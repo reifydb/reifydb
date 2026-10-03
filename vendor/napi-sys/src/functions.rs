@@ -29,19 +29,19 @@ mod napi1 {
       fn napi_create_string_latin1(
         env: napi_env,
         str_: *const c_char,
-        length: usize,
+        length: isize,
         result: *mut napi_value,
       ) -> napi_status;
       fn napi_create_string_utf8(
         env: napi_env,
         str_: *const c_char,
-        length: usize,
+        length: isize,
         result: *mut napi_value,
       ) -> napi_status;
       fn napi_create_string_utf16(
         env: napi_env,
         str_: *const u16,
-        length: usize,
+        length: isize,
         result: *mut napi_value,
       ) -> napi_status;
       fn napi_create_symbol(
@@ -52,7 +52,7 @@ mod napi1 {
       fn napi_create_function(
         env: napi_env,
         utf8name: *const c_char,
-        length: usize,
+        length: isize,
         cb: napi_callback,
         data: *mut c_void,
         result: *mut napi_value,
@@ -255,7 +255,7 @@ mod napi1 {
       fn napi_define_class(
         env: napi_env,
         utf8name: *const c_char,
-        length: usize,
+        length: isize,
         constructor: napi_callback,
         data: *mut c_void,
         property_count: usize,
@@ -416,9 +416,9 @@ mod napi1 {
       fn napi_module_register(mod_: *mut napi_module);
       fn napi_fatal_error(
         location: *const c_char,
-        location_len: usize,
+        location_len: isize,
         message: *const c_char,
-        message_len: usize,
+        message_len: isize,
       );
       fn napi_async_init(
         env: napi_env,
@@ -694,6 +694,19 @@ mod napi8 {
       fn napi_object_freeze(env: napi_env, object: napi_value) -> napi_status;
 
       fn napi_object_seal(env: napi_env, object: napi_value) -> napi_status;
+
+      fn napi_type_tag_object(
+        env: napi_env,
+        value: napi_value,
+        type_tag: *const napi_type_tag,
+      ) -> napi_status;
+
+      fn napi_check_object_type_tag(
+        env: napi_env,
+        value: napi_value,
+        type_tag: *const napi_type_tag,
+        result: *mut bool,
+      ) -> napi_status;
     }
   );
 }
@@ -709,7 +722,7 @@ mod napi9 {
       fn node_api_symbol_for(
         env: napi_env,
         utf8name: *const c_char,
-        length: usize,
+        length: isize,
         result: *mut napi_value,
       ) -> napi_status;
       fn node_api_get_module_file_name(env: napi_env, result: *mut *const c_char) -> napi_status;
@@ -728,8 +741,8 @@ mod napi9 {
   );
 }
 
-#[cfg(feature = "experimental")]
-mod experimental {
+#[cfg(feature = "napi10")]
+mod napi10 {
   use std::os::raw::{c_char, c_void};
 
   use super::super::types::*;
@@ -739,8 +752,8 @@ mod experimental {
       fn node_api_create_external_string_latin1(
         env: napi_env,
         str_: *const c_char,
-        length: usize,
-        napi_finalize: napi_finalize,
+        length: isize,
+        napi_finalize: node_api_basic_finalize,
         finalize_hint: *mut c_void,
         result: *mut napi_value,
         copied: *mut bool,
@@ -749,20 +762,88 @@ mod experimental {
       fn node_api_create_external_string_utf16(
         env: napi_env,
         str_: *const u16,
-        length: usize,
-        napi_finalize: napi_finalize,
+        length: isize,
+        napi_finalize: node_api_basic_finalize,
         finalize_hint: *mut c_void,
         result: *mut napi_value,
         copied: *mut bool,
+      ) -> napi_status;
+
+      fn node_api_create_property_key_utf16(
+        env: napi_env,
+        str_: *const u16,
+        length: isize,
+        result: *mut napi_value,
+      ) -> napi_status;
+
+      fn node_api_create_property_key_utf8(
+        env: napi_env,
+        str_: *const c_char,
+        length: isize,
+        result: *mut napi_value,
+      ) -> napi_status;
+
+      fn node_api_create_property_key_latin1(
+        env: napi_env,
+        str_: *const c_char,
+        length: isize,
+        result: *mut napi_value,
       ) -> napi_status;
     }
   );
 }
 
 #[cfg(feature = "experimental")]
+mod experimental {
+  use std::os::raw::c_void;
+
+  use super::super::types::*;
+
+  generate!(
+    extern "C" {
+      fn node_api_create_buffer_from_arraybuffer(
+        env: napi_env,
+        arraybuffer: napi_value,
+        byte_offset: usize,
+        byte_length: usize,
+        result: *mut napi_value,
+      ) -> napi_status;
+
+      fn node_api_post_finalizer(
+        env: node_api_basic_env,
+        finalize_cb: napi_finalize,
+        finalize_data: *mut c_void,
+        finalize_hint: *mut c_void,
+      ) -> napi_status;
+
+      fn node_api_create_object_with_properties(
+        env: napi_env,
+        prototype_or_null: napi_value,
+        property_names: *const napi_value,
+        property_values: *const napi_value,
+        property_count: usize,
+        result: *mut napi_value,
+      ) -> napi_status;
+    }
+  );
+
+  /// **Deprecated**: use [`node_api_create_object_with_properties`] instead.
+  ///
+  /// Compatibility alias: this binding was originally published under the wrong
+  /// symbol name (`napi_create_object_with_properties` does not exist in Node-API),
+  /// so the old name never resolved at runtime. A `pub use` is used instead of a
+  /// wrapper `fn` to preserve the `extern "C"` item kind under static linking
+  /// (`#[deprecated]` on a re-export is silently ignored by rustc, so the notice
+  /// lives in this doc comment).
+  pub use self::node_api_create_object_with_properties as napi_create_object_with_properties;
+}
+
+#[cfg(feature = "experimental")]
 pub use experimental::*;
 
 pub use napi1::*;
+#[cfg(feature = "napi10")]
+pub use napi10::*;
 #[cfg(feature = "napi2")]
 pub use napi2::*;
 #[cfg(feature = "napi3")]
@@ -780,10 +861,57 @@ pub use napi8::*;
 #[cfg(feature = "napi9")]
 pub use napi9::*;
 
-#[cfg(any(windows, feature = "dyn-symbols"))]
+#[cfg(all(windows, any(target_env = "msvc", feature = "dyn-symbols")))]
+fn test_library(
+  lib_result: Result<libloading::os::windows::Library, libloading::Error>,
+) -> Result<libloading::Library, libloading::Error> {
+  unsafe {
+    match lib_result {
+      Ok(lib) => {
+        let symbol: Result<
+          libloading::os::windows::Symbol<unsafe extern "C" fn()>,
+          libloading::Error,
+        > = lib.get(b"napi_create_int32\0");
+        match symbol {
+          Ok(_) => Ok(lib.into()),
+          Err(err) => Err(err),
+        }
+      }
+      Err(err) => Err(err),
+    }
+  }
+}
+
+#[cfg(all(windows, any(target_env = "msvc", feature = "dyn-symbols")))]
+fn find_node_library() -> Result<libloading::Library, libloading::Error> {
+  // Probe lazily via `or_else`: `Result::or` evaluates its argument eagerly,
+  // so the `Library::new` fallbacks would LoadLibrary a stray libnode.dll even
+  // when the process image already exports the symbols (a regular node.exe),
+  // pulling a second Node runtime into the process as a side effect.
+  return unsafe {
+    test_library(libloading::os::windows::Library::this())
+      .or_else(|_| {
+        test_library(libloading::os::windows::Library::open_already_loaded(
+          "libnode",
+        ))
+      })
+      .or_else(|_| {
+        test_library(libloading::os::windows::Library::open_already_loaded(
+          "node",
+        ))
+      })
+      .or_else(|_| test_library(libloading::os::windows::Library::new("node")))
+      .or_else(|_| test_library(libloading::os::windows::Library::new("libnode")))
+  };
+}
+
+#[cfg(any(
+  target_env = "msvc",
+  all(not(target_family = "wasm"), feature = "dyn-symbols")
+))]
 pub(super) unsafe fn load_all() -> Result<libloading::Library, libloading::Error> {
   #[cfg(windows)]
-  let host = libloading::os::windows::Library::this()?.into();
+  let host = find_node_library()?.into();
 
   #[cfg(unix)]
   let host = libloading::os::unix::Library::this().into();
@@ -805,6 +933,8 @@ pub(super) unsafe fn load_all() -> Result<libloading::Library, libloading::Error
   napi8::load(&host)?;
   #[cfg(feature = "napi9")]
   napi9::load(&host)?;
+  #[cfg(feature = "napi10")]
+  napi10::load(&host)?;
   #[cfg(feature = "experimental")]
   experimental::load(&host)?;
   Ok(host)

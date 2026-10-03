@@ -8,7 +8,7 @@
 ///     a.get_u128().1 + b.get_u128().1 // We have opportunity to check if the `u128` has lost precision
 /// }
 /// ```
-use std::ptr;
+use std::{cmp::max, ptr};
 
 use crate::{check_status, sys};
 
@@ -21,11 +21,22 @@ pub struct i64n(pub i64);
 
 /// <https://nodejs.org/api/n-api.html#napi_create_bigint_words>
 /// The resulting BigInt is calculated as: (–1)^sign_bit (words\[0\] × (2^64)^0 + words\[1\] × (2^64)^1 + …)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq)]
 pub struct BigInt {
   /// true for negative numbers
   pub sign_bit: bool,
   pub words: Vec<u64>,
+}
+
+impl PartialEq for BigInt {
+  fn eq(&self, other: &Self) -> bool {
+    for i in 0..max(self.words.len(), other.words.len()) {
+      if self.words.get(i).unwrap_or(&0) != other.words.get(i).unwrap_or(&0) {
+        return false;
+      }
+    }
+    self.sign_bit == other.sign_bit
+  }
 }
 
 impl TypeName for BigInt {
@@ -169,15 +180,19 @@ pub(crate) unsafe fn u128_with_sign_to_napi_value(
   let mut raw_value = ptr::null_mut();
   if cfg!(target_endian = "little") {
     let words = &val as *const u128 as *const u64;
-    check_status!(unsafe {
-      sys::napi_create_bigint_words(env, sign_bit, 2, words, &mut raw_value)
-    })?;
+    check_status!(
+      unsafe { sys::napi_create_bigint_words(env, sign_bit, 2, words, &mut raw_value) },
+      "Failed to create BigInt from u128"
+    )?;
     return Ok(raw_value);
   }
 
   let arr: [u64; 2] = [val as _, (val >> 64) as _];
   let words = &arr as *const u64;
-  check_status!(unsafe { sys::napi_create_bigint_words(env, sign_bit, 2, words, &mut raw_value) })?;
+  check_status!(
+    unsafe { sys::napi_create_bigint_words(env, sign_bit, 2, words, &mut raw_value) },
+    "Failed to create BigInt from u128"
+  )?;
   Ok(raw_value)
 }
 
@@ -189,9 +204,33 @@ impl ToNapiValue for i128 {
   }
 }
 
+impl ToNapiValue for &i128 {
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, *val)
+  }
+}
+
+impl ToNapiValue for &mut i128 {
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, *val)
+  }
+}
+
 impl ToNapiValue for u128 {
   unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
     u128_with_sign_to_napi_value(env, val, 0)
+  }
+}
+
+impl ToNapiValue for &u128 {
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, *val)
+  }
+}
+
+impl ToNapiValue for &mut u128 {
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, *val)
   }
 }
 
@@ -203,11 +242,38 @@ impl ToNapiValue for i64n {
   }
 }
 
+impl ToNapiValue for &i64n {
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, i64n(val.0))
+  }
+}
+
+impl ToNapiValue for &mut i64n {
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, i64n(val.0))
+  }
+}
+
 impl ToNapiValue for u64 {
   unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
     let mut raw_value = ptr::null_mut();
-    check_status!(unsafe { sys::napi_create_bigint_uint64(env, val, &mut raw_value) })?;
+    check_status!(
+      unsafe { sys::napi_create_bigint_uint64(env, val, &mut raw_value) },
+      "Failed to create BigInt from u64"
+    )?;
     Ok(raw_value)
+  }
+}
+
+impl ToNapiValue for &u64 {
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, *val)
+  }
+}
+
+impl ToNapiValue for &mut u64 {
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, *val)
   }
 }
 
@@ -224,6 +290,18 @@ impl ToNapiValue for isize {
     let mut raw_value = ptr::null_mut();
     check_status!(unsafe { sys::napi_create_bigint_int64(env, val as i64, &mut raw_value) })?;
     Ok(raw_value)
+  }
+}
+
+impl ToNapiValue for &usize {
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, *val)
+  }
+}
+
+impl ToNapiValue for &mut usize {
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> crate::Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, *val)
   }
 }
 
@@ -263,4 +341,20 @@ impl From<u128> for BigInt {
       words: vec![val as _, (val >> 64) as _],
     }
   }
+}
+
+#[test]
+fn test_bigint_comparison() {
+  assert_eq!(BigInt::from(1_i64), BigInt::from(1_i64));
+  assert_eq!(BigInt::from(1_i64), BigInt::from(1_i128));
+  assert_eq!(BigInt::from(1_i64), BigInt::from(1_u128));
+  assert_eq!(BigInt::from(1_i64), BigInt::from(1_u64));
+
+  assert_eq!(BigInt::from(-1_i64), BigInt::from(-1_i128));
+
+  assert_ne!(BigInt::from(1_i64), BigInt::from(-1_i128));
+  assert_ne!(BigInt::from(1_i64), BigInt::from(2_i64));
+
+  assert_eq!(BigInt::from(i128::MAX), BigInt::from(i128::MAX));
+  assert_ne!(BigInt::from(i64::MAX), BigInt::from(i128::MAX));
 }

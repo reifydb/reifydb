@@ -7,12 +7,12 @@
 //!
 //! ## Feature flags
 //!
-//! ### napi1 ~ napi8
+//! ### napi1 ~ napi10
 //!
 //! Because `Node.js` N-API has versions. So there are feature flags to choose what version of `N-API` you want to build for.
 //! For example, if you want build a library which can be used by `node@10.17.0`, you should choose the `napi5` or lower.
 //!
-//! The details of N-API versions and support matrix: [n_api_version_matrix](https://nodejs.org/api/n-api.html#n_api_n_api_version_matrix)
+//! The details of N-API versions and support matrix: [Node-API version matrix](https://nodejs.org/api/n-api.html#node-api-version-matrix)
 //!
 //! ### tokio_rt
 //! With `tokio_rt` feature, `napi-rs` provides a ***tokio runtime*** in an additional thread.
@@ -20,18 +20,44 @@
 //!
 //! ```
 //! use futures::prelude::*;
-//! use napi::{CallContext, Error, JsObject, JsString, Result, Status};
+//! use napi::bindgen_prelude::*;
 //! use tokio;
 //!
 //! #[napi]
-//! pub async fn tokio_readfile(js_filepath: String) -> Result<JsBuffer> {
-//!     ctx.env.execute_tokio_future(
+//! pub fn tokio_readfile(js_filepath: String) -> Result<Buffer> {
+//!     ctx.env.spawn_future_with_callback(
 //!         tokio::fs::read(js_filepath)
 //!           .map(|v| v.map_err(|e| Error::new(Status::Unknown, format!("failed to read file, {}", e)))),
-//!         |&mut env, data| env.create_buffer_with_data(data),
+//!         |_, data| data.into(),
 //!     )
 //! }
 //! ```
+//!
+//! ### async-runtime
+//!
+//! The `async-runtime` feature exposes a service-provider interface for plugging a **custom
+//! async runtime** into napi instead of (or alongside) the built-in Tokio runtime: implement
+//! the `bindgen_prelude::AsyncRuntime` trait and register exactly one instance with
+//! `bindgen_prelude::register_async_runtime` from `#[module_init]`, before the first Node-API
+//! environment starts.
+//!
+//! The relevant build shapes:
+//!
+//! - **`async-runtime` only** (no `tokio_rt`): napi links no Tokio at all. Every generated
+//!   `#[napi] async fn` runs on the registered backend; when nothing is registered the promise
+//!   rejects with a missing-backend error.
+//! - **`async-runtime` + `tokio_rt`** (combined, e.g. through Cargo feature unification): the
+//!   established helpers `spawn`, `spawn_blocking`, `block_on`,
+//!   `within_runtime_if_available`, and `create_custom_tokio_runtime` stay Tokio-backed with
+//!   unchanged signatures. Generated async functions follow the *selection*: the custom
+//!   backend if one was registered before the registration window closed, otherwise Tokio.
+//!   Selecting a custom backend never constructs Tokio.
+//! - **`noop` + `async-runtime`**: the SPI types exist so code compiles, but no backend can be
+//!   installed; registration retires the supplied backend and reports `InvalidArg`.
+//!
+//! Panic containment around backend hooks and task polls requires `panic = "unwind"`; on
+//! `panic = "abort"` targets (including Rust's shipped `wasm32-wasip1(-threads)`) a panicking
+//! async function traps or aborts before its promise settles.
 //!
 //! ### latin1
 //!
@@ -65,12 +91,28 @@
 //! ```
 //!
 
+#[cfg(all(target_family = "wasm", not(feature = "noop"), feature = "napi3"))]
+#[link(wasm_import_module = "napi")]
+extern "C" {
+  fn napi_add_env_cleanup_hook(
+    env: sys::napi_env,
+    fun: Option<unsafe extern "C" fn(arg: *mut core::ffi::c_void)>,
+    arg: *mut core::ffi::c_void,
+  ) -> sys::napi_status;
+  fn napi_remove_env_cleanup_hook(
+    env: sys::napi_env,
+    fun: Option<unsafe extern "C" fn(arg: *mut core::ffi::c_void)>,
+    arg: *mut core::ffi::c_void,
+  ) -> sys::napi_status;
+}
+
 #[cfg(feature = "napi8")]
 mod async_cleanup_hook;
 #[cfg(feature = "napi8")]
 pub use async_cleanup_hook::AsyncCleanupHook;
 mod async_work;
 mod bindgen_runtime;
+#[cfg(feature = "compat-mode")]
 mod call_context;
 #[cfg(feature = "napi3")]
 mod cleanup_env;
@@ -79,19 +121,63 @@ mod error;
 mod js_values;
 mod status;
 mod task;
-#[cfg(all(feature = "tokio_rt", feature = "napi4"))]
+#[cfg(all(
+  any(feature = "tokio_rt", feature = "async-runtime"),
+  feature = "napi4"
+))]
 mod tokio_runtime;
 mod value_type;
 #[cfg(feature = "napi3")]
 pub use cleanup_env::CleanupEnvHook;
+#[cfg(not(feature = "noop"))]
+mod sendable_resolver;
 #[cfg(feature = "napi4")]
 pub mod threadsafe_function;
+#[cfg(not(feature = "noop"))]
+pub use sendable_resolver::SendableResolver;
 
 mod version;
+// The heap-sync allocator lock for `wasm32-wasip1-threads`. Gated on the same inputs that
+// `napi_build::setup()` reads to pass the matching `--wrap` link arguments: the exact target
+// (`napi_wasi_threads`) and the `napi_wasi_no_heap_sync` opt-out. Not on `noop` or any other napi
+// feature, which napi-build cannot see: the wrap and the wrappers must never come apart.
+#[cfg(all(target_family = "wasm", napi_wasi_threads, not(napi_wasi_no_heap_sync)))]
+mod wasi_heap_sync;
+// The page arithmetic of its `sbrk`, pure so the unit tests run natively.
+#[cfg(any(
+  test,
+  all(target_family = "wasm", napi_wasi_threads, not(napi_wasi_no_heap_sync))
+))]
+mod wasi_heap_break;
+
+/// Threaded WASI: refresh this thread's view of the shared memory size where napi hands it work
+/// another thread built. A no-op on every other target and with `napi_wasi_no_heap_sync`.
+///
+/// A thread that received work from another thread may hold a stale memory size, and napi's
+/// allocator lock only refreshes it when it allocates. napi-async-runtime covers its own
+/// scheduler; this covers napi's own entries:
+///
+/// - `execute` of an async work (`AsyncTask`), on an emnapi pool thread, which can pop work
+///   items back to back with no refresh in between;
+/// - every poll of an `AsyncRuntimeTask`, for backends other than napi-async-runtime;
+/// - with `tokio_rt`: every task poll of napi's default Tokio runtime (the multi-thread one, which
+///   needs `--cfg tokio_unstable` on wasm), and the closure given to napi's `spawn_blocking`.
+///
+/// Not covered: a runtime passed to `create_custom_tokio_runtime`, and closures given to
+/// `tokio::task::spawn_blocking` directly.
+///
+/// One atomic load and one thread-local load; `memory.grow(0)` only when another thread has seen
+/// a larger memory (counted in `napi_wasm_heap_sync_stat(5)`).
+#[inline(always)]
+pub(crate) fn on_thread_handoff() {
+  #[cfg(all(target_family = "wasm", napi_wasi_threads, not(napi_wasi_no_heap_sync)))]
+  sys::wasi_heap_sync::refresh_if_behind();
+}
 
 pub use napi_sys as sys;
 
 pub use async_work::AsyncWorkPromise;
+#[cfg(feature = "compat-mode")]
 pub use call_context::CallContext;
 
 pub use bindgen_runtime::iterator;
@@ -99,7 +185,7 @@ pub use env::*;
 pub use error::*;
 pub use js_values::*;
 pub use status::Status;
-pub use task::Task;
+pub use task::{ScopedTask, Task};
 pub use value_type::*;
 pub use version::NodeVersion;
 #[cfg(feature = "serde-json")]
@@ -139,25 +225,39 @@ macro_rules! assert_type_of {
   };
 }
 
-pub use crate::bindgen_runtime::ctor as module_init;
-
 pub mod bindgen_prelude {
   #[cfg(all(feature = "compat-mode", not(feature = "noop")))]
   pub use crate::bindgen_runtime::register_module_exports;
-  #[cfg(feature = "tokio_rt")]
+  #[cfg(any(feature = "tokio_rt", feature = "async-runtime"))]
   pub use crate::tokio_runtime::*;
   pub use crate::{
     assert_type_of, bindgen_runtime::*, check_pending_exception, check_status,
-    check_status_or_throw, error, error::*, sys, type_of, JsError, Property, PropertyAttributes,
-    Result, Status, Task, ValueType,
+    check_status_or_throw, error, error::*, sys, type_of, JsError, JsValue, Property,
+    PropertyAttributes, Result, Status, Task, ValueType,
   };
+  #[cfg(feature = "tracing")]
+  pub use ::tracing;
+
+  /// Emit NAPI call tracing through one shared callsite.
+  ///
+  /// Keep this out of line: every generated NAPI wrapper calls this function, and inlining the
+  /// tracing macro would duplicate its static callsite metadata in every wrapper.
+  #[cfg(feature = "tracing")]
+  #[doc(hidden)]
+  #[inline(never)]
+  pub fn trace_napi_call(name: &'static str) {
+    ::tracing::debug!(target: "napi", "{}", name);
+  }
 
   // This function's signature must be kept in sync with the one in tokio_runtime.rs, otherwise napi
   // will fail to compile without the `tokio_rt` feature.
 
   /// If the feature `tokio_rt` has been enabled this will enter the runtime context and
   /// then call the provided closure. Otherwise it will just call the provided closure.
-  #[cfg(not(all(feature = "tokio_rt", feature = "napi4")))]
+  #[cfg(not(all(
+    any(feature = "tokio_rt", feature = "async-runtime"),
+    feature = "napi4"
+  )))]
   pub fn within_runtime_if_available<F: FnOnce() -> T, T>(f: F) -> T {
     f()
   }
@@ -168,6 +268,9 @@ pub mod __private {
   pub use crate::bindgen_runtime::{
     get_class_constructor, iterator::create_iterator, register_class, ___CALL_FROM_FACTORY,
   };
+
+  #[cfg(any(feature = "tokio_rt", feature = "async-runtime"))]
+  pub use crate::bindgen_runtime::async_iterator::create_async_iterator;
 
   use crate::sys;
 
@@ -203,8 +306,15 @@ pub mod __private {
   }
 }
 
+pub extern crate ctor;
+
 #[cfg(feature = "tokio_rt")]
 pub extern crate tokio;
 
 #[cfg(feature = "error_anyhow")]
 pub extern crate anyhow;
+
+#[cfg(feature = "web_stream")]
+pub extern crate futures_core;
+#[cfg(feature = "web_stream")]
+pub extern crate tokio_stream;

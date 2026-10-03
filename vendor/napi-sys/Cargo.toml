@@ -11,14 +11,21 @@
 
 [package]
 edition = "2021"
-rust-version = "1.65"
+rust-version = "1.88"
 name = "napi-sys"
-version = "2.4.0"
+version = "3.4.0"
 authors = ["LongYinan <lynweklm@gmail.com>"]
+build = "build.rs"
 include = [
     "src/**/*",
+    "build.rs",
     "Cargo.toml",
 ]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = "NodeJS N-API raw binding"
 readme = "README.md"
 keywords = [
@@ -33,14 +40,12 @@ repository = "https://github.com/napi-rs/napi-rs"
 [package.metadata.workspaces]
 independent = true
 
-[dependencies.libloading]
-version = "0.8"
-optional = true
-
 [features]
-dyn-symbols = ["libloading"]
+default = ["dyn-symbols"]
+dyn-symbols = []
 experimental = []
 napi1 = []
+napi10 = ["napi9"]
 napi2 = ["napi1"]
 napi3 = ["napi2"]
 napi4 = ["napi3"]
@@ -50,5 +55,9 @@ napi7 = ["napi6"]
 napi8 = ["napi7"]
 napi9 = ["napi8"]
 
-[target."cfg(windows)".dependencies.libloading]
-version = "0.8"
+[lib]
+name = "napi_sys"
+path = "src/lib.rs"
+
+[dependencies.libloading]
+version = "0.9"

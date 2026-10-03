@@ -139,6 +139,7 @@ pub mod Status {
   pub const napi_detachable_arraybuffer_expected: i32 = 20;
   pub const napi_would_deadlock: i32 = 21; // unused
   pub const napi_no_external_buffers_allowed: i32 = 22;
+  pub const napi_cannot_run_js: i32 = 23;
 }
 
 pub type napi_callback =
@@ -214,6 +215,13 @@ pub type napi_async_cleanup_hook_handle = *mut napi_async_cleanup_hook_handle__;
 #[cfg(feature = "napi8")]
 pub type napi_async_cleanup_hook =
   Option<unsafe extern "C" fn(handle: napi_async_cleanup_hook_handle, data: *mut c_void)>;
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct napi_type_tag {
+  pub lower: u64,
+  pub upper: u64,
+}
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -301,3 +309,22 @@ pub struct napi_module {
   pub nm_priv: *mut c_void,
   pub reserved: [*mut c_void; 4usize],
 }
+
+#[cfg(feature = "napi10")]
+pub type node_api_basic_finalize = Option<
+  unsafe extern "C" fn(
+    env: node_api_basic_env,
+    finalize_data: *mut c_void,
+    finalize_hint: *mut c_void,
+  ),
+>;
+
+#[cfg(any(feature = "experimental", feature = "napi10"))]
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct node_api_basic_env__ {
+  _unused: [u8; 0],
+}
+
+#[cfg(any(feature = "experimental", feature = "napi10"))]
+pub type node_api_basic_env = *mut node_api_basic_env__;

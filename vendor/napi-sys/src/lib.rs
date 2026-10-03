@@ -2,8 +2,43 @@
 
 #![allow(ambiguous_glob_reexports)]
 
-#[cfg(any(windows, feature = "dyn-symbols"))]
+#[cfg(any(
+  target_env = "msvc",
+  all(not(target_family = "wasm"), feature = "dyn-symbols")
+))]
+#[inline(never)]
+unsafe fn load_symbol(
+  host: &libloading::Library,
+  name: &'static [u8],
+) -> Option<*mut std::ffi::c_void> {
+  match unsafe { host.get::<unsafe extern "C" fn()>(name) } {
+    Ok(symbol) => unsafe { symbol.try_as_raw_ptr() },
+    Err(_) => None,
+  }
+}
+
+#[cfg(any(
+  target_env = "msvc",
+  all(not(target_family = "wasm"), feature = "dyn-symbols")
+))]
 macro_rules! generate {
+  (@stub_fn $name:ident($($param:ident: $ptype:ty,)*) -> napi_status) => {
+    unsafe extern "C" fn $name($(_: $ptype,)*) -> napi_status {
+      eprintln!("Node-API symbol {} has not been loaded", stringify!($name));
+      1
+    }
+  };
+  (@stub_fn $name:ident($($param:ident: $ptype:ty,)*) -> $rtype:ty) => {
+    unsafe extern "C" fn $name($(_: $ptype,)*) -> $rtype {
+      eprintln!("Node-API symbol {} has not been loaded", stringify!($name));
+      unsafe { std::mem::zeroed() }
+    }
+  };
+  (@stub_fn $name:ident($($param:ident: $ptype:ty,)*)) => {
+    unsafe extern "C" fn $name($(_: $ptype,)*) {
+      eprintln!("Node-API symbol {} has not been loaded", stringify!($name));
+    }
+  };
   (extern "C" {
     $(fn $name:ident($($param:ident: $ptype:ty$(,)?)*)$( -> $rtype:ty)?;)+
   }) => {
@@ -15,16 +50,9 @@ macro_rules! generate {
       )*
     }
 
-    #[inline(never)]
-    fn panic_load<T>() -> T {
-      panic!("Node-API symbol has not been loaded")
-    }
-
     static mut NAPI: Napi = {
       $(
-        unsafe extern "C" fn $name($(_: $ptype,)*)$( -> $rtype)* {
-          panic_load()
-        }
+        generate!(@stub_fn $name($($param: $ptype,)*) $( -> $rtype)?);
       )*
 
       Napi {
@@ -40,17 +68,26 @@ macro_rules! generate {
     ) -> Result<(), libloading::Error> {
       NAPI = Napi {
         $(
-          $name: {
-            let symbol: Result<libloading::Symbol<unsafe extern "C" fn ($(_: $ptype,)*)$( -> $rtype)*>, libloading::Error> = host.get(stringify!($name).as_bytes());
-            match symbol {
-              Ok(f) => *f,
-              Err(e) => {
-                #[cfg(debug_assertions)] {
-                  eprintln!("Load Node-API [{}] from host runtime failed: {}", stringify!($name), e);
-                }
-                NAPI.$name
+          $name: match unsafe {
+            // SAFETY: every generated name identifies a Node-API function, and `setup` keeps the
+            // host library alive for as long as the loaded function pointers can be called.
+            $crate::load_symbol(
+              host,
+              concat!(stringify!($name), "\0").as_bytes(),
+            )
+          } {
+            Some(symbol) => {
+              // SAFETY: Node-API exports use the signature declared for this field. The host
+              // library remains alive for as long as these function pointers can be called.
+              unsafe {
+                std::mem::transmute::<
+                  *mut std::ffi::c_void,
+                  unsafe extern "C" fn($(_: $ptype,)*)$( -> $rtype)*,
+                >(symbol)
               }
             }
+            // Ignore the lookup error and preserve the existing stub function.
+            None => NAPI.$name,
           },
         )*
       };
@@ -68,7 +105,10 @@ macro_rules! generate {
   };
 }
 
-#[cfg(not(any(windows, feature = "dyn-symbols")))]
+#[cfg(any(
+  target_family = "wasm",
+  all(not(target_env = "msvc"), not(feature = "dyn-symbols"))
+))]
 macro_rules! generate {
   (extern "C" {
     $(fn $name:ident($($param:ident: $ptype:ty$(,)?)*)$( -> $rtype:ty)?;)+
@@ -83,16 +123,27 @@ macro_rules! generate {
 
 mod functions;
 mod types;
+#[cfg(any(napi_wasi_threads, test))]
+#[doc(hidden)]
+pub mod wasi_heap_sync;
+#[cfg(any(napi_wasi_threads, test))]
+#[doc(hidden)]
+pub mod wasi_thread_crash;
 
 pub use functions::*;
 pub use types::*;
 
+#[cfg(any(
+  target_env = "msvc",
+  all(not(target_family = "wasm"), feature = "dyn-symbols")
+))]
 /// Loads N-API symbols from host process.
 /// Must be called at least once before using any functions in bindings or
-/// they will panic.
-/// Safety: `env` must be a valid `napi_env` for the current thread
-#[cfg(any(windows, feature = "dyn-symbols"))]
-#[allow(clippy::missing_safety_doc)]
+/// they will panic
+///
+/// # Safety
+///
+/// The returned Library must be kept alive as long as any N-API
 pub unsafe fn setup() -> libloading::Library {
   match load_all() {
     Err(err) => panic!("{}", err),

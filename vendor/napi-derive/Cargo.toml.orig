@@ -7,27 +7,28 @@ license = "MIT"
 name = "napi-derive"
 readme = "README.md"
 repository = "https://github.com/napi-rs/napi-rs"
-rust-version = "1.65"
-version = "2.16.13"
+rust-version.workspace = true
+version = "3.6.10"
 
 [package.metadata.workspaces]
 independent = true
 
 [features]
 compat-mode = []
-default = ["compat-mode", "full"]
-full = ["type-def", "strict"]
+default = ["type-def", "strict"]
+full = ["type-def", "strict", "compat-mode"]
 noop = ["napi-derive-backend/noop"]
 strict = ["napi-derive-backend/strict"]
-type-def = ["napi-derive-backend/type-def"]
+tracing = ["napi-derive-backend/tracing"]
+type-def = ["napi-derive-backend/type-def", "ctor"]
 
 [dependencies]
-convert_case = "0.6"
-napi-derive-backend = { version = "1.0.75", path = "../backend" }
+convert_case = "0.12"
+ctor = { version = "1.0.0", default-features = false, optional = true }
+napi-derive-backend = { version = "6.1.4", path = "../backend" }
 proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["fold", "full", "extra-traits"] }
-cfg-if = "1.0"
 
 [lib]
 proc-macro = true

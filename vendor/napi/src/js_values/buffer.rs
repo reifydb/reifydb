@@ -2,12 +2,12 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::ptr;
 
-use super::{Value, ValueType};
-use crate::bindgen_runtime::ValidateNapiValue;
 use crate::{
-  bindgen_runtime::TypeName, check_status, sys, Error, JsUnknown, NapiValue, Ref, Result, Status,
+  bindgen_runtime::{FromNapiValue, TypeName, ValidateNapiValue},
+  check_status, sys, Env, Error, JsValue, Ref, Result, Status, Unknown, Value, ValueType,
 };
 
+#[deprecated(since = "3.0.0", note = "Please use Buffer or &[u8] instead")]
 pub struct JsBuffer(pub(crate) Value);
 
 impl TypeName for JsBuffer {
@@ -34,9 +34,28 @@ impl ValidateNapiValue for JsBuffer {
   }
 }
 
+impl FromNapiValue for JsBuffer {
+  unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
+    Ok(JsBuffer(Value {
+      env,
+      value: napi_val,
+      value_type: ValueType::Object,
+    }))
+  }
+}
+
+impl JsValue<'_> for JsBuffer {
+  fn value(&self) -> Value {
+    self.0
+  }
+}
+
+#[deprecated(since = "3.0.0", note = "Please use Buffer or &[u8] instead")]
 pub struct JsBufferValue {
   pub(crate) value: JsBuffer,
-  data: mem::ManuallyDrop<Vec<u8>>,
+  len: usize,
+  data_ptr: *mut u8,
+  owned: Option<mem::ManuallyDrop<Vec<u8>>>,
 }
 
 impl JsBuffer {
@@ -47,39 +66,64 @@ impl JsBuffer {
       sys::napi_get_buffer_info(self.0.env, self.0.value, &mut data, &mut len)
     })?;
     Ok(JsBufferValue {
-      data: mem::ManuallyDrop::new(unsafe { Vec::from_raw_parts(data as *mut _, len, len) }),
       value: self,
+      len,
+      data_ptr: data as *mut u8,
+      owned: None,
     })
   }
 
-  pub fn into_ref(self) -> Result<Ref<JsBufferValue>> {
-    Ref::new(self.0, 1, self.into_value()?)
+  pub fn into_ref(self) -> Result<Ref<JsBuffer>> {
+    Ref::new(&Env::from(self.0.env), &self)
   }
 }
 
 impl JsBufferValue {
   pub fn new(value: JsBuffer, data: mem::ManuallyDrop<Vec<u8>>) -> Self {
-    JsBufferValue { value, data }
+    let len = data.len();
+    let data_ptr = if len == 0 {
+      std::ptr::null_mut()
+    } else {
+      data.as_ptr() as *mut u8
+    };
+    JsBufferValue {
+      value,
+      len,
+      data_ptr,
+      owned: Some(data),
+    }
   }
 
   pub fn into_raw(self) -> JsBuffer {
     self.value
   }
 
-  pub fn into_unknown(self) -> JsUnknown {
-    unsafe { JsUnknown::from_raw_unchecked(self.value.0.env, self.value.0.value) }
+  pub fn into_unknown<'env>(self) -> Unknown<'env> {
+    unsafe { Unknown::from_raw_unchecked(self.value.0.env, self.value.0.value) }
   }
 }
 
 impl AsRef<[u8]> for JsBufferValue {
   fn as_ref(&self) -> &[u8] {
-    self.data.as_slice()
+    if let Some(ref data) = self.owned {
+      data.as_slice()
+    } else if self.len == 0 {
+      &[]
+    } else {
+      unsafe { std::slice::from_raw_parts(self.data_ptr as *const u8, self.len) }
+    }
   }
 }
 
 impl AsMut<[u8]> for JsBufferValue {
   fn as_mut(&mut self) -> &mut [u8] {
-    self.data.as_mut_slice()
+    if let Some(ref mut data) = self.owned {
+      data.as_mut_slice()
+    } else if self.len == 0 {
+      &mut []
+    } else {
+      unsafe { std::slice::from_raw_parts_mut(self.data_ptr, self.len) }
+    }
   }
 }
 
@@ -87,12 +131,12 @@ impl Deref for JsBufferValue {
   type Target = [u8];
 
   fn deref(&self) -> &Self::Target {
-    self.data.as_slice()
+    self.as_ref()
   }
 }
 
 impl DerefMut for JsBufferValue {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    self.data.as_mut_slice()
+    self.as_mut()
   }
 }

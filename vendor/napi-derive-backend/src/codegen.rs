@@ -6,6 +6,7 @@ mod r#const;
 mod r#enum;
 mod r#fn;
 mod r#struct;
+mod r#type;
 
 pub use r#struct::rm_raw_prefix;
 
@@ -26,14 +27,14 @@ pub trait TryToTokens {
 }
 
 fn get_intermediate_ident(name: &str) -> Ident {
-  let new_name = format!("__napi__{}", name);
+  let new_name = format!("{name}_c_callback");
   Ident::new(&new_name, Span::call_site())
 }
 
 fn js_mod_to_token_stream(js_mod: Option<&String>) -> TokenStream {
   js_mod
     .map(|i| {
-      let i = format!("{}\0", i);
+      let i = format!("{i}\0");
       quote! { Some(#i) }
     })
     .unwrap_or_else(|| quote! { None })

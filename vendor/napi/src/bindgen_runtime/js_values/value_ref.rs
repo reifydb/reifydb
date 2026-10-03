@@ -1,40 +1,61 @@
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::cell::{Cell, LazyCell};
 use std::ffi::c_void;
+use std::hash::BuildHasherDefault;
 use std::ops::{Deref, DerefMut};
 use std::ptr;
-use std::rc::{Rc, Weak};
+use std::sync::{Arc, Weak};
 
-use crate::bindgen_prelude::FromNapiValue;
-use crate::{bindgen_runtime::ToNapiValue, check_status, Env, Error, Result, Status};
+use nohash_hasher::NoHashHasher;
 
-type RefInformation = (
+use crate::{
+  bindgen_runtime::{FromNapiValue, MaybeTypeTag, PersistedPerInstanceHashMap, ToNapiValue},
+  check_status, Env, Error, Result, Status,
+};
+
+pub(crate) type RefInformation = (
   /* wrapped_value */ *mut c_void,
   /* napi_ref */ crate::sys::napi_ref,
   /* finalize_callback */ *const Cell<*mut dyn FnOnce()>,
 );
 
-thread_local! {
-  pub(crate) static REFERENCE_MAP: RefCell<HashMap<*mut c_void, RefInformation>> = RefCell::new(HashMap::default());
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub(crate) fn add_ref(env: crate::sys::napi_env, t: *mut c_void, value: RefInformation) {
+  REFERENCE_MAP.with(|cell| {
+    cell.borrow_mut(|map| {
+      if let Some((_, previous_ref, previous_rc)) = map.insert(t, value) {
+        unsafe { Arc::from_raw(previous_rc) };
+        unsafe { crate::sys::napi_delete_reference(env, previous_ref) };
+      }
+    })
+  });
 }
 
-/// ### Experimental feature
+thread_local! {
+  pub(crate) static REFERENCE_MAP: LazyCell<
+    PersistedPerInstanceHashMap<*mut c_void, RefInformation, BuildHasherDefault<NoHashHasher<usize>>>,
+  > = LazyCell::new(Default::default);
+}
+
+/// Create a [`napi_ref`](https://nodejs.org/api/n-api.html#napi_ref) from `Class` instance.
 ///
-/// Create a `reference` from `Class` instance.
-/// Unref the `Reference` when the `Reference` is dropped.
+/// Unref the [`napi_ref`](https://nodejs.org/api/n-api.html#napi_ref) when the `Reference` is dropped.
+///
+/// The `Reference` is `Sync` when the `T` is `Sync`.
+/// It's not `Send` because of the `drop` of the `Reference` must be called in the same thread as the `Reference` is created.
 pub struct Reference<T: 'static> {
   raw: *mut T,
   napi_ref: crate::sys::napi_ref,
   env: *mut c_void,
-  finalize_callbacks: Rc<Cell<*mut dyn FnOnce()>>,
+  // the finalize callbacks can only be written with the `Env` passed in
+  // So we can use `Cell` rather than `AtomicPtr` here
+  finalize_callbacks: Arc<Cell<*mut dyn FnOnce()>>,
 }
 
-unsafe impl<T: Send> Send for Reference<T> {}
 unsafe impl<T: Sync> Sync for Reference<T> {}
 
 impl<T> Drop for Reference<T> {
   fn drop(&mut self) {
-    let rc_strong_count = Rc::strong_count(&self.finalize_callbacks);
+    let rc_strong_count = Arc::strong_count(&self.finalize_callbacks);
     let mut ref_count = 0;
     // If Rc strong count == 1, then the referenced object is dropped on GC
     // It would happen when the process is exiting
@@ -60,28 +81,23 @@ impl<T: 'static> Reference<T> {
   #[doc(hidden)]
   #[allow(clippy::not_unsafe_ptr_arg_deref)]
   pub fn add_ref(env: crate::sys::napi_env, t: *mut c_void, value: RefInformation) {
-    REFERENCE_MAP.with(|map| {
-      if let Some((_, previous_ref, previous_rc)) = map.borrow_mut().insert(t, value) {
-        unsafe { Rc::from_raw(previous_rc) };
-        unsafe { crate::sys::napi_delete_reference(env, previous_ref) };
-      }
-    });
+    add_ref(env, t, value);
   }
 
   #[doc(hidden)]
   pub unsafe fn from_value_ptr(t: *mut c_void, env: crate::sys::napi_env) -> Result<Self> {
     if let Some((wrapped_value, napi_ref, finalize_callbacks_ptr)) =
-      REFERENCE_MAP.with(|map| map.borrow().get(&t).cloned())
+      REFERENCE_MAP.with(|cell| cell.borrow_mut(|map| map.get(&t).cloned()))
     {
       let mut ref_count = 0;
       check_status!(
         unsafe { crate::sys::napi_reference_ref(env, napi_ref, &mut ref_count) },
         "Failed to ref napi reference"
       )?;
-      let finalize_callbacks_raw = unsafe { Rc::from_raw(finalize_callbacks_ptr) };
+      let finalize_callbacks_raw = unsafe { Arc::from_raw(finalize_callbacks_ptr) };
       let finalize_callbacks = finalize_callbacks_raw.clone();
       // Leak the raw finalize callbacks
-      let _ = Rc::into_raw(finalize_callbacks_raw);
+      let _ = Arc::into_raw(finalize_callbacks_raw);
       Ok(Self {
         raw: wrapped_value.cast(),
         napi_ref,
@@ -91,7 +107,7 @@ impl<T: 'static> Reference<T> {
     } else {
       Err(Error::new(
         Status::InvalidArg,
-        format!("Class for Type {:?} not found", t),
+        format!("Class for Type {t:?} not found"),
       ))
     }
   }
@@ -108,7 +124,7 @@ impl<T: 'static> ToNapiValue for Reference<T> {
   }
 }
 
-impl<T: 'static> FromNapiValue for Reference<T> {
+impl<T: 'static + MaybeTypeTag> FromNapiValue for Reference<T> {
   unsafe fn from_napi_value(
     env: crate::sys::napi_env,
     napi_val: crate::sys::napi_value,
@@ -119,6 +135,21 @@ impl<T: 'static> FromNapiValue for Reference<T> {
       "Unwrap value [{}] from class Reference failed",
       std::any::type_name::<T>(),
     )?;
+
+    // Reject a wrong-class / prototype-spoofed object before adopting it as a
+    // `Reference<T>`. Compiled only on napi8 NATIVE targets (the `T: MaybeTypeTag`
+    // bound provides `T::type_tag()` only there; elsewhere this is the pre-tag
+    // path).
+    #[cfg(all(feature = "napi8", not(target_family = "wasm")))]
+    unsafe {
+      crate::bindgen_runtime::validate_type_tag(
+        env,
+        napi_val,
+        &T::type_tag(),
+        std::any::type_name::<T>(),
+      )?
+    };
+
     unsafe { Reference::from_value_ptr(value.cast(), env) }
   }
 }
@@ -133,7 +164,7 @@ impl<T: 'static> Reference<T> {
     Ok(Self {
       raw: self.raw,
       napi_ref: self.napi_ref,
-      env: env.0 as *mut c_void,
+      env: env.0.cast(),
       finalize_callbacks: self.finalize_callbacks.clone(),
     })
   }
@@ -142,7 +173,7 @@ impl<T: 'static> Reference<T> {
     WeakReference {
       raw: self.raw,
       napi_ref: self.napi_ref,
-      finalize_callbacks: Rc::downgrade(&self.finalize_callbacks),
+      finalize_callbacks: Arc::downgrade(&self.finalize_callbacks),
     }
   }
 
@@ -260,6 +291,8 @@ pub struct SharedReference<T: 'static, S: 'static> {
   raw: *mut S,
   owner: Reference<T>,
 }
+
+unsafe impl<T, S: Sync> Sync for SharedReference<T, S> {}
 
 impl<T: 'static, S: 'static> SharedReference<T, S> {
   pub fn clone(&self, env: Env) -> Result<Self> {

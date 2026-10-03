@@ -1,6 +1,10 @@
 use super::{ToTypeDef, TypeDef};
 
-use crate::{js_doc_from_comments, ty_to_ts_type, typegen::add_alias, NapiConst};
+use crate::{
+  ty_to_ts_type,
+  typegen::{add_alias, JSDoc},
+  NapiConst,
+};
 
 impl ToTypeDef for NapiConst {
   fn to_type_def(&self) -> Option<TypeDef> {
@@ -8,7 +12,11 @@ impl ToTypeDef for NapiConst {
       return None;
     }
 
-    add_alias(self.name.to_string(), self.js_name.to_string());
+    add_alias(
+      self.name.to_string(),
+      self.js_name.to_string(),
+      self.js_mod.as_deref(),
+    );
 
     Some(TypeDef {
       kind: "const".to_owned(),
@@ -16,11 +24,11 @@ impl ToTypeDef for NapiConst {
       original_name: Some(self.name.to_string()),
       def: format!(
         "export const {}: {}",
-        &self.js_name,
+        self.js_name,
         ty_to_ts_type(&self.type_name, false, false, false).0
       ),
       js_mod: self.js_mod.to_owned(),
-      js_doc: js_doc_from_comments(&self.comments),
+      js_doc: JSDoc::new(&self.comments),
     })
   }
 }

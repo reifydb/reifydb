@@ -1,8 +1,10 @@
-test:
-    cargo test --all
+test *FILTER:
+    cargo fmt
+    cargo build
+    cargo test -q {{FILTER}}
 
-watch-test:
-    watchexec -- "reset && just test"
+watch *FILTER:
+    watchexec -e rs -rc reset -- just test {{FILTER}}
 
 build:
     cargo build --all
@@ -10,11 +12,11 @@ build:
 watch-build:
     watchexec -- "reset && just build"
 
-coverage:
-    cargo tarpaulin --all-features --out Xml && pycobertura show cobertura.xml
-
 doc:
     cargo doc --all-features
+
+open-doc:
+    xdg-open target/doc/convert_case/index.html
 
 watch-doc:
     watchexec -- "just doc && cargo test --all-features --doc"
@@ -22,11 +24,8 @@ watch-doc:
 tree:
     tree -I target
 
-test-ccase: build-ccase
-    cargo test -p ccase --no-fail-fast
+lint:
+    prek
 
-build-ccase:
-    cargo build -p ccase
-
-run *OPTIONS:
-    cargo run -p ccase -- {{OPTIONS}}
+verify-nostd:
+    cargo build --target thumbv6m-none-eabi

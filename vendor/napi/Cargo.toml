@@ -11,14 +11,14 @@
 
 [package]
 edition = "2021"
-rust-version = "1.65"
+rust-version = "1.88"
 name = "napi"
-version = "2.16.17"
+version = "3.14.0"
 authors = [
     "Nathan Sobo <nathan@github.com>",
     "Yinan Long <lynweklm@gmail.com>",
 ]
-build = false
+build = "build.rs"
 autolib = false
 autobins = false
 autoexamples = false
@@ -48,14 +48,15 @@ independent = true
 
 [features]
 async = ["tokio_rt"]
+async-runtime = ["napi4"]
 chrono_date = [
     "chrono",
     "napi5",
 ]
 compat-mode = []
 default = [
-    "napi3",
-    "compat-mode",
+    "napi4",
+    "dyn-symbols",
 ]
 deferred_trace = ["napi4"]
 dyn-symbols = ["napi-sys/dyn-symbols"]
@@ -63,7 +64,7 @@ error_anyhow = ["anyhow"]
 experimental = ["napi-sys/experimental"]
 full = [
     "latin1",
-    "napi9",
+    "napi10",
     "async",
     "serde-json",
     "experimental",
@@ -71,6 +72,10 @@ full = [
 ]
 latin1 = ["encoding_rs"]
 napi1 = []
+napi10 = [
+    "napi9",
+    "napi-sys/napi10",
+]
 napi2 = [
     "napi1",
     "napi-sys/napi2",
@@ -103,6 +108,7 @@ napi9 = [
     "napi8",
     "napi-sys/napi9",
 ]
+node_version_detect = []
 noop = []
 object_indexmap = ["indexmap"]
 serde-json = [
@@ -128,6 +134,13 @@ tokio_signal = ["tokio/signal"]
 tokio_sync = ["tokio/sync"]
 tokio_test_util = ["tokio/test-util"]
 tokio_time = ["tokio/time"]
+tracing = ["dep:tracing"]
+web_stream = [
+    "futures-core",
+    "tokio-stream",
+    "napi4",
+    "tokio_rt",
+]
 
 [lib]
 name = "napi"
@@ -146,10 +159,18 @@ version = "0.4"
 optional = true
 
 [dependencies.ctor]
-version = "0.2"
+version = "1.0.0"
+default-features = false
 
 [dependencies.encoding_rs]
 version = "0.8"
+optional = true
+
+[dependencies.futures]
+version = "0.3"
+
+[dependencies.futures-core]
+version = "0.3"
 optional = true
 
 [dependencies.indexmap]
@@ -157,10 +178,14 @@ version = "2"
 optional = true
 
 [dependencies.napi-sys]
-version = "2.4.0"
+version = "3.4.0"
+default-features = false
 
-[dependencies.once_cell]
-version = "1.19"
+[dependencies.nohash-hasher]
+version = "0.2.0"
+
+[dependencies.rustc-hash]
+version = "2.1.1"
 
 [dependencies.serde]
 version = "1"
@@ -170,7 +195,27 @@ optional = true
 version = "1"
 optional = true
 
-[target.'cfg(not(target_family = "wasm"))'.dependencies.tokio]
+[dependencies.tokio-stream]
+version = "0.1"
+optional = true
+
+[dependencies.tracing]
+version = "0.1"
+optional = true
+
+[build-dependencies.napi-build]
+version = "2.6.0"
+features = ["wasi-heap-sync"]
+
+[target.'cfg(all(target_family = "wasm", not(tokio_unstable)))'.dependencies.tokio]
+version = "1"
+features = [
+    "rt",
+    "sync",
+]
+optional = true
+
+[target.'cfg(any(all(target_family = "wasm", tokio_unstable), not(target_family = "wasm")))'.dependencies.tokio]
 version = "1"
 features = [
     "rt",
@@ -179,14 +224,5 @@ features = [
 ]
 optional = true
 
-[target.'cfg(target_family = "wasm")'.dependencies.napi-derive]
-version = "2.10.1"
-default-features = false
-
-[target.'cfg(target_family = "wasm")'.dependencies.tokio]
-version = "1"
-features = [
-    "rt",
-    "sync",
-]
-optional = true
+[target."cfg(unix)".dependencies.libc]
+version = "0.2"

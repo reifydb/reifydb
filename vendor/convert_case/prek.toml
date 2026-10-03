@@ -1,0 +1,39 @@
+[[repos]]
+repo = "local"
+hooks = [
+  {
+    id = "cargo-fmt",
+    name = "cargo fmt",
+    language = "system",
+    entry = "cargo fmt",
+    args = ["--check", "--"],
+    types = ["rust"],
+    pass_filenames = true,
+  },
+  {
+    id = "cargo-clippy",
+    name = "cargo clippy",
+    language = "system",
+    entry = "cargo clippy",
+    args = ["--all-targets", "--", "-D", "warnings"],
+    types = ["rust"],
+    pass_filenames = false,
+  },
+  {
+    id = "cargo-check",
+    name = "cargo check",
+    language = "system",
+    entry = "cargo check",
+    args = ["--all-targets"],
+    types = ["rust"],
+    pass_filenames = false,
+  },
+  {
+    id = "typos",
+    name = "typos",
+    language = "system",
+    entry = "typos",
+    types = ["text"],
+    pass_filenames = true,
+  },
+]

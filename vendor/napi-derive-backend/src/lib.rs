@@ -2,8 +2,8 @@
 extern crate quote;
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
-use once_cell::sync::Lazy;
 use proc_macro2::TokenStream;
 
 #[macro_use]
@@ -12,6 +12,7 @@ pub mod ast;
 pub mod codegen;
 #[cfg(feature = "type-def")]
 pub mod typegen;
+mod util;
 
 pub use ast::*;
 pub use codegen::*;
@@ -20,6 +21,7 @@ pub use error::{BindgenResult, Diagnostic};
 pub use semver;
 #[cfg(feature = "type-def")]
 pub use typegen::*;
+pub use util::to_case;
 
 #[derive(Debug)]
 pub struct Napi {
@@ -67,6 +69,7 @@ napi_ast_impl! {
  (Impl, NapiImpl),
  (Enum, NapiEnum),
  (Const, NapiConst),
+ (Type, NapiType),
 }
 
 pub(crate) static PRIMITIVE_TYPES: &[(&str, (&str, bool, bool))] = &[
@@ -97,19 +100,28 @@ pub(crate) static PRIMITIVE_TYPES: &[(&str, (&str, bool, bool))] = &[
   ("bool", ("boolean", false, false)),
   ("JsString", ("string", false, false)),
   ("String", ("string", false, false)),
+  ("RawCString", ("string", false, false)),
   ("str", ("string", false, false)),
   ("Latin1String", ("string", false, false)),
   ("Utf16String", ("string", false, false)),
+  ("JsStringUtf8", ("string", false, false)),
+  ("JsStringUtf16", ("string", false, false)),
+  ("JsStringLatin1", ("string", false, false)),
   ("char", ("string", false, false)),
+  ("OsString", ("string", false, false)),
+  ("OsStr", ("string", false, false)),
+  ("PathBuf", ("string", false, false)),
+  ("Path", ("string", false, false)),
   ("Null", ("null", false, false)),
   ("JsNull", ("null", false, false)),
   ("null", ("null", false, false)),
   ("Symbol", ("symbol", false, false)),
   ("JsSymbol", ("symbol", false, false)),
+  ("SymbolRef", ("symbol", false, false)),
   ("JsFunction", ("(...args: any[]) => any", true, false)),
 ];
 
-pub(crate) static TYPEDARRAY_SLICE_TYPES: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
+pub(crate) static TYPEDARRAY_SLICE_TYPES: LazyLock<HashMap<&str, &str>> = LazyLock::new(|| {
   HashMap::from([
     ("u8", "Uint8Array"),
     ("i8", "Int8Array"),

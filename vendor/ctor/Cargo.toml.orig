@@ -1,35 +1,42 @@
 [package]
 name = "ctor"
-version = "0.2.9"
-authors = ["Matt Mastracci <matthew@mastracci.com>"]
-edition = "2018"
-description = "__attribute__((constructor)) for Rust"
-license = "Apache-2.0 OR MIT"
-repository = "https://github.com/mmastrac/rust-ctor"
-readme = "../README.md"
+version = "1.0.13"
+authors.workspace = true
+edition = "2021"
+description = "Global, no_std-compatible constructors for all platforms that run before main (like C/C++ __attribute__((constructor)))"
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+categories = ["development-tools::build-utils", "no-std", "no-std::no-alloc", "embedded", "development-tools::procedural-macro-helpers"]
+rust-version = "1.60"
 
-[badges]
-travis-ci = { repository = "mmastrac/rust-ctor", branch = "master" }
+exclude = ["tests"]
 
 [features]
-# For nightly users, used(linker) may be a better choice
-used_linker = []
+default = ["std", "proc_macro", "priority"]
+
+std = []
+
+# Enable support for the priority parameter
+priority = ["dep:link-section"]
+
+# Enable the proc_macro
+proc_macro = ["dep:linktime-proc-macro"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(linktime_no_fail_on_missing_unsafe)',
+    'cfg(linktime_used_linker)',
+    'cfg(linktime_asan)'
+] }
 
 [dependencies]
-quote = "1.0.20"
-
-[dependencies.syn]
-version = "2.0.12"
-features = ["full", "parsing", "printing", "proc-macro"]
-default-features = false
+linktime-proc-macro = { workspace = true, optional = true, features = ["ctor"] }
+link-section = { workspace = true, optional = true, default-features = false }
 
 [dev-dependencies]
-libc-print = "0.1.20"
-
-[lib]
-name = "ctor"
-proc-macro = true
-
-[[example]]
-name = "example"
-path = "src/example.rs"
+libc-print = "0.5"
+macrotest = "1"
+trybuild = "1"
+walkdir = "2"
+tempfile = "3"

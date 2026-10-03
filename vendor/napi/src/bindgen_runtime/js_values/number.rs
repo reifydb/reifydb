@@ -1,5 +1,4 @@
-use super::{check_status, sys};
-use crate::{bindgen_prelude::ToNapiValue, type_of, Error, Result};
+use crate::{bindgen_prelude::ToNapiValue, check_status, sys, type_of, Error, Result};
 
 macro_rules! impl_number_conversions {
   ( $( ($name:literal, $t:ty as $st:ty, $get:ident, $create:ident) ,)* ) => {
@@ -28,6 +27,18 @@ macro_rules! impl_number_conversions {
           )?;
 
           Ok(ptr)
+        }
+      }
+
+      impl ToNapiValue for &$t {
+        unsafe fn to_napi_value(env: $crate::sys::napi_env, val: &$t) -> Result<$crate::sys::napi_value> {
+          ToNapiValue::to_napi_value(env, *val)
+        }
+      }
+
+      impl ToNapiValue for &mut $t {
+        unsafe fn to_napi_value(env: $crate::sys::napi_env, val: &mut $t) -> Result<$crate::sys::napi_value> {
+          ToNapiValue::to_napi_value(env, *val)
         }
       }
 

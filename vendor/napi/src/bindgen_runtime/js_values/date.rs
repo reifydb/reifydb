@@ -50,7 +50,7 @@ impl FromNapiValue for NaiveDateTime {
       unsafe {
         napi_sys::napi_create_string_utf8(
           env,
-          "toISOString\0".as_ptr().cast(),
+          c"toISOString".as_ptr().cast(),
           11,
           &mut to_iso_string,
         )
@@ -109,10 +109,7 @@ impl FromNapiValue for NaiveDateTime {
     let naive = NaiveDateTime::from_str(iso_string.as_str()).map_err(|err| {
       Error::new(
         Status::InvalidArg,
-        format!(
-          "Failed to convert napi value into rust type `NaiveDateTime` {} {}",
-          err, iso_string
-        ),
+        format!("Failed to convert napi value into rust type `NaiveDateTime` {err} {iso_string}"),
       )
     })?;
 

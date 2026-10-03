@@ -1,76 +1,122 @@
-use std::convert::TryInto;
-
 use super::*;
-use crate::{bindgen_runtime::FromNapiValue, Env};
+use crate::bindgen_runtime::{FnArgs, FromNapiValue, Function, Unknown};
 
-pub struct JsGlobal(pub(crate) Value);
+pub struct JsGlobal<'env>(
+  pub(crate) Value,
+  pub(crate) std::marker::PhantomData<&'env ()>,
+);
 
-pub struct JsTimeout(pub(crate) Value);
-
-pub struct JSON(pub(crate) Value);
-
-impl FromNapiValue for JSON {
+impl FromNapiValue for JsGlobal<'_> {
   unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
-    Ok(JSON(Value {
-      env,
-      value: napi_val,
-      value_type: ValueType::Object,
-    }))
+    Ok(JsGlobal(
+      Value {
+        env,
+        value: napi_val,
+        value_type: ValueType::Object,
+      },
+      std::marker::PhantomData,
+    ))
   }
 }
 
-impl JSON {
-  pub fn stringify<V: NapiRaw>(&self, value: V) -> Result<std::string::String> {
-    let func: JsFunction = self.get_named_property_unchecked("stringify")?;
-    let result = func
-      .call(None, &[value])
-      .map(|ret| unsafe { ret.cast::<JsString>() })?;
-    result.into_utf8()?.as_str().map(|s| s.to_owned())
+impl<'env> JsValue<'env> for JsGlobal<'env> {
+  fn value(&self) -> Value {
+    self.0
   }
 }
 
-impl JsGlobal {
-  pub fn set_interval(&self, handler: JsFunction, interval: f64) -> Result<JsTimeout> {
-    let func: JsFunction = self.get_named_property_unchecked("setInterval")?;
-    func
-      .call(
-        None,
-        &[
-          handler.into_unknown(),
-          unsafe { Env::from_raw(self.0.env) }
-            .create_double(interval)?
-            .into_unknown(),
-        ],
-      )
-      .and_then(|ret| ret.try_into())
+impl<'env> JsObjectValue<'env> for JsGlobal<'env> {}
+
+pub struct JsTimeout<'env>(
+  pub(crate) Value,
+  pub(crate) std::marker::PhantomData<&'env ()>,
+);
+
+impl<'env> JsValue<'env> for JsTimeout<'env> {
+  fn value(&self) -> Value {
+    self.0
+  }
+}
+
+impl<'env> JsObjectValue<'env> for JsTimeout<'env> {}
+
+impl FromNapiValue for JsTimeout<'_> {
+  unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
+    Ok(JsTimeout(
+      Value {
+        env,
+        value: napi_val,
+        value_type: ValueType::Object,
+      },
+      std::marker::PhantomData,
+    ))
+  }
+}
+pub struct JSON<'env>(
+  pub(crate) Value,
+  pub(crate) std::marker::PhantomData<&'env ()>,
+);
+
+impl<'env> JsValue<'env> for JSON<'env> {
+  fn value(&self) -> Value {
+    self.0
+  }
+}
+
+impl<'env> JsObjectValue<'env> for JSON<'env> {}
+
+impl FromNapiValue for JSON<'_> {
+  unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
+    Ok(JSON(
+      Value {
+        env,
+        value: napi_val,
+        value_type: ValueType::Object,
+      },
+      std::marker::PhantomData,
+    ))
+  }
+}
+
+impl JSON<'_> {
+  pub fn stringify<V: ToNapiValue>(&self, value: V) -> Result<std::string::String> {
+    let func: Function<V, std::string::String> = self.get_named_property_unchecked("stringify")?;
+    func.call(value)
+  }
+}
+
+type SupportType<'a> = Function<'a, FnArgs<(Function<'a, (), Unknown<'a>>, f64)>, JsTimeout<'a>>;
+
+impl<'env> JsGlobal<'env> {
+  pub fn set_interval(
+    &self,
+    handler: Function<(), Unknown>,
+    interval: f64,
+  ) -> Result<JsTimeout<'env>> {
+    let func: SupportType = self.get_named_property_unchecked("setInterval")?;
+    func.call(FnArgs {
+      data: (handler, interval),
+    })
   }
 
-  pub fn clear_interval(&self, timer: JsTimeout) -> Result<JsUndefined> {
-    let func: JsFunction = self.get_named_property_unchecked("clearInterval")?;
-    func
-      .call(None, &[timer.into_unknown()])
-      .and_then(|ret| ret.try_into())
+  pub fn clear_interval(&self, timer: JsTimeout) -> Result<()> {
+    let func: Function<JsTimeout, ()> = self.get_named_property_unchecked("clearInterval")?;
+    func.call(timer)
   }
 
-  pub fn set_timeout(&self, handler: JsFunction, interval: f64) -> Result<JsTimeout> {
-    let func: JsFunction = self.get_named_property_unchecked("setTimeout")?;
-    func
-      .call(
-        None,
-        &[
-          handler.into_unknown(),
-          unsafe { Env::from_raw(self.0.env) }
-            .create_double(interval)?
-            .into_unknown(),
-        ],
-      )
-      .and_then(|ret| ret.try_into())
+  pub fn set_timeout(
+    &self,
+    handler: Function<(), Unknown>,
+    interval: f64,
+  ) -> Result<JsTimeout<'env>> {
+    let func: SupportType = self.get_named_property_unchecked("setTimeout")?;
+    func.call(FnArgs {
+      data: (handler, interval),
+    })
   }
 
-  pub fn clear_timeout(&self, timer: JsTimeout) -> Result<JsUndefined> {
-    let func: JsFunction = self.get_named_property_unchecked("clearTimeout")?;
-    func
-      .call(None, &[timer.into_unknown()])
-      .and_then(|ret| ret.try_into())
+  pub fn clear_timeout(&self, timer: JsTimeout) -> Result<()> {
+    let func: Function<JsTimeout, ()> = self.get_named_property_unchecked("clearTimeout")?;
+    func.call(timer)
   }
 }
