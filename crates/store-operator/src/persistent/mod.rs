@@ -8,7 +8,7 @@ pub mod memory;
 pub mod sqlite;
 pub mod testing;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Borrow, collections::HashMap, sync::Arc};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
@@ -132,11 +132,11 @@ pub trait Persistent: Clone + Send + Sync + 'static {
 pub trait Fetch: Persistent {
 	fn get(&self, operator: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
 
-	fn get_many(
+	fn get_many<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,
-		keys: &[GroupStateKey],
-	) -> Result<HashMap<GroupStateKey, EncodedPodRow>>;
+		keys: &[Q],
+	) -> Result<Vec<Option<EncodedPodRow>>>;
 
 	fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool>;
 }
@@ -227,24 +227,19 @@ impl Fetch for PersistentTier {
 		}
 	}
 
-	fn get_many(
+	fn get_many<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,
-		keys: &[GroupStateKey],
-	) -> Result<HashMap<GroupStateKey, EncodedPodRow>> {
+		keys: &[Q],
+	) -> Result<Vec<Option<EncodedPodRow>>> {
 		match self {
-			Self::Absent => Ok(HashMap::new()),
+			Self::Absent => Ok(vec![None; keys.len()]),
 			Self::Memory(memory) => Fetch::get_many(memory, operator, keys),
 			Self::Testing(testing) => Fetch::get_many(testing, operator, keys),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(storage) => {
-				let encoded: Vec<EncodedKey> =
-					keys.iter().map(|key| key.as_encoded().clone()).collect();
-				Ok(storage
-					.get_many(operator, &encoded)
-					.into_iter()
-					.map(|(key, row)| (GroupStateKey::bound_unchecked(key), row))
-					.collect())
+				let refs: Vec<&EncodedKey> = keys.iter().map(|key| key.borrow().as_encoded()).collect();
+				Ok(storage.get_many(operator, &refs))
 			}
 		}
 	}

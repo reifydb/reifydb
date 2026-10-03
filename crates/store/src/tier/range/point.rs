@@ -73,8 +73,61 @@ impl<D: RangeDomain> RangeTier<D> {
 		Some(None)
 	}
 
-	fn resolve(&self, index: usize, partition: &D::Partition, key: &D::Key) -> Option<Option<D::Row>> {
+	pub fn lookup_run(&self, partition: D::Partition, keys: &[D::Key]) -> Vec<Option<Option<D::Row>>> {
+		let mut answers = vec![None; keys.len()];
+		if keys.is_empty() || !D::caches_ranges(&partition) {
+			return answers;
+		}
+		let index = self.shard_index(&partition);
+		let mut pending = Vec::new();
+		{
+			let mut shard = self.shard(index).lock();
+			for (position, key) in keys.iter().enumerate() {
+				match Self::resolve_locked(&mut shard, &partition, key) {
+					Some(resident) => answers[position] = Some(resident),
+					None => pending.push(position),
+				}
+			}
+		}
+		if pending.is_empty() {
+			return answers;
+		}
+
+		let dimension = D::dimension(&partition);
+		let before = self.retractions();
+		let claimed: Vec<(usize, bool)> = {
+			let coverage = self.coverage().read();
+			pending.into_iter()
+				.map(|position| (position, coverage.contains(dimension, &keys[position])))
+				.collect()
+		};
+		#[cfg(test)]
+		absence_interlock();
 		let mut shard = self.shard(index).lock();
+		for (position, claimed) in claimed {
+			if !claimed {
+				Self::record_point_miss_locked(&mut shard, &partition);
+				continue;
+			}
+			if let Some(resident) = Self::resolve_locked(&mut shard, &partition, &keys[position]) {
+				answers[position] = Some(resident);
+				continue;
+			}
+			if !self.retractions_unchanged(before) {
+				Self::record_point_miss_locked(&mut shard, &partition);
+				continue;
+			}
+			Self::record_point_hit_locked(&mut shard, &partition);
+			answers[position] = Some(None);
+		}
+		answers
+	}
+
+	fn resolve(&self, index: usize, partition: &D::Partition, key: &D::Key) -> Option<Option<D::Row>> {
+		Self::resolve_locked(&mut self.shard(index).lock(), partition, key)
+	}
+
+	fn resolve_locked(shard: &mut Shard<D>, partition: &D::Partition, key: &D::Key) -> Option<Option<D::Row>> {
 		let next = shard.next_tick;
 		let bucket = D::metric_bucket(partition);
 		let mut answer = None;
@@ -101,7 +154,10 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	fn record_point_hit(&self, index: usize, partition: &D::Partition) {
-		let mut shard = self.shard(index).lock();
+		Self::record_point_hit_locked(&mut self.shard(index).lock(), partition);
+	}
+
+	fn record_point_hit_locked(shard: &mut Shard<D>, partition: &D::Partition) {
 		let bucket = D::metric_bucket(partition);
 		shard.metrics.point_hits += 1;
 		shard.metrics.point_absences += 1;
@@ -110,7 +166,10 @@ impl<D: RangeDomain> RangeTier<D> {
 	}
 
 	fn record_point_miss(&self, index: usize, partition: &D::Partition) {
-		let mut shard = self.shard(index).lock();
+		Self::record_point_miss_locked(&mut self.shard(index).lock(), partition);
+	}
+
+	fn record_point_miss_locked(shard: &mut Shard<D>, partition: &D::Partition) {
 		let bucket = D::metric_bucket(partition);
 		shard.metrics.point_misses += 1;
 		shard.bucket_metrics[bucket].point_misses += 1;
@@ -333,6 +392,28 @@ mod tests {
 	}
 
 	#[test]
+	fn a_batched_range_lookup_misses_when_a_retraction_races_it() {
+		// A claim withdrawn after the run's coverage read must never leave its absent answer standing.
+		let tier = tier();
+		let id = partition(CACHED);
+		let seated = key(CACHED, b"m");
+		let unseated = key(CACHED, b"n");
+		seat(&tier, id, &seated, Entry::row(row("v")));
+		claim(&tier, &key(CACHED, b"a"), &key(CACHED, b"z"));
+
+		let withdrawing = tier.clone();
+		let outside = key(CACHED, b"zz");
+		arm_absence_interlock(move || withdrawing.mark_deleted(OP_A, &outside));
+
+		assert_eq!(
+			tier.lookup_run(id, &[seated, unseated]),
+			vec![Some(Some(row("v"))), None],
+			"a claim was withdrawn mid-run, so this tier can no longer speak for the unseated key"
+		);
+		assert_eq!(point_misses(&tier, &id), 1);
+	}
+
+	#[test]
 	fn a_row_materialized_between_the_two_steps_is_answered_rather_than_missed() {
 		// The row read must come second, or a write landing in between reads as a proven absence.
 		let tier = tier();
@@ -346,6 +427,23 @@ mod tests {
 		arm_absence_interlock(move || writing.overwrite(OP_A, landing.clone(), row("v")));
 
 		assert_eq!(tier.lookup(OP_A, &at), Some(Some(row("v"))));
+	}
+
+	#[test]
+	fn a_batched_range_lookup_answers_a_row_that_lands_between_its_two_steps() {
+		// A claimed key must be resolved again after the coverage read, or a row landing then reads absent.
+		let tier = tier();
+		let id = partition(CACHED);
+		let landing = key(CACHED, b"m");
+		let untouched = key(CACHED, b"n");
+		participate(&tier, id);
+		claim(&tier, &key(CACHED, b"a"), &key(CACHED, b"z"));
+
+		let writing = tier.clone();
+		let written = landing.clone();
+		arm_absence_interlock(move || writing.overwrite(OP_A, written.clone(), row("v")));
+
+		assert_eq!(tier.lookup_run(id, &[landing, untouched]), vec![Some(Some(row("v"))), Some(None)]);
 	}
 
 	#[test]
@@ -423,5 +521,29 @@ mod tests {
 		let shard = tier.shard_for(&id).lock();
 		assert_eq!(shard.bucket_metrics[CACHED.0 as usize].point_hits, 1);
 		assert_eq!(shard.bucket_metrics[UNCACHED.0 as usize].point_hits, 0);
+	}
+
+	#[test]
+	fn a_batched_range_lookup_charges_the_counters_single_lookups_would() {
+		// A run must charge each key exactly as its single lookup does, or the hit rate moves with batch size.
+		let (run, single) = (tier(), tier());
+		let id = partition(CACHED);
+		let keys = [key(CACHED, b"m"), key(CACHED, b"n"), key(CACHED, b"p"), key(CACHED, b"zz")];
+		for twin in [&run, &single] {
+			seat(twin, id, &keys[0], Entry::row(row("v")));
+			seat(twin, id, &keys[1], Entry::deleted());
+			claim(twin, &key(CACHED, b"a"), &key(CACHED, b"z"));
+		}
+
+		let batched = run.lookup_run(id, &keys);
+		let singles: Vec<_> = keys.iter().map(|at| single.lookup(OP_A, at)).collect();
+		let counters = |tier: &RangeTier<D>| {
+			let shard = tier.shard_for(&id).lock();
+			(shard.metrics, shard.bucket_metrics[CACHED.0 as usize])
+		};
+
+		assert_eq!(batched, vec![Some(Some(row("v"))), Some(None), Some(None), None]);
+		assert_eq!(batched, singles);
+		assert_eq!(counters(&run), counters(&single));
 	}
 }

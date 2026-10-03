@@ -31,6 +31,28 @@ impl Resident {
 		BufferedState::Absent
 	}
 
+	pub fn lookup_states(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Vec<BufferedState> {
+		let mut states = Vec::with_capacity(keys.len());
+		if let Some(slot) = self.shared().slot(operator) {
+			let inner = slot.inner.lock();
+			for key in keys {
+				states.push(inner.lookup(key).as_ref().map_or(BufferedState::Absent, buffered_state));
+			}
+		} else {
+			states.resize(keys.len(), BufferedState::Absent);
+		}
+		if states.contains(&BufferedState::Absent)
+			&& self.shared().dropped(|marker| is_state_drop(marker, operator))
+		{
+			for state in &mut states {
+				if *state == BufferedState::Absent {
+					*state = BufferedState::Dropped;
+				}
+			}
+		}
+		states
+	}
+
 	pub fn state_page(
 		&self,
 		operator: OperatorId,

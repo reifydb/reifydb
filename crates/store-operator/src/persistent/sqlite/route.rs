@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	cmp::Reverse,
-	collections::{BTreeMap, HashMap},
-	ops::Bound,
-};
+use std::{cmp::Reverse, collections::HashMap, ops::Bound};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
@@ -96,36 +92,46 @@ impl KeyspaceVisitor for Get<'_> {
 	}
 }
 
-type GetManyItem<'a> = (&'a EncodedKey, GroupId, &'a [u8]);
+type GetManyItem<'a> = (KeyspaceId, usize, GroupId, &'a [u8]);
 
 struct GetMany<'a> {
 	conn: &'a Connection,
 	operator: OperatorId,
 	tables: TableMask,
-	items: Vec<GetManyItem<'a>>,
+	items: &'a [GetManyItem<'a>],
 }
 
 impl KeyspaceVisitor for GetMany<'_> {
-	type Output = Vec<(EncodedKey, Vec<u8>)>;
+	type Output = Vec<(usize, Vec<u8>)>;
 
 	fn visit<K: Keyspace>(self) -> Self::Output {
 		if !self.tables.holds(K::ID) {
 			return Vec::new();
 		}
 		let mut probes = Vec::with_capacity(self.items.len());
-		let mut origin: HashMap<EncodedKey, EncodedKey> = HashMap::with_capacity(self.items.len());
-		for (key, group, suffix) in self.items {
+		let mut matcher: Vec<(EncodedKey, usize)> = Vec::with_capacity(self.items.len());
+		for (_, position, group, suffix) in self.items {
 			if !const { group_scoped::<K>() } && !group.is_root() {
 				continue;
 			}
-			let typed = typed_key::<K>(group, suffix, lowest::<K>());
-			origin.insert(encode::<K>(&typed), key.clone());
+			let typed = typed_key::<K>(*group, suffix, lowest::<K>());
+			matcher.push((encode::<K>(&typed), *position));
 			probes.push(typed);
 		}
-		typed::get_batch::<K>(self.conn, self.operator, &probes)
-			.into_iter()
-			.filter_map(|(typed, bytes)| origin.get(&encode::<K>(&typed)).map(|key| (key.clone(), bytes)))
-			.collect()
+		matcher.sort_unstable();
+		let mut out = Vec::with_capacity(matcher.len());
+		for (typed, bytes) in typed::get_batch::<K>(self.conn, self.operator, &probes) {
+			let found = encode::<K>(&typed);
+			let start = matcher.partition_point(|(key, _)| *key < found);
+			let end = matcher.partition_point(|(key, _)| *key <= found);
+			if let Some(((_, last), rest)) = matcher[start..end].split_last() {
+				for (_, position) in rest {
+					out.push((*position, bytes.clone()));
+				}
+				out.push((*last, bytes));
+			}
+		}
+		out
 	}
 }
 
@@ -133,28 +139,34 @@ pub(super) fn get_many(
 	conn: &Connection,
 	operator: OperatorId,
 	tables: TableMask,
-	keys: &[EncodedKey],
-) -> Vec<(EncodedKey, Vec<u8>)> {
-	let mut grouped: BTreeMap<KeyspaceId, Vec<GetManyItem>> = BTreeMap::new();
-	for key in keys {
-		let (group, keyspace, suffix) = parts(key);
-		grouped.entry(keyspace).or_default().push((key, group, suffix));
-	}
-	let mut out = Vec::with_capacity(keys.len());
-	for (keyspace, items) in grouped {
+	keys: &[&EncodedKey],
+) -> Vec<Option<Vec<u8>>> {
+	let mut items: Vec<GetManyItem> = keys
+		.iter()
+		.enumerate()
+		.map(|(position, key)| {
+			let (group, keyspace, suffix) = parts(key);
+			(keyspace, position, group, suffix)
+		})
+		.collect();
+	items.sort_unstable_by_key(|(keyspace, position, _, _)| (*keyspace, *position));
+	let mut answers = vec![None; keys.len()];
+	for run in items.chunk_by(|left, right| left.0 == right.0) {
 		let found = dispatch(
-			keyspace,
+			run[0].0,
 			GetMany {
 				conn,
 				operator,
 				tables,
-				items,
+				items: run,
 			},
 		)
 		.expect("an operator state key must name a keyspace in the catalogue");
-		out.extend(found);
+		for (position, bytes) in found {
+			answers[position] = Some(bytes);
+		}
 	}
-	out
+	answers
 }
 
 pub(super) fn get(conn: &Connection, operator: OperatorId, tables: TableMask, key: &EncodedKey) -> Option<Vec<u8>> {

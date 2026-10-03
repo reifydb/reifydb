@@ -636,6 +636,7 @@ pub fn occupied<K: Keyspace>(conn: &Connection, operator: OperatorId) -> bool {
 mod tests {
 	use std::{collections::HashSet, ops::Bound, ptr::null_mut};
 
+	use reifydb_codec::row::pod::EncodedPodRow;
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
 		key::{
@@ -1079,7 +1080,10 @@ mod tests {
 		set_one::<RingbufferTtlArm>(&store, OperatorId(1), &key, b"second");
 		set_one::<RingbufferTtlArm>(&store, OperatorId(2), &key, b"other");
 		assert_eq!(scan::<RingbufferTtlArm>(&store, OperatorId(1)), vec![(key, b"second".to_vec())]);
-		assert_eq!(store.get_many(OperatorId(1), &[encode::<RingbufferTtlArm>(&key).into_encoded()]).len(), 1);
+		assert_eq!(
+			store.get_many(OperatorId(1), &[&encode::<RingbufferTtlArm>(&key).into_encoded()]),
+			vec![Some(EncodedPodRow::new(b"second"))]
+		);
 		remove_one::<RingbufferTtlArm>(&store, OperatorId(1), &key);
 		assert!(scan::<RingbufferTtlArm>(&store, OperatorId(1)).is_empty());
 		assert_eq!(get::<RingbufferTtlArm>(&store, OperatorId(2), &key).as_deref(), Some(b"other".as_slice()));

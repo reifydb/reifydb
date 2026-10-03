@@ -140,7 +140,7 @@ mod tests {
 		assert_eq!(get::<JoinLeft>(&store, STRANGER, &key()), None);
 		assert!(scan::<JoinLeft>(&store, STRANGER).is_empty());
 		assert!(keys_after::<JoinLeft>(&store, STRANGER, None, 10).is_empty());
-		assert!(store.get_many(STRANGER, &[encode::<JoinLeft>(&key()).into_encoded()]).is_empty());
+		assert_eq!(store.get_many(STRANGER, &[&encode::<JoinLeft>(&key()).into_encoded()]), vec![None]);
 		assert!(store.group_page(STRANGER, &[key().group.0], 10, KeyspaceMask::all()).items.is_empty());
 		assert!(store.range_batch(STRANGER, EncodedKeyRange::all(), 10).items.is_empty());
 	}

@@ -272,14 +272,9 @@ pub(crate) fn deferred_fetch_state_external(
 	for (operator, entries) in grouped {
 		let inners: Vec<GroupStateKey> =
 			entries.iter().map(|(_, inner)| GroupStateKey::bound_unchecked(inner.clone())).collect();
-		let mut found: HashMap<GroupStateKey, EncodedPodRow> = HashMap::new();
-		store.state_get_many(operator, &inners, &mut |key, row| {
-			found.insert(key, row);
-			Ok(())
-		})
-		.expect(EXTERNAL_STATE_FETCH);
-		for ((index, _), inner) in entries.into_iter().zip(inners) {
-			resolved[index] = found.get(&inner).cloned();
+		let answers = store.state_get_many(operator, &inners).expect(EXTERNAL_STATE_FETCH);
+		for ((index, _), row) in entries.into_iter().zip(answers) {
+			resolved[index] = row;
 		}
 	}
 

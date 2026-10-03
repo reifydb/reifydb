@@ -125,6 +125,13 @@ impl OperatorRangeTier {
 			Self::Standard(tiers) => Some(tiers),
 		}
 	}
+
+	pub fn lookup_run(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Vec<Option<Option<EncodedPodRow>>> {
+		match self {
+			Self::Absent => vec![None; keys.len()],
+			Self::Standard(tiers) => tiers.lookup_run(operator, keys),
+		}
+	}
 }
 
 impl RangeSink for OperatorRangeTier {
