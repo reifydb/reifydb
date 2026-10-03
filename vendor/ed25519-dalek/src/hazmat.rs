@@ -17,7 +17,7 @@ use core::fmt::Debug;
 
 use crate::{InternalError, SignatureError};
 
-use curve25519_dalek::scalar::{clamp_integer, Scalar};
+use curve25519_dalek::scalar::{Scalar, clamp_integer};
 
 use subtle::{Choice, ConstantTimeEq};
 #[cfg(feature = "zeroize")]
@@ -25,7 +25,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 // These are used in the functions that are made public when the hazmat feature is set
 use crate::{Signature, VerifyingKey};
-use curve25519_dalek::digest::{generic_array::typenum::U64, Digest};
+use curve25519_dalek::digest::{Digest, array::typenum::U64};
 
 /// Contains the secret scalar and domain separator used for generating signatures.
 ///
@@ -142,7 +142,7 @@ pub fn raw_sign<CtxDigest>(
 where
     CtxDigest: Digest<OutputSize = U64>,
 {
-    esk.raw_sign::<CtxDigest>(message, verifying_key)
+    esk.raw_sign::<CtxDigest>(&[message], verifying_key)
 }
 
 /// Compute a signature over the given prehashed message, the Ed25519ph algorithm defined in
@@ -230,7 +230,7 @@ pub fn raw_verify<CtxDigest>(
 where
     CtxDigest: Digest<OutputSize = U64>,
 {
-    vk.raw_verify::<CtxDigest>(message, signature)
+    vk.raw_verify::<CtxDigest>(&[message], signature)
 }
 
 /// The batched Ed25519 verification check, rejecting non-canonical R values. `MsgDigest` is the
@@ -258,7 +258,10 @@ mod test {
 
     use super::*;
 
-    use rand::{rngs::OsRng, CryptoRng, RngCore};
+    use getrandom::{
+        SysRng,
+        rand_core::{CryptoRng, UnwrapErr},
+    };
 
     // Pick distinct, non-spec 512-bit hash functions for message and sig-context hashing
     type CtxDigest = blake2::Blake2b512;
@@ -267,7 +270,7 @@ mod test {
     impl ExpandedSecretKey {
         // Make a random expanded secret key for testing purposes. This is NOT how you generate
         // expanded secret keys IRL. They're the hash of a seed.
-        fn random<R: RngCore + CryptoRng>(mut rng: R) -> Self {
+        fn random<R: CryptoRng + ?Sized>(rng: &mut R) -> Self {
             let mut bytes = [0u8; 64];
             rng.fill_bytes(&mut bytes);
             ExpandedSecretKey::from_bytes(&bytes)
@@ -278,8 +281,8 @@ mod test {
     #[test]
     fn sign_verify_nonspec() {
         // Generate the keypair
-        let rng = OsRng;
-        let esk = ExpandedSecretKey::random(rng);
+        let mut rng = UnwrapErr(SysRng);
+        let esk = ExpandedSecretKey::random(&mut rng);
         let vk = VerifyingKey::from(&esk);
 
         let msg = b"Then one day, a piano fell on my head";
@@ -297,8 +300,8 @@ mod test {
         use curve25519_dalek::digest::Digest;
 
         // Generate the keypair
-        let rng = OsRng;
-        let esk = ExpandedSecretKey::random(rng);
+        let mut rng = UnwrapErr(SysRng);
+        let esk = ExpandedSecretKey::random(&mut rng);
         let vk = VerifyingKey::from(&esk);
 
         // Hash the message
@@ -317,8 +320,8 @@ mod test {
     #[test]
     fn sign_byupdate() {
         // Generate the keypair
-        let rng = OsRng;
-        let esk = ExpandedSecretKey::random(rng);
+        let mut rng = UnwrapErr(SysRng);
+        let esk = ExpandedSecretKey::random(&mut rng);
         let vk = VerifyingKey::from(&esk);
 
         let msg = b"realistic";

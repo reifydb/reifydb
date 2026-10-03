@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
-rust-version = "1.81"
+edition = "2024"
+rust-version = "1.85"
 name = "ed25519-dalek"
-version = "2.2.0"
+version = "3.0.0"
 authors = [
     "isis lovecruft <isis@patternsinthevoid.net>",
     "Tony Arcieri <bascule@gmail.com>",
@@ -48,38 +48,33 @@ categories = [
 ]
 license = "BSD-3-Clause"
 repository = "https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek"
+resolver = "2"
 
 [package.metadata.docs.rs]
-features = [
-    "batch",
-    "digest",
-    "hazmat",
-    "pem",
-    "serde",
-]
 rustdoc-args = [
     "--html-in-header",
     "docs/assets/rustdoc-include-katex-header.html",
     "--cfg",
     "docsrs",
 ]
+all-features = true
 
 [features]
 alloc = [
     "curve25519-dalek/alloc",
     "ed25519/alloc",
+    "signature/alloc",
     "serde?/alloc",
-    "zeroize/alloc",
+    "zeroize?/alloc",
 ]
-asm = ["sha2/asm"]
 batch = [
     "alloc",
-    "merlin",
+    "dep:keccak",
     "rand_core",
+    "strobe-rs",
 ]
 default = [
     "fast",
-    "std",
     "zeroize",
 ]
 digest = ["signature/digest"]
@@ -92,16 +87,14 @@ pem = [
     "pkcs8",
 ]
 pkcs8 = ["ed25519/pkcs8"]
-rand_core = ["dep:rand_core"]
+rand_core = [
+    "dep:rand_core",
+    "curve25519-dalek/rand_core",
+    "signature/rand_core",
+]
 serde = [
     "dep:serde",
     "ed25519/serde",
-]
-std = [
-    "alloc",
-    "ed25519/std",
-    "serde?/std",
-    "sha2/std",
 ]
 zeroize = [
     "dep:zeroize",
@@ -135,21 +128,21 @@ harness = false
 required-features = ["rand_core"]
 
 [dependencies.curve25519-dalek]
-version = "4"
+version = "5.0.0"
 features = ["digest"]
 default-features = false
 
 [dependencies.ed25519]
-version = ">=2.2, <2.3"
+version = "3"
 default-features = false
 
-[dependencies.merlin]
-version = "3"
+[dependencies.keccak]
+version = "0.2"
 optional = true
 default-features = false
 
 [dependencies.rand_core]
-version = "0.6.4"
+version = "0.10"
 optional = true
 default-features = false
 
@@ -159,13 +152,17 @@ optional = true
 default-features = false
 
 [dependencies.sha2]
-version = "0.10"
+version = "0.11"
 default-features = false
 
 [dependencies.signature]
-version = ">=2.0, <2.3"
+version = "3"
 optional = true
 default-features = false
+
+[dependencies.strobe-rs]
+version = "0.13"
+optional = true
 
 [dependencies.subtle]
 version = "2.3.0"
@@ -176,36 +173,39 @@ version = "1.5"
 optional = true
 default-features = false
 
-[dev-dependencies.bincode]
-version = "1.0"
-
 [dev-dependencies.blake2]
+version = "=0.11.0-rc.6"
+
+[dev-dependencies.chacha20]
 version = "0.10"
+features = ["rng"]
+default-features = false
 
 [dev-dependencies.criterion]
 version = "0.5"
 features = ["html_reports"]
 
 [dev-dependencies.curve25519-dalek]
-version = "4"
+version = "5.0.0"
 features = [
     "digest",
     "rand_core",
 ]
 default-features = false
 
+[dev-dependencies.getrandom]
+version = "0.4"
+features = ["sys_rng"]
+
 [dev-dependencies.hex]
 version = "0.4"
 
 [dev-dependencies.hex-literal]
-version = "0.4"
+version = "1"
 
-[dev-dependencies.rand]
-version = "0.8"
-
-[dev-dependencies.rand_core]
-version = "0.6.4"
-default-features = false
+[dev-dependencies.postcard]
+version = "1"
+features = ["alloc"]
 
 [dev-dependencies.serde]
 version = "1.0"
@@ -215,12 +215,12 @@ features = ["derive"]
 version = "1.0"
 
 [dev-dependencies.sha3]
-version = "0.10"
+version = "0.11"
 
 [dev-dependencies.toml]
-version = "0.7"
+version = "0.9"
 
 [dev-dependencies.x25519-dalek]
-version = "2"
+version = "3.0.0"
 features = ["static_secrets"]
 default-features = false

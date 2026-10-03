@@ -338,7 +338,7 @@ datafusion-physical-expr = { version = "=55.1.0", default-features = false }
 datafusion-physical-expr-common = { version = "=55.1.0", default-features = false }
 rand = { version = "=0.10.3" }
 argon2 = { version = "=0.6.0" }
-ed25519-dalek = { version = "=2.2.0", features = ["rand_core"] }
+ed25519-dalek = { version = "=3.0.0", features = ["rand_core"] }
 bs58 = { version = "=0.5.1" }
 subtle = { version = "=2.6.1" }
 
@@ -393,7 +393,7 @@ zstd = { version = "=0.13.3" }
 # hashing
 crc32fast = { version = "=1.5.2" }
 hashbrown = { version = "=0.15.5" }
-sha2 = { version = "=0.10.9" }
+sha2 = { version = "=0.11.0" }
 xxhash-rust = { version = "=0.8.19", features = ["xxh3"] }
 
 # serde
