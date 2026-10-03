@@ -19,7 +19,7 @@ use crate::{
 			layout::{KeyColumnType, KeyLayout, KeyValue},
 		},
 	},
-	state::timer::StateStore,
+	state::{batch::StateBatch, timer::StateStore},
 };
 
 pub trait SuffixBytes: Key {
@@ -137,6 +137,10 @@ pub trait TypedStateStore: StateStore {
 	where
 		K: Keyspace;
 
+	fn state_batch_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<StateBatch>
+	where
+		K: Keyspace;
+
 	fn state_set_in<K>(&mut self, group: GroupId, suffix: &K::Suffix, row: EncodedPodRow) -> Result<()>
 	where
 		K: Keyspace;
@@ -146,6 +150,10 @@ pub trait TypedStateStore: StateStore {
 		K: Keyspace;
 
 	fn state_remove_in<K>(&mut self, group: GroupId, suffix: &K::Suffix) -> Result<()>
+	where
+		K: Keyspace;
+
+	fn state_remove_many_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<()>
 	where
 		K: Keyspace;
 
@@ -165,6 +173,13 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 		K: Keyspace,
 	{
 		self.state_get(&typed_key::<K>(group, suffix))
+	}
+
+	fn state_batch_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<StateBatch>
+	where
+		K: Keyspace,
+	{
+		self.state_batch(suffixes.iter().map(|suffix| typed_key::<K>(group, suffix)).collect())
 	}
 
 	fn state_set_in<K>(&mut self, group: GroupId, suffix: &K::Suffix, row: EncodedPodRow) -> Result<()>
@@ -188,6 +203,14 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 		K: Keyspace,
 	{
 		self.state_remove(&typed_key::<K>(group, suffix))
+	}
+
+	fn state_remove_many_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<()>
+	where
+		K: Keyspace,
+	{
+		let keys: Vec<GroupStateKey> = suffixes.iter().map(|suffix| typed_key::<K>(group, suffix)).collect();
+		self.state_remove_many(&keys)
 	}
 
 	fn state_scan_in<K>(

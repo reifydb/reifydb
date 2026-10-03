@@ -3,7 +3,11 @@
 
 use arrow_array::RecordBatch;
 use reifydb_core::interface::change::Diff;
-use reifydb_value::{Result, util::hash::Hash128, value::system_columns::require_row_numbers};
+use reifydb_value::{
+	Result,
+	util::hash::Hash128,
+	value::{row_number::RowNumber, system_columns::require_row_numbers},
+};
 
 use super::{
 	JoinContext, UpdateKeys,
@@ -237,12 +241,13 @@ impl LeftHashJoin {
 			emitted
 		};
 
+		let pre_numbers = require_row_numbers(pre)?;
+		let numbers: Vec<RowNumber> = indices.iter().map(|&idx| pre_numbers[idx]).collect();
 		let left_group = ctx.state.left.group_of(key_hash);
-		for &idx in indices {
-			let row_number = require_row_numbers(pre)?[idx];
-			ctx.operator.cleanup_left_row_joins(host, *row_number)?;
-			ctx.state.left.remove_row_in(host, left_group, row_number)?;
+		for number in &numbers {
+			ctx.operator.cleanup_left_row_joins(host, number.0)?;
 		}
+		ctx.state.left.remove_rows_in(host, left_group, &numbers)?;
 		Ok(result)
 	}
 
@@ -285,10 +290,10 @@ impl LeftHashJoin {
 			}
 		}
 
-		let mut any_removed = false;
-		for &idx in indices {
-			any_removed |= ctx.state.right.remove_row(host, key_hash, require_row_numbers(pre)?[idx])?;
-		}
+		let pre_numbers = require_row_numbers(pre)?;
+		let numbers: Vec<RowNumber> = indices.iter().map(|&idx| pre_numbers[idx]).collect();
+		let right_group = ctx.state.right.group_of(key_hash);
+		let any_removed = ctx.state.right.remove_rows(host, right_group, &numbers)?.contains(&true);
 
 		if !ctx.operator.snapshot && any_removed && !ctx.state.right.contains_key(host, key_hash)? {
 			let operator = ctx.operator;

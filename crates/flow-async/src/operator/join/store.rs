@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{collections::HashSet, ops::Bound};
 
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
@@ -203,6 +203,31 @@ impl Store {
 		Ok(true)
 	}
 
+	pub(crate) fn remove_rows(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		row_numbers: &[RowNumber],
+	) -> Result<Vec<bool>> {
+		let suffixes: Vec<Asc<RowNumber>> = row_numbers.iter().copied().map(Asc).collect();
+		let batch = match self.side {
+			JoinSide::Left => host.state_batch_in::<JoinLeft>(group, &suffixes)?,
+			JoinSide::Right => host.state_batch_in::<JoinRight>(group, &suffixes)?,
+		};
+		let mut counted: HashSet<RowNumber> = HashSet::with_capacity(row_numbers.len());
+		let mut removed = Vec::with_capacity(row_numbers.len());
+		let mut stored = Vec::new();
+		for (slot, number) in row_numbers.iter().enumerate() {
+			let held = batch.value(slot).is_some() && counted.insert(*number);
+			if held {
+				stored.push(*number);
+			}
+			removed.push(held);
+		}
+		self.remove_rows_in(host, group, &stored)?;
+		Ok(removed)
+	}
+
 	pub(crate) fn remove_row_in(
 		&self,
 		host: &mut dyn HostContext,
@@ -210,6 +235,19 @@ impl Store {
 		row_number: RowNumber,
 	) -> Result<()> {
 		self.erase_row(host, group, row_number)
+	}
+
+	pub(crate) fn remove_rows_in(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		row_numbers: &[RowNumber],
+	) -> Result<()> {
+		let suffixes: Vec<Asc<RowNumber>> = row_numbers.iter().copied().map(Asc).collect();
+		match self.side {
+			JoinSide::Left => host.state_remove_many_in::<JoinLeft>(group, &suffixes),
+			JoinSide::Right => host.state_remove_many_in::<JoinRight>(group, &suffixes),
+		}
 	}
 
 	#[instrument(name = "flow::operator::join::rows_for_key", level = "trace", skip_all, fields(limit = limit))]

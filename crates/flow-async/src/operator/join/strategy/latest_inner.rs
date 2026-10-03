@@ -184,12 +184,15 @@ impl LatestInnerHashJoin {
 					}
 					return Ok(withdrawn);
 				}
-				let mut held = Vec::with_capacity(indices.len());
-				for &idx in indices {
-					if ctx.state.left.remove_row(host, key_hash, require_row_numbers(pre)?[idx])? {
-						held.push(idx);
-					}
-				}
+				let pre_numbers = require_row_numbers(pre)?;
+				let numbers: Vec<RowNumber> = indices.iter().map(|&idx| pre_numbers[idx]).collect();
+				let left_group = ctx.state.left.group_of(key_hash);
+				let removed = ctx.state.left.remove_rows(host, left_group, &numbers)?;
+				let held: Vec<usize> = indices
+					.iter()
+					.zip(removed)
+					.filter_map(|(&idx, held)| held.then_some(idx))
+					.collect();
 				if held.is_empty() {
 					return Ok(Vec::new());
 				}

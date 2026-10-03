@@ -3,7 +3,11 @@
 
 use arrow_array::RecordBatch;
 use reifydb_core::interface::change::Diff;
-use reifydb_value::{Result, util::hash::Hash128, value::system_columns::require_row_numbers};
+use reifydb_value::{
+	Result,
+	util::hash::Hash128,
+	value::{row_number::RowNumber, system_columns::require_row_numbers},
+};
 
 use super::{
 	JoinContext, UpdateKeys,
@@ -171,20 +175,17 @@ impl InnerHashJoin {
 			JoinSide::Left => ctx.state.left.group_of(key_hash),
 			JoinSide::Right => ctx.state.right.group_of(key_hash),
 		};
-		for &idx in indices {
-			let row_number = require_row_numbers(pre)?[idx];
-
-			if matches!(ctx.side, JoinSide::Left) {
-				ctx.operator.cleanup_left_row_joins(host, *row_number)?;
+		let pre_numbers = require_row_numbers(pre)?;
+		let numbers: Vec<RowNumber> = indices.iter().map(|&idx| pre_numbers[idx]).collect();
+		match ctx.side {
+			JoinSide::Left => {
+				for number in &numbers {
+					ctx.operator.cleanup_left_row_joins(host, number.0)?;
+				}
+				ctx.state.left.remove_rows_in(host, group, &numbers)?;
 			}
-
-			match ctx.side {
-				JoinSide::Left => {
-					ctx.state.left.remove_row_in(host, group, row_number)?;
-				}
-				JoinSide::Right => {
-					ctx.state.right.remove_row_in(host, group, row_number)?;
-				}
+			JoinSide::Right => {
+				ctx.state.right.remove_rows_in(host, group, &numbers)?;
 			}
 		}
 
