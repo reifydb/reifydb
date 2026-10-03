@@ -171,7 +171,7 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: foo::foo::anon::HostWithStore + Send,
+            D: foo::foo::anon::HostWithStore<T> + Send,
             for<'a> D::Data<'a>: foo::foo::anon::Host + Send,
             T: 'static + Send,
         {
@@ -234,10 +234,10 @@ pub mod foo {
                 assert!(1 == < Error as wasmtime::component::ComponentType >::SIZE32);
                 assert!(1 == < Error as wasmtime::component::ComponentType >::ALIGN32);
             };
-            pub trait HostWithStore: wasmtime::component::HasData + Send {}
-            impl<_T: ?Sized> HostWithStore for _T
+            pub trait HostWithStore<T>: wasmtime::component::HasData + Send {}
+            impl<H: ?Sized, T> HostWithStore<T> for H
             where
-                _T: wasmtime::component::HasData + Send,
+                H: wasmtime::component::HasData + Send,
             {}
             pub trait Host: Send {
                 fn option_test(
@@ -261,16 +261,15 @@ pub mod foo {
                     async move { Host::option_test(*self).await }
                 }
             }
-            pub fn add_to_linker<T, D>(
-                linker: &mut wasmtime::component::Linker<T>,
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static + Send,
             {
-                let mut inst = linker.instance("foo:foo/anon")?;
                 inst.func_wrap_async(
                     "option-test",
                     move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
@@ -282,6 +281,18 @@ pub mod foo {
                     },
                 )?;
                 Ok(())
+            }
+            pub fn add_to_linker<T, D>(
+                linker: &mut wasmtime::component::Linker<T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static + Send,
+            {
+                let mut inst = linker.instance("foo:foo/anon")?;
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
             }
         }
     }
@@ -374,7 +385,7 @@ pub mod exports {
                                     "no exported instance named `foo:foo/anon`"
                                 )
                             })?;
-                        let mut lookup = move |name| {
+                        let mut lookup = move |name: &str| {
                             _instance_pre
                                 .component()
                                 .get_export_index(Some(&instance), name)
@@ -414,16 +425,13 @@ pub mod exports {
                     }
                 }
                 impl Guest {
-                    pub async fn call_option_test<S: wasmtime::AsContextMut>(
+                    pub fn func_option_test(
                         &self,
-                        mut store: S,
-                    ) -> wasmtime::Result<
-                        Result<Option<wasmtime::component::__internal::String>, Error>,
-                    >
-                    where
-                        <S as wasmtime::AsContext>::Data: Send,
-                    {
-                        let callee = unsafe {
+                    ) -> wasmtime::component::TypedFunc<
+                        (),
+                        (Result<Option<wasmtime::component::__internal::String>, Error>,),
+                    > {
+                        unsafe {
                             wasmtime::component::TypedFunc::<
                                 (),
                                 (
@@ -433,7 +441,18 @@ pub mod exports {
                                     >,
                                 ),
                             >::new_unchecked(self.option_test)
-                        };
+                        }
+                    }
+                    pub async fn call_option_test<S: wasmtime::AsContextMut>(
+                        &self,
+                        mut store: S,
+                    ) -> wasmtime::Result<
+                        Result<Option<wasmtime::component::__internal::String>, Error>,
+                    >
+                    where
+                        <S as wasmtime::AsContext>::Data: Send,
+                    {
+                        let callee = self.func_option_test();
                         let (ret0,) = callee
                             .call_async(store.as_context_mut(), ())
                             .await?;

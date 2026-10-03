@@ -142,30 +142,31 @@ where
 
     #[inline]
     fn flags(&self) -> SegmentFlags {
+        let p_type = self.segment.p_type(self.file.endian);
         let p_flags = self.segment.p_flags(self.file.endian);
-        SegmentFlags::Elf { p_flags }
+        SegmentFlags::Elf { p_type, p_flags }
     }
 
     #[inline]
     fn permissions(&self) -> Permissions {
         let p_flags = self.segment.p_flags(self.file.endian);
         Permissions::new(
-            p_flags & elf::PF_R != 0,
-            p_flags & elf::PF_W != 0,
-            p_flags & elf::PF_X != 0,
+            p_flags.contains(elf::PF_R),
+            p_flags.contains(elf::PF_W),
+            p_flags.contains(elf::PF_X),
         )
     }
 }
 
 /// A trait for generic access to [`elf::ProgramHeader32`] and [`elf::ProgramHeader64`].
 #[allow(missing_docs)]
-pub trait ProgramHeader: Debug + Pod {
+pub trait ProgramHeader: Debug + Pod + read::private::Sealed {
     type Elf: FileHeader<ProgramHeader = Self, Endian = Self::Endian, Word = Self::Word>;
     type Word: Into<u64>;
     type Endian: endian::Endian;
 
-    fn p_type(&self, endian: Self::Endian) -> u32;
-    fn p_flags(&self, endian: Self::Endian) -> u32;
+    fn p_type(&self, endian: Self::Endian) -> elf::ProgramType;
+    fn p_flags(&self, endian: Self::Endian) -> elf::ProgramFlags;
     fn p_offset(&self, endian: Self::Endian) -> Self::Word;
     fn p_vaddr(&self, endian: Self::Endian) -> Self::Word;
     fn p_paddr(&self, endian: Self::Endian) -> Self::Word;
@@ -282,18 +283,20 @@ pub trait ProgramHeader: Debug + Pod {
     }
 }
 
+impl<Endian: endian::Endian> read::private::Sealed for elf::ProgramHeader32<Endian> {}
+
 impl<Endian: endian::Endian> ProgramHeader for elf::ProgramHeader32<Endian> {
     type Word = u32;
     type Endian = Endian;
     type Elf = elf::FileHeader32<Endian>;
 
     #[inline]
-    fn p_type(&self, endian: Self::Endian) -> u32 {
+    fn p_type(&self, endian: Self::Endian) -> elf::ProgramType {
         self.p_type.get(endian)
     }
 
     #[inline]
-    fn p_flags(&self, endian: Self::Endian) -> u32 {
+    fn p_flags(&self, endian: Self::Endian) -> elf::ProgramFlags {
         self.p_flags.get(endian)
     }
 
@@ -328,18 +331,20 @@ impl<Endian: endian::Endian> ProgramHeader for elf::ProgramHeader32<Endian> {
     }
 }
 
+impl<Endian: endian::Endian> read::private::Sealed for elf::ProgramHeader64<Endian> {}
+
 impl<Endian: endian::Endian> ProgramHeader for elf::ProgramHeader64<Endian> {
     type Word = u64;
     type Endian = Endian;
     type Elf = elf::FileHeader64<Endian>;
 
     #[inline]
-    fn p_type(&self, endian: Self::Endian) -> u32 {
+    fn p_type(&self, endian: Self::Endian) -> elf::ProgramType {
         self.p_type.get(endian)
     }
 
     #[inline]
-    fn p_flags(&self, endian: Self::Endian) -> u32 {
+    fn p_flags(&self, endian: Self::Endian) -> elf::ProgramFlags {
         self.p_flags.get(endian)
     }
 

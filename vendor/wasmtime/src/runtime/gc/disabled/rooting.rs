@@ -1,4 +1,4 @@
-use crate::runtime::vm::{GcStore, VMGcRef};
+use crate::runtime::vm::VMGcRef;
 use crate::{
     AsContext, AsContextMut, GcRef, Result, RootedGcRef,
     store::{AutoAssertNoGc, StoreOpaque},
@@ -7,7 +7,7 @@ use core::convert::Infallible;
 use core::fmt::{self, Debug};
 use core::hash::{Hash, Hasher};
 use core::marker;
-use core::ops::{Deref, DerefMut};
+use core::ops::Deref;
 
 mod sealed {
     use super::*;
@@ -33,17 +33,6 @@ mod sealed {
     }
 }
 pub(crate) use sealed::*;
-
-#[derive(Debug, Default)]
-pub(crate) struct RootSet {}
-
-impl RootSet {
-    pub(crate) fn enter_lifo_scope(&self) -> usize {
-        usize::MAX
-    }
-
-    pub(crate) fn exit_lifo_scope(&mut self, _gc_store: Option<&mut GcStore>, _scope: usize) {}
-}
 
 /// This type is disabled because the `gc` cargo feature was not enabled at
 /// compile time.
@@ -114,6 +103,14 @@ impl<T: GcRef> Rooted<T> {
     ) -> Result<bool> {
         a.assert_unreachable()
     }
+
+    pub(crate) fn try_gc_ref<'a>(&self, _store: &'a StoreOpaque) -> Result<&'a VMGcRef> {
+        match self.inner {}
+    }
+
+    pub(crate) fn try_clone_gc_ref(&self, _: &mut AutoAssertNoGc<'_>) -> Result<VMGcRef> {
+        match self.inner {}
+    }
 }
 
 /// This type has been disabled because the `gc` cargo feature was not enabled
@@ -183,7 +180,7 @@ impl<T> OwnedRooted<T>
 where
     T: GcRef,
 {
-    pub fn clone(&self, _store: impl AsContextMut) -> Self {
+    pub fn clone(&self) -> Self {
         match self.inner {}
     }
 
@@ -199,29 +196,5 @@ where
 impl<T: GcRef> RootedGcRefImpl<T> for OwnedRooted<T> {
     fn assert_unreachable<U>(&self) -> U {
         match self.inner {}
-    }
-}
-
-pub(crate) struct OpaqueRootScope<S> {
-    store: S,
-}
-
-impl<S> Deref for OpaqueRootScope<S> {
-    type Target = S;
-
-    fn deref(&self) -> &Self::Target {
-        &self.store
-    }
-}
-
-impl<S> DerefMut for OpaqueRootScope<S> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.store
-    }
-}
-
-impl<S> OpaqueRootScope<S> {
-    pub(crate) fn new(store: S) -> Self {
-        OpaqueRootScope { store }
     }
 }

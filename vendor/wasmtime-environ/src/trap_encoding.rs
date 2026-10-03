@@ -1,3 +1,4 @@
+use crate::bytes;
 use core::fmt;
 use object::{Bytes, LittleEndian, U32};
 
@@ -10,7 +11,51 @@ pub struct TrapInformation {
     pub code_offset: u32,
 
     /// Code of the trap.
-    pub trap_code: Trap,
+    pub trap_code: CompiledTrap,
+}
+
+/// Possible traps that can be compiled into WebAssembly modules.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum CompiledTrap {
+    /// A normal trap, expected to possibly be hit at runtime.
+    Normal(Trap),
+    /// An internal assertion in the compiled code itself.
+    InternalAssert,
+    /// The GC heap was detected as being corrupt.
+    GcHeapCorrupt,
+}
+
+impl CompiledTrap {
+    /// Encodes this as a byte.
+    pub fn as_u8(&self) -> u8 {
+        match self {
+            CompiledTrap::Normal(trap) => {
+                let ret = *trap as u8;
+                debug_assert_ne!(ret, CompiledTrap::InternalAssert.as_u8());
+                debug_assert_ne!(ret, CompiledTrap::GcHeapCorrupt.as_u8());
+                ret
+            }
+            CompiledTrap::InternalAssert => 0xFF,
+            CompiledTrap::GcHeapCorrupt => 0xFE,
+        }
+    }
+
+    /// Decodes a byte as a trap.
+    pub fn from_u8(byte: u8) -> Option<CompiledTrap> {
+        if byte == 0xFF {
+            Some(CompiledTrap::InternalAssert)
+        } else if byte == 0xFE {
+            Some(CompiledTrap::GcHeapCorrupt)
+        } else {
+            Trap::from_u8(byte).map(CompiledTrap::Normal)
+        }
+    }
+}
+
+impl From<Trap> for CompiledTrap {
+    fn from(trap: Trap) -> CompiledTrap {
+        CompiledTrap::Normal(trap)
+    }
 }
 
 macro_rules! generate_trap_type {
@@ -220,6 +265,20 @@ generate_trap_type! {
         /// pending operation already.
         ConcurrentFutureStreamOp = "cannot have concurrent operations active on a future/stream",
 
+        /// A reference count (for e.g. an `error-context`) overflowed.
+        ReferenceCountOverflow = "reference count overflow",
+
+        /// A read/write on a stream must be <2**28 items.
+        StreamOpTooBig = "stream read/write count too large",
+
+        /// The guest either attempted to add a waitable to a waitable set while
+        /// it was being used in a synchronous operation or tried to use it in a
+        /// synchronous operation while it was added to a waitable set.
+        WaitableSyncAndAsync = "waitable cannot be used synchronously while added to a waitable set",
+
+        /// An exception propagated out of a component without being caught.
+        UncaughtException = "uncaught exception propagated out of component",
+
         // if adding a variant here be sure to update `trap.rs` and `trap.h` as
         // mentioned above
     }
@@ -227,54 +286,135 @@ generate_trap_type! {
 
 impl core::error::Error for Trap {}
 
+/// Number of trap entries packed into one block of the trap section.
+///
+/// See `TrapEncodingBuilder` in `crate::compile` for the full section format.
+/// Chosen as a balance between the fixed-width index overhead per block (8
+/// bytes, amortized across entries) and the amount of linear decoding required
+/// to look up a single pc within a block.
+pub(crate) const TRAP_BLOCK_SIZE: usize = 128;
+
 /// Decodes the provided trap information section and attempts to find the trap
 /// code corresponding to the `offset` specified.
 ///
 /// The `section` provided is expected to have been built by
-/// `TrapEncodingBuilder` above. Additionally the `offset` should be a relative
+/// `TrapEncodingBuilder` in `crate::compile`, whose documentation describes
+/// the format decoded here. Additionally the `offset` should be a relative
 /// offset within the text section of the compilation image.
-pub fn lookup_trap_code(section: &[u8], offset: usize) -> Option<Trap> {
-    let (offsets, traps) = parse(section)?;
+pub fn lookup_trap_code(section: &[u8], offset: usize) -> Option<CompiledTrap> {
+    let section = parse(section)?;
+    let offset = u32::try_from(offset).ok()?;
 
-    // The `offsets` table is sorted in the trap section so perform a binary
-    // search of the contents of this section to find whether `offset` is an
-    // entry in the section. Note that this is a precise search because trap pcs
+    // Find the last block whose first pc is `<= offset`; only that block can
+    // contain `offset`. Note that this is a precise search because trap pcs
     // should always be precise as well as our metadata about them, which means
     // we expect an exact match to correspond to a trap opcode.
-    //
-    // Once an index is found within the `offsets` array then that same index is
-    // used to lookup from the `traps` list of bytes to get the trap code byte
-    // corresponding to this offset.
-    let offset = u32::try_from(offset).ok()?;
-    let index = offsets
-        .binary_search_by_key(&offset, |val| val.get(LittleEndian))
-        .ok()?;
-    debug_assert!(index < traps.len());
-    let byte = *traps.get(index)?;
+    let block = section
+        .block_index
+        .partition_point(|[first_offset, _]| first_offset.get(LittleEndian) <= offset)
+        .checked_sub(1)?;
 
-    let trap = Trap::from_u8(byte);
-    debug_assert!(trap.is_some(), "missing mapping for {byte}");
-    trap
+    for (pc, byte) in section.block_entries(block)? {
+        if pc == offset {
+            let trap = CompiledTrap::from_u8(byte);
+            debug_assert!(trap.is_some(), "missing mapping for {byte}");
+            return trap;
+        }
+        if pc > offset {
+            break;
+        }
+    }
+    None
 }
 
-fn parse(section: &[u8]) -> Option<(&[U32<LittleEndian>], &[u8])> {
+/// A parsed view of the trap section.
+///
+/// The fields here correspond to the pieces of the section layout described
+/// on `TrapEncodingBuilder` in `crate::compile`.
+#[derive(Clone, Copy)]
+struct TrapSection<'a> {
+    /// Total number of trap entries in this section.
+    entries: usize,
+    /// One `(first_offset, block_pos)` pair per block.
+    block_index: &'a [[U32<LittleEndian>; 2]],
+    /// Variable-length block bodies, index by `block_pos` in the `block_index`
+    /// table above.
+    block_bodies: &'a [u8],
+}
+
+impl<'a> TrapSection<'a> {
+    /// Returns an iterator of `(text_offset, trap_code_byte)` for all entries
+    /// in `block`, or `None` if the section is malformed.
+    fn block_entries(&self, block_index: usize) -> Option<BlockEntries<'a>> {
+        let [first_offset, block_pos] = self.block_index.get(block_index)?;
+        let first_offset = first_offset.get(LittleEndian);
+        let block_pos = block_pos.get(LittleEndian);
+        let mut block = self.block_bodies.get(usize::try_from(block_pos).ok()?..)?;
+        let default_code = bytes::pop(&mut block)?;
+        let remaining = core::cmp::min(
+            TRAP_BLOCK_SIZE,
+            self.entries.checked_sub(block_index * TRAP_BLOCK_SIZE)?,
+        );
+        Some(BlockEntries {
+            block,
+            prev_offset: first_offset,
+            default_code,
+            remaining,
+        })
+    }
+}
+
+/// Iterator over the entries of a single block, decoding the
+/// delta-and-code-flag varints described in the "block body" portion of the
+/// section format on `TrapEncodingBuilder` in `crate::compile`.
+struct BlockEntries<'a> {
+    block: &'a [u8],
+    prev_offset: u32,
+    default_code: u8,
+    remaining: usize,
+}
+
+impl Iterator for BlockEntries<'_> {
+    type Item = (u32, u8);
+
+    fn next(&mut self) -> Option<(u32, u8)> {
+        self.remaining = self.remaining.checked_sub(1)?;
+        let token = bytes::read_uleb(&mut self.block)?;
+        let delta = u32::try_from(token >> 1).ok()?;
+        let cur_offset = self.prev_offset.checked_add(delta)?;
+        self.prev_offset = cur_offset;
+        let code = if token & 1 != 0 {
+            bytes::pop(&mut self.block)?
+        } else {
+            self.default_code
+        };
+        Some((cur_offset, code))
+    }
+}
+
+fn parse(section: &[u8]) -> Option<TrapSection<'_>> {
     let mut section = Bytes(section);
-    // NB: this matches the encoding written by `append_to` above.
-    let count = section.read::<U32<LittleEndian>>().ok()?;
-    let count = usize::try_from(count.get(LittleEndian)).ok()?;
-    let (offsets, traps) = object::slice_from_bytes::<U32<LittleEndian>>(section.0, count).ok()?;
-    debug_assert_eq!(traps.len(), count);
-    Some((offsets, traps))
+    // NB: this matches the encoding written by `TrapEncodingBuilder`.
+    let entries = section.read::<U32<LittleEndian>>().ok()?;
+    let entries = usize::try_from(entries.get(LittleEndian)).ok()?;
+    let num_blocks = section.read::<U32<LittleEndian>>().ok()?;
+    let num_blocks = usize::try_from(num_blocks.get(LittleEndian)).ok()?;
+    let (block_index, block_bodies) =
+        object::slice_from_bytes::<[U32<LittleEndian>; 2]>(section.0, num_blocks).ok()?;
+    Some(TrapSection {
+        entries,
+        block_index,
+        block_bodies,
+    })
 }
 
 /// Returns an iterator over all of the traps encoded in `section`, which should
 /// have been produced by `TrapEncodingBuilder`.
-pub fn iterate_traps(section: &[u8]) -> Option<impl Iterator<Item = (u32, Trap)> + '_> {
-    let (offsets, traps) = parse(section)?;
+pub fn iterate_traps(section: &[u8]) -> Option<impl Iterator<Item = (u32, CompiledTrap)> + '_> {
+    let section = parse(section)?;
     Some(
-        offsets
-            .iter()
-            .zip(traps)
-            .map(|(offset, trap)| (offset.get(LittleEndian), Trap::from_u8(*trap).unwrap())),
+        (0..section.block_index.len())
+            .flat_map(move |block| section.block_entries(block).into_iter().flatten())
+            .map(|(pc, byte)| (pc, CompiledTrap::from_u8(byte).unwrap())),
     )
 }

@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "cpp_demangle"
-version = "0.4.5"
+version = "0.5.1"
 authors = [
     "Nick Fitzgerald <fitzgen@gmail.com>",
     "Jim Blandy <jimb@red-bean.com>",
@@ -71,7 +71,7 @@ path = "examples/simple.rs"
 required-features = ["std"]
 
 [dependencies.afl]
-version = "0.15"
+version = "0.16"
 optional = true
 
 [dependencies.cfg-if]

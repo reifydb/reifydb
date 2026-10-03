@@ -15,7 +15,7 @@ pub struct ControlEffect(ir::Value);
 impl ControlEffect {
     // Returns the discriminant
     pub fn signal(&self, builder: &mut FunctionBuilder) -> ir::Value {
-        builder.ins().ushr_imm(self.0, 32)
+        builder.ins().ushr_imm_u(self.0, 32)
     }
 
     pub fn from_u64(val: ir::Value) -> Self {
@@ -31,7 +31,17 @@ impl ControlEffect {
             I64,
             i64::from(wasmtime_environ::CONTROL_EFFECT_RESUME_DISCRIMINANT),
         );
-        let val = builder.ins().ishl_imm(discriminant, 32);
+        let val = builder.ins().ishl_imm_u(discriminant, 32);
+
+        Self(val)
+    }
+
+    pub fn encode_resume_throw(builder: &mut FunctionBuilder) -> Self {
+        let discriminant = builder.ins().iconst(
+            I64,
+            i64::from(wasmtime_environ::CONTROL_EFFECT_RESUME_THROW_DISCRIMINANT),
+        );
+        let val = builder.ins().ishl_imm_u(discriminant, 32);
 
         Self(val)
     }
@@ -41,7 +51,7 @@ impl ControlEffect {
             I64,
             i64::from(wasmtime_environ::CONTROL_EFFECT_SWITCH_DISCRIMINANT),
         );
-        let val = builder.ins().ishl_imm(discriminant, 32);
+        let val = builder.ins().ishl_imm_u(discriminant, 32);
 
         Self(val)
     }
@@ -51,11 +61,29 @@ impl ControlEffect {
             I64,
             i64::from(wasmtime_environ::CONTROL_EFFECT_SUSPEND_DISCRIMINANT),
         );
-        let val = builder.ins().ishl_imm(discriminant, 32);
+        let val = builder.ins().ishl_imm_u(discriminant, 32);
         let handler_index = builder.ins().uextend(I64, handler_index);
         let val = builder.ins().bor(val, handler_index);
 
         Self(val)
+    }
+
+    pub fn is_trap(self, builder: &mut FunctionBuilder) -> ir::Value {
+        let signal = self.signal(builder);
+        builder.ins().icmp_imm_u(
+            ir::condcodes::IntCC::Equal,
+            signal,
+            i64::from(wasmtime_environ::CONTROL_EFFECT_TRAP_DISCRIMINANT),
+        )
+    }
+
+    pub fn is_resume_throw(self, builder: &mut FunctionBuilder) -> ir::Value {
+        let signal = self.signal(builder);
+        builder.ins().icmp_imm_u(
+            ir::condcodes::IntCC::Equal,
+            signal,
+            i64::from(wasmtime_environ::CONTROL_EFFECT_RESUME_THROW_DISCRIMINANT),
+        )
     }
 
     /// Returns the payload of the `Suspend` variant

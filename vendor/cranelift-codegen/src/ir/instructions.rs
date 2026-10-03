@@ -511,8 +511,7 @@ impl InstructionData {
     /// condition.  Otherwise, return `None`.
     pub fn cond_code(&self) -> Option<IntCC> {
         match self {
-            &InstructionData::IntCompare { cond, .. }
-            | &InstructionData::IntCompareImm { cond, .. } => Some(cond),
+            &InstructionData::IntCompare { cond, .. } => Some(cond),
             _ => None,
         }
     }
@@ -549,9 +548,8 @@ impl InstructionData {
     pub fn load_store_offset(&self) -> Option<i32> {
         match self {
             &InstructionData::Load { offset, .. }
-            | &InstructionData::StackLoad { offset, .. }
-            | &InstructionData::Store { offset, .. }
-            | &InstructionData::StackStore { offset, .. } => Some(offset.into()),
+            | &InstructionData::StackAddr { offset, .. }
+            | &InstructionData::Store { offset, .. } => Some(offset.into()),
             _ => None,
         }
     }
@@ -569,11 +567,43 @@ impl InstructionData {
         }
     }
 
+    /// If this is a load/store instruction, return its memory flags.
+    pub fn memflags_mut(&mut self) -> Option<&mut MemFlags> {
+        match self {
+            InstructionData::Load { flags, .. }
+            | InstructionData::LoadNoOffset { flags, .. }
+            | InstructionData::Store { flags, .. }
+            | InstructionData::StoreNoOffset { flags, .. }
+            | InstructionData::AtomicCas { flags, .. }
+            | InstructionData::AtomicRmw { flags, .. } => Some(flags),
+            _ => None,
+        }
+    }
+
+    /// If this is a load/store instruction, resolve its memory flags to data
+    /// through the DFG.
+    pub fn memflags_data(&self, dfg: &super::dfg::DataFlowGraph) -> Option<super::MemFlagsData> {
+        self.memflags().map(|f| dfg.mem_flags[f])
+    }
+
+    /// Get this load/store instruction's trap code, if any.
+    ///
+    /// Returns `None` when this is not a load/store instruction, or if it is a
+    /// load/store instruction but does not have a trap code.
+    pub fn memflags_trap_code(&self, dfg: &super::dfg::DataFlowGraph) -> Option<TrapCode> {
+        self.memflags_data(dfg)?.trap_code()
+    }
+
+    /// If this is a load/store instruction, get its alias region.
+    pub fn alias_region(&self, dfg: &super::dfg::DataFlowGraph) -> Option<super::AliasRegion> {
+        let flags = self.memflags_data(dfg)?;
+        flags.alias_region()
+    }
+
     /// If this instruction references a stack slot, return it
     pub fn stack_slot(&self) -> Option<StackSlot> {
         match self {
-            &InstructionData::StackStore { stack_slot, .. }
-            | &InstructionData::StackLoad { stack_slot, .. } => Some(stack_slot),
+            &InstructionData::StackAddr { stack_slot, .. } => Some(stack_slot),
             _ => None,
         }
     }
@@ -636,26 +666,6 @@ impl InstructionData {
         match self {
             Self::UnaryImm { opcode: _, imm } => {
                 *imm = imm.mask_to_width(bit_width);
-            }
-            Self::BinaryImm64 {
-                opcode,
-                arg: _,
-                imm,
-            } => {
-                if *opcode == Opcode::SdivImm || *opcode == Opcode::SremImm {
-                    *imm = imm.mask_to_width(bit_width);
-                }
-            }
-            Self::IntCompareImm {
-                opcode,
-                arg: _,
-                cond,
-                imm,
-            } => {
-                debug_assert_eq!(*opcode, Opcode::IcmpImm);
-                if cond.unsigned() != *cond {
-                    *imm = imm.mask_to_width(bit_width);
-                }
             }
             _ => {}
         }
@@ -1084,6 +1094,15 @@ pub trait InstructionMapper {
 
     /// Map a function over an `Immediate`.
     fn map_immediate(&mut self, immediate: ir::Immediate) -> ir::Immediate;
+
+    /// Map a function over a `MemFlags` entity.
+    ///
+    /// The default implementation returns the flags unchanged, which is correct
+    /// for mappers within a single function. Override this when mapping between
+    /// functions (e.g. inlining) to re-insert the flags data into the target DFG.
+    fn map_mem_flags(&mut self, flags: ir::MemFlags) -> ir::MemFlags {
+        flags
+    }
 }
 
 impl<'a, T> InstructionMapper for &'a mut T
@@ -1144,6 +1163,10 @@ where
     fn map_immediate(&mut self, immediate: ir::Immediate) -> ir::Immediate {
         (**self).map_immediate(immediate)
     }
+
+    fn map_mem_flags(&mut self, flags: ir::MemFlags) -> ir::MemFlags {
+        (**self).map_mem_flags(flags)
+    }
 }
 
 #[cfg(test)]
@@ -1177,12 +1200,12 @@ mod tests {
         assert_eq!(x, y);
         assert_eq!(x.format(), InstructionFormat::Binary);
 
-        assert_eq!(format!("{:?}", Opcode::IaddImm), "IaddImm");
-        assert_eq!(Opcode::IaddImm.to_string(), "iadd_imm");
+        assert_eq!(format!("{:?}", Opcode::StackAddr), "StackAddr");
+        assert_eq!(Opcode::StackAddr.to_string(), "stack_addr");
 
         // Check the matcher.
         assert_eq!("iadd".parse::<Opcode>(), Ok(Opcode::Iadd));
-        assert_eq!("iadd_imm".parse::<Opcode>(), Ok(Opcode::IaddImm));
+        assert_eq!("stack_addr".parse::<Opcode>(), Ok(Opcode::StackAddr));
         assert_eq!("iadd\0".parse::<Opcode>(), Err("Unknown opcode"));
         assert_eq!("".parse::<Opcode>(), Err("Unknown opcode"));
         assert_eq!("\0".parse::<Opcode>(), Err("Unknown opcode"));
@@ -1406,11 +1429,11 @@ mod tests {
         // Mapping `GlobalValue`s.
         assert_eq!(
             map(InstructionData::UnaryGlobalValue {
-                opcode: Opcode::GlobalValue,
+                opcode: Opcode::SymbolValue,
                 global_value: GlobalValue::from_u32(4),
             }),
             InstructionData::UnaryGlobalValue {
-                opcode: Opcode::GlobalValue,
+                opcode: Opcode::SymbolValue,
                 global_value: GlobalValue::from_u32(5),
             }
         );
@@ -1487,13 +1510,13 @@ mod tests {
 
         // Mapping `StackSlot`s.
         assert_eq!(
-            map(InstructionData::StackLoad {
-                opcode: Opcode::StackLoad,
+            map(InstructionData::StackAddr {
+                opcode: Opcode::StackAddr,
                 stack_slot: StackSlot::from_u32(0),
                 offset: 0.into()
             }),
-            InstructionData::StackLoad {
-                opcode: Opcode::StackLoad,
+            InstructionData::StackAddr {
+                opcode: Opcode::StackAddr,
                 stack_slot: StackSlot::from_u32(1),
                 offset: 0.into()
             },
@@ -1501,12 +1524,12 @@ mod tests {
 
         // Mapping `DynamicStackSlot`s.
         assert_eq!(
-            map(InstructionData::DynamicStackLoad {
-                opcode: Opcode::DynamicStackLoad,
+            map(InstructionData::DynamicStackAddr {
+                opcode: Opcode::DynamicStackAddr,
                 dynamic_stack_slot: DynamicStackSlot::from_u32(0),
             }),
-            InstructionData::DynamicStackLoad {
-                opcode: Opcode::DynamicStackLoad,
+            InstructionData::DynamicStackAddr {
+                opcode: Opcode::DynamicStackAddr,
                 dynamic_stack_slot: DynamicStackSlot::from_u32(1),
             },
         );

@@ -60,6 +60,7 @@ pub mod inline;
 pub mod ir;
 pub mod isa;
 pub mod loop_analysis;
+pub mod post_dominator_tree;
 pub mod print_errors;
 pub mod settings;
 pub mod timing;
@@ -70,24 +71,24 @@ pub mod write;
 pub use crate::entity::packed_option;
 pub use crate::machinst::buffer::{
     ExceptionContextLoc, FinalizedMachCallSite, FinalizedMachExceptionHandler, FinalizedMachReloc,
-    FinalizedRelocTarget, MachCallSite, MachSrcLoc, MachTextSectionBuilder, MachTrap,
-    OpenPatchRegion, PatchRegion,
+    FinalizedRelocTarget, MachCallSite, MachExceptionHandler, MachSrcLoc, MachTextSectionBuilder,
+    MachTrap, OpenPatchRegion, PatchRegion,
 };
 pub use crate::machinst::{
     CallInfo, CompiledCode, Final, FrameLayout, MachBuffer, MachBufferDebugTagList,
     MachBufferFinalized, MachBufferFrameLayout, MachDebugTagPos, MachInst, MachInstEmit,
-    MachInstEmitState, MachLabel, RealReg, Reg, RelocDistance, TextSectionBuilder, VCodeConstant,
-    VCodeConstantData, VCodeConstants, VCodeInst, Writable,
+    MachInstEmitState, MachLabel, RealReg, Reg, RegClass, RelocDistance, TextSectionBuilder,
+    VCodeConstant, VCodeConstantData, VCodeConstants, VCodeInst, Writable,
 };
 
 mod alias_analysis;
+mod branch_to_trap;
 mod constant_hash;
 mod context;
 mod ctxhash;
 mod egraph;
 mod inst_predicates;
 mod isle_prelude;
-mod legalizer;
 mod nan_canonicalization;
 mod opts;
 mod ranges;

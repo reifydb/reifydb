@@ -31,7 +31,6 @@ use core::marker;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 
-#[cfg(feature = "component-model-async")]
 mod bug;
 
 #[macro_use]
@@ -41,7 +40,6 @@ pub(crate) mod code;
 pub(crate) mod code_memory;
 #[cfg(feature = "debug")]
 pub(crate) mod debug;
-#[cfg(feature = "gc")]
 pub(crate) mod exception;
 pub(crate) mod externals;
 #[cfg(feature = "async")]
@@ -59,6 +57,8 @@ pub(crate) mod resources;
 pub(crate) mod store;
 pub(crate) mod trampoline;
 pub(crate) mod trap;
+#[cfg(feature = "component-model-async")]
+pub(crate) mod try_mutex;
 pub(crate) mod type_registry;
 pub(crate) mod types;
 pub(crate) mod v128;
@@ -68,28 +68,29 @@ pub(crate) mod vm;
 #[cfg(feature = "component-model")]
 pub mod component;
 
-cfg_if::cfg_if! {
-    if #[cfg(miri)] {
+cfg_select! {
+    miri => {
         // no extensions on miri
-    } else if #[cfg(not(feature = "std"))] {
+    }
+    not(feature = "std") => {
         // no extensions on no-std
-    } else if #[cfg(unix)] {
+    }
+    unix => {
         pub mod unix;
-    } else if #[cfg(windows)] {
+    }
+    windows => {
         pub mod windows;
-    } else {
+    }
+    _ => {
         // ... unknown os!
     }
 }
 
-#[cfg(feature = "component-model-async")]
 pub use bug::WasmtimeBug;
-#[cfg(feature = "component-model-async")]
-pub(crate) use bug::bail_bug;
+pub(crate) use bug::{bail_bug, bug};
 pub use code_memory::CodeMemory;
 #[cfg(feature = "debug")]
 pub use debug::*;
-#[cfg(feature = "gc")]
 pub use exception::*;
 pub use externals::*;
 pub use func::*;
@@ -99,7 +100,7 @@ pub use instantiate::CompiledModule;
 pub use limits::*;
 pub use linker::*;
 pub use memory::*;
-pub use module::{Module, ModuleExport};
+pub use module::{Module, ModuleExport, ModuleFunction};
 pub use resources::*;
 #[cfg(all(feature = "async", feature = "call-hook"))]
 pub use store::CallHookHandler;

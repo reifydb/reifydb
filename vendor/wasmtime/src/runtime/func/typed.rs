@@ -92,6 +92,10 @@ where
     /// Panics if `store` does not contain this function.
     ///
     /// [`Trap`]: crate::Trap
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     #[inline]
     pub fn call(&self, mut store: impl AsContextMut, params: Params) -> Result<Results> {
         let mut store = store.as_context_mut();
@@ -117,6 +121,10 @@ where
     /// connected to a synchronous store.
     ///
     /// [`Trap`]: crate::Trap
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     #[cfg(feature = "async")]
     pub async fn call_async(
         &self,
@@ -286,10 +294,9 @@ pub unsafe trait WasmTy: Send {
                 // parameters, and fall back to dynamic type checks on the
                 // arguments passed to each invocation, as necessary.
                 (Some(expected_ref), Some(actual_ref)) if actual_ref.heap_type().is_concrete() => {
-                    expected_ref
-                        .heap_type()
-                        .top()
-                        .ensure_matches(engine, &actual_ref.heap_type().top())
+                    let expected_top = HeapType::from(expected_ref.heap_type().top());
+                    let actual_top = HeapType::from(actual_ref.heap_type().top());
+                    expected_top.ensure_matches(engine, &actual_top)
                 }
                 _ => expected.ensure_matches(engine, &actual),
             },

@@ -20,8 +20,8 @@
 //! format.
 
 use crate::entity::entity_impl;
+use crate::ir::AliasRegion;
 use core::fmt;
-use core::u32;
 #[cfg(feature = "enable-serde")]
 use serde_derive::{Deserialize, Serialize};
 
@@ -169,8 +169,9 @@ impl DynamicType {
 /// - For any compilation target, it can be registered with
 ///   [`FunctionBuilder::create_global_value`](https://docs.rs/cranelift-frontend/*/cranelift_frontend/struct.FunctionBuilder.html#method.create_global_value).
 ///
-/// `GlobalValue`s can be retrieved with
-/// [`InstBuilder:global_value`](super::InstBuilder::global_value).
+/// `GlobalValue`s can be referenced from a function's body with
+/// [`InstBuilder::symbol_value`](super::InstBuilder::symbol_value) and
+/// [`InstBuilder::tls_value`](super::InstBuilder::tls_value).
 ///
 /// While the order is stable, it is arbitrary.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -391,6 +392,8 @@ pub enum AnyEntity {
     SigRef(SigRef),
     /// An exception table.
     ExceptionTable(ExceptionTable),
+    /// An alias region.
+    AliasRegion(AliasRegion),
     /// A function's stack limit
     StackLimit,
 }
@@ -411,6 +414,7 @@ impl fmt::Display for AnyEntity {
             Self::FuncRef(r) => r.fmt(f),
             Self::SigRef(r) => r.fmt(f),
             Self::ExceptionTable(r) => r.fmt(f),
+            Self::AliasRegion(r) => r.fmt(f),
             Self::StackLimit => write!(f, "stack_limit"),
         }
     }
@@ -491,6 +495,12 @@ impl From<SigRef> for AnyEntity {
 impl From<ExceptionTable> for AnyEntity {
     fn from(r: ExceptionTable) -> Self {
         Self::ExceptionTable(r)
+    }
+}
+
+impl From<AliasRegion> for AnyEntity {
+    fn from(r: AliasRegion) -> Self {
+        Self::AliasRegion(r)
     }
 }
 

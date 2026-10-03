@@ -820,3 +820,239 @@ mod anyhow_with_custom_error {
 
     struct MyCustomError;
 }
+
+mod named_imports {
+
+    mod sync {
+        wasmtime::component::bindgen!({
+            inline: "
+                package foo:foo;
+
+                interface handler {
+                    handle: func(req: u32) -> u32;
+                    ping: func();
+                }
+
+                world the-world {
+                    import handler;
+                }
+            ",
+            named_imports: {
+                "foo:foo/handler": String,
+            },
+        });
+
+        struct MyHost;
+
+        // The normal trait is generated as usual...
+        impl foo::foo::handler::Host for MyHost {
+            fn handle(&mut self, req: u32) -> u32 {
+                req
+            }
+            fn ping(&mut self) {}
+        }
+
+        // ...and the named-imports trait has the extra id parameter.
+        impl named_imports::foo::foo::handler::Host for MyHost {
+            fn handle(&mut self, _id: String, req: u32) -> u32 {
+                req
+            }
+            fn ping(&mut self, _id: String) {}
+        }
+    }
+
+    mod hyphenated_interface_name {
+        wasmtime::component::bindgen!({
+            inline: "
+                package foo:foo;
+
+                interface my-itf {
+                    ping: func();
+                }
+
+                world the-world {
+                    import my-itf;
+                }
+            ",
+            named_imports: {
+                "foo:foo/my-itf": String,
+            },
+        });
+
+        struct MyHost;
+
+        impl named_imports::foo::foo::my_itf::Host for MyHost {
+            fn ping(&mut self, _id: String) {}
+        }
+    }
+
+    mod async_store {
+        #[derive(Clone)]
+        pub struct MyId(u32);
+
+        wasmtime::component::bindgen!({
+            inline: "
+                package foo:foo;
+
+                interface handler {
+                    handle: func(req: u32) -> u32;
+                    ping: func();
+                }
+
+                world the-world {
+                    import handler;
+                }
+            ",
+            named_imports: {
+                "foo:foo/handler": MyId,
+            },
+            imports: { default: async | store },
+        });
+    }
+
+    // An interface that defines a resource (with a constructor, a method, and
+    // a static function) reached through a named import. The named-imports
+    // resource trait threads the embedder-chosen id through every method,
+    // including the destructor.
+    mod resources_sync {
+        use wasmtime::component::Resource;
+
+        wasmtime::component::bindgen!({
+            inline: "
+                package foo:foo;
+
+                interface store {
+                    resource cache {
+                        constructor(label: u32);
+                        get: func(key: u32) -> u32;
+                        set: func(key: u32, value: u32);
+                        merge: static func(a: u32, b: u32) -> u32;
+                    }
+                    touch: func();
+                }
+
+                world the-world {
+                    import store;
+                }
+            ",
+            named_imports: {
+                "foo:foo/store": String,
+            },
+        });
+
+        struct MyHost;
+
+        // The normal resource trait is generated as usual, with no id...
+        impl foo::foo::store::HostCache for MyHost {
+            fn new(&mut self, label: u32) -> Resource<foo::foo::store::Cache> {
+                Resource::new_own(label)
+            }
+            fn get(&mut self, _self_: Resource<foo::foo::store::Cache>, key: u32) -> u32 {
+                key
+            }
+            fn set(&mut self, _self_: Resource<foo::foo::store::Cache>, _key: u32, _value: u32) {}
+            fn merge(&mut self, a: u32, b: u32) -> u32 {
+                a + b
+            }
+            fn drop(&mut self, _rep: Resource<foo::foo::store::Cache>) -> wasmtime::Result<()> {
+                Ok(())
+            }
+        }
+        impl foo::foo::store::Host for MyHost {
+            fn touch(&mut self) {}
+        }
+
+        // ...and the named-imports resource trait has the extra id parameter on
+        // the constructor, methods, the static function, and the destructor.
+        impl named_imports::foo::foo::store::HostCache for MyHost {
+            fn new(&mut self, _id: String, label: u32) -> Resource<foo::foo::store::Cache> {
+                Resource::new_own(label)
+            }
+            fn get(
+                &mut self,
+                _id: String,
+                _self_: Resource<foo::foo::store::Cache>,
+                key: u32,
+            ) -> u32 {
+                key
+            }
+            fn set(
+                &mut self,
+                _id: String,
+                _self_: Resource<foo::foo::store::Cache>,
+                _key: u32,
+                _value: u32,
+            ) {
+            }
+            fn merge(&mut self, _id: String, a: u32, b: u32) -> u32 {
+                a + b
+            }
+            fn drop(
+                &mut self,
+                _id: String,
+                _rep: Resource<foo::foo::store::Cache>,
+            ) -> wasmtime::Result<()> {
+                Ok(())
+            }
+        }
+        impl named_imports::foo::foo::store::Host for MyHost {
+            fn touch(&mut self, _id: String) {}
+        }
+    }
+
+    // Compile-only coverage that resources also generate correctly through the
+    // async/concurrent (store) path of named imports, which uses the
+    // `*WithStore` resource trait variants and the concurrent destructor.
+    mod resources_async_store {
+        #[derive(Clone)]
+        pub struct MyId(u32);
+
+        wasmtime::component::bindgen!({
+            inline: "
+                package foo:foo;
+
+                interface store {
+                    resource cache {
+                        constructor(label: u32);
+                        get: func(key: u32) -> u32;
+                    }
+                }
+
+                world the-world {
+                    import store;
+                }
+            ",
+            named_imports: {
+                "foo:foo/store": MyId,
+            },
+            imports: { default: async | store },
+        });
+    }
+}
+
+mod include_component_type {
+    wasmtime::component::bindgen!({
+        inline: "
+            package demo:pkg;
+
+            interface host {
+                greet: func(name: string) -> string;
+            }
+
+            world component-type-world {
+                import host;
+                export run: func() -> u32;
+            }
+        ",
+        include_component_type: true,
+    });
+
+    #[test]
+    fn component_type_decodes() {
+        let (resolve, world) = wit_parser::decoding::decode_world(COMPONENT_TYPE).unwrap();
+        let world = &resolve.worlds[world];
+        assert_eq!(world.name, "component-type-world");
+        assert_eq!(world.imports.len(), 1);
+        assert_eq!(world.exports.len(), 1);
+    }
+}

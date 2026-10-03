@@ -838,6 +838,60 @@ pub enum HeapType {
     NoExn,
 }
 
+/// A top heap type.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum HeapTopType {
+    /// The common supertype of all external references.
+    Extern,
+    /// The common supertype of all internal references.
+    Any,
+    /// The common supertype of all function references.
+    Func,
+    /// The common supertype of all exception references.
+    Exn,
+    /// The common supertype of all continuation references.
+    Cont,
+}
+
+/// A bottom heap type.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum HeapBottomType {
+    /// The common subtype of all external references.
+    NoExtern,
+    /// The common subtype of all internal references.
+    None,
+    /// The common subtype of all function references.
+    NoFunc,
+    /// The common subtype of all exception references.
+    NoExn,
+    /// The common subtype of all continuation references.
+    NoCont,
+}
+
+impl From<HeapTopType> for HeapType {
+    fn from(value: HeapTopType) -> Self {
+        match value {
+            HeapTopType::Extern => Self::Extern,
+            HeapTopType::Any => Self::Any,
+            HeapTopType::Func => Self::Func,
+            HeapTopType::Exn => Self::Exn,
+            HeapTopType::Cont => Self::Cont,
+        }
+    }
+}
+
+impl From<HeapBottomType> for HeapType {
+    fn from(value: HeapBottomType) -> Self {
+        match value {
+            HeapBottomType::NoExtern => Self::NoExtern,
+            HeapBottomType::None => Self::None,
+            HeapBottomType::NoFunc => Self::NoFunc,
+            HeapBottomType::NoExn => Self::NoExn,
+            HeapBottomType::NoCont => Self::NoCont,
+        }
+    }
+}
+
 impl Display for HeapType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -1068,14 +1122,14 @@ impl HeapType {
 
     /// Get the top type of this heap type's type hierarchy.
     ///
-    /// The returned heap type is a supertype of all types in this heap type's
-    /// type hierarchy.
+    /// The returned type represents a supertype of all types in this heap
+    /// type's type hierarchy.
     #[inline]
-    pub fn top(&self) -> HeapType {
+    pub fn top(&self) -> HeapTopType {
         match self {
-            HeapType::Func | HeapType::ConcreteFunc(_) | HeapType::NoFunc => HeapType::Func,
+            HeapType::Func | HeapType::ConcreteFunc(_) | HeapType::NoFunc => HeapTopType::Func,
 
-            HeapType::Extern | HeapType::NoExtern => HeapType::Extern,
+            HeapType::Extern | HeapType::NoExtern => HeapTopType::Extern,
 
             HeapType::Any
             | HeapType::Eq
@@ -1084,11 +1138,11 @@ impl HeapType {
             | HeapType::ConcreteArray(_)
             | HeapType::Struct
             | HeapType::ConcreteStruct(_)
-            | HeapType::None => HeapType::Any,
+            | HeapType::None => HeapTopType::Any,
 
-            HeapType::Cont | HeapType::ConcreteCont(_) | HeapType::NoCont => HeapType::Cont,
+            HeapType::Cont | HeapType::ConcreteCont(_) | HeapType::NoCont => HeapTopType::Cont,
 
-            HeapType::Exn | HeapType::ConcreteExn(_) | HeapType::NoExn => HeapType::Exn,
+            HeapType::Exn | HeapType::ConcreteExn(_) | HeapType::NoExn => HeapTopType::Exn,
         }
     }
 
@@ -1105,14 +1159,14 @@ impl HeapType {
 
     /// Get the bottom type of this heap type's type hierarchy.
     ///
-    /// The returned heap type is a subtype of all types in this heap type's
+    /// The returned type represents a subtype of all types in this heap type's
     /// type hierarchy.
     #[inline]
-    pub fn bottom(&self) -> HeapType {
+    pub fn bottom(&self) -> HeapBottomType {
         match self {
-            HeapType::Extern | HeapType::NoExtern => HeapType::NoExtern,
+            HeapType::Extern | HeapType::NoExtern => HeapBottomType::NoExtern,
 
-            HeapType::Func | HeapType::ConcreteFunc(_) | HeapType::NoFunc => HeapType::NoFunc,
+            HeapType::Func | HeapType::ConcreteFunc(_) | HeapType::NoFunc => HeapBottomType::NoFunc,
 
             HeapType::Any
             | HeapType::Eq
@@ -1121,11 +1175,11 @@ impl HeapType {
             | HeapType::ConcreteArray(_)
             | HeapType::Struct
             | HeapType::ConcreteStruct(_)
-            | HeapType::None => HeapType::None,
+            | HeapType::None => HeapBottomType::None,
 
-            HeapType::Cont | HeapType::ConcreteCont(_) | HeapType::NoCont => HeapType::NoCont,
+            HeapType::Cont | HeapType::ConcreteCont(_) | HeapType::NoCont => HeapBottomType::NoCont,
 
-            HeapType::Exn | HeapType::ConcreteExn(_) | HeapType::NoExn => HeapType::NoExn,
+            HeapType::Exn | HeapType::ConcreteExn(_) | HeapType::NoExn => HeapBottomType::NoExn,
         }
     }
 
@@ -1402,10 +1456,8 @@ impl HeapType {
     #[inline]
     pub(crate) fn is_vmgcref_type(&self) -> bool {
         match self.top() {
-            Self::Any | Self::Extern | Self::Exn => true,
-            Self::Func => false,
-            Self::Cont => false,
-            ty => unreachable!("not a top type: {ty:?}"),
+            HeapTopType::Any | HeapTopType::Extern | HeapTopType::Exn => true,
+            HeapTopType::Func | HeapTopType::Cont => false,
         }
     }
 
@@ -1567,7 +1619,7 @@ impl From<TagType> for ExternType {
 ///
 /// This is either a packed 8- or -16 bit integer, or else it is some unpacked
 /// Wasm value type.
-#[derive(Clone, Hash)]
+#[derive(Debug, Clone, Hash)]
 pub enum StorageType {
     /// `i8`, an 8-bit integer.
     I8,
@@ -1710,24 +1762,6 @@ impl StorageType {
             Self::I8 => WasmStorageType::I8,
             Self::I16 => WasmStorageType::I16,
             Self::ValType(v) => WasmStorageType::Val(v.to_wasm_type()),
-        }
-    }
-
-    /// The byte size of this type, if it has a defined size in the spec.
-    ///
-    /// See
-    /// https://webassembly.github.io/gc/core/syntax/types.html#bitwidth-fieldtype
-    /// and
-    /// https://webassembly.github.io/gc/core/syntax/types.html#bitwidth-valtype
-    #[cfg(feature = "gc")]
-    pub(crate) fn data_byte_size(&self) -> Option<u32> {
-        match self {
-            StorageType::I8 => Some(1),
-            StorageType::I16 => Some(2),
-            StorageType::ValType(ValType::I32 | ValType::F32) => Some(4),
-            StorageType::ValType(ValType::I64 | ValType::F64) => Some(8),
-            StorageType::ValType(ValType::V128) => Some(16),
-            StorageType::ValType(ValType::Ref(_)) => None,
         }
     }
 }
@@ -2413,6 +2447,12 @@ impl FuncType {
 
     /// Like [`FuncType::new`] but returns an
     /// [`OutOfMemory`][crate::error::OutOfMemory] error on allocation failure.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     pub fn try_new(
         engine: &Engine,
         params: impl IntoIterator<Item = ValType>,
@@ -2718,17 +2758,19 @@ impl FuncType {
     }
     /// Construct a func which returns results of default value, if each result type has a default value.
     pub fn default_value(&self, mut store: impl AsContextMut) -> Result<Func> {
-        let dummy_results = self
-            .results()
-            .map(|ty| ty.default_value())
-            .collect::<Option<Vec<_>>>()
-            .ok_or_else(|| format_err!("function results do not have a default value"))?;
-        Ok(Func::new(&mut store, self.clone(), move |_, _, results| {
+        let mut dummy_results = TryVec::new();
+        for ty in self.results() {
+            let val = ty
+                .default_value()
+                .ok_or_else(|| format_err!("function results do not have a default value"))?;
+            dummy_results.push(val)?;
+        }
+        Func::try_new(&mut store, self.clone(), move |_, _, results| {
             for (slot, dummy) in results.iter_mut().zip(dummy_results.iter()) {
                 *slot = *dummy;
             }
             Ok(())
-        }))
+        })
     }
 }
 
@@ -2849,6 +2891,11 @@ impl ExnType {
         fields: impl IntoIterator<Item = ValType>,
         func_ty: FuncType,
     ) -> Result<ExnType> {
+        ensure!(
+            engine.gc_runtime().is_some(),
+            "cannot define `ExnType`s without a GC runtime enabled"
+        );
+
         let mut wasm_fields = TryVec::new();
         for ty in fields.into_iter() {
             assert!(ty.comes_from_same_engine(engine));

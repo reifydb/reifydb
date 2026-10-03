@@ -13,14 +13,16 @@ pub struct LoadCommandIterator<'data, E: Endian> {
     endian: E,
     data: Bytes<'data>,
     ncmds: u32,
+    offset: u64,
 }
 
 impl<'data, E: Endian> LoadCommandIterator<'data, E> {
-    pub(super) fn new(endian: E, data: &'data [u8], ncmds: u32) -> Self {
+    pub(super) fn new(endian: E, data: &'data [u8], ncmds: u32, offset: u64) -> Self {
         LoadCommandIterator {
             endian,
             data: Bytes(data),
             ncmds,
+            offset,
         }
     }
 
@@ -53,8 +55,11 @@ impl<'data, E: Endian> LoadCommandIterator<'data, E> {
             .data
             .read_bytes(cmdsize)
             .read_error("Invalid Mach-O load command size")?;
+        let offset = self.offset;
+        self.offset += cmdsize as u64;
         Ok(LoadCommandData {
             cmd,
+            offset,
             data,
             marker: Default::default(),
         })
@@ -72,7 +77,8 @@ impl<'data, E: Endian> Iterator for LoadCommandIterator<'data, E> {
 /// The data for a [`macho::LoadCommand`].
 #[derive(Debug, Clone, Copy)]
 pub struct LoadCommandData<'data, E: Endian> {
-    cmd: u32,
+    cmd: macho::LoadCommandType,
+    offset: u64,
     // Includes the header.
     data: Bytes<'data>,
     marker: PhantomData<E>,
@@ -82,13 +88,18 @@ impl<'data, E: Endian> LoadCommandData<'data, E> {
     /// Return the `cmd` field of the [`macho::LoadCommand`].
     ///
     /// This is one of the `LC_` constants.
-    pub fn cmd(&self) -> u32 {
+    pub fn cmd(&self) -> macho::LoadCommandType {
         self.cmd
     }
 
     /// Return the `cmdsize` field of the [`macho::LoadCommand`].
     pub fn cmdsize(&self) -> u32 {
         self.data.len() as u32
+    }
+
+    /// Return the file offset of the command, relative to the start of the Mach-O header.
+    pub fn offset(&self) -> u64 {
+        self.offset
     }
 
     /// Parse the data as the given type.
@@ -176,7 +187,11 @@ impl<'data, E: Endian> LoadCommandData<'data, E> {
             macho::LC_ENCRYPTION_INFO_64 => LoadCommandVariant::EncryptionInfo64(self.data()?),
             macho::LC_LINKER_OPTION => LoadCommandVariant::LinkerOption(self.data()?),
             macho::LC_NOTE => LoadCommandVariant::Note(self.data()?),
-            macho::LC_BUILD_VERSION => LoadCommandVariant::BuildVersion(self.data()?),
+            macho::LC_BUILD_VERSION => {
+                let mut data = self.data;
+                let build_version = data.read().read_error("Invalid Mach-O command size")?;
+                LoadCommandVariant::BuildVersion(build_version, data.0)
+            }
             macho::LC_FILESET_ENTRY => LoadCommandVariant::FilesetEntry(self.data()?),
             _ => LoadCommandVariant::Other,
         })
@@ -238,7 +253,11 @@ impl<'data, E: Endian> LoadCommandData<'data, E> {
     ///
     /// Returns `None` if the sentinels are absent. If `Some` is returned, the value of
     /// [`macho::Dylib::timestamp`] should be ignored.
-    pub fn dylib_use_flags(self, endian: E, dylib: &macho::DylibCommand<E>) -> Result<Option<u32>> {
+    pub fn dylib_use_flags(
+        self,
+        endian: E,
+        dylib: &macho::DylibCommand<E>,
+    ) -> Result<Option<macho::DylibUseFlags>> {
         if dylib.dylib.name.offset.get(endian) != 28 // size of DylibUseCommand
             || dylib.dylib.timestamp.get(endian) != macho::DYLIB_USE_MARKER
         {
@@ -246,7 +265,7 @@ impl<'data, E: Endian> LoadCommandData<'data, E> {
         }
         Ok(Some(
             self.data
-                .read_at::<U32<_>>(24) // offset of DylibUseCommand::flags
+                .read_at::<U32<_, _>>(24) // offset of DylibUseCommand::flags
                 .read_error("Invalid dylib load command size")?
                 .get(endian),
         ))
@@ -281,6 +300,24 @@ impl<'data, E: Endian> LoadCommandData<'data, E> {
         }
     }
 
+    /// Try to parse this command as an `LC_DYLD_EXPORTS_TRIE` [`macho::LinkeditDataCommand`].
+    pub fn dyld_exports_trie(self) -> Result<Option<&'data macho::LinkeditDataCommand<E>>> {
+        if self.cmd == macho::LC_DYLD_EXPORTS_TRIE {
+            Some(self.data()).transpose()
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Try to parse this command as an `LC_DYLD_CHAINED_FIXUPS` [`macho::LinkeditDataCommand`].
+    pub fn dyld_chained_fixups(self) -> Result<Option<&'data macho::LinkeditDataCommand<E>>> {
+        if self.cmd == macho::LC_DYLD_CHAINED_FIXUPS {
+            Some(self.data()).transpose()
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Try to parse this command as an [`macho::EntryPointCommand`].
     pub fn entry_point(self) -> Result<Option<&'data macho::EntryPointCommand<E>>> {
         if self.cmd == macho::LC_MAIN {
@@ -304,12 +341,24 @@ impl<'data, E: Endian> LoadCommandData<'data, E> {
     }
 
     /// Try to parse this command as a [`macho::BuildVersionCommand`].
-    pub fn build_version(self) -> Result<Option<&'data macho::BuildVersionCommand<E>>> {
-        if self.cmd == macho::LC_BUILD_VERSION {
-            Some(self.data()).transpose()
-        } else {
-            Ok(None)
+    pub fn build_version(
+        self,
+        endian: E,
+    ) -> Result<
+        Option<(
+            &'data macho::BuildVersionCommand<E>,
+            &'data [macho::BuildToolVersion<E>],
+        )>,
+    > {
+        if self.cmd != macho::LC_BUILD_VERSION {
+            return Ok(None);
         }
+        let mut data = self.data;
+        let build_version = data
+            .read::<macho::BuildVersionCommand<E>>()
+            .read_error("Invalid Mach-O command size")?;
+        let tools = build_version.tools(endian, data.0)?;
+        Ok(Some((build_version, tools)))
     }
 }
 
@@ -395,7 +444,7 @@ pub enum LoadCommandVariant<'data, E: Endian> {
     /// `LC_NOTE`
     Note(&'data macho::NoteCommand<E>),
     /// `LC_BUILD_VERSION`
-    BuildVersion(&'data macho::BuildVersionCommand<E>),
+    BuildVersion(&'data macho::BuildVersionCommand<E>, &'data [u8]),
     /// `LC_FILESET_ENTRY`
     FilesetEntry(&'data macho::FilesetEntryCommand<E>),
     /// An unrecognized or obsolete load command.
@@ -435,7 +484,7 @@ impl<E: Endian> macho::DysymtabCommand<E> {
         &self,
         endian: E,
         data: R,
-    ) -> Result<&'data [U32<E>]> {
+    ) -> Result<&'data [U32<E, macho::IndirectSymbol>]> {
         data.read_slice_at(
             self.indirectsymoff.get(endian).into(),
             self.nindirectsyms.get(endian) as usize,
@@ -445,6 +494,15 @@ impl<E: Endian> macho::DysymtabCommand<E> {
 }
 
 impl<E: Endian> macho::LinkeditDataCommand<E> {
+    /// Return the linkedit data referenced by the command.
+    pub fn data<'data, R: ReadRef<'data>>(&self, endian: E, data: R) -> Result<&'data [u8]> {
+        data.read_bytes_at(
+            self.dataoff.get(endian).into(),
+            self.datasize.get(endian).into(),
+        )
+        .read_error("Invalid linkedit offset or size")
+    }
+
     /// Return an iterator over the function start addresses.
     ///
     /// Only works if the command is a `LC_FUNCTION_STARTS` command.
@@ -460,12 +518,7 @@ impl<E: Endian> macho::LinkeditDataCommand<E> {
         if self.cmd.get(endian) != macho::LC_FUNCTION_STARTS {
             return Err(Error("Not a function starts command"));
         }
-        let data = data
-            .read_bytes_at(
-                self.dataoff.get(endian).into(),
-                self.datasize.get(endian).into(),
-            )
-            .read_error("Invalid function starts offset or size")?;
+        let data = self.data(endian, data)?;
         Ok(FunctionStartsIterator::new(data, text_segment_addr))
     }
 
@@ -480,13 +533,23 @@ impl<E: Endian> macho::LinkeditDataCommand<E> {
         if self.cmd.get(endian) != macho::LC_DYLD_EXPORTS_TRIE {
             return Err(Error("Not an exports trie command"));
         }
-        let data = data
-            .read_bytes_at(
-                self.dataoff.get(endian).into(),
-                self.datasize.get(endian).into(),
-            )
-            .read_error("Invalid exports trie offset or size")?;
+        let data = self.data(endian, data)?;
         Ok(ExportsTrieIterator::new(data))
+    }
+}
+
+impl<E: Endian> macho::BuildVersionCommand<E> {
+    /// Get the array of tools versions from the data following the build version command.
+    ///
+    /// Returns `Err` for invalid values.
+    pub fn tools<'data>(
+        &self,
+        endian: E,
+        version_data: &'data [u8],
+    ) -> Result<&'data [macho::BuildToolVersion<E>]> {
+        version_data
+            .read_slice_at(0, self.ntools.get(endian) as usize)
+            .read_error("Invalid Mach-O number of tools")
     }
 }
 
@@ -499,13 +562,13 @@ mod tests {
     fn cmd_size_invalid() {
         #[repr(align(16))]
         struct Align<const N: usize>([u8; N]);
-        let mut commands = LoadCommandIterator::new(LittleEndian, &Align([0; 8]).0, 10);
+        let mut commands = LoadCommandIterator::new(LittleEndian, &Align([0; 8]).0, 10, 0);
         assert!(commands.next().is_err());
         let mut commands =
-            LoadCommandIterator::new(LittleEndian, &Align([0, 0, 0, 0, 7, 0, 0, 0, 0]).0, 10);
+            LoadCommandIterator::new(LittleEndian, &Align([0, 0, 0, 0, 7, 0, 0, 0, 0]).0, 10, 0);
         assert!(commands.next().is_err());
         let mut commands =
-            LoadCommandIterator::new(LittleEndian, &Align([0, 0, 0, 0, 8, 0, 0, 0, 0]).0, 10);
+            LoadCommandIterator::new(LittleEndian, &Align([0, 0, 0, 0, 8, 0, 0, 0, 0]).0, 10, 0);
         assert!(commands.next().is_ok());
     }
 

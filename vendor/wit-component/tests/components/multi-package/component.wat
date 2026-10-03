@@ -1,0 +1,31 @@
+(component
+  (core module $main (;0;)
+    (table (;0;) 1 funcref)
+    (memory (;0;) 17)
+    (export "__indirect_function_table" (table 0))
+    (export "memory" (memory 0))
+    (@producers
+      (processed-by "wit-component" "$CARGO_PKG_VERSION")
+    )
+  )
+  (core instance $main (;0;) (instantiate $main))
+  (alias core export $main "memory" (core memory $memory (;0;)))
+  (core module $wit-component-fixup (;1;)
+    (type (;0;) (func))
+    (import "main" "memory" (memory (;0;) 0))
+    (import "main" "__indirect_function_table" (table (;0;) 0 funcref))
+    (elem (;0;) (i32.const 1) func)
+    (elem (;1;) (i32.const 1) func)
+    (data (;0;) (i32.const 1048576) "\00\00\00\00\00\00\10\00")
+    (@producers
+      (processed-by "wit-component" "$CARGO_PKG_VERSION")
+    )
+  )
+  (core instance $fixup (;1;) (instantiate $wit-component-fixup
+      (with "main" (instance $main))
+    )
+  )
+  (@producers
+    (processed-by "wit-component" "$CARGO_PKG_VERSION")
+  )
+)

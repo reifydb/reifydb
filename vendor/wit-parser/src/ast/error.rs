@@ -1,11 +1,15 @@
+//! Error types for WIT parsing.
+
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use core::fmt;
 
 use crate::{SourceMap, Span, ast::lex};
 
+/// Convenience alias for a `Result` whose error type is [`ParseError`].
 pub type ParseResult<T, E = ParseError> = Result<T, E>;
 
+/// The category of error that occurred while parsing a WIT package.
 #[non_exhaustive]
 #[derive(Debug, PartialEq, Eq)]
 pub enum ParseErrorKind {
@@ -31,6 +35,7 @@ pub enum ParseErrorKind {
 }
 
 impl ParseErrorKind {
+    /// Returns the source span associated with this error.
     pub fn span(&self) -> Span {
         match self {
             ParseErrorKind::Lex(e) => Span::new(e.position(), e.position() + 1),
@@ -62,6 +67,7 @@ impl fmt::Display for ParseErrorKind {
     }
 }
 
+/// A single structured error from parsing a WIT package.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParseError(Box<ParseErrorKind>);
 
@@ -74,20 +80,33 @@ impl ParseError {
         .into()
     }
 
+    /// Returns the underlying error kind
     pub fn kind(&self) -> &ParseErrorKind {
         &self.0
     }
 
+    /// Returns the underlying error kind (mutable).
     pub fn kind_mut(&mut self) -> &mut ParseErrorKind {
         &mut self.0
     }
 
-    /// Format this error with source context (file:line:col + snippet)
-    pub fn highlight(&self, source_map: &SourceMap) -> String {
+    /// Renders this error with source context (file:line:col + snippet).
+    ///
+    /// `source_map` must be the map this error's spans are valid in.
+    pub fn render(&self, source_map: &SourceMap) -> String {
         let e = self.kind();
         source_map
             .highlight_span(e.span(), e)
             .unwrap_or_else(|| e.to_string())
+    }
+
+    pub(crate) fn adjust_spans(&mut self, offset: u32) {
+        match self.kind_mut() {
+            ParseErrorKind::Lex(e) => e.adjust_position(offset),
+            ParseErrorKind::Syntax { span, .. }
+            | ParseErrorKind::ItemNotFound { span, .. }
+            | ParseErrorKind::TypeCycle { span, .. } => span.adjust(offset),
+        }
     }
 }
 

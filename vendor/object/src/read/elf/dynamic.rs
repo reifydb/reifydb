@@ -5,7 +5,7 @@ use core::slice;
 use crate::elf;
 use crate::endian;
 use crate::pod::Pod;
-use crate::read::{ReadError, ReadRef, Result, SectionIndex, StringTable};
+use crate::read::{self, ReadError, ReadRef, Result, SectionIndex, StringTable};
 
 use super::{FileHeader, SectionHeader, SectionTable};
 
@@ -138,7 +138,7 @@ impl<'data, Elf: FileHeader> Iterator for DynamicIterator<'data, Elf> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let d = self.dynamics.next()?;
-        let tag = d.d_tag(self.endian).into();
+        let tag = d.d_tag(self.endian);
         if tag == elf::DT_NULL {
             self.dynamics = [].iter();
             return None;
@@ -154,7 +154,7 @@ pub struct Dynamic {
     /// The entry tag.
     ///
     /// One of the `DT_*` constants.
-    pub tag: i64,
+    pub tag: elf::DynamicTag,
 
     /// The entry value.
     ///
@@ -190,19 +190,18 @@ impl Dynamic {
 
 /// A trait for generic access to [`elf::Dyn32`] and [`elf::Dyn64`].
 #[allow(missing_docs)]
-pub trait Dyn: Debug + Pod {
+pub trait Dyn: Debug + Pod + read::private::Sealed {
     type Word: Into<u64>;
-    type Sword: Into<i64>;
     type Endian: endian::Endian;
 
-    fn d_tag(&self, endian: Self::Endian) -> Self::Sword;
+    fn d_tag(&self, endian: Self::Endian) -> elf::DynamicTag;
     fn d_val(&self, endian: Self::Endian) -> Self::Word;
 
-    /// Get the tag as an `i64`.
+    /// Get the tag as a `DynamicTag`.
     ///
     /// This will sign-extend for 32-bit ELF.
-    fn tag(&self, endian: Self::Endian) -> i64 {
-        self.d_tag(endian).into()
+    fn tag(&self, endian: Self::Endian) -> elf::DynamicTag {
+        self.d_tag(endian)
     }
 
     /// Get the value as a `u64`.
@@ -214,7 +213,7 @@ pub trait Dyn: Debug + Pod {
 
     /// Try to convert the tag to an `i32`.
     fn tag32(&self, endian: Self::Endian) -> Option<i32> {
-        self.d_tag(endian).into().try_into().ok()
+        self.d_tag(endian).0.try_into().ok()
     }
 
     /// Try to convert the value to a `u32`.
@@ -246,14 +245,15 @@ pub trait Dyn: Debug + Pod {
     }
 }
 
+impl<Endian: endian::Endian> read::private::Sealed for elf::Dyn32<Endian> {}
+
 impl<Endian: endian::Endian> Dyn for elf::Dyn32<Endian> {
     type Word = u32;
-    type Sword = i32;
     type Endian = Endian;
 
     #[inline]
-    fn d_tag(&self, endian: Self::Endian) -> Self::Sword {
-        self.d_tag.get(endian)
+    fn d_tag(&self, endian: Self::Endian) -> elf::DynamicTag {
+        self.d_tag.get_i64(endian)
     }
 
     #[inline]
@@ -261,14 +261,15 @@ impl<Endian: endian::Endian> Dyn for elf::Dyn32<Endian> {
         self.d_val.get(endian)
     }
 }
+
+impl<Endian: endian::Endian> read::private::Sealed for elf::Dyn64<Endian> {}
 
 impl<Endian: endian::Endian> Dyn for elf::Dyn64<Endian> {
     type Word = u64;
-    type Sword = i64;
     type Endian = Endian;
 
     #[inline]
-    fn d_tag(&self, endian: Self::Endian) -> Self::Sword {
+    fn d_tag(&self, endian: Self::Endian) -> elf::DynamicTag {
         self.d_tag.get(endian)
     }
 
@@ -278,7 +279,7 @@ impl<Endian: endian::Endian> Dyn for elf::Dyn64<Endian> {
     }
 }
 
-fn tag_is_string(tag: i64) -> bool {
+fn tag_is_string(tag: elf::DynamicTag) -> bool {
     match tag {
         elf::DT_NEEDED
         | elf::DT_SONAME
@@ -290,7 +291,7 @@ fn tag_is_string(tag: i64) -> bool {
     }
 }
 
-fn tag_is_address(tag: i64) -> bool {
+fn tag_is_address(tag: elf::DynamicTag) -> bool {
     // TODO: check architecture specific values. This requires the e_machine value.
     match tag {
         elf::DT_PLTGOT
@@ -309,8 +310,7 @@ fn tag_is_address(tag: i64) -> bool {
         | elf::DT_SYMTAB_SHNDX
         | elf::DT_VERDEF
         | elf::DT_VERNEED
-        | elf::DT_VERSYM
-        | elf::DT_ADDRRNGLO..=elf::DT_ADDRRNGHI => true,
-        _ => false,
+        | elf::DT_VERSYM => true,
+        _ => tag.is_address(),
     }
 }

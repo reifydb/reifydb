@@ -98,9 +98,9 @@ pub struct FooIndices {}
 /// [`Component`]: wasmtime::component::Component
 /// [`Linker`]: wasmtime::component::Linker
 pub struct Foo {}
-pub trait FooImportsWithStore: wasmtime::component::HasData + Send {
-    fn foo<T: Send>(
-        accessor: &wasmtime::component::Accessor<T, Self>,
+pub trait FooImportsWithStore<T>: wasmtime::component::HasData + Send {
+    fn foo(
+        host: wasmtime::component::Access<T, Self>,
     ) -> impl ::core::future::Future<Output = ()> + Send;
 }
 pub trait FooImports: Send {}
@@ -172,18 +172,24 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: FooImportsWithStore,
+            D: FooImportsWithStore<T>,
             for<'a> D::Data<'a>: FooImports,
             T: 'static + Send,
         {
             let mut linker = linker.root();
             linker
-                .func_wrap_concurrent(
+                .func_wrap_async(
                     "foo",
-                    move |caller: &wasmtime::component::Accessor<T>, (): ()| {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as FooImportsWithStore>::foo(host).await;
+                    move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as FooImportsWithStore<T>>::foo(host).await;
                             Ok(r)
                         })
                     },
@@ -195,7 +201,7 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: FooImportsWithStore + Send,
+            D: FooImportsWithStore<T> + Send,
             for<'a> D::Data<'a>: FooImports + Send,
             T: 'static + Send,
         {

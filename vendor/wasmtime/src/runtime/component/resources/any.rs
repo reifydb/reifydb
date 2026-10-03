@@ -72,6 +72,10 @@ impl ResourceAny {
     /// This method will return an error if `resource` has already been "taken"
     /// and has ownership transferred elsewhere which can happen in situations
     /// such as when it's already lowered into a component.
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     pub fn try_from_resource<T: 'static>(
         resource: Resource<T>,
         store: impl AsContextMut,
@@ -80,6 +84,12 @@ impl ResourceAny {
     }
 
     /// See [`Resource::try_from_resource_any`]
+    ///
+    /// # Errors
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     pub fn try_into_resource<T: 'static>(self, store: impl AsContextMut) -> Result<Resource<T>> {
         Resource::try_from_resource_any(self, store)
     }
@@ -99,7 +109,7 @@ impl ResourceAny {
         D: PartialEq + Send + Sync + Copy + 'static,
     {
         let store = store.as_context_mut();
-        let mut tables = HostResourceTables::new_host(store.0);
+        let mut tables = HostResourceTables::new_host(store.0)?;
         let ResourceAny { idx, ty, owned } = self;
         let ty = T::typecheck(ty).ok_or_else(|| crate::format_err!("resource type mismatch"))?;
         if owned {
@@ -146,6 +156,12 @@ impl ResourceAny {
     /// properly cleaned up. For owned resources this may execute the
     /// guest-defined destructor if applicable (or the host-defined destructor
     /// if one was specified).
+    ///
+    /// # Errors
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     pub fn resource_drop(self, mut store: impl AsContextMut) -> Result<()> {
         let mut store = store.as_context_mut();
         store.0.validate_sync_call()?;
@@ -154,6 +170,12 @@ impl ResourceAny {
 
     /// Same as [`ResourceAny::resource_drop`] except for use with async stores
     /// to execute the destructor [asynchronously](crate#async).
+    ///
+    /// # Errors
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     #[cfg(feature = "async")]
     pub async fn resource_drop_async(self, mut store: impl AsContextMut<Data: Send>) -> Result<()> {
         let mut store = store.as_context_mut();
@@ -167,7 +189,7 @@ impl ResourceAny {
         //
         // This could fail if the index is invalid or if this is removing an
         // `Own` entry which is currently being borrowed.
-        let pair = HostResourceTables::new_host(store.0).host_resource_drop(self.idx)?;
+        let pair = HostResourceTables::new_host(store.0)?.host_resource_drop(self.idx)?;
 
         let (rep, slot) = match (pair, self.owned) {
             (Some(pair), true) => pair,
@@ -179,16 +201,8 @@ impl ResourceAny {
             _ => unreachable!(),
         };
 
-        // Implement the reentrance check required by the canonical ABI. Note
-        // that this happens whether or not a destructor is present.
-        //
-        // Note that this should be safe because the raw pointer access in
-        // `flags` is valid due to `store` being the owner of the flags and
-        // flags are never destroyed within the store.
-        if let Some(instance) = slot.instance {
-            if !store.0.may_enter(instance)? {
-                bail!(Trap::CannotEnterComponent);
-            }
+        if slot.instance.is_some() && !store.0.may_enter() {
+            bail!(Trap::CannotEnterComponent);
         }
 
         let dtor = match slot.dtor {
@@ -272,6 +286,7 @@ impl ResourceAny {
 
 unsafe impl ComponentType for ResourceAny {
     const ABI: CanonicalAbiInfo = CanonicalAbiInfo::SCALAR4;
+    const MAY_REQUIRE_REALLOC: bool = false;
 
     type Lower = <u32 as ComponentType>::Lower;
 

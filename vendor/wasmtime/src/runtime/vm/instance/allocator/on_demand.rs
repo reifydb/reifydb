@@ -10,7 +10,9 @@ use crate::runtime::vm::table::Table;
 use alloc::sync::Arc;
 use core::future::Future;
 use core::pin::Pin;
-use wasmtime_environ::{DefinedMemoryIndex, DefinedTableIndex, HostPtr, Module, VMOffsets};
+use wasmtime_environ::{
+    DefinedMemoryIndex, DefinedTableIndex, HostPtr, MemoryKind, Module, VMOffsets,
+};
 
 #[cfg(feature = "gc")]
 use crate::runtime::vm::{GcHeap, GcHeapAllocationIndex, GcRuntime};
@@ -115,7 +117,10 @@ unsafe impl InstanceAllocator for OnDemandInstanceAllocator {
         request: &'a mut InstanceAllocationRequest<'b, 'c>,
         ty: &'a wasmtime_environ::Memory,
         memory_index: Option<DefinedMemoryIndex>,
+        memory_kind: MemoryKind,
     ) -> Pin<Box<dyn Future<Output = Result<(MemoryAllocationIndex, Memory)>> + Send + 'a>> {
+        debug_assert_eq!(memory_index.is_none(), memory_kind == MemoryKind::GcHeap);
+
         let creator = self
             .mem_creator
             .as_deref()
@@ -135,6 +140,7 @@ unsafe impl InstanceAllocator for OnDemandInstanceAllocator {
                 creator,
                 image,
                 request.limiter.as_deref_mut(),
+                memory_kind,
             )
             .await?;
             Ok((allocation_index, memory))
@@ -230,11 +236,9 @@ unsafe impl InstanceAllocator for OnDemandInstanceAllocator {
         engine: &crate::Engine,
         gc_runtime: &dyn GcRuntime,
         memory_alloc_index: MemoryAllocationIndex,
-        memory: Memory,
     ) -> Result<(GcHeapAllocationIndex, Box<dyn GcHeap>)> {
         debug_assert_eq!(memory_alloc_index, MemoryAllocationIndex::default());
-        let mut heap = gc_runtime.new_gc_heap(engine)?;
-        heap.attach(memory);
+        let heap = gc_runtime.new_gc_heap(engine)?;
         Ok((GcHeapAllocationIndex::default(), heap))
     }
 
@@ -242,9 +246,10 @@ unsafe impl InstanceAllocator for OnDemandInstanceAllocator {
     fn deallocate_gc_heap(
         &self,
         allocation_index: GcHeapAllocationIndex,
-        mut gc_heap: Box<dyn crate::runtime::vm::GcHeap>,
-    ) -> (MemoryAllocationIndex, Memory) {
+        gc_heap: Box<dyn crate::runtime::vm::GcHeap>,
+    ) -> MemoryAllocationIndex {
         debug_assert_eq!(allocation_index, GcHeapAllocationIndex::default());
-        (MemoryAllocationIndex::default(), gc_heap.detach())
+        debug_assert!(!gc_heap.is_attached());
+        MemoryAllocationIndex::default()
     }
 }

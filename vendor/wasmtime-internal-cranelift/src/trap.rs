@@ -1,25 +1,34 @@
 use crate::TRAP_INTERNAL_ASSERT;
+use crate::alias_region::AliasRegions;
 use crate::compiler::Compiler;
 use cranelift_codegen::cursor::FuncCursor;
 use cranelift_codegen::ir::condcodes::IntCC;
 use cranelift_codegen::ir::types::I8;
 use cranelift_codegen::ir::{self, InstBuilder};
 use cranelift_frontend::FunctionBuilder;
-use wasmtime_environ::{BuiltinFunctionIndex, TripleExt};
+use wasmtime_environ::{BuiltinFunctionIndex, GetPtrSize, TripleExt};
 
 /// Helper trait to share translation of traps between core functions and
 /// component trampolines.
 ///
 /// Traps are conditionally performed as libcalls when signals-based-traps are
 /// disabled, for example, but otherwise use the native CLIF `trap` instruction.
-pub trait TranslateTrap {
+pub trait TranslateTrap<Offsets>
+where
+    Offsets: GetPtrSize,
+{
     fn compiler(&self) -> &Compiler;
+
     fn vmctx_val(&mut self, cursor: &mut FuncCursor<'_>) -> ir::Value;
+
+    fn alias_regions(&mut self) -> &mut AliasRegions<Offsets>;
+
     fn builtin_funcref(
         &mut self,
         builder: &mut FunctionBuilder<'_>,
         index: BuiltinFunctionIndex,
     ) -> ir::FuncRef;
+
     fn debug_tags(&self, _srcloc: ir::SourceLoc) -> Vec<ir::DebugTag> {
         vec![]
     }
@@ -27,7 +36,7 @@ pub trait TranslateTrap {
     fn trap(&mut self, builder: &mut FunctionBuilder, trap: ir::TrapCode) {
         match (
             self.clif_instruction_traps_enabled(),
-            crate::clif_trap_to_env_trap(trap),
+            crate::clif_trap_to_env_trap(trap, self.compiler().tunables()),
         ) {
             // If libcall traps are disabled or there's no wasmtime-defined trap
             // code for this, then emit a native trap instruction.
@@ -42,7 +51,7 @@ pub trait TranslateTrap {
                 let debug_tags = self.debug_tags(builder.srcloc());
                 let trap_libcall = self.builtin_funcref(builder, BuiltinFunctionIndex::trap());
                 let vmctx = self.vmctx_val(&mut builder.cursor());
-                let trap_code = builder.ins().iconst(I8, i64::from(trap as u8));
+                let trap_code = builder.ins().iconst(I8, i64::from(trap.as_u8()));
                 builder.ins().call(trap_libcall, &[vmctx, trap_code]);
                 let raise_libcall = self.builtin_funcref(builder, BuiltinFunctionIndex::raise());
                 let inst = builder.ins().call(raise_libcall, &[vmctx]);

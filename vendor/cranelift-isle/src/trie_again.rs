@@ -3,7 +3,7 @@
 use crate::disjointsets::DisjointSets;
 use crate::error::{Error, Span};
 use crate::lexer::Pos;
-use crate::sema;
+use crate::sema::{self, RuleId, TermEnv, TermId, TypeEnv};
 use crate::stablemapset::StableSet;
 use std::collections::{HashMap, hash_map::Entry};
 
@@ -27,6 +27,12 @@ impl std::convert::TryFrom<usize> for BindingId {
 
     fn try_from(value: usize) -> Result<Self, Self::Error> {
         Ok(BindingId(value.try_into()?))
+    }
+}
+
+impl std::convert::From<u16> for BindingId {
+    fn from(value: u16) -> Self {
+        BindingId(value)
     }
 }
 
@@ -118,6 +124,24 @@ pub enum Binding {
         /// get the field names.
         field: TupleIndex,
     },
+    /// The result of constructing a struct.
+    MakeStruct {
+        /// Which struct type should be constructed?
+        ty: sema::TypeId,
+        /// What expressions should be provided for this struct's fields?
+        fields: Box<[BindingId]>,
+    },
+    /// Extract the fields of the struct from one of the previous bindings to produce a new binding
+    /// from one of its fields. There must be a corresponding [Constraint::Struct] for each
+    /// `source`/`variant` pair that appears in some `ExtractStruct` binding.
+    ExtractStruct {
+        /// Which binding is being matched?
+        source: BindingId,
+        /// Which field of this struct are we projecting out? Although ISLE uses named fields,
+        /// we track them by index for constant-time comparisons. The [sema::TypeEnv] can be used to
+        /// get the field names.
+        field: TupleIndex,
+    },
     /// The result of constructing an Option::Some variant.
     MakeSome {
         /// Contained expression.
@@ -156,6 +180,15 @@ pub enum Constraint {
         /// convenience, to avoid needing to look up the variant in a [sema::TypeEnv].
         fields: TupleIndex,
     },
+    /// The value must match this struct variant.
+    Struct {
+        /// Which struct type is being matched? This is implied by the binding where the constraint is
+        /// applied, but recorded here for convenience.
+        ty: sema::TypeId,
+        /// Number of fields in this variant of this enum. This is recorded in the constraint for
+        /// convenience, to avoid needing to look up the variant in a [sema::TypeEnv].
+        fields: TupleIndex,
+    },
     /// The value must equal this boolean literal.
     ConstBool {
         /// The constant value.
@@ -183,6 +216,8 @@ pub enum Constraint {
 /// contains this rule.
 #[derive(Debug, Default)]
 pub struct Rule {
+    /// Identifier of the source rule.
+    pub id: RuleId,
     /// Where was this rule defined?
     pub pos: Pos,
     /// All of these bindings must match the given constraints for this rule to apply. Note that
@@ -196,6 +231,8 @@ pub struct Rule {
     /// If other rules apply along with this one, the one with the highest numeric priority is
     /// evaluated. If multiple applicable rules have the same priority, that's an overlap error.
     pub prio: i64,
+    /// Rule name. Used for tracing.
+    pub name: Option<sema::Sym>,
     /// If this rule applies, these side effects should be evaluated before returning.
     pub impure: Vec<BindingId>,
     /// If this rule applies, the top-level term should evaluate to this expression.
@@ -270,9 +307,33 @@ impl Binding {
             Binding::Iterator { source } => std::slice::from_ref(source),
             Binding::MakeVariant { fields, .. } => &fields[..],
             Binding::MatchVariant { source, .. } => std::slice::from_ref(source),
+            Binding::MakeStruct { fields, .. } => &fields[..],
+            Binding::ExtractStruct { source, .. } => std::slice::from_ref(source),
             Binding::MakeSome { inner } => std::slice::from_ref(inner),
             Binding::MatchSome { source } => std::slice::from_ref(source),
             Binding::MatchTuple { source, .. } => std::slice::from_ref(source),
+        }
+    }
+
+    /// Returns the term referenced by this binding.
+    pub fn term(&self, tyenv: &TypeEnv, termenv: &TermEnv) -> Option<TermId> {
+        match self {
+            Binding::ConstInt { .. } => None,
+            Binding::ConstBool { .. } => None,
+            Binding::ConstPrim { .. } => None,
+            Binding::Argument { .. } => None,
+            Binding::Extractor { term, .. } => Some(*term),
+            Binding::Constructor { term, .. } => Some(*term),
+            Binding::Iterator { .. } => None,
+            Binding::MakeVariant { ty, variant, .. } => {
+                Some(termenv.get_variant_term(tyenv, *ty, *variant))
+            }
+            Binding::MatchVariant { .. } => None,
+            Binding::MakeStruct { .. } => None,
+            Binding::ExtractStruct { .. } => None,
+            Binding::MakeSome { .. } => None,
+            Binding::MatchSome { .. } => None,
+            Binding::MatchTuple { .. } => None,
         }
     }
 }
@@ -296,6 +357,32 @@ impl Constraint {
                     field,
                 })
                 .collect(),
+            Constraint::Struct { fields, .. } => (0..fields.0)
+                .map(TupleIndex)
+                .map(|field| Binding::ExtractStruct { source, field })
+                .collect(),
+        }
+    }
+
+    /// Determine if this constraint could be compatible with a given binding.
+    pub fn compatible(&self, binding: &Binding) -> bool {
+        match (self, binding) {
+            (
+                Constraint::Variant {
+                    ty: tc,
+                    variant: vc,
+                    ..
+                },
+                Binding::MakeVariant {
+                    ty: tb,
+                    variant: vb,
+                    ..
+                },
+            ) => tb == tc && vb == vc,
+            (Constraint::ConstInt { val: vc, ty: tc }, Binding::ConstInt { val: vb, ty: tb }) => {
+                vc == vb && tc == tb
+            }
+            _ => true,
         }
     }
 }
@@ -404,8 +491,10 @@ struct RuleSetBuilder {
 impl RuleSetBuilder {
     fn add_rule(&mut self, rule: &sema::Rule, termenv: &sema::TermEnv, errors: &mut Vec<Error>) {
         self.impure_instance = 0;
+        self.current_rule.id = rule.id;
         self.current_rule.pos = rule.pos;
         self.current_rule.prio = rule.prio;
+        self.current_rule.name = rule.name;
         self.current_rule.result = rule.visit(self, termenv);
         if termenv.terms[rule.root_term.index()].is_partial() {
             self.current_rule.result = self.dedup_binding(Binding::MakeSome {
@@ -575,6 +664,22 @@ impl sema::PatternVisitor for RuleSetBuilder {
         )
     }
 
+    fn add_extract_struct(
+        &mut self,
+        input: Self::PatternId,
+        input_ty: sema::TypeId,
+        arg_tys: &[sema::TypeId],
+    ) -> Vec<Self::PatternId> {
+        let fields = TupleIndex(arg_tys.len().try_into().unwrap());
+        self.set_constraint(
+            input,
+            Constraint::Struct {
+                fields,
+                ty: input_ty,
+            },
+        )
+    }
+
     fn add_extract(
         &mut self,
         input: BindingId,
@@ -637,6 +742,17 @@ impl sema::ExprVisitor for RuleSetBuilder {
         self.dedup_binding(Binding::MakeVariant {
             ty,
             variant,
+            fields: inputs.into_iter().map(|(expr, _)| expr).collect(),
+        })
+    }
+
+    fn add_create_struct(
+        &mut self,
+        inputs: Vec<(Self::ExprId, sema::TypeId)>,
+        ty: sema::TypeId,
+    ) -> Self::ExprId {
+        self.dedup_binding(Binding::MakeStruct {
+            ty,
             fields: inputs.into_iter().map(|(expr, _)| expr).collect(),
         })
     }

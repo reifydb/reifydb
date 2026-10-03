@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
-rust-version = "1.82.0"
+edition = "2024"
+rust-version = "1.85.0"
 name = "wasm-compose"
-version = "0.246.2"
+version = "0.258.3"
 authors = ["Peter Huene <peter@huene.dev>"]
 build = false
 autolib = false
@@ -59,7 +59,7 @@ default-features = false
 version = "0.5.0"
 
 [dependencies.indexmap]
-version = "2.13.0"
+version = "2.14.0"
 features = ["std"]
 default-features = false
 
@@ -90,7 +90,7 @@ optional = true
 version = "1.10.0"
 
 [dependencies.wasm-encoder]
-version = "0.246.2"
+version = "0.258.3"
 features = [
     "std",
     "wasmparser",
@@ -99,7 +99,7 @@ features = [
 default-features = false
 
 [dependencies.wasmparser]
-version = "0.246.2"
+version = "0.258.3"
 features = [
     "simd",
     "std",
@@ -110,7 +110,7 @@ features = [
 default-features = false
 
 [dependencies.wat]
-version = "1.246.2"
+version = "1.258.3"
 features = ["component-model"]
 default-features = false
 
@@ -121,12 +121,12 @@ version = "0.3.0"
 version = "1.2.1"
 
 [dev-dependencies.wasmprinter]
-version = "0.246.2"
+version = "0.258.3"
 features = ["component-model"]
 default-features = false
 
 [dev-dependencies.wit-component]
-version = "0.246.2"
+version = "0.258.3"
 
 [lints.clippy]
 clone_on_copy = "warn"
@@ -143,20 +143,20 @@ level = "allow"
 priority = -1
 
 [lints.rust]
-deprecated-safe-2024 = "warn"
+deprecated_safe_2024 = "warn"
 keyword_idents_2024 = "warn"
-missing-unsafe-on-extern = "warn"
-rust-2024-guarded-string-incompatible-syntax = "warn"
-rust-2024-incompatible-pat = "warn"
-rust-2024-prelude-collisions = "warn"
-unsafe-attr-outside-unsafe = "warn"
-unsafe-op-in-unsafe-fn = "warn"
+missing_unsafe_on_extern = "warn"
+rust_2024_guarded_string_incompatible_syntax = "warn"
+rust_2024_incompatible_pat = "warn"
+rust_2024_prelude_collisions = "warn"
+unsafe_attr_outside_unsafe = "warn"
 unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "warn"
 unstable_features = "warn"
-unused-lifetimes = "warn"
-unused-macro-rules = "warn"
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

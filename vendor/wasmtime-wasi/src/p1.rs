@@ -64,6 +64,7 @@
 use crate::cli::WasiCliView as _;
 use crate::clocks::WasiClocksView as _;
 use crate::filesystem::WasiFilesystemView as _;
+use crate::filesystem::sys;
 use crate::p2::bindings::{
     cli::{
         stderr::Host as _, stdin::Host as _, stdout::Host as _, terminal_input, terminal_output,
@@ -75,11 +76,9 @@ use crate::p2::bindings::{
 use crate::p2::{FsError, IsATTY};
 use crate::{ResourceTable, WasiCtx, WasiCtxView, WasiView};
 use std::collections::{BTreeMap, BTreeSet, HashSet, btree_map};
-use std::mem::{self, size_of, size_of_val};
-use std::slice;
+use std::mem::{self, size_of};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use system_interface::fs::FileIoExt;
 use wasmtime::component::Resource;
 use wasmtime::{bail, error::Context as _};
 use wasmtime_wasi_io::{
@@ -166,7 +165,7 @@ impl WasiP1Ctx {
 
     /// Assumes the host is going to copy all of `array` in which case a
     /// corresponding amount of fuel is consumed to ensure it's not too large.
-    fn consume_fuel_for_array<T>(&mut self, array: wiggle::GuestPtr<[T]>) -> Result<()> {
+    pub(crate) fn consume_fuel_for_array<T>(&mut self, array: wiggle::GuestPtr<[T]>) -> Result<()> {
         let byte_size = usize::try_from(array.len())?
             .checked_mul(size_of::<T>())
             .ok_or(types::Errno::Overflow)?;
@@ -653,13 +652,13 @@ impl WasiP1Ctx {
                 drop(t);
                 let f = self.table.get(&fd)?.file()?;
 
-                let do_write = move |f: &cap_std::fs::File, buf: &[u8]| match (append, write) {
+                let do_write = move |f: &std::fs::File, buf: &[u8]| match (append, write) {
                     // Note that this is implementing Linux semantics of
                     // `pwrite` where the offset is ignored if the file was
                     // opened in append mode.
-                    (true, _) => f.append(&buf),
-                    (false, FdWrite::At(pos)) => f.write_at(&buf, pos),
-                    (false, FdWrite::AtCur) => f.write_at(&buf, pos),
+                    (true, _) => sys::append_cursor_unspecified(f, &buf),
+                    (false, FdWrite::At(pos)) => sys::write_at_cursor_unspecified(f, &buf, pos),
+                    (false, FdWrite::AtCur) => sys::write_at_cursor_unspecified(f, &buf, pos),
                 };
 
                 let nwritten = match f.as_blocking_file() {
@@ -1690,9 +1689,10 @@ impl wasi_snapshot_preview1::WasiSnapshotPreview1 for WasiP1Ctx {
                     // Try to read directly into wasm memory where possible
                     // when the current thread can block and additionally wasm
                     // memory isn't shared.
-                    (Some(file), Some(mut buf)) => file
-                        .read_at(&mut buf, pos)
-                        .map_err(|e| StreamError::LastOperationFailed(e.into()))?,
+                    (Some(file), Some(mut buf)) => {
+                        sys::read_at_cursor_unspecified(file, &mut buf, pos)
+                            .map_err(|e| StreamError::LastOperationFailed(e.into()))?
+                    }
                     // ... otherwise fall back to performing the read on a
                     // blocking thread and which copies the data back into wasm
                     // memory.
@@ -1701,9 +1701,9 @@ impl wasi_snapshot_preview1::WasiSnapshotPreview1 for WasiP1Ctx {
                         let mut buf = vec![0; iov.len() as usize];
                         let buf = file
                             .run_blocking(move |file| -> Result<_, types::Error> {
-                                let bytes_read = file
-                                    .read_at(&mut buf, pos)
-                                    .map_err(|e| StreamError::LastOperationFailed(e.into()))?;
+                                let bytes_read =
+                                    sys::read_at_cursor_unspecified(file, &mut buf, pos)
+                                        .map_err(|e| StreamError::LastOperationFailed(e.into()))?;
                                 buf.truncate(bytes_read);
                                 Ok(buf)
                             })
@@ -1961,19 +1961,19 @@ impl wasi_snapshot_preview1::WasiSnapshotPreview1 for WasiP1Ctx {
         let head = [
             (
                 types::Dirent {
-                    d_next: 1u64.to_le(),
-                    d_ino: dir_metadata_hash.lower.to_le(),
+                    d_next: 1u64,
+                    d_ino: dir_metadata_hash.lower,
                     d_type: types::Filetype::Directory,
-                    d_namlen: 1u32.to_le(),
+                    d_namlen: 1u32,
                 },
                 ".".into(),
             ),
             (
                 types::Dirent {
-                    d_next: 2u64.to_le(),
-                    d_ino: dir_metadata_hash.lower.to_le(), // NOTE: incorrect, but legacy implementation returns `fd` inode here
+                    d_next: 2u64,
+                    d_ino: dir_metadata_hash.lower, // NOTE: incorrect, but legacy implementation returns `fd` inode here
                     d_type: types::Filetype::Directory,
-                    d_namlen: 2u32.to_le(),
+                    d_namlen: 2u32,
                 },
                 "..".into(),
             ),
@@ -1996,36 +1996,27 @@ impl wasi_snapshot_preview1::WasiSnapshotPreview1 for WasiP1Ctx {
             let d_namlen: u32 = name.len().try_into().map_err(|_| types::Errno::Overflow)?;
             dir.push((
                 types::Dirent {
-                    d_next: d_next.to_le(),
-                    d_ino: metadata_hash.lower.to_le(),
-                    d_type, // endian-invariant
-                    d_namlen: d_namlen.to_le(),
+                    d_next,
+                    d_ino: metadata_hash.lower,
+                    d_type,
+                    d_namlen,
                 },
                 name,
             ))
         }
 
-        // assume that `types::Dirent` size always fits in `u32`
-        const DIRENT_SIZE: u32 = size_of::<types::Dirent>() as _;
-        assert_eq!(
-            types::Dirent::guest_size(),
-            DIRENT_SIZE,
-            "Dirent guest repr and host repr should match"
-        );
         let mut buf = buf;
         let mut cap = buf_len;
+        let mut dirent = vec![0; types::Dirent::guest_size() as usize];
         for (ref entry, path) in head.into_iter().chain(dir.into_iter()).skip(cookie) {
             let mut path = path.into_bytes();
-            assert_eq!(
-                1,
-                size_of_val(&entry.d_type),
-                "Dirent member d_type should be endian-invariant"
-            );
-            let entry_len = cap.min(DIRENT_SIZE);
-            let entry = entry as *const _ as _;
-            let entry = unsafe { slice::from_raw_parts(entry, entry_len as _) };
+            dirent[0..8].copy_from_slice(entry.d_next.to_le_bytes().as_slice());
+            dirent[8..16].copy_from_slice(entry.d_ino.to_le_bytes().as_slice());
+            dirent[16..20].copy_from_slice(entry.d_namlen.to_le_bytes().as_slice());
+            dirent[20..21].copy_from_slice((entry.d_type as u8).to_le_bytes().as_slice());
+            let entry_len = cap.min(types::Dirent::guest_size());
             cap = cap.checked_sub(entry_len).unwrap();
-            buf = write_bytes(memory, buf, entry)?;
+            buf = write_bytes(memory, buf, &dirent[..entry_len as usize])?;
             if cap == 0 {
                 return Ok(buf_len);
             }
@@ -2388,22 +2379,8 @@ impl wasi_snapshot_preview1::WasiSnapshotPreview1 for WasiP1Ctx {
                             let now = wall_clock::Host::now(&mut temp.ctx.clocks())
                                 .context("failed to call `wall_clock::now`")
                                 .map_err(types::Error::trap)?;
-
-                            // Convert `timeout` to `Datetime` format.
-                            let seconds = timeout / 1_000_000_000;
-                            let nanoseconds = timeout % 1_000_000_000;
-
-                            let timeout = if now.seconds < seconds
-                                || now.seconds == seconds
-                                    && u64::from(now.nanoseconds) < nanoseconds
-                            {
-                                // `now` is less than `timeout`, which is expressible as u64,
-                                // subtract the nanosecond counts directly
-                                now.seconds * 1_000_000_000 + u64::from(now.nanoseconds) - timeout
-                            } else {
-                                0
-                            };
-                            (timeout, false)
+                            let now = now.seconds * 1_000_000_000 + u64::from(now.nanoseconds);
+                            (timeout.saturating_sub(now), false)
                         }
                         _ => return Err(types::Errno::Inval.into()),
                     };

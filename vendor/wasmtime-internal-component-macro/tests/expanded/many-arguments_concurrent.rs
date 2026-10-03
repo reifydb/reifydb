@@ -173,7 +173,7 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: foo::foo::manyarg::HostWithStore + Send,
+            D: foo::foo::manyarg::HostWithStore<T> + Send,
             for<'a> D::Data<'a>: foo::foo::manyarg::Host + Send,
             T: 'static + Send,
         {
@@ -272,9 +272,9 @@ pub mod foo {
                     4 == < BigStruct as wasmtime::component::ComponentType >::ALIGN32
                 );
             };
-            pub trait HostWithStore: wasmtime::component::HasData + Send {
-                fn many_args<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+            pub trait HostWithStore<T>: wasmtime::component::HasData + Send {
+                fn many_args(
+                    host: wasmtime::component::Access<T, Self>,
                     a1: u64,
                     a2: u64,
                     a3: u64,
@@ -292,27 +292,26 @@ pub mod foo {
                     a15: u64,
                     a16: u64,
                 ) -> impl ::core::future::Future<Output = ()> + Send;
-                fn big_argument<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn big_argument(
+                    host: wasmtime::component::Access<T, Self>,
                     x: BigStruct,
                 ) -> impl ::core::future::Future<Output = ()> + Send;
             }
             pub trait Host: Send {}
             impl<_T: Host + ?Sized + Send> Host for &mut _T {}
-            pub fn add_to_linker<T, D>(
-                linker: &mut wasmtime::component::Linker<T>,
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static + Send,
             {
-                let mut inst = linker.instance("foo:foo/manyarg")?;
-                inst.func_wrap_concurrent(
+                inst.func_wrap_async(
                     "many-args",
                     move |
-                        caller: &wasmtime::component::Accessor<T>,
+                        mut caller: wasmtime::StoreContextMut<'_, T>,
                         (
                             arg0,
                             arg1,
@@ -349,9 +348,17 @@ pub mod foo {
                             u64,
                         )|
                     {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::many_args(
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<
+                                T,
+                            >>::many_args(
                                     host,
                                     arg0,
                                     arg1,
@@ -375,20 +382,39 @@ pub mod foo {
                         })
                     },
                 )?;
-                inst.func_wrap_concurrent(
+                inst.func_wrap_async(
                     "big-argument",
                     move |
-                        caller: &wasmtime::component::Accessor<T>,
+                        mut caller: wasmtime::StoreContextMut<'_, T>,
                         (arg0,): (BigStruct,)|
                     {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::big_argument(host, arg0).await;
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::big_argument(host, arg0)
+                                .await;
                             Ok(r)
                         })
                     },
                 )?;
                 Ok(())
+            }
+            pub fn add_to_linker<T, D>(
+                linker: &mut wasmtime::component::Linker<T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static + Send,
+            {
+                let mut inst = linker.instance("foo:foo/manyarg")?;
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
             }
         }
     }
@@ -513,7 +539,7 @@ pub mod exports {
                                     "no exported instance named `foo:foo/manyarg`"
                                 )
                             })?;
-                        let mut lookup = move |name| {
+                        let mut lookup = move |name: &str| {
                             _instance_pre
                                 .component()
                                 .get_export_index(Some(&instance), name)
@@ -575,6 +601,53 @@ pub mod exports {
                     }
                 }
                 impl Guest {
+                    pub fn func_many_args(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<
+                        (
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                        ),
+                        (),
+                    > {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                    u64,
+                                ),
+                                (),
+                            >::new_unchecked(self.many_args)
+                        }
+                    }
                     pub async fn call_many_args<_T, _D>(
                         &self,
                         accessor: &wasmtime::component::Accessor<_T, _D>,
@@ -599,29 +672,7 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                    u64,
-                                ),
-                                (),
-                            >::new_unchecked(self.many_args)
-                        };
+                        let callee = self.func_many_args();
                         let () = callee
                             .call_concurrent(
                                 accessor,
@@ -647,6 +698,16 @@ pub mod exports {
                             .await?;
                         Ok(())
                     }
+                    pub fn func_big_argument(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(BigStruct,), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (BigStruct,),
+                                (),
+                            >::new_unchecked(self.big_argument)
+                        }
+                    }
                     pub async fn call_big_argument<_T, _D>(
                         &self,
                         accessor: &wasmtime::component::Accessor<_T, _D>,
@@ -656,12 +717,7 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (BigStruct,),
-                                (),
-                            >::new_unchecked(self.big_argument)
-                        };
+                        let callee = self.func_big_argument();
                         let () = callee.call_concurrent(accessor, (arg0,)).await?;
                         Ok(())
                     }

@@ -23,7 +23,7 @@
 //!         // An example of extending the `wasi:cli/command` world with a
 //!         // custom host interface.
 //!         world my-world {
-//!             include wasi:cli/command@0.3.0-rc-2026-03-15;
+//!             include wasi:cli/command@0.3.0;
 //!
 //!             import custom-host;
 //!         }
@@ -86,9 +86,10 @@ mod generated {
             "wasi:filesystem/types.[method]descriptor.append-via-stream": store | tracing | trappable,
             "wasi:filesystem/types.[method]descriptor.read-directory": store | tracing | trappable,
             "wasi:sockets/types.[method]tcp-socket.bind": async | tracing | trappable,
-            "wasi:sockets/types.[method]tcp-socket.listen":  store | tracing | trappable,
+            "wasi:sockets/types.[method]tcp-socket.listen": async | store | tracing | trappable,
             "wasi:sockets/types.[method]tcp-socket.send": store | tracing | trappable,
             "wasi:sockets/types.[method]tcp-socket.receive": store | tracing | trappable,
+            "wasi:sockets/types.[static]udp-socket.create": async | tracing | trappable,
             "wasi:sockets/types.[method]udp-socket.bind": async | tracing | trappable,
             "wasi:sockets/types.[method]udp-socket.connect": async | tracing | trappable,
             default: tracing | trappable,

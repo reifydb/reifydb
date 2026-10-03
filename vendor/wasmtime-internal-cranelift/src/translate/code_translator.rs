@@ -78,15 +78,15 @@ use crate::translate::TargetEnvironment;
 use crate::translate::environ::StructFieldsVec;
 use crate::translate::stack::{ControlStackFrame, ElseData};
 use crate::translate::translation_utils::{
-    block_with_params, blocktype_params_results, f32_translation, f64_translation,
+    block_with_params, blocktype_params_results, f32_translation, f64_translation, set_block_params,
 };
 use crate::trap::TranslateTrap;
 use cranelift_codegen::ir::condcodes::{FloatCC, IntCC};
 use cranelift_codegen::ir::immediates::Offset32;
 use cranelift_codegen::ir::{
-    self, AtomicRmwOp, ExceptionTag, InstBuilder, JumpTableData, MemFlags, Value, ValueLabel,
+    self, AtomicRmwOp, ExceptionTag, InstBuilder, JumpTableData, MemFlagsData, Value, ValueLabel,
+    types::*,
 };
-use cranelift_codegen::ir::{BlockArg, types::*};
 use cranelift_codegen::packed_option::ReservedValue;
 use cranelift_frontend::{FunctionBuilder, Variable};
 use itertools::Itertools;
@@ -128,7 +128,7 @@ pub fn translate_operator(
     log::trace!("Translating Wasm opcode: {op:?}");
 
     if !environ.is_reachable() {
-        translate_unreachable_operator(validator, &op, builder, environ)?;
+        translate_unreachable_operator(&op, builder, environ)?;
         return Ok(());
     }
 
@@ -269,23 +269,28 @@ pub fn translate_operator(
             let (params, results) = blocktype_params_results(validator, *blockty)?;
             let loop_body = block_with_params(builder, params.clone(), environ)?;
             let next = block_with_params(builder, results.clone(), environ)?;
-            canonicalise_then_jump(builder, loop_body, environ.stacks.peekn(params.len()));
+            canonicalise_then_jump(
+                environ,
+                builder,
+                loop_body,
+                environ.stacks.peekn(params.len()),
+            );
             environ
                 .stacks
                 .push_loop(loop_body, next, params.len(), results.len());
 
-            // Pop the initial `Block` actuals and replace them with the `Block`'s
-            // params since control flow joins at the top of the loop.
+            // Pop the initial `Block` actuals and replace them with the loop
+            // header's parameters since control flow joins at the top of the
+            // loop.
             environ.stacks.popn(params.len());
-            environ
-                .stacks
-                .stack
-                .extend_from_slice(builder.block_params(loop_body));
-
             builder.switch_to_block(loop_body);
-            environ.translate_loop_header(builder)?;
+            push_block_params(environ, builder, loop_body);
+            environ.translate_loop_header(builder);
         }
         Operator::If { blockty } => {
+            // Read the hint before `environ` is borrowed mutably below.
+            let branch_hint = environ.take_branch_hint(builder.srcloc().bits().into());
+
             let val = environ.stacks.pop1();
 
             let next_block = builder.create_block();
@@ -299,6 +304,7 @@ pub fn translate_operator(
                 // and go back and patch the jump.
                 let destination = block_with_params(builder, results.clone(), environ)?;
                 let branch_inst = canonicalise_brif(
+                    environ,
                     builder,
                     val,
                     next_block,
@@ -317,17 +323,28 @@ pub fn translate_operator(
                 // The `if` type signature is not valid without an `else` block,
                 // so we eagerly allocate the `else` block here.
                 let destination = block_with_params(builder, results.clone(), environ)?;
-                let else_block = block_with_params(builder, params.clone(), environ)?;
-                canonicalise_brif(
-                    builder,
-                    val,
-                    next_block,
-                    &[],
-                    else_block,
-                    environ.stacks.peekn(params.len()),
-                );
+                let else_block = builder.create_block();
+                canonicalise_brif(environ, builder, val, next_block, &[], else_block, &[]);
                 builder.seal_block(else_block);
                 (destination, ElseData::WithElse { else_block })
+            };
+
+            // Mark the unlikely successor cold per the branch hint. A likely
+            // condition makes the else block cold; when it is allocated lazily
+            // (`NoElse`) defer that to `Operator::Else` via `else_is_cold`.
+            let else_is_cold = match branch_hint {
+                Some(hint) if !hint.taken => {
+                    builder.set_cold_block(next_block);
+                    false
+                }
+                Some(_) => match &else_data {
+                    ElseData::WithElse { else_block } => {
+                        builder.set_cold_block(*else_block);
+                        false
+                    }
+                    ElseData::NoElse { .. } => true,
+                },
+                None => false,
             };
 
             builder.seal_block(next_block); // Only predecessor is the current block.
@@ -345,6 +362,7 @@ pub fn translate_operator(
                 params.len(),
                 results.len(),
                 *blockty,
+                else_is_cold,
             );
         }
         Operator::Else => {
@@ -358,6 +376,7 @@ pub fn translate_operator(
                     num_return_values,
                     blocktype,
                     destination,
+                    else_is_cold,
                     ..
                 } => {
                     // We finished the consequent, so record its final
@@ -379,9 +398,9 @@ pub fn translate_operator(
                                 let (params, _results) =
                                     blocktype_params_results(validator, blocktype)?;
                                 debug_assert_eq!(params.len(), num_return_values);
-                                let else_block =
-                                    block_with_params(builder, params.clone(), environ)?;
+                                let else_block = builder.create_block();
                                 canonicalise_then_jump(
+                                    environ,
                                     builder,
                                     destination,
                                     environ.stacks.peekn(params.len()),
@@ -398,6 +417,7 @@ pub fn translate_operator(
                             }
                             ElseData::WithElse { else_block } => {
                                 canonicalise_then_jump(
+                                    environ,
                                     builder,
                                     destination,
                                     environ.stacks.peekn(num_return_values),
@@ -406,6 +426,12 @@ pub fn translate_operator(
                                 else_block
                             }
                         };
+
+                        // Apply a likely-taken hint deferred from a lazily
+                        // allocated else block (see `Operator::If`).
+                        if else_is_cold {
+                            builder.set_cold_block(else_block);
+                        }
 
                         // You might be expecting that we push the parameters for this
                         // `else` block here, something like this:
@@ -430,9 +456,13 @@ pub fn translate_operator(
             let frame = environ.stacks.control_stack.pop().unwrap();
             let next_block = frame.following_code();
             let return_count = frame.num_return_values();
-            let return_args = environ.stacks.peekn_mut(return_count);
 
-            canonicalise_then_jump(builder, next_block, return_args);
+            canonicalise_then_jump(
+                environ,
+                builder,
+                next_block,
+                environ.stacks.peekn(return_count),
+            );
             // You might expect that if we just finished an `if` block that
             // didn't have a corresponding `else` block, then we would clean
             // up our duplicate set of parameters that we pushed earlier
@@ -454,10 +484,7 @@ pub fn translate_operator(
                 &mut environ.stacks.stack,
                 &mut environ.stacks.stack_shape,
             );
-            environ
-                .stacks
-                .stack
-                .extend_from_slice(builder.block_params(next_block));
+            push_block_params(environ, builder, next_block);
         }
         /**************************** Branch instructions *********************************
          * The branch instructions all have as arguments a target nesting level, which
@@ -493,8 +520,12 @@ pub fn translate_operator(
                 };
                 (return_count, frame.br_destination())
             };
-            let destination_args = environ.stacks.peekn_mut(return_count);
-            canonicalise_then_jump(builder, br_destination, destination_args);
+            canonicalise_then_jump(
+                environ,
+                builder,
+                br_destination,
+                environ.stacks.peekn(return_count),
+            );
             environ.stacks.popn(return_count);
             environ.stacks.reachable = false;
         }
@@ -578,8 +609,12 @@ pub fn translate_operator(
                         frame.set_branched_to_exit();
                         frame.br_destination()
                     };
-                    let destination_args = environ.stacks.peekn_mut(return_count);
-                    canonicalise_then_jump(builder, real_dest_block, destination_args);
+                    canonicalise_then_jump(
+                        environ,
+                        builder,
+                        real_dest_block,
+                        environ.stacks.peekn(return_count),
+                    );
                 }
                 environ.stacks.popn(return_count);
             }
@@ -680,13 +715,16 @@ pub fn translate_operator(
             let mut args = environ.stacks.peekn(num_args).to_vec();
             bitcast_wasm_params(environ, sig_ref, &mut args, builder);
 
-            let inst_results = environ.translate_call(
-                builder,
-                environ.next_srcloc,
-                function_index,
-                sig_ref,
-                &args,
-            )?;
+            let inst_results = unwrap_or_return_unreachable_state!(
+                environ,
+                environ.translate_call(
+                    builder,
+                    environ.next_srcloc,
+                    function_index,
+                    sig_ref,
+                    &args,
+                )?
+            );
 
             debug_assert_eq!(
                 inst_results.len(),
@@ -715,7 +753,6 @@ pub fn translate_operator(
             let inst_results = environ.translate_call_indirect(
                 builder,
                 environ.next_srcloc,
-                validator.features(),
                 TableIndex::from_u32(*table_index),
                 type_index,
                 sigref,
@@ -781,7 +818,6 @@ pub fn translate_operator(
             environ.translate_return_call_indirect(
                 builder,
                 srcloc,
-                validator.features(),
                 TableIndex::from_u32(*table_index),
                 type_index,
                 sigref,
@@ -1161,25 +1197,25 @@ pub fn translate_operator(
             let val = environ.stacks.pop1();
             environ
                 .stacks
-                .push1(builder.ins().bitcast(F32, MemFlags::new(), val));
+                .push1(builder.ins().bitcast(F32, MemFlagsData::new(), val));
         }
         Operator::F64ReinterpretI64 => {
             let val = environ.stacks.pop1();
             environ
                 .stacks
-                .push1(builder.ins().bitcast(F64, MemFlags::new(), val));
+                .push1(builder.ins().bitcast(F64, MemFlagsData::new(), val));
         }
         Operator::I32ReinterpretF32 => {
             let val = environ.stacks.pop1();
             environ
                 .stacks
-                .push1(builder.ins().bitcast(I32, MemFlags::new(), val));
+                .push1(builder.ins().bitcast(I32, MemFlagsData::new(), val));
         }
         Operator::I64ReinterpretF64 => {
             let val = environ.stacks.pop1();
             environ
                 .stacks
-                .push1(builder.ins().bitcast(I64, MemFlags::new(), val));
+                .push1(builder.ins().bitcast(I64, MemFlagsData::new(), val));
         }
         Operator::I32Extend8S => {
             let val = environ.stacks.pop1();
@@ -1331,7 +1367,7 @@ pub fn translate_operator(
         }
         Operator::I32Eqz | Operator::I64Eqz => {
             let arg = environ.stacks.pop1();
-            let val = builder.ins().icmp_imm(IntCC::Equal, arg, 0);
+            let val = builder.ins().icmp_imm_s(IntCC::Equal, arg, 0);
             environ.stacks.push1(builder.ins().uextend(I32, val));
         }
         Operator::I32Eq | Operator::I64Eq => translate_icmp(IntCC::Equal, builder, environ),
@@ -1653,7 +1689,7 @@ pub fn translate_operator(
         }
         Operator::TableSize { table: index } => {
             let result =
-                environ.translate_table_size(builder.cursor(), TableIndex::from_u32(*index))?;
+                environ.translate_table_size(builder.cursor(), TableIndex::from_u32(*index));
             environ.stacks.push1(result);
         }
         Operator::TableGrow { table: index } => {
@@ -2578,24 +2614,32 @@ pub fn translate_operator(
         Operator::I32x4RelaxedDotI8x16I7x16AddS => {
             let c = pop1_with_bitcast(environ, I32X4, builder);
             let (a, b) = pop2_with_bitcast(environ, I8X16, builder);
-            let dot =
+            let dot32 =
                 if environ.relaxed_simd_deterministic() || !environ.use_x86_pmaddubsw_for_dot() {
-                    // Deterministic semantics are to treat both operands as
-                    // signed integers and perform the dot product.
+                    // Deterministic semantics, or the lowering on any non-x86
+                    // target. Each i32 lane is the *exact* sum of the four
+                    // signed `i8 * i8` products covering it.
                     let alo = builder.ins().swiden_low(a);
                     let blo = builder.ins().swiden_low(b);
                     let lo = builder.ins().imul(alo, blo);
                     let ahi = builder.ins().swiden_high(a);
                     let bhi = builder.ins().swiden_high(b);
                     let hi = builder.ins().imul(ahi, bhi);
-                    builder.ins().iadd_pairwise(lo, hi)
+                    let lo_lo = builder.ins().swiden_low(lo);
+                    let lo_hi = builder.ins().swiden_high(lo);
+                    let hi_lo = builder.ins().swiden_low(hi);
+                    let hi_hi = builder.ins().swiden_high(hi);
+                    let s_lo = builder.ins().iadd_pairwise(lo_lo, lo_hi);
+                    let s_hi = builder.ins().iadd_pairwise(hi_lo, hi_hi);
+                    builder.ins().iadd_pairwise(s_lo, s_hi)
                 } else {
-                    builder.ins().x86_pmaddubsw(a, b)
+                    let dot = builder.ins().x86_pmaddubsw(a, b);
+                    let dotlo = builder.ins().swiden_low(dot);
+                    let dothi = builder.ins().swiden_high(dot);
+                    builder.ins().iadd_pairwise(dotlo, dothi)
                 };
-            let dotlo = builder.ins().swiden_low(dot);
-            let dothi = builder.ins().swiden_high(dot);
-            let dot32 = builder.ins().iadd_pairwise(dotlo, dothi);
-            environ.stacks.push1(builder.ins().iadd(dot32, c));
+            let result = builder.ins().iadd(dot32, c);
+            environ.stacks.push1(result);
         }
 
         Operator::BrOnNull { relative_depth } => {
@@ -2606,7 +2650,15 @@ pub fn translate_operator(
             let is_null = environ.translate_ref_is_null(builder.cursor(), r, r_ty)?;
             let (br_destination, inputs) = translate_br_if_args(*relative_depth, environ);
             let else_block = builder.create_block();
-            canonicalise_brif(builder, is_null, br_destination, inputs, else_block, &[]);
+            canonicalise_brif(
+                environ,
+                builder,
+                is_null,
+                br_destination,
+                &inputs,
+                else_block,
+                &[],
+            );
 
             builder.seal_block(else_block); // The only predecessor is the current block.
             builder.switch_to_block(else_block);
@@ -2625,10 +2677,17 @@ pub fn translate_operator(
             };
             let r_ty = *r_ty;
             let (br_destination, inputs) = translate_br_if_args(*relative_depth, environ);
-            let inputs = inputs.to_vec();
             let is_null = environ.translate_ref_is_null(builder.cursor(), r, r_ty)?;
             let else_block = builder.create_block();
-            canonicalise_brif(builder, is_null, else_block, &[], br_destination, &inputs);
+            canonicalise_brif(
+                environ,
+                builder,
+                is_null,
+                else_block,
+                &[],
+                br_destination,
+                &inputs,
+            );
 
             // In the null case, pop the ref
             environ.stacks.pop1();
@@ -3013,10 +3072,11 @@ pub fn translate_operator(
             let (cast_succeeds_block, inputs) = translate_br_if_args(*relative_depth, environ);
             let cast_fails_block = builder.create_block();
             canonicalise_brif(
+                environ,
                 builder,
                 cast_is_okay,
                 cast_succeeds_block,
-                inputs,
+                &inputs,
                 cast_fails_block,
                 &[
                     // NB: the `cast_fails_block` is dominated by the current
@@ -3047,6 +3107,7 @@ pub fn translate_operator(
             let (cast_fails_block, inputs) = translate_br_if_args(*relative_depth, environ);
             let cast_succeeds_block = builder.create_block();
             canonicalise_brif(
+                environ,
                 builder,
                 cast_is_okay,
                 cast_succeeds_block,
@@ -3055,7 +3116,7 @@ pub fn translate_operator(
                     // block, and therefore doesn't need any block params.
                 ],
                 cast_fails_block,
-                inputs,
+                &inputs,
             );
 
             // The only predecessor is the current block.
@@ -3133,7 +3194,7 @@ pub fn translate_operator(
             let param_count = params.len();
 
             let return_values =
-                environ.translate_suspend(builder, tag_index.as_u32(), &params, &return_types);
+                environ.translate_suspend(builder, tag_index.as_u32(), &params, &return_types)?;
 
             environ.stacks.popn(param_count);
             environ.stacks.pushn(&return_values);
@@ -3177,14 +3238,78 @@ pub fn translate_operator(
             environ.stacks.pushn(&cont_return_vals);
         }
         Operator::ResumeThrow {
-            cont_type_index: _,
-            tag_index: _,
-            resume_table: _,
+            cont_type_index,
+            tag_index,
+            resume_table: wasm_resume_table,
         } => {
-            // TODO(10248) This depends on exception handling
-            return Err(wasmtime_environ::WasmError::Unsupported(
-                "resume.throw instructions not supported, yet".to_string(),
-            ));
+            let mut clif_resume_table = vec![];
+            for handle in &wasm_resume_table.handlers {
+                match handle {
+                    wasmparser::Handle::OnLabel { tag, label } => {
+                        let i = environ.stacks.control_stack.len() - 1 - (*label as usize);
+                        let frame = &mut environ.stacks.control_stack[i];
+                        frame.set_branched_to_exit();
+                        clif_resume_table.push((*tag, Some(frame.br_destination())));
+                    }
+                    wasmparser::Handle::OnSwitch { tag } => {
+                        clif_resume_table.push((*tag, None));
+                    }
+                }
+            }
+
+            let cont_type_index = TypeIndex::from_u32(*cont_type_index);
+            let tag_index = TagIndex::from_u32(*tag_index);
+            let arity = environ.tag_params(tag_index).len();
+            let (contobj, exception_args) = environ.stacks.peekn(arity + 1).split_last().unwrap();
+            let contobj = *contobj;
+            let exception_args = exception_args.to_vec();
+            let cont_return_vals = environ.translate_resume_throw(
+                builder,
+                cont_type_index.as_u32(),
+                tag_index,
+                &exception_args,
+                contobj,
+                &clif_resume_table,
+            )?;
+
+            environ.stacks.popn(arity + 1);
+            environ.stacks.pushn(&cont_return_vals);
+        }
+        Operator::ResumeThrowRef {
+            cont_type_index,
+            resume_table: wasm_resume_table,
+        } => {
+            let mut clif_resume_table = vec![];
+            for handle in &wasm_resume_table.handlers {
+                match handle {
+                    wasmparser::Handle::OnLabel { tag, label } => {
+                        let i = environ.stacks.control_stack.len() - 1 - (*label as usize);
+                        let frame = &mut environ.stacks.control_stack[i];
+                        frame.set_branched_to_exit();
+                        clif_resume_table.push((*tag, Some(frame.br_destination())));
+                    }
+                    wasmparser::Handle::OnSwitch { tag } => {
+                        clif_resume_table.push((*tag, None));
+                    }
+                }
+            }
+
+            let cont_type_index = TypeIndex::from_u32(*cont_type_index);
+            // The validator leaves the continuation on top of the exception
+            // reference.
+            let operands = environ.stacks.peekn(2);
+            let exnref = operands[0];
+            let contobj = operands[1];
+            let cont_return_vals = environ.translate_resume_throw_ref(
+                builder,
+                cont_type_index.as_u32(),
+                exnref,
+                contobj,
+                &clif_resume_table,
+            )?;
+
+            environ.stacks.popn(2);
+            environ.stacks.pushn(&cont_return_vals);
         }
         Operator::Switch {
             cont_type_index,
@@ -3213,10 +3338,10 @@ pub fn translate_operator(
                     WasmHeapType::ConcreteCont(index) => {
                         let mti = index
                             .as_module_type_index()
-                            .expect("Only supporting module type indices on switch for now");
+                            .expect("expected module-local type index");
 
                         environ
-                            .continuation_arguments(TypeIndex::from_u32(mti.as_u32()))
+                            .continuation_arguments_from_interned(mti)
                             .iter()
                             .map(|ty| crate::value_type(environ.isa(), *ty))
                             .collect()
@@ -3320,7 +3445,6 @@ pub fn translate_operator(
 /// are dropped but special ones like `End` or `Else` signal the potential end of the unreachable
 /// portion so the translation state must be updated accordingly.
 fn translate_unreachable_operator(
-    validator: &FuncValidator<impl WasmModuleResources>,
     op: &Operator,
     builder: &mut FunctionBuilder,
     environ: &mut FuncEnvironment<'_>,
@@ -3339,6 +3463,7 @@ fn translate_unreachable_operator(
                 0,
                 0,
                 blockty,
+                false,
             );
         }
         Operator::Loop { blockty: _ }
@@ -3354,7 +3479,6 @@ fn translate_unreachable_operator(
                     ref else_data,
                     head_is_reachable,
                     ref mut consequent_ends_reachable,
-                    blocktype,
                     ..
                 } => {
                     debug_assert!(consequent_ends_reachable.is_none());
@@ -3369,9 +3493,7 @@ fn translate_unreachable_operator(
                                 branch_inst,
                                 placeholder,
                             } => {
-                                let (params, _results) =
-                                    blocktype_params_results(validator, blocktype)?;
-                                let else_block = block_with_params(builder, params, environ)?;
+                                let else_block = builder.create_block();
                                 let frame = environ.stacks.control_stack.last().unwrap();
                                 frame.truncate_value_stack_to_else_params(
                                     &mut environ.stacks.stack,
@@ -3409,15 +3531,15 @@ fn translate_unreachable_operator(
             }
         }
         Operator::End => {
-            let value_stack = &mut environ.stacks.stack;
-            let stack_shape = &mut environ.stacks.stack_shape;
-            let control_stack = &mut environ.stacks.control_stack;
-            let frame = control_stack.pop().unwrap();
+            let frame = environ.stacks.control_stack.pop().unwrap();
 
             frame.restore_catch_handlers(&mut environ.stacks.handlers, builder);
 
             // Pop unused parameters from stack.
-            frame.truncate_value_stack_to_original_size(value_stack, stack_shape);
+            frame.truncate_value_stack_to_original_size(
+                &mut environ.stacks.stack,
+                &mut environ.stacks.stack_shape,
+            );
 
             let reachable_anyway = match frame {
                 // If it is a loop we also have to seal the body loop block
@@ -3449,12 +3571,13 @@ fn translate_unreachable_operator(
             };
 
             if frame.exit_is_branched_to() || reachable_anyway {
-                builder.switch_to_block(frame.following_code());
-                builder.seal_block(frame.following_code());
+                let next_block = frame.following_code();
+                builder.switch_to_block(next_block);
+                builder.seal_block(next_block);
 
                 // And add the return values of the block but only if the next block is reachable
                 // (which corresponds to testing if the stack depth is 1)
-                value_stack.extend_from_slice(builder.block_params(frame.following_code()));
+                push_block_params(environ, builder, next_block);
                 environ.stacks.reachable = true;
             }
         }
@@ -3483,7 +3606,7 @@ fn prepare_addr(
     access_size: u8,
     builder: &mut FunctionBuilder,
     environ: &mut FuncEnvironment<'_>,
-) -> WasmResult<Reachability<(MemFlags, Value, Value)>> {
+) -> WasmResult<Reachability<(MemFlagsData, Value, Value)>> {
     let index = environ.stacks.pop1();
 
     let memory_index = MemoryIndex::from_u32(memarg.memory);
@@ -3633,14 +3756,15 @@ fn prepare_addr(
     // alignment immediate may says it's aligned, because WebAssembly's
     // immediate field is just a hint, while Cranelift's aligned flag needs a
     // guarantee. WebAssembly memory accesses are always little-endian.
-    let mut flags = MemFlags::new();
+    let mut flags = MemFlagsData::new();
     flags.set_endianness(ir::Endianness::Little);
 
-    // The access occurs to the `heap` disjoint category of abstract
+    // The access occurs to a per-memory disjoint category of abstract
     // state. This may allow alias analysis to merge redundant loads,
     // etc. when heap accesses occur interleaved with other (table,
     // vmctx, stack) accesses.
-    flags.set_alias_region(Some(ir::AliasRegion::Heap));
+    let region = environ.memory_alias_region(builder.func, memory_index);
+    flags.set_alias_region(Some(region));
 
     Ok(Reachability::Reachable((flags, index, addr)))
 }
@@ -3666,13 +3790,13 @@ fn align_atomic_addr(
         let effective_addr = if memarg.offset == 0 {
             addr
         } else {
-            builder.ins().iadd_imm(addr, memarg.offset.cast_signed())
+            builder.ins().iadd_imm_s(addr, memarg.offset.cast_signed())
         };
         debug_assert!(loaded_bytes.is_power_of_two());
         let misalignment = builder
             .ins()
-            .band_imm(effective_addr, i64::from(loaded_bytes - 1));
-        let f = builder.ins().icmp_imm(IntCC::NotEqual, misalignment, 0);
+            .band_imm_u(effective_addr, i64::from(loaded_bytes - 1));
+        let f = builder.ins().icmp_imm_s(IntCC::NotEqual, misalignment, 0);
         environ.trapnz(builder, f, crate::TRAP_HEAP_MISALIGNED);
     }
 }
@@ -3685,7 +3809,7 @@ fn prepare_atomic_addr(
     loaded_bytes: u8,
     builder: &mut FunctionBuilder,
     environ: &mut FuncEnvironment<'_>,
-) -> WasmResult<Reachability<(MemFlags, Value, Value)>> {
+) -> WasmResult<Reachability<(MemFlagsData, Value, Value)>> {
     align_atomic_addr(memarg, loaded_bytes, builder, environ);
     prepare_addr(memarg, loaded_bytes, builder, environ)
 }
@@ -3708,6 +3832,7 @@ fn translate_load(
 
     environ.before_load(builder, mem_op_size, wasm_index, memarg.offset);
 
+    let flags = builder.func.dfg.mem_flags.insert(flags).unwrap();
     let (load, dfg) = builder
         .ins()
         .Load(opcode, result_ty, flags, Offset32::new(0), base);
@@ -3733,6 +3858,7 @@ fn translate_store(
 
     environ.before_store(builder, mem_op_size, wasm_index, memarg.offset);
 
+    let flags = builder.func.dfg.mem_flags.insert(flags).unwrap();
     builder
         .ins()
         .Store(opcode, val_ty, flags, Offset32::new(0), val, base);
@@ -3981,19 +4107,32 @@ fn translate_br_if(
     builder: &mut FunctionBuilder,
     env: &mut FuncEnvironment<'_>,
 ) {
+    // Read the hint before `env` is borrowed mutably below.
+    let branch_hint = env.take_branch_hint(builder.srcloc().bits().into());
+
     let val = env.stacks.pop1();
     let (br_destination, inputs) = translate_br_if_args(relative_depth, env);
     let next_block = builder.create_block();
-    canonicalise_brif(builder, val, br_destination, inputs, next_block, &[]);
+
+    if let Some(hint) = branch_hint {
+        // Likely taken => the fallthrough is cold, else the branch target is.
+        builder.set_cold_block(if hint.taken {
+            next_block
+        } else {
+            br_destination
+        });
+    }
+
+    canonicalise_brif(env, builder, val, br_destination, &inputs, next_block, &[]);
 
     builder.seal_block(next_block); // The only predecessor is the current block.
     builder.switch_to_block(next_block);
 }
 
-fn translate_br_if_args<'a>(
+fn translate_br_if_args(
     relative_depth: u32,
-    env: &'a mut FuncEnvironment<'_>,
-) -> (ir::Block, &'a mut [ir::Value]) {
+    env: &mut FuncEnvironment<'_>,
+) -> (ir::Block, SmallVec<[ir::Value; 8]>) {
     let i = env.stacks.control_stack.len() - 1 - (relative_depth as usize);
     let (return_count, br_destination) = {
         let frame = &mut env.stacks.control_stack[i];
@@ -4007,7 +4146,10 @@ fn translate_br_if_args<'a>(
         };
         (return_count, frame.br_destination())
     };
-    let inputs = env.stacks.peekn_mut(return_count);
+    // Copy the branch arguments off the operand stack into an owned buffer so
+    // that callers can subsequently borrow `env` (e.g. to look up the
+    // destination's parameter variables) without conflicting with this borrow.
+    let inputs = env.stacks.peekn(return_count).to_smallvec();
     (br_destination, inputs)
 }
 
@@ -4238,7 +4380,7 @@ fn optionally_bitcast_vector(
     builder: &mut FunctionBuilder,
 ) -> Value {
     if builder.func.dfg.value_type(value) != needed_type {
-        let mut flags = MemFlags::new();
+        let mut flags = MemFlagsData::new();
         flags.set_endianness(ir::Endianness::Little);
         builder.ins().bitcast(needed_type, flags, value)
     } else {
@@ -4259,40 +4401,72 @@ fn is_non_canonical_v128(ty: ir::Type) -> bool {
 /// actually necessary, and if not, the original slice is returned.  Otherwise the cast values
 /// are returned in a slice that belongs to the caller-supplied `SmallVec`.
 fn canonicalise_v128_values<'a>(
-    tmp_canonicalised: &'a mut SmallVec<[BlockArg; 16]>,
+    tmp_canonicalised: &'a mut SmallVec<[ir::Value; 16]>,
     builder: &mut FunctionBuilder,
     values: &'a [ir::Value],
-) -> &'a [BlockArg] {
+) -> &'a [ir::Value] {
     debug_assert!(tmp_canonicalised.is_empty());
-    // Cast, and push the resulting `Value`s into `canonicalised`.
+    // If no value needs canonicalising, we can avoid any work and return the
+    // original slice unchanged.
+    if values
+        .iter()
+        .all(|v| !is_non_canonical_v128(builder.func.dfg.value_type(*v)))
+    {
+        return values;
+    }
+    // Otherwise cast as necessary, and push the resulting `Value`s into `canonicalised`.
     for v in values {
         let value = if is_non_canonical_v128(builder.func.dfg.value_type(*v)) {
-            let mut flags = MemFlags::new();
+            let mut flags = MemFlagsData::new();
             flags.set_endianness(ir::Endianness::Little);
             builder.ins().bitcast(I8X16, flags, *v)
         } else {
             *v
         };
-        tmp_canonicalised.push(BlockArg::from(value));
+        tmp_canonicalised.push(value);
     }
     tmp_canonicalised.as_slice()
+}
+
+/// Recover the Wasm stack parameters of `block` and push them onto the operand
+/// stack as we begin translating that block.
+///
+/// The caller must have already switched to `block`.
+///
+/// Every block whose Wasm parameters we recover this way (a Wasm control-flow
+/// target or the function exit block) has associated parameter `Variable`s, so
+/// we `use_var` each of them.
+fn push_block_params(
+    environ: &mut FuncEnvironment<'_>,
+    builder: &mut FunctionBuilder,
+    block: ir::Block,
+) {
+    debug_assert_eq!(builder.current_block(), Some(block));
+    let vars = &environ.stacks.block_param_vars[block];
+    for var in vars {
+        let val = builder.use_var(*var);
+        environ.stacks.stack.push(val);
+    }
 }
 
 /// Generate a `jump` instruction, but first cast all 128-bit vector values to I8X16 if they
 /// don't have that type.  This is done in somewhat roundabout way so as to ensure that we
 /// almost never have to do any heap allocation.
 fn canonicalise_then_jump(
+    environ: &FuncEnvironment<'_>,
     builder: &mut FunctionBuilder,
     destination: ir::Block,
     params: &[ir::Value],
 ) -> ir::Inst {
-    let mut tmp_canonicalised = SmallVec::<[_; 16]>::new();
-    let canonicalised = canonicalise_v128_values(&mut tmp_canonicalised, builder, params);
-    builder.ins().jump(destination, canonicalised)
+    let mut canonicalised = SmallVec::<[_; 16]>::new();
+    let canonicalised = canonicalise_v128_values(&mut canonicalised, builder, params);
+    set_block_params(environ, builder, destination, canonicalised);
+    builder.ins().jump(destination, &[])
 }
 
-/// The same but for a `brif` instruction.
+/// The same as `canonicalise_then_jump` but for a `brif` instruction.
 fn canonicalise_brif(
+    environ: &FuncEnvironment<'_>,
     builder: &mut FunctionBuilder,
     cond: ir::Value,
     block_then: ir::Block,
@@ -4300,19 +4474,17 @@ fn canonicalise_brif(
     block_else: ir::Block,
     params_else: &[ir::Value],
 ) -> ir::Inst {
-    let mut tmp_canonicalised_then = SmallVec::<[_; 16]>::new();
+    let mut canonicalised_then = SmallVec::<[_; 16]>::new();
     let canonicalised_then =
-        canonicalise_v128_values(&mut tmp_canonicalised_then, builder, params_then);
-    let mut tmp_canonicalised_else = SmallVec::<[_; 16]>::new();
+        canonicalise_v128_values(&mut canonicalised_then, builder, params_then);
+    set_block_params(environ, builder, block_then, canonicalised_then);
+
+    let mut canonicalised_else = SmallVec::<[_; 16]>::new();
     let canonicalised_else =
-        canonicalise_v128_values(&mut tmp_canonicalised_else, builder, params_else);
-    builder.ins().brif(
-        cond,
-        block_then,
-        canonicalised_then,
-        block_else,
-        canonicalised_else,
-    )
+        canonicalise_v128_values(&mut canonicalised_else, builder, params_else);
+    set_block_params(environ, builder, block_else, canonicalised_else);
+
+    builder.ins().brif(cond, block_then, &[], block_else, &[])
 }
 
 /// A helper for popping and bitcasting a single value; since SIMD values can lose their type by
@@ -4401,7 +4573,7 @@ pub fn bitcast_wasm_returns(arguments: &mut [Value], builder: &mut FunctionBuild
         builder.func.signature.returns[i].purpose == ir::ArgumentPurpose::Normal
     });
     for (t, arg) in changes {
-        let mut flags = MemFlags::new();
+        let mut flags = MemFlagsData::new();
         flags.set_endianness(ir::Endianness::Little);
         *arg = builder.ins().bitcast(t, flags, *arg);
     }
@@ -4419,7 +4591,7 @@ fn bitcast_wasm_params(
         environ.is_wasm_parameter(i)
     });
     for (t, arg) in changes {
-        let mut flags = MemFlags::new();
+        let mut flags = MemFlagsData::new();
         flags.set_endianness(ir::Endianness::Little);
         *arg = builder.ins().bitcast(t, flags, *arg);
     }
@@ -4449,14 +4621,19 @@ fn create_catch_block(
     // are compiling a `*Ref` variant.
 
     let (exn_ref_ty, needs_stack_map) = environ.reference_type(WasmHeapType::Exn);
-    let (exn_payload_wasm_ty, exn_payload_ty) = match environ.pointer_type().bits() {
-        32 => (wasmparser::ValType::I32, I32),
-        64 => (wasmparser::ValType::I64, I64),
+    let exn_payload_ty = match environ.pointer_type().bits() {
+        32 => I32,
+        64 => I64,
         _ => panic!("Unsupported pointer width"),
     };
-    let block = block_with_params(builder, [exn_payload_wasm_ty], environ)?;
+    // Unlike Wasm control-flow targets, a catch block's single parameter is a
+    // real CLIF block parameter: it is filled in by the exception ABI (the
+    // `try_call`'s exception table), not by an ordinary branch. So create it
+    // directly rather than going through `block_with_params`.
+    let block = builder.create_block();
+    let exn_ref = builder.append_block_param(block, exn_payload_ty);
     builder.switch_to_block(block);
-    let exn_ref = builder.func.dfg.block_params(block)[0];
+    environ.on_catch_block_entry(builder);
     debug_assert!(exn_ref_ty.bits() <= exn_payload_ty.bits());
     let exn_ref = if exn_ref_ty.bits() < exn_payload_ty.bits() {
         builder.ins().ireduce(exn_ref_ty, exn_ref)
@@ -4491,7 +4668,8 @@ fn create_catch_block(
     let i = environ.stacks.control_stack.len() - 1 - (label as usize);
     let frame = &mut environ.stacks.control_stack[i];
     frame.set_branched_to_exit();
-    canonicalise_then_jump(builder, frame.br_destination(), &params);
+    let br_destination = frame.br_destination();
+    canonicalise_then_jump(environ, builder, br_destination, &params);
 
     Ok(block)
 }

@@ -1,8 +1,7 @@
-use crate::macho::{EXPORT_SYMBOL_FLAGS_REEXPORT, EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER};
-use crate::read::{Bytes, ReadError, Result};
+use crate::macho;
+use crate::read::{Bytes, Error, ReadError, Result};
 use alloc::boxed::Box;
 use alloc::vec::Vec;
-use core::convert::TryInto;
 
 // The exports trie is a serialized trie with the following structure:
 //
@@ -77,7 +76,7 @@ impl<'data> Iterator for ExportsTrieIterator<'data> {
 #[derive(Debug)]
 pub struct ExportSymbol<'data> {
     name: Box<[u8]>,
-    flags: u8,
+    flags: macho::ExportSymbolFlags,
     data: ExportData<'data>,
 }
 
@@ -87,8 +86,13 @@ impl<'data> ExportSymbol<'data> {
         &self.name
     }
 
+    /// Consume the symbol and return the name buffer.
+    pub fn into_name(self) -> Vec<u8> {
+        self.name.into_vec()
+    }
+
     /// The flags for the exported symbol.
-    pub fn flags(&self) -> u8 {
+    pub fn flags(&self) -> macho::ExportSymbolFlags {
         self.flags
     }
 
@@ -101,6 +105,7 @@ impl<'data> ExportSymbol<'data> {
 #[derive(Debug)]
 struct Frame<'data> {
     data: Bytes<'data>,
+    offset: u64,
     children_remaining: u8,
     name_buf_len: usize,
 }
@@ -108,7 +113,7 @@ struct Frame<'data> {
 #[derive(Debug)]
 struct NodeIterator<'data> {
     data: &'data [u8],
-    offset: usize,
+    first: bool,
     stack: Vec<Frame<'data>>,
     // Accumulates the prefix edge strings as we traverse the trie.
     name_buf: Vec<u8>,
@@ -119,16 +124,16 @@ impl<'data> NodeIterator<'data> {
     pub(super) fn new(data: &'data [u8]) -> Self {
         NodeIterator {
             data,
-            offset: 0,
+            first: true,
             stack: Vec::new(),
             name_buf: Vec::new(),
         }
     }
 
-    fn push_node(&mut self) -> Result<Option<ExportSymbol<'data>>> {
+    fn push_node(&mut self, offset: u64) -> Result<Option<ExportSymbol<'data>>> {
         let mut data = Bytes(
             self.data
-                .get(self.offset..)
+                .get(offset as usize..)
                 .read_error("Invalid exports trie offset")?,
         );
         let terminal_size = data
@@ -152,6 +157,7 @@ impl<'data> NodeIterator<'data> {
             .read_error("Invalid exports trie children count")?;
         self.stack.push(Frame {
             data,
+            offset,
             children_remaining: children_count,
             name_buf_len: self.name_buf.len(),
         });
@@ -163,31 +169,37 @@ impl<'data> NodeIterator<'data> {
     // - `Ok(Some(None))` if we don't have terminal data at the current node.
     // - `Ok(None)` if we've reached the end of the trie.
     fn next(&mut self) -> Result<Option<Option<ExportSymbol<'data>>>> {
-        let Some(frame) = self.stack.last_mut() else {
-            // The stack is empty at the beginning and end of our traversal. We
-            // use self.offset to distinguish the two cases.
-            if self.offset == 0 {
-                return Ok(Some(self.push_node()?));
-            }
-            return Ok(None);
-        };
-        self.name_buf.truncate(frame.name_buf_len);
-        if frame.children_remaining == 0 {
-            self.stack.pop();
-            return self.next();
+        if self.first {
+            self.first = false;
+            // The root node is at offset 0.
+            return Ok(Some(self.push_node(0)?));
         }
-        let edge_str = frame
-            .data
-            .read_string()
-            .read_error("Invalid exports trie edge string")?;
-        let child_offset = frame
-            .data
-            .read_uleb128()
-            .read_error("Invalid exports trie child offset")?;
-        frame.children_remaining -= 1;
-        self.name_buf.extend(edge_str);
-        self.offset = child_offset as usize;
-        Ok(Some(self.push_node()?))
+        loop {
+            let Some(frame) = self.stack.last_mut() else {
+                // The stack only drains once the root node's subtree is fully
+                // traversed, so an empty stack here means we are done.
+                return Ok(None);
+            };
+            self.name_buf.truncate(frame.name_buf_len);
+            if frame.children_remaining == 0 {
+                self.stack.pop();
+                continue;
+            }
+            let edge_str = frame
+                .data
+                .read_string()
+                .read_error("Invalid exports trie edge string")?;
+            let child_offset = frame
+                .data
+                .read_uleb128()
+                .read_error("Invalid exports trie child offset")?;
+            frame.children_remaining -= 1;
+            self.name_buf.extend(edge_str);
+            if self.stack.iter().any(|frame| frame.offset == child_offset) {
+                return Err(Error("Invalid exports trie child offset"));
+            }
+            return Ok(Some(self.push_node(child_offset)?));
+        }
     }
 }
 
@@ -224,15 +236,15 @@ pub enum ExportData<'data> {
 }
 
 impl<'data> ExportData<'data> {
-    pub(super) fn parse(mut data: Bytes<'data>) -> Result<(u8, Self)> {
+    pub(super) fn parse(mut data: Bytes<'data>) -> Result<(macho::ExportSymbolFlags, Self)> {
         let flags = data
             .read_uleb128()
+            .map(macho::ExportSymbolFlags)
             .read_error("Invalid exports trie flags")?;
-        let flags: u8 = flags
-            .try_into()
-            .map_err(|_| ())
-            .read_error("Exports trie flags too large")?;
-        if flags & EXPORT_SYMBOL_FLAGS_REEXPORT != 0 {
+        if flags.has_unknown_bits() {
+            return Err(Error("Exports trie flags too large"));
+        }
+        if flags.contains(macho::EXPORT_SYMBOL_FLAGS_REEXPORT) {
             let dylib_ordinal = data
                 .read_uleb128()
                 .read_error("Invalid exports trie dylib ordinal")?;
@@ -247,7 +259,7 @@ impl<'data> ExportData<'data> {
                 },
             ));
         }
-        if flags & EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER != 0 {
+        if flags.contains(macho::EXPORT_SYMBOL_FLAGS_STUB_AND_RESOLVER) {
             let stub_address = data
                 .read_uleb128()
                 .read_error("Invalid exports trie stub address")?;
@@ -266,5 +278,58 @@ impl<'data> ExportData<'data> {
             .read_uleb128()
             .read_error("Invalid exports trie address")?;
         Ok((flags, ExportData::Regular { address }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_export() {
+        let data = [
+            // Root node at offset 0.
+            0x00, // terminal_size
+            0x01, // children_count
+            b'a', 0x00, // edge_str
+            0x05, // child_offset
+            // Terminal node at offset 5.
+            0x02, // terminal_size
+            0x00, // flags
+            0x10, // address
+            0x00, // children_count
+        ];
+        let mut exports = ExportsTrieIterator::new(&data);
+        let symbol = exports.next().unwrap().unwrap();
+        assert_eq!(symbol.name(), b"a");
+        assert_eq!(symbol.flags(), macho::ExportSymbolFlags(0));
+        let ExportData::Regular { address: 0x10 } = symbol.data() else {
+            panic!();
+        };
+
+        assert!(exports.next().unwrap().is_none());
+    }
+
+    #[test]
+    fn root_with_no_children() {
+        let data = [
+            0x00, // terminal_size
+            0x00, // children_count
+        ];
+        let mut exports = ExportsTrieIterator::new(&data);
+        assert!(exports.next().unwrap().is_none());
+    }
+
+    #[test]
+    fn cycle_to_root() {
+        // The root's only child points back at offset 0.
+        let data = [
+            0x00, // terminal_size
+            0x01, // children_count
+            b'a', 0x00, // edge_str
+            0x00, // child_offset (points at the root)
+        ];
+        let mut exports = ExportsTrieIterator::new(&data);
+        assert!(exports.next().is_err());
     }
 }

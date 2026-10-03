@@ -2,11 +2,9 @@
 //! wasm module (except its callstack and register state). An
 //! `InstanceHandle` is a reference-counting handle for an `Instance`.
 
-use crate::OpaqueRootScope;
 use crate::code::ModuleWithCode;
 use crate::module::ModuleRegistry;
 use crate::prelude::*;
-use crate::runtime::vm::const_expr::{ConstEvalContext, ConstExprEvaluator};
 use crate::runtime::vm::export::{Export, ExportMemory};
 use crate::runtime::vm::memory::{Memory, RuntimeMemoryCreator};
 use crate::runtime::vm::table::{Table, TableElementType};
@@ -16,13 +14,11 @@ use crate::runtime::vm::vmcontext::{
     VMTableDefinition, VMTableImport, VMTagDefinition, VMTagImport,
 };
 use crate::runtime::vm::{
-    GcStore, HostResult, Imports, ModuleRuntimeInfo, SendSyncPtr, VMGlobalKind, VMStore,
+    GcStore, HostResult, Imports, ModuleRuntimeInfo, SendSyncPtr, VMGcRef, VMGlobalKind, VMStore,
     VMStoreRawPtr, VmPtr, VmSafe, WasmFault, catch_unwind_and_record_trap,
 };
-use crate::store::{
-    Asyncness, InstanceId, StoreId, StoreInstanceId, StoreOpaque, StoreResourceLimiter,
-};
-use crate::vm::VMWasmCallFunction;
+use crate::store::{InstanceId, StoreId, StoreInstanceId, StoreOpaque, StoreResourceLimiter};
+use crate::vm::{VMWasmCallFunction, ValRaw};
 use alloc::sync::Arc;
 use core::alloc::Layout;
 use core::marker;
@@ -36,10 +32,11 @@ use core::{mem, ptr};
 use wasmtime_environ::ModuleInternedTypeIndex;
 use wasmtime_environ::error::OutOfMemory;
 use wasmtime_environ::{
-    DataIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex, DefinedTagIndex,
-    ElemIndex, EntityIndex, EntityRef, FuncIndex, GlobalIndex, HostPtr, MemoryIndex, PtrSize,
-    TableIndex, TableInitialValue, TableSegmentElements, TagIndex, Trap, VMCONTEXT_MAGIC,
-    VMOffsets, VMSharedTypeIndex, packed_option::ReservedValue,
+    Abi, DefinedFuncIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex,
+    DefinedTagIndex, EntityIndex, EntityRef, FuncIndex, FuncKey, GlobalConstValue, GlobalIndex,
+    HostPtr, MemoryIndex, MemoryInitialization, ModuleStartup, PassiveElemIndex, PtrSize,
+    RuntimeDataIndex, TableIndex, TagIndex, VMCONTEXT_MAGIC, VMOffsets, VMSharedTypeIndex,
+    WasmRefType, packed_option::ReservedValue,
 };
 #[cfg(feature = "wmemcheck")]
 use wasmtime_wmemcheck::Wmemcheck;
@@ -128,13 +125,13 @@ pub struct Instance {
     /// table.
     tables: TryPrimaryMap<DefinedTableIndex, (TableAllocationIndex, Table)>,
 
-    /// Stores the dropped passive element segments in this instantiation by index.
-    /// If the index is present in the set, the segment has been dropped.
-    dropped_elements: TryEntitySet<ElemIndex>,
-
-    /// Stores the dropped passive data segments in this instantiation by index.
-    /// If the index is present in the set, the segment has been dropped.
-    dropped_data: TryEntitySet<DataIndex>,
+    /// Evaluated passive element segments.
+    ///
+    /// If an entry is none, then it has been dropped.
+    //
+    // TODO(#12621): This should be a `TrySecondaryMap<PassiveElemIndex, _>`
+    // but that type is currently footgun-y / isn't actually OOM-safe yet.
+    passive_elements: TryVec<PassiveElementSegment>,
 
     // TODO: add support for multiple memories; `wmemcheck_state` corresponds to
     // memory 0.
@@ -154,10 +151,14 @@ pub struct Instance {
 }
 
 impl Instance {
-    /// Create an instance at the given memory address.
+    /// Creates a new owned instance handle from `req`.
     ///
-    /// It is assumed the memory was properly aligned and the
-    /// allocation was `alloc_size` in bytes.
+    /// The runtime memory/table data structures must have been previously
+    /// allocated and are present within `memories` and `tables`. These values
+    /// are `mem::take`n upon allocation success of an instance, and if the
+    /// instance allocation fails then these are otherwise left in place. This
+    /// enable the pooling allocator to run custom deallocation code for them,
+    /// for example.
     ///
     /// # Safety
     ///
@@ -166,13 +167,12 @@ impl Instance {
     /// and `tables` must have been allocated for `req.store`.
     unsafe fn new(
         req: InstanceAllocationRequest,
-        memories: TryPrimaryMap<DefinedMemoryIndex, (MemoryAllocationIndex, Memory)>,
-        tables: TryPrimaryMap<DefinedTableIndex, (TableAllocationIndex, Table)>,
+        memories: &mut TryPrimaryMap<DefinedMemoryIndex, (MemoryAllocationIndex, Memory)>,
+        tables: &mut TryPrimaryMap<DefinedTableIndex, (TableAllocationIndex, Table)>,
     ) -> Result<InstanceHandle, OutOfMemory> {
         let module = req.runtime_info.env_module();
         let memory_tys = &module.memories;
-        let dropped_elements = TryEntitySet::with_capacity(module.passive_elements.len())?;
-        let dropped_data = TryEntitySet::with_capacity(module.passive_data_map.len())?;
+        let mut passive_elements = TryVec::with_capacity(module.passive_elements.len())?;
 
         #[cfg(feature = "wmemcheck")]
         let wmemcheck_state = if req.store.engine().config().wmemcheck {
@@ -190,25 +190,69 @@ impl Instance {
         #[cfg(not(feature = "wmemcheck"))]
         let _ = memory_tys;
 
+        for (_, (ty, len)) in req.runtime_info.env_module().passive_elements.iter() {
+            let len = usize::try_from(*len).unwrap();
+            passive_elements.push(PassiveElementSegment::new(*ty, len)?)?;
+        }
+
+        // Allocate the instance and its `VMContext` with empty memory and table
+        // maps. This is the final fallible allocation in this function; only
+        // after it succeeds do we transfer ownership of the pool-allocated
+        // `memories`/`tables` into the instance (below), so that a failure here
+        // leaves them in the caller's deallocation guard to be freed.
         let mut ret = OwnedInstance::new(Instance {
             id: req.id,
             runtime_info: req.runtime_info.clone(),
-            memories,
-            tables,
-            dropped_elements,
-            dropped_data,
+            memories: TryPrimaryMap::default(),
+            tables: TryPrimaryMap::default(),
+            passive_elements,
             #[cfg(feature = "wmemcheck")]
             wmemcheck_state,
             store: None,
             vmctx: OwnedVMContext::new(),
         })?;
 
+        // Can't fail any more, so transfer ownership of `memories` and `tables`
+        // to this instance.
+        *ret.get_mut().memories_mut() = mem::take(memories);
+        *ret.get_mut().tables_mut() = mem::take(tables);
+
         // SAFETY: this vmctx was allocated with the same layout above, so it
         // should be safe to initialize with the same values here.
         unsafe {
             ret.get_mut().initialize_vmctx(req.store, req.imports);
         }
+
         Ok(ret)
+    }
+
+    /// Trace element segment GC roots inside this `Instance`.
+    ///
+    /// # Safety
+    ///
+    /// This instance must live for the duration of the associated GC cycle.
+    #[cfg(feature = "gc")]
+    pub(crate) unsafe fn trace_element_segment_roots(
+        self: Pin<&mut Self>,
+        gc_roots: &mut crate::vm::GcRootsList,
+    ) {
+        for segment in self.passive_elements_mut().iter_mut() {
+            if segment.needs_gc_rooting {
+                for e in segment.elements_mut() {
+                    if e.get_vmgcref().is_none() {
+                        continue;
+                    }
+
+                    let root: SendSyncPtr<ValRaw> = e.into();
+
+                    // Safety: We know this is a type that needs GC rooting and
+                    // the lifetime is implied by our safety contract.
+                    unsafe {
+                        gc_roots.add_val_raw_root(root, "passive element segment");
+                    }
+                }
+            }
+        }
     }
 
     /// Converts a raw `VMContext` pointer into a raw `Instance` pointer.
@@ -374,32 +418,32 @@ impl Instance {
 
     /// Return the indexed `VMFunctionImport`.
     fn imported_function(&self, index: FuncIndex) -> &VMFunctionImport {
-        unsafe { self.vmctx_plus_offset(self.offsets().vmctx_vmfunction_import(index)) }
+        unsafe { self.vmctx_plus_offset(self.offsets().imported_functions().at(index)) }
     }
 
     /// Return the index `VMTableImport`.
     fn imported_table(&self, index: TableIndex) -> &VMTableImport {
-        unsafe { self.vmctx_plus_offset(self.offsets().vmctx_vmtable_import(index)) }
+        unsafe { self.vmctx_plus_offset(self.offsets().imported_tables().at(index)) }
     }
 
     /// Return the indexed `VMMemoryImport`.
     fn imported_memory(&self, index: MemoryIndex) -> &VMMemoryImport {
-        unsafe { self.vmctx_plus_offset(self.offsets().vmctx_vmmemory_import(index)) }
+        unsafe { self.vmctx_plus_offset(self.offsets().imported_memories().at(index)) }
     }
 
     /// Return the indexed `VMGlobalImport`.
     fn imported_global(&self, index: GlobalIndex) -> &VMGlobalImport {
-        unsafe { self.vmctx_plus_offset(self.offsets().vmctx_vmglobal_import(index)) }
+        unsafe { self.vmctx_plus_offset(self.offsets().imported_globals().at(index)) }
     }
 
     /// Return the indexed `VMTagImport`.
     fn imported_tag(&self, index: TagIndex) -> &VMTagImport {
-        unsafe { self.vmctx_plus_offset(self.offsets().vmctx_vmtag_import(index)) }
+        unsafe { self.vmctx_plus_offset(self.offsets().imported_tags().at(index)) }
     }
 
     /// Return the indexed `VMTagDefinition`.
     pub fn tag_ptr(&self, index: DefinedTagIndex) -> NonNull<VMTagDefinition> {
-        unsafe { self.vmctx_plus_offset_raw(self.offsets().vmctx_vmtag_definition(index)) }
+        unsafe { self.vmctx_plus_offset_raw(self.offsets().tags().at(index)) }
     }
 
     /// Return the indexed `VMTableDefinition`.
@@ -417,10 +461,11 @@ impl Instance {
     /// Return a pointer to the `index`'th table within this instance, stored
     /// in vmctx memory.
     pub fn table_ptr(&self, index: DefinedTableIndex) -> NonNull<VMTableDefinition> {
-        unsafe { self.vmctx_plus_offset_raw(self.offsets().vmctx_vmtable_definition(index)) }
+        unsafe { self.vmctx_plus_offset_raw(self.offsets().tables().at(index)) }
     }
 
     /// Get a locally defined or imported memory.
+    #[cfg(all(has_host_compiler_backend, feature = "debug-builtins"))]
     pub(crate) fn get_memory(&self, index: MemoryIndex) -> VMMemoryDefinition {
         if let Some(defined_index) = self.env_module().defined_memory_index(index) {
             self.memory(defined_index)
@@ -451,14 +496,14 @@ impl Instance {
     #[inline]
     pub fn memory_ptr(&self, index: DefinedMemoryIndex) -> NonNull<VMMemoryDefinition> {
         unsafe {
-            self.vmctx_plus_offset::<VmPtr<_>>(self.offsets().vmctx_vmmemory_pointer(index))
+            self.vmctx_plus_offset::<VmPtr<_>>(self.offsets().memories().at(index))
                 .as_non_null()
         }
     }
 
     /// Return the indexed `VMGlobalDefinition`.
     pub fn global_ptr(&self, index: DefinedGlobalIndex) -> NonNull<VMGlobalDefinition> {
-        unsafe { self.vmctx_plus_offset_raw(self.offsets().vmctx_vmglobal_definition(index)) }
+        unsafe { self.vmctx_plus_offset_raw(self.offsets().globals().at(index)) }
     }
 
     /// Get all globals within this instance.
@@ -493,19 +538,19 @@ impl Instance {
     /// Return a pointer to the interrupts structure
     #[inline]
     pub fn vm_store_context(&self) -> NonNull<Option<VmPtr<VMStoreContext>>> {
-        unsafe { self.vmctx_plus_offset_raw(self.offsets().ptr.vmctx_store_context()) }
+        unsafe { self.vmctx_plus_offset_raw(self.offsets().ptr.vmctx().store_context()) }
     }
 
     /// Return a pointer to the global epoch counter used by this instance.
     #[cfg(target_has_atomic = "64")]
     pub fn epoch_ptr(self: Pin<&mut Self>) -> &mut Option<VmPtr<AtomicU64>> {
-        let offset = self.offsets().ptr.vmctx_epoch_ptr();
+        let offset = self.offsets().ptr.vmctx().epoch_ptr();
         unsafe { self.vmctx_plus_offset_mut(offset) }
     }
 
     /// Return a pointer to the collector-specific heap data.
     pub fn gc_heap_data(self: Pin<&mut Self>) -> &mut Option<VmPtr<u8>> {
-        let offset = self.offsets().ptr.vmctx_gc_heap_data();
+        let offset = self.offsets().ptr.vmctx().gc_heap_data();
         unsafe { self.vmctx_plus_offset_mut(offset) }
     }
 
@@ -566,6 +611,26 @@ impl Instance {
         // `self`, and the contract that `store` must own `func_ref` is a
         // contract of this function itself.
         unsafe { crate::Func::from_vm_func_ref(store, func_ref) }
+    }
+
+    /// Returns a `Func` corresponding to the startup function for this
+    /// instance, if generated at compile time.
+    ///
+    /// # Safety
+    ///
+    /// The `store` parameter must be the store that owns this instance and the
+    /// functions that this instance can reference.
+    pub unsafe fn get_startup_func(
+        self: Pin<&mut Self>,
+        registry: &ModuleRegistry,
+        store: StoreId,
+    ) -> Option<crate::Func> {
+        let func_ref = self.get_start_func_ref(registry)?;
+
+        // SAFETY: the validity of `func_ref` is guaranteed by the validity of
+        // `self`, and the contract that `store` must own `func_ref` is a
+        // contract of this function itself.
+        Some(unsafe { crate::Func::from_vm_func_ref(store, func_ref) })
     }
 
     /// Lookup a table by index.
@@ -679,20 +744,6 @@ impl Instance {
                     index,
                 )
             }
-            #[cfg(feature = "component-model")]
-            VMGlobalKind::TaskMayBlock => {
-                // SAFETY: validity of this `&Instance` means validity of its
-                // imports meaning we can read the id of the vmctx within.
-                let id = unsafe {
-                    let vmctx = super::component::VMComponentContext::from_opaque(
-                        import.vmctx.unwrap().as_non_null(),
-                    );
-                    super::component::ComponentInstance::vmctx_instance_id(vmctx)
-                };
-                crate::Global::from_task_may_block(
-                    crate::component::store::StoreComponentInstanceId::new(store, id),
-                )
-            }
         }
     }
 
@@ -743,26 +794,28 @@ impl Instance {
         result
     }
 
-    pub(crate) fn table_element_type(
-        self: Pin<&mut Self>,
-        table_index: TableIndex,
-    ) -> TableElementType {
-        self.get_table(table_index).element_type()
-    }
-
     /// Performs a grow operation on the `table_index` specified using `grow`.
     ///
     /// This will handle updating the VMTableDefinition internally as necessary.
-    pub(crate) async fn defined_table_grow(
+    ///
+    /// # Safety
+    ///
+    /// This function requires that the caller, on success, fills in the table
+    /// elements with an appropriately typed value.
+    pub(crate) async unsafe fn defined_table_grow(
         mut self: Pin<&mut Self>,
         table_index: DefinedTableIndex,
-        grow: impl AsyncFnOnce(&mut Table) -> Result<Option<usize>>,
+        limiter: Option<&mut StoreResourceLimiter<'_>>,
+        amt: u64,
     ) -> Result<Option<usize>> {
         let table = self.as_mut().get_defined_table(table_index);
-        let result = grow(table).await;
+        // SAFETY: updating the `VMContext` table pointers and such is done
+        // below, and the responsibility of filling in the new table elements
+        // is forwarded to the caller.
+        let result = unsafe { table.grow(limiter, amt).await? };
         let element = table.vmtable();
         self.set_table(table_index, element);
-        result
+        Ok(result)
     }
 
     fn alloc_layout(offsets: &VMOffsets<HostPtr>) -> Layout {
@@ -774,74 +827,7 @@ impl Instance {
     }
 
     fn type_ids_array(&self) -> NonNull<VmPtr<VMSharedTypeIndex>> {
-        unsafe { self.vmctx_plus_offset_raw(self.offsets().ptr.vmctx_type_ids_array()) }
-    }
-
-    /// Construct a new VMFuncRef for the given function
-    /// (imported or defined in this module) and store into the given
-    /// location. Used during lazy initialization.
-    ///
-    /// Note that our current lazy-init scheme actually calls this every
-    /// time the funcref pointer is fetched; this turns out to be better
-    /// than tracking state related to whether it's been initialized
-    /// before, because resetting that state on (re)instantiation is
-    /// very expensive if there are many funcrefs.
-    ///
-    /// # Safety
-    ///
-    /// This functions requires that `into` is a valid pointer.
-    unsafe fn construct_func_ref(
-        self: Pin<&mut Self>,
-        registry: &ModuleRegistry,
-        index: FuncIndex,
-        type_index: VMSharedTypeIndex,
-        into: *mut VMFuncRef,
-    ) {
-        let module_with_code = ModuleWithCode::in_store(
-            registry,
-            self.runtime_module()
-                .expect("funcref impossible in fake module"),
-        )
-        .expect("module not in store");
-
-        let func_ref = if let Some(def_index) = self.env_module().defined_func_index(index) {
-            VMFuncRef {
-                array_call: NonNull::from(
-                    module_with_code
-                        .array_to_wasm_trampoline(def_index)
-                        .expect("should have array-to-Wasm trampoline for escaping function"),
-                )
-                .cast()
-                .into(),
-                wasm_call: Some(
-                    NonNull::new(
-                        module_with_code
-                            .finished_function(def_index)
-                            .as_ptr()
-                            .cast::<VMWasmCallFunction>()
-                            .cast_mut(),
-                    )
-                    .unwrap()
-                    .into(),
-                ),
-                vmctx: VMOpaqueContext::from_vmcontext(self.vmctx()).into(),
-                type_index,
-            }
-        } else {
-            let import = self.imported_function(index);
-            VMFuncRef {
-                array_call: import.array_call,
-                wasm_call: Some(import.wasm_call),
-                vmctx: import.vmctx,
-                type_index,
-            }
-        };
-
-        // SAFETY: the unsafe contract here is forwarded to callers of this
-        // function.
-        unsafe {
-            ptr::write(into, func_ref);
-        }
+        unsafe { self.vmctx_plus_offset_raw(self.offsets().ptr.vmctx().type_ids()) }
     }
 
     /// Get a `&VMFuncRef` for the given `FuncIndex`.
@@ -859,200 +845,168 @@ impl Instance {
             return None;
         }
 
-        // For now, we eagerly initialize an funcref struct in-place
-        // whenever asked for a reference to it. This is mostly
-        // fine, because in practice each funcref is unlikely to be
-        // requested more than a few times: once-ish for funcref
-        // tables used for call_indirect (the usual compilation
-        // strategy places each function in the table at most once),
-        // and once or a few times when fetching exports via API.
-        // Note that for any case driven by table accesses, the lazy
-        // table init behaves like a higher-level cache layer that
-        // protects this initialization from happening multiple
-        // times, via that particular table at least.
+        match self.env_module().defined_func_index(index) {
+            Some(index) => self.initialize_defined_funcref(registry, index),
+            None => {
+                debug_assert!(self.env_module().is_imported_function(index));
+                Some(self.imported_function(index).as_func_ref().into())
+            }
+        }
+    }
+
+    /// Initializes a defined function's `VMFuncRef` in-place and then returns a
+    /// pointer to that location.
+    fn initialize_defined_funcref(
+        self: Pin<&mut Self>,
+        registry: &ModuleRegistry,
+        def_index: DefinedFuncIndex,
+    ) -> Option<NonNull<VMFuncRef>> {
+        let module = self.env_module();
+        let index = module.func_index(def_index);
+        let func = &module.functions[index];
+        let type_index = func.signature.unwrap_engine_type_index();
+        let vmctx_offset = self.offsets().func_refs().at(func.func_ref);
+        let array_to_wasm_key = FuncKey::ArrayToWasmTrampoline(module.module_index, def_index);
+        let wasm_key = FuncKey::DefinedWasmFunction(module.module_index, def_index);
+        // SAFETY: the type/offset/keys here are all valid for the defined
+        // function at `def_index`.
+        unsafe {
+            self.initialize_and_return_funcref(
+                registry,
+                type_index,
+                vmctx_offset,
+                array_to_wasm_key,
+                wasm_key,
+            )
+        }
+    }
+
+    fn get_start_func_ref(
+        self: Pin<&mut Self>,
+        registry: &ModuleRegistry,
+    ) -> Option<NonNull<VMFuncRef>> {
+        let module = self.env_module();
+        let type_index = match module.startup {
+            ModuleStartup::None => return None,
+            ModuleStartup::Always(t) | ModuleStartup::IfMemoriesNeedInit(t) => {
+                t.unwrap_engine_type_index()
+            }
+        };
+        let vmctx_offset = self.offsets().startup_func_ref();
+        let array_to_wasm_key = FuncKey::ModuleStartup(Abi::Array, module.module_index);
+        let wasm_key = FuncKey::ModuleStartup(Abi::Wasm, module.module_index);
+        // SAFETY: the type/offset/keys here are all valid for the module
+        // startup function.
+        unsafe {
+            self.initialize_and_return_funcref(
+                registry,
+                type_index,
+                vmctx_offset,
+                array_to_wasm_key,
+                wasm_key,
+            )
+        }
+    }
+
+    /// Common implementation of initializing a `VMFuncRef` stored within this
+    /// instance's `VMContext`.
+    ///
+    /// # Safety
+    ///
+    /// This function requires that `type_index` accurately describes this
+    /// function and `vmctx_offset` is indeed the correct offset for the
+    /// functions here. Effectively all the arguments here must be "logically
+    /// correct" for the `VMFuncRef` being initialized.
+    unsafe fn initialize_and_return_funcref(
+        self: Pin<&mut Self>,
+        registry: &ModuleRegistry,
+        type_index: VMSharedTypeIndex,
+        vmctx_offset: u32,
+        array_to_wasm_key: FuncKey,
+        wasm_key: FuncKey,
+    ) -> Option<NonNull<VMFuncRef>> {
+        // For now, we eagerly initialize an funcref struct in-place whenever
+        // asked for a reference to it. This is mostly fine, because in practice
+        // each funcref is unlikely to be requested more than a few times:
+        // once-ish for funcref tables used for call_indirect (the usual
+        // compilation strategy places each function in the table at most once),
+        // and once or a few times when fetching exports via API.  Note that for
+        // any case driven by table accesses, the lazy table init behaves like a
+        // higher-level cache layer that protects this initialization from
+        // happening multiple times, via that particular table at least.
         //
-        // When `ref.func` becomes more commonly used or if we
-        // otherwise see a use-case where this becomes a hotpath,
-        // we can reconsider by using some state to track
-        // "uninitialized" explicitly, for example by zeroing the
-        // funcrefs (perhaps together with other
-        // zeroed-at-instantiate-time state) or using a separate
-        // is-initialized bitmap.
+        // When `ref.func` becomes more commonly used or if we otherwise see a
+        // use-case where this becomes a hotpath, we can reconsider by using
+        // some state to track "uninitialized" explicitly, for example by
+        // zeroing the funcrefs (perhaps together with other
+        // zeroed-at-instantiate-time state) or using a separate is-initialized
+        // bitmap.
         //
-        // We arrived at this design because zeroing memory is
-        // expensive, so it's better for instantiation performance
-        // if we don't have to track "is-initialized" state at
-        // all!
-        let func = &self.env_module().functions[index];
-        let sig = func.signature.unwrap_engine_type_index();
+        // We arrived at this design because zeroing memory is expensive, so
+        // it's better for instantiation performance if we don't have to track
+        // "is-initialized" state at all!
+
+        let module_with_code = ModuleWithCode::in_store(
+            registry,
+            self.runtime_module()
+                .expect("funcref impossible in fake module"),
+        )
+        .expect("module not in store");
+
+        let array_call =
+            VmPtr::from(NonNull::from(module_with_code.function(array_to_wasm_key)).cast());
+
+        let wasm_call = Some(VmPtr::from(
+            NonNull::new(
+                module_with_code
+                    .function(wasm_key)
+                    .as_ptr()
+                    .cast::<VMWasmCallFunction>()
+                    .cast_mut(),
+            )
+            .unwrap(),
+        ));
+
+        let vmctx = VMOpaqueContext::from_vmcontext(self.vmctx()).into();
 
         // SAFETY: the offset calculated here should be correct with
         // `self.offsets`
-        let func_ref = unsafe {
-            self.vmctx_plus_offset_raw::<VMFuncRef>(self.offsets().vmctx_func_ref(func.func_ref))
-        };
+        let func_ref_ptr = unsafe { self.vmctx_plus_offset_raw::<VMFuncRef>(vmctx_offset) };
 
-        // SAFETY: the `func_ref` ptr should be valid as it's within our
+        // SAFETY: the `func_ref_ptr` should be valid as it's within our
         // `VMContext` area.
         unsafe {
-            self.construct_func_ref(registry, index, sig, func_ref.as_ptr());
+            func_ref_ptr.write(VMFuncRef {
+                array_call,
+                wasm_call,
+                vmctx,
+                type_index,
+            });
         }
 
-        Some(func_ref)
+        Some(func_ref_ptr)
     }
 
     /// Get the passive elements segment at the given index.
-    ///
-    /// Returns an empty segment if the index is out of bounds or if the segment
-    /// has been dropped.
-    ///
-    /// The `storage` parameter should always be `None`; it is a bit of a hack
-    /// to work around lifetime issues.
-    pub(crate) fn passive_element_segment<'a>(
-        &self,
-        storage: &'a mut Option<(Arc<wasmtime_environ::Module>, TableSegmentElements)>,
-        elem_index: ElemIndex,
-    ) -> &'a TableSegmentElements {
-        debug_assert!(storage.is_none());
-        *storage = Some((
-            // TODO: this `clone()` shouldn't be necessary but is used for now to
-            // inform `rustc` that the lifetime of the elements here are
-            // disconnected from the lifetime of `self`.
-            self.env_module().clone(),
-            // NB: fall back to an expressions-based list of elements which
-            // doesn't have static type information (as opposed to
-            // `TableSegmentElements::Functions`) since we don't know what type
-            // is needed in the caller's context. Let the type be inferred by
-            // how they use the segment.
-            TableSegmentElements::Expressions(Box::new([])),
-        ));
-        let (module, empty) = storage.as_ref().unwrap();
-
-        match module.passive_elements_map.get(&elem_index) {
-            Some(index) if !self.dropped_elements.contains(elem_index) => {
-                &module.passive_elements[*index]
-            }
-            _ => empty,
-        }
+    pub(crate) fn passive_element_segment(
+        self: Pin<&mut Self>,
+        passive: PassiveElemIndex,
+    ) -> &mut [ValRaw] {
+        self.passive_elements_mut()[passive.index()].elements_mut()
     }
 
-    /// The `table.init` operation: initializes a portion of a table with a
-    /// passive element.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `Trap` error when the range within the table is out of bounds
-    /// or the range within the passive element is out of bounds.
-    pub(crate) async fn table_init(
-        store: &mut StoreOpaque,
-        limiter: Option<&mut StoreResourceLimiter<'_>>,
-        asyncness: Asyncness,
-        instance: InstanceId,
-        table_index: TableIndex,
-        elem_index: ElemIndex,
-        dst: u64,
-        src: u64,
-        len: u64,
-    ) -> Result<()> {
-        let mut storage = None;
-        let elements = store
-            .instance(instance)
-            .passive_element_segment(&mut storage, elem_index);
-        let mut const_evaluator = ConstExprEvaluator::default();
-        Self::table_init_segment(
-            store,
-            limiter,
-            asyncness,
-            instance,
-            &mut const_evaluator,
-            table_index,
-            elements,
-            dst,
-            src,
-            len,
-        )
-        .await
-    }
-
-    pub(crate) async fn table_init_segment(
-        store: &mut StoreOpaque,
-        mut limiter: Option<&mut StoreResourceLimiter<'_>>,
-        asyncness: Asyncness,
-        elements_instance_id: InstanceId,
-        const_evaluator: &mut ConstExprEvaluator,
-        table_index: TableIndex,
-        elements: &TableSegmentElements,
-        dst: u64,
-        src: u64,
-        len: u64,
-    ) -> Result<()> {
-        // https://webassembly.github.io/bulk-memory-operations/core/exec/instructions.html#exec-table-init
-
-        let store_id = store.id();
-        let elements_instance = store.instance_mut(elements_instance_id);
-        let table = elements_instance.get_exported_table(store_id, table_index);
-        let table_size = table._size(store);
-
-        // Perform a bounds check on the table being written to. This is done by
-        // ensuring that `dst + len <= table.size()` via checked arithmetic.
-        //
-        // Note that the bounds check for the element segment happens below when
-        // the original segment is sliced via `src` and `len`.
-        table_size
-            .checked_sub(dst)
-            .and_then(|i| i.checked_sub(len))
-            .ok_or(Trap::TableOutOfBounds)?;
-
-        let src = usize::try_from(src).map_err(|_| Trap::TableOutOfBounds)?;
-        let len = usize::try_from(len).map_err(|_| Trap::TableOutOfBounds)?;
-
-        let positions = dst..dst + u64::try_from(len).unwrap();
-        match elements {
-            TableSegmentElements::Functions(funcs) => {
-                let elements = funcs
-                    .get(src..)
-                    .and_then(|s| s.get(..len))
-                    .ok_or(Trap::TableOutOfBounds)?;
-                for (i, func_idx) in positions.zip(elements) {
-                    let (instance, registry) =
-                        store.instance_and_module_registry_mut(elements_instance_id);
-                    // SAFETY: the `store_id` passed to `get_exported_func` is
-                    // indeed the store that owns the function.
-                    let func = unsafe { instance.get_exported_func(registry, store_id, *func_idx) };
-                    table.set_(store, i, func.into()).unwrap();
-                }
-            }
-            TableSegmentElements::Expressions(exprs) => {
-                let mut store = OpaqueRootScope::new(store);
-                let exprs = exprs
-                    .get(src..)
-                    .and_then(|s| s.get(..len))
-                    .ok_or(Trap::TableOutOfBounds)?;
-                let mut context = ConstEvalContext::new(elements_instance_id, asyncness);
-                for (i, expr) in positions.zip(exprs) {
-                    let element = const_evaluator
-                        .eval(&mut store, limiter.as_deref_mut(), &mut context, expr)
-                        .await?;
-                    table.set_(&mut store, i, element.ref_().unwrap()).unwrap();
-                }
-            }
-        }
-
-        Ok(())
+    pub(crate) fn passive_elements_mut(self: Pin<&mut Self>) -> &mut TryVec<PassiveElementSegment> {
+        // SAFETY: Not moving data out of `self`.
+        &mut unsafe { self.get_unchecked_mut() }.passive_elements
     }
 
     /// Drop an element.
-    pub(crate) fn elem_drop(
+    pub(crate) fn passive_elem_drop(
         self: Pin<&mut Self>,
-        elem_index: ElemIndex,
+        gc_store: Option<&mut GcStore>,
+        passive_index: PassiveElemIndex,
     ) -> Result<(), OutOfMemory> {
-        // https://webassembly.github.io/reference-types/core/exec/instructions.html#exec-elem-drop
-
-        self.dropped_elements_mut().insert(elem_index)?;
-
-        // Note that we don't check that we actually removed a segment because
-        // dropping a non-passive segment is a no-op (not a trap).
-
+        self.passive_elements_mut()[passive_index.index()].clear(gc_store);
         Ok(())
     }
 
@@ -1074,92 +1028,6 @@ impl Instance {
         }
     }
 
-    /// Do a `memory.copy`
-    ///
-    /// # Errors
-    ///
-    /// Returns a `Trap` error when the source or destination ranges are out of
-    /// bounds.
-    pub(crate) fn memory_copy(
-        self: Pin<&mut Self>,
-        dst_index: MemoryIndex,
-        dst: u64,
-        src_index: MemoryIndex,
-        src: u64,
-        len: u64,
-    ) -> Result<(), Trap> {
-        // https://webassembly.github.io/reference-types/core/exec/instructions.html#exec-memory-copy
-
-        let src_mem = self.get_memory(src_index);
-        let dst_mem = self.get_memory(dst_index);
-
-        let src = self.validate_inbounds(src_mem.current_length(), src, len)?;
-        let dst = self.validate_inbounds(dst_mem.current_length(), dst, len)?;
-        let len = usize::try_from(len).unwrap();
-
-        // Bounds and casts are checked above, by this point we know that
-        // everything is safe.
-        unsafe {
-            let dst = dst_mem.base.as_ptr().add(dst);
-            let src = src_mem.base.as_ptr().add(src);
-            // FIXME audit whether this is safe in the presence of shared memory
-            // (https://github.com/bytecodealliance/wasmtime/issues/4203).
-            ptr::copy(src, dst, len);
-        }
-
-        Ok(())
-    }
-
-    fn validate_inbounds(&self, max: usize, ptr: u64, len: u64) -> Result<usize, Trap> {
-        let oob = || Trap::MemoryOutOfBounds;
-        let end = ptr
-            .checked_add(len)
-            .and_then(|i| usize::try_from(i).ok())
-            .ok_or_else(oob)?;
-        if end > max {
-            Err(oob())
-        } else {
-            Ok(ptr.try_into().unwrap())
-        }
-    }
-
-    /// Perform the `memory.fill` operation on a locally defined memory.
-    ///
-    /// # Errors
-    ///
-    /// Returns a `Trap` error if the memory range is out of bounds.
-    pub(crate) fn memory_fill(
-        self: Pin<&mut Self>,
-        memory_index: DefinedMemoryIndex,
-        dst: u64,
-        val: u8,
-        len: u64,
-    ) -> Result<(), Trap> {
-        let memory_index = self.env_module().memory_index(memory_index);
-        let memory = self.get_memory(memory_index);
-        let dst = self.validate_inbounds(memory.current_length(), dst, len)?;
-        let len = usize::try_from(len).unwrap();
-
-        // Bounds and casts are checked above, by this point we know that
-        // everything is safe.
-        unsafe {
-            let dst = memory.base.as_ptr().add(dst);
-            // FIXME audit whether this is safe in the presence of shared memory
-            // (https://github.com/bytecodealliance/wasmtime/issues/4203).
-            ptr::write_bytes(dst, val, len);
-        }
-
-        Ok(())
-    }
-
-    /// Get the internal storage range of a particular Wasm data segment.
-    pub(crate) fn wasm_data_range(&self, index: DataIndex) -> Range<u32> {
-        match self.env_module().passive_data_map.get(&index) {
-            Some(range) if !self.dropped_data.contains(index) => range.clone(),
-            _ => 0..0,
-        }
-    }
-
     /// Given an internal storage range of a Wasm data segment (or subset of a
     /// Wasm data segment), get the data's raw bytes.
     pub(crate) fn wasm_data(&self, range: Range<u32>) -> &[u8] {
@@ -1168,63 +1036,17 @@ impl Instance {
         &self.runtime_info.wasm_data()[start..end]
     }
 
-    /// Performs the `memory.init` operation.
+    /// Returns the data for the runtime segment identified by `index`
     ///
-    /// # Errors
+    /// Does not take into account the dynamic size of the data pointed to by
+    /// `index`, always returns the raw data from the module itself.
     ///
-    /// Returns a `Trap` error if the destination range is out of this module's
-    /// memory's bounds or if the source range is outside the data segment's
-    /// bounds.
-    pub(crate) fn memory_init(
-        self: Pin<&mut Self>,
-        memory_index: MemoryIndex,
-        data_index: DataIndex,
-        dst: u64,
-        src: u32,
-        len: u32,
-    ) -> Result<(), Trap> {
-        let range = self.wasm_data_range(data_index);
-        self.memory_init_segment(memory_index, range, dst, src, len)
-    }
-
-    pub(crate) fn memory_init_segment(
-        self: Pin<&mut Self>,
-        memory_index: MemoryIndex,
-        range: Range<u32>,
-        dst: u64,
-        src: u32,
-        len: u32,
-    ) -> Result<(), Trap> {
-        // https://webassembly.github.io/bulk-memory-operations/core/exec/instructions.html#exec-memory-init
-
-        let memory = self.get_memory(memory_index);
-        let data = self.wasm_data(range);
-        let dst = self.validate_inbounds(memory.current_length(), dst, len.into())?;
-        let src = self.validate_inbounds(data.len(), src.into(), len.into())?;
-        let len = len as usize;
-
-        unsafe {
-            let src_start = data.as_ptr().add(src);
-            let dst_start = memory.base.as_ptr().add(dst);
-            // FIXME audit whether this is safe in the presence of shared memory
-            // (https://github.com/bytecodealliance/wasmtime/issues/4203).
-            ptr::copy_nonoverlapping(src_start, dst_start, len);
-        }
-
-        Ok(())
-    }
-
-    /// Drop the given data segment, truncating its length to zero.
-    pub(crate) fn data_drop(
-        self: Pin<&mut Self>,
-        data_index: DataIndex,
-    ) -> Result<(), OutOfMemory> {
-        self.dropped_data_mut().insert(data_index)?;
-
-        // Note that we don't check that we actually removed a segment because
-        // dropping a non-passive segment is a no-op (not a trap).
-
-        Ok(())
+    /// # Panics
+    ///
+    /// Panics if `index` is out-of-bounds.
+    fn runtime_data(&self, index: RuntimeDataIndex) -> &[u8] {
+        let range = self.env_module().runtime_data[index].clone();
+        self.wasm_data(range)
     }
 
     /// Get a table by index regardless of whether it is locally-defined
@@ -1281,10 +1103,7 @@ impl Instance {
                 // that `i` may be outside the limits of the static
                 // initialization so it's a fallible `get` instead of an index.
                 let module = self.env_module();
-                let precomputed = match &module.table_initialization.initial_values[idx] {
-                    TableInitialValue::Null { precomputed } => precomputed,
-                    TableInitialValue::Expr(_) => unreachable!(),
-                };
+                let precomputed = &module.table_initialization[idx];
                 // Panicking here helps catch bugs rather than silently truncating by accident.
                 let func_index = precomputed.get(usize::try_from(i).unwrap()).cloned();
                 let func_ref = func_index
@@ -1297,13 +1116,6 @@ impl Instance {
         }
 
         self.get_defined_table(idx)
-    }
-
-    /// Get a table by index regardless of whether it is locally-defined or an
-    /// imported, foreign table.
-    pub(crate) fn get_table(self: Pin<&mut Self>, table_index: TableIndex) -> &mut Table {
-        let (idx, instance) = self.defined_table_index_and_instance(table_index);
-        instance.get_defined_table(idx)
     }
 
     /// Get a locally-defined table.
@@ -1359,7 +1171,7 @@ impl Instance {
         unsafe {
             let offsets = instance.runtime_info.offsets();
             instance
-                .vmctx_plus_offset_raw::<u32>(offsets.ptr.vmctx_magic())
+                .vmctx_plus_offset_raw::<u32>(offsets.ptr.vmctx().magic())
                 .write(VMCONTEXT_MAGIC);
         }
 
@@ -1387,7 +1199,7 @@ impl Instance {
             let ptr = BUILTINS.expose_provenance();
             let offsets = instance.runtime_info.offsets();
             instance
-                .vmctx_plus_offset_raw(offsets.ptr.vmctx_builtin_functions())
+                .vmctx_plus_offset_raw(offsets.ptr.vmctx().builtin_functions())
                 .write(VmPtr::from(ptr));
         }
 
@@ -1401,7 +1213,7 @@ impl Instance {
             ptr::copy_nonoverlapping(
                 imports.functions.as_ptr(),
                 instance
-                    .vmctx_plus_offset_raw(offsets.vmctx_imported_functions_begin())
+                    .vmctx_plus_offset_raw(offsets.imported_functions().begin())
                     .as_ptr(),
                 imports.functions.len(),
             );
@@ -1409,7 +1221,7 @@ impl Instance {
             ptr::copy_nonoverlapping(
                 imports.tables.as_ptr(),
                 instance
-                    .vmctx_plus_offset_raw(offsets.vmctx_imported_tables_begin())
+                    .vmctx_plus_offset_raw(offsets.imported_tables().begin())
                     .as_ptr(),
                 imports.tables.len(),
             );
@@ -1417,7 +1229,7 @@ impl Instance {
             ptr::copy_nonoverlapping(
                 imports.memories.as_ptr(),
                 instance
-                    .vmctx_plus_offset_raw(offsets.vmctx_imported_memories_begin())
+                    .vmctx_plus_offset_raw(offsets.imported_memories().begin())
                     .as_ptr(),
                 imports.memories.len(),
             );
@@ -1425,7 +1237,7 @@ impl Instance {
             ptr::copy_nonoverlapping(
                 imports.globals.as_ptr(),
                 instance
-                    .vmctx_plus_offset_raw(offsets.vmctx_imported_globals_begin())
+                    .vmctx_plus_offset_raw(offsets.imported_globals().begin())
                     .as_ptr(),
                 imports.globals.len(),
             );
@@ -1433,7 +1245,7 @@ impl Instance {
             ptr::copy_nonoverlapping(
                 imports.tags.as_ptr(),
                 instance
-                    .vmctx_plus_offset_raw(offsets.vmctx_imported_tags_begin())
+                    .vmctx_plus_offset_raw(offsets.imported_tags().begin())
                     .as_ptr(),
                 imports.tags.len(),
             );
@@ -1451,7 +1263,7 @@ impl Instance {
         // valid.
         unsafe {
             let offsets = instance.runtime_info.offsets();
-            let mut ptr = instance.vmctx_plus_offset_raw(offsets.vmctx_tables_begin());
+            let mut ptr = instance.vmctx_plus_offset_raw(offsets.tables().begin());
             let tables = instance.as_mut().tables_mut();
             for i in 0..module.num_defined_tables() {
                 ptr.write(tables[DefinedTableIndex::new(i)].1.vmtable());
@@ -1470,9 +1282,8 @@ impl Instance {
         // valid.
         unsafe {
             let offsets = instance.runtime_info.offsets();
-            let mut ptr = instance.vmctx_plus_offset_raw(offsets.vmctx_memories_begin());
-            let mut owned_ptr =
-                instance.vmctx_plus_offset_raw(offsets.vmctx_owned_memories_begin());
+            let mut ptr = instance.vmctx_plus_offset_raw(offsets.memories().begin());
+            let mut owned_ptr = instance.vmctx_plus_offset_raw(offsets.owned_memories().begin());
             let memories = instance.as_mut().memories_mut();
             for i in 0..module.num_defined_memories() {
                 let defined_memory_index = DefinedMemoryIndex::new(i);
@@ -1505,8 +1316,20 @@ impl Instance {
         // after this, but if it's read then it'd hopefully crash faster than
         // leaving this undefined.
         unsafe {
-            for (index, _init) in module.global_initializers.iter() {
+            for i in 0..module.num_defined_globals() {
+                let index = DefinedGlobalIndex::new(i);
                 instance.global_ptr(index).write(VMGlobalDefinition::new());
+            }
+            for (index, val) in module.global_initializers.iter() {
+                let mut def = VMGlobalDefinition::new();
+                match val {
+                    GlobalConstValue::I32(i) => *def.as_i32_mut() = *i,
+                    GlobalConstValue::I64(i) => *def.as_i64_mut() = *i,
+                    GlobalConstValue::F32(i) => *def.as_f32_bits_mut() = *i,
+                    GlobalConstValue::F64(i) => *def.as_f64_bits_mut() = *i,
+                    GlobalConstValue::V128(i) => def.set_u128(*i),
+                }
+                instance.global_ptr(*index).write(def);
             }
         }
 
@@ -1517,7 +1340,7 @@ impl Instance {
         // valid.
         unsafe {
             let offsets = instance.runtime_info.offsets();
-            let mut ptr = instance.vmctx_plus_offset_raw(offsets.vmctx_tags_begin());
+            let mut ptr = instance.vmctx_plus_offset_raw(offsets.tags().begin());
             for i in 0..module.num_defined_tags() {
                 let defined_index = DefinedTagIndex::new(i);
                 let tag_index = module.tag_index(defined_index);
@@ -1526,6 +1349,56 @@ impl Instance {
                     tag.signature.unwrap_engine_type_index(),
                 ));
                 ptr = ptr.add(1);
+            }
+        }
+
+        // Initialize the lengths of runtime data segments.
+        //
+        // SAFETY: it's safe to initialize these lengths during initialization
+        // here and the various types of pointers and such here should all be
+        // valid.
+        unsafe {
+            let offsets = instance.runtime_info.offsets();
+            let mut lengths =
+                instance.vmctx_plus_offset_raw(offsets.runtime_data_lengths().begin());
+            let mut bases = instance.vmctx_plus_offset_raw(offsets.runtime_data_bases().begin());
+            for i in module.runtime_data.keys() {
+                let data = instance.runtime_data(i);
+                lengths.write(u32::try_from(data.len()).unwrap());
+                lengths = lengths.add(1);
+                bases.write(VmPtr::from(NonNull::from(data).cast::<u8>()));
+                bases = bases.add(1);
+            }
+        }
+
+        // This is the half of the strategy of implementing memory-init-cow data
+        // segments. Notably the compiled startup function, if present, will
+        // skip data segments that have a null pointer. Here each linear memory
+        // is tested to see if it needs initialization. If it does, then the
+        // data segment is left in-place (and the startup function will
+        // initialize linear memory). Otherwise the data segment is null'd out.
+        // If the startup function runs (e.g. something else in the module needs
+        // it), then the corresponding data segment's initialization will be
+        // skipped.
+        if let MemoryInitialization::Static { map } = &module.memory_initialization {
+            for (memory, init) in map {
+                let Some(memory) = module.defined_memory_index(memory) else {
+                    continue;
+                };
+                if instance.memories[memory].1.needs_init() {
+                    continue;
+                }
+                if let Some((_offset, data)) = init {
+                    let offsets = instance.runtime_info.offsets();
+                    unsafe {
+                        instance
+                            .vmctx_plus_offset_raw(offsets.runtime_data_lengths().at(*data))
+                            .write(0u32);
+                        instance
+                            .vmctx_plus_offset_raw(offsets.runtime_data_bases().at(*data))
+                            .write(0usize);
+                    }
+                }
             }
         }
     }
@@ -1626,16 +1499,6 @@ impl Instance {
         unsafe { &mut self.get_unchecked_mut().store }
     }
 
-    fn dropped_elements_mut(self: Pin<&mut Self>) -> &mut TryEntitySet<ElemIndex> {
-        // SAFETY: see `store_mut` above.
-        unsafe { &mut self.get_unchecked_mut().dropped_elements }
-    }
-
-    fn dropped_data_mut(self: Pin<&mut Self>) -> &mut TryEntitySet<DataIndex> {
-        // SAFETY: see `store_mut` above.
-        unsafe { &mut self.get_unchecked_mut().dropped_data }
-    }
-
     fn memories_mut(
         self: Pin<&mut Self>,
     ) -> &mut TryPrimaryMap<DefinedMemoryIndex, (MemoryAllocationIndex, Memory)> {
@@ -1654,6 +1517,17 @@ impl Instance {
     pub(super) fn wmemcheck_state_mut(self: Pin<&mut Self>) -> &mut Option<Wmemcheck> {
         // SAFETY: see `store_mut` above.
         unsafe { &mut self.get_unchecked_mut().wmemcheck_state }
+    }
+
+    pub(crate) fn needs_startup(&self) -> bool {
+        match self.env_module().startup {
+            ModuleStartup::None => false,
+            ModuleStartup::Always(_) => true,
+            ModuleStartup::IfMemoriesNeedInit(_) => self
+                .memories
+                .iter()
+                .any(|(_, (_, memory))| memory.needs_init()),
+        }
     }
 }
 
@@ -1967,5 +1841,49 @@ impl<T: InstanceLayout> Drop for OwnedInstance<T> {
             ptr::drop_in_place(self.instance.as_ptr());
             alloc::alloc::dealloc(self.instance.as_ptr().cast(), layout);
         }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct PassiveElementSegment {
+    needs_gc_rooting: bool,
+    elements: TryVec<ValRaw>,
+}
+
+impl PassiveElementSegment {
+    /// Create a new passive element segment with the given capacity.
+    pub(crate) fn new(ty: WasmRefType, capacity: usize) -> Result<Self, OutOfMemory> {
+        let mut elements = TryVec::with_capacity(capacity)?;
+        elements.resize_with(capacity, || ValRaw::null())?;
+        Ok(Self {
+            needs_gc_rooting: ty.is_vmgcref_type_and_not_i31(),
+            elements,
+        })
+    }
+
+    /// Clear this segment's elements.
+    pub(crate) fn clear(&mut self, mut gc_store: Option<&mut GcStore>) {
+        let elements = mem::take(&mut self.elements);
+        if !self.needs_gc_rooting {
+            return;
+        }
+        for val in elements {
+            // Like above, `anyref` accessors are used here even if this
+            // element segment has a different type because all of the vmgcref
+            // types are treated the same way.
+            let gc_ref = val.get_anyref();
+            debug_assert_eq!(gc_ref, val.get_exnref());
+            debug_assert_eq!(gc_ref, val.get_externref());
+            if let Some(gc_ref) = VMGcRef::from_raw_u32(gc_ref) {
+                if let Some(gc_store) = gc_store.as_deref_mut() {
+                    let _ = gc_store.drop_gc_ref(gc_ref);
+                }
+            }
+        }
+    }
+
+    /// The elements of this segment.
+    pub(crate) fn elements_mut(&mut self) -> &mut [ValRaw] {
+        &mut self.elements
     }
 }

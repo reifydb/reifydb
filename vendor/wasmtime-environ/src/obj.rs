@@ -7,57 +7,38 @@ use core::fmt;
 ///
 /// This is just a constant that seems reasonable in the sense it's unlikely to
 /// clash with others.
-pub const ELFOSABI_WASMTIME: u8 = 200;
+pub const ELFOSABI_WASMTIME: object::elf::OsAbi = object::elf::OsAbi(200);
 
 /// Flag for the `e_flags` field in the ELF header indicating a compiled
 /// module.
-pub const EF_WASMTIME_MODULE: u32 = 1 << 0;
+pub const EF_WASMTIME_MODULE: object::elf::FileFlags = object::elf::FileFlags(1 << 0);
 
 /// Flag for the `e_flags` field in the ELF header indicating a compiled
 /// component.
-pub const EF_WASMTIME_COMPONENT: u32 = 1 << 1;
+pub const EF_WASMTIME_COMPONENT: object::elf::FileFlags = object::elf::FileFlags(1 << 1);
 
 /// Flag for the `e_flags` field in the ELF header indicating compiled code for
 /// pulley32
-pub const EF_WASMTIME_PULLEY32: u32 = 1 << 2;
+pub const EF_WASMTIME_PULLEY32: object::elf::FileFlags = object::elf::FileFlags(1 << 2);
 
 /// Flag for the `e_flags` field in the ELF header indicating compiled code for
 /// pulley64
-pub const EF_WASMTIME_PULLEY64: u32 = 1 << 3;
+pub const EF_WASMTIME_PULLEY64: object::elf::FileFlags = object::elf::FileFlags(1 << 3);
 
 /// Flag for the `sh_flags` field in the ELF text section that indicates that
 /// the text section does not itself need to be executable. This is used for the
 /// Pulley target, for example, to indicate that it does not need to be made
 /// natively executable as it does not contain actual native code.
-pub const SH_WASMTIME_NOT_EXECUTED: u64 = 1 << 0;
+pub const SH_WASMTIME_NOT_EXECUTED: object::elf::SectionFlags = object::elf::SectionFlags(1 << 0);
 
 /// A custom Wasmtime-specific section of our compilation image which stores
 /// mapping data from offsets in the image to offset in the original wasm
 /// binary.
 ///
-/// This section has a custom binary encoding. Currently its encoding is:
-///
-/// * The section starts with a 32-bit little-endian integer. This integer is
-///   how many entries are in the following two arrays.
-/// * Next is an array with the previous count number of 32-bit little-endian
-///   integers. This array is a sorted list of relative offsets within the text
-///   section. This is intended to be a lookup array to perform a binary search
-///   on an offset within the text section on this array.
-/// * Finally there is another array, with the same count as before, also of
-///   32-bit little-endian integers. These integers map 1:1 with the previous
-///   array of offsets, and correspond to what the original offset was in the
-///   wasm file.
-///
-/// Decoding this section is intentionally simple, it only requires loading a
-/// 32-bit little-endian integer plus some bounds checks. Reading this section
-/// is done with the `lookup_file_pos` function below. Reading involves
-/// performing a binary search on the first array using the index found for the
-/// native code offset to index into the second array and find the wasm code
-/// offset.
-///
-/// At this time this section has an alignment of 1, which means all reads of it
-/// are unaligned. Additionally at this time the 32-bit encodings chosen here
-/// mean that >=4gb text sections are not supported.
+/// This section's format is defined by the documentation of the
+/// `crate::compile::AddressMapSection` data structure, which builds it. It is
+/// decoded by `lookup_file_pos`. Its offsets are relative to the start of the
+/// text section.
 pub const ELF_WASMTIME_ADDRMAP: &str = ".wasmtime.addrmap";
 
 /// A custom Wasmtime-specific section of compilation which store information
@@ -75,27 +56,13 @@ pub const ELF_WASMTIME_STACK_MAP: &str = ".wasmtime.stackmap";
 /// encodes the ability to map an offset in the text section to the trap code
 /// that it corresponds to.
 ///
-/// This section is used at runtime to determine what flavor of trap happened to
-/// ensure that embedders and debuggers know the reason for the wasm trap. The
-/// encoding of this section is custom to Wasmtime and managed with helpers in
-/// the `object` crate:
+/// This section is used at runtime to determine what flavor of trap happened
+/// to ensure that embedders and debuggers know the reason for the wasm trap.
 ///
-/// * First the section has a 32-bit little endian integer indicating how many
-///   trap entries are in the section.
-/// * Next is an array, of the same length as read before, of 32-bit
-///   little-endian integers. These integers are offsets into the text section
-///   of the compilation image.
-/// * Finally is the same count number of bytes. Each of these bytes corresponds
-///   to a trap code.
-///
-/// This section is decoded by `lookup_trap_code` below which will read the
-/// section count, slice some bytes to get the various arrays, and then perform
-/// a binary search on the offsets array to find the index corresponding to
-/// the pc being looked up. If found the same index in the trap array (the array
-/// of bytes) is the trap code for that offset.
-///
-/// Note that at this time this section has an alignment of 1. Additionally due
-/// to the 32-bit encodings for offsets this doesn't support images >=4gb.
+/// This section's format is defined by the documentation of the
+/// `crate::compile::TrapEncodingBuilder` data structure, which builds it. It
+/// is decoded by `lookup_trap_code`. Its offsets are relative to the start of
+/// the text section.
 pub const ELF_WASMTIME_TRAPS: &str = ".wasmtime.traps";
 
 /// A custom binary-encoded section of the wasmtime compilation

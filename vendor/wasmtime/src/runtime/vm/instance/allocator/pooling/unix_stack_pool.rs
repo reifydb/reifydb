@@ -1,11 +1,9 @@
 #![cfg_attr(asan, allow(dead_code))]
 
 use super::index_allocator::{SimpleIndexAllocator, SlotId};
+use crate::config::PoolingAllocationConfig;
 use crate::prelude::*;
-use crate::runtime::vm::sys::vm::commit_pages;
-use crate::runtime::vm::{
-    HostAlignedByteCount, Mmap, PoolingInstanceAllocatorConfig, mmap::AlignedLength,
-};
+use crate::runtime::vm::{HostAlignedByteCount, Mmap, mmap::AlignedLength};
 
 /// Represents a pool of execution stacks (used for the async fiber implementation).
 ///
@@ -34,7 +32,7 @@ impl StackPool {
         true
     }
 
-    pub fn new(config: &PoolingInstanceAllocatorConfig) -> Result<Self> {
+    pub fn new(config: &PoolingAllocationConfig) -> Result<Self> {
         use rustix::mm::{MprotectFlags, mprotect};
 
         let page_size = HostAlignedByteCount::host_page_size();
@@ -85,7 +83,7 @@ impl StackPool {
             async_stack_keep_resident: HostAlignedByteCount::new_rounded_up(
                 config.async_stack_keep_resident,
             )?,
-            index_allocator: SimpleIndexAllocator::new(config.limits.total_stacks),
+            index_allocator: SimpleIndexAllocator::new(config.limits.total_stacks)?,
         })
     }
 
@@ -120,8 +118,6 @@ impl StackPool {
                 .as_ptr()
                 .add(self.stack_size.unchecked_mul(index).byte_count())
                 .cast_mut();
-
-            commit_pages(bottom_of_stack, size_without_guard.byte_count())?;
 
             let stack = wasmtime_fiber::FiberStack::from_raw_parts(
                 bottom_of_stack,
@@ -212,16 +208,26 @@ impl StackPool {
         size_to_memset.byte_count()
     }
 
-    /// Deallocate a previously-allocated fiber.
+    /// Deallocate the previously-allocated fibers produced by `items`.
     ///
     /// # Safety
     ///
-    /// The fiber must have been allocated by this pool, must be in an allocated
-    /// state, and must never be used again.
+    /// The fibers must have been previously-allocated by this pool, must be
+    /// in an allocated state, and must never be used again.
     ///
-    /// The caller must have already called `zero_stack` on the fiber stack and
-    /// flushed any enqueued decommits for this stack's memory.
-    pub unsafe fn deallocate(&self, stack: wasmtime_fiber::FiberStack, bytes_resident: usize) {
+    /// The caller must have already called `zero_stack` on the fiber stacks
+    /// and flushed any enqueued decommits for these stacks' memories.
+    pub unsafe fn deallocate_many(
+        &self,
+        stacks: impl Iterator<Item = (wasmtime_fiber::FiberStack, usize)>,
+    ) {
+        self.index_allocator.free_many(
+            stacks
+                .map(|(stack, bytes_resident)| (SlotId(self.stack_index(&stack)), bytes_resident)),
+        );
+    }
+
+    fn stack_index(&self, stack: &wasmtime_fiber::FiberStack) -> u32 {
         assert!(stack.is_from_raw_parts());
 
         let top = stack
@@ -244,9 +250,7 @@ impl StackPool {
 
         let index = (start_of_stack - base) / self.stack_size.byte_count();
         assert!(index < self.max_stacks);
-        let index = u32::try_from(index).unwrap();
-
-        self.index_allocator.free(SlotId(index), bytes_resident);
+        u32::try_from(index).unwrap()
     }
 
     pub fn unused_warm_slots(&self) -> u32 {
@@ -265,18 +269,18 @@ impl StackPool {
 #[cfg(all(test, unix, feature = "async", not(miri), not(asan)))]
 mod tests {
     use super::*;
-    use crate::runtime::vm::InstanceLimits;
+    use crate::config::InstanceLimits;
 
     #[test]
     fn test_stack_pool() -> Result<()> {
-        let config = PoolingInstanceAllocatorConfig {
+        let config = PoolingAllocationConfig {
             limits: InstanceLimits {
                 total_stacks: 10,
                 ..Default::default()
             },
             stack_size: 1,
             async_stack_zeroing: true,
-            ..PoolingInstanceAllocatorConfig::default()
+            ..PoolingAllocationConfig::default()
         };
         let pool = StackPool::new(&config)?;
 
@@ -303,10 +307,8 @@ mod tests {
 
         assert!(pool.allocate().is_err(), "allocation should fail");
 
-        for stack in stacks {
-            unsafe {
-                pool.deallocate(stack, 0);
-            }
+        unsafe {
+            pool.deallocate_many(stacks.into_iter().map(|stack| (stack, 0)));
         }
 
         assert_eq!(

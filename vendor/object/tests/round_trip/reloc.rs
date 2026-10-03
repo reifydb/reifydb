@@ -1,10 +1,10 @@
 use object::read::{Object, ObjectSection};
-use object::{elf, macho, pe, xcoff};
-use object::{read, write};
 use object::{
     Architecture, BinaryFormat, Endianness, RelocationEncoding, RelocationFlags, RelocationKind,
     SymbolFlags, SymbolKind, SymbolScope,
 };
+use object::{elf, macho, pe, xcoff};
+use object::{read, write};
 
 fn check_reloc(
     format: BinaryFormat,
@@ -317,6 +317,7 @@ fn reloc_round_trip() {
             vec![
                 elf_r(A::X86_64, elf::R_X86_64_GOTPCREL),
                 macho_r(A::X86_64, macho::X86_64_RELOC_GOT, true, 2),
+                macho_r(A::Aarch64, macho::ARM64_RELOC_POINTER_TO_GOT, true, 2),
             ],
             vec![],
         ),

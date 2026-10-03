@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.92.0"
+rust-version = "1.96.0"
 name = "wasmtime"
-version = "44.0.3"
+version = "49.0.2"
 authors = ["The Wasmtime Project Developers"]
 build = "build.rs"
 autolib = false
@@ -64,8 +64,6 @@ compile-time-builtins = [
 ]
 component-model = [
     "wasmtime-environ/component-model",
-    "wasmtime-cranelift?/component-model",
-    "wasmtime-winch?/component-model",
     "dep:wasmtime-component-macro",
     "dep:wasmtime-component-util",
     "dep:encoding_rs",
@@ -74,15 +72,10 @@ component-model = [
 component-model-async = [
     "async",
     "component-model",
-    "std",
     "wasmtime-component-macro?/component-model-async",
     "dep:futures",
-    "futures/std",
 ]
-component-model-async-bytes = [
-    "component-model-async",
-    "dep:bytes",
-]
+component-model-bytes = ["dep:bytes"]
 coredump = [
     "dep:wasm-encoder",
     "runtime",
@@ -93,6 +86,7 @@ cranelift = [
     "std",
     "wasmtime-unwinder/cranelift",
 ]
+custom-fiber = ["wasmtime-fiber?/custom"]
 custom-native-signals = []
 custom-sync-primitives = []
 custom-virtual-memory = []
@@ -107,6 +101,7 @@ default = [
     "backtrace",
     "cache",
     "gc",
+    "gc-copying",
     "gc-drc",
     "gc-null",
     "wat",
@@ -126,30 +121,27 @@ default = [
     "std",
     "debug",
     "compile-time-builtins",
+    "wit-parser",
 ]
 demangle = ["wasmtime-environ/demangle"]
-gc = [
-    "wasmtime-environ/gc",
-    "wasmtime-cranelift?/gc",
-    "wasmtime-winch?/gc",
+gc = ["wasmtime-environ/gc"]
+gc-copying = [
+    "gc",
+    "wasmtime-environ/gc-copying",
 ]
 gc-drc = [
     "gc",
     "wasmtime-environ/gc-drc",
-    "wasmtime-cranelift?/gc-drc",
-    "wasmtime-winch?/gc-drc",
 ]
 gc-null = [
     "gc",
     "wasmtime-environ/gc-null",
-    "wasmtime-cranelift?/gc-null",
-    "wasmtime-winch?/gc-null",
 ]
-incremental-cache = [
-    "wasmtime-cranelift?/incremental-cache",
-    "std",
+incremental-cache = ["std"]
+memory-protection-keys = [
+    "pooling-allocator",
+    "call-hook",
 ]
-memory-protection-keys = ["pooling-allocator"]
 parallel-compilation = [
     "dep:rayon",
     "std",
@@ -195,8 +187,6 @@ stack-switching = [
     "runtime",
     "std",
     "wasmtime-environ/stack-switching",
-    "wasmtime-cranelift?/stack-switching",
-    "wasmtime-winch?/stack-switching",
 ]
 std = [
     "postcard/use-std",
@@ -206,17 +196,13 @@ std = [
     "once_cell",
     "wasmtime-fiber?/std",
     "pulley-interpreter/std",
-    "wasmtime-core/std",
     "addr2line?/std",
     "dep:rustix",
     "wasmtime-jit-icache-coherence",
     "wasmtime-jit-debug?/std",
+    "futures?/std",
 ]
-threads = [
-    "wasmtime-cranelift?/threads",
-    "wasmtime-winch?/threads",
-    "std",
-]
+threads = ["std"]
 trace-log = ["wasmtime-cranelift?/trace-log"]
 wave = [
     "dep:wasm-wave",
@@ -227,10 +213,13 @@ winch = [
     "dep:wasmtime-winch",
     "std",
 ]
+wit-parser = [
+    "dep:wit-parser",
+    "component-model",
+    "std",
+]
 wmemcheck = [
     "dep:wasmtime-wmemcheck",
-    "wasmtime-cranelift?/wmemcheck",
-    "wasmtime-winch?/wmemcheck",
     "wasmtime-environ/wmemcheck",
     "std",
 ]
@@ -275,15 +264,12 @@ optional = true
 version = "2.9.4"
 
 [dependencies.bumpalo]
-version = "3.20.0"
+version = "3.20.2"
 
 [dependencies.bytes]
 version = "1.11.1"
 optional = true
 default-features = false
-
-[dependencies.cfg-if]
-version = "1.0"
 
 [dependencies.encoding_rs]
 version = "0.8.31"
@@ -306,7 +292,7 @@ optional = true
 default-features = false
 
 [dependencies.libc]
-version = "0.2.177"
+version = "0.2.185"
 default-features = true
 
 [dependencies.log]
@@ -314,7 +300,7 @@ version = "0.4.28"
 default-features = false
 
 [dependencies.object]
-version = "0.39.0"
+version = "0.40.0"
 features = [
     "read_core",
     "elf",
@@ -332,7 +318,7 @@ features = ["alloc"]
 default-features = false
 
 [dependencies.pulley-interpreter]
-version = "=44.0.3"
+version = "=49.0.2"
 
 [dependencies.rayon]
 version = "1.5.3"
@@ -361,99 +347,103 @@ features = ["union"]
 optional = true
 
 [dependencies.target-lexicon]
-version = "0.13.0"
+version = "0.13.5"
 
 [dependencies.tempfile]
-version = "3.23.0"
+version = "3.27.0"
 optional = true
 
 [dependencies.wasm-compose]
-version = "0.246.1"
+version = "0.258.3"
 optional = true
 default-features = false
 
 [dependencies.wasm-encoder]
-version = "0.246.1"
+version = "0.258.3"
 optional = true
 
 [dependencies.wasm-wave]
-version = "0.246.1"
+version = "0.258.3"
 optional = true
 
 [dependencies.wasmparser]
-version = "0.246.1"
+version = "0.258.3"
 features = ["simd"]
 default-features = false
 
 [dependencies.wasmtime-cache]
-version = "=44.0.3"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-cache"
 
 [dependencies.wasmtime-component-macro]
-version = "=44.0.3"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-component-macro"
 
 [dependencies.wasmtime-component-util]
-version = "=44.0.3"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-component-util"
 
 [dependencies.wasmtime-core]
-version = "=44.0.3"
+version = "=49.0.2"
 features = ["serde"]
 package = "wasmtime-internal-core"
 
 [dependencies.wasmtime-cranelift]
-version = "=44.0.3"
+version = "=49.0.2"
 features = ["pulley"]
 optional = true
 package = "wasmtime-internal-cranelift"
 
 [dependencies.wasmtime-environ]
-version = "=44.0.3"
+version = "=49.0.2"
 
 [dependencies.wasmtime-fiber]
-version = "=44.0.3"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-fiber"
 
 [dependencies.wasmtime-jit-debug]
-version = "=44.0.3"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-jit-debug"
 
 [dependencies.wasmtime-jit-icache-coherence]
-version = "=44.0.3"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-jit-icache-coherence"
 
 [dependencies.wasmtime-unwinder]
-version = "=44.0.3"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-unwinder"
 
 [dependencies.wasmtime-versioned-export-macros]
-version = "=44.0.3"
+version = "=49.0.2"
 package = "wasmtime-internal-versioned-export-macros"
 
 [dependencies.wasmtime-winch]
-version = "=44.0.3"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-winch"
 
 [dependencies.wasmtime-wmemcheck]
-version = "=44.0.3"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-wmemcheck"
 
 [dependencies.wat]
-version = "1.246.1"
+version = "1.258.3"
+optional = true
+
+[dependencies.wit-parser]
+version = "0.258.3"
 optional = true
 
 [dev-dependencies.cranelift-native]
-version = "0.131.3"
+version = "0.136.2"
 
 [dev-dependencies.env_logger]
 version = "0.11.5"
@@ -462,17 +452,18 @@ version = "0.11.5"
 version = "0.8.1"
 
 [dev-dependencies.proptest]
-version = "1.0.0"
+version = "1.11.0"
 
 [dev-dependencies.rand]
-version = "0.9.2"
-features = ["small_rng"]
+version = "0.10.1"
+features = ["thread_rng"]
+default-features = false
 
 [dev-dependencies.tempfile]
-version = "3.23.0"
+version = "3.27.0"
 
 [dev-dependencies.tokio]
-version = "1.48.0"
+version = "1.51.1"
 features = [
     "rt",
     "time",
@@ -482,11 +473,11 @@ features = [
 ]
 
 [build-dependencies.cc]
-version = "1.2.41"
+version = "1.2.0"
 optional = true
 
 [build-dependencies.wasmtime-versioned-export-macros]
-version = "=44.0.3"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-versioned-export-macros"
 
@@ -520,11 +511,11 @@ features = [
 optional = true
 
 [target.'cfg(target_vendor = "apple")'.dependencies.mach2]
-version = "0.4.2"
+version = "0.6"
 optional = true
 
 [target."cfg(unix)".dependencies.rustix]
-version = "1.0.8"
+version = "1.1.4"
 features = [
     "mm",
     "param",
@@ -554,10 +545,10 @@ priority = -1
 [lints.rust]
 trivial_numeric_casts = "warn"
 unstable_features = "warn"
-unused-lifetimes = "warn"
-unused-macro-rules = "warn"
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
@@ -567,5 +558,6 @@ check-cfg = [
     "cfg(pulley_assume_llvm_makes_tail_calls)",
     "cfg(pulley_disable_interp_simd)",
     "cfg(arc_try_new)",
+    "cfg(fuzzing)",
     "cfg(gc_zeal)",
 ]

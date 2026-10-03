@@ -1,16 +1,11 @@
 //! This module corresponds to `mach/port.h`
 
-use vm_types::{integer_t, natural_t};
+use crate::vm_types::{integer_t, natural_t};
+use core::ffi::c_uint;
 
 pub type mach_port_name_t = natural_t;
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Default, Hash, PartialOrd, PartialEq, Eq, Ord)]
-pub struct ipc_port;
-
-pub type ipc_port_t = *mut ipc_port;
-
-pub type mach_port_t = ::libc::c_uint;
+pub type mach_port_t = c_uint;
 pub type mach_port_array_t = *mut mach_port_t;
 
 pub const MACH_PORT_NULL: mach_port_t = 0;
@@ -25,6 +20,8 @@ pub const MACH_PORT_RIGHT_PORT_SET: mach_port_right_t = 3;
 pub const MACH_PORT_RIGHT_DEAD_NAME: mach_port_right_t = 4;
 pub const MACH_PORT_RIGHT_LABELH: mach_port_right_t = 5;
 pub const MACH_PORT_RIGHT_NUMBER: mach_port_right_t = 6;
+
+pub type mach_port_type_t = natural_t;
 
 pub type mach_port_urefs_t = natural_t;
 pub type mach_port_delta_t = integer_t;

@@ -17,14 +17,9 @@ pub const EXCEPTION_TAG_INSTANCE_OFFSET: u32 = HEADER_SIZE;
 /// The offset of the tag-defined-index field in an exception header.
 pub const EXCEPTION_TAG_DEFINED_OFFSET: u32 = HEADER_SIZE + 4;
 
-/// The bit within a `VMDrcHeader`'s reserved bits that is the mark
-/// bit. Collectively, this bit in all the heap's objects' headers implements
-/// the precise-stack-roots set.
-pub const HEADER_MARK_BIT: u32 = 1 << 0;
-
-/// The bit within a `VMDrcHeader`'s reserved bits that is the
-/// in-the-over-approximated-stack-roots list bit.
-pub const HEADER_IN_OVER_APPROX_LIST_BIT: u32 = 1 << 1;
+pub use super::DRC_HEADER_IN_OVER_APPROX_LIST_BIT as HEADER_IN_OVER_APPROX_LIST_BIT;
+pub use super::DRC_HEADER_MARK_BIT as HEADER_MARK_BIT;
+pub use super::DRC_MIN_OVER_APPROX_STACK_ROOTS_GC_THRESHOLD as MIN_OVER_APPROX_STACK_ROOTS_GC_THRESHOLD;
 
 /// The layout of Wasm GC objects in the deferred reference-counting collector.
 #[derive(Default)]
@@ -47,11 +42,11 @@ impl GcTypeLayouts for DrcTypeLayouts {
         common_array_layout(ty, HEADER_SIZE, HEADER_ALIGN, ARRAY_LENGTH_OFFSET)
     }
 
-    fn struct_layout(&self, ty: &WasmStructType) -> GcStructLayout {
+    fn struct_layout(&self, ty: &WasmStructType) -> Result<GcStructLayout, OutOfMemory> {
         common_struct_layout(ty, HEADER_SIZE, HEADER_ALIGN)
     }
 
-    fn exn_layout(&self, ty: &WasmExnType) -> GcStructLayout {
+    fn exn_layout(&self, ty: &WasmExnType) -> Result<GcStructLayout, OutOfMemory> {
         common_exn_layout(ty, HEADER_SIZE, HEADER_ALIGN)
     }
 }

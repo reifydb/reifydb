@@ -10,9 +10,9 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2015"
+edition = "2024"
 name = "mach2"
-version = "0.4.3"
+version = "0.6.0"
 build = false
 include = [
     "src/**/*",
@@ -41,10 +41,7 @@ license = "BSD-2-Clause OR MIT OR Apache-2.0"
 repository = "https://github.com/JohnTitor/mach2"
 
 [package.metadata.docs.rs]
-default-target = "x86_64-apple-darwin"
-
-[badges.maintenance]
-status = "passively-maintained"
+default-target = "aarch64-apple-darwin"
 
 [features]
 default = []
@@ -53,7 +50,3 @@ unstable = []
 [lib]
 name = "mach2"
 path = "src/lib.rs"
-
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies.libc]
-version = "0.2"
-default-features = false

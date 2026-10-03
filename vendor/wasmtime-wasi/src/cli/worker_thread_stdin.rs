@@ -23,9 +23,8 @@
 //! This module is one that's likely to change over time though as new systems
 //! are encountered along with preexisting bugs.
 
-use crate::cli::{IsTerminal, StdinStream};
+use crate::cli::{IsTerminal, StdinStream, stream_error_from};
 use bytes::{Bytes, BytesMut};
-use std::io::Read;
 use std::mem;
 use std::pin::Pin;
 use std::sync::{Condvar, Mutex, OnceLock};
@@ -37,6 +36,8 @@ use wasmtime_wasi_io::{
     poll::Pollable,
     streams::{InputStream, StreamError},
 };
+
+use crate::MAX_READ_SIZE_ALLOC;
 
 // Implementation for tokio::io::Stdin
 impl IsTerminal for tokio::io::Stdin {
@@ -79,7 +80,7 @@ struct GlobalStdin {
 enum StdinState {
     #[default]
     ReadNotRequested,
-    ReadRequested,
+    ReadRequested(usize),
     Data(BytesMut),
     Error(std::io::Error),
     Closed,
@@ -101,12 +102,20 @@ fn create() -> GlobalStdin {
             let mut lock = state.state.lock().unwrap();
             lock = state
                 .read_requested
-                .wait_while(lock, |state| !matches!(state, StdinState::ReadRequested))
+                .wait_while(lock, |state| !matches!(state, StdinState::ReadRequested(_)))
                 .unwrap();
+
+            // Extract the size hint from the request and cap it to `MAX_READ_SIZE_ALLOC`
+            // to avoid guest-controlled unbounded allocation.
+            // The `.max(1)` ensures a zero-length read is never misinterpreted as EOF.
+            let size_hint = match *lock {
+                StdinState::ReadRequested(size) => size.min(MAX_READ_SIZE_ALLOC).max(1),
+                _ => unreachable!(),
+            };
             drop(lock);
 
-            let mut bytes = BytesMut::zeroed(1024);
-            let (new_state, done) = match std::io::stdin().read(&mut bytes) {
+            let mut bytes = BytesMut::zeroed(size_hint);
+            let (new_state, done) = match read_stdin(&mut bytes) {
                 Ok(0) => (StdinState::Closed, true),
                 Ok(nbytes) => {
                     bytes.truncate(nbytes);
@@ -119,7 +128,7 @@ fn create() -> GlobalStdin {
             // tampered with.
             debug_assert!(matches!(
                 *state.state.lock().unwrap(),
-                StdinState::ReadRequested
+                StdinState::ReadRequested(_)
             ));
             let mut lock = state.state.lock().unwrap();
             *lock = new_state;
@@ -133,19 +142,65 @@ fn create() -> GlobalStdin {
     GlobalStdin::default()
 }
 
+// Bypass `std::io::Stdin`'s process-global buffer so that a guest request
+// cannot advance a seekable input past the requested number of bytes. Keep
+// its lock held to serialize reads with other users of stdin in this process.
+fn read_stdin(bytes: &mut [u8]) -> std::io::Result<usize> {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsFd;
+        let stdin = std::io::stdin();
+        let stdin = stdin.lock();
+        rustix::io::read(stdin.as_fd(), bytes).map_err(Into::into)
+    }
+
+    #[cfg(windows)]
+    {
+        use std::io::Read as _;
+        use std::os::windows::io::{AsRawHandle, FromRawHandle};
+
+        let stdin = std::io::stdin();
+        let mut stdin = stdin.lock();
+        if std::io::IsTerminal::is_terminal(&stdin) {
+            return stdin.read(bytes);
+        }
+
+        // SAFETY: `stdin` keeps the borrowed process handle valid for this
+        // read, and `ManuallyDrop` prevents `File` from closing the handle.
+        let mut file = std::mem::ManuallyDrop::new(unsafe {
+            std::fs::File::from_raw_handle(stdin.as_raw_handle())
+        });
+        file.read(bytes)
+    }
+
+    #[cfg(not(any(unix, windows)))]
+    {
+        use std::io::Read as _;
+        std::io::stdin().read(bytes)
+    }
+}
+
 struct WasiStdin;
 
 #[async_trait::async_trait]
 impl InputStream for WasiStdin {
     fn read(&mut self, size: usize) -> Result<Bytes, StreamError> {
+        if size == 0 {
+            return Ok(Bytes::new());
+        }
         let g = GlobalStdin::get();
         let mut locked = g.state.lock().unwrap();
-        match mem::replace(&mut *locked, StdinState::ReadRequested) {
+        match mem::replace(&mut *locked, StdinState::ReadRequested(size)) {
             StdinState::ReadNotRequested => {
                 g.read_requested.notify_one();
                 Ok(Bytes::new())
             }
-            StdinState::ReadRequested => Ok(Bytes::new()),
+            StdinState::ReadRequested(prev_size) => {
+                // Preserve the larger of the two requested sizes
+                // so the worker thread allocates an adequate buffer.
+                *locked = StdinState::ReadRequested(prev_size.max(size));
+                Ok(Bytes::new())
+            }
             StdinState::Data(mut data) => {
                 let size = data.len().min(size);
                 let bytes = data.split_to(size);
@@ -158,7 +213,7 @@ impl InputStream for WasiStdin {
             }
             StdinState::Error(e) => {
                 *locked = StdinState::Closed;
-                Err(StreamError::LastOperationFailed(e.into()))
+                Err(stream_error_from(e))
             }
             StdinState::Closed => {
                 *locked = StdinState::Closed;
@@ -178,13 +233,15 @@ impl Pollable for WasiStdin {
         let notified = {
             let mut locked = g.state.lock().unwrap();
             match *locked {
-                // If a read isn't requested yet
+                // If a read isn't requested yet, use `MAX_READ_SIZE_ALLOC`
+                // as the buffer size since `ready()` doesn't know what size
+                // will be requested by the subsequent `read()` call.
                 StdinState::ReadNotRequested => {
                     g.read_requested.notify_one();
-                    *locked = StdinState::ReadRequested;
+                    *locked = StdinState::ReadRequested(MAX_READ_SIZE_ALLOC);
                     g.read_completed.notified()
                 }
-                StdinState::ReadRequested => g.read_completed.notified(),
+                StdinState::ReadRequested(_) => g.read_completed.notified(),
                 StdinState::Data(_) | StdinState::Closed | StdinState::Error(_) => return,
             }
         };
@@ -231,7 +288,7 @@ impl AsyncRead for WasiStdinAsyncRead {
 
             // Once we're in the "ready" state then take a look at the global
             // state of stdin.
-            match mem::replace(&mut *locked, StdinState::ReadRequested) {
+            match mem::replace(&mut *locked, StdinState::ReadRequested(buf.remaining())) {
                 // If data is available then drain what we can into `buf`.
                 StdinState::Data(mut data) => {
                     let size = data.len().min(buf.remaining());
@@ -264,7 +321,10 @@ impl AsyncRead for WasiStdinAsyncRead {
                 StdinState::ReadNotRequested => {
                     g.read_requested.notify_one();
                 }
-                StdinState::ReadRequested => {}
+                StdinState::ReadRequested(prev_size) => {
+                    // Preserve the larger of the previous and current size hint
+                    *locked = StdinState::ReadRequested(prev_size.max(buf.remaining()));
+                }
             }
 
             self.set(WasiStdinAsyncRead::Waiting(g.read_completed.notified()));

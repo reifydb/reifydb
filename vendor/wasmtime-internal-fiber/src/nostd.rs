@@ -39,9 +39,24 @@ pub use wasmtime_environ::error::Error;
 pub struct FiberStack {
     base: BasePtr,
     len: usize,
+    storage: FiberStackStorage,
+}
+
+#[expect(
+    dead_code,
+    reason = "fields are held to own the backing storage until drop"
+)]
+enum FiberStackStorage {
     /// Backing storage, if owned. Allocated once at startup and then
     /// not reallocated afterward.
-    storage: TryVec<u8>,
+    Owned(TryVec<Align16>),
+    Unmanaged,
+    Custom(Box<dyn RuntimeFiberStack>),
+}
+
+#[repr(align(16))]
+struct Align16 {
+    _contents: u128,
 }
 
 struct BasePtr(*mut u8);
@@ -49,49 +64,46 @@ struct BasePtr(*mut u8);
 unsafe impl Send for BasePtr {}
 unsafe impl Sync for BasePtr {}
 
-const STACK_ALIGN: usize = 16;
-
-/// Align a pointer by incrementing it up to `align - 1`
-/// bytes. `align` must be a power of two. Also updates the length as
-/// appropriate so that `ptr + len` points to the same endpoint.
-fn align_ptr(ptr: *mut u8, len: usize, align: usize) -> (*mut u8, usize) {
-    let ptr = ptr as usize;
-    let aligned = (ptr + align - 1) & !(align - 1);
-    let new_len = len - (aligned - ptr);
-    (aligned as *mut u8, new_len)
-}
-
 impl FiberStack {
     pub fn new(size: usize, zeroed: bool) -> Result<Self> {
         // Round up the size to at least one page.
         let size = core::cmp::max(4096, size);
         let mut storage = TryVec::new();
-        storage.reserve_exact(size)?;
+        let size_rounded_up = size
+            .checked_next_multiple_of(16)
+            .ok_or_else(|| format_err!("stack size too large to round up to 16 bytes"))?;
+        let size_in_16byte_units = size_rounded_up / 16;
+        storage.reserve_exact(size_in_16byte_units)?;
         if zeroed {
-            storage.resize(size, 0)?;
+            storage.resize_with(size_in_16byte_units, || Align16 { _contents: 0 })?;
         }
-        let (base, len) = align_ptr(storage.as_mut_ptr(), size, STACK_ALIGN);
         Ok(FiberStack {
-            storage,
-            base: BasePtr(base),
-            len,
+            base: BasePtr(storage.as_mut_ptr().cast()),
+            len: storage.capacity() * 16,
+            storage: FiberStackStorage::Owned(storage),
         })
     }
 
     pub unsafe fn from_raw_parts(base: *mut u8, guard_size: usize, len: usize) -> Result<Self> {
         Ok(FiberStack {
-            storage: TryVec::default(),
+            storage: FiberStackStorage::Unmanaged,
             base: BasePtr(unsafe { base.offset(isize::try_from(guard_size).unwrap()) }),
             len,
         })
     }
 
     pub fn is_from_raw_parts(&self) -> bool {
-        self.storage.is_empty()
+        matches!(self.storage, FiberStackStorage::Unmanaged)
     }
 
-    pub fn from_custom(_custom: Box<dyn RuntimeFiberStack>) -> Result<Self> {
-        unimplemented!("Custom fiber stacks not supported in no_std fiber library")
+    pub fn from_custom(custom: Box<dyn RuntimeFiberStack>) -> Result<Self> {
+        let range = custom.range();
+        let start_ptr = range.start as *mut u8;
+        Ok(FiberStack {
+            base: BasePtr(start_ptr),
+            len: range.len(),
+            storage: FiberStackStorage::Custom(custom),
+        })
     }
 
     pub fn top(&self) -> Option<*mut u8> {

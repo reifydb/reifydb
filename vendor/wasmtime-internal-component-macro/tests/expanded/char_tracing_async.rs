@@ -171,7 +171,7 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: foo::foo::chars::HostWithStore + Send,
+            D: foo::foo::chars::HostWithStore<T> + Send,
             for<'a> D::Data<'a>: foo::foo::chars::Host + Send,
             T: 'static + Send,
         {
@@ -189,10 +189,10 @@ pub mod foo {
         pub mod chars {
             #[allow(unused_imports)]
             use wasmtime::component::__internal::Box;
-            pub trait HostWithStore: wasmtime::component::HasData + Send {}
-            impl<_T: ?Sized> HostWithStore for _T
+            pub trait HostWithStore<T>: wasmtime::component::HasData + Send {}
+            impl<H: ?Sized, T> HostWithStore<T> for H
             where
-                _T: wasmtime::component::HasData + Send,
+                H: wasmtime::component::HasData + Send,
             {}
             pub trait Host: Send {
                 /// A function that accepts a character
@@ -220,16 +220,15 @@ pub mod foo {
                     async move { Host::return_char(*self).await }
                 }
             }
-            pub fn add_to_linker<T, D>(
-                linker: &mut wasmtime::component::Linker<T>,
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static + Send,
             {
-                let mut inst = linker.instance("foo:foo/chars")?;
                 inst.func_wrap_async(
                     "take-char",
                     move |
@@ -284,6 +283,18 @@ pub mod foo {
                 )?;
                 Ok(())
             }
+            pub fn add_to_linker<T, D>(
+                linker: &mut wasmtime::component::Linker<T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static + Send,
+            {
+                let mut inst = linker.instance("foo:foo/chars")?;
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
+            }
         }
     }
 }
@@ -322,7 +333,7 @@ pub mod exports {
                                     "no exported instance named `foo:foo/chars`"
                                 )
                             })?;
-                        let mut lookup = move |name| {
+                        let mut lookup = move |name: &str| {
                             _instance_pre
                                 .component()
                                 .get_export_index(Some(&instance), name)
@@ -364,6 +375,16 @@ pub mod exports {
                     }
                 }
                 impl Guest {
+                    pub fn func_take_char(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(char,), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (char,),
+                                (),
+                            >::new_unchecked(self.take_char)
+                        }
+                    }
                     /// A function that accepts a character
                     pub async fn call_take_char<S: wasmtime::AsContextMut>(
                         &self,
@@ -378,17 +399,22 @@ pub mod exports {
                             tracing::Level::TRACE, "wit-bindgen export", module =
                             "foo:foo/chars", function = "take-char",
                         );
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (char,),
-                                (),
-                            >::new_unchecked(self.take_char)
-                        };
+                        let callee = self.func_take_char();
                         let () = callee
                             .call_async(store.as_context_mut(), (arg0,))
                             .instrument(span.clone())
                             .await?;
                         Ok(())
+                    }
+                    pub fn func_return_char(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(), (char,)> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                (char,),
+                            >::new_unchecked(self.return_char)
+                        }
                     }
                     /// A function that returns a character
                     pub async fn call_return_char<S: wasmtime::AsContextMut>(
@@ -403,12 +429,7 @@ pub mod exports {
                             tracing::Level::TRACE, "wit-bindgen export", module =
                             "foo:foo/chars", function = "return-char",
                         );
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                (char,),
-                            >::new_unchecked(self.return_char)
-                        };
+                        let callee = self.func_return_char();
                         let (ret0,) = callee
                             .call_async(store.as_context_mut(), ())
                             .instrument(span.clone())

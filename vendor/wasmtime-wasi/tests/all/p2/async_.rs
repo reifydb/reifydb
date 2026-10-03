@@ -8,13 +8,21 @@ use wasmtime_wasi::p2::add_to_linker_async;
 use wasmtime_wasi::p2::bindings::Command;
 
 async fn run(path: &str, with_builder: impl FnOnce(&mut WasiCtxBuilder)) -> Result<()> {
+    run_with_workspace_setup(path, |_| Ok(()), with_builder).await
+}
+
+async fn run_with_workspace_setup(
+    path: &str,
+    setup: impl FnOnce(&Path) -> Result<()>,
+    with_builder: impl FnOnce(&mut WasiCtxBuilder),
+) -> Result<()> {
     let path = Path::new(path);
     let name = path.file_stem().unwrap().to_str().unwrap();
     let engine = test_programs_artifacts::engine(|_config| {});
     let mut linker = Linker::new(&engine);
     add_to_linker_async(&mut linker)?;
 
-    let (mut store, _td) = Ctx::new(&engine, name, |builder| {
+    let (mut store, _td) = Ctx::new_with_workspace_setup(&engine, name, setup, |builder| {
         with_builder(builder);
         MyWasiCtx::new(builder.build())
     })?;
@@ -71,6 +79,16 @@ async fn p1_fd_filestat_get() {
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn p1_fd_filestat_set() {
     run(P1_FD_FILESTAT_SET_COMPONENT, |_| {}).await.unwrap()
+}
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn p1_stat_extreme_host_mtime() {
+    run_with_workspace_setup(
+        P1_STAT_EXTREME_HOST_MTIME_COMPONENT,
+        crate::store::prepare_extreme_mtime_fixture,
+        |_| {},
+    )
+    .await
+    .unwrap()
 }
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn p1_fd_flags_set() {
@@ -324,6 +342,10 @@ async fn p2_tcp_listen() {
     run(P2_TCP_LISTEN_COMPONENT, |_| {}).await.unwrap()
 }
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn p2_tcp_busy_poll() {
+    run(P2_TCP_BUSY_POLL_COMPONENT, |_| {}).await.unwrap()
+}
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn p2_udp_sockopts() {
     run(P2_UDP_SOCKOPTS_COMPONENT, |_| {}).await.unwrap()
 }
@@ -338,12 +360,25 @@ async fn p2_udp_states() {
     run(P2_UDP_STATES_COMPONENT, |_| {}).await.unwrap()
 }
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn p2_udp_stream() {
+    run(P2_UDP_STREAM_COMPONENT, |_| {}).await.unwrap()
+}
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn p2_udp_bind() {
     run(P2_UDP_BIND_COMPONENT, |_| {}).await.unwrap()
 }
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn p2_udp_connect() {
     run(P2_UDP_CONNECT_COMPONENT, |_| {}).await.unwrap()
+}
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+// See the comment on the `p2::sync` variation of this test; for why this is
+// ignored on macos
+#[cfg_attr(target_os = "macos", ignore)]
+async fn p2_udp_send_to_closed_receiver() {
+    run(P2_UDP_SEND_TO_CLOSED_RECEIVER_COMPONENT, |_| {})
+        .await
+        .unwrap()
 }
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn p2_stream_pollable_correct() {
@@ -391,43 +426,91 @@ async fn p2_udp_send_too_much() {
         "unpermitted: argument exceeds permitted size"
     )
 }
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn p2_file_settime_overflow() {
+    run(P2_FILE_SETTIME_OVERFLOW_COMPONENT, |_| {})
+        .await
+        .unwrap()
+}
 
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn p1_file_truncation_readonly() {
-    file_truncation_readonly(P1_FILE_TRUNCATION_READONLY_COMPONENT).await
+    run_with_readonly_testfile(P1_FILE_TRUNCATION_READONLY_COMPONENT).await
 }
 #[test_log::test(tokio::test(flavor = "multi_thread"))]
 async fn p2_file_truncation_readonly() {
-    file_truncation_readonly(P2_FILE_TRUNCATION_READONLY_COMPONENT).await
+    run_with_readonly_testfile(P2_FILE_TRUNCATION_READONLY_COMPONENT).await
 }
 
-async fn file_truncation_readonly(component_path: &str) {
+async fn run_with_readonly_testfile(component_path: &str) {
     use std::path::PathBuf;
-    use wasmtime_wasi::{DirPerms, FilePerms};
+    use wasmtime_wasi::FsPerms;
 
-    let prefix = "wasi_components_truncation_readonly_ro_";
+    let prefix = "wasi_components_ro_";
     let tempdir = tempfile::Builder::new()
         .prefix(prefix)
         .tempdir()
         .expect("create readonly tempdir");
     const FILENAME: &str = "test.txt";
-    const EXPECTED_CONTENTS: &[u8] = b"truncation test file\n";
+    const EXPECTED_CONTENTS: &[u8] = b"read only test file\n";
     let mut file: PathBuf = PathBuf::from(tempdir.path());
     file.push(FILENAME);
-    std::fs::write(&file, EXPECTED_CONTENTS).expect("write truncation test file");
+    std::fs::write(&file, EXPECTED_CONTENTS).expect("write read only test file");
 
     run(component_path, |b| {
-        b.preopened_dir(
-            tempdir.path(),
-            "readonly",
-            DirPerms::READ | DirPerms::MUTATE,
-            FilePerms::READ,
-        )
-        .unwrap();
+        b.preopened_dir(tempdir.path(), "readonly", FsPerms::ReadOnly)
+            .unwrap();
     })
     .await
-    .expect("run p1_file_truncation_readonly guest");
+    .expect("run guest");
 
-    let contents = std::fs::read(&file).expect("read truncation test file");
+    let contents = std::fs::read(&file).expect("read read only test file");
     assert_eq!(EXPECTED_CONTENTS, contents);
+}
+
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn p1_file_hardlink_across_perms() {
+    run_with_readonly_testfile(P1_FILE_HARDLINK_ACROSS_PERMS_COMPONENT).await
+}
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn p2_file_hardlink_across_perms() {
+    run_with_readonly_testfile(P2_FILE_HARDLINK_ACROSS_PERMS_COMPONENT).await
+}
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn p1_file_rename_across_perms() {
+    run_with_readonly_testfile(P1_FILE_RENAME_ACROSS_PERMS_COMPONENT).await
+}
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn p2_file_rename_across_perms() {
+    run_with_readonly_testfile(P2_FILE_RENAME_ACROSS_PERMS_COMPONENT).await
+}
+
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn p2_file_stream_not_permitted() {
+    file_stream_not_permitted(P2_FILE_STREAM_NOT_PERMITTED_COMPONENT).await
+}
+
+async fn file_stream_not_permitted(component_path: &str) {
+    use wasmtime_wasi::FsPerms;
+
+    let readonly = tempfile::Builder::new()
+        .prefix("wasi_components_stream_np_ro_")
+        .tempdir()
+        .expect("create readonly tempdir");
+
+    const RO_CONTENTS: &[u8] = b"stream permission test\n";
+    std::fs::write(readonly.path().join("stream-perms.txt"), RO_CONTENTS)
+        .expect("write readonly test file");
+
+    run(component_path, |b| {
+        b.preopened_dir(readonly.path(), "readonly", FsPerms::ReadOnly)
+            .unwrap();
+    })
+    .await
+    .expect("run p2_file_stream_not_permitted guest");
+}
+
+#[test_log::test(tokio::test(flavor = "multi_thread"))]
+async fn p2_clocks_zero_wait() {
+    run(P2_CLOCKS_ZERO_WAIT_COMPONENT, |_| {}).await.unwrap()
 }

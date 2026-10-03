@@ -5,7 +5,9 @@
 //! a single function.
 
 use cranelift_codegen::ir::{self, Block, ExceptionTag, Inst, Value};
-use cranelift_frontend::FunctionBuilder;
+use cranelift_entity::SecondaryMap;
+use cranelift_frontend::{FunctionBuilder, Variable};
+use smallvec::SmallVec;
 use std::vec::Vec;
 use wasmtime_environ::FrameStackShape;
 
@@ -58,6 +60,9 @@ pub enum ControlStackFrame {
         original_stack_size: usize,
         exit_is_branched_to: bool,
         blocktype: wasmparser::BlockType,
+        /// Whether the `else` block, when allocated lazily, should be marked
+        /// cold (from a branch hint that the condition is likely true).
+        else_is_cold: bool,
         /// Was the head of the `if` reachable?
         head_is_reachable: bool,
         /// What was the reachability at the end of the consequent?
@@ -264,6 +269,24 @@ pub struct FuncTranslationStacks {
     pub(crate) stack_shape: Vec<FrameStackShape>,
     /// A stack of active control flow operations at this point in the input wasm function.
     pub(crate) control_stack: Vec<ControlStackFrame>,
+    /// Maps a CLIF block representing a Wasm control-flow target to the
+    /// `Variable`s that hold its Wasm stack parameters.
+    ///
+    /// Rather than giving these blocks CLIF block parameters and passing the
+    /// Wasm operand stack values as block arguments when branching to them, we
+    /// represent each Wasm stack parameter as a `Variable`. When branching to
+    /// such a block we `def_var` the variables and emit an argument-less
+    /// branch; when we begin translating the block we `use_var` each variable
+    /// and push the results onto the operand stack. This lets
+    /// `cranelift-frontend`'s SSA construction decide whether a real block
+    /// parameter is actually needed (i.e. only when multiple predecessors pass
+    /// differing values) instead of pessimistically creating one for every
+    /// Wasm block.
+    ///
+    /// The only blocks with real CLIF block parameters are the entry block
+    /// (function parameters) and `try_table` catch blocks (the exception
+    /// payload, filled in by the exception ABI).
+    pub(crate) block_param_vars: SecondaryMap<Block, SmallVec<[Variable; 6]>>,
     /// Exception handler state, updated as we enter and exit
     /// `try_table` scopes and attached to each call that we make.
     pub(crate) handlers: HandlerState,
@@ -288,6 +311,7 @@ impl FuncTranslationStacks {
             stack: Vec::new(),
             stack_shape: Vec::new(),
             control_stack: Vec::new(),
+            block_param_vars: SecondaryMap::new(),
             handlers: HandlerState::default(),
             reachable: true,
         }
@@ -298,6 +322,7 @@ impl FuncTranslationStacks {
         debug_assert!(self.stack_shape.is_empty());
         debug_assert!(self.control_stack.is_empty());
         debug_assert!(self.handlers.is_empty());
+        self.block_param_vars.clear();
         self.reachable = true;
     }
 
@@ -429,13 +454,6 @@ impl FuncTranslationStacks {
         &self.stack[self.stack.len() - n..]
     }
 
-    /// Peek at the top `n` values on the stack in the order they were pushed.
-    pub(crate) fn peekn_mut(&mut self, n: usize) -> &mut [Value] {
-        self.ensure_length_is_at_least(n);
-        let len = self.stack.len();
-        &mut self.stack[len - n..]
-    }
-
     fn push_block_impl(
         &mut self,
         following_code: Block,
@@ -507,6 +525,7 @@ impl FuncTranslationStacks {
         num_param_types: usize,
         num_result_types: usize,
         blocktype: wasmparser::BlockType,
+        else_is_cold: bool,
     ) {
         debug_assert!(num_param_types <= self.stack.len());
         self.assert_debug_stack_is_synced();
@@ -541,6 +560,7 @@ impl FuncTranslationStacks {
             head_is_reachable: self.reachable,
             consequent_ends_reachable: None,
             blocktype,
+            else_is_cold,
         });
     }
 

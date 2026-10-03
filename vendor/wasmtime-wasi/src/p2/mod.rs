@@ -3,7 +3,7 @@
 //!
 //! This module provides a Wasmtime host implementation of WASI 0.2 (aka WASIp2
 //! aka Preview 2) and WASI 0.1 (aka WASIp1 aka Preview 1). WASI is implemented
-//! with the Rust crates [`tokio`] and [`cap-std`] primarily, meaning that
+//! with the Rust crates [`tokio`] and [`cap-primitives`] primarily, meaning that
 //! operations are implemented in terms of their native platform equivalents by
 //! default.
 //!
@@ -187,7 +187,7 @@
 //!
 //! [`wasmtime::component::bindgen!`]: https://docs.rs/wasmtime/latest/wasmtime/component/macro.bindgen.html
 //! [`tokio`]: https://crates.io/crates/tokio
-//! [`cap-std`]: https://crates.io/crates/cap-std
+//! [`cap-primitives`]: https://crates.io/crates/cap-primitives
 //! [`wasmtime-wasi-io`]: https://crates.io/crates/wasmtime-wasi-io
 //! [`wasi:cli/environment`]: bindings::cli::environment::Host
 //! [`wasi:cli/exit`]: bindings::cli::exit::Host
@@ -248,7 +248,8 @@ mod write_stream;
 pub use self::filesystem::{FsError, FsResult, ReaddirIterator};
 pub use self::network::{Network, SocketError, SocketResult};
 pub use self::stdio::IsATTY;
-pub(crate) use tcp::P2TcpStreamingState;
+pub use tcp::TcpSocket;
+pub use udp::UdpSocket;
 // These contents of wasmtime-wasi-io are re-exported by this module for compatibility:
 // they were originally defined in this module before being factored out, and many
 // users of this module depend on them at these names.
@@ -327,6 +328,8 @@ pub fn add_to_linker_with_options_async<T: WasiView>(
     bindings::filesystem::types::add_to_linker::<T, WasiFilesystem>(l, T::filesystem)?;
     bindings::sockets::tcp::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
     bindings::sockets::udp::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
+    bindings::sockets::udp_create_socket::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
+    bindings::sockets::ip_name_lookup::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
     Ok(())
 }
 
@@ -337,7 +340,6 @@ fn add_nonblocking_to_linker<'a, T: WasiView, O>(
 ) -> wasmtime::Result<()>
 where
     bindings::sockets::network::LinkOptions: From<&'a O>,
-    bindings::cli::exit::LinkOptions: From<&'a O>,
 {
     use crate::p2::bindings::{cli, clocks, filesystem, random, sockets};
 
@@ -348,7 +350,7 @@ where
     random::random::add_to_linker::<T, WasiRandom>(l, |t| &mut t.ctx().ctx.random)?;
     random::insecure::add_to_linker::<T, WasiRandom>(l, |t| &mut t.ctx().ctx.random)?;
     random::insecure_seed::add_to_linker::<T, WasiRandom>(l, |t| &mut t.ctx().ctx.random)?;
-    cli::exit::add_to_linker::<T, WasiCli>(l, &options.into(), T::cli)?;
+    cli::exit::add_to_linker::<T, WasiCli>(l, T::cli)?;
     cli::environment::add_to_linker::<T, WasiCli>(l, T::cli)?;
     cli::stdin::add_to_linker::<T, WasiCli>(l, T::cli)?;
     cli::stdout::add_to_linker::<T, WasiCli>(l, T::cli)?;
@@ -359,10 +361,8 @@ where
     cli::terminal_stdout::add_to_linker::<T, WasiCli>(l, T::cli)?;
     cli::terminal_stderr::add_to_linker::<T, WasiCli>(l, T::cli)?;
     sockets::tcp_create_socket::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
-    sockets::udp_create_socket::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
     sockets::instance_network::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
     sockets::network::add_to_linker::<T, WasiSockets>(l, &options.into(), T::sockets)?;
-    sockets::ip_name_lookup::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
     Ok(())
 }
 
@@ -468,6 +468,8 @@ pub fn add_to_linker_with_options_sync<T: WasiView>(
     bindings::sync::filesystem::types::add_to_linker::<T, WasiFilesystem>(l, T::filesystem)?;
     bindings::sync::sockets::tcp::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
     bindings::sync::sockets::udp::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
+    bindings::sync::sockets::udp_create_socket::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
+    bindings::sync::sockets::ip_name_lookup::add_to_linker::<T, WasiSockets>(l, T::sockets)?;
     Ok(())
 }
 

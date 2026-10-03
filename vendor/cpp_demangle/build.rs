@@ -126,14 +126,13 @@ fn generate_compatibility_tests_from_libiberty() -> io::Result<()> {
         "
 extern crate cpp_demangle;
 extern crate diff;
-use std::fmt::Write;
 "
     )?;
 
     // The set of libiberty tests that pass. This should only ever grow!
     let libiberty_passing_tests = {
         let mut s: HashSet<_> = (0..86).collect();
-        s.extend(87..89);
+        s.extend(87..90);
         s.extend(91..93);
         s.extend(94..113);
         s.extend(115..118);
@@ -245,12 +244,14 @@ fn test_libiberty_demangle_{}_() {{
         Err(e) => panic!("Should parse mangled symbol {{}}", e),
     }};
 
-    let mut actual = String::new();
-    if let Err(e) = write!(&mut actual, "{{}}", sym) {{
-        panic!("Error while demangling '{{}}': {{}}",
-               mangled_str,
-               e);
-    }}
+    let actual = match sym.demangle() {{
+        Ok(a) => a,
+        Err(e) => {{
+            panic!("Error while demangling '{{}}': {{}}",
+                   mangled_str,
+                   e);
+        }}
+    }};
 
     println!("     Expect demangled symbol: {{}}", expected);
     println!("Actually demangled symbol as: {{}}", actual);
@@ -282,7 +283,7 @@ fn test_libiberty_demangle_{}_() {{
         println!("");
     }}
 
-    assert_eq!(expected, actual);
+    assert_eq!(*expected, actual);
 }}
 "###,
             cfg,

@@ -18,28 +18,40 @@ use core::marker::PhantomData;
 use core::ops::Range;
 use wasmtime_environ::error::Error;
 
-cfg_if::cfg_if! {
-    if #[cfg(not(feature = "std"))] {
+cfg_select! {
+    not(feature = "std") => {
         mod nostd;
         use nostd as imp;
         mod stackswitch;
-    } else if #[cfg(miri)] {
+    }
+    miri => {
         mod miri;
         use miri as imp;
-    } else if #[cfg(windows)] {
+    }
+    windows => {
         mod windows;
         use windows as imp;
-    } else if #[cfg(unix)] {
+    }
+    unix => {
         mod unix;
         use unix as imp;
         mod stackswitch;
-    } else {
-        compile_error!("fibers are not supported on this platform");
+    }
+    _ => {
+        mod nostd;
+        use nostd as imp;
+        mod stackswitch;
     }
 }
 
 /// Represents an execution stack to use for a fiber.
 pub struct FiberStack(imp::FiberStack);
+
+impl core::fmt::Debug for FiberStack {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("FiberStack").finish_non_exhaustive()
+    }
+}
 
 fn _assert_send_sync() {
     fn _assert_send<T: Send>() {}
@@ -171,11 +183,17 @@ impl<'a, Resume, Yield, Return> Fiber<'a, Resume, Yield, Return> {
     /// This function returns a `Fiber` which, when resumed, will execute `func`
     /// to completion. When desired the `func` can suspend itself via
     /// `Fiber::suspend`.
+    /// On error the provided `stack` is handed back to the caller (paired with
+    /// the error) so that it can be deallocated rather than leaked; the stack is
+    /// only consumed by this `Fiber` on success.
     pub fn new(
         stack: FiberStack,
         func: impl FnOnce(Resume, &mut Suspend<Resume, Yield, Return>) -> Return + 'a,
-    ) -> Result<Self> {
-        let inner = imp::Fiber::new(&stack.0, func)?;
+    ) -> Result<Self, (Error, FiberStack)> {
+        let inner = match imp::Fiber::new(&stack.0, func) {
+            Ok(inner) => inner,
+            Err(e) => return Err((e, stack)),
+        };
 
         Ok(Self {
             stack: Some(stack),
@@ -437,5 +455,81 @@ mod tests {
         }
         assert!(FiberStack::new(usize::MAX, true).is_err());
         assert!(FiberStack::new(usize::MAX, false).is_err());
+    }
+
+    #[test]
+    // Don't run under `std` -- we assert that the stack is page-aligned there.
+    #[cfg(not(feature = "std"))]
+    fn custom_stack() {
+        use super::RuntimeFiberStack;
+        use core::ops::Range;
+
+        struct CustomStack {
+            // `u128` to guarantee alignment.
+            buf: std::vec::Vec<u128>,
+        }
+        unsafe impl Send for CustomStack {}
+        unsafe impl Sync for CustomStack {}
+        unsafe impl RuntimeFiberStack for CustomStack {
+            fn top(&self) -> *mut u8 {
+                self.range().end as *mut u8
+            }
+            fn range(&self) -> Range<usize> {
+                let base = self.buf.as_ptr() as usize;
+                base..base + self.buf.len() * core::mem::size_of::<u128>()
+            }
+            fn guard_range(&self) -> Range<*mut u8> {
+                core::ptr::null_mut()..core::ptr::null_mut()
+            }
+        }
+
+        // A 1 MiB stack (65536 * 16 bytes).
+        let stack = FiberStack::from_custom(std::boxed::Box::new(CustomStack {
+            buf: std::vec![0u128; 1024 * 1024 / 16],
+        }))
+        .unwrap();
+        // A custom stack is not considered a `from_raw_parts` stack.
+        assert!(!stack.is_from_raw_parts());
+
+        let hit = Rc::new(Cell::new(false));
+        let hit2 = hit.clone();
+        let fiber = Fiber::<(), (), ()>::new(stack, move |_, s| {
+            hit2.set(true);
+            s.suspend(());
+            hit2.set(false);
+        })
+        .unwrap();
+        assert!(!hit.get());
+        // First resume runs up to the suspend point.
+        assert!(fiber.resume(()).is_err());
+        assert!(hit.get());
+        // Second resume runs to completion.
+        assert!(fiber.resume(()).is_ok());
+        assert!(!hit.get());
+
+        // The reclaimed stack still reports its range correctly.
+        let stack = fiber.into_stack();
+        assert!(stack.range().is_some());
+    }
+
+    #[test]
+    fn cross_thread_fiber() {
+        let fiber = Fiber::<(), (), ()>::new(fiber_stack(1024 * 1024), move |_, s| {
+            s.suspend(());
+        })
+        .unwrap();
+        assert!(fiber.resume(()).is_err());
+        let fiber = UnsafeSendSync(fiber);
+        std::thread::spawn(move || {
+            let fiber = fiber;
+            assert!(fiber.0.resume(()).is_ok());
+        })
+        .join()
+        .unwrap();
+
+        struct UnsafeSendSync<T>(T);
+
+        unsafe impl<T> Send for UnsafeSendSync<T> {}
+        unsafe impl<T> Sync for UnsafeSendSync<T> {}
     }
 }

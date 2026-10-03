@@ -1,12 +1,13 @@
 //! Implementation of string transcoding required by the component model.
 
+#[cfg(feature = "component-model-async")]
+use crate::bail_bug;
 use crate::component::Instance;
 #[cfg(feature = "component-model-async")]
 use crate::component::concurrent::WaitResult;
 use crate::prelude::*;
-use crate::runtime::component::RuntimeInstance;
 #[cfg(feature = "component-model-async")]
-use crate::runtime::component::concurrent::{ResourcePair, SuspensionTarget};
+use crate::runtime::component::concurrent::{ResourcePair, ResumeThread, SuspensionTarget};
 use crate::runtime::vm::component::{ComponentInstance, VMComponentContext};
 use crate::runtime::vm::{HostResultHasUnwindSentinel, VMStore, VmSafe};
 use core::cell::Cell;
@@ -341,6 +342,7 @@ unsafe fn utf16_to_utf8(
     src_len: usize,
     dst: *mut u8,
     dst_len: usize,
+    first_pass: u32,
 ) -> Result<SizePair> {
     let src = unsafe { slice::from_raw_parts(src, src_len) };
     let mut dst = unsafe { slice::from_raw_parts_mut(dst, dst_len) };
@@ -360,6 +362,12 @@ unsafe fn utf16_to_utf8(
 
     for ch in core::char::decode_utf16(src_iter) {
         let ch = ch.map_err(|_| format_err!("invalid utf16 encoding"))?;
+
+        // The spec mandates that the first pass of transcoding bails out on the
+        // first multibyte character.
+        if first_pass != 0 && u32::from(ch) >= 0x80 {
+            break;
+        }
 
         // If the destination doesn't have enough space for this character
         // then the loop is ended and this function will be called later with a
@@ -396,11 +404,19 @@ unsafe fn latin1_to_utf8(
     src_len: usize,
     dst: *mut u8,
     dst_len: usize,
+    first_pass: u32,
 ) -> Result<SizePair> {
     let src = unsafe { slice::from_raw_parts(src, src_len) };
     let dst = unsafe { slice::from_raw_parts_mut(dst, dst_len) };
     assert_no_overlap(src, dst);
-    let (read, written) = encoding_rs::mem::convert_latin1_to_utf8_partial(src, dst);
+    // The spec mandates that this transcoding in the first pass halts when a
+    // multi-byte utf8 code point is encountered, so handle that here.
+    let stop = if first_pass != 0 {
+        src.iter().position(|i| *i >= 0x80).unwrap_or(src.len())
+    } else {
+        src.len()
+    };
+    let (read, written) = encoding_rs::mem::convert_latin1_to_utf8_partial(&src[..stop], dst);
     log::trace!("latin1-to-utf8 {src_len}/{dst_len} => ({read}, {written})");
     Ok(SizePair {
         src_read: read,
@@ -652,12 +668,6 @@ fn resource_transfer_borrow(
     instance.resource_transfer_borrow(store, src_idx, src_table, dst_table)
 }
 
-fn trap(_store: &mut dyn VMStore, _instance: Instance, code: u32) -> Result<()> {
-    Err(wasmtime_environ::Trap::from_u8(u8::try_from(code).unwrap())
-        .unwrap()
-        .into())
-}
-
 fn enter_sync_call(
     store: &mut dyn VMStore,
     instance: Instance,
@@ -666,21 +676,15 @@ fn enter_sync_call(
     callee_instance: u32,
 ) -> Result<()> {
     store.enter_guest_sync_call(
-        Some(RuntimeInstance {
-            instance: instance.id().instance(),
-            index: RuntimeComponentInstanceIndex::from_u32(caller_instance),
-        }),
+        Some(instance.runtime_instance(RuntimeComponentInstanceIndex::from_u32(caller_instance))),
         callee_async != 0,
-        RuntimeInstance {
-            instance: instance.id().instance(),
-            index: RuntimeComponentInstanceIndex::from_u32(callee_instance),
-        },
+        instance.runtime_instance(RuntimeComponentInstanceIndex::from_u32(callee_instance)),
     )
 }
 
 fn exit_sync_call(store: &mut dyn VMStore, instance: Instance) -> Result<()> {
     store
-        .component_resource_tables(Some(instance))
+        .component_resource_tables(Some(instance))?
         .validate_scope_exit()?;
     store.exit_guest_sync_call()
 }
@@ -693,10 +697,7 @@ fn backpressure_modify(
     increment: u8,
 ) -> Result<()> {
     store.backpressure_modify(
-        RuntimeInstance {
-            instance: instance.id().instance(),
-            index: RuntimeComponentInstanceIndex::from_u32(caller_instance),
-        },
+        instance.runtime_instance(RuntimeComponentInstanceIndex::from_u32(caller_instance)),
         |old| {
             if increment != 0 {
                 old.checked_add(1)
@@ -797,24 +798,6 @@ fn waitable_join(
 }
 
 #[cfg(feature = "component-model-async")]
-fn thread_yield(
-    store: &mut dyn VMStore,
-    instance: Instance,
-    caller_instance: u32,
-    cancellable: u8,
-) -> Result<bool> {
-    instance
-        .suspension_intrinsic(
-            store,
-            RuntimeComponentInstanceIndex::from_u32(caller_instance),
-            cancellable != 0,
-            true,
-            SuspensionTarget::None,
-        )
-        .map(|r| r == WaitResult::Cancelled)
-}
-
-#[cfg(feature = "component-model-async")]
 fn subtask_drop(
     store: &mut dyn VMStore,
     instance: Instance,
@@ -896,7 +879,7 @@ unsafe fn sync_start(
             callback.cast::<crate::vm::VMFuncRef>(),
             NonNull::new(callee).unwrap().cast::<crate::vm::VMFuncRef>(),
             param_count,
-            storage.cast::<std::mem::MaybeUninit<crate::ValRaw>>(),
+            storage.cast::<core::mem::MaybeUninit<crate::ValRaw>>(),
             storage_len,
         )
     }
@@ -1036,13 +1019,14 @@ fn future_read(
 fn future_cancel_write(
     store: &mut dyn VMStore,
     instance: Instance,
-    _caller_instance: u32,
+    caller_instance: u32,
     ty: u32,
     async_: u8,
     writer: u32,
 ) -> Result<u32> {
     instance.future_cancel_write(
         store,
+        RuntimeComponentInstanceIndex::from_u32(caller_instance),
         TypeFutureTableIndex::from_u32(ty),
         async_ != 0,
         writer,
@@ -1053,13 +1037,14 @@ fn future_cancel_write(
 fn future_cancel_read(
     store: &mut dyn VMStore,
     instance: Instance,
-    _caller_instance: u32,
+    caller_instance: u32,
     ty: u32,
     async_: u8,
     reader: u32,
 ) -> Result<u32> {
     instance.future_cancel_read(
         store,
+        RuntimeComponentInstanceIndex::from_u32(caller_instance),
         TypeFutureTableIndex::from_u32(ty),
         async_ != 0,
         reader,
@@ -1150,13 +1135,14 @@ fn stream_read(
 fn stream_cancel_write(
     store: &mut dyn VMStore,
     instance: Instance,
-    _caller_instance: u32,
+    caller_instance: u32,
     ty: u32,
     async_: u8,
     writer: u32,
 ) -> Result<u32> {
     instance.stream_cancel_write(
         store,
+        RuntimeComponentInstanceIndex::from_u32(caller_instance),
         TypeStreamTableIndex::from_u32(ty),
         async_ != 0,
         writer,
@@ -1167,13 +1153,14 @@ fn stream_cancel_write(
 fn stream_cancel_read(
     store: &mut dyn VMStore,
     instance: Instance,
-    _caller_instance: u32,
+    caller_instance: u32,
     ty: u32,
     async_: u8,
     reader: u32,
 ) -> Result<u32> {
     instance.stream_cancel_read(
         store,
+        RuntimeComponentInstanceIndex::from_u32(caller_instance),
         TypeStreamTableIndex::from_u32(ty),
         async_ != 0,
         reader,
@@ -1312,27 +1299,6 @@ fn error_context_drop(
 }
 
 #[cfg(feature = "component-model-async")]
-fn context_get(
-    store: &mut dyn VMStore,
-    instance: Instance,
-    _caller_instance: u32,
-    slot: u32,
-) -> Result<u32> {
-    instance.context_get(store, slot)
-}
-
-#[cfg(feature = "component-model-async")]
-fn context_set(
-    store: &mut dyn VMStore,
-    instance: Instance,
-    _caller_instance: u32,
-    slot: u32,
-    val: u32,
-) -> Result<()> {
-    instance.context_set(store, slot, val)
-}
-
-#[cfg(feature = "component-model-async")]
 fn thread_index(store: &mut dyn VMStore, instance: Instance) -> Result<u32> {
     instance.thread_index(store)
 }
@@ -1358,41 +1324,22 @@ fn thread_new_indirect(
 }
 
 #[cfg(feature = "component-model-async")]
-fn thread_suspend_to_suspended(
+fn thread_resume_later(
     store: &mut dyn VMStore,
     instance: Instance,
-    caller: u32,
-    cancellable: u8,
+    caller_instance: u32,
     thread_idx: u32,
-) -> Result<bool> {
-    instance
-        .suspension_intrinsic(
-            store,
-            RuntimeComponentInstanceIndex::from_u32(caller),
-            cancellable != 0,
-            false,
-            SuspensionTarget::SomeSuspended(thread_idx),
-        )
-        .map(|r| r == WaitResult::Cancelled)
-}
+) -> Result<()> {
+    if !instance.resume_thread(
+        store,
+        RuntimeComponentInstanceIndex::from_u32(caller_instance),
+        thread_idx,
+        ResumeThread::ResumeLater,
+    )? {
+        bail_bug!("resumed thread should have been ready");
+    }
 
-#[cfg(feature = "component-model-async")]
-fn thread_suspend_to(
-    store: &mut dyn VMStore,
-    instance: Instance,
-    caller: u32,
-    cancellable: u8,
-    thread_idx: u32,
-) -> Result<bool> {
-    instance
-        .suspension_intrinsic(
-            store,
-            RuntimeComponentInstanceIndex::from_u32(caller),
-            cancellable != 0,
-            false,
-            SuspensionTarget::Some(thread_idx),
-        )
-        .map(|r| r == WaitResult::Cancelled)
+    Ok(())
 }
 
 #[cfg(feature = "component-model-async")]
@@ -1414,23 +1361,44 @@ fn thread_suspend(
 }
 
 #[cfg(feature = "component-model-async")]
-fn thread_unsuspend(
+fn thread_yield(
     store: &mut dyn VMStore,
     instance: Instance,
     caller_instance: u32,
-    thread_idx: u32,
-) -> Result<()> {
-    instance.resume_thread(
-        store,
-        RuntimeComponentInstanceIndex::from_u32(caller_instance),
-        thread_idx,
-        false,
-        false,
-    )
+    cancellable: u8,
+) -> Result<bool> {
+    instance
+        .suspension_intrinsic(
+            store,
+            RuntimeComponentInstanceIndex::from_u32(caller_instance),
+            cancellable != 0,
+            true,
+            SuspensionTarget::None,
+        )
+        .map(|r| r == WaitResult::Cancelled)
 }
 
 #[cfg(feature = "component-model-async")]
-fn thread_yield_to_suspended(
+fn thread_suspend_then_resume(
+    store: &mut dyn VMStore,
+    instance: Instance,
+    caller: u32,
+    cancellable: u8,
+    thread_idx: u32,
+) -> Result<bool> {
+    instance
+        .suspension_intrinsic(
+            store,
+            RuntimeComponentInstanceIndex::from_u32(caller),
+            cancellable != 0,
+            false,
+            SuspensionTarget::Resume(thread_idx),
+        )
+        .map(|r| r == WaitResult::Cancelled)
+}
+
+#[cfg(feature = "component-model-async")]
+fn thread_yield_then_resume(
     store: &mut dyn VMStore,
     instance: Instance,
     caller_instance: u32,
@@ -1443,7 +1411,45 @@ fn thread_yield_to_suspended(
             RuntimeComponentInstanceIndex::from_u32(caller_instance),
             cancellable != 0,
             true,
-            SuspensionTarget::SomeSuspended(thread_idx),
+            SuspensionTarget::Resume(thread_idx),
+        )
+        .map(|r| r == WaitResult::Cancelled)
+}
+
+#[cfg(feature = "component-model-async")]
+fn thread_suspend_then_promote(
+    store: &mut dyn VMStore,
+    instance: Instance,
+    caller: u32,
+    cancellable: u8,
+    thread_idx: u32,
+) -> Result<bool> {
+    instance
+        .suspension_intrinsic(
+            store,
+            RuntimeComponentInstanceIndex::from_u32(caller),
+            cancellable != 0,
+            false,
+            SuspensionTarget::Promote(thread_idx),
+        )
+        .map(|r| r == WaitResult::Cancelled)
+}
+
+#[cfg(feature = "component-model-async")]
+fn thread_yield_then_promote(
+    store: &mut dyn VMStore,
+    instance: Instance,
+    caller: u32,
+    cancellable: u8,
+    thread_idx: u32,
+) -> Result<bool> {
+    instance
+        .suspension_intrinsic(
+            store,
+            RuntimeComponentInstanceIndex::from_u32(caller),
+            cancellable != 0,
+            true,
+            SuspensionTarget::Promote(thread_idx),
         )
         .map(|r| r == WaitResult::Cancelled)
 }

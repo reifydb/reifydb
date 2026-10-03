@@ -53,7 +53,6 @@ use wasmtime_environ::ModuleInternedTypeIndex;
 mod always_mut;
 #[cfg(feature = "component-model")]
 pub mod component;
-mod const_expr;
 mod export;
 mod gc;
 mod imports;
@@ -91,6 +90,9 @@ pub(crate) mod interpreter_disabled;
 #[cfg(not(feature = "pulley"))]
 pub(crate) use interpreter_disabled as interpreter;
 
+#[cfg(feature = "component-model-async")]
+pub(crate) use sys::{component_async_tls_get, component_async_tls_set};
+
 #[cfg(feature = "debug-builtins")]
 pub use wasmtime_jit_debug::gdb_jit_int::GdbJitImageRegistration;
 
@@ -100,12 +102,11 @@ pub use crate::runtime::vm::gc::*;
 pub use crate::runtime::vm::imports::Imports;
 pub use crate::runtime::vm::instance::{
     GcHeapAllocationIndex, Instance, InstanceAllocationRequest, InstanceAllocator, InstanceHandle,
-    MemoryAllocationIndex, OnDemandInstanceAllocator, TableAllocationIndex, initialize_instance,
+    MemoryAllocationIndex, OnDemandInstanceAllocator, TableAllocationIndex,
 };
 #[cfg(feature = "pooling-allocator")]
 pub use crate::runtime::vm::instance::{
-    InstanceLimits, PoolConcurrencyLimitError, PoolingAllocatorMetrics, PoolingInstanceAllocator,
-    PoolingInstanceAllocatorConfig,
+    PoolConcurrencyLimitError, PoolingAllocatorMetrics, PoolingInstanceAllocator,
 };
 pub use crate::runtime::vm::interpreter::*;
 pub use crate::runtime::vm::memory::{
@@ -125,10 +126,19 @@ pub use crate::runtime::vm::throw::*;
 pub use crate::runtime::vm::traphandlers::*;
 #[cfg(feature = "component-model")]
 pub use crate::runtime::vm::vmcontext::VMArrayCallFunction;
+#[cfg(feature = "gc-copying")]
+pub use crate::runtime::vm::vmcontext::VMCopyingHeapData;
+#[cfg(feature = "gc-drc")]
+pub use crate::runtime::vm::vmcontext::VMDrcHeapData;
+#[cfg(feature = "component-model-async")]
+pub use crate::runtime::vm::vmcontext::VMLazyThread;
+#[cfg(feature = "gc-null")]
+pub use crate::runtime::vm::vmcontext::VMNullHeapData;
 pub use crate::runtime::vm::vmcontext::{
-    VMArrayCallHostFuncContext, VMContext, VMFuncRef, VMFunctionImport, VMGlobalDefinition,
-    VMGlobalImport, VMGlobalKind, VMMemoryDefinition, VMMemoryImport, VMOpaqueContext,
-    VMStoreContext, VMTableImport, VMTagImport, VMWasmCallFunction, ValRaw,
+    VMArrayCallHostFuncContext, VMCommonStackInformation, VMContRef, VMContext, VMFuncRef,
+    VMFunctionImport, VMGlobalDefinition, VMGlobalImport, VMGlobalKind, VMHostArray,
+    VMMemoryDefinition, VMMemoryImport, VMOpaqueContext, VMStackLimits, VMStoreContext,
+    VMTableImport, VMTagImport, VMWasmCallFunction, ValRaw,
 };
 #[cfg(has_custom_sync)]
 pub(crate) use sys::capi;
@@ -151,22 +161,18 @@ mod cow_disabled;
 #[cfg(has_virtual_memory)]
 mod mmap;
 
-#[cfg(any(feature = "async", feature = "gc"))]
-mod async_yield;
-#[cfg(any(feature = "async", feature = "gc"))]
-pub use crate::runtime::vm::async_yield::*;
-
-#[cfg(feature = "gc-null")]
+#[allow(unused, reason = "hard to cfg on/off, weird feature interactions")]
 mod send_sync_unsafe_cell;
-#[cfg(feature = "gc-null")]
+#[allow(unused, reason = "hard to cfg on/off, weird feature interactions")]
 pub use send_sync_unsafe_cell::SendSyncUnsafeCell;
 
-cfg_if::cfg_if! {
-    if #[cfg(has_virtual_memory)] {
+cfg_select! {
+    has_virtual_memory => {
         pub use crate::runtime::vm::byte_count::*;
         pub use crate::runtime::vm::mmap::{Mmap, MmapOffset};
         pub use self::cow::{MemoryImage, MemoryImageSlot, ModuleMemoryImages};
-    } else {
+    }
+    _ => {
         pub use self::cow_disabled::{MemoryImage, MemoryImageSlot, ModuleMemoryImages};
     }
 }
@@ -215,15 +221,16 @@ pub unsafe trait VMStore: 'static {
         &mut self,
     ) -> (Option<StoreResourceLimiter<'_>>, &mut StoreOpaque);
 
+    /// Invoke this store's configured call hook, if any, to notify the
+    /// embedder of a transition between the host and WebAssembly.
+    #[cfg(feature = "call-hook")]
+    fn call_hook(&mut self, s: crate::CallHook) -> Result<()>;
+
     /// Callback invoked whenever an instance observes a new epoch
     /// number. Cannot fail; cooperative epoch-based yielding is
     /// completely semantically transparent. Returns the new deadline.
     #[cfg(target_has_atomic = "64")]
     fn new_epoch_updated_deadline(&mut self) -> Result<crate::UpdateDeadline>;
-
-    /// Metadata required for resources for the component model.
-    #[cfg(feature = "component-model")]
-    fn component_task_state_mut(&mut self) -> &mut crate::component::store::ComponentTaskState;
 
     #[cfg(feature = "component-model-async")]
     fn component_async_store(
@@ -297,26 +304,48 @@ pub enum ModuleRuntimeInfo {
 /// cases where a purpose-built environ::Module is used and a full
 /// CompiledModule does not exist (for example, for tests or for the
 /// default-callee instance).
-#[derive(Clone)]
 pub struct BareModuleInfo {
     module: Arc<wasmtime_environ::Module>,
     offsets: VMOffsets<HostPtr>,
-    _registered_type: Option<RegisteredType>,
+    _registered_types: TryVec<RegisteredType>,
 }
 
 impl ModuleRuntimeInfo {
     pub(crate) fn bare(module: Arc<wasmtime_environ::Module>) -> Result<Self, OutOfMemory> {
-        ModuleRuntimeInfo::bare_with_registered_type(module, None)
+        ModuleRuntimeInfo::new_bare(module, TryVec::new())
     }
 
-    pub(crate) fn bare_with_registered_type(
+    /// Same as [`ModuleRuntimeInfo::bare`], but additionally keeps
+    /// `registered_types` alive for as long as the resulting instance.
+    ///
+    /// This is the choke point at which a host-allocated table or tag holds
+    /// `VMSharedTypeIndex`es alive on behalf of a store, so it is where we
+    /// check that those types belong to that store's engine. Returns an error
+    /// if any of `registered_types` was not registered with `engine`.
+    pub(crate) fn bare_with_registered_types(
         module: Arc<wasmtime_environ::Module>,
-        registered_type: Option<RegisteredType>,
+        engine: &crate::Engine,
+        registered_types: impl IntoIterator<Item = RegisteredType>,
+    ) -> Result<Self> {
+        let mut types = TryVec::new();
+        for ty in registered_types {
+            crate::ensure!(
+                crate::Engine::same(engine, ty.engine()),
+                "type used with wrong engine"
+            );
+            types.push(ty)?;
+        }
+        Ok(ModuleRuntimeInfo::new_bare(module, types)?)
+    }
+
+    fn new_bare(
+        module: Arc<wasmtime_environ::Module>,
+        registered_types: TryVec<RegisteredType>,
     ) -> Result<Self, OutOfMemory> {
         let info = try_new(BareModuleInfo {
             offsets: VMOffsets::new(HostPtr, &module),
             module,
-            _registered_type: registered_type,
+            _registered_types: registered_types,
         })?;
         Ok(ModuleRuntimeInfo::Bare(info))
     }

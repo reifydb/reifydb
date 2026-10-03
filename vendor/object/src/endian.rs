@@ -1,8 +1,11 @@
 //! Types for compile-time and run-time endianness.
 
+use crate::constants::Wrap;
 use crate::pod::Pod;
+use core::convert::TryInto;
 use core::fmt::{self, Debug};
 use core::marker::PhantomData;
+use core::num::TryFromIntError;
 
 /// A trait for using an endianness specification.
 ///
@@ -212,11 +215,7 @@ impl Default for LittleEndian {
 impl Endian for LittleEndian {
     #[inline]
     fn from_big_endian(big_endian: bool) -> Option<Self> {
-        if big_endian {
-            None
-        } else {
-            Some(LittleEndian)
-        }
+        if big_endian { None } else { Some(LittleEndian) }
     }
 
     #[inline]
@@ -243,11 +242,7 @@ impl Default for BigEndian {
 impl Endian for BigEndian {
     #[inline]
     fn from_big_endian(big_endian: bool) -> Option<Self> {
-        if big_endian {
-            Some(BigEndian)
-        } else {
-            None
-        }
+        if big_endian { Some(BigEndian) } else { None }
     }
 
     #[inline]
@@ -278,6 +273,7 @@ pub type NativeEndian = BigEndian;
 #[doc(hidden)]
 pub const NativeEndian: BigEndian = BigEndian;
 
+#[cfg_attr(not(feature = "read"), allow(unused_macros))]
 macro_rules! unsafe_impl_endian_pod {
     ($($struct_name:ident),+ $(,)?) => {
         $(
@@ -313,172 +309,240 @@ pub type I64Bytes<E> = I64<E>;
 /// An unaligned `u16` value with an externally specified endianness of type `E`.
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct U16<E: Endian>([u8; 2], PhantomData<E>);
+pub struct U16<E: Endian, T = u16>([u8; 2], PhantomData<(E, T)>);
 
 impl<E: Endian> U16<E> {
     /// Construct a new value given bytes that already have the required endianness.
     pub const fn from_bytes(n: [u8; 2]) -> Self {
         Self(n, PhantomData)
     }
+}
 
+impl<E: Endian, T: Wrap<Inner = u16>> U16<E, T> {
     /// Construct a new value given a native endian value.
-    pub fn new(e: E, n: u16) -> Self {
-        Self(e.write_u16(n), PhantomData)
+    pub fn new(e: E, n: T) -> Self {
+        Self(e.write_u16(n.into_inner()), PhantomData)
     }
 
     /// Return the value as a native endian value.
-    pub fn get(self, e: E) -> u16 {
-        e.read_u16(self.0)
+    pub fn get(self, e: E) -> T {
+        T::from_inner(e.read_u16(self.0))
     }
 
     /// Set the value given a native endian value.
-    pub fn set(&mut self, e: E, n: u16) {
-        self.0 = e.write_u16(n);
+    pub fn set(&mut self, e: E, n: T) {
+        self.0 = e.write_u16(n.into_inner());
     }
 }
 
 /// An unaligned `u32` value with an externally specified endianness of type `E`.
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct U32<E: Endian>([u8; 4], PhantomData<E>);
+pub struct U32<E: Endian, T = u32>([u8; 4], PhantomData<(E, T)>);
 
 impl<E: Endian> U32<E> {
     /// Construct a new value given bytes that already have the required endianness.
     pub const fn from_bytes(n: [u8; 4]) -> Self {
         Self(n, PhantomData)
     }
+}
 
+impl<E: Endian, T: Wrap<Inner = u32>> U32<E, T> {
     /// Construct a new value given a native endian value.
-    pub fn new(e: E, n: u32) -> Self {
-        Self(e.write_u32(n), PhantomData)
+    pub fn new(e: E, n: T) -> Self {
+        Self(e.write_u32(n.into_inner()), PhantomData)
     }
 
     /// Return the value as a native endian value.
-    pub fn get(self, e: E) -> u32 {
-        e.read_u32(self.0)
+    pub fn get(self, e: E) -> T {
+        T::from_inner(e.read_u32(self.0))
     }
 
     /// Set the value given a native endian value.
-    pub fn set(&mut self, e: E, n: u32) {
-        self.0 = e.write_u32(n);
+    pub fn set(&mut self, e: E, n: T) {
+        self.0 = e.write_u32(n.into_inner());
+    }
+}
+
+impl<E: Endian, T: Wrap<Inner = u64>> U32<E, T> {
+    /// Construct a new value given a native endian `u64` value.
+    pub fn new_u64(e: E, n: T) -> Result<Self, TryFromIntError> {
+        Ok(Self(e.write_u32(n.into_inner().try_into()?), PhantomData))
+    }
+
+    /// Construct a new value given a native endian `u64` value, truncating to `u32`.
+    pub fn new_u64_truncate(e: E, n: T) -> Self {
+        Self(e.write_u32(n.into_inner() as u32), PhantomData)
+    }
+
+    /// Return the value as a native endian `u64` value.
+    pub fn get_u64(self, e: E) -> T {
+        T::from_inner(u64::from(e.read_u32(self.0)))
+    }
+
+    /// Set the value given a native endian `u64` value.
+    pub fn set_u64(&mut self, e: E, n: T) -> Result<(), TryFromIntError> {
+        self.0 = e.write_u32(n.into_inner().try_into()?);
+        Ok(())
+    }
+
+    /// Set the value given a native endian `u64` value, truncating to `u32`.
+    pub fn set_u64_truncate(&mut self, e: E, n: T) {
+        self.0 = e.write_u32(n.into_inner() as u32);
     }
 }
 
 /// An unaligned `u64` value with an externally specified endianness of type `E`.
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct U64<E: Endian>([u8; 8], PhantomData<E>);
+pub struct U64<E: Endian, T = u64>([u8; 8], PhantomData<(E, T)>);
 
 impl<E: Endian> U64<E> {
     /// Construct a new value given bytes that already have the required endianness.
     pub const fn from_bytes(n: [u8; 8]) -> Self {
         Self(n, PhantomData)
     }
+}
 
+impl<E: Endian, T: Wrap<Inner = u64>> U64<E, T> {
     /// Construct a new value given a native endian value.
-    pub fn new(e: E, n: u64) -> Self {
-        Self(e.write_u64(n), PhantomData)
+    pub fn new(e: E, n: T) -> Self {
+        Self(e.write_u64(n.into_inner()), PhantomData)
     }
 
     /// Return the value as a native endian value.
-    pub fn get(self, e: E) -> u64 {
-        e.read_u64(self.0)
+    pub fn get(self, e: E) -> T {
+        T::from_inner(e.read_u64(self.0))
     }
 
     /// Set the value given a native endian value.
-    pub fn set(&mut self, e: E, n: u64) {
-        self.0 = e.write_u64(n);
+    pub fn set(&mut self, e: E, n: T) {
+        self.0 = e.write_u64(n.into_inner());
     }
 }
 
 /// An unaligned `i16` value with an externally specified endianness of type `E`.
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct I16<E: Endian>([u8; 2], PhantomData<E>);
+pub struct I16<E: Endian, T = i16>([u8; 2], PhantomData<(E, T)>);
 
 impl<E: Endian> I16<E> {
     /// Construct a new value given bytes that already have the required endianness.
     pub const fn from_bytes(n: [u8; 2]) -> Self {
         Self(n, PhantomData)
     }
+}
 
+impl<E: Endian, T: Wrap<Inner = i16>> I16<E, T> {
     /// Construct a new value given a native endian value.
-    pub fn new(e: E, n: i16) -> Self {
-        Self(e.write_i16(n), PhantomData)
+    pub fn new(e: E, n: T) -> Self {
+        Self(e.write_i16(n.into_inner()), PhantomData)
     }
 
     /// Return the value as a native endian value.
-    pub fn get(self, e: E) -> i16 {
-        e.read_i16(self.0)
+    pub fn get(self, e: E) -> T {
+        T::from_inner(e.read_i16(self.0))
     }
 
     /// Set the value given a native endian value.
-    pub fn set(&mut self, e: E, n: i16) {
-        self.0 = e.write_i16(n);
+    pub fn set(&mut self, e: E, n: T) {
+        self.0 = e.write_i16(n.into_inner());
     }
 }
 
 /// An unaligned `i32` value with an externally specified endianness of type `E`.
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct I32<E: Endian>([u8; 4], PhantomData<E>);
+pub struct I32<E: Endian, T = i32>([u8; 4], PhantomData<(E, T)>);
 
 impl<E: Endian> I32<E> {
     /// Construct a new value given bytes that already have the required endianness.
     pub const fn from_bytes(n: [u8; 4]) -> Self {
         Self(n, PhantomData)
     }
+}
 
+impl<E: Endian, T: Wrap<Inner = i32>> I32<E, T> {
     /// Construct a new value given a native endian value.
-    pub fn new(e: E, n: i32) -> Self {
-        Self(e.write_i32(n), PhantomData)
+    pub fn new(e: E, n: T) -> Self {
+        Self(e.write_i32(n.into_inner()), PhantomData)
     }
 
     /// Return the value as a native endian value.
-    pub fn get(self, e: E) -> i32 {
-        e.read_i32(self.0)
+    pub fn get(self, e: E) -> T {
+        T::from_inner(e.read_i32(self.0))
     }
 
     /// Set the value given a native endian value.
-    pub fn set(&mut self, e: E, n: i32) {
-        self.0 = e.write_i32(n);
+    pub fn set(&mut self, e: E, n: T) {
+        self.0 = e.write_i32(n.into_inner());
+    }
+}
+
+impl<E: Endian, T: Wrap<Inner = i64>> I32<E, T> {
+    /// Construct a new value given a native endian `i64` value.
+    pub fn new_i64(e: E, n: T) -> Result<Self, TryFromIntError> {
+        Ok(Self(e.write_i32(n.into_inner().try_into()?), PhantomData))
+    }
+
+    /// Construct a new value given a native endian `i64` value, truncating to `i32`.
+    pub fn new_i64_truncate(e: E, n: T) -> Self {
+        Self(e.write_i32(n.into_inner() as i32), PhantomData)
+    }
+
+    /// Return the value as a native endian `i64` value.
+    pub fn get_i64(self, e: E) -> T {
+        T::from_inner(i64::from(e.read_i32(self.0)))
+    }
+
+    /// Set the value given a native endian `i64` value.
+    pub fn set_i64(&mut self, e: E, n: T) -> Result<(), TryFromIntError> {
+        self.0 = e.write_i32(n.into_inner().try_into()?);
+        Ok(())
+    }
+
+    /// Set the value given a native endian `i64` value, truncating to `i32`.
+    pub fn set_i64_truncate(&mut self, e: E, n: T) {
+        self.0 = e.write_i32(n.into_inner() as i32);
     }
 }
 
 /// An unaligned `i64` value with an externally specified endianness of type `E`.
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
-pub struct I64<E: Endian>([u8; 8], PhantomData<E>);
+pub struct I64<E: Endian, T = i64>([u8; 8], PhantomData<(E, T)>);
 
 impl<E: Endian> I64<E> {
     /// Construct a new value given bytes that already have the required endianness.
     pub const fn from_bytes(n: [u8; 8]) -> Self {
         Self(n, PhantomData)
     }
+}
 
+impl<E: Endian, T: Wrap<Inner = i64>> I64<E, T> {
     /// Construct a new value given a native endian value.
-    pub fn new(e: E, n: i64) -> Self {
-        Self(e.write_i64(n), PhantomData)
+    pub fn new(e: E, n: T) -> Self {
+        Self(e.write_i64(n.into_inner()), PhantomData)
     }
 
     /// Return the value as a native endian value.
-    pub fn get(self, e: E) -> i64 {
-        e.read_i64(self.0)
+    pub fn get(self, e: E) -> T {
+        T::from_inner(e.read_i64(self.0))
     }
 
     /// Set the value given a native endian value.
-    pub fn set(&mut self, e: E, n: i64) {
-        self.0 = e.write_i64(n);
+    pub fn set(&mut self, e: E, n: T) {
+        self.0 = e.write_i64(n.into_inner());
     }
 }
 
-impl<E: Endian> fmt::Debug for U16<E> {
+impl<E: Endian, T> fmt::Debug for U16<E, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "U16({:02x}{:02x})", self.0[0], self.0[1],)
     }
 }
 
-impl<E: Endian> fmt::Debug for U32<E> {
+impl<E: Endian, T> fmt::Debug for U32<E, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -488,7 +552,7 @@ impl<E: Endian> fmt::Debug for U32<E> {
     }
 }
 
-impl<E: Endian> fmt::Debug for U64<E> {
+impl<E: Endian, T> fmt::Debug for U64<E, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -498,13 +562,13 @@ impl<E: Endian> fmt::Debug for U64<E> {
     }
 }
 
-impl<E: Endian> fmt::Debug for I16<E> {
+impl<E: Endian, T> fmt::Debug for I16<E, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "I16({:02x}{:02x})", self.0[0], self.0[1],)
     }
 }
 
-impl<E: Endian> fmt::Debug for I32<E> {
+impl<E: Endian, T> fmt::Debug for I32<E, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -514,7 +578,7 @@ impl<E: Endian> fmt::Debug for I32<E> {
     }
 }
 
-impl<E: Endian> fmt::Debug for I64<E> {
+impl<E: Endian, T> fmt::Debug for I64<E, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -524,8 +588,8 @@ impl<E: Endian> fmt::Debug for I64<E> {
     }
 }
 
-impl<E: FixedEndian> From<u16> for U16<E> {
-    fn from(val: u16) -> Self {
+impl<E: FixedEndian, T: Wrap<Inner = u16>> From<T> for U16<E, T> {
+    fn from(val: T) -> Self {
         Self::new(E::FIXED, val)
     }
 }
@@ -536,8 +600,8 @@ impl<E: FixedEndian> From<U16<E>> for u16 {
     }
 }
 
-impl<E: FixedEndian> From<u32> for U32<E> {
-    fn from(val: u32) -> Self {
+impl<E: FixedEndian, T: Wrap<Inner = u32>> From<T> for U32<E, T> {
+    fn from(val: T) -> Self {
         Self::new(E::FIXED, val)
     }
 }
@@ -548,8 +612,8 @@ impl<E: FixedEndian> From<U32<E>> for u32 {
     }
 }
 
-impl<E: FixedEndian> From<u64> for U64<E> {
-    fn from(val: u64) -> Self {
+impl<E: FixedEndian, T: Wrap<Inner = u64>> From<T> for U64<E, T> {
+    fn from(val: T) -> Self {
         Self::new(E::FIXED, val)
     }
 }
@@ -560,8 +624,8 @@ impl<E: FixedEndian> From<U64<E>> for u64 {
     }
 }
 
-impl<E: FixedEndian> From<i16> for I16<E> {
-    fn from(val: i16) -> Self {
+impl<E: FixedEndian, T: Wrap<Inner = i16>> From<T> for I16<E, T> {
+    fn from(val: T) -> Self {
         Self::new(E::FIXED, val)
     }
 }
@@ -572,8 +636,8 @@ impl<E: FixedEndian> From<I16<E>> for i16 {
     }
 }
 
-impl<E: FixedEndian> From<i32> for I32<E> {
-    fn from(val: i32) -> Self {
+impl<E: FixedEndian, T: Wrap<Inner = i32>> From<T> for I32<E, T> {
+    fn from(val: T) -> Self {
         Self::new(E::FIXED, val)
     }
 }
@@ -584,8 +648,8 @@ impl<E: FixedEndian> From<I32<E>> for i32 {
     }
 }
 
-impl<E: FixedEndian> From<i64> for I64<E> {
-    fn from(val: i64) -> Self {
+impl<E: FixedEndian, T: Wrap<Inner = i64>> From<T> for I64<E, T> {
+    fn from(val: T) -> Self {
         Self::new(E::FIXED, val)
     }
 }
@@ -596,4 +660,9 @@ impl<E: FixedEndian> From<I64<E>> for i64 {
     }
 }
 
-unsafe_impl_endian_pod!(U16, U32, U64, I16, I32, I64);
+unsafe impl<E: Endian, T: Copy + 'static> Pod for U16<E, T> {}
+unsafe impl<E: Endian, T: Copy + 'static> Pod for U32<E, T> {}
+unsafe impl<E: Endian, T: Copy + 'static> Pod for U64<E, T> {}
+unsafe impl<E: Endian, T: Copy + 'static> Pod for I16<E, T> {}
+unsafe impl<E: Endian, T: Copy + 'static> Pod for I32<E, T> {}
+unsafe impl<E: Endian, T: Copy + 'static> Pod for I64<E, T> {}

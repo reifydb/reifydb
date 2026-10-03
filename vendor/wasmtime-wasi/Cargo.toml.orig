@@ -26,18 +26,12 @@ tokio = { workspace = true,  features = ["time", "sync", "io-std", "io-util", "r
 bytes = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true, features = ["std", "attributes"] }
-cap-std = { workspace = true }
-cap-rand = { workspace = true }
-cap-fs-ext = { workspace = true }
-cap-net-ext = { workspace = true }
-cap-time-ext = { workspace = true }
-io-lifetimes = { workspace = true }
-fs-set-times = { workspace = true }
+public-cap-primitives = { version = "4.0.3", package = 'cap-primitives' }
 bitflags = { workspace = true }
 async-trait = { workspace = true }
-system-interface = { workspace = true}
 futures = { workspace = true }
 url = { workspace = true }
+rand = { workspace = true, features = ['std_rng', 'thread_rng'] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["time", "sync", "io-std", "io-util", "rt", "rt-multi-thread", "net", "macros", "fs"] }
@@ -51,20 +45,31 @@ env_logger = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { workspace = true, features = ["event", "fs", "net"] }
+rustix-linux-procfs = "0.1.1"
 
 [target.'cfg(windows)'.dependencies]
-io-extras = { workspace = true }
-windows-sys = { workspace = true }
 rustix = { workspace = true, features = ["event", "net"] }
+winx = "0.36.0"
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+workspace = true
+features = [
+  "Wdk_Storage_FileSystem",
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+  "Win32_System_IO",
+  "Win32_System_Ioctl",
+  "Win32_System_Performance",
+]
 
 [features]
-default = ["p1", "p2"]
+default = ["p1", "p2", "p3"]
 p0 = ["p1"]
 p1 = ["dep:wiggle", "p2"]
 p2 = ["wasmtime/component-model", "wasmtime/async"]
 p3 = [
     "wasmtime/component-model-async",
-    "wasmtime/component-model-async-bytes",
+    "wasmtime/component-model-bytes",
 ]
 
 [[test]]

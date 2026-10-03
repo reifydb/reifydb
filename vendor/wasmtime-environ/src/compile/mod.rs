@@ -5,7 +5,7 @@ use crate::error::Result;
 use crate::prelude::*;
 use crate::{
     DefinedFuncIndex, FlagValue, FuncKey, FunctionLoc, ObjectKind, PrimaryMap, StaticModuleIndex,
-    TripleExt, Tunables, WasmError, WasmFuncType, obj,
+    TripleExt, Tunables, WasmError, obj,
 };
 use object::write::{Object, SymbolId};
 use object::{Architecture, BinaryFormat, FileFlags};
@@ -261,38 +261,11 @@ pub trait Compiler: Send + Sync {
     ///
     /// The trampoline should save the necessary state to record the
     /// host-to-Wasm transition (e.g. registers used for fast stack walking).
-    fn compile_array_to_wasm_trampoline(
+    fn compile_trampoline(
         &self,
-        translation: &ModuleTranslation<'_>,
+        translation: Option<&ModuleTranslation<'_>>,
+        key: FuncKey,
         types: &ModuleTypesBuilder,
-        key: FuncKey,
-        symbol: &str,
-    ) -> Result<CompiledFunctionBody, CompileError>;
-
-    /// Compile a trampoline for a Wasm caller calling a array callee with the
-    /// given signature.
-    ///
-    /// The trampoline should save the necessary state to record the
-    /// Wasm-to-host transition (e.g. registers used for fast stack walking).
-    fn compile_wasm_to_array_trampoline(
-        &self,
-        wasm_func_ty: &WasmFuncType,
-        key: FuncKey,
-        symbol: &str,
-    ) -> Result<CompiledFunctionBody, CompileError>;
-
-    /// Creates a trampoline that can be used to call Wasmtime's implementation
-    /// of the builtin function specified by `index`.
-    ///
-    /// The trampoline created can technically have any ABI but currently has
-    /// the native ABI. This will then perform all the necessary duties of an
-    /// exit trampoline from wasm and then perform the actual dispatch to the
-    /// builtin function. Builtin functions in Wasmtime are stored in an array
-    /// in all `VMContext` pointers, so the call to the host is an indirect
-    /// call.
-    fn compile_wasm_to_builtin(
-        &self,
-        key: FuncKey,
         symbol: &str,
     ) -> Result<CompiledFunctionBody, CompileError>;
 
@@ -335,7 +308,7 @@ pub trait Compiler: Send + Sync {
         obj: &mut Object<'static>,
         funcs: &[(String, FuncKey, Box<dyn Any + Send + Sync>)],
         resolve_reloc: &dyn Fn(usize, FuncKey) -> usize,
-    ) -> Result<Vec<(SymbolId, FunctionLoc)>>;
+    ) -> Result<Vec<(Option<SymbolId>, FunctionLoc)>>;
 
     /// Creates a new `Object` file which is used to build the results of a
     /// compilation into.
@@ -348,12 +321,12 @@ pub trait Compiler: Send + Sync {
 
         let triple = self.triple();
         let (arch, flags) = match triple.architecture {
-            X86_32(_) => (Architecture::I386, 0),
-            X86_64 => (Architecture::X86_64, 0),
-            Arm(_) => (Architecture::Arm, 0),
-            Aarch64(_) => (Architecture::Aarch64, 0),
-            S390x => (Architecture::S390x, 0),
-            Riscv64(_) => (Architecture::Riscv64, 0),
+            X86_32(_) => (Architecture::I386, object::elf::FileFlags(0)),
+            X86_64 => (Architecture::X86_64, object::elf::FileFlags(0)),
+            Arm(_) => (Architecture::Arm, object::elf::FileFlags(0)),
+            Aarch64(_) => (Architecture::Aarch64, object::elf::FileFlags(0)),
+            S390x => (Architecture::S390x, object::elf::FileFlags(0)),
+            Riscv64(_) => (Architecture::Riscv64, object::elf::FileFlags(0)),
             // XXX: the `object` crate won't successfully build an object
             // with relocations and such if it doesn't know the
             // architecture, so just pretend we are riscv64. Yolo!
@@ -410,6 +383,10 @@ pub trait Compiler: Send + Sync {
                 | OperatingSystem::TvOS(_),
                 Architecture::Aarch64(..),
             ) => 0x4000,
+            // According to
+            // https://devblogs.microsoft.com/oldnewthing/20210510-00/?p=105200
+            // it seems like windows always use a 4k page size.
+            (OperatingSystem::Windows, Architecture::Aarch64(..)) => 0x1000,
             // 64 KB is the maximal page size (i.e. memory translation granule size)
             // supported by the architecture and is used on some platforms.
             (_, Architecture::Aarch64(..)) => 0x10000,
@@ -444,7 +421,7 @@ pub trait Compiler: Send + Sync {
         get_func: &'a dyn Fn(
             StaticModuleIndex,
             DefinedFuncIndex,
-        ) -> (SymbolId, &'a (dyn Any + Send + Sync)),
+        ) -> (Option<SymbolId>, &'a (dyn Any + Send + Sync)),
         dwarf_package_bytes: Option<&'a [u8]>,
         tunables: &'a Tunables,
     ) -> Result<()>;
@@ -456,6 +433,10 @@ pub trait Compiler: Send + Sync {
         // By default, an ISA cannot create a System V CIE.
         None
     }
+
+    /// Invoked at the end of a module or component compilation and signals
+    /// that any transient caches across functions can now be dropped.
+    fn release_caches(&self);
 }
 
 /// An inlining compiler.

@@ -171,7 +171,7 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: foo::foo::chars::HostWithStore + Send,
+            D: foo::foo::chars::HostWithStore<T> + Send,
             for<'a> D::Data<'a>: foo::foo::chars::Host + Send,
             T: 'static + Send,
         {
@@ -189,50 +189,76 @@ pub mod foo {
         pub mod chars {
             #[allow(unused_imports)]
             use wasmtime::component::__internal::Box;
-            pub trait HostWithStore: wasmtime::component::HasData + Send {
+            pub trait HostWithStore<T>: wasmtime::component::HasData + Send {
                 /// A function that accepts a character
-                fn take_char<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn take_char(
+                    host: wasmtime::component::Access<T, Self>,
                     x: char,
                 ) -> impl ::core::future::Future<Output = ()> + Send;
                 /// A function that returns a character
-                fn return_char<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn return_char(
+                    host: wasmtime::component::Access<T, Self>,
                 ) -> impl ::core::future::Future<Output = char> + Send;
             }
             pub trait Host: Send {}
             impl<_T: Host + ?Sized + Send> Host for &mut _T {}
-            pub fn add_to_linker<T, D>(
-                linker: &mut wasmtime::component::Linker<T>,
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static + Send,
             {
-                let mut inst = linker.instance("foo:foo/chars")?;
-                inst.func_wrap_concurrent(
+                inst.func_wrap_async(
                     "take-char",
-                    move |caller: &wasmtime::component::Accessor<T>, (arg0,): (char,)| {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::take_char(host, arg0).await;
+                    move |
+                        mut caller: wasmtime::StoreContextMut<'_, T>,
+                        (arg0,): (char,)|
+                    {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::take_char(host, arg0).await;
                             Ok(r)
                         })
                     },
                 )?;
-                inst.func_wrap_concurrent(
+                inst.func_wrap_async(
                     "return-char",
-                    move |caller: &wasmtime::component::Accessor<T>, (): ()| {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::return_char(host).await;
+                    move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::return_char(host).await;
                             Ok((r,))
                         })
                     },
                 )?;
                 Ok(())
+            }
+            pub fn add_to_linker<T, D>(
+                linker: &mut wasmtime::component::Linker<T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static + Send,
+            {
+                let mut inst = linker.instance("foo:foo/chars")?;
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
             }
         }
     }
@@ -272,7 +298,7 @@ pub mod exports {
                                     "no exported instance named `foo:foo/chars`"
                                 )
                             })?;
-                        let mut lookup = move |name| {
+                        let mut lookup = move |name: &str| {
                             _instance_pre
                                 .component()
                                 .get_export_index(Some(&instance), name)
@@ -314,6 +340,16 @@ pub mod exports {
                     }
                 }
                 impl Guest {
+                    pub fn func_take_char(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(char,), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (char,),
+                                (),
+                            >::new_unchecked(self.take_char)
+                        }
+                    }
                     /// A function that accepts a character
                     pub async fn call_take_char<_T, _D>(
                         &self,
@@ -324,14 +360,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (char,),
-                                (),
-                            >::new_unchecked(self.take_char)
-                        };
+                        let callee = self.func_take_char();
                         let () = callee.call_concurrent(accessor, (arg0,)).await?;
                         Ok(())
+                    }
+                    pub fn func_return_char(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(), (char,)> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                (char,),
+                            >::new_unchecked(self.return_char)
+                        }
                     }
                     /// A function that returns a character
                     pub async fn call_return_char<_T, _D>(
@@ -342,12 +383,7 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                (char,),
-                            >::new_unchecked(self.return_char)
-                        };
+                        let callee = self.func_return_char();
                         let (ret0,) = callee.call_concurrent(accessor, ()).await?;
                         Ok(ret0)
                     }

@@ -30,7 +30,7 @@
 use crate::component::*;
 use crate::error::Result;
 use crate::prelude::*;
-use crate::{EntityIndex, EntityRef, ModuleInternedTypeIndex, PrimaryMap, WasmValType};
+use crate::{EntityIndex, EntityRef, ModuleInternedTypeIndex, PrimaryMap, Trap, WasmValType};
 use cranelift_entity::packed_option::PackedOption;
 use indexmap::IndexMap;
 use info::LinearMemoryOptions;
@@ -43,13 +43,13 @@ use wasmparser::component_types::ComponentCoreModuleTypeId;
 #[derive(Default)]
 pub struct ComponentDfg {
     /// Same as `Component::import_types`
-    pub import_types: PrimaryMap<ImportIndex, (String, TypeDef)>,
+    pub import_types: PrimaryMap<ImportIndex, (String, ComponentExtern)>,
 
     /// Same as `Component::imports`
     pub imports: PrimaryMap<RuntimeImportIndex, (ImportIndex, Vec<String>)>,
 
     /// Same as `Component::exports`
-    pub exports: IndexMap<String, Export>,
+    pub exports: IndexMap<String, (Export, ComponentExternData)>,
 
     /// All trampolines and their type signature which will need to get
     /// compiled by Cranelift.
@@ -254,7 +254,7 @@ pub enum Export {
     },
     Instance {
         ty: TypeComponentInstanceIndex,
-        exports: IndexMap<String, Export>,
+        exports: IndexMap<String, (Export, ComponentExternData)>,
     },
     Type(TypeDef),
 }
@@ -267,7 +267,6 @@ pub enum CoreDef {
     InstanceFlags(RuntimeComponentInstanceIndex),
     Trampoline(TrampolineIndex),
     UnsafeIntrinsic(ModuleInternedTypeIndex, UnsafeIntrinsic),
-    TaskMayBlock,
 
     /// This is a special variant not present in `info::CoreDef` which
     /// represents that this definition refers to a fused adapter function. This
@@ -369,10 +368,6 @@ pub enum Trampoline {
     WaitableJoin {
         instance: RuntimeComponentInstanceIndex,
     },
-    ThreadYield {
-        instance: RuntimeComponentInstanceIndex,
-        cancellable: bool,
-    },
     SubtaskDrop {
         instance: RuntimeComponentInstanceIndex,
     },
@@ -473,39 +468,41 @@ pub enum Trampoline {
     FutureTransfer,
     StreamTransfer,
     ErrorContextTransfer,
-    Trap,
+    Trap(Trap),
     EnterSyncCall,
     ExitSyncCall,
-    ContextGet {
+    ThreadIndex {
         instance: RuntimeComponentInstanceIndex,
-        slot: u32,
     },
-    ContextSet {
-        instance: RuntimeComponentInstanceIndex,
-        slot: u32,
-    },
-    ThreadIndex,
     ThreadNewIndirect {
         instance: RuntimeComponentInstanceIndex,
         start_func_ty_idx: ComponentTypeIndex,
         start_func_table_id: TableId,
     },
-    ThreadSuspendToSuspended {
+    ThreadResumeLater {
         instance: RuntimeComponentInstanceIndex,
-        cancellable: bool,
     },
     ThreadSuspend {
         instance: RuntimeComponentInstanceIndex,
         cancellable: bool,
     },
-    ThreadSuspendTo {
+    ThreadYield {
         instance: RuntimeComponentInstanceIndex,
         cancellable: bool,
     },
-    ThreadUnsuspend {
+    ThreadSuspendThenResume {
         instance: RuntimeComponentInstanceIndex,
+        cancellable: bool,
     },
-    ThreadYieldToSuspended {
+    ThreadYieldThenResume {
+        instance: RuntimeComponentInstanceIndex,
+        cancellable: bool,
+    },
+    ThreadSuspendThenPromote {
+        instance: RuntimeComponentInstanceIndex,
+        cancellable: bool,
+    },
+    ThreadYieldThenPromote {
         instance: RuntimeComponentInstanceIndex,
         cancellable: bool,
     },
@@ -647,10 +644,10 @@ impl ComponentDfg {
         // creating some lowered imports, perhaps some saved modules, etc.
         let mut export_items = PrimaryMap::new();
         let mut exports = NameMap::default();
-        for (name, export) in self.exports.iter() {
+        for (name, (export, data)) in self.exports.iter() {
             let export =
                 linearize.export(export, &mut export_items, wasmtime_types, wasmparser_types)?;
-            exports.insert(name, &mut NameMapNoIntern, false, export)?;
+            exports.insert(name, &mut NameMapNoIntern, false, (export, data.clone()))?;
         }
 
         // With all those pieces done the results of the dataflow-based
@@ -810,10 +807,10 @@ impl LinearizeDfg<'_> {
                 ty: *ty,
                 exports: {
                     let mut map = NameMap::default();
-                    for (name, export) in exports {
+                    for (name, (export, data)) in exports {
                         let export =
                             self.export(export, items, wasmtime_types, wasmparser_types)?;
-                        map.insert(name, &mut NameMapNoIntern, false, export)?;
+                        map.insert(name, &mut NameMapNoIntern, false, (export, data.clone()))?;
                     }
                     map
                 },
@@ -915,7 +912,6 @@ impl LinearizeDfg<'_> {
                 }
                 info::CoreDef::UnsafeIntrinsic(*i)
             }
-            CoreDef::TaskMayBlock => info::CoreDef::TaskMayBlock,
         }
     }
 
@@ -1005,13 +1001,6 @@ impl LinearizeDfg<'_> {
             },
             Trampoline::WaitableJoin { instance } => info::Trampoline::WaitableJoin {
                 instance: *instance,
-            },
-            Trampoline::ThreadYield {
-                instance,
-                cancellable,
-            } => info::Trampoline::ThreadYield {
-                instance: *instance,
-                cancellable: *cancellable,
             },
             Trampoline::SubtaskDrop { instance } => info::Trampoline::SubtaskDrop {
                 instance: *instance,
@@ -1164,18 +1153,12 @@ impl LinearizeDfg<'_> {
             Trampoline::FutureTransfer => info::Trampoline::FutureTransfer,
             Trampoline::StreamTransfer => info::Trampoline::StreamTransfer,
             Trampoline::ErrorContextTransfer => info::Trampoline::ErrorContextTransfer,
-            Trampoline::Trap => info::Trampoline::Trap,
+            Trampoline::Trap(trap) => info::Trampoline::Trap(*trap),
             Trampoline::EnterSyncCall => info::Trampoline::EnterSyncCall,
             Trampoline::ExitSyncCall => info::Trampoline::ExitSyncCall,
-            Trampoline::ContextGet { instance, slot } => info::Trampoline::ContextGet {
+            Trampoline::ThreadIndex { instance } => info::Trampoline::ThreadIndex {
                 instance: *instance,
-                slot: *slot,
             },
-            Trampoline::ContextSet { instance, slot } => info::Trampoline::ContextSet {
-                instance: *instance,
-                slot: *slot,
-            },
-            Trampoline::ThreadIndex => info::Trampoline::ThreadIndex,
             Trampoline::ThreadNewIndirect {
                 instance,
                 start_func_ty_idx,
@@ -1185,19 +1168,8 @@ impl LinearizeDfg<'_> {
                 start_func_ty_idx: *start_func_ty_idx,
                 start_func_table_idx: self.runtime_table(*start_func_table_id),
             },
-            Trampoline::ThreadSuspendToSuspended {
-                instance,
-                cancellable,
-            } => info::Trampoline::ThreadSuspendToSuspended {
+            Trampoline::ThreadResumeLater { instance } => info::Trampoline::ThreadResumeLater {
                 instance: *instance,
-                cancellable: *cancellable,
-            },
-            Trampoline::ThreadSuspendTo {
-                instance,
-                cancellable,
-            } => info::Trampoline::ThreadSuspendTo {
-                instance: *instance,
-                cancellable: *cancellable,
             },
             Trampoline::ThreadSuspend {
                 instance,
@@ -1206,13 +1178,38 @@ impl LinearizeDfg<'_> {
                 instance: *instance,
                 cancellable: *cancellable,
             },
-            Trampoline::ThreadUnsuspend { instance } => info::Trampoline::ThreadUnsuspend {
-                instance: *instance,
-            },
-            Trampoline::ThreadYieldToSuspended {
+            Trampoline::ThreadYield {
                 instance,
                 cancellable,
-            } => info::Trampoline::ThreadYieldToSuspended {
+            } => info::Trampoline::ThreadYield {
+                instance: *instance,
+                cancellable: *cancellable,
+            },
+            Trampoline::ThreadSuspendThenResume {
+                instance,
+                cancellable,
+            } => info::Trampoline::ThreadSuspendThenResume {
+                instance: *instance,
+                cancellable: *cancellable,
+            },
+            Trampoline::ThreadYieldThenResume {
+                instance,
+                cancellable,
+            } => info::Trampoline::ThreadYieldThenResume {
+                instance: *instance,
+                cancellable: *cancellable,
+            },
+            Trampoline::ThreadSuspendThenPromote {
+                instance,
+                cancellable,
+            } => info::Trampoline::ThreadSuspendThenPromote {
+                instance: *instance,
+                cancellable: *cancellable,
+            },
+            Trampoline::ThreadYieldThenPromote {
+                instance,
+                cancellable,
+            } => info::Trampoline::ThreadYieldThenPromote {
                 instance: *instance,
                 cancellable: *cancellable,
             },

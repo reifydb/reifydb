@@ -130,7 +130,9 @@ impl<'data, Elf: FileHeader, R: ReadRef<'data>> SymbolTable<'data, Elf, R> {
     ///
     /// This includes the null symbol at index 0, which you will usually need to skip.
     #[inline]
-    pub fn enumerate(&self) -> impl Iterator<Item = (SymbolIndex, &'data Elf::Sym)> {
+    pub fn enumerate(
+        &self,
+    ) -> impl Iterator<Item = (SymbolIndex, &'data Elf::Sym)> + use<'data, Elf, R> {
         self.symbols
             .iter()
             .enumerate()
@@ -176,20 +178,20 @@ impl<'data, Elf: FileHeader, R: ReadRef<'data>> SymbolTable<'data, Elf, R> {
         symbol: &Elf::Sym,
         index: SymbolIndex,
     ) -> read::Result<Option<SectionIndex>> {
-        match symbol.st_shndx(endian) {
-            elf::SHN_UNDEF => Ok(None),
-            elf::SHN_XINDEX => {
-                let shndx = self
-                    .shndx(endian, index)
-                    .read_error("Missing ELF symbol extended index")?;
-                if shndx == 0 {
-                    Ok(None)
-                } else {
-                    Ok(Some(SectionIndex(shndx as usize)))
-                }
+        let shndx = symbol.st_shndx(endian);
+        if let Some(index) = shndx.index() {
+            Ok(Some(SectionIndex(index.into())))
+        } else if shndx == elf::SHN_XINDEX {
+            let shndx = self
+                .shndx(endian, index)
+                .read_error("Missing ELF symbol extended index")?;
+            if shndx == 0 {
+                Ok(None)
+            } else {
+                Ok(Some(SectionIndex(shndx as usize)))
             }
-            shndx if shndx < elf::SHN_LORESERVE => Ok(Some(SectionIndex(shndx.into()))),
-            _ => Ok(None),
+        } else {
+            Ok(None)
         }
     }
 
@@ -386,6 +388,10 @@ impl<'data, 'file, Elf: FileHeader, R: ReadRef<'data>> ObjectSymbol<'data>
 
     #[inline]
     fn address(&self) -> u64 {
+        if self.is_common() {
+            // The value is the alignment, not an address.
+            return 0;
+        }
         self.symbol.st_value(self.endian).into()
     }
 
@@ -422,10 +428,13 @@ impl<'data, 'file, Elf: FileHeader, R: ReadRef<'data>> ObjectSymbol<'data>
                 Some(index) => SymbolSection::Section(SectionIndex(index as usize)),
                 None => SymbolSection::Unknown,
             },
-            index if index < elf::SHN_LORESERVE => {
-                SymbolSection::Section(SectionIndex(index as usize))
+            shndx => {
+                if let Some(index) = shndx.index() {
+                    SymbolSection::Section(SectionIndex(index.into()))
+                } else {
+                    SymbolSection::Unknown
+                }
             }
-            _ => SymbolSection::Unknown,
         }
     }
 
@@ -489,17 +498,17 @@ impl<'data, 'file, Elf: FileHeader, R: ReadRef<'data>> ObjectSymbol<'data>
 
 /// A trait for generic access to [`elf::Sym32`] and [`elf::Sym64`].
 #[allow(missing_docs)]
-pub trait Sym: Debug + Pod {
+pub trait Sym: Debug + Pod + read::private::Sealed {
     type Word: Into<u64>;
     type Endian: endian::Endian;
 
     fn st_name(&self, endian: Self::Endian) -> u32;
-    fn st_info(&self) -> u8;
-    fn st_bind(&self) -> u8;
-    fn st_type(&self) -> u8;
-    fn st_other(&self) -> u8;
-    fn st_visibility(&self) -> u8;
-    fn st_shndx(&self, endian: Self::Endian) -> u16;
+    fn st_info(&self) -> elf::SymbolInfo;
+    fn st_bind(&self) -> elf::SymbolBind;
+    fn st_type(&self) -> elf::SymbolType;
+    fn st_other(&self) -> elf::SymbolOther;
+    fn st_visibility(&self) -> elf::SymbolVisibility;
+    fn st_shndx(&self, endian: Self::Endian) -> elf::SymbolSection;
     fn st_value(&self, endian: Self::Endian) -> Self::Word;
     fn st_size(&self, endian: Self::Endian) -> Self::Word;
 
@@ -527,7 +536,7 @@ pub trait Sym: Debug + Pod {
         strings: StringTable<'data, R>,
     ) -> bool {
         let shndx = self.st_shndx(endian);
-        if shndx == elf::SHN_UNDEF || (shndx >= elf::SHN_LORESERVE && shndx != elf::SHN_XINDEX) {
+        if shndx.is_special() && shndx != elf::SHN_XINDEX {
             return false;
         }
         match self.st_type() {
@@ -566,6 +575,8 @@ pub trait Sym: Debug + Pod {
     }
 }
 
+impl<Endian: endian::Endian> read::private::Sealed for elf::Sym32<Endian> {}
+
 impl<Endian: endian::Endian> Sym for elf::Sym32<Endian> {
     type Word = u32;
     type Endian = Endian;
@@ -576,32 +587,32 @@ impl<Endian: endian::Endian> Sym for elf::Sym32<Endian> {
     }
 
     #[inline]
-    fn st_info(&self) -> u8 {
+    fn st_info(&self) -> elf::SymbolInfo {
         self.st_info
     }
 
     #[inline]
-    fn st_bind(&self) -> u8 {
+    fn st_bind(&self) -> elf::SymbolBind {
         self.st_bind()
     }
 
     #[inline]
-    fn st_type(&self) -> u8 {
+    fn st_type(&self) -> elf::SymbolType {
         self.st_type()
     }
 
     #[inline]
-    fn st_other(&self) -> u8 {
+    fn st_other(&self) -> elf::SymbolOther {
         self.st_other
     }
 
     #[inline]
-    fn st_visibility(&self) -> u8 {
+    fn st_visibility(&self) -> elf::SymbolVisibility {
         self.st_visibility()
     }
 
     #[inline]
-    fn st_shndx(&self, endian: Self::Endian) -> u16 {
+    fn st_shndx(&self, endian: Self::Endian) -> elf::SymbolSection {
         self.st_shndx.get(endian)
     }
 
@@ -616,6 +627,8 @@ impl<Endian: endian::Endian> Sym for elf::Sym32<Endian> {
     }
 }
 
+impl<Endian: endian::Endian> read::private::Sealed for elf::Sym64<Endian> {}
+
 impl<Endian: endian::Endian> Sym for elf::Sym64<Endian> {
     type Word = u64;
     type Endian = Endian;
@@ -626,32 +639,32 @@ impl<Endian: endian::Endian> Sym for elf::Sym64<Endian> {
     }
 
     #[inline]
-    fn st_info(&self) -> u8 {
+    fn st_info(&self) -> elf::SymbolInfo {
         self.st_info
     }
 
     #[inline]
-    fn st_bind(&self) -> u8 {
+    fn st_bind(&self) -> elf::SymbolBind {
         self.st_bind()
     }
 
     #[inline]
-    fn st_type(&self) -> u8 {
+    fn st_type(&self) -> elf::SymbolType {
         self.st_type()
     }
 
     #[inline]
-    fn st_other(&self) -> u8 {
+    fn st_other(&self) -> elf::SymbolOther {
         self.st_other
     }
 
     #[inline]
-    fn st_visibility(&self) -> u8 {
+    fn st_visibility(&self) -> elf::SymbolVisibility {
         self.st_visibility()
     }
 
     #[inline]
-    fn st_shndx(&self, endian: Self::Endian) -> u16 {
+    fn st_shndx(&self, endian: Self::Endian) -> elf::SymbolSection {
         self.st_shndx.get(endian)
     }
 

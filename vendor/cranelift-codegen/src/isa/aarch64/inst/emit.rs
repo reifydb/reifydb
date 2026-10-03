@@ -417,6 +417,15 @@ fn enc_ccmp_imm(size: OperandSize, rn: Reg, imm: UImm5, nzcv: NZCV, cond: Cond) 
         | nzcv.bits()
 }
 
+impl BfmOp {
+    fn opc(self) -> u8 {
+        match self {
+            BfmOp::UBfm => 0b10,
+            BfmOp::SBfm => 0b00,
+        }
+    }
+}
+
 fn enc_bfm(opc: u8, size: OperandSize, rd: Writable<Reg>, rn: Reg, immr: u8, imms: u8) -> u32 {
     match size {
         OperandSize::Size64 => {
@@ -641,6 +650,16 @@ fn enc_cas(size: u32, rs: Writable<Reg>, rt: Reg, rn: Reg) -> u32 {
 
     0b00_0010001_1_1_00000_1_11111_00000_00000
         | size << 30
+        | machreg_to_gpr(rs.to_reg()) << 16
+        | machreg_to_gpr(rn) << 5
+        | machreg_to_gpr(rt)
+}
+
+fn enc_casp(rs: Writable<Reg>, rt: Reg, rn: Reg) -> u32 {
+    debug_assert_eq!(machreg_to_gpr(rs.to_reg()) & 1, 0);
+    debug_assert_eq!(machreg_to_gpr(rt) & 1, 0);
+
+    0b0_1_0010000_1_1_00000_1_11111_00000_00000
         | machreg_to_gpr(rs.to_reg()) << 16
         | machreg_to_gpr(rn) << 5
         | machreg_to_gpr(rt)
@@ -1508,7 +1527,14 @@ impl MachInstEmit for Inst {
                     },
                     _ => None,
                 };
-
+                let zero_ext = match op {
+                    AtomicRMWLoopOp::Umin | AtomicRMWLoopOp::Umax => match ty {
+                        I16 => Some(ExtendOp::UXTH),
+                        I8 => Some(ExtendOp::UXTB),
+                        _ => None,
+                    },
+                    _ => None,
+                };
                 // sxt{b|h} the loaded result if necessary.
                 if sign_ext.is_some() {
                     let (_, from_bits) = sign_ext.unwrap();
@@ -1561,8 +1587,7 @@ impl MachInstEmit for Inst {
                             _ => unreachable!(),
                         };
 
-                        if sign_ext.is_some() {
-                            let (extendop, _) = sign_ext.unwrap();
+                        if let Some(extendop) = sign_ext.map(|(op, _)| op).or(zero_ext) {
                             Inst::AluRRRExtend {
                                 alu_op: ALUOp::SubS,
                                 size,
@@ -1659,6 +1684,30 @@ impl MachInstEmit for Inst {
                 }
 
                 sink.put4(enc_cas(size, rd, rt, rn));
+            }
+            Inst::AtomicCAS128 { args } => {
+                let &AtomicCAS128Args {
+                    rd_lo,
+                    rd_hi,
+                    rs_lo,
+                    rs_hi,
+                    rt_lo,
+                    rt_hi,
+                    rn,
+                    flags,
+                } = &**args;
+                debug_assert_eq!(rd_lo.to_reg(), rs_lo);
+                debug_assert_eq!(rd_hi.to_reg(), rs_hi);
+
+                // These should be pinned to pairs that `casp` requires.
+                debug_assert_eq!(rs_hi, xreg(machreg_to_gpr(rs_lo) as u8 + 1));
+                debug_assert_eq!(rt_hi, xreg(machreg_to_gpr(rt_lo) as u8 + 1));
+
+                if let Some(trap_code) = flags.trap_code() {
+                    sink.add_trap(trap_code);
+                }
+
+                sink.put4(enc_casp(rd_lo, rt_lo, rn));
             }
             &Inst::AtomicCASLoop { ty, flags, .. } => {
                 /* Emit this:
@@ -2764,6 +2813,14 @@ impl MachInstEmit for Inst {
                     VecALUModOp::Fmls => {
                         (0b000_01110_10_1 | (size.enc_float_size() << 1), 0b110011)
                     }
+                    // SDOT Vd.4S, Vn.16B, Vm.16B (FEAT_DotProd). The size/element
+                    // field (bits 23:22 = 0b10) is part of the dot-product opcode,
+                    // so it is baked into top11; only Q (from `size`) is variable.
+                    // top11 (Q=0) | q<<9 with bit15_10 yields 0x4E809400 for .4S/.16B.
+                    VecALUModOp::Sdot => (0b000_01110_10_0, 0b100101),
+                    // USDOT Vd.4S, Vn.16B, Vm.16B (FEAT_I8MM). Same shape as
+                    // SDOT; only the opcode field differs.
+                    VecALUModOp::Usdot => (0b000_01110_10_0, 0b100111),
                 };
                 sink.put4(enc_vec_rrr(top11 | q << 9, rm, bit15_10, rn, rd));
             }
@@ -2906,12 +2963,35 @@ impl MachInstEmit for Inst {
                 from_bits,
                 to_bits,
             } => {
-                let (opc, size) = if signed {
-                    (0b00, OperandSize::from_bits(to_bits))
+                let (bfm_op, size) = if signed {
+                    (BfmOp::SBfm, OperandSize::from_bits(to_bits))
                 } else {
-                    (0b10, OperandSize::Size32)
+                    (BfmOp::UBfm, OperandSize::Size32)
                 };
+                let opc = bfm_op.opc();
                 sink.put4(enc_bfm(opc, size, rd, rn, 0, from_bits - 1));
+            }
+            &Inst::BitfieldMove {
+                size,
+                bfm_op,
+                rd,
+                rn,
+                immr,
+                imms,
+            } => {
+                let opc = bfm_op.opc();
+                sink.put4(enc_bfm(opc, size, rd, rn, immr.value(), imms.value()));
+            }
+            &Inst::BitfieldMoveMod {
+                size,
+                rd,
+                ri,
+                rn,
+                immr,
+                imms,
+            } => {
+                debug_assert_eq!(rd.to_reg(), ri);
+                sink.put4(enc_bfm(0b01, size, rd, rn, immr.value(), imms.value()));
             }
             &Inst::Jump { ref dest } => {
                 let off = sink.cur_offset();
@@ -3209,7 +3289,7 @@ impl MachInstEmit for Inst {
                         rtmp2.to_reg(),
                         ExtendOp::UXTW,
                     ),
-                    flags: MemFlags::trusted(),
+                    flags: MemFlagsData::trusted(),
                 };
                 inst.emit(sink, emit_info, state);
                 // Add base of jump table to jump-table-sourced block offset
@@ -3263,7 +3343,7 @@ impl MachInstEmit for Inst {
                 let inst = Inst::ULoad64 {
                     rd,
                     mem: AMode::reg(rd.to_reg()),
-                    flags: MemFlags::trusted(),
+                    flags: MemFlagsData::trusted(),
                 };
                 inst.emit(sink, emit_info, state);
             }
@@ -3312,7 +3392,7 @@ impl MachInstEmit for Inst {
                     mem: AMode::Label {
                         label: MemLabel::PCRel(8),
                     },
-                    flags: MemFlags::trusted(),
+                    flags: MemFlagsData::trusted(),
                 };
                 inst.emit(sink, emit_info, state);
                 let inst = Inst::Jump {
@@ -3466,7 +3546,7 @@ impl MachInstEmit for Inst {
                 Inst::ULoad64 {
                     rd: tmp,
                     mem: AMode::reg(rd.to_reg()),
-                    flags: MemFlags::trusted(),
+                    flags: MemFlagsData::trusted(),
                 }
                 .emit(sink, emit_info, state);
 
@@ -3530,7 +3610,7 @@ impl MachInstEmit for Inst {
                 Inst::ULoad64 {
                     rd: rtmp,
                     mem: AMode::reg(rd.to_reg()),
-                    flags: MemFlags::trusted(),
+                    flags: MemFlagsData::trusted(),
                 }
                 .emit(sink, emit_info, state);
 
@@ -3607,7 +3687,7 @@ impl MachInstEmit for Inst {
                         rn: regs::stack_reg(),
                         rm: start.to_reg(),
                     },
-                    flags: MemFlags::trusted(),
+                    flags: MemFlagsData::trusted(),
                 }
                 .emit(sink, emit_info, state);
                 Inst::AluRRR {
@@ -3677,7 +3757,7 @@ fn emit_return_call_common_sequence<T>(
                 // https://developer.arm.com/documentation/ddi0596/2020-12/Base-Instructions/LDP--Load-Pair-of-Registers-
                 simm7: SImm7Scaled::maybe_from_i64(i64::from(setup_area_size), types::I64).unwrap(),
             },
-            flags: MemFlags::trusted(),
+            flags: MemFlagsData::trusted(),
         }
         .emit(sink, emit_info, state);
     }
@@ -3692,7 +3772,9 @@ fn emit_return_call_common_sequence<T>(
         }
     }
 
-    if let Some(key) = info.key {
+    if (setup_area_size > 0 || info.sign_return_address_all)
+        && let Some(key) = info.key
+    {
         sink.put4(key.enc_auti_hint());
     }
 }

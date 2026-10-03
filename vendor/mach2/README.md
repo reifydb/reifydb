@@ -8,7 +8,7 @@ A Rust interface to the **user-space** API of the Mach 3.0 kernel exposed in
 
 This library does not expose the **kernel-space** API of the Mach 3.0 kernel
 exposed in
-`SDK/System/Library/Frameworks/Kernel.framework/Versions/A/Headers/mach`. 
+`SDK/System/Library/Frameworks/Kernel.framework/Versions/A/Headers/mach`.
 
 That is, if you are writing a kernel-resident device drivers or some other
 kernel extensions you have to use something else. The user-space kernel API is
@@ -22,8 +22,8 @@ Add the following to your `Cargo.toml` to conditionally include mach on those
 platforms that support it.
 
 ```toml
-[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies.mach]
-version = "0.4"
+[target.'cfg(target_vendor = "apple")'.dependencies.mach]
+version = "0.6"
 ```
 
 Available crate feature:
@@ -74,13 +74,13 @@ sudo ./target/debug/examples/dump_process_registers
 
 The following table describes the current CI set-up:
 
-| Target                  | Min. Rust | XCode           | build | ctest | run |
-|-------------------------|-----------|-----------------|-------|-------|-----|
-| `x86_64-apple-darwin`   | 1.33.0    | 10.3.0 - 13.1.0 | ✓     | ✓     | ✓   |
-| `aarch64-apple-darwin`  | nightly   | 13.1.0          | ✓     | -     | -   |
-| `aarch64-apple-ios`     | nightly   | 13.1.0          | ✓     | -     | -   |
-| `aarch64-apple-ios-sim` | nightly   | 13.1.0          | ✓     | -     | -   |
-| `x86_64-apple-ios`      | nightly   | 13.1.0          | ✓     | -     | -   |
+| Target                  | XCode  | build | ctest | run |
+|-------------------------|--------|-------|-------|-----|
+| `x86_64-apple-darwin`   | 26.1.0 | ✓     | ✓     | ✓   |
+| `aarch64-apple-darwin`  | 26.1.0 | ✓     | ✓     | ✓   |
+| `aarch64-apple-ios`     | 26.1.0 | ✓     | -     | -   |
+| `aarch64-apple-ios-sim` | 26.1.0 | ✓     | -     | -   |
+| `x86_64-apple-ios`      | 26.1.0 | ✓     | -     | -   |
 
 ## License
 

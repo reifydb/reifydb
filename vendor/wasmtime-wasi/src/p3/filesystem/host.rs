@@ -1,3 +1,4 @@
+use crate::filesystem::sys;
 use crate::filesystem::{Descriptor, Dir, File, WasiFilesystem, WasiFilesystemCtxView};
 use crate::p3::bindings::clocks::system_clock;
 use crate::p3::bindings::filesystem::types::{
@@ -6,14 +7,13 @@ use crate::p3::bindings::filesystem::types::{
 };
 use crate::p3::filesystem::{FilesystemError, FilesystemResult, preopens};
 use crate::p3::{DEFAULT_BUFFER_CAPACITY, FallibleIteratorProducer};
-use crate::{DirPerms, FilePerms};
 use bytes::BytesMut;
 use core::pin::Pin;
 use core::task::{Context, Poll, ready};
 use core::{iter, mem};
-use std::io::{self, Cursor};
+use std::io;
 use std::sync::Arc;
-use system_interface::fs::FileIoExt as _;
+use std::time::SystemTime;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::{JoinHandle, spawn_blocking};
 use wasmtime::StoreContextMut;
@@ -97,29 +97,37 @@ impl<T> AccessorExt for Accessor<T, WasiFilesystem> {
 }
 
 fn systemtime_from(t: system_clock::Instant) -> Result<std::time::SystemTime, ErrorCode> {
-    if let Ok(seconds) = t.seconds.try_into() {
+    if let Ok(seconds) = <i64 as TryInto<u64>>::try_into(t.seconds) {
+        // Catch nanoseconds-into-seconds Overflow error explicitly:
+        // unfortunately, Duration::new panics when input overflows
+        let duration = core::time::Duration::new(
+            seconds
+                .checked_add(u64::from(t.nanoseconds / 1_000_000_000))
+                .ok_or(ErrorCode::Overflow)?,
+            t.nanoseconds % 1_000_000_000,
+        );
         std::time::SystemTime::UNIX_EPOCH
-            .checked_add(core::time::Duration::new(seconds, t.nanoseconds))
+            .checked_add(duration)
             .ok_or(ErrorCode::Overflow)
     } else {
+        let duration = core::time::Duration::new(
+            t.seconds
+                .unsigned_abs()
+                .checked_add(u64::from(t.nanoseconds / 1_000_000_000))
+                .ok_or(ErrorCode::Overflow)?,
+            t.nanoseconds % 1_000_000_000,
+        );
         std::time::SystemTime::UNIX_EPOCH
-            .checked_sub(core::time::Duration::new(
-                t.seconds.unsigned_abs(),
-                t.nanoseconds,
-            ))
+            .checked_sub(duration)
             .ok_or(ErrorCode::Overflow)
     }
 }
 
-fn systemtimespec_from(t: NewTimestamp) -> Result<Option<fs_set_times::SystemTimeSpec>, ErrorCode> {
-    use fs_set_times::SystemTimeSpec;
+fn systemtimespec_from(t: NewTimestamp) -> Result<Option<SystemTime>, ErrorCode> {
     match t {
         NewTimestamp::NoChange => Ok(None),
-        NewTimestamp::Now => Ok(Some(SystemTimeSpec::SymbolicNow)),
-        NewTimestamp::Timestamp(st) => {
-            let st = systemtime_from(st)?;
-            Ok(Some(SystemTimeSpec::Absolute(st)))
-        }
+        NewTimestamp::Now => Ok(Some(SystemTime::now())),
+        NewTimestamp::Timestamp(st) => Ok(Some(systemtime_from(st)?)),
     }
 }
 
@@ -160,16 +168,14 @@ impl ReadStreamProducer {
 
 impl<D> StreamProducer<D> for ReadStreamProducer {
     type Item = u8;
-    type Buffer = Cursor<BytesMut>;
+    type Buffer = BytesMut;
 
     fn poll_produce<'a>(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         store: StoreContextMut<'a, D>,
         mut dst: Destination<'a, Self::Item, Self::Buffer>,
-        // Intentionally ignore this as in blocking mode everything is always
-        // ready and otherwise spawned blocking work can't be cancelled.
-        _finish: bool,
+        finish: bool,
     ) -> Poll<wasmtime::Result<StreamResult>> {
         if let Some(file) = self.file.as_blocking_file() {
             // Once a blocking file, always a blocking file, so assert as such.
@@ -179,7 +185,7 @@ impl<D> StreamProducer<D> for ReadStreamProducer {
             if buf.is_empty() {
                 return Poll::Ready(Ok(StreamResult::Completed));
             }
-            return match file.read_at(buf, self.offset) {
+            return match sys::read_at_cursor_unspecified(file, buf, self.offset) {
                 Ok(0) => {
                     self.close(Ok(()));
                     Poll::Ready(Ok(StreamResult::Dropped))
@@ -198,12 +204,12 @@ impl<D> StreamProducer<D> for ReadStreamProducer {
         // Lazily spawn a read task if one hasn't already been spawned yet.
         let me = &mut *self;
         let task = me.task.get_or_insert_with(|| {
-            let mut buf = dst.take_buffer().into_inner();
+            let mut buf = dst.take_buffer();
             buf.resize(DEFAULT_BUFFER_CAPACITY, 0);
             let file = Arc::clone(me.file.as_file());
             let offset = me.offset;
             spawn_blocking(move || {
-                file.read_at(&mut buf, offset).map(|n| {
+                sys::read_at_cursor_unspecified(&file, &mut buf, offset).map(|n| {
                     buf.truncate(n);
                     buf
                 })
@@ -213,28 +219,43 @@ impl<D> StreamProducer<D> for ReadStreamProducer {
         // Await the completion of the read task. Note that this is not a
         // cancellable await point because we can't cancel the other task, so
         // the `finish` parameter is ignored.
-        let res = ready!(Pin::new(task).poll(cx)).expect("I/O task should not panic");
+        let result = match Pin::new(&mut *task).poll(cx) {
+            // If cancellation is requested, then flag that to Tokio. Note that
+            // this still waits for the actual completion of the spawned task,
+            // which won't actually happen if it's already executing.
+            Poll::Pending if finish => {
+                task.abort();
+                ready!(Pin::new(task).poll(cx))
+            }
+            other => ready!(other),
+        };
         self.task = None;
-        match res {
-            Ok(buf) if buf.is_empty() => {
+        match result {
+            Ok(Ok(buf)) if buf.is_empty() => {
                 self.close(Ok(()));
                 Poll::Ready(Ok(StreamResult::Dropped))
             }
-            Ok(buf) => {
+            Ok(Ok(buf)) => {
                 let n = buf.len();
-                dst.set_buffer(Cursor::new(buf));
+                dst.set_buffer(buf);
                 Poll::Ready(Ok(self.complete_read(n)))
             }
-            Err(err) => {
+            Ok(Err(err)) => {
                 self.close(Err(err.into()));
                 Poll::Ready(Ok(StreamResult::Dropped))
+            }
+            Err(err) => {
+                if err.is_cancelled() {
+                    return Poll::Ready(Ok(StreamResult::Cancelled));
+                }
+                panic!("I/O task should not panic: {err}")
             }
         }
     }
 }
 
 fn map_dir_entry(
-    entry: std::io::Result<cap_std::fs::DirEntry>,
+    entry: std::io::Result<crate::filesystem::primitives::DirEntry>,
 ) -> Result<Option<DirectoryEntry>, ErrorCode> {
     match entry {
         Ok(entry) => {
@@ -274,13 +295,13 @@ struct ReadDirStream {
 
 impl ReadDirStream {
     fn new(
-        dir: Arc<cap_std::fs::Dir>,
+        dir: Arc<std::fs::File>,
         result: oneshot::Sender<Result<(), ErrorCode>>,
     ) -> ReadDirStream {
         let (tx, rx) = mpsc::channel(1);
         ReadDirStream {
             task: spawn_blocking(move || {
-                let entries = dir.entries()?;
+                let entries = crate::filesystem::primitives::read_base_dir(&dir)?;
                 for entry in entries {
                     if let Some(entry) = map_dir_entry(entry)? {
                         if let Err(_) = tx.blocking_send(entry) {
@@ -418,10 +439,10 @@ impl WriteStreamConsumer {
 }
 
 impl WriteLocation {
-    fn write(&self, file: &cap_std::fs::File, bytes: &[u8]) -> io::Result<usize> {
+    fn write(&self, file: &std::fs::File, bytes: &[u8]) -> io::Result<usize> {
         match *self {
-            WriteLocation::End => file.append(bytes),
-            WriteLocation::Offset(at) => file.write_at(bytes, at),
+            WriteLocation::End => sys::append_cursor_unspecified(file, bytes),
+            WriteLocation::Offset(at) => sys::write_at_cursor_unspecified(file, bytes, at),
         }
     }
 }
@@ -434,9 +455,7 @@ impl<D> StreamConsumer<D> for WriteStreamConsumer {
         cx: &mut Context<'_>,
         store: StoreContextMut<D>,
         src: Source<Self::Item>,
-        // Intentionally ignore this as in blocking mode everything is always
-        // ready and otherwise spawned blocking work can't be cancelled.
-        _finish: bool,
+        finish: bool,
     ) -> Poll<wasmtime::Result<StreamResult>> {
         let mut src = src.as_direct(store);
         if let Some(file) = self.file.as_blocking_file() {
@@ -456,24 +475,41 @@ impl<D> StreamConsumer<D> for WriteStreamConsumer {
         let me = &mut *self;
         let task = me.task.get_or_insert_with(|| {
             debug_assert!(me.buffer.is_empty());
-            me.buffer.extend_from_slice(src.remaining());
+            let remaining = src.remaining();
+            let n = remaining.len().min(DEFAULT_BUFFER_CAPACITY);
+            me.buffer.extend_from_slice(&remaining[..n]);
             let buf = mem::take(&mut me.buffer);
             let file = Arc::clone(me.file.as_file());
             let location = me.location;
             spawn_blocking(move || location.write(&file, &buf).map(|n| (buf, n)))
         });
-        let res = ready!(Pin::new(task).poll(cx)).expect("I/O task should not panic");
+        let result = match Pin::new(&mut *task).poll(cx) {
+            // If cancellation is requested, then flag that to Tokio. Note that
+            // this still waits for the actual completion of the spawned task,
+            // which won't actually happen if it's already executing.
+            Poll::Pending if finish => {
+                task.abort();
+                ready!(Pin::new(task).poll(cx))
+            }
+            other => ready!(other),
+        };
         self.task = None;
-        match res {
-            Ok((buf, n)) => {
+        match result {
+            Ok(Ok((buf, n))) => {
                 src.mark_read(n);
                 self.buffer = buf;
                 self.buffer.clear();
                 Poll::Ready(Ok(self.complete_write(n)))
             }
-            Err(err) => {
+            Ok(Err(err)) => {
                 self.close(Err(err.into()));
                 Poll::Ready(Ok(StreamResult::Dropped))
+            }
+            Err(err) => {
+                if err.is_cancelled() {
+                    return Poll::Ready(Ok(StreamResult::Cancelled));
+                }
+                panic!("I/O task should not panic: {err}")
             }
         }
     }
@@ -493,23 +529,23 @@ impl types::Host for WasiFilesystemCtxView<'_> {
     }
 }
 
-impl types::HostDescriptorWithStore for WasiFilesystem {
-    fn read_via_stream<U>(
+impl<U> types::HostDescriptorWithStore<U> for WasiFilesystem {
+    fn read_via_stream(
         mut store: Access<U, Self>,
         fd: Resource<Descriptor>,
         offset: Filesize,
     ) -> wasmtime::Result<(StreamReader<u8>, FutureReader<Result<(), ErrorCode>>)> {
-        let file = get_file(store.get().table, &fd)?;
-        if !file.perms.contains(FilePerms::READ) {
-            return Ok((
-                StreamReader::new(&mut store, iter::empty())?,
-                FutureReader::new(&mut store, async {
-                    wasmtime::error::Ok(Err(ErrorCode::NotPermitted))
-                })?,
-            ));
-        }
-
-        let file = file.clone();
+        let file = match get_descriptor(store.get().table, &fd)? {
+            Descriptor::File(file) => file.clone(),
+            Descriptor::Dir(_) => {
+                return Ok((
+                    StreamReader::new(&mut store, iter::empty())?,
+                    FutureReader::new(&mut store, async move {
+                        wasmtime::error::Ok(Err(ErrorCode::IsDirectory))
+                    })?,
+                ));
+            }
+        };
         let (result_tx, result_rx) = oneshot::channel();
         Ok((
             StreamReader::new(
@@ -525,7 +561,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         ))
     }
 
-    fn write_via_stream<U>(
+    fn write_via_stream(
         mut store: Access<'_, U, Self>,
         fd: Resource<Descriptor>,
         mut data: StreamReader<u8>,
@@ -533,7 +569,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
     ) -> wasmtime::Result<FutureReader<Result<(), ErrorCode>>> {
         let (result_tx, result_rx) = oneshot::channel();
         match get_file(store.get().table, &fd).and_then(|file| {
-            if !file.perms.contains(FilePerms::WRITE) {
+            if file.perms.write_not_permitted() {
                 Err(ErrorCode::NotPermitted.into())
             } else {
                 Ok(file.clone())
@@ -553,14 +589,14 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         FutureReader::new(&mut store, result_rx)
     }
 
-    fn append_via_stream<U>(
+    fn append_via_stream(
         mut store: Access<'_, U, Self>,
         fd: Resource<Descriptor>,
         mut data: StreamReader<u8>,
     ) -> wasmtime::Result<FutureReader<Result<(), ErrorCode>>> {
         let (result_tx, result_rx) = oneshot::channel();
         match get_file(store.get().table, &fd).and_then(|file| {
-            if !file.perms.contains(FilePerms::WRITE) {
+            if file.perms.write_not_permitted() {
                 Err(ErrorCode::NotPermitted.into())
             } else {
                 Ok(file.clone())
@@ -577,7 +613,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         FutureReader::new(&mut store, result_rx)
     }
 
-    async fn advise<U>(
+    async fn advise(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         offset: Filesize,
@@ -589,7 +625,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    async fn sync_data<U>(
+    async fn sync_data(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
     ) -> FilesystemResult<()> {
@@ -598,7 +634,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    async fn get_flags<U>(
+    async fn get_flags(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
     ) -> FilesystemResult<DescriptorFlags> {
@@ -607,7 +643,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(flags.into())
     }
 
-    async fn get_type<U>(
+    async fn get_type(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
     ) -> FilesystemResult<DescriptorType> {
@@ -616,7 +652,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(ty.into())
     }
 
-    async fn set_size<U>(
+    async fn set_size(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         size: Filesize,
@@ -626,7 +662,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    async fn set_times<U>(
+    async fn set_times(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         data_access_timestamp: NewTimestamp,
@@ -639,7 +675,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    fn read_directory<U>(
+    fn read_directory(
         mut store: Access<'_, U, Self>,
         fd: Resource<Descriptor>,
     ) -> wasmtime::Result<(
@@ -647,18 +683,12 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         FutureReader<Result<(), ErrorCode>>,
     )> {
         let (result_tx, result_rx) = oneshot::channel();
-        let stream = match get_dir(store.get().table, &fd).and_then(|dir| {
-            if !dir.perms.contains(DirPerms::READ) {
-                Err(ErrorCode::NotPermitted.into())
-            } else {
-                Ok(dir)
-            }
-        }) {
+        let stream = match get_dir(store.get().table, &fd) {
             Ok(dir) => {
                 let allow_blocking_current_thread = dir.allow_blocking_current_thread;
                 let dir = Arc::clone(dir.as_dir());
                 if allow_blocking_current_thread {
-                    match dir.entries() {
+                    match crate::filesystem::primitives::read_base_dir(&dir) {
                         Ok(readdir) => StreamReader::new(
                             &mut store,
                             FallibleIteratorProducer::new(
@@ -683,13 +713,13 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok((stream, FutureReader::new(&mut store, result_rx)?))
     }
 
-    async fn sync<U>(store: &Accessor<U, Self>, fd: Resource<Descriptor>) -> FilesystemResult<()> {
+    async fn sync(store: &Accessor<U, Self>, fd: Resource<Descriptor>) -> FilesystemResult<()> {
         let fd = store.get_descriptor(&fd)?;
         fd.sync().await?;
         Ok(())
     }
 
-    async fn create_directory_at<U>(
+    async fn create_directory_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         path: String,
@@ -699,7 +729,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    async fn stat<U>(
+    async fn stat(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
     ) -> FilesystemResult<DescriptorStat> {
@@ -708,7 +738,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(stat.into())
     }
 
-    async fn stat_at<U>(
+    async fn stat_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         path_flags: PathFlags,
@@ -719,7 +749,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(stat.into())
     }
 
-    async fn set_times_at<U>(
+    async fn set_times_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         path_flags: PathFlags,
@@ -735,7 +765,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    async fn link_at<U>(
+    async fn link_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         old_path_flags: PathFlags,
@@ -750,7 +780,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    async fn open_at<U>(
+    async fn open_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         path_flags: PathFlags,
@@ -776,7 +806,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(fd)
     }
 
-    async fn readlink_at<U>(
+    async fn readlink_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         path: String,
@@ -786,7 +816,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(path)
     }
 
-    async fn remove_directory_at<U>(
+    async fn remove_directory_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         path: String,
@@ -796,7 +826,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    async fn rename_at<U>(
+    async fn rename_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         old_path: String,
@@ -808,7 +838,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    async fn symlink_at<U>(
+    async fn symlink_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         old_path: String,
@@ -819,7 +849,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    async fn unlink_file_at<U>(
+    async fn unlink_file_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         path: String,
@@ -829,7 +859,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(())
     }
 
-    async fn is_same_object<U>(
+    async fn is_same_object(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         other: Resource<Descriptor>,
@@ -843,7 +873,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         fd.is_same_object(&other).await
     }
 
-    async fn metadata_hash<U>(
+    async fn metadata_hash(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
     ) -> FilesystemResult<MetadataHashValue> {
@@ -852,7 +882,7 @@ impl types::HostDescriptorWithStore for WasiFilesystem {
         Ok(meta.into())
     }
 
-    async fn metadata_hash_at<U>(
+    async fn metadata_hash_at(
         store: &Accessor<U, Self>,
         fd: Resource<Descriptor>,
         path_flags: PathFlags,

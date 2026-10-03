@@ -117,8 +117,6 @@ macro_rules! foreach_builtin_component_function {
             #[cfg(feature = "component-model-async")]
             waitable_join(vmctx: vmctx, caller_instance: u32, set: u32, waitable: u32) -> bool;
             #[cfg(feature = "component-model-async")]
-            thread_yield(vmctx: vmctx, caller_instance: u32, cancellable: u8) -> u32;
-            #[cfg(feature = "component-model-async")]
             subtask_drop(vmctx: vmctx, caller_instance: u32, task_id: u32) -> bool;
             #[cfg(feature = "component-model-async")]
             subtask_cancel(vmctx: vmctx, caller_instance: u32, async_: u8, task_id: u32) -> u64;
@@ -186,33 +184,31 @@ macro_rules! foreach_builtin_component_function {
             #[cfg(feature = "component-model-async")]
             error_context_transfer(vmctx: vmctx, src_idx: u32, src_table: u32, dst_table: u32) -> u64;
             #[cfg(feature = "component-model-async")]
-            context_get(vmctx: vmctx, caller_instance: u32, slot: u32) -> u64;
-            #[cfg(feature = "component-model-async")]
-            context_set(vmctx: vmctx, caller_instance: u32, slot: u32, val: u32) -> bool;
-            #[cfg(feature = "component-model-async")]
             thread_index(vmctx: vmctx) -> u64;
             #[cfg(feature = "component-model-async")]
             thread_new_indirect(vmctx: vmctx, caller_instance: u32, func_ty_id: u32, func_table_idx: u32, func_idx: u32, context: u32) -> u64;
             #[cfg(feature = "component-model-async")]
-            thread_suspend_to_suspended(vmctx: vmctx, caller_instance: u32, cancellable: u8, thread_idx: u32) -> u32;
-            #[cfg(feature = "component-model-async")]
-            thread_suspend_to(vmctx: vmctx, caller_instance: u32, cancellable: u8, thread_idx: u32) -> u32;
+            thread_resume_later(vmctx: vmctx, caller_instance: u32, thread_idx: u32) -> bool;
             #[cfg(feature = "component-model-async")]
             thread_suspend(vmctx: vmctx, caller_instance: u32, cancellable: u8) -> u32;
             #[cfg(feature = "component-model-async")]
-            thread_unsuspend(vmctx: vmctx, caller_instance: u32, thread_idx: u32) -> bool;
+            thread_yield(vmctx: vmctx, caller_instance: u32, cancellable: u8) -> u32;
             #[cfg(feature = "component-model-async")]
-            thread_yield_to_suspended(vmctx: vmctx, caller_instance: u32, cancellable: u8, thread_idx: u32) -> u32;
-
-            trap(vmctx: vmctx, code: u32) -> bool;
+            thread_suspend_then_resume(vmctx: vmctx, caller_instance: u32, cancellable: u8, thread_idx: u32) -> u32;
+            #[cfg(feature = "component-model-async")]
+            thread_yield_then_resume(vmctx: vmctx, caller_instance: u32, cancellable: u8, thread_idx: u32) -> u32;
+            #[cfg(feature = "component-model-async")]
+            thread_suspend_then_promote(vmctx: vmctx, caller_instance: u32, cancellable: u8, thread_idx: u32) -> u32;
+            #[cfg(feature = "component-model-async")]
+            thread_yield_then_promote(vmctx: vmctx, caller_instance: u32, cancellable: u8, thread_idx: u32) -> u32;
 
             utf8_to_utf8(vmctx: vmctx, src: ptr_u8, len: size, dst: ptr_u8) -> bool;
             utf16_to_utf16(vmctx: vmctx, src: ptr_u16, len: size, dst: ptr_u16) -> bool;
             latin1_to_latin1(vmctx: vmctx, src: ptr_u8, len: size, dst: ptr_u8) -> bool;
             latin1_to_utf16(vmctx: vmctx, src: ptr_u8, len: size, dst: ptr_u16) -> bool;
             utf8_to_utf16(vmctx: vmctx, src: ptr_u8, len: size, dst: ptr_u16) -> size;
-            utf16_to_utf8(vmctx: vmctx, src: ptr_u16, src_len: size, dst: ptr_u8, dst_len: size, ret2: ptr_size) -> size;
-            latin1_to_utf8(vmctx: vmctx, src: ptr_u8, src_len: size, dst: ptr_u8, dst_len: size, ret2: ptr_size) -> size;
+            utf16_to_utf8(vmctx: vmctx, src: ptr_u16, src_len: size, dst: ptr_u8, dst_len: size, first_pass: u32, ret2: ptr_size) -> size;
+            latin1_to_utf8(vmctx: vmctx, src: ptr_u8, src_len: size, dst: ptr_u8, dst_len: size, first_pass: u32, ret2: ptr_size) -> size;
             utf16_to_compact_probably_utf16(vmctx: vmctx, src: ptr_u16, len: size, dst: ptr_u16) -> size;
             utf8_to_latin1(vmctx: vmctx, src: ptr_u8, len: size, dst: ptr_u8, ret2: ptr_size) -> size;
             utf16_to_latin1(vmctx: vmctx, src: ptr_u16, len: size, dst: ptr_u8, ret2: ptr_size) -> size;

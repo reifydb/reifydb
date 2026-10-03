@@ -178,7 +178,8 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: my::dep0_1_0::a::HostWithStore + my::dep0_2_0::a::HostWithStore + Send,
+            D: my::dep0_1_0::a::HostWithStore<T> + my::dep0_2_0::a::HostWithStore<T>
+                + Send,
             for<'a> D::Data<'a>: my::dep0_1_0::a::Host + my::dep0_2_0::a::Host + Send,
             T: 'static + Send,
         {
@@ -200,10 +201,10 @@ pub mod my {
         pub mod a {
             #[allow(unused_imports)]
             use wasmtime::component::__internal::Box;
-            pub trait HostWithStore: wasmtime::component::HasData + Send {}
-            impl<_T: ?Sized> HostWithStore for _T
+            pub trait HostWithStore<T>: wasmtime::component::HasData + Send {}
+            impl<H: ?Sized, T> HostWithStore<T> for H
             where
-                _T: wasmtime::component::HasData + Send,
+                H: wasmtime::component::HasData + Send,
             {}
             pub trait Host: Send {
                 fn x(&mut self) -> impl ::core::future::Future<Output = ()> + Send;
@@ -213,16 +214,15 @@ pub mod my {
                     async move { Host::x(*self).await }
                 }
             }
-            pub fn add_to_linker<T, D>(
-                linker: &mut wasmtime::component::Linker<T>,
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static + Send,
             {
-                let mut inst = linker.instance("my:dep/a@0.1.0")?;
                 inst.func_wrap_async(
                     "x",
                     move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
@@ -234,6 +234,18 @@ pub mod my {
                     },
                 )?;
                 Ok(())
+            }
+            pub fn add_to_linker<T, D>(
+                linker: &mut wasmtime::component::Linker<T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static + Send,
+            {
+                let mut inst = linker.instance("my:dep/a@0.1.0")?;
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
             }
         }
     }
@@ -242,10 +254,10 @@ pub mod my {
         pub mod a {
             #[allow(unused_imports)]
             use wasmtime::component::__internal::Box;
-            pub trait HostWithStore: wasmtime::component::HasData + Send {}
-            impl<_T: ?Sized> HostWithStore for _T
+            pub trait HostWithStore<T>: wasmtime::component::HasData + Send {}
+            impl<H: ?Sized, T> HostWithStore<T> for H
             where
-                _T: wasmtime::component::HasData + Send,
+                H: wasmtime::component::HasData + Send,
             {}
             pub trait Host: Send {
                 fn x(&mut self) -> impl ::core::future::Future<Output = ()> + Send;
@@ -255,16 +267,15 @@ pub mod my {
                     async move { Host::x(*self).await }
                 }
             }
-            pub fn add_to_linker<T, D>(
-                linker: &mut wasmtime::component::Linker<T>,
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static + Send,
             {
-                let mut inst = linker.instance("my:dep/a@0.2.0")?;
                 inst.func_wrap_async(
                     "x",
                     move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
@@ -276,6 +287,18 @@ pub mod my {
                     },
                 )?;
                 Ok(())
+            }
+            pub fn add_to_linker<T, D>(
+                linker: &mut wasmtime::component::Linker<T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static + Send,
+            {
+                let mut inst = linker.instance("my:dep/a@0.2.0")?;
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
             }
         }
     }
@@ -313,7 +336,7 @@ pub mod exports {
                                     "no exported instance named `my:dep/a@0.1.0`"
                                 )
                             })?;
-                        let mut lookup = move |name| {
+                        let mut lookup = move |name: &str| {
                             _instance_pre
                                 .component()
                                 .get_export_index(Some(&instance), name)
@@ -345,6 +368,14 @@ pub mod exports {
                     }
                 }
                 impl Guest {
+                    pub fn func_x(&self) -> wasmtime::component::TypedFunc<(), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                (),
+                            >::new_unchecked(self.x)
+                        }
+                    }
                     pub async fn call_x<S: wasmtime::AsContextMut>(
                         &self,
                         mut store: S,
@@ -352,12 +383,7 @@ pub mod exports {
                     where
                         <S as wasmtime::AsContext>::Data: Send,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                (),
-                            >::new_unchecked(self.x)
-                        };
+                        let callee = self.func_x();
                         let () = callee.call_async(store.as_context_mut(), ()).await?;
                         Ok(())
                     }
@@ -395,7 +421,7 @@ pub mod exports {
                                     "no exported instance named `my:dep/a@0.2.0`"
                                 )
                             })?;
-                        let mut lookup = move |name| {
+                        let mut lookup = move |name: &str| {
                             _instance_pre
                                 .component()
                                 .get_export_index(Some(&instance), name)
@@ -427,6 +453,14 @@ pub mod exports {
                     }
                 }
                 impl Guest {
+                    pub fn func_x(&self) -> wasmtime::component::TypedFunc<(), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                (),
+                            >::new_unchecked(self.x)
+                        }
+                    }
                     pub async fn call_x<S: wasmtime::AsContextMut>(
                         &self,
                         mut store: S,
@@ -434,12 +468,7 @@ pub mod exports {
                     where
                         <S as wasmtime::AsContext>::Data: Send,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                (),
-                            >::new_unchecked(self.x)
-                        };
+                        let callee = self.func_x();
                         let () = callee.call_async(store.as_context_mut(), ()).await?;
                         Ok(())
                     }

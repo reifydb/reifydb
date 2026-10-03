@@ -4,8 +4,8 @@
 )]
 
 use crate::PoolConcurrencyLimitError;
+use crate::config::PoolingAllocationConfig;
 use crate::prelude::*;
-use crate::runtime::vm::PoolingInstanceAllocatorConfig;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// A generic implementation of a stack pool.
@@ -33,7 +33,7 @@ impl StackPool {
         false
     }
 
-    pub fn new(config: &PoolingInstanceAllocatorConfig) -> Result<Self> {
+    pub fn new(config: &PoolingAllocationConfig) -> Result<Self> {
         Ok(StackPool {
             stack_size: config.stack_size,
             stack_zeroing: config.async_stack_zeroing,
@@ -92,6 +92,18 @@ impl StackPool {
         self.live_stacks.fetch_sub(1, Ordering::AcqRel);
         // A no-op as we don't actually own the fiber stack on Windows.
         let _ = stack;
+    }
+
+    /// Safety: see the unix implementation.
+    pub unsafe fn deallocate_many(
+        &self,
+        stacks: impl Iterator<Item = (wasmtime_fiber::FiberStack, usize)>,
+    ) {
+        for (stack, bytes_resident) in stacks {
+            unsafe {
+                self.deallocate(stack, bytes_resident);
+            }
+        }
     }
 
     pub fn unused_warm_slots(&self) -> u32 {

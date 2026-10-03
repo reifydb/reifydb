@@ -165,7 +165,7 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: imports::HostWithStore + Send,
+            D: imports::HostWithStore<T> + Send,
             for<'a> D::Data<'a>: imports::Host + Send,
             T: 'static + Send,
         {
@@ -178,10 +178,10 @@ const _: () = {
 pub mod imports {
     #[allow(unused_imports)]
     use wasmtime::component::__internal::Box;
-    pub trait HostWithStore: wasmtime::component::HasData + Send {}
-    impl<_T: ?Sized> HostWithStore for _T
+    pub trait HostWithStore<T>: wasmtime::component::HasData + Send {}
+    impl<H: ?Sized, T> HostWithStore<T> for H
     where
-        _T: wasmtime::component::HasData + Send,
+        H: wasmtime::component::HasData + Send,
     {}
     pub trait Host: Send {
         fn y(&mut self) -> impl ::core::future::Future<Output = ()> + Send;
@@ -191,16 +191,15 @@ pub mod imports {
             async move { Host::y(*self).await }
         }
     }
-    pub fn add_to_linker<T, D>(
-        linker: &mut wasmtime::component::Linker<T>,
+    pub fn add_to_linker_instance<T, D>(
+        inst: &mut wasmtime::component::LinkerInstance<'_, T>,
         host_getter: fn(&mut T) -> D::Data<'_>,
     ) -> wasmtime::Result<()>
     where
-        D: HostWithStore,
+        D: HostWithStore<T>,
         for<'a> D::Data<'a>: Host,
         T: 'static + Send,
     {
-        let mut inst = linker.instance("imports")?;
         inst.func_wrap_async(
             "y",
             move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
@@ -225,5 +224,17 @@ pub mod imports {
             },
         )?;
         Ok(())
+    }
+    pub fn add_to_linker<T, D>(
+        linker: &mut wasmtime::component::Linker<T>,
+        host_getter: fn(&mut T) -> D::Data<'_>,
+    ) -> wasmtime::Result<()>
+    where
+        D: HostWithStore<T>,
+        for<'a> D::Data<'a>: Host,
+        T: 'static + Send,
+    {
+        let mut inst = linker.instance("imports")?;
+        add_to_linker_instance::<T, D>(&mut inst, host_getter)
     }
 }

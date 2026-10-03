@@ -1,6 +1,6 @@
 //! Instruction predicates/properties, shared by various analyses.
 use crate::ir::immediates::Offset32;
-use crate::ir::{self, Block, Function, Inst, InstructionData, Opcode, Type, Value};
+use crate::ir::{self, Block, DataFlowGraph, Function, Inst, InstructionData, Opcode, Type, Value};
 
 /// Test whether the given opcode is unsafe to even consider as side-effect-free.
 #[inline(always)]
@@ -18,13 +18,16 @@ fn trivially_has_side_effects(opcode: Opcode) -> bool {
 /// operating on inaccessible memory, so we can't treat them as side-effect-free even if the loaded
 /// value is unused.
 #[inline(always)]
-fn is_load_with_defined_trapping(opcode: Opcode, data: &InstructionData) -> bool {
+fn is_load_with_defined_trapping(
+    opcode: Opcode,
+    data: &InstructionData,
+    dfg: &DataFlowGraph,
+) -> bool {
     if !opcode.can_load() {
         return false;
     }
     match *data {
-        InstructionData::StackLoad { .. } => false,
-        InstructionData::Load { flags, .. } => !flags.notrap(),
+        InstructionData::Load { flags, .. } => !dfg.mem_flags[flags].notrap(),
         _ => true,
     }
 }
@@ -35,7 +38,7 @@ fn is_load_with_defined_trapping(opcode: Opcode, data: &InstructionData) -> bool
 fn has_side_effect(func: &Function, inst: Inst) -> bool {
     let data = &func.dfg.insts[inst];
     let opcode = data.opcode();
-    trivially_has_side_effects(opcode) || is_load_with_defined_trapping(opcode, data)
+    trivially_has_side_effects(opcode) || is_load_with_defined_trapping(opcode, data, &func.dfg)
 }
 
 /// Does the given instruction behave as a "pure" node with respect to
@@ -49,7 +52,10 @@ pub fn is_pure_for_egraph(func: &Function, inst: Inst) -> bool {
             opcode: Opcode::Load,
             flags,
             ..
-        } => flags.readonly() && flags.notrap() && flags.can_move(),
+        } => {
+            let flags = func.dfg.mem_flags[flags];
+            flags.readonly() && flags.notrap() && flags.can_move()
+        }
         _ => false,
     };
 
@@ -88,9 +94,25 @@ pub fn is_mergeable_for_egraph(func: &Function, inst: Inst) -> bool {
 
 /// Does the given instruction have any side-effect as per [has_side_effect], or else is a load,
 /// but not the get_pinned_reg opcode?
+///
+/// Loads are included so that lowering colors them as side-effecting, which is
+/// what keeps a load from being merged into a consumer across an intervening
+/// store. Deciding whether a load has to be *emitted* is a different question;
+/// see [`must_lower_even_if_unused`].
 pub fn has_lowering_side_effect(func: &Function, inst: Inst) -> bool {
     let op = func.dfg.insts[inst].opcode();
     op != Opcode::GetPinnedReg && (has_side_effect(func, inst) || op.can_load())
+}
+
+/// Must lowering emit the given instruction even when none of its results are
+/// used?
+///
+/// This is [has_lowering_side_effect] without its "or is a load" clause: a load
+/// that is defined not to trap has no effect of its own, so if nothing wants the
+/// value it read there is no reason to emit it.
+pub fn must_lower_even_if_unused(func: &Function, inst: Inst) -> bool {
+    let op = func.dfg.insts[inst].opcode();
+    op != Opcode::GetPinnedReg && has_side_effect(func, inst)
 }
 
 /// Is the given instruction a constant value (`iconst`, `fconst`) that can be
@@ -135,23 +157,6 @@ pub fn inst_store_data(func: &Function, inst: Inst) -> Option<Value> {
             Some(args[0])
         }
         _ => None,
-    }
-}
-
-/// Determine whether this opcode behaves as a memory fence, i.e.,
-/// prohibits any moving of memory accesses across it.
-pub fn has_memory_fence_semantics(op: Opcode) -> bool {
-    match op {
-        Opcode::AtomicRmw
-        | Opcode::AtomicCas
-        | Opcode::AtomicLoad
-        | Opcode::AtomicStore
-        | Opcode::Fence
-        | Opcode::Debugtrap
-        | Opcode::SequencePoint => true,
-        Opcode::Call | Opcode::CallIndirect | Opcode::TryCall | Opcode::TryCallIndirect => true,
-        op if op.can_trap() => true,
-        _ => false,
     }
 }
 

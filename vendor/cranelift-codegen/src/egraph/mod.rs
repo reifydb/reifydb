@@ -1,11 +1,13 @@
 //! Support for egraphs represented in the DataFlowGraph.
 
 use crate::FxHashSet;
-use crate::alias_analysis::{AliasAnalysis, LastStores};
+use crate::alias_analysis::{AliasAnalysis, MemoryState, OptResult};
+use crate::branch_to_trap::BranchToTrapAnalysis;
 use crate::ctxhash::{CtxEq, CtxHash, NullCtx};
 use crate::cursor::{Cursor, CursorPosition, FuncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::egraph::elaborate::Elaborator;
+use crate::flowgraph::ControlFlowGraph;
 use crate::inst_predicates::{is_mergeable_for_egraph, is_pure_for_egraph};
 use crate::ir::{
     Block, DataFlowGraph, Function, Inst, InstructionData, Type, Value, ValueDef, ValueListPool,
@@ -16,16 +18,64 @@ use crate::opts::generated_code::SkeletonInstSimplification;
 use crate::scoped_hash_map::{Entry as ScopedEntry, ScopedHashMap};
 use crate::take_and_replace::TakeAndReplace;
 use crate::trace;
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 use core::cmp::Ordering;
 use core::hash::Hasher;
 use cranelift_control::ControlPlane;
-use cranelift_entity::SecondaryMap;
 use cranelift_entity::packed_option::ReservedValue;
+use cranelift_entity::{EntitySet, SecondaryMap};
 use smallvec::SmallVec;
 
 mod cost;
 mod elaborate;
+
+/// An iterator that yields blocks in a depth-first pre-order traversal of the
+/// dominator tree, where each node's children are visited in order of
+/// decreasing CFG post-order number.
+///
+/// The `ScopedHashMap` used for GVN requires that we visit dominator-tree
+/// ancestors before their descendants, and that we can "pop" scopes as we
+/// backtrack up the dominator tree. This is a DFS pre-order traversal of the
+/// dominator tree: we process every dominator before the blocks it dominates,
+/// and the scope stack always mirrors the dominator-tree path from the root to
+/// the current block.
+struct EgraphBlockIter<'a> {
+    domtree: &'a DominatorTree,
+    stack: Vec<Block>,
+    children: SmallVec<[Block; 8]>,
+}
+
+impl<'a> EgraphBlockIter<'a> {
+    fn new(domtree: &'a DominatorTree) -> Self {
+        let mut iter = Self {
+            domtree,
+            stack: Vec::new(),
+            children: SmallVec::new(),
+        };
+        if let Some(&root) = domtree.cfg_postorder().last() {
+            iter.stack.push(root);
+        }
+        iter
+    }
+}
+
+impl Iterator for EgraphBlockIter<'_> {
+    type Item = Block;
+
+    fn next(&mut self) -> Option<Block> {
+        let block = self.stack.pop()?;
+
+        // Collect children into `self.children`, reusing the allocation.
+        self.children.clear();
+        self.children.extend(self.domtree.children(block));
+
+        // Push in reverse so that the first child ends up on top of the stack
+        // and is visited first.
+        self.stack.extend(self.children.iter().rev().copied());
+
+        Some(block)
+    }
+}
 
 /// Pass over a Function that does the whole aegraph thing.
 ///
@@ -60,6 +110,13 @@ pub struct EgraphPass<'a> {
     /// Chaos-mode control-plane so we can test that we still get
     /// correct results when our heuristics make bad decisions.
     ctrl_plane: &'a mut ControlPlane,
+    /// The control flow graph, used when eliminating unreachable code
+    /// after branch simplification.
+    cfg: &'a mut ControlFlowGraph,
+    /// Branch-to-trap analysis: determines which blocks are "just trap" blocks,
+    /// used by `simplify_skeleton` rules to rewrite conditional branches to
+    /// trapping blocks into conditional traps.
+    branch_to_trap_analysis: BranchToTrapAnalysis,
     /// Which Values do we want to rematerialize in each block where
     /// they're used?
     remat_values: FxHashSet<Value>,
@@ -72,6 +129,12 @@ const MATCHES_LIMIT: usize = 5;
 
 /// The maximum number of enodes in any given eclass.
 const ECLASS_ENODE_LIMIT: usize = 5;
+
+/// The amount of "fuel" available for each top-level rewrite
+/// invocation's eclass extractors.
+///
+/// Each yield from a multi-extractor iterator consumes one unit.
+pub(crate) const EXTRACTOR_FUEL: u32 = 500;
 
 /// Context passed through node insertion and optimization.
 pub(crate) struct OptimizeCtx<'opt, 'analysis>
@@ -88,11 +151,16 @@ where
     pub(crate) remat_values: &'opt mut FxHashSet<Value>,
     pub(crate) stats: &'opt mut Stats,
     domtree: &'opt DominatorTree,
+    /// The pre-egraph control-flow graph, used by the alias analysis to lazily
+    /// build a post-dominator tree for dead-store elimination.
+    cfg: &'opt ControlFlowGraph,
     pub(crate) alias_analysis: &'opt mut AliasAnalysis<'analysis>,
-    pub(crate) alias_analysis_state: &'opt mut LastStores,
+    pub(crate) alias_analysis_state: &'opt mut MemoryState,
+    pub(crate) branch_to_trap_analysis: &'opt mut BranchToTrapAnalysis,
     ctrl_plane: &'opt mut ControlPlane,
     // Held locally during optimization of one node (recursively):
     pub(crate) rewrite_depth: usize,
+    pub(crate) extractor_fuel: u32,
     pub(crate) subsume_values: FxHashSet<Value>,
     optimized_values: SmallVec<[Value; MATCHES_LIMIT]>,
     optimized_insts: SmallVec<[SkeletonInstSimplification; MATCHES_LIMIT]>,
@@ -302,7 +370,7 @@ where
         // infinite or problematic recursion, we bound the rewrite
         // depth to a small constant here.
         const REWRITE_LIMIT: usize = 5;
-        if ctx.rewrite_depth > REWRITE_LIMIT {
+        if ctx.rewrite_depth >= REWRITE_LIMIT {
             ctx.stats.rewrite_depth_limit += 1;
             return orig_value;
         }
@@ -464,7 +532,7 @@ where
                         }
                         (_, _) => unreachable!(),
                     }
-                    Some(SkeletonInstSimplification::Remove)
+                    return Some(SkeletonInstSimplification::Remove);
                 }
                 ScopedEntry::Vacant(v) => {
                     // Otherwise, insert it into the value-map.
@@ -474,94 +542,60 @@ where
                     }
                     v.insert(result);
                     trace!(" -> inserts as new (no GVN)");
-                    None
                 }
             }
         }
-        // Otherwise, if a load or store, process it with the alias
-        // analysis to see if we can optimize it (rewrite in terms of
-        // an earlier load or stored value).
-        else if let Some(new_result) =
-            self.alias_analysis
-                .process_inst(self.func, self.alias_analysis_state, inst)
+
+        // Otherwise, if a load or store, process it with the alias analysis to
+        // see if we can optimize it (rewrite in terms of an earlier load or
+        // stored value, or remove an idempotent store).
+        match self
+            .alias_analysis
+            .process_inst(self.func, self.cfg, self.alias_analysis_state, inst)
         {
-            self.stats.alias_analysis_removed += 1;
-            let result = self.func.dfg.first_result(inst);
-            trace!(
-                " -> inst {} has result {} replaced with {}",
-                inst, result, new_result
-            );
-            self.value_to_opt_value[result] = new_result;
-            self.available_block[result] = self.available_block[new_result];
-            Some(SkeletonInstSimplification::Remove)
-        }
-        // Otherwise, generic side-effecting op -- always keep it, and
-        // set its results to identity-map to original values.
-        else {
-            // Set all results to identity-map to themselves
-            // in the value-to-opt-value map.
-            for &result in self.func.dfg.inst_results(inst) {
-                self.value_to_opt_value[result] = result;
-                self.available_block[result] = block;
+            OptResult::AliasedLoad(new_result) => {
+                self.stats.alias_analysis_removed_load += 1;
+                let result = self.func.dfg.first_result(inst);
+                trace!(
+                    " -> inst {} has result {} replaced with {}",
+                    inst, result, new_result
+                );
+                self.value_to_opt_value[result] = new_result;
+                self.available_block[result] = self.available_block[new_result];
+                Some(SkeletonInstSimplification::Remove)
             }
-            None
+            OptResult::IdempotentStore => {
+                self.stats.alias_analysis_removed_idempotent_store += 1;
+                Some(SkeletonInstSimplification::Remove)
+            }
+            OptResult::DeadStore { dead, overwriter } => {
+                self.stats.alias_analysis_removed_dead_store += 1;
+                Some(SkeletonInstSimplification::RemoveDeadStore { dead, overwriter })
+            }
+            OptResult::None => {
+                // Generic side-effecting op -- always keep it, and
+                // set its results to identity-map to original values.
+                for &result in self.func.dfg.inst_results(inst) {
+                    self.value_to_opt_value[result] = result;
+                    self.available_block[result] = block;
+                }
+                None
+            }
         }
     }
 
     /// Find the best simplification of the given skeleton instruction, if any,
     /// by consulting our `simplify_skeleton` ISLE rules.
     fn simplify_skeleton_inst(&mut self, inst: Inst) -> Option<SkeletonInstSimplification> {
-        // We cannot currently simplify terminators, or simplify into
-        // terminators. Anything that could change the control-flow graph is off
-        // limits.
+        // NB: we support simplifying branch terminators (e.g. `brif` with a
+        // constant condition into `jump`). This can make blocks unreachable,
+        // but a separate `eliminate_unreachable_code` pass handles removing
+        // them after the egraph pass completes.
         //
-        // Consider the following CLIF snippet:
-        //
-        //     block0(v0: i64):
-        //         v1 = iconst.i32 0
-        //         trapz v1, user42
-        //         v2 = load.i32 v0
-        //         brif v1, block1, block2
-        //     block1:
-        //         return v2
-        //     block2:
-        //         v3 = iconst.i32 1
-        //         v4 = iadd v2, v3
-        //         return v4
-        //
-        // We would ideally like to perform simplifications like replacing the
-        // `trapz` with an unconditional `trap` and the conditional `brif`
-        // branch with an unconditional `jump`. Note, however, that blocks
-        // `block1` and `block2` are dominated by `block0` and therefore can and
-        // do use values defined in `block0`. This presents challenges:
-        //
-        // * If we replace the `brif` with a `jump`, then we've mutated the
-        //   control-flow graph and removed that domination property. The uses
-        //   of `v2` and `v3` in those blocks become invalid.
-        //
-        // * Even worse, if we turn the `trapz` into a `trap`, we are
-        //   introducing a terminator into the middle of the block, which leaves
-        //   us with two choices to fix up the IR so that there aren't any
-        //   instructions following the terminator in the block:
-        //
-        //   1. We can split the unreachable instructions off into a new
-        //      block. However, there is no control-flow edge from the current
-        //      block to this new block and so, again, the new block isn't
-        //      dominated by the current block, and therefore the can't use
-        //      values defined in this block or any dominating it. The `load`
-        //      instruction uses `v0` but is not dominated by `v0`'s
-        //      definition.
-        //
-        //   2. Alternatively, we can simply delete the trailing instructions,
-        //      since they are unreachable. But then not only are the old
-        //      instructions' uses no longer dominated by their definitions, but
-        //      the definitions do not exist at all anymore!
-        //
-        // Whatever approach we would take, we would invalidate value uses, and
-        // would need to track and fix them up.
-        if self.func.dfg.insts[inst].opcode().is_branch() {
-            return None;
-        }
+        // We do NOT yet support simplifying non-terminators into terminators
+        // (e.g. `trapz` into `trap`) because that would introduce a
+        // terminator in the middle of a block, requiring removal of trailing
+        // instructions and their value definitions.
 
         let mut guard = TakeAndReplace::new(self, |x| &mut x.optimized_insts);
         let (ctx, optimized_insts) = guard.get();
@@ -619,6 +653,36 @@ where
                     return Some(simplification);
                 }
 
+                // `ReplaceBranchCond` is unconditionally accepted: the opcode
+                // and successors don't change, so we can't use the cost-based
+                // ranking the other variants do (skeleton cost can't consider
+                // operand costs).
+                SkeletonInstSimplification::ReplaceBranchCond { cond } => {
+                    log::trace!(" -> simplify_skeleton: replace condition operand with {cond}");
+                    return Some(SkeletonInstSimplification::ReplaceBranchCond { cond });
+                }
+                // `ReplaceWithTwo` (e.g. rewriting a branch-to-trap-block into
+                // a conditional trap + jump) is also unconditionally accepted:
+                // these rules are always an improvement, but due to its shape,
+                // cannot participate in the cost-based ranking other variants
+                // use.
+                SkeletonInstSimplification::ReplaceWithTwo { first, second } => {
+                    log::trace!(
+                        " -> simplify_skeleton: replace inst with `{}; {}`",
+                        ctx.func.dfg.display_inst(first),
+                        ctx.func.dfg.display_inst(second),
+                    );
+                    return Some(SkeletonInstSimplification::ReplaceWithTwo { first, second });
+                }
+
+                SkeletonInstSimplification::RemoveDeadStore { dead, overwriter } => {
+                    log::trace!(
+                        " -> simplify_skeleton: remove other: {dead}: {}",
+                        ctx.func.dfg.display_inst(dead)
+                    );
+                    return Some(SkeletonInstSimplification::RemoveDeadStore { dead, overwriter });
+                }
+
                 // For instruction replacement simplification, we want to check
                 // that the replacements define the same number and types of
                 // values as the original instruction, and also determine
@@ -641,12 +705,6 @@ where
             };
 
             if cfg!(debug_assertions) {
-                let opcode = ctx.func.dfg.insts[inst].opcode();
-                debug_assert!(
-                    !(opcode.is_terminator() || opcode.is_branch()),
-                    "simplifying control-flow instructions and terminators is not yet supported",
-                );
-
                 let old_vals = ctx.func.dfg.inst_results(inst);
                 let new_vals = if let Some(val) = new_val.as_ref() {
                     core::slice::from_ref(val)
@@ -686,6 +744,36 @@ where
     }
 }
 
+impl SkeletonInstSimplification {
+    /// Does this simplification rewrite a block terminator, and thus
+    /// potentially change the CFG?
+    fn rewrites_terminator(&self, dfg: &DataFlowGraph) -> bool {
+        let is_terminator = |inst: Inst| dfg.insts[inst].opcode().is_terminator();
+        match self {
+            // Removing an instruction never rewrites a terminator: a block's
+            // terminator cannot be removed or the block would become invalid.
+            SkeletonInstSimplification::Remove
+            | SkeletonInstSimplification::RemoveWithVal { .. }
+            | SkeletonInstSimplification::RemoveDeadStore { .. } => false,
+
+            // Swapping a conditional branch/trap's condition operand leaves the
+            // opcode and successors in place, so the CFG is preserved.
+            SkeletonInstSimplification::ReplaceBranchCond { .. } => false,
+
+            // A one-for-one replacement (e.g. `brif` with a constant condition
+            // into `jump`) rewrites a terminator exactly when the replacement
+            // instruction is itself a terminator.
+            SkeletonInstSimplification::Replace { inst }
+            | SkeletonInstSimplification::ReplaceWithVal { inst, .. } => is_terminator(*inst),
+
+            // Replacing one instruction with two (e.g. a branch to a
+            // trap-only block into a conditional trap plus a jump) rewrites a
+            // terminator exactly when the trailing instruction is a terminator.
+            SkeletonInstSimplification::ReplaceWithTwo { second, .. } => is_terminator(*second),
+        }
+    }
+}
+
 impl<'a> EgraphPass<'a> {
     /// Create a new EgraphPass.
     pub fn new(
@@ -694,6 +782,7 @@ impl<'a> EgraphPass<'a> {
         loop_analysis: &'a LoopAnalysis,
         alias_analysis: &'a mut AliasAnalysis<'a>,
         ctrl_plane: &'a mut ControlPlane,
+        cfg: &'a mut ControlFlowGraph,
     ) -> Self {
         Self {
             func,
@@ -701,6 +790,8 @@ impl<'a> EgraphPass<'a> {
             loop_analysis,
             alias_analysis,
             ctrl_plane,
+            cfg,
+            branch_to_trap_analysis: BranchToTrapAnalysis::default(),
             stats: Stats::default(),
             remat_values: FxHashSet::default(),
         }
@@ -708,7 +799,7 @@ impl<'a> EgraphPass<'a> {
 
     /// Run the process.
     pub fn run(&mut self) {
-        self.remove_pure_and_optimize();
+        let cfg_maybe_changed = self.remove_pure_and_optimize();
 
         trace!("egraph built:\n{}\n", self.func.display());
         if cfg!(feature = "trace-log") {
@@ -721,6 +812,18 @@ impl<'a> EgraphPass<'a> {
                     _ => {}
                 }
             }
+        }
+
+        // Branch simplification could have mutated the CFG and made some blocks
+        // unreachable; recompute the CFG, find which blocks are still
+        // reachable, and remove those that aren't. But only do this if we
+        // rewrote a block terminator, because otherwise the CFG is unchanged.
+        if cfg_maybe_changed {
+            self.cfg.compute(self.func);
+            let reachable_blocks = self.find_reachable_blocks();
+            crate::unreachable_code::eliminate_unreachable_code(self.func, self.cfg, |block| {
+                reachable_blocks.contains(block)
+            });
         }
 
         self.elaborate();
@@ -747,8 +850,15 @@ impl<'a> EgraphPass<'a> {
     /// because the eclass can continue to be updated and we need to
     /// only refer to its subset that exists at this stage, to
     /// maintain acyclicity.)
-    fn remove_pure_and_optimize(&mut self) {
+    ///
+    /// Returns whether we may have modified the CFG (i.e. rewrote a
+    /// terminator).
+    fn remove_pure_and_optimize(&mut self) -> bool {
         let mut cursor = FuncCursor::new(self.func);
+
+        // Set to `true` if any skeleton simplification rewrites a terminator and
+        // thus may have made some blocks unreachable. See `run`.
+        let mut cfg_maybe_changed = false;
         let mut value_to_opt_value: SecondaryMap<Value, Value> =
             SecondaryMap::with_default(Value::reserved_value());
 
@@ -801,105 +911,139 @@ impl<'a> EgraphPass<'a> {
         // this is likely to realloc again later.
         available_block.resize(cursor.func.dfg.num_values());
 
-        // In domtree preorder, visit blocks. (TODO: factor out an
-        // iterator from this and elaborator.)
-        let root = cursor.layout().entry_block().unwrap();
-        enum StackEntry {
-            Visit(Block),
-            Pop,
-        }
-        let mut block_stack = vec![StackEntry::Visit(root)];
-        while let Some(entry) = block_stack.pop() {
-            match entry {
-                StackEntry::Visit(block) => {
-                    // We popped this block; push children
-                    // immediately, then process this block.
-                    block_stack.push(StackEntry::Pop);
-                    block_stack.extend(
-                        self.ctrl_plane
-                            .shuffled(self.domtree.children(block))
-                            .map(StackEntry::Visit),
+        // See `EgraphBlockIter` for why we use this particular block
+        // ordering.
+        let domtree = self.domtree;
+        for block in EgraphBlockIter::new(domtree) {
+            // Maintain GVN scoping: pop scopes until the top of the
+            // stack is the immediate dominator of this block.
+            while gvn_map_blocks
+                .last()
+                .is_some_and(|&dom| domtree.idom(block) != Some(dom))
+            {
+                gvn_map_blocks.pop();
+                gvn_map.decrement_depth();
+                self.alias_analysis.pop_scope();
+            }
+
+            gvn_map.increment_depth();
+            gvn_map_blocks.push(block);
+
+            let mut alias_analysis_state = self.alias_analysis.push_scope(&*self.cfg, block);
+
+            // Check that `gvn_map_blocks` is the path from this block up to the
+            // root in the dominator tree.
+            debug_assert_eq!(gvn_map_blocks, {
+                let mut b = Some(block);
+                let mut v = core::iter::from_fn(move || {
+                    let block = b;
+                    b = b.map(|b| domtree.idom(b))?;
+                    block
+                })
+                .collect::<Vec<_>>();
+                v.reverse();
+                v
+            });
+
+            trace!("Processing block {}", block);
+            cursor.set_position(CursorPosition::Before(block));
+
+            for &param in cursor.func.dfg.block_params(block) {
+                trace!("creating initial singleton eclass for blockparam {}", param);
+                value_to_opt_value[param] = param;
+                available_block[param] = block;
+            }
+            while let Some(inst) = cursor.next_inst() {
+                trace!(
+                    "Processing inst {inst}: {}",
+                    cursor.func.dfg.display_inst(inst),
+                );
+
+                // Rewrite args of *all* instructions using the
+                // value-to-opt-value map.
+                cursor.func.dfg.map_inst_values(inst, |arg| {
+                    let new_value = value_to_opt_value[arg];
+                    trace!("rewriting arg {} of inst {} to {}", arg, inst, new_value);
+                    debug_assert_ne!(
+                        new_value,
+                        Value::reserved_value(),
+                        "rewriting arg {arg} of {inst} to {new_value}, but \
+                         {new_value} == Value::reserved_value()"
                     );
-                    gvn_map.increment_depth();
-                    gvn_map_blocks.push(block);
+                    new_value
+                });
 
-                    trace!("Processing block {}", block);
-                    cursor.set_position(CursorPosition::Before(block));
+                // Build a context for optimization, with borrows of
+                // state. We can't invoke a method on `self` because
+                // we've borrowed `self.func` mutably (as
+                // `cursor.func`) so we pull apart the pieces instead
+                // here.
+                let mut ctx = OptimizeCtx {
+                    func: cursor.func,
+                    value_to_opt_value: &mut value_to_opt_value,
+                    gvn_map: &mut gvn_map,
+                    gvn_map_blocks: &mut gvn_map_blocks,
+                    available_block: &mut available_block,
+                    eclass_size: &mut eclass_size,
+                    rewrite_depth: 0,
+                    extractor_fuel: EXTRACTOR_FUEL,
+                    subsume_values: FxHashSet::default(),
+                    remat_values: &mut self.remat_values,
+                    stats: &mut self.stats,
+                    domtree: &self.domtree,
+                    cfg: &*self.cfg,
+                    alias_analysis: self.alias_analysis,
+                    alias_analysis_state: &mut alias_analysis_state,
+                    branch_to_trap_analysis: &mut self.branch_to_trap_analysis,
+                    ctrl_plane: self.ctrl_plane,
+                    optimized_values: Default::default(),
+                    optimized_insts: Default::default(),
+                };
 
-                    let mut alias_analysis_state = self.alias_analysis.block_starting_state(block);
-
-                    for &param in cursor.func.dfg.block_params(block) {
-                        trace!("creating initial singleton eclass for blockparam {}", param);
-                        value_to_opt_value[param] = param;
-                        available_block[param] = block;
-                    }
-                    while let Some(inst) = cursor.next_inst() {
-                        trace!(
-                            "Processing inst {inst}: {}",
-                            cursor.func.dfg.display_inst(inst),
+                if is_pure_for_egraph(ctx.func, inst) {
+                    // Insert into GVN map and optimize any new nodes
+                    // inserted (recursively performing this work for
+                    // any nodes the optimization rules produce).
+                    let inst = NewOrExistingInst::Existing(inst);
+                    ctx.insert_pure_enode(inst);
+                    // We've now rewritten all uses, or will when we
+                    // see them, and the instruction exists as a pure
+                    // enode in the eclass, so we can remove it.
+                    cursor.remove_inst_and_step_back();
+                } else {
+                    if let Some(cmd) = ctx.optimize_skeleton_inst(inst, block) {
+                        cfg_maybe_changed |= cmd.rewrites_terminator(&cursor.func.dfg);
+                        Self::execute_skeleton_inst_simplification(
+                            cmd,
+                            &mut cursor,
+                            &mut value_to_opt_value,
+                            inst,
                         );
-
-                        // Rewrite args of *all* instructions using the
-                        // value-to-opt-value map.
-                        cursor.func.dfg.map_inst_values(inst, |arg| {
-                            let new_value = value_to_opt_value[arg];
-                            trace!("rewriting arg {} of inst {} to {}", arg, inst, new_value);
-                            debug_assert_ne!(new_value, Value::reserved_value());
-                            new_value
-                        });
-
-                        // Build a context for optimization, with borrows of
-                        // state. We can't invoke a method on `self` because
-                        // we've borrowed `self.func` mutably (as
-                        // `cursor.func`) so we pull apart the pieces instead
-                        // here.
-                        let mut ctx = OptimizeCtx {
-                            func: cursor.func,
-                            value_to_opt_value: &mut value_to_opt_value,
-                            gvn_map: &mut gvn_map,
-                            gvn_map_blocks: &mut gvn_map_blocks,
-                            available_block: &mut available_block,
-                            eclass_size: &mut eclass_size,
-                            rewrite_depth: 0,
-                            subsume_values: FxHashSet::default(),
-                            remat_values: &mut self.remat_values,
-                            stats: &mut self.stats,
-                            domtree: &self.domtree,
-                            alias_analysis: self.alias_analysis,
-                            alias_analysis_state: &mut alias_analysis_state,
-                            ctrl_plane: self.ctrl_plane,
-                            optimized_values: Default::default(),
-                            optimized_insts: Default::default(),
-                        };
-
-                        if is_pure_for_egraph(ctx.func, inst) {
-                            // Insert into GVN map and optimize any new nodes
-                            // inserted (recursively performing this work for
-                            // any nodes the optimization rules produce).
-                            let inst = NewOrExistingInst::Existing(inst);
-                            ctx.insert_pure_enode(inst);
-                            // We've now rewritten all uses, or will when we
-                            // see them, and the instruction exists as a pure
-                            // enode in the eclass, so we can remove it.
-                            cursor.remove_inst_and_step_back();
-                        } else {
-                            if let Some(cmd) = ctx.optimize_skeleton_inst(inst, block) {
-                                Self::execute_skeleton_inst_simplification(
-                                    cmd,
-                                    &mut cursor,
-                                    &mut value_to_opt_value,
-                                    inst,
-                                );
-                            }
-                        }
                     }
-                }
-                StackEntry::Pop => {
-                    gvn_map.decrement_depth();
-                    gvn_map_blocks.pop();
                 }
             }
         }
+        cfg_maybe_changed
+    }
+
+    /// Find the set of blocks reachable from the entry block by
+    /// traversing the current CFG.
+    ///
+    /// Must be called after branch simplification and the CFG has been
+    /// recomputed to reflect post-optimization control flow.
+    fn find_reachable_blocks(&self) -> EntitySet<Block> {
+        let mut reachable = EntitySet::<Block>::with_capacity(self.func.dfg.num_blocks());
+        let entry = self.func.layout.entry_block().unwrap();
+        let mut stack = vec![entry];
+        reachable.insert(entry);
+        while let Some(block) = stack.pop() {
+            for successor in self.cfg.succ_iter(block) {
+                if reachable.insert(successor) {
+                    stack.push(successor);
+                }
+            }
+        }
+        reachable
     }
 
     /// Execute a simplification of an instruction in the side-effectful
@@ -910,30 +1054,140 @@ impl<'a> EgraphPass<'a> {
         value_to_opt_value: &mut SecondaryMap<Value, Value>,
         old_inst: Inst,
     ) {
-        let mut forward_val = |cursor: &mut FuncCursor, old_val, new_val| {
+        let old_is_terminator = cursor.func.dfg.insts[old_inst].opcode().is_terminator();
+
+        // Redirect uses of `old_val` to `new_val`.
+        let forward_val = |cursor: &mut FuncCursor<'_>,
+                           value_to_opt_value: &mut SecondaryMap<_, _>,
+                           old_val,
+                           new_val| {
             cursor.func.dfg.change_to_alias(old_val, new_val);
             value_to_opt_value[old_val] = new_val;
         };
 
+        // Values created during skeleton-instruction simplification are created
+        // after we've already computed the `value_to_opt_value` map and are
+        // therefore missing entries within it. These values are already
+        // optimized, so map them to themselves.
+        let self_map_operands =
+            |dfg: &DataFlowGraph, value_to_opt_value: &mut SecondaryMap<_, _>, inst| {
+                for val in dfg.inst_values(inst) {
+                    debug_assert!(
+                        value_to_opt_value[val] == val
+                            || value_to_opt_value[val] == Value::reserved_value()
+                    );
+                    value_to_opt_value[val] = core::cmp::min(value_to_opt_value[val], val);
+                }
+            };
+
+        // Any new instructions produced by a simplification inherit the source
+        // location of the instruction they replace.
+        let old_srcloc = cursor.func.srclocs[old_inst];
+        // NB: But we only inherit the source location when it is non-default to
+        // avoid extending the `SecondaryMap`.
+        let old_srcloc = if old_srcloc.is_default() {
+            None
+        } else {
+            Some(old_srcloc)
+        };
+
+        // Rewind the cursor to just before `inst` so that the main loop
+        // re-processes it on its next iteration. This lets a freshly
+        // produced/modified skeleton instruction be GVN'd and/or simplified
+        // further.
+        fn reprocess_from(cursor: &mut FuncCursor, inst: Inst) {
+            cursor.goto_inst(inst);
+            cursor.prev_inst();
+        }
+
         let (new_inst, new_val) = match simplification {
             SkeletonInstSimplification::Remove => {
                 cursor.remove_inst_and_step_back();
+                debug_assert!(
+                    !old_is_terminator,
+                    "cannot remove a block terminator (the block would become invalid)",
+                );
                 return;
             }
             SkeletonInstSimplification::RemoveWithVal { val } => {
                 cursor.remove_inst_and_step_back();
                 let old_val = cursor.func.dfg.first_result(old_inst);
                 cursor.func.dfg.detach_inst_results(old_inst);
-                forward_val(cursor, old_val, val);
+                forward_val(cursor, value_to_opt_value, old_val, val);
+                debug_assert!(
+                    !old_is_terminator,
+                    "cannot remove a block terminator (the block would become invalid)",
+                );
                 return;
             }
+            SkeletonInstSimplification::ReplaceBranchCond { cond } => {
+                // Swap the condition operand (argument 0) of the existing
+                // conditional skeleton instruction in place. The opcode and any
+                // successors stay the same, so the CFG is preserved. This
+                // applies to `brif` as well as the conditional traps `trapz` and
+                // `trapnz`, which all take the tested value as argument 0.
+                debug_assert!(matches!(
+                    cursor.func.dfg.insts[old_inst].opcode(),
+                    crate::ir::Opcode::Brif | crate::ir::Opcode::Trapz | crate::ir::Opcode::Trapnz,
+                ));
+                cursor.func.dfg.inst_args_mut(old_inst)[0] = cond;
+                // Re-process the modified instruction so that, e.g., another
+                // truthiness-preserving layer can be stripped from its
+                // condition or it can be GVN'd.
+                self_map_operands(&cursor.func.dfg, value_to_opt_value, old_inst);
+                reprocess_from(cursor, old_inst);
+                // The opcode and successors are unchanged, so the CFG is
+                // preserved.
+                return;
+            }
+            SkeletonInstSimplification::ReplaceWithTwo { first, second } => {
+                // We don't forward result values for `ReplaceWithTwo` -- and it
+                // isn't clear what that would mean when both the new
+                // instructions have result values -- so we only support
+                // instructions without results here.
+                debug_assert!(cursor.func.dfg.inst_results(old_inst).is_empty());
+                debug_assert!(cursor.func.dfg.inst_results(first).is_empty());
+                debug_assert!(cursor.func.dfg.inst_results(second).is_empty());
+
+                debug_assert!(!cursor.func.dfg.insts[first].opcode().is_terminator());
+                // If the instruction we're replacing is a block terminator,
+                // then the trailing new instruction must also be a terminator,
+                // so the block remains well-formed.
+                debug_assert_eq!(
+                    old_is_terminator,
+                    cursor.func.dfg.insts[second].opcode().is_terminator()
+                );
+
+                if let Some(old_srcloc) = old_srcloc {
+                    cursor.func.srclocs[first] = old_srcloc;
+                    cursor.func.srclocs[second] = old_srcloc;
+                }
+
+                cursor.insert_inst(first);
+                cursor.replace_inst(second);
+                self_map_operands(&cursor.func.dfg, value_to_opt_value, first);
+                self_map_operands(&cursor.func.dfg, value_to_opt_value, second);
+                reprocess_from(cursor, first);
+                return;
+            }
+            SkeletonInstSimplification::RemoveDeadStore { dead, overwriter } => {
+                assert!(!matches!(cursor.position(), CursorPosition::At(inst) if inst == dead));
+                cursor.func.layout.remove_inst(dead);
+                self_map_operands(&cursor.func.dfg, value_to_opt_value, overwriter);
+                cursor.prev_inst();
+                return;
+            }
+
             SkeletonInstSimplification::Replace { inst } => (inst, None),
             SkeletonInstSimplification::ReplaceWithVal { inst, val } => (inst, Some(val)),
         };
 
+        if let Some(old_srcloc) = old_srcloc {
+            cursor.func.srclocs[new_inst] = old_srcloc;
+        }
+
         // Replace the old instruction with the new one.
         cursor.replace_inst(new_inst);
-        debug_assert!(!cursor.func.dfg.insts[new_inst].opcode().is_terminator());
 
         // Redirect the old instruction's result values to our new instruction's
         // result values.
@@ -950,13 +1204,16 @@ impl<'a> EgraphPass<'a> {
         for i in 0..cursor.func.dfg.inst_results(old_inst).len() {
             let old_val = cursor.func.dfg.inst_results(old_inst)[i];
             let new_val = next_new_val(&cursor.func.dfg);
-            forward_val(cursor, old_val, new_val);
+            forward_val(cursor, value_to_opt_value, old_val, new_val);
         }
 
-        // Back up so that the next iteration of the outer egraph loop will
-        // process the new instruction.
-        cursor.goto_inst(new_inst);
-        cursor.prev_inst();
+        self_map_operands(&cursor.func.dfg, value_to_opt_value, new_inst);
+        reprocess_from(cursor, new_inst);
+
+        debug_assert_eq!(
+            old_is_terminator,
+            cursor.func.dfg.insts[new_inst].opcode().is_terminator()
+        );
     }
 
     /// Scoped elaboration: compute a final ordering of op computation
@@ -1061,7 +1318,9 @@ pub(crate) struct Stats {
     pub(crate) skeleton_inst: u64,
     pub(crate) skeleton_inst_simplified: u64,
     pub(crate) skeleton_inst_gvn: u64,
-    pub(crate) alias_analysis_removed: u64,
+    pub(crate) alias_analysis_removed_load: u64,
+    pub(crate) alias_analysis_removed_idempotent_store: u64,
+    pub(crate) alias_analysis_removed_dead_store: u64,
     pub(crate) new_inst: u64,
     pub(crate) union: u64,
     pub(crate) subsume: u64,
@@ -1069,6 +1328,7 @@ pub(crate) struct Stats {
     pub(crate) rewrite_rule_invoked: u64,
     pub(crate) rewrite_rule_results: u64,
     pub(crate) rewrite_depth_limit: u64,
+    pub(crate) rewrite_fuel_exhausted: u64,
     pub(crate) elaborate_visit_node: u64,
     pub(crate) elaborate_memoize_hit: u64,
     pub(crate) elaborate_memoize_miss: u64,

@@ -3,9 +3,8 @@ use crate::clocks::{HostMonotonicClock, HostWallClock, WasiClocksCtx};
 use crate::filesystem::{Dir, WasiFilesystemCtx};
 use crate::random::WasiRandomCtx;
 use crate::sockets::{SocketAddrCheck, SocketAddrUse, WasiSocketsCtx};
-use crate::{DirPerms, FilePerms, OpenMode};
-use cap_rand::RngCore;
-use cap_std::ambient_authority;
+use crate::{FsPerms, OpenMode};
+use rand::Rng;
 use std::future::Future;
 use std::mem;
 use std::net::SocketAddr;
@@ -242,6 +241,15 @@ impl WasiCtxBuilder {
         self
     }
 
+    /// Configures the initial current working directory reported to the guest.
+    ///
+    /// By default no initial current working directory is configured and
+    /// `wasi:cli/environment.initial-cwd` returns `none`.
+    pub fn initial_cwd(&mut self, path: impl AsRef<str>) -> &mut Self {
+        self.cli.initial_cwd = Some(path.as_ref().to_owned());
+        self
+    }
+
     /// Configures a "preopened directory" to be available to WebAssembly.
     ///
     /// By default WebAssembly does not have access to the filesystem because
@@ -260,11 +268,8 @@ impl WasiCtxBuilder {
     /// * `guest_path` - the name of the preopened directory from WebAssembly's
     ///   perspective. Note that this does not need to match the host's name for
     ///   the directory.
-    /// * `dir_perms` - this is the permissions that wasm will have to operate on
-    ///   `guest_path`. This can be used, for example, to provide readonly access to a
-    ///   directory.
-    /// * `file_perms` - similar to `dir_perms` but corresponds to the maximum set
-    ///   of permissions that can be used for any file in this directory.
+    /// * `fs_perms` - permissions enforced by wasmtime-wasi on filesystem
+    ///    operations under a preopen.
     ///
     /// # Errors
     ///
@@ -274,17 +279,17 @@ impl WasiCtxBuilder {
     ///
     /// ```
     /// use wasmtime_wasi::WasiCtxBuilder;
-    /// use wasmtime_wasi::{DirPerms, FilePerms};
+    /// use wasmtime_wasi::FsPerms;
     ///
     /// # fn main() {}
     /// # fn foo() -> wasmtime::Result<()> {
     /// let mut wasi = WasiCtxBuilder::new();
     ///
     /// // Make `./host-directory` available in the guest as `.`
-    /// wasi.preopened_dir("./host-directory", ".", DirPerms::all(), FilePerms::all());
+    /// wasi.preopened_dir("./host-directory", ".", FsPerms::ReadWrite);
     ///
     /// // Make `./readonly` available in the guest as `./ro`
-    /// wasi.preopened_dir("./readonly", "./ro", DirPerms::READ, FilePerms::READ);
+    /// wasi.preopened_dir("./readonly", "./ro", FsPerms::ReadOnly);
     /// # Ok(())
     /// # }
     /// ```
@@ -292,22 +297,17 @@ impl WasiCtxBuilder {
         &mut self,
         host_path: impl AsRef<Path>,
         guest_path: impl AsRef<str>,
-        dir_perms: DirPerms,
-        file_perms: FilePerms,
+        perms: FsPerms,
     ) -> Result<&mut Self> {
-        let dir = cap_std::fs::Dir::open_ambient_dir(host_path.as_ref(), ambient_authority())?;
-        let mut open_mode = OpenMode::empty();
-        if dir_perms.contains(DirPerms::READ) {
-            open_mode |= OpenMode::READ;
-        }
-        if dir_perms.contains(DirPerms::MUTATE) {
-            open_mode |= OpenMode::WRITE;
-        }
+        let dir = crate::filesystem::primitives::open_ambient_dir(host_path.as_ref())?;
+        let open_mode = match perms {
+            FsPerms::ReadOnly => OpenMode::READ,
+            FsPerms::ReadWrite => OpenMode::READ | OpenMode::WRITE,
+        };
         self.filesystem.preopens.push((
             Dir::new(
                 dir,
-                dir_perms,
-                file_perms,
+                perms,
                 open_mode,
                 self.filesystem.allow_blocking_current_thread,
             ),
@@ -326,7 +326,7 @@ impl WasiCtxBuilder {
     /// unpredictable random data in order to maintain its security invariants,
     /// and ideally should use the insecure random API otherwise, so using any
     /// prerecorded or otherwise predictable data may compromise security.
-    pub fn secure_random(&mut self, random: impl RngCore + Send + 'static) -> &mut Self {
+    pub fn secure_random(&mut self, random: impl Rng + Send + 'static) -> &mut Self {
         self.random.random = Box::new(random);
         self
     }
@@ -335,7 +335,7 @@ impl WasiCtxBuilder {
     ///
     /// The `insecure_random` generator provided will be used for all randomness
     /// requested by the `wasi:random/insecure` interface.
-    pub fn insecure_random(&mut self, insecure_random: impl RngCore + Send + 'static) -> &mut Self {
+    pub fn insecure_random(&mut self, insecure_random: impl Rng + Send + 'static) -> &mut Self {
         self.random.insecure_random = Box::new(insecure_random);
         self
     }
@@ -413,10 +413,9 @@ impl WasiCtxBuilder {
         self
     }
 
-    /// Allow usage of UDP.
+    /// Allow usage of UDP
     ///
-    /// This is enabled by default, but can be disabled if UDP should be blanket
-    /// disabled.
+    /// By default this is disabled.
     pub fn allow_udp(&mut self, enable: bool) -> &mut Self {
         self.sockets.allowed_network_uses.udp = enable;
         self
@@ -424,8 +423,7 @@ impl WasiCtxBuilder {
 
     /// Allow usage of TCP
     ///
-    /// This is enabled by default, but can be disabled if TCP should be blanket
-    /// disabled.
+    /// By default this is disabled.
     pub fn allow_tcp(&mut self, enable: bool) -> &mut Self {
         self.sockets.allowed_network_uses.tcp = enable;
         self

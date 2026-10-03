@@ -1,10 +1,8 @@
-#[cfg(feature = "component-model-async-bytes")]
+use crate::prelude::*;
+#[cfg(feature = "component-model-bytes")]
 use bytes::{Bytes, BytesMut};
-#[cfg(feature = "component-model-async-bytes")]
-use std::io::Cursor;
-use std::mem::{self, MaybeUninit};
-use std::slice;
-use std::vec::Vec;
+use core::mem::{self, MaybeUninit};
+use core::slice;
 
 // Inner module here to restrict possible readers of the fields of
 // `UntypedWriteBuffer`.
@@ -12,10 +10,10 @@ pub use untyped::*;
 mod untyped {
     use super::WriteBuffer;
     use crate::vm::SendSyncPtr;
-    use std::any::TypeId;
-    use std::marker;
-    use std::mem;
-    use std::ptr::NonNull;
+    use core::any::TypeId;
+    use core::marker;
+    use core::mem;
+    use core::ptr::NonNull;
 
     /// Helper structure to type-erase the `T` in `WriteBuffer<T>`.
     ///
@@ -223,6 +221,7 @@ pub struct SliceBuffer {
 
 impl SliceBuffer {
     pub fn new(buffer: Vec<u8>, offset: usize, limit: usize) -> Self {
+        assert!(offset <= limit);
         assert!(limit <= buffer.len());
         Self {
             buffer,
@@ -375,57 +374,41 @@ impl<T: Send + Sync + 'static> ReadBuffer<T> for Vec<T> {
 
 // SAFETY: the `take` implementation below guarantees that the `fun` closure is
 // provided with fully initialized items.
-#[cfg(feature = "component-model-async-bytes")]
-unsafe impl WriteBuffer<u8> for Cursor<Bytes> {
+#[cfg(feature = "component-model-bytes")]
+unsafe impl WriteBuffer<u8> for Bytes {
     fn remaining(&self) -> &[u8] {
-        &self.get_ref()[usize::try_from(self.position()).unwrap()..]
+        self
     }
 
     fn skip(&mut self, count: usize) {
-        assert!(
-            count <= self.remaining().len(),
-            "tried to skip {count} with {} remaining",
-            self.remaining().len()
-        );
-        self.set_position(
-            self.position()
-                .checked_add(u64::try_from(count).unwrap())
-                .unwrap(),
-        );
+        let _prefix = self.split_to(count);
     }
 
     fn take(&mut self, count: usize, fun: &mut dyn FnMut(&[MaybeUninit<u8>])) {
-        assert!(count <= self.remaining().len());
-        fun(unsafe_byte_slice(&self.remaining()[..count]));
-        self.skip(count);
+        let prefix = self.split_to(count);
+        fun(unsafe_byte_slice(&prefix));
     }
 }
 
 // SAFETY: the `take` implementation below guarantees that the `fun` closure is
 // provided with fully initialized items.
-#[cfg(feature = "component-model-async-bytes")]
-unsafe impl WriteBuffer<u8> for Cursor<BytesMut> {
+#[cfg(feature = "component-model-bytes")]
+unsafe impl WriteBuffer<u8> for BytesMut {
     fn remaining(&self) -> &[u8] {
-        &self.get_ref()[usize::try_from(self.position()).unwrap()..]
+        self
     }
 
     fn skip(&mut self, count: usize) {
-        assert!(count <= self.remaining().len());
-        self.set_position(
-            self.position()
-                .checked_add(u64::try_from(count).unwrap())
-                .unwrap(),
-        );
+        let _prefix = self.split_to(count);
     }
 
     fn take(&mut self, count: usize, fun: &mut dyn FnMut(&[MaybeUninit<u8>])) {
-        assert!(count <= self.remaining().len());
-        fun(unsafe_byte_slice(&self.remaining()[..count]));
-        self.skip(count);
+        let prefix = self.split_to(count);
+        fun(unsafe_byte_slice(&prefix));
     }
 }
 
-#[cfg(feature = "component-model-async-bytes")]
+#[cfg(feature = "component-model-bytes")]
 impl ReadBuffer<u8> for BytesMut {
     fn extend<I: IntoIterator<Item = u8>>(&mut self, iter: I) {
         Extend::extend(self, iter)
@@ -447,7 +430,7 @@ impl ReadBuffer<u8> for BytesMut {
     }
 }
 
-#[cfg(feature = "component-model-async-bytes")]
+#[cfg(feature = "component-model-bytes")]
 fn unsafe_byte_slice(slice: &[u8]) -> &[MaybeUninit<u8>] {
     // SAFETY: it's always safe to interpret a slice of items as a
     // possibly-initialized slice of items.
@@ -457,7 +440,6 @@ fn unsafe_byte_slice(slice: &[u8]) -> &[MaybeUninit<u8>] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::prelude::*;
 
     #[test]
     fn test_vec_buffer_take() {
@@ -483,9 +465,9 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "component-model-async-bytes")]
+    #[cfg(feature = "component-model-bytes")]
     fn test_cursor_bytes_take() {
-        let mut buf = Cursor::new(Bytes::from(&b"123"[..]));
+        let mut buf = Bytes::from(&b"123"[..]);
         let mut dst = Vec::new();
         dst.reserve(1);
         dst.move_from(&mut buf, 1);
@@ -500,9 +482,9 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "component-model-async-bytes")]
+    #[cfg(feature = "component-model-bytes")]
     fn test_cursor_bytes_mut_take() {
-        let mut buf = Cursor::new(BytesMut::from(&b"123"[..]));
+        let mut buf = BytesMut::from(&b"123"[..]);
         let mut dst = Vec::new();
         dst.reserve(1);
         dst.move_from(&mut buf, 1);

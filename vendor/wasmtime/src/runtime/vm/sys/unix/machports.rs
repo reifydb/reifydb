@@ -32,12 +32,14 @@
 //! the SpiderMonkey implementation and it should pass all the tests!
 
 #![allow(
-    // FFI bindings here for C/etc don't follow Rust's naming conventions.
     non_snake_case,
-    // Platform-specific code has a lot of false positives with these lints so
-    // like Unix disable the lints for this module.
+    reason = "FFI bindings here for C/etc don't follow Rust's naming conventions"
+)]
+#![allow(
     clippy::cast_sign_loss,
-    clippy::cast_possible_truncation
+    clippy::cast_possible_truncation,
+    reason = "Platform-specific code has a lot of false positives with these \
+              lints so like Unix disable the lints for this module"
 )]
 
 use crate::runtime::module::lookup_code;
@@ -56,7 +58,7 @@ use mach2::traps::*;
 use std::io;
 use std::mem;
 use std::thread;
-use wasmtime_environ::Trap;
+use wasmtime_environ::CompiledTrap;
 
 /// Process-global port that we use to route thread-level exceptions to.
 static mut WASMTIME_PORT: mach_port_name_t = MACH_PORT_NULL;
@@ -172,7 +174,6 @@ unsafe extern "C" fn sigbus_handler(
 // additionally match what mach expects (apparently, I wish I had a better
 // reference for this).
 #[repr(C, packed(4))]
-#[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 struct __Request__exception_raise_t {
     Head: mach_msg_header_t,
@@ -194,7 +195,6 @@ struct __Request__exception_raise_t {
 
 // This is largely just copied from SpiderMonkey.
 #[repr(C)]
-#[allow(dead_code)]
 #[derive(Debug)]
 struct ExceptionRequest {
     body: __Request__exception_raise_t,
@@ -311,8 +311,8 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
     //   parameters as the first two arguments.
     // * `thread_state` - a fresh instance of `ThreadState` to read into
     // * `thread_state_count` - the size to pass to `mach_msg`.
-    cfg_if::cfg_if! {
-        if #[cfg(target_arch = "x86_64")] {
+    cfg_select! {
+        target_arch = "x86_64" => {
             use mach2::structs::x86_thread_state64_t;
             use mach2::thread_status::x86_THREAD_STATE64;
 
@@ -325,7 +325,7 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
                 state.__rbp as usize,
             );
 
-            let resume = |state: &mut ThreadState, pc: usize, fp: usize, fault1: usize, fault2: usize, trap: Trap| {
+            let resume = |state: &mut ThreadState, pc: usize, fp: usize, fault1: usize, fault2: usize, trap: CompiledTrap| {
                 // The x86_64 ABI requires a 16-byte stack alignment for
                 // functions, so typically we'll be 16-byte aligned. In this
                 // case we simulate a `call` instruction by decrementing the
@@ -356,10 +356,11 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
                 state.__rsi = fp as u64;
                 state.__rdx = fault1 as u64;
                 state.__rcx = fault2 as u64;
-                state.__r8 = trap as u64;
+                state.__r8 = trap.as_u8().into();
             };
             let mut thread_state = ThreadState::new();
-        } else if #[cfg(target_arch = "aarch64")] {
+        }
+        target_arch = "aarch64" => {
             type ThreadState = mach2::structs::arm_thread_state64_t;
 
             let thread_state_flavor = ARM_THREAD_STATE64;
@@ -369,7 +370,7 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
                 state.__fp as usize,
             );
 
-            let resume = |state: &mut ThreadState, pc: usize, fp: usize, fault1: usize, fault2: usize, trap: Trap| {
+            let resume = |state: &mut ThreadState, pc: usize, fp: usize, fault1: usize, fault2: usize, trap: CompiledTrap| {
                 // Clobber LR with the faulting PC, so unwinding resumes at the
                 // faulting instruction. The previous value of LR has been saved
                 // by the callee (in Cranelift generated code), so no need to
@@ -382,11 +383,12 @@ unsafe fn handle_exception(request: &mut ExceptionRequest) -> bool {
                 state.__x[1] = fp as u64;
                 state.__x[2] = fault1 as u64;
                 state.__x[3] = fault2 as u64;
-                state.__x[4] = trap as u64;
+                state.__x[4] = trap.as_u8().into();
                 state.__pc = (unwind as *const ()).addr() as u64;
             };
             let mut thread_state = unsafe { mem::zeroed::<ThreadState>() };
-        } else {
+        }
+        _ => {
             compile_error!("unsupported target architecture");
         }
     }
@@ -464,7 +466,7 @@ unsafe extern "C" fn unwind(pc: usize, fp: usize, fault1: usize, fault2: usize, 
             0 => None,
             _ => Some(fault2),
         };
-        let trap = Trap::from_u8(trap).unwrap();
+        let trap = CompiledTrap::from_u8(trap).unwrap();
         state.set_jit_trap(regs, faulting_addr, trap);
         state.entry_trap_handler()
     });

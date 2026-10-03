@@ -173,7 +173,7 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: foo::foo::simple::HostWithStore,
+            D: foo::foo::simple::HostWithStore<T>,
             for<'a> D::Data<'a>: foo::foo::simple::Host,
             T: 'static,
         {
@@ -191,10 +191,10 @@ pub mod foo {
         pub mod simple {
             #[allow(unused_imports)]
             use wasmtime::component::__internal::Box;
-            pub trait HostWithStore: wasmtime::component::HasData {}
-            impl<_T: ?Sized> HostWithStore for _T
+            pub trait HostWithStore<T>: wasmtime::component::HasData {}
+            impl<H: ?Sized, T> HostWithStore<T> for H
             where
-                _T: wasmtime::component::HasData,
+                H: wasmtime::component::HasData,
             {}
             pub trait Host {
                 fn f1(&mut self) -> ();
@@ -224,16 +224,15 @@ pub mod foo {
                     Host::f6(*self, a, b, c)
                 }
             }
-            pub fn add_to_linker<T, D>(
-                linker: &mut wasmtime::component::Linker<T>,
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static,
             {
-                let mut inst = linker.instance("foo:foo/simple")?;
                 inst.func_wrap(
                     "f1",
                     move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
@@ -290,6 +289,18 @@ pub mod foo {
                 )?;
                 Ok(())
             }
+            pub fn add_to_linker<T, D>(
+                linker: &mut wasmtime::component::Linker<T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static,
+            {
+                let mut inst = linker.instance("foo:foo/simple")?;
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
+            }
         }
     }
 }
@@ -336,7 +347,7 @@ pub mod exports {
                                     "no exported instance named `foo:foo/simple`"
                                 )
                             })?;
-                        let mut lookup = move |name| {
+                        let mut lookup = move |name: &str| {
                             _instance_pre
                                 .component()
                                 .get_export_index(Some(&instance), name)
@@ -398,32 +409,48 @@ pub mod exports {
                     }
                 }
                 impl Guest {
-                    pub fn call_f1<S: wasmtime::AsContextMut>(
-                        &self,
-                        mut store: S,
-                    ) -> wasmtime::Result<()> {
-                        let callee = unsafe {
+                    pub fn func_f1(&self) -> wasmtime::component::TypedFunc<(), ()> {
+                        unsafe {
                             wasmtime::component::TypedFunc::<
                                 (),
                                 (),
                             >::new_unchecked(self.f1)
-                        };
+                        }
+                    }
+                    pub fn call_f1<S: wasmtime::AsContextMut>(
+                        &self,
+                        mut store: S,
+                    ) -> wasmtime::Result<()> {
+                        let callee = self.func_f1();
                         let () = callee.call(store.as_context_mut(), ())?;
                         Ok(())
+                    }
+                    pub fn func_f2(&self) -> wasmtime::component::TypedFunc<(u32,), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (u32,),
+                                (),
+                            >::new_unchecked(self.f2)
+                        }
                     }
                     pub fn call_f2<S: wasmtime::AsContextMut>(
                         &self,
                         mut store: S,
                         arg0: u32,
                     ) -> wasmtime::Result<()> {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (u32,),
-                                (),
-                            >::new_unchecked(self.f2)
-                        };
+                        let callee = self.func_f2();
                         let () = callee.call(store.as_context_mut(), (arg0,))?;
                         Ok(())
+                    }
+                    pub fn func_f3(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(u32, u32), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (u32, u32),
+                                (),
+                            >::new_unchecked(self.f3)
+                        }
                     }
                     pub fn call_f3<S: wasmtime::AsContextMut>(
                         &self,
@@ -431,40 +458,56 @@ pub mod exports {
                         arg0: u32,
                         arg1: u32,
                     ) -> wasmtime::Result<()> {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (u32, u32),
-                                (),
-                            >::new_unchecked(self.f3)
-                        };
+                        let callee = self.func_f3();
                         let () = callee.call(store.as_context_mut(), (arg0, arg1))?;
                         Ok(())
+                    }
+                    pub fn func_f4(&self) -> wasmtime::component::TypedFunc<(), (u32,)> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                (u32,),
+                            >::new_unchecked(self.f4)
+                        }
                     }
                     pub fn call_f4<S: wasmtime::AsContextMut>(
                         &self,
                         mut store: S,
                     ) -> wasmtime::Result<u32> {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                (u32,),
-                            >::new_unchecked(self.f4)
-                        };
+                        let callee = self.func_f4();
                         let (ret0,) = callee.call(store.as_context_mut(), ())?;
                         Ok(ret0)
+                    }
+                    pub fn func_f5(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(), ((u32, u32),)> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                ((u32, u32),),
+                            >::new_unchecked(self.f5)
+                        }
                     }
                     pub fn call_f5<S: wasmtime::AsContextMut>(
                         &self,
                         mut store: S,
                     ) -> wasmtime::Result<(u32, u32)> {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                ((u32, u32),),
-                            >::new_unchecked(self.f5)
-                        };
+                        let callee = self.func_f5();
                         let (ret0,) = callee.call(store.as_context_mut(), ())?;
                         Ok(ret0)
+                    }
+                    pub fn func_f6(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<
+                        (u32, u32, u32),
+                        ((u32, u32, u32),),
+                    > {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (u32, u32, u32),
+                                ((u32, u32, u32),),
+                            >::new_unchecked(self.f6)
+                        }
                     }
                     pub fn call_f6<S: wasmtime::AsContextMut>(
                         &self,
@@ -473,12 +516,7 @@ pub mod exports {
                         arg1: u32,
                         arg2: u32,
                     ) -> wasmtime::Result<(u32, u32, u32)> {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (u32, u32, u32),
-                                ((u32, u32, u32),),
-                            >::new_unchecked(self.f6)
-                        };
+                        let callee = self.func_f6();
                         let (ret0,) = callee
                             .call(store.as_context_mut(), (arg0, arg1, arg2))?;
                         Ok(ret0)

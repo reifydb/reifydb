@@ -173,7 +173,7 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: foo::foo::simple_lists::HostWithStore + Send,
+            D: foo::foo::simple_lists::HostWithStore<T> + Send,
             for<'a> D::Data<'a>: foo::foo::simple_lists::Host + Send,
             T: 'static + Send,
         {
@@ -191,10 +191,10 @@ pub mod foo {
         pub mod simple_lists {
             #[allow(unused_imports)]
             use wasmtime::component::__internal::Box;
-            pub trait HostWithStore: wasmtime::component::HasData + Send {}
-            impl<_T: ?Sized> HostWithStore for _T
+            pub trait HostWithStore<T>: wasmtime::component::HasData + Send {}
+            impl<H: ?Sized, T> HostWithStore<T> for H
             where
-                _T: wasmtime::component::HasData + Send,
+                H: wasmtime::component::HasData + Send,
             {}
             pub trait Host: Send {
                 fn simple_list1(
@@ -266,16 +266,15 @@ pub mod foo {
                     async move { Host::simple_list4(*self, l).await }
                 }
             }
-            pub fn add_to_linker<T, D>(
-                linker: &mut wasmtime::component::Linker<T>,
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static + Send,
             {
-                let mut inst = linker.instance("foo:foo/simple-lists")?;
                 inst.func_wrap_async(
                     "simple-list1",
                     move |
@@ -400,6 +399,18 @@ pub mod foo {
                 )?;
                 Ok(())
             }
+            pub fn add_to_linker<T, D>(
+                linker: &mut wasmtime::component::Linker<T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static + Send,
+            {
+                let mut inst = linker.instance("foo:foo/simple-lists")?;
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
+            }
         }
     }
 }
@@ -442,7 +453,7 @@ pub mod exports {
                                     "no exported instance named `foo:foo/simple-lists`"
                                 )
                             })?;
-                        let mut lookup = move |name| {
+                        let mut lookup = move |name: &str| {
                             _instance_pre
                                 .component()
                                 .get_export_index(Some(&instance), name)
@@ -517,6 +528,16 @@ pub mod exports {
                     }
                 }
                 impl Guest {
+                    pub fn func_simple_list1(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(&[u32],), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (&[u32],),
+                                (),
+                            >::new_unchecked(self.simple_list1)
+                        }
+                    }
                     pub async fn call_simple_list1<S: wasmtime::AsContextMut>(
                         &self,
                         mut store: S,
@@ -530,17 +551,25 @@ pub mod exports {
                             tracing::Level::TRACE, "wit-bindgen export", module =
                             "foo:foo/simple-lists", function = "simple-list1",
                         );
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (&[u32],),
-                                (),
-                            >::new_unchecked(self.simple_list1)
-                        };
+                        let callee = self.func_simple_list1();
                         let () = callee
                             .call_async(store.as_context_mut(), (arg0,))
                             .instrument(span.clone())
                             .await?;
                         Ok(())
+                    }
+                    pub fn func_simple_list2(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<
+                        (),
+                        (wasmtime::component::__internal::Vec<u32>,),
+                    > {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                (wasmtime::component::__internal::Vec<u32>,),
+                            >::new_unchecked(self.simple_list2)
+                        }
                     }
                     pub async fn call_simple_list2<S: wasmtime::AsContextMut>(
                         &self,
@@ -554,17 +583,35 @@ pub mod exports {
                             tracing::Level::TRACE, "wit-bindgen export", module =
                             "foo:foo/simple-lists", function = "simple-list2",
                         );
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                (wasmtime::component::__internal::Vec<u32>,),
-                            >::new_unchecked(self.simple_list2)
-                        };
+                        let callee = self.func_simple_list2();
                         let (ret0,) = callee
                             .call_async(store.as_context_mut(), ())
                             .instrument(span.clone())
                             .await?;
                         Ok(ret0)
+                    }
+                    pub fn func_simple_list3(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<
+                        (&[u32], &[u32]),
+                        (
+                            (
+                                wasmtime::component::__internal::Vec<u32>,
+                                wasmtime::component::__internal::Vec<u32>,
+                            ),
+                        ),
+                    > {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (&[u32], &[u32]),
+                                (
+                                    (
+                                        wasmtime::component::__internal::Vec<u32>,
+                                        wasmtime::component::__internal::Vec<u32>,
+                                    ),
+                                ),
+                            >::new_unchecked(self.simple_list3)
+                        }
                     }
                     pub async fn call_simple_list3<S: wasmtime::AsContextMut>(
                         &self,
@@ -585,22 +632,33 @@ pub mod exports {
                             tracing::Level::TRACE, "wit-bindgen export", module =
                             "foo:foo/simple-lists", function = "simple-list3",
                         );
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (&[u32], &[u32]),
-                                (
-                                    (
-                                        wasmtime::component::__internal::Vec<u32>,
-                                        wasmtime::component::__internal::Vec<u32>,
-                                    ),
-                                ),
-                            >::new_unchecked(self.simple_list3)
-                        };
+                        let callee = self.func_simple_list3();
                         let (ret0,) = callee
                             .call_async(store.as_context_mut(), (arg0, arg1))
                             .instrument(span.clone())
                             .await?;
                         Ok(ret0)
+                    }
+                    pub fn func_simple_list4(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<
+                        (&[wasmtime::component::__internal::Vec<u32>],),
+                        (
+                            wasmtime::component::__internal::Vec<
+                                wasmtime::component::__internal::Vec<u32>,
+                            >,
+                        ),
+                    > {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (&[wasmtime::component::__internal::Vec<u32>],),
+                                (
+                                    wasmtime::component::__internal::Vec<
+                                        wasmtime::component::__internal::Vec<u32>,
+                                    >,
+                                ),
+                            >::new_unchecked(self.simple_list4)
+                        }
                     }
                     pub async fn call_simple_list4<S: wasmtime::AsContextMut>(
                         &self,
@@ -619,16 +677,7 @@ pub mod exports {
                             tracing::Level::TRACE, "wit-bindgen export", module =
                             "foo:foo/simple-lists", function = "simple-list4",
                         );
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (&[wasmtime::component::__internal::Vec<u32>],),
-                                (
-                                    wasmtime::component::__internal::Vec<
-                                        wasmtime::component::__internal::Vec<u32>,
-                                    >,
-                                ),
-                            >::new_unchecked(self.simple_list4)
-                        };
+                        let callee = self.func_simple_list4();
                         let (ret0,) = callee
                             .call_async(store.as_context_mut(), (arg0,))
                             .instrument(span.clone())

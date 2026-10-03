@@ -1,5 +1,6 @@
 //! Index/slot allocator policies for the pooling allocator.
 
+use super::ShardId;
 use crate::hash_map::{Entry, HashMap};
 use crate::prelude::*;
 use crate::runtime::vm::CompiledModuleId;
@@ -27,8 +28,10 @@ impl SlotId {
 pub struct SimpleIndexAllocator(ModuleAffinityIndexAllocator);
 
 impl SimpleIndexAllocator {
-    pub fn new(capacity: u32) -> Self {
-        SimpleIndexAllocator(ModuleAffinityIndexAllocator::new(capacity, 0))
+    pub fn new(capacity: u32) -> Result<Self, OutOfMemory> {
+        Ok(SimpleIndexAllocator(ModuleAffinityIndexAllocator::new(
+            capacity, 0,
+        )?))
     }
 
     pub fn is_empty(&self) -> bool {
@@ -46,6 +49,12 @@ impl SimpleIndexAllocator {
     /// the [`Self::unused_bytes_resident`] method.
     pub(crate) fn free(&self, index: SlotId, bytes_resident: usize) {
         self.0.free(index, bytes_resident);
+    }
+
+    /// Same as [`Self::free`], but frees many slots under a single lock
+    /// acquisition.
+    pub(crate) fn free_many(&self, items: impl IntoIterator<Item = (SlotId, usize)>) {
+        self.0.free_many(items);
     }
 
     /// Returns the number of previously-used slots in this allocator which are
@@ -79,7 +88,23 @@ pub struct MemoryInModule(pub CompiledModuleId, pub DefinedMemoryIndex);
 /// An index allocator that has configurable affinity between slots and modules
 /// so that slots are often reused for the same module again.
 #[derive(Debug)]
-pub struct ModuleAffinityIndexAllocator(Mutex<Inner>);
+pub struct ModuleAffinityIndexAllocator {
+    /// The slot space is partitioned into shards, each protected by its own
+    /// mutex, to avoid contention on a single lock when many threads
+    /// allocate and free slots concurrently. Each shard owns a contiguous
+    /// range of `slots_per_shard` slot indices and manages them with local
+    /// indices; translation to global `SlotId`s happens at this type's
+    /// public boundary.
+    ///
+    /// Threads have a "home" shard (the same thread-local, round-robin
+    /// assignment used for the sharded decommit queue) which they try
+    /// first for allocation, falling back to probing the other shards, so
+    /// in steady state each thread allocates and frees from its own shard
+    /// without cross-thread lock traffic. Pool exhaustion is only reported
+    /// after all shards have been consulted.
+    shards: Box<[super::CachePadded<Mutex<Inner>>]>,
+    slots_per_shard: u32,
+}
 
 #[derive(Debug)]
 struct Inner {
@@ -184,33 +209,144 @@ enum AllocMode {
     AnySlot,
 }
 
+/// The division of an allocator's slot space and unused-warm-slot budget
+/// into shards.
+#[derive(Debug, PartialEq, Eq)]
+struct ShardLayout {
+    /// Number of slots in each shard except possibly the last, which may be
+    /// smaller when `requested_shards` doesn't evenly divide the capacity.
+    slots_per_shard: u32,
+    /// Per-shard `(capacity, max_unused_warm_slots)`.
+    shards: Box<[(u32, u32)]>,
+}
+
+impl ShardLayout {
+    fn new(
+        capacity: u32,
+        max_unused_warm_slots: u32,
+        requested_shards: u32,
+    ) -> Result<ShardLayout, OutOfMemory> {
+        // N.B. we limit the pool sharding (via `default_shard_count`, whose
+        // cap `requested_shards` reflects) regardless of CPU count to
+        // balance reduced lock-contention with the downsides of slot
+        // sharding. In particular, on many-core systems, scaling with the
+        // number of cores can lead to:
+        // - very small shards, increasing the likelihood of running out of
+        //   slots in a shard and falling off the fast path.
+        // - warm-slot budget dilution, where `max_unused_warm_slots` is low
+        //   enough that many shards don't get warm slots at all.
+        // - affinity dilution, where some threads may have slots with the
+        //   right instance type affinity available, but the thread handling
+        //   the request doesn't, so the slower instantiation path has to be
+        //   taken.
+        //
+        // Additionally, we don't shard at all for small pools, as the
+        // downsides of sharding are too pronounced.
+        let nshards = if capacity >= 128 {
+            requested_shards.max(1)
+        } else {
+            1
+        };
+        let slots_per_shard = capacity.div_ceil(nshards).max(1);
+        let nshards = capacity.div_ceil(slots_per_shard).max(1);
+
+        let shards = (0..nshards)
+            .map(|i| {
+                let base = i * slots_per_shard;
+                let shard_capacity = capacity.saturating_sub(base).min(slots_per_shard);
+                // Distribute the unused-warm budget across shards,
+                // spreading the remainder over the leading shards.
+                let shard_warm = max_unused_warm_slots / nshards
+                    + u32::from(i < max_unused_warm_slots % nshards);
+                (shard_capacity, shard_warm)
+            })
+            .try_collect()?;
+
+        Ok(ShardLayout {
+            slots_per_shard,
+            shards,
+        })
+    }
+}
+
 impl ModuleAffinityIndexAllocator {
     /// Create the default state for this strategy.
-    pub fn new(capacity: u32, max_unused_warm_slots: u32) -> Self {
-        ModuleAffinityIndexAllocator(Mutex::new(Inner {
-            last_cold: 0,
+    pub fn new(capacity: u32, max_unused_warm_slots: u32) -> Result<Self, OutOfMemory> {
+        Self::new_with_shard_count(
+            capacity,
             max_unused_warm_slots,
-            unused_warm_slots: 0,
-            module_affine: HashMap::new(),
-            slot_state: (0..capacity).map(|_| SlotState::UnusedCold).collect(),
-            warm: List::default(),
-            unused_bytes_resident: 0,
-        }))
+            super::default_shard_count(),
+        )
+    }
+
+    /// Same as [`Self::new`], but with an explicit shard count (which is
+    /// capped as described in [`ShardLayout::new`]).
+    fn new_with_shard_count(
+        capacity: u32,
+        max_unused_warm_slots: u32,
+        requested_shards: u32,
+    ) -> Result<Self, OutOfMemory> {
+        let layout = ShardLayout::new(capacity, max_unused_warm_slots, requested_shards)?;
+        let shards = layout
+            .shards
+            .iter()
+            .map(|&(shard_capacity, shard_warm)| {
+                super::CachePadded(Mutex::new(Inner {
+                    last_cold: 0,
+                    max_unused_warm_slots: shard_warm,
+                    unused_warm_slots: 0,
+                    module_affine: HashMap::new(),
+                    slot_state: (0..shard_capacity).map(|_| SlotState::UnusedCold).collect(),
+                    warm: List::default(),
+                    unused_bytes_resident: 0,
+                }))
+            })
+            .try_collect()?;
+
+        Ok(ModuleAffinityIndexAllocator {
+            shards,
+            slots_per_shard: layout.slots_per_shard,
+        })
+    }
+
+    /// Translate a shard-local slot index to a global `SlotId`.
+    fn global_id(&self, shard: ShardId, local: SlotId) -> SlotId {
+        SlotId(u32::try_from(shard.index()).unwrap() * self.slots_per_shard + local.0)
+    }
+
+    /// Translate a global `SlotId` to its shard and shard-local index.
+    fn shard_of(&self, global: SlotId) -> (ShardId, SlotId) {
+        let shard = ShardId::from_index((global.0 / self.slots_per_shard) as usize);
+        (shard, SlotId(global.0 % self.slots_per_shard))
+    }
+
+    /// Returns the [`Inner`] state of the given shard.
+    fn shard(&self, shard: ShardId) -> &Mutex<Inner> {
+        &self.shards[shard.index()].0
+    }
+
+    /// Enumerate all shard ids of this allocator.
+    fn shard_ids(&self) -> impl Iterator<Item = ShardId> + use<> {
+        (0..self.shards.len()).map(ShardId::from_index)
     }
 
     /// How many slots can this allocator allocate?
     pub fn len(&self) -> usize {
-        let inner = self.0.lock().unwrap();
-        inner.slot_state.len()
+        self.shards
+            .iter()
+            .map(|s| s.0.lock().unwrap().slot_state.len())
+            .sum()
     }
 
     /// Are zero slots in use right now?
     pub fn is_empty(&self) -> bool {
-        let inner = self.0.lock().unwrap();
-        !inner
-            .slot_state
-            .iter()
-            .any(|s| matches!(s, SlotState::Used(_)))
+        self.shards.iter().all(|s| {
+            !s.0.lock()
+                .unwrap()
+                .slot_state
+                .iter()
+                .any(|state| matches!(state, SlotState::Used(_)))
+        })
     }
 
     /// Allocate a new index from this allocator optionally using `id` as an
@@ -218,7 +354,16 @@ impl ModuleAffinityIndexAllocator {
     ///
     /// Returns `None` if no more slots are available.
     pub fn alloc(&self, for_memory: Option<MemoryInModule>) -> Option<SlotId> {
-        self._alloc(for_memory, AllocMode::AnySlot)
+        // Start at this thread's home shard and probe the others only if
+        // it's fully allocated. In steady state this means each thread
+        // stays on its own shard.
+        for shard in super::shard_ids_from_home(self.shards.len()) {
+            let mut inner = self.shard(shard).lock().unwrap();
+            if let Some(local) = Self::alloc_within(&mut inner, for_memory, AllocMode::AnySlot) {
+                return Some(self.global_id(shard, local));
+            }
+        }
+        None
     }
 
     /// Attempts to allocate a guaranteed-affine slot to the module `id`
@@ -233,16 +378,26 @@ impl ModuleAffinityIndexAllocator {
         module_id: CompiledModuleId,
         memory_index: DefinedMemoryIndex,
     ) -> Option<SlotId> {
-        self._alloc(
-            Some(MemoryInModule(module_id, memory_index)),
-            AllocMode::ForceAffineAndClear,
-        )
+        // Affine slots for this module may live in any shard, so consult
+        // them all. This is a module-teardown path, not a hot path.
+        for shard in self.shard_ids() {
+            let mut inner = self.shard(shard).lock().unwrap();
+            if let Some(local) = Self::alloc_within(
+                &mut inner,
+                Some(MemoryInModule(module_id, memory_index)),
+                AllocMode::ForceAffineAndClear,
+            ) {
+                return Some(self.global_id(shard, local));
+            }
+        }
+        None
     }
 
-    fn _alloc(&self, for_memory: Option<MemoryInModule>, mode: AllocMode) -> Option<SlotId> {
-        let mut inner = self.0.lock().unwrap();
-        let inner = &mut *inner;
-
+    fn alloc_within(
+        inner: &mut Inner,
+        for_memory: Option<MemoryInModule>,
+        mode: AllocMode,
+    ) -> Option<SlotId> {
         // As a first-pass always attempt an affine allocation. This will
         // succeed if any slots are considered affine to `module_id` (if it's
         // specified). Failing that something else is attempted to be chosen.
@@ -300,8 +455,33 @@ impl ModuleAffinityIndexAllocator {
     }
 
     pub(crate) fn free(&self, index: SlotId, bytes_resident: usize) {
-        let mut inner = self.0.lock().unwrap();
-        let inner = &mut *inner;
+        let (shard, local) = self.shard_of(index);
+        let mut inner = self.shard(shard).lock().unwrap();
+        Self::free_locked(&mut inner, local, bytes_resident);
+    }
+
+    /// Same as [`Self::free`], but frees many slots under a single lock
+    /// acquisition per shard to reduce contention when a decommit-queue
+    /// flush returns a whole batch of slots at once.
+    pub(crate) fn free_many(&self, items: impl IntoIterator<Item = (SlotId, usize)>) {
+        let mut per_shard: smallvec::SmallVec<[smallvec::SmallVec<[(SlotId, usize); 8]>; 16]> =
+            (0..self.shards.len()).map(|_| Default::default()).collect();
+        for (index, bytes_resident) in items {
+            let (shard, local) = self.shard_of(index);
+            per_shard[shard.index()].push((local, bytes_resident));
+        }
+        for (shard, items) in per_shard.into_iter().enumerate() {
+            if items.is_empty() {
+                continue;
+            }
+            let mut inner = self.shard(ShardId::from_index(shard)).lock().unwrap();
+            for (local, bytes_resident) in items {
+                Self::free_locked(&mut inner, local, bytes_resident);
+            }
+        }
+    }
+
+    fn free_locked(inner: &mut Inner, index: SlotId, bytes_resident: usize) {
         let module_memory = match inner.slot_state[index.index()] {
             SlotState::Used(module_memory) => module_memory,
             _ => unreachable!(),
@@ -345,19 +525,29 @@ impl ModuleAffinityIndexAllocator {
     /// Return the number of empty slots available in this allocator.
     #[cfg(test)]
     pub fn num_empty_slots(&self) -> usize {
-        let inner = self.0.lock().unwrap();
-        let total_slots = inner.slot_state.len();
-        (total_slots - inner.last_cold as usize) + inner.unused_warm_slots as usize
+        self.shards
+            .iter()
+            .map(|s| {
+                let inner = s.0.lock().unwrap();
+                let total_slots = inner.slot_state.len();
+                (total_slots - inner.last_cold as usize) + inner.unused_warm_slots as usize
+            })
+            .sum()
     }
 
     /// For testing only, we want to be able to assert what is on the single
     /// freelist, for the policies that keep just one.
     #[cfg(test)]
     pub(crate) fn testing_freelist(&self) -> Vec<SlotId> {
-        let inner = self.0.lock().unwrap();
-        inner
-            .warm
-            .iter(&inner.slot_state, |s| &s.unused_list_link)
+        self.shard_ids()
+            .flat_map(|shard| {
+                let inner = self.shard(shard).lock().unwrap();
+                inner
+                    .warm
+                    .iter(&inner.slot_state, |s| &s.unused_list_link)
+                    .map(|local| self.global_id(shard, local))
+                    .collect::<Vec<_>>()
+            })
             .collect()
     }
 
@@ -365,8 +555,16 @@ impl ModuleAffinityIndexAllocator {
     /// with affinity for that module.
     #[cfg(test)]
     pub(crate) fn testing_module_affinity_list(&self) -> Vec<MemoryInModule> {
-        let inner = self.0.lock().unwrap();
-        inner.module_affine.keys().copied().collect()
+        let mut ret = Vec::new();
+        for s in self.shards.iter() {
+            let inner = s.0.lock().unwrap();
+            for key in inner.module_affine.keys() {
+                if !ret.contains(key) {
+                    ret.push(*key);
+                }
+            }
+        }
+        ret
     }
 
     /// Returns the number of previously-used slots in this allocator which are
@@ -375,7 +573,10 @@ impl ModuleAffinityIndexAllocator {
     /// Note that this acquires a `Mutex` for synchronization at this time to
     /// read the internal counter information.
     pub fn unused_warm_slots(&self) -> u32 {
-        self.0.lock().unwrap().unused_warm_slots
+        self.shards
+            .iter()
+            .map(|s| s.0.lock().unwrap().unused_warm_slots)
+            .sum()
     }
 
     /// Returns the number of bytes that are resident in previously-used slots
@@ -384,7 +585,10 @@ impl ModuleAffinityIndexAllocator {
     /// Note that this acquires a `Mutex` for synchronization at this time to
     /// read the internal counter information.
     pub fn unused_bytes_resident(&self) -> usize {
-        self.0.lock().unwrap().unused_bytes_resident
+        self.shards
+            .iter()
+            .map(|s| s.0.lock().unwrap().unused_bytes_resident)
+            .sum()
     }
 }
 
@@ -535,12 +739,13 @@ impl List {
 #[cfg(test)]
 mod test {
     use super::*;
+    use rand::RngExt;
     use wasmtime_environ::EntityRef;
 
     #[test]
     fn test_next_available_allocation_strategy() {
         for size in 0..20 {
-            let state = ModuleAffinityIndexAllocator::new(size, 0);
+            let state = ModuleAffinityIndexAllocator::new(size, 0).unwrap();
             assert_eq!(state.num_empty_slots(), usize::try_from(size).unwrap());
             for i in 0..size {
                 assert_eq!(state.num_empty_slots(), usize::try_from(size - i).unwrap());
@@ -554,7 +759,7 @@ mod test {
     fn test_affinity_allocation_strategy() {
         let id1 = MemoryInModule(CompiledModuleId::new(), DefinedMemoryIndex::new(0));
         let id2 = MemoryInModule(CompiledModuleId::new(), DefinedMemoryIndex::new(0));
-        let state = ModuleAffinityIndexAllocator::new(100, 100);
+        let state = ModuleAffinityIndexAllocator::new(100, 100).unwrap();
 
         let index1 = state.alloc(Some(id1)).unwrap();
         assert_eq!(index1.index(), 0);
@@ -612,7 +817,7 @@ mod test {
         let memory_index = DefinedMemoryIndex::new(0);
 
         for max_unused_warm_slots in [0, 1, 2] {
-            let state = ModuleAffinityIndexAllocator::new(100, max_unused_warm_slots);
+            let state = ModuleAffinityIndexAllocator::new(100, max_unused_warm_slots).unwrap();
 
             let index1 = state.alloc(Some(MemoryInModule(id, memory_index))).unwrap();
             let index2 = state.alloc(Some(MemoryInModule(id, memory_index))).unwrap();
@@ -637,7 +842,6 @@ mod test {
 
     #[test]
     fn test_affinity_allocation_strategy_random() {
-        use rand::Rng;
         let mut rng = rand::rng();
 
         let ids = std::iter::repeat_with(|| {
@@ -645,7 +849,13 @@ mod test {
         })
         .take(10)
         .collect::<Vec<_>>();
-        let state = ModuleAffinityIndexAllocator::new(1000, 1000);
+        // Pin the allocator to a single shard: with multiple shards a
+        // thread's alloc probing finds any free slot in its home shard
+        // before consulting the shard holding the affine slot, making the
+        // hit-rate statistics below depend on the host's CPU count.
+        // Sharded allocation is covered by the proptests at the bottom of
+        // this module.
+        let state = ModuleAffinityIndexAllocator::new_with_shard_count(1000, 1000, 1).unwrap();
         let mut allocated: Vec<SlotId> = vec![];
         let mut last_id = vec![None; 1000];
 
@@ -687,7 +897,7 @@ mod test {
         let id1 = MemoryInModule(CompiledModuleId::new(), DefinedMemoryIndex::new(0));
         let id2 = MemoryInModule(CompiledModuleId::new(), DefinedMemoryIndex::new(0));
         let id3 = MemoryInModule(CompiledModuleId::new(), DefinedMemoryIndex::new(0));
-        let state = ModuleAffinityIndexAllocator::new(10, 2);
+        let state = ModuleAffinityIndexAllocator::new(10, 2).unwrap();
 
         // Set some slot affinities
         assert_eq!(state.alloc(Some(id1)), Some(SlotId(0)));
@@ -756,7 +966,7 @@ mod test {
 
     #[test]
     fn test_freelist() {
-        let allocator = SimpleIndexAllocator::new(10);
+        let allocator = SimpleIndexAllocator::new(10).unwrap();
         assert_eq!(allocator.testing_freelist(), []);
         let a = allocator.alloc().unwrap();
         assert_eq!(allocator.testing_freelist(), []);
@@ -770,5 +980,91 @@ mod test {
         assert_eq!(allocator.testing_freelist(), [b]);
         allocator.free(a, 0);
         assert_eq!(allocator.testing_freelist(), [b, a]);
+    }
+
+    #[test]
+    // proptest reads the current directory for its persistence file, which
+    // miri doesn't support with isolation enabled.
+    #[cfg_attr(miri, ignore)]
+    fn shard_layout_is_exhaustive_and_exact() {
+        use proptest::prelude::*;
+
+        proptest!(|(
+            capacity in 0u32..100_000,
+            max_unused_warm_slots in 0u32..10_000,
+            requested_shards in 1u32..64,
+        )| {
+            let layout = ShardLayout::new(capacity, max_unused_warm_slots, requested_shards)
+                .unwrap();
+
+            // Shard capacities partition the whole slot space, and the
+            // warm-slot budgets sum to the configured total, no matter how
+            // unevenly the capacity divides.
+            prop_assert_eq!(
+                layout.shards.iter().map(|(c, _)| *c).sum::<u32>(),
+                capacity
+            );
+            prop_assert_eq!(
+                layout.shards.iter().map(|(_, w)| *w).sum::<u32>(),
+                max_unused_warm_slots
+            );
+
+            // Every shard except possibly the last is exactly
+            // `slots_per_shard` large, which the global<->local `SlotId`
+            // translation relies on.
+            let (last, rest) = layout.shards.split_last().unwrap();
+            for (c, _) in rest {
+                prop_assert_eq!(*c, layout.slots_per_shard);
+            }
+            prop_assert!(last.0 <= layout.slots_per_shard);
+
+            // The requested shard count is an upper bound, and small pools
+            // are never sharded.
+            prop_assert!(layout.shards.len() <= requested_shards as usize);
+            if capacity < 128 {
+                prop_assert_eq!(layout.shards.len(), 1);
+            }
+        });
+    }
+
+    #[test]
+    // proptest reads the current directory for its persistence file, which
+    // miri doesn't support with isolation enabled.
+    #[cfg_attr(miri, ignore)]
+    fn sharded_alloc_is_exhaustive_and_unique() {
+        use proptest::prelude::*;
+
+        proptest!(|(
+            capacity in 0u32..2048,
+            max_unused_warm_slots in 0u32..100,
+            requested_shards in 1u32..64,
+        )| {
+            let allocator = ModuleAffinityIndexAllocator::new_with_shard_count(
+                capacity,
+                max_unused_warm_slots,
+                requested_shards,
+            )
+            .unwrap();
+
+            // Regardless of shard layout, we can allocate exactly
+            // `capacity` slots, all distinct and in-bounds, ...
+            let mut ids = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            for _ in 0..capacity {
+                let id = allocator.alloc(None).unwrap();
+                prop_assert!(id.0 < capacity);
+                prop_assert!(seen.insert(id.0));
+                ids.push(id);
+            }
+            // ... after which the pool reports exhaustion, ...
+            prop_assert!(allocator.alloc(None).is_none());
+
+            // ... and freeing everything makes it all allocatable again.
+            allocator.free_many(ids.into_iter().map(|id| (id, 0)));
+            for _ in 0..capacity {
+                prop_assert!(allocator.alloc(None).is_some());
+            }
+            prop_assert!(allocator.alloc(None).is_none());
+        });
     }
 }

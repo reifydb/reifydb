@@ -1,12 +1,12 @@
 use alloc::borrow::Cow;
-use alloc::vec::Vec;
+use core::marker::PhantomData;
 
 use crate::endian::Endianness;
 use crate::read::{
     self, Architecture, CodeView, ComdatKind, CompressedData, CompressedFileRange, Export,
-    FileFlags, Import, ObjectKind, ObjectMap, Permissions, Relocation, RelocationMap, Result,
-    SectionFlags, SectionIndex, SectionKind, SegmentFlags, SubArchitecture, SymbolFlags,
-    SymbolIndex, SymbolKind, SymbolMap, SymbolMapBuilder, SymbolMapName, SymbolScope,
+    FileFlags, Import, ImportLibrary, ObjectKind, ObjectMap, Permissions, Relocation,
+    RelocationMap, Result, SectionFlags, SectionIndex, SectionKind, SegmentFlags, SubArchitecture,
+    SymbolFlags, SymbolIndex, SymbolKind, SymbolMap, SymbolMapBuilder, SymbolMapName, SymbolScope,
     SymbolSection,
 };
 
@@ -64,10 +64,10 @@ pub trait Object<'data>: read::private::Sealed {
 
     /// A symbol table in the object file.
     type SymbolTable<'file>: ObjectSymbolTable<
-        'data,
-        Symbol = Self::Symbol<'file>,
-        SymbolIterator = Self::SymbolIterator<'file>,
-    >
+            'data,
+            Symbol = Self::Symbol<'file>,
+            SymbolIterator = Self::SymbolIterator<'file>,
+        >
     where
         Self: 'file,
         'data: 'file;
@@ -77,6 +77,24 @@ pub trait Object<'data>: read::private::Sealed {
     /// The first field in the item tuple is the address
     /// that the relocation applies to.
     type DynamicRelocationIterator<'file>: Iterator<Item = (u64, Relocation)>
+    where
+        Self: 'file,
+        'data: 'file;
+
+    /// An iterator for import libraries in the object file.
+    type ImportLibraryIterator<'file>: Iterator<Item = Result<ImportLibrary<'data>>>
+    where
+        Self: 'file,
+        'data: 'file;
+
+    /// An iterator for imports in the object file.
+    type ImportIterator<'file>: Iterator<Item = Result<Import<'data>>>
+    where
+        Self: 'file,
+        'data: 'file;
+
+    /// An iterator for exports in the object file.
+    type ExportIterator<'file>: Iterator<Item = Result<Export<'data>>>
     where
         Self: 'file,
         'data: 'file;
@@ -225,14 +243,36 @@ pub trait Object<'data>: read::private::Sealed {
         ObjectMap::default()
     }
 
-    /// Get the imported symbols.
-    fn imports(&self) -> Result<Vec<Import<'data>>>;
-
-    /// Get the exported symbols that expose both a name and an address.
+    /// Get an iterator for the libraries that the file depends on.
     ///
-    /// Some file formats may provide other kinds of symbols that can be retrieved using
-    /// the low level API.
-    fn exports(&self) -> Result<Vec<Export<'data>>>;
+    /// An error is returned if the tables that describe the libraries could not be parsed.
+    /// Errors for individual libraries are returned by the iterator instead, and iteration
+    /// continues with the next library.
+    ///
+    /// For ELF, these are the `DT_NEEDED` entries in the dynamic table.
+    /// For Mach-O, these are the dylib load commands.
+    /// For PE, these are from the import table and the delay-load import table.
+    fn import_libraries(&self) -> Result<Self::ImportLibraryIterator<'_>>;
+
+    /// Get an iterator for the imported symbols.
+    ///
+    /// An error is returned if the tables that describe the imports could not be parsed.
+    /// Errors for individual imports are returned by the iterator instead, and iteration
+    /// continues with the next import.
+    ///
+    /// Additional tables may be parsed each time this is called, so if you need
+    /// the imports more than once, collect them instead of calling this again.
+    fn imports(&self) -> Result<Self::ImportIterator<'_>>;
+
+    /// Get an iterator for the exported items.
+    ///
+    /// An error is returned if the tables that describe the exports could not be parsed.
+    /// Errors for individual exports are returned by the iterator instead, and iteration
+    /// continues with the next export.
+    ///
+    /// Additional tables may be parsed each time this is called, so if you need
+    /// the exports more than once, collect them instead of calling this again.
+    fn exports(&self) -> Result<Self::ExportIterator<'_>>;
 
     /// Return true if the file contains DWARF debug information sections, false if not.
     fn has_debug_symbols(&self) -> bool;
@@ -374,6 +414,11 @@ pub trait ObjectSection<'data>: read::private::Sealed {
     /// The length of this data may be different from the size of the
     /// section in memory.
     ///
+    /// This may allocate the uncompressed size that is recorded in the file, which
+    /// is not bounded. Use [`Self::compressed_data`] and check
+    /// [`CompressedData::uncompressed_size`] first if you need to bound this for
+    /// untrusted files.
+    ///
     /// If no compression is detected, then returns the data unchanged.
     /// Returns `Err` if decompression fails.
     fn uncompressed_data(&self) -> Result<Cow<'data, [u8]>> {
@@ -472,7 +517,10 @@ pub trait ObjectSymbol<'data>: read::private::Sealed {
     /// Returns an error if the name is not UTF-8.
     fn name(&self) -> Result<&'data str>;
 
-    /// The address of the symbol. May be zero if the address is unknown.
+    /// The address of the symbol.
+    ///
+    /// May be zero if the symbol does not have an address, such as for undefined or
+    /// common symbols.
     fn address(&self) -> u64;
 
     /// The size of the symbol. May be zero if the size is unknown.
@@ -501,8 +549,6 @@ pub trait ObjectSymbol<'data>: read::private::Sealed {
     fn is_definition(&self) -> bool;
 
     /// Return true if the symbol is common data.
-    ///
-    /// Note: does not check for [`SymbolSection::Section`] with [`SectionKind::Common`].
     fn is_common(&self) -> bool;
 
     /// Return true if the symbol is weak.
@@ -529,6 +575,63 @@ pub struct NoDynamicRelocationIterator;
 
 impl Iterator for NoDynamicRelocationIterator {
     type Item = (u64, Relocation);
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
+/// An iterator for files that don't have import libraries.
+#[derive(Debug)]
+pub struct NoImportLibraryIterator<'data, 'file, R>(PhantomData<(&'data (), &'file (), R)>);
+
+impl<'data, 'file, R> Default for NoImportLibraryIterator<'data, 'file, R> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<'data, 'file, R> Iterator for NoImportLibraryIterator<'data, 'file, R> {
+    type Item = Result<ImportLibrary<'data>>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
+/// An iterator for files that don't have imports.
+#[derive(Debug)]
+pub struct NoImportIterator<'data, 'file, R>(PhantomData<(&'data (), &'file (), R)>);
+
+impl<'data, 'file, R> Default for NoImportIterator<'data, 'file, R> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<'data, 'file, R> Iterator for NoImportIterator<'data, 'file, R> {
+    type Item = Result<Import<'data>>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
+/// An iterator for files that don't have exports.
+#[derive(Debug)]
+pub struct NoExportIterator<'data, 'file, R>(PhantomData<(&'data (), &'file (), R)>);
+
+impl<'data, 'file, R> Default for NoExportIterator<'data, 'file, R> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<'data, 'file, R> Iterator for NoExportIterator<'data, 'file, R> {
+    type Item = Result<Export<'data>>;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {

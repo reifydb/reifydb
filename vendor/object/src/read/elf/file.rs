@@ -1,4 +1,3 @@
-use alloc::vec::Vec;
 use core::convert::TryInto;
 use core::fmt::Debug;
 use core::mem;
@@ -6,16 +5,17 @@ use core::mem;
 use crate::endian::{self, Endian, Endianness, NativeEndian, U32};
 use crate::pod::Pod;
 use crate::read::{
-    self, util, Architecture, ByteString, Bytes, Error, Export, FileFlags, Import, Object,
-    ObjectKind, ReadError, ReadRef, SectionIndex, StringTable, SymbolIndex,
+    self, Architecture, Bytes, Error, FileFlags, Object, ObjectKind, ReadError, ReadRef,
+    SectionIndex, StringTable, SymbolIndex, util,
 };
-use crate::{elf, SkipDebugList};
+use crate::{SkipDebugList, elf};
 
 use super::{
     CompressionHeader, Dyn, DynamicTable, ElfComdat, ElfComdatIterator,
-    ElfDynamicRelocationIterator, ElfSection, ElfSectionIterator, ElfSegment, ElfSegmentIterator,
-    ElfSymbol, ElfSymbolIterator, ElfSymbolTable, NoteHeader, ProgramHeader, Rel, Rela,
-    RelocationSections, Relr, SectionHeader, SectionTable, Sym, SymbolTable,
+    ElfDynamicRelocationIterator, ElfExportIterator, ElfImportIterator, ElfImportLibraryIterator,
+    ElfSection, ElfSectionIterator, ElfSegment, ElfSegmentIterator, ElfSymbol, ElfSymbolIterator,
+    ElfSymbolTable, NoteHeader, ProgramHeader, Rel, Rela, RelocationSections, Relr, SectionHeader,
+    SectionTable, Sym, SymbolTable,
 };
 
 /// A 32-bit ELF object file.
@@ -176,7 +176,7 @@ where
         if !section_name.starts_with(b".debug_") {
             return None;
         }
-        let mut name = Vec::with_capacity(section_name.len() + 1);
+        let mut name = alloc::vec::Vec::with_capacity(section_name.len() + 1);
         name.extend_from_slice(b".zdebug_");
         name.extend_from_slice(&section_name[7..]);
         self.raw_section_by_name(&name)
@@ -253,6 +253,21 @@ where
     where
         Self: 'file,
         'data: 'file;
+    type ImportLibraryIterator<'file>
+        = ElfImportLibraryIterator<'data, 'file, Elf, R>
+    where
+        Self: 'file,
+        'data: 'file;
+    type ImportIterator<'file>
+        = ElfImportIterator<'data, 'file, Elf, R>
+    where
+        Self: 'file,
+        'data: 'file;
+    type ExportIterator<'file>
+        = ElfExportIterator<'data, 'file, Elf, R>
+    where
+        Self: 'file,
+        'data: 'file;
 
     fn architecture(&self) -> Architecture {
         match (
@@ -272,11 +287,12 @@ where
             (elf::EM_X86_64, false) => Architecture::X86_64_X32,
             (elf::EM_X86_64, true) => Architecture::X86_64,
             (elf::EM_HEXAGON, _) => Architecture::Hexagon,
+            (elf::EM_IA_64, _) => Architecture::Ia64,
             (elf::EM_LOONGARCH, false) => Architecture::LoongArch32,
             (elf::EM_LOONGARCH, true) => Architecture::LoongArch64,
             (elf::EM_68K, false) => Architecture::M68k,
             (elf::EM_MIPS, false) => {
-                if (self.header.e_flags(self.endian) & elf::EF_MIPS_ABI2) != 0 {
+                if self.header.e_flags(self.endian).contains(elf::EF_MIPS_ABI2) {
                     Architecture::Mips64_N32
                 } else {
                     Architecture::Mips
@@ -404,44 +420,27 @@ where
         })
     }
 
-    fn imports(&self) -> read::Result<Vec<Import<'data>>> {
-        let versions = self.sections.versions(self.endian, self.data.0)?;
-
-        let mut imports = Vec::new();
-        for (index, symbol) in self.dynamic_symbols.enumerate() {
-            if symbol.is_undefined(self.endian) {
-                let name = symbol.name(self.endian, self.dynamic_symbols.strings())?;
-                if !name.is_empty() {
-                    let library = if let Some(svt) = versions.as_ref() {
-                        let vi = svt.version_index(self.endian, index);
-                        svt.version(vi)?.and_then(|v| v.file())
-                    } else {
-                        None
-                    }
-                    .unwrap_or(&[]);
-                    imports.push(Import {
-                        name: ByteString(name),
-                        library: ByteString(library),
-                    });
-                }
-            }
-        }
-        Ok(imports)
+    fn import_libraries(&self) -> read::Result<ElfImportLibraryIterator<'data, '_, Elf, R>> {
+        let dynamic = self.sections.dynamic_table(self.endian, self.data.0)?;
+        Ok(ElfImportLibraryIterator::new(dynamic))
     }
 
-    fn exports(&self) -> read::Result<Vec<Export<'data>>> {
-        let mut exports = Vec::new();
-        for symbol in self.dynamic_symbols.iter() {
-            if symbol.is_definition(self.endian, self.dynamic_symbols.strings()) {
-                let name = symbol.name(self.endian, self.dynamic_symbols.strings())?;
-                let address = symbol.st_value(self.endian).into();
-                exports.push(Export {
-                    name: ByteString(name),
-                    address,
-                });
-            }
-        }
-        Ok(exports)
+    fn imports(&self) -> read::Result<ElfImportIterator<'data, '_, Elf, R>> {
+        let versions = self.sections.versions(self.endian, self.data.0)?;
+        Ok(ElfImportIterator::new(
+            self.endian,
+            versions,
+            &self.dynamic_symbols,
+        ))
+    }
+
+    fn exports(&self) -> read::Result<ElfExportIterator<'data, '_, Elf, R>> {
+        let versions = self.sections.versions(self.endian, self.data.0)?;
+        Ok(ElfExportIterator::new(
+            self.endian,
+            versions,
+            &self.dynamic_symbols,
+        ))
     }
 
     fn has_debug_symbols(&self) -> bool {
@@ -543,7 +542,7 @@ where
 
 /// A trait for generic access to [`elf::FileHeader32`] and [`elf::FileHeader64`].
 #[allow(missing_docs)]
-pub trait FileHeader: Debug + Pod {
+pub trait FileHeader: Debug + Pod + read::private::Sealed {
     // Ideally this would be a `u64: From<Word>`, but can't express that.
     type Word: Into<u64> + Default + Copy;
     type Sword: Into<i64>;
@@ -573,19 +572,19 @@ pub trait FileHeader: Debug + Pod {
         Self: Sized;
 
     fn e_ident(&self) -> &elf::Ident;
-    fn e_type(&self, endian: Self::Endian) -> u16;
-    fn e_machine(&self, endian: Self::Endian) -> u16;
+    fn e_type(&self, endian: Self::Endian) -> elf::FileType;
+    fn e_machine(&self, endian: Self::Endian) -> elf::Machine;
     fn e_version(&self, endian: Self::Endian) -> u32;
     fn e_entry(&self, endian: Self::Endian) -> Self::Word;
     fn e_phoff(&self, endian: Self::Endian) -> Self::Word;
     fn e_shoff(&self, endian: Self::Endian) -> Self::Word;
-    fn e_flags(&self, endian: Self::Endian) -> u32;
+    fn e_flags(&self, endian: Self::Endian) -> elf::FileFlags;
     fn e_ehsize(&self, endian: Self::Endian) -> u16;
     fn e_phentsize(&self, endian: Self::Endian) -> u16;
     fn e_phnum(&self, endian: Self::Endian) -> u16;
     fn e_shentsize(&self, endian: Self::Endian) -> u16;
     fn e_shnum(&self, endian: Self::Endian) -> u16;
-    fn e_shstrndx(&self, endian: Self::Endian) -> u16;
+    fn e_shstrndx(&self, endian: Self::Endian) -> elf::SymbolSection;
 
     // Provided methods.
 
@@ -663,16 +662,12 @@ pub trait FileHeader: Debug + Pod {
     /// Return the `e_phnum` field of the header. Handles extended values.
     ///
     /// Returns `Err` for invalid values.
-    fn phnum<'data, R: ReadRef<'data>>(
-        &self,
-        endian: Self::Endian,
-        data: R,
-    ) -> read::Result<usize> {
+    fn phnum<'data, R: ReadRef<'data>>(&self, endian: Self::Endian, data: R) -> read::Result<u32> {
         let e_phnum = self.e_phnum(endian);
         if e_phnum < elf::PN_XNUM {
-            Ok(e_phnum as usize)
+            Ok(e_phnum.into())
         } else if let Some(section_0) = self.section_0(endian, data)? {
-            Ok(section_0.sh_info(endian) as usize)
+            Ok(section_0.sh_info(endian))
         } else {
             // Section 0 must exist if e_phnum overflows.
             Err(Error("Missing ELF section headers for e_phnum overflow"))
@@ -682,14 +677,10 @@ pub trait FileHeader: Debug + Pod {
     /// Return the `e_shnum` field of the header. Handles extended values.
     ///
     /// Returns `Err` for invalid values.
-    fn shnum<'data, R: ReadRef<'data>>(
-        &self,
-        endian: Self::Endian,
-        data: R,
-    ) -> read::Result<usize> {
+    fn shnum<'data, R: ReadRef<'data>>(&self, endian: Self::Endian, data: R) -> read::Result<u32> {
         let e_shnum = self.e_shnum(endian);
         if e_shnum > 0 {
-            Ok(e_shnum as usize)
+            Ok(e_shnum.into())
         } else if let Some(section_0) = self.section_0(endian, data)? {
             section_0
                 .sh_size(endian)
@@ -712,18 +703,20 @@ pub trait FileHeader: Debug + Pod {
         data: R,
     ) -> read::Result<u32> {
         let e_shstrndx = self.e_shstrndx(endian);
-        let index = if e_shstrndx != elf::SHN_XINDEX {
-            e_shstrndx.into()
-        } else if let Some(section_0) = self.section_0(endian, data)? {
-            section_0.sh_link(endian)
-        } else {
+        if let Some(index) = e_shstrndx.index() {
+            Ok(u32::from(index))
+        } else if e_shstrndx == elf::SHN_XINDEX {
             // Section 0 must exist if we're trying to read e_shstrndx.
-            return Err(Error("Missing ELF section headers for e_shstrndx overflow"));
-        };
-        if index == 0 {
-            return Err(Error("Missing ELF e_shstrndx"));
+            let section_0 = self
+                .section_0(endian, data)?
+                .read_error("Missing ELF section headers for e_shstrndx overflow")?;
+            Ok(section_0.sh_link(endian))
+        } else if e_shstrndx == elf::SHN_UNDEF {
+            // Valid, but we're only called if we expect a section index.
+            Err(Error("Missing ELF e_shstrndx"))
+        } else {
+            Err(Error("Invalid ELF e_shstrndx"))
         }
-        Ok(index)
     }
 
     /// Return the slice of program headers.
@@ -750,7 +743,7 @@ pub trait FileHeader: Debug + Pod {
             // Program header size must match.
             return Err(Error("Invalid ELF program header entry size"));
         }
-        data.read_slice_at(phoff, phnum)
+        data.read_slice_at(phoff, phnum as usize)
             .read_error("Invalid ELF program header size or alignment")
     }
 
@@ -778,7 +771,7 @@ pub trait FileHeader: Debug + Pod {
             // Section header size must match.
             return Err(Error("Invalid ELF section header entry size"));
         }
-        data.read_slice_at(shoff, shnum)
+        data.read_slice_at(shoff, shnum as usize)
             .read_error("Invalid ELF section header offset/size/alignment")
     }
 
@@ -834,6 +827,8 @@ pub trait FileHeader: Debug + Pod {
     }
 }
 
+impl<Endian: endian::Endian> read::private::Sealed for elf::FileHeader32<Endian> {}
+
 impl<Endian: endian::Endian> FileHeader for elf::FileHeader32<Endian> {
     type Word = u32;
     type Sword = i32;
@@ -867,12 +862,12 @@ impl<Endian: endian::Endian> FileHeader for elf::FileHeader32<Endian> {
     }
 
     #[inline]
-    fn e_type(&self, endian: Self::Endian) -> u16 {
+    fn e_type(&self, endian: Self::Endian) -> elf::FileType {
         self.e_type.get(endian)
     }
 
     #[inline]
-    fn e_machine(&self, endian: Self::Endian) -> u16 {
+    fn e_machine(&self, endian: Self::Endian) -> elf::Machine {
         self.e_machine.get(endian)
     }
 
@@ -897,7 +892,7 @@ impl<Endian: endian::Endian> FileHeader for elf::FileHeader32<Endian> {
     }
 
     #[inline]
-    fn e_flags(&self, endian: Self::Endian) -> u32 {
+    fn e_flags(&self, endian: Self::Endian) -> elf::FileFlags {
         self.e_flags.get(endian)
     }
 
@@ -927,10 +922,12 @@ impl<Endian: endian::Endian> FileHeader for elf::FileHeader32<Endian> {
     }
 
     #[inline]
-    fn e_shstrndx(&self, endian: Self::Endian) -> u16 {
+    fn e_shstrndx(&self, endian: Self::Endian) -> elf::SymbolSection {
         self.e_shstrndx.get(endian)
     }
 }
+
+impl<Endian: endian::Endian> read::private::Sealed for elf::FileHeader64<Endian> {}
 
 impl<Endian: endian::Endian> FileHeader for elf::FileHeader64<Endian> {
     type Word = u64;
@@ -965,12 +962,12 @@ impl<Endian: endian::Endian> FileHeader for elf::FileHeader64<Endian> {
     }
 
     #[inline]
-    fn e_type(&self, endian: Self::Endian) -> u16 {
+    fn e_type(&self, endian: Self::Endian) -> elf::FileType {
         self.e_type.get(endian)
     }
 
     #[inline]
-    fn e_machine(&self, endian: Self::Endian) -> u16 {
+    fn e_machine(&self, endian: Self::Endian) -> elf::Machine {
         self.e_machine.get(endian)
     }
 
@@ -995,7 +992,7 @@ impl<Endian: endian::Endian> FileHeader for elf::FileHeader64<Endian> {
     }
 
     #[inline]
-    fn e_flags(&self, endian: Self::Endian) -> u32 {
+    fn e_flags(&self, endian: Self::Endian) -> elf::FileFlags {
         self.e_flags.get(endian)
     }
 
@@ -1025,7 +1022,7 @@ impl<Endian: endian::Endian> FileHeader for elf::FileHeader64<Endian> {
     }
 
     #[inline]
-    fn e_shstrndx(&self, endian: Self::Endian) -> u16 {
+    fn e_shstrndx(&self, endian: Self::Endian) -> elf::SymbolSection {
         self.e_shstrndx.get(endian)
     }
 }

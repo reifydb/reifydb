@@ -32,6 +32,9 @@ struct PackageFile<'a> {
     decl_list: DeclList<'a>,
 }
 
+/// Maximum nesting depth of `package { ... }` scopes.
+const MAX_ITEM_DEPTH: usize = 100;
+
 impl<'a> PackageFile<'a> {
     /// Parse a standalone file represented by `tokens`.
     ///
@@ -54,7 +57,7 @@ impl<'a> PackageFile<'a> {
         } else {
             None
         };
-        let decl_list = DeclList::parse_until(tokens, None)?;
+        let decl_list = DeclList::parse_until(tokens, None, 0)?;
         Ok(PackageFile {
             package_id,
             decl_list,
@@ -66,6 +69,7 @@ impl<'a> PackageFile<'a> {
         tokens: &mut Tokenizer<'a>,
         docs: Docs<'a>,
         attributes: Vec<Attribute<'a>>,
+        depth: usize,
     ) -> ParseResult<Self> {
         let span = tokens.expect(Token::Package)?;
         if !attributes.is_empty() {
@@ -74,9 +78,12 @@ impl<'a> PackageFile<'a> {
                 format!("cannot place attributes on nested packages"),
             ));
         }
+        if depth >= MAX_ITEM_DEPTH {
+            return Err(ParseError::new_syntax(span, "package nesting too deep"));
+        }
         let package_id = PackageName::parse(tokens, docs)?;
         tokens.expect(Token::LeftBrace)?;
-        let decl_list = DeclList::parse_until(tokens, Some(Token::RightBrace))?;
+        let decl_list = DeclList::parse_until(tokens, Some(Token::RightBrace), depth + 1)?;
         Ok(PackageFile {
             package_id: Some(package_id),
             decl_list,
@@ -125,7 +132,11 @@ pub struct DeclList<'a> {
 }
 
 impl<'a> DeclList<'a> {
-    fn parse_until(tokens: &mut Tokenizer<'a>, end: Option<Token>) -> ParseResult<DeclList<'a>> {
+    fn parse_until(
+        tokens: &mut Tokenizer<'a>,
+        end: Option<Token>,
+        depth: usize,
+    ) -> ParseResult<DeclList<'a>> {
         let mut items = Vec::new();
         let mut docs = parse_docs(tokens)?;
         loop {
@@ -141,7 +152,7 @@ impl<'a> DeclList<'a> {
                     }
                 }
             }
-            items.push(AstItem::parse(tokens, docs)?);
+            items.push(AstItem::parse(tokens, docs, depth)?);
             docs = parse_docs(tokens)?;
         }
         Ok(DeclList { items })
@@ -209,7 +220,7 @@ impl<'a> DeclList<'a> {
                                 }
                                 Ok(())
                             }
-                            ExternKind::Path(path) => {
+                            ExternKind::Path(path) | ExternKind::NamedPath(_, path) => {
                                 f(None, attrs, path, None, WorldOrInterface::Interface)
                             }
                             ExternKind::Func(..) => Ok(()),
@@ -263,7 +274,7 @@ enum AstItem<'a> {
 }
 
 impl<'a> AstItem<'a> {
-    fn parse(tokens: &mut Tokenizer<'a>, docs: Docs<'a>) -> ParseResult<Self> {
+    fn parse(tokens: &mut Tokenizer<'a>, docs: Docs<'a>, depth: usize) -> ParseResult<Self> {
         let attributes = Attribute::parse_list(tokens)?;
         match tokens.clone().next()? {
             Some((_span, Token::Interface)) => {
@@ -272,7 +283,7 @@ impl<'a> AstItem<'a> {
             Some((_span, Token::World)) => World::parse(tokens, docs, attributes).map(Self::World),
             Some((_span, Token::Use)) => ToplevelUse::parse(tokens, attributes).map(Self::Use),
             Some((_span, Token::Package)) => {
-                PackageFile::parse_nested(tokens, docs, attributes).map(Self::Package)
+                PackageFile::parse_nested(tokens, docs, attributes, depth).map(Self::Package)
             }
             other => Err(err_expected(tokens, "`world`, `interface` or `use`", other).into()),
         }
@@ -484,6 +495,8 @@ enum ExternKind<'a> {
     Interface(Id<'a>, Vec<InterfaceItem<'a>>),
     Path(UsePath<'a>),
     Func(Id<'a>, Func<'a>),
+    /// `label: use-path` — a named import/export that implements an interface.
+    NamedPath(Id<'a>, UsePath<'a>),
 }
 
 impl<'a> ExternKind<'a> {
@@ -512,6 +525,26 @@ impl<'a> ExternKind<'a> {
                 *tokens = clone;
                 return Ok(ExternKind::Interface(id, Interface::parse_items(tokens)?));
             }
+
+            // import label: use-path
+            // At this point we consumed `id:` on the clone but the next token
+            // is not `func`, `async`, or `interface`. This could be either:
+            //   import label: local-iface;          (NamedPath)
+            //   import label: pkg:name/iface;       (NamedPath with package path)
+            //   import ns:pkg/iface;                (regular fully-qualified Path)
+            //
+            // Disambiguate: if the next tokens are `id /`, then the colon was
+            // part of a fully-qualified `namespace:package/interface` name, not
+            // a label separator. Fall through to the Path parser in that case.
+            let mut peek = clone.clone();
+            let is_qualified_path =
+                parse_id(&mut peek).is_ok() && peek.clone().eat(Token::Slash).unwrap_or(false);
+            if !is_qualified_path {
+                *tokens = clone;
+                let path = UsePath::parse(tokens)?;
+                tokens.expect_semicolon()?;
+                return Ok(ExternKind::NamedPath(id, path));
+            }
         }
 
         // import foo
@@ -528,6 +561,7 @@ impl<'a> ExternKind<'a> {
             ExternKind::Path(UsePath::Id(id)) => id.span,
             ExternKind::Path(UsePath::Package { name, .. }) => name.span,
             ExternKind::Func(id, _) => id.span,
+            ExternKind::NamedPath(id, _) => id.span,
         }
     }
 }
@@ -1367,9 +1401,25 @@ fn parse_docs<'a>(tokens: &mut Tokenizer<'a>) -> Result<Docs<'a>, lex::Error> {
     Ok(docs)
 }
 
+/// Maximum nesting depth of types parsed with `Type::parse`, e.g.
+/// `list<list<list<...>>>`.
+const MAX_TYPE_DEPTH: usize = 100;
+
 impl<'a> Type<'a> {
     fn parse(tokens: &mut Tokenizer<'a>) -> ParseResult<Self> {
-        match tokens.next()? {
+        Type::parse_at_depth(tokens, 0)
+    }
+
+    fn parse_at_depth(tokens: &mut Tokenizer<'a>, depth: usize) -> ParseResult<Self> {
+        let token = tokens.next()?;
+        if depth >= MAX_TYPE_DEPTH {
+            let span = match token {
+                Some((span, _)) => span,
+                None => tokens.eof_span(),
+            };
+            return Err(ParseError::new_syntax(span, "type nesting too deep"));
+        }
+        match token {
             Some((span, Token::U8)) => Ok(Type::U8(span)),
             Some((span, Token::U16)) => Ok(Type::U16(span)),
             Some((span, Token::U32)) => Ok(Type::U32(span)),
@@ -1388,7 +1438,7 @@ impl<'a> Type<'a> {
                     tokens,
                     Token::LessThan,
                     Token::GreaterThan,
-                    |_docs, tokens| Type::parse(tokens),
+                    |_docs, tokens| Type::parse_at_depth(tokens, depth + 1),
                 )?;
                 Ok(Type::Tuple(Tuple { span, types }))
             }
@@ -1400,7 +1450,7 @@ impl<'a> Type<'a> {
             // list<T, N>
             Some((span, Token::List)) => {
                 tokens.expect(Token::LessThan)?;
-                let ty = Type::parse(tokens)?;
+                let ty = Type::parse_at_depth(tokens, depth + 1)?;
                 let size = if tokens.eat(Token::Comma)? {
                     let number = tokens.next()?;
                     if let Some((span, Token::Integer)) = number {
@@ -1432,9 +1482,9 @@ impl<'a> Type<'a> {
             // map<K, V>
             Some((span, Token::Map)) => {
                 tokens.expect(Token::LessThan)?;
-                let key = Type::parse(tokens)?;
+                let key = Type::parse_at_depth(tokens, depth + 1)?;
                 tokens.expect(Token::Comma)?;
-                let value = Type::parse(tokens)?;
+                let value = Type::parse_at_depth(tokens, depth + 1)?;
                 tokens.expect(Token::GreaterThan)?;
                 Ok(Type::Map(Map {
                     span,
@@ -1446,7 +1496,7 @@ impl<'a> Type<'a> {
             // option<T>
             Some((span, Token::Option_)) => {
                 tokens.expect(Token::LessThan)?;
-                let ty = Type::parse(tokens)?;
+                let ty = Type::parse_at_depth(tokens, depth + 1)?;
                 tokens.expect(Token::GreaterThan)?;
                 Ok(Type::Option(Option_ {
                     span,
@@ -1465,11 +1515,11 @@ impl<'a> Type<'a> {
                 if tokens.eat(Token::LessThan)? {
                     if tokens.eat(Token::Underscore)? {
                         tokens.expect(Token::Comma)?;
-                        err = Some(Box::new(Type::parse(tokens)?));
+                        err = Some(Box::new(Type::parse_at_depth(tokens, depth + 1)?));
                     } else {
-                        ok = Some(Box::new(Type::parse(tokens)?));
+                        ok = Some(Box::new(Type::parse_at_depth(tokens, depth + 1)?));
                         if tokens.eat(Token::Comma)? {
-                            err = Some(Box::new(Type::parse(tokens)?));
+                            err = Some(Box::new(Type::parse_at_depth(tokens, depth + 1)?));
                         }
                     };
                     tokens.expect(Token::GreaterThan)?;
@@ -1483,7 +1533,7 @@ impl<'a> Type<'a> {
                 let mut ty = None;
 
                 if tokens.eat(Token::LessThan)? {
-                    ty = Some(Box::new(Type::parse(tokens)?));
+                    ty = Some(Box::new(Type::parse_at_depth(tokens, depth + 1)?));
                     tokens.expect(Token::GreaterThan)?;
                 };
                 Ok(Type::Future(Future { span, ty }))
@@ -1495,7 +1545,7 @@ impl<'a> Type<'a> {
                 let mut ty = None;
 
                 if tokens.eat(Token::LessThan)? {
-                    ty = Some(Box::new(Type::parse(tokens)?));
+                    ty = Some(Box::new(Type::parse_at_depth(tokens, depth + 1)?));
                     tokens.expect(Token::GreaterThan)?;
                 };
                 Ok(Type::Stream(Stream { span, ty }))
@@ -1628,6 +1678,7 @@ enum Attribute<'a> {
     Since { span: Span, version: Version },
     Unstable { span: Span, feature: Id<'a> },
     Deprecated { span: Span, version: Version },
+    ExternalId { span: Span, id: String },
 }
 
 impl<'a> Attribute<'a> {
@@ -1669,6 +1720,15 @@ impl<'a> Attribute<'a> {
                         version,
                     }
                 }
+                "external-id" => {
+                    tokens.expect(Token::LeftParen)?;
+                    let span = tokens.expect(Token::StringLiteral)?;
+                    tokens.expect(Token::RightParen)?;
+                    Attribute::ExternalId {
+                        span: id.span,
+                        id: tokens.string_literal(span)?,
+                    }
+                }
                 other => {
                     return Err(ParseError::new_syntax(
                         id.span,
@@ -1679,14 +1739,6 @@ impl<'a> Attribute<'a> {
             ret.push(attr);
         }
         Ok(ret)
-    }
-
-    fn span(&self) -> Span {
-        match self {
-            Attribute::Since { span, .. }
-            | Attribute::Unstable { span, .. }
-            | Attribute::Deprecated { span, .. } => *span,
-        }
     }
 }
 
@@ -1731,6 +1783,39 @@ impl SourceMap {
         let contents = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read file {path:?}"))?;
         self.push(path, contents);
+        Ok(())
+    }
+
+    /// Reads all `*.wit` files in the directory `path` (non-recursively) and
+    /// appends their contents to this [`SourceMap`].
+    ///
+    /// Subdirectories, non-`*.wit` files, and symlinks to directories are
+    /// ignored. Note that a `deps` subdirectory is not probed here; that is
+    /// handled by [`crate::Resolve::push_dir`].
+    #[cfg(feature = "std")]
+    pub fn push_dir(&mut self, path: &Path) -> anyhow::Result<()> {
+        let cx = || format!("failed to read directory {path:?}");
+        for entry in path.read_dir().with_context(&cx)? {
+            let entry = entry.with_context(&cx)?;
+            let entry_path = entry.path();
+            let ty = entry.file_type().with_context(&cx)?;
+            if ty.is_dir() {
+                continue;
+            }
+            if ty.is_symlink() {
+                if entry_path.is_dir() {
+                    continue;
+                }
+            }
+            let filename = match entry_path.file_name().and_then(|s| s.to_str()) {
+                Some(name) => name,
+                None => continue,
+            };
+            if !filename.ends_with(".wit") {
+                continue;
+            }
+            self.push_file(&entry_path)?;
+        }
         Ok(())
     }
 
@@ -1845,25 +1930,6 @@ impl SourceMap {
         Ok((resolver.resolve()?, nested))
     }
 
-    /// Runs `f` and, on error, attempts to add source highlighting to resolver
-    /// error types that still use `anyhow`. Only needed until the resolver is
-    /// migrated to structured errors.
-    pub(crate) fn rewrite_error<F, T>(&self, f: F) -> anyhow::Result<T>
-    where
-        F: FnOnce() -> anyhow::Result<T>,
-    {
-        let mut err = match f() {
-            Ok(t) => return Ok(t),
-            Err(e) => e,
-        };
-        if let Some(e) = err.downcast_mut::<crate::Error>() {
-            e.highlight(self);
-        } else if let Some(e) = err.downcast_mut::<crate::PackageNotFoundError>() {
-            e.highlight(self);
-        }
-        Err(err)
-    }
-
     pub(crate) fn highlight_span(&self, span: Span, err: impl fmt::Display) -> Option<String> {
         if !span.is_known() {
             return None;
@@ -1907,6 +1973,29 @@ impl SourceMap {
         return msg;
     }
 
+    /// Resolves a global `span` to a location within a single source file.
+    ///
+    /// Returns the path the source was registered with and the span's byte
+    /// range (UTF-8) relative to that file's contents. Returns `None` if
+    /// `span` is unknown or does not fall within any source in this map.
+    pub fn resolve_span(&self, span: Span) -> Option<SpanLocation<'_>> {
+        if !span.is_known() || span.start() >= self.offset {
+            return None;
+        }
+        let src = self.source_for_offset(span.start());
+        // Exclude the synthetic `\n` appended by `push_str` so that spans
+        // pointing at eof resolve to an empty range at the end of the file.
+        let len = src.contents.len() - 1;
+        let start = src.to_relative_offset(span.start()).min(len);
+        let end = usize::try_from(span.end().saturating_sub(src.offset))
+            .unwrap()
+            .clamp(start, len);
+        Some(SpanLocation {
+            path: &src.path,
+            range: start..end,
+        })
+    }
+
     /// Renders a span as a human-readable location string (e.g., "file.wit:10:5").
     pub fn render_location(&self, span: Span) -> String {
         if !span.is_known() {
@@ -1942,6 +2031,15 @@ impl SourceMap {
     pub fn source_names(&self) -> impl Iterator<Item = &str> {
         self.sources.iter().map(|src| src.path.as_str())
     }
+}
+
+/// A [`Span`] resolved to a location within a single source file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpanLocation<'a> {
+    /// The path of the source, as it was registered with the [`SourceMap`].
+    pub path: &'a str,
+    /// The byte range (UTF-8) within the file's contents.
+    pub range: core::ops::Range<usize>,
 }
 
 impl Source {
@@ -1981,4 +2079,323 @@ pub fn parse_use_path(s: &str) -> anyhow::Result<ParsedUsePath> {
             ParsedUsePath::Package(id.package_name(), name.name.to_string())
         }
     })
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Ord, PartialOrd)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde_derive::Serialize, serde_derive::Deserialize)
+)]
+#[cfg_attr(feature = "serde", serde(into = "String", try_from = "String"))]
+/// The fully-qualified name of a Component Model item (function,
+/// type, or resource) as can be defined by wit. An item is optionally in a
+/// package, the package optionally has a version, and the item is optionally
+/// inside a namespace.
+///
+/// The syntax for an ItemName always uses the package version as a suffix, if
+/// it is given. The following tests show examples of the syntax for ItemName:
+/// ```rust
+/// # use wit_parser::{ItemName, PackageName};
+/// assert_eq!(
+///     "foo".parse::<ItemName>().unwrap(),
+///     ItemName {
+///         package: None,
+///         interface: None,
+///         name: "foo".to_owned()
+///     }
+/// );
+/// assert_eq!(
+///     "foo.bar".parse::<ItemName>().unwrap(),
+///     ItemName {
+///         package: None,
+///         interface: Some("foo".to_owned()),
+///         name: "bar".to_owned()
+///     }
+/// );
+/// assert_eq!(
+///     "foo:bar/baz".parse::<ItemName>().unwrap(),
+///     ItemName {
+///         package: Some(PackageName {
+///             namespace: "foo".to_owned(),
+///             name: "bar".to_owned(),
+///             version: None
+///         }),
+///         interface: None,
+///         name: "baz".to_owned()
+///     }
+/// );
+/// assert_eq!(
+///     "foo:bar/baz@0.1.0".parse::<ItemName>().unwrap(),
+///     ItemName {
+///         package: Some(PackageName {
+///             namespace: "foo".to_owned(),
+///             name: "bar".to_owned(),
+///             version: Some("0.1.0".parse().unwrap())
+///         }),
+///         interface: None,
+///         name: "baz".to_owned()
+///     }
+/// );
+/// assert_eq!(
+///     "foo:bar/baz.bat".parse::<ItemName>().unwrap(),
+///     ItemName {
+///         package: Some(PackageName {
+///             namespace: "foo".to_owned(),
+///             name: "bar".to_owned(),
+///             version: None
+///         }),
+///         interface: Some("baz".to_owned()),
+///         name: "bat".to_owned()
+///     }
+/// );
+/// assert_eq!(
+///     "foo:bar/baz.bat@0.1.0".parse::<ItemName>().unwrap(),
+///     ItemName {
+///         package: Some(PackageName {
+///             namespace: "foo".to_owned(),
+///             name: "bar".to_owned(),
+///             version: Some("0.1.0".parse().unwrap()),
+///         }),
+///         interface: Some("baz".to_owned()),
+///         name: "bat".to_owned()
+///     }
+/// );
+/// assert!("foo@0.1.0".parse::<ItemName>().is_err());
+/// assert!("foo:bar@0.1.0".parse::<ItemName>().is_err());
+/// assert!("foo:bar/baz@0.1.0.bat".parse::<ItemName>().is_err());
+/// assert!("foo.bar@0.1.0".parse::<ItemName>().is_err());
+/// assert!("foo@0.1.0.bar".parse::<ItemName>().is_err());
+/// ```
+///
+/// Parse this from a string using its [`FromStr`](core::str::FromStr) or
+/// [`TryFrom<String>`](core::convert::TryFrom) impls.
+/// [`Display`](core::fmt::Display) to render to the same string syntax.
+pub struct ItemName {
+    pub package: Option<crate::PackageName>,
+    pub interface: Option<String>,
+    pub name: String,
+}
+impl ItemName {
+    /// Get the name of the component instance containing this item, if any.
+    /// The instance name will be formed like:
+    /// "namespace.packagename/interfacename@0.1.0"
+    /// ```rust
+    /// # use wit_parser::ItemName;
+    /// assert_eq!(
+    ///     "foo".parse::<ItemName>().unwrap().instance_name(),
+    ///     None,
+    /// );
+    /// assert_eq!(
+    ///     "foo.bar".parse::<ItemName>().unwrap().instance_name(),
+    ///     Some("foo".to_owned())
+    /// );
+    /// assert_eq!(
+    ///     "foo:bar/baz.bat@0.1.0".parse::<ItemName>().unwrap().instance_name(),
+    ///     Some("foo:bar/baz@0.1.0".to_owned())
+    /// );
+    /// ```
+    pub fn instance_name(&self) -> Option<String> {
+        if self.package.is_none() && self.interface.is_none() {
+            return None;
+        }
+        let mut s = String::new();
+        if let Some(crate::PackageName {
+            namespace, name, ..
+        }) = &self.package
+        {
+            s.push_str(&format!("{namespace}:{name}/"));
+        }
+        if let Some(name) = &self.interface {
+            s.push_str(&format!("{name}"));
+        }
+        if let Some(crate::PackageName {
+            version: Some(version),
+            ..
+        }) = &self.package
+        {
+            s.push_str(&format!("@{version}"));
+        }
+        Some(s)
+    }
+}
+impl core::str::FromStr for ItemName {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> anyhow::Result<ItemName> {
+        let mut tokens = Tokenizer::new(s, 0)?;
+
+        let id = parse_id(&mut tokens)?;
+        let (package, name) = if tokens.eat(Token::Colon)? {
+            let name = parse_id(&mut tokens)?;
+            tokens.expect(Token::Slash)?;
+            (Some((id, name)), parse_id(&mut tokens)?)
+        } else {
+            (None, id)
+        };
+        let interface;
+        let name = if tokens.eat(Token::Period)? {
+            interface = Some(name.name.to_string());
+            parse_id(&mut tokens)?
+        } else {
+            interface = None;
+            name
+        };
+
+        let package = package
+            .map(|(namespace, name)| -> anyhow::Result<crate::PackageName> {
+                let version = parse_opt_version(&mut tokens)?;
+                Ok(PackageName {
+                    docs: Docs::default(),
+                    span: Span::new(
+                        namespace.span.start(),
+                        version
+                            .as_ref()
+                            .map(|(s, _)| s.end())
+                            .unwrap_or(name.span.end()),
+                    ),
+                    namespace,
+                    name,
+                    version,
+                }
+                .package_name())
+            })
+            .transpose()?;
+
+        if tokens.next()?.is_some() {
+            anyhow::bail!("trailing tokens in item name specifier");
+        }
+        Ok(ItemName {
+            package,
+            interface,
+            name: name.name.to_string(),
+        })
+    }
+}
+impl core::convert::TryFrom<String> for ItemName {
+    type Error = anyhow::Error;
+    fn try_from(s: String) -> anyhow::Result<ItemName> {
+        s.parse()
+    }
+}
+impl fmt::Display for ItemName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(crate::PackageName {
+            namespace, name, ..
+        }) = &self.package
+        {
+            write!(f, "{namespace}:{name}/")?;
+        }
+        if let Some(int) = &self.interface {
+            write!(f, "{int}.")?;
+        }
+        write!(f, "{}", self.name)?;
+        if let Some(crate::PackageName {
+            version: Some(version),
+            ..
+        }) = &self.package
+        {
+            write!(f, "@{version}")?;
+        }
+        Ok(())
+    }
+}
+impl From<ItemName> for String {
+    fn from(m: ItemName) -> String {
+        m.to_string()
+    }
+}
+
+#[cfg(test)]
+mod item_name_test {
+    use super::{ItemName, Version};
+    use crate::PackageName;
+    use alloc::borrow::ToOwned;
+
+    fn assert_round_trip(s: &str) {
+        use alloc::string::ToString;
+        let i = s.parse::<ItemName>().unwrap();
+        assert_eq!(i.to_string(), s);
+    }
+
+    #[test]
+    fn bare() {
+        assert_eq!(
+            "bare-kebab-name".parse::<ItemName>().unwrap(),
+            ItemName {
+                package: None,
+                interface: None,
+                name: "bare-kebab-name".to_owned()
+            }
+        );
+        assert_round_trip("bare-kebab-name");
+        // Invalid to have a version without a package name
+        assert!("bare-kebab-name@0.1.0".parse::<ItemName>().is_err());
+    }
+    #[test]
+    fn in_interface() {
+        assert_eq!(
+            "foo.bar".parse::<ItemName>().unwrap(),
+            ItemName {
+                package: None,
+                interface: Some("foo".to_owned()),
+                name: "bar".to_owned()
+            }
+        );
+        assert_round_trip("foo.bar");
+        // Invalid to have a version without a package name
+        assert!("foo.bar@0.1.0".parse::<ItemName>().is_err());
+    }
+    #[test]
+    fn in_package() {
+        assert_eq!(
+            "foo:bar/baz.bat".parse::<ItemName>().unwrap(),
+            ItemName {
+                package: Some(PackageName {
+                    namespace: "foo".to_owned(),
+                    name: "bar".to_owned(),
+                    version: None
+                }),
+                interface: Some("baz".to_owned()),
+                name: "bat".to_owned()
+            }
+        );
+        assert_round_trip("foo:bar/baz.bat");
+        assert_eq!(
+            "foo:bar/baz.bat@0.1.0".parse::<ItemName>().unwrap(),
+            ItemName {
+                package: Some(PackageName {
+                    namespace: "foo".to_owned(),
+                    name: "bar".to_owned(),
+                    version: Some(Version::parse("0.1.0").unwrap()),
+                }),
+                interface: Some("baz".to_owned()),
+                name: "bat".to_owned()
+            }
+        );
+        assert_round_trip("foo:bar/baz.bat@0.1.0");
+        assert_eq!(
+            "foo:bar/baz".parse::<ItemName>().unwrap(),
+            ItemName {
+                package: Some(PackageName {
+                    namespace: "foo".to_owned(),
+                    name: "bar".to_owned(),
+                    version: None
+                }),
+                interface: None,
+                name: "baz".to_owned()
+            }
+        );
+        assert_round_trip("foo:bar/baz@0.1.0");
+        assert_eq!(
+            "foo:bar/baz@0.1.0".parse::<ItemName>().unwrap(),
+            ItemName {
+                package: Some(PackageName {
+                    namespace: "foo".to_owned(),
+                    name: "bar".to_owned(),
+                    version: Some(Version::parse("0.1.0").unwrap()),
+                }),
+                interface: None,
+                name: "baz".to_owned()
+            }
+        );
+    }
 }

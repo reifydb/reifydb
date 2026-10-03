@@ -7,7 +7,6 @@ pub(crate) struct Formats {
     pub(crate) atomic_rmw: Rc<InstructionFormat>,
     pub(crate) binary: Rc<InstructionFormat>,
     pub(crate) binary_imm8: Rc<InstructionFormat>,
-    pub(crate) binary_imm64: Rc<InstructionFormat>,
     pub(crate) branch_table: Rc<InstructionFormat>,
     pub(crate) brif: Rc<InstructionFormat>,
     pub(crate) call: Rc<InstructionFormat>,
@@ -18,7 +17,6 @@ pub(crate) struct Formats {
     pub(crate) float_compare: Rc<InstructionFormat>,
     pub(crate) func_addr: Rc<InstructionFormat>,
     pub(crate) int_compare: Rc<InstructionFormat>,
-    pub(crate) int_compare_imm: Rc<InstructionFormat>,
     pub(crate) int_add_trap: Rc<InstructionFormat>,
     pub(crate) jump: Rc<InstructionFormat>,
     pub(crate) load: Rc<InstructionFormat>,
@@ -26,10 +24,8 @@ pub(crate) struct Formats {
     pub(crate) multiary: Rc<InstructionFormat>,
     pub(crate) nullary: Rc<InstructionFormat>,
     pub(crate) shuffle: Rc<InstructionFormat>,
-    pub(crate) stack_load: Rc<InstructionFormat>,
-    pub(crate) stack_store: Rc<InstructionFormat>,
-    pub(crate) dynamic_stack_load: Rc<InstructionFormat>,
-    pub(crate) dynamic_stack_store: Rc<InstructionFormat>,
+    pub(crate) stack_addr: Rc<InstructionFormat>,
+    pub(crate) dynamic_stack_addr: Rc<InstructionFormat>,
     pub(crate) store: Rc<InstructionFormat>,
     pub(crate) store_no_offset: Rc<InstructionFormat>,
     pub(crate) ternary: Rc<InstructionFormat>,
@@ -70,8 +66,6 @@ impl Formats {
 
             binary_imm8: Builder::new("BinaryImm8").value().imm(&imm.uimm8).build(),
 
-            binary_imm64: Builder::new("BinaryImm64").value().imm(&imm.imm64).build(),
-
             // The select instructions are controlled by the second VALUE operand.
             // The first VALUE operand is the controlling flag which has a derived type.
             // The fma instruction has the same constraint on all inputs.
@@ -104,12 +98,6 @@ impl Formats {
                 .imm(&imm.intcc)
                 .value()
                 .value()
-                .build(),
-
-            int_compare_imm: Builder::new("IntCompareImm")
-                .imm(&imm.intcc)
-                .value()
-                .imm(&imm.imm64)
                 .build(),
 
             float_compare: Builder::new("FloatCompare")
@@ -191,23 +179,12 @@ impl Formats {
                 .value()
                 .build(),
 
-            stack_load: Builder::new("StackLoad")
+            stack_addr: Builder::new("StackAddr")
                 .imm(&entities.stack_slot)
                 .imm(&imm.offset32)
                 .build(),
 
-            stack_store: Builder::new("StackStore")
-                .value()
-                .imm(&entities.stack_slot)
-                .imm(&imm.offset32)
-                .build(),
-
-            dynamic_stack_load: Builder::new("DynamicStackLoad")
-                .imm(&entities.dynamic_stack_slot)
-                .build(),
-
-            dynamic_stack_store: Builder::new("DynamicStackStore")
-                .value()
+            dynamic_stack_addr: Builder::new("DynamicStackAddr")
                 .imm(&entities.dynamic_stack_slot)
                 .build(),
 
