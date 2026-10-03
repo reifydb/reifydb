@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, Schema};
 use reifydb_core::{
 	expression::{
 		AccessObjectExpression, AddExpression, AndExpression, BetweenExpression, CallExpression,
-		ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression, GreaterThanEqExpression,
-		GreaterThanExpression, IdentExpression, LessThanEqExpression, LessThanExpression, MulExpression,
-		NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression,
-		XorExpression,
+		ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression, FieldAccessExpression,
+		GreaterThanEqExpression, GreaterThanExpression, IdentExpression, LessThanEqExpression,
+		LessThanExpression, MulExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator,
+		RemExpression, SubExpression, VariableExpression, XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 	value::column::factory,
@@ -22,10 +22,11 @@ use reifydb_evaluate::{
 		context::{CompileContext, EvalContext},
 	},
 	lower::LoweredExpr,
-	stack::SymbolTable,
+	stack::{ClosureValue, SymbolTable, Variable},
 };
 use reifydb_routine::function::default_in_process_functions;
 use reifydb_routine_abi::registry::Routines;
+use reifydb_rql::instruction::CompiledClosure;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{
 	Result,
@@ -289,5 +290,38 @@ pub fn call(name: &str, args: Vec<Expression>) -> Expression {
 		func: IdentExpression(frag(name)),
 		args,
 		fragment: frag("call"),
+	})
+}
+
+pub fn variable(text: &str) -> Expression {
+	Expression::Variable(VariableExpression {
+		fragment: frag(text),
+	})
+}
+
+pub fn field_access(object: Expression, field: &str) -> Expression {
+	Expression::FieldAccess(FieldAccessExpression {
+		object: Box::new(object),
+		field: frag(field),
+		fragment: frag("."),
+	})
+}
+
+pub fn symbols(variables: Vec<(&str, Variable)>) -> SymbolTable {
+	let mut symbols = SymbolTable::new();
+	for (name, variable) in variables {
+		symbols.set(name.to_string(), variable, false).unwrap();
+	}
+	symbols
+}
+
+pub fn closure() -> Variable {
+	Variable::Closure(ClosureValue {
+		def: CompiledClosure {
+			parameters: vec![],
+			body: vec![],
+			captures: vec![],
+		},
+		captured: HashMap::new(),
 	})
 }

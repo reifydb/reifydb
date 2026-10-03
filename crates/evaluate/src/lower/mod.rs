@@ -68,6 +68,8 @@ pub const CLAIMED: &[&str] = &[
 	"Div",
 	"Rem",
 	"Call",
+	"Variable",
+	"FieldAccess(Variable)",
 ];
 
 pub fn kind(expression: &Expression) -> &'static str {
@@ -110,7 +112,10 @@ pub fn kind(expression: &Expression) -> &'static str {
 		Expression::Extend(_) => "Extend",
 		Expression::SumTypeConstructor(_) => "SumTypeConstructor",
 		Expression::IsVariant(_) => "IsVariant",
-		Expression::FieldAccess(_) => "FieldAccess",
+		Expression::FieldAccess(access) => match access.object.as_ref() {
+			Expression::Variable(_) => "FieldAccess(Variable)",
+			_ => "FieldAccess(Other)",
+		},
 	}
 }
 
@@ -230,7 +235,11 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 		return Some(expression);
 	}
 	match expression {
-		Expression::Column(_) | Expression::AccessSource(_) | Expression::Constant(_) => None,
+		Expression::Column(_)
+		| Expression::AccessSource(_)
+		| Expression::Constant(_)
+		| Expression::Variable(_)
+		| Expression::FieldAccess(_) => None,
 		Expression::Prefix(e) => first_unclaimed(&e.expression),
 		Expression::And(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
 		Expression::Or(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
@@ -400,6 +409,13 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 		Expression::Call(call) if !ctx.is_aggregate_context => {
 			routine::lower_call(ctx, operator, expression, call)
 		}
+		Expression::Variable(variable) => Ok(literal::variable(ctx, operator, variable)?),
+		Expression::FieldAccess(access) => match access.object.as_ref() {
+			Expression::Variable(variable) => {
+				Ok(literal::variable_field(ctx, operator, variable, access.field.text())?)
+			}
+			_ => Err(Stop::Unsupported(expression)),
+		},
 		_ => Err(Stop::Unsupported(expression)),
 	}
 }

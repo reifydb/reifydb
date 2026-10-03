@@ -5,16 +5,35 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use datafusion_common::{ScalarValue, metadata::FieldMetadata};
 use datafusion_expr::Expr;
-use reifydb_core::expression::ConstantExpression;
+use reifydb_core::expression::{ConstantExpression, VariableExpression};
 
 use crate::{
 	Result,
-	expression::constant::constant_value,
+	expression::{
+		compile::{variable_column, variable_field_column},
+		constant::constant_value,
+		context::EvalContext,
+	},
 	lower::{Node, bool_field, error::from_datafusion},
 };
 
 pub(super) fn constant(operator: &str, constant: &ConstantExpression, label: &str) -> Result<Node> {
 	let (field, array) = constant_value(constant, label, 1)?;
+	row_zero(operator, &field, &array)
+}
+
+pub(super) fn variable(ctx: &EvalContext, operator: &str, variable: &VariableExpression) -> Result<Node> {
+	let (field, array) = variable_column(ctx, variable, 1)?;
+	row_zero(operator, &field, &array)
+}
+
+pub(super) fn variable_field(
+	ctx: &EvalContext,
+	operator: &str,
+	variable: &VariableExpression,
+	field_name: &str,
+) -> Result<Node> {
+	let (field, array) = variable_field_column(ctx, variable, field_name, 1)?;
 	row_zero(operator, &field, &array)
 }
 

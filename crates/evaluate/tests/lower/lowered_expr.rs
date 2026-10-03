@@ -7,8 +7,8 @@ use reifydb_core::{expression::PrefixOperator, interface::identifier::ColumnObje
 use reifydb_evaluate::lower::{CLAIMED, LoweredExpr, kind};
 
 use crate::common::{
-	ARITH_OPS, COMPARE_OPS, Env, access, and, arith, batch, between, boolean, call, column, compare, frag, not,
-	number, or, prefix, rows, strings, xor,
+	ARITH_OPS, COMPARE_OPS, Env, access, and, arith, batch, between, boolean, call, column, compare, field_access,
+	frag, not, number, or, prefix, rows, strings, variable, xor,
 };
 
 #[test]
@@ -35,6 +35,8 @@ fn the_claimed_list_is_exactly_the_lowered_kinds() {
 		"Div",
 		"Rem",
 		"Call",
+		"Variable",
+		"FieldAccess(Variable)",
 	]
 	.into_iter()
 	.collect();
@@ -58,6 +60,8 @@ fn every_claimed_name_is_a_kind_that_kind_can_return() {
 	samples.extend(COMPARE_OPS.map(|op| compare(op, number("1"), number("2"))));
 	samples.extend(ARITH_OPS.map(|op| arith(op, number("1"), number("2"))));
 	samples.push(call("math::abs", vec![number("1")]));
+	samples.push(variable("$x"));
+	samples.push(field_access(variable("$x"), "a"));
 
 	let kinds: BTreeSet<&str> = samples.iter().map(kind).collect();
 	let claimed: BTreeSet<&str> = CLAIMED.iter().copied().collect();
@@ -101,6 +105,23 @@ fn an_unclaimed_kind_under_a_claimed_parent_falls_back_without_a_panic() {
 
 	assert_eq!(strings(&lowered), strings(&old));
 	assert_eq!(strings(&lowered), vec!["true", "false"]);
+}
+
+#[test]
+fn a_field_on_a_non_variable_object_falls_back_with_the_old_error() {
+	// Only a field on a variable is claimed, so any other object must fall back and run before its field error.
+	let env = Env::new();
+	let input = batch(vec![factory::int4("a", [1, 2])]);
+
+	for (object, code) in [("a", "RUNTIME_009"), ("missing", "QUERY_001")] {
+		let expression = field_access(column(object), "f");
+		assert_eq!(kind(&expression), "FieldAccess(Other)");
+		let lowered = env.lowered(&expression, input.clone()).unwrap_err();
+		let old = env.old(&expression, input.clone()).unwrap_err();
+		assert_eq!(lowered, old, "error of {object}.f");
+		assert_eq!(lowered.code, code, "code of {object}.f");
+	}
+	assert!(!CLAIMED.contains(&"FieldAccess(Other)"));
 }
 
 #[test]
