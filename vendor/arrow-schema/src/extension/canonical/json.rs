@@ -137,7 +137,7 @@ impl ExtensionType for Json {
                 .as_ref()
                 .map(serde_json::to_string)
                 .map(Result::unwrap)
-                .unwrap_or_default(),
+                .unwrap_or_else(|| "".to_owned()),
         )
     }
 
@@ -196,7 +196,7 @@ mod tests {
         field.try_with_extension_type(Json::default())?;
         assert_eq!(
             field.metadata().get(EXTENSION_TYPE_METADATA_KEY),
-            Some(&String::new())
+            Some(&"".to_owned())
         );
         assert_eq!(
             field.try_extension_type::<Json>()?,
@@ -228,8 +228,11 @@ mod tests {
     #[test]
     #[should_panic(expected = "Extension type name missing")]
     fn missing_name() {
-        let field = Field::new("", DataType::Int8, false)
-            .with_metadata([(EXTENSION_TYPE_METADATA_KEY, "{}")]);
+        let field = Field::new("", DataType::Int8, false).with_metadata(
+            [(EXTENSION_TYPE_METADATA_KEY.to_owned(), "{}".to_owned())]
+                .into_iter()
+                .collect(),
+        );
         field.extension_type::<Json>();
     }
 
@@ -244,10 +247,14 @@ mod tests {
         expected = "Json extension type metadata is either an empty string or a JSON string with an empty object"
     )]
     fn invalid_metadata() {
-        let field = Field::new("", DataType::Utf8, false).with_metadata([
-            (EXTENSION_TYPE_NAME_KEY, Json::NAME),
-            (EXTENSION_TYPE_METADATA_KEY, "1234"),
-        ]);
+        let field = Field::new("", DataType::Utf8, false).with_metadata(
+            [
+                (EXTENSION_TYPE_NAME_KEY.to_owned(), Json::NAME.to_owned()),
+                (EXTENSION_TYPE_METADATA_KEY.to_owned(), "1234".to_owned()),
+            ]
+            .into_iter()
+            .collect(),
+        );
         field.extension_type::<Json>();
     }
 
@@ -256,8 +263,11 @@ mod tests {
         expected = "Json extension type metadata is either an empty string or a JSON string with an empty object"
     )]
     fn missing_metadata() {
-        let field = Field::new("", DataType::LargeUtf8, false)
-            .with_metadata([(EXTENSION_TYPE_NAME_KEY, Json::NAME)]);
+        let field = Field::new("", DataType::LargeUtf8, false).with_metadata(
+            [(EXTENSION_TYPE_NAME_KEY.to_owned(), Json::NAME.to_owned())]
+                .into_iter()
+                .collect(),
+        );
         field.extension_type::<Json>();
     }
 }

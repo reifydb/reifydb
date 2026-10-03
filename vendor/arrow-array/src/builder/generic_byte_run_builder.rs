@@ -194,9 +194,6 @@ where
     }
 
     /// Creates the RunArray and resets the builder.
-    ///
-    /// # Panics
-    ///
     /// Panics if RunArray cannot be built.
     pub fn finish(&mut self) -> RunArray<R> {
         // write the last run end to the array.
@@ -215,9 +212,6 @@ where
     }
 
     /// Creates the RunArray and without resetting the builder.
-    ///
-    /// # Panics
-    ///
     /// Panics if RunArray cannot be built.
     pub fn finish_cloned(&self) -> RunArray<R> {
         let mut run_ends_array = self.run_ends_builder.finish_cloned();

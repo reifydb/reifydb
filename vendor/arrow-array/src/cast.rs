@@ -477,7 +477,7 @@ macro_rules! downcast_primitive_array {
 }
 
 /// Force downcast of an [`Array`], such as an [`ArrayRef`], to
-/// [`PrimitiveArray<T>`].
+/// [`PrimitiveArray<T>`], panic'ing on failure.
 ///
 /// # Example
 ///
@@ -501,10 +501,6 @@ macro_rules! downcast_primitive_array {
 ///     .downcast_ref::<Int32Array>()
 ///     .unwrap();
 /// ```
-///
-/// # Panics
-///
-/// Panics if `arr` is not a [`PrimitiveArray<T>`]
 pub fn as_primitive_array<T>(arr: &dyn Array) -> &PrimitiveArray<T>
 where
     T: ArrowPrimitiveType,
@@ -577,7 +573,7 @@ macro_rules! downcast_dictionary_array {
 }
 
 /// Force downcast of an [`Array`], such as an [`ArrayRef`] to
-/// [`DictionaryArray<T>`].
+/// [`DictionaryArray<T>`], panic'ing on failure.
 ///
 /// # Example
 ///
@@ -590,10 +586,6 @@ macro_rules! downcast_dictionary_array {
 /// let arr: ArrayRef = std::sync::Arc::new(arr);
 /// let dict_array: &DictionaryArray<Int32Type> = as_dictionary_array::<Int32Type>(&arr);
 /// ```
-///
-/// # Panics
-///
-/// Panics if `arr` is not a [`DictionaryArray<T>`]
 pub fn as_dictionary_array<T>(arr: &dyn Array) -> &DictionaryArray<T>
 where
     T: ArrowDictionaryKeyType,
@@ -604,7 +596,7 @@ where
 }
 
 /// Force downcast of an [`Array`], such as an [`ArrayRef`] to
-/// [`RunArray<T>`].
+/// [`RunArray<T>`], panic'ing on failure.
 ///
 /// # Example
 ///
@@ -617,10 +609,6 @@ where
 /// let arr: ArrayRef = std::sync::Arc::new(arr);
 /// let run_array: &RunArray<Int32Type> = as_run_array::<Int32Type>(&arr);
 /// ```
-///
-/// # Panics
-///
-/// Panics if `arr` is not a [`RunArray<T>`]
 pub fn as_run_array<T>(arr: &dyn Array) -> &RunArray<T>
 where
     T: RunEndIndexType,
@@ -693,11 +681,7 @@ macro_rules! downcast_run_array {
 }
 
 /// Force downcast of an [`Array`], such as an [`ArrayRef`] to
-/// [`GenericListArray<T>`].
-///
-/// # Panics
-///
-/// Panics if `arr` is not a [`GenericListArray<T>`]
+/// [`GenericListArray<T>`], panicking on failure.
 pub fn as_generic_list_array<S: OffsetSizeTrait>(arr: &dyn Array) -> &GenericListArray<S> {
     arr.as_any()
         .downcast_ref::<GenericListArray<S>>()
@@ -705,22 +689,14 @@ pub fn as_generic_list_array<S: OffsetSizeTrait>(arr: &dyn Array) -> &GenericLis
 }
 
 /// Force downcast of an [`Array`], such as an [`ArrayRef`] to
-/// [`ListArray`].
-///
-/// # Panics
-///
-/// Panics if `arr` is not a [`ListArray`]
+/// [`ListArray`], panicking on failure.
 #[inline]
 pub fn as_list_array(arr: &dyn Array) -> &ListArray {
     as_generic_list_array::<i32>(arr)
 }
 
 /// Force downcast of an [`Array`], such as an [`ArrayRef`] to
-/// [`FixedSizeListArray`].
-///
-/// # Panics
-///
-/// Panics if `arr` is not a [`FixedSizeListArray`]
+/// [`FixedSizeListArray`], panicking on failure.
 #[inline]
 pub fn as_fixed_size_list_array(arr: &dyn Array) -> &FixedSizeListArray {
     arr.as_any()
@@ -729,22 +705,14 @@ pub fn as_fixed_size_list_array(arr: &dyn Array) -> &FixedSizeListArray {
 }
 
 /// Force downcast of an [`Array`], such as an [`ArrayRef`] to
-/// [`LargeListArray`].
-///
-/// # Panics
-///
-/// Panics if `arr` is not a [`LargeListArray`]
+/// [`LargeListArray`], panicking on failure.
 #[inline]
 pub fn as_large_list_array(arr: &dyn Array) -> &LargeListArray {
     as_generic_list_array::<i64>(arr)
 }
 
 /// Force downcast of an [`Array`], such as an [`ArrayRef`] to
-/// [`GenericBinaryArray<S>`].
-///
-/// # Panics
-///
-/// Panics if `arr` is not a [`GenericBinaryArray<S>`]
+/// [`GenericBinaryArray<S>`], panicking on failure.
 #[inline]
 pub fn as_generic_binary_array<S: OffsetSizeTrait>(arr: &dyn Array) -> &GenericBinaryArray<S> {
     arr.as_any()
@@ -753,7 +721,7 @@ pub fn as_generic_binary_array<S: OffsetSizeTrait>(arr: &dyn Array) -> &GenericB
 }
 
 /// Force downcast of an [`Array`], such as an [`ArrayRef`] to
-/// [`StringArray`].
+/// [`StringArray`], panicking on failure.
 ///
 /// # Example
 ///
@@ -765,10 +733,6 @@ pub fn as_generic_binary_array<S: OffsetSizeTrait>(arr: &dyn Array) -> &GenericB
 /// let arr: ArrayRef = Arc::new(StringArray::from_iter(vec![Some("foo")]));
 /// let string_array = as_string_array(&arr);
 /// ```
-///
-/// # Panics
-///
-/// Panics if `arr` is not a [`StringArray`]
 pub fn as_string_array(arr: &dyn Array) -> &StringArray {
     arr.as_any()
         .downcast_ref::<StringArray>()
@@ -776,7 +740,7 @@ pub fn as_string_array(arr: &dyn Array) -> &StringArray {
 }
 
 /// Force downcast of an [`Array`], such as an [`ArrayRef`] to
-/// [`BooleanArray`].
+/// [`BooleanArray`], panicking on failure.
 ///
 /// # Example
 ///
@@ -788,10 +752,6 @@ pub fn as_string_array(arr: &dyn Array) -> &StringArray {
 /// let arr: ArrayRef = Arc::new(BooleanArray::from_iter(vec![Some(true)]));
 /// let boolean_array = as_boolean_array(&arr);
 /// ```
-///
-/// # Panics
-///
-/// Panics if `arr` is not a [`BooleanArray`]
 pub fn as_boolean_array(arr: &dyn Array) -> &BooleanArray {
     arr.as_any()
         .downcast_ref::<BooleanArray>()
@@ -801,11 +761,6 @@ pub fn as_boolean_array(arr: &dyn Array) -> &BooleanArray {
 macro_rules! array_downcast_fn {
     ($name: ident, $arrty: ty, $arrty_str:expr) => {
         #[doc = "Force downcast of an [`Array`], such as an [`ArrayRef`] to "]
-        #[doc = $arrty_str]
-        #[doc = ""]
-        #[doc = "# Panics"]
-        #[doc = ""]
-        #[doc = "Panics if `arr` is not a "]
         #[doc = $arrty_str]
         pub fn $name(arr: &dyn Array) -> &$arrty {
             arr.as_any().downcast_ref::<$arrty>().expect(concat!(
@@ -817,7 +772,11 @@ macro_rules! array_downcast_fn {
 
     // use recursive macro to generate dynamic doc string for a given array type
     ($name: ident, $arrty: ty) => {
-        array_downcast_fn!($name, $arrty, concat!("[`", stringify!($arrty), "`]"));
+        array_downcast_fn!(
+            $name,
+            $arrty,
+            concat!("[`", stringify!($arrty), "`], panicking on failure.")
+        );
     };
 }
 
@@ -877,11 +836,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`BooleanArray`] returning `None` if not possible
     fn as_boolean_opt(&self) -> Option<&BooleanArray>;
 
-    /// Downcast this to a [`BooleanArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`BooleanArray`]
+    /// Downcast this to a [`BooleanArray`] panicking if not possible
     fn as_boolean(&self) -> &BooleanArray {
         self.as_boolean_opt().expect("boolean array")
     }
@@ -889,11 +844,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`PrimitiveArray`] returning `None` if not possible
     fn as_primitive_opt<T: ArrowPrimitiveType>(&self) -> Option<&PrimitiveArray<T>>;
 
-    /// Downcast this to a [`PrimitiveArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`PrimitiveArray`]
+    /// Downcast this to a [`PrimitiveArray`] panicking if not possible
     fn as_primitive<T: ArrowPrimitiveType>(&self) -> &PrimitiveArray<T> {
         self.as_primitive_opt().expect("primitive array")
     }
@@ -901,11 +852,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`GenericByteArray`] returning `None` if not possible
     fn as_bytes_opt<T: ByteArrayType>(&self) -> Option<&GenericByteArray<T>>;
 
-    /// Downcast this to a [`GenericByteArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`GenericByteArray`]
+    /// Downcast this to a [`GenericByteArray`] panicking if not possible
     fn as_bytes<T: ByteArrayType>(&self) -> &GenericByteArray<T> {
         self.as_bytes_opt().expect("byte array")
     }
@@ -915,11 +862,7 @@ pub trait AsArray: private::Sealed {
         self.as_bytes_opt()
     }
 
-    /// Downcast this to a [`GenericStringArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`GenericStringArray`]
+    /// Downcast this to a [`GenericStringArray`] panicking if not possible
     fn as_string<O: OffsetSizeTrait>(&self) -> &GenericStringArray<O> {
         self.as_bytes_opt().expect("string array")
     }
@@ -929,11 +872,7 @@ pub trait AsArray: private::Sealed {
         self.as_bytes_opt()
     }
 
-    /// Downcast this to a [`GenericBinaryArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`GenericBinaryArray`]
+    /// Downcast this to a [`GenericBinaryArray`] panicking if not possible
     fn as_binary<O: OffsetSizeTrait>(&self) -> &GenericBinaryArray<O> {
         self.as_bytes_opt().expect("binary array")
     }
@@ -943,11 +882,7 @@ pub trait AsArray: private::Sealed {
         self.as_byte_view_opt()
     }
 
-    /// Downcast this to a [`StringViewArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`StringViewArray`]
+    /// Downcast this to a [`StringViewArray`] panicking if not possible
     fn as_string_view(&self) -> &StringViewArray {
         self.as_byte_view_opt().expect("string view array")
     }
@@ -957,11 +892,7 @@ pub trait AsArray: private::Sealed {
         self.as_byte_view_opt()
     }
 
-    /// Downcast this to a [`BinaryViewArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`BinaryViewArray`]
+    /// Downcast this to a [`BinaryViewArray`] panicking if not possible
     fn as_binary_view(&self) -> &BinaryViewArray {
         self.as_byte_view_opt().expect("binary view array")
     }
@@ -969,11 +900,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`GenericByteViewArray`] returning `None` if not possible
     fn as_byte_view_opt<T: ByteViewType>(&self) -> Option<&GenericByteViewArray<T>>;
 
-    /// Downcast this to a [`GenericByteViewArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`GenericByteViewArray`]
+    /// Downcast this to a [`GenericByteViewArray`] panicking if not possible
     fn as_byte_view<T: ByteViewType>(&self) -> &GenericByteViewArray<T> {
         self.as_byte_view_opt().expect("byte view array")
     }
@@ -981,11 +908,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`StructArray`] returning `None` if not possible
     fn as_struct_opt(&self) -> Option<&StructArray>;
 
-    /// Downcast this to a [`StructArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`StructArray`]
+    /// Downcast this to a [`StructArray`] panicking if not possible
     fn as_struct(&self) -> &StructArray {
         self.as_struct_opt().expect("struct array")
     }
@@ -993,11 +916,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`UnionArray`] returning `None` if not possible
     fn as_union_opt(&self) -> Option<&UnionArray>;
 
-    /// Downcast this to a [`UnionArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`UnionArray`]
+    /// Downcast this to a [`UnionArray`] panicking if not possible
     fn as_union(&self) -> &UnionArray {
         self.as_union_opt().expect("union array")
     }
@@ -1005,11 +924,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`GenericListArray`] returning `None` if not possible
     fn as_list_opt<O: OffsetSizeTrait>(&self) -> Option<&GenericListArray<O>>;
 
-    /// Downcast this to a [`GenericListArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`GenericListArray`]
+    /// Downcast this to a [`GenericListArray`] panicking if not possible
     fn as_list<O: OffsetSizeTrait>(&self) -> &GenericListArray<O> {
         self.as_list_opt().expect("list array")
     }
@@ -1017,11 +932,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`GenericListViewArray`] returning `None` if not possible
     fn as_list_view_opt<O: OffsetSizeTrait>(&self) -> Option<&GenericListViewArray<O>>;
 
-    /// Downcast this to a [`GenericListViewArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`GenericListViewArray`]
+    /// Downcast this to a [`GenericListViewArray`] panicking if not possible
     fn as_list_view<O: OffsetSizeTrait>(&self) -> &GenericListViewArray<O> {
         self.as_list_view_opt().expect("list view array")
     }
@@ -1029,11 +940,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`FixedSizeBinaryArray`] returning `None` if not possible
     fn as_fixed_size_binary_opt(&self) -> Option<&FixedSizeBinaryArray>;
 
-    /// Downcast this to a [`FixedSizeBinaryArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`FixedSizeBinaryArray`]
+    /// Downcast this to a [`FixedSizeBinaryArray`] panicking if not possible
     fn as_fixed_size_binary(&self) -> &FixedSizeBinaryArray {
         self.as_fixed_size_binary_opt()
             .expect("fixed size binary array")
@@ -1042,11 +949,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`FixedSizeListArray`] returning `None` if not possible
     fn as_fixed_size_list_opt(&self) -> Option<&FixedSizeListArray>;
 
-    /// Downcast this to a [`FixedSizeListArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`FixedSizeListArray`]
+    /// Downcast this to a [`FixedSizeListArray`] panicking if not possible
     fn as_fixed_size_list(&self) -> &FixedSizeListArray {
         self.as_fixed_size_list_opt()
             .expect("fixed size list array")
@@ -1055,11 +958,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`MapArray`] returning `None` if not possible
     fn as_map_opt(&self) -> Option<&MapArray>;
 
-    /// Downcast this to a [`MapArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`MapArray`]
+    /// Downcast this to a [`MapArray`] panicking if not possible
     fn as_map(&self) -> &MapArray {
         self.as_map_opt().expect("map array")
     }
@@ -1067,11 +966,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`DictionaryArray`] returning `None` if not possible
     fn as_dictionary_opt<K: ArrowDictionaryKeyType>(&self) -> Option<&DictionaryArray<K>>;
 
-    /// Downcast this to a [`DictionaryArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`DictionaryArray`]
+    /// Downcast this to a [`DictionaryArray`] panicking if not possible
     fn as_dictionary<K: ArrowDictionaryKeyType>(&self) -> &DictionaryArray<K> {
         self.as_dictionary_opt().expect("dictionary array")
     }
@@ -1079,11 +974,7 @@ pub trait AsArray: private::Sealed {
     /// Downcast this to a [`RunArray`] returning `None` if not possible
     fn as_run_opt<K: RunEndIndexType>(&self) -> Option<&RunArray<K>>;
 
-    /// Downcast this to a [`RunArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`RunArray`]
+    /// Downcast this to a [`RunArray`] panicking if not possible
     fn as_run<K: RunEndIndexType>(&self) -> &RunArray<K> {
         self.as_run_opt().expect("run array")
     }
@@ -1091,11 +982,7 @@ pub trait AsArray: private::Sealed {
     /// Downcasts this to a [`AnyDictionaryArray`] returning `None` if not possible
     fn as_any_dictionary_opt(&self) -> Option<&dyn AnyDictionaryArray>;
 
-    /// Downcasts this to a [`AnyDictionaryArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`AnyDictionaryArray`]
+    /// Downcasts this to a [`AnyDictionaryArray`] panicking if not possible
     fn as_any_dictionary(&self) -> &dyn AnyDictionaryArray {
         self.as_any_dictionary_opt().expect("any dictionary array")
     }
@@ -1103,11 +990,7 @@ pub trait AsArray: private::Sealed {
     /// Downcasts this to a [`AnyRunEndArray`] returning `None` if not possible
     fn as_any_ree_opt(&self) -> Option<&dyn AnyRunEndArray>;
 
-    /// Downcasts this to a [`AnyRunEndArray`]
-    ///
-    /// # Panics
-    ///
-    /// Panics if this is not a [`AnyRunEndArray`]
+    /// Downcasts this to a [`AnyRunEndArray`] panicking if not possible
     fn as_any_ree(&self) -> &dyn AnyRunEndArray {
         self.as_any_ree_opt().expect("any run end array")
     }

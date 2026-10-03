@@ -77,20 +77,12 @@ pub trait ArrowNativeTypeOp: ArrowNativeType {
     fn div_checked(self, rhs: Self) -> Result<Self, ArrowError>;
 
     /// Wrapping division operation
-    ///
-    /// # Panics
-    ///
-    /// Panics if `rhs` is zero for integer types
     fn div_wrapping(self, rhs: Self) -> Self;
 
     /// Checked remainder operation
     fn mod_checked(self, rhs: Self) -> Result<Self, ArrowError>;
 
     /// Wrapping remainder operation
-    ///
-    /// # Panics
-    ///
-    /// Panics if `rhs` is zero for integer types
     fn mod_wrapping(self, rhs: Self) -> Self;
 
     /// Checked negation operation
@@ -421,19 +413,40 @@ native_type_float_op!(
     f16::from_bits(-1 as _),
     f16::from_bits(i16::MAX as _)
 );
+// from_bits is not yet stable as const fn, see https://github.com/rust-lang/rust/issues/72447
 native_type_float_op!(
     f32,
     0.,
     1.,
-    f32::from_bits(-1_i32 as _),
-    f32::from_bits(i32::MAX as _)
+    unsafe {
+        // Need to allow in clippy because
+        // current MSRV (Minimum Supported Rust Version) is `1.85.0` but this item is stable since `1.87.0`
+        #[allow(unnecessary_transmutes)]
+        std::mem::transmute(-1_i32)
+    },
+    unsafe {
+        // Need to allow in clippy because
+        // current MSRV (Minimum Supported Rust Version) is `1.85.0` but this item is stable since `1.87.0`
+        #[allow(unnecessary_transmutes)]
+        std::mem::transmute(i32::MAX)
+    }
 );
 native_type_float_op!(
     f64,
     0.,
     1.,
-    f64::from_bits(-1_i64 as _),
-    f64::from_bits(i64::MAX as _)
+    unsafe {
+        // Need to allow in clippy because
+        // current MSRV (Minimum Supported Rust Version) is `1.85.0` but this item is stable since `1.87.0`
+        #[allow(unnecessary_transmutes)]
+        std::mem::transmute(-1_i64)
+    },
+    unsafe {
+        // Need to allow in clippy because
+        // current MSRV (Minimum Supported Rust Version) is `1.85.0` but this item is stable since `1.87.0`
+        #[allow(unnecessary_transmutes)]
+        std::mem::transmute(i64::MAX)
+    }
 );
 
 #[cfg(test)]
@@ -474,7 +487,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_native_type_comparison() {
         // is_eq
         assert!(8_i8.is_eq(8_i8));
@@ -538,7 +550,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_native_type_add() {
         // add_wrapping
         assert_eq!(8_i8.add_wrapping(2_i8), 10_i8);
@@ -586,7 +597,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_native_type_sub() {
         // sub_wrapping
         assert_eq!(8_i8.sub_wrapping(2_i8), 6_i8);
@@ -634,7 +644,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_native_type_mul() {
         // mul_wrapping
         assert_eq!(8_i8.mul_wrapping(2_i8), 16_i8);
@@ -682,7 +691,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_native_type_div() {
         // div_wrapping
         assert_eq!(8_i8.div_wrapping(2_i8), 4_i8);
@@ -730,7 +738,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_native_type_mod() {
         // mod_wrapping
         assert_eq!(9_i8.mod_wrapping(2_i8), 1_i8);
@@ -778,7 +785,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_native_type_neg() {
         // neg_wrapping
         assert_eq!(8_i8.neg_wrapping(), -8_i8);
@@ -818,7 +824,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_native_type_pow() {
         // pow_wrapping
         assert_eq!(8_i8.pow_wrapping(2_u32), 64_i8);

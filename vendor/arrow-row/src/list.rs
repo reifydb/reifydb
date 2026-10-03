@@ -57,8 +57,9 @@ impl<O: OffsetSizeTrait> GenericListArrayOrMap for GenericListArray<O> {
     where
         Self: Sized,
     {
-        let (DataType::List(field) | DataType::LargeList(field)) = data_type else {
-            unreachable!()
+        let field = match data_type {
+            DataType::List(inner_field) | DataType::LargeList(inner_field) => inner_field,
+            _ => unreachable!(),
         };
 
         let child = children
@@ -365,7 +366,7 @@ pub fn encode_fixed_size_list(
                     data[*offset] = null_sentinel;
                     *offset += 1;
                 }
-            }
+            };
         })
 }
 
