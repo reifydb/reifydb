@@ -3,3 +3,5 @@
 
 #[path = "operator/state/access.rs"]
 mod access;
+#[path = "operator/gate.rs"]
+mod gate;
