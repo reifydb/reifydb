@@ -24,7 +24,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::hash::{build_shape, columns_from_block, encode_row};
+use super::hash::{JoinRows, columns_from_block};
 use crate::operator::{
 	host::HostContext,
 	join::{Identity, operator::JoinOperator, store::Store},
@@ -152,22 +152,19 @@ pub(crate) fn write_right_rows(
 	host: &mut dyn HostContext,
 	right: &Store,
 	key_hash: &Hash128,
-	columns: &RecordBatch,
+	rows: &mut JoinRows,
 	indices: &[usize],
 	pick: &JoinPick,
 ) -> Result<()> {
 	if indices.is_empty() {
 		return Ok(());
 	}
-	let shape = build_shape(columns)?;
-	right.set_row_shape(host, &shape)?;
+	let encoded = rows.encoded(host, right)?;
 	let group = right.group_of(key_hash);
 
-	let row_numbers = require_row_numbers(columns)?;
 	let mut candidates: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(indices.len() + 1);
 	for &idx in indices {
-		let row = encode_row(&shape, columns, idx, host.written_at(), right.side())?;
-		candidates.push((row_numbers[idx], row.into_bytes()));
+		candidates.push((encoded.number(idx), encoded.row(idx).clone().into_bytes()));
 	}
 	let held = read_slot(host, right, group)?;
 	if let Some(held) = &held
@@ -193,14 +190,14 @@ pub(crate) fn overwrite_right_slot(
 	host: &mut dyn HostContext,
 	right: &Store,
 	key_hash: &Hash128,
-	columns: &RecordBatch,
+	rows: &mut JoinRows,
 	indices: &[usize],
 	pick: &JoinPick,
 ) -> Result<Option<RecordBatch>> {
 	if indices.is_empty() {
 		return Ok(None);
 	}
-	write_right_rows(host, right, key_hash, columns, indices, pick)?;
+	write_right_rows(host, right, key_hash, rows, indices, pick)?;
 	read_right_slot(host, right, key_hash)
 }
 

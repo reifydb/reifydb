@@ -146,13 +146,13 @@ impl LatestLeftHashJoin {
 						.map(|columns| vec![Diff::insert(columns)])
 						.unwrap_or_default());
 				}
-				add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
+				add_to_state_entry_batch(host, &ctx.state.left, key_hash, ctx.rows, indices)?;
 				let slot = read_right_slot(host, &ctx.state.right, key_hash)?;
 				Ok(ctx.operator
 					.latest_columns(host, post, indices, slot.as_ref(), Identity::Mint)?
 					.published())
 			}
-			JoinSide::Right => self.handle_right_insert(host, post, indices, key_hash, ctx),
+			JoinSide::Right => self.handle_right_insert(host, indices, key_hash, ctx),
 		}
 	}
 
@@ -160,7 +160,6 @@ impl LatestLeftHashJoin {
 	fn handle_right_insert(
 		&self,
 		host: &mut dyn HostContext,
-		post: &RecordBatch,
 		indices: &[usize],
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
@@ -173,11 +172,12 @@ impl LatestLeftHashJoin {
 				right_store: &ctx.state.right,
 			};
 			retire_slot(host, &snapshot_ctx, key_hash)?;
-			write_right_rows(host, &ctx.state.right, key_hash, post, indices, ctx.operator.pick())?;
+			write_right_rows(host, &ctx.state.right, key_hash, ctx.rows, indices, ctx.operator.pick())?;
 			return Ok(Vec::new());
 		}
 		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
-		let new = overwrite_right_slot(host, &ctx.state.right, key_hash, post, indices, ctx.operator.pick())?;
+		let new =
+			overwrite_right_slot(host, &ctx.state.right, key_hash, ctx.rows, indices, ctx.operator.pick())?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
 		for_each_left_block(host, &ctx.state.left, key_hash, |host, left| {
@@ -371,7 +371,7 @@ impl LatestLeftHashJoin {
 					return Ok(result);
 				}
 
-				let prepared = prepare_entry_update(host, &ctx.state.left, keys.pre, post)?;
+				let prepared = prepare_entry_update(host, &ctx.state.left, keys.pre, ctx.rows)?;
 				let mut held = Vec::with_capacity(indices.len());
 				let mut expired = Vec::new();
 				for &idx in indices {
@@ -380,7 +380,7 @@ impl LatestLeftHashJoin {
 						&ctx.state.left,
 						&prepared,
 						require_row_numbers(pre)?[idx],
-						post,
+						ctx.rows,
 						idx,
 					)? {
 						true => held.push(idx),
@@ -398,7 +398,7 @@ impl LatestLeftHashJoin {
 				result.extend(self.handle_insert(host, post, &expired, keys.post, ctx)?);
 				Ok(result)
 			}
-			JoinSide::Right => self.handle_right_insert(host, post, indices, keys.post, ctx),
+			JoinSide::Right => self.handle_right_insert(host, indices, keys.post, ctx),
 		}
 	}
 }

@@ -110,6 +110,13 @@ pub trait StateStore {
 		Ok(())
 	}
 
+	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		for (key, row) in rows {
+			self.state_set(&key, row)?;
+		}
+		Ok(())
+	}
+
 	fn state_page(
 		&mut self,
 		range: EncodedKeyRange,

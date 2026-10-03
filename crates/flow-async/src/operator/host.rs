@@ -273,6 +273,19 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_remove_many(self.operator, keys)
 	}
 
+	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		let managed: Vec<GroupStateKey> = rows
+			.iter()
+			.filter(|(key, _)| key.keyspace() == Some(KeyspaceId::CUSTOM_MANAGED))
+			.map(|(key, _)| key.clone())
+			.collect();
+		self.txn.state_set_many(self.operator, rows)?;
+		for key in &managed {
+			self.arm_reclaim(key)?;
+		}
+		Ok(())
+	}
+
 	fn state_page_inner(
 		&mut self,
 		range: EncodedKeyRange,

@@ -57,7 +57,7 @@ use super::{
 	column::{JoinedColumnsBuilder, JoinedColumnsCache},
 	snapshot::SnapshotLedger,
 	state::{JoinSide, JoinState},
-	strategy::{JoinContext, JoinStrategy, UpdateKeys},
+	strategy::{JoinContext, JoinStrategy, UpdateKeys, hash::JoinRows},
 };
 use crate::{
 	error::FlowStateError,
@@ -998,6 +998,7 @@ impl JoinOperator {
 		let keys = self.compute_join_keys(post, self.compiled_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
+		let mut rows = JoinRows::new(post, side, host.written_at());
 
 		for key_hash in &order {
 			let indices = &groups[key_hash];
@@ -1005,6 +1006,7 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
+				rows: &mut rows,
 			};
 			result.extend(self.strategy.handle_insert(host, post, indices, key_hash, &mut ctx)?);
 		}
@@ -1014,6 +1016,7 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
+				rows: &mut rows,
 			};
 			result.extend(self.strategy.handle_insert_undefined(host, post, row_idx, &mut ctx)?);
 		}
@@ -1035,6 +1038,7 @@ impl JoinOperator {
 		let keys = self.compute_join_keys(pre, self.compiled_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
+		let mut rows = JoinRows::new(pre, side, host.written_at());
 
 		for key_hash in &order {
 			let indices = &groups[key_hash];
@@ -1042,6 +1046,7 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
+				rows: &mut rows,
 			};
 			result.extend(self.strategy.handle_remove(host, pre, indices, key_hash, &mut ctx)?);
 		}
@@ -1051,6 +1056,7 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
+				rows: &mut rows,
 			};
 			result.extend(self.strategy.handle_remove_undefined(host, pre, row_idx, &mut ctx)?);
 		}
@@ -1077,12 +1083,14 @@ impl JoinOperator {
 			Some(_) => row_times(post)?,
 			None => Vec::new(),
 		};
+		let mut rows = JoinRows::new(post, side, host.written_at());
 
 		for row_idx in 0..row_count {
 			let mut ctx = JoinContext {
 				side,
 				state,
 				operator: self,
+				rows: &mut rows,
 			};
 			let diffs = match (pre_keys[row_idx], post_keys[row_idx]) {
 				(Some(pre_key), Some(post_key)) => {

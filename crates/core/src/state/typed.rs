@@ -141,6 +141,10 @@ pub trait TypedStateStore: StateStore {
 	where
 		K: Keyspace;
 
+	fn state_set_many_in<K>(&mut self, group: GroupId, rows: Vec<(K::Suffix, EncodedPodRow)>) -> Result<()>
+	where
+		K: Keyspace;
+
 	fn state_remove_in<K>(&mut self, group: GroupId, suffix: &K::Suffix) -> Result<()>
 	where
 		K: Keyspace;
@@ -168,6 +172,15 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 		K: Keyspace,
 	{
 		self.state_set(&typed_key::<K>(group, suffix), row)
+	}
+
+	fn state_set_many_in<K>(&mut self, group: GroupId, rows: Vec<(K::Suffix, EncodedPodRow)>) -> Result<()>
+	where
+		K: Keyspace,
+	{
+		self.state_set_many(
+			rows.into_iter().map(|(suffix, row)| (typed_key::<K>(group, &suffix), row)).collect(),
+		)
 	}
 
 	fn state_remove_in<K>(&mut self, group: GroupId, suffix: &K::Suffix) -> Result<()>

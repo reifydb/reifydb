@@ -84,10 +84,15 @@ impl StateBatch {
 
 pub fn check_batch_keys(keys: &[GroupStateKey]) -> Result<()> {
 	for key in keys {
-		let inner = key.as_slice();
-		if inner.is_empty() || !is_framed_inner(inner) {
-			return Err(Error(Box::new(flow_state_batch_key_unframed(inner.len()))));
-		}
+		check_batch_key(key)?;
+	}
+	Ok(())
+}
+
+pub fn check_batch_key(key: &GroupStateKey) -> Result<()> {
+	let inner = key.as_slice();
+	if inner.is_empty() || !is_framed_inner(inner) {
+		return Err(Error(Box::new(flow_state_batch_key_unframed(inner.len()))));
 	}
 	Ok(())
 }

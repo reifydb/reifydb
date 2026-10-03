@@ -27,7 +27,7 @@ use reifydb_core::{
 	},
 	metrics::scan::ScanCounters,
 	state::{
-		batch::{StateBatch, check_batch_keys},
+		batch::{StateBatch, check_batch_key, check_batch_keys},
 		timer::sweep_order,
 	},
 };
@@ -162,6 +162,22 @@ pub trait StateExtension: FlowTransaction {
 	fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
 		let scoped = scoped_key(id, key);
 		self.set(&scoped, row.into_bytes())
+	}
+
+	#[instrument(name = "flow::state::set_many", level = "debug", skip(self, rows), fields(
+		operator_id = id.0,
+		key_count = rows.len()
+	))]
+	fn state_set_many(&mut self, id: OperatorId, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		for (key, _) in &rows {
+			check_batch_key(key)?;
+		}
+		let writes = rows
+			.into_iter()
+			.map(|(key, row)| (scoped_key(id, &key), PendingWrite::Set(row.into_bytes())))
+			.collect();
+		self.pending_mut().put_many(writes);
+		Ok(())
 	}
 
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(

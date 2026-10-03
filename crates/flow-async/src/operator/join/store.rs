@@ -143,6 +143,19 @@ impl Store {
 		self.store_row(host, group, row_number, row.clone())
 	}
 
+	pub(crate) fn write_rows(
+		&self,
+		host: &mut dyn HostContext,
+		group: GroupId,
+		rows: Vec<(RowNumber, EncodedPodRow)>,
+	) -> Result<()> {
+		let rows = rows.into_iter().map(|(row_number, row)| (Asc(row_number), row)).collect();
+		match self.side {
+			JoinSide::Left => host.state_set_many_in::<JoinLeft>(group, rows),
+			JoinSide::Right => host.state_set_many_in::<JoinRight>(group, rows),
+		}
+	}
+
 	pub(crate) fn get_row_in(
 		&self,
 		host: &mut dyn HostContext,

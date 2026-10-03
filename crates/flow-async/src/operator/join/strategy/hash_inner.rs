@@ -70,10 +70,10 @@ impl InnerHashJoin {
 
 		match ctx.side {
 			JoinSide::Left => {
-				add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
+				add_to_state_entry_batch(host, &ctx.state.left, key_hash, ctx.rows, indices)?;
 			}
 			JoinSide::Right => {
-				add_to_state_entry_batch(host, &mut ctx.state.right, key_hash, post, indices)?;
+				add_to_state_entry_batch(host, &ctx.state.right, key_hash, ctx.rows, indices)?;
 			}
 		}
 
@@ -245,7 +245,7 @@ impl InnerHashJoin {
 						&ctx.state.left,
 						keys.pre,
 						pre_row_number,
-						post,
+						ctx.rows,
 						row_idx,
 					)?;
 					Ok(diffs)
@@ -257,7 +257,7 @@ impl InnerHashJoin {
 						&ctx.state.right,
 						keys.pre,
 						pre_row_number,
-						post,
+						ctx.rows,
 						row_idx,
 					)?;
 					Ok(Vec::new())
@@ -271,7 +271,7 @@ impl InnerHashJoin {
 				&ctx.state.left,
 				keys.pre,
 				pre_row_number,
-				post,
+				ctx.rows,
 				row_idx,
 			)?,
 			JoinSide::Right => update_single_row_in_entry(
@@ -279,7 +279,7 @@ impl InnerHashJoin {
 				&ctx.state.right,
 				keys.pre,
 				pre_row_number,
-				post,
+				ctx.rows,
 				row_idx,
 			)?,
 		};

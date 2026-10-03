@@ -112,7 +112,7 @@ impl LeftHashJoin {
 		key_hash: &Hash128,
 		ctx: &mut JoinContext,
 	) -> Result<Vec<Diff>> {
-		add_to_state_entry_batch(host, &mut ctx.state.left, key_hash, post, indices)?;
+		add_to_state_entry_batch(host, &ctx.state.left, key_hash, ctx.rows, indices)?;
 
 		if ctx.operator.snapshot {
 			let ledger = ctx.operator.snapshot_ledger();
@@ -148,7 +148,7 @@ impl LeftHashJoin {
 		let is_first = is_first_right_row(host, &ctx.state.right, key_hash)?;
 
 		let mut result = Vec::new();
-		add_to_state_entry_batch(host, &mut ctx.state.right, key_hash, post, indices)?;
+		add_to_state_entry_batch(host, &ctx.state.right, key_hash, ctx.rows, indices)?;
 
 		if ctx.operator.snapshot {
 			return Ok(result);
@@ -357,14 +357,20 @@ impl LeftHashJoin {
 				right_store: &ctx.state.right,
 			};
 			let resynced = resync_joined(host, &snapshot_ctx, keys, pre, post, row_idx, true)?;
-			if !update_single_row_in_entry(host, &ctx.state.left, keys.pre, pre_row_number, post, row_idx)?
-			{
+			if !update_single_row_in_entry(
+				host,
+				&ctx.state.left,
+				keys.pre,
+				pre_row_number,
+				ctx.rows,
+				row_idx,
+			)? {
 				return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 			}
 			return Ok(resynced);
 		}
 
-		if !update_single_row_in_entry(host, &ctx.state.left, keys.pre, pre_row_number, post, row_idx)? {
+		if !update_single_row_in_entry(host, &ctx.state.left, keys.pre, pre_row_number, ctx.rows, row_idx)? {
 			return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 		}
 
@@ -411,7 +417,7 @@ impl LeftHashJoin {
 			retire_right(host, &snapshot_ctx, keys.pre, pre_row_number)?;
 		}
 
-		if !update_single_row_in_entry(host, &ctx.state.right, keys.pre, pre_row_number, post, row_idx)? {
+		if !update_single_row_in_entry(host, &ctx.state.right, keys.pre, pre_row_number, ctx.rows, row_idx)? {
 			return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 		}
 
