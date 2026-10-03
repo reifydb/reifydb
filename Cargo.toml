@@ -392,7 +392,7 @@ zstd = { version = "=0.14.0" }
 
 # hashing
 crc32fast = { version = "=1.5.2" }
-hashbrown = { version = "=0.15.5" }
+hashbrown = { version = "=0.17.1" }
 sha2 = { version = "=0.11.0" }
 xxhash-rust = { version = "=0.8.19", features = ["xxh3"] }
 
