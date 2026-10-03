@@ -3807,6 +3807,7 @@ dependencies = [
  "arrow-select 60.0.0",
  "reifydb-build",
  "reifydb-core",
+ "reifydb-routine",
  "reifydb-routine-abi",
  "reifydb-rql",
  "reifydb-runtime",

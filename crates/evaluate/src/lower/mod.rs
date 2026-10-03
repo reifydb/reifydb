@@ -5,6 +5,7 @@ mod arith;
 mod compare;
 mod error;
 mod literal;
+mod routine;
 mod schema;
 
 use std::sync::Arc;
@@ -66,6 +67,7 @@ pub const CLAIMED: &[&str] = &[
 	"Mul",
 	"Div",
 	"Rem",
+	"Call",
 ];
 
 pub fn kind(expression: &Expression) -> &'static str {
@@ -246,6 +248,7 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 		Expression::Between(e) => first_unclaimed(&e.value)
 			.or_else(|| first_unclaimed(&e.lower))
 			.or_else(|| first_unclaimed(&e.upper)),
+		Expression::Call(e) => e.args.iter().find_map(first_unclaimed),
 		_ => Some(expression),
 	}
 }
@@ -394,6 +397,9 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 			e.full_fragment_owned(),
 			ArithOp::Rem,
 		),
+		Expression::Call(call) if !ctx.is_aggregate_context => {
+			routine::lower_call(ctx, operator, expression, call)
+		}
 		_ => Err(Stop::Unsupported(expression)),
 	}
 }

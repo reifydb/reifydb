@@ -7,10 +7,11 @@ use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, Schema};
 use reifydb_core::{
 	expression::{
-		AccessObjectExpression, AddExpression, AndExpression, BetweenExpression, ColumnExpression,
-		ConstantExpression, DivExpression, EqExpression, Expression, GreaterThanEqExpression,
-		GreaterThanExpression, LessThanEqExpression, LessThanExpression, MulExpression, NotEqExpression,
-		OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression, XorExpression,
+		AccessObjectExpression, AddExpression, AndExpression, BetweenExpression, CallExpression,
+		ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression, GreaterThanEqExpression,
+		GreaterThanExpression, IdentExpression, LessThanEqExpression, LessThanExpression, MulExpression,
+		NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression,
+		XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 	value::column::factory,
@@ -23,6 +24,7 @@ use reifydb_evaluate::{
 	lower::LoweredExpr,
 	stack::SymbolTable,
 };
+use reifydb_routine::function::default_in_process_functions;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{
@@ -50,6 +52,15 @@ impl Env {
 			symbols,
 			routines: Routines::empty(),
 			runtime_context: RuntimeContext::with_clock(Clock::Real),
+		}
+	}
+
+	pub fn with_routines(routines: Routines, runtime_context: RuntimeContext) -> Self {
+		Self {
+			params: Params::None,
+			symbols: SymbolTable::new(),
+			routines,
+			runtime_context,
 		}
 	}
 
@@ -267,4 +278,16 @@ pub fn arith(op: &str, left: Expression, right: Expression) -> Expression {
 		}),
 		other => panic!("no arithmetic operator {other}"),
 	}
+}
+
+pub fn registry() -> Routines {
+	default_in_process_functions(Routines::builder()).configure()
+}
+
+pub fn call(name: &str, args: Vec<Expression>) -> Expression {
+	Expression::Call(CallExpression {
+		func: IdentExpression(frag(name)),
+		args,
+		fragment: frag("call"),
+	})
 }

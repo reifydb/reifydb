@@ -32,6 +32,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
+reifydb-routine = { workspace = true }
 
 [build-dependencies]
 reifydb-build = { workspace = true }

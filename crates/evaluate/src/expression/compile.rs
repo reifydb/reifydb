@@ -901,7 +901,7 @@ fn variable_column(ctx: &EvalContext, expr: &VariableExpression, row_count: usiz
 	}
 }
 
-fn type_column(row_count: usize, ty: &ValueType, fragment: &Fragment) -> (FieldRef, ArrayRef) {
+pub(crate) fn type_column(row_count: usize, ty: &ValueType, fragment: &Fragment) -> (FieldRef, ArrayRef) {
 	let values: Vec<Value> = (0..row_count).map(|_| Value::Type(ty.clone())).collect();
 	factory::any(fragment.text(), values)
 }
