@@ -203,6 +203,11 @@ check-code-quality:
 	@./scripts/check-section-comments.sh
 	@./scripts/check-em-dashes.sh
 	@$(MAKE) --no-print-directory check-value-no-features
+	cd $(TEST_SUITE_DIR) && $(MAKE) check-code-quality
+	cd $(TEST_CRATE_DIR) && $(MAKE) check-code-quality
+	cd $(TEST_REGRESSION_DIR) && $(MAKE) check-code-quality
+	cd $(TEST_CHAOS_DIR) && $(MAKE) check-code-quality
+	cd $(TEST_QUERY_DIR) && $(MAKE) check-code-quality
 #	@MAKEFLAGS= cargo clippy --release --workspace --all-targets -- -D warnings
 
 .PHONY: check-workspace
