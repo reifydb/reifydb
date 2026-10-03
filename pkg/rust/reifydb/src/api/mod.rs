@@ -193,7 +193,7 @@ fn create_memory_store_with(
 		clock: Clock::Real,
 	});
 
-	let operator_store = OperatorStore::standard(OperatorStoreConfig::memory(spawner.clone(), Clock::Real));
+	let operator_store = OperatorStore::standard(OperatorStoreConfig::memory(spawner.clone()));
 
 	let cdc_store = CdcStore::new(CdcStoreConfig {
 		commit: cdc_commit,
@@ -267,11 +267,7 @@ fn create_sqlite_store_with(
 			storage: Resident::with_limits(operator_resident),
 			flush_interval: operator_flush_interval,
 		},
-		..OperatorStoreConfig::sqlite(
-			OperatorPersistentConfig::opened(operator_persistent),
-			spawner.clone(),
-			Clock::Real,
-		)
+		..OperatorStoreConfig::sqlite(OperatorPersistentConfig::opened(operator_persistent), spawner.clone())
 	});
 
 	let cdc_persistent = if cdc_memory {

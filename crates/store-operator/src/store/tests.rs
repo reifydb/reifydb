@@ -51,7 +51,7 @@ fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
 
 fn store_fixture_with(resident: ResidentConfig) -> (StandardOperatorStore, SqliteTempPathGuard) {
 	let clock = Clock::testing();
-	let actor_system = ActorSystem::testing(clock.clone());
+	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqlitePersistent::in_memory();
 	let store = StandardOperatorStore::new(OperatorStoreConfig {
@@ -59,7 +59,6 @@ fn store_fixture_with(resident: ResidentConfig) -> (StandardOperatorStore, Sqlit
 		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::Sqlite(storage))),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
-		clock,
 	});
 	(store, guard)
 }
@@ -475,14 +474,13 @@ impl PersistentHooks for EnumerateFault {
 
 fn faulted_store(fault: Arc<EnumerateFault>) -> StandardOperatorStore {
 	let clock = Clock::testing();
-	let actor_system = ActorSystem::testing(clock.clone());
+	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	StandardOperatorStore::new(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::testing(fault))),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
-		clock,
 	})
 }
 

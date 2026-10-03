@@ -32,7 +32,6 @@ use reifydb_core::{
 };
 use reifydb_filter::adaptive::{AdaptiveKeyFilter, FilterMetrics};
 use reifydb_runtime::sync::{
-	condvar::Condvar,
 	mutex::{Mutex, MutexGuard},
 	rwlock::RwLock,
 };
@@ -171,7 +170,6 @@ pub struct Shared {
 	global: Mutex<GlobalInner>,
 	drops_outstanding: AtomicBool,
 	write_seq: AtomicU64,
-	idle: Condvar,
 	drain: Mutex<()>,
 	flusher: Mutex<()>,
 	accounting: RwLock<()>,
@@ -206,7 +204,6 @@ impl Shared {
 			global: Mutex::new(GlobalInner::default()),
 			drops_outstanding: AtomicBool::new(false),
 			write_seq: AtomicU64::new(0),
-			idle: Condvar::new(),
 			drain: Mutex::new(()),
 			flusher: Mutex::new(()),
 			accounting: RwLock::new(()),
@@ -1073,7 +1070,6 @@ impl Resident {
 		}
 
 		self.shared.global.lock().flushing = false;
-		self.shared.idle.notify_all();
 		self.shared.evict_parked.store(false, Ordering::Release);
 		self.wake_evictor();
 	}

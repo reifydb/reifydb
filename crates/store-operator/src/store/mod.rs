@@ -24,15 +24,12 @@ use reifydb_filter::{
 	config::FilterConfig,
 };
 use reifydb_runtime::{
-	actor::{
-		mailbox::ActorRef,
-		system::{ActorSpawner, ActorSystem},
-	},
+	actor::{mailbox::ActorRef, system::ActorSystem},
 	context::clock::Clock,
 	shutdown::Shutdown,
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
+use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::Result;
 
@@ -81,8 +78,6 @@ pub struct StandardOperatorStoreInner {
 	pub(crate) range: OperatorRangeTier,
 	pub(crate) pins: CheckpointPins,
 	pub(crate) flush: Option<ActorRef<FlushMessage>>,
-	#[allow(dead_code)]
-	pub(crate) spawner: ActorSpawner,
 	#[cfg(test)]
 	pub(crate) checkpoint_interlock: OnceLock<CheckpointInterlock>,
 }
@@ -100,6 +95,7 @@ impl StandardOperatorStore {
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let flush_interval = config.resident.flush_interval;
 		let resident = config.resident.storage;
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let spawner = config.spawner;
 		let range = config
 			.persistent
@@ -184,7 +180,6 @@ impl StandardOperatorStore {
 			range,
 			pins: CheckpointPins::new(),
 			flush,
-			spawner,
 			#[cfg(test)]
 			checkpoint_interlock: OnceLock::new(),
 		}))
@@ -266,32 +261,24 @@ impl OperatorStore {
 
 	pub fn testing_memory() -> Self {
 		let clock = Clock::testing();
-		let actor_system = ActorSystem::testing(clock.clone());
+		let actor_system = ActorSystem::testing(clock);
 		let spawner = actor_system.spawner();
-		Self::standard(OperatorStoreConfig::memory(spawner, clock))
+		Self::standard(OperatorStoreConfig::memory(spawner))
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn testing_memory_with_persistent_sqlite() -> (Self, SqliteTempPathGuard) {
 		let clock = Clock::testing();
-		let actor_system = ActorSystem::testing(clock.clone());
+		let actor_system = ActorSystem::testing(clock);
 		let spawner = actor_system.spawner();
 		let (persistent, guard) = OperatorPersistentConfig::sqlite_in_memory();
 		(
 			Self::standard(OperatorStoreConfig {
 				range: Some(OperatorRangeConfig::testing()),
-				..OperatorStoreConfig::sqlite(persistent, spawner, clock)
+				..OperatorStoreConfig::sqlite(persistent, spawner)
 			}),
 			guard,
 		)
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(config: SqliteConfig, spawner: ActorSpawner, clock: Clock) -> Self {
-		Self::standard(OperatorStoreConfig {
-			range: Some(OperatorRangeConfig::testing()),
-			..OperatorStoreConfig::sqlite(OperatorPersistentConfig::sqlite(config), spawner, clock)
-		})
 	}
 
 	pub fn resident(&self) -> &Resident {
