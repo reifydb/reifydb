@@ -21,10 +21,7 @@ use reifydb_core::{
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_flow_async::operator::window::operator::{WindowConfig, WindowOperator};
-use reifydb_routine::{
-	function::default_in_process_functions, monoid::default_in_process_monoids,
-	procedure::default_in_process_procedures,
-};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_testing_flow::{generator, harness::Harness};
@@ -45,7 +42,7 @@ fn routines() -> Routines {
 	let b = Routines::builder();
 	let b = default_in_process_functions(b);
 	let b = default_in_process_procedures(b);
-	default_in_process_monoids(b).configure()
+	b.configure()
 }
 
 fn harness(kind: WindowKind) -> Harness<WindowOperator> {
@@ -66,7 +63,7 @@ fn harness(kind: WindowKind) -> Harness<WindowOperator> {
 	})
 }
 
-fn row(number: u64) -> reifydb_core::row::Row {
+fn row(number: u64) -> reifydb_testing_chaos::operator::event::Row {
 	let at = DateTime::from_epoch_millis(BASE_MS + i64::try_from(number).expect("row number fits in i64 millis"))
 		.expect("a row stamp is representable");
 	generator::row(RowNumber(number), GROUP, 1, at)
@@ -151,7 +148,7 @@ fn a_session_window_keeps_no_state_per_removed_row() {
 // (12750666829617941778) is not a durable handle: it names a position in a generated corpus, so any
 // change to the workload or its parameters points it somewhere else entirely.
 
-fn valued(number: u64, value: i64, ms: i64) -> reifydb_core::row::Row {
+fn valued(number: u64, value: i64, ms: i64) -> reifydb_testing_chaos::operator::event::Row {
 	generator::row(RowNumber(number), GROUP, value, at_millis(ms))
 }
 

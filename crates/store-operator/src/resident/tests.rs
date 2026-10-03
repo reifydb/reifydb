@@ -3,7 +3,8 @@
 
 use std::{
 	ops::{Bound, Range},
-	sync::{Arc, atomic::Ordering},
+	sync::{Arc, atomic::Ordering, mpsc},
+	thread,
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
@@ -16,7 +17,7 @@ use reifydb_core::{
 				columns_width,
 				join::{JoinLeft, JoinRight},
 			},
-			state::{GroupId, GroupStateKey, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId},
+			state::{GroupId, GroupStateKey, KEYSPACE_INNER_PREFIX_LEN, KeyspaceId, KeyspaceMask},
 			traits::Keyspace,
 		},
 		typed::{direction::Asc, layout::KeyLayout},
@@ -24,7 +25,11 @@ use reifydb_core::{
 	state::typed::typed_key,
 };
 use reifydb_runtime::sync::mutex::Mutex;
-use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
+use reifydb_value::{
+	byte_size::ByteSize,
+	util::hash::Hash128,
+	value::{duration::Duration, row_number::RowNumber},
+};
 
 use crate::{
 	actor::Waker,
@@ -1122,7 +1127,7 @@ impl RangeSink for RecordingRange {
 		self.calls.lock().push(RangeCall::Retract(operator, keys.iter().map(|key| (*key).clone()).collect()));
 	}
 
-	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId, _occupied: u64) {}
+	fn invalidate_group(&self, _operator: OperatorId, _group: GroupId, _occupied: KeyspaceMask) {}
 
 	fn invalidate_operator(&self, _operator: OperatorId) {}
 
@@ -1301,4 +1306,26 @@ fn a_settle_during_a_parked_sweep_queues_exactly_one_wake() {
 		3,
 		"the queued sweep reached the budget, so it must clear the stale park and let the next commit wake it"
 	);
+}
+
+#[test]
+fn a_miss_after_a_drop_has_settled_never_waits_on_the_global_lock() {
+	let buffer = Resident::new();
+	set(&buffer, OP_A, key("before"), row("v"));
+	buffer.record_drop(DropMarker::OperatorState(OP_A));
+	set(&buffer, OP_B, key("neighbour"), row("v"));
+	buffer.take_for_flush().expect("the drop and the neighbour's write make a batch");
+	buffer.complete_flush();
+
+	let held = buffer.shared().global.lock();
+	let (sent, received) = mpsc::channel();
+	let reader = buffer.clone();
+	let lookup = thread::spawn(move || {
+		sent.send(reader.lookup_state(OP_A, &key("missing"))).expect("the test is still waiting");
+	});
+	let answer = received.recv_timeout(Duration::from_seconds_const(5).to_std());
+	drop(held);
+	lookup.join().expect("the lookup thread must finish once the lock is released");
+
+	assert_eq!(answer, Ok(BufferedState::Absent), "a miss on a settled drop blocked on the global lock");
 }

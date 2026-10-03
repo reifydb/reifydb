@@ -1,8 +1,6 @@
-use cap_std::time::{Duration, Instant, SystemClock, SystemTime};
-use cap_std::{AmbientAuthority, ambient_authority};
-use cap_time_ext::{MonotonicClockExt as _, SystemClockExt as _};
 use std::error::Error;
 use std::fmt;
+use std::time::{Duration, Instant, SystemTime};
 use wasmtime::component::{HasData, ResourceTable};
 
 /// A helper struct which implements [`HasData`] for the `wasi:clocks` APIs.
@@ -82,43 +80,44 @@ pub trait HostMonotonicClock: Send {
     fn now(&self) -> u64;
 }
 
-pub struct WallClock {
-    /// The underlying system clock.
-    clock: cap_std::time::SystemClock,
-}
-
-impl Default for WallClock {
-    fn default() -> Self {
-        Self::new(ambient_authority())
-    }
-}
+#[derive(Default)]
+pub struct WallClock;
 
 impl WallClock {
-    pub fn new(ambient_authority: AmbientAuthority) -> Self {
-        Self {
-            clock: cap_std::time::SystemClock::new(ambient_authority),
-        }
+    pub fn new() -> Self {
+        Self
     }
 }
 
 impl HostWallClock for WallClock {
     fn resolution(&self) -> Duration {
-        self.clock.resolution()
+        #[cfg(unix)]
+        {
+            let res = rustix::time::clock_getres(rustix::time::ClockId::Realtime);
+            Duration::new(
+                res.tv_sec.try_into().unwrap(),
+                res.tv_nsec.try_into().unwrap(),
+            )
+        }
+        #[cfg(windows)]
+        {
+            // According to [this blog post], the system timer resolution
+            // is 55ms or 10ms. Use the more conservative of the two.
+            //
+            // [this blog post]: https://devblogs.microsoft.com/oldnewthing/20170921-00/?p=97057
+            Duration::new(0, 55_000_000)
+        }
     }
 
     fn now(&self) -> Duration {
         // WASI defines wall clocks to return "Unix time".
-        self.clock
-            .now()
-            .duration_since(SystemClock::UNIX_EPOCH)
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
     }
 }
 
 pub struct MonotonicClock {
-    /// The underlying system clock.
-    clock: cap_std::time::MonotonicClock,
-
     /// The `Instant` this clock was created. All returned times are
     /// durations since that time.
     initial: Instant,
@@ -126,28 +125,46 @@ pub struct MonotonicClock {
 
 impl Default for MonotonicClock {
     fn default() -> Self {
-        Self::new(ambient_authority())
+        Self::new()
     }
 }
 
 impl MonotonicClock {
-    pub fn new(ambient_authority: AmbientAuthority) -> Self {
-        let clock = cap_std::time::MonotonicClock::new(ambient_authority);
-        let initial = clock.now();
-        Self { clock, initial }
+    pub fn new() -> Self {
+        Self {
+            initial: Instant::now(),
+        }
     }
 }
 
 impl HostMonotonicClock for MonotonicClock {
     fn resolution(&self) -> u64 {
-        self.clock.resolution().as_nanos().try_into().unwrap()
+        #[cfg(unix)]
+        {
+            let res = rustix::time::clock_getres(rustix::time::ClockId::Monotonic);
+            u64::try_from(res.tv_sec).unwrap() * 1_000_000_000 + u64::try_from(res.tv_nsec).unwrap()
+        }
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::System::Performance::QueryPerformanceFrequency;
+
+            unsafe {
+                let mut frequency = 0;
+                if QueryPerformanceFrequency(&mut frequency) == 0 {
+                    panic!(
+                        "QueryPerformanceFrequency failed: {}",
+                        std::io::Error::last_os_error()
+                    );
+                }
+                1_000_000_000 / u64::try_from(frequency).unwrap()
+            }
+        }
     }
 
     fn now(&self) -> u64 {
         // Unwrap here and in `resolution` above; a `u64` is wide enough to
         // hold over 584 years of nanoseconds.
-        self.clock
-            .now()
+        Instant::now()
             .duration_since(self.initial)
             .as_nanos()
             .try_into()
@@ -172,7 +189,7 @@ impl TryFrom<SystemTime> for Datetime {
     type Error = DatetimeError;
 
     fn try_from(time: SystemTime) -> Result<Self, Self::Error> {
-        let epoch = SystemTime::from_std(std::time::SystemTime::UNIX_EPOCH);
+        let epoch = SystemTime::UNIX_EPOCH;
 
         if time >= epoch {
             let duration = time.duration_since(epoch)?;

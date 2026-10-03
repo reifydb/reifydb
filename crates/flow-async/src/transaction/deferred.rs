@@ -75,7 +75,7 @@ use reifydb_transaction::{
 			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
 			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
-		transaction::{PostCommitInterceptor, PreCommitInterceptor},
+		transaction::PostCommitInterceptor,
 		view::{
 			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
 			ViewPreUpdateInterceptor,
@@ -177,7 +177,7 @@ pub(crate) fn deferred_storage_get(
 		ReadFrom::OperatorState => unreachable!(),
 	};
 	let key = TaggedKey::decode(key).expect(UNDECODABLE_KEY);
-	Ok(query.expect(NO_READ_TRANSACTION).get(&key)?.map(|multi| multi.bytes().clone()))
+	Ok(query.expect(NO_READ_TRANSACTION).get(&key)?.map(|value| value.into_multi_version_row().bytes))
 }
 
 pub(crate) fn deferred_storage_contains(
@@ -467,7 +467,6 @@ impl WithInterceptors for DeferredTransaction {
 		RingBufferRowPostDeleteInterceptor
 	);
 
-	interceptor_method!(pre_commit_interceptors, pre_commit, PreCommitInterceptor);
 	interceptor_method!(post_commit_interceptors, post_commit, PostCommitInterceptor);
 
 	interceptor_method!(namespace_post_create_interceptors, namespace_post_create, NamespacePostCreateInterceptor);

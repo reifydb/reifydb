@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashMap;
+
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
@@ -64,17 +66,20 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 		store.flush_pending_blocking();
 	}
 
-	let found = store
-		.get_many(
+	let found: HashMap<EncodedKey, Vec<u8>> = store
+		.get_many_versioned(
 			&[k1.encode(), k2.encode(), p.encode(), absent_op.encode(), absent_multi.encode()],
 			CommitVersion(1),
 		)
-		.unwrap();
+		.unwrap()
+		.into_iter()
+		.filter_map(|(key, result)| Some((key, result.value()?.to_vec())))
+		.collect();
 
 	assert_eq!(found.len(), 3);
-	assert_eq!(found.get(&k1.encode()).map(|r| r.bytes.to_vec()), Some(b"n1".to_vec()));
-	assert_eq!(found.get(&k2.encode()).map(|r| r.bytes.to_vec()), Some(b"n2".to_vec()));
-	assert_eq!(found.get(&p.encode()).map(|r| r.bytes.to_vec()), Some(b"pp".to_vec()));
+	assert_eq!(found.get(&k1.encode()).cloned(), Some(b"n1".to_vec()));
+	assert_eq!(found.get(&k2.encode()).cloned(), Some(b"n2".to_vec()));
+	assert_eq!(found.get(&p.encode()).cloned(), Some(b"pp".to_vec()));
 	assert!(!found.contains_key(&absent_op.encode()));
 	assert!(!found.contains_key(&absent_multi.encode()));
 }
@@ -101,7 +106,12 @@ fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
 		let mut lookup: Vec<EncodedKey> = present[..count].to_vec();
 		lookup.push(absent.encode());
 
-		let found = store.get_many(&lookup, CommitVersion(1)).unwrap();
+		let found: HashMap<EncodedKey, Vec<u8>> = store
+			.get_many_versioned(&lookup, CommitVersion(1))
+			.unwrap()
+			.into_iter()
+			.filter_map(|(key, result)| Some((key, result.value()?.to_vec())))
+			.collect();
 
 		assert_eq!(found.len(), count, "count={}: expected exactly {} resolved keys", count, count);
 		assert!(
@@ -111,7 +121,7 @@ fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
 		);
 		for (i, key) in present[..count].iter().enumerate() {
 			assert_eq!(
-				found.get(key).map(|r| r.bytes.to_vec()),
+				found.get(key).cloned(),
 				Some(format!("v{}", i).into_bytes()),
 				"count={}: key index {} returned wrong value",
 				count,

@@ -7,7 +7,6 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
-	row::Row as CoreRow,
 };
 use reifydb_flow_async::window::{
 	accumulator::{MergeAccumulator, WindowAccumulator, invertible::moments::Moments},
@@ -20,7 +19,6 @@ use reifydb_sdk::{
 		MountedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
 			operator::{AllKinds, Emit, WindowedOperator},
@@ -29,9 +27,10 @@ use reifydb_sdk::{
 	},
 	row,
 };
+use reifydb_testing_chaos::operator::event::Row as CoreRow;
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::ExternCOperatorHarnessBuilder,
+	in_process::harness::InProcessOperatorHarnessBuilder,
 };
 use reifydb_value::{
 	config::ExtensionParams,
@@ -201,7 +200,7 @@ fn sealed_with() -> ApplyWith {
 
 #[test]
 fn single_insert_emits_insert() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -217,7 +216,7 @@ fn single_insert_emits_insert() {
 #[test]
 fn multiple_events_accumulate_within_one_window() {
 	// Two rows sharing a window coordinate must accumulate, not overwrite each other.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -235,7 +234,7 @@ fn multiple_events_accumulate_within_one_window() {
 #[test]
 fn partial_remove_within_window_keeps_window_alive() {
 	// Removing one of two events inside a window must leave the window standing, not drop it.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -253,7 +252,7 @@ fn partial_remove_within_window_keeps_window_alive() {
 
 #[test]
 fn update_within_window_applies_post_minus_pre() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -269,7 +268,7 @@ fn update_within_window_applies_post_minus_pre() {
 
 #[test]
 fn buffer_fills_then_evicts_oldest_window() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -289,7 +288,7 @@ fn buffer_fills_then_evicts_oldest_window() {
 #[test]
 fn late_window_event_accepted_while_lateness_is_open() {
 	// while the lateness window has not elapsed, a late event must still merge into its older coordinate
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -302,7 +301,7 @@ fn late_window_event_accepted_while_lateness_is_open() {
 fn remove_clears_buffer_emits_remove() {
 	// Emptying the buffer has to withdraw the previously emitted row; leaking a ghost row is
 	// what breaks reorg retraction.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -316,7 +315,7 @@ fn remove_clears_buffer_emits_remove() {
 
 #[test]
 fn multiple_groups_isolate_buffers() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -381,7 +380,7 @@ impl Emit for SealedRollingSum {
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// A group that stops reporting must still be reclaimed, or a high-cardinality group key
 	// grows without bound; nothing moves here after the initial batch except the watermark.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<SealedRollingSum>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<SealedRollingSum>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -407,7 +406,7 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 #[test]
 fn a_rolling_time_window_arms_a_seal_timer() {
 	// a driver with a required window must always acquire a seal retention policy
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -419,7 +418,7 @@ fn a_rolling_time_window_arms_a_seal_timer() {
 #[test]
 fn create_without_a_window_reports_flow_065() {
 	// require_window must refuse a missing window before any row reaches the aggregator
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<TestRollingSum>>>::new()
+	let Err(err) = InProcessOperatorHarnessBuilder::<PlainDriver<TestRollingSum>>::new()
 		.with(ApplyWith::default())
 		.build()
 	else {

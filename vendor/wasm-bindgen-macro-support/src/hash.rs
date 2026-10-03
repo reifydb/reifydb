@@ -16,6 +16,20 @@ use std::sync::atomic::Ordering::SeqCst;
 #[derive(Debug)]
 pub struct ShortHash<T>(pub T);
 
+pub fn unique_crate_identifier() -> String {
+    format!(
+        "{}-{}",
+        env::var("CARGO_PKG_NAME").expect("should have CARGO_PKG_NAME env var"),
+        ShortHash(0)
+    )
+}
+
+/// Mangle an export shim symbol with the per-crate hash, matching the hash
+/// suffix of `unique_crate_identifier` so cli-support can recompute the name.
+pub fn crate_mangled_symbol(base: &str) -> String {
+    wasm_bindgen_shared::mangled_symbol(base, &ShortHash(0).to_string())
+}
+
 impl<T: Hash> fmt::Display for ShortHash<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         static HASHED: AtomicBool = AtomicBool::new(false);

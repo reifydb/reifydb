@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{any::TypeId, collections::HashMap, fmt::Write, ops::Bound, sync::LazyLock};
 
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -14,12 +14,122 @@ use reifydb_core::{
 		},
 	},
 };
+use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sqlite::batch::values_placeholders;
 use rusqlite::{Connection, Error as SqliteError, Row, Transaction, params_from_iter, types::Value};
 use tracing::instrument;
 
 pub fn table_of(name: &str, operator: OperatorId) -> String {
 	format!("operator_{}_{}", name.to_ascii_lowercase(), operator.0)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Statement {
+	Set(usize),
+	Remove(usize),
+	Get,
+	GetBatch(usize),
+	Bounded(Bound<()>, Bound<()>, &'static str),
+	KeysAfter(Bound<()>),
+	Census,
+	Clear,
+	Occupied,
+}
+
+struct Template {
+	head: String,
+	tail: String,
+}
+
+impl Template {
+	fn of<K: Keyspace>(statement: Statement) -> Self {
+		let (lead, tail) = match statement {
+			Statement::Set(rows) => (
+				"INSERT INTO \"".to_string(),
+				format!(
+					"\" ({}\"bytes\") VALUES {}\n\
+					 ON CONFLICT ({}) DO UPDATE SET \"bytes\" = excluded.\"bytes\"",
+					K::key_columns(),
+					values_placeholders(rows, K::columns().len() + 1),
+					primary_key(K::columns())
+				),
+			),
+			Statement::Remove(rows) => ("DELETE FROM \"".to_string(), format!("\"{}", K::key_in(rows))),
+			Statement::Get => {
+				("SELECT \"bytes\" FROM \"".to_string(), format!("\" WHERE 1{}", K::key_predicate(1)))
+			}
+			Statement::GetBatch(rows) => (
+				format!("SELECT {}\"bytes\" FROM \"", K::key_columns()),
+				format!("\"{}", K::key_in(rows)),
+			),
+			Statement::Bounded(start, end, order) => {
+				let mut at = 1;
+				let start_clause = bound_clause::<K>(start, ">=", ">", at);
+				if !matches!(start, Bound::Unbounded) {
+					at += K::columns().len();
+				}
+				let end_clause = bound_clause::<K>(end, "<=", "<", at);
+				(
+					format!("SELECT {}\"bytes\" FROM \"", K::key_columns()),
+					format!(
+						"\" WHERE 1{}{}{} LIMIT ",
+						start_clause,
+						end_clause,
+						K::ordering(order)
+					),
+				)
+			}
+			Statement::KeysAfter(after) => {
+				let columns = match K::columns().is_empty() {
+					true => "1".to_string(),
+					false => K::column_list(),
+				};
+				(
+					format!("SELECT {} FROM \"", columns),
+					format!(
+						"\" WHERE 1{}{} LIMIT ",
+						bound_clause::<K>(after, ">=", ">", 1),
+						K::ordering("ASC")
+					),
+				)
+			}
+			Statement::Census => (
+				"SELECT COUNT(*), COALESCE(SUM(LENGTH(\"bytes\")), 0) FROM \"".to_string(),
+				"\"".to_string(),
+			),
+			Statement::Clear => ("DELETE FROM \"".to_string(), "\"".to_string()),
+			Statement::Occupied => ("SELECT EXISTS (SELECT 1 FROM \"".to_string(), "\")".to_string()),
+		};
+		Self {
+			head: format!("{lead}operator_{}_", K::NAME.to_ascii_lowercase()),
+			tail,
+		}
+	}
+
+	fn render(&self, operator: OperatorId, limit: Option<u64>) -> String {
+		let mut sql = String::with_capacity(self.head.len() + self.tail.len() + 40);
+		sql.push_str(&self.head);
+		write!(sql, "{}", operator.0).expect("a String accepts every write");
+		sql.push_str(&self.tail);
+		if let Some(limit) = limit {
+			write!(sql, "{}", limit as i64).expect("a String accepts every write");
+		}
+		sql
+	}
+}
+
+static TEMPLATES: LazyLock<RwLock<HashMap<(TypeId, Statement), Template>>> =
+	LazyLock::new(|| RwLock::new(HashMap::new()));
+
+fn sql<K: Keyspace>(statement: Statement, operator: OperatorId, limit: Option<u64>) -> String {
+	let key = (TypeId::of::<K>(), statement);
+	if let Some(template) = TEMPLATES.read().get(&key) {
+		return template.render(operator, limit);
+	}
+	let template = Template::of::<K>(statement);
+	let rendered = template.render(operator, limit);
+	TEMPLATES.write().entry(key).or_insert(template);
+	rendered
 }
 
 pub fn create_table(spec: &KeyspaceSpec, operator: OperatorId) -> String {
@@ -201,22 +311,6 @@ impl<K: Keyspace> SqlKey for K {
 
 pub const WRITE_CHUNK: usize = 100;
 
-fn set_sql<K: Keyspace>(operator: OperatorId, rows: usize) -> String {
-	let cols = K::columns().len() + 1;
-	format!(
-		"INSERT INTO \"{}\" ({}\"bytes\") VALUES {}\n\
-		 ON CONFLICT ({}) DO UPDATE SET \"bytes\" = excluded.\"bytes\"",
-		K::table(operator),
-		K::key_columns(),
-		values_placeholders(rows, cols),
-		primary_key(K::columns())
-	)
-}
-
-fn remove_sql<K: Keyspace>(operator: OperatorId, rows: usize) -> String {
-	format!("DELETE FROM \"{}\"{}", K::table(operator), K::key_in(rows))
-}
-
 #[instrument(name = "store::operator::persistent::sqlite::set_chunked", level = "debug", skip_all, fields(row_count = rows.len()))]
 pub fn set_chunked<K: Keyspace>(txn: &Transaction, operator: OperatorId, rows: &[(K::GroupedKey, Vec<u8>)]) {
 	if rows.is_empty() {
@@ -227,7 +321,7 @@ pub fn set_chunked<K: Keyspace>(txn: &Transaction, operator: OperatorId, rows: &
 		params.push(Value::Blob(row.1.clone()));
 	};
 	let mut chunks = rows.chunks_exact(WRITE_CHUNK);
-	let chunk_sql = set_sql::<K>(operator, WRITE_CHUNK);
+	let chunk_sql = sql::<K>(Statement::Set(WRITE_CHUNK), operator, None);
 	for full in chunks.by_ref() {
 		let mut params = Vec::with_capacity(WRITE_CHUNK * (K::columns().len() + 1));
 		for row in full {
@@ -242,7 +336,7 @@ pub fn set_chunked<K: Keyspace>(txn: &Transaction, operator: OperatorId, rows: &
 	if rest.is_empty() {
 		return;
 	}
-	let rest_sql = set_sql::<K>(operator, rest.len());
+	let rest_sql = sql::<K>(Statement::Set(rest.len()), operator, None);
 	let mut params = Vec::with_capacity(rest.len() * (K::columns().len() + 1));
 	for row in rest {
 		bind(row, &mut params);
@@ -262,7 +356,7 @@ pub fn remove_chunked<K: Keyspace>(txn: &Transaction, operator: OperatorId, keys
 		params.extend(K::bind_key(key));
 	};
 	let mut chunks = keys.chunks_exact(WRITE_CHUNK);
-	let chunk_sql = remove_sql::<K>(operator, WRITE_CHUNK);
+	let chunk_sql = sql::<K>(Statement::Remove(WRITE_CHUNK), operator, None);
 	for full in chunks.by_ref() {
 		let mut params = Vec::with_capacity(WRITE_CHUNK * K::columns().len());
 		for row in full {
@@ -277,7 +371,7 @@ pub fn remove_chunked<K: Keyspace>(txn: &Transaction, operator: OperatorId, keys
 	if rest.is_empty() {
 		return;
 	}
-	let rest_sql = remove_sql::<K>(operator, rest.len());
+	let rest_sql = sql::<K>(Statement::Remove(rest.len()), operator, None);
 	let mut params = Vec::with_capacity(rest.len() * K::columns().len());
 	for row in rest {
 		bind(row, &mut params);
@@ -289,7 +383,7 @@ pub fn remove_chunked<K: Keyspace>(txn: &Transaction, operator: OperatorId, keys
 }
 
 pub fn get<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::GroupedKey) -> Option<Vec<u8>> {
-	let sql = format!("SELECT \"bytes\" FROM \"{}\" WHERE 1{}", K::table(operator), K::key_predicate(1));
+	let sql = sql::<K>(Statement::Get, operator, None);
 	let params = K::bind_key(key);
 	let mut stmt = conn.prepare_cached(&sql).expect("operator state get could not be prepared");
 	match stmt.query_row(params_from_iter(params), |row| row.get::<_, Vec<u8>>(0)) {
@@ -301,10 +395,6 @@ pub fn get<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::Groupe
 
 pub const READ_CHUNK: usize = 100;
 
-fn get_batch_sql<K: Keyspace>(operator: OperatorId, rows: usize) -> String {
-	format!("SELECT {}\"bytes\" FROM \"{}\"{}", K::key_columns(), K::table(operator), K::key_in(rows))
-}
-
 pub fn get_batch<K: Keyspace>(
 	conn: &Connection,
 	operator: OperatorId,
@@ -312,7 +402,7 @@ pub fn get_batch<K: Keyspace>(
 ) -> Vec<(K::GroupedKey, Vec<u8>)> {
 	let mut out = Vec::with_capacity(keys.len());
 	for chunk in keys.chunks(READ_CHUNK) {
-		let sql = get_batch_sql::<K>(operator, chunk.len());
+		let sql = sql::<K>(Statement::GetBatch(chunk.len()), operator, None);
 		let mut params = Vec::with_capacity(chunk.len() * K::columns().len());
 		for key in chunk {
 			params.extend(K::bind_key(key));
@@ -329,25 +419,7 @@ pub fn get_batch<K: Keyspace>(
 	out
 }
 
-pub fn scan<K: Keyspace>(conn: &Connection, operator: OperatorId) -> Vec<(K::GroupedKey, Vec<u8>)> {
-	let sql = format!("SELECT {}\"bytes\" FROM \"{}\"{}", K::key_columns(), K::table(operator), K::ordering("ASC"));
-	let mut stmt = conn.prepare_cached(&sql).expect("operator state scan could not be prepared");
-	let mut rows = stmt.query([]).expect("operator state scan failed");
-	let mut out = Vec::new();
-	while let Some(row) = rows.next().expect("operator state scan row failed") {
-		let key = K::read_key(row, 0).expect("an operator state row does not decode as its own key layout");
-		let bytes: Vec<u8> = row.get(K::columns().len()).expect("operator state row has no payload");
-		out.push((key, bytes));
-	}
-	out
-}
-
-fn bound_clause<K: Keyspace>(
-	bound: Bound<&K::GroupedKey>,
-	op_included: &str,
-	op_excluded: &str,
-	from: usize,
-) -> String {
+fn bound_clause<K: Keyspace>(bound: Bound<()>, op_included: &str, op_excluded: &str, from: usize) -> String {
 	if K::columns().is_empty() {
 		return String::new();
 	}
@@ -425,24 +497,11 @@ fn bounded<K: Keyspace>(
 	operator: OperatorId,
 	range: &KeyRange<K::GroupedKey>,
 	limit: u64,
-	order: &str,
+	order: &'static str,
 ) -> Vec<(K::GroupedKey, Vec<u8>)> {
 	let width = K::columns().len();
-	let mut at = 1;
-	let start = bound_clause::<K>(range.start.as_ref(), ">=", ">", at);
-	if bound_key::<K>(range.start.as_ref()).is_some() {
-		at += width;
-	}
-	let end = bound_clause::<K>(range.end.as_ref(), "<=", "<", at);
-	let sql = format!(
-		"SELECT {}\"bytes\" FROM \"{}\" WHERE 1{}{}{} LIMIT {}",
-		K::key_columns(),
-		K::table(operator),
-		start,
-		end,
-		K::ordering(order),
-		limit as i64
-	);
+	let statement = Statement::Bounded(range.start.as_ref().map(|_| ()), range.end.as_ref().map(|_| ()), order);
+	let sql = sql::<K>(statement, operator, Some(limit));
 	let mut params = Vec::new();
 	if !K::columns().is_empty() {
 		for bound in [range.start.as_ref(), range.end.as_ref()] {
@@ -468,19 +527,8 @@ pub fn keys_after<K: Keyspace>(
 	after: Option<&K::GroupedKey>,
 	limit: u64,
 ) -> Vec<K::GroupedKey> {
-	let start = bound_clause::<K>(after.map_or(Bound::Unbounded, Bound::Excluded), ">=", ">", 1);
-	let columns = match K::columns().is_empty() {
-		true => "1".to_string(),
-		false => K::column_list(),
-	};
-	let sql = format!(
-		"SELECT {} FROM \"{}\" WHERE 1{}{} LIMIT {}",
-		columns,
-		K::table(operator),
-		start,
-		K::ordering("ASC"),
-		limit as i64
-	);
+	let statement = Statement::KeysAfter(after.map_or(Bound::Unbounded, |_| Bound::Excluded(())));
+	let sql = sql::<K>(statement, operator, Some(limit));
 	let mut params = Vec::new();
 	if let Some(key) = after
 		&& !K::columns().is_empty()
@@ -563,7 +611,7 @@ pub fn range_in<K: Keyspace>(
 }
 
 pub fn census<K: Keyspace>(conn: &Connection, operator: OperatorId) -> (u64, u64) {
-	let sql = format!("SELECT COUNT(*), COALESCE(SUM(LENGTH(\"bytes\")), 0) FROM \"{}\"", K::table(operator));
+	let sql = sql::<K>(Statement::Census, operator, None);
 	let mut stmt = conn.prepare_cached(&sql).expect("operator state census could not be prepared");
 	let (keys, bytes): (i64, i64) =
 		stmt.query_row([], |row| Ok((row.get(0)?, row.get(1)?))).expect("operator state census failed");
@@ -571,14 +619,14 @@ pub fn census<K: Keyspace>(conn: &Connection, operator: OperatorId) -> (u64, u64
 }
 
 pub fn clear<K: Keyspace>(txn: &Transaction, operator: OperatorId) {
-	txn.prepare_cached(&format!("DELETE FROM \"{}\"", K::table(operator)))
+	txn.prepare_cached(&sql::<K>(Statement::Clear, operator, None))
 		.expect("operator state drop could not be prepared")
 		.execute([])
 		.expect("operator state drop failed");
 }
 
 pub fn occupied<K: Keyspace>(conn: &Connection, operator: OperatorId) -> bool {
-	conn.prepare_cached(&format!("SELECT EXISTS (SELECT 1 FROM \"{}\")", K::table(operator)))
+	conn.prepare_cached(&sql::<K>(Statement::Occupied, operator, None))
 		.expect("operator state occupancy could not be prepared")
 		.query_row([], |row| row.get(0))
 		.expect("operator state occupancy check failed")

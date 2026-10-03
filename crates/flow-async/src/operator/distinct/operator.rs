@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{HashMap, HashSet},
+	mem::take,
 	sync::Arc,
 };
 
@@ -25,7 +26,7 @@ use reifydb_evaluate::expression::{
 use reifydb_flow::context::FlowContext;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, error::Error, util::hash::Hash128, value::datetime::DateTime};
+use reifydb_value::{Result, error::Error, util::hash::Hash128};
 use tracing::instrument;
 
 use crate::{
@@ -42,6 +43,8 @@ use crate::{
 const DROP_REASON: &str = "removes whose distinct entry was reclaimed";
 
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
+
+type DiffHashes = (Vec<Hash128>, Vec<Hash128>);
 
 enum LoadedEntry {
 	Absent,
@@ -148,8 +151,8 @@ impl DistinctPlan {
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 	) -> Result<()> {
-		let dirty: Vec<(Hash128, DateTime)> = state.dirty.drain().collect();
-		for (hash, _) in dirty {
+		let dirty: Vec<Hash128> = state.dirty.drain().collect();
+		for hash in dirty {
 			let key = Self::entry_key(groups[&hash]);
 			match state.entries.get(&hash) {
 				Some(entry) => {
@@ -164,7 +167,7 @@ impl DistinctPlan {
 				None => store::state_remove(host, &key)?,
 			}
 		}
-		if state.layout_changed_at.take().is_some() {
+		if take(&mut state.layout_changed) {
 			let layout_row = state.layout.encode_state().map_err(|e| {
 				Error::from(FlowStateError::Encode {
 					state: "DistinctLayout",
@@ -177,37 +180,38 @@ impl DistinctPlan {
 	}
 
 	#[instrument(name = "flow::operator::distinct::batch_hashes", level = "trace", skip_all, fields(diffs = diffs.len()))]
-	fn batch_hashes(&self, diffs: &[Diff]) -> Result<Vec<Hash128>> {
+	fn batch_hashes(&self, diffs: &[Diff]) -> Result<(Vec<Hash128>, Vec<DiffHashes>)> {
 		let mut touched: Vec<Hash128> = Vec::new();
 		let mut seen: HashSet<Hash128> = HashSet::new();
-		let mut fold = |hashes: Vec<Hash128>, touched: &mut Vec<Hash128>| {
-			for hash in hashes {
+		let mut per_diff: Vec<DiffHashes> = Vec::with_capacity(diffs.len());
+		let mut fold = |hashes: &[Hash128], touched: &mut Vec<Hash128>| {
+			for &hash in hashes {
 				if seen.insert(hash) {
 					touched.push(hash);
 				}
 			}
 		};
 		for diff in diffs {
-			match diff {
+			let (pre_hashes, post_hashes) = match diff {
 				Diff::Insert {
 					post,
 					..
-				} => fold(self.compute_hashes(post)?, &mut touched),
+				} => (Vec::new(), self.compute_hashes(post)?),
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => {
-					fold(self.compute_hashes(pre)?, &mut touched);
-					fold(self.compute_hashes(post)?, &mut touched);
-				}
+				} => (self.compute_hashes(pre)?, self.compute_hashes(post)?),
 				Diff::Remove {
 					pre,
 					..
-				} => fold(self.compute_hashes(pre)?, &mut touched),
-			}
+				} => (self.compute_hashes(pre)?, Vec::new()),
+			};
+			fold(&pre_hashes, &mut touched);
+			fold(&post_hashes, &mut touched);
+			per_diff.push((pre_hashes, post_hashes));
 		}
-		Ok(touched)
+		Ok((touched, per_diff))
 	}
 }
 
@@ -223,13 +227,13 @@ impl HostOperator for DistinctOperator {
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		let plan = &self.plan;
 		let operator_id = plan.operator;
-		let ordered = plan.batch_hashes(&change.diffs)?;
+		let (ordered, diff_hashes) = plan.batch_hashes(&change.diffs)?;
 
 		let mut state = DistinctState {
 			entries: IndexMap::new(),
 			layout: plan.load_layout(host)?,
-			dirty: HashMap::new(),
-			layout_changed_at: None,
+			dirty: HashSet::new(),
+			layout_changed: false,
 		};
 
 		let mut groups: HashMap<Hash128, GroupId> = HashMap::with_capacity(ordered.len());
@@ -241,20 +245,21 @@ impl HostOperator for DistinctOperator {
 					state.entries.insert(*hash, entry);
 				}
 				LoadedEntry::Empty => {
-					state.dirty.insert(*hash, DateTime::default());
+					state.dirty.insert(*hash);
 				}
 				LoadedEntry::Absent => {}
 			}
 		}
 
 		let mut result = Vec::new();
-		for diff in change.diffs {
+		for (diff, (pre_hashes, post_hashes)) in change.diffs.into_iter().zip(diff_hashes) {
 			match diff {
 				Diff::Insert {
 					post,
 					..
 				} => {
-					let insert_result = plan.process_insert(host, &mut state, &groups, &post)?;
+					let insert_result =
+						plan.process_insert(host, &mut state, &groups, &post, &post_hashes)?;
 					result.extend(insert_result);
 				}
 				Diff::Update {
@@ -262,15 +267,22 @@ impl HostOperator for DistinctOperator {
 					post,
 					..
 				} => {
-					let update_result =
-						plan.process_update(host, &mut state, &groups, &pre, &post)?;
+					let update_result = plan.process_update(
+						host,
+						&mut state,
+						&groups,
+						&pre,
+						&post,
+						(&pre_hashes, &post_hashes),
+					)?;
 					result.extend(update_result);
 				}
 				Diff::Remove {
 					pre,
 					..
 				} => {
-					let remove_result = plan.process_remove(host, &mut state, &groups, &pre)?;
+					let remove_result =
+						plan.process_remove(host, &mut state, &groups, &pre, &pre_hashes)?;
 					result.extend(remove_result);
 				}
 			}

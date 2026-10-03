@@ -1,3 +1,6 @@
+;;! stub-missing-functions = true
+;;! use-built-in-libdl = true
+
 ;; module name: libc.so
 (module
   (@dylink.0
@@ -23,6 +26,9 @@
   (func $abort (type 0)
     unreachable
   )
+  (func (export "__wasi_init_tp"))
+  (func (export "memcmp") (param i32 i32 i32) (result i32) unreachable)
+  (func (export "strlen") (param i32) (result i32) unreachable)
   (export "malloc" (func $malloc))
   (export "abort" (func $abort))
   (export "errno" (global $errno))

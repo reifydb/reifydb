@@ -1,40 +1,64 @@
-use crate::{Block, BlockSizeUser, Sha1Core};
-use digest::typenum::Unsigned;
-
 cfg_if::cfg_if! {
-    if #[cfg(feature = "force-soft")] {
+    if #[cfg(sha1_backend = "soft")] {
         mod soft;
-        use soft::compress as compress_inner;
-    } else if #[cfg(all(feature = "asm", target_arch = "aarch64"))] {
-        mod soft;
-        mod aarch64;
-        use aarch64::compress as compress_inner;
-    } else if #[cfg(all(feature = "loongarch64_asm", target_arch = "loongarch64"))] {
-        mod loongarch64_asm;
-        use loongarch64_asm::compress as compress_inner;
-    } else if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
-        #[cfg(not(feature = "asm"))]
-        mod soft;
-        #[cfg(feature = "asm")]
-        mod soft {
-            pub use sha1_asm::compress;
+        pub(crate) use soft::compress;
+    } else if #[cfg(sha1_backend = "aarch64-sha2")] {
+        mod aarch64_sha2;
+
+        #[cfg(not(target_feature = "sha2"))]
+        compile_error!("aarch64-sha2 backend requires sha2 target feature");
+
+        pub(crate) fn compress(state: &mut [u32; 5], blocks: &[[u8; 64]]) {
+            // SAFETY: we checked above that the required target features are enabled
+            unsafe { aarch64_sha2::compress(state, blocks) }
         }
-        mod x86;
-        use x86::compress as compress_inner;
+    } else if #[cfg(sha1_backend = "x86-sha")] {
+        mod x86_sha;
+
+        #[cfg(not(all(
+            target_feature = "sha",
+            target_feature = "sse2",
+            target_feature = "ssse3",
+            target_feature = "sse4.1",
+        )))]
+        compile_error!("x86-sha backend requires sha, sse2, ssse3, sse4.1 target features");
+
+        pub(crate) fn compress(state: &mut [u32; 5], blocks: &[[u8; 64]]) {
+            // SAFETY: we checked above that the required target features are enabled
+            unsafe { x86_sha::compress(state, blocks) }
+        }
+    } else if #[cfg(target_arch = "loongarch64")] {
+        mod loongarch64_asm;
+        pub(crate) use loongarch64_asm::compress;
     } else {
         mod soft;
-        use soft::compress as compress_inner;
+
+        cfg_if::cfg_if! {
+            if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+                mod x86_sha;
+                cpufeatures::new!(shani_cpuid, "sha", "sse2", "ssse3", "sse4.1");
+            } else if #[cfg(target_arch = "aarch64")] {
+                mod aarch64_sha2;
+                cpufeatures::new!(sha2_hwcap, "sha2");
+            }
+        }
+
+        pub(crate) fn compress(state: &mut [u32; 5], blocks: &[[u8; 64]]) {
+            cfg_if::cfg_if! {
+                if #[cfg(any(target_arch = "x86", target_arch = "x86_64"))] {
+                    if shani_cpuid::get() {
+                        // SAFETY: we checked that required target features are available
+                        return unsafe { x86_sha::compress(state, blocks) };
+                    }
+                } else if #[cfg(target_arch = "aarch64")] {
+                    if sha2_hwcap::get() {
+                        // SAFETY: we checked that `sha2` target feature is available
+                        return unsafe { aarch64_sha2::compress(state, blocks) };
+                    }
+                }
+            }
+
+            soft::compress(state, blocks);
+        }
     }
-}
-
-const BLOCK_SIZE: usize = <Sha1Core as BlockSizeUser>::BlockSize::USIZE;
-
-/// SHA-1 compression function
-#[cfg_attr(docsrs, doc(cfg(feature = "compress")))]
-pub fn compress(state: &mut [u32; 5], blocks: &[Block<Sha1Core>]) {
-    // SAFETY: GenericArray<u8, U64> and [u8; 64] have
-    // exactly the same memory layout
-    let blocks: &[[u8; BLOCK_SIZE]] =
-        unsafe { &*(blocks as *const _ as *const [[u8; BLOCK_SIZE]]) };
-    compress_inner(state, blocks);
 }

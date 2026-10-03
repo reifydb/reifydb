@@ -65,7 +65,7 @@ fn resolves_a_mint_a_concurrent_flow_interned_after_this_flows_snapshot() {
 
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
 
-	let interned = registry_on(&parent.single).intern(&dictionary, &mint()).unwrap().id.to_u128();
+	let interned = registry_on(&parent.single).intern_batch(&dictionary, &[mint()]).unwrap().remove(0).id.to_u128();
 
 	let mut txn = flow_txn(&engine, registry_on(&parent.single));
 
@@ -89,7 +89,7 @@ fn an_interned_mint_is_durable_so_a_restart_still_resolves_it() {
 	let dictionary = mints();
 
 	let parent = engine.begin_admin(IdentityId::system()).unwrap();
-	let interned = registry_on(&parent.single).intern(&dictionary, &mint()).unwrap().id;
+	let interned = registry_on(&parent.single).intern_batch(&dictionary, &[mint()]).unwrap().remove(0).id;
 
 	let mut txn = flow_txn(&engine, registry_on(&parent.single));
 
@@ -118,8 +118,8 @@ fn a_rolled_back_slice_leaves_its_mint_durable_and_the_retry_reuses_that_id() {
 
 	let interned = {
 		let txn = flow_txn(&engine, registry.clone());
-		let first = txn.dictionary_allocators().intern(&dictionary, &mint()).unwrap();
-		let second = txn.dictionary_allocators().intern(&dictionary, &mint()).unwrap();
+		let first = txn.dictionary_allocators().intern_batch(&dictionary, &[mint()]).unwrap().remove(0);
+		let second = txn.dictionary_allocators().intern_batch(&dictionary, &[mint()]).unwrap().remove(0);
 
 		assert!(first.created, "the first sight of the mint creates it");
 		assert!(!second.created, "re-interning inside one slice must not create a second id");

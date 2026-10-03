@@ -3,45 +3,24 @@
 // -----------------------------------------------------------------------------
 // Lock-free implementations
 
-#[cfg(not(any(
-    target_arch = "avr",
-    target_arch = "msp430",
-    all(
-        portable_atomic_no_atomic_load_store,
-        not(all(target_arch = "bpf", not(feature = "critical-section"))),
-    ),
-)))]
-#[cfg_attr(
-    portable_atomic_no_cfg_target_has_atomic,
-    cfg(not(all(
-        any(
-            target_arch = "riscv32",
-            target_arch = "riscv64",
-            feature = "critical-section",
-            portable_atomic_unsafe_assume_single_core,
-        ),
-        portable_atomic_no_atomic_cas,
-    )))
-)]
-#[cfg_attr(
-    not(portable_atomic_no_cfg_target_has_atomic),
-    cfg(not(all(
-        any(
-            target_arch = "riscv32",
-            target_arch = "riscv64",
-            feature = "critical-section",
-            portable_atomic_unsafe_assume_single_core,
-        ),
-        not(target_has_atomic = "ptr"),
-    )))
-)]
-mod core_atomic;
+cfg_core_atomic!({
+    mod core_atomic;
+});
 
 // AVR
 #[cfg(target_arch = "avr")]
 #[cfg(not(portable_atomic_no_asm))]
 #[cfg(not(feature = "critical-section"))]
 mod avr;
+
+// pre-v6 Arm Linux
+#[cfg(all(
+    target_arch = "arm",
+    not(any(miri, portable_atomic_sanitize_thread)),
+    any(target_os = "linux", target_os = "android"),
+    not(any(target_feature = "v6", portable_atomic_target_feature = "v6")),
+))]
+pub(crate) mod arm_linux;
 
 // MSP430
 #[cfg(target_arch = "msp430")]
@@ -73,7 +52,7 @@ mod riscv;
     not(any(miri, portable_atomic_sanitize_thread)),
     any(not(portable_atomic_no_asm), portable_atomic_unstable_asm),
 ))]
-mod x86;
+pub(crate) mod x86;
 
 // 64-bit atomic implementations on 32-bit architectures
 #[cfg(any(target_arch = "arm", target_arch = "riscv32"))]
@@ -94,16 +73,18 @@ mod atomic128;
 // Lock-based fallback implementations
 
 #[cfg(feature = "fallback")]
-#[cfg(not(any(
-    target_arch = "avr",
-    target_arch = "msp430",
-    portable_atomic_unsafe_assume_single_core,
-)))]
 #[cfg_attr(portable_atomic_no_cfg_target_has_atomic, cfg(not(portable_atomic_no_atomic_cas)))]
 #[cfg_attr(not(portable_atomic_no_cfg_target_has_atomic), cfg(target_has_atomic = "ptr"))]
-#[cfg(any(
-    test,
-    not(any(
+#[cfg_attr(
+    not(test),
+    cfg(not(any(
+        // ---------------
+        // Use other ways.
+        target_arch = "avr",
+        target_arch = "msp430",
+        portable_atomic_unsafe_assume_single_core,
+        // --------------------
+        // Has 128-bit atomics.
         all(
             target_arch = "aarch64",
             not(all(
@@ -162,18 +143,12 @@ mod fallback;
 // AVR can be safely assumed to be single-core, so this is sound.
 // MSP430 as well.
 // See the module-level comments of interrupt module for more.
-#[cfg(any(
-    target_arch = "avr",
-    target_arch = "msp430",
-    feature = "critical-section",
-    portable_atomic_unsafe_assume_single_core,
-    portable_atomic_unsafe_assume_privileged,
-))]
 #[cfg_attr(
     portable_atomic_no_cfg_target_has_atomic,
     cfg(any(
-        test,
-        portable_atomic_no_atomic_cas,
+        target_arch = "avr",
+        target_arch = "msp430",
+        all(feature = "critical-section", any(test, portable_atomic_no_atomic_cas)),
         portable_atomic_unsafe_assume_single_core,
         portable_atomic_unsafe_assume_privileged,
     ))
@@ -181,8 +156,9 @@ mod fallback;
 #[cfg_attr(
     not(portable_atomic_no_cfg_target_has_atomic),
     cfg(any(
-        test,
-        not(target_has_atomic = "ptr"),
+        target_arch = "avr",
+        target_arch = "msp430",
+        all(feature = "critical-section", any(test, not(target_has_atomic = "ptr"))),
         portable_atomic_unsafe_assume_single_core,
         portable_atomic_unsafe_assume_privileged,
     ))

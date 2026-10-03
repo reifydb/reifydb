@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Bound};
+use std::ops::Bound;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
@@ -17,7 +17,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_value::Result;
-use tracing::instrument;
 
 use super::{MultiTransaction, manager::TransactionManagerQuery, version::StandardVersionProvider};
 use crate::multi::{RangeScope, lease::VersionLeaseGuard, types::TransactionValue};
@@ -66,12 +65,6 @@ impl MultiReadTransaction {
 	pub fn get<K: Into<TaggedKey> + Clone>(&self, key: &K) -> Result<Option<TransactionValue>> {
 		let version = self.tm.version();
 		Ok(self.engine.get(&key.clone().into(), version)?.map(Into::into))
-	}
-
-	#[instrument(name = "transaction::get_many", level = "trace", skip(self, keys), fields(key_count = keys.len()))]
-	pub fn get_many(&self, keys: &[EncodedKey]) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
-		let version = self.tm.version();
-		self.engine.store.get_many(keys, version)
 	}
 
 	pub fn contains<K: Into<TaggedKey> + Clone>(&self, key: &K) -> Result<bool> {

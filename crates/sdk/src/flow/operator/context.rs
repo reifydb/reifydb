@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, ManagedKey, UnmanagedKey, guest_may_address},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, ManagedKey, UnmanagedKey},
 	state::timer::TimerKind,
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
@@ -94,14 +94,15 @@ pub trait GuestState {
 	fn sweep_bytes_visit(
 		&self,
 		group: GroupId,
-		data_only: bool,
+		keyspaces: KeyspaceMask,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		let mut seen = 0usize;
+		let addressable = KeyspaceMask::windowed().intersect(keyspaces);
 		for id in (u8::MIN..=u8::MAX).rev() {
 			let keyspace = KeyspaceId(id);
-			if !guest_may_address(OperatorClass::Windowed, keyspace) || (data_only && !keyspace.is_data()) {
+			if !addressable.holds(keyspace) {
 				continue;
 			}
 			let remaining = match limit {
@@ -128,6 +129,7 @@ pub trait GuestState {
 		&self,
 		groups: &[GroupId],
 		limit: usize,
+		keyspaces: KeyspaceMask,
 	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
 		let mut rows = Vec::new();
 		for group in groups {
@@ -135,7 +137,7 @@ pub trait GuestState {
 				break;
 			}
 			let remaining = limit.saturating_add(1).saturating_sub(rows.len());
-			self.sweep_bytes_visit(*group, false, Some(remaining), &mut |key, payload| {
+			self.sweep_bytes_visit(*group, keyspaces, Some(remaining), &mut |key, payload| {
 				rows.push((key, payload));
 				Ok(())
 			})?;
@@ -306,9 +308,6 @@ pub trait GuestContext<C = Windowed>: GuestEmitContext {
 	where
 		C: WindowClass;
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>
-	where
-		C: WindowClass;
-	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome>
 	where
 		C: WindowClass;
 }

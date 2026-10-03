@@ -1,4 +1,4 @@
-FROM rust:1.95.0-slim AS builder
+FROM rust:1.99.0-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
@@ -16,6 +16,7 @@ COPY Cargo.toml Cargo.lock ./
 # Copy vendor directory and cargo config for offline builds
 COPY vendor ./vendor
 COPY .cargo ./.cargo
+COPY patch ./patch
 
 # Copy all workspace members
 COPY crates ./crates
@@ -25,7 +26,7 @@ COPY bin ./bin
 WORKDIR /build
 RUN RUSTC_WRAPPER="" cargo build --release --offline --package testcontainer
 
-FROM rust:1.95.0-slim
+FROM rust:1.99.0-slim
 
 LABEL org.opencontainers.image.title="ReifyDB Test Container"
 LABEL org.opencontainers.image.source="https://github.com/reifydb/reifydb"

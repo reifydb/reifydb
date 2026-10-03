@@ -66,7 +66,7 @@ impl<'a> FromReader<'a> for ComponentAlias<'a> {
                 name: reader.read_string()?,
             },
             0x01 => ComponentAlias::CoreInstanceExport {
-                kind: BinaryReader::external_kind_from_byte(
+                kind: match BinaryReader::external_kind_from_byte(
                     byte2.ok_or_else(|| {
                         BinaryReader::invalid_leading_byte_error(
                             byte1,
@@ -75,7 +75,12 @@ impl<'a> FromReader<'a> for ComponentAlias<'a> {
                         )
                     })?,
                     offset,
-                )?,
+                )? {
+                    ExternalKind::FuncExact => {
+                        bail!(offset, "exact type is not allowed in core export aliases")
+                    }
+                    kind => kind,
+                },
                 instance_index: reader.read_var_u32()?,
                 name: reader.read_string()?,
             },
@@ -92,7 +97,7 @@ impl<'a> FromReader<'a> for ComponentAlias<'a> {
 fn component_outer_alias_kind_from_bytes(
     byte1: u8,
     byte2: Option<u8>,
-    offset: usize,
+    offset: u64,
 ) -> Result<ComponentOuterAliasKind> {
     Ok(match byte1 {
         0x00 => match byte2.unwrap() {

@@ -14,12 +14,12 @@ use arrow_array::RecordBatch;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::change::{Change, Diff},
-	row::Row,
 };
 use reifydb_flow_async::operator::HostOperator;
 use reifydb_testing_chaos::{
 	fuzz::run_reported,
 	operator::{
+		event::Row,
 		session::Session,
 		view::{MaterializedView, RowKey},
 		workload::Workload,

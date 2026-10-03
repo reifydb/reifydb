@@ -1,12 +1,23 @@
 use crate::clocks::Datetime;
+use crate::filesystem::primitives::{DirOptions, FollowSymlinks, Metadata, OpenOptions};
 use crate::runtime::{AbortOnDropJoinHandle, spawn_blocking};
-use cap_fs_ext::{FileTypeExt as _, MetadataExt as _};
-use fs_set_times::SystemTimeSpec;
 use std::collections::hash_map;
 use std::sync::Arc;
+use std::time::SystemTime;
 use tracing::debug;
 use wasmtime::component::{HasData, Resource, ResourceTable};
 use wasmtime::error::Context as _;
+
+#[cfg(unix)]
+pub(crate) mod unix;
+#[cfg(unix)]
+pub(crate) use unix as sys;
+#[cfg(windows)]
+pub(crate) mod windows;
+#[cfg(windows)]
+pub(crate) use windows as sys;
+
+pub(crate) mod primitives;
 
 /// A helper struct which implements [`HasData`] for the `wasi:filesystem` APIs.
 ///
@@ -67,11 +78,38 @@ pub trait WasiFilesystemView: Send {
     fn filesystem(&mut self) -> WasiFilesystemCtxView<'_>;
 }
 
-bitflags::bitflags! {
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-    pub struct FilePerms: usize {
-        const READ = 0b1;
-        const WRITE = 0b10;
+/// Permission bits for operating on filesystem, specified per preopen,
+/// as enforced by wasmtime-wasi.
+///
+/// Filesystems can deny all mutation operations (read-only) or permit
+/// mutations (read-write).
+///
+/// Read-only permissions allow reading the contents
+/// of any file or directory reachable under the preopen, as well as reading
+/// any file metadata. Changing, appending, or truncating files is not
+/// permitted. Creating or deleting files, directories, symbolic links, and
+/// hard links are not permitted.
+///
+/// Read-write permissions include changing the contents of any reachable
+/// file, creating and deleting files, directories, symbolic links, and
+/// creating hard links, as well as mutating any file metadata.
+///
+/// These permissions are enforced by wasmtime-wasi. The host filesystem may
+/// enforce additional restrictions not covered by these.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FsPerms {
+    // Only read operations are permitted - no mutation permitted
+    ReadOnly,
+    // All operations are permitted.
+    ReadWrite,
+}
+
+impl FsPerms {
+    /// Tests whether writes are not permitted, returning a boolean. Shorthand
+    /// for matches!(perms, FsPerms::ReadOnly), used frequently in
+    /// if-statements.
+    pub fn write_not_permitted(&self) -> bool {
+        matches!(self, Self::ReadOnly)
     }
 }
 
@@ -80,23 +118,6 @@ bitflags::bitflags! {
     pub struct OpenMode: usize {
         const READ = 0b1;
         const WRITE = 0b10;
-    }
-}
-
-bitflags::bitflags! {
-    /// Permission bits for operating on a directory.
-    ///
-    /// Directories can be limited to being readonly. This will restrict what
-    /// can be done with them, for example preventing creation of new files.
-    #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-    pub struct DirPerms: usize {
-        /// This directory can be read, for example its entries can be iterated
-        /// over and files can be opened.
-        const READ = 0b1;
-
-        /// This directory can be mutated, for example by creating new files
-        /// within it.
-        const MUTATE = 0b10;
     }
 }
 
@@ -232,11 +253,6 @@ pub(crate) enum ErrorCode {
     InvalidSeek,
 }
 
-fn datetime_from(t: std::time::SystemTime) -> Datetime {
-    // FIXME make this infallible or handle errors properly
-    Datetime::try_from(cap_std::time::SystemTime::from_std(t)).unwrap()
-}
-
 /// The type of a filesystem object referenced by a descriptor.
 ///
 /// Note: This was called `filetype` in earlier versions of WASI.
@@ -245,6 +261,10 @@ pub(crate) enum DescriptorType {
     /// any of the other types specified.
     Unknown,
     /// The descriptor refers to a block device inode.
+    #[cfg_attr(
+        windows,
+        expect(dead_code, reason = "windows has no notion of block devices")
+    )]
     BlockDevice,
     /// The descriptor refers to a character device inode.
     CharacterDevice,
@@ -256,20 +276,16 @@ pub(crate) enum DescriptorType {
     RegularFile,
 }
 
-impl From<cap_std::fs::FileType> for DescriptorType {
-    fn from(ft: cap_std::fs::FileType) -> Self {
+impl From<crate::filesystem::primitives::FileType> for DescriptorType {
+    fn from(ft: crate::filesystem::primitives::FileType) -> Self {
         if ft.is_dir() {
             DescriptorType::Directory
         } else if ft.is_symlink() {
             DescriptorType::SymbolicLink
-        } else if ft.is_block_device() {
-            DescriptorType::BlockDevice
-        } else if ft.is_char_device() {
-            DescriptorType::CharacterDevice
         } else if ft.is_file() {
             DescriptorType::RegularFile
         } else {
-            DescriptorType::Unknown
+            sys::descriptor_type(ft)
         }
     }
 }
@@ -302,15 +318,23 @@ pub(crate) struct DescriptorStat {
     pub status_change_timestamp: Option<Datetime>,
 }
 
-impl From<cap_std::fs::Metadata> for DescriptorStat {
-    fn from(meta: cap_std::fs::Metadata) -> Self {
+impl DescriptorStat {
+    /// Creates a `DescriptorStat` from a `Metadata` plus the hard link
+    /// count.
+    fn new(meta: &Metadata, link_count: u64) -> Self {
         Self {
             type_: meta.file_type().into(),
-            link_count: meta.nlink(),
+            link_count,
             size: meta.len(),
-            data_access_timestamp: meta.accessed().map(|t| datetime_from(t.into_std())).ok(),
-            data_modification_timestamp: meta.modified().map(|t| datetime_from(t.into_std())).ok(),
-            status_change_timestamp: meta.created().map(|t| datetime_from(t.into_std())).ok(),
+            data_access_timestamp: meta
+                .accessed()
+                .ok()
+                .and_then(|t| Datetime::try_from(t).ok()),
+            data_modification_timestamp: meta
+                .modified()
+                .ok()
+                .and_then(|t| Datetime::try_from(t).ok()),
+            status_change_timestamp: meta.created().ok().and_then(|t| Datetime::try_from(t).ok()),
         }
     }
 }
@@ -324,17 +348,17 @@ pub(crate) struct MetadataHashValue {
     pub upper: u64,
 }
 
-impl From<&cap_std::fs::Metadata> for MetadataHashValue {
-    fn from(meta: &cap_std::fs::Metadata) -> Self {
-        use cap_fs_ext::MetadataExt;
+impl MetadataHashValue {
+    /// Creates a hash value from a file's unique identity, e.g. a
+    /// device/inode number pair.
+    fn new(identity: impl std::hash::Hash) -> Self {
         // Without incurring any deps, std provides us with a 64 bit hash
         // function:
-        use std::hash::Hasher;
+        use std::hash::Hasher as _;
         // Note that this means that the metadata hash (which becomes a preview1 ino) may
         // change when a different rustc release is used to build this host implementation:
         let mut hasher = hash_map::DefaultHasher::new();
-        hasher.write_u64(meta.dev());
-        hasher.write_u64(meta.ino());
+        identity.hash(&mut hasher);
         let lower = hasher.finish();
         // MetadataHashValue has a pair of 64-bit members for representing a
         // single 128-bit number. However, we only have 64 bits of entropy. To
@@ -348,6 +372,16 @@ impl From<&cap_std::fs::Metadata> for MetadataHashValue {
         let upper = lower ^ 4614256656552045848u64;
         Self { lower, upper }
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum Advice {
+    Normal,
+    Sequential,
+    Random,
+    WillNeed,
+    DontNeed,
+    NoReuse,
 }
 
 #[cfg(unix)]
@@ -455,6 +489,9 @@ impl Descriptor {
     pub(crate) fn file(&self) -> Result<&File, ErrorCode> {
         match self {
             Descriptor::File(f) => Ok(f),
+            // File-only ops such as advise stay bad-descriptor on a dir
+            // (wasi-testsuite filesystem-advise). read-via-stream maps Dir
+            // to is-directory on its own.
             Descriptor::Dir(_) => Err(ErrorCode::BadDescriptor),
         }
     }
@@ -463,19 +500,6 @@ impl Descriptor {
         match self {
             Descriptor::Dir(d) => Ok(d),
             Descriptor::File(_) => Err(ErrorCode::NotDirectory),
-        }
-    }
-
-    async fn get_metadata(&self) -> std::io::Result<cap_std::fs::Metadata> {
-        match self {
-            Self::File(f) => {
-                // No permissions check on metadata: if opened, allowed to stat it
-                f.run_blocking(|f| f.metadata()).await
-            }
-            Self::Dir(d) => {
-                // No permissions check on metadata: if opened, allowed to stat it
-                d.run_blocking(|d| d.dir_metadata()).await
-            }
         }
     }
 
@@ -499,7 +523,11 @@ impl Descriptor {
             }
             Self::Dir(d) => {
                 d.run_blocking(|d| {
-                    let d = d.open(std::path::Component::CurDir)?;
+                    let d = crate::filesystem::primitives::open(
+                        d,
+                        std::path::Component::CurDir.as_ref(),
+                        OpenOptions::new().read(true),
+                    )?;
                     d.sync_data()?;
                     Ok(())
                 })
@@ -509,25 +537,9 @@ impl Descriptor {
     }
 
     pub(crate) async fn get_flags(&self) -> Result<DescriptorFlags, ErrorCode> {
-        use system_interface::fs::{FdFlags, GetSetFdFlags};
-
-        fn get_from_fdflags(flags: FdFlags) -> DescriptorFlags {
-            let mut out = DescriptorFlags::empty();
-            if flags.contains(FdFlags::DSYNC) {
-                out |= DescriptorFlags::REQUESTED_WRITE_SYNC;
-            }
-            if flags.contains(FdFlags::RSYNC) {
-                out |= DescriptorFlags::DATA_INTEGRITY_SYNC;
-            }
-            if flags.contains(FdFlags::SYNC) {
-                out |= DescriptorFlags::FILE_INTEGRITY_SYNC;
-            }
-            out
-        }
         match self {
             Self::File(f) => {
-                let flags = f.run_blocking(|f| f.get_fd_flags()).await?;
-                let mut flags = get_from_fdflags(flags);
+                let mut flags = f.run_blocking(|f| sys::get_flags(f)).await?;
                 if f.open_mode.contains(OpenMode::READ) {
                     flags |= DescriptorFlags::READ;
                 }
@@ -537,8 +549,7 @@ impl Descriptor {
                 Ok(flags)
             }
             Self::Dir(d) => {
-                let flags = d.run_blocking(|d| d.get_fd_flags()).await?;
-                let mut flags = get_from_fdflags(flags);
+                let mut flags = d.run_blocking(|d| sys::get_flags(d)).await?;
                 if d.open_mode.contains(OpenMode::READ) {
                     flags |= DescriptorFlags::READ;
                 }
@@ -553,7 +564,7 @@ impl Descriptor {
     pub(crate) async fn get_type(&self) -> Result<DescriptorType, ErrorCode> {
         match self {
             Self::File(f) => {
-                let meta = f.run_blocking(|f| f.metadata()).await?;
+                let meta = f.run_blocking(|f| Metadata::from_file(f)).await?;
                 Ok(meta.file_type().into())
             }
             Self::Dir(_) => Ok(DescriptorType::Directory),
@@ -562,23 +573,29 @@ impl Descriptor {
 
     pub(crate) async fn set_times(
         &self,
-        atim: Option<SystemTimeSpec>,
-        mtim: Option<SystemTimeSpec>,
+        atim: Option<SystemTime>,
+        mtim: Option<SystemTime>,
     ) -> Result<(), ErrorCode> {
-        use fs_set_times::SetTimes as _;
+        let mut times = std::fs::FileTimes::new();
+        if let Some(atim) = atim {
+            times = times.set_accessed(atim);
+        }
+        if let Some(mtim) = mtim {
+            times = times.set_modified(mtim);
+        }
         match self {
             Self::File(f) => {
-                if !f.perms.contains(FilePerms::WRITE) {
+                if f.perms.write_not_permitted() {
                     return Err(ErrorCode::NotPermitted);
                 }
-                f.run_blocking(|f| f.set_times(atim, mtim)).await?;
+                f.run_blocking(move |f| f.set_times(times)).await?;
                 Ok(())
             }
             Self::Dir(d) => {
-                if !d.perms.contains(DirPerms::MUTATE) {
+                if d.perms.write_not_permitted() {
                     return Err(ErrorCode::NotPermitted);
                 }
-                d.run_blocking(|d| d.set_times(atim, mtim)).await?;
+                d.run_blocking(move |d| d.set_times(times)).await?;
                 Ok(())
             }
         }
@@ -604,7 +621,11 @@ impl Descriptor {
             }
             Self::Dir(d) => {
                 d.run_blocking(|d| {
-                    let d = d.open(std::path::Component::CurDir)?;
+                    let d = crate::filesystem::primitives::open(
+                        d,
+                        std::path::Component::CurDir.as_ref(),
+                        OpenOptions::new().read(true),
+                    )?;
                     d.sync_all()?;
                     Ok(())
                 })
@@ -615,44 +636,34 @@ impl Descriptor {
 
     pub(crate) async fn stat(&self) -> Result<DescriptorStat, ErrorCode> {
         match self {
-            Self::File(f) => {
-                // No permissions check on stat: if opened, allowed to stat it
-                let meta = f.run_blocking(|f| f.metadata()).await?;
-                Ok(meta.into())
-            }
-            Self::Dir(d) => {
-                // No permissions check on stat: if opened, allowed to stat it
-                let meta = d.run_blocking(|d| d.dir_metadata()).await?;
-                Ok(meta.into())
-            }
+            Self::File(f) => Ok(f.run_blocking(|f| sys::stat(f)).await?),
+            Self::Dir(d) => Ok(d.run_blocking(|f| sys::stat(f)).await?),
         }
     }
 
     pub(crate) async fn is_same_object(&self, other: &Self) -> wasmtime::Result<bool> {
-        use cap_fs_ext::MetadataExt;
-        let meta_a = self.get_metadata().await?;
-        let meta_b = other.get_metadata().await?;
-        if meta_a.dev() == meta_b.dev() && meta_a.ino() == meta_b.ino() {
-            // MetadataHashValue does not derive eq, so use a pair of
-            // comparisons to check equality:
-            debug_assert_eq!(
-                MetadataHashValue::from(&meta_a).upper,
-                MetadataHashValue::from(&meta_b).upper,
-            );
-            debug_assert_eq!(
-                MetadataHashValue::from(&meta_a).lower,
-                MetadataHashValue::from(&meta_b).lower,
-            );
-            Ok(true)
-        } else {
-            // Hash collisions are possible, so don't assert the negative here
-            Ok(false)
-        }
+        // No permissions check on metadata: if opened, allowed to stat it
+        let other = match other {
+            Self::File(f) => Arc::clone(&f.file),
+            Self::Dir(d) => Arc::clone(&d.dir),
+        };
+        Ok(match self {
+            Self::File(f) => {
+                f.run_blocking(move |f| sys::is_same_file(f, &other))
+                    .await?
+            }
+            Self::Dir(d) => {
+                d.run_blocking(move |d| sys::is_same_file(d, &other))
+                    .await?
+            }
+        })
     }
 
     pub(crate) async fn metadata_hash(&self) -> Result<MetadataHashValue, ErrorCode> {
-        let meta = self.get_metadata().await?;
-        Ok(MetadataHashValue::from(&meta))
+        match self {
+            Self::File(f) => Ok(f.run_blocking(|f| sys::metadata_hash(f)).await?),
+            Self::Dir(d) => Ok(d.run_blocking(|d| sys::metadata_hash(d)).await?),
+        }
     }
 }
 
@@ -663,15 +674,16 @@ pub struct File {
     /// Wrapped in an Arc because the same underlying file is used for
     /// implementing the stream types. A copy is also needed for
     /// `spawn_blocking`.
-    pub file: Arc<cap_std::fs::File>,
+    pub file: Arc<std::fs::File>,
     /// Permissions to enforce on access to the file. These permissions are
-    /// specified by a user of the `crate::WasiCtxBuilder`, and are
-    /// enforced prior to any enforced by the underlying operating system.
-    pub perms: FilePerms,
+    /// specified to the parent preopen by a user of the
+    /// `crate::WasiCtxBuilder`, and are enforced prior to any enforced by the
+    /// underlying operating system.
+    pub perms: FsPerms,
     /// The mode the file was opened under: bits for reading, and writing.
-    /// Required to correctly report the DescriptorFlags, because cap-std
-    /// doesn't presently provide a cross-platform equivalent of reading the
-    /// oflags back out using fcntl.
+    /// Required to correctly report the DescriptorFlags, because
+    /// cap-primitives doesn't presently provide a cross-platform equivalent
+    /// of reading the oflags back out using fcntl.
     pub open_mode: OpenMode,
 
     allow_blocking_current_thread: bool,
@@ -679,8 +691,8 @@ pub struct File {
 
 impl File {
     pub fn new(
-        file: cap_std::fs::File,
-        perms: FilePerms,
+        file: std::fs::File,
+        perms: FsPerms,
         open_mode: OpenMode,
         allow_blocking_current_thread: bool,
     ) -> Self {
@@ -708,7 +720,7 @@ impl File {
     /// - [Implement opt-in for enabling WASI to block the current thread](https://github.com/bytecodealliance/wasmtime/pull/8190)
     pub(crate) async fn run_blocking<F, R>(&self, body: F) -> R
     where
-        F: FnOnce(&cap_std::fs::File) -> R + Send + 'static,
+        F: FnOnce(&std::fs::File) -> R + Send + 'static,
         R: Send + 'static,
     {
         match self.as_blocking_file() {
@@ -719,7 +731,7 @@ impl File {
 
     pub(crate) fn spawn_blocking<F, R>(&self, body: F) -> AbortOnDropJoinHandle<R>
     where
-        F: FnOnce(&cap_std::fs::File) -> R + Send + 'static,
+        F: FnOnce(&std::fs::File) -> R + Send + 'static,
         R: Send + 'static,
     {
         let f = self.file.clone();
@@ -729,7 +741,7 @@ impl File {
     /// Returns `Some` when the current thread is allowed to block in filesystem
     /// operations, and otherwise returns `None` to indicate that
     /// `spawn_blocking` must be used.
-    pub(crate) fn as_blocking_file(&self) -> Option<&cap_std::fs::File> {
+    pub(crate) fn as_blocking_file(&self) -> Option<&std::fs::File> {
         if self.allow_blocking_current_thread {
             Some(&self.file)
         } else {
@@ -737,9 +749,9 @@ impl File {
         }
     }
 
-    /// Returns reference to the underlying [`cap_std::fs::File`]
+    /// Returns reference to the underlying [`std::fs::File`]
     #[cfg(feature = "p3")]
-    pub(crate) fn as_file(&self) -> &Arc<cap_std::fs::File> {
+    pub(crate) fn as_file(&self) -> &Arc<std::fs::File> {
         &self.file
     }
 
@@ -747,16 +759,15 @@ impl File {
         &self,
         offset: u64,
         len: u64,
-        advice: system_interface::fs::Advice,
+        advice: Advice,
     ) -> Result<(), ErrorCode> {
-        use system_interface::fs::FileIoExt as _;
-        self.run_blocking(move |f| f.advise(offset, len, advice))
+        self.run_blocking(move |f| sys::advise(f, offset, len, advice))
             .await?;
         Ok(())
     }
 
     pub(crate) async fn set_size(&self, size: u64) -> Result<(), ErrorCode> {
-        if !self.perms.contains(FilePerms::WRITE) {
+        if self.perms.write_not_permitted() {
             return Err(ErrorCode::NotPermitted);
         }
         self.run_blocking(move |f| f.set_len(size)).await?;
@@ -769,21 +780,22 @@ pub struct Dir {
     /// The operating system file descriptor this struct is mediating access
     /// to.
     ///
+    /// This is a handle to a directory, and all paths accessed through this
+    /// struct are sandboxed to be within this directory via `cap-primitives`.
+    ///
     /// Wrapped in an Arc because a copy is needed for `run_blocking`.
-    pub dir: Arc<cap_std::fs::Dir>,
-    /// Permissions to enforce on access to this directory. These permissions
-    /// are specified by a user of the `crate::WasiCtxBuilder`, and
+    pub dir: Arc<std::fs::File>,
+    /// Permissions to enforce on access to the filesystem under this
+    /// directory are specified by a user of the `crate::WasiCtxBuilder`, and
     /// are enforced prior to any enforced by the underlying operating system.
     ///
     /// These permissions are also enforced on any directories opened under
     /// this directory.
-    pub perms: DirPerms,
-    /// Permissions to enforce on any files opened under this directory.
-    pub file_perms: FilePerms,
+    pub perms: FsPerms,
     /// The mode the directory was opened under: bits for reading, and writing.
-    /// Required to correctly report the DescriptorFlags, because cap-std
-    /// doesn't presently provide a cross-platform equivalent of reading the
-    /// oflags back out using fcntl.
+    /// Required to correctly report the DescriptorFlags, because
+    /// cap-primitives doesn't presently provide a cross-platform equivalent
+    /// of reading the oflags back out using fcntl.
     pub open_mode: OpenMode,
 
     pub(crate) allow_blocking_current_thread: bool,
@@ -791,16 +803,14 @@ pub struct Dir {
 
 impl Dir {
     pub fn new(
-        dir: cap_std::fs::Dir,
-        perms: DirPerms,
-        file_perms: FilePerms,
+        dir: std::fs::File,
+        perms: FsPerms,
         open_mode: OpenMode,
         allow_blocking_current_thread: bool,
     ) -> Self {
         Dir {
             dir: Arc::new(dir),
             perms,
-            file_perms,
             open_mode,
             allow_blocking_current_thread,
         }
@@ -822,7 +832,7 @@ impl Dir {
     /// - [Implement opt-in for enabling WASI to block the current thread](https://github.com/bytecodealliance/wasmtime/pull/8190)
     pub(crate) async fn run_blocking<F, R>(&self, body: F) -> R
     where
-        F: FnOnce(&cap_std::fs::Dir) -> R + Send + 'static,
+        F: FnOnce(&std::fs::File) -> R + Send + 'static,
         R: Send + 'static,
     {
         if self.allow_blocking_current_thread {
@@ -833,17 +843,20 @@ impl Dir {
         }
     }
 
-    /// Returns reference to the underlying [`cap_std::fs::Dir`]
+    /// Returns reference to the underlying directory handle.
     #[cfg(feature = "p3")]
-    pub(crate) fn as_dir(&self) -> &Arc<cap_std::fs::Dir> {
+    pub(crate) fn as_dir(&self) -> &Arc<std::fs::File> {
         &self.dir
     }
 
     pub(crate) async fn create_directory_at(&self, path: String) -> Result<(), ErrorCode> {
-        if !self.perms.contains(DirPerms::MUTATE) {
+        if self.perms.write_not_permitted() {
             return Err(ErrorCode::NotPermitted);
         }
-        self.run_blocking(move |d| d.create_dir(&path)).await?;
+        self.run_blocking(move |d| {
+            crate::filesystem::primitives::create_dir(d, path.as_ref(), &DirOptions::new())
+        })
+        .await?;
         Ok(())
     }
 
@@ -852,47 +865,35 @@ impl Dir {
         path_flags: PathFlags,
         path: String,
     ) -> Result<DescriptorStat, ErrorCode> {
-        if !self.perms.contains(DirPerms::READ) {
-            return Err(ErrorCode::NotPermitted);
-        }
-
-        let meta = if path_flags.contains(PathFlags::SYMLINK_FOLLOW) {
-            self.run_blocking(move |d| d.metadata(&path)).await?
+        let follow = if path_flags.contains(PathFlags::SYMLINK_FOLLOW) {
+            FollowSymlinks::Yes
         } else {
-            self.run_blocking(move |d| d.symlink_metadata(&path))
-                .await?
+            FollowSymlinks::No
         };
-        Ok(meta.into())
+        let ret = self
+            .run_blocking(move |d| sys::stat_at(d, path.as_ref(), follow))
+            .await?;
+        Ok(ret)
     }
 
     pub(crate) async fn set_times_at(
         &self,
         path_flags: PathFlags,
         path: String,
-        atim: Option<SystemTimeSpec>,
-        mtim: Option<SystemTimeSpec>,
+        atim: Option<SystemTime>,
+        mtim: Option<SystemTime>,
     ) -> Result<(), ErrorCode> {
-        use cap_fs_ext::DirExt as _;
-
-        if !self.perms.contains(DirPerms::MUTATE) {
+        if self.perms.write_not_permitted() {
             return Err(ErrorCode::NotPermitted);
         }
         if path_flags.contains(PathFlags::SYMLINK_FOLLOW) {
             self.run_blocking(move |d| {
-                d.set_times(
-                    &path,
-                    atim.map(cap_fs_ext::SystemTimeSpec::from_std),
-                    mtim.map(cap_fs_ext::SystemTimeSpec::from_std),
-                )
+                crate::filesystem::primitives::set_times(d, path.as_ref(), atim, mtim)
             })
             .await?;
         } else {
             self.run_blocking(move |d| {
-                d.set_symlink_times(
-                    &path,
-                    atim.map(cap_fs_ext::SystemTimeSpec::from_std),
-                    mtim.map(cap_fs_ext::SystemTimeSpec::from_std),
-                )
+                crate::filesystem::primitives::set_times_nofollow(d, path.as_ref(), atim, mtim)
             })
             .await?;
         }
@@ -906,18 +907,28 @@ impl Dir {
         new_dir: &Self,
         new_path: String,
     ) -> Result<(), ErrorCode> {
-        if !self.perms.contains(DirPerms::MUTATE) {
+        if self.perms.write_not_permitted() {
             return Err(ErrorCode::NotPermitted);
         }
-        if !new_dir.perms.contains(DirPerms::MUTATE) {
+        if new_dir.perms.write_not_permitted() {
             return Err(ErrorCode::NotPermitted);
         }
         if old_path_flags.contains(PathFlags::SYMLINK_FOLLOW) {
             return Err(ErrorCode::Invalid);
         }
+        if self.perms != new_dir.perms {
+            return Err(ErrorCode::NotPermitted);
+        }
         let new_dir_handle = Arc::clone(&new_dir.dir);
-        self.run_blocking(move |d| d.hard_link(&old_path, &new_dir_handle, &new_path))
-            .await?;
+        self.run_blocking(move |d| {
+            crate::filesystem::primitives::hard_link(
+                d,
+                old_path.as_ref(),
+                &new_dir_handle,
+                new_path.as_ref(),
+            )
+        })
+        .await?;
         Ok(())
     }
 
@@ -929,29 +940,13 @@ impl Dir {
         flags: DescriptorFlags,
         allow_blocking_current_thread: bool,
     ) -> Result<Descriptor, ErrorCode> {
-        use cap_fs_ext::{FollowSymlinks, OpenOptionsFollowExt, OpenOptionsMaybeDirExt};
-        use system_interface::fs::{FdFlags, GetSetFdFlags};
-
-        if !self.perms.contains(DirPerms::READ) {
-            return Err(ErrorCode::NotPermitted);
-        }
-
-        if !self.perms.contains(DirPerms::MUTATE) {
-            if oflags.contains(OpenFlags::CREATE) || oflags.contains(OpenFlags::TRUNCATE) {
-                return Err(ErrorCode::NotPermitted);
-            }
-            if flags.contains(DescriptorFlags::WRITE) {
-                return Err(ErrorCode::NotPermitted);
-            }
-        }
-
         // Track whether we are creating file, for permission check:
         let mut create = false;
         // Track open mode, for permission check and recording in created descriptor:
         let mut open_mode = OpenMode::empty();
         // Construct the OpenOptions to give the OS:
-        let mut opts = cap_std::fs::OpenOptions::new();
-        opts.maybe_dir(true);
+        let mut opts = OpenOptions::new();
+        sys::maybe_dir(&mut opts);
 
         if oflags.contains(OpenFlags::CREATE) {
             if oflags.contains(OpenFlags::EXCLUSIVE) {
@@ -981,13 +976,14 @@ impl Dir {
             opts.read(true);
             open_mode |= OpenMode::READ;
         }
+
         if path_flags.contains(PathFlags::SYMLINK_FOLLOW) {
             opts.follow(FollowSymlinks::Yes);
         } else {
             opts.follow(FollowSymlinks::No);
         }
 
-        // These flags are not yet supported in cap-std:
+        // These flags are not yet supported in cap-primitives:
         if flags.contains(DescriptorFlags::FILE_INTEGRITY_SYNC)
             || flags.contains(DescriptorFlags::DATA_INTEGRITY_SYNC)
             || flags.contains(DescriptorFlags::REQUESTED_WRITE_SYNC)
@@ -1006,36 +1002,29 @@ impl Dir {
 
         // Now enforce this WasiCtx's permissions before letting the OS have
         // its shot:
-        if !self.perms.contains(DirPerms::MUTATE) && create {
-            return Err(ErrorCode::NotPermitted);
-        }
-        if !self.file_perms.contains(FilePerms::WRITE) && open_mode.contains(OpenMode::WRITE) {
-            return Err(ErrorCode::NotPermitted);
+        if self.perms.write_not_permitted() {
+            if create || open_mode.contains(OpenMode::WRITE) {
+                return Err(ErrorCode::NotPermitted);
+            }
         }
 
         // Represents each possible outcome from the spawn_blocking operation.
         // This makes sure we don't have to give spawn_blocking any way to
         // manipulate the table.
         enum OpenResult {
-            Dir(cap_std::fs::Dir),
-            File(cap_std::fs::File),
+            Dir(std::fs::File),
+            File(std::fs::File),
             NotDir,
         }
 
         let opened = self
             .run_blocking::<_, std::io::Result<OpenResult>>(move |d| {
-                let mut opened = d.open_with(&path, &opts)?;
-                if opened.metadata()?.is_dir() {
-                    Ok(OpenResult::Dir(cap_std::fs::Dir::from_std_file(
-                        opened.into_std(),
-                    )))
+                let opened = crate::filesystem::primitives::open(d, path.as_ref(), &opts)?;
+                if Metadata::from_file(&opened)?.is_dir() {
+                    Ok(OpenResult::Dir(opened))
                 } else if oflags.contains(OpenFlags::DIRECTORY) {
                     Ok(OpenResult::NotDir)
                 } else {
-                    // FIXME cap-std needs a nonblocking open option so that files reads and writes
-                    // are nonblocking. Instead we set it after opening here:
-                    let set_fd_flags = opened.new_set_fd_flags(FdFlags::NONBLOCK)?;
-                    opened.set_fd_flags(set_fd_flags)?;
                     Ok(OpenResult::File(opened))
                 }
             })
@@ -1053,14 +1042,13 @@ impl Dir {
             OpenResult::Dir(dir) => Ok(Descriptor::Dir(Dir::new(
                 dir,
                 self.perms,
-                self.file_perms,
                 open_mode,
                 allow_blocking_current_thread,
             ))),
 
             OpenResult::File(file) => Ok(Descriptor::File(File::new(
                 file,
-                self.file_perms,
+                self.perms,
                 open_mode,
                 allow_blocking_current_thread,
             ))),
@@ -1070,20 +1058,20 @@ impl Dir {
     }
 
     pub(crate) async fn readlink_at(&self, path: String) -> Result<String, ErrorCode> {
-        if !self.perms.contains(DirPerms::READ) {
-            return Err(ErrorCode::NotPermitted);
-        }
-        let link = self.run_blocking(move |d| d.read_link(&path)).await?;
+        let link = self
+            .run_blocking(move |d| crate::filesystem::primitives::read_link(d, path.as_ref()))
+            .await?;
         link.into_os_string()
             .into_string()
             .or(Err(ErrorCode::IllegalByteSequence))
     }
 
     pub(crate) async fn remove_directory_at(&self, path: String) -> Result<(), ErrorCode> {
-        if !self.perms.contains(DirPerms::MUTATE) {
+        if self.perms.write_not_permitted() {
             return Err(ErrorCode::NotPermitted);
         }
-        self.run_blocking(move |d| d.remove_dir(&path)).await?;
+        self.run_blocking(move |d| crate::filesystem::primitives::remove_dir(d, path.as_ref()))
+            .await?;
         Ok(())
     }
 
@@ -1093,15 +1081,25 @@ impl Dir {
         new_dir: &Self,
         new_path: String,
     ) -> Result<(), ErrorCode> {
-        if !self.perms.contains(DirPerms::MUTATE) {
+        if self.perms.write_not_permitted() {
             return Err(ErrorCode::NotPermitted);
         }
-        if !new_dir.perms.contains(DirPerms::MUTATE) {
+        if new_dir.perms.write_not_permitted() {
+            return Err(ErrorCode::NotPermitted);
+        }
+        if self.perms != new_dir.perms {
             return Err(ErrorCode::NotPermitted);
         }
         let new_dir_handle = Arc::clone(&new_dir.dir);
-        self.run_blocking(move |d| d.rename(&old_path, &new_dir_handle, &new_path))
-            .await?;
+        self.run_blocking(move |d| {
+            crate::filesystem::primitives::rename(
+                d,
+                old_path.as_ref(),
+                &new_dir_handle,
+                new_path.as_ref(),
+            )
+        })
+        .await?;
         Ok(())
     }
 
@@ -1110,25 +1108,19 @@ impl Dir {
         src_path: String,
         dest_path: String,
     ) -> Result<(), ErrorCode> {
-        // On windows, Dir.symlink is provided by DirExt
-        #[cfg(windows)]
-        use cap_fs_ext::DirExt;
-
-        if !self.perms.contains(DirPerms::MUTATE) {
+        if self.perms.write_not_permitted() {
             return Err(ErrorCode::NotPermitted);
         }
-        self.run_blocking(move |d| d.symlink(&src_path, &dest_path))
+        self.run_blocking(move |d| sys::symlink(src_path.as_ref(), d, dest_path.as_ref()))
             .await?;
         Ok(())
     }
 
     pub(crate) async fn unlink_file_at(&self, path: String) -> Result<(), ErrorCode> {
-        use cap_fs_ext::DirExt;
-
-        if !self.perms.contains(DirPerms::MUTATE) {
+        if self.perms.write_not_permitted() {
             return Err(ErrorCode::NotPermitted);
         }
-        self.run_blocking(move |d| d.remove_file_or_symlink(&path))
+        self.run_blocking(move |d| sys::remove_file_or_symlink(d, path.as_ref()))
             .await?;
         Ok(())
     }
@@ -1139,16 +1131,15 @@ impl Dir {
         path: String,
     ) -> Result<MetadataHashValue, ErrorCode> {
         // No permissions check on metadata: if dir opened, allowed to stat it
-        let meta = self
-            .run_blocking(move |d| {
-                if path_flags.contains(PathFlags::SYMLINK_FOLLOW) {
-                    d.metadata(path)
-                } else {
-                    d.symlink_metadata(path)
-                }
-            })
+        let follow = if path_flags.contains(PathFlags::SYMLINK_FOLLOW) {
+            FollowSymlinks::Yes
+        } else {
+            FollowSymlinks::No
+        };
+        let hash = self
+            .run_blocking(move |d| sys::metadata_hash_at(d, path.as_ref(), follow))
             .await?;
-        Ok(MetadataHashValue::from(&meta))
+        Ok(hash)
     }
 }
 

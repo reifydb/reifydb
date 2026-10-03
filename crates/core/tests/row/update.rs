@@ -587,7 +587,7 @@ fn test_update_dynamic_preserves_static() {
 		// Static fields must be unchanged
 		assert!(shape.get::<bool>(&row, 0));
 		assert_eq!(shape.get::<i32>(&row, 1), 42);
-		assert!((shape.get::<f64>(&row, 3) - f64::consts::PI).abs() < f64::EPSILON);
+		assert!((shape.get::<f64>(&row, 3) - f64::consts::PI).abs() < <f64>::EPSILON);
 	}
 
 	assert_eq!(shape.get_utf8(&row, 2), "iteration_9");

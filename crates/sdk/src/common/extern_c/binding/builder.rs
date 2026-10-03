@@ -4,16 +4,10 @@
 use core::{ffi::c_void, ptr};
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::{
-	reifydb_assertions,
-	value::{decimal::Decimal, row_number::RowNumber},
-};
+use reifydb_value::{reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	common::{
-		extern_c::wire::callbacks::builder::{BuilderCallbacks, ColumnBufferHandle, EmitDiffKind},
-		family::{FamilyValue, family_params},
-	},
+	common::extern_c::wire::callbacks::builder::{BuilderCallbacks, ColumnBufferHandle, EmitDiffKind},
 	error::SdkError,
 };
 
@@ -240,17 +234,6 @@ impl<'a> ColumnBuilder<'a> {
 		write_var_len(self, values.iter().map(|s| s.as_ref().as_bytes()))
 	}
 
-	pub fn write_blob<B: AsRef<[u8]>>(self, values: &[B]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Blob, "write_blob requires a Blob ColumnBuilder");
-		}
-		write_var_len(self, values.iter().map(|b| b.as_ref()))
-	}
-
-	pub fn write_decimal(self, values: &[Decimal]) -> Result<CommittedColumn, SdkError> {
-		write_family(self, values)
-	}
-
 	pub fn set_defined(&self, defined: &[bool]) {
 		let bytes = defined.len().div_ceil(8);
 		if bytes == 0 {
@@ -285,35 +268,6 @@ unsafe fn write_scalar<T: Copy>(col: ColumnBuilder<'_>, values: &[T]) -> Result<
 		// copied as untyped bytes so neither needs alignment for `T`.
 		unsafe {
 			core::ptr::copy_nonoverlapping(values.as_ptr() as *const u8, col.data_ptr(), bytes);
-		}
-	}
-	col.commit(values.len())
-}
-
-fn write_family<T: FamilyValue>(col: ColumnBuilder<'_>, values: &[T]) -> Result<CommittedColumn, SdkError> {
-	if col.type_code != T::KIND {
-		return Err(SdkError::InvalidInput(format!(
-			"{:?} values written to a {:?} ColumnBuilder",
-			T::KIND,
-			col.type_code
-		)));
-	}
-	let (precision, scale) = family_params(col.type_code, col.precision, col.scale).ok_or_else(|| {
-		SdkError::InvalidInput(format!(
-			"{:?} ColumnBuilder has invalid precision {} and scale {}",
-			col.type_code, col.precision, col.scale
-		))
-	})?;
-	let mut cells = Vec::new();
-	for value in values {
-		value.encode_cell(precision, scale, &mut cells)?;
-	}
-	if !cells.is_empty() {
-		// SAFETY: a family builder's host buffer holds one fixed-width cell per acquired element, so the
-		// `values.len()` cells in the separate `cells` allocation fit as long as the caller acquired
-		// capacity for at least `values.len()` elements.
-		unsafe {
-			core::ptr::copy_nonoverlapping(cells.as_ptr(), col.data_ptr(), cells.len());
 		}
 	}
 	col.commit(values.len())

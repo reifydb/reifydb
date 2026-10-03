@@ -13,6 +13,7 @@ const WASM_DYLINK_NEEDED: u8 = 2;
 const WASM_DYLINK_EXPORT_INFO: u8 = 3;
 const WASM_DYLINK_IMPORT_INFO: u8 = 4;
 const WASM_DYLINK_RUNTIME_PATH: u8 = 5;
+const WASM_DYLINK_TARGET_ARCH: u8 = 6;
 
 /// Represents a `WASM_DYLINK_MEM_INFO` field
 #[derive(Debug, Copy, Clone)]
@@ -58,17 +59,16 @@ pub enum Dylink0Subsection<'a> {
     ExportInfo(Vec<ExportInfo<'a>>),
     ImportInfo(Vec<ImportInfo<'a>>),
     RuntimePath(Vec<&'a str>),
+    TargetArch(&'a str),
     Unknown {
         ty: u8,
         data: &'a [u8],
-        range: Range<usize>,
+        range: Range<u64>,
     },
 }
 
 impl<'a> Subsection<'a> for Dylink0Subsection<'a> {
     fn from_reader(id: u8, mut reader: BinaryReader<'a>) -> Result<Self> {
-        let data = reader.remaining_buffer();
-        let offset = reader.original_position();
         Ok(match id {
             WASM_DYLINK_MEM_INFO => Self::MemInfo(MemInfo {
                 memory_size: reader.read_var_u32()?,
@@ -107,10 +107,11 @@ impl<'a> Subsection<'a> for Dylink0Subsection<'a> {
                     .map(|_| reader.read_unlimited_string())
                     .collect::<Result<_, _>>()?,
             ),
+            WASM_DYLINK_TARGET_ARCH => Self::TargetArch(reader.read_unlimited_string()?),
             ty => Self::Unknown {
                 ty,
-                data,
-                range: offset..offset + data.len(),
+                data: reader.remaining_buffer(),
+                range: reader.remaining_range(),
             },
         })
     }

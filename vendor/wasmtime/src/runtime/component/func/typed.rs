@@ -12,13 +12,11 @@ use core::iter;
 use core::marker;
 use core::mem::{self, MaybeUninit};
 use core::str;
+use wasmtime_core::array::array_try_from_fn;
 use wasmtime_environ::component::{
     CanonicalAbiInfo, ComponentTypes, InterfaceType, MAX_FLAT_PARAMS, MAX_FLAT_RESULTS,
     OptionsIndex, StringEncoding, TypeMap, VariantInfo,
 };
-
-#[cfg(feature = "component-model-async")]
-use crate::component::concurrent::{self, AsAccessor, PreparedCall};
 
 /// A statically-typed version of [`Func`] which takes `Params` as input and
 /// returns `Return`.
@@ -140,6 +138,10 @@ where
     /// information to understand which part of the canonical ABI went wrong
     /// and what to inspect.
     ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
+    ///
     /// # Panics
     ///
     /// Panics if `store` does not own this function.
@@ -151,6 +153,12 @@ where
 
     /// Exactly like [`Self::call`], except for invoking WebAssembly
     /// [asynchronously](crate#async).
+    ///
+    /// # Errors
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     ///
     /// # Panics
     ///
@@ -168,59 +176,7 @@ where
 
         #[cfg(feature = "component-model-async")]
         if store.0.concurrency_support() {
-            use crate::component::concurrent::TaskId;
-            use crate::runtime::vm::SendSyncPtr;
-            use core::ptr::NonNull;
-
-            let ptr = SendSyncPtr::from(NonNull::from(&params).cast::<u8>());
-            let prepared =
-                self.prepare_call(store.as_context_mut(), true, move |cx, ty, dst| {
-                    // SAFETY: The goal here is to get `Params`, a non-`'static`
-                    // value, to live long enough to the lowering of the
-                    // parameters. We're guaranteed that `Params` lives in the
-                    // future of the outer function (we're in an `async fn`) so it'll
-                    // stay alive as long as the future itself. That is distinct,
-                    // for example, from the signature of `call_concurrent` below.
-                    //
-                    // Here a pointer to `Params` is smuggled to this location
-                    // through a `SendSyncPtr<u8>` to thwart the `'static` check
-                    // of rustc and the signature of `prepare_call`.
-                    //
-                    // Note the use of `SignalOnDrop` in the code that follows
-                    // this closure, which ensures that the task will be removed
-                    // from the concurrent state to which it belongs when the
-                    // containing `Future` is dropped, so long as the parameters
-                    // have not yet been lowered. Since this closure is removed from
-                    // the task after the parameters are lowered, it will never be called
-                    // after the containing `Future` is dropped.
-                    let params = unsafe { ptr.cast::<Params>().as_ref() };
-                    Self::lower_args(cx, ty, dst, params)
-                })?;
-
-            struct SignalOnDrop<'a, T: 'static> {
-                store: StoreContextMut<'a, T>,
-                task: TaskId,
-            }
-
-            impl<'a, T> Drop for SignalOnDrop<'a, T> {
-                fn drop(&mut self) {
-                    self.task
-                        .host_future_dropped(self.store.as_context_mut())
-                        .unwrap();
-                }
-            }
-
-            let mut wrapper = SignalOnDrop {
-                store,
-                task: prepared.task_id(),
-            };
-
-            let result = concurrent::queue_call(wrapper.store.as_context_mut(), prepared)?;
-            return wrapper
-                .store
-                .as_context_mut()
-                .run_concurrent_trap_on_idle(async |_| Ok(result.await?))
-                .await?;
+            return self.call_async_concurrent(store, params).await;
         }
 
         store
@@ -228,94 +184,7 @@ where
             .await?
     }
 
-    /// Start a concurrent call to this function.
-    ///
-    /// Concurrency is achieved by relying on the [`Accessor`] argument, which
-    /// can be obtained by calling [`StoreContextMut::run_concurrent`].
-    ///
-    /// Unlike [`Self::call`] and [`Self::call_async`] (both of which require
-    /// exclusive access to the store until the completion of the call), calls
-    /// made using this method may run concurrently with other calls to the same
-    /// instance.  In addition, the runtime will call the `post-return` function
-    /// (if any) automatically when the guest task completes.
-    ///
-    /// This function will return an error if [`Config::concurrency_support`] is
-    /// disabled.
-    ///
-    /// [`Config::concurrency_support`]: crate::Config::concurrency_support
-    ///
-    /// # Progress and Cancellation
-    ///
-    /// For more information about how to make progress on the wasm task or how
-    /// to cancel the wasm task see the documentation for
-    /// [`Func::call_concurrent`].
-    ///
-    /// [`Func::call_concurrent`]: crate::component::Func::call_concurrent
-    ///
-    /// # Panics
-    ///
-    /// Panics if the store that the [`Accessor`] is derived from does not own
-    /// this function.
-    ///
-    /// [`Accessor`]: crate::component::Accessor
-    ///
-    /// # Example
-    ///
-    /// Using [`StoreContextMut::run_concurrent`] to get an [`Accessor`]:
-    ///
-    /// ```
-    /// # use {
-    /// #   wasmtime::{
-    /// #     error::{Result},
-    /// #     component::{Component, Linker, ResourceTable},
-    /// #     Config, Engine, Store
-    /// #   },
-    /// # };
-    /// #
-    /// # struct Ctx { table: ResourceTable }
-    /// #
-    /// # async fn foo() -> Result<()> {
-    /// # let mut config = Config::new();
-    /// # let engine = Engine::new(&config)?;
-    /// # let mut store = Store::new(&engine, Ctx { table: ResourceTable::new() });
-    /// # let mut linker = Linker::new(&engine);
-    /// # let component = Component::new(&engine, "")?;
-    /// # let instance = linker.instantiate_async(&mut store, &component).await?;
-    /// let my_typed_func = instance.get_typed_func::<(), ()>(&mut store, "my_typed_func")?;
-    /// store.run_concurrent(async |accessor| -> wasmtime::Result<_> {
-    ///    my_typed_func.call_concurrent(accessor, ()).await?;
-    ///    Ok(())
-    /// }).await??;
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[cfg(feature = "component-model-async")]
-    pub async fn call_concurrent(
-        self,
-        accessor: impl AsAccessor<Data: Send>,
-        params: Params,
-    ) -> Result<Return>
-    where
-        Params: 'static,
-        Return: 'static,
-    {
-        let result = accessor.as_accessor().with(|mut store| {
-            let mut store = store.as_context_mut();
-            ensure!(
-                store.0.concurrency_support(),
-                "cannot use `call_concurrent` Config::concurrency_support disabled",
-            );
-
-            let prepared =
-                self.prepare_call(store.as_context_mut(), false, move |cx, ty, dst| {
-                    Self::lower_args(cx, ty, dst, &params)
-                })?;
-            concurrent::queue_call(store, prepared)
-        });
-        Ok(result?.await?)
-    }
-
-    fn lower_args<T>(
+    pub(crate) fn lower_args<T>(
         cx: &mut LowerContext<T>,
         ty: InterfaceType,
         dst: &mut [MaybeUninit<ValRaw>],
@@ -333,81 +202,6 @@ where
         } else {
             Self::lower_heap_args(cx, &params, ty, &mut dst[0])
         }
-    }
-
-    /// Calls `concurrent::prepare_call` with monomorphized functions for
-    /// lowering the parameters and lifting the result according to the number
-    /// of core Wasm parameters and results in the signature of the function to
-    /// be called.
-    #[cfg(feature = "component-model-async")]
-    fn prepare_call<T>(
-        self,
-        store: StoreContextMut<'_, T>,
-        host_future_present: bool,
-        lower: impl FnOnce(
-            &mut LowerContext<T>,
-            InterfaceType,
-            &mut [MaybeUninit<ValRaw>],
-        ) -> Result<()>
-        + Send
-        + Sync
-        + 'static,
-    ) -> Result<PreparedCall<Return>>
-    where
-        Return: 'static,
-    {
-        use crate::component::storage::slice_to_storage;
-        debug_assert!(store.0.concurrency_support());
-
-        let param_count = if Params::flatten_count() <= MAX_FLAT_PARAMS {
-            Params::flatten_count()
-        } else {
-            1
-        };
-        let max_results = if self.func.abi_async(store.0) {
-            MAX_FLAT_PARAMS
-        } else {
-            MAX_FLAT_RESULTS
-        };
-        concurrent::prepare_call(
-            store,
-            self.func,
-            param_count,
-            host_future_present,
-            move |func, store, params_out| {
-                func.with_lower_context(store, |cx, ty| lower(cx, ty, params_out))
-            },
-            move |func, store, results| {
-                let result = if Return::flatten_count() <= max_results {
-                    func.with_lift_context(store, |cx, ty| {
-                        // SAFETY: Per the safety requiments documented for the
-                        // `ComponentType` trait, `Return::Lower` must be
-                        // compatible at the binary level with a `[ValRaw; N]`,
-                        // where `N` is `mem::size_of::<Return::Lower>() /
-                        // mem::size_of::<ValRaw>()`.  And since this function
-                        // is only used when `Return::flatten_count() <=
-                        // MAX_FLAT_RESULTS` and `MAX_FLAT_RESULTS == 1`, `N`
-                        // can only either be 0 or 1.
-                        //
-                        // See `ComponentInstance::exit_call` for where we use
-                        // the result count passed from
-                        // `wasmtime_environ::fact::trampoline`-generated code
-                        // to ensure the slice has the correct length, and also
-                        // `concurrent::start_call` for where we conservatively
-                        // use a slice length of 1 unconditionally.  Also note
-                        // that, as of this writing `slice_to_storage`
-                        // double-checks the slice length is sufficient.
-                        let results: &Return::Lower = unsafe { slice_to_storage(results) };
-                        Self::lift_stack_result(cx, ty, results)
-                    })?
-                } else {
-                    func.with_lift_context(store, |cx, ty| {
-                        Self::lift_heap_result(cx, ty, &results[0])
-                    })?
-                };
-                Ok(Box::new(result))
-            },
-        )
     }
 
     fn call_impl(&self, mut store: impl AsContextMut, params: Params) -> Result<Return> {
@@ -434,7 +228,7 @@ where
         // safety requirements of `Lift` and `Lower` on `Params` and `Return` in
         // combination with checking the various possible branches here and
         // dispatching to appropriately typed functions.
-        let (result, post_return_arg) = unsafe {
+        let result = unsafe {
             // This type is used as `LowerParams` for `call_raw` which is either
             // `Params::Lower` or `ValRaw` representing it's either on the stack
             // or it's on the heap. This allocates 1 extra `ValRaw` on the stack
@@ -466,11 +260,13 @@ where
                     Self::lift_heap_result,
                 )
             }
-        }?;
+        };
 
-        self.func.post_return_impl(store, post_return_arg)?;
+        if result.is_err() {
+            store.0.set_trapped();
+        }
 
-        Ok(result)
+        result
     }
 
     /// Lower parameters directly onto the stack specified by the `dst`
@@ -531,7 +327,7 @@ where
     ///
     /// This is only used when the result fits in the maximum number of stack
     /// slots.
-    fn lift_stack_result(
+    pub(crate) fn lift_stack_result(
         cx: &mut LiftContext<'_>,
         ty: InterfaceType,
         dst: &Return::Lower,
@@ -541,7 +337,7 @@ where
 
     /// Lift the result of a function where the result is stored indirectly on
     /// the heap.
-    fn lift_heap_result(
+    pub(crate) fn lift_heap_result(
         cx: &mut LiftContext<'_>,
         ty: InterfaceType,
         dst: &ValRaw,
@@ -954,11 +750,16 @@ pub unsafe trait Lift: Sized + ComponentType {
 // these wrappers only implement lowering because lifting native Rust types
 // cannot be done.
 macro_rules! forward_type_impls {
-    ($(($($generics:tt)*) $a:ty => $b:ty,)*) => ($(
+    ($(
+        $(#[$attr:meta])*
+        ($($generics:tt)*) $a:ty => $b:ty,
+    )*) => ($(
+        $(#[$attr])*
         unsafe impl <$($generics)*> ComponentType for $a {
             type Lower = <$b as ComponentType>::Lower;
 
             const ABI: CanonicalAbiInfo = <$b as ComponentType>::ABI;
+            const MAY_REQUIRE_REALLOC: bool = <$b as ComponentType>::MAY_REQUIRE_REALLOC;
 
             #[inline]
             fn typecheck(ty: &InterfaceType, types: &InstanceType<'_>) -> Result<()> {
@@ -974,10 +775,18 @@ forward_type_impls! {
     (T: ComponentType + ?Sized) alloc::sync::Arc<T> => T,
     () String => str,
     (T: ComponentType) Vec<T> => [T],
+    #[cfg(feature = "component-model-bytes")]
+    () bytes::Bytes => [u8],
+    #[cfg(feature = "component-model-bytes")]
+    () bytes::BytesMut => [u8],
 }
 
 macro_rules! forward_lowers {
-    ($(($($generics:tt)*) $a:ty => $b:ty,)*) => ($(
+    ($(
+        $(#[$attr:meta])*
+        ($($generics:tt)*) $a:ty => $b:ty,
+    )*) => ($(
+        $(#[$attr])*
         unsafe impl <$($generics)*> Lower for $a {
             fn linear_lower_to_flat<U>(
                 &self,
@@ -1006,6 +815,10 @@ forward_lowers! {
     (T: Lower + ?Sized) alloc::sync::Arc<T> => T,
     () String => str,
     (T: Lower) Vec<T> => [T],
+    #[cfg(feature = "component-model-bytes")]
+    () bytes::Bytes => [u8],
+    #[cfg(feature = "component-model-bytes")]
+    () bytes::BytesMut => [u8],
 }
 
 macro_rules! forward_string_lifts {
@@ -1035,25 +848,39 @@ forward_string_lifts! {
 }
 
 macro_rules! forward_list_lifts {
-    ($($a:ty,)*) => ($(
-        unsafe impl <T: Lift> Lift for $a {
+    ($(
+        $(#[$attr:meta])*
+        ($($generics:tt)*) $a:ty => WasmList<$b:ty> $(( $via:ident $c:ty ))?,
+    )*) => ($(
+        $(#[$attr])*
+        unsafe impl <$($generics)*> Lift for $a {
             fn linear_lift_from_flat(cx: &mut LiftContext<'_>, ty: InterfaceType, src: &Self::Lower) -> Result<Self> {
-                let list = <WasmList::<T> as Lift>::linear_lift_from_flat(cx, ty, src)?;
-                Ok(T::linear_lift_list_from_memory(cx, &list)?.into())
+                let list = <WasmList::<$b> as Lift>::linear_lift_from_flat(cx, ty, src)?;
+                let vec = <$b>::linear_lift_list_from_memory(cx, &list)?;
+                $(let vec = <$c>::from(vec);)?
+                Ok(Self::from(vec))
             }
 
             fn linear_lift_from_memory(cx: &mut LiftContext<'_>, ty: InterfaceType, bytes: &[u8]) -> Result<Self> {
-                let list = <WasmList::<T> as Lift>::linear_lift_from_memory(cx, ty, bytes)?;
-                Ok(T::linear_lift_list_from_memory(cx, &list)?.into())
+                let list = <WasmList::<$b> as Lift>::linear_lift_from_memory(cx, ty, bytes)?;
+                let vec = <$b>::linear_lift_list_from_memory(cx, &list)?;
+                $(let vec = <$c>::from(vec);)?
+                Ok(Self::from(vec))
             }
         }
     )*)
 }
 
 forward_list_lifts! {
-    Box<[T]>,
-    alloc::sync::Arc<[T]>,
-    Vec<T>,
+    (T: Lift) Box<[T]> => WasmList<T>,
+    (T: Lift) alloc::sync::Arc<[T]> => WasmList<T>,
+    (T: Lift) Vec<T> => WasmList<T>,
+    #[cfg(feature = "component-model-bytes")]
+    () bytes::Bytes => WasmList<u8>,
+    // Note that `From<Vec<u8>> for BytesMut` is missing from the `bytes` crate
+    // and this is the subject of tokio-rs/bytes#615
+    #[cfg(feature = "component-model-bytes")]
+    () bytes::BytesMut => WasmList<u8> (via bytes::Bytes),
 }
 
 // Macro to help generate `ComponentType` implementations for primitive types
@@ -1156,7 +983,7 @@ macro_rules! integers {
             fn linear_lift_from_memory(_cx: &mut LiftContext<'_>, ty: InterfaceType, bytes: &[u8]) -> Result<Self> {
                 debug_assert!(matches!(ty, InterfaceType::$ty));
                 debug_assert!((bytes.as_ptr() as usize) % Self::SIZE32 == 0);
-                Ok($primitive::from_le_bytes(bytes.try_into().unwrap()))
+                Ok($primitive::from_le_bytes(*bytes.as_array().unwrap()))
             }
 
             fn linear_lift_into_from_memory(
@@ -1193,6 +1020,7 @@ macro_rules! floats {
             type Lower = ValRaw;
 
             const ABI: CanonicalAbiInfo = CanonicalAbiInfo::$abi;
+            const MAY_REQUIRE_REALLOC: bool = false;
 
             fn typecheck(ty: &InterfaceType, _types: &InstanceType<'_>) -> Result<()> {
                 match ty {
@@ -1255,8 +1083,9 @@ macro_rules! floats {
                 // into a memcpy on little-endian platforms.
                 // TODO use `as_chunks` when https://github.com/rust-lang/rust/issues/74985
                 // is stabilized
-                for (dst, src) in iter::zip(dst.chunks_exact_mut(Self::SIZE32), items) {
-                    let dst: &mut [u8; Self::SIZE32] = dst.try_into().unwrap();
+                let (dst, rest) = dst.as_chunks_mut::<{Self::SIZE32}>();
+                debug_assert!(rest.is_empty());
+                for (dst, src) in iter::zip(dst, items) {
                     *dst = src.to_le_bytes();
                 }
                 Ok(())
@@ -1274,7 +1103,7 @@ macro_rules! floats {
             fn linear_lift_from_memory(_cx: &mut LiftContext<'_>, ty: InterfaceType, bytes: &[u8]) -> Result<Self> {
                 debug_assert!(matches!(ty, InterfaceType::$ty));
                 debug_assert!((bytes.as_ptr() as usize) % Self::SIZE32 == 0);
-                Ok($float::from_le_bytes(bytes.try_into().unwrap()))
+                Ok($float::from_le_bytes(*bytes.as_array().unwrap()))
             }
 
             fn linear_lift_list_from_memory(cx: &mut LiftContext<'_>, list: &WasmList<Self>) -> Result<Vec<Self>> where Self: Sized {
@@ -1293,7 +1122,7 @@ macro_rules! floats {
                 Ok(
                     bytes
                         .chunks_exact(Self::SIZE32)
-                        .map(|i| $float::from_le_bytes(i.try_into().unwrap()))
+                        .map(|i| $float::from_le_bytes(*i.as_array().unwrap()))
                         .collect()
                 )
             }
@@ -1310,6 +1139,7 @@ unsafe impl ComponentType for bool {
     type Lower = ValRaw;
 
     const ABI: CanonicalAbiInfo = CanonicalAbiInfo::SCALAR1;
+    const MAY_REQUIRE_REALLOC: bool = false;
 
     fn typecheck(ty: &InterfaceType, _types: &InstanceType<'_>) -> Result<()> {
         match ty {
@@ -1376,6 +1206,7 @@ unsafe impl ComponentType for char {
     type Lower = ValRaw;
 
     const ABI: CanonicalAbiInfo = CanonicalAbiInfo::SCALAR4;
+    const MAY_REQUIRE_REALLOC: bool = false;
 
     fn typecheck(ty: &InterfaceType, _types: &InstanceType<'_>) -> Result<()> {
         match ty {
@@ -1431,7 +1262,7 @@ unsafe impl Lift for char {
     ) -> Result<Self> {
         debug_assert!(matches!(ty, InterfaceType::Char));
         debug_assert!((bytes.as_ptr() as usize) % Self::SIZE32 == 0);
-        let bits = u32::from_le_bytes(bytes.try_into().unwrap());
+        let bits = u32::from_le_bytes(*bytes.as_array().unwrap());
         Ok(char::try_from(bits)?)
     }
 }
@@ -1450,8 +1281,8 @@ fn lift_pointer_pair_from_flat(
 fn lift_pointer_pair_from_memory(cx: &mut LiftContext<'_>, bytes: &[u8]) -> Result<(usize, usize)> {
     // FIXME(#4311): needs memory64 treatment
     let _ = cx; // this will be needed for memory64 in the future
-    let ptr = u32::from_le_bytes(bytes[..4].try_into().unwrap());
-    let len = u32::from_le_bytes(bytes[4..].try_into().unwrap());
+    let ptr = u32::from_le_bytes(*bytes[..4].as_array().unwrap());
+    let len = u32::from_le_bytes(*bytes[4..].as_array().unwrap());
     Ok((usize::try_from(ptr)?, usize::try_from(len)?))
 }
 
@@ -1765,14 +1596,13 @@ impl WasmStr {
 
     fn decode_utf16<'a>(&self, memory: &'a [u8], len: usize) -> Result<Cow<'a, str>> {
         // See notes in `decode_utf8` for why this is panicking indexing.
-        let memory = &memory[self.ptr..][..len * 2];
-        Ok(core::char::decode_utf16(
-            memory
-                .chunks(2)
-                .map(|chunk| u16::from_le_bytes(chunk.try_into().unwrap())),
+        let (chunks, rest) = &memory[self.ptr..][..len * 2].as_chunks::<2>();
+        debug_assert!(rest.is_empty());
+        Ok(
+            core::char::decode_utf16(chunks.iter().map(|chunk| u16::from_le_bytes(*chunk)))
+                .collect::<Result<String, _>>()?
+                .into(),
         )
-        .collect::<Result<String, _>>()?
-        .into())
     }
 
     fn decode_latin1<'a>(&self, memory: &'a [u8]) -> Result<Cow<'a, str>> {
@@ -1982,7 +1812,10 @@ impl<T: Lift> WasmList<T> {
     // consumers should be validating through the iterator.
     pub fn get(&self, mut store: impl AsContextMut, index: usize) -> Option<Result<T>> {
         let store = store.as_context_mut().0;
-        let mut cx = LiftContext::new(store, self.options, self.instance);
+        let mut cx = match LiftContext::new(store, self.options, self.instance) {
+            Ok(cx) => cx,
+            Err(e) => return Some(Err(e)),
+        };
         self.get_from_store(&mut cx, index)
     }
 
@@ -2007,10 +1840,10 @@ impl<T: Lift> WasmList<T> {
     pub fn iter<'a, U: 'static>(
         &'a self,
         store: impl Into<StoreContextMut<'a, U>>,
-    ) -> impl ExactSizeIterator<Item = Result<T>> + 'a {
+    ) -> Result<impl ExactSizeIterator<Item = Result<T>> + 'a> {
         let store = store.into().0;
-        let mut cx = LiftContext::new(store, self.options, self.instance);
-        (0..self.len).map(move |i| self.get_from_store(&mut cx, i).unwrap())
+        let mut cx = LiftContext::new(store, self.options, self.instance)?;
+        Ok((0..self.len).map(move |i| self.get_from_store(&mut cx, i).unwrap()))
     }
 }
 
@@ -2534,6 +2367,7 @@ where
     type Lower = TupleLower<<u32 as ComponentType>::Lower, T::Lower>;
 
     const ABI: CanonicalAbiInfo = CanonicalAbiInfo::variant_static(&[None, Some(T::ABI)]);
+    const MAY_REQUIRE_REALLOC: bool = T::MAY_REQUIRE_REALLOC;
 
     fn typecheck(ty: &InterfaceType, types: &InstanceType<'_>) -> Result<()> {
         match ty {
@@ -2675,6 +2509,7 @@ where
     type Lower = ResultLower<T::Lower, E::Lower>;
 
     const ABI: CanonicalAbiInfo = CanonicalAbiInfo::variant_static(&[Some(T::ABI), Some(E::ABI)]);
+    const MAY_REQUIRE_REALLOC: bool = T::MAY_REQUIRE_REALLOC || E::MAY_REQUIRE_REALLOC;
 
     fn typecheck(ty: &InterfaceType, types: &InstanceType<'_>) -> Result<()> {
         match ty {
@@ -3032,6 +2867,7 @@ macro_rules! impl_component_ty_for_tuples {
             const ABI: CanonicalAbiInfo = CanonicalAbiInfo::record_static(&[
                 $($t::ABI),*
             ]);
+            const MAY_REQUIRE_REALLOC: bool = false $(|| $t::MAY_REQUIRE_REALLOC)*;
 
             const IS_RUST_UNIT_TYPE: bool = {
                 let mut _is_unit = true;
@@ -3139,6 +2975,102 @@ macro_rules! impl_component_ty_for_tuples {
 }
 
 for_each_function_signature!(impl_component_ty_for_tuples);
+
+unsafe impl<T, const N: usize> ComponentType for [T; N]
+where
+    T: ComponentType,
+{
+    type Lower = [T::Lower; N];
+
+    const ABI: CanonicalAbiInfo = CanonicalAbiInfo::fixed_length_list_static(&T::ABI, N);
+
+    fn typecheck(ty: &InterfaceType, types: &InstanceType<'_>) -> Result<()> {
+        match ty {
+            InterfaceType::FixedLengthList(t) => {
+                let list = &types.types[*t];
+                match usize::try_from(list.size) {
+                    Ok(n) if n == N => {}
+                    _ => bail!("expected `list<_, {}>` found `list<_, {N}>`", list.size),
+                }
+                T::typecheck(&list.element, types)
+            }
+            other => bail!("expected `list<_, {N}>` found `{}`", desc(other)),
+        }
+    }
+}
+
+unsafe impl<T, const N: usize> Lower for [T; N]
+where
+    T: Lower,
+{
+    fn linear_lower_to_flat<U>(
+        &self,
+        cx: &mut LowerContext<'_, U>,
+        ty: InterfaceType,
+        dst: &mut MaybeUninit<Self::Lower>,
+    ) -> Result<()> {
+        let element = match ty {
+            InterfaceType::FixedLengthList(ty) => cx.types[ty].element,
+            _ => bad_type_info(),
+        };
+        for (i, val) in self.iter().enumerate() {
+            val.linear_lower_to_flat(cx, element, map_maybe_uninit!(dst[i]))?;
+        }
+        Ok(())
+    }
+
+    fn linear_lower_to_memory<U>(
+        &self,
+        cx: &mut LowerContext<'_, U>,
+        ty: InterfaceType,
+        offset: usize,
+    ) -> Result<()> {
+        debug_assert!(offset % (Self::ALIGN32 as usize) == 0);
+        let element = match ty {
+            InterfaceType::FixedLengthList(ty) => cx.types[ty].element,
+            _ => bad_type_info(),
+        };
+        for (i, val) in self.iter().enumerate() {
+            val.linear_lower_to_memory(cx, element, offset + i * T::SIZE32)?;
+        }
+        Ok(())
+    }
+}
+
+unsafe impl<T, const N: usize> Lift for [T; N]
+where
+    T: Lift + Sized,
+{
+    fn linear_lift_from_flat(
+        cx: &mut LiftContext<'_>,
+        ty: InterfaceType,
+        src: &Self::Lower,
+    ) -> Result<Self> {
+        let element = match ty {
+            InterfaceType::FixedLengthList(ty) => cx.types[ty].element,
+            _ => bad_type_info(),
+        };
+        array_try_from_fn(|n| T::linear_lift_from_flat(cx, element, &src[n]))
+    }
+
+    fn linear_lift_from_memory(
+        cx: &mut LiftContext<'_>,
+        ty: InterfaceType,
+        bytes: &[u8],
+    ) -> Result<Self> {
+        debug_assert!((bytes.as_ptr() as usize) % (Self::ALIGN32 as usize) == 0);
+        let element = match ty {
+            InterfaceType::FixedLengthList(ty) => cx.types[ty].element,
+            _ => bad_type_info(),
+        };
+        let mut offset = 0;
+        array_try_from_fn(|_n| {
+            let res = T::linear_lift_from_memory(cx, element, &bytes[offset..offset + T::SIZE32]);
+            offset += T::SIZE32;
+            res
+        })
+    }
+}
 
 pub fn desc(ty: &InterfaceType) -> &'static str {
     match ty {

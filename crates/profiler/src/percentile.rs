@@ -1,94 +1,101 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::mem;
-
 use reifydb_value::value::duration::Duration;
 use serde::{Deserialize, Serialize};
-use tdigest::TDigest;
 
-const MAX_CENTROIDS: usize = 100;
-const FLUSH_THRESHOLD: usize = 64;
+const SUB_BUCKET_BITS: u32 = 3;
+const SUB_BUCKETS: usize = 1 << SUB_BUCKET_BITS;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct PercentileHistogram {
-	digest: TDigest,
-	pending: Vec<f64>,
+	counts: Vec<u64>,
+	count: u64,
+	max: u32,
 }
 
-impl Default for PercentileHistogram {
-	fn default() -> Self {
-		Self::new()
+fn bucket_index(value: u32) -> usize {
+	if (value as usize) < SUB_BUCKETS {
+		return value as usize;
 	}
+	let exp = 31 - value.leading_zeros();
+	let shift = exp - SUB_BUCKET_BITS;
+	let sub = ((value >> shift) as usize) & (SUB_BUCKETS - 1);
+	SUB_BUCKETS + (shift as usize) * SUB_BUCKETS + sub
+}
+
+fn bucket_midpoint(index: usize) -> u64 {
+	if index < SUB_BUCKETS {
+		return index as u64;
+	}
+	let shift = ((index - SUB_BUCKETS) / SUB_BUCKETS) as u32;
+	let sub = ((index - SUB_BUCKETS) % SUB_BUCKETS) as u64;
+	let low = (SUB_BUCKETS as u64 + sub) << shift;
+	low + (1u64 << shift) / 2
 }
 
 impl PercentileHistogram {
 	pub fn new() -> Self {
-		Self {
-			digest: TDigest::new_with_size(MAX_CENTROIDS),
-			pending: Vec::new(),
-		}
+		Self::default()
 	}
 
 	pub fn observe(&mut self, value_us: u32) {
-		self.pending.push(value_us as f64);
-		if self.pending.len() >= FLUSH_THRESHOLD {
-			self.flush();
+		let index = bucket_index(value_us);
+		if self.counts.len() <= index {
+			self.counts.resize(index + 1, 0);
 		}
+		self.counts[index] += 1;
+		self.count += 1;
+		self.max = self.max.max(value_us);
 	}
 
 	pub fn merge(&mut self, other: &Self) {
-		let mut combined: Vec<f64> = Vec::with_capacity(self.pending.len() + other.pending.len());
-		combined.append(&mut self.pending);
-		combined.extend(other.pending.iter().copied());
-		let merged = TDigest::merge_digests(vec![self.digest.clone(), other.digest.clone()]);
-		self.digest = if combined.is_empty() {
-			merged
-		} else {
-			merged.merge_unsorted(combined)
-		};
+		if self.counts.len() < other.counts.len() {
+			self.counts.resize(other.counts.len(), 0);
+		}
+		for (mine, theirs) in self.counts.iter_mut().zip(&other.counts) {
+			*mine += theirs;
+		}
+		self.count += other.count;
+		self.max = self.max.max(other.max);
 	}
 
 	pub fn total_count(&self) -> u64 {
-		(self.digest.count() as u64).saturating_add(self.pending.len() as u64)
+		self.count
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.total_count() == 0
+		self.count == 0
 	}
 
 	pub fn percentile(&self, p: f64) -> u32 {
-		if self.total_count() == 0 {
+		if self.count == 0 {
 			return 0;
 		}
 		let p = p.clamp(0.0, 1.0);
-		let digest_for_read = if self.pending.is_empty() {
-			self.digest.clone()
-		} else {
-			self.digest.clone().merge_unsorted(self.pending.clone())
-		};
-		let estimate = digest_for_read.estimate_quantile(p);
-		estimate.round().max(0.0).min(u32::MAX as f64) as u32
+		if p >= 1.0 {
+			return self.max;
+		}
+		let rank = ((p * self.count as f64).ceil() as u64).max(1);
+		let mut seen = 0u64;
+		for (index, bucket) in self.counts.iter().enumerate() {
+			seen += bucket;
+			if seen >= rank {
+				return bucket_midpoint(index).min(self.max as u64) as u32;
+			}
+		}
+		self.max
 	}
 
 	pub fn percentiles(&self) -> Percentiles {
-		if self.total_count() == 0 {
-			return Percentiles::default();
-		}
-		let digest_for_read = if self.pending.is_empty() {
-			self.digest.clone()
-		} else {
-			self.digest.clone().merge_unsorted(self.pending.clone())
-		};
-		let read = |p: f64| digest_for_read.estimate_quantile(p).round().max(0.0).min(u32::MAX as f64) as u32;
 		Percentiles {
-			p50: read(0.50),
-			p75: read(0.75),
-			p90: read(0.90),
-			p95: read(0.95),
-			p98: read(0.98),
-			p99: read(0.99),
-			p100: read(1.00),
+			p50: self.percentile(0.50),
+			p75: self.percentile(0.75),
+			p90: self.percentile(0.90),
+			p95: self.percentile(0.95),
+			p98: self.percentile(0.98),
+			p99: self.percentile(0.99),
+			p100: self.percentile(1.00),
 		}
 	}
 
@@ -103,14 +110,6 @@ impl PercentileHistogram {
 			p99: Duration::from_micros_infallible(raw.p99 as u64),
 			p100: Duration::from_micros_infallible(raw.p100 as u64),
 		}
-	}
-
-	fn flush(&mut self) {
-		if self.pending.is_empty() {
-			return;
-		}
-		let values = mem::take(&mut self.pending);
-		self.digest = self.digest.clone().merge_unsorted(values);
 	}
 }
 

@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.92.0"
+rust-version = "1.96.0"
 name = "wasmtime-environ"
-version = "44.0.2"
+version = "49.0.2"
 authors = ["The Wasmtime Project Developers"]
 build = false
 autolib = false
@@ -59,6 +59,7 @@ demangle = [
     "dep:cpp_demangle",
 ]
 gc = []
+gc-copying = ["gc"]
 gc-drc = ["gc"]
 gc-null = ["gc"]
 rr = ["component-model"]
@@ -93,24 +94,24 @@ required-features = [
 ]
 
 [dependencies.anyhow]
-version = "1.0.100"
+version = "1.0.103"
 default-features = false
 
 [dependencies.cpp_demangle]
-version = "0.4.3"
+version = "0.5.1"
 features = ["alloc"]
 optional = true
 default-features = false
 
 [dependencies.cranelift-bforest]
-version = "0.131.2"
+version = "0.136.2"
 
 [dependencies.cranelift-bitset]
-version = "0.131.2"
+version = "0.136.2"
 features = ["enable-serde"]
 
 [dependencies.cranelift-entity]
-version = "0.131.2"
+version = "0.136.2"
 features = ["enable-serde"]
 
 [dependencies.gimli]
@@ -119,12 +120,12 @@ features = ["read"]
 default-features = false
 
 [dependencies.hashbrown]
-version = "0.16"
+version = "0.17"
 features = ["default-hasher"]
 default-features = false
 
 [dependencies.indexmap]
-version = "2.11.4"
+version = "2.14.0"
 features = ["serde"]
 default-features = false
 
@@ -133,7 +134,7 @@ version = "0.4.28"
 default-features = false
 
 [dependencies.object]
-version = "0.39.0"
+version = "0.40.0"
 features = [
     "read_core",
     "elf",
@@ -176,14 +177,14 @@ features = [
 ]
 
 [dependencies.target-lexicon]
-version = "0.13.0"
+version = "0.13.5"
 
 [dependencies.wasm-encoder]
-version = "0.246.1"
+version = "0.258.3"
 optional = true
 
 [dependencies.wasmparser]
-version = "0.246.1"
+version = "0.258.3"
 features = [
     "simd",
     "validate",
@@ -193,16 +194,16 @@ features = [
 default-features = false
 
 [dependencies.wasmprinter]
-version = "0.246.1"
+version = "0.258.3"
 optional = true
 
 [dependencies.wasmtime-component-util]
-version = "=44.0.2"
+version = "=49.0.2"
 optional = true
 package = "wasmtime-internal-component-util"
 
 [dependencies.wasmtime-core]
-version = "=44.0.2"
+version = "=49.0.2"
 features = ["serde"]
 package = "wasmtime-internal-core"
 
@@ -226,7 +227,7 @@ default-features = false
 version = "0.11.5"
 
 [dev-dependencies.object]
-version = "0.39.0"
+version = "0.40.0"
 features = [
     "read_core",
     "elf",
@@ -235,7 +236,7 @@ features = [
 default-features = false
 
 [dev-dependencies.wat]
-version = "1.246.1"
+version = "1.258.3"
 
 [lints.clippy]
 allow_attributes_without_reason = "warn"
@@ -260,10 +261,10 @@ priority = -1
 [lints.rust]
 trivial_numeric_casts = "warn"
 unstable_features = "warn"
-unused-lifetimes = "warn"
-unused-macro-rules = "warn"
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
@@ -273,5 +274,6 @@ check-cfg = [
     "cfg(pulley_assume_llvm_makes_tail_calls)",
     "cfg(pulley_disable_interp_simd)",
     "cfg(arc_try_new)",
+    "cfg(fuzzing)",
     "cfg(gc_zeal)",
 ]

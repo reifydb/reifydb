@@ -10,31 +10,27 @@
     (table (;0;) 1 funcref)
     (memory (;0;) 17)
     (global (;0;) (mut i32) i32.const 1048576)
-    (global (;1;) (mut i32) i32.const 1048576)
-    (global (;2;) (mut i32) i32.const 0)
-    (global (;3;) i32 i32.const 1048592)
-    (global (;4;) i32 i32.const 1)
-    (global (;5;) (mut i32) i32.const 0)
+    (global (;1;) i32 i32.const 1048592)
+    (global (;2;) i32 i32.const 1)
+    (global (;3;) (mut i32) i32.const 0)
+    (global (;4;) i32 i32.const 1048624)
+    (global (;5;) i32 i32.const 1)
     (global (;6;) i32 i32.const 1048624)
     (global (;7;) i32 i32.const 1)
-    (global (;8;) i32 i32.const 1048624)
-    (global (;9;) i32 i32.const 1)
-    (global (;10;) (mut i32) i32.const 0)
-    (global (;11;) (mut i32) i32.const 1048640)
-    (global (;12;) (mut i32) i32.const 1114112)
+    (global (;8;) (mut i32) i32.const 0)
+    (global (;9;) (mut i32) i32.const 1048640)
+    (global (;10;) (mut i32) i32.const 1114112)
     (export "__stack_pointer" (global 0))
-    (export "__stack_high" (global 1))
-    (export "__stack_low" (global 2))
-    (export "bar:memory_base" (global 3))
-    (export "bar:table_base" (global 4))
-    (export "bar:well" (global 5))
-    (export "c:memory_base" (global 6))
-    (export "c:table_base" (global 7))
-    (export "foo:memory_base" (global 8))
-    (export "foo:table_base" (global 9))
-    (export "foo:um" (global 10))
-    (export "__heap_base" (global 11))
-    (export "__heap_end" (global 12))
+    (export "bar:memory_base" (global 1))
+    (export "bar:table_base" (global 2))
+    (export "bar:well" (global 3))
+    (export "c:memory_base" (global 4))
+    (export "c:table_base" (global 5))
+    (export "foo:memory_base" (global 6))
+    (export "foo:table_base" (global 7))
+    (export "foo:um" (global 8))
+    (export "__heap_base" (global 9))
+    (export "__heap_end" (global 10))
     (export "__indirect_function_table" (table 0))
     (export "memory" (memory 0))
     (@producers
@@ -147,43 +143,6 @@
     )
     (data $.data (;0;) (global.get $__memory_base) "\01\00\00\00\02\00\00\00\03\00\00\00\04\00\00\00\05\00\00\00")
   )
-  (core module $__init (;4;)
-    (type (;0;) (func))
-    (type (;1;) (func (param i32)))
-    (import "env" "memory" (memory (;0;) 0))
-    (import "env" "__indirect_function_table" (table (;0;) 0 funcref))
-    (import "bar" "__wasm_apply_data_relocs" (func (;0;) (type 0)))
-    (import "bar" "_initialize" (func (;1;) (type 0)))
-    (import "env" "foo:memory_base" (global (;0;) i32))
-    (import "foo" "well" (global (;1;) i32))
-    (import "env" "bar:well" (global (;2;) (mut i32)))
-    (import "foo" "__wasm_apply_data_relocs" (func (;2;) (type 0)))
-    (import "foo" "_initialize" (func (;3;) (type 0)))
-    (import "env" "bar:memory_base" (global (;3;) i32))
-    (import "bar" "um" (global (;4;) i32))
-    (import "env" "foo:um" (global (;5;) (mut i32)))
-    (start 4)
-    (elem (;0;) (i32.const 1) func)
-    (elem (;1;) (i32.const 1) func)
-    (func (;4;) (type 0)
-      global.get 0
-      global.get 1
-      i32.add
-      global.set 2
-      global.get 3
-      global.get 4
-      i32.add
-      global.set 5
-      call 0
-      call 2
-      call 1
-      call 3
-    )
-    (data (;0;) (i32.const 1048576) "\00\00\00\00\00\00\10\00")
-    (@producers
-      (processed-by "wit-component" "$CARGO_PKG_VERSION")
-    )
-  )
   (core instance $main (;0;) (instantiate $main))
   (alias core export $main "memory" (core memory $memory (;0;)))
   (alias core export $main "__heap_base" (core global $__heap_base (;0;)))
@@ -245,10 +204,46 @@
       (with "GOT.mem" (instance $"#core-instance8 GOT.mem"))
     )
   )
-  (core instance $__init (;10;) (instantiate $__init
-      (with "env" (instance $main))
-      (with "bar" (instance $bar))
+  (core module $wit-component-fixup (;4;)
+    (type (;0;) (func))
+    (import "main" "memory" (memory (;0;) 0))
+    (import "main" "__indirect_function_table" (table (;0;) 0 funcref))
+    (import "main" "foo:memory_base" (global $foo:memory_base (;0;) i32))
+    (import "foo" "well" (global $well (;1;) i32))
+    (import "main" "bar:well" (global $bar:well (;2;) (mut i32)))
+    (import "main" "bar:memory_base" (global $bar:memory_base (;3;) i32))
+    (import "bar" "um" (global $um (;4;) i32))
+    (import "main" "foo:um" (global $foo:um (;5;) (mut i32)))
+    (import "bar" "__wasm_apply_data_relocs" (func $__wasm_apply_data_relocs (;0;) (type 0)))
+    (import "foo" "__wasm_apply_data_relocs" (func $"#func1 __wasm_apply_data_relocs" (@name "__wasm_apply_data_relocs") (;1;) (type 0)))
+    (import "bar" "_initialize" (func $_initialize (;2;) (type 0)))
+    (import "foo" "_initialize" (func $"#func3 _initialize" (@name "_initialize") (;3;) (type 0)))
+    (start $start)
+    (elem (;0;) (i32.const 1) func)
+    (elem (;1;) (i32.const 1) func)
+    (func $start (;4;) (type 0)
+      global.get $foo:memory_base
+      global.get $well
+      i32.add
+      global.set $bar:well
+      global.get $bar:memory_base
+      global.get $um
+      i32.add
+      global.set $foo:um
+      call $__wasm_apply_data_relocs
+      call $"#func1 __wasm_apply_data_relocs"
+      call $_initialize
+      call $"#func3 _initialize"
+    )
+    (data (;0;) (i32.const 1048576) "\00\00\00\00\00\00\10\00")
+    (@producers
+      (processed-by "wit-component" "$CARGO_PKG_VERSION")
+    )
+  )
+  (core instance $fixup (;10;) (instantiate $wit-component-fixup
+      (with "main" (instance $main))
       (with "foo" (instance $foo))
+      (with "bar" (instance $bar))
     )
   )
   (type (;1;) (func (param "v" s32) (result s32)))

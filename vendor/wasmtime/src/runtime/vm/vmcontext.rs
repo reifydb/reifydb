@@ -7,18 +7,20 @@ pub use self::vm_host_func_context::VMArrayCallHostFuncContext;
 use crate::prelude::*;
 use crate::runtime::vm::{InterpreterRef, VMGcRef, VmPtr, VmSafe, f32x4, f64x2, i8x16};
 use crate::store::StoreOpaque;
-use crate::vm::stack_switching::VMStackChain;
+use crate::vm::stack_switching::{VMContinuationStack, VMStackChain, VMStackState};
 use core::cell::UnsafeCell;
 use core::ffi::c_void;
 use core::fmt;
-use core::marker;
+use core::marker::{self, PhantomPinned};
 use core::mem::{self, MaybeUninit};
+#[cfg(feature = "gc-null")]
+use core::num::NonZeroU32;
 use core::ops::Range;
 use core::ptr::{self, NonNull};
 use core::sync::atomic::{AtomicUsize, Ordering};
 use wasmtime_environ::{
     BuiltinFunctionIndex, DefinedGlobalIndex, DefinedMemoryIndex, DefinedTableIndex,
-    DefinedTagIndex, VMCONTEXT_MAGIC, VMSharedTypeIndex, WasmHeapTopType, WasmValType,
+    DefinedTagIndex, NUM_COMPONENT_CONTEXT_SLOTS, VMCONTEXT_MAGIC, VMSharedTypeIndex,
 };
 
 /// A function pointer that exposes the array calling convention.
@@ -67,55 +69,53 @@ pub struct VMArrayCallFunction(VMFunctionBody);
 #[repr(transparent)]
 pub struct VMWasmCallFunction(VMFunctionBody);
 
-/// An imported function.
-#[derive(Debug, Copy, Clone)]
-#[repr(C)]
-pub struct VMFunctionImport {
-    /// Function pointer to use when calling this imported function from Wasm.
-    pub wasm_call: VmPtr<VMWasmCallFunction>,
-
-    /// Function pointer to use when calling this imported function with the
-    /// "array" calling convention that `Func::new` et al use.
-    pub array_call: VmPtr<VMArrayCallFunction>,
-
-    /// The VM state associated with this function.
-    ///
-    /// For Wasm functions defined by core wasm instances this will be `*mut
-    /// VMContext`, but for lifted/lowered component model functions this will
-    /// be a `VMComponentContext`, and for a host function it will be a
-    /// `VMHostFuncContext`, etc.
-    pub vmctx: VmPtr<VMOpaqueContext>,
-}
-
-// SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
+// SAFETY: `VMFunctionImport` is generated with `#[repr(C)]` and only contains
+// `VmSafe` fields.
 unsafe impl VmSafe for VMFunctionImport {}
+
+impl VMFunctionImport {
+    /// Convert `&VMFunctionImport` into `&VMFuncRef`.
+    pub fn as_func_ref(&self) -> &VMFuncRef {
+        // Safety: `VMFunctionImport` and `VMFuncRef` have the same
+        // representation.
+        unsafe { Self::as_non_null_func_ref(NonNull::from(self)).as_ref() }
+    }
+
+    /// Convert `NonNull<VMFunctionImport>` into `NonNull<VMFuncRef>`.
+    pub fn as_non_null_func_ref(p: NonNull<VMFunctionImport>) -> NonNull<VMFuncRef> {
+        p.cast()
+    }
+
+    /// Convert `*mut VMFunctionImport` into `*mut VMFuncRef`.
+    pub fn as_func_ref_ptr(p: *mut VMFunctionImport) -> *mut VMFuncRef {
+        p.cast()
+    }
+}
 
 #[cfg(test)]
 mod test_vmfunction_import {
-    use super::VMFunctionImport;
+    use super::{VMFuncRef, VMFunctionImport};
     use core::mem::offset_of;
     use std::mem::size_of;
-    use wasmtime_environ::{HostPtr, Module, StaticModuleIndex, VMOffsets};
 
     #[test]
-    fn check_vmfunction_import_offsets() {
-        let module = Module::new(StaticModuleIndex::from_u32(0));
-        let offsets = VMOffsets::new(HostPtr, &module);
+    fn vmfunction_import_and_vmfunc_ref_have_same_layout() {
+        assert_eq!(size_of::<VMFunctionImport>(), size_of::<VMFuncRef>());
         assert_eq!(
-            size_of::<VMFunctionImport>(),
-            usize::from(offsets.size_of_vmfunction_import())
+            offset_of!(VMFunctionImport, array_call),
+            offset_of!(VMFuncRef, array_call),
         );
         assert_eq!(
             offset_of!(VMFunctionImport, wasm_call),
-            usize::from(offsets.vmfunction_import_wasm_call())
+            offset_of!(VMFuncRef, wasm_call),
         );
         assert_eq!(
-            offset_of!(VMFunctionImport, array_call),
-            usize::from(offsets.vmfunction_import_array_call())
+            offset_of!(VMFunctionImport, type_index),
+            offset_of!(VMFuncRef, type_index),
         );
         assert_eq!(
             offset_of!(VMFunctionImport, vmctx),
-            usize::from(offsets.vmfunction_import_vmctx())
+            offset_of!(VMFuncRef, vmctx),
         );
     }
 }
@@ -141,53 +141,14 @@ mod test_vmfunction_body {
     }
 }
 
-/// The fields compiled code needs to access to utilize a WebAssembly table
-/// imported from another instance.
-#[derive(Debug, Copy, Clone)]
-#[repr(C)]
-pub struct VMTableImport {
-    /// A pointer to the imported table description.
-    pub from: VmPtr<VMTableDefinition>,
-
-    /// A pointer to the `VMContext` that owns the table description.
-    pub vmctx: VmPtr<VMContext>,
-
-    /// The table index, within `vmctx`, this definition resides at.
-    pub index: DefinedTableIndex,
-}
-
-// SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
+// SAFETY: `VMTableImport` is generated with `#[repr(C)]` and only contains
+// `VmSafe` fields.
 unsafe impl VmSafe for VMTableImport {}
 
 #[cfg(test)]
 mod test_vmtable {
-    use super::VMTableImport;
-    use core::mem::offset_of;
-    use std::mem::size_of;
     use wasmtime_environ::component::{Component, VMComponentOffsets};
-    use wasmtime_environ::{HostPtr, Module, StaticModuleIndex, VMOffsets};
-
-    #[test]
-    fn check_vmtable_offsets() {
-        let module = Module::new(StaticModuleIndex::from_u32(0));
-        let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(
-            size_of::<VMTableImport>(),
-            usize::from(offsets.size_of_vmtable_import())
-        );
-        assert_eq!(
-            offset_of!(VMTableImport, from),
-            usize::from(offsets.vmtable_import_from())
-        );
-        assert_eq!(
-            offset_of!(VMTableImport, vmctx),
-            usize::from(offsets.vmtable_import_vmctx())
-        );
-        assert_eq!(
-            offset_of!(VMTableImport, index),
-            usize::from(offsets.vmtable_import_index())
-        );
-    }
+    use wasmtime_environ::{HostPtr, Module, PtrSize, StaticModuleIndex, VMOffsets};
 
     #[test]
     fn ensure_sizes_match() {
@@ -199,86 +160,18 @@ mod test_vmtable {
         let component = Component::default();
         let vm_component_offsets = VMComponentOffsets::new(HostPtr, &component);
         assert_eq!(
-            vm_offsets.size_of_vmtable_import(),
-            vm_component_offsets.size_of_vmtable_import()
+            vm_offsets.ptr.vm_table_import().size(),
+            vm_component_offsets.ptr.vm_table_import().size()
         );
     }
 }
 
-/// The fields compiled code needs to access to utilize a WebAssembly linear
-/// memory imported from another instance.
-#[derive(Debug, Copy, Clone)]
-#[repr(C)]
-pub struct VMMemoryImport {
-    /// A pointer to the imported memory description.
-    pub from: VmPtr<VMMemoryDefinition>,
-
-    /// A pointer to the `VMContext` that owns the memory description.
-    pub vmctx: VmPtr<VMContext>,
-
-    /// The index of the memory in the containing `vmctx`.
-    pub index: DefinedMemoryIndex,
-}
-
-// SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
+// SAFETY: `VMMemoryImport` is generated with `#[repr(C)]` and only contains
+// `VmSafe` fields.
 unsafe impl VmSafe for VMMemoryImport {}
 
-#[cfg(test)]
-mod test_vmmemory_import {
-    use super::VMMemoryImport;
-    use core::mem::offset_of;
-    use std::mem::size_of;
-    use wasmtime_environ::{HostPtr, Module, StaticModuleIndex, VMOffsets};
-
-    #[test]
-    fn check_vmmemory_import_offsets() {
-        let module = Module::new(StaticModuleIndex::from_u32(0));
-        let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(
-            size_of::<VMMemoryImport>(),
-            usize::from(offsets.size_of_vmmemory_import())
-        );
-        assert_eq!(
-            offset_of!(VMMemoryImport, from),
-            usize::from(offsets.vmmemory_import_from())
-        );
-        assert_eq!(
-            offset_of!(VMMemoryImport, vmctx),
-            usize::from(offsets.vmmemory_import_vmctx())
-        );
-        assert_eq!(
-            offset_of!(VMMemoryImport, index),
-            usize::from(offsets.vmmemory_import_index())
-        );
-    }
-}
-
-/// The fields compiled code needs to access to utilize a WebAssembly global
-/// variable imported from another instance.
-///
-/// Note that unlike with functions, tables, and memories, `VMGlobalImport`
-/// doesn't include a `vmctx` pointer. Globals are never resized, and don't
-/// require a `vmctx` pointer to access.
-#[derive(Debug, Copy, Clone)]
-#[repr(C)]
-pub struct VMGlobalImport {
-    /// A pointer to the imported global variable description.
-    pub from: VmPtr<VMGlobalDefinition>,
-
-    /// A pointer to the context that owns the global.
-    ///
-    /// Exactly what's stored here is dictated by `kind` below. This is `None`
-    /// for `VMGlobalKind::Host`, it's a `VMContext` for
-    /// `VMGlobalKind::Instance`, and it's `VMComponentContext` for
-    /// `VMGlobalKind::ComponentFlags`.
-    pub vmctx: Option<VmPtr<VMOpaqueContext>>,
-
-    /// The kind of global, and extra location information in addition to
-    /// `vmctx` above.
-    pub kind: VMGlobalKind,
-}
-
-// SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
+// SAFETY: `VMGlobalImport` is generated with `#[repr(C)]` and only contains
+// `VmSafe` fields.
 unsafe impl VmSafe for VMGlobalImport {}
 
 /// The kinds of globals that Wasmtime has.
@@ -292,101 +185,120 @@ pub enum VMGlobalKind {
     /// Flags for a component instance, stored in `VMComponentContext`.
     #[cfg(feature = "component-model")]
     ComponentFlags(wasmtime_environ::component::RuntimeComponentInstanceIndex),
-    #[cfg(feature = "component-model")]
-    TaskMayBlock,
 }
 
 // SAFETY: the above enum is repr(C) and stores nothing else
 unsafe impl VmSafe for VMGlobalKind {}
 
-#[cfg(test)]
-mod test_vmglobal_import {
-    use super::VMGlobalImport;
-    use core::mem::offset_of;
-    use std::mem::size_of;
-    use wasmtime_environ::{HostPtr, Module, StaticModuleIndex, VMOffsets};
-
-    #[test]
-    fn check_vmglobal_import_offsets() {
-        let module = Module::new(StaticModuleIndex::from_u32(0));
-        let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(
-            size_of::<VMGlobalImport>(),
-            usize::from(offsets.size_of_vmglobal_import())
-        );
-        assert_eq!(
-            offset_of!(VMGlobalImport, from),
-            usize::from(offsets.vmglobal_import_from())
-        );
-    }
-}
-
-/// The fields compiled code needs to access to utilize a WebAssembly
-/// tag imported from another instance.
-#[derive(Debug, Copy, Clone)]
-#[repr(C)]
-pub struct VMTagImport {
-    /// A pointer to the imported tag description.
-    pub from: VmPtr<VMTagDefinition>,
-
-    /// The instance that owns this tag.
-    pub vmctx: VmPtr<VMContext>,
-
-    /// The index of the tag in the containing `vmctx`.
-    pub index: DefinedTagIndex,
-}
-
-// SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
+// SAFETY: `VMTagImport` is generated with `#[repr(C)]` and only contains
+// `VmSafe` fields.
 unsafe impl VmSafe for VMTagImport {}
 
-#[cfg(test)]
-mod test_vmtag_import {
-    use super::VMTagImport;
-    use core::mem::{offset_of, size_of};
-    use wasmtime_environ::{HostPtr, Module, StaticModuleIndex, VMOffsets};
+/// Define the runtime definitions of the shared `VM*` types.
+#[cfg_attr(
+    not(test),
+    allow(
+        unused_macro_rules,
+        reason = "the `@test` arms are only expanded inside the `#[cfg(test)]` \
+                  layout-test module"
+    )
+)]
+macro_rules! define_vm_types {
+    (@test [ $($cfg:tt)* ] $Name:ident $snake:ident [ $($fname:ident)* ]) => {
+        $($cfg)*
+        #[test]
+        fn $snake() {
+            use super::$Name;
 
-    #[test]
-    fn check_vmtag_import_offsets() {
-        let module = Module::new(StaticModuleIndex::from_u32(0));
-        let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(
-            size_of::<VMTagImport>(),
-            usize::from(offsets.size_of_vmtag_import())
-        );
-        assert_eq!(
-            offset_of!(VMTagImport, from),
-            usize::from(offsets.vmtag_import_from())
-        );
-        assert_eq!(
-            offset_of!(VMTagImport, vmctx),
-            usize::from(offsets.vmtag_import_vmctx())
-        );
-        assert_eq!(
-            offset_of!(VMTagImport, index),
-            usize::from(offsets.vmtag_import_index())
-        );
-    }
+            let host = HostPtr;
+            let offsets = host.$snake();
+
+            let expected = usize::from(offsets.size());
+            let actual = size_of::<$Name>();
+            assert_eq!(
+                expected,
+                actual,
+                "size of {} failed: {expected} (expected) != {actual} (actual)",
+                stringify!($Name),
+            );
+
+            let expected = usize::from(offsets.align());
+            let actual = align_of::<$Name>();
+            assert_eq!(
+                expected,
+                actual,
+                "alignment of {} failed: {expected} (expected) != {actual} (actual)",
+                stringify!($Name),
+            );
+
+            $(
+                let expected = usize::from(offsets.$fname());
+                let actual = offset_of!($Name, $fname);
+                assert_eq!(
+                    expected,
+                    actual,
+                    "offset of {}::{} failed: {expected} (expected) != {actual} (actual)",
+                    stringify!($Name),
+                    stringify!($fname),
+                );
+            )*
+        }
+    };
+
+    ( $(
+        $(#[doc = $sdoc:literal])*
+        $(#[cfg($($scfg:tt)*)])?
+        $(#[derive($($d:ident),*)])?
+        #[repr($($repr:tt)*)]
+        #[snake_name = $snake:ident]
+        $svis:vis struct $Name:ident {
+            $(
+                $(#[doc = $fdoc:literal])*
+                $(#[aggregate])?
+                $(#[indexed])?
+                $(#[readonly])?
+                $(#[can_move])?
+                // Unlike the offsets and alias-region consumers, this one only
+                // ever re-emits a field's type verbatim, so it can capture the
+                // whole type as one fragment instead of taking it apart.
+                $fvis:vis $fname:ident : $fty:ty ,
+            )*
+        }
+    )* ) => {
+        $(
+            $(#[doc = $sdoc])*
+            $(#[cfg($($scfg)*)])?
+            $(#[derive($($d),*)])?
+            #[repr($($repr)*)]
+            $svis struct $Name {
+                $(
+                    $(#[doc = $fdoc])*
+                    $fvis $fname: $fty,
+                )*
+            }
+        )*
+
+        #[cfg(test)]
+        mod test_vm_type_layouts {
+            use core::mem::{align_of, offset_of, size_of};
+            use wasmtime_environ::{HostPtr, PtrSize};
+
+            $(
+                define_vm_types!(
+                    @test
+                    [ $(#[cfg($($scfg)*)])? ]
+                    $Name $snake
+                    [ $($fname)* ]
+                );
+            )*
+        }
+    };
 }
+wasmtime_environ::for_each_vm_type!(define_vm_types);
 
-/// The fields compiled code needs to access to utilize a WebAssembly linear
-/// memory defined within the instance, namely the start address and the
-/// size in bytes.
-#[derive(Debug)]
-#[repr(C)]
-pub struct VMMemoryDefinition {
-    /// The start address.
-    pub base: VmPtr<u8>,
-
-    /// The current logical size of this linear memory in bytes.
-    ///
-    /// This is atomic because shared memories must be able to grow their length
-    /// atomically. For relaxed access, see
-    /// [`VMMemoryDefinition::current_length()`].
-    pub current_length: AtomicUsize,
-}
-
-// SAFETY: the above definition has `repr(C)` and each field individually
-// implements `VmSafe`, which satisfies the requirements of this trait.
+// SAFETY: `VMMemoryDefinition` is generated with `#[repr(C)]` and each field
+// individually implements `VmSafe`, which satisfies the requirements of this
+// trait.
 unsafe impl VmSafe for VMMemoryDefinition {}
 
 impl VMMemoryDefinition {
@@ -415,98 +327,19 @@ impl VMMemoryDefinition {
     }
 }
 
-#[cfg(test)]
-mod test_vmmemory_definition {
-    use super::VMMemoryDefinition;
-    use core::mem::offset_of;
-    use std::mem::size_of;
-    use wasmtime_environ::{HostPtr, Module, PtrSize, StaticModuleIndex, VMOffsets};
-
-    #[test]
-    fn check_vmmemory_definition_offsets() {
-        let module = Module::new(StaticModuleIndex::from_u32(0));
-        let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(
-            size_of::<VMMemoryDefinition>(),
-            usize::from(offsets.ptr.size_of_vmmemory_definition())
-        );
-        assert_eq!(
-            offset_of!(VMMemoryDefinition, base),
-            usize::from(offsets.ptr.vmmemory_definition_base())
-        );
-        assert_eq!(
-            offset_of!(VMMemoryDefinition, current_length),
-            usize::from(offsets.ptr.vmmemory_definition_current_length())
-        );
-        /* TODO: Assert that the size of `current_length` matches.
-        assert_eq!(
-            size_of::<VMMemoryDefinition::current_length>(),
-            usize::from(offsets.size_of_vmmemory_definition_current_length())
-        );
-        */
-    }
-}
-
-/// The fields compiled code needs to access to utilize a WebAssembly table
-/// defined within the instance.
-#[derive(Debug, Copy, Clone)]
-#[repr(C)]
-pub struct VMTableDefinition {
-    /// Pointer to the table data.
-    pub base: VmPtr<u8>,
-
-    /// The current number of elements in the table.
-    pub current_elements: usize,
-}
-
-// SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
+// SAFETY: `VMTableDefinition` is generated with `#[repr(C)]` and only contains
+// `VmSafe` fields.
 unsafe impl VmSafe for VMTableDefinition {}
 
-#[cfg(test)]
-mod test_vmtable_definition {
-    use super::VMTableDefinition;
-    use core::mem::offset_of;
-    use std::mem::size_of;
-    use wasmtime_environ::{HostPtr, Module, StaticModuleIndex, VMOffsets};
-
-    #[test]
-    fn check_vmtable_definition_offsets() {
-        let module = Module::new(StaticModuleIndex::from_u32(0));
-        let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(
-            size_of::<VMTableDefinition>(),
-            usize::from(offsets.size_of_vmtable_definition())
-        );
-        assert_eq!(
-            offset_of!(VMTableDefinition, base),
-            usize::from(offsets.vmtable_definition_base())
-        );
-        assert_eq!(
-            offset_of!(VMTableDefinition, current_elements),
-            usize::from(offsets.vmtable_definition_current_elements())
-        );
-    }
-}
-
-/// The storage for a WebAssembly global defined within the instance.
-///
-/// TODO: Pack the globals more densely, rather than using the same size
-/// for every type.
-#[derive(Debug)]
-#[repr(C, align(16))]
-pub struct VMGlobalDefinition {
-    storage: [u8; 16],
-    // If more elements are added here, remember to add offset_of tests below!
-}
-
-// SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
+// SAFETY: `VMGlobalDefinition` is generated with `#[repr(C)]` and only contains
+// `VmSafe` fields.
 unsafe impl VmSafe for VMGlobalDefinition {}
 
 #[cfg(test)]
 mod test_vmglobal_definition {
     use super::VMGlobalDefinition;
     use std::mem::{align_of, size_of};
-    use wasmtime_environ::{HostPtr, Module, PtrSize, StaticModuleIndex, VMOffsets};
+    use wasmtime_environ::{HostPtr, Module, StaticModuleIndex, VMOffsets};
 
     #[test]
     fn check_vmglobal_definition_alignment() {
@@ -520,20 +353,10 @@ mod test_vmglobal_definition {
     }
 
     #[test]
-    fn check_vmglobal_definition_offsets() {
-        let module = Module::new(StaticModuleIndex::from_u32(0));
-        let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(
-            size_of::<VMGlobalDefinition>(),
-            usize::from(offsets.ptr.size_of_vmglobal_definition())
-        );
-    }
-
-    #[test]
     fn check_vmglobal_begins_aligned() {
         let module = Module::new(StaticModuleIndex::from_u32(0));
         let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(offsets.vmctx_globals_begin() % 16, 0);
+        assert_eq!(offsets.globals().begin() % 16, 0);
     }
 
     #[test]
@@ -547,86 +370,6 @@ impl VMGlobalDefinition {
     /// Construct a `VMGlobalDefinition`.
     pub fn new() -> Self {
         Self { storage: [0; 16] }
-    }
-
-    /// Create a `VMGlobalDefinition` from a `ValRaw`.
-    ///
-    /// # Unsafety
-    ///
-    /// This raw value's type must match the given `WasmValType`.
-    pub unsafe fn from_val_raw(
-        store: &mut StoreOpaque,
-        wasm_ty: WasmValType,
-        raw: ValRaw,
-    ) -> Result<Self> {
-        let mut global = Self::new();
-        unsafe {
-            match wasm_ty {
-                WasmValType::I32 => *global.as_i32_mut() = raw.get_i32(),
-                WasmValType::I64 => *global.as_i64_mut() = raw.get_i64(),
-                WasmValType::F32 => *global.as_f32_bits_mut() = raw.get_f32(),
-                WasmValType::F64 => *global.as_f64_bits_mut() = raw.get_f64(),
-                WasmValType::V128 => global.set_u128(raw.get_v128()),
-                WasmValType::Ref(r) => match r.heap_type.top() {
-                    WasmHeapTopType::Extern => {
-                        let r = VMGcRef::from_raw_u32(raw.get_externref());
-                        global.init_gc_ref(store, r.as_ref())
-                    }
-                    WasmHeapTopType::Any => {
-                        let r = VMGcRef::from_raw_u32(raw.get_anyref());
-                        global.init_gc_ref(store, r.as_ref())
-                    }
-                    WasmHeapTopType::Func => *global.as_func_ref_mut() = raw.get_funcref().cast(),
-                    WasmHeapTopType::Cont => *global.as_func_ref_mut() = raw.get_funcref().cast(), // TODO(#10248): temporary hack.
-                    WasmHeapTopType::Exn => {
-                        let r = VMGcRef::from_raw_u32(raw.get_exnref());
-                        global.init_gc_ref(store, r.as_ref())
-                    }
-                },
-            }
-        }
-        Ok(global)
-    }
-
-    /// Get this global's value as a `ValRaw`.
-    ///
-    /// # Unsafety
-    ///
-    /// This global's value's type must match the given `WasmValType`.
-    pub unsafe fn to_val_raw(
-        &self,
-        store: &mut StoreOpaque,
-        wasm_ty: WasmValType,
-    ) -> Result<ValRaw> {
-        unsafe {
-            Ok(match wasm_ty {
-                WasmValType::I32 => ValRaw::i32(*self.as_i32()),
-                WasmValType::I64 => ValRaw::i64(*self.as_i64()),
-                WasmValType::F32 => ValRaw::f32(*self.as_f32_bits()),
-                WasmValType::F64 => ValRaw::f64(*self.as_f64_bits()),
-                WasmValType::V128 => ValRaw::v128(self.get_u128()),
-                WasmValType::Ref(r) => match r.heap_type.top() {
-                    WasmHeapTopType::Extern => ValRaw::externref(match self.as_gc_ref() {
-                        Some(r) => store.clone_gc_ref(r).as_raw_u32(),
-                        None => 0,
-                    }),
-                    WasmHeapTopType::Any => ValRaw::anyref({
-                        match self.as_gc_ref() {
-                            Some(r) => store.clone_gc_ref(r).as_raw_u32(),
-                            None => 0,
-                        }
-                    }),
-                    WasmHeapTopType::Exn => ValRaw::exnref({
-                        match self.as_gc_ref() {
-                            Some(r) => store.clone_gc_ref(r).as_raw_u32(),
-                            None => 0,
-                        }
-                    }),
-                    WasmHeapTopType::Func => ValRaw::funcref(self.as_func_ref().cast()),
-                    WasmHeapTopType::Cont => todo!(), // FIXME: #10248 stack switching support.
-                },
-            })
-        }
     }
 
     /// Return a reference to the value as an i32.
@@ -745,8 +488,20 @@ impl VMGlobalDefinition {
         ret
     }
 
+    /// Return a reference to the global value as a borrowed GC reference.
+    pub unsafe fn as_gc_ref_mut(&mut self) -> Option<&mut VMGcRef> {
+        let raw_ptr = self.storage.as_mut().as_mut_ptr().cast::<Option<VMGcRef>>();
+        let ret = unsafe { (*raw_ptr).as_mut() };
+        assert!(cfg!(feature = "gc") || ret.is_none());
+        ret
+    }
+
     /// Initialize a global to the given GC reference.
-    pub unsafe fn init_gc_ref(&mut self, store: &mut StoreOpaque, gc_ref: Option<&VMGcRef>) {
+    pub unsafe fn init_gc_ref(
+        &mut self,
+        store: &mut StoreOpaque,
+        gc_ref: Option<&VMGcRef>,
+    ) -> Result<()> {
         let dest = unsafe {
             &mut *(self
                 .storage
@@ -759,7 +514,11 @@ impl VMGlobalDefinition {
     }
 
     /// Write a GC reference into this global value.
-    pub unsafe fn write_gc_ref(&mut self, store: &mut StoreOpaque, gc_ref: Option<&VMGcRef>) {
+    pub unsafe fn write_gc_ref(
+        &mut self,
+        store: &mut StoreOpaque,
+        gc_ref: Option<&VMGcRef>,
+    ) -> Result<()> {
         let dest = unsafe { &mut *(self.storage.as_mut().as_mut_ptr().cast::<Option<VMGcRef>>()) };
         store.write_gc_ref(dest, gc_ref)
     }
@@ -792,94 +551,30 @@ mod test_vmshared_type_index {
     }
 }
 
-/// A WebAssembly tag defined within the instance.
-///
-#[derive(Debug)]
-#[repr(C)]
-pub struct VMTagDefinition {
-    /// Function signature's type id.
-    pub type_index: VMSharedTypeIndex,
-}
-
 impl VMTagDefinition {
     pub fn new(type_index: VMSharedTypeIndex) -> Self {
         Self { type_index }
     }
 }
 
-// SAFETY: the above structure is repr(C) and only contains VmSafe
-// fields.
+// SAFETY: `VMTagDefinition` is generated with `#[repr(C)]` and only contains
+// `VmSafe` fields.
 unsafe impl VmSafe for VMTagDefinition {}
 
 #[cfg(test)]
 mod test_vmtag_definition {
-    use super::VMTagDefinition;
-    use std::mem::size_of;
-    use wasmtime_environ::{HostPtr, Module, PtrSize, StaticModuleIndex, VMOffsets};
-
-    #[test]
-    fn check_vmtag_definition_offsets() {
-        let module = Module::new(StaticModuleIndex::from_u32(0));
-        let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(
-            size_of::<VMTagDefinition>(),
-            usize::from(offsets.ptr.size_of_vmtag_definition())
-        );
-    }
+    use wasmtime_environ::{HostPtr, Module, StaticModuleIndex, VMOffsets};
 
     #[test]
     fn check_vmtag_begins_aligned() {
         let module = Module::new(StaticModuleIndex::from_u32(0));
         let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(offsets.vmctx_tags_begin() % 16, 0);
+        assert_eq!(offsets.tags().begin() % 16, 0);
     }
 }
 
-/// The VM caller-checked "funcref" record, for caller-side signature checking.
-///
-/// It consists of function pointer(s), a type id to be checked by the
-/// caller, and the vmctx closure associated with this function.
-#[derive(Debug, Clone)]
-#[repr(C)]
-pub struct VMFuncRef {
-    /// Function pointer for this funcref if being called via the "array"
-    /// calling convention that `Func::new` et al use.
-    pub array_call: VmPtr<VMArrayCallFunction>,
-
-    /// Function pointer for this funcref if being called via the calling
-    /// convention we use when compiling Wasm.
-    ///
-    /// Most functions come with a function pointer that we can use when they
-    /// are called from Wasm. The notable exception is when we `Func::wrap` a
-    /// host function, and we don't have a Wasm compiler on hand to compile a
-    /// Wasm-to-native trampoline for the function. In this case, we leave
-    /// `wasm_call` empty until the function is passed as an import to Wasm (or
-    /// otherwise exposed to Wasm via tables/globals). At this point, we look up
-    /// a Wasm-to-native trampoline for the function in the Wasm's compiled
-    /// module and use that fill in `VMFunctionImport::wasm_call`. **However**
-    /// there is no guarantee that the Wasm module has a trampoline for this
-    /// function's signature. The Wasm module only has trampolines for its
-    /// types, and if this function isn't of one of those types, then the Wasm
-    /// module will not have a trampoline for it. This is actually okay, because
-    /// it means that the Wasm cannot actually call this function. But it does
-    /// mean that this field needs to be an `Option` even though it is non-null
-    /// the vast vast vast majority of the time.
-    pub wasm_call: Option<VmPtr<VMWasmCallFunction>>,
-
-    /// Function signature's type id.
-    pub type_index: VMSharedTypeIndex,
-
-    /// The VM state associated with this function.
-    ///
-    /// The actual definition of what this pointer points to depends on the
-    /// function being referenced: for core Wasm functions, this is a `*mut
-    /// VMContext`, for host functions it is a `*mut VMHostFuncContext`, and for
-    /// component functions it is a `*mut VMComponentContext`.
-    pub vmctx: VmPtr<VMOpaqueContext>,
-    // If more elements are added here, remember to add offset_of tests below!
-}
-
-// SAFETY: the above structure is repr(C) and only contains `VmSafe` fields.
+// SAFETY: `VMFuncRef` is generated with `#[repr(C)]` and only contains
+// `VmSafe` fields.
 unsafe impl VmSafe for VMFuncRef {}
 
 impl VMFuncRef {
@@ -968,39 +663,15 @@ impl VMFuncRef {
             )
         }
     }
-}
 
-#[cfg(test)]
-mod test_vm_func_ref {
-    use super::VMFuncRef;
-    use core::mem::offset_of;
-    use std::mem::size_of;
-    use wasmtime_environ::{HostPtr, Module, PtrSize, StaticModuleIndex, VMOffsets};
-
-    #[test]
-    fn check_vm_func_ref_offsets() {
-        let module = Module::new(StaticModuleIndex::from_u32(0));
-        let offsets = VMOffsets::new(HostPtr, &module);
-        assert_eq!(
-            size_of::<VMFuncRef>(),
-            usize::from(offsets.ptr.size_of_vm_func_ref())
-        );
-        assert_eq!(
-            offset_of!(VMFuncRef, array_call),
-            usize::from(offsets.ptr.vm_func_ref_array_call())
-        );
-        assert_eq!(
-            offset_of!(VMFuncRef, wasm_call),
-            usize::from(offsets.ptr.vm_func_ref_wasm_call())
-        );
-        assert_eq!(
-            offset_of!(VMFuncRef, type_index),
-            usize::from(offsets.ptr.vm_func_ref_type_index())
-        );
-        assert_eq!(
-            offset_of!(VMFuncRef, vmctx),
-            usize::from(offsets.ptr.vm_func_ref_vmctx())
-        );
+    pub(crate) fn as_vm_function_import(&self) -> Option<&VMFunctionImport> {
+        if self.wasm_call.is_some() {
+            // Safety: `VMFuncRef` and `VMFunctionImport` have the same layout
+            // and `wasm_call` is non-null.
+            Some(unsafe { NonNull::from(self).cast::<VMFunctionImport>().as_ref() })
+        } else {
+            None
+        }
     }
 }
 
@@ -1074,157 +745,6 @@ const _: () = {
     )
 };
 
-/// Structure that holds all mutable context that is shared across all instances
-/// in a store, for example data related to fuel or epochs.
-///
-/// `VMStoreContext`s are one-to-one with `wasmtime::Store`s, the same way that
-/// `VMContext`s are one-to-one with `wasmtime::Instance`s. And the same way
-/// that multiple `wasmtime::Instance`s may be associated with the same
-/// `wasmtime::Store`, multiple `VMContext`s hold a pointer to the same
-/// `VMStoreContext` when they are associated with the same `wasmtime::Store`.
-#[derive(Debug)]
-#[repr(C)]
-pub struct VMStoreContext {
-    // NB: 64-bit integer fields are located first with pointer-sized fields
-    // trailing afterwards. That makes the offsets in this structure easier to
-    // calculate on 32-bit platforms as we don't have to worry about the
-    // alignment of 64-bit integers.
-    //
-    /// Indicator of how much fuel has been consumed and is remaining to
-    /// WebAssembly.
-    ///
-    /// This field is typically negative and increments towards positive. Upon
-    /// turning positive a wasm trap will be generated. This field is only
-    /// modified if wasm is configured to consume fuel.
-    pub fuel_consumed: UnsafeCell<i64>,
-
-    /// Deadline epoch for interruption: if epoch-based interruption
-    /// is enabled and the global (per engine) epoch counter is
-    /// observed to reach or exceed this value, the guest code will
-    /// yield if running asynchronously.
-    pub epoch_deadline: UnsafeCell<u64>,
-
-    /// The "store version".
-    ///
-    /// This is used to test whether stack-frame handles referring to
-    /// suspended stack frames remain valid.
-    ///
-    /// The invariant that this upward-counting number must satisfy
-    /// is: the number must be incremented whenever execution starts
-    /// or resumes in the `Store` or when any stack is
-    /// dropped/freed. That way, if we take a reference to some
-    /// suspended stack frame and track the "version" at the time we
-    /// took that reference, if the version still matches, we can be
-    /// sure that nothing could have unwound the referenced Wasm
-    /// frame.
-    ///
-    /// This version number is incremented in exactly one place: the
-    /// Wasm-to-host trampolines, after return from host code. Note
-    /// that this captures both the normal "return into Wasm" case
-    /// (where Wasm frames can subsequently return normally and thus
-    /// invalidate frames), and the "trap/exception unwinds Wasm
-    /// frames" case, which is done internally via the `raise` libcall
-    /// invoked after the main hostcall returns an error, and after we
-    /// increment this version number.
-    ///
-    /// Note that this also handles the fiber/future-drop case because
-    /// because we *always* return into the trampoline to clean up;
-    /// that trampoline immediately raises an error and uses the
-    /// longjmp-like unwind within Cranelift frames to skip over all
-    /// the guest Wasm frames, but not before it increments the
-    /// store's execution version number.
-    ///
-    /// This field is in use only if guest debugging is enabled.
-    pub execution_version: u64,
-
-    /// Current stack limit of the wasm module.
-    ///
-    /// For more information see `crates/cranelift/src/lib.rs`.
-    pub stack_limit: UnsafeCell<usize>,
-
-    /// The `VMMemoryDefinition` for this store's GC heap.
-    pub gc_heap: VMMemoryDefinition,
-
-    /// The value of the frame pointer register in the trampoline used
-    /// to call from Wasm to the host.
-    ///
-    /// Maintained by our Wasm-to-host trampoline, and cleared just
-    /// before calling into Wasm in `catch_traps`.
-    ///
-    /// This member is `0` when Wasm is actively running and has not called out
-    /// to the host.
-    ///
-    /// Used to find the start of a contiguous sequence of Wasm frames
-    /// when walking the stack. Note that we record the FP of the
-    /// *trampoline*'s frame, not the last Wasm frame, because we need
-    /// to know the SP (bottom of frame) of the last Wasm frame as
-    /// well in case we need to resume to an exception handler in that
-    /// frame. The FP of the last Wasm frame can be recovered by
-    /// loading the saved FP value at this FP address.
-    pub last_wasm_exit_trampoline_fp: UnsafeCell<usize>,
-
-    /// The last Wasm program counter before we called from Wasm to the host.
-    ///
-    /// Maintained by our Wasm-to-host trampoline, and cleared just before
-    /// calling into Wasm in `catch_traps`.
-    ///
-    /// This member is `0` when Wasm is actively running and has not called out
-    /// to the host.
-    ///
-    /// Used when walking a contiguous sequence of Wasm frames.
-    pub last_wasm_exit_pc: UnsafeCell<usize>,
-
-    /// The last host stack pointer before we called into Wasm from the host.
-    ///
-    /// Maintained by our host-to-Wasm trampoline. This member is `0` when Wasm
-    /// is not running, and it's set to nonzero once a host-to-wasm trampoline
-    /// is executed.
-    ///
-    /// When a host function is wrapped into a `wasmtime::Func`, and is then
-    /// called from the host, then this member is not changed meaning that the
-    /// previous activation in pointed to by `last_wasm_exit_trampoline_fp` is
-    /// still the last wasm set of frames on the stack.
-    ///
-    /// This field is saved/restored during fiber suspension/resumption
-    /// resumption as part of `CallThreadState::swap`.
-    ///
-    /// This field is used to find the end of a contiguous sequence of Wasm
-    /// frames when walking the stack. Additionally it's used when a trap is
-    /// raised as part of the set of parameters used to resume in the entry
-    /// trampoline's "catch" block.
-    pub last_wasm_entry_sp: UnsafeCell<usize>,
-
-    /// Same as `last_wasm_entry_sp`, but for the `fp` of the trampoline.
-    pub last_wasm_entry_fp: UnsafeCell<usize>,
-
-    /// The last trap handler from a host-to-wasm entry trampoline on the stack.
-    ///
-    /// This field is configured when the host calls into wasm by the trampoline
-    /// itself. It stores the `pc` of an exception handler suitable to handle
-    /// all traps (or uncaught exceptions).
-    pub last_wasm_entry_trap_handler: UnsafeCell<usize>,
-
-    /// Stack information used by stack switching instructions. See documentation
-    /// on `VMStackChain` for details.
-    pub stack_chain: UnsafeCell<VMStackChain>,
-
-    /// A pointer to the embedder's `T` inside a `Store<T>`, for use with the
-    /// `store-data-address` unsafe intrinsic.
-    pub store_data: VmPtr<()>,
-
-    /// The range, in addresses, of the guard page that is currently in use.
-    ///
-    /// This field is used when signal handlers are run to determine whether a
-    /// faulting address lies within the guard page of an async stack for
-    /// example. If this happens then the signal handler aborts with a stack
-    /// overflow message similar to what would happen had the stack overflow
-    /// happened on the main thread. This field is, by default a null..null
-    /// range indicating that no async guard is in use (aka no fiber). In such a
-    /// situation while this field is read it'll never classify a fault as an
-    /// guard page fault.
-    pub async_guard_range: Range<*mut u8>,
-}
-
 impl VMStoreContext {
     /// From the current saved trampoline FP, get the FP of the last
     /// Wasm frame. If the current saved trampoline FP is null, return
@@ -1276,6 +796,16 @@ impl VMStoreContext {
             0
         }
     }
+
+    #[cfg(feature = "component-model-async")]
+    pub(crate) fn component_context_mut(&mut self) -> &mut [u32; NUM_COMPONENT_CONTEXT_SLOTS] {
+        self.component_context.get_mut()
+    }
+
+    #[cfg(feature = "component-model-async")]
+    pub(crate) fn current_thread_mut(&mut self) -> &mut VMLazyThread {
+        self.current_thread.get_mut()
+    }
 }
 
 // The `VMStoreContext` type is a pod-type with no destructor, and we don't
@@ -1294,11 +824,11 @@ impl Default for VMStoreContext {
             fuel_consumed: UnsafeCell::new(0),
             epoch_deadline: UnsafeCell::new(0),
             execution_version: 0,
-            stack_limit: UnsafeCell::new(usize::max_value()),
-            gc_heap: VMMemoryDefinition {
+            stack_limit: UnsafeCell::new(usize::MAX),
+            gc_heap: UnsafeCell::new(VMMemoryDefinition {
                 base: NonNull::dangling().into(),
                 current_length: AtomicUsize::new(0),
-            },
+            }),
             last_wasm_exit_trampoline_fp: UnsafeCell::new(0),
             last_wasm_exit_pc: UnsafeCell::new(0),
             last_wasm_entry_fp: UnsafeCell::new(0),
@@ -1307,6 +837,8 @@ impl Default for VMStoreContext {
             stack_chain: UnsafeCell::new(VMStackChain::Absent),
             async_guard_range: ptr::null_mut()..ptr::null_mut(),
             store_data: VmPtr::dangling(),
+            component_context: UnsafeCell::new([0; NUM_COMPONENT_CONTEXT_SLOTS]),
+            current_thread: UnsafeCell::new(VMLazyThread::none()),
         }
     }
 }
@@ -1317,65 +849,109 @@ mod test_vmstore_context {
     use core::mem::offset_of;
     use wasmtime_environ::{HostPtr, Module, PtrSize, StaticModuleIndex, VMOffsets};
 
+    /// Check the `VMStoreContext` offsets that `for_each_vm_type!` does *not*
+    /// generate: the offsets reaching into the inlined `gc_heap`.
+    ///
+    /// Every field offset, plus the size and alignment of the type, is already
+    /// checked by the generated `test_vm_type_layouts::vm_store_context`.
     #[test]
-    fn field_offsets() {
+    fn derived_field_offsets() {
         let module = Module::new(StaticModuleIndex::from_u32(0));
         let offsets = VMOffsets::new(HostPtr, &module);
         assert_eq!(
-            offset_of!(VMStoreContext, stack_limit),
-            usize::from(offsets.ptr.vmstore_context_stack_limit())
-        );
-        assert_eq!(
-            offset_of!(VMStoreContext, fuel_consumed),
-            usize::from(offsets.ptr.vmstore_context_fuel_consumed())
-        );
-        assert_eq!(
-            offset_of!(VMStoreContext, epoch_deadline),
-            usize::from(offsets.ptr.vmstore_context_epoch_deadline())
-        );
-        assert_eq!(
-            offset_of!(VMStoreContext, execution_version),
-            usize::from(offsets.ptr.vmstore_context_execution_version())
-        );
-        assert_eq!(
-            offset_of!(VMStoreContext, gc_heap),
-            usize::from(offsets.ptr.vmstore_context_gc_heap())
-        );
-        assert_eq!(
             offset_of!(VMStoreContext, gc_heap) + offset_of!(VMMemoryDefinition, base),
-            usize::from(offsets.ptr.vmstore_context_gc_heap_base())
+            usize::from(offsets.ptr.vm_store_context().gc_heap_base())
         );
         assert_eq!(
             offset_of!(VMStoreContext, gc_heap) + offset_of!(VMMemoryDefinition, current_length),
-            usize::from(offsets.ptr.vmstore_context_gc_heap_current_length())
+            usize::from(offsets.ptr.vm_store_context().gc_heap_current_length())
         );
+    }
+}
+
+#[cfg(test)]
+mod test_vm_cont_ref {
+    use wasmtime_environ::PtrSize;
+
+    /// Check the one `VMContRef` property that `for_each_vm_type!` does *not*
+    /// generate an assertion for: that `revision` lands at an eight-aligned
+    /// offset for every target pointer width, not just the host's.
+    ///
+    /// Some 32-bit platforms need it to be 8-byte aligned and some don't, so we
+    /// make sure that it always is, without padding to get there.
+    ///
+    /// Every field offset, plus the size and alignment of the type, is already
+    /// checked by the generated `test_vm_type_layouts::vm_cont_ref`.
+    #[test]
+    fn revision_is_eight_aligned() {
+        assert_eq!(4u8.vm_cont_ref().revision() % 8, 0);
+        assert_eq!(8u8.vm_cont_ref().revision() % 8, 0);
+    }
+}
+
+impl VMLazyThread {
+    const _ASSERT_SIZE: () = assert!(
+        core::mem::size_of::<VMLazyThread>() == core::mem::size_of::<*mut VMDeferredThread>()
+    );
+    const _ASSERT_ALIGN: () = assert!(
+        core::mem::align_of::<VMLazyThread>() == core::mem::align_of::<*mut VMDeferredThread>()
+    );
+
+    const FORCED: VmPtr<VMDeferredThread> = VmPtr::<u8>::dangling().cast();
+
+    /// There is no current thread.
+    pub const fn none() -> Self {
+        Self { thread: None }
+    }
+
+    /// A lazy thread that has already been promoted.
+    pub const fn forced() -> Self {
+        Self {
+            thread: Some(Self::FORCED),
+        }
+    }
+
+    /// A deferred thread referencing the given on-stack [`VMDeferredThread`].
+    pub fn deferred(ptr: NonNull<VMDeferredThread>) -> Self {
+        debug_assert_eq!(ptr.addr().get() & Self::FORCED.addr().get(), 0);
+        Self {
+            thread: Some(ptr.into()),
+        }
+    }
+
+    /// Returns `true` if there is no current thread.
+    pub fn is_none(self) -> bool {
+        self.thread.is_none()
+    }
+
+    /// Returns `true` if a deferred thread has been forced/promoted.
+    pub fn is_forced(self) -> bool {
+        self.thread.is_some_and(|p| p == Self::FORCED)
+    }
+
+    /// Returns `true` if this is a deferred thread (i.e. neither `None` nor
+    /// forced).
+    pub fn is_deferred(self) -> bool {
+        self.thread.is_some_and(|p| p != Self::FORCED)
+    }
+
+    /// Returns the deferred [`VMDeferredThread`] pointer if this is a deferred
+    /// thread.
+    pub fn as_deferred(self) -> Option<VmPtr<VMDeferredThread>> {
+        self.thread
+            .and_then(|p| if p == Self::FORCED { None } else { Some(p) })
+    }
+}
+
+#[cfg(test)]
+mod test_vmlazy_thread {
+    use super::*;
+
+    #[test]
+    fn vmlazy_thread_forced() {
         assert_eq!(
-            offset_of!(VMStoreContext, last_wasm_exit_trampoline_fp),
-            usize::from(offsets.ptr.vmstore_context_last_wasm_exit_trampoline_fp())
-        );
-        assert_eq!(
-            offset_of!(VMStoreContext, last_wasm_exit_pc),
-            usize::from(offsets.ptr.vmstore_context_last_wasm_exit_pc())
-        );
-        assert_eq!(
-            offset_of!(VMStoreContext, last_wasm_entry_fp),
-            usize::from(offsets.ptr.vmstore_context_last_wasm_entry_fp())
-        );
-        assert_eq!(
-            offset_of!(VMStoreContext, last_wasm_entry_sp),
-            usize::from(offsets.ptr.vmstore_context_last_wasm_entry_sp())
-        );
-        assert_eq!(
-            offset_of!(VMStoreContext, last_wasm_entry_trap_handler),
-            usize::from(offsets.ptr.vmstore_context_last_wasm_entry_trap_handler())
-        );
-        assert_eq!(
-            offset_of!(VMStoreContext, stack_chain),
-            usize::from(offsets.ptr.vmstore_context_stack_chain())
-        );
-        assert_eq!(
-            offset_of!(VMStoreContext, store_data),
-            usize::from(offsets.ptr.vmstore_context_store_data())
+            VMLazyThread::forced().thread.unwrap().addr().get(),
+            usize::try_from(wasmtime_environ::VM_LAZY_THREAD_FORCED).unwrap()
         );
     }
 }
@@ -1399,7 +975,7 @@ impl VMContext {
     #[inline]
     pub unsafe fn from_opaque(opaque: NonNull<VMOpaqueContext>) -> NonNull<VMContext> {
         // Note that in general the offset of the "magic" field is stored in
-        // `VMOffsets::vmctx_magic`. Given though that this is a sanity check
+        // `VMContext::magic`. Given though that this is a sanity check
         // about converting this pointer to another type we ideally don't want
         // to read the offset from potentially corrupt memory. Instead it would
         // be better to catch errors here as soon as possible.
@@ -1666,6 +1242,18 @@ impl ValRaw {
         ValRaw { exnref: r.to_le() }
     }
 
+    #[inline]
+    pub(crate) fn vmgcref(r: Option<VMGcRef>) -> ValRaw {
+        let raw = r.map_or(0, |r| r.as_raw_u32());
+
+        // NB: All `VMGcRef`-based `ValRaw`s are the same.
+        debug_assert_eq!(raw, ValRaw::anyref(raw).get_exnref());
+        debug_assert_eq!(raw, ValRaw::exnref(raw).get_externref());
+        debug_assert_eq!(raw, ValRaw::externref(raw).get_anyref());
+
+        ValRaw::anyref(raw)
+    }
+
     /// Gets the WebAssembly `i32` value
     #[inline]
     pub fn get_i32(&self) -> i32 {
@@ -1737,6 +1325,13 @@ impl ValRaw {
         let exnref = u32::from_le(unsafe { self.exnref });
         assert!(cfg!(feature = "gc") || exnref == 0);
         exnref
+    }
+
+    /// Get the inner `VMGcRef`.
+    pub(crate) fn get_vmgcref(&self) -> Option<crate::vm::VMGcRef> {
+        debug_assert_eq!(self.get_anyref(), self.get_exnref());
+        debug_assert_eq!(self.get_anyref(), self.get_externref());
+        VMGcRef::from_raw_u32(self.get_anyref())
     }
 }
 

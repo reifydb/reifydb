@@ -30,14 +30,12 @@ use crate::{
 			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass,
 		},
 		dictionary::Dictionary,
-		diff::DiffStart,
 		extern_c::{
 			binding::{
 				sink::ExternCRowSink,
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
-					get_or_create_row_numbers_for_pairs, reclaim_group_identity,
-					reclaim_group_identity_keys, remove_row_number,
+					get_or_create_row_numbers_for_pairs, reclaim_group_identity, remove_row_number,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -175,22 +173,10 @@ impl ExternCContext {
 		reclaim_group_identity(self, group, limit)
 	}
 
-	pub fn reclaim_group_identity_keys(
-		&mut self,
-		group: GroupId,
-		keys: &[GroupStateKey],
-	) -> Result<ReclaimOutcome> {
-		reclaim_group_identity_keys(self, group, keys)
-	}
-
 	pub fn builder(&mut self) -> ColumnsBuilder<'_> {
 		ColumnsBuilder::new(self.ctx as *mut c_void, unsafe { (*self.ctx).callbacks.builder }, unsafe {
 			(*self.ctx).written_at_nanos
 		})
-	}
-
-	pub fn diff(&mut self) -> DiffStart<'_> {
-		DiffStart::new(self)
 	}
 }
 
@@ -342,11 +328,5 @@ impl<C> GuestContext<C> for ExternCContext {
 		C: WindowClass,
 	{
 		ExternCContext::reclaim_group_identity(self, group, limit)
-	}
-	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome>
-	where
-		C: WindowClass,
-	{
-		ExternCContext::reclaim_group_identity_keys(self, group, keys)
 	}
 }

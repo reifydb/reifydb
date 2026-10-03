@@ -76,6 +76,12 @@ pub fn infer_native_flags(isa_builder: &mut dyn Configurable) -> Result<(), &'st
         if std::is_x86_feature_detected!("fma") {
             isa_builder.enable("has_fma").unwrap();
         }
+        if std::is_x86_feature_detected!("avxvnni") {
+            isa_builder.enable("has_avx_vnni").unwrap();
+        }
+        if std::is_x86_feature_detected!("avx512vnni") {
+            isa_builder.enable("has_avx512vnni").unwrap();
+        }
         if std::is_x86_feature_detected!("bmi1") {
             isa_builder.enable("has_bmi1").unwrap();
         }
@@ -114,6 +120,14 @@ pub fn infer_native_flags(isa_builder: &mut dyn Configurable) -> Result<(), &'st
 
         if std::arch::is_aarch64_feature_detected!("fp16") {
             isa_builder.enable("has_fp16").unwrap();
+        }
+
+        if std::arch::is_aarch64_feature_detected!("dotprod") {
+            isa_builder.enable("has_dotprod").unwrap();
+        }
+
+        if std::arch::is_aarch64_feature_detected!("i8mm") {
+            isa_builder.enable("has_i8mm").unwrap();
         }
 
         if cfg!(target_os = "macos") {

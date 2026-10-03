@@ -19,7 +19,8 @@ use reifydb_core::{
 	key::{
 		any::TaggedKey,
 		operator::state::{
-			GroupId, GroupStateKey, OperatorStateKey, group_inner_range, unmanaged_key, unmanaged_key_in,
+			GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey, group_inner_range, unmanaged_key,
+			unmanaged_key_in,
 		},
 		queue::QueueDeduplicationKey,
 		row::RowKey,
@@ -811,8 +812,13 @@ fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
 		}
 	}
 
-	let batched: Vec<TaggedKey> =
-		txn.state_group_range(operator, &groups, 64).unwrap().items.into_iter().map(|row| row.key).collect();
+	let batched: Vec<TaggedKey> = txn
+		.state_group_range(operator, &groups, 64, KeyspaceMask::all())
+		.unwrap()
+		.items
+		.into_iter()
+		.map(|row| row.key)
+		.collect();
 
 	let mut expected: Vec<TaggedKey> = Vec::new();
 	for group in sweep_order(&groups) {
@@ -847,8 +853,13 @@ fn a_group_range_honours_a_pending_write_that_storage_has_never_seen() {
 	txn.state_remove(operator, &doomed).unwrap();
 	txn.state_set(operator, &added, make_value("3")).unwrap();
 
-	let keys: Vec<TaggedKey> =
-		txn.state_group_range(operator, &groups, 64).unwrap().items.into_iter().map(|row| row.key).collect();
+	let keys: Vec<TaggedKey> = txn
+		.state_group_range(operator, &groups, 64, KeyspaceMask::all())
+		.unwrap()
+		.items
+		.into_iter()
+		.map(|row| row.key)
+		.collect();
 
 	assert!(!keys.contains(&full_key(operator, &doomed)), "a pending remove must not come back from storage");
 	assert!(keys.contains(&full_key(operator, &added)), "a pending insert must be visible to the batched read");

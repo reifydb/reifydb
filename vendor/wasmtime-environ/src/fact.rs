@@ -20,14 +20,19 @@
 
 use crate::component::dfg::CoreDef;
 use crate::component::{
-    Adapter, AdapterOptions as AdapterOptionsDfg, ComponentTypesBuilder, FlatType, InterfaceType,
-    RuntimeComponentInstanceIndex, StringEncoding, Transcode, TypeFuncIndex,
+    Adapter, AdapterOptions as AdapterOptionsDfg, CanonicalAbiInfo, ComponentTypesBuilder,
+    FlatType, InterfaceType, RuntimeComponentInstanceIndex, StringEncoding, Transcode,
+    TypeFuncIndex, UnsafeIntrinsic,
 };
 use crate::fact::transcode::Transcoder;
-use crate::{EntityRef, FuncIndex, GlobalIndex, MemoryIndex, PrimaryMap, Tunables};
-use crate::{ModuleInternedTypeIndex, prelude::*};
+use crate::prelude::*;
+use crate::{
+    EntityRef, FuncIndex, GlobalIndex, IndexType, Memory, MemoryIndex, ModuleInternedTypeIndex,
+    PrimaryMap, Trap, Tunables, WasmValType,
+};
 use std::collections::HashMap;
 use wasm_encoder::*;
+use wasmparser::WasmFeatures;
 
 mod core_types;
 mod signature;
@@ -56,6 +61,9 @@ pub struct Module<'a> {
     tunables: &'a Tunables,
     /// Type information from the creator of this `Module`
     types: &'a ComponentTypesBuilder,
+
+    /// The Wasm features enabled for validation of this module.
+    features: WasmFeatures,
 
     /// Core wasm type section that's incrementally built
     core_types: core_types::CoreTypes,
@@ -89,7 +97,11 @@ pub struct Module<'a> {
     imported_enter_sync_call: Option<FuncIndex>,
     imported_exit_sync_call: Option<FuncIndex>,
 
-    imported_trap: Option<FuncIndex>,
+    /// Cached versions of unsafe intrinsics and where they were imported.
+    imported_unsafe_intrinsics: HashMap<UnsafeIntrinsic, FuncIndex>,
+
+    /// Cached versions of the imported `trap` intrinsic, one per trap code.
+    imported_traps: HashMap<Trap, FuncIndex>,
 
     // Current status of index spaces from the imports generated so far.
     imported_funcs: PrimaryMap<FuncIndex, Option<CoreDef>>,
@@ -101,8 +113,6 @@ pub struct Module<'a> {
     helper_worklist: Vec<(FunctionId, Helper)>,
 
     exports: Vec<(u32, String)>,
-
-    task_may_block: Option<GlobalIndex>,
 }
 
 struct AdapterData {
@@ -125,9 +135,6 @@ struct AdapterOptions {
     /// The Wasmtime-assigned component instance index where the options were
     /// originally specified.
     instance: RuntimeComponentInstanceIndex,
-    /// The ancestors (i.e. chain of instantiating instances) of the instance
-    /// specified in the `instance` field.
-    ancestors: Vec<RuntimeComponentInstanceIndex>,
     /// The ascribed type of this adapter.
     ty: TypeFuncIndex,
     /// The global that represents the instance flags for where this adapter
@@ -142,11 +149,9 @@ struct AdapterOptions {
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
 /// Linear memory.
 struct LinearMemoryOptions {
-    /// Whether or not the `memory` field, if present, is a 64-bit memory.
-    memory64: bool,
     /// An optionally-specified memory where values may travel through for
     /// types like lists.
-    memory: Option<MemoryIndex>,
+    memory: Option<(MemoryIndex, Memory)>,
     /// An optionally-specified function to be used to allocate space for
     /// types such as strings as they go into a module.
     realloc: Option<FuncIndex>,
@@ -154,7 +159,7 @@ struct LinearMemoryOptions {
 
 impl LinearMemoryOptions {
     fn ptr(&self) -> ValType {
-        if self.memory64 {
+        if self.memory64() {
             ValType::I64
         } else {
             ValType::I32
@@ -162,7 +167,22 @@ impl LinearMemoryOptions {
     }
 
     fn ptr_size(&self) -> u8 {
-        if self.memory64 { 8 } else { 4 }
+        if self.memory64() { 8 } else { 4 }
+    }
+
+    fn memory64(&self) -> bool {
+        self.memory
+            .as_ref()
+            .map(|(_, ty)| ty.idx_type == IndexType::I64)
+            .unwrap_or(false)
+    }
+
+    fn sizealign(&self, abi: &CanonicalAbiInfo) -> (u32, u32) {
+        if self.memory64() {
+            (abi.size64, abi.align64)
+        } else {
+            (abi.size32, abi.align32)
+        }
     }
 }
 
@@ -242,10 +262,15 @@ enum HelperLocation {
 
 impl<'a> Module<'a> {
     /// Creates an empty module.
-    pub fn new(types: &'a ComponentTypesBuilder, tunables: &'a Tunables) -> Module<'a> {
+    pub fn new(
+        types: &'a ComponentTypesBuilder,
+        tunables: &'a Tunables,
+        features: WasmFeatures,
+    ) -> Module<'a> {
         Module {
             tunables,
             types,
+            features,
             core_types: Default::default(),
             core_imports: Default::default(),
             imported: Default::default(),
@@ -265,9 +290,9 @@ impl<'a> Module<'a> {
             imported_error_context_transfer: None,
             imported_enter_sync_call: None,
             imported_exit_sync_call: None,
-            imported_trap: None,
+            imported_unsafe_intrinsics: HashMap::new(),
+            imported_traps: HashMap::new(),
             exports: Vec::new(),
-            task_may_block: None,
         }
     }
 
@@ -321,7 +346,6 @@ impl<'a> Module<'a> {
     fn import_options(&mut self, ty: TypeFuncIndex, options: &AdapterOptionsDfg) -> AdapterOptions {
         let AdapterOptionsDfg {
             instance,
-            ancestors,
             string_encoding,
             post_return: _, // handled above
             callback,
@@ -345,30 +369,32 @@ impl<'a> Module<'a> {
 
         let data_model = match data_model {
             crate::component::DataModel::Gc {} => DataModel::Gc {},
-            crate::component::DataModel::LinearMemory {
-                memory,
-                memory64,
-                realloc,
-            } => {
-                let memory = memory.as_ref().map(|memory| {
-                    self.import_memory(
-                        "memory",
-                        &format!("m{}", self.imported_memories.len()),
-                        MemoryType {
-                            minimum: 0,
-                            maximum: None,
-                            shared: false,
-                            memory64: *memory64,
-                            page_size_log2: None,
-                        },
-                        memory.clone().into(),
+            crate::component::DataModel::LinearMemory { memory, realloc } => {
+                let memory = memory.as_ref().map(|(memory, ty)| {
+                    (
+                        self.import_memory(
+                            "memory",
+                            &format!("m{}", self.imported_memories.len()),
+                            MemoryType {
+                                minimum: 0,
+                                maximum: None,
+                                shared: ty.shared,
+                                memory64: ty.idx_type == IndexType::I64,
+                                page_size_log2: if ty.page_size_log2 == 16 {
+                                    None
+                                } else {
+                                    Some(ty.page_size_log2.into())
+                                },
+                            },
+                            memory.clone().into(),
+                        ),
+                        *ty,
                     )
                 });
                 let realloc = realloc.as_ref().map(|func| {
-                    let ptr = if *memory64 {
-                        ValType::I64
-                    } else {
-                        ValType::I32
+                    let ptr = match memory.as_ref().unwrap().1.idx_type {
+                        IndexType::I32 => ValType::I32,
+                        IndexType::I64 => ValType::I64,
                     };
                     let ty = self.core_types.function(&[ptr, ptr, ptr, ptr], &[ptr]);
                     self.import_func(
@@ -378,11 +404,7 @@ impl<'a> Module<'a> {
                         func.clone(),
                     )
                 });
-                DataModel::LinearMemory(LinearMemoryOptions {
-                    memory64: *memory64,
-                    memory,
-                    realloc,
-                })
+                DataModel::LinearMemory(LinearMemoryOptions { memory, realloc })
             }
         };
 
@@ -400,7 +422,6 @@ impl<'a> Module<'a> {
 
         AdapterOptions {
             instance: *instance,
-            ancestors: ancestors.clone(),
             ty,
             flags,
             post_return: None,
@@ -460,25 +481,6 @@ impl<'a> Module<'a> {
         self.imported.insert(def.clone(), idx.index());
         self.imports.push(Import::CoreDef(def));
         idx
-    }
-
-    fn import_task_may_block(&mut self) -> GlobalIndex {
-        if let Some(task_may_block) = self.task_may_block {
-            task_may_block
-        } else {
-            let task_may_block = self.import_global(
-                "instance",
-                "task_may_block",
-                GlobalType {
-                    val_type: ValType::I32,
-                    mutable: true,
-                    shared: false,
-                },
-                CoreDef::TaskMayBlock,
-            );
-            self.task_may_block = Some(task_may_block);
-            task_may_block
-        }
     }
 
     fn import_transcoder(&mut self, transcoder: transcode::Transcoder) -> FuncIndex {
@@ -738,14 +740,63 @@ impl<'a> Module<'a> {
         )
     }
 
-    fn import_trap(&mut self) -> FuncIndex {
-        self.import_simple(
+    /// Imports the `context.get` intrinsic for the `slot`th context slot.
+    fn import_context_get(&mut self, slot: usize) -> FuncIndex {
+        let intrinsic = match slot {
+            0 => UnsafeIntrinsic::ContextGetI32_0,
+            1 => UnsafeIntrinsic::ContextGetI32_1,
+            _ => unreachable!(),
+        };
+        self.import_unsafe_intrinsic(intrinsic, &format!("get{slot}"))
+    }
+
+    /// Imports the `context.set` intrinsic for the `slot`th context slot.
+    fn import_context_set(&mut self, slot: usize) -> FuncIndex {
+        let intrinsic = match slot {
+            0 => UnsafeIntrinsic::ContextSetI32_0,
+            1 => UnsafeIntrinsic::ContextSetI32_1,
+            _ => unreachable!(),
+        };
+        self.import_unsafe_intrinsic(intrinsic, &format!("set{slot}"))
+    }
+
+    fn import_unsafe_intrinsic(&mut self, intrinsic: UnsafeIntrinsic, name: &str) -> FuncIndex {
+        let map = |ty: &WasmValType| match ty {
+            crate::WasmValType::I32 => ValType::I32,
+            crate::WasmValType::I64 => ValType::I64,
+            crate::WasmValType::F32 => ValType::F32,
+            crate::WasmValType::F64 => ValType::F64,
+            crate::WasmValType::V128 => ValType::V128,
+            crate::WasmValType::Ref(_) => unreachable!(),
+        };
+        let params = intrinsic.core_params().iter().map(map).collect::<Vec<_>>();
+        let results = intrinsic.core_results().iter().map(map).collect::<Vec<_>>();
+
+        self.import_simple_get_and_set(
+            "context",
+            name,
+            &params,
+            &results,
+            Import::UnsafeIntrinsic(intrinsic),
+            |me| me.imported_unsafe_intrinsics.get(&intrinsic).copied(),
+            |me, idx| {
+                me.imported_unsafe_intrinsics.insert(intrinsic, idx);
+            },
+        )
+    }
+
+    fn import_trap(&mut self, trap: Trap) -> FuncIndex {
+        let name = format!("trap{}", trap as u8);
+        self.import_simple_get_and_set(
             "runtime",
-            "trap",
-            &[ValType::I32],
+            &name,
             &[],
-            Import::Trap,
-            |me| &mut me.imported_trap,
+            &[],
+            Import::Trap(trap),
+            |me| me.imported_traps.get(&trap).copied(),
+            |me, idx| {
+                me.imported_traps.insert(trap, idx);
+            },
         )
     }
 
@@ -888,7 +939,7 @@ pub enum Import {
     /// ownership of an `error-context`.
     ErrorContextTransfer,
     /// An intrinsic for trapping the instance with a specific trap code.
-    Trap,
+    Trap(Trap),
     /// An intrinsic used by FACT-generated modules to check whether an instance
     /// may be entered for a sync-to-sync call and push a task onto the stack if
     /// so.
@@ -896,6 +947,8 @@ pub enum Import {
     /// An intrinsic used by FACT-generated modules to pop the task previously
     /// pushed by `EnterSyncCall`.
     ExitSyncCall,
+    /// An unsafe intrinsic, such as reading/writing `context.{get,set}` slots.
+    UnsafeIntrinsic(UnsafeIntrinsic),
 }
 
 impl Options {
@@ -907,7 +960,7 @@ impl Options {
         let flat = types.flat_types(ty)?;
         match self.data_model {
             DataModel::Gc {} => todo!("CM+GC"),
-            DataModel::LinearMemory(mem_opts) => Some(if mem_opts.memory64 {
+            DataModel::LinearMemory(mem_opts) => Some(if mem_opts.memory64() {
                 flat.memory64
             } else {
                 flat.memory32

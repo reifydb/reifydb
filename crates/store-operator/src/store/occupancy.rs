@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::{
 		keyspace::KEYSPACES,
-		state::{KeyspaceId, OperatorStateKey},
+		state::{KeyspaceId, KeyspaceMask, OperatorStateKey},
 	},
 };
 use reifydb_runtime::sync::mutex::Mutex;
@@ -16,11 +16,9 @@ use tracing::instrument;
 
 use crate::{error::Result, types::OperatorWrite};
 
-const LOWEST_META: u8 = KeyspaceId::GUEST_ROW_MAPPING.0;
-
 #[derive(Debug, Default, Clone, Copy)]
 struct Occupancy {
-	mask: u64,
+	mask: KeyspaceMask,
 	seeded: bool,
 }
 
@@ -34,7 +32,7 @@ impl KeyspaceOccupancy {
 		reifydb_assertions! {
 			for spec in KEYSPACES {
 				assert!(
-					bit(spec.id).is_some(),
+					KeyspaceMask::of([spec.id]).holds(spec.id),
 					"store::operator::occupancy keyspace {} has no occupancy bit",
 					spec.id.0
 				);
@@ -67,55 +65,35 @@ impl KeyspaceOccupancy {
 			let Some((_, keyspace, _)) = OperatorStateKey::decode_inner(key.as_slice()) else {
 				continue;
 			};
-			let Some(bit) = bit(keyspace) else {
-				continue;
-			};
-			masks.entry(operator).or_default().mask |= bit;
+			masks.entry(operator).or_default().mask.insert(keyspace);
 		}
 	}
 
-	pub fn mask(&self, operator: OperatorId, seed: impl FnOnce() -> Result<Vec<KeyspaceId>>) -> Result<u64> {
+	pub fn mask(
+		&self,
+		operator: OperatorId,
+		seed: impl FnOnce() -> Result<Vec<KeyspaceId>>,
+	) -> Result<KeyspaceMask> {
 		if let Some(entry) = self.masks.lock().get(&operator)
 			&& entry.seeded
 		{
 			return Ok(entry.mask);
 		}
-		let seeded = seed()?.into_iter().filter_map(bit).fold(0, |mask, bit| mask | bit);
+		let seeded = seed()?;
 		let mut masks = self.masks.lock();
 		let entry = masks.entry(operator).or_default();
-		entry.mask |= seeded;
+		for keyspace in seeded {
+			entry.mask.insert(keyspace);
+		}
 		entry.seeded = true;
 		Ok(entry.mask)
 	}
 
 	pub fn occupied(&self, operator: OperatorId) -> Vec<KeyspaceId> {
-		let mask = self.masks.lock().get(&operator).map(|entry| entry.mask).unwrap_or_default();
-		let mut ids: Vec<KeyspaceId> = KEYSPACES
-			.iter()
-			.map(|spec| spec.id)
-			.filter(|id| bit(*id).is_some_and(|bit| mask & bit != 0))
-			.collect();
-		ids.sort_unstable();
-		ids
+		self.masks.lock().get(&operator).map(|entry| entry.mask).unwrap_or_default().held()
 	}
 
 	pub fn forget(&self, operator: OperatorId) {
 		self.masks.lock().remove(&operator);
 	}
-}
-
-pub fn occupies(mask: u64, keyspace: KeyspaceId) -> bool {
-	match bit(keyspace) {
-		Some(bit) => mask & bit != 0,
-		None => true,
-	}
-}
-
-pub(crate) fn bit(keyspace: KeyspaceId) -> Option<u64> {
-	let index = match keyspace.0 {
-		id if id <= KeyspaceId::HIGHEST_DATA => id as u32,
-		id if id >= LOWEST_META => (KeyspaceId::HIGHEST_DATA as u32) + 1 + (id - LOWEST_META) as u32,
-		_ => return None,
-	};
-	(index < u64::BITS).then(|| 1u64 << index)
 }

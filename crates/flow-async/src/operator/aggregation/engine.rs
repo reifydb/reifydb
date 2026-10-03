@@ -7,7 +7,6 @@ use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	key::operator::state::GroupId,
-	value::batch::from_row,
 };
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
@@ -19,7 +18,7 @@ use tracing::instrument;
 
 use super::{
 	accumulator::{RowAccumulator, WindowSlotKey},
-	core::Aggregation,
+	core::{Aggregation, EmitRow},
 };
 use crate::{
 	operator::{
@@ -46,10 +45,27 @@ pub(crate) type SessionBounds = HashMap<(Hash128, u64), (DateTime, DateTime)>;
 
 pub(crate) type EarliestTimes = HashMap<(Hash128, WindowSpan<DateTime>), DateTime>;
 
+pub(crate) type GatedMeta = HashMap<(Hash128, WindowSpan<DateTime>), Option<EngineMeta>>;
+
 pub(crate) enum Stamp<'a> {
 	SpanStart,
-	Session(Duration, &'a SessionBounds),
+	Session(Duration, &'a SessionBounds, &'a GatedMeta),
 	Earliest(&'a EarliestTimes),
+}
+
+fn prior_engine_meta(
+	host: &mut dyn HostContext,
+	stamp: &Stamp<'_>,
+	window: &(Hash128, WindowSpan<DateTime>),
+	group: GroupId,
+) -> Result<Option<EngineMeta>> {
+	match stamp {
+		Stamp::Session(_, _, gated) => Ok(gated
+			.get(window)
+			.cloned()
+			.expect("the seal gate reads the engine meta of every session window it admits")),
+		Stamp::SpanStart | Stamp::Earliest(_) => get_classified::<_, EngineMeta>(host, &EngineMetaKey(group)),
+	}
 }
 
 #[instrument(name = "flow::operator::aggregation::window_groups", level = "trace", skip_all, fields(windows = windows.len()))]
@@ -95,11 +111,12 @@ where
 	}
 	let groups = core.compute_groups(columns)?;
 	let slot_cols = core.evaluate_slot_inputs(columns)?;
+	let views = core.slot_views(columns, &slot_cols)?;
 	let row_numbers = require_row_numbers(columns)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let (span, event_ts) = assign(row_idx);
 		let coord = slot_coord(false, event_ts, row_numbers[row_idx].0);
-		let contribution = (coord, core.build_contribution(columns, &slot_cols, row_idx, event_ts)?);
+		let contribution = (coord, views.contribution(row_idx, event_ts));
 		let key = (*hash, span);
 		let event = if is_add {
 			let entry = window_max_ts.entry(key).or_default();
@@ -161,7 +178,7 @@ pub(crate) fn finish_tumbling_engine(
 	for r in &results {
 		let group = group_of(groups, r.group, r.span.start.to_order());
 		let window_start = r.span.start.to_order();
-		let prior_meta = get_classified::<_, EngineMeta>(host, &EngineMetaKey(group))?;
+		let prior_meta = prior_engine_meta(host, &stamp, &(r.group, r.span), group)?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
 		let prior_first = prior_meta.as_ref().map(|m| m.first_event_time);
@@ -223,7 +240,7 @@ pub(crate) fn finish_tumbling_engine(
 				};
 				(span(pre), span(now))
 			}
-			Stamp::Session(gap, bounds) => {
+			Stamp::Session(gap, bounds, _) => {
 				let before =
 					get_classified::<_, SessionState>(host, &SessionKey(group))?.map(|state| {
 						(
@@ -265,7 +282,7 @@ pub(crate) fn finish_tumbling_engine(
 	for (hash, span) in arrival.iter().filter(|key| !published.contains(key)) {
 		let group = group_of(groups, *hash, span.start.to_order());
 		let window_start = span.start.to_order();
-		let prior_meta = get_classified::<_, EngineMeta>(host, &EngineMetaKey(group))?;
+		let prior_meta = prior_engine_meta(host, &stamp, &(*hash, *span), group)?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
 		let prior_first = prior_meta.as_ref().map(|m| m.first_event_time);
@@ -286,30 +303,25 @@ pub(crate) fn finish_tumbling_engine(
 	}
 	*core.tumbling_engine_slot() = Some(engine);
 
-	let ts = change.changed_at;
-	let mut diffs = Vec::new();
+	let mut inserts = Vec::new();
+	let mut updates = Vec::new();
+	let mut removes = Vec::new();
 	for (r, (pre_span, post_span)) in results.into_iter().zip(spans) {
-		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
+		let group_values = group_values.get(&r.group).cloned().unwrap_or_default();
+		let emit = |slot_values: Vec<Value>, span: WindowSpan<DateTime>| EmitRow {
+			group_values: group_values.clone(),
+			slot_values,
+			row_number: r.row_number,
+			span: Some(span),
+		};
+		let pre_values = r.prior.clone().unwrap_or_else(|| r.value.clone());
 		match r.kind {
-			EmitKind::Insert => {
-				let row = core.build_engine_row(&gvals, &r.value, r.row_number, ts, Some(post_span))?;
-				diffs.push(Diff::insert(from_row(&row)?));
-			}
-			EmitKind::Update => {
-				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, Some(pre_span))?;
-				let post =
-					core.build_engine_row(&gvals, &r.value, r.row_number, ts, Some(post_span))?;
-				diffs.push(Diff::update(from_row(&pre)?, from_row(&post)?));
-			}
-			EmitKind::Remove => {
-				let pre_vals: &[Value] = r.prior.as_deref().unwrap_or(&r.value);
-				let pre = core.build_engine_row(&gvals, pre_vals, r.row_number, ts, Some(pre_span))?;
-				diffs.push(Diff::remove(from_row(&pre)?));
-			}
+			EmitKind::Insert => inserts.push(emit(r.value, post_span)),
+			EmitKind::Update => updates.push((emit(pre_values, pre_span), emit(r.value, post_span))),
+			EmitKind::Remove => removes.push(emit(pre_values, pre_span)),
 		}
 	}
-	Ok(diffs)
+	core.emit_diffs(inserts, updates, removes, change.changed_at)
 }
 
 #[cfg(test)]

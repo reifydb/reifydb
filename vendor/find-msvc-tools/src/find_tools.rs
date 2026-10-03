@@ -12,6 +12,7 @@
 //! 1. On Windows host, probe the Windows Registry if needed;
 //! 2. On non-Windows host, check specified environment variables.
 
+#![allow(missing_docs)]
 #![allow(clippy::upper_case_acronyms)]
 
 use std::{
@@ -133,7 +134,7 @@ impl EnvGetter for StdEnvGetter {
 /// as found in the current `PATH`. If that fails, it will attempt to locate
 /// the newest MSVC toolset in the newest installed version of Visual Studio.
 /// To limit the search to a specific version of the MSVC toolset, set the
-/// VCToolsVersion environment variable to the desired version (e.g. "14.44.35207").
+/// `VCToolsVersion` environment variable to the desired version (e.g. "14.44.35207").
 ///
 /// Note that this function always returns `None` for non-MSVC targets (if a
 /// full target name was specified).
@@ -356,7 +357,7 @@ mod impl_ {
 
     impl LibraryHandle {
         fn new(name: &[u8]) -> Option<Self> {
-            let handle = unsafe { LoadLibraryA(name.as_ptr() as _) };
+            let handle = unsafe { LoadLibraryA(name.as_ptr().cast()) };
             (!handle.is_null()).then_some(Self(handle))
         }
 
@@ -369,7 +370,7 @@ mod impl_ {
         ///
         /// The function returned cannot be used after the handle is dropped.
         unsafe fn get_proc_address<F>(&self, name: &[u8]) -> Option<F> {
-            let symbol = GetProcAddress(self.0, name.as_ptr() as _);
+            let symbol = GetProcAddress(self.0, name.as_ptr().cast());
             symbol.map(|symbol| mem::transmute_copy(&symbol))
         }
     }
@@ -392,7 +393,12 @@ mod impl_ {
                 .get_proc_address::<GetMachineTypeAttributesFuncType>(b"GetMachineTypeAttributes\0")
         }?;
         let mut attributes = Default::default();
-        if unsafe { get_machine_type_attributes(IMAGE_FILE_MACHINE_AMD64, &mut attributes) } == S_OK
+        if unsafe {
+            get_machine_type_attributes(
+                IMAGE_FILE_MACHINE_AMD64.try_into().unwrap(),
+                &mut attributes,
+            )
+        } == S_OK
         {
             Some((attributes & UserEnabled) != 0)
         } else {
@@ -560,22 +566,22 @@ mod impl_ {
         target: TargetArch,
         version: &'static str,
         env_getter: &dyn EnvGetter,
-    ) -> Box<Iterator<Item = PathBuf>> {
-        let instances = if let Some(instances) = vs15plus_instances(target, env_getter) {
-            instances
-        } else {
-            return Box::new(iter::empty());
-        };
-        Box::new(instances.into_iter().filter_map(move |instance| {
-            let installation_name = instance.installation_name()?;
-            if installation_name.starts_with(&format!("VisualStudio/{}.", version))
-                || installation_name.starts_with(&format!("VisualStudioPreview/{}.", version))
-            {
-                Some(instance.installation_path()?)
-            } else {
-                None
-            }
-        }))
+    ) -> Box<dyn Iterator<Item = PathBuf>> {
+        Box::new(
+            vs15plus_instances(target, env_getter)
+                .into_iter()
+                .flatten()
+                .filter_map(move |instance| {
+                    instance
+                        .installation_name()
+                        .filter(|name| {
+                            ["VisualStudio", "VisualStudioPreview"]
+                                .into_iter()
+                                .any(|kind| name.starts_with(&format!("{kind}/{version}.")))
+                        })
+                        .and_then(|_| instance.installation_path())
+                }),
+        )
     }
 
     fn find_tool_in_vs16plus_path(
@@ -636,7 +642,7 @@ mod impl_ {
                     AARCH64 => "ARM64",
                     _ => return None,
                 };
-                if host_folder != "" {
+                if !host_folder.is_empty() {
                     // E.g. C:\...\VC\Tools\LLVM\x64
                     base_path.push(host_folder);
                 }
@@ -753,7 +759,7 @@ mod impl_ {
                 let tool = tool_from_vs15plus_instance(tool, target, &instance_path, env_getter)?;
                 Some((version, tool))
             })
-            .max_by(|(a_version, _), (b_version, _)| a_version.cmp(b_version))
+            .max_by_key(|(version, _)| *version)
             .map(|(_version, tool)| tool)
     }
 
@@ -785,7 +791,7 @@ mod impl_ {
                 .ok()
                 .and_then(|key| key.query_str("15.0").ok())
                 .map(|path| PathBuf::from(path).join(tool))
-                .and_then(|path| if path.is_file() { Some(path) } else { None });
+                .filter(|path| path.is_file());
         }
 
         path.map(|path| {
@@ -865,11 +871,10 @@ mod impl_ {
         // We use the first available host architecture that can build for the target
         let (host_path, host) = hosts.iter().find_map(|&x| {
             let candidate = path.join("bin").join(format!("Host{}", x));
-            if candidate.join(target_dir).exists() {
-                Some((candidate, x))
-            } else {
-                None
-            }
+            candidate
+                .join(target_dir)
+                .exists()
+                .then_some((candidate, x))
         })?;
         // This is the path to the toolchain for a particular target, running
         // on a given host
@@ -941,8 +946,8 @@ mod impl_ {
                             (name, version)
                         })
                     })
-                    .max_by(|(_, a), (_, b)| a.cmp(b))
-                    .map(|(version, _)| version);
+                    .max_by_key(|(_, version)| *version)
+                    .map(|(name, _)| name);
             }
             version_path.push(version_file);
             File::open(version_path).ok()?
@@ -964,12 +969,10 @@ mod impl_ {
 
     fn atl_paths(target: TargetArch, path: &Path) -> Option<(PathBuf, PathBuf)> {
         let atl_path = path.join("atlmfc");
-        let sub = target.as_vs_arch();
-        if atl_path.exists() {
-            Some((atl_path.join("lib").join(sub), atl_path.join("include")))
-        } else {
-            None
-        }
+        atl_path.exists().then(|| {
+            let sub = target.as_vs_arch();
+            (atl_path.join("lib").join(sub), atl_path.join("include"))
+        })
     }
 
     // For MSVC 14 we need to find the Universal CRT as well as either
@@ -1105,13 +1108,13 @@ mod impl_ {
             .map(|dir| dir.path())
             .filter(|dir| {
                 dir.components()
-                    .last()
+                    .next_back()
                     .and_then(|c| c.as_os_str().to_str())
                     .map(|c| c.starts_with("10.") && dir.join("ucrt").is_dir())
                     .unwrap_or(false)
             })
             .max()?;
-        let version = max_libdir.components().last().unwrap();
+        let version = max_libdir.components().next_back().unwrap();
         let version = version.as_os_str().to_str().unwrap().to_string();
         Some((root.into(), version))
     }
@@ -1154,7 +1157,7 @@ mod impl_ {
             .into_iter()
             .rev()
             .find(|dir| dir.join("um").join("x64").join("kernel32.lib").is_file())?;
-        let version = dir.components().last().unwrap();
+        let version = dir.components().next_back().unwrap();
         let version = version.as_os_str().to_str().unwrap().to_string();
         Some((root.into(), version))
     }
@@ -1242,6 +1245,112 @@ mod impl_ {
             GetNativeSystemInfo(&mut info);
             info.wProcessorArchitecture
         }
+    }
+
+    // Given a registry key, look at all the sub keys and find the one which has
+    // the maximal numeric value.
+    //
+    // Returns the name of the maximal key as well as the opened maximal key.
+    fn max_version(key: &RegistryKey) -> Option<(OsString, RegistryKey)> {
+        let mut max_vers = 0;
+        let mut max_key = None;
+        for subkey in key.iter().filter_map(|k| k.ok()) {
+            let val = subkey
+                .to_str()
+                .and_then(|s| s.trim_start_matches('v').replace('.', "").parse().ok());
+            let Some(val) = val else { continue };
+            if val > max_vers {
+                if let Ok(k) = key.open(&subkey) {
+                    max_vers = val;
+                    max_key = Some((subkey, k));
+                }
+            }
+        }
+        max_key
+    }
+
+    #[inline(always)]
+    pub(super) fn has_msbuild_version(version: &str, env_getter: &dyn EnvGetter) -> bool {
+        match version {
+            "18.0" => {
+                find_msbuild_vs18(TargetArch::X64, env_getter).is_some()
+                    || find_msbuild_vs18(TargetArch::X86, env_getter).is_some()
+                    || find_msbuild_vs18(TargetArch::Arm64, env_getter).is_some()
+            }
+            "17.0" => {
+                find_msbuild_vs17(TargetArch::X64, env_getter).is_some()
+                    || find_msbuild_vs17(TargetArch::X86, env_getter).is_some()
+                    || find_msbuild_vs17(TargetArch::Arm64, env_getter).is_some()
+            }
+            "16.0" => {
+                find_msbuild_vs16(TargetArch::X64, env_getter).is_some()
+                    || find_msbuild_vs16(TargetArch::X86, env_getter).is_some()
+                    || find_msbuild_vs16(TargetArch::Arm64, env_getter).is_some()
+            }
+            "15.0" => {
+                find_msbuild_vs15(TargetArch::X64, env_getter).is_some()
+                    || find_msbuild_vs15(TargetArch::X86, env_getter).is_some()
+                    || find_msbuild_vs15(TargetArch::Arm64, env_getter).is_some()
+            }
+            "14.0" => LOCAL_MACHINE
+                .open(&OsString::from(format!(
+                    "SOFTWARE\\Microsoft\\MSBuild\\ToolsVersions\\{}",
+                    version
+                )))
+                .is_ok(),
+            _ => false,
+        }
+    }
+
+    pub(super) fn find_devenv(target: TargetArch, env_getter: &dyn EnvGetter) -> Option<Tool> {
+        find_devenv_vs15(target, env_getter)
+    }
+
+    fn find_devenv_vs15(target: TargetArch, env_getter: &dyn EnvGetter) -> Option<Tool> {
+        find_tool_in_vs15_path(r"Common7\IDE\devenv.exe", target, env_getter)
+    }
+
+    // see http://stackoverflow.com/questions/328017/path-to-msbuild
+    pub(super) fn find_msbuild(target: TargetArch, env_getter: &dyn EnvGetter) -> Option<Tool> {
+        // VS 15 (2017) changed how to locate msbuild
+        if let Some(r) = find_msbuild_vs18(target, env_getter) {
+            Some(r)
+        } else if let Some(r) = find_msbuild_vs17(target, env_getter) {
+            Some(r)
+        } else if let Some(r) = find_msbuild_vs16(target, env_getter) {
+            Some(r)
+        } else if let Some(r) = find_msbuild_vs15(target, env_getter) {
+            Some(r)
+        } else {
+            find_old_msbuild(target)
+        }
+    }
+
+    fn find_msbuild_vs15(target: TargetArch, env_getter: &dyn EnvGetter) -> Option<Tool> {
+        find_tool_in_vs15_path(r"MSBuild\15.0\Bin\MSBuild.exe", target, env_getter)
+    }
+
+    fn find_old_msbuild(target: TargetArch) -> Option<Tool> {
+        let key = r"SOFTWARE\Microsoft\MSBuild\ToolsVersions";
+        LOCAL_MACHINE
+            .open(key.as_ref())
+            .ok()
+            .and_then(|key| {
+                max_version(&key).and_then(|(_vers, key)| key.query_str("MSBuildToolsPath").ok())
+            })
+            .map(|path| {
+                let mut path = PathBuf::from(path);
+                path.push("MSBuild.exe");
+                let mut tool = Tool {
+                    tool: path,
+                    is_clang_cl: false,
+                    env: Vec::new(),
+                };
+                if target == TargetArch::X64 {
+                    tool.env.push(("Platform".into(), "X64".into()));
+                }
+                tool
+            })
     }
 
     #[cfg(test)]
@@ -1341,44 +1450,41 @@ mod impl_ {
                 let env_getter = StdEnvGetter;
                 let result = find_llvm_tool(tool, target_arch, &env_getter);
 
-                match result {
-                    Some(found_tool) => {
-                        found_tools_count += 1;
+                if let Some(found_tool) = result {
+                    found_tools_count += 1;
 
-                        // Verify the found tool has a valid, non-empty path
-                        assert!(
-                            !found_tool.path().as_os_str().is_empty(),
-                            "Found LLVM tool '{}' should have a non-empty path",
-                            tool
-                        );
+                    // Verify the found tool has a valid, non-empty path
+                    assert!(
+                        !found_tool.path().as_os_str().is_empty(),
+                        "Found LLVM tool '{}' should have a non-empty path",
+                        tool
+                    );
 
-                        // Verify the tool path actually exists on filesystem
-                        assert!(
-                            found_tool.path().exists(),
-                            "LLVM tool '{}' path should exist: {:?}",
-                            tool,
-                            found_tool.path()
-                        );
+                    // Verify the tool path actually exists on filesystem
+                    assert!(
+                        found_tool.path().exists(),
+                        "LLVM tool '{}' path should exist: {:?}",
+                        tool,
+                        found_tool.path()
+                    );
 
-                        // Verify the tool path contains the expected tool name
-                        let path_str = found_tool.path().to_string_lossy();
-                        assert!(
-                            path_str.contains(tool.trim_end_matches(".exe")),
-                            "Tool path '{}' should contain tool name '{}'",
-                            path_str,
-                            tool
-                        );
+                    // Verify the tool path contains the expected tool name
+                    let path_str = found_tool.path().to_string_lossy();
+                    assert!(
+                        path_str.contains(tool.trim_end_matches(".exe")),
+                        "Tool path '{}' should contain tool name '{}'",
+                        path_str,
+                        tool
+                    );
 
-                        // Verify it's in the correct host-specific VS LLVM directory
-                        assert!(
-                            path_str.contains(expected_host_path) || path_str.contains(&expected_host_path.replace("\\", "/")),
-                            "LLVM tool should be in host-specific VS LLVM directory '{}' for {} host, but found: {}",
-                            expected_host_path,
-                            host_name,
-                            path_str
-                        );
-                    }
-                    None => {}
+                    // Verify it's in the correct host-specific VS LLVM directory
+                    assert!(
+                        path_str.contains(expected_host_path) || path_str.contains(&expected_host_path.replace("\\", "/")),
+                        "LLVM tool should be in host-specific VS LLVM directory '{}' for {} host, but found: {}",
+                        expected_host_path,
+                        host_name,
+                        path_str
+                    );
                 }
             }
 
@@ -1390,115 +1496,6 @@ mod impl_ {
                 found_tools_count
             );
         }
-    }
-
-    // Given a registry key, look at all the sub keys and find the one which has
-    // the maximal numeric value.
-    //
-    // Returns the name of the maximal key as well as the opened maximal key.
-    fn max_version(key: &RegistryKey) -> Option<(OsString, RegistryKey)> {
-        let mut max_vers = 0;
-        let mut max_key = None;
-        for subkey in key.iter().filter_map(|k| k.ok()) {
-            let val = subkey
-                .to_str()
-                .and_then(|s| s.trim_start_matches('v').replace('.', "").parse().ok());
-            let val = match val {
-                Some(s) => s,
-                None => continue,
-            };
-            if val > max_vers {
-                if let Ok(k) = key.open(&subkey) {
-                    max_vers = val;
-                    max_key = Some((subkey, k));
-                }
-            }
-        }
-        max_key
-    }
-
-    #[inline(always)]
-    pub(super) fn has_msbuild_version(version: &str, env_getter: &dyn EnvGetter) -> bool {
-        match version {
-            "18.0" => {
-                find_msbuild_vs18(TargetArch::X64, env_getter).is_some()
-                    || find_msbuild_vs18(TargetArch::X86, env_getter).is_some()
-                    || find_msbuild_vs18(TargetArch::Arm64, env_getter).is_some()
-            }
-            "17.0" => {
-                find_msbuild_vs17(TargetArch::X64, env_getter).is_some()
-                    || find_msbuild_vs17(TargetArch::X86, env_getter).is_some()
-                    || find_msbuild_vs17(TargetArch::Arm64, env_getter).is_some()
-            }
-            "16.0" => {
-                find_msbuild_vs16(TargetArch::X64, env_getter).is_some()
-                    || find_msbuild_vs16(TargetArch::X86, env_getter).is_some()
-                    || find_msbuild_vs16(TargetArch::Arm64, env_getter).is_some()
-            }
-            "15.0" => {
-                find_msbuild_vs15(TargetArch::X64, env_getter).is_some()
-                    || find_msbuild_vs15(TargetArch::X86, env_getter).is_some()
-                    || find_msbuild_vs15(TargetArch::Arm64, env_getter).is_some()
-            }
-            "14.0" => LOCAL_MACHINE
-                .open(&OsString::from(format!(
-                    "SOFTWARE\\Microsoft\\MSBuild\\ToolsVersions\\{}",
-                    version
-                )))
-                .is_ok(),
-            _ => false,
-        }
-    }
-
-    pub(super) fn find_devenv(target: TargetArch, env_getter: &dyn EnvGetter) -> Option<Tool> {
-        find_devenv_vs15(target, env_getter)
-    }
-
-    fn find_devenv_vs15(target: TargetArch, env_getter: &dyn EnvGetter) -> Option<Tool> {
-        find_tool_in_vs15_path(r"Common7\IDE\devenv.exe", target, env_getter)
-    }
-
-    // see http://stackoverflow.com/questions/328017/path-to-msbuild
-    pub(super) fn find_msbuild(target: TargetArch, env_getter: &dyn EnvGetter) -> Option<Tool> {
-        // VS 15 (2017) changed how to locate msbuild
-        if let Some(r) = find_msbuild_vs18(target, env_getter) {
-            Some(r)
-        } else if let Some(r) = find_msbuild_vs17(target, env_getter) {
-            Some(r)
-        } else if let Some(r) = find_msbuild_vs16(target, env_getter) {
-            return Some(r);
-        } else if let Some(r) = find_msbuild_vs15(target, env_getter) {
-            return Some(r);
-        } else {
-            find_old_msbuild(target)
-        }
-    }
-
-    fn find_msbuild_vs15(target: TargetArch, env_getter: &dyn EnvGetter) -> Option<Tool> {
-        find_tool_in_vs15_path(r"MSBuild\15.0\Bin\MSBuild.exe", target, env_getter)
-    }
-
-    fn find_old_msbuild(target: TargetArch) -> Option<Tool> {
-        let key = r"SOFTWARE\Microsoft\MSBuild\ToolsVersions";
-        LOCAL_MACHINE
-            .open(key.as_ref())
-            .ok()
-            .and_then(|key| {
-                max_version(&key).and_then(|(_vers, key)| key.query_str("MSBuildToolsPath").ok())
-            })
-            .map(|path| {
-                let mut path = PathBuf::from(path);
-                path.push("MSBuild.exe");
-                let mut tool = Tool {
-                    tool: path,
-                    is_clang_cl: false,
-                    env: Vec::new(),
-                };
-                if target == TargetArch::X64 {
-                    tool.env.push(("Platform".into(), "X64".into()));
-                }
-                tool
-            })
     }
 }
 

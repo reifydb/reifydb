@@ -9,7 +9,6 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
-	row::Row as CoreRow,
 };
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
@@ -23,7 +22,6 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
 			carry::CarryDriver,
@@ -32,9 +30,10 @@ use reifydb_sdk::{
 	},
 	row,
 };
+use reifydb_testing_chaos::operator::event::Row as CoreRow;
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::ExternCOperatorHarnessBuilder,
+	in_process::harness::InProcessOperatorHarnessBuilder,
 };
 use reifydb_value::{
 	config::ExtensionParams,
@@ -182,7 +181,7 @@ fn sealed_with() -> ApplyWith {
 
 #[test]
 fn first_window_has_no_carry() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -203,7 +202,7 @@ fn first_window_has_no_carry() {
 fn remove_empties_window_emits_remove() {
 	// Emptying a window has to withdraw the previously emitted row; leaking a ghost row is
 	// what breaks reorg retraction.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -218,7 +217,7 @@ fn remove_empties_window_emits_remove() {
 
 #[test]
 fn second_window_carries_in_prior_window_close() {
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -240,7 +239,7 @@ fn second_window_carries_in_prior_window_close() {
 #[test]
 fn carry_rotates_across_three_windows_in_one_batch() {
 	// Windows opened in one batch must still rotate the carry in window order, not batch order.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -268,7 +267,7 @@ fn carry_rotates_across_three_windows_in_one_batch() {
 fn update_in_current_window_recomputes_carry() {
 	// The carry is derived from the window value, so an update to the closing observation must
 	// change what the next window carries in.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -287,7 +286,7 @@ fn update_in_current_window_recomputes_carry() {
 #[test]
 fn late_event_accepted_while_lateness_is_open() {
 	// while the lateness window has not elapsed, a late event must still reopen its earlier window
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -356,7 +355,7 @@ impl CarryEmit for SealedCarry {
 fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// Carry windows prune relative to the newest window a group has seen, so a group that
 	// stops reporting freezes; only the watermark can drive its reclamation.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<SealedCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -390,7 +389,7 @@ fn a_ladder_advancing_on_its_own_event_time_keeps_publishing_every_window() {
 	// watermark advances exactly as the feed does - from the rows' own #time, which is what
 	// `max_input_time` feeds it in production - so a ladder that keeps receiving must keep
 	// publishing, however many windows it has crossed.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<SealedCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -419,7 +418,7 @@ fn a_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 	// late mutations for that window have to be refused, or a stalled group's buckets accumulate
 	// without limit. SealedCarry seals 120ms after a 60ms window, so a watermark at 10_000ms is
 	// far outside the envelope of the window starting at 0.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<SealedCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -440,7 +439,7 @@ fn a_watermark_genuinely_past_the_seal_envelope_does_seal_the_window() {
 #[test]
 fn a_carry_time_window_arms_a_seal_timer() {
 	// a driver with a required window must always acquire a seal retention policy
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -452,9 +451,8 @@ fn a_carry_time_window_arms_a_seal_timer() {
 #[test]
 fn create_without_a_window_reports_flow_065() {
 	// require_window must refuse a missing window before any row reaches the aggregator
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
-		.with(ApplyWith::default())
-		.build()
+	let Err(err) =
+		InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new().with(ApplyWith::default()).build()
 	else {
 		panic!("create must refuse a missing window");
 	};
@@ -475,10 +473,7 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		retention: None,
 		throttle: None,
 	};
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
-		.with(with)
-		.build()
-	else {
+	let Err(err) = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new().with(with).build() else {
 		panic!("create must refuse an unsupported window kind");
 	};
 	assert!(err.to_string().contains("FLOW_066"), "expected FLOW_066, got: {err}");
@@ -487,7 +482,7 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 #[test]
 fn a_refilled_carry_window_publishes_an_insert() {
 	// Downstream already dropped the removed row, so an update retracting it corrupts every consumer.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");
@@ -504,7 +499,7 @@ fn a_refilled_carry_window_publishes_an_insert() {
 #[test]
 fn an_emptied_carry_window_publishes_nothing_when_folded() {
 	// A second removal of a row downstream already dropped is a retraction of nothing.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(sealed_with())
 		.build()
 		.expect("harness");
@@ -520,7 +515,7 @@ fn an_emptied_carry_window_publishes_nothing_when_folded() {
 #[test]
 fn an_emptied_carry_window_carries_nothing_into_the_next_window() {
 	// A carry taken from a withdrawn window seeds the next window with a close that no longer exists.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<CarryDriver<TestCarry>>>::new()
+	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<TestCarry>>::new()
 		.with(window_with())
 		.build()
 		.expect("harness");

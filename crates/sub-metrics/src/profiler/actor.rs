@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use reifydb_core::value::batch::views;
 use reifydb_engine::engine::StandardEngine;
 use reifydb_profiler::{
 	callsite,
@@ -23,10 +22,8 @@ use reifydb_runtime::{
 };
 use reifydb_value::{
 	Result,
-	params::Params,
-	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId},
+	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
-use tracing::error;
 
 use super::{accumulator::ProfilerAccumulator, instruments::ProfilerInstruments, publish::spans_columns};
 use crate::framework::{current::CurrentCache, spec::MetricsDomain};
@@ -152,24 +149,12 @@ fn append_spans_snapshot(engine: &StandardEngine, columns: &RecordBatch) -> Resu
 	let Some(path) = MetricsDomain::ProfilerSpans.snapshots_path() else {
 		return Ok(());
 	};
-	let views = views(columns)?;
-	let rows: Vec<Params> = (0..row_count)
-		.map(|index| {
-			let mut row = HashMap::new();
-			for view in &views {
-				let value = view.get_value(index);
-				if !matches!(value, Value::None { .. }) {
-					row.insert(view.field.name().to_string(), value);
-				}
-			}
-			Params::Named(Arc::new(row))
-		})
-		.collect();
 	let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
-	builder.series(path).rows(rows).done();
-	if let Err(e) = builder.execute() {
-		error!("Failed to append profiler spans snapshot: {}", e);
-	}
+	builder.series(path).batch(columns.clone()).done();
+	builder.execute().map_err(|mut e| {
+		e.0.notes.push(format!("appending the {path} snapshot"));
+		e
+	})?;
 	Ok(())
 }
 

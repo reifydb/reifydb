@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::{BTreeMap, HashSet},
 	mem::size_of,
 	sync::Arc,
 };
@@ -172,9 +172,9 @@ pub(super) struct DistinctState {
 
 	pub(super) layout: DistinctLayout,
 
-	pub(super) dirty: HashMap<Hash128, DateTime>,
+	pub(super) dirty: HashSet<Hash128>,
 
-	pub(super) layout_changed_at: Option<DateTime>,
+	pub(super) layout_changed: bool,
 }
 
 impl Default for DistinctState {
@@ -182,8 +182,8 @@ impl Default for DistinctState {
 		Self {
 			entries: IndexMap::new(),
 			layout: DistinctLayout::new(),
-			dirty: HashMap::new(),
-			layout_changed_at: None,
+			dirty: HashSet::new(),
+			layout_changed: false,
 		}
 	}
 }

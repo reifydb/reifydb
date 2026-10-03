@@ -1,26 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashMap;
+
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+	actors::pending::PendingWrite,
+	common::CommitVersion,
+	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupStateKey, IntoGroupStateKey, unmanaged_key},
 	metrics::heap::HeapSize,
-	operator_with::ApplyWith,
 };
-use reifydb_flow_async::operator::state_access::{get, get_or_default, set, update};
-use reifydb_macro::operator_state;
-use reifydb_sdk::{
-	error::Result,
-	flow::operator::{
-		OperatorMetadata,
-		change::BorrowedChange,
-		column::operator::OperatorColumn,
-		extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
-		windowed::guest_as_host::GuestAsHost,
+use reifydb_flow_async::{
+	operator::{
+		host::TxnHostContext,
+		state_access::{get, get_or_default, set, update},
 	},
+	transaction::FlowTransaction,
 };
-use reifydb_testing_sdk::{builders::TestChangeBuilder, harness::ExternCOperatorHarnessBuilder};
-use reifydb_value::{config::ExtensionParams, value::Value};
+use reifydb_macro::operator_state;
+use reifydb_runtime::context::clock::{Clock, MockClock};
+use reifydb_sdk::flow::operator::{mount::context::InProcessContext, windowed::guest_as_host::GuestAsHost};
+use reifydb_testing_sdk::{builders::TestChangeBuilder, in_process::transaction::TestFlowTransaction};
+use reifydb_value::value::Value;
+
+const OPERATOR: OperatorId = OperatorId(1);
 
 /// A bare `String` cannot be a state key: `IntoGroupStateKey` exists to force every key through the operator-state
 /// framing, so this wrapper frames the test's keys exactly as an operator would.
@@ -89,84 +93,87 @@ impl HeapSize for SumState {
 	}
 }
 
-/// Exists only so the harness can hand out a real `ExternCContext`; the state_access functions, not the operator, are
-/// under test.
-struct PassthroughOperator;
-
-impl OperatorMetadata for PassthroughOperator {
-	const NAME: &'static str = "passthrough";
-	const VERSION: &'static str = "1.0.0";
-	const DESCRIPTION: &'static str = "Pass-through operator for testing";
-	const INPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[];
-	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+struct Host {
+	txn: TestFlowTransaction,
 }
 
-impl ExternCOperator for PassthroughOperator {
-	fn new(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
-		Ok(Self)
+impl Host {
+	fn new() -> Self {
+		Self {
+			txn: TestFlowTransaction::new(CommitVersion(1), Clock::Mock(MockClock::new(0))),
+		}
 	}
 
-	fn apply(&mut self, _ctx: &mut ExternCContext, _input: BorrowedChange<'_>) -> Result<()> {
-		Ok(())
+	fn snapshot_state(&self) -> HashMap<EncodedKey, EncodedBytes> {
+		self.txn.pending()
+			.iter_sorted()
+			.filter_map(|(key, write)| match write {
+				PendingWrite::Set(bytes) => Some((key.clone(), bytes.clone())),
+				PendingWrite::Remove {
+					..
+				} => None,
+			})
+			.collect()
 	}
 }
 
 #[test]
 fn test_set_and_get() {
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut host = Host::new();
 
 	let key = TestKey::new("test_key");
 	let value = CounterState {
 		count: 42,
 	};
 
-	let mut ctx = harness.create_operator_context();
+	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 	set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 
 	// Nothing buffers the write, so the value must be in host storage the moment set returns.
-	assert_eq!(harness.state().len(), 1);
+	assert_eq!(host.snapshot_state().len(), 1);
 
-	let mut ctx = harness.create_operator_context();
+	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 	let retrieved = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 	assert_eq!(retrieved, Some(value));
 }
 
 #[test]
-fn test_set_persists_to_extern_c_on_the_set_itself() {
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+fn test_set_persists_to_host_storage_on_the_set_itself() {
+	let mut host = Host::new();
 
 	let key = TestKey::new("persist_key");
 	let value = CounterState {
 		count: 100,
 	};
 
-	// Set is the sole point at which state crosses the ABI; a guest that never sets writes nothing.
-	let mut ctx = harness.create_operator_context();
+	// Set is the sole point at which state reaches host storage; a guest that never sets writes nothing.
+	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 	set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
-	let persisted = harness.snapshot_state();
+	let persisted = host.snapshot_state();
 	assert_eq!(persisted.len(), 1, "Set must write through to host storage");
 
 	// A later context must observe the same bytes, or the write only reached the guest side.
-	let mut ctx = harness.create_operator_context();
+	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 	assert_eq!(
 		get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed"),
 		Some(value),
 		"the persisted row must read back across a fresh context"
 	);
-	assert_eq!(harness.snapshot_state(), persisted, "a read must leave host storage byte-identical");
+	assert_eq!(host.snapshot_state(), persisted, "a read must leave host storage byte-identical");
 }
 
 #[test]
 fn test_get_or_default_creates_default() {
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut host = Host::new();
 
 	let key = TestKey::new("new_key");
 
-	let mut ctx = harness.create_operator_context();
+	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 	let result: CounterState = get_or_default(&mut GuestAsHost(&mut ctx), &key).expect("get_or_default failed");
 
 	assert_eq!(result.count, 0);
@@ -174,8 +181,7 @@ fn test_get_or_default_creates_default() {
 
 #[test]
 fn test_get_or_default_returns_existing() {
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut host = Host::new();
 
 	let key = TestKey::new("existing_key");
 	let value = CounterState {
@@ -183,12 +189,14 @@ fn test_get_or_default_returns_existing() {
 	};
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 	}
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result: CounterState =
 			get_or_default(&mut GuestAsHost(&mut ctx), &key).expect("get_or_default failed");
 
@@ -198,13 +206,13 @@ fn test_get_or_default_returns_existing() {
 
 #[test]
 fn test_update() {
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut host = Host::new();
 
 	let key = TestKey::new("counter");
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result: CounterState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut CounterState| {
 			s.count += 10;
 			Ok(())
@@ -215,7 +223,8 @@ fn test_update() {
 	}
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result: CounterState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut CounterState| {
 			s.count += 5;
 			Ok(())
@@ -227,7 +236,8 @@ fn test_update() {
 
 	// The returned value must agree with host storage, otherwise the second update read a stale base.
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 		assert_eq!(
 			result,
@@ -240,11 +250,11 @@ fn test_update() {
 
 #[test]
 fn test_multiple_keys() {
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut host = Host::new();
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		for i in 0..5 {
 			let key = TestKey::new(&format!("sum_{}", i));
 			let value = SumState {
@@ -255,10 +265,11 @@ fn test_multiple_keys() {
 	}
 
 	// Five distinct keys must frame five distinct rows; a collision would silently overwrite.
-	assert_eq!(harness.state().len(), 5);
+	assert_eq!(host.snapshot_state().len(), 5);
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		for i in 0..5 {
 			let key = TestKey::new(&format!("sum_{}", i));
 			let result: Option<SumState> = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
@@ -274,8 +285,7 @@ fn test_multiple_keys() {
 
 #[test]
 fn test_tuple_keys() {
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut host = Host::new();
 
 	let key1 = TestPair(TestKey::new("base"), TestKey::new("quote"));
 	let key2 = TestPair(TestKey::new("foo"), TestKey::new("bar"));
@@ -287,16 +297,18 @@ fn test_tuple_keys() {
 	};
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		set(&mut GuestAsHost(&mut ctx), &key1, &value1).expect("Set failed");
 		set(&mut GuestAsHost(&mut ctx), &key2, &value2).expect("Set failed");
 	}
 
 	// Two composite keys must never frame onto one row, otherwise the second set eats the first.
-	assert_eq!(harness.state().len(), 2);
+	assert_eq!(host.snapshot_state().len(), 2);
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result1 = get(&mut GuestAsHost(&mut ctx), &key1).expect("Get failed");
 		let result2 = get(&mut GuestAsHost(&mut ctx), &key2).expect("Get failed");
 		assert_eq!(result1, Some(value1));
@@ -306,13 +318,13 @@ fn test_tuple_keys() {
 
 #[test]
 fn test_tuple_key_update() {
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut host = Host::new();
 
 	let key = TestPair(TestKey::new("account"), TestKey::new("balance"));
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result: SumState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut SumState| {
 			s.total += 500;
 			Ok(())
@@ -323,7 +335,8 @@ fn test_tuple_key_update() {
 	}
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result: SumState = update(&mut GuestAsHost(&mut ctx), &key, |s: &mut SumState| {
 			s.total += 250;
 			Ok(())
@@ -336,8 +349,7 @@ fn test_tuple_key_update() {
 
 #[test]
 fn test_get_reloads_from_host_storage() {
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut host = Host::new();
 
 	let key = TestKey::new("miss_hit_key");
 	let value = CounterState {
@@ -345,20 +357,23 @@ fn test_get_reloads_from_host_storage() {
 	};
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
 	}
 
 	// A reader that never saw the write can only answer from host storage, never from an in-process copy.
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 		assert_eq!(result, Some(value.clone()));
 	}
 
 	// A get must never consume the row, otherwise the next read of the same key strands the operator.
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
 		assert_eq!(result, Some(value));
 	}
@@ -366,8 +381,7 @@ fn test_get_reloads_from_host_storage() {
 
 #[test]
 fn test_with_operator_apply() {
-	let mut harness =
-		ExternCOperatorHarnessBuilder::<PassthroughOperator>::new().build().expect("Failed to build harness");
+	let mut host = Host::new();
 
 	// Every apply gets a fresh context, so the count must accumulate through host storage, never restart at zero.
 	let input = TestChangeBuilder::new()
@@ -376,8 +390,9 @@ fn test_with_operator_apply() {
 		.build();
 
 	{
-		let mut ctx = harness.create_operator_context();
-		let diff_count = input.diffs.len() as i64;
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
+		let diff_count = input.row_count() as i64;
 		update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s: &mut CounterState| {
 			s.count += diff_count;
 			Ok(())
@@ -388,8 +403,9 @@ fn test_with_operator_apply() {
 	let input2 = TestChangeBuilder::new().insert_row(3, vec![Value::Int8(30i64)]).build();
 
 	{
-		let mut ctx = harness.create_operator_context();
-		let diff_count = input2.diffs.len() as i64;
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
+		let diff_count = input2.row_count() as i64;
 		update(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter"), |s: &mut CounterState| {
 			s.count += diff_count;
 			Ok(())
@@ -398,7 +414,8 @@ fn test_with_operator_apply() {
 	}
 
 	{
-		let mut ctx = harness.create_operator_context();
+		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
+		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		let result = get(&mut GuestAsHost(&mut ctx), &TestKey::new("event_counter")).expect("Get failed");
 		assert_eq!(
 			result,

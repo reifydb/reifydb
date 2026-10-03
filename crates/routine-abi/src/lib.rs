@@ -8,17 +8,13 @@
 
 pub mod context;
 pub mod error;
-pub mod monoid;
 pub mod registry;
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use error::RoutineError;
 use reifydb_core::value::column::view::group_by::{GroupId, GroupRows};
-use reifydb_value::{
-	fragment::Fragment,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 use serde::{Deserialize, Serialize};
 
 mod sealed {
@@ -171,17 +167,6 @@ pub trait Accumulator: Send + Sync {
 	fn retract(&mut self, _args: &[(FieldRef, ArrayRef)], _groups: &GroupRows) -> Result<(), RoutineError> {
 		Err(RoutineError::Unsupported {
 			op: "retract",
-			accumulator: self.kind_name(),
-		})
-	}
-
-	fn peek(&self, _group: GroupId) -> Option<Value> {
-		None
-	}
-
-	fn seed(&mut self, _group: GroupId, _value: Value) -> Result<(), RoutineError> {
-		Err(RoutineError::Unsupported {
-			op: "seed",
 			accumulator: self.kind_name(),
 		})
 	}

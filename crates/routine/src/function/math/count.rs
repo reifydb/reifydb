@@ -180,15 +180,4 @@ impl Accumulator for CountAccumulator {
 		}
 		Ok(())
 	}
-
-	fn peek(&self, group: GroupId) -> Option<Value> {
-		self.counts.get(group).copied().map(Value::Int8)
-	}
-
-	fn seed(&mut self, group: GroupId, value: Value) -> Result<(), RoutineError> {
-		if let Value::Int8(n) = value {
-			self.counts.insert(group, n);
-		}
-		Ok(())
-	}
 }

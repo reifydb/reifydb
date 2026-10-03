@@ -7,7 +7,7 @@
 //! component whose type is the union of any `component-type*` custom sections found in the input modules.
 //!
 //! The entry point into this process is `Linker::encode`, which analyzes and topologically sorts the input
-//! modules, then sythesizes two additional modules:
+//! modules, then synthesizes two additional modules:
 //!
 //! - `main` AKA `env`: hosts the component's single memory and function table and exports any functions needed to
 //! break dependency cycles discovered in the input modules. Those functions use `call.indirect` to invoke the real
@@ -23,32 +23,40 @@
 //! ahead-of-time.
 
 use {
+    crate::encoding::fixup::{AddressDest, FixupModule, ImportedInstance, StartAction},
     crate::encoding::{ComponentEncoder, Instance, Item, LibraryInfo, MainOrAdapter},
     anyhow::{Context, Result, anyhow, bail},
     indexmap::{IndexMap, IndexSet, map::Entry},
     metadata::{Export, ExportKey, FunctionType, GlobalType, Metadata, Type, ValueType},
     std::{
+        borrow::Cow,
         collections::{BTreeMap, HashMap, HashSet},
         fmt::Debug,
         hash::Hash,
-        iter,
     },
     wasm_encoder::{
-        CodeSection, ConstExpr, DataSection, ElementSection, Elements, EntityType, ExportKind,
-        ExportSection, Function, FunctionSection, GlobalSection, ImportSection, Instruction as Ins,
-        MemArg, MemorySection, MemoryType, Module, RawCustomSection, RefType, StartSection,
-        TableSection, TableType, TagKind, TagSection, TagType, TypeSection, ValType,
+        CodeSection, ConstExpr, Elements, EntityType, ExportKind, ExportSection, Function,
+        FunctionSection, GlobalSection, ImportSection, MemArg, MemorySection, MemoryType, Module,
+        RawCustomSection, RefType, TableSection, TableType, TypeSection, ValType,
     },
     wasmparser::SymbolFlags,
 };
 
-mod metadata;
+pub(crate) mod metadata;
 
 const PAGE_SIZE_BYTES: u32 = 65536;
 // This matches the default stack size LLVM produces:
 pub const DEFAULT_STACK_SIZE_BYTES: u32 = 16 * PAGE_SIZE_BYTES;
 const HEAP_ALIGNMENT_BYTES: u32 = 16;
 const STUB_LIBRARY_NAME: &str = "wit-component:stubs";
+const CABI_REALLOC: &str = "cabi_realloc";
+
+/// Symbols to re-export from the `env` module regardless of whether any
+/// libraries import them, since
+/// `EncodingState::create_export_task_initialization_wrappers` needs to be able
+/// to call them.
+static ENV_REEXPORTS: &[(&str, &[ValueType], &[ValueType])] =
+    &[(metadata::TASK_HOOK, &[ValueType::I32], &[])];
 
 enum Address<'a> {
     Function(u32),
@@ -71,7 +79,7 @@ struct DlOpenables<'a> {
 
     /// Linear memory addresses where global variable addresses will live
     ///
-    /// The init module will fill in the correct values at insantiation time.
+    /// The init module will fill in the correct values at instantiation time.
     global_addresses: Vec<(&'a str, &'a str, u32)>,
 
     /// Number of function references to be stored in the main module's table
@@ -101,7 +109,7 @@ impl<'a> DlOpenables<'a> {
                 let mut symbols = metadata
                     .exports
                     .iter()
-                    .map(|export| {
+                    .filter_map(|export| {
                         let name_address = memory_base + u32::try_from(buffer.len()).unwrap();
                         write_bytes_padded(&mut buffer, export.key.name.as_bytes());
 
@@ -110,9 +118,10 @@ impl<'a> DlOpenables<'a> {
                                 table_base + get_and_increment(&mut function_count),
                             ),
                             Type::Global(_) => Address::Global(export.key.name),
+                            Type::Tag(_) => return None,
                         };
 
-                        (export.key.name, name_address, address)
+                        Some((export.key.name, name_address, address))
                     })
                     .collect::<Vec<_>>();
 
@@ -167,6 +176,106 @@ impl<'a> DlOpenables<'a> {
             function_count,
             libraries_address,
         }
+    }
+}
+
+/// The layout of the whole program's thread-local storage bookkeeping.
+///
+/// This generates a C structure that matches this layout:
+///
+/// ```c
+/// struct {
+///     size_t num_libraries;
+///     void **library_info;
+///     void **main_thread_tls_base;
+/// } __wasm_program_tls_info;
+/// ```
+///
+/// where the `main_thread_tls_base` array is placed first, then the
+/// `library_info` array, then this structure itself.
+#[derive(Default)]
+struct TlsLayout {
+    /// Address of the `main_thread_tls_base` array.
+    ///
+    /// This is left zero-initialized; no data segment covers it.
+    main_thread_tls_base: u32,
+
+    /// Address of the `library_info` array.
+    library_info: u32,
+
+    /// Address of the `__wasm_program_tls_info` struct itself.
+    program_info: u32,
+
+    /// For each library, the slot it uses in the array of TLS base pointers, or
+    /// `None` if it has no thread-local storage of its own.
+    slots: Vec<Option<u32>>,
+
+    /// Static contents of the `__wasm_program_tls_info`.
+    buffer: Vec<u8>,
+}
+
+impl TlsLayout {
+    /// Reserve linear memory and table space for the layout described above,
+    /// advancing `memory_offset` and `table_offset` past what's used.
+    ///
+    /// Nothing is reserved for a program which doesn't use thread-local storage
+    /// at all, and the `__wasm_program_tls_info` half is skipped unless some
+    /// library actually asks for it, which is only the case when the program
+    /// might spawn a thread.
+    fn new(metadata: &[Metadata], memory_offset: &mut u32) -> Self {
+        let needs_tls_base = metadata
+            .iter()
+            .any(|m| m.needs_get_tls_base || m.needs_set_tls_base);
+        let needs_program_info = metadata.iter().any(|m| m.needs_program_tls_info);
+        if !needs_tls_base && !needs_program_info {
+            return Self::default();
+        }
+
+        // Filter out libraries that don't have TLS.
+        let libraries = metadata
+            .iter()
+            .enumerate()
+            .filter(|(_, metadata)| metadata.has_library_tls_info)
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+
+        let mut slots = vec![None; metadata.len()];
+        for (slot, index) in libraries.iter().enumerate() {
+            slots[*index] = Some(u32::try_from(slot).unwrap());
+        }
+        let count = u32::try_from(libraries.len()).unwrap();
+
+        // Allocate space for `main_thread_tls_base`
+        *memory_offset = align(*memory_offset, 4);
+        let main_thread_tls_base = *memory_offset;
+        *memory_offset += count * 4;
+
+        let mut library_info = 0;
+        let mut program_info = 0;
+        let mut buffer = Vec::new();
+        if needs_program_info {
+            library_info = *memory_offset;
+            *memory_offset += count * 4;
+            program_info = *memory_offset;
+            *memory_offset += 12;
+
+            write_u32(&mut buffer, count);
+            write_u32(&mut buffer, library_info);
+            write_u32(&mut buffer, main_thread_tls_base);
+        }
+
+        Self {
+            main_thread_tls_base,
+            library_info,
+            program_info,
+            slots,
+            buffer,
+        }
+    }
+
+    /// The slot library `index` uses in the array of TLS base pointers.
+    fn slot(&self, index: usize) -> Option<u32> {
+        self.slots.get(index).copied().flatten()
     }
 }
 
@@ -273,7 +382,7 @@ fn make_env_module<'a>(
     env_exports: &[EnvExport<'_>],
     cabi_realloc_exporter: Option<&str>,
     stack_size_bytes: u32,
-) -> (Vec<u8>, DlOpenables<'a>, u32) {
+) -> (Vec<u8>, DlOpenables<'a>, TlsLayout, u32) {
     // TODO: deduplicate types
     let mut types = TypeSection::new();
     let mut imports = ImportSection::new();
@@ -306,6 +415,7 @@ fn make_env_module<'a>(
                                 shared: ty.shared,
                             })
                         }
+                        Type::Tag(_) => continue,
                     },
                 );
             }
@@ -313,12 +423,12 @@ fn make_env_module<'a>(
 
         if metadata.has_wasi_start {
             if wasi_start.is_some() {
-                panic!("multiple libraries export _start");
+                panic!("multiple libraries export {}", metadata::START);
             }
             let index = get_and_increment(&mut function_count);
 
             types.ty().function(vec![], vec![]);
-            imports.import(metadata.name, "_start", EntityType::Function(index));
+            imports.import(metadata.name, metadata::START, EntityType::Function(index));
 
             wasi_start = Some(index);
         }
@@ -336,42 +446,84 @@ fn make_env_module<'a>(
     if let Some(exporter) = cabi_realloc_exporter {
         let index = get_and_increment(&mut function_count);
         types.ty().function([ValType::I32; 4], [ValType::I32]);
-        imports.import(exporter, "cabi_realloc", EntityType::Function(index));
-        exports.export("cabi_realloc", ExportKind::Func, index);
+        imports.import(exporter, CABI_REALLOC, EntityType::Function(index));
+        exports.export(CABI_REALLOC, ExportKind::Func, index);
     }
 
+    // If tls base shims are being generated, and something might spawn a
+    // thread, then the shims generated will need access to `context.get 1`.
+    let indirect_tls_base = metadata
+        .iter()
+        .any(|m| m.needs_get_tls_base || m.needs_set_tls_base)
+        && metadata.iter().any(|m| m.uses_thread_new_indirect);
+    let tls_context_get = if indirect_tls_base {
+        let index = get_and_increment(&mut function_count);
+        types.ty().function([], [ValType::I32]);
+        imports.import(
+            metadata::ROOT,
+            metadata::CONTEXT_GET_1,
+            EntityType::Function(index),
+        );
+        Some(index)
+    } else {
+        None
+    };
+
+    let mut add_global_export = |name: &str, value, mutable| {
+        let index = globals.len();
+        globals.global(
+            wasm_encoder::GlobalType {
+                val_type: ValType::I32,
+                mutable,
+                shared: false,
+            },
+            &const_u32(value),
+        );
+        exports.export(name, ExportKind::Global, index);
+    };
+
     let dl_openables = DlOpenables::new(table_offset, memory_offset, metadata);
+
+    if metadata.iter().any(|m| m.needs_libdl_libraries) {
+        add_global_export(
+            metadata::LIBDL_LIBRARIES,
+            dl_openables.libraries_address,
+            true,
+        );
+    }
 
     table_offset += dl_openables.function_count;
     memory_offset += u32::try_from(dl_openables.buffer.len()).unwrap();
 
-    let memory_size = {
-        let mut add_global_export = |name: &str, value, mutable| {
-            let index = globals.len();
-            globals.global(
-                wasm_encoder::GlobalType {
-                    val_type: ValType::I32,
-                    mutable,
-                    shared: false,
-                },
-                &const_u32(value),
-            );
-            exports.export(name, ExportKind::Global, index);
-        };
+    let tls = TlsLayout::new(metadata, &mut memory_offset);
 
-        add_global_export("__stack_pointer", stack_size_bytes, true);
+    if metadata.iter().any(|m| m.needs_program_tls_info) {
+        add_global_export(metadata::PROGRAM_TLS_INFO, tls.program_info, true);
+    }
+
+    let memory_size = {
+        if metadata.iter().any(|m| m.needs_stack_pointer) {
+            add_global_export(metadata::STACK_POINTER, stack_size_bytes, true);
+        }
+        if metadata.iter().any(|m| m.needs_init_stack_pointer) {
+            add_global_export(metadata::INIT_STACK_POINTER, stack_size_bytes, false);
+        }
 
         // Binaryen's Asyncify transform for shared everything linking requires these globals
         // to be provided from env module
         let has_asyncified_module = metadata.iter().any(|m| m.is_asyncified);
         if has_asyncified_module {
-            add_global_export("__asyncify_state", 0, true);
-            add_global_export("__asyncify_data", 0, true);
+            add_global_export(metadata::ASYNCIFY_STATE, 0, true);
+            add_global_export(metadata::ASYNCIFY_DATA, 0, true);
         }
 
         // The libc.so in WASI-SDK 28+ requires these:
-        add_global_export("__stack_high", stack_size_bytes, true);
-        add_global_export("__stack_low", 0, true);
+        if metadata.iter().any(|m| m.needs_stack_high) {
+            add_global_export(metadata::STACK_HIGH, stack_size_bytes, true);
+        }
+        if metadata.iter().any(|m| m.needs_stack_low) {
+            add_global_export(metadata::STACK_LOW, 0, true);
+        }
 
         for metadata in metadata {
             memory_offset = align(memory_offset, 1 << metadata.mem_info.memory_alignment);
@@ -401,12 +553,8 @@ fn make_env_module<'a>(
         {
             let offsets = env_exports
                 .iter()
-                .filter_map(|export| match export {
-                    EnvExport::Func { name, exporter, .. } => Some((name, exporter)),
-                    EnvExport::Tag { .. } => None,
-                })
                 .enumerate()
-                .map(|(offset, (name, exporter))| {
+                .map(|(offset, EnvExport { name, exporter, .. })| {
                     (
                         *name,
                         (
@@ -435,10 +583,14 @@ fn make_env_module<'a>(
         }
 
         memory_offset = align(memory_offset, HEAP_ALIGNMENT_BYTES);
-        add_global_export("__heap_base", memory_offset, true);
+        if metadata.iter().any(|m| m.needs_heap_base) {
+            add_global_export(metadata::HEAP_BASE, memory_offset, true);
+        }
 
         let heap_end = align(memory_offset, PAGE_SIZE_BYTES);
-        add_global_export("__heap_end", heap_end, true);
+        if metadata.iter().any(|m| m.needs_heap_end) {
+            add_global_export(metadata::HEAP_END, heap_end, true);
+        }
         heap_end / PAGE_SIZE_BYTES
     };
 
@@ -447,30 +599,147 @@ fn make_env_module<'a>(
     let mut functions = FunctionSection::new();
     let mut code = CodeSection::new();
     for export in env_exports {
-        let (name, ty) = match export {
-            EnvExport::Func { name, ty, .. } => (name, ty),
-            _ => continue,
-        };
         let index = get_and_increment(&mut function_count);
         types.ty().function(
-            ty.parameters.iter().copied().map(ValType::from),
-            ty.results.iter().copied().map(ValType::from),
+            export.ty.parameters.iter().copied().map(ValType::from),
+            export.ty.results.iter().copied().map(ValType::from),
         );
         functions.function(u32::try_from(index).unwrap());
         let mut function = Function::new([]);
-        for local in 0..ty.parameters.len() {
-            function.instruction(&Ins::LocalGet(u32::try_from(local).unwrap()));
+        for local in 0..export.ty.parameters.len() {
+            function
+                .instructions()
+                .local_get(u32::try_from(local).unwrap());
         }
-        function.instruction(&Ins::I32Const(i32::try_from(table_offset).unwrap()));
-        function.instruction(&Ins::CallIndirect {
-            type_index: u32::try_from(index).unwrap(),
-            table_index: 0,
-        });
-        function.instruction(&Ins::End);
+        function
+            .instructions()
+            .i32_const(i32::try_from(table_offset).unwrap())
+            .call_indirect(0, u32::try_from(index).unwrap())
+            .end();
         code.function(&function);
-        exports.export(name, ExportKind::Func, index);
+        exports.export(export.name, ExportKind::Func, index);
 
         table_offset += 1;
+    }
+
+    // Define a distinct `__wasm_{get,set}_tls_base` pair for each library that
+    // needs one. Each pair reads and writes that library's slot of the array of
+    // pointers described by `TlsLayout`.
+    for (index, metadata) in metadata.iter().enumerate() {
+        // A library with no thread-local storage of its own has no slot in the
+        // array. If it still imports these then synthesize functions that trap
+        // since they shouldn't ever be called.
+        let Some(slot) = tls.slot(index) else {
+            for (needed, name, params, results) in [
+                (
+                    metadata.needs_get_tls_base,
+                    metadata::GET_TLS_BASE,
+                    &[][..],
+                    &[ValType::I32][..],
+                ),
+                (
+                    metadata.needs_set_tls_base,
+                    metadata::SET_TLS_BASE,
+                    &[ValType::I32][..],
+                    &[][..],
+                ),
+            ] {
+                if !needed {
+                    continue;
+                }
+                let func = get_and_increment(&mut function_count);
+                types
+                    .ty()
+                    .function(params.iter().copied(), results.iter().copied());
+                functions.function(func);
+                let mut function = Function::new([]);
+                function.instructions().unreachable().end();
+                code.function(&function);
+                exports.export(&format!("{}:{name}", metadata.name), ExportKind::Func, func);
+            }
+            continue;
+        };
+
+        let mem_arg = MemArg {
+            offset: u64::from(slot * 4),
+            align: 2,
+            memory_index: 0,
+        };
+
+        if metadata.needs_get_tls_base {
+            let func = get_and_increment(&mut function_count);
+            types.ty().function([], [ValType::I32]);
+            functions.function(func);
+            let mut function = Function::new([]);
+            // With coop threads the base pointer is in `context.get 1`. Without
+            // coop threads the base pointer is `main_thread_tls_base` itself.
+            match tls_context_get {
+                Some(get) => {
+                    function.instructions().call(get);
+                }
+                None => {
+                    function
+                        .instructions()
+                        .i32_const(i32::try_from(tls.main_thread_tls_base).unwrap());
+                }
+            }
+            function.instructions().i32_load(mem_arg).end();
+            code.function(&function);
+            exports.export(
+                &format!("{}:{}", metadata.name, metadata::GET_TLS_BASE),
+                ExportKind::Func,
+                func,
+            );
+        }
+
+        if metadata.needs_set_tls_base {
+            let func = get_and_increment(&mut function_count);
+            types.ty().function([ValType::I32], []);
+            functions.function(func);
+            let mut function = Function::new_with_locals_types(if tls_context_get.is_some() {
+                vec![ValType::I32]
+            } else {
+                vec![]
+            });
+            // With coop threads this intrinsic conditionally initializes
+            // `main_thread_tls_base` based on `context.get 1`. Otherwise it
+            // writes through to it if it's set.
+            //
+            // Without coop threads this is updating `main_thread_tls_base`.
+            match tls_context_get {
+                Some(get) => {
+                    function
+                        .instructions()
+                        .call(get)
+                        .local_tee(1)
+                        .i32_eqz()
+                        .if_(wasm_encoder::BlockType::Empty)
+                        .i32_const(i32::try_from(tls.main_thread_tls_base).unwrap())
+                        .local_get(0)
+                        .i32_store(mem_arg)
+                        .else_()
+                        .local_get(1)
+                        .local_get(0)
+                        .i32_store(mem_arg)
+                        .end()
+                        .end();
+                }
+                None => {
+                    function
+                        .instructions()
+                        .i32_const(i32::try_from(tls.main_thread_tls_base).unwrap())
+                        .local_get(0)
+                        .i32_store(mem_arg)
+                        .end();
+                }
+            }
+            code.function(&function);
+            exports.export(
+                &format!("{}:{}", metadata.name, metadata::SET_TLS_BASE),
+                ExportKind::Func,
+                func,
+            );
+        }
     }
 
     for (import, offset) in import_map {
@@ -481,31 +750,8 @@ fn make_env_module<'a>(
         );
     }
     if let Some(index) = wasi_start {
-        exports.export("_start", ExportKind::Func, index);
+        exports.export(metadata::START, ExportKind::Func, index);
     }
-
-    let tags = {
-        let mut tags = TagSection::new();
-        for export in env_exports.iter() {
-            let (name, ty) = match export {
-                EnvExport::Tag { name, ty } => (name, ty),
-                _ => continue,
-            };
-
-            let func_type_idx = types.len();
-            types.ty().function(
-                ty.parameters.iter().copied().map(ValType::from),
-                ty.results.iter().copied().map(ValType::from),
-            );
-            let tag_idx = tags.len();
-            tags.tag(TagType {
-                kind: TagKind::Exception,
-                func_type_idx,
-            });
-            exports.export(name, ExportKind::Tag, tag_idx);
-        }
-        tags
-    };
 
     let mut module = Module::new();
 
@@ -522,7 +768,7 @@ fn make_env_module<'a>(
             table64: false,
             shared: false,
         });
-        exports.export("__indirect_function_table", ExportKind::Table, 0);
+        exports.export(metadata::INDIRECT_FUNCTION_TABLE, ExportKind::Table, 0);
         module.section(&tables);
     }
 
@@ -535,13 +781,10 @@ fn make_env_module<'a>(
             shared: false,
             page_size_log2: None,
         });
-        exports.export("memory", ExportKind::Memory, 0);
+        exports.export(metadata::MEMORY, ExportKind::Memory, 0);
         module.section(&memories);
     }
 
-    if !tags.is_empty() {
-        module.section(&tags);
-    }
     module.section(&globals);
     module.section(&exports);
     module.section(&code);
@@ -552,7 +795,7 @@ fn make_env_module<'a>(
     let module = module.finish();
     wasmparser::validate(&module).unwrap();
 
-    (module, dl_openables, indirection_table_base)
+    (module, dl_openables, tls, indirection_table_base)
 }
 
 /// Synthesize the "init" module, responsible for initializing global variables per the dynamic linking tool
@@ -560,212 +803,172 @@ fn make_env_module<'a>(
 ///
 /// This module also contains the data segment for the `dlopen`/`dlsym` lookup table.
 fn make_init_module(
+    fixups: &mut FixupModule,
     metadata: &[Metadata],
     exporters: &IndexMap<&ExportKey, (&str, &Export)>,
     env_exports: &[EnvExport<'_>],
-    dl_openables: DlOpenables,
+    dl_openables: &DlOpenables,
+    tls: &TlsLayout,
     indirection_table_base: u32,
-) -> Result<Vec<u8>> {
-    let mut module = Module::new();
-
-    // TODO: deduplicate types
-    let mut types = TypeSection::new();
-    types.ty().function([], []);
-    let thunk_ty = 0;
-    types.ty().function([ValType::I32], []);
-    let one_i32_param_ty = 1;
-    let mut type_offset = 2;
-
-    for metadata in metadata {
-        if metadata.dl_openable {
-            for export in &metadata.exports {
-                if let Type::Function(ty) = &export.key.ty {
-                    types.ty().function(
-                        ty.parameters.iter().copied().map(ValType::from),
-                        ty.results.iter().copied().map(ValType::from),
-                    );
-                }
-            }
-        }
-    }
-    for export in env_exports {
-        let ty = match export {
-            EnvExport::Func { ty, .. } => ty,
-            _ => continue,
-        };
-        types.ty().function(
-            ty.parameters.iter().copied().map(ValType::from),
-            ty.results.iter().copied().map(ValType::from),
-        );
-    }
-    module.section(&types);
-
-    let mut imports = ImportSection::new();
-    imports.import(
-        "env",
-        "memory",
+) -> Result<()> {
+    let thunk_ty = fixups.type_thunk();
+    let memory = fixups.import(
+        &ImportedInstance::Main,
+        metadata::MEMORY,
         MemoryType {
             minimum: 0,
             maximum: None,
             memory64: false,
             shared: false,
             page_size_log2: None,
-        },
-    );
-    imports.import(
-        "env",
-        "__indirect_function_table",
+        }
+        .into(),
+    )?;
+    let table = fixups.import(
+        &ImportedInstance::Main,
+        metadata::INDIRECT_FUNCTION_TABLE,
         TableType {
             element_type: RefType::FUNCREF,
             minimum: 0,
             maximum: None,
             table64: false,
             shared: false,
-        },
-    );
+        }
+        .into(),
+    )?;
 
-    let mut global_count = 0;
+    let module_name_to_instance = |module: &str| match module {
+        metadata::ENV => ImportedInstance::Main,
+        other => ImportedInstance::Adapter(other.to_string()),
+    };
+
     let mut global_map = HashMap::new();
-    let mut add_global_import = |imports: &mut ImportSection, module: &str, name: &str, mutable| {
+    let mut add_global_import = |fixups: &mut FixupModule, module: &str, name: &str, mutable| {
         *global_map
             .entry((module.to_owned(), name.to_owned()))
             .or_insert_with(|| {
-                imports.import(
-                    module,
-                    name,
-                    wasm_encoder::GlobalType {
-                        val_type: ValType::I32,
-                        mutable,
-                        shared: false,
-                    },
-                );
-                get_and_increment(&mut global_count)
+                fixups
+                    .import_global(
+                        &module_name_to_instance(module),
+                        name,
+                        wasm_encoder::GlobalType {
+                            val_type: ValType::I32,
+                            mutable,
+                            shared: false,
+                        },
+                    )
+                    .unwrap()
             })
     };
 
-    let mut function_count = 0;
     let mut function_map = HashMap::new();
-    let mut add_function_import = |imports: &mut ImportSection, module: &str, name: &str, ty| {
+    let mut add_function_import = |fixups: &mut FixupModule, module: &str, name: &str, ty| {
         *function_map
             .entry((module.to_owned(), name.to_owned()))
             .or_insert_with(|| {
-                imports.import(module, name, EntityType::Function(ty));
-                get_and_increment(&mut function_count)
+                fixups
+                    .import_func(&module_name_to_instance(module), name, ty)
+                    .unwrap()
             })
     };
 
-    let mut memory_address_inits = Vec::new();
-    let mut reloc_calls = Vec::new();
-    let mut ctor_calls = Vec::new();
     let mut names = HashMap::new();
-
-    for (exporter, export, address) in dl_openables.global_addresses.iter() {
-        memory_address_inits.push(Ins::I32Const(i32::try_from(*address).unwrap()));
-        memory_address_inits.push(Ins::GlobalGet(add_global_import(
-            &mut imports,
-            "env",
-            &format!("{exporter}:memory_base"),
-            false,
-        )));
-        memory_address_inits.push(Ins::GlobalGet(add_global_import(
-            &mut imports,
-            exporter,
-            export,
-            false,
-        )));
-        memory_address_inits.push(Ins::I32Add);
-        memory_address_inits.push(Ins::I32Store(MemArg {
-            offset: 0,
-            align: 2,
-            memory_index: 0,
-        }));
-    }
-
     for (index, metadata) in metadata.iter().enumerate() {
         names.insert_unique(index, metadata.name);
+    }
 
-        if metadata.has_data_relocs {
-            reloc_calls.push(Ins::Call(add_function_import(
-                &mut imports,
-                metadata.name,
-                "__wasm_apply_data_relocs",
-                thunk_ty,
-            )));
+    for (exporter, export, address) in dl_openables.global_addresses.iter() {
+        let memory_base = add_global_import(
+            fixups,
+            metadata::ENV,
+            &format!("{exporter}:memory_base"),
+            false,
+        );
+        let export = add_global_import(fixups, exporter, export, false);
+
+        fixups.add_start_abi_detail(StartAction::InitializeAddress {
+            memory_base,
+            export,
+            dest: AddressDest::LinearMemory {
+                address: *address,
+                memory,
+            },
+        });
+    }
+
+    for metadata in metadata {
+        for import in &metadata.memory_address_imports {
+            let (exporter, _) = find_offset_exporter(import, exporters)?;
+
+            let memory_base = add_global_import(
+                fixups,
+                metadata::ENV,
+                &format!("{exporter}:memory_base"),
+                false,
+            );
+            let offset = add_global_import(fixups, exporter, import, false);
+            let address = add_global_import(
+                fixups,
+                metadata::ENV,
+                &format!("{}:{import}", metadata.name),
+                true,
+            );
+            fixups.add_start_abi_detail(StartAction::InitializeAddress {
+                memory_base,
+                export: offset,
+                dest: AddressDest::Global(address),
+            });
         }
+    }
 
+    for metadata in metadata {
+        if metadata.has_data_relocs {
+            let func =
+                add_function_import(fixups, metadata.name, metadata::APPLY_DATA_RELOCS, thunk_ty);
+            fixups.add_start_abi_detail(StartAction::Call(func));
+        }
+    }
+
+    for metadata in metadata {
         if metadata.has_ctors && metadata.has_initialize {
             bail!(
-                "library {} exports both `__wasm_call_ctors` and `_initialize`; \
+                "library {} exports both `{}` and `{}`; \
                  expected at most one of the two",
-                metadata.name
+                metadata.name,
+                metadata::CALL_CTORS,
+                metadata::INITIALIZE
             );
         }
 
         if metadata.has_ctors {
-            ctor_calls.push(Ins::Call(add_function_import(
-                &mut imports,
-                metadata.name,
-                "__wasm_call_ctors",
-                thunk_ty,
-            )));
+            let func = add_function_import(fixups, metadata.name, metadata::CALL_CTORS, thunk_ty);
+            fixups.add_start_user_func(StartAction::Call(func));
         }
 
         if metadata.has_initialize {
-            ctor_calls.push(Ins::Call(add_function_import(
-                &mut imports,
-                metadata.name,
-                "_initialize",
-                thunk_ty,
-            )));
-        }
-
-        if metadata.has_set_libraries {
-            ctor_calls.push(Ins::I32Const(
-                i32::try_from(dl_openables.libraries_address).unwrap(),
-            ));
-            ctor_calls.push(Ins::Call(add_function_import(
-                &mut imports,
-                metadata.name,
-                "__wasm_set_libraries",
-                one_i32_param_ty,
-            )));
-        }
-
-        for import in &metadata.memory_address_imports {
-            let (exporter, _) = find_offset_exporter(import, exporters)?;
-
-            memory_address_inits.push(Ins::GlobalGet(add_global_import(
-                &mut imports,
-                "env",
-                &format!("{exporter}:memory_base"),
-                false,
-            )));
-            memory_address_inits.push(Ins::GlobalGet(add_global_import(
-                &mut imports,
-                exporter,
-                import,
-                false,
-            )));
-            memory_address_inits.push(Ins::I32Add);
-            memory_address_inits.push(Ins::GlobalSet(add_global_import(
-                &mut imports,
-                "env",
-                &format!("{}:{import}", metadata.name),
-                true,
-            )));
+            let func = add_function_import(fixups, metadata.name, metadata::INITIALIZE, thunk_ty);
+            fixups.add_start_user_func(StartAction::Call(func));
         }
     }
+
+    let intern_type = |fixups: &mut FixupModule, ty: &FunctionType| {
+        fixups.type_intern(
+            ty.parameters.iter().copied().map(|t| t.into()).collect(),
+            ty.results.iter().copied().map(|t| t.into()).collect(),
+        )
+    };
 
     let mut dl_openable_functions = Vec::new();
     for metadata in metadata {
         if metadata.dl_openable {
             for export in &metadata.exports {
-                if let Type::Function(_) = &export.key.ty {
+                if let Type::Function(fty) = &export.key.ty {
+                    let ty = intern_type(fixups, fty);
                     dl_openable_functions.push(add_function_import(
-                        &mut imports,
+                        fixups,
                         metadata.name,
                         export.key.name,
-                        get_and_increment(&mut type_offset),
+                        ty,
                     ));
                 }
             }
@@ -774,74 +977,65 @@ fn make_init_module(
 
     let indirections = env_exports
         .iter()
-        .filter_map(|export| match export {
-            EnvExport::Func { name, exporter, .. } => Some((name, exporter)),
-            _ => None,
-        })
-        .map(|(name, index)| {
-            add_function_import(
-                &mut imports,
-                names[index],
-                name,
-                get_and_increment(&mut type_offset),
-            )
+        .map(|EnvExport { name, exporter, ty }| {
+            let ty = intern_type(fixups, ty);
+            add_function_import(fixups, names[exporter], name, ty)
         })
         .collect::<Vec<_>>();
 
-    module.section(&imports);
-
-    {
-        let mut functions = FunctionSection::new();
-        functions.function(thunk_ty);
-        module.section(&functions);
-    }
-
-    module.section(&StartSection {
-        function_index: function_count,
-    });
-
-    {
-        let mut elements = ElementSection::new();
-        elements.active(
-            None,
-            &const_u32(dl_openables.table_base),
-            Elements::Functions(dl_openable_functions.into()),
-        );
-        elements.active(
-            None,
-            &const_u32(indirection_table_base),
-            Elements::Functions(indirections.into()),
-        );
-        module.section(&elements);
-    }
-
-    {
-        let mut code = CodeSection::new();
-        let mut function = Function::new([]);
-        for ins in memory_address_inits
+    // For all libraries that export TLS information the initialization function
+    // here will setup the in-memory `__wasm_program_tls_info` structure by
+    // storing the pointers to each `__wasm_library_tls_info` structure in a
+    // sequence.
+    if tls.library_info != 0 {
+        for (lib_index, tls_index) in tls
+            .slots
             .iter()
-            .chain(&reloc_calls)
-            .chain(&ctor_calls)
+            .enumerate()
+            .filter_map(|(i, slot)| slot.map(|j| (i, j)))
         {
-            function.instruction(ins);
+            let metadata = &metadata[lib_index];
+            let memory_base = add_global_import(
+                fixups,
+                metadata::ENV,
+                &format!("{}:memory_base", metadata.name),
+                false,
+            );
+            let i = add_global_import(fixups, metadata.name, metadata::LIBRARY_TLS_INFO, false);
+
+            fixups.add_start_abi_detail(StartAction::InitializeAddress {
+                memory_base,
+                export: i,
+                dest: AddressDest::LinearMemory {
+                    address: tls.library_info + tls_index * 4,
+                    memory,
+                },
+            });
         }
-        function.instruction(&Ins::End);
-        code.function(&function);
-        module.section(&code);
     }
 
-    let mut data = DataSection::new();
-    data.active(0, &const_u32(dl_openables.memory_base), dl_openables.buffer);
-    module.section(&data);
+    fixups.elements().active(
+        if table == 0 { None } else { Some(table) },
+        &const_u32(dl_openables.table_base),
+        Elements::Functions(dl_openable_functions.into()),
+    );
+    fixups.elements().active(
+        if table == 0 { None } else { Some(table) },
+        &const_u32(indirection_table_base),
+        Elements::Functions(indirections.into()),
+    );
 
-    module.section(&RawCustomSection(
-        &crate::base_producers().raw_custom_section(),
-    ));
+    let data = fixups.data();
+    data.active(
+        memory,
+        &const_u32(dl_openables.memory_base),
+        dl_openables.buffer.clone(),
+    );
+    if !tls.buffer.is_empty() {
+        data.active(memory, &const_u32(tls.program_info), tls.buffer.clone());
+    }
 
-    let module = module.finish();
-    wasmparser::validate(&module)?;
-
-    Ok(module)
+    Ok(())
 }
 
 /// Find the library which exports the specified function or global address.
@@ -881,6 +1075,23 @@ fn find_function_exporter<'a>(
         .ok_or_else(|| anyhow!("unable to find {export:?} in any library"))
 }
 
+/// Find the library which exports the specified tag.
+fn find_tag_exporter<'a>(
+    name: &str,
+    ty: &FunctionType,
+    exporters: &IndexMap<&ExportKey, (&'a str, &'a Export<'a>)>,
+) -> Result<(&'a str, &'a Export<'a>)> {
+    let export = ExportKey {
+        name,
+        ty: Type::Tag(ty.clone()),
+    };
+
+    exporters
+        .get(&export)
+        .copied()
+        .ok_or_else(|| anyhow!("unable to find {export:?} in any library"))
+}
+
 /// Analyze the specified library metadata, producing a symbol-to-library-name map of exports.
 fn resolve_exporters<'a>(
     metadata: &'a [Metadata<'a>],
@@ -908,12 +1119,9 @@ fn resolve_symbols<'a>(
 ) {
     let function_exporters = exporters
         .iter()
-        .filter_map(|(export, exporters)| {
-            if let Type::Function(_) = &export.ty {
-                Some((export.name, (export, exporters)))
-            } else {
-                None
-            }
+        .filter_map(|(export, exporters)| match &export.ty {
+            Type::Function(_) => Some((export.name, (export, exporters))),
+            Type::Global(_) | Type::Tag(_) => None,
         })
         .collect_unique::<IndexMap<_, _>>();
 
@@ -923,11 +1131,11 @@ fn resolve_symbols<'a>(
 
     let mut triage = |metadata: &'a Metadata, export: Export<'a>| {
         if let Some((key, value)) = exporters.get_key_value(&export.key) {
+            // Note that we do not use `insert_unique` here since multiple libraries may import the same
+            // symbol, in which case we may redundantly insert the same value.
             match value.as_slice() {
                 [] => unreachable!(),
                 [exporter] => {
-                    // Note that we do not use `insert_unique` here since multiple libraries may import the same
-                    // symbol, in which case we may redundantly insert the same value.
                     resolved.insert(*key, *exporter);
                 }
                 [exporter, ..] => {
@@ -970,6 +1178,19 @@ fn resolve_symbols<'a>(
                 },
             );
         }
+
+        for (name, ty) in &metadata.tag_imports {
+            triage(
+                metadata,
+                Export {
+                    key: ExportKey {
+                        name,
+                        ty: Type::Tag(ty.clone()),
+                    },
+                    flags: SymbolFlags::empty(),
+                },
+            );
+        }
     }
 
     for metadata in metadata {
@@ -1004,6 +1225,35 @@ fn resolve_symbols<'a>(
                         flags: SymbolFlags::empty(),
                     },
                 ));
+            }
+        }
+    }
+
+    // Even if no library imports these symbols, we re-export them from the
+    // `env` module so that
+    // `EncodingState::create_export_task_initialization_wrappers` can find
+    // and use them:
+    for (name, params, results) in ENV_REEXPORTS {
+        let export = Export {
+            key: ExportKey {
+                name,
+                ty: Type::Function(FunctionType {
+                    parameters: params.to_vec(),
+                    results: results.to_vec(),
+                }),
+            },
+            flags: SymbolFlags::empty(),
+        };
+
+        if let Some((key, value)) = exporters.get_key_value(&export.key) {
+            // Note that we do not use `insert_unique` here since multiple
+            // libraries may import the same symbol, in which case we may
+            // redundantly insert the same value.
+            match value.as_slice() {
+                [] => unreachable!(),
+                [exporter] | [exporter, ..] => {
+                    resolved.insert(*key, *exporter);
+                }
             }
         }
     }
@@ -1119,16 +1369,10 @@ struct EnvExports<'a> {
     reexport_cabi_realloc: bool,
 }
 
-enum EnvExport<'a> {
-    Func {
-        name: &'a str,
-        ty: &'a FunctionType,
-        exporter: usize,
-    },
-    Tag {
-        name: &'a str,
-        ty: &'a FunctionType,
-    },
+struct EnvExport<'a> {
+    name: &'a str,
+    ty: Cow<'a, FunctionType>,
+    exporter: usize,
 }
 
 /// Analyze the specified metadata and generate what needs to be exported from
@@ -1175,9 +1419,9 @@ fn env_exports<'a>(
                     .get(name)
                     .ok_or_else(|| anyhow!("unable to find {name:?} in any library"))?;
 
-                result.push(EnvExport::Func {
+                result.push(EnvExport {
                     name: *name,
-                    ty: *ty,
+                    ty: Cow::Borrowed(*ty),
                     exporter: indexes[exporter],
                 });
                 exported.insert(*name);
@@ -1190,9 +1434,9 @@ fn env_exports<'a>(
                     .unwrap()
                     .0];
                 if !seen.contains(&exporter) {
-                    result.push(EnvExport::Func {
+                    result.push(EnvExport {
                         name: *import_name,
-                        ty,
+                        ty: Cow::Borrowed(ty),
                         exporter,
                     });
                     exported.insert(*import_name);
@@ -1200,19 +1444,34 @@ fn env_exports<'a>(
             }
         }
 
-        for (import_name, ty) in &metadata.tag_imports {
-            if exported.insert(import_name) {
-                result.push(EnvExport::Tag {
-                    name: *import_name,
-                    ty,
-                });
-            }
-        }
-
         seen.insert(index);
     }
 
-    let reexport_cabi_realloc = exported.contains("cabi_realloc");
+    // Even if no library imports these symbols, we re-export them from the
+    // `env` module so that
+    // `EncodingState::create_export_task_initialization_wrappers` can find
+    // and use them:
+    for (name, params, results) in ENV_REEXPORTS {
+        if !exported.contains(name) {
+            let ty = FunctionType {
+                parameters: params.to_vec(),
+                results: results.to_vec(),
+            };
+            if let Some(exporter) = exporters.get(&ExportKey {
+                name,
+                ty: Type::Function(ty.clone()),
+            }) {
+                result.push(EnvExport {
+                    name,
+                    ty: Cow::Owned(ty),
+                    exporter: indexes[exporter.0],
+                });
+                exported.insert(name);
+            }
+        }
+    }
+
+    let reexport_cabi_realloc = exported.contains(CABI_REALLOC);
 
     Ok(EnvExports {
         exports: result,
@@ -1247,8 +1506,7 @@ fn make_stubs_module(missing: &[(&str, Export)]) -> Vec<u8> {
         );
         functions.function(offset);
         let mut function = Function::new([]);
-        function.instruction(&Ins::Unreachable);
-        function.instruction(&Ins::End);
+        function.instructions().unreachable().end();
         code.function(&function);
         exports.export(name, ExportKind::Func, offset);
     }
@@ -1308,109 +1566,69 @@ pub struct Linker {
     /// The order of this list determines priority in cases where more than one library exports the same symbol.
     libraries: Vec<(String, Vec<u8>, bool)>,
 
-    /// The set of adapters to use when generating the component
-    adapters: Vec<(String, Vec<u8>)>,
-
-    /// Whether to validate the resulting component prior to returning it
-    validate: bool,
-
     /// Whether to generate trapping stubs for any unresolved imports
     stub_missing_functions: bool,
 
     /// Whether to use a built-in implementation of `dlopen`/`dlsym`.
     use_built_in_libdl: bool,
 
-    /// Whether to generate debug `name` sections.
-    debug_names: bool,
-
     /// Size of stack (in bytes) to allocate in the synthesized main module
     ///
     /// If `None`, use `DEFAULT_STACK_SIZE_BYTES`.
     stack_size: Option<u32>,
 
-    /// This affects how when to WIT worlds are merged together, for example
-    /// from two different libraries, whether their imports are unified when the
-    /// semver version ranges for interface allow it.
-    merge_imports_based_on_semver: Option<bool>,
+    encoder: ComponentEncoder,
 }
 
 impl Linker {
     /// Add a dynamic library module to this linker.
     ///
-    /// If `dl_openable` is true, all of the libraries exports will be added to the `dlopen`/`dlsym` lookup table
+    /// If `dl_openable` is true, all of the library's exports will be added to the `dlopen`/`dlsym` lookup table
     /// for runtime resolution.
-    pub fn library(mut self, name: &str, module: &[u8], dl_openable: bool) -> Result<Self> {
+    pub fn library(&mut self, name: &str, module: &[u8], dl_openable: bool) -> Result<&mut Self> {
         self.libraries
             .push((name.to_owned(), module.to_vec(), dl_openable));
 
         Ok(self)
     }
 
-    /// Add an adapter to this linker.
-    ///
-    /// See [crate::encoding::ComponentEncoder::adapter] for details.
-    pub fn adapter(mut self, name: &str, module: &[u8]) -> Result<Self> {
-        self.adapters.push((name.to_owned(), module.to_vec()));
-
-        Ok(self)
-    }
-
-    /// Specify whether to validate the resulting component prior to returning it
-    pub fn validate(mut self, validate: bool) -> Self {
-        self.validate = validate;
-        self
-    }
-
     /// Specify size of stack to allocate in the synthesized main module
-    pub fn stack_size(mut self, stack_size: u32) -> Self {
+    pub fn stack_size(&mut self, stack_size: u32) -> &mut Self {
         self.stack_size = Some(stack_size);
         self
     }
 
     /// Specify whether to generate trapping stubs for any unresolved imports
-    pub fn stub_missing_functions(mut self, stub_missing_functions: bool) -> Self {
+    pub fn stub_missing_functions(&mut self, stub_missing_functions: bool) -> &mut Self {
         self.stub_missing_functions = stub_missing_functions;
         self
     }
 
     /// Specify whether to use a built-in implementation of `dlopen`/`dlsym`.
-    pub fn use_built_in_libdl(mut self, use_built_in_libdl: bool) -> Self {
+    pub fn use_built_in_libdl(&mut self, use_built_in_libdl: bool) -> &mut Self {
         self.use_built_in_libdl = use_built_in_libdl;
         self
     }
 
-    /// Whether or not to generate debug name sections.
-    pub fn debug_names(mut self, enable: bool) -> Self {
-        self.debug_names = enable;
-        self
-    }
-
-    /// This affects how when to WIT worlds are merged together, for example
-    /// from two different libraries, whether their imports are unified when the
-    /// semver version ranges for interface allow it.
-    ///
-    /// This is enabled by default.
-    pub fn merge_imports_based_on_semver(mut self, merge: bool) -> Self {
-        self.merge_imports_based_on_semver = Some(merge);
-        self
+    /// Returns a reference to the internal [`ComponentEncoder`] that can be
+    /// configured.
+    pub fn encoder(&mut self) -> &mut ComponentEncoder {
+        &mut self.encoder
     }
 
     /// Encode the component and return the bytes
     pub fn encode(mut self) -> Result<Vec<u8>> {
         if self.use_built_in_libdl {
             self.use_built_in_libdl = false;
-            self = self.library("libdl.so", include_bytes!("../libdl.so"), false)?;
+            self.library("libdl.so", include_bytes!("../libdl.so"), false)?;
         }
 
         let adapter_names = self
+            .encoder
             .adapters
-            .iter()
-            .map(|(name, _)| name.as_str())
-            .collect_unique::<HashSet<_>>();
-
-        if adapter_names.len() != self.adapters.len() {
-            bail!("duplicate adapter name");
-        }
+            .keys()
+            .map(|name| name.as_str())
+            .collect::<HashSet<_>>();
 
         let metadata = self
             .libraries
@@ -1525,7 +1743,7 @@ impl Linker {
             reexport_cabi_realloc,
         } = env_exports(&metadata, &exporters, &topo_sorted)?;
 
-        let (env_module, dl_openables, table_base) = make_env_module(
+        let (env_module, dl_openables, tls, table_base) = make_env_module(
             &metadata,
             &env_exports,
             if reexport_cabi_realloc {
@@ -1538,36 +1756,32 @@ impl Linker {
             self.stack_size.unwrap_or(DEFAULT_STACK_SIZE_BYTES),
         );
 
-        let mut encoder = ComponentEncoder::default()
-            .validate(self.validate)
-            .debug_names(self.debug_names);
-        if let Some(merge) = self.merge_imports_based_on_semver {
-            encoder = encoder.merge_imports_based_on_semver(merge);
-        };
-        encoder = encoder.module(&env_module)?;
-
-        for (name, module) in &self.adapters {
-            encoder = encoder.adapter(name, module)?;
-        }
+        self.encoder.module(&env_module)?;
 
         let default_env_items = [
             Item {
-                alias: "memory".into(),
+                alias: metadata::MEMORY.into(),
                 kind: ExportKind::Memory,
                 which: MainOrAdapter::Main,
-                name: "memory".into(),
+                name: metadata::MEMORY.into(),
             },
             Item {
-                alias: "__indirect_function_table".into(),
+                alias: metadata::INDIRECT_FUNCTION_TABLE.into(),
                 kind: ExportKind::Table,
                 which: MainOrAdapter::Main,
-                name: "__indirect_function_table".into(),
+                name: metadata::INDIRECT_FUNCTION_TABLE.into(),
             },
             Item {
-                alias: "__stack_pointer".into(),
+                alias: metadata::STACK_POINTER.into(),
                 kind: ExportKind::Global,
                 which: MainOrAdapter::Main,
-                name: "__stack_pointer".into(),
+                name: metadata::STACK_POINTER.into(),
+            },
+            Item {
+                alias: metadata::INIT_STACK_POINTER.into(),
+                kind: ExportKind::Global,
+                which: MainOrAdapter::Main,
+                name: metadata::INIT_STACK_POINTER.into(),
             },
         ];
 
@@ -1581,18 +1795,32 @@ impl Linker {
                 .cloned()
                 .chain([
                     Item {
-                        alias: "__memory_base".into(),
+                        alias: metadata::MEMORY_BASE.into(),
                         kind: ExportKind::Global,
                         which: MainOrAdapter::Main,
                         name: format!("{name}:memory_base"),
                     },
                     Item {
-                        alias: "__table_base".into(),
+                        alias: metadata::TABLE_BASE.into(),
                         kind: ExportKind::Global,
                         which: MainOrAdapter::Main,
                         name: format!("{name}:table_base"),
                     },
                 ])
+                .chain(
+                    [
+                        (metadata.needs_get_tls_base, metadata::GET_TLS_BASE),
+                        (metadata.needs_set_tls_base, metadata::SET_TLS_BASE),
+                    ]
+                    .into_iter()
+                    .filter(|(needed, _)| *needed)
+                    .map(|(_, intrinsic)| Item {
+                        alias: intrinsic.into(),
+                        kind: ExportKind::Func,
+                        which: MainOrAdapter::Main,
+                        name: format!("{name}:{intrinsic}"),
+                    }),
+                )
                 .chain(metadata.env_imports.iter().map(|(name, (ty, _))| {
                     let (exporter, _) = find_function_exporter(name, ty, &exporters).unwrap();
 
@@ -1607,25 +1835,53 @@ impl Linker {
                         name: (*name).into(),
                     }
                 }))
-                .chain(metadata.tag_imports.iter().map(|(name, _ty)| Item {
-                    alias: (*name).into(),
-                    kind: ExportKind::Tag,
-                    which: MainOrAdapter::Main,
-                    name: (*name).into(),
-                }))
+                .chain(
+                    metadata
+                        .tag_imports
+                        .iter()
+                        .map(|(name, ty)| {
+                            let (exporter, _) = find_tag_exporter(name, ty, &exporters).unwrap();
+
+                            Ok(Item {
+                                alias: (*name).into(),
+                                kind: ExportKind::Tag,
+                                which: if seen.contains(exporter) {
+                                    MainOrAdapter::Adapter(exporter.to_owned())
+                                } else {
+                                    // As of this writing, LLVM-produced shared
+                                    // libraries which use C++ exceptions import
+                                    // a `cpp_exception` tag which is defined in
+                                    // `libunwind.so`.  Presumably
+                                    // `libunwind.so` will not import anything
+                                    // circularly from such shared libraries, so
+                                    // this case shouldn't be hit in practice
+                                    // unless we're dealing with some other,
+                                    // non-LLVM toolchain that does weird
+                                    // circular things with imports and
+                                    // exception tags.
+                                    bail!(
+                                        "circular dependency prevents direct tag import from `{}`",
+                                        exporter.to_owned()
+                                    )
+                                },
+                                name: (*name).into(),
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?,
+                )
                 .chain(if metadata.is_asyncified {
                     vec![
                         Item {
-                            alias: "__asyncify_state".into(),
+                            alias: metadata::ASYNCIFY_STATE.into(),
                             kind: ExportKind::Global,
                             which: MainOrAdapter::Main,
-                            name: "__asyncify_state".into(),
+                            name: metadata::ASYNCIFY_STATE.into(),
                         },
                         Item {
-                            alias: "__asyncify_data".into(),
+                            alias: metadata::ASYNCIFY_DATA.into(),
                             kind: ExportKind::Global,
                             which: MainOrAdapter::Main,
-                            name: "__asyncify_data".into(),
+                            name: metadata::ASYNCIFY_DATA.into(),
                         },
                     ]
                 } else {
@@ -1646,14 +1902,21 @@ impl Linker {
                 .copied()
                 .map(global_item)
                 .chain(
-                    ["__heap_base", "__heap_end", "__stack_high", "__stack_low"]
-                        .into_iter()
-                        .map(|name| Item {
-                            alias: name.into(),
-                            kind: ExportKind::Global,
-                            which: MainOrAdapter::Main,
-                            name: name.into(),
-                        }),
+                    [
+                        metadata::HEAP_BASE,
+                        metadata::HEAP_END,
+                        metadata::STACK_HIGH,
+                        metadata::STACK_LOW,
+                        metadata::LIBDL_LIBRARIES,
+                        metadata::PROGRAM_TLS_INFO,
+                    ]
+                    .into_iter()
+                    .map(|name| Item {
+                        alias: name.into(),
+                        kind: ExportKind::Global,
+                        which: MainOrAdapter::Main,
+                        name: name.into(),
+                    }),
                 )
                 .collect();
 
@@ -1674,15 +1937,14 @@ impl Linker {
                 });
             }
 
-            encoder = encoder.library(
+            self.encoder.library(
                 name,
                 module,
                 LibraryInfo {
-                    instantiate_after_shims: false,
                     arguments: [
-                        ("GOT.mem".into(), Instance::Items(mem_items)),
-                        ("GOT.func".into(), Instance::Items(func_items)),
-                        ("env".into(), Instance::Items(env_items)),
+                        (metadata::GOT_MEM.into(), Instance::Items(mem_items)),
+                        (metadata::GOT_FUNC.into(), Instance::Items(func_items)),
+                        (metadata::ENV.into(), Instance::Items(env_items)),
                     ]
                     .into_iter()
                     .chain(
@@ -1697,31 +1959,16 @@ impl Linker {
             seen.insert(name.as_str());
         }
 
-        encoder
-            .library(
-                "__init",
-                &make_init_module(
-                    &metadata,
-                    &exporters,
-                    &env_exports,
-                    dl_openables,
-                    table_base,
-                )?,
-                LibraryInfo {
-                    instantiate_after_shims: true,
-                    arguments: iter::once((
-                        "env".into(),
-                        Instance::MainOrAdapter(MainOrAdapter::Main),
-                    ))
-                    .chain(self.libraries.iter().map(|(name, ..)| {
-                        (
-                            name.clone(),
-                            Instance::MainOrAdapter(MainOrAdapter::Adapter(name.clone())),
-                        )
-                    }))
-                    .collect(),
-                },
-            )?
-            .encode()
+        self.encoder.encode_with_fixups(Some(&mut |fixups| {
+            make_init_module(
+                fixups,
+                &metadata,
+                &exporters,
+                &env_exports,
+                &dl_openables,
+                &tls,
+                table_base,
+            )
+        }))
     }
 }

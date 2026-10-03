@@ -72,8 +72,9 @@ impl SourceWorkload {
 		let mut held = self.interned.lock();
 		*held.entry(symbol).or_insert_with(|| {
 			self.registry
-				.intern(&self.dictionary, &Value::Utf8(symbol.to_string()))
+				.intern_batch(&self.dictionary, &[Value::Utf8(symbol.to_string())])
 				.expect("interning a symbol succeeds")
+				.remove(0)
 				.id
 		})
 	}

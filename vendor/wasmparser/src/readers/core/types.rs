@@ -13,7 +13,7 @@
  * limitations under the License.
  */
 
-use crate::binary_reader::BinaryReaderErrorKind;
+use crate::error::ErrorKind;
 use crate::limits::{
     MAX_WASM_FUNCTION_PARAMS, MAX_WASM_FUNCTION_RETURNS, MAX_WASM_STRUCT_FIELDS,
     MAX_WASM_SUPERTYPES, MAX_WASM_TYPES,
@@ -21,7 +21,7 @@ use crate::limits::{
 use crate::prelude::*;
 #[cfg(feature = "validate")]
 use crate::types::CoreTypeId;
-use crate::{BinaryReader, BinaryReaderError, FromReader, Result, SectionLimited};
+use crate::{BinaryReader, Error, FromReader, Result, SectionLimited};
 use core::cmp::Ordering;
 use core::fmt::{self, Debug};
 use core::hash::{Hash, Hasher};
@@ -323,13 +323,13 @@ pub struct RecGroup {
 
 #[derive(Debug, Clone)]
 enum RecGroupInner {
-    Implicit((usize, SubType)),
-    Explicit(Vec<(usize, SubType)>),
+    Implicit((u64, SubType)),
+    Explicit(Vec<(u64, SubType)>),
 }
 
 impl RecGroup {
     /// Create an explicit `RecGroup` for the given types.
-    pub(crate) fn explicit(types: Vec<(usize, SubType)>) -> Self {
+    pub(crate) fn explicit(types: Vec<(u64, SubType)>) -> Self {
         RecGroup {
             inner: RecGroupInner::Explicit(types),
         }
@@ -337,7 +337,7 @@ impl RecGroup {
 
     /// Create an implicit `RecGroup` for a type that was not contained
     /// in a `(rec ...)`.
-    pub(crate) fn implicit(offset: usize, ty: SubType) -> Self {
+    pub(crate) fn implicit(offset: u64, ty: SubType) -> Self {
         RecGroup {
             inner: RecGroupInner::Implicit((offset, ty)),
         }
@@ -376,21 +376,21 @@ impl RecGroup {
 
     /// Returns an owning iterator of all subtypes in this recursion
     /// group, along with their offset.
-    pub fn into_types_and_offsets(self) -> impl ExactSizeIterator<Item = (usize, SubType)> {
+    pub fn into_types_and_offsets(self) -> impl ExactSizeIterator<Item = (u64, SubType)> {
         return match self.inner {
             RecGroupInner::Implicit(tup) => Iter::Implicit(Some(tup)),
             RecGroupInner::Explicit(types) => Iter::Explicit(types.into_iter()),
         };
 
         enum Iter {
-            Implicit(Option<(usize, SubType)>),
-            Explicit(alloc::vec::IntoIter<(usize, SubType)>),
+            Implicit(Option<(u64, SubType)>),
+            Explicit(alloc::vec::IntoIter<(u64, SubType)>),
         }
 
         impl Iterator for Iter {
-            type Item = (usize, SubType);
+            type Item = (u64, SubType);
 
-            fn next(&mut self) -> Option<(usize, SubType)> {
+            fn next(&mut self) -> Option<(u64, SubType)> {
                 match self {
                     Self::Implicit(ty) => ty.take(),
                     Self::Explicit(types) => types.next(),
@@ -450,21 +450,21 @@ pub struct SubType {
     /// Is the subtype final.
     pub is_final: bool,
     /// The list of supertype indexes. As of GC MVP, there can be at most one supertype.
-    pub supertype_idx: Option<PackedIndex>,
+    pub supertype_idxs: Vec<PackedIndex>,
     /// The composite type of the subtype.
     pub composite_type: CompositeType,
 }
 
 impl fmt::Display for SubType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_final && self.supertype_idx.is_none() {
+        if self.is_final && self.supertype_idxs.is_empty() {
             fmt::Display::fmt(&self.composite_type, f)
         } else {
             write!(f, "(sub ")?;
             if self.is_final {
                 write!(f, "final ")?;
             }
-            if let Some(idx) = self.supertype_idx {
+            for idx in self.supertype_idxs.iter() {
                 write!(f, "{idx} ")?;
             }
             fmt::Display::fmt(&self.composite_type, f)?;
@@ -485,7 +485,7 @@ impl SubType {
     pub fn func(signature: FuncType, shared: bool) -> Self {
         Self {
             is_final: true,
-            supertype_idx: None,
+            supertype_idxs: Vec::new(),
             composite_type: CompositeType {
                 inner: CompositeInnerType::Func(signature),
                 shared,
@@ -522,7 +522,7 @@ impl SubType {
         &mut self,
         f: &mut dyn FnMut(&mut PackedIndex) -> Result<()>,
     ) -> Result<()> {
-        if let Some(idx) = &mut self.supertype_idx {
+        for idx in self.supertype_idxs.iter_mut() {
             f(idx)?;
         }
         if let Some(idx) = &mut self.composite_type.descriptor_idx {
@@ -1798,7 +1798,7 @@ impl<'a> FromReader<'a> for ValType {
                 // that's the "root" of what was being parsed rather than
                 // reference types.
                 let refty = reader.read().map_err(|mut e| {
-                    if let BinaryReaderErrorKind::Invalid = e.kind() {
+                    if let ErrorKind::InvalidHeapType = e.kind() {
                         e.set_message("invalid value type");
                     }
                     e
@@ -1818,21 +1818,29 @@ impl<'a> FromReader<'a> for RefType {
             0x63 | 0x64 => {
                 let nullable = reader.read_u8()? == 0x63;
                 RefType::new(nullable, reader.read()?)
-                    .ok_or_else(|| crate::BinaryReaderError::new("type index too large", pos))
+                    .ok_or_else(|| crate::Error::new("type index too large", pos))
             }
-            0x62 => Err(crate::BinaryReaderError::new("unexpected exact type", pos)),
+            0x62 => Err(crate::Error::new("unexpected exact type", pos)),
             _ => {
-                // Reclassify errors as invalid reference types here because
-                // that's the "root" of what was being parsed rather than
-                // heap types.
-                let hty = reader.read().map_err(|mut e| {
-                    if let BinaryReaderErrorKind::Invalid = e.kind() {
+                // The short form of a reference type (without a `0x63`/`0x64`
+                // prefix byte) is only an abbreviation for `ref null <ht>` where
+                // `<ht>` is an *abstract* heap type; a bare (non-negative) type
+                // index is not a value type. Parse an abstract heap type
+                // directly, handling the `0x65` prefix for `shared` variants,
+                // rather than parsing a full heap type and then rejecting the
+                // concrete/exact cases that a heap type additionally allows.
+                let shared = reader.peek()? == 0x65;
+                if shared {
+                    reader.read_u8()?;
+                }
+                let ty = reader.read().map_err(|mut e| {
+                    if let ErrorKind::InvalidHeapType = e.kind() {
                         e.set_message("malformed reference type");
                     }
                     e
                 })?;
-                RefType::new(true, hty)
-                    .ok_or_else(|| crate::BinaryReaderError::new("type index too large", pos))
+                // `RefType::new` is infallible for abstract heap types.
+                Ok(RefType::new(true, HeapType::Abstract { shared, ty }).unwrap())
             }
         }
     }
@@ -1854,7 +1862,7 @@ impl<'a> FromReader<'a> for HeapType {
                 // read.
                 *reader = clone;
                 let idx = PackedIndex::from_module_index(idx).ok_or_else(|| {
-                    BinaryReaderError::new(
+                    Error::new(
                         "type index greater than implementation limits",
                         reader.original_position(),
                     )
@@ -1877,7 +1885,7 @@ impl<'a> FromReader<'a> for HeapType {
                     // that's the "root" of what was being parsed rather than
                     // abstract heap types.
                     let ty = reader.read().map_err(|mut e| {
-                        if let BinaryReaderErrorKind::Invalid = e.kind() {
+                        if let ErrorKind::InvalidHeapType = e.kind() {
                             e.set_message("invalid heap type");
                         }
                         e
@@ -1908,7 +1916,7 @@ impl<'a> FromReader<'a> for AbstractHeapType {
             0x68 => Ok(Cont),
             0x75 => Ok(NoCont),
             _ => {
-                return Err(BinaryReaderError::invalid(
+                return Err(Error::invalid_heap_type(
                     "invalid abstract heap type",
                     reader.original_position() - 1,
                 ));
@@ -2061,7 +2069,7 @@ impl<'a> TypeSectionReader<'a> {
                 (Some(ty), None) => ty,
                 _ => bail!(offset, "gc proposal not supported"),
             };
-            if !ty.is_final || ty.supertype_idx.is_some() {
+            if !ty.is_final || !ty.supertype_idxs.is_empty() {
                 bail!(offset, "gc proposal not supported");
             }
             match ty.composite_type.inner {
@@ -2083,10 +2091,7 @@ impl<'a> FromReader<'a> for CompositeType {
     }
 }
 
-fn read_composite_type(
-    opcode: u8,
-    reader: &mut BinaryReader,
-) -> Result<CompositeType, BinaryReaderError> {
+fn read_composite_type(opcode: u8, reader: &mut BinaryReader) -> Result<CompositeType, Error> {
     // NB: See `FromReader<'a> for ValType` for a table of how this
     // interacts with other value encodings.
     let (shared, opcode) = if opcode == 0x65 {
@@ -2096,7 +2101,7 @@ fn read_composite_type(
     };
     let (describes_idx, opcode) = if opcode == 0x4c {
         let idx = PackedIndex::from_module_index(reader.read_var_u32()?).ok_or_else(|| {
-            BinaryReaderError::new(
+            Error::new(
                 "type index greater than implementation limits",
                 reader.original_position(),
             )
@@ -2107,7 +2112,7 @@ fn read_composite_type(
     };
     let (descriptor_idx, opcode) = if opcode == 0x4d {
         let idx = PackedIndex::from_module_index(reader.read_var_u32()?).ok_or_else(|| {
-            BinaryReaderError::new(
+            Error::new(
                 "type index greater than implementation limits",
                 reader.original_position(),
             )
@@ -2157,40 +2162,39 @@ impl<'a> FromReader<'a> for RecGroup {
 
 impl<'a> FromReader<'a> for SubType {
     fn from_reader(reader: &mut BinaryReader<'a>) -> Result<Self> {
-        let pos = reader.original_position();
         // NB: See `FromReader<'a> for ValType` for a table of how this
         // interacts with other value encodings.
         Ok(match reader.read_u8()? {
             opcode @ (0x4f | 0x50) => {
+                if !reader.gc() {
+                    bail!(
+                        reader.original_position() - 1,
+                        "gc proposal must be enabled to use subtypes"
+                    );
+                }
                 let idx_iter = reader.read_iter(MAX_WASM_SUPERTYPES, "supertype idxs")?;
                 let idxs = idx_iter.collect::<Result<Vec<u32>>>()?;
-                if idxs.len() > 1 {
-                    return Err(BinaryReaderError::new(
-                        "multiple supertypes not supported",
-                        pos,
-                    ));
-                }
-                let supertype_idx = idxs
-                    .first()
+                let supertype_idxs = idxs
+                    .iter()
                     .copied()
                     .map(|idx| {
                         PackedIndex::from_module_index(idx).ok_or_else(|| {
-                            BinaryReaderError::new(
+                            Error::new(
                                 "type index greater than implementation limits",
                                 reader.original_position(),
                             )
                         })
                     })
-                    .transpose()?;
+                    .collect::<Result<Vec<_>>>()?;
                 SubType {
                     is_final: opcode == 0x4f,
-                    supertype_idx,
+                    supertype_idxs,
                     composite_type: read_composite_type(reader.read_u8()?, reader)?,
                 }
             }
             opcode => SubType {
                 is_final: true,
-                supertype_idx: None,
+                supertype_idxs: Vec::new(),
                 composite_type: read_composite_type(opcode, reader)?,
             },
         })
@@ -2254,7 +2258,7 @@ impl<'a> FromReader<'a> for ContType {
             }
         };
         let idx = PackedIndex::from_module_index(idx).ok_or_else(|| {
-            BinaryReaderError::new(
+            Error::new(
                 "type index greater than implementation limits",
                 reader.original_position(),
             )

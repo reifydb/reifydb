@@ -244,14 +244,11 @@ where
 				state_lookup_keys.push(state_key(group));
 			}
 		}
-		let state_pairs: Vec<(GroupId, EncodedKey)> =
-			state_lookup_keys.iter().map(|key| (GroupId::of(key), key.clone())).collect();
-		let resolved_rows: Vec<(GroupId, RowNumber)> = state_pairs
+		let state_groups: Vec<GroupId> = state_lookup_keys.iter().map(GroupId::of).collect();
+		let resolved_rows: Vec<(GroupId, RowNumber)> = state_groups
 			.iter()
-			.zip(store.get_or_create_row_numbers_for_groups(
-				&state_pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-			)?)
-			.map(|((group_id, _), (row_number, _is_new))| (*group_id, row_number))
+			.zip(store.get_or_create_row_numbers_for_groups(&state_groups)?)
+			.map(|(group_id, (row_number, _is_new))| (*group_id, row_number))
 			.collect();
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
@@ -292,11 +289,8 @@ where
 		if lookup_keys.is_empty() {
 			return Ok(StateRows::new());
 		}
-		let pairs: Vec<(GroupId, EncodedKey)> =
-			lookup_keys.iter().map(|key| (GroupId::of(key), key.clone())).collect();
-		let resolved_rows = store.get_or_create_row_numbers_for_groups(
-			&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-		)?;
+		let groups: Vec<GroupId> = lookup_keys.iter().map(GroupId::of).collect();
+		let resolved_rows = store.get_or_create_row_numbers_for_groups(&groups)?;
 		reifydb_assertions! {
 			let resolved = resolved_rows.len();
 			let requested = lookup_keys.len();
@@ -310,9 +304,9 @@ where
 		}
 		Ok(resolve_order
 			.into_iter()
-			.zip(pairs)
+			.zip(groups)
 			.zip(resolved_rows)
-			.map(|((group, (group_id, _)), (row_number, _is_new))| (group, (group_id, row_number)))
+			.map(|((group, group_id), (row_number, _is_new))| (group, (group_id, row_number)))
 			.collect())
 	}
 

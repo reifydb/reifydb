@@ -509,17 +509,18 @@ mod sync_nostd;
 #[cfg(not(feature = "std"))]
 use sync_nostd as sync;
 
-pub use wasmtime_environ::OperatorCost;
 pub use wasmtime_environ::ToWasmtimeResult;
 #[doc(inline)]
 pub use wasmtime_environ::error;
+pub use wasmtime_environ::{FuncIndex, StaticModuleIndex};
+pub use wasmtime_environ::{OperatorCost, VariableOperatorCost};
 
 // Only for use in `bindgen!`-generated code.
 #[doc(hidden)]
 #[cfg(feature = "anyhow")]
 pub use wasmtime_environ::anyhow;
 
-pub use self::error::{Error, Result, bail, ensure, format_err};
+pub use self::error::{Error, OutOfMemory, Result, bail, ensure, format_err};
 
 /// A re-exported instance of Wasmtime's `wasmparser` dependency.
 ///

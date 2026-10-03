@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{iter::repeat_n, sync::Arc};
 
-use arrow_array::{ArrayRef, RecordBatch};
+use arrow_array::{Array, ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::{FieldRef, Schema, SchemaRef};
 use postcard::to_stdvec;
-use reifydb_codec::row::{
-	bytes::RowBuilder,
-	shape::{RowFamily, RowShape, RowShapeField},
-};
 use reifydb_core::{
 	error::diagnostic::{
 		flow::{
@@ -19,9 +15,12 @@ use reifydb_core::{
 		operation::aggregate_group_by_unkeyable,
 	},
 	expression::{Expression, name::display_label},
-	interface::catalog::flow::OperatorId,
-	row::Row,
-	value::batch::{empty_batch, from_row},
+	interface::{catalog::flow::OperatorId, change::Diff},
+	internal_err,
+	value::{
+		batch::{batch, batch_with, empty_batch},
+		column::builder::ColumnBuilder,
+	},
 };
 use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
@@ -41,15 +40,21 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	fragment::Fragment,
+	reifydb_assertions,
 	util::hash::{Hash128, xxh3_128},
 	value::{
 		Value,
 		column_view::ColumnView,
+		constraint::{precision::Precision, scale::Scale},
+		container::temporal_array::datetime_array,
 		datetime::DateTime,
 		digest::{Digest, DigestError},
 		row_number::RowNumber,
-		system_columns::column_view,
-		value_type::ValueType,
+		system_columns::{SystemColumn, column_view, system_field},
+		value_type::{
+			ValueType,
+			field::{FieldType, from_field, named, to_field},
+		},
 	},
 };
 
@@ -105,14 +110,156 @@ fn digest_input_error(function: &str, error: DigestError) -> Error {
 	Error(Box::new(flow_digest_input_rejected(function, error.to_string())))
 }
 
-#[inline]
-fn build_aggregation_shape(names: &[String], types: &[ValueType]) -> RowShape {
-	let fields: Vec<RowShapeField> = names
-		.iter()
-		.zip(types.iter())
-		.map(|(name, ty)| RowShapeField::unconstrained(name.clone(), ty.clone()))
-		.collect();
-	RowShape::new(RowFamily::Table, fields)
+fn bare_slot(output: &Expression, slot_count: usize) -> Option<usize> {
+	match output {
+		Expression::Alias(alias) => bare_slot(&alias.expression, slot_count),
+		Expression::Column(column) => {
+			let name = column.0.name.text();
+			(0..slot_count).find(|slot| synthetic_aggregate_column_name(*slot) == name)
+		}
+		_ => None,
+	}
+}
+
+enum SlotView<'a> {
+	Absent,
+	Column(ColumnView<'a>),
+	EventTime,
+}
+
+pub struct SlotViews<'a>(Vec<SlotView<'a>>);
+
+impl SlotViews<'_> {
+	pub fn contribution(&self, row_idx: usize, event_time: DateTime) -> Vec<Option<Value>> {
+		self.0.iter()
+			.map(|view| match view {
+				SlotView::Absent => None,
+				SlotView::Column(column) => Some(column.get_value(row_idx)),
+				SlotView::EventTime => Some(Value::DateTime(event_time)),
+			})
+			.collect()
+	}
+}
+
+fn declared_slot_type(kind: SlotKind, input: &SlotInput, parent_schema: Option<&SchemaRef>) -> Option<ValueType> {
+	match kind {
+		SlotKind::Count {
+			..
+		} => Some(ValueType::Int8),
+		SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowLast => Some(ValueType::DateTime),
+		SlotKind::WindowDuration => Some(ValueType::Duration),
+		SlotKind::Min | SlotKind::Max | SlotKind::First | SlotKind::Last => match input {
+			SlotInput::Column(name) => {
+				let field = parent_schema?.field_with_name(name).ok()?;
+				match from_field(field).ok()?.value_type?.inner_type() {
+					ValueType::Any => None,
+					inner => Some(inner.clone()),
+				}
+			}
+			_ => None,
+		},
+		SlotKind::Sum
+		| SlotKind::Avg
+		| SlotKind::Digest {
+			..
+		} => None,
+	}
+}
+
+fn type_family(value_type: &ValueType) -> ValueType {
+	match value_type {
+		ValueType::Decimal {
+			..
+		} => ValueType::decimal(Precision::MAX, Scale::new(0)),
+		other => other.clone(),
+	}
+}
+
+fn value_family(value: &Value) -> Option<ValueType> {
+	match value {
+		Value::None {
+			..
+		} => None,
+		other => Some(type_family(&other.get_type())),
+	}
+}
+
+fn type_groups(signatures: Vec<Vec<Option<ValueType>>>) -> Vec<Vec<usize>> {
+	let mut groups: Vec<(Vec<Option<ValueType>>, Vec<usize>)> = Vec::new();
+	for (index, signature) in signatures.into_iter().enumerate() {
+		let fits = |known: &[Option<ValueType>]| {
+			known.iter()
+				.zip(&signature)
+				.all(|(known, next)| known.is_none() || next.is_none() || known == next)
+		};
+		match groups.iter_mut().find(|(known, _)| fits(known)) {
+			Some((known, members)) => {
+				for (known, next) in known.iter_mut().zip(&signature) {
+					if known.is_none() {
+						*known = next.clone();
+					}
+				}
+				members.push(index);
+			}
+			None => groups.push((signature, vec![index])),
+		}
+	}
+	groups.into_iter().map(|(_, members)| members).collect()
+}
+
+fn typed_column<'v>(
+	name: &str,
+	declared: Option<ValueType>,
+	values: impl Iterator<Item = &'v Value>,
+) -> Result<(FieldRef, ArrayRef)> {
+	let values: Vec<&Value> = values.collect();
+	let column_type = match declared {
+		Some(declared) => {
+			let family = type_family(declared.inner_type());
+			if let Some(value) =
+				values.iter().find(|value| value_family(value).is_some_and(|got| got != family))
+			{
+				return internal_err!(
+					"aggregation column {} is declared {:?} but holds a {:?}",
+					name,
+					declared,
+					value.get_type()
+				);
+			}
+			declared
+		}
+		None => values
+			.iter()
+			.find(|value| !matches!(value, Value::None { .. }))
+			.or(values.first())
+			.map_or(ValueType::Any, |value| value.get_type()),
+	};
+	let mut builder = ColumnBuilder::with_capacity(column_type, values.len());
+	for value in values {
+		builder.push_value(value.clone());
+	}
+	Ok(builder.finish(name))
+}
+
+fn optional_named(name: &str, field: &FieldRef, array: ArrayRef) -> Result<(FieldRef, ArrayRef)> {
+	let mut field_type = from_field(field)?;
+	field_type.value_type = field_type.value_type.map(|value_type| match value_type {
+		ValueType::Option(_) => value_type,
+		other => ValueType::Option(Box::new(other)),
+	});
+	Ok(named(name, field_type, array))
+}
+
+#[derive(Clone, Debug)]
+pub struct EmitRow {
+	pub group_values: Vec<Value>,
+	pub slot_values: Vec<Value>,
+	pub row_number: RowNumber,
+	pub span: Option<WindowSpan<DateTime>>,
+}
+
+fn row_types(row: &EmitRow) -> Vec<Option<ValueType>> {
+	row.group_values.iter().chain(&row.slot_values).map(value_family).collect()
 }
 
 pub struct Aggregation {
@@ -129,6 +276,12 @@ pub struct Aggregation {
 	pub compiled_slot_args: Vec<CompiledExpr>,
 
 	pub compiled_outputs: Vec<CompiledExpr>,
+
+	bare_outputs: Option<Vec<usize>>,
+
+	slot_types: Vec<Option<ValueType>>,
+
+	emit_schema: Option<SchemaRef>,
 
 	pub routines: Routines,
 	pub runtime_context: RuntimeContext,
@@ -179,7 +332,9 @@ impl Aggregation {
 				break;
 			}
 		}
-		let (slot_kinds, slot_inputs, compiled_slot_args, compiled_outputs) = if all_representable {
+		let slot_count = slots.len();
+		let (slot_kinds, slot_inputs, compiled_slot_args, compiled_outputs, bare_outputs) = if all_representable
+		{
 			let mut kinds = Vec::with_capacity(slots.len());
 			let mut inputs = Vec::with_capacity(slots.len());
 			let mut compiled_args = Vec::new();
@@ -200,15 +355,36 @@ impl Aggregation {
 				.iter()
 				.map(|e| compile_expression(&compile_ctx, e))
 				.collect::<Result<Vec<_>>>()?;
-			(Some(kinds), inputs, compiled_args, outputs)
+			let bare: Option<Vec<usize>> =
+				rewritten_outputs.iter().map(|output| bare_slot(output, slot_count)).collect();
+			(Some(kinds), inputs, compiled_args, outputs, bare)
 		} else {
-			(None, Vec::new(), Vec::new(), Vec::new())
+			(None, Vec::new(), Vec::new(), Vec::new(), None)
 		};
 		let group_names: Vec<String> = group_by.iter().map(|e| display_label(e).text().to_string()).collect();
+		let slot_types: Vec<Option<ValueType>> = match &slot_kinds {
+			Some(kinds) => kinds
+				.iter()
+				.zip(&slot_inputs)
+				.map(|(kind, input)| declared_slot_type(*kind, input, parent_schema.as_ref()))
+				.collect(),
+			None => Vec::new(),
+		};
+		let aggregate_fields = aggregations.iter().enumerate().map(|(index, expression)| {
+			let declared =
+				bare_outputs.as_ref().and_then(|bare| slot_types.get(bare[index]).cloned().flatten());
+			match declared {
+				Some(declared) => Arc::new(to_field(
+					&aggregate_output_names[index],
+					&FieldType::from(ValueType::Option(Box::new(declared))),
+				)),
+				None => schema_column(parent_schema.as_ref(), expression),
+			}
+		});
 		let output_schema = Arc::new(Schema::new(
 			group_by.iter()
-				.chain(&aggregations)
 				.map(|e| schema_column(parent_schema.as_ref(), e))
+				.chain(aggregate_fields)
 				.collect::<Vec<FieldRef>>(),
 		));
 
@@ -222,6 +398,9 @@ impl Aggregation {
 			slot_inputs,
 			compiled_slot_args,
 			compiled_outputs,
+			bare_outputs,
+			slot_types,
+			emit_schema: None,
 			routines,
 			runtime_context,
 			tumbling_engine: None,
@@ -320,53 +499,30 @@ impl Aggregation {
 		Ok(())
 	}
 
-	pub fn build_contribution(
+	pub fn slot_views<'a>(
 		&self,
-		columns: &RecordBatch,
-		slot_cols: &[(FieldRef, ArrayRef)],
-		row_idx: usize,
-		event_time: DateTime,
-	) -> Result<Vec<Option<Value>>> {
-		self.slot_inputs
-			.iter()
-			.map(|input| -> Result<Option<Value>> {
-				Ok(match input {
-					SlotInput::Star => None,
-					SlotInput::Column(name) => {
-						column_view(columns, name)?.map(|column| column.get_value(row_idx))
-					}
-					SlotInput::Expr(idx) => {
-						Some(ColumnView::try_from(&slot_cols[*idx])?.get_value(row_idx))
-					}
-					SlotInput::EventTime => Some(Value::DateTime(event_time)),
+		columns: &'a RecordBatch,
+		slot_cols: &'a [(FieldRef, ArrayRef)],
+	) -> Result<SlotViews<'a>> {
+		if columns.num_rows() == 0 {
+			return Ok(SlotViews(Vec::new()));
+		}
+		let views =
+			self.slot_inputs
+				.iter()
+				.map(|input| -> Result<SlotView<'a>> {
+					Ok(match input {
+						SlotInput::Star => SlotView::Absent,
+						SlotInput::Column(name) => column_view(columns, name)?
+							.map_or(SlotView::Absent, SlotView::Column),
+						SlotInput::Expr(idx) => {
+							SlotView::Column(ColumnView::try_from(&slot_cols[*idx])?)
+						}
+						SlotInput::EventTime => SlotView::EventTime,
+					})
 				})
-			})
-			.collect()
-	}
-
-	pub fn compute_outputs(&self, slot_values: &[Value]) -> Result<Vec<Value>> {
-		if self.compiled_outputs.is_empty() {
-			return Ok(slot_values.to_vec());
-		}
-		let names: Vec<String> = (0..slot_values.len()).map(synthetic_aggregate_column_name).collect();
-		let types: Vec<_> = slot_values.iter().map(Value::get_type).collect();
-		let layout = build_aggregation_shape(&names, &types);
-		let mut encoded = layout.allocate_table();
-		layout.set_values(&mut encoded, slot_values);
-		let row = Row {
-			number: RowNumber(0),
-			encoded: encoded.freeze_bytes(),
-			shape: layout,
-		};
-		let columns = from_row(&row)?;
-		let session = self.eval_session();
-		let exec_ctx = session.with_eval(columns, 1);
-		let mut out = Vec::with_capacity(self.compiled_outputs.len());
-		for compiled in &self.compiled_outputs {
-			let column = compiled.execute(&exec_ctx)?;
-			out.push(ColumnView::try_from(&column)?.get_value(0));
-		}
-		Ok(out)
+				.collect::<Result<Vec<_>>>()?;
+		Ok(SlotViews(views))
 	}
 
 	pub fn needs_event_time(&self) -> bool {
@@ -392,39 +548,129 @@ impl Aggregation {
 		Some(out)
 	}
 
-	pub fn build_engine_row(
-		&self,
-		group_values: &[Value],
-		slot_values: &[Value],
-		row_number: RowNumber,
+	pub fn emit_diffs(
+		&mut self,
+		inserts: Vec<EmitRow>,
+		updates: Vec<(EmitRow, EmitRow)>,
+		removes: Vec<EmitRow>,
 		ts: DateTime,
-		span: Option<WindowSpan<DateTime>>,
-	) -> Result<Row> {
-		let patched = span.and_then(|span| self.span_slot_values(slot_values, span));
-		let aggregate_values = self.compute_outputs(patched.as_deref().unwrap_or(slot_values))?;
-		let mut values = Vec::with_capacity(group_values.len() + aggregate_values.len());
-		let mut names = Vec::with_capacity(group_values.len() + aggregate_values.len());
-		let mut types = Vec::with_capacity(group_values.len() + aggregate_values.len());
-		for (value, name) in group_values.iter().zip(self.group_names.iter()) {
-			types.push(value.get_type());
-			values.push(value.clone());
-			names.push(name.clone());
+	) -> Result<Vec<Diff>> {
+		let inserts: Vec<EmitRow> = inserts.into_iter().map(|row| self.patched(row)).collect();
+		let updates: Vec<(EmitRow, EmitRow)> =
+			updates.into_iter().map(|(pre, post)| (self.patched(pre), self.patched(post))).collect();
+		let removes: Vec<EmitRow> = removes.into_iter().map(|row| self.patched(row)).collect();
+		let mut diffs = Vec::new();
+		for members in type_groups(inserts.iter().map(row_types).collect()) {
+			let rows: Vec<&EmitRow> = members.iter().map(|&index| &inserts[index]).collect();
+			diffs.push(Diff::insert(self.emit_batch(&rows, ts)?));
 		}
-		for (value, name) in aggregate_values.iter().zip(self.aggregate_output_names.iter()) {
-			types.push(value.get_type());
-			values.push(value.clone());
-			names.push(name.clone());
+		let signatures = updates
+			.iter()
+			.map(|(pre, post)| row_types(pre).into_iter().chain(row_types(post)).collect())
+			.collect();
+		for members in type_groups(signatures) {
+			let pres: Vec<&EmitRow> = members.iter().map(|&index| &updates[index].0).collect();
+			let posts: Vec<&EmitRow> = members.iter().map(|&index| &updates[index].1).collect();
+			diffs.push(Diff::update(self.emit_batch(&pres, ts)?, self.emit_batch(&posts, ts)?));
 		}
-		let layout = build_aggregation_shape(&names, &types);
-		let mut encoded = layout.allocate_table();
-		layout.set_values(&mut encoded, &values);
-		encoded.set_timestamps(ts, ts);
-		encoded.set_time(span.map(|span| span.start).unwrap_or(ts));
-		Ok(Row {
-			number: row_number,
-			encoded: encoded.freeze_bytes(),
-			shape: layout,
-		})
+		for members in type_groups(removes.iter().map(row_types).collect()) {
+			let rows: Vec<&EmitRow> = members.iter().map(|&index| &removes[index]).collect();
+			diffs.push(Diff::remove(self.emit_batch(&rows, ts)?));
+		}
+		Ok(diffs)
+	}
+
+	fn patched(&self, mut row: EmitRow) -> EmitRow {
+		if let Some(span) = row.span
+			&& let Some(patched) = self.span_slot_values(&row.slot_values, span)
+		{
+			row.slot_values = patched;
+		}
+		row
+	}
+
+	fn emit_batch(&mut self, rows: &[&EmitRow], ts: DateTime) -> Result<RecordBatch> {
+		let count = rows.len();
+		let slot_count = rows.first().map_or(0, |row| row.slot_values.len());
+		let slot_columns = (0..slot_count)
+			.map(|slot| {
+				typed_column(
+					&synthetic_aggregate_column_name(slot),
+					self.slot_types.get(slot).cloned().flatten(),
+					rows.iter().map(|row| &row.slot_values[slot]),
+				)
+			})
+			.collect::<Result<Vec<_>>>()?;
+		let outputs = self.output_columns(slot_columns, count)?;
+		let mut columns: Vec<(FieldRef, ArrayRef)> =
+			Vec::with_capacity(self.group_names.len() + outputs.len() + 4);
+		for (index, name) in self.group_names.iter().enumerate() {
+			let declared = from_field(self.output_schema.field(index))?
+				.value_type
+				.filter(|value_type| !matches!(value_type.inner_type(), ValueType::Any));
+			columns.push(typed_column(name, declared, rows.iter().map(|row| &row.group_values[index]))?);
+		}
+		for ((field, array), name) in outputs.into_iter().zip(&self.aggregate_output_names) {
+			columns.push(optional_named(name, &field, array)?);
+		}
+		let system = |column: SystemColumn, array: ArrayRef| {
+			(system_field(column, array.logical_null_count() > 0), array)
+		};
+		let stamps: ArrayRef = Arc::new(datetime_array(repeat_n(ts, count)));
+		columns.push(system(
+			SystemColumn::RowNumbers,
+			Arc::new(UInt64Array::from_iter_values(rows.iter().map(|row| row.row_number.0))),
+		));
+		columns.push(system(SystemColumn::CreatedAt, stamps.clone()));
+		columns.push(system(SystemColumn::UpdatedAt, stamps));
+		columns.push(system(
+			SystemColumn::Time,
+			Arc::new(datetime_array(rows.iter().map(|row| row.span.map_or(ts, |span| span.start)))),
+		));
+		let out = match &self.emit_schema {
+			Some(schema) => batch_with(schema, columns, count)?,
+			None => batch(columns)?,
+		};
+		self.emit_schema = Some(out.schema());
+		Ok(out)
+	}
+
+	fn output_columns(
+		&self,
+		slot_columns: Vec<(FieldRef, ArrayRef)>,
+		count: usize,
+	) -> Result<Vec<(FieldRef, ArrayRef)>> {
+		if self.compiled_outputs.is_empty() {
+			return Ok(slot_columns);
+		}
+		let Some(bare) = &self.bare_outputs else {
+			return self.evaluated_columns(&slot_columns, count);
+		};
+		let out: Vec<(FieldRef, ArrayRef)> = bare.iter().map(|&slot| slot_columns[slot].clone()).collect();
+		reifydb_assertions! {
+			let evaluated = self.evaluated_columns(&slot_columns, count)?;
+			for (index, ((bare_field, bare_array), (field, array))) in out.iter().zip(&evaluated).enumerate() {
+				let bare_view = ColumnView::try_from((bare_array, bare_field.as_ref()))?;
+				let view = ColumnView::try_from((array, field.as_ref()))?;
+				assert!(
+					bare_view.get_type() == view.get_type()
+						&& (0..count).all(|row| bare_view.get_value(row) == view.get_value(row)),
+					"a bare aggregate output must publish exactly what evaluating it on the slot batch returns; \
+					 output {index} differs"
+				);
+			}
+		}
+		Ok(out)
+	}
+
+	fn evaluated_columns(
+		&self,
+		slot_columns: &[(FieldRef, ArrayRef)],
+		count: usize,
+	) -> Result<Vec<(FieldRef, ArrayRef)>> {
+		let session = self.eval_session();
+		let exec_ctx = session.with_eval(batch(slot_columns.to_vec())?, count);
+		self.compiled_outputs.iter().map(|compiled| compiled.execute(&exec_ctx)).collect()
 	}
 
 	fn eval_session(&self) -> EvalContext<'_> {
@@ -445,20 +691,15 @@ impl Aggregation {
 
 #[cfg(test)]
 mod tests {
-	use arrow_array::{ArrayRef, RecordBatch};
+	use arrow_array::ArrayRef;
 	use arrow_schema::FieldRef;
-	use reifydb_codec::row::bytes::RowBuilder;
-	use reifydb_core::{
-		row::Row,
-		value::{batch::from_row, column::builder::ColumnBuilder},
-	};
+	use reifydb_core::value::column::builder::ColumnBuilder;
 	use reifydb_flow::aggregate::DIGEST_FUNCTION;
 	use reifydb_value::value::{
-		Value, column_view::ColumnView, digest::Digest, duration::Duration, row_number::RowNumber,
-		value_type::ValueType,
+		Value, column_view::ColumnView, digest::Digest, duration::Duration, value_type::ValueType,
 	};
 
-	use super::{build_aggregation_shape, check_digest_input};
+	use super::{check_digest_input, typed_column};
 
 	const PPM: u32 = 10_000;
 
@@ -469,10 +710,6 @@ mod tests {
 			builder.push_value(value);
 		}
 		builder.finish("v")
-	}
-
-	fn view(columns: &RecordBatch, index: usize) -> ColumnView<'_> {
-		ColumnView::try_from((columns.column(index), columns.schema_ref().field(index))).unwrap()
 	}
 
 	fn digest_of(values: &[f64]) -> Value {
@@ -531,29 +768,18 @@ mod tests {
 	}
 
 	#[test]
-	fn digest_slot_values_pass_through_the_aggregation_shape_and_read_back_equal() {
-		// A slot shape that cannot hold a digest panics the flow on the first group that reads a percentile.
+	fn digest_slot_values_pass_through_the_slot_column_and_read_back_equal() {
+		// A slot column that cannot hold a digest panics the flow on the first group that reads a percentile.
 		let digest = digest_of(&[1.0, 2.0, 40.0]);
 		let digest_type = digest.get_type();
-		let values = vec![Value::Int4(7), digest.clone(), Value::none_of(digest_type.clone()), digest_of(&[])];
-		let names: Vec<String> = ["g", "d", "empty_group", "no_values"].map(String::from).to_vec();
-		let types: Vec<ValueType> = values.iter().map(Value::get_type).collect();
+		let values = [digest.clone(), Value::none_of(digest_type.clone()), digest_of(&[])];
 
-		let shape = build_aggregation_shape(&names, &types);
-		assert_eq!(shape.fingerprint(), build_aggregation_shape(&names, &types).fingerprint());
-		let mut encoded = shape.allocate_table();
-		shape.set_values(&mut encoded, &values);
-		let row = Row {
-			number: RowNumber(1),
-			encoded: encoded.freeze_bytes(),
-			shape,
-		};
-		let columns = from_row(&row).unwrap();
+		let (field, array) = typed_column("d", None, values.iter()).unwrap();
+		let view = ColumnView::try_from((&array, field.as_ref())).unwrap();
 
-		assert_eq!(view(&columns, 0).get_value(0), Value::Int4(7));
-		assert_eq!(view(&columns, 1).get_type(), digest_type);
-		assert_eq!(view(&columns, 1).get_value(0), digest);
-		assert!(matches!(view(&columns, 2).get_value(0), Value::None { .. }));
-		assert_eq!(view(&columns, 3).get_value(0), values[3]);
+		assert_eq!(view.get_type().inner_type(), &digest_type);
+		assert_eq!(view.get_value(0), digest);
+		assert!(matches!(view.get_value(1), Value::None { .. }));
+		assert_eq!(view.get_value(2), values[2]);
 	}
 }

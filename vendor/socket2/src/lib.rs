@@ -528,6 +528,7 @@ impl TcpKeepalive {
     #[cfg(any(
         target_os = "android",
         target_os = "dragonfly",
+        target_os = "emscripten",
         target_os = "freebsd",
         target_os = "fuchsia",
         target_os = "illumos",
@@ -540,6 +541,7 @@ impl TcpKeepalive {
         target_os = "watchos",
         target_os = "windows",
         target_os = "cygwin",
+        target_os = "nuttx",
         all(target_os = "wasi", not(target_env = "p1")),
     ))]
     pub const fn with_interval(self, interval: Duration) -> Self {
@@ -558,6 +560,7 @@ impl TcpKeepalive {
         any(
             target_os = "android",
             target_os = "dragonfly",
+            target_os = "emscripten",
             target_os = "freebsd",
             target_os = "fuchsia",
             target_os = "illumos",
@@ -570,6 +573,7 @@ impl TcpKeepalive {
             target_os = "watchos",
             target_os = "cygwin",
             target_os = "windows",
+            target_os = "nuttx",
             all(target_os = "wasi", not(target_env = "p1")),
         )
     ))]

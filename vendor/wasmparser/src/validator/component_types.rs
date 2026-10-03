@@ -2,16 +2,17 @@
 
 use super::component::ExternKind;
 use super::{CanonicalOptions, Concurrency};
+use crate::limits::MAX_WASM_VALUE_TYPE_BYTE_SIZE;
 use crate::validator::StringEncoding;
+use crate::validator::component::PtrSize;
 use crate::validator::names::KebabString;
 use crate::validator::types::{
     CoreTypeId, EntityType, SnapshotList, TypeAlloc, TypeData, TypeIdentifier, TypeInfo, TypeList,
     Types, TypesKind, TypesRef, TypesRefKind,
 };
 use crate::{AbstractHeapType, CompositeInnerType, HeapType, RefType, StorageType, prelude::*};
-use crate::{
-    BinaryReaderError, FuncType, MemoryType, PrimitiveValType, Result, TableType, ValType,
-};
+use crate::{Error, FuncType, MemoryType, PrimitiveValType, Result, TableType, ValType};
+use alloc::borrow::Cow;
 use core::fmt;
 use core::ops::Index;
 use core::sync::atomic::{AtomicUsize, Ordering};
@@ -138,7 +139,7 @@ impl PrimitiveValType {
         types: &TypeList,
         _abi: Abi,
         options: &CanonicalOptions,
-        offset: usize,
+        offset: u64,
         core: ArgOrField,
     ) -> Result<()> {
         match (self, core) {
@@ -302,7 +303,11 @@ impl PrimitiveValType {
     }
 }
 
-fn push_primitive_wasm_types(ty: &PrimitiveValType, lowered_types: &mut LoweredTypes) -> bool {
+fn push_primitive_wasm_types(
+    ptr_size: PtrSize,
+    ty: &PrimitiveValType,
+    lowered_types: &mut LoweredTypes,
+) -> bool {
     match ty {
         PrimitiveValType::Bool
         | PrimitiveValType::S8
@@ -317,7 +322,8 @@ fn push_primitive_wasm_types(ty: &PrimitiveValType, lowered_types: &mut LoweredT
         PrimitiveValType::F32 => lowered_types.try_push(ValType::F32),
         PrimitiveValType::F64 => lowered_types.try_push(ValType::F64),
         PrimitiveValType::String => {
-            lowered_types.try_push(ValType::I32) && lowered_types.try_push(ValType::I32)
+            lowered_types.try_push(ptr_size.core_type())
+                && lowered_types.try_push(ptr_size.core_type())
         }
     }
 }
@@ -731,10 +737,15 @@ impl ComponentValType {
         }
     }
 
-    fn push_wasm_types(&self, types: &TypeList, lowered_types: &mut LoweredTypes) -> bool {
+    fn push_wasm_types(
+        &self,
+        ptr_size: PtrSize,
+        types: &TypeList,
+        lowered_types: &mut LoweredTypes,
+    ) -> bool {
         match self {
-            Self::Primitive(ty) => push_primitive_wasm_types(ty, lowered_types),
-            Self::Type(id) => types[*id].push_wasm_types(types, lowered_types),
+            Self::Primitive(ty) => push_primitive_wasm_types(ptr_size, ty, lowered_types),
+            Self::Type(id) => types[*id].push_wasm_types(ptr_size, types, lowered_types),
         }
     }
 
@@ -745,18 +756,33 @@ impl ComponentValType {
         }
     }
 
+    /// Returns the Canonical ABI information for this value type.
+    pub(crate) fn abi(&self, types: &TypeList) -> AbiInfo {
+        match self {
+            Self::Primitive(ty) => AbiInfo::primitive(*ty),
+            Self::Type(id) => types[*id].abi(),
+        }
+    }
+
     fn lower_gc(
         &self,
         types: &TypeList,
         abi: Abi,
         options: &CanonicalOptions,
-        offset: usize,
+        offset: u64,
         core: ArgOrField,
     ) -> Result<()> {
         match self {
             ComponentValType::Primitive(ty) => ty.lower_gc(types, abi, options, offset, core),
             ComponentValType::Type(ty) => types[*ty].lower_gc(types, abi, options, offset, core),
         }
+    }
+
+    pub(crate) fn eq(a: &Self, b: &Self, types: &TypeList, offset: u64) -> bool {
+        let cx = SubtypeCx::new(types, types);
+        let ab = cx.component_val_type(&a, &b, offset).is_ok();
+        let ba = cx.component_val_type(&b, &a, offset).is_ok();
+        ab && ba
     }
 }
 
@@ -1023,6 +1049,20 @@ pub struct ComponentItem {
     pub ty: ComponentEntityType,
     /// The optional `(implements "...")` metadata, if specified.
     pub implements: Option<String>,
+    /// The optional `(versionsuffix "...")` metadata, if specified.
+    pub version_suffix: Option<String>,
+    /// The optional `(external_id "...")` metadata, if specified.
+    pub external_id: Option<String>,
+}
+
+impl ComponentItem {
+    /// Returns the full name of the interface in `implements`, if specified.
+    pub fn full_implements(&self) -> Option<Cow<'_, str>> {
+        Some(crate::with_version_suffix(
+            self.implements.as_ref()?,
+            self.version_suffix.as_deref(),
+        ))
+    }
 }
 
 impl TypeData for ComponentType {
@@ -1187,10 +1227,10 @@ pub(crate) enum LoweredFuncType {
 }
 
 impl LoweredFuncType {
-    pub(crate) fn intern(self, types: &mut TypeAlloc, offset: usize) -> CoreTypeId {
+    pub(crate) fn intern(self, types: &mut TypeAlloc, offset: u64) -> Result<CoreTypeId> {
         match self {
             LoweredFuncType::New(ty) => types.intern_func_type(ty, offset),
-            LoweredFuncType::Existing(id) => id,
+            LoweredFuncType::Existing(id) => Ok(id),
         }
     }
 }
@@ -1203,13 +1243,18 @@ impl ComponentFuncType {
         types: &TypeList,
         options: &CanonicalOptions,
         abi: Abi,
-        offset: usize,
+        offset: u64,
     ) -> Result<LoweredFuncType> {
         let mut sig = LoweredSignature::default();
 
         if options.gc {
             return self.lower_gc(types, abi, options, offset);
         }
+
+        let ptr_size = match options.memory {
+            None => PtrSize::Ptr32,
+            Some((_, ptr_size)) => ptr_size,
+        };
 
         if abi == Abi::Lower && options.concurrency.is_async() {
             sig.params.max = MAX_FLAT_ASYNC_PARAMS;
@@ -1231,12 +1276,12 @@ impl ComponentFuncType {
                 }
             }
 
-            if !ty.push_wasm_types(types, &mut sig.params) {
+            if !ty.push_wasm_types(ptr_size, types, &mut sig.params) {
                 // Too many parameters to pass directly
                 // Function will have a single pointer parameter to pass the arguments
                 // via linear memory
                 sig.params.clear();
-                assert!(sig.params.try_push(ValType::I32));
+                assert!(sig.params.try_push(ptr_size.core_type()));
                 options.require_memory(offset)?;
 
                 // We need realloc as well when lifting a function
@@ -1247,18 +1292,18 @@ impl ComponentFuncType {
             }
         }
 
+        // Results of lowered functions that contains pointers must be allocated
+        // by the callee meaning that realloc is required. Results of lifted
+        // function are allocated by the guest which means that no realloc
+        // option is necessary.
+        if let Some(ty) = &self.result {
+            options.require_realloc_if(offset, || abi == Abi::Lower && ty.contains_ptr(types))?;
+        }
+
         match (abi, options.concurrency) {
             (Abi::Lower | Abi::Lift, Concurrency::Sync) => {
                 if let Some(ty) = &self.result {
-                    // Results of lowered functions that contains pointers must be
-                    // allocated by the callee meaning that realloc is required.
-                    // Results of lifted function are allocated by the guest which
-                    // means that no realloc option is necessary.
-                    options.require_realloc_if(offset, || {
-                        abi == Abi::Lower && ty.contains_ptr(types)
-                    })?;
-
-                    if !ty.push_wasm_types(types, &mut sig.results) {
+                    if !ty.push_wasm_types(ptr_size, types, &mut sig.results) {
                         // Too many results to return directly, either a retptr
                         // parameter will be used (import) or a single pointer
                         // will be returned (export).
@@ -1267,10 +1312,10 @@ impl ComponentFuncType {
                         match abi {
                             Abi::Lower => {
                                 sig.params.max = MAX_LOWERED_TYPES;
-                                assert!(sig.params.try_push(ValType::I32));
+                                assert!(sig.params.try_push(ptr_size.core_type()));
                             }
                             Abi::Lift => {
-                                assert!(sig.results.try_push(ValType::I32));
+                                assert!(sig.results.try_push(ptr_size.core_type()));
                             }
                         }
                     }
@@ -1279,7 +1324,7 @@ impl ComponentFuncType {
             (Abi::Lower, Concurrency::Async { callback: _ }) => {
                 if self.result.is_some() {
                     sig.params.max = MAX_LOWERED_TYPES;
-                    sig.params.assert_push(ValType::I32);
+                    sig.params.assert_push(ptr_size.core_type());
                     options.require_memory(offset)?;
                 }
                 sig.results.assert_push(ValType::I32);
@@ -1295,8 +1340,11 @@ impl ComponentFuncType {
                     // Note that the return type itself has no effect on the
                     // expected core signature of the lifted function.
 
-                    let overflow =
-                        !ty.push_wasm_types(types, &mut LoweredTypes::new(MAX_FLAT_FUNC_PARAMS));
+                    let overflow = !ty.push_wasm_types(
+                        ptr_size,
+                        types,
+                        &mut LoweredTypes::new(MAX_FLAT_FUNC_PARAMS),
+                    );
 
                     options.require_memory_if(offset, || overflow || ty.contains_ptr(types))?;
                 }
@@ -1314,7 +1362,7 @@ impl ComponentFuncType {
         types: &TypeList,
         abi: Abi,
         options: &CanonicalOptions,
-        offset: usize,
+        offset: u64,
     ) -> Result<LoweredFuncType> {
         let core_type_id = options.core_type.unwrap();
         let core_func_ty = types[core_type_id].unwrap_func();
@@ -1363,6 +1411,8 @@ pub struct VariantCase {
 pub struct RecordType {
     /// Metadata about this record type.
     pub(crate) info: TypeInfo,
+    /// Canonical ABI information about this record type.
+    pub(crate) abi: AbiInfo,
     /// The map of record fields.
     pub fields: IndexMap<KebabString, ComponentValType>,
 }
@@ -1373,7 +1423,7 @@ impl RecordType {
         types: &TypeList,
         abi: Abi,
         options: &CanonicalOptions,
-        offset: usize,
+        offset: u64,
         core: ArgOrField,
     ) -> Result<()> {
         lower_gc_product_type(
@@ -1393,6 +1443,8 @@ impl RecordType {
 pub struct VariantType {
     /// Metadata about this variant type.
     pub(crate) info: TypeInfo,
+    /// Canonical ABI information about this variant type.
+    pub(crate) abi: AbiInfo,
     /// The map of variant cases.
     pub cases: IndexMap<KebabString, VariantCase>,
 }
@@ -1403,7 +1455,7 @@ impl VariantType {
         types: &TypeList,
         abi: Abi,
         options: &CanonicalOptions,
-        offset: usize,
+        offset: u64,
         core: ArgOrField,
     ) -> Result<()> {
         lower_gc_sum_type(types, abi, options, offset, core, "variant")
@@ -1416,7 +1468,7 @@ fn lower_gc_sum_type(
     types: &TypeList,
     _abi: Abi,
     _options: &CanonicalOptions,
-    offset: usize,
+    offset: u64,
     core: ArgOrField,
     kind: &str,
 ) -> Result<()> {
@@ -1440,6 +1492,8 @@ fn lower_gc_sum_type(
 pub struct TupleType {
     /// Metadata about this tuple type.
     pub(crate) info: TypeInfo,
+    /// Canonical ABI information about this tuple type.
+    pub(crate) abi: AbiInfo,
     /// The types of the tuple.
     pub types: Box<[ComponentValType]>,
 }
@@ -1450,7 +1504,7 @@ impl TupleType {
         types: &TypeList,
         abi: Abi,
         options: &CanonicalOptions,
-        offset: usize,
+        offset: u64,
         core: ArgOrField,
     ) -> Result<()> {
         lower_gc_product_type(
@@ -1475,11 +1529,36 @@ pub enum ComponentDefinedType {
     /// The type is a variant.
     Variant(VariantType),
     /// The type is a list.
-    List(ComponentValType),
+    List {
+        /// The element type of the list.
+        element: ComponentValType,
+        /// Cached type information.
+        info: TypeInfo,
+        /// Cached Canonical ABI information.
+        abi: AbiInfo,
+    },
     /// The type is a map.
-    Map(ComponentValType, ComponentValType),
+    Map {
+        /// The key type of the map.
+        key: ComponentValType,
+        /// The value type of the map.
+        value: ComponentValType,
+        /// Cached type information.
+        info: TypeInfo,
+        /// Cached Canonical ABI information.
+        abi: AbiInfo,
+    },
     /// The type is a fixed-length list.
-    FixedLengthList(ComponentValType, u32),
+    FixedLengthList {
+        /// The element type of the list.
+        element: ComponentValType,
+        /// The fixed number of elements in the list.
+        length: u32,
+        /// Cached type information.
+        info: TypeInfo,
+        /// Cached Canonical ABI information.
+        abi: AbiInfo,
+    },
     /// The type is a tuple.
     Tuple(TupleType),
     /// The type is a set of flags.
@@ -1487,57 +1566,298 @@ pub enum ComponentDefinedType {
     /// The type is an enumeration.
     Enum(IndexSet<KebabString>),
     /// The type is an `option`.
-    Option(ComponentValType),
+    Option {
+        /// The payload type of the option.
+        ty: ComponentValType,
+        /// Cached type information.
+        info: TypeInfo,
+        /// Cached Canonical ABI information.
+        abi: AbiInfo,
+    },
     /// The type is a `result`.
     Result {
         /// The `ok` type.
         ok: Option<ComponentValType>,
         /// The `error` type.
         err: Option<ComponentValType>,
+        /// Cached type information.
+        info: TypeInfo,
+        /// Cached Canonical ABI information.
+        abi: AbiInfo,
     },
     /// The type is an owned handle to the specified resource.
     Own(AliasableResourceId),
     /// The type is a borrowed handle to the specified resource.
     Borrow(AliasableResourceId),
     /// A future type with the specified payload type.
-    Future(Option<ComponentValType>),
+    Future {
+        /// The payload type of the future, if any.
+        ty: Option<ComponentValType>,
+        /// Cached type information.
+        info: TypeInfo,
+        /// Cached Canonical ABI information.
+        abi: AbiInfo,
+    },
     /// A stream type with the specified payload type.
-    Stream(Option<ComponentValType>),
+    Stream {
+        /// The payload type of the stream, if any.
+        ty: Option<ComponentValType>,
+        /// Cached type information.
+        info: TypeInfo,
+        /// Cached Canonical ABI information.
+        abi: AbiInfo,
+    },
 }
 
 impl TypeData for ComponentDefinedType {
     type Id = ComponentDefinedTypeId;
     const IS_CORE_SUB_TYPE: bool = false;
-    fn type_info(&self, types: &TypeList) -> TypeInfo {
+    fn type_info(&self, _types: &TypeList) -> TypeInfo {
         match self {
             Self::Primitive(_)
             | Self::Flags(_)
             | Self::Enum(_)
             | Self::Own(_)
-            | Self::Future(_)
-            | Self::Stream(_) => TypeInfo::new(),
-            Self::Borrow(_) => TypeInfo::borrow(),
+            | Self::Borrow(_) => TypeInfo::new(),
             Self::Record(r) => r.info,
             Self::Variant(v) => v.info,
             Self::Tuple(t) => t.info,
-            Self::List(ty) | Self::FixedLengthList(ty, _) | Self::Option(ty) => ty.info(types),
-            Self::Map(k, v) => {
-                let mut info = k.info(types);
-                info.combine(v.info(types), 0).unwrap();
-                info
-            }
-            Self::Result { ok, err } => {
-                let default = TypeInfo::new();
-                let mut info = ok.map(|ty| ty.type_info(types)).unwrap_or(default);
-                info.combine(err.map(|ty| ty.type_info(types)).unwrap_or(default), 0)
-                    .unwrap();
-                info
-            }
+            Self::List { info, .. }
+            | Self::FixedLengthList { info, .. }
+            | Self::Option { info, .. }
+            | Self::Map { info, .. }
+            | Self::Result { info, .. }
+            | Self::Future { info, .. }
+            | Self::Stream { info, .. } => *info,
         }
     }
 }
 
+/// ABI information about defined value types in the component model.
+///
+/// This is packed into a single `u32` as it's stored on every defined type:
+///
+/// * bits 0..28 - `elem_size(t, 'i64')`, the number of bytes a value of this
+///   type takes up when stored in a 64-bit linear memory. Validation requires
+///   this to be less than `MAX_WASM_VALUE_TYPE_BYTE_SIZE`. Note that this only
+///   tracks 64-bit linear memory sizes because ABI information isn't needed in
+///   validation except for ensuring sizes are beneath a certain threshold.
+///
+/// * bits 28..30 - the base-2 logarithm of `alignment(t, 'i64')`, so 0, 1, 2,
+///   or 3 for an alignment of 1, 2, 4, or 8.
+///
+/// * bit 30 - whether or not this type transitively contains a `borrow`. For
+///   example `(borrow $t)` and `(list (borrow $t))` both do but `(list u32)`
+///   does not. Used to validate that component function results don't contain
+///   borrows.
+///
+/// * bit 31 - unused.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[doc(hidden)]
+pub struct AbiInfo(u32);
+
+impl AbiInfo {
+    const ELEM_SIZE_BITS: u32 = 28;
+    const ALIGN_LOG2_BITS: u32 = 2;
+    const CONTAINS_BORROW_BITS: u32 = 1;
+
+    const ELEM_SIZE_OFFSET: u32 = 0;
+    const ALIGN_LOG2_OFFSET: u32 = Self::ELEM_SIZE_OFFSET + Self::ELEM_SIZE_BITS;
+    const CONTAINS_BORROW_OFFSET: u32 = Self::ALIGN_LOG2_OFFSET + Self::ALIGN_LOG2_BITS;
+
+    const ELEM_SIZE_MASK: u32 = ((1 << Self::ELEM_SIZE_BITS) - 1) << Self::ELEM_SIZE_OFFSET;
+    const ALIGN_LOG2_MASK: u32 = ((1 << Self::ALIGN_LOG2_BITS) - 1) << Self::ALIGN_LOG2_OFFSET;
+    const CONTAINS_BORROW_MASK: u32 =
+        ((1 << Self::CONTAINS_BORROW_BITS) - 1) << Self::CONTAINS_BORROW_OFFSET;
+
+    const BOOL: AbiInfo = AbiInfo::new_unchecked(1, 1, false);
+    const U8: AbiInfo = AbiInfo::new_unchecked(1, 1, false);
+    const U16: AbiInfo = AbiInfo::new_unchecked(2, 2, false);
+    const U32: AbiInfo = AbiInfo::new_unchecked(4, 4, false);
+    const U64: AbiInfo = AbiInfo::new_unchecked(8, 8, false);
+    const S8: AbiInfo = AbiInfo::U8;
+    const S16: AbiInfo = AbiInfo::U16;
+    const S32: AbiInfo = AbiInfo::U32;
+    const S64: AbiInfo = AbiInfo::U64;
+    const F32: AbiInfo = AbiInfo::U32;
+    const F64: AbiInfo = AbiInfo::U64;
+    const CHAR: AbiInfo = AbiInfo::U32;
+    const ERROR_CONTEXT: AbiInfo = AbiInfo::U32;
+    const PTR_PAIR: AbiInfo = AbiInfo::new_unchecked(16, 8, false);
+    const HANDLE: AbiInfo = AbiInfo::new_unchecked(4, 4, false);
+    const BORROW: AbiInfo = AbiInfo::HANDLE.with_borrow(true);
+
+    pub(crate) fn primitive(ty: PrimitiveValType) -> AbiInfo {
+        match ty {
+            PrimitiveValType::Bool => AbiInfo::BOOL,
+            PrimitiveValType::S8 => AbiInfo::S8,
+            PrimitiveValType::U8 => AbiInfo::U8,
+            PrimitiveValType::S16 => AbiInfo::S16,
+            PrimitiveValType::U16 => AbiInfo::U16,
+            PrimitiveValType::S32 => AbiInfo::S32,
+            PrimitiveValType::U32 => AbiInfo::U32,
+            PrimitiveValType::S64 => AbiInfo::S64,
+            PrimitiveValType::U64 => AbiInfo::U64,
+            PrimitiveValType::F32 => AbiInfo::F32,
+            PrimitiveValType::F64 => AbiInfo::F64,
+            PrimitiveValType::Char => AbiInfo::CHAR,
+            PrimitiveValType::ErrorContext => AbiInfo::ERROR_CONTEXT,
+            PrimitiveValType::String => AbiInfo::PTR_PAIR,
+        }
+    }
+
+    pub(crate) fn flags(count: usize) -> AbiInfo {
+        if count <= 8 {
+            AbiInfo::U8
+        } else if count <= 16 {
+            AbiInfo::U16
+        } else {
+            AbiInfo::U32
+        }
+    }
+
+    pub(crate) fn discriminant(cases: usize) -> AbiInfo {
+        if cases <= 0x100 {
+            AbiInfo::U8
+        } else if cases <= 0x10000 {
+            AbiInfo::U16
+        } else {
+            AbiInfo::U32
+        }
+    }
+
+    pub(crate) fn record(fields: impl Iterator<Item = AbiInfo>, offset: u64) -> Result<AbiInfo> {
+        let mut size = 0;
+        let mut align = 1;
+        let mut contains_borrow = false;
+        for field in fields {
+            size = align_to(size, field.alignment()) + u64::from(field.elem_size());
+            align = align.max(field.alignment());
+            contains_borrow |= field.contains_borrow();
+        }
+        debug_assert!(size > 0);
+        AbiInfo::new(align_to(size, align), align, contains_borrow, offset)
+    }
+
+    pub(crate) fn variant(
+        payloads: impl ExactSizeIterator<Item = Option<AbiInfo>>,
+        offset: u64,
+    ) -> Result<AbiInfo> {
+        let discriminant = AbiInfo::discriminant(payloads.len());
+        let mut payload_size = 0;
+        let mut payload_align = 1;
+        let mut contains_borrow = false;
+        for payload in payloads.flatten() {
+            payload_size = payload_size.max(u64::from(payload.elem_size()));
+            payload_align = payload_align.max(payload.alignment());
+            contains_borrow |= payload.contains_borrow();
+        }
+        let align = discriminant.alignment().max(payload_align);
+        let size = align_to(u64::from(discriminant.elem_size()), payload_align) + payload_size;
+        AbiInfo::new(align_to(size, align), align, contains_borrow, offset)
+    }
+
+    pub(crate) fn list(element: AbiInfo) -> AbiInfo {
+        AbiInfo::PTR_PAIR.with_borrow(element.contains_borrow())
+    }
+
+    pub(crate) fn map(key: AbiInfo, value: AbiInfo) -> AbiInfo {
+        AbiInfo::PTR_PAIR.with_borrow(key.contains_borrow() || value.contains_borrow())
+    }
+
+    pub(crate) fn fixed_length_list(element: AbiInfo, length: u32, offset: u64) -> Result<AbiInfo> {
+        // Note that this multiplication cannot overflow since it's a 32x32-bit
+        // multiplication done in the 64-bit integer space.
+        let size = u64::from(element.elem_size()) * u64::from(length);
+        AbiInfo::new(size, element.alignment(), element.contains_borrow(), offset)
+    }
+
+    pub(crate) fn future_or_stream(payload: Option<AbiInfo>) -> AbiInfo {
+        AbiInfo::HANDLE.with_borrow(match payload {
+            Some(abi) => abi.contains_borrow(),
+            None => false,
+        })
+    }
+
+    /// Creates an `AbiInfo` of `size` bytes with an alignment of `align`, returning
+    /// an error if the size is at or above the component model's limit.
+    fn new(size: u64, align: u32, contains_borrow: bool, offset: u64) -> Result<AbiInfo> {
+        if size >= u64::from(MAX_WASM_VALUE_TYPE_BYTE_SIZE) {
+            bail!(
+                offset,
+                "value type's maximum in-memory size exceeds maximum byte size"
+            );
+        }
+        Ok(AbiInfo::new_unchecked(size as u32, align, contains_borrow))
+    }
+
+    /// Same as `new` but for sizes which are statically known to be in-bounds.
+    const fn new_unchecked(size: u32, align: u32, contains_borrow: bool) -> AbiInfo {
+        debug_assert!(size < MAX_WASM_VALUE_TYPE_BYTE_SIZE);
+        debug_assert!(align.is_power_of_two() && align <= 8);
+        AbiInfo(
+            (size << Self::ELEM_SIZE_OFFSET)
+                | (align.trailing_zeros() << Self::ALIGN_LOG2_OFFSET)
+                | ((contains_borrow as u32) << Self::CONTAINS_BORROW_OFFSET),
+        )
+    }
+
+    const fn with_borrow(&self, contains_borrow: bool) -> AbiInfo {
+        AbiInfo(
+            (self.0 & !Self::CONTAINS_BORROW_MASK)
+                | ((contains_borrow as u32) << Self::CONTAINS_BORROW_OFFSET),
+        )
+    }
+
+    /// The size of this value as it resides in a 64-bit linear memory.
+    fn elem_size(&self) -> u32 {
+        (self.0 & Self::ELEM_SIZE_MASK) >> Self::ELEM_SIZE_OFFSET
+    }
+
+    /// The alignment of this value as it resides in a 64-bit linear memory.
+    fn alignment(&self) -> u32 {
+        1 << ((self.0 & Self::ALIGN_LOG2_MASK) >> Self::ALIGN_LOG2_OFFSET)
+    }
+
+    /// Whether this type transitively contains a `borrow`.
+    pub(crate) fn contains_borrow(&self) -> bool {
+        (self.0 & Self::CONTAINS_BORROW_MASK) != 0
+    }
+}
+
+const _: () = {
+    assert!(1 << AbiInfo::ELEM_SIZE_BITS >= MAX_WASM_VALUE_TYPE_BYTE_SIZE);
+};
+
+/// The Canonical ABI's `align_to`.
+fn align_to(offset: u64, align: u32) -> u64 {
+    debug_assert!(align.is_power_of_two());
+    let align = u64::from(align);
+    (offset + (align - 1)) & !(align - 1)
+}
+
 impl ComponentDefinedType {
+    /// Returns the Canonical ABI information for this type.
+    pub(crate) fn abi(&self) -> AbiInfo {
+        match self {
+            Self::Primitive(ty) => AbiInfo::primitive(*ty),
+            Self::Flags(names) => AbiInfo::flags(names.len()),
+            Self::Enum(cases) => AbiInfo::discriminant(cases.len()),
+            Self::Own(_) => AbiInfo::HANDLE,
+            Self::Borrow(_) => AbiInfo::BORROW,
+            Self::Record(r) => r.abi,
+            Self::Variant(v) => v.abi,
+            Self::Tuple(t) => t.abi,
+            Self::List { abi, .. }
+            | Self::FixedLengthList { abi, .. }
+            | Self::Option { abi, .. }
+            | Self::Map { abi, .. }
+            | Self::Result { abi, .. }
+            | Self::Future { abi, .. }
+            | Self::Stream { abi, .. } => *abi,
+        }
+    }
+
     pub(crate) fn contains_ptr(&self, types: &TypeList) -> bool {
         match self {
             Self::Primitive(ty) => ty.contains_ptr(),
@@ -1546,61 +1866,78 @@ impl ComponentDefinedType {
                 .cases
                 .values()
                 .any(|case| case.ty.map(|ty| ty.contains_ptr(types)).unwrap_or(false)),
-            Self::List(_) | Self::Map(_, _) => true,
+            Self::List { .. } | Self::Map { .. } => true,
             Self::Tuple(t) => t.types.iter().any(|ty| ty.contains_ptr(types)),
             Self::Flags(_)
             | Self::Enum(_)
             | Self::Own(_)
             | Self::Borrow(_)
-            | Self::Future(_)
-            | Self::Stream(_) => false,
-            Self::Option(ty) | Self::FixedLengthList(ty, _) => ty.contains_ptr(types),
-            Self::Result { ok, err } => {
+            | Self::Future { .. }
+            | Self::Stream { .. } => false,
+            Self::Option { ty, .. } | Self::FixedLengthList { element: ty, .. } => {
+                ty.contains_ptr(types)
+            }
+            Self::Result { ok, err, .. } => {
                 ok.map(|ty| ty.contains_ptr(types)).unwrap_or(false)
                     || err.map(|ty| ty.contains_ptr(types)).unwrap_or(false)
             }
         }
     }
 
-    fn push_wasm_types(&self, types: &TypeList, lowered_types: &mut LoweredTypes) -> bool {
+    fn push_wasm_types(
+        &self,
+        ptr_size: PtrSize,
+        types: &TypeList,
+        lowered_types: &mut LoweredTypes,
+    ) -> bool {
         match self {
-            Self::Primitive(ty) => push_primitive_wasm_types(ty, lowered_types),
+            Self::Primitive(ty) => push_primitive_wasm_types(ptr_size, ty, lowered_types),
             Self::Record(r) => r
                 .fields
                 .iter()
-                .all(|(_, ty)| ty.push_wasm_types(types, lowered_types)),
+                .all(|(_, ty)| ty.push_wasm_types(ptr_size, types, lowered_types)),
             Self::Variant(v) => Self::push_variant_wasm_types(
                 v.cases.iter().filter_map(|(_, case)| case.ty.as_ref()),
+                ptr_size,
                 types,
                 lowered_types,
             ),
-            Self::List(_) | Self::Map(_, _) => {
-                lowered_types.try_push(ValType::I32) && lowered_types.try_push(ValType::I32)
+            Self::List { .. } | Self::Map { .. } => {
+                lowered_types.try_push(ptr_size.core_type())
+                    && lowered_types.try_push(ptr_size.core_type())
             }
-            Self::FixedLengthList(ty, length) => {
-                (0..*length).all(|_n| ty.push_wasm_types(types, lowered_types))
-            }
+            Self::FixedLengthList {
+                element: ty,
+                length,
+                ..
+            } => (0..*length).all(|_n| ty.push_wasm_types(ptr_size, types, lowered_types)),
             Self::Tuple(t) => t
                 .types
                 .iter()
-                .all(|ty| ty.push_wasm_types(types, lowered_types)),
+                .all(|ty| ty.push_wasm_types(ptr_size, types, lowered_types)),
             Self::Flags(names) => {
                 (0..(names.len() + 31) / 32).all(|_| lowered_types.try_push(ValType::I32))
             }
-            Self::Enum(_) | Self::Own(_) | Self::Borrow(_) | Self::Future(_) | Self::Stream(_) => {
-                lowered_types.try_push(ValType::I32)
+            Self::Enum(_)
+            | Self::Own(_)
+            | Self::Borrow(_)
+            | Self::Future { .. }
+            | Self::Stream { .. } => lowered_types.try_push(ValType::I32),
+            Self::Option { ty, .. } => {
+                Self::push_variant_wasm_types([ty].into_iter(), ptr_size, types, lowered_types)
             }
-            Self::Option(ty) => {
-                Self::push_variant_wasm_types([ty].into_iter(), types, lowered_types)
-            }
-            Self::Result { ok, err } => {
-                Self::push_variant_wasm_types(ok.iter().chain(err.iter()), types, lowered_types)
-            }
+            Self::Result { ok, err, .. } => Self::push_variant_wasm_types(
+                ok.iter().chain(err.iter()),
+                ptr_size,
+                types,
+                lowered_types,
+            ),
         }
     }
 
     fn push_variant_wasm_types<'a>(
         cases: impl Iterator<Item = &'a ComponentValType>,
+        ptr_size: PtrSize,
         types: &TypeList,
         lowered_types: &mut LoweredTypes,
     ) -> bool {
@@ -1614,7 +1951,7 @@ impl ComponentDefinedType {
         for ty in cases {
             let mut temp = LoweredTypes::new(lowered_types.max);
 
-            if !ty.push_wasm_types(types, &mut temp) {
+            if !ty.push_wasm_types(ptr_size, types, &mut temp) {
                 return false;
             }
 
@@ -1652,15 +1989,15 @@ impl ComponentDefinedType {
             ComponentDefinedType::Tuple(_) => "tuple",
             ComponentDefinedType::Enum(_) => "enum",
             ComponentDefinedType::Flags(_) => "flags",
-            ComponentDefinedType::Option(_) => "option",
-            ComponentDefinedType::List(_) => "list",
-            ComponentDefinedType::Map(_, _) => "map",
-            ComponentDefinedType::FixedLengthList(_, _) => "fixed-length list",
+            ComponentDefinedType::Option { .. } => "option",
+            ComponentDefinedType::List { .. } => "list",
+            ComponentDefinedType::Map { .. } => "map",
+            ComponentDefinedType::FixedLengthList { .. } => "fixed-length list",
             ComponentDefinedType::Result { .. } => "result",
             ComponentDefinedType::Own(_) => "own",
             ComponentDefinedType::Borrow(_) => "borrow",
-            ComponentDefinedType::Future(_) => "future",
-            ComponentDefinedType::Stream(_) => "stream",
+            ComponentDefinedType::Future { .. } => "future",
+            ComponentDefinedType::Stream { .. } => "stream",
         }
     }
 
@@ -1669,7 +2006,7 @@ impl ComponentDefinedType {
         types: &TypeList,
         abi: Abi,
         options: &CanonicalOptions,
-        offset: usize,
+        offset: u64,
         core: ArgOrField,
     ) -> Result<()> {
         match self {
@@ -1679,7 +2016,8 @@ impl ComponentDefinedType {
 
             ComponentDefinedType::Variant(ty) => ty.lower_gc(types, abi, options, offset, core),
 
-            ComponentDefinedType::List(ty) | ComponentDefinedType::FixedLengthList(ty, _) => {
+            ComponentDefinedType::List { element: ty, .. }
+            | ComponentDefinedType::FixedLengthList { element: ty, .. } => {
                 let id = match core.as_concrete_ref() {
                     Some(id) => id,
                     None => bail!(
@@ -1699,7 +2037,7 @@ impl ComponentDefinedType {
                 ty.lower_gc(types, abi, options, offset, array_ty.0.element_type.into())
             }
 
-            ComponentDefinedType::Map(_, _) => bail!(
+            ComponentDefinedType::Map { .. } => bail!(
                 offset,
                 "GC lowering for component `map` type is not yet implemented"
             ),
@@ -1731,7 +2069,7 @@ impl ComponentDefinedType {
                 }
             }
 
-            ComponentDefinedType::Option(_) => {
+            ComponentDefinedType::Option { .. } => {
                 lower_gc_sum_type(types, abi, options, offset, core, "option")
             }
 
@@ -1741,8 +2079,8 @@ impl ComponentDefinedType {
 
             ComponentDefinedType::Own(_)
             | ComponentDefinedType::Borrow(_)
-            | ComponentDefinedType::Future(_)
-            | ComponentDefinedType::Stream(_) => {
+            | ComponentDefinedType::Future { .. }
+            | ComponentDefinedType::Stream { .. } => {
                 if let Some(r) = core.as_ref_type() {
                     if let HeapType::Abstract {
                         shared: _,
@@ -1770,10 +2108,10 @@ fn lower_gc_product_type<'a, I>(
     types: &TypeList,
     abi: Abi,
     options: &CanonicalOptions,
-    offset: usize,
+    offset: u64,
     core: ArgOrField,
     kind: &str,
-) -> core::result::Result<(), BinaryReaderError>
+) -> core::result::Result<(), Error>
 where
     I: IntoIterator<Item = &'a ComponentValType>,
     I::IntoIter: ExactSizeIterator,
@@ -2531,16 +2869,16 @@ impl TypeAlloc {
                     }
                 }
             }
-            ComponentDefinedType::List(ty)
-            | ComponentDefinedType::FixedLengthList(ty, _)
-            | ComponentDefinedType::Option(ty) => {
+            ComponentDefinedType::List { element: ty, .. }
+            | ComponentDefinedType::FixedLengthList { element: ty, .. }
+            | ComponentDefinedType::Option { ty, .. } => {
                 self.free_variables_valtype(ty, set);
             }
-            ComponentDefinedType::Map(k, v) => {
-                self.free_variables_valtype(k, set);
-                self.free_variables_valtype(v, set);
+            ComponentDefinedType::Map { key, value, .. } => {
+                self.free_variables_valtype(key, set);
+                self.free_variables_valtype(value, set);
             }
-            ComponentDefinedType::Result { ok, err } => {
+            ComponentDefinedType::Result { ok, err, .. } => {
                 if let Some(ok) = ok {
                     self.free_variables_valtype(ok, set);
                 }
@@ -2551,12 +2889,7 @@ impl TypeAlloc {
             ComponentDefinedType::Own(id) | ComponentDefinedType::Borrow(id) => {
                 set.insert(id.resource());
             }
-            ComponentDefinedType::Future(ty) => {
-                if let Some(ty) = ty {
-                    self.free_variables_valtype(ty, set);
-                }
-            }
-            ComponentDefinedType::Stream(ty) => {
+            ComponentDefinedType::Future { ty, .. } | ComponentDefinedType::Stream { ty, .. } => {
                 if let Some(ty) = ty {
                     self.free_variables_valtype(ty, set);
                 }
@@ -2670,7 +3003,7 @@ impl TypeAlloc {
             ComponentDefinedType::Tuple(r) => {
                 r.types.iter().all(|t| self.type_named_valtype(t, set))
             }
-            ComponentDefinedType::Result { ok, err } => {
+            ComponentDefinedType::Result { ok, err, .. } => {
                 ok.as_ref()
                     .map(|t| self.type_named_valtype(t, set))
                     .unwrap_or(true)
@@ -2679,11 +3012,11 @@ impl TypeAlloc {
                         .map(|t| self.type_named_valtype(t, set))
                         .unwrap_or(true)
             }
-            ComponentDefinedType::List(ty)
-            | ComponentDefinedType::FixedLengthList(ty, _)
-            | ComponentDefinedType::Option(ty) => self.type_named_valtype(ty, set),
-            ComponentDefinedType::Map(k, v) => {
-                self.type_named_valtype(k, set) && self.type_named_valtype(v, set)
+            ComponentDefinedType::List { element: ty, .. }
+            | ComponentDefinedType::FixedLengthList { element: ty, .. }
+            | ComponentDefinedType::Option { ty, .. } => self.type_named_valtype(ty, set),
+            ComponentDefinedType::Map { key, value, .. } => {
+                self.type_named_valtype(key, set) && self.type_named_valtype(value, set)
             }
 
             // own/borrow themselves don't have to be named, but the resource
@@ -2692,12 +3025,7 @@ impl TypeAlloc {
                 set.contains(&ComponentAnyTypeId::from(*id))
             }
 
-            ComponentDefinedType::Future(ty) => ty
-                .as_ref()
-                .map(|ty| self.type_named_valtype(ty, set))
-                .unwrap_or(true),
-
-            ComponentDefinedType::Stream(ty) => ty
+            ComponentDefinedType::Future { ty, .. } | ComponentDefinedType::Stream { ty, .. } => ty
                 .as_ref()
                 .map(|ty| self.type_named_valtype(ty, set))
                 .unwrap_or(true),
@@ -2872,16 +3200,16 @@ where
                     }
                 }
             }
-            ComponentDefinedType::List(ty)
-            | ComponentDefinedType::FixedLengthList(ty, _)
-            | ComponentDefinedType::Option(ty) => {
+            ComponentDefinedType::List { element: ty, .. }
+            | ComponentDefinedType::FixedLengthList { element: ty, .. }
+            | ComponentDefinedType::Option { ty, .. } => {
                 any_changed |= self.remap_valtype(ty, map);
             }
-            ComponentDefinedType::Map(k, v) => {
-                any_changed |= self.remap_valtype(k, map);
-                any_changed |= self.remap_valtype(v, map);
+            ComponentDefinedType::Map { key, value, .. } => {
+                any_changed |= self.remap_valtype(key, map);
+                any_changed |= self.remap_valtype(value, map);
             }
-            ComponentDefinedType::Result { ok, err } => {
+            ComponentDefinedType::Result { ok, err, .. } => {
                 if let Some(ok) = ok {
                     any_changed |= self.remap_valtype(ok, map);
                 }
@@ -2892,7 +3220,7 @@ where
             ComponentDefinedType::Own(id) | ComponentDefinedType::Borrow(id) => {
                 any_changed |= self.remap_resource_id(id, map);
             }
-            ComponentDefinedType::Future(ty) | ComponentDefinedType::Stream(ty) => {
+            ComponentDefinedType::Future { ty, .. } | ComponentDefinedType::Stream { ty, .. } => {
                 if let Some(ty) = ty {
                     any_changed |= self.remap_valtype(ty, map);
                 }
@@ -3126,7 +3454,7 @@ impl<'a> SubtypeCx<'a> {
         &mut self,
         a: &ComponentEntityType,
         b: &ComponentEntityType,
-        offset: usize,
+        offset: u64,
     ) -> Result<()> {
         use ComponentEntityType::*;
 
@@ -3160,7 +3488,7 @@ impl<'a> SubtypeCx<'a> {
         &mut self,
         a: ComponentTypeId,
         b: ComponentTypeId,
-        offset: usize,
+        offset: u64,
     ) -> Result<()> {
         // Components are ... tricky. They follow the same basic
         // structure as core wasm modules, but they also have extra
@@ -3245,7 +3573,7 @@ impl<'a> SubtypeCx<'a> {
         &mut self,
         a_id: ComponentInstanceTypeId,
         b_id: ComponentInstanceTypeId,
-        offset: usize,
+        offset: u64,
     ) -> Result<()> {
         // For instance type subtyping, all exports in the other
         // instance type must be present in this instance type's
@@ -3281,7 +3609,7 @@ impl<'a> SubtypeCx<'a> {
         &mut self,
         a: ComponentFuncTypeId,
         b: ComponentFuncTypeId,
-        offset: usize,
+        offset: u64,
     ) -> Result<()> {
         let a = &self.a[a];
         let b = &self.b[b];
@@ -3360,7 +3688,7 @@ impl<'a> SubtypeCx<'a> {
         &mut self,
         a: ComponentCoreModuleTypeId,
         b: ComponentCoreModuleTypeId,
-        offset: usize,
+        offset: u64,
     ) -> Result<()> {
         // For module type subtyping, all exports in the other module
         // type must be present in this module type's exports (i.e. it
@@ -3399,7 +3727,7 @@ impl<'a> SubtypeCx<'a> {
         &mut self,
         a: ComponentAnyTypeId,
         b: ComponentAnyTypeId,
-        offset: usize,
+        offset: u64,
     ) -> Result<()> {
         match (a, b) {
             (ComponentAnyTypeId::Resource(a), ComponentAnyTypeId::Resource(b)) => {
@@ -3475,7 +3803,7 @@ impl<'a> SubtypeCx<'a> {
         a: &IndexMap<String, ComponentEntityType>,
         b: ComponentTypeId,
         kind: ExternKind,
-        offset: usize,
+        offset: u64,
     ) -> Result<Remapping> {
         // First, determine the mapping from resources in `b` to those supplied
         // by arguments in `a`.
@@ -3617,7 +3945,7 @@ impl<'a> SubtypeCx<'a> {
         Ok(mapping)
     }
 
-    pub(crate) fn entity_type(&self, a: &EntityType, b: &EntityType, offset: usize) -> Result<()> {
+    pub(crate) fn entity_type(&self, a: &EntityType, b: &EntityType, offset: u64) -> Result<()> {
         match (a, b) {
             (EntityType::Func(a), EntityType::Func(b))
             | (EntityType::FuncExact(a), EntityType::Func(b)) => {
@@ -3651,13 +3979,27 @@ impl<'a> SubtypeCx<'a> {
                 }
             }
             (EntityType::Global(_), b) => bail!(offset, "expected {}, found global", b.desc()),
-            (EntityType::Tag(a), EntityType::Tag(b)) => self.core_func_type(*a, *b, offset),
+            // Tag matching has to match both ways, see
+            // https://webassembly.github.io/spec/core/valid/matching.html#tag-types
+            (EntityType::Tag(a), EntityType::Tag(b)) => {
+                self.core_func_type(*b, *a, offset)?;
+                self.core_func_type(*a, *b, offset)
+            }
             (EntityType::Tag(_), b) => bail!(offset, "expected {}, found tag", b.desc()),
         }
     }
 
-    pub(crate) fn table_type(a: &TableType, b: &TableType, offset: usize) -> Result<()> {
-        if a.element_type != b.element_type {
+    pub(crate) fn table_type(a: &TableType, b: &TableType, offset: u64) -> Result<()> {
+        let TableType {
+            element_type,
+            shared,
+            table64,
+
+            // checked via `limits_match!` below.
+            initial: _,
+            maximum: _,
+        } = *a;
+        if element_type != b.element_type {
             bail!(
                 offset,
                 "expected table element type {}, found {}",
@@ -3665,8 +4007,11 @@ impl<'a> SubtypeCx<'a> {
                 a.element_type,
             )
         }
-        if a.shared != b.shared {
+        if shared != b.shared {
             bail!(offset, "mismatch in the shared flag for tables")
+        }
+        if table64 != b.table64 {
+            bail!(offset, "mismatch in index type used for tables")
         }
         if limits_match!(a, b) {
             Ok(())
@@ -3675,11 +4020,22 @@ impl<'a> SubtypeCx<'a> {
         }
     }
 
-    pub(crate) fn memory_type(a: &MemoryType, b: &MemoryType, offset: usize) -> Result<()> {
-        if a.shared != b.shared {
+    pub(crate) fn memory_type(a: &MemoryType, b: &MemoryType, offset: u64) -> Result<()> {
+        let MemoryType {
+            shared,
+            memory64,
+
+            // checked manually below to handle the default
+            page_size_log2: _,
+
+            // checked via `limits_match!` below.
+            initial: _,
+            maximum: _,
+        } = *a;
+        if shared != b.shared {
             bail!(offset, "mismatch in the shared flag for memories")
         }
-        if a.memory64 != b.memory64 {
+        if memory64 != b.memory64 {
             bail!(offset, "mismatch in index type used for memories")
         }
         if a.page_size_log2() != b.page_size_log2() {
@@ -3692,7 +4048,7 @@ impl<'a> SubtypeCx<'a> {
         }
     }
 
-    fn core_func_type(&self, a: CoreTypeId, b: CoreTypeId, offset: usize) -> Result<()> {
+    fn core_func_type(&self, a: CoreTypeId, b: CoreTypeId, offset: u64) -> Result<()> {
         debug_assert!(self.a.get(a).is_some());
         debug_assert!(self.b.get(b).is_some());
         if self.a.id_is_subtype(a, b) {
@@ -3714,7 +4070,7 @@ impl<'a> SubtypeCx<'a> {
         &self,
         a: &ComponentValType,
         b: &ComponentValType,
-        offset: usize,
+        offset: u64,
     ) -> Result<()> {
         match (a, b) {
             (ComponentValType::Primitive(a), ComponentValType::Primitive(b)) => {
@@ -3738,7 +4094,7 @@ impl<'a> SubtypeCx<'a> {
         &self,
         a: ComponentDefinedTypeId,
         b: ComponentDefinedTypeId,
-        offset: usize,
+        offset: u64,
     ) -> Result<()> {
         use ComponentDefinedType::*;
 
@@ -3795,24 +4151,43 @@ impl<'a> SubtypeCx<'a> {
                 Ok(())
             }
             (Variant(_), b) => bail!(offset, "expected {}, found variant", b.desc()),
-            (List(a), List(b)) | (Option(a), Option(b)) => self.component_val_type(a, b, offset),
-            (List(_), b) => bail!(offset, "expected {}, found list", b.desc()),
-            (Map(ak, av), Map(bk, bv)) => {
+            (List { element: a, .. }, List { element: b, .. })
+            | (Option { ty: a, .. }, Option { ty: b, .. }) => self.component_val_type(a, b, offset),
+            (List { .. }, b) => bail!(offset, "expected {}, found list", b.desc()),
+            (
+                Map {
+                    key: ak, value: av, ..
+                },
+                Map {
+                    key: bk, value: bv, ..
+                },
+            ) => {
                 self.component_val_type(ak, bk, offset)
                     .with_context(|| "type mismatch in map key")?;
                 self.component_val_type(av, bv, offset)
                     .with_context(|| "type mismatch in map value")
             }
-            (Map(_, _), b) => bail!(offset, "expected {}, found map", b.desc()),
-            (FixedLengthList(a, asize), FixedLengthList(b, bsize)) => {
+            (Map { .. }, b) => bail!(offset, "expected {}, found map", b.desc()),
+            (
+                FixedLengthList {
+                    element: a,
+                    length: asize,
+                    ..
+                },
+                FixedLengthList {
+                    element: b,
+                    length: bsize,
+                    ..
+                },
+            ) => {
                 if asize != bsize {
                     bail!(offset, "expected fixed-length {bsize}, found size {asize}")
                 } else {
                     self.component_val_type(a, b, offset)
                 }
             }
-            (FixedLengthList(_, _), b) => bail!(offset, "expected {}, found list", b.desc()),
-            (Option(_), b) => bail!(offset, "expected {}, found option", b.desc()),
+            (FixedLengthList { .. }, b) => bail!(offset, "expected {}, found list", b.desc()),
+            (Option { .. }, b) => bail!(offset, "expected {}, found option", b.desc()),
             (Tuple(a), Tuple(b)) => {
                 if a.types.len() != b.types.len() {
                     bail!(
@@ -3842,7 +4217,14 @@ impl<'a> SubtypeCx<'a> {
             }
             (Flags(_), b) => bail!(offset, "expected {}, found flags", b.desc()),
             (Enum(_), b) => bail!(offset, "expected {}, found enum", b.desc()),
-            (Result { ok: ao, err: ae }, Result { ok: bo, err: be }) => {
+            (
+                Result {
+                    ok: ao, err: ae, ..
+                },
+                Result {
+                    ok: bo, err: be, ..
+                },
+            ) => {
                 match (ao, bo) {
                     (None, None) => {}
                     (Some(a), Some(b)) => self
@@ -3871,7 +4253,7 @@ impl<'a> SubtypeCx<'a> {
             }
             (Own(_), b) => bail!(offset, "expected {}, found own", b.desc()),
             (Borrow(_), b) => bail!(offset, "expected {}, found borrow", b.desc()),
-            (Future(a), Future(b)) => match (a, b) {
+            (Future { ty: a, .. }, Future { ty: b, .. }) => match (a, b) {
                 (None, None) => Ok(()),
                 (Some(a), Some(b)) => self
                     .component_val_type(a, b, offset)
@@ -3879,8 +4261,8 @@ impl<'a> SubtypeCx<'a> {
                 (None, Some(_)) => bail!(offset, "expected future type, but found none"),
                 (Some(_), None) => bail!(offset, "expected future type to not be present"),
             },
-            (Future(_), b) => bail!(offset, "expected {}, found future", b.desc()),
-            (Stream(a), Stream(b)) => match (a, b) {
+            (Future { .. }, b) => bail!(offset, "expected {}, found future", b.desc()),
+            (Stream { ty: a, .. }, Stream { ty: b, .. }) => match (a, b) {
                 (None, None) => Ok(()),
                 (Some(a), Some(b)) => self
                     .component_val_type(a, b, offset)
@@ -3888,7 +4270,7 @@ impl<'a> SubtypeCx<'a> {
                 (None, Some(_)) => bail!(offset, "expected stream type, but found none"),
                 (Some(_), None) => bail!(offset, "expected stream type to not be present"),
             },
-            (Stream(_), b) => bail!(offset, "expected {}, found stream", b.desc()),
+            (Stream { .. }, b) => bail!(offset, "expected {}, found stream", b.desc()),
         }
     }
 
@@ -3896,7 +4278,7 @@ impl<'a> SubtypeCx<'a> {
         &self,
         a: PrimitiveValType,
         b: PrimitiveValType,
-        offset: usize,
+        offset: u64,
     ) -> Result<()> {
         // Note that this intentionally diverges from the upstream specification
         // at this time and only considers exact equality for subtyping
@@ -3926,8 +4308,7 @@ impl<'a> SubtypeCx<'a> {
                     created: actual, ..
                 },
             ) => {
-                let prev = type_map.insert(expected, actual);
-                assert!(prev.is_none());
+                type_map.insert(expected, actual);
             }
             (ComponentEntityType::Instance(expected), ComponentEntityType::Instance(actual)) => {
                 let actual = &self.a[actual];
@@ -4038,7 +4419,7 @@ impl<T> Context for Result<T> {
     }
 }
 
-impl Context for BinaryReaderError {
+impl Context for Error {
     fn with_context<S>(mut self, context: impl FnOnce() -> S) -> Self
     where
         S: Into<String>,

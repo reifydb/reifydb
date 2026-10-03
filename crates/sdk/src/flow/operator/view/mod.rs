@@ -4,7 +4,7 @@
 pub mod in_process;
 
 use reifydb_value::value::{
-	Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
+	date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
 	row_number::RowNumber, time::Time,
 };
 
@@ -32,7 +32,6 @@ pub trait RowView {
 	fn datetime(&self, name: &str) -> Result<Option<DateTime>, SdkError>;
 	fn time(&self, name: &str) -> Result<Option<Time>, SdkError>;
 	fn duration(&self, name: &str) -> Result<Option<Duration>, SdkError>;
-	fn value(&self, name: &str) -> Option<Value>;
 	fn row_number(&self) -> Option<RowNumber>;
 	fn row_time(&self) -> Option<DateTime>;
 }

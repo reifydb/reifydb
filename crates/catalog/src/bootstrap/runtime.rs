@@ -9,7 +9,6 @@ use reifydb_core::{
 		series::{SeriesKey, TimestampPrecision},
 	},
 };
-use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -45,7 +44,6 @@ pub fn bootstrap_runtime(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Clock::Real,
 	)?;
 
 	ensure_namespace(
@@ -123,7 +121,6 @@ fn runtime_col(name: &str, ty: ValueType) -> SeriesColumnToCreate {
 		fragment: Fragment::internal(name),
 		constraint: TypeConstraint::unconstrained(ty),
 		properties: vec![],
-		auto_increment: false,
 		dictionary_id: None,
 	}
 }

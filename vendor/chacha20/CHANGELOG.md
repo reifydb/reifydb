@@ -5,12 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.2 (2026-08-27)
+### Fixed
+- Use of SSE4.1 intrinsic in SSE2 backend of RNG and legacy (64-bit counter) variants ([#580])
+
+[#580]: https://github.com/RustCrypto/stream-ciphers/pull/580
+
+## 0.10.1 (2026-06-24)
+### Added
+- `ChaCha20LegacyCore` type and `Nonce` type alias ([#570])
+
+[#570]: https://github.com/RustCrypto/stream-ciphers/pull/570
+
 ## 0.10.0 (2026-02-07)
 ### Added
 - `rand_core` v0.10 support ([#333], [#513])
 - 64-bit counter support ([#439])
 - `{get,set}_block_pos` inherent methods ([#516])
 - AVX-512 backend - requires `--cfg chacha20_avx512` to enable ([#477])
+- Inherent methods for RNG state (de)serialization ([#541])
 
 ### Changed
 - Bump `cipher` from `0.4` to `0.5` - replaces `generic-array` with `hybrid-array` ([#338], [#521])
@@ -40,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#520]: https://github.com/RustCrypto/stream-ciphers/pull/520
 [#521]: https://github.com/RustCrypto/stream-ciphers/pull/521
 [#530]: https://github.com/RustCrypto/stream-ciphers/pull/530
+[#541]: https://github.com/RustCrypto/stream-ciphers/pull/541
 
 ## 0.9.1 (2023-04-01)
 ### Added

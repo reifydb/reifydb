@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.92.0"
+rust-version = "1.96.0"
 name = "cranelift-bforest"
-version = "0.131.2"
+version = "0.136.2"
 authors = ["The Cranelift Project Developers"]
 build = false
 autolib = false
@@ -40,10 +40,10 @@ name = "cranelift_bforest"
 path = "src/lib.rs"
 
 [dependencies.cranelift-entity]
-version = "0.131.2"
+version = "0.136.2"
 
 [dependencies.wasmtime-core]
-version = "=44.0.2"
+version = "=49.0.2"
 package = "wasmtime-internal-core"
 
 [lints.clippy]
@@ -69,10 +69,10 @@ priority = -1
 [lints.rust]
 trivial_numeric_casts = "warn"
 unstable_features = "warn"
-unused-lifetimes = "warn"
-unused-macro-rules = "warn"
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
@@ -82,5 +82,6 @@ check-cfg = [
     "cfg(pulley_assume_llvm_makes_tail_calls)",
     "cfg(pulley_disable_interp_simd)",
     "cfg(arc_try_new)",
+    "cfg(fuzzing)",
     "cfg(gc_zeal)",
 ]

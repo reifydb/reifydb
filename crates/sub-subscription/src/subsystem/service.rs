@@ -8,8 +8,8 @@ use std::{
 };
 
 use reifydb_core::{
-	flow::dag::FlowDag,
-	interface::catalog::{flow::FlowId, id::SubscriptionId},
+	flow::{dag::FlowDag, operator::OperatorDef},
+	interface::catalog::{flow::FlowId, id::SubscriptionId, object::ObjectId},
 };
 use reifydb_engine::subscription::{HydrateError, HydrateOutcome, SubscriptionContext, SubscriptionService};
 use reifydb_runtime::{
@@ -25,7 +25,7 @@ use reifydb_value::{Result, value::identity::IdentityId};
 
 use crate::{
 	store::SubscriptionStore,
-	tracker::SubscriptionPositionTracker,
+	tracker::{SubscribedObjects, SubscriptionPositionTracker},
 	worker::{SubscriptionWorkerMessage, worker_name},
 };
 
@@ -35,6 +35,7 @@ pub(super) struct SubscriptionState {
 	pub(super) subscription_flows: RwLock<HashMap<SubscriptionId, FlowId>>,
 	pub(super) multi: MultiTransaction,
 	pub(super) position_tracker: SubscriptionPositionTracker,
+	pub(super) subscribed: SubscribedObjects,
 	pub(super) spawner: ActorSpawner,
 }
 
@@ -73,6 +74,29 @@ impl SubscriptionState {
 			failure
 		);
 	}
+}
+
+fn source_objects(flow: &FlowDag) -> Vec<ObjectId> {
+	flow.get_operator_ids()
+		.filter_map(|id| match flow.get_operator(&id).map(|operator| &operator.ty) {
+			Some(OperatorDef::SourceTable {
+				table,
+				..
+			}) => Some(ObjectId::table(*table)),
+			Some(OperatorDef::SourceView {
+				view,
+			}) => Some(ObjectId::view(*view)),
+			Some(OperatorDef::SourceRingBuffer {
+				ringbuffer,
+				..
+			}) => Some(ObjectId::ringbuffer(*ringbuffer)),
+			Some(OperatorDef::SourceSeries {
+				series,
+				..
+			}) => Some(ObjectId::series(*series)),
+			_ => None,
+		})
+		.collect()
 }
 
 pub(super) struct SubscriptionServiceImpl {
@@ -137,10 +161,12 @@ impl SubscriptionService for SubscriptionServiceImpl {
 		let id = ctx.id;
 		let flow_id = flow_dag.id;
 		self.state.store.register(id);
+		self.state.subscribed.register(id, source_objects(&flow_dag));
 
 		self.register_with_worker(flow_dag, hydration_enabled, ctx).inspect_err(|_| {
 			self.state.store.unregister(&id);
 			self.state.position_tracker.remove(&id);
+			self.state.subscribed.unregister(&id);
 		})?;
 
 		self.state.subscription_flows.write().insert(id, flow_id);
@@ -150,6 +176,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 	fn unregister_subscription(&self, id: &SubscriptionId) -> Result<bool> {
 		let existed = self.state.store.unregister(id);
 		self.state.position_tracker.remove(id);
+		self.state.subscribed.unregister(id);
 
 		if let Some(flow_id) = self.state.subscription_flows.write().remove(id) {
 			let (tx, rx) = mpsc::channel();
@@ -268,6 +295,7 @@ mod tests {
 			subscription_flows: RwLock::new(HashMap::new()),
 			multi: t.inner().multi_owned(),
 			position_tracker: SubscriptionPositionTracker::new(),
+			subscribed: SubscribedObjects::new(),
 			spawner,
 		});
 		Fixture {

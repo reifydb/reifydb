@@ -131,9 +131,12 @@ Currently supported platforms:
 * Linux
 * NetBSD
 * OpenBSD
+* WASI
 * Windows
+* Wine
 * iOS
 * macOS
+* Solaris
 
 Mio can handle interfacing with each of the event systems of the aforementioned
 platforms. The details of their implementation are further discussed in the
@@ -146,12 +149,6 @@ The Windows implementation for polling sockets is using the [wepoll] strategy.
 This uses the Windows AFD system to access socket readiness events.
 
 [wepoll]: https://github.com/piscisaureus/wepoll
-
-### Unsupported
-
-* Wine, see [issue #1444]
-
-[issue #1444]: https://github.com/tokio-rs/mio/issues/1444
 
 ## MSRV Policy
 

@@ -4,10 +4,10 @@
 use std::{mem, sync::Arc};
 
 use rand::rngs::StdRng;
-use reifydb_core::{interface::change::Change, row::Row};
+use reifydb_core::interface::change::Change;
 use reifydb_testing_chaos::operator::{
 	compare::Tolerances,
-	event::{ChaosBatch, ChaosEvent},
+	event::{ChaosBatch, ChaosEvent, Row},
 	expectation::ViewClaim,
 	model::Model,
 	view::{MaterializedView, OutputKey},

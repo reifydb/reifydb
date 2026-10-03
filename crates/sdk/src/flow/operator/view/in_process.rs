@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::any::type_name;
+use std::{
+	any::type_name,
+	collections::HashMap,
+	sync::{Arc, OnceLock},
+};
 
 use arrow_array::RecordBatch;
 use reifydb_core::interface::change::{Change, Diff};
 use reifydb_value::{
 	error::ColumnReadReason,
 	value::{
-		Value,
 		column_view::{ColumnView, FromColumnView, ViewData},
 		date::Date,
 		datetime::DateTime,
@@ -16,7 +19,7 @@ use reifydb_value::{
 		diff_type::DiffType,
 		duration::Duration,
 		row_number::RowNumber,
-		system_columns::{column_view, is_system_field, row_numbers, time},
+		system_columns::{is_system_field, row_numbers, time},
 		time::Time,
 	},
 };
@@ -24,28 +27,70 @@ use reifydb_value::{
 use super::{ChangeView, ColumnsView, DiffView, RowView};
 use crate::error::SdkError;
 
-pub struct InProcessRowView<'a> {
+struct ResolvedColumns<'a> {
 	batch: &'a RecordBatch,
+	positions: HashMap<&'a str, usize>,
+	views: Box<[OnceLock<Option<ColumnView<'a>>>]>,
+	time: OnceLock<&'a [DateTime]>,
+}
+
+impl<'a> ResolvedColumns<'a> {
+	fn new(batch: &'a RecordBatch) -> Self {
+		let fields = batch.schema_ref().fields();
+		let mut positions = HashMap::with_capacity(fields.len());
+		for (index, field) in fields.iter().enumerate() {
+			positions.entry(field.name().as_str()).or_insert(index);
+		}
+		Self {
+			batch,
+			positions,
+			views: fields.iter().map(|_| OnceLock::new()).collect(),
+			time: OnceLock::new(),
+		}
+	}
+
+	fn view(&self, name: &str) -> Result<Option<&ColumnView<'a>>, SdkError> {
+		let Some(&index) = self.positions.get(name) else {
+			return Ok(None);
+		};
+		let slot = &self.views[index];
+		if let Some(view) = slot.get() {
+			return Ok(view.as_ref());
+		}
+		let batch = self.batch;
+		let view = ColumnView::try_from((batch.column(index), batch.schema_ref().field(index)))?;
+		Ok(slot.get_or_init(|| Some(view).filter(|view| !is_system_field(view.field))).as_ref())
+	}
+
+	fn time(&self) -> &'a [DateTime] {
+		self.time.get_or_init(|| {
+			time(self.batch).unwrap_or_else(|e| panic!("in-process #time column does not read: {e}"))
+		})
+	}
+}
+
+pub struct InProcessRowView<'a> {
+	columns: Arc<ResolvedColumns<'a>>,
 	index: usize,
 }
 
 impl<'a> InProcessRowView<'a> {
 	pub fn new(batch: &'a RecordBatch, index: usize) -> Self {
 		Self {
-			batch,
+			columns: Arc::new(ResolvedColumns::new(batch)),
 			index,
 		}
 	}
 
-	fn buffer(&self, name: &str) -> Result<Option<ColumnView<'a>>, SdkError> {
-		Ok(column_view(self.batch, name)?.filter(|view| !is_system_field(view.field)))
+	fn buffer(&self, name: &str) -> Result<Option<&ColumnView<'a>>, SdkError> {
+		self.columns.view(name)
 	}
 
-	fn readable(&self, name: &str) -> Option<ColumnView<'a>> {
+	fn readable(&self, name: &str) -> Option<&ColumnView<'a>> {
 		self.buffer(name).unwrap_or_else(|e| panic!("in-process column '{name}' does not read: {e}"))
 	}
 
-	fn defined(&self, name: &str) -> Result<Option<ColumnView<'a>>, SdkError> {
+	fn defined(&self, name: &str) -> Result<Option<&ColumnView<'a>>, SdkError> {
 		Ok(self.buffer(name)?.filter(|view| view.is_defined(self.index)))
 	}
 
@@ -53,7 +98,7 @@ impl<'a> InProcessRowView<'a> {
 		let Some(view) = self.defined(name)? else {
 			return Ok(None);
 		};
-		T::from_column_view(&view, self.index).map_err(|reason| column_read::<T>(name, &view, reason))
+		T::from_column_view(view, self.index).map_err(|reason| column_read::<T>(name, view, reason))
 	}
 }
 
@@ -67,7 +112,7 @@ impl<'a> RowView for InProcessRowView<'a> {
 			return Ok(None);
 		};
 		if !matches!(view.data, ViewData::Utf8 { .. }) {
-			return Err(column_read::<&str>(name, &view, ColumnReadReason::WrongType));
+			return Err(column_read::<&str>(name, view, ColumnReadReason::WrongType));
 		}
 		Ok(view.get_str(self.index))
 	}
@@ -77,7 +122,7 @@ impl<'a> RowView for InProcessRowView<'a> {
 			return Ok(None);
 		};
 		if !matches!(view.data, ViewData::Blob { .. }) {
-			return Err(column_read::<&[u8]>(name, &view, ColumnReadReason::WrongType));
+			return Err(column_read::<&[u8]>(name, view, ColumnReadReason::WrongType));
 		}
 		Ok(view.get_bytes(self.index))
 	}
@@ -154,22 +199,15 @@ impl<'a> RowView for InProcessRowView<'a> {
 		self.typed(name)
 	}
 
-	fn value(&self, name: &str) -> Option<Value> {
-		self.readable(name).map(|view| view.get_value(self.index))
-	}
-
 	fn row_number(&self) -> Option<RowNumber> {
-		row_numbers(self.batch)
+		row_numbers(self.columns.batch)
 			.unwrap_or_else(|e| panic!("in-process #rownum column does not read: {e}"))
 			.get(self.index)
 			.copied()
 	}
 
 	fn row_time(&self) -> Option<DateTime> {
-		time(self.batch)
-			.unwrap_or_else(|e| panic!("in-process #time column does not read: {e}"))
-			.get(self.index)
-			.copied()
+		self.columns.time().get(self.index).copied()
 	}
 }
 
@@ -183,27 +221,30 @@ fn column_read<T: ?Sized>(name: &str, view: &ColumnView<'_>, reason: ColumnReadR
 }
 
 pub struct InProcessColumnsView<'a> {
-	batch: &'a RecordBatch,
+	columns: Arc<ResolvedColumns<'a>>,
 }
 
 impl<'a> InProcessColumnsView<'a> {
 	pub fn new(batch: &'a RecordBatch) -> Self {
 		Self {
-			batch,
+			columns: Arc::new(ResolvedColumns::new(batch)),
 		}
 	}
 }
 
 impl<'a> ColumnsView for InProcessColumnsView<'a> {
 	fn row_count(&self) -> usize {
-		self.batch.num_rows()
+		self.columns.batch.num_rows()
 	}
 
 	fn row(&self, index: usize) -> Option<impl RowView + '_> {
-		if index >= self.batch.num_rows() {
+		if index >= self.columns.batch.num_rows() {
 			return None;
 		}
-		Some(InProcessRowView::new(self.batch, index))
+		Some(InProcessRowView {
+			columns: Arc::clone(&self.columns),
+			index,
+		})
 	}
 }
 

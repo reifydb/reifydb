@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, hash_map::Entry};
 
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -39,8 +39,7 @@ pub fn run<T: Changes + Rows + Emit + Lookup + Intern + ClockNow>(
 	let flows = order_flows(txn.transactional_flows()?);
 	for flow in &flows {
 		let mut nodes = build(txn, flow, routines, runtime_context)?;
-		let entries = txn.entries_from(at);
-		let pending = seed_entry_nodes(flow, &entries, txn.now())?;
+		let pending = seed_entry_nodes(flow, txn.entries_from(at), txn.now())?;
 		if pending.is_empty() {
 			continue;
 		}
@@ -136,6 +135,7 @@ fn seed_entry_nodes(
 	changed_at: DateTime,
 ) -> Result<HashMap<OperatorId, Vec<Change>>> {
 	let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
+	let mut consolidated: HashMap<ObjectId, Vec<Diff>> = HashMap::new();
 	for operator_id in flow.topological_order() {
 		let operator = flow.get_operator(operator_id).unwrap_or_else(|| {
 			panic!("transactional flow {:?} orders operator {} it does not hold", flow.id, operator_id)
@@ -143,15 +143,26 @@ fn seed_entry_nodes(
 		let Some(object) = source_object(&operator.ty) else {
 			continue;
 		};
-		let diffs = consolidate_diffs(
-			entries.iter().filter(|(entry, _)| *entry == object).map(|(_, diff)| diff.clone()).collect(),
-		)?;
+		let diffs = match consolidated.entry(object) {
+			Entry::Occupied(cached) => cached.into_mut(),
+			Entry::Vacant(slot) => slot.insert(consolidate_diffs(
+				entries.iter()
+					.filter(|(entry, _)| *entry == object)
+					.map(|(_, diff)| diff.clone())
+					.collect(),
+			)?),
+		};
 		if diffs.is_empty() {
 			continue;
 		}
 		pending.insert(
 			*operator_id,
-			vec![Change::from_object(object, ChangeVersion::from(CommitVersion(0)), diffs, changed_at)],
+			vec![Change::from_object(
+				object,
+				ChangeVersion::from(CommitVersion(0)),
+				diffs.clone(),
+				changed_at,
+			)],
 		);
 	}
 	Ok(pending)

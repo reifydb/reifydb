@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use arrow_array::RecordBatch;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
+	ringbuffer::EncodedRingBufferRowBuilder,
 	shape::RowShape,
 };
 use reifydb_core::{
@@ -21,34 +26,33 @@ use reifydb_core::{
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::{RingBuffer, RingBufferMetadata},
 		},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
-	internal_error,
 	partition::partition_of,
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::InsertRingBufferNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
+#[cfg(reifydb_assertions)]
+use reifydb_value::value::canonical::assert_canonical_floats;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions, return_error,
 	value::{
-		Value,
-		identity::IdentityId,
-		row_number::RowNumber,
-		system_columns::{column_view, user_columns},
+		Value, identity::IdentityId, partition::Partition, row_number::RowNumber, system_columns::user_columns,
 	},
 };
 use tracing::instrument;
 
 use super::{
-	coerce::{InputFragments, coerce_value_to_column_type},
+	coerce::InputFragments,
+	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
 	context::RingBufferTarget,
 	partition::{
-		compute_partition_col_indices, ensure_partition_metadata, evict_oldest_for_partition,
-		save_all_partition_metadata, update_metadata_after_insert,
+		compute_partition_col_indices, ensure_partition_metadata, partition_values,
+		save_all_partition_metadata, select_oldest_for_partition, update_metadata_after_insert,
 	},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_ringbuffer_shape,
@@ -56,9 +60,9 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	transaction::operation::{dictionary::DictionaryOperations, ringbuffer::RingBufferOperations},
+	transaction::operation::ringbuffer::RingBufferOperations,
 	vm::{
-		instruction::dml::time::resolve_time,
+		instruction::dml::time::{EventColumn, populator_index, resolve_time},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -146,9 +150,20 @@ fn drive_ringbuffer_insert(
 	let partition_col_indices = compute_partition_col_indices(ringbuffer);
 	let mut inserted_count = 0u64;
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
+	let pipeline = ColumnPipeline {
+		columns: &ringbuffer.columns,
+		sequences: None,
+		series_key: None,
+		fragments,
+		context,
+	};
+	let populator = populator_index(&ringbuffer.time, shape);
 
 	let mut mutable_context = (**context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
+		reifydb_assertions! {
+			assert_canonical_floats(&columns, "ringbuffer insert");
+		}
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,
 			namespace.name(),
@@ -164,48 +179,114 @@ fn drive_ringbuffer_insert(
 		}
 
 		let row_count = columns.num_rows();
-		for row_idx in 0..row_count {
-			let (row, row_values) = build_insert_ringbuffer_row(
-				services,
-				txn,
-				target_data,
-				shape,
-				&columns,
-				fragments,
-				context,
-				row_idx,
-			)?;
-			let partition_key: Vec<Value> =
-				partition_col_indices.iter().map(|&idx| row_values[idx].clone()).collect();
+		let inputs = input_views(&columns, &ringbuffer.columns)?;
+		let mut batches = [pipeline.cast_target_columns(&inputs, row_count, None)?];
+		intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut batches)?;
+		let mut built: Vec<EncodedRingBufferRowBuilder> =
+			(0..row_count).map(|_| shape.allocate_ringbuffer()).collect();
+		batches[0].write(shape, &mut built)?;
+		let partition_keys = partition_values(&batches[0], &inputs, &partition_col_indices)?;
+
+		let now = services.runtime_context.clock.now();
+		let event = EventColumn::new(populator.map(|index| batches[0].view(index)).transpose()?);
+		let mut rows = Vec::with_capacity(row_count);
+		for (index, (mut row, partition_key)) in built.into_iter().zip(partition_keys).enumerate() {
+			row.set_timestamps(now, now);
+			if let Some(time) = event.at(index).map_or_else(
+				|| resolve_time(&ringbuffer.name, &ringbuffer.time, shape, &row, now),
+				|time| Ok(Some(time)),
+			)? {
+				row.set_time(time);
+			}
 			let partition = if partition_col_indices.is_empty() {
 				None
 			} else {
 				Some(partition_of(&ringbuffer.columns, &ringbuffer.partition_by, &partition_key))
 			};
-			ensure_partition_metadata(
-				services,
-				txn,
-				target_data,
-				&partition_key,
-				partition_metadata_cache,
-			)?;
-			let current_metadata = partition_metadata_cache.get_mut(&partition_key).unwrap();
-
-			if current_metadata.is_full(ringbuffer.capacity) {
-				evict_oldest_for_partition(txn, target_data, partition, current_metadata)?;
-			}
-
-			let row_number = services.catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
-			let stored_row = txn.insert_ringbuffer_at(ringbuffer, shape, partition, row_number, row)?;
-			if has_returning {
-				returned_rows.push((row_number, stored_row));
-			}
-			update_metadata_after_insert(current_metadata, row_number);
-			inserted_count += 1;
+			rows.push((row.freeze_bytes(), partition_key, partition));
 		}
+
+		inserted_count += insert_ringbuffer_chunks(
+			&services.catalog,
+			txn,
+			ringbuffer,
+			shape,
+			&rows,
+			partition_metadata_cache,
+			has_returning.then_some(&mut returned_rows),
+		)?;
 	}
 
 	Ok((inserted_count, returned_rows))
+}
+
+pub(crate) fn insert_ringbuffer_chunks(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	ringbuffer: &RingBuffer,
+	shape: &RowShape,
+	rows: &[(EncodedBytes, Vec<Value>, Option<Partition>)],
+	cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
+	mut returned: Option<&mut Vec<(RowNumber, EncodedBytes)>>,
+) -> Result<u64> {
+	let mut inserted_count = 0u64;
+	let mut start = 0;
+	while start < rows.len() {
+		let mut held: HashMap<&[Value], u64> = HashMap::new();
+		let mut end = start;
+		while end < rows.len() {
+			let count = held.entry(rows[end].1.as_slice()).or_default();
+			if *count >= ringbuffer.capacity && end > start {
+				break;
+			}
+			*count += 1;
+			end += 1;
+		}
+
+		let mut chosen = HashSet::new();
+		let mut pending = HashSet::new();
+		let mut victims = Vec::new();
+		let mut victim_partitions = Vec::new();
+		let mut ids = Vec::with_capacity(end - start);
+		let mut partitions = Vec::with_capacity(end - start);
+		let mut encoded = Vec::with_capacity(end - start);
+		for (row, partition_key, partition) in &rows[start..end] {
+			ensure_partition_metadata(catalog, txn, ringbuffer, partition_key, cache)?;
+			let current_metadata = cache.get_mut(partition_key).unwrap();
+
+			if current_metadata.is_full(ringbuffer.capacity)
+				&& let Some(victim) = select_oldest_for_partition(
+					txn,
+					ringbuffer,
+					*partition,
+					current_metadata,
+					&chosen,
+					&pending,
+				)? {
+				chosen.insert(victim);
+				victims.push(victim);
+				victim_partitions.extend(*partition);
+			}
+
+			let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
+			pending.insert(row_number);
+			update_metadata_after_insert(current_metadata, row_number);
+			ids.push(row_number);
+			partitions.extend(*partition);
+			encoded.push(row.clone());
+		}
+
+		if !victims.is_empty() {
+			txn.remove_from_ringbuffer(ringbuffer, &victim_partitions, &victims)?;
+		}
+		let stored = txn.insert_ringbuffer(ringbuffer, shape, &partitions, &ids, &encoded)?;
+		if let Some(returned) = returned.as_mut() {
+			returned.extend(ids.iter().copied().zip(stored));
+		}
+		inserted_count += (end - start) as u64;
+		start = end;
+	}
+	Ok(inserted_count)
 }
 
 #[inline]
@@ -222,7 +303,7 @@ fn finalize_ringbuffer_insert(
 	inserted_count: u64,
 ) -> Result<RecordBatch> {
 	let ringbuffer = target_data.ringbuffer;
-	save_all_partition_metadata(services, txn, ringbuffer, partition_metadata_cache)?;
+	save_all_partition_metadata(&services.catalog, txn, ringbuffer, partition_metadata_cache)?;
 
 	reifydb_assertions! {
 		let returning_rows_match = returning.is_none() || returned_rows.len() as u64 == inserted_count;
@@ -286,70 +367,6 @@ fn build_insert_ringbuffer_query_context(
 	})
 }
 
-#[allow(clippy::too_many_arguments)]
-fn build_insert_ringbuffer_row(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	target: &RingBufferTarget<'_>,
-	shape: &RowShape,
-	columns: &RecordBatch,
-	fragments: &InputFragments,
-	context: &Arc<QueryContext>,
-	row_idx: usize,
-) -> Result<(EncodedBytes, Vec<Value>)> {
-	let mut row = shape.allocate_ringbuffer();
-	let mut row_values: Vec<Value> = Vec::with_capacity(target.ringbuffer.columns.len());
-
-	for (rb_idx, rb_column) in target.ringbuffer.columns.iter().enumerate() {
-		let mut value = if let Some(input_column) = column_view(columns, &rb_column.name)? {
-			input_column.get_value(row_idx)
-		} else {
-			Value::none()
-		};
-
-		let column_ident = fragments.column(&rb_column.name);
-		let resolved_column =
-			ResolvedColumn::new(column_ident.clone(), context.source.clone().unwrap(), rb_column.clone());
-
-		value = coerce_value_to_column_type(value, rb_column.constraint.get_type(), resolved_column, context)?;
-		if let Err(mut e) = rb_column.constraint.coerce(&mut value) {
-			e.0.fragment = column_ident.clone();
-			return Err(e);
-		}
-
-		let value = if let Some(dict_id) = rb_column.dictionary_id {
-			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-				internal_error!("Dictionary {:?} not found for column {}", dict_id, rb_column.name)
-			})?;
-			let entry_id = if matches!(value, Value::None { .. }) {
-				dictionary.id_type.none()
-			} else {
-				txn.insert_into_dictionary(&dictionary, &value)?
-			};
-			entry_id.to_value()
-		} else {
-			value
-		};
-
-		row_values.push(value.clone());
-		shape.set_value(&mut row, rb_idx, &value);
-	}
-
-	let now = services.runtime_context.clock.now();
-	row.set_timestamps(now, now);
-	if let Some(time) = resolve_time(
-		&target.ringbuffer.name,
-		&target.ringbuffer.columns,
-		&target.ringbuffer.time,
-		shape,
-		&row,
-		now,
-	)? {
-		row.set_time(time);
-	}
-	Ok((row.freeze_bytes(), row_values))
-}
-
 #[inline]
 fn insert_ringbuffer_result(namespace: &str, ringbuffer: &str, inserted: u64) -> Result<RecordBatch> {
 	single_row([
@@ -357,4 +374,112 @@ fn insert_ringbuffer_result(namespace: &str, ringbuffer: &str, inserted: u64) ->
 		("ringbuffer", Value::Utf8(ringbuffer.to_string())),
 		("inserted", Value::Uint8(inserted)),
 	])
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{collections::HashMap, sync::Arc};
+
+	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
+	use reifydb_codec::row::shape::{RowFamily, RowShape};
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::{
+			id::{NamespaceId, RingBufferId},
+			namespace::Namespace,
+			ringbuffer::RingBuffer,
+		},
+		value::column::headers::ColumnHeaders,
+	};
+	use reifydb_evaluate::stack::SymbolTable;
+	use reifydb_rql::{nodes::InlineDataNode, query::QueryPlan};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::{
+		params::Params,
+		value::{identity::IdentityId, value_type::ValueType},
+	};
+
+	use super::{InputFragments, RingBufferTarget, build_insert_ringbuffer_query_context, drive_ringbuffer_insert};
+	use crate::{
+		Result,
+		vm::{
+			services::Services,
+			volcano::query::{QueryContext, QueryNode},
+		},
+	};
+
+	struct NegativeZeroNode;
+
+	impl QueryNode for NegativeZeroNode {
+		fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+			Ok(())
+		}
+
+		fn next<'a>(
+			&mut self,
+			_rx: &mut Transaction<'a>,
+			_ctx: &mut QueryContext,
+		) -> Result<Option<RecordBatch>> {
+			let column: ArrayRef = Arc::new(Float64Array::from(vec![-0.0f64]));
+			Ok(Some(RecordBatch::try_from_iter([("c", column)]).unwrap()))
+		}
+
+		fn headers(&self) -> Option<ColumnHeaders> {
+			None
+		}
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "is not canonical")]
+	fn test_drive_with_negative_zero_panics() {
+		// The insert root skips the Box check, so the loop must check or a raw -0.0 is stored.
+		let services = Services::testing();
+		let mut txn = create_test_admin_transaction();
+		let namespace = Namespace::Local {
+			id: NamespaceId(1),
+			name: "app".to_string(),
+			local_name: "app".to_string(),
+			parent_id: NamespaceId(0),
+		};
+		let ringbuffer = RingBuffer {
+			id: RingBufferId(1),
+			namespace: NamespaceId(1),
+			name: "rb".to_string(),
+			columns: vec![],
+			capacity: 1,
+			primary_key: None,
+			partition_by: vec![],
+			time: TimeSource::None,
+		};
+		let target = RingBufferTarget {
+			namespace: &namespace,
+			ringbuffer: &ringbuffer,
+		};
+		let shape = RowShape::testing(RowFamily::RingBuffer, &[ValueType::Float8]);
+		let symbols = SymbolTable::new();
+		let context = build_insert_ringbuffer_query_context(
+			&services,
+			&target,
+			&Params::default(),
+			&symbols,
+			IdentityId::system(),
+		);
+		let fragments = InputFragments::of(&QueryPlan::InlineData(InlineDataNode {
+			rows: vec![],
+		}));
+		let _ = drive_ringbuffer_insert(
+			&services,
+			&mut Transaction::Admin(&mut txn),
+			&symbols,
+			&target,
+			&shape,
+			&context,
+			&mut NegativeZeroNode,
+			&fragments,
+			false,
+			&mut HashMap::new(),
+		);
+	}
 }

@@ -20,8 +20,8 @@ use reifydb_core::{
 	key::{
 		any::TaggedKey,
 		operator::state::{
-			GroupId, GroupStateKey, OperatorStateKey, group_inner_range, group_inner_range_split,
-			keyspace_inner_range_split, node_prefix,
+			GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey, group_inner_range,
+			group_inner_range_split, keyspace_inner_range_split, node_prefix,
 		},
 	},
 	metrics::scan::ScanCounters,
@@ -210,6 +210,7 @@ pub trait StateExtension: FlowTransaction {
 		id: OperatorId,
 		groups: &[GroupId],
 		limit: usize,
+		keyspaces: KeyspaceMask,
 	) -> Result<MultiVersionBatch<TaggedKey>> {
 		let ordered = sweep_order(groups);
 		let prefix = EncodedKey::new(node_prefix(id));
@@ -218,9 +219,18 @@ pub trait StateExtension: FlowTransaction {
 			let range = group_inner_range(*group).with_prefix(prefix.clone());
 			self.pending().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 		}
-		let pending: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
+		let pending: Vec<(EncodedKey, PendingWrite)> = merged
+			.into_iter()
+			.filter(|(key, _)| {
+				key.as_slice()
+					.strip_prefix(prefix.as_slice())
+					.and_then(OperatorStateKey::decode_inner)
+					.is_some_and(|(_, keyspace, _)| keyspaces.holds(keyspace))
+			})
+			.collect();
 		let version = self.version();
-		let batch = self.operator_store().group_page(id, &ordered, limit.saturating_add(1) as u64)?;
+		let batch =
+			self.operator_store().group_page(id, &ordered, limit.saturating_add(1) as u64, keyspaces)?;
 		let truncated = batch.has_more;
 		let stored: Vec<Result<MultiVersionRow<TaggedKey>>> = batch
 			.items
@@ -256,7 +266,7 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_last(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		let prefix = node_prefix(id);
-		let prefixed_range = range.with_prefix(EncodedKey::new(prefix.clone()));
+		let prefixed_range = range.with_prefix(EncodedKey::new(&prefix));
 
 		let version = self.version();
 		let store = self.operator_store();

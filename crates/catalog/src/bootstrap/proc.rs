@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{event::EventBus, interface::catalog::id::NamespaceId};
-use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction, single::SingleTransaction,
 	transaction::admin::AdminTransaction,
@@ -25,7 +24,6 @@ pub fn bootstrap_proc(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Clock::Real,
 	)?;
 
 	ensure_namespace(

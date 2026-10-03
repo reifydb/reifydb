@@ -3,6 +3,7 @@
 
 mod common;
 
+mod canonical_floats;
 mod delta;
 mod delta_rle;
 mod dict;

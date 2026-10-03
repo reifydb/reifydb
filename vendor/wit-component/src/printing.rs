@@ -6,9 +6,6 @@ use std::mem;
 use std::ops::Deref;
 use wit_parser::*;
 
-// NB: keep in sync with `crates/wit-parser/src/ast/lex.rs`
-const PRINT_F32_F64_DEFAULT: bool = true;
-
 /// A utility for printing WebAssembly interface definitions to a string.
 pub struct WitPrinter<O: Output = OutputToString> {
     /// Visitor that holds the WIT document being printed.
@@ -20,8 +17,6 @@ pub struct WitPrinter<O: Output = OutputToString> {
 
     // Whether to print doc comments.
     emit_docs: bool,
-
-    print_f32_f64: bool,
 }
 
 impl Default for WitPrinter {
@@ -31,16 +26,12 @@ impl Default for WitPrinter {
 }
 
 impl<O: Output> WitPrinter<O> {
-    /// Craete new instance.
+    /// Create new instance.
     pub fn new(output: O) -> Self {
         Self {
             output,
             any_items: false,
             emit_docs: true,
-            print_f32_f64: match std::env::var("WIT_REQUIRE_F32_F64") {
-                Ok(s) => s == "1",
-                Err(_) => PRINT_F32_F64_DEFAULT,
-            },
         }
     }
 
@@ -180,6 +171,7 @@ impl<O: Output> WitPrinter<O> {
             self.new_item();
             self.print_docs(&func.docs);
             self.print_stability(&func.stability);
+            self.print_external_id(func.external_id.as_deref());
             self.print_name_type(func.item_name(), TypeKind::FunctionFreestanding);
             self.output.str(": ");
             self.print_function(resolve, func)?;
@@ -202,29 +194,40 @@ impl<O: Output> WitPrinter<O> {
         // Partition types defined in this interface into either those imported
         // from foreign interfaces or those defined locally.
         let mut types_to_declare = Vec::new();
-        let mut types_to_import: Vec<(_, &_, Vec<_>)> = Vec::new();
+        let mut types_to_import: Vec<(_, &TypeDef, Vec<_>)> = Vec::new();
         for (name, ty_id) in types {
             let ty = &resolve.types[ty_id];
+
+            // If `ty` points to another type, `other`, then this might actually
+            // be a `use`.
             if let TypeDefKind::Type(Type::Id(other)) = ty.kind {
                 let other = &resolve.types[other];
                 match other.owner {
                     TypeOwner::None => {}
+
+                    // `use` is only applicable when the owner of the current
+                    // set of types is different than the owner of `other`. Once
+                    // this is detected `types_to_import` is going to get
+                    // modified.
                     other_owner if owner != other_owner => {
                         let other_name = other
                             .name
                             .as_ref()
                             .ok_or_else(|| anyhow!("cannot import unnamed type"))?;
-                        if let Some((owner, stability, list)) = types_to_import.last_mut() {
-                            if *owner == other_owner && ty.stability == **stability {
+
+                        // As a convenience push onto the last set of types to
+                        // import if it's to the same interface and with
+                        // matching attributes.
+                        if let Some((prev_owner, prev_ty, list)) = types_to_import.last_mut() {
+                            if *prev_owner == other_owner
+                                && ty.stability == prev_ty.stability
+                                && ty.external_id == prev_ty.external_id
+                            {
                                 list.push((name, other_name));
                                 continue;
                             }
                         }
-                        types_to_import.push((
-                            other_owner,
-                            &ty.stability,
-                            vec![(name, other_name)],
-                        ));
+                        types_to_import.push((other_owner, ty, vec![(name, other_name)]));
                         continue;
                     }
                     _ => {}
@@ -240,9 +243,10 @@ impl<O: Output> WitPrinter<O> {
             TypeOwner::World(id) => resolve.worlds[id].package.unwrap(),
             TypeOwner::None => unreachable!(),
         };
-        for (owner, stability, tys) in types_to_import {
+        for (owner, ty, tys) in types_to_import {
             self.any_items = true;
-            self.print_stability(stability);
+            self.print_stability(&ty.stability);
+            self.print_external_id(ty.external_id.as_deref());
             self.output.keyword("use");
             self.output.str(" ");
             let id = match owner {
@@ -275,6 +279,7 @@ impl<O: Output> WitPrinter<O> {
             self.new_item();
             self.print_docs(&resolve.types[id].docs);
             self.print_stability(&resolve.types[id].stability);
+            self.print_external_id(resolve.types[id].external_id.as_deref());
             match resolve.types[id].kind {
                 TypeDefKind::Resource => self.print_resource(
                     resolve,
@@ -304,6 +309,7 @@ impl<O: Output> WitPrinter<O> {
         for func in funcs {
             self.print_docs(&func.docs);
             self.print_stability(&func.stability);
+            self.print_external_id(func.external_id.as_deref());
 
             match &func.kind {
                 FunctionKind::Constructor(_) => {}
@@ -361,13 +367,13 @@ impl<O: Output> WitPrinter<O> {
             FunctionKind::Method(_) | FunctionKind::AsyncMethod(_) => 1,
             _ => 0,
         };
-        for (i, (name, ty)) in func.params.iter().skip(params_to_skip).enumerate() {
+        for (i, param) in func.params.iter().skip(params_to_skip).enumerate() {
             if i > 0 {
                 self.output.str(", ");
             }
-            self.print_name_param(name);
+            self.print_name_param(&param.name);
             self.output.str(": ");
-            self.print_type_name(resolve, ty)?;
+            self.print_type_name(resolve, &param.ty)?;
         }
         self.output.str(")");
 
@@ -411,8 +417,8 @@ impl<O: Output> WitPrinter<O> {
         let mut function_imports_to_print = Vec::new();
         for (name, import) in world.imports.iter() {
             match import {
-                WorldItem::Type(t) => match name {
-                    WorldKey::Name(s) => types.push((s.as_str(), *t)),
+                WorldItem::Type { id, .. } => match name {
+                    WorldKey::Name(s) => types.push((s.as_str(), *id)),
                     WorldKey::Interface(_) => unreachable!(),
                 },
                 _ => {
@@ -461,17 +467,30 @@ impl<O: Output> WitPrinter<O> {
         cur_pkg: PackageId,
         import_or_export_keyword: &str,
     ) -> Result<()> {
-        // Print inline item docs
-        if matches!(name, WorldKey::Name(_)) {
-            self.print_docs(match item {
-                WorldItem::Interface { id, .. } => &resolve.interfaces[*id].docs,
-                WorldItem::Function(f) => &f.docs,
-                // Types are handled separately
-                WorldItem::Type(_) => unreachable!(),
-            });
+        // Print docs for this import/export statement. For interfaces, prefer
+        // the docs attached to the statement itself (`WorldItem::Interface`'s
+        // `docs`); for an inline `import x: interface { .. }` with no statement
+        // docs fall back to the interface definition's docs.
+        let docs = match item {
+            WorldItem::Interface { id, docs, .. } => {
+                if docs.contents.is_some() {
+                    Some(docs)
+                } else if matches!(name, WorldKey::Name(_)) {
+                    Some(&resolve.interfaces[*id].docs)
+                } else {
+                    None
+                }
+            }
+            WorldItem::Function(f) => Some(&f.docs),
+            // Types are handled separately
+            WorldItem::Type { .. } => unreachable!(),
+        };
+        if let Some(docs) = docs {
+            self.print_docs(docs);
         }
 
         self.print_stability(item.stability(resolve));
+        self.print_external_id(resolve.external_id_value(name, item).as_deref());
         self.output.keyword(import_or_export_keyword);
         self.output.str(" ");
         match name {
@@ -480,11 +499,17 @@ impl<O: Output> WitPrinter<O> {
                     WorldItem::Interface { id, .. } => {
                         self.print_name_type(name, TypeKind::Other);
                         self.output.str(": ");
-                        assert!(resolve.interfaces[*id].name.is_none());
-                        self.output.keyword("interface");
-                        self.output.indent_start();
-                        self.print_interface(resolve, *id)?;
-                        self.output.indent_end();
+                        if resolve.interfaces[*id].name.is_none() {
+                            // `import label: interface { .. }` syntax
+                            self.output.keyword("interface");
+                            self.output.indent_start();
+                            self.print_interface(resolve, *id)?;
+                            self.output.indent_end();
+                        } else {
+                            // `import label: use-path;` syntax
+                            self.print_path_to_interface(resolve, *id, cur_pkg)?;
+                            self.output.semicolon();
+                        }
                     }
                     WorldItem::Function(f) => {
                         self.print_name_type(&f.name, TypeKind::Other);
@@ -493,7 +518,7 @@ impl<O: Output> WitPrinter<O> {
                         self.output.semicolon();
                     }
                     // Types are handled separately
-                    WorldItem::Type(_) => unreachable!(),
+                    WorldItem::Type { .. } => unreachable!(),
                 }
             }
             WorldKey::Interface(id) => {
@@ -543,20 +568,8 @@ impl<O: Output> WitPrinter<O> {
             Type::S16 => self.output.ty("s16", TypeKind::BuiltIn),
             Type::S32 => self.output.ty("s32", TypeKind::BuiltIn),
             Type::S64 => self.output.ty("s64", TypeKind::BuiltIn),
-            Type::F32 => {
-                if self.print_f32_f64 {
-                    self.output.ty("f32", TypeKind::BuiltIn)
-                } else {
-                    self.output.ty("f32", TypeKind::BuiltIn)
-                }
-            }
-            Type::F64 => {
-                if self.print_f32_f64 {
-                    self.output.ty("f64", TypeKind::BuiltIn)
-                } else {
-                    self.output.ty("f64", TypeKind::BuiltIn)
-                }
-            }
+            Type::F32 => self.output.ty("f32", TypeKind::BuiltIn),
+            Type::F64 => self.output.ty("f64", TypeKind::BuiltIn),
             Type::Char => self.output.ty("char", TypeKind::BuiltIn),
             Type::String => self.output.ty("string", TypeKind::BuiltIn),
             Type::ErrorContext => self.output.ty("error-context", TypeKind::BuiltIn),
@@ -610,7 +623,7 @@ impl<O: Output> WitPrinter<O> {
                         self.print_type_name(resolve, value_ty)?;
                         self.output.generic_args_end();
                     }
-                    TypeDefKind::FixedSizeList(ty, size) => {
+                    TypeDefKind::FixedLengthList(ty, size) => {
                         self.output.ty("list", TypeKind::BuiltIn);
                         self.output.generic_args_start();
                         self.print_type_name(resolve, ty)?;
@@ -794,8 +807,8 @@ impl<O: Output> WitPrinter<O> {
                     TypeDefKind::Map(key, value) => {
                         self.declare_map(resolve, ty.name.as_deref(), key, value)?
                     }
-                    TypeDefKind::FixedSizeList(inner, size) => {
-                        self.declare_fixed_size_list(resolve, ty.name.as_deref(), inner, *size)?
+                    TypeDefKind::FixedLengthList(inner, size) => {
+                        self.declare_fixed_length_list(resolve, ty.name.as_deref(), inner, *size)?
                     }
                     TypeDefKind::Type(inner) => match ty.name.as_deref() {
                         Some(name) => {
@@ -1035,7 +1048,7 @@ impl<O: Output> WitPrinter<O> {
         Ok(())
     }
 
-    fn declare_fixed_size_list(
+    fn declare_fixed_length_list(
         &mut self,
         resolve: &Resolve,
         name: Option<&str>,
@@ -1179,6 +1192,40 @@ impl<O: Output> WitPrinter<O> {
             }
         }
     }
+
+    fn print_external_id(&mut self, id: Option<&str>) {
+        let Some(id) = id else {
+            return;
+        };
+        self.output.keyword("@external-id");
+        self.output.str("(\"");
+        let mut buf = [0; 4];
+        for c in id.chars() {
+            if c.is_ascii_alphanumeric()
+                || c == '-'
+                || c == '_'
+                || c == '.'
+                || c == '/'
+                || c == ':'
+                || c == ' '
+            {
+                self.output.push_str(c.encode_utf8(&mut buf));
+                continue;
+            }
+            match c {
+                '\\' => self.output.push_str("\\\\"),
+                '"' => self.output.push_str("\\\""),
+                '\n' => self.output.push_str("\\n"),
+                '\r' => self.output.push_str("\\r"),
+                '\t' => self.output.push_str("\\t"),
+                _ => {
+                    self.output.push_str(&format!("\\u{{{:x}}}", c as u32));
+                }
+            }
+        }
+        self.output.str("\")");
+        self.output.newline();
+    }
 }
 
 fn is_keyword(name: &str) -> bool {
@@ -1229,6 +1276,7 @@ fn is_keyword(name: &str) -> bool {
             | "constructor"
             | "error-context"
             | "async"
+            | "map"
     )
 }
 
@@ -1240,8 +1288,8 @@ fn is_keyword(name: &str) -> bool {
 pub trait Output {
     /// Push a string slice into a buffer or an output.
     ///
-    /// Parameter `src` can contain punctation characters, and must be escaped
-    /// when outputing to languages like HTML.
+    /// Parameter `src` can contain punctuation characters, and must be escaped
+    /// when outputting to languages like HTML.
     /// Helper function used exclusively by the default implementations of trait methods.
     /// This function is not called directly by `WitPrinter`.
     /// When overriding all the trait methods, users do not need to handle this function.
@@ -1264,8 +1312,8 @@ pub trait Output {
     /// Called only from the default implementation functions of this trait.
     fn indent_and_print(&mut self, src: &str) {
         assert!(!src.contains('\n'));
-        let idented = self.indent_if_needed();
-        if idented && src.starts_with(' ') {
+        let indented = self.indent_if_needed();
+        if indented && src.starts_with(' ') {
             panic!("cannot add a space at the beginning of a line");
         }
         self.push_str(src);
@@ -1337,8 +1385,8 @@ pub trait Output {
     }
 
     /// Any string that does not have a specialized function is added.
-    /// Parameter `src` can contain punctation characters, and must be escaped
-    /// when outputing to languages like HTML.
+    /// Parameter `src` can contain punctuation characters, and must be escaped
+    /// when outputting to languages like HTML.
     fn str(&mut self, src: &str) {
         self.indent_and_print(src);
     }

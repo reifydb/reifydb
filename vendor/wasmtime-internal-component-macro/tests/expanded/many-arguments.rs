@@ -173,7 +173,7 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: foo::foo::manyarg::HostWithStore,
+            D: foo::foo::manyarg::HostWithStore<T>,
             for<'a> D::Data<'a>: foo::foo::manyarg::Host,
             T: 'static,
         {
@@ -272,10 +272,10 @@ pub mod foo {
                     4 == < BigStruct as wasmtime::component::ComponentType >::ALIGN32
                 );
             };
-            pub trait HostWithStore: wasmtime::component::HasData {}
-            impl<_T: ?Sized> HostWithStore for _T
+            pub trait HostWithStore<T>: wasmtime::component::HasData {}
+            impl<H: ?Sized, T> HostWithStore<T> for H
             where
-                _T: wasmtime::component::HasData,
+                H: wasmtime::component::HasData,
             {}
             pub trait Host {
                 fn many_args(
@@ -343,16 +343,15 @@ pub mod foo {
                     Host::big_argument(*self, x)
                 }
             }
-            pub fn add_to_linker<T, D>(
-                linker: &mut wasmtime::component::Linker<T>,
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static,
             {
-                let mut inst = linker.instance("foo:foo/manyarg")?;
                 inst.func_wrap(
                     "many-args",
                     move |
@@ -428,6 +427,18 @@ pub mod foo {
                     },
                 )?;
                 Ok(())
+            }
+            pub fn add_to_linker<T, D>(
+                linker: &mut wasmtime::component::Linker<T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static,
+            {
+                let mut inst = linker.instance("foo:foo/manyarg")?;
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
             }
         }
     }
@@ -552,7 +563,7 @@ pub mod exports {
                                     "no exported instance named `foo:foo/manyarg`"
                                 )
                             })?;
-                        let mut lookup = move |name| {
+                        let mut lookup = move |name: &str| {
                             _instance_pre
                                 .component()
                                 .get_export_index(Some(&instance), name)
@@ -614,27 +625,30 @@ pub mod exports {
                     }
                 }
                 impl Guest {
-                    pub fn call_many_args<S: wasmtime::AsContextMut>(
+                    pub fn func_many_args(
                         &self,
-                        mut store: S,
-                        arg0: u64,
-                        arg1: u64,
-                        arg2: u64,
-                        arg3: u64,
-                        arg4: u64,
-                        arg5: u64,
-                        arg6: u64,
-                        arg7: u64,
-                        arg8: u64,
-                        arg9: u64,
-                        arg10: u64,
-                        arg11: u64,
-                        arg12: u64,
-                        arg13: u64,
-                        arg14: u64,
-                        arg15: u64,
-                    ) -> wasmtime::Result<()> {
-                        let callee = unsafe {
+                    ) -> wasmtime::component::TypedFunc<
+                        (
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                            u64,
+                        ),
+                        (),
+                    > {
+                        unsafe {
                             wasmtime::component::TypedFunc::<
                                 (
                                     u64,
@@ -656,7 +670,29 @@ pub mod exports {
                                 ),
                                 (),
                             >::new_unchecked(self.many_args)
-                        };
+                        }
+                    }
+                    pub fn call_many_args<S: wasmtime::AsContextMut>(
+                        &self,
+                        mut store: S,
+                        arg0: u64,
+                        arg1: u64,
+                        arg2: u64,
+                        arg3: u64,
+                        arg4: u64,
+                        arg5: u64,
+                        arg6: u64,
+                        arg7: u64,
+                        arg8: u64,
+                        arg9: u64,
+                        arg10: u64,
+                        arg11: u64,
+                        arg12: u64,
+                        arg13: u64,
+                        arg14: u64,
+                        arg15: u64,
+                    ) -> wasmtime::Result<()> {
+                        let callee = self.func_many_args();
                         let () = callee
                             .call(
                                 store.as_context_mut(),
@@ -681,17 +717,22 @@ pub mod exports {
                             )?;
                         Ok(())
                     }
+                    pub fn func_big_argument(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(&BigStruct,), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (&BigStruct,),
+                                (),
+                            >::new_unchecked(self.big_argument)
+                        }
+                    }
                     pub fn call_big_argument<S: wasmtime::AsContextMut>(
                         &self,
                         mut store: S,
                         arg0: &BigStruct,
                     ) -> wasmtime::Result<()> {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (&BigStruct,),
-                                (),
-                            >::new_unchecked(self.big_argument)
-                        };
+                        let callee = self.func_big_argument();
                         let () = callee.call(store.as_context_mut(), (arg0,))?;
                         Ok(())
                     }

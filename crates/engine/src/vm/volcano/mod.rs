@@ -1,20 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashMap;
+
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
-	value::{batch::batch, column::builder::ColumnBuilder},
+	internal_err,
+	value::{
+		batch::{batch, take_rows_or_none},
+		column::builder::ColumnBuilder,
+	},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		Value,
-		column_view::ColumnView,
-		dictionary::DictionaryEntryId,
+		column_view::{ColumnView, ViewData},
+		container::dictionary_array,
 		system_columns::{is_system_field, user_columns},
+		value_type::ValueType,
 	},
 };
 use tracing::instrument;
@@ -24,7 +30,7 @@ use crate::{Result, transaction::operation::dictionary::DictionaryOperations};
 #[instrument(level = "trace", skip_all, name = "volcano::scan::dictionaries")]
 pub(crate) fn decode_dictionary_columns(
 	input: RecordBatch,
-	dictionaries: &[Option<Dictionary>],
+	dictionaries: &[Option<(Dictionary, ValueType)>],
 	rx: &mut Transaction,
 ) -> Result<RecordBatch> {
 	if dictionaries.iter().all(Option::is_none) {
@@ -40,27 +46,59 @@ pub(crate) fn decode_dictionary_columns(
 		}
 		let dictionary = dictionaries.get(user_index).and_then(Option::as_ref);
 		user_index += 1;
-		let Some(dictionary) = dictionary else {
+		let Some((dictionary, declared)) = dictionary else {
 			columns.push((field.clone(), array.clone()));
 			continue;
 		};
-		let view = ColumnView::try_from((array, field.as_ref()))?;
-		let row_count = view.len();
-		let mut new_data = ColumnBuilder::with_capacity(dictionary.value_type.clone(), row_count);
-		for row_idx in 0..row_count {
-			let id_value = view.get_value(row_idx);
-			if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
-				match rx.get_from_dictionary(dictionary, entry_id)? {
-					Some(decoded) => new_data.push_value(decoded),
-					None => new_data.push_value(Value::none()),
-				}
-			} else {
-				new_data.push_value(Value::none());
-			}
-		}
-		columns.push(new_data.finish(field.name()));
+		columns.push(decode_dictionary_column(field, array, dictionary, declared.clone(), rx)?);
 	}
 	batch(columns)
+}
+
+pub(crate) fn decode_dictionary_column(
+	field: &FieldRef,
+	array: &ArrayRef,
+	dictionary: &Dictionary,
+	target: ValueType,
+	rx: &mut Transaction,
+) -> Result<(FieldRef, ArrayRef)> {
+	let view = ColumnView::try_from((array, field.as_ref()))?;
+	let ViewData::DictionaryId {
+		container,
+		..
+	} = view.data
+	else {
+		return internal_err!(
+			"dictionary column {} holds {} instead of dictionary ids",
+			field.name(),
+			view.get_type()
+		);
+	};
+	let mut slots: HashMap<u128, Option<usize>> = HashMap::new();
+	let mut values = ColumnBuilder::with_capacity(target, 0);
+	let mut picks = Vec::with_capacity(view.len());
+	for (row, id) in dictionary_array::iter(container).enumerate() {
+		if !view.is_defined(row) {
+			picks.push(None);
+			continue;
+		}
+		let key = id.to_u128();
+		if let Some(&slot) = slots.get(&key) {
+			picks.push(slot);
+			continue;
+		}
+		let slot = match rx.get_from_dictionary(dictionary, id)? {
+			Some(value) => {
+				values.push_value(value);
+				Some(values.len() - 1)
+			}
+			None => None,
+		};
+		slots.insert(key, slot);
+		picks.push(slot);
+	}
+	let decoded = take_rows_or_none(&batch(vec![values.finish(field.name())])?, &picks)?;
+	Ok((decoded.schema_ref().fields()[0].clone(), decoded.column(0).clone()))
 }
 
 pub(crate) fn user_pairs(batch: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {

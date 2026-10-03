@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 /// Check if the MPK feature is supported.
 pub fn is_supported() -> bool {
-    cfg!(target_os = "linux") && cfg!(target_arch = "x86_64") && pkru::has_cpuid_bit_set()
+    wasmtime_core::mpk::is_supported()
 }
 
 /// Allocate up to `max` protection keys.
@@ -107,6 +107,35 @@ impl ProtectionKey {
     /// This function assumes that the kernel has allocated key 0 for itself.
     pub fn as_stripe(&self) -> usize {
         self.stripe as usize
+    }
+
+    /// Re-apply this [`ProtectionKey`] to a region that has just been re-mapped.
+    ///
+    /// A fresh `mmap` over a region discards that region's protection key,
+    /// leaving it associated with the default key 0 which is always accessible.
+    /// Any code that maps over pkey-protected memory must therefore call this
+    /// afterwards to restore the key, otherwise the memory becomes readable and
+    /// writable from any stripe.
+    ///
+    /// Note that `mprotect` (unlike `mmap`) preserves the existing key, so only
+    /// `mmap` call sites need this.
+    ///
+    /// # Safety
+    ///
+    /// `addr` must be page-aligned and `addr..addr + len` must describe a mapped
+    /// region owned by the caller. `readwrite` must match the page protections
+    /// the region was just mapped with, since this overwrites them.
+    pub unsafe fn reprotect(&self, addr: usize, len: usize, readwrite: bool) -> Result<()> {
+        let prot = if readwrite {
+            sys::PROT_READ | sys::PROT_WRITE
+        } else {
+            sys::PROT_NONE
+        };
+        sys::pkey_mprotect(addr, len, prot, self.id).with_context(|| {
+            format!(
+                "failed to restore pkey on region (addr = {addr:#x}, len = {len}, prot = {prot:#b})"
+            )
+        })
     }
 }
 

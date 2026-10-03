@@ -7,6 +7,7 @@
 //!
 //! A failure reports its seed; replay with `make test-chaos SEED=... FILTER=...`.
 
+use reifydb_sdk::flow::operator::NostateMount;
 use reifydb_testing_chaos::operator::scenario::{BatchSize, Scenario, SupportedOps};
 use reifydb_testing_macro::chaos_test;
 use reifydb_testing_sdk::chaos::{
@@ -28,7 +29,7 @@ fn cfg(steps: u32) -> Scenario {
 }
 
 chaos_test!(sequential_keys_drive_passthrough, |seed| {
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -47,7 +48,7 @@ chaos_test!(sequential_keys_drive_passthrough, |seed| {
 chaos_test!(hashof_keys_drive_passthrough_with_collisions, |seed| {
 	// A tiny k_range makes collisions frequent, and each one turns an Insert into an Update
 	// against the live row - still a valid flow the oracle has to agree with.
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::hash_of(["k"]))
@@ -66,7 +67,7 @@ chaos_test!(hashof_keys_drive_passthrough_with_collisions, |seed| {
 });
 
 chaos_test!(custom_keys_drive_passthrough, |seed| {
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::custom(["k"], |content: &RowContent| {

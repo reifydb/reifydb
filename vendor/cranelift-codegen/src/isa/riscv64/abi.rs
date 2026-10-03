@@ -132,7 +132,7 @@ impl ABIMachineSpec for Riscv64MachineDeps {
             }
 
             // Find regclass(es) of the register(s) used to store a value of this type.
-            let (rcs, reg_tys) = Inst::rc_for_type(param.value_type)?;
+            let (rcs, reg_tys) = Inst::rc_for_type(&param.value_type)?;
             let mut slots = ABIArgSlotVec::new();
             for (rc, reg_ty) in rcs.iter().zip(reg_tys.iter()) {
                 let next_reg = if (next_x_reg <= x_end) && *rc == RegClass::Int {
@@ -194,11 +194,11 @@ impl ABIMachineSpec for Riscv64MachineDeps {
     }
 
     fn gen_load_stack(mem: StackAMode, into_reg: Writable<Reg>, ty: Type) -> Inst {
-        Inst::gen_load(into_reg, mem.into(), ty, MemFlags::trusted())
+        Inst::gen_load(into_reg, mem.into(), ty, MemFlagsData::trusted())
     }
 
     fn gen_store_stack(mem: StackAMode, from_reg: Reg, ty: Type) -> Inst {
-        Inst::gen_store(mem.into(), from_reg, ty, MemFlags::trusted())
+        Inst::gen_store(mem.into(), from_reg, ty, MemFlagsData::trusted())
     }
 
     fn gen_move(to_reg: Writable<Reg>, from_reg: Reg, ty: Type) -> Inst {
@@ -225,6 +225,7 @@ impl ABIMachineSpec for Riscv64MachineDeps {
     fn get_ext_mode(
         _call_conv: isa::CallConv,
         specified: ir::ArgumentExtension,
+        _location: ABIArgLocation,
     ) -> ir::ArgumentExtension {
         specified
     }
@@ -273,9 +274,11 @@ impl ABIMachineSpec for Riscv64MachineDeps {
     fn gen_stack_lower_bound_trap(limit_reg: Reg) -> SmallInstVec<Inst> {
         let mut insts = SmallVec::new();
         insts.push(Inst::TrapIf {
-            cc: IntCC::UnsignedLessThan,
-            rs1: stack_reg(),
-            rs2: limit_reg,
+            cmp: IntegerCompare {
+                kind: IntCC::UnsignedLessThan,
+                rs1: stack_reg(),
+                rs2: limit_reg,
+            },
             trap_code: ir::TrapCode::STACK_OVERFLOW,
         });
         insts
@@ -290,12 +293,12 @@ impl ABIMachineSpec for Riscv64MachineDeps {
 
     fn gen_load_base_offset(into_reg: Writable<Reg>, base: Reg, offset: i32, ty: Type) -> Inst {
         let mem = AMode::RegOffset(base, offset as i64);
-        Inst::gen_load(into_reg, mem, ty, MemFlags::trusted())
+        Inst::gen_load(into_reg, mem, ty, MemFlagsData::trusted())
     }
 
     fn gen_store_base_offset(base: Reg, offset: i32, from_reg: Reg, ty: Type) -> Inst {
         let mem = AMode::RegOffset(base, offset as i64);
-        Inst::gen_store(mem, from_reg, ty, MemFlags::trusted())
+        Inst::gen_store(mem, from_reg, ty, MemFlagsData::trusted())
     }
 
     fn gen_sp_reg_adjust(amount: i32) -> SmallInstVec<Inst> {
@@ -344,13 +347,13 @@ impl ABIMachineSpec for Riscv64MachineDeps {
                 AMode::SPOffset(8),
                 link_reg(),
                 I64,
-                MemFlags::trusted(),
+                MemFlagsData::trusted(),
             ));
             insts.push(Inst::gen_store(
                 AMode::SPOffset(0),
                 fp_reg(),
                 I64,
-                MemFlags::trusted(),
+                MemFlagsData::trusted(),
             ));
 
             if flags.unwind_info() {
@@ -383,13 +386,13 @@ impl ABIMachineSpec for Riscv64MachineDeps {
                 writable_link_reg(),
                 AMode::SPOffset(8),
                 I64,
-                MemFlags::trusted(),
+                MemFlagsData::trusted(),
             ));
             insts.push(Inst::gen_load(
                 writable_fp_reg(),
                 AMode::SPOffset(0),
                 I64,
-                MemFlags::trusted(),
+                MemFlagsData::trusted(),
             ));
             insts.extend(Self::gen_sp_reg_adjust(16));
         }
@@ -446,19 +449,19 @@ impl ABIMachineSpec for Riscv64MachineDeps {
                     AMode::SPOffset(8),
                     link_reg(),
                     I64,
-                    MemFlags::trusted(),
+                    MemFlagsData::trusted(),
                 ));
                 insts.push(Inst::gen_load(
                     writable_fp_reg(),
                     AMode::SPOffset(i64::from(incoming_args_diff)),
                     I64,
-                    MemFlags::trusted(),
+                    MemFlagsData::trusted(),
                 ));
                 insts.push(Inst::gen_store(
                     AMode::SPOffset(0),
                     fp_reg(),
                     I64,
-                    MemFlags::trusted(),
+                    MemFlagsData::trusted(),
                 ));
 
                 // Finally, sync the frame pointer with SP
@@ -501,7 +504,7 @@ impl ABIMachineSpec for Riscv64MachineDeps {
                     AMode::SPOffset(i64::from(stack_size - cur_offset - ty.bytes())),
                     Reg::from(reg.to_reg()),
                     ty,
-                    MemFlags::trusted(),
+                    MemFlagsData::trusted(),
                 ));
 
                 if flags.unwind_info() {
@@ -544,7 +547,7 @@ impl ABIMachineSpec for Riscv64MachineDeps {
                 reg.map(Reg::from),
                 AMode::SPOffset(i64::from(stack_size - cur_offset - ty.bytes())),
                 ty,
-                MemFlags::trusted(),
+                MemFlagsData::trusted(),
             ));
             cur_offset += ty.bytes();
         }
@@ -1115,7 +1118,7 @@ impl Riscv64MachineDeps {
                 AMode::SPOffset(0),
                 zero_reg(),
                 I32,
-                MemFlags::trusted(),
+                MemFlagsData::trusted(),
             ));
         }
 

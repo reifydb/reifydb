@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.81"
 name = "web-sys"
-version = "0.3.99"
+version = "0.3.106"
 authors = ["The wasm-bindgen Developers"]
 build = false
 include = [
@@ -512,6 +512,7 @@ ExtColorBufferFloat = []
 ExtColorBufferHalfFloat = []
 ExtDisjointTimerQuery = []
 ExtFragDepth = []
+ExtPolygonOffsetClamp = []
 ExtSRgb = []
 ExtShaderTextureLod = []
 ExtTextureFilterAnisotropic = []
@@ -1466,7 +1467,26 @@ MutationRecord = []
 NamedNodeMap = []
 NativeOsFileReadOptions = []
 NativeOsFileWriteAtomicOptions = []
+NavigateEvent = ["Event"]
+NavigateEventInit = []
+Navigation = ["EventTarget"]
+NavigationActivation = []
+NavigationApiType = []
+NavigationCurrentEntryChangeEvent = ["Event"]
+NavigationCurrentEntryChangeEventInit = []
+NavigationDestination = []
+NavigationFocusReset = []
+NavigationHistoryBehavior = []
+NavigationHistoryEntry = ["EventTarget"]
+NavigationInterceptOptions = []
+NavigationNavigateOptions = []
+NavigationOptions = []
+NavigationReloadOptions = []
+NavigationResult = []
+NavigationScrollBehavior = []
+NavigationTransition = []
 NavigationType = []
+NavigationUpdateCurrentEntryOptions = []
 Navigator = []
 NavigatorAutomationInformation = []
 NavigatorUaBrandVersion = []
@@ -2800,11 +2820,11 @@ test = false
 doctest = false
 
 [dependencies.js-sys]
-version = "=0.3.99"
+version = "=0.3.106"
 default-features = false
 
 [dependencies.wasm-bindgen]
-version = "=0.2.122"
+version = "=0.2.129"
 default-features = false
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies.futures]

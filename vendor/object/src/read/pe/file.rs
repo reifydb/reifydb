@@ -1,4 +1,3 @@
-use alloc::vec::Vec;
 use core::fmt::Debug;
 use core::{mem, str};
 
@@ -8,14 +7,15 @@ use crate::endian::{LittleEndian as LE, U32};
 use crate::pod::{self, Pod};
 use crate::read::coff::{CoffCommon, CoffSymbol, CoffSymbolIterator, CoffSymbolTable, SymbolTable};
 use crate::read::{
-    self, Architecture, ByteString, Bytes, CodeView, ComdatKind, Error, Export, FileFlags, Import,
+    self, Architecture, ByteString, Bytes, CodeView, ComdatKind, Error, FileFlags,
     NoDynamicRelocationIterator, Object, ObjectComdat, ObjectKind, ReadError, ReadRef, Result,
     SectionIndex, SubArchitecture, SymbolIndex,
 };
-use crate::{pe, SkipDebugList};
+use crate::{SkipDebugList, pe};
 
 use super::{
-    DataDirectories, ExportTable, ImageThunkData, ImportTable, PeSection, PeSectionIterator,
+    DataDirectories, DelayLoadImportTable, ExportTable, ImageThunkData, ImportTable,
+    PeExportIterator, PeImportIterator, PeImportLibraryIterator, PeSection, PeSectionIterator,
     PeSegment, PeSegmentIterator, RichHeaderInfo, SectionTable,
 };
 
@@ -135,6 +135,14 @@ where
             .import_table(self.data.0, &self.common.sections)
     }
 
+    /// Returns the delay-load import table of this file.
+    ///
+    /// The delay-load import table is located using the data directory.
+    pub fn delay_load_import_table(&self) -> Result<Option<DelayLoadImportTable<'data>>> {
+        self.data_directories
+            .delay_load_import_table(self.data.0, &self.common.sections)
+    }
+
     pub(super) fn section_alignment(&self) -> u64 {
         u64::from(self.nt_headers.optional_header().section_alignment())
     }
@@ -202,6 +210,21 @@ where
     where
         Self: 'file,
         'data: 'file;
+    type ImportLibraryIterator<'file>
+        = PeImportLibraryIterator<'data, 'file, Pe, R>
+    where
+        Self: 'file,
+        'data: 'file;
+    type ImportIterator<'file>
+        = PeImportIterator<'data, 'file, Pe, R>
+    where
+        Self: 'file,
+        'data: 'file;
+    type ExportIterator<'file>
+        = PeExportIterator<'data, 'file, R>
+    where
+        Self: 'file,
+        'data: 'file;
 
     fn architecture(&self) -> Architecture {
         match self.nt_headers.file_header().machine.get(LE) {
@@ -233,9 +256,9 @@ where
 
     fn kind(&self) -> ObjectKind {
         let characteristics = self.nt_headers.file_header().characteristics.get(LE);
-        if characteristics & pe::IMAGE_FILE_DLL != 0 {
+        if characteristics.contains(pe::IMAGE_FILE_DLL) {
             ObjectKind::Dynamic
-        } else if characteristics & pe::IMAGE_FILE_SYSTEM != 0 {
+        } else if characteristics.contains(pe::IMAGE_FILE_SYSTEM) {
             ObjectKind::Unknown
         } else {
             ObjectKind::Executable
@@ -312,46 +335,16 @@ where
         None
     }
 
-    fn imports(&self) -> Result<Vec<Import<'data>>> {
-        let mut imports = Vec::new();
-        if let Some(import_table) = self.import_table()? {
-            let mut import_descs = import_table.descriptors()?;
-            while let Some(import_desc) = import_descs.next()? {
-                let library = import_table.name(import_desc.name.get(LE))?;
-                let mut first_thunk = import_desc.original_first_thunk.get(LE);
-                if first_thunk == 0 {
-                    first_thunk = import_desc.first_thunk.get(LE);
-                }
-                let mut thunks = import_table.thunks(first_thunk)?;
-                while let Some(thunk) = thunks.next::<Pe>()? {
-                    if !thunk.is_ordinal() {
-                        let (_hint, name) = import_table.hint_name(thunk.address())?;
-                        imports.push(Import {
-                            library: ByteString(library),
-                            name: ByteString(name),
-                        });
-                    }
-                }
-            }
-        }
-        Ok(imports)
+    fn import_libraries(&self) -> Result<Self::ImportLibraryIterator<'_>> {
+        PeImportLibraryIterator::new(self)
     }
 
-    fn exports(&self) -> Result<Vec<Export<'data>>> {
-        let mut exports = Vec::new();
-        if let Some(export_table) = self.export_table()? {
-            for (name_pointer, address_index) in export_table.name_iter() {
-                let name = export_table.name_from_pointer(name_pointer)?;
-                let address = export_table.address_by_index(address_index.into())?;
-                if !export_table.is_forward(address) {
-                    exports.push(Export {
-                        name: ByteString(name),
-                        address: self.common.image_base.wrapping_add(address.into()),
-                    })
-                }
-            }
-        }
-        Ok(exports)
+    fn imports(&self) -> Result<Self::ImportIterator<'_>> {
+        PeImportIterator::new(self)
+    }
+
+    fn exports(&self) -> Result<Self::ExportIterator<'_>> {
+        PeExportIterator::new(self)
     }
 
     fn pdb_info(&self) -> Result<Option<CodeView<'_>>> {
@@ -595,7 +588,7 @@ pub fn optional_header_magic<'data, R: ReadRef<'data>>(data: R) -> Result<u16> {
 
 /// A trait for generic access to [`pe::ImageNtHeaders32`] and [`pe::ImageNtHeaders64`].
 #[allow(missing_docs)]
-pub trait ImageNtHeaders: Debug + Pod {
+pub trait ImageNtHeaders: Debug + Pod + read::private::Sealed {
     type ImageOptionalHeader: ImageOptionalHeader;
     type ImageThunkData: ImageThunkData;
 
@@ -681,7 +674,7 @@ pub trait ImageNtHeaders: Debug + Pod {
 
 /// A trait for generic access to [`pe::ImageOptionalHeader32`] and [`pe::ImageOptionalHeader64`].
 #[allow(missing_docs)]
-pub trait ImageOptionalHeader: Debug + Pod {
+pub trait ImageOptionalHeader: Debug + Pod + read::private::Sealed {
     // Standard fields.
     fn magic(&self) -> u16;
     fn major_linker_version(&self) -> u8;
@@ -707,8 +700,8 @@ pub trait ImageOptionalHeader: Debug + Pod {
     fn size_of_image(&self) -> u32;
     fn size_of_headers(&self) -> u32;
     fn check_sum(&self) -> u32;
-    fn subsystem(&self) -> u16;
-    fn dll_characteristics(&self) -> u16;
+    fn subsystem(&self) -> pe::Subsystem;
+    fn dll_characteristics(&self) -> pe::DllFlags;
     fn size_of_stack_reserve(&self) -> u64;
     fn size_of_stack_commit(&self) -> u64;
     fn size_of_heap_reserve(&self) -> u64;
@@ -716,6 +709,8 @@ pub trait ImageOptionalHeader: Debug + Pod {
     fn loader_flags(&self) -> u32;
     fn number_of_rva_and_sizes(&self) -> u32;
 }
+
+impl read::private::Sealed for pe::ImageNtHeaders32 {}
 
 impl ImageNtHeaders for pe::ImageNtHeaders32 {
     type ImageOptionalHeader = pe::ImageOptionalHeader32;
@@ -746,6 +741,8 @@ impl ImageNtHeaders for pe::ImageNtHeaders32 {
         &self.optional_header
     }
 }
+
+impl read::private::Sealed for pe::ImageOptionalHeader32 {}
 
 impl ImageOptionalHeader for pe::ImageOptionalHeader32 {
     #[inline]
@@ -859,12 +856,12 @@ impl ImageOptionalHeader for pe::ImageOptionalHeader32 {
     }
 
     #[inline]
-    fn subsystem(&self) -> u16 {
+    fn subsystem(&self) -> pe::Subsystem {
         self.subsystem.get(LE)
     }
 
     #[inline]
-    fn dll_characteristics(&self) -> u16 {
+    fn dll_characteristics(&self) -> pe::DllFlags {
         self.dll_characteristics.get(LE)
     }
 
@@ -899,6 +896,8 @@ impl ImageOptionalHeader for pe::ImageOptionalHeader32 {
     }
 }
 
+impl read::private::Sealed for pe::ImageNtHeaders64 {}
+
 impl ImageNtHeaders for pe::ImageNtHeaders64 {
     type ImageOptionalHeader = pe::ImageOptionalHeader64;
     type ImageThunkData = pe::ImageThunkData64;
@@ -928,6 +927,8 @@ impl ImageNtHeaders for pe::ImageNtHeaders64 {
         &self.optional_header
     }
 }
+
+impl read::private::Sealed for pe::ImageOptionalHeader64 {}
 
 impl ImageOptionalHeader for pe::ImageOptionalHeader64 {
     #[inline]
@@ -1041,12 +1042,12 @@ impl ImageOptionalHeader for pe::ImageOptionalHeader64 {
     }
 
     #[inline]
-    fn subsystem(&self) -> u16 {
+    fn subsystem(&self) -> pe::Subsystem {
         self.subsystem.get(LE)
     }
 
     #[inline]
-    fn dll_characteristics(&self) -> u16 {
+    fn dll_characteristics(&self) -> pe::DllFlags {
         self.dll_characteristics.get(LE)
     }
 

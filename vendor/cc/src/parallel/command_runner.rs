@@ -1,6 +1,5 @@
 use std::{
     cell::Cell,
-    io::{self, Write as _},
     process::{Child, Command},
 };
 
@@ -9,7 +8,7 @@ use crate::{
         async_executor::{block_on, YieldOnce},
         job_token,
     },
-    spawn, CargoOutput, Error, ErrorKind, StderrForwarder,
+    spawn, CargoOutput, CommandLine, Error, ErrorKind, StderrForwarder,
 };
 
 struct KillOnDrop(Child, StderrForwarder);
@@ -35,32 +34,32 @@ where
 fn try_wait_on_child(
     cmd: &Command,
     child: &mut Child,
-    mut stdout: impl io::Write,
     stderr_forwarder: &mut StderrForwarder,
+    cargo_output: &CargoOutput,
 ) -> Result<Option<()>, Error> {
-    stderr_forwarder.forward_available();
+    stderr_forwarder.forward_available(cmd);
 
     match child.try_wait() {
         Ok(Some(status)) => {
-            stderr_forwarder.forward_all();
+            stderr_forwarder.forward_all(cmd);
 
-            let _ = writeln!(stdout, "{}", status);
+            println!("{status}");
 
             if status.success() {
                 Ok(Some(()))
             } else {
-                Err(Error::new(
-                    ErrorKind::ToolExecError,
-                    format!("command did not execute successfully (status code {status}): {cmd:?}"),
-                ))
+                Err(cargo_output.command_failed(cmd, status))
             }
         }
         Ok(None) => Ok(None),
         Err(e) => {
-            stderr_forwarder.forward_all();
+            stderr_forwarder.forward_all(cmd);
             Err(Error::new(
                 ErrorKind::ToolExecError,
-                format!("failed to wait on spawned child process `{cmd:?}`: {e}"),
+                format!(
+                    "failed to wait on spawned child process `{}`: {e}",
+                    CommandLine(cmd)
+                ),
             ))
         }
     }
@@ -98,8 +97,6 @@ pub(crate) fn run_commands_in_parallel(
 
     let wait_future = async {
         let mut error = None;
-        // Buffer the stdout
-        let mut stdout = io::BufWriter::with_capacity(128, io::stdout());
 
         loop {
             // If the other end of the pipe is already disconnected, then we're not gonna get any new jobs,
@@ -114,7 +111,7 @@ pub(crate) fn run_commands_in_parallel(
             cell_update(&pendings, |mut pendings| {
                 // Try waiting on them.
                 pendings.retain_mut(|(cmd, child, _token)| {
-                    match try_wait_on_child(cmd, &mut child.0, &mut stdout, &mut child.1) {
+                    match try_wait_on_child(cmd, &mut child.0, &mut child.1, cargo_output) {
                         Ok(Some(())) => {
                             // Task done, remove the entry
                             has_made_progress.set(true);
@@ -124,11 +121,12 @@ pub(crate) fn run_commands_in_parallel(
                         Err(err) => {
                             // Task fail, remove the entry.
                             // Since we can only return one error, log the error to make
-                            // sure users always see all the compilation failures.
+                            // sure users always see all the compilation failures. The
+                            // logger already got each failed command as `CommandFailed`.
                             has_made_progress.set(true);
 
                             if cargo_output.warnings {
-                                let _ = writeln!(stdout, "cargo:warning={}", err);
+                                println!("cargo:warning={err}");
                             }
                             error = Some(err);
 
@@ -156,7 +154,7 @@ pub(crate) fn run_commands_in_parallel(
             let mut cmd = res?;
             let token = tokens.acquire().await?;
             let mut child = spawn(&mut cmd, cargo_output)?;
-            let mut stderr_forwarder = StderrForwarder::new(&mut child);
+            let mut stderr_forwarder = StderrForwarder::new(&mut child, cargo_output);
             stderr_forwarder.set_non_blocking()?;
 
             cell_update(&pendings, |mut pendings| {

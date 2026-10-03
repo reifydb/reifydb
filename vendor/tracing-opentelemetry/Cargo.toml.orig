@@ -1,6 +1,6 @@
 [package]
 name = "tracing-opentelemetry"
-version = "0.32.1"
+version = "0.34.0"
 description = "OpenTelemetry integration for tracing"
 homepage = "https://github.com/tokio-rs/tracing-opentelemetry"
 repository = "https://github.com/tokio-rs/tracing-opentelemetry"
@@ -14,6 +14,7 @@ keywords = ["tracing", "opentelemetry", "jaeger", "zipkin", "async"]
 license = "MIT"
 edition = "2021"
 rust-version = "1.75.0"
+include = ["src/**/*.rs", "tests/**/*.rs", "CHANGELOG.md", "README.md", "Cargo.toml", "LICENSE"]
 
 [features]
 default = ["tracing-log", "metrics"]
@@ -21,7 +22,7 @@ default = ["tracing-log", "metrics"]
 metrics = ["opentelemetry/metrics", "smallvec"]
 
 [dependencies]
-opentelemetry = { version = "0.31.0", default-features = false, features = [
+opentelemetry = { version = "0.33.0", default-features = false, features = [
     "trace",
 ] }
 
@@ -41,18 +42,18 @@ lazy_static = { version = "1.0.2", optional = true }
 criterion = { version = "0.5.1", default-features = false, features = [
     "html_reports",
 ] }
-opentelemetry = { version = "0.31.0", features = ["trace", "metrics"] }
-opentelemetry_sdk = { version = "0.31.0", default-features = false, features = [
+opentelemetry = { version = "0.33.0", features = ["trace", "metrics"] }
+opentelemetry_sdk = { version = "0.33.0", default-features = false, features = [
     "trace",
     "experimental_metrics_custom_reader",
     "testing",
 ] }
-opentelemetry-stdout = { version = "0.31.0", features = ["trace", "metrics"] }
-opentelemetry-otlp = { version = "0.31.0", features = [
+opentelemetry-stdout = { version = "0.33.0", features = ["trace", "metrics"] }
+opentelemetry-otlp = { version = "0.33.0", features = [
     "metrics",
     "grpc-tonic",
 ] }
-opentelemetry-semantic-conventions = { version = "0.31.0", features = [
+opentelemetry-semantic-conventions = { version = "0.33.0", features = [
     "semconv_experimental",
 ] }
 tokio = { version = "1", features = ["full"] }
@@ -79,6 +80,7 @@ bench = false
 
 [lints.rust]
 unnameable_types = "warn"
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(__reentrant_tracing_test)'] }
 
 [[bench]]
 name = "trace"

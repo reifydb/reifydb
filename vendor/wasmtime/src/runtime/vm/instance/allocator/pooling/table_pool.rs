@@ -2,10 +2,10 @@ use super::{
     TableAllocationIndex,
     index_allocator::{SimpleIndexAllocator, SlotId},
 };
+use crate::config::PoolingAllocationConfig;
 use crate::runtime::vm::sys::vm::{PageMap, commit_pages, reset_with_pagemap};
 use crate::runtime::vm::{
-    InstanceAllocationRequest, Mmap, PoolingInstanceAllocatorConfig, SendSyncPtr, Table,
-    mmap::AlignedLength,
+    InstanceAllocationRequest, Mmap, SendSyncPtr, Table, mmap::AlignedLength,
 };
 use crate::{prelude::*, vm::HostAlignedByteCount};
 use std::ptr::NonNull;
@@ -28,7 +28,7 @@ pub struct TablePool {
 
 impl TablePool {
     /// Create a new `TablePool`.
-    pub fn new(config: &PoolingInstanceAllocatorConfig) -> Result<Self> {
+    pub fn new(config: &PoolingAllocationConfig) -> Result<Self> {
         let table_size = HostAlignedByteCount::new_rounded_up(
             crate::runtime::vm::table::NOMINAL_MAX_TABLE_ELEM_SIZE
                 .checked_mul(config.limits.table_elements)
@@ -48,7 +48,7 @@ impl TablePool {
         let keep_resident = HostAlignedByteCount::new_rounded_up(config.table_keep_resident)?;
 
         Ok(Self {
-            index_allocator: SimpleIndexAllocator::new(config.limits.total_tables),
+            index_allocator: SimpleIndexAllocator::new(config.limits.total_tables)?,
             mapping,
             table_size,
             max_total_tables,
@@ -186,26 +186,26 @@ impl TablePool {
         }
     }
 
-    /// Deallocate a previously-allocated table.
+    /// Deallocate the previously-allocated tables produced by `items`.
     ///
     /// # Safety
     ///
-    /// The table must have been previously-allocated by this pool and assigned
-    /// the given allocation index, it must currently be allocated, and it must
-    /// never be used again.
+    /// The tables must have been previously-allocated by this pool and assigned
+    /// their given allocation indices, they must currently be allocated, and
+    /// they must never be used again.
     ///
     /// The caller must have already called `reset_table_pages_to_zero` on the
-    /// memory and flushed any enqueued decommits for this table's memory.
-    pub unsafe fn deallocate(
+    /// memories and flushed any enqueued decommits for these tables' memories.
+    pub unsafe fn deallocate_many(
         &self,
-        allocation_index: TableAllocationIndex,
-        table: Table,
-        bytes_resident: usize,
+        items: impl Iterator<Item = (TableAllocationIndex, Table, usize)>,
     ) {
-        assert!(table.is_static());
-        drop(table);
         self.index_allocator
-            .free(SlotId(allocation_index.0), bytes_resident);
+            .free_many(items.map(|(allocation_index, table, bytes_resident)| {
+                assert!(table.is_static());
+                drop(table);
+                (SlotId(allocation_index.0), bytes_resident)
+            }));
     }
 
     /// Reset the given table's memory to zero.
@@ -260,11 +260,11 @@ impl TablePool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::vm::InstanceLimits;
+    use crate::config::InstanceLimits;
 
     #[test]
     fn test_table_pool() -> Result<()> {
-        let pool = TablePool::new(&PoolingInstanceAllocatorConfig {
+        let pool = TablePool::new(&PoolingAllocationConfig {
             limits: InstanceLimits {
                 total_tables: 7,
                 table_elements: 100,
@@ -298,7 +298,7 @@ mod tests {
     #[test]
     fn test_table_pool_continuations_capacity() -> Result<()> {
         let mkpool = |table_elements: usize| -> Result<TablePool> {
-            TablePool::new(&PoolingInstanceAllocatorConfig {
+            TablePool::new(&PoolingAllocationConfig {
                 limits: InstanceLimits {
                     table_elements,
                     total_tables: 7,

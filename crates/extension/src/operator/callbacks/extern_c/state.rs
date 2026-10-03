@@ -30,7 +30,7 @@ use reifydb_value::value::datetime::DateTime;
 
 use super::{
 	context::{get_host_mut, guest_class},
-	marshal::{encoded_bytes, encoded_key, encoded_keys, identity_keys, state_key, write_buffer},
+	marshal::{encoded_bytes, encoded_key, encoded_keys, state_key, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
 use crate::procedure::callbacks::extern_c::memory::{host_alloc, host_free};
@@ -593,41 +593,6 @@ pub(super) extern "C" fn host_reclaim_group_identity(
 	}
 }
 
-pub(super) extern "C" fn host_reclaim_group_identity_keys(
-	_operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	group: ExternCGroupId,
-	keys: *const ExternCKeyRef,
-	keys_len: usize,
-	removed_out: *mut usize,
-	more_out: *mut u8,
-) -> i32 {
-	if ctx.is_null() || removed_out.is_null() || more_out.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-	if keys_len > 0 && keys.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: `ctx` is null-checked above, as are the out pointers, and so is `keys` whenever `keys_len`
-	// is non-zero; the guest must pass back the ExternCContextRaw the host handed it for this call
-	// (discharging get_host_mut) and `keys` satisfying identity_keys.
-	unsafe {
-		let host = get_host_mut(&mut *ctx);
-		let Some(keys) = identity_keys(keys, keys_len) else {
-			return EXTERN_C_ERROR_NULL_PTR;
-		};
-		match host.reclaim_group_identity_keys(host_group(group), &keys) {
-			Ok(outcome) => {
-				*removed_out = outcome.removed.as_u64() as usize;
-				*more_out = outcome.more as u8;
-				EXTERN_C_OK
-			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
-		}
-	}
-}
-
 pub(super) extern "C" fn host_flow_watermark(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
@@ -770,7 +735,6 @@ mod join_row_expiry_guard_tests {
 	};
 	use reifydb_value::{
 		Result,
-		count::Count,
 		util::hash::Hash128,
 		value::{
 			Value,
@@ -877,14 +841,6 @@ mod join_row_expiry_guard_tests {
 		fn reclaim_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
 			Ok(ReclaimOutcome::NOTHING)
 		}
-
-		fn reclaim_identity_keys(
-			&mut self,
-			_group: GroupId,
-			_keys: &[GroupStateKey],
-		) -> Result<ReclaimOutcome> {
-			Ok(ReclaimOutcome::NOTHING)
-		}
 	}
 
 	impl HostContext for RecordingHost {
@@ -968,17 +924,6 @@ mod join_row_expiry_guard_tests {
 
 		fn reclaim_group_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
 			Ok(ReclaimOutcome::NOTHING)
-		}
-
-		fn reclaim_group_identity_keys(
-			&mut self,
-			_group: GroupId,
-			keys: &[GroupStateKey],
-		) -> Result<ReclaimOutcome> {
-			Ok(ReclaimOutcome {
-				removed: Count::new(keys.len() as u64),
-				more: false,
-			})
 		}
 
 		fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {

@@ -22,7 +22,7 @@ all-features = true
 [dependencies]
 anyhow = { workspace = true }
 bitflags = "2.3.3"
-indexmap = { workspace = true }
+indexmap = { workspace = true, features = ["std"] }
 log = "0.4.17"
 serde = { workspace = true }
 serde_derive = { workspace = true }
@@ -39,6 +39,7 @@ env_logger = { workspace = true }
 glob = "0.3.0"
 libtest-mimic = { workspace = true }
 pretty_assertions = "1.3.0"
+toml = { workspace = true }
 wasmparser = { workspace = true, features = ['std', 'component-model', 'features'] }
 wasmprinter = { workspace = true, features = ['component-model'] }
 wat = { workspace = true, features = ['component-model'] }

@@ -6,7 +6,7 @@ use std::{
 	ops::Bound,
 };
 
-use reifydb_cdc::rebuild::rebuild_changes;
+use reifydb_cdc::lift::lift_changes;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -247,7 +247,7 @@ fn cdc_at(t: &TestEngine, version: CommitVersion) -> Cdc {
 fn inserted_rows_per_object(t: &TestEngine, cdc: &Cdc) -> BTreeMap<ObjectId, usize> {
 	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
 	let mut counts = BTreeMap::new();
-	for change in rebuild_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query)).expect("rebuild") {
+	for change in lift_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query)).expect("lift") {
 		let ChangeOrigin::Object(object) = change.origin else {
 			continue;
 		};

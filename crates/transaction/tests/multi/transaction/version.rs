@@ -24,7 +24,7 @@ fn test_versions() {
 	for i in 1..10 {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(&k0, as_values!(i)).unwrap();
-		txn.commit(vec![]).unwrap();
+		txn.commit().unwrap();
 		assert_eq!(i + 1, engine.version().unwrap());
 	}
 
@@ -80,7 +80,7 @@ fn test_as_of_version_bounds() {
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&k0, as_values!(1)).unwrap();
-	txn.commit(vec![]).unwrap();
+	txn.commit().unwrap();
 	let committed_at = engine.version().unwrap();
 	assert_eq!(CommitVersion(2), committed_at);
 

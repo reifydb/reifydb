@@ -11,11 +11,11 @@
 
 [package]
 edition = "2024"
-rust-version = "1.92.0"
+rust-version = "1.96.0"
 name = "wasmtime-internal-cranelift"
-version = "44.0.2"
+version = "49.0.2"
 authors = ["The Wasmtime Project Developers"]
-build = false
+build = "build.rs"
 autolib = false
 autobins = false
 autoexamples = false
@@ -35,56 +35,39 @@ resolver = "2"
 
 [features]
 all-arch = ["cranelift-codegen/all-arch"]
-component-model = ["wasmtime-environ/component-model"]
-gc = ["wasmtime-environ/gc"]
-gc-drc = [
-    "gc",
-    "wasmtime-environ/gc-drc",
-]
-gc-null = [
-    "gc",
-    "wasmtime-environ/gc-null",
-]
 host-arch = ["cranelift-codegen/host-arch"]
-incremental-cache = ["cranelift-codegen/incremental-cache"]
 pulley = [
     "cranelift-codegen/pulley",
     "dep:pulley-interpreter",
 ]
-stack-switching = []
-threads = ["wasmtime-environ/threads"]
 trace-log = ["cranelift-codegen/trace-log"]
-wmemcheck = ["wasmtime-environ/wmemcheck"]
 
 [lib]
 name = "wasmtime_internal_cranelift"
 path = "src/lib.rs"
 
-[dependencies.cfg-if]
-version = "1.0"
-
 [dependencies.cranelift-codegen]
-version = "0.131.2"
+version = "0.136.2"
 features = [
-    "std",
     "unwind",
     "host-arch",
     "timing",
+    "incremental-cache",
 ]
 default-features = false
 
 [dependencies.cranelift-control]
-version = "0.131.2"
+version = "0.136.2"
 default-features = false
 
 [dependencies.cranelift-entity]
-version = "0.131.2"
+version = "0.136.2"
 
 [dependencies.cranelift-frontend]
-version = "0.131.2"
+version = "0.136.2"
 
 [dependencies.cranelift-native]
-version = "0.131.2"
+version = "0.136.2"
 
 [dependencies.gimli]
 version = "0.33.0"
@@ -102,7 +85,7 @@ version = "0.4.28"
 default-features = false
 
 [dependencies.object]
-version = "0.39.0"
+version = "0.40.0"
 features = [
     "read_core",
     "elf",
@@ -112,7 +95,7 @@ features = [
 default-features = false
 
 [dependencies.pulley-interpreter]
-version = "=44.0.2"
+version = "=49.0.2"
 optional = true
 
 [dependencies.smallvec]
@@ -120,31 +103,39 @@ version = "1.15.1"
 features = ["union"]
 
 [dependencies.target-lexicon]
-version = "0.13.0"
+version = "0.13.5"
 
 [dependencies.thiserror]
 version = "2.0.17"
 
 [dependencies.wasmparser]
-version = "0.246.1"
+version = "0.258.3"
 features = ["simd"]
 default-features = false
 
 [dependencies.wasmtime-core]
-version = "=44.0.2"
+version = "=49.0.2"
 package = "wasmtime-internal-core"
 
 [dependencies.wasmtime-environ]
-version = "=44.0.2"
-features = ["compile"]
+version = "=49.0.2"
+features = [
+    "compile",
+    "component-model",
+    "gc-drc",
+    "gc-null",
+    "gc-copying",
+    "stack-switching",
+    "threads",
+]
 
 [dependencies.wasmtime-unwinder]
-version = "=44.0.2"
+version = "=49.0.2"
 features = ["cranelift"]
 package = "wasmtime-internal-unwinder"
 
 [dependencies.wasmtime-versioned-export-macros]
-version = "=44.0.2"
+version = "=49.0.2"
 package = "wasmtime-internal-versioned-export-macros"
 
 [lints.clippy]
@@ -170,10 +161,10 @@ priority = -1
 [lints.rust]
 trivial_numeric_casts = "warn"
 unstable_features = "warn"
-unused-lifetimes = "warn"
-unused-macro-rules = "warn"
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
@@ -183,5 +174,6 @@ check-cfg = [
     "cfg(pulley_assume_llvm_makes_tail_calls)",
     "cfg(pulley_disable_interp_simd)",
     "cfg(arc_try_new)",
+    "cfg(fuzzing)",
     "cfg(gc_zeal)",
 ]

@@ -83,7 +83,7 @@ pub unsafe fn wait_for_unlock_notify(db: *mut ffi::sqlite3) -> c_int {
     rc
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod test {
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     use wasm_bindgen_test::wasm_bindgen_test as test;

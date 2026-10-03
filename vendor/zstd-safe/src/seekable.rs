@@ -28,6 +28,8 @@ impl core::fmt::Display for FrameIndexTooLargeError {
 /// to start a new compression operation call `init()`.
 pub struct SeekableCStream(NonNull<zstd_sys::ZSTD_seekable_CStream>);
 
+// Safety: the stream is an owned heap allocation with no thread-local state,
+// and every method that advances it takes `&mut self`.
 unsafe impl Send for SeekableCStream {}
 unsafe impl Sync for SeekableCStream {}
 
@@ -175,6 +177,8 @@ impl Drop for SeekableCStream {
 /// afterward into a seekable archive.
 pub struct FrameLog(NonNull<zstd_sys::ZSTD_frameLog>);
 
+// Safety: as for `SeekableCStream` - owned, not thread-bound, and only mutated
+// through `&mut self`.
 unsafe impl Send for FrameLog {}
 unsafe impl Sync for FrameLog {}
 
@@ -259,6 +263,8 @@ impl Drop for FrameLog {
 /// The lifetime references the potential buffer that holds the data of this seekable.
 pub struct Seekable<'a>(NonNull<zstd_sys::ZSTD_seekable>, PhantomData<&'a ()>);
 
+// Safety: as for `SeekableCStream`. Note the decompression methods, which do
+// drive the C context, all take `&mut self`.
 unsafe impl Send for Seekable<'_> {}
 unsafe impl Sync for Seekable<'_> {}
 
@@ -456,10 +462,20 @@ pub struct AdvancedSeekable<'a, F> {
 }
 
 #[cfg(feature = "std")]
+// Safety: this owns both the `Seekable`, which is `Send`, and the `F` behind
+// `src`, so it can move between threads exactly when `F` can.
 unsafe impl<F> Send for AdvancedSeekable<'_, F> where F: Send {}
 #[cfg(feature = "std")]
+// Safety: `F` is only ever reached from the C callbacks, which run under the
+// `&mut self` methods, so a shared reference here never touches it. The `F:
+// Sync` bound is more than that needs.
 unsafe impl<F> Sync for AdvancedSeekable<'_, F> where F: Sync {}
 
+/// Only `Deref` is implemented, deliberately: handing out a `&mut Seekable`
+/// would let safe code `mem::swap()` the inner context out of here, leaving the
+/// swapped-out context holding a pointer to a `src` that this struct still owns
+/// and frees on drop. See https://github.com/gyscos/zstd-rs/issues/366.
+/// The `&mut self` methods are re-exposed above instead.
 #[cfg(feature = "std")]
 impl<'a, F> core::ops::Deref for AdvancedSeekable<'a, F> {
     type Target = Seekable<'a>;
@@ -470,9 +486,27 @@ impl<'a, F> core::ops::Deref for AdvancedSeekable<'a, F> {
 }
 
 #[cfg(feature = "std")]
-impl<'a, F> core::ops::DerefMut for AdvancedSeekable<'a, F> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+impl<'a, F> AdvancedSeekable<'a, F> {
+    /// Decompresses the data at `offset` into `dst`.
+    ///
+    /// See [`Seekable::decompress()`].
+    pub fn decompress<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        offset: u64,
+    ) -> SafeResult {
+        self.inner.decompress(dst, offset)
+    }
+
+    /// Decompresses the frame with index `frame_index` into `dst`.
+    ///
+    /// See [`Seekable::decompress_frame()`].
+    pub fn decompress_frame<C: WriteBuf + ?Sized>(
+        &mut self,
+        dst: &mut C,
+        frame_index: u32,
+    ) -> SafeResult {
+        self.inner.decompress_frame(dst, frame_index)
     }
 }
 
@@ -512,6 +546,13 @@ impl<'a> Seekable<'a> {
         };
 
         if crate::is_error(code) {
+            // The context was not initialized, so nothing will ever call back
+            // into `opaque`; take the box back rather than leaking it (and
+            // whatever `F` holds, like a file descriptor).
+            // Safety: `opaque` comes from the `Box::into_raw` above, and has
+            // not been handed to anything that outlives this function.
+            let _: std::boxed::Box<F> =
+                unsafe { std::boxed::Box::from_raw(opaque) };
             return Err(code);
         }
 
@@ -545,8 +586,10 @@ unsafe extern "C" fn advanced_seek<S: std::io::Seek>(
     let seeker: &mut S = std::mem::transmute(opaque);
     let pos = match origin {
         SEEK_SET => {
-            let Ok(offset) = u64::try_from(offset) else {
-                return -1;
+            // `let .. else` would read better, but it needs Rust 1.65.
+            let offset = match u64::try_from(offset) {
+                Ok(offset) => offset,
+                Err(_) => return -1,
             };
             SeekFrom::Start(offset)
         }
@@ -595,6 +638,7 @@ impl core::fmt::Display for SeekTableCreateError {
 
 pub struct SeekTable(NonNull<zstd_sys::ZSTD_seekTable>);
 
+// Safety: a seek table is built once and only read afterwards.
 unsafe impl Send for SeekTable {}
 unsafe impl Sync for SeekTable {}
 

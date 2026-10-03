@@ -19,8 +19,11 @@ extern crate alloc as std_alloc;
 extern crate std;
 
 pub mod alloc;
+pub mod array;
 pub mod error;
 pub mod math;
+pub mod mpk;
 pub mod non_max;
 pub mod slab;
+pub mod truncate;
 pub mod undo;

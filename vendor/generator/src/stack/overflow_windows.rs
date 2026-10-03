@@ -13,9 +13,12 @@ unsafe extern "system" fn vectored_handler(exception_info: *mut EXCEPTION_POINTE
     let rec = &(*info.ExceptionRecord);
     let context = &mut (*info.ContextRecord);
 
-    if rec.ExceptionCode == EXCEPTION_STACK_OVERFLOW
-        && guard::current().contains(&(context.Rsp as usize))
-    {
+    #[cfg(target_arch = "x86_64")]
+    let fault_sp = context.Rsp as usize;
+    #[cfg(target_arch = "aarch64")]
+    let fault_sp = context.Sp as usize;
+
+    if rec.ExceptionCode == EXCEPTION_STACK_OVERFLOW && guard::current().contains(&fault_sp) {
         eprintln!(
             "\ncoroutine in thread '{}' has overflowed its stack\n",
             std::thread::current().name().unwrap_or("<unknown>")
@@ -76,4 +79,52 @@ unsafe fn context_init(parent: &mut Context, context: &mut CONTEXT) {
     *((teb + 0x08) as *mut usize) = stack_base;
     *((teb + 0x10) as *mut usize) = stack_limit;
     *((teb + 0x1478) as *mut usize) = dealloc_stack;
+}
+
+#[cfg(target_arch = "aarch64")]
+unsafe fn context_init(parent: &mut Context, context: &mut CONTEXT) {
+    // Must match initialize_call_frame / swap_registers in aarch64_windows.rs
+    const X19: usize = 0;
+    // X20..X28
+    const FP: usize = 10;
+    const LR: usize = 11;
+    const SP: usize = 12;
+    const D_BASE: usize = 14; // d8 starts here (byte offset 112) and ends d15 (byte offset 168)
+    const STACK_BASE: usize = 22;
+    const STACK_LIMIT: usize = 23;
+    const STACK_DEALLOC: usize = 24;
+
+    let gpr = &parent.regs.regs.gpr;
+
+    // Integer + control: x19..x28, fp, lr, sp, pc
+    let regs = &mut context.Anonymous.Anonymous;
+    regs.X19 = gpr[X19] as u64;
+    regs.X20 = gpr[X19 + 1] as u64;
+    regs.X21 = gpr[X19 + 2] as u64;
+    regs.X22 = gpr[X19 + 3] as u64;
+    regs.X23 = gpr[X19 + 4] as u64;
+    regs.X24 = gpr[X19 + 5] as u64;
+    regs.X25 = gpr[X19 + 6] as u64;
+    regs.X26 = gpr[X19 + 7] as u64;
+    regs.X27 = gpr[X19 + 8] as u64;
+    regs.X28 = gpr[X19 + 9] as u64;
+    regs.Fp = gpr[FP] as u64;
+    regs.Lr = gpr[LR] as u64;
+    context.Sp = gpr[SP] as u64;
+    context.Pc = gpr[LR] as u64;
+
+    // Callee-saved FP regs: d8..d15 live in low 64 bits of V[8..16]
+    let d_src = (gpr.as_ptr() as *const u64).add(D_BASE);
+    for i in 0..8 {
+        let bits = *d_src.add(i);
+        context.V[8 + i].Anonymous.Low = bits;
+        context.V[8 + i].Anonymous.High = 0;
+    }
+
+    let teb: usize;
+    core::arch::asm!("mov {0}, x18", out(reg) teb);
+
+    *((teb + 0x08) as *mut usize) = gpr[STACK_BASE];
+    *((teb + 0x10) as *mut usize) = gpr[STACK_LIMIT];
+    *((teb + 0x1478) as *mut usize) = gpr[STACK_DEALLOC];
 }

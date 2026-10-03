@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
-rust-version = "1.65"
+edition = "2024"
+rust-version = "1.85"
 name = "hashlink"
-version = "0.11.1"
+version = "0.12.2"
 build = false
 autolib = false
 autobins = false
@@ -54,7 +54,7 @@ name = "serde"
 path = "tests/serde.rs"
 
 [dependencies.hashbrown]
-version = "0.16"
+version = "0.17"
 features = ["default-hasher"]
 default-features = false
 

@@ -28,6 +28,61 @@ Released YYYY/MM/DD
 
 --------------------------------------------------------------------------------
 
+# 0.5.1
+
+Released 2025/11/5
+
+## Added
+
+* Fold expressions are supported. (#303)[https://github.com/gimli-rs/cpp_demangle/pull/303]
+
+## Fixed
+
+* We are now less conservative when accepting the legacy <data-member-prefix>
+  production for increased compatibility with libiberty.
+
+* When printing conversion and cast operators we now treat the type we are
+  converting/casting to as a self-contained child and prevent outer template
+  parameters/etc from leaking into it.
+
+* When looking for a <template-template-param> production after a conversion
+  operator, we now correctly handle the case where peeking for the next character
+  fails because we reached the end of the symbol.
+
+* When parsing <unqualified-name productions, accept <operator-names> both
+  with and without an "on" prefix. LLVM requires the prefix, while libiberty
+  accepts but does not require it.
+
+* Empty braced-enclosed initializer lists are now accepted.
+
+--------------------------------------------------------------------------------
+
+# 0.5.0
+
+Released 2025/9/23
+
+## Added
+
+* A new `Symbol::demangle` function has been introduced to replace the `Display`
+  impl. See below for the motivation.
+
+## Changed
+
+* The function previously known as `Symbol::demangle` has been renamed to
+  `Symbol::demangle_with_options`. See below for the motivation.
+
+## Removed
+
+* The implementation of `Display` for `Symbol` has been removed. This implementation
+  violated the contract of the `Display` trait by potentially returning an `Err`
+  without a failure of a write to the provided stream. This contract is enforced
+  by assertion since [Rust 1.80.0](https://github.com/rust-lang/rust/pull/125012).
+  The new `Symbol::demangle` function is the intended replacement for uses of
+  the `Display` impl.
+  (#233)[https://github.com/gimli-rs/cpp_demangle/issues/233]
+
+--------------------------------------------------------------------------------
+
 # 0.4.5
 
 Released 2025/9/23

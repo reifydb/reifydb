@@ -69,7 +69,7 @@ use table_row::{
 	TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
 	TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 };
-use transaction::{PostCommitInterceptor, PreCommitInterceptor};
+use transaction::PostCommitInterceptor;
 use view::{ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor, ViewPreUpdateInterceptor};
 
 pub type Chain<I> = InterceptorChain<I>;
@@ -104,7 +104,6 @@ pub trait WithInterceptors {
 		&mut self,
 	) -> &mut Chain<dyn RingBufferRowPostDeleteInterceptor + Send + Sync>;
 
-	fn pre_commit_interceptors(&mut self) -> &mut Chain<dyn PreCommitInterceptor + Send + Sync>;
 	fn post_commit_interceptors(&mut self) -> &mut Chain<dyn PostCommitInterceptor + Send + Sync>;
 
 	fn namespace_post_create_interceptors(

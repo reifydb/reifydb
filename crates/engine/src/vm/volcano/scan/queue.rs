@@ -36,7 +36,7 @@ pub struct QueueScan {
 	headers: ColumnHeaders,
 	shape: Option<RowShape>,
 	storage_types: Vec<ValueType>,
-	dictionaries: Vec<Option<Dictionary>>,
+	dictionaries: Vec<Option<(Dictionary, ValueType)>>,
 	last_key: Option<TaggedKey>,
 	exhausted: bool,
 	context: Option<Arc<QueryContext>>,
@@ -53,7 +53,7 @@ impl QueueScan {
 				&& let Some(dict) = context.services.catalog.find_dictionary(rx, dict_id)?
 			{
 				storage_types.push(ValueType::DictionaryId);
-				dictionaries.push(Some(dict));
+				dictionaries.push(Some((dict, col.constraint.get_type())));
 				continue;
 			}
 			storage_types.push(col.constraint.get_type());

@@ -18,7 +18,6 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, SeriesId, TableId},
 };
-use reifydb_runtime::context::clock::Clock;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
@@ -49,7 +48,6 @@ fn system_series_use_reserved_ids_and_first_user_source_starts_at_16385() {
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Clock::Real,
 	)
 	.expect("admin transaction");
 

@@ -450,8 +450,12 @@ fn base_column(name: &str, base: &ValueType, rows: Vec<Option<String>>) -> Resul
 	let array: ArrayRef = match base {
 		ValueType::Option(inner) => return base_column(name, inner, rows),
 		ValueType::Boolean => Arc::new(BooleanArray::from(cells(name, base, rows, false, |s| s.parse().ok())?)),
-		ValueType::Float4 => Arc::new(Float32Array::from(cells(name, base, rows, 0.0f32, |s| s.parse().ok())?)),
-		ValueType::Float8 => Arc::new(Float64Array::from(cells(name, base, rows, 0.0f64, |s| s.parse().ok())?)),
+		ValueType::Float4 => Arc::new(Float32Array::from(cells(name, base, rows, 0.0f32, |s| {
+			s.parse().ok().map(OrderedF32::canonical)
+		})?)),
+		ValueType::Float8 => Arc::new(Float64Array::from(cells(name, base, rows, 0.0f64, |s| {
+			s.parse().ok().map(OrderedF64::canonical)
+		})?)),
 		ValueType::Int1 => Arc::new(Int8Array::from(cells(name, base, rows, 0i8, |s| s.parse().ok())?)),
 		ValueType::Int2 => Arc::new(Int16Array::from(cells(name, base, rows, 0i16, |s| s.parse().ok())?)),
 		ValueType::Int4 => Arc::new(Int32Array::from(cells(name, base, rows, 0i32, |s| s.parse().ok())?)),

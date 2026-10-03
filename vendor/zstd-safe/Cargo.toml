@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.64"
 name = "zstd-safe"
-version = "7.2.4"
+version = "8.0.0"
 authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
 build = "build.rs"
 exclude = ["update_consts.sh"]
@@ -33,7 +33,7 @@ categories = [
     "api-bindings",
     "compression",
 ]
-license = "MIT OR Apache-2.0"
+license = "BSD-3-Clause"
 repository = "https://github.com/gyscos/zstd-rs"
 
 [package.metadata.docs.rs]
@@ -48,6 +48,7 @@ features = [
 [features]
 arrays = []
 bindgen = ["zstd-sys/bindgen"]
+cmake = ["zstd-sys/cmake"]
 debug = ["zstd-sys/debug"]
 default = [
     "legacy",
@@ -64,6 +65,7 @@ seekable = ["zstd-sys/seekable"]
 std = ["zstd-sys/std"]
 thin = ["zstd-sys/thin"]
 thin-lto = ["zstd-sys/thin-lto"]
+vendored = ["zstd-sys/vendored"]
 zdict_builder = ["zstd-sys/zdict_builder"]
 zstdmt = ["zstd-sys/zstdmt"]
 
@@ -72,7 +74,7 @@ name = "zstd_safe"
 path = "src/lib.rs"
 
 [dependencies.zstd-sys]
-version = "2.0.15"
+version = "2.1.0"
 default-features = false
 
 [lints.rust]

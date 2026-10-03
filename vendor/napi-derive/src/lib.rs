@@ -1,10 +1,10 @@
 #[cfg(feature = "compat-mode")]
 mod compat_macro;
 mod expand;
+#[cfg(not(feature = "noop"))]
 mod parser;
 
-#[macro_use]
-extern crate syn;
+#[cfg(not(feature = "noop"))]
 #[macro_use]
 extern crate napi_derive_backend;
 #[macro_use]
@@ -14,7 +14,8 @@ use std::env;
 
 use proc_macro::TokenStream;
 #[cfg(feature = "compat-mode")]
-use syn::{fold::Fold, parse_macro_input, ItemFn};
+use syn::fold::Fold;
+use syn::{parse_macro_input, ItemFn};
 
 /// ```ignore
 /// #[napi]
@@ -26,8 +27,8 @@ use syn::{fold::Fold, parse_macro_input, ItemFn};
 pub fn napi(attr: TokenStream, input: TokenStream) -> TokenStream {
   match expand::expand(attr.into(), input.into()) {
     Ok(tokens) => {
-      if env::var("DEBUG_GENERATED_CODE").is_ok() {
-        println!("{}", tokens);
+      if env::var("NAPI_DEBUG_GENERATED_CODE").is_ok() {
+        println!("{tokens}");
       }
       tokens.into()
     }
@@ -151,18 +152,21 @@ pub fn module_exports(_attr: TokenStream, input: TokenStream) -> TokenStream {
   };
 
   let register = quote! {
-    #[cfg_attr(not(target_family = "wasm"), napi::bindgen_prelude::ctor)]
-    fn __napi__explicit_module_register() {
-      unsafe fn register(raw_env: napi::sys::napi_env, raw_exports: napi::sys::napi_value) -> napi::Result<()> {
-        use napi::{Env, JsObject, NapiValue};
+    #[cfg(not(target_family = "wasm"))]
+    napi::ctor::declarative::ctor! {
+      #[ctor(unsafe)]
+      fn __napi_explicit_module_register() {
+        unsafe fn register(raw_env: napi::sys::napi_env, raw_exports: napi::sys::napi_value) -> napi::Result<()> {
+          use napi::{Env, JsObject, NapiValue};
 
-        let env = Env::from_raw(raw_env);
-        let exports = JsObject::from_raw_unchecked(raw_env, raw_exports);
+          let env = Env::from_raw(raw_env);
+          let exports = JsObject::from_raw_unchecked(raw_env, raw_exports);
 
-        #call_expr
+          #call_expr
+        }
+
+        napi::bindgen_prelude::register_module_exports(register)
       }
-
-      napi::bindgen_prelude::register_module_exports(register)
     }
   };
 
@@ -172,5 +176,17 @@ pub fn module_exports(_attr: TokenStream, input: TokenStream) -> TokenStream {
 
     #register
   })
+  .into()
+}
+
+#[proc_macro_attribute]
+pub fn module_init(_: TokenStream, input: TokenStream) -> TokenStream {
+  let input = parse_macro_input!(input as ItemFn);
+  quote! {
+    napi::ctor::declarative::ctor! {
+      #[ctor(unsafe)]
+      #input
+    }
+  }
   .into()
 }

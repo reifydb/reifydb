@@ -6,8 +6,8 @@ include = ["/LICENSE-*", "/src"]
 license = "MIT OR Apache-2.0"
 name = "wasm-bindgen-test"
 repository = "https://github.com/wasm-bindgen/wasm-bindgen"
-rust-version = "1.77"
-version = "0.3.72"
+rust-version = "1.81"
+version = "0.3.79"
 
 [features]
 default = ["std"]
@@ -15,11 +15,11 @@ std = ["wasm-bindgen/std", "js-sys/std", "wasm-bindgen-futures/std"]
 
 [dependencies]
 gg-alloc = { version = "1.0", optional = true }
-js-sys = { path = '../js-sys', version = '=0.3.99', default-features = false }
-wasm-bindgen = { path = '../..', version = '=0.2.122', default-features = false }
-wasm-bindgen-futures = { path = '../futures', version = '=0.4.72', default-features = false }
-wasm-bindgen-test-macro = { path = '../test-macro', version = '=0.3.72' }
-wasm-bindgen-test-shared = { path = "../test-shared", version = "=0.2.122" }
+js-sys = { path = '../js-sys', version = '=0.3.106', default-features = false }
+wasm-bindgen = { path = '../..', version = '=0.2.129', default-features = false }
+wasm-bindgen-futures = { path = '../futures', version = '=0.4.79', default-features = false }
+wasm-bindgen-test-macro = { path = '../test-macro', version = '=0.3.79' }
+wasm-bindgen-test-shared = { path = "../test-shared", version = "=0.2.129" }
 
 # benchmark required start
 async-trait = "0.1.89"
@@ -33,7 +33,9 @@ serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 # benchmark required end
 
 [target.'cfg(all(target_arch = "wasm32", wasm_bindgen_unstable_test_coverage))'.dependencies]
-minicov = "0.3.8"
+# Pinned: 0.3.9 bundles the LLVM 23.1 profiling runtime (profraw v11), which
+# crashes/mismatches with the LLVM 22 instrumentation of the pinned nightly.
+minicov = "=0.3.8"
 
 [dev-dependencies]
 web-sys = { path = "../web-sys", features = [

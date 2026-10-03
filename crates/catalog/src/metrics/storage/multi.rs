@@ -97,13 +97,7 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 		}
 	}
 
-	pub fn record_write(
-		&mut self,
-		tier: Tier,
-		key: &[u8],
-		value_bytes: u64,
-		pre_value_bytes: Option<u64>,
-	) -> Result<()> {
+	pub fn record_write(&mut self, tier: Tier, key: &[u8], value_bytes: u64, pre_value_bytes: Option<u64>) {
 		let id = parse_id(key);
 
 		let key_bytes = (key.len() + MVCC_VERSION_SIZE) as u64;
@@ -117,7 +111,7 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 		})
 	}
 
-	pub fn record_delete(&mut self, tier: Tier, key: &[u8], pre_value_bytes: Option<u64>) -> Result<()> {
+	pub fn record_delete(&mut self, tier: Tier, key: &[u8], pre_value_bytes: Option<u64>) {
 		let id = parse_id(key);
 
 		let key_bytes = (key.len() + MVCC_VERSION_SIZE) as u64;
@@ -132,7 +126,7 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 		})
 	}
 
-	pub fn record_eviction(&mut self, tier: Tier, key: &[u8], value_bytes: u64, current: bool) -> Result<()> {
+	pub fn record_eviction(&mut self, tier: Tier, key: &[u8], value_bytes: u64, current: bool) {
 		let id = parse_id(key);
 
 		let key_bytes = (key.len() + MVCC_VERSION_SIZE) as u64;
@@ -142,13 +136,12 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 		})
 	}
 
-	fn update<F>(&mut self, tier: Tier, id: MetricsId, f: F) -> Result<()>
+	fn update<F>(&mut self, tier: Tier, id: MetricsId, f: F)
 	where
 		F: FnOnce(&mut MultiStorageMetrics),
 	{
 		f(self.stats.entry((tier, id)).or_default());
 		self.dirty.insert((tier, id));
-		Ok(())
 	}
 
 	pub fn flush(&mut self) -> Result<()> {

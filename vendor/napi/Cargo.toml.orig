@@ -7,8 +7,8 @@ license = "MIT"
 name = "napi"
 readme = "README.md"
 repository = "https://github.com/napi-rs/napi-rs"
-rust-version = "1.65"
-version = "2.16.17"
+rust-version.workspace = true
+version = "3.14.0"
 
 [lib]
 doctest = false
@@ -22,13 +22,24 @@ independent = true
 
 [features]
 async = ["tokio_rt"]
+# Pluggable async runtime SPI (`AsyncRuntime` + `register_async_runtime`).
+# Deliberately does NOT pull in tokio: a pure `async-runtime` build is tokio-free.
+async-runtime = ["napi4"]
 chrono_date = ["chrono", "napi5"]
+# Enable deprecated types and traits for compatibility
 compat-mode = []
-default = ["napi3", "compat-mode"]                                               # for most Node.js users
+default = ["napi4", "dyn-symbols"]
 deferred_trace = ["napi4"]
 error_anyhow = ["anyhow"]
 experimental = ["napi-sys/experimental"]
-full = ["latin1", "napi9", "async", "serde-json", "experimental", "chrono_date"]
+full = [
+  "latin1",
+  "napi10",
+  "async",
+  "serde-json",
+  "experimental",
+  "chrono_date",
+]
 object_indexmap = ["indexmap"]
 latin1 = ["encoding_rs"]
 napi1 = []
@@ -40,6 +51,8 @@ napi6 = ["napi5", "napi-sys/napi6"]
 napi7 = ["napi6", "napi-sys/napi7"]
 napi8 = ["napi7", "napi-sys/napi8"]
 napi9 = ["napi8", "napi-sys/napi9"]
+napi10 = ["napi9", "napi-sys/napi10"]
+web_stream = ["futures-core", "tokio-stream", "napi4", "tokio_rt"]
 noop = []
 serde-json = ["serde", "serde_json"]
 serde-json-ordered = ["serde-json", "serde_json/preserve_order"]
@@ -56,11 +69,17 @@ tokio_sync = ["tokio/sync"]
 tokio_test_util = ["tokio/test-util"]
 tokio_time = ["tokio/time"]
 dyn-symbols = ["napi-sys/dyn-symbols"]
+# Add a runtime Node version detection
+node_version_detect = []
+tracing = ["dep:tracing"]
 
 [dependencies]
 bitflags = "2"
-ctor = "0.2"
-once_cell = "1.19"
+# Keep ctor's priority support disabled until the Apple/Zig cross-link
+# path stops emitting unresolved `section$end$__DATA$CTOR` references.
+ctor = { version = "1.0.0", default-features = false }
+nohash-hasher = "0.2.0"
+rustc-hash = "2.1.1"
 
 [dependencies.anyhow]
 optional = true
@@ -68,7 +87,8 @@ version = "1"
 
 [dependencies.napi-sys]
 path = "../sys"
-version = "2.4.0"
+version = "3.4.0"
+default-features = false
 
 [dependencies.encoding_rs]
 optional = true
@@ -78,16 +98,25 @@ version = "0.8"
 optional = true
 version = "0.4"
 
-[target.'cfg(target_family = "wasm")'.dependencies]
-napi-derive = { path = "../macro", version = "2.10.1", default-features = false }
-tokio = { version = "1", optional = true, features = ["rt", "sync"] }
+[dependencies.tracing]
+optional = true
+version = "0.1"
 
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
-tokio = { version = "1", optional = true, features = [
+# `dladdr`/`dlopen` and the `RTLD_*` constants used to pin the addon image, see
+# `retain_current_module_for_unload_safety`. Windows uses `GetModuleHandleExW`
+# declared inline, so it needs no extra dependency.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(any(all(target_family = "wasm", tokio_unstable), not(target_family = "wasm")))'.dependencies]
+tokio = { version = "1", features = [
   "rt",
   "rt-multi-thread",
   "sync",
-] }
+], optional = true }
+
+[target.'cfg(all(target_family = "wasm", not(tokio_unstable)))'.dependencies]
+tokio = { version = "1", features = ["rt", "sync"], optional = true }
 
 [dependencies.serde]
 optional = true
@@ -100,3 +129,22 @@ version = "1"
 [dependencies.indexmap]
 optional = true
 version = "2"
+
+[dependencies.futures-core]
+optional = true
+version = "0.3"
+
+[dependencies.tokio-stream]
+optional = true
+version = "0.1"
+
+[dependencies.futures]
+version = "0.3"
+
+[build-dependencies]
+# `wasi-heap-sync`: `src/wasi_heap_sync.rs` defines the allocator wrappers, so every addon's
+# `napi_build::setup()` must link with the matching `--wrap` arguments. Cargo feature
+# unification carries the feature from here into it.
+napi-build = { path = "../build", version = "2.6.0", features = [
+  "wasi-heap-sync",
+] }

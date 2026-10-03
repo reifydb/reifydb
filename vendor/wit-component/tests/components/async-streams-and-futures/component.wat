@@ -4,7 +4,7 @@
       (type (;0;) (future u32))
       (type (;1;) (future 0))
       (type (;2;) (stream string))
-      (type (;3;) (func (param "x" 1) (param "y" u32) (result 2)))
+      (type (;3;) (func async (param "x" 1) (param "y" u32) (result 2)))
       (export (;0;) "foo" (func (type 3)))
     )
   )
@@ -12,7 +12,7 @@
   (type (;1;) (future u32))
   (type (;2;) (future 1))
   (type (;3;) (stream string))
-  (type (;4;) (func (param "x" 2) (param "y" u32) (result 3)))
+  (type (;4;) (func async (param "x" 2) (param "y" u32) (result 3)))
   (import "foo" (func $foo (;0;) (type 4)))
   (core module $main (;0;)
     (type (;0;) (func (param i32 i32 i32) (result i32)))
@@ -129,8 +129,7 @@
   )
   (core module $wit-component-shim-module (;1;)
     (type (;0;) (func (param i32 i32 i32) (result i32)))
-    (type (;1;) (func (param i32 i32 i32) (result i32)))
-    (type (;2;) (func (param i32 i32) (result i32)))
+    (type (;1;) (func (param i32 i32) (result i32)))
     (table (;0;) 26 26 funcref)
     (export "0" (func $"indirect-$root-[async-lower]foo"))
     (export "1" (func $"$root-[stream-read-2]foo"))
@@ -166,43 +165,43 @@
       i32.const 0
       call_indirect (type 0)
     )
-    (func $"$root-[stream-read-2]foo" (;1;) (type 1) (param i32 i32 i32) (result i32)
+    (func $"$root-[stream-read-2]foo" (;1;) (type 0) (param i32 i32 i32) (result i32)
       local.get 0
       local.get 1
       local.get 2
       i32.const 1
-      call_indirect (type 1)
+      call_indirect (type 0)
     )
-    (func $"$root-[stream-write-2]foo" (;2;) (type 1) (param i32 i32 i32) (result i32)
+    (func $"$root-[stream-write-2]foo" (;2;) (type 0) (param i32 i32 i32) (result i32)
       local.get 0
       local.get 1
       local.get 2
       i32.const 2
-      call_indirect (type 1)
+      call_indirect (type 0)
     )
-    (func $"$root-[future-read-0]foo" (;3;) (type 2) (param i32 i32) (result i32)
+    (func $"$root-[future-read-0]foo" (;3;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 3
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"$root-[future-write-0]foo" (;4;) (type 2) (param i32 i32) (result i32)
+    (func $"$root-[future-write-0]foo" (;4;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 4
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"$root-[future-read-1]foo" (;5;) (type 2) (param i32 i32) (result i32)
+    (func $"$root-[future-read-1]foo" (;5;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 5
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"$root-[future-write-1]foo" (;6;) (type 2) (param i32 i32) (result i32)
+    (func $"$root-[future-write-1]foo" (;6;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 6
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
     (func $"indirect-foo:foo/bar-[async-lower]foo" (;7;) (type 0) (param i32 i32 i32) (result i32)
       local.get 0
@@ -211,156 +210,120 @@
       i32.const 7
       call_indirect (type 0)
     )
-    (func $"foo:foo/bar-[stream-read-2]foo" (;8;) (type 1) (param i32 i32 i32) (result i32)
+    (func $"foo:foo/bar-[stream-read-2]foo" (;8;) (type 0) (param i32 i32 i32) (result i32)
       local.get 0
       local.get 1
       local.get 2
       i32.const 8
-      call_indirect (type 1)
+      call_indirect (type 0)
     )
-    (func $"foo:foo/bar-[stream-write-2]foo" (;9;) (type 1) (param i32 i32 i32) (result i32)
+    (func $"foo:foo/bar-[stream-write-2]foo" (;9;) (type 0) (param i32 i32 i32) (result i32)
       local.get 0
       local.get 1
       local.get 2
       i32.const 9
-      call_indirect (type 1)
+      call_indirect (type 0)
     )
-    (func $"foo:foo/bar-[future-read-0]foo" (;10;) (type 2) (param i32 i32) (result i32)
+    (func $"foo:foo/bar-[future-read-0]foo" (;10;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 10
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"foo:foo/bar-[future-write-0]foo" (;11;) (type 2) (param i32 i32) (result i32)
+    (func $"foo:foo/bar-[future-write-0]foo" (;11;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 11
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"foo:foo/bar-[future-read-1]foo" (;12;) (type 2) (param i32 i32) (result i32)
+    (func $"foo:foo/bar-[future-read-1]foo" (;12;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 12
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"foo:foo/bar-[future-write-1]foo" (;13;) (type 2) (param i32 i32) (result i32)
+    (func $"foo:foo/bar-[future-write-1]foo" (;13;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 13
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"[export]$root-[stream-read-2]foo" (;14;) (type 1) (param i32 i32 i32) (result i32)
+    (func $"[export]$root-[stream-read-2]foo" (;14;) (type 0) (param i32 i32 i32) (result i32)
       local.get 0
       local.get 1
       local.get 2
       i32.const 14
-      call_indirect (type 1)
+      call_indirect (type 0)
     )
-    (func $"[export]$root-[stream-write-2]foo" (;15;) (type 1) (param i32 i32 i32) (result i32)
+    (func $"[export]$root-[stream-write-2]foo" (;15;) (type 0) (param i32 i32 i32) (result i32)
       local.get 0
       local.get 1
       local.get 2
       i32.const 15
-      call_indirect (type 1)
+      call_indirect (type 0)
     )
-    (func $"[export]$root-[future-read-0]foo" (;16;) (type 2) (param i32 i32) (result i32)
+    (func $"[export]$root-[future-read-0]foo" (;16;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 16
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"[export]$root-[future-write-0]foo" (;17;) (type 2) (param i32 i32) (result i32)
+    (func $"[export]$root-[future-write-0]foo" (;17;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 17
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"[export]$root-[future-read-1]foo" (;18;) (type 2) (param i32 i32) (result i32)
+    (func $"[export]$root-[future-read-1]foo" (;18;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 18
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"[export]$root-[future-write-1]foo" (;19;) (type 2) (param i32 i32) (result i32)
+    (func $"[export]$root-[future-write-1]foo" (;19;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 19
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"[export]foo:foo/bar-[stream-read-2]foo" (;20;) (type 1) (param i32 i32 i32) (result i32)
+    (func $"[export]foo:foo/bar-[stream-read-2]foo" (;20;) (type 0) (param i32 i32 i32) (result i32)
       local.get 0
       local.get 1
       local.get 2
       i32.const 20
-      call_indirect (type 1)
+      call_indirect (type 0)
     )
-    (func $"[export]foo:foo/bar-[stream-write-2]foo" (;21;) (type 1) (param i32 i32 i32) (result i32)
+    (func $"[export]foo:foo/bar-[stream-write-2]foo" (;21;) (type 0) (param i32 i32 i32) (result i32)
       local.get 0
       local.get 1
       local.get 2
       i32.const 21
-      call_indirect (type 1)
+      call_indirect (type 0)
     )
-    (func $"[export]foo:foo/bar-[future-read-0]foo" (;22;) (type 2) (param i32 i32) (result i32)
+    (func $"[export]foo:foo/bar-[future-read-0]foo" (;22;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 22
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"[export]foo:foo/bar-[future-write-0]foo" (;23;) (type 2) (param i32 i32) (result i32)
+    (func $"[export]foo:foo/bar-[future-write-0]foo" (;23;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 23
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"[export]foo:foo/bar-[future-read-1]foo" (;24;) (type 2) (param i32 i32) (result i32)
+    (func $"[export]foo:foo/bar-[future-read-1]foo" (;24;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 24
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (func $"[export]foo:foo/bar-[future-write-1]foo" (;25;) (type 2) (param i32 i32) (result i32)
+    (func $"[export]foo:foo/bar-[future-write-1]foo" (;25;) (type 1) (param i32 i32) (result i32)
       local.get 0
       local.get 1
       i32.const 25
-      call_indirect (type 2)
+      call_indirect (type 1)
     )
-    (@producers
-      (processed-by "wit-component" "$CARGO_PKG_VERSION")
-    )
-  )
-  (core module $wit-component-fixup (;2;)
-    (type (;0;) (func (param i32 i32 i32) (result i32)))
-    (type (;1;) (func (param i32 i32 i32) (result i32)))
-    (type (;2;) (func (param i32 i32) (result i32)))
-    (import "" "0" (func (;0;) (type 0)))
-    (import "" "1" (func (;1;) (type 1)))
-    (import "" "2" (func (;2;) (type 1)))
-    (import "" "3" (func (;3;) (type 2)))
-    (import "" "4" (func (;4;) (type 2)))
-    (import "" "5" (func (;5;) (type 2)))
-    (import "" "6" (func (;6;) (type 2)))
-    (import "" "7" (func (;7;) (type 0)))
-    (import "" "8" (func (;8;) (type 1)))
-    (import "" "9" (func (;9;) (type 1)))
-    (import "" "10" (func (;10;) (type 2)))
-    (import "" "11" (func (;11;) (type 2)))
-    (import "" "12" (func (;12;) (type 2)))
-    (import "" "13" (func (;13;) (type 2)))
-    (import "" "14" (func (;14;) (type 1)))
-    (import "" "15" (func (;15;) (type 1)))
-    (import "" "16" (func (;16;) (type 2)))
-    (import "" "17" (func (;17;) (type 2)))
-    (import "" "18" (func (;18;) (type 2)))
-    (import "" "19" (func (;19;) (type 2)))
-    (import "" "20" (func (;20;) (type 1)))
-    (import "" "21" (func (;21;) (type 1)))
-    (import "" "22" (func (;22;) (type 2)))
-    (import "" "23" (func (;23;) (type 2)))
-    (import "" "24" (func (;24;) (type 2)))
-    (import "" "25" (func (;25;) (type 2)))
-    (import "" "$imports" (table (;0;) 26 26 funcref))
-    (elem (;0;) (i32.const 0) func 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25)
     (@producers
       (processed-by "wit-component" "$CARGO_PKG_VERSION")
     )
@@ -503,30 +466,28 @@
     (export "[future-drop-readable-1]foo" (func $"#core-func63 future.drop-readable"))
     (export "[future-drop-writable-1]foo" (func $"#core-func64 future.drop-writable"))
   )
-  (type (;6;) (stream string))
-  (core func $"#core-func65 stream.new" (@name "stream.new") (;65;) (canon stream.new 6))
+  (core func $"#core-func65 stream.new" (@name "stream.new") (;65;) (canon stream.new 3))
   (alias core export $wit-component-shim-instance "20" (core func $"[export]foo:foo/bar-[stream-read-2]foo" (;66;)))
   (alias core export $wit-component-shim-instance "21" (core func $"[export]foo:foo/bar-[stream-write-2]foo" (;67;)))
-  (core func $"#core-func68 stream.cancel-read" (@name "stream.cancel-read") (;68;) (canon stream.cancel-read 6))
-  (core func $"#core-func69 stream.cancel-write" (@name "stream.cancel-write") (;69;) (canon stream.cancel-write 6))
-  (core func $"#core-func70 stream.drop-readable" (@name "stream.drop-readable") (;70;) (canon stream.drop-readable 6))
-  (core func $"#core-func71 stream.drop-writable" (@name "stream.drop-writable") (;71;) (canon stream.drop-writable 6))
-  (type (;7;) (future u32))
-  (core func $"#core-func72 future.new" (@name "future.new") (;72;) (canon future.new 7))
+  (core func $"#core-func68 stream.cancel-read" (@name "stream.cancel-read") (;68;) (canon stream.cancel-read 3))
+  (core func $"#core-func69 stream.cancel-write" (@name "stream.cancel-write") (;69;) (canon stream.cancel-write 3))
+  (core func $"#core-func70 stream.drop-readable" (@name "stream.drop-readable") (;70;) (canon stream.drop-readable 3))
+  (core func $"#core-func71 stream.drop-writable" (@name "stream.drop-writable") (;71;) (canon stream.drop-writable 3))
+  (core func $"#core-func72 future.new" (@name "future.new") (;72;) (canon future.new 1))
   (alias core export $wit-component-shim-instance "22" (core func $"[export]foo:foo/bar-[future-read-0]foo" (;73;)))
   (alias core export $wit-component-shim-instance "23" (core func $"[export]foo:foo/bar-[future-write-0]foo" (;74;)))
-  (core func $"#core-func75 future.cancel-read" (@name "future.cancel-read") (;75;) (canon future.cancel-read 7))
-  (core func $"#core-func76 future.cancel-write" (@name "future.cancel-write") (;76;) (canon future.cancel-write 7))
-  (core func $"#core-func77 future.drop-readable" (@name "future.drop-readable") (;77;) (canon future.drop-readable 7))
-  (core func $"#core-func78 future.drop-writable" (@name "future.drop-writable") (;78;) (canon future.drop-writable 7))
-  (type (;8;) (future 7))
-  (core func $"#core-func79 future.new" (@name "future.new") (;79;) (canon future.new 8))
+  (core func $"#core-func75 future.cancel-read" (@name "future.cancel-read") (;75;) (canon future.cancel-read 1))
+  (core func $"#core-func76 future.cancel-write" (@name "future.cancel-write") (;76;) (canon future.cancel-write 1))
+  (core func $"#core-func77 future.drop-readable" (@name "future.drop-readable") (;77;) (canon future.drop-readable 1))
+  (core func $"#core-func78 future.drop-writable" (@name "future.drop-writable") (;78;) (canon future.drop-writable 1))
+  (type (;6;) (future 1))
+  (core func $"#core-func79 future.new" (@name "future.new") (;79;) (canon future.new 6))
   (alias core export $wit-component-shim-instance "24" (core func $"[export]foo:foo/bar-[future-read-1]foo" (;80;)))
   (alias core export $wit-component-shim-instance "25" (core func $"[export]foo:foo/bar-[future-write-1]foo" (;81;)))
-  (core func $"#core-func82 future.cancel-read" (@name "future.cancel-read") (;82;) (canon future.cancel-read 8))
-  (core func $"#core-func83 future.cancel-write" (@name "future.cancel-write") (;83;) (canon future.cancel-write 8))
-  (core func $"#core-func84 future.drop-readable" (@name "future.drop-readable") (;84;) (canon future.drop-readable 8))
-  (core func $"#core-func85 future.drop-writable" (@name "future.drop-writable") (;85;) (canon future.drop-writable 8))
+  (core func $"#core-func82 future.cancel-read" (@name "future.cancel-read") (;82;) (canon future.cancel-read 6))
+  (core func $"#core-func83 future.cancel-write" (@name "future.cancel-write") (;83;) (canon future.cancel-write 6))
+  (core func $"#core-func84 future.drop-readable" (@name "future.drop-readable") (;84;) (canon future.drop-readable 6))
+  (core func $"#core-func85 future.drop-writable" (@name "future.drop-writable") (;85;) (canon future.drop-writable 6))
   (core instance $"[export]foo:foo/bar" (;4;)
     (export "[stream-new-2]foo" (func $"#core-func65 stream.new"))
     (export "[stream-read-2]foo" (func $"[export]foo:foo/bar-[stream-read-2]foo"))
@@ -558,10 +519,44 @@
     )
   )
   (alias core export $main "memory" (core memory $memory (;0;)))
-  (alias core export $wit-component-shim-instance "$imports" (core table $"shim table" (;0;)))
-  (alias core export $main "cabi_realloc" (core func $realloc (;86;)))
-  (core func $"#core-func87 indirect-$root-[async-lower]foo" (@name "indirect-$root-[async-lower]foo") (;87;) (canon lower (func $foo) (memory $memory) async))
-  (core func $stream.read (;88;) (canon stream.read 3 (memory $memory) (realloc $realloc) string-encoding=utf8))
+  (core module $wit-component-fixup (;2;)
+    (type (;0;) (func (param i32 i32 i32) (result i32)))
+    (type (;1;) (func (param i32 i32) (result i32)))
+    (import "actual" "0" (func $0 (;0;) (type 0)))
+    (import "actual" "1" (func $1 (;1;) (type 0)))
+    (import "actual" "2" (func $2 (;2;) (type 0)))
+    (import "actual" "3" (func $3 (;3;) (type 1)))
+    (import "actual" "4" (func $4 (;4;) (type 1)))
+    (import "actual" "5" (func $5 (;5;) (type 1)))
+    (import "actual" "6" (func $6 (;6;) (type 1)))
+    (import "actual" "7" (func $7 (;7;) (type 0)))
+    (import "actual" "8" (func $8 (;8;) (type 0)))
+    (import "actual" "9" (func $9 (;9;) (type 0)))
+    (import "actual" "10" (func $10 (;10;) (type 1)))
+    (import "actual" "11" (func $11 (;11;) (type 1)))
+    (import "actual" "12" (func $12 (;12;) (type 1)))
+    (import "actual" "13" (func $13 (;13;) (type 1)))
+    (import "actual" "14" (func $14 (;14;) (type 0)))
+    (import "actual" "15" (func $15 (;15;) (type 0)))
+    (import "actual" "16" (func $16 (;16;) (type 1)))
+    (import "actual" "17" (func $17 (;17;) (type 1)))
+    (import "actual" "18" (func $18 (;18;) (type 1)))
+    (import "actual" "19" (func $19 (;19;) (type 1)))
+    (import "actual" "20" (func $20 (;20;) (type 0)))
+    (import "actual" "21" (func $21 (;21;) (type 0)))
+    (import "actual" "22" (func $22 (;22;) (type 1)))
+    (import "actual" "23" (func $23 (;23;) (type 1)))
+    (import "actual" "24" (func $24 (;24;) (type 1)))
+    (import "actual" "25" (func $25 (;25;) (type 1)))
+    (import "shim" "$imports" (table (;0;) 26 26 funcref))
+    (elem (;0;) (i32.const 0) func $0 $1 $2 $3 $4 $5 $6 $7 $8 $9 $10 $11 $12 $13 $14 $15 $16 $17 $18 $19 $20 $21 $22 $23 $24 $25)
+    (@producers
+      (processed-by "wit-component" "$CARGO_PKG_VERSION")
+    )
+  )
+  (core func $"#core-func86 indirect-$root-[async-lower]foo" (@name "indirect-$root-[async-lower]foo") (;86;) (canon lower (func $foo) (memory $memory) async))
+  (alias core export $main "cabi_realloc" (core func $cabi_realloc (;87;)))
+  (core func $stream.read (;88;) (canon stream.read 3 (memory $memory) (realloc $cabi_realloc) string-encoding=utf8))
   (core func $stream.write (;89;) (canon stream.write 3 (memory $memory) string-encoding=utf8))
   (core func $future.read (;90;) (canon future.read 1 (memory $memory)))
   (core func $future.write (;91;) (canon future.write 1 (memory $memory)))
@@ -569,27 +564,26 @@
   (core func $"#core-func93 future.write" (@name "future.write") (;93;) (canon future.write 2 (memory $memory)))
   (alias export $foo:foo/bar "foo" (func $"#func1 foo" (@name "foo") (;1;)))
   (core func $"#core-func94 indirect-foo:foo/bar-[async-lower]foo" (@name "indirect-foo:foo/bar-[async-lower]foo") (;94;) (canon lower (func $"#func1 foo") (memory $memory) async))
-  (core func $"#core-func95 stream.read" (@name "stream.read") (;95;) (canon stream.read 3 (memory $memory) (realloc $realloc) string-encoding=utf8))
+  (core func $"#core-func95 stream.read" (@name "stream.read") (;95;) (canon stream.read 3 (memory $memory) (realloc $cabi_realloc) string-encoding=utf8))
   (core func $"#core-func96 stream.write" (@name "stream.write") (;96;) (canon stream.write 3 (memory $memory) string-encoding=utf8))
   (core func $"#core-func97 future.read" (@name "future.read") (;97;) (canon future.read 1 (memory $memory)))
   (core func $"#core-func98 future.write" (@name "future.write") (;98;) (canon future.write 1 (memory $memory)))
   (core func $"#core-func99 future.read" (@name "future.read") (;99;) (canon future.read 5 (memory $memory)))
   (core func $"#core-func100 future.write" (@name "future.write") (;100;) (canon future.write 5 (memory $memory)))
-  (core func $"#core-func101 stream.read" (@name "stream.read") (;101;) (canon stream.read 3 (memory $memory) (realloc $realloc) string-encoding=utf8))
+  (core func $"#core-func101 stream.read" (@name "stream.read") (;101;) (canon stream.read 3 (memory $memory) (realloc $cabi_realloc) string-encoding=utf8))
   (core func $"#core-func102 stream.write" (@name "stream.write") (;102;) (canon stream.write 3 (memory $memory) string-encoding=utf8))
   (core func $"#core-func103 future.read" (@name "future.read") (;103;) (canon future.read 1 (memory $memory)))
   (core func $"#core-func104 future.write" (@name "future.write") (;104;) (canon future.write 1 (memory $memory)))
   (core func $"#core-func105 future.read" (@name "future.read") (;105;) (canon future.read 2 (memory $memory)))
   (core func $"#core-func106 future.write" (@name "future.write") (;106;) (canon future.write 2 (memory $memory)))
-  (core func $"#core-func107 stream.read" (@name "stream.read") (;107;) (canon stream.read 6 (memory $memory) (realloc $realloc) string-encoding=utf8))
-  (core func $"#core-func108 stream.write" (@name "stream.write") (;108;) (canon stream.write 6 (memory $memory) string-encoding=utf8))
-  (core func $"#core-func109 future.read" (@name "future.read") (;109;) (canon future.read 7 (memory $memory)))
-  (core func $"#core-func110 future.write" (@name "future.write") (;110;) (canon future.write 7 (memory $memory)))
-  (core func $"#core-func111 future.read" (@name "future.read") (;111;) (canon future.read 8 (memory $memory)))
-  (core func $"#core-func112 future.write" (@name "future.write") (;112;) (canon future.write 8 (memory $memory)))
-  (core instance $fixup-args (;6;)
-    (export "$imports" (table $"shim table"))
-    (export "0" (func $"#core-func87 indirect-$root-[async-lower]foo"))
+  (core func $"#core-func107 stream.read" (@name "stream.read") (;107;) (canon stream.read 3 (memory $memory) (realloc $cabi_realloc) string-encoding=utf8))
+  (core func $"#core-func108 stream.write" (@name "stream.write") (;108;) (canon stream.write 3 (memory $memory) string-encoding=utf8))
+  (core func $"#core-func109 future.read" (@name "future.read") (;109;) (canon future.read 1 (memory $memory)))
+  (core func $"#core-func110 future.write" (@name "future.write") (;110;) (canon future.write 1 (memory $memory)))
+  (core func $"#core-func111 future.read" (@name "future.read") (;111;) (canon future.read 6 (memory $memory)))
+  (core func $"#core-func112 future.write" (@name "future.write") (;112;) (canon future.write 6 (memory $memory)))
+  (core instance $actual (;6;)
+    (export "0" (func $"#core-func86 indirect-$root-[async-lower]foo"))
     (export "1" (func $stream.read))
     (export "2" (func $stream.write))
     (export "3" (func $future.read))
@@ -617,25 +611,26 @@
     (export "25" (func $"#core-func112 future.write"))
   )
   (core instance $fixup (;7;) (instantiate $wit-component-fixup
-      (with "" (instance $fixup-args))
+      (with "actual" (instance $actual))
+      (with "shim" (instance $wit-component-shim-instance))
     )
   )
   (alias core export $main "[async-lift-stackful]foo" (core func $"[async-lift-stackful]foo" (;113;)))
   (func $"#func2 foo" (@name "foo") (;2;) (type 4) (canon lift (core func $"[async-lift-stackful]foo") async))
   (export $"#func3 foo" (@name "foo") (;3;) "foo" (func $"#func2 foo"))
-  (type (;9;) (func (param "x" 8) (param "y" u32) (result 6)))
+  (type (;7;) (func async (param "x" 6) (param "y" u32) (result 3)))
   (alias core export $main "[async-lift-stackful]foo:foo/bar#foo" (core func $"[async-lift-stackful]foo:foo/bar#foo" (;114;)))
-  (func $"#func4 foo" (@name "foo") (;4;) (type 9) (canon lift (core func $"[async-lift-stackful]foo:foo/bar#foo") async))
+  (func $"#func4 foo" (@name "foo") (;4;) (type 7) (canon lift (core func $"[async-lift-stackful]foo:foo/bar#foo") async))
   (component $foo:foo/bar-shim-component (;0;)
     (type (;0;) (future u32))
     (type (;1;) (future 0))
     (type (;2;) (stream string))
-    (type (;3;) (func (param "x" 1) (param "y" u32) (result 2)))
+    (type (;3;) (func async (param "x" 1) (param "y" u32) (result 2)))
     (import "import-func-foo" (func (;0;) (type 3)))
     (type (;4;) (future u32))
     (type (;5;) (future 4))
     (type (;6;) (stream string))
-    (type (;7;) (func (param "x" 5) (param "y" u32) (result 6)))
+    (type (;7;) (func async (param "x" 5) (param "y" u32) (result 6)))
     (export (;1;) "foo" (func 0) (func (type 7)))
   )
   (instance $foo:foo/bar-shim-instance (;1;) (instantiate $foo:foo/bar-shim-component

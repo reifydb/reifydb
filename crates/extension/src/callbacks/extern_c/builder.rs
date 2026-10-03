@@ -42,7 +42,7 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		system_columns::{SystemColumn, with_system_column},
+		system_columns::{SystemColumn, stamp_system_columns},
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 		value_type::{
@@ -599,18 +599,17 @@ fn assemble_columns(
 		cols.push(rename(committed.buffer, name_bytes));
 	}
 
-	let mut out = batch(cols).map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+	let out = batch(cols).map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+	let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 	if row_count > 0 {
 		// SAFETY: row_count > 0 passed the null check and row_numbers_len was verified equal to it.
 		let raw = unsafe { slice::from_raw_parts(row_numbers_ptr, row_count) };
-		out = with_system_column(out, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(raw.to_vec())))
-			.map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+		stamps.push((SystemColumn::RowNumbers, Arc::new(UInt64Array::from(raw.to_vec()))));
 	}
 	for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time] {
-		out = with_system_column(out, column, Arc::new(datetime_array(vec![now; row_count])))
-			.map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+		stamps.push((column, Arc::new(datetime_array(vec![now; row_count]))));
 	}
-	Ok(out)
+	stamp_system_columns(out, stamps).map_err(|_| EXTERN_C_ERROR_INTERNAL)
 }
 
 fn elem_size_for(type_code: ValueKind) -> usize {
@@ -880,9 +879,9 @@ mod tests {
 	};
 
 	use super::{
-		BuilderRegistry, BuilderSlot, Handle, finalize_buffer, host_builder_acquire, host_builder_commit,
-		host_builder_data_ptr, host_builder_emit_diff, host_builder_offsets_ptr, numeric_bytes_to_vec,
-		with_registry,
+		BuilderRegistry, BuilderSlot, Handle, finalize_buffer, host_builder_acquire, host_builder_bitvec_ptr,
+		host_builder_commit, host_builder_data_ptr, host_builder_emit_diff, host_builder_grow,
+		host_builder_offsets_ptr, numeric_bytes_to_vec, with_registry,
 	};
 
 	fn decimals(texts: &[&str]) -> Vec<Decimal> {
@@ -984,6 +983,53 @@ mod tests {
 		});
 		assert_eq!(code, EXTERN_C_OK);
 		committed_buffer(&registry, handle)
+	}
+
+	fn bitvec_and_offsets_capacity(registry: &BuilderRegistry, id: u64) -> (usize, usize) {
+		let inner = registry.inner.lock();
+		let Some(BuilderSlot::Active(active)) = inner.slots.get(&id) else {
+			panic!("the builder must still be active");
+		};
+		(
+			active.bitvec.as_ref().expect("a requested bitvec").capacity(),
+			active.offsets.as_ref().expect("a var-len builder carries offsets").capacity(),
+		)
+	}
+
+	#[test]
+	fn growing_a_builder_also_grows_its_bitvec_and_offsets_capacity() {
+		// A grow that leaves the bitvec or offsets behind lets the guest write validity bits or offsets past
+		// their end.
+		let registry = BuilderRegistry::new();
+		with_registry(&registry, || {
+			// SAFETY: the registry is installed for this closure and the handle comes from
+			// host_builder_acquire in it.
+			unsafe {
+				let handle = host_builder_acquire(ptr::null_mut(), ValueKind::Utf8, 0, 0, 2);
+				assert!(
+					!host_builder_bitvec_ptr(handle).is_null(),
+					"precondition: the builder hands out a bitvec"
+				);
+				let id = Handle::decode(handle).id;
+				let (bitvec_before, offsets_before) = bitvec_and_offsets_capacity(&registry, id);
+
+				assert_eq!(
+					host_builder_grow(handle, 16),
+					EXTERN_C_OK,
+					"a grow of an active builder must succeed"
+				);
+
+				let (bitvec_after, offsets_after) = bitvec_and_offsets_capacity(&registry, id);
+				assert!(
+					bitvec_after * 8 >= bitvec_before * 8 + 16,
+					"the bitvec must cover the grown rows: before={bitvec_before} after={bitvec_after}"
+				);
+				assert!(
+					offsets_after >= offsets_before + 16,
+					"the offsets must cover the grown rows: before={offsets_before} after={offsets_after}"
+				);
+			}
+		});
 	}
 
 	#[test]

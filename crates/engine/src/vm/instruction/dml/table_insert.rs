@@ -1,17 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet},
-	sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
 	pod::EncodedPodRow,
 	shape::RowShape,
-	table::{EncodedTableRow, EncodedTableRowBuilder},
+	table::EncodedTableRowBuilder,
 };
 use reifydb_core::{
 	error::diagnostic::{
@@ -29,9 +26,8 @@ use reifydb_core::{
 			policy::{DataOp, PolicyTargetType},
 			table::Table,
 		},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedTable},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
-	internal_error,
 	key::catalog::IndexEntryKey,
 	partition::{partition_col_indices, partition_of, partition_values},
 	value::batch::single_row,
@@ -43,16 +39,14 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	return_error,
-	value::{
-		Value, column_view::ColumnView, identity::IdentityId, row_number::RowNumber,
-		system_columns::user_columns,
-	},
+	value::{Value, identity::IdentityId, row_number::RowNumber, system_columns::user_columns},
 };
 use tracing::instrument;
 
 use super::{
+	columns::{CastColumns, ColumnPipeline, input_views, intern_dictionary_columns},
 	context::TableTarget,
-	primary_key,
+	primary_key::{self, PrimaryKeyEncoder},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_table_shape,
 };
@@ -60,11 +54,11 @@ use crate::{
 	Result,
 	partition::resolve_partition,
 	policy::PolicyEvaluator,
-	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
+	transaction::operation::table::TableOperations,
 	vm::{
 		instruction::dml::{
-			coerce::{InputFragments, coerce_value_to_column_type},
-			time::resolve_time,
+			coerce::InputFragments,
+			time::{EventColumn, populator_index, resolve_time},
 		},
 		services::Services,
 		volcano::{
@@ -113,7 +107,7 @@ pub(crate) fn insert_table(
 		let indices = partition_col_indices(&table.columns, &table.partition_by);
 		let mut verified = HashSet::new();
 		for row in &validated {
-			let values = partition_values(&shape, row, &indices);
+			let values = partition_values(&shape, row.as_slice(), &indices);
 			let partition = partition_of(&table.columns, &table.partition_by, &values);
 			resolve_partition(txn, ObjectId::Table(table.id), partition, &values, &mut verified)?;
 		}
@@ -128,17 +122,14 @@ pub(crate) fn insert_table(
 	assert_eq!(row_numbers.len(), validated.len());
 
 	let pk_def = primary_key::get_primary_key(&services.catalog, txn, &table)?;
-	let pk_ctx = pk_def.as_ref().map(|pk| PkContext {
-		pk_def: pk,
-	});
 	let returned_rows = insert_validated_table_rows(
 		txn,
 		&target_data,
 		&shape,
-		&validated,
+		validated,
 		&row_numbers,
 		returning.is_some(),
-		pk_ctx.as_ref(),
+		pk_def.as_ref(),
 	)?;
 
 	if let Some(returning_exprs) = &returning {
@@ -148,15 +139,6 @@ pub(crate) fn insert_table(
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
 	}
 	insert_table_result(namespace.name(), &table.name, total_rows as u64)
-}
-
-struct PkContext<'a> {
-	pk_def: &'a PrimaryKey,
-}
-
-struct InputColumns<'a> {
-	columns: &'a [ColumnView<'a>],
-	column_map: &'a HashMap<&'a str, usize>,
 }
 
 #[inline]
@@ -209,8 +191,15 @@ fn validate_and_encode_input_rows(
 	symbols: &SymbolTable,
 	input_node: &mut Box<dyn QueryNode>,
 	fragments: &InputFragments,
-) -> Result<Vec<EncodedBytes>> {
-	let mut validated: Vec<EncodedBytes> = Vec::new();
+) -> Result<Vec<EncodedTableRowBuilder>> {
+	let pipeline = ColumnPipeline {
+		columns: &target.table.columns,
+		sequences: Some(target.table.id.into()),
+		series_key: None,
+		fragments,
+		context,
+	};
+	let mut batches: Vec<CastColumns> = Vec::new();
 	let mut mutable_context = (**context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
@@ -226,106 +215,49 @@ fn validate_and_encode_input_rows(
 		{
 			return_error!(column_not_found(fragments.column(unknown.name())));
 		}
-		let views: Vec<ColumnView<'_>> = user_columns(&columns)
-			.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
-			.collect::<Result<_>>()?;
-		let mut column_map: HashMap<&str, usize> = HashMap::new();
-		for (idx, view) in views.iter().enumerate() {
-			column_map.insert(view.field.name().as_str(), idx);
-		}
-		let view = InputColumns {
-			columns: &views,
-			column_map: &column_map,
-		};
-		let row_count = columns.num_rows();
-		for row_idx in 0..row_count {
-			validated.push(build_insert_table_row(
-				services, txn, target, shape, &view, fragments, context, row_idx,
-			)?);
+		let inputs = input_views(&columns, &target.table.columns)?;
+		let mut cast = pipeline.cast_target_columns(&inputs, columns.num_rows(), None)?;
+		pipeline.fill_sequences(services, txn, &mut cast)?;
+		batches.push(cast);
+	}
+	intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut batches)?;
+
+	let populator = populator_index(&target.table.time, shape);
+	let mut validated: Vec<EncodedTableRowBuilder> = Vec::new();
+	for cast in &batches {
+		let mut rows: Vec<EncodedTableRowBuilder> = (0..cast.rows()).map(|_| shape.allocate_table()).collect();
+		cast.write(shape, &mut rows)?;
+		let now = services.runtime_context.clock.now();
+		let event = EventColumn::new(populator.map(|index| cast.view(index)).transpose()?);
+		for (index, mut row) in rows.into_iter().enumerate() {
+			row.set_timestamps(now, now);
+			if let Some(time) = event.at(index).map_or_else(
+				|| resolve_time(&target.table.name, &target.table.time, shape, &row, now),
+				|time| Ok(Some(time)),
+			)? {
+				row.set_time(time);
+			}
+			validated.push(row);
 		}
 	}
 	Ok(validated)
-}
-
-#[allow(clippy::too_many_arguments)]
-#[inline]
-fn build_insert_table_row(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	target: &TableTarget<'_>,
-	shape: &RowShape,
-	view: &InputColumns<'_>,
-	fragments: &InputFragments,
-	context: &Arc<QueryContext>,
-	row_idx: usize,
-) -> Result<EncodedBytes> {
-	let mut row = shape.allocate_table();
-	for (table_idx, table_column) in target.table.columns.iter().enumerate() {
-		let mut value = if let Some(&input_idx) = view.column_map.get(table_column.name.as_str()) {
-			view.columns[input_idx].get_value(row_idx)
-		} else {
-			Value::none()
-		};
-		if table_column.auto_increment && matches!(value, Value::None { .. }) {
-			value = services.catalog.column_sequence_next_value(txn, target.table.id, table_column.id)?;
-		}
-		let column_ident = fragments.column(&table_column.name);
-		let resolved_column = ResolvedColumn::new(
-			column_ident.clone(),
-			context.source.clone().unwrap(),
-			table_column.clone(),
-		);
-		value = coerce_value_to_column_type(
-			value,
-			table_column.constraint.get_type(),
-			resolved_column,
-			context,
-		)?;
-		if let Err(mut e) = table_column.constraint.coerce(&mut value) {
-			e.0.fragment = column_ident.clone();
-			return Err(e);
-		}
-		let value = if let Some(dict_id) = table_column.dictionary_id {
-			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-				internal_error!("Dictionary {:?} not found for column {}", dict_id, table_column.name)
-			})?;
-			let entry_id = if matches!(value, Value::None { .. }) {
-				dictionary.id_type.none()
-			} else {
-				txn.insert_into_dictionary(&dictionary, &value)?
-			};
-			entry_id.to_value()
-		} else {
-			value
-		};
-		shape.set_value(&mut row, table_idx, &value);
-	}
-	let now = services.runtime_context.clock.now();
-	row.set_timestamps(now, now);
-	if let Some(time) =
-		resolve_time(&target.table.name, &target.table.columns, &target.table.time, shape, &row, now)?
-	{
-		row.set_time(time);
-	}
-	Ok(row.freeze_bytes())
 }
 
 fn insert_validated_table_rows(
 	txn: &mut Transaction<'_>,
 	target: &TableTarget<'_>,
 	shape: &RowShape,
-	validated: &[EncodedBytes],
+	mut owned_rows: Vec<EncodedTableRowBuilder>,
 	row_numbers: &[RowNumber],
 	has_returning: bool,
-	pk: Option<&PkContext<'_>>,
+	pk: Option<&PrimaryKey>,
 ) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-	let mut owned_rows: Vec<EncodedTableRowBuilder> =
-		validated.iter().map(|r| EncodedTableRow::from(r.clone()).thaw()).collect();
 	txn.insert_table(target.table, shape, row_numbers, &mut owned_rows)?;
 
 	if let Some(pk) = pk {
+		let encoder = PrimaryKeyEncoder::new(pk, target.table)?;
 		for (row, &row_number) in owned_rows.iter().zip(row_numbers.iter()) {
-			write_insert_table_pk_index(txn, target, shape, pk, row, row_number)?;
+			write_insert_table_pk_index(txn, target, shape, pk, &encoder, row, row_number)?;
 		}
 	}
 
@@ -341,14 +273,15 @@ fn write_insert_table_pk_index(
 	txn: &mut Transaction<'_>,
 	target: &TableTarget<'_>,
 	shape: &RowShape,
-	pk: &PkContext<'_>,
+	pk: &PrimaryKey,
+	encoder: &PrimaryKeyEncoder,
 	row: &[u8],
 	row_number: RowNumber,
 ) -> Result<()> {
-	let index_key = primary_key::encode_primary_key(pk.pk_def, row, target.table, shape)?;
-	let index_entry_key = IndexEntryKey::new(target.table.id, IndexId::primary(pk.pk_def.id), index_key.clone());
+	let index_key = encoder.encode(shape, row);
+	let index_entry_key = IndexEntryKey::new(target.table.id, IndexId::primary(pk.id), index_key.clone());
 	if txn.contains(&index_entry_key)? {
-		let key_columns = pk.pk_def.columns.iter().map(|c| c.name.clone()).collect();
+		let key_columns = pk.columns.iter().map(|c| c.name.clone()).collect();
 		return_error!(primary_key_violation(target.fragment.clone(), target.table.name.clone(), key_columns,));
 	}
 	txn.set(&index_entry_key, EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes())?;

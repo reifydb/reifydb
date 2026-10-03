@@ -127,7 +127,7 @@ fn spawn_stall_writer(multi: &MultiTransaction, stall_keys: u64, running: &Arc<A
 				)
 				.expect("set must succeed");
 			}
-			txn.commit(vec![]).expect("stall writer keys are disjoint from every other thread");
+			txn.commit().expect("stall writer keys are disjoint from every other thread");
 			round += 1;
 		}
 	})
@@ -184,7 +184,7 @@ fn run_once(threads: usize, layout: TableLayout, iterations: u64, readers: usize
 				txn.set(&encoded_key(layout, thread_id, index), encoded_bytes(index))
 					.expect("set must succeed");
 				let commit_start = Clock::Real.instant();
-				txn.commit(vec![]).expect("disjoint keys must not conflict");
+				txn.commit().expect("disjoint keys must not conflict");
 				commit_histogram
 					.record(commit_start.elapsed().as_nanos() as u64)
 					.expect("latency within bounds");

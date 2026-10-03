@@ -25,7 +25,7 @@ use reifydb_value::{
 		container::{
 			decimal_array::{self, DECIMAL128_MAX_PRECISION, DecimalArray, DecimalView, decimal_at},
 			dictionary_array::DICTIONARY_ENTRY_WIDTH,
-			temporal_array::DATETIME_TIMEZONE,
+			temporal_array::datetime_timezone,
 			uuid_array::UUID_WIDTH,
 			varlen_array,
 			wide_int_array::WideInt,
@@ -383,7 +383,7 @@ impl ColumnBuilder {
 			ValueType::Date => TypedBuilder::Date(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::DateTime => TypedBuilder::DateTime(
 				PrimitiveBuilder::<TimestampNanosecondType>::with_capacity(capacity)
-					.with_timezone(DATETIME_TIMEZONE),
+					.with_timezone(datetime_timezone()),
 			),
 			ValueType::Time => TypedBuilder::Time(PrimitiveBuilder::with_capacity(capacity)),
 			ValueType::Duration => TypedBuilder::Duration(PrimitiveBuilder::with_capacity(capacity)),
@@ -517,6 +517,17 @@ impl ColumnBuilder {
 		}
 		self.append_view(other)?;
 		self.optional |= other_optional;
+		Ok(())
+	}
+
+	pub fn append_values(&mut self, other: &ColumnView) -> Result<()> {
+		let nones = other.none_count();
+		if nones == other.len() {
+			self.append_nones(other.len());
+			return Ok(());
+		}
+		self.append_view(other)?;
+		self.optional |= nones > 0;
 		Ok(())
 	}
 

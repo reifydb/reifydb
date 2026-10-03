@@ -25,149 +25,154 @@ use reifydb_value::{
 
 use crate::Result;
 
-pub fn encode_primary_key(pk_def: &PrimaryKey, row: &[u8], table: &Table, shape: &RowShape) -> Result<EncodedIndexKey> {
-	if let Some(column) =
-		pk_def.columns.iter().find(|c| matches!(c.constraint.get_type().inner_type(), ValueType::Digest { .. }))
-	{
-		return Err(CoreError::PrimaryKeyDigestColumn {
-			fragment: Fragment::internal(&column.name),
-			column: column.name.clone(),
-			ty: column.constraint.get_type(),
-		}
-		.into());
-	}
-	let types: Vec<ValueType> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
-	let directions = vec![SortDirection::Asc; types.len()];
-	let index_shape = IndexShape::new(&types, &directions)?;
+pub struct PrimaryKeyEncoder {
+	shape: IndexShape,
+	columns: Vec<(usize, ValueType)>,
+}
 
-	let mut index_key = index_shape.allocate_key();
-
-	for (pk_idx, pk_column) in pk_def.columns.iter().enumerate() {
-		let table_idx = table
+impl PrimaryKeyEncoder {
+	pub fn new(pk_def: &PrimaryKey, table: &Table) -> Result<Self> {
+		if let Some(column) = pk_def
 			.columns
 			.iter()
-			.position(|c| c.id == pk_column.id)
-			.expect("Primary key column not found in table");
-
-		match pk_column.constraint.get_type() {
-			ValueType::Boolean => {
-				let val = shape.get::<bool>(row, table_idx);
-				index_shape.set_bool(&mut index_key, pk_idx, val);
+			.find(|c| matches!(c.constraint.get_type().inner_type(), ValueType::Digest { .. }))
+		{
+			return Err(CoreError::PrimaryKeyDigestColumn {
+				fragment: Fragment::internal(&column.name),
+				column: column.name.clone(),
+				ty: column.constraint.get_type(),
 			}
-			ValueType::Int1 => {
-				let val = shape.get::<i8>(row, table_idx);
-				index_shape.set_i8(&mut index_key, pk_idx, val);
-			}
-			ValueType::Int2 => {
-				let val = shape.get::<i16>(row, table_idx);
-				index_shape.set_i16(&mut index_key, pk_idx, val);
-			}
-			ValueType::Int4 => {
-				let val = shape.get::<i32>(row, table_idx);
-				index_shape.set_i32(&mut index_key, pk_idx, val);
-			}
-			ValueType::Int8 => {
-				let val = shape.get::<i64>(row, table_idx);
-				index_shape.set_i64(&mut index_key, pk_idx, val);
-			}
-			ValueType::Int16 => {
-				let val = shape.get::<i128>(row, table_idx);
-				index_shape.set_i128(&mut index_key, pk_idx, val);
-			}
-			ValueType::Uint1 => {
-				let val = shape.get::<u8>(row, table_idx);
-				index_shape.set_u8(&mut index_key, pk_idx, val);
-			}
-			ValueType::Uint2 => {
-				let val = shape.get::<u16>(row, table_idx);
-				index_shape.set_u16(&mut index_key, pk_idx, val);
-			}
-			ValueType::Uint4 => {
-				let val = shape.get::<u32>(row, table_idx);
-				index_shape.set_u32(&mut index_key, pk_idx, val);
-			}
-			ValueType::Uint8 => {
-				let val = shape.get::<u64>(row, table_idx);
-				index_shape.set_u64(&mut index_key, pk_idx, val);
-			}
-			ValueType::Uint16 => {
-				let val = shape.get::<u128>(row, table_idx);
-				index_shape.set_u128(&mut index_key, pk_idx, val);
-			}
-			ValueType::Float4 => {
-				let val = shape.get::<f32>(row, table_idx);
-				index_shape.set_f32(&mut index_key, pk_idx, val);
-			}
-			ValueType::Float8 => {
-				let val = shape.get::<f64>(row, table_idx);
-				index_shape.set_f64(&mut index_key, pk_idx, val);
-			}
-			ValueType::Utf8 => {
-				panic!("UTF8 columns in primary keys not yet supported");
-			}
-			ValueType::Blob => {
-				panic!("Blob columns cannot be used in primary keys");
-			}
-			ValueType::Date => {
-				let val = shape.get::<Date>(row, table_idx);
-				index_shape.set_date(&mut index_key, pk_idx, val);
-			}
-			ValueType::Time => {
-				let val = shape.get::<Time>(row, table_idx);
-				index_shape.set_time(&mut index_key, pk_idx, val);
-			}
-			ValueType::DateTime => {
-				let val = shape.get::<DateTime>(row, table_idx);
-				index_shape.set_datetime(&mut index_key, pk_idx, val);
-			}
-			ValueType::Duration => {
-				let val = shape.get::<Duration>(row, table_idx);
-				index_shape.set_duration(&mut index_key, pk_idx, val);
-			}
-			ValueType::Uuid4 => {
-				let val = shape.get::<Uuid4>(row, table_idx);
-				index_shape.set_uuid4(&mut index_key, pk_idx, val);
-			}
-			ValueType::Uuid7 => {
-				let val = shape.get::<Uuid7>(row, table_idx);
-				index_shape.set_uuid7(&mut index_key, pk_idx, val);
-			}
-			ValueType::IdentityId => {
-				let val = shape.get::<IdentityId>(row, table_idx);
-				index_shape.set_identity_id(&mut index_key, pk_idx, val);
-			}
-			ValueType::Decimal {
-				..
-			} => {
-				panic!("Decimal columns in primary keys not yet supported");
-			}
-			ValueType::Option(_) => {
-				index_shape.set_none(&mut index_key, pk_idx);
-			}
-			ValueType::DictionaryId => {
-				panic!("DictionaryId columns cannot be used in primary keys");
-			}
-			ValueType::Any => {
-				panic!("Any type cannot be used in primary keys");
-			}
-			ValueType::List(_) => {
-				panic!("List type cannot be used in primary keys");
-			}
-			ValueType::Record(_) => {
-				panic!("Record type cannot be used in primary keys");
-			}
-			ValueType::Tuple(_) => {
-				panic!("Tuple type cannot be used in primary keys");
-			}
-			ValueType::Digest {
-				..
-			} => {
-				unreachable!("IndexShape::new rejects a Digest primary key column");
-			}
+			.into());
 		}
+		let types: Vec<ValueType> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
+		let directions = vec![SortDirection::Asc; types.len()];
+		let shape = IndexShape::new(&types, &directions)?;
+		let columns = pk_def
+			.columns
+			.iter()
+			.map(|pk_column| {
+				let table_idx = table
+					.columns
+					.iter()
+					.position(|c| c.id == pk_column.id)
+					.expect("Primary key column not found in table");
+				(table_idx, pk_column.constraint.get_type())
+			})
+			.collect();
+		Ok(Self {
+			shape,
+			columns,
+		})
 	}
 
-	Ok(index_key)
+	pub fn encode(&self, shape: &RowShape, row: &[u8]) -> EncodedIndexKey {
+		let mut index_key = self.shape.allocate_key();
+		for (pk_idx, (table_idx, column_type)) in self.columns.iter().enumerate() {
+			match column_type {
+				ValueType::Boolean => {
+					let val = shape.get::<bool>(row, *table_idx);
+					self.shape.set_bool(&mut index_key, pk_idx, val);
+				}
+				ValueType::Int1 => {
+					let val = shape.get::<i8>(row, *table_idx);
+					self.shape.set_i8(&mut index_key, pk_idx, val);
+				}
+				ValueType::Int2 => {
+					let val = shape.get::<i16>(row, *table_idx);
+					self.shape.set_i16(&mut index_key, pk_idx, val);
+				}
+				ValueType::Int4 => {
+					let val = shape.get::<i32>(row, *table_idx);
+					self.shape.set_i32(&mut index_key, pk_idx, val);
+				}
+				ValueType::Int8 => {
+					let val = shape.get::<i64>(row, *table_idx);
+					self.shape.set_i64(&mut index_key, pk_idx, val);
+				}
+				ValueType::Int16 => {
+					let val = shape.get::<i128>(row, *table_idx);
+					self.shape.set_i128(&mut index_key, pk_idx, val);
+				}
+				ValueType::Uint1 => {
+					let val = shape.get::<u8>(row, *table_idx);
+					self.shape.set_u8(&mut index_key, pk_idx, val);
+				}
+				ValueType::Uint2 => {
+					let val = shape.get::<u16>(row, *table_idx);
+					self.shape.set_u16(&mut index_key, pk_idx, val);
+				}
+				ValueType::Uint4 => {
+					let val = shape.get::<u32>(row, *table_idx);
+					self.shape.set_u32(&mut index_key, pk_idx, val);
+				}
+				ValueType::Uint8 => {
+					let val = shape.get::<u64>(row, *table_idx);
+					self.shape.set_u64(&mut index_key, pk_idx, val);
+				}
+				ValueType::Uint16 => {
+					let val = shape.get::<u128>(row, *table_idx);
+					self.shape.set_u128(&mut index_key, pk_idx, val);
+				}
+				ValueType::Float4 => {
+					let val = shape.get::<f32>(row, *table_idx);
+					self.shape.set_f32(&mut index_key, pk_idx, val);
+				}
+				ValueType::Float8 => {
+					let val = shape.get::<f64>(row, *table_idx);
+					self.shape.set_f64(&mut index_key, pk_idx, val);
+				}
+				ValueType::Date => {
+					let val = shape.get::<Date>(row, *table_idx);
+					self.shape.set_date(&mut index_key, pk_idx, val);
+				}
+				ValueType::Time => {
+					let val = shape.get::<Time>(row, *table_idx);
+					self.shape.set_time(&mut index_key, pk_idx, val);
+				}
+				ValueType::DateTime => {
+					let val = shape.get::<DateTime>(row, *table_idx);
+					self.shape.set_datetime(&mut index_key, pk_idx, val);
+				}
+				ValueType::Duration => {
+					let val = shape.get::<Duration>(row, *table_idx);
+					self.shape.set_duration(&mut index_key, pk_idx, val);
+				}
+				ValueType::Uuid4 => {
+					let val = shape.get::<Uuid4>(row, *table_idx);
+					self.shape.set_uuid4(&mut index_key, pk_idx, val);
+				}
+				ValueType::Uuid7 => {
+					let val = shape.get::<Uuid7>(row, *table_idx);
+					self.shape.set_uuid7(&mut index_key, pk_idx, val);
+				}
+				ValueType::IdentityId => {
+					let val = shape.get::<IdentityId>(row, *table_idx);
+					self.shape.set_identity_id(&mut index_key, pk_idx, val);
+				}
+				ValueType::Option(_) => {
+					self.shape.set_none(&mut index_key, pk_idx);
+				}
+				ValueType::Utf8
+				| ValueType::Blob
+				| ValueType::Decimal {
+					..
+				}
+				| ValueType::DictionaryId
+				| ValueType::Any
+				| ValueType::List(_)
+				| ValueType::Record(_)
+				| ValueType::Tuple(_) => {
+					unreachable!("CREATE PRIMARY KEY refuses a {column_type} key column");
+				}
+				ValueType::Digest {
+					..
+				} => {
+					unreachable!("IndexShape::new rejects a Digest primary key column");
+				}
+			}
+		}
+		index_key
+	}
 }
 
 pub fn get_primary_key(catalog: &Catalog, txn: &mut Transaction<'_>, table: &Table) -> Result<Option<PrimaryKey>> {

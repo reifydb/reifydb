@@ -38,7 +38,7 @@
 //!
 //! ```toml
 //! [dependencies.uuid]
-//! version = "1.23.2"
+//! version = "1.27.0"
 //! # Lets you generate random UUIDs
 //! features = [
 //!     "v4",
@@ -138,7 +138,7 @@
 //!
 //! ```toml
 //! [dependencies.uuid]
-//! version = "1.23.2"
+//! version = "1.27.0"
 //! features = [
 //!     "v4",
 //!     "v7",
@@ -153,7 +153,7 @@
 //!
 //! ```toml
 //! [dependencies.uuid]
-//! version = "1.23.2"
+//! version = "1.27.0"
 //! default-features = false
 //! ```
 //!
@@ -205,13 +205,14 @@
 //!
 //! [`wasm-bindgen`]: https://crates.io/crates/wasm-bindgen
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![no_std]
 #![deny(missing_debug_implementations, missing_docs)]
 #![allow(clippy::mixed_attributes_style)]
 #![doc(
     html_logo_url = "https://www.rust-lang.org/logos/rust-logo-128x128-blk-v2.png",
     html_favicon_url = "https://www.rust-lang.org/favicon.ico",
-    html_root_url = "https://docs.rs/uuid/1.23.2"
+    html_root_url = "https://docs.rs/uuid/1.27.0"
 )]
 
 #[cfg(any(feature = "std", test))]
@@ -998,7 +999,7 @@ pub mod serde {
     //! to change the way a [`Uuid`](../struct.Uuid.html) is serialized
     //! and deserialized.
 
-    pub use crate::external::serde_support::{braced, compact, hyphenated, simple, urn};
+    pub use crate::external::serde_support::{braced, bytes, compact, hyphenated, simple, urn};
 }
 
 #[cfg(test)]

@@ -89,9 +89,9 @@ impl Default for Bindgen {
             imports: Default::default(),
             exports: Default::default(),
             includes: Default::default(),
-            include_names: Default::default(),
             package: Some(package),
             stability: Default::default(),
+            span: Default::default(),
         });
         resolve.packages[package]
             .worlds
@@ -169,7 +169,7 @@ impl EncodingMap {
                         self.encodings.insert(key, encoding);
                     }
                 }
-                WorldItem::Type(_) => {}
+                WorldItem::Type { .. } => {}
             }
         }
     }
@@ -231,7 +231,7 @@ pub fn decode(wasm: &[u8]) -> Result<(Option<Vec<u8>>, Bindgen)> {
     let mut new_module = wasm_encoder::Module::new();
 
     let mut found_custom = false;
-    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
+    for payload in wasmparser::Parser::new(0).parse_all(&wasm) {
         let payload = payload.context("decoding item in module")?;
         match payload {
             wasmparser::Payload::CustomSection(cs) if cs.name().starts_with("component-type") => {
@@ -248,7 +248,7 @@ pub fn decode(wasm: &[u8]) -> Result<(Option<Vec<u8>>, Bindgen)> {
                 if let Some((id, range)) = payload.as_section() {
                     new_module.section(&wasm_encoder::RawSection {
                         id,
-                        data: &wasm[range],
+                        data: &wasm[range.start as usize..range.end as usize],
                     });
                 }
             }
@@ -280,7 +280,7 @@ pub fn encode(
     let mut outer_ty = ComponentType::new();
     outer_ty.ty().component(&ty);
     outer_ty.export(
-        &resolve.id_of_name(world.package.unwrap(), &world.name),
+        resolve.id_of_name(world.package.unwrap(), &world.name),
         ComponentTypeRef::Component(0),
     );
 
@@ -350,14 +350,15 @@ impl Bindgen {
         let resolve;
         let encoding;
 
-        let mut reader = BinaryReader::new(data, 0);
+        let mut reader = BinaryReader::new(&data, 0);
         match reader.read_u8()? {
             // Historical 0x03 format where the support here will be deleted in
             // the future
             0x03 => {
                 encoding = decode_string_encoding(reader.read_u8()?)?;
                 let world_name = reader.read_string()?;
-                wasm = &data[reader.original_position()..];
+                let data_offset = reader.original_position() as usize;
+                wasm = &data[data_offset..];
 
                 let (r, pkg) = match crate::decode(wasm)? {
                     DecodedWasm::WitPackage(resolve, pkgs) => (resolve, pkgs),
@@ -410,7 +411,7 @@ impl Bindgen {
             .resolve
             .merge(resolve)
             .context("failed to merge WIT package sets together")?;
-        let world = remap.map_world(world, None)?;
+        let world = remap.map_world(world, Default::default())?;
         let exports = self.resolve.worlds[world].exports.keys().cloned().collect();
         self.resolve
             .merge_worlds(world, self.world, &mut CloneMaps::default())

@@ -33,10 +33,10 @@ use reifydb_core::{
 use reifydb_flow::{
 	error::FlowSinkError,
 	operator::sink::{
-		coerce_columns, encode_row_at_index,
+		SourceRowEncoder, coerce_columns,
 		partition::{ensure_partition_unchanged, partition_of},
 		shape_field_columns,
-		view::{partitioned_key, sorted_view_key},
+		view::{partitioned_key, sort_runs, sorted_view_key},
 	},
 };
 use reifydb_runtime::context::RuntimeContext;
@@ -140,6 +140,7 @@ impl SinkTableViewOperator {
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.num_rows();
 		let field_columns = shape_field_columns(source, &self.shape);
+		let encoder = SourceRowEncoder::new(source, &self.shape, &field_columns)?;
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let row_numbers = if row_count == 0 {
@@ -147,10 +148,10 @@ impl SinkTableViewOperator {
 		} else {
 			require_row_numbers(source)?
 		};
+		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
+		let encoded = encoder.encode_all()?;
 
-		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			let (_, encoded) =
-				encode_row_at_index(source, row_idx, &self.shape, row_number, &field_columns)?;
+		for ((row_idx, &row_number), encoded) in row_numbers.iter().enumerate().take(row_count).zip(encoded) {
 			let key = if self.is_partitioned() {
 				let (partition, values) =
 					partition_of(self.view.def(), &self.partition_indices, source, row_idx)?;
@@ -161,9 +162,9 @@ impl SinkTableViewOperator {
 					&values,
 					&mut self.verified_partitions,
 				)?;
-				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
+				partitioned_key(self.storage, runs.next(), partition, row_number)
 			} else {
-				sorted_view_key(self.storage, &self.sort, source, row_idx, row_number)?
+				sorted_view_key(self.storage, runs.next(), row_number)
 			};
 			remember_created_at(&mut self.created_at, row_number, read_created_at(&encoded));
 			keys.push(key);
@@ -192,6 +193,7 @@ impl SinkTableViewOperator {
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let row_count = source_post.num_rows();
 		let field_columns = shape_field_columns(source_post, &self.shape);
+		let encoder = SourceRowEncoder::new(source_post, &self.shape, &field_columns)?;
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
@@ -200,16 +202,12 @@ impl SinkTableViewOperator {
 		} else {
 			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
 		};
-		for row_idx in 0..row_count {
+		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
+		let mut post_runs = sort_runs(&self.sort, &coerced_post)?.into_iter();
+		let encoded = encoder.encode_all()?;
+		for (row_idx, mut post_encoded) in (0..row_count).zip(encoded) {
 			let pre_row_number = pre_row_numbers[row_idx];
 			let post_row_number = post_row_numbers[row_idx];
-			let (_, mut post_encoded) = encode_row_at_index(
-				source_post,
-				row_idx,
-				&self.shape,
-				post_row_number,
-				&field_columns,
-			)?;
 
 			let (pre_key, post_key) = if self.is_partitioned() {
 				let (pre_partition, _pre_values) =
@@ -229,33 +227,18 @@ impl SinkTableViewOperator {
 					&mut self.verified_partitions,
 				)?;
 				(
+					partitioned_key(self.storage, pre_runs.next(), pre_partition, pre_row_number),
 					partitioned_key(
 						self.storage,
-						&self.sort,
-						source_pre,
-						row_idx,
-						pre_partition,
-						pre_row_number,
-					)?,
-					partitioned_key(
-						self.storage,
-						&self.sort,
-						source_post,
-						row_idx,
+						post_runs.next(),
 						post_partition,
 						post_row_number,
-					)?,
+					),
 				)
 			} else {
 				(
-					sorted_view_key(self.storage, &self.sort, source_pre, row_idx, pre_row_number)?,
-					sorted_view_key(
-						self.storage,
-						&self.sort,
-						source_post,
-						row_idx,
-						post_row_number,
-					)?,
+					sorted_view_key(self.storage, pre_runs.next(), pre_row_number),
+					sorted_view_key(self.storage, post_runs.next(), post_row_number),
 				)
 			};
 
@@ -323,14 +306,15 @@ impl SinkTableViewOperator {
 		} else {
 			require_row_numbers(source)?
 		};
+		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			self.created_at.remove(&row_number);
 			let key = if self.is_partitioned() {
 				let (partition, _values) =
 					partition_of(self.view.def(), &self.partition_indices, source, row_idx)?;
-				partitioned_key(self.storage, &self.sort, source, row_idx, partition, row_number)?
+				partitioned_key(self.storage, runs.next(), partition, row_number)
 			} else {
-				sorted_view_key(self.storage, &self.sort, source, row_idx, row_number)?
+				sorted_view_key(self.storage, runs.next(), row_number)
 			};
 			keys.push(key);
 		}
@@ -652,7 +636,11 @@ mod tests {
 			let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
 				engine.single().clone(),
 			)));
-			registry.intern(&dictionary, &Value::Utf8(value.to_string())).unwrap().id.to_u128()
+			registry.intern_batch(&dictionary, &[Value::Utf8(value.to_string())])
+				.unwrap()
+				.remove(0)
+				.id
+				.to_u128()
 		};
 
 		let sol_id = intern("sol");

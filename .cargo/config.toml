@@ -4,6 +4,9 @@ replace-with = "vendored-sources"
 [source.vendored-sources]
 directory = "vendor"
 
+[patch.crates-io]
+datafusion-common = { path = "patch/datafusion-common" }
+
 [net]
 offline = true
 

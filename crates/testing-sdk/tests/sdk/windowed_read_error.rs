@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{env, process::Command};
+
 use reifydb_codec::row::shape::RowShapeField;
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
-	row::Row as CoreRow,
 };
 use reifydb_flow_async::window::{
 	accumulator::{
@@ -23,7 +24,6 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
 			operator::{Emit, NoRolling, WindowedOperator},
@@ -32,9 +32,10 @@ use reifydb_sdk::{
 	},
 	row,
 };
+use reifydb_testing_chaos::operator::event::Row as CoreRow;
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::ExternCOperatorHarnessBuilder,
+	in_process::harness::InProcessOperatorHarnessBuilder,
 };
 use reifydb_value::{
 	config::ExtensionParams,
@@ -139,22 +140,39 @@ fn float_size_row() -> CoreRow {
 		.build()
 }
 
+const CHILD_ENV: &str = "REIFYDB_WINDOWED_READ_ERROR_CHILD";
+const CHILD_TEST: &str = "windowed_read_error::a_read_error_in_extract_aborts_the_apply_instead_of_skipping_the_row";
+
 #[test]
-fn a_read_error_in_extract_fails_the_apply_instead_of_skipping_the_row() {
+fn a_read_error_in_extract_aborts_the_apply_instead_of_skipping_the_row() {
 	// Skipping would drop the row from every window and emit plausible totals built on missing data.
-	let mut h = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<PlainDriver<ReadsSizeAsInt>>>::new()
-		.with(ApplyWith {
-			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Duration(millis(60)),
-			}),
-			lateness: Some(WithSpan::Duration(millis(3_600_000))),
-			immutable: None,
-			retention: None,
-			throttle: None,
-		})
-		.build()
-		.expect("harness");
-	let result = h.apply(TestChangeBuilder::new().insert(float_size_row()).build());
-	let err = result.expect_err("reading a float8 column as i32 must fail the apply");
-	assert!(err.to_string().contains("size"), "the error must name the column, got {err}");
+	if env::var(CHILD_ENV).is_ok() {
+		let mut h = InProcessOperatorHarnessBuilder::<PlainDriver<ReadsSizeAsInt>>::new()
+			.with(ApplyWith {
+				window: Some(WindowKind::Tumbling {
+					size: WindowSize::Duration(millis(60)),
+				}),
+				lateness: Some(WithSpan::Duration(millis(3_600_000))),
+				immutable: None,
+				retention: None,
+				throttle: None,
+			})
+			.build()
+			.expect("harness");
+		let _ = h.apply(TestChangeBuilder::new().insert(float_size_row()).build());
+		eprintln!("a read error in extract returned instead of aborting");
+		return;
+	}
+
+	let exe = env::current_exe().expect("current_exe");
+	let output = Command::new(&exe)
+		.args(["--exact", CHILD_TEST, "--nocapture"])
+		.env(CHILD_ENV, "1")
+		.output()
+		.expect("spawn child");
+
+	let stderr = String::from_utf8_lossy(&output.stderr);
+	assert!(!output.status.success(), "reading a float8 column as i32 must fail the apply; stderr={stderr:?}");
+	let reason = stderr.lines().find(|line| line.starts_with("reason:")).unwrap_or_default();
+	assert!(reason.contains("size"), "the error must name the column, got {reason:?}");
 }

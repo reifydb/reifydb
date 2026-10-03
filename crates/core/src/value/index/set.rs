@@ -4,7 +4,7 @@
 use std::{f64, ptr};
 
 #[cfg(reifydb_assertions)]
-use reifydb_value::value::value_type::ValueType;
+use reifydb_value::value::{ordered_f32::OrderedF32, ordered_f64::OrderedF64, value_type::ValueType};
 use reifydb_value::{
 	reifydb_assertions,
 	value::{
@@ -54,12 +54,17 @@ impl IndexShape {
 
 	pub fn set_f32(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<f32>) {
 		let field = &self.fields[index];
+		let v = value.into();
 		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Float4);
+			assert_eq!(
+				v.to_bits(),
+				OrderedF32::canonical(v).to_bits(),
+				"set_f32: field {index} float {v:?} is not canonical"
+			);
 		}
 		key.set_valid(index, true);
 
-		let v = value.into();
 		let mut bytes = v.to_bits().to_be_bytes();
 
 		if v.is_sign_negative() {
@@ -84,12 +89,17 @@ impl IndexShape {
 
 	pub fn set_f64(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<f64>) {
 		let field = &self.fields[index];
+		let v = value.into();
 		reifydb_assertions! {
 			assert_eq!(field.value, ValueType::Float8);
+			assert_eq!(
+				v.to_bits(),
+				OrderedF64::canonical(v).to_bits(),
+				"set_f64: field {index} float {v:?} is not canonical"
+			);
 		}
 		key.set_valid(index, true);
 
-		let v = value.into();
 		let mut bytes = v.to_bits().to_be_bytes();
 
 		if v.is_sign_negative() {
@@ -884,6 +894,26 @@ pub mod tests {
 
 			assert!(key_neg.as_slice() > key_pos.as_slice());
 		}
+
+		#[test]
+		#[cfg(reifydb_assertions)]
+		#[should_panic(expected = "is not canonical")]
+		fn test_negative_zero_panics() {
+			// -0.0 and 0.0 encode to different key bytes, so a raw -0.0 must never reach a key.
+			let layout = IndexShape::new(&[ValueType::Float4], &[SortDirection::Asc]).unwrap();
+			let mut key = layout.allocate_key();
+			layout.set_f32(&mut key, 0, -0.0f32);
+		}
+
+		#[test]
+		#[cfg(reifydb_assertions)]
+		#[should_panic(expected = "is not canonical")]
+		fn test_negative_nan_panics() {
+			// Each NaN bit pattern encodes to its own key bytes, so only the canonical NaN may reach a key.
+			let layout = IndexShape::new(&[ValueType::Float4], &[SortDirection::Asc]).unwrap();
+			let mut key = layout.allocate_key();
+			layout.set_f32(&mut key, 0, f32::from_bits(f32::NAN.to_bits() | 0x8000_0000));
+		}
 	}
 
 	mod f64 {
@@ -915,6 +945,26 @@ pub mod tests {
 			let offset = layout.fields[0].offset;
 			// PI: ASC encoding then invert for DESC
 			assert_eq!(&key[offset..offset + 8], &[0x3F, 0xF6, 0xDE, 0x04, 0xAB, 0xBB, 0xD2, 0xE7]);
+		}
+
+		#[test]
+		#[cfg(reifydb_assertions)]
+		#[should_panic(expected = "is not canonical")]
+		fn test_negative_zero_panics() {
+			// -0.0 and 0.0 encode to different key bytes, so a raw -0.0 must never reach a key.
+			let layout = IndexShape::new(&[ValueType::Float8], &[SortDirection::Asc]).unwrap();
+			let mut key = layout.allocate_key();
+			layout.set_f64(&mut key, 0, -0.0f64);
+		}
+
+		#[test]
+		#[cfg(reifydb_assertions)]
+		#[should_panic(expected = "is not canonical")]
+		fn test_negative_nan_panics() {
+			// Each NaN bit pattern encodes to its own key bytes, so only the canonical NaN may reach a key.
+			let layout = IndexShape::new(&[ValueType::Float8], &[SortDirection::Asc]).unwrap();
+			let mut key = layout.allocate_key();
+			layout.set_f64(&mut key, 0, f64::from_bits(f64::NAN.to_bits() | 0x8000_0000_0000_0000));
 		}
 	}
 

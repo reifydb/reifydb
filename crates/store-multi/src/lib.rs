@@ -306,16 +306,6 @@ impl MultiStore {
 		}
 	}
 
-	pub fn get_many(
-		&self,
-		keys: &[EncodedKey],
-		version: CommitVersion,
-	) -> Result<HashMap<EncodedKey, MultiVersionRow>> {
-		match self {
-			MultiStore::Standard(store) => store.get_many(keys, version),
-		}
-	}
-
 	pub fn get_many_versioned(
 		&self,
 		keys: &[EncodedKey],

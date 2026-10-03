@@ -8,6 +8,9 @@ This architecture provides the following 128-bit atomic instructions:
 - CMPXCHG16B: CAS (CMPXCHG16B)
 - VMOVDQA: load/store (AVX)
 
+We could use asm byte_wise_atomic_load + asm atomic_compare_exchange pattern for RMW here, but using an
+inline assembly allows omitting the comparison of results and the storing/comparing of flags.
+
 Note: On Miri and ThreadSanitizer which do not support inline assembly, we don't use
 this module and use intrinsics.rs instead.
 
@@ -44,8 +47,15 @@ mod detect;
 
 #[cfg(not(portable_atomic_no_asm))]
 use core::arch::asm;
+#[cfg(not(all(
+    not(target_feature = "avx"),
+    any(portable_atomic_no_outline_atomics, target_env = "sgx", not(target_feature = "sse")),
+)))]
+use core::arch::x86_64::__m128i;
 use core::sync::atomic::Ordering;
 
+#[cfg(portable_atomic_no_strict_provenance)]
+use crate::utils::ptr::PtrExt as _;
 use crate::utils::{Pair, U128};
 
 // Asserts that the function is called in the correct context.
@@ -60,7 +70,6 @@ macro_rules! debug_assert_cmpxchg16b {
         }
     };
 }
-#[cfg(target_feature = "sse")]
 #[cfg(not(all(
     not(target_feature = "avx"),
     any(portable_atomic_no_outline_atomics, target_env = "sgx", not(target_feature = "sse")),
@@ -75,7 +84,6 @@ macro_rules! debug_assert_cmpxchg16b_avx {
     }};
 }
 
-#[cfg(target_feature = "sse")]
 #[cfg(not(all(
     not(target_feature = "avx"),
     any(portable_atomic_no_outline_atomics, target_env = "sgx", not(target_feature = "sse")),
@@ -86,7 +94,6 @@ macro_rules! ptr_modifier {
         ":e"
     };
 }
-#[cfg(target_feature = "sse")]
 #[cfg(not(all(
     not(target_feature = "avx"),
     any(portable_atomic_no_outline_atomics, target_env = "sgx", not(target_feature = "sse")),
@@ -111,7 +118,7 @@ macro_rules! ptr_modifier {
 )]
 #[inline]
 unsafe fn cmpxchg16b(dst: *mut u128, old: u128, new: u128) -> (u128, bool) {
-    debug_assert!(dst as usize % 16 == 0);
+    debug_assert!(dst.addr() % 16 == 0);
     debug_assert_cmpxchg16b!();
 
     // SAFETY: the caller must guarantee that `dst` is valid for both writes and
@@ -181,8 +188,10 @@ unsafe fn cmpxchg16b(dst: *mut u128, old: u128, new: u128) -> (u128, bool) {
 // baseline and is always available, but the SSE target feature is disabled for
 // use cases such as kernels and firmware that should not use vector registers.
 // So, do not use vector registers unless SSE target feature is enabled.
+// Note that we cannot use cfg(target_abi = "softfloat") because cfg(target_abi)
+// is unavailable on old rustc and target_abi = "softfloat" is not set for
+// softfloat x86_64 targets as of Rust 1.95.
 // See also https://github.com/rust-lang/rust/blob/1.84.0/src/doc/rustc/src/platform-support/x86_64-unknown-none.md.
-#[cfg(target_feature = "sse")]
 #[cfg(not(all(
     not(target_feature = "avx"),
     any(portable_atomic_no_outline_atomics, target_env = "sgx", not(target_feature = "sse")),
@@ -190,14 +199,14 @@ unsafe fn cmpxchg16b(dst: *mut u128, old: u128, new: u128) -> (u128, bool) {
 #[target_feature(enable = "avx")]
 #[inline]
 unsafe fn _atomic_load_vmovdqa(src: *mut u128) -> u128 {
-    debug_assert!(src as usize % 16 == 0);
+    debug_assert!(src.addr() % 16 == 0);
     debug_assert_cmpxchg16b_avx!();
 
     // SAFETY: the caller must uphold the safety contract.
     //
     // atomic load by vmovdqa is always SeqCst.
     unsafe {
-        let out: core::arch::x86_64::__m128i;
+        let out: __m128i;
         asm!(
             concat!("vmovdqa {out}, xmmword ptr [{src", ptr_modifier!(), "}]"),
             src = in(reg) src,
@@ -207,7 +216,6 @@ unsafe fn _atomic_load_vmovdqa(src: *mut u128) -> u128 {
         core::mem::transmute(out)
     }
 }
-#[cfg(target_feature = "sse")]
 #[cfg(not(all(
     not(target_feature = "avx"),
     any(portable_atomic_no_outline_atomics, target_env = "sgx", not(target_feature = "sse")),
@@ -215,12 +223,12 @@ unsafe fn _atomic_load_vmovdqa(src: *mut u128) -> u128 {
 #[target_feature(enable = "avx")]
 #[inline]
 unsafe fn _atomic_store_vmovdqa(dst: *mut u128, val: u128, order: Ordering) {
-    debug_assert!(dst as usize % 16 == 0);
+    debug_assert!(dst.addr() % 16 == 0);
     debug_assert_cmpxchg16b_avx!();
 
     // SAFETY: the caller must uphold the safety contract.
     unsafe {
-        let val: core::arch::x86_64::__m128i = core::mem::transmute(val);
+        let val: __m128i = core::mem::transmute(val);
         match order {
             // Relaxed and Release stores are equivalent.
             Ordering::Relaxed | Ordering::Release => {
@@ -363,7 +371,7 @@ unsafe fn atomic_load(src: *mut u128, _order: Ordering) -> u128 {
 )]
 #[inline]
 unsafe fn _atomic_load_cmpxchg16b(src: *mut u128) -> u128 {
-    debug_assert!(src as usize % 16 == 0);
+    debug_assert!(src.addr() % 16 == 0);
     debug_assert_cmpxchg16b!();
 
     // SAFETY: the caller must guarantee that `src` is valid for both writes and
@@ -543,7 +551,7 @@ use self::atomic_compare_exchange as atomic_compare_exchange_weak;
 )]
 #[inline]
 unsafe fn atomic_swap_cmpxchg16b(dst: *mut u128, val: u128, _order: Ordering) -> u128 {
-    debug_assert!(dst as usize % 16 == 0);
+    debug_assert!(dst.addr() % 16 == 0);
     debug_assert_cmpxchg16b!();
 
     // SAFETY: the caller must guarantee that `dst` is valid for both writes and
@@ -624,7 +632,7 @@ macro_rules! atomic_rmw_cas_3 {
         )]
         #[inline]
         unsafe fn $name(dst: *mut u128, val: u128, _order: Ordering) -> u128 {
-            debug_assert!(dst as usize % 16 == 0);
+            debug_assert!(dst.addr() % 16 == 0);
             debug_assert_cmpxchg16b!();
             // SAFETY: the caller must guarantee that `dst` is valid for both writes and
             // reads, 16-byte aligned, and that there are no concurrent non-atomic operations.
@@ -702,7 +710,7 @@ macro_rules! atomic_rmw_cas_2 {
         )]
         #[inline]
         unsafe fn $name(dst: *mut u128, _order: Ordering) -> u128 {
-            debug_assert!(dst as usize % 16 == 0);
+            debug_assert!(dst.addr() % 16 == 0);
             debug_assert_cmpxchg16b!();
             // SAFETY: the caller must guarantee that `dst` is valid for both writes and
             // reads, 16-byte aligned, and that there are no concurrent non-atomic operations.

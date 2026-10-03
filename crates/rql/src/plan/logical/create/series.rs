@@ -44,13 +44,23 @@ impl<'bump> Compiler<'bump> {
 			let ty_fragment = col.ty.name_fragment().to_owned();
 			let fragment = Fragment::merge_all([name.clone(), ty_fragment]);
 
-			let mut auto_increment = false;
 			let mut dictionary_id = None;
 			let mut properties = vec![];
 
 			for property in &col.properties {
 				match property {
-					AstColumnProperty::AutoIncrement => auto_increment = true,
+					AstColumnProperty::AutoIncrement => {
+						return Err(TypeError::Ast {
+							kind: AstErrorKind::UnexpectedToken {
+								expected: "a series column without auto_increment"
+									.to_string(),
+							},
+							message: "auto_increment is not supported on series columns"
+								.to_string(),
+							fragment: col.name.to_owned(),
+						}
+						.into());
+					}
 					AstColumnProperty::Dictionary(dict_ident) => {
 						let dict_ns_segments: Vec<&str> = if dict_ident.namespace.is_empty() {
 							series_ns_segments.clone()
@@ -112,7 +122,6 @@ impl<'bump> Compiler<'bump> {
 				fragment,
 				constraint,
 				properties,
-				auto_increment,
 				dictionary_id,
 			});
 		}
@@ -196,6 +205,17 @@ impl<'bump> Compiler<'bump> {
 			}
 		};
 
+		if key_col.dictionary_id.is_some() {
+			return Err(TypeError::Ast {
+				kind: AstErrorKind::UnexpectedToken {
+					expected: "a series key column without a dictionary".to_string(),
+				},
+				message: "a series key cannot use a dictionary".to_string(),
+				fragment: key_fragment.to_owned(),
+			}
+			.into());
+		}
+
 		let partition_by: Vec<String> = ast.partition_by.iter().map(|s| s.to_string()).collect();
 		for pb_col in &partition_by {
 			if !columns.iter().any(|c| c.name.text() == pb_col.as_str()) {
@@ -226,7 +246,7 @@ impl<'bump> Compiler<'bump> {
 
 		let time = resolve_declared_source_time(
 			&TimeDeclaration::from(&ast.time_declaration),
-			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+			columns.iter().map(|c| (c.name.text(), c.constraint.get_type(), c.dictionary_id.is_some())),
 			row_ttl,
 		)?;
 

@@ -19,6 +19,7 @@ use reifydb_runtime::{
 	Runtime, RuntimeConfig,
 	actor::{
 		context::Context,
+		mailbox::SendError,
 		traits::{Actor, Directive},
 	},
 	pool::PoolConfig,
@@ -422,4 +423,63 @@ fn ephemeral_lifecycle_and_spawn_task() {
 	handle.join().unwrap();
 
 	assert!(wait_until(Duration::from_secs(5), || jobs_done.load(Ordering::SeqCst) == 100));
+}
+
+#[derive(Debug)]
+enum StopMessage {
+	Park(mpsc::Receiver<()>),
+	Reply(mpsc::Sender<()>),
+	Stop,
+}
+
+struct StoppingActor;
+
+impl Actor for StoppingActor {
+	type State = ();
+	type Message = StopMessage;
+
+	fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
+
+	fn handle(&self, _state: &mut Self::State, msg: Self::Message, _ctx: &Context<Self::Message>) -> Directive {
+		match msg {
+			StopMessage::Park(gate) => {
+				let _ = gate.recv();
+				Directive::Continue
+			}
+			StopMessage::Reply(reply) => {
+				let _ = reply.send(());
+				Directive::Continue
+			}
+			StopMessage::Stop => Directive::Stop,
+		}
+	}
+}
+
+#[test]
+fn self_stopped_actor_refuses_sends_with_closed() {
+	// A stopped actor that still accepts sends swallows them silently, freezing any caller that falls back on
+	// Closed.
+	let rt = runtime(1, 1, 1);
+	let handle = rt.spawner().spawn_coordination("stopping", StoppingActor);
+	let actor_ref = handle.actor_ref().clone();
+	actor_ref.send(StopMessage::Stop).unwrap();
+	handle.join().unwrap();
+	assert!(matches!(actor_ref.send(StopMessage::Stop), Err(SendError::Closed(_))));
+}
+
+#[test]
+fn queued_messages_are_released_when_the_actor_stops() {
+	// Messages queued behind Stop must drop with the mailbox, otherwise their reply channels hang until system
+	// shutdown.
+	let rt = runtime(1, 1, 1);
+	let handle = rt.spawner().spawn_coordination("stopping", StoppingActor);
+	let actor_ref = handle.actor_ref().clone();
+	let (gate_tx, gate_rx) = mpsc::channel();
+	let (reply_tx, reply_rx) = mpsc::channel();
+	actor_ref.send(StopMessage::Park(gate_rx)).unwrap();
+	actor_ref.send(StopMessage::Stop).unwrap();
+	actor_ref.send(StopMessage::Reply(reply_tx)).unwrap();
+	drop(gate_tx);
+	handle.join().unwrap();
+	assert!(matches!(reply_rx.try_recv(), Err(mpsc::TryRecvError::Disconnected)));
 }

@@ -1,5 +1,6 @@
 use crate::TrappableError;
 use crate::filesystem::File;
+use crate::filesystem::sys;
 use crate::p2::bindings::filesystem::types;
 use crate::p2::{InputStream, OutputStream, Pollable, StreamError, StreamResult};
 use crate::runtime::AbortOnDropJoinHandle;
@@ -83,12 +84,10 @@ impl FileInputStream {
         }
     }
 
-    fn blocking_read(file: &cap_std::fs::File, offset: u64, size: usize) -> ReadState {
-        use system_interface::fs::FileIoExt;
-
+    fn blocking_read(file: &std::fs::File, offset: u64, size: usize) -> ReadState {
         let mut buf = BytesMut::zeroed(size.min(crate::MAX_READ_SIZE_ALLOC));
         loop {
-            match file.read_at(&mut buf, offset) {
+            match sys::read_at_cursor_unspecified(file, &mut buf, offset) {
                 Ok(0) => return ReadState::Closed,
                 Ok(n) => {
                     buf.truncate(n);
@@ -239,17 +238,15 @@ impl FileOutputStream {
     }
 
     fn blocking_write(
-        file: &cap_std::fs::File,
+        file: &std::fs::File,
         mut buf: Bytes,
         mode: FileOutputMode,
     ) -> io::Result<usize> {
-        use system_interface::fs::FileIoExt;
-
         match mode {
             FileOutputMode::Position(mut p) => {
                 let mut total = 0;
                 loop {
-                    let nwritten = file.write_at(buf.as_ref(), p)?;
+                    let nwritten = sys::write_at_cursor_unspecified(file, buf.as_ref(), p)?;
                     // afterwards buf contains [nwritten, len):
                     let _ = buf.split_to(nwritten);
                     p += nwritten as u64;
@@ -263,7 +260,7 @@ impl FileOutputStream {
             FileOutputMode::Append => {
                 let mut total = 0;
                 loop {
-                    let nwritten = file.append(buf.as_ref())?;
+                    let nwritten = sys::append_cursor_unspecified(file, buf.as_ref())?;
                     let _ = buf.split_to(nwritten);
                     total += nwritten;
                     if buf.is_empty() {
@@ -277,7 +274,7 @@ impl FileOutputStream {
 }
 
 // FIXME: configurable? determine from how much space left in file?
-const FILE_WRITE_CAPACITY: usize = 1024 * 1024;
+const FILE_WRITE_CAPACITY: usize = crate::MAX_READ_SIZE_ALLOC;
 
 #[async_trait::async_trait]
 impl OutputStream for FileOutputStream {

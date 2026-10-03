@@ -73,7 +73,7 @@ impl<'a, R: BufRead> Decoder<'a, R> {
     /// The dictionary must be the same as the one used during compression.
     pub fn with_prepared_dictionary<'b>(
         reader: R,
-        dictionary: &DecoderDictionary<'b>,
+        dictionary: &'a DecoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,
@@ -118,11 +118,32 @@ impl<'a, R: BufRead> Decoder<'a, R> {
         self.reader.reader_mut()
     }
 
+    /// Consume the rest of the current frame, so the underlying reader is
+    /// left pointing just after it.
+    ///
+    /// zstd can hand out the last of the decoded data before it has read the
+    /// frame epilogue, so a reader that stops as soon as it has the bytes it
+    /// wanted leaves the input somewhere inside the frame. Call this to line
+    /// the reader back up with the end of the frame - for instance to carry on
+    /// reading whatever follows the compressed section.
+    ///
+    /// This does not touch the underlying reader if the frame is already
+    /// complete, and never starts decoding the next frame.
+    pub fn finish_frame(&mut self) -> io::Result<()> {
+        self.reader.finish_frame()
+    }
+
     /// Return the inner `Read`.
     ///
     /// Calling `finish()` is not *required* after reading a stream -
     /// just use it if you need to get the `Read` back.
-    pub fn finish(self) -> R {
+    ///
+    /// This consumes the rest of the current frame first, so the reader is
+    /// returned pointing just after it - see [`Self::finish_frame()`]. That
+    /// may read from the underlying reader, and any error doing so is
+    /// ignored; call `finish_frame()` directly if you need to see it.
+    pub fn finish(mut self) -> R {
+        let _ = self.finish_frame();
         self.reader.into_inner()
     }
 
@@ -166,12 +187,25 @@ impl<R: BufRead> Encoder<'static, R> {
 }
 
 impl<'a, R: BufRead> Encoder<'a, R> {
+    /// Creates a new encoder which employs the provided context for serialization.
+    pub fn with_context(
+        reader: R,
+        context: &'a mut zstd_safe::CCtx<'static>,
+    ) -> Self {
+        Self {
+            reader: zio::Reader::new(
+                reader,
+                raw::Encoder::with_context(context),
+            ),
+        }
+    }
+
     /// Creates a new encoder, using an existing `EncoderDictionary`.
     ///
     /// The dictionary must be the same as the one used during compression.
     pub fn with_prepared_dictionary<'b>(
         reader: R,
-        dictionary: &EncoderDictionary<'b>,
+        dictionary: &'a EncoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,

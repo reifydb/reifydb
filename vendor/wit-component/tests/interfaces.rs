@@ -98,7 +98,9 @@ fn assert_print(resolve: &Resolve, pkg_id: PackageId, path: &Path, is_dir: bool)
     };
     assert_output(&expected, &output)?;
 
-    UnresolvedPackageGroup::parse("foo.wit", &output).context("failed to parse printed output")?;
+    UnresolvedPackageGroup::parse("foo.wit", &output)
+        .map_err(|(map, e)| anyhow::anyhow!("{}", e.render(&map)))
+        .context("failed to parse printed output")?;
     Ok(())
 }
 
@@ -108,6 +110,11 @@ fn assert_output(expected: &Path, actual: &str) -> Result<()> {
         "\"$CARGO_PKG_VERSION\"",
     );
     if std::env::var_os("BLESS").is_some() {
+        if let Ok(prev) = fs::read_to_string(&expected)
+            && prev == actual
+        {
+            return Ok(());
+        }
         fs::write(expected, actual).with_context(|| format!("failed to write {expected:?}"))?;
     } else {
         assert_eq!(

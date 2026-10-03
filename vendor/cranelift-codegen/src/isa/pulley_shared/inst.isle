@@ -74,14 +74,14 @@
     ;;
     ;; How much is written to the register is defined by `ExtKind`. The `flags`
     ;; control behavior such as endianness.
-    (XLoad (dst WritableXReg) (mem Amode) (ty Type) (flags MemFlags))
-    (FLoad (dst WritableFReg) (mem Amode) (ty Type) (flags MemFlags))
-    (VLoad (dst WritableVReg) (mem Amode) (ty Type) (flags MemFlags))
+    (XLoad (dst WritableXReg) (mem Amode) (ty Type) (flags MemFlagsData))
+    (FLoad (dst WritableFReg) (mem Amode) (ty Type) (flags MemFlagsData))
+    (VLoad (dst WritableVReg) (mem Amode) (ty Type) (flags MemFlagsData))
 
     ;; Stores.
-    (XStore (mem Amode) (src XReg) (ty Type) (flags MemFlags))
-    (FStore (mem Amode) (src FReg) (ty Type) (flags MemFlags))
-    (VStore (mem Amode) (src VReg) (ty Type) (flags MemFlags))
+    (XStore (mem Amode) (src XReg) (ty Type) (flags MemFlagsData))
+    (FStore (mem Amode) (src FReg) (ty Type) (flags MemFlagsData))
+    (VStore (mem Amode) (src VReg) (ty Type) (flags MemFlagsData))
 
     ;; A raw pulley instruction generated at compile-time via Pulley's
     ;; `for_each_op!` macro. This variant has `pulley_*` constructors to
@@ -246,9 +246,9 @@
       (wasm_addr XReg)
       (offset u8))))
 
-;; Helper to determine the endianness of `MemFlags` taking the current target
+;; Helper to determine the endianness of `MemFlagsData` taking the current target
 ;; into account.
-(decl pure endianness (MemFlags) Endianness)
+(decl pure endianness (MemFlagsData) Endianness)
 (extern constructor endianness endianness)
 (type Endianness extern (enum Little Big))
 
@@ -270,9 +270,10 @@
 (type SinkableLoad (enum (Load (inst Inst) (ty Type) (addr Value) (offset u8))))
 (decl pure partial sinkable_load (Value) SinkableLoad)
 (rule (sinkable_load value @ (value_type ty))
-  (if-let inst @ (load _ flags addr (offset32 offset)) (is_sinkable_inst value))
-  (if-let true (is_native_endianness (endianness flags)))
-  (if-let true (memflags_nontrapping flags))
+  (if-let inst @ (load _ (mem_flags_data flags_data) addr (offset32 offset))
+          (is_sinkable_inst value))
+  (if-let true (is_native_endianness (endianness flags_data)))
+  (if-let true (memflags_nontrapping flags_data))
   (if-let offset8 (i32_try_into_u8 offset))
   (SinkableLoad.Load inst ty addr offset8))
 
@@ -295,10 +296,13 @@
 (decl pure pointer_width () PointerWidth)
 (extern constructor pointer_width pointer_width)
 
-(decl pure memflags_nontrapping (MemFlags) bool)
+(decl pure memflags_nontrapping (MemFlagsData) bool)
 (extern constructor memflags_nontrapping memflags_nontrapping)
 
-(decl pure memflags_is_wasm (MemFlags) bool)
+(decl pure partial memflags_trapping (MemFlagsData) TrapCode)
+(extern constructor memflags_trapping memflags_trapping)
+
+(decl pure memflags_is_wasm (MemFlagsData) bool)
 (extern constructor memflags_is_wasm memflags_is_wasm)
 
 ;; Helper type to represent a "pending" `AddrG32` value.
@@ -344,9 +348,9 @@
 ;; Here the top-layer of this rule matches the `(select ...)` node where 0 is
 ;; used if the oob condition is true. Otherwise the raw address is used for the
 ;; load/store.
-(decl pure partial wasm_g32 (Value Offset32 MemFlags Type) G32)
+(decl pure partial wasm_g32 (Value Offset32 MemFlagsData Type) G32)
 (rule (wasm_g32 (select _ oob (u64_from_iconst 0) raw_addr) (offset32 0) flags ty)
-  ;; This must be a wasm load/store according to `MemFlags`, namely that it's
+  ;; This must be a wasm load/store according to `MemFlagsData`, namely that it's
   ;; got a "HEAP_OUT_OF_BOUNDS" trap code and it's little-endian.
   (if-let true (memflags_is_wasm flags))
   ;; Peel off the static wasm offset from `raw_addr`, if one is present. If
@@ -427,9 +431,9 @@
 ;; of the address against a particular bound.
 (decl pure partial wasm_oob_cond (Value Value) OobCond)
 (type OobCond (enum (All (a Value) (b u64))))
-(rule (wasm_oob_cond wasm_addr (ugt wasm_addr (isub _ bound (u64_from_iconst n))))
+(rule (wasm_oob_cond wasm_addr (ugt _ wasm_addr (isub _ bound (u64_from_iconst n))))
   (OobCond.All bound n))
-(rule (wasm_oob_cond wasm_addr (ult (isub _ bound (u64_from_iconst n)) wasm_addr))
+(rule (wasm_oob_cond wasm_addr (ult _ (isub _ bound (u64_from_iconst n)) wasm_addr))
   (OobCond.All bound n))
 
 ;;;; Newtypes for Different Register Classes ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -463,6 +467,11 @@
 (decl put_in_xreg (Value) XReg)
 (rule (put_in_xreg val) (xreg_new (put_in_reg val)))
 (convert Value XReg put_in_xreg)
+
+;; Returns `Value` in an `XReg` if it's <=64 bits, or the low 64-bits if
+;; it's an i128.
+(decl lo_xreg (Value) XReg)
+(rule (lo_xreg val) (xreg_new (lo_reg val)))
 
 ;; Construct an `InstOutput` out of a single XReg register.
 (decl output_xreg (XReg) InstOutput)
@@ -662,33 +671,33 @@
 (rule (pulley_br_if cond taken not_taken)
       (SideEffectNoResult.Inst (MInst.BrIf cond taken not_taken)))
 
-(decl pulley_xload (Amode Type MemFlags) XReg)
+(decl pulley_xload (Amode Type MemFlagsData) XReg)
 (rule (pulley_xload amode ty flags)
       (let ((dst WritableXReg (temp_writable_xreg))
             (_ Unit (emit (MInst.XLoad dst amode ty flags))))
         dst))
 
-(decl pulley_xstore (Amode XReg Type MemFlags) SideEffectNoResult)
+(decl pulley_xstore (Amode XReg Type MemFlagsData) SideEffectNoResult)
 (rule (pulley_xstore amode src ty flags)
       (SideEffectNoResult.Inst (MInst.XStore amode src ty flags)))
 
-(decl pulley_fload (Amode Type MemFlags) FReg)
+(decl pulley_fload (Amode Type MemFlagsData) FReg)
 (rule (pulley_fload amode ty flags)
       (let ((dst WritableFReg (temp_writable_freg))
             (_ Unit (emit (MInst.FLoad dst amode ty flags))))
         dst))
 
-(decl pulley_fstore (Amode FReg Type MemFlags) SideEffectNoResult)
+(decl pulley_fstore (Amode FReg Type MemFlagsData) SideEffectNoResult)
 (rule (pulley_fstore amode src ty flags)
       (SideEffectNoResult.Inst (MInst.FStore amode src ty flags)))
 
-(decl pulley_vload (Amode Type MemFlags) VReg)
+(decl pulley_vload (Amode Type MemFlagsData) VReg)
 (rule (pulley_vload amode ty flags)
       (let ((dst WritableVReg (temp_writable_vreg))
             (_ Unit (emit (MInst.VLoad dst amode ty flags))))
         dst))
 
-(decl pulley_vstore (Amode VReg Type MemFlags) SideEffectNoResult)
+(decl pulley_vstore (Amode VReg Type MemFlagsData) SideEffectNoResult)
 (rule (pulley_vstore amode src ty flags)
       (SideEffectNoResult.Inst (MInst.VStore amode src ty flags)))
 

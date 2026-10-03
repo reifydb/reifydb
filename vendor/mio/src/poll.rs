@@ -4,12 +4,12 @@
     not(any(
         target_os = "aix",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "fuchsia",
         target_os = "haiku",
         target_os = "hermit",
         target_os = "hurd",
         target_os = "nto",
-        target_os = "solaris",
         target_os = "vita",
         target_os = "cygwin",
         target_os = "horizon"
@@ -243,6 +243,7 @@ use crate::{event, sys, Events, Interest, Token};
 /// | Linux         | [epoll]   |
 /// | NetBSD        | [kqueue]  |
 /// | OpenBSD       | [kqueue]  |
+/// | Solaris       | [event ports] |
 /// | Windows       | [IOCP]    |
 /// | macOS         | [kqueue]  |
 ///
@@ -261,6 +262,7 @@ use crate::{event, sys, Events, Interest, Token};
 /// kernel.
 ///
 /// [epoll]: https://man7.org/linux/man-pages/man7/epoll.7.html
+/// [event ports]: https://docs.oracle.com/cd/E88353_01/html/E37843/port-create-3c.html
 /// [kqueue]: https://www.freebsd.org/cgi/man.cgi?query=kqueue&sektion=2
 /// [IOCP]: https://docs.microsoft.com/en-us/windows/win32/fileio/i-o-completion-ports
 /// [`signalfd`]: https://man7.org/linux/man-pages/man2/signalfd.2.html
@@ -287,11 +289,7 @@ impl Poll {
         /// with the error.
         ///
         /// close-on-exec flag is set on the file descriptors used by the selector to prevent
-        /// leaking it to executed processes. However, on some systems such as
-        /// old Linux systems that don't support `epoll_create1` syscall it is done
-        /// non-atomically, so a separate thread executing in parallel to this
-        /// function may accidentally leak the file descriptor if it executes a
-        /// new process before this function returns.
+        /// leaking it to executed processes.
         ///
         /// See [struct] level docs for more details.
         ///
@@ -448,12 +446,12 @@ impl Poll {
     not(any(
         target_os = "aix",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "fuchsia",
         target_os = "haiku",
         target_os = "hermit",
         target_os = "hurd",
         target_os = "nto",
-        target_os = "solaris",
         target_os = "vita",
         target_os = "cygwin",
         target_os = "horizon"
@@ -752,12 +750,12 @@ impl fmt::Debug for Registry {
     not(any(
         target_os = "aix",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "haiku",
         target_os = "fuchsia",
         target_os = "hermit",
         target_os = "hurd",
         target_os = "nto",
-        target_os = "solaris",
         target_os = "vita",
         target_os = "cygwin",
         target_os = "horizon"
@@ -775,12 +773,12 @@ impl AsFd for Registry {
     not(any(
         target_os = "aix",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "haiku",
         target_os = "fuchsia",
         target_os = "hermit",
         target_os = "hurd",
         target_os = "nto",
-        target_os = "solaris",
         target_os = "vita",
         target_os = "cygwin",
         target_os = "horizon"
@@ -799,10 +797,10 @@ cfg_os_poll! {
         not(any(
             target_os = "aix",
             target_os = "espidf",
+            target_os = "nuttx",
             target_os = "hermit",
             target_os = "hurd",
             target_os = "nto",
-            target_os = "solaris",
             target_os = "vita",
             target_os = "cygwin",
             target_os = "horizon"

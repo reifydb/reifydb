@@ -173,7 +173,7 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: foo::foo::records::HostWithStore + Send,
+            D: foo::foo::records::HostWithStore<T> + Send,
             for<'a> D::Data<'a>: foo::foo::records::Host + Send,
             T: 'static + Send,
         {
@@ -388,187 +388,269 @@ pub mod foo {
                     >::ALIGN32
                 );
             };
-            pub trait HostWithStore: wasmtime::component::HasData + Send {
-                fn tuple_arg<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+            pub trait HostWithStore<T>: wasmtime::component::HasData + Send {
+                fn tuple_arg(
+                    host: wasmtime::component::Access<T, Self>,
                     x: (char, u32),
                 ) -> impl ::core::future::Future<Output = ()> + Send;
-                fn tuple_result<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn tuple_result(
+                    host: wasmtime::component::Access<T, Self>,
                 ) -> impl ::core::future::Future<Output = (char, u32)> + Send;
-                fn empty_arg<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn empty_arg(
+                    host: wasmtime::component::Access<T, Self>,
                     x: Empty,
                 ) -> impl ::core::future::Future<Output = ()> + Send;
-                fn empty_result<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn empty_result(
+                    host: wasmtime::component::Access<T, Self>,
                 ) -> impl ::core::future::Future<Output = Empty> + Send;
-                fn scalar_arg<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn scalar_arg(
+                    host: wasmtime::component::Access<T, Self>,
                     x: Scalars,
                 ) -> impl ::core::future::Future<Output = ()> + Send;
-                fn scalar_result<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn scalar_result(
+                    host: wasmtime::component::Access<T, Self>,
                 ) -> impl ::core::future::Future<Output = Scalars> + Send;
-                fn flags_arg<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn flags_arg(
+                    host: wasmtime::component::Access<T, Self>,
                     x: ReallyFlags,
                 ) -> impl ::core::future::Future<Output = ()> + Send;
-                fn flags_result<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn flags_result(
+                    host: wasmtime::component::Access<T, Self>,
                 ) -> impl ::core::future::Future<Output = ReallyFlags> + Send;
-                fn aggregate_arg<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn aggregate_arg(
+                    host: wasmtime::component::Access<T, Self>,
                     x: Aggregates,
                 ) -> impl ::core::future::Future<Output = ()> + Send;
-                fn aggregate_result<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn aggregate_result(
+                    host: wasmtime::component::Access<T, Self>,
                 ) -> impl ::core::future::Future<Output = Aggregates> + Send;
-                fn typedef_inout<T: Send>(
-                    accessor: &wasmtime::component::Accessor<T, Self>,
+                fn typedef_inout(
+                    host: wasmtime::component::Access<T, Self>,
                     e: TupleTypedef2,
                 ) -> impl ::core::future::Future<Output = i32> + Send;
             }
             pub trait Host: Send {}
             impl<_T: Host + ?Sized + Send> Host for &mut _T {}
-            pub fn add_to_linker<T, D>(
-                linker: &mut wasmtime::component::Linker<T>,
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static + Send,
             {
-                let mut inst = linker.instance("foo:foo/records")?;
-                inst.func_wrap_concurrent(
+                inst.func_wrap_async(
                     "tuple-arg",
                     move |
-                        caller: &wasmtime::component::Accessor<T>,
+                        mut caller: wasmtime::StoreContextMut<'_, T>,
                         (arg0,): ((char, u32),)|
                     {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::tuple_arg(host, arg0).await;
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::tuple_arg(host, arg0).await;
                             Ok(r)
                         })
                     },
                 )?;
-                inst.func_wrap_concurrent(
+                inst.func_wrap_async(
                     "tuple-result",
-                    move |caller: &wasmtime::component::Accessor<T>, (): ()| {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::tuple_result(host).await;
+                    move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::tuple_result(host).await;
                             Ok((r,))
                         })
                     },
                 )?;
-                inst.func_wrap_concurrent(
+                inst.func_wrap_async(
                     "empty-arg",
-                    move |caller: &wasmtime::component::Accessor<T>, (arg0,): (Empty,)| {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::empty_arg(host, arg0).await;
+                    move |
+                        mut caller: wasmtime::StoreContextMut<'_, T>,
+                        (arg0,): (Empty,)|
+                    {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::empty_arg(host, arg0).await;
                             Ok(r)
                         })
                     },
                 )?;
-                inst.func_wrap_concurrent(
+                inst.func_wrap_async(
                     "empty-result",
-                    move |caller: &wasmtime::component::Accessor<T>, (): ()| {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::empty_result(host).await;
+                    move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::empty_result(host).await;
                             Ok((r,))
                         })
                     },
                 )?;
-                inst.func_wrap_concurrent(
+                inst.func_wrap_async(
                     "scalar-arg",
                     move |
-                        caller: &wasmtime::component::Accessor<T>,
+                        mut caller: wasmtime::StoreContextMut<'_, T>,
                         (arg0,): (Scalars,)|
                     {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::scalar_arg(host, arg0).await;
-                            Ok(r)
-                        })
-                    },
-                )?;
-                inst.func_wrap_concurrent(
-                    "scalar-result",
-                    move |caller: &wasmtime::component::Accessor<T>, (): ()| {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::scalar_result(host).await;
-                            Ok((r,))
-                        })
-                    },
-                )?;
-                inst.func_wrap_concurrent(
-                    "flags-arg",
-                    move |
-                        caller: &wasmtime::component::Accessor<T>,
-                        (arg0,): (ReallyFlags,)|
-                    {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::flags_arg(host, arg0).await;
-                            Ok(r)
-                        })
-                    },
-                )?;
-                inst.func_wrap_concurrent(
-                    "flags-result",
-                    move |caller: &wasmtime::component::Accessor<T>, (): ()| {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::flags_result(host).await;
-                            Ok((r,))
-                        })
-                    },
-                )?;
-                inst.func_wrap_concurrent(
-                    "aggregate-arg",
-                    move |
-                        caller: &wasmtime::component::Accessor<T>,
-                        (arg0,): (Aggregates,)|
-                    {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::aggregate_arg(host, arg0)
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::scalar_arg(host, arg0)
                                 .await;
                             Ok(r)
                         })
                     },
                 )?;
-                inst.func_wrap_concurrent(
-                    "aggregate-result",
-                    move |caller: &wasmtime::component::Accessor<T>, (): ()| {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::aggregate_result(host).await;
+                inst.func_wrap_async(
+                    "scalar-result",
+                    move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::scalar_result(host).await;
                             Ok((r,))
                         })
                     },
                 )?;
-                inst.func_wrap_concurrent(
+                inst.func_wrap_async(
+                    "flags-arg",
+                    move |
+                        mut caller: wasmtime::StoreContextMut<'_, T>,
+                        (arg0,): (ReallyFlags,)|
+                    {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::flags_arg(host, arg0).await;
+                            Ok(r)
+                        })
+                    },
+                )?;
+                inst.func_wrap_async(
+                    "flags-result",
+                    move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::flags_result(host).await;
+                            Ok((r,))
+                        })
+                    },
+                )?;
+                inst.func_wrap_async(
+                    "aggregate-arg",
+                    move |
+                        mut caller: wasmtime::StoreContextMut<'_, T>,
+                        (arg0,): (Aggregates,)|
+                    {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::aggregate_arg(host, arg0)
+                                .await;
+                            Ok(r)
+                        })
+                    },
+                )?;
+                inst.func_wrap_async(
+                    "aggregate-result",
+                    move |mut caller: wasmtime::StoreContextMut<'_, T>, (): ()| {
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::aggregate_result(host)
+                                .await;
+                            Ok((r,))
+                        })
+                    },
+                )?;
+                inst.func_wrap_async(
                     "typedef-inout",
                     move |
-                        caller: &wasmtime::component::Accessor<T>,
+                        mut caller: wasmtime::StoreContextMut<'_, T>,
                         (arg0,): (TupleTypedef2,)|
                     {
-                        wasmtime::component::__internal::Box::pin(async move {
-                            let host = &caller.with_getter(host_getter);
-                            let r = <D as HostWithStore>::typedef_inout(host, arg0)
+                        wasmtime::component::__internal::Box::new(async move {
+                            let access_cx = wasmtime::AsContextMut::as_context_mut(
+                                &mut caller,
+                            );
+                            let host = wasmtime::component::Access::<
+                                T,
+                                D,
+                            >::new(access_cx, host_getter);
+                            let r = <D as HostWithStore<T>>::typedef_inout(host, arg0)
                                 .await;
                             Ok((r,))
                         })
                     },
                 )?;
                 Ok(())
+            }
+            pub fn add_to_linker<T, D>(
+                linker: &mut wasmtime::component::Linker<T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static + Send,
+            {
+                let mut inst = linker.instance("foo:foo/records")?;
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
             }
         }
     }
@@ -855,7 +937,7 @@ pub mod exports {
                                     "no exported instance named `foo:foo/records`"
                                 )
                             })?;
-                        let mut lookup = move |name| {
+                        let mut lookup = move |name: &str| {
                             _instance_pre
                                 .component()
                                 .get_export_index(Some(&instance), name)
@@ -981,6 +1063,16 @@ pub mod exports {
                     }
                 }
                 impl Guest {
+                    pub fn func_tuple_arg(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<((char, u32),), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                ((char, u32),),
+                                (),
+                            >::new_unchecked(self.tuple_arg)
+                        }
+                    }
                     pub async fn call_tuple_arg<_T, _D>(
                         &self,
                         accessor: &wasmtime::component::Accessor<_T, _D>,
@@ -990,14 +1082,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                ((char, u32),),
-                                (),
-                            >::new_unchecked(self.tuple_arg)
-                        };
+                        let callee = self.func_tuple_arg();
                         let () = callee.call_concurrent(accessor, (arg0,)).await?;
                         Ok(())
+                    }
+                    pub fn func_tuple_result(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(), ((char, u32),)> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                ((char, u32),),
+                            >::new_unchecked(self.tuple_result)
+                        }
                     }
                     pub async fn call_tuple_result<_T, _D>(
                         &self,
@@ -1007,14 +1104,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                ((char, u32),),
-                            >::new_unchecked(self.tuple_result)
-                        };
+                        let callee = self.func_tuple_result();
                         let (ret0,) = callee.call_concurrent(accessor, ()).await?;
                         Ok(ret0)
+                    }
+                    pub fn func_empty_arg(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(Empty,), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (Empty,),
+                                (),
+                            >::new_unchecked(self.empty_arg)
+                        }
                     }
                     pub async fn call_empty_arg<_T, _D>(
                         &self,
@@ -1025,14 +1127,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (Empty,),
-                                (),
-                            >::new_unchecked(self.empty_arg)
-                        };
+                        let callee = self.func_empty_arg();
                         let () = callee.call_concurrent(accessor, (arg0,)).await?;
                         Ok(())
+                    }
+                    pub fn func_empty_result(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(), (Empty,)> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                (Empty,),
+                            >::new_unchecked(self.empty_result)
+                        }
                     }
                     pub async fn call_empty_result<_T, _D>(
                         &self,
@@ -1042,14 +1149,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                (Empty,),
-                            >::new_unchecked(self.empty_result)
-                        };
+                        let callee = self.func_empty_result();
                         let (ret0,) = callee.call_concurrent(accessor, ()).await?;
                         Ok(ret0)
+                    }
+                    pub fn func_scalar_arg(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(Scalars,), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (Scalars,),
+                                (),
+                            >::new_unchecked(self.scalar_arg)
+                        }
                     }
                     pub async fn call_scalar_arg<_T, _D>(
                         &self,
@@ -1060,14 +1172,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (Scalars,),
-                                (),
-                            >::new_unchecked(self.scalar_arg)
-                        };
+                        let callee = self.func_scalar_arg();
                         let () = callee.call_concurrent(accessor, (arg0,)).await?;
                         Ok(())
+                    }
+                    pub fn func_scalar_result(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(), (Scalars,)> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                (Scalars,),
+                            >::new_unchecked(self.scalar_result)
+                        }
                     }
                     pub async fn call_scalar_result<_T, _D>(
                         &self,
@@ -1077,14 +1194,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                (Scalars,),
-                            >::new_unchecked(self.scalar_result)
-                        };
+                        let callee = self.func_scalar_result();
                         let (ret0,) = callee.call_concurrent(accessor, ()).await?;
                         Ok(ret0)
+                    }
+                    pub fn func_flags_arg(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(ReallyFlags,), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (ReallyFlags,),
+                                (),
+                            >::new_unchecked(self.flags_arg)
+                        }
                     }
                     pub async fn call_flags_arg<_T, _D>(
                         &self,
@@ -1095,14 +1217,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (ReallyFlags,),
-                                (),
-                            >::new_unchecked(self.flags_arg)
-                        };
+                        let callee = self.func_flags_arg();
                         let () = callee.call_concurrent(accessor, (arg0,)).await?;
                         Ok(())
+                    }
+                    pub fn func_flags_result(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(), (ReallyFlags,)> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                (ReallyFlags,),
+                            >::new_unchecked(self.flags_result)
+                        }
                     }
                     pub async fn call_flags_result<_T, _D>(
                         &self,
@@ -1112,14 +1239,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                (ReallyFlags,),
-                            >::new_unchecked(self.flags_result)
-                        };
+                        let callee = self.func_flags_result();
                         let (ret0,) = callee.call_concurrent(accessor, ()).await?;
                         Ok(ret0)
+                    }
+                    pub fn func_aggregate_arg(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(Aggregates,), ()> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (Aggregates,),
+                                (),
+                            >::new_unchecked(self.aggregate_arg)
+                        }
                     }
                     pub async fn call_aggregate_arg<_T, _D>(
                         &self,
@@ -1130,14 +1262,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (Aggregates,),
-                                (),
-                            >::new_unchecked(self.aggregate_arg)
-                        };
+                        let callee = self.func_aggregate_arg();
                         let () = callee.call_concurrent(accessor, (arg0,)).await?;
                         Ok(())
+                    }
+                    pub fn func_aggregate_result(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(), (Aggregates,)> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (),
+                                (Aggregates,),
+                            >::new_unchecked(self.aggregate_result)
+                        }
                     }
                     pub async fn call_aggregate_result<_T, _D>(
                         &self,
@@ -1147,14 +1284,19 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (),
-                                (Aggregates,),
-                            >::new_unchecked(self.aggregate_result)
-                        };
+                        let callee = self.func_aggregate_result();
                         let (ret0,) = callee.call_concurrent(accessor, ()).await?;
                         Ok(ret0)
+                    }
+                    pub fn func_typedef_inout(
+                        &self,
+                    ) -> wasmtime::component::TypedFunc<(TupleTypedef2,), (i32,)> {
+                        unsafe {
+                            wasmtime::component::TypedFunc::<
+                                (TupleTypedef2,),
+                                (i32,),
+                            >::new_unchecked(self.typedef_inout)
+                        }
                     }
                     pub async fn call_typedef_inout<_T, _D>(
                         &self,
@@ -1165,12 +1307,7 @@ pub mod exports {
                         _T: Send,
                         _D: wasmtime::component::HasData,
                     {
-                        let callee = unsafe {
-                            wasmtime::component::TypedFunc::<
-                                (TupleTypedef2,),
-                                (i32,),
-                            >::new_unchecked(self.typedef_inout)
-                        };
+                        let callee = self.func_typedef_inout();
                         let (ret0,) = callee.call_concurrent(accessor, (arg0,)).await?;
                         Ok(ret0)
                     }

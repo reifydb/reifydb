@@ -7,9 +7,8 @@ use reifydb_codec::tag::ValueKind;
 use reifydb_value::{
 	error::ColumnReadReason,
 	value::{
-		Value, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-		ordered_f32::OrderedF32, ordered_f64::OrderedF64, row_number::RowNumber, time::Time,
-		value_type::ValueType,
+		date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
+		row_number::RowNumber, time::Time, value_type::ValueType,
 	},
 };
 
@@ -90,7 +89,7 @@ impl<'a> RowView for ExternCRowView<'a> {
 		if col.type_code() != ValueKind::Utf8 {
 			return Err(read_error::<&str>(&col, ColumnReadReason::WrongType));
 		}
-		Ok(col.iter_str().nth(self.index))
+		Ok(col.str_at(self.index))
 	}
 
 	fn blob(&self, name: &str) -> Result<Option<&[u8]>, SdkError> {
@@ -100,7 +99,7 @@ impl<'a> RowView for ExternCRowView<'a> {
 		if col.type_code() != ValueKind::Blob {
 			return Err(read_error::<&[u8]>(&col, ColumnReadReason::WrongType));
 		}
-		Ok(col.iter_bytes().nth(self.index))
+		Ok(col.bytes_at(self.index))
 	}
 
 	fn bool(&self, name: &str) -> Result<Option<bool>, SdkError> {
@@ -194,11 +193,6 @@ impl<'a> RowView for ExternCRowView<'a> {
 		self.temporal(name, ValueKind::Duration)
 	}
 
-	fn value(&self, name: &str) -> Option<Value> {
-		let col = self.columns.column(name)?;
-		Some(read_value_at(&col, self.index))
-	}
-
 	fn row_number(&self) -> Option<RowNumber> {
 		self.columns.row_numbers().get(self.index).copied().map(RowNumber)
 	}
@@ -263,52 +257,6 @@ fn type_for_column(col: &BorrowedColumn<'_>) -> ValueType {
 	}
 }
 
-fn none_value(col: &BorrowedColumn<'_>) -> Value {
-	Value::None {
-		inner: type_for_column(col),
-	}
-}
-
-fn read_value_at(col: &BorrowedColumn<'_>, index: usize) -> Value {
-	let code = col.type_code();
-	if !is_defined_at(col, index) {
-		return none_value(col);
-	}
-	match code {
-		ValueKind::Boolean => col
-			.data_bytes()
-			.get(index / 8)
-			.copied()
-			.map(|b| Value::Boolean((b >> (index % 8)) & 1 == 1))
-			.unwrap_or_else(|| none_value(col)),
-		ValueKind::Float4 => fixed_at::<f32>(col, index)
-			.and_then(|v| OrderedF32::try_from(v).ok())
-			.map(Value::Float4)
-			.unwrap_or_else(|| none_value(col)),
-		ValueKind::Float8 => fixed_at::<f64>(col, index)
-			.and_then(|v| OrderedF64::try_from(v).ok())
-			.map(Value::Float8)
-			.unwrap_or_else(|| none_value(col)),
-		ValueKind::Int1 => fixed_at::<i8>(col, index).map(Value::Int1).unwrap_or_else(|| none_value(col)),
-		ValueKind::Int2 => fixed_at::<i16>(col, index).map(Value::Int2).unwrap_or_else(|| none_value(col)),
-		ValueKind::Int4 => fixed_at::<i32>(col, index).map(Value::Int4).unwrap_or_else(|| none_value(col)),
-		ValueKind::Int8 => fixed_at::<i64>(col, index).map(Value::Int8).unwrap_or_else(|| none_value(col)),
-		ValueKind::Int16 => fixed_at::<i128>(col, index).map(Value::Int16).unwrap_or_else(|| none_value(col)),
-		ValueKind::Uint1 => fixed_at::<u8>(col, index).map(Value::Uint1).unwrap_or_else(|| none_value(col)),
-		ValueKind::Uint2 => fixed_at::<u16>(col, index).map(Value::Uint2).unwrap_or_else(|| none_value(col)),
-		ValueKind::Uint4 => fixed_at::<u32>(col, index).map(Value::Uint4).unwrap_or_else(|| none_value(col)),
-		ValueKind::Uint8 => fixed_at::<u64>(col, index).map(Value::Uint8).unwrap_or_else(|| none_value(col)),
-		ValueKind::Uint16 => fixed_at::<u128>(col, index).map(Value::Uint16).unwrap_or_else(|| none_value(col)),
-		ValueKind::Utf8 => {
-			col.iter_str().nth(index).map(|s| Value::Utf8(s.to_string())).unwrap_or_else(|| none_value(col))
-		}
-		ValueKind::Decimal => {
-			col.expect_family_cell_at(index).map(Value::Decimal).unwrap_or_else(|| none_value(col))
-		}
-		_ => none_value(col),
-	}
-}
-
 impl<'a> BorrowedColumns<'a> {
 	pub fn row(self, index: usize) -> Option<ExternCRowView<'a>> {
 		if index >= self.row_count() {
@@ -370,6 +318,6 @@ impl<'a> ChangeView for BorrowedChange<'a> {
 	}
 
 	fn diff(&self, index: usize) -> Option<impl DiffView + '_> {
-		self.diffs().nth(index)
+		self.diff_at(index)
 	}
 }

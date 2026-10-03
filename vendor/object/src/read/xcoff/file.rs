@@ -1,15 +1,14 @@
 use core::fmt::Debug;
 use core::mem;
 
-use alloc::vec::Vec;
-
 use crate::endian::BigEndian as BE;
 use crate::pod::Pod;
 use crate::read::{
-    self, Architecture, Error, Export, FileFlags, Import, NoDynamicRelocationIterator, Object,
-    ObjectKind, ObjectSection, ReadError, ReadRef, Result, SectionIndex, SymbolIndex,
+    self, Architecture, Error, FileFlags, NoDynamicRelocationIterator, NoExportIterator,
+    NoImportIterator, NoImportLibraryIterator, Object, ObjectKind, ObjectSection, ReadError,
+    ReadRef, Result, SectionIndex, SymbolIndex,
 };
-use crate::{xcoff, SkipDebugList};
+use crate::{SkipDebugList, xcoff};
 
 use super::{
     CsectAux, FileAux, Rel, SectionHeader, SectionTable, Symbol, SymbolTable, XcoffComdat,
@@ -169,6 +168,21 @@ where
     where
         Self: 'file,
         'data: 'file;
+    type ImportLibraryIterator<'file>
+        = NoImportLibraryIterator<'data, 'file, R>
+    where
+        Self: 'file,
+        'data: 'file;
+    type ImportIterator<'file>
+        = NoImportIterator<'data, 'file, R>
+    where
+        Self: 'file,
+        'data: 'file;
+    type ExportIterator<'file>
+        = NoExportIterator<'data, 'file, R>
+    where
+        Self: 'file,
+        'data: 'file;
 
     fn architecture(&self) -> Architecture {
         if self.is_64() {
@@ -188,11 +202,11 @@ where
 
     fn kind(&self) -> ObjectKind {
         let flags = self.header.f_flags();
-        if flags & xcoff::F_EXEC != 0 {
+        if flags.contains(xcoff::F_EXEC) {
             ObjectKind::Executable
-        } else if flags & xcoff::F_SHROBJ != 0 {
+        } else if flags.contains(xcoff::F_SHROBJ) {
             ObjectKind::Dynamic
-        } else if flags & xcoff::F_RELFLG == 0 {
+        } else if !flags.contains(xcoff::F_RELFLG) {
             ObjectKind::Relocatable
         } else {
             ObjectKind::Unknown
@@ -277,14 +291,19 @@ where
         None
     }
 
-    fn imports(&self) -> Result<alloc::vec::Vec<Import<'data>>> {
-        // TODO: return the imports in the STYP_LOADER section.
-        Ok(Vec::new())
+    fn import_libraries(&self) -> Result<Self::ImportLibraryIterator<'_>> {
+        // TODO: return the import file IDs in the STYP_LOADER section.
+        Ok(Default::default())
     }
 
-    fn exports(&self) -> Result<alloc::vec::Vec<Export<'data>>> {
+    fn imports(&self) -> Result<Self::ImportIterator<'_>> {
+        // TODO: return the imports in the STYP_LOADER section.
+        Ok(Default::default())
+    }
+
+    fn exports(&self) -> Result<Self::ExportIterator<'_>> {
         // TODO: return the exports in the STYP_LOADER section.
-        Ok(Vec::new())
+        Ok(Default::default())
     }
 
     fn has_debug_symbols(&self) -> bool {
@@ -312,7 +331,7 @@ where
 
 /// A trait for generic access to [`xcoff::FileHeader32`] and [`xcoff::FileHeader64`].
 #[allow(missing_docs)]
-pub trait FileHeader: Debug + Pod {
+pub trait FileHeader: Debug + Pod + read::private::Sealed {
     type Word: Into<u64>;
     type AuxHeader: AuxHeader<Word = Self::Word>;
     type SectionHeader: SectionHeader<Word = Self::Word, Rel = Self::Rel>;
@@ -330,7 +349,7 @@ pub trait FileHeader: Debug + Pod {
     fn f_symptr(&self) -> Self::Word;
     fn f_nsyms(&self) -> u32;
     fn f_opthdr(&self) -> u16;
-    fn f_flags(&self) -> u16;
+    fn f_flags(&self) -> xcoff::FileFlags;
 
     // Provided methods.
 
@@ -359,7 +378,7 @@ pub trait FileHeader: Debug + Pod {
         offset: &mut u64,
     ) -> Result<Option<&'data Self::AuxHeader>> {
         let aux_header_size = self.f_opthdr();
-        if self.f_flags() & xcoff::F_EXEC == 0 {
+        if !self.f_flags().contains(xcoff::F_EXEC) {
             // No auxiliary header is required for an object file that is not an executable.
             // TODO: Some AIX programs generate auxiliary headers for 32-bit object files
             // that end after the data_start field.
@@ -394,6 +413,8 @@ pub trait FileHeader: Debug + Pod {
         SymbolTable::parse(*self, data)
     }
 }
+
+impl read::private::Sealed for xcoff::FileHeader32 {}
 
 impl FileHeader for xcoff::FileHeader32 {
     type Word = u32;
@@ -432,10 +453,12 @@ impl FileHeader for xcoff::FileHeader32 {
         self.f_opthdr.get(BE)
     }
 
-    fn f_flags(&self) -> u16 {
+    fn f_flags(&self) -> xcoff::FileFlags {
         self.f_flags.get(BE)
     }
 }
+
+impl read::private::Sealed for xcoff::FileHeader64 {}
 
 impl FileHeader for xcoff::FileHeader64 {
     type Word = u64;
@@ -474,14 +497,14 @@ impl FileHeader for xcoff::FileHeader64 {
         self.f_opthdr.get(BE)
     }
 
-    fn f_flags(&self) -> u16 {
+    fn f_flags(&self) -> xcoff::FileFlags {
         self.f_flags.get(BE)
     }
 }
 
 /// A trait for generic access to [`xcoff::AuxHeader32`] and [`xcoff::AuxHeader64`].
 #[allow(missing_docs)]
-pub trait AuxHeader: Debug + Pod {
+pub trait AuxHeader: Debug + Pod + read::private::Sealed {
     type Word: Into<u64>;
 
     fn o_mflag(&self) -> u16;
@@ -515,6 +538,8 @@ pub trait AuxHeader: Debug + Pod {
     fn o_sntbss(&self) -> u16;
     fn o_x64flags(&self) -> Option<u16>;
 }
+
+impl read::private::Sealed for xcoff::AuxHeader32 {}
 
 impl AuxHeader for xcoff::AuxHeader32 {
     type Word = u32;
@@ -639,6 +664,8 @@ impl AuxHeader for xcoff::AuxHeader32 {
         None
     }
 }
+
+impl read::private::Sealed for xcoff::AuxHeader64 {}
 
 impl AuxHeader for xcoff::AuxHeader64 {
     type Word = u64;

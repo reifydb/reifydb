@@ -72,6 +72,16 @@ impl OrderedF32 {
 	pub fn zero() -> OrderedF32 {
 		OrderedF32(0.0f32)
 	}
+
+	pub fn canonical(f: f32) -> f32 {
+		if f.is_nan() {
+			f32::NAN
+		} else if f == 0.0 {
+			0.0
+		} else {
+			f
+		}
+	}
 }
 
 impl Deref for OrderedF32 {
@@ -136,15 +146,10 @@ impl TryFrom<f32> for OrderedF32 {
 	type Error = Error;
 
 	fn try_from(f: f32) -> Result<Self, Self::Error> {
-		let normalized = if f == 0.0 {
-			0.0
-		} else {
-			f
-		};
 		if f.is_nan() {
 			Err(TypeError::NanNotAllowed.into())
 		} else {
-			Ok(OrderedF32(normalized))
+			Ok(OrderedF32(Self::canonical(f)))
 		}
 	}
 }

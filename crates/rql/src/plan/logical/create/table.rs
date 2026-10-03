@@ -170,7 +170,7 @@ impl<'bump> Compiler<'bump> {
 
 		let time = resolve_declared_source_time(
 			&TimeDeclaration::from(&ast.time_declaration),
-			columns.iter().map(|c| (c.name.text(), c.constraint.get_type())),
+			columns.iter().map(|c| (c.name.text(), c.constraint.get_type(), c.dictionary_id.is_some())),
 			row_ttl,
 		)?;
 

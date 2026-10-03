@@ -2,8 +2,8 @@ use crate::component::*;
 use crate::error::{Result, bail};
 use crate::prelude::*;
 use crate::{
-    EngineOrModuleTypeIndex, EntityType, ModuleInternedTypeIndex, ModuleTypes, ModuleTypesBuilder,
-    PrimaryMap, TypeConvert, WasmHeapType, WasmValType,
+    EngineOrModuleTypeIndex, EntityType, ModuleTypes, ModuleTypesBuilder, PrimaryMap, TypeConvert,
+    WasmHeapType,
 };
 use cranelift_entity::EntityRef;
 use std::collections::HashMap;
@@ -21,15 +21,6 @@ use wasmtime_component_util::FlagsSize;
 
 mod resources;
 pub use resources::ResourcesBuilder;
-
-/// Maximum nesting depth of a type allowed in Wasmtime.
-///
-/// This constant isn't chosen via any scientific means and its main purpose is
-/// to enable most of Wasmtime to handle types via recursion without worrying
-/// about stack overflow.
-///
-/// Some more information about this can be found in #4814
-const MAX_TYPE_DEPTH: u32 = 100;
 
 /// Structure used to build a [`ComponentTypes`] during translation.
 ///
@@ -146,40 +137,21 @@ impl ComponentTypesBuilder {
     pub fn finish(mut self, component: &Component) -> (ComponentTypes, TypeComponentIndex) {
         let mut component_ty = TypeComponent::default();
         for (_, (name, ty)) in component.import_types.iter() {
-            component_ty.imports.insert(name.clone(), *ty);
+            component_ty.imports.insert(name.clone(), ty.clone());
         }
-        for (name, ty) in component.exports.raw_iter() {
+        for (name, (ty, data)) in component.exports.raw_iter() {
             component_ty.exports.insert(
-                name.clone(),
-                self.export_type_def(&component.export_items, *ty),
+                name.clone_panic_on_oom().into(),
+                ComponentExtern {
+                    data: data.clone(),
+                    ty: self.export_type_def(&component.export_items, *ty),
+                },
             );
         }
         let ty = self.component_types.components.push(component_ty);
 
         self.component_types.module_types = Some(self.module_types.finish());
         (self.component_types, ty)
-    }
-
-    /// Smaller helper method to find a `ModuleInternedTypeIndex` which
-    /// corresponds to the `resource.drop` intrinsic in components, namely a
-    /// core wasm function type which takes one `i32` argument and has no
-    /// results.
-    ///
-    /// This is a bit of a hack right now as ideally this find operation
-    /// wouldn't be needed and instead the `ModuleInternedTypeIndex` itself
-    /// would be threaded through appropriately, but that's left for a future
-    /// refactoring. Try not to lean too hard on this method though.
-    pub fn find_resource_drop_signature(&self) -> Option<ModuleInternedTypeIndex> {
-        self.module_types
-            .wasm_types()
-            .find(|(_, ty)| {
-                ty.as_func().map_or(false, |sig| {
-                    sig.params().len() == 1
-                        && sig.results().len() == 0
-                        && sig.params()[0] == WasmValType::I32
-                })
-            })
-            .map(|(i, _)| i)
     }
 
     /// Returns the underlying builder used to build up core wasm module types.
@@ -266,6 +238,22 @@ impl ComponentTypesBuilder {
         Ok(self.add_func_type(ty))
     }
 
+    /// Converts a wasmparser `wasmparser::ComponentItem` into Wasmtime's type
+    /// representation.
+    pub fn convert_component_item(
+        &mut self,
+        types: TypesRef<'_>,
+        ty: &wasmparser::component_types::ComponentItem,
+    ) -> Result<ComponentExtern> {
+        Ok(ComponentExtern {
+            ty: self.convert_component_entity_type(types, ty.ty)?,
+            data: ComponentExternData {
+                implements: ty.implements.clone(),
+                external_id: ty.external_id.clone(),
+            },
+        })
+    }
+
     /// Converts a wasmparser `ComponentEntityType` into Wasmtime's type
     /// representation.
     pub fn convert_component_entity_type(
@@ -325,18 +313,16 @@ impl ComponentTypesBuilder {
         let ty = &types[id];
         let mut result = TypeComponent::default();
         for (name, ty) in ty.imports.iter() {
-            self.register_abstract_component_entity_type(types, *ty);
-            result.imports.insert(
-                name.clone(),
-                self.convert_component_entity_type(types, *ty)?,
-            );
+            self.register_abstract_component_entity_type(types, ty.ty);
+            result
+                .imports
+                .insert(name.clone(), self.convert_component_item(types, ty)?);
         }
         for (name, ty) in ty.exports.iter() {
-            self.register_abstract_component_entity_type(types, *ty);
-            result.exports.insert(
-                name.clone(),
-                self.convert_component_entity_type(types, *ty)?,
-            );
+            self.register_abstract_component_entity_type(types, ty.ty);
+            result
+                .exports
+                .insert(name.clone(), self.convert_component_item(types, ty)?);
         }
         Ok(self.component_types.components.push(result))
     }
@@ -350,11 +336,10 @@ impl ComponentTypesBuilder {
         let ty = &types[id];
         let mut result = TypeComponentInstance::default();
         for (name, ty) in ty.exports.iter() {
-            self.register_abstract_component_entity_type(types, *ty);
-            result.exports.insert(
-                name.clone(),
-                self.convert_component_entity_type(types, *ty)?,
-            );
+            self.register_abstract_component_entity_type(types, ty.ty);
+            result
+                .exports
+                .insert(name.clone(), self.convert_component_item(types, ty)?);
         }
         Ok(self.component_types.component_instances.push(result))
     }
@@ -436,42 +421,43 @@ impl ComponentTypesBuilder {
         id: ComponentDefinedTypeId,
     ) -> Result<InterfaceType> {
         assert_eq!(types.id(), self.module_types.validator_id());
-        let ret = match &types[id] {
+        Ok(match &types[id] {
             ComponentDefinedType::Primitive(ty) => self.primitive_type(ty)?,
             ComponentDefinedType::Record(e) => InterfaceType::Record(self.record_type(types, e)?),
             ComponentDefinedType::Variant(e) => {
                 InterfaceType::Variant(self.variant_type(types, e)?)
             }
-            ComponentDefinedType::List(e) => InterfaceType::List(self.list_type(types, e)?),
-            ComponentDefinedType::Map(key, value) => {
+            ComponentDefinedType::List { element, .. } => {
+                InterfaceType::List(self.list_type(types, element)?)
+            }
+            ComponentDefinedType::Map { key, value, .. } => {
                 InterfaceType::Map(self.map_type(types, key, value)?)
             }
             ComponentDefinedType::Tuple(e) => InterfaceType::Tuple(self.tuple_type(types, e)?),
             ComponentDefinedType::Flags(e) => InterfaceType::Flags(self.flags_type(e)),
             ComponentDefinedType::Enum(e) => InterfaceType::Enum(self.enum_type(e)),
-            ComponentDefinedType::Option(e) => InterfaceType::Option(self.option_type(types, e)?),
-            ComponentDefinedType::Result { ok, err } => {
+            ComponentDefinedType::Option { ty, .. } => {
+                InterfaceType::Option(self.option_type(types, ty)?)
+            }
+            ComponentDefinedType::Result { ok, err, .. } => {
                 InterfaceType::Result(self.result_type(types, ok, err)?)
             }
             ComponentDefinedType::Own(r) => InterfaceType::Own(self.resource_id(r.resource())),
             ComponentDefinedType::Borrow(r) => {
                 InterfaceType::Borrow(self.resource_id(r.resource()))
             }
-            ComponentDefinedType::Future(ty) => {
+            ComponentDefinedType::Future { ty, .. } => {
                 InterfaceType::Future(self.future_table_type(types, ty)?)
             }
-            ComponentDefinedType::Stream(ty) => {
+            ComponentDefinedType::Stream { ty, .. } => {
                 InterfaceType::Stream(self.stream_table_type(types, ty)?)
             }
-            ComponentDefinedType::FixedLengthList(ty, size) => {
-                InterfaceType::FixedLengthList(self.fixed_length_list_type(types, ty, *size)?)
-            }
-        };
-        let info = self.type_information(&ret);
-        if info.depth > MAX_TYPE_DEPTH {
-            bail!("type nesting is too deep");
-        }
-        Ok(ret)
+            ComponentDefinedType::FixedLengthList {
+                element, length, ..
+            } => InterfaceType::FixedLengthList(
+                self.fixed_length_list_type(types, element, *length)?,
+            ),
+        })
     }
 
     /// Retrieve Wasmtime's type representation of the `error-context` type.
@@ -591,14 +577,10 @@ impl ComponentTypesBuilder {
         size: u32,
     ) -> TypeFixedLengthListIndex {
         let element_abi = self.component_types.canonical_abi(&element);
-        let mut abi = element_abi.clone();
-        // this assumes that size32 is already rounded up to alignment
-        abi.size32 = element_abi.size32.saturating_mul(size);
-        abi.size64 = element_abi.size64.saturating_mul(size);
-        abi.flat_count = element_abi
-            .flat_count
-            .zip(u8::try_from(size).ok())
-            .and_then(|(flat_count, size)| flat_count.checked_mul(size));
+        let abi = CanonicalAbiInfo::fixed_length_list_static(
+            element_abi,
+            size.try_into().expect("size should fit into usize"),
+        );
         self.add_fixed_length_list_type(TypeFixedLengthList { element, size, abi })
     }
 
@@ -1012,7 +994,6 @@ struct TypeInformationCache {
 }
 
 struct TypeInformation {
-    depth: u32,
     flat: FlatTypesStorage,
     has_borrow: bool,
 }
@@ -1020,7 +1001,6 @@ struct TypeInformation {
 impl TypeInformation {
     const fn new() -> TypeInformation {
         TypeInformation {
-            depth: 0,
             flat: FlatTypesStorage::new(),
             has_borrow: false,
         }
@@ -1028,7 +1008,6 @@ impl TypeInformation {
 
     const fn primitive(flat: FlatType) -> TypeInformation {
         let mut info = TypeInformation::new();
-        info.depth = 1;
         info.flat.memory32[0] = flat;
         info.flat.memory64[0] = flat;
         info.flat.len = 1;
@@ -1037,7 +1016,6 @@ impl TypeInformation {
 
     const fn string() -> TypeInformation {
         let mut info = TypeInformation::new();
-        info.depth = 1;
         info.flat.memory32[0] = FlatType::I32;
         info.flat.memory32[1] = FlatType::I32;
         info.flat.memory64[0] = FlatType::I64;
@@ -1049,9 +1027,7 @@ impl TypeInformation {
     /// Builds up all flat types internally using the specified representation
     /// for all of the component fields of the record.
     fn build_record<'a>(&mut self, types: impl Iterator<Item = &'a TypeInformation>) {
-        self.depth = 1;
         for info in types {
-            self.depth = self.depth.max(1 + info.depth);
             self.has_borrow = self.has_borrow || info.has_borrow;
             match info.flat.as_flat_types() {
                 Some(types) => {
@@ -1085,16 +1061,14 @@ impl TypeInformation {
     {
         let cases = cases.into_iter();
         self.flat.push(FlatType::I32, FlatType::I32);
-        self.depth = 1;
 
         for info in cases {
             let info = match info {
                 Some(info) => info,
                 // If this case doesn't have a payload then it doesn't change
-                // the depth/flat representation
+                // the flat representation
                 None => continue,
             };
-            self.depth = self.depth.max(1 + info.depth);
             self.has_borrow = self.has_borrow || info.has_borrow;
 
             // If this variant is already unrepresentable in a flat
@@ -1160,7 +1134,6 @@ impl TypeInformation {
 
     fn fixed_length_lists(&mut self, types: &ComponentTypesBuilder, ty: &TypeFixedLengthList) {
         let element_info = types.type_information(&ty.element);
-        self.depth = 1 + element_info.depth;
         self.has_borrow = element_info.has_borrow;
         match element_info.flat.as_flat_types() {
             Some(types) => {
@@ -1177,12 +1150,10 @@ impl TypeInformation {
     }
 
     fn enums(&mut self, _types: &ComponentTypesBuilder, _ty: &TypeEnum) {
-        self.depth = 1;
         self.flat.push(FlatType::I32, FlatType::I32);
     }
 
     fn flags(&mut self, _types: &ComponentTypesBuilder, ty: &TypeFlags) {
-        self.depth = 1;
         match FlagsSize::from_count(ty.names.len()) {
             FlagsSize::Size0 => {}
             FlagsSize::Size1 | FlagsSize::Size2 => {
@@ -1218,18 +1189,15 @@ impl TypeInformation {
     fn lists(&mut self, types: &ComponentTypesBuilder, ty: &TypeList) {
         *self = TypeInformation::string();
         let info = types.type_information(&ty.element);
-        self.depth += info.depth;
         self.has_borrow = info.has_borrow;
     }
 
     fn maps(&mut self, types: &ComponentTypesBuilder, ty: &TypeMap) {
         // Maps are represented as list<tuple<k, v>> in canonical ABI
-        // So we use POINTER_PAIR like lists, and calculate depth/borrow from key and value
+        // So we use POINTER_PAIR like lists, and calculate borrow from key and value
         *self = TypeInformation::string();
         let key_info = types.type_information(&ty.key);
         let value_info = types.type_information(&ty.value);
-        // Depth is max of key/value depths, plus 1 for the extra map layer.
-        self.depth = key_info.depth.max(value_info.depth) + 1;
         self.has_borrow = key_info.has_borrow || value_info.has_borrow;
     }
 }

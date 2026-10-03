@@ -1,7 +1,7 @@
 //! C types used inside crate
 #![allow(non_camel_case_types)]
 
-//https://github.com/rust-lang/rust/blob/7b4d9e155fec06583c763f176fc432dc779f1fc6/library/core/src/ffi/mod.rs#L166
+//Reference: https://github.com/rust-lang/rust/blob/999967a57dce987bbad353d152f03c3ef67d41f2/library/core/src/ffi/primitives.rs#L176
 #[cfg(any(target_arch = "avr", target_arch = "msp430"))]
 mod ints {
     ///C type `int`
@@ -18,12 +18,21 @@ mod ints {
     pub type c_uint = u32;
 }
 
-#[cfg(all(target_pointer_width = "64", not(windows)))]
+#[cfg(any(
+    all(target_pointer_width = "64", not(windows)),
+    //Reference: https://github.com/rust-lang/rust/blob/999967a57dce987bbad353d152f03c3ef67d41f2/library/core/src/ffi/primitives.rs#L139
+    all(target_arch = "wasm32", target_os = "linux")
+))]
 mod longs {
     ///C type `unsigned long`
     pub type c_ulong = u64;
 }
-#[cfg(not(all(target_pointer_width = "64", not(windows))))]
+
+#[cfg(not(any(
+    all(target_pointer_width = "64", not(windows)),
+    //Reference: https://github.com/rust-lang/rust/blob/999967a57dce987bbad353d152f03c3ef67d41f2/library/core/src/ffi/primitives.rs#L139
+    all(target_arch = "wasm32", target_os = "linux")
+)))]
 mod longs {
     ///C type `unsigned long`
     pub type c_ulong = u32;

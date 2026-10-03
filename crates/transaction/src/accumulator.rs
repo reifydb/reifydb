@@ -72,6 +72,11 @@ impl ChangeAccumulator {
 		self.entries.is_empty()
 	}
 
+	pub fn take_entries(&mut self) -> Vec<(ObjectId, Diff)> {
+		self.cursor = 0;
+		mem::take(&mut self.entries)
+	}
+
 	pub fn take_changes_from(
 		&mut self,
 		offset: usize,

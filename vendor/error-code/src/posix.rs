@@ -18,12 +18,13 @@ fn equivalent(code: c_int, other: &ErrorCode) -> bool {
     ptr::eq(&POSIX_CATEGORY, other.category()) && code == other.raw_code()
 }
 
-#[cfg(not(any(target_os = "cloudabi", target_os = "unknown")))]
+//Reference
+//https://github.com/rust-lang/rust/blob/0844f35a32c98882d77e39da8c2a872ec74615cd/library/std/src/sys/io/error/unix.rs#L6
+//
+//newlib can technically be on bare metal so add it as exception
+#[cfg(any(target_env = "newlib", not(any(target_os = "unknown", target_os = "hermit", target_os = "vxworks", target_os = "dragonfly"))))]
 pub(crate) fn get_last_error() -> c_int {
-    //Reference:
-    //https://github.com/rust-lang/rust/blob/2ae1bb671183a072b54ed8ed39abfcd72990a3e7/library/std/src/sys/pal/unix/os.rs#L42
-    extern {
-        #[cfg(not(any(target_os = "dragonfly", target_os = "vxworks")))]
+    extern "C" {
         #[cfg_attr(
             any(
                 target_os = "linux",
@@ -40,24 +41,18 @@ pub(crate) fn get_last_error() -> c_int {
             any(
                 target_os = "netbsd",
                 target_os = "openbsd",
+                target_os = "cygwin",
                 target_os = "android",
                 target_os = "redox",
+                target_os = "nuttx",
                 target_env = "newlib"
             ),
             link_name = "__errno"
         )]
         #[cfg_attr(any(target_os = "solaris", target_os = "illumos"), link_name = "___errno")]
         #[cfg_attr(target_os = "nto", link_name = "__get_errno_ptr")]
-        #[cfg_attr(
-            any(
-                target_os = "macos",
-                target_os = "ios",
-                target_os = "tvos",
-                target_os = "freebsd",
-                target_os = "watchos"
-            ),
-            link_name = "__error"
-        )]
+        #[cfg_attr(target_os = "qnx", link_name = "__get_errno_ptr")]
+        #[cfg_attr(any(target_os = "freebsd", target_vendor = "apple"), link_name = "__error")]
         #[cfg_attr(target_os = "haiku", link_name = "_errnop")]
         #[cfg_attr(target_os = "aix", link_name = "_Errno")]
         #[cfg_attr(target_os = "windows", link_name = "_errno")]
@@ -69,10 +64,11 @@ pub(crate) fn get_last_error() -> c_int {
     }
 }
 
-#[cfg(any(target_os = "cloudabi", target_os = "dragonfly"))]
+#[cfg(target_os = "dragonfly")]
 pub(crate) fn get_last_error() -> c_int {
-    //WASI implements it as thread local, but thread local are not stable :(
-    extern {
+    //Rust uses thread local, but it might be better just use __errno_location() location for portability sake
+    //Referenece: https://github.com/WebAssembly/wasi-libc/blob/355422cd5effd01fde5dc069ae4c34828c1e85f1/libc-bottom-half/sources/__errno_location.c#L6
+    extern "C" {
         #[thread_local]
         static errno: c_int;
     }
@@ -88,6 +84,18 @@ pub(crate) fn get_last_error() -> c_int {
 
     unsafe {
         errnoGet()
+    }
+}
+
+#[cfg(target_os = "hermit")]
+pub(crate) fn get_last_error() -> c_int {
+    extern "C" {
+        #[link_name = "sys_get_errno"]
+        pub fn get_errno() -> c_int;
+    }
+
+    unsafe {
+        get_errno()
     }
 }
 
@@ -124,7 +132,7 @@ pub(crate) fn message(_code: c_int, out: &mut MessageBuf) -> &str {
 
         if !err.is_null() {
             let err_len = unsafe {
-                core::cmp::min(out.len(), strlen(err) as usize)
+                core::cmp::min(out.len(), strlen(err) as _)
             };
 
             let err_slice = unsafe {

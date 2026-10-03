@@ -154,14 +154,27 @@ fn main() {
     // Disable -Wextra warnings - jemalloc doesn't compile free of warnings with
     // it enabled: https://github.com/jemalloc/jemalloc/issues/1196
     let compiler = cc::Build::new().extra_warnings(false).get_compiler();
-    let cflags = compiler
-        .args()
-        .iter()
-        .map(|s| s.to_str().unwrap())
-        .collect::<Vec<_>>()
-        .join(" ");
-    info!("CC={:?}", compiler.path());
+    let cflags = compiler.cflags_env();
+    let ldflags = read_and_watch_env("LDFLAGS")
+        .map(OsString::from)
+        .unwrap_or_default();
+    let cppflags = read_and_watch_env("CPPFLAGS")
+        .map(OsString::from)
+        .unwrap_or_default();
+
+    // Use cc_env() to get the full CC value including any wrapper (e.g. sccache).
+    // cc_env() returns empty when no wrapper is configured, so fall back to path().
+    let cc = compiler.cc_env();
+    let cc = if cc.is_empty() {
+        compiler.path().as_os_str().to_owned()
+    } else {
+        cc
+    };
+
+    info!("CC={:?}", cc);
     info!("CFLAGS={:?}", cflags);
+    info!("LDFLAGS={:?}", ldflags);
+    info!("CPPFLAGS={:?}", cppflags);
 
     assert!(out_dir.exists(), "OUT_DIR does not exist");
     let jemalloc_repo_dir = PathBuf::from("jemalloc");
@@ -195,10 +208,10 @@ fn main() {
             .replace('\\', "/"),
     )
     .current_dir(&build_dir)
-    .env("CC", compiler.path())
-    .env("CFLAGS", cflags.clone())
-    .env("LDFLAGS", cflags.clone())
-    .env("CPPFLAGS", cflags)
+    .env("CC", &cc)
+    .env("CFLAGS", &cflags)
+    .env("LDFLAGS", &ldflags)
+    .env("CPPFLAGS", &cppflags)
     .arg(format!("--with-version={je_version}"))
     .arg("--disable-cxx")
     .arg("--enable-doc=no")
@@ -282,6 +295,17 @@ fn main() {
         cmd.arg("--enable-prof");
     }
 
+    if env::var("CARGO_FEATURE_PROFILING_LIBUNWIND").is_ok() {
+        info!("CARGO_FEATURE_PROFILING_LIBUNWIND set");
+        cmd.arg("--enable-prof-libunwind");
+        // On Apple platforms unwind symbols live in libSystem, and on
+        // Windows libunwind is not available. Everywhere else (Linux,
+        // FreeBSD, etc.) we need to link it explicitly.
+        if !target.contains("apple") && !target.contains("windows") {
+            println!("cargo:rustc-link-lib=unwind");
+        }
+    }
+
     if env::var("CARGO_FEATURE_STATS").is_ok() {
         info!("CARGO_FEATURE_STATS set");
         cmd.arg("--enable-stats");
@@ -328,6 +352,9 @@ fn main() {
         .arg("install_lib_static")
         .arg("install_include"));
 
+    // Try to remove the build directory to avoid it wasting disk space in the target directory
+    let _ = fs::remove_dir_all(build_dir);
+
     println!("cargo:root={}", out_dir.display());
 
     // Linkage directives to pull in jemalloc and its dependencies.
@@ -342,7 +369,7 @@ fn main() {
     } else {
         println!("cargo:rustc-link-lib=static=jemalloc_pic");
     }
-    println!("cargo:rustc-link-search=native={}/lib", build_dir.display());
+    println!("cargo:rustc-link-search=native={}/lib", out_dir.display());
     if target.contains("android") {
         println!("cargo:rustc-link-lib=gcc");
     } else if !target.contains("windows") {
@@ -372,7 +399,10 @@ fn make_command(make_cmd: &str, build_dir: &Path, num_jobs: &str) -> Command {
 
     if let Ok(makeflags) = std::env::var("CARGO_MAKEFLAGS") {
         let makeflags = if let Ok(orig_makeflags) = std::env::var("MAKEFLAGS") {
-            format!("{orig_makeflags} {makeflags}")
+            // Prepend Cargo makeflags before externally configured makeflags
+            // Adding Cargo makeflags at the end was causing issues, see
+            // https://github.com/tikv/jemallocator/issues/92#issuecomment-3536269176.
+            format!("{makeflags} {orig_makeflags}")
         } else {
             makeflags
         };
@@ -420,10 +450,13 @@ fn gnu_target(target: &str) -> String {
     match target {
         "i686-pc-windows-msvc" => "i686-pc-win32".to_string(),
         "x86_64-pc-windows-msvc" => "x86_64-pc-win32".to_string(),
-        "i686-pc-windows-gnu" => "i686-w64-mingw32".to_string(),
-        "x86_64-pc-windows-gnu" => "x86_64-w64-mingw32".to_string(),
+        "i686-pc-windows-gnu" | "i686-pc-windows-gnullvm" => "i686-w64-mingw32".to_string(),
+        "x86_64-pc-windows-gnu" | "x86_64-pc-windows-gnullvm" => "x86_64-w64-mingw32".to_string(),
+        "aarch64-pc-windows-gnullvm" => "aarch64-w64-mingw32".to_string(),
         "armv7-linux-androideabi" => "arm-linux-androideabi".to_string(),
-        "riscv64gc-unknown-linux-gnu" => "riscv64-linux-gnu".to_string(),
+        "riscv64gc-unknown-linux-gnu" | "riscv64a23-unknown-linux-gnu" => {
+            "riscv64-linux-gnu".to_string()
+        }
         "riscv64gc-unknown-linux-musl" => "riscv64-linux-musl".to_string(),
         s => s.to_string(),
     }

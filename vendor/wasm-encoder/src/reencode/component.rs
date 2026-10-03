@@ -77,6 +77,8 @@ pub trait ReencodeComponent: Reencode {
         parser: wasmparser::Parser,
         data: &[u8],
     ) -> Result<(), Error<Self::Error>> {
+        // so we can slice into the data with the offsets from the parser
+        assert_eq!(parser.offset(), 0, "data must be parsed at offset 0");
         component_utils::parse_component(self, component, parser, data, data)
     }
 
@@ -385,6 +387,8 @@ impl ReencodeComponent for RoundtripReencoder {}
 
 #[allow(missing_docs)] // FIXME
 pub mod component_utils {
+    use core::ops::Range;
+
     use super::super::utils::name_map;
     use super::ReencodeComponent;
     use crate::reencode::Error;
@@ -414,7 +418,8 @@ pub mod component_utils {
                 | wasmparser::Payload::ModuleSection {
                     unchecked_range, ..
                 } => {
-                    remaining = &remaining[unchecked_range.len()..];
+                    let skipped_len = (unchecked_range.end - unchecked_range.start) as usize;
+                    remaining = &remaining[skipped_len..];
                 }
                 _ => {}
             }
@@ -430,6 +435,10 @@ pub mod component_utils {
         payload: wasmparser::Payload<'_>,
         whole_component: &[u8],
     ) -> Result<(), Error<T::Error>> {
+        let convert_range = |file_range: &Range<u64>| {
+            // By assumption that `whole_component` is at parser offset 0
+            file_range.start as usize..file_range.end as usize
+        };
         match payload {
             wasmparser::Payload::Version {
                 encoding: wasmparser::Encoding::Component,
@@ -504,7 +513,7 @@ pub mod component_utils {
                 reencoder.parse_component_submodule(
                     component,
                     parser,
-                    &whole_component[unchecked_range],
+                    &whole_component[convert_range(&unchecked_range)],
                 )?;
             }
             wasmparser::Payload::ComponentSection {
@@ -514,7 +523,7 @@ pub mod component_utils {
                 reencoder.parse_component_subcomponent(
                     component,
                     parser,
-                    &whole_component[unchecked_range],
+                    &whole_component[convert_range(&unchecked_range)],
                     whole_component,
                 )?;
             }
@@ -525,7 +534,7 @@ pub mod component_utils {
 
             other => match other.as_section() {
                 Some((id, range)) => {
-                    let section = &whole_component[range];
+                    let section = &whole_component[convert_range(&range)];
                     reencoder.parse_unknown_component_section(component, id, section)?;
                 }
                 None => unreachable!(),
@@ -957,10 +966,6 @@ pub mod component_utils {
                 let resource = reencoder.component_type_index(resource);
                 section.resource_drop(resource);
             }
-            wasmparser::CanonicalFunction::ResourceDropAsync { resource } => {
-                let resource = reencoder.component_type_index(resource);
-                section.resource_drop_async(resource);
-            }
             wasmparser::CanonicalFunction::ResourceRep { resource } => {
                 let resource = reencoder.component_type_index(resource);
                 section.resource_rep(resource);
@@ -1002,9 +1007,6 @@ pub mod component_utils {
             wasmparser::CanonicalFunction::ContextSet { ty, slot } => {
                 section.context_set(reencoder.val_type(ty)?, slot);
             }
-            wasmparser::CanonicalFunction::ThreadYield { cancellable } => {
-                section.thread_yield(cancellable);
-            }
             wasmparser::CanonicalFunction::SubtaskDrop => {
                 section.subtask_drop();
             }
@@ -1028,11 +1030,14 @@ pub mod component_utils {
                     .collect::<Result<Vec<_>, _>>()?;
                 section.stream_write(reencoder.component_type_index(ty), options);
             }
+            wasmparser::CanonicalFunction::StreamForward { ty } => {
+                section.stream_forward(reencoder.component_type_index(ty));
+            }
             wasmparser::CanonicalFunction::StreamCancelRead { ty, async_ } => {
-                section.stream_cancel_read(ty, async_);
+                section.stream_cancel_read(reencoder.component_type_index(ty), async_);
             }
             wasmparser::CanonicalFunction::StreamCancelWrite { ty, async_ } => {
-                section.stream_cancel_write(ty, async_);
+                section.stream_cancel_write(reencoder.component_type_index(ty), async_);
             }
             wasmparser::CanonicalFunction::StreamDropReadable { ty } => {
                 section.stream_drop_readable(reencoder.component_type_index(ty));
@@ -1057,11 +1062,14 @@ pub mod component_utils {
                     .collect::<Result<Vec<_>, _>>()?;
                 section.future_write(reencoder.component_type_index(ty), options);
             }
+            wasmparser::CanonicalFunction::FutureForward { ty } => {
+                section.future_forward(reencoder.component_type_index(ty));
+            }
             wasmparser::CanonicalFunction::FutureCancelRead { ty, async_ } => {
-                section.future_cancel_read(ty, async_);
+                section.future_cancel_read(reencoder.component_type_index(ty), async_);
             }
             wasmparser::CanonicalFunction::FutureCancelWrite { ty, async_ } => {
-                section.future_cancel_write(ty, async_);
+                section.future_cancel_write(reencoder.component_type_index(ty), async_);
             }
             wasmparser::CanonicalFunction::FutureDropReadable { ty } => {
                 section.future_drop_readable(reencoder.component_type_index(ty));
@@ -1089,17 +1097,11 @@ pub mod component_utils {
             wasmparser::CanonicalFunction::WaitableSetNew => {
                 section.waitable_set_new();
             }
-            wasmparser::CanonicalFunction::WaitableSetWait {
-                cancellable,
-                memory,
-            } => {
-                section.waitable_set_wait(cancellable, reencoder.memory_index(memory)?);
+            wasmparser::CanonicalFunction::WaitableSetWait { memory } => {
+                section.waitable_set_wait(reencoder.memory_index(memory)?);
             }
-            wasmparser::CanonicalFunction::WaitableSetPoll {
-                cancellable,
-                memory,
-            } => {
-                section.waitable_set_poll(cancellable, reencoder.memory_index(memory)?);
+            wasmparser::CanonicalFunction::WaitableSetPoll { memory } => {
+                section.waitable_set_poll(reencoder.memory_index(memory)?);
             }
             wasmparser::CanonicalFunction::WaitableSetDrop => {
                 section.waitable_set_drop();
@@ -1118,20 +1120,26 @@ pub mod component_utils {
                 let table_index = reencoder.table_index(table_index)?;
                 section.thread_new_indirect(func_ty, table_index);
             }
-            wasmparser::CanonicalFunction::ThreadSuspendToSuspended { cancellable } => {
-                section.thread_suspend_to_suspended(cancellable);
+            wasmparser::CanonicalFunction::ThreadResumeLater => {
+                section.thread_resume_later();
             }
-            wasmparser::CanonicalFunction::ThreadSuspend { cancellable } => {
-                section.thread_suspend(cancellable);
+            wasmparser::CanonicalFunction::ThreadSuspend => {
+                section.thread_suspend();
             }
-            wasmparser::CanonicalFunction::ThreadSuspendTo { cancellable } => {
-                section.thread_suspend_to(cancellable);
+            wasmparser::CanonicalFunction::ThreadYield => {
+                section.thread_yield();
             }
-            wasmparser::CanonicalFunction::ThreadUnsuspend => {
-                section.thread_unsuspend();
+            wasmparser::CanonicalFunction::ThreadSuspendThenResume => {
+                section.thread_suspend_then_resume();
             }
-            wasmparser::CanonicalFunction::ThreadYieldToSuspended { cancellable } => {
-                section.thread_yield_to_suspended(cancellable);
+            wasmparser::CanonicalFunction::ThreadYieldThenResume => {
+                section.thread_yield_then_resume();
+            }
+            wasmparser::CanonicalFunction::ThreadSuspendThenPromote => {
+                section.thread_suspend_then_promote();
+            }
+            wasmparser::CanonicalFunction::ThreadYieldThenPromote => {
+                section.thread_yield_then_promote();
             }
         }
         Ok(())

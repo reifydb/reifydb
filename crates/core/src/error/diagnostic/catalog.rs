@@ -707,6 +707,21 @@ pub fn primary_key_column_not_found(fragment: Fragment, column_id: u64) -> Diagn
 	}
 }
 
+pub fn primary_key_invalid_type(fragment: Fragment, column: &str, ty: ValueType) -> Diagnostic {
+	Diagnostic {
+		code: "CA_104".to_string(),
+		rql: None,
+		message: format!("primary key column `{}` has type `{}`, which a primary key cannot hold", column, ty),
+		fragment,
+		label: Some("unsupported primary key column type".to_string()),
+		help: Some("primary key columns must be non-optional fixed-width types: bool, integers, floats, date, time, datetime, duration, uuid4, uuid7 or identity_id".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn virtual_table_already_exists(namespace: &str, name: &str) -> Diagnostic {
 	Diagnostic {
 		code: "CA_022".to_string(),

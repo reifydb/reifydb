@@ -5,8 +5,7 @@ pub mod error;
 pub mod store;
 
 use std::{
-	collections::HashMap,
-	slice,
+	collections::{HashMap, HashSet},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -83,6 +82,13 @@ impl Counter {
 		}
 	}
 
+	fn current(&self) -> u128 {
+		match self {
+			Counter::Narrow(counter) => counter.load(Ordering::SeqCst) as u128,
+			Counter::Wide(counter) => *counter.lock(),
+		}
+	}
+
 	fn raise_to(&self, seed: u128) {
 		match self {
 			Counter::Narrow(counter) => {
@@ -151,11 +157,6 @@ impl DictionaryAllocatorRegistry {
 		}
 	}
 
-	pub fn intern(&self, dictionary: &Dictionary, value: &Value) -> Result<InternOutcome> {
-		let mut outcomes = self.intern_batch(dictionary, slice::from_ref(value))?;
-		Ok(outcomes.pop().expect("a batch of one value must yield exactly one outcome"))
-	}
-
 	pub fn intern_batch(&self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<InternOutcome>> {
 		let serialized: Vec<Vec<u8>> = values
 			.iter()
@@ -181,7 +182,7 @@ impl DictionaryAllocatorRegistry {
 		}
 
 		if resolved.iter().all(Option::is_some) {
-			return outcomes(dictionary, resolved, &[]);
+			return outcomes(dictionary, resolved, &HashSet::new());
 		}
 
 		let slot = self.slot(dictionary);
@@ -201,7 +202,7 @@ impl DictionaryAllocatorRegistry {
 
 		let missing: Vec<usize> = (0..values.len()).filter(|index| resolved[*index].is_none()).collect();
 		if missing.is_empty() {
-			return outcomes(dictionary, resolved, &[]);
+			return outcomes(dictionary, resolved, &HashSet::new());
 		}
 
 		self.seed_if_needed(dictionary, &slot)?;
@@ -213,9 +214,19 @@ impl DictionaryAllocatorRegistry {
 			.into());
 		}
 
+		let fresh = missing.iter().map(|&index| hashes[index]).collect::<HashSet<_>>().len() as u128;
+		let current = slot.counter.current();
+		if let Some(last) = current.checked_add(fresh)
+			&& DictionaryEntryId::from_u128(last, dictionary.id_type.clone()).is_err()
+		{
+			for planned in 1..=fresh {
+				DictionaryEntryId::from_u128(current + planned, dictionary.id_type.clone())?;
+			}
+		}
+
 		let mut allocated: HashMap<[u8; 16], u128> = HashMap::new();
 		let mut writes: Vec<DictEntryWrite> = Vec::new();
-		let mut created_ids: Vec<u128> = Vec::new();
+		let mut created_ids: HashSet<u128> = HashSet::new();
 
 		for &index in &missing {
 			let hash = hashes[index];
@@ -228,7 +239,7 @@ impl DictionaryAllocatorRegistry {
 			})?;
 			allocated.insert(hash, id);
 			writes.push(entry_write(dictionary, &serialized[index], hash, id));
-			created_ids.push(id);
+			created_ids.insert(id);
 			resolved[index] = Some(id);
 		}
 
@@ -348,7 +359,11 @@ impl DictionaryAllocatorRegistry {
 	}
 }
 
-fn outcomes(dictionary: &Dictionary, resolved: Vec<Option<u128>>, created_ids: &[u128]) -> Result<Vec<InternOutcome>> {
+fn outcomes(
+	dictionary: &Dictionary,
+	resolved: Vec<Option<u128>>,
+	created_ids: &HashSet<u128>,
+) -> Result<Vec<InternOutcome>> {
 	resolved.into_iter()
 		.map(|id| {
 			let id = id.expect("every interned value must resolve to an id");
@@ -399,7 +414,7 @@ fn entry_write(dictionary: &Dictionary, value_bytes: &[u8], hash: [u8; 16], id: 
 
 #[cfg(test)]
 mod tests {
-	use std::{collections::BTreeMap, thread};
+	use std::{collections::BTreeMap, slice, thread};
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::interface::catalog::id::NamespaceId;
@@ -490,7 +505,7 @@ mod tests {
 
 		assert!(!store.contains(&entry_key_of(&d, &value)), "precondition: nothing is durable yet");
 
-		let outcome = registry.intern(&d, &value).unwrap();
+		let outcome = registry.intern_batch(&d, slice::from_ref(&value)).unwrap().remove(0);
 
 		assert!(outcome.created, "a first-seen value must be reported as created");
 		assert!(
@@ -507,9 +522,9 @@ mod tests {
 		let registry = registry_on(&store);
 		let d = dict(ValueType::Uint8);
 
-		let a = registry.intern(&d, &utf8("wsol")).unwrap();
-		let b = registry.intern(&d, &utf8("wsol")).unwrap();
-		let c = registry.intern(&d, &utf8("usdc")).unwrap();
+		let a = registry.intern_batch(&d, &[utf8("wsol")]).unwrap().remove(0);
+		let b = registry.intern_batch(&d, &[utf8("wsol")]).unwrap().remove(0);
+		let c = registry.intern_batch(&d, &[utf8("usdc")]).unwrap().remove(0);
 
 		assert_eq!(a.id, b.id, "the same value must resolve to one id");
 		assert!(a.created, "the first sight of a value creates it");
@@ -527,10 +542,10 @@ mod tests {
 		let store = MockStore::default();
 		let d = dict(ValueType::Uint8);
 
-		let first = registry_on(&store).intern(&d, &utf8("wsol")).unwrap();
+		let first = registry_on(&store).intern_batch(&d, &[utf8("wsol")]).unwrap().remove(0);
 
 		let cold = registry_on(&store);
-		let second = cold.intern(&d, &utf8("wsol")).unwrap();
+		let second = cold.intern_batch(&d, &[utf8("wsol")]).unwrap().remove(0);
 
 		assert_eq!(second.id, first.id, "a durable value keeps its id across registries");
 		assert!(!second.created, "an already-durable value is not created again");
@@ -546,12 +561,12 @@ mod tests {
 
 		let ids: Vec<u128> = ["a", "b", "c"]
 			.iter()
-			.map(|v| registry_on(&store).intern(&d, &utf8(v)).unwrap().id.to_u128())
+			.map(|v| registry_on(&store).intern_batch(&d, &[utf8(v)]).unwrap().remove(0).id.to_u128())
 			.collect();
 		assert_eq!(ids, vec![1, 2, 3]);
 
 		let restarted = registry_on(&store);
-		let next = restarted.intern(&d, &utf8("d")).unwrap();
+		let next = restarted.intern_batch(&d, &[utf8("d")]).unwrap().remove(0);
 
 		assert_eq!(
 			next.id.to_u128(),
@@ -602,7 +617,13 @@ mod tests {
 				.map(|_| {
 					let registry = registry.clone();
 					let d = d.clone();
-					scope.spawn(move || registry.intern(&d, &utf8("wsol")).unwrap().id.to_u128())
+					scope.spawn(move || {
+						registry.intern_batch(&d, &[utf8("wsol")])
+							.unwrap()
+							.remove(0)
+							.id
+							.to_u128()
+					})
 				})
 				.collect();
 			handles.into_iter().map(|h| h.join().unwrap()).collect()
@@ -631,7 +652,7 @@ mod tests {
 			.rows
 			.insert(DictionaryEntryKey::encoded(d.id, hash), EncodedPodRow::new(&poisoned).into_bytes());
 
-		let err = registry.intern(&d, &value).unwrap_err();
+		let err = registry.intern_batch(&d, slice::from_ref(&value)).unwrap_err();
 		assert!(
 			err.to_string().to_lowercase().contains("collision"),
 			"a hash slot holding different bytes must raise a collision, got: {err}"

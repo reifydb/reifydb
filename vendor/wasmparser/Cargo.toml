@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.85.0"
+rust-version = "1.88.0"
 name = "wasmparser"
-version = "0.251.0"
+version = "0.261.0"
 authors = ["Yury Delendik <ydelendik@mozilla.com>"]
 build = false
 exclude = ["benches/*.wasm"]
@@ -25,7 +25,6 @@ autobenches = false
 description = """
 A simple event-driven library for parsing WebAssembly binary files.
 """
-homepage = "https://github.com/bytecodealliance/wasm-tools/tree/main/crates/wasmparser"
 readme = "README.md"
 keywords = [
     "parser",
@@ -112,7 +111,7 @@ version = "1.0.58"
 default-features = false
 
 [dev-dependencies.criterion]
-version = "0.7.0"
+version = "0.8.2"
 default-features = false
 
 [dev-dependencies.env_logger]
@@ -142,20 +141,20 @@ level = "allow"
 priority = -1
 
 [lints.rust]
-deprecated-safe-2024 = "warn"
+deprecated_safe_2024 = "warn"
 keyword_idents_2024 = "warn"
-missing-unsafe-on-extern = "warn"
-rust-2024-guarded-string-incompatible-syntax = "warn"
-rust-2024-incompatible-pat = "warn"
-rust-2024-prelude-collisions = "warn"
-unsafe-attr-outside-unsafe = "warn"
-unsafe-op-in-unsafe-fn = "warn"
+missing_unsafe_on_extern = "warn"
+rust_2024_guarded_string_incompatible_syntax = "warn"
+rust_2024_incompatible_pat = "warn"
+rust_2024_prelude_collisions = "warn"
+unsafe_attr_outside_unsafe = "warn"
 unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "warn"
 unstable_features = "warn"
-unused-lifetimes = "warn"
-unused-macro-rules = "warn"
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"

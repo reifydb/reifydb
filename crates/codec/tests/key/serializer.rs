@@ -3,7 +3,7 @@
 
 use std::{f32::consts::PI, f64, str::FromStr};
 
-use reifydb_codec::key::{deserializer::KeyDeserializer, serializer::KeySerializer, sort::SortOrder};
+use reifydb_codec::key::{deserializer::KeyDeserializer, serializer::KeySerializer};
 use reifydb_runtime::context::{
 	clock::{Clock, MockClock},
 	rng::Rng,
@@ -421,60 +421,6 @@ fn test_ordering_descending_i32() {
 
 	assert!(bytes3 < bytes2, "encode(1000) should be < encode(100)");
 	assert!(bytes2 < bytes1, "encode(100) should be < encode(1)");
-}
-
-#[test]
-fn test_extend_value_with_direction_ascending() {
-	// Ascending: a smaller value must encode to smaller bytes so a forward scan returns it first.
-	let enc = |v: i32| {
-		let mut s = KeySerializer::new();
-		s.extend_value_with_direction(&Value::Int4(v), SortOrder::Asc).unwrap();
-		s.finish()
-	};
-	assert!(enc(1) < enc(100), "asc: encode(1) should sort before encode(100)");
-	assert!(enc(100) < enc(1000), "asc: encode(100) should sort before encode(1000)");
-	assert!(enc(-5) < enc(0), "asc: encode(-5) should sort before encode(0)");
-}
-
-#[test]
-fn test_extend_value_with_direction_descending() {
-	// Descending: a larger value must encode to smaller bytes so a forward scan returns it first.
-	let enc = |v: i32| {
-		let mut s = KeySerializer::new();
-		s.extend_value_with_direction(&Value::Int4(v), SortOrder::Desc).unwrap();
-		s.finish()
-	};
-	assert!(enc(1000) < enc(100), "desc: encode(1000) should sort before encode(100)");
-	assert!(enc(100) < enc(1), "desc: encode(100) should sort before encode(1)");
-}
-
-#[test]
-fn test_extend_value_with_direction_none_policy() {
-	// none sorts last under ascending and first under descending.
-	let enc = |v: &Value, d: SortOrder| {
-		let mut s = KeySerializer::new();
-		s.extend_value_with_direction(v, d).unwrap();
-		s.finish()
-	};
-	let none = Value::none_of(ValueType::Int4);
-	let present = Value::Int4(0);
-	assert!(enc(&present, SortOrder::Asc) < enc(&none, SortOrder::Asc), "asc: present should sort before none");
-	assert!(enc(&none, SortOrder::Desc) < enc(&present, SortOrder::Desc), "desc: none should sort before present");
-}
-
-#[test]
-fn test_extend_value_with_direction_utf8() {
-	// Strings encode ascending in keycode, unlike the numeric types, so asc must preserve
-	// lexicographic order and only desc inverts it.
-	let enc = |s: &str, d: SortOrder| {
-		let mut ser = KeySerializer::new();
-		ser.extend_value_with_direction(&Value::Utf8(s.to_string()), d).unwrap();
-		ser.finish()
-	};
-	assert!(enc("apple", SortOrder::Asc) < enc("banana", SortOrder::Asc), "asc: apple < banana");
-	assert!(enc("banana", SortOrder::Asc) < enc("cherry", SortOrder::Asc), "asc: banana < cherry");
-	assert!(enc("cherry", SortOrder::Desc) < enc("banana", SortOrder::Desc), "desc: cherry first");
-	assert!(enc("banana", SortOrder::Desc) < enc("apple", SortOrder::Desc), "desc: banana before apple");
 }
 
 #[test]

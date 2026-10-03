@@ -5,14 +5,14 @@ use std::{collections::HashMap, result::Result as StdResult, sync::Arc};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchOptions, UInt64Array, new_null_array};
 use arrow_buffer::BooleanBuffer;
-use arrow_schema::{ArrowError, FieldRef, Schema};
+use arrow_schema::{ArrowError, FieldRef, Schema, SchemaRef};
 use arrow_select::{
 	concat::{concat as concat_arrays, concat_batches},
 	take::take,
 };
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
-	shape::{RowFamily, RowShape, RowShapeField},
+	shape::{RowShape, RowShapeField},
 };
 use reifydb_value::{
 	Result,
@@ -31,11 +31,14 @@ use reifydb_value::{
 		},
 		date::Date,
 		datetime::DateTime,
-		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
+		ordered_f32::OrderedF32,
+		ordered_f64::OrderedF64,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, column_view, is_system_field, system_column, with_system_column},
+		system_columns::{
+			SystemColumn, column_view, is_system_field, stamp_system_columns, system_column, system_field,
+		},
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 		value_type::{
@@ -50,10 +53,10 @@ use crate::{
 	interface::catalog::column::Column as CatalogColumn,
 	internal_err,
 	metrics::heap::HeapSize,
-	row::Row,
 	value::column::{
 		builder::{ColumnBuilder, TypedBuilder, append_fixed},
-		factory::from_many,
+		factory::from_one,
+		nulls::none_filler,
 		view::group_by::{GroupKeyDict, GroupRows, group_rows},
 	},
 };
@@ -63,12 +66,30 @@ pub fn batch(columns: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch> {
 	assemble(columns, HashMap::new(), row_count)
 }
 
+pub fn batch_with(schema: &SchemaRef, columns: Vec<(FieldRef, ArrayRef)>, row_count: usize) -> Result<RecordBatch> {
+	let reusable = schema.fields().len() == columns.len()
+		&& schema
+			.fields()
+			.iter()
+			.zip(&columns)
+			.all(|(cached, (field, _))| Arc::ptr_eq(cached, field) || cached == field);
+	if !reusable {
+		return assemble(columns, schema.metadata().clone(), row_count);
+	}
+	RecordBatch::try_new_with_options(
+		schema.clone(),
+		columns.into_iter().map(|(_, array)| array).collect(),
+		&RecordBatchOptions::new().with_row_count(Some(row_count)),
+	)
+	.map_err(frame_error)
+}
+
 pub fn empty_batch() -> RecordBatch {
 	RecordBatch::new_empty(Arc::new(Schema::empty()))
 }
 
 pub fn single_row<'a>(values: impl IntoIterator<Item = (&'a str, Value)>) -> Result<RecordBatch> {
-	batch(values.into_iter().map(|(name, value)| from_many(name, value, 1)).collect())
+	batch(values.into_iter().map(|(name, value)| from_one(name, value)).collect())
 }
 
 pub fn from_rows(names: &[&str], rows: &[Vec<Value>]) -> Result<RecordBatch> {
@@ -120,45 +141,6 @@ pub fn try_from_records(param: &str, records: &[Value]) -> Result<RecordBatch> {
 	from_rows(&name_refs, &rows)
 }
 
-pub fn from_row(row: &Row) -> Result<RecordBatch> {
-	let shape = &row.shape;
-	let mut columns = Vec::with_capacity(shape.fields().len());
-	for (idx, field) in shape.fields().iter().enumerate() {
-		let value = shape.get_value(&row.encoded, idx);
-
-		let column_type = match value {
-			Value::None {
-				..
-			} => field.constraint.get_type(),
-			Value::Decimal(_) => field.constraint.get_type().inner_type().clone(),
-			_ => value.get_type(),
-		};
-
-		let mut builder = ColumnBuilder::with_capacity(column_type, 1);
-		builder.push_value(value);
-
-		if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint() {
-			builder.set_dictionary_id(*dict_id);
-		}
-
-		let name = shape.get_field_name(idx).expect("RowShape missing name for field");
-		columns.push(builder.finish(name));
-	}
-
-	let mut out = assemble(columns, HashMap::new(), 1)?;
-	out = with_system_column(out, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![row.number.0])))?;
-	if !matches!(shape.family(), RowFamily::Pod | RowFamily::Operator) {
-		let created_at = datetime_array([shape.created_at(&row.encoded)]);
-		let updated_at = datetime_array([shape.updated_at(&row.encoded)]);
-		out = with_system_column(out, SystemColumn::CreatedAt, Arc::new(created_at))?;
-		out = with_system_column(out, SystemColumn::UpdatedAt, Arc::new(updated_at))?;
-	}
-	if let Some(time) = shape.time(&row.encoded) {
-		out = with_system_column(out, SystemColumn::Time, Arc::new(datetime_array([time])))?;
-	}
-	Ok(out)
-}
-
 pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBytes]) -> Result<RecordBatch> {
 	assert_eq!(ids.len(), rows.len(), "ids length must match rows length");
 
@@ -168,16 +150,14 @@ pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBy
 		if let Some(Constraint::Dictionary(dict_id, _)) = field.constraint.constraint() {
 			builder.set_dictionary_id(*dict_id);
 		}
-		for row in rows {
-			builder.push_value(shape.get_value(row, index));
-		}
+		decode_cells(&mut builder, &field.name, shape, index, rows)?;
 		columns.push(builder.finish(&field.name));
 	}
 
-	let out = assemble(columns, HashMap::new(), rows.len())?;
-	stamps(shape, rows, ids)?
-		.into_iter()
-		.try_fold(out, |out, (column, array)| with_system_column(out, column, array))
+	for (column, array) in stamps(shape, rows, ids)? {
+		columns.push((system_field(column, array.logical_null_count() > 0), array));
+	}
+	assemble(columns, HashMap::new(), rows.len())
 }
 
 pub fn empty_for(columns: &[CatalogColumn]) -> Result<RecordBatch> {
@@ -304,16 +284,17 @@ pub fn append_rows(
 		builders.push(retyped(&view, field, rows.len()));
 	}
 
-	for row in &rows {
-		match (0..shape.field_count()).all(|index| shape.is_defined(row, index)) {
-			true => append_all_defined(&names, &mut builders, shape, row)?,
-			false => append_fallback(&names, &mut builders, shape, row)?,
-		}
+	for (index, (builder, name)) in builders.iter_mut().zip(&names).enumerate() {
+		decode_cells(builder, name, shape, index, &rows)?;
 	}
 
 	let columns = names.iter().zip(builders).map(|(name, builder)| builder.finish(name)).collect();
 	let out = assemble(columns, schema.metadata().clone(), batch.num_rows() + rows.len())?;
 	merge_system_columns(out, &batch, stamps(shape, &rows, &row_numbers)?, rows.len())
+}
+
+pub fn take_row(batch: &RecordBatch, index: usize) -> Result<RecordBatch> {
+	take_rows(batch, &[index])
 }
 
 pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
@@ -333,17 +314,61 @@ pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> 
 	.map_err(frame_error)
 }
 
+pub(crate) fn gather(sources: &[&RecordBatch], picks: &[(usize, usize)]) -> Result<RecordBatch> {
+	let Some(lead) = sources.first() else {
+		return Ok(empty_batch());
+	};
+	let schema = lead.schema_ref();
+	if sources.iter().all(|source| source.schema_ref() == schema) {
+		let columns = (0..lead.num_columns())
+			.map(|index| {
+				let arrays: Vec<&dyn Array> =
+					sources.iter().map(|source| source.column(index).as_ref()).collect();
+				kernel::picked(&arrays, picks)
+			})
+			.collect();
+		return RecordBatch::try_new_with_options(
+			schema.clone(),
+			columns,
+			&RecordBatchOptions::new().with_row_count(Some(picks.len())),
+		)
+		.map_err(frame_error);
+	}
+	let mut rows_of: Vec<Vec<usize>> = vec![Vec::new(); sources.len()];
+	let mut slot_of: Vec<(usize, usize)> = Vec::with_capacity(picks.len());
+	for &(source, row) in picks {
+		slot_of.push((source, rows_of[source].len()));
+		rows_of[source].push(row);
+	}
+	let mut offsets: Vec<usize> = Vec::with_capacity(sources.len());
+	let mut parts: Vec<RecordBatch> = Vec::with_capacity(sources.len());
+	let mut next = 0;
+	for (source, rows) in sources.iter().zip(&rows_of) {
+		offsets.push(next);
+		next += rows.len();
+		if !rows.is_empty() {
+			parts.push(take_rows(source, rows)?);
+		}
+	}
+	let glued = concat(&parts)?;
+	let order: Vec<usize> = slot_of.iter().map(|&(source, at)| offsets[source] + at).collect();
+	take_rows(&glued, &order)
+}
+
 pub fn take_rows_or_none(batch: &RecordBatch, picks: &[Option<usize>]) -> Result<RecordBatch> {
 	kernel::rows_in_range(&picks.iter().flatten().copied().collect::<Vec<_>>(), batch.num_rows())?;
 	let pairs: Vec<(usize, usize)> = picks.iter().map(|pick| pick.map_or((1, 0), |index| (0, index))).collect();
 	let schema = batch.schema_ref();
 	let mut columns = Vec::with_capacity(batch.num_columns());
 	for (field, array) in schema.fields().iter().zip(batch.columns()) {
-		let filler = new_null_array(array.data_type(), 1);
+		let mut field_type = from_field(field)?;
+		let filler = match &field_type.value_type {
+			Some(ty) => none_filler(ty, array.data_type()),
+			None => new_null_array(array.data_type(), 1),
+		};
 		let taken = kernel::picked(&[array.as_ref(), filler.as_ref()], &pairs);
 		let field = match taken.logical_null_count() > 0 && !field.is_nullable() {
 			true => {
-				let mut field_type = from_field(field)?;
 				field_type.value_type =
 					field_type.value_type.map(|value_type| ValueType::Option(Box::new(value_type)));
 				Arc::new(to_field(field.name(), &field_type))
@@ -368,10 +393,6 @@ pub fn scalar_value(batch: &RecordBatch) -> Result<Value> {
 
 pub fn is_scalar(batch: &RecordBatch) -> bool {
 	batch.schema_ref().fields().iter().filter(|field| !is_system_field(field)).count() == 1 && batch.num_rows() == 1
-}
-
-pub fn row_values(batch: &RecordBatch, index: usize) -> Result<Vec<Value>> {
-	Ok(views(batch)?.iter().map(|view| view.get_value(index)).collect())
 }
 
 pub fn group_by(batch: &RecordBatch, keys: &[&str], dict: &mut GroupKeyDict) -> Result<GroupRows> {
@@ -442,11 +463,7 @@ fn user_views(batch: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
 	Ok(views(batch)?.into_iter().filter(|view| !is_system_field(view.field)).collect())
 }
 
-fn assemble(
-	columns: Vec<(FieldRef, ArrayRef)>,
-	metadata: HashMap<String, String>,
-	row_count: usize,
-) -> Result<RecordBatch> {
+fn assemble(columns: Vec<(FieldRef, ArrayRef)>, metadata: HashMap<String, String>, row_count: usize) -> Result<RecordBatch> {
 	let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) = columns.into_iter().unzip();
 	RecordBatch::try_new_with_options(
 		Arc::new(Schema::new_with_metadata(fields, metadata)),
@@ -511,11 +528,18 @@ fn stamps(shape: &RowShape, rows: &[EncodedBytes], row_numbers: &[RowNumber]) ->
 	if rows.is_empty() {
 		return Ok(columns);
 	}
-	if !matches!(shape.family(), RowFamily::Pod) {
-		let created_at = datetime_array(rows.iter().map(|row| shape.created_at(row)));
-		let updated_at = datetime_array(rows.iter().map(|row| shape.updated_at(row)));
-		columns.push((SystemColumn::CreatedAt, Arc::new(created_at)));
-		columns.push((SystemColumn::UpdatedAt, Arc::new(updated_at)));
+	let carried = shape.family().system_columns();
+	if carried.contains(&SystemColumn::CreatedAt) {
+		columns.push((
+			SystemColumn::CreatedAt,
+			Arc::new(datetime_array(rows.iter().map(|row| shape.created_at(row)))),
+		));
+	}
+	if carried.contains(&SystemColumn::UpdatedAt) {
+		columns.push((
+			SystemColumn::UpdatedAt,
+			Arc::new(datetime_array(rows.iter().map(|row| shape.updated_at(row)))),
+		));
 	}
 	let time: Vec<DateTime> = rows.iter().filter_map(|row| shape.time(row)).collect();
 	match time.len() {
@@ -534,7 +558,7 @@ fn stamps(shape: &RowShape, rows: &[EncodedBytes], row_numbers: &[RowNumber]) ->
 }
 
 fn merge_system_columns(
-	mut out: RecordBatch,
+	out: RecordBatch,
 	batch: &RecordBatch,
 	fresh: Vec<(SystemColumn, ArrayRef)>,
 	appended: usize,
@@ -547,6 +571,7 @@ fn merge_system_columns(
 	{
 		return internal_err!("unknown system column {}", field.name());
 	}
+	let mut merged_columns: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 	for column in SystemColumn::ALL {
 		let new = fresh.iter().find(|(fresh_column, _)| *fresh_column == column).map(|(_, array)| array);
 		let merged = match (system_column(batch, column), new) {
@@ -562,9 +587,9 @@ fn merge_system_columns(
 				.into());
 			}
 		};
-		out = with_system_column(out, column, merged)?;
+		merged_columns.push((column, merged));
 	}
-	Ok(out)
+	stamp_system_columns(out, merged_columns)
 }
 
 fn retyped(view: &ColumnView, field: &RowShapeField, appended: usize) -> ColumnBuilder {
@@ -587,54 +612,26 @@ fn retyped(view: &ColumnView, field: &RowShapeField, appended: usize) -> ColumnB
 	builder
 }
 
-fn append_all_defined(
-	names: &[&str],
-	builders: &mut [ColumnBuilder],
+pub fn decode_cells(
+	builder: &mut ColumnBuilder,
+	name: &str,
 	shape: &RowShape,
-	bytes: &EncodedBytes,
+	index: usize,
+	rows: &[EncodedBytes],
 ) -> Result<()> {
-	for (index, (builder, field)) in builders.iter_mut().zip(shape.fields()).enumerate() {
-		if builder.optional {
-			builder.push_value(shape.get_value(bytes, index));
-			continue;
-		}
-		let column_type = builder.get_type();
-		let value_type = field.constraint.get_type();
-		if !append_encoded(&mut builder.inner, &value_type, shape, bytes, index) {
-			return Err(CoreError::FrameError {
-				message: format!(
-					"type mismatch for column '{}'({}): incompatible with value {}",
-					names[index], column_type, value_type
-				),
-			}
-			.into());
-		}
-	}
-	Ok(())
-}
-
-fn append_fallback(
-	names: &[&str],
-	builders: &mut [ColumnBuilder],
-	shape: &RowShape,
-	bytes: &EncodedBytes,
-) -> Result<()> {
-	for (index, (builder, field)) in builders.iter_mut().zip(shape.fields()).enumerate() {
-		if !shape.is_defined(bytes, index) {
+	let value_type = shape.fields()[index].constraint.get_type();
+	for row in rows {
+		if !shape.is_defined(row, index) {
 			builder.push_none();
 			continue;
 		}
-		if builder.optional {
-			builder.push_value(shape.get_value(bytes, index));
-			continue;
-		}
-		let column_type = builder.get_type();
-		let value_type = field.constraint.get_type();
-		if !append_encoded(&mut builder.inner, &value_type, shape, bytes, index) {
+		if !append_encoded(builder, value_type.inner_type(), shape, row, index) {
 			return Err(CoreError::FrameError {
 				message: format!(
 					"type mismatch for column '{}'({}): incompatible with value {}",
-					names[index], column_type, value_type
+					name,
+					builder.get_type(),
+					value_type
 				),
 			}
 			.into());
@@ -644,22 +641,24 @@ fn append_fallback(
 }
 
 fn append_encoded(
-	builder: &mut TypedBuilder,
+	column: &mut ColumnBuilder,
 	value_type: &ValueType,
 	shape: &RowShape,
 	bytes: &EncodedBytes,
 	index: usize,
 ) -> bool {
-	match (builder, value_type) {
+	match (&mut column.inner, value_type) {
 		(TypedBuilder::Bool(builder), ValueType::Boolean) => {
 			builder.append_value(shape.get::<bool>(bytes, index));
 		}
-		(TypedBuilder::Float4(builder), ValueType::Float4) => {
-			builder.append_value(shape.get::<f32>(bytes, index));
-		}
-		(TypedBuilder::Float8(builder), ValueType::Float8) => {
-			builder.append_value(shape.get::<f64>(bytes, index));
-		}
+		(TypedBuilder::Float4(builder), ValueType::Float4) => match shape.get::<f32>(bytes, index) {
+			value if value.is_nan() => column.push_none(),
+			value => builder.append_value(OrderedF32::canonical(value)),
+		},
+		(TypedBuilder::Float8(builder), ValueType::Float8) => match shape.get::<f64>(bytes, index) {
+			value if value.is_nan() => column.push_none(),
+			value => builder.append_value(OrderedF64::canonical(value)),
+		},
 		(TypedBuilder::Int1(builder), ValueType::Int1) => {
 			builder.append_value(shape.get::<i8>(bytes, index));
 		}
@@ -743,10 +742,9 @@ fn append_encoded(
 				..
 			},
 			ValueType::DictionaryId,
-		) => match shape.get_value(bytes, index) {
-			Value::DictionaryId(id) => append_fixed(builder, &dictionary_array::encode(id)),
-			_ => append_fixed(builder, &dictionary_array::encode(DictionaryEntryId::default())),
-		},
+		) => {
+			append_fixed(builder, &dictionary_array::encode(shape.get_dictionary_id(bytes, index)));
+		}
 		(
 			TypedBuilder::Digest {
 				builder,
@@ -760,6 +758,12 @@ fn append_encoded(
 		) if *inner == **field_inner && *accuracy == *field_accuracy => {
 			push_digest(builder, &shape.get_digest(bytes, index));
 		}
+		(
+			TypedBuilder::Any {
+				..
+			},
+			ValueType::Any | ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_),
+		) => column.push_value(shape.get_value(bytes, index)),
 		_ => return false,
 	}
 	true
@@ -794,8 +798,110 @@ pub mod tests {
 	};
 	use uuid::{Timestamp, Uuid};
 
-	use super::{batch, heap_size, single_row, take_rows};
+	use super::{append, batch, gather, heap_size, single_row, take_rows};
 	use crate::value::column::{builder::ColumnBuilder, factory};
+
+	fn one_row_append_chain(sources: &[&RecordBatch], picks: &[(usize, usize)]) -> RecordBatch {
+		// Must mirror consolidation before gather: one 1-row take per pick, appended in pick order.
+		let mut parts = picks.iter().map(|&(source, row)| take_rows(sources[source], &[row]).unwrap());
+		let first = parts.next().unwrap();
+		parts.fold(first, |merged, part| append(&merged, &part).unwrap())
+	}
+
+	fn cells(batch: &RecordBatch) -> Vec<Vec<Value>> {
+		// Reads every cell through its own field, so a wrong type or row shows up as a different value.
+		(0..batch.num_rows())
+			.map(|row| {
+				(0..batch.num_columns())
+					.map(|index| {
+						ColumnView::try_from((
+							batch.column(index),
+							batch.schema_ref().field(index),
+						))
+						.unwrap()
+						.get_value(row)
+					})
+					.collect()
+			})
+			.collect()
+	}
+
+	fn field_types(batch: &RecordBatch) -> Vec<FieldType> {
+		batch.schema_ref().fields().iter().map(|field| from_field(field).unwrap()).collect()
+	}
+
+	#[test]
+	fn gather_keeps_pick_order_across_sources_of_one_schema() {
+		// A pick must land on its own source and row, otherwise consolidation emits a neighbour's row.
+		let first = batch(vec![factory::int4("v", [1, 2, 3])]).unwrap();
+		let second = batch(vec![factory::int4("v", [4, 5])]).unwrap();
+		let third = batch(vec![factory::int4("v", [6])]).unwrap();
+		let gathered = gather(&[&first, &second, &third], &[(1, 1), (0, 2), (2, 0), (0, 0)]).unwrap();
+		assert_eq!(
+			cells(&gathered),
+			vec![vec![Value::Int4(5)], vec![Value::Int4(3)], vec![Value::Int4(6)], vec![Value::Int4(1)]]
+		);
+		assert!(
+			Arc::ptr_eq(gathered.schema_ref(), first.schema_ref()),
+			"one shared schema must be reused, never rebuilt"
+		);
+	}
+
+	#[test]
+	fn gather_over_mixed_nullability_equals_the_one_row_append_chain() {
+		// Sources that differ only in nullability must come out typed and ordered exactly as the 1-row chain
+		// did.
+		let optional = batch(vec![factory::int4_optional("v", [Some(4), None, Some(6)])]).unwrap();
+		let plain = batch(vec![factory::int4("v", [1, 2, 3])]).unwrap();
+		let sources = [&optional, &plain];
+		let picks = [(0, 1), (1, 2), (0, 0), (1, 0)];
+		let gathered = gather(&sources, &picks).unwrap();
+		let chained = one_row_append_chain(&sources, &picks);
+		assert_eq!(field_types(&gathered), field_types(&chained));
+		assert_eq!(cells(&gathered), cells(&chained));
+	}
+
+	#[test]
+	fn gather_over_mixed_decimals_widens_only_for_picked_rows() {
+		// A row that is not picked must never widen the type, or a cancelled row would change the output
+		// schema.
+		let decimal = |text: &str| Decimal::from_str(text).unwrap();
+		let narrow = batch(vec![factory::decimal(
+			"d",
+			Precision::new(5),
+			Scale::new(2),
+			[decimal("1.25"), decimal("2.50")],
+		)])
+		.unwrap();
+		let wide = batch(vec![factory::decimal(
+			"d",
+			Precision::new(20),
+			Scale::new(4),
+			[decimal("3.1250"), decimal("1234567890123456.0001")],
+		)])
+		.unwrap();
+		let sources = [&narrow, &wide];
+		let picks = [(0, 1), (1, 0), (0, 0)];
+		let gathered = gather(&sources, &picks).unwrap();
+		let chained = one_row_append_chain(&sources, &picks);
+		assert_eq!(field_types(&gathered), field_types(&chained));
+		assert_eq!(cells(&gathered), cells(&chained));
+	}
+
+	#[test]
+	fn gather_over_any_columns_with_nones_equals_the_one_row_append_chain() {
+		// An Any column's none typing depends on the rows it holds, so gather must see the same rows as the
+		// chain.
+		let first = batch(vec![factory::any_optional("x", [Some(Value::Int4(5)), None])]).unwrap();
+		let second =
+			batch(vec![factory::any_optional("x", [None, Some(Value::Utf8("w".to_string()))])]).unwrap();
+		let sources = [&first, &second];
+		let picks = [(0, 1), (1, 0), (1, 1)];
+		let gathered = gather(&sources, &picks).unwrap();
+		let chained = one_row_append_chain(&sources, &picks);
+		assert_eq!(field_types(&gathered), field_types(&chained));
+		assert_eq!(cells(&gathered), cells(&chained));
+	}
 
 	pub(super) fn column(batch: &RecordBatch, index: usize) -> (FieldRef, ArrayRef) {
 		(batch.schema_ref().fields()[index].clone(), batch.column(index).clone())

@@ -43,7 +43,7 @@ tracing = { workspace = true }
 server = ["dep:reifydb-sub-server"]
 
 [target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
-libc = "0.2"
+libc = "=0.2.190"
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }

@@ -4,10 +4,7 @@
 use arrow_array::ArrayRef;
 use arrow_row::{RowConverter, SortField};
 use arrow_schema::FieldRef;
-use reifydb_core::{
-	internal_error,
-	value::column::view::group_by::{cast_key, key_column},
-};
+use reifydb_core::{internal_error, value::column::view::group_by::cast_key};
 use reifydb_value::value::{column_view::ColumnView, value_type::ValueType};
 
 use crate::Result;
@@ -24,8 +21,7 @@ pub(crate) fn key_arrays(key_columns: &[(&FieldRef, &ArrayRef)], targets: &[Valu
 		.iter()
 		.zip(targets)
 		.map(|((_, array), target)| {
-			let normalized = key_column(array);
-			let (cast, _) = cast_key(&normalized, target);
+			let (cast, _) = cast_key(array, target);
 			cast
 		})
 		.collect()

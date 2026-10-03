@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.75.0"
 name = "opentelemetry-proto"
-version = "0.31.0"
+version = "0.33.0"
 build = false
 autolib = false
 autobins = false
@@ -51,13 +51,11 @@ full = [
 ]
 gen-tonic = [
     "gen-tonic-messages",
-    "tonic/channel",
-]
-gen-tonic-messages = [
     "tonic",
     "tonic-prost",
-    "prost",
+    "tonic/channel",
 ]
+gen-tonic-messages = ["prost"]
 internal-logs = ["opentelemetry/internal-logs"]
 logs = [
     "opentelemetry/logs",
@@ -78,7 +76,6 @@ with-serde = [
     "serde",
     "const-hex",
     "base64",
-    "serde_json",
 ]
 zpages = ["trace"]
 
@@ -105,11 +102,11 @@ version = "1.14.1"
 optional = true
 
 [dependencies.opentelemetry]
-version = "0.31"
+version = "0.33"
 default-features = false
 
 [dependencies.opentelemetry_sdk]
-version = "0.31"
+version = "0.33"
 default-features = false
 
 [dependencies.prost]
@@ -117,7 +114,7 @@ version = "0.14"
 optional = true
 
 [dependencies.schemars]
-version = "0.8"
+version = "1.0"
 optional = true
 
 [dependencies.serde]
@@ -128,10 +125,6 @@ features = [
 ]
 optional = true
 default-features = false
-
-[dependencies.serde_json]
-version = "1.0"
-optional = true
 
 [dependencies.tonic]
 version = "0.14.1"
@@ -144,12 +137,9 @@ version = "0.14.1"
 optional = true
 
 [dev-dependencies.opentelemetry]
-version = "0.31"
+version = "0.33"
 features = ["testing"]
 default-features = false
-
-[dev-dependencies.prost-build]
-version = "0.14"
 
 [dev-dependencies.serde_json]
 version = "1.0"

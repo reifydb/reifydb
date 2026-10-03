@@ -1,7 +1,5 @@
-use core::{
-    fmt,
-    ops::{Deref, DerefMut},
-};
+use core::fmt;
+use core::ops::{Deref, DerefMut};
 
 /// A CPU architecture.
 #[allow(missing_docs)]
@@ -25,6 +23,7 @@ pub enum Architecture {
     X86_64_X32,
     Hexagon,
     Hppa,
+    Ia64,
     LoongArch32,
     LoongArch64,
     M68k,
@@ -79,6 +78,7 @@ impl Architecture {
             Architecture::X86_64_X32 => Some(AddressSize::U32),
             Architecture::Hexagon => Some(AddressSize::U32),
             Architecture::Hppa => Some(AddressSize::U32),
+            Architecture::Ia64 => Some(AddressSize::U64),
             Architecture::LoongArch32 => Some(AddressSize::U32),
             Architecture::LoongArch64 => Some(AddressSize::U64),
             Architecture::M68k => Some(AddressSize::U32),
@@ -176,7 +176,7 @@ pub enum SectionKind {
     ///
     /// Example ELF sections: `.rodata`
     ///
-    /// Example Mach-O sections: `__TEXT/__const`, `__DATA/__const`, `__TEXT/__literal4`
+    /// Example Mach-O sections: `__TEXT/__const`, `__TEXT/__literal4`
     ReadOnlyData,
     /// A read only data section with relocations.
     ///
@@ -193,12 +193,8 @@ pub enum SectionKind {
     ///
     /// Example ELF sections: `.bss`
     ///
-    /// Example Mach-O sections: `__DATA/__bss`
+    /// Example Mach-O sections: `__DATA/__bss`, `__DATA/__common`
     UninitializedData,
-    /// An uninitialized common data section.
-    ///
-    /// Example Mach-O sections: `__DATA/__common`
-    Common,
     /// A TLS data section.
     ///
     /// Example ELF sections: `.tdata`
@@ -244,19 +240,12 @@ pub enum SectionKind {
     ///
     /// Example ELF sections: `.symtab`, `.strtab`, `.group`
     Metadata,
-    /// Some other ELF section type.
-    ///
-    /// This is the `sh_type` field in the section header.
-    /// The meaning may be dependent on the architecture.
-    Elf(u32),
 }
 
 impl SectionKind {
     /// Return true if this section contains zerofill data.
     pub fn is_bss(self) -> bool {
-        self == SectionKind::UninitializedData
-            || self == SectionKind::UninitializedTls
-            || self == SectionKind::Common
+        self == SectionKind::UninitializedData || self == SectionKind::UninitializedTls
     }
 }
 
@@ -483,28 +472,32 @@ pub enum FileFlags {
     /// No file flags.
     None,
     /// ELF file flags.
+    #[cfg(feature = "elf")]
     Elf {
         /// `os_abi` field in the ELF file header.
-        os_abi: u8,
+        os_abi: crate::elf::OsAbi,
         /// `abi_version` field in the ELF file header.
         abi_version: u8,
         /// `e_flags` field in the ELF file header.
-        e_flags: u32,
+        e_flags: crate::elf::FileFlags,
     },
     /// Mach-O file flags.
+    #[cfg(feature = "macho")]
     MachO {
         /// `flags` field in the Mach-O file header.
-        flags: u32,
+        flags: crate::macho::FileFlags,
     },
     /// COFF file flags.
+    #[cfg(feature = "coff")]
     Coff {
         /// `Characteristics` field in the COFF file header.
-        characteristics: u16,
+        characteristics: crate::pe::FileFlags,
     },
     /// XCOFF file flags.
+    #[cfg(feature = "xcoff")]
     Xcoff {
         /// `f_flags` field in the XCOFF file header.
-        f_flags: u16,
+        f_flags: crate::xcoff::FileFlags,
     },
 }
 
@@ -515,23 +508,28 @@ pub enum SegmentFlags {
     /// No segment flags.
     None,
     /// ELF segment flags.
+    #[cfg(feature = "elf")]
     Elf {
+        /// `p_type` field in the segment header.
+        p_type: crate::elf::ProgramType,
         /// `p_flags` field in the segment header.
-        p_flags: u32,
+        p_flags: crate::elf::ProgramFlags,
     },
     /// Mach-O segment flags.
+    #[cfg(feature = "macho")]
     MachO {
         /// `flags` field in the segment header.
-        flags: u32,
+        flags: crate::macho::SegmentFlags,
         /// `maxprot` field in the segment header.
-        maxprot: u32,
+        maxprot: crate::macho::VmProt,
         /// `initprot` field in the segment header.
-        initprot: u32,
+        initprot: crate::macho::VmProt,
     },
     /// COFF segment flags.
+    #[cfg(feature = "coff")]
     Coff {
         /// `Characteristics` field in the segment header.
-        characteristics: u32,
+        characteristics: crate::pe::SectionFlags,
     },
 }
 
@@ -611,24 +609,34 @@ pub enum SectionFlags {
     /// No section flags.
     None,
     /// ELF section flags.
+    #[cfg(feature = "elf")]
     Elf {
+        /// `sh_type` field in the section header.
+        sh_type: crate::elf::SectionType,
         /// `sh_flags` field in the section header.
-        sh_flags: u64,
+        sh_flags: crate::elf::SectionFlags,
     },
     /// Mach-O section flags.
+    #[cfg(feature = "macho")]
     MachO {
         /// `flags` field in the section header.
-        flags: u32,
+        flags: crate::macho::SectionFlags,
+        /// `reserved2` field in the section header.
+        ///
+        /// This is the size of a stub in a section with type `S_SYMBOL_STUBS`.
+        reserved2: u32,
     },
     /// COFF section flags.
+    #[cfg(feature = "coff")]
     Coff {
         /// `Characteristics` field in the section header.
-        characteristics: u32,
+        characteristics: crate::pe::SectionFlags,
     },
     /// XCOFF section flags.
+    #[cfg(feature = "xcoff")]
     Xcoff {
         /// `s_flags` field in the section header.
-        s_flags: u32,
+        s_flags: crate::xcoff::SectionFlags,
     },
 }
 
@@ -639,41 +647,64 @@ pub enum SymbolFlags<Section, Symbol> {
     /// No symbol flags.
     None,
     /// ELF symbol flags.
+    #[cfg(feature = "elf")]
     Elf {
         /// `st_info` field in the ELF symbol.
-        st_info: u8,
+        st_info: crate::elf::SymbolInfo,
         /// `st_other` field in the ELF symbol.
-        st_other: u8,
+        st_other: crate::elf::SymbolOther,
     },
     /// Mach-O symbol flags.
+    #[cfg(feature = "macho")]
     MachO {
+        /// `n_type` field in the Mach-O symbol.
+        n_type: crate::macho::SymbolFlags,
         /// `n_desc` field in the Mach-O symbol.
-        n_desc: u16,
+        n_desc: crate::macho::SymbolDesc,
     },
-    /// COFF flags for a section symbol.
+    /// COFF flags for a symbol.
+    #[cfg(feature = "coff")]
+    Coff {
+        /// `Type` field in the COFF symbol.
+        typ: crate::pe::SymbolType,
+        /// `StorageClass` field in the COFF symbol.
+        storage_class: crate::pe::SymbolClass,
+    },
+    /// COFF flags for a section symbol with an auxiliary symbol.
+    #[cfg(feature = "coff")]
     CoffSection {
+        /// `Type` field in the COFF symbol.
+        typ: crate::pe::SymbolType,
+        /// `StorageClass` field in the COFF symbol.
+        storage_class: crate::pe::SymbolClass,
         /// `Selection` field in the auxiliary symbol for the section.
-        selection: u8,
+        selection: crate::pe::ComdatSelection,
         /// `Number` field in the auxiliary symbol for the section.
         associative_section: Option<Section>,
     },
     /// XCOFF symbol flags.
+    #[cfg(feature = "xcoff")]
     Xcoff {
+        /// `n_type` field in the XCOFF symbol.
+        n_type: crate::xcoff::SymbolType,
         /// `n_sclass` field in the XCOFF symbol.
-        n_sclass: u8,
+        n_sclass: crate::xcoff::SymbolClass,
         /// `x_smtyp` field in the CSECT auxiliary symbol.
         ///
         /// Only valid if `n_sclass` is `C_EXT`, `C_WEAKEXT`, or `C_HIDEXT`.
-        x_smtyp: u8,
+        x_smtyp: crate::xcoff::CsectAuxSmtyp,
         /// `x_smclas` field in the CSECT auxiliary symbol.
         ///
         /// Only valid if `n_sclass` is `C_EXT`, `C_WEAKEXT`, or `C_HIDEXT`.
-        x_smclas: u8,
+        x_smclas: crate::xcoff::CsectAuxClass,
         /// The containing csect for the symbol.
         ///
         /// Only valid if `x_smtyp` is `XTY_LD`.
         containing_csect: Option<Symbol>,
     },
+    #[doc(hidden)]
+    #[cfg(not(all(feature = "coff", feature = "xcoff")))]
+    _Phantom(core::marker::PhantomData<(Section, Symbol)>),
 }
 
 impl<Section, Symbol> SymbolFlags<Section, Symbol> {
@@ -681,9 +712,10 @@ impl<Section, Symbol> SymbolFlags<Section, Symbol> {
     ///
     /// This corresponds to the lower 2 bits of the `st_other` field,
     /// and will be a value such as `elf::STV_DEFAULT`.
-    pub fn elf_visibility(&self) -> Option<u8> {
+    #[cfg(feature = "elf")]
+    pub fn elf_visibility(&self) -> Option<crate::elf::SymbolVisibility> {
         match self {
-            SymbolFlags::Elf { st_other, .. } => Some(st_other & 0x3),
+            SymbolFlags::Elf { st_other, .. } => Some(st_other.visibility()),
             _ => None,
         }
     }
@@ -703,30 +735,40 @@ pub enum RelocationFlags {
         size: u8,
     },
     /// ELF relocation fields.
+    #[cfg(feature = "elf")]
     Elf {
         /// `r_type` field in the ELF relocation.
-        r_type: u32,
+        r_type: crate::elf::RelocationType,
     },
     /// Mach-O relocation fields.
+    #[cfg(feature = "macho")]
     MachO {
         /// `r_type` field in the Mach-O relocation.
-        r_type: u8,
+        r_type: crate::macho::RelocationType,
         /// `r_pcrel` field in the Mach-O relocation.
         r_pcrel: bool,
         /// `r_length` field in the Mach-O relocation.
         r_length: u8,
     },
     /// COFF relocation fields.
+    #[cfg(feature = "coff")]
     Coff {
         /// `typ` field in the COFF relocation.
-        typ: u16,
+        typ: crate::pe::RelocationType,
     },
     /// XCOFF relocation fields.
+    #[cfg(feature = "xcoff")]
     Xcoff {
         /// `r_rtype` field in the XCOFF relocation.
-        r_rtype: u8,
+        r_rtype: crate::xcoff::RelocationType,
         /// `r_rsize` field in the XCOFF relocation.
         r_rsize: u8,
+    },
+    /// Wasm relocation fields.
+    #[cfg(feature = "wasm")]
+    Wasm {
+        /// Relocation type (the `R_WASM_*` constant).
+        r_type: u8,
     },
 }
 

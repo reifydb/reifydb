@@ -27,7 +27,7 @@ use reifydb_value::{
 pub trait Changes {
 	fn cursor(&self) -> usize;
 
-	fn entries_from(&self, at: usize) -> Vec<(ObjectId, Diff)>;
+	fn entries_from(&self, at: usize) -> &[(ObjectId, Diff)];
 
 	fn set_cursor(&mut self, at: usize);
 }

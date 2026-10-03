@@ -311,7 +311,21 @@
       (rotl ty x (iconst_u kty (u64_and k (ty_shift_mask ty)))))
 
 (rule (simplify (band ty (ishl ty x z) (ishl ty y z))) (ishl ty (band ty x y) z))
+(rule (simplify (bor ty (ishl ty x z) (ishl ty y z))) (ishl ty (bor ty x y) z))
 (rule (simplify (isub ty (ishl ty x z) (ishl ty y z))) (ishl ty (isub ty x y) z))
 (rule (simplify (iadd ty (ishl ty x z) (ishl ty y z))) (ishl ty (iadd ty x y) z))
 
 (rule (simplify (ushr ty (band ty (ishl ty x y) z) y)) (band ty x (ushr ty z y)))
+(rule (simplify (ushr ty (band ty x (ishl ty y z)) z)) (band ty y (ushr ty x z)))
+
+;; Zero remains zero for any shift or rotate amount.
+(rule (simplify (ishl ty (iconst_u ty 0) x)) (subsume (iconst_u ty 0)))
+(rule (simplify (ushr ty (iconst_u ty 0) x)) (subsume (iconst_u ty 0)))
+(rule (simplify (sshr ty (iconst_u ty 0) x)) (subsume (iconst_u ty 0)))
+(rule (simplify (rotl ty (iconst_u ty 0) x)) (subsume (iconst_u ty 0)))
+(rule (simplify (rotr ty (iconst_u ty 0) x)) (subsume (iconst_u ty 0)))
+
+;; All ones remain all ones for arithmetic right shifts or rotates.
+(rule (simplify (sshr ty (iconst_s ty -1) x)) (subsume (iconst_s ty -1)))
+(rule (simplify (rotl ty (iconst_s ty -1) x)) (subsume (iconst_s ty -1)))
+(rule (simplify (rotr ty (iconst_s ty -1) x)) (subsume (iconst_s ty -1)))

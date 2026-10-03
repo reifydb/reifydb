@@ -1,7 +1,5 @@
 use crate::prelude::*;
-use crate::{
-    BinaryReader, BinaryReaderError, FromReader, Result, SectionLimited, Subsection, Subsections,
-};
+use crate::{BinaryReader, Error, FromReader, Result, SectionLimited, Subsection, Subsections};
 use core::ops::Range;
 
 bitflags::bitflags! {
@@ -74,7 +72,7 @@ pub struct LinkingSectionReader<'a> {
     /// The subsections in this section.
     subsections: Subsections<'a, Linking<'a>>,
     /// The range of the entire section, including the version.
-    range: Range<usize>,
+    range: Range<u64>,
 }
 
 /// Represents a reader for segments from the linking custom section.
@@ -370,6 +368,8 @@ pub enum Linking<'a> {
     ComdatInfo(ComdatMap<'a>),
     /// Extra information about the symbols present in the module.
     SymbolTable(SymbolInfoMap<'a>),
+    /// The target architecture of this object file, e.g. `wasm32` or `wasm64`.
+    TargetArch(&'a str),
     /// An unknown [linking subsection](https://github.com/WebAssembly/tool-conventions/blob/main/Linking.md#linking-metadata-section).
     Unknown {
         /// The identifier for this subsection.
@@ -378,23 +378,22 @@ pub enum Linking<'a> {
         data: &'a [u8],
         /// The range of bytes, relative to the start of the original data
         /// stream, that the contents of this subsection reside in.
-        range: Range<usize>,
+        range: Range<u64>,
     },
 }
 
 impl<'a> Subsection<'a> for Linking<'a> {
-    fn from_reader(id: u8, reader: BinaryReader<'a>) -> Result<Self> {
-        let data = reader.remaining_buffer();
-        let offset = reader.original_position();
+    fn from_reader(id: u8, mut reader: BinaryReader<'a>) -> Result<Self> {
         Ok(match id {
             5 => Self::SegmentInfo(SegmentMap::new(reader)?),
             6 => Self::InitFuncs(InitFuncMap::new(reader)?),
             7 => Self::ComdatInfo(ComdatMap::new(reader)?),
             8 => Self::SymbolTable(SymbolInfoMap::new(reader)?),
+            9 => Self::TargetArch(reader.read_string()?),
             ty => Self::Unknown {
                 ty,
-                data,
-                range: offset..offset + data.len(),
+                data: reader.remaining_buffer(),
+                range: reader.remaining_range(),
             },
         })
     }
@@ -409,7 +408,7 @@ impl<'a> LinkingSectionReader<'a> {
 
         let version = reader.read_var_u32()?;
         if version != 2 {
-            return Err(BinaryReaderError::new(
+            return Err(Error::new(
                 format!("unsupported linking section version: {version}"),
                 offset,
             ));
@@ -429,13 +428,13 @@ impl<'a> LinkingSectionReader<'a> {
     }
 
     /// Returns the original byte offset of this section.
-    pub fn original_position(&self) -> usize {
+    pub fn original_position(&self) -> u64 {
         self.subsections.original_position()
     }
 
     /// Returns the range, as byte offsets, of this section within the original
     /// wasm binary.
-    pub fn range(&self) -> Range<usize> {
+    pub fn range(&self) -> Range<u64> {
         self.range.clone()
     }
 

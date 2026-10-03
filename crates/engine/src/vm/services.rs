@@ -12,10 +12,7 @@ use reifydb_catalog::{
 use reifydb_core::util::ioc::IocContainer;
 use reifydb_extension::transform::registry::Transforms;
 #[cfg(test)]
-use reifydb_routine::{
-	function::default_in_process_functions, monoid::default_in_process_monoids,
-	procedure::default_in_process_procedures,
-};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::{Procedure, registry::Routines};
 use reifydb_rql::compiler::Compiler;
 use reifydb_runtime::context::RuntimeContext;
@@ -94,7 +91,6 @@ impl Services {
 		let routines_builder = Routines::builder();
 		let routines_builder = default_in_process_functions(routines_builder);
 		let routines_builder = default_in_process_procedures(routines_builder);
-		let routines_builder = default_in_process_monoids(routines_builder);
 		let routines = routines_builder.configure();
 
 		let services = Self::new(

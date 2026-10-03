@@ -3,7 +3,7 @@
 
 use std::str::FromStr;
 
-use reifydb_codec::key::{deserializer::KeyDeserializer, encode_bytes, serializer::KeySerializer, sort::SortOrder};
+use reifydb_codec::key::{deserializer::KeyDeserializer, encode_bytes, serializer::KeySerializer};
 use reifydb_value::value::{
 	Value,
 	blob::Blob,
@@ -209,12 +209,6 @@ fn enc_value(value: &Value) -> Vec<u8> {
 	s.to_encoded_key().to_vec()
 }
 
-fn enc_value_dir(value: &Value, direction: SortOrder) -> Vec<u8> {
-	let mut s = KeySerializer::new();
-	s.extend_value_with_direction(value, direction).unwrap();
-	s.to_encoded_key().to_vec()
-}
-
 #[test]
 fn every_value_type_encodes_descending() {
 	// descending is the house default; a type encoded ascending silently reverses its scans.
@@ -225,21 +219,6 @@ fn every_value_type_encodes_descending() {
 				"{label}: {:?} is greater than {:?} so it must encode smaller",
 				pair[1],
 				pair[0]
-			);
-		}
-	}
-}
-
-#[test]
-fn asc_direction_reverses_every_value_type() {
-	// a type missing from keycode_type_descending stays descending under an explicit ASC.
-	for (label, values) in ascending_samples() {
-		for pair in values.windows(2) {
-			assert!(
-				enc_value_dir(&pair[0], SortOrder::Asc) < enc_value_dir(&pair[1], SortOrder::Asc),
-				"{label}: ASC must invert the default order for {:?} vs {:?}",
-				pair[0],
-				pair[1]
 			);
 		}
 	}

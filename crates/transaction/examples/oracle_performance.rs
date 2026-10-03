@@ -56,7 +56,7 @@ pub fn oracle_performance_benchmark() {
 			let value = as_values!(format!("value_{}", i));
 
 			tx.set(&key, value).unwrap();
-			tx.commit(vec![]).unwrap();
+			tx.commit().unwrap();
 		}
 
 		let duration = start.elapsed();
@@ -96,7 +96,7 @@ pub fn concurrent_oracle_benchmark() {
 					let value = as_values!(i);
 
 					tx.set(&key, value).unwrap();
-					tx.commit(vec![]).unwrap();
+					tx.commit().unwrap();
 				}
 			});
 			handles.push(handle);
@@ -125,7 +125,7 @@ pub fn conflict_detection_benchmark() {
 		let key = as_key!(format!("shared_key_{}", i % 100));
 		let value = as_values!(i);
 		tx.set(&key, value).unwrap();
-		tx.commit(vec![]).unwrap();
+		tx.commit().unwrap();
 	}
 
 	println!("Pre-populated with 1000 transactions across 100 keys");
@@ -142,7 +142,7 @@ pub fn conflict_detection_benchmark() {
 
 		tx.set(&key, value).unwrap();
 
-		match tx.commit(vec![]) {
+		match tx.commit() {
 			Ok(_) => {}
 			Err(e) if e.code == "TXN_001" => {
 				conflicts += 1;

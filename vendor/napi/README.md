@@ -12,36 +12,42 @@ A framework for building compiled `Node.js` add-ons in `Rust` via Node-API. Webs
   <a href="https://docs.rs/crate/napi"><img src="https://docs.rs/napi/badge.svg"></img></a>
   <a href="https://crates.io/crates/napi"><img src="https://img.shields.io/crates/v/napi.svg"></img></a>
   <a href="https://www.npmjs.com/package/@napi-rs/cli"><img src="https://img.shields.io/npm/v/@napi-rs/cli.svg"></img></a>
-  <a href="https://stakes.social/0x2C9F5c3ebC01A45D34198229E60eE186eCDc5C5E"><img src="https://badge.devprotocol.xyz/0x2C9F5c3ebC01A45D34198229E60eE186eCDc5C5E/descriptive" alt="Stake to support us"></img></a>
 </p>
+
+## Sponsors
+
+![](https://napi.rs/sponsors.svg)
 
 ## Platform Support
 
 [![Test & Release](https://github.com/napi-rs/napi-rs/actions/workflows/test-release.yaml/badge.svg)](https://github.com/napi-rs/napi-rs/actions/workflows/test-release.yaml)
-[![FreeBSD](https://api.cirrus-ci.com/github/napi-rs/napi-rs.svg)](https://cirrus-ci.com/github/napi-rs/napi-rs?branch=main)
 [![Address Sanitizer](https://github.com/napi-rs/napi-rs/actions/workflows/asan.yml/badge.svg)](https://github.com/napi-rs/napi-rs/actions/workflows/asan.yml)
 [![Memory Leak Detect](https://github.com/napi-rs/napi-rs/actions/workflows/memory-test.yml/badge.svg)](https://github.com/napi-rs/napi-rs/actions/workflows/memory-test.yml)
 
 ## MSRV
 
-**Rust** `1.65.0`
+**Rust** `1.88.0`
 
-|                       | node12 | node14 | node16 | node18 | node20 |
-| --------------------- | ------ | ------ | ------ | ------ | ------ |
-| Windows x64           | ✓      | ✓      | ✓      | ✓      | ✓      |
-| Windows x86           | ✓      | ✓      | ✓      | ✓      | ✓      |
-| Windows arm64         | ✓      | ✓      | ✓      | ✓      | ✓      |
-| macOS x64             | ✓      | ✓      | ✓      | ✓      | ✓      |
-| macOS aarch64         | ✓      | ✓      | ✓      | ✓      | ✓      |
-| Linux x64 gnu         | ✓      | ✓      | ✓      | ✓      | ✓      |
-| Linux x64 musl        | ✓      | ✓      | ✓      | ✓      | ✓      |
-| Linux aarch64 gnu     | ✓      | ✓      | ✓      | ✓      | ✓      |
-| Linux aarch64 musl    | ✓      | ✓      | ✓      | ✓      | ✓      |
-| Linux arm gnueabihf   | ✓      | ✓      | ✓      | ✓      | ✓      |
-| Linux riscv64 gnu     | N/A    | N/A    | ✓      | ✓      | ✓      |
-| Linux aarch64 android | ✓      | ✓      | ✓      | ✓      | ✓      |
-| Linux armv7 android   | ✓      | ✓      | ✓      | ✓      | ✓      |
-| FreeBSD x64           | ✓      | ✓      | ✓      | ✓      | ✓      |
+|                       | node12 | node14 | node16 | node18 | node20 | node22 |
+| --------------------- | ------ | ------ | ------ | ------ | ------ | ------ |
+| Windows x64           | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Windows x86           | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Windows arm64         | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| macOS x64             | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| macOS aarch64         | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Linux x64 gnu         | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Linux x64 musl        | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Linux aarch64 gnu     | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Linux aarch64 musl    | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Linux arm gnueabihf   | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Linux arm muslebihf   | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Linux powerpc64le gnu | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Linux s390x gnu       | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Linux loong64 gnu     | N/A    | N/A    | N/A    | ✓      | ✓      | ✓      |
+| Linux riscv64 gnu     | N/A    | N/A    | ✓      | ✓      | ✓      | ✓      |
+| Linux aarch64 android | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| Linux armv7 android   | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
+| FreeBSD x64           | ✓      | ✓      | ✓      | ✓      | ✓      | ✓      |
 
 This library depends on Node-API and requires `Node@10.0.0` or later.
 
@@ -56,13 +62,12 @@ One nice feature is that this crate allows you to build add-ons purely with the 
 ### Define JavaScript functions
 
 ```rust
-/// import the preludes
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
 /// module registration is done by the runtime, no need to explicitly do it now.
 #[napi]
-fn fibonacci(n: u32) -> u32 {
+pub fn fibonacci(n: u32) -> u32 {
   match n {
     1 | 2 => 1,
     _ => fibonacci(n - 1) + fibonacci(n - 2),
@@ -72,30 +77,31 @@ fn fibonacci(n: u32) -> u32 {
 /// use `Fn`, `FnMut` or `FnOnce` traits to defined JavaScript callbacks
 /// the return type of callbacks can only be `Result`.
 #[napi]
-fn get_cwd<T: Fn(String) -> Result<()>>(callback: T) {
-  callback(env::current_dir().unwrap().to_string_lossy().to_string()).unwrap();
+pub fn get_cwd<T: Fn(String) -> Result<()>>(callback: T) {
+  callback(
+    std::env::current_dir()
+      .unwrap()
+      .to_string_lossy()
+      .to_string(),
+  )
+  .unwrap();
 }
 
 /// or, define the callback signature in where clause
 #[napi]
-fn test_callback<T>(callback: T)
-where T: Fn(String) -> Result<()>
-{}
+pub fn test_callback<T>(callback: T) -> Result<()>
+where
+  T: Fn(String) -> Result<()>,
+{
+  callback(std::env::current_dir()?.to_string_lossy().to_string())
+}
 
 /// async fn, require `async` feature enabled.
 /// [dependencies]
 /// napi = {version="2", features=["async"]}
 #[napi]
-async fn read_file_async(path: String) -> Result<Buffer> {
-  tokio::fs::read(path)
-    .map(|r| match r {
-      Ok(content) => Ok(content.into()),
-      Err(e) => Err(Error::new(
-        Status::GenericFailure,
-        format!("failed to read file, {}", e),
-      )),
-    })
-    .await
+pub async fn read_file_async(path: String) -> Result<Buffer> {
+  Ok(tokio::fs::read(path).await?.into())
 }
 ```
 
@@ -115,11 +121,11 @@ name = "awesome"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = "2"
-napi-derive = "2"
+napi = "3"
+napi-derive = "3"
 
 [build-dependencies]
-napi-build = "1"
+napi-build = "2"
 ```
 
 And create `build.rs` in your own project:
@@ -135,16 +141,16 @@ fn main() {
 
 So far, the `napi` build script has only been tested on `macOS` `Linux` `Windows x64 MSVC` and `FreeBSD`.
 
-Install the `@napi-rs/cli` to help you build your `Rust` codes and copy `Dynamic lib` file to `.node` file in case you can `require` it in your program.
+Install `@napi-rs/cli` as a local development dependency to build the Rust crate and copy its dynamic library to a loadable `.node` file.
 
 ```js
 {
-  "package": "awesome-package",
+  "name": "awesome-package",
   "devDependencies": {
-    "@napi-rs/cli": "^1.0.0"
+    "@napi-rs/cli": "^3.0.0"
   },
   "napi": {
-    "name": "jarvis" // <----------- Config the name of native addon, or the napi command will use the name of `Cargo.toml` for the binary file name.
+    "binaryName": "jarvis"
   },
   "scripts": {
     "build": "napi build --release",
@@ -174,6 +180,10 @@ napi build [--release] ./artifacts
 
 There are [documents](./cli) which contains more details about the `@napi-rs/cli` usage.
 
+### wasm32-wasip1-threads allocator lock
+
+On `wasm32-wasip1-threads`, `napi` takes one lock around every call into wasi-libc's allocator and refreshes the calling thread's view of the shared memory size under it. This works around a V8 bug: a thread keeps a stale memory size after another thread grows the shared memory, and can trap with "memory access out of bounds" on the new pages. The heap also stays below 2 GiB: an allocation that would pass it fails, because Node's WASI rejects pointers at or above 2 GiB. `napi_build::setup()` adds the link arguments this needs. Opt out with `--cfg napi_wasi_no_heap_sync` in the target rustflags; see [napi-build](https://github.com/napi-rs/napi-rs/tree/main/crates/build#wasm32-wasip1-threads-allocator-lock). The lock cost 3-11% on rolldown's loads; the numbers, the `napi_wasm_heap_sync_stat` test counters and what the lock does not cover are in [the WASI docs](https://github.com/napi-rs/napi-rs/blob/main/cli/docs/wasi.md#shared-memory-growth-on-wasm32-wasip1-threads).
+
 ## Testing
 
 Because libraries that depend on this crate must be loaded into a Node executable in order to resolve symbols, all tests are written in JavaScript in the `test_module` subdirectory.
@@ -199,6 +209,8 @@ yarn test
 | f64                      | Number              | 1                                                                               | v8.0.0               |
 | bool                     | Boolean             | 1                                                                               | v8.0.0               |
 | String/&'a str           | String              | 1                                                                               | v8.0.0               |
+| OsString/&'a OsStr       | String              | 1                                                                               | v8.0.0               |
+| PathBuf/&'a Path         | String              | 1                                                                               | v8.0.0               |
 | Latin1String             | String              | 1                                                                               | v8.0.0               | latin1                   |
 | UTF16String              | String              | 1                                                                               | v8.0.0               |
 | Object                   | Object              | 1                                                                               | v8.0.0               |

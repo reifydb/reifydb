@@ -1,17 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_core::{
 	interface::catalog::column::Column,
 	value::{
 		batch::empty_batch,
-		column::{cast::cast_column_data, factory::from_many, write::check_digest_write_type},
+		column::{
+			cast::cast_column_data,
+			factory::from_one,
+			write::{check_digest_write, check_digest_write_type},
+		},
 	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::{
+	error::Error,
 	fragment::Fragment,
 	params::Params,
 	value::{Value, column_view::ColumnView, identity::IdentityId},
@@ -40,10 +47,14 @@ impl RowCoercer {
 		if matches!(value, Value::None { .. }) {
 			return Ok(value);
 		}
-		self.cast(value, column).map_err(|mut e| {
-			e.0.notes.push(format!("row {} of the bulk insert into `{}`", row_idx + 1, source_name));
-			e
-		})
+		self.cast(value, column).map_err(|e| with_row_note(e, source_name, row_idx))
+	}
+
+	pub(super) fn cast_column(&self, view: &ColumnView<'_>, column: &Column) -> Result<(FieldRef, ArrayRef)> {
+		let target = column.constraint.get_type();
+		let fragment = || Fragment::internal(&column.name);
+		check_digest_write(view, &target, fragment)?;
+		cast_column_data(&self.context(view.len()), view, target.inner_type().clone(), fragment)
 	}
 
 	fn cast(&self, value: Value, column: &Column) -> Result<Value> {
@@ -54,7 +65,14 @@ impl RowCoercer {
 		if value.get_type() == cast_target {
 			return Ok(value);
 		}
-		let ctx = EvalContext {
+		let column = from_one("value", value);
+		let casted =
+			cast_column_data(&self.context(1), &ColumnView::try_from(&column)?, cast_target, fragment)?;
+		Ok(ColumnView::try_from(&casted)?.get_value(0))
+	}
+
+	fn context(&self, row_count: usize) -> EvalContext<'_> {
+		EvalContext {
 			params: &Params::None,
 			symbols: &self.symbols,
 			routines: &self.routines,
@@ -62,12 +80,14 @@ impl RowCoercer {
 			identity: self.identity,
 			is_aggregate_context: false,
 			batch: empty_batch(),
-			row_count: 1,
+			row_count,
 			target: None,
 			take: None,
-		};
-		let column = from_many("value", value, 1);
-		let casted = cast_column_data(&ctx, &ColumnView::try_from(&column)?, cast_target, fragment)?;
-		Ok(ColumnView::try_from(&casted)?.get_value(0))
+		}
 	}
+}
+
+pub(super) fn with_row_note(mut error: Error, source_name: &str, row_idx: usize) -> Error {
+	error.0.notes.push(format!("row {} of the bulk insert into `{}`", row_idx + 1, source_name));
+	error
 }

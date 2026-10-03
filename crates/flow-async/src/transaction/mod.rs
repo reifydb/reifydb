@@ -312,9 +312,6 @@ pub trait FlowTransaction: Sized + Send + 'static {
 	}
 
 	fn take_accumulator_entries(&mut self) -> Vec<(ObjectId, Diff)> {
-		let acc = self.accumulator_mut();
-		let entries: Vec<_> = acc.entries_from(0).to_vec();
-		acc.clear();
-		entries
+		self.accumulator_mut().take_entries()
 	}
 }

@@ -6,11 +6,20 @@
 ;; ISLE representation of `Vec<u8>`
 (type VecMask extern (enum))
 
+(model ValueRegs
+      (type
+            (struct
+                  (lo (named Reg))
+                  (hi (named Reg))
+            )
+      )
+)
 (type ValueRegs (primitive ValueRegs))
 (type WritableValueRegs (primitive WritableValueRegs))
 (type ValueRegsVec extern (enum))
 
 ;; Instruction lowering result: a vector of `ValueRegs`.
+(model InstOutput (type (bv)))
 (type InstOutput (primitive InstOutput))
 
 ;; Type to hold multiple Regs
@@ -25,8 +34,9 @@
 
 ;;;; Registers ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(model Reg (type (bv)))
 (type Reg (primitive Reg))
+
+(model WritableReg (type (bv)))
 (type WritableReg (primitive WritableReg))
 (type OptionWritableReg (primitive OptionWritableReg))
 (type VecReg extern (enum))
@@ -34,8 +44,7 @@
 (type PReg (primitive PReg))
 
 ;; Construct a `ValueRegs` of one register.
-(spec (value_reg arg)
-    (provide (= result arg)))
+(spec (value_reg arg) (provide (= (:lo result) arg)))
 (decl value_reg (Reg) ValueRegs)
 (extern constructor value_reg value_reg)
 
@@ -44,6 +53,9 @@
 (extern constructor writable_value_reg writable_value_reg)
 
 ;; Construct a `ValueRegs` of two registers.
+(spec (value_regs x y)
+      (provide (= x (:lo result))
+               (= y (:hi result))))
 (decl value_regs (Reg Reg) ValueRegs)
 (extern constructor value_regs value_regs)
 
@@ -52,32 +64,43 @@
 (extern constructor writable_value_regs writable_value_regs)
 
 ;; Construct an empty `ValueRegs` containing only invalid register sentinels.
+(spec (value_regs_invalid) (provide true))
 (decl value_regs_invalid () ValueRegs)
 (extern constructor value_regs_invalid value_regs_invalid)
 
 ;; Construct an empty `InstOutput`.
+(spec (output_none) (provide (= result #b1)))
 (decl output_none () InstOutput)
 (extern constructor output_none output_none)
 
 ;; Construct a single-element `InstOutput`.
 (spec (output arg)
-      (provide (= arg (conv_to (widthof arg) result))))
+      (provide
+            ; Two input registers are the same width.
+            (= (widthof (:lo arg)) (widthof (:hi arg)))
+
+            ; Output is the concatenation of the two registers.
+            (let
+                  ((cat (concat (:hi arg) (:lo arg))))
+                  (= cat (conv_to (widthof cat) result)))))
 (decl output (ValueRegs) InstOutput)
 (extern constructor output output)
 
 ;; Construct a two-element `InstOutput`.
+(spec (output_pair first second)
+      (provide
+            ; `lower` is specified in terms of the instruction's first result.
+            ; The second result is returned for code generation but is not the
+            ; semantic result of the lowering rule.
+            (= (widthof (:lo first)) (widthof (:hi first)))
+            (if (<= (widthof result) 64)
+                (= result (conv_to (widthof result) (:lo first)))
+                (let ((cat (concat (:hi first) (:lo first))))
+                     (= result (conv_to (widthof result) cat))))))
 (decl output_pair (ValueRegs ValueRegs) InstOutput)
 (extern constructor output_pair output_pair)
 
 ;; Construct a single-element `InstOutput` from a single register.
-(spec (output_reg arg)
-      (provide (= result (conv_to (widthof result) arg))))
-(instantiate output_reg
-    ((args (bv 64)) (ret (bv 8)) (canon (bv 8)))
-    ((args (bv 64)) (ret (bv 16)) (canon (bv 16)))
-    ((args (bv 64)) (ret (bv 32)) (canon (bv 32)))
-    ((args (bv 64)) (ret (bv 64)) (canon (bv 64)))
-)
 (decl output_reg (Reg) InstOutput)
 (rule output_reg (output_reg reg) (output (value_reg reg)))
 
@@ -90,10 +113,12 @@
 (extern constructor output_vec output_vec)
 
 ;; Get a temporary register for writing.
+(spec (temp_writable_reg ty) (provide (= (:bits ty) (widthof result))))
 (decl temp_writable_reg (Type) WritableReg)
 (extern constructor temp_writable_reg temp_writable_reg)
 
 ;; Get a temporary register for reading.
+(attr temp_reg (tag TODO)) ; not currently used for aarch64
 (decl temp_reg (Type) Reg)
 (rule (temp_reg ty)
       (writable_reg_to_reg (temp_writable_reg ty)))
@@ -114,6 +139,14 @@
 (decl mark_value_used (Value) Unit)
 (extern constructor mark_value_used mark_value_used)
 
+;; Record an "opportunistic def" of `val` into `regs` at the current
+;; scan position: the lowering currently being generated computes a
+;; value as a byproduct into the given reg(s). If this is sufficient
+;; to satisfy all uses, the lowering at the original def site may be
+;; elided.
+(decl opportunistic_def (Value ValueRegs) Unit)
+(extern constructor opportunistic_def opportunistic_def)
+
 ;; Put the given value into a register.
 ;;
 ;; Asserts that the value fits into a single register, and doesn't require
@@ -121,14 +154,18 @@
 ;;
 ;; As a side effect, this marks the value as used.
 (spec (put_in_reg arg)
-      (provide (= result (conv_to 64 arg))))
+      (provide (= result (conv_to 64 arg)))
+      (require (<= (widthof arg) 64)))
 (decl put_in_reg (Value) Reg)
 (extern constructor put_in_reg put_in_reg)
 
 ;; Put the given value into one or more registers.
 ;;
 ;; As a side effect, this marks the value as used.
-(spec (put_in_regs arg) (provide (= (conv_to 64 arg) result)))
+(spec (put_in_regs arg)
+      (provide
+            (= (:lo result) (extract  63  0 (conv_to 128 arg)))
+            (= (:hi result) (extract 127 64 (conv_to 128 arg)))))
 (decl put_in_regs (Value) ValueRegs)
 (extern constructor put_in_regs put_in_regs)
 
@@ -137,8 +174,11 @@
 (extern constructor put_in_regs_vec put_in_regs_vec)
 
 ;; Get the `n`th register inside a `ValueRegs`.
-(spec (value_regs_get arg i)
-    (provide (= arg result) (= (widthof i) 1)))
+(spec (value_regs_get regs index)
+      (provide
+            (= result (switch index
+                  (0 (:lo regs))
+                  (1 (:hi regs))))))
 (decl value_regs_get (ValueRegs usize) Reg)
 (extern constructor value_regs_get value_regs_get)
 
@@ -165,19 +205,10 @@
 
 ;; Convert a MultiReg with three registers into an InstOutput containing
 ;; one ValueRegs containing the first two regs and one containing the third reg
+(attr multi_reg_to_pair_and_single (veri chain))
 (decl multi_reg_to_pair_and_single (MultiReg) InstOutput)
 (rule (multi_reg_to_pair_and_single (MultiReg.Three a b c))
       (output_pair (value_regs a b) c))
-
-;; Convert a MultiReg with two registers into an InstOutput containing one ValueRegs with both regs
-(decl multi_reg_to_pair (MultiReg) InstOutput)
-(rule (multi_reg_to_pair (MultiReg.Two a b))
-      (value_regs a b))
-
-;; Convert a MultiReg with one register into an InstOutput containing one ValueRegs with the register
-(decl multi_reg_to_single (MultiReg) InstOutput)
-(rule (multi_reg_to_single (MultiReg.One a))
-      (value_reg a))
 
 ;;;; Common Mach Types ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -245,6 +276,7 @@
            (value_list_slice (value_slice_unwrap head1 (value_slice_unwrap head2 tail))))
 
 ;; Turn a `Writable<Reg>` into a `Reg` via `Writable::to_reg`.
+(spec (writable_reg_to_reg reg) (provide (= result reg)))
 (decl pure writable_reg_to_reg (WritableReg) Reg)
 (extern constructor writable_reg_to_reg writable_reg_to_reg)
 
@@ -257,9 +289,42 @@
 (decl pure value_is_unused (Value) bool)
 (extern constructor value_is_unused value_is_unused)
 
+;; Returns whether the given value still has uses to serve in the
+;; lowering scan. If false, production of the given value may be
+;; skipped by the lowered instruction(s).
+(spec (value_used value) (provide true))
+(decl pure value_used (Value) bool)
+(extern constructor value_used value_used)
+
 ;; Extract the first result value of the given instruction.
 (decl first_result (Value) Inst)
 (extern extractor first_result first_result)
+
+;; Extract the second result value of the given instruction.
+;;
+;; Be careful using this: if used to match on a *`Value`*, the
+;; auto-converter will take that `Value` to its defining `Inst`, then
+;; the inner result of this extractor will be the second def of the
+;; value; in other words, it will *fetch* the second result but will
+;; not *assert/only match if* the initial `Value` is the second
+;; result. Use `is_second_result` for that.
+(spec (second_result value) (provide (= result value)))
+(decl second_result (Value) Inst)
+(extern extractor second_result second_result)
+
+;; Determine whether the given value is the second result of its
+;; defining instruction.
+(spec (is_second_result value) (provide (= result value)))
+(decl is_second_result (Value) Value)
+(extern extractor is_second_result is_second_result)
+
+;; Returns whether an instruction's second result still has uses to serve in
+;; the lowering scan. Overflow operations use this while lowering their first
+;; (non-boolean) result.
+(spec (second_result_used inst)
+      (provide (> (widthof inst) 1)))
+(decl pure second_result_used (Inst) bool)
+(extern constructor second_result_used second_result_used)
 
 ;; Extract the `InstructionData` for an `Inst`.
 (decl inst_data_value (Type InstructionData) Inst)
@@ -273,13 +338,16 @@
 ;; Extract the type of the instruction's first result and pass along the
 ;; instruction as well.
 (spec (has_type ty arg)
-      (provide (= result arg))
-      (require (= ty (widthof arg))))
+      (provide
+            (= result arg)
+            (= (:bits ty) (widthof arg))))
 (decl has_type (Type Inst) Inst)
 (extractor (has_type ty inst)
            (and (result_type ty)
                 inst))
 
+(spec (u8_from_iconst x)
+      (provide (= result (zero_ext 64 x))))
 (decl u8_from_iconst (u8) Value)
 (extractor (u8_from_iconst x)
            (u64_from_iconst (u8_from_u64 x)))
@@ -310,7 +378,16 @@
 ;; The value is sign extended to 32 bits.
 (spec (i32_from_iconst arg)
       (provide (= arg (extract 31 0 (sign_ext 64 result))))
-      (require (= result (sign_ext (widthof result) arg))))
+      (match
+            ; result <= i32::MAX
+            (bvsle (sign_ext 64 result) #x000000007fffffff)
+            ; i32::MIN <= result
+            (bvsle (bvneg #x0000000080000000) (sign_ext 64 result))))
+(instantiate i32_from_iconst
+    ((args (bv 32)) (ret (bv 8)))
+    ((args (bv 32)) (ret (bv 16)))
+    ((args (bv 32)) (ret (bv 32)))
+    ((args (bv 32)) (ret (bv 64))))
 (decl i32_from_iconst (i32) Value)
 (extractor (i32_from_iconst x)
            (i64_from_iconst (i32_from_i64 x)))
@@ -325,6 +402,7 @@
 (extern constructor zero_value zero_value)
 
 ;; Match a sinkable instruction from a value operand.
+(spec (is_sinkable_inst value) (provide (= result value)))
 (decl pure partial is_sinkable_inst (Value) Inst)
 (extern constructor is_sinkable_inst is_sinkable_inst)
 
@@ -335,43 +413,45 @@
 
 ;; Get an unsigned 8-bit immediate in a u8 from an Imm64, if possible.
 (spec (uimm8 arg)
-    (provide (= result (zero_ext 64 arg)))
-    (require (bvslt result #x0000000000000100)
-             (= (widthof arg) 8)))
+      (provide (= result (zero_ext 64 arg)))
+      (match
+            (bvsge result #x0000000000000000) ; >= 0
+            (bvslt result #x0000000000000100))) ; < 256
 (decl uimm8 (u8) Imm64)
 (extern extractor uimm8 uimm8)
 
-(decl eq (Value Value) Value)
-(extractor (eq x y) (icmp (IntCC.Equal) x y))
+(decl eq (Type Value Value) Value)
+(extractor (eq ty x y) (icmp ty (IntCC.Equal) x y))
 
-(decl ne (Value Value) Value)
-(extractor (ne x y) (icmp (IntCC.NotEqual) x y))
+(decl ne (Type Value Value) Value)
+(extractor (ne ty x y) (icmp ty (IntCC.NotEqual) x y))
 
-(decl ult (Value Value) Value)
-(extractor (ult x y) (icmp _ (IntCC.UnsignedLessThan) x y))
+(decl ult (Type Value Value) Value)
+(extractor (ult ty x y) (icmp ty (IntCC.UnsignedLessThan) x y))
 
-(decl ule (Value Value) Value)
-(extractor (ule x y) (icmp (IntCC.UnsignedLessThanOrEqual) x y))
+(decl ule (Type Value Value) Value)
+(extractor (ule ty x y) (icmp ty (IntCC.UnsignedLessThanOrEqual) x y))
 
-(decl ugt (Value Value) Value)
-(extractor (ugt x y) (icmp _ (IntCC.UnsignedGreaterThan) x y))
+(decl ugt (Type Value Value) Value)
+(extractor (ugt ty x y) (icmp ty (IntCC.UnsignedGreaterThan) x y))
 
-(decl uge (Value Value) Value)
-(extractor (uge x y) (icmp (IntCC.UnsignedGreaterThanOrEqual) x y))
+(decl uge (Type Value Value) Value)
+(extractor (uge ty x y) (icmp ty (IntCC.UnsignedGreaterThanOrEqual) x y))
 
-(decl slt (Value Value) Value)
-(extractor (slt x y) (icmp (IntCC.SignedLessThan) x y))
+(decl slt (Type Value Value) Value)
+(extractor (slt ty x y) (icmp ty (IntCC.SignedLessThan) x y))
 
-(decl sle (Value Value) Value)
-(extractor (sle x y) (icmp (IntCC.SignedLessThanOrEqual) x y))
+(decl sle (Type Value Value) Value)
+(extractor (sle ty x y) (icmp ty (IntCC.SignedLessThanOrEqual) x y))
 
-(decl sgt (Value Value) Value)
-(extractor (sgt x y) (icmp (IntCC.SignedGreaterThan) x y))
+(decl sgt (Type Value Value) Value)
+(extractor (sgt ty x y) (icmp ty (IntCC.SignedGreaterThan) x y))
 
-(decl sge (Value Value) Value)
-(extractor (sge x y) (icmp (IntCC.SignedGreaterThanOrEqual) x y))
+(decl sge (Type Value Value) Value)
+(extractor (sge ty x y) (icmp ty (IntCC.SignedGreaterThanOrEqual) x y))
 
 ;; Get the MachLabel for a particular CLIF block's indexed exception-handling successor.
+(model Block (type !))
 (decl block_exn_successor_label (Block u64) MachLabel)
 (extern constructor block_exn_successor_label block_exn_successor_label)
 
@@ -381,7 +461,7 @@
 ;;
 ;; This is low-level and side-effectful; it should only be used as an
 ;; implementation detail by helpers that preserve the SSA facade themselves.
-
+(spec (emit inst) (provide (= result #b1)))
 (decl emit (MInst) Unit)
 (extern constructor emit emit)
 
@@ -390,11 +470,12 @@
 ;; This is a side-effectful operation that notifies the context that the
 ;; instruction has been sunk into another instruction, and no longer needs to
 ;; be lowered.
+(spec (sink_inst inst) (provide true))
 (decl sink_inst (Inst) Unit)
 (extern constructor sink_inst sink_inst)
 
 ;; Constant pool emission.
-
+(model VCodeConstant (type !))
 (type VCodeConstant (primitive VCodeConstant))
 
 ;; Add a u64 little-endian constant to the in-memory constant pool and
@@ -435,9 +516,8 @@
                                  (inst2 MInst)
                                  (inst3 MInst))))
 
-(model SideEffectNoResult (type Unit))
-
 ;; Emit given side-effectful instruction.
+(spec (emit_side_effect arg) (provide true))
 (decl emit_side_effect (SideEffectNoResult) Unit)
 (rule (emit_side_effect (SideEffectNoResult.Inst inst))
       (emit inst))
@@ -452,12 +532,11 @@
 ;; Create an empty `InstOutput`, but do emit the given side-effectful
 ;; instruction.
 (decl side_effect (SideEffectNoResult) InstOutput)
-(spec (side_effect v)
-    (provide (= result v)))
 (rule (side_effect inst)
       (let ((_ Unit (emit_side_effect inst)))
         (output_none)))
 
+(attr side_effect_concat (tag TODO)) ; not currently used for aarch64
 (decl side_effect_concat (SideEffectNoResult SideEffectNoResult) SideEffectNoResult)
 (rule (side_effect_concat (SideEffectNoResult.Inst inst1) (SideEffectNoResult.Inst inst2))
       (SideEffectNoResult.Inst2 inst1 inst2))
@@ -480,6 +559,12 @@
 ;;
 ;; Variant determines how result is given when combined with a
 ;; ConsumesFlags. See `with_flags` below for more.
+(model ProducesFlags
+      (type
+            (struct
+                  (flags  (named NZCV))
+                  (result (named Reg))
+                  (has_result Bool))))
 (type ProducesFlags (enum
                      ;; For cases where the flags have been produced by another
                      ;; instruction, and we have out-of-band reasons to know
@@ -491,9 +576,70 @@
                      ;; Not directly combinable with a ConsumesFlags;
                      ;; used in s390x and unwrapped directly by `trapif`.
                      (ProducesFlagsReturnsReg (inst MInst) (result Reg))
-                     (ProducesFlagsReturnsResultWithConsumer (inst MInst) (result Reg))))
+                     (ProducesFlagsReturnsResultWithConsumer (inst MInst) (result Reg))
+                     ;; Like `ProducesFlagsReturnsResultWithConsumer`, but the
+                     ;; result register is not exposed as a normal result: when
+                     ;; the producer is emitted (via `with_flags` or
+                     ;; `with_flags_side_effect`), an "opportunistic def" of
+                     ;; `value` is registered in `reg` instead. This allows a
+                     ;; lowering that consumes only the flags (e.g., a branch,
+                     ;; trap, or select on the overflow-flag output of a
+                     ;; `uadd_overflow`) to incidentally define the other
+                     ;; output (the sum) so that its own lowering can be
+                     ;; skipped.
+                     ;;
+                     ;; The registration is deliberately deferred until
+                     ;; emission time, because the consumer may materialize
+                     ;; uses of `value` (e.g., as its own operands) after the
+                     ;; producer is constructed, and we want these to use the
+                     ;; opportunistic def if they can, as well.
+                     (ProducesFlagsOpportunisticDef (inst MInst) (reg Reg) (value Value))
+                     ;; Like `ProducesFlagsOpportunisticDef`, with an
+                     ;; additional instruction.
+                     (ProducesFlagsOpportunisticDef2 (inst1 MInst) (reg Reg) (value Value) (inst2 MInst))))
+
+(spec (ProducesFlags.ProducesFlagsReturnsResultWithConsumer inst reg)
+      (provide
+            (= (:flags result) (:flags_out inst))
+            (= (:result result) reg)
+            (:has_result result)))
+
+(spec (ProducesFlags.ProducesFlagsOpportunisticDef inst reg value)
+      (provide
+            (= (:flags result) (:flags_out inst))
+            (not (:has_result result))))
+
+(spec (ProducesFlags.ProducesFlagsOpportunisticDef2 inst1 reg value inst2)
+      (provide
+            ; Flags output from the first instruction pass to the second's input.
+            (= (:flags_out inst1) (:flags_in inst2))
+
+            ; Result flags of the ProducesFlags wrapper are from the second
+            ; instruction's output.
+            (= (:flags result) (:flags_out inst2))
+
+            ; No value is produced.
+            (not (:has_result result))))
+
+(spec (ProducesFlags.ProducesFlagsSideEffect inst)
+      (provide
+            (= (:flags result) (:flags_out inst))
+            (not (:has_result result))))
+
+(spec (ProducesFlags.ProducesFlagsTwiceSideEffect inst1 inst2)
+      (provide
+            ; Flags output from the first instruction pass to the second's input.
+            (= (:flags_out inst1) (:flags_in inst2))
+
+            ; Result flags of the ProducesFlags wrapper are from the second
+            ; instruction's output.
+            (= (:flags result) (:flags_out inst2))
+
+            ; No value is produced.
+            (not (:has_result result))))
 
 ;; Chain another producer to a `ProducesFlags`.
+(attr produces_flags_concat (tag chain))
 (decl produces_flags_concat (ProducesFlags ProducesFlags) ProducesFlags)
 (rule (produces_flags_concat (ProducesFlags.ProducesFlagsSideEffect inst1) (ProducesFlags.ProducesFlagsSideEffect inst2))
       (ProducesFlags.ProducesFlagsTwiceSideEffect inst1 inst2))
@@ -507,6 +653,12 @@
 ;;
 ;; Variant determines how result is given when combined with a
 ;; ProducesFlags. See `with_flags` below for more.
+(model ConsumesFlags
+      (type
+            (struct
+                  (flags  (named NZCV))
+                  (result (named Reg))
+                  (has_result Bool))))
 (type ConsumesFlags (enum
                      (ConsumesFlagsSideEffect (inst MInst))
                      (ConsumesFlagsSideEffect2 (inst1 MInst) (inst2 MInst))
@@ -519,9 +671,29 @@
                                                              (inst2 MInst)
                                                              (inst3 MInst)
                                                              (inst4 MInst)
-                                                             (result ValueRegs))))
+                                                             (result ValueRegs))
+                     (ConsumesFlagsNop)))
 
+(spec (ConsumesFlags.ConsumesFlagsNop)
+      (provide
+            (not (:has_result result))))
 
+(spec (ConsumesFlags.ConsumesFlagsReturnsResultWithProducer inst reg)
+      (provide
+            (= (:flags result) (:flags_in inst))
+            (= (:result result) reg)
+            (:has_result result)))
+
+(spec (ConsumesFlags.ConsumesFlagsReturnsReg inst reg)
+      (provide
+            (= (:flags result) (:flags_in inst))
+            (= (:result result) reg)
+            (:has_result result)))
+
+(spec (ConsumesFlags.ConsumesFlagsSideEffect inst)
+      (provide
+            (= (:flags result) (:flags_in inst))
+            (not (:has_result result))))
 
 ;; Get the produced register out of a ProducesFlags.
 (decl produces_flags_get_reg (ProducesFlags) Reg)
@@ -536,10 +708,39 @@
 (rule (produces_flags_ignore (ProducesFlags.ProducesFlagsReturnsResultWithConsumer inst _))
       (ProducesFlags.ProducesFlagsSideEffect inst))
 
+;; Wrap a result-producing producer so that, when it is emitted, an
+;; opportunistic def of `value` is registered in its result register (see
+;; the `ProducesFlagsOpportunisticDef` variant).
+(decl produces_flags_opportunistic_def (ProducesFlags Value) ProducesFlags)
+(rule (produces_flags_opportunistic_def
+        (ProducesFlags.ProducesFlagsReturnsResultWithConsumer inst reg) value)
+      (ProducesFlags.ProducesFlagsOpportunisticDef inst reg value))
+
+;; Wrap a pair of instructions -- `inst1`, which computes `value` into `reg`
+;; but does not produce the flags of interest, followed by `inst2`, which
+;; produces the flags (consuming the (irrelevant) flags of `inst1`) -- so
+;; that, when they are emitted (via `with_flags` or `with_flags_side_effect`),
+;; an opportunistic def of `value` is registered in `reg`.
+(decl produces_flags_opportunistic_def2 (MInst Reg Value MInst) ProducesFlags)
+(rule (produces_flags_opportunistic_def2 inst1 reg value inst2)
+      (ProducesFlags.ProducesFlagsOpportunisticDef2 inst1 reg value inst2))
+
 ;; Helper for combining two flags-consumer instructions that return a
 ;; single Reg, giving a ConsumesFlags that returns both values in a
 ;; ValueRegs.
 (decl consumes_flags_concat (ConsumesFlags ConsumesFlags) ConsumesFlags)
+;; ConsumesFlags is modeled as a struct with a single `result` Reg. The
+;; concatenated form actually carries two registers (a ValueRegs), but
+;; downstream verification currently only reasons about the first result
+;; produced by `with_flags`, so we record arg `a`'s result as the canonical
+;; `result` field. Both inputs share the same incoming flag state, which we
+;; propagate to the result.
+(spec (consumes_flags_concat a b)
+      (provide
+            (= (:flags result) (:flags a))
+            (= (:flags a) (:flags b))
+            (= (:result result) (:result a))
+            (= (:has_result result) (:has_result a))))
 (rule (consumes_flags_concat (ConsumesFlags.ConsumesFlagsReturnsReg inst1 reg1)
                              (ConsumesFlags.ConsumesFlagsReturnsReg inst2 reg2))
       (ConsumesFlags.ConsumesFlagsTwiceReturnsValueRegs
@@ -567,9 +768,26 @@
 ;; - ReturnsResultWithProducer + ReturnsResultWithConsumer --> ValueReg with low part from producer, high part from consumer
 ;;
 ;; See `with_flags_reg` below for a variant that extracts out just the lower Reg.
+(spec (with_flags producer consumer)
+      (provide
+            ; Transfer flags from producer to consumer.
+            (= (:flags producer) (:flags consumer))
+            ; Construct resulting value registers.
+            (=> (and (:has_result producer) (:has_result consumer))
+                  (and
+                        (= (:lo result) (:result producer))
+                        (= (:hi result) (:result consumer))
+                  )
+            )
+            (=> (and (not (:has_result producer)) (:has_result consumer))
+                  (= (:lo result) (:result consumer))
+            )
+            (=> (and (:has_result producer) (not (:has_result consumer)))
+                  (= (:lo result) (:result producer)))))
 (decl with_flags (ProducesFlags ConsumesFlags) ValueRegs)
 
-(rule (with_flags (ProducesFlags.ProducesFlagsReturnsResultWithConsumer producer_inst producer_result)
+(rule with_flags_paired_results
+      (with_flags (ProducesFlags.ProducesFlagsReturnsResultWithConsumer producer_inst producer_result)
                   (ConsumesFlags.ConsumesFlagsReturnsResultWithProducer consumer_inst consumer_result))
       (let ((_x Unit (emit producer_inst))
             (_y Unit (emit consumer_inst)))
@@ -577,19 +795,47 @@
 
 ;; A flag-producer that also produces a result, paired with a consumer that has
 ;; no results.
-(rule (with_flags (ProducesFlags.ProducesFlagsReturnsResultWithConsumer producer_inst producer_result)
+(rule with_flags_producer_result_only
+      (with_flags (ProducesFlags.ProducesFlagsReturnsResultWithConsumer producer_inst producer_result)
                   (ConsumesFlags.ConsumesFlagsSideEffect consumer_inst))
       (let ((_ Unit (emit producer_inst))
             (_ Unit (emit consumer_inst)))
         (value_reg producer_result)))
 
-(rule (with_flags (ProducesFlags.ProducesFlagsSideEffect producer_inst)
+;; A flag-producer whose flags are not consumed by anything: emit it for its
+;; result alone, ignoring the flags.
+(rule with_flags_producer_result_only_noop
+      (with_flags (ProducesFlags.ProducesFlagsReturnsResultWithConsumer producer_inst producer_result)
+                  (ConsumesFlags.ConsumesFlagsNop))
+      (let ((_x Unit (emit producer_inst)))
+        (value_reg producer_result)))
+(rule with_flags_producer_reg_noop
+      (with_flags (ProducesFlags.ProducesFlagsReturnsReg producer_inst producer_result)
+                  (ConsumesFlags.ConsumesFlagsNop))
+      (let ((_x Unit (emit producer_inst)))
+        (value_reg producer_result)))
+
+(rule with_flags_consumer_reg
+      (with_flags (ProducesFlags.ProducesFlagsSideEffect producer_inst)
                   (ConsumesFlags.ConsumesFlagsReturnsReg consumer_inst consumer_result))
       (let ((_x Unit (emit producer_inst))
             (_y Unit (emit consumer_inst)))
         (value_reg consumer_result)))
 
-(rule (with_flags (ProducesFlags.ProducesFlagsSideEffect producer_inst)
+;; A producer that registers an opportunistic def of another value in
+;; `producer_result` when it is emitted: record the def only after the
+;; emission has been set up, so that a failed match does not leave a dangling
+;; registration.
+(rule with_flags_opportunistic_def_consumer_reg
+      (with_flags (ProducesFlags.ProducesFlagsOpportunisticDef producer_inst producer_result producer_value)
+                  (ConsumesFlags.ConsumesFlagsReturnsReg consumer_inst consumer_result))
+      (let ((_x Unit (emit producer_inst))
+            (_y Unit (emit consumer_inst))
+            (_ Unit (opportunistic_def producer_value (value_reg producer_result))))
+        (value_reg consumer_result)))
+
+(rule with_flags_consumer_twice
+      (with_flags (ProducesFlags.ProducesFlagsSideEffect producer_inst)
                   (ConsumesFlags.ConsumesFlagsTwiceReturnsValueRegs consumer_inst_1
                                                                     consumer_inst_2
                                                                     consumer_result))
@@ -601,7 +847,22 @@
             (_z Unit (emit consumer_inst_2)))
         consumer_result))
 
-(rule (with_flags (ProducesFlags.ProducesFlagsSideEffect producer_inst)
+(rule with_flags_opportunistic_def_consumer_twice
+      (with_flags (ProducesFlags.ProducesFlagsOpportunisticDef producer_inst producer_result producer_value)
+                  (ConsumesFlags.ConsumesFlagsTwiceReturnsValueRegs consumer_inst_1
+                                                                    consumer_inst_2
+                                                                    consumer_result))
+      ;; We must emit these instructions in order as the creator of
+      ;; the ConsumesFlags may be relying on dataflow dependencies
+      ;; amongst them.
+      (let ((_x Unit (emit producer_inst))
+            (_y Unit (emit consumer_inst_1))
+            (_z Unit (emit consumer_inst_2))
+            (_ Unit (opportunistic_def producer_value (value_reg producer_result))))
+        consumer_result))
+
+(rule with_flags_consumer_four
+      (with_flags (ProducesFlags.ProducesFlagsSideEffect producer_inst)
                   (ConsumesFlags.ConsumesFlagsFourTimesReturnsValueRegs consumer_inst_1
                                                                         consumer_inst_2
                                                                         consumer_inst_3
@@ -617,14 +878,78 @@
             (_v Unit (emit consumer_inst_4)))
         consumer_result))
 
-(rule (with_flags (ProducesFlags.ProducesFlagsTwiceSideEffect producer_inst1 producer_inst2)
+(rule with_flags_opportunistic_def_consumer_four
+      (with_flags (ProducesFlags.ProducesFlagsOpportunisticDef producer_inst producer_result producer_value)
+                  (ConsumesFlags.ConsumesFlagsFourTimesReturnsValueRegs consumer_inst_1
+                                                                        consumer_inst_2
+                                                                        consumer_inst_3
+                                                                        consumer_inst_4
+                                                                        consumer_result))
+      ;; We must emit these instructions in order as the creator of
+      ;; the ConsumesFlags may be relying on dataflow dependencies
+      ;; amongst them.
+      (let ((_x Unit (emit producer_inst))
+            (_y Unit (emit consumer_inst_1))
+            (_z Unit (emit consumer_inst_2))
+            (_w Unit (emit consumer_inst_3))
+            (_v Unit (emit consumer_inst_4))
+            (_ Unit (opportunistic_def producer_value (value_reg producer_result))))
+        consumer_result))
+
+;; A pair of flag-producing side-effect instructions, where the first one also
+;; computes `producer_value` in `producer_result` and registers an
+;; opportunistic def of it, paired with a consumer that returns a single
+;; register. (See `ProducesFlagsOpportunisticDef2`.)
+(rule with_flags_opportunistic_def2_consumer_reg
+      (with_flags (ProducesFlags.ProducesFlagsOpportunisticDef2 producer_inst1 producer_result producer_value producer_inst2)
+                  (ConsumesFlags.ConsumesFlagsReturnsReg consumer_inst consumer_result))
+      (let ((_x Unit (emit producer_inst1))
+            (_y Unit (emit producer_inst2))
+            (_z Unit (emit consumer_inst))
+            (_ Unit (opportunistic_def producer_value (value_reg producer_result))))
+        (value_reg consumer_result)))
+
+(rule with_flags_opportunistic_def2_consumer_twice
+      (with_flags (ProducesFlags.ProducesFlagsOpportunisticDef2 producer_inst1 producer_result producer_value producer_inst2)
+                  (ConsumesFlags.ConsumesFlagsTwiceReturnsValueRegs consumer_inst_1
+                                                                    consumer_inst_2
+                                                                    consumer_result))
+      ;; We must emit these instructions in order as the creator of
+      ;; the ConsumesFlags may be relying on dataflow dependencies
+      ;; amongst them.
+      (let ((_x Unit (emit producer_inst1))
+            (_y Unit (emit producer_inst2))
+            (_z Unit (emit consumer_inst_1))
+            (_w Unit (emit consumer_inst_2))
+            (_ Unit (opportunistic_def producer_value (value_reg producer_result))))
+        consumer_result))
+
+(rule with_flags_opportunistic_def2_consumer_four
+      (with_flags (ProducesFlags.ProducesFlagsOpportunisticDef2 producer_inst1 producer_result producer_value producer_inst2)
+                  (ConsumesFlags.ConsumesFlagsFourTimesReturnsValueRegs consumer_inst_1
+                                                                        consumer_inst_2
+                                                                        consumer_inst_3
+                                                                        consumer_inst_4
+                                                                        consumer_result))
+      (let ((_x Unit (emit producer_inst1))
+            (_y Unit (emit producer_inst2))
+            (_z Unit (emit consumer_inst_1))
+            (_w Unit (emit consumer_inst_2))
+            (_v Unit (emit consumer_inst_3))
+            (_u Unit (emit consumer_inst_4))
+            (_ Unit (opportunistic_def producer_value (value_reg producer_result))))
+        consumer_result))
+
+(rule with_flags_producer_twice_reg
+      (with_flags (ProducesFlags.ProducesFlagsTwiceSideEffect producer_inst1 producer_inst2)
                   (ConsumesFlags.ConsumesFlagsReturnsReg consumer_inst consumer_result))
       (let ((_ Unit (emit producer_inst1))
             (_ Unit (emit producer_inst2))
             (_ Unit (emit consumer_inst)))
         (value_reg consumer_result)))
 
-(rule (with_flags (ProducesFlags.ProducesFlagsTwiceSideEffect producer_inst1 producer_inst2)
+(rule with_flags_producer_twice_consumer_twice
+      (with_flags (ProducesFlags.ProducesFlagsTwiceSideEffect producer_inst1 producer_inst2)
                   (ConsumesFlags.ConsumesFlagsTwiceReturnsValueRegs consumer_inst_1
                                                                     consumer_inst_2
                                                                     consumer_result))
@@ -637,7 +962,8 @@
             (_ Unit (emit consumer_inst_2)))
         consumer_result))
 
-(rule (with_flags (ProducesFlags.ProducesFlagsTwiceSideEffect producer_inst1 producer_inst2)
+(rule with_flags_producer_twice_consumer_four
+      (with_flags (ProducesFlags.ProducesFlagsTwiceSideEffect producer_inst1 producer_inst2)
                   (ConsumesFlags.ConsumesFlagsFourTimesReturnsValueRegs consumer_inst_1
                                                                         consumer_inst_2
                                                                         consumer_inst_3
@@ -659,19 +985,47 @@
       (let ((v ValueRegs (with_flags p c)))
         (value_regs_get v 0)))
 
-;; Indicate that the current state of the flags register from the instruction
-;; that produces this Value is relied on.
-(decl flags_to_producesflags (Value) ProducesFlags)
-(rule (flags_to_producesflags val)
-      (let ((_ Unit (mark_value_used val)))
-        (ProducesFlags.AlreadyExistingFlags)))
-
 ;; Combine a flags-producing instruction and a flags-consuming instruction that
 ;; produces no results.
 ;;
-;; This function handles the following case only:
-;; - ProducesFlagsSideEffect + ConsumesFlagsSideEffect
+;; This function handles the following cases:
+;; - ProducesFlagsSideEffect + ConsumesFlagsSideEffect / ConsumesFlagsSideEffect2
+;; - ProducesFlagsOpportunisticDef + ConsumesFlagsSideEffect / ConsumesFlagsSideEffect2
 (decl with_flags_side_effect (ProducesFlags ConsumesFlags) SideEffectNoResult)
+
+;; A producer that registers an opportunistic def of another value in
+;; `producer_result` when it is emitted (see `with_flags`): record the def
+;; here, when the emission is set up, so that a failed match does not leave a
+;; dangling registration.
+(rule (with_flags_side_effect
+        (ProducesFlags.ProducesFlagsOpportunisticDef producer_inst producer_result producer_value)
+        (ConsumesFlags.ConsumesFlagsSideEffect consumer_inst))
+      (let ((_ Unit (opportunistic_def producer_value (value_reg producer_result))))
+        (SideEffectNoResult.Inst2 producer_inst consumer_inst)))
+
+(rule (with_flags_side_effect
+        (ProducesFlags.ProducesFlagsOpportunisticDef producer_inst producer_result producer_value)
+        (ConsumesFlags.ConsumesFlagsSideEffect2 consumer_inst_1 consumer_inst_2))
+      (let ((_ Unit (opportunistic_def producer_value (value_reg producer_result))))
+        (SideEffectNoResult.Inst3 producer_inst consumer_inst_1 consumer_inst_2)))
+
+;; The first instruction does not produce the flags of interest, so it
+;; can be emitted eagerly; the flags producer and the consumer must
+;; stay adjacent, so they are returned as a side-effect pair/triple to
+;; be emitted together.
+(rule (with_flags_side_effect
+        (ProducesFlags.ProducesFlagsOpportunisticDef2 producer_inst1 producer_result producer_value producer_inst2)
+        (ConsumesFlags.ConsumesFlagsSideEffect consumer_inst))
+      (let ((_ Unit (emit producer_inst1))
+            (_ Unit (opportunistic_def producer_value (value_reg producer_result))))
+        (SideEffectNoResult.Inst2 producer_inst2 consumer_inst)))
+
+(rule (with_flags_side_effect
+        (ProducesFlags.ProducesFlagsOpportunisticDef2 producer_inst1 producer_result producer_value producer_inst2)
+        (ConsumesFlags.ConsumesFlagsSideEffect2 consumer_inst_1 consumer_inst_2))
+      (let ((_ Unit (emit producer_inst1))
+            (_ Unit (opportunistic_def producer_value (value_reg producer_result))))
+        (SideEffectNoResult.Inst3 producer_inst2 consumer_inst_1 consumer_inst_2)))
 
 (rule (with_flags_side_effect
         (ProducesFlags.AlreadyExistingFlags)
@@ -746,6 +1100,7 @@
             (_ Unit (emit consume_inst3))
             (_ Unit (emit consume_inst4)))
         (MultiReg.Two (value_regs_get consume_result 0) (value_regs_get consume_result 1))))
+
 
 
 ;; ProducesFlags.ReturnsReg + ConsumesAndProducesFlags.SideEffect with all possible ConsumeFlags options
@@ -840,7 +1195,6 @@
             (_ Unit (emit consume_inst3))
             (_ Unit (emit consume_inst4)))
         (MultiReg.Three middle_result (value_regs_get consume_result 0) (value_regs_get consume_result 1))))
-
 
 ;; ProducesFlags.ReturnsReg + ConsumesAndProducesFlags.ReturnsReg with all possible ConsumeFlags options
 (rule (with_flags_chained (ProducesFlags.ProducesFlagsReturnsReg prod_inst prod_result)
@@ -1061,11 +1415,6 @@
 (type RealReg (primitive RealReg))
 
 ;; Instruction on whether and how to extend an argument value.
-(model ArgumentExtension
-  (enum
-    (None)
-    (Uext)
-    (Sext)))
 (type ArgumentExtension extern
   (enum
     (None)
@@ -1173,10 +1522,20 @@
 (extern constructor try_call_none try_call_none)
 
 ;; Helper for extracting an immediate that's not 0 and not -1 from an imm64.
- (spec (safe_divisor_from_imm64 t x)
-       (provide (= (sign_ext 64 x) result))
-       (require (not (= #x0000000000000000 result))
-                (not (= #x1111111111111111 result))))
+(spec (safe_divisor_from_imm64 ty arg)
+      (match
+            (let (
+                  (minus1 (zero_ext 64 (bvones! (:bits ty))))
+                  (zero (bvzero! 64))
+                  (bits (bvand arg minus1)))
+            (and
+                  (not (= bits minus1))
+                  (not (= bits zero)))))
+      (provide
+            (let (
+                  (minus1 (zero_ext 64 (bvones! (:bits ty))))
+                  (bits (bvand arg minus1)))
+            (= result bits))))
 (decl pure partial safe_divisor_from_imm64 (Type Imm64) u64)
 (extern constructor safe_divisor_from_imm64 safe_divisor_from_imm64)
 
@@ -1195,3 +1554,10 @@
 (convert ValueRegsVec InstOutput output_vec)
 (convert ExternalName BoxExternalName box_external_name)
 (convert PReg Reg preg_to_reg)
+
+;;;; Additional verification terms ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(model Inst (type (bv)))
+(model Constant (type (bv)))
+(spec (def_inst arg)
+      (provide (= result arg)))
+(model StackSlot (type !))

@@ -8,6 +8,34 @@ A [separate changelog is kept for rand_core](https://github.com/rust-random/core
 
 You may also find the [Upgrade Guide](https://rust-random.github.io/book/update.html) useful.
 
+## [0.10.3] — 2026-09-20
+
+### Fixes
+- Fix `WeightedIndex` panic when the sum of float weights is infinite; return `Error::Overflow` instead ([#1808])
+- Fix spurious `Error::NonFinite` from `Uniform::new_inclusive` on large finite float ranges such as `0.0..=f64::MAX` ([#1821])
+- Fix possible panic due to sampling a deserialized `Uniform<char>` ([#1831])
+
+### Changes
+- Report exact remaining lengths from `WeightedIndex::weights()` and reduce overhead when reading weights ([#1838])
+
+[#1808]: https://github.com/rust-random/rand/pull/1808
+[#1821]: https://github.com/rust-random/rand/pull/1821
+[#1831]: https://github.com/rust-random/rand/pull/1831
+[#1838]: https://github.com/rust-random/rand/pull/1838
+
+## [0.10.2] — 2026-07-02
+
+### Fixes
+- Fix possible memory safety violation due to deserialization of `UniformChar` from bad source ([#1790])
+
+### Changes
+- Document required output order of fn `partial_shuffle` and apply `#[must_use]` ([#1769])
+- Avoid usage of `unsafe` in contexts where non-local memory corruption could invalidate contract ([#1791])
+
+[#1769]: https://github.com/rust-random/rand/pull/1769
+[#1790]: https://github.com/rust-random/rand/pull/1790
+[#1791]: https://github.com/rust-random/rand/pull/1791
+
 ## [0.10.1] — 2026-02-11
 This release includes a fix for a soundness bug; see [#1763].
 
@@ -1156,7 +1184,7 @@ Code replaced with a compatibility layer over rand 0.4.
 ### Added
 - Separate `rand` out of the standard library
 
-[Unreleased]: https://github.com/rust-random/rand/compare/0.10.0...HEAD
+[Unreleased]: https://github.com/rust-random/rand/compare/0.10.1...HEAD
 [0.10.1]: https://github.com/rust-random/rand/compare/0.10.0...0.10.1
 [0.10.0]: https://github.com/rust-random/rand/compare/0.9.2...0.10.0
 [0.9.2]: https://github.com/rust-random/rand/compare/0.9.1...0.9.2

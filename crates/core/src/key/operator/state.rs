@@ -26,7 +26,7 @@ use crate::{
 		bound::{TaggedKeyBound, TaggedKeyBoundRange},
 		operator::{
 			keyspace::{
-				KeyspaceVisitor, REGISTERED, dispatch,
+				KEYSPACES, KeyspaceVisitor, REGISTERED, dispatch,
 				root::{
 					CustomManagedSuffix, CustomUnmanagedSuffix, NodeCounter, NodeCounterKey,
 					NodeCounterKind,
@@ -421,6 +421,67 @@ const WINDOWED_KEYSPACES: [KeyspaceId; 12] = [
 	KeyspaceId::GUEST_ROW_MAPPING,
 ];
 
+const LOWEST_META: u8 = KeyspaceId::GUEST_ROW_MAPPING.0;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct KeyspaceMask(u64);
+
+impl KeyspaceMask {
+	pub const fn all() -> Self {
+		Self(u64::MAX)
+	}
+
+	pub fn windowed() -> Self {
+		Self::of(WINDOWED_KEYSPACES)
+	}
+
+	pub fn data() -> Self {
+		Self::of((0..=KeyspaceId::HIGHEST_DATA).map(KeyspaceId))
+	}
+
+	pub fn of(keyspaces: impl IntoIterator<Item = KeyspaceId>) -> Self {
+		let mut mask = Self::default();
+		for keyspace in keyspaces {
+			mask.insert(keyspace);
+		}
+		mask
+	}
+
+	pub fn holds(self, keyspace: KeyspaceId) -> bool {
+		keyspace_bit(keyspace).is_some_and(|bit| self.0 & bit != 0)
+	}
+
+	pub fn held(self) -> Vec<KeyspaceId> {
+		let mut ids: Vec<KeyspaceId> =
+			KEYSPACES.iter().map(|spec| spec.id).filter(|id| self.holds(*id)).collect();
+		ids.sort_unstable();
+		ids
+	}
+
+	pub fn insert(&mut self, keyspace: KeyspaceId) {
+		if let Some(bit) = keyspace_bit(keyspace) {
+			self.0 |= bit;
+		}
+	}
+
+	pub fn intersect(self, other: Self) -> Self {
+		Self(self.0 & other.0)
+	}
+
+	pub fn bits(self) -> u64 {
+		self.0
+	}
+}
+
+fn keyspace_bit(keyspace: KeyspaceId) -> Option<u64> {
+	let index = match keyspace.0 {
+		id if id <= KeyspaceId::HIGHEST_DATA => id as u32,
+		id if id >= LOWEST_META => (KeyspaceId::HIGHEST_DATA as u32) + 1 + (id - LOWEST_META) as u32,
+		_ => return None,
+	};
+	(index < u64::BITS).then(|| 1u64 << index)
+}
+
 pub fn guest_may_address(class: OperatorClass, keyspace: KeyspaceId) -> bool {
 	match class {
 		OperatorClass::Managed => keyspace == KeyspaceId::CUSTOM_MANAGED,
@@ -434,11 +495,6 @@ pub fn is_class_framed_inner(class: OperatorClass, inner: &[u8]) -> bool {
 	OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, suffix)| {
 		guest_may_address(class, keyspace) && suffix_width_of(keyspace) == Some(suffix.len())
 	})
-}
-
-pub fn is_identity_framed_inner(inner: &[u8]) -> bool {
-	OperatorStateKey::decode_inner(inner)
-		.is_some_and(|(_, keyspace, _)| keyspace.is_identity() && keyspace.is_known())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -518,7 +574,7 @@ impl OperatorStateKey {
 			return None;
 		}
 		let operator = de.read_u64().ok()?;
-		let inner = de.read_raw(de.remaining()).ok()?.to_vec();
+		let inner = de.read_raw(de.remaining()).ok()?;
 		Some((OperatorId(operator), EncodedKey::new(inner)))
 	}
 }
@@ -577,10 +633,6 @@ impl GroupStateKey {
 
 	pub fn from_class_framed(class: OperatorClass, key: EncodedKey) -> Option<Self> {
 		is_class_framed_inner(class, key.as_slice()).then_some(Self(key))
-	}
-
-	pub fn from_identity_framed(key: EncodedKey) -> Option<Self> {
-		is_identity_framed_inner(key.as_slice()).then_some(Self(key))
 	}
 
 	pub fn bound_unchecked(key: EncodedKey) -> Self {
@@ -787,7 +839,7 @@ pub fn group_inner_range_split(range: &EncodedKeyRange) -> Option<GroupId> {
 		Bound::Unbounded => return None,
 	};
 	let group = GroupId::from_bytes(KeyDeserializer::from_bytes(key.as_slice()).read_fixed().ok()?);
-	for candidate in [group_inner_range(group), group_data_inner_range(group)] {
+	for candidate in [group_inner_range(group), group_data_inner_range(group), group_identity_inner_range(group)] {
 		if range.start == candidate.start && range.end == candidate.end {
 			return Some(group);
 		}

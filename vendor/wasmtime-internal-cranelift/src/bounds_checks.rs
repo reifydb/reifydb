@@ -53,7 +53,6 @@ pub enum BoundsCheck {
     /// ```ignore
     /// index + object_size <= bound
     /// ```
-    #[cfg(feature = "gc")]
     StaticObjectField {
         offset: u32,
         access_size: u8,
@@ -64,7 +63,6 @@ pub enum BoundsCheck {
     ///
     /// It is *your* responsibility to ensure that the `offset + access_size <=
     /// object_size` precondition holds.
-    #[cfg(feature = "gc")]
     DynamicObjectField {
         offset: ir::Value,
         object_size: ir::Value,
@@ -91,7 +89,6 @@ pub fn bounds_check_and_compute_addr(
             access_size,
         } => bounds_check_field_access(builder, env, heap, index, offset, access_size, trap),
 
-        #[cfg(feature = "gc")]
         BoundsCheck::StaticObjectField {
             offset,
             access_size,
@@ -129,7 +126,6 @@ pub fn bounds_check_and_compute_addr(
         // Compute the index of the end of the object, bounds check that and get
         // a pointer to just after the object, and then reverse offset from that
         // to get the pointer to the field being accessed.
-        #[cfg(feature = "gc")]
         BoundsCheck::DynamicObjectField {
             offset,
             object_size,
@@ -184,16 +180,17 @@ fn bounds_check_field_access(
         env.heap_access_spectre_mitigation() && clif_memory_traps_enabled;
 
     let host_page_size_log2 = env.target_config().page_size_align_log2;
+    let memory_tunables = heap.memory_tunables(env.tunables());
     let can_use_virtual_memory = heap
         .memory
-        .can_use_virtual_memory(env.tunables(), host_page_size_log2)
+        .can_use_virtual_memory(memory_tunables.tunables(), host_page_size_log2)
         && clif_memory_traps_enabled;
     let can_elide_bounds_check = heap
         .memory
-        .can_elide_bounds_check(env.tunables(), host_page_size_log2)
+        .can_elide_bounds_check(&memory_tunables, host_page_size_log2)
         && clif_memory_traps_enabled;
-    let memory_guard_size = env.tunables().memory_guard_size;
-    let memory_reservation = env.tunables().memory_reservation;
+    let memory_guard_size = memory_tunables.guard_size();
+    let memory_reservation = memory_tunables.reservation();
 
     let offset_and_size = offset_plus_size(offset, access_size);
     let statically_in_bounds = statically_in_bounds(&builder.func, heap, index, offset_and_size);
@@ -348,7 +345,7 @@ fn bounds_check_field_access(
     // factor in the guard pages here.
     if can_use_virtual_memory
         && heap.memory.minimum_byte_size().unwrap_or(u64::MAX) <= memory_reservation
-        && !heap.memory.memory_may_move(env.tunables())
+        && !heap.memory.memory_may_move(&memory_tunables)
         && memory_reservation >= offset_and_size
     {
         let adjusted_bound = memory_reservation.checked_sub(offset_and_size).unwrap();
@@ -488,6 +485,12 @@ fn bounds_check_field_access(
     ))
 }
 
+fn vmctx(pos: &mut FuncCursor<'_>) -> ir::Value {
+    pos.func
+        .special_param(ir::ArgumentPurpose::VMContext)
+        .expect("missing vmctx parameter")
+}
+
 /// Get the bound of a dynamic heap as an `ir::Value`.
 fn get_dynamic_heap_bound(
     builder: &mut FunctionBuilder,
@@ -499,8 +502,11 @@ fn get_dynamic_heap_bound(
         // bound.
         Some(max_size) => builder.ins().iconst(env.pointer_type(), max_size as i64),
 
-        // Load the heap bound from its global variable.
-        _ => builder.ins().global_value(env.pointer_type(), heap.bound),
+        // Emit the load chain that computes the heap bound.
+        _ => {
+            let vmctx = vmctx(&mut builder.cursor());
+            heap.bound.emit(&mut builder.cursor(), vmctx)
+        }
     }
 }
 
@@ -617,7 +623,15 @@ fn explicit_check_oob_condition_and_compute_addr(
 /// It is the caller's responsibility to ensure that any necessary bounds and
 /// overflow checks are emitted, and that the resulting address is never used
 /// unless they succeed.
-fn compute_addr(
+///
+/// Arguments are:
+///
+/// * `pos` - where to generate instructions
+/// * `heap` - the memory being accessed
+/// * `addr_ty` - the host's pointer type
+/// * `index` - the raw wasm index, of type `addr_ty`
+/// * `offset` - a static offset to add to `index`
+pub fn compute_addr(
     pos: &mut FuncCursor,
     heap: &HeapData,
     addr_ty: ir::Type,
@@ -626,7 +640,8 @@ fn compute_addr(
 ) -> ir::Value {
     debug_assert_eq!(pos.func.dfg.value_type(index), addr_ty);
 
-    let heap_base = pos.ins().global_value(addr_ty, heap.base);
+    let vmctx = vmctx(pos);
+    let heap_base = heap.base.emit(pos, vmctx);
     let base_and_index = pos.ins().iadd(heap_base, index);
 
     if offset == 0 {

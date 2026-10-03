@@ -1,4 +1,4 @@
-use std::mem;
+use core::mem;
 
 use crate::{
     target::TargetInfo,
@@ -177,6 +177,10 @@ fn parse_arch(full_arch: &str) -> Option<&str> {
         // https://github.com/Clever-ISA/Clever-ISA
         arch if arch.starts_with("clever") => "clever",
 
+        // https://github.com/llvm-z80/rust-z80
+        "z80" => "z80",
+        "sm83" => "sm83",
+
         "sparc" | "sparcv7" | "sparcv8" => "sparc",
         "sparc64" | "sparcv9" => "sparc64",
 
@@ -222,13 +226,15 @@ fn parse_envabi(last_component: &str) -> Option<(&str, &str)> {
             ("newlib", env_and_abi.strip_prefix("newlib").unwrap())
         }
 
+        // target that enables arm's pointer authentication
+        "pauthtest" => ("musl", "pauthtest"),
+
         // Environments
         "msvc" => ("msvc", ""),
         "ohos" => ("ohos", ""),
         "qnx700" => ("nto70", ""),
         "qnx710_iosock" => ("nto71_iosock", ""),
         "qnx710" => ("nto71", ""),
-        "qnx800" => ("nto80", ""),
         "sgx" => ("sgx", ""),
         "threads" => ("threads", ""),
         "mlibc" => ("mlibc", ""),
@@ -273,9 +279,17 @@ impl<'a> TargetInfo<'a> {
             });
         }
 
-        if target == "armv7a-vex-v5" {
+        let mut components = target.split('-');
+
+        // Insist that the target name contains at least a valid architecture.
+        let full_arch = components.next().ok_or(Error::new(
+            ErrorKind::InvalidTarget,
+            "target was empty".to_string(),
+        ))?;
+
+        if target == "armv7a-vex-v5" || target == "thumbv7a-vex-v5" {
             return Ok(Self {
-                full_arch: "armv7a",
+                full_arch,
                 arch: "arm",
                 vendor: "vex",
                 os: "vexos",
@@ -284,13 +298,6 @@ impl<'a> TargetInfo<'a> {
             });
         }
 
-        let mut components = target.split('-');
-
-        // Insist that the target name contains at least a valid architecture.
-        let full_arch = components.next().ok_or(Error::new(
-            ErrorKind::InvalidTarget,
-            "target was empty".to_string(),
-        ))?;
         let arch = parse_arch(full_arch).ok_or_else(|| {
             Error::new(
                 ErrorKind::UnknownTarget,
@@ -376,6 +383,9 @@ impl<'a> TargetInfo<'a> {
             "armv7-unknown-linux-ohos" | "armv7-unknown-trusty" => {
                 abi = "eabi";
             }
+            "sparc-unknown-linux-gnu" => {
+                abi = "v8plus";
+            }
             _ => {}
         }
 
@@ -411,6 +421,7 @@ impl<'a> TargetInfo<'a> {
             // https://github.com/rust-lang/compiler-team/issues/850.
             "wali" => "unknown",
             "lynx" => "unknown",
+            "oe" => "unknown",
             // Some Linux distributions set their name as the target vendor,
             // so we have to assume that it can be an arbitary string.
             vendor => vendor,
@@ -424,7 +435,13 @@ impl<'a> TargetInfo<'a> {
         if vendor == "uwp" {
             abi = "uwp";
         }
-        if ["powerpc64-unknown-linux-gnu", "powerpc64-wrs-vxworks"].contains(&target) {
+        if [
+            "powerpc64-unknown-linux-gnu",
+            "powerpc64-wrs-vxworks",
+            "powerpc64-sony-ps3",
+        ]
+        .contains(&target)
+        {
             abi = "elfv1";
         }
         if [
@@ -457,6 +474,7 @@ impl<'a> TargetInfo<'a> {
 
 #[cfg(test)]
 #[allow(unexpected_cfgs)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use std::process::Command;
 
@@ -572,6 +590,7 @@ mod tests {
         ignore = "must enable explicitly with --cfg=rustc_target_test"
     )]
     fn parse_rustc_targets() {
+        #[allow(clippy::disallowed_methods)]
         let rustc = std::env::var("RUSTC").unwrap_or_else(|_| "rustc".to_string());
 
         let target_list = Command::new(&rustc)

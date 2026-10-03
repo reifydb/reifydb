@@ -13,8 +13,16 @@
 edition = "2021"
 rust-version = "1.75.0"
 name = "tracing-opentelemetry"
-version = "0.32.1"
+version = "0.34.0"
 build = false
+include = [
+    "src/**/*.rs",
+    "tests/**/*.rs",
+    "CHANGELOG.md",
+    "README.md",
+    "Cargo.toml",
+    "LICENSE",
+]
 autolib = false
 autobins = false
 autoexamples = false
@@ -60,26 +68,6 @@ name = "tracing_opentelemetry"
 path = "src/lib.rs"
 bench = false
 
-[[example]]
-name = "basic"
-path = "examples/basic.rs"
-
-[[example]]
-name = "opentelemetry-error"
-path = "examples/opentelemetry-error.rs"
-
-[[example]]
-name = "opentelemetry-otlp"
-path = "examples/opentelemetry-otlp.rs"
-
-[[example]]
-name = "opentelemetry-remote-context"
-path = "examples/opentelemetry-remote-context.rs"
-
-[[example]]
-name = "otel_context"
-path = "examples/otel_context.rs"
-
 [[test]]
 name = "batch_global_subscriber"
 path = "tests/batch_global_subscriber.rs"
@@ -120,22 +108,12 @@ path = "tests/span_ext.rs"
 name = "trace_state_propagation"
 path = "tests/trace_state_propagation.rs"
 
-[[bench]]
-name = "metrics"
-path = "benches/metrics.rs"
-harness = false
-
-[[bench]]
-name = "trace"
-path = "benches/trace.rs"
-harness = false
-
 [dependencies.lazy_static]
 version = "1.0.2"
 optional = true
 
 [dependencies.opentelemetry]
-version = "0.31.0"
+version = "0.33.0"
 features = ["trace"]
 default-features = false
 
@@ -170,32 +148,32 @@ features = ["html_reports"]
 default-features = false
 
 [dev-dependencies.opentelemetry]
-version = "0.31.0"
+version = "0.33.0"
 features = [
     "trace",
     "metrics",
 ]
 
 [dev-dependencies.opentelemetry-otlp]
-version = "0.31.0"
+version = "0.33.0"
 features = [
     "metrics",
     "grpc-tonic",
 ]
 
 [dev-dependencies.opentelemetry-semantic-conventions]
-version = "0.31.0"
+version = "0.33.0"
 features = ["semconv_experimental"]
 
 [dev-dependencies.opentelemetry-stdout]
-version = "0.31.0"
+version = "0.33.0"
 features = [
     "trace",
     "metrics",
 ]
 
 [dev-dependencies.opentelemetry_sdk]
-version = "0.31.0"
+version = "0.33.0"
 features = [
     "trace",
     "experimental_metrics_custom_reader",
@@ -242,3 +220,8 @@ features = [
 
 [lints.rust]
 unnameable_types = "warn"
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = 0
+check-cfg = ["cfg(__reentrant_tracing_test)"]

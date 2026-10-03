@@ -62,7 +62,7 @@ use crate::{
 	consumer::SubscriptionCdcConsumer,
 	delivery::DeliveryBuffer,
 	store::SubscriptionStore,
-	tracker::{SubscriptionPositionTracker, SubscriptionSourceTracker},
+	tracker::{SubscribedObjects, SubscriptionPositionTracker, SubscriptionSourceTracker},
 	watermark::compute_subscription_watermarks,
 	worker::{SubscriptionWorkerActor, SubscriptionWorkerMessage, worker_name},
 };
@@ -95,12 +95,14 @@ impl SubscriptionSubsystem {
 		let (workers, worker_handles) =
 			Self::spawn_worker_pool(&engine, &catalog, &store, &delivery, &spawner, num_workers);
 
+		let subscribed = SubscribedObjects::new();
 		let state = Arc::new(SubscriptionState {
 			store: store.clone(),
 			workers: workers.clone(),
 			subscription_flows: RwLock::new(HashMap::new()),
 			multi,
 			position_tracker: position_tracker.clone(),
+			subscribed: subscribed.clone(),
 			spawner: spawner.clone(),
 		});
 
@@ -111,6 +113,7 @@ impl SubscriptionSubsystem {
 			position_tracker,
 			store.clone(),
 			delivery,
+			subscribed,
 		);
 
 		let cdc_wake_registry =

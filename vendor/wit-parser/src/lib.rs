@@ -9,9 +9,6 @@ use crate::abi::AbiVariant;
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
-#[cfg(feature = "std")]
-use anyhow::Context;
-use anyhow::{Result, bail};
 use id_arena::{Arena, Id};
 use semver::Version;
 
@@ -45,13 +42,14 @@ pub use metadata::PackageMetadata;
 
 pub mod abi;
 mod ast;
-pub use ast::SourceMap;
 pub use ast::error::*;
 pub use ast::lex::Span;
+pub use ast::{ItemName, SourceMap, SpanLocation};
 pub use ast::{ParsedUsePath, parse_use_path};
 mod sizealign;
 pub use sizealign::*;
 mod resolve;
+pub use resolve::error::*;
 pub use resolve::*;
 mod live;
 pub use live::{LiveTypes, TypeIdVisitor};
@@ -64,9 +62,37 @@ mod serde_;
 use serde_::*;
 
 /// Checks if the given string is a legal identifier in wit.
-pub fn validate_id(s: &str) -> Result<()> {
+pub fn validate_id(s: &str) -> anyhow::Result<()> {
     ast::validate_id(0, s)?;
     Ok(())
+}
+
+/// Renders an [`anyhow::Error`] chain produced by this crate, substituting
+/// snippet-bearing output for any [`ResolveError`] or [`ParseError`] layers.
+///
+/// For each layer in the chain, this calls [`ResolveError::render`] or
+/// [`ParseError::render`] to format typed errors with file/line/column and
+/// a source snippet. Other layers are formatted via their [`fmt::Display`]
+/// impl. Layers are joined with `": "`, matching `format!("{err:#}")`.
+///
+/// `source_map` must be the [`SourceMap`] in which every typed error's spans
+/// are valid; combining typed errors from different source maps in one chain
+/// is unsupported. For errors from [`Resolve`] methods, prefer
+/// [`Resolve::render_error`].
+#[cfg(feature = "std")]
+pub fn render_anyhow_error(err: &anyhow::Error, source_map: &SourceMap) -> String {
+    err.chain()
+        .map(|layer| {
+            if let Some(re) = layer.downcast_ref::<ResolveError>() {
+                re.render(source_map)
+            } else if let Some(pe) = layer.downcast_ref::<ParseError>() {
+                pe.render(source_map)
+            } else {
+                layer.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(": ")
 }
 
 pub type WorldId = Id<World>;
@@ -98,7 +124,7 @@ pub type TypeId = Id<TypeDef>;
 /// will connect the `foreign_deps` field of this structure to packages
 /// previously inserted within the [`Resolve`]. Embedders are responsible for
 /// performing this resolution themselves.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnresolvedPackage {
     /// The namespace, name, and version information for this package.
     pub name: PackageName,
@@ -176,7 +202,7 @@ impl UnresolvedPackage {
 }
 
 /// Tracks a set of packages, all pulled from the same group of WIT source files.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnresolvedPackageGroup {
     /// The "main" package in this package group which was found at the root of
     /// the WIT files.
@@ -294,107 +320,24 @@ impl fmt::Display for PackageName {
     }
 }
 
-#[derive(Debug)]
-struct Error {
-    span: Span,
-    msg: String,
-    highlighted: Option<String>,
-}
-
-impl Error {
-    fn new(span: Span, msg: impl Into<String>) -> Error {
-        Error {
-            span,
-            msg: msg.into(),
-            highlighted: None,
-        }
-    }
-
-    /// Highlights this error using the given source map, if the span is known.
-    fn highlight(&mut self, source_map: &ast::SourceMap) {
-        if self.highlighted.is_none() {
-            self.highlighted = source_map.highlight_span(self.span, &self.msg);
-        }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.highlighted.as_ref().unwrap_or(&self.msg).fmt(f)
-    }
-}
-
-impl core::error::Error for Error {}
-
-#[derive(Debug)]
-struct PackageNotFoundError {
-    span: Span,
-    requested: PackageName,
-    known: Vec<PackageName>,
-    highlighted: Option<String>,
-}
-
-impl PackageNotFoundError {
-    pub fn new(span: Span, requested: PackageName, known: Vec<PackageName>) -> Self {
-        Self {
-            span,
-            requested,
-            known,
-            highlighted: None,
-        }
-    }
-
-    /// Highlights this error using the given source map, if the span is known.
-    fn highlight(&mut self, source_map: &ast::SourceMap) {
-        if self.highlighted.is_none() {
-            self.highlighted = source_map.highlight_span(self.span, &format!("{self}"));
-        }
-    }
-}
-
-impl fmt::Display for PackageNotFoundError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(highlighted) = &self.highlighted {
-            return highlighted.fmt(f);
-        }
-        if self.known.is_empty() {
-            write!(
-                f,
-                "package '{}' not found. no known packages.",
-                self.requested
-            )?;
-        } else {
-            write!(
-                f,
-                "package '{}' not found. known packages:\n",
-                self.requested
-            )?;
-            for known in self.known.iter() {
-                write!(f, "    {known}\n")?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl core::error::Error for PackageNotFoundError {}
-
 impl UnresolvedPackageGroup {
     /// Parses the given string as a wit document.
     ///
     /// The `path` argument is used for error reporting. The `contents` provided
     /// are considered to be the contents of `path`. This function does not read
     /// the filesystem.
+    ///
+    /// On failure the constructed [`SourceMap`] is returned alongside the
+    /// typed [`ParseError`] so the caller can render a snippet via
+    /// [`ParseError::render`] or merge the source map elsewhere.
     #[cfg(feature = "std")]
-    pub fn parse(path: impl AsRef<Path>, contents: &str) -> Result<UnresolvedPackageGroup> {
-        let path = path
-            .as_ref()
-            .to_str()
-            .ok_or_else(|| anyhow::anyhow!("path is not valid utf-8: {:?}", path.as_ref()))?;
+    pub fn parse(
+        path: impl AsRef<Path>,
+        contents: &str,
+    ) -> Result<UnresolvedPackageGroup, (SourceMap, ParseError)> {
         let mut map = SourceMap::default();
-        map.push_str(path, contents);
+        map.push(path.as_ref(), contents);
         map.parse()
-            .map_err(|(map, e)| anyhow::anyhow!("{}", e.highlight(&map)))
     }
 
     /// Parses a WIT package from the directory provided.
@@ -404,33 +347,13 @@ impl UnresolvedPackageGroup {
     /// grouping. This is useful when a WIT package is split across multiple
     /// files.
     #[cfg(feature = "std")]
-    pub fn parse_dir(path: impl AsRef<Path>) -> Result<UnresolvedPackageGroup> {
-        let path = path.as_ref();
+    pub fn parse_dir(path: impl AsRef<Path>) -> anyhow::Result<UnresolvedPackageGroup> {
         let mut map = SourceMap::default();
-        let cx = || format!("failed to read directory {path:?}");
-        for entry in path.read_dir().with_context(&cx)? {
-            let entry = entry.with_context(&cx)?;
-            let path = entry.path();
-            let ty = entry.file_type().with_context(&cx)?;
-            if ty.is_dir() {
-                continue;
-            }
-            if ty.is_symlink() {
-                if path.is_dir() {
-                    continue;
-                }
-            }
-            let filename = match path.file_name().and_then(|s| s.to_str()) {
-                Some(name) => name,
-                None => continue,
-            };
-            if !filename.ends_with(".wit") {
-                continue;
-            }
-            map.push_file(&path)?;
-        }
-        map.parse()
-            .map_err(|(map, e)| anyhow::anyhow!("{}", e.highlight(&map)))
+        map.push_dir(path.as_ref())?;
+        map.parse().map_err(|(map, e)| {
+            let rendered = e.render(&map);
+            anyhow::Error::from(e).context(rendered)
+        })
     }
 }
 
@@ -581,6 +504,14 @@ pub enum WorldItem {
             serde(skip_serializing_if = "Stability::is_unknown")
         )]
         stability: Stability,
+        #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+        external_id: Option<String>,
+        /// Documentation attached to the `import`/`export` statement.
+        #[cfg_attr(
+            feature = "serde",
+            serde(default, skip_serializing_if = "Docs::is_empty")
+        )]
+        docs: Docs,
         #[cfg_attr(feature = "serde", serde(skip))]
         span: Span,
     },
@@ -698,6 +629,8 @@ pub struct TypeDef {
     /// Source span for this type.
     #[cfg_attr(feature = "serde", serde(skip))]
     pub span: Span,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub external_id: Option<String>,
 }
 
 impl TypeDef {
@@ -962,9 +895,9 @@ impl Enum {
 fn discriminant_type(num_cases: usize) -> Int {
     match num_cases.checked_sub(1) {
         None => Int::U8,
-        Some(n) if n <= u8::max_value() as usize => Int::U8,
-        Some(n) if n <= u16::max_value() as usize => Int::U16,
-        Some(n) if n <= u32::max_value() as usize => Int::U32,
+        Some(n) if n <= u8::MAX as usize => Int::U8,
+        Some(n) if n <= u16::MAX as usize => Int::U16,
+        Some(n) if n <= u32::MAX as usize => Int::U32,
         _ => panic!("too many cases to fit in a repr"),
     }
 }
@@ -1019,6 +952,8 @@ pub struct Function {
     /// Source span for this function.
     #[cfg_attr(feature = "serde", serde(skip))]
     pub span: Span,
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
+    pub external_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1162,12 +1097,12 @@ pub enum Mangling {
 impl core::str::FromStr for Mangling {
     type Err = anyhow::Error;
 
-    fn from_str(s: &str) -> Result<Mangling> {
+    fn from_str(s: &str) -> anyhow::Result<Mangling> {
         match s {
             "legacy" => Ok(Mangling::Legacy),
             "standard32" => Ok(Mangling::Standard32),
             _ => {
-                bail!(
+                anyhow::bail!(
                     "unknown name mangling `{s}`, \
                      supported values are `legacy` or `standard32`"
                 )
@@ -1277,6 +1212,24 @@ impl ManglingAndAbi {
         match self {
             Self::Standard32 => Mangling::Standard32,
             Self::Legacy(_) => Mangling::Legacy,
+        }
+    }
+
+    /// Returns a suitable [`ManglingAndAbi`], based on `self`, to use for
+    /// `func`.
+    ///
+    /// This handles the case where `func` is a synchronous function which means
+    /// that it's forced to use the sync ABI no matter what.
+    pub fn for_func(&self, func: &Function) -> Self {
+        match self {
+            Self::Standard32 => *self,
+            Self::Legacy(abi) => {
+                if !func.kind.is_async() {
+                    Self::Legacy(LiftLowerAbi::Sync)
+                } else {
+                    Self::Legacy(*abi)
+                }
+            }
         }
     }
 }
@@ -1572,6 +1525,7 @@ mod test {
             docs: Docs::default(),
             stability: Stability::Unknown,
             span: Default::default(),
+            external_id: Default::default(),
         });
         let t1 = resolve.types.alloc(TypeDef {
             name: None,
@@ -1580,6 +1534,7 @@ mod test {
             docs: Docs::default(),
             stability: Stability::Unknown,
             span: Default::default(),
+            external_id: Default::default(),
         });
         let t2 = resolve.types.alloc(TypeDef {
             name: None,
@@ -1588,6 +1543,7 @@ mod test {
             docs: Docs::default(),
             stability: Stability::Unknown,
             span: Default::default(),
+            external_id: Default::default(),
         });
         let found = Function {
             name: "foo".into(),
@@ -1608,6 +1564,7 @@ mod test {
             docs: Docs::default(),
             stability: Stability::Unknown,
             span: Default::default(),
+            external_id: Default::default(),
         }
         .find_futures_and_streams(&resolve);
         assert_eq!(3, found.len());

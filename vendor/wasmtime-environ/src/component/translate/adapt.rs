@@ -115,9 +115,9 @@
 //! time this may want to be revisited if too many adapter modules are being
 //! created.
 
-use crate::EntityType;
 use crate::component::translate::*;
 use crate::fact;
+use crate::{EntityType, Memory};
 use std::collections::HashSet;
 
 /// Metadata information about a fused adapter.
@@ -150,10 +150,8 @@ pub enum DataModel {
 
     /// Data is stored in a linear memory.
     LinearMemory {
-        /// An optional memory definition supplied.
-        memory: Option<dfg::CoreExport<MemoryIndex>>,
-        /// If `memory` is specified, whether it's a 64-bit memory.
-        memory64: bool,
+        /// An optional memory definition supplied, and its type.
+        memory: Option<(dfg::CoreExport<MemoryIndex>, Memory)>,
         /// An optional definition of `realloc` to used.
         realloc: Option<dfg::CoreDef>,
     },
@@ -166,9 +164,6 @@ pub struct AdapterOptions {
     /// The Wasmtime-assigned component instance index where the options were
     /// originally specified.
     pub instance: RuntimeComponentInstanceIndex,
-    /// The ancestors (i.e. chain of instantiating instances) of the instance
-    /// specified in the `instance` field.
-    pub ancestors: Vec<RuntimeComponentInstanceIndex>,
     /// How strings are encoded.
     pub string_encoding: StringEncoding,
     /// The async callback function used by these options, if specified.
@@ -208,7 +203,11 @@ impl<'data> Translator<'_, 'data> {
         // the module using standard core wasm translation, and then fills out
         // the dfg metadata for each adapter.
         for (module_id, adapter_module) in state.adapter_modules.iter() {
-            let mut module = fact::Module::new(self.types.types(), self.tunables);
+            let mut module = fact::Module::new(
+                self.types.types(),
+                self.tunables,
+                *self.validator.features(),
+            );
             let mut names = Vec::with_capacity(adapter_module.adapters.len());
             for adapter in adapter_module.adapters.iter() {
                 let name = format!("adapter{}", adapter.as_u32());
@@ -346,9 +345,12 @@ fn fact_import_to_core_def(
         fact::Import::ErrorContextTransfer => {
             simple_intrinsic(dfg::Trampoline::ErrorContextTransfer)
         }
-        fact::Import::Trap => simple_intrinsic(dfg::Trampoline::Trap),
+        fact::Import::Trap(trap) => simple_intrinsic(dfg::Trampoline::Trap(*trap)),
         fact::Import::EnterSyncCall => simple_intrinsic(dfg::Trampoline::EnterSyncCall),
         fact::Import::ExitSyncCall => simple_intrinsic(dfg::Trampoline::ExitSyncCall),
+        fact::Import::UnsafeIntrinsic(intrinsic) => {
+            dfg::CoreDef::UnsafeIntrinsic(ty.unwrap_func().unwrap_module_type_index(), *intrinsic)
+        }
     }
 }
 
@@ -416,12 +418,8 @@ impl PartitionAdapterModules {
             DataModel::Gc {} => {
                 // Nothing to do here yet.
             }
-            DataModel::LinearMemory {
-                memory,
-                memory64: _,
-                realloc,
-            } => {
-                if let Some(memory) = memory {
+            DataModel::LinearMemory { memory, realloc } => {
+                if let Some((memory, _ty)) = memory {
                     self.core_export(dfg, memory);
                 }
                 if let Some(def) = realloc {
@@ -454,8 +452,7 @@ impl PartitionAdapterModules {
             // These items can't transitively depend on an adapter
             dfg::CoreDef::Trampoline(_)
             | dfg::CoreDef::InstanceFlags(_)
-            | dfg::CoreDef::UnsafeIntrinsic(..)
-            | dfg::CoreDef::TaskMayBlock => {}
+            | dfg::CoreDef::UnsafeIntrinsic(..) => {}
         }
     }
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashSet;
+
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -14,8 +16,8 @@ use reifydb_core::{
 	value::batch::single_row,
 };
 use reifydb_transaction::{
-	dictionary::InternOutcome,
-	interceptor::dictionary_row::DictionaryRowInterceptor,
+	dictionary::DictionaryAllocatorRegistry,
+	interceptor::{WithInterceptors, dictionary_row::DictionaryRowInterceptor},
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
 use reifydb_value::{
@@ -27,32 +29,65 @@ use smallvec::smallvec;
 use crate::Result;
 
 pub(crate) trait DictionaryOperations {
-	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId>;
+	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
+		let ids = self.intern_values(dictionary, vec![value.clone()])?;
+		Ok(ids[0])
+	}
+
+	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>>;
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>>;
 
-	#[allow(dead_code)]
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>>;
 }
 
-impl DictionaryOperations for CommandTransaction {
-	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-		let mut values_buf = [value.clone()];
-		DictionaryRowInterceptor::pre_insert(self, dictionary, &mut values_buf)?;
-		let [value] = values_buf;
+struct Interned {
+	ids: Vec<DictionaryEntryId>,
+	created: Vec<Value>,
+}
 
-		let registry = self
-			.dictionary_allocators()
-			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		let outcome = registry.intern(dictionary, &value)?;
+fn intern_through_chains<T: WithInterceptors>(
+	txn: &mut T,
+	registry: impl FnOnce(&T) -> Option<DictionaryAllocatorRegistry>,
+	dictionary: &Dictionary,
+	mut values: Vec<Value>,
+) -> Result<Interned> {
+	if values.is_empty() {
+		return Ok(Interned {
+			ids: Vec::new(),
+			created: Vec::new(),
+		});
+	}
+	if !txn.dictionary_row_pre_insert_interceptors().is_empty() {
+		DictionaryRowInterceptor::pre_insert(txn, dictionary, &mut values)?;
+	}
 
-		if outcome.created {
-			let ids = [outcome.id];
-			let values = [value.clone()];
-			DictionaryRowInterceptor::post_insert(self, dictionary, &ids, &values)?;
+	let registry =
+		registry(txn).ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+	let outcomes = registry.intern_batch(dictionary, &values)?;
+
+	let mut seen = HashSet::new();
+	let mut created_ids = Vec::new();
+	let mut created = Vec::new();
+	for (outcome, value) in outcomes.iter().zip(values) {
+		if outcome.created && seen.insert(outcome.id) {
+			created_ids.push(outcome.id);
+			created.push(value);
 		}
+	}
+	if !created_ids.is_empty() && !txn.dictionary_row_post_insert_interceptors().is_empty() {
+		DictionaryRowInterceptor::post_insert(txn, dictionary, &created_ids, &created)?;
+	}
 
-		Ok(outcome.id)
+	Ok(Interned {
+		ids: outcomes.into_iter().map(|outcome| outcome.id).collect(),
+		created,
+	})
+}
+
+impl DictionaryOperations for CommandTransaction {
+	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>> {
+		Ok(intern_through_chains(self, CommandTransaction::dictionary_allocators, dictionary, values)?.ids)
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
@@ -77,29 +112,6 @@ impl DictionaryOperations for CommandTransaction {
 	}
 }
 
-fn intern_into_admin(
-	txn: &mut AdminTransaction,
-	dictionary: &Dictionary,
-	value: &Value,
-) -> Result<(InternOutcome, Value)> {
-	let mut values_buf = [value.clone()];
-	DictionaryRowInterceptor::pre_insert(txn, dictionary, &mut values_buf)?;
-	let [value] = values_buf;
-
-	let registry = txn
-		.dictionary_allocators()
-		.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-	let outcome = registry.intern(dictionary, &value)?;
-
-	if outcome.created {
-		let ids = [outcome.id];
-		let values = [value.clone()];
-		DictionaryRowInterceptor::post_insert(txn, dictionary, &ids, &values)?;
-	}
-
-	Ok((outcome, value))
-}
-
 fn dictionary_insert_change(dictionary: &Dictionary, value: Value) -> Result<Change> {
 	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::dictionary(dictionary.id)),
@@ -110,9 +122,8 @@ fn dictionary_insert_change(dictionary: &Dictionary, value: Value) -> Result<Cha
 }
 
 impl DictionaryOperations for AdminTransaction {
-	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-		let (outcome, _) = intern_into_admin(self, dictionary, value)?;
-		Ok(outcome.id)
+	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>> {
+		Ok(intern_through_chains(self, AdminTransaction::dictionary_allocators, dictionary, values)?.ids)
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
@@ -138,16 +149,21 @@ impl DictionaryOperations for AdminTransaction {
 }
 
 impl DictionaryOperations for Transaction<'_> {
-	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
+	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>> {
 		match self {
-			Transaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
-			Transaction::Admin(admin) => admin.insert_into_dictionary(dictionary, value),
+			Transaction::Command(cmd) => cmd.intern_values(dictionary, values),
+			Transaction::Admin(admin) => admin.intern_values(dictionary, values),
 			Transaction::Test(t) => {
-				let (outcome, value) = intern_into_admin(t.inner, dictionary, value)?;
-				if outcome.created {
+				let interned = intern_through_chains(
+					t.inner,
+					AdminTransaction::dictionary_allocators,
+					dictionary,
+					values,
+				)?;
+				for value in interned.created {
 					t.inner.track_flow_change(dictionary_insert_change(dictionary, value)?);
 				}
-				Ok(outcome.id)
+				Ok(interned.ids)
 			}
 			Transaction::Query(_) => {
 				Err(internal_error!("Cannot insert into dictionary during a query transaction"))

@@ -9,7 +9,10 @@ use std::{
 };
 
 use libloading::{Library, Symbol};
-use object::{File as ObjectFile, Object, read::ReadCache};
+use object::{
+	File as ObjectFile, Object,
+	read::{NameOrOrdinal, ReadCache},
+};
 
 use crate::error::ExtensionError;
 
@@ -88,12 +91,15 @@ fn exports_symbol(path: &Path, symbol_name: &[u8]) -> Result<bool, ExtensionErro
 	let file = File::open(path).map_err(|e| read_error(&e))?;
 	let cache = ReadCache::new(file);
 	let object = ObjectFile::parse(&cache).map_err(|e| read_error(&e))?;
-	let exports = object.exports().map_err(|e| read_error(&e))?;
-
-	Ok(exports.iter().any(|export| {
-		let exported = export.name();
-		exported == name || exported.strip_prefix(b"_") == Some(name)
-	}))
+	for export in object.exports().map_err(|e| read_error(&e))? {
+		let export = export.map_err(|e| read_error(&e))?;
+		if let NameOrOrdinal::Name(exported) = export.name() {
+			if exported == name || exported.strip_prefix(b"_") == Some(name) {
+				return Ok(true);
+			}
+		}
+	}
+	Ok(false)
 }
 
 impl Default for ExternLoad {

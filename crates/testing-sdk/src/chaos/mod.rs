@@ -11,7 +11,11 @@ use std::{
 };
 
 use reifydb_codec::row::shape::RowShape;
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::OperatorId, operator_with::ApplyWith};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::catalog::{dictionary::Dictionary, flow::OperatorId},
+	operator_with::ApplyWith,
+};
 use reifydb_value::value::Value;
 
 pub mod accumulator_oracle;
@@ -24,7 +28,7 @@ pub mod strategy;
 
 use bridge::OracleFn;
 use context::ChaosContext;
-use reifydb_sdk::flow::operator::extern_c::binding::operator::ExternCOperator;
+use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
 use reifydb_testing_chaos::operator::{
 	compare::Tolerances,
 	event::ChaosBatch,
@@ -35,7 +39,7 @@ use runner::RunnableChaos;
 use schema::{ChaosSchema, KeyStrategy};
 use strategy::{ColumnRegistry, ColumnSampler, RowContent, samplers};
 
-use crate::harness::ExternCOperatorHarness;
+use crate::in_process::harness::InProcessOperatorHarness;
 
 #[derive(Debug)]
 pub enum ChaosError {
@@ -75,17 +79,17 @@ pub type ChaosResult<T> = Result<T, ChaosError>;
 
 const DEFAULT_STEPS: u32 = 200;
 
-pub struct ChaosHarness<T: ExternCOperator> {
-	_phantom: PhantomData<T>,
+pub struct ChaosHarness<C: MountedOperator + OperatorMetadata + 'static> {
+	_phantom: PhantomData<C>,
 }
 
-impl<T: ExternCOperator> ChaosHarness<T> {
-	pub fn builder() -> ChaosHarnessBuilder<T> {
+impl<C: MountedOperator + OperatorMetadata + 'static> ChaosHarness<C> {
+	pub fn builder() -> ChaosHarnessBuilder<C> {
 		ChaosHarnessBuilder::new()
 	}
 }
 
-pub struct ChaosHarnessBuilder<T: ExternCOperator> {
+pub struct ChaosHarnessBuilder<C: MountedOperator + OperatorMetadata + 'static> {
 	seed: u64,
 	scenario: Scenario,
 	supported_ops: SupportedOps,
@@ -93,6 +97,7 @@ pub struct ChaosHarnessBuilder<T: ExternCOperator> {
 	version: CommitVersion,
 	operator_params: Vec<(String, Value)>,
 	operator_with: ApplyWith,
+	dictionaries: Vec<(Dictionary, Vec<Value>)>,
 	input_shape: Option<RowShape>,
 	output_shape: Option<RowShape>,
 	key_strategy: Option<KeyStrategy>,
@@ -101,16 +106,16 @@ pub struct ChaosHarnessBuilder<T: ExternCOperator> {
 	registry: ColumnRegistry,
 	tolerances: Tolerances,
 	oracle: Option<OracleFn>,
-	_phantom: PhantomData<T>,
+	_phantom: PhantomData<C>,
 }
 
-impl<T: ExternCOperator> Default for ChaosHarnessBuilder<T> {
+impl<C: MountedOperator + OperatorMetadata + 'static> Default for ChaosHarnessBuilder<C> {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
+impl<C: MountedOperator + OperatorMetadata + 'static> ChaosHarnessBuilder<C> {
 	pub fn new() -> Self {
 		Self {
 			seed: 0,
@@ -120,6 +125,7 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 			version: CommitVersion(1),
 			operator_params: Vec::new(),
 			operator_with: ApplyWith::default(),
+			dictionaries: Vec::new(),
 			input_shape: None,
 			output_shape: None,
 			key_strategy: None,
@@ -169,6 +175,11 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 
 	pub fn with(mut self, with: ApplyWith) -> Self {
 		self.operator_with = with;
+		self
+	}
+
+	pub fn with_dictionary(mut self, dictionary: Dictionary, values: Vec<Value>) -> Self {
+		self.dictionaries.push((dictionary, values));
 		self
 	}
 
@@ -224,7 +235,7 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 		self
 	}
 
-	pub fn build(self) -> ChaosResult<RunnableChaos<T>> {
+	pub fn build(self) -> ChaosResult<RunnableChaos<C>> {
 		validate_supported_ops(&self.supported_ops)?;
 		let input_shape = self.input_shape.ok_or(ChaosError::MissingField("input_shape"))?;
 		let output_shape = self.output_shape.ok_or(ChaosError::MissingField("output_shape"))?;
@@ -245,15 +256,19 @@ impl<T: ExternCOperator> ChaosHarnessBuilder<T> {
 		self.registry.validate(&schema.input_shape).map_err(ChaosError::InputColumnsMissingSampler)?;
 		let schema = Arc::new(schema);
 
-		let context = ChaosContext::new(self.seed);
+		let mut context = ChaosContext::new(self.seed);
+		context.dictionaries = self.dictionaries;
 
-		let mut builder = ExternCOperatorHarness::<T>::builder()
+		let mut builder = InProcessOperatorHarness::<C>::builder()
 			.with_node_id(self.operator_id)
 			.with_version(self.version)
 			.with_clock(context.clock.clone())
 			.with(self.operator_with);
 		for (k, v) in self.operator_params {
 			builder = builder.add_param(k, v);
+		}
+		for (dictionary, values) in &context.dictionaries {
+			builder = builder.with_dictionary(dictionary.clone(), values.clone());
 		}
 		let harness = builder.build().map_err(|e| ChaosError::HarnessBuild(format!("{e:?}")))?;
 
@@ -318,10 +333,10 @@ mod tests {
 	use reifydb_sdk::{
 		error::Result,
 		flow::operator::{
-			OperatorMetadata,
-			change::BorrowedChange,
+			NostateMount, NostateOperator, OperatorMetadata,
 			column::operator::OperatorColumn,
-			extern_c::binding::{context::ExternCContext, operator::ExternCOperator},
+			context::{GuestContext, Nostate},
+			view::ChangeView,
 		},
 	};
 	use reifydb_testing_chaos::operator::scenario::BatchSize;
@@ -342,12 +357,12 @@ mod tests {
 		const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
 	}
 
-	impl ExternCOperator for NoOpOperator {
-		fn new(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
+	impl NostateOperator for NoOpOperator {
+		fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> Result<Self> {
 			Ok(Self)
 		}
 
-		fn apply(&mut self, _ctx: &mut ExternCContext, _input: BorrowedChange<'_>) -> Result<()> {
+		fn apply(&mut self, _ctx: &mut impl GuestContext<Nostate>, _change: impl ChangeView) -> Result<()> {
 			Ok(())
 		}
 	}
@@ -382,7 +397,7 @@ mod tests {
 	fn the_builder_default_is_the_mixed_corpus_it_replaced() {
 		// Every suite that skips with_scenario runs this corpus; drift here re-points all of
 		// them while they all still pass.
-		let builder = ChaosHarness::<NoOpOperator>::builder();
+		let builder = ChaosHarness::<NostateMount<NoOpOperator>>::builder();
 		assert_eq!(builder.scenario.steps, 200);
 		assert_eq!(builder.scenario.max_live, Some(50));
 		assert_eq!(builder.scenario.duplicate_update_burst, 0.3);
@@ -401,7 +416,8 @@ mod tests {
 	fn supported_ops_reshapes_the_scenario_mix_in_place() {
 		// If the preset stopped writing through to the mix, a suite asking to isolate inserts
 		// would still generate removes.
-		let builder = ChaosHarness::<NoOpOperator>::builder().with_supported_ops(SupportedOps::insert_only());
+		let builder = ChaosHarness::<NostateMount<NoOpOperator>>::builder()
+			.with_supported_ops(SupportedOps::insert_only());
 		assert_eq!(builder.scenario.remove_pct, 0);
 		assert_eq!(builder.scenario.update_pct, 0);
 	}
@@ -442,9 +458,9 @@ mod tests {
 		assert!(validate_supported_ops(&none).is_ok());
 	}
 
-	fn well_formed_builder() -> ChaosHarnessBuilder<NoOpOperator> {
+	fn well_formed_builder() -> ChaosHarnessBuilder<NostateMount<NoOpOperator>> {
 		// The minimum settings that reach validation; each test then breaks one field.
-		ChaosHarness::<NoOpOperator>::builder()
+		ChaosHarness::<NostateMount<NoOpOperator>>::builder()
 			.with_input_shape(shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]))
 			.with_output_shape(shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8)]))
 			.with_key_strategy(KeyStrategy::Sequential)
@@ -459,7 +475,7 @@ mod tests {
 		assert!(well_formed_builder().build().is_ok(), "expected well-formed builder to succeed");
 	}
 
-	fn expect_build_err(result: ChaosResult<RunnableChaos<NoOpOperator>>, label: &str) -> ChaosError {
+	fn expect_build_err(result: ChaosResult<RunnableChaos<NostateMount<NoOpOperator>>>, label: &str) -> ChaosError {
 		// RunnableChaos is not Debug, so Result::expect_err is unavailable.
 		match result {
 			Ok(_) => panic!("expected error from build(): {label}"),
@@ -482,7 +498,7 @@ mod tests {
 	#[test]
 	fn build_rejects_input_columns_without_samplers() {
 		// The same wiring assertion for the sampler registry.
-		let result = ChaosHarness::<NoOpOperator>::builder()
+		let result = ChaosHarness::<NostateMount<NoOpOperator>>::builder()
 			.with_input_shape(shape(&[("k", ValueType::Uint8), ("v", ValueType::Float8), ("missing", ValueType::Int8)]))
 			.with_output_shape(shape(&[("k", ValueType::Uint8)]))
 			.with_key_strategy(KeyStrategy::Sequential)
@@ -502,11 +518,14 @@ mod tests {
 
 	#[test]
 	fn build_rejects_missing_required_fields() {
-		let err = expect_build_err(ChaosHarness::<NoOpOperator>::builder().build(), "no input_shape");
+		let err = expect_build_err(
+			ChaosHarness::<NostateMount<NoOpOperator>>::builder().build(),
+			"no input_shape",
+		);
 		assert!(matches!(err, ChaosError::MissingField("input_shape")), "{err:?}");
 
 		let err = expect_build_err(
-			ChaosHarness::<NoOpOperator>::builder()
+			ChaosHarness::<NostateMount<NoOpOperator>>::builder()
 				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
 				.build(),
 			"no output_shape",
@@ -514,7 +533,7 @@ mod tests {
 		assert!(matches!(err, ChaosError::MissingField("output_shape")), "{err:?}");
 
 		let err = expect_build_err(
-			ChaosHarness::<NoOpOperator>::builder()
+			ChaosHarness::<NostateMount<NoOpOperator>>::builder()
 				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
 				.with_output_shape(shape(&[("k", ValueType::Uint8)]))
 				.build(),
@@ -523,7 +542,7 @@ mod tests {
 		assert!(matches!(err, ChaosError::MissingField("key_strategy")), "{err:?}");
 
 		let err = expect_build_err(
-			ChaosHarness::<NoOpOperator>::builder()
+			ChaosHarness::<NostateMount<NoOpOperator>>::builder()
 				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
 				.with_output_shape(shape(&[("k", ValueType::Uint8)]))
 				.with_key_strategy(KeyStrategy::Sequential)
@@ -534,7 +553,7 @@ mod tests {
 
 		// Every other required field must be present or an earlier check shadows the oracle error.
 		let err = expect_build_err(
-			ChaosHarness::<NoOpOperator>::builder()
+			ChaosHarness::<NostateMount<NoOpOperator>>::builder()
 				.with_input_shape(shape(&[("k", ValueType::Uint8)]))
 				.with_output_shape(shape(&[("k", ValueType::Uint8)]))
 				.with_key_strategy(KeyStrategy::Sequential)

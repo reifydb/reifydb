@@ -13,11 +13,11 @@ use reifydb_sdk::{
 		UnmanagedOperator,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Managed, Nostate, Unmanaged},
-		extern_c::binding::{exports::create_descriptor, operator::ExternCOperatorAdapter},
+		extern_c::binding::exports::create_descriptor,
 		view::ChangeView,
 	},
 };
-use reifydb_testing_sdk::harness::ExternCOperatorHarnessBuilder;
+use reifydb_testing_sdk::in_process::harness::InProcessOperatorHarnessBuilder;
 use reifydb_value::{config::ExtensionParams, factory::time::secs};
 
 struct NostateProbe;
@@ -148,9 +148,8 @@ fn retention_of(seconds: u64) -> ApplyWith {
 #[test]
 fn a_nostate_operator_refuses_any_with() {
 	// A nostate operator that takes a with block lets a view declare a seal nothing honours.
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<NostateMount<NostateProbe>>>::new()
-		.with(lateness_of(60))
-		.build()
+	let Err(err) =
+		InProcessOperatorHarnessBuilder::<NostateMount<NostateProbe>>::new().with(lateness_of(60)).build()
 	else {
 		panic!("create must refuse a with block");
 	};
@@ -160,9 +159,8 @@ fn a_nostate_operator_refuses_any_with() {
 #[test]
 fn a_managed_operator_refuses_a_missing_lateness() {
 	// A managed operator must never start without lateness, or its state has no bound.
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<ManagedMount<ManagedProbe>>>::new()
-		.with(ApplyWith::default())
-		.build()
+	let Err(err) =
+		InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new().with(ApplyWith::default()).build()
 	else {
 		panic!("create must refuse a missing lateness");
 	};
@@ -172,7 +170,7 @@ fn a_managed_operator_refuses_a_missing_lateness() {
 #[test]
 fn a_managed_operator_builds_with_a_zero_lateness() {
 	// Zero lateness is a real bound now: no output hold, and the state is freed at the next gate step.
-	ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<ManagedMount<ManagedProbe>>>::new()
+	InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new()
 		.with(lateness_of(0))
 		.build()
 		.expect("a zero lateness bounds the state and must build");
@@ -187,10 +185,7 @@ fn a_managed_operator_refuses_a_window() {
 		}),
 		..lateness_of(60)
 	};
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<ManagedMount<ManagedProbe>>>::new()
-		.with(with)
-		.build()
-	else {
+	let Err(err) = InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new().with(with).build() else {
 		panic!("create must refuse a window");
 	};
 	assert!(err.to_string().contains("FLOW_067"), "expected FLOW_067, got: {err}");
@@ -199,7 +194,7 @@ fn a_managed_operator_refuses_a_window() {
 #[test]
 fn a_managed_operator_builds_with_a_duration_lateness() {
 	// The managed checks must never refuse the with block they exist to require.
-	ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<ManagedMount<ManagedProbe>>>::new()
+	InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new()
 		.with(lateness_of(60))
 		.build()
 		.expect("a duration lateness is all a managed operator needs");
@@ -208,7 +203,7 @@ fn a_managed_operator_builds_with_a_duration_lateness() {
 #[test]
 fn a_managed_operator_builds_with_a_retention_alone() {
 	// Retention is the bound the reclaim reads, so it must satisfy the managed check without any lateness.
-	ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<ManagedMount<ManagedProbe>>>::new()
+	InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new()
 		.with(retention_of(60))
 		.build()
 		.expect("a retention alone bounds the state and must build");
@@ -221,10 +216,7 @@ fn a_managed_operator_refuses_a_retention_below_its_lateness() {
 		retention: Some(secs(30)),
 		..lateness_of(60)
 	};
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<ManagedMount<ManagedProbe>>>::new()
-		.with(with)
-		.build()
-	else {
+	let Err(err) = InProcessOperatorHarnessBuilder::<ManagedMount<ManagedProbe>>::new().with(with).build() else {
 		panic!("create must refuse a retention below the lateness");
 	};
 	assert!(err.to_string().contains("FLOW_081"), "expected FLOW_081, got: {err}");
@@ -233,9 +225,8 @@ fn a_managed_operator_refuses_a_retention_below_its_lateness() {
 #[test]
 fn an_unmanaged_operator_refuses_a_retention() {
 	// Nothing reclaims unmanaged state, so an accepted retention is a bound the author believes holds.
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<UnmanagedMount<UnmanagedProbe>>>::new()
-		.with(retention_of(60))
-		.build()
+	let Err(err) =
+		InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedProbe>>::new().with(retention_of(60)).build()
 	else {
 		panic!("create must refuse a retention");
 	};
@@ -245,7 +236,7 @@ fn an_unmanaged_operator_refuses_a_retention() {
 #[test]
 fn an_unmanaged_operator_builds_with_the_window_it_declares() {
 	// The harness skips the create-time checks, so the mount is the last guard before a flow dies at start.
-	ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<UnmanagedMount<UnmanagedWindowProbe>>>::new()
+	InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedWindowProbe>>::new()
 		.with(tumbling_of(60))
 		.build()
 		.expect("an unmanaged operator declaring a tumbling window must build with one");
@@ -254,9 +245,8 @@ fn an_unmanaged_operator_builds_with_the_window_it_declares() {
 #[test]
 fn an_unmanaged_operator_refuses_a_window_it_does_not_declare() {
 	// A mount that took any window would let an operator with no window logic silently receive one.
-	let Err(err) = ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<UnmanagedMount<UnmanagedProbe>>>::new()
-		.with(tumbling_of(60))
-		.build()
+	let Err(err) =
+		InProcessOperatorHarnessBuilder::<UnmanagedMount<UnmanagedProbe>>::new().with(tumbling_of(60)).build()
 	else {
 		panic!("create must refuse a window the operator does not declare");
 	};

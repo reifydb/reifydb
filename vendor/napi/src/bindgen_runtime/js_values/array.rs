@@ -1,14 +1,16 @@
-use std::ptr;
+use std::{marker::PhantomData, ptr};
 
-use crate::{bindgen_prelude::*, check_status, JsObject, Value};
+use crate::{bindgen_prelude::*, check_status, Value};
 
-pub struct Array {
-  env: sys::napi_env,
-  inner: sys::napi_value,
-  len: u32,
+#[derive(Clone, Copy)]
+pub struct Array<'env> {
+  pub(crate) env: sys::napi_env,
+  pub(crate) inner: sys::napi_value,
+  pub(crate) len: u32,
+  _marker: std::marker::PhantomData<&'env ()>,
 }
 
-impl Array {
+impl<'env> Array<'env> {
   pub(crate) fn new(env: sys::napi_env, len: u32) -> Result<Self> {
     let mut ptr = ptr::null_mut();
     unsafe {
@@ -22,6 +24,7 @@ impl Array {
       env,
       inner: ptr,
       len,
+      _marker: std::marker::PhantomData,
     })
   }
 
@@ -39,6 +42,26 @@ impl Array {
       )?;
 
       Ok(Some(T::from_napi_value(self.env, ret)?))
+    }
+  }
+
+  /// Note: for `#[napi]` classes the generated [`FromNapiRef`] registers a native borrow, which
+  /// is only permitted during generated callback argument conversion. Reading a class element
+  /// from inside a native call should go through `ClassInstance<T>` (via [`Array::get`]) instead.
+  pub fn get_ref<T: 'static + FromNapiRef>(&self, index: u32) -> Result<Option<&'env T>> {
+    if index >= self.len() {
+      return Ok(None);
+    }
+
+    let mut ret = ptr::null_mut();
+    unsafe {
+      check_status!(
+        sys::napi_get_element(self.env, self.inner, index, &mut ret),
+        "Failed to get element with index `{}`",
+        index,
+      )?;
+
+      Ok(Some(T::from_napi_ref(self.env, ret)?))
     }
   }
 
@@ -70,18 +93,21 @@ impl Array {
     self.len
   }
 
-  pub fn coerce_to_object(self) -> Result<JsObject> {
+  pub fn coerce_to_object(self) -> Result<Object<'env>> {
     let mut new_raw_value = ptr::null_mut();
     check_status!(unsafe { sys::napi_coerce_to_object(self.env, self.inner, &mut new_raw_value) })?;
-    Ok(JsObject(Value {
-      env: self.env,
-      value: new_raw_value,
-      value_type: ValueType::Object,
-    }))
+    Ok(Object(
+      Value {
+        env: self.env,
+        value: new_raw_value,
+        value_type: ValueType::Object,
+      },
+      PhantomData,
+    ))
   }
 }
 
-impl TypeName for Array {
+impl TypeName for Array<'_> {
   fn type_name() -> &'static str {
     "Array"
   }
@@ -91,43 +117,54 @@ impl TypeName for Array {
   }
 }
 
-impl ToNapiValue for Array {
-  unsafe fn to_napi_value(_env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
-    Ok(val.inner)
-  }
-}
-
-impl FromNapiValue for Array {
-  unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
-    let mut is_arr = false;
-    check_status!(
-      unsafe { sys::napi_is_array(env, napi_val, &mut is_arr) },
-      "Failed to check given napi value is array"
-    )?;
-
-    if is_arr {
-      let mut len = 0;
-
-      check_status!(
-        unsafe { sys::napi_get_array_length(env, napi_val, &mut len) },
-        "Failed to get Array length",
-      )?;
-
-      Ok(Array {
-        inner: napi_val,
-        env,
-        len,
-      })
-    } else {
-      Err(Error::new(
-        Status::InvalidArg,
-        "Given napi value is not an array".to_owned(),
-      ))
+impl<'env> JsValue<'env> for Array<'env> {
+  fn value(&self) -> Value {
+    Value {
+      env: self.env,
+      value: self.inner,
+      value_type: ValueType::Object,
     }
   }
 }
 
-impl Array {
+impl<'env> JsObjectValue<'env> for Array<'env> {}
+
+impl FromNapiValue for Array<'_> {
+  unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
+    let mut len = 0;
+
+    check_status!(
+      unsafe { sys::napi_get_array_length(env, napi_val, &mut len) },
+      "Failed to get Array length",
+    )?;
+
+    Ok(Array {
+      inner: napi_val,
+      env,
+      len,
+      _marker: std::marker::PhantomData,
+    })
+  }
+}
+
+impl<'env> ValidateNapiValue for Array<'env> {
+  unsafe fn validate(env: sys::napi_env, napi_val: sys::napi_value) -> Result<sys::napi_value> {
+    let mut is_array = false;
+    check_status!(
+      unsafe { sys::napi_is_array(env, napi_val, &mut is_array) },
+      "Failed to check given napi value is array"
+    )?;
+    if !is_array {
+      return Err(Error::new(
+        Status::InvalidArg,
+        "Expected an array".to_owned(),
+      ));
+    }
+    Ok(ptr::null_mut())
+  }
+}
+
+impl Array<'_> {
   /// Create `Array` from `Vec<T>`
   pub fn from_vec<T>(env: &Env, value: Vec<T>) -> Result<Self>
   where
@@ -165,8 +202,6 @@ impl Array {
   }
 }
 
-impl ValidateNapiValue for Array {}
-
 impl<T> TypeName for Vec<T> {
   fn type_name() -> &'static str {
     "Array<T>"
@@ -192,15 +227,15 @@ where
   }
 }
 
-impl<T> ToNapiValue for &[T]
+impl<T, const N: usize> ToNapiValue for &[T; N]
 where
-  T: ToNapiValue + Copy,
+  for<'a> &'a T: ToNapiValue,
 {
   unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
     let mut arr = Array::new(env, val.len() as u32)?;
 
     for (i, v) in val.iter().enumerate() {
-      arr.set(i as u32, *v)?;
+      arr.set(i as u32, v)?;
     }
 
     unsafe { Array::to_napi_value(env, arr) }
@@ -222,41 +257,27 @@ where
   }
 }
 
-macro_rules! impl_for_primitive_type {
-  ($primitive_type:ident) => {
-    impl ToNapiValue for &Vec<$primitive_type> {
-      unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
-        let mut arr = Array::new(env, val.len() as u32)?;
-
-        for (i, v) in val.iter().enumerate() {
-          arr.set(i as u32, *v)?;
-        }
-
-        unsafe { Array::to_napi_value(env, arr) }
-      }
-    }
-  };
-}
-
-impl_for_primitive_type!(u8);
-impl_for_primitive_type!(i8);
-impl_for_primitive_type!(u16);
-impl_for_primitive_type!(i16);
-impl_for_primitive_type!(u32);
-impl_for_primitive_type!(i32);
-impl_for_primitive_type!(i64);
-impl_for_primitive_type!(f64);
-impl_for_primitive_type!(bool);
-
-impl ToNapiValue for &Vec<String> {
+impl<T> ToNapiValue for &Vec<T>
+where
+  for<'a> &'a T: ToNapiValue,
+{
   unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
     let mut arr = Array::new(env, val.len() as u32)?;
 
     for (i, v) in val.iter().enumerate() {
-      arr.set(i as u32, v.as_str())?;
+      arr.set(i as u32, v)?;
     }
 
     unsafe { Array::to_napi_value(env, arr) }
+  }
+}
+
+impl<T> ToNapiValue for &mut Vec<T>
+where
+  for<'a> &'a T: ToNapiValue,
+{
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, &*val)
   }
 }
 
@@ -266,7 +287,7 @@ where
 {
   unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
     let arr = unsafe { Array::from_napi_value(env, napi_val)? };
-    let mut vec = vec![];
+    let mut vec = Vec::with_capacity(arr.len() as usize);
 
     for i in 0..arr.len() {
       if let Some(val) = arr.get::<T>(i)? {
@@ -304,33 +325,34 @@ where
 }
 
 macro_rules! arr_get {
-  ($arr:expr, $n:expr) => {
+  ($arr:expr, $n:expr, $err:expr) => {
     if let Some(e) = $arr.get($n)? {
       e
     } else {
-      return Err(Error::new(
-        Status::InvalidArg,
-        format!(
-          "Found inconsistent data type in Array[{}] when converting to Rust T",
-          $n
-        )
-        .to_owned(),
-      ));
+      return $err($n);
     }
   };
 }
 
 macro_rules! tuple_from_napi_value {
-  ($total:expr, $($n:expr),+) => {
+  ($total:expr, $($n:expr),+,) => {
     unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
       let arr = unsafe { Array::from_napi_value(env, napi_val)? };
+      let err = |v| Err(Error::new(
+        Status::InvalidArg,
+        format!(
+          "Found inconsistent data type in Array[{}] when converting to Rust T",
+          v
+        )
+        .to_owned(),
+      ));
       if arr.len() < $total {
         return Err(Error::new(
             Status::InvalidArg,
             format!("Array length < {}",$total).to_owned(),
         ));
       }
-      Ok(($(arr_get!(arr,$n)),+))
+      Ok(($(arr_get!(arr,$n,err),)+))
     }
   }
 }
@@ -349,285 +371,75 @@ macro_rules! impl_tuple_validate_napi_value {
   };
 }
 
-impl<T0, T1> FromNapiValue for (T0, T1)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-{
-  tuple_from_napi_value!(2, 0, 1);
+macro_rules! impl_from_tuple {
+  (
+    $($typs:ident),*;
+    $($tidents:expr),+;
+    $length:expr
+  ) => {
+    impl<$($typs),*> FromNapiValue for ($($typs,)*)
+      where $($typs: FromNapiValue,)* {
+      tuple_from_napi_value!($length, $($tidents,)*);
+    }
+  };
 }
 
-impl<T0, T1, T2> FromNapiValue for (T0, T1, T2)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-{
-  tuple_from_napi_value!(3, 0, 1, 2);
+macro_rules! impl_to_tuple {
+  (
+    $($typs:ident),*;
+    $($tidents:expr),+;
+    $length:expr
+  ) => {
+    impl<$($typs),*> ToNapiValue for ($($typs,)*)
+      where $($typs: ToNapiValue,)* {
+      unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
+        let mut arr = Array::new(env, $length as u32)?;
+
+        #[allow(non_snake_case)]
+        let ($($typs,)*) = val;
+        let mut i = 0;
+
+        $(i+=1; unsafe {arr.set(i-1, <$typs as ToNapiValue>::to_napi_value(env, $typs)? )?}; )*
+
+        unsafe { Array::to_napi_value(env, arr) }
+      }
+    }
+  };
 }
 
-impl<T0, T1, T2, T3> FromNapiValue for (T0, T1, T2, T3)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-{
-  tuple_from_napi_value!(4, 0, 1, 2, 3);
+macro_rules! impl_tuples {
+  (
+    ;;$length:expr,
+    $shift:expr
+  ) => {};
+  (
+    $typ:ident$(, $($typs:ident),*)?;
+    $tident:expr$(, $($tidents:expr),*)?;
+    $length:expr,
+    $shift:expr
+  ) => {
+    impl_tuples!(
+      $($($typs),*)?;
+      $($($tidents),*)?;
+      $length - 1,
+      $shift + 1
+    );
+    impl_from_tuple!(
+      $typ$(, $($typs),*)?;
+      $tident - $shift$(, $($tidents - $shift),*)?;
+      $length
+    );
+    impl_to_tuple!(
+      $typ$(, $($typs),*)?;
+      $tident - $shift$(, $($tidents - $shift),*)?;
+      $length
+    );
+    impl_tuple_validate_napi_value!($typ$(, $($typs),*)?);
+  };
 }
 
-impl<T0, T1, T2, T3, T4> FromNapiValue for (T0, T1, T2, T3, T4)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-{
-  tuple_from_napi_value!(5, 0, 1, 2, 3, 4);
-}
-
-impl<T0, T1, T2, T3, T4, T5> FromNapiValue for (T0, T1, T2, T3, T4, T5)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-{
-  tuple_from_napi_value!(6, 0, 1, 2, 3, 4, 5);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6> FromNapiValue for (T0, T1, T2, T3, T4, T5, T6)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-  T6: FromNapiValue,
-{
-  tuple_from_napi_value!(7, 0, 1, 2, 3, 4, 5, 6);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7> FromNapiValue for (T0, T1, T2, T3, T4, T5, T6, T7)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-  T6: FromNapiValue,
-  T7: FromNapiValue,
-{
-  tuple_from_napi_value!(8, 0, 1, 2, 3, 4, 5, 6, 7);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8> FromNapiValue for (T0, T1, T2, T3, T4, T5, T6, T7, T8)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-  T6: FromNapiValue,
-  T7: FromNapiValue,
-  T8: FromNapiValue,
-{
-  tuple_from_napi_value!(9, 0, 1, 2, 3, 4, 5, 6, 7, 8);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> FromNapiValue
-  for (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-  T6: FromNapiValue,
-  T7: FromNapiValue,
-  T8: FromNapiValue,
-  T9: FromNapiValue,
-{
-  tuple_from_napi_value!(10, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10> FromNapiValue
-  for (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-  T6: FromNapiValue,
-  T7: FromNapiValue,
-  T8: FromNapiValue,
-  T9: FromNapiValue,
-  T10: FromNapiValue,
-{
-  tuple_from_napi_value!(11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11> FromNapiValue
-  for (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-  T6: FromNapiValue,
-  T7: FromNapiValue,
-  T8: FromNapiValue,
-  T9: FromNapiValue,
-  T10: FromNapiValue,
-  T11: FromNapiValue,
-{
-  tuple_from_napi_value!(12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12> FromNapiValue
-  for (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-  T6: FromNapiValue,
-  T7: FromNapiValue,
-  T8: FromNapiValue,
-  T9: FromNapiValue,
-  T10: FromNapiValue,
-  T11: FromNapiValue,
-  T12: FromNapiValue,
-{
-  tuple_from_napi_value!(13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13> FromNapiValue
-  for (T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13)
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-  T6: FromNapiValue,
-  T7: FromNapiValue,
-  T8: FromNapiValue,
-  T9: FromNapiValue,
-  T10: FromNapiValue,
-  T11: FromNapiValue,
-  T12: FromNapiValue,
-  T13: FromNapiValue,
-{
-  tuple_from_napi_value!(14, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14> FromNapiValue
-  for (
-    T0,
-    T1,
-    T2,
-    T3,
-    T4,
-    T5,
-    T6,
-    T7,
-    T8,
-    T9,
-    T10,
-    T11,
-    T12,
-    T13,
-    T14,
-  )
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-  T6: FromNapiValue,
-  T7: FromNapiValue,
-  T8: FromNapiValue,
-  T9: FromNapiValue,
-  T10: FromNapiValue,
-  T11: FromNapiValue,
-  T12: FromNapiValue,
-  T13: FromNapiValue,
-  T14: FromNapiValue,
-{
-  tuple_from_napi_value!(15, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14);
-}
-
-impl<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15> FromNapiValue
-  for (
-    T0,
-    T1,
-    T2,
-    T3,
-    T4,
-    T5,
-    T6,
-    T7,
-    T8,
-    T9,
-    T10,
-    T11,
-    T12,
-    T13,
-    T14,
-    T15,
-  )
-where
-  T0: FromNapiValue,
-  T1: FromNapiValue,
-  T2: FromNapiValue,
-  T3: FromNapiValue,
-  T4: FromNapiValue,
-  T5: FromNapiValue,
-  T6: FromNapiValue,
-  T7: FromNapiValue,
-  T8: FromNapiValue,
-  T9: FromNapiValue,
-  T10: FromNapiValue,
-  T11: FromNapiValue,
-  T12: FromNapiValue,
-  T13: FromNapiValue,
-  T14: FromNapiValue,
-  T15: FromNapiValue,
-{
-  tuple_from_napi_value!(16, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
-}
-
-impl_tuple_validate_napi_value!(T0, T1);
-impl_tuple_validate_napi_value!(T0, T1, T2);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4, T5);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4, T5, T6);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4, T5, T6, T7);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4, T5, T6, T7, T8);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13);
-impl_tuple_validate_napi_value!(T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14);
-impl_tuple_validate_napi_value!(
-  T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15
+impl_tuples!(
+  T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15;
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15;
+  16, 0
 );

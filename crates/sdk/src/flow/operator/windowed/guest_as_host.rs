@@ -8,7 +8,7 @@ use reifydb_codec::{
 	row::pod::EncodedPodRow,
 };
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range_split},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, keyspace_inner_range_split},
 	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore, sweep_order},
 };
 use reifydb_flow_async::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
@@ -53,10 +53,6 @@ impl<C: GuestContext> TimerStore for GuestAsHost<'_, C> {
 impl<C: GuestContext> IdentityReclaim for GuestAsHost<'_, C> {
 	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		Ok(self.0.reclaim_group_identity(group, limit)?)
-	}
-
-	fn reclaim_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome> {
-		Ok(self.0.reclaim_group_identity_keys(group, keys)?)
 	}
 }
 
@@ -108,19 +104,25 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	fn group_sweep(
 		&mut self,
 		group: GroupId,
-		data_only: bool,
+		keyspaces: KeyspaceMask,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let mut swept = Vec::new();
-		self.0.window_state().sweep_bytes_visit(group, data_only, limit, &mut |key, row| {
+		self.0.window_state().sweep_bytes_visit(group, keyspaces, limit, &mut |key, row| {
 			swept.push((key, row));
 			Ok(())
 		})?;
 		Ok(swept)
 	}
 
-	fn group_sweep_many(&mut self, groups: &[GroupId], limit: usize) -> Result<GroupSweep> {
-		let (rows, complete) = self.0.window_state().sweep_many_bytes(&sweep_order(groups), limit)?;
+	fn group_sweep_many(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+		keyspaces: KeyspaceMask,
+	) -> Result<GroupSweep> {
+		let (rows, complete) =
+			self.0.window_state().sweep_many_bytes(&sweep_order(groups), limit, keyspaces)?;
 		Ok(GroupSweep {
 			rows,
 			complete,

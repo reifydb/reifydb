@@ -7,9 +7,6 @@ use reifydb_value::value::{Value, column_view::FromColumnView, system_columns::c
 #[path = "sdk/row_time.rs"]
 mod row_time;
 
-#[path = "sdk/writer.rs"]
-mod writer;
-
 #[path = "sdk/batch.rs"]
 mod batch;
 

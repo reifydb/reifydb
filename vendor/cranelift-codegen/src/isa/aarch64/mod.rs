@@ -18,8 +18,6 @@ use alloc::string::String;
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt;
 use cranelift_control::ControlPlane;
-#[cfg(feature = "unwind")]
-use target_lexicon::OperatingSystem;
 use target_lexicon::{Aarch64Architecture, Architecture, Triple};
 
 // New backend:
@@ -57,12 +55,22 @@ impl AArch64Backend {
         &self,
         func: &Function,
         domtree: &DominatorTree,
+        regalloc_ctx: &mut regalloc2::Ctx,
         ctrl_plane: &mut ControlPlane,
-    ) -> CodegenResult<(VCode<inst::Inst>, regalloc2::Output)> {
+    ) -> CodegenResult<VCode<inst::Inst>> {
         let emit_info = EmitInfo::new(self.flags.clone(), self.isa_flags.clone());
         let sigs = SigSet::new::<abi::AArch64MachineDeps>(func, &self.flags)?;
         let abi = abi::AArch64Callee::new(func, self, &self.isa_flags, &sigs)?;
-        compile::compile::<AArch64Backend>(func, domtree, self, abi, emit_info, sigs, ctrl_plane)
+        compile::compile::<AArch64Backend>(
+            func,
+            domtree,
+            regalloc_ctx,
+            self,
+            abi,
+            emit_info,
+            sigs,
+            ctrl_plane,
+        )
     }
 }
 
@@ -71,12 +79,13 @@ impl TargetIsa for AArch64Backend {
         &self,
         func: &Function,
         domtree: &DominatorTree,
+        regalloc_ctx: &mut regalloc2::Ctx,
         want_disasm: bool,
         ctrl_plane: &mut ControlPlane,
     ) -> CodegenResult<CompiledCodeStencil> {
-        let (vcode, regalloc_result) = self.compile_vcode(func, domtree, ctrl_plane)?;
+        let vcode = self.compile_vcode(func, domtree, regalloc_ctx, ctrl_plane)?;
 
-        let emit_result = vcode.emit(&regalloc_result, want_disasm, &self.flags, ctrl_plane);
+        let emit_result = vcode.emit(&regalloc_ctx.output, want_disasm, &self.flags, ctrl_plane)?;
         let value_labels_ranges = emit_result.value_labels_ranges;
         let buffer = emit_result.buffer;
 
@@ -151,17 +160,9 @@ impl TargetIsa for AArch64Backend {
 
     #[cfg(feature = "unwind")]
     fn create_systemv_cie(&self) -> Option<gimli::write::CommonInformationEntry> {
-        let is_apple_os = match self.triple.operating_system {
-            OperatingSystem::Darwin(_)
-            | OperatingSystem::IOS(_)
-            | OperatingSystem::MacOSX { .. }
-            | OperatingSystem::TvOS(_) => true,
-            _ => false,
-        };
-
         if self.isa_flags.sign_return_address()
             && self.isa_flags.sign_return_address_with_bkey()
-            && !is_apple_os
+            && !self.triple.operating_system.is_like_darwin()
         {
             unimplemented!(
                 "Specifying that the B key is used with pointer authentication instructions in the CIE is not implemented."
@@ -185,19 +186,12 @@ impl TargetIsa for AArch64Backend {
     }
 
     fn page_size_align_log2(&self) -> u8 {
-        use target_lexicon::*;
-        match self.triple().operating_system {
-            OperatingSystem::MacOSX { .. }
-            | OperatingSystem::Darwin(_)
-            | OperatingSystem::IOS(_)
-            | OperatingSystem::TvOS(_) => {
-                debug_assert_eq!(1 << 14, 0x4000);
-                14
-            }
-            _ => {
-                debug_assert_eq!(1 << 16, 0x10000);
-                16
-            }
+        if self.triple().operating_system.is_like_darwin() {
+            debug_assert_eq!(1 << 14, 0x4000);
+            14
+        } else {
+            debug_assert_eq!(1 << 16, 0x10000);
+            16
         }
     }
 

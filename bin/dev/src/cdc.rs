@@ -7,7 +7,7 @@ use std::{
 };
 
 use postcard::{from_bytes, to_stdvec};
-use reifydb_cdc::rebuild::{changed_objects, row_target};
+use reifydb_cdc::lift::{changed_objects, row_target};
 use reifydb_codec::cdc;
 use reifydb_core::{
 	event::metric::CdcEviction,
@@ -175,19 +175,19 @@ fn absorb(cdc: &Cdc, stats: &mut Stats) -> Result<()> {
 	}
 	stats.touched_objects += changed_objects(cdc).len() as u64;
 
-	let mut rebuilt: BTreeSet<Origin> = BTreeSet::new();
+	let mut lifted: BTreeSet<Origin> = BTreeSet::new();
 	for change in &cdc.changes {
-		absorb_cdc_change(change, stats, &mut rebuilt)?;
+		absorb_cdc_change(change, stats, &mut lifted)?;
 	}
 
-	stats.changes += rebuilt.len() as u64;
-	for origin in rebuilt {
+	stats.changes += lifted.len() as u64;
+	for origin in lifted {
 		stats.objects.entry(origin).or_default().changes += 1;
 	}
 	Ok(())
 }
 
-fn absorb_cdc_change(change: &CdcChange, stats: &mut Stats, rebuilt: &mut BTreeSet<Origin>) -> Result<()> {
+fn absorb_cdc_change(change: &CdcChange, stats: &mut Stats, lifted: &mut BTreeSet<Origin>) -> Result<()> {
 	let bytes = encoded_len(change)?;
 	stats.cdc_changes += 1;
 	stats.cdc_bytes += bytes;
@@ -214,7 +214,7 @@ fn absorb_cdc_change(change: &CdcChange, stats: &mut Stats, rebuilt: &mut BTreeS
 	stats.objects.entry(origin.clone()).or_default().rows.add(1, bytes);
 	stats.attributed_rows += 1;
 	stats.row_kinds.entry(kind).or_default().add(1, bytes);
-	rebuilt.insert(origin);
+	lifted.insert(origin);
 	Ok(())
 }
 
@@ -344,13 +344,13 @@ mod tests {
 	}
 
 	#[test]
-	fn an_invisible_delete_is_absent_from_the_report_exactly_as_it_is_from_the_rebuild() {
-		// The report must not invent a row the rebuild skipped, or the two disagree on what happened.
+	fn an_invisible_delete_is_absent_from_the_report_exactly_as_it_is_from_the_lift() {
+		// The report must not invent a row the lift skipped, or the two disagree on what happened.
 		let stats = stats_of(&[commit(vec![delete(StorageId::table(7), 1, false)])]);
 
 		assert_eq!(stats.row_changes, 0, "an invisible delete must not be counted as a row key");
 		assert_eq!(stats.attributed_rows, 0);
-		assert_eq!(stats.changes, 0, "the rebuild must emit no change for an invisible delete");
+		assert_eq!(stats.changes, 0, "the lift must emit no change for an invisible delete");
 		assert!(stats.objects.is_empty(), "and it must open no object slot of its own");
 	}
 
@@ -364,7 +364,7 @@ mod tests {
 
 		assert_eq!(stats.row_changes, 1, "byte-identical keys must be split by the visibility flag alone");
 		assert_eq!(stats.attributed_rows, 1);
-		assert_eq!(stats.changes, 1, "the visible delete alone must rebuild one change for the view");
+		assert_eq!(stats.changes, 1, "the visible delete alone must lift one change for the view");
 		assert_eq!(object(&stats, "view", 4).rows.rows, 1);
 	}
 
@@ -374,7 +374,7 @@ mod tests {
 
 		assert_eq!(object(&stats, "view", 42).rows.rows, 1, "a view must never report under a table id");
 		assert_eq!(object(&stats, "table", 42).rows.rows, 1);
-		assert_eq!(stats.changes, 2, "two objects touched in one commit must rebuild two changes");
+		assert_eq!(stats.changes, 2, "two objects touched in one commit must lift two changes");
 	}
 
 	#[test]
@@ -396,12 +396,12 @@ mod tests {
 			stats.row_bytes
 				+ encoded_len(&namespace_insert()).unwrap()
 				+ encoded_len(&delete(StorageId::table(7), 2, false)).unwrap(),
-			"bytes skipped by the rebuild still have to show up in the system total"
+			"bytes skipped by the lift still have to show up in the system total"
 		);
 	}
 
 	#[test]
-	fn a_commit_counts_one_rebuilt_change_per_object_however_many_rows_it_touched() {
+	fn a_commit_counts_one_lifted_change_per_object_however_many_rows_it_touched() {
 		let stats = stats_of(&[commit(vec![
 			insert(StorageId::table(7), 1),
 			insert(StorageId::table(7), 2),

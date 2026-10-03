@@ -7,7 +7,7 @@ use reifydb::{
 	SqliteConfig, Value, WithSubsystem, embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_cdc::rebuild::changed_objects;
+use reifydb_cdc::lift::changed_objects;
 use reifydb_core::{
 	common::{ChangeVersion, SourceVersion},
 	interface::catalog::{

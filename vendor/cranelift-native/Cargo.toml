@@ -11,9 +11,9 @@
 
 [package]
 edition = "2024"
-rust-version = "1.92.0"
+rust-version = "1.96.0"
 name = "cranelift-native"
-version = "0.131.2"
+version = "0.136.2"
 authors = ["The Cranelift Project Developers"]
 build = false
 autolib = false
@@ -39,16 +39,13 @@ name = "cranelift_native"
 path = "src/lib.rs"
 
 [dependencies.cranelift-codegen]
-version = "0.131.2"
-features = [
-    "std",
-    "unwind",
-]
+version = "0.136.2"
+features = ["unwind"]
 default-features = false
 
 [dependencies.target-lexicon]
-version = "0.13.0"
+version = "0.13.5"
 
 [target.'cfg(target_arch = "riscv64")'.dependencies.libc]
-version = "0.2.177"
+version = "0.2.185"
 default-features = true

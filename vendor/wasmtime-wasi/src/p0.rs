@@ -31,7 +31,7 @@ wiggle::from_witx!({
             fd_filestat_set_times, fd_read, fd_pread, fd_seek, fd_sync, fd_readdir, fd_write,
             fd_pwrite, poll_oneoff, path_create_directory, path_filestat_get,
             path_filestat_set_times, path_link, path_open, path_readlink, path_remove_directory,
-            path_rename, path_symlink, path_unlink_file
+            path_rename, path_symlink, path_unlink_file, fd_renumber
         }
     },
     errors: { errno => trappable Error },
@@ -50,7 +50,7 @@ mod sync {
                 fd_filestat_set_times, fd_read, fd_pread, fd_seek, fd_sync, fd_readdir, fd_write,
                 fd_pwrite, poll_oneoff, path_create_directory, path_filestat_get,
                 path_filestat_set_times, path_link, path_open, path_readlink, path_remove_directory,
-                path_rename, path_symlink, path_unlink_file
+                path_rename, path_symlink, path_unlink_file, fd_renumber
             }
         },
         errors: { errno => trappable Error },
@@ -69,7 +69,7 @@ impl wiggle::GuestErrorType for types::Errno {
     }
 }
 
-impl<T: Snapshot1 + Send> wasi_unstable::WasiUnstable for T {
+impl wasi_unstable::WasiUnstable for WasiP1Ctx {
     fn set_hostcall_fuel(&mut self, fuel: usize) {
         Snapshot1::set_hostcall_fuel(self, fuel)
     }
@@ -300,13 +300,13 @@ impl<T: Snapshot1 + Send> wasi_unstable::WasiUnstable for T {
         Ok(())
     }
 
-    fn fd_renumber(
+    async fn fd_renumber(
         &mut self,
         memory: &mut GuestMemory<'_>,
         from: types::Fd,
         to: types::Fd,
     ) -> Result<(), Error> {
-        Snapshot1::fd_renumber(self, memory, from.into(), to.into())?;
+        Snapshot1::fd_renumber(self, memory, from.into(), to.into()).await?;
         Ok(())
     }
 
@@ -518,6 +518,7 @@ impl<T: Snapshot1 + Send> wasi_unstable::WasiUnstable for T {
         nsubscriptions: types::Size,
     ) -> Result<types::Size, Error> {
         let subs_array = subs.as_array(nsubscriptions);
+        self.consume_fuel_for_array(subs_array)?;
         let mut old_subs = Vec::new();
         for slot in subs_array.iter() {
             let slot = slot?;

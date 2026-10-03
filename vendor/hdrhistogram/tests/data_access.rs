@@ -3,7 +3,7 @@
 use hdrhistogram::Histogram;
 
 macro_rules! assert_near {
-    ($a:expr, $b:expr, $tolerance:expr) => {{
+    ($a:expr_2021, $b:expr_2021, $tolerance:expr_2021) => {{
         let a = $a as f64;
         let b = $b as f64;
         let tol = $tolerance as f64;
@@ -228,13 +228,13 @@ fn quantile_atorbelow() {
 
 #[test]
 fn quantile_below_saturates() {
-    let mut h = Histogram::<u64>::new_with_bounds(1, u64::max_value(), 3).unwrap();
+    let mut h = Histogram::<u64>::new_with_bounds(1, u64::MAX, 3).unwrap();
 
     for i in 0..1024 {
-        h.record_n(i, u64::max_value() - 1).unwrap();
+        h.record_n(i, u64::MAX - 1).unwrap();
     }
 
-    // really it should be 0.5 but it saturates at u64::max_value()
+    // really it should be 0.5 but it saturates at u64::MAX
     assert_eq!(1.0, h.quantile_below(512));
 }
 
@@ -251,7 +251,7 @@ fn quantile_below_value_beyond_max() {
         h.record(100_000).unwrap();
     }
 
-    assert_eq!(1.0, h.quantile_below(u64::max_value()));
+    assert_eq!(1.0, h.quantile_below(u64::MAX));
 }
 
 #[test]
@@ -282,13 +282,13 @@ fn count_between_low_and_high_beyond_max() {
 
 #[test]
 fn count_between_saturates() {
-    let mut h = Histogram::<u64>::new_with_bounds(1, u64::max_value(), 3).unwrap();
+    let mut h = Histogram::<u64>::new_with_bounds(1, u64::MAX, 3).unwrap();
 
     for i in 0..1024 {
-        h.record_n(i, u64::max_value() - 1).unwrap();
+        h.record_n(i, u64::MAX - 1).unwrap();
     }
 
-    assert_eq!(u64::max_value(), h.count_between(100, 200));
+    assert_eq!(u64::MAX, h.count_between(100, 200));
 }
 
 #[test]
@@ -306,7 +306,7 @@ fn count_at_beyond_max_value() {
     // largest expressible value will land in last index
     h.record((1 << 17) - 1).unwrap();
 
-    assert_eq!(1, h.count_at(u64::max_value()));
+    assert_eq!(1, h.count_at(u64::MAX));
 }
 
 #[test]
@@ -467,6 +467,7 @@ fn iter_recorded() {
         num += 1;
     }
     assert_eq!(total_added_counts, 20000);
+    assert_eq!(num, 4228);
 }
 
 #[test]
@@ -560,4 +561,60 @@ fn total_count_exceeds_bucket_type() {
     }
 
     assert_eq!(400, h.len());
+}
+
+// value_at_quantiles / value_at_percentiles must return exactly what the singular value_at_quantile
+// / value_at_percentile would, in input order, with the same handling of corner cases.
+#[test]
+fn batch_quantiles_match_singular() {
+    let mut h = Histogram::<u64>::new_with_bounds(1, 3_600_000_000, 3).unwrap();
+    for _ in 1..=1_000_000u64 {
+        h.record((rand::random::<u64>() % 1_000_000_000) + 1)
+            .unwrap();
+    }
+
+    let quantiles = [-0.5, 0.0, 0.5, 0.5, 0.99, 0.9999, 1.0, 1.5];
+    let batch = h.value_at_quantiles(quantiles).collect::<Vec<_>>();
+    assert_eq!(batch.len(), quantiles.len());
+    for (i, &q) in quantiles.iter().enumerate() {
+        assert_eq!(
+            batch[i],
+            h.value_at_quantile(q),
+            "quantile {} (idx {})",
+            q,
+            i
+        );
+    }
+
+    let percentiles = [-50.0, 0.0, 50.0, 50.0, 99.0, 99.99, 100.0, 150.0];
+    let pbatch = h.value_at_percentiles(percentiles).collect::<Vec<_>>();
+    for (i, &p) in percentiles.iter().enumerate() {
+        assert_eq!(
+            pbatch[i],
+            h.value_at_percentile(p),
+            "percentile {} (idx {})",
+            p,
+            i
+        );
+    }
+
+    // Empty slice -> empty result.
+    assert_eq!(h.value_at_quantiles([]).count(), 0);
+}
+
+#[test]
+fn batch_quantiles_empty_histogram() {
+    // unitMagnitude > 0 (lowest > 1) is the case where a naive scan could diverge.
+    let h = Histogram::<u64>::new_with_bounds(100, 10_000_000, 3).unwrap();
+    let quantiles = [0.0, 0.5, 0.9, 0.99, 1.0];
+    let batch = h.value_at_quantiles(quantiles).collect::<Vec<_>>();
+    for (i, &q) in quantiles.iter().enumerate() {
+        assert_eq!(batch[i], 0, "empty histogram, quantile {}", q);
+        assert_eq!(
+            batch[i],
+            h.value_at_quantile(q),
+            "empty vs singular, quantile {}",
+            q
+        );
+    }
 }

@@ -11,11 +11,10 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
 	metrics::heap::HeapSize,
-	value::batch::from_row,
 };
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
-	Result,
+	Result, reifydb_assertions,
 	util::hash::Hash128,
 	value::{Value, datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
@@ -26,6 +25,7 @@ use crate::{
 	operator::{
 		aggregation::{
 			accumulator::{RowAccumulator, WindowSlotKey},
+			core::EmitRow,
 			engine::{WindowGroups, group_of, intern_window_groups},
 		},
 		host::HostContext,
@@ -146,6 +146,8 @@ fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
 
 type RollingEngineBuckets<S> = RollingBuckets<Hash128, S, (WindowSlotKey, Vec<Option<Value>>)>;
 
+type RollingPriors = HashMap<Hash128, Option<RollingMeta>>;
+
 #[instrument(name = "flow::operator::window::intern_partitions", level = "trace", skip_all, fields(partitions = touched.len()))]
 fn intern_partitions(touched: &[Hash128]) -> WindowGroups {
 	let partitions: Vec<(Hash128, u64)> = touched.iter().map(|hash| (*hash, 0)).collect();
@@ -198,6 +200,44 @@ fn timed_row_engine(
 	}
 }
 
+fn load_rolling_priors(
+	operator: &mut WindowOperator,
+	host: &mut dyn HostContext,
+	touched: &[Hash128],
+	groups: &WindowGroups,
+) -> Result<RollingPriors> {
+	let mut priors = RollingPriors::with_capacity(touched.len());
+	for hash in touched {
+		let meta = operator.meta_slot().rolling_meta(host, group_of(groups, *hash, 0))?;
+		priors.insert(*hash, meta);
+	}
+	Ok(priors)
+}
+
+fn published_prior<S: RollingDomain>(
+	priors: &RollingPriors,
+	group: &Hash128,
+	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] buffer: &RollingBuffer<S, RowAccumulator>,
+	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] kinds: &[SlotKind],
+	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] lag: S::Span,
+	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))] immutable: Option<Duration>,
+) -> Option<Vec<Value>> {
+	let prior = priors
+		.get(group)
+		.expect("every touched rolling group has its published meta loaded")
+		.as_ref()
+		.map(|meta| meta.last_value.clone());
+	reifydb_assertions! {
+		let recombined = combine_rolling::<S>(buffer, kinds, lag, immutable);
+		assert!(
+			prior == recombined,
+			"a rolling group last published {prior:?} but its stored panes recombine to {recombined:?}; \
+			 a prior taken from the publish would then withdraw or update a row the panes disagree with"
+		);
+	}
+	prior
+}
+
 fn combine_rolling<S: RollingDomain>(
 	buffer: &RollingBuffer<S, RowAccumulator>,
 	kinds: &[SlotKind],
@@ -241,18 +281,12 @@ fn route_rolling_columns<S: RollingDomain>(
 		Vec::new()
 	};
 	let slot_cols = operator.core.evaluate_slot_inputs(columns)?;
+	let views = operator.core.slot_views(columns, &slot_cols)?;
 	for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 		let slot = S::slot(row_numbers, row_idx, &timestamps);
 		let slot_key = S::slot_key(slot, row_numbers[row_idx].0);
-		let contribution = (
-			slot_key,
-			operator.core.build_contribution(
-				columns,
-				&slot_cols,
-				row_idx,
-				timestamps.get(row_idx).copied().unwrap_or_default(),
-			)?,
-		);
+		let contribution =
+			(slot_key, views.contribution(row_idx, timestamps.get(row_idx).copied().unwrap_or_default()));
 		let event = if is_add {
 			AccumulatorEvent::Add(contribution)
 		} else {
@@ -381,31 +415,35 @@ fn apply_rolling<S: RollingDomain>(
 	let armed_before = rolling_earliest_expiry::<S>(operator, host, runnable, lag)?;
 
 	let groups = intern_partitions(&touched);
-	let results = if runnable {
+	let (results, mut priors) = if runnable {
 		let engine = S::engine(operator, true, lag);
-		engine.apply_running(
+		let results = engine.apply_running(
 			host,
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
 			|| RowAccumulator::new(&kinds, immutable),
-		)?
+		)?;
+		(results, RollingPriors::new())
 	} else {
+		let priors = load_rolling_priors(operator, host, &touched, &groups)?;
 		let engine = S::engine(operator, false, lag);
-		engine.apply_evicting(
+		let results = engine.apply_evicting_with_prior(
 			host,
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
 			|| RowAccumulator::new(&kinds, immutable),
+			|group, buffer| published_prior::<S>(&priors, group, buffer, &kinds, lag, immutable),
 			|_g, buffer| combine_rolling::<S>(buffer, &kinds, lag, immutable),
-		)?
+		)?;
+		(results, priors)
 	};
 
 	rearm_rolling_seal::<S>(operator, host, armed_before, runnable, lag)?;
 	arm_stranded_meta_seals::<S>(operator, host, runnable, lag)?;
 
-	let diffs = finish_rolling_results(operator, host, &change, &results, &group_values, &groups)?;
+	let diffs = finish_rolling_results(operator, host, &change, &results, &group_values, &groups, &mut priors)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
@@ -460,41 +498,40 @@ fn finish_rolling_results(
 	results: &[RollingResult<Hash128, Vec<Value>>],
 	group_values: &HashMap<Hash128, Vec<Value>>,
 	groups: &WindowGroups,
+	priors: &mut RollingPriors,
 ) -> Result<Vec<Diff>> {
-	let ts = change.changed_at;
-	let mut diffs = Vec::new();
+	let mut inserts = Vec::new();
+	let mut updates = Vec::new();
+	let mut removes = Vec::new();
 	for r in results {
 		let group_id = group_of(groups, r.group, 0);
-		let prior = operator.meta_slot().rolling_meta(host, group_id)?;
+		let prior = match priors.remove(&r.group) {
+			Some(loaded) => loaded,
+			None => operator.meta_slot().rolling_meta(host, group_id)?,
+		};
 		if matches!(r.kind, EmitKind::Remove) {
 			if let Some(m) = prior {
-				let pre = operator.core.build_engine_row(
-					&m.group_values,
-					&m.last_value,
-					RowNumber(m.row_number),
-					ts,
-					None,
-				)?;
-				diffs.push(Diff::remove(from_row(&pre)?));
+				removes.push(EmitRow {
+					group_values: m.group_values,
+					slot_values: m.last_value,
+					row_number: RowNumber(m.row_number),
+					span: None,
+				});
 				operator.meta_slot().drop_rolling_meta(host, group_id)?;
 			}
 			continue;
 		}
 		let gvals = group_values.get(&r.group).cloned().unwrap_or_default();
-		let post = operator.core.build_engine_row(&gvals, &r.value, r.row_number, ts, None)?;
+		let emit = |slot_values: Vec<Value>| EmitRow {
+			group_values: gvals.clone(),
+			slot_values,
+			row_number: r.row_number,
+			span: None,
+		};
 		match (r.kind, prior) {
-			(EmitKind::Insert, _) => diffs.push(Diff::insert(from_row(&post)?)),
-			(_, Some(m)) => {
-				let pre = operator.core.build_engine_row(
-					&gvals,
-					&m.last_value,
-					r.row_number,
-					ts,
-					None,
-				)?;
-				diffs.push(Diff::update(from_row(&pre)?, from_row(&post)?));
-			}
-			(_, None) => diffs.push(Diff::update(from_row(&post)?, from_row(&post)?)),
+			(EmitKind::Insert, _) => inserts.push(emit(r.value.clone())),
+			(_, Some(m)) => updates.push((emit(m.last_value), emit(r.value.clone()))),
+			(_, None) => updates.push((emit(r.value.clone()), emit(r.value.clone()))),
 		}
 		operator.meta_slot().put_rolling_meta(
 			host,
@@ -507,7 +544,7 @@ fn finish_rolling_results(
 			},
 		)?;
 	}
-	Ok(diffs)
+	operator.core.emit_diffs(inserts, updates, removes, change.changed_at)
 }
 
 #[tracing::instrument(name = "flow::window::seal_rolling", level = "debug", skip_all, fields(operator = operator.core.operator.0, expired = tracing::field::Empty))]
@@ -551,7 +588,8 @@ pub fn seal_rolling_engine(
 	Span::current().record("expired", expiries.len());
 	rearm_rolling_seal::<DateTime>(operator, host, armed_before, runnable, lag)?;
 
-	let mut diffs = Vec::new();
+	let mut updates = Vec::new();
+	let mut removes = Vec::new();
 	for expiry in expiries {
 		match expiry {
 			RollingExpiry::Update {
@@ -563,21 +601,13 @@ pub fn seal_rolling_engine(
 				let Some(meta) = operator.meta_slot().rolling_meta(host, group_id)? else {
 					continue;
 				};
-				let pre = operator.core.build_engine_row(
-					&meta.group_values,
-					&meta.last_value,
+				let emit = |slot_values: Vec<Value>| EmitRow {
+					group_values: meta.group_values.clone(),
+					slot_values,
 					row_number,
-					ts,
-					None,
-				)?;
-				let post = operator.core.build_engine_row(
-					&meta.group_values,
-					&value,
-					row_number,
-					ts,
-					None,
-				)?;
-				diffs.push(Diff::update(from_row(&pre)?, from_row(&post)?));
+					span: None,
+				};
+				updates.push((emit(meta.last_value.clone()), emit(value.clone())));
 				operator.meta_slot().put_rolling_meta(
 					host,
 					group_id,
@@ -597,19 +627,17 @@ pub fn seal_rolling_engine(
 				let Some(meta) = operator.meta_slot().rolling_meta(host, group_id)? else {
 					continue;
 				};
-				let pre = operator.core.build_engine_row(
-					&meta.group_values,
-					&meta.last_value,
+				removes.push(EmitRow {
+					group_values: meta.group_values,
+					slot_values: meta.last_value,
 					row_number,
-					ts,
-					None,
-				)?;
-				diffs.push(Diff::remove(from_row(&pre)?));
+					span: None,
+				});
 				operator.meta_slot().drop_rolling_meta(host, group_id)?;
 			}
 		}
 	}
-	Ok(diffs)
+	operator.core.emit_diffs(Vec::new(), updates, removes, ts)
 }
 
 #[cfg(test)]

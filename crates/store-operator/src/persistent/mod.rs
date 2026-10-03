@@ -16,7 +16,7 @@ use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
 	metrics::collect::MetricsCollector,
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -147,7 +147,7 @@ pub trait Page: Persistent {
 		operator: OperatorId,
 		range: EncodedKeyRange,
 		batch: u64,
-		occupied: u64,
+		occupied: KeyspaceMask,
 	) -> Result<OperatorBatch>;
 
 	fn last_batch(
@@ -155,10 +155,16 @@ pub trait Page: Persistent {
 		operator: OperatorId,
 		range: EncodedKeyRange,
 		batch: u64,
-		occupied: u64,
+		occupied: KeyspaceMask,
 	) -> Result<OperatorBatch>;
 
-	fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch: u64, mask: u64) -> Result<OperatorBatch>;
+	fn group_page(
+		&self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		batch: u64,
+		mask: KeyspaceMask,
+	) -> Result<OperatorBatch>;
 }
 
 pub trait Measure: Persistent {
@@ -260,7 +266,7 @@ impl Page for PersistentTier {
 		operator: OperatorId,
 		range: EncodedKeyRange,
 		batch: u64,
-		occupied: u64,
+		occupied: KeyspaceMask,
 	) -> Result<OperatorBatch> {
 		match self {
 			Self::Absent => Ok(OperatorBatch::empty()),
@@ -276,7 +282,7 @@ impl Page for PersistentTier {
 		operator: OperatorId,
 		range: EncodedKeyRange,
 		batch: u64,
-		occupied: u64,
+		occupied: KeyspaceMask,
 	) -> Result<OperatorBatch> {
 		match self {
 			Self::Absent => Ok(OperatorBatch::empty()),
@@ -287,7 +293,13 @@ impl Page for PersistentTier {
 		}
 	}
 
-	fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch: u64, mask: u64) -> Result<OperatorBatch> {
+	fn group_page(
+		&self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		batch: u64,
+		mask: KeyspaceMask,
+	) -> Result<OperatorBatch> {
 		match self {
 			Self::Absent => Ok(OperatorBatch::empty()),
 			Self::Memory(memory) => Page::group_page(memory, operator, groups, batch, mask),

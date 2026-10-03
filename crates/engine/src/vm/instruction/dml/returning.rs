@@ -9,9 +9,10 @@ use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::R
 use reifydb_core::{
 	expression::Expression,
 	interface::catalog::{column::Column, dictionary::Dictionary},
+	internal_err,
 	value::{
-		batch::{batch, empty_batch},
-		column::{builder::ColumnBuilder, factory},
+		batch::{batch, empty_batch, from_encoded_bytes},
+		column::factory,
 	},
 };
 use reifydb_evaluate::{
@@ -26,9 +27,11 @@ use reifydb_value::{
 	params::Params,
 	value::{
 		column_view::ColumnView,
+		datetime::DateTime,
 		identity::IdentityId,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, system_column, user_columns, with_system_column},
+		system_columns::{SystemColumn, stamp_system_columns, system_column, user_columns, with_system_column},
+		value_type::ValueType,
 	},
 };
 
@@ -38,75 +41,44 @@ use crate::{
 };
 
 pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Result<RecordBatch> {
-	let fields = shape.fields();
-
-	let mut builders: Vec<ColumnBuilder> = Vec::with_capacity(fields.len());
-	for field in fields.iter() {
-		builders.push(ColumnBuilder::with_capacity(field.constraint.get_type(), rows.len()));
-	}
-
-	let mut row_numbers = Vec::with_capacity(rows.len());
-	let mut created_at = Vec::with_capacity(rows.len());
-	let mut updated_at = Vec::with_capacity(rows.len());
-	let mut time = Vec::with_capacity(rows.len());
-	for (row_number, encoded) in rows {
-		row_numbers.push(*row_number);
-		created_at.push(shape.created_at(encoded));
-		updated_at.push(shape.updated_at(encoded));
-		if let Some(t) = shape.time(encoded) {
-			time.push(t);
-		}
-		for (i, _) in fields.iter().enumerate() {
-			builders[i].push_value(shape.get_value(encoded, i));
-		}
-	}
-
-	let columns_vec: Vec<(FieldRef, ArrayRef)> =
-		fields.iter().zip(builders).map(|(field, data)| data.finish(&field.name)).collect();
-
-	let mut out = batch(columns_vec)?;
-	if !row_numbers.is_empty() {
-		let array: ArrayRef = Arc::new(UInt64Array::from_iter_values(row_numbers.iter().map(|rn| rn.0)));
-		out = with_system_column(out, SystemColumn::RowNumbers, array)?;
-	}
-	for (column, values) in [
-		(SystemColumn::CreatedAt, created_at),
-		(SystemColumn::UpdatedAt, updated_at),
-		(SystemColumn::Time, time),
-	] {
-		if !values.is_empty() {
-			out = with_system_column(out, column, factory::datetime(column.name(), values).1)?;
-		}
-	}
-	Ok(out)
+	let (ids, encoded): (Vec<RowNumber>, Vec<EncodedBytes>) = rows.iter().cloned().unzip();
+	from_encoded_bytes(shape, &ids, &encoded)
 }
 
 pub(crate) fn with_series_stamps(
 	columns: Vec<(FieldRef, ArrayRef)>,
-	row_number: RowNumber,
-	encoded: &EncodedBytes,
+	row_numbers: &[RowNumber],
+	encoded: &[EncodedBytes],
 ) -> Result<RecordBatch> {
-	let row = EncodedSeriesRow::view(encoded);
-	let rn: ArrayRef = Arc::new(UInt64Array::from_iter_values([row_number.0]));
-	let out = with_system_column(batch(columns)?, SystemColumn::RowNumbers, rn)?;
-	let out = with_system_column(
-		out,
-		SystemColumn::CreatedAt,
-		factory::datetime(SystemColumn::CreatedAt.name(), [row.created_at()]).1,
-	)?;
-	let out = with_system_column(
-		out,
-		SystemColumn::UpdatedAt,
-		factory::datetime(SystemColumn::UpdatedAt.name(), [row.updated_at()]).1,
-	)?;
-	match row.time() {
-		Some(time) => with_system_column(
-			out,
-			SystemColumn::Time,
-			factory::datetime(SystemColumn::Time.name(), [time]).1,
+	let rows: Vec<&EncodedSeriesRow> = encoded.iter().map(EncodedSeriesRow::view).collect();
+	let rn: ArrayRef = Arc::new(UInt64Array::from_iter_values(row_numbers.iter().map(|row_number| row_number.0)));
+	let mut stamps: Vec<(SystemColumn, ArrayRef)> = vec![
+		(SystemColumn::RowNumbers, rn),
+		(
+			SystemColumn::CreatedAt,
+			factory::datetime(SystemColumn::CreatedAt.name(), rows.iter().map(|row| row.created_at())).1,
 		),
-		None => Ok(out),
+		(
+			SystemColumn::UpdatedAt,
+			factory::datetime(SystemColumn::UpdatedAt.name(), rows.iter().map(|row| row.updated_at())).1,
+		),
+	];
+	let times: Vec<DateTime> = rows.iter().filter_map(|row| row.time()).collect();
+	match times.len() {
+		0 => {}
+		stamped if stamped == rows.len() => {
+			stamps.push((SystemColumn::Time, factory::datetime(SystemColumn::Time.name(), times).1));
+		}
+		stamped => {
+			return internal_err!(
+				"{} of {} series rows carry a {} stamp",
+				stamped,
+				rows.len(),
+				SystemColumn::Time
+			);
+		}
 	}
+	stamp_system_columns(batch(columns)?, stamps)
 }
 
 pub(crate) fn with_pre_image(post: RecordBatch, pre: &RecordBatch) -> Result<RecordBatch> {
@@ -115,16 +87,12 @@ pub(crate) fn with_pre_image(post: RecordBatch, pre: &RecordBatch) -> Result<Rec
 	for (field, array) in user_columns(pre) {
 		merged.push(factory::rename((field.clone(), array.clone()), &format!("pre_{}", field.name())));
 	}
-	let mut out = batch(merged)?;
-	for column in SystemColumn::ALL {
-		if column == SystemColumn::CommitVersion {
-			continue;
-		}
-		if let Some(array) = system_column(&post, column) {
-			out = with_system_column(out, column, array.clone())?;
-		}
-	}
-	Ok(out)
+	let stamps: Vec<(SystemColumn, ArrayRef)> = SystemColumn::ALL
+		.into_iter()
+		.filter(|column| *column != SystemColumn::CommitVersion)
+		.filter_map(|column| system_column(&post, column).map(|array| (column, array.clone())))
+		.collect();
+	stamp_system_columns(batch(merged)?, stamps)
 }
 
 pub(crate) fn with_absent_pre_image(post: RecordBatch) -> Result<RecordBatch> {
@@ -144,11 +112,14 @@ pub(crate) fn decode_returning_dictionaries(
 	object_columns: &[Column],
 	columns: RecordBatch,
 ) -> Result<RecordBatch> {
-	let mut dictionaries: Vec<Option<Dictionary>> = Vec::with_capacity(columns.num_columns());
+	let mut dictionaries: Vec<Option<(Dictionary, ValueType)>> = Vec::with_capacity(columns.num_columns());
 	for (field, _) in user_columns(&columns) {
-		let dict_id = object_columns.iter().find(|c| c.name == *field.name()).and_then(|c| c.dictionary_id);
-		match dict_id {
-			Some(id) => dictionaries.push(services.catalog.find_dictionary(txn, id)?),
+		let column = object_columns.iter().find(|c| c.name == *field.name());
+		match column.and_then(|c| c.dictionary_id.map(|id| (id, c.constraint.get_type()))) {
+			Some((id, declared)) => dictionaries.push(services
+				.catalog
+				.find_dictionary(txn, id)?
+				.map(|dictionary| (dictionary, declared))),
 			None => dictionaries.push(None),
 		}
 	}

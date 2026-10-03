@@ -1,22 +1,24 @@
 use alloc::vec::Vec;
 
+use crate::elf;
+use crate::endian::U32;
+use crate::write::elf::encoder::*;
 use crate::write::elf::writer::*;
 use crate::write::string::StringId;
 use crate::write::*;
-use crate::{elf, pod};
 
 #[derive(Clone, Copy)]
 struct ComdatOffsets {
-    offset: usize,
+    offset: u64,
     str_id: StringId,
 }
 
 #[derive(Clone, Copy)]
 struct SectionOffsets {
     index: SectionIndex,
-    offset: usize,
+    offset: u64,
     str_id: StringId,
-    reloc_offset: usize,
+    reloc_offset: u64,
     reloc_str_id: Option<StringId>,
 }
 
@@ -31,30 +33,34 @@ impl<'a> Object<'a> {
     /// Add a property with a u32 value to the ELF ".note.gnu.property" section.
     ///
     /// Requires `feature = "elf"`.
-    pub fn add_elf_gnu_property_u32(&mut self, property: u32, value: u32) {
+    pub fn add_elf_gnu_property_u32(&mut self, property: elf::GnuPropertyType, value: u32) {
         if self.format != BinaryFormat::Elf {
             return;
         }
 
-        let align = if self.elf_is_64() { 8 } else { 4 };
+        let address_size = if self.elf_is_64() { 8 } else { 4 };
         let mut data = Vec::with_capacity(32);
         let n_name = b"GNU\0";
-        data.extend_from_slice(pod::bytes_of(&elf::NoteHeader32 {
+        let header = &elf::NoteHeader32 {
             n_namesz: U32::new(self.endian, n_name.len() as u32),
-            n_descsz: U32::new(self.endian, util::align(3 * 4, align) as u32),
+            n_descsz: U32::new(self.endian, align_u32(3 * 4, address_size)),
             n_type: U32::new(self.endian, elf::NT_GNU_PROPERTY_TYPE_0),
-        }));
+        };
+        data.write_pod(header);
         data.extend_from_slice(n_name);
         // This happens to already be aligned correctly.
-        debug_assert_eq!(util::align(data.len(), align), data.len());
-        data.extend_from_slice(pod::bytes_of(&U32::new(self.endian, property)));
+        debug_assert_eq!(
+            align(data.len() as u64, address_size.into()),
+            data.len() as u64
+        );
+        data.write_u32(self.endian, property);
         // Value size
-        data.extend_from_slice(pod::bytes_of(&U32::new(self.endian, 4)));
-        data.extend_from_slice(pod::bytes_of(&U32::new(self.endian, value)));
-        util::write_align(&mut data, align);
+        data.write_u32(self.endian, 4u32);
+        data.write_u32(self.endian, value);
+        data.resize(align(data.len() as u64, address_size.into()) as usize, 0);
 
         let section = self.section_id(StandardSection::GnuProperty);
-        self.append_section_data(section, &data, align as u64);
+        self.append_section_data(section, &data, address_size.into());
     }
 }
 
@@ -96,31 +102,29 @@ impl<'a> Object<'a> {
                 // Unsupported section.
                 (&[], &[], SectionKind::TlsVariables, SectionFlags::None)
             }
-            StandardSection::Common => {
-                // Unsupported section.
-                (&[], &[], SectionKind::Common, SectionFlags::None)
-            }
             StandardSection::GnuProperty => (
                 &[],
                 &b".note.gnu.property"[..],
                 SectionKind::Note,
                 SectionFlags::Elf {
-                    sh_flags: u64::from(elf::SHF_ALLOC),
+                    sh_type: elf::SHT_NOTE,
+                    sh_flags: elf::SHF_ALLOC,
                 },
             ),
             StandardSection::EhFrame => (
                 &[],
                 &b".eh_frame"[..],
-                if matches!(
-                    self.architecture(),
-                    Architecture::X86_64 | Architecture::X86_64_X32
-                ) {
-                    SectionKind::Elf(elf::SHT_X86_64_UNWIND)
-                } else {
-                    SectionKind::ReadOnlyData
-                },
+                SectionKind::ReadOnlyData,
                 SectionFlags::Elf {
-                    sh_flags: u64::from(elf::SHF_ALLOC),
+                    sh_type: if matches!(
+                        self.architecture(),
+                        Architecture::X86_64 | Architecture::X86_64_X32
+                    ) {
+                        elf::SHT_X86_64_UNWIND
+                    } else {
+                        elf::SHT_PROGBITS
+                    },
+                    sh_flags: elf::SHF_ALLOC,
                 },
             ),
         }
@@ -136,6 +140,15 @@ impl<'a> Object<'a> {
     }
 
     pub(crate) fn elf_section_flags(&self, section: &Section<'_>) -> SectionFlags {
+        let sh_type = match section.kind {
+            SectionKind::Unknown | SectionKind::TlsVariables => {
+                // Unsupported sections.
+                return SectionFlags::None;
+            }
+            SectionKind::UninitializedData | SectionKind::UninitializedTls => elf::SHT_NOBITS,
+            SectionKind::Note => elf::SHT_NOTE,
+            _ => elf::SHT_PROGBITS,
+        };
         let sh_flags = match section.kind {
             SectionKind::Text => elf::SHF_ALLOC | elf::SHF_EXECINSTR,
             SectionKind::Data | SectionKind::ReadOnlyDataWithRel => elf::SHF_ALLOC | elf::SHF_WRITE,
@@ -147,18 +160,9 @@ impl<'a> Object<'a> {
             SectionKind::OtherString | SectionKind::DebugString => {
                 elf::SHF_STRINGS | elf::SHF_MERGE
             }
-            SectionKind::Other
-            | SectionKind::Debug
-            | SectionKind::Metadata
-            | SectionKind::Linker
-            | SectionKind::Note
-            | SectionKind::Elf(_) => 0,
-            SectionKind::Unknown | SectionKind::Common | SectionKind::TlsVariables => {
-                return SectionFlags::None;
-            }
-        }
-        .into();
-        SectionFlags::Elf { sh_flags }
+            _ => elf::SectionFlags(0),
+        };
+        SectionFlags::Elf { sh_type, sh_flags }
     }
 
     pub(crate) fn elf_symbol_flags(&self, symbol: &Symbol) -> SymbolFlags<SectionId, SymbolId> {
@@ -200,13 +204,16 @@ impl<'a> Object<'a> {
         } else {
             elf::STB_GLOBAL
         };
-        let st_info = (st_bind << 4) + st_type;
-        let st_other = if symbol.scope == SymbolScope::Linkage {
+        let st_info = st_bind | st_type;
+        let vis = if symbol.scope == SymbolScope::Linkage {
             elf::STV_HIDDEN
         } else {
             elf::STV_DEFAULT
         };
-        SymbolFlags::Elf { st_info, st_other }
+        SymbolFlags::Elf {
+            st_info,
+            st_other: vis.into(),
+        }
     }
 
     fn elf_has_relocation_addend(&self) -> Result<bool> {
@@ -225,6 +232,7 @@ impl<'a> Object<'a> {
             Architecture::X86_64_X32 => true,
             Architecture::Hppa => false,
             Architecture::Hexagon => true,
+            Architecture::Ia64 => true,
             Architecture::LoongArch32 => true,
             Architecture::LoongArch64 => true,
             Architecture::M68k => true,
@@ -257,6 +265,7 @@ impl<'a> Object<'a> {
         &mut self,
         reloc: &mut RelocationInternal,
     ) -> Result<()> {
+        use Endianness as N;
         use RelocationEncoding as E;
         use RelocationKind as K;
 
@@ -322,6 +331,18 @@ impl<'a> Object<'a> {
                 (K::None, _, 0) => elf::R_CKCORE_NONE,
                 (K::Absolute, _, 32) => elf::R_CKCORE_ADDR32,
                 (K::Relative, E::Generic, 32) => elf::R_CKCORE_PCREL32,
+                _ => return unsupported_reloc(),
+            },
+            Architecture::Ia64 => match (kind, encoding, size, self.endian) {
+                (K::None, E::Generic, 0, _) => elf::R_IA64_NONE,
+                (K::Absolute, E::Generic, 32, N::Little) => elf::R_IA64_DIR32LSB,
+                (K::Absolute, E::Generic, 32, N::Big) => elf::R_IA64_DIR32MSB,
+                (K::Absolute, E::Generic, 64, N::Little) => elf::R_IA64_DIR64LSB,
+                (K::Absolute, E::Generic, 64, N::Big) => elf::R_IA64_DIR64MSB,
+                (K::Relative, E::Generic, 32, N::Little) => elf::R_IA64_PCREL32LSB,
+                (K::Relative, E::Generic, 32, N::Big) => elf::R_IA64_PCREL32MSB,
+                (K::Relative, E::Generic, 64, N::Little) => elf::R_IA64_PCREL64LSB,
+                (K::Relative, E::Generic, 64, N::Big) => elf::R_IA64_PCREL64MSB,
                 _ => return unsupported_reloc(),
             },
             Architecture::I386 => match (kind, size) {
@@ -632,7 +653,7 @@ impl<'a> Object<'a> {
         let mut section_offsets = Vec::with_capacity(self.sections.len());
         for (section, reloc_name) in self.sections.iter().zip(reloc_names.iter()) {
             let index = writer.reserve_section_index();
-            let offset = writer.reserve(section.data.len(), section.align as usize);
+            let offset = writer.reserve(section.data.len() as u64, section.align);
             let str_id = writer.add_section_name(&section.name);
             let mut reloc_str_id = None;
             if !section.relocations.is_empty() {
@@ -680,7 +701,7 @@ impl<'a> Object<'a> {
         }
         writer.reserve_symtab_shndx();
         writer.reserve_strtab_section_index();
-        writer.reserve_strtab();
+        writer.reserve_strtab()?;
 
         // Calculate size of relocations.
         for (index, section) in self.sections.iter().enumerate() {
@@ -692,7 +713,7 @@ impl<'a> Object<'a> {
 
         // Calculate size of section headers.
         writer.reserve_shstrtab_section_index();
-        writer.reserve_shstrtab();
+        writer.reserve_shstrtab()?;
         writer.reserve_section_headers();
 
         // Start writing.
@@ -712,6 +733,7 @@ impl<'a> Object<'a> {
             (Architecture::X86_64_X32, None) => elf::EM_X86_64,
             (Architecture::Hppa, None) => elf::EM_PARISC,
             (Architecture::Hexagon, None) => elf::EM_HEXAGON,
+            (Architecture::Ia64, None) => elf::EM_IA_64,
             (Architecture::LoongArch32, None) => elf::EM_LOONGARCH,
             (Architecture::LoongArch64, None) => elf::EM_LOONGARCH,
             (Architecture::M68k, None) => elf::EM_68K,
@@ -746,11 +768,15 @@ impl<'a> Object<'a> {
         {
             (os_abi, abi_version, e_flags)
         } else {
-            (elf::ELFOSABI_NONE, 0, 0)
+            (elf::ELFOSABI_NONE, 0, elf::FileFlags(0))
         };
 
         if self.architecture == Architecture::Mips64_N32 {
             e_flags |= elf::EF_MIPS_ABI2;
+        }
+
+        if self.architecture == Architecture::Ia64 {
+            e_flags |= elf::EF_IA_64_ABI64;
         }
 
         writer.write_file_header(&FileHeader {
@@ -770,8 +796,8 @@ impl<'a> Object<'a> {
             }
         }
         for (index, section) in self.sections.iter().enumerate() {
-            writer.write_align(section.align as usize);
-            debug_assert_eq!(section_offsets[index].offset, writer.len());
+            writer.write_align(section.align);
+            debug_assert_eq!(section_offsets[index].offset, writer.offset());
             writer.write(&section.data);
         }
 
@@ -793,10 +819,12 @@ impl<'a> Object<'a> {
                 SymbolSection::Undefined => (elf::SHN_UNDEF, None),
                 SymbolSection::Absolute => (elf::SHN_ABS, None),
                 SymbolSection::Common => (elf::SHN_COMMON, None),
-                SymbolSection::Section(id) => (0, Some(section_offsets[id.0].index)),
+                SymbolSection::Section(id) => {
+                    (elf::SymbolSection(0), Some(section_offsets[id.0].index.0))
+                }
             };
             writer.write_symbol(&Sym {
-                name: symbol_offsets[index].str_id,
+                st_name: writer.string_offset(symbol_offsets[index].str_id),
                 section,
                 st_info,
                 st_other,
@@ -823,7 +851,7 @@ impl<'a> Object<'a> {
         for (index, section) in self.sections.iter().enumerate() {
             if !section.relocations.is_empty() {
                 writer.write_align_relocation();
-                debug_assert_eq!(section_offsets[index].reloc_offset, writer.len());
+                debug_assert_eq!(section_offsets[index].reloc_offset, writer.offset());
                 for reloc in &section.relocations {
                     let r_type = if let RelocationFlags::Elf { r_type } = reloc.flags {
                         r_type
@@ -860,13 +888,7 @@ impl<'a> Object<'a> {
             );
         }
         for (index, section) in self.sections.iter().enumerate() {
-            let sh_type = match section.kind {
-                SectionKind::UninitializedData | SectionKind::UninitializedTls => elf::SHT_NOBITS,
-                SectionKind::Note => elf::SHT_NOTE,
-                SectionKind::Elf(sh_type) => sh_type,
-                _ => elf::SHT_PROGBITS,
-            };
-            let SectionFlags::Elf { sh_flags } = self.section_flags(section) else {
+            let SectionFlags::Elf { sh_type, sh_flags } = self.section_flags(section) else {
                 return Err(Error(format!(
                     "unimplemented section `{}` kind {:?}",
                     section.name().unwrap_or(""),
@@ -879,11 +901,11 @@ impl<'a> Object<'a> {
                 _ => 0,
             };
             writer.write_section_header(&SectionHeader {
-                name: Some(section_offsets[index].str_id),
+                sh_name: writer.section_name_offset(Some(section_offsets[index].str_id)),
                 sh_type,
                 sh_flags,
                 sh_addr: 0,
-                sh_offset: section_offsets[index].offset as u64,
+                sh_offset: section_offsets[index].offset,
                 sh_size: section.size,
                 sh_link: 0,
                 sh_info: 0,

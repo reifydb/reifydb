@@ -44,10 +44,7 @@ use reifydb_extension::procedure::extern_c::loader::register_procedures_from_dir
 #[cfg(feature = "wasm")]
 use reifydb_extension::procedure::extern_wasm::loader::register_extern_wasm_procedures_from_dir;
 use reifydb_extension::transform::registry::{Transforms, TransformsConfigurator};
-use reifydb_routine::{
-	function::default_in_process_functions, monoid::default_in_process_monoids,
-	procedure::default_in_process_procedures,
-};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_rql::RqlVersion;
 use reifydb_runtime::{Runtime, context::RuntimeContext, version_epoch::VersionEpoch};
@@ -448,7 +445,6 @@ impl DatabaseBuilder {
 			let mut routines_builder = Routines::builder();
 			routines_builder = default_in_process_functions(routines_builder);
 			routines_builder = default_in_process_procedures(routines_builder);
-			routines_builder = default_in_process_monoids(routines_builder);
 
 			#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 			if let Some(dir) = &self.procedure_dir {

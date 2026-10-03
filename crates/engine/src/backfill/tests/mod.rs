@@ -20,9 +20,8 @@ use reifydb_core::{
 use reifydb_flow::backfill::testing::{InstalledScanHooks, ScanHooks};
 use reifydb_flow::{
 	backfill::Scan,
-	operator::sink::{encode_row_at_index, shape_field_columns},
+	operator::sink::{SourceRowEncoder, shape_field_columns},
 };
-use reifydb_runtime::context::clock::{Clock, MockClock};
 #[cfg(feature = "testing")]
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_test_harness::engine::create_test_admin_transaction;
@@ -105,7 +104,6 @@ impl Db {
 			self.event_bus.clone(),
 			self.interceptors(),
 			IdentityId::system(),
-			Clock::Mock(MockClock::from_millis(1000)),
 		)
 		.unwrap();
 		txn.set_dictionary_allocators(self.allocators.clone());
@@ -119,7 +117,6 @@ impl Db {
 			self.event_bus.clone(),
 			self.interceptors(),
 			IdentityId::system(),
-			Clock::Mock(MockClock::from_millis(1000)),
 		)
 		.unwrap()
 	}
@@ -207,8 +204,8 @@ impl Db {
 		let mut kept = BTreeSet::new();
 		for batch in &current {
 			let fields = shape_field_columns(batch, &shape);
-			for (index, &number) in require_row_numbers(batch).unwrap().iter().enumerate() {
-				let (_, bytes) = encode_row_at_index(batch, index, &shape, number, &fields).unwrap();
+			let encoded = SourceRowEncoder::new(batch, &shape, &fields).unwrap().encode_all().unwrap();
+			for (&number, bytes) in require_row_numbers(batch).unwrap().iter().zip(encoded) {
 				txn.set(&RowKey::new(storage, number), bytes).unwrap();
 				kept.insert(number);
 			}

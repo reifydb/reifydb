@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0 OR MIT
+//
 // Copyright 2023 The Fuchsia Authors
 //
 // Licensed under a BSD-style license <LICENSE-BSD>, Apache License, Version 2.0
@@ -21,7 +23,7 @@ use core::{
 
 use super::*;
 use crate::pointer::{
-    invariant::{Exclusive, Shared, Valid},
+    invariant::{Exclusive, Safe, Shared},
     SizeEq, TransmuteFromPtr,
 };
 
@@ -148,6 +150,8 @@ pub(crate) fn validate_aligned_to<T: AsAddress, U>(t: T) -> Result<(), Alignment
     // Ensures that we add the minimum required padding.
     kani::ensures(|&p| p < align.get()),
 )]
+#[cfg_attr(not(zerocopy_inline_always), inline)]
+#[cfg_attr(zerocopy_inline_always, inline(always))]
 pub(crate) const fn padding_needed_for(len: usize, align: NonZeroUsize) -> usize {
     #[cfg(kani)]
     #[kani::proof_for_contract(padding_needed_for)]
@@ -249,6 +253,8 @@ pub(crate) const fn round_down_to_next_multiple_of_alignment(
     n & mask
 }
 
+#[cfg_attr(not(zerocopy_inline_always), inline)]
+#[cfg_attr(zerocopy_inline_always, inline(always))]
 pub(crate) const fn max(a: NonZeroUsize, b: NonZeroUsize) -> NonZeroUsize {
     if a.get() < b.get() {
         b
@@ -257,6 +263,8 @@ pub(crate) const fn max(a: NonZeroUsize, b: NonZeroUsize) -> NonZeroUsize {
     }
 }
 
+#[cfg_attr(not(zerocopy_inline_always), inline)]
+#[cfg_attr(zerocopy_inline_always, inline(always))]
 pub(crate) const fn min(a: NonZeroUsize, b: NonZeroUsize) -> NonZeroUsize {
     if a.get() > b.get() {
         b
@@ -332,7 +340,7 @@ pub(crate) unsafe fn transmute_ref<Src, Dst, R>(src: &Src) -> &Dst
 where
     Src: ?Sized,
     Dst: SizeEq<Src>
-        + TransmuteFromPtr<Src, Shared, Valid, Valid, <Dst as SizeEq<Src>>::CastFrom, R>
+        + TransmuteFromPtr<Src, Shared, Safe, Safe, <Dst as SizeEq<Src>>::CastFrom, R>
         + ?Sized,
 {
     let dst = Ptr::from_ref(src).transmute();
@@ -349,7 +357,7 @@ pub(crate) unsafe fn transmute_mut<Src, Dst, R>(src: &mut Src) -> &mut Dst
 where
     Src: ?Sized,
     Dst: SizeEq<Src>
-        + TransmuteFromPtr<Src, Exclusive, Valid, Valid, <Dst as SizeEq<Src>>::CastFrom, R>
+        + TransmuteFromPtr<Src, Exclusive, Safe, Safe, <Dst as SizeEq<Src>>::CastFrom, R>
         + ?Sized,
 {
     let dst = Ptr::from_mut(src).transmute();

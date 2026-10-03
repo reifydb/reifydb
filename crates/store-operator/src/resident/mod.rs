@@ -169,7 +169,7 @@ pub(crate) type PersistInterlock = Box<dyn Fn() + Send + Sync>;
 pub struct Shared {
 	slots: DashMap<OperatorId, Arc<Slot>>,
 	global: Mutex<GlobalInner>,
-	drop_epoch: AtomicU64,
+	drops_outstanding: AtomicBool,
 	write_seq: AtomicU64,
 	idle: Condvar,
 	drain: Mutex<()>,
@@ -204,7 +204,7 @@ impl Shared {
 		Self {
 			slots: DashMap::new(),
 			global: Mutex::new(GlobalInner::default()),
-			drop_epoch: AtomicU64::new(0),
+			drops_outstanding: AtomicBool::new(false),
 			write_seq: AtomicU64::new(0),
 			idle: Condvar::new(),
 			drain: Mutex::new(()),
@@ -340,10 +340,15 @@ impl Shared {
 	}
 
 	pub(crate) fn dropped(&self, predicate: impl Fn(&DropMarker) -> bool) -> bool {
-		if self.drop_epoch.load(Ordering::Acquire) == 0 {
+		if !self.drops_outstanding.load(Ordering::Acquire) {
 			return false;
 		}
 		self.global.lock().any_drop(predicate)
+	}
+
+	fn publish_drops(&self, global: &GlobalInner) {
+		let outstanding = !global.drops.is_empty() || !global.in_flight_drops.is_empty();
+		self.drops_outstanding.store(outstanding, Ordering::Release);
 	}
 }
 
@@ -585,7 +590,7 @@ impl Resident {
 		{
 			let mut global = self.shared.global.lock();
 			global.drops.push(marker);
-			self.shared.drop_epoch.fetch_add(1, Ordering::Release);
+			self.shared.publish_drops(&global);
 		}
 		let Some(slot) = self.shared.slot(operator) else {
 			return;
@@ -720,7 +725,10 @@ impl Resident {
 	pub fn complete_flush(&self) {
 		let batch = {
 			let global = self.shared.global.lock();
-			if global.in_flight_operators.is_empty() && global.in_flight_checkpoints.is_empty() {
+			if global.in_flight_operators.is_empty()
+				&& global.in_flight_checkpoints.is_empty()
+				&& global.in_flight_drops.is_empty()
+			{
 				return;
 			}
 			self.rebuild_in_flight(&global)
@@ -925,6 +933,7 @@ impl Resident {
 		batch.drops = mem::take(&mut global.drops);
 		global.in_flight_checkpoints = batch.checkpoints.clone();
 		global.in_flight_drops = batch.drops.clone();
+		self.shared.publish_drops(&global);
 		global.in_flight_operators = touched;
 		global.flushing = true;
 		Some(Arc::new(batch))
@@ -963,8 +972,13 @@ impl Resident {
 		self.shared.charge_dirty(rearmed);
 		self.shared.charge_dirty_bytes(rearmed_bytes);
 		global.in_flight_operators.clear();
-		global.in_flight_checkpoints.clear();
-		global.in_flight_drops.clear();
+		for (flow, entry) in mem::take(&mut global.in_flight_checkpoints) {
+			global.checkpoints.entry(flow).or_insert(entry);
+		}
+		let mut drops = mem::take(&mut global.in_flight_drops);
+		drops.append(&mut global.drops);
+		global.drops = drops;
+		self.shared.publish_drops(global);
 	}
 
 	fn device_absent(&self) -> bool {
@@ -1008,6 +1022,7 @@ impl Resident {
 			global.in_flight_operators.clear();
 			global.in_flight_checkpoints.clear();
 			global.in_flight_drops.clear();
+			self.shared.publish_drops(&global);
 		}
 		self.shared.triggered.store(false, Ordering::Release);
 

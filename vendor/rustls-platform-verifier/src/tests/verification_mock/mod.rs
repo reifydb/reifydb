@@ -21,6 +21,7 @@
     not(target_os = "visionos")
 ))]
 
+use core::time::Duration;
 use std::convert::TryFrom;
 use std::net::IpAddr;
 #[cfg(not(any(target_vendor = "apple", windows)))]
@@ -34,7 +35,7 @@ use rustls::pki_types::{DnsName, ServerName};
 use rustls::{CertificateError, Error as TlsError, OtherError};
 
 use super::TestCase;
-use crate::tests::{assert_cert_error_eq, test_provider, verification_time};
+use crate::tests::{assert_cert_error_eq, test_provider};
 use crate::verification::{EkuError, Verifier};
 
 macro_rules! mock_root_test_cases {
@@ -146,6 +147,16 @@ fn test_verification_without_mock_root() {
 mock_root_test_cases! {
     valid_no_stapling_dns [ any(windows, unix) ] => TestCase {
         reference_id: EXAMPLE_COM,
+        chain: &[ROOT1_INT1_EXAMPLE_COM_GOOD, ROOT1_INT1],
+        stapled_ocsp: None,
+        verification_time: verification_time(),
+        expected_result: Ok(()),
+        other_error: no_error!(),
+    },
+    valid_no_stapling_dns_trailing_label [ any(windows, unix) ] => TestCase {
+        // XXX: `pki_types` validates that the label is still valid and that cases such as two `.` characters
+        // are still correctly rejected.
+        reference_id: "example.com.",
         chain: &[ROOT1_INT1_EXAMPLE_COM_GOOD, ROOT1_INT1],
         stapled_ocsp: None,
         verification_time: verification_time(),
@@ -388,4 +399,14 @@ enum Roots {
     /// Right now, not all platforms are supported.
     #[cfg(not(target_os = "android"))]
     ExtraAndPlatform,
+}
+
+/// Return a fixed [`pki_types::UnixTime`] for certificate validation purposes.
+///
+/// We fix the "now" value used for certificate validation to a fixed point in time at which
+/// we know the test certificates are valid. This must be updated if the mock certificates
+/// are regenerated.
+pub(crate) fn verification_time() -> pki_types::UnixTime {
+    // Wed, Sep 9 2026 11:52 UTC
+    pki_types::UnixTime::since_unix_epoch(Duration::from_secs(1_788_954_730))
 }

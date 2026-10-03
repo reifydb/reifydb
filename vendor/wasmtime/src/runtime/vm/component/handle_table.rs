@@ -1,6 +1,6 @@
 use super::{TypedResource, TypedResourceIndex};
+use crate::prelude::TryVec;
 use crate::{Result, bail};
-use alloc::vec::Vec;
 use core::mem;
 use wasmtime_environ::component::{TypeFutureTableIndex, TypeStreamTableIndex};
 
@@ -114,14 +114,14 @@ enum Slot {
 
 pub struct HandleTable {
     next: u32,
-    slots: Vec<Slot>,
+    slots: TryVec<Slot>,
 }
 
 impl Default for HandleTable {
     fn default() -> Self {
         Self {
             next: 0,
-            slots: Vec::new(),
+            slots: TryVec::new(),
         }
     }
 }
@@ -135,27 +135,30 @@ impl HandleTable {
     }
 
     fn insert(&mut self, slot: Slot) -> Result<u32> {
-        let next = self.next as usize;
-        if next == self.slots.len() {
-            self.slots.push(Slot::Free {
-                next: self.next.checked_add(1).unwrap(),
-            });
-        }
-        let ret = self.next;
-        self.next = match mem::replace(&mut self.slots[next], slot) {
-            Slot::Free { next } => next,
-            _ => unreachable!(),
-        };
+        let next = self.next;
+
         // The component model reserves index 0 as never allocatable so add one
         // to the table index to start the numbering at 1 instead. Also note
         // that the component model places an upper-limit per-table on the
         // maximum allowed index.
-        let ret = ret + 1;
-        if ret >= MAX_HANDLE {
+        //
+        // First check to make sure the returned handle is in-bounds, then do
+        // the actual allocation below.
+        if next + 1 >= MAX_HANDLE {
             bail!("cannot allocate another handle: index overflow");
         }
 
-        Ok(ret)
+        if next as usize == self.slots.len() {
+            self.slots.push(Slot::Free {
+                next: next.checked_add(1).unwrap(),
+            })?;
+        }
+        self.next = match mem::replace(&mut self.slots[next as usize], slot) {
+            Slot::Free { next } => next,
+            _ => unreachable!(),
+        };
+
+        Ok(next + 1)
     }
 
     fn remove(&mut self, idx: u32) -> Result<()> {
@@ -455,25 +458,27 @@ impl HandleTable {
         Ok(ret)
     }
 
-    /// Removes the writable future handle from `idx`, returning its `rep`.
+    /// Removes the writable future handle from `idx`, returning its `rep` along
+    /// with whether the writer is "done" (i.e. it either successfully wrote a
+    /// value or was notified that the readable end was dropped).
     pub fn future_remove_writable(
         &mut self,
         expected_ty: TypeFutureTableIndex,
         idx: u32,
-    ) -> Result<u32> {
+    ) -> Result<(u32, bool)> {
         let ret = match self.get_mut(idx)? {
             Slot::Future { rep, ty, state } => {
                 if *ty != expected_ty {
                     bail!("handle is a future of a different type");
                 }
-                match state {
-                    TransmitLocalState::Write { .. } => {}
+                let is_done = match state {
+                    TransmitLocalState::Write { done } => *done,
                     TransmitLocalState::Read { .. } => {
                         bail!("passed read end to `future.drop-writable`")
                     }
                     TransmitLocalState::Busy => bail!("cannot drop busy future"),
-                }
-                *rep
+                };
+                (*rep, is_done)
             }
             _ => bail!("handle is not a future"),
         };

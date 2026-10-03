@@ -4,14 +4,14 @@
 
 #![allow(clippy::match_same_arms)] // https://github.com/rust-lang/rust-clippy/issues/12044
 
-#[path = "version.rs"]
-mod version;
-use self::version::{Version, rustc_version};
-
 #[path = "src/gen/build.rs"]
 mod generated;
+#[path = "version.rs"]
+mod version;
 
 use std::{env, str};
+
+use self::version::{Version, rustc_version};
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
@@ -56,7 +56,7 @@ fn main() {
         // Custom cfgs set by build script. Not public API.
         // grep -F 'cargo:rustc-cfg=' build.rs | grep -Ev '^ *//' | sed -E 's/^.*cargo:rustc-cfg=//; s/(=\\)?".*$//' | LC_ALL=C sort -u | tr '\n' ',' | sed -E 's/,$/\n/'
         println!(
-            "cargo:rustc-check-cfg=cfg(portable_atomic_atomic_intrinsics,portable_atomic_disable_fiq,portable_atomic_force_amo,portable_atomic_ll_sc_rmw,portable_atomic_no_asm,portable_atomic_no_asm_maybe_uninit,portable_atomic_no_atomic_64,portable_atomic_no_atomic_cas,portable_atomic_no_atomic_load_store,portable_atomic_no_atomic_min_max,portable_atomic_no_cfg_target_has_atomic,portable_atomic_no_cmpxchg16b_intrinsic,portable_atomic_no_cmpxchg16b_target_feature,portable_atomic_no_const_mut_refs,portable_atomic_no_const_raw_ptr_deref,portable_atomic_no_const_transmute,portable_atomic_no_core_unwind_safe,portable_atomic_no_diagnostic_namespace,portable_atomic_no_strict_provenance,portable_atomic_no_strict_provenance_atomic_ptr,portable_atomic_no_stronger_failure_ordering,portable_atomic_no_track_caller,portable_atomic_no_unsafe_op_in_unsafe_fn,portable_atomic_pre_llvm_15,portable_atomic_pre_llvm_16,portable_atomic_pre_llvm_18,portable_atomic_pre_llvm_20,portable_atomic_s_mode,portable_atomic_sanitize_thread,portable_atomic_target_feature,portable_atomic_unsafe_assume_privileged,portable_atomic_unsafe_assume_single_core,portable_atomic_unstable_asm,portable_atomic_unstable_asm_experimental_arch,portable_atomic_unstable_cfg_target_has_atomic,portable_atomic_unstable_isa_attribute)"
+            "cargo:rustc-check-cfg=cfg(portable_atomic_atomic_intrinsics,portable_atomic_disable_fiq,portable_atomic_force_amo,portable_atomic_ll_sc_rmw,portable_atomic_no_asm,portable_atomic_no_asm_maybe_uninit,portable_atomic_no_asm_syscall,portable_atomic_no_atomic_64,portable_atomic_no_atomic_cas,portable_atomic_no_atomic_load_store,portable_atomic_no_atomic_min_max,portable_atomic_no_cfg_target_has_atomic,portable_atomic_no_cmpxchg16b_intrinsic,portable_atomic_no_cmpxchg16b_target_feature,portable_atomic_no_const_mut_refs,portable_atomic_no_const_raw_ptr_deref,portable_atomic_no_const_transmute,portable_atomic_no_core_unwind_safe,portable_atomic_no_diagnostic_namespace,portable_atomic_no_strict_provenance,portable_atomic_no_strict_provenance_atomic_ptr,portable_atomic_no_stronger_failure_ordering,portable_atomic_no_track_caller,portable_atomic_no_unsafe_op_in_unsafe_fn,portable_atomic_pre_llvm_16,portable_atomic_pre_llvm_18,portable_atomic_pre_llvm_20,portable_atomic_s_mode,portable_atomic_sanitize_thread,portable_atomic_target_feature,portable_atomic_unsafe_assume_privileged,portable_atomic_unsafe_assume_single_core,portable_atomic_unstable_asm,portable_atomic_unstable_asm_experimental_arch,portable_atomic_unstable_cfg_target_has_atomic,portable_atomic_unstable_isa_attribute)"
         );
         // TODO: handle multi-line target_feature_fallback
         // grep -F 'target_feature_fallback("' build.rs | grep -Ev '^ *//' | sed -E 's/^.*target_feature_fallback\(//; s/",.*$/"/' | LC_ALL=C sort -u | tr '\n' ',' | sed -E 's/,$/\n/'
@@ -160,9 +160,11 @@ fn main() {
             // The part of this feature we use has not been changed since nightly-2020-06-21
             // until it was stabilized, so it can safely be enabled in nightly for that period.
             println!("cargo:rustc-cfg=portable_atomic_unstable_asm");
-            if (target_arch == "riscv32" || target_arch == "riscv64") && version.minor < 55 {
-                // Clobber-only registers used in riscv_linux.rs require Rust 1.55 (https://github.com/rust-lang/rust/pull/86416).
-                println!("cargo:rustc-cfg=portable_atomic_no_outline_atomics");
+            if (target_arch == "riscv32" || target_arch == "riscv64")
+                && !version.probe(56, 2021, 8, 15)
+            {
+                // Clobbering vector status needed for asm syscall require Rust 1.56 (nightly-2021-08-16): https://github.com/rust-lang/rust/pull/87581
+                println!("cargo:rustc-cfg=portable_atomic_no_asm_syscall");
             }
         }
         println!("cargo:rustc-cfg=portable_atomic_no_asm");
@@ -197,6 +199,18 @@ fn main() {
                         println!("cargo:rustc-cfg=portable_atomic_unstable_asm_experimental_arch");
                     } else {
                         println!("cargo:rustc-cfg=portable_atomic_no_asm");
+                    }
+                    if !version.probe(92, 2025, 9, 22)
+                        || env::var("CARGO_CFG_TARGET_ABI")
+                            .unwrap_or_default()
+                            .split(',')
+                            .any(|abi| abi == "spu")
+                    {
+                        // Clobbering ctr register needed for asm syscall require Rust 1.92 (nightly-2025-09-23): https://github.com/rust-lang/rust/pull/146831
+                        // Cell/B.E. Linux's SPU syscalls support a subset of powerpc64 syscalls with the exact semantics: https://github.com/torvalds/linux/blob/v7.1/arch/powerpc/platforms/cell/spu_callbacks.c#L17
+                        // but have a different syscall sequence: https://github.com/mirror/newlib-cygwin/blob/newlib-4.4.0/libgloss/spu/linux_syscalls.c#L37
+                        // This is currently used only for testing.
+                        println!("cargo:rustc-cfg=portable_atomic_no_asm_syscall");
                     }
                 }
             }
@@ -237,9 +251,6 @@ fn main() {
             println!("cargo:rustc-cfg=portable_atomic_pre_llvm_18");
             if version.llvm < 16 {
                 println!("cargo:rustc-cfg=portable_atomic_pre_llvm_16");
-                if version.llvm < 15 {
-                    println!("cargo:rustc-cfg=portable_atomic_pre_llvm_15");
-                }
             }
         }
     }
@@ -327,60 +338,62 @@ fn main() {
                 // #[cfg(target_feature = "v7")] and others don't work on stable.
                 // armv7-unknown-linux-gnueabihf
                 //    ^^
-                let mut subarch =
-                    strip_prefix(target, "arm").or_else(|| strip_prefix(target, "thumb")).unwrap();
-                subarch = strip_prefix(subarch, "eb").unwrap_or(subarch); // ignore endianness
-                subarch = subarch.split('-').next().unwrap(); // ignore vender/os/env
-                subarch = subarch.split('.').next().unwrap(); // ignore .base/.main suffix
-                let mut known = true;
-                // See https://github.com/taiki-e/atomic-maybe-uninit/blob/HEAD/build.rs for details
                 let mut mclass = false;
-                match subarch {
-                    "v7" | "v7a" | "v7neon" | "v7s" | "v7k" | "v8" | "v8a" | "v9" | "v9a" => {} // aclass
-                    "v7r" | "v8r" | "v9r" => {} // rclass
-                    "v6m" | "v7em" | "v7m" | "v8m" => mclass = true,
-                    // arm-linux-androideabi is v5te
-                    // https://github.com/rust-lang/rust/blob/1.84.0/compiler/rustc_target/src/spec/targets/arm_linux_androideabi.rs#L18
-                    _ if target == "arm-linux-androideabi" => subarch = "v5te",
-                    // armeb-unknown-linux-gnueabi is v8 & aclass
-                    // https://github.com/rust-lang/rust/blob/1.84.0/compiler/rustc_target/src/spec/targets/armeb_unknown_linux_gnueabi.rs#L18
-                    _ if target == "armeb-unknown-linux-gnueabi" => subarch = "v8",
-                    // Legacy Arm architectures (pre-v7 except v6m) don't have *class target feature.
-                    "" => subarch = "v6",
-                    "v4t" | "v5te" | "v6" | "v6k" => {}
-                    _ => {
-                        known = false;
-                        if env::var_os("PORTABLE_ATOMIC_DENY_WARNINGS").is_some() {
-                            panic!("unrecognized Arm subarch: {}", target)
+                let mut v6 = false;
+                let mut v7 = false;
+                if let Some(mut subarch) =
+                    strip_prefix(target, "arm").or_else(|| strip_prefix(target, "thumb"))
+                {
+                    subarch = strip_prefix(subarch, "eb").unwrap_or(subarch); // ignore endianness
+                    subarch = subarch.split('-').next().unwrap(); // ignore vender/os/env
+                    let mut i = subarch.splitn(2, '.');
+                    subarch = i.next().unwrap();
+                    let suffix = i.next().unwrap_or_default(); // .base/.main suffix
+                    let mut known = true;
+                    // See https://github.com/taiki-e/atomic-maybe-uninit/blob/HEAD/build.rs for details
+                    match subarch {
+                        "v7" | "v7a" | "v7neon" | "v7s" | "v7k" | "v8" | "v8a" | "v9" | "v9a" => {} // aclass
+                        "v7r" | "v8r" | "v9r" => {} // rclass
+                        "v6m" | "v7em" | "v7m" | "v8m" => mclass = true,
+                        // arm-linux-androideabi is v5te
+                        // https://github.com/rust-lang/rust/blob/1.84.0/compiler/rustc_target/src/spec/targets/arm_linux_androideabi.rs#L18
+                        _ if target == "arm-linux-androideabi" => subarch = "v5te",
+                        // armeb-unknown-linux-gnueabi is v8 & aclass
+                        // https://github.com/rust-lang/rust/blob/1.84.0/compiler/rustc_target/src/spec/targets/armeb_unknown_linux_gnueabi.rs#L18
+                        _ if target == "armeb-unknown-linux-gnueabi" => subarch = "v8",
+                        // Legacy Arm architectures (pre-v7 except v6m) don't have *class target feature.
+                        "" => subarch = "v6",
+                        "v4t" | "v5te" | "v6" | "v6k" => {}
+                        _ => {
+                            known = false;
+                            if env::var_os("PORTABLE_ATOMIC_DENY_WARNINGS").is_some() {
+                                panic!("unrecognized Arm subarch: {}", target)
+                            }
+                            println!(
+                                "cargo:warning={}: unrecognized Arm subarch: {}",
+                                env!("CARGO_PKG_NAME"),
+                                target
+                            );
                         }
-                        println!(
-                            "cargo:warning={}: unrecognized Arm subarch: {}",
-                            env!("CARGO_PKG_NAME"),
-                            target
-                        );
+                    }
+                    v6 = known && subarch.starts_with("v6");
+                    v7 = known && subarch.starts_with("v7");
+                    if known && (subarch.starts_with("v8") || subarch.starts_with("v9")) {
+                        // Armv8-M is not considered as v8 by LLVM.
+                        // https://github.com/rust-lang/stdarch/blob/a0c30f3e3c75adcd6ee7efc94014ebcead61c507/crates/core_arch/src/arm_shared/mod.rs
+                        if mclass {
+                            // Armv8-M Mainline is a superset of Armv7-M.
+                            // Armv8-M Baseline is a superset of Armv6-M.
+                            // That said, LLVM handles thumbv8m.main without v8m like v6m, not v7m: https://godbolt.org/z/Ph96v9zae
+                            // TODO: Armv9-M has not yet been released,
+                            // so it is not clear how it will be handled here.
+                            v6 = true;
+                            v7 = suffix == "main";
+                        } else {
+                            v7 = true;
+                        }
                     }
                 }
-                let mut v6 = known && subarch.starts_with("v6");
-                let mut v7 = known && subarch.starts_with("v7");
-                let (v8, v8m) = if known && (subarch.starts_with("v8") || subarch.starts_with("v9"))
-                {
-                    // Armv8-M is not considered as v8 by LLVM.
-                    // https://github.com/rust-lang/stdarch/blob/a0c30f3e3c75adcd6ee7efc94014ebcead61c507/crates/core_arch/src/arm_shared/mod.rs
-                    if mclass {
-                        // Armv8-M Mainline is a superset of Armv7-M.
-                        // Armv8-M Baseline is a superset of Armv6-M.
-                        // That said, LLVM handles thumbv8m.main without v8m like v6m, not v7m: https://godbolt.org/z/Ph96v9zae
-                        // TODO: Armv9-M has not yet been released,
-                        // so it is not clear how it will be handled here.
-                        (false, true)
-                    } else {
-                        (true, false)
-                    }
-                } else {
-                    (false, false)
-                };
-                v7 |= v8;
-                v6 |= v8m;
                 v6 |= target_feature_fallback("v7", v7);
                 target_feature_fallback("v6", v6);
                 target_feature_fallback("mclass", mclass);
@@ -491,22 +504,24 @@ fn main() {
             target_feature_fallback("distinct-ops", arch9_features);
         }
         "avr" => {
-            // target_feature "rmw" will be added in https://github.com/rust-lang/rust/pull/146900
-            // https://github.com/llvm/llvm-project/blob/llvmorg-22.1.0-rc1/llvm/lib/Target/AVR/AVRDevices.td
-            let mut xmegau = false; // FamilyXMEGAU
-            if let Some(cpu) = target_cpu() {
-                match &*cpu {
-                    "atxmega16a4u" | "atxmega16c4" | "atxmega32a4u" | "atxmega32c3"
-                    | "atxmega32c4" | "atxmega32e5" | "atxmega16e5" | "atxmega8e5"
-                    | "atxmega64a3u" | "atxmega64a4u" | "atxmega64b1" | "atxmega64b3"
-                    | "atxmega64c3" | "atxmega64a1u" | "atxmega128a3u" | "atxmega128b1"
-                    | "atxmega128b3" | "atxmega128c3" | "atxmega192a3u" | "atxmega192c3"
-                    | "atxmega256a3u" | "atxmega256a3bu" | "atxmega256c3" | "atxmega384c3"
-                    | "atxmega128a1u" | "atxmega128a4u" => xmegau = true,
-                    _ => {}
+            // target_feature "rmw" is unstable and available on rustc side since nightly-2026-02-08: https://github.com/rust-lang/rust/pull/146900
+            if !version.probe(95, 2026, 2, 7) || needs_target_feature_fallback(&version, None) {
+                // https://github.com/llvm/llvm-project/blob/llvmorg-22.1.0-rc1/llvm/lib/Target/AVR/AVRDevices.td
+                let mut xmegau = false; // FamilyXMEGAU
+                if let Some(cpu) = target_cpu() {
+                    match &*cpu {
+                        "atxmega16a4u" | "atxmega16c4" | "atxmega32a4u" | "atxmega32c3"
+                        | "atxmega32c4" | "atxmega32e5" | "atxmega16e5" | "atxmega8e5"
+                        | "atxmega64a3u" | "atxmega64a4u" | "atxmega64b1" | "atxmega64b3"
+                        | "atxmega64c3" | "atxmega64a1u" | "atxmega128a3u" | "atxmega128b1"
+                        | "atxmega128b3" | "atxmega128c3" | "atxmega192a3u" | "atxmega192c3"
+                        | "atxmega256a3u" | "atxmega256a3bu" | "atxmega256c3" | "atxmega384c3"
+                        | "atxmega128a1u" | "atxmega128a4u" => xmegau = true,
+                        _ => {}
+                    }
                 }
+                target_feature_fallback("rmw", xmegau);
             }
-            target_feature_fallback("rmw", xmegau);
         }
         _ => {}
     }

@@ -16,7 +16,10 @@ use reifydb_core::{
 	operator_with::DistinctWith,
 	value::{batch::batch, column::factory::uint8},
 };
-use reifydb_value::value::{row_number::RowNumber, system_columns::row_numbers};
+use reifydb_value::value::{
+	row_number::RowNumber,
+	system_columns::{SystemColumn, row_numbers, with_system_column},
+};
 
 use super::{lane::*, *};
 

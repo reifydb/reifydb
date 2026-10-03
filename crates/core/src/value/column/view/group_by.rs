@@ -9,15 +9,14 @@ use std::{
 };
 
 use arrow_array::{
-	Array, ArrayRef, Decimal128Array, Decimal256Array, PrimitiveArray,
-	cast::AsArray,
+	Array, ArrayRef, Decimal128Array, Decimal256Array, Float32Array, Float64Array, PrimitiveArray, UInt32Array,
 	make_array,
-	types::{Float32Type, Float64Type},
 };
 use arrow_buffer::{NullBuffer, ScalarBuffer, i256};
 use arrow_row::{RowConverter, Rows, SortField};
-use arrow_schema::{ArrowError, DataType};
-use indexmap::IndexMap;
+use arrow_schema::{ArrowError, FieldRef};
+use arrow_select::take::take;
+use indexmap::{IndexMap, IndexSet};
 use reifydb_codec::key::{encoded::EncodedKey, serializer::KeySerializer};
 use reifydb_value::{
 	Result,
@@ -25,7 +24,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value,
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
 		constraint::{precision::Precision, scale::Scale},
 		container::decimal_array::{DECIMAL128_MAX_PRECISION, DecimalArray, data_type},
 		decimal::unscaled,
@@ -33,9 +32,11 @@ use reifydb_value::{
 	},
 };
 
-use crate::{internal_error, metrics::heap::HeapSize, value::column::key::extend_key};
-
-pub type GroupKey = Vec<Value>;
+use crate::{
+	internal_error,
+	metrics::heap::HeapSize,
+	value::column::{builder::ColumnBuilder, factory::none, key::extend_keys},
+};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -139,19 +140,21 @@ impl<T> IntoIterator for GroupSlots<T> {
 
 #[derive(Debug, Default, Clone)]
 pub struct GroupKeyDict {
-	entries: IndexMap<EncodedKey, GroupKey>,
+	entries: IndexSet<EncodedKey>,
 	row_lens: Vec<usize>,
 	converter: Option<Arc<RowConverter>>,
 	key_types: Vec<ValueType>,
+	key_rows: Vec<Vec<(FieldRef, ArrayRef)>>,
 }
 
 impl GroupKeyDict {
 	pub fn new() -> Self {
 		Self {
-			entries: IndexMap::new(),
+			entries: IndexSet::new(),
 			row_lens: Vec::new(),
 			converter: None,
 			key_types: Vec::new(),
+			key_rows: Vec::new(),
 		}
 	}
 
@@ -163,26 +166,69 @@ impl GroupKeyDict {
 		self.entries.is_empty()
 	}
 
-	pub fn values(&self, group: GroupId) -> Option<&GroupKey> {
-		self.entries.get_index(group.index()).map(|(_, values)| values)
+	pub fn key_values(&self, group: GroupId) -> Option<Vec<Value>> {
+		self.key_rows
+			.iter()
+			.map(|parts| {
+				let mut index = group.index();
+				for (field, array) in parts {
+					if index < array.len() {
+						return ColumnView::try_from((array, field.as_ref()))
+							.ok()
+							.map(|view| view.get_value(index));
+					}
+					index -= array.len();
+				}
+				None
+			})
+			.collect()
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = (GroupId, &GroupKey)> {
-		self.entries.values().enumerate().map(|(index, values)| (GroupId(index as u32), values))
-	}
-
-	pub(crate) fn intern(
-		&mut self,
-		encoded: &EncodedKey,
-		row_len: usize,
-		materialize: impl FnOnce() -> GroupKey,
-	) -> GroupId {
-		if let Some(index) = self.entries.get_index_of(encoded) {
-			return GroupId(index as u32);
+	pub fn key_column(
+		&self,
+		column: usize,
+		declared: Option<ValueType>,
+		name: &str,
+	) -> Result<(FieldRef, ArrayRef)> {
+		let parts = self.key_rows.get(column).map(Vec::as_slice).unwrap_or_default();
+		let views = parts.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+		let first = views.iter().find_map(|view| {
+			(0..view.len())
+				.map(|index| view.get_value(index))
+				.find(|value| !matches!(value, Value::None { .. }))
+		});
+		let mut builder = match first.map(|value| value.get_type()).or(declared) {
+			Some(key_type) => ColumnBuilder::with_capacity(key_type, self.len()),
+			None => ColumnBuilder::from_view(&ColumnView::try_from(&none(name, 0))?),
+		};
+		for (part, view) in parts.iter().zip(&views) {
+			match canonical_floats(part, view) {
+				Some(canonical) => builder.append_values(&ColumnView::try_from(&canonical)?)?,
+				None => builder.append_values(view)?,
+			}
 		}
-		let (index, _) = self.entries.insert_full(encoded.clone(), materialize());
+		Ok(builder.finish(name))
+	}
+
+	pub(crate) fn intern(&mut self, encoded: &[u8], row_len: usize) -> (GroupId, bool) {
+		if let Some(index) = self.entries.get_index_of(encoded) {
+			return (GroupId(index as u32), false);
+		}
+		let (index, _) = self.entries.insert_full(EncodedKey::new(encoded));
 		self.row_lens.push(row_len);
-		GroupId(index as u32)
+		(GroupId(index as u32), true)
+	}
+
+	fn remember(&mut self, views: &[ColumnView<'_>], first_rows: &[usize]) -> Result<()> {
+		if self.key_rows.len() < views.len() {
+			self.key_rows.resize_with(views.len(), Vec::new);
+		}
+		let indices = UInt32Array::from_iter_values(first_rows.iter().map(|&row| row as u32));
+		for (parts, view) in self.key_rows.iter_mut().zip(views) {
+			let taken = take(view.array(), &indices, None).map_err(group_key_error)?;
+			parts.push((Arc::new(view.field.clone()), taken));
+		}
+		Ok(())
 	}
 
 	pub(crate) fn row_keys(&mut self, views: &[&ColumnView]) -> Result<Rows> {
@@ -220,7 +266,7 @@ impl GroupKeyDict {
 			self.converter.take().ok_or_else(|| internal_error!("group keys rekeyed before any batch"))?;
 		let parser = old.parser();
 		let rows =
-			self.entries.keys().zip(&self.row_lens).map(|(key, &len)| parser.parse(&key.as_bytes()[..len]));
+			self.entries.iter().zip(&self.row_lens).map(|(key, &len)| parser.parse(&key.as_bytes()[..len]));
 		let decoded = old.convert_rows(rows).map_err(group_key_error)?;
 		let mut arrays: Vec<ArrayRef> = Vec::with_capacity(decoded.len());
 		for (array, target) in decoded.into_iter().zip(&targets) {
@@ -235,12 +281,12 @@ impl GroupKeyDict {
 		let rows = converter.convert_columns(&arrays).map_err(group_key_error)?;
 		let entries = mem::take(&mut self.entries);
 		let mut row_lens = Vec::with_capacity(self.row_lens.len());
-		for (index, ((key, values), old_len)) in entries.into_iter().zip(&self.row_lens).enumerate() {
+		for (index, (key, old_len)) in entries.into_iter().zip(&self.row_lens).enumerate() {
 			let row = rows.row(index);
 			let mut bytes = row.as_ref().to_vec();
 			bytes.extend_from_slice(&key.as_bytes()[*old_len..]);
 			row_lens.push(row.as_ref().len());
-			self.entries.insert(EncodedKey::new(&bytes), values);
+			self.entries.insert(EncodedKey::new(&bytes));
 		}
 		self.row_lens = row_lens;
 		self.converter = Some(converter);
@@ -276,12 +322,16 @@ pub fn common_key_type(left: &ValueType, right: &ValueType) -> Option<ValueType>
 			let precision = (digits + scale).min(unscaled::MAX_DIGITS);
 			Some(ValueType::decimal(Precision::new(precision), Scale::new(scale)))
 		}
+		(ValueType::Option(_), _) | (_, ValueType::Option(_)) => {
+			common_key_type(left.inner_type(), right.inner_type())
+				.map(|merged| ValueType::Option(Box::new(merged)))
+		}
 		_ => None,
 	}
 }
 
 pub fn cast_key(array: &ArrayRef, target: &ValueType) -> (ArrayRef, usize) {
-	let (Some(precision), Some(scale)) = (target.precision(), target.scale()) else {
+	let (Some(precision), Some(scale)) = (target.inner_type().precision(), target.inner_type().scale()) else {
 		return (array.clone(), 0);
 	};
 	if *array.data_type() == data_type(precision, scale) {
@@ -291,7 +341,7 @@ pub fn cast_key(array: &ArrayRef, target: &ValueType) -> (ArrayRef, usize) {
 }
 
 fn cast_key_array(array: ArrayRef, target: &ValueType) -> (ArrayRef, usize) {
-	let (Some(precision), Some(scale)) = (target.precision(), target.scale()) else {
+	let (Some(precision), Some(scale)) = (target.inner_type().precision(), target.inner_type().scale()) else {
 		return (array, 0);
 	};
 	let decimal = if let Some(array) = array.as_any().downcast_ref::<Decimal128Array>() {
@@ -368,73 +418,59 @@ fn row_format_matches_value_key(view: &ColumnView) -> bool {
 	ty.is_scalar() && !matches!(ty.inner_type(), ValueType::Float4 | ValueType::Float8)
 }
 
-macro_rules! canonical_float {
-	($value:expr, $ty:ty) => {
-		if $value.is_nan() {
-			<$ty>::NAN
-		} else if $value == 0.0 {
-			0.0
-		} else {
-			$value
-		}
-	};
-}
-
-macro_rules! needs_canonical {
-	($value:expr) => {
-		$value.is_nan() || (*$value == 0.0 && $value.is_sign_negative())
-	};
-}
-
-pub fn key_column(array: &ArrayRef) -> ArrayRef {
-	match array.data_type() {
-		DataType::Float32
-			if array.as_primitive::<Float32Type>().values().iter().any(|f| needs_canonical!(f)) =>
-		{
-			Arc::new(
-				array.as_primitive::<Float32Type>()
-					.unary::<_, Float32Type>(|f| canonical_float!(f, f32)),
-			)
-		}
-		DataType::Float64
-			if array.as_primitive::<Float64Type>().values().iter().any(|f| needs_canonical!(f)) =>
-		{
-			Arc::new(
-				array.as_primitive::<Float64Type>()
-					.unary::<_, Float64Type>(|f| canonical_float!(f, f64)),
-			)
-		}
-		_ => array.clone(),
-	}
-}
-
 impl HeapSize for GroupKeyDict {
 	fn heap_size(&self) -> usize {
-		self.entries.capacity()
-			* (mem::size_of::<EncodedKey>() + mem::size_of::<GroupKey>() + mem::size_of::<usize>())
+		self.entries.capacity() * (mem::size_of::<EncodedKey>() + mem::size_of::<usize>())
 			+ self.row_lens.capacity() * mem::size_of::<usize>()
-			+ self.entries.iter().map(|(key, values)| key.heap_size() + values.heap_size()).sum::<usize>()
+			+ self.entries.iter().map(HeapSize::heap_size).sum::<usize>()
+			+ self.key_rows.iter().flatten().map(|(_, array)| array.get_array_memory_size()).sum::<usize>()
 	}
+}
+
+fn canonical_floats(part: &(FieldRef, ArrayRef), view: &ColumnView) -> Option<(FieldRef, ArrayRef)> {
+	let array: ArrayRef = match &view.data {
+		ViewData::Float4(array) => Arc::new(Float32Array::from_iter(array.iter().map(|value| {
+			value.filter(|v| !v.is_nan()).map(|v| {
+				if v == 0.0 {
+					0.0
+				} else {
+					v
+				}
+			})
+		}))),
+		ViewData::Float8(array) => Arc::new(Float64Array::from_iter(array.iter().map(|value| {
+			value.filter(|v| !v.is_nan()).map(|v| {
+				if v == 0.0 {
+					0.0
+				} else {
+					v
+				}
+			})
+		}))),
+		_ => return None,
+	};
+	Some((part.0.clone(), array))
 }
 
 pub(crate) fn group_rows(views: &[ColumnView<'_>], row_count: usize, dict: &mut GroupKeyDict) -> Result<GroupRows> {
-	let arrays: Vec<ArrayRef> = views.iter().map(|view| key_column(&make_array(view.array().to_data()))).collect();
-	let normalized: Vec<ColumnView<'_>> = arrays
-		.iter()
-		.zip(views)
-		.map(|(array, view)| ColumnView::try_from((array, view.field)))
-		.collect::<Result<_>>()?;
-
-	let row_columns: Vec<&ColumnView> =
-		normalized.iter().filter(|view| row_format_matches_value_key(view)).collect();
-	let value_columns: Vec<&ColumnView> =
-		normalized.iter().filter(|view| !row_format_matches_value_key(view)).collect();
+	let row_columns: Vec<&ColumnView> = views.iter().filter(|view| row_format_matches_value_key(view)).collect();
+	let value_columns: Vec<&ColumnView> = views.iter().filter(|view| !row_format_matches_value_key(view)).collect();
 	let row_keys = match row_columns.is_empty() {
 		true => None,
 		false => Some(dict.row_keys(&row_columns)?),
 	};
 
+	let mut value_keys: Vec<KeySerializer> = Vec::new();
+	if !value_columns.is_empty() {
+		value_keys = (0..row_count).map(|_| KeySerializer::new()).collect();
+		for view in &value_columns {
+			extend_keys(view, &mut value_keys)?;
+		}
+	}
+	let mut value_keys = value_keys.into_iter();
+
 	let mut rows_by_group: IndexMap<GroupId, Vec<usize>> = IndexMap::new();
+	let mut first_rows: Vec<usize> = Vec::new();
 	let mut bytes: Vec<u8> = Vec::new();
 
 	for row in 0..row_count {
@@ -442,19 +478,19 @@ pub(crate) fn group_rows(views: &[ColumnView<'_>], row_count: usize, dict: &mut 
 		if let Some(row_keys) = &row_keys {
 			bytes.extend_from_slice(row_keys.row(row).as_ref());
 		}
-		if !value_columns.is_empty() {
-			let mut serializer = KeySerializer::new();
-			for view in &value_columns {
-				extend_key(view, row, &mut serializer)?;
-			}
-			bytes.extend_from_slice(serializer.to_encoded_key().as_bytes());
+		if let Some(value_key) = value_keys.next() {
+			bytes.extend_from_slice(value_key.to_encoded_key().as_bytes());
 		}
 
 		let row_len = row_keys.as_ref().map_or(0, |row_keys| row_keys.row(row).as_ref().len());
-		let group = dict.intern(&EncodedKey::new(&bytes), row_len, || {
-			views.iter().map(|view| view.get_value(row)).collect()
-		});
+		let (group, new) = dict.intern(&bytes, row_len);
+		if new {
+			first_rows.push(row);
+		}
 		rows_by_group.entry(group).or_default().push(row);
+	}
+	if !first_rows.is_empty() {
+		dict.remember(views, &first_rows)?;
 	}
 
 	Ok(rows_by_group.into_iter().collect())

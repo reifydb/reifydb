@@ -2,8 +2,6 @@ use crate::off64_t;
 use crate::prelude::*;
 
 pub type clock_t = i32;
-pub type time_t = i32;
-pub type suseconds_t = i32;
 pub type wchar_t = i32;
 pub type off_t = i32;
 pub type ino_t = u32;
@@ -12,8 +10,6 @@ pub type blksize_t = i32;
 pub type nlink_t = u32;
 pub type fsblkcnt_t = c_ulong;
 pub type fsfilcnt_t = c_ulong;
-pub type __u64 = c_ulonglong;
-pub type __s64 = c_longlong;
 pub type fsblkcnt64_t = u64;
 pub type fsfilcnt64_t = u64;
 
@@ -101,13 +97,6 @@ s! {
         __val: [c_ulong; 4],
     }
 
-    pub struct siginfo_t {
-        pub si_signo: c_int,
-        pub si_code: c_int,
-        pub si_errno: c_int,
-        pub _pad: [c_int; 29],
-    }
-
     pub struct glob64_t {
         pub gl_pathc: size_t,
         pub gl_pathv: *mut *mut c_char,
@@ -185,7 +174,7 @@ s! {
         pub f_fsid: crate::fsid_t,
 
         pub f_namelen: c_long,
-        f_spare: [c_long; 6],
+        f_spare: Padding<[c_long; 6]>,
     }
 
     pub struct statfs64 {
@@ -396,12 +385,10 @@ pub const SYS_modify_ldt: c_long = 4000 + 123;
 pub const SYS_adjtimex: c_long = 4000 + 124;
 pub const SYS_mprotect: c_long = 4000 + 125;
 pub const SYS_sigprocmask: c_long = 4000 + 126;
-#[deprecated(since = "0.2.70", note = "Functional up to 2.6 kernel")]
-pub const SYS_create_module: c_long = 4000 + 127;
+// 4000 + 127 was SYS_create_module
 pub const SYS_init_module: c_long = 4000 + 128;
 pub const SYS_delete_module: c_long = 4000 + 129;
-#[deprecated(since = "0.2.70", note = "Functional up to 2.6 kernel")]
-pub const SYS_get_kernel_syms: c_long = 4000 + 130;
+// 4000 + 130 was SYS_get_kernel_syms
 pub const SYS_quotactl: c_long = 4000 + 131;
 pub const SYS_getpgid: c_long = 4000 + 132;
 pub const SYS_fchdir: c_long = 4000 + 133;
@@ -457,8 +444,7 @@ pub const SYS_socket: c_long = 4000 + 183;
 pub const SYS_socketpair: c_long = 4000 + 184;
 pub const SYS_setresuid: c_long = 4000 + 185;
 pub const SYS_getresuid: c_long = 4000 + 186;
-#[deprecated(since = "0.2.70", note = "Functional up to 2.6 kernel")]
-pub const SYS_query_module: c_long = 4000 + 187;
+// 4000 + 187 was SYS_query_module
 pub const SYS_poll: c_long = 4000 + 188;
 pub const SYS_nfsservctl: c_long = 4000 + 189;
 pub const SYS_setresgid: c_long = 4000 + 190;
@@ -665,7 +651,6 @@ pub const SYS_process_mrelease: c_long = 4000 + 448;
 pub const SYS_futex_waitv: c_long = 4000 + 449;
 pub const SYS_set_mempolicy_home_node: c_long = 4000 + 450;
 
-#[link(name = "util")]
 extern "C" {
     pub fn sysctl(
         name: *mut c_int,

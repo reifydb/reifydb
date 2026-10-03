@@ -232,7 +232,6 @@ impl<T> Pointable for T {
 /// along with pointer as in `Box<[T]>`).
 ///
 /// Elements are not present in the type, but they will be in the allocation.
-/// ```
 #[repr(C)]
 struct Array<T> {
     /// The number of elements (not the number of bytes).
@@ -338,28 +337,22 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         }
     }
 
-    /// Returns a new null atomic pointer.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crossbeam_epoch::Atomic;
-    ///
-    /// let a = Atomic::<i32>::null();
-    /// ```
-    #[cfg(not(crossbeam_loom))]
-    pub const fn null() -> Atomic<T> {
-        Self {
-            data: AtomicUsize::new(0),
-            _marker: PhantomData,
-        }
-    }
-    /// Returns a new null atomic pointer.
-    #[cfg(crossbeam_loom)]
-    pub fn null() -> Atomic<T> {
-        Self {
-            data: AtomicUsize::new(0),
-            _marker: PhantomData,
+    const_fn! {
+        const_if: #[cfg(not(crossbeam_loom))];
+        /// Returns a new null atomic pointer.
+        ///
+        /// # Examples
+        ///
+        /// ```
+        /// use crossbeam_epoch::Atomic;
+        ///
+        /// let a = Atomic::<i32>::null();
+        /// ```
+        pub const fn null() -> Atomic<T> {
+            Self {
+                data: AtomicUsize::new(0),
+                _marker: PhantomData,
+            }
         }
     }
 
@@ -635,7 +628,7 @@ impl<T: ?Sized + Pointable> Atomic<T> {
         let mut prev = self.load(fail_order, guard);
         while let Some(next) = func(prev) {
             match self.compare_exchange_weak(prev, next, set_order, fail_order, guard) {
-                Ok(shared) => return Ok(shared),
+                Ok(_result) => return Ok(prev),
                 Err(next_prev) => prev = next_prev.current,
             }
         }
@@ -943,7 +936,7 @@ impl<T: ?Sized + Pointable> fmt::Pointer for Atomic<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let data = self.data.load(Ordering::SeqCst);
         let (raw, _) = decompose_tag::<T>(data);
-        fmt::Pointer::fmt(&(unsafe { T::deref(raw) as *const _ }), f)
+        fmt::Pointer::fmt(&(raw as *const ()), f)
     }
 }
 
@@ -1357,7 +1350,7 @@ impl<'g, T: ?Sized + Pointable> Shared<'g, T> {
     /// let p = Shared::<i32>::null();
     /// assert!(p.is_null());
     /// ```
-    pub fn null() -> Shared<'g, T> {
+    pub const fn null() -> Shared<'g, T> {
         Shared {
             data: 0,
             _marker: PhantomData,
@@ -1662,7 +1655,8 @@ impl<T: ?Sized + Pointable> fmt::Debug for Shared<'_, T> {
 
 impl<T: ?Sized + Pointable> fmt::Pointer for Shared<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Pointer::fmt(&(unsafe { self.deref() as *const _ }), f)
+        let (raw, _) = decompose_tag::<T>(self.data);
+        fmt::Pointer::fmt(&(raw as *const ()), f)
     }
 }
 
@@ -1674,8 +1668,8 @@ impl<T: ?Sized + Pointable> Default for Shared<'_, T> {
 
 #[cfg(all(test, not(crossbeam_loom)))]
 mod tests {
-    use super::{Owned, Shared};
-    use std::mem::MaybeUninit;
+    use super::{Atomic, Owned, Shared};
+    use std::{format, mem::MaybeUninit};
 
     #[test]
     fn valid_tag_i8() {
@@ -1688,15 +1682,32 @@ mod tests {
     }
 
     #[test]
-    fn const_atomic_null() {
-        use super::Atomic;
-        static _U: Atomic<u8> = Atomic::<u8>::null();
+    fn const_null() {
+        use super::{Atomic, Shared};
+        static _A: Atomic<u8> = Atomic::<u8>::null();
+        static _S: () = {
+            let _shared = Shared::<u8>::null();
+        };
     }
 
     #[test]
     fn array_init() {
-        let owned = Owned::<[MaybeUninit<usize>]>::init(10);
-        let arr: &[MaybeUninit<usize>] = &owned;
+        let mut owned = Owned::<[MaybeUninit<usize>]>::init(10);
+        let arr: &mut [MaybeUninit<usize>] = &mut owned;
+        arr[arr.len() - 1].write(20);
         assert_eq!(arr.len(), 10);
+    }
+
+    #[test]
+    fn format_null() {
+        let atomic = Atomic::<usize>::null();
+        assert_eq!(format!("{atomic:p}"), "0x0");
+        let atomic = Atomic::<[MaybeUninit<usize>]>::null();
+        assert_eq!(format!("{atomic:p}"), "0x0");
+
+        let shared = Shared::<usize>::null();
+        assert_eq!(format!("{shared:p}"), "0x0");
+        let shared = Shared::<[MaybeUninit<usize>]>::null();
+        assert_eq!(format!("{shared:p}"), "0x0");
     }
 }

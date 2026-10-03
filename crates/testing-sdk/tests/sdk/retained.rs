@@ -9,7 +9,6 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	operator_with::ApplyWith,
-	row::Row as CoreRow,
 	state::timer::TimerKind,
 };
 use reifydb_flow_async::window::{
@@ -21,7 +20,6 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
 			operator::{Emit, NoRolling, WindowedOperator},
@@ -31,9 +29,10 @@ use reifydb_sdk::{
 	},
 	row,
 };
+use reifydb_testing_chaos::operator::event::Row as CoreRow;
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::{ExternCOperatorHarness, ExternCOperatorHarnessBuilder},
+	in_process::harness::{InProcessOperatorHarness, InProcessOperatorHarnessBuilder},
 };
 use reifydb_value::{
 	config::ExtensionParams,
@@ -123,8 +122,8 @@ impl Emit for TestRetained {
 	}
 }
 
-type Retained = ExternCOperatorAdapter<RetainedDriver<TestRetained, u64, i64>>;
-type Plain = ExternCOperatorAdapter<PlainDriver<TestRetained>>;
+type Retained = RetainedDriver<TestRetained, u64, i64>;
+type Plain = PlainDriver<TestRetained>;
 
 fn input_row(rn: u64, group: &str, key: u64, at: u64, value: i64) -> CoreRow {
 	TestOperatorRowBuilder::new(rn)
@@ -150,8 +149,8 @@ fn with(throttle: Option<u64>) -> ApplyWith {
 	}
 }
 
-fn throttled_harness() -> ExternCOperatorHarness<Retained> {
-	ExternCOperatorHarnessBuilder::<Retained>::new().with(with(Some(10_000))).build().expect("harness")
+fn throttled_harness() -> InProcessOperatorHarness<Retained> {
+	InProcessOperatorHarnessBuilder::<Retained>::new().with(with(Some(10_000))).build().expect("harness")
 }
 
 fn only_update(out: &Change) -> (f64, f64) {
@@ -189,8 +188,9 @@ fn seen(out: &Change) -> Seen {
 #[test]
 fn parity_with_plain_driver_without_throttle() {
 	// The retained driver replaces the plain one for retained operators, so any drift is a wrong row downstream.
-	let mut plain = ExternCOperatorHarnessBuilder::<Plain>::new().with(with(None)).build().expect("harness");
-	let mut retained = ExternCOperatorHarnessBuilder::<Retained>::new().with(with(None)).build().expect("harness");
+	let mut plain = InProcessOperatorHarnessBuilder::<Plain>::new().with(with(None)).build().expect("harness");
+	let mut retained =
+		InProcessOperatorHarnessBuilder::<Retained>::new().with(with(None)).build().expect("harness");
 	let batches: Vec<Change> = vec![
 		TestChangeBuilder::new()
 			.insert(input_row(1, "BTC", 1, 0, 10))
@@ -283,12 +283,13 @@ fn a_window_emptied_inside_the_throttle_publishes_its_removal() {
 #[test]
 fn a_dirty_window_publishes_once_more_when_it_closes() {
 	// A window closing with unpublished changes would leave its final value unseen forever.
-	let mut h = throttled_harness();
+	let mut h =
+		InProcessOperatorHarnessBuilder::<Retained>::new().with(with(Some(10_000))).build().expect("harness");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(1, "BTC", 1, 0, 10)).build()).expect("apply");
 	let _ = h.apply(TestChangeBuilder::new().insert(input_row(2, "BTC", 2, 1_000, 5)).build()).expect("apply");
 	h.advance_watermark(DateTime::from_millis(120_000)).expect("advance watermark");
-	let out = h.apply(TestChangeBuilder::new().insert(input_row(3, "ETH", 1, 120_000, 1)).build()).expect("apply");
-	assert_eq!(only_update(&out), (10.0, 15.0));
+	assert_eq!(only_update(h.last_change().expect("the close must publish")), (10.0, 15.0));
+	let _ = h.apply(TestChangeBuilder::new().insert(input_row(3, "ETH", 1, 120_000, 1)).build()).expect("apply");
 }
 
 #[test]

@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{
+	collections::{HashMap, HashSet},
+	mem,
+};
 
 use arrow_array::RecordBatch;
-use indexmap::IndexMap;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	value::{diff_type::DiffType, row_number::RowNumber, system_columns::row_numbers},
@@ -12,12 +14,12 @@ use reifydb_value::{
 
 use crate::{
 	interface::change::{ChangeOrigin, Diff},
-	value::batch::{append, take_rows},
+	value::batch::{concat, gather},
 };
 
 pub fn coalesce_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	if has_cross_kind_overlap(&diffs)? {
-		consolidate_diffs(diffs)
+		consolidate_keyed(diffs)
 	} else {
 		merge_adjacent(diffs)
 	}
@@ -31,7 +33,10 @@ pub fn consolidate_diffs(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	if !all_row_keyed(diffs.iter())? {
 		return merge_adjacent(diffs);
 	}
-	consolidate_row_keyed(diffs)
+	if is_canonical(&diffs)? {
+		return Ok(diffs);
+	}
+	consolidate_keyed(diffs)
 }
 
 fn has_cross_kind_overlap(diffs: &[Diff]) -> Result<bool> {
@@ -89,9 +94,23 @@ fn key_rows(diff: &Diff) -> Result<&[RowNumber]> {
 			..
 		} => row_numbers(post),
 		Diff::Update {
+			pre,
 			post,
 			..
-		} => row_numbers(post),
+		} => {
+			reifydb_assertions! {
+				assert!(
+					row_numbers(pre)? == row_numbers(post)?,
+					"diff consolidation keys an update row by its post row number and pairs \
+					 the pre row positionally; a pre row carrying a different row number \
+					 would retract a different row than the one this update claims to \
+					 replace (pre={:?}, post={:?})",
+					row_numbers(pre)?,
+					row_numbers(post)?
+				);
+			}
+			row_numbers(post)
+		}
 		Diff::Remove {
 			pre,
 			..
@@ -101,176 +120,245 @@ fn key_rows(diff: &Diff) -> Result<&[RowNumber]> {
 
 fn merge_adjacent(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
 	let mut merged: Vec<Diff> = Vec::with_capacity(diffs.len());
+	let mut run: Vec<Diff> = Vec::new();
 	for diff in diffs {
 		if diff.row_count() == 0 {
 			continue;
 		}
-		let same_kind_and_origin = match (merged.last(), &diff) {
-			(Some(last), next) => last.kind() == next.kind() && last.origin() == next.origin(),
-			_ => false,
-		};
-		if same_kind_and_origin {
-			let last = merged.last_mut().expect("non-empty by same_kind_and_origin branch");
-			merge_into(last, diff)?;
-		} else {
-			merged.push(diff);
+		let joins_run = run.last().is_some_and(|last: &Diff| {
+			last.kind() == diff.kind()
+				&& last.origin() == diff.origin()
+				&& last.pre().zip(diff.pre()).is_none_or(|(a, b)| same_columns(a, b))
+				&& last.post().zip(diff.post()).is_none_or(|(a, b)| same_columns(a, b))
+		});
+		if !joins_run && !run.is_empty() {
+			merged.push(merge_run(mem::take(&mut run))?);
 		}
+		run.push(diff);
+	}
+	if !run.is_empty() {
+		merged.push(merge_run(run)?);
 	}
 	Ok(merged)
 }
 
-fn merge_into(target: &mut Diff, source: Diff) -> Result<()> {
-	match (target, source) {
-		(
-			Diff::Insert {
-				post: t,
-				..
-			},
-			Diff::Insert {
-				post: s,
-				..
-			},
-		) => append_in_place(t, &s),
-		(
-			Diff::Update {
-				pre: tp,
-				post: tpost,
-				..
-			},
-			Diff::Update {
-				pre: sp,
-				post: spost,
-				..
-			},
-		) => {
-			append_in_place(tp, &sp)?;
-			append_in_place(tpost, &spost)
-		}
-		(
-			Diff::Remove {
-				pre: t,
-				..
-			},
-			Diff::Remove {
-				pre: s,
-				..
-			},
-		) => append_in_place(t, &s),
-		_ => unreachable!("merge_into requires matching diff kinds"),
-	}
+fn same_columns(a: &RecordBatch, b: &RecordBatch) -> bool {
+	a.schema_ref().fields().iter().map(|field| field.name()).eq(b
+		.schema_ref()
+		.fields()
+		.iter()
+		.map(|field| field.name()))
 }
 
+fn merge_run(run: Vec<Diff>) -> Result<Diff> {
+	let mut run = run.into_iter();
+	let lead = run.next().expect("merge_adjacent never closes an empty run");
+	let rest: Vec<Diff> = run.collect();
+	if rest.is_empty() {
+		return Ok(lead);
+	}
+	let pres: Vec<RecordBatch> = lead.pre().into_iter().chain(rest.iter().filter_map(Diff::pre)).cloned().collect();
+	let posts: Vec<RecordBatch> =
+		lead.post().into_iter().chain(rest.iter().filter_map(Diff::post)).cloned().collect();
+	Ok(match lead {
+		Diff::Insert {
+			origin,
+			..
+		} => Diff::Insert {
+			post: concat(&posts)?,
+			origin,
+		},
+		Diff::Update {
+			origin,
+			..
+		} => Diff::update_with_origin(concat(&pres)?, concat(&posts)?, origin),
+		Diff::Remove {
+			origin,
+			..
+		} => Diff::Remove {
+			pre: concat(&pres)?,
+			origin,
+		},
+	})
+}
+
+#[derive(Clone, Copy)]
 enum RowState {
 	Inserted {
-		post: RecordBatch,
+		post: (usize, usize),
 	},
 	Updated {
-		pre: RecordBatch,
-		post: RecordBatch,
+		pre: (usize, usize),
+		post: (usize, usize),
 	},
 	Removed {
-		pre: RecordBatch,
+		pre: (usize, usize),
 	},
 }
 
-type StateKey = (Option<ChangeOrigin>, RowNumber);
+type StateKey = (usize, RowNumber);
 
-#[derive(Default)]
-struct OriginGroup {
-	inserts: Option<RecordBatch>,
-	update_pre: Option<RecordBatch>,
-	update_post: Option<RecordBatch>,
-	removes: Option<RecordBatch>,
+fn is_canonical(diffs: &[Diff]) -> Result<bool> {
+	let mut keys: HashSet<(Option<&ChangeOrigin>, RowNumber)> = HashSet::new();
+	let mut closed: Vec<Option<&ChangeOrigin>> = Vec::new();
+	let mut run_start = 0;
+	for (position, diff) in diffs.iter().enumerate() {
+		if position > 0 {
+			let last = &diffs[position - 1];
+			if last.origin() != diff.origin() {
+				if closed.contains(&diff.origin()) {
+					return Ok(false);
+				}
+				closed.push(last.origin());
+				run_start = position;
+			} else if kind_bit(diff.kind()) < kind_bit(last.kind()) {
+				return Ok(false);
+			}
+			let shares_columns = diffs[run_start..position].iter().any(|earlier| {
+				earlier.kind() == diff.kind()
+					&& earlier.pre().zip(diff.pre()).is_none_or(|(a, b)| same_columns(a, b))
+					&& earlier.post().zip(diff.post()).is_none_or(|(a, b)| same_columns(a, b))
+			});
+			if shares_columns {
+				return Ok(false);
+			}
+		}
+		for &row in key_rows(diff)? {
+			if !keys.insert((diff.origin(), row)) {
+				return Ok(false);
+			}
+		}
+	}
+	Ok(true)
 }
 
-fn consolidate_row_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
-	let mut states: IndexMap<StateKey, RowState> = IndexMap::new();
-	for diff in diffs {
-		match diff {
-			Diff::Insert {
-				post,
-				origin,
-			} => {
-				for (i, &row) in row_numbers(&post)?.iter().enumerate() {
-					apply_insert(&mut states, (origin.clone(), row), take_rows(&post, &[i])?);
-				}
+fn consolidate_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
+	let diffs: Vec<Diff> = diffs.into_iter().filter(|diff| diff.row_count() > 0).collect();
+	let mut origins: Vec<Option<&ChangeOrigin>> = Vec::new();
+	let mut origin_of: Vec<usize> = Vec::with_capacity(diffs.len());
+	let mut slots: Vec<Option<RowState>> = Vec::new();
+	let mut index: HashMap<StateKey, usize> = HashMap::new();
+	for (source, diff) in diffs.iter().enumerate() {
+		let origin = match origins.iter().position(|&known| known == diff.origin()) {
+			Some(origin) => origin,
+			None => {
+				origins.push(diff.origin());
+				origins.len() - 1
 			}
-			Diff::Update {
-				pre,
-				post,
-				origin,
-			} => {
-				reifydb_assertions! {
-					assert!(
-						row_numbers(&pre)? == row_numbers(&post)?,
-						"diff consolidation keys an update row by its post row number and pairs \
-						 the pre row positionally; a pre row carrying a different row number \
-						 would retract a different row than the one this update claims to \
-						 replace (pre={:?}, post={:?})",
-						row_numbers(&pre)?,
-						row_numbers(&post)?
-					);
-				}
-				for (i, &row) in row_numbers(&post)?.iter().enumerate() {
-					apply_update(
-						&mut states,
-						(origin.clone(), row),
-						take_rows(&pre, &[i])?,
-						take_rows(&post, &[i])?,
-					);
-				}
-			}
-			Diff::Remove {
-				pre,
-				origin,
-			} => {
-				for (i, &row) in row_numbers(&pre)?.iter().enumerate() {
-					apply_remove(&mut states, (origin.clone(), row), take_rows(&pre, &[i])?);
-				}
+		};
+		origin_of.push(origin);
+		for (row, &number) in key_rows(diff)?.iter().enumerate() {
+			let key = (origin, number);
+			match diff.kind() {
+				DiffType::Insert => apply_insert(&mut slots, &mut index, key, (source, row)),
+				DiffType::Update => apply_update(&mut slots, &mut index, key, (source, row)),
+				DiffType::Remove => apply_remove(&mut slots, &mut index, key, (source, row)),
 			}
 		}
 	}
 
-	let mut groups: IndexMap<Option<ChangeOrigin>, OriginGroup> = IndexMap::new();
-	for ((origin, _), state) in states {
-		let group = groups.entry(origin).or_default();
-		match state {
+	let set_of = |side: fn(&Diff) -> Option<&RecordBatch>| -> Vec<Option<usize>> {
+		let mut known: HashMap<Vec<&str>, usize> = HashMap::new();
+		diffs.iter()
+			.map(|diff| {
+				side(diff).map(|batch| {
+					let names = batch
+						.schema_ref()
+						.fields()
+						.iter()
+						.map(|field| field.name().as_str())
+						.collect();
+					let next = known.len();
+					*known.entry(names).or_insert(next)
+				})
+			})
+			.collect()
+	};
+	let pre_set = set_of(Diff::pre);
+	let post_set = set_of(Diff::post);
+
+	let mut origin_order: Vec<usize> = Vec::new();
+	let mut group_keys: Vec<(usize, u8, Option<usize>, Option<usize>)> = Vec::new();
+	let mut group_pre: Vec<Vec<(usize, usize)>> = Vec::new();
+	let mut group_post: Vec<Vec<(usize, usize)>> = Vec::new();
+	let mut group_at: HashMap<(usize, u8, Option<usize>, Option<usize>), usize> = HashMap::new();
+	for state in slots.into_iter().flatten() {
+		let (kind, pre, post) = match state {
 			RowState::Inserted {
 				post,
-			} => append_into(&mut group.inserts, post)?,
+			} => (DiffType::Insert, None, Some(post)),
 			RowState::Updated {
 				pre,
 				post,
-			} => {
-				append_into(&mut group.update_pre, pre)?;
-				append_into(&mut group.update_post, post)?;
-			}
+			} => (DiffType::Update, Some(pre), Some(post)),
 			RowState::Removed {
 				pre,
-			} => append_into(&mut group.removes, pre)?,
+			} => (DiffType::Remove, Some(pre), None),
+		};
+		let (source, _) = pre.or(post).expect("every surviving row has a pre or a post");
+		let origin = origin_of[source];
+		if !origin_order.contains(&origin) {
+			origin_order.push(origin);
 		}
+		let key = (
+			origin,
+			kind_bit(kind),
+			pre.and_then(|(source, _)| pre_set[source]),
+			post.and_then(|(source, _)| post_set[source]),
+		);
+		let at = *group_at.entry(key).or_insert_with(|| {
+			group_keys.push(key);
+			group_pre.push(Vec::new());
+			group_post.push(Vec::new());
+			group_keys.len() - 1
+		});
+		group_pre[at].extend(pre);
+		group_post[at].extend(post);
 	}
 
-	let mut result: Vec<Diff> = Vec::with_capacity(groups.len() * 3);
-	for (origin, group) in groups {
-		if let Some(post) = group.inserts {
-			result.push(Diff::Insert {
-				post,
-				origin: origin.clone(),
-			});
+	let gathered = |side: fn(&Diff) -> Option<&RecordBatch>, picks: &[(usize, usize)]| -> Result<RecordBatch> {
+		let mut local_of: Vec<Option<usize>> = vec![None; diffs.len()];
+		let mut sources: Vec<&RecordBatch> = Vec::new();
+		let mut local_picks: Vec<(usize, usize)> = Vec::with_capacity(picks.len());
+		for &(source, row) in picks {
+			let local = match local_of[source] {
+				Some(local) => local,
+				None => {
+					sources.push(side(&diffs[source])
+						.expect("a pick only names a diff that has this side"));
+					local_of[source] = Some(sources.len() - 1);
+					sources.len() - 1
+				}
+			};
+			local_picks.push((local, row));
 		}
-		if let (Some(pre), Some(post)) = (group.update_pre, group.update_post) {
-			result.push(Diff::Update {
-				pre,
-				post,
-				origin: origin.clone(),
-			});
-		}
-		if let Some(pre) = group.removes {
-			result.push(Diff::Remove {
-				pre,
-				origin,
-			});
+		gather(&sources, &local_picks)
+	};
+
+	let mut result: Vec<Diff> = Vec::with_capacity(group_keys.len());
+	for &origin in &origin_order {
+		for kind in [DiffType::Insert, DiffType::Update, DiffType::Remove] {
+			for (at, &(group_origin, bit, _, _)) in group_keys.iter().enumerate() {
+				if group_origin != origin || bit != kind_bit(kind) {
+					continue;
+				}
+				let origin = origins[origin].cloned();
+				result.push(match kind {
+					DiffType::Insert => Diff::Insert {
+						post: gathered(Diff::post, &group_post[at])?,
+						origin,
+					},
+					DiffType::Update => Diff::update_with_origin(
+						gathered(Diff::pre, &group_pre[at])?,
+						gathered(Diff::post, &group_post[at])?,
+						origin,
+					),
+					DiffType::Remove => Diff::Remove {
+						pre: gathered(Diff::pre, &group_pre[at])?,
+						origin,
+					},
+				});
+			}
 		}
 	}
 	Ok(result)
@@ -302,8 +390,13 @@ fn batch_row_keyed(batch: &RecordBatch) -> Result<bool> {
 	Ok(batch.num_rows() > 0 && row_numbers(batch)?.len() == batch.num_rows())
 }
 
-fn apply_insert(states: &mut IndexMap<StateKey, RowState>, key: StateKey, post: RecordBatch) {
-	let next = match states.get(&key) {
+fn apply_insert(
+	slots: &mut Vec<Option<RowState>>,
+	index: &mut HashMap<StateKey, usize>,
+	key: StateKey,
+	post: (usize, usize),
+) {
+	let next = match index.get(&key).and_then(|&at| slots[at]) {
 		Some(RowState::Updated {
 			pre,
 			..
@@ -311,87 +404,99 @@ fn apply_insert(states: &mut IndexMap<StateKey, RowState>, key: StateKey, post: 
 		| Some(RowState::Removed {
 			pre,
 		}) => RowState::Updated {
-			pre: pre.clone(),
+			pre,
 			post,
 		},
 		_ => RowState::Inserted {
 			post,
 		},
 	};
-	states.insert(key, next);
+	match index.get(&key) {
+		Some(&at) => slots[at] = Some(next),
+		None => {
+			index.insert(key, slots.len());
+			slots.push(Some(next));
+		}
+	}
 }
 
-fn apply_update(states: &mut IndexMap<StateKey, RowState>, key: StateKey, pre: RecordBatch, post: RecordBatch) {
-	let next = match states.get(&key) {
+fn apply_update(
+	slots: &mut Vec<Option<RowState>>,
+	index: &mut HashMap<StateKey, usize>,
+	key: StateKey,
+	pick: (usize, usize),
+) {
+	let next = match index.get(&key).and_then(|&at| slots[at]) {
 		None => RowState::Updated {
-			pre,
-			post,
+			pre: pick,
+			post: pick,
 		},
 		Some(RowState::Inserted {
 			..
 		}) => RowState::Inserted {
-			post,
+			post: pick,
 		},
 		Some(RowState::Updated {
-			pre: pre0,
+			pre,
 			..
 		})
 		| Some(RowState::Removed {
-			pre: pre0,
+			pre,
 		}) => RowState::Updated {
-			pre: pre0.clone(),
-			post,
+			pre,
+			post: pick,
 		},
 	};
-	states.insert(key, next);
-}
-
-fn apply_remove(states: &mut IndexMap<StateKey, RowState>, key: StateKey, pre: RecordBatch) {
-	match states.get(&key) {
+	match index.get(&key) {
+		Some(&at) => slots[at] = Some(next),
 		None => {
-			states.insert(
-				key,
-				RowState::Removed {
-					pre,
-				},
-			);
-		}
-		Some(RowState::Inserted {
-			..
-		}) => {
-			states.shift_remove(&key);
-		}
-		Some(RowState::Updated {
-			pre: pre0,
-			..
-		}) => {
-			let pre0 = pre0.clone();
-			states.insert(
-				key,
-				RowState::Removed {
-					pre: pre0,
-				},
-			);
-		}
-		Some(RowState::Removed {
-			..
-		}) => {}
-	}
-}
-
-fn append_into(target: &mut Option<RecordBatch>, source: RecordBatch) -> Result<()> {
-	match target {
-		Some(existing) => append_in_place(existing, &source),
-		None => {
-			*target = Some(source);
-			Ok(())
+			index.insert(key, slots.len());
+			slots.push(Some(next));
 		}
 	}
 }
 
-fn append_in_place(target: &mut RecordBatch, source: &RecordBatch) -> Result<()> {
-	*target = append(target, source)?;
-	Ok(())
+fn apply_remove(
+	slots: &mut Vec<Option<RowState>>,
+	index: &mut HashMap<StateKey, usize>,
+	key: StateKey,
+	pre: (usize, usize),
+) {
+	match index.get(&key).map(|&at| (at, slots[at])) {
+		None => {
+			index.insert(key, slots.len());
+			slots.push(Some(RowState::Removed {
+				pre,
+			}));
+		}
+		Some((
+			at,
+			Some(RowState::Inserted {
+				..
+			}),
+		)) => {
+			slots[at] = None;
+			index.remove(&key);
+		}
+		Some((
+			at,
+			Some(RowState::Updated {
+				pre: pre0,
+				..
+			}),
+		)) => {
+			slots[at] = Some(RowState::Removed {
+				pre: pre0,
+			});
+		}
+		Some((
+			_,
+			Some(RowState::Removed {
+				..
+			}),
+		))
+		| Some((_, None)) => {}
+	}
 }
 
 #[cfg(test)]

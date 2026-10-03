@@ -276,7 +276,9 @@ fn dropping_a_batch_removes_the_present_keys_and_leaves_the_absent_ones_alone() 
 	let (kept, _) = txn.get_or_create_row_numbers(NODE, group(), &[key("kept")]).unwrap().remove(0);
 	txn.get_or_create_row_numbers(NODE, group(), &[key("doomed")]).unwrap();
 
-	txn.remove_row_numbers(NODE, group(), &[key("doomed"), key("never_mapped")]).unwrap();
+	for doomed in [key("doomed"), key("never_mapped")] {
+		txn.remove_row_number(NODE, group(), &doomed).unwrap();
+	}
 
 	assert_eq!(
 		txn.get_row_numbers(NODE, group(), &[key("doomed"), key("never_mapped"), key("kept")]).unwrap(),

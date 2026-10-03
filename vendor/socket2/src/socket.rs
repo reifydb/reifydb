@@ -11,7 +11,7 @@ use std::io::{self, Read, Write};
 #[cfg(not(any(target_os = "redox", target_os = "wasi", target_os = "horizon")))]
 use std::io::{IoSlice, IoSliceMut};
 use std::mem::MaybeUninit;
-#[cfg(not(target_os = "nto"))]
+#[cfg(not(any(target_os = "nto", target_os = "nuttx")))]
 use std::net::Ipv6Addr;
 use std::net::{self, Ipv4Addr, Shutdown};
 #[cfg(any(unix, all(target_os = "wasi", not(target_env = "p1"))))]
@@ -1214,6 +1214,7 @@ impl Socket {
         not(any(
             target_os = "redox",
             target_os = "espidf",
+            target_os = "nuttx",
             target_os = "wasi",
             target_os = "horizon"
         ))
@@ -1245,6 +1246,7 @@ impl Socket {
         not(any(
             target_os = "redox",
             target_os = "espidf",
+            target_os = "nuttx",
             target_os = "wasi",
             target_os = "horizon"
         ))
@@ -1640,7 +1642,6 @@ impl Socket {
         target_os = "fuchsia",
         target_os = "redox",
         target_os = "solaris",
-        target_os = "illumos",
         target_os = "haiku",
         target_os = "wasi",
     )))]
@@ -1660,7 +1661,6 @@ impl Socket {
         target_os = "fuchsia",
         target_os = "redox",
         target_os = "solaris",
-        target_os = "illumos",
         target_os = "haiku",
         target_os = "wasi",
     )))]
@@ -1688,6 +1688,7 @@ impl Socket {
         target_os = "haiku",
         target_os = "nto",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "vita",
         target_os = "cygwin",
         target_os = "wasi",
@@ -1722,6 +1723,7 @@ impl Socket {
         target_os = "haiku",
         target_os = "nto",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "vita",
         target_os = "cygwin",
         target_os = "wasi",
@@ -1765,6 +1767,7 @@ impl Socket {
         not(any(
             target_os = "redox",
             target_os = "espidf",
+            target_os = "nuttx",
             target_os = "openbsd",
             target_os = "freebsd",
             target_os = "dragonfly",
@@ -1797,6 +1800,7 @@ impl Socket {
         not(any(
             target_os = "redox",
             target_os = "espidf",
+            target_os = "nuttx",
             target_os = "openbsd",
             target_os = "freebsd",
             target_os = "dragonfly",
@@ -1866,7 +1870,7 @@ impl Socket {
     /// This function specifies a new multicast group for this socket to join.
     /// The address must be a valid multicast address, and `interface` is the
     /// index of the interface to join/leave (or 0 to indicate any interface).
-    #[cfg(not(target_os = "nto"))]
+    #[cfg(not(any(target_os = "nto", target_os = "nuttx")))]
     pub fn join_multicast_v6(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
         let mreq = sys::Ipv6Mreq {
             ipv6mr_multiaddr: sys::to_in6_addr(multiaddr),
@@ -1890,7 +1894,7 @@ impl Socket {
     /// For more information about this option, see [`join_multicast_v6`].
     ///
     /// [`join_multicast_v6`]: Socket::join_multicast_v6
-    #[cfg(not(target_os = "nto"))]
+    #[cfg(not(any(target_os = "nto", target_os = "nuttx")))]
     pub fn leave_multicast_v6(&self, multiaddr: &Ipv6Addr, interface: u32) -> io::Result<()> {
         let mreq = sys::Ipv6Mreq {
             ipv6mr_multiaddr: sys::to_in6_addr(multiaddr),
@@ -2100,6 +2104,7 @@ impl Socket {
         target_os = "haiku",
         target_os = "hurd",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "vita",
         target_os = "wasi",
         target_os = "horizon"
@@ -2127,6 +2132,7 @@ impl Socket {
         target_os = "haiku",
         target_os = "hurd",
         target_os = "espidf",
+        target_os = "nuttx",
         target_os = "vita",
         target_os = "wasi",
         target_os = "horizon"
@@ -2252,6 +2258,7 @@ impl Socket {
         any(
             target_os = "android",
             target_os = "dragonfly",
+            target_os = "emscripten",
             target_os = "freebsd",
             target_os = "fuchsia",
             target_os = "illumos",
@@ -2263,6 +2270,7 @@ impl Socket {
             target_os = "tvos",
             target_os = "watchos",
             target_os = "cygwin",
+            target_os = "nuttx",
             all(target_os = "wasi", not(target_env = "p1")),
         )
     ))]
@@ -2283,6 +2291,7 @@ impl Socket {
         any(
             target_os = "android",
             target_os = "dragonfly",
+            target_os = "emscripten",
             target_os = "freebsd",
             target_os = "fuchsia",
             target_os = "illumos",
@@ -2295,6 +2304,7 @@ impl Socket {
             target_os = "watchos",
             target_os = "cygwin",
             target_os = "windows",
+            target_os = "nuttx",
             all(target_os = "wasi", not(target_env = "p1")),
         )
     ))]

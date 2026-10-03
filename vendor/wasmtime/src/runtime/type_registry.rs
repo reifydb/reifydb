@@ -5,9 +5,10 @@
 
 use crate::Engine;
 use crate::error::OutOfMemory;
+use crate::hash_map::HashMap;
 use crate::prelude::*;
 use crate::sync::RwLock;
-use crate::vm::GcRuntime;
+use crate::vm::{GcRuntime, TraceInfo};
 use alloc::sync::Arc;
 use core::cell::Cell;
 use core::iter;
@@ -91,6 +92,8 @@ pub struct TypeCollection {
     rec_groups: TryVec<RecGroupEntry>,
     types: TryPrimaryMap<ModuleInternedTypeIndex, VMSharedTypeIndex>,
     trampolines: TrySecondaryMap<VMSharedTypeIndex, PackedOption<ModuleInternedTypeIndex>>,
+    trace_info: TryPrimaryMap<ModuleInternedTypeIndex, Option<TraceInfo>>,
+    types_with_trace_info: HashMap<VMSharedTypeIndex, ModuleInternedTypeIndex>,
 }
 
 impl Debug for TypeCollection {
@@ -100,11 +103,14 @@ impl Debug for TypeCollection {
             rec_groups,
             types,
             trampolines,
+            trace_info,
+            types_with_trace_info: _,
         } = self;
         f.debug_struct("TypeCollection")
             .field("rec_groups", rec_groups)
             .field("types", types)
             .field("trampolines", trampolines)
+            .field("trace_info", trace_info)
             .finish_non_exhaustive()
     }
 }
@@ -138,10 +144,31 @@ impl Engine {
         let gc_runtime = engine.gc_runtime().map(|rt| &**rt);
 
         // First, register these types in this engine's registry.
-        let (rec_groups, types) = registry
+        let (rec_groups, types, trace_info) = registry
             .0
             .write()
             .register_module_types(gc_runtime, module_types)?;
+
+        // Wrap rec_groups in an Undo guard so that if any of the
+        // following fallible operations fail before we construct the
+        // TypeCollection, we properly decref the registered types.
+        let rec_groups = Undo::new(rec_groups, |rec_groups| {
+            let mut inner = registry.0.write();
+            for entry in &rec_groups {
+                if entry.decref("register_and_canonicalize_types cleanup") {
+                    inner.unregister_entry(entry.clone());
+                }
+            }
+        });
+
+        // Build up the map of vm indices to module indices for when types have
+        // trace info associated with them.
+        let mut types_with_trace_info = TryHashMap::new();
+        for (module_ty, info) in trace_info.iter() {
+            if info.is_some() {
+                types_with_trace_info.insert(types[module_ty], module_ty)?;
+            }
+        }
 
         // Then build our map from each function type's engine index to the
         // module-index of its trampoline. Trampoline functions are queried by
@@ -169,11 +196,14 @@ impl Engine {
             module.canonicalize_for_runtime_usage(&mut |idx| types[idx]);
         }
 
+        let rec_groups = Undo::commit(rec_groups);
         Ok(TypeCollection {
             engine,
             rec_groups,
             types,
             trampolines,
+            trace_info,
+            types_with_trace_info: types_with_trace_info.into(),
         })
     }
 }
@@ -209,6 +239,23 @@ impl TypeCollection {
         let trampoline_ty = self.trampolines[ty].expand();
         log::trace!("TypeCollection::trampoline_type({ty:?}) -> {trampoline_ty:?}");
         trampoline_ty
+    }
+
+    /// Returns the `TraceInfo`, if any, for the `index` provided.
+    #[inline]
+    #[cfg(feature = "gc")]
+    pub fn trace_info(&self, index: ModuleInternedTypeIndex) -> Option<&TraceInfo> {
+        self.trace_info.get(index).and_then(|s| s.as_ref())
+    }
+
+    /// If `index` has `TraceInfo` associated with it then the corresponding
+    /// `ModuleInternedTypeIndex` for `index` is returned.
+    #[inline]
+    pub fn shared_type_with_trace_info(
+        &self,
+        index: VMSharedTypeIndex,
+    ) -> Option<ModuleInternedTypeIndex> {
+        self.types_with_trace_info.get(&index).copied()
     }
 }
 
@@ -683,24 +730,56 @@ impl TypeRegistryInner {
         (
             TryVec<RecGroupEntry>,
             TryPrimaryMap<ModuleInternedTypeIndex, VMSharedTypeIndex>,
+            TryPrimaryMap<ModuleInternedTypeIndex, Option<TraceInfo>>,
         ),
         OutOfMemory,
     > {
         log::trace!("Start registering module types");
 
         // The engine's type registry entries for these module types.
-        let mut entries = TryVec::with_capacity(types.rec_groups().len())?;
+        let mut entries = TryVec::new();
 
         // The map from a module type index to an engine type index for these
         // module types.
-        let mut map = TryPrimaryMap::<ModuleInternedTypeIndex, VMSharedTypeIndex>::with_capacity(
-            types.wasm_types().len(),
-        )?;
+        let mut map = TryPrimaryMap::<ModuleInternedTypeIndex, VMSharedTypeIndex>::new();
+        let mut trace_info = TryPrimaryMap::new();
+
+        if let Err(e) = self.register_module_types_impl(
+            gc_runtime,
+            types,
+            &mut entries,
+            &mut map,
+            &mut trace_info,
+        ) {
+            for entry in entries {
+                if entry.decref("register_module_types cleanup") {
+                    self.unregister_entry(entry);
+                }
+            }
+            return Err(e);
+        }
+
+        log::trace!("End registering module types");
+
+        Ok((entries, map, trace_info))
+    }
+
+    fn register_module_types_impl(
+        &mut self,
+        gc_runtime: Option<&dyn GcRuntime>,
+        types: &ModuleTypes,
+        entries: &mut TryVec<RecGroupEntry>,
+        map: &mut TryPrimaryMap<ModuleInternedTypeIndex, VMSharedTypeIndex>,
+        trace_info: &mut TryPrimaryMap<ModuleInternedTypeIndex, Option<TraceInfo>>,
+    ) -> Result<(), OutOfMemory> {
+        entries.reserve(types.rec_groups().len())?;
+        map.reserve(types.wasm_types().len())?;
+        trace_info.reserve(types.wasm_types().len())?;
 
         for (_rec_group_index, module_group) in types.rec_groups() {
             let entry = self.register_rec_group(
                 gc_runtime,
-                &map,
+                map,
                 module_group.clone(),
                 iter_entity_range(module_group.clone()).map(|ty| types[ty].try_clone()),
             )?;
@@ -712,14 +791,20 @@ impl TypeRegistryInner {
             {
                 let module_ty2 = map.push(*engine_ty).expect("reserved capacity");
                 assert_eq!(module_ty, module_ty2);
+
+                let info = self
+                    .type_to_gc_layout
+                    .get(*engine_ty)
+                    .and_then(|l| l.as_ref())
+                    .map(TraceInfo::new);
+                let module_ty3 = trace_info.push(info).expect("reserved capacity");
+                assert_eq!(module_ty, module_ty3);
             }
 
             entries.push(entry).expect("reserved capacity");
         }
 
-        log::trace!("End registering module types");
-
-        Ok((entries, map))
+        Ok(())
     }
 
     /// Register a rec group in this registry.
@@ -1119,10 +1204,10 @@ impl TypeRegistryInner {
                     gc_runtime.layouts().array_layout(a).into()
                 }
                 wasmtime_environ::WasmCompositeInnerType::Struct(s) => {
-                    try_new::<Arc<_>>(gc_runtime.layouts().struct_layout(s))?.into()
+                    try_new::<Arc<_>>(gc_runtime.layouts().struct_layout(s)?)?.into()
                 }
                 wasmtime_environ::WasmCompositeInnerType::Exn(e) => {
-                    try_new::<Arc<_>>(gc_runtime.layouts().exn_layout(e))?.into()
+                    try_new::<Arc<_>>(gc_runtime.layouts().exn_layout(e)?)?.into()
                 }
                 wasmtime_environ::WasmCompositeInnerType::Cont(_) => continue, // FIXME: #10248 stack switching support.
             };

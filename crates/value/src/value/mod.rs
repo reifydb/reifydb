@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 pub mod as_string;
 pub mod blob;
 pub mod boolean;
+pub mod canonical;
 pub mod column_view;
 pub mod constraint;
 pub mod container;

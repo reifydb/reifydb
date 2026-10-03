@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_sdk::flow::operator::extern_c::binding::operator::ExternCOperator;
+use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
 use reifydb_testing_chaos::{
 	corpus::Corpus,
 	operator::{
@@ -23,7 +23,7 @@ use super::{
 	schema::ChaosSchema,
 	strategy::ColumnRegistry,
 };
-use crate::harness::ExternCOperatorHarness;
+use crate::in_process::harness::InProcessOperatorHarness;
 
 #[derive(Debug)]
 pub struct ChaosOutcome {
@@ -78,17 +78,17 @@ impl ChaosOutcome {
 	}
 }
 
-pub struct RunnableChaos<T: ExternCOperator> {
+pub struct RunnableChaos<C: MountedOperator + OperatorMetadata + 'static> {
 	pub context: ChaosContext,
 	pub scenario: Scenario,
 	pub schema: Arc<ChaosSchema>,
 	pub registry: Arc<ColumnRegistry>,
 	pub tolerances: Tolerances,
 	pub oracle: OracleFn,
-	pub harness: ExternCOperatorHarness<T>,
+	pub harness: InProcessOperatorHarness<C>,
 }
 
-impl<T: ExternCOperator> RunnableChaos<T> {
+impl<C: MountedOperator + OperatorMetadata + 'static> RunnableChaos<C> {
 	pub fn run(mut self) -> ChaosOutcome {
 		let scenario = self.scenario;
 		let workload = SamplerWorkload::new(self.schema.clone(), self.registry.clone());

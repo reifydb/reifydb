@@ -54,7 +54,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::{
-	column::JoinedColumnsBuilder,
+	column::{JoinedColumnsBuilder, JoinedColumnsCache},
 	snapshot::SnapshotLedger,
 	state::{JoinSide, JoinState},
 	strategy::{JoinContext, JoinStrategy, UpdateKeys},
@@ -177,6 +177,7 @@ pub struct JoinOperator {
 	ctx: Arc<FlowContext>,
 	seal_fires: Counter,
 	expiry: JoinExpiryIndex,
+	columns: JoinedColumnsCache,
 }
 
 impl JoinOperator {
@@ -221,6 +222,7 @@ impl JoinOperator {
 			right_node,
 			compiled_left_exprs,
 			compiled_right_exprs,
+			columns: JoinedColumnsCache::new(alias.clone(), natural),
 			alias,
 			left_schema,
 			right_schema,
@@ -383,12 +385,14 @@ impl JoinOperator {
 		self.move_join_expiries(host, side, &cleared, &[])
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn move_row_join_expiry(
 		&mut self,
 		host: &mut dyn HostContext,
 		side: JoinSide,
 		pre: &RecordBatch,
 		post: &RecordBatch,
+		post_times: &[Option<DateTime>],
 		row_idx: usize,
 		keys: (Option<Hash128>, Option<Hash128>),
 	) -> Result<()> {
@@ -401,7 +405,7 @@ impl JoinOperator {
 		}
 		let mut armed: Vec<(GroupId, RowNumber, DateTime)> = Vec::new();
 		if let (Some(group), Some(at)) =
-			(self.expiry_group(side, keys.1), row_times(post)?.get(row_idx).copied().flatten())
+			(self.expiry_group(side, keys.1), post_times.get(row_idx).copied().flatten())
 		{
 			armed.push((group, require_row_numbers(post)?[row_idx], at));
 		}
@@ -640,8 +644,7 @@ impl JoinOperator {
 			return Ok(Emitted::empty());
 		}
 
-		let builder =
-			JoinedColumnsBuilder::new(left.schema_ref(), &self.right_schema, &self.alias, self.natural);
+		let builder = self.columns.builder(left.schema_ref(), &self.right_schema);
 		let built = builder.unmatched_left(row_numbers[0], left, left_idx, &self.right_schema)?;
 		Self::split(built, &fresh, &existing)
 	}
@@ -707,8 +710,7 @@ impl JoinOperator {
 
 		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
-		let builder =
-			JoinedColumnsBuilder::new(left.schema_ref(), &self.right_schema, &self.alias, self.natural);
+		let builder = self.columns.builder(left.schema_ref(), &self.right_schema);
 		let built = builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema)?;
 		Self::split(built, &fresh, &existing)
 	}
@@ -758,8 +760,7 @@ impl JoinOperator {
 
 		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
-		let builder =
-			JoinedColumnsBuilder::new(left.schema_ref(), right.schema_ref(), &self.alias, self.natural);
+		let builder = self.columns.builder(left.schema_ref(), right.schema_ref());
 		let built = builder.join_one_to_many(&row_numbers, left, left_idx, right)?;
 		Self::split(built, &fresh, &existing)
 	}
@@ -789,8 +790,7 @@ impl JoinOperator {
 
 		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
-		let builder =
-			JoinedColumnsBuilder::new(left.schema_ref(), right.schema_ref(), &self.alias, self.natural);
+		let builder = self.columns.builder(left.schema_ref(), right.schema_ref());
 		let built = builder.join_many_to_one(&row_numbers, left, right, right_idx)?;
 		Self::split(built, &fresh, &existing)
 	}
@@ -825,8 +825,7 @@ impl JoinOperator {
 
 		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
-		let builder =
-			JoinedColumnsBuilder::new(left.schema_ref(), right.schema_ref(), &self.alias, self.natural);
+		let builder = self.columns.builder(left.schema_ref(), right.schema_ref());
 		let built = builder.join_cartesian(&row_numbers, left, left_indices, right, right_indices)?;
 		Self::split(built, &fresh, &existing)
 	}
@@ -842,8 +841,7 @@ impl JoinOperator {
 		slot: &RecordBatch,
 		row_numbers: &[RowNumber],
 	) -> Result<RecordBatch> {
-		let builder =
-			JoinedColumnsBuilder::new(left.schema_ref(), slot.schema_ref(), &self.alias, self.natural);
+		let builder = self.columns.builder(left.schema_ref(), slot.schema_ref());
 		builder.join_cartesian(row_numbers, left, left_indices, slot, &[0])
 	}
 
@@ -853,8 +851,7 @@ impl JoinOperator {
 		left_indices: &[usize],
 		row_numbers: &[RowNumber],
 	) -> Result<RecordBatch> {
-		let builder =
-			JoinedColumnsBuilder::new(left.schema_ref(), &self.right_schema, &self.alias, self.natural);
+		let builder = self.columns.builder(left.schema_ref(), &self.right_schema);
 		builder.unmatched_left_batch(row_numbers, left, left_indices, &self.right_schema)
 	}
 
@@ -873,27 +870,17 @@ impl JoinOperator {
 		let keys: Vec<JoinRowMappingKey> =
 			left_indices.iter().map(|&idx| Self::unmatched_left_key(left_numbers[idx])).collect();
 		let (row_numbers, fresh, existing) = self.identities(host, &keys, identity)?;
-		let built = match slot {
-			Some(slot) => JoinedColumnsBuilder::new(
-				left.schema_ref(),
-				slot.schema_ref(),
-				&self.alias,
-				self.natural,
-			)
-			.join_cartesian(&row_numbers, left, left_indices, slot, &[0])?,
-			None => JoinedColumnsBuilder::new(
-				left.schema_ref(),
-				&self.right_schema,
-				&self.alias,
-				self.natural,
-			)
-			.unmatched_left_batch(
-				&row_numbers,
-				left,
-				left_indices,
-				&self.right_schema,
-			)?,
-		};
+		let built =
+			match slot {
+				Some(slot) => self
+					.columns
+					.builder(left.schema_ref(), slot.schema_ref())
+					.join_cartesian(&row_numbers, left, left_indices, slot, &[0])?,
+				None => self
+					.columns
+					.builder(left.schema_ref(), &self.right_schema)
+					.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema)?,
+			};
 		Self::split(built, &fresh, &existing)
 	}
 
@@ -1086,6 +1073,10 @@ impl JoinOperator {
 		let pre_keys = self.compute_join_keys(pre, self.compiled_exprs_of(side))?;
 		let post_keys = self.compute_join_keys(post, self.compiled_exprs_of(side))?;
 		let row_count = post.num_rows();
+		let post_times = match self.retention_of(side) {
+			Some(_) => row_times(post)?,
+			None => Vec::new(),
+		};
 
 		for row_idx in 0..row_count {
 			let mut ctx = JoinContext {
@@ -1136,6 +1127,7 @@ impl JoinOperator {
 				side,
 				pre,
 				post,
+				&post_times,
 				row_idx,
 				(pre_keys[row_idx], post_keys[row_idx]),
 			)?;

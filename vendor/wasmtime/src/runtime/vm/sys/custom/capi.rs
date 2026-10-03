@@ -172,16 +172,20 @@ unsafe extern "C" {
     #[cfg(has_virtual_memory)]
     pub fn wasmtime_memory_image_free(image: *mut wasmtime_memory_image);
 
-    /// Wasmtime requires a single pointer's space of TLS to be used at runtime,
-    /// and this function returns the current value of the TLS variable.
+    /// Wasmtime requires a small amount of TLS to be used at runtime,
+    /// and this function returns the current value of the TLS state.
     ///
-    /// This value should default to `NULL`.
-    pub fn wasmtime_tls_get() -> *mut u8;
+    /// Wasmtime needs at least one pointer's worth of TLS space, and with the
+    /// `component-model-async` feature a second pointer's worth of TLS space is
+    /// required. The `slot` variable is 0 for the default runtime TLS pointer,
+    /// and it is 1 for the component-model-async state. No other value of
+    /// `slot` is passed in.
+    ///
+    /// The values should default to `NULL`.
+    pub fn wasmtime_tls_get(slot: usize) -> *mut u8;
 
-    /// Sets the current TLS value for Wasmtime to the provided value.
-    ///
-    /// This value should be returned when later calling `wasmtime_tls_get`.
-    pub fn wasmtime_tls_set(ptr: *mut u8);
+    /// Setter for the TLS space described in `wasmtime_tls_get`.
+    pub fn wasmtime_tls_set(slot: usize, ptr: *mut u8);
 
     /// Frees a synchronization lock.
     ///
@@ -232,4 +236,29 @@ unsafe extern "C" {
     /// The implementor must handle this case gracefully.
     #[cfg(has_custom_sync)]
     pub fn wasmtime_sync_rwlock_free(lock: *mut usize);
+
+    // The `wasmtime_fiber_*` declarations below are duplicated in
+    // `crates/fiber/src/stackswitch/custom.rs`, which is where Wasmtime
+    // actually imports them from (the `wasmtime-internal-fiber` crate cannot
+    // depend on this crate). Keep the two copies in-sync.
+
+    /// Initializes a fiber stack so that switching to it will begin executing `entry`.
+    #[cfg(has_custom_fiber)]
+    #[expect(
+        dead_code,
+        reason = "imported and called from the `wasmtime-internal-fiber`"
+    )]
+    pub fn wasmtime_fiber_init(
+        top_of_stack: *mut u8,
+        entry: extern "C" fn(*mut u8, *mut u8) -> *mut u8,
+        entry_arg0: *mut u8,
+    );
+
+    /// Switches execution to the fiber stack whose top is `top_of_stack`.
+    #[cfg(has_custom_fiber)]
+    #[expect(
+        dead_code,
+        reason = "imported and called from `wasmtime-internal-fiber`"
+    )]
+    pub fn wasmtime_fiber_switch(top_of_stack: *mut u8);
 }

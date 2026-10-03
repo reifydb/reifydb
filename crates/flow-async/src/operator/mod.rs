@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, RecordBatch, TimestampNanosecondArray};
+use arrow_arith::aggregate::max;
+use arrow_array::{Array, ArrayRef, RecordBatch, TimestampNanosecondArray, types::TimestampNanosecondType};
 #[cfg(feature = "runtime")]
 use arrow_schema::SchemaRef;
 #[cfg(feature = "runtime")]
@@ -14,12 +15,12 @@ use reifydb_core::{
 };
 use reifydb_core::{interface::change::Change, internal_err};
 #[cfg(feature = "runtime")]
-use reifydb_value::value::duration::Duration;
+use reifydb_value::value::{container::temporal_array::datetimes, duration::Duration};
 use reifydb_value::{
 	Result,
 	value::{
 		column_view::ViewData,
-		container::temporal_array::{DATETIME_TIMEZONE, datetime_to_native, datetimes},
+		container::temporal_array::{datetime_timezone, datetime_to_native},
 		datetime::DateTime,
 		system_columns::{SystemColumn, column_view, with_system_column},
 	},
@@ -131,7 +132,7 @@ pub type BoxedHostOperator = Box<dyn HostOperator>;
 pub fn max_input_time(change: &Change) -> Result<Option<DateTime>> {
 	let mut latest = None;
 	for columns in change.diffs.iter().filter_map(|diff| diff.post().or_else(|| diff.pre())) {
-		latest = latest.max(row_times(columns)?.into_iter().flatten().max());
+		latest = latest.max(time_array(columns)?.and_then(max).map(DateTime::from_nanos));
 	}
 	Ok(latest)
 }
@@ -141,19 +142,32 @@ pub(crate) fn stamp_output_time(change: &mut Change, inherited: Option<DateTime>
 	let Some(inherited) = inherited else {
 		return Ok(());
 	};
+	let inherited = datetime_to_native(inherited);
 	for diff in change.diffs.iter_mut() {
 		for columns in diff.batches_mut() {
-			let times = row_times(columns)?;
-			if times.is_empty() {
+			let Some(times) = time_array(columns)?.filter(|times| !times.is_empty()) else {
 				continue;
-			}
-			let stamped = time_column(times.into_iter().map(|own| own.map(|own| own.min(inherited))));
-			*columns = with_system_column(columns.clone(), SystemColumn::Time, stamped)?;
+			};
+			let stamped = times
+				.unary::<_, TimestampNanosecondType>(|own| own.min(inherited))
+				.with_timezone(datetime_timezone());
+			*columns = with_system_column(columns.clone(), SystemColumn::Time, Arc::new(stamped))?;
 		}
 	}
 	Ok(())
 }
 
+fn time_array(columns: &RecordBatch) -> Result<Option<&TimestampNanosecondArray>> {
+	let Some(view) = column_view(columns, SystemColumn::Time.name())? else {
+		return Ok(None);
+	};
+	match &view.data {
+		ViewData::DateTime(array) => Ok(Some(*array)),
+		_ => internal_err!("system column #time holds {}", view.base_type()),
+	}
+}
+
+#[cfg(feature = "runtime")]
 pub(crate) fn row_times(columns: &RecordBatch) -> Result<Vec<Option<DateTime>>> {
 	let Some(view) = column_view(columns, SystemColumn::Time.name())? else {
 		return Ok(Vec::new());
@@ -177,7 +191,7 @@ pub(crate) fn time_at(columns: &RecordBatch, row_idx: usize) -> Result<Option<Da
 pub(crate) fn time_column(times: impl IntoIterator<Item = Option<DateTime>>) -> ArrayRef {
 	Arc::new(
 		TimestampNanosecondArray::from_iter(times.into_iter().map(|time| time.map(datetime_to_native)))
-			.with_timezone(DATETIME_TIMEZONE),
+			.with_timezone(datetime_timezone()),
 	)
 }
 

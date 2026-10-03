@@ -5,12 +5,9 @@ use arrow_array::{ArrayRef, RecordBatch};
 use arrow_buffer::BooleanBuffer;
 use arrow_schema::FieldRef;
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
-use reifydb_core::{
-	row::Row,
-	value::{
-		batch::{batch, from_row, take_rows},
-		column::{builder::ColumnBuilder, factory, scatter::scatter_merge},
-	},
+use reifydb_core::value::{
+	batch::{batch, from_encoded_bytes, take_rows},
+	column::{builder::ColumnBuilder, factory, scatter::scatter_merge},
 };
 use reifydb_value::value::{
 	Value,
@@ -145,7 +142,7 @@ fn scatter_merge_of_optional_columns_keeps_precision_and_scale() {
 }
 
 #[test]
-fn reset_from_row_keeps_precision_and_scale() {
+fn decoding_a_stored_row_keeps_precision_and_scale() {
 	// Columns built from a stored row must carry the shape's declared type, not the default precision.
 	let types = [ValueType::decimal(Precision::new(12), Scale::new(3))];
 	let fields = ["d"]
@@ -156,12 +153,7 @@ fn reset_from_row_keeps_precision_and_scale() {
 	let shape = RowShape::new(RowFamily::Table, fields);
 	let mut encoded = shape.allocate_table();
 	shape.set_values(&mut encoded, &[Value::Decimal(decimal("1.25"))]);
-	let row = Row {
-		number: RowNumber(1),
-		encoded: encoded.freeze().into(),
-		shape,
-	};
-	let columns = from_row(&row).unwrap();
+	let columns = from_encoded_bytes(&shape, &[RowNumber(1)], &[encoded.freeze().into()]).unwrap();
 	assert_eq!(user_column_count(&columns), 1);
 	for (index, ty) in types.iter().enumerate() {
 		assert_eq!(&user_column(&columns, index).get_type(), ty);

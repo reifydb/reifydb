@@ -4,10 +4,7 @@
 use core::{slice, str};
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::{
-	reifydb_assertions,
-	value::{decimal::Decimal, diff_type::DiffType, time::Time},
-};
+use reifydb_value::{reifydb_assertions, value::diff_type::DiffType};
 
 use crate::{
 	common::{
@@ -59,15 +56,19 @@ impl<'a> BorrowedChange<'a> {
 	}
 
 	pub fn diffs(&self) -> impl Iterator<Item = BorrowedDiff<'a>> + 'a {
-		let count = self.extern_c.diff_count;
-		let base = self.extern_c.diffs;
-		(0..count).map(move |i| {
-			// SAFETY: `base` is the `diff_count`-element `ExternCDiff` array `marshal_change` wrote and
-			// fully initialized; `i < count` keeps the offset inside it.
-			let diff: &'a ExternCDiff = unsafe { &*base.add(i) };
-			BorrowedDiff {
-				extern_c: diff,
-			}
+		let change = *self;
+		(0..self.extern_c.diff_count).filter_map(move |i| change.diff_at(i))
+	}
+
+	pub(crate) fn diff_at(&self, index: usize) -> Option<BorrowedDiff<'a>> {
+		if index >= self.extern_c.diff_count {
+			return None;
+		}
+		// SAFETY: `diffs` is the `diff_count`-element `ExternCDiff` array `marshal_change` wrote and fully
+		// initialized; `index < diff_count` keeps the offset inside it.
+		let diff: &'a ExternCDiff = unsafe { &*self.extern_c.diffs.add(index) };
+		Some(BorrowedDiff {
+			extern_c: diff,
 		})
 	}
 }
@@ -239,40 +240,12 @@ impl<'a> BorrowedColumn<'a> {
 		Some(unsafe { slice::from_raw_parts(bytes.as_ptr() as *const T, count) })
 	}
 
-	pub fn iter_str(&self) -> impl Iterator<Item = &'a str> + 'a {
-		let data = self.data_bytes();
-		let offsets = self.offsets();
-		let row_count = self.row_count();
-		let offsets_len = offsets.len();
-		(0..row_count).map(move |i| {
-			if i + 1 >= offsets_len {
-				return "";
-			}
-			let start = offsets[i] as usize;
-			let end = offsets[i + 1] as usize;
-			if end > data.len() {
-				return "";
-			}
-			str::from_utf8(&data[start..end]).unwrap_or("")
-		})
+	pub(crate) fn str_at(&self, index: usize) -> Option<&'a str> {
+		self.bytes_at(index).map(|bytes| str::from_utf8(bytes).unwrap_or(""))
 	}
 
-	pub fn iter_bytes(&self) -> impl Iterator<Item = &'a [u8]> + 'a {
-		let data = self.data_bytes();
-		let offsets = self.offsets();
-		let row_count = self.row_count();
-		let offsets_len = offsets.len();
-		(0..row_count).map(move |i| {
-			if i + 1 >= offsets_len {
-				return &[][..];
-			}
-			let start = offsets[i] as usize;
-			let end = offsets[i + 1] as usize;
-			if end > data.len() {
-				return &[][..];
-			}
-			&data[start..end]
-		})
+	pub(crate) fn bytes_at(&self, index: usize) -> Option<&'a [u8]> {
+		(index < self.row_count()).then(|| varlen_cell(self.data_bytes(), self.offsets(), index))
 	}
 
 	#[inline]
@@ -285,14 +258,6 @@ impl<'a> BorrowedColumn<'a> {
 			Some(b) => (b >> (index % 8)) & 1 == 1,
 			None => false,
 		}
-	}
-
-	#[inline]
-	pub fn decimal_at(&self, index: usize) -> Option<Decimal> {
-		if !self.is_defined_at(index) {
-			return None;
-		}
-		self.expect_family_cell_at(index)
 	}
 
 	pub(crate) fn family_cell_at<T: FamilyValue>(&self, index: usize) -> Result<Option<T>, SdkError> {
@@ -316,21 +281,18 @@ impl<'a> BorrowedColumn<'a> {
 		};
 		T::decode_cell(cell, scale).map(Some)
 	}
+}
 
-	pub(crate) fn expect_family_cell_at<T: FamilyValue>(&self, index: usize) -> Option<T> {
-		self.family_cell_at(index)
-			.unwrap_or_else(|err| panic!("decoding column {} at row {index} failed: {err}", self.name()))
+fn varlen_cell<'a>(data: &'a [u8], offsets: &[u64], index: usize) -> &'a [u8] {
+	if index + 1 >= offsets.len() {
+		return &[];
 	}
-
-	#[inline]
-	pub fn time_at(&self, index: usize) -> Option<Time> {
-		if self.type_code() != ValueKind::Time || !self.is_defined_at(index) {
-			return None;
-		}
-		// SAFETY: the Time check above means the buffer is a marshalled &[Time]; `Time` is
-		// `repr(transparent)` over `u64`, so it is aligned and every bit pattern is a valid value.
-		unsafe { self.as_slice::<Time>()?.get(index).copied() }
+	let start = offsets[index] as usize;
+	let end = offsets[index + 1] as usize;
+	if end > data.len() {
+		return &[];
 	}
+	&data[start..end]
 }
 
 /// # Safety

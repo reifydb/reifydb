@@ -28,12 +28,12 @@ use super::{
 	encode_u128, encode_u128_varint,
 };
 use crate::{
-	key::{buf::KeyBuf, encoded::EncodedKey, sort::SortOrder},
+	key::{buf::KeyBuf, encoded::EncodedKey},
 	tag::{TypeTag, ValueKind},
 	unscaled::{NARROW, decimal_unscaled, width},
 };
 
-fn keycode_type_descending(ty: &ValueType) -> bool {
+pub(super) fn keycode_type_descending(ty: &ValueType) -> bool {
 	matches!(
 		ty,
 		ValueType::Boolean
@@ -59,6 +59,10 @@ fn keycode_type_descending(ty: &ValueType) -> bool {
 			| ValueType::Uuid7
 			| ValueType::IdentityId
 			| ValueType::Decimal { .. }
+			| ValueType::DictionaryId
+			| ValueType::List(_)
+			| ValueType::Record(_)
+			| ValueType::Tuple(_)
 	)
 }
 
@@ -181,29 +185,14 @@ impl KeySerializer {
 		self
 	}
 
-	pub fn extend_value_with_direction(&mut self, value: &Value, direction: SortOrder) -> Result<&mut Self> {
-		let ty = match value {
-			Value::None {
-				inner,
-			} => inner.clone(),
-			present => present.get_type(),
-		};
-		let ascending = matches!(direction, SortOrder::Asc);
-		if ascending == keycode_type_descending(&ty) {
-			let mut tmp = KeySerializer::new();
-			tmp.try_extend_value(value)?;
-			let mut bytes = tmp.to_encoded_key().to_vec();
-			for b in bytes.iter_mut() {
-				*b = !*b;
-			}
-			Ok(self.extend_raw(&bytes))
-		} else {
-			self.try_extend_value(value)
-		}
-	}
-
 	pub fn len(&self) -> usize {
 		self.buffer.len()
+	}
+
+	pub(crate) fn complement_from(&mut self, start: usize) {
+		for byte in &mut self.buffer.as_mut_slice()[start..] {
+			*byte = !*byte;
+		}
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -283,18 +272,12 @@ impl KeySerializer {
 				..
 			} => {
 				self.buffer.push(ValueKind::None.byte());
-				match ValueKind::of_type(inner) {
-					ValueKind::List | ValueKind::Record | ValueKind::Tuple => unreachable!(
-						"List/Record/Tuple types cannot be encoded as none inner type in keys"
-					),
-					ValueKind::Digest => {
-						return Err(Error::from(TypeError::SerdeKeycode {
-							message: format!(
-								"a none of type {inner} cannot be serialized in a key"
-							),
-						}));
-					}
-					_ => {}
+				if ValueKind::of_type(inner) == ValueKind::Digest {
+					return Err(Error::from(TypeError::SerdeKeycode {
+						message: format!(
+							"a none of type {inner} cannot be serialized in a key"
+						),
+					}));
 				}
 				let tag = TypeTag::of_type(inner)
 					.expect("option nesting in a key none inner exceeds the supported depth");

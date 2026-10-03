@@ -1,11 +1,11 @@
 #![cfg(all(feature = "read", feature = "write"))]
 
 use object::read::{Object, ObjectSection, ObjectSymbol};
-use object::{read, write, SectionIndex, SubArchitecture};
 use object::{
     Architecture, BinaryFormat, Endianness, RelocationEncoding, RelocationFlags, RelocationKind,
     SectionFlags, SectionKind, SymbolFlags, SymbolKind, SymbolScope, SymbolSection,
 };
+use object::{SectionIndex, SubArchitecture, read, write};
 
 mod bss;
 mod coff;
@@ -217,7 +217,8 @@ fn elf_x86_64() {
     assert_eq!(
         text.flags(),
         SectionFlags::Elf {
-            sh_flags: (object::elf::SHF_ALLOC | object::elf::SHF_EXECINSTR).into()
+            sh_type: object::elf::SHT_PROGBITS,
+            sh_flags: object::elf::SHF_ALLOC | object::elf::SHF_EXECINSTR,
         }
     );
     assert_eq!(&text.data().unwrap()[..30], &[1; 30]);
@@ -231,14 +232,12 @@ fn elf_x86_64() {
     let section = sections.next().unwrap();
     println!("{:?}", section);
     assert_eq!(section.name(), Ok(".eh_frame"));
-    assert_eq!(
-        section.kind(),
-        SectionKind::Elf(object::elf::SHT_X86_64_UNWIND)
-    );
+    assert_eq!(section.kind(), SectionKind::Unknown);
     assert_eq!(
         section.flags(),
         SectionFlags::Elf {
-            sh_flags: object::elf::SHF_ALLOC.into()
+            sh_type: object::elf::SHT_X86_64_UNWIND,
+            sh_flags: object::elf::SHF_ALLOC,
         }
     );
 
@@ -302,6 +301,8 @@ fn elf_any() {
         (Architecture::X86_64_X32, Endianness::Little),
         (Architecture::Hppa, Endianness::Big),
         (Architecture::Hexagon, Endianness::Little),
+        (Architecture::Ia64, Endianness::Little),
+        (Architecture::Ia64, Endianness::Big),
         (Architecture::LoongArch32, Endianness::Little),
         (Architecture::LoongArch64, Endianness::Little),
         (Architecture::M68k, Endianness::Big),

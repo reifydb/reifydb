@@ -41,8 +41,8 @@ async-trait = { workspace = true }
 reifydb-core = { workspace = true, optional = true }
 reifydb-runtime = { workspace = true, optional = true }
 
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = { version = "1.0.149" }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.151" }
 
 # Async runtime
 tokio = { workspace = true }
@@ -70,5 +70,5 @@ reifydb-client = { path = ".", features = ["grpc", "http", "ws", "dst"] }
 reifydb-sub-server = { workspace = true }
 reifydb-testing = { workspace = true }
 rustls = { workspace = true }
-test_each_file = { version = "0.3.7" }
+test_each_file = { version = "=0.3.7" }
 tokio = { workspace = true }

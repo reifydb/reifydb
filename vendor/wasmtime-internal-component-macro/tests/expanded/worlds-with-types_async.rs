@@ -212,12 +212,17 @@ const _: () = {
             host_getter: fn(&mut T) -> D::Data<'_>,
         ) -> wasmtime::Result<()>
         where
-            D: foo::foo::i::HostWithStore,
+            D: foo::foo::i::HostWithStore<T>,
             for<'a> D::Data<'a>: foo::foo::i::Host,
             T: 'static + Send,
         {
             foo::foo::i::add_to_linker::<T, D>(linker, host_getter)?;
             Ok(())
+        }
+        pub fn func_f(&self) -> wasmtime::component::TypedFunc<(), ((T, U, R),)> {
+            unsafe {
+                wasmtime::component::TypedFunc::<(), ((T, U, R),)>::new_unchecked(self.f)
+            }
         }
         pub async fn call_f<S: wasmtime::AsContextMut>(
             &self,
@@ -226,9 +231,7 @@ const _: () = {
         where
             <S as wasmtime::AsContext>::Data: Send,
         {
-            let callee = unsafe {
-                wasmtime::component::TypedFunc::<(), ((T, U, R),)>::new_unchecked(self.f)
-            };
+            let callee = self.func_f();
             let (ret0,) = callee.call_async(store.as_context_mut(), ()).await?;
             Ok(ret0)
         }
@@ -245,24 +248,35 @@ pub mod foo {
                 assert!(2 == < T as wasmtime::component::ComponentType >::SIZE32);
                 assert!(2 == < T as wasmtime::component::ComponentType >::ALIGN32);
             };
-            pub trait HostWithStore: wasmtime::component::HasData {}
-            impl<_T: ?Sized> HostWithStore for _T
+            pub trait HostWithStore<T>: wasmtime::component::HasData {}
+            impl<H: ?Sized, T> HostWithStore<T> for H
             where
-                _T: wasmtime::component::HasData,
+                H: wasmtime::component::HasData,
             {}
             pub trait Host {}
             impl<_T: Host + ?Sized> Host for &mut _T {}
+            pub fn add_to_linker_instance<T, D>(
+                inst: &mut wasmtime::component::LinkerInstance<'_, T>,
+                host_getter: fn(&mut T) -> D::Data<'_>,
+            ) -> wasmtime::Result<()>
+            where
+                D: HostWithStore<T>,
+                for<'a> D::Data<'a>: Host,
+                T: 'static,
+            {
+                Ok(())
+            }
             pub fn add_to_linker<T, D>(
                 linker: &mut wasmtime::component::Linker<T>,
                 host_getter: fn(&mut T) -> D::Data<'_>,
             ) -> wasmtime::Result<()>
             where
-                D: HostWithStore,
+                D: HostWithStore<T>,
                 for<'a> D::Data<'a>: Host,
                 T: 'static,
             {
                 let mut inst = linker.instance("foo:foo/i")?;
-                Ok(())
+                add_to_linker_instance::<T, D>(&mut inst, host_getter)
             }
         }
     }

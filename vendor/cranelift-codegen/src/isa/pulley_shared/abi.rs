@@ -4,7 +4,7 @@ use super::{PulleyFlags, PulleyTargetKind, inst::*};
 use crate::isa::pulley_shared::PointerWidth;
 use crate::{
     CodegenResult,
-    ir::{self, MemFlags, Signature, types::*},
+    ir::{self, MemFlagsData, Signature, types::*},
     isa,
     machinst::*,
     settings,
@@ -91,7 +91,7 @@ where
         for param in params {
             // Find the regclass(es) of the register(s) used to store a value of
             // this type.
-            let (rcs, reg_tys) = Self::I::rc_for_type(param.value_type)?;
+            let (rcs, reg_tys) = Self::I::rc_for_type(&param.value_type)?;
 
             let mut slots = ABIArgSlotVec::new();
             for (rc, reg_ty) in rcs.iter().zip(reg_tys.iter()) {
@@ -164,7 +164,7 @@ where
     }
 
     fn gen_load_stack(mem: StackAMode, into_reg: Writable<Reg>, ty: Type) -> Self::I {
-        let mut flags = MemFlags::trusted();
+        let mut flags = MemFlagsData::trusted();
         // Stack loads/stores of vectors always use little-endianness to avoid
         // implementing a byte-swap of vectors on big-endian platforms.
         if ty.is_vector() {
@@ -174,7 +174,7 @@ where
     }
 
     fn gen_store_stack(mem: StackAMode, from_reg: Reg, ty: Type) -> Self::I {
-        let mut flags = MemFlags::trusted();
+        let mut flags = MemFlagsData::trusted();
         // Stack loads/stores of vectors always use little-endianness to avoid
         // implementing a byte-swap of vectors on big-endian platforms.
         if ty.is_vector() {
@@ -211,6 +211,7 @@ where
     fn get_ext_mode(
         _call_conv: isa::CallConv,
         specified: ir::ArgumentExtension,
+        _location: ABIArgLocation,
     ) -> ir::ArgumentExtension {
         specified
     }
@@ -261,13 +262,13 @@ where
     fn gen_load_base_offset(into_reg: Writable<Reg>, base: Reg, offset: i32, ty: Type) -> Self::I {
         let base = XReg::try_from(base).unwrap();
         let mem = Amode::RegOffset { base, offset };
-        Inst::gen_load(into_reg, mem, ty, MemFlags::trusted()).into()
+        Inst::gen_load(into_reg, mem, ty, MemFlagsData::trusted()).into()
     }
 
     fn gen_store_base_offset(base: Reg, offset: i32, from_reg: Reg, ty: Type) -> Self::I {
         let base = XReg::try_from(base).unwrap();
         let mem = Amode::RegOffset { base, offset };
-        Inst::gen_store(mem, from_reg, ty, MemFlags::trusted()).into()
+        Inst::gen_store(mem, from_reg, ty, MemFlagsData::trusted()).into()
     }
 
     fn gen_sp_reg_adjust(amount: i32) -> SmallInstVec<Self::I> {
@@ -344,7 +345,7 @@ where
         }
 
         for (offset, ty, reg) in frame_layout.manually_managed_clobbers(&style) {
-            let mut flags = MemFlags::trusted();
+            let mut flags = MemFlagsData::trusted();
             if ty.is_vector() {
                 flags.set_endianness(ir::Endianness::Little);
             }
@@ -367,7 +368,7 @@ where
 
         // Restore clobbered registers that are manually managed in Cranelift.
         for (offset, ty, reg) in frame_layout.manually_managed_clobbers(&style) {
-            let mut flags = MemFlags::trusted();
+            let mut flags = MemFlagsData::trusted();
             if ty.is_vector() {
                 flags.set_endianness(ir::Endianness::Little);
             }
@@ -713,29 +714,47 @@ impl FrameLayout {
         &'a self,
         style: &'a FrameStyle,
     ) -> impl Iterator<Item = (i32, Type, Reg)> + 'a {
-        let mut offset = self.stack_size();
+        // `push_frame_save` always saves the pulley-managed registers at the
+        // *top* of the allocated frame (the highest addresses, `amt - 8`
+        // downward). Therefore the manually-managed clobbers must be placed
+        // *below* that pulley-saved region. The pulley-saved registers are not
+        // necessarily first in `clobbered_callee_saves` (it is sorted by
+        // register, and the manually-managed integer registers x0..x15 sort
+        // before the pulley-managed x16..x31), so we cannot simply walk the
+        // list from the top assigning slots in order -- doing so would place a
+        // manually-managed register on top of a pulley-saved one and the two
+        // stores would collide.
+        //
+        // Instead reserve the top `num_saved_by_pulley` 8-byte slots for the
+        // pulley-managed registers (matching `push_frame_save`) and hand out
+        // the remaining, lower slots to the manually-managed registers.
+        let num_saved_by_pulley = match style {
+            FrameStyle::PulleySetupAndSaveClobbers {
+                saved_by_pulley, ..
+            } => u32::from(saved_by_pulley.len()),
+            _ => 0,
+        };
+        let mut offset = self.stack_size() - num_saved_by_pulley * 8;
         self.clobbered_callee_saves.iter().filter_map(move |reg| {
-            // Allocate space for this clobber no matter what. If pulley is
-            // managing this then we're just accounting for the pulley-saved
-            // registers as well. Note that all pulley-managed registers come
-            // first in the list here.
-            offset -= 8;
             let r_reg = reg.to_reg();
-            let ty = match r_reg.class() {
-                RegClass::Int => {
-                    // If this register is saved by pulley, skip this clobber.
-                    if let FrameStyle::PulleySetupAndSaveClobbers {
-                        saved_by_pulley, ..
-                    } = style
-                    {
-                        if let Some(reg) = r_reg.hw_enc().checked_sub(16) {
-                            if saved_by_pulley.contains(reg) {
-                                return None;
-                            }
+            // If this register is saved by pulley, skip it: its slot is one of
+            // the reserved top slots accounted for above.
+            if let FrameStyle::PulleySetupAndSaveClobbers {
+                saved_by_pulley, ..
+            } = style
+            {
+                if r_reg.class() == RegClass::Int {
+                    if let Some(reg) = r_reg.hw_enc().checked_sub(16) {
+                        if saved_by_pulley.contains(reg) {
+                            return None;
                         }
                     }
-                    I64
                 }
+            }
+            // Allocate space for this manually-managed clobber.
+            offset -= 8;
+            let ty = match r_reg.class() {
+                RegClass::Int => I64,
                 RegClass::Float => F64,
                 RegClass::Vector => I8X16,
             };

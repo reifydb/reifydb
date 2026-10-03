@@ -31,7 +31,7 @@ use reifydb_core::{
 	},
 	metrics::heap::HeapSize,
 	state::typed::typed_key,
-	value::batch::{from_encoded_bytes, take_rows},
+	value::batch::{from_encoded_bytes, take_row, take_rows},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -46,7 +46,7 @@ use reifydb_value::{
 		datetime::DateTime,
 		row_number::RowNumber,
 		system_columns::{
-			SystemColumn, created_at, require_row_numbers, updated_at, user_columns, with_system_column,
+			SystemColumn, created_at, require_row_numbers, stamp_system_columns, updated_at, user_columns,
 		},
 	},
 };
@@ -65,8 +65,7 @@ struct RowAge {
 }
 
 impl RowAge {
-	fn of(columns: &RecordBatch, row_idx: usize, row: RowNumber) -> Result<Self> {
-		let created_at = created_at(columns)?.get(row_idx).copied();
+	fn of(created_at: Option<DateTime>, row: RowNumber) -> Self {
 		reifydb_assertions! {
 			assert!(
 				created_at.is_some(),
@@ -75,10 +74,10 @@ impl RowAge {
 				row
 			);
 		}
-		Ok(Self {
+		Self {
 			created_at: created_at.unwrap_or_default(),
 			row,
-		})
+		}
 	}
 }
 
@@ -100,6 +99,7 @@ pub struct TakePlan {
 
 pub struct TakeOperator {
 	plan: TakePlan,
+	shape: Option<(SchemaRef, RowShape)>,
 }
 
 fn user_views(columns: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
@@ -112,6 +112,17 @@ fn row_shape_from_columns(cols: &RecordBatch) -> Result<RowShape> {
 		.map(|view| RowShapeField::unconstrained(view.field.name().clone(), view.get_type()))
 		.collect();
 	Ok(RowShape::new(RowFamily::Pod, fields))
+}
+
+fn row_shape_for(cache: &mut Option<(SchemaRef, RowShape)>, cols: &RecordBatch) -> Result<RowShape> {
+	if let Some((schema, shape)) = cache.as_ref()
+		&& schema == cols.schema_ref()
+	{
+		return Ok(shape.clone());
+	}
+	let shape = row_shape_from_columns(cols)?;
+	*cache = Some((cols.schema(), shape.clone()));
+	Ok(shape)
 }
 
 fn encode_take_bytes(shape: &RowShape, columns: &RecordBatch, row_idx: usize) -> Result<EncodedBytes> {
@@ -141,7 +152,7 @@ fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedB
 	if let Some(time) = envelope.time() {
 		stamps.push((SystemColumn::Time, Arc::new(datetime_array([time]))));
 	}
-	stamps.into_iter().try_fold(decoded, |decoded, (column, array)| with_system_column(decoded, column, array))
+	stamp_system_columns(decoded, stamps)
 }
 
 impl TakeOperator {
@@ -152,6 +163,7 @@ impl TakeOperator {
 				operator,
 				limit,
 			},
+			shape: None,
 		}
 	}
 
@@ -257,6 +269,7 @@ impl TakePlan {
 		&self,
 		state: &mut TakeState,
 		row_number: RowNumber,
+		created_at: Option<DateTime>,
 		single_row: RecordBatch,
 		schema: &RowShape,
 		output_diffs: &mut Vec<Diff>,
@@ -265,7 +278,7 @@ impl TakePlan {
 			return Ok(());
 		}
 
-		let age = RowAge::of(&single_row, 0, row_number)?;
+		let age = RowAge::of(created_at, row_number);
 		state.row_data.insert(row_number, encode_take_bytes(schema, &single_row, 0)?);
 
 		if state.by_age.len() >= self.limit
@@ -308,14 +321,16 @@ impl TakePlan {
 		&self,
 		state: &mut TakeState,
 		post: RecordBatch,
+		shapes: &mut Option<(SchemaRef, RowShape)>,
 		output_diffs: &mut Vec<Diff>,
 	) -> Result<()> {
 		let row_count = post.num_rows();
 		if row_count == 0 {
 			return Ok(());
 		}
-		let schema = row_shape_from_columns(&post)?;
+		let schema = row_shape_for(shapes, &post)?;
 		let row_numbers = require_row_numbers(&post)?;
+		let created = created_at(&post)?;
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
 				slot.1 += 1;
@@ -327,8 +342,15 @@ impl TakePlan {
 				continue;
 			}
 
-			let single = take_rows(&post, &[row_idx])?;
-			self.admit_new_row(state, row_number, single, &schema, output_diffs)?;
+			let single = take_row(&post, row_idx)?;
+			self.admit_new_row(
+				state,
+				row_number,
+				created.get(row_idx).copied(),
+				single,
+				&schema,
+				output_diffs,
+			)?;
 		}
 		Ok(())
 	}
@@ -340,14 +362,16 @@ impl TakePlan {
 		state: &mut TakeState,
 		pre: RecordBatch,
 		post: RecordBatch,
+		shapes: &mut Option<(SchemaRef, RowShape)>,
 		output_diffs: &mut Vec<Diff>,
 	) -> Result<()> {
 		let row_count = post.num_rows();
 		if row_count == 0 {
 			return Ok(());
 		}
-		let schema = row_shape_from_columns(&post)?;
+		let schema = row_shape_for(shapes, &post)?;
 		let row_numbers = require_row_numbers(&post)?;
+		let created = created_at(&post)?;
 		let mut update_indices: Vec<usize> = Vec::new();
 
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
@@ -362,8 +386,15 @@ impl TakePlan {
 				continue;
 			}
 
-			let single = take_rows(&post, &[row_idx])?;
-			self.admit_new_row(state, row_number, single, &schema, output_diffs)?;
+			let single = take_row(&post, row_idx)?;
+			self.admit_new_row(
+				state,
+				row_number,
+				created.get(row_idx).copied(),
+				single,
+				&schema,
+				output_diffs,
+			)?;
 		}
 
 		if !update_indices.is_empty() {
@@ -381,13 +412,14 @@ impl TakePlan {
 		&self,
 		state: &mut TakeState,
 		pre: RecordBatch,
+		shapes: &mut Option<(SchemaRef, RowShape)>,
 		output_diffs: &mut Vec<Diff>,
 	) -> Result<()> {
 		let row_count = pre.num_rows();
 		if row_count == 0 {
 			return Ok(());
 		}
-		let schema = row_shape_from_columns(&pre)?;
+		let schema = row_shape_for(shapes, &pre)?;
 		let row_numbers = require_row_numbers(&pre)?;
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
@@ -399,7 +431,7 @@ impl TakePlan {
 				state.by_row.remove(&row_number);
 				state.by_age.remove(&age);
 				state.row_data.remove(&row_number);
-				output_diffs.push(Diff::remove(take_rows(&pre, &[row_idx])?));
+				output_diffs.push(Diff::remove(take_row(&pre, row_idx)?));
 
 				if state.by_age.len() < self.limit && !state.candidates_by_age.is_empty() {
 					self.promote_one_candidate(state, &schema, output_diffs)?;
@@ -442,16 +474,27 @@ impl HostOperator for TakeOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.plan.apply_insert_diff(&mut state, post, &mut output_diffs)?,
+				} => self.plan.apply_insert_diff(
+					&mut state,
+					post,
+					&mut self.shape,
+					&mut output_diffs,
+				)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.plan.apply_update_diff(&mut state, pre, post, &mut output_diffs)?,
+				} => self.plan.apply_update_diff(
+					&mut state,
+					pre,
+					post,
+					&mut self.shape,
+					&mut output_diffs,
+				)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.plan.apply_remove_diff(&mut state, pre, &mut output_diffs)?,
+				} => self.plan.apply_remove_diff(&mut state, pre, &mut self.shape, &mut output_diffs)?,
 			}
 		}
 
@@ -474,7 +517,7 @@ mod tests {
 		value::{batch::batch, column::factory::int4},
 	};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::value::system_columns::{row_numbers, system_column, time};
+	use reifydb_value::value::system_columns::{row_numbers, system_column, time, with_system_column};
 
 	use super::*;
 	use crate::{

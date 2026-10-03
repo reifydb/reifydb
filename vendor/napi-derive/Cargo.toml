@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.65"
+rust-version = "1.88"
 name = "napi-derive"
-version = "2.16.13"
+version = "3.6.10"
 authors = [
     "LongYinan <lynweklm@gmail.com>",
     "Forehalo <forehalo@gmail.com>",
@@ -38,19 +38,40 @@ repository = "https://github.com/napi-rs/napi-rs"
 [package.metadata.workspaces]
 independent = true
 
+[features]
+compat-mode = []
+default = [
+    "type-def",
+    "strict",
+]
+full = [
+    "type-def",
+    "strict",
+    "compat-mode",
+]
+noop = ["napi-derive-backend/noop"]
+strict = ["napi-derive-backend/strict"]
+tracing = ["napi-derive-backend/tracing"]
+type-def = [
+    "napi-derive-backend/type-def",
+    "ctor",
+]
+
 [lib]
 name = "napi_derive"
 path = "src/lib.rs"
 proc-macro = true
 
-[dependencies.cfg-if]
-version = "1.0"
-
 [dependencies.convert_case]
-version = "0.6"
+version = "0.12"
+
+[dependencies.ctor]
+version = "1.0.0"
+optional = true
+default-features = false
 
 [dependencies.napi-derive-backend]
-version = "1.0.75"
+version = "6.1.4"
 
 [dependencies.proc-macro2]
 version = "1"
@@ -65,17 +86,3 @@ features = [
     "full",
     "extra-traits",
 ]
-
-[features]
-compat-mode = []
-default = [
-    "compat-mode",
-    "full",
-]
-full = [
-    "type-def",
-    "strict",
-]
-noop = ["napi-derive-backend/noop"]
-strict = ["napi-derive-backend/strict"]
-type-def = ["napi-derive-backend/type-def"]

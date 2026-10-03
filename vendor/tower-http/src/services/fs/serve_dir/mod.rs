@@ -17,12 +17,15 @@ use std::{
 };
 use tower_service::Service;
 
+mod backend;
 pub(crate) mod future;
 mod headers;
 mod open_file;
 
 #[cfg(test)]
 mod tests;
+
+pub use self::backend::{Backend, File, Metadata, TokioBackend, TokioFile};
 
 // default capacity 64KiB
 const DEFAULT_CAPACITY: usize = 65536;
@@ -50,15 +53,18 @@ const DEFAULT_CAPACITY: usize = 65536;
 /// let service = ServeDir::new("assets");
 /// ```
 #[derive(Clone, Debug)]
-pub struct ServeDir<F = DefaultServeDirFallback> {
+pub struct ServeDir<F = DefaultServeDirFallback, B = TokioBackend> {
     base: PathBuf,
+    redirect_path_prefix: String,
     buf_chunk_size: usize,
+    ignore_multi_range_requests: bool,
     precompressed_variants: Option<PrecompressedVariants>,
-    // This is used to specialise implementation for
+    // This is used to specialize implementation for
     // single files
     variant: ServeVariant,
     fallback: Option<F>,
     call_fallback_on_method_not_allowed: bool,
+    backend: B,
 }
 
 impl ServeDir<DefaultServeDirFallback> {
@@ -72,13 +78,18 @@ impl ServeDir<DefaultServeDirFallback> {
 
         Self {
             base,
+            redirect_path_prefix: String::new(),
             buf_chunk_size: DEFAULT_CAPACITY,
+            ignore_multi_range_requests: false,
             precompressed_variants: None,
             variant: ServeVariant::Directory {
                 append_index_html_on_directories: true,
+                redirect_to_trailing_slash: true,
+                html_as_default_extension: false,
             },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
+            backend: TokioBackend,
         }
     }
 
@@ -88,16 +99,48 @@ impl ServeDir<DefaultServeDirFallback> {
     {
         Self {
             base: path.as_ref().to_owned(),
+            redirect_path_prefix: String::new(),
             buf_chunk_size: DEFAULT_CAPACITY,
+            ignore_multi_range_requests: false,
             precompressed_variants: None,
             variant: ServeVariant::SingleFile { mime },
             fallback: None,
             call_fallback_on_method_not_allowed: false,
+            backend: TokioBackend,
         }
     }
 }
 
-impl<F> ServeDir<F> {
+impl<B: Backend> ServeDir<DefaultServeDirFallback, B> {
+    /// Create a new [`ServeDir`] with a custom [`Backend`].
+    ///
+    /// This allows serving files from sources other than the local filesystem.
+    pub fn with_backend<P>(path: P, backend: B) -> Self
+    where
+        P: AsRef<Path>,
+    {
+        let mut base = PathBuf::from(".");
+        base.push(path.as_ref());
+
+        ServeDir {
+            base,
+            buf_chunk_size: DEFAULT_CAPACITY,
+            ignore_multi_range_requests: false,
+            precompressed_variants: None,
+            variant: ServeVariant::Directory {
+                append_index_html_on_directories: true,
+                redirect_to_trailing_slash: true,
+                html_as_default_extension: false,
+            },
+            fallback: None,
+            call_fallback_on_method_not_allowed: false,
+            redirect_path_prefix: String::new(),
+            backend,
+        }
+    }
+}
+
+impl<F, B: Backend> ServeDir<F, B> {
     /// If the requested path is a directory append `index.html`.
     ///
     /// This is useful for static sites.
@@ -107,6 +150,7 @@ impl<F> ServeDir<F> {
         match &mut self.variant {
             ServeVariant::Directory {
                 append_index_html_on_directories,
+                ..
             } => {
                 *append_index_html_on_directories = append;
                 self
@@ -115,11 +159,74 @@ impl<F> ServeDir<F> {
         }
     }
 
+    /// Whether to redirect directory requests without a trailing slash.
+    ///
+    /// When enabled, a request to `/dir` redirects to `/dir/`. When disabled,
+    /// `/dir/index.html` is served directly at `/dir` if
+    /// [`append_index_html_on_directories`](Self::append_index_html_on_directories) is enabled.
+    ///
+    /// Defaults to `true`.
+    pub fn redirect_to_trailing_slash(mut self, redirect: bool) -> Self {
+        match &mut self.variant {
+            ServeVariant::Directory {
+                redirect_to_trailing_slash,
+                ..
+            } => {
+                *redirect_to_trailing_slash = redirect;
+                self
+            }
+            ServeVariant::SingleFile { mime: _ } => self,
+        }
+    }
+
+    /// If the requested path doesn't specify a file extension, append `.html`.
+    ///
+    /// Defaults to `false`.
+    pub fn html_as_default_extension(mut self, append: bool) -> Self {
+        match &mut self.variant {
+            ServeVariant::Directory {
+                html_as_default_extension,
+                ..
+            } => {
+                *html_as_default_extension = append;
+                self
+            }
+            ServeVariant::SingleFile { mime: _ } => self,
+        }
+    }
+
+    /// Sets a path to be prepended when performing a trailing slash redirect.
+    ///
+    /// This is useful when you want to serve the files at another location than `/`, for example
+    /// when you are using multiple services and want this instance to handle `/static/<path>`.
+    /// In that example, you should pass in `/static` so that a trailing slash redirect does not
+    /// redirect to `/<path>/` but instead to `/static/<path>/`
+    ///
+    /// The default is the empty string.
+    pub fn redirect_path_prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.redirect_path_prefix = prefix.into();
+        self
+    }
+
     /// Set a specific read buffer chunk size.
     ///
     /// The default capacity is 64kb.
     pub fn with_buf_chunk_size(mut self, chunk_size: usize) -> Self {
         self.buf_chunk_size = chunk_size;
+        self
+    }
+
+    /// Configure whether syntactically valid multi-range requests should be ignored.
+    ///
+    /// When enabled, a request containing multiple byte ranges is served as a normal full
+    /// response with status `200 OK`, as if the `Range` header were absent. This check happens
+    /// before semantic range validation, so overlapping, reversed, or otherwise unsatisfiable
+    /// multi-range requests are also ignored. Malformed range headers and unsatisfiable
+    /// single-range requests still result in `416 Range Not Satisfiable`.
+    ///
+    /// Defaults to `false`.
+    pub fn ignore_multi_range_requests(mut self, ignore: bool) -> Self {
+        self.ignore_multi_range_requests = ignore;
         self
     }
 
@@ -209,14 +316,17 @@ impl<F> ServeDir<F> {
     ///     // respond with `not_found.html` for missing files
     ///     .fallback(ServeFile::new("assets/not_found.html"));
     /// ```
-    pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2> {
+    pub fn fallback<F2>(self, new_fallback: F2) -> ServeDir<F2, B> {
         ServeDir {
+            redirect_path_prefix: self.redirect_path_prefix,
             base: self.base,
             buf_chunk_size: self.buf_chunk_size,
+            ignore_multi_range_requests: self.ignore_multi_range_requests,
             precompressed_variants: self.precompressed_variants,
             variant: self.variant,
             fallback: Some(new_fallback),
             call_fallback_on_method_not_allowed: self.call_fallback_on_method_not_allowed,
+            backend: self.backend,
         }
     }
 
@@ -237,7 +347,7 @@ impl<F> ServeDir<F> {
     /// ```
     ///
     /// Setups like this are often found in single page applications.
-    pub fn not_found_service<F2>(self, new_fallback: F2) -> ServeDir<SetStatus<F2>> {
+    pub fn not_found_service<F2>(self, new_fallback: F2) -> ServeDir<SetStatus<F2>, B> {
         self.fallback(SetStatus::new(new_fallback, StatusCode::NOT_FOUND))
     }
 
@@ -252,11 +362,17 @@ impl<F> ServeDir<F> {
     /// Call the service and get a future that contains any `std::io::Error` that might have
     /// happened.
     ///
+    /// This only returns I/O errors encountered while serving the request. Invalid request paths
+    /// and unsupported methods are represented as responses. When a fallback is configured,
+    /// errors that the default service would convert to `404 Not Found` call the fallback instead
+    /// of being returned.
+    ///
     /// By default `<ServeDir as Service<_>>::call` will handle IO errors and convert them into
     /// responses. It does that by converting [`std::io::ErrorKind::NotFound`] and
-    /// [`std::io::ErrorKind::PermissionDenied`] to `404 Not Found` and any other error to `500
-    /// Internal Server Error`. The error will also be logged with `tracing` in case the `tracing`
-    /// crate feature is enabled.
+    /// [`std::io::ErrorKind::PermissionDenied`] to `404 Not Found`. On Unix, errors indicating
+    /// that a path component is not a directory are also converted to `404 Not Found`. Any other
+    /// error is converted to `500 Internal Server Error` and will also be logged with `tracing` in
+    /// case the `tracing` crate feature is enabled.
     ///
     /// If you want to manually control how the error response is generated you can make a new
     /// service that wraps a `ServeDir` and calls `try_call` instead of `call`.
@@ -278,7 +394,7 @@ impl<F> ServeDir<F> {
     ///     let mut service = ServeDir::new("assets");
     ///
     ///     // You only need to worry about backpressure, and thus call `ServiceExt::ready`, if
-    ///     // your adding a fallback to `ServeDir` that cares about backpressure.
+    ///     // you are adding a fallback to `ServeDir` that cares about backpressure.
     ///     //
     ///     // Its shown here for demonstration but you can do `service.try_call(request)`
     ///     // otherwise
@@ -292,11 +408,20 @@ impl<F> ServeDir<F> {
     ///             Ok(response.map(|body| body.map_err(Into::into).boxed_unsync()))
     ///         }
     ///         Err(err) => {
-    ///             let body = Full::from("Something went wrong...")
+    ///             let not_found = matches!(
+    ///                 err.kind(),
+    ///                 io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+    ///             ) || cfg!(unix) && err.raw_os_error() == Some(20);
+    ///             let (status, message) = if not_found {
+    ///                 (StatusCode::NOT_FOUND, "Not found")
+    ///             } else {
+    ///                 (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong...")
+    ///             };
+    ///             let body = Full::from(message)
     ///                 .map_err(Into::into)
     ///                 .boxed_unsync();
     ///             let response = Response::builder()
-    ///                 .status(StatusCode::INTERNAL_SERVER_ERROR)
+    ///                 .status(status)
     ///                 .body(body)
     ///                 .unwrap();
     ///             Ok(response)
@@ -359,40 +484,47 @@ impl<F> ServeDir<F> {
             }
         };
 
+        let redirect_path_prefix = self.redirect_path_prefix.clone();
+
         let buf_chunk_size = self.buf_chunk_size;
+        let ignore_multi_range_requests = self.ignore_multi_range_requests;
         let range_header = req
             .headers()
             .get(header::RANGE)
             .and_then(|value| value.to_str().ok())
             .map(|s| s.to_owned());
 
+        let precompression_configured = self.precompressed_variants.is_some();
         let negotiated_encodings: Vec<_> = encodings(
             req.headers(),
             self.precompressed_variants.unwrap_or_default(),
         )
         .collect();
 
-        let variant = self.variant.clone();
-
-        let open_file_future = Box::pin(open_file::open_file(
-            variant,
+        let open_file_future = Box::pin(open_file::open_file(open_file::OpenFileRequest {
+            variant: self.variant.clone(),
+            redirect_path_prefix,
             path_to_file,
             req,
             negotiated_encodings,
             range_header,
             buf_chunk_size,
-        ));
+            ignore_multi_range_requests,
+            precompression_configured,
+            backend: self.backend.clone(),
+        }));
 
         ResponseFuture::open_file_future(open_file_future, fallback_and_request)
     }
 }
 
-impl<ReqBody, F, FResBody> Service<Request<ReqBody>> for ServeDir<F>
+impl<ReqBody, F, FResBody, B> Service<Request<ReqBody>> for ServeDir<F, B>
 where
     F: Service<Request<ReqBody>, Response = Response<FResBody>, Error = Infallible> + Clone,
     F::Future: Send + 'static,
     FResBody: http_body::Body<Data = Bytes> + Send + 'static,
     FResBody::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    B: Backend,
 {
     type Response = Response<ResponseBody>;
     type Error = Infallible;
@@ -411,23 +543,42 @@ where
         let future = self
             .try_call(req)
             .map(|result: Result<_, _>| -> Result<_, Infallible> {
-                let response = result.unwrap_or_else(|_err| {
-                    #[cfg(feature = "tracing")]
-                    tracing::error!(error = %_err, "Failed to read file");
+                let response = result.unwrap_or_else(|err| {
+                    let status = if should_return_not_found(&err) {
+                        StatusCode::NOT_FOUND
+                    } else {
+                        #[cfg(feature = "tracing")]
+                        tracing::error!(error = %err, "Failed to read file");
 
-                    let body = ResponseBody::new(UnsyncBoxBody::new(
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    };
+
+                    let body = ResponseBody::new(UnsyncBoxBody::from_inner(
                         Empty::new().map_err(|err| match err {}).boxed_unsync(),
                     ));
-                    Response::builder()
-                        .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(body)
-                        .unwrap()
+                    Response::builder().status(status).body(body).unwrap()
                 });
                 Ok(response)
             } as _);
 
         InfallibleResponseFuture::new(future)
     }
+}
+
+fn should_return_not_found(err: &io::Error) -> bool {
+    #[cfg(unix)]
+    // 20 = libc::ENOTDIR => "not a directory".
+    // When `io_error_more` lands, this can be changed
+    // to checking for `io::ErrorKind::NotADirectory`.
+    // https://github.com/rust-lang/rust/issues/86442
+    let error_is_not_a_directory = err.raw_os_error() == Some(20);
+    #[cfg(not(unix))]
+    let error_is_not_a_directory = false;
+
+    matches!(
+        err.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::PermissionDenied
+    ) || error_is_not_a_directory
 }
 
 opaque_future! {
@@ -445,6 +596,8 @@ opaque_future! {
 enum ServeVariant {
     Directory {
         append_index_html_on_directories: bool,
+        redirect_to_trailing_slash: bool,
+        html_as_default_extension: bool,
     },
     SingleFile {
         mime: HeaderValue,
@@ -456,6 +609,8 @@ impl ServeVariant {
         match self {
             ServeVariant::Directory {
                 append_index_html_on_directories: _,
+                redirect_to_trailing_slash: _,
+                html_as_default_extension: _,
             } => {
                 let path = requested_path.trim_start_matches('/');
 
@@ -611,6 +766,12 @@ opaque_body! {
     /// Response body for [`ServeDir`] and [`ServeFile`][super::ServeFile].
     #[derive(Default)]
     pub type ResponseBody = UnsyncBoxBody<Bytes, io::Error>;
+}
+
+impl From<ResponseBody> for UnsyncBoxBody<Bytes, io::Error> {
+    fn from(body: ResponseBody) -> Self {
+        body.inner
+    }
 }
 
 /// The default fallback service used with [`ServeDir`].

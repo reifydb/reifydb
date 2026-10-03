@@ -5,7 +5,6 @@ use reifydb_core::{
 	event::EventBus,
 	interface::catalog::policy::{CallableOp, PolicyOpToCreate, PolicyTargetType, PolicyToCreate},
 };
-use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -52,7 +51,6 @@ pub fn bootstrap_call_policies(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
-		Clock::Real,
 	)?;
 
 	for (name, namespace, object) in missing {

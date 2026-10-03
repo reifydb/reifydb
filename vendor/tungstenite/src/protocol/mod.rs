@@ -774,7 +774,7 @@ impl WebSocketContext {
         let empty_or_pong = self
             .additional_send
             .as_ref()
-            .map_or(true, |f| f.header().opcode == OpCode::Control(OpCtl::Pong));
+            .is_none_or(|f| f.header().opcode == OpCode::Control(OpCtl::Pong));
         if empty_or_pong {
             self.additional_send.replace(add);
         }

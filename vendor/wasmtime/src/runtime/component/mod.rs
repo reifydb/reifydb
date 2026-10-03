@@ -116,19 +116,20 @@ mod storage;
 pub(crate) mod store;
 pub mod types;
 mod values;
-pub use self::component::{Component, ComponentExportIndex};
+pub use self::component::{Component, ComponentExportIndex, ExportLookup};
 #[cfg(feature = "component-model-async")]
 pub use self::concurrent::{
     Access, Accessor, AccessorTask, AsAccessor, Destination, DirectDestination, DirectSource,
-    ErrorContext, FutureAny, FutureConsumer, FutureProducer, FutureReader, GuardedFutureReader,
-    GuardedStreamReader, JoinHandle, ReadBuffer, Source, StreamAny, StreamConsumer, StreamProducer,
-    StreamReader, StreamResult, VMComponentAsyncStore, VecBuffer, WriteBuffer,
+    ErrorContext, FuncCallConcurrent, FutureAny, FutureConsumer, FutureProducer, FutureReader,
+    GuardedFutureReader, GuardedStreamReader, GuestTaskId, JoinHandle, ReadBuffer, Source,
+    StreamAny, StreamConsumer, StreamProducer, StreamReader, StreamResult, TypedFuncCallConcurrent,
+    VMComponentAsyncStore, VecBuffer, WriteBuffer,
 };
 pub use self::func::{
     ComponentNamedList, ComponentType, Func, Lift, Lower, TypedFunc, WasmList, WasmStr,
 };
 pub use self::has_data::*;
-pub use self::instance::{Instance, InstanceExportLookup, InstancePre};
+pub use self::instance::{Instance, InstancePre};
 pub use self::linker::{Linker, LinkerInstance};
 pub use self::resource_table::{ResourceTable, ResourceTableError};
 pub use self::resources::{Resource, ResourceAny, ResourceDynamic};
@@ -143,6 +144,11 @@ pub(crate) use self::store::{ComponentInstanceId, RuntimeInstance};
 // tracked separately from wasmtime.
 #[cfg(feature = "wave")]
 pub use wasm_wave;
+
+// Re-export wit-parser crate so the compatible version of this dep doesn't have to be
+// tracked separately from wasmtime.
+#[cfg(feature = "wit-parser")]
+pub use wit_parser;
 
 // These items are used by `#[derive(ComponentType, Lift, Lower)]`, but they are not part of
 // Wasmtime's API stability guarantees
@@ -299,9 +305,10 @@ pub(crate) use self::store::ComponentStoreData;
 ///         // `HostWithStore` trait. Functions without a `store` are generated
 ///         // in a `Host` trait.
 ///         //
-///         // > Note: this is not yet implemented for non-async functions. This
-///         // > will result in bindgen errors right now and is intended to be
-///         // > implemented in the near future.
+///         // If the WIT function itself is `async`, then the function will
+///         // already have this flag and will take an `&Accessor<T, Self>`. If
+///         // the WIT function is not `async`, however, then the function will
+///         // take `Access<T, Self>`.
 ///         "wasi:clocks/monotonic-clock.now": store,
 ///
 ///         // This is an example of combining flags where the `async` and
@@ -342,11 +349,6 @@ pub(crate) use self::store::ComponentStoreData;
 ///         // host function return `wasmtime::Result<Result<WitOk, WitErr>>`
 ///         // for example and instead return `Result<WitOk, RustErrorType>`.
 ///         "my:local/api.fallible": trappable,
-///
-///         // The `ignore_wit` flag discards the WIT-level defaults of a
-///         // function. For example this `async` WIT function will be ignored
-///         // and a synchronous function will be generated on the host.
-///         "my:local/api.wait": ignore_wit,
 ///
 ///         // The `exact` flag ensures that the filter, here "f", only matches
 ///         // functions exactly. For example "f" here would only refer to
@@ -442,6 +444,39 @@ pub(crate) use self::store::ComponentStoreData;
 ///         "wasi:filesystem/types.descriptor": MyDescriptorType,
 ///     },
 ///
+///     // Generate an additional set of "named imports" bindings for the listed
+///     // interfaces, used together with the component model's
+///     // `(implements "...")` annotation.
+///     //
+///     // For each interface listed here an extra `Host` trait is generated
+///     // under a top-level `named_imports` module (mirroring the interface's
+///     // normal module path) whose methods each take an additional first
+///     // argument: a reference to the host-chosen "id" type given as the value
+///     // (here `MyHandlerId`). Alongside the trait a reflection-based
+///     // `add_to_linker` is generated:
+///     //
+///     // ```ignore
+///     // fn add_to_linker<T, D>(
+///     //     linker: &mut Linker<T>,
+///     //     component: &Component,
+///     //     lookup: impl FnMut(&str) -> Result<MyHandlerId>,
+///     //     host_getter: fn(&mut T) -> D::Data<'_>,
+///     // ) -> Result<()>;
+///     // ```
+///     //
+///     // This inspects `component`'s imports, and for each one annotated with
+///     // `(implements "wasi:http/handler")` calls `lookup` with the import's
+///     // name to obtain an id. That id is then cloned into each linker closure
+///     // and passed as the first argument to every method call, letting a
+///     // single `Host` implementation distinguish between multiple imports
+///     // of the same interface.
+///     //
+///     // The id type must be `Clone + Send + Sync + 'static`. Interfaces that
+///     // define a resource are not supported here and cause a compile error.
+///     named_imports: {
+///         "wasi:http/handler": MyHandlerId,
+///     },
+///
 ///     // Additional derive attributes to include on generated types (structs or enums).
 ///     //
 ///     // These are deduplicated and attached in a deterministic order.
@@ -487,6 +522,19 @@ pub(crate) use self::store::ComponentStoreData;
 ///     //
 ///     // This option defaults to false.
 ///     include_generated_code_from_file: false,
+///
+///     // Whether to generate a `COMPONENT_TYPE` constant containing a
+///     // binary-encoded description of the WIT world that bindings
+///     // were generated for.
+///     //
+///     // This can be decoded with the `wit_parser::decoding::decode_world`
+///     // function to recover the WIT `Resolve` and `WorldId` used to
+///     // generate the bindings, for example to type-check components
+///     // against the world without keeping the original WIT files around.
+///     //
+///     // This option defaults to false as the encoded world adds a
+///     // nontrivial amount of data to the generated code.
+///     include_component_type: false,
 /// });
 /// ```
 pub use wasmtime_component_macro::bindgen;

@@ -14,8 +14,11 @@ use reifydb_core::{
 	},
 	key::any::TaggedKey,
 };
-use reifydb_transaction::{interceptor::series_row::SeriesRowInterceptor, transaction::Transaction};
-use reifydb_value::value::datetime::DateTime;
+use reifydb_transaction::{
+	interceptor::{WithInterceptors, series_row::SeriesRowInterceptor},
+	transaction::Transaction,
+};
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use smallvec::smallvec;
 
 use crate::Result;
@@ -29,24 +32,30 @@ pub(crate) fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Seri
 	});
 }
 
-pub fn remove_series_row(
+pub(crate) fn remove_series_rows(
 	txn: &mut Transaction<'_>,
 	series: &Series,
-	key: &TaggedKey,
-	pre_for_cdc: EncodedBytes,
-	was_committed: bool,
-	pre: Option<RecordBatch>,
+	ids: &[RowNumber],
+	removals: &[(TaggedKey, EncodedBytes, bool)],
 ) -> Result<()> {
-	if let Some(pre) = pre {
-		emit_series_remove_change(txn, series, pre);
+	assert_eq!(ids.len(), removals.len(), "ids/removals length mismatch");
+	if ids.is_empty() {
+		return Ok(());
 	}
-	SeriesRowInterceptor::pre_delete(txn, series)?;
-	if was_committed {
-		txn.mark_preexisting(key)?;
+	if !txn.series_row_pre_delete_interceptors().is_empty() {
+		SeriesRowInterceptor::pre_delete(txn, series, ids)?;
 	}
-	txn.remove_with_pre(key, pre_for_cdc.clone())?;
-	let pre_rows = [pre_for_cdc];
-	SeriesRowInterceptor::post_delete(txn, series, &pre_rows)?;
+	for (key, pre_for_cdc, was_committed) in removals {
+		if *was_committed {
+			txn.mark_preexisting(key)?;
+		}
+		txn.remove_with_pre(key, pre_for_cdc.clone())?;
+	}
+	if !txn.series_row_post_delete_interceptors().is_empty() {
+		let pre_rows: Vec<EncodedBytes> =
+			removals.iter().map(|(_, pre_for_cdc, _)| pre_for_cdc.clone()).collect();
+		SeriesRowInterceptor::post_delete(txn, series, &pre_rows)?;
+	}
 	Ok(())
 }
 

@@ -11,9 +11,15 @@ use reifydb_core::{
 		config::{ConfigKey, GetConfig},
 		policy::{DataOp, PolicyTargetType},
 	},
+	internal_error,
 	value::{
 		batch::batch,
-		column::{builder::ColumnBuilder, cast::cast_value, factory, write::check_digest_write_type},
+		column::{
+			builder::ColumnBuilder,
+			cast::{cast_column_data, cast_value, convert::TargetConvert},
+			factory,
+			write::{check_digest_write, check_digest_write_type},
+		},
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -78,7 +84,6 @@ pub(crate) fn insert_dictionary(
 
 	input_node.initialize(txn, &execution_context)?;
 
-	let mut ids: Vec<Value> = Vec::new();
 	let mut values: Vec<Value> = Vec::new();
 	let mut mutable_context = (*execution_context).clone();
 
@@ -92,7 +97,6 @@ pub(crate) fn insert_dictionary(
 			PolicyTargetType::Dictionary,
 		)?;
 
-		let row_count = columns.num_rows();
 		let source_column = match column_view(&columns, "value")? {
 			Some(view) => Some(view),
 			None => user_columns(&columns)
@@ -100,33 +104,12 @@ pub(crate) fn insert_dictionary(
 				.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
 				.transpose()?,
 		};
-
-		for row_idx in 0..row_count {
-			let value = match &source_column {
-				Some(column) => column.get_value(row_idx),
-				None => Value::none(),
-			};
-
-			if matches!(value, Value::None { .. }) {
-				continue;
-			}
-
-			let coerced_value = coerce_value_to_dictionary_type(value, &dictionary.value_type)?;
-
-			let entry_id = txn.insert_into_dictionary(&dictionary, &coerced_value)?;
-
-			let id_value = match entry_id {
-				DictionaryEntryId::U1(v) => Value::Uint1(v),
-				DictionaryEntryId::U2(v) => Value::Uint2(v),
-				DictionaryEntryId::U4(v) => Value::Uint4(v),
-				DictionaryEntryId::U8(v) => Value::Uint8(v),
-				DictionaryEntryId::U16(v) => Value::Uint16(v),
-			};
-
-			ids.push(id_value);
-			values.push(coerced_value);
+		if let Some(source) = &source_column {
+			values.extend(cast_to_dictionary_type(source, &dictionary.value_type)?);
 		}
 	}
+
+	let ids = txn.intern_values(&dictionary, values.clone())?;
 
 	if let Some(returning_exprs) = &plan.returning {
 		let id_column = build_id_column(&ids, dictionary.id_type)?;
@@ -155,19 +138,46 @@ pub(crate) fn insert_dictionary(
 	])
 }
 
+fn cast_to_dictionary_type(source: &ColumnView<'_>, target_type: &ValueType) -> Result<Vec<Value>> {
+	let defined: Vec<Value> = source.iter().filter(|value| !matches!(value, Value::None { .. })).collect();
+	if defined.is_empty() {
+		return Ok(defined);
+	}
+	let mut compact = ColumnBuilder::with_capacity(source.base_type(), defined.len());
+	for value in &defined {
+		compact.push_value(value.clone());
+	}
+	let compact = compact.finish(source.field.name());
+	let compact = ColumnView::try_from(&compact)?;
+	let convert = TargetConvert {
+		target: None,
+	};
+	let cast = check_digest_write(&compact, target_type, || Fragment::None)
+		.and_then(|()| cast_column_data(convert, &compact, target_type.clone(), || Fragment::None));
+	match cast {
+		Ok(cast) => Ok(ColumnView::try_from(&cast)?.iter().collect()),
+		Err(_) => {
+			for value in defined {
+				coerce_value_to_dictionary_type(value, target_type)?;
+			}
+			Err(internal_error!("a dictionary column cast failed where every value cast passes"))
+		}
+	}
+}
+
 fn coerce_value_to_dictionary_type(value: Value, target_type: &ValueType) -> Result<Value> {
 	let display = value.to_string();
 	check_digest_write_type(&value.get_type(), target_type, || Fragment::internal(&display))?;
 	cast_value(value, target_type)
 }
 
-fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<(FieldRef, ArrayRef)> {
+fn build_id_column(ids: &[DictionaryEntryId], id_type: ValueType) -> Result<(FieldRef, ArrayRef)> {
 	let data = match id_type {
 		ValueType::Uint1 => {
 			let vals: Vec<u8> = ids
 				.iter()
-				.map(|v| match v {
-					Value::Uint1(n) => *n,
+				.map(|id| match id {
+					DictionaryEntryId::U1(n) => *n,
 					_ => 0,
 				})
 				.collect();
@@ -176,8 +186,8 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<(FieldRef, Array
 		ValueType::Uint2 => {
 			let vals: Vec<u16> = ids
 				.iter()
-				.map(|v| match v {
-					Value::Uint2(n) => *n,
+				.map(|id| match id {
+					DictionaryEntryId::U2(n) => *n,
 					_ => 0,
 				})
 				.collect();
@@ -186,8 +196,8 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<(FieldRef, Array
 		ValueType::Uint4 => {
 			let vals: Vec<u32> = ids
 				.iter()
-				.map(|v| match v {
-					Value::Uint4(n) => *n,
+				.map(|id| match id {
+					DictionaryEntryId::U4(n) => *n,
 					_ => 0,
 				})
 				.collect();
@@ -196,8 +206,8 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<(FieldRef, Array
 		ValueType::Uint8 => {
 			let vals: Vec<u64> = ids
 				.iter()
-				.map(|v| match v {
-					Value::Uint8(n) => *n,
+				.map(|id| match id {
+					DictionaryEntryId::U8(n) => *n,
 					_ => 0,
 				})
 				.collect();
@@ -206,8 +216,8 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<(FieldRef, Array
 		ValueType::Uint16 => {
 			let vals: Vec<u128> = ids
 				.iter()
-				.map(|v| match v {
-					Value::Uint16(n) => *n,
+				.map(|id| match id {
+					DictionaryEntryId::U16(n) => *n,
 					_ => 0,
 				})
 				.collect();
@@ -216,8 +226,8 @@ fn build_id_column(ids: &[Value], id_type: ValueType) -> Result<(FieldRef, Array
 		_ => {
 			let vals: Vec<u64> = ids
 				.iter()
-				.map(|v| match v {
-					Value::Uint8(n) => *n,
+				.map(|id| match id {
+					DictionaryEntryId::U8(n) => *n,
 					_ => 0,
 				})
 				.collect();

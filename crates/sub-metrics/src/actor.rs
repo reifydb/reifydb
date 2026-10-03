@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, mem, sync::Arc};
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::{
 	metrics::storage::{
 		cdc::{CdcMetrics, CdcMetricsWriter},
@@ -23,7 +24,7 @@ use reifydb_core::{
 		},
 		store::MetricsProcessedEvent,
 	},
-	fingerprint::RequestFingerprint,
+	fingerprint::{RequestFingerprint, StatementFingerprint},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -36,6 +37,7 @@ use reifydb_core::{
 		execution::StatementMetrics,
 		sample::{MetricKind, Reading},
 	},
+	value::{batch::batch, column::factory},
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -54,10 +56,9 @@ use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
 	count::Count,
-	params::Params,
 	value::{Value, datetime::DateTime, duration::Duration, identity::IdentityId, value_type::ValueType},
 };
-use tracing::{error, trace};
+use tracing::trace;
 
 use crate::{
 	accumulator::StatementMetricsAccumulator,
@@ -150,8 +151,9 @@ impl MetricsFlushActor {
 			deletes.len(),
 		);
 
-		self.record_writes(state, writes, version);
-		self.record_deletes(state, deletes, version);
+		self.record_writes(state, writes, version).expect("metrics must read prior versions for write sizes");
+		self.record_deletes(state, deletes, version)
+			.expect("metrics must read prior versions for delete sizes");
 		advance_max_version(&mut state.max_version, version);
 	}
 
@@ -172,52 +174,57 @@ impl MetricsFlushActor {
 	}
 
 	#[inline]
-	fn record_writes(&self, state: &mut MetricsFlushActorState, writes: &[MultiWrite], version: CommitVersion) {
+	fn record_writes(
+		&self,
+		state: &mut MetricsFlushActorState,
+		writes: &[MultiWrite],
+		version: CommitVersion,
+	) -> Result<()> {
 		let keys: Vec<EncodedKey> = writes.iter().map(|write| write.key.clone()).collect();
-		let pre_sizes = self.read_prior_sizes(&keys, version);
+		let pre_sizes = self.read_prior_sizes(&keys, version)?;
 		record_each_write(state, writes, &pre_sizes);
+		Ok(())
 	}
 
 	#[inline]
-	fn record_deletes(&self, state: &mut MetricsFlushActorState, deletes: &[MultiDelete], version: CommitVersion) {
+	fn record_deletes(
+		&self,
+		state: &mut MetricsFlushActorState,
+		deletes: &[MultiDelete],
+		version: CommitVersion,
+	) -> Result<()> {
 		let keys: Vec<EncodedKey> = deletes.iter().map(|delete| delete.key.clone()).collect();
-		let pre_sizes = self.read_prior_sizes(&keys, version);
+		let pre_sizes = self.read_prior_sizes(&keys, version)?;
 		for delete in deletes {
-			if let Err(e) = state.storage_writer.record_delete(
+			state.storage_writer.record_delete(
 				Tier::Buffer,
 				delete.key.as_ref(),
 				pre_sizes.get(&delete.key).copied(),
-			) {
-				error!("Failed to record delete: {}", e);
-			}
+			);
 		}
+		Ok(())
 	}
 
 	#[inline]
-	fn read_prior_sizes(&self, keys: &[EncodedKey], version: CommitVersion) -> HashMap<EncodedKey, u64> {
+	fn read_prior_sizes(&self, keys: &[EncodedKey], version: CommitVersion) -> Result<HashMap<EncodedKey, u64>> {
 		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
 		if version.0 > 0 && !keys.is_empty() {
-			match self.resolver.get_many_versioned(keys, CommitVersion(version.0 - 1)) {
-				Ok(rows) => {
-					for (key, result) in rows {
-						match result {
-							VersionedGetResult::Value {
-								value,
-								..
-							} => {
-								pre_sizes.insert(key, value.len() as u64);
-							}
-							VersionedGetResult::Tombstone => {
-								pre_sizes.insert(key, 0);
-							}
-							VersionedGetResult::NotFound => {}
-						}
+			for (key, result) in self.resolver.get_many_versioned(keys, CommitVersion(version.0 - 1))? {
+				match result {
+					VersionedGetResult::Value {
+						value,
+						..
+					} => {
+						pre_sizes.insert(key, value.len() as u64);
 					}
+					VersionedGetResult::Tombstone => {
+						pre_sizes.insert(key, 0);
+					}
+					VersionedGetResult::NotFound => {}
 				}
-				Err(e) => error!("Failed to read previous versions for write metrics: {}", e),
 			}
 		}
-		pre_sizes
+		Ok(pre_sizes)
 	}
 
 	fn process_cdc_written(&self, state: &mut MetricsFlushActorState, event: CdcWrittenEvent) {
@@ -225,9 +232,7 @@ impl MetricsFlushActor {
 		let entries = event.entries();
 		trace!("Processing {} CDC ops for version {:?}", entries.len(), version);
 		for entry in entries {
-			if let Err(e) = state.cdc_writer.record_cdc(entry.key.as_ref(), entry.value_bytes) {
-				error!("Failed to record cdc: {}", e);
-			}
+			state.cdc_writer.record_cdc(entry.key.as_ref(), entry.value_bytes);
 		}
 		advance_max_version(&mut state.max_version, version);
 	}
@@ -237,14 +242,7 @@ impl MetricsFlushActor {
 		let entries = event.entries();
 		trace!("Processing {} CDC drop ops for version {:?}", entries.len(), version);
 		for entry in entries {
-			if let Err(e) = state.cdc_writer.record_compaction(
-				entry.id,
-				entry.key_bytes,
-				entry.value_bytes,
-				entry.count,
-			) {
-				error!("Failed to record cdc drop: {}", e);
-			}
+			state.cdc_writer.record_compaction(entry.id, entry.key_bytes, entry.value_bytes, entry.count);
 		}
 		advance_max_version(&mut state.max_version, version);
 	}
@@ -253,42 +251,31 @@ impl MetricsFlushActor {
 fn record_each_write(state: &mut MetricsFlushActorState, writes: &[MultiWrite], pre_sizes: &HashMap<EncodedKey, u64>) {
 	for write in writes {
 		let pre_value_bytes = pre_sizes.get(&write.key).copied();
-		if let Err(e) = state.storage_writer.record_write(
-			Tier::Buffer,
-			write.key.as_ref(),
-			write.value_bytes,
-			pre_value_bytes,
-		) {
-			error!("Failed to record write: {}", e);
-		}
+		state.storage_writer.record_write(Tier::Buffer, write.key.as_ref(), write.value_bytes, pre_value_bytes);
 	}
 }
 
 #[inline]
 fn record_evictions(state: &mut MetricsFlushActorState, evictions: &[MultiEviction]) {
 	for eviction in evictions {
-		if let Err(e) = state.storage_writer.record_eviction(
+		state.storage_writer.record_eviction(
 			Tier::Buffer,
 			eviction.key.as_ref(),
 			eviction.value_bytes.as_bytes(),
 			eviction.current,
-		) {
-			error!("Failed to record eviction: {}", e);
-		}
+		);
 	}
 }
 
 #[inline]
 fn record_persists(state: &mut MetricsFlushActorState, persists: &[MultiPersist]) {
 	for persist in persists {
-		if let Err(e) = state.storage_writer.record_write(
+		state.storage_writer.record_write(
 			Tier::Persistent,
 			persist.key.as_ref(),
 			persist.value_bytes.as_bytes(),
 			None,
-		) {
-			error!("Failed to record persist: {}", e);
-		}
+		);
 	}
 }
 
@@ -309,15 +296,12 @@ pub struct MetricsFlushActorState {
 impl MetricsFlushActor {
 	#[inline]
 	fn flush(&self, state: &mut MetricsFlushActorState) {
-		if let Err(e) = state.storage_writer.flush() {
-			error!("Failed to flush storage stats: {}", e);
-		}
-		if let Err(e) = state.cdc_writer.flush() {
-			error!("Failed to flush cdc stats: {}", e);
-		}
+		state.storage_writer.flush().expect("metrics flush must persist storage stats");
+		state.cdc_writer.flush().expect("metrics flush must persist cdc stats");
 		let pending = mem::take(&mut state.pending);
-		self.drain_request_history(pending);
-		self.drain_statement_metrics();
+		self.drain_request_history(pending)
+			.expect("metrics flush must append system::metrics::request_history");
+		self.drain_statement_metrics().expect("metrics flush must append system::metrics::statement_stats");
 		self.push_object_metrics();
 		emit_stats_processed(&self.event_bus, &mut state.max_version);
 	}
@@ -400,39 +384,34 @@ impl Actor for MetricsFlushActor {
 }
 
 impl MetricsFlushActor {
-	fn drain_request_history(&self, pending: Vec<RequestExecutedEvent>) {
+	fn drain_request_history(&self, pending: Vec<RequestExecutedEvent>) -> Result<()> {
 		let Some((engine, _)) = &self.drain else {
-			return;
+			return Ok(());
 		};
 		if pending.is_empty() {
-			return;
+			return Ok(());
 		}
-		let rows: Vec<Params> = pending.iter().map(request_history_row).collect();
 		let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
-		builder.ringbuffer("system::metrics::request_history").rows(rows).done();
-		if let Err(e) = builder.execute() {
-			error!("Failed to drain request history: {}", e);
-		}
+		builder.ringbuffer("system::metrics::request_history").batch(request_history_batch(&pending)?).done();
+		builder.execute()?;
+		Ok(())
 	}
 
-	fn drain_statement_metrics(&self) {
+	fn drain_statement_metrics(&self) -> Result<()> {
 		let Some((engine, clock)) = &self.drain else {
-			return;
+			return Ok(());
 		};
 		let snapshot = self.accumulator.snapshot();
 		if snapshot.is_empty() {
-			return;
+			return Ok(());
 		}
 		let now = clock.now();
-		let rows: Vec<Params> = snapshot
-			.iter()
-			.map(|(fingerprint, aggregate)| statement_metrics_row(now, fingerprint.to_hex(), aggregate))
-			.collect();
 		let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
-		builder.ringbuffer("system::metrics::statement_stats").rows(rows).done();
-		if let Err(e) = builder.execute() {
-			error!("Failed to drain statement metrics: {}", e);
-		}
+		builder.ringbuffer("system::metrics::statement_stats")
+			.batch(statement_metrics_batch(now, &snapshot)?)
+			.done();
+		builder.execute()?;
+		Ok(())
 	}
 }
 
@@ -453,34 +432,44 @@ fn request_parts(request: &Request) -> (&'static str, &RequestFingerprint, &[Sta
 	}
 }
 
-fn request_history_row(event: &RequestExecutedEvent) -> Params {
-	let (operation, fingerprint, statements) = request_parts(event.request());
-	let normalized_rql = statements.iter().map(|s| s.normalized_rql.as_str()).collect::<Vec<&str>>().join("; ");
-	let mut row = HashMap::new();
-	row.insert("timestamp".to_string(), Value::DateTime(*event.timestamp()));
-	row.insert("operation".to_string(), Value::Utf8(operation.to_string()));
-	row.insert("fingerprint".to_string(), Value::Utf8(fingerprint.to_hex()));
-	row.insert("total_duration".to_string(), Value::Duration(*event.total()));
-	row.insert("compute_duration".to_string(), Value::Duration(*event.compute()));
-	row.insert("success".to_string(), Value::Boolean(*event.success()));
-	row.insert("statement_count".to_string(), Value::Int8(statements.len() as i64));
-	row.insert("normalized_rql".to_string(), Value::Utf8(normalized_rql));
-	Params::Named(Arc::new(row))
+fn request_history_batch(pending: &[RequestExecutedEvent]) -> Result<RecordBatch> {
+	let parts: Vec<_> = pending.iter().map(|event| request_parts(event.request())).collect();
+	batch(vec![
+		factory::datetime("timestamp", pending.iter().map(|event| *event.timestamp())),
+		factory::utf8("operation", parts.iter().map(|(operation, _, _)| *operation)),
+		factory::utf8("fingerprint", parts.iter().map(|(_, fingerprint, _)| fingerprint.to_hex())),
+		factory::duration("total_duration", pending.iter().map(|event| *event.total())),
+		factory::duration("compute_duration", pending.iter().map(|event| *event.compute())),
+		factory::bool("success", pending.iter().map(|event| *event.success())),
+		factory::int8("statement_count", parts.iter().map(|(_, _, statements)| statements.len() as i64)),
+		factory::utf8(
+			"normalized_rql",
+			parts.iter().map(|(_, _, statements)| {
+				statements.iter().map(|s| s.normalized_rql.as_str()).collect::<Vec<&str>>().join("; ")
+			}),
+		),
+	])
 }
 
-fn statement_metrics_row(now: DateTime, fingerprint: String, aggregate: &StatementMetricsAggregate) -> Params {
-	let mut row = HashMap::new();
-	row.insert("snapshot_timestamp".to_string(), Value::DateTime(now));
-	row.insert("fingerprint".to_string(), Value::Utf8(fingerprint));
-	row.insert("normalized_rql".to_string(), Value::Utf8(aggregate.normalized_rql().to_string()));
-	row.insert("calls".to_string(), Value::Int8(aggregate.calls() as i64));
-	row.insert("total_duration".to_string(), Value::Duration(aggregate.total_duration()));
-	row.insert("mean_duration".to_string(), Value::Duration(aggregate.mean_duration()));
-	row.insert("max_duration".to_string(), Value::Duration(aggregate.max_duration()));
-	row.insert("min_duration".to_string(), Value::Duration(aggregate.min_duration()));
-	row.insert("total_rows".to_string(), Value::Int8(aggregate.total_rows() as i64));
-	row.insert("errors".to_string(), Value::Int8(aggregate.errors() as i64));
-	Params::Named(Arc::new(row))
+fn statement_metrics_batch(
+	now: DateTime,
+	snapshot: &[(StatementFingerprint, Arc<StatementMetricsAggregate>)],
+) -> Result<RecordBatch> {
+	batch(vec![
+		factory::datetime("snapshot_timestamp", snapshot.iter().map(|_| now)),
+		factory::utf8("fingerprint", snapshot.iter().map(|(fingerprint, _)| fingerprint.to_hex())),
+		factory::utf8(
+			"normalized_rql",
+			snapshot.iter().map(|(_, aggregate)| aggregate.normalized_rql().to_string()),
+		),
+		factory::int8("calls", snapshot.iter().map(|(_, aggregate)| aggregate.calls() as i64)),
+		factory::duration("total_duration", snapshot.iter().map(|(_, aggregate)| aggregate.total_duration())),
+		factory::duration("mean_duration", snapshot.iter().map(|(_, aggregate)| aggregate.mean_duration())),
+		factory::duration("max_duration", snapshot.iter().map(|(_, aggregate)| aggregate.max_duration())),
+		factory::duration("min_duration", snapshot.iter().map(|(_, aggregate)| aggregate.min_duration())),
+		factory::int8("total_rows", snapshot.iter().map(|(_, aggregate)| aggregate.total_rows() as i64)),
+		factory::int8("errors", snapshot.iter().map(|(_, aggregate)| aggregate.errors() as i64)),
+	])
 }
 
 fn emit_stats_processed(event_bus: &EventBus, max_version: &mut CommitVersion) {

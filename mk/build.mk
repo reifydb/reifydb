@@ -42,9 +42,9 @@ build-pkg-typescript:
 	@echo "🏗️ Building pkg/typescript packages..."
 	@set -e; if [ -d "pkg/typescript" ]; then \
 		echo "  Installing dependencies..."; \
-		cd pkg/typescript && pnpm install 2>/dev/null || npm install 2>/dev/null; \
+		pnpm -C pkg/typescript install; \
 		echo "  Building TypeScript packages..."; \
-		cd pkg/typescript && pnpm build 2>/dev/null || npm run build 2>/dev/null; \
+		pnpm -C pkg/typescript build; \
 	fi
 
 # Build with vendored dependencies

@@ -4,8 +4,8 @@ use crate::p2::bindings::{
     clocks::monotonic_clock::{self, Duration as WasiDuration, Instant},
     clocks::wall_clock::{self, Datetime},
 };
-use cap_std::time::SystemTime;
 use std::time::Duration;
+use std::time::SystemTime;
 use wasmtime::component::Resource;
 use wasmtime_wasi_io::poll::{Pollable, subscribe};
 
@@ -73,7 +73,7 @@ fn subscribe_to_duration(
     duration: tokio::time::Duration,
 ) -> wasmtime::Result<Resource<DynPollable>> {
     let sleep = if duration.is_zero() {
-        table.push(Deadline::Past)?
+        table.push(Deadline::Past { yielded: false })?
     } else if let Some(deadline) = tokio::time::Instant::now().checked_add(duration) {
         // NB: this resource created here is not actually exposed to wasm, it's
         // only an internal implementation detail used to match the signature
@@ -115,7 +115,7 @@ impl monotonic_clock::Host for WasiClocksCtxView<'_> {
 }
 
 enum Deadline {
-    Past,
+    Past { yielded: bool },
     Instant(tokio::time::Instant),
     Never,
 }
@@ -124,7 +124,28 @@ enum Deadline {
 impl Pollable for Deadline {
     async fn ready(&mut self) {
         match self {
-            Deadline::Past => {}
+            Deadline::Past { yielded: true } => {}
+            Deadline::Past { yielded } => {
+                // It is important we yield to Tokio here; otherwise we risk
+                // starving `mio` such that it is unable to signal readiness for
+                // other pollables (e.g. TCP sockets) when the guest is polling
+                // in a busy loop.
+                //
+                // This is somewhat of a hack to ensure that
+                // `wasmtime-wasi-io`'s implementation of `wasi:io/poll` does
+                // not starve `mio` when the guest calls `wasi:io/poll#poll` in
+                // a busy loop with a zero timeout.  It relies on the guest
+                // using the most natural approach to making a non-blocking call
+                // to `wasi:io/poll#poll`, which is to include a zero-duration
+                // `monotonic_clock::subscribe_{instant,duration}` in the list
+                // of pollables.  That's what `wasi-libc`'s `poll(2)`
+                // implementation does as of this writing, for example.  There
+                // are hypothetically other ways to generate a pollable that's
+                // always immediately ready, which this hack doesn't cover, but
+                // we consider this sufficient for now.
+                *yielded = true;
+                tokio::task::yield_now().await
+            }
             Deadline::Instant(instant) => tokio::time::sleep_until(*instant).await,
             Deadline::Never => std::future::pending().await,
         }

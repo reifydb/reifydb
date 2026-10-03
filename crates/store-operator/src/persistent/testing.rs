@@ -15,7 +15,7 @@ use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
 	metrics::collect::MetricsCollector,
 };
 use reifydb_value::byte_size::ByteSize;
@@ -192,7 +192,7 @@ impl Page for TestingPersistent {
 		operator: OperatorId,
 		range: EncodedKeyRange,
 		batch: u64,
-		occupied: u64,
+		occupied: KeyspaceMask,
 	) -> Result<OperatorBatch> {
 		self.call();
 		let page = self.0.durable.range_batch(operator, range, batch, occupied)?;
@@ -205,7 +205,7 @@ impl Page for TestingPersistent {
 		operator: OperatorId,
 		range: EncodedKeyRange,
 		batch: u64,
-		occupied: u64,
+		occupied: KeyspaceMask,
 	) -> Result<OperatorBatch> {
 		self.call();
 		let page = self.0.durable.last_batch(operator, range, batch, occupied)?;
@@ -213,7 +213,13 @@ impl Page for TestingPersistent {
 		shorten(page, outcome)
 	}
 
-	fn group_page(&self, operator: OperatorId, groups: &[GroupId], batch: u64, mask: u64) -> Result<OperatorBatch> {
+	fn group_page(
+		&self,
+		operator: OperatorId,
+		groups: &[GroupId],
+		batch: u64,
+		mask: KeyspaceMask,
+	) -> Result<OperatorBatch> {
 		self.call();
 		let page = self.0.durable.group_page(operator, groups, batch, mask)?;
 		let outcome = self.0.hooks.on_page(operator, page.items.len());

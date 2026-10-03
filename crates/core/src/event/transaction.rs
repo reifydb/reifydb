@@ -3,12 +3,11 @@
 
 use reifydb_value::util::cowvec::CowVec;
 
-use crate::{common::ChangeVersion, delta::Delta, interface::change::Change};
+use crate::{common::ChangeVersion, delta::Delta};
 
 define_event! {
 	pub struct PostCommitEvent {
 		pub deltas: CowVec<Delta>,
 		pub version: ChangeVersion,
-		pub flow_changes: Vec<Change>,
 	}
 }

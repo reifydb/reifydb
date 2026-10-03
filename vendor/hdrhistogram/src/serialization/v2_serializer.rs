@@ -7,7 +7,7 @@ use std::{error, fmt};
 /// Errors that occur during serialization.
 #[derive(Debug)]
 pub enum V2SerializeError {
-    /// A count above i64::max_value() cannot be zig-zag encoded, and therefore cannot be
+    /// A count above i64::MAX cannot be zig-zag encoded, and therefore cannot be
     /// serialized.
     CountNotSerializable,
     /// Internal calculations cannot be represented in `usize`. Use smaller histograms or beefier
@@ -26,10 +26,9 @@ impl std::convert::From<std::io::Error> for V2SerializeError {
 impl fmt::Display for V2SerializeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            V2SerializeError::CountNotSerializable => write!(
-                f,
-                "A count above i64::max_value() cannot be zig-zag encoded"
-            ),
+            V2SerializeError::CountNotSerializable => {
+                write!(f, "A count above i64::MAX cannot be zig-zag encoded")
+            }
             V2SerializeError::UsizeTypeTooSmall => {
                 write!(f, "Internal calculations cannot be represented in `usize`")
             }
@@ -93,11 +92,8 @@ impl Serializer for V2Serializer {
 
         debug_assert_eq!(V2_HEADER_SIZE, self.buf.len());
 
-        unsafe {
-            // want to treat the rest of the vec as a slice, and we've already reserved this
-            // space, so this way we don't have to resize() on a lot of dummy bytes.
-            self.buf.set_len(max_size);
-        }
+        // want to treat the rest of the vec as a slice
+        self.buf.resize(max_size, 0);
 
         let counts_len = encode_counts(h, &mut self.buf[V2_HEADER_SIZE..])?;
         // addition should be safe as max_size is already a usize
@@ -142,11 +138,11 @@ pub fn encode_counts<T: Counter>(
     let mut index = 0;
     let mut bytes_written = 0;
 
-    assert!(index_limit <= h.counts.len());
+    assert!(index_limit < h.counts.len());
 
     while index <= index_limit {
         // index is inside h.counts because of the assert above
-        let count = unsafe { *(h.counts.get_unchecked(index)) };
+        let count = h.counts[index];
         index += 1;
 
         // Non-negative values are counts for the respective value, negative values are skipping
@@ -157,9 +153,7 @@ pub fn encode_counts<T: Counter>(
             zero_count = 1;
 
             // index is inside h.counts because of the assert above
-            while (index <= index_limit)
-                && (unsafe { *(h.counts.get_unchecked(index)) } == T::zero())
-            {
+            while (index <= index_limit) && h.counts[index] == T::zero() {
                 zero_count += 1;
                 index += 1;
             }
@@ -171,7 +165,7 @@ pub fn encode_counts<T: Counter>(
             -zero_count
         } else {
             // TODO while writing tests that serialize random counts, this was annoying.
-            // Don't want to silently cap them at i64::max_value() for users that, say, aren't
+            // Don't want to silently cap them at i64::MAX for users that, say, aren't
             // serializing. Don't want to silently eat counts beyond i63 max when serializing.
             // Perhaps we should provide some sort of pluggability here -- choose whether you want
             // to truncate counts to i63 max, or report errors if you need maximum fidelity?

@@ -7,6 +7,7 @@
 //!
 //! A failure reports its seed; replay with `make test-chaos SEED=... FILTER=...`.
 
+use reifydb_sdk::flow::operator::NostateMount;
 use reifydb_testing_chaos::operator::{
 	event::ChaosEvent,
 	scenario::{BatchSize, Scenario, SupportedOps},
@@ -28,7 +29,7 @@ fn cfg(duplicate_update_burst: f64, update_as_remove_insert: f64) -> Scenario {
 chaos_test!(no_chaos_primitives_passthrough_matches, |seed| {
 	// Baseline with both primitives off; if this fails every other test in the file is
 	// meaningless.
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -47,7 +48,7 @@ chaos_test!(no_chaos_primitives_passthrough_matches, |seed| {
 chaos_test!(duplicate_burst_at_one_passthrough_matches, |seed| {
 	// Re-applying the same post to the same row is idempotent at the materialized-table level,
 	// so a no-op duplicate per Update must not move the output.
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -83,7 +84,7 @@ chaos_test!(duplicate_burst_at_one_passthrough_matches, |seed| {
 chaos_test!(rewrite_at_one_passthrough_matches, |seed| {
 	// Removing then re-inserting the same key with the new value lands in the same materialized
 	// state as one Update, so the rewrite must be invisible to the oracle.
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -104,7 +105,7 @@ chaos_test!(rewrite_at_one_passthrough_matches, |seed| {
 chaos_test!(both_chaos_primitives_at_one_passthrough_matches, |seed| {
 	// Rewrite takes precedence, so duplicate-burst never fires: there is no surviving Update
 	// left to duplicate.
-	let outcome = ChaosHarness::<PassthroughOperator>::builder()
+	let outcome = ChaosHarness::<NostateMount<PassthroughOperator>>::builder()
 		.with_input_shape(simple_kv_shape())
 		.with_output_shape(simple_kv_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

@@ -7,14 +7,15 @@ use crate::{Engine, ExternType, FuncType, prelude::*};
 use alloc::sync::Arc;
 use core::fmt;
 use core::ops::Deref;
+use wasmtime_environ::PanicOnOom as _;
 use wasmtime_environ::component::{
     ComponentTypes, Export, InterfaceType, ResourceIndex, TypeComponentIndex,
-    TypeComponentInstanceIndex, TypeDef, TypeEnumIndex, TypeFlagsIndex, TypeFuncIndex,
-    TypeFutureIndex, TypeFutureTableIndex, TypeListIndex, TypeMapIndex, TypeModuleIndex,
-    TypeOptionIndex, TypeRecordIndex, TypeResourceTable, TypeResourceTableIndex, TypeResultIndex,
-    TypeStreamIndex, TypeStreamTableIndex, TypeTupleIndex, TypeVariantIndex,
+    TypeComponentInstanceIndex, TypeDef, TypeEnumIndex, TypeFixedLengthListIndex, TypeFlagsIndex,
+    TypeFuncIndex, TypeFutureIndex, TypeFutureTableIndex, TypeListIndex, TypeMapIndex,
+    TypeModuleIndex, TypeOptionIndex, TypeRecordIndex, TypeResourceTable, TypeResourceTableIndex,
+    TypeResultIndex, TypeStreamIndex, TypeStreamTableIndex, TypeTupleIndex, TypeVariantIndex,
+    alternate_lookup_key,
 };
-use wasmtime_environ::{PanicOnOom as _, PrimaryMap};
 
 pub use crate::component::resources::ResourceType;
 
@@ -35,12 +36,13 @@ pub use crate::component::resources::ResourceType;
 ///   component with different resources produces different instance types but
 ///   the same underlying component type, so this field serves the purpose to
 ///   distinguish instance types from one another. This is runtime state created
-///   during instantiation and threaded through here.
+///   during instantiation and threaded through here. Note that if this field
+///   is `None` then this represents an abstract uninstantiated component type.
 #[derive(Clone)]
 struct Handle<T> {
     index: T,
     types: Arc<ComponentTypes>,
-    resources: Arc<PrimaryMap<ResourceIndex, ResourceType>>,
+    resources: Option<Arc<TryPrimaryMap<ResourceIndex, ResourceType>>>,
 }
 
 impl<T> Handle<T> {
@@ -48,14 +50,14 @@ impl<T> Handle<T> {
         Handle {
             index,
             types: ty.types.clone(),
-            resources: ty.resources.clone(),
+            resources: ty.resources.cloned(),
         }
     }
 
     fn instance(&self) -> InstanceType<'_> {
         InstanceType {
             types: &self.types,
-            resources: &self.resources,
+            resources: self.resources.as_ref(),
         }
     }
 
@@ -69,13 +71,17 @@ impl<T> Handle<T> {
     {
         (self.index == other.index
             && Arc::ptr_eq(&self.types, &other.types)
-            && Arc::ptr_eq(&self.resources, &other.resources))
+            && match (&self.resources, &other.resources) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            })
             || type_check(
                 &TypeChecker {
                     a_types: &self.types,
                     b_types: &other.types,
-                    a_resource: &self.resources,
-                    b_resource: &other.resources,
+                    a_resource: self.resources.as_deref(),
+                    b_resource: other.resources.as_deref(),
                 },
                 self.index,
                 other.index,
@@ -94,9 +100,9 @@ impl<T: fmt::Debug> fmt::Debug for Handle<T> {
 /// Type checker between two `Handle`s
 struct TypeChecker<'a> {
     a_types: &'a ComponentTypes,
-    a_resource: &'a PrimaryMap<ResourceIndex, ResourceType>,
+    a_resource: Option<&'a TryPrimaryMap<ResourceIndex, ResourceType>>,
     b_types: &'a ComponentTypes,
-    b_resource: &'a PrimaryMap<ResourceIndex, ResourceType>,
+    b_resource: Option<&'a TryPrimaryMap<ResourceIndex, ResourceType>>,
 }
 
 impl TypeChecker<'_> {
@@ -160,7 +166,10 @@ impl TypeChecker<'_> {
             (InterfaceType::Stream(_), _) => false,
             (InterfaceType::ErrorContext(_), InterfaceType::ErrorContext(_)) => true,
             (InterfaceType::ErrorContext(_), _) => false,
-            (InterfaceType::FixedLengthList(_), _) => todo!(), // FIXME(#12279)
+            (InterfaceType::FixedLengthList(t1), InterfaceType::FixedLengthList(t2)) => {
+                self.fixed_length_lists_equal(t1, t2)
+            }
+            (InterfaceType::FixedLengthList(_), _) => false,
         }
     }
 
@@ -176,6 +185,19 @@ impl TypeChecker<'_> {
         self.interface_types_equal(a.key, b.key) && self.interface_types_equal(a.value, b.value)
     }
 
+    fn fixed_length_lists_equal(
+        &self,
+        l1: wasmtime_environ::component::TypeFixedLengthListIndex,
+        l2: wasmtime_environ::component::TypeFixedLengthListIndex,
+    ) -> bool {
+        let a = &self.a_types[l1];
+        let b = &self.b_types[l2];
+        if a.size != b.size {
+            return false;
+        }
+        self.interface_types_equal(a.element, b.element)
+    }
+
     fn resources_equal(&self, o1: TypeResourceTableIndex, o2: TypeResourceTableIndex) -> bool {
         match (&self.a_types[o1], &self.b_types[o2]) {
             // Concrete resource types are the same if they map back to the
@@ -184,7 +206,7 @@ impl TypeChecker<'_> {
             (
                 TypeResourceTable::Concrete { ty: a, .. },
                 TypeResourceTable::Concrete { ty: b, .. },
-            ) => self.a_resource[*a] == self.b_resource[*b],
+            ) => self.a_resource.unwrap()[*a] == self.b_resource.unwrap()[*b],
             (TypeResourceTable::Concrete { .. }, _) => false,
 
             // Abstract resource types are only the same if they have the same
@@ -358,6 +380,34 @@ impl Map {
     /// Retrieve the value type of this `map`.
     pub fn value(&self) -> Type {
         Type::from(&self.0.types[self.0.index].value, &self.0.instance())
+    }
+}
+/// A `list` interface type
+#[derive(Clone, Debug)]
+pub struct FixedLengthList(Handle<TypeFixedLengthListIndex>);
+
+impl PartialEq for FixedLengthList {
+    fn eq(&self, other: &Self) -> bool {
+        self.0
+            .equivalent(&other.0, TypeChecker::fixed_length_lists_equal)
+    }
+}
+
+impl Eq for FixedLengthList {}
+
+impl FixedLengthList {
+    pub(crate) fn from(index: TypeFixedLengthListIndex, ty: &InstanceType<'_>) -> Self {
+        FixedLengthList(Handle::new(index, ty))
+    }
+
+    /// Retrieve the element type of this `list`.
+    pub fn ty(&self) -> Type {
+        Type::from(&self.0.types[self.0.index].element, &self.0.instance())
+    }
+
+    /// Retrieve the length of this `list`.
+    pub fn len(&self) -> u32 {
+        self.0.types[self.0.index].size
     }
 }
 
@@ -615,9 +665,9 @@ impl FutureType {
         match (my_payload, payload) {
             (Some(a), Some(b)) => TypeChecker {
                 a_types: &self.0.types,
-                a_resource: &self.0.resources,
+                a_resource: self.0.resources.as_deref(),
                 b_types: ty.types,
-                b_resource: ty.resources,
+                b_resource: ty.resources.map(|p| &**p),
             }
             .interface_types_equal(*a, *b),
             (None, None) => true,
@@ -672,9 +722,9 @@ impl StreamType {
         match (my_payload, payload) {
             (Some(a), Some(b)) => TypeChecker {
                 a_types: &self.0.types,
-                a_resource: &self.0.resources,
+                a_resource: self.0.resources.as_deref(),
                 b_types: ty.types,
-                b_resource: ty.resources,
+                b_resource: ty.resources.map(|p| &**p),
             }
             .interface_types_equal(*a, *b),
             (None, None) => true,
@@ -733,6 +783,7 @@ pub enum Type {
     Future(FutureType),
     Stream(StreamType),
     ErrorContext,
+    FixedLengthList(FixedLengthList),
 }
 
 impl Type {
@@ -894,7 +945,9 @@ impl Type {
             InterfaceType::Future(index) => Type::Future(instance.future_type(*index)),
             InterfaceType::Stream(index) => Type::Stream(instance.stream_type(*index)),
             InterfaceType::ErrorContext(_) => Type::ErrorContext,
-            InterfaceType::FixedLengthList(_) => todo!(), // FIXME(#12279)
+            InterfaceType::FixedLengthList(index) => {
+                Type::FixedLengthList(FixedLengthList::from(*index, instance))
+            }
         }
     }
 
@@ -927,6 +980,7 @@ impl Type {
             Type::Future(_) => "future",
             Type::Stream(_) => "stream",
             Type::ErrorContext => "error-context",
+            Type::FixedLengthList(_) => "list<_, N>",
         }
     }
 }
@@ -1026,43 +1080,43 @@ impl Component {
     }
 
     /// Returns import associated with `name`, if such exists in the component
-    pub fn get_import(&self, engine: &Engine, name: &str) -> Option<ComponentItem> {
+    pub fn get_import<'a>(&'a self, engine: &'a Engine, name: &str) -> Option<ComponentExtern<'a>> {
         self.0.types[self.0.index]
             .imports
             .get(name)
-            .map(|ty| ComponentItem::from(engine, ty, &self.0.instance()))
+            .map(|e| ComponentExtern::new(engine, &self.0.instance(), e))
     }
 
     /// Iterates over imports of the component
     pub fn imports<'a>(
         &'a self,
         engine: &'a Engine,
-    ) -> impl ExactSizeIterator<Item = (&'a str, ComponentItem)> + 'a {
-        self.0.types[self.0.index].imports.iter().map(|(name, ty)| {
+    ) -> impl ExactSizeIterator<Item = (&'a str, ComponentExtern<'a>)> + 'a {
+        self.0.types[self.0.index].imports.iter().map(|(name, e)| {
             (
                 name.as_str(),
-                ComponentItem::from(engine, ty, &self.0.instance()),
+                ComponentExtern::new(engine, &self.0.instance(), e),
             )
         })
     }
 
     /// Returns export associated with `name`, if such exists in the component
-    pub fn get_export(&self, engine: &Engine, name: &str) -> Option<ComponentItem> {
+    pub fn get_export<'a>(&'a self, engine: &'a Engine, name: &str) -> Option<ComponentExtern<'a>> {
         self.0.types[self.0.index]
             .exports
             .get(name)
-            .map(|ty| ComponentItem::from(engine, ty, &self.0.instance()))
+            .map(|e| ComponentExtern::new(engine, &self.0.instance(), e))
     }
 
     /// Iterates over exports of the component
     pub fn exports<'a>(
         &'a self,
         engine: &'a Engine,
-    ) -> impl ExactSizeIterator<Item = (&'a str, ComponentItem)> + 'a {
-        self.0.types[self.0.index].exports.iter().map(|(name, ty)| {
+    ) -> impl ExactSizeIterator<Item = (&'a str, ComponentExtern<'a>)> + 'a {
+        self.0.types[self.0.index].exports.iter().map(|(name, e)| {
             (
                 name.as_str(),
-                ComponentItem::from(engine, ty, &self.0.instance()),
+                ComponentExtern::new(engine, &self.0.instance(), e),
             )
         })
     }
@@ -1071,7 +1125,7 @@ impl Component {
     pub fn instance_type(&self) -> InstanceType<'_> {
         InstanceType {
             types: &self.0.types,
-            resources: &self.0.resources,
+            resources: self.0.resources.as_ref(),
         }
     }
 }
@@ -1086,24 +1140,79 @@ impl ComponentInstance {
     }
 
     /// Returns export associated with `name`, if such exists in the component instance
-    pub fn get_export(&self, engine: &Engine, name: &str) -> Option<ComponentItem> {
+    pub fn get_export<'a>(&'a self, engine: &'a Engine, name: &str) -> Option<ComponentExtern<'a>> {
         self.0.types[self.0.index]
             .exports
             .get(name)
-            .map(|ty| ComponentItem::from(engine, ty, &self.0.instance()))
+            .map(|e| ComponentExtern::new(engine, &self.0.instance(), e))
     }
 
     /// Iterates over exports of the component instance
     pub fn exports<'a>(
         &'a self,
         engine: &'a Engine,
-    ) -> impl ExactSizeIterator<Item = (&'a str, ComponentItem)> {
-        self.0.types[self.0.index].exports.iter().map(|(name, ty)| {
+    ) -> impl ExactSizeIterator<Item = (&'a str, ComponentExtern<'a>)> {
+        self.0.types[self.0.index].exports.iter().map(|(name, e)| {
             (
                 name.as_str(),
-                ComponentItem::from(engine, ty, &self.0.instance()),
+                ComponentExtern::new(engine, &self.0.instance(), e),
             )
         })
+    }
+}
+
+/// An import or an export from either [`Component`] or [`ComponentInstance`].
+///
+/// This records the type of the item that is being imported or exported along
+/// with any other metadata associated.
+#[derive(Clone, Debug)]
+pub struct ComponentExtern<'a> {
+    /// The type of this item.
+    pub ty: ComponentItem,
+    /// The `(implements "...")` annotation, if present.
+    pub implements: Option<&'a str>,
+    /// The `(external-id "...")` annotation, if present.
+    ///
+    /// This is a free-form host-defined identifier and is intended to indicate
+    /// how the host should satisfy an import (or interpret an export).
+    pub external_id: Option<&'a str>,
+}
+
+impl<'a> ComponentExtern<'a> {
+    fn new(
+        engine: &'a Engine,
+        instance_ty: &InstanceType<'_>,
+        env: &'a wasmtime_environ::component::ComponentExtern,
+    ) -> Self {
+        Self {
+            implements: env.data.implements.as_deref(),
+            external_id: env.data.external_id.as_deref(),
+            ty: ComponentItem::from(engine, &env.ty, instance_ty),
+        }
+    }
+
+    /// Returns whether this item is tagged with `(implements "..")` with an
+    /// interface that's compatible with `name`.
+    ///
+    /// This function will return `false` if `(implements "...")` is not
+    /// present. If it is present, and it's equal to `name`, then `true` is
+    /// returned. Failing that, this attempts to perform version-matching to see
+    /// if a compatible version of this item is implemented. For example if
+    /// `(implements "a:b/c@1.1.0")` is specified then this will return `true`
+    /// for `a:b/c@1.0.0` and `a:b/c@1.2.0` as well.
+    pub fn is_implements(&self, name: &str) -> bool {
+        let implements = match self.implements {
+            Some(s) => s,
+            None => return false,
+        };
+        if name == implements {
+            return true;
+        }
+
+        match (alternate_lookup_key(implements), alternate_lookup_key(name)) {
+            (Some((alt_implements, _)), Some((alt_name, _))) => alt_implements == alt_name,
+            _ => false,
+        }
     }
 }
 
@@ -1152,7 +1261,7 @@ impl ComponentItem {
                 TypeResourceTable::Concrete {
                     ty: resource_index, ..
                 } => {
-                    let ty = match ty.resources.get(resource_index) {
+                    let ty = match ty.resources.and_then(|t| t.get(resource_index)) {
                         // This resource type was substituted by a linker for
                         // example so it's replaced here.
                         Some(ty) => *ty,

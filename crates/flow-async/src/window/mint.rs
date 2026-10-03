@@ -47,6 +47,26 @@ impl<'a> Mint<'a> {
 		self.meta.store_row_index(store, group, row_number, window_id)
 	}
 
+	pub fn record_memberships(
+		&mut self,
+		store: &mut dyn StateStore,
+		group: GroupId,
+		row_number: RowNumber,
+		window_ids: &[u64],
+	) -> Result<()> {
+		self.meta.store_row_indexes(store, group, row_number, window_ids)
+	}
+
+	pub fn withdraw_membership(
+		&mut self,
+		store: &mut dyn StateStore,
+		group: GroupId,
+		row_number: RowNumber,
+		window_id: u64,
+	) -> Result<()> {
+		self.meta.withdraw_row_index(store, group, row_number, window_id)
+	}
+
 	pub fn drop_membership(
 		&mut self,
 		store: &mut dyn StateStore,

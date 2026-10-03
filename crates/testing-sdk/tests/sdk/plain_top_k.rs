@@ -13,7 +13,6 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	metrics::heap::HeapSize,
 	operator_with::{ApplyWith, WithSpan},
-	row::Row as CoreRow,
 };
 use reifydb_flow_async::{
 	operator::state::seal::coord::Coord,
@@ -29,7 +28,6 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		extern_c::binding::operator::ExternCOperatorAdapter,
 		view::RowView,
 		windowed::{
 			operator::{AllKinds, Emit, PlainMarker, TopKMarker, WindowDriver, WindowedOperator},
@@ -38,9 +36,10 @@ use reifydb_sdk::{
 	},
 	row,
 };
+use reifydb_testing_chaos::operator::event::Row as CoreRow;
 use reifydb_testing_sdk::{
 	builders::{TestChangeBuilder, TestOperatorRowBuilder},
-	harness::ExternCOperatorHarnessBuilder,
+	in_process::harness::InProcessOperatorHarnessBuilder,
 };
 use reifydb_value::{
 	config::ExtensionParams,
@@ -263,7 +262,7 @@ fn render(out: &Change) -> Emitted {
 
 macro_rules! harness {
 	($driver:ty, $with:expr) => {
-		ExternCOperatorHarnessBuilder::<ExternCOperatorAdapter<TopKDriver<$driver>>>::new().with($with).build()
+		InProcessOperatorHarnessBuilder::<TopKDriver<$driver>>::new().with($with).build()
 	};
 }
 

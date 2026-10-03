@@ -13,7 +13,7 @@ use reifydb_core::{
 	interface::change::Diff,
 	key::operator::state::GroupId,
 	value::{
-		batch::{empty_batch, take_rows},
+		batch::{empty_batch, take_row, take_rows},
 		column::key::extend_key,
 	},
 };
@@ -24,9 +24,8 @@ use reifydb_value::{
 	util::hash::{Hash128, xxh3_128},
 	value::{
 		column_view::ColumnView,
-		datetime::DateTime,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, keep_system_columns, require_row_numbers, with_system_column},
+		system_columns::{SystemColumn, require_row_numbers, restamp_row_numbers},
 	},
 };
 
@@ -36,15 +35,10 @@ use crate::operator::{
 		state::{DistinctEntry, DistinctState, SerializedRow, user_views},
 	},
 	host::HostContext,
-	time_at,
 };
 
 const CARRIED_SYSTEM_COLUMNS: [SystemColumn; 3] =
 	[SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time];
-
-fn row_time(host: &dyn HostContext, columns: &RecordBatch, row_idx: usize) -> Result<DateTime> {
-	Ok(time_at(columns, row_idx)?.unwrap_or_else(|| host.written_at()))
-}
 
 fn ensure_distinct_keyable(view: &ColumnView) -> Result<()> {
 	let ty = view.get_type();
@@ -71,8 +65,7 @@ fn row_hashes(key_columns: &[ColumnView], row_count: usize) -> Result<Vec<Hash12
 }
 
 fn restamped(columns: &RecordBatch, row_numbers: Vec<u64>) -> Result<RecordBatch> {
-	let carried = keep_system_columns(columns, &CARRIED_SYSTEM_COLUMNS)?;
-	with_system_column(carried, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(row_numbers)))
+	restamp_row_numbers(columns, &CARRIED_SYSTEM_COLUMNS, Arc::new(UInt64Array::from(row_numbers)))
 }
 
 impl DistinctPlan {
@@ -125,6 +118,7 @@ impl DistinctPlan {
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 		columns: &RecordBatch,
+		hashes: &[Hash128],
 	) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.num_rows();
@@ -133,9 +127,8 @@ impl DistinctPlan {
 		}
 
 		if state.layout.update_from_columns(columns)? {
-			state.layout_changed_at = Some(row_time(host, columns, 0)?);
+			state.layout_changed = true;
 		}
-		let hashes = self.compute_hashes(columns)?;
 		let row_numbers = require_row_numbers(columns)?;
 
 		let mut order: Vec<usize> = (0..row_count).collect();
@@ -172,9 +165,7 @@ impl DistinctPlan {
 				new_entries.push((row_idx, hash));
 			}
 		}
-		for (row_idx, &hash) in hashes.iter().enumerate() {
-			state.dirty.insert(hash, row_time(host, columns, row_idx)?);
-		}
+		state.dirty.extend(hashes.iter().copied());
 
 		new_entries.sort_by_key(|&(i, _)| row_numbers[i]);
 		swap_pairs.sort_by_key(|&(_, i, _)| row_numbers[i]);
@@ -206,7 +197,7 @@ impl DistinctPlan {
 			for ((old_serialized, new_idx, _), (stable_rn, _)) in swap_pairs.into_iter().zip(stable_rns) {
 				let pre_cols =
 					Self::with_stable_rn(old_serialized.to_columns(&state.layout)?, stable_rn)?;
-				let post_cols = Self::with_stable_rn(take_rows(columns, &[new_idx])?, stable_rn)?;
+				let post_cols = Self::with_stable_rn(take_row(columns, new_idx)?, stable_rn)?;
 				result.push(Diff::update(pre_cols, post_cols));
 			}
 		}
@@ -221,6 +212,7 @@ impl DistinctPlan {
 		groups: &HashMap<Hash128, GroupId>,
 		pre_columns: &RecordBatch,
 		post_columns: &RecordBatch,
+		(pre_hashes, post_hashes): (&[Hash128], &[Hash128]),
 	) -> Result<Vec<Diff>> {
 		let row_count = post_columns.num_rows();
 		if row_count == 0 {
@@ -228,10 +220,8 @@ impl DistinctPlan {
 		}
 
 		if state.layout.update_from_columns(post_columns)? {
-			state.layout_changed_at = Some(row_time(host, post_columns, 0)?);
+			state.layout_changed = true;
 		}
-		let pre_hashes = self.compute_hashes(pre_columns)?;
-		let post_hashes = self.compute_hashes(post_columns)?;
 		let post_row_numbers = require_row_numbers(post_columns)?;
 
 		let mut result = Vec::new();
@@ -247,7 +237,7 @@ impl DistinctPlan {
 				let visible = if let Some(entry) = state.entries.get_mut(&pre_hash) {
 					let visible_rn = entry.rows.keys().next_back().copied();
 					entry.rows.insert(row_number, new_serialized);
-					state.dirty.insert(pre_hash, row_time(host, post_columns, row_idx)?);
+					state.dirty.insert(pre_hash);
 					visible_rn == Some(row_number)
 				} else {
 					dropped += 1;
@@ -259,10 +249,9 @@ impl DistinctPlan {
 						.into_iter()
 						.next()
 						.unwrap();
-					let pre_out =
-						Self::with_stable_rn(take_rows(pre_columns, &[row_idx])?, stable_rn)?;
+					let pre_out = Self::with_stable_rn(take_row(pre_columns, row_idx)?, stable_rn)?;
 					let post_out =
-						Self::with_stable_rn(take_rows(post_columns, &[row_idx])?, stable_rn)?;
+						Self::with_stable_rn(take_row(post_columns, row_idx)?, stable_rn)?;
 					result.push(Diff::update(pre_out, post_out));
 				}
 				continue;
@@ -273,7 +262,7 @@ impl DistinctPlan {
 					let prev_rn = entry.rows.keys().next_back().copied().unwrap();
 					let removed = entry.rows.remove(&row_number).is_some();
 					if removed {
-						state.dirty.insert(pre_hash, row_time(host, post_columns, row_idx)?);
+						state.dirty.insert(pre_hash);
 						if entry.rows.is_empty() {
 							Some((true, None))
 						} else {
@@ -296,7 +285,7 @@ impl DistinctPlan {
 			};
 
 			if state.entries.get(&pre_hash).map(|e| e.rows.is_empty()).unwrap_or(false) {
-				state.entries.shift_remove(&pre_hash);
+				state.entries.swap_remove(&pre_hash);
 			}
 
 			let new_serialized = SerializedRow::from_columns_at_index(post_columns, row_idx)?;
@@ -321,7 +310,7 @@ impl DistinctPlan {
 					);
 					(true, None)
 				};
-			state.dirty.insert(post_hash, row_time(host, post_columns, row_idx)?);
+			state.dirty.insert(post_hash);
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
 				let (stable_rn, _) = host
@@ -332,12 +321,12 @@ impl DistinctPlan {
 				if pre_is_empty {
 					host.remove_row_number_for_group(groups[&pre_hash])?;
 					result.push(Diff::remove(Self::with_stable_rn(
-						take_rows(pre_columns, &[row_idx])?,
+						take_row(pre_columns, row_idx)?,
 						stable_rn,
 					)?));
 				} else if let Some(new_visible) = pre_new_visible_opt {
 					result.push(Diff::update(
-						Self::with_stable_rn(take_rows(pre_columns, &[row_idx])?, stable_rn)?,
+						Self::with_stable_rn(take_row(pre_columns, row_idx)?, stable_rn)?,
 						Self::with_stable_rn(
 							new_visible.to_columns(&state.layout)?,
 							stable_rn,
@@ -353,7 +342,7 @@ impl DistinctPlan {
 					.into_iter()
 					.next()
 					.unwrap();
-				let post_out = Self::with_stable_rn(take_rows(post_columns, &[row_idx])?, stable_rn)?;
+				let post_out = Self::with_stable_rn(take_row(post_columns, row_idx)?, stable_rn)?;
 				match post_displaced_opt {
 					Some(old_visible) => result.push(Diff::update(
 						Self::with_stable_rn(
@@ -378,6 +367,7 @@ impl DistinctPlan {
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 		columns: &RecordBatch,
+		hashes: &[Hash128],
 	) -> Result<Vec<Diff>> {
 		let mut result = Vec::new();
 		let row_count = columns.num_rows();
@@ -385,7 +375,6 @@ impl DistinctPlan {
 			return Ok(result);
 		}
 
-		let hashes = self.compute_hashes(columns)?;
 		let row_numbers = require_row_numbers(columns)?;
 
 		let mut mutations: Vec<(usize, Hash128, Option<Option<SerializedRow>>)> = Vec::new();
@@ -405,7 +394,7 @@ impl DistinctPlan {
 			if !removed {
 				continue;
 			}
-			state.dirty.insert(hash, row_time(host, columns, row_idx)?);
+			state.dirty.insert(hash);
 
 			if entry.rows.is_empty() {
 				empty_hashes.push(hash);
@@ -423,7 +412,7 @@ impl DistinctPlan {
 		}
 
 		for hash in empty_hashes {
-			state.entries.shift_remove(&hash);
+			state.entries.swap_remove(&hash);
 		}
 
 		let active: Vec<(usize, Hash128, Option<SerializedRow>)> = mutations
@@ -440,16 +429,13 @@ impl DistinctPlan {
 					None => {
 						host.remove_row_number_for_group(groups[&hash])?;
 						result.push(Diff::remove(Self::with_stable_rn(
-							take_rows(columns, &[row_idx])?,
+							take_row(columns, row_idx)?,
 							stable_rn,
 						)?));
 					}
 					Some(new_visible) => {
 						result.push(Diff::update(
-							Self::with_stable_rn(
-								take_rows(columns, &[row_idx])?,
-								stable_rn,
-							)?,
+							Self::with_stable_rn(take_row(columns, row_idx)?, stable_rn)?,
 							Self::with_stable_rn(
 								new_visible.to_columns(&state.layout)?,
 								stable_rn,

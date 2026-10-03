@@ -1,6 +1,6 @@
 [package]
 name = "hyper"
-version = "1.10.1"
+version = "1.11.1"
 description = "A protective and efficient HTTP library for all."
 readme = "README.md"
 homepage = "https://hyper.rs"
@@ -82,7 +82,7 @@ full = [
 
 # HTTP versions
 http1 = ["dep:atomic-waker", "dep:futures-channel", "dep:futures-core", "dep:httparse", "dep:itoa"]
-http2 = ["dep:futures-channel", "dep:futures-core", "dep:h2"]
+http2 = ["dep:atomic-waker", "dep:futures-channel", "dep:futures-core", "dep:h2"]
 
 # Client/Server
 client = ["dep:want", "dep:pin-project-lite", "dep:smallvec"]
@@ -115,52 +115,33 @@ restriction = { level = "warn", priority = -2 }
 
 arithmetic_side_effects = "allow" # TODO: consider
 as_conversions = "allow" # TODO: tricky
-borrow_as_ptr = "allow"
-cast_lossless = "allow" # TODO: easy fix
 cast_possible_truncation = "allow" # TODO: consider
 cast_precision_loss = "allow" # TODO: consider
 checked_conversions = "allow"
 collapsible_match = "allow"
-decimal_literal_representation = "allow" # TODO: consider
-default_trait_access = "allow"
 else_if_without_else = "allow"
-empty_structs_with_brackets = "allow" # TODO: easy fix
 enum_glob_use = "allow"
-explicit_iter_loop = "allow" # TODO: easy fix
 float_arithmetic = "allow"
 ignored_unit_patterns = "allow"
 indexing_slicing = "allow"
 integer_division = "allow"
 integer_division_remainder_used = "allow"
-large_enum_variant = "allow"
 let_unit_value = "allow"
-manual_assert_eq = "allow" # TODO: easy fix
 map_err_ignore = "allow"
 map_unwrap_or = "allow"
 match_wild_err_arm = "allow"
 missing_fields_in_debug = "allow" # TODO: use finish_non_exhaustive
-missing_errors_doc = "allow" # TODO: good to fix
 missing_panics_doc = "allow" # TODO: might be false
 multiple_inherent_impl = "allow"
 multiple_unsafe_ops_per_block = "allow"
-needless_continue = "allow"
 needless_pass_by_value = "allow"
 panic = "allow"
 pattern_type_mismatch = "allow"
-ptr_as_ptr = "allow"
-question_mark = "allow" # TODO: probably easy fix
 redundant_closure_for_method_calls = "allow"
 redundant_else = "allow"
-ref_option = "allow"
-ref_patterns = "allow" # TODO: perhaps deny?
-semicolon_if_nothing_returned = "allow" # TODO: easy fix
 single_char_lifetime_names = "allow"
-single_match_else = "allow" # TODO: easy fix
 struct_excessive_bools = "allow" # TODO: bogus lint?
 trivially_copy_pass_by_ref = "allow"
-undocumented_unsafe_blocks = "allow" # TODO: fix me
-uninlined_format_args = "allow" # TODO: easy fix
-unnecessary_semicolon = "allow" # TODO: easy fix
 unnecessary_trailing_comma = "allow"
 unnested_or_patterns = "allow"
 unused_async = "allow" # TODO: is it for API?
@@ -175,6 +156,7 @@ arbitrary_source_item_ordering = "allow" # order: std, deps, crate
 blanket_clippy_restriction_lints = "allow" # allowlist is better
 clone_on_ref_ptr = "allow" # Arc::clone(blah) is needlessly noisy
 cognitive_complexity = "allow" # is this ever useful?
+decimal_literal_representation = "allow" # arguably more human-readable
 default_numeric_fallback = "allow" # too many false positives
 expect_used = "allow" # expect is self-documenting
 error_impl_error = "allow" # mod::Error is a fine name
@@ -369,4 +351,9 @@ required-features = ["full"]
 [[test]]
 name = "server"
 path = "tests/server.rs"
+required-features = ["full"]
+
+[[test]]
+name = "h1_shutdown_while_buffered"
+path = "tests/h1_shutdown_while_buffered.rs"
 required-features = ["full"]

@@ -200,7 +200,7 @@ pub mod exports {
                     .ok_or_else(|| {
                         wasmtime::format_err!("no exported instance named `the-name`")
                     })?;
-                let mut lookup = move |name| {
+                let mut lookup = move |name: &str| {
                     _instance_pre
                         .component()
                         .get_export_index(Some(&instance), name)
@@ -230,6 +230,11 @@ pub mod exports {
             }
         }
         impl Guest {
+            pub fn func_y(&self) -> wasmtime::component::TypedFunc<(), ()> {
+                unsafe {
+                    wasmtime::component::TypedFunc::<(), ()>::new_unchecked(self.y)
+                }
+            }
             pub async fn call_y<S: wasmtime::AsContextMut>(
                 &self,
                 mut store: S,
@@ -242,9 +247,7 @@ pub mod exports {
                     tracing::Level::TRACE, "wit-bindgen export", module = "the-name",
                     function = "y",
                 );
-                let callee = unsafe {
-                    wasmtime::component::TypedFunc::<(), ()>::new_unchecked(self.y)
-                };
+                let callee = self.func_y();
                 let () = callee
                     .call_async(store.as_context_mut(), ())
                     .instrument(span.clone())

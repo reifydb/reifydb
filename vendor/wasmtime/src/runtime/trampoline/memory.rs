@@ -12,8 +12,8 @@ use alloc::sync::Arc;
 use core::future::Future;
 use core::pin::Pin;
 use wasmtime_environ::{
-    DefinedMemoryIndex, DefinedTableIndex, EntityIndex, HostPtr, Module, StaticModuleIndex,
-    Tunables, VMOffsets,
+    DefinedMemoryIndex, DefinedTableIndex, EntityIndex, HostPtr, MemoryKind, MemoryTunables,
+    Module, StaticModuleIndex, VMOffsets,
 };
 
 #[cfg(feature = "component-model")]
@@ -105,18 +105,18 @@ impl RuntimeMemoryCreator for MemoryCreatorProxy {
     fn new_memory(
         &self,
         ty: &wasmtime_environ::Memory,
-        tunables: &Tunables,
+        memory_tunables: &MemoryTunables<'_>,
         minimum: usize,
         maximum: Option<usize>,
     ) -> Result<Box<dyn RuntimeLinearMemory>> {
-        let reserved_size_in_bytes = Some(tunables.memory_reservation.try_into().unwrap());
+        let reserved_size_in_bytes = Some(memory_tunables.reservation().try_into().unwrap());
         self.0
             .new_memory(
                 MemoryType::from_wasmtime_memory(ty),
                 minimum,
                 maximum,
                 reserved_size_in_bytes,
-                usize::try_from(tunables.memory_guard_size).unwrap(),
+                usize::try_from(memory_tunables.guard_size()).unwrap(),
             )
             .map(|mem| Box::new(LinearMemoryProxy { mem }) as Box<dyn RuntimeLinearMemory>)
             .map_err(|e| format_err!(e))
@@ -176,6 +176,7 @@ unsafe impl InstanceAllocator for SingleMemoryInstance<'_> {
         request: &'a mut InstanceAllocationRequest<'b, 'c>,
         ty: &'a wasmtime_environ::Memory,
         memory_index: Option<DefinedMemoryIndex>,
+        memory_kind: MemoryKind,
     ) -> Pin<Box<dyn Future<Output = Result<(MemoryAllocationIndex, Memory)>> + Send + 'a>> {
         if cfg!(debug_assertions) {
             let module = request.runtime_info.env_module();
@@ -191,7 +192,9 @@ unsafe impl InstanceAllocator for SingleMemoryInstance<'_> {
                     shared_memory.clone().as_memory(),
                 ))
             }),
-            None => self.ondemand.allocate_memory(request, ty, memory_index),
+            None => self
+                .ondemand
+                .allocate_memory(request, ty, memory_index, memory_kind),
         }
     }
 
@@ -260,7 +263,6 @@ unsafe impl InstanceAllocator for SingleMemoryInstance<'_> {
         _engine: &crate::Engine,
         _gc_runtime: &dyn crate::vm::GcRuntime,
         _memory_alloc_index: crate::vm::MemoryAllocationIndex,
-        _memory: Memory,
     ) -> Result<(crate::vm::GcHeapAllocationIndex, Box<dyn crate::vm::GcHeap>)> {
         unreachable!()
     }
@@ -270,7 +272,7 @@ unsafe impl InstanceAllocator for SingleMemoryInstance<'_> {
         &self,
         _allocation_index: crate::vm::GcHeapAllocationIndex,
         _gc_heap: Box<dyn crate::vm::GcHeap>,
-    ) -> (crate::vm::MemoryAllocationIndex, crate::vm::Memory) {
+    ) -> crate::vm::MemoryAllocationIndex {
         unreachable!()
     }
 }

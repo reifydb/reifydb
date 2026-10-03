@@ -557,6 +557,11 @@ fn gen_instruction_data_impl(formats: &[Rc<InstructionFormat>], fmt: &mut Format
                                     OperandKindFields::VariableArgs => {
                                         fmtln!(fmt, "{member}: mapper.map_value_list({member}),");
                                     }
+                                    OperandKindFields::ImmValue
+                                        if field.kind.rust_type == "ir::MemFlags" =>
+                                    {
+                                        fmtln!(fmt, "{member}: mapper.map_mem_flags({member}),");
+                                    }
                                     OperandKindFields::ImmValue |
                                     OperandKindFields::ImmEnum(_) |
                                     OperandKindFields::TypeVar(_) => fmtln!(fmt, "{member},"),
@@ -946,7 +951,7 @@ fn gen_type_constraints(all_inst: &AllInstructions, fmt: &mut Formatter) {
                 .collect::<Vec<_>>()
                 .join(", ")));
             if let Some(poly) = &inst.polymorphic_info {
-                fmt.comment(format!("Polymorphic over {}", typeset_to_string(poly.ctrl_typevar.get_raw_typeset())));
+                fmt.comment(format_args!("Polymorphic over {}", typeset_to_string(poly.ctrl_typevar.get_raw_typeset())));
             }
 
             // Compute the bit field encoding, c.f. instructions.rs.
@@ -1153,7 +1158,14 @@ fn gen_inst_builder(inst: &Instruction, format: &InstructionFormat, fmt: &mut Fo
         } else {
             let t = if op.is_immediate() {
                 let t = format!("T{}", tmpl_types.len() + 1);
-                tmpl_types.push(format!("{}: Into<{}>", t, op.kind.rust_type));
+                // For memflags, the public API type is MemFlagsData (the data),
+                // while InstructionData stores MemFlags (the entity index).
+                let api_type = if op.kind.rust_type == "ir::MemFlags" {
+                    "ir::MemFlagsData"
+                } else {
+                    op.kind.rust_type
+                };
+                tmpl_types.push(format!("{t}: Into<{api_type}>"));
                 into_args.push(op.name);
                 t
             } else {
@@ -1164,9 +1176,13 @@ fn gen_inst_builder(inst: &Instruction, format: &InstructionFormat, fmt: &mut Fo
         }
     }
 
-    // We need to mutate `self` if this instruction accepts a value list, or will construct
-    // BlockCall values.
-    if format.has_value_list || !block_args.is_empty() {
+    // We need to mutate `self` if this instruction accepts a value list, will construct
+    // BlockCall values, or has memflags operands (which need DFG insertion).
+    let has_memflags = inst
+        .operands_in
+        .iter()
+        .any(|op| op.kind.rust_type == "ir::MemFlags");
+    if format.has_value_list || !block_args.is_empty() || has_memflags {
         args[0].push_str("mut self");
     } else {
         args[0].push_str("self");
@@ -1219,6 +1235,17 @@ fn gen_inst_builder(inst: &Instruction, format: &InstructionFormat, fmt: &mut Fo
         // Convert all of the `Into<>` arguments.
         for arg in into_args {
             fmtln!(fmt, "let {} = {}.into();", arg, arg);
+        }
+
+        // Insert memflags data into the DFG to get entity indices.
+        for op in &inst.operands_in {
+            if op.kind.rust_type == "ir::MemFlags" && op.is_immediate() {
+                fmtln!(
+                    fmt,
+                    "let {0} = self.data_flow_graph_mut().mem_flags.insert({0}).unwrap();",
+                    op.name
+                );
+            }
         }
 
         // Convert block references
@@ -1319,6 +1346,253 @@ fn gen_inst_builder(inst: &Instruction, format: &InstructionFormat, fmt: &mut Fo
     });
 }
 
+/// Emit the `{name}_imm_s`, `{name}_imm_u`, and (deprecated) `{name}_imm`
+/// convenience methods for `inst`, requested via `.inst_builder_imm_method(true)`.
+///
+/// Each generated method has the same shape as `inst`'s normal builder method,
+/// except that its trailing value operand is taken as an `Into<Imm64>`
+/// immediate. That immediate is materialized as an `iconst` (extended to the
+/// controlling type as needed, see `InstBuilder::build_imm_const`) and then
+/// `inst` is built with it. The `_imm_s` variant sign-extends the immediate
+/// while `_imm_u` zero-extends it; this only matters for `i128`.
+///
+/// The bare `_imm` method is kept around for backwards-compatibility, with the
+/// sign-/zero-extension behavior the now-removed `*_imm` instructions used to
+/// have. It is deprecated in favor of the explicit `_imm_s`/`_imm_u` variants.
+fn gen_imm_inst_builder(inst: &Instruction, fmt: &mut Formatter) {
+    // Only the simple, fixed-operand, single-result integer instructions that
+    // used to have a `binary_imm64`/`int_compare_imm` counterpart are
+    // supported.
+    assert!(
+        !inst.format.has_value_list,
+        "inst_builder_imm_method is not supported for {} (has a value list)",
+        inst.name
+    );
+    assert_eq!(
+        inst.value_results.len(),
+        1,
+        "inst_builder_imm_method is only supported for single-result instructions, not {}",
+        inst.name
+    );
+    assert!(
+        inst.value_opnums.len() >= 2,
+        "inst_builder_imm_method requires at least two value operands, but {} has {}",
+        inst.name,
+        inst.value_opnums.len()
+    );
+
+    // Whether the now-removed `*_imm` instruction historically sign-extended its
+    // immediate. This is what the deprecated bare `_imm` method preserves.
+    let historically_signed = matches!(
+        inst.name.as_str(),
+        "iadd" | "imul" | "sdiv" | "srem" | "icmp"
+    );
+
+    gen_one_imm_inst_builder(inst, fmt, "_imm_s", true, None);
+    fmt.empty_line();
+    gen_one_imm_inst_builder(inst, fmt, "_imm_u", false, None);
+    fmt.empty_line();
+    let name = inst.snake_name();
+    let deprecation = format!(
+        "use `{name}_imm_s` (sign-extends the immediate) or `{name}_imm_u` \
+         (zero-extends the immediate) instead",
+    );
+    gen_one_imm_inst_builder(inst, fmt, "_imm", historically_signed, Some(&deprecation));
+}
+
+/// Emit a single immediate convenience method for `inst` with the given method
+/// name `suffix` (e.g. `"_imm_s"`). `signed` selects sign- vs zero-extension of
+/// the materialized immediate, and `deprecation`, if set, marks the method
+/// `#[deprecated]` with the given note.
+fn gen_one_imm_inst_builder(
+    inst: &Instruction,
+    fmt: &mut Formatter,
+    suffix: &str,
+    signed: bool,
+    deprecation: Option<&str>,
+) {
+    // The immediate replaces the trailing value operand; the first value
+    // operand provides the controlling type for the synthesized `iconst`.
+    let imm_opnum = *inst.value_opnums.last().unwrap();
+    let ctrl_opnum = *inst.value_opnums.first().unwrap();
+    let imm_name = inst.operands_in[imm_opnum].name;
+    let ctrl_name = inst.operands_in[ctrl_opnum].name;
+
+    let mut args = vec!["mut self".to_string()];
+    let mut args_doc = Vec::new();
+    for (i, op) in inst.operands_in.iter().enumerate() {
+        if i == imm_opnum {
+            args.push(format!("{}: T", op.name));
+            args_doc.push(format!("- {}: an immediate integer constant", op.name));
+        } else if op.is_value() {
+            args.push(format!("{}: Value", op.name));
+            args_doc.push(format!("- {}: {}", op.name, op.doc()));
+        } else {
+            args.push(format!("{}: {}", op.name, op.kind.rust_type));
+            args_doc.push(format!("- {}: {}", op.name, op.doc()));
+        }
+    }
+
+    let proto = format!(
+        "{}{suffix}<T: Into<ir::immediates::Imm64>>({}) -> Value",
+        inst.snake_name(),
+        args.join(", "),
+    );
+
+    let extends = if signed {
+        "sign-extended"
+    } else {
+        "zero-extended"
+    };
+    fmt.doc_comment(format!(
+        "Convenience method that is like [`{name}`][Self::{name}], but takes its \
+         trailing operand as an immediate integer constant which is materialized \
+         with an `iconst` and {extends} to the controlling type.",
+        name = inst.snake_name(),
+    ));
+    fmt.line("///");
+    fmt.doc_comment("Inputs:");
+    fmt.line("///");
+    for doc_line in args_doc {
+        fmt.doc_comment(doc_line);
+    }
+
+    if let Some(note) = deprecation {
+        fmtln!(fmt, "#[deprecated(note = \"{note}\")]");
+    }
+    fmt.line("#[allow(non_snake_case, reason = \"generated code\")]");
+    fmt.add_block(&format!("fn {proto}"), |fmt| {
+        fmtln!(fmt, "let {imm_name} = {imm_name}.into();");
+        fmtln!(
+            fmt,
+            "let imm_ty = self.data_flow_graph().value_type({ctrl_name});"
+        );
+        fmtln!(
+            fmt,
+            "let {imm_name} = self.build_imm_const(imm_ty, {imm_name}, {signed});",
+        );
+        let call_args = inst
+            .operands_in
+            .iter()
+            .map(|op| op.name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        fmtln!(fmt, "self.{}({call_args})", inst.snake_name());
+    });
+}
+
+/// Emit the `stack_load`, `stack_store`, `dynamic_stack_load`, and
+/// `dynamic_stack_store` `InstBuilder` backwards-compat/convenience methods.
+///
+/// These are equivalent to a `[dynamic_]stack_addr` followed by a normal
+/// `load`/`store`.
+fn gen_stack_access_builders(fmt: &mut Formatter) {
+    // `stack_load` => `stack_addr` + `load`.
+    fmt.doc_comment(
+        "Load a value from a stack slot at the constant offset.\n\n\
+         This emits a `stack_addr` followed by a `load`.",
+    );
+    fmt.line("#[allow(non_snake_case, reason = \"generated code\")]");
+    fmt.add_block(
+        "fn stack_load<T1: Into<ir::immediates::Offset32>>(mut self, pointer_type: crate::ir::Type, Mem: crate::ir::Type, SS: ir::StackSlot, Offset: T1) -> Value",
+        |fmt| {
+            fmt.line("let Offset = Offset.into();");
+            fmt.line("let addr = self.build_aux_inst(InstructionData::StackAddr { opcode: Opcode::StackAddr, stack_slot: SS, offset: Offset }, pointer_type);");
+            fmt.line("let addr = self.data_flow_graph().first_result(addr);");
+            fmt.line("// Stack slots are required to be accessible, but we can't");
+            fmt.line("// currently ensure that they are aligned.");
+            fmt.line("let mut flags = ir::MemFlagsData::new();");
+            fmt.line("flags.set_notrap();");
+            fmt.line("self.load(Mem, flags, addr, 0)");
+        },
+    );
+    fmt.empty_line();
+
+    // `stack_store` => `stack_addr` + `store`.
+    fmt.doc_comment(
+        "Store a value to a stack slot at a constant offset.\n\n\
+         This emits a `stack_addr` followed by a `store`.",
+    );
+    fmt.line("#[allow(non_snake_case, reason = \"generated code\")]");
+    fmt.add_block(
+        "fn stack_store<T1: Into<ir::immediates::Offset32>>(mut self, pointer_type: crate::ir::Type, x: ir::Value, SS: ir::StackSlot, Offset: T1) -> Inst",
+        |fmt| {
+            fmt.line("let Offset = Offset.into();");
+            fmt.line("let addr = self.build_aux_inst(InstructionData::StackAddr { opcode: Opcode::StackAddr, stack_slot: SS, offset: Offset }, pointer_type);");
+            fmt.line("let addr = self.data_flow_graph().first_result(addr);");
+            fmt.line("// Stack slots are required to be accessible, but we can't");
+            fmt.line("// currently ensure that they are aligned.");
+            fmt.line("let mut flags = ir::MemFlagsData::new();");
+            fmt.line("flags.set_notrap();");
+            fmt.line("self.store(flags, x, addr, 0)");
+        },
+    );
+    fmt.empty_line();
+
+    // `dynamic_stack_load` => `dynamic_stack_addr` + `load`.
+    fmt.doc_comment(
+        "Load a value from a dynamic stack slot.\n\n\
+         This emits a `dynamic_stack_addr` followed by a `load`.",
+    );
+    fmt.line("#[allow(non_snake_case, reason = \"generated code\")]");
+    fmt.add_block(
+        "fn dynamic_stack_load(mut self, pointer_type: crate::ir::Type, Mem: crate::ir::Type, DSS: ir::DynamicStackSlot) -> Value",
+        |fmt| {
+            fmt.line("let addr = self.build_aux_inst(InstructionData::DynamicStackAddr { opcode: Opcode::DynamicStackAddr, dynamic_stack_slot: DSS }, pointer_type);");
+            fmt.line("let addr = self.data_flow_graph().first_result(addr);");
+            fmt.line("// Dynamic stack slots are required to be accessible and aligned.");
+            fmt.line("let flags = ir::MemFlagsData::trusted();");
+            fmt.line("self.load(Mem, flags, addr, 0)");
+        },
+    );
+    fmt.empty_line();
+
+    // `dynamic_stack_store` => `dynamic_stack_addr` + `store`.
+    fmt.doc_comment(
+        "Store a value to a dynamic stack slot.\n\n\
+         This emits a `dynamic_stack_addr` followed by a `store`.",
+    );
+    fmt.line("#[allow(non_snake_case, reason = \"generated code\")]");
+    fmt.add_block(
+        "fn dynamic_stack_store(mut self, pointer_type: crate::ir::Type, x: ir::Value, DSS: ir::DynamicStackSlot) -> Inst",
+        |fmt| {
+            fmt.line("let addr = self.build_aux_inst(InstructionData::DynamicStackAddr { opcode: Opcode::DynamicStackAddr, dynamic_stack_slot: DSS }, pointer_type);");
+            fmt.line("let addr = self.data_flow_graph().first_result(addr);");
+            fmt.line("// Dynamic stack slots are required to be accessible and aligned.");
+            fmt.line("let flags = ir::MemFlagsData::trusted();");
+            fmt.line("self.store(flags, x, addr, 0)");
+        },
+    );
+}
+
+/// Emit the `band_not`, `bor_not`, and `bxor_not` `InstBuilder`
+/// backwards-compat/convenience methods.
+///
+/// These fused bitwise-plus-not instructions were removed; each one is
+/// equivalent to a `bnot` of the second operand followed by the corresponding
+/// `band`/`bor`/`bxor`.
+fn gen_bitwise_not_builders(fmt: &mut Formatter) {
+    for (method, op, doc) in [
+        ("band_not", "band", "Bitwise and not: computes `x & ~y`."),
+        ("bor_not", "bor", "Bitwise or not: computes `x | ~y`."),
+        ("bxor_not", "bxor", "Bitwise xor not: computes `x ^ ~y`."),
+    ] {
+        fmt.doc_comment(format!(
+            "{doc}\n\nThis emits a `bnot` of `y` followed by a `{op}`."
+        ));
+        fmt.add_block(
+            &format!("fn {method}(mut self, x: ir::Value, y: ir::Value) -> Value"),
+            |fmt| {
+                fmt.line("let ctrl_typevar = self.data_flow_graph().value_type(y);");
+                fmt.line("let neg = self.build_aux_inst(InstructionData::Unary { opcode: Opcode::Bnot, arg: y }, ctrl_typevar);");
+                fmt.line("let neg = self.data_flow_graph().first_result(neg);");
+                fmtln!(fmt, "self.{op}(x, neg)");
+            },
+        );
+        fmt.empty_line();
+    }
+}
+
 /// Generate a Builder trait with methods for all instructions.
 fn gen_builder(
     instructions: &AllInstructions,
@@ -1349,7 +1623,14 @@ fn gen_builder(
         for inst in instructions.iter() {
             gen_inst_builder(inst, &inst.format, fmt);
             fmt.empty_line();
+            if inst.inst_builder_imm_method {
+                gen_imm_inst_builder(inst, fmt);
+                fmt.empty_line();
+            }
         }
+        gen_stack_access_builders(fmt);
+        fmt.empty_line();
+        gen_bitwise_not_builders(fmt);
         for (i, format) in formats.iter().enumerate() {
             gen_format_constructor(format, fmt);
             if i + 1 != formats.len() {

@@ -45,10 +45,12 @@ const _: () = {
         fn pointer_to_metadata(
             ptr: *mut Self,
         ) -> <Self as ::zerocopy::KnownLayout>::PointerMetadata {
-            <U>::pointer_to_metadata(ptr as *mut _)
+            <U as ::zerocopy::KnownLayout>::pointer_to_metadata(ptr as *mut _)
         }
     }
+    #[allow(missing_debug_implementations)]
     struct __Zerocopy_Field_0;
+    #[allow(missing_debug_implementations)]
     struct __Zerocopy_Field_1;
     unsafe impl<T, U> ::zerocopy::util::macro_util::Field<__Zerocopy_Field_0>
     for Foo<T, U> {
@@ -61,6 +63,7 @@ const _: () = {
     #[repr(C)]
     #[repr(align(2))]
     #[doc(hidden)]
+    #[allow(missing_debug_implementations)]
     struct __ZerocopyKnownLayoutMaybeUninit<T, U>(
         ::zerocopy::util::macro_util::core_reexport::mem::MaybeUninit<
             <Foo<T, U> as ::zerocopy::util::macro_util::Field<__Zerocopy_Field_0>>::Type,
@@ -127,7 +130,7 @@ const _: () = {
                 U,
             > as ::zerocopy::util::macro_util::Field<
                 __Zerocopy_Field_1,
-            >>::Type as ::zerocopy::KnownLayout>::MaybeUninit>::pointer_to_metadata(
+            >>::Type as ::zerocopy::KnownLayout>::MaybeUninit as ::zerocopy::KnownLayout>::pointer_to_metadata(
                 ptr as *mut _,
             )
         }

@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.81"
 name = "js-sys"
-version = "0.3.99"
+version = "0.3.106"
 authors = ["The wasm-bindgen Developers"]
 build = false
 include = [
@@ -47,7 +47,7 @@ futures-core-03-stream = [
 ]
 std = [
     "wasm-bindgen/std",
-    "dep:futures-util",
+    "futures-util/std",
 ]
 unsafe-eval = []
 
@@ -67,16 +67,11 @@ default-features = false
 
 [dependencies.futures-util]
 version = "0.3.31"
-features = ["std"]
 optional = true
 default-features = false
 
-[dependencies.once_cell]
-version = "1.12"
-default-features = false
-
 [dependencies.wasm-bindgen]
-version = "=0.2.122"
+version = "=0.2.129"
 default-features = false
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies.futures-channel]
@@ -99,4 +94,7 @@ type_complexity = "allow"
 [lints.rust.unexpected_cfgs]
 level = "warn"
 priority = 0
-check-cfg = ["cfg(js_sys_unstable_apis)"]
+check-cfg = [
+    "cfg(js_sys_unstable_apis)",
+    "cfg(wasm_bindgen_unstable_jspi)",
+]

@@ -24,6 +24,7 @@ macro_rules! use_as_trait_name {
 use_as_trait_name!(
     KnownLayout => super::derive::known_layout::derive,
     Immutable => super::derive::derive_immutable,
+    Project => super::derive::project::derive,
     TryFromBytes => super::derive::try_from_bytes::derive_try_from_bytes,
     FromZeros => super::derive::from_bytes::derive_from_zeros,
     FromBytes => super::derive::from_bytes::derive_from_bytes,
@@ -58,10 +59,11 @@ macro_rules! test {
             let ts: proc_macro2::TokenStream = quote::quote!( $($i)* );
             let ast = syn::parse2::<syn::DeriveInput>(ts).unwrap();
             let ctx = crate::Ctx::try_from_derive_input(ast).unwrap();
-            let res = $name(&ctx, crate::util::Trait::$name);
+            let res = $name(&ctx, crate::util::Trait::$name).into_ts();
+            crate::util::testutil::check_hygiene(res.clone());
             let expected_toks = quote::quote!( $($o)* );
             let expected = pretty_print(expected_toks);
-            let actual = pretty_print(res.into_ts().into());
+            let actual = pretty_print(res);
             assert_eq_or_diff(&expected, &actual);
         }
     };
@@ -75,8 +77,9 @@ macro_rules! test {
             let ts: proc_macro2::TokenStream = quote::quote!( $($i)* );
             let ast = syn::parse2::<syn::DeriveInput>(ts).unwrap();
             let ctx = crate::Ctx::try_from_derive_input(ast).unwrap();
-            let res = $name(&ctx, crate::util::Trait::$name);
-            let actual = pretty_print(res.into_ts().into());
+            let res = $name(&ctx, crate::util::Trait::$name).into_ts();
+            crate::util::testutil::check_hygiene(res.clone());
+            let actual = pretty_print(res);
 
             if std::env::var("ZEROCOPY_BLESS").is_ok() {
                 let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -155,6 +158,91 @@ fn test_immutable() {
         Immutable {
             struct Foo;
         } expands to "expected/immutable.expected.rs"
+    }
+}
+
+#[test]
+fn test_project_empty_struct() {
+    test! {
+        Project {
+            struct Foo;
+        } expands to {}
+    }
+}
+
+#[test]
+fn test_project_struct() {
+    test! {
+        Project {
+            struct Foo {
+                field: u8,
+            }
+        } expands to "expected/project_struct.expected.rs"
+    }
+}
+
+#[test]
+fn test_project_enum() {
+    test! {
+        Project {
+            #[repr(u8)]
+            enum ComplexWithGenerics<'a: 'static, const N: usize, X, Y: Deref>
+            where
+                X: Deref<Target = &'a [(X, Y); N]>,
+            {
+                UnitLike,
+                StructLike { a: u8, b: X, c: X::Target, d: Y::Target, e: [(X, Y); N] },
+                TupleLike(bool, Y, PhantomData<&'a [(X, Y); N]>),
+            }
+        } expands to "expected/project_enum_1.expected.rs"
+    }
+
+    test! {
+        Project {
+            #[repr(u32)]
+            enum ComplexWithGenerics<'a: 'static, const N: usize, X, Y: Deref>
+            where
+                X: Deref<Target = &'a [(X, Y); N]>,
+            {
+                UnitLike,
+                StructLike { a: u8, b: X, c: X::Target, d: Y::Target, e: [(X, Y); N] },
+                TupleLike(bool, Y, PhantomData<&'a [(X, Y); N]>),
+            }
+        } expands to "expected/project_enum_2.expected.rs"
+    }
+
+    test! {
+        Project {
+            #[repr(C)]
+            enum ComplexWithGenerics<'a: 'static, const N: usize, X, Y: Deref>
+            where
+                X: Deref<Target = &'a [(X, Y); N]>,
+            {
+                UnitLike,
+                StructLike { a: u8, b: X, c: X::Target, d: Y::Target, e: [(X, Y); N] },
+                TupleLike(bool, Y, PhantomData<&'a [(X, Y); N]>),
+            }
+        } expands to "expected/project_enum_3.expected.rs"
+    }
+}
+
+#[test]
+fn test_project_union() {
+    test! {
+        Project {
+            #[repr(C)]
+            union Foo {
+                field: u8,
+            }
+        } expands to "expected/project_union_repr_c.expected.rs"
+    }
+
+    test! {
+        Project {
+            union Foo {
+                field: u8,
+            }
+        } expands to "expected/project_union_default_repr.expected.rs"
     }
 }
 
@@ -242,6 +330,16 @@ fn test_into_bytes_struct_trailing_generic() {
                 b: [Trailing],
             }
         } expands to "expected/into_bytes_struct_trailing_generic.expected.rs"
+    }
+}
+
+#[test]
+fn test_into_bytes_struct_homogeneous_generic() {
+    test! {
+        IntoBytes {
+            #[repr(C)]
+            struct Foo<T, const N: usize>(T, [T; N], [T]);
+        } expands to "expected/into_bytes_struct_homogeneous_generic.expected.rs"
     }
 }
 
@@ -602,10 +700,10 @@ fn test_from_bytes_enum() {
 }
 
 #[test]
-fn test_try_from_bytes_trivial_is_bit_valid_enum() {
+fn test_try_from_bytes_trivial_is_safe_enum() {
     // Even when we aren't deriving `FromBytes` as the top-level trait,
     // `TryFromBytes` on enums still detects whether we *could* derive
-    // `FromBytes`, and if so, performs the same "trivial `is_bit_valid`"
+    // `FromBytes`, and if so, performs the same "trivial `is_safe`"
     // optimization.
     test! {
         TryFromBytes {
@@ -868,7 +966,7 @@ fn test_try_from_bytes_trivial_is_bit_valid_enum() {
                 Variant254,
                 Variant255,
             }
-        } expands to "expected/try_from_bytes_trivial_is_bit_valid_enum.expected.rs"
+        } expands to "expected/try_from_bytes_trivial_is_safe_enum.expected.rs"
     }
 }
 

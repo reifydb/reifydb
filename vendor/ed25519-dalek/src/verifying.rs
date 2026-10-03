@@ -9,17 +9,20 @@
 
 //! ed25519 public keys.
 
+#[cfg(feature = "digest")]
+use curve25519_dalek::digest::{common::KeySizeUser, typenum::U32};
+
 use core::fmt::Debug;
 use core::hash::{Hash, Hasher};
 
 use curve25519_dalek::{
-    digest::{generic_array::typenum::U64, Digest},
+    digest::{Digest, array::typenum::U64},
     edwards::{CompressedEdwardsY, EdwardsPoint},
     montgomery::MontgomeryPoint,
     scalar::Scalar,
 };
 
-use ed25519::signature::Verifier;
+use ed25519::signature::{MultipartVerifier, Verifier};
 
 use sha2::Sha512;
 
@@ -31,6 +34,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 #[cfg(feature = "digest")]
 use crate::context::Context;
+#[cfg(feature = "digest")]
+use curve25519_dalek::digest::Update;
 #[cfg(feature = "digest")]
 use signature::DigestVerifier;
 
@@ -112,6 +117,11 @@ impl From<EdwardsPoint> for VerifyingKey {
             compressed: point.compress(),
         }
     }
+}
+
+#[cfg(feature = "digest")]
+impl KeySizeUser for VerifyingKey {
+    type KeySize = U32;
 }
 
 impl VerifyingKey {
@@ -200,7 +210,7 @@ impl VerifyingKey {
     #[allow(non_snake_case)]
     pub(crate) fn raw_verify<CtxDigest>(
         &self,
-        message: &[u8],
+        message: &[&[u8]],
         signature: &ed25519::Signature,
     ) -> Result<(), SignatureError>
     where
@@ -245,7 +255,7 @@ impl VerifyingKey {
 
         let message = prehashed_message.finalize();
 
-        let expected_R = RCompute::<CtxDigest>::compute(self, signature, Some(ctx), &message);
+        let expected_R = RCompute::<CtxDigest>::compute(self, signature, Some(ctx), &[&message]);
 
         if expected_R == signature.R {
             Ok(())
@@ -371,7 +381,7 @@ impl VerifyingKey {
             return Err(InternalError::Verify.into());
         }
 
-        let expected_R = RCompute::<Sha512>::compute(self, signature, None, message);
+        let expected_R = RCompute::<Sha512>::compute(self, signature, None, &[message]);
         if expected_R == signature.R {
             Ok(())
         } else {
@@ -447,7 +457,7 @@ impl VerifyingKey {
         }
 
         let message = prehashed_message.finalize();
-        let expected_R = RCompute::<Sha512>::compute(self, signature, Some(ctx), &message);
+        let expected_R = RCompute::<Sha512>::compute(self, signature, Some(ctx), &[&message]);
 
         if expected_R == signature.R {
             Ok(())
@@ -508,10 +518,10 @@ where
         key: &VerifyingKey,
         signature: InternalSignature,
         prehash_ctx: Option<&[u8]>,
-        message: &[u8],
+        message: &[&[u8]],
     ) -> CompressedEdwardsY {
         let mut c = Self::new(key, signature, prehash_ctx);
-        c.update(message);
+        message.iter().for_each(|slice| c.update(slice));
         c.finish()
     }
 
@@ -561,6 +571,16 @@ impl Verifier<ed25519::Signature> for VerifyingKey {
     ///
     /// Returns `Ok(())` if the signature is valid, and `Err` otherwise.
     fn verify(&self, message: &[u8], signature: &ed25519::Signature) -> Result<(), SignatureError> {
+        self.multipart_verify(&[message], signature)
+    }
+}
+
+impl MultipartVerifier<ed25519::Signature> for VerifyingKey {
+    fn multipart_verify(
+        &self,
+        message: &[&[u8]],
+        signature: &ed25519::Signature,
+    ) -> Result<(), SignatureError> {
         self.raw_verify::<Sha512>(message, signature)
     }
 }
@@ -569,14 +589,16 @@ impl Verifier<ed25519::Signature> for VerifyingKey {
 #[cfg(feature = "digest")]
 impl<MsgDigest> DigestVerifier<MsgDigest, ed25519::Signature> for VerifyingKey
 where
-    MsgDigest: Digest<OutputSize = U64>,
+    MsgDigest: Digest<OutputSize = U64> + Update,
 {
-    fn verify_digest(
+    fn verify_digest<F: Fn(&mut MsgDigest) -> Result<(), SignatureError>>(
         &self,
-        msg_digest: MsgDigest,
+        f: F,
         signature: &ed25519::Signature,
     ) -> Result<(), SignatureError> {
-        self.verify_prehashed(msg_digest, None, signature)
+        let mut digest = MsgDigest::new();
+        f(&mut digest)?;
+        self.verify_prehashed(digest, None, signature)
     }
 }
 
@@ -585,15 +607,17 @@ where
 #[cfg(feature = "digest")]
 impl<MsgDigest> DigestVerifier<MsgDigest, ed25519::Signature> for Context<'_, '_, VerifyingKey>
 where
-    MsgDigest: Digest<OutputSize = U64>,
+    MsgDigest: Digest<OutputSize = U64> + Update,
 {
-    fn verify_digest(
+    fn verify_digest<F: Fn(&mut MsgDigest) -> Result<(), SignatureError>>(
         &self,
-        msg_digest: MsgDigest,
+        f: F,
         signature: &ed25519::Signature,
     ) -> Result<(), SignatureError> {
+        let mut digest = MsgDigest::new();
+        f(&mut digest)?;
         self.key()
-            .verify_prehashed(msg_digest, Some(self.value()), signature)
+            .verify_prehashed(digest, Some(self.value()), signature)
     }
 }
 
@@ -610,6 +634,14 @@ impl TryFrom<&[u8]> for VerifyingKey {
     }
 }
 
+#[cfg(feature = "pkcs8")]
+impl pkcs8::spki::SignatureAlgorithmIdentifier for VerifyingKey {
+    type Params = pkcs8::spki::der::AnyRef<'static>;
+
+    const SIGNATURE_ALGORITHM_IDENTIFIER: pkcs8::spki::AlgorithmIdentifier<Self::Params> =
+        <ed25519::Signature as pkcs8::spki::AssociatedAlgorithmIdentifier>::ALGORITHM_IDENTIFIER;
+}
+
 impl From<VerifyingKey> for EdwardsPoint {
     fn from(vk: VerifyingKey) -> EdwardsPoint {
         vk.point
@@ -620,20 +652,6 @@ impl From<VerifyingKey> for EdwardsPoint {
 impl pkcs8::EncodePublicKey for VerifyingKey {
     fn to_public_key_der(&self) -> pkcs8::spki::Result<pkcs8::Document> {
         pkcs8::PublicKeyBytes::from(self).to_public_key_der()
-    }
-}
-
-#[cfg(all(feature = "alloc", feature = "pkcs8"))]
-impl pkcs8::spki::DynSignatureAlgorithmIdentifier for VerifyingKey {
-    fn signature_algorithm_identifier(
-        &self,
-    ) -> pkcs8::spki::Result<pkcs8::spki::AlgorithmIdentifierOwned> {
-        // From https://datatracker.ietf.org/doc/html/rfc8410
-        // `id-Ed25519   OBJECT IDENTIFIER ::= { 1 3 101 112 }`
-        Ok(ed25519::pkcs8::spki::AlgorithmIdentifierOwned {
-            oid: ed25519::pkcs8::ALGORITHM_OID,
-            parameters: None,
-        })
     }
 }
 
@@ -700,7 +718,7 @@ impl<'d> Deserialize<'d> for VerifyingKey {
             type Value = VerifyingKey;
 
             fn expecting(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                write!(formatter, concat!("An ed25519 verifying (public) key"))
+                write!(formatter, "An ed25519 verifying (public) key")
             }
 
             fn visit_bytes<E: serde::de::Error>(self, bytes: &[u8]) -> Result<Self::Value, E> {

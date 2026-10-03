@@ -10,10 +10,10 @@
 # See Cargo.toml.orig for the original contents.
 
 [package]
-edition = "2021"
-rust-version = "1.81.0"
+edition = "2024"
+rust-version = "1.85.0"
 name = "wit-component"
-version = "0.244.0"
+version = "0.258.3"
 authors = ["Peter Huene <peter@huene.dev>"]
 build = false
 autolib = false
@@ -73,12 +73,14 @@ path = "tests/wit.rs"
 
 [dependencies.anyhow]
 version = "1.0.58"
+default-features = false
 
 [dependencies.bitflags]
 version = "2.3.3"
 
 [dependencies.indexmap]
-version = "2.7.0"
+version = "2.14.0"
+features = ["std"]
 default-features = false
 
 [dependencies.log]
@@ -96,7 +98,7 @@ version = "1.0.166"
 version = "1"
 
 [dependencies.wasm-encoder]
-version = "0.244.0"
+version = "0.258.3"
 features = [
     "std",
     "wasmparser",
@@ -104,11 +106,11 @@ features = [
 default-features = false
 
 [dependencies.wasm-metadata]
-version = "0.244.0"
+version = "0.258.3"
 default-features = false
 
 [dependencies.wasmparser]
-version = "0.244.0"
+version = "0.258.3"
 features = [
     "simd",
     "std",
@@ -118,17 +120,17 @@ features = [
 default-features = false
 
 [dependencies.wast]
-version = "244.0.0"
+version = "258.0.3"
 optional = true
 default-features = false
 
 [dependencies.wat]
-version = "1.244.0"
+version = "1.258.3"
 optional = true
 default-features = false
 
 [dependencies.wit-parser]
-version = "0.244.0"
+version = "0.258.3"
 features = [
     "decoding",
     "serde",
@@ -146,13 +148,16 @@ version = "0.8.1"
 [dev-dependencies.pretty_assertions]
 version = "1.3.0"
 
+[dev-dependencies.toml]
+version = "0.9.8"
+
 [dev-dependencies.wasm-metadata]
-version = "0.244.0"
+version = "0.258.3"
 features = ["oci"]
 default-features = false
 
 [dev-dependencies.wasmparser]
-version = "0.244.0"
+version = "0.258.3"
 features = [
     "simd",
     "std",
@@ -162,17 +167,17 @@ features = [
 default-features = false
 
 [dev-dependencies.wasmprinter]
-version = "0.244.0"
+version = "0.258.3"
 features = ["component-model"]
 default-features = false
 
 [dev-dependencies.wat]
-version = "1.244.0"
+version = "1.258.3"
 features = ["component-model"]
 default-features = false
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies.wasmtime]
-version = "34.0.1"
+version = "36.0.7"
 features = [
     "cranelift",
     "component-model",
@@ -196,22 +201,25 @@ level = "allow"
 priority = -1
 
 [lints.rust]
-deprecated-safe-2024 = "warn"
+deprecated_safe_2024 = "warn"
 keyword_idents_2024 = "warn"
-missing-unsafe-on-extern = "warn"
-rust-2024-guarded-string-incompatible-syntax = "warn"
-rust-2024-incompatible-pat = "warn"
-rust-2024-prelude-collisions = "warn"
-unsafe-attr-outside-unsafe = "warn"
-unsafe-op-in-unsafe-fn = "warn"
+missing_unsafe_on_extern = "warn"
+rust_2024_guarded_string_incompatible_syntax = "warn"
+rust_2024_incompatible_pat = "warn"
+rust_2024_prelude_collisions = "warn"
+unsafe_attr_outside_unsafe = "warn"
 unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "warn"
 unstable_features = "warn"
-unused-lifetimes = "warn"
-unused-macro-rules = "warn"
 unused_extern_crates = "warn"
 unused_import_braces = "warn"
+unused_lifetimes = "warn"
+unused_macro_rules = "warn"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
 priority = 0
-check-cfg = ["cfg(fuzzing)"]
+check-cfg = [
+    "cfg(fuzzing)",
+    "cfg(debug_check_try_op)",
+]

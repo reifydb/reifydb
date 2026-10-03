@@ -67,7 +67,7 @@ pub use reifydb_remote_proxy as remote_proxy;
 #[cfg(feature = "column")]
 pub use reifydb_store_column as column;
 pub mod routine {
-	pub use reifydb_routine::{function, monoid, procedure};
+	pub use reifydb_routine::{function, procedure};
 	pub use reifydb_routine_abi as abi;
 }
 pub use reifydb_routine::{function, procedure};

@@ -74,7 +74,7 @@
 //!   wrapper via `sccache cc`. This compiler must understand the `-c` flag. For
 //!   certain `TARGET`s, it also is assumed to know about other flags (most
 //!   common is `-fPIC`).
-//!   ccache, distcc, sccache, icecc, cachepot and buildcache are supported,
+//!   ccache, distcc, sccache, icecc, cachepot, buildcache and kache are supported,
 //!   for sccache, simply set `CC` to `sccache cc`.
 //!   For other custom `CC` wrapper, just set `CC_KNOWN_WRAPPER_CUSTOM`
 //!   to the custom wrapper used in `CC`.
@@ -101,8 +101,9 @@
 //! * `RUSTC_WRAPPER` - If set, the specified command will be prefixed to the compiler
 //!   command. This is useful for projects that want to use
 //!   [sccache](https://github.com/mozilla/sccache),
-//!   [buildcache](https://gitlab.com/bits-n-bites/buildcache), or
-//!   [cachepot](https://github.com/paritytech/cachepot).
+//!   [buildcache](https://gitlab.com/bits-n-bites/buildcache),
+//!   [cachepot](https://github.com/paritytech/cachepot), or
+//!   [kache](https://github.com/kunobi-ninja/kache).
 //!
 //! Furthermore, projects using this crate may specify custom environment variables
 //! to be inspected, for example via the `Build::try_flags_from_environment`
@@ -197,6 +198,15 @@
 //!
 //! In particular, for Android you may want to [use `c++_static` if you have at most one shared library](https://developer.android.com/ndk/guides/cpp-support).
 //!
+//! Setting the `CXXSTDLIB_STATIC` environment variable links the C++ standard
+//! library statically, as if [`Build::cpp_link_stdlib_static`] were set on every
+//! `Build`, including those of crates that don't call it. The name of the library
+//! is still chosen as above. Like `CXXSTDLIB`, it can be set per target, for
+//! example as `CXXSTDLIB_STATIC_x86_64_unknown_linux_gnu`. It is on unless set to
+//! `""`, `"0"`, `"no"` or `"false"`. A build script that links the C++ standard
+//! library from two separate `Build`s may then fail to build, see
+//! [`Build::cpp_link_stdlib_static`].
+//!
 //! Remember that C++ does name mangling so `extern "C"` might be required to enable Rust linker to find your functions.
 //!
 //! # CUDA C++ support
@@ -235,13 +245,9 @@
 //! files if the sources are unchanged.
 
 #![doc(html_root_url = "https://docs.rs/cc/1.0")]
-#![deny(warnings)]
-#![deny(missing_docs)]
-#![deny(clippy::disallowed_methods)]
-#![warn(clippy::doc_markdown)]
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fmt::{self, Display};
@@ -249,7 +255,8 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 
 use shlex::Shlex;
 
@@ -334,12 +341,20 @@ pub mod windows_registry {
     /// operation (finding a MSVC tool in a local install) but instead returns a
     /// [`Tool`](crate::Tool) which may be introspected.
     pub fn find_tool(arch_or_target: &str, tool: &str) -> Option<crate::Tool> {
-        ::find_msvc_tools::find_tool(arch_or_target, tool).map(crate::Tool::from_find_msvc_tools)
+        ::find_msvc_tools::find_tool(arch_or_target, tool)
+            .map(|tool| crate::Tool::from_find_msvc_tools(tool, crate::EnvSnapshot::capture()))
     }
 }
 
 mod command_helpers;
 use command_helpers::*;
+
+mod logger;
+use logger::Logger;
+pub use logger::{BuildMessage, BuildMessageKind, BuildMessageLogger};
+
+mod build_env;
+use build_env::{BuildEnv, EnvSnapshot, EnvVars};
 
 mod tool;
 pub use tool::Tool;
@@ -353,10 +368,27 @@ use utilities::*;
 mod flags;
 use flags::*;
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+/// Key of the flag support cache, next to the flag itself: everything else the
+/// probe `Build` in [`Build::is_flag_supported_inner`] is made from. Built by
+/// [`Build::flag_support_cache_key`].
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 struct CompilerFlag {
     compiler: Box<Path>,
-    flag: Box<OsStr>,
+    target: Option<Arc<str>>,
+    host: Option<Arc<str>>,
+    cpp: bool,
+    cuda: bool,
+    /// The `Build`'s snapshot of the inherited environment, shared rather than
+    /// copied. The probe runs in this and `explicit`, so the key and the
+    /// probe's environment can't differ.
+    inherited: EnvSnapshot,
+    /// [`Build::env`], which wins over `inherited`.
+    explicit: Box<EnvVars>,
+}
+
+enum PrefixMapFlag {
+    Macro,
+    Debug,
 }
 
 #[derive(Debug, Default)]
@@ -364,8 +396,10 @@ struct BuildCache {
     apple_sdk_root_cache: RwLock<HashMap<Box<str>, Arc<OsStr>>>,
     apple_versions_cache: RwLock<HashMap<Box<str>, Arc<str>>>,
     cached_compiler_family: RwLock<CompilerFamilyLookupCache>,
-    known_flag_support_status_cache: RwLock<HashMap<CompilerFlag, bool>>,
+    emitted_cpp_link_stdlibs: Mutex<HashSet<Box<str>>>,
+    known_flag_support_status_cache: RwLock<HashMap<Box<OsStr>, BTreeMap<CompilerFlag, bool>>>,
     target_info_parser: target::TargetInfoParser,
+    warned_about_msvc_linker_flags: AtomicBool,
 }
 
 /// A builder for compilation of a native library.
@@ -373,6 +407,16 @@ struct BuildCache {
 /// A `Build` is the main type of the `cc` crate and is used to control all the
 /// various configuration options and such of a compile. You'll find more
 /// documentation on each method itself.
+///
+/// A `Build` reads the process environment once, the first time it needs it
+/// (for example in [`Build::compile`], [`Build::get_compiler`],
+/// [`Build::is_flag_supported`] or [`Build::try_flags_from_environment`]), and
+/// keeps that copy. Its own lookups of variables such as `CC` or `CFLAGS` use
+/// the copy, and the compiler and other tools it runs get the copy as their
+/// whole environment instead of inheriting the process environment, so later
+/// changes to the process environment are not seen. A clone made after that
+/// point keeps the copy, one made before takes its own. Use [`Build::env`] to
+/// change the environment of the child processes.
 #[derive(Clone, Debug)]
 pub struct Build {
     include_directories: Vec<Arc<Path>>,
@@ -401,7 +445,7 @@ pub struct Build {
     opt_level: Option<Arc<str>>,
     debug: Option<Arc<str>>,
     force_frame_pointer: Option<bool>,
-    env: Vec<(Arc<OsStr>, Arc<OsStr>)>,
+    env: BuildEnv,
     compiler: Option<Arc<Path>>,
     archiver: Option<Arc<Path>>,
     ranlib: Option<Arc<Path>>,
@@ -419,6 +463,7 @@ pub struct Build {
     shell_escaped_flags: Option<bool>,
     build_cache: Arc<BuildCache>,
     inherit_rustflags: bool,
+    inherit_trim_paths: bool,
     prefer_clang_cl_over_msvc: bool,
 }
 
@@ -532,7 +577,7 @@ impl Build {
             opt_level: None,
             debug: None,
             force_frame_pointer: None,
-            env: Vec::new(),
+            env: BuildEnv::default(),
             compiler: None,
             archiver: None,
             ranlib: None,
@@ -548,6 +593,7 @@ impl Build {
             shell_escaped_flags: None,
             build_cache: Arc::default(),
             inherit_rustflags: true,
+            inherit_trim_paths: true,
             prefer_clang_cl_over_msvc: false,
         }
     }
@@ -862,6 +908,12 @@ impl Build {
     /// 2. Else if the `CXXSTDLIB` environment variable is set, use its value.
     /// 3. Else the default is `c++` for OS X and BSDs, `c++_shared` for Android,
     ///    `None` for MSVC and `stdc++` for anything else.
+    ///
+    /// On MSVC this also passes `-Tp` immediately before each `.cc` source file
+    /// to ensure that they are compiled as C++ rather than assumed to be
+    /// object files. The per-file form is used instead of `/TP`, which would
+    /// compile every following input as C++. clang-cl recognizes `.cc` itself
+    /// and is not passed `-Tp`.
     pub fn cpp(&mut self, cpp: bool) -> &mut Build {
         self.cpp = cpp;
         self
@@ -1049,6 +1101,28 @@ impl Build {
     /// Provide value of `true` if linking against system library is not desired
     ///
     /// Note that for `wasm32` target C++ stdlib will always be linked statically
+    ///
+    /// If the `CXXSTDLIB_STATIC` environment variable is set, and not to `""`,
+    /// `"0"`, `"no"` or `"false"`, the C++ stdlib is linked statically even if this
+    /// is set to `false`. It is read with the same target prefixes as `CXXSTDLIB`.
+    ///
+    /// The C++ stdlib is emitted as `cargo:rustc-link-lib=static:-bundle=<stdlib>`,
+    /// so the linker of the final binary finds it in the toolchain's search paths
+    /// instead of rustc bundling it into the rlib. On `wasm32` and `pauthtest`
+    /// targets, where cc may also link the C++ stdlib through `cargo:rustc-flags`,
+    /// and on Apple targets, where the linker would pick the dynamic library over
+    /// an unbundled static one, it is emitted as `static=<stdlib>`. A stdlib value
+    /// that already names a link kind, such as `CXXSTDLIB=static:-bundle=stdc++`,
+    /// is emitted unchanged.
+    ///
+    /// rustc rejects a library that is passed twice when either mention has link
+    /// modifiers ("overriding linking modifiers from command line is not
+    /// supported"). The C++ stdlib is therefore emitted only once per `Build`,
+    /// shared with its clones, however many times it is compiled. A build script
+    /// that links the same C++ stdlib from two separate `Build`s with this option,
+    /// or links it both statically and dynamically, fails to build. Compile such
+    /// libraries with one `Build` or its clones, or set
+    /// [`cpp_link_stdlib(None)`](Build::cpp_link_stdlib) on all but one of them.
     ///
     /// # Example
     ///
@@ -1264,10 +1338,52 @@ impl Build {
     /// Define whether compile warnings should be emitted for cargo. Defaults to
     /// `true`.
     ///
-    /// If disabled, compiler messages will not be printed.
+    /// If disabled, compiler messages will not be printed. They still go to a
+    /// logger set with [`message_logger`](Build::message_logger).
     /// Issues unrelated to the compilation will always produce cargo warnings regardless of this setting.
     pub fn cargo_warnings(&mut self, cargo_warnings: bool) -> &mut Build {
         self.cargo_output.warnings = cargo_warnings;
+        self
+    }
+
+    /// Sets a logger that receives cc's messages: its own warnings, each line
+    /// the commands it runs write to stderr, and the commands that failed. See
+    /// [`BuildMessageKind`] for the details.
+    ///
+    /// The warnings and stderr lines are still printed as cargo warnings too.
+    /// Disable [`cargo_warnings`](Build::cargo_warnings) to send them only to
+    /// the logger. Other `cargo:` lines, such as `cargo:rustc-link-lib`, are
+    /// always printed to stdout, since Cargo reads them there.
+    ///
+    /// Clones of this `Build` share the logger. Passing `None` removes a logger
+    /// set earlier.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::{any::Any, sync::{Arc, Mutex}};
+    /// use cc::{BuildMessage, BuildMessageKind, BuildMessageLogger};
+    ///
+    /// #[derive(Default)]
+    /// struct Messages(Mutex<Vec<String>>);
+    ///
+    /// impl BuildMessageLogger for Messages {
+    ///     fn log(&self, kind: BuildMessageKind, msg: BuildMessage<'_>, _extra: &dyn Any) {
+    ///         self.0.lock().unwrap().push(format!("{kind:?}: {msg}"));
+    ///     }
+    /// }
+    ///
+    /// let messages = Arc::new(Messages::default());
+    /// let result = cc::Build::new()
+    ///     .file("src/foo.c")
+    ///     .message_logger(Some(messages.clone()))
+    ///     .try_compile("foo");
+    /// // The messages are there whether the build failed or not.
+    /// println!("{:#?}", messages.0.lock().unwrap());
+    /// result.unwrap();
+    /// ```
+    pub fn message_logger(&mut self, logger: Option<Arc<dyn BuildMessageLogger>>) -> &mut Build {
+        self.cargo_output.logger = logger.map(Logger);
         self
     }
 
@@ -1379,6 +1495,29 @@ impl Build {
         self
     }
 
+    /// Configure whether cc should automatically inherit path remap rules
+    /// from cargo's [`trim-paths`] profile setting,
+    /// and translate them into `-fmacro-prefix-map`/ `-fdebug-prefix-map` flags.
+    ///
+    /// This option defaults to `true`.
+    ///
+    /// This option doesn't support Windows MSVC cl.exe yet.
+    /// Only clang and GCC are supported.
+    ///
+    /// <div class="warning">
+    ///
+    /// [`trim-paths`] is currently an unstable cargo feature,
+    /// only available on nightly with `-Ztrim-paths`.
+    /// The contract around this option may change as the cargo feature evolves.
+    ///
+    /// </div>
+    ///
+    /// [`trim-paths`]: https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#profile-trim-paths-option
+    pub fn inherit_trim_paths(&mut self, inherit_trim_paths: bool) -> &mut Build {
+        self.inherit_trim_paths = inherit_trim_paths;
+        self
+    }
+
     /// Prefer to use clang-cl over msvc.
     ///
     /// This option defaults to `false`.
@@ -1402,7 +1541,9 @@ impl Build {
         K: AsRef<OsStr>,
         V: AsRef<OsStr>,
     {
-        self.env.push((key.as_ref().into(), val.as_ref().into()));
+        self.env
+            .explicit
+            .push((key.as_ref().into(), val.as_ref().into()));
         self
     }
 
@@ -1418,6 +1559,19 @@ impl Build {
     }
 }
 
+/// Source, object, and working directory for an `is_flag_supported` probe.
+///
+/// Tempfiles, when used, are removed when this value is dropped.
+struct FlagSupportProbeFiles<'a> {
+    dir: Cow<'a, Path>,
+    src: PathBuf,
+    obj: PathBuf,
+    _temp_files: Option<(
+        crate::tempfile::NamedTempfile,
+        crate::tempfile::NamedTempfile,
+    )>,
+}
+
 /// Invoke or fetch the compiler or archiver.
 impl Build {
     /// Run the compiler to test if it accepts the given flag.
@@ -1428,73 +1582,169 @@ impl Build {
     /// It may return error if it's unable to run the compiler with a test file
     /// (e.g. the compiler is missing or a write to the `out_dir` failed).
     ///
-    /// Note: Once computed, the result of this call is stored in the
-    /// `known_flag_support` field. If `is_flag_supported(flag)`
-    /// is called again, the result will be read from the hash table.
+    /// Note: Once computed, the result of this call is cached, and the cache
+    /// is shared with clones of this `Build`. It is reused for the same
+    /// compiler, flag, target, host, language and environment.
     pub fn is_flag_supported(&self, flag: impl AsRef<OsStr>) -> Result<bool, Error> {
         self.is_flag_supported_inner(
             flag.as_ref(),
             &self.get_base_compiler()?,
             &self.get_target()?,
+            &mut None,
         )
     }
 
-    fn ensure_check_file(&self) -> Result<PathBuf, Error> {
-        let out_dir = self.get_out_dir()?;
-        let src = if self.cuda {
+    fn flag_check_src_name(&self) -> &'static str {
+        if self.cuda {
             assert!(self.cpp);
-            out_dir.join("flag_check.cu")
+            "flag_check.cu"
         } else if self.cpp {
-            out_dir.join("flag_check.cpp")
+            "flag_check.cpp"
         } else {
-            out_dir.join("flag_check.c")
-        };
+            "flag_check.c"
+        }
+    }
+
+    fn write_flag_check_src(file: &mut fs::File) -> io::Result<()> {
+        write!(file, "int main(void) {{ return 0; }}")?;
+        file.flush()?;
+        file.sync_data()
+    }
+
+    fn ensure_check_file(&self) -> Result<PathBuf, Error> {
+        let src = self.get_out_dir()?.join(self.flag_check_src_name());
 
         if !src.exists() {
             let mut f = fs::File::create(&src)?;
-            write!(f, "int main(void) {{ return 0; }}")?;
+            Self::write_flag_check_src(&mut f)?;
         }
 
         Ok(src)
     }
 
+    /// Directory, source, and object for a flag-support probe.
+    ///
+    /// Cargo build scripts have `OUT_DIR`; reuse `flag_check.c` there so
+    /// probes stay cheap. Callers such as rustc bootstrap do not, and
+    /// treating a missing dir as "unsupported" silently drops flags.
+    /// Fall back to unique tempfiles instead of a shared name in `/tmp`.
+    fn flag_support_probe_files(&self) -> Result<FlagSupportProbeFiles<'_>, Error> {
+        match self.get_out_dir() {
+            Ok(dir) => {
+                let src = self.ensure_check_file()?;
+                let obj = dir.join("flag_check");
+                Ok(FlagSupportProbeFiles {
+                    dir,
+                    src,
+                    obj,
+                    _temp_files: None,
+                })
+            }
+            Err(_) => {
+                let dir = env::temp_dir();
+                fs::create_dir_all(&dir)?;
+
+                let mut tmp_src =
+                    crate::tempfile::NamedTempfile::new(&dir, self.flag_check_src_name())?;
+                let mut tmp_file = tmp_src.take_file().unwrap();
+                Self::write_flag_check_src(&mut tmp_file)?;
+                // Close the handle before invoking the compiler; Windows
+                // cannot open a file that another handle still holds.
+                drop(tmp_file);
+
+                let mut tmp_obj = crate::tempfile::NamedTempfile::new(&dir, "flag_check")?;
+                // Same as the source file: the compiler must be able to
+                // overwrite this path, so drop the open handle first.
+                drop(tmp_obj.take_file());
+
+                let src = tmp_src.path().to_owned();
+                let obj = tmp_obj.path().to_owned();
+                Ok(FlagSupportProbeFiles {
+                    dir: Cow::Owned(dir),
+                    src,
+                    obj,
+                    _temp_files: Some((tmp_src, tmp_obj)),
+                })
+            }
+        }
+    }
+
+    /// The flag support cache key for probing flags of `tool` with this
+    /// `Build`.
+    fn flag_support_cache_key(&self, tool: &Tool) -> CompilerFlag {
+        CompilerFlag {
+            compiler: tool.path().into(),
+            target: self.target.clone(),
+            host: self.host.clone(),
+            cpp: self.cpp,
+            cuda: self.cuda,
+            inherited: self.env.inherited().clone(),
+            explicit: self.env.explicit.clone().into_boxed_slice(),
+        }
+    }
+
+    /// `key` holds the cache key for `tool` and this `Build`, or `None` to
+    /// build it here. A caller that probes several flags of one tool passes
+    /// the same `key` to each call, so it is built once.
     fn is_flag_supported_inner(
         &self,
         flag: &OsStr,
         tool: &Tool,
         target: &TargetInfo<'_>,
+        key: &mut Option<CompilerFlag>,
     ) -> Result<bool, Error> {
-        let compiler_flag = CompilerFlag {
-            compiler: tool.path().into(),
-            flag: flag.into(),
-        };
+        let key = &*key.get_or_insert_with(|| self.flag_support_cache_key(tool));
+        assert_eq!(&*key.compiler, tool.path());
 
         if let Some(is_supported) = self
             .build_cache
             .known_flag_support_status_cache
             .read()
             .unwrap()
-            .get(&compiler_flag)
-            .cloned()
+            .get(flag)
+            .and_then(|answers| answers.get(key))
+            .copied()
         {
             return Ok(is_supported);
         }
 
-        let out_dir = self.get_out_dir()?;
-        let src = self.ensure_check_file()?;
-        let obj = out_dir.join("flag_check");
+        // The probe build drops `/link` in `try_get_compiler`, so it would
+        // compile fine and wrongly report `/link` as supported.
+        if tool.is_like_msvc() && is_msvc_link_flag(flag) {
+            return Ok(false);
+        }
+
+        let probe = self.flag_support_probe_files()?;
 
         let mut compiler = {
             let mut cfg = Build::new();
             cfg.flag(flag)
                 .compiler(tool.path())
                 .cargo_metadata(self.cargo_output.metadata)
+                .cargo_warnings(self.cargo_output.warnings)
                 .opt_level(0)
                 .debug(false)
                 .cpp(self.cpp)
                 .cuda(self.cuda)
+                .out_dir(&*probe.dir)
                 .inherit_rustflags(false)
+                .inherit_trim_paths(false)
                 .emit_rerun_if_env_changed(self.emit_rerun_if_env_changed);
+            // The probe has to see the environment the compiler is invoked in,
+            // or it answers a question about a different compiler than the one
+            // being built with: a bare compiler name resolves through this
+            // `PATH`, not the ambient one. Taking it from `key` makes the probe
+            // read `CFLAGS` and the like from the same snapshot and run in
+            // exactly the environment of the key. Also share the caches, so
+            // that a compiler family already worked out is not worked out
+            // again.
+            cfg.env = BuildEnv::with_inherited(key.inherited.clone(), key.explicit.to_vec());
+            cfg.build_cache = Arc::clone(&self.build_cache);
+            // The probe's own warnings go where this build's warnings go,
+            // including its logger.
+            cfg.cargo_output
+                .logger
+                .clone_from(&self.cargo_output.logger);
             if let Some(target) = &self.target {
                 cfg.target(target);
             }
@@ -1516,9 +1766,10 @@ impl Build {
         }
 
         let mut cmd = compiler.to_command();
+        cmd.set_flag_supported_env(compiler.env());
         command_add_output_file(
             &mut cmd,
-            &obj,
+            &probe.obj,
             CmdAddOutputFileArgs {
                 cuda: self.cuda,
                 is_assembler_msvc: false,
@@ -1540,7 +1791,7 @@ impl Build {
             cmd.arg("--");
         }
 
-        cmd.arg(&src);
+        cmd.arg(&probe.src);
 
         if compiler.is_like_msvc() {
             // On MSVC we need to make sure the LIB directory is included
@@ -1553,14 +1804,20 @@ impl Build {
             }
         }
 
-        let output = cmd.current_dir(out_dir).output()?;
+        cmd.current_dir(&*probe.dir);
+        self.cargo_output
+            .print_debug(&format_args!("running: {}", CommandLine(&cmd)));
+        let output = cmd.output()?;
+        drop(probe);
         let is_supported = output.status.success() && output.stderr.is_empty();
 
         self.build_cache
             .known_flag_support_status_cache
             .write()
             .unwrap()
-            .insert(compiler_flag, is_supported);
+            .entry(flag.into())
+            .or_default()
+            .insert(key.clone(), is_supported);
 
         Ok(is_supported)
     }
@@ -1570,34 +1827,28 @@ impl Build {
     /// This will return a result instead of panicking; see [`Self::compile()`] for
     /// the complete description.
     pub fn try_compile(&self, output: &str) -> Result<(), Error> {
-        let mut output_components = Path::new(output).components();
-        match (output_components.next(), output_components.next()) {
-            (Some(Component::Normal(_)), None) => {}
-            _ => {
-                return Err(Error::new(
-                    ErrorKind::InvalidArgument,
-                    "argument of `compile` must be a single normal path component",
-                ));
-            }
-        }
-
-        let (lib_name, gnu_lib_name) = if output.starts_with("lib") && output.ends_with(".a") {
-            (&output[3..output.len() - 2], output.to_owned())
-        } else {
-            let mut gnu = String::with_capacity(5 + output.len());
-            gnu.push_str("lib");
-            gnu.push_str(output);
-            gnu.push_str(".a");
-            (output, gnu)
-        };
+        // Reject a bad name before compiling anything.
+        lib_and_archive_names(output, "compile")?;
         let dst = self.get_out_dir()?;
 
         let objects = objects_from_files(&self.files, &dst)?;
 
         self.compile_objects(&objects)?;
-        self.assemble(lib_name, &dst.join(gnu_lib_name), &objects)?;
+        let library = self.try_create_archive(output, objects.iter().map(|o| &o.dst))?;
 
+        try_emit_link_directives(self, library)
+    }
+
+    /// Emit the `cargo:` lines that link the static library `lib_name` found in
+    /// `search_dir`, along with the libraries it needs.
+    fn emit_link_directives_for(&self, lib_name: &str, search_dir: &Path) -> Result<(), Error> {
         let target = self.get_target()?;
+        if target.abi == "pauthtest" {
+            self.cargo_output.print_warning(
+                &"cc-rs should not be used with `pauthtest` target: it only builds \
+                static libraries, while `pauthtest` requires shared objects.",
+            );
+        }
         if target.env == "msvc" {
             let compiler = self.get_base_compiler()?;
             let atlmfc_lib = compiler
@@ -1634,20 +1885,42 @@ impl Build {
         }
         self.cargo_output.print_metadata(&format_args!(
             "cargo:rustc-link-search=native={}",
-            dst.display()
+            search_dir.display()
         ));
 
         // Add specific C++ libraries, if enabled.
         if self.cpp {
             if let Some(stdlib) = self.get_cpp_link_stdlib()? {
-                if self.cpp_link_stdlib_static {
-                    self.cargo_output.print_metadata(&format_args!(
-                        "cargo:rustc-link-lib=static={}",
-                        stdlib.display()
-                    ));
+                let stdlib = stdlib.to_string_lossy();
+                // rustc rejects a library passed twice when either mention has
+                // link modifiers, so a value that may carry them is emitted once
+                // per `Build`. `wasm32` and `pauthtest` may link the C++ stdlib
+                // below as well, so they keep a plain `static=`. So does Apple:
+                // rustc passes no static hint there and ld64 prefers the dylib,
+                // so an unbundled stdlib would silently link dynamically.
+                let (link_lib, once) = if stdlib.contains('=') {
+                    (stdlib.into_owned(), true)
+                } else if !self.get_cpp_link_stdlib_static() {
+                    (stdlib.into_owned(), false)
+                } else if target.arch == "wasm32"
+                    || target.abi == "pauthtest"
+                    || target.vendor == "apple"
+                {
+                    (format!("static={stdlib}"), false)
                 } else {
+                    (format!("static:-bundle={stdlib}"), true)
+                };
+                let emit = !once
+                    || (self.cargo_output.metadata
+                        && self
+                            .build_cache
+                            .emitted_cpp_link_stdlibs
+                            .lock()
+                            .unwrap()
+                            .insert(link_lib.as_str().into()));
+                if emit {
                     self.cargo_output
-                        .print_metadata(&format_args!("cargo:rustc-link-lib={}", stdlib.display()));
+                        .print_metadata(&format_args!("cargo:rustc-link-lib={link_lib}"));
                 }
             }
             // Link c++ lib from WASI sysroot
@@ -1667,6 +1940,14 @@ impl Build {
                         Path::new(&musl_sysroot).display(),
                     ));
                 }
+            }
+            // Pauthtest needs LLVM's libc++, libc++abi provided by the sysroot.
+            if target.abi == "pauthtest" {
+                let pauthtest_sysroot = self.pauthtest_sysroot()?;
+                self.cargo_output.print_metadata(&format_args!(
+                    "cargo:rustc-flags=-L {}/lib -lc++ -lc++abi",
+                    Path::new(&pauthtest_sysroot).display(),
+                ));
             }
         }
 
@@ -1695,6 +1976,10 @@ impl Build {
                 } else if cfg!(target_env = "msvc") {
                     libdir.push("lib");
                     match target.arch {
+                        "aarch64" => {
+                            libdir.push("arm64");
+                            libtst = true;
+                        }
                         "x86_64" => {
                             libdir.push("x64");
                             libtst = true;
@@ -1775,6 +2060,10 @@ impl Build {
     ///
     /// This will return a list of compiled object files, in the same order
     /// as they were passed in as `file`/`files` methods.
+    ///
+    /// [`Build::create_archive`] and [`emit_link_directives`] do the rest of
+    /// what [`Build::compile`] does, so the objects can be changed or added to
+    /// in between.
     pub fn compile_intermediates(&self) -> Vec<PathBuf> {
         match self.try_compile_intermediates() {
             Ok(v) => v,
@@ -1795,36 +2084,113 @@ impl Build {
         Ok(objects.into_iter().map(|v| v.dst).collect())
     }
 
-    fn compile_objects(&self, objs: &[Object]) -> Result<(), Error> {
+    /// Create a static library from object files, the way [`Build::compile`]
+    /// does after compiling.
+    ///
+    /// `output` names the library as described under "Library name" in
+    /// [`Build::compile`]. The archive is written
+    /// to `lib<output>.a` in the output directory ([`Build::out_dir`], or
+    /// `OUT_DIR` by default), replacing any existing file, and that path is
+    /// returned. On MSVC targets a copy named `<output>.lib` is placed next to
+    /// it, as `compile` does.
+    ///
+    /// The archive holds `objects` followed by any objects added with
+    /// [`Build::object`] or [`Build::objects`]. It is created with the same
+    /// archiver and flags as `compile` uses, see [`Build::get_archiver`]. With
+    /// [`Build::cuda`] and CUDA files added, the device code is linked into it
+    /// as well.
+    ///
+    /// No `cargo:` lines are emitted. Use [`emit_link_directives`] with the
+    /// returned path to link the library.
+    ///
+    /// ```no_run
+    /// let mut build = cc::Build::new();
+    /// build.file("foo.c");
+    /// let objects = build.compile_intermediates();
+    /// // Change the objects here.
+    /// let library = build.create_archive("foo", &objects);
+    /// cc::emit_link_directives(&build, &library);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// Panics if `output` is not formatted correctly, if `CC_FORCE_DISABLE` is
+    /// set, or if the archiver fails.
+    pub fn create_archive<P>(&self, output: &str, objects: P) -> PathBuf
+    where
+        P: IntoIterator,
+        P::Item: AsRef<Path>,
+    {
+        match self.try_create_archive(output, objects) {
+            Ok(library) => library,
+            Err(e) => fail(&e.message),
+        }
+    }
+
+    /// Create a static library from object files, the way [`Build::compile`]
+    /// does after compiling.
+    ///
+    /// This will return a result instead of panicking; see
+    /// [`Build::create_archive`] for the complete description.
+    pub fn try_create_archive<P>(&self, output: &str, objects: P) -> Result<PathBuf, Error>
+    where
+        P: IntoIterator,
+        P::Item: AsRef<Path>,
+    {
+        let (lib_name, gnu_lib_name) = lib_and_archive_names(output, "create_archive")?;
+        self.check_enabled()?;
+        let dst = self.get_out_dir()?.join(gnu_lib_name);
+
+        let objects: Vec<P::Item> = objects.into_iter().collect();
+        self.assemble(lib_name, &dst, &mut objects.iter().map(AsRef::as_ref))?;
+
+        Ok(dst)
+    }
+
+    fn check_enabled(&self) -> Result<(), Error> {
         if self.is_disabled() {
             return Err(Error::new(
                 ErrorKind::Disabled,
                 "the `cc` crate's functionality has been disabled by the `CC_FORCE_DISABLE` environment variable.",
             ));
         }
+        Ok(())
+    }
+
+    fn compile_objects(&self, objs: &[Object]) -> Result<(), Error> {
+        self.check_enabled()?;
+
+        if objs.is_empty() {
+            return Ok(());
+        }
+        // Every object is compiled with the same compiler and flags, so work
+        // them out once.
+        let compiler = self.try_get_compiler()?;
 
         #[cfg(feature = "parallel")]
         if objs.len() > 1 {
             return parallel::run_commands_in_parallel(
                 &self.cargo_output,
-                &mut objs.iter().map(|obj| self.create_compile_object_cmd(obj)),
+                &mut objs
+                    .iter()
+                    .map(|obj| self.create_compile_object_cmd(obj, &compiler)),
             );
         }
 
         for obj in objs {
-            let mut cmd = self.create_compile_object_cmd(obj)?;
+            let mut cmd = self.create_compile_object_cmd(obj, &compiler)?;
             run(&mut cmd, &self.cargo_output)?;
         }
 
         Ok(())
     }
 
-    fn create_compile_object_cmd(&self, obj: &Object) -> Result<Command, Error> {
+    /// `compiler` is the result of [`Build::try_get_compiler`].
+    fn create_compile_object_cmd(&self, obj: &Object, compiler: &Tool) -> Result<Command, Error> {
         let asm_ext = AsmFileExt::from_path(&obj.src);
         let is_asm = asm_ext.is_some();
         let target = self.get_target()?;
         let msvc = target.env == "msvc";
-        let compiler = self.try_get_compiler()?;
 
         let is_assembler_msvc = msvc && asm_ext == Some(AsmFileExt::DotAsm);
         let mut cmd = if is_assembler_msvc {
@@ -1854,7 +2220,40 @@ impl Build {
             cmd.arg("--device-c");
         }
         if is_asm {
-            cmd.args(self.asm_flags.iter().map(std::ops::Deref::deref));
+            cmd.args(self.asm_flags.iter().map(core::ops::Deref::deref));
+        }
+
+        self.add_compile_source_arg(&mut cmd, compiler, &obj.src, is_assembler_msvc);
+
+        if cfg!(target_os = "macos") {
+            self.fix_env_for_apple_os(&mut cmd)?;
+        }
+
+        Ok(cmd)
+    }
+
+    /// Append a source path to `cmd`, using MSVC's per-file `-Tp` for `.cc`
+    /// sources so they are not treated as objects.
+    ///
+    /// `-Tp` applies only to the immediately following file, unlike `/TP` which
+    /// would compile every subsequent input as C++ (including C sources).
+    /// clang-cl recognizes `.cc` and is not passed `-Tp` (it uses `--` instead).
+    fn add_compile_source_arg(
+        &self,
+        cmd: &mut Command,
+        compiler: &Tool,
+        src: &Path,
+        is_assembler_msvc: bool,
+    ) {
+        if self.cpp
+            && src.extension() == Some(OsStr::new("cc"))
+            && matches!(compiler.family, ToolFamily::Msvc { clang_cl: false })
+        {
+            // MSVC recognizes only `.c` / `.cpp` / `.cxx` as source. A `.cc`
+            // file (mimalloc 0.1.52 writes `OUT_DIR/mimalloc-static.cc`) is
+            // assumed to be an object unless `-Tp` forces C++ compilation
+            // (#1877).
+            cmd.arg("-Tp");
         }
 
         if compiler.supports_path_delimiter() && !is_assembler_msvc {
@@ -1864,13 +2263,7 @@ impl Build {
             // `-Wslash-u-filename` warning.
             cmd.arg("--");
         }
-        cmd.arg(&obj.src);
-
-        if cfg!(target_os = "macos") {
-            self.fix_env_for_apple_os(&mut cmd)?;
-        }
-
-        Ok(cmd)
+        cmd.arg(src);
     }
 
     /// This will return a result instead of panicking; see [`Self::expand()`] for
@@ -1888,21 +2281,30 @@ impl Build {
         let is_asm = self
             .files
             .iter()
-            .map(std::ops::Deref::deref)
+            .map(core::ops::Deref::deref)
             .find_map(AsmFileExt::from_path)
             .is_some();
 
-        if compiler.family == (ToolFamily::Msvc { clang_cl: true }) && !is_asm {
-            // #513: For `clang-cl`, separate flags/options from the input file.
-            // When cross-compiling macOS -> Windows, this avoids interpreting
-            // common `/Users/...` paths as the `/U` flag and triggering
-            // `-Wslash-u-filename` warning.
-            cmd.arg("--");
+        for src in self.files.iter().map(std::ops::Deref::deref) {
+            self.add_compile_source_arg(&mut cmd, &compiler, src, is_asm);
         }
 
-        cmd.args(self.files.iter().map(std::ops::Deref::deref));
+        // cl.exe echoes the name of the file it compiles on stderr. That is
+        // not a warning, so don't forward it as one (#896).
+        let echoed_file_name = if matches!(compiler.family, ToolFamily::Msvc { clang_cl: false }) {
+            self.files
+                .first()
+                .and_then(|src| src.file_name())
+                .and_then(OsStr::to_str)
+        } else {
+            None
+        };
 
-        run_output(&mut cmd, &self.cargo_output)
+        run_output_ignoring_line(
+            &mut cmd,
+            &self.cargo_output,
+            echoed_file_name.map(str::as_bytes),
+        )
     }
 
     /// Run the compiler, returning the macro-expanded version of the input files.
@@ -1958,6 +2360,8 @@ impl Build {
         let target = self.get_target()?;
 
         let mut cmd = self.get_base_compiler()?;
+        // Shared by every flag probe below, see `is_flag_supported_inner`.
+        let mut flag_support_key = None;
 
         // The flags below are added in roughly the following order:
         // 1. Default flags
@@ -1987,7 +2391,7 @@ impl Build {
         // Disable default flag generation via `no_default_flags` or environment variable
         let no_defaults = self.no_default_flags || self.get_env_boolean("CRATE_CC_NO_DEFAULTS");
         if !no_defaults {
-            self.add_default_flags(&mut cmd, &target, &opt_level)?;
+            self.add_default_flags(&mut cmd, &target, &opt_level, &mut flag_support_key)?;
         }
 
         // Specify various flags that are not considered part of the default flags above.
@@ -2037,17 +2441,29 @@ impl Build {
 
         // Add cc flags inherited from matching rustc flags.
         if self.inherit_rustflags {
-            self.add_inherited_rustflags(&mut cmd, &target)?;
+            self.add_inherited_rustflags(&mut cmd, &target, &mut flag_support_key)?;
+        }
+
+        // Add path remap flags inherited from cargo's `-Ztrim-paths`.
+        if self.inherit_trim_paths {
+            self.add_trim_paths_flags(&mut cmd, &target, &mut flag_support_key)?;
         }
 
         // Set flags configured in the builder (do this second-to-last, to allow these to override
         // everything above).
-        for flag in self.flags.iter() {
+        let (flags, linker_flags) = split_off_msvc_linker_flags(cmd.family, &self.flags);
+        let mut ignored_flags: Vec<&OsStr> = linker_flags.iter().map(|f| &**f).collect();
+        for flag in flags {
             cmd.args.push((**flag).into());
         }
-        for flag in self.flags_supported.iter() {
+        // Like `self.flags` above, drop `/link` and the entries after it in
+        // this list without probing them.
+        let (flags_supported, linker_flags) =
+            split_off_msvc_linker_flags(cmd.family, &self.flags_supported);
+        ignored_flags.extend(linker_flags.iter().map(|f| &**f));
+        for flag in flags_supported {
             if self
-                .is_flag_supported_inner(flag, &cmd, &target)
+                .is_flag_supported_inner(flag, &cmd, &target, &mut flag_support_key)
                 .unwrap_or(false)
             {
                 cmd.push_cc_arg((**flag).into());
@@ -2063,15 +2479,30 @@ impl Build {
 
         // Set flags from the environment (do this last, to allow these to override everything else).
         if let Some(flags) = &envflags {
+            let (flags, linker_flags) = split_off_msvc_linker_flags(cmd.family, flags);
+            ignored_flags.extend(linker_flags.iter().map(OsStr::new));
             for arg in flags {
                 cmd.push_cc_arg(arg.into());
             }
         }
 
+        if !ignored_flags.is_empty()
+            && !self
+                .build_cache
+                .warned_about_msvc_linker_flags
+                .swap(true, Ordering::Relaxed)
+        {
+            self.cargo_output.print_warning(&format_args!(
+                "Ignoring {ignored_flags:?}: cl passes `/link` and the arguments after it to the \
+                linker, but cc only compiles. Use `cargo:rustc-link-arg` for linker flags, and \
+                `/Zl` instead of `/link /NODEFAULTLIB`."
+            ));
+        }
+
         // Set custom env vars that the user specified with `Build::env`.
         //
         // Do this last, to allow overwriting the other values above.
-        for (key, val) in &self.env {
+        for (key, val) in &self.env.explicit {
             cmd.env.push((key.into(), val.into()));
         }
 
@@ -2083,6 +2514,7 @@ impl Build {
         cmd: &mut Tool,
         target: &TargetInfo<'_>,
         opt_level: &str,
+        flag_support_key: &mut Option<CompilerFlag>,
     ) -> Result<(), Error> {
         let raw_target = self.get_raw_target()?;
         // Non-target flags
@@ -2176,10 +2608,10 @@ impl Build {
                     }
                 }
 
-                if target.os == "nto" {
+                if target.os == "nto" || target.os == "qnx" {
                     // Select the target with `-V`, see qcc documentation:
-                    // QNX 7.1: https://www.qnx.com/developers/docs/7.1/index.html#com.qnx.doc.neutrino.utilities/topic/q/qcc.html
-                    // QNX 8.0: https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/q/qcc.html
+                    // QNX SDP 7.1: https://www.qnx.com/developers/docs/7.1/index.html#com.qnx.doc.neutrino.utilities/topic/q/qcc.html
+                    // QNX SDP 8.0: https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/q/qcc.html
                     // This assumes qcc/q++ as compiler, which is currently the only supported compiler for QNX.
                     // See for details: https://github.com/rust-lang/cc-rs/pull/1319
                     let arg = match target.full_arch {
@@ -2213,7 +2645,16 @@ impl Build {
 
         if self.get_force_frame_pointer() {
             let family = cmd.family;
-            family.add_force_frame_pointer(cmd);
+            if let ToolFamily::Gnu | ToolFamily::Clang { .. } = family {
+                cmd.push_cc_arg("-fno-omit-frame-pointer".into());
+                let flag = OsString::from("-mno-omit-leaf-frame-pointer");
+                if self
+                    .is_flag_supported_inner(&flag, cmd, target, flag_support_key)
+                    .unwrap_or(false)
+                {
+                    cmd.push_cc_arg(flag);
+                }
+            }
         }
 
         if !cmd.is_like_msvc() {
@@ -2279,6 +2720,34 @@ impl Build {
                             format!("--sysroot={}", Path::new(&musl_sysroot).display()).into(),
                         );
                         cmd.push_cc_arg("-pthread".into());
+                    } else if target.abi == "pauthtest" {
+                        let pauthtest_sysroot = self.pauthtest_sysroot()?;
+                        let pauthtest_resource_dir = self.pauthtest_resource_dir()?;
+                        cmd.push_cc_arg(
+                            format!("--sysroot={}", Path::new(&pauthtest_sysroot).display()).into(),
+                        );
+                        cmd.push_cc_arg(
+                            format!(
+                                "-resource-dir={}",
+                                Path::new(&pauthtest_resource_dir).display()
+                            )
+                            .into(),
+                        );
+                        cmd.push_cc_arg("-march=armv8.3-a+pauth".into());
+                        if self.cpp && self.cpp_set_stdlib.is_none() {
+                            cmd.push_cc_arg("-stdlib=libc++".into());
+                            cmd.push_cc_arg(
+                                format!(
+                                    "-I{}/include/c++/v1",
+                                    Path::new(&pauthtest_sysroot).display()
+                                )
+                                .into(),
+                            );
+
+                            cmd.push_cc_arg(
+                                format!("-L{}/lib", Path::new(&pauthtest_sysroot).display()).into(),
+                            );
+                        }
                     }
                     // Pass `--target` with the LLVM target to configure Clang for cross-compiling.
                     //
@@ -2301,11 +2770,8 @@ impl Build {
                     // So instead, we pass the deployment target with `-m*-version-min=`, and only
                     // pass it here on visionOS and Mac Catalyst where that option does not exist:
                     // https://github.com/rust-lang/cc-rs/issues/1383
-                    let version = if target.os == "visionos" || target.env == "macabi" {
-                        Some(self.apple_deployment_target(target))
-                    } else {
-                        None
-                    };
+                    let version = (target.os == "visionos" || target.env == "macabi")
+                        .then(|| self.apple_deployment_target(target));
 
                     let clang_target =
                         target.llvm_target(&self.get_raw_target()?, version.as_deref());
@@ -2399,7 +2865,7 @@ impl Build {
                 }
 
                 if target.full_arch.contains("neon") {
-                    cmd.args.push("-mfpu=neon-vfpv4".into());
+                    cmd.args.push("-mfpu=neon".into());
                 }
 
                 if target.full_arch == "armv4t" && target.os == "linux" {
@@ -2444,68 +2910,101 @@ impl Build {
                     cmd.args.push("-Wl,-melf_i386".into());
                 }
 
+                //
+                // Arm Target Details
+                //
+
+                // Set Float ABI for all Arm bare-metal targets using EABIHF
                 if target.arch == "arm" && target.os == "none" && target.abi == "eabihf" {
                     cmd.args.push("-mfloat-abi=hard".into())
                 }
+                // Set -mthumb for all Thumb targets
                 if target.full_arch.starts_with("thumb") {
                     cmd.args.push("-mthumb".into());
                 }
+                // Armv6-M targets (no FPU available)
                 if target.full_arch.starts_with("thumbv6m") {
+                    // ARMv6S-M is an old name for "ARMv6-M with SVC support"
+                    // before SVC support became mandatory. Some versions of GAS care
+                    // about the difference.
                     cmd.args.push("-march=armv6s-m".into());
                 }
+                // Armv7-M targets (no FPU available)
+                if target.full_arch.starts_with("thumbv7m") {
+                    cmd.args.push("-march=armv7-m".into());
+                }
+                // Armv7E-M targets
                 if target.full_arch.starts_with("thumbv7em") {
                     cmd.args.push("-march=armv7e-m".into());
-
                     if target.abi == "eabihf" {
                         cmd.args.push("-mfpu=fpv4-sp-d16".into())
                     }
                 }
-                if target.full_arch.starts_with("thumbv7m") {
-                    cmd.args.push("-march=armv7-m".into());
-                }
+                // Armv8-M Baseline (no FPU available)
                 if target.full_arch.starts_with("thumbv8m.base") {
                     cmd.args.push("-march=armv8-m.base".into());
                 }
+                // Armv8-M Mainline targets
                 if target.full_arch.starts_with("thumbv8m.main") {
                     cmd.args.push("-march=armv8-m.main".into());
-
                     if target.abi == "eabihf" {
                         cmd.args.push("-mfpu=fpv5-sp-d16".into())
                     }
                 }
-                if target.full_arch.starts_with("armebv7r") | target.full_arch.starts_with("armv7r")
+                // ARMv6 targets
+                if target.full_arch.starts_with("armv6")
+                    || (target.full_arch.starts_with("thumbv6")
+                        && !target.full_arch.starts_with("thumbv6m"))
+                {
+                    cmd.args.push("-march=armv6".into());
+                    if target.abi == "eabihf" {
+                        // lowest common denominator FPU
+                        cmd.args.push("-mfpu=vfpv2".into());
+                    }
+                }
+                // ARMv7-R targets
+                if target.full_arch.starts_with("armebv7r")
+                    || target.full_arch.starts_with("armv7r")
+                    || target.full_arch.starts_with("thumbv7r")
                 {
                     if target.full_arch.starts_with("armeb") {
                         cmd.args.push("-mbig-endian".into());
-                    } else {
-                        cmd.args.push("-mlittle-endian".into());
                     }
-
-                    // ARM mode
-                    cmd.args.push("-marm".into());
-
-                    // R Profile
                     cmd.args.push("-march=armv7-r".into());
-
                     if target.abi == "eabihf" {
                         // lowest common denominator FPU
                         // (see Cortex-R4 technical reference manual)
                         cmd.args.push("-mfpu=vfpv3-d16".into())
                     }
                 }
-                if target.full_arch.starts_with("armv7a") {
+                // Armv7-A targets
+                if target.full_arch.starts_with("armv7a")
+                    || target.full_arch.starts_with("thumbv7a")
+                {
                     cmd.args.push("-march=armv7-a".into());
-
                     if target.abi == "eabihf" {
                         // lowest common denominator FPU
                         cmd.args.push("-mfpu=vfpv3-d16".into());
                     }
                 }
+                // Armv8-R targets
+                if target.full_arch.starts_with("armv8r")
+                    || target.full_arch.starts_with("thumbv8r")
+                {
+                    cmd.args.push("-march=armv8-r".into());
+                    if target.abi == "eabihf" {
+                        cmd.args.push("-mfpu=fp-armv8".into())
+                    }
+                }
+
                 if target.arch == "riscv32" || target.arch == "riscv64" {
                     // get the 32i/32imac/32imc/64gc/64imac/... part
                     let arch = &target.full_arch[5..];
                     if arch.starts_with("64") {
-                        if matches!(target.os, "linux" | "freebsd" | "netbsd") {
+                        if matches!(
+                            target.os,
+                            "linux" | "freebsd" | "netbsd" | "managarm" | "redox"
+                        ) {
                             cmd.args.push(("-march=rv64gc").into());
                             cmd.args.push("-mabi=lp64d".into());
                         } else {
@@ -2582,17 +3081,151 @@ impl Build {
         &self,
         cmd: &mut Tool,
         target: &TargetInfo<'_>,
+        flag_support_key: &mut Option<CompilerFlag>,
     ) -> Result<(), Error> {
-        let env_os = match cargo_env_var_os("CARGO_ENCODED_RUSTFLAGS") {
-            Some(env) => env,
+        let Some(env_os) = cargo_env_var_os("CARGO_ENCODED_RUSTFLAGS") else {
             // No encoded RUSTFLAGS -> nothing to do
-            None => return Ok(()),
+            return Ok(());
         };
 
         let env = env_os.to_string_lossy();
         let codegen_flags = RustcCodegenFlags::parse(&env)?;
-        codegen_flags.cc_flags(self, cmd, target);
+        codegen_flags.cc_flags(self, cmd, target, flag_support_key);
         Ok(())
+    }
+
+    /// Translate cargo's `-Ztrim-paths` remap rules into compiler flags.
+    ///
+    /// [`trim-paths`]: https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#profile-trim-paths-option
+    fn add_trim_paths_flags(
+        &self,
+        cmd: &mut Tool,
+        target: &TargetInfo<'_>,
+        flag_support_key: &mut Option<CompilerFlag>,
+    ) -> Result<(), Error> {
+        // Native MSVC has no documented equivalent of the `-f*-prefix-map` flag family.
+        // clang-cl parses Clang driver options when wrapped in `/clang:`.
+        if cmd.is_like_msvc() && !cmd.is_like_clang_cl() {
+            return Ok(());
+        }
+        let Some(scope) = cargo_env_var_os("CARGO_TRIM_PATHS_SCOPE") else {
+            return Ok(());
+        };
+        let Some(remap) = cargo_env_var_os("CARGO_TRIM_PATHS_REMAP") else {
+            return Ok(());
+        };
+
+        // * `macro` scope -> `-fmacro-prefix-map`
+        // * `object` scope -> `-fmacro-prefix-map` + `-fdebug-prefix-map`
+        // * `all` scope -> both
+        // * `diagnostics` and `none` scopes have no C equivalent
+        let mut macro_scope = false;
+        let mut object_scope = false;
+        for scope in scope.to_string_lossy().split(',') {
+            match scope {
+                "all" => {
+                    macro_scope = true;
+                    object_scope = true;
+                    break;
+                }
+                // `__FILE__` and friends
+                "macro" => macro_scope = true,
+                // Everything embedded in object files.
+                // rustc defines this scope as macro + debuginfo.
+                // Both `__FILE__` strings and debug info end up in the object,
+                // so the C analogue must remap both as well.
+                "object" => {
+                    macro_scope = true;
+                    object_scope = true;
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        let macro_scope = macro_scope
+            && self.probe_prefix_map_flag(PrefixMapFlag::Macro, cmd, target, flag_support_key);
+        let object_scope = object_scope
+            && self.probe_prefix_map_flag(PrefixMapFlag::Debug, cmd, target, flag_support_key);
+
+        if !macro_scope && !object_scope {
+            return Ok(());
+        }
+
+        // clang-cl parses Clang driver options when wrapped in `/clang:`.
+        // <https://clang.llvm.org/docs/UsersManual.html#the-clang-option>
+        let clang_driver = if cmd.is_like_clang_cl() {
+            "/clang:"
+        } else {
+            ""
+        };
+
+        for pair in env::split_paths(&remap) {
+            let pair = pair.as_os_str();
+            if pair.is_empty() {
+                continue;
+            }
+            if macro_scope {
+                let mut flag = OsString::from(clang_driver);
+                flag.push("-fmacro-prefix-map=");
+                flag.push(pair);
+                cmd.push_cc_arg(flag);
+            }
+            if object_scope {
+                let mut flag = OsString::from(clang_driver);
+                flag.push("-fdebug-prefix-map=");
+                flag.push(pair);
+                cmd.push_cc_arg(flag);
+            }
+        }
+        Ok(())
+    }
+
+    /// Check if `-f*-prefix-map` flag is supported.
+    ///
+    /// * `-fdebug-prefix-map`: supported since GCC 4.3 (2008-03), Clang 3.8 (2016-03):
+    ///   * <https://gcc.gnu.org/onlinedocs/gcc-4.3.0/gcc/Debugging-Options.html>
+    ///   * <https://github.com/llvm/llvm-project/commit/436256a71316a1e6ad68ebee8439c88d75>
+    /// * `-fmacro-prefix-map`: supported since GCC 8.1 (2018-05), Clang 10.0 (2020-03)
+    ///   * <https://gcc.gnu.org/onlinedocs/gcc-8.1.0/gcc/Option-Summary.html>
+    ///   * <https://releases.llvm.org/10.0.0/tools/clang/docs/ReleaseNotes.html>
+    fn probe_prefix_map_flag(
+        &self,
+        flag: PrefixMapFlag,
+        cmd: &Tool,
+        target: &TargetInfo<'_>,
+        flag_support_key: &mut Option<CompilerFlag>,
+    ) -> bool {
+        let (flag, unsupported_warning) = match flag {
+            PrefixMapFlag::Macro => (
+                "-fmacro-prefix-map",
+                "paths embedded by macros will not be remapped",
+            ),
+            PrefixMapFlag::Debug => (
+                "-fdebug-prefix-map",
+                "paths embedded in debug info will not be remapped",
+            ),
+        };
+        // clang-cl parses Clang driver options when wrapped in `/clang:`.
+        // <https://clang.llvm.org/docs/UsersManual.html#the-clang-option>
+        let flag = if cmd.is_like_clang_cl() {
+            format!("/clang:{flag}")
+        } else {
+            flag.to_owned()
+        };
+        let probe = format!("{flag}=/probe=/probe");
+        let supported = self
+            .is_flag_supported_inner(OsStr::new(&probe), cmd, target, flag_support_key)
+            .unwrap_or(false);
+
+        if !supported {
+            self.cargo_output.print_warning(&format_args!(
+                "{flag} is not supported by {:?}, {unsupported_warning}",
+                cmd.path()
+            ));
+        }
+
+        supported
     }
 
     fn msvc_macro_assembler(&self) -> Result<Command, Error> {
@@ -2654,7 +3287,12 @@ impl Build {
         Ok(cmd)
     }
 
-    fn assemble(&self, lib_name: &str, dst: &Path, objs: &[Object]) -> Result<(), Error> {
+    fn assemble<'a>(
+        &'a self,
+        lib_name: &str,
+        dst: &Path,
+        objs: &mut dyn Iterator<Item = &'a Path>,
+    ) -> Result<(), Error> {
         // Delete the destination if it exists as we want to
         // create on the first iteration instead of appending.
         let _ = fs::remove_file(dst);
@@ -2670,9 +3308,7 @@ impl Build {
         let mut deterministic_ar: Option<bool> = None;
 
         let mut objs = objs
-            .iter()
-            .map(|o| o.dst.as_path())
-            .chain(self.objects.iter().map(std::ops::Deref::deref))
+            .chain(self.objects.iter().map(core::ops::Deref::deref))
             .peekable();
         let mut batch = Vec::new();
         while objs.peek().is_some() {
@@ -2908,9 +3544,7 @@ impl Build {
 
     fn cmd<P: AsRef<OsStr>>(&self, prog: P) -> Command {
         let mut cmd = Command::new(prog);
-        for (a, b) in self.env.iter() {
-            cmd.env(a, b);
-        }
+        self.env.apply(&mut cmd);
         cmd
     }
 
@@ -2929,6 +3563,7 @@ impl Build {
         if let Some(c) = &self.compiler {
             return Ok(Tool::new(
                 (**c).to_owned(),
+                &self.env,
                 &self.build_cache.cached_compiler_family,
                 &self.cargo_output,
                 out_dir,
@@ -2956,7 +3591,7 @@ impl Build {
             // and many modern illumos distributions today ship GCC as "gcc" without
             // also making it available as "cc".
             Cow::Borrowed(Path::new(gnu))
-        } else if self.prefer_clang() {
+        } else if self.prefer_clang() || target.abi == "pauthtest" {
             self.which(Path::new(clang), None)
                 .map(Cow::Owned)
                 .unwrap_or(fallback)
@@ -2976,6 +3611,7 @@ impl Build {
                 let mut t = Tool::with_args(
                     tool,
                     args.clone(),
+                    &self.env,
                     &self.build_cache.cached_compiler_family,
                     &self.cargo_output,
                     out_dir,
@@ -2996,6 +3632,7 @@ impl Build {
                         let mut t = Tool::with_family(
                             PathBuf::from("cmd"),
                             ToolFamily::Clang { zig_cc: false },
+                            self.env.inherited().clone(),
                         );
                         t.args.push("/c".into());
                         t.args.push(format!("{tool}.bat").into());
@@ -3003,6 +3640,7 @@ impl Build {
                     } else {
                         Some(Tool::new(
                             PathBuf::from(tool),
+                            &self.env,
                             &self.build_cache.cached_compiler_family,
                             &self.cargo_output,
                             out_dir,
@@ -3031,7 +3669,7 @@ impl Build {
                 {
                     clang.into()
                 } else if target.os == "android" {
-                    autodetect_android_compiler(&raw_target, gnu, clang)
+                    autodetect_android_compiler(&raw_target, gnu, clang, self.env.inherited())
                 } else if target.os == "cloudabi" {
                     format!(
                         "{}-{}-{}-{}",
@@ -3050,7 +3688,7 @@ impl Build {
                     format!("arm-kmc-eabi-{gnu}").into()
                 } else if target.arch == "aarch64" && target.vendor == "kmc" {
                     format!("aarch64-kmc-elf-{gnu}").into()
-                } else if target.os == "nto" {
+                } else if target.os == "nto" || target.os == "qnx" {
                     // See for details: https://github.com/rust-lang/cc-rs/pull/1319
                     if self.cpp { "q++" } else { "qcc" }.into()
                 } else if self.get_is_cross_compile()? {
@@ -3068,6 +3706,7 @@ impl Build {
 
                 let mut t = Tool::new(
                     compiler,
+                    &self.env,
                     &self.build_cache.cached_compiler_family,
                     &self.cargo_output,
                     out_dir,
@@ -3086,12 +3725,13 @@ impl Build {
             );
             let nvcc = match self.getenv_with_target_prefixes("NVCC") {
                 Err(_) => PathBuf::from("nvcc"),
-                Ok(nvcc) => PathBuf::from(&*nvcc),
+                Ok(nvcc) => PathBuf::from(nvcc),
             };
             let mut nvcc_tool = Tool::with_features(
                 nvcc,
                 vec![],
                 self.cuda,
+                &self.env,
                 &self.build_cache.cached_compiler_family,
                 &self.cargo_output,
                 out_dir,
@@ -3187,6 +3827,23 @@ impl Build {
                 .print_warning(&"GNU compiler is not supported for this target");
         }
 
+        if target.abi == "pauthtest" {
+            match tool.family {
+                ToolFamily::Clang { .. } => {}
+                _ => {
+                    return Err(Error::new(
+                        ErrorKind::ToolNotFound,
+                        format!(
+                            "target '{}' requires a Clang-based toolchain, but found {:?} ({})",
+                            raw_target,
+                            tool.family,
+                            tool.path.display()
+                        ),
+                    ));
+                }
+            }
+        }
+
         Ok(tool)
     }
 
@@ -3195,17 +3852,15 @@ impl Build {
         // No explicit CC wrapper was detected, but check if RUSTC_WRAPPER
         // is defined and is a build accelerator that is compatible with
         // C/C++ compilers (e.g. sccache)
-        const VALID_WRAPPERS: &[&str] = &["sccache", "cachepot", "buildcache"];
+        const VALID_WRAPPERS: &[&str] = &["sccache", "cachepot", "buildcache", "kache"];
 
         let rustc_wrapper = cargo_env_var_os("RUSTC_WRAPPER")?;
         let wrapper_path = Path::new(&rustc_wrapper);
         let wrapper_stem = wrapper_path.file_stem()?;
 
-        if VALID_WRAPPERS.contains(&wrapper_stem.to_str()?) {
-            Some(Cow::Owned(rustc_wrapper))
-        } else {
-            None
-        }
+        VALID_WRAPPERS
+            .contains(&wrapper_stem.to_str()?)
+            .then_some(Cow::Owned(rustc_wrapper))
     }
 
     /// Returns compiler path, optional modifier name from whitelist, and arguments vec
@@ -3252,10 +3907,10 @@ impl Build {
             "icecc",
             "cachepot",
             "buildcache",
+            "kache",
         ];
-        let custom_wrapper = self.get_env("CC_KNOWN_WRAPPER_CUSTOM");
-        if custom_wrapper.is_some() {
-            known_wrappers.push(custom_wrapper.as_deref().unwrap().to_str().unwrap());
+        if let Some(custom_wrapper) = self.get_env("CC_KNOWN_WRAPPER_CUSTOM") {
+            known_wrappers.push(custom_wrapper.to_str().unwrap());
         }
 
         let mut parts = tool.split_whitespace();
@@ -3284,16 +3939,12 @@ impl Build {
     /// 2. Else if the `CXXSTDLIB` environment variable is set, uses its value.
     /// 3. Else the default is `c++` for OS X and BSDs, `c++_shared` for Android,
     ///    `None` for MSVC and `stdc++` for anything else.
-    fn get_cpp_link_stdlib(&self) -> Result<Option<Cow<'_, Path>>, Error> {
+    fn get_cpp_link_stdlib(&self) -> Result<Option<&Path>, Error> {
         match &self.cpp_link_stdlib {
-            Some(s) => Ok(s.as_deref().map(Path::new).map(Cow::Borrowed)),
+            Some(s) => Ok(s.as_deref().map(Path::new)),
             None => {
                 if let Ok(stdlib) = self.getenv_with_target_prefixes("CXXSTDLIB") {
-                    if stdlib.is_empty() {
-                        Ok(None)
-                    } else {
-                        Ok(Some(Cow::Owned(Path::new(&stdlib).to_owned())))
-                    }
+                    Ok((!stdlib.is_empty()).then(|| Path::new(&**stdlib)))
                 } else {
                     let target = self.get_target()?;
                     if target.env == "msvc" {
@@ -3304,16 +3955,27 @@ impl Build {
                         || target.os == "aix"
                         || (target.os == "linux" && target.env == "ohos")
                         || target.os == "wasi"
+                        || target.abi == "pauthtest"
                     {
-                        Ok(Some(Cow::Borrowed(Path::new("c++"))))
+                        Ok(Some(Path::new("c++")))
                     } else if target.os == "android" {
-                        Ok(Some(Cow::Borrowed(Path::new("c++_shared"))))
+                        Ok(Some(Path::new("c++_shared")))
                     } else {
-                        Ok(Some(Cow::Borrowed(Path::new("stdc++"))))
+                        Ok(Some(Path::new("stdc++")))
                     }
                 }
             }
         }
+    }
+
+    /// Returns whether the C++ standard library is linked statically: if
+    /// [`cpp_link_stdlib_static`](Build::cpp_link_stdlib_static) is set, or
+    /// if the `CXXSTDLIB_STATIC` environment variable turns it on.
+    fn get_cpp_link_stdlib_static(&self) -> bool {
+        self.cpp_link_stdlib_static
+            || self
+                .getenv_with_target_prefixes("CXXSTDLIB_STATIC")
+                .map_or(false, |s| env_value_is_true(s))
     }
 
     /// Get the archiver (ar) that's in use for this configuration.
@@ -3460,7 +4122,13 @@ impl Build {
             None => {
                 if target.os == "android" {
                     name = format!("llvm-{tool}").into();
-                    match Command::new(&name).arg("--version").status() {
+                    // This probe decides which archiver the build uses, so it has
+                    // to run in the environment the build was configured with: a
+                    // bare name resolves through `Build::env`'s `PATH`, not the
+                    // ambient one.
+                    let mut probe = Command::new(&name);
+                    probe.arg("--version").set_ar_detection_env(&self.env);
+                    match probe.status() {
                         Ok(status) if status.success() => (),
                         _ => {
                             // FIXME: Use parsed target.
@@ -3520,10 +4188,10 @@ impl Build {
                 } else if target.os == "vxworks" {
                     name = format!("wr-{tool}").into();
                     self.cmd(&name)
-                } else if target.os == "nto" {
+                } else if target.os == "nto" || target.os == "qnx" {
                     // Ref: https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.utilities/topic/a/ar.html
                     name = match target.full_arch {
-                        "i586" => format!("ntox86-{tool}").into(),
+                        "i686" | "i586" => format!("ntox86-{tool}").into(),
                         "x86" | "aarch64" | "x86_64" => {
                             format!("nto{}-{}", target.arch, tool).into()
                         }
@@ -3549,7 +4217,9 @@ impl Build {
                                 .iter()
                                 .filter_map(|infix| {
                                     let target_p = format!("{prefix}{infix}-{tool}");
-                                    let status = Command::new(&target_p)
+                                    let mut cmd = Command::new(&target_p);
+                                    self.env.inherited().apply(&mut cmd);
+                                    let status = cmd
                                         .arg("--version")
                                         .stdin(Stdio::null())
                                         .stdout(Stdio::null())
@@ -3582,7 +4252,6 @@ impl Build {
     fn prefix_for_target(&self, target: &str) -> Option<Cow<'static, str>> {
         // CROSS_COMPILE is of the form: "arm-linux-gnueabi-"
         self.get_env("CROSS_COMPILE")
-            .as_deref()
             .map(|s| s.to_string_lossy().trim_end_matches('-').to_owned())
             .map(Cow::Owned)
             .or_else(|| {
@@ -3601,6 +4270,7 @@ impl Build {
                     "aarch64-uwp-windows-gnu" => Some("aarch64-w64-mingw32"),
                     "aarch64-unknown-helenos" => Some("aarch64-helenos"),
                     "aarch64-unknown-linux-gnu" => Some("aarch64-linux-gnu"),
+                    "aarch64_be-unknown-linux-gnu" => Some("aarch64_be-linux-gnu"),
                     "aarch64-unknown-linux-musl" => Some("aarch64-linux-musl"),
                     "aarch64-unknown-linux-relibc" => Some("aarch64-linux-relibc"),
                     "aarch64-unknown-netbsd" => Some("aarch64--netbsd"),
@@ -3613,6 +4283,7 @@ impl Build {
                     "arm-unknown-linux-musleabi" => Some("arm-linux-musleabi"),
                     "arm-unknown-linux-musleabihf" => Some("arm-linux-musleabihf"),
                     "arm-unknown-netbsd-eabi" => Some("arm--netbsdelf-eabi"),
+                    "armeb-unknown-linux-gnueabi" => Some("armeb-linux-gnueabi"),
                     "armv6-unknown-netbsd-eabihf" => Some("armv6--netbsdelf-eabihf"),
                     "armv7-unknown-linux-gnueabi" => Some("arm-linux-gnueabi"),
                     "armv7-unknown-linux-gnueabihf" => Some("arm-linux-gnueabihf"),
@@ -3708,6 +4379,10 @@ impl Build {
                     "sparc64-unknown-linux-gnu" => Some("sparc64-linux-gnu"),
                     "sparc64-unknown-netbsd" => Some("sparc64--netbsd"),
                     "sparcv9-sun-solaris" => Some("sparcv9-sun-solaris"),
+                    "armv4t-none-eabi" => Some("arm-none-eabi"),
+                    "armv5te-none-eabi" => Some("arm-none-eabi"),
+                    "armv6-none-eabi" => Some("arm-none-eabi"),
+                    "armv6-none-eabihf" => Some("arm-none-eabi"),
                     "armv7a-none-eabi" => Some("arm-none-eabi"),
                     "armv7a-none-eabihf" => Some("arm-none-eabi"),
                     "armebv7r-none-eabi" => Some("arm-none-eabi"),
@@ -3715,6 +4390,14 @@ impl Build {
                     "armv7r-none-eabi" => Some("arm-none-eabi"),
                     "armv7r-none-eabihf" => Some("arm-none-eabi"),
                     "armv8r-none-eabihf" => Some("arm-none-eabi"),
+                    "thumbv4t-none-eabi" => Some("arm-none-eabi"),
+                    "thumbv5te-none-eabi" => Some("arm-none-eabi"),
+                    "thumbv6-none-eabi" => Some("arm-none-eabi"),
+                    "thumbv7a-none-eabi" => Some("arm-none-eabi"),
+                    "thumbv7a-none-eabihf" => Some("arm-none-eabi"),
+                    "thumbv7r-none-eabi" => Some("arm-none-eabi"),
+                    "thumbv7r-none-eabihf" => Some("arm-none-eabi"),
+                    "thumbv8r-none-eabihf" => Some("arm-none-eabi"),
                     "thumbv6m-none-eabi" => Some("arm-none-eabi"),
                     "thumbv7em-none-eabi" => Some("arm-none-eabi"),
                     "thumbv7em-none-eabihf" => Some("arm-none-eabi"),
@@ -3760,7 +4443,6 @@ impl Build {
         // are more likely to discover the toolchain early on, because chances are good
         // that the desired toolchain is in one of the higher-priority paths.
         self.get_env("PATH")
-            .as_ref()
             .and_then(|path_entries| {
                 env::split_paths(path_entries).find_map(|path_entry| {
                     for prefix in prefixes {
@@ -3880,20 +4562,20 @@ impl Build {
         }
     }
 
-    /// Look up an environment variable, and tell Cargo that we used it.
-    fn get_env(&self, v: &str) -> Option<OsString> {
+    /// Look up an environment variable in the snapshot, and tell Cargo that we
+    /// used it.
+    fn get_env(&self, v: &str) -> Option<&Arc<OsStr>> {
         // Excluding `PATH` prevents spurious rebuilds on Windows, see
         // <https://github.com/rust-lang/cc-rs/pull/1215> for details.
         if self.emit_rerun_if_env_changed && v != "PATH" {
             self.cargo_output
                 .print_metadata(&format_args!("cargo:rerun-if-env-changed={v}"));
         }
-        #[allow(clippy::disallowed_methods)] // We emit rerun-if-env-changed above
-        let r = env::var_os(v);
+        let r = self.env.inherited().get(OsStr::new(v));
         self.cargo_output.print_metadata(&format_args!(
             "{} = {}",
             v,
-            OptionOsStrDisplay(r.as_deref())
+            OptionOsStrDisplay(r.map(|r| &**r))
         ));
         r
     }
@@ -3908,14 +4590,14 @@ impl Build {
     /// On the other hand, we don't want to allow overwriting environment
     /// variables that are `CC`-specific such as `CC_FORCE_DISABLE`
     /// (`Build::env` applies to child processes, not to `cc` itself).
-    fn get_env_overridable(&self, key: &str) -> Option<Cow<'_, OsStr>> {
+    fn get_env_overridable(&self, key: &str) -> Option<&Arc<OsStr>> {
         // Try to look up in overrides first.
-        if let Some((_key, val)) = self.env.iter().find(|(k, _)| k.as_ref() == key) {
-            return Some(Cow::Borrowed(&**val));
+        if let Some((_key, val)) = self.env.explicit.iter().find(|(k, _)| k.as_ref() == key) {
+            return Some(val);
         }
 
         // If not found in overrides, look up from environment.
-        self.get_env(key).map(Cow::Owned)
+        self.get_env(key)
     }
 
     /// Get boolean flag that is either true or false.
@@ -3923,8 +4605,7 @@ impl Build {
     /// Used for `CC_*`-style flags.
     fn get_env_boolean(&self, key: &str) -> bool {
         match self.get_env(key) {
-            // Set -> `true`, unless set to `""`, `"0"`, `"no"` `"false"`
-            Some(s) => &*s != "0" && &*s != "false" && &*s != "no" && !s.is_empty(),
+            Some(s) => env_value_is_true(s),
             // Not set -> default to `false`.
             None => false,
         }
@@ -3949,7 +4630,7 @@ impl Build {
     }
 
     /// Get a single-valued environment variable with target variants.
-    fn getenv_with_target_prefixes(&self, env: &str) -> Result<OsString, Error> {
+    fn getenv_with_target_prefixes(&self, env: &str) -> Result<&Arc<OsStr>, Error> {
         // Take from first environment variable in the environment.
         let res = self
             .target_envs(env)?
@@ -4006,10 +4687,10 @@ impl Build {
         Ok(())
     }
 
-    fn apple_sdk_root_inner(&self, sdk: &str) -> Result<Cow<'_, OsStr>, Error> {
+    fn apple_sdk_root_inner(&self, sdk: &str) -> Result<Arc<OsStr>, Error> {
         // Code copied from rustc's compiler/rustc_codegen_ssa/src/back/link.rs.
         if let Some(sdkroot) = self.get_env_overridable("SDKROOT") {
-            let p = Path::new(&sdkroot);
+            let p = Path::new(sdkroot);
             let does_sdkroot_contain = |strings: &[&str]| {
                 let sdkroot_str = p.to_string_lossy();
                 strings.iter().any(|s| sdkroot_str.contains(s))
@@ -4035,7 +4716,7 @@ impl Build {
                 "xrsimulator" if does_sdkroot_contain(&["XROS.platform", "MacOSX.platform"]) => {}
                 // Ignore `SDKROOT` if it's not a valid path.
                 _ if !p.is_absolute() || p == Path::new("/") || !p.exists() => {}
-                _ => return Ok(sdkroot),
+                _ => return Ok(Arc::clone(sdkroot)),
             }
         }
 
@@ -4047,16 +4728,13 @@ impl Build {
             &self.cargo_output,
         )?;
 
-        let sdk_path = match String::from_utf8(sdk_path) {
-            Ok(p) => p,
-            Err(_) => {
-                return Err(Error::new(
-                    ErrorKind::IOError,
-                    "Unable to determine Apple SDK path.",
-                ));
-            }
+        let Ok(sdk_path) = String::from_utf8(sdk_path) else {
+            return Err(Error::new(
+                ErrorKind::IOError,
+                "Unable to determine Apple SDK path.",
+            ));
         };
-        Ok(Cow::Owned(sdk_path.trim().into()))
+        Ok(OsStr::new(sdk_path.trim()).into())
     }
 
     fn apple_sdk_root(&self, target: &TargetInfo<'_>) -> Result<Arc<OsStr>, Error> {
@@ -4072,7 +4750,7 @@ impl Build {
         {
             return Ok(ret);
         }
-        let sdk_path: Arc<OsStr> = self.apple_sdk_root_inner(sdk)?.into();
+        let sdk_path = self.apple_sdk_root_inner(sdk)?;
         self.build_cache
             .apple_sdk_root_cache
             .write()
@@ -4100,11 +4778,11 @@ impl Build {
                     .arg("--show-sdk-version")
                     .arg("--sdk")
                     .arg(sdk),
-                &self.cargo_output,
+                &self.cargo_output.for_detection_cmd(),
             )
             .ok()?;
 
-            Some(Arc::from(std::str::from_utf8(&version).ok()?.trim()))
+            Some(Arc::from(core::str::from_utf8(&version).ok()?.trim()))
         };
 
         let deployment_from_env = |name: &str| -> Option<Arc<str>> {
@@ -4209,7 +4887,7 @@ impl Build {
         version
     }
 
-    fn wasm_musl_sysroot(&self) -> Result<OsString, Error> {
+    fn wasm_musl_sysroot(&self) -> Result<&Arc<OsStr>, Error> {
         if let Some(musl_sysroot_path) = self.get_env("WASM_MUSL_SYSROOT") {
             Ok(musl_sysroot_path)
         } else {
@@ -4220,7 +4898,7 @@ impl Build {
         }
     }
 
-    fn wasi_sysroot(&self) -> Result<OsString, Error> {
+    fn wasi_sysroot(&self) -> Result<&Arc<OsStr>, Error> {
         if let Some(wasi_sysroot_path) = self.get_env("WASI_SYSROOT") {
             Ok(wasi_sysroot_path)
         } else {
@@ -4250,7 +4928,7 @@ impl Build {
         } else {
             path_entries
                 .and_then(find_exe_in_path)
-                .or_else(|| find_exe_in_path(&self.get_env("PATH")?))
+                .or_else(|| find_exe_in_path(self.get_env("PATH")?))
         }
     }
 
@@ -4264,12 +4942,12 @@ impl Build {
         let search_dirs = run_output(
             self.cmd(cc).arg("--print-search-dirs"),
             // this doesn't concern the compilation so we always want to show warnings.
-            cargo_output,
+            &cargo_output.for_detection_cmd(),
         )
         .ok()?;
         // clang driver appears to be forcing UTF-8 output even on Windows,
         // hence from_utf8 is assumed to be usable in all cases.
-        let search_dirs = std::str::from_utf8(&search_dirs).ok()?;
+        let search_dirs = core::str::from_utf8(&search_dirs).ok()?;
         for dirs in search_dirs.split(['\r', '\n']) {
             if let Some(path) = dirs.strip_prefix("programs: =") {
                 return self.which(prog, Some(OsStr::new(path)));
@@ -4290,7 +4968,10 @@ impl Build {
             fn get_env(&self, name: &str) -> Option<::find_msvc_tools::Env> {
                 // TODO: Should we allow overriding these with `Build::env`?
                 // <https://github.com/rust-lang/cc-rs/issues/1688>
-                self.0.get_env(name).map(::find_msvc_tools::Env::Owned)
+                self.0
+                    .get_env(name)
+                    .cloned()
+                    .map(::find_msvc_tools::Env::Arced)
             }
         }
 
@@ -4299,7 +4980,7 @@ impl Build {
         }
 
         ::find_msvc_tools::find_tool_with_env(target.full_arch, tool, &BuildEnvGetter(self))
-            .map(Tool::from_find_msvc_tools)
+            .map(|tool| Tool::from_find_msvc_tools(tool, self.env.inherited().clone()))
     }
 
     /// Compiling for WASI targets typically uses the [wasi-sdk] project and
@@ -4323,12 +5004,148 @@ impl Build {
 
         clang.into()
     }
+
+    fn pauthtest_sysroot(&self) -> Result<&Arc<OsStr>, Error> {
+        if let Some(pauthtest_sysroot) = self.get_env("PAUTHTEST_SYSROOT") {
+            Ok(pauthtest_sysroot)
+        } else {
+            let target = self.get_raw_target()?;
+            Err(Error::new(
+                ErrorKind::EnvVarNotFound,
+                format!(
+                    "Environment variable PAUTHTEST_SYSROOT not defined for the {} target. Please consult target's platform support document for instructions on how to obtain the sysroot and then setup the environment variable PAUTHTEST_SYSROOT.",
+                    target
+                ),
+            ))
+        }
+    }
+
+    fn pauthtest_resource_dir(&self) -> Result<&Arc<OsStr>, Error> {
+        if let Some(pauthtest_resource_dir) = self.get_env("PAUTHTEST_RESOURCE_DIR") {
+            Ok(pauthtest_resource_dir)
+        } else {
+            let target = self.get_raw_target()?;
+            Err(Error::new(
+                ErrorKind::EnvVarNotFound,
+                format!(
+                    "Environment variable PAUTHTEST_RESOURCE_DIR not defined for the {} target. Please consult target's platform support document for instructions on how to obtain the sysroot and then setup the environment variable PAUTHTEST_RESOURCE_DIR.",
+                    target
+                ),
+            ))
+        }
+    }
 }
 
 impl Default for Build {
     fn default() -> Build {
         Build::new()
     }
+}
+
+/// Emit the `cargo:` lines that link a static library into the crate being
+/// built, the way [`Build::compile`] does after creating its archive.
+///
+/// `library` is the path of the library, such as the one returned by
+/// [`Build::create_archive`], including its folder. Its file name must be
+/// `lib<name>.a`, or `<name>.lib` on MSVC targets. The library is linked as
+/// `<name>`, and its folder is added to the native library search path.
+///
+/// `build` provides the target and the settings that decide how it is linked
+/// and which other libraries are linked with it, such as
+/// [`Build::link_lib_modifier`], [`Build::cpp`] with
+/// [`Build::cpp_link_stdlib`], and [`Build::cudart`]. The lines are not
+/// printed when [`Build::cargo_metadata`] is off.
+///
+/// # Panics
+///
+/// Panics if `library` has no folder or its file name doesn't have one of the
+/// forms above, or if the libraries to link with it can't be determined.
+pub fn emit_link_directives<P: AsRef<Path>>(build: &Build, library: P) {
+    if let Err(e) = try_emit_link_directives(build, library) {
+        fail(&e.message);
+    }
+}
+
+/// Emit the `cargo:` lines that link a static library into the crate being
+/// built, the way [`Build::compile`] does after creating its archive.
+///
+/// This will return a result instead of panicking; see
+/// [`emit_link_directives`] for the complete description.
+pub fn try_emit_link_directives<P: AsRef<Path>>(build: &Build, library: P) -> Result<(), Error> {
+    let library = library.as_ref();
+    let file_name = library.file_name().and_then(OsStr::to_str).unwrap_or("");
+    let mut lib_name = file_name
+        .strip_prefix("lib")
+        .and_then(|name| name.strip_suffix(".a"));
+    if lib_name.is_none() && build.get_target()?.env == "msvc" {
+        lib_name = file_name.strip_suffix(".lib");
+    }
+    let search_dir = library.parent().filter(|dir| !dir.as_os_str().is_empty());
+    match (lib_name, search_dir) {
+        (Some(lib_name), Some(search_dir)) if !lib_name.is_empty() => {
+            build.emit_link_directives_for(lib_name, search_dir)
+        }
+        _ => Err(Error::new(
+            ErrorKind::InvalidArgument,
+            format!(
+                "`emit_link_directives` expects the path of a static library named \
+                 `lib<name>.a`, or `<name>.lib` on MSVC targets, including its folder, \
+                 got `{}`",
+                library.display()
+            ),
+        )),
+    }
+}
+
+/// Split the `output` argument of [`Build::compile`] or
+/// [`Build::create_archive`] into the library name and the archive's file name.
+fn lib_and_archive_names<'a>(output: &'a str, method: &str) -> Result<(&'a str, String), Error> {
+    let mut output_components = Path::new(output).components();
+    match (output_components.next(), output_components.next()) {
+        (Some(Component::Normal(_)), None) => {}
+        _ => {
+            return Err(Error::new(
+                ErrorKind::InvalidArgument,
+                format!("argument of `{method}` must be a single normal path component"),
+            ));
+        }
+    }
+
+    Ok(if output.starts_with("lib") && output.ends_with(".a") {
+        (&output[3..output.len() - 2], output.to_owned())
+    } else {
+        let mut gnu = String::with_capacity(5 + output.len());
+        gnu.push_str("lib");
+        gnu.push_str(output);
+        gnu.push_str(".a");
+        (output, gnu)
+    })
+}
+
+/// `cl` and `clang-cl` pass `/link` and every argument after it to the linker.
+/// cc only compiles, and appends the source file after the flags, so such flags
+/// would never reach a linker and would hide the source file from the compiler
+/// (#1331). Splits `flags` into the flags before `/link` and the rest.
+fn split_off_msvc_linker_flags<T: AsRef<OsStr>>(family: ToolFamily, flags: &[T]) -> (&[T], &[T]) {
+    let start = match family {
+        ToolFamily::Msvc { .. } => flags
+            .iter()
+            .position(|flag| is_msvc_link_flag(flag.as_ref())),
+        ToolFamily::Gnu | ToolFamily::Clang { .. } => None,
+    };
+    flags.split_at(start.unwrap_or(flags.len()))
+}
+
+/// Whether `flag` is the `/link` option of `cl` and `clang-cl`. clang-cl also
+/// accepts a joined `-link<args>` form, which this does not detect.
+fn is_msvc_link_flag(flag: &OsStr) -> bool {
+    matches!(flag.to_str(), Some("/link" | "-link"))
+}
+
+/// Whether a boolean environment variable that is set counts as `true`: it
+/// does unless set to `""`, `"0"`, `"no"` or `"false"`.
+fn env_value_is_true(value: &OsStr) -> bool {
+    value != "0" && value != "false" && value != "no" && !value.is_empty()
 }
 
 fn fail(s: &str) -> ! {
@@ -4377,7 +5194,18 @@ fn is_llvm_mingw_wrapper(clang_path: &Path) -> bool {
 }
 
 // FIXME: Use parsed target.
-fn autodetect_android_compiler(raw_target: &str, gnu: &str, clang: &str) -> PathBuf {
+fn autodetect_android_compiler(
+    raw_target: &str,
+    gnu: &str,
+    clang: &str,
+    env: &EnvSnapshot,
+) -> PathBuf {
+    let exists = |program: &str| {
+        let mut cmd = Command::new(program);
+        env.apply(&mut cmd);
+        cmd.output().is_ok()
+    };
+
     let new_clang_key = match raw_target {
         "aarch64-linux-android" => Some("aarch64"),
         "armv7-linux-androideabi" => Some("armv7a"),
@@ -4395,7 +5223,7 @@ fn autodetect_android_compiler(raw_target: &str, gnu: &str, clang: &str) -> Path
         .unwrap_or(None);
 
     if let Some(new_clang) = new_clang {
-        if Command::new(new_clang).output().is_ok() {
+        if exists(new_clang) {
             return (*new_clang).into();
         }
     }
@@ -4415,9 +5243,9 @@ fn autodetect_android_compiler(raw_target: &str, gnu: &str, clang: &str) -> Path
 
     // Check if gnu compiler is present
     // if not, use clang
-    if Command::new(&gnu_compiler).output().is_ok() {
+    if exists(&gnu_compiler) {
         gnu_compiler
-    } else if cfg!(windows) && Command::new(&clang_compiler_cmd).output().is_ok() {
+    } else if cfg!(windows) && exists(&clang_compiler_cmd) {
         clang_compiler_cmd
     } else {
         clang_compiler
@@ -4472,10 +5300,23 @@ impl AsmFileExt {
     }
 }
 
-fn check_exe(mut exe: PathBuf) -> Option<PathBuf> {
+fn check_exe(exe: PathBuf) -> Option<PathBuf> {
+    if exe.exists() {
+        return Some(exe);
+    }
     let exe_ext = std::env::consts::EXE_EXTENSION;
-    let check = exe.exists() || (!exe_ext.is_empty() && exe.set_extension(exe_ext) && exe.exists());
-    check.then_some(exe)
+    if exe_ext.is_empty() {
+        return None;
+    }
+    // TODO: Replace the code below with `exe.add_extension(exe_ext)` when MSRV supports it.
+    let _ = exe.file_name()?;
+    let with_ext = {
+        let mut buf = exe.into_os_string();
+        buf.push(".");
+        buf.push(exe_ext);
+        PathBuf::from(buf)
+    };
+    with_ext.exists().then_some(with_ext)
 }
 
 #[cfg(test)]

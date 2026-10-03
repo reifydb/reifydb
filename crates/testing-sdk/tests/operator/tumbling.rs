@@ -9,7 +9,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	operator_with::{ApplyWith, WithSpan},
 };
-use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::plain::PlainDriver};
+use reifydb_sdk::flow::operator::windowed::plain::PlainDriver;
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -47,7 +47,7 @@ fn size_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<VolumeTumbling>>>::builder()
+	ChaosHarness::<PlainDriver<VolumeTumbling>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::volume_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -74,7 +74,7 @@ fn run_volume(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome 
 }
 
 fn run_min(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<MinTumbling>>>::builder()
+	ChaosHarness::<PlainDriver<MinTumbling>>::builder()
 		.with_input_shape(common::tumbling_shape())
 		.with_output_shape(common::min_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)
@@ -101,7 +101,7 @@ fn run_ohlcv(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
 	} else {
 		samplers::f64_range(10.0..500.0)
 	};
-	ChaosHarness::<ExternCOperatorAdapter<PlainDriver<OhlcvSealingTumbling>>>::builder()
+	ChaosHarness::<PlainDriver<OhlcvSealingTumbling>>::builder()
 		.with_input_shape(common::ohlcv_shape())
 		.with_output_shape(common::ohlcv_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

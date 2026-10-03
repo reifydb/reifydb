@@ -56,14 +56,6 @@ pub(super) unsafe fn encoded_keys(keys: *const ExternCKeyRef, len: usize) -> Opt
 	Some(encoded)
 }
 
-// SAFETY: same contract as [`encoded_keys`]; every entry must additionally name a known identity
-// keyspace, and a single entry that does not rejects the whole batch rather than reclaiming a data
-// key the guest was never entitled to name.
-pub(super) unsafe fn identity_keys(keys: *const ExternCKeyRef, len: usize) -> Option<Vec<GroupStateKey>> {
-	// SAFETY: forwards this function's own contract to encoded_keys unchanged.
-	unsafe { encoded_keys(keys, len) }?.into_iter().map(GroupStateKey::from_identity_framed).collect()
-}
-
 // SAFETY: `ptr` must be valid for reads of `len` bytes.
 pub(super) unsafe fn encoded_bytes(ptr: *const u8, len: usize) -> EncodedBytes {
 	EncodedBytes(CowVec::new(unsafe { from_raw_parts(ptr, len) }.to_vec()))

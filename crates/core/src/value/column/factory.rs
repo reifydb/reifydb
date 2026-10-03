@@ -35,6 +35,8 @@ use reifydb_value::value::{
 	digest::Digest,
 	duration::Duration,
 	identity::IdentityId,
+	ordered_f32::OrderedF32,
+	ordered_f64::OrderedF64,
 	time::Time,
 	uuid::{Uuid4, Uuid7},
 	value_type::{
@@ -72,9 +74,9 @@ where
 }
 
 macro_rules! native_factory {
-	($name:ident, $name_bv:ident, $arrow:ty, $t:ty, $value_type:expr) => {
+	($name:ident, $name_bv:ident, $arrow:ty, $t:ty, $value_type:expr, $canonical:expr) => {
 		pub fn $name(name: &str, data: impl IntoIterator<Item = $t>) -> (FieldRef, ArrayRef) {
-			let values = data.into_iter().collect::<Vec<_>>();
+			let values = data.into_iter().map($canonical).collect::<Vec<_>>();
 			column(name, $value_type, native::<$arrow>(values, None))
 		}
 
@@ -83,10 +85,13 @@ macro_rules! native_factory {
 			data: impl IntoIterator<Item = $t>,
 			bitvec: impl Into<BooleanBuffer>,
 		) -> (FieldRef, ArrayRef) {
-			let values = data.into_iter().collect::<Vec<_>>();
+			let values = data.into_iter().map($canonical).collect::<Vec<_>>();
 			let nulls = validity(values.len(), bitvec);
 			column(name, $value_type, native::<$arrow>(values, nulls))
 		}
+	};
+	($name:ident, $name_bv:ident, $arrow:ty, $t:ty, $value_type:expr) => {
+		native_factory!($name, $name_bv, $arrow, $t, $value_type, |v| v);
 	};
 }
 
@@ -124,8 +129,8 @@ pub fn bool_with_bitvec(
 	column(name, ValueType::Boolean, Arc::new(bool_array::attach_nulls(BooleanArray::from(values), nulls)))
 }
 
-native_factory!(float4, float4_with_bitvec, Float32Type, f32, ValueType::Float4);
-native_factory!(float8, float8_with_bitvec, Float64Type, f64, ValueType::Float8);
+native_factory!(float4, float4_with_bitvec, Float32Type, f32, ValueType::Float4, OrderedF32::canonical);
+native_factory!(float8, float8_with_bitvec, Float64Type, f64, ValueType::Float8, OrderedF64::canonical);
 native_factory!(int1, int1_with_bitvec, Int8Type, i8, ValueType::Int1);
 native_factory!(int2, int2_with_bitvec, Int16Type, i16, ValueType::Int2);
 native_factory!(int4, int4_with_bitvec, Int32Type, i32, ValueType::Int4);
@@ -314,6 +319,10 @@ pub fn none_typed(name: &str, ty: ValueType, len: usize) -> (FieldRef, ArrayRef)
 	};
 	let array = with_validity(array, NullBuffer::new_null(len));
 	(Arc::new(field.as_ref().clone().with_nullable(true)), array)
+}
+
+pub fn from_one(name: &str, value: Value) -> (FieldRef, ArrayRef) {
+	from_many(name, value, 1)
 }
 
 pub fn from_many(name: &str, value: Value, row_count: usize) -> (FieldRef, ArrayRef) {

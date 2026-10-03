@@ -7,7 +7,7 @@ use std::task::{Context, Poll};
 use bytes::Buf;
 use futures_core::ready;
 use h2::SendStream;
-use http::header::{HeaderName, CONNECTION, TE, TRANSFER_ENCODING, UPGRADE};
+use http::header::{HeaderName, CONNECTION, TRANSFER_ENCODING, UPGRADE};
 use http::HeaderMap;
 use pin_project_lite::pin_project;
 
@@ -40,22 +40,32 @@ static CONNECTION_HEADERS: [HeaderName; 4] = [
     UPGRADE,
 ];
 
-fn strip_connection_headers(headers: &mut HeaderMap, is_request: bool) {
+enum MessageKind {
+    #[cfg(feature = "client")]
+    Request,
+    #[cfg(feature = "server")]
+    Response,
+}
+
+fn strip_connection_headers(headers: &mut HeaderMap, kind: MessageKind) {
     for header in &CONNECTION_HEADERS {
         if headers.remove(header).is_some() {
             warn!("Connection header illegal in HTTP/2: {}", header.as_str());
         }
     }
 
-    if is_request {
+    #[cfg(not(feature = "client"))]
+    let _ = kind;
+    #[cfg(feature = "client")]
+    if matches!(kind, MessageKind::Request) {
         if headers
-            .get(TE)
+            .get(http::header::TE)
             .map_or(false, |te_header| te_header != "trailers")
         {
             warn!("TE headers not set to \"trailers\" are illegal in HTTP/2 requests");
-            headers.remove(TE);
+            headers.remove(http::header::TE);
         }
-    } else if headers.remove(TE).is_some() {
+    } else if headers.remove(http::header::TE).is_some() {
         warn!("TE headers illegal in HTTP/2 responses");
     }
 
@@ -206,12 +216,21 @@ where
                             continue;
                         }
 
-                        // Reserve exactly the chunk size so we never pin more
-                        // connection-level flow-control window than we are
-                        // about to consume. Stash the chunk in `self` so it
-                        // survives the upcoming `poll_capacity` wait even if
-                        // it returns `Poll::Pending`.
-                        me.body_tx.reserve_capacity(len);
+                        // Reserve a minimal claim on the connection-level
+                        // flow-control window rather than the whole chunk. The
+                        // chunk is already in hand, so this still cannot pin
+                        // capacity against a body that never produces data
+                        // (#4003), and h2 raises the request to the buffered
+                        // length inside `send_data`, so the demand eventually
+                        // signalled to the peer is unchanged. Claiming the full
+                        // length up front instead makes every in-flight stream a
+                        // heavyweight claimant while it waits, which is costly
+                        // once the streams on a connection collectively demand
+                        // more than the window the peer advertises. Stash the
+                        // chunk in `self` so it survives the upcoming
+                        // `poll_capacity` wait even if it returns
+                        // `Poll::Pending`.
+                        me.body_tx.reserve_capacity(1);
                         *me.buffered_data = Some(Peeked {
                             data: chunk,
                             is_eos,
@@ -275,35 +294,35 @@ enum SendBuf<B> {
 impl<B: Buf> Buf for SendBuf<B> {
     #[inline]
     fn remaining(&self) -> usize {
-        match *self {
-            Self::Buf(ref b) => b.remaining(),
-            Self::Cursor(ref c) => Buf::remaining(c),
+        match self {
+            Self::Buf(b) => b.remaining(),
+            Self::Cursor(c) => Buf::remaining(c),
             Self::None => 0,
         }
     }
 
     #[inline]
     fn chunk(&self) -> &[u8] {
-        match *self {
-            Self::Buf(ref b) => b.chunk(),
-            Self::Cursor(ref c) => c.chunk(),
+        match self {
+            Self::Buf(b) => b.chunk(),
+            Self::Cursor(c) => c.chunk(),
             Self::None => &[],
         }
     }
 
     #[inline]
     fn advance(&mut self, cnt: usize) {
-        match *self {
-            Self::Buf(ref mut b) => b.advance(cnt),
-            Self::Cursor(ref mut c) => c.advance(cnt),
+        match self {
+            Self::Buf(b) => b.advance(cnt),
+            Self::Cursor(c) => c.advance(cnt),
             Self::None => {}
         }
     }
 
     fn chunks_vectored<'a>(&'a self, dst: &mut [IoSlice<'a>]) -> usize {
-        match *self {
-            Self::Buf(ref b) => b.chunks_vectored(dst),
-            Self::Cursor(ref c) => c.chunks_vectored(dst),
+        match self {
+            Self::Buf(b) => b.chunks_vectored(dst),
+            Self::Cursor(c) => c.chunks_vectored(dst),
             Self::None => 0,
         }
     }

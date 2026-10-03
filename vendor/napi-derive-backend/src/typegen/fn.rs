@@ -1,10 +1,11 @@
-use convert_case::{Case, Casing};
-use quote::ToTokens;
 use std::fmt::{Display, Formatter};
+
+use convert_case::Case;
+use quote::ToTokens;
 use syn::{Member, Pat, PathArguments, PathSegment};
 
-use super::{ty_to_ts_type, ToTypeDef, TypeDef};
-use crate::{js_doc_from_comments, CallbackArg, FnKind, NapiFn};
+use super::{r#struct::CLASS_STRUCTS, ty_to_ts_type, ToTypeDef, TypeDef};
+use crate::{typegen::JSDoc, util::to_case, CallbackArg, FnKind, NapiFn};
 
 pub(crate) struct FnArg {
   pub(crate) arg: String,
@@ -16,6 +17,14 @@ pub(crate) struct FnArgList {
   this: Option<FnArg>,
   args: Vec<FnArg>,
   last_required: Option<usize>,
+  is_setter: bool,
+}
+
+impl FnArgList {
+  fn with_setter_context(mut self, is_setter: bool) -> Self {
+    self.is_setter = is_setter;
+    self
+  }
 }
 
 impl Display for FnArgList {
@@ -27,10 +36,12 @@ impl Display for FnArgList {
       if i != 0 || self.this.is_some() {
         write!(f, ", ")?;
       }
-      let is_optional = arg.is_optional
+      // For setters, never mark parameter as optional (TS1051: A 'set' accessor cannot have an optional parameter)
+      let is_optional = !self.is_setter
+        && arg.is_optional
         && self
           .last_required
-          .map_or(true, |last_required| i > last_required);
+          .is_none_or(|last_required| i > last_required);
       if is_optional {
         write!(f, "{}?: {}", arg.arg, arg.ts_type)?;
       } else {
@@ -61,35 +72,39 @@ impl FromIterator<FnArg> for FnArgList {
       this,
       args,
       last_required,
+      is_setter: false,
     }
   }
 }
 
 impl ToTypeDef for NapiFn {
   fn to_type_def(&self) -> Option<TypeDef> {
-    if self.skip_typescript {
+    if self.skip_typescript || self.module_exports || self.no_export {
       return None;
     }
 
-    let def = format!(
-      r#"{prefix} {name}{generic}({args}){ret}"#,
-      prefix = self.gen_ts_func_prefix(),
-      name = &self.js_name,
-      generic = &self
-        .ts_generic_types
-        .as_ref()
-        .map(|g| format!("<{}>", g))
-        .unwrap_or_default(),
-      args = self
-        .ts_args_type
-        .clone()
-        .unwrap_or_else(|| self.gen_ts_func_args()),
-      ret = self
-        .ts_return_type
-        .clone()
-        .map(|t| format!(": {}", t))
-        .unwrap_or_else(|| self.gen_ts_func_ret()),
-    );
+    let prefix = self.gen_ts_func_prefix();
+    let def = match self.ts_type.as_ref() {
+      Some(ts_type) => format!("{prefix} {name}{ts_type}", name = self.js_name),
+      None => format!(
+        r#"{prefix} {name}{generic}({args}){ret}"#,
+        name = self.js_name,
+        generic = self
+          .ts_generic_types
+          .as_ref()
+          .map(|g| format!("<{g}>"))
+          .unwrap_or_default(),
+        args = self
+          .ts_args_type
+          .clone()
+          .unwrap_or_else(|| self.gen_ts_func_args()),
+        ret = self
+          .ts_return_type
+          .clone()
+          .map(|t| format!(": {t}"))
+          .unwrap_or_else(|| self.gen_ts_func_ret()),
+      ),
+    };
 
     Some(TypeDef {
       kind: "fn".to_owned(),
@@ -97,7 +112,7 @@ impl ToTypeDef for NapiFn {
       original_name: None,
       def,
       js_mod: self.js_mod.to_owned(),
-      js_doc: js_doc_from_comments(&self.comments),
+      js_doc: JSDoc::new(&self.comments),
     })
   }
 }
@@ -105,14 +120,14 @@ impl ToTypeDef for NapiFn {
 fn gen_callback_type(callback: &CallbackArg) -> String {
   format!(
     "({args}) => {ret}",
-    args = &callback
+    args = callback
       .args
       .iter()
       .enumerate()
       .map(|(i, arg)| {
         let (ts_type, is_optional) = ty_to_ts_type(arg, false, false, false);
         FnArg {
-          arg: format!("arg{}", i),
+          arg: format!("arg{i}"),
           ts_type,
           is_optional,
         }
@@ -138,9 +153,9 @@ fn gen_ts_func_arg(pat: &Pat) -> String {
           };
           let nested_str = gen_ts_func_arg(&field.pat);
           if member_str == nested_str {
-            member_str.to_case(Case::Camel)
+            to_case(member_str, Case::Camel)
           } else {
-            format!("{}: {}", member_str.to_case(Case::Camel), nested_str)
+            format!("{}: {}", to_case(member_str, Case::Camel), nested_str)
           }
         })
         .collect::<Vec<_>>()
@@ -153,9 +168,9 @@ fn gen_ts_func_arg(pat: &Pat) -> String {
         .iter()
         .enumerate()
         .map(|(index, elem)| {
-          let member_str = format!("field{}", index);
+          let member_str = format!("field{index}");
           let nested_str = gen_ts_func_arg(elem);
-          format!("{}: {}", member_str, nested_str)
+          format!("{member_str}: {nested_str}")
         })
         .collect::<Vec<_>>()
         .join(", "),
@@ -168,7 +183,8 @@ fn gen_ts_func_arg(pat: &Pat) -> String {
         .collect::<Vec<_>>()
         .join(", ")
     ),
-    _ => pat.to_token_stream().to_string().to_case(Case::Camel),
+    Pat::Wild(_) => "_".to_string(),
+    _ => to_case(pat.to_token_stream().to_string(), Case::Camel),
   }
 }
 
@@ -181,9 +197,23 @@ impl NapiFn {
         .iter()
         .filter_map(|arg| match &arg.kind {
           crate::NapiFnArgKind::PatType(path) => {
-            let ty_string = path.ty.to_token_stream().to_string();
-            if ty_string == "Env" {
-              return None;
+            if let syn::Type::Path(syn::TypePath {
+              qself: None,
+              path: syn::Path { segments, .. },
+            }) = path.ty.as_ref()
+            {
+              if segments.last().is_some_and(|s| s.ident == "Env") {
+                return None;
+              }
+            }
+            if let syn::Type::Reference(syn::TypeReference { elem, .. }) = &*path.ty {
+              if let syn::Type::Path(syn::TypePath { qself: None, path }) = elem.as_ref() {
+                if let Some(PathSegment { ident, .. }) = path.segments.last() {
+                  if ident == "Env" {
+                    return None;
+                  }
+                }
+              }
             }
             if let syn::Type::Path(path) = path.ty.as_ref() {
               if let Some(PathSegment { ident, arguments }) = path.path.segments.last() {
@@ -220,6 +250,7 @@ impl NapiFn {
                   {
                     if let Some(syn::GenericArgument::Type(ty)) = angle_bracketed_args.first() {
                       let (ts_type, _) = ty_to_ts_type(ty, false, false, false);
+                      let ts_type = arg.use_overridden_type_or(|| ts_type);
                       return Some(FnArg {
                         arg: "this".to_owned(),
                         ts_type,
@@ -229,7 +260,7 @@ impl NapiFn {
                   } else {
                     return Some(FnArg {
                       arg: "this".to_owned(),
-                      ts_type: "this".to_owned(),
+                      ts_type: arg.use_overridden_type_or(|| "this".to_owned()),
                       is_optional: false,
                     });
                   }
@@ -255,7 +286,7 @@ impl NapiFn {
           }
           crate::NapiFnArgKind::Callback(cb) => {
             let ts_type = arg.use_overridden_type_or(|| gen_callback_type(cb));
-            let arg = cb.pat.to_token_stream().to_string().to_case(Case::Camel);
+            let arg = to_case(cb.pat.to_token_stream().to_string(), Case::Camel);
 
             Some(FnArg {
               arg,
@@ -265,6 +296,7 @@ impl NapiFn {
           }
         })
         .collect::<FnArgList>()
+        .with_setter_context(matches!(self.kind, FnKind::Setter))
     )
   }
 
@@ -280,10 +312,8 @@ impl NapiFn {
         crate::FnKind::Getter => "get",
         crate::FnKind::Setter => "set",
       }
-    } else if self.js_mod.is_some() {
-      "export function"
     } else {
-      "export declare function"
+      "function"
     }
   }
 
@@ -294,11 +324,15 @@ impl NapiFn {
         .parent
         .clone()
         .map(|i| {
-          let parent = i.to_string().to_case(Case::Pascal);
+          let origin_name = i.to_string();
+          let parent = CLASS_STRUCTS
+            .with_borrow(|c| c.get(&origin_name).map(|c| c.js_name.clone()))
+            .unwrap_or_else(|| to_case(origin_name, Case::Pascal));
+
           if self.is_async {
-            format!(": Promise<{}>", parent)
+            format!(": Promise<{parent}>")
           } else {
-            format!(": {}", parent)
+            format!(": {parent}")
           }
         })
         .unwrap_or_else(|| "".to_owned()),
@@ -315,11 +349,10 @@ impl NapiFn {
         } else {
           "void".to_owned()
         };
-
         if self.is_async {
-          format!(": Promise<{}>", ret)
+          format!(": Promise<{ret}>")
         } else {
-          format!(": {}", ret)
+          format!(": {ret}")
         }
       }
     }

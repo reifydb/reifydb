@@ -1,11 +1,11 @@
 //! This module defines s390x-specific machine instruction types.
 
 use crate::binemit::{Addend, CodeOffset, Reloc};
-use crate::ir::{ExternalName, Type, types};
+use crate::ir::{ExternalName, MemFlagsData, Type, types};
 use crate::isa::s390x::abi::S390xMachineDeps;
 use crate::isa::{CallConv, FunctionAlignment};
 use crate::machinst::*;
-use crate::{CodegenError, CodegenResult, settings};
+use crate::{CodegenError, CodegenResult};
 use alloc::boxed::Box;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -239,6 +239,10 @@ impl Inst {
             | Inst::CondBreak { .. }
             | Inst::Unwind { .. }
             | Inst::ElfTlsGetOffset { .. } => InstructionSet::Base,
+
+            Inst::LoadIndexedAddr { .. } | Inst::LoadLogicalIndexedAddr { .. } => {
+                InstructionSet::MIE4
+            }
 
             // These depend on the opcode
             Inst::AluRRR { alu_op, .. } => match alu_op {
@@ -1030,6 +1034,20 @@ fn s390x_get_operands(inst: &mut Inst, collector: &mut DenyReuseVisitor<impl Ope
             collector.reg_def(rd);
             memarg_operands(mem, collector);
         }
+        Inst::LoadIndexedAddr {
+            rd, base, index, ..
+        } => {
+            collector.reg_def(rd);
+            collector.reg_use(base);
+            collector.reg_use(index);
+        }
+        Inst::LoadLogicalIndexedAddr {
+            rd, base, index, ..
+        } => {
+            collector.reg_def(rd);
+            collector.reg_use(base);
+            collector.reg_use(index);
+        }
         Inst::StackProbeLoop { probe_count, .. } => {
             collector.reg_early_def(probe_count);
         }
@@ -1206,17 +1224,14 @@ impl MachInst for Inst {
         vec![vec![0x07, 0x07]]
     }
 
-    fn rc_for_type(ty: Type) -> CodegenResult<(&'static [RegClass], &'static [Type])> {
-        match ty {
-            types::I8 => Ok((&[RegClass::Int], &[types::I8])),
-            types::I16 => Ok((&[RegClass::Int], &[types::I16])),
-            types::I32 => Ok((&[RegClass::Int], &[types::I32])),
-            types::I64 => Ok((&[RegClass::Int], &[types::I64])),
-            types::F16 => Ok((&[RegClass::Float], &[types::F16])),
-            types::F32 => Ok((&[RegClass::Float], &[types::F32])),
-            types::F64 => Ok((&[RegClass::Float], &[types::F64])),
-            types::F128 => Ok((&[RegClass::Float], &[types::F128])),
-            types::I128 => Ok((&[RegClass::Float], &[types::I128])),
+    fn rc_for_type(ty: &Type) -> CodegenResult<(&[RegClass], &[Type])> {
+        match *ty {
+            types::I8 | types::I16 | types::I32 | types::I64 => {
+                Ok((&[RegClass::Int], core::slice::from_ref(ty)))
+            }
+            types::F16 | types::F32 | types::F64 | types::F128 | types::I128 => {
+                Ok((&[RegClass::Float], core::slice::from_ref(ty)))
+            }
             _ if ty.is_vector() && ty.bits() == 128 => Ok((&[RegClass::Float], &[types::I8X16])),
             _ => Err(CodegenError::Unsupported(format!(
                 "Unexpected SSA-value type: {ty}"
@@ -1247,8 +1262,8 @@ impl MachInst for Inst {
         44
     }
 
-    fn ref_type_regclass(_: &settings::Flags) -> RegClass {
-        RegClass::Int
+    fn worst_case_island_growth() -> CodeOffset {
+        0
     }
 
     fn gen_dummy_use(reg: Reg) -> Inst {
@@ -1296,7 +1311,9 @@ impl Inst {
                     ALUOp::SubLogical32 => ("slrk", true),
                     ALUOp::SubLogical64 => ("slgrk", true),
                     ALUOp::Mul32 => ("msrkc", true),
+                    ALUOp::Mul32CC => ("msrkc", false),
                     ALUOp::Mul64 => ("msgrkc", true),
+                    ALUOp::Mul64CC => ("msgrkc", false),
                     ALUOp::And32 => ("nrk", true),
                     ALUOp::And64 => ("ngrk", true),
                     ALUOp::Orr32 => ("ork", true),
@@ -2511,11 +2528,13 @@ impl Inst {
                     VecBinaryOp::Add32x4 => "vaf",
                     VecBinaryOp::Add64x2 => "vag",
                     VecBinaryOp::Add128 => "vaq",
+                    VecBinaryOp::Add128Cout => "vaccq",
                     VecBinaryOp::Sub8x16 => "vsb",
                     VecBinaryOp::Sub16x8 => "vsh",
                     VecBinaryOp::Sub32x4 => "vsf",
                     VecBinaryOp::Sub64x2 => "vsg",
                     VecBinaryOp::Sub128 => "vsq",
+                    VecBinaryOp::Sub128Cout => "vscbiq",
                     VecBinaryOp::Mul8x16 => "vmlb",
                     VecBinaryOp::Mul16x8 => "vmlhw",
                     VecBinaryOp::Mul32x4 => "vmlf",
@@ -3506,6 +3525,56 @@ impl Inst {
                 let mem = mem.pretty_print_default();
 
                 format!("{mem_str}{op} {rd}, {mem}")
+            }
+            &Inst::LoadIndexedAddr {
+                rd,
+                base,
+                index,
+                offset,
+                size,
+            } => {
+                let rd = pretty_print_reg(rd.to_reg());
+                let op = match size {
+                    1 => "lxah",
+                    2 => "lxaf",
+                    3 => "lxag",
+                    4 => "lxaq",
+                    _ => unreachable!(),
+                };
+                let flags = MemFlagsData::trusted();
+                let mem = MemArg::BXD20 {
+                    base,
+                    index,
+                    disp: offset,
+                    flags: flags.into(),
+                };
+                let mem = mem.pretty_print_default();
+                format!("{op} {rd}, {mem}")
+            }
+            &Inst::LoadLogicalIndexedAddr {
+                rd,
+                base,
+                index,
+                offset,
+                size,
+            } => {
+                let rd = pretty_print_reg(rd.to_reg());
+                let op = match size {
+                    1 => "llxah",
+                    2 => "llxaf",
+                    3 => "llxag",
+                    4 => "llxaq",
+                    _ => unreachable!(),
+                };
+                let flags = MemFlagsData::trusted();
+                let mem = MemArg::BXD20 {
+                    base,
+                    index,
+                    disp: offset,
+                    flags: flags.into(),
+                };
+                let mem = mem.pretty_print_default();
+                format!("{op} {rd}, {mem}")
             }
             &Inst::StackProbeLoop {
                 probe_count,

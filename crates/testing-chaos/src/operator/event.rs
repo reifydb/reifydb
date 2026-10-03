@@ -3,8 +3,15 @@
 
 use std::slice::Iter;
 
-use reifydb_core::row::Row;
+use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape};
 use reifydb_value::value::row_number::RowNumber;
+
+#[derive(Debug, Clone)]
+pub struct Row {
+	pub number: RowNumber,
+	pub encoded: EncodedBytes,
+	pub shape: RowShape,
+}
 
 #[derive(Debug, Clone)]
 pub enum ChaosEvent {

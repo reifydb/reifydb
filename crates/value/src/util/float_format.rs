@@ -66,9 +66,9 @@ mod tests {
 
 	#[test]
 	fn test_format_f64_special_values() {
-		assert_eq!(format_f64(f64::INFINITY), "inf");
-		assert_eq!(format_f64(f64::NEG_INFINITY), "-inf");
-		assert_eq!(format_f64(f64::NAN), "NaN");
+		assert_eq!(format_f64(<f64>::INFINITY), "inf");
+		assert_eq!(format_f64(<f64>::NEG_INFINITY), "-inf");
+		assert_eq!(format_f64(<f64>::NAN), "NaN");
 		assert_eq!(format_f64(0.0), "0");
 		assert_eq!(format_f64(-0.0), "0");
 	}
@@ -127,9 +127,9 @@ mod tests {
 
 	#[test]
 	fn test_format_f32_special_values() {
-		assert_eq!(format_f32(f32::INFINITY), "inf");
-		assert_eq!(format_f32(f32::NEG_INFINITY), "-inf");
-		assert_eq!(format_f32(f32::NAN), "NaN");
+		assert_eq!(format_f32(<f32>::INFINITY), "inf");
+		assert_eq!(format_f32(<f32>::NEG_INFINITY), "-inf");
+		assert_eq!(format_f32(<f32>::NAN), "NaN");
 		assert_eq!(format_f32(0.0f32), "0");
 		assert_eq!(format_f32(-0.0f32), "0");
 	}

@@ -48,6 +48,7 @@
 //! For majority of use cases, just use the default garbage collector by invoking [`pin`]. If you
 //! want to create your own garbage collector, use the [`Collector`] API.
 
+#![no_std]
 #![doc(test(
     no_crate_inject,
     attr(
@@ -61,10 +62,11 @@
     rust_2018_idioms,
     unreachable_pub
 )]
-#![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(crossbeam_loom)]
 extern crate loom_crate as loom;
+#[cfg(feature = "std")]
+extern crate std;
 
 #[cfg(crossbeam_loom)]
 #[allow(unused_imports, dead_code)]
@@ -74,6 +76,8 @@ mod primitive {
     }
     pub(crate) mod sync {
         pub(crate) mod atomic {
+            #[cfg(target_has_atomic = "64")]
+            pub(crate) use loom::sync::atomic::AtomicU64;
             pub(crate) use loom::sync::atomic::{fence, AtomicPtr, AtomicUsize, Ordering};
 
             // FIXME: loom does not support compiler_fence at the moment.
@@ -119,13 +123,9 @@ mod primitive {
         }
     }
     pub(crate) mod sync {
-        pub(crate) mod atomic {
-            pub(crate) use core::sync::atomic::{
-                compiler_fence, fence, AtomicPtr, AtomicUsize, Ordering,
-            };
-        }
         #[cfg(feature = "alloc")]
         pub(crate) use alloc::sync::Arc;
+        pub(crate) use core::sync::atomic;
     }
 
     #[cfg(feature = "std")]
@@ -134,6 +134,23 @@ mod primitive {
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 extern crate alloc;
+
+/// Make the given function const if the given condition is true.
+#[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
+macro_rules! const_fn {
+    (
+        const_if: #[cfg($($cfg:tt)+)];
+        $(#[$($attr:tt)*])*
+        $vis:vis const $($rest:tt)*
+    ) => {
+        #[cfg($($cfg)+)]
+        $(#[$($attr)*])*
+        $vis const $($rest)*
+        #[cfg(not($($cfg)+))]
+        $(#[$($attr)*])*
+        $vis $($rest)*
+    };
+}
 
 #[cfg(all(feature = "alloc", target_has_atomic = "ptr"))]
 mod atomic;

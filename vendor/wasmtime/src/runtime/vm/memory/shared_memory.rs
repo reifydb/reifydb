@@ -33,13 +33,21 @@ impl SharedMemory {
     /// Construct a new [`SharedMemory`].
     pub fn new(engine: &Engine, ty: &wasmtime_environ::Memory) -> Result<Self> {
         let tunables = engine.tunables();
+        let memory_tunables = wasmtime_environ::MemoryTunables::new(
+            tunables,
+            wasmtime_environ::MemoryKind::LinearMemory,
+        );
         // Note that without a limiter being passed to `limit_new` this
         // `assert_ready` should never panic.
         let (minimum_bytes, maximum_bytes) = vm::assert_ready(Memory::limit_new(ty, None))?;
-        let mmap_memory = MmapMemory::new(ty, tunables, minimum_bytes, maximum_bytes)?;
+        let mmap_memory = MmapMemory::new(ty, &memory_tunables, minimum_bytes, maximum_bytes)?;
         let boxed: Box<dyn crate::runtime::vm::RuntimeLinearMemory> =
             try_new::<Box<_>>(mmap_memory)?;
-        Self::wrap(engine, ty, LocalMemory::new(ty, tunables, boxed, None)?)
+        Self::wrap(
+            engine,
+            ty,
+            LocalMemory::new(ty, &memory_tunables, boxed, None)?,
+        )
     }
 
     /// Wrap an existing [Memory] with the locking provided by a [SharedMemory].
@@ -138,7 +146,15 @@ impl SharedMemory {
         assert!(std::mem::size_of::<AtomicU32>() == 4);
         assert!(std::mem::align_of::<AtomicU32>() <= 4);
         let atomic = unsafe { AtomicU32::from_ptr(addr.cast()) };
-        let deadline = timeout.map(|d| Instant::now() + d);
+        // Wasm linear memory is always little-endian, but `AtomicU32` uses the
+        // host's native endianness.
+        let expected = expected.to_le();
+
+        // Note that `checked_add` is used such that when `timeout` is too large
+        // it'll cause there to be no timeout at all if we can't represent the
+        // deadline. That effectively maps to the requested timeout since if we
+        // can't represent the deadline we'll be here awhile.
+        let deadline = timeout.and_then(|d| Instant::now().checked_add(d));
 
         WAITER.with(|waiter| {
             let mut waiter = waiter.borrow_mut();
@@ -162,7 +178,12 @@ impl SharedMemory {
         assert!(std::mem::size_of::<AtomicU64>() == 8);
         assert!(std::mem::align_of::<AtomicU64>() <= 8);
         let atomic = unsafe { AtomicU64::from_ptr(addr.cast()) };
-        let deadline = timeout.map(|d| Instant::now() + d);
+        // Wasm linear memory is always little-endian, but `AtomicU64` uses the
+        // host's native endianness.
+        let expected = expected.to_le();
+
+        // See `atomic_wait32` for why this is using `checked_add`.
+        let deadline = timeout.and_then(|d| Instant::now().checked_add(d));
 
         WAITER.with(|waiter| {
             let mut waiter = waiter.borrow_mut();

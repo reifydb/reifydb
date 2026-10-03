@@ -12,7 +12,7 @@
 [package]
 edition = "2018"
 name = "memfd"
-version = "0.6.5"
+version = "0.6.6"
 authors = [
     "Luca Bruno <lucab@lucabruno.net>",
     "Simonas Kazlauskas <memfd@kazlauskas.me>",
@@ -44,19 +44,19 @@ categories = [
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/lucab/memfd-rs"
 
+[package.metadata.release]
+publish = false
+push = false
+pre-release-commit-message = "cargo: memfd release {{version}}"
+sign-commit = true
+sign-tag = true
+tag-message = "memfd {{version}}"
+
 [package.metadata.docs.rs]
 rustdoc-args = [
     "--cfg",
     "docsrs",
 ]
-
-[package.metadata.release]
-pre-release-commit-message = "cargo: memfd release {{version}}"
-publish = false
-push = false
-sign-commit = true
-sign-tag = true
-tag-message = "memfd {{version}}"
 
 [lib]
 name = "memfd"

@@ -8,7 +8,7 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::expiry::{ReapQueue, ReapQueueKey},
-			state::{GroupId, GroupStateKey, OperatorStateKey},
+			state::{GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey},
 		},
 		typed::direction::Desc,
 	},
@@ -30,8 +30,6 @@ pub trait Reaper {
 
 pub trait IdentityReclaim: StateStore {
 	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
-
-	fn reclaim_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome>;
 }
 
 pub struct StoreReaper;
@@ -98,7 +96,6 @@ pub struct GroupDrain {
 
 #[derive(Default)]
 struct GroupScan {
-	identity: Vec<GroupStateKey>,
 	data: Vec<(GroupStateKey, EncodedPodRow)>,
 }
 
@@ -106,36 +103,22 @@ fn bucket(rows: Vec<(GroupStateKey, EncodedPodRow)>) -> (HashMap<GroupId, GroupS
 	let mut buckets: HashMap<GroupId, GroupScan> = HashMap::new();
 	let mut last = None;
 	for (key, row) in rows {
-		let Some((group, keyspace, _)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes()) else {
+		let Some((group, _, _)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes()) else {
 			continue;
 		};
 		last = Some(group);
-		let bucket = buckets.entry(group).or_default();
-		match keyspace.is_data() {
-			true => bucket.data.push((key, row)),
-			false => bucket.identity.push(key),
-		}
+		buckets.entry(group).or_default().data.push((key, row));
 	}
 	(buckets, last)
 }
 
 fn scan_group(store: &mut dyn StateStore, group: GroupId, budget: usize) -> Result<Option<GroupScan>> {
-	let mut identity = Vec::new();
-	let mut data = Vec::new();
-	let swept = store.group_sweep(group, false, Some(budget.saturating_add(1)))?;
+	let swept = store.group_sweep(group, KeyspaceMask::data(), Some(budget.saturating_add(1)))?;
 	if swept.len() > budget {
 		return Ok(None);
 	}
-	for (key, row) in swept {
-		match OperatorStateKey::decode_inner(key.as_encoded().as_bytes()) {
-			Some((_, keyspace, _)) if keyspace.is_data() => data.push((key, row)),
-			Some(_) => identity.push(key),
-			None => {}
-		}
-	}
 	Ok(Some(GroupScan {
-		identity,
-		data,
+		data: swept,
 	}))
 }
 
@@ -151,13 +134,16 @@ where
 	let Some(scan) = scan_group(store, group, budget)? else {
 		return drain_group_scanning(store, group, reaper, budget);
 	};
-	Ok(GroupDrain {
-		freed: reap_scanned(store, group, scan, reaper)?,
-		still_queued: false,
-	})
+	reap_scanned(store, group, scan, reaper, budget)
 }
 
-fn reap_scanned<R>(store: &mut dyn IdentityReclaim, group: GroupId, scan: GroupScan, reaper: &mut R) -> Result<usize>
+fn reap_scanned<R>(
+	store: &mut dyn IdentityReclaim,
+	group: GroupId,
+	scan: GroupScan,
+	reaper: &mut R,
+	budget: usize,
+) -> Result<GroupDrain>
 where
 	R: Reaper,
 {
@@ -169,14 +155,17 @@ where
 	}
 	if group.is_root() {
 		store.state_remove(&queue_key(group))?;
-		return Ok(0);
+		return Ok(GroupDrain {
+			freed: 0,
+			still_queued: false,
+		});
 	}
 	store.remove_root_siblings(&scan.data)?;
 	for (key, _) in &scan.data {
 		reaper.reap(store, key)?;
 	}
 	reifydb_assertions! {
-		let leftover = store.group_sweep(group, true, None)?.len();
+		let leftover = store.group_sweep(group, KeyspaceMask::data(), None)?.len();
 		assert!(
 			leftover == 0,
 			"group {} still holds {leftover} data rows in its own partition; forgetting its dictionary \
@@ -185,9 +174,25 @@ where
 		);
 	}
 	let freed = scan.data.len();
-	let outcome = store.reclaim_identity_keys(group, &scan.identity)?;
+	if freed >= budget {
+		return Ok(GroupDrain {
+			freed,
+			still_queued: true,
+		});
+	}
+	let outcome = store.reclaim_identity(group, budget - freed)?;
+	let freed = freed + outcome.removed.as_u64() as usize;
+	if outcome.more {
+		return Ok(GroupDrain {
+			freed,
+			still_queued: true,
+		});
+	}
 	store.state_remove(&queue_key(group))?;
-	Ok(freed + outcome.removed.as_u64() as usize)
+	Ok(GroupDrain {
+		freed,
+		still_queued: false,
+	})
 }
 
 fn drain_group_scanning<R>(
@@ -241,7 +246,7 @@ where
 	R: Reaper,
 {
 	let ordered = sweep_order(groups);
-	let sweep = store.group_sweep_many(&ordered, budget)?;
+	let sweep = store.group_sweep_many(&ordered, budget, KeyspaceMask::data())?;
 	let (mut buckets, last) = bucket(sweep.rows);
 	let cut = match sweep.complete {
 		true => None,
@@ -266,7 +271,17 @@ where
 			still_queued.extend(pending);
 			break;
 		}
-		spent += reap_scanned(store, group, buckets.remove(&group).unwrap_or_default(), reaper)?;
+		let drain = reap_scanned(
+			store,
+			group,
+			buckets.remove(&group).unwrap_or_default(),
+			reaper,
+			budget.saturating_sub(spent),
+		)?;
+		spent += drain.freed;
+		if drain.still_queued {
+			still_queued.push(group);
+		}
 	}
 	Ok(DrainOutcome {
 		freed: spent,
@@ -288,7 +303,7 @@ where
 	if group.is_root() {
 		return Ok(0);
 	}
-	let doomed = store.group_sweep(group, true, Some(budget))?;
+	let doomed = store.group_sweep(group, KeyspaceMask::data(), Some(budget))?;
 	store.remove_root_siblings(&doomed)?;
 	for (key, _) in &doomed {
 		reaper.reap(store, key)?;

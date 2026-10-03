@@ -483,7 +483,7 @@ macro_rules! tuples_try_from_row {
 
 tuples_try_from_row!(A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P);
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     use wasm_bindgen_test::wasm_bindgen_test as test;
@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn test_try_from_row_for_tuple_1() -> Result<()> {
         use crate::ToSql;
-        use std::convert::TryFrom;
+        use std::convert::TryFrom as _;
 
         let conn = Connection::open_in_memory()?;
         conn.execute(
@@ -510,7 +510,7 @@ mod tests {
 
     #[test]
     fn test_try_from_row_for_tuple_2() -> Result<()> {
-        use std::convert::TryFrom;
+        use std::convert::TryFrom as _;
 
         let conn = Connection::open_in_memory()?;
         conn.execute("CREATE TABLE test (a INTEGER, b INTEGER)", [])?;
@@ -528,7 +528,7 @@ mod tests {
 
     #[test]
     fn test_try_from_row_for_tuple_16() -> Result<()> {
-        use std::convert::TryFrom;
+        use std::convert::TryFrom as _;
 
         let create_table = "CREATE TABLE test (
             a INTEGER,
@@ -625,14 +625,14 @@ mod tests {
         {
             let iterator_count = stmt.query_map([], |_| Ok(()))?.count();
             assert_eq!(1, iterator_count); // should be 0
-            use fallible_streaming_iterator::FallibleStreamingIterator;
+            use fallible_streaming_iterator::FallibleStreamingIterator as _;
             let fallible_iterator_count = stmt.query([])?.count().unwrap_or(0);
             assert_eq!(0, fallible_iterator_count);
         }
         {
             let iterator_last = stmt.query_map([], |_| Ok(()))?.last();
             assert!(iterator_last.is_some()); // should be none
-            use fallible_iterator::FallibleIterator;
+            use fallible_iterator::FallibleIterator as _;
             let fallible_iterator_last = stmt.query([])?.map(|_| Ok(())).last();
             assert!(fallible_iterator_last.is_err());
         }

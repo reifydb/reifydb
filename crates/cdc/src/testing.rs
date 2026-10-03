@@ -96,7 +96,6 @@ impl CdcHost for TestCdcHost {
 			self.event_bus.clone(),
 			Interceptors::new(),
 			IdentityId::system(),
-			self.clock.clone(),
 		)
 	}
 

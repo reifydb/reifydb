@@ -9,7 +9,9 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change},
 	key::operator::keyspace::timer::TimerWheelKey,
 };
-use reifydb_value::Result;
+#[cfg(reifydb_assertions)]
+use reifydb_value::value::canonical::assert_canonical_floats;
+use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
 	engine::{FlowEngineInner, dispatch::Node},
@@ -148,6 +150,13 @@ impl FlowEngineInner {
 				let Some(result) = fired else {
 					continue;
 				};
+				reifydb_assertions! {
+					for diff in &result.diffs {
+						for batch in diff.pre().into_iter().chain(diff.post()) {
+							assert_canonical_floats(batch, "flow timer");
+						}
+					}
+				}
 				if result.diffs.is_empty() {
 					continue;
 				}
@@ -165,6 +174,7 @@ impl FlowEngineInner {
 mod tests {
 	use std::sync::Arc;
 
+	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion},
@@ -177,7 +187,7 @@ mod tests {
 				flow::{FlowId, OperatorId},
 				id::ViewId,
 			},
-			change::Change,
+			change::{Change, Diff},
 			flow::OperatorCapability,
 		},
 		state::timer::TimerKind,
@@ -236,6 +246,29 @@ mod tests {
 				})));
 			}
 			Ok(None)
+		}
+	}
+
+	struct NegativeZeroTimer(fn(RecordBatch) -> Diff);
+
+	impl HostOperator for NegativeZeroTimer {
+		fn id(&self) -> OperatorId {
+			OPERATOR
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+			Ok(change)
+		}
+
+		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+			let column: ArrayRef = Arc::new(Float64Array::from(vec![-0.0f64]));
+			let batch = RecordBatch::try_from_iter([("c", column)]).unwrap();
+			let version = ChangeVersion::from(CommitVersion(1));
+			Ok(Some(Change::from_flow(OPERATOR, version, vec![(self.0)(batch)], timer.due)))
 		}
 	}
 
@@ -406,5 +439,67 @@ mod tests {
 			.unwrap();
 
 		assert_eq!(fired, 1, "the timer the failed dispatch never committed must still be due");
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "is not canonical")]
+	fn a_timer_output_holding_negative_zero_panics() {
+		// A timer's output skips apply, so a raw -0.0 must stop here or it reaches the children unchecked.
+		let engine = TestEngine::new();
+		let mut inner = engine_inner(&engine);
+		let flow = dag();
+		inner.register_flow_dag(flow.clone());
+
+		let mut seed = engine.flow_txn().deferred();
+		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
+		let seeded = seed.take_pending();
+		let store = engine.inner().operator_state();
+		apply_operator_state(&store, &seeded);
+
+		let armed: Vec<TimerDue> =
+			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
+		inner.timers.rebuild(FLOW, armed);
+		inner.insert_operator(FLOW, OPERATOR, Box::new(NegativeZeroTimer(Diff::insert)));
+
+		let mut txn = engine.flow_txn().deferred();
+		let _ = inner.dispatch_due_timers(
+			&mut txn,
+			&flow,
+			ChangeVersion::from(CommitVersion(1)),
+			flow.topological_order(),
+		);
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "is not canonical")]
+	fn a_timer_removal_holding_negative_zero_panics() {
+		// A timer removal carries its batch in pre only, so a check on post alone must never let -0.0 pass.
+		let engine = TestEngine::new();
+		let mut inner = engine_inner(&engine);
+		let flow = dag();
+		inner.register_flow_dag(flow.clone());
+
+		let mut seed = engine.flow_txn().deferred();
+		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
+		let seeded = seed.take_pending();
+		let store = engine.inner().operator_state();
+		apply_operator_state(&store, &seeded);
+
+		let armed: Vec<TimerDue> =
+			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
+		inner.timers.rebuild(FLOW, armed);
+		inner.insert_operator(FLOW, OPERATOR, Box::new(NegativeZeroTimer(Diff::remove)));
+
+		let mut txn = engine.flow_txn().deferred();
+		let _ = inner.dispatch_due_timers(
+			&mut txn,
+			&flow,
+			ChangeVersion::from(CommitVersion(1)),
+			flow.topological_order(),
+		);
 	}
 }

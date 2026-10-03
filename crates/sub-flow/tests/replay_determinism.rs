@@ -17,7 +17,7 @@
 //! Both comparators live in `reifydb_testing_flow::state` so the catch-up suites hold flows to
 //! the same contract this one does.
 
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 
 use arrow_array::RecordBatch;
 use arrow_schema::{Schema, SchemaRef};
@@ -41,10 +41,7 @@ use reifydb_flow_async::operator::{
 	join::operator::{JoinOperator, JoinSideConfig},
 	window::operator::{WindowConfig, WindowOperator},
 };
-use reifydb_routine::{
-	function::default_in_process_functions, monoid::default_in_process_monoids,
-	procedure::default_in_process_procedures,
-};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_testing_flow::{
@@ -76,7 +73,7 @@ fn routines() -> Routines {
 	let b = Routines::builder();
 	let b = default_in_process_functions(b);
 	let b = default_in_process_procedures(b);
-	default_in_process_monoids(b).configure()
+	b.configure()
 }
 
 fn count_keyspace(state: &State, keyspace: KeyspaceId) -> usize {
@@ -106,20 +103,28 @@ fn chunks<'a, T>(events: &'a [T], slices: &[usize]) -> Vec<&'a [T]> {
 
 #[derive(Clone)]
 enum Event {
-	Insert(reifydb_core::row::Row),
-	Remove(reifydb_core::row::Row),
-	Update(reifydb_core::row::Row, reifydb_core::row::Row),
+	Insert(reifydb_testing_chaos::operator::event::Row),
+	Remove(reifydb_testing_chaos::operator::event::Row),
+	Update(reifydb_testing_chaos::operator::event::Row, reifydb_testing_chaos::operator::event::Row),
 }
 
 fn change_of(events: &[Event]) -> Change {
 	let mut diffs = Vec::with_capacity(events.len());
 	for event in events {
 		diffs.push(match event {
-			Event::Insert(row) => Diff::insert(batch::from_row(row).expect("a row converts")),
-			Event::Remove(row) => Diff::remove(batch::from_row(row).expect("a row converts")),
+			Event::Insert(row) => Diff::insert(
+				batch::from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded))
+					.expect("a row converts"),
+			),
+			Event::Remove(row) => Diff::remove(
+				batch::from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded))
+					.expect("a row converts"),
+			),
 			Event::Update(pre, post) => Diff::update(
-				batch::from_row(pre).expect("a row converts"),
-				batch::from_row(post).expect("a row converts"),
+				batch::from_encoded_bytes(&pre.shape, &[pre.number], slice::from_ref(&pre.encoded))
+					.expect("a row converts"),
+				batch::from_encoded_bytes(&post.shape, &[post.number], slice::from_ref(&post.encoded))
+					.expect("a row converts"),
 			),
 		});
 	}

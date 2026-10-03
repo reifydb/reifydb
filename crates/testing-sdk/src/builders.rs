@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::RecordBatch;
+use std::sync::Arc;
+
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use reifydb_codec::row::{
 	bytes::RowBuilder,
 	shape::{RowFamily, RowShape, RowShapeField},
@@ -12,10 +14,22 @@ use reifydb_core::{
 		catalog::{id::TableId, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
-	row::Row,
-	value::batch::from_row,
+	value::{
+		batch::{batch, concat},
+		column::builder::ColumnBuilder,
+	},
 };
-use reifydb_value::value::{Value, datetime::DateTime, row_number::RowNumber, value_type::ValueType};
+use reifydb_testing_chaos::operator::event::Row;
+use reifydb_value::value::{
+	Value,
+	constraint::Constraint,
+	container::temporal_array::datetime_array,
+	datetime::DateTime,
+	diff_type::DiffType,
+	row_number::RowNumber,
+	system_columns::{SystemColumn, stamp_system_columns},
+	value_type::ValueType,
+};
 
 pub struct TestRowBuilder {
 	row_number: RowNumber,
@@ -147,6 +161,7 @@ pub struct TestChangeBuilder {
 	diffs: Diffs,
 	version: CommitVersion,
 	changed_at: DateTime,
+	run: Option<(DiffType, Vec<RecordBatch>, Vec<RecordBatch>)>,
 }
 
 impl Default for TestChangeBuilder {
@@ -162,6 +177,7 @@ impl TestChangeBuilder {
 			diffs: Diffs::new(),
 			version: CommitVersion(1),
 			changed_at: DateTime::default(),
+			run: None,
 		}
 	}
 
@@ -176,7 +192,7 @@ impl TestChangeBuilder {
 	}
 
 	pub fn insert(mut self, row: Row) -> Self {
-		self.diffs.push(Diff::insert(row_batch(&row)));
+		self.extend_run(DiffType::Insert, None, Some(row_batch(&row)));
 		self
 	}
 
@@ -186,7 +202,7 @@ impl TestChangeBuilder {
 	}
 
 	pub fn update(mut self, pre: Row, post: Row) -> Self {
-		self.diffs.push(Diff::update(row_batch(&pre), row_batch(&post)));
+		self.extend_run(DiffType::Update, Some(row_batch(&pre)), Some(row_batch(&post)));
 		self
 	}
 
@@ -203,7 +219,7 @@ impl TestChangeBuilder {
 	}
 
 	pub fn remove(mut self, row: Row) -> Self {
-		self.diffs.push(Diff::remove(row_batch(&row)));
+		self.extend_run(DiffType::Remove, Some(row_batch(&row)), None);
 		self
 	}
 
@@ -212,7 +228,8 @@ impl TestChangeBuilder {
 		self.remove(row)
 	}
 
-	pub fn build(self) -> Change {
+	pub fn build(mut self) -> Change {
+		self.close_run();
 		Change {
 			origin: self.origin,
 			diffs: self.diffs,
@@ -222,10 +239,77 @@ impl TestChangeBuilder {
 	}
 }
 
+impl TestChangeBuilder {
+	fn extend_run(&mut self, kind: DiffType, pre: Option<RecordBatch>, post: Option<RecordBatch>) {
+		let same_schema = |next: &Option<RecordBatch>, run: &[RecordBatch]| match (next, run.last()) {
+			(Some(next), Some(last)) => next.schema_ref() == last.schema_ref(),
+			(None, None) => true,
+			_ => false,
+		};
+		let joins = matches!(&self.run, Some((run_kind, pres, posts))
+			if *run_kind == kind && same_schema(&pre, pres) && same_schema(&post, posts));
+		if !joins {
+			self.close_run();
+			self.run = Some((kind, Vec::new(), Vec::new()));
+		}
+		let (_, pres, posts) = self.run.as_mut().expect("a run is open after the check above");
+		pres.extend(pre);
+		posts.extend(post);
+	}
+
+	fn close_run(&mut self) {
+		let Some((kind, pres, posts)) = self.run.take() else {
+			return;
+		};
+		self.diffs.push(match kind {
+			DiffType::Insert => Diff::insert(glued(&posts)),
+			DiffType::Update => Diff::update(glued(&pres), glued(&posts)),
+			DiffType::Remove => Diff::remove(glued(&pres)),
+		});
+	}
+}
+
 fn row_batch(row: &Row) -> RecordBatch {
-	match from_row(row) {
+	let shape = &row.shape;
+	let mut columns = Vec::with_capacity(shape.fields().len());
+	for (index, field) in shape.fields().iter().enumerate() {
+		let value = shape.get_value(&row.encoded, index);
+		let column_type = match value {
+			Value::None {
+				..
+			} => field.constraint.get_type(),
+			Value::Decimal(_) => field.constraint.get_type().inner_type().clone(),
+			_ => value.get_type(),
+		};
+		let mut builder = ColumnBuilder::with_capacity(column_type, 1);
+		builder.push_value(value);
+		if let Some(Constraint::Dictionary(dictionary, _)) = field.constraint.constraint() {
+			builder.set_dictionary_id(*dictionary);
+		}
+		columns.push(builder.finish(&field.name));
+	}
+	let carried = shape.family().system_columns();
+	let mut stamps: Vec<(SystemColumn, ArrayRef)> =
+		vec![(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![row.number.0])))];
+	if carried.contains(&SystemColumn::CreatedAt) {
+		stamps.push((SystemColumn::CreatedAt, Arc::new(datetime_array([shape.created_at(&row.encoded)]))));
+	}
+	if carried.contains(&SystemColumn::UpdatedAt) {
+		stamps.push((SystemColumn::UpdatedAt, Arc::new(datetime_array([shape.updated_at(&row.encoded)]))));
+	}
+	if let Some(time) = shape.time(&row.encoded) {
+		stamps.push((SystemColumn::Time, Arc::new(datetime_array([time]))));
+	}
+	match batch(columns).and_then(|columns| stamp_system_columns(columns, stamps)) {
 		Ok(batch) => batch,
 		Err(e) => panic!("test change row {} does not build a batch: {e}", row.number.0),
+	}
+}
+
+fn glued(batches: &[RecordBatch]) -> RecordBatch {
+	match concat(batches) {
+		Ok(batch) => batch,
+		Err(e) => panic!("test change rows of one shape do not glue into one batch: {e}"),
 	}
 }
 
@@ -267,7 +351,7 @@ impl TestLayoutBuilder {
 }
 
 pub mod helpers {
-	use reifydb_core::{interface::change::Change, row::Row};
+	use reifydb_core::interface::change::Change;
 	use reifydb_value::value::row_number::RowNumber;
 
 	use super::*;

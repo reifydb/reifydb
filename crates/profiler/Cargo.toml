@@ -26,7 +26,6 @@ dashmap = { workspace = true }
 serde = { workspace = true }
 once_cell = { workspace = true }
 paste = { workspace = true }
-tdigest = { workspace = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }

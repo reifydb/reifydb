@@ -32,7 +32,8 @@ use reifydb_value::{
 		partition::Partition,
 		row_number::RowNumber,
 		system_columns::{
-			SystemColumn, column_view, require_row_numbers, system_column, user_columns, with_system_column,
+			SystemColumn, column_view, require_row_numbers, stamp_system_columns, system_column,
+			user_columns,
 		},
 		value_type::ValueType,
 	},
@@ -263,11 +264,10 @@ fn decode_run(
 			]
 		}
 	};
-	for (column, array) in stamps {
-		if let Some(array) = array {
-			decoded = with_system_column(decoded, column, array)?;
-		}
-	}
+	decoded = stamp_system_columns(
+		decoded,
+		stamps.into_iter().filter_map(|(column, array)| array.map(|array| (column, array))).collect(),
+	)?;
 
 	Ok(decoded)
 }
@@ -331,7 +331,7 @@ fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<RecordBatch> {
 		}
 		result_columns.push(buf.finish(name));
 	}
-	let mut merged = batch(result_columns)?;
+	let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 
 	for column in SystemColumn::ALL {
 		if column == SystemColumn::Time {
@@ -355,7 +355,7 @@ fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<RecordBatch> {
 		if parts.is_empty() {
 			continue;
 		}
-		merged = with_system_column(merged, column, concat_columns(&parts)?.1)?;
+		stamps.push((column, concat_columns(&parts)?.1));
 	}
 
 	let mut times: Vec<Option<DateTime>> = Vec::with_capacity(total);
@@ -371,10 +371,10 @@ fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<RecordBatch> {
 		assert_all_or_none(SystemColumn::Time, timed, total);
 	}
 	if timed > 0 {
-		merged = with_system_column(merged, SystemColumn::Time, time_column(times))?;
+		stamps.push((SystemColumn::Time, time_column(times)));
 	}
 
-	Ok(merged)
+	stamp_system_columns(batch(result_columns)?, stamps)
 }
 
 #[instrument(name = "flow::operator::join::columns_from_block", level = "trace", skip_all, fields(rows = block.len()))]
@@ -633,7 +633,7 @@ mod tests {
 	use arrow_array::UInt64Array;
 	use reifydb_core::{interface::catalog::flow::OperatorId, value::column::factory::int4};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::value::system_columns::{created_at, updated_at};
+	use reifydb_value::value::system_columns::{created_at, updated_at, with_system_column};
 
 	use super::*;
 	use crate::{

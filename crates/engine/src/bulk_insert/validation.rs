@@ -3,54 +3,201 @@
 
 use std::iter;
 
-use arrow_array::ArrayRef;
+use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
-use reifydb_core::{interface::catalog::column::Column, value::column::builder::ColumnBuilder};
+use reifydb_core::{interface::catalog::column::Column, internal_error, value::column::builder::ColumnBuilder};
 use reifydb_value::{
+	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{Value, column_view::ColumnView, identity::IdentityId},
+	value::{
+		Value,
+		column_view::{ColumnView, ViewData},
+		identity::IdentityId,
+		system_columns::{column_view, is_system_field},
+		value_type::ValueType,
+	},
 };
 
 use super::coerce::RowCoercer;
 use crate::{Result, error::EngineError};
 
-pub fn coerce_rows(
+const TAG: &str = "tag";
+
+struct Segment<'a> {
+	columns: &'a [Column],
+	tagged: bool,
+	source_name: &'a str,
+	coercer: &'a RowCoercer,
+}
+
+#[allow(clippy::type_complexity)]
+pub fn coerce_columns(
 	rows: &[Params],
+	batches: &[(usize, RecordBatch)],
 	columns: &[Column],
+	tagged: bool,
 	source_name: &str,
 	identity: IdentityId,
-) -> Result<Vec<Vec<Value>>> {
-	if rows.is_empty() {
-		return Ok(Vec::new());
+) -> Result<(Vec<(FieldRef, ArrayRef)>, Option<(FieldRef, ArrayRef)>)> {
+	let coercer = RowCoercer::new(identity);
+	let segment = Segment {
+		columns,
+		tagged,
+		source_name,
+		coercer: &coercer,
+	};
+	let total = rows.len() + batches.iter().map(|(_, batch)| batch.num_rows()).sum::<usize>();
+	let mut builders: Vec<ColumnBuilder> =
+		columns.iter().map(|col| ColumnBuilder::with_capacity(col.constraint.get_type(), total)).collect();
+	let mut tags = tagged.then(|| ColumnBuilder::with_capacity(ValueType::Any, total));
+	let mut taken = 0;
+	let mut first_row = 0;
+	for (at, batch) in batches {
+		first_row +=
+			collect_rows_to_columns(&segment, &rows[taken..*at], first_row, &mut builders, tags.as_mut())?;
+		taken = *at;
+		first_row += coerce_batch(&segment, batch, first_row, &mut builders, tags.as_mut())?;
+	}
+	collect_rows_to_columns(&segment, &rows[taken..], first_row, &mut builders, tags.as_mut())?;
+	let columns = builders.into_iter().zip(columns).map(|(builder, column)| builder.finish(&column.name)).collect();
+	Ok((columns, tags.map(|builder| builder.finish(TAG))))
+}
+
+fn coerce_batch(
+	segment: &Segment<'_>,
+	batch: &RecordBatch,
+	first_row: usize,
+	builders: &mut [ColumnBuilder],
+	tags: Option<&mut ColumnBuilder>,
+) -> Result<usize> {
+	let rows = batch.num_rows();
+	if rows == 0 {
+		return Ok(0);
 	}
 
-	let column_data = collect_rows_to_columns(rows, columns, source_name, &RowCoercer::new(identity))?;
+	let views = segment.columns.iter().map(|col| column_view(batch, &col.name)).collect::<Result<Vec<_>>>()?;
+	let mut failure: Option<(usize, Error)> = None;
+	for ((builder, column), view) in builders.iter_mut().zip(segment.columns).zip(&views) {
+		let limit = failure.as_ref().map_or(rows, |(row, _)| *row);
+		let Some(view) = view else {
+			for _ in 0..rows {
+				builder.push_none();
+			}
+			continue;
+		};
+		let per_cell =
+			matches!(view.data, ViewData::Any { .. } | ViewData::Digest { .. } | ViewData::None { .. });
+		if per_cell {
+			if let Some(found) = coerce_cells(segment, column, view, first_row, limit, builder) {
+				failure = Some(found);
+			}
+			continue;
+		}
+		if view.base_type() == *column.constraint.get_type().inner_type() {
+			builder.append_values(view)?;
+			continue;
+		}
+		match segment.coercer.cast_column(view, column) {
+			Ok(cast) => builder.append_values(&ColumnView::try_from(&cast)?)?,
+			Err(_) => match coerce_cells(segment, column, view, first_row, limit, builder) {
+				Some(found) => failure = Some(found),
+				None if failure.is_some() => {}
+				None => {
+					return Err(internal_error!(
+						"bulk column {} failed its column cast where every cell cast passes",
+						column.name
+					));
+				}
+			},
+		}
+	}
+	if let Some((_, error)) = failure {
+		return Err(error);
+	}
 
-	columns_to_rows(&column_data, rows.len(), columns.len())
+	if let Some(field) = batch.schema().fields().iter().find(|field| {
+		is_system_field(field)
+			|| !(segment.columns.iter().any(|c| &c.name == field.name())
+				|| (segment.tagged && field.name() == TAG))
+	}) {
+		return Err(EngineError::BulkInsertColumnNotFound {
+			fragment: Fragment::None,
+			table_name: segment.source_name.to_string(),
+			column: field.name().to_string(),
+		}
+		.into());
+	}
+
+	if let Some(tags) = tags {
+		match column_view(batch, TAG)? {
+			Some(view) => {
+				for row in 0..rows {
+					push_tag(tags, view.get_value(row));
+				}
+			}
+			None => {
+				for _ in 0..rows {
+					tags.push_none();
+				}
+			}
+		}
+	}
+	Ok(rows)
+}
+
+fn coerce_cells(
+	segment: &Segment<'_>,
+	column: &Column,
+	view: &ColumnView<'_>,
+	first_row: usize,
+	limit: usize,
+	builder: &mut ColumnBuilder,
+) -> Option<(usize, Error)> {
+	for row in 0..limit {
+		match segment.coercer.coerce(view.get_value(row), column, segment.source_name, first_row + row) {
+			Ok(value) => builder.push_value(value),
+			Err(error) => return Some((row, error)),
+		}
+	}
+	None
+}
+
+fn push_tag(tags: &mut ColumnBuilder, value: Value) {
+	match value {
+		Value::None {
+			..
+		} => tags.push_none(),
+		value => tags.push_value(Value::Any(Box::new(value))),
+	}
 }
 
 fn collect_rows_to_columns(
+	segment: &Segment<'_>,
 	rows: &[Params],
-	columns: &[Column],
-	source_name: &str,
-	coercer: &RowCoercer,
-) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	first_row: usize,
+	builders: &mut [ColumnBuilder],
+	mut tags: Option<&mut ColumnBuilder>,
+) -> Result<usize> {
+	let columns = segment.columns;
+	let source_name = segment.source_name;
+	let coercer = segment.coercer;
 	let num_cols = columns.len();
-	let mut column_data: Vec<ColumnBuilder> =
-		columns.iter().map(|col| ColumnBuilder::with_capacity(col.constraint.get_type(), rows.len())).collect();
 
 	for (row_idx, params) in rows.iter().enumerate() {
 		match params {
 			Params::Named(map) => {
 				for (col_idx, col) in columns.iter().enumerate() {
 					let value = map.get(&col.name).cloned().unwrap_or(Value::none());
-					column_data[col_idx].push_value(coercer.coerce(
+					builders[col_idx].push_value(coercer.coerce(
 						value,
 						col,
 						source_name,
-						row_idx,
+						first_row + row_idx,
 					)?);
+				}
+				if let Some(tags) = tags.as_deref_mut() {
+					push_tag(tags, map.get(TAG).cloned().unwrap_or(Value::none()));
 				}
 			}
 			Params::Positional(vals) => {
@@ -62,18 +209,29 @@ fn collect_rows_to_columns(
 					}
 					.into());
 				}
-				for ((col_data, col), val) in column_data
+				for ((col_data, col), val) in builders
 					.iter_mut()
 					.zip(columns.iter())
 					.zip(vals.iter().map(Some).chain(iter::repeat(None)))
 				{
 					let value = val.cloned().unwrap_or(Value::none());
-					col_data.push_value(coercer.coerce(value, col, source_name, row_idx)?);
+					col_data.push_value(coercer.coerce(
+						value,
+						col,
+						source_name,
+						first_row + row_idx,
+					)?);
+				}
+				if let Some(tags) = tags.as_deref_mut() {
+					tags.push_none();
 				}
 			}
 			Params::None => {
-				for col_data in column_data.iter_mut() {
+				for col_data in builders.iter_mut() {
 					col_data.push_none();
+				}
+				if let Some(tags) = tags.as_deref_mut() {
+					tags.push_none();
 				}
 			}
 		}
@@ -82,7 +240,7 @@ fn collect_rows_to_columns(
 	for params in rows {
 		if let Params::Named(map) = params {
 			for name in map.keys() {
-				if !columns.iter().any(|c| &c.name == name) {
+				if !(columns.iter().any(|c| &c.name == name) || (segment.tagged && name == TAG)) {
 					return Err(EngineError::BulkInsertColumnNotFound {
 						fragment: Fragment::None,
 						table_name: source_name.to_string(),
@@ -94,20 +252,5 @@ fn collect_rows_to_columns(
 		}
 	}
 
-	Ok(column_data.into_iter().zip(columns).map(|(builder, column)| builder.finish(&column.name)).collect())
-}
-
-fn columns_to_rows(columns: &[(FieldRef, ArrayRef)], num_rows: usize, num_cols: usize) -> Result<Vec<Vec<Value>>> {
-	let views = columns.iter().take(num_cols).map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
-	let mut result = Vec::with_capacity(num_rows);
-
-	for row_idx in 0..num_rows {
-		let mut row_values = Vec::with_capacity(num_cols);
-		for col in views.iter() {
-			row_values.push(col.get_value(row_idx));
-		}
-		result.push(row_values);
-	}
-
-	Ok(result)
+	Ok(rows.len())
 }

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(not(reifydb_dst))]
+use std::thread::sleep;
+#[cfg(not(reifydb_dst))]
 #[allow(clippy::disallowed_types)]
 use std::time::Duration as StdDuration;
-use std::{ops::Deref, sync::Arc, thread::sleep};
+use std::{ops::Deref, sync::Arc};
 
 use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
@@ -30,10 +33,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_extension::transform::registry::Transforms;
-use reifydb_routine::{
-	function::default_in_process_functions, monoid::default_in_process_monoids,
-	procedure::default_in_process_procedures,
-};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
@@ -179,6 +179,7 @@ impl TestEngine {
 		self.mock_clock.clone()
 	}
 
+	#[cfg(not(reifydb_dst))]
 	#[allow(clippy::disallowed_types)]
 	pub fn await_cdc(&self) -> CommitVersion {
 		let target = self.engine.current_version().expect("current version");
@@ -194,6 +195,20 @@ impl TestEngine {
 			producer.get(),
 			self.engine.done_until()
 		)
+	}
+
+	#[cfg(reifydb_dst)]
+	pub fn await_cdc(&self) -> CommitVersion {
+		let target = self.engine.current_version().expect("current version");
+		self.engine.spawner().system().run_until_idle();
+		let producer = self.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
+		assert!(
+			producer.get() >= target && self.engine.done_until() >= target,
+			"CDC did not reach {target:?} once the actors went idle: producer={:?}, done_until={:?}",
+			producer.get(),
+			self.engine.done_until()
+		);
+		target
 	}
 }
 
@@ -315,7 +330,7 @@ impl TestEngineBuilder {
 					let b = Routines::builder();
 					let b = default_in_process_functions(b);
 					let b = default_in_process_procedures(b);
-					default_in_process_monoids(b).configure()
+					b.configure()
 				},
 				transforms: Transforms::empty(),
 				ioc,
@@ -417,15 +432,8 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let dictionary_allocators =
 		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
 
-	let mut txn = AdminTransaction::new(
-		multi,
-		single,
-		event_bus,
-		Interceptors::new(),
-		IdentityId::system(),
-		Clock::Mock(MockClock::from_millis(1000)),
-	)
-	.unwrap();
+	let mut txn =
+		AdminTransaction::new(multi, single, event_bus, Interceptors::new(), IdentityId::system()).unwrap();
 	txn.set_dictionary_allocators(dictionary_allocators);
 	txn
 }
@@ -458,7 +466,6 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		event_bus.clone(),
 		Interceptors::new(),
 		IdentityId::system(),
-		Clock::Mock(MockClock::from_millis(1000)),
 	)
 	.unwrap();
 	result.set_dictionary_allocators(dictionary_allocators);

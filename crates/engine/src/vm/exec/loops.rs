@@ -96,7 +96,7 @@ impl<'a> Vm<'a> {
 				let column = match value {
 					Value::None {
 						..
-					} => factory::from_many(field.name(), value, 1),
+					} => factory::from_one(field.name(), value),
 					_ => {
 						let mut data = ColumnBuilder::with_capacity(value.get_type(), 1);
 						data.push_value(value);

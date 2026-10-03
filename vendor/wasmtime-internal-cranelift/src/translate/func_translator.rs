@@ -4,6 +4,7 @@
 //! function to Cranelift IR guided by a `FuncEnvironment` which provides information about the
 //! WebAssembly module and the runtime environment.
 
+use crate::alias_region::AliasRegions;
 use crate::func_environ::FuncEnvironment;
 use crate::translate::TargetEnvironment;
 use crate::translate::code_translator::{bitcast_wasm_returns, translate_operator};
@@ -11,7 +12,8 @@ use crate::translate::translation_utils::get_vmctx_value_label;
 use cranelift_codegen::entity::EntityRef;
 use cranelift_codegen::ir::{self, Block, InstBuilder, ValueLabel};
 use cranelift_codegen::timing;
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
+use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use smallvec::SmallVec;
 use wasmparser::{BinaryReader, FuncValidator, FunctionBody, OperatorsReader, WasmModuleResources};
 use wasmtime_environ::{TypeConvert, WasmResult};
 
@@ -67,6 +69,7 @@ impl FuncTranslator {
         debug_assert_eq!(func.dfg.num_insts(), 0, "Function must be empty");
 
         let mut builder = FunctionBuilder::new(func, &mut self.func_ctx);
+        builder.make_stack_map_alias_region(Box::new(AliasRegions::<u8>::stack_map_region));
         builder.set_srcloc(cur_srcloc(&reader));
         let entry_block = builder.create_block();
         builder.append_block_params_for_function_params(entry_block);
@@ -84,16 +87,61 @@ impl FuncTranslator {
         // Set up the translation state with a single pushed control block representing the whole
         // function and its return values.
         let exit_block = builder.create_block();
-        builder.append_block_params_for_function_returns(exit_block);
         environ
             .stacks
             .initialize(&builder.func.signature, exit_block);
 
         parse_local_decls(&mut reader, &mut builder, num_params, environ, validator)?;
+
+        // Represent the function's return values as `Variable`s, exactly like
+        // Wasm block parameters, rather than as real CLIF block parameters.
+        //
+        // Note this must happen *after* `parse_local_decls`: the Wasm locals'
+        // `Variable`s must be indexed contiguously after the parameters, so we
+        // can only declare these additional variables once all locals exist.
+        let return_types: SmallVec<[ir::Type; 6]> = builder
+            .func
+            .signature
+            .returns
+            .iter()
+            .map(|ret| ret.value_type)
+            .collect();
+        let return_vars: SmallVec<[Variable; 6]> = return_types
+            .iter()
+            .map(|ty| builder.declare_var(*ty))
+            .collect();
+        environ
+            .stacks
+            .block_param_vars
+            .insert(exit_block, return_vars);
+
         parse_function_body(validator, reader, &mut builder, environ)?;
 
-        builder.finalize();
+        builder.finalize(environ.target_config());
+        crate::alias_region::debug_assert_all_mem_insts_have_alias_regions(func);
         log::trace!("translated Wasm to CLIF:\n{}", func.display());
+        Ok(())
+    }
+
+    /// Translate the `FuncKey::ModuleStartup` function.
+    pub fn translate_module_startup(
+        &mut self,
+        func: &mut ir::Function,
+        environ: &mut FuncEnvironment<'_>,
+    ) -> WasmResult<()> {
+        let mut builder = FunctionBuilder::new(func, &mut self.func_ctx);
+        builder.make_stack_map_alias_region(Box::new(AliasRegions::<u8>::stack_map_region));
+        let entry_block = builder.create_block();
+        builder.append_block_params_for_function_params(entry_block);
+        builder.switch_to_block(entry_block);
+        builder.seal_block(entry_block);
+        builder.ensure_inserted_block();
+        environ.before_translate_function(&mut builder)?;
+        environ.translate_module_startup(&mut builder)?;
+        environ.after_translate_function(&mut builder)?;
+        builder.ins().return_(&[]);
+        builder.finalize(environ.target_config());
+        crate::alias_region::debug_assert_all_mem_insts_have_alias_regions(func);
         Ok(())
     }
 }
@@ -296,7 +344,7 @@ fn validate_op_and_get_operand_types<'a>(
     environ: &mut FuncEnvironment<'_>,
     operand_types: &'a mut Vec<wasmtime_environ::WasmValType>,
     op: &wasmparser::Operator<'_>,
-    pos: usize,
+    pos: u64,
 ) -> WasmResult<Option<&'a [wasmtime_environ::WasmValType]>> {
     // Get the operand types for this operator.
     //

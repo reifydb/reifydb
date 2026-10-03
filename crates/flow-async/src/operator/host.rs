@@ -21,8 +21,8 @@ use reifydb_core::{
 		operator::{
 			keyspace::join::JoinRowMappingKey,
 			state::{
-				GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, group_inner_range_split,
-				node_prefix,
+				GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey,
+				group_inner_range_split, node_prefix,
 			},
 		},
 		row::StoragePartitionedRowKey,
@@ -109,8 +109,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim {
 	fn state_clear(&mut self) -> Result<()>;
 
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
-
-	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome>;
 
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
 
@@ -296,8 +294,22 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		Ok(out)
 	}
 
-	fn group_sweep_many(&mut self, groups: &[GroupId], limit: usize) -> Result<GroupSweep> {
-		let batch = self.txn.state_group_range(self.operator, groups, limit)?;
+	fn group_sweep(
+		&mut self,
+		group: GroupId,
+		keyspaces: KeyspaceMask,
+		limit: Option<usize>,
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		Ok(self.group_sweep_many(&[group], limit.unwrap_or(usize::MAX), keyspaces)?.rows)
+	}
+
+	fn group_sweep_many(
+		&mut self,
+		groups: &[GroupId],
+		limit: usize,
+		keyspaces: KeyspaceMask,
+	) -> Result<GroupSweep> {
+		let batch = self.txn.state_group_range(self.operator, groups, limit, keyspaces)?;
 		let mut rows = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
 			if let TaggedKey::OperatorState(decoded) = &r.key
@@ -340,13 +352,6 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.remove_row_number_for_group(self.operator, group)
 	}
 
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		for key in keys {
-			self.txn.remove_row_number(self.operator, group, key)?;
-		}
-		Ok(())
-	}
-
 	fn written_at(&self) -> DateTime {
 		self.now
 	}
@@ -355,10 +360,6 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
 	fn reclaim_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		self.txn.reclaim_group_identity(self.operator, group, limit)
-	}
-
-	fn reclaim_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome> {
-		self.txn.reclaim_group_identity_keys(self.operator, group, keys)
 	}
 }
 
@@ -516,10 +517,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		self.txn.reclaim_group_identity(self.operator, group, limit)
-	}
-
-	fn reclaim_group_identity_keys(&mut self, group: GroupId, keys: &[GroupStateKey]) -> Result<ReclaimOutcome> {
-		self.txn.reclaim_group_identity_keys(self.operator, group, keys)
 	}
 
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {

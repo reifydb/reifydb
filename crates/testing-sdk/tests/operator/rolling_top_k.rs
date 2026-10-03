@@ -9,7 +9,7 @@ use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	operator_with::{ApplyWith, WithSpan},
 };
-use reifydb_sdk::flow::operator::{extern_c::binding::operator::ExternCOperatorAdapter, windowed::top_k::TopKDriver};
+use reifydb_sdk::flow::operator::windowed::top_k::TopKDriver;
 use reifydb_testing_chaos::operator::scenario::{Scenario, SupportedOps};
 use reifydb_testing_sdk::chaos::{
 	ChaosHarness,
@@ -49,7 +49,7 @@ fn volume_sampler(none_values: bool) -> ColumnSampler {
 }
 
 fn run(none_values: bool, scenario: Scenario, seed: u64) -> ChaosOutcome {
-	ChaosHarness::<ExternCOperatorAdapter<TopKDriver<TopVolumeRollingTopK>>>::builder()
+	ChaosHarness::<TopKDriver<TopVolumeRollingTopK>>::builder()
 		.with_input_shape(common::rolling_top_k_shape())
 		.with_output_shape(common::top_out_shape())
 		.with_key_strategy(KeyStrategy::Sequential)

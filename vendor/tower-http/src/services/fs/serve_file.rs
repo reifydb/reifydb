@@ -105,6 +105,13 @@ impl ServeFile {
         Self(self.0.with_buf_chunk_size(chunk_size))
     }
 
+    /// Configure whether syntactically valid multi-range requests should be ignored.
+    ///
+    /// See [`ServeDir::ignore_multi_range_requests`] for details.
+    pub fn ignore_multi_range_requests(self, ignore: bool) -> Self {
+        Self(self.0.ignore_multi_range_requests(ignore))
+    }
+
     /// Call the service and get a future that contains any `std::io::Error` that might have
     /// happened.
     ///
@@ -143,7 +150,6 @@ where
 mod tests {
     use crate::services::ServeFile;
     use crate::test_helpers::Body;
-    use async_compression::tokio::bufread::ZstdDecoder;
     use brotli::BrotliDecompress;
     use flate2::bufread::DeflateDecoder;
     use flate2::bufread::GzDecoder;
@@ -154,12 +160,19 @@ mod tests {
     use mime::Mime;
     use std::io::Read;
     use std::str::FromStr;
-    use tokio::io::AsyncReadExt;
     use tower::ServiceExt;
+
+    /// Expected prefix of the decompressed content in precompressed test files.
+    const EXPECTED_CONTENT_PREFIX: &str = "Test file";
+
+    /// Directory containing test fixture files.
+    const TEST_FILES_DIR: &str = "../test-files";
+    /// Path to the repository README, used as a large test fixture.
+    const README_PATH: &str = "../README.md";
 
     #[tokio::test]
     async fn basic() {
-        let svc = ServeFile::new("../README.md");
+        let svc = ServeFile::new(README_PATH);
 
         let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
@@ -173,7 +186,7 @@ mod tests {
 
     #[tokio::test]
     async fn basic_with_mime() {
-        let svc = ServeFile::new_with_mime("../README.md", &Mime::from_str("image/jpg").unwrap());
+        let svc = ServeFile::new_with_mime(README_PATH, &Mime::from_str("image/jpg").unwrap());
 
         let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
@@ -186,22 +199,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn multipart_range_can_be_ignored() {
+        let svc = ServeFile::new(README_PATH).ignore_multi_range_requests(true);
+        let request = Request::builder()
+            .header(header::RANGE, "bytes=0-0,2-2")
+            .body(Body::empty())
+            .unwrap();
+        let res = svc.oneshot(request).await.unwrap();
+
+        assert_eq!(res.status(), StatusCode::OK);
+        assert!(res.headers().get(header::CONTENT_RANGE).is_none());
+
+        let body = res.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body.as_ref(), std::fs::read(README_PATH).unwrap());
+    }
+
+    #[tokio::test]
     async fn head_request() {
-        let svc = ServeFile::new("../test-files/precompressed.txt");
+        let svc = ServeFile::new(format!("{TEST_FILES_DIR}/precompressed.txt"));
 
         let mut request = Request::new(Body::empty());
         *request.method_mut() = Method::HEAD;
         let res = svc.oneshot(request).await.unwrap();
 
         assert_eq!(res.headers()["content-type"], "text/plain");
-        assert_eq!(res.headers()["content-length"], "23");
+        assert_eq!(res.headers()["content-length"], "10");
 
         assert!(res.into_body().frame().await.is_none());
     }
 
     #[tokio::test]
-    async fn precompresed_head_request() {
-        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_gzip();
+    async fn precompressed_head_request() {
+        let svc =
+            ServeFile::new(format!("{TEST_FILES_DIR}/precompressed.txt")).precompressed_gzip();
 
         let request = Request::builder()
             .header("Accept-Encoding", "gzip")
@@ -212,14 +242,15 @@ mod tests {
 
         assert_eq!(res.headers()["content-type"], "text/plain");
         assert_eq!(res.headers()["content-encoding"], "gzip");
-        assert_eq!(res.headers()["content-length"], "59");
+        assert_eq!(res.headers()["content-length"], "30");
 
         assert!(res.into_body().frame().await.is_none());
     }
 
     #[tokio::test]
     async fn precompressed_gzip() {
-        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_gzip();
+        let svc =
+            ServeFile::new(format!("{TEST_FILES_DIR}/precompressed.txt")).precompressed_gzip();
 
         let request = Request::builder()
             .header("Accept-Encoding", "gzip")
@@ -234,12 +265,13 @@ mod tests {
         let mut decoder = GzDecoder::new(&body[..]);
         let mut decompressed = String::new();
         decoder.read_to_string(&mut decompressed).unwrap();
-        assert!(decompressed.starts_with("\"This is a test file!\""));
+        assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
     }
 
     #[tokio::test]
     async fn unsupported_precompression_alogrithm_fallbacks_to_uncompressed() {
-        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_gzip();
+        let svc =
+            ServeFile::new(format!("{TEST_FILES_DIR}/precompressed.txt")).precompressed_gzip();
 
         let request = Request::builder()
             .header("Accept-Encoding", "br")
@@ -252,12 +284,13 @@ mod tests {
 
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body.starts_with("\"This is a test file!\""));
+        assert!(body.starts_with(EXPECTED_CONTENT_PREFIX));
     }
 
     #[tokio::test]
     async fn missing_precompressed_variant_fallbacks_to_uncompressed() {
-        let svc = ServeFile::new("../test-files/missing_precompressed.txt").precompressed_gzip();
+        let svc = ServeFile::new(format!("{TEST_FILES_DIR}/missing_precompressed.txt"))
+            .precompressed_gzip();
 
         let request = Request::builder()
             .header("Accept-Encoding", "gzip")
@@ -271,12 +304,13 @@ mod tests {
 
         let body = res.into_body().collect().await.unwrap().to_bytes();
         let body = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body.starts_with("Test file!"));
+        assert!(body.starts_with(EXPECTED_CONTENT_PREFIX));
     }
 
     #[tokio::test]
     async fn missing_precompressed_variant_fallbacks_to_uncompressed_head_request() {
-        let svc = ServeFile::new("../test-files/missing_precompressed.txt").precompressed_gzip();
+        let svc = ServeFile::new(format!("{TEST_FILES_DIR}/missing_precompressed.txt"))
+            .precompressed_gzip();
 
         let request = Request::builder()
             .header("Accept-Encoding", "gzip")
@@ -286,7 +320,7 @@ mod tests {
         let res = svc.oneshot(request).await.unwrap();
 
         assert_eq!(res.headers()["content-type"], "text/plain");
-        assert_eq!(res.headers()["content-length"], "11");
+        assert_eq!(res.headers()["content-length"], "10");
         // Uncompressed file is served because compressed version is missing
         assert!(res.headers().get("content-encoding").is_none());
 
@@ -295,7 +329,7 @@ mod tests {
 
     #[tokio::test]
     async fn only_precompressed_variant_existing() {
-        let svc = ServeFile::new("../test-files/only_gzipped.txt").precompressed_gzip();
+        let svc = ServeFile::new(format!("{TEST_FILES_DIR}/only_gzipped.txt")).precompressed_gzip();
 
         let request = Request::builder().body(Body::empty()).unwrap();
         let res = svc.clone().oneshot(request).await.unwrap();
@@ -316,12 +350,12 @@ mod tests {
         let mut decoder = GzDecoder::new(&body[..]);
         let mut decompressed = String::new();
         decoder.read_to_string(&mut decompressed).unwrap();
-        assert!(decompressed.starts_with("\"This is a test file\""));
+        assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
     }
 
     #[tokio::test]
     async fn precompressed_br() {
-        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_br();
+        let svc = ServeFile::new(format!("{TEST_FILES_DIR}/precompressed.txt")).precompressed_br();
 
         let request = Request::builder()
             .header("Accept-Encoding", "gzip,br")
@@ -336,12 +370,13 @@ mod tests {
         let mut decompressed = Vec::new();
         BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
         let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
-        assert!(decompressed.starts_with("\"This is a test file!\""));
+        assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
     }
 
     #[tokio::test]
     async fn precompressed_deflate() {
-        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_deflate();
+        let svc =
+            ServeFile::new(format!("{TEST_FILES_DIR}/precompressed.txt")).precompressed_deflate();
         let request = Request::builder()
             .header("Accept-Encoding", "deflate,br")
             .body(Body::empty())
@@ -355,12 +390,13 @@ mod tests {
         let mut decoder = DeflateDecoder::new(&body[..]);
         let mut decompressed = String::new();
         decoder.read_to_string(&mut decompressed).unwrap();
-        assert!(decompressed.starts_with("\"This is a test file!\""));
+        assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
     }
 
     #[tokio::test]
     async fn precompressed_zstd() {
-        let svc = ServeFile::new("../test-files/precompressed.txt").precompressed_zstd();
+        let svc =
+            ServeFile::new(format!("{TEST_FILES_DIR}/precompressed.txt")).precompressed_zstd();
         let request = Request::builder()
             .header("Accept-Encoding", "zstd,br")
             .body(Body::empty())
@@ -371,15 +407,14 @@ mod tests {
         assert_eq!(res.headers()["content-encoding"], "zstd");
 
         let body = res.into_body().collect().await.unwrap().to_bytes();
-        let mut decoder = ZstdDecoder::new(&body[..]);
-        let mut decompressed = String::new();
-        decoder.read_to_string(&mut decompressed).await.unwrap();
-        assert!(decompressed.starts_with("\"This is a test file!\""));
+        let decompressed = zstd::stream::decode_all(&body[..]).unwrap();
+        let decompressed = String::from_utf8(decompressed).unwrap();
+        assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
     }
 
     #[tokio::test]
     async fn multi_precompressed() {
-        let svc = ServeFile::new("../test-files/precompressed.txt")
+        let svc = ServeFile::new(format!("{TEST_FILES_DIR}/precompressed.txt"))
             .precompressed_gzip()
             .precompressed_br();
 
@@ -396,7 +431,7 @@ mod tests {
         let mut decoder = GzDecoder::new(&body[..]);
         let mut decompressed = String::new();
         decoder.read_to_string(&mut decompressed).unwrap();
-        assert!(decompressed.starts_with("\"This is a test file!\""));
+        assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
 
         let request = Request::builder()
             .header("Accept-Encoding", "br")
@@ -411,12 +446,12 @@ mod tests {
         let mut decompressed = Vec::new();
         BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
         let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
-        assert!(decompressed.starts_with("\"This is a test file!\""));
+        assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
     }
 
     #[tokio::test]
     async fn with_custom_chunk_size() {
-        let svc = ServeFile::new("../README.md").with_buf_chunk_size(1024 * 32);
+        let svc = ServeFile::new(README_PATH).with_buf_chunk_size(1024 * 32);
 
         let res = svc.oneshot(Request::new(Body::empty())).await.unwrap();
 
@@ -430,7 +465,7 @@ mod tests {
 
     #[tokio::test]
     async fn fallbacks_to_different_precompressed_variant_if_not_found() {
-        let svc = ServeFile::new("../test-files/precompressed_br.txt")
+        let svc = ServeFile::new(format!("{TEST_FILES_DIR}/precompressed_br.txt"))
             .precompressed_gzip()
             .precompressed_deflate()
             .precompressed_br();
@@ -448,12 +483,12 @@ mod tests {
         let mut decompressed = Vec::new();
         BrotliDecompress(&mut &body[..], &mut decompressed).unwrap();
         let decompressed = String::from_utf8(decompressed.to_vec()).unwrap();
-        assert!(decompressed.starts_with("Test file"));
+        assert!(decompressed.starts_with(EXPECTED_CONTENT_PREFIX));
     }
 
     #[tokio::test]
     async fn fallbacks_to_different_precompressed_variant_if_not_found_head_request() {
-        let svc = ServeFile::new("../test-files/precompressed_br.txt")
+        let svc = ServeFile::new(format!("{TEST_FILES_DIR}/precompressed_br.txt"))
             .precompressed_gzip()
             .precompressed_deflate()
             .precompressed_br();
@@ -498,7 +533,7 @@ mod tests {
 
     #[tokio::test]
     async fn last_modified() {
-        let svc = ServeFile::new("../README.md");
+        let svc = ServeFile::new(README_PATH);
 
         let req = Request::builder().body(Body::empty()).unwrap();
         let res = svc.oneshot(req).await.unwrap();
@@ -512,7 +547,7 @@ mod tests {
 
         // -- If-Modified-Since
 
-        let svc = ServeFile::new("../README.md");
+        let svc = ServeFile::new(README_PATH);
         let req = Request::builder()
             .header(header::IF_MODIFIED_SINCE, last_modified)
             .body(Body::empty())
@@ -522,7 +557,7 @@ mod tests {
         assert_eq!(res.status(), StatusCode::NOT_MODIFIED);
         assert!(res.into_body().frame().await.is_none());
 
-        let svc = ServeFile::new("../README.md");
+        let svc = ServeFile::new(README_PATH);
         let req = Request::builder()
             .header(header::IF_MODIFIED_SINCE, "Fri, 09 Aug 1996 14:21:40 GMT")
             .body(Body::empty())
@@ -536,7 +571,7 @@ mod tests {
 
         // -- If-Unmodified-Since
 
-        let svc = ServeFile::new("../README.md");
+        let svc = ServeFile::new(README_PATH);
         let req = Request::builder()
             .header(header::IF_UNMODIFIED_SINCE, last_modified)
             .body(Body::empty())
@@ -547,7 +582,7 @@ mod tests {
         let body = res.into_body().collect().await.unwrap().to_bytes();
         assert_eq!(body.as_ref(), readme_bytes);
 
-        let svc = ServeFile::new("../README.md");
+        let svc = ServeFile::new(README_PATH);
         let req = Request::builder()
             .header(header::IF_UNMODIFIED_SINCE, "Fri, 09 Aug 1996 14:21:40 GMT")
             .body(Body::empty())

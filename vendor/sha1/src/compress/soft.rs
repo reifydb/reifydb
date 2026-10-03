@@ -1,8 +1,5 @@
 #![allow(clippy::many_single_char_names)]
-use super::BLOCK_SIZE;
-use core::convert::TryInto;
-
-const K: [u32; 4] = [0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xCA62C1D6];
+use crate::consts::K;
 
 #[inline(always)]
 fn add(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
@@ -20,7 +17,7 @@ fn xor(a: [u32; 4], b: [u32; 4]) -> [u32; 4] {
 }
 
 #[inline]
-pub fn sha1_first_add(e: u32, w0: [u32; 4]) -> [u32; 4] {
+fn sha1_first_add(e: u32, w0: [u32; 4]) -> [u32; 4] {
     let [a, b, c, d] = w0;
     [e.wrapping_add(a), b, c, d]
 }
@@ -196,7 +193,7 @@ macro_rules! schedule_rounds4 {
 }
 
 #[inline(always)]
-fn sha1_digest_block_u32(state: &mut [u32; 5], block: &[u32; 16]) {
+fn digest_block(state: &mut [u32; 5], block: [u32; 16]) {
     let mut w0 = [block[0], block[1], block[2], block[3]];
     let mut w1 = [block[4], block[5], block[6], block[7]];
     let mut w2 = [block[8], block[9], block[10], block[11]];
@@ -245,16 +242,15 @@ fn sha1_digest_block_u32(state: &mut [u32; 5], block: &[u32; 16]) {
     state[4] = state[4].wrapping_add(e);
 }
 
-pub fn compress(state: &mut [u32; 5], blocks: &[[u8; BLOCK_SIZE]]) {
-    let mut block_u32 = [0u32; BLOCK_SIZE / 4];
-    // since LLVM can't properly use aliasing yet it will make
-    // unnecessary state stores without this copy
-    let mut state_cpy = *state;
-    for block in blocks.iter() {
-        for (o, chunk) in block_u32.iter_mut().zip(block.chunks_exact(4)) {
-            *o = u32::from_be_bytes(chunk.try_into().unwrap());
-        }
-        sha1_digest_block_u32(&mut state_cpy, &block_u32);
+fn read_block(block: &[u8; 64]) -> [u32; 16] {
+    core::array::from_fn(|i| {
+        let chunk = &block[4 * i..][..4];
+        u32::from_be_bytes(chunk.try_into().unwrap())
+    })
+}
+
+pub(crate) fn compress(state: &mut [u32; 5], blocks: &[[u8; 64]]) {
+    for block in blocks.iter().map(read_block) {
+        digest_block(state, block);
     }
-    *state = state_cpy;
 }

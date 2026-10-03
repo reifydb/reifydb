@@ -40,6 +40,7 @@ impl WasmType for component::Type {
             Self::Option(_) => WasmTypeKind::Option,
             Self::Result(_) => WasmTypeKind::Result,
             Self::Flags(_) => WasmTypeKind::Flags,
+            Self::FixedLengthList(_) => WasmTypeKind::FixedLengthList,
 
             Self::Own(_)
             | Self::Borrow(_)
@@ -144,6 +145,7 @@ impl WasmValue for component::Val {
             | Self::Future(_)
             | Self::ErrorContext(_)
             | Self::Map(_) => WasmTypeKind::Unsupported,
+            Self::FixedLengthList(_) => WasmTypeKind::FixedLengthList,
         }
     }
 
@@ -259,7 +261,10 @@ impl WasmValue for component::Val {
         unwrap_val!(self, Self::String, "string").into()
     }
     fn unwrap_list(&self) -> Box<dyn Iterator<Item = Cow<'_, Self>> + '_> {
-        let list = unwrap_val!(self, Self::List, "list");
+        let list = match self {
+            Self::List(list) | Self::FixedLengthList(list) => list,
+            _ => panic!("called unwrap_list on non-list value"),
+        };
         Box::new(list.iter().map(cow))
     }
     fn unwrap_record(&self) -> Box<dyn Iterator<Item = (Cow<'_, str>, Cow<'_, Self>)> + '_> {

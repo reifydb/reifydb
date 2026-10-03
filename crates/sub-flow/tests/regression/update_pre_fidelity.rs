@@ -35,10 +35,7 @@ use reifydb_flow_async::operator::{
 	take::TakeOperator,
 	window::operator::{WindowConfig, WindowOperator},
 };
-use reifydb_routine::{
-	function::default_in_process_functions, monoid::default_in_process_monoids,
-	procedure::default_in_process_procedures,
-};
+use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_testing_flow::{generator, harness::Harness};
@@ -56,14 +53,14 @@ fn routines() -> Routines {
 	let b = Routines::builder();
 	let b = default_in_process_functions(b);
 	let b = default_in_process_procedures(b);
-	default_in_process_monoids(b).configure()
+	b.configure()
 }
 
 fn source() -> Option<SchemaRef> {
 	Some(Arc::new(Schema::empty()))
 }
 
-fn row(number: u64, group: i32, value: i64) -> reifydb_core::row::Row {
+fn row(number: u64, group: i32, value: i64) -> reifydb_testing_chaos::operator::event::Row {
 	let at = DateTime::from_epoch_millis(BASE_MS + i64::try_from(number).expect("row number fits in i64 millis"))
 		.expect("a row stamp is representable");
 	generator::row(RowNumber(number), group, value, at)
@@ -682,7 +679,10 @@ mod source {
 				catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary");
 			let registry = harness.dictionary_registry();
 			let intern = |symbol: &str| {
-				registry.intern(&dictionary, &Value::Utf8(symbol.to_string())).expect("intern").id
+				registry.intern_batch(&dictionary, &[Value::Utf8(symbol.to_string())])
+					.expect("intern")
+					.remove(0)
+					.id
 			};
 
 			let out = harness
@@ -731,8 +731,9 @@ mod source {
 				catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary");
 			let entry = harness
 				.dictionary_registry()
-				.intern(&dictionary, &Value::Utf8(BEFORE.to_string()))
+				.intern_batch(&dictionary, &[Value::Utf8(BEFORE.to_string())])
 				.expect("intern")
+				.remove(0)
 				.id;
 
 			let out = harness

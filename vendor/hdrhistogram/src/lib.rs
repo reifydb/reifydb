@@ -194,6 +194,7 @@
     unused_results,
     variant_size_differences
 )]
+#![forbid(unsafe_code)]
 // Enable feature(test) is enabled so that we can have benchmarks of private code
 #![cfg_attr(all(test, feature = "bench_private"), feature(test))]
 
@@ -212,7 +213,7 @@ use std::ops::{Add, AddAssign, Sub, SubAssign};
 use iterators::HistogramIterator;
 
 /// Min value of a new histogram.
-/// Equivalent to `u64::max_value()`, but const functions aren't allowed (yet).
+/// Equivalent to `u64::MAX`, but const functions aren't allowed (yet).
 /// See <https://github.com/rust-lang/rust/issues/24111>
 const ORIGINAL_MIN: u64 = (-1_i64 >> 63) as u64;
 /// Max value of a new histogram.
@@ -605,7 +606,7 @@ impl<T: Counter> Histogram<T> {
         let old_max_lowest_equiv = self.lowest_equivalent(self.max());
 
         // If total_count is at the max value, it may have saturated, so we must restat
-        let mut needs_restat = self.total_count == u64::max_value();
+        let mut needs_restat = self.total_count == u64::MAX;
 
         for i in 0..subtrahend.distinct_values() {
             let other_count = subtrahend
@@ -689,7 +690,7 @@ impl<T: Counter> Histogram<T> {
 
     /// Construct an auto-resizing `Histogram` with a lowest discernible value of 1 and an
     /// auto-adjusting highest trackable value. Can auto-resize up to track values up to
-    /// `(i64::max_value() / 2)`.
+    /// `(i64::MAX / 2)`.
     ///
     /// See [`new_with_bounds`] for info on `sigfig`.
     ///
@@ -724,7 +725,7 @@ impl<T: Counter> Histogram<T> {
     /// use 1.
     ///
     /// `high` is the highest value to be tracked by the histogram, and must be a
-    /// positive integer that is `>= (2 * low)`. If you're not sure, use `u64::max_value()`.
+    /// positive integer that is `>= (2 * low)`. If you're not sure, use `u64::MAX`.
     ///
     /// `sigfig` Specifies the number of significant figures to maintain. This is the number of
     /// significant decimal digits to which the histogram will maintain value resolution and
@@ -738,7 +739,7 @@ impl<T: Counter> Histogram<T> {
         if low < 1 {
             return Err(CreationError::LowIsZero);
         }
-        if low > u64::max_value() / 2 {
+        if low > u64::MAX / 2 {
             // avoid overflow in 2 * low
             return Err(CreationError::LowExceedsMax);
         }
@@ -1044,7 +1045,7 @@ impl<T: Counter> Histogram<T> {
     pub fn iter_quantiles(
         &self,
         ticks_per_half_distance: u32,
-    ) -> HistogramIterator<T, iterators::quantile::Iter<T>> {
+    ) -> HistogramIterator<'_, T, iterators::quantile::Iter<'_, T>> {
         // TODO upper bound on ticks per half distance? 2^31 ticks is not useful
         iterators::quantile::Iter::new(self, ticks_per_half_distance)
     }
@@ -1104,7 +1105,10 @@ impl<T: Counter> Histogram<T> {
     /// );
     /// assert_eq!(perc.next(), None);
     /// ```
-    pub fn iter_linear(&self, step: u64) -> HistogramIterator<T, iterators::linear::Iter<T>> {
+    pub fn iter_linear(
+        &self,
+        step: u64,
+    ) -> HistogramIterator<'_, T, iterators::linear::Iter<'_, T>> {
         iterators::linear::Iter::new(self, step)
     }
 
@@ -1142,7 +1146,11 @@ impl<T: Counter> Histogram<T> {
     /// );
     /// assert_eq!(perc.next(), None);
     /// ```
-    pub fn iter_log(&self, start: u64, exp: f64) -> HistogramIterator<T, iterators::log::Iter<T>> {
+    pub fn iter_log(
+        &self,
+        start: u64,
+        exp: f64,
+    ) -> HistogramIterator<'_, T, iterators::log::Iter<'_, T>> {
         iterators::log::Iter::new(self, start, exp)
     }
 
@@ -1180,7 +1188,7 @@ impl<T: Counter> Histogram<T> {
     /// );
     /// assert_eq!(perc.next(), None);
     /// ```
-    pub fn iter_recorded(&self) -> HistogramIterator<T, iterators::recorded::Iter> {
+    pub fn iter_recorded(&self) -> HistogramIterator<'_, T, iterators::recorded::Iter> {
         iterators::recorded::Iter::new(self)
     }
 
@@ -1239,7 +1247,7 @@ impl<T: Counter> Histogram<T> {
     /// );
     /// assert_eq!(perc.next(), Some(IterationValue::new(10, 1.0, 1.0, 0, 0)));
     /// ```
-    pub fn iter_all(&self) -> HistogramIterator<T, iterators::all::Iter> {
+    pub fn iter_all(&self) -> HistogramIterator<'_, T, iterators::all::Iter> {
         iterators::all::Iter::new(self)
     }
 
@@ -1273,7 +1281,7 @@ impl<T: Counter> Histogram<T> {
     }
 
     /// Get the lowest recorded non-zero value level in the histogram.
-    /// If the histogram has no recorded values, the value returned is `u64::max_value()`.
+    /// If the histogram has no recorded values, the value returned is `u64::MAX`.
     pub fn min_nz(&self) -> u64 {
         if self.min_non_zero_value == ORIGINAL_MIN {
             ORIGINAL_MIN
@@ -1322,6 +1330,9 @@ impl<T: Counter> Histogram<T> {
     ///
     /// This is simply `value_at_quantile` multiplied by 100.0. For best floating-point precision,
     /// use `value_at_quantile` directly.
+    ///
+    /// If you are trying to compute multiple percentiles, prefer
+    /// [`Histogram::value_at_percentiles`].
     pub fn value_at_percentile(&self, percentile: f64) -> u64 {
         self.value_at_quantile(percentile / 100.0)
     }
@@ -1335,8 +1346,10 @@ impl<T: Counter> Histogram<T> {
     ///
     /// Two values are considered "equivalent" if `self.equivalent` would return true.
     ///
-    /// If the total count of the histogram has exceeded `u64::max_value()`, this will return
+    /// If the total count of the histogram has exceeded `u64::MAX`, this will return
     /// inaccurate results.
+    ///
+    /// If you are trying to compute multiple quantiles, prefer [`Histogram::value_at_quantiles`].
     pub fn value_at_quantile(&self, quantile: f64) -> u64 {
         // Cap at 1.0
         let quantile = if quantile > 1.0 { 1.0 } else { quantile };
@@ -1350,22 +1363,118 @@ impl<T: Counter> Histogram<T> {
             count_at_quantile = 1;
         }
 
+        // Sum bins in chunks (such that the operation can auto-vectorized by the compiler) until we
+        // detect a chunk that passes the target; only then do we walk the chunk bin-by-bin.
+        const SCAN_CHUNK: usize = 8;
+        let finish = |index: usize| -> u64 {
+            let value_at_index = self.value_for(index);
+            if quantile == 0.0 {
+                self.lowest_equivalent(value_at_index)
+            } else {
+                self.highest_equivalent(value_at_index)
+            }
+        };
+
         let mut total_to_current_index: u64 = 0;
-        for i in 0..self.counts.len() {
-            // Direct indexing is safe; indexes must reside in counts array.
-            // TODO overflow
-            total_to_current_index += self.counts[i].as_u64();
+        let (chunks, tail) = self.counts.as_chunks::<SCAN_CHUNK>();
+        let mut base = 0usize;
+        for chunk in chunks {
+            let chunk_sum: u64 = chunk.iter().map(|c| c.as_u64()).sum();
+            if total_to_current_index + chunk_sum >= count_at_quantile {
+                for (j, count) in chunk.iter().enumerate() {
+                    total_to_current_index += count.as_u64();
+                    if total_to_current_index >= count_at_quantile {
+                        return finish(base + j);
+                    }
+                }
+                unreachable!("chunk subtotal reached the target but no element did");
+            } else {
+                total_to_current_index += chunk_sum;
+            }
+            base += SCAN_CHUNK;
+        }
+        // if SCAN_CHUNK does not perfectly divide the number of bins, handle the leftovers
+        for (j, count) in tail.iter().enumerate() {
+            total_to_current_index += count.as_u64();
             if total_to_current_index >= count_at_quantile {
-                let value_at_index = self.value_for(i);
-                return if quantile == 0.0 {
-                    self.lowest_equivalent(value_at_index)
-                } else {
-                    self.highest_equivalent(value_at_index)
-                };
+                return finish(base + j);
             }
         }
 
         0
+    }
+
+    /// Get the values at several quantiles in a single pass over the histogram.
+    ///
+    /// Returns an iterator with one entry per input quantile, in the same order as `quantiles`,
+    /// but stops early if a quantile is not greater than or equal to the previous (i.e., provide
+    /// `quantiles` in ascending order).
+    ///
+    /// Each entry is exactly what [`Histogram::value_at_quantile`] would return for that quantile,
+    /// but the `counts` array is scanned only once regardless of how many quantiles are requested,
+    /// which is faster than N separate calls for N > 1.
+    ///
+    /// Edge behavior matches [`Histogram::value_at_quantile`]: quantiles are capped at `1.0`, an
+    /// empty histogram yields all `0`s, and `quantile == 0.0` uses the lowest equivalent value.
+    pub fn value_at_quantiles<'a, I>(
+        &'a self,
+        quantiles: I,
+    ) -> impl Iterator<Item = u64> + use<'a, I, T>
+    where
+        I: IntoIterator<Item = f64>,
+    {
+        let mut total_to_current_index: u64 = 0;
+        let mut quantiles = quantiles.into_iter();
+        let mut counts = self.counts.iter().enumerate();
+        let mut at_count_i = 0;
+        let mut previous_quantile = None;
+        std::iter::from_fn(move || {
+            let quantile = quantiles.next()?;
+            if previous_quantile.is_some_and(|pq| pq > quantile) {
+                // not in sorted order, so stop iterating
+                return None;
+            }
+            // clamps to 0.0 .. 1.0, with a minimum count of 1
+            let target = ((quantile.clamp(0., 1.) * self.total_count as f64).ceil() as u64).max(1);
+
+            while total_to_current_index < target {
+                let Some((i, count)) = counts.next() else {
+                    // target is clamped to total_count, so last bin must make this false
+                    // _except_ in the case where the histogram is empty
+                    assert_eq!(self.total_count, 0);
+                    return Some(0);
+                };
+                at_count_i = i;
+                total_to_current_index += count.as_u64();
+            }
+
+            let value_at_index = self.value_for(at_count_i);
+            let result = if quantile == 0.0 {
+                self.lowest_equivalent(value_at_index)
+            } else {
+                self.highest_equivalent(value_at_index)
+            };
+            previous_quantile = Some(quantile);
+            Some(result)
+        })
+    }
+
+    /// Get the values at several percentiles (each in `[0.0, 100.0]`) in a single pass.
+    ///
+    /// Returns an iterator with one entry per input percentile, in the same order as `percentiles`,
+    /// but stops early if a percentile is not greater than or equal to the previous (i.e., provide
+    /// `percentile` in ascending order).
+    ///
+    /// Convenience wrapper over [`Histogram::value_at_quantiles`]; returns one value per input
+    /// percentile, in input order.
+    pub fn value_at_percentiles<'a, I>(
+        &'a self,
+        percentiles: I,
+    ) -> impl Iterator<Item = u64> + use<'a, I, T>
+    where
+        I: IntoIterator<Item = f64>,
+    {
+        self.value_at_quantiles(percentiles.into_iter().map(|p| p / 100.0))
     }
 
     /// Get the percentile of samples at and below a given value.
@@ -1386,7 +1495,7 @@ impl<T: Counter> Histogram<T> {
     /// If the value is larger than the maximum representable value, it will be clamped to the
     /// max representable value.
     ///
-    /// If the total count of the histogram has reached `u64::max_value()`, this will return
+    /// If the total count of the histogram has reached `u64::MAX`, this will return
     /// inaccurate results.
     pub fn quantile_below(&self, value: u64) -> f64 {
         if self.total_count == 0 {
@@ -1431,7 +1540,7 @@ impl<T: Counter> Histogram<T> {
     /// If either value is larger than the maximum representable value, it will be clamped to the
     /// max representable value.
     ///
-    /// The count will saturate at u64::max_value().
+    /// The count will saturate at u64::MAX.
     pub fn count_between(&self, low: u64, high: u64) -> u64 {
         let low_index = self.index_for_or_last(low);
         let high_index = self.index_for_or_last(high);
@@ -1471,10 +1580,10 @@ impl<T: Counter> Histogram<T> {
     /// resolution. Equivalent here means that value samples recorded for any two equivalent values
     /// are counted in a common total count.
     ///
-    /// Note that the return value is capped at `u64::max_value()`.
+    /// Note that the return value is capped at `u64::MAX`.
     pub fn highest_equivalent(&self, value: u64) -> u64 {
-        if value == u64::max_value() {
-            u64::max_value()
+        if value == u64::MAX {
+            u64::MAX
         } else {
             self.next_non_equivalent(value) - 1
         }
@@ -1484,7 +1593,7 @@ impl<T: Counter> Histogram<T> {
     /// given value. Equivalent here means that value samples recorded for any two equivalent
     /// values are counted in a common total count.
     ///
-    /// Note that the return value is capped at `u64::max_value()`.
+    /// Note that the return value is capped at `u64::MAX`.
     pub fn median_equivalent(&self, value: u64) -> u64 {
         // adding half of the range to the bottom of the range shouldn't overflow
         self.lowest_equivalent(value)
@@ -1496,7 +1605,7 @@ impl<T: Counter> Histogram<T> {
     /// resolution. Equivalent means that value samples recorded for any two equivalent values are
     /// counted in a common total count.
     ///
-    /// Note that the return value is capped at `u64::max_value()`.
+    /// Note that the return value is capped at `u64::MAX`.
     pub fn next_non_equivalent(&self, value: u64) -> u64 {
         self.lowest_equivalent(value)
             .saturating_add(self.equivalent_range(value))
@@ -1522,13 +1631,13 @@ impl<T: Counter> Histogram<T> {
 
     /// Computes the matching histogram value for the given histogram bin.
     ///
-    /// `index` must be no larger than `u32::max_value()`; no possible histogram uses that much
+    /// `index` must be no larger than `u32::MAX`; no possible histogram uses that much
     /// storage anyway. So, any index that comes from a valid histogram location will be safe.
     ///
     /// If the index is for a position beyond what this histogram is configured for, the correct
     /// corresponding value will be returned, but of course it won't have a corresponding count.
     ///
-    /// If the index maps to a value beyond `u64::max_value()`, the result will be garbage.
+    /// If the index maps to a value beyond `u64::MAX`, the result will be garbage.
     fn value_for(&self, index: usize) -> u64 {
         // Dividing by sub bucket half count will yield 1 in top half of first bucket, 2 in
         // in the top half (i.e., the only half that's used) of the 2nd bucket, etc, so subtract 1
@@ -1595,7 +1704,7 @@ impl<T: Counter> Histogram<T> {
 
     /// Compute the value corresponding to the provided bucket and sub bucket indices.
     /// The indices given must map to an actual u64; providing contrived indices that would map to
-    /// a value larger than u64::max_value() will yield garbage.
+    /// a value larger than u64::MAX will yield garbage.
     #[inline]
     fn value_from_loc(&self, bucket_index: u8, sub_bucket_index: u32) -> u64 {
         // Sum won't overflow; bucket_index and unit_magnitude are both <= 64.
@@ -1615,7 +1724,7 @@ impl<T: Counter> Histogram<T> {
         // always have at least 1 bucket
         let mut buckets_needed = 1;
         while smallest_untrackable_value <= value {
-            if smallest_untrackable_value > u64::max_value() / 2 {
+            if smallest_untrackable_value > u64::MAX / 2 {
                 // next shift will overflow, meaning that bucket could represent values up to ones
                 // greater than i64::max_value, so it's the last bucket
                 return buckets_needed + 1;
@@ -1645,7 +1754,7 @@ impl<T: Counter> Histogram<T> {
     /// Returns an error if the new size cannot be represented as a `usize`.
     fn resize(&mut self, high: u64) -> Result<(), UsizeTypeTooSmall> {
         // will not overflow because lowest_discernible_value must be at least as small as
-        // u64::max_value() / 2 to have passed initial validation
+        // u64::MAX / 2 to have passed initial validation
         assert!(
             high >= 2 * self.lowest_discernible_value,
             "highest trackable value must be >= (2 * lowest discernible value)"
@@ -1705,11 +1814,7 @@ impl<T: Counter> Histogram<T> {
 
     fn reset_min(&mut self, min: u64) {
         let internal_value = min & !self.unit_magnitude_mask; // Min unit-equivalent value
-        self.min_non_zero_value = if min == u64::max_value() {
-            min
-        } else {
-            internal_value
-        };
+        self.min_non_zero_value = if min == u64::MAX { min } else { internal_value };
     }
 
     /// Recalculate min, max, total_count.

@@ -4,7 +4,7 @@ use std::{
   sync::{Arc, Mutex},
 };
 
-use crate::{check_status, sys, Error, JsUnknown, NapiRaw, NapiValue, Result, Status, ValueType};
+use crate::{check_status, sys, Env, Error, JsValue, Result, Status, Value, ValueType};
 
 mod array;
 mod arraybuffer;
@@ -22,16 +22,21 @@ mod map;
 mod nil;
 mod number;
 mod object;
-#[cfg(all(feature = "tokio_rt", feature = "napi4"))]
+mod os_string;
 mod promise;
+mod promise_raw;
+mod scope;
 #[cfg(feature = "serde-json")]
 mod serde;
+mod set;
+#[cfg(feature = "web_stream")]
+mod stream;
 mod string;
 mod symbol;
 mod task;
 mod value_ref;
 
-pub use crate::js_values::JsUnknown as Unknown;
+pub use crate::js_values::Unknown;
 #[cfg(feature = "napi5")]
 pub use crate::JsDate as Date;
 pub use array::*;
@@ -45,15 +50,15 @@ pub use external::*;
 pub use function::*;
 pub use nil::*;
 pub use object::*;
-#[cfg(all(feature = "tokio_rt", feature = "napi4"))]
 pub use promise::*;
+pub use promise_raw::*;
+pub use scope::*;
+#[cfg(feature = "web_stream")]
+pub use stream::*;
 pub use string::*;
 pub use symbol::*;
 pub use task::*;
 pub use value_ref::*;
-
-#[cfg(feature = "latin1")]
-pub use string::latin1_string::*;
 
 pub trait TypeName {
   fn type_name() -> &'static str;
@@ -61,24 +66,25 @@ pub trait TypeName {
   fn value_type() -> ValueType;
 }
 
-pub trait ToNapiValue {
-  /// # Safety
+pub trait ToNapiValue: Sized {
+  /// This function called to convert rust values to napi values
   ///
-  /// this function called to convert rust values to napi values
+  /// # Safety
+  /// The caller must guarantee that the `env` is a valid napi env pointer and the returned `napi_value` is a valid js value pointer.
   unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value>;
-}
 
-impl TypeName for JsUnknown {
-  fn type_name() -> &'static str {
-    "unknown"
+  fn into_unknown(self, env: &Env) -> Result<Unknown<'_>> {
+    let napi_val = unsafe { Self::to_napi_value(env.0, self)? };
+    Ok(Unknown(
+      Value {
+        env: env.0,
+        value: napi_val,
+        value_type: ValueType::Unknown,
+      },
+      std::marker::PhantomData,
+    ))
   }
-
-  fn value_type() -> ValueType {
-    ValueType::Unknown
-  }
 }
-
-impl ValidateNapiValue for JsUnknown {}
 
 impl ToNapiValue for sys::napi_value {
   unsafe fn to_napi_value(_env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
@@ -86,58 +92,81 @@ impl ToNapiValue for sys::napi_value {
   }
 }
 
-impl<T: NapiRaw> ToNapiValue for T {
+impl<'env, T: JsValue<'env>> ToNapiValue for T {
   unsafe fn to_napi_value(_env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
-    Ok(unsafe { NapiRaw::raw(&val) })
-  }
-}
-
-impl<T: NapiValue> FromNapiValue for T {
-  unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
-    Ok(unsafe { T::from_raw_unchecked(env, napi_val) })
+    Ok(val.raw())
   }
 }
 
 pub trait FromNapiValue: Sized {
+  /// This function called to convert napi values to native rust values
+  ///
   /// # Safety
   ///
-  /// this function called to convert napi values to native rust values
+  /// The caller must ensure that:
+  /// - The `env` is a valid napi env pointer
+  /// - The `napi_val` is a valid js value pointer
+  /// - The `napi_val` is a valid type that can be converted into `Self` using [ValidateNapiValue::validate]
   unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self>;
 
-  fn from_unknown(value: JsUnknown) -> Result<Self> {
+  fn from_unknown(value: Unknown) -> Result<Self> {
     unsafe { Self::from_napi_value(value.0.env, value.0.value) }
   }
 }
 
 pub trait FromNapiRef {
+  /// This function called to convert napi values to native rust values
+  ///
   /// # Safety
   ///
-  /// this function called to convert napi values to native rust values
+  /// The caller must ensure that:
+  /// - The `env` is a valid napi env pointer
+  /// - The `napi_val` is a valid js value pointer
+  /// - The `napi_val` is a valid type that can be converted into `Self` using [ValidateNapiValue::validate]
   unsafe fn from_napi_ref(env: sys::napi_env, napi_val: sys::napi_value) -> Result<&'static Self>;
 }
 
 pub trait FromNapiMutRef {
+  /// This function called to convert napi values to native rust values
+  ///
   /// # Safety
   ///
-  /// this function called to convert napi values to native rust values
+  /// The caller must ensure that:
+  /// - The `env` is a valid napi env pointer
+  /// - The `napi_val` is a valid js value pointer
+  /// - The `napi_val` is a valid type that can be converted into `Self` using [ValidateNapiValue::validate]
   unsafe fn from_napi_mut_ref(
     env: sys::napi_env,
     napi_val: sys::napi_value,
   ) -> Result<&'static mut Self>;
 }
 
+impl<T: FromNapiRef + 'static> FromNapiValue for &T {
+  unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
+    unsafe { T::from_napi_ref(env, napi_val) }
+  }
+}
+
+impl<T: FromNapiMutRef + 'static> FromNapiValue for &mut T {
+  unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
+    unsafe { T::from_napi_mut_ref(env, napi_val) }
+  }
+}
+
 pub trait ValidateNapiValue: TypeName {
-  /// # Safety
+  /// This function called to validate whether napi value passed to rust is valid type.
   ///
-  /// this function called to validate whether napi value passed to rust is valid type
   /// The reason why this function return `napi_value` is that if a `Promise<T>` passed in
   /// we need to return `Promise.reject(T)`, not the `T`.
   /// So we need to create `Promise.reject(T)` in this function.
+  ///
+  /// # Safety
+  ///
+  /// The caller must ensure that:
+  /// - The `env` is a valid napi env pointer
+  /// - The `napi_val` is a valid js value pointer
   unsafe fn validate(env: sys::napi_env, napi_val: sys::napi_value) -> Result<sys::napi_value> {
     let value_type = Self::value_type();
-    if value_type == ValueType::Unknown {
-      return Ok(ptr::null_mut());
-    }
 
     let mut result = -1;
     check_status!(
@@ -151,10 +180,7 @@ pub trait ValidateNapiValue: TypeName {
     } else {
       Err(Error::new(
         Status::InvalidArg,
-        format!(
-          "Expect value to be {}, but received {}",
-          value_type, received_type
-        ),
+        format!("Expect value to be {value_type}, but received {received_type}"),
       ))
     }
   }
@@ -295,13 +321,6 @@ where
   T: FromNapiValue,
 {
   unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
-    let mut val_type = 0;
-
-    check_status!(
-      unsafe { sys::napi_typeof(env, napi_val, &mut val_type) },
-      "Failed to convert napi value into rust type `Rc<T>`",
-    )?;
-
     Ok(Rc::new(unsafe { T::from_napi_value(env, napi_val)? }))
   }
 }
@@ -312,6 +331,24 @@ where
 {
   unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
     unsafe { T::to_napi_value(env, (*val).clone()) }
+  }
+}
+
+impl<T> ToNapiValue for &Rc<T>
+where
+  T: ToNapiValue + Clone,
+{
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
+    unsafe { T::to_napi_value(env, (**val).clone()) }
+  }
+}
+
+impl<T> ToNapiValue for &mut Rc<T>
+where
+  T: ToNapiValue + Clone,
+{
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
+    unsafe { T::to_napi_value(env, (**val).clone()) }
   }
 }
 
@@ -354,13 +391,6 @@ where
   T: FromNapiValue,
 {
   unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
-    let mut val_type = 0;
-
-    check_status!(
-      unsafe { sys::napi_typeof(env, napi_val, &mut val_type) },
-      "Failed to convert napi value into rust type `Arc<T>`",
-    )?;
-
     Ok(Arc::new(unsafe { T::from_napi_value(env, napi_val)? }))
   }
 }
@@ -371,6 +401,24 @@ where
 {
   unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
     unsafe { T::to_napi_value(env, (*val).clone()) }
+  }
+}
+
+impl<T> ToNapiValue for &Arc<T>
+where
+  T: ToNapiValue + Clone,
+{
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
+    unsafe { T::to_napi_value(env, (**val).clone()) }
+  }
+}
+
+impl<T> ToNapiValue for &mut Arc<T>
+where
+  T: ToNapiValue + Clone,
+{
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
+    unsafe { T::to_napi_value(env, (**val).clone()) }
   }
 }
 
@@ -413,13 +461,6 @@ where
   T: FromNapiValue,
 {
   unsafe fn from_napi_value(env: sys::napi_env, napi_val: sys::napi_value) -> Result<Self> {
-    let mut val_type = 0;
-
-    check_status!(
-      unsafe { sys::napi_typeof(env, napi_val, &mut val_type) },
-      "Failed to convert napi value into rust type `Mutex<T>`",
-    )?;
-
     Ok(Mutex::new(unsafe { T::from_napi_value(env, napi_val)? }))
   }
 }
@@ -438,5 +479,31 @@ where
         )),
       }
     }
+  }
+}
+
+impl<T> ToNapiValue for &Mutex<T>
+where
+  T: ToNapiValue + Clone,
+{
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
+    unsafe {
+      match val.lock() {
+        Ok(inner) => T::to_napi_value(env, inner.clone()),
+        Err(_) => Err(Error::new(
+          Status::GenericFailure,
+          "Failed to acquire a lock",
+        )),
+      }
+    }
+  }
+}
+
+impl<T> ToNapiValue for &mut Mutex<T>
+where
+  T: ToNapiValue + Clone,
+{
+  unsafe fn to_napi_value(env: sys::napi_env, val: Self) -> Result<sys::napi_value> {
+    ToNapiValue::to_napi_value(env, &*val)
   }
 }

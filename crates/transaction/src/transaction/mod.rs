@@ -6,9 +6,7 @@ use std::{ops::Bound, sync::Arc};
 use arrow_array::RecordBatch;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
-	actors::pending::PendingWrite,
 	common::CommitVersion,
-	delta::{Delta, RemoveVisibility},
 	execution::ExecutionResult,
 	interface::{
 		catalog::{object::ObjectId, policy::SessionOp, storage::StorageId},
@@ -22,7 +20,12 @@ use reifydb_core::{
 	},
 	testing::{CapturedEvent, CapturedInvocation},
 };
-use reifydb_value::{Result, error::Diagnostic, params::Params, value::identity::IdentityId};
+use reifydb_value::{
+	Result,
+	error::Diagnostic,
+	params::Params,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 
 use crate::{
 	TransactionId,
@@ -76,7 +79,7 @@ use crate::{
 			TableRowPostDeleteInterceptor, TableRowPostInsertInterceptor, TableRowPostUpdateInterceptor,
 			TableRowPreDeleteInterceptor, TableRowPreInsertInterceptor, TableRowPreUpdateInterceptor,
 		},
-		transaction::{PostCommitInterceptor, PreCommitContext, PreCommitInterceptor},
+		transaction::PostCommitInterceptor,
 		view::{
 			ViewPostCreateInterceptor, ViewPostUpdateInterceptor, ViewPreDeleteInterceptor,
 			ViewPreUpdateInterceptor,
@@ -96,43 +99,6 @@ pub mod catalog;
 pub mod command;
 pub mod query;
 pub mod write;
-
-use crate::multi::{pending::PendingWrites, transaction::write::MultiWriteTransaction};
-
-#[inline]
-pub(super) fn collect_transaction_writes(pending: &PendingWrites) -> Vec<(EncodedKey, Option<EncodedBytes>)> {
-	pending.iter()
-		.map(|(key, p)| match &p.delta {
-			Delta::Set {
-				bytes,
-				..
-			} => (key.encode(), Some(bytes.clone())),
-			_ => (key.encode(), None),
-		})
-		.collect()
-}
-
-#[inline]
-pub(super) fn apply_pre_commit_writes(
-	multi: &mut MultiWriteTransaction,
-	pending_writes: &[(TaggedKey, PendingWrite)],
-) -> Result<()> {
-	for (key, write) in pending_writes {
-		match write {
-			PendingWrite::Set(v) => multi.set(key, v.clone())?,
-			PendingWrite::Remove {
-				announce: RemoveVisibility::Announced,
-			} => multi.remove(key)?,
-			PendingWrite::Remove {
-				announce: RemoveVisibility::Unobserved,
-			} => multi.remove_unobserved(key)?,
-			PendingWrite::Remove {
-				announce: RemoveVisibility::Silent,
-			} => multi.remove_silent(key)?,
-		}
-	}
-	Ok(())
-}
 
 pub struct Savepoint {
 	write: WriteSavepoint,
@@ -223,50 +189,13 @@ impl<'a> TestTransaction<'a> {
 			return Ok(());
 		}
 
-		let offset = self.baseline;
-		let transaction_writes: Vec<(EncodedKey, Option<EncodedBytes>)> = self
-			.inner
-			.pending_writes()
-			.iter()
-			.map(|(key, pending)| match &pending.delta {
-				Delta::Set {
-					bytes,
-					..
-				} => (key.encode(), Some(bytes.clone())),
-				_ => (key.encode(), None),
-			})
-			.collect();
-
-		let (carried, flow_changes): (Vec<Change>, Vec<Change>) = self
+		let carried: Vec<Change> = self
 			.inner
 			.accumulator
-			.take_changes_from(offset, CommitVersion(0), self.inner.clock.now())?
+			.take_changes_from(self.baseline, CommitVersion(0), DateTime::default())?
 			.into_iter()
-			.partition(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))));
-
-		let mut ctx = PreCommitContext {
-			flow_changes,
-			pending_writes: Vec::new(),
-			transaction_writes,
-			view_entries: Vec::new(),
-		};
-
-		self.inner.interceptors.pre_commit.execute(&mut ctx)?;
-
-		for (key, write) in &ctx.pending_writes {
-			match write {
-				PendingWrite::Set(v) => self.inner.cmd.as_mut().unwrap().set(key, v.clone())?,
-				PendingWrite::Remove {
-					announce: RemoveVisibility::Announced,
-				} => self.inner.cmd.as_mut().unwrap().remove(key)?,
-				PendingWrite::Remove {
-					announce: RemoveVisibility::Unobserved,
-				} => self.inner.cmd.as_mut().unwrap().remove_unobserved(key)?,
-				PendingWrite::Remove {
-					announce: RemoveVisibility::Silent,
-				} => self.inner.cmd.as_mut().unwrap().remove_silent(key)?,
-			}
-		}
+			.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
+			.collect();
 
 		for change in carried {
 			if let ChangeOrigin::Object(id) = change.origin {
@@ -274,9 +203,6 @@ impl<'a> TestTransaction<'a> {
 					self.inner.accumulator.track(id, diff);
 				}
 			}
-		}
-		for (id, diff) in ctx.view_entries {
-			self.inner.accumulator.track(id, diff);
 		}
 
 		Ok(())
@@ -760,7 +686,6 @@ impl WithInterceptors for Transaction<'_> {
 		ringbuffer_row_post_delete_interceptors,
 		&mut Chain<dyn RingBufferRowPostDeleteInterceptor + Send + Sync>
 	);
-	delegate_interceptor!(pre_commit_interceptors, &mut Chain<dyn PreCommitInterceptor + Send + Sync>);
 	delegate_interceptor!(post_commit_interceptors, &mut Chain<dyn PostCommitInterceptor + Send + Sync>);
 	delegate_interceptor!(
 		namespace_post_create_interceptors,

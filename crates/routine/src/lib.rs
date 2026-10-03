@@ -7,5 +7,4 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod function;
-pub mod monoid;
 pub mod procedure;

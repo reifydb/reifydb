@@ -1,6 +1,6 @@
 [package]
 name = "moka"
-version = "0.12.15"
+version = "0.12.16"
 edition = "2021"
 # Rust 1.71.1 was released on August 3, 2023.
 rust-version = "1.71.1"
@@ -14,7 +14,9 @@ categories = ["caching", "concurrency"]
 readme = "README.md"
 exclude = [
     ".ci_extras/",
+    ".claude/",
     ".codecov.yml",
+    ".coderabbit.yaml",
     ".devcontainer",
     ".github",
     ".gitignore",
@@ -22,8 +24,10 @@ exclude = [
     ".markdownlint.json",
     ".vscode",
     "CHANGELOG.md",
+    "CLAUDE.md",
     "examples",
     "MIGRATION-GUIDE.md",
+    "openspec/",
     "tests/compile_tests/",
 ]
 
@@ -58,7 +62,7 @@ unstable-debug-counters = ["future"]
 
 [dependencies]
 crossbeam-channel = "0.5.15"
-crossbeam-epoch = "0.9.18"
+crossbeam-epoch = "0.9.20"
 crossbeam-utils = "0.8.21"
 equivalent = "1.0"
 parking_lot = "0.12"

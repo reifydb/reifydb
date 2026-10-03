@@ -18,11 +18,15 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
 	},
+	internal_error,
 	key::{
 		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
-	value::{batch::single_row, column::builder::ColumnBuilder},
+	value::{
+		batch::{single_row, take_rows},
+		column::builder::ColumnBuilder,
+	},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::DeleteSeriesNode, query::QueryPlan};
@@ -33,7 +37,7 @@ use reifydb_value::{
 	reifydb_assertions, return_error,
 	value::{
 		Value,
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
 		identity::IdentityId,
 		partition::Partition,
 		row_number::RowNumber,
@@ -53,7 +57,9 @@ use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
-	transaction::operation::series::{SeriesDeleteTally, apply_series_metadata_after_delete, remove_series_row},
+	transaction::operation::series::{
+		SeriesDeleteTally, apply_series_metadata_after_delete, emit_series_remove_change, remove_series_rows,
+	},
 	vm::{
 		instruction::dml::shape::get_or_create_series_shape,
 		services::Services,
@@ -227,10 +233,14 @@ fn drive_series_delete_input(
 			}
 			.into());
 		}
+		let keys = series_delete_keys(series, &columns)?;
+		let tags = series_delete_tags(&columns, has_tag, row_count)?;
+		let mut removed = SeriesRemovedRows::default();
+		let mut removals: Vec<(TaggedKey, EncodedBytes, bool)> = Vec::new();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let sequence = u64::from(row_number);
-			let key_value = extract_series_delete_key_value(&columns, series, row_idx)?;
-			let variant_tag = extract_series_delete_variant_tag(&columns, has_tag, row_idx)?;
+			let key_value = keys[row_idx];
+			let variant_tag = tags[row_idx];
 			let partition = if partitioned {
 				sidecar_partitions[row_idx]
 			} else {
@@ -264,62 +274,80 @@ fn drive_series_delete_input(
 			let committed = txn.get_committed(&key)?.map(|v| v.bytes);
 			let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_bytes.clone());
 
-			let pre = build_series_delete_pre_columns_from_input(
-				series,
-				&columns,
-				&pre_for_cdc,
-				key_value,
-				row_number,
-				row_idx,
-			)?;
-			remove_series_row(txn, series, &key, pre_for_cdc, committed.is_some(), Some(pre))?;
 			if has_returning {
 				returned_rows.push((row_number, encoded_bytes));
 			}
 			deleted_by_partition.entry(partition).or_default().record(key_value);
+			removed.key_values.push(key_value);
+			removed.row_numbers.push(row_number);
+			removed.pres.push(pre_for_cdc.clone());
+			removed.row_indices.push(row_idx);
+			removals.push((key, pre_for_cdc, committed.is_some()));
+		}
+		remove_series_rows(txn, series, &removed.row_numbers, &removals)?;
+		if !removed.pres.is_empty() {
+			let pre = build_series_delete_pre_columns_from_input(series, &columns, removed)?;
+			emit_series_remove_change(txn, series, pre);
 		}
 	}
 
 	Ok((deleted_by_partition, returned_rows))
 }
 
-#[inline]
-fn extract_series_delete_key_value(columns: &RecordBatch, series: &Series, row_idx: usize) -> Result<u64> {
-	Ok(column_view(columns, series.key.column())?
-		.and_then(|c| series.key_to_u64(c.get_value(row_idx)))
-		.unwrap_or(0))
+fn series_delete_keys(series: &Series, columns: &RecordBatch) -> Result<Vec<u64>> {
+	let key_column = series.key.column();
+	let view = column_view(columns, key_column)?.ok_or_else(|| {
+		internal_error!("delete of series {} has no key column {} in its input", series.name, key_column)
+	})?;
+	series.key
+		.keys_to_u64(&view)
+		.into_iter()
+		.map(|key| {
+			key.ok_or_else(|| internal_error!("delete of series {} reads a row without a key", series.name))
+		})
+		.collect()
 }
 
-#[inline]
-fn extract_series_delete_variant_tag(columns: &RecordBatch, has_tag: bool, row_idx: usize) -> Result<Option<u8>> {
+fn series_delete_tags(columns: &RecordBatch, has_tag: bool, rows: usize) -> Result<Vec<Option<u8>>> {
 	if !has_tag {
-		return Ok(None);
+		return Ok(vec![None; rows]);
 	}
-	Ok(column_view(columns, "tag")?.and_then(|c| match c.get_value(row_idx) {
-		Value::Uint1(v) => Some(v),
-		_ => None,
-	}))
+	Ok(match column_view(columns, "tag")? {
+		Some(view) => match &view.data {
+			ViewData::Uint1(array) => {
+				(0..rows).map(|row| (!view.none_at(row)).then(|| array.value(row))).collect()
+			}
+			_ => vec![None; rows],
+		},
+		None => vec![None; rows],
+	})
+}
+
+#[derive(Default)]
+struct SeriesRemovedRows {
+	key_values: Vec<u64>,
+	row_numbers: Vec<RowNumber>,
+	pres: Vec<EncodedBytes>,
+	row_indices: Vec<usize>,
 }
 
 fn build_series_delete_pre_columns_from_input(
 	series: &Series,
 	columns: &RecordBatch,
-	encoded_bytes: &EncodedBytes,
-	key_value: u64,
-	row_number: RowNumber,
-	row_idx: usize,
+	removed: SeriesRemovedRows,
 ) -> Result<RecordBatch> {
 	let mut pre_col_vec = Vec::with_capacity(1 + series.columns.len());
-	pre_col_vec.push(series.key_column_data(vec![key_value]));
-	for (field, array) in user_columns(columns) {
+	pre_col_vec.push(series.key_column_data(removed.key_values));
+	let taken = take_rows(columns, &removed.row_indices)?;
+	for (field, array) in user_columns(&taken) {
 		if field.name() != series.key.column() && field.name() != "tag" {
-			let col = ColumnView::try_from((array, field.as_ref()))?;
-			let mut data = ColumnBuilder::with_capacity(col.get_type(), 1);
-			data.push_value(col.get_value(row_idx));
-			pre_col_vec.push(data.finish(field.name()));
+			let view = ColumnView::try_from((array, field.as_ref()))?;
+			let mut builder = ColumnBuilder::with_capacity(view.get_type(), removed.row_indices.len());
+			builder.append_values(&view)?;
+			pre_col_vec.push(builder.finish(field.name()));
 		}
 	}
-	with_series_stamps(pre_col_vec, row_number, encoded_bytes)
+	with_series_stamps(pre_col_vec, &removed.row_numbers, &removed.pres)
 }
 
 #[inline]
@@ -329,4 +357,74 @@ fn delete_series_result(namespace: &str, series: &str, deleted: u64) -> Result<R
 		("series", Value::Utf8(series.to_string())),
 		("deleted", Value::Uint8(deleted)),
 	])
+}
+
+#[cfg(test)]
+mod tests {
+	use arrow_array::RecordBatch;
+	use reifydb_core::{
+		common::TimeSource,
+		interface::catalog::{
+			column::{Column, ColumnIndex},
+			id::{ColumnId, NamespaceId, SeriesId},
+			series::{Series, SeriesKey},
+		},
+		value::{batch::batch, column::builder::ColumnBuilder},
+	};
+	use reifydb_value::value::{Value, constraint::TypeConstraint, value_type::ValueType};
+
+	use super::series_delete_keys;
+
+	fn series() -> Series {
+		let column = |index: u8, name: &str| Column {
+			id: ColumnId(index as u64 + 1),
+			name: name.to_string(),
+			constraint: TypeConstraint::unconstrained(ValueType::Int4),
+			properties: vec![],
+			index: ColumnIndex(index),
+			auto_increment: false,
+			dictionary_id: None,
+		};
+		Series {
+			id: SeriesId(1),
+			namespace: NamespaceId(1),
+			name: "s".to_string(),
+			columns: vec![column(0, "k"), column(1, "v")],
+			tag: None,
+			key: SeriesKey::Integer {
+				column: "k".to_string(),
+			},
+			primary_key: None,
+			partition_by: vec![],
+			time: TimeSource::None,
+		}
+	}
+
+	fn input(name: &str, ty: ValueType, values: Vec<Value>) -> RecordBatch {
+		let mut builder = ColumnBuilder::with_capacity(ty, values.len());
+		for value in values {
+			builder.push_value(value);
+		}
+		batch(vec![builder.finish(name)]).unwrap()
+	}
+
+	#[test]
+	fn a_delete_key_that_does_not_convert_is_an_error() {
+		// A bad key must fail the delete, otherwise it reads as key 0 and the row silently stays.
+		let series = series();
+		let optional = ValueType::Option(Box::new(ValueType::Int4));
+
+		let converted =
+			series_delete_keys(&series, &input("k", ValueType::Int4, vec![Value::Int4(1), Value::Int4(7)]));
+
+		assert_eq!(converted.unwrap(), vec![1, 7]);
+		for (label, columns) in [
+			("a missing key column", input("v", ValueType::Int4, vec![Value::Int4(1)])),
+			("a none key", input("k", optional, vec![Value::Int4(1), Value::none_of(ValueType::Int4)])),
+			("a negative key", input("k", ValueType::Int4, vec![Value::Int4(-5)])),
+		] {
+			let error = series_delete_keys(&series, &columns).expect_err(label);
+			assert_eq!(error.0.code, "INTERNAL_ERROR", "{label}");
+		}
+	}
 }

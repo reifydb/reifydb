@@ -1,0 +1,416 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use reifydb_catalog::catalog::Catalog;
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{
+		bytes::{EncodedBytes, read_fingerprint},
+		shape::{RowShape, fingerprint::RowShapeFingerprint},
+	},
+};
+use reifydb_core::{
+	interface::{
+		catalog::object::ObjectId,
+		cdc::{Cdc, CdcChange},
+		change::{Change, ChangeOrigin, Diff, Diffs},
+	},
+	internal_error,
+	key::{
+		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
+		series::{PartitionedSeriesRowKey, SeriesRowKey},
+		tag::KeyTag,
+	},
+	value::batch::from_encoded_bytes,
+};
+use reifydb_transaction::transaction::Transaction;
+use reifydb_value::{Result, error::Error, value::row_number::RowNumber};
+
+pub struct RowTarget {
+	pub object: ObjectId,
+	pub row: RowNumber,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum LiftedKind {
+	Insert,
+	Update,
+	Remove,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct BucketKey {
+	kind: LiftedKind,
+	post_shape: RowShapeFingerprint,
+	pre_shape: RowShapeFingerprint,
+}
+
+struct LiftedRow {
+	target: RowTarget,
+	pre: Option<EncodedBytes>,
+	post: Option<EncodedBytes>,
+}
+
+#[derive(Default)]
+struct Bucket {
+	ids: Vec<RowNumber>,
+	pre: Vec<EncodedBytes>,
+	post: Vec<EncodedBytes>,
+}
+
+pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
+	match KeyTag::of(key)? {
+		KeyTag::Row => {
+			let row_key = RowKey::decode(key)?;
+			Some(RowTarget {
+				object: ObjectId::from(row_key.storage),
+				row: row_key.row,
+			})
+		}
+		KeyTag::SeriesRow => {
+			let series_key = SeriesRowKey::decode(key)?;
+			Some(RowTarget {
+				object: ObjectId::from(series_key.storage),
+				row: RowNumber(series_key.sequence),
+			})
+		}
+		KeyTag::PartitionedRow => {
+			let partitioned = PartitionedRowKey::decode(key)?;
+			Some(RowTarget {
+				object: ObjectId::from(partitioned.storage),
+				row: partitioned.row,
+			})
+		}
+		KeyTag::PartitionedSeriesRow => {
+			let partitioned = PartitionedSeriesRowKey::decode(key)?;
+			Some(RowTarget {
+				object: ObjectId::from(partitioned.storage),
+				row: RowNumber(partitioned.sequence),
+			})
+		}
+		KeyTag::SortedViewRow => Some(RowTarget {
+			object: ObjectId::from(SortedViewRowKey::storage_of(key)?),
+			row: SortedViewRowKey::row_of(key)?,
+		}),
+		KeyTag::PartitionedSortedViewRow => Some(RowTarget {
+			object: ObjectId::from(PartitionedSortedViewRowKey::storage_of(key)?),
+			row: PartitionedSortedViewRowKey::row_of(key)?,
+		}),
+		_ => None,
+	}
+}
+
+fn tracked_target(key: &EncodedKey) -> Option<RowTarget> {
+	let target = row_target(key)?;
+	if matches!(target.object, ObjectId::Queue(_)) {
+		return None;
+	}
+	Some(target)
+}
+
+pub fn changed_objects(cdc: &Cdc) -> &BTreeSet<ObjectId> {
+	cdc.changed_objects_with(|cdc| {
+		cdc.changes.iter().filter_map(|change| tracked_target(change.key())).map(|t| t.object).collect()
+	})
+}
+
+pub fn lifted_objects(cdc: &Cdc) -> Result<BTreeSet<ObjectId>> {
+	let mut objects = BTreeSet::new();
+	for cdc_change in &cdc.changes {
+		let Some(target) = tracked_target(cdc_change.key()) else {
+			continue;
+		};
+		match cdc_change {
+			CdcChange::Delete {
+				visible: false,
+				..
+			} => continue,
+			CdcChange::Delete {
+				key,
+				pre: None,
+				visible: true,
+			} => return Err(missing_pre_image(key, cdc)),
+			_ => {}
+		}
+		objects.insert(target.object);
+	}
+	Ok(objects)
+}
+
+pub fn lift_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) -> Result<Vec<Change>> {
+	lift_selected_changes(cdc, catalog, txn, |_| true)
+}
+
+pub fn lift_selected_changes(
+	cdc: &Cdc,
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	accept: impl Fn(ObjectId) -> bool,
+) -> Result<Vec<Change>> {
+	let mut rows: Vec<LiftedRow> = Vec::with_capacity(cdc.changes.len());
+
+	for cdc_change in &cdc.changes {
+		let Some(target) = tracked_target(cdc_change.key()) else {
+			continue;
+		};
+		if !accept(target.object) {
+			continue;
+		}
+		let (pre, post) = match cdc_change {
+			CdcChange::Insert {
+				post,
+				..
+			} => (None, Some(post.clone())),
+			CdcChange::Update {
+				pre,
+				post,
+				..
+			} => (Some(pre.clone()), Some(post.clone())),
+			CdcChange::Delete {
+				visible: false,
+				..
+			} => continue,
+			CdcChange::Delete {
+				key,
+				pre,
+				visible: true,
+			} => {
+				let pre = pre.as_ref().ok_or_else(|| missing_pre_image(key, cdc))?;
+				(Some(pre.clone()), None)
+			}
+		};
+		rows.push(LiftedRow {
+			target,
+			pre,
+			post,
+		});
+	}
+
+	pair_moved_rows(&mut rows);
+
+	let mut grouped: BTreeMap<ObjectId, BTreeMap<BucketKey, Bucket>> = BTreeMap::new();
+	for row in rows {
+		let key = match (&row.pre, &row.post) {
+			(None, Some(post)) => {
+				let fingerprint = read_fingerprint(post);
+				BucketKey {
+					kind: LiftedKind::Insert,
+					post_shape: fingerprint,
+					pre_shape: fingerprint,
+				}
+			}
+			(Some(pre), Some(post)) => BucketKey {
+				kind: LiftedKind::Update,
+				post_shape: read_fingerprint(post),
+				pre_shape: read_fingerprint(pre),
+			},
+			(Some(pre), None) => {
+				let fingerprint = read_fingerprint(pre);
+				BucketKey {
+					kind: LiftedKind::Remove,
+					post_shape: fingerprint,
+					pre_shape: fingerprint,
+				}
+			}
+			(None, None) => continue,
+		};
+
+		let bucket = grouped.entry(row.target.object).or_default().entry(key).or_default();
+		bucket.ids.push(row.target.row);
+		if let Some(pre) = row.pre {
+			bucket.pre.push(pre);
+		}
+		if let Some(post) = row.post {
+			bucket.post.push(post);
+		}
+	}
+
+	let mut shapes: BTreeMap<RowShapeFingerprint, RowShape> = BTreeMap::new();
+	let mut changes: Vec<Change> = Vec::with_capacity(grouped.len());
+
+	for (object, buckets) in grouped {
+		let mut diffs: Diffs = Diffs::new();
+		for (key, bucket) in buckets {
+			let diff = match key.kind {
+				LiftedKind::Insert => {
+					let shape = load_shape(catalog, txn, &mut shapes, key.post_shape)?;
+					Diff::insert(from_encoded_bytes(&shape, &bucket.ids, &bucket.post)?)
+				}
+				LiftedKind::Update => {
+					let pre_shape = load_shape(catalog, txn, &mut shapes, key.pre_shape)?;
+					let post_shape = load_shape(catalog, txn, &mut shapes, key.post_shape)?;
+					Diff::update(
+						from_encoded_bytes(&pre_shape, &bucket.ids, &bucket.pre)?,
+						from_encoded_bytes(&post_shape, &bucket.ids, &bucket.post)?,
+					)
+				}
+				LiftedKind::Remove => {
+					let shape = load_shape(catalog, txn, &mut shapes, key.pre_shape)?;
+					Diff::remove(from_encoded_bytes(&shape, &bucket.ids, &bucket.pre)?)
+				}
+			};
+			diffs.push(diff);
+		}
+		changes.push(Change {
+			origin: ChangeOrigin::Object(object),
+			diffs,
+			version: cdc.version,
+			changed_at: cdc.timestamp,
+		});
+	}
+
+	Ok(changes)
+}
+
+fn missing_pre_image(key: &EncodedKey, cdc: &Cdc) -> Error {
+	internal_error!(
+		"CDC delete for key {:?} at version {} carries no pre-image, so its change cannot be lifted",
+		key.as_slice(),
+		cdc.version.commit.0
+	)
+}
+
+fn pair_moved_rows(rows: &mut Vec<LiftedRow>) {
+	let mut inserts: BTreeMap<(ObjectId, RowNumber), usize> = BTreeMap::new();
+	for (index, row) in rows.iter().enumerate() {
+		if row.pre.is_none() {
+			inserts.insert((row.target.object, row.target.row), index);
+		}
+	}
+	for index in 0..rows.len() {
+		if rows[index].pre.is_none() || rows[index].post.is_some() {
+			continue;
+		}
+		if let Some(insert) = inserts.remove(&(rows[index].target.object, rows[index].target.row)) {
+			rows[index].post = rows[insert].post.take();
+		}
+	}
+	rows.retain(|row| row.pre.is_some() || row.post.is_some());
+}
+
+fn load_shape(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	cache: &mut BTreeMap<RowShapeFingerprint, RowShape>,
+	fingerprint: RowShapeFingerprint,
+) -> Result<RowShape> {
+	if let Some(shape) = cache.get(&fingerprint) {
+		return Ok(shape.clone());
+	}
+	let shape = catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
+		internal_error!("RowShape with fingerprint {:?} not found while lifting CDC changes", fingerprint)
+	})?;
+	cache.insert(fingerprint, shape.clone());
+	Ok(shape)
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		interface::catalog::{
+			id::{SeriesId, TableId, ViewId},
+			storage::StorageId,
+		},
+		key::{
+			row::{PartitionedRowKey, RowKey},
+			series::{PartitionedSeriesRowKey, SeriesRowKey},
+		},
+	};
+	use reifydb_value::value::partition::Partition;
+
+	use super::*;
+
+	#[test]
+	fn test_row_key_maps_to_its_storage_object() {
+		let target = row_target(&RowKey::encoded(StorageId::table(3), RowNumber(9))).expect("row target");
+		assert_eq!(target.object, ObjectId::Table(TableId(3)));
+		assert_eq!(target.row, RowNumber(9));
+	}
+
+	#[test]
+	fn test_view_row_key_maps_to_the_view_and_never_to_its_former_backing_table() {
+		let target = row_target(&RowKey::encoded(StorageId::view(42), RowNumber(1))).expect("row target");
+		assert_eq!(target.object, ObjectId::View(ViewId(42)));
+	}
+
+	#[test]
+	fn test_partitioned_row_key_maps_to_its_storage_object() {
+		let key = PartitionedRowKey::encoded(StorageId::view(8), Partition(5), RowNumber(2));
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::View(ViewId(8)));
+		assert_eq!(target.row, RowNumber(2));
+	}
+
+	#[test]
+	fn test_series_row_key_uses_the_sequence_as_row_number_never_the_series_key() {
+		// A RowKey decode of the longer series suffix would invent RowNumber(1_000) out of the key bytes.
+		let key = SeriesRowKey {
+			storage: StorageId::series(4),
+			variant_tag: None,
+			key: 1_000,
+			sequence: 7,
+		}
+		.encode();
+		assert!(RowKey::decode(&key).is_none(), "a series row key must no longer decode as a plain row key");
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::Series(SeriesId(4)));
+		assert_eq!(target.row, RowNumber(7));
+	}
+
+	#[test]
+	fn test_tagged_series_row_key_maps_to_its_series() {
+		// The variant tag shifts the key and sequence by one byte, so the tagged layout needs its own cover.
+		let key = SeriesRowKey {
+			storage: StorageId::series(9),
+			variant_tag: Some(3),
+			key: 1_000,
+			sequence: 11,
+		}
+		.encode();
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::Series(SeriesId(9)));
+		assert_eq!(target.row, RowNumber(11));
+	}
+
+	#[test]
+	fn test_series_row_key_on_a_view_storage_maps_to_the_view_never_to_a_series() {
+		// A series-backed view writes series keys under a View storage id; reading the object id back as a
+		// series would attribute every lifted change of that view to a series that does not exist.
+		let key = SeriesRowKey {
+			storage: StorageId::view(8),
+			variant_tag: None,
+			key: 1_000,
+			sequence: 7,
+		}
+		.encode();
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::View(ViewId(8)));
+		assert_eq!(target.row, RowNumber(7));
+	}
+
+	#[test]
+	fn test_partitioned_series_row_key_uses_the_sequence_as_row_number() {
+		// The partitioned series kind carries its row identity in the sequence, exactly like the unpartitioned
+		// one; taking the series key instead would invent RowNumber(1_000) and misjoin every pre-image.
+		let key = PartitionedSeriesRowKey::encoded(StorageId::series(4), Partition(1), None, 1_000, 7);
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::Series(SeriesId(4)));
+		assert_eq!(target.row, RowNumber(7));
+	}
+
+	#[test]
+	fn test_partitioned_series_row_key_on_a_view_storage_maps_to_the_view() {
+		// Same widening as the unpartitioned case: the storage id decides the object, not the key kind.
+		let key = PartitionedSeriesRowKey::encoded(StorageId::view(8), Partition(1), Some(2), 5, 3);
+		let target = row_target(&key).expect("row target");
+		assert_eq!(target.object, ObjectId::View(ViewId(8)));
+		assert_eq!(target.row, RowNumber(3));
+	}
+
+	#[test]
+	fn test_catalog_keys_are_skipped() {
+		assert!(row_target(&EncodedKey::new(b"not a row key")).is_none());
+	}
+}

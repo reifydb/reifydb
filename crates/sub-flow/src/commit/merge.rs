@@ -8,7 +8,7 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_cdc::rebuild::changed_objects;
+use reifydb_cdc::lift::changed_objects;
 use reifydb_core::{
 	common::{CommitVersion, SourceVersion},
 	interface::{

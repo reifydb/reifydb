@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.64"
 name = "zstd"
-version = "0.13.3"
+version = "0.14.0"
 authors = ["Alexandre Bury <alexandre.bury@gmail.com>"]
 build = false
 exclude = [
@@ -37,7 +37,7 @@ categories = [
     "compression",
     "api-bindings",
 ]
-license = "MIT"
+license = "BSD-3-Clause"
 repository = "https://github.com/gyscos/zstd-rs"
 
 [package.metadata.docs.rs]
@@ -54,6 +54,7 @@ repository = "gyscos/zstd-rs"
 [features]
 arrays = ["zstd-safe/arrays"]
 bindgen = ["zstd-safe/bindgen"]
+cmake = ["zstd-safe/cmake"]
 debug = ["zstd-safe/debug"]
 default = [
     "legacy",
@@ -68,6 +69,7 @@ no_asm = ["zstd-safe/no_asm"]
 pkg-config = ["zstd-safe/pkg-config"]
 thin = ["zstd-safe/thin"]
 thin-lto = ["zstd-safe/thin-lto"]
+vendored = ["zstd-safe/vendored"]
 wasm = []
 zdict_builder = ["zstd-safe/zdict_builder"]
 zstdmt = ["zstd-safe/zstdmt"]
@@ -105,8 +107,12 @@ path = "examples/zstdcat.rs"
 name = "issue_182"
 path = "tests/issue_182.rs"
 
+[[test]]
+name = "issue_251"
+path = "tests/issue_251.rs"
+
 [dependencies.zstd-safe]
-version = "7.1.0"
+version = "8.0.0"
 features = ["std"]
 default-features = false
 

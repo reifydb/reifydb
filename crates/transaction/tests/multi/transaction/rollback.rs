@@ -45,7 +45,7 @@ fn test_savepoint_restore_drops_post_savepoint_writes() {
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.restore_savepoint(sp);
 
-	let v = txn.commit(vec![]).unwrap();
+	let v = txn.commit().unwrap();
 	assert!(v.0 > 0, "commit should produce a non-zero version");
 
 	let rx = engine.begin_query().unwrap();

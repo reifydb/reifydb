@@ -24,6 +24,7 @@ reifydb-auth = { workspace = true, optional = true }
 reifydb-sqlite = { workspace = true, optional = true }
 reifydb-codec = { workspace = true, optional = true }
 reifydb-sdk = { workspace = true, optional = true }
+reifydb-testing-chaos = { workspace = true, optional = true, features = ["operator"] }
 reifydb-testing-sdk = { workspace = true, optional = true }
 reifydb-flow-async = { workspace = true, optional = true, features = ["runtime"] }
 reifydb-cdc = { workspace = true, optional = true }
@@ -60,6 +61,7 @@ operator = [
     "engine",
     "dep:reifydb-runtime",
     "dep:reifydb-codec",
+    "dep:reifydb-testing-chaos",
     "dep:reifydb-testing-sdk",
     "dep:reifydb-flow-async",
 ]

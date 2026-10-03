@@ -17,10 +17,13 @@ use reifydb_core::{
 use reifydb_evaluate::{expression::context::EvalContext, stack::SymbolTable};
 use reifydb_extension::transform::context::TransformContext;
 use reifydb_transaction::transaction::Transaction;
+#[cfg(reifydb_assertions)]
+use reifydb_value::value::canonical::assert_canonical_floats;
 use reifydb_value::{
 	byte_size::ByteSize,
 	error,
 	params::Params,
+	reifydb_assertions,
 	value::{column_view::ColumnView, identity::IdentityId, system_columns::check_user_columns},
 };
 
@@ -79,6 +82,9 @@ impl QueryNode for Box<dyn QueryNode> {
 		let result = (**self).next(rx, ctx)?;
 		if let Some(ref batch) = result {
 			check_user_columns(batch)?;
+			reifydb_assertions! {
+				assert_canonical_floats(batch, "volcano next");
+			}
 		}
 		Ok(result)
 	}
@@ -120,16 +126,23 @@ pub fn eval_context_from_transform<'a>(ctx: &'a TransformContext<'a>, stored: &'
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
 	use reifydb_core::{
 		util::budget::MemoryBudget,
 		value::{
 			batch::{batch, heap_size},
-			column::factory::int4,
+			column::{factory::int4, headers::ColumnHeaders},
 		},
 	};
-	use reifydb_value::byte_size::ByteSize;
+	use reifydb_evaluate::stack::SymbolTable;
+	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_transaction::transaction::Transaction;
+	use reifydb_value::{byte_size::ByteSize, params::Params, value::identity::IdentityId};
 
-	use super::charge_query_memory_bytes;
+	use super::{QueryContext, QueryNode, charge_query_memory_bytes, query_budget};
+	use crate::{Result, vm::services::Services};
 
 	#[test]
 	fn charge_query_memory_delta_charges_and_rejects_over_budget() {
@@ -156,5 +169,46 @@ mod tests {
 		let big_size = heap_size(&big).expect("an int4 batch has a heap size");
 		let err = charge_query_memory_bytes(&budget, &mut big_charged, big_size).unwrap_err();
 		assert_eq!(err.0.code, "QUERY_006", "an over-budget charge must raise the memory-limit diagnostic");
+	}
+
+	struct NegativeZeroNode;
+
+	impl QueryNode for NegativeZeroNode {
+		fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
+			Ok(())
+		}
+
+		fn next<'a>(
+			&mut self,
+			_rx: &mut Transaction<'a>,
+			_ctx: &mut QueryContext,
+		) -> Result<Option<RecordBatch>> {
+			let column: ArrayRef = Arc::new(Float64Array::from(vec![-0.0f64]));
+			Ok(Some(RecordBatch::try_from_iter([("c", column)]).unwrap()))
+		}
+
+		fn headers(&self) -> Option<ColumnHeaders> {
+			None
+		}
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "is not canonical")]
+	fn test_box_next_with_negative_zero_panics() {
+		// Every operator's output passes through this Box, so a raw -0.0 must stop here or compare splits zero.
+		let services = Services::testing();
+		let mut txn = create_test_admin_transaction();
+		let mut ctx = QueryContext {
+			services: services.clone(),
+			source: None,
+			batch_size: 1,
+			params: Params::default(),
+			symbols: SymbolTable::new(),
+			identity: IdentityId::system(),
+			memory: query_budget(&services),
+		};
+		let mut node: Box<dyn QueryNode> = Box::new(NegativeZeroNode);
+		let _ = <Box<dyn QueryNode> as QueryNode>::next(&mut node, &mut Transaction::Admin(&mut txn), &mut ctx);
 	}
 }

@@ -1,12 +1,9 @@
 use crate::prelude::*;
-use crate::runtime::RootedGcRefImpl;
-use crate::runtime::vm::{
-    self, GcStore, SendSyncPtr, TableElementType, VMFuncRef, VMGcRef, VMStore,
-};
+use crate::runtime::vm::{self, GcStore, TableElementType, VMFuncRef, VMGcRef, VMStore};
 use crate::store::{AutoAssertNoGc, StoreInstanceId, StoreOpaque, StoreResourceLimiter};
 use crate::trampoline::generate_table_export;
 use crate::{
-    AnyRef, AsContext, AsContextMut, ExnRef, ExternRef, Func, HeapType, Ref, RefType,
+    AnyRef, AsContext, AsContextMut, ExnRef, ExternRef, Func, HeapTopType, Ref, RefType,
     StoreContextMut, TableType, Trap,
 };
 use core::iter;
@@ -59,11 +56,18 @@ impl Table {
     /// Returns an error if `init` does not match the element type of the table,
     /// or if `init` does not belong to the `store` provided.
     ///
+    /// Returns an error if the element type of `ty` was not created with the
+    /// same [`Engine`](crate::Engine) as `store`.
+    ///
     /// This function will also return an error when used with a
     /// [`Store`](`crate::Store`) which has a
     /// [`ResourceLimiterAsync`](`crate::ResourceLimiterAsync`) (see also:
     /// [`Store::limiter_async`](`crate::Store::limiter_async`).  When using an
     /// async resource limiter, use [`Table::new_async`] instead.
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     ///
     /// # Examples
     ///
@@ -103,6 +107,15 @@ impl Table {
     ///
     /// You must use this variant with [`Store`](`crate::Store`)s which have a
     /// [`ResourceLimiterAsync`](`crate::ResourceLimiterAsync`).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the element type of `ty` was not created with the
+    /// same [`Engine`](crate::Engine) as `store`.
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     #[cfg(feature = "async")]
     pub async fn new_async(
         mut store: impl AsContextMut,
@@ -119,7 +132,27 @@ impl Table {
         ty: TableType,
         init: Ref,
     ) -> Result<Table> {
+        init.ensure_matches_ty(store, ty.element())
+            .context("type mismatch: value does not match table element type")?;
         let table = generate_table_export(store, limiter, &ty).await?;
+
+        // Tables are always allocated as all zeroes, so skip the fill below if
+        // the value being inserted is all zeros.
+        //
+        // Note that this is applicable for funcref tables when
+        // `tunables.table_lazy_init` is enabled as well. In that situation the
+        // null image means "go check the instance" and the instance created by
+        // `generate_table_export` says everything is null.
+        //
+        // In all cases a zero-initialized table will reflect all-null elements
+        // at runtime.
+        if init.is_zero_pattern() {
+            if cfg!(debug_assertions) {
+                let (table, _) = table.wasmtime_table(store, None);
+                table.debug_assert_all_zero();
+            }
+            return Ok(table);
+        }
         table._fill(store, 0, init, ty.minimum())?;
         Ok(table)
     }
@@ -131,10 +164,10 @@ impl Table {
     ///
     /// Panics if `store` does not own this table.
     pub fn ty(&self, store: impl AsContext) -> TableType {
-        self._ty(store.as_context().0)
+        self.ty_(store.as_context().0)
     }
 
-    fn _ty(&self, store: &StoreOpaque) -> TableType {
+    pub(crate) fn ty_(&self, store: &StoreOpaque) -> TableType {
         TableType::from_wasmtime_table(store.engine(), self.wasmtime_ty(store))
     }
 
@@ -185,17 +218,17 @@ impl Table {
                     .ok()?
                     .map(|r| r.unchecked_copy())
                     .map(|r| store.clone_gc_ref(&r));
-                Some(match self._ty(&store).element().heap_type().top() {
-                    HeapType::Extern => {
+                Some(match self.ty_(&store).element().heap_type().top() {
+                    HeapTopType::Extern => {
                         Ref::Extern(gc_ref.map(|r| ExternRef::from_cloned_gc_ref(&mut store, r)))
                     }
-                    HeapType::Any => {
+                    HeapTopType::Any => {
                         Ref::Any(gc_ref.map(|r| AnyRef::from_cloned_gc_ref(&mut store, r)))
                     }
-                    HeapType::Exn => {
+                    HeapTopType::Exn => {
                         Ref::Exn(gc_ref.map(|r| ExnRef::from_cloned_gc_ref(&mut store, r)))
                     }
-                    _ => unreachable!(),
+                    HeapTopType::Func | HeapTopType::Cont => unreachable!("not GC refs"),
                 })
             }
             // TODO(#10248) Required to support stack switching in the embedder
@@ -212,6 +245,10 @@ impl Table {
     /// the right type to be stored in this table, or if `val` belongs to a
     /// different store.
     ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
+    ///
     /// # Panics
     ///
     /// Panics if `store` does not own this table.
@@ -220,7 +257,7 @@ impl Table {
     }
 
     pub(crate) fn set_(&self, store: &mut StoreOpaque, index: u64, val: Ref) -> Result<()> {
-        let ty = self._ty(store);
+        let ty = self.ty_(store);
         match element_type(&ty) {
             TableElementType::Func => {
                 let element = val.into_table_func(store, ty.element())?;
@@ -250,10 +287,10 @@ impl Table {
     ///
     /// Panics if `store` does not own this table.
     pub fn size(&self, store: impl AsContext) -> u64 {
-        self._size(store.as_context().0)
+        self.size_(store.as_context().0)
     }
 
-    pub(crate) fn _size(&self, store: &StoreOpaque) -> u64 {
+    pub(crate) fn size_(&self, store: &StoreOpaque) -> u64 {
         // unwrap here should be ok because the runtime should always guarantee
         // that we can fit the number of elements in a 64-bit integer.
         u64::try_from(store[self.instance].table(self.index).current_elements).unwrap()
@@ -277,6 +314,10 @@ impl Table {
     /// [`Store::limiter_async`](`crate::Store::limiter_async`)).  When using an
     /// async resource limiter, use [`Table::grow_async`] instead.
     ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
+    ///
     /// # Panics
     ///
     /// Panics if `store` does not own this table.
@@ -288,61 +329,48 @@ impl Table {
 
     async fn _grow<T>(&self, store: StoreContextMut<'_, T>, delta: u64, init: Ref) -> Result<u64> {
         let store = store.0;
-        let ty = self.ty(&store);
         let (mut limiter, store) = store.resource_limiter_and_store_opaque();
         let limiter = limiter.as_mut();
-        let result = match element_type(&ty) {
-            TableElementType::Func => {
-                let element = init
-                    .into_table_func(store, ty.element())?
-                    .map(SendSyncPtr::new);
-                self.instance
-                    .get_mut(store)
-                    .defined_table_grow(self.index, async |table| {
-                        // SAFETY: in the context of `defined_table_grow` this
-                        // is safe to call as it'll update the internal table
-                        // pointer in the instance.
-                        unsafe { table.grow_func(limiter, delta, element).await }
-                    })
-                    .await?
-            }
-            TableElementType::GcRef => {
-                let mut store = AutoAssertNoGc::new(store);
-                let element = init
-                    .into_table_gc_ref(&mut store, ty.element())?
-                    .map(|r| r.unchecked_copy());
-                let (gc_store, instance) = self.instance.get_with_gc_store_mut(&mut store);
-                instance
-                    .defined_table_grow(self.index, async |table| {
-                        // SAFETY: in the context of `defined_table_grow` this
-                        // is safe to call as it'll update the internal table
-                        // pointer in the instance.
-                        unsafe {
-                            table
-                                .grow_gc_ref(limiter, gc_store, delta, element.as_ref())
-                                .await
-                        }
-                    })
-                    .await?
-            }
-            // TODO(#10248) Required to support stack switching in the
-            // embedder API.
-            TableElementType::Cont => bail!("unimplemented table for cont"),
+
+        // First, type-check to make sure that `init` does indeed match this
+        // table's element type.
+        let ty = self.ty_(store);
+        init.ensure_matches_ty(store, ty.element())
+            .context("type mismatch: value does not match table element type")?;
+
+        // SAFETY: the requirement here is that the new table elements, on
+        // success, are filled in with an appropriately typed value. That's done
+        // below in `_fill`.
+        let result = unsafe {
+            self.instance
+                .get_mut(store)
+                .defined_table_grow(self.index, limiter, delta)
+                .await?
         };
-        match result {
-            Some(size) => {
-                // unwrap here should be ok because the runtime should always
-                // guarantee that we can fit the table size in a 64-bit integer.
-                Ok(u64::try_from(size).unwrap())
-            }
+        let start = match result {
+            // unwrap here should be ok because the runtime should always
+            // guarantee that we can fit the table size in a 64-bit integer.
+            Some(size) => u64::try_from(size).unwrap(),
             None => bail!("failed to grow table by `{delta}`"),
-        }
+        };
+        // This should be in-bounds and well-typed, meaning that it should not
+        // fail, hence the unwrap. Note that this is required for the safety of
+        // this operation because this table's type may be non-nullable elements
+        // which means this must happen after growth.
+        self._fill(store, start, init, delta).unwrap();
+        Ok(start)
     }
 
     /// Async variant of [`Table::grow`].
     ///
     /// Required when using a
     /// [`ResourceLimiterAsync`](`crate::ResourceLimiterAsync`).
+    ///
+    /// # Errors
+    ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
     ///
     /// # Panics
     ///
@@ -366,6 +394,10 @@ impl Table {
     /// destination tables, or if the source table's element type does not match
     /// the destination table's element type.
     ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
+    ///
     /// # Panics
     ///
     /// Panics if `store` does not own either `dst_table` or `src_table`.
@@ -379,6 +411,15 @@ impl Table {
     ) -> Result<()> {
         let store = store.as_context_mut().0;
 
+        let src_range = src_index..src_index.checked_add(len).ok_or(Trap::TableOutOfBounds)?;
+        let dst_range = dst_index..dst_index.checked_add(len).ok_or(Trap::TableOutOfBounds)?;
+
+        // Bounds-check up front before any modifications to ensure everything
+        // is in-bounds.
+        if src_range.end > src_table.size_(store) || dst_range.end > dst_table.size_(store) {
+            return Err(Trap::TableOutOfBounds.into());
+        }
+
         let dst_ty = dst_table.ty(&store);
         let src_ty = src_table.ty(&store);
         src_ty
@@ -389,91 +430,25 @@ impl Table {
                  destination table's element type",
             )?;
 
-        // SAFETY: the the two tables have the same type, as type-checked above.
-        unsafe {
-            Self::copy_raw(store, dst_table, dst_index, src_table, src_index, len)?;
+        // Do a forwards or backwards copy depending on the indices involved to
+        // ensure that elements that are part of the copy aren't accidentally
+        // clobbered.
+        if dst_index < src_index {
+            for (src, dst) in src_range.zip(dst_range) {
+                let val = src_table
+                    .get(&mut *store, src)
+                    .ok_or(Trap::TableOutOfBounds)?;
+                dst_table.set(&mut *store, dst, val)?;
+            }
+        } else {
+            for (src, dst) in src_range.rev().zip(dst_range.rev()) {
+                let val = src_table
+                    .get(&mut *store, src)
+                    .ok_or(Trap::TableOutOfBounds)?;
+                dst_table.set(&mut *store, dst, val)?;
+            }
         }
         Ok(())
-    }
-
-    /// Copies the elements of `src_table` to `dst_table`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the either table doesn't belong to `store`.
-    ///
-    /// # Safety
-    ///
-    /// Requires that the two tables have previously been type-checked to have
-    /// the same type.
-    pub(crate) unsafe fn copy_raw(
-        store: &mut StoreOpaque,
-        dst_table: &Table,
-        dst_index: u64,
-        src_table: &Table,
-        src_index: u64,
-        len: u64,
-    ) -> Result<(), Trap> {
-        // Handle lazy initialization of the source table first before doing
-        // anything else.
-        let src_range = src_index..(src_index.checked_add(len).unwrap_or(u64::MAX));
-        src_table.wasmtime_table(store, src_range);
-
-        // validate `dst_table` belongs to `store`.
-        dst_table.wasmtime_table(store, iter::empty());
-
-        // Figure out which of the three cases we're in:
-        //
-        // 1. Cross-instance table copy.
-        // 2. Intra-instance table copy.
-        // 3. Intra-table copy.
-        //
-        // We handle each of them slightly differently.
-        let src_instance = src_table.instance.instance();
-        let dst_instance = dst_table.instance.instance();
-        match (
-            src_instance == dst_instance,
-            src_table.index == dst_table.index,
-        ) {
-            // 1. Cross-instance table copy: split the mutable store borrow into
-            // two mutable instance borrows, get each instance's defined table,
-            // and do the copy.
-            (false, _) => {
-                // SAFETY: accessing two instances mutably at the same time
-                // requires only accessing defined entities on each instance
-                // which is done below with `get_defined_*` methods.
-                let (gc_store, [src_instance, dst_instance]) = unsafe {
-                    store.optional_gc_store_and_instances_mut([src_instance, dst_instance])
-                };
-                src_instance.get_defined_table(src_table.index).copy_to(
-                    dst_instance.get_defined_table(dst_table.index),
-                    gc_store,
-                    dst_index,
-                    src_index,
-                    len,
-                )
-            }
-
-            // 2. Intra-instance, distinct-tables copy: split the mutable
-            // instance borrow into two distinct mutable table borrows and do
-            // the copy.
-            (true, false) => {
-                let (gc_store, instance) = store.optional_gc_store_and_instance_mut(src_instance);
-                let [(_, src_table), (_, dst_table)] = instance
-                    .tables_mut()
-                    .get_disjoint_mut([src_table.index, dst_table.index])
-                    .unwrap();
-                src_table.copy_to(dst_table, gc_store, dst_index, src_index, len)
-            }
-
-            // 3. Intra-table copy: get the table and copy within it!
-            (true, true) => {
-                let (gc_store, instance) = store.optional_gc_store_and_instance_mut(src_instance);
-                instance
-                    .get_defined_table(src_table.index)
-                    .copy_within(gc_store, dst_index, src_index, len)
-            }
-        }
     }
 
     /// Fill `table[dst..(dst + len)]` with the given value.
@@ -489,6 +464,10 @@ impl Table {
     ///
     /// * `val` comes from a different `Store` from this table.
     ///
+    /// This function will return an [`OutOfMemory`][crate::OutOfMemory] error when
+    /// memory allocation fails. See the `OutOfMemory` type's documentation for
+    /// details on Wasmtime's out-of-memory handling.
+    ///
     /// # Panics
     ///
     /// Panics if `store` does not own either `dst_table` or `src_table`.
@@ -503,35 +482,23 @@ impl Table {
         val: Ref,
         len: u64,
     ) -> Result<()> {
-        let ty = self._ty(&store);
-        match element_type(&ty) {
-            TableElementType::Func => {
-                let val = val.into_table_func(store, ty.element())?;
-                let (table, _) = self.wasmtime_table(store, iter::empty());
-                table.fill_func(dst, val, len)?;
-            }
-            TableElementType::GcRef => {
-                // Note that `val` is a `VMGcRef` temporarily read from the
-                // store here, and blocking GC with `AutoAssertNoGc` should
-                // ensure that it's not collected while being worked on here.
-                let mut store = AutoAssertNoGc::new(store);
-                let val = val.into_table_gc_ref(&mut store, ty.element())?;
-                let val = val.map(|g| g.unchecked_copy());
-                let (table, gc_store) = self.wasmtime_table(&mut store, iter::empty());
-                table.fill_gc_ref(gc_store, dst, val.as_ref(), len)?;
-            }
-            // TODO(#10248) Required to support stack switching in the embedder
-            // API.
-            TableElementType::Cont => bail!("unimplemented table for cont"),
+        let ty = self.ty_(store);
+        val.ensure_matches_ty(store, ty.element())
+            .context("type mismatch: value does not match table element type")?;
+        let end = dst.checked_add(len).ok_or(Trap::TableOutOfBounds)?;
+        if end > self.size_(store) {
+            bail!(Trap::TableOutOfBounds);
         }
-
+        for i in dst..dst + len {
+            self.set_(&mut *store, i, val.clone())?;
+        }
         Ok(())
     }
 
     #[cfg(feature = "gc")]
     pub(crate) fn trace_roots(&self, store: &mut StoreOpaque, gc_roots_list: &mut vm::GcRootsList) {
         if !self
-            ._ty(store)
+            .ty_(store)
             .element()
             .is_vmgcref_type_and_points_to_object()
         {
@@ -542,7 +509,7 @@ impl Table {
         for gc_ref in table.gc_refs_mut() {
             if let Some(gc_ref) = gc_ref {
                 unsafe {
-                    gc_roots_list.add_root(gc_ref.into(), "Wasm table element");
+                    gc_roots_list.add_vmgcref_root(gc_ref.into(), "Wasm table element");
                 }
             }
         }
@@ -596,10 +563,9 @@ impl Table {
 
 fn element_type(ty: &TableType) -> TableElementType {
     match ty.element().heap_type().top() {
-        HeapType::Func => TableElementType::Func,
-        HeapType::Exn | HeapType::Extern | HeapType::Any => TableElementType::GcRef,
-        HeapType::Cont => TableElementType::Cont,
-        _ => unreachable!(),
+        HeapTopType::Func => TableElementType::Func,
+        HeapTopType::Exn | HeapTopType::Extern | HeapTopType::Any => TableElementType::GcRef,
+        HeapTopType::Cont => TableElementType::Cont,
     }
 }
 
@@ -613,11 +579,11 @@ impl Ref {
             .context("type mismatch: value does not match table element type")?;
 
         match (self, ty.heap_type().top()) {
-            (Ref::Func(None), HeapType::Func) => {
+            (Ref::Func(None), HeapTopType::Func) => {
                 assert!(ty.is_nullable());
                 Ok(None)
             }
-            (Ref::Func(Some(f)), HeapType::Func) => {
+            (Ref::Func(Some(f)), HeapTopType::Func) => {
                 debug_assert!(
                     f.comes_from_same_store(store),
                     "checked in `ensure_matches_ty`"
@@ -638,7 +604,7 @@ impl Ref {
             .context("type mismatch: value does not match table element type")?;
 
         match (self, ty.heap_type().top()) {
-            (Ref::Extern(e), HeapType::Extern) => match e {
+            (Ref::Extern(e), HeapTopType::Extern) => match e {
                 None => {
                     assert!(ty.is_nullable());
                     Ok(None)
@@ -646,7 +612,7 @@ impl Ref {
                 Some(e) => Ok(Some(e.try_gc_ref(store)?)),
             },
 
-            (Ref::Any(a), HeapType::Any) => match a {
+            (Ref::Any(a), HeapTopType::Any) => match a {
                 None => {
                     assert!(ty.is_nullable());
                     Ok(None)
@@ -654,7 +620,7 @@ impl Ref {
                 Some(a) => Ok(Some(a.try_gc_ref(store)?)),
             },
 
-            (Ref::Exn(e), HeapType::Exn) => match e {
+            (Ref::Exn(e), HeapTopType::Exn) => match e {
                 None => {
                     assert!(ty.is_nullable());
                     Ok(None)
@@ -663,6 +629,15 @@ impl Ref {
             },
 
             _ => unreachable!("checked that the value matches the type above"),
+        }
+    }
+
+    fn is_zero_pattern(&self) -> bool {
+        match self {
+            Ref::Extern(None) | Ref::Any(None) | Ref::Exn(None) | Ref::Func(None) => true,
+            Ref::Extern(Some(_)) | Ref::Any(Some(_)) | Ref::Exn(Some(_)) | Ref::Func(Some(_)) => {
+                false
+            }
         }
     }
 }

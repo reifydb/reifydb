@@ -3,13 +3,19 @@
 //! Parsers are generic over their error type, requiring that it implements
 //! the `error::ParseError<Input>` trait.
 
-use crate::internal::Parser;
+use crate::internal::{Err, Mode, OutputMode, PResult, Parser};
 use crate::lib::std::fmt;
+
+#[cfg(feature = "alloc")]
+use crate::alloc::borrow::ToOwned;
+
+#[cfg(feature = "std")]
+use crate::internal::IResult;
 
 /// This trait must be implemented by the error type of a nom parser.
 ///
 /// There are already implementations of it for `(Input, ErrorKind)`
-/// and `VerboseError<Input>`.
+/// and `Error<Input>`.
 ///
 /// It provides methods to create an error from some combinators,
 /// and combine existing errors in combinators like `alt`.
@@ -53,8 +59,8 @@ pub trait FromExternalError<I, E> {
   fn from_external_error(input: I, kind: ErrorKind, e: E) -> Self;
 }
 
-/// default error type, only contains the error' location and code
-#[derive(Debug, PartialEq)]
+/// default error type, only contains the error's location and code
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Error<I> {
   /// position of the error in the input data
   pub input: I,
@@ -95,8 +101,72 @@ impl<I: fmt::Display> fmt::Display for Error<I> {
   }
 }
 
+#[cfg(feature = "alloc")]
+impl<I: ToOwned + ?Sized> Error<&I> {
+  /// Converts `Error<&I>` into `Error<I::Owned>` by cloning.
+  pub fn cloned(self) -> Error<I::Owned> {
+    Error {
+      input: self.input.to_owned(),
+      code: self.code,
+    }
+  }
+}
+
+#[cfg(feature = "alloc")]
+impl<I: ToOwned + ?Sized> Error<&mut I> {
+  /// Converts `Error<&mut I>` into `Error<I::Owned>` by cloning.
+  pub fn cloned(self) -> Error<I::Owned> {
+    Error {
+      input: self.input.to_owned(),
+      code: self.code,
+    }
+  }
+}
+
+impl<I: Copy> Error<&I> {
+  /// Converts `Error<&I>` into `Error<I>` by copying.
+  pub fn copied(self) -> Error<I> {
+    Error {
+      input: *self.input,
+      code: self.code,
+    }
+  }
+}
+
+impl<I: Copy> Error<&mut I> {
+  /// Converts `Error<&mut I>` into `Error<I>` by copying.
+  pub fn copied(self) -> Error<I> {
+    Error {
+      input: *self.input,
+      code: self.code,
+    }
+  }
+}
+
 #[cfg(feature = "std")]
 impl<I: fmt::Debug + fmt::Display> std::error::Error for Error<I> {}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(feature = "docsrs", doc(cfg(feature = "alloc")))]
+impl From<Error<&[u8]>> for Error<crate::lib::std::vec::Vec<u8>> {
+  fn from(value: Error<&[u8]>) -> Self {
+    Error {
+      input: value.input.to_owned(),
+      code: value.code,
+    }
+  }
+}
+
+#[cfg(feature = "alloc")]
+#[cfg_attr(feature = "docsrs", doc(cfg(feature = "alloc")))]
+impl From<Error<&str>> for Error<crate::lib::std::string::String> {
+  fn from(value: Error<&str>) -> Self {
+    Error {
+      input: value.input.to_owned(),
+      code: value.code,
+    }
+  }
+}
 
 // for backward compatibility, keep those trait implementations
 // for the previously used error type
@@ -142,221 +212,41 @@ pub fn append_error<I, E: ParseError<I>>(input: I, kind: ErrorKind, other: E) ->
   E::append(input, kind, other)
 }
 
-/// This error type accumulates errors and their position when backtracking
-/// through a parse tree. With some post processing (cf `examples/json.rs`),
-/// it can be used to display user friendly error messages
-#[cfg(feature = "alloc")]
-#[cfg_attr(feature = "docsrs", doc(cfg(feature = "alloc")))]
-#[derive(Clone, Debug, PartialEq)]
-pub struct VerboseError<I> {
-  /// List of errors accumulated by `VerboseError`, containing the affected
-  /// part of input data, and some context
-  pub errors: crate::lib::std::vec::Vec<(I, VerboseErrorKind)>,
-}
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(feature = "docsrs", doc(cfg(feature = "alloc")))]
-#[derive(Clone, Debug, PartialEq)]
-/// Error context for `VerboseError`
-pub enum VerboseErrorKind {
-  /// Static string added by the `context` function
-  Context(&'static str),
-  /// Indicates which character was expected by the `char` function
-  Char(char),
-  /// Error kind given by various nom parsers
-  Nom(ErrorKind),
-}
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(feature = "docsrs", doc(cfg(feature = "alloc")))]
-impl<I> ParseError<I> for VerboseError<I> {
-  fn from_error_kind(input: I, kind: ErrorKind) -> Self {
-    VerboseError {
-      errors: vec![(input, VerboseErrorKind::Nom(kind))],
-    }
-  }
-
-  fn append(input: I, kind: ErrorKind, mut other: Self) -> Self {
-    other.errors.push((input, VerboseErrorKind::Nom(kind)));
-    other
-  }
-
-  fn from_char(input: I, c: char) -> Self {
-    VerboseError {
-      errors: vec![(input, VerboseErrorKind::Char(c))],
-    }
-  }
-}
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(feature = "docsrs", doc(cfg(feature = "alloc")))]
-impl<I> ContextError<I> for VerboseError<I> {
-  fn add_context(input: I, ctx: &'static str, mut other: Self) -> Self {
-    other.errors.push((input, VerboseErrorKind::Context(ctx)));
-    other
-  }
-}
-
-#[cfg(feature = "alloc")]
-#[cfg_attr(feature = "docsrs", doc(cfg(feature = "alloc")))]
-impl<I, E> FromExternalError<I, E> for VerboseError<I> {
-  /// Create a new error from an input position and an external error
-  fn from_external_error(input: I, kind: ErrorKind, _e: E) -> Self {
-    Self::from_error_kind(input, kind)
-  }
-}
-
-#[cfg(feature = "alloc")]
-impl<I: fmt::Display> fmt::Display for VerboseError<I> {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    writeln!(f, "Parse error:")?;
-    for (input, error) in &self.errors {
-      match error {
-        VerboseErrorKind::Nom(e) => writeln!(f, "{:?} at: {}", e, input)?,
-        VerboseErrorKind::Char(c) => writeln!(f, "expected '{}' at: {}", c, input)?,
-        VerboseErrorKind::Context(s) => writeln!(f, "in section '{}', at: {}", s, input)?,
-      }
-    }
-
-    Ok(())
-  }
-}
-
-#[cfg(feature = "std")]
-impl<I: fmt::Debug + fmt::Display> std::error::Error for VerboseError<I> {}
-
-use crate::internal::{Err, IResult};
-
 /// Create a new error from an input position, a static string and an existing error.
 /// This is used mainly in the [context] combinator, to add user friendly information
 /// to errors when backtracking through a parse tree
-pub fn context<I: Clone, E: ContextError<I>, F, O>(
-  context: &'static str,
-  mut f: F,
-) -> impl FnMut(I) -> IResult<I, O, E>
-where
-  F: Parser<I, O, E>,
-{
-  move |i: I| match f.parse(i.clone()) {
-    Ok(o) => Ok(o),
-    Err(Err::Incomplete(i)) => Err(Err::Incomplete(i)),
-    Err(Err::Error(e)) => Err(Err::Error(E::add_context(i, context, e))),
-    Err(Err::Failure(e)) => Err(Err::Failure(E::add_context(i, context, e))),
-  }
+pub fn context<F>(context: &'static str, parser: F) -> Context<F> {
+  Context { context, parser }
 }
 
-/// Transforms a `VerboseError` into a trace with input position information
-#[cfg(feature = "alloc")]
-#[cfg_attr(feature = "docsrs", doc(cfg(feature = "alloc")))]
-pub fn convert_error<I: core::ops::Deref<Target = str>>(
-  input: I,
-  e: VerboseError<I>,
-) -> crate::lib::std::string::String {
-  use crate::lib::std::fmt::Write;
-  use crate::traits::Offset;
+/// Parser implementation for [context]
+pub struct Context<F> {
+  context: &'static str,
+  parser: F,
+}
 
-  let mut result = crate::lib::std::string::String::new();
+impl<I, F> Parser<I> for Context<F>
+where
+  I: Clone,
+  F: Parser<I>,
+  <F as Parser<I>>::Error: ContextError<I>,
+{
+  type Output = <F as Parser<I>>::Output;
+  type Error = <F as Parser<I>>::Error;
 
-  for (i, (substring, kind)) in e.errors.iter().enumerate() {
-    let offset = input.offset(substring);
-
-    if input.is_empty() {
-      match kind {
-        VerboseErrorKind::Char(c) => {
-          write!(&mut result, "{}: expected '{}', got empty input\n\n", i, c)
-        }
-        VerboseErrorKind::Context(s) => write!(&mut result, "{}: in {}, got empty input\n\n", i, s),
-        VerboseErrorKind::Nom(e) => write!(&mut result, "{}: in {:?}, got empty input\n\n", i, e),
-      }
-    } else {
-      let prefix = &input.as_bytes()[..offset];
-
-      // Count the number of newlines in the first `offset` bytes of input
-      let line_number = prefix.iter().filter(|&&b| b == b'\n').count() + 1;
-
-      // Find the line that includes the subslice:
-      // Find the *last* newline before the substring starts
-      let line_begin = prefix
-        .iter()
-        .rev()
-        .position(|&b| b == b'\n')
-        .map(|pos| offset - pos)
-        .unwrap_or(0);
-
-      // Find the full line after that newline
-      let line = input[line_begin..]
-        .lines()
-        .next()
-        .unwrap_or(&input[line_begin..])
-        .trim_end();
-
-      // The (1-indexed) column number is the offset of our substring into that line
-      let column_number = line.offset(substring) + 1;
-
-      match kind {
-        VerboseErrorKind::Char(c) => {
-          if let Some(actual) = substring.chars().next() {
-            write!(
-              &mut result,
-              "{i}: at line {line_number}:\n\
-               {line}\n\
-               {caret:>column$}\n\
-               expected '{expected}', found {actual}\n\n",
-              i = i,
-              line_number = line_number,
-              line = line,
-              caret = '^',
-              column = column_number,
-              expected = c,
-              actual = actual,
-            )
-          } else {
-            write!(
-              &mut result,
-              "{i}: at line {line_number}:\n\
-               {line}\n\
-               {caret:>column$}\n\
-               expected '{expected}', got end of input\n\n",
-              i = i,
-              line_number = line_number,
-              line = line,
-              caret = '^',
-              column = column_number,
-              expected = c,
-            )
-          }
-        }
-        VerboseErrorKind::Context(s) => write!(
-          &mut result,
-          "{i}: at line {line_number}, in {context}:\n\
-             {line}\n\
-             {caret:>column$}\n\n",
-          i = i,
-          line_number = line_number,
-          context = s,
-          line = line,
-          caret = '^',
-          column = column_number,
-        ),
-        VerboseErrorKind::Nom(e) => write!(
-          &mut result,
-          "{i}: at line {line_number}, in {nom_err:?}:\n\
-             {line}\n\
-             {caret:>column$}\n\n",
-          i = i,
-          line_number = line_number,
-          nom_err = e,
-          line = line,
-          caret = '^',
-          column = column_number,
-        ),
-      }
+  fn process<OM: OutputMode>(&mut self, input: I) -> PResult<OM, I, Self::Output, Self::Error> {
+    match self.parser.process::<OM>(input.clone()) {
+      Err(Err::Error(e)) => Err(Err::Error(OM::Error::map(e, |e| {
+        <F as Parser<I>>::Error::add_context(input, self.context, e)
+      }))),
+      Err(Err::Failure(e)) => Err(Err::Failure(<F as Parser<I>>::Error::add_context(
+        input,
+        self.context,
+        e,
+      ))),
+      x => x,
     }
-    // Because `write!` to a `String` is infallible, this `unwrap` is fine.
-    .unwrap();
   }
-
-  result
 }
 
 /// Indicates which parser returned an error
@@ -383,6 +273,7 @@ pub enum ErrorKind {
   Digit,
   HexDigit,
   OctDigit,
+  BinDigit,
   AlphaNumeric,
   Space,
   MultiSpace,
@@ -417,6 +308,9 @@ pub enum ErrorKind {
   Float,
   Satisfy,
   Fail,
+  Many,
+  Fold,
+  Precedence,
 }
 
 #[rustfmt::skip]
@@ -477,6 +371,10 @@ pub fn error_to_u32(e: &ErrorKind) -> u32 {
     ErrorKind::Float                     => 73,
     ErrorKind::Satisfy                   => 74,
     ErrorKind::Fail                      => 75,
+    ErrorKind::Many                      => 76,
+    ErrorKind::Fold                      => 77,
+    ErrorKind::BinDigit                  => 78,
+    ErrorKind::Precedence                => 79,
   }
 }
 
@@ -527,6 +425,7 @@ impl ErrorKind {
       ErrorKind::ManyMN                    => "Many(m, n)",
       ErrorKind::HexDigit                  => "Hexadecimal Digit",
       ErrorKind::OctDigit                  => "Octal digit",
+      ErrorKind::BinDigit                  => "Binary digit",
       ErrorKind::Not                       => "Negation",
       ErrorKind::Permutation               => "Permutation",
       ErrorKind::ManyTill                  => "ManyTill",
@@ -539,6 +438,9 @@ impl ErrorKind {
       ErrorKind::Float                     => "Float",
       ErrorKind::Satisfy                   => "Satisfy",
       ErrorKind::Fail                      => "Fail",
+      ErrorKind::Many                      => "Many",
+      ErrorKind::Fold                      => "Fold",
+      ErrorKind::Precedence                => "Precedence",
     }
   }
 }
@@ -548,7 +450,7 @@ impl ErrorKind {
 #[allow(unused_variables)]
 #[macro_export(local_inner_macros)]
 macro_rules! error_position(
-  ($input:expr, $code:expr) => ({
+  ($input:expr, $code:expr $(,)?) => ({
     $crate::error::make_error($input, $code)
   });
 );
@@ -559,7 +461,7 @@ macro_rules! error_position(
 #[allow(unused_variables)]
 #[macro_export(local_inner_macros)]
 macro_rules! error_node_position(
-  ($input:expr, $code:expr, $next:expr) => ({
+  ($input:expr, $code:expr, $next:expr $(,)?) => ({
     $crate::error::append_error($input, $code, $next)
   });
 );
@@ -605,16 +507,85 @@ where
 }
 
 #[cfg(test)]
-#[cfg(feature = "alloc")]
 mod tests {
   use super::*;
-  use crate::character::complete::char;
 
   #[test]
-  fn convert_error_panic() {
-    let input = "";
+  fn context_test() {
+    use crate::{character::char, combinator::cut, internal::Needed};
 
-    let _result: IResult<_, _, VerboseError<&str>> = char('x')(input);
+    #[derive(Debug, PartialEq)]
+    struct Error<I> {
+      input: I,
+      ctx: Option<&'static str>,
+    }
+
+    impl<I> ParseError<I> for Error<I> {
+      fn from_error_kind(input: I, _kind: ErrorKind) -> Self {
+        Self { input, ctx: None }
+      }
+
+      fn append(input: I, _kind: ErrorKind, other: Self) -> Self {
+        Self {
+          input,
+          ctx: other.ctx,
+        }
+      }
+    }
+
+    impl<I> ContextError<I> for Error<I> {
+      fn add_context(input: I, ctx: &'static str, _other: Self) -> Self {
+        Self {
+          input,
+          ctx: Some(ctx),
+        }
+      }
+    }
+
+    assert_eq!(
+      context("ctx", char::<_, Error<_>>('a')).parse("abcd"),
+      Ok(("bcd", 'a'))
+    );
+    assert_eq!(
+      context("ctx", char::<_, Error<_>>('a')).parse(""),
+      Err(Err::Incomplete(Needed::new(1)))
+    );
+    assert_eq!(
+      context("ctx", char::<_, Error<_>>('a')).parse_complete(""),
+      Err(Err::Error(Error {
+        input: "",
+        ctx: Some("ctx")
+      }))
+    );
+    assert_eq!(
+      context("ctx", cut(char::<_, Error<_>>('a'))).parse("bcd"),
+      Err(Err::Failure(Error {
+        input: "bcd",
+        ctx: Some("ctx")
+      }))
+    );
+  }
+
+  #[cfg(feature = "alloc")]
+  #[test]
+  fn clone_error() {
+    use crate::lib::std::string::String;
+    let err = Error {
+      code: ErrorKind::Eof,
+      input: "test",
+    };
+
+    let _err: Error<String> = err.cloned();
+  }
+
+  #[test]
+  fn copy_error() {
+    let err = Error {
+      code: ErrorKind::Eof,
+      input: &0_u8,
+    };
+
+    let _err: Error<u8> = err.copied();
   }
 }
 

@@ -29,7 +29,7 @@ use reifydb_value::{
 	value::{
 		partition::Partition,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, with_system_column},
+		system_columns::{SystemColumn, stamp_system_columns},
 		value_type::ValueType,
 	},
 };
@@ -53,7 +53,7 @@ pub struct TableScanNode {
 
 	storage_types: Vec<ValueType>,
 
-	dictionaries: Vec<Option<Dictionary>>,
+	dictionaries: Vec<Option<(Dictionary, ValueType)>>,
 
 	shape: Option<RowShape>,
 	resume: Resume,
@@ -66,6 +66,8 @@ pub struct TableScanNode {
 	oldest_first: bool,
 
 	merge: Option<PartitionMerge>,
+
+	storage_batch: Option<RecordBatch>,
 }
 
 impl TableScanNode {
@@ -82,7 +84,7 @@ impl TableScanNode {
 			if let Some(dict_id) = col.dictionary_id {
 				if let Some(dict) = context.services.catalog.find_dictionary(rx, dict_id)? {
 					storage_types.push(ValueType::DictionaryId);
-					dictionaries.push(Some(dict));
+					dictionaries.push(Some((dict, col.constraint.get_type())));
 				} else {
 					storage_types.push(col.constraint.get_type());
 					dictionaries.push(None);
@@ -119,6 +121,7 @@ impl TableScanNode {
 			system_columns,
 			oldest_first: false,
 			merge: None,
+			storage_batch: None,
 		})
 	}
 
@@ -370,21 +373,22 @@ impl QueryNode for TableScanNode {
 
 		self.resume = next_resume;
 
-		let columns = batch(self.storage_columns())?;
-		let mut columns = self.append_batch(rx, columns, scanned.rows, scanned.row_numbers)?;
+		let columns = match &self.storage_batch {
+			Some(storage) => storage.clone(),
+			None => {
+				let storage = batch(self.storage_columns())?;
+				self.storage_batch = Some(storage.clone());
+				storage
+			}
+		};
+		let columns = self.append_batch(rx, columns, scanned.rows, scanned.row_numbers)?;
 
+		let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 		if !scanned.partitions.is_empty() {
-			columns = with_system_column(
-				columns,
-				SystemColumn::Partitions,
-				partition_array(&scanned.partitions),
-			)?;
+			stamps.push((SystemColumn::Partitions, partition_array(&scanned.partitions)));
 		}
-		columns = with_system_column(
-			columns,
-			SystemColumn::CommitVersion,
-			Arc::new(UInt64Array::from(scanned.commit_versions)),
-		)?;
+		stamps.push((SystemColumn::CommitVersion, Arc::new(UInt64Array::from(scanned.commit_versions))));
+		let columns = stamp_system_columns(columns, stamps)?;
 
 		Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, rx)?))
 	}

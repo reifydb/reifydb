@@ -236,7 +236,7 @@ impl Executor {
 					None => OpResult::Error("transaction not found".into()),
 				},
 				Op::Commit => match handles.remove(&tx_id) {
-					Some(TxHandle::Write(mut tx)) => match tx.commit(vec![]) {
+					Some(TxHandle::Write(mut tx)) => match tx.commit() {
 						Ok(version) => {
 							committed.insert(tx_id, version);
 							OpResult::Committed

@@ -1,3 +1,5 @@
+;;! use-built-in-libdl = true
+
 ;; module name: libc.so
 (module
   (@dylink.0
@@ -30,6 +32,7 @@
   (func $abort (type 0)
     unreachable
   )
+  (func (export "__wasi_init_tp"))
   (export "malloc" (func $malloc))
   (export "memcmp" (func $memcmp))
   (export "strlen" (func $strlen))

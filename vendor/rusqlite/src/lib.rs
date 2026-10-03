@@ -57,9 +57,17 @@
 pub use fallible_iterator;
 pub use fallible_streaming_iterator;
 
-#[cfg(not(all(target_family = "wasm", target_os = "unknown")))]
+#[cfg(not(all(
+    target_family = "wasm",
+    target_os = "unknown",
+    any(test, feature = "ffi-sqlite-wasm-rs")
+)))]
 pub use libsqlite3_sys as ffi;
-#[cfg(all(target_family = "wasm", target_os = "unknown"))]
+#[cfg(all(
+    target_family = "wasm",
+    target_os = "unknown",
+    any(test, feature = "ffi-sqlite-wasm-rs")
+))]
 pub use sqlite_wasm_rs as ffi;
 
 use std::cell::RefCell;
@@ -327,16 +335,17 @@ fn str_for_sqlite(
     (ptr, len as ffi::sqlite3_uint64, dtor_info)
 }
 
-#[cfg(unix)]
 fn path_to_cstring(p: &Path) -> Result<CString> {
-    use std::os::unix::ffi::OsStrExt;
-    Ok(CString::new(p.as_os_str().as_bytes())?)
-}
-
-#[cfg(not(unix))]
-fn path_to_cstring(p: &Path) -> Result<CString> {
-    let s = p.to_str().ok_or_else(|| Error::InvalidPath(p.to_owned()))?;
-    Ok(CString::new(s)?)
+    cfg_select! {
+        unix => {
+            use std::os::unix::ffi::OsStrExt as _;
+            Ok(CString::new(p.as_os_str().as_bytes())?)
+        }
+        _ => {
+            let s = p.to_str().ok_or_else(|| Error::InvalidPath(p.to_owned()))?;
+            Ok(CString::new(s)?)
+        }
+    }
 }
 
 /// Shorthand for `Main` database.
@@ -1090,6 +1099,12 @@ impl Connection {
     pub fn is_interrupted(&self) -> bool {
         self.db.borrow().is_interrupted()
     }
+
+    /// Set error code and message
+    #[cfg(feature = "modern_sqlite")] // 3.51.0
+    pub fn set_errmsg(&self, code: c_int, msg: Option<&std::ffi::CStr>) -> Result<()> {
+        unsafe { error::set_errmsg(self.handle(), code, msg) }
+    }
 }
 
 impl fmt::Debug for Connection {
@@ -1262,6 +1277,9 @@ bitflags::bitflags! {
         const SQLITE_PREPARE_NO_VTAB = 0x04;
         /// Prevents SQL compiler errors from being sent to the error log.
         const SQLITE_PREPARE_DONT_LOG = 0x10;
+        /// Causes the SQL compiler to enforce security constraints that would otherwise only be enforced when parsing
+        /// the database schema.
+        const SQLITE_PREPARE_FROM_DDL = 0x20; // 3.53.0
     }
 }
 
@@ -1287,13 +1305,13 @@ impl InterruptHandle {
 #[cfg(doctest)]
 doc_comment::doctest!("../README.md");
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod test {
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     use wasm_bindgen_test::wasm_bindgen_test as test;
 
     use super::*;
-    use fallible_iterator::FallibleIterator;
+    use fallible_iterator::FallibleIterator as _;
     use std::error::Error as StdError;
     use std::fmt;
 
@@ -1437,7 +1455,7 @@ mod test {
     fn test_invalid_unicode_file_names() -> Result<()> {
         use std::ffi::OsStr;
         use std::fs::File;
-        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::ffi::OsStrExt as _;
         let temp_dir = tempfile::tempdir().unwrap();
 
         let path = temp_dir.path();
@@ -2326,5 +2344,21 @@ mod test {
     fn release_memory() -> Result<()> {
         let db = Connection::open_in_memory()?;
         db.release_memory()
+    }
+
+    #[test]
+    #[cfg(feature = "modern_sqlite")] // 3.51.0
+    fn set_errmsg() -> Result<()> {
+        let db = Connection::open_in_memory()?;
+        let code: i32 = ffi::SQLITE_MISUSE;
+        let msg = c"Oops";
+        db.set_errmsg(code, Some(msg))?;
+        let ptr = unsafe { db.handle() };
+        assert_eq!(unsafe { ffi::sqlite3_errcode(ptr) }, code);
+        assert_eq!(
+            unsafe { std::ffi::CStr::from_ptr(ffi::sqlite3_errmsg(ptr)) },
+            msg
+        );
+        Ok(())
     }
 }

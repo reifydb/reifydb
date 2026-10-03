@@ -64,22 +64,22 @@ pub(crate) fn bucket_of<C: Coord>(coord: C, size: C::Span) -> C {
 	WindowSpan::for_coord(coord, size).start
 }
 
-pub(crate) type WindowGroups<G, C> = HashMap<(G, C), GroupId>;
+pub(crate) type WindowGroups<G, C> = HashMap<(G, C), (GroupId, EncodedKey)>;
 
 pub(crate) fn intern_window_groups<G, C>(windows: impl IntoIterator<Item = ((G, C), EncodedKey)>) -> WindowGroups<G, C>
 where
 	G: Clone + Eq + Hash,
 	C: Copy + Eq + Hash,
 {
-	windows.into_iter().map(|(window, key)| (window, GroupId::of(&key))).collect()
+	windows.into_iter().map(|(window, key)| (window, (GroupId::of(&key), key))).collect()
 }
 
-pub(crate) fn group_of<G, C>(groups: &WindowGroups<G, C>, group: &G, coord: C) -> GroupId
+pub(crate) fn group_of<G, C>(groups: &WindowGroups<G, C>, group: &G, coord: C) -> (GroupId, EncodedKey)
 where
 	G: Clone + Eq + Hash,
 	C: Copy + Eq + Hash,
 {
-	groups.get(&(group.clone(), coord)).copied().expect("every routed window is interned before the engine runs")
+	groups.get(&(group.clone(), coord)).cloned().expect("every routed window is interned before the engine runs")
 }
 
 pub(crate) fn window_engine_config(_params: &ExtensionParams) -> WindowEngineConfig {

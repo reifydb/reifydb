@@ -1,11 +1,24 @@
 use crate::{
-    PanicOnOom as _, Tunables, WasmResult, collections::TryCow, error::OutOfMemory, prelude::*,
-    wasm_unsupported,
+    MemoryTunables, PanicOnOom as _, Tunables, WasmResult, collections::TryCow, error::OutOfMemory,
+    prelude::*, wasm_unsupported,
 };
 use alloc::boxed::Box;
 use core::{fmt, ops::Range};
 use serde_derive::{Deserialize, Serialize};
 use smallvec::SmallVec;
+
+#[doc(hidden)]
+pub fn deserialize_boxed_slice<'de, T, D>(deserializer: D) -> Result<Box<[T]>, D::Error>
+where
+    T: serde::de::Deserialize<'de>,
+    D: serde::de::Deserializer<'de>,
+{
+    let tys: crate::collections::TryVec<T> = serde::Deserialize::deserialize(deserializer)?;
+    let tys = tys
+        .into_boxed_slice()
+        .map_err(|oom| serde::de::Error::custom(oom))?;
+    Ok(tys)
+}
 
 /// A trait for things that can trace all type-to-type edges, aka all type
 /// indices within this thing.
@@ -193,6 +206,9 @@ impl TypeTrace for WasmValType {
 }
 
 impl WasmValType {
+    /// Alias for the `funcref` type.
+    pub const FUNCREF: WasmValType = WasmValType::Ref(WasmRefType::FUNCREF);
+
     /// Is this a type that is represented as a `VMGcRef`?
     #[inline]
     pub fn is_vmgcref_type(&self) -> bool {
@@ -538,7 +554,23 @@ impl TypeTrace for WasmHeapType {
             Self::ConcreteFunc(i) => func(i),
             Self::ConcreteStruct(i) => func(i),
             Self::ConcreteCont(i) => func(i),
-            _ => Ok(()),
+            Self::ConcreteExn(i) => func(i),
+            // Top/bottom lattice elements have no inner type
+            // reference.
+            Self::Extern
+            | Self::NoExtern
+            | Self::Func
+            | Self::NoFunc
+            | Self::Cont
+            | Self::NoCont
+            | Self::Any
+            | Self::Eq
+            | Self::I31
+            | Self::Array
+            | Self::Struct
+            | Self::Exn
+            | Self::NoExn
+            | Self::None => Ok(()),
         }
     }
 
@@ -551,7 +583,23 @@ impl TypeTrace for WasmHeapType {
             Self::ConcreteFunc(i) => func(i),
             Self::ConcreteStruct(i) => func(i),
             Self::ConcreteCont(i) => func(i),
-            _ => Ok(()),
+            Self::ConcreteExn(i) => func(i),
+            // Top/bottom lattice elements have no inner type
+            // reference.
+            Self::Extern
+            | Self::NoExtern
+            | Self::Func
+            | Self::NoFunc
+            | Self::Cont
+            | Self::NoCont
+            | Self::Any
+            | Self::Eq
+            | Self::I31
+            | Self::Array
+            | Self::Struct
+            | Self::Exn
+            | Self::NoExn
+            | Self::None => Ok(()),
         }
     }
 }
@@ -686,7 +734,7 @@ pub enum WasmHeapBottomType {
 /// WebAssembly function type -- equivalent of `wasmparser`'s FuncType.
 #[derive(Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct WasmFuncType {
-    #[serde(deserialize_with = "WasmFuncType::deserialize_params_results")]
+    #[serde(deserialize_with = "deserialize_boxed_slice")]
     params_results: Box<[WasmValType]>,
     params_len: u32,
     non_i31_gc_ref_params_count: u32,
@@ -748,18 +796,6 @@ impl TypeTrace for WasmFuncType {
 }
 
 impl WasmFuncType {
-    fn deserialize_params_results<'de, D>(deserializer: D) -> Result<Box<[WasmValType]>, D::Error>
-    where
-        D: serde::de::Deserializer<'de>,
-    {
-        let tys: crate::collections::TryVec<WasmValType> =
-            serde::Deserialize::deserialize(deserializer)?;
-        let tys = tys
-            .into_boxed_slice()
-            .map_err(|oom| serde::de::Error::custom(oom))?;
-        Ok(tys)
-    }
-
     /// Creates a new function type from the provided `params` and `returns`.
     #[inline]
     pub fn new(
@@ -941,6 +977,7 @@ pub struct WasmExnType {
     /// we also need to be able to derive a GC object layout from this
     /// type descriptor without referencing other type descriptors; so
     /// we directly inline the information here.
+    #[serde(deserialize_with = "deserialize_boxed_slice")]
     pub fields: Box<[WasmFieldType]>,
 }
 
@@ -1116,6 +1153,7 @@ impl TypeTrace for WasmArrayType {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct WasmStructType {
     /// The fields that make up this struct type.
+    #[serde(deserialize_with = "deserialize_boxed_slice")]
     pub fields: Box<[WasmFieldType]>,
 }
 
@@ -1529,6 +1567,7 @@ impl TypeTrace for WasmSubType {
 #[derive(Debug, Default, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct WasmRecGroup {
     /// The types inside of this recgroup.
+    #[serde(deserialize_with = "deserialize_boxed_slice")]
     pub types: Box<[WasmSubType]>,
 }
 
@@ -1687,15 +1726,37 @@ impl Default for VMSharedTypeIndex {
     }
 }
 
-/// Index type of a passive data segment inside the WebAssembly module.
+/// Index type of a data segment inside the WebAssembly module.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct DataIndex(u32);
 entity_impl_with_try_clone!(DataIndex);
 
-/// Index type of a passive element segment inside the WebAssembly module.
+/// Index into data segments needed at runtime by a module.
+///
+/// This does not directly correspond to either active or passive data segments
+/// in the wasm spec. Instead this is a concept purely for Wasmtime and
+/// organizing memory initialization within the
+/// `ModuleTranslation::finalize_memory_init` function, for example.
+///
+/// Passive data segments at runtime all have a corresponding
+/// `RuntimeDataIndex`, but active data segments maybe coalesced or mutated if
+/// they're statically evaluated.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+pub struct RuntimeDataIndex(u32);
+entity_impl_with_try_clone!(RuntimeDataIndex);
+
+/// Index type of an element segment inside the WebAssembly module.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 pub struct ElemIndex(u32);
 entity_impl_with_try_clone!(ElemIndex);
+
+/// Dense index space of the subset of element segments that are passive.
+///
+/// Not a spec-level concept, just used to get dense index spaces for passive
+/// element segments inside of Wasmtime.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
+pub struct PassiveElemIndex(u32);
+entity_impl_with_try_clone!(PassiveElemIndex);
 
 /// Index type of a defined tag inside the WebAssembly module.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Serialize, Deserialize)]
@@ -1984,7 +2045,7 @@ impl ConstExpr {
 
 /// A global's constant value, known at compile time.
 #[expect(missing_docs, reason = "self-describing variants")]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum GlobalConstValue {
     I32(i32),
     I64(i64),
@@ -2004,7 +2065,7 @@ pub enum ConstOp {
     V128Const(u128),
     GlobalGet(GlobalIndex),
     RefI31,
-    RefNull(WasmHeapTopType),
+    RefNull(WasmHeapType),
     RefFunc(FuncIndex),
     I32Add,
     I32Sub,
@@ -2037,7 +2098,7 @@ impl ConstOp {
     pub fn from_wasmparser(
         env: &dyn TypeConvert,
         op: wasmparser::Operator<'_>,
-        offset: usize,
+        offset: u64,
     ) -> WasmResult<Self> {
         use wasmparser::Operator as O;
         Ok(match op {
@@ -2046,7 +2107,7 @@ impl ConstOp {
             O::F32Const { value } => Self::F32Const(value.bits()),
             O::F64Const { value } => Self::F64Const(value.bits()),
             O::V128Const { value } => Self::V128Const(u128::from_le_bytes(*value.bytes())),
-            O::RefNull { hty } => Self::RefNull(env.convert_heap_type(hty)?.top()),
+            O::RefNull { hty } => Self::RefNull(env.convert_heap_type(hty)?),
             O::RefFunc { function_index } => Self::RefFunc(FuncIndex::from_u32(function_index)),
             O::GlobalGet { global_index } => Self::GlobalGet(GlobalIndex::from_u32(global_index)),
             O::RefI31 => Self::RefI31,
@@ -2083,6 +2144,67 @@ impl ConstOp {
                 ));
             }
         })
+    }
+
+    /// Convert a `ConstOp` back to a `wasmparser::Operator`.
+    ///
+    /// `RefNull`'s heap type does not round-trip, so only use this where the
+    /// immediates do not matter, such as looking up an operator's fuel cost.
+    pub fn to_operator(&self) -> wasmparser::Operator<'static> {
+        use wasmparser::{AbstractHeapType, HeapType, Ieee32, Ieee64, Operator, V128};
+        match self {
+            ConstOp::I32Const(value) => Operator::I32Const { value: *value },
+            ConstOp::I64Const(value) => Operator::I64Const { value: *value },
+            ConstOp::F32Const(bits) => Operator::F32Const {
+                value: Ieee32::from(f32::from_bits(*bits)),
+            },
+            ConstOp::F64Const(bits) => Operator::F64Const {
+                value: Ieee64::from(f64::from_bits(*bits)),
+            },
+            ConstOp::V128Const(value) => Operator::V128Const {
+                value: V128::from(*value as i128),
+            },
+            ConstOp::GlobalGet(index) => Operator::GlobalGet {
+                global_index: index.as_u32(),
+            },
+            ConstOp::RefI31 => Operator::RefI31,
+            ConstOp::RefNull(_) => Operator::RefNull {
+                hty: HeapType::Abstract {
+                    shared: false,
+                    ty: AbstractHeapType::Any,
+                },
+            },
+            ConstOp::RefFunc(index) => Operator::RefFunc {
+                function_index: index.as_u32(),
+            },
+            ConstOp::I32Add => Operator::I32Add,
+            ConstOp::I32Sub => Operator::I32Sub,
+            ConstOp::I32Mul => Operator::I32Mul,
+            ConstOp::I64Add => Operator::I64Add,
+            ConstOp::I64Sub => Operator::I64Sub,
+            ConstOp::I64Mul => Operator::I64Mul,
+            ConstOp::StructNew { struct_type_index } => Operator::StructNew {
+                struct_type_index: struct_type_index.as_u32(),
+            },
+            ConstOp::StructNewDefault { struct_type_index } => Operator::StructNewDefault {
+                struct_type_index: struct_type_index.as_u32(),
+            },
+            ConstOp::ArrayNew { array_type_index } => Operator::ArrayNew {
+                array_type_index: array_type_index.as_u32(),
+            },
+            ConstOp::ArrayNewDefault { array_type_index } => Operator::ArrayNewDefault {
+                array_type_index: array_type_index.as_u32(),
+            },
+            ConstOp::ArrayNewFixed {
+                array_type_index,
+                array_size,
+            } => Operator::ArrayNewFixed {
+                array_type_index: array_type_index.as_u32(),
+                array_size: *array_size,
+            },
+            ConstOp::ExternConvertAny => Operator::ExternConvertAny,
+            ConstOp::AnyConvertExtern => Operator::AnyConvertExtern,
+        }
     }
 }
 
@@ -2258,26 +2380,30 @@ impl Memory {
     /// Returns whether this memory is a candidate for bounds check elision
     /// given the configuration and host page size.
     ///
-    /// This function determines whether the given compilation configuration and
-    /// hos enables possible bounds check elision for this memory. Bounds checks
+    /// This function determines whether the given compilation configuration
+    /// enables possible bounds check elision for this memory. Bounds checks
     /// can only be elided if [`Memory::can_use_virtual_memory`] returns `true`
     /// for example but there are additionally requirements on the index size of
-    /// this memory and the memory reservation in `tunables`.
+    /// this memory and the memory reservation in the tunables.
     ///
     /// Currently the only case that supports bounds check elision is when all
     /// of these apply:
     ///
     /// * When [`Memory::can_use_virtual_memory`] returns `true`.
     /// * This is a 32-bit linear memory (e.g. not 64-bit)
-    /// * `tunables.memory_reservation` is in excess of 4GiB
+    /// * The reservation + guard size is in excess of 4GiB
     ///
     /// In this situation all computable addresses fall within the reserved
     /// space (modulo static offsets factoring in guard pages) so bounds checks
     /// may be elidable.
-    pub fn can_elide_bounds_check(&self, tunables: &Tunables, host_page_size_log2: u8) -> bool {
-        self.can_use_virtual_memory(tunables, host_page_size_log2)
+    pub fn can_elide_bounds_check(
+        &self,
+        memory_tunables: &MemoryTunables<'_>,
+        host_page_size_log2: u8,
+    ) -> bool {
+        self.can_use_virtual_memory(memory_tunables.tunables(), host_page_size_log2)
             && self.idx_type == IndexType::I32
-            && tunables.memory_reservation + tunables.memory_guard_size >= (1 << 32)
+            && memory_tunables.reservation() + memory_tunables.guard_size() >= (1 << 32)
     }
 
     /// Returns the static size of this heap in bytes at runtime, if available.
@@ -2295,7 +2421,7 @@ impl Memory {
     /// When this function returns `false` then it means that after the initial
     /// allocation the base pointer is constant for the entire lifetime of a
     /// memory. This can enable compiler optimizations, for example.
-    pub fn memory_may_move(&self, tunables: &Tunables) -> bool {
+    pub fn memory_may_move(&self, memory_tunables: &MemoryTunables<'_>) -> bool {
         // Shared memories cannot ever relocate their base pointer so the
         // settings configured in the engine must be appropriate for them ahead
         // of time.
@@ -2305,7 +2431,7 @@ impl Memory {
 
         // If movement is disallowed in engine configuration, then the answer is
         // "no".
-        if !tunables.memory_may_move {
+        if !memory_tunables.may_move() {
             return false;
         }
 
@@ -2318,7 +2444,7 @@ impl Memory {
         // If the maximum size of this memory is above the threshold of the
         // initial memory reservation then the memory may move.
         let max = self.maximum_byte_size().unwrap_or(u64::MAX);
-        max > tunables.memory_reservation
+        max > memory_tunables.reservation()
     }
 
     /// Tests whether this memory type is allowed to grow up to `size` bytes.

@@ -13,15 +13,19 @@ use crate::utils::{Buffer, get_unaligned_chunk, get_aligned_chunk_ref};
 // Code is as close to original C implementation as possible
 // It does make it look ugly, but it is fast and easy to update once xxhash gets new version.
 
-#[cfg(all(any(target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128")), not(target_feature = "avx2")))]
+#[cfg(all(any(target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128")), not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 #[repr(align(16))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
-#[cfg(target_feature = "avx2")]
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
 #[repr(align(32))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
-#[cfg(not(any(target_feature = "avx2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"), target_feature = "sse2")))]
+#[cfg(target_feature = "avx512f")]
+#[repr(align(64))]
+#[derive(Clone)]
+struct Acc([u64; ACC_NB]);
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"), target_feature = "sse2")))]
 #[repr(align(8))]
 #[derive(Clone)]
 struct Acc([u64; ACC_NB]);
@@ -36,18 +40,52 @@ type LongHashFn128 = fn(&[u8], u64, &[u8]) -> u128;
 
 #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::wasm32::v128>()]; STRIPE_LEN / mem::size_of::<core::arch::wasm32::v128>()];
-#[cfg(all(target_arch = "x86", target_feature = "avx2"))]
+#[cfg(all(target_arch = "x86", target_feature = "avx512f"))]
+type StripeLanes = [[u8; mem::size_of::<core::arch::x86::__m512i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86::__m512i>()];
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+type StripeLanes = [[u8; mem::size_of::<core::arch::x86_64::__m512i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86_64::__m512i>()];
+#[cfg(all(target_arch = "x86", target_feature = "avx2", not(target_feature = "avx512f")))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::x86::__m256i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86::__m256i>()];
-#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2", not(target_feature = "avx512f")))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::x86_64::__m256i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86_64::__m256i>()];
-#[cfg(all(target_arch = "x86", target_feature = "sse2", not(target_feature = "avx2")))]
+#[cfg(all(target_arch = "x86", target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::x86::__m128i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86::__m128i>()];
-#[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(target_feature = "avx2")))]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 type StripeLanes = [[u8; mem::size_of::<core::arch::x86_64::__m128i>()]; STRIPE_LEN / mem::size_of::<core::arch::x86_64::__m128i>()];
 #[cfg(target_feature = "neon")]
 type StripeLanes = [[u8; mem::size_of::<core::arch::aarch64::uint8x16_t>()]; STRIPE_LEN / mem::size_of::<core::arch::aarch64::uint8x16_t>()];
 
-#[cfg(any(target_feature = "sse2", target_feature = "avx2"))]
+///Secret validation wrapper
+pub struct SecretInput<T>(T);
+
+impl<T: AsRef<[u8]>> SecretInput<T> {
+    #[inline(always)]
+    ///Creates secret input validating its length is sufficient
+    pub fn try_new(input: T) -> Option<Self> {
+        if input.as_ref().len() >= SECRET_SIZE_MIN {
+            Some(Self(input))
+        } else {
+            None
+        }
+    }
+}
+
+impl<const N: usize> SecretInput<[u8; N]> {
+    ///Creates secret input from static array, suitable to be used at compile time.
+    ///
+    ///On insufficient length it shall panic.
+    ///
+    ///Prefer to generate secret at compile time using [const_custom_default_secret](../const_xxh3/fn.const_custom_default_secret.html)
+    pub const fn new(input: [u8; N]) -> Self {
+        assert!(N >= SECRET_SIZE_MIN, "input length must be equal or greater than SECRET_SIZE_MIN=136");
+
+        Self(input)
+    }
+}
+
+// TODO: replace with [`core::arch::x86::_MM_SHUFFLE`](https://doc.rust-lang.org/core/arch/x86/fn._MM_SHUFFLE.html)
+// when it stabilizes
+#[cfg(any(target_feature = "sse2", target_feature = "avx2", target_feature = "avx512f"))]
 #[inline]
 const fn _mm_shuffle(z: u32, y: u32, x: u32, w: u32) -> i32 {
     ((z << 6) | (y << 4) | (x << 2) | w) as i32
@@ -211,7 +249,7 @@ fn accumulate_512_wasm(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes)
     }
 }
 
-#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
+#[cfg(all(any(target_arch = "aarch64", target_arch = "arm64ec"), target_feature = "neon"))]
 macro_rules! vld1q_u8 {
     ($ptr:expr) => {
         core::arch::aarch64::vld1q_u8($ptr)
@@ -235,7 +273,7 @@ fn accumulate_512_neon(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes)
     unsafe {
         #[cfg(target_arch = "arm")]
         use core::arch::arm::*;
-        #[cfg(target_arch = "aarch64")]
+        #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
         use core::arch::aarch64::*;
 
         let mut idx = 0usize;
@@ -266,7 +304,7 @@ fn accumulate_512_neon(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes)
 
             //xxhash does it with inline assembly, but idk if I want to embed it here
             let sum_1 = vmlal_u32(data_swap_1, vget_low_u32(data_key_lo), vget_low_u32(data_key_hi));
-            #[cfg(target_arch = "aarch64")]
+            #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
             let sum_2 = vmlal_high_u32(data_swap_2, data_key_lo, data_key_hi);
             #[cfg(target_arch = "arm")]
             let sum_2 = vmlal_u32(data_swap_2, vget_high_u32(data_key_lo), vget_high_u32(data_key_hi));
@@ -279,7 +317,7 @@ fn accumulate_512_neon(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes)
     }
 }
 
-#[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 fn accumulate_512_sse2(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -304,7 +342,7 @@ fn accumulate_512_sse2(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes)
     }
 }
 
-#[cfg(target_feature = "avx2")]
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
 fn accumulate_512_avx2(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -329,7 +367,32 @@ fn accumulate_512_avx2(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes)
     }
 }
 
-#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
+#[cfg(target_feature = "avx512f")]
+fn accumulate_512_avx512(acc: &mut Acc, input: &StripeLanes, secret: &StripeLanes) {
+    unsafe {
+        #[cfg(target_arch = "x86")]
+        use core::arch::x86::*;
+        #[cfg(target_arch = "x86_64")]
+        use core::arch::x86_64::*;
+
+        let xacc = acc.0.as_mut_ptr() as *mut __m512i;
+
+        let idx = 0;
+
+        let data_vec = _mm512_loadu_si512(input[idx].as_ptr() as _);
+        let key_vec = _mm512_loadu_si512(secret[idx].as_ptr() as _);
+        let data_key = _mm512_xor_si512(data_vec, key_vec);
+
+        let data_key_lo = _mm512_srli_epi64(data_key, 32);
+        let product = _mm512_mul_epu32(data_key, data_key_lo);
+
+        let data_swap = _mm512_shuffle_epi32(data_vec, _mm_shuffle(1, 0, 3, 2));
+        let sum = _mm512_add_epi64(*xacc.add(idx), data_swap);
+        xacc.add(idx).write(_mm512_add_epi64(product, sum));
+    }
+}
+
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
 fn accumulate_512_scalar(acc: &mut Acc, input: &[[u8; 8]; ACC_NB], secret: &[[u8; 8]; ACC_NB]) {
     for idx in 0..ACC_NB {
         let data_val = u64::from_ne_bytes(input[idx]).to_le();
@@ -344,11 +407,13 @@ fn accumulate_512_scalar(acc: &mut Acc, input: &[[u8; 8]; ACC_NB], secret: &[[u8
 use accumulate_512_wasm as accumulate_512;
 #[cfg(target_feature = "neon")]
 use accumulate_512_neon as accumulate_512;
-#[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 use accumulate_512_sse2 as accumulate_512;
-#[cfg(target_feature = "avx2")]
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
 use accumulate_512_avx2 as accumulate_512;
-#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
+#[cfg(target_feature = "avx512f")]
+use accumulate_512_avx512 as accumulate_512;
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
 use accumulate_512_scalar as accumulate_512;
 
 #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
@@ -376,7 +441,7 @@ fn scramble_acc_neon(acc: &mut Acc, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "arm")]
         use core::arch::arm::*;
-        #[cfg(target_arch = "aarch64")]
+        #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
         use core::arch::aarch64::*;
 
         let xacc = acc.0.as_mut_ptr() as *mut uint64x2_t;
@@ -403,7 +468,7 @@ fn scramble_acc_neon(acc: &mut Acc, secret: &StripeLanes) {
     }
 }
 
-#[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 fn scramble_acc_sse2(acc: &mut Acc, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -430,7 +495,7 @@ fn scramble_acc_sse2(acc: &mut Acc, secret: &StripeLanes) {
     }
 }
 
-#[cfg(target_feature = "avx2")]
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
 fn scramble_acc_avx2(acc: &mut Acc, secret: &StripeLanes) {
     unsafe {
         #[cfg(target_arch = "x86")]
@@ -457,7 +522,33 @@ fn scramble_acc_avx2(acc: &mut Acc, secret: &StripeLanes) {
     }
 }
 
-#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
+#[cfg(target_feature = "avx512f")]
+fn scramble_acc_avx512(acc: &mut Acc, secret: &StripeLanes) {
+    unsafe {
+        #[cfg(target_arch = "x86")]
+        use core::arch::x86::*;
+        #[cfg(target_arch = "x86_64")]
+        use core::arch::x86_64::*;
+
+        let xacc = acc.0.as_mut_ptr() as *mut __m512i;
+        let prime32 = _mm512_set1_epi32(xxh32::PRIME_1 as i32);
+
+        let idx = 0;
+
+        let acc_vec = *xacc.add(idx);
+        let shifted = _mm512_srli_epi64(acc_vec, 47);
+
+        let key_vec = _mm512_loadu_si512(secret[idx].as_ptr() as _);
+        let data_key = _mm512_ternarylogic_epi32(key_vec, acc_vec, shifted, 0x96);
+
+        let data_key_hi = _mm512_srli_epi64(data_key, 32);
+        let prod_lo = _mm512_mul_epu32(data_key, prime32);
+        let prod_hi = _mm512_mul_epu32(data_key_hi, prime32);
+        xacc.add(idx).write(_mm512_add_epi64(prod_lo, _mm512_slli_epi64(prod_hi, 32)));
+    }
+}
+
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
 fn scramble_acc_scalar(acc: &mut Acc, secret: &[[u8; 8]; ACC_NB]) {
     for idx in 0..secret.len() {
         let key = u64::from_ne_bytes(secret[idx]).to_le();
@@ -473,13 +564,16 @@ use scramble_acc_wasm as scramble_acc;
 #[cfg(target_feature = "neon")]
 use scramble_acc_neon as scramble_acc;
 
-#[cfg(all(target_feature = "sse2", not(target_feature = "avx2")))]
+#[cfg(all(target_feature = "sse2", not(any(target_feature = "avx2", target_feature = "avx512f"))))]
 use scramble_acc_sse2 as scramble_acc;
 
-#[cfg(target_feature = "avx2")]
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512f")))]
 use scramble_acc_avx2 as scramble_acc;
 
-#[cfg(not(any(target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
+#[cfg(target_feature = "avx512f")]
+use scramble_acc_avx512 as scramble_acc;
+
+#[cfg(not(any(target_feature = "avx512f", target_feature = "avx2", target_feature = "sse2", target_feature = "neon", all(target_family = "wasm", target_feature = "simd128"))))]
 use scramble_acc_scalar as scramble_acc;
 
 #[inline(always)]
@@ -741,8 +835,19 @@ pub fn xxh3_64_with_seed(input: &[u8], seed: u64) -> u64 {
 
 #[inline]
 ///Returns 64bit hash for provided input using custom secret.
+///
+///This function panics if `secret` doesn't fit minimum required secret size.
+///
+///Prefer to use [SecretInput] with [xxh3_64_with_secret_input] to avoid assert
 pub fn xxh3_64_with_secret(input: &[u8], secret: &[u8]) -> u64 {
+    assert!(secret.len() >= SECRET_SIZE_MIN);
     xxh3_64_internal(input, 0, secret, xxh3_64_long_with_secret)
+}
+
+#[inline]
+///Returns 64bit hash for provided input using custom secret.
+pub fn xxh3_64_with_secret_input(input: &[u8], secret: &SecretInput<impl AsRef<[u8]>>) -> u64 {
+    xxh3_64_internal(input, 0, secret.0.as_ref(), xxh3_64_long_with_secret)
 }
 
 const INTERNAL_BUFFER_SIZE: usize = 256;
@@ -941,6 +1046,7 @@ impl Xxh3Default {
         ((high as u128) << 64) | (low as u128)
     }
 
+    #[inline]
     ///Computes hash.
     pub fn digest(&self) -> u64 {
         //Separating digest mid sized allows us to inline this function, which benefits
@@ -952,6 +1058,7 @@ impl Xxh3Default {
         }
     }
 
+    #[inline]
     ///Computes hash as 128bit integer.
     pub fn digest128(&self) -> u128 {
         //Separating digest mid sized allows us to inline this function, which benefits
@@ -1100,6 +1207,7 @@ impl Xxh3 {
         ((high as u128) << 64) | (low as u128)
     }
 
+    #[inline]
     ///Computes hash.
     pub fn digest(&self) -> u64 {
         //Separating digest mid sized allows us to inline this function, which benefits
@@ -1115,6 +1223,7 @@ impl Xxh3 {
         }
     }
 
+    #[inline]
     ///Computes hash as 128bit integer.
     pub fn digest128(&self) -> u128 {
         //Separating digest mid sized allows us to inline this function, which benefits
@@ -1167,8 +1276,8 @@ impl std::io::Write for Xxh3 {
 #[derive(Clone, Copy)]
 ///Hash builder for `Xxh3`
 pub struct Xxh3Builder {
-    seed: u64,
-    secret: [u8; DEFAULT_SECRET_SIZE],
+    seed: Option<u64>,
+    secret: Option<[u8; DEFAULT_SECRET_SIZE]>,
 }
 
 impl Xxh3Builder {
@@ -1176,29 +1285,39 @@ impl Xxh3Builder {
     ///Creates new instance with default params.
     pub const fn new() -> Self {
         Self {
-            seed: 0,
-            secret: DEFAULT_SECRET,
+            seed: None,
+            secret: None,
         }
     }
 
     #[inline(always)]
     ///Sets `seed` for `xxh3` algorithm
+    ///
+    ///This method overrides default secret with custom based on seed.
+    ///
+    ///To counter it, override secret using [Xxh3Builder::with_secret]
     pub const fn with_seed(mut self, seed: u64) -> Self {
-        self.seed = seed;
+        self.seed = Some(seed);
         self
     }
 
     #[inline(always)]
     ///Sets custom `secret` for `xxh3` algorithm
     pub const fn with_secret(mut self, secret: [u8; DEFAULT_SECRET_SIZE]) -> Self {
-        self.secret = secret;
+        self.secret = Some(secret);
         self
     }
 
     #[inline(always)]
     ///Creates `Xxh3` instance
     pub const fn build(self) -> Xxh3 {
-        Xxh3::with_custom_ops(self.seed, self.secret)
+        let (seed, secret) = match (self.seed, self.secret) {
+            (Some(seed), Some(secret)) => (seed, secret),
+            (Some(seed), None) => (seed, const_custom_default_secret(seed)),
+            (None, Some(secret)) => (0, secret),
+            (None, None) => (0, DEFAULT_SECRET),
+        };
+        Xxh3::with_custom_ops(seed, secret)
     }
 }
 
@@ -1514,6 +1633,17 @@ pub fn xxh3_128_with_seed(input: &[u8], seed: u64) -> u128 {
 
 #[inline]
 ///Returns 128 hash for provided input using custom secret.
+///
+///This function panics if `secret` doesn't fit minimum required secret size.
+///
+///Prefer to use [SecretInput] with [xxh3_128_with_secret_input] to avoid assert
 pub fn xxh3_128_with_secret(input: &[u8], secret: &[u8]) -> u128 {
+    assert!(secret.len() >= SECRET_SIZE_MIN);
     xxh3_128_internal(input, 0, secret, xxh3_128_long_with_secret)
+}
+
+#[inline]
+///Returns 128 hash for provided input using custom secret.
+pub fn xxh3_128_with_secret_input(input: &[u8], secret: &SecretInput<impl AsRef<[u8]>>) -> u128 {
+    xxh3_128_internal(input, 0, secret.0.as_ref(), xxh3_128_long_with_secret)
 }

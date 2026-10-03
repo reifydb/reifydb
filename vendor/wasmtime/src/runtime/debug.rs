@@ -6,7 +6,7 @@ use crate::module::RegisterBreakpointState;
 use crate::store::StoreId;
 use crate::vm::{Activation, Backtrace};
 use crate::{
-    AnyRef, AsContextMut, CodeMemory, ExnRef, Extern, ExternRef, Func, Instance, Module,
+    AnyRef, AsContextMut, CodeMemory, Engine, ExnRef, Extern, ExternRef, Func, Instance, Module,
     OwnedRooted, StoreContext, StoreContextMut, Val,
     code::StoreCodePC,
     module::ModuleRegistry,
@@ -153,8 +153,8 @@ impl StoreOpaque {
             return None;
         }
 
-        let (breakpoints, registry) = self.breakpoints_and_registry_mut();
-        Some(breakpoints.edit(registry))
+        let (breakpoints, registry, engine) = self.breakpoints_and_registry_and_engine_mut();
+        Some(breakpoints.edit(registry, engine))
     }
 
     fn debug_all_instances(&mut self) -> Vec<Instance> {
@@ -170,7 +170,10 @@ impl StoreOpaque {
             return vec![];
         }
 
-        self.modules().all_modules().cloned().collect()
+        self.modules()
+            .all_modules()
+            .map(|(_, m)| m.clone())
+            .collect()
     }
 }
 
@@ -645,10 +648,10 @@ impl FrameDataCache {
                 // module that actually contains the physical PC
                 // (i.e., the outermost function that inlined the
                 // others).
-                let (module, frames) = VirtualFrame::decode(registry, frame.pc());
+                let (store_code, frames) = VirtualFrame::decode(registry, frame.pc());
                 let frames = frames
                     .into_iter()
-                    .map(|frame| FrameData::compute(frame, &module))
+                    .map(|frame| FrameData::compute(frame, store_code))
                     .collect::<Vec<_>>();
                 v.insert(frames)
             }
@@ -672,18 +675,17 @@ struct VirtualFrame {
 impl VirtualFrame {
     /// Return virtual frames corresponding to a physical frame, from
     /// outermost to innermost.
-    fn decode(registry: &ModuleRegistry, pc: usize) -> (Module, Vec<VirtualFrame>) {
-        let (module_with_code, pc) = registry
-            .module_and_code_by_pc(pc)
+    fn decode(registry: &ModuleRegistry, pc: usize) -> (&StoreCode, Vec<VirtualFrame>) {
+        let (store_code, pc) = registry
+            .store_code_by_pc(pc)
             .expect("Wasm frame PC does not correspond to a module");
-        let module = module_with_code.module();
-        let table = module.frame_table().unwrap();
+        let table = store_code.code_memory().frame_table().unwrap();
         let pc = u32::try_from(pc).expect("PC offset too large");
         let program_points = table.find_program_point(pc, FrameInstPos::Post)
             .expect("There must be a program point record in every frame when debug instrumentation is enabled");
 
         (
-            module.clone(),
+            store_code,
             program_points
                 .map(|(wasm_pc, frame_descriptor, stack_shape)| VirtualFrame {
                     wasm_pc,
@@ -719,8 +721,8 @@ struct FrameData {
 }
 
 impl FrameData {
-    fn compute(frame: VirtualFrame, module: &Module) -> Self {
-        let frame_table = module.frame_table().unwrap();
+    fn compute(frame: VirtualFrame, store_code: &StoreCode) -> Self {
+        let frame_table = store_code.code_memory().frame_table().unwrap();
         // Parse the frame descriptor.
         let (data, slot_to_fp_offset) = frame_table
             .frame_descriptor(frame.frame_descriptor)
@@ -773,50 +775,52 @@ unsafe fn read_value(
 ) -> Val {
     let address = unsafe { slot_base.offset(isize::try_from(offset.offset()).unwrap()) };
 
-    // SAFETY: each case reads a value from memory that should be
-    // valid according to our safety condition.
+    // SAFETY: each case reads a value from memory that should be valid
+    // according to our safety condition. State-slot values are packed without
+    // alignment padding, so these loads must accept unaligned addresses.
     match ty {
         FrameValType::I32 => {
-            let value = unsafe { *(address as *const i32) };
+            let value = unsafe { (address as *const i32).read_unaligned() };
             Val::I32(value)
         }
         FrameValType::I64 => {
-            let value = unsafe { *(address as *const i64) };
+            let value = unsafe { (address as *const i64).read_unaligned() };
             Val::I64(value)
         }
         FrameValType::F32 => {
-            let value = unsafe { *(address as *const u32) };
+            let value = unsafe { (address as *const u32).read_unaligned() };
             Val::F32(value)
         }
         FrameValType::F64 => {
-            let value = unsafe { *(address as *const u64) };
+            let value = unsafe { (address as *const u64).read_unaligned() };
             Val::F64(value)
         }
         FrameValType::V128 => {
             // Vectors are always stored as little-endian.
-            let value = unsafe { u128::from_le_bytes(*(address as *const [u8; 16])) };
+            let value =
+                unsafe { u128::from_le_bytes((address as *const [u8; 16]).read_unaligned()) };
             Val::V128(value.into())
         }
         FrameValType::AnyRef => {
             let mut nogc = AutoAssertNoGc::new(store);
-            let value = unsafe { *(address as *const u32) };
+            let value = unsafe { (address as *const u32).read_unaligned() };
             let value = AnyRef::_from_raw(&mut nogc, value);
             Val::AnyRef(value)
         }
         FrameValType::ExnRef => {
             let mut nogc = AutoAssertNoGc::new(store);
-            let value = unsafe { *(address as *const u32) };
+            let value = unsafe { (address as *const u32).read_unaligned() };
             let value = ExnRef::_from_raw(&mut nogc, value);
             Val::ExnRef(value)
         }
         FrameValType::ExternRef => {
             let mut nogc = AutoAssertNoGc::new(store);
-            let value = unsafe { *(address as *const u32) };
+            let value = unsafe { (address as *const u32).read_unaligned() };
             let value = ExternRef::_from_raw(&mut nogc, value);
             Val::ExternRef(value)
         }
         FrameValType::FuncRef => {
-            let value = unsafe { *(address as *const *mut c_void) };
+            let value = unsafe { (address as *const *mut c_void).read_unaligned() };
             let value = unsafe { Func::_from_raw(store, value) };
             Val::FuncRef(value)
         }
@@ -868,11 +872,13 @@ pub(crate) fn gc_refs_in_frame<'a>(ft: FrameTable<'a>, pc: u32, fp: *mut usize) 
 pub enum DebugEvent<'a> {
     /// A [`wasmtime::Error`](crate::Error) was raised by a hostcall.
     HostcallError(&'a crate::Error),
-    /// An exception is thrown and caught by Wasm. The current state
-    /// is at the throw-point.
-    CaughtExceptionThrown(OwnedRooted<ExnRef>),
-    /// An exception was not caught and is escaping to the host.
-    UncaughtExceptionThrown(OwnedRooted<ExnRef>),
+    /// An exception is thrown by wasm.
+    ///
+    /// Note that the exception may be caught by wasm if there's an appropriate
+    /// handler on the stack, but the stack hasn't been searched yet. The
+    /// debugger can inject its own exception or overwrite this exception if
+    /// desired.
+    Exception(OwnedRooted<ExnRef>),
     /// A Wasm trap occurred.
     Trap(Trap),
     /// A breakpoint was reached.
@@ -993,6 +999,8 @@ impl BreakpointKey {
 pub struct BreakpointEdit<'a> {
     state: &'a mut BreakpointState,
     registry: &'a mut ModuleRegistry,
+    /// The engine that owns everything in `registry`.
+    engine: &'a Engine,
     /// Modules that have been edited.
     ///
     /// Invariant: each of these modules' CodeMemory objects is
@@ -1001,10 +1009,15 @@ pub struct BreakpointEdit<'a> {
 }
 
 impl BreakpointState {
-    pub(crate) fn edit<'a>(&'a mut self, registry: &'a mut ModuleRegistry) -> BreakpointEdit<'a> {
+    pub(crate) fn edit<'a>(
+        &'a mut self,
+        registry: &'a mut ModuleRegistry,
+        engine: &'a Engine,
+    ) -> BreakpointEdit<'a> {
         BreakpointEdit {
             state: self,
             registry,
+            engine,
             dirty_modules: BTreeSet::new(),
         }
     }
@@ -1039,6 +1052,21 @@ impl BreakpointState {
 }
 
 impl<'a> BreakpointEdit<'a> {
+    /// Errors if `module` does not belong to the same engine as the store
+    /// being edited.
+    ///
+    /// The module registry rejects foreign modules on its own, but breakpoint
+    /// bookkeeping is updated before a module reaches the registry, and
+    /// removing a breakpoint that was never added does not touch the registry
+    /// at all. So this editing session checks up front as well.
+    fn check_engine(&self, module: &Module) -> Result<()> {
+        crate::ensure!(
+            crate::Engine::same(self.engine, module.engine()),
+            "cross-`Engine` breakpoint editing is not supported"
+        );
+        Ok(())
+    }
+
     fn get_code_memory<'b>(
         breakpoints: &BreakpointState,
         registry: &'b mut ModuleRegistry,
@@ -1083,7 +1111,13 @@ impl<'a> BreakpointEdit<'a> {
     /// available opcode PC.
     ///
     /// No effect if the breakpoint is already set.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `module` was not compiled by the same engine as
+    /// the store being edited.
     pub fn add_breakpoint(&mut self, module: &Module, pc: ModulePC) -> Result<()> {
+        self.check_engine(module)?;
         let frame_table = module
             .frame_table()
             .expect("Frame table must be present when guest-debug is enabled");
@@ -1114,7 +1148,13 @@ impl<'a> BreakpointEdit<'a> {
     /// that module.
     ///
     /// No effect if the breakpoint was not set.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `module` was not compiled by the same engine as
+    /// the store being edited.
     pub fn remove_breakpoint(&mut self, module: &Module, pc: ModulePC) -> Result<()> {
+        self.check_engine(module)?;
         let requested_key = BreakpointKey::from_raw(module, pc);
         let actual_key = self
             .state
@@ -1179,7 +1219,11 @@ impl<'a> BreakpointEdit<'a> {
             // re-publishing code.
             return Ok(());
         }
-        let modules = self.registry.all_modules().cloned().collect::<Vec<_>>();
+        let modules = self
+            .registry
+            .all_modules()
+            .map(|(_, m)| m.clone())
+            .collect::<Vec<_>>();
         for module in modules {
             let mem =
                 Self::get_code_memory(self.state, self.registry, &mut self.dirty_modules, &module)?;

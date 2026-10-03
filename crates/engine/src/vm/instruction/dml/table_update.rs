@@ -14,6 +14,7 @@ use reifydb_core::{
 	error::diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
+		index::primary_key_violation,
 		query::column_not_found,
 	},
 	interface::{
@@ -26,10 +27,9 @@ use reifydb_core::{
 			policy::{DataOp, PolicyTargetType},
 			table::Table,
 		},
-		resolved::{ResolvedColumn, ResolvedNamespace, ResolvedObject, ResolvedTable},
+		resolved::{ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
-	internal_error,
-	key::{any::TaggedKey, catalog::IndexEntryKey},
+	key::catalog::IndexEntryKey,
 	partition::PartitionError,
 	value::batch::single_row,
 };
@@ -45,13 +45,14 @@ use reifydb_value::{
 		identity::IdentityId,
 		partition::Partition,
 		row_number::RowNumber,
-		system_columns::{column_view, partitions, row_numbers, user_columns},
+		system_columns::{partitions, row_numbers, user_columns},
 	},
 };
 
 use super::{
+	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
 	context::{TableTarget, WriteExecCtx},
-	primary_key,
+	primary_key::{self, PrimaryKeyEncoder},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_table_shape,
 };
@@ -60,11 +61,11 @@ use crate::{
 	error::EngineError,
 	partition::{row_key_from_partition, table_partition_of_row},
 	policy::PolicyEvaluator,
-	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
+	transaction::operation::table::TableOperations,
 	vm::{
 		instruction::dml::{
-			coerce::{InputFragments, coerce_value_to_column_type},
-			time::resolve_time_for_update,
+			coerce::InputFragments,
+			time::{EventColumn, populator_index, resolve_time_for_update},
 		},
 		services::Services,
 		volcano::{
@@ -183,6 +184,16 @@ fn run_table_update(
 	let mut returned_rows: ReturnedRows = Vec::new();
 	let mut pre_rows: ReturnedRows = Vec::new();
 	let mut mutable_context = context.clone();
+	let pipeline = ColumnPipeline {
+		columns: &target.table.columns,
+		sequences: None,
+		series_key: None,
+		fragments,
+		context,
+	};
+	let pk_def = primary_key::get_primary_key(&exec.services.catalog, txn, target.table)?;
+	let mut encoder: Option<PrimaryKeyEncoder> = None;
+	let populator = populator_index(&target.table.time, shape);
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		if columns.num_rows() == 0 {
@@ -218,22 +229,35 @@ fn run_table_update(
 		let row_numbers: Vec<RowNumber> = row_numbers(&columns)?.to_vec();
 		let sidecar_partitions: Vec<Partition> = partitions(&columns)?;
 		let row_count = columns.num_rows();
-		enforce_old_row_policies(exec, txn, target, shape, &row_numbers, &sidecar_partitions)?;
+		let mut old_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
+			let row_key = row_key_from_partition(
+				target.table.id,
+				sidecar_partitions.get(row_idx).copied(),
+				row_number,
+			);
+			old_rows.push(txn.get(&row_key)?.expect("bytes must exist for update").bytes);
+		}
+		enforce_old_row_policies(exec, txn, target, shape, &row_numbers, &old_rows)?;
+
+		let inputs = input_views(&columns, &target.table.columns)?;
+		let mut batches = [pipeline.cast_target_columns(&inputs, row_count, None)?];
+		intern_dictionary_columns(
+			&exec.services.catalog,
+			txn,
+			pipeline.columns,
+			pipeline.series_key,
+			&mut batches,
+		)?;
+		let mut rows: Vec<EncodedTableRowBuilder> = (0..row_count).map(|_| shape.allocate_table()).collect();
+		batches[0].write(shape, &mut rows)?;
+		let now = exec.services.runtime_context.clock.now();
+		let event = EventColumn::new(populator.map(|index| batches[0].view(index)).transpose()?);
 
 		let mut prepared_rows: Vec<EncodedTableRowBuilder> = Vec::with_capacity(row_count);
 		let mut partitions_out: Vec<Partition> = Vec::with_capacity(row_count);
 		let mut pre_by_row: HashMap<RowNumber, EncodedBytes> = HashMap::new();
-		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
-			let mut row = build_updated_table_row(
-				exec.services,
-				txn,
-				target.table,
-				shape,
-				&columns,
-				fragments,
-				context,
-				row_idx,
-			)?;
+		for (row_idx, (mut row, &row_number)) in rows.into_iter().zip(row_numbers.iter()).enumerate() {
 			let partition = sidecar_partitions.get(row_idx).copied();
 
 			if let Some(old) = partition {
@@ -246,28 +270,33 @@ fn run_table_update(
 				}
 			}
 
-			let row_key = row_key_from_partition(target.table.id, partition, row_number);
-
-			if let Some(pk_def) = primary_key::get_primary_key(&exec.services.catalog, txn, target.table)? {
-				rotate_table_pk_index(txn, target.table, shape, &pk_def, &row_key, &row, row_number)?;
+			let old_row = &old_rows[row_idx];
+			if let Some(pk_def) = &pk_def {
+				let encoder = match &mut encoder {
+					Some(encoder) => encoder,
+					None => encoder.insert(PrimaryKeyEncoder::new(pk_def, target.table)?),
+				};
+				rotate_table_pk_index(txn, target, shape, pk_def, encoder, old_row, &row, row_number)?;
 			}
 
-			let old_row = txn.get(&row_key)?.expect("bytes must exist for update").bytes;
 			if has_returning {
 				pre_by_row.insert(row_number, old_row.clone());
 			}
-			let old_row = EncodedTableRow::view(&old_row);
+			let old_row = EncodedTableRow::view(old_row);
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
-			let now = exec.services.runtime_context.clock.now();
 			row.set_timestamps(old_created_at, now);
-			if let Some(time) = resolve_time_for_update(
-				&target.table.name,
-				&target.table.columns,
-				&target.table.time,
-				shape,
-				&row,
-				old_time,
+			if let Some(time) = event.at(row_idx).map_or_else(
+				|| {
+					resolve_time_for_update(
+						&target.table.name,
+						&target.table.time,
+						shape,
+						&row,
+						old_time,
+					)
+				},
+				|time| Ok(Some(time)),
 			)? {
 				row.set_time(time);
 			}
@@ -299,17 +328,12 @@ fn enforce_old_row_policies(
 	target: &TableTarget<'_>,
 	shape: &RowShape,
 	row_numbers: &[RowNumber],
-	partitions: &[Partition],
+	rows: &[EncodedBytes],
 ) -> Result<()> {
 	if txn.identity().is_privileged() {
 		return Ok(());
 	}
-	let mut old_rows: ReturnedRows = Vec::with_capacity(row_numbers.len());
-	for (row_idx, &row_number) in row_numbers.iter().enumerate() {
-		let row_key = row_key_from_partition(target.table.id, partitions.get(row_idx).copied(), row_number);
-		let bytes = txn.get(&row_key)?.expect("bytes must exist for update").bytes;
-		old_rows.push((row_number, bytes));
-	}
+	let old_rows: ReturnedRows = row_numbers.iter().copied().zip(rows.iter().cloned()).collect();
 	let old_columns = decode_rows_to_columns(shape, &old_rows)?;
 	let old_columns = decode_returning_dictionaries(exec.services, txn, &target.table.columns, old_columns)?;
 	PolicyEvaluator::new(exec.services, exec.symbols).enforce_write_policies(
@@ -324,82 +348,26 @@ fn enforce_old_row_policies(
 
 #[allow(clippy::too_many_arguments)]
 #[inline]
-fn build_updated_table_row(
-	services: &Arc<Services>,
-	txn: &mut Transaction<'_>,
-	table: &Table,
-	shape: &RowShape,
-	columns: &RecordBatch,
-	fragments: &InputFragments,
-	context: &QueryContext,
-	row_idx: usize,
-) -> Result<EncodedTableRowBuilder> {
-	let mut row = shape.allocate_table();
-	for (table_idx, table_column) in table.columns.iter().enumerate() {
-		let mut value = if let Some(input_column) = column_view(columns, &table_column.name)? {
-			input_column.get_value(row_idx)
-		} else {
-			Value::none()
-		};
-
-		let column_ident = fragments.column(&table_column.name);
-		let resolved_column = ResolvedColumn::new(
-			column_ident.clone(),
-			context.source.clone().unwrap(),
-			table_column.clone(),
-		);
-
-		value = coerce_value_to_column_type(
-			value,
-			table_column.constraint.get_type(),
-			resolved_column,
-			context,
-		)?;
-		if let Err(mut e) = table_column.constraint.coerce(&mut value) {
-			e.0.fragment = column_ident.clone();
-			return Err(e);
-		}
-
-		let value = if let Some(dict_id) = table_column.dictionary_id {
-			let dictionary = services.catalog.find_dictionary(txn, dict_id)?.ok_or_else(|| {
-				internal_error!("Dictionary {:?} not found for column {}", dict_id, table_column.name)
-			})?;
-			let entry_id = if matches!(value, Value::None { .. }) {
-				dictionary.id_type.none()
-			} else {
-				txn.insert_into_dictionary(&dictionary, &value)?
-			};
-			entry_id.to_value()
-		} else {
-			value
-		};
-
-		shape.set_value(&mut row, table_idx, &value);
-	}
-	Ok(row)
-}
-
-#[inline]
 fn rotate_table_pk_index(
 	txn: &mut Transaction<'_>,
-	table: &Table,
+	target: &TableTarget<'_>,
 	shape: &RowShape,
 	pk_def: &PrimaryKey,
-	row_key: &TaggedKey,
+	encoder: &PrimaryKeyEncoder,
+	pre_row: &[u8],
 	new_row: &[u8],
 	row_number: RowNumber,
 ) -> Result<()> {
-	if let Some(pre_row_data) = txn.get(row_key)? {
-		let pre_row = pre_row_data.bytes;
-		let pre_key = primary_key::encode_primary_key(pk_def, &pre_row, table, shape)?;
-		txn.remove(&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), pre_key))?;
-	}
+	let pre_key = encoder.encode(shape, pre_row);
+	txn.remove(&IndexEntryKey::new(target.table.id, IndexId::primary(pk_def.id), pre_key))?;
 
-	let post_key = primary_key::encode_primary_key(pk_def, new_row, table, shape)?;
-	txn.set(
-		&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), post_key),
-		EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes(),
-	)?;
+	let post_key = encoder.encode(shape, new_row);
+	let post_entry_key = IndexEntryKey::new(target.table.id, IndexId::primary(pk_def.id), post_key);
+	if txn.contains(&post_entry_key)? {
+		let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
+		return_error!(primary_key_violation(target.fragment.clone(), target.table.name.clone(), key_columns));
+	}
+	txn.set(&post_entry_key, EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes())?;
 	Ok(())
 }
 

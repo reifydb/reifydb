@@ -1,11 +1,21 @@
 #[cfg(all(feature = "with-serde", feature = "gen-tonic-messages"))]
 mod json_serde {
     #[cfg(feature = "logs")]
-    use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
+    use opentelemetry_proto::tonic::collector::logs::v1::{
+        ExportLogsServiceRequest, ExportLogsServiceResponse,
+    };
     #[cfg(feature = "metrics")]
-    use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
+    use opentelemetry_proto::tonic::collector::metrics::v1::{
+        ExportMetricsServiceRequest, ExportMetricsServiceResponse,
+    };
+    #[cfg(feature = "profiles")]
+    use opentelemetry_proto::tonic::collector::profiles::v1development::{
+        ExportProfilesServiceRequest, ExportProfilesServiceResponse,
+    };
     #[cfg(feature = "trace")]
-    use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
+    use opentelemetry_proto::tonic::collector::trace::v1::{
+        ExportTraceServiceRequest, ExportTraceServiceResponse,
+    };
     use opentelemetry_proto::tonic::common::v1::any_value::Value;
     use opentelemetry_proto::tonic::common::v1::{
         AnyValue, ArrayValue, InstrumentationScope, KeyValue, KeyValueList,
@@ -24,9 +34,26 @@ mod json_serde {
         ResourceSpans, ScopeSpans, Span, Status,
     };
 
+    #[cfg(feature = "profiles")]
+    mod export_profiles_service_request {
+        use super::*;
+
+        #[test]
+        fn deserialize_omitted_resource_profiles() {
+            let empty: ExportProfilesServiceRequest = serde_json::from_str("{}").unwrap();
+            assert!(empty.resource_profiles.is_empty());
+        }
+    }
+
     #[cfg(feature = "trace")]
     mod export_trace_service_request {
         use super::*;
+
+        #[test]
+        fn deserialize_omitted_resource_spans() {
+            let empty: ExportTraceServiceRequest = serde_json::from_str("{}").unwrap();
+            assert!(empty.resource_spans.is_empty());
+        }
 
         // `ExportTraceServiceRequest` from the OpenTelemetry proto examples
         // see <https://github.com/open-telemetry/opentelemetry-proto/blob/v1.3.2/examples/trace.json>
@@ -42,6 +69,7 @@ mod json_serde {
                                 value: Some(AnyValue {
                                     value: Some(Value::StringValue(String::from("my.service"))),
                                 }),
+                                key_strindex: 0,
                             }],
                             dropped_attributes_count: 0,
                             entity_refs: vec![],
@@ -57,6 +85,7 @@ mod json_serde {
                                             "some scope attribute",
                                         ))),
                                     }),
+                                    key_strindex: 0,
                                 }],
                                 dropped_attributes_count: 0,
                             }),
@@ -76,6 +105,7 @@ mod json_serde {
                                     value: Some(AnyValue {
                                         value: Some(Value::StringValue(String::from("some value"))),
                                     }),
+                                    key_strindex: 0,
                                 }],
                                 dropped_attributes_count: 0,
                                 events: vec![],
@@ -104,7 +134,8 @@ mod json_serde {
             }
           }
         ],
-        "droppedAttributesCount": 0
+        "droppedAttributesCount": 0,
+        "entityRefs": []
       },
       "scopeSpans": [
         {
@@ -249,6 +280,7 @@ mod json_serde {
                                 value: Some(AnyValue {
                                     value: Some(Value::StringValue(String::from("my.service"))),
                                 }),
+                                key_strindex: 0,
                             }],
                             dropped_attributes_count: 1,
                             entity_refs: vec![],
@@ -264,6 +296,7 @@ mod json_serde {
                                             "some scope attribute",
                                         ))),
                                     }),
+                                    key_strindex: 0,
                                 }],
                                 dropped_attributes_count: 1,
                             }),
@@ -286,12 +319,14 @@ mod json_serde {
                                                 "some value",
                                             ))),
                                         }),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: String::from("my.span.bytes.attr"),
                                         value: Some(AnyValue {
                                             value: Some(Value::BytesValue(vec![0x80, 0x80, 0x80])),
                                         }),
+                                        key_strindex: 0,
                                     },
                                 ],
                                 dropped_attributes_count: 1,
@@ -305,6 +340,7 @@ mod json_serde {
                                                 "snowman",
                                             ))),
                                         }),
+                                        key_strindex: 0,
                                     }],
                                     dropped_attributes_count: 1,
                                 }],
@@ -319,6 +355,7 @@ mod json_serde {
                                         value: Some(AnyValue {
                                             value: Some(Value::StringValue(String::from("rust"))),
                                         }),
+                                        key_strindex: 0,
                                     }],
                                     dropped_attributes_count: 1,
                                     flags: 0x0200,
@@ -349,7 +386,8 @@ mod json_serde {
             }
           }
         ],
-        "droppedAttributesCount": 1
+        "droppedAttributesCount": 1,
+        "entityRefs": []
       },
       "scopeSpans": [
         {
@@ -599,6 +637,7 @@ mod json_serde {
                     value: Some(AnyValue {
                         value: Some(Value::StringValue(String::from("some value"))),
                     }),
+                    key_strindex: 0,
                 }],
             });
             // language=json
@@ -625,6 +664,141 @@ mod json_serde {
         }
     }
 
+    mod empty_any_value {
+        use super::*;
+
+        #[test]
+        fn deserialize_empty_and_unknown_only_values() {
+            for json in [r#"{}"#, r#"{"futureValue":"ignored"}"#] {
+                let actual: AnyValue =
+                    serde_json::from_str(json).expect("empty AnyValue must deserialize");
+                assert_eq!(actual, AnyValue { value: None });
+                assert_eq!(
+                    serde_json::to_string(&actual).expect("empty AnyValue must serialize"),
+                    "{}"
+                );
+            }
+        }
+
+        #[test]
+        fn deserialize_null_values_as_unset() {
+            for field in [
+                "stringValue",
+                "boolValue",
+                "intValue",
+                "doubleValue",
+                "arrayValue",
+                "kvlistValue",
+                "bytesValue",
+            ] {
+                let json = format!(r#"{{"{field}":null}}"#);
+                let actual: AnyValue =
+                    serde_json::from_str(&json).expect("null AnyValue field must deserialize");
+                assert_eq!(actual.value, None, "field: {field}");
+            }
+        }
+
+        #[test]
+        fn deserialize_null_field_preserves_non_null_value() {
+            for field in [
+                "stringValue",
+                "boolValue",
+                "intValue",
+                "doubleValue",
+                "arrayValue",
+                "kvlistValue",
+                "bytesValue",
+            ] {
+                let (non_null_field, expected) = if field == "stringValue" {
+                    (r#""intValue":"42""#, Value::IntValue(42))
+                } else {
+                    (r#""stringValue":"kept""#, Value::StringValue("kept".into()))
+                };
+                for json in [
+                    format!(r#"{{"{field}":null,{non_null_field}}}"#),
+                    format!(r#"{{{non_null_field},"{field}":null}}"#),
+                ] {
+                    let actual: AnyValue = serde_json::from_str(&json).unwrap();
+                    assert_eq!(actual.value.as_ref(), Some(&expected), "input: {json}");
+                }
+            }
+        }
+
+        #[test]
+        fn deserialize_malformed_non_null_values_fails() {
+            for json in [
+                r#"{"stringValue":42}"#,
+                r#"{"boolValue":"true"}"#,
+                r#"{"intValue":"not-an-integer"}"#,
+                r#"{"intValue":"9223372036854775808"}"#,
+                r#"{"doubleValue":true}"#,
+                r#"{"arrayValue":42}"#,
+                r#"{"kvlistValue":42}"#,
+                r#"{"bytesValue":"!"}"#,
+            ] {
+                assert!(
+                    serde_json::from_str::<AnyValue>(json).is_err(),
+                    "input: {json}"
+                );
+            }
+        }
+
+        #[cfg(feature = "trace")]
+        #[test]
+        fn deserialize_empty_span_attribute() {
+            let json = r#"{
+                "resourceSpans": [{
+                    "scopeSpans": [{
+                        "spans": [{
+                            "traceId": "00000000000000000000000000000001",
+                            "spanId": "0000000000000001",
+                            "name": "cloudflare-span",
+                            "attributes": [{"key": "empty", "value": {}}]
+                        }]
+                    }]
+                }]
+            }"#;
+
+            let request: ExportTraceServiceRequest =
+                serde_json::from_str(json).expect("trace request must deserialize");
+            let value = &request.resource_spans[0].scope_spans[0].spans[0].attributes[0]
+                .value
+                .as_ref()
+                .expect("attribute must remain present")
+                .value;
+            assert_eq!(value, &None);
+        }
+
+        #[cfg(feature = "logs")]
+        #[test]
+        fn deserialize_empty_log_field() {
+            let json = r#"{
+                "resourceLogs": [{
+                    "scopeLogs": [{
+                        "logRecords": [{
+                            "body": {
+                                "kvlistValue": {
+                                    "values": [{"key": "value", "value": {}}]
+                                }
+                            }
+                        }]
+                    }]
+                }]
+            }"#;
+
+            let request: ExportLogsServiceRequest =
+                serde_json::from_str(json).expect("logs request must deserialize");
+            let Some(Value::KvlistValue(body)) = request.resource_logs[0].scope_logs[0].log_records
+                [0]
+            .body
+            .as_ref()
+            .and_then(|body| body.value.as_ref()) else {
+                panic!("log body must remain a key-value list");
+            };
+            assert_eq!(body.values[0].value, Some(AnyValue { value: None }));
+        }
+    }
+
     mod key_value {
         use super::*;
 
@@ -637,6 +811,7 @@ mod json_serde {
                     value: Some(AnyValue {
                         value: Some(Value::StringValue(String::from("my.service"))),
                     }),
+                    key_strindex: 0,
                 }
             }
 
@@ -674,6 +849,7 @@ mod json_serde {
                     value: Some(AnyValue {
                         value: Some(Value::IntValue(33)),
                     }),
+                    key_strindex: 0,
                 }
             }
 
@@ -780,6 +956,12 @@ mod json_serde {
     mod export_metrics_service_request {
         use super::*;
 
+        #[test]
+        fn deserialize_omitted_resource_metrics() {
+            let empty: ExportMetricsServiceRequest = serde_json::from_str("{}").unwrap();
+            assert!(empty.resource_metrics.is_empty());
+        }
+
         // `ExportTraceServiceRequest` from the OpenTelemetry proto examples
         // see <https://github.com/open-telemetry/opentelemetry-proto/blob/v1.3.2/examples/metrics.json>
         mod example {
@@ -794,6 +976,7 @@ mod json_serde {
                                 value: Some(AnyValue {
                                     value: Some(Value::StringValue(String::from("my.service"))),
                                 }),
+                                key_strindex: 0,
                             }],
                             dropped_attributes_count: 0,
                             entity_refs: vec![],
@@ -809,6 +992,7 @@ mod json_serde {
                                             "some scope attribute",
                                         ))),
                                     }),
+                                    key_strindex: 0,
                                 }],
                                 dropped_attributes_count: 0,
                             }),
@@ -827,6 +1011,7 @@ mod json_serde {
                                                         "some value",
                                                     ))),
                                                 }),
+                                                key_strindex: 0,
                                             }],
                                             start_time_unix_nano: 1544712660300000000,
                                             time_unix_nano: 1544712660300000000,
@@ -852,6 +1037,7 @@ mod json_serde {
                                                         "some value",
                                                     ))),
                                                 }),
+                                                key_strindex: 0,
                                             }],
                                             start_time_unix_nano: 0,
                                             time_unix_nano: 1544712660300000000,
@@ -875,6 +1061,7 @@ mod json_serde {
                                                         "some value",
                                                     ))),
                                                 }),
+                                                key_strindex: 0,
                                             }],
                                             start_time_unix_nano: 1544712660300000000,
                                             time_unix_nano: 1544712660300000000,
@@ -911,7 +1098,8 @@ mod json_serde {
             }
           }
         ],
-        "droppedAttributesCount": 0
+        "droppedAttributesCount": 0,
+        "entityRefs": []
       },
       "scopeMetrics": [
         {
@@ -999,11 +1187,11 @@ mod json_serde {
                     ],
                     "startTimeUnixNano": "1544712660300000000",
                     "timeUnixNano": "1544712660300000000",
-                    "count": 2,
+                    "count": "2",
                     "sum": 2.0,
                     "bucketCounts": [
-                      1,
-                      1
+                      "1",
+                      "1"
                     ],
                     "explicitBounds": [
                       1.0
@@ -1111,9 +1299,9 @@ mod json_serde {
                   {
                     "startTimeUnixNano": "1544712660300000000",
                     "timeUnixNano": "1544712660300000000",
-                    "count": 2,
+                    "count": "2",
                     "sum": 2,
-                    "bucketCounts": [1,1],
+                    "bucketCounts": ["1","1"],
                     "explicitBounds": [1],
                     "min": 0,
                     "max": 2,
@@ -1164,8 +1352,202 @@ mod json_serde {
     }
 
     #[cfg(feature = "logs")]
+    mod export_logs_service_response {
+        use super::*;
+
+        #[test]
+        fn deserialize_empty_partial_success() {
+            let response: ExportLogsServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_log_records, 0);
+            assert!(partial_success.error_message.is_empty());
+        }
+
+        #[test]
+        fn deserialize_partial_success_with_omitted_rejected_log_records() {
+            let response: ExportLogsServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{"errorMessage":"backend warning"}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_log_records, 0);
+            assert_eq!(partial_success.error_message, "backend warning");
+        }
+
+        #[test]
+        fn deserialize_partial_success_with_omitted_error_message() {
+            let response: ExportLogsServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{"rejectedLogRecords":1}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_log_records, 1);
+            assert!(partial_success.error_message.is_empty());
+        }
+    }
+
+    #[cfg(feature = "trace")]
+    mod export_trace_service_response {
+        use super::*;
+
+        #[test]
+        fn deserialize_empty_partial_success() {
+            let response: ExportTraceServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_spans, 0);
+            assert!(partial_success.error_message.is_empty());
+        }
+
+        #[test]
+        fn deserialize_partial_success_with_omitted_rejected_spans() {
+            let response: ExportTraceServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{"errorMessage":"backend warning"}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_spans, 0);
+            assert_eq!(partial_success.error_message, "backend warning");
+        }
+
+        #[test]
+        fn deserialize_partial_success_with_omitted_error_message() {
+            let response: ExportTraceServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{"rejectedSpans":1}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_spans, 1);
+            assert!(partial_success.error_message.is_empty());
+        }
+    }
+
+    #[cfg(feature = "metrics")]
+    mod export_metrics_service_response {
+        use super::*;
+
+        #[test]
+        fn deserialize_empty_partial_success() {
+            let response: ExportMetricsServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_data_points, 0);
+            assert!(partial_success.error_message.is_empty());
+        }
+
+        #[test]
+        fn deserialize_partial_success_with_omitted_rejected_data_points() {
+            let response: ExportMetricsServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{"errorMessage":"backend warning"}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_data_points, 0);
+            assert_eq!(partial_success.error_message, "backend warning");
+        }
+
+        #[test]
+        fn deserialize_partial_success_with_omitted_error_message() {
+            let response: ExportMetricsServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{"rejectedDataPoints":1}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_data_points, 1);
+            assert!(partial_success.error_message.is_empty());
+        }
+    }
+
+    #[cfg(feature = "profiles")]
+    mod export_profiles_service_response {
+        use super::*;
+
+        #[test]
+        fn deserialize_empty_partial_success() {
+            let response: ExportProfilesServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_profiles, 0);
+            assert!(partial_success.error_message.is_empty());
+        }
+
+        #[test]
+        fn deserialize_partial_success_with_omitted_rejected_profiles() {
+            let response: ExportProfilesServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{"errorMessage":"backend warning"}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_profiles, 0);
+            assert_eq!(partial_success.error_message, "backend warning");
+        }
+
+        #[test]
+        fn deserialize_partial_success_with_omitted_error_message() {
+            let response: ExportProfilesServiceResponse =
+                serde_json::from_str(r#"{"partialSuccess":{"rejectedProfiles":1}}"#)
+                    .expect("deserialization must succeed");
+
+            let partial_success = response
+                .partial_success
+                .expect("partial success must be present");
+
+            assert_eq!(partial_success.rejected_profiles, 1);
+            assert!(partial_success.error_message.is_empty());
+        }
+    }
+
+    #[cfg(feature = "logs")]
     mod export_logs_service_request {
         use super::*;
+
+        #[test]
+        fn deserialize_omitted_resource_logs() {
+            let empty: ExportLogsServiceRequest = serde_json::from_str("{}").unwrap();
+            assert!(empty.resource_logs.is_empty());
+        }
 
         // `ExportTraceServiceRequest` from the OpenTelemetry proto examples
         // see <https://github.com/open-telemetry/opentelemetry-proto/blob/v1.3.2/examples/logs.json>
@@ -1181,6 +1563,7 @@ mod json_serde {
                                 value: Some(AnyValue {
                                     value: Some(Value::StringValue(String::from("my.service"))),
                                 }),
+                                key_strindex: 0,
                             }],
                             dropped_attributes_count: 0,
                             entity_refs: vec![],
@@ -1196,6 +1579,7 @@ mod json_serde {
                                             "some scope attribute",
                                         ))),
                                     }),
+                                    key_strindex: 0,
                                 }],
                                 dropped_attributes_count: 0,
                             }),
@@ -1218,24 +1602,28 @@ mod json_serde {
                                                 "some string",
                                             ))),
                                         }),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: String::from("boolean.attribute"),
                                         value: Some(AnyValue {
                                             value: Some(Value::BoolValue(true)),
                                         }),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: String::from("int.attribute"),
                                         value: Some(AnyValue {
                                             value: Some(Value::IntValue(10)),
                                         }),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: String::from("double.attribute"),
                                         value: Some(AnyValue {
                                             value: Some(Value::DoubleValue(637.704)),
                                         }),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: String::from("array.attribute"),
@@ -1255,6 +1643,7 @@ mod json_serde {
                                                 ],
                                             })),
                                         }),
+                                        key_strindex: 0,
                                     },
                                     KeyValue {
                                         key: String::from("map.attribute"),
@@ -1267,9 +1656,11 @@ mod json_serde {
                                                             String::from("some value"),
                                                         )),
                                                     }),
+                                                    key_strindex: 0,
                                                 }],
                                             })),
                                         }),
+                                        key_strindex: 0,
                                     },
                                 ],
                                 dropped_attributes_count: 0,
@@ -1298,7 +1689,8 @@ mod json_serde {
             }
           }
         ],
-        "droppedAttributesCount": 0
+        "droppedAttributesCount": 0,
+        "entityRefs": []
       },
       "scopeLogs": [
         {
@@ -1523,6 +1915,328 @@ mod json_serde {
                     serde_json::from_str(ALTERNATIVE).expect("deserialization must succeed");
                 let expected: ExportLogsServiceRequest = value();
                 assert_eq!(actual, expected);
+            }
+        }
+    }
+    #[cfg(feature = "metrics")]
+    mod metrics_with_nan {
+        use super::*;
+        use opentelemetry_proto::tonic::metrics::v1::summary_data_point::ValueAtQuantile;
+        use opentelemetry_proto::tonic::metrics::v1::Summary;
+        use opentelemetry_proto::tonic::metrics::v1::SummaryDataPoint;
+
+        fn value_with_nan() -> ExportMetricsServiceRequest {
+            ExportMetricsServiceRequest {
+                resource_metrics: vec![ResourceMetrics {
+                    resource: Some(Resource {
+                        attributes: vec![KeyValue {
+                            key: String::from("service.name"),
+                            value: None,
+                            key_strindex: 0,
+                        }],
+                        dropped_attributes_count: 0,
+                        entity_refs: vec![],
+                    }),
+                    scope_metrics: vec![ScopeMetrics {
+                        scope: None,
+                        metrics: vec![Metric {
+                            name: String::from("example_metric"),
+                            description: String::from("A sample metric with NaN values"),
+                            unit: String::from("1"),
+                            metadata: vec![],
+                            data: Some(
+                                opentelemetry_proto::tonic::metrics::v1::metric::Data::Summary(
+                                    Summary {
+                                        data_points: vec![SummaryDataPoint {
+                                            attributes: vec![],
+                                            start_time_unix_nano: 0,
+                                            time_unix_nano: 0,
+                                            count: 100,
+                                            sum: 500.0,
+                                            quantile_values: vec![
+                                                ValueAtQuantile {
+                                                    quantile: 0.5,
+                                                    value: f64::NAN,
+                                                },
+                                                ValueAtQuantile {
+                                                    quantile: 0.9,
+                                                    value: f64::NAN,
+                                                },
+                                            ],
+                                            flags: 0,
+                                        }],
+                                    },
+                                ),
+                            ),
+                        }],
+                        schema_url: String::new(),
+                    }],
+                    schema_url: String::new(),
+                }],
+            }
+        }
+
+        // language=json
+        const CANONICAL_WITH_NAN: &str = r#"{
+          "resourceMetrics": [
+            {
+              "resource": {
+                "attributes": [
+                  {
+                    "key": "service.name",
+                    "value": null
+                  }
+                ],
+                "droppedAttributesCount": 0,
+                "entityRefs": []
+              },
+              "scopeMetrics": [
+                {
+                  "scope": null,
+                  "metrics": [
+                    {
+                      "name": "example_metric",
+                      "description": "A sample metric with NaN values",
+                      "unit": "1",
+                      "metadata": [],
+                      "summary": {
+                        "dataPoints": [
+                          {
+                            "attributes": [],
+                            "startTimeUnixNano": "0",
+                            "timeUnixNano": "0",
+                            "count": "100",
+                            "sum": 500.0,
+                            "quantileValues": [
+                              {
+                                "quantile": 0.5,
+                                "value": "NaN"
+                              },
+                              {
+                                "quantile": 0.9,
+                                "value": "NaN"
+                              }
+                            ],
+                            "flags": 0
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "schemaUrl": ""
+                }
+              ],
+              "schemaUrl": ""
+            }
+          ]
+        }"#;
+
+        #[test]
+        fn serialize_with_nan() {
+            let input: ExportMetricsServiceRequest = value_with_nan();
+
+            // Serialize the structure to JSON
+            let actual = serde_json::to_string_pretty(&input).expect("serialization must succeed");
+
+            // Normalize both the actual and expected JSON for comparison
+            let actual_value: serde_json::Value =
+                serde_json::from_str(&actual).expect("valid JSON");
+            let expected_value: serde_json::Value =
+                serde_json::from_str(CANONICAL_WITH_NAN).expect("valid JSON");
+
+            // Compare the normalized JSON values
+            assert_eq!(actual_value, expected_value);
+        }
+
+        #[test]
+        fn deserialize_with_nan() {
+            let actual: ExportMetricsServiceRequest =
+                serde_json::from_str(CANONICAL_WITH_NAN).expect("deserialization must succeed");
+
+            // Ensure the deserialized structure matches the expected values
+            assert_eq!(actual.resource_metrics.len(), 1);
+
+            let resource_metric = &actual.resource_metrics[0];
+            assert_eq!(
+                resource_metric.resource.as_ref().unwrap().attributes.len(),
+                1
+            );
+            assert_eq!(
+                resource_metric.resource.as_ref().unwrap().attributes[0].key,
+                "service.name"
+            );
+            assert!(resource_metric.resource.as_ref().unwrap().attributes[0]
+                .value
+                .is_none());
+
+            assert_eq!(resource_metric.scope_metrics.len(), 1);
+
+            let scope_metric = &resource_metric.scope_metrics[0];
+            assert!(scope_metric.scope.is_none());
+            assert_eq!(scope_metric.metrics.len(), 1);
+
+            let metric = &scope_metric.metrics[0];
+            assert_eq!(metric.name, "example_metric");
+            assert_eq!(metric.description, "A sample metric with NaN values");
+            assert_eq!(metric.unit, "1");
+
+            if let Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Summary(summary)) =
+                &metric.data
+            {
+                assert_eq!(summary.data_points.len(), 1);
+
+                let data_point = &summary.data_points[0];
+                assert_eq!(data_point.attributes.len(), 0);
+                assert_eq!(data_point.start_time_unix_nano, 0);
+                assert_eq!(data_point.time_unix_nano, 0);
+                assert_eq!(data_point.count, 100);
+                assert_eq!(data_point.sum, 500.0);
+
+                assert_eq!(data_point.quantile_values.len(), 2);
+
+                // Verify that quantile values are NaN
+                assert!(data_point.quantile_values[0].value.is_nan());
+                assert!(data_point.quantile_values[0].quantile == 0.5);
+                assert!(data_point.quantile_values[1].value.is_nan());
+                assert!(data_point.quantile_values[1].quantile == 0.9);
+            } else {
+                panic!("Expected metric data to be of type Summary");
+            }
+        }
+    }
+
+    #[cfg(feature = "metrics")]
+    mod bare_number_deserialization {
+        use super::*;
+
+        #[test]
+        fn u64_bare_number() {
+            // parsers must accept both bare and quoted numbers
+            let json = r#"{
+  "resourceMetrics": [
+    {
+      "scopeMetrics": [
+        {
+          "metrics": [
+            {
+              "name": "test",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": 1544712660000000000,
+                    "timeUnixNano": "1544712661000000000",
+                    "asInt": "42"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}"#;
+            let result: ExportMetricsServiceRequest =
+                serde_json::from_str(json).expect("bare u64 numbers must deserialize");
+            let dp = &result.resource_metrics[0].scope_metrics[0].metrics[0];
+            if let Some(Data::Gauge(gauge)) = &dp.data {
+                assert_eq!(
+                    gauge.data_points[0].start_time_unix_nano,
+                    1544712660000000000
+                );
+                assert_eq!(gauge.data_points[0].time_unix_nano, 1544712661000000000);
+            } else {
+                panic!("expected gauge data");
+            }
+        }
+
+        #[test]
+        fn vec_u64_bare_numbers() {
+            // bucket_counts should accept both quoted and bare numbers in arrays
+            let json = r#"{
+  "resourceMetrics": [
+    {
+      "scopeMetrics": [
+        {
+          "metrics": [
+            {
+              "name": "test_histogram",
+              "histogram": {
+                "dataPoints": [
+                  {
+                    "startTimeUnixNano": "0",
+                    "timeUnixNano": "0",
+                    "count": 10,
+                    "sum": 100.0,
+                    "bucketCounts": [1, "2", 3],
+                    "explicitBounds": [10.0, 20.0]
+                  }
+                ],
+                "aggregationTemporality": 2
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}"#;
+            let result: ExportMetricsServiceRequest =
+                serde_json::from_str(json).expect("bare u64 vec numbers must deserialize");
+            let dp = &result.resource_metrics[0].scope_metrics[0].metrics[0];
+            if let Some(Data::Histogram(hist)) = &dp.data {
+                assert_eq!(hist.data_points[0].bucket_counts, vec![1, 2, 3]);
+                assert_eq!(hist.data_points[0].count, 10);
+            } else {
+                panic!("expected histogram data");
+            }
+        }
+
+        #[test]
+        fn f64_bare_number_in_summary_quantile() {
+            // deserialize_f64_special should accept both quoted and bare numeric strings
+            let json = r#"{
+  "resourceMetrics": [
+    {
+      "scopeMetrics": [
+        {
+          "metrics": [
+            {
+              "name": "test_summary",
+              "summary": {
+                "dataPoints": [
+                  {
+                    "count": "1",
+                    "sum": 100.0,
+                    "quantileValues": [
+                      {
+                        "quantile": "0.5",
+                        "value": 99.0
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}"#;
+            let result: ExportMetricsServiceRequest =
+                serde_json::from_str(json).expect("quoted f64 numbers must deserialize");
+            let dp = &result.resource_metrics[0].scope_metrics[0].metrics[0];
+            if let Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Summary(summary)) =
+                &dp.data
+            {
+                let qv = &summary.data_points[0].quantile_values[0];
+                // assert!((qv.quantile - 0.5).abs() < f64::EPSILON);
+                // assert!((qv.value - 99.0).abs() < f64::EPSILON);
+                assert_eq!(qv.quantile, 0.5);
+                assert_eq!(qv.value, 99.0);
+            } else {
+                panic!("expected summary data");
             }
         }
     }

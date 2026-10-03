@@ -188,6 +188,9 @@ pub enum ProtocolError {
     /// Missing `Sec-WebSocket-Key` HTTP header.
     #[error("No \"Sec-WebSocket-Key\" header")]
     MissingSecWebSocketKey,
+    /// Invalid Sec-WebSocket-Key HTTP header value.
+    #[error("Invalid \"Sec-WebSocket-Key\" header value")]
+    InvalidSecWebSocketKey,
     /// The `Sec-WebSocket-Accept` header is either not present or does not specify the correct key value.
     #[error("Key mismatch in \"Sec-WebSocket-Accept\" header")]
     SecWebSocketAcceptKeyMismatch,
