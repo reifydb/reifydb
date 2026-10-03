@@ -649,7 +649,7 @@ impl Statement<'_> {
                     c_str,
                     len,
                     destructor,
-                    ffi::SQLITE_UTF8 as _,
+                    ffi::SQLITE_UTF8 as _, // TODO SQLITE_UTF8_ZT
                 )
             },
             ValueRef::Blob(b) => unsafe {
@@ -691,19 +691,17 @@ impl Statement<'_> {
         self.conn.decode_result(stmt.finalize())
     }
 
-    #[cfg(feature = "extra_check")]
     #[inline]
+    #[allow(clippy::unnecessary_wraps)]
     fn check_update(&self) -> Result<()> {
-        if self.column_count() > 0 && self.stmt.readonly() {
-            return Err(Error::ExecuteReturnedResults);
+        cfg_select! {
+          feature = "extra_check" => {
+              if self.column_count() > 0 && self.stmt.readonly() {
+                  return Err(Error::ExecuteReturnedResults);
+              }
+          }
+          _ => {}
         }
-        Ok(())
-    }
-
-    #[cfg(not(feature = "extra_check"))]
-    #[inline]
-    #[expect(clippy::unnecessary_wraps)]
-    fn check_update(&self) -> Result<()> {
         Ok(())
     }
 
@@ -897,7 +895,7 @@ pub enum StatementStatus {
     MemUsed = 99,
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod test {
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     use wasm_bindgen_test::wasm_bindgen_test as test;
@@ -1309,6 +1307,10 @@ mod test {
         stmt.parameter_index("test")?;
         let err = stmt.step().unwrap_err();
         assert_eq!(err.sqlite_error_code(), Some(crate::ErrorCode::ApiMisuse));
+        assert_eq!(
+            err.sqlite_extended_error_code(),
+            Some(crate::ffi::SQLITE_MISUSE)
+        );
         // error msg is different with sqlcipher, so we use assert_ne:
         assert_ne!(err.to_string(), "not an error".to_owned());
         stmt.reset()?; // SQLITE_OMIT_AUTORESET = false

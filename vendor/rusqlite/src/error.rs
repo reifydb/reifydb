@@ -7,6 +7,27 @@ use std::fmt;
 use std::path::PathBuf;
 use std::str;
 
+// Just to keep MSRV low
+macro_rules! cfg_select {
+    ({ $($tt:tt)* }) => {{
+        $crate::cfg_select! { $($tt)* }
+    }};
+    (_ => { $($output:tt)* }) => {
+        $($output)*
+    };
+    (
+        $cfg:meta => $output:tt
+        $($( $rest:tt )+)?
+    ) => {{
+        #[cfg($cfg)]
+        cfg_select! { _ => $output }
+        $(
+            #[cfg(not($cfg))]
+            cfg_select! { $($rest)+ }
+        )?
+    }}
+}
+
 /// Enum listing possible errors from rusqlite.
 #[derive(Debug)]
 #[non_exhaustive]
@@ -407,6 +428,14 @@ impl Error {
     pub fn sqlite_error_code(&self) -> Option<ffi::ErrorCode> {
         self.sqlite_error().map(|error| error.code)
     }
+
+    /// Returns the underlying SQLite extended error code if this is
+    /// [`Error::SqliteFailure`].
+    #[inline]
+    #[must_use]
+    pub fn sqlite_extended_error_code(&self) -> Option<c_int> {
+        self.sqlite_error().map(|error| error.extended_code)
+    }
 }
 
 // These are public but not re-exported by lib.rs, so only visible within crate.
@@ -458,31 +487,32 @@ pub unsafe fn decode_result_raw(db: *mut ffi::sqlite3, code: c_int) -> Result<()
 }
 
 #[cold]
-#[cfg(not(feature = "modern_sqlite"))] // SQLite >= 3.38.0
-pub unsafe fn error_with_offset(db: *mut ffi::sqlite3, code: c_int, _sql: &str) -> Error {
-    error_from_handle(db, code)
-}
-
-#[cold]
-#[cfg(feature = "modern_sqlite")] // SQLite >= 3.38.0
+#[allow(unused_variables)]
 pub unsafe fn error_with_offset(db: *mut ffi::sqlite3, code: c_int, sql: &str) -> Error {
-    if db.is_null() {
-        error_from_sqlite_code(code, None)
-    } else {
-        let error = ffi::Error::new(code);
-        let msg = error_msg(db, code);
-        if ffi::ErrorCode::Unknown == error.code {
-            let offset = ffi::sqlite3_error_offset(db);
-            if offset >= 0 {
-                return Error::SqlInputError {
-                    error,
-                    msg: msg.unwrap_or("error".to_owned()),
-                    sql: sql.to_owned(),
-                    offset,
-                };
-            }
-        }
-        Error::SqliteFailure(error, msg)
+    cfg_select! {
+      feature = "modern_sqlite" => { // SQLite >= 3.38.0
+          if db.is_null() {
+              error_from_sqlite_code(code, None)
+          } else {
+              let error = ffi::Error::new(code);
+              let msg = error_msg(db, code);
+              if ffi::ErrorCode::Unknown == error.code {
+                  let offset = ffi::sqlite3_error_offset(db);
+                  if offset >= 0 {
+                      return Error::SqlInputError {
+                          error,
+                          msg: msg.unwrap_or("error".to_owned()),
+                          sql: sql.to_owned(),
+                          offset,
+                      };
+                  }
+              }
+              Error::SqliteFailure(error, msg)
+          }
+      }
+      _ => {
+          error_from_handle(db, code)
+      }
     }
 }
 
@@ -510,5 +540,26 @@ pub unsafe fn to_sqlite_error(e: &Error, err_msg: *mut *mut c_char) -> c_int {
             *err_msg = alloc(&err.to_string());
             ffi::SQLITE_ERROR
         }
+    }
+}
+
+/// Set error code and message
+/// # Safety
+/// This function is unsafe because it uses raw pointer
+#[cfg(feature = "modern_sqlite")] // 3.51.0
+pub unsafe fn set_errmsg(
+    db: *mut ffi::sqlite3,
+    code: c_int,
+    msg: Option<&std::ffi::CStr>,
+) -> Result<()> {
+    unsafe {
+        decode_result_raw(
+            db,
+            ffi::sqlite3_set_errmsg(
+                db,
+                code,
+                msg.map_or(std::ptr::null(), std::ffi::CStr::as_ptr),
+            ),
+        )
     }
 }

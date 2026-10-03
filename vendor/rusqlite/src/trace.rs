@@ -218,17 +218,17 @@ impl Connection {
                     trace_fn(TraceEvent::Stmt(
                         StmtRef::new(p as *mut ffi::sqlite3_stmt),
                         &str,
-                    ))
+                    ));
                 }
                 ffi::SQLITE_TRACE_PROFILE => {
                     let ns = *(x as *const i64);
                     trace_fn(TraceEvent::Profile(
                         StmtRef::new(p as *mut ffi::sqlite3_stmt),
                         Duration::from_nanos(u64::try_from(ns).unwrap_or_default()),
-                    ))
+                    ));
                 }
                 ffi::SQLITE_TRACE_ROW => {
-                    trace_fn(TraceEvent::Row(StmtRef::new(p as *mut ffi::sqlite3_stmt)))
+                    trace_fn(TraceEvent::Row(StmtRef::new(p as *mut ffi::sqlite3_stmt)));
                 }
                 ffi::SQLITE_TRACE_CLOSE => trace_fn(TraceEvent::Close(ConnRef {
                     ptr: p as *mut ffi::sqlite3,
@@ -252,7 +252,7 @@ impl Connection {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod test {
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     use wasm_bindgen_test::wasm_bindgen_test as test;
@@ -319,7 +319,7 @@ mod test {
 
     #[test]
     pub fn trace_v2() -> Result<()> {
-        use std::borrow::Borrow;
+        use std::borrow::Borrow as _;
         use std::cmp::Ordering;
 
         let db = Connection::open_in_memory()?;

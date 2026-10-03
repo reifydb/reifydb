@@ -495,7 +495,7 @@ impl Wal {
                     &mut n_log,
                     &mut n_ckpt,
                 ),
-            )?
+            )?;
         };
         Ok((n_log, n_ckpt))
     }
@@ -706,7 +706,7 @@ impl InnerConnection {
                 boxed_handler
                     .as_ref()
                     .map_or_else(ptr::null_mut, |h| &**h as *const F as *mut _),
-            )
+            );
         };
         self.progress_handler = boxed_handler.map(|bh| bh as _);
     }
@@ -811,7 +811,7 @@ unsafe fn expect_optional_utf8<'a>(
         .into()
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod test {
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     use wasm_bindgen_test::wasm_bindgen_test as test;

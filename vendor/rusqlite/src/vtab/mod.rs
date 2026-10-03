@@ -101,102 +101,113 @@ const ZERO_MODULE: ffi::sqlite3_module = unsafe {
     .module
 };
 
-macro_rules! module {
-    ($lt:lifetime, $vt:ty, $ct:ty, $xcreate:expr, $xdestroy:expr, $xupdate:expr,
-         $xbegin:expr, $xsync:expr, $xcommit:expr, $xrollback:expr) => {
-    &Module {
-        base: ffi::sqlite3_module {
-            // We don't use methods provided by versions > 1
-            iVersion: 1,
-            xCreate: $xcreate,
-            xConnect: Some(rust_connect::<$vt>),
-            xBestIndex: Some(rust_best_index::<$vt>),
-            xDisconnect: Some(rust_disconnect::<$vt>),
-            xDestroy: $xdestroy,
-            xOpen: Some(rust_open::<$vt>),
-            xClose: Some(rust_close::<$ct>),
-            xFilter: Some(rust_filter::<$ct>),
-            xNext: Some(rust_next::<$ct>),
-            xEof: Some(rust_eof::<$ct>),
-            xColumn: Some(rust_column::<$ct>),
-            xRowid: Some(rust_rowid::<$ct>), // FIXME optional
-            xUpdate: $xupdate,
-            xBegin: $xbegin,
-            xSync: $xsync,
-            xCommit: $xcommit,
-            xRollback: $xrollback,
-            xFindFunction: None,
-            xRename: None,
-            ..ZERO_MODULE
-        },
-        phantom: PhantomData::<&$lt $vt>,
-    }
-    };
-}
-
-/// Create a modifiable virtual table implementation.
-///
-/// Step 2 of [Creating New Virtual Table Implementations](https://sqlite.org/vtab.html#creating_new_virtual_table_implementations).
-#[must_use]
-pub fn update_module<'vtab, T: UpdateVTab<'vtab>>() -> &'static Module<'vtab, T> {
-    match T::KIND {
-        VTabKind::EponymousOnly => {
-            module!('vtab, T, T::Cursor, None, None, Some(rust_update::<T>), None, None, None, None)
-        }
-        VTabKind::Eponymous => {
-            module!('vtab, T, T::Cursor, Some(rust_connect::<T>), Some(rust_disconnect::<T>), Some(rust_update::<T>), None, None, None, None)
-        }
-        _ => {
-            module!('vtab, T, T::Cursor, Some(rust_create::<T>), Some(rust_destroy::<T>), Some(rust_update::<T>), None, None, None, None)
+impl<'vtab, T: VTab<'vtab>> Module<'vtab, T> {
+    /// Create an eponymous only virtual table implementation.
+    ///
+    /// Step 2 of [Creating New Virtual Table Implementations](https://sqlite.org/vtab.html#creating_new_virtual_table_implementations).
+    #[must_use]
+    pub const fn eponymous_only_module() -> Self {
+        //  For eponymous-only virtual tables, the xCreate method is NULL
+        Module {
+            base: ffi::sqlite3_module {
+                // We don't use methods provided by versions > 1
+                iVersion: 1,
+                xCreate: None,
+                xConnect: Some(rust_connect::<T>),
+                xBestIndex: Some(rust_best_index::<T>),
+                xDisconnect: Some(rust_disconnect::<T>),
+                xDestroy: None,
+                xOpen: Some(rust_open::<T>),
+                xClose: Some(rust_close::<T::Cursor>),
+                xFilter: Some(rust_filter::<T::Cursor>),
+                xNext: Some(rust_next::<T::Cursor>),
+                xEof: Some(rust_eof::<T::Cursor>),
+                xColumn: Some(rust_column::<T::Cursor>),
+                xRowid: Some(rust_rowid::<T::Cursor>),
+                xUpdate: None,
+                xBegin: None,
+                xSync: None,
+                xCommit: None,
+                xRollback: None,
+                xFindFunction: None,
+                xRename: None,
+                ..ZERO_MODULE
+            },
+            phantom: PhantomData::<&'vtab T>,
         }
     }
-}
 
-/// Create a modifiable virtual table implementation with support for transactions.
-///
-/// Step 2 of [Creating New Virtual Table Implementations](https://sqlite.org/vtab.html#creating_new_virtual_table_implementations).
-#[must_use]
-pub fn update_module_with_tx<'vtab, T: TransactionVTab<'vtab>>() -> &'static Module<'vtab, T> {
-    match T::KIND {
-        VTabKind::EponymousOnly => {
-            module!('vtab, T, T::Cursor, None, None, Some(rust_update::<T>), Some(rust_begin::<T>), Some(rust_sync::<T>), Some(rust_commit::<T>), Some(rust_rollback::<T>))
-        }
-        VTabKind::Eponymous => {
-            module!('vtab, T, T::Cursor, Some(rust_connect::<T>), Some(rust_disconnect::<T>), Some(rust_update::<T>), Some(rust_begin::<T>), Some(rust_sync::<T>), Some(rust_commit::<T>), Some(rust_rollback::<T>))
-        }
-        _ => {
-            module!('vtab, T, T::Cursor, Some(rust_create::<T>), Some(rust_destroy::<T>), Some(rust_update::<T>), Some(rust_begin::<T>), Some(rust_sync::<T>), Some(rust_commit::<T>), Some(rust_rollback::<T>))
+    /// Create a read-only virtual table implementation.
+    ///
+    /// Step 2 of [Creating New Virtual Table Implementations](https://sqlite.org/vtab.html#creating_new_virtual_table_implementations).
+    #[must_use]
+    pub const fn read_only_module() -> Self
+    where
+        T: CreateVTab<'vtab>,
+    {
+        let mut module = Self::eponymous_only_module();
+        match T::KIND {
+            VTabKind::EponymousOnly => module,
+            VTabKind::Eponymous => {
+                // A virtual table is eponymous if its xCreate method is the exact same function
+                // as the xConnect method
+                module.base.xCreate = module.base.xConnect;
+                module.base.xDestroy = module.base.xDisconnect;
+                module
+            }
+            _ => {
+                // The xConnect and xCreate methods may do the same thing, but they must be
+                // different so that the virtual table is not an eponymous virtual table.
+                module.base.xCreate = Some(rust_create::<T>);
+                module.base.xDestroy = Some(rust_destroy::<T>);
+                module
+            }
         }
     }
-}
 
-/// Create a read-only virtual table implementation.
-///
-/// Step 2 of [Creating New Virtual Table Implementations](https://sqlite.org/vtab.html#creating_new_virtual_table_implementations).
-#[must_use]
-pub fn read_only_module<'vtab, T: CreateVTab<'vtab>>() -> &'static Module<'vtab, T> {
-    match T::KIND {
-        VTabKind::EponymousOnly => eponymous_only_module(),
-        VTabKind::Eponymous => {
-            // A virtual table is eponymous if its xCreate method is the exact same function
-            // as the xConnect method
-            module!('vtab, T, T::Cursor, Some(rust_connect::<T>), Some(rust_disconnect::<T>), None, None, None, None, None)
-        }
-        _ => {
-            // The xConnect and xCreate methods may do the same thing, but they must be
-            // different so that the virtual table is not an eponymous virtual table.
-            module!('vtab, T, T::Cursor, Some(rust_create::<T>), Some(rust_destroy::<T>), None, None, None, None, None)
-        }
+    /// Create a modifiable virtual table implementation.
+    ///
+    /// Step 2 of [Creating New Virtual Table Implementations](https://sqlite.org/vtab.html#creating_new_virtual_table_implementations).
+    #[must_use]
+    pub const fn update_module() -> Self
+    where
+        T: UpdateVTab<'vtab>,
+    {
+        let mut module = Self::read_only_module();
+        module.base.xUpdate = Some(rust_update::<T>);
+        module
     }
-}
 
-/// Create an eponymous only virtual table implementation.
-///
-/// Step 2 of [Creating New Virtual Table Implementations](https://sqlite.org/vtab.html#creating_new_virtual_table_implementations).
-#[must_use]
-pub fn eponymous_only_module<'vtab, T: VTab<'vtab>>() -> &'static Module<'vtab, T> {
-    //  For eponymous-only virtual tables, the xCreate method is NULL
-    module!('vtab, T, T::Cursor, None, None, None, None, None, None, None)
+    /// Create a modifiable virtual table implementation with support for transactions.
+    ///
+    /// Step 2 of [Creating New Virtual Table Implementations](https://sqlite.org/vtab.html#creating_new_virtual_table_implementations).
+    #[must_use]
+    pub const fn update_module_with_tx() -> Self
+    where
+        T: TransactionVTab<'vtab>,
+    {
+        let mut module = Self::update_module();
+        module.base.xBegin = Some(rust_begin::<T>);
+        module.base.xSync = Some(rust_sync::<T>);
+        module.base.xCommit = Some(rust_commit::<T>);
+        module.base.xRollback = Some(rust_rollback::<T>);
+        module
+    }
+
+    /// No `xRowid`
+    pub const fn without_rowid(mut self) -> Self {
+        self.base.xRowid = None;
+        self
+    }
+
+    /// No `xSync`
+    pub const fn without_sync(mut self) -> Self
+    where
+        T: TransactionVTab<'vtab>,
+    {
+        self.base.xSync = None;
+        self
+    }
 }
 
 /// Virtual table configuration options
@@ -270,12 +281,16 @@ pub unsafe trait VTab<'vtab>: Sized {
     fn connect(
         db: &mut VTabConnection,
         aux: Option<&Self::Aux>,
+        module_name: &[u8],
+        database_name: &[u8],
+        table_name: &[u8],
         args: &[&[u8]],
-    ) -> Result<(String, Self)>;
+    ) -> Result<(Cow<'static, CStr>, Self)>;
 
     /// Determine the best way to access the virtual table.
     /// (See [SQLite doc](https://sqlite.org/vtab.html#the_xbestindex_method))
-    fn best_index(&self, info: &mut IndexInfo) -> Result<()>;
+    /// Returning `Ok(false)` means unusable / `SQLITE_CONSTRAINT`.
+    fn best_index(&self, info: &mut IndexInfo) -> Result<bool>;
 
     /// Create a new cursor used for accessing a virtual table.
     /// (See [SQLite doc](https://sqlite.org/vtab.html#the_xopen_method))
@@ -300,9 +315,12 @@ pub trait CreateVTab<'vtab>: VTab<'vtab> {
     fn create(
         db: &mut VTabConnection,
         aux: Option<&Self::Aux>,
+        module_name: &[u8],
+        database_name: &[u8],
+        table_name: &[u8],
         args: &[&[u8]],
-    ) -> Result<(String, Self)> {
-        Self::connect(db, aux, args)
+    ) -> Result<(Cow<'static, CStr>, Self)> {
+        Self::connect(db, aux, module_name, database_name, table_name, args)
     }
 
     /// Destroy the underlying table implementation. This method undoes the work
@@ -1135,17 +1153,39 @@ pub fn escape_double_quote(identifier: &str) -> Cow<'_, str> {
 }
 /// Dequote string
 #[must_use]
-pub fn dequote(s: &str) -> &str {
-    if s.len() < 2 {
-        return s;
+pub fn dequote(mut s: &str) -> Cow<'_, str> {
+    let mut chars = s.chars();
+    let (Some(first), Some(last)) = (chars.next(), chars.next_back()) else {
+        return Cow::Borrowed(s);
+    };
+    if (first == '"' || first == '\'' || first == '`' || first == '[')
+        && (last == first || first == '[' && last == ']')
+    {
+        s = chars.as_str();
+        if first != '[' && s.contains(first) {
+            // handle inner escaped quote(s)
+            let mut owned = String::with_capacity(s.len());
+            let mut escaped = false;
+            for c in s.chars() {
+                if c == first {
+                    if !escaped {
+                        escaped = true;
+                        continue;
+                    } else {
+                        escaped = false;
+                    }
+                } else if escaped {
+                    // not properly escaped
+                    return Cow::Borrowed(s);
+                }
+                owned.push(c);
+            }
+            if !escaped {
+                return Cow::Owned(owned);
+            }
+        }
     }
-    match s.bytes().next() {
-        Some(b) if b == b'"' || b == b'\'' => match s.bytes().next_back() {
-            Some(e) if e == b => &s[1..s.len() - 1], // FIXME handle inner escaped quote(s)
-            _ => s,
-        },
-        _ => s,
-    }
+    Cow::Borrowed(s)
 }
 /// The boolean can be one of:
 /// ```text
@@ -1171,8 +1211,8 @@ pub fn parse_boolean(s: &str) -> Option<bool> {
     }
 }
 
-/// `<param_name>=['"]?<param_value>['"]?` => `(<param_name>, <param_value>)`
-pub fn parameter(c_slice: &[u8]) -> Result<(&str, &str)> {
+/// `<param_name>=['"`[]?<param_value>['"`]]?` => `(<param_name>, <param_value>)`
+pub fn parameter(c_slice: &[u8]) -> Result<(&str, Cow<'_, str>)> {
     let arg = std::str::from_utf8(c_slice)?.trim();
     match arg.split_once('=') {
         Some((key, value)) => {
@@ -1202,24 +1242,18 @@ where
         .iter()
         .map(|&cs| CStr::from_ptr(cs).to_bytes()) // FIXME .to_str() -> Result<&str, Utf8Error>
         .collect::<Vec<_>>();
-    match T::create(&mut conn, aux.as_ref(), &vec[..]) {
-        Ok((sql, vtab)) => match std::ffi::CString::new(sql) {
-            Ok(c_sql) => {
-                let rc = ffi::sqlite3_declare_vtab(db, c_sql.as_ptr());
-                if rc == ffi::SQLITE_OK {
-                    let boxed_vtab: *mut T = Box::into_raw(Box::new(vtab));
-                    *pp_vtab = boxed_vtab.cast::<sqlite3_vtab>();
-                    ffi::SQLITE_OK
-                } else {
-                    let err = error_from_sqlite_code(rc, None);
-                    to_sqlite_error(&err, err_msg)
-                }
+    match T::create(&mut conn, aux.as_ref(), vec[0], vec[1], vec[2], &vec[3..]) {
+        Ok((sql, vtab)) => {
+            let rc = ffi::sqlite3_declare_vtab(db, sql.as_ptr());
+            if rc == ffi::SQLITE_OK {
+                let boxed_vtab: *mut T = Box::into_raw(Box::new(vtab));
+                *pp_vtab = boxed_vtab.cast::<sqlite3_vtab>();
+                ffi::SQLITE_OK
+            } else {
+                let err = error_from_sqlite_code(rc, None);
+                to_sqlite_error(&err, err_msg)
             }
-            Err(err) => {
-                *err_msg = alloc(&err.to_string());
-                ffi::SQLITE_ERROR
-            }
-        },
+        }
         Err(err) => to_sqlite_error(&err, err_msg),
     }
 }
@@ -1242,24 +1276,18 @@ where
         .iter()
         .map(|&cs| CStr::from_ptr(cs).to_bytes()) // FIXME .to_str() -> Result<&str, Utf8Error>
         .collect::<Vec<_>>();
-    match T::connect(&mut conn, aux.as_ref(), &vec[..]) {
-        Ok((sql, vtab)) => match std::ffi::CString::new(sql) {
-            Ok(c_sql) => {
-                let rc = ffi::sqlite3_declare_vtab(db, c_sql.as_ptr());
-                if rc == ffi::SQLITE_OK {
-                    let boxed_vtab: *mut T = Box::into_raw(Box::new(vtab));
-                    *pp_vtab = boxed_vtab.cast::<sqlite3_vtab>();
-                    ffi::SQLITE_OK
-                } else {
-                    let err = error_from_sqlite_code(rc, None);
-                    to_sqlite_error(&err, err_msg)
-                }
+    match T::connect(&mut conn, aux.as_ref(), vec[0], vec[1], vec[2], &vec[3..]) {
+        Ok((sql, vtab)) => {
+            let rc = ffi::sqlite3_declare_vtab(db, sql.as_ptr());
+            if rc == ffi::SQLITE_OK {
+                let boxed_vtab: *mut T = Box::into_raw(Box::new(vtab));
+                *pp_vtab = boxed_vtab.cast::<sqlite3_vtab>();
+                ffi::SQLITE_OK
+            } else {
+                let err = error_from_sqlite_code(rc, None);
+                to_sqlite_error(&err, err_msg)
             }
-            Err(err) => {
-                *err_msg = alloc(&err.to_string());
-                ffi::SQLITE_ERROR
-            }
-        },
+        }
         Err(err) => to_sqlite_error(&err, err_msg),
     }
 }
@@ -1273,7 +1301,11 @@ where
 {
     let vt = vtab.cast::<T>();
     let mut idx_info = IndexInfo(info);
-    vtab_error(vtab, (*vt).best_index(&mut idx_info))
+    match (*vt).best_index(&mut idx_info) {
+        Ok(true) => ffi::SQLITE_OK,
+        Ok(false) => ffi::SQLITE_CONSTRAINT,
+        err => vtab_error(vtab, err),
+    }
 }
 
 unsafe extern "C" fn rust_disconnect<'vtab, T>(vtab: *mut sqlite3_vtab) -> c_int
@@ -1515,7 +1547,7 @@ unsafe fn result_error<T>(ctx: *mut ffi::sqlite3_context, result: Result<T>) -> 
                         ffi::sqlite3_result_error(ctx, cstr.as_ptr(), -1);
                     }
                 }
-            };
+            }
             err.extended_code
         }
         Err(err) => {
@@ -1534,11 +1566,13 @@ pub mod array;
 pub mod csvtab;
 #[cfg(feature = "series")]
 pub mod series; // SQLite >= 3.9.0
-#[cfg(all(test, feature = "modern_sqlite"))]
+#[cfg(all(test, feature = "modern_sqlite", not(miri)))]
 mod vtablog;
 
 #[cfg(test)]
 mod test {
+    use std::borrow::Cow;
+
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     use wasm_bindgen_test::wasm_bindgen_test as test;
 
@@ -1547,12 +1581,25 @@ mod test {
         assert_eq!("", super::dequote(""));
         assert_eq!("'", super::dequote("'"));
         assert_eq!("\"", super::dequote("\""));
+
         assert_eq!("'\"", super::dequote("'\""));
+
         assert_eq!("", super::dequote("''"));
         assert_eq!("", super::dequote("\"\""));
+        assert_eq!("", super::dequote("``"));
+        assert_eq!("", super::dequote("[]"));
+
         assert_eq!("x", super::dequote("'x'"));
         assert_eq!("x", super::dequote("\"x\""));
         assert_eq!("x", super::dequote("x"));
+        assert_eq!("x", super::dequote("`x`"));
+        assert_eq!("x", super::dequote("[x]"));
+
+        assert_eq!("x'", super::dequote("'x'''"));
+        assert_eq!("x`", super::dequote("`x```"));
+
+        assert_eq!("x'", super::dequote("'x''"));
+        assert_eq!("x`", super::dequote("`x``"));
     }
     #[test]
     fn test_parse_boolean() {
@@ -1568,7 +1615,13 @@ mod test {
     }
     #[test]
     fn test_parse_parameters() {
-        assert_eq!(Ok(("key", "value")), super::parameter(b"key='value'"));
-        assert_eq!(Ok(("key", "foo=bar")), super::parameter(b"key='foo=bar'"));
+        assert_eq!(
+            Ok(("key", Cow::Borrowed("value"))),
+            super::parameter(b"key='value'")
+        );
+        assert_eq!(
+            Ok(("key", Cow::Borrowed("foo=bar"))),
+            super::parameter(b"key='foo=bar'")
+        );
     }
 }

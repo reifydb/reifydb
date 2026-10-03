@@ -49,7 +49,7 @@ impl BindIndex for &CStr {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod test {
     use crate::{ffi, Connection, Error, Result};
 

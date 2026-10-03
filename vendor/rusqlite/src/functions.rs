@@ -342,7 +342,7 @@ unsafe fn sql_result<T: SqlFnOutput>(
         }
         Ok(Err(err)) => report_error(ctx, &err),
         Err(err) => report_error(ctx, err),
-    };
+    }
 }
 
 /// Aggregate is the callback interface for user-defined
@@ -756,7 +756,7 @@ unsafe extern "C" fn call_boxed_step<A, D, T>(
     match r {
         Ok(_) => {}
         Err(err) => report_error(ctx, &err),
-    };
+    }
 }
 
 #[cfg(feature = "window")]
@@ -796,7 +796,7 @@ unsafe extern "C" fn call_boxed_inverse<A, W, T>(
     match r {
         Ok(_) => {}
         Err(err) => report_error(ctx, &err),
-    };
+    }
 }
 
 unsafe extern "C" fn call_boxed_final<A, D, T>(ctx: *mut sqlite3_context)
@@ -872,7 +872,7 @@ where
     sql_result(ctx, &[], t);
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod test {
     #[cfg(all(target_family = "wasm", target_os = "unknown"))]
     use wasm_bindgen_test::wasm_bindgen_test as test;
@@ -1124,7 +1124,7 @@ mod test {
     #[test]
     #[cfg(feature = "window")]
     fn test_window() -> Result<()> {
-        use fallible_iterator::FallibleIterator;
+        use fallible_iterator::FallibleIterator as _;
 
         let db = Connection::open_in_memory()?;
         db.create_window_function(
@@ -1221,7 +1221,7 @@ mod test {
     #[cfg(feature = "pointer")]
     fn test_rc_pointer() -> Result<()> {
         use crate::types::ToSqlOutput;
-        use std::ops::Deref;
+        use std::ops::Deref as _;
         use std::rc::Rc;
 
         const PTR_TYPE: &std::ffi::CStr = c"my_rust_ptr";
