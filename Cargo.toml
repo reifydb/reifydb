@@ -388,7 +388,7 @@ futures-util = { version = "=0.3.34", features = ["sink"] }
 rusqlite = { version = "=0.39.0", features = ["bundled"] }
 
 # compression
-zstd = { version = "=0.13.3" }
+zstd = { version = "=0.14.0" }
 
 # hashing
 crc32fast = { version = "=1.5.2" }

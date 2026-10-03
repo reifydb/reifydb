@@ -218,7 +218,7 @@ impl<'a, W: Write> Encoder<'a, W> {
     /// but requires the dictionary to be present during decompression.)
     pub fn with_prepared_dictionary<'b>(
         writer: W,
-        dictionary: &EncoderDictionary<'b>,
+        dictionary: &'a EncoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,
@@ -370,13 +370,22 @@ impl<'a, W: Write> Decoder<'a, W> {
         Decoder { writer }
     }
 
+    /// Creates a decoder that uses the provided context to decompress a stream.
+    pub fn with_context(
+        writer: W,
+        context: &'a mut zstd_safe::DCtx<'static>,
+    ) -> Self {
+        let encoder = raw::Decoder::with_context(context);
+        Self::with_decoder(writer, encoder)
+    }
+
     /// Creates a new decoder, using an existing prepared `DecoderDictionary`.
     ///
     /// (Provides better compression ratio for small files,
     /// but requires the dictionary to be present during decompression.)
     pub fn with_prepared_dictionary<'b>(
         writer: W,
-        dictionary: &DecoderDictionary<'b>,
+        dictionary: &'a DecoderDictionary<'b>,
     ) -> io::Result<Self>
     where
         'b: 'a,
