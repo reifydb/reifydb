@@ -8,7 +8,10 @@ use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupStateKey, IntoGroupStateKey, unmanaged_key},
+	key::operator::{
+		keyspace::suffix_width_of,
+		state::{GroupStateKey, IntoGroupStateKey, KeyspaceId},
+	},
 	metrics::heap::HeapSize,
 };
 use reifydb_flow_async::{
@@ -58,14 +61,23 @@ impl IntoGroupStateKey for &TestPair {
 		suffix.extend_from_slice(self.0.0.as_bytes());
 		suffix.push(0xFF);
 		suffix.extend_from_slice(self.1.0.as_bytes());
-		unmanaged_key(&suffix).expect("a fixture pair must fit the keyspace's id width").into()
+		accumulator_key(&suffix)
 	}
 }
 
 impl IntoGroupStateKey for &TestKey {
 	fn into_group_state_key(self) -> GroupStateKey {
-		unmanaged_key(self.0.as_bytes()).expect("a fixture name must fit the keyspace's id width").into()
+		accumulator_key(self.0.as_bytes())
 	}
+}
+
+fn accumulator_key(id: &[u8]) -> GroupStateKey {
+	let width =
+		suffix_width_of(KeyspaceId::GUEST_ACCUMULATOR).expect("the guest accumulator keyspace is catalogued");
+	assert!(id.len() <= width, "a fixture id must fit the keyspace's slot width");
+	let mut slot = id.to_vec();
+	slot.resize(width, 0);
+	GroupStateKey::root(KeyspaceId::GUEST_ACCUMULATOR, slot)
 }
 
 #[operator_state]

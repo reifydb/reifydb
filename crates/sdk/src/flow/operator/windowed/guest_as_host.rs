@@ -140,9 +140,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	}
 
 	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
-		let pairs: Vec<(GroupId, EncodedKey)> =
-			groups.iter().map(|group| (*group, EncodedKey::new(Vec::new()))).collect();
-		Ok(self.0.get_or_create_row_numbers_for_pairs(&pairs)?)
+		Ok(self.0.get_or_create_row_numbers_for_groups(groups)?)
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {

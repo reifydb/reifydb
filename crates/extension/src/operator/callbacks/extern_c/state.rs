@@ -301,7 +301,7 @@ pub(super) extern "C" fn host_state_get_many(
 
 const _: () = assert!(
 	size_of::<ExternCGroupId>() == GroupId::WIDTH,
-	"the wire group id must stay exactly as wide as GroupId, or the pair array stride reads across elements"
+	"the wire group id must stay exactly as wide as GroupId, or the group array stride reads across elements"
 );
 
 fn host_group(group: ExternCGroupId) -> GroupId {
@@ -663,33 +663,29 @@ pub(super) extern "C" fn host_disarm_timer(
 	}
 }
 
-pub(super) extern "C" fn host_get_or_create_row_numbers_for_pairs(
+pub(super) extern "C" fn host_get_or_create_row_numbers_for_groups(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
 	groups: *const ExternCGroupId,
-	keys: *const ExternCKeyRef,
-	pairs_len: usize,
+	groups_len: usize,
 	row_numbers_out: *mut u64,
 	is_new_out: *mut u8,
 ) -> i32 {
 	if ctx.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
-	if pairs_len > 0 && (groups.is_null() || keys.is_null() || row_numbers_out.is_null() || is_new_out.is_null()) {
+	if groups_len > 0 && (groups.is_null() || row_numbers_out.is_null() || is_new_out.is_null()) {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: `ctx` is null-checked above, and for a non-zero `pairs_len` so are `groups`, `keys`,
+	// SAFETY: `ctx` is null-checked above, and for a non-zero `groups_len` so are `groups`,
 	// `row_numbers_out` and `is_new_out`; the guest must pass back the ExternCContextRaw the host handed it
-	// for this call, `groups` valid and aligned for `pairs_len` ExternCGroupId reads, `keys` satisfying
-	// encoded_keys for the same length, and both out arrays valid and aligned for `pairs_len` writes -
-	// get_or_create_row_numbers_for_pairs returns exactly one result per pair.
+	// for this call, `groups` valid and aligned for `groups_len` ExternCGroupId reads, and both out arrays
+	// valid and aligned for `groups_len` writes - get_or_create_row_numbers_for_groups returns exactly one
+	// result per group.
 	unsafe {
 		let host = get_host_mut(&mut *ctx);
-		let Some(encoded) = encoded_keys(keys, pairs_len) else {
-			return EXTERN_C_ERROR_NULL_PTR;
-		};
-		let group_ids: Vec<GroupId> = (0..encoded.len()).map(|index| host_group(*groups.add(index))).collect();
+		let group_ids: Vec<GroupId> = (0..groups_len).map(|index| host_group(*groups.add(index))).collect();
 		match host.get_or_create_row_numbers_for_groups(&group_ids) {
 			Ok(results) => {
 				for (index, (row_number, is_new)) in results.iter().enumerate() {

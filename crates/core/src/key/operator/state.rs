@@ -387,10 +387,6 @@ impl KeyspaceId {
 		!self.is_data()
 	}
 
-	pub fn is_custom(&self) -> bool {
-		matches!(*self, Self::CUSTOM_UNMANAGED | Self::CUSTOM_MANAGED)
-	}
-
 	pub const fn is_known(&self) -> bool {
 		REGISTERED[(self.0 >> 6) as usize] & (1u64 << (self.0 & 63)) != 0
 	}
@@ -398,12 +394,6 @@ impl KeyspaceId {
 
 pub fn is_framed_inner(inner: &[u8]) -> bool {
 	inner.is_empty() || OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, _)| keyspace.is_known())
-}
-
-pub fn is_guest_framed_inner(inner: &[u8]) -> bool {
-	OperatorStateKey::decode_inner(inner).is_some_and(|(_, keyspace, suffix)| {
-		keyspace.is_custom() && suffix_width_of(keyspace) == Some(suffix.len())
-	})
 }
 
 const WINDOWED_KEYSPACES: [KeyspaceId; 12] = [
@@ -997,8 +987,8 @@ mod tests {
 		EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, KeySerializer, KeyspaceId,
 		OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
 		group_identity_inner_range, group_identity_range, group_inner_prefix, group_inner_range, group_range,
-		guest_may_address, is_class_framed_inner, is_framed_inner, is_guest_framed_inner, keyspace_range,
-		managed_key_in, node_prefix, node_range, suffix_width_of, unmanaged_key_in,
+		guest_may_address, is_class_framed_inner, is_framed_inner, keyspace_range, managed_key_in, node_prefix,
+		node_range, suffix_width_of, unmanaged_key_in,
 	};
 	use crate::{common::OperatorClass, interface::catalog::flow::OperatorId, key::operator::keyspace::KEYSPACES};
 
@@ -1142,18 +1132,20 @@ mod tests {
 		// sweeping every host keyspace on the way up; a guest key must name its keyspace or be refused
 		let empty: &[u8] = &[];
 		assert!(is_framed_inner(empty));
-		assert!(!is_guest_framed_inner(empty));
+		assert!(!is_class_framed_inner(OperatorClass::Unmanaged, empty));
 		assert!(GroupStateKey::from_class_framed(OperatorClass::Unmanaged, EncodedKey::new(Vec::new()))
 			.is_none());
 
-		assert!(is_guest_framed_inner(
+		assert!(is_class_framed_inner(
+			OperatorClass::Unmanaged,
 			unmanaged_key_in(GroupId::hashed(Hash128(3)), &[])
 				.expect("an empty id fits the keyspace")
 				.as_ref()
 				.as_slice()
 		));
 		assert!(
-			!is_guest_framed_inner(
+			!is_class_framed_inner(
+				OperatorClass::Unmanaged,
 				OperatorStateKey::inner_encoded(
 					GroupId::hashed(Hash128(3)),
 					KeyspaceId::CUSTOM_UNMANAGED,
@@ -1699,18 +1691,11 @@ mod tests {
 			OperatorStateKey::decode_inner(key.as_ref().as_slice()).expect("a managed key decodes");
 		assert_eq!(decoded, group);
 		assert_eq!(keyspace, KeyspaceId::CUSTOM_MANAGED);
-		assert!(is_guest_framed_inner(key.as_ref().as_slice()));
+		assert!(is_class_framed_inner(OperatorClass::Managed, key.as_ref().as_slice()));
 		assert!(
 			managed_key_in(group, &[0u8; 17]).is_none(),
 			"an id wider than the suffix must be refused, not cut"
 		);
-	}
-
-	#[test]
-	fn only_the_two_custom_keyspaces_are_guest_owned() {
-		// A third guest-owned keyspace lets a guest write engine state past the host check.
-		let owned: Vec<&str> = CENSUS.iter().filter(|(_, id, ..)| id.is_custom()).map(|(n, ..)| *n).collect();
-		assert_eq!(owned, ["CUSTOM_UNMANAGED", "CUSTOM_MANAGED"]);
 	}
 
 	#[test]

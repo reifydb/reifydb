@@ -197,7 +197,7 @@ impl ClassValue for Windowed {
 	const CLASS: OperatorClass = OperatorClass::Windowed;
 }
 
-pub trait CustomClass {
+pub trait CustomClass: ClassValue {
 	type Key: AsRef<GroupStateKey>;
 }
 
@@ -209,7 +209,7 @@ impl CustomClass for Unmanaged {
 	type Key = UnmanagedKey;
 }
 
-pub trait WindowClass {}
+pub trait WindowClass: ClassValue {}
 
 impl WindowClass for Windowed {}
 
@@ -250,10 +250,7 @@ pub trait GuestEmitContext {
 	fn written_at(&self) -> DateTime;
 	fn dictionary(&mut self) -> impl GuestDictionary + '_;
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
-	fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> Result<Vec<(RowNumber, bool)>>;
+	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;

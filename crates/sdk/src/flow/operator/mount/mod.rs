@@ -126,8 +126,9 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::CommitVersion,
-		key::operator::state::{
-			GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey, unmanaged_key_in,
+		key::operator::{
+			keyspace::suffix_width_of,
+			state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey},
 		},
 		state::timer::{StateStore, TimerKind},
 	};
@@ -168,8 +169,12 @@ mod tests {
 	}
 
 	fn stored_key(id: &str) -> GroupStateKey {
-		// the guest owns only this keyspace, and its id column is what the round trip must hand back intact
-		unmanaged_key_in(GroupId::ROOT, id.as_bytes()).expect("a fixture id fits the keyspace").into()
+		// the windowed guest owns this keyspace; its slot column is what the round trip must hand back intact
+		let width = suffix_width_of(KeyspaceId::GUEST_ACCUMULATOR)
+			.expect("the guest accumulator keyspace is catalogued");
+		let mut slot = id.as_bytes().to_vec();
+		slot.resize(width, 0);
+		GroupStateKey::new(GroupId::ROOT, KeyspaceId::GUEST_ACCUMULATOR, slot)
 	}
 
 	#[test]

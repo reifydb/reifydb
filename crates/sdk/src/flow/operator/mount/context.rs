@@ -8,10 +8,11 @@ use reifydb_codec::{
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
+	common::OperatorClass,
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, is_framed_inner, is_guest_framed_inner,
+		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, guest_may_address, is_class_framed_inner,
 		keyspace_inner_range_in,
 	},
 	state::timer::TimerKind,
@@ -39,24 +40,21 @@ use crate::{
 	},
 };
 
-fn guest_addressable(key: &GroupStateKey) -> SdkResult<()> {
-	if is_guest_framed_inner(key.as_slice()) {
+fn class_framed(class: OperatorClass, key: &GroupStateKey) -> SdkResult<()> {
+	if is_class_framed_inner(class, key.as_slice()) {
 		return Ok(());
 	}
 	Err(SdkError::Other(format!(
-		"a guest operator state key must name a guest keyspace and carry that keyspace's exact suffix width, got {} bytes",
+		"a {class:?} guest state key must name a keyspace its class owns and carry that keyspace's exact suffix width, got {} bytes",
 		key.as_slice().len()
 	)))
 }
 
-fn framed(key: &GroupStateKey) -> SdkResult<()> {
-	if is_framed_inner(key.as_slice()) {
+fn class_keyspace(class: OperatorClass, keyspace: KeyspaceId) -> SdkResult<()> {
+	if guest_may_address(class, keyspace) {
 		return Ok(());
 	}
-	Err(SdkError::Other(format!(
-		"an operator state key must name a known keyspace, got {} bytes",
-		key.as_slice().len()
-	)))
+	Err(SdkError::Other(format!("a {class:?} guest may not read keyspace {}", keyspace.name())))
 }
 
 fn to_sdk_err<E: ToString>(e: E) -> SdkError {
@@ -167,12 +165,13 @@ impl GuestUpdateEmit for InProcessUpdateEmit<'_> {
 
 pub struct InProcessState<'a> {
 	host: *mut (dyn HostContext + 'a),
+	class: OperatorClass,
 	_marker: PhantomData<&'a mut (dyn HostContext + 'a)>,
 }
 
 impl GuestState for InProcessState<'_> {
 	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> SdkResult<Option<T>> {
-		guest_addressable(key)?;
+		class_framed(self.class, key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		match unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)? {
@@ -181,39 +180,39 @@ impl GuestState for InProcessState<'_> {
 		}
 	}
 	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> SdkResult<()> {
-		guest_addressable(key)?;
+		class_framed(self.class, key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_set(key, encode(value)?) }.map_err(to_sdk_err)
 	}
 	fn remove(&mut self, key: &GroupStateKey) -> SdkResult<()> {
-		guest_addressable(key)?;
+		class_framed(self.class, key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
 	}
 	fn contains(&self, key: &GroupStateKey) -> SdkResult<bool> {
-		guest_addressable(key)?;
+		class_framed(self.class, key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		Ok(unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)?.is_some())
 	}
 	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<EncodedPodRow>> {
-		framed(key)?;
+		class_framed(self.class, key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)
 	}
 
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> SdkResult<()> {
-		framed(key)?;
+		class_framed(self.class, key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_set(key, payload) }.map_err(to_sdk_err)
 	}
 
 	fn remove_bytes(&mut self, key: &GroupStateKey) -> SdkResult<()> {
-		framed(key)?;
+		class_framed(self.class, key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
@@ -225,7 +224,7 @@ impl GuestState for InProcessState<'_> {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		for key in keys {
-			framed(key)?;
+			class_framed(self.class, key)?;
 		}
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
@@ -247,6 +246,7 @@ impl GuestState for InProcessState<'_> {
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
+		class_keyspace(self.class, keyspace)?;
 		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
@@ -296,6 +296,7 @@ impl GuestState for InProcessState<'_> {
 		start: GuestBound<'_>,
 		end: GuestBound<'_>,
 	) -> SdkResult<Option<(GroupStateKey, EncodedPodRow)>> {
+		class_keyspace(self.class, keyspace)?;
 		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
@@ -379,14 +380,10 @@ impl GuestEmitContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).get_or_create_row_numbers(group, keys) }.map_err(to_sdk_err)
 	}
-	fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> SdkResult<Vec<(RowNumber, bool)>> {
-		let groups: Vec<GroupId> = pairs.iter().map(|(group, _)| *group).collect();
+	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> SdkResult<Vec<(RowNumber, bool)>> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).get_or_create_row_numbers_for_groups(&groups) }.map_err(to_sdk_err)
+		unsafe { (*self.host).get_or_create_row_numbers_for_groups(groups) }.map_err(to_sdk_err)
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
@@ -435,6 +432,7 @@ impl<C> GuestContext<C> for InProcessContext<'_> {
 	{
 		InProcessState {
 			host: self.host,
+			class: C::CLASS,
 			_marker: PhantomData,
 		}
 	}
@@ -444,6 +442,7 @@ impl<C> GuestContext<C> for InProcessContext<'_> {
 	{
 		InProcessState {
 			host: self.host,
+			class: C::CLASS,
 			_marker: PhantomData,
 		}
 	}
@@ -480,7 +479,7 @@ mod tests {
 
 		let err = state.set_bytes(&unframed, EncodedPodRow::new(&[1])).unwrap_err();
 		assert!(
-			err.to_string().contains("must name a known keyspace"),
+			err.to_string().contains("a keyspace its class owns"),
 			"set_bytes must refuse an unframed key, got {err}"
 		);
 		assert!(state.get_bytes(&unframed).is_err(), "get_bytes must refuse an unframed key too");

@@ -85,12 +85,11 @@ pub struct StateCallbacks {
 		is_new_out: *mut u8,
 	) -> i32,
 
-	pub get_or_create_row_numbers_for_pairs: extern "C" fn(
+	pub get_or_create_row_numbers_for_groups: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
 		groups: *const ExternCGroupId,
-		keys: *const ExternCKeyRef,
-		pairs_len: usize,
+		groups_len: usize,
 		row_numbers_out: *mut u64,
 		is_new_out: *mut u8,
 	) -> i32,

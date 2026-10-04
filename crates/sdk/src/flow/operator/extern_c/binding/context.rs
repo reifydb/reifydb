@@ -35,7 +35,8 @@ use crate::{
 				sink::ExternCRowSink,
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
-					get_or_create_row_numbers_for_pairs, reclaim_group_identity, remove_row_number,
+					get_or_create_row_numbers_for_groups, reclaim_group_identity,
+					remove_row_number,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -158,11 +159,8 @@ impl ExternCContext {
 		get_or_create_row_numbers(self, group, keys)
 	}
 
-	pub fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> Result<Vec<(RowNumber, bool)>> {
-		get_or_create_row_numbers_for_pairs(self, pairs)
+	pub fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+		get_or_create_row_numbers_for_groups(self, groups)
 	}
 
 	pub fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
@@ -267,11 +265,8 @@ impl GuestEmitContext for ExternCContext {
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		ExternCContext::get_or_create_row_numbers(self, group, keys)
 	}
-	fn get_or_create_row_numbers_for_pairs(
-		&mut self,
-		pairs: &[(GroupId, EncodedKey)],
-	) -> Result<Vec<(RowNumber, bool)>> {
-		ExternCContext::get_or_create_row_numbers_for_pairs(self, pairs)
+	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
+		ExternCContext::get_or_create_row_numbers_for_groups(self, groups)
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		ExternCContext::remove_row_number(self, group, key)
