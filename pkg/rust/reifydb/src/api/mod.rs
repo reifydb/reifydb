@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(all(feature = "column", reifydb_target = "host"))]
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use reifydb_core::{event::EventBus, interface::catalog::config::GetConfig};
@@ -153,6 +155,13 @@ pub(crate) fn cdc_sqlite_config(config: &SqliteConfig, wal_autocheckpoint: u32) 
 	}
 }
 
+#[cfg(all(feature = "column", reifydb_target = "host"))]
+pub(crate) fn column_dir(config: &SqliteConfig) -> PathBuf {
+	match &config.path {
+		DbPath::File(p) | DbPath::Memory(p) | DbPath::Tmpfs(p) => p.with_extension("").join("column"),
+	}
+}
+
 fn create_memory_store_with(
 	multi_commit_store: CommitStore,
 	cdc_commit: CdcCommitConfig,
@@ -184,7 +193,7 @@ fn create_memory_store_with(
 		clock: Clock::Real,
 	});
 
-	let operator_store = OperatorStore::standard(OperatorStoreConfig::memory(spawner.clone(), Clock::Real));
+	let operator_store = OperatorStore::standard(OperatorStoreConfig::memory(spawner.clone()));
 
 	let cdc_store = CdcStore::new(CdcStoreConfig {
 		commit: cdc_commit,
@@ -258,11 +267,7 @@ fn create_sqlite_store_with(
 			storage: Resident::with_limits(operator_resident),
 			flush_interval: operator_flush_interval,
 		},
-		..OperatorStoreConfig::sqlite(
-			OperatorPersistentConfig::opened(operator_persistent),
-			spawner.clone(),
-			Clock::Real,
-		)
+		..OperatorStoreConfig::sqlite(OperatorPersistentConfig::opened(operator_persistent), spawner.clone())
 	});
 
 	let cdc_persistent = if cdc_memory {

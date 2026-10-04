@@ -1,0 +1,1017 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright the Vortex contributors
+
+//! Iterative array execution.
+//!
+//! The single-step [`Executable`] implementation for [`ArrayRef`] tries `reduce`,
+//! `reduce_parent`, `execute_parent`, then `execute` once. The matcher-driven
+//! [`ArrayRef::execute_until`] loop interprets [`ExecutionStep::ExecuteSlot`],
+//! [`ExecutionStep::AppendChild`], and [`ExecutionStep::Done`] using an explicit stack plus an
+//! optional builder, so encodings can advance without recursive descent.
+//!
+//! See <https://docs.vortex.dev/developer-guide/internals/execution> for the full execution
+//! narrative, diagrams, and walkthroughs.
+
+use std::env::VarError;
+use std::fmt;
+use std::fmt::Display;
+use std::sync::Arc;
+use std::sync::LazyLock;
+use std::sync::OnceLock;
+#[cfg(debug_assertions)]
+use std::sync::atomic::AtomicUsize;
+#[cfg(debug_assertions)]
+use std::sync::atomic::Ordering;
+
+use vortex_error::VortexExpect;
+use vortex_error::VortexResult;
+use vortex_error::vortex_bail;
+use vortex_error::vortex_ensure;
+use vortex_error::vortex_panic;
+use vortex_session::VortexSession;
+
+use crate::AnyCanonical;
+use crate::ArrayRef;
+use crate::Canonical;
+use crate::IntoArray;
+use crate::array::ArrayId;
+use crate::builders::ArrayBuilder;
+use crate::builders::builder_with_capacity_in;
+use crate::dtype::DType;
+use crate::matcher::Matcher;
+use crate::memory::BufferAllocatorRef;
+use crate::memory::MemorySessionExt;
+use crate::optimizer::ArrayOptimizer;
+use crate::optimizer::kernels::ArrayKernelsExt;
+use crate::optimizer::kernels::ParentExecutionKernels;
+use crate::optimizer::kernels::execute_parent_key;
+use crate::stats::ArrayStats;
+use crate::stats::StatsSet;
+use crate::trace_op;
+
+/// Returns the maximum number of iterations to attempt when executing an array before giving up and returning
+/// an error, can be by the `VORTEX_MAX_ITERATIONS` env variables, otherwise defaults to 2^22.
+pub(crate) fn max_iterations() -> usize {
+    static MAX_ITERATIONS: LazyLock<usize> =
+        LazyLock::new(|| match std::env::var("VORTEX_MAX_ITERATIONS") {
+            Ok(val) => val.parse::<usize>().unwrap_or_else(|e| {
+                vortex_panic!("VORTEX_MAX_ITERATIONS is not a valid usize: {e}")
+            }),
+            Err(VarError::NotPresent) => 2 << 21, // 2 ^ 22
+            Err(VarError::NotUnicode(_)) => {
+                vortex_panic!("VORTEX_MAX_ITERATIONS is not a valid unicode string")
+            }
+        });
+    *MAX_ITERATIONS
+}
+
+/// Marker trait for types that an [`ArrayRef`] can be executed into.
+///
+/// Implementors must provide an implementation of `execute` that takes
+/// an [`ArrayRef`] and an [`ExecutionCtx`], and produces an instance of the
+/// implementor type.
+///
+/// Users should use the `Array::execute` or `Array::execute_as` methods
+pub trait Executable: Sized {
+    fn execute(array: ArrayRef, ctx: &mut ExecutionCtx) -> VortexResult<Self>;
+}
+
+#[expect(clippy::same_name_method)]
+impl ArrayRef {
+    /// Execute this array to produce an instance of `E`.
+    ///
+    /// See the [`Executable`] implementation for details on how this execution is performed.
+    pub fn execute<E: Executable>(self, ctx: &mut ExecutionCtx) -> VortexResult<E> {
+        E::execute(self, ctx)
+    }
+
+    /// Execute this array, labeling the execution step with a name for tracing.
+    pub fn execute_as<E: Executable>(
+        self,
+        _name: &'static str,
+        ctx: &mut ExecutionCtx,
+    ) -> VortexResult<E> {
+        E::execute(self, ctx)
+    }
+
+    /// Iteratively execute this array until the [`Matcher`] matches, using an explicit work
+    /// stack plus an optional builder for `AppendChild`.
+    ///
+    /// Note: the returned array may not match `M`. If execution converges to a canonical form
+    /// that does not match `M`, the canonical array is returned since no further execution
+    /// progress is possible.
+    ///
+    /// For safety, this errors once execution reaches a configurable maximum number of
+    /// iterations (default `2^22`, override with `VORTEX_MAX_ITERATIONS`).
+    ///
+    /// # Loop state
+    ///
+    /// - `current_array: ArrayRef` -- the array currently in focus.
+    /// - `current_builder: Option<Box<dyn ArrayBuilder>>` -- active only for builder-mode
+    ///   execution. `AppendChild` appends detached children here. `Done` finishes the builder
+    ///   and turns it back into the next `current_array`.
+    /// - `stack: Vec<StackFrame>` -- suspended parents from `ExecuteSlot`, including the
+    ///   detached slot index, its [`DonePredicate`], and the parent builder that was active
+    ///   before focus moved into the child.
+    ///
+    /// Example after `ExecuteSlot(1, pred)` has focused slot 1 of a parent:
+    ///
+    /// ```text
+    ///   stack[top].parent_array:
+    ///     RunEnd                          <-- suspended parent
+    ///     +-- slot 0: ends
+    ///     +-- slot 1: _  (detached)
+    ///
+    ///   current_array:
+    ///     DictEncoding                    <-- focused child
+    ///     +-- slot 0: codes
+    ///     +-- slot 1: dictionary
+    ///
+    ///   current_builder:
+    ///     None
+    /// ```
+    ///
+    /// Each loop iteration works like this:
+    ///
+    /// ```text
+    /// loop:
+    ///   Step 1: done(current_array)?
+    ///     - root activation   -> return current_array
+    ///     - ExecuteSlot frame -> pop, reattach child, resume parent
+    ///
+    ///   Step 2: current_builder active?
+    ///     - yes -> skip Step 2a / 2b
+    ///     - no  -> try parent kernels
+    ///
+    ///   Step 2a: if stack.top exists:
+    ///               parent = stack.top.parent_array
+    ///               child = current_array
+    ///               kernels[(parent.encoding_id(), child.encoding_id())]
+    ///                 .try_execute_parent(child, parent, stack.top.slot_idx)
+    ///
+    ///   Step 2b: for child in current_array.children():
+    ///               parent = current_array
+    ///               kernels[(parent.encoding_id(), child.encoding_id())]
+    ///                 .try_execute_parent(child, parent, child.slot_idx)
+    ///
+    ///   Step 3: match current_array.execute()
+    ///     ExecuteSlot(i, pred) -> push parent on stack, focus child `i`
+    ///     AppendChild(i)       -> detach child `i`, append it into current_builder,
+    ///                             keep parent as current_array
+    ///     Done                 -> finish current_builder if present, else use returned array
+    /// ```
+    ///
+    /// Step 2a and Step 2b are skipped while `current_builder` is active. `AppendChild`
+    /// partially consumes `current_array`: some slots already live in the builder, so a
+    /// parent rewrite would observe inconsistent state and could discard accumulated builder
+    /// data.
+    #[allow(clippy::cognitive_complexity)]
+    pub fn execute_until<M: Matcher>(self, ctx: &mut ExecutionCtx) -> VortexResult<ArrayRef> {
+        let mut current_array = self;
+        let mut current_builder: Option<Box<dyn ArrayBuilder>> = None;
+        let mut stack: Vec<StackFrame> = Vec::new();
+        let execute_parent_kernels = Arc::clone(&ctx.execute_parent_kernels);
+        let kernels = execute_parent_kernels.as_ref();
+        let max_iterations = max_iterations();
+
+        trace_op!(record_execute_until_start::<M>(&current_array));
+
+        for _iteration in 0..max_iterations {
+            trace_op!(record_execute_until_iteration(
+                _iteration,
+                &current_array,
+                stack
+                    .last()
+                    .map(|frame| (&frame.parent_array, frame.slot_idx)),
+                current_builder.is_some(),
+            ));
+
+            let is_done = stack
+                .last()
+                .map_or(M::matches as DonePredicate, |frame| frame.done);
+
+            let done_target = is_done(&current_array);
+            let done_canonical = AnyCanonical::matches(&current_array);
+            trace_op!(record_execute_until_done_check(done_target, done_canonical));
+
+            if done_target || done_canonical {
+                match stack.pop() {
+                    None => {
+                        debug_assert!(
+                            current_builder.is_none(),
+                            "root activation should not retain a builder"
+                        );
+                        trace_op!(record_execute_until_return(&current_array));
+                        return Ok(current_array);
+                    }
+                    Some(frame) => {
+                        let _slot_idx = frame.slot_idx;
+                        (current_array, current_builder) = pop_frame(frame, current_array)?;
+                        trace_op!(record_execute_until_pop_frame(_slot_idx, &current_array));
+                        continue;
+                    }
+                }
+            }
+
+            // Step 2a: execute_parent against the suspended parent from ExecuteSlot.
+            //
+            // When executing a child for ExecuteSlot, try execute_parent against
+            // the suspended parent on the stack. This lets kernels like RunEnd's
+            // FilterKernel fire before the child is forced to canonical.
+            //
+            // Skip when a builder is active: the current array has been partially
+            // consumed by AppendChild (some slots are already in the builder), so
+            // a parent rewrite would see inconsistent state and the builder data
+            // would be lost when we restore frame.parent_builder.
+            if current_builder.is_none()
+                && let Some(frame) = stack.last()
+                && let Some(result) = {
+                    execute_parent_for_child(
+                        "stack_execute_parent",
+                        &frame.parent_array,
+                        &current_array,
+                        frame.slot_idx,
+                        kernels,
+                        ctx,
+                    )?
+                }
+            {
+                let frame = stack.pop().vortex_expect("just peeked");
+                let optimized = result.optimize_ctx(ctx.session())?;
+                trace_op!(record_execute_optimized(&result, &optimized));
+                current_array = optimized;
+                current_builder = frame.parent_builder;
+                continue;
+            }
+            if current_builder.is_none() && stack.last().is_some() {
+                trace_op!(record_execute_parent_none(
+                    "stack_execute_parent",
+                    &current_array,
+                ));
+            }
+
+            // Step 2b: execute_parent against current_array's own children.
+            if current_builder.is_none()
+                && let Some(rewritten) = try_execute_parent(&current_array, kernels, ctx)?
+            {
+                let optimized = rewritten.optimize_ctx(ctx.session())?;
+                trace_op!(record_execute_optimized(&rewritten, &optimized));
+                current_array = optimized;
+                continue;
+            }
+            if current_builder.is_none() {
+                trace_op!(record_execute_parent_none(
+                    "child_execute_parent",
+                    &current_array,
+                ));
+            }
+
+            let expected_len = current_array.len();
+            let expected_dtype = current_array.dtype().clone();
+            let stats = current_array.statistics().to_array_stats();
+            let encoding_id = current_array.encoding_id();
+            trace_op!(record_execute_encoding(&current_array));
+            let result = current_array.execute_encoding_unchecked(ctx)?;
+            let (array, step) = result.into_parts();
+            match step {
+                ExecutionStep::ExecuteSlot(i, done) => {
+                    let (parent, child) = unsafe { array.take_slot_unchecked(i) }?;
+
+                    trace_op!(record_execute_slot(i, &parent, &child));
+                    stack.push(StackFrame {
+                        parent_array: parent,
+                        parent_builder: current_builder.take(),
+                        slot_idx: i,
+                        done,
+                        original_dtype: child.dtype().clone(),
+                        original_len: child.len(),
+                    });
+                    current_array = child;
+                    current_builder = None;
+                }
+                ExecutionStep::AppendChild(i) => {
+                    if current_builder.is_none() {
+                        trace_op!(record_builder_start(&array));
+                        current_builder = Some(builder_with_capacity_in(
+                            array.dtype(),
+                            array.len(),
+                            ctx.allocator(),
+                        ));
+                    }
+                    let (parent, child) = unsafe { array.take_slot_unchecked(i) }?;
+
+                    trace_op!(record_append_child(i, &parent, &child));
+                    trace_op!(record_builder_append(&child));
+
+                    // TODO(joe)[7674]: replace with a builder kernel registry so we don't
+                    // need to go through the VTable append_to_builder indirection.
+                    child.append_to_builder(
+                        current_builder
+                            .as_deref_mut()
+                            .vortex_expect("builder must exist"),
+                        ctx,
+                    )?;
+                    current_array = parent;
+                }
+                ExecutionStep::Done => {
+                    let had_builder = current_builder.is_some();
+                    trace_op!(record_execute_done(&array));
+                    (current_array, current_builder) = finalize_done(
+                        array,
+                        current_builder,
+                        expected_len,
+                        expected_dtype,
+                        stats,
+                        encoding_id,
+                    )?;
+                    if had_builder {
+                        trace_op!(record_builder_finish(&current_array));
+                    }
+                }
+            }
+        }
+
+        vortex_bail!(
+            "Exceeded maximum execution iterations ({}) while executing array",
+            max_iterations,
+        )
+    }
+}
+
+struct StackFrame {
+    parent_array: ArrayRef,
+    parent_builder: Option<Box<dyn ArrayBuilder>>,
+    slot_idx: usize,
+    done: DonePredicate,
+    original_dtype: DType,
+    original_len: usize,
+}
+
+/// Execution context for batch CPU compute.
+#[derive(Debug, Clone)]
+pub struct ExecutionCtx {
+    session: VortexSession,
+    // OnceLock avoids cloning the session allocator when a context does not allocate.
+    allocator: OnceLock<BufferAllocatorRef>,
+    execute_parent_kernels: Arc<ParentExecutionKernels>,
+    #[cfg(debug_assertions)]
+    id: usize,
+    #[cfg(debug_assertions)]
+    ops: Vec<String>,
+}
+
+impl ExecutionCtx {
+    /// Create a new execution context with the given session.
+    ///
+    /// This captures a snapshot of the session's execute-parent kernel registry. Kernels
+    /// registered after this context is created are not visible to it; create a new
+    /// [`ExecutionCtx`] after registration to use newly registered kernels.
+    pub fn new(session: VortexSession) -> Self {
+        let execute_parent_kernels = session.kernels().execute_parent_snapshot();
+        Self {
+            session,
+            allocator: OnceLock::new(),
+            execute_parent_kernels,
+            #[cfg(debug_assertions)]
+            id: {
+                static EXEC_CTX_ID: AtomicUsize = AtomicUsize::new(0);
+                EXEC_CTX_ID.fetch_add(1, Ordering::Relaxed)
+            },
+            #[cfg(debug_assertions)]
+            ops: Vec::new(),
+        }
+    }
+
+    /// Get the session associated with this execution context.
+    pub fn session(&self) -> &VortexSession {
+        &self.session
+    }
+
+    /// Get the allocator for this execution context.
+    pub fn allocator(&self) -> &BufferAllocatorRef {
+        self.allocator.get_or_init(|| self.session.allocator())
+    }
+
+    /// Set the allocator for this execution context.
+    pub fn with_allocator(mut self, allocator: BufferAllocatorRef) -> Self {
+        self.allocator = OnceLock::from(allocator);
+        self
+    }
+
+    /// Log an execution step at the current depth.
+    ///
+    /// Steps are accumulated and dumped as a single trace on Drop at DEBUG level.
+    /// Individual steps are also logged at TRACE level for real-time following.
+    ///
+    /// Use the [`format_args!`] macro to create the `msg` argument.
+    pub fn log(&mut self, msg: fmt::Arguments<'_>) {
+        #[cfg(debug_assertions)]
+        if tracing::enabled!(tracing::Level::TRACE) {
+            let formatted = format!(" - {msg}");
+            tracing::trace!("exec[{}]: {formatted}", self.id);
+            self.ops.push(formatted);
+        }
+        let _ = msg;
+    }
+}
+
+impl Display for ExecutionCtx {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[cfg(debug_assertions)]
+        return write!(f, "exec[{}]", self.id);
+        #[cfg(not(debug_assertions))]
+        write!(f, "exec")
+    }
+}
+
+#[cfg(debug_assertions)]
+impl Drop for ExecutionCtx {
+    fn drop(&mut self) {
+        if !self.ops.is_empty() && tracing::enabled!(tracing::Level::DEBUG) {
+            // Unlike itertools `.format()` (panics in 0.14 on second format)
+            struct FmtOps<'a>(&'a [String]);
+            impl Display for FmtOps<'_> {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    for (i, op) in self.0.iter().enumerate() {
+                        if i > 0 {
+                            f.write_str("\n")?;
+                        }
+                        f.write_str(op)?;
+                    }
+                    Ok(())
+                }
+            }
+            tracing::debug!("exec[{}] trace:\n{}", self.id, FmtOps(&self.ops));
+        }
+    }
+}
+
+/// Single-step execution: takes one step toward canonical form.
+///
+/// Steps through reduce, reduce_parent, execute_parent, then execute. For `ExecuteSlot`,
+/// only a single child execution step is performed — the child is executed once and put back,
+/// making this a lightweight, bounded operation.
+///
+/// **However**, if `execute_step` returns [`ExecutionStep::AppendChild`], this implementation
+/// drives the *entire* array to completion via [`execute_into_builder`] in a single call.
+/// This can do substantially more work than a normal step because it creates a builder and
+/// fully decodes the array into that builder before returning. Callers should be aware that a
+/// single `.execute::<ArrayRef>(ctx)` call may perform O(n_children * decode_cost) work when
+/// `AppendChild` is returned.
+impl Executable for ArrayRef {
+    fn execute(array: ArrayRef, ctx: &mut ExecutionCtx) -> VortexResult<Self> {
+        trace_op!(record_single_step_start(&array));
+
+        if let Some(canonical) = array.as_opt::<AnyCanonical>() {
+            let output = Canonical::from(canonical).into_array();
+            trace_op!(record_single_step_applied("canonical", &array, &output));
+            return Ok(output);
+        }
+        trace_op!(record_single_step_phase_none("canonical", &array));
+
+        if let Some(reduced) = array.reduce()? {
+            reduced.statistics().inherit_from(array.statistics());
+            trace_op!(record_single_step_applied("reduce", &array, &reduced));
+            return Ok(reduced);
+        }
+        trace_op!(record_single_step_phase_none("reduce", &array));
+
+        for (slot_idx, slot) in array.slots().iter().enumerate() {
+            let Some(child) = slot else { continue };
+            if let Some(reduced_parent) = child.reduce_parent(&array, slot_idx)? {
+                reduced_parent.statistics().inherit_from(array.statistics());
+                trace_op!(record_single_step_applied(
+                    "reduce_parent",
+                    &array,
+                    &reduced_parent,
+                ));
+                return Ok(reduced_parent);
+            }
+        }
+        trace_op!(record_single_step_phase_none("reduce_parent", &array));
+
+        let execute_parent_kernels = Arc::clone(&ctx.execute_parent_kernels);
+        let kernels = execute_parent_kernels.as_ref();
+
+        for (slot_idx, slot) in array.slots().iter().enumerate() {
+            let Some(child) = slot else { continue };
+            if let Some(executed_parent) = execute_parent_for_child(
+                "single_step_execute_parent",
+                &array,
+                child,
+                slot_idx,
+                kernels,
+                ctx,
+            )? {
+                ctx.log(format_args!(
+                    "execute_parent: slot[{}]({}) rewrote {} -> {}",
+                    slot_idx,
+                    child.encoding_id(),
+                    array,
+                    executed_parent
+                ));
+                executed_parent
+                    .statistics()
+                    .inherit_from(array.statistics());
+                trace_op!(record_single_step_applied(
+                    "execute_parent",
+                    &array,
+                    &executed_parent,
+                ));
+                return Ok(executed_parent);
+            }
+        }
+        trace_op!(record_single_step_phase_none("execute_parent", &array));
+        trace_op!(record_execute_encoding(&array));
+
+        let result = array.execute_encoding(ctx)?;
+        let (array, step) = result.into_parts();
+        match step {
+            ExecutionStep::Done => {
+                trace_op!(record_execute_done(&array));
+                Ok(array)
+            }
+            ExecutionStep::ExecuteSlot(i, _) => {
+                let child = array.slots()[i].clone().vortex_expect("valid slot index");
+                let executed_child = child.execute::<ArrayRef>(ctx)?;
+                // SAFETY: execution of a child slot produces a logically equivalent array in a
+                // different physical representation, preserving parent values and statistics.
+                unsafe { array.with_slot(i, executed_child) }
+            }
+            ExecutionStep::AppendChild(_) => {
+                // Single-step: build the entire parent via the builder path.
+                trace_op!(record_builder_start(&array));
+                let builder = builder_with_capacity_in(array.dtype(), array.len(), ctx.allocator());
+                let mut builder = execute_into_builder(array, builder, ctx)?;
+                let output = builder.finish();
+                trace_op!(record_builder_finish(&output));
+                Ok(output)
+            }
+        }
+    }
+}
+
+/// Execute `array` into the given `builder`.
+///
+/// This uses the encoding's [`crate::array::VTable::append_to_builder`] implementation. Most
+/// encodings use the default path of `execute::<Canonical>` followed by re-dispatching
+/// `append_to_builder` on the canonical array, while encodings like `Chunked` can override that to
+/// append child-by-child without materializing the entire parent.
+///
+/// The builder must have a [`DType`] that is a nullability-superset of `array.dtype()`.
+pub fn execute_into_builder(
+    array: ArrayRef,
+    mut builder: Box<dyn ArrayBuilder>,
+    ctx: &mut ExecutionCtx,
+) -> VortexResult<Box<dyn ArrayBuilder>> {
+    array.append_to_builder(builder.as_mut(), ctx)?;
+    Ok(builder)
+}
+
+/// Pop a stack frame, restoring the parent with the finished child in its slot.
+fn pop_frame(
+    frame: StackFrame,
+    child: ArrayRef,
+) -> VortexResult<(ArrayRef, Option<Box<dyn ArrayBuilder>>)> {
+    debug_assert_eq!(
+        child.dtype(),
+        &frame.original_dtype,
+        "child dtype changed during execution"
+    );
+    debug_assert_eq!(
+        child.len(),
+        frame.original_len,
+        "child len changed during execution"
+    );
+    let parent_array = unsafe { frame.parent_array.put_slot_unchecked(frame.slot_idx, child) }?;
+    Ok((parent_array, frame.parent_builder))
+}
+
+fn finalize_done(
+    result: ArrayRef,
+    mut builder: Option<Box<dyn ArrayBuilder>>,
+    expected_len: usize,
+    expected_dtype: DType,
+    stats: ArrayStats,
+    encoding_id: ArrayId,
+) -> VortexResult<(ArrayRef, Option<Box<dyn ArrayBuilder>>)> {
+    let output = if let Some(mut builder) = builder.take() {
+        builder.finish()
+    } else {
+        result
+    };
+
+    if cfg!(debug_assertions) {
+        vortex_ensure!(
+            output.len() == expected_len,
+            "Result length mismatch for {:?}",
+            encoding_id
+        );
+        vortex_ensure!(
+            output.dtype() == &expected_dtype,
+            "Executed canonical dtype mismatch for {:?}",
+            encoding_id
+        );
+    }
+
+    output
+        .statistics()
+        .set_iter(StatsSet::from(stats).into_iter());
+    Ok((output, None))
+}
+
+fn execute_parent_for_child(
+    _phase: &'static str,
+    parent: &ArrayRef,
+    child: &ArrayRef,
+    slot_idx: usize,
+    kernels: &ParentExecutionKernels,
+    ctx: &mut ExecutionCtx,
+) -> VortexResult<Option<ArrayRef>> {
+    let key = execute_parent_key(parent.encoding_id(), child.encoding_id());
+    if let Some(plugins) = kernels.get(&key) {
+        #[allow(clippy::unused_enumerate_index)]
+        for (_plugin_idx, plugin) in plugins.as_ref().iter().enumerate() {
+            if let Some(result) = plugin.execute_parent(child, parent, slot_idx, ctx)? {
+                if cfg!(debug_assertions) {
+                    vortex_ensure!(
+                        result.len() == parent.len(),
+                        "Executed parent canonical length mismatch"
+                    );
+                    vortex_ensure!(
+                        result.dtype() == parent.dtype(),
+                        "Executed parent canonical dtype mismatch"
+                    );
+                }
+                trace_op!(record_session_execute_parent_applied(
+                    _phase,
+                    parent,
+                    child,
+                    slot_idx,
+                    _plugin_idx,
+                    &result,
+                ));
+                return Ok(Some(result));
+            }
+            trace_op!(record_session_execute_parent_declined(
+                _phase,
+                parent,
+                child,
+                slot_idx,
+                _plugin_idx,
+            ));
+        }
+    }
+
+    Ok(None)
+}
+
+/// Try execute_parent on each occupied slot of the array.
+fn try_execute_parent(
+    array: &ArrayRef,
+    kernels: &ParentExecutionKernels,
+    ctx: &mut ExecutionCtx,
+) -> VortexResult<Option<ArrayRef>> {
+    for (slot_idx, slot) in array.slots().iter().enumerate() {
+        let Some(child) = slot else { continue };
+        if let Some(executed_parent) =
+            execute_parent_for_child("child_execute_parent", array, child, slot_idx, kernels, ctx)?
+        {
+            ctx.log(format_args!(
+                "execute_parent: slot[{}]({}) rewrote {} -> {}",
+                slot_idx,
+                child.encoding_id(),
+                array,
+                executed_parent
+            ));
+            executed_parent
+                .statistics()
+                .inherit_from(array.statistics());
+            return Ok(Some(executed_parent));
+        }
+    }
+    Ok(None)
+}
+
+/// A predicate that determines when an array has reached a desired form during execution.
+pub type DonePredicate = fn(&ArrayRef) -> bool;
+
+/// Scheduler step indicator returned alongside an array in [`ExecutionResult`].
+///
+/// Instead of recursively executing children, encodings return an `ExecutionStep` that tells the
+/// scheduler what to do next. This enables the scheduler to manage execution iteratively using
+/// an explicit work stack plus an optional builder.
+///
+/// # Semantics
+///
+/// Each variant describes a different execution strategy with distinct cost profiles:
+///
+/// - [`Done`](ExecutionStep::Done): The current activation has finished its work. If no builder
+///   is active, the returned array is the result. If a builder is active, the scheduler ignores
+///   the placeholder array and finishes the builder instead. The scheduler may continue
+///   executing if the target form (e.g. canonical) has not yet been reached.
+///
+/// - [`ExecuteSlot`](ExecutionStep::ExecuteSlot): The encoding needs one of its children
+///   decoded before it can make further progress. The scheduler detaches that child, pushes
+///   the parent onto the explicit stack, executes the child until the [`DonePredicate`]
+///   matches, puts it back, and re-enters the parent. This is a cooperative yield: the
+///   encoding does a bounded amount of work per step while the loop tracks the parent-child
+///   relationship explicitly.
+///
+/// - [`AppendChild`](ExecutionStep::AppendChild): The encoding needs one child executed to
+///   canonical form and then appended into a builder owned by the current activation. The
+///   scheduler detaches that child, lazily creates `current_builder` if needed, appends the
+///   child into it, and keeps the parent as `current_array` for the next iteration. While the
+///   builder is active, parent-kernel rewrites are skipped because the parent is partially
+///   consumed. **Important:** in the single-step executor ([`Executable`] for [`ArrayRef`]),
+///   returning `AppendChild` still causes the executor to drive the *entire* array to
+///   completion via [`execute_into_builder`] in one call — this can do significantly more
+///   work than a single `ExecuteSlot` step.
+pub enum ExecutionStep {
+    /// Request that the scheduler execute the slot at the given index, using the provided
+    /// [`DonePredicate`] to determine when the slot is "done", then replace the slot in this
+    /// array and re-enter execution.
+    ///
+    /// Use [`ExecutionResult::execute_slot`] instead of constructing this variant directly.
+    ExecuteSlot(usize, DonePredicate),
+
+    /// Detach the slot at the given index, append that child into the current activation's
+    /// canonical builder, and keep the returned parent as `current_array`.
+    ///
+    /// `Done` finalizes that builder and turns it into the result of the activation.
+    ///
+    /// **Note:** In the single-step executor ([`Executable`] for [`ArrayRef`]), this variant
+    /// drives the entire parent to completion in one call via [`execute_into_builder`], which
+    /// may perform substantially more work than a single `ExecuteSlot` step.
+    AppendChild(usize),
+
+    /// Execution is complete. If no builder is active, the array in the accompanying
+    /// [`ExecutionResult`] is the result. Otherwise, the scheduler finalizes the active
+    /// builder and uses that finished array instead.
+    ///
+    /// The scheduler will continue executing if it has not yet reached the target form.
+    Done,
+}
+
+impl fmt::Debug for ExecutionStep {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExecutionStep::ExecuteSlot(idx, _) => f.debug_tuple("ExecuteSlot").field(idx).finish(),
+            ExecutionStep::AppendChild(idx) => f.debug_tuple("AppendChild").field(idx).finish(),
+            ExecutionStep::Done => write!(f, "Done"),
+        }
+    }
+}
+
+/// The result of a single execution step on an array encoding.
+///
+/// Combines an [`ArrayRef`] with an [`ExecutionStep`] to tell the scheduler both what to do next
+/// and what array to work with.
+pub struct ExecutionResult {
+    array: ArrayRef,
+    step: ExecutionStep,
+}
+
+impl ExecutionResult {
+    /// Signal that execution is complete with the given result array.
+    pub fn done(result: impl IntoArray) -> Self {
+        Self {
+            array: result.into_array(),
+            step: ExecutionStep::Done,
+        }
+    }
+
+    /// Request execution of slot at `slot_idx` until it matches the given [`Matcher`].
+    ///
+    /// The provided array is the (possibly modified) parent that still needs its slot executed.
+    pub fn execute_slot<M: Matcher>(array: impl IntoArray, slot_idx: usize) -> Self {
+        let array = array.into_array();
+        Self {
+            array,
+            step: ExecutionStep::ExecuteSlot(slot_idx, M::matches),
+        }
+    }
+
+    /// Request that the child slot at `slot_idx` be detached, appended into the current
+    /// activation's canonical builder, and leave the returned parent as the next
+    /// `current_array`.
+    pub fn append_child(array: impl IntoArray, slot_idx: usize) -> Self {
+        let array = array.into_array();
+        Self {
+            array,
+            step: ExecutionStep::AppendChild(slot_idx),
+        }
+    }
+
+    /// Returns a reference to the array.
+    pub fn array(&self) -> &ArrayRef {
+        &self.array
+    }
+
+    /// Returns a reference to the step.
+    pub fn step(&self) -> &ExecutionStep {
+        &self.step
+    }
+
+    /// Decompose into parts.
+    pub fn into_parts(self) -> (ArrayRef, ExecutionStep) {
+        (self.array, self.step)
+    }
+}
+
+impl fmt::Debug for ExecutionResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ExecutionResult")
+            .field("array", &self.array)
+            .field("step", &self.step)
+            .finish()
+    }
+}
+
+/// Require that a child array matches `$M`. If the child already matches, returns the same
+/// array unchanged. Otherwise, early-returns an [`ExecutionResult`] requesting execution of
+/// child `$idx` until it matches `$M`.
+///
+/// ```ignore
+/// let array = require_child!(array, array.codes(), 0 => Primitive);
+/// let array = require_child!(array, array.values(), 1 => AnyCanonical);
+/// ```
+#[macro_export]
+macro_rules! require_child {
+    ($parent:expr, $child:expr, $idx:expr => $M:ty) => {{
+        if !$child.is::<$M>() {
+            return Ok($crate::ExecutionResult::execute_slot::<$M>(
+                $parent.clone(),
+                $idx,
+            ));
+        }
+        $parent
+    }};
+}
+
+/// Like [`require_child!`], but for optional children. If the child is `None`, this is a no-op.
+/// If the child is `Some` but does not match `$M`, early-returns an [`ExecutionResult`] requesting
+/// execution of child `$idx`.
+///
+/// Unlike `require_child!`, this is a statement macro (no value produced) and does not clone
+/// `$parent` - it is moved into the early-return path.
+///
+/// ```ignore
+/// require_opt_child!(array, array.patches().map(|p| p.indices()), 1 => Primitive);
+/// ```
+#[macro_export]
+macro_rules! require_opt_child {
+    ($parent:expr, $child_opt:expr, $idx:expr => $M:ty) => {
+        if $child_opt.is_some_and(|child| !child.is::<$M>()) {
+            return Ok($crate::ExecutionResult::execute_slot::<$M>($parent, $idx));
+        }
+    };
+}
+
+/// Require that patch slots (indices, values, and optionally chunk_offsets) are `Primitive`.
+/// If no patches are present (slots are `None`), this is a no-op.
+///
+/// Like [`require_opt_child!`], `$parent` is moved (not cloned) into the early-return path.
+///
+/// ```ignore
+/// require_patches!(
+///     array,
+///     MySlots::PATCH_INDICES,
+///     MySlots::PATCH_VALUES,
+///     MySlots::PATCH_CHUNK_OFFSETS
+/// );
+/// ```
+#[macro_export]
+macro_rules! require_patches {
+    ($parent:expr, $indices_slot:expr, $values_slot:expr, $chunk_offsets_slot:expr) => {
+        $crate::require_opt_child!(
+            $parent,
+            $parent.slots()[$indices_slot].as_ref(),
+            $indices_slot => $crate::arrays::Primitive
+        );
+        $crate::require_opt_child!(
+            $parent,
+            $parent.slots()[$values_slot].as_ref(),
+            $values_slot => $crate::arrays::Primitive
+        );
+        $crate::require_opt_child!(
+            $parent,
+            $parent.slots()[$chunk_offsets_slot].as_ref(),
+            $chunk_offsets_slot => $crate::arrays::Primitive
+        );
+    };
+}
+
+/// Require that the validity slot is a [`Bool`](crate::arrays::Bool) array. If validity is not
+/// array-backed (e.g. `NonNullable` or `AllValid`), this is a no-op. If it is array-backed but
+/// not `Bool`, early-returns an [`ExecutionResult`] requesting execution of the validity slot.
+///
+/// Like [`require_opt_child!`], `$parent` is moved (not cloned) into the early-return path.
+///
+/// ```ignore
+/// require_validity!(array, MySlots::VALIDITY);
+/// ```
+#[macro_export]
+macro_rules! require_validity {
+    ($parent:expr, $idx:expr) => {
+        $crate::require_opt_child!(
+            $parent,
+            $parent.slots()[$idx].as_ref(),
+            $idx => $crate::arrays::Bool
+        );
+    };
+}
+
+/// Extension trait for creating an execution context from a session.
+pub trait VortexSessionExecute {
+    /// Create a new execution context from this session.
+    fn create_execution_ctx(&self) -> ExecutionCtx;
+}
+
+impl VortexSessionExecute for VortexSession {
+    fn create_execution_ctx(&self) -> ExecutionCtx {
+        ExecutionCtx::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use static_assertions::assert_impl_all;
+    use vortex_session::SessionExt;
+    use vortex_session::VortexSession;
+
+    use super::*;
+    use crate::VTable as _;
+    use crate::VortexSessionExecute;
+    use crate::arrays::Bool;
+    use crate::arrays::Primitive;
+    use crate::memory::BufferAllocatorRef;
+    use crate::memory::MemorySession;
+    use crate::memory::MemorySessionExt;
+    use crate::optimizer::kernels::ExecuteParentFn;
+    use crate::optimizer::kernels::KernelSession;
+    use crate::optimizer::kernels::execute_parent_key;
+
+    assert_impl_all!(ExecutionCtx: Send, Sync);
+
+    fn noop_execute_parent(
+        _child: &ArrayRef,
+        _parent: &ArrayRef,
+        _child_idx: usize,
+        _ctx: &mut ExecutionCtx,
+    ) -> VortexResult<Option<ArrayRef>> {
+        Ok(None)
+    }
+
+    #[test]
+    fn execution_ctx_snapshots_execute_parent_kernels_at_creation() {
+        let session = VortexSession::empty().with_some(KernelSession::empty());
+        let key = execute_parent_key(Bool.id(), Primitive.id());
+
+        let before_registration = session.create_execution_ctx();
+        assert!(
+            !before_registration
+                .execute_parent_kernels
+                .contains_key(&key)
+        );
+
+        let kernels = session.kernels();
+        kernels.register_execute_parent(
+            Bool.id(),
+            Primitive.id(),
+            &[noop_execute_parent as ExecuteParentFn],
+        );
+
+        assert!(
+            !before_registration
+                .execute_parent_kernels
+                .contains_key(&key)
+        );
+
+        let after_registration = session.create_execution_ctx();
+        assert!(after_registration.execute_parent_kernels.contains_key(&key));
+    }
+
+    #[test]
+    fn execution_ctx_allocator_override() {
+        let first = BufferAllocatorRef::new(vortex_buffer::StaticBufferAllocator);
+        let second = BufferAllocatorRef::new(vortex_buffer::StaticBufferAllocator);
+        let third = BufferAllocatorRef::new(vortex_buffer::StaticBufferAllocator);
+        let session = VortexSession::empty()
+            .with::<MemorySession>()
+            .with_allocator(first.clone());
+        let ctx = session.create_execution_ctx();
+
+        session
+            .get_mut::<MemorySession>()
+            .set_allocator(third.clone());
+
+        assert!(session.allocator().ptr_eq(&third));
+        assert!(ctx.allocator().ptr_eq(&third));
+
+        let ctx = ctx.with_allocator(second.clone());
+        session.get_mut::<MemorySession>().set_allocator(first);
+
+        assert!(ctx.allocator().ptr_eq(&second));
+    }
+}

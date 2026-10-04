@@ -1115,13 +1115,9 @@ impl RangeSink for RecordingRange {
 		None
 	}
 
-	fn overwrite(&self, _operator: OperatorId, _key: &EncodedKey, _row: EncodedPodRow) {}
-
 	fn insert(&self, operator: OperatorId, key: &EncodedKey, _row: EncodedPodRow) {
 		self.calls.lock().push(RangeCall::Insert(operator, key.clone()));
 	}
-
-	fn mark_deleted(&self, _operator: OperatorId, _key: &EncodedKey) {}
 
 	fn retract_run(&self, operator: OperatorId, keys: &[&EncodedKey]) {
 		self.calls.lock().push(RangeCall::Retract(operator, keys.iter().map(|key| (*key).clone()).collect()));

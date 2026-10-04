@@ -1,0 +1,53 @@
+# Templated by `cargo-generate` using https://github.com/danielhenrymantilla/proc-macro-template
+[package]
+name = "nougat"
+authors = [
+    "Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>",
+]
+version = "0.2.4"  # Keep in sync
+edition = "2018"
+
+license = "Zlib OR MIT OR Apache-2.0"
+repository = "https://github.com/danielhenrymantilla/nougat.rs"
+documentation = "https://docs.rs/nougat"
+readme = "README.md"
+
+description = "(lifetime) GATs on stable Rust"
+# keywords = []
+
+[features]
+docs = []  # allowed to break MSRV
+ui-tests = ["docs"]
+
+debug-macros = [
+    "nougat-proc_macros/debug-macros"
+]
+
+test-lending-iterator-filter = [
+    "polonius-the-crab",
+]
+
+[dependencies]
+macro_rules_attribute.version = "0.1.2"
+
+polonius-the-crab.version = "0.2.1"
+polonius-the-crab.optional = true
+
+[dependencies.nougat-proc_macros]
+path = "src/proc_macros"
+version = "0.2.4"  # Keep in sync
+
+[dev-dependencies]
+
+[workspace]
+members = [
+    "src/proc_macros",
+]
+
+[package.metadata.docs.rs]
+features = [
+    "docs",
+]
+rustdoc-args = [
+    "--html-before-content", "fix-docsrs-li-details-summary.html",
+]

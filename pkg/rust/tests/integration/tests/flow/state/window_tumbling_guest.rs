@@ -5,6 +5,7 @@ use reifydb::{
 	ConfigKey, Value, WithSubsystem,
 	core::{
 		interface::{catalog::flow::OperatorId, flow::OperatorCapability},
+		metrics::heap::HeapSize,
 		operator_with::ApplyWith,
 	},
 	embedded,
@@ -37,7 +38,8 @@ const ACCUMULATORS: &str = "from system::metrics::flow::state::current
 
 const SURFACE: &str = "from system::metrics::flow::state::current";
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb::r#macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 struct GuestWindow {
 	g: i32,
 	total: i64,

@@ -10,6 +10,7 @@ use crate::operator::{
 	join::{
 		operator::JoinOperator,
 		state::{JoinSide, JoinState},
+		strategy::hash::JoinRows,
 	},
 };
 
@@ -31,6 +32,7 @@ pub(crate) struct JoinContext<'a> {
 	pub side: JoinSide,
 	pub state: &'a mut JoinState,
 	pub operator: &'a JoinOperator,
+	pub rows: &'a mut JoinRows,
 }
 
 #[derive(Clone, Copy)]

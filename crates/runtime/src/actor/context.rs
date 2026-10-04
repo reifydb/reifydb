@@ -8,7 +8,7 @@ use std::sync::{
 
 use reifydb_value::value::duration::Duration;
 
-#[cfg(not(reifydb_single_threaded))]
+#[cfg(all(not(reifydb_single_threaded), not(loom)))]
 use crate::actor::timers::Repeat;
 #[cfg(reifydb_dst)]
 use crate::actor::timers::dst as dst_timers;
@@ -87,7 +87,7 @@ impl<M: Send + 'static> Context<M> {
 }
 
 impl<M: Send + 'static> Context<M> {
-	#[cfg(not(reifydb_single_threaded))]
+	#[cfg(all(not(reifydb_single_threaded), not(loom)))]
 	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(
 		&self,
 		delay: impl Into<Duration>,
@@ -98,6 +98,15 @@ impl<M: Send + 'static> Context<M> {
 		self.system.scheduler().schedule_once(delay, move || {
 			let _ = actor_ref.send(factory());
 		})
+	}
+
+	#[cfg(all(loom, not(reifydb_single_threaded)))]
+	pub fn schedule_once<F: FnOnce() -> M + Send + 'static>(
+		&self,
+		_delay: impl Into<Duration>,
+		_factory: F,
+	) -> TimerHandle {
+		panic!("actors never run under the loom backend, so no timer can fire")
 	}
 
 	#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
@@ -128,13 +137,18 @@ impl<M: Send + 'static> Context<M> {
 }
 
 impl<M: Send + Sync + Clone + 'static> Context<M> {
-	#[cfg(not(reifydb_single_threaded))]
+	#[cfg(all(not(reifydb_single_threaded), not(loom)))]
 	pub fn schedule_repeat(&self, interval: impl Into<Duration>, msg: M) -> TimerHandle {
 		let interval = interval.into().to_std();
 		let actor_ref = self.self_ref.clone();
 		self.system
 			.scheduler()
 			.schedule_repeat(interval, move || Repeat::after_send(actor_ref.send(msg.clone())))
+	}
+
+	#[cfg(all(loom, not(reifydb_single_threaded)))]
+	pub fn schedule_repeat(&self, _interval: impl Into<Duration>, _msg: M) -> TimerHandle {
+		panic!("actors never run under the loom backend, so no timer can fire")
 	}
 
 	#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
@@ -157,7 +171,7 @@ impl<M: Send + Sync + Clone + 'static> Context<M> {
 }
 
 impl<M: Send + 'static> Context<M> {
-	#[cfg(not(reifydb_single_threaded))]
+	#[cfg(all(not(reifydb_single_threaded), not(loom)))]
 	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
 		&self,
 		interval: impl Into<Duration>,
@@ -166,6 +180,15 @@ impl<M: Send + 'static> Context<M> {
 		let interval = interval.into().to_std();
 		let actor_ref = self.self_ref.clone();
 		self.system.scheduler().schedule_repeat(interval, move || Repeat::after_send(actor_ref.send(factory())))
+	}
+
+	#[cfg(all(loom, not(reifydb_single_threaded)))]
+	pub fn schedule_repeat_fn<F: Fn() -> M + Send + Sync + 'static>(
+		&self,
+		_interval: impl Into<Duration>,
+		_factory: F,
+	) -> TimerHandle {
+		panic!("actors never run under the loom backend, so no timer can fire")
 	}
 
 	#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
@@ -194,6 +217,7 @@ impl<M: Send + 'static> Context<M> {
 		)
 	}
 
+	#[cfg(not(all(loom, not(reifydb_single_threaded))))]
 	pub fn schedule_tick<F: Fn(i64) -> M + Send + Sync + 'static>(
 		&self,
 		interval: impl Into<Duration>,
@@ -232,6 +256,15 @@ impl<M: Send + 'static> Context<M> {
 				},
 			)
 		}
+	}
+
+	#[cfg(all(loom, not(reifydb_single_threaded)))]
+	pub fn schedule_tick<F: Fn(i64) -> M + Send + Sync + 'static>(
+		&self,
+		_interval: impl Into<Duration>,
+		_factory: F,
+	) -> TimerHandle {
+		panic!("actors never run under the loom backend, so no timer can fire")
 	}
 }
 

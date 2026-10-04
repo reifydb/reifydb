@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::{self, Debug, Formatter};
+use std::{
+	fmt::{self, Debug, Formatter},
+	sync::Arc,
+};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::KeyspaceId};
@@ -11,33 +14,41 @@ use crate::{
 	bound::parts,
 	persistent::{Enumerate, PersistentTier},
 	resident::state_hash,
-	types::OperatorStateCensus,
+	store::census::OperatorCensus,
 };
 
 pub struct OperatorStateKeySource {
 	persistent: PersistentTier,
+	census: Arc<OperatorCensus>,
 	pending: Vec<(OperatorId, KeyspaceId)>,
 	cursor: Option<EncodedKey>,
 	started: bool,
 }
 
 impl OperatorStateKeySource {
-	pub fn new(persistent: PersistentTier) -> Self {
+	pub(crate) fn new(persistent: PersistentTier, census: Arc<OperatorCensus>) -> Self {
 		Self {
 			persistent,
+			census,
 			pending: Vec::new(),
 			cursor: None,
 			started: false,
 		}
 	}
 
-	fn occupied(&self) -> Vec<OperatorStateCensus> {
-		self.persistent
-			.census()
-			.expect("operator census must complete; a filter built on a partial one misses live keys")
-			.into_iter()
-			.filter(|entry| entry.keys > 0)
-			.collect()
+	fn occupied(&self) -> Vec<(OperatorId, KeyspaceId)> {
+		let operators = self
+			.persistent
+			.operators()
+			.expect("operator enumeration must complete; a filter built on a partial one misses live keys");
+		let mut occupied = Vec::new();
+		for operator in operators {
+			let keyspaces = self.persistent.keyspaces(operator).expect(
+				"keyspace enumeration must complete; a filter built on a partial one misses live keys",
+			);
+			occupied.extend(keyspaces.into_iter().map(|keyspace| (operator, keyspace)));
+		}
+		occupied
 	}
 }
 
@@ -53,11 +64,11 @@ impl KeyFilterSource for OperatorStateKeySource {
 	}
 
 	fn estimated_len(&self) -> u64 {
-		self.occupied().iter().map(|entry| entry.keys).sum()
+		self.census.snapshot().iter().map(|entry| entry.keys).sum()
 	}
 
 	fn restart(&mut self) {
-		self.pending = self.occupied().into_iter().map(|entry| (entry.operator, entry.keyspace)).collect();
+		self.pending = self.occupied();
 		self.cursor = None;
 		self.started = true;
 	}

@@ -3,18 +3,14 @@
 
 #![cfg(feature = "column")]
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb::{
-	WithSubsystem, embedded as db_embedded,
+	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_column::reader::SnapshotReader;
-use reifydb_store_column::store::ColumnStore;
-use reifydb_sub_store::{
-	factory::StorageSubsystemFactory,
-	subsystem::{StorageConfig, StorageSubsystem},
-};
+use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, store::ColumnStore};
+use reifydb_sub_store::subsystem::{StorageConfig, StorageSubsystem};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
 
@@ -24,12 +20,7 @@ fn db() -> TestDb {
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		..StorageConfig::default()
 	};
-	let db = TestDb::from(
-		db_embedded::memory()
-			.with_subsystem(Box::new(StorageSubsystemFactory::new(config)))
-			.build()
-			.expect("build"),
-	);
+	let db = TestDb::from(db_embedded::memory().with_storage_config(config).build().expect("build"));
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE TABLE test::t { id: int4, v: int4 }");
 	db
@@ -40,8 +31,6 @@ fn block_store(db: &TestDb) -> ColumnStore {
 }
 
 fn latest_rows(db: &TestDb, store: &ColumnStore) -> Option<BTreeMap<i32, i32>> {
-	// Entries are read before the catalog so a block put after its snapshot commit is never missed.
-	let entries = store.entries();
 	let engine = db.engine();
 	let catalog = engine.catalog();
 	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
@@ -52,15 +41,20 @@ fn latest_rows(db: &TestDb, store: &ColumnStore) -> Option<BTreeMap<i32, i32>> {
 		.list_column_snapshots_for_table(&mut tx, table.id)
 		.expect("list table snapshots")
 		.into_iter()
-		.map(|snapshot| snapshot.id)
-		.max()?;
-	let block = entries.into_iter().find(|(id, _)| *id == latest).map(|(_, block)| block)?;
+		.max_by_key(|snapshot| snapshot.id)?;
+	let block = Arc::new(
+		store.open(&BlockKey::of(&latest))
+			.expect("open block")
+			.expect("a cataloged snapshot must have a block file")
+			.read(None)
+			.expect("read block"),
+	);
 
 	let mut rows = BTreeMap::new();
 	if block.is_empty() {
 		return Some(rows);
 	}
-	let mut reader = SnapshotReader::new(block, 100);
+	let mut reader = SnapshotReader::new(block, 100, store.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");
 	for row in 0..batch.num_rows() {
 		let id = match column_view(&batch, "id").expect("id view").expect("id column").get_value(row) {

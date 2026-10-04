@@ -38,7 +38,7 @@ use crate::{
 	},
 	range::OperatorRangeConfig,
 	resident::{Resident, ResidentLimits},
-	store::{CheckpointInterlock, StandardOperatorStore},
+	store::{CheckpointInterlock, StandardOperatorStore, census::OperatorCensus},
 	types::{LayeredPre, OperatorWrite},
 };
 
@@ -51,7 +51,7 @@ fn store_fixture() -> (StandardOperatorStore, SqliteTempPathGuard) {
 
 fn store_fixture_with(resident: ResidentConfig) -> (StandardOperatorStore, SqliteTempPathGuard) {
 	let clock = Clock::testing();
-	let actor_system = ActorSystem::testing(clock.clone());
+	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqlitePersistent::in_memory();
 	let store = StandardOperatorStore::new(OperatorStoreConfig {
@@ -59,7 +59,6 @@ fn store_fixture_with(resident: ResidentConfig) -> (StandardOperatorStore, Sqlit
 		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::Sqlite(storage))),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
-		clock,
 	});
 	(store, guard)
 }
@@ -475,14 +474,13 @@ impl PersistentHooks for EnumerateFault {
 
 fn faulted_store(fault: Arc<EnumerateFault>) -> StandardOperatorStore {
 	let clock = Clock::testing();
-	let actor_system = ActorSystem::testing(clock.clone());
+	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	StandardOperatorStore::new(OperatorStoreConfig {
 		resident: Default::default(),
 		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::testing(fault))),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
-		clock,
 	})
 }
 
@@ -521,8 +519,37 @@ fn a_failed_keyspace_enumeration_fails_a_group_range_batch() {
 }
 
 #[test]
+fn the_key_filter_size_estimate_is_counted_without_enumerating_the_persistent_tier() {
+	let fault = EnumerateFault::disarmed();
+	let census = Arc::new(OperatorCensus::default());
+	census.record(&[insert(1, "a"), insert(2, "b"), insert(3, "c")]);
+	let source = OperatorStateKeySource::new(PersistentTier::testing(fault.clone()), census);
+
+	assert_eq!(source.estimated_len(), 3);
+	assert_eq!(fault.calls.load(Ordering::SeqCst), 0, "the size estimate must not enumerate the persistent tier");
+}
+
+#[test]
+fn a_key_filter_restart_still_scans_a_keyspace_whose_last_key_is_deleted_but_not_flushed() {
+	let (store, _guard) = store_fixture();
+	store.apply_batch(&[insert(1, "only")]);
+	flush(&store);
+	store.apply_batch(&[remove(&store, 1)]);
+	assert!(store.census.snapshot().is_empty(), "the in-memory census must already have dropped the keyspace");
+	let mut source = OperatorStateKeySource::new(store.persistent.clone(), store.census.clone());
+
+	source.restart();
+	let slice = source.next_slice(16);
+
+	assert_eq!(slice.hashes.len(), 1, "the durable key must be fed to the rebuilt filter");
+}
+
+#[test]
 #[should_panic(expected = "a filter built on a partial one misses live keys")]
 fn a_failed_census_stops_the_key_filter_rebuild() {
-	let mut source = OperatorStateKeySource::new(PersistentTier::testing(EnumerateFault::from_call(1)));
+	let mut source = OperatorStateKeySource::new(
+		PersistentTier::testing(EnumerateFault::from_call(1)),
+		Arc::new(OperatorCensus::default()),
+	);
 	source.restart();
 }

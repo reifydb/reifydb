@@ -1,0 +1,12 @@
+[package]
+name = "const_for"
+version = "0.1.6"
+edition = "2021"
+authors = ["Joachim Enggård Nebel"]
+description = "Ergonomic for loop macro for const and no_std contexts"
+rust-version = "1.58"
+readme = "README.md"
+repository = "https://github.com/JENebel/const_for"
+license = "MIT"
+keywords = ["const", "for", "loop", "const-fn", "const_for"]
+categories = ["rust-patterns", "no-std"]

@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
-
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
@@ -22,37 +20,32 @@ use crate::{
 
 impl SqlitePersistent {
 	#[instrument(name = "store::operator::persistent::sqlite::state_sizes", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn state_sizes(&self, operator: OperatorId, keys: &[EncodedKey]) -> HashMap<EncodedKey, ByteSize> {
-		let mut sizes = HashMap::with_capacity(keys.len());
+	pub fn state_sizes(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Vec<Option<ByteSize>> {
 		if keys.is_empty() || !self.state_written() {
-			return sizes;
+			return vec![None; keys.len()];
 		}
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return sizes;
+			return vec![None; keys.len()];
 		};
-		for (key, bytes) in route::get_many(conn, operator, tables, keys) {
-			sizes.insert(key, ByteSize::from_bytes(bytes.len() as u64));
-		}
-		sizes
+		route::sizes_many(conn, operator, tables, keys)
+			.into_iter()
+			.map(|size| size.map(ByteSize::from_bytes))
+			.collect()
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::get_many", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn get_many(&self, operator: OperatorId, keys: &[EncodedKey]) -> HashMap<EncodedKey, EncodedPodRow> {
-		let mut found = HashMap::with_capacity(keys.len());
+	pub fn get_many(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Vec<Option<EncodedPodRow>> {
 		if keys.is_empty() || !self.state_written() {
-			return found;
+			return vec![None; keys.len()];
 		}
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return found;
+			return vec![None; keys.len()];
 		};
-		for (key, bytes) in route::get_many(conn, operator, tables, keys) {
-			found.insert(key, decode_row(bytes));
-		}
-		found
+		route::get_many(conn, operator, tables, keys).into_iter().map(|bytes| bytes.map(decode_row)).collect()
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]

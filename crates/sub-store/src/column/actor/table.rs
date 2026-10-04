@@ -6,11 +6,15 @@ use std::{collections::HashMap, sync::Arc};
 use arrow_array::RecordBatch;
 use dashmap::DashMap;
 use reifydb_catalog::store::column_snapshot::create::ColumnSnapshotToCreate;
-use reifydb_column::{compress::Compressor, snapshot::ColumnBlock};
 use reifydb_core::{
 	common::CommitVersion,
 	event::{EventListener, transaction::PostCommitEvent},
-	interface::catalog::{column_snapshot::ColumnSnapshotSource, id::TableId, storage::StorageId, table::Table},
+	interface::catalog::{
+		column_snapshot::{ColumnSnapshot, ColumnSnapshotSource},
+		id::TableId,
+		storage::StorageId,
+		table::Table,
+	},
 	key::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
@@ -30,7 +34,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{compress::Compressor, device::BlockKey, snapshot::ColumnBlock, store::ColumnStore};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	Result,
@@ -237,7 +241,8 @@ impl TableMaterializationActor {
 	) -> Result<()> {
 		let row_count = block_arc.len() as u64;
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
-		let column_snapshot = self.engine.catalog().create_column_snapshot(
+		let catalog = self.engine.catalog();
+		let column_snapshot = catalog.create_column_snapshot(
 			&mut admin,
 			ColumnSnapshotToCreate {
 				namespace: table.namespace,
@@ -250,9 +255,19 @@ impl TableMaterializationActor {
 				stats: Vec::new(),
 			},
 		)?;
-		self.block_store.persist(column_snapshot.id, block_arc.as_ref())?;
+		let old: Vec<ColumnSnapshot> = catalog
+			.list_column_snapshots_for_table(&mut Transaction::Admin(&mut admin), table.id)?
+			.into_iter()
+			.filter(|snapshot| snapshot.id != column_snapshot.id)
+			.collect();
+		for snapshot in &old {
+			catalog.drop_column_snapshot(&mut admin, snapshot.id)?;
+		}
+		self.block_store.write(&BlockKey::of(&column_snapshot), block_arc.as_ref())?;
 		commit_admin(admin)?;
-		self.block_store.put(column_snapshot.id, block_arc);
+		for snapshot in &old {
+			self.block_store.remove(&BlockKey::of(snapshot))?;
+		}
 		Ok(())
 	}
 }

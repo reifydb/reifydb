@@ -1,0 +1,17 @@
+[package]
+name = "zigzag"
+version = "0.1.0"
+authors = ["Zac Burns <That3Percent@gmail.com>"]
+edition = "2018"
+
+description = "ZigZag encoding and decoding"
+repository = "https://github.com/That3Percent/zigzag"
+keywords = ["varint"]
+categories = ["compression"]
+license = "MIT"
+
+[badges]
+maintenance = { status = "experimental"}
+
+[dependencies]
+num-traits = "0.2.11"

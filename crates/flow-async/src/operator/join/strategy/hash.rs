@@ -8,7 +8,7 @@ use arrow_schema::FieldRef;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	envelope::{Envelope, EnvelopeBuilder},
-	pod::EncodedPodRow,
+	pod::{EncodedPodRow, EncodedPodRowBuilder},
 	shape::{RowFamily, RowShape, RowShapeField, fingerprint::RowShapeFingerprint},
 };
 use reifydb_core::{
@@ -26,7 +26,7 @@ use reifydb_value::{
 	util::{cowvec::CowVec, hash::Hash128},
 	value::{
 		Value,
-		column_view::{ColumnView, FromColumnView},
+		column_view::ColumnView,
 		container::temporal_array::datetime_array,
 		datetime::DateTime,
 		partition::Partition,
@@ -56,93 +56,181 @@ pub(crate) fn build_shape(columns: &RecordBatch) -> Result<RowShape> {
 	Ok(RowShape::new(RowFamily::Pod, fields))
 }
 
-pub(crate) fn encode_row(
-	shape: &RowShape,
-	columns: &RecordBatch,
-	row_idx: usize,
-	now: DateTime,
+pub(crate) struct JoinRows {
+	columns: RecordBatch,
 	side: JoinSide,
-) -> Result<EncodedPodRow> {
-	let values: Vec<Value> = user_columns(columns)
-		.map(|(field, array)| Ok(ColumnView::try_from((array, field.as_ref()))?.get_value(row_idx)))
+	now: DateTime,
+	encoded: Option<EncodedRows>,
+}
+
+impl JoinRows {
+	pub(crate) fn new(columns: &RecordBatch, side: JoinSide, now: DateTime) -> Self {
+		Self {
+			columns: columns.clone(),
+			side,
+			now,
+			encoded: None,
+		}
+	}
+
+	pub(crate) fn encoded(&mut self, host: &mut dyn HostContext, store: &Store) -> Result<&EncodedRows> {
+		let encoded = match self.encoded.take() {
+			Some(encoded) => encoded,
+			None => {
+				let shape = build_shape(&self.columns)?;
+				store.set_row_shape(host, &shape)?;
+				let numbers = require_row_numbers(&self.columns)?.to_vec();
+				let rows = encode_rows(&shape, &self.columns, self.side, self.now)?;
+				EncodedRows {
+					numbers,
+					rows,
+				}
+			}
+		};
+		Ok(self.encoded.insert(encoded))
+	}
+}
+
+pub(crate) struct EncodedRows {
+	numbers: Vec<RowNumber>,
+	rows: Vec<EncodedPodRow>,
+}
+
+impl EncodedRows {
+	pub(crate) fn row(&self, index: usize) -> &EncodedPodRow {
+		&self.rows[index]
+	}
+
+	pub(crate) fn number(&self, index: usize) -> RowNumber {
+		self.numbers[index]
+	}
+}
+
+fn encode_rows(shape: &RowShape, columns: &RecordBatch, side: JoinSide, now: DateTime) -> Result<Vec<EncodedPodRow>> {
+	let views: Vec<ColumnView> = user_columns(columns)
+		.map(|(field, array)| ColumnView::try_from((array, field.as_ref())))
 		.collect::<Result<_>>()?;
-	let mut encoded = shape.allocate_pod();
-	shape.set_values(&mut encoded, &values);
-	let envelope = EnvelopeBuilder::new().fingerprint(shape.fingerprint());
-	let envelope = match side {
-		JoinSide::Left => left_envelope(envelope, columns, row_idx)?,
-		JoinSide::Right => match stamp_at::<DateTime>(columns, SystemColumn::Time, row_idx)? {
-			Some(time) => envelope.time(time),
-			None => envelope.created_at(now),
-		},
-	};
-	Ok(envelope.build(encoded.freeze().as_slice()))
+	let mut bodies: Vec<EncodedPodRowBuilder> = (0..columns.num_rows()).map(|_| shape.allocate_pod()).collect();
+	shape.write_columns(&mut bodies, &views)?;
+	let stamps = Stamps::of(columns, side)?;
+	let base = EnvelopeBuilder::new().fingerprint(shape.fingerprint());
+	bodies.into_iter()
+		.enumerate()
+		.map(|(row, body)| Ok(stamps.stamp(base, row, now)?.build(body.freeze().as_slice())))
+		.collect()
 }
 
-fn left_envelope(mut envelope: EnvelopeBuilder, columns: &RecordBatch, row_idx: usize) -> Result<EnvelopeBuilder> {
-	if let Some(created_at) = stamp_at::<DateTime>(columns, SystemColumn::CreatedAt, row_idx)? {
-		envelope = envelope.created_at(created_at);
-	}
-	if let Some(updated_at) = stamp_at::<DateTime>(columns, SystemColumn::UpdatedAt, row_idx)? {
-		envelope = envelope.updated_at(updated_at);
-	}
-	if let Some(time) = stamp_at::<DateTime>(columns, SystemColumn::Time, row_idx)? {
-		envelope = envelope.time(time);
-	}
-	if let Some(commit_version) = stamp_at::<u64>(columns, SystemColumn::CommitVersion, row_idx)? {
-		envelope = envelope.commit_version(commit_version);
-	}
-	if let Some(partition) = stamp_at::<u128>(columns, SystemColumn::Partitions, row_idx)? {
-		envelope = envelope.partition(Partition(partition));
-	}
-	Ok(envelope)
+enum Stamps<'a> {
+	Left {
+		created_at: Option<ColumnView<'a>>,
+		updated_at: Option<ColumnView<'a>>,
+		time: Option<ColumnView<'a>>,
+		commit_version: Option<ColumnView<'a>>,
+		partition: Option<ColumnView<'a>>,
+	},
+	Right {
+		time: Option<ColumnView<'a>>,
+	},
 }
 
-fn stamp_at<T: FromColumnView>(columns: &RecordBatch, column: SystemColumn, row_idx: usize) -> Result<Option<T>> {
-	match column_view(columns, column.name())? {
-		Some(view) => view.get_as::<T>(row_idx),
-		None => Ok(None),
+impl<'a> Stamps<'a> {
+	fn of(columns: &'a RecordBatch, side: JoinSide) -> Result<Self> {
+		Ok(match side {
+			JoinSide::Left => Stamps::Left {
+				created_at: column_view(columns, SystemColumn::CreatedAt.name())?,
+				updated_at: column_view(columns, SystemColumn::UpdatedAt.name())?,
+				time: column_view(columns, SystemColumn::Time.name())?,
+				commit_version: column_view(columns, SystemColumn::CommitVersion.name())?,
+				partition: column_view(columns, SystemColumn::Partitions.name())?,
+			},
+			JoinSide::Right => Stamps::Right {
+				time: column_view(columns, SystemColumn::Time.name())?,
+			},
+		})
+	}
+
+	fn stamp(&self, mut envelope: EnvelopeBuilder, row: usize, now: DateTime) -> Result<EnvelopeBuilder> {
+		match self {
+			Stamps::Left {
+				created_at,
+				updated_at,
+				time,
+				commit_version,
+				partition,
+			} => {
+				if let Some(view) = created_at
+					&& let Some(created_at) = view.get_as::<DateTime>(row)?
+				{
+					envelope = envelope.created_at(created_at);
+				}
+				if let Some(view) = updated_at
+					&& let Some(updated_at) = view.get_as::<DateTime>(row)?
+				{
+					envelope = envelope.updated_at(updated_at);
+				}
+				if let Some(view) = time
+					&& let Some(time) = view.get_as::<DateTime>(row)?
+				{
+					envelope = envelope.time(time);
+				}
+				if let Some(view) = commit_version
+					&& let Some(commit_version) = view.get_as::<u64>(row)?
+				{
+					envelope = envelope.commit_version(commit_version);
+				}
+				if let Some(view) = partition
+					&& let Some(partition) = view.get_as::<u128>(row)?
+				{
+					envelope = envelope.partition(Partition(partition));
+				}
+				Ok(envelope)
+			}
+			Stamps::Right {
+				time,
+			} => {
+				let time = match time {
+					Some(view) => view.get_as::<DateTime>(row)?,
+					None => None,
+				};
+				Ok(match time {
+					Some(time) => envelope.time(time),
+					None => envelope.created_at(now),
+				})
+			}
+		}
 	}
 }
 
 #[instrument(name = "flow::operator::join::add_state_entry", level = "trace", skip_all)]
 pub(crate) fn add_to_state_entry_batch(
 	host: &mut dyn HostContext,
-	store: &mut Store,
+	store: &Store,
 	key_hash: &Hash128,
-	columns: &RecordBatch,
+	rows: &mut JoinRows,
 	indices: &[usize],
 ) -> Result<()> {
 	if indices.is_empty() {
 		return Ok(());
 	}
-	let shape = build_shape(columns)?;
-	store.set_row_shape(host, &shape)?;
+	let encoded = rows.encoded(host, store)?;
 	let group = store.group_of(key_hash);
-	let row_numbers = require_row_numbers(columns)?;
-	for &idx in indices {
-		let row = encode_row(&shape, columns, idx, host.written_at(), store.side())?;
-		store.write_row(host, group, row_numbers[idx], &row)?;
-	}
-	Ok(())
+	let batch = indices.iter().map(|&idx| (encoded.number(idx), encoded.row(idx).clone())).collect();
+	store.write_rows(host, group, batch)
 }
 
 pub(crate) struct EntryUpdate {
 	group: GroupId,
-	shape: RowShape,
 }
 
 pub(crate) fn prepare_entry_update(
 	host: &mut dyn HostContext,
 	store: &Store,
 	key_hash: &Hash128,
-	post: &RecordBatch,
+	rows: &mut JoinRows,
 ) -> Result<EntryUpdate> {
-	let shape = build_shape(post)?;
-	store.set_row_shape(host, &shape)?;
+	rows.encoded(host, store)?;
 	Ok(EntryUpdate {
 		group: store.group_of(key_hash),
-		shape,
 	})
 }
 
@@ -151,11 +239,12 @@ pub(crate) fn update_row_in_entry(
 	store: &Store,
 	prepared: &EntryUpdate,
 	pre_row_number: RowNumber,
-	post: &RecordBatch,
+	rows: &mut JoinRows,
 	row_idx: usize,
 ) -> Result<bool> {
-	let row = encode_row(&prepared.shape, post, row_idx, host.written_at(), store.side())?;
-	let post_row_number = require_row_numbers(post)?[row_idx];
+	let encoded = rows.encoded(host, store)?;
+	let row = encoded.row(row_idx).clone();
+	let post_row_number = encoded.number(row_idx);
 	if pre_row_number == post_row_number {
 		store.update_row_in(host, prepared.group, post_row_number, &row)
 	} else {
@@ -173,13 +262,12 @@ pub(crate) fn update_single_row_in_entry(
 	store: &Store,
 	key_hash: &Hash128,
 	pre_row_number: RowNumber,
-	post: &RecordBatch,
+	rows: &mut JoinRows,
 	row_idx: usize,
 ) -> Result<bool> {
-	let shape = build_shape(post)?;
-	store.set_row_shape(host, &shape)?;
-	let row = encode_row(&shape, post, row_idx, host.written_at(), store.side())?;
-	let post_row_number = require_row_numbers(post)?[row_idx];
+	let encoded = rows.encoded(host, store)?;
+	let row = encoded.row(row_idx).clone();
+	let post_row_number = encoded.number(row_idx);
 	if pre_row_number == post_row_number {
 		store.update_row(host, key_hash, post_row_number, &row)
 	} else {
@@ -638,7 +726,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::host::TxnHostContext,
-		transaction::{deferred::DeferredTransaction, mock::FlowTxn},
+		transaction::{FlowTransaction, deferred::DeferredTransaction, mock::FlowTxn},
 	};
 
 	fn h(v: u128) -> Hash128 {
@@ -680,9 +768,12 @@ mod tests {
 		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
 		let columns = columns_with_time(&[("mint", 7)], 1, None);
 		let shape = build_shape(&columns).unwrap();
-		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
 
-		let row = encode_row(&shape, &columns, 0, now, JoinSide::Right).unwrap();
+		let row = JoinRows::new(&columns, JoinSide::Right, now)
+			.encoded(&mut host(&mut txn, operator), &store)
+			.unwrap()
+			.row(0)
+			.clone();
 		let envelope = Envelope::try_view(&row).unwrap();
 		assert_eq!(envelope.header_size(), 17, "flags byte plus a fingerprint plus exactly one instant");
 		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
@@ -723,9 +814,12 @@ mod tests {
 		let event = DateTime::from_nanos(1_600_000_000_000_000_000);
 		let columns = columns_with_time(&[("mint", 9)], 2, Some(event));
 		let shape = build_shape(&columns).unwrap();
-		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
 
-		let row = encode_row(&shape, &columns, 0, now, JoinSide::Right).unwrap();
+		let row = JoinRows::new(&columns, JoinSide::Right, now)
+			.encoded(&mut host(&mut txn, operator), &store)
+			.unwrap()
+			.row(0)
+			.clone();
 		let envelope = Envelope::try_view(&row).unwrap();
 		assert_eq!(envelope.header_size(), 17, "a timed row must cost the same as a timeless one");
 		assert_eq!(envelope.fingerprint(), Some(shape.fingerprint()));
@@ -764,7 +858,14 @@ mod tests {
 
 		let rows: Vec<EncodedBytes> = [&first, &second, &third]
 			.into_iter()
-			.map(|columns| encode_row(&shape, columns, 0, now, JoinSide::Right).unwrap().into_bytes())
+			.map(|columns| {
+				JoinRows::new(columns, JoinSide::Right, now)
+					.encoded(&mut host(&mut txn, operator), &store)
+					.unwrap()
+					.row(0)
+					.clone()
+					.into_bytes()
+			})
 			.collect();
 
 		let decoded = decode_run(
@@ -792,16 +893,30 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(70);
-		let mut store = Store::new(JoinSide::Right);
+		let store = Store::new(JoinSide::Right);
+		let now = txn.written_at();
 
 		let key_a = h(0xA);
 		let resolved = columns_with_fields(&[("mint", 1), ("decimals", 8)], 1);
-		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key_a, &resolved, &[0]).unwrap();
+		add_to_state_entry_batch(
+			&mut host(&mut txn, operator),
+			&store,
+			&key_a,
+			&mut JoinRows::new(&resolved, JoinSide::Right, now),
+			&[0],
+		)
+		.unwrap();
 
 		let key_b = h(0xB);
 		let freshly_discovered = columns_with_fields(&[("mint", 2), ("decimals", 6), ("bump", 255)], 2);
-		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key_b, &freshly_discovered, &[0])
-			.unwrap();
+		add_to_state_entry_batch(
+			&mut host(&mut txn, operator),
+			&store,
+			&key_b,
+			&mut JoinRows::new(&freshly_discovered, JoinSide::Right, now),
+			&[0],
+		)
+		.unwrap();
 
 		let block_b = store.rows_for_key(&mut host(&mut txn, operator), &key_b, None, 10).unwrap();
 		assert_eq!(block_b.len(), 1);
@@ -822,15 +937,30 @@ mod tests {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(71);
-		let mut store = Store::new(JoinSide::Right);
+		let store = Store::new(JoinSide::Right);
 		let key = h(0xC);
+		let now = txn.written_at();
 
 		let row1 = columns_with_fields(&[("mint", 111), ("flag", 1)], 1);
-		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key, &row1, &[0]).unwrap();
+		add_to_state_entry_batch(
+			&mut host(&mut txn, operator),
+			&store,
+			&key,
+			&mut JoinRows::new(&row1, JoinSide::Right, now),
+			&[0],
+		)
+		.unwrap();
 
 		// The same column set in the opposite order, which is a different fingerprint.
 		let row2 = columns_with_fields(&[("flag", 999), ("mint", 222)], 2);
-		add_to_state_entry_batch(&mut host(&mut txn, operator), &mut store, &key, &row2, &[0]).unwrap();
+		add_to_state_entry_batch(
+			&mut host(&mut txn, operator),
+			&store,
+			&key,
+			&mut JoinRows::new(&row2, JoinSide::Right, now),
+			&[0],
+		)
+		.unwrap();
 
 		let block = store.rows_for_key(&mut host(&mut txn, operator), &key, None, 10).unwrap();
 		assert_eq!(block.len(), 2);

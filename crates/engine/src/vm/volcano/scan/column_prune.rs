@@ -3,8 +3,8 @@
 
 use std::mem::discriminant;
 
-use reifydb_column::predicate::{ColRef, Predicate};
 use reifydb_core::interface::catalog::column_snapshot::{ColumnSnapshot, ColumnSnapshotSource};
+use reifydb_store_column::predicate::{ColRef, Predicate};
 use reifydb_value::value::Value;
 
 pub(crate) fn prune_series_snapshots(

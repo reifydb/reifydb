@@ -13,7 +13,7 @@ use reifydb_core::{
 		catalog::object::ObjectId,
 		change::{Change, Diff},
 	},
-	key::{any::TaggedKey, tag::KeyTag},
+	key::any::TaggedKey,
 	state::timer::TimerKind,
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -123,10 +123,7 @@ impl<O> Harness<O> {
 			&pending,
 		);
 		let mut rest = Pending::new();
-		for (key, write) in pending.iter_sorted() {
-			if matches!(KeyTag::of(key), Some(KeyTag::OperatorState)) {
-				continue;
-			}
+		for (key, write) in pending.rows_ordered() {
 			match write {
 				PendingWrite::Set(row) => rest.insert(key.clone(), row.clone()),
 				PendingWrite::Remove {

@@ -786,17 +786,8 @@ mod tests {
 		fn state_get(&mut self, key: &GroupStateKey) -> ValueResult<Option<EncodedPodRow>> {
 			Ok(self.state.get(key.as_slice()).cloned())
 		}
-		fn state_get_many_visit(
-			&mut self,
-			keys: &[GroupStateKey],
-			visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> ValueResult<()>,
-		) -> ValueResult<()> {
-			for key in keys {
-				if let Some(b) = self.state.get(key.as_slice()) {
-					visit(key.clone(), b.clone())?;
-				}
-			}
-			Ok(())
+		fn state_get_many(&mut self, keys: &[GroupStateKey]) -> ValueResult<Vec<Option<EncodedPodRow>>> {
+			Ok(keys.iter().map(|key| self.state.get(key.as_slice()).cloned()).collect())
 		}
 		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> ValueResult<()> {
 			self.state.insert(key.as_slice().to_vec(), payload);

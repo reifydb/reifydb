@@ -410,6 +410,7 @@ impl Database {
 		}
 	}
 
+	#[cfg(feature = "column")]
 	/// Read-only; rejects DDL and DML. Scans through the column layout.
 	pub fn query_column_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>> {
 		let r = self.engine.query_column_as(IdentityId::root(), rql, params.into());

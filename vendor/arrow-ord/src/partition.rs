@@ -36,8 +36,9 @@ impl Partitions {
     /// Consecutive ranges will be contiguous: i.e [`(a, b)` and `(b, c)`], and
     /// `start = 0` and `end = self.len()` for the first and last range respectively
     pub fn ranges(&self) -> Vec<Range<usize>> {
-        let Some(boundaries) = &self.0 else {
-            return vec![];
+        let boundaries = match &self.0 {
+            Some(boundaries) => boundaries,
+            None => return vec![],
         };
 
         let mut out = vec![];
@@ -134,7 +135,7 @@ pub fn partition(columns: &[ArrayRef]) -> Result<Partitions, ArrowError> {
         return Err(ArrowError::InvalidArgumentError(
             "Partition columns have different row counts".to_string(),
         ));
-    }
+    };
 
     match num_rows {
         0 => return Ok(Partitions(None)),

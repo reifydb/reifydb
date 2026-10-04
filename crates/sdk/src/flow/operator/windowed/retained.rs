@@ -15,8 +15,6 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 	state::timer::StateStore,
 };
-#[cfg(reifydb_assertions)]
-use reifydb_flow_async::operator::state::reaper::queued;
 use reifydb_flow_async::{
 	operator::{
 		state::{
@@ -93,6 +91,7 @@ impl<A, K, V> RetainedDriver<A, K, V>
 where
 	A: Emit<Accumulator = RetainedAccumulator<K, V>> + Send + Sync + 'static,
 	A::Output: Row,
+	A::Output: Clone + StateCodec + HeapSize,
 	A::GroupKey: Send + Sync,
 	K: Ord + Clone + Debug + HeapSize + StateCodec + Send + Sync,
 	V: Clone + Debug + PartialEq + HeapSize + Send + Sync,
@@ -201,7 +200,7 @@ where
 		engine.expire_meta(store, horizon.to_order())?;
 		if *reap_queue_empty {
 			reifydb_assertions! {
-				let pending = queued(store, 1)?;
+				let pending = reifydb_flow_async::operator::state::reaper::queued(store, 1)?;
 				assert!(
 					pending.groups.is_empty(),
 					"the reap queue still holds {:?} while the driver believes it drained the \
@@ -235,7 +234,7 @@ where
 		emitted: &mut Emitted<A>,
 	) -> Result<()> {
 		let key = PublishKey::new(group_id, Self::row_key(group, window_start));
-		let Some(mut state) = get_classified::<_, PublishState>(store, &key)? else {
+		let Some(mut state) = get_classified::<_, PublishState<A::Output>>(store, &key)? else {
 			return Ok(());
 		};
 		if !state.dirty {
@@ -439,6 +438,7 @@ impl<A, K, V> MountedOperator for RetainedDriver<A, K, V>
 where
 	A: Emit<Accumulator = RetainedAccumulator<K, V>> + Send + Sync + 'static,
 	A::Output: Row,
+	A::Output: Clone + StateCodec + HeapSize,
 	A::GroupKey: Send + Sync,
 	K: Ord + Clone + Debug + HeapSize + StateCodec + Send + Sync + 'static,
 	V: Clone + Debug + PartialEq + HeapSize + Send + Sync + 'static,
@@ -550,6 +550,8 @@ mod tests {
 	use super::*;
 	use crate::row;
 
+	#[reifydb_macro::operator_state]
+	#[derive(Clone, HeapSize)]
 	struct Out {
 		v: i64,
 	}

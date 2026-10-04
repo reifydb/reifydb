@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_column::predicate::{ColRef, Predicate};
 use reifydb_core::interface::catalog::series::Series;
+use reifydb_store_column::predicate::{ColRef, Predicate};
 use reifydb_value::value::{Value, value_type::ValueType};
 
 pub(crate) fn series_scan_predicate(

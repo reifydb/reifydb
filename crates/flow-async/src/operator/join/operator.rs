@@ -57,7 +57,7 @@ use super::{
 	column::{JoinedColumnsBuilder, JoinedColumnsCache},
 	snapshot::SnapshotLedger,
 	state::{JoinSide, JoinState},
-	strategy::{JoinContext, JoinStrategy, UpdateKeys},
+	strategy::{JoinContext, JoinStrategy, UpdateKeys, hash::JoinRows},
 };
 use crate::{
 	error::FlowStateError,
@@ -998,6 +998,7 @@ impl JoinOperator {
 		let keys = self.compute_join_keys(post, self.compiled_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
+		let mut rows = JoinRows::new(post, side, host.written_at());
 
 		for key_hash in &order {
 			let indices = &groups[key_hash];
@@ -1005,6 +1006,7 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
+				rows: &mut rows,
 			};
 			result.extend(self.strategy.handle_insert(host, post, indices, key_hash, &mut ctx)?);
 		}
@@ -1014,6 +1016,7 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
+				rows: &mut rows,
 			};
 			result.extend(self.strategy.handle_insert_undefined(host, post, row_idx, &mut ctx)?);
 		}
@@ -1035,6 +1038,7 @@ impl JoinOperator {
 		let keys = self.compute_join_keys(pre, self.compiled_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
+		let mut rows = JoinRows::new(pre, side, host.written_at());
 
 		for key_hash in &order {
 			let indices = &groups[key_hash];
@@ -1042,6 +1046,7 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
+				rows: &mut rows,
 			};
 			result.extend(self.strategy.handle_remove(host, pre, indices, key_hash, &mut ctx)?);
 		}
@@ -1051,6 +1056,7 @@ impl JoinOperator {
 				side,
 				state,
 				operator: self,
+				rows: &mut rows,
 			};
 			result.extend(self.strategy.handle_remove_undefined(host, pre, row_idx, &mut ctx)?);
 		}
@@ -1077,12 +1083,14 @@ impl JoinOperator {
 			Some(_) => row_times(post)?,
 			None => Vec::new(),
 		};
+		let mut rows = JoinRows::new(post, side, host.written_at());
 
 		for row_idx in 0..row_count {
 			let mut ctx = JoinContext {
 				side,
 				state,
 				operator: self,
+				rows: &mut rows,
 			};
 			let diffs = match (pre_keys[row_idx], post_keys[row_idx]) {
 				(Some(pre_key), Some(post_key)) => {
@@ -1156,7 +1164,7 @@ mod seal_tests {
 			any::TaggedKey,
 			operator::{
 				keyspace::join::{JoinLeft, JoinRight, JoinRowExpiryState as JoinRowExpiry},
-				state::{KeyspaceId, keyspace_inner_range, node_prefix},
+				state::{GroupStateKey, KeyspaceId, keyspace_inner_range, node_prefix},
 				traits::Keyspace,
 			},
 		},
@@ -1434,12 +1442,12 @@ mod seal_tests {
 	}
 
 	impl Batch for CountingTxn {
-		fn set(&mut self, keys: &[EncodedKey], rows: &[EncodedBytes]) -> Result<()> {
+		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 			self.pending_mut().insert_batch(keys, rows);
 			Ok(())
 		}
 
-		fn remove(&mut self, keys: &[EncodedKey]) -> Result<()> {
+		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 			self.pending_mut().remove_batch(keys);
 			Ok(())
 		}
@@ -1540,12 +1548,8 @@ mod seal_tests {
 			self.inner.storage_range(range, scope, batch_size)
 		}
 
-		fn fetch_state_external(
-			&mut self,
-			keys: Vec<EncodedKey>,
-			items: &mut Vec<MultiVersionRow<TaggedKey>>,
-		) -> Result<()> {
-			self.inner.fetch_state_external(keys, items)
+		fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+			self.inner.fetch_state(id, keys)
 		}
 	}
 

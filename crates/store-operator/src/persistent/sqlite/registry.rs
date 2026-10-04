@@ -140,7 +140,7 @@ mod tests {
 		assert_eq!(get::<JoinLeft>(&store, STRANGER, &key()), None);
 		assert!(scan::<JoinLeft>(&store, STRANGER).is_empty());
 		assert!(keys_after::<JoinLeft>(&store, STRANGER, None, 10).is_empty());
-		assert!(store.get_many(STRANGER, &[encode::<JoinLeft>(&key()).into_encoded()]).is_empty());
+		assert_eq!(store.get_many(STRANGER, &[&encode::<JoinLeft>(&key()).into_encoded()]), vec![None]);
 		assert!(store.group_page(STRANGER, &[key().group.0], 10, KeyspaceMask::all()).items.is_empty());
 		assert!(store.range_batch(STRANGER, EncodedKeyRange::all(), 10).items.is_empty());
 	}
@@ -171,6 +171,20 @@ mod tests {
 		set_one::<JoinLeft>(&store, OWNER, &key(), b"left");
 		remove_one::<JoinLeft>(&store, OWNER, &key());
 		assert!(store.occupied_keyspaces(OWNER).is_empty());
+	}
+
+	#[test]
+	fn only_operators_still_holding_rows_are_listed() {
+		// the key filter rebuild lists operators from here, so an unlisted live operator hides its keys and a
+		// listed emptied one is a wasted scan
+		let store = open();
+		set_one::<JoinLeft>(&store, STRANGER, &key(), b"left");
+		set_one::<JoinLeft>(&store, OWNER, &key(), b"left");
+		let mut listed = store.occupied_operators();
+		listed.sort_unstable();
+		assert_eq!(listed, vec![OWNER, STRANGER]);
+		remove_one::<JoinLeft>(&store, OWNER, &key());
+		assert_eq!(store.occupied_operators(), vec![STRANGER]);
 	}
 
 	#[test]

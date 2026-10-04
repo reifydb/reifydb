@@ -70,7 +70,8 @@ impl WindowAccumulator for SumAccumulator {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 struct SumOut {
 	group: String,
 	total: f64,

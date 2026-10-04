@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, HashMap};
+use std::{borrow::Borrow, collections::BTreeMap};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
@@ -23,19 +23,17 @@ use crate::{
 
 impl Measure for MemoryPersistent {
 	#[instrument(name = "store::operator::persistent::memory::state_sizes", level = "trace", skip_all)]
-	fn state_sizes(
+	fn state_sizes<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,
-		keys: &[GroupStateKey],
-	) -> Result<HashMap<GroupStateKey, ByteSize>> {
+		keys: &[Q],
+	) -> Result<Vec<Option<ByteSize>>> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
-			return Ok(HashMap::new());
+			return Ok(vec![None; keys.len()]);
 		};
 		Ok(keys.iter()
-			.filter_map(|key| {
-				rows.get(key).map(|row| (key.clone(), ByteSize::from_bytes(row.len() as u64)))
-			})
+			.map(|key| rows.get(key.borrow()).map(|row| ByteSize::from_bytes(row.len() as u64)))
 			.collect())
 	}
 

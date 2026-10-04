@@ -4,27 +4,20 @@
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
-	actors::pending::{Pending, PendingWrite},
+	actors::pending::Pending,
 	common::CommitVersion,
-	delta::RemoveVisibility,
 	interface::catalog::flow::OperatorId,
-	key::{
-		any::TaggedKey,
-		operator::{
-			keyspace::KEYSPACES,
-			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
-		},
-		tag::KeyTag,
+	key::operator::{
+		keyspace::KEYSPACES,
+		state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	},
 };
 use reifydb_flow_async::transaction::{
-	ChangeCoordinate, DeferredParams, FlowTransaction,
-	deferred::DeferredTransaction,
-	substrate::{FlowSubstrate, apply_operator_state},
+	ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_transaction::interceptor::interceptors::Interceptors;
-use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
+use reifydb_value::value::datetime::DateTime;
 
 use crate::engine::TestEngine;
 
@@ -103,8 +96,6 @@ fn default_coordinate() -> ChangeCoordinate {
 
 pub trait FlowTxn {
 	fn flow_txn(&self) -> FlowTxnBuilder<'_>;
-
-	fn commit_pending(&self, txn: &mut DeferredTransaction);
 }
 
 impl FlowTxn for TestEngine {
@@ -115,31 +106,5 @@ impl FlowTxn for TestEngine {
 			clock: self.clock().clone(),
 			catalog: Catalog::testing(),
 		}
-	}
-
-	fn commit_pending(&self, txn: &mut DeferredTransaction) {
-		let pending = txn.take_pending();
-		let mut cmd = self.begin_command(IdentityId::system()).unwrap();
-		cmd.disable_conflict_tracking().unwrap();
-		for (key, pw) in pending.iter_sorted() {
-			if matches!(KeyTag::of(key), Some(KeyTag::OperatorState)) {
-				continue;
-			}
-			let key = TaggedKey::decode(key).expect("a pending write must carry a key a typed key decodes");
-			match pw {
-				PendingWrite::Set(v) => cmd.set(&key, v.clone()).unwrap(),
-				PendingWrite::Remove {
-					announce: RemoveVisibility::Announced,
-				} => cmd.remove(&key).unwrap(),
-				PendingWrite::Remove {
-					announce: RemoveVisibility::Unobserved,
-				} => cmd.remove_unobserved(&key).unwrap(),
-				PendingWrite::Remove {
-					announce: RemoveVisibility::Silent,
-				} => cmd.remove_silent(&key).unwrap(),
-			};
-		}
-		cmd.commit_unchecked().unwrap();
-		apply_operator_state(&self.inner().operator_state(), &pending);
 	}
 }

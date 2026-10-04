@@ -18,6 +18,7 @@
 //! Defines sort kernel for `ArrayRef`
 
 use crate::ord::{DynComparator, make_comparator};
+use arrow_array::builder::BufferBuilder;
 use arrow_array::cast::*;
 use arrow_array::types::*;
 use arrow_array::*;
@@ -372,7 +373,7 @@ fn sort_bytes<T: ByteArrayType>(
             let len = slice.len() as u64;
             // Compute the 4‑byte prefix in BE order, or left‑pad if shorter
             let prefix = if slice.len() >= 4 {
-                let raw = std::ptr::read_unaligned(slice.as_ptr().cast::<u32>());
+                let raw = std::ptr::read_unaligned(slice.as_ptr() as *const u32);
                 u32::from_be(raw)
             } else if slice.is_empty() {
                 // Handle empty slice case to avoid shift overflow
@@ -721,14 +722,14 @@ fn sort_run_downcasted<R: RunEndIndexType>(
 
     let run_ends = run_array.run_ends();
 
-    let mut new_run_ends = Vec::with_capacity(run_ends.len());
+    let mut new_run_ends_builder = BufferBuilder::<R::Native>::new(run_ends.len());
     let mut new_run_end: usize = 0;
     let mut new_physical_len: usize = 0;
 
     let consume_runs = |run_length, _| {
         new_run_end += run_length;
         new_physical_len += 1;
-        new_run_ends.push(R::Native::from_usize(new_run_end).unwrap());
+        new_run_ends_builder.append(R::Native::from_usize(new_run_end).unwrap());
     };
 
     let (values_indices, run_values) = sort_run_inner(run_array, options, output_len, consume_runs);
@@ -738,7 +739,7 @@ fn sort_run_downcasted<R: RunEndIndexType>(
         // The function builds a valid run_ends array and hence need not be validated.
         ArrayDataBuilder::new(R::DATA_TYPE)
             .len(new_physical_len)
-            .add_buffer(new_run_ends.into())
+            .add_buffer(new_run_ends_builder.finish())
             .build_unchecked()
     };
 
@@ -956,7 +957,7 @@ pub fn lexsort_to_indices(
         return Err(ArrowError::ComputeError(
             "lexical sort columns have different row counts".to_string(),
         ));
-    }
+    };
 
     let len = limit.unwrap_or(row_count).min(row_count);
 
@@ -1094,11 +1095,11 @@ fn sift_down_worst_heap(
         }
 
         let right = left + 1;
-        let worst = if right < heap.len() && compare(heap[left], heap[right]) == Ordering::Less {
-            right
-        } else {
-            left
-        };
+        let mut worst = left;
+
+        if right < heap.len() && compare(heap[left], heap[right]) == Ordering::Less {
+            worst = right;
+        }
 
         if compare(heap[pos], heap[worst]) != Ordering::Less {
             break;
@@ -1131,7 +1132,7 @@ impl LexicographicalComparator {
     pub fn compare(&self, a_idx: usize, b_idx: usize) -> Ordering {
         for comparator in &self.compare_items {
             match comparator(a_idx, b_idx) {
-                Ordering::Equal => {}
+                Ordering::Equal => continue,
                 r => return r,
             }
         }
@@ -1167,7 +1168,7 @@ impl<const N: usize> FixedLexicographicalComparator<N> {
     pub fn compare(&self, a_idx: usize, b_idx: usize) -> Ordering {
         for comparator in &self.compare_items {
             match comparator(a_idx, b_idx) {
-                Ordering::Equal => {}
+                Ordering::Equal => continue,
                 r => return r,
             }
         }
@@ -1211,7 +1212,7 @@ mod tests {
     use half::f16;
     use rand::rngs::StdRng;
     use rand::seq::SliceRandom;
-    use rand::{Rng, RngExt, SeedableRng};
+    use rand::{Rng, RngCore, SeedableRng};
 
     fn create_decimal_array<T: DecimalType>(
         data: Vec<Option<usize>>,
@@ -1621,7 +1622,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_sort_to_indices_primitives() {
         test_sort_to_indices_primitive_arrays::<Int8Type>(
             vec![None, Some(0), Some(2), Some(-1), Some(0), None],
@@ -2732,7 +2732,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_sort_primitives() {
         // default case
         test_sort_primitive_arrays::<UInt8Type>(
@@ -3629,7 +3628,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore)] // Unsupported inline assembly
     fn test_sort_list() {
         test_sort_list_arrays::<Int8Type>(
             vec![
@@ -5139,7 +5137,7 @@ mod tests {
 
         // Use standard library sort as reference
         let mut expected = test_cases.clone();
-        expected.sort_unstable();
+        expected.sort();
 
         // Use our sorting algorithm
         let string_array = StringArray::from(test_cases.clone());
@@ -5187,7 +5185,7 @@ mod tests {
 
         let strings: Vec<&str> = test_cases.iter().map(|(s, _)| *s).collect();
         let mut expected = strings.clone();
-        expected.sort_unstable();
+        expected.sort();
 
         let string_array = StringArray::from(strings.clone());
         let indices: Vec<u32> = (0..strings.len() as u32).collect();
@@ -5220,7 +5218,7 @@ mod tests {
         ];
 
         let mut expected = test_cases.clone();
-        expected.sort_unstable();
+        expected.sort();
 
         let string_array = StringArray::from(test_cases.clone());
         let indices: Vec<u32> = (0..test_cases.len() as u32).collect();
@@ -5338,7 +5336,7 @@ mod tests {
         let test_cases = vec!["a", "ab", "ba", "baa", "abba", "abbc", "abc", "cda"];
 
         let mut expected = test_cases.clone();
-        expected.sort_unstable();
+        expected.sort();
         expected.reverse(); // Descending order
 
         let string_array = StringArray::from(test_cases.clone());
@@ -5397,7 +5395,7 @@ mod tests {
         let limit = 3;
 
         let mut expected = test_cases.clone();
-        expected.sort_unstable();
+        expected.sort();
         expected.truncate(limit);
 
         let string_array = StringArray::from(test_cases.clone());

@@ -17,9 +17,12 @@ use reifydb_core::{
 	metrics::heap::{HeapSize, OperatorSample},
 	value::batch::{empty_batch, take_rows},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::{CompileContext, EvalContext},
+use reifydb_evaluate::{
+	expression::{
+		compile::compile_expression,
+		context::{CompileContext, EvalContext},
+	},
+	lower::LoweredExpr,
 };
 use reifydb_flow::context::FlowContext;
 use reifydb_macro::operator_state;
@@ -67,7 +70,7 @@ impl IntoGroupStateKey for &VisibilityKey {
 pub struct GateOperator {
 	parent_schema: Option<SchemaRef>,
 	operator: OperatorId,
-	compiled_conditions: Vec<CompiledExpr>,
+	lowered_conditions: Vec<LoweredExpr>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ctx: Arc<FlowContext>,
@@ -85,13 +88,16 @@ impl GateOperator {
 		let compile_ctx = CompileContext {
 			symbols: &ctx.symbols,
 		};
-		let compiled_conditions: Vec<CompiledExpr> =
-			conditions.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
+		for condition in &conditions {
+			compile_expression(&compile_ctx, condition)?;
+		}
+		let lowered_conditions: Vec<LoweredExpr> =
+			conditions.into_iter().map(|condition| LoweredExpr::new(condition, "gate")).collect();
 
 		Ok(Self {
 			parent_schema,
 			operator,
-			compiled_conditions,
+			lowered_conditions,
 			routines,
 			runtime_context,
 			ctx,
@@ -124,8 +130,8 @@ impl GateOperator {
 
 		let mut mask = vec![true; row_count];
 
-		for compiled_condition in &self.compiled_conditions {
-			let result = compiled_condition.execute(&exec_ctx)?;
+		for lowered_condition in &self.lowered_conditions {
+			let result = lowered_condition.evaluate(&exec_ctx)?;
 			let result_col = ColumnView::try_from(&result)?;
 
 			for (row_idx, mask_val) in mask.iter_mut().enumerate() {

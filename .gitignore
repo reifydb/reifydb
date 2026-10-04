@@ -10,11 +10,8 @@
 /pkg/rust/tests/fuzz/corpus/
 /pkg/rust/tests/fuzz/artifacts/**/target/
 
-# Ignore workspace member lock files - only root Cargo.lock should exist
-/bin/*/Cargo.lock
-/crates/*/Cargo.lock
-/pkg/rust/*/Cargo.lock
-!/Cargo.lock
+Cargo.lock
+!/vendor/**/Cargo.lock
 
 .idea
 .run

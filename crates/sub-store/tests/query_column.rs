@@ -6,11 +6,11 @@
 use std::collections::BTreeMap;
 
 use reifydb::{
-	Clock, Frame, MockClock, RuntimeConfig, WithSubsystem, embedded as db_embedded,
+	Clock, Frame, MockClock, RuntimeConfig, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_core::execution::ExecutionResult;
-use reifydb_sub_store::{factory::StorageSubsystemFactory, subsystem::StorageConfig};
+use reifydb_sub_store::subsystem::StorageConfig;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	params::Params,
@@ -32,12 +32,7 @@ fn materializing_db() -> TestDb {
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		..StorageConfig::default()
 	};
-	let db = TestDb::from(
-		db_embedded::memory()
-			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-			.build()
-			.expect("build"),
-	);
+	let db = TestDb::from(db_embedded::memory().with_storage_config(fast_config).build().expect("build"));
 	db.admin("CREATE NAMESPACE test");
 	db
 }
@@ -263,7 +258,7 @@ fn series_db() -> TestDb {
 	};
 	let db = TestDb::from(
 		db_embedded::memory()
-			.with_subsystem(Box::new(StorageSubsystemFactory::new(config)))
+			.with_storage_config(config)
 			.with_runtime_config(
 				RuntimeConfig::default().clock(Clock::Mock(MockClock::new(MOCK_EPOCH_NANOS))),
 			)

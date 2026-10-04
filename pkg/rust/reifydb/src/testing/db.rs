@@ -71,6 +71,7 @@ impl TestDb {
 		self.db.query_as_root(rql, ()).unwrap()
 	}
 
+	#[cfg(feature = "column")]
 	pub fn query_column(&self, rql: &str) -> Vec<Frame> {
 		self.db.query_column_as_root(rql, ()).unwrap()
 	}
@@ -87,6 +88,7 @@ impl TestDb {
 		self.db.query_as_root(rql, ())
 	}
 
+	#[cfg(feature = "column")]
 	pub fn try_query_column(&self, rql: &str) -> Result<Vec<Frame>> {
 		self.db.query_column_as_root(rql, ())
 	}

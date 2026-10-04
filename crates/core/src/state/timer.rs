@@ -13,9 +13,13 @@ use reifydb_value::{
 	value::{datetime::DateTime, row_number::RowNumber},
 };
 
-use crate::key::operator::{
-	keyspace::{RootSibling, root_sibling_of},
-	state::{GroupId, GroupStateKey, KeyspaceMask, keyspace_inner_range, keyspace_inner_range_split},
+use crate::{
+	actors::pending::PendingWrite,
+	key::operator::{
+		keyspace::{RootSibling, root_sibling_of},
+		state::{GroupId, GroupStateKey, KeyspaceMask, keyspace_inner_range, keyspace_inner_range_split},
+	},
+	state::batch::StateBatch,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -71,17 +75,47 @@ pub fn sweep_order(groups: &[GroupId]) -> Vec<GroupId> {
 pub trait StateStore {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
 
-	fn state_get_many_visit(
-		&mut self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()>;
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>>;
 
 	fn state_classify(&mut self, _key: &GroupStateKey, _pre: Option<ByteSize>) {}
 
 	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
+
+	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		for key in keys {
+			self.state_remove(key)?;
+		}
+		Ok(())
+	}
+
+	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		let batch = StateBatch::read(keys, |keys| self.state_get_many(keys))?;
+		for slot in 0..batch.len() {
+			self.state_classify(batch.key(slot), batch.value(slot).map(EncodedPodRow::byte_size));
+		}
+		Ok(batch)
+	}
+
+	fn state_write_batch(&mut self, batch: StateBatch) -> Result<()> {
+		for (key, write) in batch.into_writes() {
+			match write {
+				PendingWrite::Set(bytes) => self.state_set(&key, EncodedPodRow::from(bytes))?,
+				PendingWrite::Remove {
+					..
+				} => self.state_remove(&key)?,
+			}
+		}
+		Ok(())
+	}
+
+	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		for (key, row) in rows {
+			self.state_set(&key, row)?;
+		}
+		Ok(())
+	}
 
 	fn state_page(
 		&mut self,
@@ -137,15 +171,13 @@ pub trait StateStore {
 	}
 
 	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
+		let mut siblings = Vec::new();
 		for (key, row) in swept {
-			let Some(sibling) = root_sibling_of(key, row) else {
-				continue;
-			};
-			if let RootSibling::Derived(sibling) = sibling {
-				self.state_remove(&sibling)?;
+			if let Some(RootSibling::Derived(sibling)) = root_sibling_of(key, row) {
+				siblings.push(sibling);
 			}
 		}
-		Ok(())
+		self.state_remove_many(&siblings)
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
@@ -159,6 +191,13 @@ pub trait StateStore {
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
 
 	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()>;
+
+	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		for key in keys {
+			self.remove_row_number(group, key)?;
+		}
+		Ok(())
+	}
 
 	fn written_at(&self) -> DateTime;
 }

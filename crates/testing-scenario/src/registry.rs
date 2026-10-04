@@ -3,11 +3,18 @@
 
 use crate::{
 	scenario::Scenario,
-	scenarios::{join, ping, read, scan, write},
+	scenarios::{join, ping, project, read, scan, write},
 };
 
 pub fn all() -> Vec<Scenario> {
-	vec![ping::scenario(), read::scenario(), write::scenario(), scan::scenario(), join::scenario()]
+	vec![
+		ping::scenario(),
+		read::scenario(),
+		write::scenario(),
+		scan::scenario(),
+		join::scenario(),
+		project::scenario(),
+	]
 }
 
 pub fn names() -> Vec<&'static str> {
@@ -45,7 +52,7 @@ mod tests {
 		// Losing any of the rest is a silent capability regression for an existing invocation.
 		let mut registered = names();
 		registered.sort();
-		assert_eq!(registered, vec!["join", "ping", "read", "scan", "write"]);
+		assert_eq!(registered, vec!["join", "ping", "project", "read", "scan", "write"]);
 	}
 
 	#[test]

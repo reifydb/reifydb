@@ -395,7 +395,7 @@ fn an_armed_filter_is_left_alone_until_it_fills_and_is_then_resized_from_the_liv
 	);
 
 	for i in 0..4000u64 {
-		filter.handle().add(i.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+		filter.handle().add_many(&[i.wrapping_mul(0x9E37_79B9_7F4A_7C15)]);
 	}
 	let filled = filter.metrics().fill_ratio;
 	assert!(filled > FilterConfig::default().fill_trigger, "setup left the filter below the trigger: {filled}");

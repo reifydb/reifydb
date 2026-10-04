@@ -6,6 +6,8 @@ pub mod store;
 
 use std::{
 	collections::{HashMap, HashSet},
+	hash::Hash,
+	slice,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -254,14 +256,43 @@ impl DictionaryAllocatorRegistry {
 		outcomes(dictionary, resolved, &created_ids)
 	}
 
+	pub fn find_batch(&self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		let serialized: Vec<Vec<u8>> = values
+			.iter()
+			.map(|value| to_stdvec(value).expect("failed to serialize dictionary value"))
+			.collect();
+		let (firsts, slot_of) = distinct_positions(serialized.iter().map(Vec::as_slice));
+		let mut answers: Vec<Option<DictionaryEntryId>> = Vec::with_capacity(firsts.len());
+		for index in firsts {
+			answers.push(self.find_one(dictionary, &serialized[index])?);
+		}
+		Ok(slot_of.into_iter().map(|distinct| answers[distinct]).collect())
+	}
+
+	pub fn get_batch(&self, dictionary: &Dictionary, ids: &[u128]) -> Result<Vec<Option<Arc<[u8]>>>> {
+		let (firsts, slot_of) = distinct_positions(ids.iter().copied());
+		let mut answers: Vec<Option<Arc<[u8]>>> = Vec::with_capacity(firsts.len());
+		for index in firsts {
+			answers.push(self.get_one(dictionary, ids[index])?);
+		}
+		Ok(slot_of.into_iter().map(|distinct| answers[distinct].clone()).collect())
+	}
+
 	pub fn find(&self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		let value_bytes = to_stdvec(value).expect("failed to serialize dictionary value");
-		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
+		Ok(self.find_batch(dictionary, slice::from_ref(value))?.remove(0))
+	}
+
+	pub fn get(&self, dictionary: &Dictionary, id: u128) -> Result<Option<Arc<[u8]>>> {
+		Ok(self.get_batch(dictionary, slice::from_ref(&id))?.remove(0))
+	}
+
+	fn find_one(&self, dictionary: &Dictionary, value_bytes: &[u8]) -> Result<Option<DictionaryEntryId>> {
+		let hash = xxh3_128(value_bytes).0.to_be_bytes();
 
 		if let Some(slot) = self.inner.slots.get(&dictionary.id)
 			&& let Some(entry) = slot.cache.get(&hash)
 		{
-			if entry.value.as_ref() != value_bytes.as_slice() {
+			if entry.value.as_ref() != value_bytes {
 				return Err(DictionaryError::HashCollision {
 					dictionary: dictionary.id,
 					hash,
@@ -274,16 +305,16 @@ impl DictionaryAllocatorRegistry {
 		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		match self.inner.store.read_committed(&entry_key)? {
 			Some(existing) => {
-				let id = decode_entry_id(dictionary, &value_bytes, hash, &existing)?;
+				let id = decode_entry_id(dictionary, value_bytes, hash, &existing)?;
 				let slot = self.slot(dictionary);
-				cache_into_slot(&slot, hash, id, Arc::from(value_bytes.as_slice()));
+				cache_into_slot(&slot, hash, id, Arc::from(value_bytes));
 				Ok(Some(DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?))
 			}
 			None => Ok(None),
 		}
 	}
 
-	pub fn get(&self, dictionary: &Dictionary, id: u128) -> Result<Option<Arc<[u8]>>> {
+	fn get_one(&self, dictionary: &Dictionary, id: u128) -> Result<Option<Arc<[u8]>>> {
 		if let Some(value) = self.resolve_value(dictionary.id, id) {
 			return Ok(Some(value));
 		}
@@ -373,6 +404,20 @@ fn outcomes(
 			})
 		})
 		.collect()
+}
+
+fn distinct_positions<K: Hash + Eq>(keys: impl Iterator<Item = K>) -> (Vec<usize>, Vec<usize>) {
+	let mut seen: HashMap<K, usize> = HashMap::new();
+	let mut firsts: Vec<usize> = Vec::new();
+	let mut slot_of: Vec<usize> = Vec::new();
+	for (index, key) in keys.enumerate() {
+		let distinct = *seen.entry(key).or_insert_with(|| {
+			firsts.push(index);
+			firsts.len() - 1
+		});
+		slot_of.push(distinct);
+	}
+	(firsts, slot_of)
 }
 
 fn decode_entry_id(

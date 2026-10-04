@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{result::Result as StdResult, sync::Arc};
+use std::{collections::HashMap, result::Result as StdResult, sync::Arc};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchOptions, UInt64Array, new_null_array};
 use arrow_buffer::BooleanBuffer;
-use arrow_schema::{ArrowError, FieldRef, Metadata, Schema, SchemaRef};
+use arrow_schema::{ArrowError, FieldRef, Schema, SchemaRef};
 use arrow_select::{
 	concat::{concat as concat_arrays, concat_batches},
 	take::take,
@@ -63,7 +63,7 @@ use crate::{
 
 pub fn batch(columns: Vec<(FieldRef, ArrayRef)>) -> Result<RecordBatch> {
 	let row_count = columns.first().map_or(0, |(_, array)| array.len());
-	assemble(columns, Metadata::new(), row_count)
+	assemble(columns, HashMap::new(), row_count)
 }
 
 pub fn batch_with(schema: &SchemaRef, columns: Vec<(FieldRef, ArrayRef)>, row_count: usize) -> Result<RecordBatch> {
@@ -157,7 +157,7 @@ pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBy
 	for (column, array) in stamps(shape, rows, ids)? {
 		columns.push((system_field(column, array.logical_null_count() > 0), array));
 	}
-	assemble(columns, Metadata::new(), rows.len())
+	assemble(columns, HashMap::new(), rows.len())
 }
 
 pub fn empty_for(columns: &[CatalogColumn]) -> Result<RecordBatch> {
@@ -463,7 +463,11 @@ fn user_views(batch: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
 	Ok(views(batch)?.into_iter().filter(|view| !is_system_field(view.field)).collect())
 }
 
-fn assemble(columns: Vec<(FieldRef, ArrayRef)>, metadata: Metadata, row_count: usize) -> Result<RecordBatch> {
+fn assemble(
+	columns: Vec<(FieldRef, ArrayRef)>,
+	metadata: HashMap<String, String>,
+	row_count: usize,
+) -> Result<RecordBatch> {
 	let (fields, arrays): (Vec<FieldRef>, Vec<ArrayRef>) = columns.into_iter().unzip();
 	RecordBatch::try_new_with_options(
 		Arc::new(Schema::new_with_metadata(fields, metadata)),

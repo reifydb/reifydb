@@ -1,0 +1,79 @@
+# Templated by `cargo-generate` using https://github.com/danielhenrymantilla/proc-macro-template
+[lib]
+path = "src/_lib.rs"
+
+[package]
+name = "lending-iterator"
+authors = [
+    "Daniel Henry-Mantilla <daniel.henry.mantilla@gmail.com>",
+]
+version = "0.1.7"  # Keep in sync
+edition = "2021"
+
+license = "Zlib OR MIT OR Apache-2.0"
+repository = "https://github.com/danielhenrymantilla/lending-iterator.rs"
+documentation = "https://docs.rs/lending-iterator"
+readme = "README.md"
+
+rust-version = "1.57.0"
+
+description = "Fully general lending iterators in stable rust: windows_mut!"
+keywords = [
+    "streaming",
+    "streaming-iterator",
+    "windows_mut",
+    "hkt",
+    "gat",
+]
+
+[features]
+default = [
+    "alloc",
+]
+
+alloc = []
+
+better-docs = [ # allowed to break MSRV
+    "futures",
+    "macro-vis",
+]
+
+testing = []
+
+ui-tests = [
+    "better-docs",
+]
+
+[dependencies]
+extension-traits.version = "1.0.1"
+macro_rules_attribute.version = "0.1.2"
+never-say-never.version = "6.6.666"
+nougat.version = "0.2.4"
+polonius-the-crab.version = "0.2.1"
+
+futures.optional = true
+futures.version = "0.3.21"
+macro-vis.optional = true
+macro-vis.version = "0.1.1"
+
+[dependencies.lending-iterator-proc_macros]
+path = "src/proc_macros"
+version = "0.1.7"  # Keep in sync
+
+[dev-dependencies]
+lending-iterator.path = "."
+lending-iterator.features = ["testing"]
+
+[workspace]
+members = [
+    "src/proc_macros",
+]
+
+[package.metadata.docs.rs]
+features = [
+    "better-docs",
+]
+rustdoc-args = [
+    "--html-before-content", "fix-docsrs-li-details-summary.html",
+    "--cfg", "doc_nightly",
+]

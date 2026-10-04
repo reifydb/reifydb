@@ -6,14 +6,11 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use reifydb::{
-	WithSubsystem, embedded as db_embedded,
+	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_column::reader::SnapshotReader;
-use reifydb_sub_store::{
-	factory::StorageSubsystemFactory,
-	subsystem::{StorageConfig, StorageSubsystem},
-};
+use reifydb_store_column::{device::BlockKey, reader::SnapshotReader};
+use reifydb_sub_store::subsystem::{StorageConfig, StorageSubsystem};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
 
@@ -30,12 +27,7 @@ fn series_materialization_populates_block_store() {
 		..StorageConfig::default()
 	};
 
-	let mut db = TestDb::from(
-		db_embedded::memory()
-			.with_subsystem(Box::new(StorageSubsystemFactory::new(fast_config)))
-			.build()
-			.expect("build"),
-	);
+	let mut db = TestDb::from(db_embedded::memory().with_storage_config(fast_config).build().expect("build"));
 
 	db.admin("CREATE NAMESPACE test");
 	db.admin("CREATE SERIES test::s { k: uint8, value: float8 } WITH { key: k }");
@@ -53,8 +45,6 @@ fn series_materialization_populates_block_store() {
 
 	let blocks = poll_until(
 		|| {
-			// Without the owner filter, an empty bootstrap table block reads as a bucket of s.
-			let all_entries = block_store.entries();
 			let engine = db.engine();
 			let catalog = engine.catalog();
 			let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
@@ -67,13 +57,22 @@ fn series_materialization_populates_block_store() {
 				.find_series_by_name(&mut tx, namespace.id(), "s")
 				.expect("find series")
 				.expect("series test::s");
-			let owned: Vec<_> = catalog
+			let entries: Vec<_> = catalog
 				.list_column_snapshots_for_series(&mut tx, series.id)
 				.expect("list series snapshots")
 				.into_iter()
-				.map(|snapshot| snapshot.id)
+				.map(|snapshot| {
+					let block = Arc::new(
+						block_store
+							.open(&BlockKey::of(&snapshot))
+							.expect("open block")
+							.expect("a cataloged snapshot must have a block file")
+							.read(None)
+							.expect("read block"),
+					);
+					(snapshot.id, block)
+				})
 				.collect();
-			let entries: Vec<_> = all_entries.into_iter().filter(|(id, _)| owned.contains(id)).collect();
 			if entries.len() >= 2 {
 				Some(entries)
 			} else {
@@ -96,7 +95,7 @@ fn series_materialization_populates_block_store() {
 			vec!["k", "value", "#rownum", "#created_at", "#updated_at", "#commit_version"]
 		);
 
-		let mut reader = SnapshotReader::new(Arc::clone(block), 100);
+		let mut reader = SnapshotReader::new(Arc::clone(block), 100, block_store.session().clone());
 		let batch = reader.next().expect("batch present").expect("read batch");
 		assert!(reader.next().is_none(), "reader should yield a single batch per bucket");
 		assert_eq!(batch.num_rows(), block.len());

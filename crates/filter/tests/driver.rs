@@ -277,9 +277,9 @@ fn a_key_written_mid_rebuild_survives_the_swap() {
 	);
 
 	assert_eq!(driver.step(), DriverProgress::Started);
-	filter.add(written);
+	filter.add_many(&[written]);
 	assert_eq!(driver.step(), DriverProgress::Scanning);
-	filter.add(written);
+	filter.add_many(&[written]);
 	run_to_commit(&mut driver);
 
 	assert!(filter.may_contain(written), "a key written during the rebuild was lost by the swap");

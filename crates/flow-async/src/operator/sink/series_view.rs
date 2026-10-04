@@ -30,7 +30,7 @@ use reifydb_flow::{
 		shape_field_columns,
 		table::{dictionary_encode_view_columns, dictionary_lookup_view_columns},
 	},
-	txn::Emit,
+	txn::{Batch, Emit},
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -220,9 +220,7 @@ impl SinkSeriesViewOperator {
 			keys.push(key);
 			encoded_bytes_list.push(encoded);
 		}
-		for (key, encoded) in keys.iter().zip(encoded_bytes_list.iter()) {
-			txn.set_one(key, encoded.clone())?;
-		}
+		txn.set(keys, encoded_bytes_list)?;
 		txn.emit(view.id(), Diff::insert(coerced))?;
 		Ok(())
 	}
@@ -319,12 +317,7 @@ impl SinkSeriesViewOperator {
 			post_keys.push(post_key);
 			post_encoded_bytes_vec.push(post_encoded);
 		}
-		for ((pre_key, post_key), post_encoded) in
-			pre_keys.iter().zip(post_keys.iter()).zip(post_encoded_bytes_vec.iter())
-		{
-			txn.remove_one(pre_key)?;
-			txn.set_one(post_key, post_encoded.clone())?;
-		}
+		txn.replace_batch(pre_keys, post_keys, post_encoded_bytes_vec)?;
 		txn.emit(view.id(), Diff::update(coerced_pre, coerced_post))?;
 		Ok(())
 	}
@@ -365,9 +358,7 @@ impl SinkSeriesViewOperator {
 			};
 			keys.push(key);
 		}
-		for key in keys.iter() {
-			txn.remove_one(key)?;
-		}
+		txn.remove(keys)?;
 		txn.emit(view.id(), Diff::remove(coerced))?;
 		Ok(())
 	}

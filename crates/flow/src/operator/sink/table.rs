@@ -24,6 +24,7 @@ use reifydb_core::{
 		},
 		change::{Change, Diff},
 	},
+	internal_err,
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::{batch::batch, column::builder::ColumnBuilder},
@@ -152,7 +153,7 @@ impl TableSink {
 			encoded_bytes_list.push(encoded);
 		}
 
-		txn.set(&keys, &encoded_bytes_list)?;
+		txn.set(keys, encoded_bytes_list)?;
 
 		txn.emit(self.view.id(), Diff::insert(coerced))
 	}
@@ -246,8 +247,8 @@ impl TableSink {
 			post_encoded_bytes_vec.push(post_encoded);
 		}
 
-		txn.remove(&pre_keys)?;
-		txn.set(&post_keys, &post_encoded_bytes_vec)?;
+		txn.remove(pre_keys)?;
+		txn.set(post_keys, post_encoded_bytes_vec)?;
 
 		txn.emit(self.view.id(), Diff::update(coerced_pre, coerced_post))
 	}
@@ -278,7 +279,7 @@ impl TableSink {
 			keys.push(key);
 		}
 
-		txn.remove(&keys)?;
+		txn.remove(keys)?;
 
 		txn.emit(self.view.id(), Diff::remove(coerced))
 	}
@@ -363,10 +364,22 @@ pub fn dictionary_lookup_view_columns<T: Intern + ?Sized>(
 		let (field, array) = &encoded[*col_pos];
 		let column = ColumnView::try_from((array, field.as_ref()))?;
 		let row_count = column.len();
+		let values: Vec<Value> = (0..row_count).map(|row_idx| column.get_value(row_idx)).collect();
+		let ids = if values.is_empty() {
+			Vec::new()
+		} else {
+			txn.find(dictionary, &values)?
+		};
+		if ids.len() != values.len() {
+			return internal_err!(
+				"a dictionary batch find answered {} ids for {} values",
+				ids.len(),
+				values.len()
+			);
+		}
 		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
-		for row_idx in 0..row_count {
-			let value = column.get_value(row_idx);
-			let id = txn.find(dictionary, &value)?.ok_or_else(|| {
+		for id in ids {
+			let id = id.ok_or_else(|| {
 				Error::from(FlowSinkError::DictionaryEntryNotFound {
 					dictionary_id: format!("{:?}", dictionary.id),
 					column: view.columns()[*col_pos].name.to_string(),

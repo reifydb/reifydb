@@ -10,8 +10,6 @@ use reifydb_value::{reifydb_assertions, value::duration::Duration};
 use tokio::{runtime::Handle, select, sync::mpsc, task::spawn_blocking, time};
 use tracing::{Instrument, debug, debug_span, error, info};
 
-#[cfg(reifydb_assertions)]
-use crate::schedule::Schedule;
 use crate::{
 	context::TaskContext,
 	registry::{TaskEntry, TaskRegistry},
@@ -167,7 +165,7 @@ fn handle_completion(
 		if let Some(next_exec) = entry.task.schedule.next_execution(completed_at) {
 			reifydb_assertions! {
 				assert!(
-					!matches!(entry.task.schedule, Schedule::Once(_)),
+					!matches!(entry.task.schedule, crate::schedule::Schedule::Once(_)),
 					"a Schedule::Once task entered the reschedule path after completing, so a one-shot task would run repeatedly and duplicate its side effects (task={})",
 					entry.task.name
 				);

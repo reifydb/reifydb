@@ -39,6 +39,12 @@ pub(crate) trait DictionaryOperations {
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>>;
 
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>>;
+
+	fn find_many_in_dictionary(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>>;
 }
 
 struct Interned {
@@ -110,6 +116,17 @@ impl DictionaryOperations for CommandTransaction {
 			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
 		registry.find(dictionary, value)
 	}
+
+	fn find_many_in_dictionary(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>> {
+		let registry = self
+			.dictionary_allocators()
+			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+		registry.find_batch(dictionary, values)
+	}
 }
 
 fn dictionary_insert_change(dictionary: &Dictionary, value: Value) -> Result<Change> {
@@ -145,6 +162,17 @@ impl DictionaryOperations for AdminTransaction {
 			.dictionary_allocators()
 			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
 		registry.find(dictionary, value)
+	}
+
+	fn find_many_in_dictionary(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>> {
+		let registry = self
+			.dictionary_allocators()
+			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+		registry.find_batch(dictionary, values)
 	}
 }
 
@@ -228,6 +256,21 @@ impl DictionaryOperations for Transaction<'_> {
 			}
 			None => Ok(None),
 		}
+	}
+
+	fn find_many_in_dictionary(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>> {
+		match self {
+			Transaction::Command(cmd) => return cmd.find_many_in_dictionary(dictionary, values),
+			Transaction::Admin(admin) => return admin.find_many_in_dictionary(dictionary, values),
+			Transaction::Test(t) => return t.inner.find_many_in_dictionary(dictionary, values),
+			Transaction::Query(_) => {}
+		}
+
+		values.iter().map(|value| self.find_in_dictionary(dictionary, value)).collect()
 	}
 }
 

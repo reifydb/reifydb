@@ -111,7 +111,8 @@ impl WindowAccumulator for VolumeAccumulator {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 struct VolumeOut {
 	group: String,
 	window_start: u64,
@@ -253,7 +254,8 @@ impl WindowAccumulator for MinAccumulator {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 struct MinOut {
 	group: String,
 	window_start: u64,

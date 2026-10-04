@@ -15,19 +15,17 @@ use arrow_buffer::BooleanBuffer;
 use reifydb::{Database, embedded};
 use reifydb_allocator::backend::ALLOCATOR as BACKEND;
 use reifydb_benches::{BenchReport, env_flag, env_usize};
-use reifydb_column::{
-	reader::SnapshotReader,
-	snapshot::{ColumnBlock, ColumnChunks},
-};
 use reifydb_core::value::{
 	batch::{batch, concat, filter, take_rows},
-	column::{
-		builder::ColumnBuilder,
-		data::{Column, canonical::Canonical},
-		factory,
-	},
+	column::{builder::ColumnBuilder, factory},
 };
 use reifydb_runtime::context::clock::Clock;
+use reifydb_store_column::{
+	compress::Compressor,
+	reader::SnapshotReader,
+	session::new_session,
+	snapshot::{ColumnBlock, ColumnChunks},
+};
 use reifydb_value::value::{
 	Value, datetime::DateTime, decimal::Decimal, duration::Duration, system_columns::SystemColumn, uuid::Uuid7,
 	value_type::ValueType,
@@ -185,7 +183,7 @@ fn columns_fixture(start: usize, end: usize) -> RecordBatch {
 	.expect("bench columns share one length")
 }
 
-fn snapshot_block(rows: usize) -> Arc<ColumnBlock> {
+fn snapshot_block(rows: usize, compressor: &Compressor) -> Arc<ColumnBlock> {
 	let schema = vec![
 		(SystemColumn::RowNumbers.name().to_string(), ValueType::Uint8, false),
 		(SystemColumn::CreatedAt.name().to_string(), ValueType::DateTime, false),
@@ -196,7 +194,7 @@ fn snapshot_block(rows: usize) -> Arc<ColumnBlock> {
 		("name".to_string(), ValueType::Utf8, false),
 		("maybe".to_string(), ValueType::Int4, true),
 	];
-	let mut per_column: Vec<Vec<Column>> = vec![Vec::new(); schema.len()];
+	let mut per_column: Vec<Option<ColumnChunks>> = vec![None; schema.len()];
 	for start in (0..rows).step_by(CHUNK_ROWS) {
 		let chunk = start..(start + CHUNK_ROWS).min(rows);
 		let parts = [
@@ -209,17 +207,15 @@ fn snapshot_block(rows: usize) -> Arc<ColumnBlock> {
 			factory::utf8("name", chunk.clone().map(name)),
 			factory::int4_optional("maybe", chunk.map(maybe)),
 		];
-		for (column, part) in per_column.iter_mut().zip(parts) {
-			let canonical = Canonical::from_column(&part).expect("bench chunk has a canonical form");
-			column.push(Column::from_canonical(canonical));
+		for ((slot, part), (_, ty, _)) in per_column.iter_mut().zip(parts).zip(&schema) {
+			let compressed = compressor.compress(ty.clone(), &part).expect("bench chunk compresses");
+			match slot {
+				None => *slot = Some(compressed),
+				Some(column) => column.chunks.extend(compressed.chunks),
+			}
 		}
 	}
-	let columns = schema
-		.iter()
-		.zip(per_column)
-		.map(|((_, ty, nullable), parts)| ColumnChunks::new(ty.clone(), *nullable, parts))
-		.collect();
-	Arc::new(ColumnBlock::new(Arc::new(schema), columns))
+	Arc::new(ColumnBlock::new(Arc::new(schema), per_column.into_iter().map(|c| c.expect("rows > 0")).collect()))
 }
 
 fn bench_push(report: &mut BenchReport, rows: usize, repeats: usize) {
@@ -289,13 +285,14 @@ fn bench_columns(report: &mut BenchReport, rows: usize, repeats: usize) {
 	let sample = measure(repeats, || batches.clone(), |batches| concat(&batches).expect("batches share one shape"));
 	record(report, "concat/16", rows, sample);
 
-	let block = snapshot_block(rows);
+	let session = new_session();
+	let block = snapshot_block(rows, &Compressor::new(session.clone()));
 	let sample = measure(
 		repeats,
 		|| (),
 		|()| {
 			let mut seen = 0usize;
-			for batch in SnapshotReader::new(Arc::clone(&block), SCAN_BATCH) {
+			for batch in SnapshotReader::new(Arc::clone(&block), SCAN_BATCH, session.clone()) {
 				seen += batch.expect("snapshot batch materializes").num_rows();
 			}
 			assert_eq!(seen, rows, "snapshot scan must return every row");

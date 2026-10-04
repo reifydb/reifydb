@@ -333,6 +333,8 @@ fn only_an_unmanaged_operator_reaches_the_library_with_its_reason() {
 	assert_eq!(published("nostate_probe"), Some((OperatorClass::Nostate, None)));
 }
 
+#[reifydb_macro::operator_state]
+#[derive(Clone, HeapSize)]
 struct GRow {
 	g: i32,
 }

@@ -1,0 +1,49 @@
+[package]
+name = "vortex-mask"
+authors = { workspace = true }
+categories = { workspace = true }
+description = "Vortex Mask - sorted, unique, non-negative integers"
+edition = { workspace = true }
+homepage = { workspace = true }
+include = { workspace = true }
+keywords = { workspace = true }
+license = { workspace = true }
+readme = { workspace = true }
+repository = { workspace = true }
+rust-version = { workspace = true }
+version = { workspace = true }
+
+[features]
+serde = ["dep:serde", "vortex-buffer/serde"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+[dependencies]
+itertools = { workspace = true }
+serde = { workspace = true, optional = true, features = ["rc"] }
+vortex-buffer = { workspace = true, features = ["arrow"] }
+vortex-error = { workspace = true }
+
+[dev-dependencies]
+divan = { workspace = true }
+rstest = { workspace = true }
+
+[[bench]]
+name = "intersect_by_rank"
+harness = false
+
+[[bench]]
+name = "rank"
+harness = false
+
+[[bench]]
+name = "valid_counts"
+harness = false
+
+[[bench]]
+name = "mask_iteration"
+harness = false
+
+[lints]
+workspace = true

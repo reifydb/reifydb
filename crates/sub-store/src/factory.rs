@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(reifydb_target = "host")]
+use std::path::PathBuf;
 #[cfg(feature = "column")]
 use std::sync::Arc;
 
-#[cfg(feature = "column")]
-use reifydb_column::compress::Compressor;
 #[cfg(feature = "column")]
 use reifydb_core::event::{EventBus, transaction::PostCommitEvent};
 use reifydb_core::util::ioc::IocContainer;
@@ -13,12 +13,8 @@ use reifydb_core::util::ioc::IocContainer;
 use reifydb_engine::engine::StandardEngine;
 #[cfg(feature = "column")]
 use reifydb_runtime::actor::system::ActorSpawner;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_sqlite::SqliteConfig;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_store_column::persistent::sqlite::SqliteColumnStore;
 #[cfg(feature = "column")]
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{compress::Compressor, store::ColumnStore};
 use reifydb_sub_api::subsystem::{Subsystem, SubsystemFactory};
 use reifydb_value::Result;
 
@@ -32,22 +28,32 @@ use crate::subsystem::{StorageConfig, StorageSubsystem};
 pub struct StorageSubsystemFactory {
 	#[cfg_attr(not(feature = "column"), allow(dead_code))]
 	config: StorageConfig,
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	column_sqlite: Option<SqliteConfig>,
+	#[cfg(reifydb_target = "host")]
+	column_dir: Option<PathBuf>,
+	#[cfg(feature = "column")]
+	column_store: Option<ColumnStore>,
 }
 
 impl StorageSubsystemFactory {
 	pub fn new(config: StorageConfig) -> Self {
 		Self {
 			config,
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			column_sqlite: None,
+			#[cfg(reifydb_target = "host")]
+			column_dir: None,
+			#[cfg(feature = "column")]
+			column_store: None,
 		}
 	}
 
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn with_column_sqlite(mut self, config: Option<SqliteConfig>) -> Self {
-		self.column_sqlite = config;
+	#[cfg(reifydb_target = "host")]
+	pub fn with_column_dir(mut self, dir: Option<PathBuf>) -> Self {
+		self.column_dir = dir;
+		self
+	}
+
+	#[cfg(feature = "column")]
+	pub fn with_column_store(mut self, store: ColumnStore) -> Self {
+		self.column_store = Some(store);
 		self
 	}
 }
@@ -65,22 +71,20 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
 
-		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		let block_store = {
-			let tier = self.column_sqlite.clone().map(|cfg| Arc::new(SqliteColumnStore::new(cfg)));
-			let store = ColumnStore::with_persistent(tier);
-			store.warm()?;
-			store
+		let block_store = match self.column_store.clone() {
+			Some(store) => store,
+			#[cfg(reifydb_target = "host")]
+			None => match self.column_dir.clone() {
+				Some(dir) => ColumnStore::host(dir)?,
+				None => ColumnStore::memory()?,
+			},
+			#[cfg(not(reifydb_target = "host"))]
+			None => ColumnStore::memory()?,
 		};
-		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let block_store = ColumnStore::new();
 
 		ioc.register_service::<Arc<ColumnStore>>(Arc::new(block_store.clone()));
 
-		let compressor = || match self.config.compress.clone() {
-			Some(cfg) => Compressor::new(cfg),
-			None => Compressor::disabled(),
-		};
+		let compressor = || Compressor::new(block_store.session().clone());
 
 		let table_changes = TableChanges::new();
 		event_bus.register::<PostCommitEvent, _>(table_changes.clone());

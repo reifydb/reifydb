@@ -28,7 +28,7 @@ pub(crate) fn compile_filter<'a>(
 ) -> Box<dyn QueryNode> {
 	let source = extract_resolved_source(&node.input);
 	let input_node = compile(*node.input, rx, context);
-	Box::new(FilterNode::with_source(input_node, node.conditions, source))
+	Box::new(FilterNode::with_source(input_node, node.conditions, source, "filter"))
 }
 
 pub(crate) fn compile_map<'a>(

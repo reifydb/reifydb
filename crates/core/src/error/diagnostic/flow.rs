@@ -541,6 +541,15 @@ pub fn flow_guest_key_too_wide(len: usize) -> Diagnostic {
 	)
 }
 
+pub fn flow_state_batch_key_unframed(len: usize) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_086",
+		format!("a batch state key of {} bytes names no known keyspace", len),
+		"Batch state writes take only keys framed with a registered keyspace; the empty key is a range bound, \
+		 never a key.",
+	)
+}
+
 pub fn flow_digest_accuracy_not_a_literal(output: &str, function: &str) -> Diagnostic {
 	let example = match function {
 		"stats::approx_percentile" => "stats::approx_percentile(latency, 0.99, 0.01)",

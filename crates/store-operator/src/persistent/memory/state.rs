@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Bound};
+use std::{borrow::Borrow, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -90,16 +90,16 @@ impl Fetch for MemoryPersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::memory::get_many", level = "trace", skip_all)]
-	fn get_many(
+	fn get_many<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,
-		keys: &[GroupStateKey],
-	) -> Result<HashMap<GroupStateKey, EncodedPodRow>> {
+		keys: &[Q],
+	) -> Result<Vec<Option<EncodedPodRow>>> {
 		let rows = self.0.rows.lock();
 		let Some(rows) = rows.get(&operator) else {
-			return Ok(HashMap::new());
+			return Ok(vec![None; keys.len()]);
 		};
-		Ok(keys.iter().filter_map(|key| rows.get(key).map(|row| (key.clone(), row.clone()))).collect())
+		Ok(keys.iter().map(|key| rows.get(key.borrow()).cloned()).collect())
 	}
 
 	#[instrument(name = "store::operator::persistent::memory::contains", level = "trace", skip_all)]

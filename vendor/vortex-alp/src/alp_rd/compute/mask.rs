@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright the Vortex contributors
+
+use vortex_array::ArrayRef;
+use vortex_array::ArrayView;
+use vortex_array::IntoArray;
+use vortex_array::scalar_fn::fns::mask::Mask as MaskExpr;
+use vortex_array::scalar_fn::fns::mask::MaskReduce;
+use vortex_error::VortexResult;
+
+use crate::ALPRD;
+use crate::ALPRDArrayExt;
+use crate::ALPRDArraySlotsExt;
+
+impl MaskReduce for ALPRD {
+    #[allow(clippy::disallowed_methods)]
+    fn mask(array: ArrayView<'_, Self>, mask: &ArrayRef) -> VortexResult<Option<ArrayRef>> {
+        let masked_left_parts =
+            MaskExpr::try_new(array.left_parts().clone(), mask.clone())?.into_array();
+        Ok(Some(
+            ALPRD::try_new(
+                array.dtype().as_nullable(),
+                masked_left_parts,
+                array.left_parts_dictionary().clone(),
+                array.right_parts().clone(),
+                array.right_bit_width(),
+                array.left_parts_patches(),
+            )?
+            .into_array(),
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::LazyLock;
+
+    use rstest::rstest;
+    use vortex_array::IntoArray;
+    use vortex_array::VortexSessionExecute;
+    use vortex_array::array_session;
+    use vortex_array::arrays::PrimitiveArray;
+    use vortex_array::compute::conformance::mask::test_mask_conformance;
+    use vortex_array::dtype::NativePType;
+    use vortex_session::VortexSession;
+
+    use crate::ALPRDFloat;
+    use crate::RDEncoder;
+    use crate::RDEncoderExt;
+
+    static SESSION: LazyLock<VortexSession> = LazyLock::new(|| {
+        let session = array_session();
+        crate::initialize(&session);
+        session
+    });
+
+    #[rstest]
+    #[case(0.1f32, 0.2f32, 3e25f32)]
+    #[case(0.1f64, 0.2f64, 3e100f64)]
+    fn test_mask_simple<T: ALPRDFloat + NativePType>(
+        #[case] a: T,
+        #[case] b: T,
+        #[case] outlier: T,
+    ) {
+        let mut ctx = SESSION.create_execution_ctx();
+        test_mask_conformance(
+            &RDEncoder::new(&[a, b])
+                .encode(PrimitiveArray::from_iter([a, b, outlier, b, outlier]).as_view())
+                .into_array(),
+            &mut ctx,
+        );
+    }
+
+    #[rstest]
+    #[case(0.1f32, 3e25f32)]
+    #[case(0.5f64, 1e100f64)]
+    fn test_mask_with_nulls<T: ALPRDFloat + NativePType>(#[case] a: T, #[case] outlier: T) {
+        let mut ctx = SESSION.create_execution_ctx();
+        test_mask_conformance(
+            &RDEncoder::new(&[a])
+                .encode(
+                    PrimitiveArray::from_option_iter([Some(a), None, Some(outlier), Some(a), None])
+                        .as_view(),
+                )
+                .into_array(),
+            &mut ctx,
+        );
+    }
+}

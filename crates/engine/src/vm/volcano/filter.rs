@@ -12,10 +12,7 @@ use reifydb_core::{
 	interface::resolved::ResolvedObject,
 	value::{batch::filter, column::headers::ColumnHeaders},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::{CompileContext, EvalContext},
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -38,27 +35,30 @@ pub(crate) struct FilterNode {
 	input: Box<dyn QueryNode>,
 	expressions: Vec<Expression>,
 	source: Option<ResolvedObject>,
+	operator: &'static str,
 	udf_names: Vec<String>,
-	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
+	context: Option<(Arc<QueryContext>, Vec<LoweredExpr>)>,
 	emitted: bool,
 
 	empty: Option<RecordBatch>,
 }
 
 impl FilterNode {
-	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>) -> Self {
-		Self::with_source(input, expressions, None)
+	pub fn new(input: Box<dyn QueryNode>, expressions: Vec<Expression>, operator: &'static str) -> Self {
+		Self::with_source(input, expressions, None, operator)
 	}
 
 	pub fn with_source(
 		input: Box<dyn QueryNode>,
 		expressions: Vec<Expression>,
 		source: Option<ResolvedObject>,
+		operator: &'static str,
 	) -> Self {
 		Self {
 			input,
 			expressions,
 			source,
+			operator,
 			udf_names: Vec::new(),
 			context: None,
 			emitted: false,
@@ -69,12 +69,12 @@ impl FilterNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::eval")]
 	fn eval_predicate(
 		session: &EvalContext,
-		compiled: &CompiledExpr,
+		lowered: &LoweredExpr,
 		columns: &RecordBatch,
 		row_count: usize,
 	) -> Result<(FieldRef, ArrayRef)> {
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
-		compiled.execute(&exec_ctx)
+		lowered.evaluate(&exec_ctx)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::filter::mask")]
@@ -111,15 +111,8 @@ impl QueryNode for FilterNode {
 		self.expressions = expressions;
 		self.udf_names = udf_names;
 
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
-		let compiled = self
-			.expressions
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>>>()?;
-		self.context = Some((Arc::new(ctx.clone()), compiled));
+		let lowered = self.expressions.iter().map(|e| LoweredExpr::new(e.clone(), self.operator)).collect();
+		self.context = Some((Arc::new(ctx.clone()), lowered));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
@@ -168,19 +161,19 @@ impl QueryNode for FilterNode {
 
 impl Transform for FilterNode {
 	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
-		let (stored_ctx, compiled) =
+		let (stored_ctx, lowered) =
 			self.context.as_ref().expect("FilterNode::apply() called before initialize()");
 
 		let session = eval_context_from_transform(ctx, stored_ctx);
 		let mut columns = input;
 		let mut row_count = columns.num_rows();
 
-		for compiled_expr in compiled {
+		for lowered_expr in lowered {
 			if row_count == 0 {
 				break;
 			}
 
-			let result = Self::eval_predicate(&session, compiled_expr, &columns, row_count)?;
+			let result = Self::eval_predicate(&session, lowered_expr, &columns, row_count)?;
 			let filter_mask = Self::build_mask(&ColumnView::try_from(&result)?, row_count);
 
 			columns = Self::compact(&columns, &filter_mask)?;

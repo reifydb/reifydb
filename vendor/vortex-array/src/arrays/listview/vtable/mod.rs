@@ -1,0 +1,251 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright the Vortex contributors
+
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::sync::Arc;
+
+use prost::Message;
+use vortex_error::VortexExpect;
+use vortex_error::VortexResult;
+use vortex_error::vortex_bail;
+use vortex_error::vortex_ensure;
+use vortex_error::vortex_panic;
+use vortex_session::VortexSession;
+use vortex_session::registry::CachedId;
+
+use crate::ArrayEq;
+use crate::ArrayHash;
+use crate::ArrayParts;
+use crate::ArrayRef;
+use crate::EqMode;
+use crate::ExecutionCtx;
+use crate::ExecutionResult;
+use crate::array::Array;
+use crate::array::ArrayId;
+use crate::array::ArrayView;
+use crate::array::VTable;
+use crate::array::with_empty_buffers;
+use crate::arrays::listview::ListViewArraySlotsExt;
+use crate::arrays::listview::ListViewData;
+use crate::arrays::listview::ListViewSlots;
+use crate::arrays::listview::compute::rules::PARENT_RULES;
+use crate::buffer::BufferHandle;
+use crate::builders::ArrayBuilder;
+use crate::dtype::DType;
+use crate::dtype::Nullability;
+use crate::dtype::PType;
+use crate::match_each_list_builder;
+use crate::serde::ArrayChildren;
+use crate::validity::Validity;
+mod kernel;
+mod operations;
+mod validity;
+/// A [`ListView`]-encoded Vortex array.
+pub type ListViewArray = Array<ListView>;
+
+pub(crate) fn initialize(session: &VortexSession) {
+    kernel::initialize(session);
+}
+
+#[derive(Clone, Debug)]
+pub struct ListView;
+
+#[derive(Clone, prost::Message)]
+pub struct ListViewMetadata {
+    #[prost(uint64, tag = "1")]
+    elements_len: u64,
+    #[prost(enumeration = "PType", tag = "2")]
+    offset_ptype: i32,
+    #[prost(enumeration = "PType", tag = "3")]
+    size_ptype: i32,
+}
+
+impl ArrayHash for ListViewData {
+    fn array_hash<H: Hasher>(&self, state: &mut H, _accuracy: EqMode) {
+        self.is_zero_copy_to_list().hash(state);
+    }
+}
+
+impl ArrayEq for ListViewData {
+    fn array_eq(&self, other: &Self, _accuracy: EqMode) -> bool {
+        self.is_zero_copy_to_list() == other.is_zero_copy_to_list()
+    }
+}
+
+impl VTable for ListView {
+    type TypedArrayData = ListViewData;
+
+    type OperationsVTable = Self;
+    type ValidityVTable = Self;
+    fn id(&self) -> ArrayId {
+        static ID: CachedId = CachedId::new("vortex.listview");
+        *ID
+    }
+
+    fn nbuffers(_array: ArrayView<'_, Self>) -> usize {
+        0
+    }
+
+    fn buffer(_array: ArrayView<'_, Self>, idx: usize) -> BufferHandle {
+        vortex_panic!("ListViewArray buffer index {idx} out of bounds")
+    }
+
+    fn buffer_name(_array: ArrayView<'_, Self>, idx: usize) -> Option<String> {
+        vortex_panic!("ListViewArray buffer_name index {idx} out of bounds")
+    }
+
+    fn with_buffers(
+        &self,
+        array: ArrayView<'_, Self>,
+        buffers: &[BufferHandle],
+    ) -> VortexResult<ArrayParts<Self>> {
+        with_empty_buffers(self, array, buffers)
+    }
+
+    fn serialize(
+        array: ArrayView<'_, Self>,
+        _session: &VortexSession,
+    ) -> VortexResult<Option<Vec<u8>>> {
+        Ok(Some(
+            ListViewMetadata {
+                elements_len: array.elements().len() as u64,
+                offset_ptype: PType::try_from(array.offsets().dtype())? as i32,
+                size_ptype: PType::try_from(array.sizes().dtype())? as i32,
+            }
+            .encode_to_vec(),
+        ))
+    }
+
+    fn validate(
+        &self,
+        _data: &ListViewData,
+        dtype: &DType,
+        len: usize,
+        slots: &[Option<ArrayRef>],
+    ) -> VortexResult<()> {
+        vortex_ensure!(
+            slots.len() == ListViewSlots::COUNT,
+            "ListViewArray expected {} slots, found {}",
+            ListViewSlots::COUNT,
+            slots.len()
+        );
+        let elements = slots[ListViewSlots::ELEMENTS]
+            .as_ref()
+            .vortex_expect("ListViewArray elements slot");
+        let offsets = slots[ListViewSlots::OFFSETS]
+            .as_ref()
+            .vortex_expect("ListViewArray offsets slot");
+        let sizes = slots[ListViewSlots::SIZES]
+            .as_ref()
+            .vortex_expect("ListViewArray sizes slot");
+        vortex_ensure!(
+            offsets.len() == len && sizes.len() == len,
+            "ListViewArray length {} does not match outer length {}",
+            offsets.len(),
+            len
+        );
+
+        let actual_dtype = DType::List(Arc::new(elements.dtype().clone()), dtype.nullability());
+        vortex_ensure!(
+            &actual_dtype == dtype,
+            "ListViewArray dtype {} does not match outer dtype {}",
+            actual_dtype,
+            dtype
+        );
+
+        Ok(())
+    }
+
+    fn deserialize(
+        &self,
+        dtype: &DType,
+        len: usize,
+        metadata: &[u8],
+
+        buffers: &[BufferHandle],
+        children: &dyn ArrayChildren,
+        _session: &VortexSession,
+    ) -> VortexResult<ArrayParts<Self>> {
+        let metadata = ListViewMetadata::decode(metadata)?;
+        vortex_ensure!(
+            buffers.is_empty(),
+            "`ListViewArray::build` expects no buffers"
+        );
+
+        let DType::List(element_dtype, _) = dtype else {
+            vortex_bail!("Expected List dtype, got {:?}", dtype);
+        };
+
+        let validity = if children.len() == 3 {
+            Validity::from(dtype.nullability())
+        } else if children.len() == 4 {
+            let validity = children.get(3, &Validity::DTYPE, len)?;
+            Validity::Array(validity)
+        } else {
+            vortex_bail!(
+                "`ListViewArray::build` expects 3 or 4 children, got {}",
+                children.len()
+            );
+        };
+
+        // Get elements with the correct length from metadata.
+        let elements = children.get(
+            0,
+            element_dtype.as_ref(),
+            usize::try_from(metadata.elements_len)?,
+        )?;
+
+        // Get offsets with proper type from metadata.
+        let offsets = children.get(
+            1,
+            &DType::Primitive(metadata.offset_ptype(), Nullability::NonNullable),
+            len,
+        )?;
+
+        // Get sizes with proper type from metadata.
+        let sizes = children.get(
+            2,
+            &DType::Primitive(metadata.size_ptype(), Nullability::NonNullable),
+            len,
+        )?;
+
+        ListViewData::validate(&elements, &offsets, &sizes, &validity)?;
+        let data = ListViewData::try_new()?;
+        let slots = ListViewData::make_slots(&elements, &offsets, &sizes, &validity, len);
+        Ok(ArrayParts::new(self.clone(), dtype.clone(), len, data).with_slots(slots))
+    }
+
+    fn slot_name(_array: ArrayView<'_, Self>, idx: usize) -> String {
+        ListViewSlots::NAMES[idx].to_string()
+    }
+
+    fn execute(array: Array<Self>, _ctx: &mut ExecutionCtx) -> VortexResult<ExecutionResult> {
+        Ok(ExecutionResult::done(array))
+    }
+
+    // The complexity comes from the expansion of `match_each_list_builder!`.
+    #[expect(clippy::cognitive_complexity)]
+    fn append_to_builder(
+        array: ArrayView<'_, Self>,
+        builder: &mut dyn ArrayBuilder,
+        ctx: &mut ExecutionCtx,
+    ) -> VortexResult<()> {
+        match match_each_list_builder!(&mut *builder, |b| b.append_listview_array(array, ctx)) {
+            Some(result) => result,
+            None => vortex_bail!(
+                "cannot append a ListView array of dtype {} to a {} builder",
+                array.dtype(),
+                builder.dtype()
+            ),
+        }
+    }
+
+    fn reduce_parent(
+        array: ArrayView<'_, Self>,
+        parent: &ArrayRef,
+        child_idx: usize,
+    ) -> VortexResult<Option<ArrayRef>> {
+        PARENT_RULES.evaluate(array, parent, child_idx)
+    }
+}

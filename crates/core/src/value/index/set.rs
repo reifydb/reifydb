@@ -3,8 +3,6 @@
 
 use std::{f64, ptr};
 
-#[cfg(reifydb_assertions)]
-use reifydb_value::value::{ordered_f32::OrderedF32, ordered_f64::OrderedF64, value_type::ValueType};
 use reifydb_value::{
 	reifydb_assertions,
 	value::{
@@ -27,7 +25,7 @@ impl IndexShape {
 	pub fn set_bool(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<bool>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Boolean);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Boolean);
 		}
 		key.set_valid(index, true);
 
@@ -56,10 +54,10 @@ impl IndexShape {
 		let field = &self.fields[index];
 		let v = value.into();
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Float4);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Float4);
 			assert_eq!(
 				v.to_bits(),
-				OrderedF32::canonical(v).to_bits(),
+				reifydb_value::value::ordered_f32::OrderedF32::canonical(v).to_bits(),
 				"set_f32: field {index} float {v:?} is not canonical"
 			);
 		}
@@ -91,10 +89,10 @@ impl IndexShape {
 		let field = &self.fields[index];
 		let v = value.into();
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Float8);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Float8);
 			assert_eq!(
 				v.to_bits(),
-				OrderedF64::canonical(v).to_bits(),
+				reifydb_value::value::ordered_f64::OrderedF64::canonical(v).to_bits(),
 				"set_f64: field {index} float {v:?} is not canonical"
 			);
 		}
@@ -125,7 +123,7 @@ impl IndexShape {
 	pub fn set_i8(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i8>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Int1);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Int1);
 		}
 		key.set_valid(index, true);
 
@@ -150,7 +148,7 @@ impl IndexShape {
 	pub fn set_i16(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i16>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Int2);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Int2);
 		}
 		key.set_valid(index, true);
 
@@ -177,7 +175,7 @@ impl IndexShape {
 	pub fn set_i32(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i32>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Int4);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Int4);
 		}
 		key.set_valid(index, true);
 
@@ -204,7 +202,7 @@ impl IndexShape {
 	pub fn set_i64(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i64>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Int8);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Int8);
 		}
 		key.set_valid(index, true);
 
@@ -231,7 +229,7 @@ impl IndexShape {
 	pub fn set_i128(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i128>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Int16);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Int16);
 		}
 		key.set_valid(index, true);
 
@@ -258,7 +256,7 @@ impl IndexShape {
 	pub fn set_u8(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u8>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Uint1);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Uint1);
 		}
 		key.set_valid(index, true);
 
@@ -274,7 +272,7 @@ impl IndexShape {
 	pub fn set_u16(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u16>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Uint2);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Uint2);
 		}
 		key.set_valid(index, true);
 
@@ -292,7 +290,7 @@ impl IndexShape {
 	pub fn set_u32(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u32>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Uint4);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Uint4);
 		}
 		key.set_valid(index, true);
 
@@ -310,7 +308,7 @@ impl IndexShape {
 	pub fn set_u64(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u64>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Uint8);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Uint8);
 		}
 		key.set_valid(index, true);
 
@@ -328,7 +326,7 @@ impl IndexShape {
 	pub fn set_u128(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u128>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Uint16);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Uint16);
 		}
 		key.set_valid(index, true);
 
@@ -346,7 +344,7 @@ impl IndexShape {
 	pub fn set_row_number(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u64>) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Uint8);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Uint8);
 		}
 		key.set_valid(index, true);
 
@@ -364,7 +362,7 @@ impl IndexShape {
 	pub fn set_date(&self, key: &mut EncodedIndexKey, index: usize, value: Date) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Date);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Date);
 		}
 		key.set_valid(index, true);
 
@@ -392,7 +390,7 @@ impl IndexShape {
 	pub fn set_datetime(&self, key: &mut EncodedIndexKey, index: usize, value: DateTime) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::DateTime);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::DateTime);
 		}
 		key.set_valid(index, true);
 
@@ -411,7 +409,7 @@ impl IndexShape {
 	pub fn set_time(&self, key: &mut EncodedIndexKey, index: usize, value: Time) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Time);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Time);
 		}
 		key.set_valid(index, true);
 
@@ -430,7 +428,7 @@ impl IndexShape {
 	pub fn set_duration(&self, key: &mut EncodedIndexKey, index: usize, value: Duration) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Duration);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Duration);
 		}
 		key.set_valid(index, true);
 
@@ -483,7 +481,7 @@ impl IndexShape {
 	pub fn set_uuid4(&self, key: &mut EncodedIndexKey, index: usize, value: Uuid4) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Uuid4);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Uuid4);
 		}
 		key.set_valid(index, true);
 
@@ -507,7 +505,7 @@ impl IndexShape {
 	pub fn set_uuid7(&self, key: &mut EncodedIndexKey, index: usize, value: Uuid7) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::Uuid7);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::Uuid7);
 		}
 		key.set_valid(index, true);
 
@@ -531,7 +529,7 @@ impl IndexShape {
 	pub fn set_identity_id(&self, key: &mut EncodedIndexKey, index: usize, value: IdentityId) {
 		let field = &self.fields[index];
 		reifydb_assertions! {
-			assert_eq!(field.value, ValueType::IdentityId);
+			assert_eq!(field.value, reifydb_value::value::value_type::ValueType::IdentityId);
 		}
 		key.set_valid(index, true);
 

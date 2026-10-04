@@ -37,7 +37,7 @@ use crate::{
 
 const _: () = assert!(
 	size_of::<ExternCGroupId>() == GroupId::WIDTH,
-	"the wire group id must stay exactly as wide as GroupId, or the pair array stride reads across elements"
+	"the wire group id must stay exactly as wide as GroupId, or the group array stride reads across elements"
 );
 
 fn wire_group(group: GroupId) -> ExternCGroupId {
@@ -340,43 +340,32 @@ fn key_refs(keys: &[EncodedKey]) -> Vec<ExternCKeyRef> {
 		.collect()
 }
 
-pub(crate) fn get_or_create_row_numbers_for_pairs(
+pub(crate) fn get_or_create_row_numbers_for_groups(
 	ctx: &mut ExternCContext,
-	pairs: &[(GroupId, EncodedKey)],
+	groups: &[GroupId],
 ) -> Result<Vec<(RowNumber, bool)>> {
-	if pairs.is_empty() {
+	if groups.is_empty() {
 		return Ok(Vec::new());
 	}
-	let group_ids: Vec<ExternCGroupId> = pairs.iter().map(|(group, _)| wire_group(*group)).collect();
-	let refs: Vec<ExternCKeyRef> = pairs
-		.iter()
-		.map(|(_, key)| {
-			let bytes = key.as_bytes();
-			ExternCKeyRef {
-				ptr: bytes.as_ptr(),
-				len: bytes.len(),
-			}
-		})
-		.collect();
-	let mut row_numbers = vec![0u64; pairs.len()];
-	let mut is_new = vec![0u8; pairs.len()];
+	let group_ids: Vec<ExternCGroupId> = groups.iter().map(|group| wire_group(*group)).collect();
+	let mut row_numbers = vec![0u64; groups.len()];
+	let mut is_new = vec![0u8; groups.len()];
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; group_ids and refs borrow pairs for the duration of the call, and row_numbers
-	// and is_new are live, initialised arrays of exactly pairs.len() slots each for the host to fill.
+	// for the whole guest call; group_ids is a live array of exactly groups.len() wire group ids, and
+	// row_numbers and is_new are live, initialised arrays of exactly groups.len() slots each for the host to fill.
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.get_or_create_row_numbers_for_pairs)(
+		let result = ((*ctx.ctx).callbacks.state.get_or_create_row_numbers_for_groups)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
 			group_ids.as_ptr(),
-			refs.as_ptr(),
-			refs.len(),
+			group_ids.len(),
 			row_numbers.as_mut_ptr(),
 			is_new.as_mut_ptr(),
 		);
 		if result != EXTERN_C_OK {
 			return Err(SdkError::Other(format!(
-				"host_get_or_create_row_numbers_for_pairs failed with code {}",
+				"host_get_or_create_row_numbers_for_groups failed with code {}",
 				result
 			)));
 		}

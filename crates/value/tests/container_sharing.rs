@@ -8,7 +8,6 @@ use arrow_array::{
 	LargeBinaryArray, LargeStringArray, Time64NanosecondArray, TimestampNanosecondArray, types::ByteArrayType,
 };
 use arrow_buffer::{BooleanBuffer, i256};
-use postcard::{from_bytes, to_allocvec};
 use reifydb_value::{
 	util::bitmap,
 	value::{
@@ -32,8 +31,6 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use serde::{Deserialize, Serialize};
-use serde_json::{from_str as json_from_str, to_string as json_to_string};
 use uuid::Uuid;
 
 const ROWS: usize = 1000;
@@ -47,12 +44,9 @@ fn points_into<T>(parent: &[T], child: &[T]) -> bool {
 }
 
 macro_rules! encoded_row_suite {
-	($name:ident, $elem:ty, $gen:expr, $build:path, $decode:path, $equals:path, $ser:tt, $de:tt) => {
+	($name:ident, $elem:ty, $gen:expr, $build:path, $decode:path, $equals:path) => {
 		mod $name {
 			use super::*;
-
-			#[derive(Serialize, Deserialize)]
-			struct Column(#[serde(serialize_with = $ser, deserialize_with = $de)] LargeBinaryArray);
 
 			fn values(n: usize) -> Vec<$elem> {
 				let make: fn(usize) -> $elem = $gen;
@@ -90,22 +84,6 @@ macro_rules! encoded_row_suite {
 			}
 
 			#[test]
-			fn serialize_of_a_slice_equals_a_fresh_array() {
-				// A slice must serialize exactly its rows, never the parent's rows.
-				let c = array(ROWS);
-				let s = Column(slice(&c, 100, 350));
-				let fresh = Column($build(values(ROWS)[100..350].to_vec()));
-				let encoded = to_allocvec(&s).unwrap();
-				assert_eq!(encoded, to_allocvec(&fresh).unwrap());
-				let decoded: Column = from_bytes(&encoded).unwrap();
-				assert_eq!($decode(&decoded.0), &values(ROWS)[100..350]);
-				let json = json_to_string(&s).unwrap();
-				assert_eq!(json, json_to_string(&fresh).unwrap());
-				let decoded: Column = json_from_str(&json).unwrap();
-				assert_eq!($decode(&decoded.0), &values(ROWS)[100..350]);
-			}
-
-			#[test]
 			fn equality_ignores_how_the_rows_are_stored() {
 				// A slice must equal a fresh array of its rows, otherwise equality reads the parent.
 				let c = array(ROWS);
@@ -122,15 +100,9 @@ fn digest_rows(array: &LargeBinaryArray) -> Vec<Option<Digest>> {
 }
 
 macro_rules! decimal_suite {
-	($name:ident, $elem:ty, $gen:expr, $build:expr, $decode:path, $de:tt) => {
+	($name:ident, $elem:ty, $gen:expr, $build:expr, $decode:path) => {
 		mod $name {
 			use super::*;
-
-			#[derive(Serialize, Deserialize)]
-			struct Column(
-				#[serde(serialize_with = "decimal_array::serialize_decimal_array", deserialize_with = $de)]
-				 DecimalArray,
-			);
 
 			fn values(n: usize) -> Vec<$elem> {
 				let make: fn(usize) -> $elem = $gen;
@@ -167,27 +139,6 @@ macro_rules! decimal_suite {
 			}
 
 			#[test]
-			fn serialize_of_a_slice_equals_a_fresh_array() {
-				// A slice must serialize exactly its rows, never the parent's rows.
-				let c = build(values(ROWS));
-				let s = Column(decimal_slice(&c, 100, 350));
-				let fresh = Column(build(values(ROWS)[100..350].to_vec()));
-				let encoded = to_allocvec(&s).unwrap();
-				assert_eq!(encoded, to_allocvec(&fresh).unwrap());
-				let decoded: Column = from_bytes(&encoded).unwrap();
-				assert_eq!($decode(&decoded.0), &values(ROWS)[100..350]);
-				assert_eq!(
-					decoded.0.data_type(),
-					c.data_type(),
-					"decoding must restore the precision and scale"
-				);
-				let json = json_to_string(&s).unwrap();
-				assert_eq!(json, json_to_string(&fresh).unwrap());
-				let decoded: Column = json_from_str(&json).unwrap();
-				assert_eq!($decode(&decoded.0), &values(ROWS)[100..350]);
-			}
-
-			#[test]
 			fn equality_ignores_how_the_rows_are_stored() {
 				// A slice must equal a fresh array of its rows, otherwise equality reads the parent.
 				let c = build(values(ROWS));
@@ -218,8 +169,7 @@ decimal_suite!(
 	Decimal,
 	|i| Decimal::from_parts(i256::from_i128(i as i128 * 125 - 60_000), 3).unwrap(),
 	|values| decimal_array::decimal_array(Precision::new(20), Scale::new(3), values),
-	decimal_array::decimals,
-	"decimal_array::deserialize_decimal_array"
+	decimal_array::decimals
 );
 decimal_suite!(
 	decimal256,
@@ -227,8 +177,7 @@ decimal_suite!(
 	|i| Decimal::from_parts(i256::from_i128(i as i128 * 125 - 60_000).wrapping_mul(i256::from_i128(i128::MAX)), 3)
 		.unwrap(),
 	|values| decimal_array::decimal_array(Precision::MAX, Scale::new(3), values),
-	decimal_array::decimals,
-	"decimal_array::deserialize_decimal_array"
+	decimal_array::decimals
 );
 encoded_row_suite!(
 	any,
@@ -240,9 +189,7 @@ encoded_row_suite!(
 	},
 	any_array::any_array,
 	any_array::values,
-	any_array::equals,
-	"any_array::serialize",
-	"any_array::deserialize"
+	any_array::equals
 );
 encoded_row_suite!(
 	digest,
@@ -254,18 +201,13 @@ encoded_row_suite!(
 	}),
 	digest_array::digest_array,
 	digest_rows,
-	varlen_array::equals,
-	"digest_array::serialize",
-	"digest_array::deserialize"
+	varlen_array::equals
 );
 
 macro_rules! array_suite {
-	($name:ident, $array:ty, $elem:ty, $gen:expr, $build:path, $typed:path, $ops:ident, $ser:tt, $de:tt) => {
+	($name:ident, $array:ty, $elem:ty, $gen:expr, $build:path, $typed:path, $ops:ident) => {
 		mod $name {
 			use super::*;
-
-			#[derive(Serialize, Deserialize)]
-			struct Column(#[serde(serialize_with = $ser, deserialize_with = $de)] $array);
 
 			fn values(n: usize) -> Vec<$elem> {
 				let make: fn(usize) -> $elem = $gen;
@@ -296,23 +238,6 @@ macro_rules! array_suite {
 			}
 
 			#[test]
-			fn serialize_of_a_slice_equals_a_fresh_container() {
-				// A slice must serialize as exactly its rows, never the parent's rows.
-				let c = array(ROWS);
-				let s = Column($ops::slice(&c, 100, 350));
-				let fresh = Column($build(values(ROWS)[100..350].to_vec()));
-				assert_eq!(to_allocvec(&s).unwrap(), to_allocvec(&fresh).unwrap());
-				let json = json_to_string(&s).unwrap();
-				assert_eq!(json, json_to_string(&fresh).unwrap());
-				let decoded: Column = json_from_str(&json).unwrap();
-				assert_eq!($typed(&decoded.0), &values(ROWS)[100..350]);
-				assert!(
-					$typed(&decoded.0) == $typed(&fresh.0),
-					"the decoded slice must equal the fresh container"
-				);
-			}
-
-			#[test]
 			fn equality_ignores_how_the_rows_are_stored() {
 				// Typed slices must honour the array offset, otherwise equality sees the parent rows.
 				let c = array(ROWS);
@@ -331,9 +256,7 @@ array_suite!(
 	|i| Date::from_days_since_epoch(i as i32).unwrap(),
 	temporal_array::date_array,
 	temporal_array::dates,
-	primitive,
-	"temporal_array::serialize_dates",
-	"temporal_array::deserialize_dates"
+	primitive
 );
 array_suite!(
 	datetime,
@@ -342,9 +265,7 @@ array_suite!(
 	|i| DateTime::from_nanos(i as i64 * 1_000_000_007 + 7),
 	temporal_array::datetime_array,
 	temporal_array::datetimes,
-	primitive,
-	"temporal_array::serialize_datetimes",
-	"temporal_array::deserialize_datetimes"
+	primitive
 );
 array_suite!(
 	time,
@@ -353,9 +274,7 @@ array_suite!(
 	|i| Time::from_nanos_since_midnight(i as u64 * 1_000).unwrap(),
 	temporal_array::time_array,
 	temporal_array::times,
-	primitive,
-	"temporal_array::serialize_times",
-	"temporal_array::deserialize_times"
+	primitive
 );
 array_suite!(
 	duration,
@@ -364,9 +283,7 @@ array_suite!(
 	|i| Duration::new((i % 12) as i32, (i % 28) as i32, i as i64 * 1_000).unwrap(),
 	temporal_array::duration_array,
 	temporal_array::durations,
-	primitive,
-	"temporal_array::serialize_durations",
-	"temporal_array::deserialize_durations"
+	primitive
 );
 array_suite!(
 	uuid4,
@@ -375,9 +292,7 @@ array_suite!(
 	|i| Uuid4(Uuid::from_u128(i as u128 + 1)),
 	uuid_array::uuid4_array,
 	uuid_array::uuid4s,
-	fixed_array,
-	"uuid_array::serialize_uuid4s",
-	"uuid_array::deserialize_uuid4s"
+	fixed_array
 );
 array_suite!(
 	uuid7,
@@ -386,9 +301,7 @@ array_suite!(
 	|i| Uuid7(Uuid::from_u128((i as u128 + 1) << 64)),
 	uuid_array::uuid7_array,
 	uuid_array::uuid7s,
-	fixed_array,
-	"uuid_array::serialize_uuid7s",
-	"uuid_array::deserialize_uuid7s"
+	fixed_array
 );
 array_suite!(
 	identity_id,
@@ -397,9 +310,7 @@ array_suite!(
 	|i| IdentityId(Uuid7(Uuid::from_u128(((i as u128 + 1) << 80) | (0x7 << 76) | (0x2 << 62)))),
 	uuid_array::identity_id_array,
 	uuid_array::identity_ids,
-	fixed_array,
-	"uuid_array::serialize_identity_ids",
-	"uuid_array::deserialize_identity_ids"
+	fixed_array
 );
 
 fn bool_pattern(n: usize) -> Vec<bool> {
@@ -412,11 +323,6 @@ fn packed_bits_ptr(bits: &BooleanBuffer) -> *const u8 {
 		Cow::Owned(_) => panic!("a view at bit zero must borrow its packed bytes"),
 	}
 }
-
-#[derive(Serialize, Deserialize)]
-struct BoolColumn(
-	#[serde(serialize_with = "bool_array::serialize", deserialize_with = "bool_array::deserialize")] BooleanArray,
-);
 
 #[test]
 fn bool_clone_after_freeze_shares_the_bits() {
@@ -461,18 +367,6 @@ fn bool_slice_after_freeze_shares_the_bits_and_reads_at_the_offset() {
 	assert_eq!(t.values().inner().as_ptr(), c.values().inner().as_ptr());
 }
 
-#[test]
-fn bool_serialize_of_a_slice_equals_a_fresh_container() {
-	// A bool slice at a non byte offset must serialize exactly like a fresh array of its rows.
-	let c = BooleanArray::from(bool_pattern(ROWS));
-	let s = BoolColumn(bool_array::slice(&c, 13, 400));
-	let fresh = BoolColumn(BooleanArray::from(bool_pattern(ROWS)[13..400].to_vec()));
-	assert_eq!(to_allocvec(&s).unwrap(), to_allocvec(&fresh).unwrap());
-	let decoded: BoolColumn = from_bytes(&to_allocvec(&s).unwrap()).unwrap();
-	assert_eq!(decoded.0.values().iter().collect::<Vec<_>>(), &bool_pattern(ROWS)[13..400]);
-	assert!(s.0 == fresh.0);
-}
-
 fn strings(n: usize) -> Vec<String> {
 	(0..n).map(|i| format!("row-{i}-{}", "x".repeat(i % 5))).collect()
 }
@@ -480,12 +374,6 @@ fn strings(n: usize) -> Vec<String> {
 fn utf8_array(n: usize) -> LargeStringArray {
 	LargeStringArray::from(strings(n))
 }
-
-#[derive(Serialize, Deserialize)]
-struct Utf8Column(
-	#[serde(serialize_with = "varlen_array::serialize", deserialize_with = "varlen_array::deserialize_utf8")]
-	LargeStringArray,
-);
 
 fn byte_start(rows: &[String], row: usize) -> usize {
 	rows[..row].iter().map(|s| s.len()).sum()
@@ -552,20 +440,6 @@ fn utf8_slice_of_a_slice_keeps_absolute_offsets() {
 }
 
 #[test]
-fn utf8_serialize_of_a_slice_equals_a_fresh_container() {
-	// A utf8 slice must serialize exactly its rows, never the whole shared buffer.
-	let rows = strings(ROWS);
-	let c = utf8_array(ROWS);
-	let s = slice(&c, 100, 350);
-	let fresh = LargeStringArray::from(rows[100..350].to_vec());
-	let encoded = to_allocvec(&Utf8Column(s.clone())).unwrap();
-	assert_eq!(encoded, to_allocvec(&Utf8Column(fresh.clone())).unwrap());
-	let decoded: Utf8Column = from_bytes(&encoded).unwrap();
-	assert_eq!((0..decoded.0.len()).map(|i| decoded.0.value(i)).collect::<Vec<_>>(), rows[100..350].to_vec());
-	assert!(equals(&s, &fresh));
-}
-
-#[test]
 fn a_small_utf8_slice_pins_the_whole_parent_buffer() {
 	// A one row utf8 slice must keep referencing the parent buffer after the parent handle is dropped; this pins
 	// the whole block.
@@ -584,9 +458,6 @@ fn a_small_utf8_slice_pins_the_whole_parent_buffer() {
 fn blobs(n: usize) -> Vec<Vec<u8>> {
 	(0..n).map(|i| (0..(i % 9) as u8).map(|b| b.wrapping_mul(i as u8)).collect()).collect()
 }
-
-#[derive(Serialize)]
-struct BlobColumn(#[serde(serialize_with = "varlen_array::serialize")] LargeBinaryArray);
 
 #[test]
 fn blob_slice_after_freeze_references_the_parent_bytes() {
@@ -607,7 +478,6 @@ fn blob_slice_after_freeze_references_the_parent_bytes() {
 	assert_compact_parts_match(&s, &expected);
 
 	let fresh = blob_array(&rows[100..350].iter().cloned().map(Blob::new).collect::<Vec<_>>());
-	assert_eq!(to_allocvec(&BlobColumn(s.clone())).unwrap(), to_allocvec(&BlobColumn(fresh.clone())).unwrap());
 	assert!(equals(&s, &fresh));
 }
 

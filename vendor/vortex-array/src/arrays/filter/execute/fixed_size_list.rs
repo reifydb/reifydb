@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright the Vortex contributors
+
+use vortex_error::VortexExpect;
+use vortex_mask::Mask;
+use vortex_mask::MaskIter;
+use vortex_mask::MaskValues;
+use vortex_mask::MaskValuesRef;
+
+use crate::arrays::FixedSizeListArray;
+use crate::arrays::filter::execute::filter_validity;
+use crate::arrays::fixed_size_list::FixedSizeListArrayExt;
+use crate::arrays::fixed_size_list::FixedSizeListArraySlotsExt;
+
+/// Density threshold for choosing between indices and slices representation when expanding masks.
+///
+/// When the mask density is below this threshold, we use indices. Otherwise, we use slices.
+const MASK_EXPANSION_DENSITY_THRESHOLD: f64 = 0.05;
+
+/// Filter implementation for [`FixedSizeListArray`].
+///
+/// Expands the selection mask to cover all elements within selected lists and pushes the expanded
+/// mask down to the child elements array.
+pub fn filter_fixed_size_list(
+    array: &FixedSizeListArray,
+    selection_mask: &MaskValuesRef,
+) -> FixedSizeListArray {
+    let filtered_validity = filter_validity(
+        array
+            .validity()
+            .vortex_expect("validity is derivable for a valid FixedSizeListArray"),
+        selection_mask,
+    );
+
+    let elements = array.elements();
+    let new_len = selection_mask.true_count();
+    let list_size = array.list_size();
+
+    let new_elements = {
+        if list_size != 0 {
+            // TODO(connor): Push down an indices or slices selection to avoid expanding the mask.
+            let elements_mask =
+                compute_mask_for_fsl_elements(selection_mask.as_ref(), list_size as usize);
+
+            let new_elements = elements
+                .filter(elements_mask)
+                .vortex_expect("FixedSizeListArray elements are guaranteed to support filter");
+            debug_assert_eq!(new_elements.len(), new_len * list_size as usize);
+
+            new_elements
+        } else {
+            // We make a special case for degenerate `FixedSizeList` arrays.
+            debug_assert_eq!(
+                elements.len(),
+                0,
+                "degenerate FixedSizeListArray is invalid"
+            );
+
+            elements.clone()
+        }
+    };
+
+    // SAFETY:
+    // - A valid zero-width array has no elements, which the zero-width branch preserves.
+    // - Otherwise, the expanded selection retains `list_size` elements for each selected list.
+    // - Filtering validity with `selection_mask` gives it the required `new_len`.
+    unsafe {
+        FixedSizeListArray::new_unchecked(new_elements, list_size, filtered_validity, new_len)
+    }
+}
+
+/// Given a mask for a fixed-size list array, creates a new mask for the underlying elements.
+///
+/// This function simply "expands" out the input `selection_mask` by duplicating each bit
+/// `list_size` times.
+///
+/// The output `Mask` is guaranteed to have a length equal to `selection_mask.len() * list_size`.
+fn compute_mask_for_fsl_elements(selection_mask: &MaskValues, list_size: usize) -> Mask {
+    let expanded_len = selection_mask.len() * list_size;
+
+    // Use threshold_iter to choose the optimal representation based on density.
+    let expanded_slices = match selection_mask.threshold_iter(MASK_EXPANSION_DENSITY_THRESHOLD) {
+        MaskIter::Slices(slices) => {
+            // Expand a dense mask (represented as slices) by scaling each slice by `list_size`.
+            slices
+                .iter()
+                .map(|&(start, end)| (start * list_size, end * list_size))
+                .collect()
+        }
+        MaskIter::Indices(indices) => {
+            // Expand a sparse mask (represented as indices) by duplicating each index `list_size`
+            // times.
+            //
+            // Note that in the worst case, it is possible that we create only a few slices with a
+            // small range (for example, when list_size <= 2). This could be further optimized,
+            // but we choose simplicity for now.
+            indices
+                .iter()
+                .map(|&idx| {
+                    let start = idx * list_size;
+                    let end = (idx + 1) * list_size;
+                    (start, end)
+                })
+                .collect()
+        }
+    };
+
+    Mask::from_slices(expanded_len, expanded_slices)
+}
+
+#[cfg(test)]
+mod tests {
+    use vortex_buffer::buffer;
+    use vortex_mask::Mask;
+
+    use crate::IntoArray;
+    use crate::VortexSessionExecute;
+    use crate::array_session;
+    use crate::arrays::FixedSizeListArray;
+    use crate::arrays::PrimitiveArray;
+    use crate::assert_arrays_eq;
+    use crate::compute::conformance::filter::test_filter_conformance;
+    use crate::dtype::Nullability;
+    use crate::validity::Validity;
+
+    #[test]
+    fn test_filter_fixed_size_list_conformance() {
+        let elements = PrimitiveArray::from_iter([1i32, 2, 3, 4, 5, 6, 7, 8, 9]);
+        let array = FixedSizeListArray::new(elements.into_array(), 3, Validity::NonNullable, 3);
+        test_filter_conformance(
+            &array.into_array(),
+            &mut array_session().create_execution_ctx(),
+        );
+    }
+
+    #[test]
+    fn test_filter_fixed_size_list_with_nulls_conformance() {
+        let elements =
+            PrimitiveArray::from_option_iter([Some(1i32), None, Some(3), Some(4), Some(5), None]);
+        let validity = Validity::from_iter([true, false, true]);
+        let array = FixedSizeListArray::new(elements.into_array(), 2, validity, 3);
+        test_filter_conformance(
+            &array.into_array(),
+            &mut array_session().create_execution_ctx(),
+        );
+    }
+
+    #[test]
+    fn filter_fixed_size_list_selects_correct_lists() {
+        let mut ctx = array_session().create_execution_ctx();
+        let elements = PrimitiveArray::from_iter([10i32, 20, 30, 40, 50, 60]);
+        let array = FixedSizeListArray::new(elements.into_array(), 2, Validity::NonNullable, 3);
+
+        let mask = Mask::from_iter([true, false, true]);
+        let filtered = array.filter(mask).unwrap();
+
+        // Should select lists 0 and 2: [10, 20] and [50, 60].
+        let expected_elements = PrimitiveArray::from_iter([10i32, 20, 50, 60]);
+        let expected =
+            FixedSizeListArray::new(expected_elements.into_array(), 2, Validity::NonNullable, 2);
+
+        assert_arrays_eq!(filtered, expected, &mut ctx);
+    }
+
+    #[test]
+    fn filter_degenerate_list_size_zero() {
+        let mut ctx = array_session().create_execution_ctx();
+        let elements = PrimitiveArray::empty::<i32>(Nullability::NonNullable);
+        let array = FixedSizeListArray::new(elements.into_array(), 0, Validity::NonNullable, 5);
+
+        let mask = Mask::from_iter([true, false, true, false, true]);
+        let filtered = array.filter(mask).unwrap();
+
+        let expected_elements = PrimitiveArray::empty::<i32>(Nullability::NonNullable);
+        let expected =
+            FixedSizeListArray::new(expected_elements.into_array(), 0, Validity::NonNullable, 3);
+
+        assert_arrays_eq!(filtered, expected, &mut ctx);
+    }
+
+    #[test]
+    fn filter_nested_fixed_size_lists() {
+        let mut ctx = array_session().create_execution_ctx();
+        // Inner lists of size 2, outer lists of size 2 (so 2 outer lists, each with 2 inner lists).
+        let inner_elements = buffer![1i32, 2, 3, 4, 5, 6, 7, 8].into_array();
+        let inner_fsl = FixedSizeListArray::new(inner_elements, 2, Validity::NonNullable, 4);
+        let outer_fsl =
+            FixedSizeListArray::new(inner_fsl.into_array(), 2, Validity::NonNullable, 2);
+
+        // Keep only the second outer list.
+        let mask = Mask::from_iter([false, true]);
+        let filtered = outer_fsl.filter(mask).unwrap();
+
+        let expected_inner_elements = buffer![5i32, 6, 7, 8].into_array();
+        let expected_inner =
+            FixedSizeListArray::new(expected_inner_elements, 2, Validity::NonNullable, 2);
+        let expected_outer =
+            FixedSizeListArray::new(expected_inner.into_array(), 2, Validity::NonNullable, 1);
+
+        assert_arrays_eq!(filtered, expected_outer, &mut ctx);
+    }
+}

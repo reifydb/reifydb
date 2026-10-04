@@ -1,0 +1,217 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright the Vortex contributors
+
+use std::hash::Hasher;
+
+use vortex_error::VortexExpect;
+use vortex_error::VortexResult;
+use vortex_error::vortex_bail;
+use vortex_error::vortex_ensure;
+use vortex_error::vortex_panic;
+use vortex_mask::Mask;
+use vortex_mask::MaskValuesRef;
+use vortex_session::VortexSession;
+use vortex_session::registry::CachedId;
+
+use crate::AnyCanonical;
+use crate::ArrayEq;
+use crate::ArrayHash;
+use crate::ArrayParts;
+use crate::ArrayRef;
+use crate::Canonical;
+use crate::EqMode;
+use crate::IntoArray;
+use crate::array::Array;
+use crate::array::ArrayId;
+use crate::array::ArrayView;
+use crate::array::OperationsVTable;
+use crate::array::VTable;
+use crate::array::ValidityVTable;
+use crate::array::with_empty_buffers;
+use crate::arrays::filter::FilterArraySlotsExt;
+use crate::arrays::filter::array::FilterData;
+use crate::arrays::filter::array::FilterSlots;
+use crate::arrays::filter::execute::contiguous_filter_range;
+use crate::arrays::filter::execute::execute_all_null_filter_fast_path;
+use crate::arrays::filter::execute::execute_filter;
+use crate::arrays::filter::rules::PARENT_RULES;
+use crate::arrays::filter::rules::RULES;
+use crate::buffer::BufferHandle;
+use crate::dtype::DType;
+use crate::executor::ExecutionCtx;
+use crate::executor::ExecutionResult;
+use crate::require_child;
+use crate::scalar::Scalar;
+use crate::serde::ArrayChildren;
+use crate::validity::Validity;
+
+/// A [`Filter`]-encoded Vortex array.
+pub type FilterArray = Array<Filter>;
+
+#[derive(Clone, Debug)]
+pub struct Filter;
+
+impl ArrayHash for FilterData {
+    fn array_hash<H: Hasher>(&self, state: &mut H, accuracy: EqMode) {
+        self.mask.array_hash(state, accuracy);
+    }
+}
+
+impl ArrayEq for FilterData {
+    fn array_eq(&self, other: &Self, accuracy: EqMode) -> bool {
+        self.mask.array_eq(&other.mask, accuracy)
+    }
+}
+
+impl VTable for Filter {
+    type TypedArrayData = FilterData;
+    type OperationsVTable = Self;
+    type ValidityVTable = Self;
+    fn id(&self) -> ArrayId {
+        static ID: CachedId = CachedId::new("vortex.filter");
+        *ID
+    }
+
+    fn validate(
+        &self,
+        data: &Self::TypedArrayData,
+        dtype: &DType,
+        len: usize,
+        slots: &[Option<ArrayRef>],
+    ) -> VortexResult<()> {
+        vortex_ensure!(
+            slots[FilterSlots::CHILD].is_some(),
+            "FilterArray child slot must be present"
+        );
+        let child = slots[FilterSlots::CHILD]
+            .as_ref()
+            .vortex_expect("validated child slot");
+        vortex_ensure!(
+            child.dtype() == dtype,
+            "FilterArray dtype {} does not match outer dtype {}",
+            child.dtype(),
+            dtype
+        );
+        vortex_ensure!(
+            data.len() == len,
+            "FilterArray length {} does not match outer length {}",
+            data.len(),
+            len
+        );
+        vortex_ensure!(
+            child.len() == data.mask.len(),
+            "FilterArray child length {} does not match mask length {}",
+            child.len(),
+            data.mask.len()
+        );
+        Ok(())
+    }
+
+    fn nbuffers(_array: ArrayView<'_, Self>) -> usize {
+        0
+    }
+
+    fn buffer(_array: ArrayView<'_, Self>, _idx: usize) -> BufferHandle {
+        vortex_panic!("FilterArray has no buffers")
+    }
+
+    fn buffer_name(_array: ArrayView<'_, Self>, _idx: usize) -> Option<String> {
+        None
+    }
+
+    fn with_buffers(
+        &self,
+        array: ArrayView<'_, Self>,
+        buffers: &[BufferHandle],
+    ) -> VortexResult<ArrayParts<Self>> {
+        with_empty_buffers(self, array, buffers)
+    }
+
+    fn slot_name(_array: ArrayView<'_, Self>, idx: usize) -> String {
+        FilterSlots::NAMES[idx].to_string()
+    }
+
+    fn serialize(
+        _array: ArrayView<'_, Self>,
+        _session: &VortexSession,
+    ) -> VortexResult<Option<Vec<u8>>> {
+        // TODO(joe): make this configurable
+        vortex_bail!("Filter array is not serializable")
+    }
+
+    fn deserialize(
+        &self,
+        _dtype: &DType,
+        _len: usize,
+        _metadata: &[u8],
+
+        _buffers: &[BufferHandle],
+        _children: &dyn ArrayChildren,
+        _session: &VortexSession,
+    ) -> VortexResult<ArrayParts<Self>> {
+        vortex_bail!("Filter array is not serializable")
+    }
+
+    fn execute(array: Array<Self>, ctx: &mut ExecutionCtx) -> VortexResult<ExecutionResult> {
+        // Match the mask once. A zero-length mask is both all true and all false, so check the
+        // empty output before the unfiltered one.
+        let mask_values = match &array.mask {
+            Mask::AllFalse(_) | Mask::AllTrue(0) => {
+                return Ok(ExecutionResult::done(
+                    Canonical::empty(array.dtype()).into_array(),
+                ));
+            }
+            Mask::AllTrue(_) => return Ok(ExecutionResult::done(array.child().clone())),
+            Mask::Values(values) => MaskValuesRef::clone(values),
+        };
+
+        // Filtering by one contiguous range is exactly a slice and can remain zero-copy.
+        if let Some(range) = contiguous_filter_range(array.filter_mask()) {
+            return Ok(ExecutionResult::done(array.child().slice(range)?));
+        }
+
+        if let Some(canonical) =
+            execute_all_null_filter_fast_path(array.as_view(), mask_values.true_count(), ctx)?
+        {
+            return Ok(ExecutionResult::done(canonical));
+        }
+
+        let array = require_child!(array, array.child(), FilterSlots::CHILD => AnyCanonical);
+
+        // We rely on the optimization pass that runs prior to this execution for filter pushdown,
+        // so now we can just execute the filter without worrying.
+        // TODO(joe): fix the ownership of AnyCanonical
+        let child = Canonical::from(array.child().as_::<AnyCanonical>());
+        Ok(ExecutionResult::done(
+            execute_filter(child, &mask_values).into_array(),
+        ))
+    }
+
+    fn reduce_parent(
+        array: ArrayView<'_, Self>,
+        parent: &ArrayRef,
+        child_idx: usize,
+    ) -> VortexResult<Option<ArrayRef>> {
+        PARENT_RULES.evaluate(array, parent, child_idx)
+    }
+
+    fn reduce(array: ArrayView<'_, Self>) -> VortexResult<Option<ArrayRef>> {
+        RULES.evaluate(array)
+    }
+}
+impl OperationsVTable<Filter> for Filter {
+    fn scalar_at(
+        array: ArrayView<'_, Filter>,
+        index: usize,
+        ctx: &mut ExecutionCtx,
+    ) -> VortexResult<Scalar> {
+        let rank_idx = array.mask.rank(index);
+        array.child().execute_scalar(rank_idx, ctx)
+    }
+}
+
+impl ValidityVTable<Filter> for Filter {
+    fn validity(array: ArrayView<'_, Filter>) -> VortexResult<Validity> {
+        array.child().validity()?.filter(&array.mask)
+    }
+}

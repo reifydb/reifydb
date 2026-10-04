@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::result::Result as StdResult;
-
 use arrow_array::{Array, FixedSizeBinaryArray};
 use arrow_buffer::MutableBuffer;
-use serde::{Deserialize, Deserializer, Serializer};
 
 use crate::value::{
 	Value,
@@ -83,27 +80,10 @@ pub fn as_string(array: &FixedSizeBinaryArray, index: usize) -> String {
 	get(array, index).map(|id| id.to_string()).unwrap_or_else(|| "none".to_string())
 }
 
-pub fn serialize<Ser: Serializer>(array: &FixedSizeBinaryArray, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
-	serializer.collect_seq(iter(array))
-}
-
-pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<FixedSizeBinaryArray, D::Error> {
-	Ok(dictionary_array(Vec::<DictionaryEntryId>::deserialize(deserializer)?))
-}
-
 #[cfg(test)]
 mod tests {
-	use postcard::{from_bytes, to_allocvec};
-	use serde::{Deserialize, Serialize};
-	use serde_json::{from_str, to_string};
 
 	use super::*;
-	use crate::value::container::fixed_array::slice;
-
-	#[derive(Serialize, Deserialize)]
-	struct DictionaryColumn(
-		#[serde(serialize_with = "serialize", deserialize_with = "deserialize")] FixedSizeBinaryArray,
-	);
 
 	fn boundaries() -> Vec<DictionaryEntryId> {
 		vec![
@@ -185,29 +165,5 @@ mod tests {
 		// A 16 byte uuid array read as dictionary rows would shift every entry.
 		let array = FixedSizeBinaryArray::new(16, vec![0u8; 32].into(), None);
 		get(&array, 0);
-	}
-
-	#[test]
-	fn serde_writes_entries_like_a_slice_of_entry_ids() {
-		// The column bytes must match the entry list encoding, or stored frames stop decoding.
-		let entries = boundaries();
-		let column = DictionaryColumn(dictionary_array(entries.clone()));
-		let bytes = to_allocvec(&column).unwrap();
-		assert_eq!(bytes, to_allocvec(&entries).unwrap());
-		let back: DictionaryColumn = from_bytes(&bytes).unwrap();
-		assert_eq!(iter(&back.0).collect::<Vec<_>>(), entries);
-		let json = to_string(&column).unwrap();
-		assert_eq!(json, to_string(&entries).unwrap());
-		let back: DictionaryColumn = from_str(&json).unwrap();
-		assert_eq!(iter(&back.0).collect::<Vec<_>>(), entries);
-	}
-
-	#[test]
-	fn sliced_array_serializes_only_its_rows() {
-		// Serializing the whole backing buffer would leak rows outside the slice.
-		let entries = boundaries();
-		let sliced = slice(&dictionary_array(entries.clone()), 2, 4);
-		let bytes = to_allocvec(&DictionaryColumn(sliced)).unwrap();
-		assert_eq!(bytes, to_allocvec(&entries[2..4]).unwrap());
 	}
 }

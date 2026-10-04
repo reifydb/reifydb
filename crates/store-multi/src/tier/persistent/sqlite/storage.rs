@@ -593,9 +593,9 @@ impl SqlitePersistentStorage {
 
 		let mut chunks = sets.chunks_exact(UPSERT_CHUNK);
 		for chunk in chunks.by_ref() {
+			self.inner.filter.add_many(chunk.iter().map(|(key, _)| (table, key)));
 			let mut boxed: Vec<Box<dyn ToSql>> = Vec::with_capacity(chunk.len() * (key_columns + 3));
 			for (key, value) in chunk.iter().copied() {
-				self.inner.filter.add((table, key));
 				push_key_params(table_sql.schema, key.as_slice(), &mut boxed)?;
 				boxed.push(Box::new(new_version_bytes.to_vec()));
 				boxed.push(Box::new(value.as_ref().map(|v| v.as_slice().to_vec())));
@@ -618,8 +618,8 @@ impl SqlitePersistentStorage {
 			}
 		}
 
+		self.inner.filter.add_many(chunks.remainder().iter().map(|(key, _)| (table, key)));
 		for (key, value) in chunks.remainder().iter().copied() {
-			self.inner.filter.add((table, key));
 			let mut boxed: Vec<Box<dyn ToSql>> = Vec::with_capacity(key_columns + 3);
 			push_key_params(table_sql.schema, key.as_slice(), &mut boxed)?;
 			boxed.push(Box::new(new_version_bytes.to_vec()));

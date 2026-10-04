@@ -82,8 +82,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 
 	fn config_uint8(&self, key: ConfigKey) -> u64;
 
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
-
 	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape>;
 
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
@@ -131,6 +129,22 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>>;
 
 	fn dictionary_get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
+
+	fn dictionary_find_many(
+		&mut self,
+		dictionary: DictionaryId,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>> {
+		values.iter().map(|value| self.dictionary_find(dictionary, value)).collect()
+	}
+
+	fn dictionary_get_many(
+		&mut self,
+		dictionary: DictionaryId,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>> {
+		ids.iter().map(|&id| self.dictionary_get(dictionary, id)).collect()
+	}
 
 	fn lookup_read(
 		&mut self,
@@ -238,22 +252,8 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_get(self.operator, key)
 	}
 
-	fn state_get_many_visit(
-		&mut self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
-		let batch = self.txn.state_get_many(self.operator, keys)?;
-		for r in batch.items {
-			let TaggedKey::OperatorState(decoded) = &r.key else {
-				continue;
-			};
-			let Some(inner) = GroupStateKey::from_framed(decoded.inner()) else {
-				continue;
-			};
-			visit(inner, EncodedPodRow::from(r.bytes))?;
-		}
-		Ok(())
+	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		self.txn.state_get_many(self.operator, keys)
 	}
 
 	fn state_classify(&mut self, key: &GroupStateKey, pre: Option<ByteSize>) {
@@ -267,6 +267,23 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
 		self.txn.state_remove(self.operator, key)
+	}
+
+	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		self.txn.state_remove_many(self.operator, keys)
+	}
+
+	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		let managed: Vec<GroupStateKey> = rows
+			.iter()
+			.filter(|(key, _)| key.keyspace() == Some(KeyspaceId::CUSTOM_MANAGED))
+			.map(|(key, _)| key.clone())
+			.collect();
+		self.txn.state_set_many(self.operator, rows)?;
+		for key in &managed {
+			self.arm_reclaim(key)?;
+		}
+		Ok(())
 	}
 
 	fn state_page_inner(
@@ -458,18 +475,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.catalog().get_config_uint8(key)
 	}
 
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		let batch = self.txn.state_get_many(self.operator, keys)?;
-		let mut out = Vec::with_capacity(batch.items.len());
-		for r in batch.items {
-			let Some(key) = unscope(&r.key) else {
-				continue;
-			};
-			out.push((key, EncodedPodRow::from(r.bytes)));
-		}
-		Ok(out)
-	}
-
 	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		self.state_range_limited(range, None)
 	}
@@ -564,6 +569,28 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 			None => Ok(None),
 		}
 	}
+
+	fn dictionary_find_many(
+		&mut self,
+		dictionary: DictionaryId,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>> {
+		match self.txn.find_dictionary(dictionary) {
+			Some(dict) => self.txn.find_many_in_dictionary(&dict, values),
+			None => Ok(vec![None; values.len()]),
+		}
+	}
+
+	fn dictionary_get_many(
+		&mut self,
+		dictionary: DictionaryId,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>> {
+		match self.txn.find_dictionary(dictionary) {
+			Some(dict) => self.txn.get_many_from_dictionary(&dict, ids),
+			None => Ok(vec![None; ids.len()]),
+		}
+	}
 }
 
 impl<T: FlowTransaction> Resolve for TxnHostContext<'_, T> {
@@ -571,8 +598,8 @@ impl<T: FlowTransaction> Resolve for TxnHostContext<'_, T> {
 		Ok(self.txn.find_dictionary(id))
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		self.txn.get_from_dictionary(dictionary, id)
+	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+		self.txn.get_many_from_dictionary(dictionary, ids)
 	}
 }
 

@@ -10,4 +10,5 @@ use reifydb_value::Result;
 
 pub mod error;
 pub mod expression;
+pub mod lower;
 pub mod stack;

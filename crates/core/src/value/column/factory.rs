@@ -269,7 +269,13 @@ pub fn typed_none(name: &str, ty: &ValueType) -> (FieldRef, ArrayRef) {
 }
 
 pub fn none_typed(name: &str, ty: ValueType, len: usize) -> (FieldRef, ArrayRef) {
-	let (field, array) = match ty {
+	let (field, array) = default_typed(name, ty, len);
+	let array = with_validity(array, NullBuffer::new_null(len));
+	(Arc::new(field.as_ref().clone().with_nullable(true)), array)
+}
+
+pub fn default_typed(name: &str, ty: ValueType, len: usize) -> (FieldRef, ArrayRef) {
+	match ty {
 		ValueType::Boolean => bool(name, vec![false; len]),
 		ValueType::Float4 => float4(name, vec![0.0f32; len]),
 		ValueType::Float8 => float8(name, vec![0.0f64; len]),
@@ -301,7 +307,7 @@ pub fn none_typed(name: &str, ty: ValueType, len: usize) -> (FieldRef, ArrayRef)
 		list_ty @ ValueType::List(_) => any_typed(name, vec![Value::List(vec![]); len], list_ty),
 		record_ty @ ValueType::Record(_) => any_typed(name, vec![Value::Record(vec![]); len], record_ty),
 		ValueType::Tuple(_) => any(name, vec![Value::Tuple(vec![]); len]),
-		ValueType::Option(inner) => return none_typed(name, *inner, len),
+		ValueType::Option(inner) => default_typed(name, *inner, len),
 		ValueType::Digest {
 			inner,
 			accuracy,
@@ -316,9 +322,7 @@ pub fn none_typed(name: &str, ty: ValueType, len: usize) -> (FieldRef, ArrayRef)
 			},
 			Arc::new(digest_array((0..len).map(|_| None::<Digest>))),
 		),
-	};
-	let array = with_validity(array, NullBuffer::new_null(len));
-	(Arc::new(field.as_ref().clone().with_nullable(true)), array)
+	}
 }
 
 pub fn from_one(name: &str, value: Value) -> (FieldRef, ArrayRef) {

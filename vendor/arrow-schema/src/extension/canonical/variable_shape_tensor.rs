@@ -178,7 +178,7 @@ enum MetadataField {
 
 struct MetadataFieldVisitor;
 
-impl Visitor<'_> for MetadataFieldVisitor {
+impl<'de> Visitor<'de> for MetadataFieldVisitor {
     type Value = MetadataField;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -548,7 +548,11 @@ mod tests {
             ],
             false,
         )
-        .with_metadata([(EXTENSION_TYPE_METADATA_KEY, "{}")]);
+        .with_metadata(
+            [(EXTENSION_TYPE_METADATA_KEY.to_owned(), "{}".to_owned())]
+                .into_iter()
+                .collect(),
+        );
         field.extension_type::<VariableShapeTensor>();
     }
 
@@ -597,7 +601,14 @@ mod tests {
             ],
             false,
         )
-        .with_metadata([(EXTENSION_TYPE_NAME_KEY, VariableShapeTensor::NAME)]);
+        .with_metadata(
+            [(
+                EXTENSION_TYPE_NAME_KEY.to_owned(),
+                VariableShapeTensor::NAME.to_owned(),
+            )]
+            .into_iter()
+            .collect(),
+        );
         field.extension_type::<VariableShapeTensor>();
     }
 
@@ -621,13 +632,20 @@ mod tests {
             ],
             false,
         )
-        .with_metadata([
-            (EXTENSION_TYPE_NAME_KEY, VariableShapeTensor::NAME),
-            (
-                EXTENSION_TYPE_METADATA_KEY,
-                r#"{ "dim_names": [1, null, 3, 4] }"#,
-            ),
-        ]);
+        .with_metadata(
+            [
+                (
+                    EXTENSION_TYPE_NAME_KEY.to_owned(),
+                    VariableShapeTensor::NAME.to_owned(),
+                ),
+                (
+                    EXTENSION_TYPE_METADATA_KEY.to_owned(),
+                    r#"{ "dim_names": [1, null, 3, 4] }"#.to_owned(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        );
         field.extension_type::<VariableShapeTensor>();
     }
 

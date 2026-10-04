@@ -1,0 +1,768 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright the Vortex contributors
+
+//! Tests for primitive scalar types, utility functions, and basic operations.
+
+#[cfg(test)]
+mod tests {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::Hash;
+    use std::hash::Hasher;
+    use std::sync::Arc;
+
+    use vortex_buffer::ByteBuffer;
+    use vortex_error::VortexResult;
+    use vortex_utils::aliases::hash_set::HashSet;
+
+    use crate::dtype::DType;
+    use crate::dtype::DecimalDType;
+    use crate::dtype::NativeDecimalType;
+    use crate::dtype::Nullability;
+    use crate::dtype::PType;
+    use crate::dtype::UnionVariants;
+    use crate::extension::datetime::Date;
+    use crate::extension::datetime::TimeUnit;
+    use crate::scalar::DecimalScalar;
+    use crate::scalar::DecimalValue;
+    use crate::scalar::PValue;
+    use crate::scalar::PrimitiveScalar;
+    use crate::scalar::Scalar;
+    use crate::scalar::ScalarValue;
+
+    fn union_variants(
+        int_nullability: Nullability,
+        utf8_nullability: Nullability,
+    ) -> VortexResult<UnionVariants> {
+        UnionVariants::try_new(
+            ["int", "string"].into(),
+            vec![
+                DType::Primitive(PType::I32, int_nullability),
+                DType::Utf8(utf8_nullability),
+            ],
+            vec![5, 9],
+        )
+    }
+
+    fn scalar_hash(scalar: &Scalar) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        scalar.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn default_value_for_complex_dtype() {
+        let struct_dtype = DType::struct_(
+            [
+                ("a", DType::Primitive(PType::I32, Nullability::NonNullable)),
+                (
+                    "b",
+                    DType::list(
+                        DType::Primitive(PType::I8, Nullability::Nullable),
+                        Nullability::NonNullable,
+                    ),
+                ),
+                ("c", DType::Primitive(PType::I32, Nullability::Nullable)),
+            ],
+            Nullability::NonNullable,
+        );
+
+        let scalar = Scalar::default_value(&struct_dtype);
+        assert_eq!(scalar.dtype(), &struct_dtype);
+
+        let scalar = scalar.as_struct();
+
+        let a_field = scalar.field("a").unwrap();
+        assert_eq!(a_field.as_primitive().pvalue().unwrap(), PValue::I32(0));
+
+        let b_field = scalar.field("b").unwrap();
+        assert!(b_field.as_list().is_empty());
+
+        let c_field = scalar.field("c").unwrap();
+        assert!(c_field.is_null());
+    }
+
+    #[test]
+    fn default_value_for_nullable_union_is_null() -> VortexResult<()> {
+        let nullable = DType::Union(
+            union_variants(Nullability::Nullable, Nullability::NonNullable)?,
+            Nullability::Nullable,
+        );
+
+        assert!(Scalar::default_value(&nullable).is_null());
+
+        Ok(())
+    }
+
+    #[test]
+    fn default_value_for_non_nullable_union_selects_first_variant() -> VortexResult<()> {
+        let non_nullable = DType::Union(
+            union_variants(Nullability::Nullable, Nullability::NonNullable)?,
+            Nullability::NonNullable,
+        );
+
+        let scalar = Scalar::default_value(&non_nullable);
+        let union = scalar.as_union();
+
+        assert!(!scalar.is_null());
+        assert!(!union.is_null());
+        assert_eq!(union.type_id(), Some(5));
+        assert!(union.child().is_some_and(|child| child.is_null()));
+        assert_eq!(scalar.is_zero(), None);
+
+        Ok(())
+    }
+
+    #[test]
+    fn union_zero_value_selects_first_variant() -> VortexResult<()> {
+        let dtype = DType::Union(
+            union_variants(Nullability::Nullable, Nullability::NonNullable)?,
+            Nullability::Nullable,
+        );
+
+        let scalar = Scalar::zero_value(&dtype);
+        let union = scalar.as_union();
+
+        assert!(!scalar.is_null());
+        assert!(!union.is_null());
+        assert_eq!(union.type_id(), Some(5));
+        assert_eq!(
+            union.child(),
+            Some(Scalar::primitive(0_i32, Nullability::Nullable))
+        );
+        assert_eq!(scalar.is_zero(), Some(true));
+
+        Ok(())
+    }
+
+    #[test]
+    fn union_has_no_zero_value_when_first_variant_is_null() -> VortexResult<()> {
+        let variants = UnionVariants::try_new(
+            ["null", "int"].into(),
+            vec![
+                DType::Null,
+                DType::Primitive(PType::I32, Nullability::NonNullable),
+            ],
+            vec![5, 9],
+        )?;
+        let dtype = DType::Union(variants.clone(), Nullability::NonNullable);
+        let scalar = Scalar::union(
+            variants,
+            5,
+            Scalar::null(DType::Null),
+            Nullability::NonNullable,
+        )?;
+
+        assert_eq!(ScalarValue::try_zero_value(&dtype), None);
+        assert_eq!(scalar.is_zero(), None);
+
+        Ok(())
+    }
+
+    #[test]
+    fn union_is_zero_requires_first_variant_and_zero_child() -> VortexResult<()> {
+        let variants = union_variants(Nullability::NonNullable, Nullability::NonNullable)?;
+        let first_zero = Scalar::union(
+            variants.clone(),
+            5,
+            Scalar::from(0_i32),
+            Nullability::NonNullable,
+        )?;
+        let first_nonzero = Scalar::union(
+            variants.clone(),
+            5,
+            Scalar::from(1_i32),
+            Nullability::NonNullable,
+        )?;
+        let second_zero = Scalar::union(
+            variants.clone(),
+            9,
+            Scalar::from(""),
+            Nullability::NonNullable,
+        )?;
+        let null = Scalar::null(DType::Union(variants, Nullability::Nullable));
+
+        assert_eq!(first_zero.is_zero(), Some(true));
+        assert_eq!(first_nonzero.is_zero(), Some(false));
+        assert_eq!(second_zero.is_zero(), Some(false));
+        assert_eq!(null.is_zero(), None);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_scalar_nbytes() -> VortexResult<()> {
+        // Test null scalar - should be 0 bytes
+        let null_scalar = Scalar::null(DType::Null);
+        assert_eq!(null_scalar.approx_nbytes(), 0);
+
+        // Test bool scalar - should be 1 byte
+        let bool_scalar = Scalar::bool(true, Nullability::NonNullable);
+        assert_eq!(bool_scalar.approx_nbytes(), 1);
+
+        // Test primitive scalars
+        let u8_scalar = Scalar::primitive(42u8, Nullability::NonNullable);
+        assert_eq!(u8_scalar.approx_nbytes(), 1);
+
+        let u16_scalar = Scalar::primitive(1000u16, Nullability::NonNullable);
+        assert_eq!(u16_scalar.approx_nbytes(), 2);
+
+        let u32_scalar = Scalar::primitive(100000u32, Nullability::NonNullable);
+        assert_eq!(u32_scalar.approx_nbytes(), 4);
+
+        let u64_scalar = Scalar::primitive(10000000000u64, Nullability::NonNullable);
+        assert_eq!(u64_scalar.approx_nbytes(), 8);
+
+        let f32_scalar = Scalar::primitive(3.5f32, Nullability::NonNullable);
+        assert_eq!(f32_scalar.approx_nbytes(), 4);
+
+        let f64_scalar = Scalar::primitive(3.5f64, Nullability::NonNullable);
+        assert_eq!(f64_scalar.approx_nbytes(), 8);
+
+        // Test UTF-8 scalar
+        let utf8_scalar = Scalar::utf8("hello", Nullability::NonNullable);
+        assert_eq!(utf8_scalar.approx_nbytes(), 5);
+
+        let empty_utf8 = Scalar::utf8("", Nullability::NonNullable);
+        assert_eq!(empty_utf8.approx_nbytes(), 0);
+
+        // Test binary scalar
+        let binary_scalar = Scalar::binary(
+            ByteBuffer::from(vec![1u8, 2, 3, 4]),
+            Nullability::NonNullable,
+        );
+        assert_eq!(binary_scalar.approx_nbytes(), 4);
+
+        // Test struct scalar
+        let struct_scalar = Scalar::struct_(
+            DType::struct_(
+                [
+                    ("a", DType::Primitive(PType::I32, Nullability::NonNullable)),
+                    ("b", DType::Primitive(PType::I64, Nullability::NonNullable)),
+                ],
+                Nullability::NonNullable,
+            ),
+            vec![
+                Scalar::primitive(42i32, Nullability::NonNullable),
+                Scalar::primitive(100i64, Nullability::NonNullable),
+            ],
+        );
+        assert_eq!(struct_scalar.approx_nbytes(), 4 + 8); // i32 + i64
+
+        // Test list scalar
+        let list_scalar = Scalar::list(
+            Arc::new(DType::Primitive(PType::I32, Nullability::NonNullable)),
+            vec![
+                Scalar::primitive(1i32, Nullability::NonNullable),
+                Scalar::primitive(2i32, Nullability::NonNullable),
+                Scalar::primitive(3i32, Nullability::NonNullable),
+            ],
+            Nullability::NonNullable,
+        );
+        assert_eq!(list_scalar.approx_nbytes(), 3 * 4); // 3 * i32
+
+        // Test extension scalar
+        let ext_scalar = Scalar::extension::<Date>(
+            TimeUnit::Days,
+            Scalar::primitive(42i32, Nullability::NonNullable),
+        );
+        assert_eq!(ext_scalar.approx_nbytes(), 4); // i32 storage
+
+        // Test union scalar: one-byte type ID plus selected child.
+        let variants = union_variants(Nullability::Nullable, Nullability::NonNullable)?;
+        let union_scalar = Scalar::union(
+            variants.clone(),
+            5,
+            Scalar::primitive(42_i32, Nullability::Nullable),
+            Nullability::Nullable,
+        )?;
+
+        assert_eq!(
+            union_scalar.approx_nbytes(),
+            size_of::<u8>() + size_of::<i32>()
+        );
+        let inner_null = Scalar::union(
+            variants.clone(),
+            5,
+            Scalar::null(DType::Primitive(PType::I32, Nullability::Nullable)),
+            Nullability::Nullable,
+        )?;
+        assert_eq!(
+            inner_null.approx_nbytes(),
+            size_of::<u8>() + size_of::<i32>()
+        );
+        assert_eq!(
+            Scalar::null(DType::Union(variants, Nullability::Nullable)).approx_nbytes(),
+            0
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_decimal_nbytes() {
+        // Test decimal with precision <= 38 (should use i128 = 16 bytes)
+        let decimal_low_precision = Scalar::decimal(
+            DecimalValue::I128(123456789),
+            DecimalDType::new(i128::MAX_PRECISION, 2), // precision 38
+            Nullability::NonNullable,
+        );
+        assert_eq!(
+            decimal_low_precision.approx_nbytes(),
+            16,
+            "Decimals with precision <= 38 should be 16 bytes (i128)"
+        );
+
+        // Test decimal with precision > 38 (should use i256 = 32 bytes)
+        let decimal_high_precision = Scalar::decimal(
+            DecimalValue::I128(123456789),
+            DecimalDType::new(i128::MAX_PRECISION + 1, 2), // precision 39
+            Nullability::NonNullable,
+        );
+        assert_eq!(
+            decimal_high_precision.approx_nbytes(),
+            32,
+            "Decimals with precision > 38 should be 32 bytes (i256)"
+        );
+
+        // Test various precision boundaries
+        let decimal_p10 = Scalar::decimal(
+            DecimalValue::I32(12345),
+            DecimalDType::new(10, 2),
+            Nullability::NonNullable,
+        );
+        assert_eq!(
+            decimal_p10.approx_nbytes(),
+            16,
+            "Decimal with precision 10 should be 16 bytes"
+        );
+
+        let decimal_p38 = Scalar::decimal(
+            DecimalValue::I64(123456789),
+            DecimalDType::new(38, 4),
+            Nullability::NonNullable,
+        );
+        assert_eq!(
+            decimal_p38.approx_nbytes(),
+            16,
+            "Decimal with precision 38 should be 16 bytes"
+        );
+
+        let decimal_p50 = Scalar::decimal(
+            DecimalValue::I128(123456789),
+            DecimalDType::new(50, 5),
+            Nullability::NonNullable,
+        );
+        assert_eq!(
+            decimal_p50.approx_nbytes(),
+            32,
+            "Decimal with precision 50 should be 32 bytes"
+        );
+
+        // Test null decimal - should still report size based on precision
+        let null_decimal_low = Scalar::null(DType::Decimal(
+            DecimalDType::new(20, 2),
+            Nullability::Nullable,
+        ));
+        assert_eq!(
+            null_decimal_low.approx_nbytes(),
+            16,
+            "Null decimal with low precision should still report 16 bytes"
+        );
+
+        let null_decimal_high = Scalar::null(DType::Decimal(
+            DecimalDType::new(40, 2),
+            Nullability::Nullable,
+        ));
+        assert_eq!(
+            null_decimal_high.approx_nbytes(),
+            32,
+            "Null decimal with high precision should still report 32 bytes"
+        );
+    }
+
+    #[test]
+    fn test_scalar_nbytes_with_nulls() {
+        // Test null string
+        let null_utf8 = Scalar::null(DType::Utf8(Nullability::Nullable));
+        assert_eq!(null_utf8.approx_nbytes(), 0);
+
+        // Test null binary
+        let null_binary = Scalar::null(DType::Binary(Nullability::Nullable));
+        assert_eq!(null_binary.approx_nbytes(), 0);
+
+        // Test struct with null fields
+        let struct_with_null = Scalar::struct_(
+            DType::struct_(
+                [
+                    ("a", DType::Primitive(PType::I32, Nullability::Nullable)),
+                    ("b", DType::Primitive(PType::I64, Nullability::NonNullable)),
+                ],
+                Nullability::NonNullable,
+            ),
+            vec![
+                Scalar::null(DType::Primitive(PType::I32, Nullability::Nullable)),
+                Scalar::primitive(100i64, Nullability::NonNullable),
+            ],
+        );
+        // Primitive null fields still count their byte width
+        assert_eq!(struct_with_null.approx_nbytes(), 4 + 8);
+
+        // Test list with null elements
+        let list_with_null = Scalar::list(
+            Arc::new(DType::Primitive(PType::I32, Nullability::Nullable)),
+            vec![
+                Scalar::primitive(1i32, Nullability::Nullable),
+                Scalar::null(DType::Primitive(PType::I32, Nullability::Nullable)),
+                Scalar::primitive(3i32, Nullability::Nullable),
+            ],
+            Nullability::NonNullable,
+        );
+        // Primitive null elements still count their byte width
+        assert_eq!(list_with_null.approx_nbytes(), 3 * 4); // 3 i32 values (including null)
+    }
+
+    #[test]
+    fn test_scalar_into_nullable() {
+        let non_nullable = Scalar::primitive(42i32, Nullability::NonNullable);
+        assert_eq!(non_nullable.dtype().nullability(), Nullability::NonNullable);
+
+        let nullable = non_nullable.into_nullable();
+        assert_eq!(nullable.dtype().nullability(), Nullability::Nullable);
+        assert_eq!(nullable.as_primitive().typed_value::<i32>(), Some(42));
+
+        // Test with already nullable scalar
+        let already_nullable = Scalar::primitive(42i32, Nullability::Nullable);
+        let still_nullable = already_nullable.into_nullable();
+        assert_eq!(still_nullable.dtype().nullability(), Nullability::Nullable);
+    }
+
+    #[test]
+    fn test_scalar_into_parts() {
+        let scalar = Scalar::primitive(42i32, Nullability::NonNullable);
+        let (dtype, value) = scalar.into_parts();
+
+        assert_eq!(
+            dtype,
+            DType::Primitive(PType::I32, Nullability::NonNullable)
+        );
+        match value {
+            Some(ScalarValue::Primitive(PValue::I32(v))) => {
+                assert_eq!(v, 42);
+            }
+            _ => panic!("Expected I32 primitive value"),
+        }
+    }
+
+    #[test]
+    fn test_scalar_into_value() {
+        let scalar = Scalar::primitive(42i32, Nullability::NonNullable);
+        let value = scalar.into_value();
+
+        match value {
+            Some(ScalarValue::Primitive(PValue::I32(v))) => {
+                assert_eq!(v, 42);
+            }
+            _ => panic!("Expected I32 primitive value"),
+        }
+    }
+
+    #[test]
+    fn test_scalar_is_valid_is_null() {
+        let valid_scalar = Scalar::primitive(42i32, Nullability::NonNullable);
+        assert!(valid_scalar.is_valid());
+        assert!(!valid_scalar.is_null());
+
+        let null_scalar = Scalar::null(DType::Primitive(PType::I32, Nullability::Nullable));
+        assert!(!null_scalar.is_valid());
+        assert!(null_scalar.is_null());
+    }
+
+    #[test]
+    fn test_scalar_from_option() {
+        // Test Some value
+        let some_value: Option<i32> = Some(42);
+        let scalar = Scalar::from(some_value);
+        assert_eq!(
+            scalar.dtype(),
+            &DType::Primitive(PType::I32, Nullability::Nullable)
+        );
+        assert_eq!(scalar.as_primitive().typed_value::<i32>(), Some(42));
+
+        // Test None value
+        let none_value: Option<i32> = None;
+        let null_scalar = Scalar::from(none_value);
+        assert_eq!(
+            null_scalar.dtype(),
+            &DType::Primitive(PType::I32, Nullability::Nullable)
+        );
+        assert!(null_scalar.is_null());
+    }
+
+    #[test]
+    fn test_scalar_from_primitive_scalar() {
+        let dtype = DType::Primitive(PType::I32, Nullability::NonNullable);
+        let pscalar =
+            PrimitiveScalar::try_new(&dtype, Some(&ScalarValue::Primitive(PValue::I32(42))))
+                .unwrap();
+
+        let scalar = Scalar::from(pscalar);
+        assert_eq!(scalar.dtype(), &dtype);
+        assert_eq!(scalar.as_primitive().typed_value::<i32>(), Some(42));
+    }
+
+    #[test]
+    fn test_scalar_from_decimal_scalar() {
+        let decimal_dtype = DecimalDType::new(10, 2);
+        let dtype = DType::Decimal(decimal_dtype, Nullability::NonNullable);
+        let dscalar = DecimalScalar::try_new(
+            &dtype,
+            Some(&ScalarValue::Decimal(DecimalValue::I32(12345))),
+        )
+        .unwrap();
+
+        let scalar = Scalar::from(dscalar);
+        assert_eq!(scalar.dtype(), &dtype);
+        assert_eq!(
+            scalar.as_decimal().decimal_value(),
+            Some(DecimalValue::I32(12345))
+        );
+    }
+
+    #[test]
+    fn test_scalar_from_vec_macros() {
+        // Test Vec<u16>
+        let vec_u16 = vec![1u16, 2, 3];
+        let scalar = Scalar::from(vec_u16);
+        assert!(matches!(scalar.dtype(), DType::List(..)));
+        assert_eq!(scalar.as_list().len(), 3);
+
+        // Test Vec<i32>
+        let vec_i32 = vec![10i32, 20, 30];
+        let scalar = Scalar::from(vec_i32);
+        assert!(matches!(scalar.dtype(), DType::List(..)));
+        assert_eq!(scalar.as_list().len(), 3);
+
+        // Test Vec<f64>
+        let vec_f64 = vec![1.1f64, 2.2, 3.3];
+        let scalar = Scalar::from(vec_f64);
+        assert!(matches!(scalar.dtype(), DType::List(..)));
+        assert_eq!(scalar.as_list().len(), 3);
+
+        // Test Vec<String>
+        let vec_string = vec!["hello".to_string(), "world".to_string()];
+        let scalar = Scalar::from(vec_string);
+        assert!(matches!(scalar.dtype(), DType::List(..)));
+        assert_eq!(scalar.as_list().len(), 2);
+    }
+
+    #[test]
+    fn test_scalar_hash() {
+        let mut set = HashSet::new();
+
+        // Add various scalar types
+        set.insert(Scalar::null(DType::Null));
+        set.insert(Scalar::bool(true, Nullability::NonNullable));
+        set.insert(Scalar::primitive(42i32, Nullability::NonNullable));
+        set.insert(Scalar::utf8("test", Nullability::NonNullable));
+
+        // Test that duplicates are not added
+        assert_eq!(set.len(), 4);
+        set.insert(Scalar::primitive(42i32, Nullability::NonNullable));
+        assert_eq!(set.len(), 4); // Should still be 4
+
+        // Test that different values hash differently
+        set.insert(Scalar::primitive(43i32, Nullability::NonNullable));
+        assert_eq!(set.len(), 5);
+    }
+
+    #[test]
+    fn test_scalar_hash_ignores_nested_nullability() {
+        let nullable = Scalar::list(
+            DType::Primitive(PType::I32, Nullability::Nullable),
+            vec![Scalar::primitive(42_i32, Nullability::Nullable)],
+            Nullability::NonNullable,
+        );
+        let non_nullable = Scalar::list(
+            DType::Primitive(PType::I32, Nullability::NonNullable),
+            vec![Scalar::primitive(42_i32, Nullability::NonNullable)],
+            Nullability::NonNullable,
+        );
+
+        assert_eq!(nullable, non_nullable);
+        assert_eq!(scalar_hash(&nullable), scalar_hash(&non_nullable));
+    }
+
+    #[test]
+    fn test_union_scalar_equality_ignores_variant_nullability() -> VortexResult<()> {
+        let lhs_variants = union_variants(Nullability::Nullable, Nullability::NonNullable)?;
+        let rhs_variants = union_variants(Nullability::NonNullable, Nullability::Nullable)?;
+
+        let lhs = Scalar::union(
+            lhs_variants.clone(),
+            5,
+            Scalar::primitive(42_i32, Nullability::Nullable),
+            Nullability::Nullable,
+        )?;
+
+        let rhs = Scalar::union(
+            rhs_variants.clone(),
+            5,
+            Scalar::primitive(42_i32, Nullability::NonNullable),
+            Nullability::NonNullable,
+        )?;
+
+        assert_eq!(lhs, rhs);
+
+        let lhs_null = Scalar::null(DType::Union(lhs_variants, Nullability::Nullable));
+        let rhs_null = Scalar::null(DType::Union(rhs_variants, Nullability::Nullable));
+
+        assert_eq!(lhs_null, rhs_null);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_scalar_partial_ord_incompatible_types() {
+        let int_scalar = Scalar::primitive(42i32, Nullability::NonNullable);
+        let bool_scalar = Scalar::bool(true, Nullability::NonNullable);
+
+        // Different types should return None for partial_cmp
+        assert_eq!(int_scalar.partial_cmp(&bool_scalar), None);
+        assert_eq!(bool_scalar.partial_cmp(&int_scalar), None);
+    }
+
+    #[test]
+    fn test_scalar_partial_ord_same_type() {
+        let scalar1 = Scalar::primitive(10i32, Nullability::NonNullable);
+        let scalar2 = Scalar::primitive(20i32, Nullability::NonNullable);
+        let scalar3 = Scalar::primitive(10i32, Nullability::NonNullable);
+
+        assert_eq!(
+            scalar1.partial_cmp(&scalar2),
+            Some(std::cmp::Ordering::Less)
+        );
+        assert_eq!(
+            scalar2.partial_cmp(&scalar1),
+            Some(std::cmp::Ordering::Greater)
+        );
+        assert_eq!(
+            scalar1.partial_cmp(&scalar3),
+            Some(std::cmp::Ordering::Equal)
+        );
+    }
+
+    #[test]
+    fn test_scalar_eq() {
+        let scalar1 = Scalar::primitive(42i32, Nullability::NonNullable);
+        let scalar2 = Scalar::primitive(42i32, Nullability::NonNullable);
+        let scalar3 = Scalar::primitive(43i32, Nullability::NonNullable);
+
+        assert_eq!(scalar1, scalar2);
+        assert_ne!(scalar1, scalar3);
+    }
+
+    #[test]
+    fn test_union_type_id_is_part_of_value_identity() -> VortexResult<()> {
+        let variants = UnionVariants::try_new(
+            ["left", "right"].into(),
+            vec![
+                DType::Primitive(PType::I32, Nullability::NonNullable),
+                DType::Primitive(PType::I32, Nullability::NonNullable),
+            ],
+            vec![3, 8],
+        )?;
+        let left = Scalar::union(
+            variants.clone(),
+            3,
+            Scalar::primitive(42_i32, Nullability::NonNullable),
+            Nullability::NonNullable,
+        )?;
+
+        let right = Scalar::union(
+            variants,
+            8,
+            Scalar::primitive(42_i32, Nullability::NonNullable),
+            Nullability::NonNullable,
+        )?;
+
+        assert_ne!(left, right);
+        assert_eq!(left.partial_cmp(&right), None);
+
+        Ok(())
+    }
+
+    #[test]
+    fn union_values_with_same_type_id_are_ordered_by_selected_child() -> VortexResult<()> {
+        let variants = UnionVariants::try_new(
+            ["int"].into(),
+            vec![DType::Primitive(PType::I32, Nullability::NonNullable)],
+            vec![3],
+        )?;
+        let smaller = Scalar::union(
+            variants.clone(),
+            3,
+            Scalar::primitive(10_i32, Nullability::NonNullable),
+            Nullability::NonNullable,
+        )?;
+        let larger = Scalar::union(
+            variants,
+            3,
+            Scalar::primitive(20_i32, Nullability::NonNullable),
+            Nullability::NonNullable,
+        )?;
+
+        assert_eq!(smaller.partial_cmp(&larger), Some(std::cmp::Ordering::Less));
+        assert_eq!(
+            larger.partial_cmp(&smaller),
+            Some(std::cmp::Ordering::Greater)
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn selected_null_union_children_preserve_type_id() -> VortexResult<()> {
+        let variants = UnionVariants::try_new(
+            ["int", "string"].into(),
+            vec![
+                DType::Primitive(PType::I32, Nullability::Nullable),
+                DType::Utf8(Nullability::Nullable),
+            ],
+            vec![3, 8],
+        )?;
+        let int_null = Scalar::union(
+            variants.clone(),
+            3,
+            Scalar::null(DType::Primitive(PType::I32, Nullability::Nullable)),
+            Nullability::NonNullable,
+        )?;
+        let same_int_null = Scalar::union(
+            variants.clone(),
+            3,
+            Scalar::null(DType::Primitive(PType::I32, Nullability::Nullable)),
+            Nullability::NonNullable,
+        )?;
+        let string_null = Scalar::union(
+            variants.clone(),
+            8,
+            Scalar::null(DType::Utf8(Nullability::Nullable)),
+            Nullability::NonNullable,
+        )?;
+        let outer_null = Scalar::null(DType::Union(variants, Nullability::Nullable));
+
+        assert_eq!(int_null, same_int_null);
+        assert_eq!(
+            int_null.partial_cmp(&same_int_null),
+            Some(std::cmp::Ordering::Equal)
+        );
+        assert_eq!(scalar_hash(&int_null), scalar_hash(&same_int_null));
+
+        assert_ne!(int_null, string_null);
+        assert_eq!(int_null.partial_cmp(&string_null), None);
+        assert_ne!(scalar_hash(&int_null), scalar_hash(&string_null));
+        assert_ne!(int_null, outer_null);
+        assert_ne!(scalar_hash(&int_null), scalar_hash(&outer_null));
+
+        Ok(())
+    }
+}

@@ -32,6 +32,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::{backfill::run, engine::StandardEngine};
+use reifydb_flow::txn::Batch;
 use reifydb_flow_async::{
 	engine::{FlowEngineInner, frontier::WatermarkHolds},
 	operator::InputOrder,
@@ -344,9 +345,7 @@ fn clear_views(
 			}
 		}
 	}
-	for key in &keys {
-		txn.remove_one(key)?;
-	}
+	txn.remove(keys)?;
 	Ok(())
 }
 

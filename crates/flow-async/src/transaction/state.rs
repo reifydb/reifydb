@@ -13,6 +13,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::PendingWrite,
+	delta::RemoveVisibility,
 	interface::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionBatch, MultiVersionRow},
@@ -25,7 +26,10 @@ use reifydb_core::{
 		},
 	},
 	metrics::scan::ScanCounters,
-	state::timer::sweep_order,
+	state::{
+		batch::{StateBatch, check_batch_key, check_batch_keys},
+		timer::sweep_order,
+	},
 };
 use reifydb_store_operator::store::state::StateLastIter;
 use reifydb_transaction::multi::RangeScope;
@@ -93,30 +97,29 @@ pub trait StateExtension: FlowTransaction {
 		operator_id = id.0,
 		key_count = keys.len()
 	))]
-	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<MultiVersionBatch<TaggedKey>> {
-		let version = self.version();
-		let mut items: Vec<MultiVersionRow<TaggedKey>> = Vec::with_capacity(keys.len());
-		let mut to_batch: Vec<EncodedKey> = Vec::new();
-
-		for key in keys {
-			let encoded_key = scoped_key(id, key);
-			match self.lookup_overlays(&encoded_key) {
-				Some(None) => continue,
-				Some(Some(bytes)) => items.push(MultiVersionRow {
-					key: TaggedKey::decode(&encoded_key).expect(UNDECODABLE_STATE_KEY),
-					bytes,
-					version,
-				}),
-				None => to_batch.push(encoded_key),
+	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		let mut answers: Vec<Option<EncodedPodRow>> = Vec::with_capacity(keys.len());
+		let mut missed: Vec<usize> = Vec::new();
+		for (slot, key) in keys.iter().enumerate() {
+			match self.lookup_overlays(&scoped_key(id, key)) {
+				Some(overlay) => answers.push(overlay.map(EncodedPodRow::from)),
+				None => {
+					answers.push(None);
+					missed.push(slot);
+				}
 			}
 		}
 
-		self.fetch_state_external(to_batch, &mut items)?;
-
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
+		let fetched = if missed.len() == keys.len() {
+			self.fetch_state(id, keys)?
+		} else {
+			let misses: Vec<GroupStateKey> = missed.iter().map(|slot| keys[*slot].clone()).collect();
+			self.fetch_state(id, &misses)?
+		};
+		for (slot, row) in missed.into_iter().zip(fetched) {
+			answers[slot] = row.map(EncodedPodRow::from);
+		}
+		Ok(answers)
 	}
 
 	fn state_classify(&mut self, id: OperatorId, key: &GroupStateKey, pre: Option<ByteSize>) {
@@ -125,6 +128,30 @@ pub trait StateExtension: FlowTransaction {
 			return;
 		}
 		self.classify(&scoped, pre);
+	}
+
+	#[instrument(name = "flow::state::batch", level = "debug", skip(self, keys), fields(
+		operator_id = id.0,
+		key_count = keys.len()
+	))]
+	fn state_batch(&mut self, id: OperatorId, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		let batch = StateBatch::read(keys, |keys| self.state_get_many(id, keys))?;
+		for slot in 0..batch.len() {
+			self.state_classify(id, batch.key(slot), batch.value(slot).map(EncodedPodRow::byte_size));
+		}
+		Ok(batch)
+	}
+
+	#[instrument(name = "flow::state::write_batch", level = "debug", skip(self, batch), fields(
+		operator_id = id.0,
+		write_count = field::Empty
+	))]
+	fn state_write_batch(&mut self, id: OperatorId, batch: StateBatch) -> Result<()> {
+		let writes: Vec<_> =
+			batch.into_writes().into_iter().map(|(key, write)| (scoped_key(id, &key), write)).collect();
+		Span::current().record("write_count", writes.len());
+		self.pending_mut().put_many(writes);
+		Ok(())
 	}
 
 	#[instrument(name = "flow::state::set", level = "trace", skip(self, row), fields(
@@ -137,6 +164,22 @@ pub trait StateExtension: FlowTransaction {
 		self.set_one(&scoped, row.into_bytes())
 	}
 
+	#[instrument(name = "flow::state::set_many", level = "debug", skip(self, rows), fields(
+		operator_id = id.0,
+		key_count = rows.len()
+	))]
+	fn state_set_many(&mut self, id: OperatorId, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		for (key, _) in &rows {
+			check_batch_key(key)?;
+		}
+		let writes = rows
+			.into_iter()
+			.map(|(key, row)| (scoped_key(id, &key), PendingWrite::Set(row.into_bytes())))
+			.collect();
+		self.pending_mut().put_many(writes);
+		Ok(())
+	}
+
 	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
 		operator_id = id.0,
 		key_len = key.as_slice().len()
@@ -144,6 +187,27 @@ pub trait StateExtension: FlowTransaction {
 	fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
 		let scoped = scoped_key(id, key);
 		self.remove_silent(&scoped)
+	}
+
+	#[instrument(name = "flow::state::remove_many", level = "debug", skip(self, keys), fields(
+		operator_id = id.0,
+		key_count = keys.len()
+	))]
+	fn state_remove_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<()> {
+		check_batch_keys(keys)?;
+		let writes = keys
+			.iter()
+			.map(|key| {
+				(
+					scoped_key(id, key),
+					PendingWrite::Remove {
+						announce: RemoveVisibility::Silent,
+					},
+				)
+			})
+			.collect();
+		self.pending_mut().put_many(writes);
+		Ok(())
 	}
 
 	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
@@ -409,7 +473,7 @@ fn remove_keys<T: FlowTransaction>(txn: &mut T, keys: Vec<(EncodedKey, Option<By
 		if let Some(pre) = pre {
 			txn.classify(&key, Some(pre));
 		}
-		txn.remove_one(&key)?;
+		txn.remove_silent(&key)?;
 	}
 	Ok(())
 }

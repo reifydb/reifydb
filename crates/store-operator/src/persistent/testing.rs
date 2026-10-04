@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::HashMap,
+	borrow::Borrow,
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -166,19 +166,13 @@ impl Fetch for TestingPersistent {
 		}
 	}
 
-	fn get_many(
+	fn get_many<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,
-		keys: &[GroupStateKey],
-	) -> Result<HashMap<GroupStateKey, EncodedPodRow>> {
+		keys: &[Q],
+	) -> Result<Vec<Option<EncodedPodRow>>> {
 		self.call();
-		let mut found = HashMap::new();
-		for key in keys {
-			if let Some(row) = self.get(operator, key)? {
-				found.insert(key.clone(), row);
-			}
-		}
-		Ok(found)
+		keys.iter().map(|key| self.get(operator, key.borrow())).collect()
 	}
 
 	fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool> {
@@ -228,11 +222,11 @@ impl Page for TestingPersistent {
 }
 
 impl Measure for TestingPersistent {
-	fn state_sizes(
+	fn state_sizes<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,
-		keys: &[GroupStateKey],
-	) -> Result<HashMap<GroupStateKey, ByteSize>> {
+		keys: &[Q],
+	) -> Result<Vec<Option<ByteSize>>> {
 		self.call();
 		self.0.durable.state_sizes(operator, keys)
 	}

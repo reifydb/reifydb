@@ -945,14 +945,10 @@ impl Date32Type {
     /// # Arguments
     ///
     /// * `i` - The Date32Type to convert
-    ///
-    /// # Panics
-    ///
-    /// Panics on overflow
     #[deprecated(since = "58.0.0", note = "Use to_naive_date_opt instead.")]
     pub fn to_naive_date(i: <Date32Type as ArrowPrimitiveType>::Native) -> NaiveDate {
         Self::to_naive_date_opt(i)
-            .unwrap_or_else(|| panic!("Date32Type::to_naive_date overflowed for date: {i}"))
+            .unwrap_or_else(|| panic!("Date32Type::to_naive_date overflowed for date: {i}",))
     }
 
     /// Converts an arrow Date32Type into a chrono::NaiveDate
@@ -963,9 +959,8 @@ impl Date32Type {
     ///
     /// Returns `Some(NaiveDate)` if it fits, `None` otherwise.
     pub fn to_naive_date_opt(i: <Date32Type as ArrowPrimitiveType>::Native) -> Option<NaiveDate> {
-        let epoch = NaiveDate::default();
-        let d = Duration::try_days(i as i64)?;
-        epoch.checked_add_signed(d)
+        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+        Duration::try_days(i as i64).and_then(|d| epoch.checked_add_signed(d))
     }
 
     /// Converts a chrono::NaiveDate into an arrow Date32Type
@@ -974,7 +969,7 @@ impl Date32Type {
     ///
     /// * `d` - The NaiveDate to convert
     pub fn from_naive_date(d: NaiveDate) -> <Date32Type as ArrowPrimitiveType>::Native {
-        let epoch = NaiveDate::default();
+        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
         d.sub(epoch).num_days() as <Date32Type as ArrowPrimitiveType>::Native
     }
 
@@ -984,10 +979,6 @@ impl Date32Type {
     ///
     /// * `date` - The date on which to perform the operation
     /// * `delta` - The interval to add
-    ///
-    /// # Panics
-    ///
-    /// Panics on overflow
     #[deprecated(
         since = "58.0.0",
         note = "Use `add_year_months_opt` instead, which returns an Option to handle overflow."
@@ -997,7 +988,7 @@ impl Date32Type {
         delta: <IntervalYearMonthType as ArrowPrimitiveType>::Native,
     ) -> <Date32Type as ArrowPrimitiveType>::Native {
         Self::add_year_months_opt(date, delta).unwrap_or_else(|| {
-            panic!("Date32Type::add_year_months overflowed for date: {date}, delta: {delta}")
+            panic!("Date32Type::add_year_months overflowed for date: {date}, delta: {delta}",)
         })
     }
 
@@ -1025,10 +1016,6 @@ impl Date32Type {
     ///
     /// * `date` - The date on which to perform the operation
     /// * `delta` - The interval to add
-    ///
-    /// # Panics
-    ///
-    /// Panics on overflow
     #[deprecated(
         since = "58.0.0",
         note = "Use `add_day_time_opt` instead, which returns an Option to handle overflow."
@@ -1038,7 +1025,7 @@ impl Date32Type {
         delta: <IntervalDayTimeType as ArrowPrimitiveType>::Native,
     ) -> <Date32Type as ArrowPrimitiveType>::Native {
         Self::add_day_time_opt(date, delta).unwrap_or_else(|| {
-            panic!("Date32Type::add_day_time overflowed for date: {date}, delta: {delta:?}")
+            panic!("Date32Type::add_day_time overflowed for date: {date}, delta: {delta:?}",)
         })
     }
 
@@ -1067,10 +1054,6 @@ impl Date32Type {
     ///
     /// * `date` - The date on which to perform the operation
     /// * `delta` - The interval to add
-    ///
-    /// # Panics
-    ///
-    /// Panics on overflow
     #[deprecated(
         since = "58.0.0",
         note = "Use `add_month_day_nano_opt` instead, which returns an Option to handle overflow."
@@ -1080,7 +1063,7 @@ impl Date32Type {
         delta: <IntervalMonthDayNanoType as ArrowPrimitiveType>::Native,
     ) -> <Date32Type as ArrowPrimitiveType>::Native {
         Self::add_month_day_nano_opt(date, delta).unwrap_or_else(|| {
-            panic!("Date32Type::add_month_day_nano overflowed for date: {date}, delta: {delta:?}")
+            panic!("Date32Type::add_month_day_nano overflowed for date: {date}, delta: {delta:?}",)
         })
     }
 
@@ -1110,10 +1093,6 @@ impl Date32Type {
     ///
     /// * `date` - The date on which to perform the operation
     /// * `delta` - The interval to subtract
-    ///
-    /// # Panics
-    ///
-    /// Panics on overflow
     #[deprecated(
         since = "58.0.0",
         note = "Use `subtract_year_months_opt` instead, which returns an Option to handle overflow."
@@ -1123,7 +1102,7 @@ impl Date32Type {
         delta: <IntervalYearMonthType as ArrowPrimitiveType>::Native,
     ) -> <Date32Type as ArrowPrimitiveType>::Native {
         Self::subtract_year_months_opt(date, delta).unwrap_or_else(|| {
-            panic!("Date32Type::subtract_year_months overflowed for date: {date}, delta: {delta}")
+            panic!("Date32Type::subtract_year_months overflowed for date: {date}, delta: {delta}",)
         })
     }
 
@@ -1151,10 +1130,6 @@ impl Date32Type {
     ///
     /// * `date` - The date on which to perform the operation
     /// * `delta` - The interval to subtract
-    ///
-    /// # Panics
-    ///
-    /// Panics on overflow
     #[deprecated(
         since = "58.0.0",
         note = "Use `subtract_day_time_opt` instead, which returns an Option to handle overflow."
@@ -1164,7 +1139,7 @@ impl Date32Type {
         delta: <IntervalDayTimeType as ArrowPrimitiveType>::Native,
     ) -> <Date32Type as ArrowPrimitiveType>::Native {
         Self::subtract_day_time_opt(date, delta).unwrap_or_else(|| {
-            panic!("Date32Type::subtract_day_time overflowed for date: {date}, delta: {delta:?}")
+            panic!("Date32Type::subtract_day_time overflowed for date: {date}, delta: {delta:?}",)
         })
     }
 
@@ -1193,10 +1168,6 @@ impl Date32Type {
     ///
     /// * `date` - The date on which to perform the operation
     /// * `delta` - The interval to subtract
-    ///
-    /// # Panics
-    ///
-    /// Panics on overflow
     #[deprecated(
         since = "58.0.0",
         note = "Use `subtract_month_day_nano_opt` instead, which returns an Option to handle overflow."
@@ -1245,9 +1216,8 @@ impl Date64Type {
     ///
     /// Returns `Some(NaiveDateTime)` if it fits, `None` otherwise.
     pub fn to_naive_date_opt(i: <Date64Type as ArrowPrimitiveType>::Native) -> Option<NaiveDate> {
-        let epoch = NaiveDate::default();
-        let d = Duration::try_milliseconds(i)?;
-        epoch.checked_add_signed(d)
+        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+        Duration::try_milliseconds(i).and_then(|d| epoch.checked_add_signed(d))
     }
 
     /// Converts a chrono::NaiveDate into an arrow Date64Type
@@ -1256,8 +1226,8 @@ impl Date64Type {
     ///
     /// * `d` - The NaiveDate to convert
     pub fn from_naive_date(d: NaiveDate) -> <Date64Type as ArrowPrimitiveType>::Native {
-        let epoch = NaiveDate::default();
-        d.sub(epoch).num_milliseconds()
+        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+        d.sub(epoch).num_milliseconds() as <Date64Type as ArrowPrimitiveType>::Native
     }
 
     /// Adds the given IntervalYearMonthType to an arrow Date64Type
@@ -1745,7 +1715,7 @@ impl<O: OffsetSizeTrait> ByteArrayType for GenericBinaryType<O> {
 
     fn validate(offsets: &OffsetBuffer<Self::Offset>, values: &Buffer) -> Result<(), ArrowError> {
         // offsets are guaranteed to be monotonically increasing and non-empty
-        let max_offset = offsets.last().as_usize();
+        let max_offset = offsets.last().unwrap().as_usize();
         if values.len() < max_offset {
             return Err(ArrowError::InvalidArgumentError(format!(
                 "Maximum offset of {max_offset} is larger than values of length {}",

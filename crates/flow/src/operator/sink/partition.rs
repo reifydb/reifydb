@@ -79,7 +79,7 @@ pub fn resolve_partition_flow<T: Get + Batch + ?Sized>(
 		None => {
 			let mut row = REGISTRY_SHAPE.allocate_pod();
 			REGISTRY_SHAPE.set_value(&mut row, 0, &candidate);
-			txn.set(&[key], &[row.freeze().into()])?;
+			txn.set(vec![key], vec![row.freeze().into()])?;
 		}
 	}
 	if verified.len() >= VERIFIED_PARTITIONS_CAPACITY {

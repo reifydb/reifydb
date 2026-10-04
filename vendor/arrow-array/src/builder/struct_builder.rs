@@ -236,11 +236,6 @@ impl StructBuilder {
     }
 
     /// Builds the `StructArray` and reset this builder.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the number of fields is not equal to the number of field builders, or
-    /// if the field builders do not all have length `self.len()`
     pub fn finish(&mut self) -> StructArray {
         self.validate_content();
         if self.fields.is_empty() {
@@ -253,11 +248,6 @@ impl StructBuilder {
     }
 
     /// Builds the `StructArray` without resetting the builder.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the number of fields is not equal to the number of field builders, or
-    /// if the field builders do not all have length `self.len()`
     pub fn finish_cloned(&self) -> StructArray {
         self.validate_content();
 

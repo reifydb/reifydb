@@ -35,13 +35,22 @@ pub trait RangeTier: Send + Sync {
 
 	fn lookup(&self, operator: OperatorId, group: GroupId, suffix: &[u8]) -> Option<Option<EncodedPodRow>>;
 
-	fn overwrite(&self, operator: OperatorId, group: GroupId, suffix: &[u8], row: EncodedPodRow);
+	fn lookup_run(
+		&self,
+		operator: OperatorId,
+		group: GroupId,
+		suffixes: &[&[u8]],
+	) -> Vec<Option<Option<EncodedPodRow>>>;
 
 	fn insert(&self, operator: OperatorId, group: GroupId, suffix: &[u8], row: EncodedPodRow);
 
-	fn mark_deleted(&self, operator: OperatorId, group: GroupId, suffix: &[u8]);
-
 	fn retract_run(&self, operator: OperatorId, group: GroupId, suffixes: &[&[u8]]);
+
+	fn overwrite_run(&self, operator: OperatorId, group: GroupId, rows: &[(&[u8], &EncodedPodRow)]);
+
+	fn insert_run(&self, operator: OperatorId, group: GroupId, rows: &[(&[u8], &EncodedPodRow)]);
+
+	fn mark_deleted_run(&self, operator: OperatorId, group: GroupId, suffixes: &[&[u8]]);
 
 	fn invalidate_group(&self, operator: OperatorId, group: GroupId);
 
@@ -82,15 +91,31 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 		self.lookup_in(partition, partition, &key)
 	}
 
-	fn overwrite(&self, operator: OperatorId, group: GroupId, suffix: &[u8], row: EncodedPodRow) {
-		let Some(key) = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix) else {
-			return;
-		};
+	fn lookup_run(
+		&self,
+		operator: OperatorId,
+		group: GroupId,
+		suffixes: &[&[u8]],
+	) -> Vec<Option<Option<EncodedPodRow>>> {
+		let mut answers = vec![None; suffixes.len()];
+		let mut positions = Vec::with_capacity(suffixes.len());
+		let mut keys = Vec::with_capacity(suffixes.len());
+		for (position, suffix) in suffixes.iter().enumerate() {
+			if let Some(key) = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix) {
+				positions.push(position);
+				keys.push(key);
+			}
+		}
 		let partition = TypedPartition {
 			operator,
 			group,
 		};
-		self.overwrite_in(partition, partition, key, row);
+		for (position, answer) in
+			positions.into_iter().zip(StandardRangeTier::<K>::lookup_run(self, partition, &keys))
+		{
+			answers[position] = answer;
+		}
+		answers
 	}
 
 	fn insert(&self, operator: OperatorId, group: GroupId, suffix: &[u8], row: EncodedPodRow) {
@@ -104,17 +129,6 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 		self.insert_in(partition, partition, key, row);
 	}
 
-	fn mark_deleted(&self, operator: OperatorId, group: GroupId, suffix: &[u8]) {
-		let Some(key) = <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix) else {
-			return;
-		};
-		let partition = TypedPartition {
-			operator,
-			group,
-		};
-		self.mark_deleted_in(partition, partition, &key);
-	}
-
 	fn retract_run(&self, operator: OperatorId, group: GroupId, suffixes: &[&[u8]]) {
 		let keys: Vec<K::Suffix> = suffixes
 			.iter()
@@ -125,6 +139,46 @@ impl<K: Keyspace> RangeTier for StandardRangeTier<K> {
 			group,
 		};
 		StandardRangeTier::<K>::retract_run(self, partition, &keys);
+	}
+
+	fn overwrite_run(&self, operator: OperatorId, group: GroupId, rows: &[(&[u8], &EncodedPodRow)]) {
+		let rows: Vec<(K::Suffix, EncodedPodRow)> = rows
+			.iter()
+			.filter_map(|(suffix, row)| {
+				<K::Suffix as SuffixBytes>::from_suffix_bytes(suffix).map(|key| (key, (*row).clone()))
+			})
+			.collect();
+		let partition = TypedPartition {
+			operator,
+			group,
+		};
+		StandardRangeTier::<K>::overwrite_run(self, partition, rows);
+	}
+
+	fn insert_run(&self, operator: OperatorId, group: GroupId, rows: &[(&[u8], &EncodedPodRow)]) {
+		let rows: Vec<(K::Suffix, EncodedPodRow)> = rows
+			.iter()
+			.filter_map(|(suffix, row)| {
+				<K::Suffix as SuffixBytes>::from_suffix_bytes(suffix).map(|key| (key, (*row).clone()))
+			})
+			.collect();
+		let partition = TypedPartition {
+			operator,
+			group,
+		};
+		StandardRangeTier::<K>::insert_run(self, partition, rows);
+	}
+
+	fn mark_deleted_run(&self, operator: OperatorId, group: GroupId, suffixes: &[&[u8]]) {
+		let keys: Vec<K::Suffix> = suffixes
+			.iter()
+			.filter_map(|suffix| <K::Suffix as SuffixBytes>::from_suffix_bytes(suffix))
+			.collect();
+		let partition = TypedPartition {
+			operator,
+			group,
+		};
+		StandardRangeTier::<K>::mark_deleted_run(self, partition, &keys);
 	}
 
 	fn invalidate_group(&self, operator: OperatorId, group: GroupId) {
@@ -228,13 +282,34 @@ impl RangeTiers {
 		self.of(keyspace)?.lookup(operator, group, suffix)
 	}
 
-	pub fn overwrite(&self, operator: OperatorId, key: &EncodedKey, row: EncodedPodRow) {
-		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
-			return;
-		};
-		if let Some(tier) = self.of(keyspace) {
-			tier.overwrite(operator, group, suffix, row);
+	pub fn lookup_run(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Vec<Option<Option<EncodedPodRow>>> {
+		let mut answers = vec![None; keys.len()];
+		let mut decoded = keys
+			.iter()
+			.enumerate()
+			.filter_map(|(position, key)| {
+				OperatorStateKey::decode_inner(key.as_slice())
+					.map(|(group, keyspace, suffix)| (position, group, keyspace, suffix))
+			})
+			.peekable();
+		while let Some((position, group, keyspace, suffix)) = decoded.next() {
+			let mut positions = vec![position];
+			let mut suffixes = vec![suffix];
+			while let Some((next, _, _, suffix)) =
+				decoded.next_if(|(_, g, k, _)| *g == group && *k == keyspace)
+			{
+				positions.push(next);
+				suffixes.push(suffix);
+			}
+			if let Some(tier) = self.of(keyspace) {
+				for (position, answer) in
+					positions.into_iter().zip(tier.lookup_run(operator, group, &suffixes))
+				{
+					answers[position] = answer;
+				}
+			}
 		}
+		answers
 	}
 
 	pub fn insert(&self, operator: OperatorId, key: &EncodedKey, row: EncodedPodRow) {
@@ -243,15 +318,6 @@ impl RangeTiers {
 		};
 		if let Some(tier) = self.of(keyspace) {
 			tier.insert(operator, group, suffix, row);
-		}
-	}
-
-	pub fn mark_deleted(&self, operator: OperatorId, key: &EncodedKey) {
-		let Some((group, keyspace, suffix)) = OperatorStateKey::decode_inner(key.as_slice()) else {
-			return;
-		};
-		if let Some(tier) = self.of(keyspace) {
-			tier.mark_deleted(operator, group, suffix);
 		}
 	}
 
@@ -265,6 +331,62 @@ impl RangeTiers {
 			}
 			if let Some(tier) = self.of(keyspace) {
 				tier.retract_run(operator, group, &suffixes);
+			}
+		}
+	}
+
+	pub fn overwrite_run(&self, operator: OperatorId, rows: &[(&EncodedKey, &EncodedPodRow)]) {
+		let mut decoded = rows
+			.iter()
+			.filter_map(|(key, row)| {
+				OperatorStateKey::decode_inner(key.as_slice())
+					.map(|(group, keyspace, suffix)| (group, keyspace, suffix, *row))
+			})
+			.peekable();
+		while let Some((group, keyspace, suffix, row)) = decoded.next() {
+			let mut run = vec![(suffix, row)];
+			while let Some((_, _, next, row)) =
+				decoded.next_if(|(g, k, _, _)| *g == group && *k == keyspace)
+			{
+				run.push((next, row));
+			}
+			if let Some(tier) = self.of(keyspace) {
+				tier.overwrite_run(operator, group, &run);
+			}
+		}
+	}
+
+	pub fn insert_run(&self, operator: OperatorId, rows: &[(&EncodedKey, &EncodedPodRow)]) {
+		let mut decoded = rows
+			.iter()
+			.filter_map(|(key, row)| {
+				OperatorStateKey::decode_inner(key.as_slice())
+					.map(|(group, keyspace, suffix)| (group, keyspace, suffix, *row))
+			})
+			.peekable();
+		while let Some((group, keyspace, suffix, row)) = decoded.next() {
+			let mut run = vec![(suffix, row)];
+			while let Some((_, _, next, row)) =
+				decoded.next_if(|(g, k, _, _)| *g == group && *k == keyspace)
+			{
+				run.push((next, row));
+			}
+			if let Some(tier) = self.of(keyspace) {
+				tier.insert_run(operator, group, &run);
+			}
+		}
+	}
+
+	pub fn mark_deleted_run(&self, operator: OperatorId, keys: &[&EncodedKey]) {
+		let mut decoded =
+			keys.iter().filter_map(|key| OperatorStateKey::decode_inner(key.as_slice())).peekable();
+		while let Some((group, keyspace, suffix)) = decoded.next() {
+			let mut suffixes = vec![suffix];
+			while let Some((_, _, next)) = decoded.next_if(|(g, k, _)| *g == group && *k == keyspace) {
+				suffixes.push(next);
+			}
+			if let Some(tier) = self.of(keyspace) {
+				tier.mark_deleted_run(operator, group, &suffixes);
 			}
 		}
 	}

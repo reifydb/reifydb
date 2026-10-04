@@ -30,7 +30,7 @@ pub struct OperatorRangeScope {
 	pub inner: EncodedKeyRange,
 }
 
-pub(crate) fn scoped_key(id: OperatorId, key: &GroupStateKey) -> EncodedKey {
+pub fn scoped_key(id: OperatorId, key: &GroupStateKey) -> EncodedKey {
 	let suffix = key.as_slice();
 	let mut serializer = KeySerializer::with_capacity(NODE_PREFIX_LEN + suffix.len());
 	extend_node_prefix(&mut serializer, id);

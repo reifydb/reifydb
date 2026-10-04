@@ -20,7 +20,8 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
-	key::any::TaggedKey,
+	internal_err,
+	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
 use reifydb_flow::txn::{Batch, Get};
 use reifydb_runtime::context::clock::Clock;
@@ -158,11 +159,7 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>;
 
-	fn fetch_state_external(
-		&mut self,
-		keys: Vec<EncodedKey>,
-		items: &mut Vec<MultiVersionRow<TaggedKey>>,
-	) -> Result<()>;
+	fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>>;
 
 	fn lookup_floor(&self) -> Option<CommitVersion> {
 		None
@@ -245,12 +242,30 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 		Ok(())
 	}
 
-	fn classify(&mut self, key: &EncodedKey, pre: Option<ByteSize>) {
-		self.pending_mut().classify(key.clone(), pre);
+	fn replace_batch(
+		&mut self,
+		pre_keys: Vec<EncodedKey>,
+		post_keys: Vec<EncodedKey>,
+		rows: Vec<EncodedBytes>,
+	) -> Result<()> {
+		if pre_keys.len() != post_keys.len() || post_keys.len() != rows.len() {
+			return internal_err!(
+				"replace_batch got {} pre keys, {} post keys and {} rows",
+				pre_keys.len(),
+				post_keys.len(),
+				rows.len()
+			);
+		}
+		let pending = self.pending_mut();
+		for ((pre_key, post_key), row) in pre_keys.into_iter().zip(post_keys).zip(rows) {
+			pending.remove(pre_key);
+			pending.insert(post_key, row);
+		}
+		Ok(())
 	}
 
-	fn is_classified(&self, key: &EncodedKey) -> bool {
-		self.pending().is_classified(key)
+	fn classify(&mut self, key: &EncodedKey, pre: Option<ByteSize>) {
+		self.pending_mut().classify(key.clone(), pre);
 	}
 
 	#[inline]

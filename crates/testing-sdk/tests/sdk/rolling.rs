@@ -89,7 +89,8 @@ impl MergeAccumulator for WindowSum {
 	}
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, PartialEq, HeapSize)]
 struct TestOut {
 	group: String,
 	rolling_sum: f64,

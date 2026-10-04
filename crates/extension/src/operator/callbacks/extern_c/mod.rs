@@ -33,7 +33,7 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			iterator_free: state::host_state_iterator_free,
 			get_many: state::host_state_get_many,
 			get_or_create_row_numbers: state::host_get_or_create_row_numbers,
-			get_or_create_row_numbers_for_pairs: state::host_get_or_create_row_numbers_for_pairs,
+			get_or_create_row_numbers_for_groups: state::host_get_or_create_row_numbers_for_groups,
 			remove_row_number: state::host_remove_row_number,
 			arm_timer: state::host_arm_timer,
 			disarm_timer: state::host_disarm_timer,

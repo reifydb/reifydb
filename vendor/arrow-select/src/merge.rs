@@ -174,9 +174,10 @@ pub fn merge_n(values: &[&dyn Array], indices: &[impl MergeIndex]) -> Result<Arr
 
         if end_row_ix == indices.len() {
             break;
+        } else {
+            // Set the start_row_ix for the next slice.
+            start_row_ix = end_row_ix;
         }
-        // Set the start_row_ix for the next slice.
-        start_row_ix = end_row_ix;
     }
 
     Ok(make_array(mutable.freeze()))
@@ -563,10 +564,7 @@ mod tests {
     }
 
     #[test]
-    // The message differs between debug and release: in release the
-    // `cfg(debug_assertions)` bounds check in `merge_n` is compiled out and the
-    // slice index panics instead.
-    #[should_panic(expected = "out of bounds")]
+    #[should_panic]
     fn test_merge_n_invalid_indices() {
         let a1 = StringArray::from(vec![Some("A")]);
 

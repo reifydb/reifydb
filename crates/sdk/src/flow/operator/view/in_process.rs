@@ -75,13 +75,6 @@ pub struct InProcessRowView<'a> {
 }
 
 impl<'a> InProcessRowView<'a> {
-	pub fn new(batch: &'a RecordBatch, index: usize) -> Self {
-		Self {
-			columns: Arc::new(ResolvedColumns::new(batch)),
-			index,
-		}
-	}
-
 	fn buffer(&self, name: &str) -> Result<Option<&ColumnView<'a>>, SdkError> {
 		self.columns.view(name)
 	}

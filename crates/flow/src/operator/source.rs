@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, iter::once, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	iter::once,
+	sync::Arc,
+};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, Schema, SchemaRef};
@@ -10,6 +14,7 @@ use reifydb_core::{
 		catalog::{column::Column, dictionary::Dictionary, flow::OperatorId, series::Series},
 		change::{Change, Diff},
 	},
+	internal_err,
 	value::{batch::batch, column::builder::ColumnBuilder},
 };
 use reifydb_value::{
@@ -134,28 +139,38 @@ pub fn decode_dictionary_columns<T: Resolve + ?Sized>(columns: &mut RecordBatch,
 
 	let mut decoded: Vec<(FieldRef, ArrayRef)> =
 		columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect();
-	let mut resolved: HashMap<(DictionaryId, DictionaryEntryId), Value> = HashMap::new();
 	for (col_pos, dictionary) in &dict_columns {
 		let (field, array) = &decoded[*col_pos];
 		let column = ColumnView::try_from((array, field.as_ref()))?;
 		let row_count = column.len();
+		let entry_ids: Vec<Option<DictionaryEntryId>> = (0..row_count)
+			.map(|row_idx| DictionaryEntryId::from_value(&column.get_value(row_idx)))
+			.collect();
+		let distinct: Vec<DictionaryEntryId> =
+			entry_ids.iter().flatten().copied().collect::<HashSet<_>>().into_iter().collect();
+		let values = if distinct.is_empty() {
+			Vec::new()
+		} else {
+			txn.resolve(dictionary, &distinct)?
+		};
+		if values.len() != distinct.len() {
+			return internal_err!(
+				"a dictionary batch get answered {} values for {} ids",
+				values.len(),
+				distinct.len()
+			);
+		}
+		let resolved: HashMap<DictionaryEntryId, Value> = distinct
+			.into_iter()
+			.zip(values)
+			.filter_map(|(entry_id, value)| value.map(|value| (entry_id, value)))
+			.collect();
 		let mut new_data = ColumnBuilder::with_capacity(dictionary.value_type.clone(), row_count);
 
-		for row_idx in 0..row_count {
-			let id_value = column.get_value(row_idx);
-			let value = match DictionaryEntryId::from_value(&id_value) {
-				Some(entry_id) => match resolved.get(&(dictionary.id, entry_id)) {
-					Some(value) => value.clone(),
-					None => match txn.resolve(dictionary, entry_id)? {
-						Some(value) => {
-							resolved.insert((dictionary.id, entry_id), value.clone());
-							value
-						}
-						None => Value::none(),
-					},
-				},
-				None => Value::none(),
-			};
+		for entry_id in &entry_ids {
+			let value = entry_id
+				.and_then(|entry_id| resolved.get(&entry_id).cloned())
+				.unwrap_or_else(Value::none);
 			new_data.push_value(value);
 		}
 

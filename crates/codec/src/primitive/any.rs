@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(reifydb_assertions)]
-use reifydb_value::value::value_type::ValueType;
 use reifydb_value::{reifydb_assertions, value::Value};
 
 use crate::{
@@ -19,7 +17,7 @@ impl RowShape {
 				row.len(),
 				self.total_static_size()
 			);
-			assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), ValueType::Any);
+			assert_eq!(*self.fields()[index].constraint.get_type().inner_type(), reifydb_value::value::value_type::ValueType::Any);
 		}
 		let encoded = encode_value(value).expect("unsupported value in any row field");
 		self.replace_dynamic_data(row, index, &encoded);
@@ -34,7 +32,7 @@ impl RowShape {
 				row.len(),
 				self.total_static_size()
 			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Any);
+			assert_eq!(*field.constraint.get_type().inner_type(), reifydb_value::value::value_type::ValueType::Any);
 		}
 
 		let ref_slice = &row[field.offset as usize..field.offset as usize + 8];

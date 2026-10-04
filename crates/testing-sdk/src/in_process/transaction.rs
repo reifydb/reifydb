@@ -12,7 +12,7 @@ use reifydb_core::{
 	actors::pending::Pending,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
-	key::any::TaggedKey,
+	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
 use reifydb_flow::txn::{Batch, Get};
 use reifydb_flow_async::{
@@ -155,12 +155,8 @@ impl FlowTransaction for TestFlowTransaction {
 		Box::new(iter::empty())
 	}
 
-	fn fetch_state_external(
-		&mut self,
-		_keys: Vec<EncodedKey>,
-		_items: &mut Vec<MultiVersionRow<TaggedKey>>,
-	) -> Result<()> {
-		Ok(())
+	fn fetch_state(&mut self, _id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		Ok(vec![None; keys.len()])
 	}
 }
 
@@ -171,12 +167,12 @@ impl Get for TestFlowTransaction {
 }
 
 impl Batch for TestFlowTransaction {
-	fn set(&mut self, keys: &[EncodedKey], rows: &[EncodedBytes]) -> Result<()> {
+	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 		self.pending_mut().insert_batch(keys, rows);
 		Ok(())
 	}
 
-	fn remove(&mut self, keys: &[EncodedKey]) -> Result<()> {
+	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 		self.pending_mut().remove_batch(keys);
 		Ok(())
 	}

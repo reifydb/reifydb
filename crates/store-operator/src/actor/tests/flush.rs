@@ -68,7 +68,7 @@ fn tier(storage: &SqlitePersistent) -> PersistentTier {
 
 fn store_fixture() -> (OperatorStore, SqlitePersistent, SqliteTempPathGuard) {
 	let clock = Clock::testing();
-	let actor_system = ActorSystem::testing(clock.clone());
+	let actor_system = ActorSystem::testing(clock);
 	let spawner = actor_system.spawner();
 	let (storage, guard) = SqlitePersistent::in_memory();
 	let store = OperatorStore::standard(OperatorStoreConfig {
@@ -76,7 +76,6 @@ fn store_fixture() -> (OperatorStore, SqlitePersistent, SqliteTempPathGuard) {
 		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::Sqlite(storage.clone()))),
 		range: Some(OperatorRangeConfig::testing()),
 		spawner,
-		clock,
 	});
 	(store, storage, guard)
 }

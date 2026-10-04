@@ -4,16 +4,21 @@
 #[cfg(reifydb_dst)]
 pub mod dst;
 
-#[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_dst), not(loom)))]
 pub mod host;
+
+#[cfg(all(loom, not(reifydb_single_threaded)))]
+pub mod loom;
 
 #[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 pub mod wasm;
 
 #[cfg(reifydb_dst)]
 pub use dst::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
-#[cfg(all(not(reifydb_single_threaded), not(reifydb_dst)))]
+#[cfg(all(not(reifydb_single_threaded), not(reifydb_dst), not(loom)))]
 pub use host::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
+#[cfg(all(loom, not(reifydb_single_threaded)))]
+pub use loom::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
 #[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
 pub use wasm::{ActorHandle, ActorSpawner, ActorSystem, JoinError};
 

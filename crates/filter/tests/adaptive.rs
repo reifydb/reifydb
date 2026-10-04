@@ -43,7 +43,7 @@ fn add_on_disabled_filter_neither_enables_nor_panics() {
 	let filter = AdaptiveKeyFilter::new();
 
 	for hash in 0..1000u64 {
-		filter.add(hash);
+		filter.add_many(&[hash]);
 	}
 
 	assert!(!filter.is_enabled());
@@ -105,13 +105,41 @@ fn writes_during_a_rebuild_land_in_the_new_filter() {
 	handle.feed(&[1, 2, 3, 4, 5]);
 
 	let written_during_rebuild = 0xDEAD_BEEF_u64;
-	filter.add(written_during_rebuild);
+	filter.add_many(&[written_during_rebuild]);
 
 	filter.commit_rebuild(handle);
 
 	assert!(filter.may_contain(written_during_rebuild), "a key written mid-rebuild was lost by the swap");
 	for hash in [1u64, 2, 3, 4, 5] {
 		assert!(filter.may_contain(hash));
+	}
+}
+
+#[test]
+fn add_many_during_a_rebuild_reaches_the_active_and_the_new_filter() {
+	// A batch must land in both slots, or its keys read absent before the swap or after it.
+	let filter = AdaptiveKeyFilter::armed(1024);
+	let written = [
+		find_rejected_hash(&filter, 1_000_000),
+		find_rejected_hash(&filter, 2_000_000),
+		find_rejected_hash(&filter, 3_000_000),
+	];
+	let handle = filter.begin_rebuild(1024);
+
+	filter.add_many(&written);
+
+	for hash in written {
+		assert!(
+			filter.may_contain(hash),
+			"a batched write {hash} never reached the filter still serving reads"
+		);
+	}
+	filter.commit_rebuild(handle);
+	for hash in written {
+		assert!(
+			filter.may_contain(hash),
+			"a batched write {hash} made during the rebuild was lost by the swap"
+		);
 	}
 }
 
@@ -127,7 +155,7 @@ fn writes_keep_reaching_the_active_filter_during_a_rebuild() {
 
 	let written_during_rebuild = 0xFEED_FACE_u64;
 	let second = filter.begin_rebuild(256);
-	filter.add(written_during_rebuild);
+	filter.add_many(&[written_during_rebuild]);
 	filter.abort_rebuild(second);
 
 	assert!(filter.may_contain(written_during_rebuild), "a mid-rebuild write was lost when the rebuild aborted");
@@ -197,11 +225,11 @@ fn abort_clears_the_building_slot() {
 	filter.abort_rebuild(aborted);
 
 	assert!(!filter.metrics().rebuilding);
-	filter.add(0xABCD);
+	filter.add_many(&[0xABCD]);
 
 	let fresh = filter.begin_rebuild(128);
 	let written_after_abort = 0x1234_5678_u64;
-	filter.add(written_after_abort);
+	filter.add_many(&[written_after_abort]);
 	filter.commit_rebuild(fresh);
 
 	assert!(filter.may_contain(written_after_abort), "add after an abort did not reach the live rebuild");
@@ -268,8 +296,8 @@ fn counters_track_queries_and_savings_only() {
 
 	let before = filter.metrics();
 	for _ in 0..5 {
-		filter.add(70_000);
-		filter.add(80_000);
+		filter.add_many(&[70_000]);
+		filter.add_many(&[80_000]);
 	}
 	let after_writes = filter.metrics();
 	assert_eq!(after_writes.queries, before.queries, "add counted as a query");
@@ -347,7 +375,7 @@ fn concurrent_writers_and_readers_never_lose_a_key() {
 				let mut written = Vec::new();
 				for i in 0..250u64 {
 					let hash = t * 1_000_000 + i + 1;
-					filter.add(hash);
+					filter.add_many(&[hash]);
 					written.push(hash);
 				}
 				written
@@ -394,9 +422,9 @@ fn an_armed_filter_rules_out_keys_that_were_never_added() {
 	let rejected = find_rejected_hash(&filter, 10_000);
 	assert!(!filter.may_contain(rejected));
 
-	filter.add(1);
-	filter.add(2);
-	filter.add(3);
+	filter.add_many(&[1]);
+	filter.add_many(&[2]);
+	filter.add_many(&[3]);
 
 	let still_absent = find_rejected_hash(&filter, 4_000_000);
 	assert!(!filter.may_contain(still_absent), "an armed filter stopped ruling out keys after a few writes");
@@ -412,7 +440,7 @@ fn every_key_added_to_an_armed_filter_answers_present() {
 
 	let hashes: Vec<u64> = (0..1500u64).map(|i| i.wrapping_mul(0x517C_C1B7_2722_0A95)).collect();
 	for hash in &hashes {
-		filter.add(*hash);
+		filter.add_many(&[*hash]);
 	}
 
 	for hash in &hashes {
@@ -432,7 +460,7 @@ fn an_armed_filter_reports_a_real_allocation_and_an_empty_fill() {
 	assert_eq!(metrics.fill_ratio, 0.0, "nothing has been added, so no bit may be set");
 	assert_eq!(metrics.estimated_keys, 0);
 
-	filter.add(0x00C0_FFEE);
+	filter.add_many(&[0x00C0_FFEE]);
 	assert!(filter.metrics().fill_ratio > 0.0, "a write into an armed filter set no bits");
 }
 

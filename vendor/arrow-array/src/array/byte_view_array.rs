@@ -213,15 +213,15 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
 
         T::validate(&views, &buffers)?;
 
-        if let Some(n) = nulls.as_ref()
-            && n.len() != views.len()
-        {
-            return Err(ArrowError::InvalidArgumentError(format!(
-                "Incorrect length of null buffer for {}ViewArray, expected {} got {}",
-                T::PREFIX,
-                views.len(),
-                n.len(),
-            )));
+        if let Some(n) = nulls.as_ref() {
+            if n.len() != views.len() {
+                return Err(ArrowError::InvalidArgumentError(format!(
+                    "Incorrect length of null buffer for {}ViewArray, expected {} got {}",
+                    T::PREFIX,
+                    views.len(),
+                    n.len(),
+                )));
+            }
         }
 
         Ok(Self {
@@ -238,11 +238,14 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
     /// # Safety
     ///
     /// Safe if [`Self::try_new`] would not error
-    pub unsafe fn new_unchecked(
+    pub unsafe fn new_unchecked<U>(
         views: ScalarBuffer<u128>,
-        buffers: Arc<[Buffer]>,
+        buffers: U,
         nulls: Option<NullBuffer>,
-    ) -> Self {
+    ) -> Self
+    where
+        U: Into<Arc<[Buffer]>>,
+    {
         if cfg!(feature = "force_validate") {
             return Self::new(views, buffers, nulls);
         }
@@ -251,7 +254,7 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
             data_type: T::DATA_TYPE,
             phantom: Default::default(),
             views,
-            buffers,
+            buffers: buffers.into(),
             nulls,
         }
     }
@@ -297,13 +300,9 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
         &self.views
     }
 
-    /// Returns the shared collection of buffers storing non-inline string or binary data.
-    ///
-    /// The returned `Arc` can be cloned to share the buffers with another array without
-    /// allocating a new collection or cloning the individual buffers. To consume this
-    /// array and take ownership of its buffers, use [`Self::into_parts`].
+    /// Returns the buffers storing string data
     #[inline]
-    pub fn data_buffers(&self) -> &Arc<[Buffer]> {
+    pub fn data_buffers(&self) -> &[Buffer] {
         &self.buffers
     }
 
@@ -358,12 +357,7 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
     pub unsafe fn inline_value(view: &u128, len: usize) -> &[u8] {
         debug_assert!(len <= MAX_INLINE_VIEW_LEN as usize);
         unsafe {
-            std::slice::from_raw_parts(
-                std::ptr::from_ref::<u128>(view)
-                    .cast::<u8>()
-                    .wrapping_add(4),
-                len,
-            )
+            std::slice::from_raw_parts((view as *const u128 as *const u8).wrapping_add(4), len)
         }
     }
 
@@ -465,9 +459,6 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
     }
 
     /// Returns a zero-copy slice of this array with the indicated offset and length.
-    ///
-    /// # Panics
-    /// Panics if `offset + length > self.len()`
     pub fn slice(&self, offset: usize, length: usize) -> Self {
         Self {
             data_type: T::DATA_TYPE,
@@ -544,7 +535,7 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
             return unsafe {
                 GenericByteViewArray::new_unchecked(
                     self.views().clone(),
-                    Arc::from([]), // empty data blocks
+                    vec![], // empty data blocks
                     nulls,
                 )
             };
@@ -559,7 +550,7 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
             return unsafe {
                 GenericByteViewArray::new_unchecked(
                     self.views().clone(),
-                    Arc::from([]), // empty data blocks
+                    vec![], // empty data blocks
                     nulls,
                 )
             };
@@ -627,7 +618,7 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
                     total_len: current_elements,
                 });
             }
-            debug_assert!(i32::try_from(groups.len()).is_ok());
+            debug_assert!(groups.len() <= i32::MAX as usize);
 
             // Second pass: copy each group into an exactly-sized buffer.
             let mut views_buf = Vec::with_capacity(len);
@@ -658,7 +649,7 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
         let views_scalar = ScalarBuffer::from(views_buf);
 
         // SAFETY: views_scalar, data_blocks, and nulls are correctly aligned and sized
-        unsafe { GenericByteViewArray::new_unchecked(views_scalar, data_blocks.into(), nulls) }
+        unsafe { GenericByteViewArray::new_unchecked(views_scalar, data_blocks, nulls) }
     }
 
     /// Copy the i‑th view into `data_buf` if it refers to an out‑of‑line buffer.
@@ -878,8 +869,8 @@ impl<T: ByteViewType + ?Sized> GenericByteViewArray<T> {
 impl<T: ByteViewType + ?Sized> Debug for GenericByteViewArray<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}ViewArray\n[\n", T::PREFIX)?;
-        print_long_array(self, f, &mut |index, f| {
-            std::fmt::Debug::fmt(&self.value(index), f)
+        print_long_array(self, f, |array, index, f| {
+            std::fmt::Debug::fmt(&array.value(index), f)
         })?;
         write!(f, "]")
     }
@@ -1037,7 +1028,10 @@ where
     fn from(byte_array: &GenericByteArray<FROM>) -> Self {
         let offsets = byte_array.offsets();
 
-        let can_reuse_buffer = offsets.last().as_usize() < u32::MAX as usize;
+        let can_reuse_buffer = match offsets.last() {
+            Some(offset) => offset.as_usize() < u32::MAX as usize,
+            None => true,
+        };
 
         if can_reuse_buffer {
             // build views directly pointing to the existing buffer
@@ -1221,7 +1215,7 @@ mod tests {
     use arrow_data::{ArrayDataBuilder, ByteView, MAX_INLINE_VIEW_LEN};
     use arrow_schema::DataType;
     use rand::prelude::StdRng;
-    use rand::{RngExt, SeedableRng};
+    use rand::{Rng, SeedableRng};
     use std::str::from_utf8;
 
     const BLOCK_SIZE: u32 = 8;
@@ -1516,7 +1510,7 @@ mod tests {
             } else {
                 // random length between 0 and twice the inline limit
                 let len = rng.random_range(0..(MAX_INLINE_VIEW_LEN * 2));
-                let s = "A".repeat(len as usize);
+                let s: String = "A".repeat(len as usize);
                 builder.append_option(Some(&s));
                 original.push(Some(s));
             }
@@ -1571,7 +1565,8 @@ mod tests {
         let total = array.total_buffer_bytes_used();
         assert!(
             total > u32::MAX as usize,
-            "Expected total non-inline bytes to exceed 4 GiB, got {total}"
+            "Expected total non-inline bytes to exceed 4 GiB, got {}",
+            total
         );
 
         // Run gc and verify correctness
@@ -1633,7 +1628,7 @@ mod tests {
             gced.data_buffers().len()
         );
         // No output buffer may exceed the cap.
-        for buf in gced.data_buffers().iter() {
+        for buf in gced.data_buffers() {
             assert!(buf.len() <= max_buffer_size, "buffer exceeded max size");
         }
         // Every value (inline, large, and null) is unchanged and in order.

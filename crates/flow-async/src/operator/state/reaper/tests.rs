@@ -385,9 +385,9 @@ struct RecordingReaper {
 }
 
 impl Reaper for RecordingReaper {
-	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
-		self.seen.push(key.clone());
-		store.state_remove(key)
+	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
+		self.seen.extend_from_slice(keys);
+		store.state_remove_many(keys)
 	}
 }
 

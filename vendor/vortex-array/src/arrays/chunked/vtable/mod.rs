@@ -1,0 +1,301 @@
+// SPDX-License-Identifier: Apache-2.0
+// SPDX-FileCopyrightText: Copyright the Vortex contributors
+
+use std::hash::Hasher;
+
+use itertools::Itertools;
+use smallvec::SmallVec;
+use vortex_error::VortexExpect;
+use vortex_error::VortexResult;
+use vortex_error::vortex_bail;
+use vortex_error::vortex_ensure;
+use vortex_error::vortex_err;
+use vortex_error::vortex_panic;
+use vortex_session::VortexSession;
+use vortex_session::registry::CachedId;
+
+use crate::ArrayEq;
+use crate::ArrayHash;
+use crate::ArrayRef;
+use crate::Canonical;
+use crate::EqMode;
+use crate::ExecutionCtx;
+use crate::ExecutionResult;
+use crate::IntoArray;
+use crate::VortexSessionExecute;
+use crate::array::Array;
+use crate::array::ArrayId;
+use crate::array::ArrayParts;
+use crate::array::ArrayView;
+use crate::array::VTable;
+use crate::array::with_empty_buffers;
+use crate::arrays::PrimitiveArray;
+use crate::arrays::chunked::ChunkedArrayExt;
+use crate::arrays::chunked::ChunkedData;
+use crate::arrays::chunked::array::ChunkedSlots;
+use crate::arrays::chunked::compute::rules::PARENT_RULES;
+use crate::arrays::chunked::vtable::canonical::_canonicalize;
+use crate::buffer::BufferHandle;
+use crate::builders::ArrayBuilder;
+use crate::dtype::DType;
+use crate::dtype::Nullability;
+use crate::dtype::PType;
+use crate::serde::ArrayChildren;
+mod canonical;
+mod operations;
+mod validity;
+
+/// A [`Chunked`]-encoded Vortex array.
+pub type ChunkedArray = Array<Chunked>;
+
+#[derive(Clone, Debug)]
+pub struct Chunked;
+
+impl ArrayHash for ChunkedData {
+    fn array_hash<H: Hasher>(&self, _state: &mut H, _accuracy: EqMode) {
+        // Chunk offsets are cached derived data. Slot 0 already stores the logical offsets array,
+        // and ArrayData hashing includes every slot before TypedArrayData.
+    }
+}
+
+impl ArrayEq for ChunkedData {
+    fn array_eq(&self, _other: &Self, _accuracy: EqMode) -> bool {
+        // Chunk offsets are cached derived data. Slot 0 already stores the logical offsets array,
+        // and ArrayData equality compares every slot before TypedArrayData.
+        true
+    }
+}
+
+impl VTable for Chunked {
+    type TypedArrayData = ChunkedData;
+
+    type OperationsVTable = Self;
+    type ValidityVTable = Self;
+    fn id(&self) -> ArrayId {
+        static ID: CachedId = CachedId::new("vortex.chunked");
+        *ID
+    }
+
+    fn validate(
+        &self,
+        data: &ChunkedData,
+        dtype: &DType,
+        len: usize,
+        slots: &[Option<ArrayRef>],
+    ) -> VortexResult<()> {
+        vortex_ensure!(
+            !slots.is_empty(),
+            "ChunkedArray must have at least a chunk offsets slot"
+        );
+        let chunk_offsets = slots[ChunkedSlots::CHUNK_OFFSETS]
+            .as_ref()
+            .vortex_expect("validated chunk offsets slot");
+        vortex_ensure!(
+            chunk_offsets.dtype() == &DType::Primitive(PType::U64, Nullability::NonNullable),
+            "ChunkedArray chunk offsets must be non-nullable u64, found {}",
+            chunk_offsets.dtype()
+        );
+        vortex_ensure!(
+            chunk_offsets.len() == data.chunk_offsets.len(),
+            "ChunkedArray chunk offsets slot length {} does not match cached offsets length {}",
+            chunk_offsets.len(),
+            data.chunk_offsets.len()
+        );
+        vortex_ensure!(
+            data.chunk_offsets.len() == slots.len() - ChunkedSlots::CHUNKS_OFFSET + 1,
+            "ChunkedArray chunk offsets length {} does not match {} chunks",
+            data.chunk_offsets.len(),
+            slots.len() - ChunkedSlots::CHUNKS_OFFSET
+        );
+        vortex_ensure!(
+            data.chunk_offsets
+                .last()
+                .copied()
+                .vortex_expect("chunked arrays always have a leading 0 offset")
+                == len,
+            "ChunkedArray length {} does not match outer length {}",
+            data.chunk_offsets.last().copied().unwrap_or_default(),
+            len
+        );
+        for (idx, (start, end)) in data
+            .chunk_offsets
+            .iter()
+            .copied()
+            .tuple_windows()
+            .enumerate()
+        {
+            let chunk = slots[ChunkedSlots::CHUNKS_OFFSET + idx]
+                .as_ref()
+                .vortex_expect("validated chunk slot");
+            vortex_ensure!(
+                chunk.dtype() == dtype,
+                "ChunkedArray chunk dtype {} does not match outer dtype {}",
+                chunk.dtype(),
+                dtype
+            );
+            vortex_ensure!(
+                chunk.len() == end - start,
+                "ChunkedArray chunk {} len {} does not match offsets span {}",
+                idx,
+                chunk.len(),
+                end - start
+            );
+        }
+        Ok(())
+    }
+
+    fn nbuffers(_array: ArrayView<'_, Self>) -> usize {
+        0
+    }
+
+    fn buffer(_array: ArrayView<'_, Self>, idx: usize) -> BufferHandle {
+        vortex_panic!("ChunkedArray buffer index {idx} out of bounds")
+    }
+
+    fn buffer_name(_array: ArrayView<'_, Self>, idx: usize) -> Option<String> {
+        vortex_panic!("ChunkedArray buffer_name index {idx} out of bounds")
+    }
+
+    fn with_buffers(
+        &self,
+        array: ArrayView<'_, Self>,
+        buffers: &[BufferHandle],
+    ) -> VortexResult<ArrayParts<Self>> {
+        with_empty_buffers(self, array, buffers)
+    }
+
+    fn serialize(
+        _array: ArrayView<'_, Self>,
+        _session: &VortexSession,
+    ) -> VortexResult<Option<Vec<u8>>> {
+        Ok(Some(vec![]))
+    }
+
+    fn deserialize(
+        &self,
+        dtype: &DType,
+        len: usize,
+        metadata: &[u8],
+        _buffers: &[BufferHandle],
+        children: &dyn ArrayChildren,
+        session: &VortexSession,
+    ) -> VortexResult<ArrayParts<Self>> {
+        if !metadata.is_empty() {
+            vortex_bail!(
+                "ChunkedArray expects empty metadata, got {} bytes",
+                metadata.len()
+            );
+        }
+        if children.is_empty() {
+            vortex_bail!("Chunked array needs at least one child");
+        }
+
+        let nchunks = children.len() - 1;
+        let chunk_offsets = children.get(
+            ChunkedSlots::CHUNK_OFFSETS,
+            &DType::Primitive(PType::U64, Nullability::NonNullable),
+            nchunks + 1,
+        )?;
+        let mut ctx = session.create_execution_ctx();
+        let chunk_offsets_buf = chunk_offsets
+            .clone()
+            .execute::<PrimitiveArray>(&mut ctx)?
+            .to_buffer::<u64>();
+        let chunk_offsets_usize = chunk_offsets_buf
+            .iter()
+            .copied()
+            .map(|offset| {
+                usize::try_from(offset)
+                    .map_err(|_| vortex_err!("chunk offset {offset} exceeds usize range"))
+            })
+            .collect::<VortexResult<Vec<_>>>()?;
+        let mut slots = SmallVec::with_capacity(children.len());
+        slots.push(Some(chunk_offsets));
+        for (idx, (start, end)) in chunk_offsets_usize
+            .iter()
+            .copied()
+            .tuple_windows()
+            .enumerate()
+        {
+            let chunk_len = end - start;
+            slots.push(Some(children.get(
+                idx + ChunkedSlots::CHUNKS_OFFSET,
+                dtype,
+                chunk_len,
+            )?));
+        }
+
+        Ok(ArrayParts::new(
+            self.clone(),
+            dtype.clone(),
+            len,
+            ChunkedData::new(chunk_offsets_usize),
+        )
+        .with_slots(slots))
+    }
+
+    fn append_to_builder(
+        array: ArrayView<'_, Self>,
+        builder: &mut dyn ArrayBuilder,
+        ctx: &mut ExecutionCtx,
+    ) -> VortexResult<()> {
+        for chunk in array.iter_chunks() {
+            chunk.append_to_builder(builder, ctx)?;
+        }
+        Ok(())
+    }
+
+    fn slot_name(_array: ArrayView<'_, Self>, idx: usize) -> String {
+        match idx {
+            ChunkedSlots::CHUNK_OFFSETS => "chunk_offsets".to_string(),
+            n => format!("chunks[{}]", n - ChunkedSlots::CHUNKS_OFFSET),
+        }
+    }
+
+    fn execute(array: Array<Self>, ctx: &mut ExecutionCtx) -> VortexResult<ExecutionResult> {
+        match array.dtype() {
+            DType::Union(..) => {
+                todo!(
+                    "TODO(connor)[Union]: canonicalize chunked Union arrays by packing type IDs and \
+                     every sparse child along identical chunk boundaries"
+                )
+            }
+            // Struct, List, FixedSizeList, and Variant need child swizzling that the builder path
+            // cannot express.
+            DType::Struct(..) | DType::List(..) | DType::FixedSizeList(..) | DType::Variant(..) => {
+                // TODO(joe)[#7674]: iterative execution here too
+                Ok(ExecutionResult::done(_canonicalize(array.as_view(), ctx)?))
+            }
+            // For all other types, use the builder path via AppendChild.
+            _ => {
+                let slot_idx = array.next_builder_slot.max(ChunkedSlots::CHUNKS_OFFSET);
+                if slot_idx < array.slots().len() {
+                    Ok(ExecutionResult::append_child(
+                        array.with_next_builder_slot(slot_idx + 1),
+                        slot_idx,
+                    ))
+                } else {
+                    Ok(ExecutionResult::done(
+                        Canonical::empty(array.dtype()).into_array(),
+                    ))
+                }
+            }
+        }
+    }
+
+    fn reduce(array: ArrayView<'_, Self>) -> VortexResult<Option<ArrayRef>> {
+        Ok(match array.nchunks() {
+            0 => Some(Canonical::empty(array.dtype()).into_array()),
+            1 => Some(array.chunk(0).clone()),
+            _ => None,
+        })
+    }
+
+    fn reduce_parent(
+        array: ArrayView<'_, Self>,
+        parent: &ArrayRef,
+        child_idx: usize,
+    ) -> VortexResult<Option<ArrayRef>> {
+        PARENT_RULES.evaluate(array, parent, child_idx)
+    }
+}

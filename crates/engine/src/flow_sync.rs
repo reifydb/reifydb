@@ -167,15 +167,15 @@ impl Get for FlowTransaction<'_> {
 }
 
 impl Batch for FlowTransaction<'_> {
-	fn set(&mut self, keys: &[EncodedKey], rows: &[EncodedBytes]) -> Result<()> {
+	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
 		for (key, row) in keys.iter().zip(rows) {
-			self.tx.set(&tagged(key), row.clone())?;
+			self.tx.set(&tagged(key), row)?;
 		}
 		Ok(())
 	}
 
-	fn remove(&mut self, keys: &[EncodedKey]) -> Result<()> {
-		for key in keys {
+	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
+		for key in &keys {
 			let key = tagged(key);
 			match self.tx.get_committed(&key)? {
 				Some(committed) => {
@@ -220,14 +220,14 @@ impl Resolve for FlowTransaction<'_> {
 		self.catalog.find_dictionary(&mut self.tx, id)
 	}
 
-	fn resolve(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		self.tx.get_from_dictionary(dictionary, id)
+	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+		ids.iter().map(|&id| self.tx.get_from_dictionary(dictionary, id)).collect()
 	}
 }
 
 impl Intern for FlowTransaction<'_> {
-	fn find(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		self.tx.find_in_dictionary(dictionary, value)
+	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		self.tx.find_many_in_dictionary(dictionary, values)
 	}
 
 	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {

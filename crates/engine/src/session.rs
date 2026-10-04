@@ -90,6 +90,7 @@ impl Session {
 		self.engine.query_as(self.identity, rql, params.into())
 	}
 
+	#[cfg(feature = "column")]
 	#[instrument(name = "session::query_column", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn query_column(&self, rql: &str, params: impl Into<Params>) -> ExecutionResult {
 		self.engine.query_column_as(self.identity, rql, params.into())

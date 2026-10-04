@@ -11,18 +11,12 @@ use reifydb_catalog::{
 	catalog::Catalog,
 	store::column_snapshot::{create::ColumnSnapshotToCreate, update::ColumnSnapshotToUpdate},
 };
-use reifydb_column::{
-	bucket::{Bucket, BucketId, bucket_for, is_closed},
-	compress::Compressor,
-	snapshot::ColumnBlock,
-	stats::block_stats,
-};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
-			column_snapshot::{ColumnSnapshotSource, ColumnStats},
-			id::{ColumnSnapshotId, SeriesId},
+			column_snapshot::{ColumnSnapshot, ColumnSnapshotSource, ColumnStats},
+			id::SeriesId,
 			object::ObjectId,
 			series::{Series, SeriesPartitionMetadata},
 		},
@@ -45,7 +39,14 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{
+	bucket::{Bucket, BucketId, bucket_for, is_closed},
+	compress::Compressor,
+	device::BlockKey,
+	snapshot::ColumnBlock,
+	stats::block_stats,
+	store::ColumnStore,
+};
 use reifydb_transaction::{
 	multi::RangeScope,
 	transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction},
@@ -60,9 +61,7 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
-use tracing::{debug, warn};
-
-const PARTITION_CARDINALITY_WARN: usize = 1000;
+use tracing::debug;
 
 use crate::column::{
 	actor::{
@@ -212,7 +211,7 @@ impl SeriesMaterializationActor {
 		};
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
-		let stale: Vec<ColumnSnapshotId> = catalog
+		let stale: Vec<ColumnSnapshot> = catalog
 			.list_column_snapshots_for_series(&mut Transaction::Admin(&mut admin), series.id)?
 			.into_iter()
 			.filter(|snapshot| match snapshot.source {
@@ -222,17 +221,16 @@ impl SeriesMaterializationActor {
 				} => partition == stored_partition,
 				_ => false,
 			})
-			.map(|snapshot| snapshot.id)
 			.collect();
 		if stale.is_empty() {
 			return Ok(());
 		}
-		for id in &stale {
-			catalog.drop_column_snapshot(&mut admin, *id)?;
+		for snapshot in &stale {
+			catalog.drop_column_snapshot(&mut admin, snapshot.id)?;
 		}
 		commit_admin(admin)?;
-		for id in &stale {
-			self.block_store.remove(*id)?;
+		for snapshot in &stale {
+			self.block_store.remove(&BlockKey::of(snapshot))?;
 		}
 		state.bucket_state.retain(|(id, part, _)| *id != series.id || *part != partition);
 		self.reset_dirty_mark(series, partition)
@@ -293,15 +291,6 @@ impl SeriesMaterializationActor {
 		} else {
 			self.read_partition_registry(query_txn, series)?
 		};
-		if partitions.len() > PARTITION_CARDINALITY_WARN {
-			warn!(
-				series = %series.name,
-				series_id = ?series.id,
-				partitions = partitions.len(),
-				"series exceeds {} partitions; the column store writes one block per bucket per partition",
-				PARTITION_CARDINALITY_WARN
-			);
-		}
 		state.partitions.insert(series.id, partitions.clone());
 		Ok(partitions)
 	}
@@ -369,7 +358,7 @@ impl SeriesMaterializationActor {
 		}
 
 		let block = Arc::new(self.build_column_block(series, batches, sealed_at_commit_version)?);
-		let stats = block_stats(block.as_ref())?;
+		let stats = block_stats(block.as_ref(), self.block_store.session())?;
 		self.upsert_snapshot_and_store(series, scope, &stats, bucket, sealed_at_commit_version, block)
 	}
 
@@ -513,9 +502,8 @@ impl SeriesMaterializationActor {
 				},
 			)?,
 		};
-		self.block_store.persist(column_snapshot.id, block.as_ref())?;
+		self.block_store.write(&BlockKey::of(&column_snapshot), block.as_ref())?;
 		commit_admin(admin)?;
-		self.block_store.put(column_snapshot.id, block);
 		Ok(())
 	}
 }

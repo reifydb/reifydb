@@ -149,6 +149,14 @@ pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
 	fn type_argument_positions(&self) -> &[usize] {
 		&[]
 	}
+
+	fn changes_row_count(&self) -> bool {
+		false
+	}
+
+	fn has_fixed_return_type(&self) -> bool {
+		false
+	}
 }
 
 pub trait Procedure: for<'a, 'tx> Routine<context::ProcedureContext<'a, 'tx>> {}

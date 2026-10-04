@@ -68,6 +68,19 @@ impl SqlitePersistent {
 		route::occupied_keyspaces(conn, operator, tables)
 	}
 
+	#[instrument(name = "store::operator::persistent::sqlite::occupied_operators", level = "debug", skip(self))]
+	pub fn occupied_operators(&self) -> Vec<OperatorId> {
+		let tables = self.inner.tables.snapshot();
+		let guard = self.read_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Vec::new();
+		};
+		tables.into_iter()
+			.filter(|(operator, mask)| !route::occupied_keyspaces(conn, *operator, *mask).is_empty())
+			.map(|(operator, _)| operator)
+			.collect()
+	}
+
 	#[instrument(name = "store::operator::persistent::sqlite::census", level = "debug", skip(self))]
 	pub fn census(&self) -> Vec<OperatorStateCensus> {
 		let tables = self.inner.tables.snapshot();

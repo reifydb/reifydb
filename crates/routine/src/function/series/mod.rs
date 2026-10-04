@@ -151,4 +151,8 @@ impl Function for Series {
 	fn arity(&self) -> Arity {
 		Arity::Exact(2)
 	}
+
+	fn changes_row_count(&self) -> bool {
+		true
+	}
 }

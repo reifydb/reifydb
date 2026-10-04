@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::result::Result as StdResult;
-
 use arrow_array::{Array, BooleanArray};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_select::filter::FilterPredicate;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	Result,
@@ -78,38 +75,12 @@ pub fn heap_size(array: &BooleanArray) -> usize {
 	capacity(array).div_ceil(8)
 }
 
-pub fn serialize<Ser: Serializer>(array: &BooleanArray, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
-	#[derive(Serialize)]
-	struct Helper<'a> {
-		#[serde(serialize_with = "bitmap::serialize")]
-		data: &'a BooleanBuffer,
-	}
-	Helper {
-		data: array.values(),
-	}
-	.serialize(serializer)
-}
-
-pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<BooleanArray, D::Error> {
-	#[derive(Deserialize)]
-	struct Helper {
-		#[serde(deserialize_with = "bitmap::deserialize")]
-		data: BooleanBuffer,
-	}
-	Ok(BooleanArray::from(Helper::deserialize(deserializer)?.data))
-}
-
 #[cfg(test)]
 mod tests {
 	use arrow_array::BooleanArray;
-	use serde::{Deserialize, Serialize};
-	use serde_json::{from_str, to_string};
 
 	use super::{as_string, filter, get_value, reorder, slice, take};
 	use crate::value::{Value, value_type::ValueType};
-
-	#[derive(Serialize, Deserialize)]
-	struct Wrap(#[serde(with = "super")] BooleanArray);
 
 	fn values(array: &BooleanArray) -> Vec<bool> {
 		array.values().iter().collect()
@@ -143,29 +114,5 @@ mod tests {
 		assert_eq!(values(&filter(&array, mask.values())), vec![true, true]);
 		let error = reorder(&array, &[2, 7, 1]).unwrap_err();
 		assert_eq!(error.diagnostic().message, "row index 7 out of range for a column of 3 rows");
-	}
-
-	#[test]
-	fn serde_keeps_the_bool_container_shape() {
-		// Stored Bool columns are {data: {bits, len}}; any other shape breaks decoding.
-		let array = BooleanArray::from(vec![true, false, true]);
-		assert_eq!(to_string(&Wrap(array)).unwrap(), r#"{"data":{"bits":[5],"len":3}}"#);
-		let Wrap(back) = from_str::<Wrap>(r#"{"data":{"bits":[5],"len":3}}"#).unwrap();
-		assert_eq!(values(&back), vec![true, false, true]);
-	}
-
-	#[test]
-	fn serde_of_a_sliced_array_equals_a_fresh_one() {
-		// A slice at a bit offset must serialize like a fresh array of the same rows.
-		let all = vec![true, false, true, true, false, false, true, false, true, true];
-		let view = slice(&BooleanArray::from(all.clone()), 3, 9);
-		let fresh = BooleanArray::from(all[3..9].to_vec());
-		assert_eq!(to_string(&Wrap(view)).unwrap(), to_string(&Wrap(fresh)).unwrap());
-	}
-
-	#[test]
-	fn deserialize_rejects_short_bits() {
-		// Short bits must be a serde error, not a panic on the first read.
-		assert!(from_str::<Wrap>(r#"{"data":{"bits":[],"len":5}}"#).is_err());
 	}
 }

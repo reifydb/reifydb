@@ -1,0 +1,57 @@
+[package]
+name = "fsst-rs"
+version = "0.6.0"
+description = "Pure-Rust implementation of Fast Static Symbol Tables algorithm for string compression"
+authors = ["SpiralDB Developers <hello@spiraldb.com>"]
+license = "Apache-2.0"
+repository = "https://github.com/spiraldb/fsst"
+readme = "README.md"
+keywords = ["fsst", "compression", "string", "symbol-table", "encoding"]
+categories = ["compression"]
+rust-version = "1.86.0"
+edition = "2024"
+exclude = ["benchmarks/*", ".github/*", "logo.webp"]
+
+[lib]
+name = "fsst"
+
+[lints.rust]
+warnings = "deny"
+missing_docs = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+if_then_some_else_none = { level = "deny" }
+mem_forget = { level = "deny" }
+or_fun_call = "deny"
+panic_in_result_fn = { level = "deny" }
+same_name_method = { level = "deny" }
+tests_outside_test_module = { level = "deny" }
+unwrap_in_result = { level = "deny" }
+use_debug = { level = "deny" }
+
+[dependencies]
+rustc-hash = "2.1.1"
+
+[dev-dependencies]
+criterion = { package = "codspeed-criterion-compat", version = "5.0" }
+curl = "0.4"
+hegeltest = "0.28.2"
+
+[[example]]
+name = "round_trip"
+bench = false
+test = false
+
+[[bench]]
+name = "compress"
+harness = false
+
+[[bench]]
+name = "micro"
+harness = false
+
+[[test]]
+name = "correctness"
+test = true
+bench = false

@@ -21,14 +21,14 @@ use crate::{
 	Result,
 	expression::{
 		arith::{ArithOp, arith_target},
-		context::EvalContext,
+		context::ArithContext,
 		option::arith_op_unwrap_option,
 		scalar::FitFamily,
 	},
 };
 
 pub fn rem_columns(
-	ctx: &EvalContext,
+	ctx: &ArithContext,
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: impl LazyFragment + Copy,
@@ -52,7 +52,7 @@ pub fn rem_columns(
 }
 
 fn rem_numeric<L, R>(
-	ctx: &EvalContext,
+	ctx: &ArithContext,
 	l: &[L],
 	r: &[R],
 	target: ValueType,
@@ -81,7 +81,7 @@ where
 }
 
 fn rem_numeric_clone<L, R>(
-	ctx: &EvalContext,
+	ctx: &ArithContext,
 	l: &[L],
 	r: &[R],
 	target: ValueType,

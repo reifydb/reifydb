@@ -15,7 +15,7 @@ reifydb-allocator = { workspace = true }
 reifydb-auth = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-cdc = { workspace = true }
-reifydb-column = { workspace = true }
+reifydb-store-column = { workspace = true, optional = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-derive = { workspace = true }
@@ -113,7 +113,7 @@ alloc-jemalloc = ["reifydb-allocator/alloc-jemalloc"]
 wasm = ["reifydb-extension/wasm"]
 
 # Subsystem features
-column = ["reifydb-sub-store/column", "reifydb-sub-store/sqlite"]
+column = ["dep:reifydb-store-column", "reifydb-engine/column", "reifydb-sub-store/column"]
 sub_flow = ["dep:reifydb-flow-async", "dep:reifydb-sub-flow", "dep:reifydb-sub-subscription"]
 flow_testing = ["testing"]
 sub_tracing = ["dep:reifydb-sub-tracing"]

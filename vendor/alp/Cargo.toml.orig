@@ -1,0 +1,85 @@
+[package]
+name = "alp"
+description = "A pure Rust implementation of Adaptive Lossless floating-Point Compression by Afroozeh et al."
+version = "0.0.4"
+license = "Apache-2.0"
+repository = "https://github.com/spiraldb/alp"
+documentation = "https://docs.rs/alp"
+readme = "README.md"
+keywords = ["alp", "compression", "floating-point", "codec", "lossless"]
+categories = ["compression"]
+edition = "2024"
+rust-version = "1.91.0"
+exclude = [".github/*"]
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "alp_rd"
+harness = false
+
+[dependencies]
+fastlanes = "0.6"
+itertools = "0.15.0"
+num-traits = "0.2.19"
+serde = { version = "1", optional = true, features = ["derive"] }
+
+[workspace.lints.rust]
+macro_use_extern_crate = "deny"
+missing_docs = "deny"
+redundant_lifetimes = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unused_lifetimes = "deny"
+unused_qualifications = "deny"
+warnings = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+as_ptr_cast_mut = "deny"
+borrow_as_ptr = "deny"
+cargo = { level = "deny", priority = -1 }
+# Truncating casts are deliberate throughout a bit-level codec. Every site either truncates by
+# design (e.g. `ALPRDFloat::to_u16`) or is provably in range (dictionary codes are < MAX_DICT_SIZE,
+# bit widths are <= 64). The float -> int casts saturate, and out-of-range values are caught by the
+# encoder's round-trip check and stored as exceptions.
+cast_possible_truncation = "allow"
+cognitive_complexity = "deny"
+collection_is_never_read = "deny"
+dbg_macro = "deny"
+debug_assert_with_mut_call = "deny"
+derive_partial_eq_without_eq = "deny"
+equatable_if_let = "deny"
+exit = "deny"
+expect_fun_call = "deny"
+# Panics on invalid input are part of the public contract here (see the `# Panics` sections), and
+# `expect` carries a better message than the indexing panic it replaces.
+expect_used = "allow"
+fallible_impl_from = "deny"
+get_unwrap = "deny"
+host_endian_bytes = "deny"
+if_then_some_else_none = "deny"
+inconsistent_struct_constructor = "deny"
+manual_assert = "deny"
+manual_is_variant_and = "deny"
+many_single_char_names = "deny"
+mem_forget = "deny"
+missing_errors_doc = "deny"
+missing_panics_doc = "deny"
+multiple_crate_versions = "allow"
+or_fun_call = "deny"
+panic = "deny"
+# panic_in_result_fn = "deny" -- we cannot disable this for tests to use assertions
+redundant_clone = "deny"
+same_name_method = "deny"
+tests_outside_test_module = "deny"
+# todo = "deny"
+# unimplemented = "deny"
+unwrap_in_result = "deny"
+unwrap_used = "deny"
+use_debug = "deny"
+
+[dev-dependencies]
+criterion = { package = "codspeed-criterion-compat", version = "5.0.1", default-features = false, features = [
+  "cargo_bench_support",
+] }

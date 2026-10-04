@@ -34,8 +34,6 @@ use reifydb_core::{
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::{nodes::InsertRingBufferNode, query::QueryPlan};
 use reifydb_transaction::transaction::Transaction;
-#[cfg(reifydb_assertions)]
-use reifydb_value::value::canonical::assert_canonical_floats;
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
@@ -162,7 +160,7 @@ fn drive_ringbuffer_insert(
 	let mut mutable_context = (**context).clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		reifydb_assertions! {
-			assert_canonical_floats(&columns, "ringbuffer insert");
+			reifydb_value::value::canonical::assert_canonical_floats(&columns, "ringbuffer insert");
 		}
 		PolicyEvaluator::new(services, symbols).enforce_write_policies(
 			txn,

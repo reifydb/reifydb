@@ -12,8 +12,6 @@ use std::{
 };
 
 use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
-#[cfg(reifydb_assertions)]
-use reifydb_core::key::tag::KeyTag;
 use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
 	common::{CommitVersion, SourceVersion},
@@ -30,8 +28,6 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::engine::StandardEngine;
-#[cfg(reifydb_assertions)]
-use reifydb_flow_async::transaction::read::{ReadFrom, read_from};
 use reifydb_flow_async::{
 	engine::{FlowEngineInner, frontier::WatermarkHolds},
 	operator::metrics::OperatorSampleRegistry,
@@ -785,12 +781,13 @@ impl FlowActor {
 				 would record a durability this commit never wrote, and the flow would stop \
 				 checkpointing because it believes it has nothing left to record"
 			);
-			for (key, _) in slice.combined.iter_ordered() {
+			for (key, _) in slice.combined.iter_sorted() {
 				assert!(
-					read_from(key) != ReadFrom::Query,
+					reifydb_flow_async::transaction::read::read_from(key)
+						!= reifydb_flow_async::transaction::read::ReadFrom::Query,
 					"flow {:?} committed {:?}, a key it reads back through the query pinned at its cursor, which never sees this commit",
 					self.flow_id,
-					KeyTag::of(key)
+					reifydb_core::key::tag::KeyTag::of(key)
 				);
 			}
 		}
@@ -960,12 +957,13 @@ impl FlowActor {
 		view_changes: Vec<Change>,
 	) {
 		reifydb_assertions! {
-			for (key, _) in pending.iter_ordered() {
+			for (key, _) in pending.iter_sorted() {
 				assert!(
-					read_from(key) != ReadFrom::Query,
+					reifydb_flow_async::transaction::read::read_from(key)
+						!= reifydb_flow_async::transaction::read::ReadFrom::Query,
 					"flow {:?} committed {:?} on a tick, a key it reads back through the query pinned at its cursor, which never sees this commit",
 					self.flow_id,
-					KeyTag::of(key)
+					reifydb_core::key::tag::KeyTag::of(key)
 				);
 			}
 		}

@@ -4,14 +4,13 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use reifydb_column::snapshot::Schema;
 use reifydb_core::{
 	common::TimeSource,
 	error::diagnostic::{internal::internal, query::no_column_snapshot},
 	interface::resolved::ResolvedTable,
 	value::column::{builder::ColumnBuilder, headers::ColumnHeaders},
 };
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{snapshot::Schema, store::ColumnStore};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::Error, value::system_columns::SystemColumn};
 
@@ -71,7 +70,7 @@ impl ColumnTableScanNode {
 		Ok(ScanState::Reading {
 			reader: Box::new(BlockSequenceReader::new(
 				store,
-				vec![snapshot.id],
+				vec![snapshot],
 				self.context.batch_size as usize,
 			)),
 			emitted: false,

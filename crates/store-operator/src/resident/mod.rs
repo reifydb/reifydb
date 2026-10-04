@@ -32,7 +32,6 @@ use reifydb_core::{
 };
 use reifydb_filter::adaptive::{AdaptiveKeyFilter, FilterMetrics};
 use reifydb_runtime::sync::{
-	condvar::Condvar,
 	mutex::{Mutex, MutexGuard},
 	rwlock::RwLock,
 };
@@ -171,7 +170,6 @@ pub struct Shared {
 	global: Mutex<GlobalInner>,
 	drops_outstanding: AtomicBool,
 	write_seq: AtomicU64,
-	idle: Condvar,
 	drain: Mutex<()>,
 	flusher: Mutex<()>,
 	accounting: RwLock<()>,
@@ -206,7 +204,6 @@ impl Shared {
 			global: Mutex::new(GlobalInner::default()),
 			drops_outstanding: AtomicBool::new(false),
 			write_seq: AtomicU64::new(0),
-			idle: Condvar::new(),
 			drain: Mutex::new(()),
 			flusher: Mutex::new(()),
 			accounting: RwLock::new(()),
@@ -874,6 +871,7 @@ impl Resident {
 		let mut staged = 0usize;
 		let mut staged_bytes = ByteSize::ZERO;
 		let mut exhausted = false;
+		let mut hashes: Vec<u64> = Vec::new();
 
 		for group in self.pending_groups() {
 			if staged > 0 && consumed >= slice {
@@ -896,7 +894,7 @@ impl Resident {
 						staged_write(entry.post.clone()),
 					));
 					staged += 1;
-					self.shared.filter.add(state_hash(operator, keyspace, group, suffix));
+					hashes.push(state_hash(operator, keyspace, group, suffix));
 				});
 				consumed = consumed.saturating_add(carried);
 				staged_bytes = staged_bytes.saturating_add(
@@ -906,6 +904,7 @@ impl Resident {
 				touched.push(operator);
 			}
 		}
+		self.shared.filter.add_many(&hashes);
 		self.shared.release_dirty(staged);
 		self.shared.release_dirty_bytes(staged_bytes);
 		batch.bytes = consumed;
@@ -1073,7 +1072,6 @@ impl Resident {
 		}
 
 		self.shared.global.lock().flushing = false;
-		self.shared.idle.notify_all();
 		self.shared.evict_parked.store(false, Ordering::Release);
 		self.wake_evictor();
 	}

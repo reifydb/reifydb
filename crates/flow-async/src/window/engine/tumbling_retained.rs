@@ -23,8 +23,6 @@ use reifydb_core::{
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
-#[cfg(reifydb_assertions)]
-use crate::operator::state::expiry::expiry_all;
 use crate::{
 	operator::{
 		state::{
@@ -93,8 +91,8 @@ impl<G, S, K, V> Reaper for RetainedTumblingEngine<G, S, K, V>
 where
 	S: WindowAnchor + Hash,
 {
-	fn reap(&mut self, store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
-		store.state_remove(key)
+	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
+		store.state_remove_many(keys)
 	}
 }
 
@@ -386,7 +384,7 @@ where
 		}
 		self.expiry.settle(store)?;
 		reifydb_assertions! {
-			for entry in expiry_all::<TumblingExpiry, TumblingIndexEntry<G, S>>(store)? {
+			for entry in crate::operator::state::expiry::expiry_all::<TumblingExpiry, TumblingIndexEntry<G, S>>(store)? {
 				assert!(
 					!out.iter().any(|window| window.group_id == entry.group_id),
 					"the expiry index still holds a row for a group that is about to be queued for \

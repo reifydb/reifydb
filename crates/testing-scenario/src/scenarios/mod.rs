@@ -5,6 +5,7 @@ use reifydb_value::value::Value;
 
 pub mod join;
 pub mod ping;
+pub mod project;
 pub mod read;
 pub mod scan;
 pub mod write;

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(feature = "column")]
+pub mod column;
 #[cfg(feature = "auth")]
 pub mod identity;
 

@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Borrow, result::Result as StdResult};
+use std::borrow::Borrow;
 
 use arrow_array::{
 	Array, LargeBinaryArray,
 	builder::{ArrayBuilder, LargeBinaryBuilder},
 };
 use postcard::{from_bytes, to_allocvec};
-use serde::{Deserialize, Deserializer, Serializer, de::Error as _, ser::SerializeSeq};
 
 use crate::{
 	Result,
@@ -99,29 +98,11 @@ pub fn equals(left: &LargeBinaryArray, right: &LargeBinaryArray) -> bool {
 	left.len() == right.len() && (0..left.len()).all(|index| get(left, index) == get(right, index))
 }
 
-pub fn serialize<Ser: Serializer>(array: &LargeBinaryArray, serializer: Ser) -> StdResult<Ser::Ok, Ser::Error> {
-	let mut seq = serializer.serialize_seq(Some(array.len()))?;
-	for index in 0..array.len() {
-		seq.serialize_element(&get(array, index))?;
-	}
-	seq.end()
-}
-
-pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> StdResult<LargeBinaryArray, D::Error> {
-	let values: Vec<Option<Value>> = Vec::deserialize(deserializer)?;
-	if let Some(row) = values.iter().position(|value| matches!(value, Some(Value::None { .. }))) {
-		return Err(D::Error::custom(format!("an Any cell can not hold a none, row {row} must be a null row")));
-	}
-	Ok(any_array_optional(values))
-}
-
 #[cfg(test)]
 mod tests {
 	use ::uuid::Uuid as StdUuid;
 	use arrow_buffer::i256;
 	use postcard::to_allocvec;
-	use serde::{Deserialize, Serialize};
-	use serde_json::{from_str, to_string};
 
 	use super::*;
 	use crate::value::{
@@ -138,14 +119,6 @@ mod tests {
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 	};
-
-	#[derive(Serialize, Deserialize)]
-	struct AnyColumn {
-		#[serde(serialize_with = "serialize", deserialize_with = "deserialize")]
-		data: LargeBinaryArray,
-		#[serde(default)]
-		declared_type: Option<ValueType>,
-	}
 
 	fn digest() -> Digest {
 		let mut digest = Digest::new(ValueType::Float8, 10_000).unwrap();
@@ -253,22 +226,5 @@ mod tests {
 		// An empty row under a set valid bit is corrupt, so reading one must fail loudly instead of giving a
 		// none.
 		get(&LargeBinaryArray::from_iter_values([b"".as_slice()]), 0);
-	}
-
-	#[test]
-	fn serde_round_trips_every_variant_and_the_declared_type() {
-		// Stored and shipped Any columns must read back exactly every variant and the declared type.
-		let cells = every_variant();
-		let declared_type = Some(ValueType::List(Box::new(ValueType::Int4)));
-		let column = AnyColumn {
-			data: any_array(&cells),
-			declared_type: declared_type.clone(),
-		};
-		let json = to_string(&column).unwrap();
-		let back: AnyColumn = from_str(&json).unwrap();
-		assert_eq!(values(&back.data), cells);
-		assert_eq!(back.declared_type, declared_type);
-		let without_type: AnyColumn = from_str(r#"{"data":[]}"#).unwrap();
-		assert_eq!(without_type.declared_type, None);
 	}
 }

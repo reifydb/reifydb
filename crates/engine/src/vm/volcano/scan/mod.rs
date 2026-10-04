@@ -37,11 +37,17 @@ use reifydb_value::{
 
 use crate::{Result, vm::services::Services};
 
+#[cfg(feature = "column")]
 pub mod column_block_sequence;
+#[cfg(feature = "column")]
 pub mod column_predicate;
+#[cfg(feature = "column")]
 pub mod column_prune;
+#[cfg(feature = "column")]
 pub mod column_series;
+#[cfg(feature = "column")]
 pub mod column_table;
+#[cfg(feature = "column")]
 pub mod column_unsupported;
 pub mod dictionary;
 pub mod index;
