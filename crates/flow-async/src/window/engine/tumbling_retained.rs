@@ -15,35 +15,30 @@ use reifydb_codec::{
 use reifydb_core::{
 	key::operator::{
 		keyspace::expiry::TumblingExpiry,
-		state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range},
+		state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, keyspace_inner_range},
 	},
 	metrics::heap::HeapSize,
-	state::timer::StateStore,
+	state::{batch::StateBatch, timer::StateStore},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{Result, reifydb_assertions, value::row_number::RowNumber};
 
 use crate::{
-	operator::{
-		state::{
-			expiry::{ExpiryIndex, expiry_drop, tumbling_expiry_key},
-			reaper::Reaper,
-		},
-		state_access::{get_classified, put, remove},
+	operator::state::{
+		expiry::{ExpiryIndex, expiry_drop, tumbling_expiry_key},
+		reaper::Reaper,
 	},
 	window::{
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, RetainedEntryKey,
 			WindowStateKey,
 			config::WindowEngineConfig,
-			group_hash, load_batch_meta, meta_key_for, note_when_expiry_capped, persist_batch_meta,
+			group_hash, meta_key_for, note_when_expiry_capped,
 			tumbling::{ExpiredWindow, TumblingBuckets, TumblingIndexEntry},
 		},
 		span::{WindowAnchor, WindowSpan},
 	},
 };
-
-type MetaLoaded<G, S> = HashMap<G, BatchMeta<S>>;
 
 #[derive(Clone)]
 struct ResolvedSlot {
@@ -58,6 +53,25 @@ struct PendingEmit<G, S> {
 	group: G,
 	span: WindowSpan<S>,
 	withdraw: bool,
+}
+
+struct WindowSlots<K> {
+	group: GroupId,
+	header: usize,
+	entries: BTreeMap<K, usize>,
+}
+
+struct RetainedSession<G, S, K> {
+	batch: StateBatch,
+	metas: BTreeMap<G, (usize, BatchMeta<S>)>,
+	windows: HashMap<(G, WindowSpan<S>), WindowSlots<K>>,
+}
+
+fn slot_value<T: OperatorState>(batch: &StateBatch, slot: usize) -> Result<Option<T>> {
+	match batch.value(slot) {
+		Some(row) => Ok(Some(decode::<T>(row)?)),
+		None => Ok(None),
+	}
 }
 
 pub struct RetainedResult<G, S> {
@@ -99,7 +113,6 @@ where
 pub struct RetainedTumblingEngine<G, S, K, V> {
 	meta_sweep: MetaSweep,
 	expire_batch: usize,
-	dropped_retractions: u64,
 	expiry: ExpiryIndex<TumblingExpiry>,
 	_pd: PhantomData<(G, S, K, V)>,
 }
@@ -120,14 +133,9 @@ where
 		Self {
 			meta_sweep: MetaSweep::default(),
 			expire_batch: config.expire_batch(),
-			dropped_retractions: 0,
 			expiry: ExpiryIndex::default(),
 			_pd: PhantomData,
 		}
-	}
-
-	pub fn dropped_retractions(&self) -> u64 {
-		self.dropped_retractions
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -170,11 +178,9 @@ where
 	where
 		SK: Fn(&G, S) -> (GroupId, EncodedKey),
 	{
-		self.dropped_retractions = 0;
 		if buckets.is_empty() {
 			return Ok(Vec::new());
 		}
-		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let slot_resolved = Self::resolve_slots(order, &slot_key);
 		reifydb_assertions! {
 			let ordered = slot_resolved.len();
@@ -187,8 +193,25 @@ where
 				 (order={ordered}, buckets={bucketed})"
 			);
 		}
-		let results = self.apply_events(store, buckets, order, &slot_resolved, &mut meta_loaded)?;
-		self.persist_meta(store, meta_loaded)?;
+		let mut session = Self::open_session(store, &buckets, &slot_resolved)?;
+		let results = self.apply_events(store, &mut session, buckets, order)?;
+		let RetainedSession {
+			mut batch,
+			metas,
+			..
+		} = session;
+		for (slot, meta) in metas.into_values() {
+			if let Some(bumped) = meta.bumped {
+				batch.set(
+					slot,
+					GroupMeta {
+						high_water: Some(bumped),
+					}
+					.encode_state()?,
+				);
+			}
+		}
+		store.state_write_batch(batch)?;
 		Ok(results)
 	}
 
@@ -202,23 +225,74 @@ where
 		Ok(entries)
 	}
 
-	fn entry_key(&self, group: GroupId, key: &K) -> Result<RetainedEntryKey> {
+	fn entry_key(group: GroupId, key: &K) -> Result<RetainedEntryKey> {
 		Ok(RetainedEntryKey::new(group, EncodedKey::new(encode(key)?.body())))
 	}
 
-	fn load_meta(
-		&mut self,
+	fn open_session(
 		store: &mut dyn StateStore,
 		buckets: &TumblingBuckets<G, S, (K, V)>,
-	) -> Result<MetaLoaded<G, S>> {
-		let mut meta_loaded: MetaLoaded<G, S> = HashMap::new();
+		slot_resolved: &SlotResolved<G, S>,
+	) -> Result<RetainedSession<G, S, K>> {
+		let mut keys: Vec<GroupStateKey> = Vec::new();
+		let mut meta_slots: BTreeMap<G, usize> = BTreeMap::new();
 		for (group, _) in buckets.keys() {
-			if !meta_loaded.contains_key(group) {
-				let batch = load_batch_meta(store, &meta_key_for(group_hash(group)?))?;
-				meta_loaded.insert(group.clone(), batch);
+			if !meta_slots.contains_key(group) {
+				meta_slots.insert(group.clone(), keys.len());
+				keys.push((&meta_key_for(group_hash(group)?)).into_group_state_key());
 			}
 		}
-		Ok(meta_loaded)
+		let mut windows: HashMap<(G, WindowSpan<S>), WindowSlots<K>> = HashMap::with_capacity(buckets.len());
+		for (window, events) in buckets {
+			let Some(ResolvedSlot {
+				group: id,
+				key,
+			}) = slot_resolved.get(window)
+			else {
+				continue;
+			};
+			let header = keys.len();
+			keys.push(
+				(&WindowStateKey::new(KeyspaceFamily::Guest, *id, key.clone())).into_group_state_key()
+			);
+			let mut entries: BTreeMap<K, usize> = BTreeMap::new();
+			for event in events {
+				let (AccumulatorEvent::Add((k, _)) | AccumulatorEvent::Remove((k, _))) = event;
+				entries.entry(k.clone()).or_default();
+			}
+			for (k, slot) in entries.iter_mut() {
+				*slot = keys.len();
+				keys.push((&Self::entry_key(*id, k)?).into_group_state_key());
+			}
+			windows.insert(
+				window.clone(),
+				WindowSlots {
+					group: *id,
+					header,
+					entries,
+				},
+			);
+		}
+		let batch = store.state_batch(keys)?;
+		let mut metas: BTreeMap<G, (usize, BatchMeta<S>)> = BTreeMap::new();
+		for (group, slot) in meta_slots {
+			let initial = slot_value::<GroupMeta<S>>(&batch, slot)?.and_then(|meta| meta.high_water);
+			metas.insert(
+				group,
+				(
+					slot,
+					BatchMeta {
+						initial,
+						bumped: None,
+					},
+				),
+			);
+		}
+		Ok(RetainedSession {
+			batch,
+			metas,
+			windows,
+		})
 	}
 
 	fn resolve_slots<SK>(order: &[(G, WindowSpan<S>)], slot_key: &SK) -> SlotResolved<G, S>
@@ -239,13 +313,78 @@ where
 		resolved
 	}
 
+	fn entry_slot(slots: &WindowSlots<K>, key: &K) -> usize {
+		*slots.entries.get(key).expect("every event key of a window holds a slot in the session it opened")
+	}
+
+	fn current(
+		batch: &StateBatch,
+		slots: &WindowSlots<K>,
+		folded: &BTreeMap<K, Option<V>>,
+		key: &K,
+	) -> Result<Option<V>> {
+		match folded.get(key) {
+			Some(value) => Ok(value.clone()),
+			None => Ok(slot_value::<RetainedEntry<K, V>>(batch, Self::entry_slot(slots, key))?
+				.map(|entry| entry.value)),
+		}
+	}
+
+	fn fold_window(
+		batch: &mut StateBatch,
+		slots: &WindowSlots<K>,
+		events: Vec<AccumulatorEvent<(K, V)>>,
+	) -> Result<(bool, bool)> {
+		let mut header: RetainedHeader = slot_value(batch, slots.header)?.unwrap_or_default();
+		let was_empty = header.count == 0;
+		let mut folded: BTreeMap<K, Option<V>> = BTreeMap::new();
+		for event in events {
+			match event {
+				AccumulatorEvent::Add((k, v)) => {
+					if Self::current(batch, slots, &folded, &k)?.is_none() {
+						header.count += 1;
+					}
+					folded.insert(k, Some(v));
+				}
+				AccumulatorEvent::Remove((k, v)) => {
+					if header.count == 0 {
+						continue;
+					}
+					if Self::current(batch, slots, &folded, &k)?.as_ref() == Some(&v) {
+						folded.insert(k, None);
+						header.count -= 1;
+					}
+				}
+			}
+		}
+		for (key, value) in folded {
+			let slot = Self::entry_slot(slots, &key);
+			match value {
+				Some(value) => batch.set(
+					slot,
+					RetainedEntry {
+						key,
+						value,
+					}
+					.encode_state()?,
+				),
+				None => batch.remove(slot),
+			}
+		}
+		let is_empty = header.count == 0;
+		match is_empty {
+			true => batch.remove(slots.header),
+			false => batch.set(slots.header, header.encode_state()?),
+		}
+		Ok((was_empty, is_empty))
+	}
+
 	fn apply_events(
 		&mut self,
 		store: &mut dyn StateStore,
+		session: &mut RetainedSession<G, S, K>,
 		mut buckets: TumblingBuckets<G, S, (K, V)>,
 		order: &[(G, WindowSpan<S>)],
-		slot_resolved: &SlotResolved<G, S>,
-		meta_loaded: &mut MetaLoaded<G, S>,
 	) -> Result<Vec<RetainedResult<G, S>>> {
 		let mut pending: Vec<PendingEmit<G, S>> = Vec::new();
 
@@ -254,62 +393,20 @@ where
 				continue;
 			};
 			let (group, span) = ordered.clone();
-			meta_loaded.entry(group.clone()).or_default().observe(span.start);
+			session.metas
+				.get_mut(&group)
+				.expect("every bucket group holds a meta slot in the session it opened")
+				.1
+				.observe(span.start);
 
-			let Some(ResolvedSlot {
-				group: id,
-				key,
-			}) = slot_resolved.get(&(group.clone(), span)).cloned()
-			else {
+			let Some(slots) = session.windows.get(ordered) else {
 				continue;
 			};
-			let state_key = WindowStateKey::new(KeyspaceFamily::Guest, id, key);
-
-			let mut header: RetainedHeader = get_classified(store, &state_key)?.unwrap_or_default();
-			let was_empty = header.count == 0;
-
-			for event in events {
-				match event {
-					AccumulatorEvent::Add((k, v)) => {
-						let entry_key = self.entry_key(id, &k)?;
-						let old: Option<RetainedEntry<K, V>> =
-							get_classified(store, &entry_key)?;
-						put(
-							store,
-							&entry_key,
-							RetainedEntry {
-								key: k,
-								value: v,
-							},
-						)?;
-						if old.is_none() {
-							header.count += 1;
-						}
-					}
-					AccumulatorEvent::Remove((k, v)) => {
-						if header.count == 0 {
-							self.dropped_retractions += 1;
-							continue;
-						}
-						let entry_key = self.entry_key(id, &k)?;
-						let old: Option<RetainedEntry<K, V>> =
-							get_classified(store, &entry_key)?;
-						if let Some(entry) = old
-							&& entry.value == v
-						{
-							remove(store, &entry_key)?;
-							header.count -= 1;
-						}
-					}
-				}
-			}
-
-			let is_empty = header.count == 0;
-			put(store, &state_key, header)?;
+			let (was_empty, is_empty) = Self::fold_window(&mut session.batch, slots, events)?;
 
 			if !is_empty || !was_empty {
 				pending.push(PendingEmit {
-					group_id: id,
+					group_id: slots.group,
 					group,
 					span,
 					withdraw: is_empty,
@@ -325,6 +422,9 @@ where
 			);
 		}
 
+		if pending.is_empty() {
+			return Ok(Vec::new());
+		}
 		let groups: Vec<GroupId> = pending.iter().map(|p| p.group_id).collect();
 		let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
 		reifydb_assertions! {
@@ -338,6 +438,7 @@ where
 			);
 		}
 
+		let mut withdrawn: Vec<GroupId> = Vec::new();
 		let mut results: Vec<RetainedResult<G, S>> = Vec::with_capacity(pending.len());
 		for (emit, (row_number, is_new)) in pending.into_iter().zip(rows) {
 			let kind = if emit.withdraw {
@@ -351,7 +452,7 @@ where
 						 (group={group_id:?}, row={row_number:?})"
 					);
 				}
-				store.remove_row_number_for_group(emit.group_id)?;
+				withdrawn.push(emit.group_id);
 				EmitKind::Remove
 			} else if is_new {
 				EmitKind::Insert
@@ -365,6 +466,9 @@ where
 				span: emit.span,
 				kind,
 			});
+		}
+		if !withdrawn.is_empty() {
+			store.remove_row_numbers_for_groups(&withdrawn)?;
 		}
 		Ok(results)
 	}
@@ -399,10 +503,6 @@ where
 
 	pub fn earliest_expiry(&mut self, store: &mut dyn StateStore) -> Result<Option<u64>> {
 		self.expiry.earliest(store)
-	}
-
-	fn persist_meta(&mut self, store: &mut dyn StateStore, meta_loaded: MetaLoaded<G, S>) -> Result<()> {
-		persist_batch_meta(store, meta_loaded)
 	}
 
 	pub fn expire_meta(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<usize> {
@@ -534,13 +634,17 @@ mod tests {
 	}
 
 	#[test]
-	fn remove_on_empty_window_counts_a_dropped_retraction() {
-		// A retraction into an empty window has nothing to undo; it must be counted, never applied.
+	fn a_retraction_that_matches_nothing_is_never_applied() {
+		// A retraction into an empty window has nothing to undo; applying it corrupts the count so the window's
+		// later removal never publishes.
 		let mut store = MockStore::default();
 		let mut engine = Engine::new(test_config());
 		let out = apply(&mut engine, &mut store, vec![Remove((1, 10))]);
 		assert!(out.is_empty(), "an empty window publishes nothing");
-		assert_eq!(engine.dropped_retractions(), 1);
+		assert!(engine.load_entries(&mut store, window_group()).unwrap().is_empty(), "nothing is stored");
+		assert_eq!(kinds(&apply(&mut engine, &mut store, vec![Add((1, 10))])), vec![EmitKind::Insert]);
+		assert_eq!(engine.load_entries(&mut store, window_group()).unwrap(), BTreeMap::from([(1, 10)]));
+		assert_eq!(kinds(&apply(&mut engine, &mut store, vec![Remove((1, 10))])), vec![EmitKind::Remove]);
 	}
 
 	#[test]
