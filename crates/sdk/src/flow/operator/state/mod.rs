@@ -8,7 +8,10 @@ use reifydb_codec::{
 		pod::EncodedPodRow,
 	},
 };
-use reifydb_core::key::operator::state::{GroupId, GroupStateKey, KeyspaceId};
+use reifydb_core::{
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
+	state::batch::{StateBatch, check_batch_keys},
+};
 use reifydb_value::error::Error as ValueError;
 
 use crate::{
@@ -59,6 +62,17 @@ impl<'a> State<'a> {
 
 	pub fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 		extern_c::set(self.ctx, key.as_encoded(), &payload.into_bytes())
+	}
+
+	pub fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		check_batch_keys(&keys)?;
+		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
+		let rows = extern_c::batch_read(self.ctx, &raw)?;
+		Ok(StateBatch::read(keys, |_| Ok(rows.into_iter().map(|row| row.map(EncodedPodRow::from)).collect()))?)
+	}
+
+	pub fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()> {
+		extern_c::batch_write(self.ctx, &batch)
 	}
 
 	pub fn get_many_bytes_visit(

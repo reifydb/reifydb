@@ -5,8 +5,9 @@ use std::{ptr, ptr::null_mut, slice::from_raw_parts};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
+	actors::pending::PendingWrite,
 	key::operator::state::{GroupId, KeyspaceId},
-	state::timer::TimerKind,
+	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::{
@@ -29,7 +30,10 @@ use crate::{
 			binding::context::ExternCContext,
 			wire::{
 				iterators::ExternCStateIterator,
-				state::{ExternCGroupId, ExternCStateEntry, ExternCStateSlice},
+				state::{
+					EXTERN_C_BATCH_OP_NONE, EXTERN_C_BATCH_OP_REMOVE, EXTERN_C_BATCH_OP_SET,
+					ExternCBatchSlot, ExternCGroupId, ExternCStateEntry, ExternCStateSlice,
+				},
 			},
 		},
 	},
@@ -73,22 +77,113 @@ pub(crate) fn get(ctx: &ExternCContext, key: &EncodedKey) -> Result<Option<Encod
 		);
 
 		if result == EXTERN_C_OK {
-			if output.ptr.is_null() || output.len == 0 {
-				Span::current().record("found", false);
-				Ok(None)
-			} else {
-				let value_bytes = from_raw_parts(output.ptr, output.len).to_vec();
-
-				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
-				Span::current().record("found", true);
-				Ok(Some(EncodedBytes(CowVec::new(value_bytes))))
-			}
+			Span::current().record("found", true);
+			Ok(Some(take_buffer(ctx, output)))
 		} else if result == EXTERN_C_NOT_FOUND {
 			Span::current().record("found", false);
 			Ok(None)
 		} else {
 			Err(SdkError::Other(format!("host_state_get failed with code {}", result)))
 		}
+	}
+}
+
+unsafe fn take_buffer(ctx: &ExternCContext, buffer: ExternCBuffer) -> EncodedBytes {
+	if buffer.ptr.is_null() {
+		return EncodedBytes(CowVec::new(Vec::new()));
+	}
+	// SAFETY: callers pass the live ExternCContext of this guest call and a buffer the host wrote on EXTERN_C_OK; a
+	// non-null ptr owns buffer.len initialised bytes, copied out before memory.free releases them with the length
+	// they were allocated at.
+	unsafe {
+		let bytes = from_raw_parts(buffer.ptr, buffer.len).to_vec();
+		((*ctx.ctx).callbacks.memory.free)(buffer.ptr as *mut u8, buffer.len);
+		EncodedBytes(CowVec::new(bytes))
+	}
+}
+
+#[instrument(name = "flow::operator::state::extern_c:batch_read", level = "debug", skip(ctx, keys), fields(
+	operator_id = ctx.operator_id().0,
+	key_count = keys.len()
+))]
+pub(crate) fn batch_read(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	if keys.is_empty() {
+		return Ok(Vec::new());
+	}
+	let key_refs = key_refs(keys);
+	let mut rows = vec![ExternCBuffer::empty(); keys.len()];
+	let mut present = vec![0u8; keys.len()];
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; key_refs borrows keys that outlive the callback, and rows and present are live,
+	// initialised arrays of exactly keys.len() slots for the host to fill. On EXTERN_C_OK every present slot
+	// holds a buffer the host wrote, handed to take_buffer exactly once; on any other status the host has
+	// written or freed nothing the guest must release.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.batch_read)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			key_refs.as_ptr(),
+			key_refs.len(),
+			rows.as_mut_ptr(),
+			present.as_mut_ptr(),
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host_state_batch_read failed with code {}", result)));
+		}
+		Ok(rows.into_iter()
+			.zip(present)
+			.map(|(row, present)| (present != 0).then(|| take_buffer(ctx, row)))
+			.collect())
+	}
+}
+
+#[instrument(name = "flow::operator::state::extern_c:batch_write", level = "debug", skip(ctx, batch), fields(
+	operator_id = ctx.operator_id().0,
+	slot_count = batch.len()
+))]
+pub(crate) fn batch_write(ctx: &mut ExternCContext, batch: &StateBatch) -> Result<()> {
+	let slots: Vec<ExternCBatchSlot> = (0..batch.len())
+		.map(|slot| {
+			let (op, value) = match batch.op(slot) {
+				None => (EXTERN_C_BATCH_OP_NONE, &[][..]),
+				Some(PendingWrite::Set(bytes)) => (EXTERN_C_BATCH_OP_SET, bytes.as_ref()),
+				Some(PendingWrite::Remove {
+					..
+				}) => (EXTERN_C_BATCH_OP_REMOVE, &[][..]),
+			};
+			let read = batch.value(slot);
+			ExternCBatchSlot {
+				key: slice(batch.key(slot).as_slice()),
+				read: slice(read.map_or(&[][..], |row| row.bytes().as_ref())),
+				read_present: u8::from(read.is_some()),
+				op,
+				value: slice(value),
+			}
+		})
+		.collect();
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; every slice in slots borrows the batch, which outlives the callback, and the
+	// host only reads them.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.batch_write)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			slots.as_ptr(),
+			slots.len(),
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host_state_batch_write failed with code {}", result)));
+		}
+	}
+	Ok(())
+}
+
+fn slice(bytes: &[u8]) -> ExternCStateSlice {
+	ExternCStateSlice {
+		ptr: bytes.as_ptr(),
+		len: bytes.len(),
 	}
 }
 

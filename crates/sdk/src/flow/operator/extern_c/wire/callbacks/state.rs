@@ -6,7 +6,7 @@ use crate::{
 	flow::operator::extern_c::wire::{
 		context::ExternCContextRaw,
 		iterators::ExternCStateIterator,
-		state::{ExternCGroupId, ExternCStateEntry},
+		state::{ExternCBatchSlot, ExternCGroupId, ExternCStateEntry},
 	},
 };
 
@@ -31,17 +31,6 @@ pub struct StateCallbacks {
 	) -> i32,
 
 	pub remove: extern "C" fn(operator_id: u64, ctx: *mut ExternCContextRaw, key: *const u8, key_len: usize) -> i32,
-
-	pub clear: extern "C" fn(operator_id: u64, ctx: *mut ExternCContextRaw) -> i32,
-
-	pub prefix: extern "C" fn(
-		operator_id: u64,
-		ctx: *mut ExternCContextRaw,
-		prefix: *const u8,
-		prefix_len: usize,
-		limit: usize,
-		iterator_out: *mut *mut ExternCStateIterator,
-	) -> i32,
 
 	pub range: extern "C" fn(
 		operator_id: u64,
@@ -73,6 +62,22 @@ pub struct StateCallbacks {
 		keys: *const ExternCKeyRef,
 		keys_len: usize,
 		iterator_out: *mut *mut ExternCStateIterator,
+	) -> i32,
+
+	pub batch_read: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		keys: *const ExternCKeyRef,
+		keys_len: usize,
+		rows_out: *mut ExternCBuffer,
+		present_out: *mut u8,
+	) -> i32,
+
+	pub batch_write: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		slots: *const ExternCBatchSlot,
+		slots_len: usize,
 	) -> i32,
 
 	pub get_or_create_row_numbers: extern "C" fn(

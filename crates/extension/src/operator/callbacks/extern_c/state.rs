@@ -4,12 +4,14 @@
 use std::{mem, ops::Bound, ptr, slice::from_raw_parts};
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
 };
 use reifydb_core::{
+	actors::pending::PendingWrite,
+	delta::RemoveVisibility,
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, guest_may_address, keyspace_inner_range_in},
-	state::timer::TimerKind,
+	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_sdk::{
 	common::extern_c::wire::{
@@ -23,10 +25,13 @@ use reifydb_sdk::{
 	flow::operator::extern_c::wire::{
 		context::ExternCContextRaw,
 		iterators::ExternCStateIterator,
-		state::{ExternCGroupId, ExternCStateEntry, ExternCStateSlice},
+		state::{
+			EXTERN_C_BATCH_OP_NONE, EXTERN_C_BATCH_OP_REMOVE, EXTERN_C_BATCH_OP_SET, ExternCBatchSlot,
+			ExternCGroupId, ExternCStateEntry, ExternCStateSlice,
+		},
 	},
 };
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 use super::{
 	context::{get_host_mut, guest_class},
@@ -140,79 +145,153 @@ pub(super) extern "C" fn host_state_remove(
 	}
 }
 
-#[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_state_clear(_operator_id: u64, ctx: *mut ExternCContextRaw) -> i32 {
-	if ctx.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
+unsafe fn slice_bytes(slice: ExternCStateSlice) -> Option<Vec<u8>> {
+	if slice.len == 0 {
+		return Some(Vec::new());
 	}
-
-	// SAFETY: `ctx` is null-checked above and the guest must pass back the ExternCContextRaw the host handed
-	// it for this call, which discharges get_host_mut.
-	unsafe {
-		let ctx_handle = &mut *ctx;
-		let host = get_host_mut(ctx_handle);
-
-		let result = host.state_clear();
-
-		match result {
-			Ok(_) => EXTERN_C_OK,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
-		}
+	if slice.ptr.is_null() {
+		return None;
 	}
+	// SAFETY: callers pass a guest slice that is null with length 0 or valid for reads of `slice.len` bytes;
+	// `slice.len` is non-zero and `slice.ptr` non-null on this path, and the bytes are copied out here.
+	Some(unsafe { from_raw_parts(slice.ptr, slice.len) }.to_vec())
+}
+
+fn slice_row(bytes: Vec<u8>) -> EncodedBytes {
+	EncodedBytes(CowVec::new(bytes))
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_state_prefix(
+pub(super) extern "C" fn host_state_batch_read(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	prefix_ptr: *const u8,
-	prefix_len: usize,
-	limit: usize,
-	iterator_out: *mut *mut ExternCStateIterator,
+	keys: *const ExternCKeyRef,
+	keys_len: usize,
+	rows_out: *mut ExternCBuffer,
+	present_out: *mut u8,
 ) -> i32 {
-	if ctx.is_null() || iterator_out.is_null() {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if keys_len > 0 && (keys.is_null() || rows_out.is_null() || present_out.is_null()) {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: `ctx` and `iterator_out` are null-checked above; the guest must pass back the ExternCContextRaw
-	// the host handed it for this call, a `prefix_ptr` that is null or valid for `prefix_len` reads,
-	// and an `iterator_out` valid for one pointer write; the handle is freed via state.iterator_free.
+	// SAFETY: `ctx` and (for a non-zero `keys_len`) `keys`, `rows_out` and `present_out` are null-checked
+	// above; the guest must pass back the ExternCContextRaw the host handed it for this call, `keys` valid for
+	// reads of `keys_len` ExternCKeyRef whose non-empty entries are valid for their own `len` (discharging
+	// encoded_keys), and `rows_out` / `present_out` valid and aligned for `keys_len` writes each. Every buffer
+	// written is handed over to the guest on EXTERN_C_OK and freed here on any other status.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let class = guest_class(ctx_handle);
 		let host = get_host_mut(ctx_handle);
 
-		if prefix_ptr.is_null() || prefix_len == 0 {
-			return EXTERN_C_ERROR_INTERNAL;
+		let Some(raw) = encoded_keys(keys, keys_len) else {
+			return EXTERN_C_ERROR_NULL_PTR;
+		};
+		let mut framed = Vec::with_capacity(raw.len());
+		for key in raw {
+			let Some(key) = GroupStateKey::from_class_framed(class, key) else {
+				return EXTERN_C_ERROR_INTERNAL;
+			};
+			framed.push(key);
 		}
 
-		let Some(prefix) = state_key(class, prefix_ptr, prefix_len) else {
+		let Ok(batch) = host.state_batch(framed) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
-
-		let range = EncodedKeyRange::prefix(prefix.as_slice());
-
-		match host.state_range_limited(range, (limit != usize::MAX).then_some(limit)) {
-			Ok(entries) => {
-				let handle = state_iterator::create_iterator(iterator_entries(entries));
-
-				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
-					as *mut StateIteratorInternal;
-				if iter_ptr.is_null() {
-					state_iterator::free_iterator(handle);
-					return EXTERN_C_ERROR_ALLOC;
-				}
-
-				ptr::write(
-					iter_ptr,
-					StateIteratorInternal {
-						handle,
-					},
-				);
-
-				*iterator_out = iter_ptr as *mut ExternCStateIterator;
-				EXTERN_C_OK
+		for slot in 0..batch.len() {
+			let row_out = rows_out.add(slot);
+			*row_out = ExternCBuffer::empty();
+			*present_out.add(slot) = 0;
+			let Some(row) = batch.value(slot) else {
+				continue;
+			};
+			let status = write_buffer(row_out, row.bytes().as_ref());
+			if status != EXTERN_C_OK {
+				free_rows(rows_out, present_out, slot);
+				return status;
 			}
+			*present_out.add(slot) = 1;
+		}
+		EXTERN_C_OK
+	}
+}
+
+unsafe fn free_rows(rows: *mut ExternCBuffer, present: *mut u8, count: usize) {
+	for slot in 0..count {
+		// SAFETY: callers pass `rows` and `present` valid for `count` reads and writes, with every present row
+		// owning a host-allocated buffer of its `len`; `slot` is below `count`.
+		unsafe {
+			let row = &mut *rows.add(slot);
+			if *present.add(slot) != 0 && !row.ptr.is_null() {
+				host_free(row.ptr as *mut u8, row.len);
+			}
+			*row = ExternCBuffer::empty();
+			*present.add(slot) = 0;
+		}
+	}
+}
+
+#[cfg_attr(not(test), unsafe(no_mangle))]
+pub(super) extern "C" fn host_state_batch_write(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	slots: *const ExternCBatchSlot,
+	slots_len: usize,
+) -> i32 {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if slots_len > 0 && slots.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx` and (for a non-zero `slots_len`) `slots` are null-checked above; the guest must pass back
+	// the ExternCContextRaw the host handed it for this call and `slots` valid for reads of `slots_len`
+	// ExternCBatchSlot whose slices are null with length 0 or valid for their own `len` (discharging
+	// slice_bytes). Every slot is decoded and class-checked before anything reaches the host.
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let class = guest_class(ctx_handle);
+		let host = get_host_mut(ctx_handle);
+
+		let slots = if slots_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(slots, slots_len)
+		};
+		let mut keys = Vec::with_capacity(slots.len());
+		let mut values = Vec::with_capacity(slots.len());
+		let mut ops = Vec::with_capacity(slots.len());
+		for slot in slots {
+			let (Some(key), Some(read), Some(value)) =
+				(slice_bytes(slot.key), slice_bytes(slot.read), slice_bytes(slot.value))
+			else {
+				return EXTERN_C_ERROR_NULL_PTR;
+			};
+			let Some(key) = GroupStateKey::from_class_framed(class, EncodedKey::new(key)) else {
+				return EXTERN_C_ERROR_INTERNAL;
+			};
+			let op = match slot.op {
+				EXTERN_C_BATCH_OP_NONE => None,
+				EXTERN_C_BATCH_OP_SET => Some(PendingWrite::Set(slice_row(value))),
+				EXTERN_C_BATCH_OP_REMOVE => Some(PendingWrite::Remove {
+					announce: RemoveVisibility::Silent,
+				}),
+				_ => return EXTERN_C_ERROR_INTERNAL,
+			};
+			keys.push(key);
+			values.push((slot.read_present != 0).then(|| EncodedPodRow::from(slice_row(read))));
+			ops.push(op);
+		}
+
+		let Ok(batch) = StateBatch::from_parts(keys, values, ops) else {
+			return EXTERN_C_ERROR_INTERNAL;
+		};
+		match host.state_write_batch(batch) {
+			Ok(()) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
 	}
@@ -929,10 +1008,6 @@ mod join_row_expiry_guard_tests {
 			StateIterator::new(Box::new(empty::<Result<MultiVersionRow<TaggedKey>>>()))
 		}
 
-		fn state_clear(&mut self) -> Result<()> {
-			Ok(())
-		}
-
 		fn reclaim_group_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
 			Ok(ReclaimOutcome::NOTHING)
 		}
@@ -1356,16 +1431,50 @@ mod join_row_expiry_guard_tests {
 		});
 		assert_eq!(status, EXTERN_C_ERROR_INTERNAL);
 	}
+
+	fn batch_slot(key: &[u8], value: &[u8]) -> ExternCBatchSlot {
+		ExternCBatchSlot {
+			key: ExternCStateSlice {
+				ptr: key.as_ptr(),
+				len: key.len(),
+			},
+			read: ExternCStateSlice {
+				ptr: ptr::null(),
+				len: 0,
+			},
+			read_present: 0,
+			op: 1,
+			value: ExternCStateSlice {
+				ptr: value.as_ptr(),
+				len: value.len(),
+			},
+		}
+	}
+
+	#[test]
+	fn a_guest_batch_write_with_one_foreign_key_writes_nothing() {
+		// A batch checked while writing lands the owned keys before the foreign one fails the call.
+		let owned = framed(KeyspaceId::CUSTOM_MANAGED);
+		let foreign = framed(KeyspaceId::CUSTOM_UNMANAGED);
+		let value = [7u8];
+		let slots = [batch_slot(&owned, &value), batch_slot(&foreign, &value)];
+		let (status, reached) = with_class_context(OperatorClass::Managed, |ctx| {
+			host_state_batch_write(1, ctx, slots.as_ptr(), 1)
+		});
+		assert_eq!((status, reached), (EXTERN_C_OK, true), "precondition: the owned slot alone is written");
+		let (status, reached) = with_class_context(OperatorClass::Managed, |ctx| {
+			host_state_batch_write(1, ctx, slots.as_ptr(), slots.len())
+		});
+		assert_eq!(status, EXTERN_C_ERROR_INTERNAL, "one foreign key must refuse the whole batch");
+		assert!(!reached, "a refused batch must reach no host write");
+	}
 }
 
 #[cfg(test)]
 mod empty_value_boundary_tests {
 	use std::ptr::null_mut;
 
-	use reifydb_sdk::common::extern_c::wire::{
-		buffer::ExternCBuffer,
-		status::{EXTERN_C_ERROR_ALLOC, EXTERN_C_OK},
-	};
+	use reifydb_sdk::common::extern_c::wire::{buffer::ExternCBuffer, status::EXTERN_C_OK};
 
 	use crate::{
 		operator::callbacks::extern_c::marshal::write_buffer, procedure::callbacks::extern_c::memory::host_free,
@@ -1380,25 +1489,25 @@ mod empty_value_boundary_tests {
 	}
 
 	#[test]
-	fn a_zero_length_row_cannot_cross_the_guest_boundary_as_a_present_value() {
-		// host_alloc(0) returns null, so the only status a present-but-empty row can produce here is an
-		// allocation failure; and even on OK the guest binding reads len == 0 as absent. A zero-length
-		// value is therefore not representable across this boundary, so no state a guest operator reads
-		// may rely on one.
-		let mut output = empty_buffer();
+	fn a_zero_length_row_crosses_the_guest_boundary_as_a_present_empty_value() {
+		// The store keeps a zero-length row apart from an absent one, so a guest must see it as present.
+		let mut output = ExternCBuffer {
+			ptr: 1 as *const u8,
+			len: 9,
+			cap: 9,
+		};
 
 		// SAFETY: output is a live, aligned ExternCBuffer this test owns for the whole call.
 		let status = unsafe { write_buffer(&mut output as *mut ExternCBuffer, &[]) };
 
-		assert_eq!(status, EXTERN_C_ERROR_ALLOC, "an empty payload has no allocation to hand over");
-		assert!(output.ptr.is_null(), "and nothing may be written into the guest buffer");
-		assert_eq!(output.len, 0);
+		assert_eq!(status, EXTERN_C_OK, "an empty payload is a present row, not an allocation failure");
+		assert!(output.ptr.is_null(), "an empty payload owns no allocation");
+		assert_eq!((output.len, output.cap), (0, 0), "an empty payload has length and capacity 0");
 	}
 
 	#[test]
 	fn a_one_byte_row_does_cross_the_guest_boundary() {
-		// The companion case: one byte is the smallest payload that survives, which is why a marker that
-		// must reach a guest carries a flags byte instead of an empty body.
+		// A guest frees a row with the length it was handed, so the copy must carry the payload's exact length.
 		let mut output = empty_buffer();
 
 		// SAFETY: output is a live, aligned ExternCBuffer this test owns for the whole call.

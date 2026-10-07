@@ -64,6 +64,13 @@ pub(super) unsafe fn encoded_bytes(ptr: *const u8, len: usize) -> EncodedBytes {
 // SAFETY: `output` must be valid for writes of a ExternCBuffer and properly aligned. Ownership of the
 // host-allocated `ptr` it is given transfers to the caller.
 pub(super) unsafe fn write_buffer(output: *mut ExternCBuffer, bytes: &[u8]) -> i32 {
+	if bytes.is_empty() {
+		// SAFETY: this function's contract makes `output` valid and aligned for one ExternCBuffer write.
+		unsafe {
+			*output = ExternCBuffer::empty();
+		}
+		return EXTERN_C_OK;
+	}
 	let dst = host_alloc(bytes.len());
 	if dst.is_null() {
 		return EXTERN_C_ERROR_ALLOC;

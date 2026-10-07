@@ -12,10 +12,9 @@ use reifydb_core::{
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, change::Diff},
 	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, guest_may_address, is_class_framed_inner,
-		keyspace_inner_range_in,
+		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, guest_may_address, keyspace_inner_range_in,
 	},
-	state::timer::TimerKind,
+	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
 use reifydb_value::{
@@ -34,21 +33,11 @@ use crate::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
 		context::{
 			ClassState, CustomClass, GuestBound, GuestContext, GuestDictionary, GuestEmit,
-			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass,
+			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass, check_class_batch, class_framed,
 		},
 		state::{decode_payload, encode_payload},
 	},
 };
-
-fn class_framed(class: OperatorClass, key: &GroupStateKey) -> SdkResult<()> {
-	if is_class_framed_inner(class, key.as_slice()) {
-		return Ok(());
-	}
-	Err(SdkError::Other(format!(
-		"a {class:?} guest state key must name a keyspace its class owns and carry that keyspace's exact suffix width, got {} bytes",
-		key.as_slice().len()
-	)))
-}
 
 fn class_keyspace(class: OperatorClass, keyspace: KeyspaceId) -> SdkResult<()> {
 	if guest_may_address(class, keyspace) {
@@ -216,6 +205,22 @@ impl GuestState for InProcessState<'_> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
+	}
+
+	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> SdkResult<StateBatch> {
+		for key in &keys {
+			class_framed(self.class, key)?;
+		}
+		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
+		unsafe { (*self.host).state_batch(keys) }.map_err(to_sdk_err)
+	}
+
+	fn write_batch_bytes(&mut self, batch: StateBatch) -> SdkResult<()> {
+		check_class_batch(self.class, &batch)?;
+		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
+		unsafe { (*self.host).state_write_batch(batch) }.map_err(to_sdk_err)
 	}
 
 	fn get_many_bytes_visit(

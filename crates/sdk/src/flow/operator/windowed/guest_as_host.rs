@@ -9,7 +9,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, keyspace_inner_range_split},
-	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore, sweep_order},
+	state::{
+		batch::StateBatch,
+		timer::{GroupSweep, StateStore, TimerKind, TimerStore, sweep_order},
+	},
 };
 use reifydb_flow_async::operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome};
 use reifydb_value::{
@@ -77,6 +80,15 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
 		self.0.window_state().remove_bytes(key)?;
+		Ok(())
+	}
+
+	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		Ok(self.0.window_state().batch_bytes(keys)?)
+	}
+
+	fn state_write_batch(&mut self, batch: StateBatch) -> Result<()> {
+		self.0.window_state().write_batch_bytes(batch)?;
 		Ok(())
 	}
 

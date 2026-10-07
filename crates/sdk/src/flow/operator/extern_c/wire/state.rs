@@ -23,6 +23,20 @@ pub struct ExternCStateEntry {
 	pub value: ExternCStateSlice,
 }
 
+pub const EXTERN_C_BATCH_OP_NONE: u8 = 0;
+pub const EXTERN_C_BATCH_OP_SET: u8 = 1;
+pub const EXTERN_C_BATCH_OP_REMOVE: u8 = 2;
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct ExternCBatchSlot {
+	pub key: ExternCStateSlice,
+	pub read: ExternCStateSlice,
+	pub read_present: u8,
+	pub op: u8,
+	pub value: ExternCStateSlice,
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 pub struct ExternCStateUsage {

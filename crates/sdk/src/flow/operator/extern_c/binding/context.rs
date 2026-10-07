@@ -10,7 +10,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
-	state::timer::TimerKind,
+	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::value::{
@@ -201,6 +201,14 @@ impl GuestState for State<'_> {
 
 	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()> {
 		State::remove(self, key)
+	}
+
+	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		State::batch_bytes(self, keys)
+	}
+
+	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()> {
+		State::write_batch_bytes(self, batch)
 	}
 
 	fn get_many_bytes_visit(

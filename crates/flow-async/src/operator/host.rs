@@ -106,8 +106,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 
 	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_>;
 
-	fn state_clear(&mut self) -> Result<()>;
-
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
 
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
@@ -422,8 +420,8 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		let commit = self.txn.lookup_view_version(view, source);
 		let floor = self.txn.lookup_floor();
 		if let Some(floor) = floor
-			&& floor.0 > source.0
-			&& commit.is_none_or(|commit| self.txn.lookup_view_commit_through(view, floor) != Some(commit))
+			&& floor.0 > source.0 && commit
+			.is_none_or(|commit| self.txn.lookup_view_commit_through(view, floor) != Some(commit))
 		{
 			panic!(
 				"lookup of view {view:?} for source {source:?} sits below the held lease floor {floor:?} and its \
@@ -514,10 +512,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_> {
 		let prefixed = range.with_prefix(EncodedKey::new(node_prefix(self.operator)));
 		StateIterator::new(self.txn.range(prefixed, RangeScope::All, 1024))
-	}
-
-	fn state_clear(&mut self) -> Result<()> {
-		self.txn.state_clear(self.operator)
 	}
 
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {

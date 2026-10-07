@@ -418,16 +418,6 @@ pub trait StateExtension: FlowTransaction {
 			version: row.version,
 		}))
 	}
-
-	#[instrument(name = "flow::state::clear", level = "trace", skip(self), fields(
-		operator_id = id.0
-	))]
-	fn state_clear(&mut self, id: OperatorId) -> Result<()> {
-		let keys_to_remove = scan_keys_for_clear(self, id)?;
-
-		remove_keys(self, keys_to_remove)?;
-		Ok(())
-	}
 }
 
 impl<T: FlowTransaction> StateExtension for T {}
@@ -446,34 +436,4 @@ fn next_stored(scan: &mut StateLastIter<'_>, prefix: &[u8]) -> Result<Option<(En
 			})
 		})
 		.map_err(Into::into)
-}
-
-#[inline]
-#[instrument(name = "flow::state::clear::scan", level = "trace", skip(txn), fields(operator_id = id.0))]
-fn scan_keys_for_clear<T: FlowTransaction>(txn: &mut T, id: OperatorId) -> Result<Vec<(EncodedKey, Option<ByteSize>)>> {
-	let range = OperatorStateKey::node_range(id).encode();
-	let iter = txn.range(range, RangeScope::All, 1024);
-	let mut keys = Vec::new();
-	for result in iter {
-		let multi = result?;
-		keys.push((multi.key.encode(), ByteSize::from_bytes(multi.bytes.len() as u64)));
-	}
-	Ok(keys.into_iter()
-		.map(|(key, pre)| {
-			let durable = !txn.pending().contains_key(&key);
-			(key, durable.then_some(pre))
-		})
-		.collect())
-}
-
-#[inline]
-#[instrument(name = "flow::state::clear::remove", level = "trace", skip(txn, keys), fields(count = keys.len()))]
-fn remove_keys<T: FlowTransaction>(txn: &mut T, keys: Vec<(EncodedKey, Option<ByteSize>)>) -> Result<()> {
-	for (key, pre) in keys {
-		if let Some(pre) = pre {
-			txn.classify(&key, Some(pre));
-		}
-		txn.remove_silent(&key)?;
-	}
-	Ok(())
 }

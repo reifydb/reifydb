@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{marker::PhantomData, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -10,8 +10,10 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, ManagedKey, UnmanagedKey},
-	state::timer::TimerKind,
+	key::operator::state::{
+		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, ManagedKey, UnmanagedKey, is_class_framed_inner,
+	},
+	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
 use reifydb_value::value::{
@@ -22,9 +24,29 @@ use reifydb_value::value::{
 };
 
 use crate::{
-	error::Result,
-	flow::operator::column::{row::Row, sink::RowSink},
+	error::{Result, SdkError},
+	flow::operator::{
+		column::{row::Row, sink::RowSink},
+		state::encode_payload,
+	},
 };
+
+pub(crate) fn class_framed(class: OperatorClass, key: &GroupStateKey) -> Result<()> {
+	if is_class_framed_inner(class, key.as_slice()) {
+		return Ok(());
+	}
+	Err(SdkError::Other(format!(
+		"a {class:?} guest state key must name a keyspace its class owns and carry that keyspace's exact suffix width, got {} bytes",
+		key.as_slice().len()
+	)))
+}
+
+pub(crate) fn check_class_batch(class: OperatorClass, batch: &StateBatch) -> Result<()> {
+	for slot in 0..batch.len() {
+		class_framed(class, batch.key(slot))?;
+	}
+	Ok(())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuestBound<'a> {
@@ -74,6 +96,10 @@ pub trait GuestState {
 	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
 
 	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()>;
+
+	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch>;
+
+	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()>;
 
 	fn get_many_bytes_visit(
 		&self,
@@ -213,11 +239,29 @@ pub trait WindowClass: ClassValue {}
 
 impl WindowClass for Windowed {}
 
+pub struct ClassBatch<C, T> {
+	batch: StateBatch,
+	_marker: PhantomData<fn() -> (C, T)>,
+}
+
+impl<C: CustomClass, T: OperatorState> ClassBatch<C, T> {
+	pub fn set(&mut self, slot: usize, value: &T) -> Result<()> {
+		self.batch.set(slot, encode_payload(value)?);
+		Ok(())
+	}
+
+	pub fn commit(self, state: &mut impl ClassState<C>) -> Result<()> {
+		state.write_batch(self)
+	}
+}
+
 pub trait ClassState<C: CustomClass> {
 	fn get<T: OperatorState>(&self, key: &C::Key) -> Result<Option<T>>;
 	fn set<T: OperatorState>(&mut self, key: &C::Key, value: &T) -> Result<()>;
 	fn remove(&mut self, key: &C::Key) -> Result<()>;
 	fn contains(&self, key: &C::Key) -> Result<bool>;
+	fn batch<T: OperatorState>(&mut self, keys: &[C::Key]) -> Result<ClassBatch<C, T>>;
+	fn write_batch<T: OperatorState>(&mut self, batch: ClassBatch<C, T>) -> Result<()>;
 }
 
 impl<C: CustomClass, S: GuestState> ClassState<C> for S {
@@ -232,6 +276,17 @@ impl<C: CustomClass, S: GuestState> ClassState<C> for S {
 	}
 	fn contains(&self, key: &C::Key) -> Result<bool> {
 		GuestState::contains(self, key.as_ref())
+	}
+	fn batch<T: OperatorState>(&mut self, keys: &[C::Key]) -> Result<ClassBatch<C, T>> {
+		let keys = keys.iter().map(|key| key.as_ref().clone()).collect();
+		Ok(ClassBatch {
+			batch: self.batch_bytes(keys)?,
+			_marker: PhantomData,
+		})
+	}
+	fn write_batch<T: OperatorState>(&mut self, batch: ClassBatch<C, T>) -> Result<()> {
+		check_class_batch(C::CLASS, &batch.batch)?;
+		self.write_batch_bytes(batch.batch)
 	}
 }
 
