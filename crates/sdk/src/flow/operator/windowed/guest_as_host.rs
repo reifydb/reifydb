@@ -83,6 +83,28 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(())
 	}
 
+	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		if keys.is_empty() {
+			return Ok(());
+		}
+		self.0.window_state().remove_many_bytes(keys)?;
+		Ok(())
+	}
+
+	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		if rows.is_empty() {
+			return Ok(());
+		}
+		let (keys, payloads): (Vec<GroupStateKey>, Vec<EncodedPodRow>) = rows.into_iter().unzip();
+		let slots = keys.len();
+		let mut batch = StateBatch::from_parts(keys, vec![None; slots], vec![None; slots])?;
+		for (slot, payload) in payloads.into_iter().enumerate() {
+			batch.set(slot, payload);
+		}
+		self.0.window_state().write_batch_bytes(batch)?;
+		Ok(())
+	}
+
 	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
 		Ok(self.0.window_state().batch_bytes(keys)?)
 	}

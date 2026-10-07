@@ -211,6 +211,10 @@ impl GuestState for State<'_> {
 		State::remove(self, key)
 	}
 
+	fn remove_many_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		State::remove_many_bytes(self, keys)
+	}
+
 	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
 		State::batch_bytes(self, keys)
 	}

@@ -208,6 +208,18 @@ impl GuestState for InProcessState<'_> {
 		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
 	}
 
+	fn remove_many_bytes(&mut self, keys: &[GroupStateKey]) -> SdkResult<()> {
+		for key in keys {
+			class_framed(self.class, key)?;
+		}
+		if keys.is_empty() {
+			return Ok(());
+		}
+		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
+		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
+		unsafe { (*self.host).state_remove_many(keys) }.map_err(to_sdk_err)
+	}
+
 	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> SdkResult<StateBatch> {
 		for key in &keys {
 			class_framed(self.class, key)?;

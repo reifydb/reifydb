@@ -32,6 +32,13 @@ pub struct StateCallbacks {
 
 	pub remove: extern "C" fn(operator_id: u64, ctx: *mut ExternCContextRaw, key: *const u8, key_len: usize) -> i32,
 
+	pub remove_many: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		keys: *const ExternCKeyRef,
+		keys_len: usize,
+	) -> i32,
+
 	pub range: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,

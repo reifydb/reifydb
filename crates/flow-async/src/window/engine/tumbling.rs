@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::{BTreeMap, HashMap, HashSet},
 	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
@@ -13,6 +13,7 @@ use reifydb_codec::{
 	row::operator::state::{OperatorState, StateCodec},
 };
 use reifydb_core::{
+	internal_err,
 	key::operator::{
 		keyspace::expiry::TumblingExpiry,
 		state::{GroupId, GroupStateKey},
@@ -28,7 +29,7 @@ use crate::{
 			expiry::{ExpiryIndex, expiry_drop, tumbling_expiry_key},
 			reaper::Reaper,
 		},
-		state_access::{get_classified, put},
+		state_access::batch,
 	},
 	window::{
 		accumulator::WindowAccumulator,
@@ -213,6 +214,31 @@ where
 	{
 		let mut pending: Vec<PendingEmit<G, S, Accumulator::Output>> = Vec::new();
 
+		let mut keys: Vec<WindowStateKey> = Vec::new();
+		let mut slots: HashMap<(G, WindowSpan<S>), usize> = HashMap::new();
+		let mut claimed: HashSet<WindowStateKey> = HashSet::new();
+		for ordered in order {
+			if !buckets.contains_key(ordered) {
+				continue;
+			}
+			let Some(resolved) = slot_resolved.get(ordered) else {
+				continue;
+			};
+			let state_key = WindowStateKey::new(self.family, resolved.group, resolved.key.clone());
+			if !claimed.insert(state_key.clone()) {
+				return internal_err!(
+					"two windows of one batch resolve to one accumulator slot (group={:?})",
+					resolved.group
+				);
+			}
+			slots.insert(ordered.clone(), keys.len());
+			keys.push(state_key);
+		}
+		let mut session = match keys.is_empty() {
+			true => None,
+			false => Some(batch::<_, Accumulator>(store, &keys)?),
+		};
+
 		for ordered in order {
 			let Some(events) = buckets.remove(ordered) else {
 				continue;
@@ -221,15 +247,16 @@ where
 
 			let Some(ResolvedSlot {
 				group: id,
-				key,
+				..
 			}) = slot_resolved.get(&(group.clone(), span)).cloned()
 			else {
 				continue;
 			};
-			let state_key = WindowStateKey::new(self.family, id, key.clone());
+			let (Some(session), Some(&slot)) = (session.as_mut(), slots.get(&(group.clone(), span))) else {
+				continue;
+			};
 
-			let mut accumulator: Accumulator =
-				get_classified(store, &state_key)?.unwrap_or_else(new_accumulator);
+			let mut accumulator: Accumulator = session.value(slot)?.unwrap_or_else(new_accumulator);
 			let was_empty_before = accumulator.is_empty();
 			let prior = if was_empty_before {
 				None
@@ -253,7 +280,7 @@ where
 			}
 
 			let value = accumulator.finalize();
-			put(store, &state_key, accumulator)?;
+			session.set(slot, &accumulator)?;
 
 			match value {
 				Some(value) => pending.push(PendingEmit {
@@ -287,6 +314,13 @@ where
 			);
 		}
 
+		if let Some(session) = session {
+			session.commit(store)?;
+		}
+		if pending.is_empty() {
+			return Ok(Vec::new());
+		}
+
 		let groups: Vec<GroupId> = pending.iter().map(|p| p.group_id).collect();
 		let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
 		reifydb_assertions! {
@@ -301,6 +335,7 @@ where
 		}
 
 		let mut results: Vec<WindowResult<G, S, Accumulator::Output>> = Vec::with_capacity(pending.len());
+		let mut withdrawn: Vec<GroupId> = Vec::new();
 		for (emit, (row_number, is_new)) in pending.into_iter().zip(rows) {
 			let kind = if emit.withdraw {
 				reifydb_assertions! {
@@ -313,7 +348,7 @@ where
 						 (group={group_id:?}, row={row_number:?})"
 					);
 				}
-				store.remove_row_number_for_group(emit.group_id)?;
+				withdrawn.push(emit.group_id);
 				EmitKind::Remove
 			} else if is_new {
 				EmitKind::Insert
@@ -329,6 +364,9 @@ where
 				kind,
 			});
 		}
+		if !withdrawn.is_empty() {
+			store.remove_row_numbers_for_groups(&withdrawn)?;
+		}
 		Ok(results)
 	}
 
@@ -336,14 +374,18 @@ where
 		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> =
 			self.expiry.due(store, threshold, self.expire_batch)?;
 
-		let mut out: Vec<ExpiredWindow<G, S>> = Vec::new();
+		let mut out: Vec<ExpiredWindow<G, S>> = Vec::with_capacity(due.len());
+		let mut index_keys: Vec<GroupStateKey> = Vec::with_capacity(due.len());
 		for (index_key, entry) in due {
-			expiry_drop(store, &index_key)?;
+			index_keys.push(index_key);
 			out.push(ExpiredWindow {
 				group: entry.group,
 				group_id: entry.group_id,
 				window_start: entry.window_start,
 			});
+		}
+		if !index_keys.is_empty() {
+			store.state_remove_many(&index_keys)?;
 		}
 		self.expiry.settle(store)?;
 		if !out.is_empty() {

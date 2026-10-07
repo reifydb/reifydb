@@ -49,6 +49,11 @@ impl<'a> State<'a> {
 		extern_c::remove(self.ctx, key.as_encoded())
 	}
 
+	pub fn remove_many_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
+		extern_c::remove_many(self.ctx, &raw)
+	}
+
 	pub fn contains(&self, key: &GroupStateKey) -> Result<bool> {
 		Ok(extern_c::get(self.ctx, key.as_encoded())?.is_some())
 	}

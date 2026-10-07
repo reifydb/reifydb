@@ -19,10 +19,10 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::{
 		state::{
-			reaper::{drain, drain_groups, enqueue},
+			reaper::{drain, drain_groups, enqueue_many},
 			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 		},
-		state_access::{get_classified, put},
+		state_access::{batch, get_many},
 	},
 	window::{
 		accumulator::WindowAccumulator,
@@ -32,7 +32,7 @@ use reifydb_flow_async::{
 			rolling::{RollingBuckets, RollingBuffer, RollingEngine, RollingEviction},
 			session::{GuestSession, SessionEngine},
 			sliding::SlidingEngine,
-			tumbling::{TumblingBuckets, TumblingEngine},
+			tumbling::{ExpiredWindow, TumblingBuckets, TumblingEngine},
 		},
 		kind::session::SessionAssignment,
 		settings::WindowSettings,
@@ -64,7 +64,7 @@ use crate::{
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
 			operator::{Contribution, Emit, KindSet, WindowedOperator},
-			publish::{Emitted, Rows, UpdateRow, UpdateRows, load_publish_states, publish_row},
+			publish::{Emitted, Rows, UpdateRow, UpdateRows, publish_row},
 			seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
@@ -279,20 +279,11 @@ where
 			return Ok(());
 		}
 		let store_queue_empty = *reap_queue_empty;
-		let mut expired = Vec::new();
-		for window in engine.expire(store, horizon.to_order().saturating_sub(1))? {
-			Self::publish_dirty_close(
-				aggregator,
-				settings,
-				store,
-				&window.group,
-				window.group_id,
-				window.window_start,
-				frontier,
-				emitted,
-			)?;
-			enqueue(store, window.group_id)?;
-			expired.push(window.group_id);
+		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
+		Self::publish_dirty_closes(aggregator, settings, store, &closing, frontier, emitted)?;
+		let expired: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
+		enqueue_many(store, &expired)?;
+		if !expired.is_empty() {
 			*reap_queue_empty = false;
 		}
 		if *reap_queue_empty {
@@ -318,53 +309,89 @@ where
 		Ok(())
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	fn publish_dirty_close<C: GuestContext>(
+	fn publish_dirty_closes<C: GuestContext>(
 		aggregator: &A,
 		settings: &WindowSettings<A::Coord>,
 		store: &mut GuestAsHost<'_, C>,
-		group: &A::GroupKey,
-		group_id: GroupId,
-		window_start: A::Coord,
+		windows: &[ExpiredWindow<A::GroupKey, A::Coord>],
 		frontier: A::Coord,
 		emitted: &mut Emitted<A>,
 	) -> Result<()> {
-		let slot = Self::row_key(group, window_start);
-		let key = PublishKey::new(group_id, slot.clone());
-		let Some(mut state) = get_classified::<_, PublishState<A::Output>>(store, &key)? else {
-			return Ok(());
-		};
-		if !state.dirty {
+		if windows.is_empty() {
 			return Ok(());
 		}
-		let accumulator: Option<A::Accumulator> =
-			get_classified(store, &WindowStateKey::new(KeyspaceFamily::Guest, group_id, slot))?;
+		let slots: Vec<EncodedKey> =
+			windows.iter().map(|window| Self::row_key(&window.group, window.window_start)).collect();
+		let keys: Vec<PublishKey> = windows
+			.iter()
+			.zip(&slots)
+			.map(|(window, slot)| PublishKey::new(window.group_id, slot.clone()))
+			.collect();
+		let mut session = batch::<_, PublishState<A::Output>>(store, &keys)?;
+		let mut dirty: Vec<(usize, PublishState<A::Output>)> = Vec::new();
+		for slot in 0..windows.len() {
+			if let Some(state) = session.value(slot)?
+				&& state.dirty
+			{
+				dirty.push((slot, state));
+			}
+		}
+		if dirty.is_empty() {
+			return Ok(());
+		}
+		let accumulator_keys: Vec<WindowStateKey> = dirty
+			.iter()
+			.map(|(slot, _)| {
+				WindowStateKey::new(
+					KeyspaceFamily::Guest,
+					windows[*slot].group_id,
+					slots[*slot].clone(),
+				)
+			})
+			.collect();
+		let accumulators = get_many::<_, A::Accumulator>(store, &accumulator_keys)?;
+		let groups: Vec<GroupId> = dirty.iter().map(|(slot, _)| windows[*slot].group_id).collect();
+		let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
 		reifydb_assertions! {
+			let requested = groups.len();
+			let returned = rows.len();
 			assert!(
-				accumulator.is_some(),
-				"a dirty window closed with no accumulator; emptying a window must store a clean publish \
-				 state, otherwise the close retracts a row downstream already dropped (group={group_id:?})"
+				returned == requested,
+				"the identity batch must return one row per dirty closing window; a short batch drops the \
+				 tail, so those windows never publish their closing row (requested={requested}, \
+				 returned={returned})"
 			);
 		}
-		let out = accumulator.and_then(|accumulator| accumulator.finalize()).and_then(|value| {
-			aggregator.build_output(
-				group,
-				WindowSpan::for_coord(window_start, settings.fixed_size()),
-				&value,
-			)
-		});
-		let rows = store.get_or_create_row_numbers_for_groups(&[group_id])?;
-		#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
-		let (row_number, is_new) = rows[0];
-		reifydb_assertions! {
-			assert!(
-				!is_new,
-				"a dirty window already published a row, so it must still own its mapping; minting one \
-				 here publishes the closing row under a number no sink has seen (group={group_id:?})"
-			);
+		for (((slot, mut state), accumulator), row) in dirty.into_iter().zip(accumulators).zip(rows) {
+			let window = &windows[slot];
+			#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
+			let (row_number, is_new) = row;
+			reifydb_assertions! {
+				let group_id = window.group_id;
+				assert!(
+					accumulator.is_some(),
+					"a dirty window closed with no accumulator; emptying a window must store a clean \
+					 publish state, otherwise the close retracts a row downstream already dropped \
+					 (group={group_id:?})"
+				);
+				assert!(
+					!is_new,
+					"a dirty window already published a row, so it must still own its mapping; minting \
+					 one here publishes the closing row under a number no sink has seen \
+					 (group={group_id:?})"
+				);
+			}
+			let out = accumulator.and_then(|accumulator| accumulator.finalize()).and_then(|value| {
+				aggregator.build_output(
+					&window.group,
+					WindowSpan::for_coord(window.window_start, settings.fixed_size()),
+					&value,
+				)
+			});
+			publish_row::<A>(row_number, out, &mut state, Some(frontier), emitted)?;
+			session.set(slot, &state)?;
 		}
-		publish_row::<A>(row_number, out, &mut state, Some(frontier), emitted)?;
-		put(store, &key, state)?;
+		session.commit(store)?;
 		Ok(())
 	}
 
@@ -584,6 +611,9 @@ where
 			}
 		}
 
+		if results.is_empty() {
+			return Ok(emitted);
+		}
 		let mut store = GuestAsHost(ctx);
 		let keys: Vec<PublishKey> = results
 			.iter()
@@ -592,12 +622,12 @@ where
 				PublishKey::new(group, key)
 			})
 			.collect();
-		let mut states = load_publish_states(&mut store, &keys)?;
-		for (r, key) in results.into_iter().zip(keys) {
-			let mut state = states.remove(&key.group).unwrap_or_default();
+		let mut session = batch::<_, PublishState<A::Output>>(&mut store, &keys)?;
+		for (slot, r) in results.into_iter().enumerate() {
+			let mut state = session.value(slot)?.unwrap_or_default();
 			if r.kind == EmitKind::Remove {
 				publish_row::<A>(r.row_number, None, &mut state, frontier, &mut emitted)?;
-				put(&mut store, &key, state)?;
+				session.set(slot, &state)?;
 				continue;
 			}
 			let due = match (throttle, state.last_publish, frontier) {
@@ -608,13 +638,14 @@ where
 			};
 			if state.row.is_some() && !due {
 				state.dirty = true;
-				put(&mut store, &key, state)?;
+				session.set(slot, &state)?;
 				continue;
 			}
 			let out = aggregator.build_output(&r.group, r.span, &r.value);
 			publish_row::<A>(r.row_number, out, &mut state, frontier, &mut emitted)?;
-			put(&mut store, &key, state)?;
+			session.set(slot, &state)?;
 		}
+		session.commit(&mut store)?;
 		Ok(emitted)
 	}
 
@@ -982,12 +1013,9 @@ where
 						Some((pre_group, pre_value)),
 						Some((post_group, post_value)),
 					) = (pre_coord, post_coord, &before, &after)
-						&& pre_group == post_group
-						&& (pre_coord == post_coord
-							|| engine.refuses(
-								&Self::tracker_now(&batch, pre_group),
-								post_coord,
-							)) {
+						&& pre_group == post_group && (pre_coord == post_coord
+						|| engine.refuses(&Self::tracker_now(&batch, pre_group), post_coord))
+					{
 						match Self::holding_session(
 							engine, &mut batch, ctx, pre_group, number, horizon,
 						)? {

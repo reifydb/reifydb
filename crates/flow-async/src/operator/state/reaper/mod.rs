@@ -62,6 +62,26 @@ pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {
 	store.state_set(&queue_key(group), EncodedPodRow::new(&[]))
 }
 
+pub fn enqueue_many(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
+	reifydb_assertions! {
+		for group in groups {
+			assert!(
+				!group.is_root(),
+				"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+			);
+		}
+	}
+	let rows: Vec<(GroupStateKey, EncodedPodRow)> = groups
+		.iter()
+		.filter(|group| !group.is_root())
+		.map(|group| (queue_key(*group), EncodedPodRow::new(&[])))
+		.collect();
+	if rows.is_empty() {
+		return Ok(());
+	}
+	store.state_set_many(rows)
+}
+
 pub struct Queued {
 	pub groups: Vec<GroupId>,
 	pub more: bool,
@@ -252,35 +272,79 @@ where
 		false => last,
 	};
 
-	let mut spent = 0usize;
-	let mut still_queued: Vec<GroupId> = Vec::new();
+	let mut planned: Vec<(GroupId, usize)> = Vec::new();
+	let mut doomed: Vec<(GroupStateKey, EncodedPodRow)> = Vec::new();
 	let mut pending = ordered.into_iter();
-	while let Some(group) = pending.next() {
+	let mut cut_group = None;
+	for group in pending.by_ref() {
 		if cut == Some(group) {
-			match spent {
-				0 => {
-					let outcome = drain_group_scanning(store, group, reaper, budget)?;
-					spent += outcome.freed;
-					if outcome.still_queued {
-						still_queued.push(group);
-					}
-				}
-				_ => still_queued.push(group),
-			}
-			still_queued.extend(pending);
+			cut_group = Some(group);
 			break;
 		}
-		let drain = reap_scanned(
-			store,
-			group,
-			buckets.remove(&group).unwrap_or_default(),
-			reaper,
-			budget.saturating_sub(spent),
-		)?;
-		spent += drain.freed;
-		if drain.still_queued {
-			still_queued.push(group);
+		let scan = buckets.remove(&group).unwrap_or_default();
+		reifydb_assertions! {
+			assert!(
+				!group.is_root(),
+				"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
+			);
 		}
+		if group.is_root() {
+			planned.push((group, 0));
+			continue;
+		}
+		planned.push((group, scan.data.len()));
+		doomed.extend(scan.data);
+	}
+
+	if !doomed.is_empty() {
+		store.remove_root_siblings(&doomed)?;
+		let keys: Vec<GroupStateKey> = doomed.iter().map(|(key, _)| key.clone()).collect();
+		reaper.reap(store, &keys)?;
+	}
+
+	let mut spent = 0usize;
+	let mut still_queued: Vec<GroupId> = Vec::new();
+	for (group, freed) in planned {
+		if group.is_root() {
+			store.state_remove(&queue_key(group))?;
+			continue;
+		}
+		reifydb_assertions! {
+			let leftover = store.group_sweep(group, KeyspaceMask::data(), None)?.len();
+			assert!(
+				leftover == 0,
+				"group {} still holds {leftover} data rows in its own partition; forgetting its dictionary \
+				 entry now would orphan them behind a group id nothing can resolve again",
+				group
+			);
+		}
+		let available = budget.saturating_sub(spent);
+		if freed >= available {
+			spent += freed;
+			still_queued.push(group);
+			continue;
+		}
+		let outcome = store.reclaim_identity(group, available - freed)?;
+		spent += freed + outcome.removed.as_u64() as usize;
+		if outcome.more {
+			still_queued.push(group);
+			continue;
+		}
+		store.state_remove(&queue_key(group))?;
+	}
+
+	if let Some(group) = cut_group {
+		match spent {
+			0 => {
+				let outcome = drain_group_scanning(store, group, reaper, budget)?;
+				spent += outcome.freed;
+				if outcome.still_queued {
+					still_queued.push(group);
+				}
+			}
+			_ => still_queued.push(group),
+		}
+		still_queued.extend(pending);
 	}
 	Ok(DrainOutcome {
 		freed: spent,

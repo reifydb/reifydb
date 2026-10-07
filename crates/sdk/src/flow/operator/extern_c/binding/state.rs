@@ -242,6 +242,32 @@ pub(crate) fn remove(ctx: &mut ExternCContext, key: &EncodedKey) -> Result<()> {
 	}
 }
 
+#[instrument(name = "flow::operator::state::extern_c:remove_many", level = "debug", skip(ctx, keys), fields(
+	operator_id = ctx.operator_id().0,
+	key_count = keys.len()
+))]
+pub(crate) fn remove_many(ctx: &mut ExternCContext, keys: &[EncodedKey]) -> Result<()> {
+	if keys.is_empty() {
+		return Ok(());
+	}
+	let key_refs = key_refs(keys);
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; key_refs borrows keys that outlive the callback, which only reads them.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.remove_many)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			key_refs.as_ptr(),
+			key_refs.len(),
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host_state_remove_many failed with code {}", result)));
+		}
+	}
+	Ok(())
+}
+
 #[instrument(name = "flow::operator::state::extern_c:get_many", level = "debug", skip(ctx, keys), fields(
 	operator_id = ctx.operator_id().0,
 	key_count = keys.len(),

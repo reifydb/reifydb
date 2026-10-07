@@ -106,6 +106,8 @@ pub trait GuestState {
 
 	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()>;
 
+	fn remove_many_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()>;
+
 	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch>;
 
 	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()>;

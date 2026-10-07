@@ -9,6 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::PendingWrite,
+	common::OperatorClass,
 	delta::RemoveVisibility,
 	key::operator::state::{
 		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, guest_may_address, keyspace_inner_range_in,
@@ -145,6 +146,67 @@ pub(super) extern "C" fn host_state_remove(
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
 	}
+}
+
+#[cfg_attr(not(test), unsafe(no_mangle))]
+pub(super) extern "C" fn host_state_remove_many(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	keys: *const ExternCKeyRef,
+	keys_len: usize,
+) -> i32 {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if keys_len > 0 && keys.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx` and (for a non-zero `keys_len`) `keys` are null-checked above; the guest must pass back
+	// the ExternCContextRaw the host handed it for this call and `keys` valid for reads of `keys_len`
+	// ExternCKeyRef whose non-empty entries are valid for their own `len`; the key bytes are copied out here.
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let class = guest_class(ctx_handle);
+		let host = get_host_mut(ctx_handle);
+
+		let key_refs = if keys_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(keys, keys_len)
+		};
+
+		let encoded_keys = match class_framed_keys(class, key_refs) {
+			Ok(keys) => keys,
+			Err(code) => return code,
+		};
+
+		match host.state_remove_many(&encoded_keys) {
+			Ok(_) => EXTERN_C_OK,
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
+		}
+	}
+}
+
+unsafe fn class_framed_keys(class: OperatorClass, key_refs: &[ExternCKeyRef]) -> Result<Vec<GroupStateKey>, i32> {
+	let mut keys = Vec::with_capacity(key_refs.len());
+	for key_ref in key_refs {
+		if key_ref.len > 0 && key_ref.ptr.is_null() {
+			return Err(EXTERN_C_ERROR_NULL_PTR);
+		}
+		let bytes = if key_ref.len == 0 {
+			Vec::new()
+		} else {
+			// SAFETY: callers pass guest key refs whose non-empty entries are valid for reads of their own
+			// `len`; `ptr` is non-null on this path and the bytes are copied out here.
+			unsafe { from_raw_parts(key_ref.ptr, key_ref.len) }.to_vec()
+		};
+		let Some(framed) = GroupStateKey::from_class_framed(class, EncodedKey::new(bytes)) else {
+			return Err(EXTERN_C_ERROR_INTERNAL);
+		};
+		keys.push(framed);
+	}
+	Ok(keys)
 }
 
 unsafe fn slice_bytes(slice: ExternCStateSlice) -> Option<Vec<u8>> {
@@ -333,21 +395,10 @@ pub(super) extern "C" fn host_state_get_many(
 			from_raw_parts(keys, keys_len)
 		};
 
-		let mut encoded_keys: Vec<GroupStateKey> = Vec::with_capacity(key_refs.len());
-		for key_ref in key_refs {
-			if key_ref.len > 0 && key_ref.ptr.is_null() {
-				return EXTERN_C_ERROR_NULL_PTR;
-			}
-			let bytes = if key_ref.len == 0 {
-				Vec::new()
-			} else {
-				from_raw_parts(key_ref.ptr, key_ref.len).to_vec()
-			};
-			let Some(framed) = GroupStateKey::from_class_framed(class, EncodedKey::new(bytes)) else {
-				return EXTERN_C_ERROR_INTERNAL;
-			};
-			encoded_keys.push(framed);
-		}
+		let encoded_keys = match class_framed_keys(class, key_refs) {
+			Ok(keys) => keys,
+			Err(code) => return code,
+		};
 
 		match host.state_get_many(&encoded_keys) {
 			Ok(answers) => {
@@ -1557,6 +1608,41 @@ mod join_row_expiry_guard_tests {
 			host_state_get_many(1, ctx, keys.as_ptr(), keys.len(), &mut iterator)
 		});
 		assert_eq!(status, EXTERN_C_ERROR_INTERNAL);
+	}
+
+	#[test]
+	fn one_foreign_key_refuses_the_whole_remove_many() {
+		// The guest is untrusted; a wall checked key by key lets a refused batch remove what came before the
+		// foreign key.
+		let owned = framed(KeyspaceId::GUEST_ACCUMULATOR);
+		let foreign = framed(KeyspaceId::JOIN_LEFT);
+		let keys = [
+			ExternCKeyRef {
+				ptr: owned.as_ptr(),
+				len: owned.len(),
+			},
+			ExternCKeyRef {
+				ptr: foreign.as_ptr(),
+				len: foreign.len(),
+			},
+		];
+		let (status, reached) = with_class_context(OperatorClass::Windowed, |ctx| {
+			host_state_remove_many(1, ctx, keys.as_ptr(), keys.len())
+		});
+		assert_eq!(
+			(status, reached),
+			(EXTERN_C_ERROR_INTERNAL, false),
+			"no key of a refused batch may be removed"
+		);
+	}
+
+	#[test]
+	fn a_remove_many_with_a_null_key_list_is_refused() {
+		// A null list with a length makes the host read guest memory it was never given.
+		let (status, reached) = with_class_context(OperatorClass::Windowed, |ctx| {
+			host_state_remove_many(1, ctx, ptr::null(), 2)
+		});
+		assert_eq!((status, reached), (EXTERN_C_ERROR_NULL_PTR, false));
 	}
 
 	#[test]

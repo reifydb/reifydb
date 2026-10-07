@@ -18,15 +18,16 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::{
 		state::{
-			reaper::{drain, drain_groups, enqueue},
+			reaper::{drain, drain_groups, enqueue_many},
 			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 		},
-		state_access::put,
+		state_access::batch,
 	},
 	window::{
 		accumulator::invertible::retained_map::RetainedAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, PublishKey,
+			publish::PublishState,
 			tumbling::{ExpiredWindow, TumblingBuckets},
 			tumbling_retained::{RetainedEntry, RetainedTumblingEngine},
 		},
@@ -58,7 +59,7 @@ use crate::{
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
 			operator::{Emit, WindowedOperator},
-			publish::{Emitted, UpdateRow, load_publish_states, publish_row},
+			publish::{Emitted, UpdateRow, publish_row},
 			seal_frontier, timer_frontier, window_engine_config,
 		},
 	},
@@ -187,10 +188,9 @@ where
 		let store_queue_empty = *reap_queue_empty;
 		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
 		Self::publish_dirty_closes(aggregator, engine, settings, store, &closing, frontier, emitted)?;
-		let mut expired = Vec::new();
-		for window in closing {
-			enqueue(store, window.group_id)?;
-			expired.push(window.group_id);
+		let expired: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
+		enqueue_many(store, &expired)?;
+		if !expired.is_empty() {
 			*reap_queue_empty = false;
 		}
 		engine.expire_meta(store, horizon.to_order())?;
@@ -235,23 +235,36 @@ where
 				PublishKey::new(window.group_id, Self::row_key(&window.group, window.window_start))
 			})
 			.collect();
-		let mut states = load_publish_states::<_, A::Output>(store, &keys)?;
+		let mut session = batch::<_, PublishState<A::Output>>(store, &keys)?;
 		let mut dirty = Vec::new();
-		for (window, key) in windows.iter().zip(keys) {
-			match states.remove(&window.group_id) {
-				Some(state) if state.dirty => dirty.push((window, key, state)),
-				_ => {}
+		for (slot, (window, key)) in windows.iter().zip(&keys).enumerate() {
+			if let Some(state) = session.value(slot)?
+				&& state.dirty
+			{
+				dirty.push((slot, window, key, state));
 			}
 		}
 		if dirty.is_empty() {
 			return Ok(());
 		}
 		let slots: Vec<(GroupId, EncodedKey)> =
-			dirty.iter().map(|(window, key, _)| (window.group_id, key.slot.clone())).collect();
+			dirty.iter().map(|(_, window, key, _)| (window.group_id, key.slot.clone())).collect();
 		let counts = engine.window_counts(store, &slots)?;
 		let reads: Vec<(GroupId, u64)> = slots.iter().map(|(group, _)| *group).zip(counts).collect();
 		let mut read = engine.load_entries(store, &reads)?;
-		for (window, key, mut state) in dirty {
+		let groups: Vec<GroupId> = dirty.iter().map(|(_, window, _, _)| window.group_id).collect();
+		let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
+		reifydb_assertions! {
+			let requested = groups.len();
+			let returned = rows.len();
+			assert!(
+				returned == requested,
+				"the identity batch must return one row per dirty closing window; a short batch drops the \
+				 tail, so those windows never publish their closing row (requested={requested}, \
+				 returned={returned})"
+			);
+		}
+		for ((slot, window, _, mut state), row) in dirty.into_iter().zip(rows) {
 			let group_id = window.group_id;
 			let entries =
 				read.remove(&group_id).expect("the entry read answers every window it was asked for");
@@ -271,9 +284,8 @@ where
 					&entries,
 				),
 			};
-			let rows = store.get_or_create_row_numbers_for_groups(&[group_id])?;
 			#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
-			let (row_number, is_new) = rows[0];
+			let (row_number, is_new) = row;
 			reifydb_assertions! {
 				assert!(
 					!is_new,
@@ -283,8 +295,9 @@ where
 				);
 			}
 			publish_row::<A>(row_number, out, &mut state, Some(frontier), emitted)?;
-			put(store, &key, state)?;
+			session.set(slot, &state)?;
 		}
+		session.commit(store)?;
 		Ok(())
 	}
 
@@ -368,6 +381,9 @@ where
 			}
 		}
 
+		if results.is_empty() {
+			return Ok(emitted);
+		}
 		let mut store = GuestAsHost(ctx);
 		let keys: Vec<PublishKey> = results
 			.iter()
@@ -376,11 +392,11 @@ where
 				PublishKey::new(r.group_id, key)
 			})
 			.collect();
-		let mut states = load_publish_states(&mut store, &keys)?;
+		let mut session = batch::<_, PublishState<A::Output>>(&mut store, &keys)?;
 		let mut decided = Vec::with_capacity(results.len());
 		let mut due_windows: Vec<(GroupId, u64)> = Vec::new();
-		for (r, key) in results.into_iter().zip(keys) {
-			let state = states.remove(&key.group).unwrap_or_default();
+		for (slot, r) in results.into_iter().enumerate() {
+			let state = session.value(slot)?.unwrap_or_default();
 			let decision = if r.kind == EmitKind::Remove {
 				Decision::Remove
 			} else {
@@ -397,10 +413,10 @@ where
 					Decision::Due
 				}
 			};
-			decided.push((r, key, state, decision));
+			decided.push((slot, r, state, decision));
 		}
 		let mut read = engine.load_entries(&mut store, &due_windows)?;
-		for (r, key, mut state, decision) in decided {
+		for (slot, r, mut state, decision) in decided {
 			match decision {
 				Decision::Remove => {
 					publish_row::<A>(r.row_number, None, &mut state, frontier, &mut emitted)?
@@ -414,8 +430,9 @@ where
 					publish_row::<A>(r.row_number, out, &mut state, frontier, &mut emitted)?;
 				}
 			}
-			put(&mut store, &key, state)?;
+			session.set(slot, &state)?;
 		}
+		session.commit(&mut store)?;
 		Ok(emitted)
 	}
 
