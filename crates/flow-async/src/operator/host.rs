@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Cow, collections::HashMap, ops::Bound};
+use std::{
+	borrow::Cow,
+	collections::{BTreeSet, HashMap},
+	ops::Bound,
+};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
+	actors::pending::PendingWrite,
 	common::{CommitVersion, SourceVersion},
 	interface::catalog::{
 		config::{ConfigKey, GetConfig},
@@ -28,7 +33,10 @@ use reifydb_core::{
 		},
 		row::StoragePartitionedRowKey,
 	},
-	state::timer::{GroupSweep, StateStore, TimerKind, TimerStore},
+	state::{
+		batch::StateBatch,
+		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
+	},
 };
 use reifydb_flow::txn::Resolve;
 use reifydb_transaction::multi::RangeScope;
@@ -178,13 +186,7 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 		}
 	}
 
-	fn arm_reclaim(&mut self, key: &GroupStateKey) -> Result<()> {
-		if key.keyspace() != Some(KeyspaceId::CUSTOM_MANAGED) {
-			return Ok(());
-		}
-		let Some(group) = key.group().filter(|group| !group.is_root()) else {
-			return Ok(());
-		};
+	fn arm_reclaim(&mut self, group: GroupId) -> Result<()> {
 		let Some(retention) = self.retention else {
 			return internal_err!("operator {} wrote managed state but has no retention", self.operator);
 		};
@@ -206,6 +208,13 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 			},
 		)
 	}
+}
+
+fn managed_group(key: &GroupStateKey) -> Option<GroupId> {
+	if key.keyspace() != Some(KeyspaceId::CUSTOM_MANAGED) {
+		return None;
+	}
+	key.group().filter(|group| !group.is_root())
 }
 
 const NANOS_PER_SECOND: i64 = 1_000_000_000;
@@ -260,7 +269,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 
 	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
 		self.txn.state_set(self.operator, key, payload)?;
-		self.arm_reclaim(key)
+		managed_group(key).map_or(Ok(()), |group| self.arm_reclaim(group))
 	}
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
@@ -272,14 +281,22 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	}
 
 	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
-		let managed: Vec<GroupStateKey> = rows
-			.iter()
-			.filter(|(key, _)| key.keyspace() == Some(KeyspaceId::CUSTOM_MANAGED))
-			.map(|(key, _)| key.clone())
-			.collect();
+		let groups: BTreeSet<GroupId> = rows.iter().filter_map(|(key, _)| managed_group(key)).collect();
 		self.txn.state_set_many(self.operator, rows)?;
-		for key in &managed {
-			self.arm_reclaim(key)?;
+		for group in groups {
+			self.arm_reclaim(group)?;
+		}
+		Ok(())
+	}
+
+	fn state_write_batch(&mut self, batch: StateBatch) -> Result<()> {
+		let groups: BTreeSet<GroupId> = (0..batch.len())
+			.filter(|&slot| matches!(batch.op(slot), Some(PendingWrite::Set(_))))
+			.filter_map(|slot| managed_group(batch.key(slot)))
+			.collect();
+		self.txn.state_write_batch(self.operator, batch)?;
+		for group in groups {
+			self.arm_reclaim(group)?;
 		}
 		Ok(())
 	}
