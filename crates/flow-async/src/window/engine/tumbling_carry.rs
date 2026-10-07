@@ -178,6 +178,7 @@ where
 		K: Fn(&G, S) -> EncodedKey,
 	{
 		let sealed_keys: Vec<EncodedKey> = sealed.iter().map(|first| row_key(group, *first)).collect();
+		let mut sealed_groups = Vec::with_capacity(sealed_keys.len());
 		for (first, sealed_key) in sealed.into_iter().zip(sealed_keys) {
 			let carry_out =
 				meta.windows.get(&first).expect("sealed window entry present").carry_out.clone();
@@ -186,9 +187,9 @@ where
 			meta.sealed_carry = carry_out;
 			let sealed_group = GroupId::of(&sealed_key);
 			remove(store, &WindowStateKey::new(family, sealed_group, sealed_key.clone()))?;
-			store.remove_row_number_for_group(sealed_group)?;
+			sealed_groups.push(sealed_group);
 		}
-		Ok(())
+		store.remove_row_numbers_for_groups(&sealed_groups)
 	}
 
 	#[allow(clippy::too_many_arguments)]

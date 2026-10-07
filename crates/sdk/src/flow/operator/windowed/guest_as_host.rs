@@ -163,6 +163,15 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(self.0.remove_row_number(group, &EncodedKey::new(Vec::new()))?)
 	}
 
+	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		let keys: Vec<EncodedKey> = keys.iter().map(mapping_key).collect();
+		Ok(self.0.remove_row_numbers(group, &keys)?)
+	}
+
+	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
+		Ok(self.0.remove_row_numbers_for_groups(groups)?)
+	}
+
 	fn written_at(&self) -> DateTime {
 		self.0.written_at()
 	}

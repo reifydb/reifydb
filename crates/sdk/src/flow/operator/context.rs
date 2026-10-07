@@ -41,6 +41,15 @@ pub(crate) fn class_framed(class: OperatorClass, key: &GroupStateKey) -> Result<
 	)))
 }
 
+pub(crate) fn check_row_number_keys(keys: &[EncodedKey]) -> Result<()> {
+	match keys.iter().position(|key| key.is_empty()) {
+		Some(slot) => Err(SdkError::Other(format!(
+			"a guest row-number batch key at slot {slot} is empty; an empty key names the group row, remove group rows with remove_row_numbers_for_groups"
+		))),
+		None => Ok(()),
+	}
+}
+
 pub(crate) fn check_class_batch(class: OperatorClass, batch: &StateBatch) -> Result<()> {
 	for slot in 0..batch.len() {
 		class_framed(class, batch.key(slot))?;
@@ -307,6 +316,8 @@ pub trait GuestEmitContext {
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>>;
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
+	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()>;
+	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()>;
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;

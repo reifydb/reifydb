@@ -33,7 +33,8 @@ use crate::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
 		context::{
 			ClassState, CustomClass, GuestBound, GuestContext, GuestDictionary, GuestEmit,
-			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass, check_class_batch, class_framed,
+			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass, check_class_batch,
+			check_row_number_keys, class_framed,
 		},
 		state::{decode_payload, encode_payload},
 	},
@@ -402,6 +403,17 @@ impl GuestEmitContext for InProcessContext<'_> {
 			}
 		}
 		.map_err(to_sdk_err)
+	}
+	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> SdkResult<()> {
+		check_row_number_keys(keys)?;
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).remove_row_numbers(group, keys) }.map_err(to_sdk_err)
+	}
+	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> SdkResult<()> {
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).remove_row_numbers_for_groups(groups) }.map_err(to_sdk_err)
 	}
 	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
 		let now = self.now;

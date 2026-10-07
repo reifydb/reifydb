@@ -199,6 +199,13 @@ pub trait StateStore {
 		Ok(())
 	}
 
+	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
+		for group in groups {
+			self.remove_row_number_for_group(*group)?;
+		}
+		Ok(())
+	}
+
 	fn written_at(&self) -> DateTime;
 }
 

@@ -615,6 +615,64 @@ pub(super) extern "C" fn host_remove_row_number(
 	}
 }
 
+pub(super) extern "C" fn host_remove_row_numbers(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	group: ExternCGroupId,
+	keys: *const ExternCKeyRef,
+	keys_len: usize,
+) -> i32 {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if keys_len > 0 && keys.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx` and (for a non-zero `keys_len`) `keys` are null-checked above; the guest must pass back the
+	// ExternCContextRaw the host handed it for this call and `keys` satisfying encoded_keys. Every key is checked
+	// before anything reaches the host.
+	unsafe {
+		let host = get_host_mut(&mut *ctx);
+		let Some(encoded_keys) = encoded_keys(keys, keys_len) else {
+			return EXTERN_C_ERROR_NULL_PTR;
+		};
+		if encoded_keys.iter().any(|key| key.is_empty()) {
+			return EXTERN_C_ERROR_INTERNAL;
+		}
+		match host.remove_row_numbers(host_group(group), &encoded_keys) {
+			Ok(()) => EXTERN_C_OK,
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
+		}
+	}
+}
+
+pub(super) extern "C" fn host_remove_row_numbers_for_groups(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	groups: *const ExternCGroupId,
+	groups_len: usize,
+) -> i32 {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if groups_len > 0 && groups.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx` and (for a non-zero `groups_len`) `groups` are null-checked above; the guest must pass back
+	// the ExternCContextRaw the host handed it for this call and `groups` valid and aligned for `groups_len`
+	// ExternCGroupId reads.
+	unsafe {
+		let host = get_host_mut(&mut *ctx);
+		let group_ids: Vec<GroupId> = (0..groups_len).map(|index| host_group(*groups.add(index))).collect();
+		match host.remove_row_numbers_for_groups(&group_ids) {
+			Ok(()) => EXTERN_C_OK,
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
+		}
+	}
+}
+
 pub(super) extern "C" fn host_arm_timer(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
@@ -909,6 +967,11 @@ mod join_row_expiry_guard_tests {
 		}
 
 		fn remove_row_number_for_group(&mut self, _group: GroupId) -> Result<()> {
+			Ok(())
+		}
+
+		fn remove_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<()> {
+			self.reached.set(true);
 			Ok(())
 		}
 
@@ -1467,6 +1530,35 @@ mod join_row_expiry_guard_tests {
 		});
 		assert_eq!(status, EXTERN_C_ERROR_INTERNAL, "one foreign key must refuse the whole batch");
 		assert!(!reached, "a refused batch must reach no host write");
+	}
+
+	#[test]
+	fn a_host_keyed_row_number_batch_with_an_empty_key_removes_nothing() {
+		// A C guest can skip the sdk check, and at the boundary an empty key names the group row.
+		let key = [7u8; 4];
+		let keys = [
+			ExternCKeyRef {
+				ptr: key.as_ptr(),
+				len: key.len(),
+			},
+			ExternCKeyRef {
+				ptr: ptr::null(),
+				len: 0,
+			},
+		];
+		let group = ExternCGroupId {
+			bytes: *GroupId::hashed(Hash128(5)).as_bytes(),
+		};
+		let (status, reached) = with_context(|ctx| host_remove_row_numbers(1, ctx, group, keys.as_ptr(), 1));
+		assert_eq!(
+			(status, reached),
+			(EXTERN_C_OK, true),
+			"precondition: the non-empty key alone reaches the host"
+		);
+		let (status, reached) =
+			with_context(|ctx| host_remove_row_numbers(1, ctx, group, keys.as_ptr(), keys.len()));
+		assert_eq!(status, EXTERN_C_ERROR_INTERNAL, "an empty key must refuse the whole keyed batch");
+		assert!(!reached, "a refused keyed batch must remove nothing");
 	}
 }
 

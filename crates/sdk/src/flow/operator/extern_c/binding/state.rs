@@ -25,7 +25,7 @@ use crate::{
 	},
 	error::{Result, SdkError},
 	flow::operator::{
-		context::GuestBound,
+		context::{GuestBound, check_row_number_keys},
 		extern_c::{
 			binding::context::ExternCContext,
 			wire::{
@@ -615,6 +615,55 @@ pub(crate) fn remove_row_number(ctx: &mut ExternCContext, group: GroupId, key: &
 			Ok(())
 		} else {
 			Err(SdkError::Other(format!("host_remove_row_number failed with code {}", result)))
+		}
+	}
+}
+
+pub(crate) fn remove_row_numbers(ctx: &mut ExternCContext, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+	check_row_number_keys(keys)?;
+	if keys.is_empty() {
+		return Ok(());
+	}
+	let key_refs = key_refs(keys);
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; key_refs borrows keys for the duration of the call, which only reads them.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.remove_row_numbers)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			wire_group(group),
+			key_refs.as_ptr(),
+			key_refs.len(),
+		);
+		if result == EXTERN_C_OK {
+			Ok(())
+		} else {
+			Err(SdkError::Other(format!("host_remove_row_numbers failed with code {}", result)))
+		}
+	}
+}
+
+pub(crate) fn remove_row_numbers_for_groups(ctx: &mut ExternCContext, groups: &[GroupId]) -> Result<()> {
+	if groups.is_empty() {
+		return Ok(());
+	}
+	let group_ids: Vec<ExternCGroupId> = groups.iter().map(|group| wire_group(*group)).collect();
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; group_ids is a live array of exactly groups.len() wire group ids the callback
+	// only reads.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.remove_row_numbers_for_groups)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			group_ids.as_ptr(),
+			group_ids.len(),
+		);
+		if result == EXTERN_C_OK {
+			Ok(())
+		} else {
+			Err(SdkError::Other(format!("host_remove_row_numbers_for_groups failed with code {}", result)))
 		}
 	}
 }

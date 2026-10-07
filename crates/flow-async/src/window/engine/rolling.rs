@@ -710,13 +710,9 @@ where
 
 		let mut out: Vec<RollingResult<G, Output>> = Vec::with_capacity(pending.len());
 		if !pairs.is_empty() {
-			let rows = store.get_or_create_row_numbers_for_groups(
-				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
-			)?;
-			for (((group, value), (group_id, _key)), (row_number, _)) in
-				pending.into_iter().zip(pairs).zip(rows)
-			{
-				store.remove_row_number_for_group(group_id)?;
+			let groups: Vec<GroupId> = pairs.iter().map(|(group, _)| *group).collect();
+			let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
+			for ((group, value), (row_number, _)) in pending.into_iter().zip(rows) {
 				out.push(RollingResult {
 					row_number,
 					group,
@@ -725,6 +721,7 @@ where
 					kind: EmitKind::Remove,
 				});
 			}
+			store.remove_row_numbers_for_groups(&groups)?;
 		}
 		Ok(out)
 	}

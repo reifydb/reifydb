@@ -36,7 +36,7 @@ use crate::{
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
 					get_or_create_row_numbers_for_groups, reclaim_group_identity,
-					remove_row_number,
+					remove_row_number, remove_row_numbers, remove_row_numbers_for_groups,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -167,6 +167,14 @@ impl ExternCContext {
 		remove_row_number(self, group, key)
 	}
 
+	pub fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		remove_row_numbers(self, group, keys)
+	}
+
+	pub fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
+		remove_row_numbers_for_groups(self, groups)
+	}
+
 	pub fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
 		reclaim_group_identity(self, group, limit)
 	}
@@ -278,6 +286,12 @@ impl GuestEmitContext for ExternCContext {
 	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		ExternCContext::remove_row_number(self, group, key)
+	}
+	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		ExternCContext::remove_row_numbers(self, group, keys)
+	}
+	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
+		ExternCContext::remove_row_numbers_for_groups(self, groups)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCInsertEmit<'_>> {
 		let mut builder = self.builder();
