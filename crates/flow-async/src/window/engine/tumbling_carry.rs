@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::{BTreeMap, BTreeSet, HashMap},
 	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
@@ -26,13 +26,13 @@ use reifydb_value::{Result, reifydb_assertions};
 use crate::{
 	operator::{
 		state::seal::rule::is_sealed,
-		state_access::{get, get_classified, put, remove},
+		state_access::{batch, put},
 	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, KeyspaceFamily, MetaFate, MetaHighWater, MetaSweep, WindowResult,
-			WindowStateKey, config::TumblingCarryConfig, group_hash, meta_key_for,
+			AccumulatorEvent, EmitKind, KeyspaceFamily, MetaFate, MetaHighWater, MetaKey, MetaSweep,
+			WindowResult, WindowStateKey, config::TumblingCarryConfig, group_hash, meta_key_for,
 			tumbling::TumblingBuckets,
 		},
 		span::{SlotSpan, WindowAnchor, WindowSpan},
@@ -95,8 +95,6 @@ where
 }
 
 type MetaLoaded<G, S, Carry, Output> = HashMap<G, CarryMeta<S, Carry, Output>>;
-type MetaStored<G> = HashMap<G, EncodedPodRow>;
-type MetaRead<G, S, Carry, Output> = (MetaLoaded<G, S, Carry, Output>, MetaStored<G>);
 type SlotResolved = Vec<Option<(GroupId, EncodedKey)>>;
 
 struct PendingCarry<S, Output> {
@@ -141,7 +139,9 @@ where
 	{
 		let family = self.family;
 		let threshold = horizon.to_order();
-		self.meta_sweep.sweep_with(store, threshold, |store, key, bytes| {
+		let mut doomed: Vec<GroupStateKey> = Vec::new();
+		let mut groups: Vec<GroupId> = Vec::new();
+		let dropped = self.meta_sweep.sweep_with(store, threshold, |store, key, bytes| {
 			let mut meta = decode::<CarryMeta<S, Carry, Output>>(bytes)?;
 			let sealed: Vec<S> =
 				meta.windows.keys().copied().take_while(|first| is_sealed(*first, horizon)).collect();
@@ -150,7 +150,13 @@ where
 				let recorded =
 					meta.group.clone().expect("a carry meta with live windows records its group");
 				let group: G = decode_body(&EncodedPodRow::new(&recorded))?;
-				Self::fold_windows(family, store, &mut meta, &group, sealed, &row_key)?;
+				Self::fold_windows(&mut meta, &sealed);
+				for first in sealed {
+					let slot = row_key(&group, first);
+					let id = GroupId::of(&slot);
+					doomed.push((&WindowStateKey::new(family, id, slot)).into_group_state_key());
+					groups.push(id);
+				}
 			}
 			let Some(hw) = meta.high_water_order() else {
 				return Ok(MetaFate::Ignored);
@@ -163,33 +169,22 @@ where
 				put(store, &key, meta)?;
 			}
 			Ok(MetaFate::Survives(earliest))
-		})
+		})?;
+		if !doomed.is_empty() {
+			store.state_remove_many(&doomed)?;
+		}
+		if !groups.is_empty() {
+			store.remove_row_numbers_for_groups(&groups)?;
+		}
+		Ok(dropped)
 	}
 
-	fn fold_windows<K>(
-		family: KeyspaceFamily,
-		store: &mut dyn StateStore,
-		meta: &mut CarryMeta<S, Carry, Output>,
-		group: &G,
-		sealed: Vec<S>,
-		row_key: &K,
-	) -> Result<()>
-	where
-		K: Fn(&G, S) -> EncodedKey,
-	{
-		let sealed_keys: Vec<EncodedKey> = sealed.iter().map(|first| row_key(group, *first)).collect();
-		let mut sealed_groups = Vec::with_capacity(sealed_keys.len());
-		for (first, sealed_key) in sealed.into_iter().zip(sealed_keys) {
-			let carry_out =
-				meta.windows.get(&first).expect("sealed window entry present").carry_out.clone();
-			meta.windows.remove(&first);
-			meta.sealed_up_to = Some(first);
+	fn fold_windows(meta: &mut CarryMeta<S, Carry, Output>, sealed: &[S]) {
+		for first in sealed {
+			let carry_out = meta.windows.remove(first).expect("sealed window entry present").carry_out;
+			meta.sealed_up_to = Some(*first);
 			meta.sealed_carry = carry_out;
-			let sealed_group = GroupId::of(&sealed_key);
-			remove(store, &WindowStateKey::new(family, sealed_group, sealed_key.clone()))?;
-			sealed_groups.push(sealed_group);
 		}
-		store.remove_row_numbers_for_groups(&sealed_groups)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -212,11 +207,23 @@ where
 			return Ok(Vec::new());
 		}
 		let retention = self.retention;
-		let (mut meta_loaded, meta_stored) = self.load_meta(store, &buckets)?;
+		let mut groups: Vec<G> = buckets.keys().map(|(group, _)| group.clone()).collect();
+		groups.dedup();
+		let mut meta_keys: Vec<MetaKey> = Vec::with_capacity(groups.len());
+		for group in &groups {
+			meta_keys.push(meta_key_for(group_hash(group)?));
+		}
+		let mut metas = batch::<_, CarryMeta<S, Carry, Output>>(store, &meta_keys)?;
+		let mut meta_loaded: MetaLoaded<G, S, Carry, Output> = HashMap::with_capacity(groups.len());
+		for (slot, group) in groups.iter().enumerate() {
+			meta_loaded.insert(group.clone(), metas.value(slot)?.unwrap_or_default());
+		}
 		let slot_resolved = self.resolve_survivor_rows(&buckets, &meta_loaded, &row_key)?;
+		let (keys, slot_of) = self.session_keys(&buckets, &slot_resolved, &meta_loaded, &row_key);
+		let mut windows = batch::<_, Accumulator>(store, &keys)?;
 
 		let mut earliest_affected: BTreeMap<G, S> = BTreeMap::new();
-		let mut batch_slots: HashMap<(G, S), (GroupId, EncodedKey)> = HashMap::new();
+		let mut touched: HashMap<usize, Accumulator> = HashMap::new();
 		for (((group, span), events), slot_pre) in buckets.into_iter().zip(slot_resolved) {
 			let entry = meta_loaded.entry(group.clone()).or_default();
 			if entry.group.is_none() {
@@ -225,14 +232,12 @@ where
 			if matches!(entry.sealed_up_to, Some(s) if span.start <= s) {
 				continue;
 			}
-			let Some((group_id, slot_key)) = slot_pre else {
+			if slot_pre.is_none() {
 				continue;
-			};
-			batch_slots.insert((group.clone(), span.start), (group_id, slot_key.clone()));
+			}
+			let slot = slot_of[&(group.clone(), span.start)];
 
-			let mut accumulator: Accumulator =
-				get_classified(store, &WindowStateKey::new(self.family, group_id, slot_key.clone()))?
-					.unwrap_or_else(&new_accumulator);
+			let mut accumulator: Accumulator = windows.value(slot)?.unwrap_or_else(&new_accumulator);
 			let mut changed = false;
 			for event in events {
 				match event {
@@ -252,7 +257,8 @@ where
 			if !changed {
 				continue;
 			}
-			put(store, &WindowStateKey::new(self.family, group_id, slot_key), accumulator)?;
+			windows.set(slot, &accumulator)?;
+			touched.insert(slot, accumulator);
 
 			entry.windows.entry(span.start).or_insert_with(|| WindowEntry {
 				span,
@@ -269,7 +275,8 @@ where
 			}
 		}
 
-		let mut results: Vec<WindowResult<G, S, Output>> = Vec::new();
+		let mut pending: Vec<(G, PendingCarry<S, Output>)> = Vec::new();
+		let mut removed_groups: Vec<GroupId> = Vec::new();
 		for (group, start) in earliest_affected {
 			let meta = meta_loaded.get_mut(&group).expect("affected group has meta");
 
@@ -278,96 +285,70 @@ where
 				None => meta.sealed_carry.clone(),
 			};
 
-			let slots: Vec<S> = meta.windows.range(start..).map(|(c, _)| *c).collect();
-			let slot_keys: Vec<(GroupId, EncodedKey)> = slots
-				.iter()
-				.map(|slot| match batch_slots.get(&(group.clone(), *slot)) {
-					Some(found) => found.clone(),
-					None => {
-						let key = row_key(&group, *slot);
-						(GroupId::of(&key), key)
-					}
-				})
-				.collect();
+			let starts: Vec<S> = meta.windows.range(start..).map(|(c, _)| *c).collect();
 			let mut emptied: Vec<S> = Vec::new();
-			let mut pending: Vec<PendingCarry<S, Output>> = Vec::new();
-			for (slot, (slot_group, slot_key)) in slots.into_iter().zip(slot_keys) {
-				let span = meta.windows.get(&slot).expect("window entry present").span;
-				let finalized = get::<_, Accumulator>(
-					store,
-					&WindowStateKey::new(self.family, slot_group, slot_key),
-				)?
-				.and_then(|a| a.finalize())
-				.map(|value| (slot_group, value));
-				let emitted = finalized.as_ref().and_then(|(slot_group, value)| {
-					build_output(&group, span, value, prev_carry.as_ref())
-						.map(|out| (*slot_group, value, out))
+			for window in starts {
+				let slot = *slot_of
+					.get(&(group.clone(), window))
+					.expect("an emitted window is in the session");
+				let slot_group = keys[slot].group;
+				let span = meta.windows.get(&window).expect("window entry present").span;
+				let read;
+				let accumulator: Option<&Accumulator> = match touched.get(&slot) {
+					Some(accumulator) => Some(accumulator),
+					None => {
+						read = windows.value(slot)?;
+						read.as_ref()
+					}
+				};
+				let drained = accumulator.is_some_and(WindowAccumulator::is_empty);
+				let finalized = accumulator.and_then(|a| a.finalize());
+				let emitted = finalized.as_ref().and_then(|value| {
+					build_output(&group, span, value, prev_carry.as_ref()).map(|out| (value, out))
 				});
 				match emitted {
-					Some((slot_group, value, out)) => {
+					Some((value, out)) => {
 						let new_carry = carry_forward(value, prev_carry.as_ref());
-						let w = meta.windows.get_mut(&slot).expect("window entry present");
+						let w = meta.windows.get_mut(&window).expect("window entry present");
 						w.carry_out = new_carry.clone();
 						w.last_output = Some(out.clone());
 						if new_carry.is_some() {
 							prev_carry = new_carry;
 						}
-						pending.push(PendingCarry {
-							group_id: slot_group,
-							span,
-							value: out,
-							withdraw: false,
-						});
+						pending.push((
+							group.clone(),
+							PendingCarry {
+								group_id: slot_group,
+								span,
+								value: out,
+								withdraw: false,
+							},
+						));
 					}
 					None => {
 						if let Some(prev) =
-							meta.windows.get(&slot).and_then(|w| w.last_output.clone())
+							meta.windows.get(&window).and_then(|w| w.last_output.clone())
 						{
-							pending.push(PendingCarry {
-								group_id: slot_group,
-								span,
-								value: prev,
-								withdraw: true,
-							});
+							pending.push((
+								group.clone(),
+								PendingCarry {
+									group_id: slot_group,
+									span,
+									value: prev,
+									withdraw: true,
+								},
+							));
 						}
-						emptied.push(slot);
+						if drained {
+							windows.remove(slot);
+						}
+						emptied.push(window);
 					}
 				}
 			}
 
-			let groups: Vec<GroupId> = pending.iter().map(|p| p.group_id).collect();
-			let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
-			reifydb_assertions! {
-				let requested = groups.len();
-				let returned = rows.len();
-				assert!(
-					returned == requested,
-					"the identity batch must return one row per publishing window; a short batch makes \
-					 the zip below drop the tail, so those windows publish nothing while their carry \
-					 meta already advanced (requested={requested}, returned={returned})"
-				);
-			}
-			for (emit, (row_number, is_new)) in pending.into_iter().zip(rows) {
-				let kind = if emit.withdraw {
-					store.remove_row_number_for_group(emit.group_id)?;
-					EmitKind::Remove
-				} else if is_new {
-					EmitKind::Insert
-				} else {
-					EmitKind::Update
-				};
-				results.push(WindowResult {
-					row_number,
-					group: group.clone(),
-					span: emit.span,
-					value: emit.value,
-					prior: None,
-					kind,
-				});
-			}
-
-			for slot in emptied {
-				meta.windows.remove(&slot);
+			for window in emptied {
+				meta.windows.remove(&window);
 			}
 
 			if let (Some(retention), Some(hw)) = (retention, meta.high_water) {
@@ -377,40 +358,110 @@ where
 					.copied()
 					.take_while(|first| hw.span_since(*first) > retention)
 					.collect();
-				Self::fold_windows(self.family, store, meta, &group, to_seal, &row_key)?;
+				Self::fold_windows(meta, &to_seal);
+				for first in to_seal {
+					let slot = *slot_of
+						.get(&(group.clone(), first))
+						.expect("a window the fold seals is in the session");
+					windows.remove(slot);
+					removed_groups.push(keys[slot].group);
+				}
 			}
 		}
 
-		self.persist_meta(store, meta_loaded, meta_stored)?;
+		let mut results: Vec<WindowResult<G, S, Output>> = Vec::with_capacity(pending.len());
+		if !pending.is_empty() {
+			let ids: Vec<GroupId> = pending.iter().map(|(_, emit)| emit.group_id).collect();
+			let rows = store.get_or_create_row_numbers_for_groups(&ids)?;
+			reifydb_assertions! {
+				let requested = ids.len();
+				let returned = rows.len();
+				assert!(
+					returned == requested,
+					"the identity batch must return one row per publishing window; a short batch makes \
+					 the zip below drop the tail, so those windows publish nothing while their carry \
+					 meta already advanced (requested={requested}, returned={returned})"
+				);
+			}
+			for ((group, emit), (row_number, is_new)) in pending.into_iter().zip(rows) {
+				let kind = if emit.withdraw {
+					removed_groups.push(emit.group_id);
+					EmitKind::Remove
+				} else if is_new {
+					EmitKind::Insert
+				} else {
+					EmitKind::Update
+				};
+				results.push(WindowResult {
+					row_number,
+					group,
+					span: emit.span,
+					value: emit.value,
+					prior: None,
+					kind,
+				});
+			}
+		}
+
+		windows.commit(store)?;
+		if !removed_groups.is_empty() {
+			store.remove_row_numbers_for_groups(&removed_groups)?;
+		}
+		for (slot, group) in groups.iter().enumerate() {
+			metas.set(slot, meta_loaded.get(group).expect("every bucket group has meta"))?;
+		}
+		metas.commit(store)?;
 		Ok(results)
 	}
 
-	fn load_meta(
-		&mut self,
-		store: &mut dyn StateStore,
+	fn session_keys<K>(
+		&self,
 		buckets: &TumblingBuckets<G, S, Accumulator::Contribution>,
-	) -> Result<MetaRead<G, S, Carry, Output>> {
-		let mut meta_loaded: MetaLoaded<G, S, Carry, Output> = HashMap::new();
-		let mut meta_stored: MetaStored<G> = HashMap::new();
-		let mut by_key: HashMap<GroupStateKey, G> = HashMap::new();
-		for (group, _) in buckets.keys() {
-			if meta_loaded.contains_key(group) {
-				continue;
-			}
-			meta_loaded.insert(group.clone(), CarryMeta::default());
-			by_key.insert((&meta_key_for(group_hash(group)?)).into_group_state_key(), group.clone());
-		}
-		let keys: Vec<GroupStateKey> = by_key.keys().cloned().collect();
-		for (key, bytes) in keys.iter().zip(store.state_get_many(&keys)?) {
-			let Some(bytes) = bytes else {
+		slot_resolved: &SlotResolved,
+		meta_loaded: &MetaLoaded<G, S, Carry, Output>,
+		row_key: &K,
+	) -> (Vec<WindowStateKey>, HashMap<(G, S), usize>)
+	where
+		K: Fn(&G, S) -> EncodedKey,
+	{
+		let mut keys: Vec<WindowStateKey> = Vec::new();
+		let mut slot_of: HashMap<(G, S), usize> = HashMap::new();
+		let mut bucket_starts: BTreeMap<G, BTreeSet<S>> = BTreeMap::new();
+		for ((group, span), slot_pre) in buckets.keys().zip(slot_resolved) {
+			let Some((group_id, slot_key)) = slot_pre else {
 				continue;
 			};
-			if let Some(group) = by_key.get(key) {
-				meta_loaded.insert(group.clone(), decode::<CarryMeta<S, Carry, Output>>(&bytes)?);
-				meta_stored.insert(group.clone(), bytes);
+			slot_of.entry((group.clone(), span.start)).or_insert_with(|| {
+				keys.push(WindowStateKey::new(self.family, *group_id, slot_key.clone()));
+				keys.len() - 1
+			});
+			bucket_starts.entry(group.clone()).or_default().insert(span.start);
+		}
+		for (group, starts) in bucket_starts {
+			let meta = meta_loaded.get(&group);
+			let earliest = *starts.first().expect("a group in the map holds a bucket");
+			let newest = *starts.last().expect("a group in the map holds a bucket");
+			let mut windows: BTreeSet<S> = starts;
+			if let Some(meta) = meta {
+				windows.extend(meta.windows.range(earliest..).map(|(start, _)| *start));
+			}
+			if let Some(retention) = self.retention {
+				let hw = meta.and_then(|meta| meta.high_water).map_or(newest, |hw| hw.max(newest));
+				let mut known: BTreeSet<S> = windows.clone();
+				if let Some(meta) = meta {
+					known.extend(meta.windows.keys().copied());
+				}
+				windows.extend(known.into_iter().take_while(|first| hw.span_since(*first) > retention));
+			}
+			for start in windows {
+				slot_of.entry((group.clone(), start)).or_insert_with(|| {
+					let slot_key = row_key(&group, start);
+					keys.push(WindowStateKey::new(self.family, GroupId::of(&slot_key), slot_key));
+					keys.len() - 1
+				});
 			}
 		}
-		Ok((meta_loaded, meta_stored))
+		(keys, slot_of)
 	}
 
 	fn resolve_survivor_rows<K>(
@@ -444,22 +495,6 @@ where
 				}
 			})
 			.collect())
-	}
-
-	fn persist_meta(
-		&mut self,
-		store: &mut dyn StateStore,
-		meta_loaded: MetaLoaded<G, S, Carry, Output>,
-		meta_stored: MetaStored<G>,
-	) -> Result<()> {
-		for (group, meta) in meta_loaded {
-			let encoded = meta.encode_state()?;
-			if meta_stored.get(&group) == Some(&encoded) {
-				continue;
-			}
-			store.state_set(&(&meta_key_for(group_hash(&group)?)).into_group_state_key(), encoded)?;
-		}
-		Ok(())
 	}
 }
 

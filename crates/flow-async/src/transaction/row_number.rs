@@ -216,6 +216,14 @@ pub trait RowNumberExtension: FlowTransaction {
 		self.state_remove(operator, &group_mapping_key(group))
 	}
 
+	fn remove_row_numbers_for_groups(&mut self, operator: OperatorId, groups: &[GroupId]) -> Result<()> {
+		if groups.is_empty() {
+			return Ok(());
+		}
+		let keys: Vec<GroupStateKey> = groups.iter().copied().map(group_mapping_key).collect();
+		self.state_remove_many(operator, &keys)
+	}
+
 	fn remove_join_row_numbers(&mut self, operator: OperatorId, keys: &[JoinRowMappingKey]) -> Result<()> {
 		if keys.is_empty() {
 			return Ok(());

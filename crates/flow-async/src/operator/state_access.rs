@@ -135,6 +135,17 @@ impl<V: OperatorState> TypedBatch<V> {
 		Ok(())
 	}
 
+	pub fn value(&self, slot: usize) -> Result<Option<V>> {
+		match self.batch.value(slot) {
+			Some(row) => Ok(Some(decode::<V>(row)?)),
+			None => Ok(None),
+		}
+	}
+
+	pub fn remove(&mut self, slot: usize) {
+		self.batch.remove(slot);
+	}
+
 	pub fn commit(self, store: &mut dyn StateStore) -> Result<()> {
 		store.state_write_batch(self.batch)
 	}

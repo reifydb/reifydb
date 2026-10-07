@@ -384,6 +384,10 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.remove_row_number_for_group(self.operator, group)
 	}
 
+	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
+		self.txn.remove_row_numbers_for_groups(self.operator, groups)
+	}
+
 	fn written_at(&self) -> DateTime {
 		self.now
 	}
