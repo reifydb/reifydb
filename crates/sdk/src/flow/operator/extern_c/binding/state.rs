@@ -6,7 +6,7 @@ use std::{ptr, ptr::null_mut, slice::from_raw_parts};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::PendingWrite,
-	key::operator::state::{GroupId, KeyspaceId},
+	key::operator::state::{GroupId, KeyspaceId, KeyspaceMask},
 	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
@@ -340,6 +340,39 @@ pub(crate) fn range(
 		}
 
 		collect_iterator_results(ctx, iterator)
+	}
+}
+
+pub(crate) fn sweep_many(
+	ctx: &ExternCContext,
+	groups: &[GroupId],
+	limit: usize,
+	keyspaces: KeyspaceMask,
+) -> Result<(Vec<(EncodedKey, EncodedBytes)>, bool)> {
+	let wire: Vec<ExternCGroupId> = groups.iter().map(|group| wire_group(*group)).collect();
+	let mut iterator: *mut ExternCStateIterator = null_mut();
+	let mut complete = 0u8;
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; the group slice and the complete slot outlive the callback. The handle the host
+	// opens is passed once to collect_iterator_results, which owns and frees it.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.sweep_many)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			wire.as_ptr(),
+			wire.len(),
+			limit,
+			keyspaces.bits(),
+			&mut complete,
+			&mut iterator,
+		);
+
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host_state_sweep_many failed with code {}", result)));
+		}
+
+		Ok((collect_iterator_results(ctx, iterator)?, complete != 0))
 	}
 }
 

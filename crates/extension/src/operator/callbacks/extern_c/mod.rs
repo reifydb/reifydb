@@ -27,6 +27,7 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			set: state::host_state_set,
 			remove: state::host_state_remove,
 			range: state::host_state_range,
+			sweep_many: state::host_state_sweep_many,
 			iterator_next: state::host_state_iterator_next,
 			iterator_free: state::host_state_iterator_free,
 			get_many: state::host_state_get_many,

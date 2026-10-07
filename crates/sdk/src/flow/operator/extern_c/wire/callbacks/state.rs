@@ -47,6 +47,17 @@ pub struct StateCallbacks {
 		iterator_out: *mut *mut ExternCStateIterator,
 	) -> i32,
 
+	pub sweep_many: extern "C" fn(
+		operator_id: u64,
+		ctx: *mut ExternCContextRaw,
+		groups: *const ExternCGroupId,
+		groups_len: usize,
+		limit: usize,
+		keyspaces: u64,
+		complete_out: *mut u8,
+		iterator_out: *mut *mut ExternCStateIterator,
+	) -> i32,
+
 	pub iterator_next: extern "C" fn(
 		iterator: *mut ExternCStateIterator,
 		out: *mut ExternCStateEntry,

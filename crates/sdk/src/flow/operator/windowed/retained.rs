@@ -21,14 +21,13 @@ use reifydb_flow_async::{
 			reaper::{drain, drain_groups, enqueue},
 			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 		},
-		state_access::{get_classified, put},
+		state_access::put,
 	},
 	window::{
 		accumulator::invertible::retained_map::RetainedAccumulator,
 		engine::{
 			AccumulatorEvent, EmitKind, PublishKey,
-			publish::PublishState,
-			tumbling::TumblingBuckets,
+			tumbling::{ExpiredWindow, TumblingBuckets},
 			tumbling_retained::{RetainedEntry, RetainedTumblingEngine},
 		},
 		settings::WindowSettings,
@@ -66,6 +65,12 @@ use crate::{
 };
 
 const SEAL_REAP_BATCH: usize = 256;
+
+enum Decision {
+	Remove,
+	Throttled,
+	Due,
+}
 
 type SealSpan<A> = <<A as WindowedOperator>::Coord as SealDomain>::SealSpan;
 type Buckets<A, K, V> = TumblingBuckets<<A as WindowedOperator>::GroupKey, <A as WindowedOperator>::Coord, (K, V)>;
@@ -180,19 +185,10 @@ where
 			return Ok(());
 		}
 		let store_queue_empty = *reap_queue_empty;
+		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
+		Self::publish_dirty_closes(aggregator, engine, settings, store, &closing, frontier, emitted)?;
 		let mut expired = Vec::new();
-		for window in engine.expire(store, horizon.to_order().saturating_sub(1))? {
-			Self::publish_dirty_close(
-				aggregator,
-				engine,
-				settings,
-				store,
-				&window.group,
-				window.group_id,
-				window.window_start,
-				frontier,
-				emitted,
-			)?;
+		for window in closing {
 			enqueue(store, window.group_id)?;
 			expired.push(window.group_id);
 			*reap_queue_empty = false;
@@ -221,53 +217,74 @@ where
 		Ok(())
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	fn publish_dirty_close<C: GuestContext>(
+	fn publish_dirty_closes<C: GuestContext>(
 		aggregator: &A,
 		engine: &Engine<A, K, V>,
 		settings: &WindowSettings<A::Coord>,
 		store: &mut GuestAsHost<'_, C>,
-		group: &A::GroupKey,
-		group_id: GroupId,
-		window_start: A::Coord,
+		windows: &[ExpiredWindow<A::GroupKey, A::Coord>],
 		frontier: A::Coord,
 		emitted: &mut Emitted<A>,
 	) -> Result<()> {
-		let key = PublishKey::new(group_id, Self::row_key(group, window_start));
-		let Some(mut state) = get_classified::<_, PublishState<A::Output>>(store, &key)? else {
-			return Ok(());
-		};
-		if !state.dirty {
+		if windows.is_empty() {
 			return Ok(());
 		}
-		let entries = engine.load_entries(store, group_id)?;
-		reifydb_assertions! {
-			assert!(
-				!entries.is_empty(),
-				"a dirty window closed with no entries; emptying a window must store a clean publish state, \
-				 otherwise the close retracts a row downstream already dropped (group={group_id:?})"
-			);
+		let keys: Vec<PublishKey> = windows
+			.iter()
+			.map(|window| {
+				PublishKey::new(window.group_id, Self::row_key(&window.group, window.window_start))
+			})
+			.collect();
+		let mut states = load_publish_states::<_, A::Output>(store, &keys)?;
+		let mut dirty = Vec::new();
+		for (window, key) in windows.iter().zip(keys) {
+			match states.remove(&window.group_id) {
+				Some(state) if state.dirty => dirty.push((window, key, state)),
+				_ => {}
+			}
 		}
-		let out = match entries.is_empty() {
-			true => None,
-			false => aggregator.build_output(
-				group,
-				WindowSpan::for_coord(window_start, settings.fixed_size()),
-				&entries,
-			),
-		};
-		let rows = store.get_or_create_row_numbers_for_groups(&[group_id])?;
-		#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
-		let (row_number, is_new) = rows[0];
-		reifydb_assertions! {
-			assert!(
-				!is_new,
-				"a dirty window already published a row, so it must still own its mapping; minting one \
-				 here publishes the closing row under a number no sink has seen (group={group_id:?})"
-			);
+		if dirty.is_empty() {
+			return Ok(());
 		}
-		publish_row::<A>(row_number, out, &mut state, Some(frontier), emitted)?;
-		put(store, &key, state)?;
+		let slots: Vec<(GroupId, EncodedKey)> =
+			dirty.iter().map(|(window, key, _)| (window.group_id, key.slot.clone())).collect();
+		let counts = engine.window_counts(store, &slots)?;
+		let reads: Vec<(GroupId, u64)> = slots.iter().map(|(group, _)| *group).zip(counts).collect();
+		let mut read = engine.load_entries(store, &reads)?;
+		for (window, key, mut state) in dirty {
+			let group_id = window.group_id;
+			let entries =
+				read.remove(&group_id).expect("the entry read answers every window it was asked for");
+			reifydb_assertions! {
+				assert!(
+					!entries.is_empty(),
+					"a dirty window closed with no entries; emptying a window must store a clean publish \
+					 state, otherwise the close retracts a row downstream already dropped \
+					 (group={group_id:?})"
+				);
+			}
+			let out = match entries.is_empty() {
+				true => None,
+				false => aggregator.build_output(
+					&window.group,
+					WindowSpan::for_coord(window.window_start, settings.fixed_size()),
+					&entries,
+				),
+			};
+			let rows = store.get_or_create_row_numbers_for_groups(&[group_id])?;
+			#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
+			let (row_number, is_new) = rows[0];
+			reifydb_assertions! {
+				assert!(
+					!is_new,
+					"a dirty window already published a row, so it must still own its mapping; minting \
+					 one here publishes the closing row under a number no sink has seen \
+					 (group={group_id:?})"
+				);
+			}
+			publish_row::<A>(row_number, out, &mut state, Some(frontier), emitted)?;
+			put(store, &key, state)?;
+		}
 		Ok(())
 	}
 
@@ -360,27 +377,43 @@ where
 			})
 			.collect();
 		let mut states = load_publish_states(&mut store, &keys)?;
+		let mut decided = Vec::with_capacity(results.len());
+		let mut due_windows: Vec<(GroupId, u64)> = Vec::new();
 		for (r, key) in results.into_iter().zip(keys) {
-			let mut state = states.remove(&key.group).unwrap_or_default();
-			if r.kind == EmitKind::Remove {
-				publish_row::<A>(r.row_number, None, &mut state, frontier, &mut emitted)?;
-				put(&mut store, &key, state)?;
-				continue;
-			}
-			let due = match (throttle, state.last_publish, frontier) {
-				(Some(throttle), Some(last), Some(frontier)) => {
-					<A::Coord as Coord>::from_order(last).add_span(throttle) <= frontier
+			let state = states.remove(&key.group).unwrap_or_default();
+			let decision = if r.kind == EmitKind::Remove {
+				Decision::Remove
+			} else {
+				let due = match (throttle, state.last_publish, frontier) {
+					(Some(throttle), Some(last), Some(frontier)) => {
+						<A::Coord as Coord>::from_order(last).add_span(throttle) <= frontier
+					}
+					_ => true,
+				};
+				if state.row.is_some() && !due {
+					Decision::Throttled
+				} else {
+					due_windows.push((r.group_id, r.count));
+					Decision::Due
 				}
-				_ => true,
 			};
-			if state.row.is_some() && !due {
-				state.dirty = true;
-				put(&mut store, &key, state)?;
-				continue;
+			decided.push((r, key, state, decision));
+		}
+		let mut read = engine.load_entries(&mut store, &due_windows)?;
+		for (r, key, mut state, decision) in decided {
+			match decision {
+				Decision::Remove => {
+					publish_row::<A>(r.row_number, None, &mut state, frontier, &mut emitted)?
+				}
+				Decision::Throttled => state.dirty = true,
+				Decision::Due => {
+					let entries = read
+						.remove(&r.group_id)
+						.expect("the entry read answers every due window");
+					let out = aggregator.build_output(&r.group, r.span, &entries);
+					publish_row::<A>(r.row_number, out, &mut state, frontier, &mut emitted)?;
+				}
 			}
-			let entries = engine.load_entries(&mut store, r.group_id)?;
-			let out = aggregator.build_output(&r.group, r.span, &entries);
-			publish_row::<A>(r.row_number, out, &mut state, frontier, &mut emitted)?;
 			put(&mut store, &key, state)?;
 		}
 		Ok(emitted)

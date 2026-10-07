@@ -10,7 +10,9 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	delta::RemoveVisibility,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, guest_may_address, keyspace_inner_range_in},
+	key::operator::state::{
+		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, guest_may_address, keyspace_inner_range_in,
+	},
 	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_sdk::{
@@ -485,6 +487,68 @@ pub(super) extern "C" fn host_state_range(
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(super) extern "C" fn host_state_sweep_many(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	groups: *const ExternCGroupId,
+	groups_len: usize,
+	limit: usize,
+	keyspaces: u64,
+	complete_out: *mut u8,
+	iterator_out: *mut *mut ExternCStateIterator,
+) -> i32 {
+	if ctx.is_null() || complete_out.is_null() || iterator_out.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if groups_len > 0 && groups.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx`, `complete_out`, `iterator_out` and (for a non-zero `groups_len`) `groups` are null-checked
+	// above; the guest must pass back the ExternCContextRaw the host handed it for this call, `groups` valid
+	// and aligned for `groups_len` ExternCGroupId reads, and `complete_out` and `iterator_out` valid for one
+	// write each; the handle is freed via state.iterator_free.
+	unsafe {
+		let ctx_handle = &mut *ctx;
+		let class = guest_class(ctx_handle);
+		let mask = KeyspaceMask::from_bits(keyspaces);
+		let held = mask.held();
+		if KeyspaceMask::of(held.iter().copied()) != mask
+			|| held.iter().any(|keyspace| !guest_may_address(class, *keyspace))
+		{
+			return EXTERN_C_ERROR_INTERNAL;
+		}
+		let host = get_host_mut(ctx_handle);
+		let group_ids: Vec<GroupId> = (0..groups_len).map(|index| host_group(*groups.add(index))).collect();
+
+		match host.group_sweep_many(&group_ids, limit, mask) {
+			Ok(sweep) => {
+				let handle = state_iterator::create_iterator(iterator_entries(sweep.rows));
+
+				let iter_ptr = host_alloc(mem::size_of::<StateIteratorInternal>())
+					as *mut StateIteratorInternal;
+				if iter_ptr.is_null() {
+					state_iterator::free_iterator(handle);
+					return EXTERN_C_ERROR_ALLOC;
+				}
+
+				ptr::write(
+					iter_ptr,
+					StateIteratorInternal {
+						handle,
+					},
+				);
+
+				*complete_out = sweep.complete as u8;
+				*iterator_out = iter_ptr as *mut ExternCStateIterator;
+				EXTERN_C_OK
+			}
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
+		}
+	}
+}
+
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_iterator_next(
 	iterator: *mut ExternCStateIterator,
@@ -860,7 +924,7 @@ mod join_row_expiry_guard_tests {
 			operator::{
 				keyspace::{join::JoinRowMappingKey, suffix_width_of},
 				state::{
-					GroupId, KeyspaceId, OperatorStateKey, keyspace_inner_range,
+					GroupId, KeyspaceId, KeyspaceMask, OperatorStateKey, keyspace_inner_range,
 					keyspace_inner_range_split,
 				},
 			},
@@ -1493,6 +1557,33 @@ mod join_row_expiry_guard_tests {
 			host_state_get_many(1, ctx, keys.as_ptr(), keys.len(), &mut iterator)
 		});
 		assert_eq!(status, EXTERN_C_ERROR_INTERNAL);
+	}
+
+	#[test]
+	fn a_sweep_naming_a_foreign_keyspace_is_refused() {
+		// The guest is untrusted; a mask the host does not wall lets a windowed guest read another class's
+		// rows.
+		let groups = [ExternCGroupId {
+			bytes: *GroupId::hashed(Hash128(5)).as_bytes(),
+		}];
+		let mut mask = KeyspaceMask::of([KeyspaceId::GUEST_RETAINED_ENTRY]);
+		mask.insert(KeyspaceId::JOIN_LEFT);
+		let mut complete = 0u8;
+		let mut iterator: *mut ExternCStateIterator = ptr::null_mut();
+		let (status, _) = with_class_context(OperatorClass::Windowed, |ctx| {
+			host_state_sweep_many(
+				1,
+				ctx,
+				groups.as_ptr(),
+				groups.len(),
+				16,
+				mask.bits(),
+				&mut complete,
+				&mut iterator,
+			)
+		});
+		assert_eq!(status, EXTERN_C_ERROR_INTERNAL);
+		assert!(iterator.is_null(), "a refused sweep must hand the guest no rows");
 	}
 
 	fn batch_slot(key: &[u8], value: &[u8]) -> ExternCBatchSlot {

@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
 	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
@@ -237,6 +237,15 @@ impl GuestState for State<'_> {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		State::range_bytes_visit(self, group, keyspace, start, end, limit, visit)
+	}
+
+	fn sweep_many_bytes(
+		&self,
+		groups: &[GroupId],
+		limit: usize,
+		keyspaces: KeyspaceMask,
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+		State::sweep_many_bytes(self, groups, limit, keyspaces)
 	}
 }
 

@@ -421,6 +421,10 @@ impl KeyspaceMask {
 		Self(u64::MAX)
 	}
 
+	pub const fn from_bits(bits: u64) -> Self {
+		Self(bits)
+	}
+
 	pub fn windowed() -> Self {
 		Self::of(WINDOWED_KEYSPACES)
 	}

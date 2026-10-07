@@ -9,7 +9,7 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
 	state::batch::{StateBatch, check_batch_keys},
 };
 use reifydb_value::error::Error as ValueError;
@@ -107,6 +107,21 @@ impl<'a> State<'a> {
 			visit(framed(k)?, EncodedPodRow::from(row))?;
 		}
 		Ok(())
+	}
+
+	pub fn sweep_many_bytes(
+		&self,
+		groups: &[GroupId],
+		limit: usize,
+		keyspaces: KeyspaceMask,
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+		let (rows, complete) =
+			extern_c::sweep_many(self.ctx, groups, limit, KeyspaceMask::windowed().intersect(keyspaces))?;
+		let mut framed_rows = Vec::with_capacity(rows.len());
+		for (k, row) in rows {
+			framed_rows.push((framed(k)?, EncodedPodRow::from(row)));
+		}
+		Ok((framed_rows, complete))
 	}
 }
 
