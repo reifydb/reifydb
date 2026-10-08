@@ -655,8 +655,12 @@ mod tests {
 	use reifydb_core::{
 		common::{WindowKind, WindowSize},
 		interface::catalog::flow::OperatorId,
-		key::operator::state::{GroupId, GroupStateKey},
-		state::timer::{StateStore, TimerKind, TimerStore},
+		key::operator::state::{GroupId, GroupStateKey, KeyspaceMask},
+		state::{
+			batch::StateBatch,
+			per_key,
+			timer::{GroupSweep, StateStore, TimerKind, TimerStore},
+		},
 	};
 	use reifydb_flow::context::FlowContext;
 	use reifydb_routine_abi::registry::Routines;
@@ -860,6 +864,49 @@ mod tests {
 			self.rows.remove(&(group, Vec::new()));
 			Ok(())
 		}
+
+		fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> ValueResult<()> {
+			per_key::remove_many(self, keys)
+		}
+
+		fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> ValueResult<StateBatch> {
+			per_key::read_batch(self, keys)
+		}
+
+		fn state_write_batch(&mut self, batch: StateBatch) -> ValueResult<()> {
+			per_key::write_batch(self, batch)
+		}
+
+		fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> ValueResult<()> {
+			per_key::set_many(self, rows)
+		}
+
+		fn group_sweep(
+			&mut self,
+			group: GroupId,
+			keyspaces: KeyspaceMask,
+			limit: Option<usize>,
+		) -> ValueResult<Vec<(GroupStateKey, EncodedPodRow)>> {
+			per_key::group_sweep(self, group, keyspaces, limit)
+		}
+
+		fn group_sweep_many(
+			&mut self,
+			groups: &[GroupId],
+			limit: usize,
+			keyspaces: KeyspaceMask,
+		) -> ValueResult<GroupSweep> {
+			per_key::group_sweep_many(self, groups, limit, keyspaces)
+		}
+
+		fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> ValueResult<()> {
+			per_key::remove_row_numbers(self, group, keys)
+		}
+
+		fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> ValueResult<()> {
+			per_key::remove_row_numbers_for_groups(self, groups)
+		}
+
 		fn written_at(&self) -> DateTime {
 			DateTime::EPOCH
 		}

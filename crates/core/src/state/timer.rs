@@ -14,10 +14,9 @@ use reifydb_value::{
 };
 
 use crate::{
-	actors::pending::PendingWrite,
 	key::operator::{
 		keyspace::{RootSibling, root_sibling_of},
-		state::{GroupId, GroupStateKey, KeyspaceMask, keyspace_inner_range, keyspace_inner_range_split},
+		state::{GroupId, GroupStateKey, KeyspaceMask, keyspace_inner_range_split},
 	},
 	state::batch::StateBatch,
 };
@@ -54,17 +53,6 @@ pub struct GroupSweep {
 	pub complete: bool,
 }
 
-impl GroupSweep {
-	pub fn of(mut rows: Vec<(GroupStateKey, EncodedPodRow)>, limit: usize) -> Self {
-		let complete = rows.len() <= limit;
-		rows.truncate(limit);
-		Self {
-			rows,
-			complete,
-		}
-	}
-}
-
 pub fn sweep_order(groups: &[GroupId]) -> Vec<GroupId> {
 	let mut ordered = groups.to_vec();
 	ordered.sort_by_key(|group| Reverse(*group.as_bytes()));
@@ -83,39 +71,13 @@ pub trait StateStore {
 
 	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
 
-	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-		for key in keys {
-			self.state_remove(key)?;
-		}
-		Ok(())
-	}
+	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()>;
 
-	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
-		let batch = StateBatch::read(keys, |keys| self.state_get_many(keys))?;
-		for slot in 0..batch.len() {
-			self.state_classify(batch.key(slot), batch.value(slot).map(EncodedPodRow::byte_size));
-		}
-		Ok(batch)
-	}
+	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch>;
 
-	fn state_write_batch(&mut self, batch: StateBatch) -> Result<()> {
-		for (key, write) in batch.into_writes() {
-			match write {
-				PendingWrite::Set(bytes) => self.state_set(&key, EncodedPodRow::from(bytes))?,
-				PendingWrite::Remove {
-					..
-				} => self.state_remove(&key)?,
-			}
-		}
-		Ok(())
-	}
+	fn state_write_batch(&mut self, batch: StateBatch) -> Result<()>;
 
-	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
-		for (key, row) in rows {
-			self.state_set(&key, row)?;
-		}
-		Ok(())
-	}
+	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()>;
 
 	fn state_page(
 		&mut self,
@@ -140,35 +102,10 @@ pub trait StateStore {
 		group: GroupId,
 		keyspaces: KeyspaceMask,
 		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		let mut rows = Vec::new();
-		for keyspace in keyspaces.held().into_iter().rev() {
-			let remaining = match limit {
-				Some(limit) if rows.len() >= limit => break,
-				Some(limit) => Some(limit - rows.len()),
-				None => None,
-			};
-			rows.extend(self.state_page_inner(keyspace_inner_range(group, keyspace), remaining)?);
-		}
-		Ok(rows)
-	}
+	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
-	fn group_sweep_many(
-		&mut self,
-		groups: &[GroupId],
-		limit: usize,
-		keyspaces: KeyspaceMask,
-	) -> Result<GroupSweep> {
-		let mut rows = Vec::new();
-		for group in sweep_order(groups) {
-			if rows.len() > limit {
-				break;
-			}
-			let remaining = limit.saturating_add(1).saturating_sub(rows.len());
-			rows.extend(self.group_sweep(group, keyspaces, Some(remaining))?);
-		}
-		Ok(GroupSweep::of(rows, limit))
-	}
+	fn group_sweep_many(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask)
+	-> Result<GroupSweep>;
 
 	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
 		let mut siblings = Vec::new();
@@ -192,19 +129,9 @@ pub trait StateStore {
 
 	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()>;
 
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		for key in keys {
-			self.remove_row_number(group, key)?;
-		}
-		Ok(())
-	}
+	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()>;
 
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
-		for group in groups {
-			self.remove_row_number_for_group(*group)?;
-		}
-		Ok(())
-	}
+	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()>;
 
 	fn written_at(&self) -> DateTime;
 }

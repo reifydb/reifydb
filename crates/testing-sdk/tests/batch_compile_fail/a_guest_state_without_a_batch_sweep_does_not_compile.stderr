@@ -1,0 +1,7 @@
+error[E0046]: not all trait items implemented, missing: `sweep_many_bytes`
+  --> tests/batch_compile_fail/a_guest_state_without_a_batch_sweep_does_not_compile.rs:17:1
+   |
+17 | impl GuestState for PerGroupState {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `sweep_many_bytes` in implementation
+   |
+   = help: implement the missing item: `fn sweep_many_bytes(&self, _: &[reifydb_core::key::operator::state::GroupId], _: usize, _: KeyspaceMask) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool), SdkError> { todo!() }`

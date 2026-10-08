@@ -273,25 +273,6 @@ impl GuestState for InProcessState<'_> {
 			.map_err(to_sdk_err)
 	}
 
-	fn sweep_bytes_visit(
-		&self,
-		group: GroupId,
-		keyspaces: KeyspaceMask,
-		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let rows = unsafe {
-			(*self.host).group_sweep(group, KeyspaceMask::windowed().intersect(keyspaces), limit)
-		}
-		.map_err(to_sdk_err)?;
-		for (key, row) in rows {
-			visit(key, row)?;
-		}
-		Ok(())
-	}
-
 	fn sweep_many_bytes(
 		&self,
 		groups: &[GroupId],

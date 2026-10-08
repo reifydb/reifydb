@@ -140,17 +140,13 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
-	) -> Result<Vec<Option<DictionaryEntryId>>> {
-		values.iter().map(|value| self.dictionary_find(dictionary, value)).collect()
-	}
+	) -> Result<Vec<Option<DictionaryEntryId>>>;
 
 	fn dictionary_get_many(
 		&mut self,
 		dictionary: DictionaryId,
 		ids: &[DictionaryEntryId],
-	) -> Result<Vec<Option<Value>>> {
-		ids.iter().map(|&id| self.dictionary_get(dictionary, id)).collect()
-	}
+	) -> Result<Vec<Option<Value>>>;
 
 	fn lookup_read(
 		&mut self,
@@ -280,6 +276,10 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_remove_many(self.operator, keys)
 	}
 
+	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		self.txn.state_batch(self.operator, keys)
+	}
+
 	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
 		let groups: BTreeSet<GroupId> = rows.iter().filter_map(|(key, _)| managed_group(key)).collect();
 		self.txn.state_set_many(self.operator, rows)?;
@@ -378,6 +378,10 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		self.txn.remove_row_number(self.operator, group, key)
+	}
+
+	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		self.txn.remove_row_numbers(self.operator, group, keys)
 	}
 
 	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {

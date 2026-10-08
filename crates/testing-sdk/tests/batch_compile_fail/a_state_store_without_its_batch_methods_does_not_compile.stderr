@@ -1,0 +1,14 @@
+error[E0046]: not all trait items implemented, missing: `state_remove_many`, `state_batch`, `state_write_batch`, `state_set_many`, `group_sweep`, `group_sweep_many`, `remove_row_numbers`, `remove_row_numbers_for_groups`
+  --> tests/batch_compile_fail/a_state_store_without_its_batch_methods_does_not_compile.rs:20:1
+   |
+20 | impl StateStore for SingleKeyStore {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `state_remove_many`, `state_batch`, `state_write_batch`, `state_set_many`, `group_sweep`, `group_sweep_many`, `remove_row_numbers`, `remove_row_numbers_for_groups` in implementation
+   |
+   = help: implement the missing item: `fn state_remove_many(&mut self, _: &[GroupStateKey]) -> Result<(), reifydb_value::error::Error> { todo!() }`
+   = help: implement the missing item: `fn state_batch(&mut self, _: Vec<GroupStateKey>) -> Result<StateBatch, reifydb_value::error::Error> { todo!() }`
+   = help: implement the missing item: `fn state_write_batch(&mut self, _: StateBatch) -> Result<(), reifydb_value::error::Error> { todo!() }`
+   = help: implement the missing item: `fn state_set_many(&mut self, _: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<(), reifydb_value::error::Error> { todo!() }`
+   = help: implement the missing item: `fn group_sweep(&mut self, _: reifydb_core::key::operator::state::GroupId, _: KeyspaceMask, _: std::option::Option<usize>) -> Result<Vec<(GroupStateKey, EncodedPodRow)>, reifydb_value::error::Error> { todo!() }`
+   = help: implement the missing item: `fn group_sweep_many(&mut self, _: &[reifydb_core::key::operator::state::GroupId], _: usize, _: KeyspaceMask) -> Result<GroupSweep, reifydb_value::error::Error> { todo!() }`
+   = help: implement the missing item: `fn remove_row_numbers(&mut self, _: reifydb_core::key::operator::state::GroupId, _: &[EncodedKey]) -> Result<(), reifydb_value::error::Error> { todo!() }`
+   = help: implement the missing item: `fn remove_row_numbers_for_groups(&mut self, _: &[reifydb_core::key::operator::state::GroupId]) -> Result<(), reifydb_value::error::Error> { todo!() }`

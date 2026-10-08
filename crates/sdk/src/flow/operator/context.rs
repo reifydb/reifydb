@@ -128,61 +128,12 @@ pub trait GuestState {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 
-	fn sweep_bytes_visit(
-		&self,
-		group: GroupId,
-		keyspaces: KeyspaceMask,
-		limit: Option<usize>,
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
-		let mut seen = 0usize;
-		let addressable = KeyspaceMask::windowed().intersect(keyspaces);
-		for id in (u8::MIN..=u8::MAX).rev() {
-			let keyspace = KeyspaceId(id);
-			if !addressable.holds(keyspace) {
-				continue;
-			}
-			let remaining = match limit {
-				Some(limit) if seen >= limit => break,
-				Some(limit) => Some(limit - seen),
-				None => None,
-			};
-			self.range_bytes_visit(
-				group,
-				keyspace,
-				GuestBound::Unbounded,
-				GuestBound::Unbounded,
-				remaining,
-				&mut |key, payload| {
-					seen += 1;
-					visit(key, payload)
-				},
-			)?;
-		}
-		Ok(())
-	}
-
 	fn sweep_many_bytes(
 		&self,
 		groups: &[GroupId],
 		limit: usize,
 		keyspaces: KeyspaceMask,
-	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
-		let mut rows = Vec::new();
-		for group in groups {
-			if rows.len() > limit {
-				break;
-			}
-			let remaining = limit.saturating_add(1).saturating_sub(rows.len());
-			self.sweep_bytes_visit(*group, keyspaces, Some(remaining), &mut |key, payload| {
-				rows.push((key, payload));
-				Ok(())
-			})?;
-		}
-		let complete = rows.len() <= limit;
-		rows.truncate(limit);
-		Ok((rows, complete))
-	}
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)>;
 
 	fn last_bytes(
 		&self,

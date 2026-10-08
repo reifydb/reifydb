@@ -141,12 +141,9 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		keyspaces: KeyspaceMask,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		let mut swept = Vec::new();
-		self.0.window_state().sweep_bytes_visit(group, keyspaces, limit, &mut |key, row| {
-			swept.push((key, row));
-			Ok(())
-		})?;
-		Ok(swept)
+		let (rows, _) =
+			self.0.window_state().sweep_many_bytes(&[group], limit.unwrap_or(usize::MAX), keyspaces)?;
+		Ok(rows)
 	}
 
 	fn group_sweep_many(
