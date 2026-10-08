@@ -44,6 +44,7 @@ column = [
 	"dep:reifydb-transaction",
 	"dep:thiserror",
 ]
+pco = ["column", "reifydb-store-column/pco"]
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }

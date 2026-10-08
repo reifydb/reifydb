@@ -3,12 +3,16 @@
 
 use vortex_alp::initialize as alp_initialize;
 use vortex_array::array_session;
+#[cfg(feature = "pco")]
+use vortex_array::session::ArraySessionExt;
 use vortex_arrow::initialize as arrow_initialize;
 use vortex_datetime_parts::initialize as datetime_parts_initialize;
 use vortex_decimal_byte_parts::initialize as decimal_byte_parts_initialize;
 use vortex_fastlanes::initialize as fastlanes_initialize;
 use vortex_fsst::initialize as fsst_initialize;
 use vortex_onpair::initialize as onpair_initialize;
+#[cfg(feature = "pco")]
+use vortex_pco::Pco;
 use vortex_runend::initialize as runend_initialize;
 use vortex_sequence::initialize as sequence_initialize;
 use vortex_session::VortexSession;
@@ -28,5 +32,7 @@ pub fn new_session() -> VortexSession {
 	sparse_initialize(&session);
 	datetime_parts_initialize(&session);
 	decimal_byte_parts_initialize(&session);
+	#[cfg(feature = "pco")]
+	session.arrays().register(Pco);
 	session
 }

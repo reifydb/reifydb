@@ -14,7 +14,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 use reifydb_runtime::actor::mailbox::ActorRef;
 use reifydb_runtime::shutdown::Shutdown;
 #[cfg(feature = "column")]
-use reifydb_store_column::store::ColumnStore;
+use reifydb_store_column::{compress::CompressionProfile, store::ColumnStore};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::value::duration::Duration;
 use tracing::debug;
@@ -32,6 +32,9 @@ pub struct StorageConfig {
 	pub series_bucket_width: u64,
 
 	pub series_grace: Duration,
+
+	#[cfg(feature = "column")]
+	pub compression: CompressionProfile,
 }
 
 impl Default for StorageConfig {
@@ -42,6 +45,9 @@ impl Default for StorageConfig {
 
 			series_bucket_width: 3_600 * 1_000_000_000,
 			series_grace: Duration::from_seconds(5).unwrap(),
+
+			#[cfg(feature = "column")]
+			compression: CompressionProfile::Default,
 		}
 	}
 }

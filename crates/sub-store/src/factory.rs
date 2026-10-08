@@ -84,7 +84,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 
 		ioc.register_service::<Arc<ColumnStore>>(Arc::new(block_store.clone()));
 
-		let compressor = || Compressor::new(block_store.session().clone());
+		let compressor = || Compressor::with_profile(block_store.session().clone(), self.config.compression);
 
 		let table_changes = TableChanges::new();
 		event_bus.register::<PostCommitEvent, _>(table_changes.clone());
