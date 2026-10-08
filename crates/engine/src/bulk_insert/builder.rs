@@ -25,7 +25,6 @@ use reifydb_core::{
 		table::Table,
 	},
 	internal_error,
-	partition::partition_of,
 	value::batch::batch,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -63,7 +62,7 @@ use crate::{
 		instruction::dml::{
 			coerce::key_out_of_range,
 			columns::{CastColumns, fill_sequences, intern_dictionary_columns},
-			partition::{compute_partition_col_indices, save_all_partition_metadata},
+			partition::{ringbuffer_batch_partitions, save_all_partition_metadata},
 			primary_key::Violation,
 			ringbuffer_insert::insert_ringbuffer_chunks,
 			series_insert::{assign_series_keys, series_batch_partitions},
@@ -620,23 +619,22 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 	let mut built: Vec<_> = (0..rows).map(|_| shape.allocate_ringbuffer()).collect();
 	cast[0].write(shape, &mut built)?;
 
-	let partition_col_indices = compute_partition_col_indices(ringbuffer);
-	let partition_views =
-		partition_col_indices.iter().map(|&index| cast[0].view(index)).collect::<Result<Vec<_>>>()?;
+	let batch = ringbuffer_batch_partitions(ringbuffer, &cast[0])?;
+	let mut verified = HashMap::new();
+	resolve_partitions(
+		&mut Transaction::Command(txn),
+		ObjectId::ringbuffer(ringbuffer.id),
+		&batch.distinct,
+		&mut verified,
+	)?;
 	let now = writer.clock.now();
 	let event = EventColumn::new(
 		populator_index(&ringbuffer.time, shape).map(|index| cast[0].view(index)).transpose()?,
 	);
 	let mut entries = Vec::with_capacity(rows);
 	for (row, mut builder) in built.into_iter().enumerate() {
-		let partition_key: Vec<Value> = partition_views.iter().map(|view| view.get_value(row)).collect();
-		let partition = if partition_col_indices.is_empty() {
-			None
-		} else {
-			Some(partition_of(&ringbuffer.columns, &ringbuffer.partition_by, &partition_key))
-		};
 		stamp(&mut builder, &ringbuffer.name, &ringbuffer.time, shape, now, event.at(row))?;
-		entries.push((builder.freeze_bytes(), partition_key, partition));
+		entries.push(builder.freeze_bytes());
 	}
 
 	let mut cache = HashMap::new();
@@ -646,6 +644,8 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		ringbuffer,
 		shape,
 		&entries,
+		&batch.rows,
+		&verified,
 		&mut cache,
 		None,
 	)?;

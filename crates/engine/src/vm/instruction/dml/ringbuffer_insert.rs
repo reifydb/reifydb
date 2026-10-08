@@ -23,12 +23,12 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
+			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
 			ringbuffer::{RingBuffer, RingBufferMetadata},
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
-	partition::partition_of,
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -49,14 +49,15 @@ use super::{
 	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
 	context::RingBufferTarget,
 	partition::{
-		compute_partition_col_indices, ensure_partition_metadata, partition_values,
-		save_all_partition_metadata, select_oldest_for_partition, update_metadata_after_insert,
+		ensure_partition_metadata, ringbuffer_batch_partitions, save_all_partition_metadata,
+		select_oldest_for_partition, update_metadata_after_insert,
 	},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_ringbuffer_shape,
 };
 use crate::{
 	Result,
+	partition::resolve_partitions,
 	policy::PolicyEvaluator,
 	transaction::operation::ringbuffer::RingBufferOperations,
 	vm::{
@@ -145,7 +146,7 @@ fn drive_ringbuffer_insert(
 ) -> Result<(u64, Vec<(RowNumber, EncodedBytes)>)> {
 	let namespace = target_data.namespace;
 	let ringbuffer = target_data.ringbuffer;
-	let partition_col_indices = compute_partition_col_indices(ringbuffer);
+	let mut verified = HashMap::new();
 	let mut inserted_count = 0u64;
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let pipeline = ColumnPipeline {
@@ -183,12 +184,13 @@ fn drive_ringbuffer_insert(
 		let mut built: Vec<EncodedRingBufferRowBuilder> =
 			(0..row_count).map(|_| shape.allocate_ringbuffer()).collect();
 		batches[0].write(shape, &mut built)?;
-		let partition_keys = partition_values(&batches[0], &inputs, &partition_col_indices)?;
+		let batch = ringbuffer_batch_partitions(ringbuffer, &batches[0])?;
+		resolve_partitions(txn, ObjectId::ringbuffer(ringbuffer.id), &batch.distinct, &mut verified)?;
 
 		let now = services.runtime_context.clock.now();
 		let event = EventColumn::new(populator.map(|index| batches[0].view(index)).transpose()?);
 		let mut rows = Vec::with_capacity(row_count);
-		for (index, (mut row, partition_key)) in built.into_iter().zip(partition_keys).enumerate() {
+		for (index, mut row) in built.into_iter().enumerate() {
 			row.set_timestamps(now, now);
 			if let Some(time) = event.at(index).map_or_else(
 				|| resolve_time(&ringbuffer.name, &ringbuffer.time, shape, &row, now),
@@ -196,12 +198,7 @@ fn drive_ringbuffer_insert(
 			)? {
 				row.set_time(time);
 			}
-			let partition = if partition_col_indices.is_empty() {
-				None
-			} else {
-				Some(partition_of(&ringbuffer.columns, &ringbuffer.partition_by, &partition_key))
-			};
-			rows.push((row.freeze_bytes(), partition_key, partition));
+			rows.push(row.freeze_bytes());
 		}
 
 		inserted_count += insert_ringbuffer_chunks(
@@ -210,6 +207,8 @@ fn drive_ringbuffer_insert(
 			ringbuffer,
 			shape,
 			&rows,
+			&batch.rows,
+			&verified,
 			partition_metadata_cache,
 			has_returning.then_some(&mut returned_rows),
 		)?;
@@ -223,17 +222,19 @@ pub(crate) fn insert_ringbuffer_chunks(
 	txn: &mut Transaction<'_>,
 	ringbuffer: &RingBuffer,
 	shape: &RowShape,
-	rows: &[(EncodedBytes, Vec<Value>, Option<Partition>)],
+	rows: &[EncodedBytes],
+	partitions: &[Partition],
+	values: &HashMap<Partition, Vec<Value>>,
 	cache: &mut HashMap<Vec<Value>, RingBufferMetadata>,
 	mut returned: Option<&mut Vec<(RowNumber, EncodedBytes)>>,
 ) -> Result<u64> {
 	let mut inserted_count = 0u64;
 	let mut start = 0;
 	while start < rows.len() {
-		let mut held: HashMap<&[Value], u64> = HashMap::new();
+		let mut held: HashMap<Option<Partition>, u64> = HashMap::new();
 		let mut end = start;
 		while end < rows.len() {
-			let count = held.entry(rows[end].1.as_slice()).or_default();
+			let count = held.entry(partitions.get(end).copied()).or_default();
 			if *count >= ringbuffer.capacity && end > start {
 				break;
 			}
@@ -245,10 +246,11 @@ pub(crate) fn insert_ringbuffer_chunks(
 		let mut pending = HashSet::new();
 		let mut victims = Vec::new();
 		let mut victim_partitions = Vec::new();
-		let mut ids = Vec::with_capacity(end - start);
-		let mut partitions = Vec::with_capacity(end - start);
-		let mut encoded = Vec::with_capacity(end - start);
-		for (row, partition_key, partition) in &rows[start..end] {
+		let ids = catalog.next_row_number_batch_for_ringbuffer(txn, ringbuffer.id, (end - start) as u64)?;
+		let chunk_partitions = partitions.get(start..end).unwrap_or_default();
+		for (offset, &row_number) in ids.iter().enumerate() {
+			let partition = chunk_partitions.get(offset).copied();
+			let partition_key = partition.map_or(&[][..], |partition| values[&partition].as_slice());
 			ensure_partition_metadata(catalog, txn, ringbuffer, partition_key, cache)?;
 			let current_metadata = cache.get_mut(partition_key).unwrap();
 
@@ -256,28 +258,24 @@ pub(crate) fn insert_ringbuffer_chunks(
 				&& let Some(victim) = select_oldest_for_partition(
 					txn,
 					ringbuffer,
-					*partition,
+					partition,
 					current_metadata,
 					&chosen,
 					&pending,
 				)? {
 				chosen.insert(victim);
 				victims.push(victim);
-				victim_partitions.extend(*partition);
+				victim_partitions.extend(partition);
 			}
 
-			let row_number = catalog.next_row_number_for_ringbuffer(txn, ringbuffer.id)?;
 			pending.insert(row_number);
 			update_metadata_after_insert(current_metadata, row_number);
-			ids.push(row_number);
-			partitions.extend(*partition);
-			encoded.push(row.clone());
 		}
 
 		if !victims.is_empty() {
 			txn.remove_from_ringbuffer(ringbuffer, &victim_partitions, &victims)?;
 		}
-		let stored = txn.insert_ringbuffer(ringbuffer, shape, &partitions, &ids, &encoded)?;
+		let stored = txn.insert_ringbuffer(ringbuffer, shape, chunk_partitions, &ids, &rows[start..end])?;
 		if let Some(returned) = returned.as_mut() {
 			returned.extend(ids.iter().copied().zip(stored));
 		}

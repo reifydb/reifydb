@@ -28,13 +28,6 @@ impl RowSequence {
 		Self::next_row_number_batch_for_source(txn, StorageId::from(table), count)
 	}
 
-	pub(crate) fn next_row_number_for_ringbuffer(
-		txn: &mut impl SequenceTransaction,
-		ringbuffer: RingBufferId,
-	) -> Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::new(StorageId::from(ringbuffer)), None).map(RowNumber)
-	}
-
 	pub(crate) fn next_row_number_batch_for_ringbuffer(
 		txn: &mut impl SequenceTransaction,
 		ringbuffer: RingBufferId,

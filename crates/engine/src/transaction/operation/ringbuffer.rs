@@ -43,6 +43,25 @@ fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_num
 	}
 }
 
+fn refuse_moved_partitions(
+	ringbuffer: &RingBuffer,
+	shape: &RowShape,
+	partitions: &[Partition],
+	rows: &[EncodedBytes],
+) -> Result<()> {
+	let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
+	if rows.iter().zip(partitions).any(|(row, &partition)| {
+		partition_of(&ringbuffer.columns, &ringbuffer.partition_by, &partition_values(shape, row, &indices))
+			!= partition
+	}) {
+		return Err(PartitionError::PartitionColumnChangedByHook {
+			object: ObjectId::ringbuffer(ringbuffer.id),
+		}
+		.into());
+	}
+	Ok(())
+}
+
 fn ringbuffer_change(ringbuffer: &RingBuffer, diff: Diff) -> Change {
 	Change {
 		origin: ChangeOrigin::Object(ObjectId::ringbuffer(ringbuffer.id)),
@@ -182,12 +201,13 @@ impl RingBufferOperations for CommandTransaction {
 			let mut builders: Vec<_> =
 				rows.iter().map(|bytes| EncodedRingBufferRow::from(bytes.clone()).thaw()).collect();
 			RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut builders)?;
-			builders.into_iter().map(|builder| builder.freeze_bytes()).collect()
+			let written: Vec<EncodedBytes> =
+				builders.into_iter().map(|builder| builder.freeze_bytes()).collect();
+			refuse_moved_partitions(ringbuffer, shape, partitions, &written)?;
+			written
 		};
 
-		for (key, bytes) in keys.iter().zip(&written) {
-			self.set(key, bytes.clone())?;
-		}
+		self.set_many(keys.iter().cloned().zip(written.iter().cloned()).collect())?;
 
 		if !self.ringbuffer_row_post_insert_interceptors().is_empty() {
 			RingBufferRowInterceptor::post_insert(self, ringbuffer, ids, &written)?;
@@ -417,12 +437,13 @@ impl RingBufferOperations for AdminTransaction {
 			let mut builders: Vec<_> =
 				rows.iter().map(|bytes| EncodedRingBufferRow::from(bytes.clone()).thaw()).collect();
 			RingBufferRowInterceptor::pre_insert(self, ringbuffer, &mut builders)?;
-			builders.into_iter().map(|builder| builder.freeze_bytes()).collect()
+			let written: Vec<EncodedBytes> =
+				builders.into_iter().map(|builder| builder.freeze_bytes()).collect();
+			refuse_moved_partitions(ringbuffer, shape, partitions, &written)?;
+			written
 		};
 
-		for (key, bytes) in keys.iter().zip(&written) {
-			self.set(key, bytes.clone())?;
-		}
+		self.set_many(keys.iter().cloned().zip(written.iter().cloned()).collect())?;
 
 		if !self.ringbuffer_row_post_insert_interceptors().is_empty() {
 			RingBufferRowInterceptor::post_insert(self, ringbuffer, ids, &written)?;

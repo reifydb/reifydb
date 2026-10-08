@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
@@ -52,19 +52,6 @@ pub fn resolve_partitions(
 		}
 	}
 	Ok(())
-}
-
-pub fn resolve_partition(
-	txn: &mut Transaction<'_>,
-	object: ObjectId,
-	partition: Partition,
-	values: &[Value],
-	verified: &mut HashSet<Partition>,
-) -> Result<()> {
-	if !verified.insert(partition) {
-		return Ok(());
-	}
-	check_or_register(txn, object, partition, values)
 }
 
 fn check_or_register(

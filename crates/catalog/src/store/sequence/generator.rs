@@ -110,14 +110,15 @@ macro_rules! impl_generator {
 					let result = match tx.get(key)? {
 						Some(row) => {
 							let current_value = decode(EncodedPodRow::view(&row.bytes))?;
-							let next_value = current_value.saturating_add(incr);
-
-							if current_value == next_value {
+							let Some(next_value) = current_value
+								.checked_add(incr)
+								.filter(|next| *next != current_value)
+							else {
 								return Err(CoreError::SequenceExhausted {
 									value_type: $type_enum,
 								}
 								.into());
-							}
+							};
 
 							tx.set(key, encode(next_value).into_bytes())?;
 							next_value
@@ -319,8 +320,7 @@ macro_rules! impl_generator {
 					for i in 0..iterations_1 {
 						let expected = ($start as u128)
 							.saturating_add((batch_size_1 as u128) * ((i as u128) + 1))
-							.saturating_sub(1)
-							as $prim;
+							.saturating_sub(1) as $prim;
 						let got = $generator::next_batched(
 							&mut txn,
 							&seq_key("sequence_by_5000"),
@@ -343,8 +343,7 @@ macro_rules! impl_generator {
 					for i in 0..iterations_2 {
 						let expected = ($start as u128)
 							.saturating_add((batch_size_2 as u128) * ((i as u128) + 1))
-							.saturating_sub(1)
-							as $prim;
+							.saturating_sub(1) as $prim;
 						let got = $generator::next_batched(
 							&mut txn,
 							&seq_key("sequence_by_10000"),
@@ -412,6 +411,28 @@ macro_rules! impl_generator {
 						}
 						.into_diagnostic()
 					);
+				}
+
+				#[test]
+				fn a_batch_past_the_end_takes_nothing_and_leaves_the_tail_to_a_batch_that_fits() {
+					// A batch is handed out as last minus count plus one; a clamped last would
+					// re-issue numbers that are already in use, so it must fail and keep the tail.
+					let mut txn = create_test_admin_transaction();
+					let key = seq_key("tail");
+					txn.with_single_command([&key.encode()], |tx| {
+						tx.set(&key, encode($max - 2).into_bytes())
+					})
+					.unwrap();
+
+					let err = $generator::next_batched(&mut txn, &key, None, 5).unwrap_err();
+					assert_eq!(
+						err.diagnostic(),
+						CoreError::SequenceExhausted {
+							value_type: $type_enum
+						}
+						.into_diagnostic()
+					);
+					assert_eq!($generator::next_batched(&mut txn, &key, None, 2).unwrap(), $max);
 				}
 
 				#[test]

@@ -10,9 +10,13 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
+	partition::{BatchPartitions, NoneCell, partition_of, partitions_of_batch},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
-use reifydb_value::value::{Value, column_view::ColumnView, partition::Partition, row_number::RowNumber};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{Value, partition::Partition, row_number::RowNumber},
+};
 
 use super::columns::CastColumns;
 use crate::Result;
@@ -121,25 +125,21 @@ pub(crate) fn save_all_partition_metadata(
 	Ok(())
 }
 
-pub(super) fn partition_values(
-	cast: &CastColumns,
-	inputs: &[Option<ColumnView<'_>>],
-	indices: &[usize],
-) -> Result<Vec<Vec<Value>>> {
-	let views = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
-	Ok((0..cast.rows())
-		.map(|row| {
-			indices.iter()
-				.zip(&views)
-				.map(|(&index, view)| {
-					let input = inputs[index].as_ref();
-					if view.none_at(row) && input.is_none_or(|input| input.none_at(row)) {
-						input.map(|input| input.get_value(row)).unwrap_or_else(Value::none)
-					} else {
-						view.get_value(row)
-					}
-				})
-				.collect()
-		})
-		.collect())
+pub(crate) fn ringbuffer_batch_partitions(ringbuffer: &RingBuffer, cast: &CastColumns) -> Result<BatchPartitions> {
+	let indices = compute_partition_col_indices(ringbuffer);
+	if indices.is_empty() {
+		return Ok(BatchPartitions::default());
+	}
+	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
+	let batch = partitions_of_batch(&keys, NoneCell::Untyped);
+	reifydb_assertions! {
+		for (partition, values) in &batch.distinct {
+			assert_eq!(
+				partition_of(&ringbuffer.columns, &ringbuffer.partition_by, values),
+				*partition,
+				"a batch partition must hash its values like the row-at-a-time partition"
+			);
+		}
+	}
+	Ok(batch)
 }
