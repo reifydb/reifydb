@@ -13,6 +13,7 @@ doctest = false
 [features]
 default = []
 testing = ["reifydb-runtime/testing"]
+pco = ["vortex-btrblocks/pco", "dep:vortex-pco"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -42,6 +43,7 @@ vortex-flatbuffers = { workspace = true }
 vortex-fsst = { workspace = true }
 vortex-mask = { workspace = true }
 vortex-onpair = { workspace = true }
+vortex-pco = { workspace = true, optional = true }
 vortex-runend = { workspace = true }
 vortex-sequence = { workspace = true }
 vortex-session = { workspace = true }

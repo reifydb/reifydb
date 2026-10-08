@@ -346,6 +346,7 @@ vortex-flatbuffers = { version = "=0.86.1" }
 vortex-fsst = { version = "=0.86.1" }
 vortex-mask = { version = "=0.86.1" }
 vortex-onpair = { version = "=0.86.1" }
+vortex-pco = { version = "=0.86.1" }
 vortex-runend = { version = "=0.86.1" }
 vortex-sequence = { version = "=0.86.1" }
 vortex-session = { version = "=0.86.1" }
