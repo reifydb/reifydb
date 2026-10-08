@@ -100,6 +100,19 @@ pub enum EngineError {
 		value: String,
 		fragment: Fragment,
 	},
+
+	#[error("series key column `{column}` of series `{series}` changed by a pre-insert hook")]
+	SeriesKeyChangedByHook {
+		series: String,
+		column: String,
+	},
+
+	#[error("series `{series}` is partitioned by its key `{column}`, so an insert must give the key")]
+	SeriesKeyPartitionNeedsKey {
+		series: String,
+		column: String,
+		fragment: Fragment,
+	},
 }
 
 impl IntoDiagnostic for EngineError {
@@ -379,6 +392,51 @@ impl IntoDiagnostic for EngineError {
 				fragment,
 				label: Some("key out of range".to_string()),
 				help: Some(format!("a series key must be between 0 and {}", u64::MAX)),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			EngineError::SeriesKeyChangedByHook {
+				series,
+				column,
+			} => Diagnostic {
+				code: "SERIES_002".to_string(),
+				rql: None,
+				message: format!(
+					"series key column `{}` of series `{}` changed by a pre-insert hook",
+					column, series
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("series key changed by hook".to_string()),
+				help: Some(format!(
+					"the key `{}` of series `{}` is part of the row key, which is built before pre-insert hooks run, so a hook must not change it",
+					column, series
+				)),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			EngineError::SeriesKeyPartitionNeedsKey {
+				series,
+				column,
+				fragment,
+			} => Diagnostic {
+				code: "SERIES_003".to_string(),
+				rql: None,
+				message: format!(
+					"series `{}` is partitioned by its key `{}`, so an insert must give the key",
+					series, column
+				),
+				column: None,
+				fragment,
+				label: Some("key not given".to_string()),
+				help: Some(format!(
+					"an integer key is generated as the next key of its partition, and the partition of `{}` is made of the key itself; give `{}` on every row",
+					series, column
+				)),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

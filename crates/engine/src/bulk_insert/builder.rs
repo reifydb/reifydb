@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet, hash_map::Entry},
-	marker::PhantomData,
-	sync::Arc,
-};
+use std::{collections::HashMap, marker::PhantomData, sync::Arc};
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
@@ -14,7 +10,7 @@ use reifydb_catalog::{
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_codec::row::{
-	bytes::{EncodedBytes, RowBuilder, SourceRowBuilder},
+	bytes::{RowBuilder, SourceRowBuilder},
 	shape::RowShape,
 };
 use reifydb_core::{
@@ -26,15 +22,9 @@ use reifydb_core::{
 		policy::{DataOp, PolicyTargetType},
 		ringbuffer::RingBuffer,
 		series::{Series, SeriesPartitionMetadata},
-		storage::StorageId,
-		sumtype::SumType,
 		table::Table,
 	},
 	internal_error,
-	key::{
-		any::TaggedKey,
-		series::{PartitionedSeriesRowKey, SeriesRowKey},
-	},
 	partition::partition_of,
 	value::batch::batch,
 };
@@ -42,10 +32,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_runtime::context::clock::Clock;
 #[cfg(feature = "testing")]
 use reifydb_transaction::counting::OpCounts;
-use reifydb_transaction::{
-	interceptor::{WithInterceptors, series_row::SeriesRowInterceptor},
-	transaction::{Transaction, command::CommandTransaction},
-};
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
@@ -56,8 +43,9 @@ use reifydb_value::{
 };
 
 use super::{
-	BulkInsertResult, RingBufferInsertResult, SeriesInsertResult, TableInsertResult, coerce::with_row_note,
-	validation::coerce_columns,
+	BulkInsertResult, RingBufferInsertResult, SeriesInsertResult, TableInsertResult,
+	coerce::with_row_note,
+	validation::{CoercedTags, coerce_columns},
 };
 use crate::{
 	Result,
@@ -68,8 +56,9 @@ use crate::{
 	},
 	engine::StandardEngine,
 	error::EngineError,
-	partition::resolve_partition,
+	partition::resolve_partitions,
 	policy::PolicyEvaluator,
+	transaction::operation::series::{SeriesRows, write_series_rows},
 	vm::{
 		instruction::dml::{
 			coerce::key_out_of_range,
@@ -77,7 +66,7 @@ use crate::{
 			partition::{compute_partition_col_indices, save_all_partition_metadata},
 			primary_key::Violation,
 			ringbuffer_insert::insert_ringbuffer_chunks,
-			series_insert::resolve_variant_tag,
+			series_insert::{assign_series_keys, series_batch_partitions},
 			shape::{
 				get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape,
 			},
@@ -280,7 +269,6 @@ struct Checks<'a> {
 	columns: &'a [Column],
 	filled: &'a [Vec<usize>],
 	series: Option<&'a Series>,
-	sumtype: Option<&'a SumType>,
 	time: &'a TimeSource,
 }
 
@@ -292,7 +280,7 @@ struct Checked {
 fn check_rows<V: ValidationMode>(
 	checks: &Checks<'_>,
 	columns: &[(FieldRef, ArrayRef)],
-	tags: Option<&(FieldRef, ArrayRef)>,
+	tags: Option<CoercedTags>,
 	rows: usize,
 ) -> Result<Checked> {
 	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
@@ -331,29 +319,12 @@ fn check_rows<V: ValidationMode>(
 	}
 
 	let mut variant_tags = vec![None; rows];
-	if let (Some(sumtype), Some(tags)) = (checks.sumtype, tags) {
-		let view = ColumnView::try_from(tags)?;
-		for (row, variant_tag) in variant_tags.iter_mut().enumerate().take(limit(&failure)) {
-			let value = match view.get_value(row) {
-				Value::Any(value) => *value,
-				value => value,
-			};
-			*variant_tag = match value {
-				Value::None {
-					..
-				} => Some(0),
-				value => match resolve_variant_tag(
-					sumtype,
-					&value,
-					Fragment::internal(value.to_string()),
-				) {
-					Ok(tag) => Some(tag),
-					Err(error) => {
-						failure = Some((row, error));
-						break;
-					}
-				},
-			};
+	if let Some((tags, tag_failure)) = tags {
+		variant_tags = tags;
+		if let Some((row, error)) = tag_failure
+			&& row < limit(&failure)
+		{
+			failure = Some((row, error));
 		}
 	}
 
@@ -465,7 +436,7 @@ fn execute_table_insert<V: ValidationMode>(
 	let (namespace, table) = resolve_table(catalog, txn, pending)?;
 	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
 	let (columns, _) =
-		coerce_columns(&pending.rows, &pending.batches, &table.columns, false, &table.name, txn.identity)?;
+		coerce_columns(&pending.rows, &pending.batches, &table.columns, None, &table.name, txn.identity)?;
 	let rows = pending.row_count();
 	if rows == 0 {
 		return Ok(empty_table_result(pending));
@@ -479,7 +450,6 @@ fn execute_table_insert<V: ValidationMode>(
 			columns: &table.columns,
 			filled: &filled,
 			series: None,
-			sumtype: None,
 			time: &table.time,
 		},
 		&columns,
@@ -583,7 +553,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		&pending.rows,
 		&pending.batches,
 		&ringbuffer.columns,
-		false,
+		None,
 		&ringbuffer.name,
 		txn.identity,
 	)?;
@@ -638,7 +608,6 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 			columns: &ringbuffer.columns,
 			filled: &vec![Vec::new(); ringbuffer.columns.len()],
 			series: None,
-			sumtype: None,
 			time: &ringbuffer.time,
 		},
 		&columns,
@@ -698,7 +667,7 @@ fn execute_series_insert<V: ValidationMode>(
 		&pending.rows,
 		&pending.batches,
 		&series.columns,
-		sumtype.is_some(),
+		sumtype.as_ref(),
 		&series.name,
 		txn.identity,
 	)?;
@@ -713,11 +682,10 @@ fn execute_series_insert<V: ValidationMode>(
 				columns: &series.columns,
 				filled: &vec![Vec::new(); series.columns.len()],
 				series: Some(&series),
-				sumtype: sumtype.as_ref(),
 				time: &series.time,
 			},
 			&columns,
-			tags.as_ref(),
+			tags,
 			rows,
 		)?;
 		insert_series_rows(writer, txn, &series, &shape, columns, checked, &mut metadata_by_partition)?
@@ -790,98 +758,37 @@ fn insert_series_rows(
 	let now = writer.clock.now();
 	let event = EventColumn::new(populator_index(&series.time, shape).map(|index| views[index].clone()));
 
-	let partition_views = series_partition_col_indices(series)?
-		.into_iter()
-		.map(|index| cast.view(index))
-		.collect::<Result<Vec<_>>>()?;
-	let storage = StorageId::series(series.id);
-	let mut verified: HashSet<Partition> = HashSet::new();
-	let mut storage_keys: Vec<TaggedKey> = Vec::with_capacity(rows);
-	for (row, ((builder, &key_value), &variant_tag)) in
-		built.iter_mut().zip(&checked.keys).zip(&checked.tags).enumerate()
-	{
-		let partition_values: Vec<Value> = partition_views.iter().map(|view| view.get_value(row)).collect();
-		let partition = if partition_values.is_empty() {
-			Partition::default()
-		} else {
-			partition_of(&series.columns, &series.partition_by, &partition_values)
-		};
-		let metadata = match metadata_by_partition.entry(partition) {
-			Entry::Occupied(entry) => entry.into_mut(),
-			Entry::Vacant(entry) => {
-				let loaded = catalog
-					.find_series_metadata(&mut Transaction::Command(txn), series.id, partition)?
-					.unwrap_or_default();
-				entry.insert(loaded)
-			}
-		};
-
-		metadata.sequence_counter += 1;
-		let sequence = metadata.sequence_counter;
-		let key: TaggedKey = if partition_values.is_empty() {
-			SeriesRowKey {
-				storage,
-				variant_tag,
-				key: key_value,
-				sequence,
-			}
-			.into()
-		} else {
-			resolve_partition(
-				&mut Transaction::Command(txn),
-				ObjectId::Series(series.id),
-				partition,
-				&partition_values,
-				&mut verified,
-			)?;
-			PartitionedSeriesRowKey::new(storage, partition, variant_tag, key_value, sequence).into()
-		};
+	let batch = series_batch_partitions(series, &cast, Some(&views[0]))?;
+	resolve_partitions(
+		&mut Transaction::Command(txn),
+		ObjectId::Series(series.id),
+		&batch.distinct,
+		&mut HashMap::new(),
+	)?;
+	let assigned = assign_series_keys(
+		catalog,
+		&mut Transaction::Command(txn),
+		series,
+		&batch.rows,
+		checked.keys.into_iter().map(Some).collect(),
+		&checked.tags,
+		metadata_by_partition,
+		|_| Err(internal_error!("bulk insert into series {} kept a row without a key", series.name)),
+	)?;
+	for (row, builder) in built.iter_mut().enumerate() {
 		stamp(builder, &series.name, &series.time, shape, now, event.at(row))?;
-		update_series_metadata_for_insert(metadata, key_value);
-		storage_keys.push(key);
 	}
-
-	if !txn.series_row_pre_insert_interceptors().is_empty() {
-		SeriesRowInterceptor::pre_insert(txn, series, &mut built)?;
-	}
-	let written: Vec<EncodedBytes> = built.into_iter().map(|row| row.freeze_bytes()).collect();
-	for (key, row) in storage_keys.iter().zip(&written) {
-		txn.set(key, row.clone())?;
-	}
-	if !txn.series_row_post_insert_interceptors().is_empty() {
-		SeriesRowInterceptor::post_insert(txn, series, &written)?;
-	}
-	Ok(rows as u64)
-}
-
-#[inline]
-fn series_partition_col_indices(series: &Series) -> Result<Vec<usize>> {
-	series.partition_by
-		.iter()
-		.map(|name| {
-			series.columns.iter().position(|c| &c.name == name).ok_or_else(|| {
-				internal_error!("series {} partition column {} not found", series.name, name)
-			})
-		})
-		.collect()
-}
-
-#[inline]
-fn update_series_metadata_for_insert(metadata: &mut SeriesPartitionMetadata, key_value: u64) {
-	if metadata.row_count == 0 {
-		metadata.oldest_key = key_value;
-		metadata.newest_key = key_value;
-	} else {
-		if key_value < metadata.oldest_key {
-			metadata.oldest_key = key_value;
-		}
-		if key_value > metadata.newest_key {
-			metadata.newest_key = key_value;
-		}
-	}
-	metadata.dirty_from_key = metadata.dirty_from_key.min(key_value);
-	metadata.dirty_to_key = metadata.dirty_to_key.max(key_value.saturating_add(1));
-	metadata.row_count += 1;
+	let written = write_series_rows(
+		&mut Transaction::Command(txn),
+		series,
+		shape,
+		SeriesRows {
+			keys: assigned.storage,
+			partitions: &batch.rows,
+			rows: built,
+		},
+	)?;
+	Ok(written.len() as u64)
 }
 
 fn parse_qualified_name(qualified_name: &str) -> (String, String) {

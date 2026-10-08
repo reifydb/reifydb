@@ -2,7 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::RecordBatch;
-use reifydb_codec::row::bytes::EncodedBytes;
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, RowBuilder},
+	series::EncodedSeriesRowBuilder,
+	shape::RowShape,
+};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::{
@@ -13,15 +17,99 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::any::TaggedKey,
+	partition::{PartitionError, partition_of, partition_values},
 };
 use reifydb_transaction::{
 	interceptor::{WithInterceptors, series_row::SeriesRowInterceptor},
 	transaction::Transaction,
 };
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::{Value, datetime::DateTime, partition::Partition, row_number::RowNumber};
 use smallvec::smallvec;
 
-use crate::Result;
+use crate::{Result, error::EngineError};
+
+pub(crate) struct SeriesRows<'a> {
+	pub keys: Vec<TaggedKey>,
+	pub partitions: &'a [Partition],
+	pub rows: Vec<EncodedSeriesRowBuilder>,
+}
+
+pub(crate) fn write_series_rows(
+	txn: &mut Transaction<'_>,
+	series: &Series,
+	shape: &RowShape,
+	write: SeriesRows<'_>,
+) -> Result<Vec<EncodedBytes>> {
+	let SeriesRows {
+		keys,
+		partitions,
+		mut rows,
+	} = write;
+	assert_eq!(keys.len(), rows.len(), "keys/rows length mismatch");
+	assert!(
+		if series.partition_by.is_empty() {
+			partitions.is_empty()
+		} else {
+			partitions.len() == rows.len()
+		},
+		"a partitioned series needs one partition per row, an unpartitioned series none"
+	);
+	if rows.is_empty() {
+		return Ok(Vec::new());
+	}
+
+	if !txn.series_row_pre_insert_interceptors().is_empty() {
+		let key_cells = series_key_cells(shape, &rows);
+		SeriesRowInterceptor::pre_insert(txn, series, &mut rows)?;
+		if rows.iter()
+			.zip(partitions)
+			.any(|(row, &partition)| series_partition_of_bytes(series, shape, row) != partition)
+		{
+			return Err(PartitionError::PartitionColumnChangedByHook {
+				object: ObjectId::series(series.id),
+			}
+			.into());
+		}
+		if series_key_cells(shape, &rows) != key_cells {
+			return Err(EngineError::SeriesKeyChangedByHook {
+				series: series.name.clone(),
+				column: series.key.column().to_string(),
+			}
+			.into());
+		}
+	}
+
+	let written: Vec<EncodedBytes> = rows.into_iter().map(|row| row.freeze_bytes()).collect();
+	txn.set_many(keys.into_iter().zip(written.iter().cloned()).collect())?;
+	if !txn.series_row_post_insert_interceptors().is_empty() {
+		SeriesRowInterceptor::post_insert(txn, series, &written)?;
+	}
+	Ok(written)
+}
+
+fn series_key_cells(shape: &RowShape, rows: &[EncodedSeriesRowBuilder]) -> Vec<Value> {
+	rows.iter().map(|row| shape.get_value(row, 0)).collect()
+}
+
+#[inline]
+pub(crate) fn series_partition_of_bytes(series: &Series, shape: &RowShape, bytes: &[u8]) -> Partition {
+	let key_column = series.key.column();
+	let indices: Vec<usize> = series
+		.partition_by
+		.iter()
+		.map(|name| {
+			if name == key_column {
+				0
+			} else {
+				1 + series
+					.data_columns()
+					.position(|c| c.name == *name)
+					.expect("partition column must exist (validated during planning)")
+			}
+		})
+		.collect();
+	partition_of(&series.columns, &series.partition_by, &partition_values(shape, bytes, &indices))
+}
 
 pub(crate) fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Series, pre: RecordBatch) {
 	txn.track_flow_change(Change {

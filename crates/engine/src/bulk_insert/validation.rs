@@ -5,7 +5,11 @@ use std::iter;
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
-use reifydb_core::{interface::catalog::column::Column, internal_error, value::column::builder::ColumnBuilder};
+use reifydb_core::{
+	interface::catalog::{column::Column, sumtype::SumType},
+	internal_error,
+	value::column::builder::ColumnBuilder,
+};
 use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
@@ -15,12 +19,11 @@ use reifydb_value::{
 		column_view::{ColumnView, ViewData},
 		identity::IdentityId,
 		system_columns::{column_view, is_system_field},
-		value_type::ValueType,
 	},
 };
 
 use super::coerce::RowCoercer;
-use crate::{Result, error::EngineError};
+use crate::{Result, error::EngineError, vm::instruction::dml::series_insert::VariantTags};
 
 const TAG: &str = "tag";
 
@@ -31,26 +34,27 @@ struct Segment<'a> {
 	coercer: &'a RowCoercer,
 }
 
-#[allow(clippy::type_complexity)]
+pub type CoercedTags = (Vec<Option<u8>>, Option<(usize, Error)>);
+
 pub fn coerce_columns(
 	rows: &[Params],
 	batches: &[(usize, RecordBatch)],
 	columns: &[Column],
-	tagged: bool,
+	sumtype: Option<&SumType>,
 	source_name: &str,
 	identity: IdentityId,
-) -> Result<(Vec<(FieldRef, ArrayRef)>, Option<(FieldRef, ArrayRef)>)> {
+) -> Result<(Vec<(FieldRef, ArrayRef)>, Option<CoercedTags>)> {
 	let coercer = RowCoercer::new(identity);
 	let segment = Segment {
 		columns,
-		tagged,
+		tagged: sumtype.is_some(),
 		source_name,
 		coercer: &coercer,
 	};
 	let total = rows.len() + batches.iter().map(|(_, batch)| batch.num_rows()).sum::<usize>();
 	let mut builders: Vec<ColumnBuilder> =
 		columns.iter().map(|col| ColumnBuilder::with_capacity(col.constraint.get_type(), total)).collect();
-	let mut tags = tagged.then(|| ColumnBuilder::with_capacity(ValueType::Any, total));
+	let mut tags = sumtype.map(|sumtype| VariantTags::new(sumtype, total));
 	let mut taken = 0;
 	let mut first_row = 0;
 	for (at, batch) in batches {
@@ -61,7 +65,7 @@ pub fn coerce_columns(
 	}
 	collect_rows_to_columns(&segment, &rows[taken..], first_row, &mut builders, tags.as_mut())?;
 	let columns = builders.into_iter().zip(columns).map(|(builder, column)| builder.finish(&column.name)).collect();
-	Ok((columns, tags.map(|builder| builder.finish(TAG))))
+	Ok((columns, tags.map(VariantTags::finish)))
 }
 
 fn coerce_batch(
@@ -69,7 +73,7 @@ fn coerce_batch(
 	batch: &RecordBatch,
 	first_row: usize,
 	builders: &mut [ColumnBuilder],
-	tags: Option<&mut ColumnBuilder>,
+	tags: Option<&mut VariantTags<'_>>,
 ) -> Result<usize> {
 	let rows = batch.num_rows();
 	if rows == 0 {
@@ -133,12 +137,12 @@ fn coerce_batch(
 		match column_view(batch, TAG)? {
 			Some(view) => {
 				for row in 0..rows {
-					push_tag(tags, view.get_value(row));
+					tags.push(view.get_value(row));
 				}
 			}
 			None => {
 				for _ in 0..rows {
-					tags.push_none();
+					tags.push(Value::none());
 				}
 			}
 		}
@@ -163,21 +167,12 @@ fn coerce_cells(
 	None
 }
 
-fn push_tag(tags: &mut ColumnBuilder, value: Value) {
-	match value {
-		Value::None {
-			..
-		} => tags.push_none(),
-		value => tags.push_value(Value::Any(Box::new(value))),
-	}
-}
-
 fn collect_rows_to_columns(
 	segment: &Segment<'_>,
 	rows: &[Params],
 	first_row: usize,
 	builders: &mut [ColumnBuilder],
-	mut tags: Option<&mut ColumnBuilder>,
+	mut tags: Option<&mut VariantTags<'_>>,
 ) -> Result<usize> {
 	let columns = segment.columns;
 	let source_name = segment.source_name;
@@ -197,7 +192,7 @@ fn collect_rows_to_columns(
 					)?);
 				}
 				if let Some(tags) = tags.as_deref_mut() {
-					push_tag(tags, map.get(TAG).cloned().unwrap_or(Value::none()));
+					tags.push(map.get(TAG).cloned().unwrap_or(Value::none()));
 				}
 			}
 			Params::Positional(vals) => {
@@ -223,7 +218,7 @@ fn collect_rows_to_columns(
 					)?);
 				}
 				if let Some(tags) = tags.as_deref_mut() {
-					tags.push_none();
+					tags.push(Value::none());
 				}
 			}
 			Params::None => {
@@ -231,7 +226,7 @@ fn collect_rows_to_columns(
 					col_data.push_none();
 				}
 				if let Some(tags) = tags.as_deref_mut() {
-					tags.push_none();
+					tags.push(Value::none());
 				}
 			}
 		}

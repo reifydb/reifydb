@@ -33,7 +33,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
-	partition::{PartitionError, partition_of, partition_values},
+	partition::PartitionError,
 	value::{
 		batch::{decode_cells, single_row, take_rows},
 		column::builder::ColumnBuilder,
@@ -54,7 +54,6 @@ use reifydb_value::{
 		column_view::{ColumnView, ViewData},
 		datetime::DateTime,
 		identity::IdentityId,
-		partition::Partition,
 		row_number::RowNumber,
 		system_columns::{column_view, partitions, row_numbers, user_columns},
 	},
@@ -74,6 +73,7 @@ use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
+	transaction::operation::series::series_partition_of_bytes,
 	vm::{
 		instruction::dml::{
 			coerce::{InputFragments, series_key},
@@ -402,26 +402,6 @@ fn enforce_old_row_policies(
 		&old_columns,
 		PolicyTargetType::Series,
 	)
-}
-
-#[inline]
-fn series_partition_of_bytes(series: &Series, shape: &RowShape, bytes: &EncodedBytes) -> Partition {
-	let key_column = series.key.column();
-	let indices: Vec<usize> = series
-		.partition_by
-		.iter()
-		.map(|name| {
-			if name == key_column {
-				0
-			} else {
-				1 + series
-					.data_columns()
-					.position(|c| c.name == *name)
-					.expect("partition column must exist (validated during planning)")
-			}
-		})
-		.collect();
-	partition_of(&series.columns, &series.partition_by, &partition_values(shape, bytes, &indices))
 }
 
 fn series_update_keys(series: &Series, columns: &RecordBatch) -> Result<(Vec<Option<u64>>, Option<Failure>)> {
