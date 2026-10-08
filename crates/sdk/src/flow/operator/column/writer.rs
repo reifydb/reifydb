@@ -4,16 +4,13 @@
 use core::marker::PhantomData;
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::{
-	reifydb_assertions,
-	value::{
-		constraint::{precision::Precision, scale::Scale},
-		date::Date,
-		datetime::DateTime,
-		decimal::Decimal,
-		duration::Duration,
-		time::Time,
-	},
+use reifydb_value::value::{
+	constraint::{precision::Precision, scale::Scale},
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	duration::Duration,
+	time::Time,
 };
 
 use crate::{
@@ -22,13 +19,13 @@ use crate::{
 		family::{FamilyValue, cell_width},
 	},
 	error::SdkError,
+	flow::operator::column::sink::ColumnWriter,
 };
 
 pub struct ScalarWriter<'a, T: Copy> {
 	inner: ColumnBuilder<'a>,
 	data: *mut T,
 	cursor: usize,
-	#[cfg_attr(not(reifydb_assertions), allow(dead_code))]
 	capacity: usize,
 	defined: Option<Vec<bool>>,
 	_t: PhantomData<T>,
@@ -48,41 +45,21 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 	}
 
 	#[inline]
-	pub fn push(&mut self, v: T) {
-		reifydb_assertions! {
-			assert!(self.cursor < self.capacity, "ScalarWriter::push past capacity");
+	fn write(&mut self, value: T) -> Result<(), SdkError> {
+		if self.cursor == self.capacity {
+			let extra = self.capacity.max(1);
+			self.inner.grow(extra)?;
+			self.capacity += extra;
+			self.data = self.inner.data_ptr() as *mut T;
 		}
-		// SAFETY: `self.data` is the `data_ptr` base of the buffer `ColumnsBuilder::*_writer` acquired for
-		// `self.capacity` elements of `T`, and a scalar writer never grows, so it stays valid; the store at
-		// `self.cursor` is in bounds while callers keep the cursor below that capacity; `write_unaligned`
-		// needs no alignment for `T`.
+		// SAFETY: `self.data` is the `data_ptr` base fetched after the last grow of a buffer that holds
+		// `self.capacity` elements of `T`, and the check above grows it whenever `self.cursor` reaches that
+		// capacity, so the store at `self.cursor` is in bounds; `write_unaligned` needs no alignment for `T`.
 		unsafe {
-			core::ptr::write_unaligned(self.data.add(self.cursor), v);
-		}
-		if let Some(d) = self.defined.as_mut() {
-			d.push(true);
+			core::ptr::write_unaligned(self.data.add(self.cursor), value);
 		}
 		self.cursor += 1;
-	}
-
-	#[inline]
-	pub fn push_none(&mut self)
-	where
-		T: Default,
-	{
-		reifydb_assertions! {
-			assert!(self.cursor < self.capacity, "ScalarWriter::push_none past capacity");
-		}
-		// SAFETY: `self.data` is the `data_ptr` base of the buffer `ColumnsBuilder::*_writer` acquired for
-		// `self.capacity` elements of `T`, and a scalar writer never grows, so it stays valid; the store at
-		// `self.cursor` is in bounds while callers keep the cursor below that capacity; `write_unaligned`
-		// needs no alignment for `T`.
-		unsafe {
-			core::ptr::write_unaligned(self.data.add(self.cursor), T::default());
-		}
-		let d = self.defined.get_or_insert_with(|| vec![true; self.cursor]);
-		d.push(false);
-		self.cursor += 1;
+		Ok(())
 	}
 
 	#[inline]
@@ -103,9 +80,30 @@ impl<'a, T: Copy> ScalarWriter<'a, T> {
 	}
 }
 
+impl<T: Copy + Default> ColumnWriter<T> for ScalarWriter<'_, T> {
+	#[inline]
+	fn push(&mut self, value: &T) -> Result<(), SdkError> {
+		self.write(*value)?;
+		if let Some(d) = self.defined.as_mut() {
+			d.push(true);
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn push_none(&mut self) -> Result<(), SdkError> {
+		self.write(T::default())?;
+		let cursor = self.cursor;
+		let d = self.defined.get_or_insert_with(|| vec![true; cursor - 1]);
+		d.push(false);
+		Ok(())
+	}
+}
+
 pub struct BoolWriter<'a> {
 	inner: ColumnBuilder<'a>,
 	values: Vec<bool>,
+	capacity: usize,
 	defined: Option<Vec<bool>>,
 }
 
@@ -114,23 +112,9 @@ impl<'a> BoolWriter<'a> {
 		Self {
 			inner,
 			values: Vec::with_capacity(capacity),
+			capacity,
 			defined: None,
 		}
-	}
-
-	#[inline]
-	pub fn push(&mut self, v: bool) {
-		self.values.push(v);
-		if let Some(d) = self.defined.as_mut() {
-			d.push(true);
-		}
-	}
-
-	#[inline]
-	pub fn push_none(&mut self) {
-		self.values.push(false);
-		let d = self.defined.get_or_insert_with(|| vec![true; self.values.len() - 1]);
-		d.push(false);
 	}
 
 	#[inline]
@@ -144,10 +128,32 @@ impl<'a> BoolWriter<'a> {
 	}
 
 	pub fn finish(self) -> Result<CommittedColumn, SdkError> {
+		if self.values.len() > self.capacity {
+			self.inner.grow(self.values.len() - self.capacity)?;
+		}
 		if let Some(d) = &self.defined {
 			self.inner.set_defined(d);
 		}
 		self.inner.write_bool(&self.values)
+	}
+}
+
+impl ColumnWriter<bool> for BoolWriter<'_> {
+	#[inline]
+	fn push(&mut self, value: &bool) -> Result<(), SdkError> {
+		self.values.push(*value);
+		if let Some(d) = self.defined.as_mut() {
+			d.push(true);
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn push_none(&mut self) -> Result<(), SdkError> {
+		self.values.push(false);
+		let d = self.defined.get_or_insert_with(|| vec![true; self.values.len() - 1]);
+		d.push(false);
+		Ok(())
 	}
 }
 
@@ -182,36 +188,7 @@ impl<'a, T: FamilyValue> FamilyWriter<'a, T> {
 		}
 	}
 
-	#[inline]
-	pub fn push(&mut self, v: &T) -> Result<(), SdkError> {
-		self.cell.clear();
-		v.encode_cell(self.precision, self.scale, &mut self.cell)?;
-		self.write_cell()?;
-		if let Some(d) = self.defined.as_mut() {
-			d.push(true);
-		}
-		Ok(())
-	}
-
-	#[inline]
-	pub fn push_none(&mut self) -> Result<(), SdkError> {
-		self.cell.clear();
-		self.cell.resize(self.width, 0);
-		let cursor = self.cursor;
-		self.write_cell()?;
-		let d = self.defined.get_or_insert_with(|| vec![true; cursor]);
-		d.push(false);
-		Ok(())
-	}
-
 	fn write_cell(&mut self) -> Result<(), SdkError> {
-		if self.cursor >= self.capacity {
-			return Err(SdkError::InvalidInput(format!(
-				"{:?} writer is full at {} rows",
-				T::KIND,
-				self.capacity
-			)));
-		}
 		if self.cell.len() != self.width {
 			return Err(SdkError::InvalidInput(format!(
 				"{:?} cell is {} bytes, expected {}",
@@ -220,10 +197,15 @@ impl<'a, T: FamilyValue> FamilyWriter<'a, T> {
 				self.width
 			)));
 		}
-		// SAFETY: `self.data` is the `data_ptr` base of the buffer `ColumnsBuilder::*_writer` acquired for
-		// `self.capacity` cells of `self.width` bytes, and a family writer never grows, so it stays valid;
-		// the check above keeps `self.cursor` below that capacity, and `self.cell` is a distinct live
-		// allocation of exactly `self.width` bytes.
+		if self.cursor == self.capacity {
+			let extra = self.capacity.max(1);
+			self.inner.grow(extra)?;
+			self.capacity += extra;
+			self.data = self.inner.data_ptr();
+		}
+		// SAFETY: `self.data` is the `data_ptr` base fetched after the last grow of a buffer that holds
+		// `self.capacity` cells of `self.width` bytes, and the check above grows it whenever `self.cursor`
+		// reaches that capacity; `self.cell` is a distinct live allocation of exactly `self.width` bytes.
 		unsafe {
 			core::ptr::copy_nonoverlapping(
 				self.cell.as_ptr(),
@@ -253,32 +235,43 @@ impl<'a, T: FamilyValue> FamilyWriter<'a, T> {
 	}
 }
 
-pub struct VarLenWriter<'a> {
+impl<T: FamilyValue> ColumnWriter<T> for FamilyWriter<'_, T> {
+	#[inline]
+	fn push(&mut self, value: &T) -> Result<(), SdkError> {
+		self.cell.clear();
+		value.encode_cell(self.precision, self.scale, &mut self.cell)?;
+		self.write_cell()?;
+		if let Some(d) = self.defined.as_mut() {
+			d.push(true);
+		}
+		Ok(())
+	}
+
+	#[inline]
+	fn push_none(&mut self) -> Result<(), SdkError> {
+		self.cell.clear();
+		self.cell.resize(self.width, 0);
+		let cursor = self.cursor;
+		self.write_cell()?;
+		let d = self.defined.get_or_insert_with(|| vec![true; cursor]);
+		d.push(false);
+		Ok(())
+	}
+}
+
+struct VarLenWriter<'a> {
 	inner: ColumnBuilder<'a>,
 	data: *mut u8,
 	offsets: *mut u64,
 	item_cursor: usize,
 	byte_cursor: usize,
 	data_capacity: usize,
-	#[cfg_attr(not(reifydb_assertions), allow(dead_code))]
-	capacity: usize,
+	item_capacity: usize,
 	defined: Option<Vec<bool>>,
-	#[cfg_attr(not(reifydb_assertions), allow(dead_code))]
-	type_code: ValueKind,
 }
 
 impl<'a> VarLenWriter<'a> {
 	fn new(inner: ColumnBuilder<'a>, capacity: usize, expected_bytes: usize) -> Result<Self, SdkError> {
-		let type_code = inner.type_code();
-		reifydb_assertions! {
-			assert!(
-				matches!(
-					type_code,
-					ValueKind::Utf8 | ValueKind::Blob
-				),
-				"VarLenWriter requires Utf8 or Blob",
-			);
-		}
 		let initial = expected_bytes.max(capacity);
 		if initial > 0 {
 			inner.grow(initial)?;
@@ -296,36 +289,34 @@ impl<'a> VarLenWriter<'a> {
 			offsets,
 			item_cursor: 0,
 			byte_cursor: 0,
-			data_capacity: initial,
-			capacity,
+			data_capacity: capacity + initial,
+			item_capacity: capacity + initial,
 			defined: None,
-			type_code,
 		})
 	}
 
 	#[inline]
 	fn ensure_capacity(&mut self, need: usize) -> Result<(), SdkError> {
-		if self.byte_cursor + need <= self.data_capacity {
+		let byte_short = (self.byte_cursor + need).saturating_sub(self.data_capacity);
+		if byte_short == 0 && self.item_cursor < self.item_capacity {
 			return Ok(());
 		}
-		let extra = (self.byte_cursor + need - self.data_capacity).max(self.data_capacity.max(64));
+		let extra = byte_short.max(self.data_capacity).max(self.item_capacity).max(64);
 		self.inner.grow(extra)?;
 		self.data = self.inner.data_ptr();
 		self.offsets = self.inner.offsets_ptr();
 		self.data_capacity += extra;
+		self.item_capacity += extra;
 		Ok(())
 	}
 
 	#[inline]
-	fn push_bytes_internal(&mut self, bytes: &[u8]) -> Result<(), SdkError> {
-		reifydb_assertions! {
-			assert!(self.item_cursor < self.capacity, "VarLenWriter::push past capacity");
-		}
+	fn push_bytes(&mut self, bytes: &[u8]) -> Result<(), SdkError> {
 		self.ensure_capacity(bytes.len())?;
 		// SAFETY: `self.data` and `self.offsets` were fetched after the last grow, and `ensure_capacity`
-		// kept `byte_cursor + bytes.len()` within the data bytes `grow` reserved, so the copy is in bounds
-		// and `bytes` is a distinct live slice; the offsets slot at `item_cursor + 1` is in bounds while
-		// callers keep `item_cursor` below `self.capacity`.
+		// kept `byte_cursor + bytes.len()` within the data bytes and `item_cursor` below the offset slots
+		// the acquire and every grow reserved, so the copy and the slot at `item_cursor + 1` are in bounds;
+		// `bytes` is a distinct live slice.
 		unsafe {
 			if !bytes.is_empty() {
 				core::ptr::copy_nonoverlapping(
@@ -344,27 +335,11 @@ impl<'a> VarLenWriter<'a> {
 		Ok(())
 	}
 
-	pub fn push_str(&mut self, s: &str) -> Result<(), SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Utf8);
-		}
-		self.push_bytes_internal(s.as_bytes())
-	}
-
-	pub fn push_bytes(&mut self, b: &[u8]) -> Result<(), SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Blob);
-		}
-		self.push_bytes_internal(b)
-	}
-
-	pub fn push_none(&mut self) -> Result<(), SdkError> {
-		reifydb_assertions! {
-			assert!(self.item_cursor < self.capacity, "VarLenWriter::push_none past capacity");
-		}
+	fn push_none(&mut self) -> Result<(), SdkError> {
+		self.ensure_capacity(0)?;
 		// SAFETY: `self.offsets` is non-null for this var-len builder and was fetched after the last grow,
-		// and the slot at `item_cursor + 1` is inside the slots the acquire and `grow` reserved while
-		// callers keep `item_cursor` below `self.capacity`.
+		// and `ensure_capacity` kept `item_cursor` below the offset slots the acquire and every grow
+		// reserved, so the slot at `item_cursor + 1` is in bounds.
 		unsafe {
 			core::ptr::write(self.offsets.add(self.item_cursor + 1), self.byte_cursor as u64);
 		}
@@ -374,21 +349,71 @@ impl<'a> VarLenWriter<'a> {
 		Ok(())
 	}
 
-	#[inline]
-	pub fn len(&self) -> usize {
-		self.item_cursor
-	}
-
-	#[inline]
-	pub fn is_empty(&self) -> bool {
-		self.item_cursor == 0
-	}
-
-	pub fn finish(self) -> Result<CommittedColumn, SdkError> {
+	fn finish(self) -> Result<CommittedColumn, SdkError> {
 		if let Some(d) = &self.defined {
 			self.inner.set_defined(d);
 		}
 		self.inner.commit(self.item_cursor)
+	}
+}
+
+pub struct Utf8Writer<'a>(VarLenWriter<'a>);
+
+impl Utf8Writer<'_> {
+	#[inline]
+	pub fn len(&self) -> usize {
+		self.0.item_cursor
+	}
+
+	#[inline]
+	pub fn is_empty(&self) -> bool {
+		self.0.item_cursor == 0
+	}
+
+	pub fn finish(self) -> Result<CommittedColumn, SdkError> {
+		self.0.finish()
+	}
+}
+
+impl ColumnWriter<str> for Utf8Writer<'_> {
+	#[inline]
+	fn push(&mut self, value: &str) -> Result<(), SdkError> {
+		self.0.push_bytes(value.as_bytes())
+	}
+
+	#[inline]
+	fn push_none(&mut self) -> Result<(), SdkError> {
+		self.0.push_none()
+	}
+}
+
+pub struct BlobWriter<'a>(VarLenWriter<'a>);
+
+impl BlobWriter<'_> {
+	#[inline]
+	pub fn len(&self) -> usize {
+		self.0.item_cursor
+	}
+
+	#[inline]
+	pub fn is_empty(&self) -> bool {
+		self.0.item_cursor == 0
+	}
+
+	pub fn finish(self) -> Result<CommittedColumn, SdkError> {
+		self.0.finish()
+	}
+}
+
+impl ColumnWriter<[u8]> for BlobWriter<'_> {
+	#[inline]
+	fn push(&mut self, value: &[u8]) -> Result<(), SdkError> {
+		self.0.push_bytes(value)
+	}
+
+	#[inline]
+	fn push_none(&mut self) -> Result<(), SdkError> {
+		self.0.push_none()
 	}
 }
 
@@ -408,8 +433,6 @@ pub type DateWriter<'a> = ScalarWriter<'a, Date>;
 pub type DateTimeWriter<'a> = ScalarWriter<'a, DateTime>;
 pub type TimeWriter<'a> = ScalarWriter<'a, Time>;
 pub type DurationWriter<'a> = ScalarWriter<'a, Duration>;
-pub type Utf8Writer<'a> = VarLenWriter<'a>;
-pub type BlobWriter<'a> = VarLenWriter<'a>;
 pub type DecimalWriter<'a> = FamilyWriter<'a, Decimal>;
 
 impl<'a> ColumnsBuilder<'a> {
@@ -465,10 +488,10 @@ impl<'a> ColumnsBuilder<'a> {
 		Ok(BoolWriter::new(self.acquire(ValueKind::Boolean, capacity)?, capacity))
 	}
 	pub fn utf8_writer(&mut self, capacity: usize, expected_bytes: usize) -> Result<Utf8Writer<'_>, SdkError> {
-		VarLenWriter::new(self.acquire(ValueKind::Utf8, capacity)?, capacity, expected_bytes)
+		Ok(Utf8Writer(VarLenWriter::new(self.acquire(ValueKind::Utf8, capacity)?, capacity, expected_bytes)?))
 	}
 	pub fn blob_writer(&mut self, capacity: usize, expected_bytes: usize) -> Result<BlobWriter<'_>, SdkError> {
-		VarLenWriter::new(self.acquire(ValueKind::Blob, capacity)?, capacity, expected_bytes)
+		Ok(BlobWriter(VarLenWriter::new(self.acquire(ValueKind::Blob, capacity)?, capacity, expected_bytes)?))
 	}
 	pub fn decimal_writer(
 		&mut self,

@@ -1,0 +1,15 @@
+error[E0277]: the trait bound `BlobWriter<'_>: ColumnWriter<str>` is not satisfied
+  --> tests/writer_compile_fail/a_blob_writer_does_not_take_text.rs:11:28
+   |
+11 |     ColumnWriter::<str>::push(&mut blob, "text")?;
+   |     ------------------------- ^^^^^^^^^ the trait `ColumnWriter<str>` is not implemented for `BlobWriter<'_>`
+   |     |
+   |     required by a bound introduced by this call
+   |
+help: the trait `ColumnWriter<str>` is not implemented for `BlobWriter<'_>`
+      but trait `ColumnWriter<[u8]>` is implemented for it
+  --> $WORKSPACE/crates/sdk/src/flow/operator/column/writer.rs
+   |
+   | impl ColumnWriter<[u8]> for BlobWriter<'_> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for that trait implementation, expected `[u8]`, found `str`

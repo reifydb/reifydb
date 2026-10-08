@@ -1,0 +1,15 @@
+error[E0277]: the trait bound `Utf8Writer<'_>: ColumnWriter<[u8]>` is not satisfied
+  --> tests/writer_compile_fail/a_utf8_writer_does_not_take_bytes.rs:11:29
+   |
+11 |     ColumnWriter::<[u8]>::push(&mut text, b"bytes".as_slice())?;
+   |     -------------------------- ^^^^^^^^^ the trait `ColumnWriter<[u8]>` is not implemented for `Utf8Writer<'_>`
+   |     |
+   |     required by a bound introduced by this call
+   |
+help: the trait `ColumnWriter<[u8]>` is not implemented for `Utf8Writer<'_>`
+      but trait `ColumnWriter<str>` is implemented for it
+  --> $WORKSPACE/crates/sdk/src/flow/operator/column/writer.rs
+   |
+   | impl ColumnWriter<str> for Utf8Writer<'_> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: for that trait implementation, expected `str`, found `[u8]`

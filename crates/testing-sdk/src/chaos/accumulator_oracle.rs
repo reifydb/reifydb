@@ -180,7 +180,7 @@ fn materialize_outputs<O: Row>(
 	now: DateTime,
 	output_key_columns: &[String],
 ) -> MaterializedView {
-	let mut sink = InProcessRowSink::new(<O as Row>::COLUMNS).expect("output sink");
+	let mut sink = InProcessRowSink::new(<O as Row>::COLUMNS, 0).expect("output sink");
 	let mut row_numbers: Vec<RowNumber> = Vec::new();
 	let mut count = 0u64;
 	for output in outputs {

@@ -22,7 +22,7 @@ use reifydb_value::value::{
 };
 
 use crate::{
-	common::extern_c::binding::builder::ColumnsBuilder,
+	common::extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
 	error::Result,
 	flow::operator::{
 		column::row::Row,
@@ -50,7 +50,6 @@ use crate::{
 pub struct ExternCInsertEmit<'a> {
 	builder: ColumnsBuilder<'a>,
 	sink: ExternCRowSink<'a>,
-	names: Vec<&'static str>,
 }
 
 impl<'a> GuestEmit for ExternCInsertEmit<'a> {
@@ -60,15 +59,15 @@ impl<'a> GuestEmit for ExternCInsertEmit<'a> {
 	}
 	fn finish(self, row_numbers: &[RowNumber]) -> Result<()> {
 		let mut builder = self.builder;
+		let names = self.sink.names();
 		let columns = self.sink.finish_all()?;
-		builder.emit_insert(&columns, &self.names, row_numbers)
+		builder.insert_named(&columns, names, row_numbers)
 	}
 }
 
 pub struct ExternCRemoveEmit<'a> {
 	builder: ColumnsBuilder<'a>,
 	sink: ExternCRowSink<'a>,
-	names: Vec<&'static str>,
 }
 
 impl<'a> GuestEmit for ExternCRemoveEmit<'a> {
@@ -78,8 +77,9 @@ impl<'a> GuestEmit for ExternCRemoveEmit<'a> {
 	}
 	fn finish(self, row_numbers: &[RowNumber]) -> Result<()> {
 		let mut builder = self.builder;
+		let names = self.sink.names();
 		let columns = self.sink.finish_all()?;
-		builder.emit_remove(&columns, &self.names, row_numbers)
+		builder.remove_named(&columns, names, row_numbers)
 	}
 }
 
@@ -87,7 +87,6 @@ pub struct ExternCUpdateEmit<'a> {
 	builder: ColumnsBuilder<'a>,
 	pre: ExternCRowSink<'a>,
 	post: ExternCRowSink<'a>,
-	names: Vec<&'static str>,
 }
 
 impl<'a> GuestUpdateEmit for ExternCUpdateEmit<'a> {
@@ -100,16 +99,18 @@ impl<'a> GuestUpdateEmit for ExternCUpdateEmit<'a> {
 	}
 	fn finish(self, row_numbers: &[RowNumber]) -> Result<()> {
 		let mut builder = self.builder;
+		let pre_names = self.pre.names();
+		let post_names = self.post.names();
 		let pre_columns = self.pre.finish_all()?;
 		let post_columns = self.post.finish_all()?;
-		builder.emit_update(
+		builder.update_named(
 			&pre_columns,
-			&self.names,
-			row_numbers.len(),
+			pre_names,
+			pre_columns.first().map_or(0, CommittedColumn::row_count),
 			row_numbers,
 			&post_columns,
-			&self.names,
-			row_numbers.len(),
+			post_names,
+			post_columns.first().map_or(0, CommittedColumn::row_count),
 			row_numbers,
 		)
 	}
@@ -401,33 +402,27 @@ impl GuestEmitContext for ExternCContext {
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCInsertEmit<'_>> {
 		let mut builder = self.builder();
 		let sink = ExternCRowSink::new::<R>(&mut builder, row_capacity)?;
-		let names = R::COLUMNS.iter().map(|(n, _)| *n).collect();
 		Ok(ExternCInsertEmit {
 			builder,
 			sink,
-			names,
 		})
 	}
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCUpdateEmit<'_>> {
 		let mut builder = self.builder();
 		let pre = ExternCRowSink::new::<R>(&mut builder, row_capacity)?;
 		let post = ExternCRowSink::new::<R>(&mut builder, row_capacity)?;
-		let names = R::COLUMNS.iter().map(|(n, _)| *n).collect();
 		Ok(ExternCUpdateEmit {
 			builder,
 			pre,
 			post,
-			names,
 		})
 	}
 	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCRemoveEmit<'_>> {
 		let mut builder = self.builder();
 		let sink = ExternCRowSink::new::<R>(&mut builder, row_capacity)?;
-		let names = R::COLUMNS.iter().map(|(n, _)| *n).collect();
 		Ok(ExternCRemoveEmit {
 			builder,
 			sink,
-			names,
 		})
 	}
 }

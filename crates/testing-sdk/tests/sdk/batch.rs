@@ -10,10 +10,7 @@ use reifydb_sdk::{
 	error::Result,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
-		column::{
-			batch::{InsertBatch, RemoveBatch, UpdateBatch},
-			operator::OperatorColumn,
-		},
+		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
 		view::ChangeView,
 	},
@@ -68,38 +65,30 @@ impl MountedOperator for EmitOpInsert {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
-		let mut batch = InsertBatch::<Bar, _>::new(ctx, 3)?;
-		batch.push(
-			RowNumber(1),
-			&Bar {
+		let rows = [
+			Bar {
 				mint: "SOL".to_string(),
 				timestamp: 100,
 				price: 1.5,
 				is_open: true,
 				count: 10,
 			},
-		)?;
-		batch.push(
-			RowNumber(2),
-			&Bar {
+			Bar {
 				mint: "BTC".to_string(),
 				timestamp: 200,
 				price: 50000.0,
 				is_open: false,
 				count: 20,
 			},
-		)?;
-		batch.push(
-			RowNumber(3),
-			&Bar {
+			Bar {
 				mint: "ETH".to_string(),
 				timestamp: 300,
 				price: 3000.0,
 				is_open: true,
 				count: 30,
 			},
-		)?;
-		batch.finish()
+		];
+		ctx.emit_insert(&rows, &[RowNumber(1), RowNumber(2), RowNumber(3)])
 	}
 }
 
@@ -149,7 +138,8 @@ impl MountedOperator for EmitOpEmpty {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
-		InsertBatch::<Bar, _>::new(ctx, 0)?.finish()
+		let rows: [Bar; 0] = [];
+		ctx.emit_insert(&rows, &[])
 	}
 }
 
@@ -177,25 +167,23 @@ impl MountedOperator for EmitOpUpdate {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
-		let mut batch = UpdateBatch::<Bar, _>::new(ctx, 1)?;
-		batch.push(
-			RowNumber(1),
-			&Bar {
+		ctx.emit_update(
+			&[Bar {
 				mint: "PRE".to_string(),
 				timestamp: 10,
 				price: 1.0,
 				is_open: false,
 				count: 5,
-			},
-			&Bar {
+			}],
+			&[Bar {
 				mint: "POST".to_string(),
 				timestamp: 20,
 				price: 2.0,
 				is_open: true,
 				count: 6,
-			},
-		)?;
-		batch.finish()
+			}],
+			&[RowNumber(1)],
+		)
 	}
 }
 
@@ -239,28 +227,23 @@ impl MountedOperator for EmitOpRemove {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
-		let mut batch = RemoveBatch::<Bar, _>::new(ctx, 2)?;
-		batch.push(
-			RowNumber(1),
-			&Bar {
+		let rows = [
+			Bar {
 				mint: "X".to_string(),
 				timestamp: 0,
 				price: 0.0,
 				is_open: false,
 				count: 0,
 			},
-		)?;
-		batch.push(
-			RowNumber(2),
-			&Bar {
+			Bar {
 				mint: "Y".to_string(),
 				timestamp: 0,
 				price: 0.0,
 				is_open: false,
 				count: 0,
 			},
-		)?;
-		batch.finish()
+		];
+		ctx.emit_remove(&rows, &[RowNumber(1), RowNumber(2)])
 	}
 }
 
@@ -291,20 +274,17 @@ impl MountedOperator for EmitOpBig {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
-		let mut batch = InsertBatch::<Bar, _>::new(ctx, 100)?;
-		for i in 0..100u64 {
-			batch.push(
-				RowNumber(i + 1),
-				&Bar {
-					mint: format!("MINT{}", i),
-					timestamp: i * 10,
-					price: i as f64 * 1.5,
-					is_open: i % 2 == 0,
-					count: i as u32,
-				},
-			)?;
-		}
-		batch.finish()
+		let rows: Vec<Bar> = (0..100u64)
+			.map(|i| Bar {
+				mint: format!("MINT{}", i),
+				timestamp: i * 10,
+				price: i as f64 * 1.5,
+				is_open: i % 2 == 0,
+				count: i as u32,
+			})
+			.collect();
+		let row_numbers: Vec<RowNumber> = (1..=100).map(RowNumber).collect();
+		ctx.emit_insert(&rows, &row_numbers)
 	}
 }
 
@@ -346,32 +326,21 @@ impl MountedOperator for EmitOpOptU64 {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
-		let mut batch = InsertBatch::<OptU64Row, _>::new(ctx, 4)?;
-		batch.push(
-			RowNumber(1),
-			&OptU64Row {
+		let rows = [
+			OptU64Row {
 				v: None,
 			},
-		)?;
-		batch.push(
-			RowNumber(2),
-			&OptU64Row {
+			OptU64Row {
 				v: Some(42),
 			},
-		)?;
-		batch.push(
-			RowNumber(3),
-			&OptU64Row {
+			OptU64Row {
 				v: None,
 			},
-		)?;
-		batch.push(
-			RowNumber(4),
-			&OptU64Row {
+			OptU64Row {
 				v: Some(u64::MAX),
 			},
-		)?;
-		batch.finish()
+		];
+		ctx.emit_insert(&rows, &[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)])
 	}
 }
 
@@ -417,32 +386,21 @@ impl MountedOperator for EmitOpOptStr {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
-		let mut batch = InsertBatch::<OptStrRow, _>::new(ctx, 4)?;
-		batch.push(
-			RowNumber(1),
-			&OptStrRow {
+		let rows = [
+			OptStrRow {
 				s: None,
 			},
-		)?;
-		batch.push(
-			RowNumber(2),
-			&OptStrRow {
+			OptStrRow {
 				s: Some("hi".to_string()),
 			},
-		)?;
-		batch.push(
-			RowNumber(3),
-			&OptStrRow {
+			OptStrRow {
 				s: None,
 			},
-		)?;
-		batch.push(
-			RowNumber(4),
-			&OptStrRow {
+			OptStrRow {
 				s: Some("".to_string()),
 			},
-		)?;
-		batch.finish()
+		];
+		ctx.emit_insert(&rows, &[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)])
 	}
 }
 
@@ -488,26 +446,18 @@ impl MountedOperator for EmitOpOptBlob {
 		Ok(Self)
 	}
 	fn apply(&mut self, ctx: &mut impl GuestContext<Windowed>, _: impl ChangeView) -> Result<()> {
-		let mut batch = InsertBatch::<OptBlobRow, _>::new(ctx, 3)?;
-		batch.push(
-			RowNumber(1),
-			&OptBlobRow {
+		let rows = [
+			OptBlobRow {
 				b: None,
 			},
-		)?;
-		batch.push(
-			RowNumber(2),
-			&OptBlobRow {
+			OptBlobRow {
 				b: Some(vec![1u8, 2, 3]),
 			},
-		)?;
-		batch.push(
-			RowNumber(3),
-			&OptBlobRow {
+			OptBlobRow {
 				b: None,
 			},
-		)?;
-		batch.finish()
+		];
+		ctx.emit_insert(&rows, &[RowNumber(1), RowNumber(2), RowNumber(3)])
 	}
 }
 

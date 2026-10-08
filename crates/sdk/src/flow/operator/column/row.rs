@@ -12,6 +12,19 @@ pub trait Row: Sized {
 	const AVG_VAR_BYTES: usize = 0;
 
 	fn encode_into<S: RowSink>(&self, sink: &mut S) -> Result<(), SdkError>;
+
+	fn encode_rows<'r, S: RowSink, I: Iterator<Item = &'r Self> + Clone>(
+		rows: I,
+		sink: &mut S,
+	) -> Result<(), SdkError>
+	where
+		Self: 'r,
+	{
+		for row in rows {
+			row.encode_into(sink)?;
+		}
+		Ok(())
+	}
 }
 
 pub trait OutputRows {
@@ -53,6 +66,22 @@ macro_rules! __row_body {
 			let mut __col = 0usize;
 			$(
 				<$fty as $crate::flow::operator::column::cell::Cell>::encode(&self.$fname, e, __col)?;
+				__col += 1;
+			)+
+			let _ = __col;
+			Ok(())
+		}
+
+		fn encode_rows<'__r, __S: $crate::flow::operator::column::sink::RowSink, __I: Iterator<Item = &'__r Self> + Clone>(
+			rows: __I,
+			e: &mut __S,
+		) -> Result<(), $crate::error::SdkError>
+		where
+			Self: '__r,
+		{
+			let mut __col = 0usize;
+			$(
+				<$fty as $crate::flow::operator::column::cell::Cell>::encode_column(e, __col, rows.clone().map(|r| Some(&r.$fname)))?;
 				__col += 1;
 			)+
 			let _ = __col;

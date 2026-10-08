@@ -38,11 +38,7 @@ use crate::{
 	error::Result,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
-		column::{
-			batch::{InsertBatch, RemoveBatch, UpdateBatch},
-			operator::OperatorColumn,
-			row::OutputRows,
-		},
+		column::{operator::OperatorColumn, row::OutputRows},
 		context::{GuestContext, Windowed},
 		timer::Timer,
 		view::{ChangeView, ColumnsView, DiffView},
@@ -212,27 +208,16 @@ where
 		updates: &[(RowNumber, Rw<A>, Rw<A>)],
 		removes: &[(RowNumber, Rw<A>)],
 	) -> Result<()> {
-		if !inserts.is_empty() {
-			let mut batch = InsertBatch::<Rw<A>, _>::new(ctx, inserts.len())?;
-			for (rn, data) in inserts {
-				batch.push(*rn, data)?;
-			}
-			batch.finish()?;
-		}
-		if !updates.is_empty() {
-			let mut batch = UpdateBatch::<Rw<A>, _>::new(ctx, updates.len())?;
-			for (rn, prior, new) in updates {
-				batch.push(*rn, prior, new)?;
-			}
-			batch.finish()?;
-		}
-		if !removes.is_empty() {
-			let mut batch = RemoveBatch::<Rw<A>, _>::new(ctx, removes.len())?;
-			for (rn, data) in removes {
-				batch.push(*rn, data)?;
-			}
-			batch.finish()?;
-		}
+		let row_numbers: Vec<RowNumber> = inserts.iter().map(|(rn, _)| *rn).collect();
+		ctx.emit_insert(inserts.iter().map(|(_, data)| data), &row_numbers)?;
+		let row_numbers: Vec<RowNumber> = updates.iter().map(|(rn, ..)| *rn).collect();
+		ctx.emit_update(
+			updates.iter().map(|(_, prior, _)| prior),
+			updates.iter().map(|(_, _, new)| new),
+			&row_numbers,
+		)?;
+		let row_numbers: Vec<RowNumber> = removes.iter().map(|(rn, _)| *rn).collect();
+		ctx.emit_remove(removes.iter().map(|(_, data)| data), &row_numbers)?;
 		Ok(())
 	}
 }

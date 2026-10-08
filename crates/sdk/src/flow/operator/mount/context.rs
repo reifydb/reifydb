@@ -397,27 +397,27 @@ impl GuestEmitContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).remove_row_numbers_for_groups(groups) }.map_err(to_sdk_err)
 	}
-	fn insert_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
+	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
 		let now = self.now;
 		Ok(InProcessInsertEmit {
-			sink: InProcessRowSink::new(R::COLUMNS)?,
+			sink: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			diffs: &mut self.diffs,
 			now,
 		})
 	}
-	fn update_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessUpdateEmit<'_>> {
+	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessUpdateEmit<'_>> {
 		let now = self.now;
 		Ok(InProcessUpdateEmit {
-			pre: InProcessRowSink::new(R::COLUMNS)?,
-			post: InProcessRowSink::new(R::COLUMNS)?,
+			pre: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
+			post: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			diffs: &mut self.diffs,
 			now,
 		})
 	}
-	fn remove_emit<R: Row>(&mut self, _row_capacity: usize) -> SdkResult<InProcessRemoveEmit<'_>> {
+	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessRemoveEmit<'_>> {
 		let now = self.now;
 		Ok(InProcessRemoveEmit {
-			sink: InProcessRowSink::new(R::COLUMNS)?,
+			sink: InProcessRowSink::new(R::COLUMNS, row_capacity)?,
 			diffs: &mut self.diffs,
 			now,
 		})

@@ -12,7 +12,7 @@ use crate::{
 	error::SdkError,
 	flow::operator::column::{
 		row::Row,
-		sink::RowSink,
+		sink::{ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, unsupported_column},
 		writer::{
 			BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DurationWriter, F32Writer,
 			F64Writer, I8Writer, I16Writer, I32Writer, I64Writer, I128Writer, TimeWriter, U8Writer,
@@ -62,6 +62,7 @@ impl<'a> AnyWriter<'a> {
 		// the ExternCContextRaw behind that pointer outlives `'a`.
 		let builder: &mut ColumnsBuilder<'a> =
 			unsafe { core::mem::transmute::<&mut ColumnsBuilder<'_>, &mut ColumnsBuilder<'a>>(builder) };
+		column_type(type_code)?;
 		if let Some((precision, scale)) = default_family_params(type_code) {
 			return Ok(AnyWriter::Decimal(builder.decimal_writer(row_capacity, precision, scale)?));
 		}
@@ -85,12 +86,7 @@ impl<'a> AnyWriter<'a> {
 			ValueKind::Boolean => AnyWriter::Bool(builder.bool_writer(row_capacity)?),
 			ValueKind::Utf8 => AnyWriter::Utf8(builder.utf8_writer(row_capacity, var_bytes_hint)?),
 			ValueKind::Blob => AnyWriter::Blob(builder.blob_writer(row_capacity, var_bytes_hint)?),
-			other => {
-				return Err(SdkError::Other(format!(
-					"ExternCRowSink: unsupported column type {:?}",
-					other
-				)));
-			}
+			other => return Err(unsupported_column(other)),
 		})
 	}
 
@@ -145,8 +141,8 @@ impl<'a> ExternCRowSink<'a> {
 		self.row_capacity
 	}
 
-	fn mismatch(&self, col: usize, kind: &str) -> SdkError {
-		SdkError::InvalidInput(format!("column {col} is {:?}, cannot push {kind}", self.columns[col].1))
+	pub(crate) fn names(&self) -> impl ExactSizeIterator<Item = &'static str> + Clone + use<> {
+		self.columns.iter().map(|(name, _)| *name)
 	}
 
 	pub(crate) fn finish_all(self) -> Result<Vec<CommittedColumn>, SdkError> {
@@ -160,213 +156,162 @@ impl<'a> ExternCRowSink<'a> {
 
 impl RowSink for ExternCRowSink<'_> {
 	#[inline]
-	fn push_u8(&mut self, col: usize, v: u8) -> Result<(), SdkError> {
+	fn u8_column(&mut self, col: usize) -> Result<impl ColumnWriter<u8> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::U8(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "u8")),
+			AnyWriter::U8(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "u8")),
 		}
 	}
 
 	#[inline]
-	fn push_u16(&mut self, col: usize, v: u16) -> Result<(), SdkError> {
+	fn u16_column(&mut self, col: usize) -> Result<impl ColumnWriter<u16> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::U16(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "u16")),
+			AnyWriter::U16(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "u16")),
 		}
 	}
 
 	#[inline]
-	fn push_u32(&mut self, col: usize, v: u32) -> Result<(), SdkError> {
+	fn u32_column(&mut self, col: usize) -> Result<impl ColumnWriter<u32> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::U32(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "u32")),
+			AnyWriter::U32(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "u32")),
 		}
 	}
 
 	#[inline]
-	fn push_u64(&mut self, col: usize, v: u64) -> Result<(), SdkError> {
+	fn u64_column(&mut self, col: usize) -> Result<impl ColumnWriter<u64> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::U64(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "u64")),
+			AnyWriter::U64(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "u64")),
 		}
 	}
 
 	#[inline]
-	fn push_u128(&mut self, col: usize, v: u128) -> Result<(), SdkError> {
+	fn u128_column(&mut self, col: usize) -> Result<impl ColumnWriter<u128> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::U128(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "u128")),
+			AnyWriter::U128(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "u128")),
 		}
 	}
 
 	#[inline]
-	fn push_i8(&mut self, col: usize, v: i8) -> Result<(), SdkError> {
+	fn i8_column(&mut self, col: usize) -> Result<impl ColumnWriter<i8> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::I8(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "i8")),
+			AnyWriter::I8(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "i8")),
 		}
 	}
 
 	#[inline]
-	fn push_i16(&mut self, col: usize, v: i16) -> Result<(), SdkError> {
+	fn i16_column(&mut self, col: usize) -> Result<impl ColumnWriter<i16> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::I16(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "i16")),
+			AnyWriter::I16(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "i16")),
 		}
 	}
 
 	#[inline]
-	fn push_i32(&mut self, col: usize, v: i32) -> Result<(), SdkError> {
+	fn i32_column(&mut self, col: usize) -> Result<impl ColumnWriter<i32> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::I32(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "i32")),
+			AnyWriter::I32(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "i32")),
 		}
 	}
 
 	#[inline]
-	fn push_i64(&mut self, col: usize, v: i64) -> Result<(), SdkError> {
+	fn i64_column(&mut self, col: usize) -> Result<impl ColumnWriter<i64> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::I64(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "i64")),
+			AnyWriter::I64(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "i64")),
 		}
 	}
 
 	#[inline]
-	fn push_i128(&mut self, col: usize, v: i128) -> Result<(), SdkError> {
+	fn i128_column(&mut self, col: usize) -> Result<impl ColumnWriter<i128> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::I128(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "i128")),
+			AnyWriter::I128(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "i128")),
 		}
 	}
 
 	#[inline]
-	fn push_f32(&mut self, col: usize, v: f32) -> Result<(), SdkError> {
+	fn f32_column(&mut self, col: usize) -> Result<impl ColumnWriter<f32> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::F32(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "f32")),
+			AnyWriter::F32(w) => Ok(NoneOnNan(w)),
+			_ => Err(column_mismatch(col, self.columns[col].1, "f32")),
 		}
 	}
 
 	#[inline]
-	fn push_f64(&mut self, col: usize, v: f64) -> Result<(), SdkError> {
+	fn f64_column(&mut self, col: usize) -> Result<impl ColumnWriter<f64> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::F64(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "f64")),
+			AnyWriter::F64(w) => Ok(NoneOnNan(w)),
+			_ => Err(column_mismatch(col, self.columns[col].1, "f64")),
 		}
 	}
 
 	#[inline]
-	fn push_date(&mut self, col: usize, v: Date) -> Result<(), SdkError> {
+	fn date_column(&mut self, col: usize) -> Result<impl ColumnWriter<Date> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Date(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "date")),
+			AnyWriter::Date(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "date")),
 		}
 	}
 
 	#[inline]
-	fn push_datetime(&mut self, col: usize, v: DateTime) -> Result<(), SdkError> {
+	fn datetime_column(&mut self, col: usize) -> Result<impl ColumnWriter<DateTime> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::DateTime(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "datetime")),
+			AnyWriter::DateTime(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "datetime")),
 		}
 	}
 
 	#[inline]
-	fn push_time(&mut self, col: usize, v: Time) -> Result<(), SdkError> {
+	fn time_column(&mut self, col: usize) -> Result<impl ColumnWriter<Time> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Time(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "time")),
+			AnyWriter::Time(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "time")),
 		}
 	}
 
 	#[inline]
-	fn push_duration(&mut self, col: usize, v: Duration) -> Result<(), SdkError> {
+	fn duration_column(&mut self, col: usize) -> Result<impl ColumnWriter<Duration> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Duration(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "duration")),
+			AnyWriter::Duration(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "duration")),
 		}
 	}
 
 	#[inline]
-	fn push_bool(&mut self, col: usize, v: bool) -> Result<(), SdkError> {
+	fn bool_column(&mut self, col: usize) -> Result<impl ColumnWriter<bool> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Bool(w) => {
-				w.push(v);
-				Ok(())
-			}
-			_ => Err(self.mismatch(col, "bool")),
+			AnyWriter::Bool(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "bool")),
 		}
 	}
 
 	#[inline]
-	fn push_utf8(&mut self, col: usize, v: &str) -> Result<(), SdkError> {
+	fn utf8_column(&mut self, col: usize) -> Result<impl ColumnWriter<str> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Utf8(w) => w.push_str(v),
-			_ => Err(self.mismatch(col, "utf8")),
+			AnyWriter::Utf8(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "utf8")),
 		}
 	}
 
 	#[inline]
-	fn push_blob(&mut self, col: usize, v: &[u8]) -> Result<(), SdkError> {
+	fn blob_column(&mut self, col: usize) -> Result<impl ColumnWriter<[u8]> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Blob(w) => w.push_bytes(v),
-			_ => Err(self.mismatch(col, "blob")),
+			AnyWriter::Blob(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "blob")),
 		}
 	}
 
 	#[inline]
-	fn push_decimal(&mut self, col: usize, v: &Decimal) -> Result<(), SdkError> {
+	fn decimal_column(&mut self, col: usize) -> Result<impl ColumnWriter<Decimal> + '_, SdkError> {
 		match &mut self.writers[col] {
-			AnyWriter::Decimal(w) => w.push(v),
-			_ => Err(self.mismatch(col, "decimal")),
+			AnyWriter::Decimal(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "decimal")),
 		}
 	}
 
@@ -390,10 +335,9 @@ impl RowSink for ExternCRowSink<'_> {
 			AnyWriter::Time(w) => w.push_none(),
 			AnyWriter::Duration(w) => w.push_none(),
 			AnyWriter::Bool(w) => w.push_none(),
-			AnyWriter::Utf8(w) => return w.push_none(),
-			AnyWriter::Blob(w) => return w.push_none(),
-			AnyWriter::Decimal(w) => return w.push_none(),
+			AnyWriter::Utf8(w) => w.push_none(),
+			AnyWriter::Blob(w) => w.push_none(),
+			AnyWriter::Decimal(w) => w.push_none(),
 		}
-		Ok(())
 	}
 }

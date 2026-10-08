@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use core::{ffi::c_void, ptr};
+use core::{ffi::c_void, iter, ptr};
 
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::{reifydb_assertions, value::row_number::RowNumber};
@@ -9,6 +9,7 @@ use reifydb_value::{reifydb_assertions, value::row_number::RowNumber};
 use crate::{
 	common::extern_c::wire::callbacks::builder::{BuilderCallbacks, ColumnBufferHandle, EmitDiffKind},
 	error::SdkError,
+	flow::operator::context::check_emit_count,
 };
 
 pub struct ColumnBuilder<'a> {
@@ -25,6 +26,12 @@ pub struct ColumnBuilder<'a> {
 pub struct CommittedColumn {
 	handle: *mut ColumnBufferHandle,
 	row_count: usize,
+}
+
+impl CommittedColumn {
+	pub(crate) fn row_count(&self) -> usize {
+		self.row_count
+	}
 }
 
 impl<'a> ColumnBuilder<'a> {
@@ -83,7 +90,7 @@ impl<'a> ColumnBuilder<'a> {
 		self.scale
 	}
 
-	pub fn write_bool(self, values: &[bool]) -> Result<CommittedColumn, SdkError> {
+	pub(crate) fn write_bool(self, values: &[bool]) -> Result<CommittedColumn, SdkError> {
 		reifydb_assertions! {
 			assert_eq!(self.type_code, ValueKind::Boolean, "write_bool requires a Bool ColumnBuilder");
 		}
@@ -107,134 +114,7 @@ impl<'a> ColumnBuilder<'a> {
 		self.commit(values.len())
 	}
 
-	pub fn write_f32(self, values: &[f32]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Float4);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_f64(self, values: &[f64]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Float8);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_i8(self, values: &[i8]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Int1);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_i16(self, values: &[i16]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Int2);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_i32(self, values: &[i32]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Int4);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_i64(self, values: &[i64]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Int8);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_i128(self, values: &[i128]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Int16);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_u8(self, values: &[u8]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Uint1);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_u16(self, values: &[u16]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Uint2);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_u32(self, values: &[u32]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Uint4);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_u64(self, values: &[u64]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Uint8);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_u128(self, values: &[u128]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Uint16);
-		}
-		// SAFETY: discharges `write_scalar` - the slice element type is the in-memory encoding of the
-		// ValueKind this method requires, and the caller must have acquired the builder with
-		// capacity for at least `values.len()` elements.
-		unsafe { write_scalar(self, values) }
-	}
-
-	pub fn write_utf8<S: AsRef<str>>(self, values: &[S]) -> Result<CommittedColumn, SdkError> {
-		reifydb_assertions! {
-			assert_eq!(self.type_code, ValueKind::Utf8, "write_utf8 requires a Utf8 ColumnBuilder");
-		}
-		write_var_len(self, values.iter().map(|s| s.as_ref().as_bytes()))
-	}
-
-	pub fn set_defined(&self, defined: &[bool]) {
+	pub(crate) fn set_defined(&self, defined: &[bool]) {
 		let bytes = defined.len().div_ceil(8);
 		if bytes == 0 {
 			return;
@@ -254,52 +134,13 @@ impl<'a> ColumnBuilder<'a> {
 	}
 }
 
-/// # Safety
-///
-/// `col` must have been acquired with a capacity of at least
-/// `size_of_val(values)` bytes, since this writes without growing, and `T` must
-/// be the Rust type whose in-memory representation is the element encoding of
-/// `col.type_code`.
-unsafe fn write_scalar<T: Copy>(col: ColumnBuilder<'_>, values: &[T]) -> Result<CommittedColumn, SdkError> {
-	let bytes = core::mem::size_of_val(values);
-	if bytes > 0 {
-		// SAFETY: this fn's contract puts a capacity of at least `bytes` on the caller; `data_ptr` is
-		// the base of that host buffer and `values` is a distinct live slice, and both sides are
-		// copied as untyped bytes so neither needs alignment for `T`.
-		unsafe {
-			core::ptr::copy_nonoverlapping(values.as_ptr() as *const u8, col.data_ptr(), bytes);
-		}
+fn emitted_rows(columns: &[CommittedColumn], row_numbers: &[RowNumber]) -> Result<usize, SdkError> {
+	let rows = columns.first().map_or(0, CommittedColumn::row_count);
+	check_emit_count(rows, row_numbers.len())?;
+	for column in columns {
+		check_emit_count(column.row_count, row_numbers.len())?;
 	}
-	col.commit(values.len())
-}
-
-fn write_var_len<'b, I>(col: ColumnBuilder<'_>, items: I) -> Result<CommittedColumn, SdkError>
-where
-	I: IntoIterator<Item = &'b [u8]>,
-{
-	let items: Vec<&[u8]> = items.into_iter().collect();
-	let total: usize = items.iter().map(|b| b.len()).sum();
-	let needed = total.max(items.len());
-	if needed > 0 {
-		col.grow(needed)?;
-	}
-	let mut cursor = 0usize;
-	// SAFETY: `col` is a var-len builder, so `offsets_ptr` is non-null and starts out with room for
-	// one entry; `grow(needed)` above reserved `total` further data bytes and `items.len()` further
-	// offset slots, so every write through `data` and `offsets` here is inside those reservations.
-	unsafe {
-		let data = col.data_ptr();
-		let offsets = col.offsets_ptr();
-		core::ptr::write(offsets, 0u64);
-		for (i, bytes) in items.iter().enumerate() {
-			if !bytes.is_empty() {
-				core::ptr::copy_nonoverlapping(bytes.as_ptr(), data.add(cursor), bytes.len());
-			}
-			cursor += bytes.len();
-			core::ptr::write(offsets.add(i + 1), cursor as u64);
-		}
-	}
-	col.commit(items.len())
+	Ok(rows)
 }
 
 impl<'a> Drop for ColumnBuilder<'a> {
@@ -370,10 +211,28 @@ impl<'a> ColumnsBuilder<'a> {
 		names: &[&str],
 		row_numbers: &[RowNumber],
 	) -> Result<(), SdkError> {
+		self.insert_named(post, names.iter().copied(), row_numbers)
+	}
+
+	pub(crate) fn insert_named<'n>(
+		&mut self,
+		post: &[CommittedColumn],
+		names: impl ExactSizeIterator<Item = &'n str> + Clone,
+		row_numbers: &[RowNumber],
+	) -> Result<(), SdkError> {
 		assert_eq!(post.len(), names.len(), "emit_insert: post columns and names must have matching length");
-		let row_count = post.first().map(|c| c.row_count).unwrap_or(0);
-		assert_eq!(row_numbers.len(), row_count, "emit_insert: row_numbers length must equal post row count");
-		self.emit_internal(EmitDiffKind::Insert, &[], &[], 0, &[], post, names, row_count, row_numbers)
+		let row_count = emitted_rows(post, row_numbers)?;
+		self.emit_internal(
+			EmitDiffKind::Insert,
+			&[],
+			iter::empty(),
+			0,
+			&[],
+			post,
+			names,
+			row_count,
+			row_numbers,
+		)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -388,10 +247,40 @@ impl<'a> ColumnsBuilder<'a> {
 		post_row_count: usize,
 		post_row_numbers: &[RowNumber],
 	) -> Result<(), SdkError> {
+		self.update_named(
+			pre,
+			pre_names.iter().copied(),
+			pre_row_count,
+			pre_row_numbers,
+			post,
+			post_names.iter().copied(),
+			post_row_count,
+			post_row_numbers,
+		)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn update_named<'n>(
+		&mut self,
+		pre: &[CommittedColumn],
+		pre_names: impl ExactSizeIterator<Item = &'n str> + Clone,
+		pre_row_count: usize,
+		pre_row_numbers: &[RowNumber],
+		post: &[CommittedColumn],
+		post_names: impl ExactSizeIterator<Item = &'n str> + Clone,
+		post_row_count: usize,
+		post_row_numbers: &[RowNumber],
+	) -> Result<(), SdkError> {
 		assert_eq!(pre.len(), pre_names.len(), "emit_update: pre columns/names mismatch");
 		assert_eq!(post.len(), post_names.len(), "emit_update: post columns/names mismatch");
-		assert_eq!(pre_row_numbers.len(), pre_row_count, "emit_update: pre_row_numbers length mismatch");
-		assert_eq!(post_row_numbers.len(), post_row_count, "emit_update: post_row_numbers length mismatch");
+		check_emit_count(pre_row_count, pre_row_numbers.len())?;
+		check_emit_count(post_row_count, post_row_numbers.len())?;
+		for column in pre {
+			check_emit_count(column.row_count, pre_row_numbers.len())?;
+		}
+		for column in post {
+			check_emit_count(column.row_count, post_row_numbers.len())?;
+		}
 		self.emit_internal(
 			EmitDiffKind::Update,
 			pre,
@@ -411,32 +300,40 @@ impl<'a> ColumnsBuilder<'a> {
 		names: &[&str],
 		row_numbers: &[RowNumber],
 	) -> Result<(), SdkError> {
+		self.remove_named(pre, names.iter().copied(), row_numbers)
+	}
+
+	pub(crate) fn remove_named<'n>(
+		&mut self,
+		pre: &[CommittedColumn],
+		names: impl ExactSizeIterator<Item = &'n str> + Clone,
+		row_numbers: &[RowNumber],
+	) -> Result<(), SdkError> {
 		assert_eq!(pre.len(), names.len(), "emit_remove: pre columns and names must have matching length");
-		let row_count = pre.first().map(|c| c.row_count).unwrap_or(0);
-		assert_eq!(row_numbers.len(), row_count, "emit_remove: row_numbers length must equal pre row count");
-		self.emit_internal(EmitDiffKind::Remove, pre, names, row_count, row_numbers, &[], &[], 0, &[])
+		let row_count = emitted_rows(pre, row_numbers)?;
+		self.emit_internal(EmitDiffKind::Remove, pre, names, row_count, row_numbers, &[], iter::empty(), 0, &[])
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn emit_internal(
+	fn emit_internal<'p, 'q>(
 		&mut self,
 		kind: EmitDiffKind,
 		pre: &[CommittedColumn],
-		pre_names: &[&str],
+		pre_names: impl Iterator<Item = &'p str> + Clone,
 		pre_row_count: usize,
 		pre_row_numbers: &[RowNumber],
 		post: &[CommittedColumn],
-		post_names: &[&str],
+		post_names: impl Iterator<Item = &'q str> + Clone,
 		post_row_count: usize,
 		post_row_numbers: &[RowNumber],
 	) -> Result<(), SdkError> {
 		let pre_handles: Vec<*mut ColumnBufferHandle> = pre.iter().map(|c| c.handle).collect();
-		let pre_name_ptrs: Vec<*const u8> = pre_names.iter().map(|n| n.as_ptr()).collect();
-		let pre_name_lens: Vec<usize> = pre_names.iter().map(|n| n.len()).collect();
+		let pre_name_ptrs: Vec<*const u8> = pre_names.clone().map(str::as_ptr).collect();
+		let pre_name_lens: Vec<usize> = pre_names.map(str::len).collect();
 		let pre_row_nums: Vec<u64> = pre_row_numbers.iter().map(|r| r.0).collect();
 		let post_handles: Vec<*mut ColumnBufferHandle> = post.iter().map(|c| c.handle).collect();
-		let post_name_ptrs: Vec<*const u8> = post_names.iter().map(|n| n.as_ptr()).collect();
-		let post_name_lens: Vec<usize> = post_names.iter().map(|n| n.len()).collect();
+		let post_name_ptrs: Vec<*const u8> = post_names.clone().map(str::as_ptr).collect();
+		let post_name_lens: Vec<usize> = post_names.map(str::len).collect();
 		let post_row_nums: Vec<u64> = post_row_numbers.iter().map(|r| r.0).collect();
 
 		// SAFETY: `self.callbacks` was copied out of the context borrowed for `'a`, so the table is live; every

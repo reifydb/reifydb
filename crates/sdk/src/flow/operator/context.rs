@@ -32,6 +32,13 @@ use crate::{
 	},
 };
 
+pub(crate) fn check_emit_count(rows: usize, row_numbers: usize) -> Result<()> {
+	if rows == row_numbers {
+		return Ok(());
+	}
+	Err(SdkError::InvalidInput(format!("emit of {rows} rows with {row_numbers} row numbers")))
+}
+
 pub(crate) fn class_framed(class: OperatorClass, key: &GroupStateKey) -> Result<()> {
 	if is_class_framed_inner(class, key.as_slice()) {
 		return Ok(());
@@ -291,39 +298,55 @@ pub trait GuestEmitContext {
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::UpdateEmit<'_>>;
 	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::RemoveEmit<'_>>;
 
-	fn emit_insert<R: Row>(&mut self, rows: &[R], row_numbers: &[RowNumber]) -> Result<()> {
-		if rows.is_empty() {
+	fn emit_insert<'r, R: Row + 'r, I>(&mut self, rows: I, row_numbers: &[RowNumber]) -> Result<()>
+	where
+		I: IntoIterator<Item = &'r R>,
+		I::IntoIter: ExactSizeIterator + Clone,
+	{
+		let rows = rows.into_iter();
+		let count = rows.len();
+		check_emit_count(count, row_numbers.len())?;
+		if count == 0 {
 			return Ok(());
 		}
-		let mut emit = self.insert_emit::<R>(rows.len())?;
-		for bytes in rows {
-			bytes.encode_into(emit.sink())?;
-		}
+		let mut emit = self.insert_emit::<R>(count)?;
+		R::encode_rows(rows, emit.sink())?;
 		emit.finish(row_numbers)
 	}
 
-	fn emit_update<R: Row>(&mut self, pre: &[R], post: &[R], row_numbers: &[RowNumber]) -> Result<()> {
+	fn emit_update<'r, R: Row + 'r, P, Q>(&mut self, pre: P, post: Q, row_numbers: &[RowNumber]) -> Result<()>
+	where
+		P: IntoIterator<Item = &'r R>,
+		P::IntoIter: ExactSizeIterator + Clone,
+		Q: IntoIterator<Item = &'r R>,
+		Q::IntoIter: ExactSizeIterator + Clone,
+	{
+		let pre = pre.into_iter();
+		let post = post.into_iter();
+		check_emit_count(pre.len(), row_numbers.len())?;
+		check_emit_count(post.len(), row_numbers.len())?;
 		if row_numbers.is_empty() {
 			return Ok(());
 		}
 		let mut emit = self.update_emit::<R>(row_numbers.len())?;
-		for row in pre {
-			row.encode_into(emit.pre())?;
-		}
-		for row in post {
-			row.encode_into(emit.post())?;
-		}
+		R::encode_rows(pre, emit.pre())?;
+		R::encode_rows(post, emit.post())?;
 		emit.finish(row_numbers)
 	}
 
-	fn emit_remove<R: Row>(&mut self, rows: &[R], row_numbers: &[RowNumber]) -> Result<()> {
-		if rows.is_empty() {
+	fn emit_remove<'r, R: Row + 'r, I>(&mut self, rows: I, row_numbers: &[RowNumber]) -> Result<()>
+	where
+		I: IntoIterator<Item = &'r R>,
+		I::IntoIter: ExactSizeIterator + Clone,
+	{
+		let rows = rows.into_iter();
+		let count = rows.len();
+		check_emit_count(count, row_numbers.len())?;
+		if count == 0 {
 			return Ok(());
 		}
-		let mut emit = self.remove_emit::<R>(rows.len())?;
-		for row in rows {
-			row.encode_into(emit.sink())?;
-		}
+		let mut emit = self.remove_emit::<R>(count)?;
+		R::encode_rows(rows, emit.sink())?;
 		emit.finish(row_numbers)
 	}
 }
