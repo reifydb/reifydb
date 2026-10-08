@@ -62,6 +62,10 @@ impl<'a> ResolvedColumns<'a> {
 		Ok(slot.get_or_init(|| Some(view).filter(|view| !is_system_field(view.field))).as_ref())
 	}
 
+	fn row_numbers(&self) -> &'a [RowNumber] {
+		row_numbers(self.batch).unwrap_or_else(|e| panic!("in-process #rownum column does not read: {e}"))
+	}
+
 	fn time(&self) -> &'a [DateTime] {
 		self.time.get_or_init(|| {
 			time(self.batch).unwrap_or_else(|e| panic!("in-process #time column does not read: {e}"))
@@ -193,10 +197,7 @@ impl<'a> RowView for InProcessRowView<'a> {
 	}
 
 	fn row_number(&self) -> Option<RowNumber> {
-		row_numbers(self.columns.batch)
-			.unwrap_or_else(|e| panic!("in-process #rownum column does not read: {e}"))
-			.get(self.index)
-			.copied()
+		self.columns.row_numbers().get(self.index).copied()
 	}
 
 	fn row_time(&self) -> Option<DateTime> {
@@ -238,6 +239,10 @@ impl<'a> ColumnsView for InProcessColumnsView<'a> {
 			columns: Arc::clone(&self.columns),
 			index,
 		})
+	}
+
+	fn row_numbers(&self) -> &[RowNumber] {
+		self.columns.row_numbers()
 	}
 }
 

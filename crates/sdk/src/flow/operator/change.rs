@@ -4,7 +4,10 @@
 use core::{slice, str};
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::{reifydb_assertions, value::diff_type::DiffType};
+use reifydb_value::{
+	reifydb_assertions,
+	value::{diff_type::DiffType, row_number::RowNumber},
+};
 
 use crate::{
 	common::{
@@ -127,14 +130,19 @@ impl<'a> BorrowedColumns<'a> {
 		self.extern_c.row_count == 0 && self.extern_c.column_count == 0
 	}
 
-	pub fn row_numbers(&self) -> &'a [u64] {
+	pub fn row_numbers(&self) -> &'a [RowNumber] {
 		if self.extern_c.row_numbers.is_null() || self.extern_c.row_count == 0 {
 			&[]
 		} else {
 			// SAFETY: `row_numbers` is non-null here and the host marshal takes it only from the batch's
 			// `#rownum` column, which a RecordBatch holds at exactly `row_count` entries; `RowNumber` is
 			// `repr(transparent)` over `u64`.
-			unsafe { slice::from_raw_parts(self.extern_c.row_numbers, self.extern_c.row_count) }
+			unsafe {
+				slice::from_raw_parts(
+					self.extern_c.row_numbers.cast::<RowNumber>(),
+					self.extern_c.row_count,
+				)
+			}
 		}
 	}
 
@@ -164,10 +172,6 @@ impl<'a> BorrowedColumns<'a> {
 
 	pub fn column(&self, name: &str) -> Option<BorrowedColumn<'a>> {
 		self.columns().find(|c| c.name() == name)
-	}
-
-	pub fn index_of(&self, name: &str) -> Option<usize> {
-		self.columns().position(|c| c.name() == name)
 	}
 }
 

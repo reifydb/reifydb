@@ -39,6 +39,7 @@ pub trait RowView {
 pub trait ColumnsView {
 	fn row_count(&self) -> usize;
 	fn row(&self, index: usize) -> Option<impl RowView + '_>;
+	fn row_numbers(&self) -> &[RowNumber];
 }
 
 pub trait DiffView {

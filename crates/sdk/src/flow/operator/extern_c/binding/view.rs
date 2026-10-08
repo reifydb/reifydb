@@ -35,17 +35,9 @@ impl<'a> ExternCRowView<'a> {
 		}
 	}
 
-	pub fn index(&self) -> usize {
-		self.index
-	}
-
-	pub fn columns(&self) -> BorrowedColumns<'a> {
-		self.columns
-	}
-
 	fn column_defined(&self, name: &str) -> Option<BorrowedColumn<'a>> {
 		let col = self.columns.column(name)?;
-		if !is_defined_at(&col, self.index) {
+		if !col.is_defined_at(self.index) {
 			return None;
 		}
 		Some(col)
@@ -77,7 +69,7 @@ macro_rules! widening_read {
 impl<'a> RowView for ExternCRowView<'a> {
 	fn is_defined(&self, name: &str) -> bool {
 		match self.columns.column(name) {
-			Some(col) => is_defined_at(&col, self.index),
+			Some(col) => col.is_defined_at(self.index),
 			None => false,
 		}
 	}
@@ -194,7 +186,7 @@ impl<'a> RowView for ExternCRowView<'a> {
 	}
 
 	fn row_number(&self) -> Option<RowNumber> {
-		self.columns.row_numbers().get(self.index).copied().map(RowNumber)
+		self.columns.row_numbers().get(self.index).copied()
 	}
 
 	fn row_time(&self) -> Option<DateTime> {
@@ -209,18 +201,6 @@ fn read_error<T: ?Sized>(col: &BorrowedColumn<'_>, reason: ColumnReadReason) -> 
 		target: type_name::<T>(),
 		reason,
 	}
-}
-
-pub(crate) fn is_defined_at(col: &BorrowedColumn<'_>, index: usize) -> bool {
-	let bv = col.defined_bitvec();
-	if bv.is_empty() {
-		return true;
-	}
-	let byte = match bv.get(index / 8) {
-		Some(b) => *b,
-		None => return false,
-	};
-	(byte >> (index % 8)) & 1 == 1
 }
 
 pub(crate) fn fixed_at<T: Copy>(col: &BorrowedColumn<'_>, index: usize) -> Option<T> {
@@ -277,6 +257,10 @@ impl<'a> ColumnsView for BorrowedColumns<'a> {
 
 	fn row(&self, index: usize) -> Option<impl RowView + '_> {
 		(*self).row(index)
+	}
+
+	fn row_numbers(&self) -> &[RowNumber] {
+		BorrowedColumns::row_numbers(self)
 	}
 }
 

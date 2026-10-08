@@ -58,7 +58,7 @@ use crate::{
 		},
 		context::{GuestContext, Windowed},
 		timer::Timer,
-		view::{ChangeView, ColumnsView, DiffView, RowView},
+		view::{ChangeView, ColumnsView, DiffView},
 		windowed::{
 			WindowGroups, group_of,
 			guest_as_host::GuestAsHost,
@@ -810,11 +810,12 @@ where
 					let Some(cols) = diff.post() else {
 						continue;
 					};
+					let numbers = cols.row_numbers();
 					for i in 0..cols.row_count() {
 						let Some(row) = cols.row(i) else {
 							continue;
 						};
-						let Some(number) = row.row_number() else {
+						let Some(&number) = numbers.get(i) else {
 							*refused += 1;
 							continue;
 						};
@@ -836,11 +837,12 @@ where
 					let Some(cols) = diff.pre() else {
 						continue;
 					};
+					let numbers = cols.row_numbers();
 					for i in 0..cols.row_count() {
 						let Some(row) = cols.row(i) else {
 							continue;
 						};
-						let Some(number) = row.row_number() else {
+						let Some(&number) = numbers.get(i) else {
 							*refused += 1;
 							continue;
 						};
@@ -858,11 +860,12 @@ where
 					let (Some(pre), Some(post)) = (diff.pre(), diff.post()) else {
 						continue;
 					};
+					let numbers = pre.row_numbers();
 					for i in 0..pre.row_count() {
 						let (Some(pre_row), Some(post_row)) = (pre.row(i), post.row(i)) else {
 							continue;
 						};
-						let Some(number) = pre_row.row_number() else {
+						let Some(&number) = numbers.get(i) else {
 							*refused += 2;
 							continue;
 						};
