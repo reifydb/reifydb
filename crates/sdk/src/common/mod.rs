@@ -2,6 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 #[cfg(feature = "host")]
+pub(crate) mod buffer_check;
+#[cfg(feature = "host")]
 pub mod extern_c;
 pub mod extern_wasm;
 #[cfg(feature = "host")]

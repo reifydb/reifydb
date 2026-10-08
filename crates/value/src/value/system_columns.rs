@@ -140,6 +140,71 @@ pub fn time(batch: &RecordBatch) -> Result<&[DateTime]> {
 	datetime_column(batch, SystemColumn::Time)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowTimes<'a> {
+	values: &'a [DateTime],
+	defined: Option<(&'a [u8], usize)>,
+}
+
+impl<'a> RowTimes<'a> {
+	pub const EMPTY: Self = Self {
+		values: &[],
+		defined: None,
+	};
+
+	pub fn new(values: &'a [DateTime], defined: Option<(&'a [u8], usize)>) -> Self {
+		Self {
+			values,
+			defined,
+		}
+	}
+
+	pub fn len(&self) -> usize {
+		self.values.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.values.is_empty()
+	}
+
+	pub fn get(&self, index: usize) -> Option<DateTime> {
+		let value = *self.values.get(index)?;
+		match self.defined {
+			Some((bits, offset)) => {
+				let bit = offset + index;
+				bits.get(bit / 8).is_some_and(|byte| byte & (1 << (bit % 8)) != 0).then_some(value)
+			}
+			None => Some(value),
+		}
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = Option<DateTime>> + '_ {
+		(0..self.len()).map(|index| self.get(index))
+	}
+
+	pub fn values(&self) -> &'a [DateTime] {
+		self.values
+	}
+
+	pub fn defined(&self) -> Option<(&'a [u8], usize)> {
+		self.defined
+	}
+}
+
+pub fn row_times(batch: &RecordBatch) -> Result<RowTimes<'_>> {
+	let Some(array) = system_column(batch, SystemColumn::Time) else {
+		return Ok(RowTimes::EMPTY);
+	};
+	let array = array.as_any().downcast_ref::<TimestampNanosecondArray>().ok_or_else(|| {
+		field_error(format!(
+			"system column {} holds arrow type {}",
+			SystemColumn::Time.name(),
+			array.data_type()
+		))
+	})?;
+	Ok(RowTimes::new(datetimes(array), array.nulls().map(|nulls| (nulls.validity(), nulls.offset()))))
+}
+
 pub fn require_row_numbers(batch: &RecordBatch) -> Result<&[RowNumber]> {
 	require(batch, SystemColumn::RowNumbers)?;
 	row_numbers(batch)

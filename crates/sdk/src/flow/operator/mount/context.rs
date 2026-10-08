@@ -11,9 +11,7 @@ use reifydb_core::{
 	common::OperatorClass,
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, change::Diff},
-	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, guest_may_address, keyspace_inner_range_in,
-	},
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, keyspace_inner_range_in},
 	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
@@ -34,18 +32,11 @@ use crate::{
 		context::{
 			ClassState, CustomClass, GuestBound, GuestContext, GuestDictionary, GuestEmit,
 			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass, check_class_batch,
-			check_row_number_keys, class_framed,
+			check_row_number_keys, class_framed, class_keyspace, guest_sweep_mask,
 		},
 		state::{decode_payload, encode_payload},
 	},
 };
-
-fn class_keyspace(class: OperatorClass, keyspace: KeyspaceId) -> SdkResult<()> {
-	if guest_may_address(class, keyspace) {
-		return Ok(());
-	}
-	Err(SdkError::Other(format!("a {class:?} guest may not read keyspace {}", keyspace.name())))
-}
 
 fn to_sdk_err<E: ToString>(e: E) -> SdkError {
 	SdkError::Other(e.to_string())
@@ -281,10 +272,8 @@ impl GuestState for InProcessState<'_> {
 	) -> SdkResult<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let sweep = unsafe {
-			(*self.host).group_sweep_many(groups, limit, KeyspaceMask::windowed().intersect(keyspaces))
-		}
-		.map_err(to_sdk_err)?;
+		let sweep = unsafe { (*self.host).group_sweep_many(groups, limit, guest_sweep_mask(keyspaces)) }
+			.map_err(to_sdk_err)?;
 		Ok((sweep.rows, sweep.complete))
 	}
 

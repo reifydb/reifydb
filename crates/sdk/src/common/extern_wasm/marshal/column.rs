@@ -26,7 +26,7 @@ use reifydb_value::{
 		dictionary::DictionaryEntryId,
 		duration::Duration,
 		identity::IdentityId,
-		system_columns::{SystemColumn, row_numbers, system_column, time, user_columns},
+		system_columns::{SystemColumn, row_numbers, row_times, system_column, user_columns},
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -65,11 +65,17 @@ impl Arena {
 			ptr::null()
 		};
 
-		let time_ptr = match system_column(batch, SystemColumn::Time) {
-			Some(array) if !array.is_empty() && array.null_count() == 0 => {
-				time(batch)?.as_ptr() as *const i64
+		let times = row_times(batch)?;
+		let time_ptr = if !times.is_empty() {
+			times.values().as_ptr() as *const i64
+		} else {
+			ptr::null()
+		};
+		let time_defined = match system_column(batch, SystemColumn::Time).and_then(|array| array.nulls()) {
+			Some(nulls) if !times.is_empty() && nulls.null_count() > 0 => {
+				self.marshal_bitvec(nulls.inner())
 			}
-			_ => ptr::null(),
+			_ => ExternCBuffer::empty(),
 		};
 
 		let columns_size = column_count * size_of::<ExternCColumn>();
@@ -93,6 +99,7 @@ impl Arena {
 			row_numbers: row_numbers_ptr,
 			columns: columns_ptr as *const ExternCColumn,
 			time: time_ptr,
+			time_defined,
 		})
 	}
 }
@@ -464,8 +471,8 @@ mod tests {
 		// Absolute offsets leaking to the guest would read rows shifted by the slice start.
 		let parent = frozen(utf8("c", ["aa", "bb", "cc", "dd"]));
 		let got = read_back(slice(parent, 2, 4), |column, row| {
-			assert!(column.type_code() == ValueKind::Utf8 && column.is_defined_at(row));
-			column.str_at(row).map(str::to_string)
+			assert!(column.type_code() == ValueKind::Utf8 && column.defined_at(row).unwrap());
+			column.str_at(row).unwrap().map(str::to_string)
 		});
 		assert_eq!(got, vec!["cc".to_string(), "dd".to_string()]);
 	}
@@ -541,7 +548,8 @@ mod tests {
 						"padding {padding}"
 					);
 					assert!(
-						column.type_code() == ValueKind::Uint16 && column.is_defined_at(row),
+						column.type_code() == ValueKind::Uint16
+							&& column.defined_at(row).unwrap(),
 						"padding {padding}"
 					);
 					// SAFETY: asserted above: 16-aligned rows, `row_count` u128 cells long.
@@ -563,7 +571,7 @@ mod tests {
 			DateTime::from_nanos(i64::MAX),
 		];
 		let got = read_back(datetime("c", values.clone()), |column, row| {
-			assert!(column.type_code() == ValueKind::DateTime && column.is_defined_at(row));
+			assert!(column.type_code() == ValueKind::DateTime && column.defined_at(row).unwrap());
 			// SAFETY: DateTime cells marshal as aligned raw i64, and `DateTime` is transparent over i64.
 			unsafe { column.as_slice::<DateTime>() }?.get(row).copied()
 		});
@@ -575,7 +583,7 @@ mod tests {
 		// The marshal is zero-copy raw i32 days since the epoch, so the reader must read the same units.
 		let values = vec![Date::default(), Date::new(2024, 3, 15).unwrap(), Date::new(1970, 1, 1).unwrap()];
 		let got = read_back(date("c", values.clone()), |column, row| {
-			assert!(column.type_code() == ValueKind::Date && column.is_defined_at(row));
+			assert!(column.type_code() == ValueKind::Date && column.defined_at(row).unwrap());
 			// SAFETY: Date cells marshal as aligned raw i32, and `Date` is transparent over i32.
 			unsafe { column.as_slice::<Date>() }?.get(row).copied()
 		});
@@ -591,7 +599,7 @@ mod tests {
 			Time::new(23, 59, 59, 999_999_999).unwrap(),
 		];
 		let got = read_back(time("c", values.clone()), |column, row| {
-			assert!(column.type_code() == ValueKind::Time && column.is_defined_at(row));
+			assert!(column.type_code() == ValueKind::Time && column.defined_at(row).unwrap());
 			// SAFETY: Time cells marshal as aligned raw u64, and `Time` is transparent over u64.
 			unsafe { column.as_slice::<Time>() }?.get(row).copied()
 		});
@@ -608,7 +616,7 @@ mod tests {
 			Duration::from_seconds(-30).expect("duration"),
 		];
 		let got = read_back(duration("c", values.clone()), |column, row| {
-			assert!(column.type_code() == ValueKind::Duration && column.is_defined_at(row));
+			assert!(column.type_code() == ValueKind::Duration && column.defined_at(row).unwrap());
 			// SAFETY: Duration cells marshal aligned and `repr(C)`, so every bit pattern is valid.
 			unsafe { column.as_slice::<Duration>() }?.get(row).copied()
 		});

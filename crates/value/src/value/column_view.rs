@@ -21,7 +21,7 @@ use crate::{
 		constraint::bytes::MaxBytes,
 		container::{
 			any_array, bool_array,
-			decimal_array::{DecimalView, decimal_as_string, decimal_at, decimal_get_value},
+			decimal_array::{DecimalView, checked_decimal_at, decimal_as_string, decimal_get_value},
 			dictionary_array, digest_array, primitive,
 			temporal_array::{self, dates, datetimes, durations, times},
 			uuid_array::{self, identity_ids, uuid4s, uuid7s},
@@ -779,7 +779,7 @@ impl FromColumnView for Uuid7 {
 impl FromColumnView for Decimal {
 	fn from_column_view(view: &ColumnView<'_>, index: usize) -> StdResult<Option<Self>, ColumnReadReason> {
 		match &view.data {
-			ViewData::Decimal(d) => Ok(decimal_at(d, index)),
+			ViewData::Decimal(d) => checked_decimal_at(d, index).ok_or(ColumnReadReason::DoesNotFit),
 			ViewData::Float4(c) => c
 				.values()
 				.get(index)

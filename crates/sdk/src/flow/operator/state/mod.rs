@@ -17,7 +17,7 @@ use reifydb_value::error::Error as ValueError;
 use crate::{
 	error::{Result, SdkError},
 	flow::operator::{
-		context::GuestBound,
+		context::{GuestBound, guest_sweep_mask},
 		extern_c::binding::{context::ExternCContext, state as extern_c},
 	},
 };
@@ -120,8 +120,7 @@ impl<'a> State<'a> {
 		limit: usize,
 		keyspaces: KeyspaceMask,
 	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
-		let (rows, complete) =
-			extern_c::sweep_many(self.ctx, groups, limit, KeyspaceMask::windowed().intersect(keyspaces))?;
+		let (rows, complete) = extern_c::sweep_many(self.ctx, groups, limit, guest_sweep_mask(keyspaces))?;
 		let mut framed_rows = Vec::with_capacity(rows.len());
 		for (k, row) in rows {
 			framed_rows.push((framed(k)?, EncodedPodRow::from(row)));

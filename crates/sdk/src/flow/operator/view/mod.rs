@@ -5,13 +5,13 @@ pub mod in_process;
 
 use reifydb_value::value::{
 	date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-	row_number::RowNumber, time::Time,
+	row_number::RowNumber, system_columns::RowTimes, time::Time,
 };
 
 use crate::error::SdkError;
 
 pub trait RowView {
-	fn is_defined(&self, name: &str) -> bool;
+	fn is_defined(&self, name: &str) -> Result<bool, SdkError>;
 	fn utf8(&self, name: &str) -> Result<Option<&str>, SdkError>;
 	fn blob(&self, name: &str) -> Result<Option<&[u8]>, SdkError>;
 	fn bool(&self, name: &str) -> Result<Option<bool>, SdkError>;
@@ -40,6 +40,7 @@ pub trait ColumnsView {
 	fn row_count(&self) -> usize;
 	fn row(&self, index: usize) -> Option<impl RowView + '_>;
 	fn row_numbers(&self) -> &[RowNumber];
+	fn times(&self) -> RowTimes<'_>;
 }
 
 pub trait DiffView {

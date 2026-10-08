@@ -3,18 +3,21 @@
 
 use std::any::type_name;
 
-use reifydb_codec::tag::ValueKind;
+use reifydb_codec::tag::{TypeTag, ValueKind};
 use reifydb_value::{
 	error::ColumnReadReason,
 	value::{
 		date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-		row_number::RowNumber, time::Time, value_type::ValueType,
+		row_number::RowNumber, system_columns::RowTimes, time::Time, value_type::ValueType,
 	},
 };
 
 use crate::{
-	common::family::family_params,
-	error::SdkError,
+	common::{
+		buffer_check::{bitvec_len, fixed_len},
+		family::family_params,
+	},
+	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
 		view::{ChangeView, ColumnsView, DiffView, RowView},
@@ -35,72 +38,75 @@ impl<'a> ExternCRowView<'a> {
 		}
 	}
 
-	fn column_defined(&self, name: &str) -> Option<BorrowedColumn<'a>> {
-		let col = self.columns.column(name)?;
-		if !col.is_defined_at(self.index) {
-			return None;
+	fn column_defined(&self, name: &str) -> SdkResult<Option<BorrowedColumn<'a>>> {
+		let Some(col) = self.columns.column(name)? else {
+			return Ok(None);
+		};
+		if !col.defined_at(self.index)? {
+			return Ok(None);
 		}
-		Some(col)
+		Ok(Some(col))
 	}
 
 	fn temporal<T: Copy>(&self, name: &str, kind: ValueKind) -> Result<Option<T>, SdkError> {
-		let Some(col) = self.column_defined(name) else {
+		let Some(col) = self.column_defined(name)? else {
 			return Ok(None);
 		};
 		if col.type_code() != kind {
 			return Err(read_error::<T>(&col, ColumnReadReason::WrongType));
 		}
-		Ok(fixed_at::<T>(&col, self.index))
+		fixed_at::<T>(&col, self.index)
 	}
 }
 
 macro_rules! widening_read {
 	($self:ident, $name:ident, $t:ty => [$($kind:ident: $source:ty),*]) => {{
-		let Some(col) = $self.column_defined($name) else {
+		let Some(col) = $self.column_defined($name)? else {
 			return Ok(None);
 		};
 		match col.type_code() {
-			$(ValueKind::$kind => Ok(fixed_at::<$source>(&col, $self.index).map(<$t>::from)),)*
+			$(ValueKind::$kind => Ok(fixed_at::<$source>(&col, $self.index)?.map(<$t>::from)),)*
 			_ => Err(read_error::<$t>(&col, ColumnReadReason::WrongType)),
 		}
 	}};
 }
 
 impl<'a> RowView for ExternCRowView<'a> {
-	fn is_defined(&self, name: &str) -> bool {
-		match self.columns.column(name) {
-			Some(col) => col.is_defined_at(self.index),
-			None => false,
+	fn is_defined(&self, name: &str) -> Result<bool, SdkError> {
+		match self.columns.column(name)? {
+			Some(col) => col.defined_at(self.index),
+			None => Ok(false),
 		}
 	}
 
 	fn utf8(&self, name: &str) -> Result<Option<&str>, SdkError> {
-		let Some(col) = self.column_defined(name) else {
+		let Some(col) = self.column_defined(name)? else {
 			return Ok(None);
 		};
 		if col.type_code() != ValueKind::Utf8 {
 			return Err(read_error::<&str>(&col, ColumnReadReason::WrongType));
 		}
-		Ok(col.str_at(self.index))
+		col.str_at(self.index)
 	}
 
 	fn blob(&self, name: &str) -> Result<Option<&[u8]>, SdkError> {
-		let Some(col) = self.column_defined(name) else {
+		let Some(col) = self.column_defined(name)? else {
 			return Ok(None);
 		};
 		if col.type_code() != ValueKind::Blob {
 			return Err(read_error::<&[u8]>(&col, ColumnReadReason::WrongType));
 		}
-		Ok(col.bytes_at(self.index))
+		col.bytes_at(self.index)
 	}
 
 	fn bool(&self, name: &str) -> Result<Option<bool>, SdkError> {
-		let Some(col) = self.column_defined(name) else {
+		let Some(col) = self.column_defined(name)? else {
 			return Ok(None);
 		};
 		if col.type_code() != ValueKind::Boolean {
 			return Err(read_error::<bool>(&col, ColumnReadReason::WrongType));
 		}
+		bitvec_len(col.data_bytes().len(), col.row_count(), col.name())?;
 		Ok(col.data_bytes().get(self.index / 8).map(|byte| (byte >> (self.index % 8)) & 1 == 1))
 	}
 
@@ -153,16 +159,19 @@ impl<'a> RowView for ExternCRowView<'a> {
 	}
 
 	fn decimal(&self, name: &str) -> Result<Option<Decimal>, SdkError> {
-		let Some(col) = self.column_defined(name) else {
+		let Some(col) = self.column_defined(name)? else {
 			return Ok(None);
 		};
 		let does_not_fit = || read_error::<Decimal>(&col, ColumnReadReason::DoesNotFit);
 		match col.type_code() {
-			ValueKind::Decimal => col.family_cell_at(self.index),
-			ValueKind::Float8 => fixed_at::<f64>(&col, self.index)
+			ValueKind::Decimal => match col.family_cell_at::<Decimal>(self.index)? {
+				Some(decoded) => decoded.map(Some).map_err(|_| does_not_fit()),
+				None => Ok(None),
+			},
+			ValueKind::Float8 => fixed_at::<f64>(&col, self.index)?
 				.map(|v| Decimal::from_f64(v).ok_or_else(does_not_fit))
 				.transpose(),
-			ValueKind::Float4 => fixed_at::<f32>(&col, self.index)
+			ValueKind::Float4 => fixed_at::<f32>(&col, self.index)?
 				.map(|v| Decimal::from_f32(v).ok_or_else(does_not_fit))
 				.transpose(),
 			_ => Err(read_error::<Decimal>(&col, ColumnReadReason::WrongType)),
@@ -190,7 +199,7 @@ impl<'a> RowView for ExternCRowView<'a> {
 	}
 
 	fn row_time(&self) -> Option<DateTime> {
-		self.columns.time().get(self.index).copied().map(DateTime::from_nanos)
+		self.columns.times().get(self.index)
 	}
 }
 
@@ -203,37 +212,23 @@ fn read_error<T: ?Sized>(col: &BorrowedColumn<'_>, reason: ColumnReadReason) -> 
 	}
 }
 
-pub(crate) fn fixed_at<T: Copy>(col: &BorrowedColumn<'_>, index: usize) -> Option<T> {
+pub(crate) fn fixed_at<T: Copy>(col: &BorrowedColumn<'_>, index: usize) -> SdkResult<Option<T>> {
+	fixed_len(col.data_bytes().len(), col.row_count(), size_of::<T>(), col.name())?;
 	// SAFETY: discharges BorrowedColumn::as_slice - every caller checks `col.type_code()` first and
 	// instantiates `T` as that code's element type, and the host marshals fixed-width columns
 	// zero-copy from a live `&[T]`, so the bytes are an initialised array of `T` aligned for it.
-	let slice = unsafe { col.as_slice::<T>()? };
-	slice.get(index).copied()
+	let slice = unsafe { col.as_slice::<T>() };
+	Ok(slice.and_then(|slice| slice.get(index).copied()))
 }
 
 fn type_for_column(col: &BorrowedColumn<'_>) -> ValueType {
 	let code = col.type_code();
 	match code {
-		ValueKind::Boolean => ValueType::Boolean,
-		ValueKind::Float4 => ValueType::Float4,
-		ValueKind::Float8 => ValueType::Float8,
-		ValueKind::Int1 => ValueType::Int1,
-		ValueKind::Int2 => ValueType::Int2,
-		ValueKind::Int4 => ValueType::Int4,
-		ValueKind::Int8 => ValueType::Int8,
-		ValueKind::Int16 => ValueType::Int16,
-		ValueKind::Uint1 => ValueType::Uint1,
-		ValueKind::Uint2 => ValueType::Uint2,
-		ValueKind::Uint4 => ValueType::Uint4,
-		ValueKind::Uint8 => ValueType::Uint8,
-		ValueKind::Uint16 => ValueType::Uint16,
-		ValueKind::Utf8 => ValueType::Utf8,
 		ValueKind::Decimal => match family_params(code, col.precision(), col.scale()) {
 			Some((precision, scale)) => ValueType::decimal(precision, scale),
 			None => ValueType::Any,
 		},
-		ValueKind::Blob => ValueType::Blob,
-		_ => ValueType::Any,
+		_ => TypeTag::new(code, 0).ok().and_then(|tag| tag.to_type().ok()).unwrap_or(ValueType::Any),
 	}
 }
 
@@ -261,6 +256,10 @@ impl<'a> ColumnsView for BorrowedColumns<'a> {
 
 	fn row_numbers(&self) -> &[RowNumber] {
 		BorrowedColumns::row_numbers(self)
+	}
+
+	fn times(&self) -> RowTimes<'_> {
+		BorrowedColumns::times(self)
 	}
 }
 

@@ -69,6 +69,7 @@ use uuid::Uuid;
 
 use crate::{
 	common::{
+		buffer_check::{cell_range, malformed},
 		extern_wasm::{
 			layout::{
 				EXTERN_WASM_COLUMN_SIZE, EXTERN_WASM_COLUMNS_HEADER_SIZE, ExternWasmColumn,
@@ -78,7 +79,7 @@ use crate::{
 		},
 		family::{cell_width, column_params, decode_family_column, family_params, is_family},
 	},
-	error::{Result as SdkResult, SdkError},
+	error::Result as SdkResult,
 };
 
 const COLUMN_FLAG_OPTIONAL: u8 = 0b0000_0001;
@@ -275,10 +276,6 @@ pub fn unmarshal_columns_from_bytes(bytes: &[u8]) -> SdkResult<RecordBatch> {
 	} else {
 		Ok(with_system_column(columns, SystemColumn::RowNumbers, Arc::new(UInt64Array::from(row_numbers)))?)
 	}
-}
-
-fn malformed(reason: String) -> SdkError {
-	SdkError::InvalidInput(reason)
 }
 
 fn region<'a>(bytes: &'a [u8], offset: u32, len: u32, what: &str) -> SdkResult<&'a [u8]> {
@@ -625,18 +622,8 @@ fn cell_ranges(data: &[u8], row_count: usize, offsets_bytes: &[u8], what: &str) 
 			row_count + 1
 		)));
 	}
-	(0..row_count)
-		.map(|i| {
-			let (start, end) = (offsets[i] as usize, offsets[i + 1] as usize);
-			if start > end || end > data.len() {
-				return Err(malformed(format!(
-					"guest {what} cell {i} spans {start}..{end}, outside the {} data bytes sent",
-					data.len()
-				)));
-			}
-			Ok((start, end))
-		})
-		.collect()
+	let what = format!("guest {what}");
+	(0..row_count).map(|i| cell_range(&offsets, data.len(), i, &what)).collect()
 }
 
 fn maybe_wrap_option(

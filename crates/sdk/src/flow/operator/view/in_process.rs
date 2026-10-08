@@ -19,7 +19,7 @@ use reifydb_value::{
 		diff_type::DiffType,
 		duration::Duration,
 		row_number::RowNumber,
-		system_columns::{is_system_field, row_numbers, time},
+		system_columns::{RowTimes, is_system_field, row_numbers, row_times},
 		time::Time,
 	},
 };
@@ -31,7 +31,7 @@ struct ResolvedColumns<'a> {
 	batch: &'a RecordBatch,
 	positions: HashMap<&'a str, usize>,
 	views: Box<[OnceLock<Option<ColumnView<'a>>>]>,
-	time: OnceLock<&'a [DateTime]>,
+	times: OnceLock<RowTimes<'a>>,
 }
 
 impl<'a> ResolvedColumns<'a> {
@@ -45,7 +45,7 @@ impl<'a> ResolvedColumns<'a> {
 			batch,
 			positions,
 			views: fields.iter().map(|_| OnceLock::new()).collect(),
-			time: OnceLock::new(),
+			times: OnceLock::new(),
 		}
 	}
 
@@ -58,18 +58,17 @@ impl<'a> ResolvedColumns<'a> {
 			return Ok(view.as_ref());
 		}
 		let batch = self.batch;
-		let view = ColumnView::try_from((batch.column(index), batch.schema_ref().field(index)))?;
+		let view = ColumnView::try_from((batch.column(index), batch.schema_ref().field(index)))
+			.map_err(|err| SdkError::InvalidInput(err.0.message))?;
 		Ok(slot.get_or_init(|| Some(view).filter(|view| !is_system_field(view.field))).as_ref())
 	}
 
 	fn row_numbers(&self) -> &'a [RowNumber] {
-		row_numbers(self.batch).unwrap_or_else(|e| panic!("in-process #rownum column does not read: {e}"))
+		row_numbers(self.batch).expect("checked at the apply boundary")
 	}
 
-	fn time(&self) -> &'a [DateTime] {
-		self.time.get_or_init(|| {
-			time(self.batch).unwrap_or_else(|e| panic!("in-process #time column does not read: {e}"))
-		})
+	fn times(&self) -> RowTimes<'a> {
+		*self.times.get_or_init(|| row_times(self.batch).expect("checked at the apply boundary"))
 	}
 }
 
@@ -81,10 +80,6 @@ pub struct InProcessRowView<'a> {
 impl<'a> InProcessRowView<'a> {
 	fn buffer(&self, name: &str) -> Result<Option<&ColumnView<'a>>, SdkError> {
 		self.columns.view(name)
-	}
-
-	fn readable(&self, name: &str) -> Option<&ColumnView<'a>> {
-		self.buffer(name).unwrap_or_else(|e| panic!("in-process column '{name}' does not read: {e}"))
 	}
 
 	fn defined(&self, name: &str) -> Result<Option<&ColumnView<'a>>, SdkError> {
@@ -100,8 +95,8 @@ impl<'a> InProcessRowView<'a> {
 }
 
 impl<'a> RowView for InProcessRowView<'a> {
-	fn is_defined(&self, name: &str) -> bool {
-		self.readable(name).map(|view| view.is_defined(self.index)).unwrap_or(false)
+	fn is_defined(&self, name: &str) -> Result<bool, SdkError> {
+		Ok(self.buffer(name)?.is_some_and(|view| view.is_defined(self.index)))
 	}
 
 	fn utf8(&self, name: &str) -> Result<Option<&str>, SdkError> {
@@ -201,7 +196,7 @@ impl<'a> RowView for InProcessRowView<'a> {
 	}
 
 	fn row_time(&self) -> Option<DateTime> {
-		self.columns.time().get(self.index).copied()
+		self.columns.times().get(self.index)
 	}
 }
 
@@ -243,6 +238,10 @@ impl<'a> ColumnsView for InProcessColumnsView<'a> {
 
 	fn row_numbers(&self) -> &[RowNumber] {
 		self.columns.row_numbers()
+	}
+
+	fn times(&self) -> RowTimes<'_> {
+		self.columns.times()
 	}
 }
 

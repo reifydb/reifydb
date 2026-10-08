@@ -66,6 +66,8 @@ pub struct ExternCColumns {
 	pub columns: *const ExternCColumn,
 
 	pub time: *const i64,
+
+	pub time_defined: ExternCBuffer,
 }
 
 impl ExternCColumns {
@@ -76,6 +78,7 @@ impl ExternCColumns {
 			row_numbers: core::ptr::null(),
 			columns: core::ptr::null(),
 			time: core::ptr::null(),
+			time_defined: ExternCBuffer::empty(),
 		}
 	}
 

@@ -200,10 +200,16 @@ pub fn decimal_array<B: Borrow<Decimal>>(
 }
 
 pub fn decimal_at<'a>(array: impl Into<DecimalView<'a>>, index: usize) -> Option<Decimal> {
+	checked_decimal_at(array, index).expect("a decimal array holds only valid decimals")
+}
+
+pub fn checked_decimal_at<'a>(array: impl Into<DecimalView<'a>>, index: usize) -> Option<Option<Decimal>> {
 	let array = array.into();
 	let scale = array.scale().value();
-	array.unscaled_at(index)
-		.map(|value| Decimal::from_parts(value, scale).expect("a decimal array holds only valid decimals"))
+	match array.unscaled_at(index) {
+		Some(value) => Decimal::from_parts(value, scale).map(Some),
+		None => Some(None),
+	}
 }
 
 pub fn decimals<'a>(array: impl Into<DecimalView<'a>>) -> Vec<Decimal> {

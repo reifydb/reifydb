@@ -21,7 +21,10 @@ use reifydb_runtime::fatal::{
 	describe_payload, fatal, is_armed,
 	report::{FatalKind, FatalReport},
 };
-use reifydb_value::Result;
+use reifydb_value::{
+	Result,
+	value::system_columns::{row_numbers, row_times},
+};
 
 use crate::{
 	error::Result as SdkResult,
@@ -78,6 +81,10 @@ impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		for batch in change.diffs.iter().flat_map(|diff| [diff.pre(), diff.post()]).flatten() {
+			row_numbers(batch)?;
+			row_times(batch)?;
+		}
 		let version = change.version;
 		let changed_at = change.changed_at;
 		let mut ctx = InProcessContext::new(host, self.operator);

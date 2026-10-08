@@ -11,7 +11,8 @@ use reifydb_core::{
 	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, ManagedKey, UnmanagedKey, is_class_framed_inner,
+		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, ManagedKey, UnmanagedKey, guest_may_address,
+		is_class_framed_inner,
 	},
 	state::{batch::StateBatch, timer::TimerKind},
 };
@@ -39,6 +40,17 @@ pub(crate) fn class_framed(class: OperatorClass, key: &GroupStateKey) -> Result<
 		"a {class:?} guest state key must name a keyspace its class owns and carry that keyspace's exact suffix width, got {} bytes",
 		key.as_slice().len()
 	)))
+}
+
+pub(crate) fn class_keyspace(class: OperatorClass, keyspace: KeyspaceId) -> Result<()> {
+	if guest_may_address(class, keyspace) {
+		return Ok(());
+	}
+	Err(SdkError::Other(format!("a {class:?} guest may not read keyspace {}", keyspace.name())))
+}
+
+pub(crate) fn guest_sweep_mask(keyspaces: KeyspaceMask) -> KeyspaceMask {
+	KeyspaceMask::windowed().intersect(keyspaces)
 }
 
 pub(crate) fn check_row_number_keys(keys: &[EncodedKey]) -> Result<()> {

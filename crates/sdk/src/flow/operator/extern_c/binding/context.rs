@@ -8,6 +8,7 @@ use reifydb_codec::{
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
+	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
 	state::{batch::StateBatch, timer::TimerKind},
@@ -27,7 +28,8 @@ use crate::{
 		column::row::Row,
 		context::{
 			ClassState, CustomClass, GuestBound, GuestContext, GuestDictionary, GuestEmit,
-			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass,
+			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass, check_class_batch, class_framed,
+			class_keyspace,
 		},
 		dictionary::Dictionary,
 		extern_c::{
@@ -253,6 +255,96 @@ impl GuestState for State<'_> {
 	}
 }
 
+pub struct ClassFramedState<'a> {
+	state: State<'a>,
+	class: OperatorClass,
+}
+
+impl GuestState for ClassFramedState<'_> {
+	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> Result<Option<T>> {
+		class_framed(self.class, key)?;
+		State::get(&self.state, key)
+	}
+	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()> {
+		class_framed(self.class, key)?;
+		State::set(&mut self.state, key, value)
+	}
+	fn remove(&mut self, key: &GroupStateKey) -> Result<()> {
+		class_framed(self.class, key)?;
+		State::remove(&mut self.state, key)
+	}
+	fn contains(&self, key: &GroupStateKey) -> Result<bool> {
+		class_framed(self.class, key)?;
+		State::contains(&self.state, key)
+	}
+	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
+		class_framed(self.class, key)?;
+		State::get_bytes(&self.state, key)
+	}
+
+	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
+		class_framed(self.class, key)?;
+		State::set_bytes(&mut self.state, key, payload)
+	}
+
+	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()> {
+		class_framed(self.class, key)?;
+		State::remove(&mut self.state, key)
+	}
+
+	fn remove_many_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		for key in keys {
+			class_framed(self.class, key)?;
+		}
+		State::remove_many_bytes(&mut self.state, keys)
+	}
+
+	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
+		for key in &keys {
+			class_framed(self.class, key)?;
+		}
+		State::batch_bytes(&mut self.state, keys)
+	}
+
+	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()> {
+		check_class_batch(self.class, &batch)?;
+		State::write_batch_bytes(&mut self.state, batch)
+	}
+
+	fn get_many_bytes_visit(
+		&self,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
+		for key in keys {
+			class_framed(self.class, key)?;
+		}
+		State::get_many_bytes_visit(&self.state, keys, visit)
+	}
+
+	fn range_bytes_visit(
+		&self,
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: GuestBound<'_>,
+		end: GuestBound<'_>,
+		limit: Option<usize>,
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
+		class_keyspace(self.class, keyspace)?;
+		State::range_bytes_visit(&self.state, group, keyspace, start, end, limit, visit)
+	}
+
+	fn sweep_many_bytes(
+		&self,
+		groups: &[GroupId],
+		limit: usize,
+		keyspaces: KeyspaceMask,
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+		State::sweep_many_bytes(&self.state, groups, limit, keyspaces)
+	}
+}
+
 impl GuestDictionary for Dictionary<'_> {
 	fn id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {
 		Dictionary::id_by_name(self, name)
@@ -345,13 +437,19 @@ impl<C> GuestContext<C> for ExternCContext {
 	where
 		C: CustomClass,
 	{
-		ExternCContext::state(self)
+		ClassFramedState {
+			state: ExternCContext::state(self),
+			class: C::CLASS,
+		}
 	}
 	fn window_state(&mut self) -> impl GuestState + '_
 	where
 		C: WindowClass,
 	{
-		ExternCContext::state(self)
+		ClassFramedState {
+			state: ExternCContext::state(self),
+			class: C::CLASS,
+		}
 	}
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>
 	where

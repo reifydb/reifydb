@@ -6,18 +6,19 @@ use core::{slice, str};
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::{
 	reifydb_assertions,
-	value::{diff_type::DiffType, row_number::RowNumber},
+	value::{datetime::DateTime, diff_type::DiffType, row_number::RowNumber, system_columns::RowTimes},
 };
 
 use crate::{
 	common::{
+		buffer_check::{bitvec_len, cell_range, malformed},
 		extern_c::wire::{
 			buffer::ExternCBuffer,
 			columns::{ExternCColumn, ExternCColumns},
 		},
 		family::{FamilyValue, cell_width, family_params},
 	},
-	error::SdkError,
+	error::{Result as SdkResult, SdkError},
 	flow::extern_c::wire::change::{ExternCChange, ExternCDiff, ExternCOrigin},
 };
 
@@ -146,15 +147,20 @@ impl<'a> BorrowedColumns<'a> {
 		}
 	}
 
-	pub fn time(&self) -> &'a [i64] {
+	pub fn times(&self) -> RowTimes<'a> {
 		if self.extern_c.time.is_null() || self.extern_c.row_count == 0 {
-			&[]
-		} else {
-			// SAFETY: `time` is non-null here and the host marshal takes it only from the batch's `#time`
-			// column with no nones, which a RecordBatch holds at exactly `row_count` entries; `DateTime`
-			// is `repr(transparent)` over `i64`.
-			unsafe { slice::from_raw_parts(self.extern_c.time, self.extern_c.row_count) }
+			return RowTimes::EMPTY;
 		}
+		// SAFETY: `time` is non-null here and the host marshal takes it only from the batch's `#time`
+		// column, which a RecordBatch holds at exactly `row_count` entries; `DateTime` is
+		// `repr(transparent)` over `i64`.
+		let values = unsafe {
+			slice::from_raw_parts(self.extern_c.time.cast::<DateTime>(), self.extern_c.row_count)
+		};
+		// SAFETY: `time_defined` is a host-produced descriptor kept live for `'a` by the
+		// `from_extern_c` / `from_raw` contract.
+		let defined = unsafe { read_buffer(&self.extern_c.time_defined) };
+		RowTimes::new(values, (!defined.is_empty()).then_some((defined, 0)))
 	}
 
 	pub fn columns(&self) -> impl Iterator<Item = BorrowedColumn<'a>> + 'a {
@@ -170,8 +176,21 @@ impl<'a> BorrowedColumns<'a> {
 		})
 	}
 
-	pub fn column(&self, name: &str) -> Option<BorrowedColumn<'a>> {
-		self.columns().find(|c| c.name() == name)
+	pub fn column(&self, name: &str) -> SdkResult<Option<BorrowedColumn<'a>>> {
+		for column in self.columns() {
+			if column.checked_name()? != name {
+				continue;
+			}
+			if column.row_count() != self.row_count() {
+				return Err(malformed(format!(
+					"extern-c column {name} holds {} rows in a batch of {}",
+					column.row_count(),
+					self.row_count()
+				)));
+			}
+			return Ok(Some(column));
+		}
+		Ok(None)
 	}
 }
 
@@ -185,6 +204,13 @@ impl<'a> BorrowedColumn<'a> {
 		// SAFETY: `self.extern_c` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_extern_c`
 		// caller, whose contract keeps every buffer this `ExternCColumn` describes live for `'a`.
 		unsafe { read_buffer_str(&self.extern_c.name) }
+	}
+
+	pub fn checked_name(&self) -> SdkResult<&'a str> {
+		// SAFETY: `self.extern_c` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_extern_c`
+		// caller, whose contract keeps every buffer this `ExternCColumn` describes live for `'a`.
+		let bytes = unsafe { read_buffer(&self.extern_c.name) };
+		str::from_utf8(bytes).map_err(|_| malformed("extern-c column name is not utf8".to_string()))
 	}
 
 	pub fn type_code(&self) -> ValueKind {
@@ -244,27 +270,33 @@ impl<'a> BorrowedColumn<'a> {
 		Some(unsafe { slice::from_raw_parts(bytes.as_ptr() as *const T, count) })
 	}
 
-	pub(crate) fn str_at(&self, index: usize) -> Option<&'a str> {
-		self.bytes_at(index).map(|bytes| str::from_utf8(bytes).unwrap_or(""))
+	pub(crate) fn str_at(&self, index: usize) -> SdkResult<Option<&'a str>> {
+		let Some(bytes) = self.bytes_at(index)? else {
+			return Ok(None);
+		};
+		str::from_utf8(bytes)
+			.map(Some)
+			.map_err(|_| malformed(format!("extern-c column {} cell {index} is not utf8", self.name())))
 	}
 
-	pub(crate) fn bytes_at(&self, index: usize) -> Option<&'a [u8]> {
-		(index < self.row_count()).then(|| varlen_cell(self.data_bytes(), self.offsets(), index))
+	pub(crate) fn bytes_at(&self, index: usize) -> SdkResult<Option<&'a [u8]>> {
+		if index >= self.row_count() {
+			return Ok(None);
+		}
+		varlen_cell(self, index).map(Some)
 	}
 
 	#[inline]
-	pub fn is_defined_at(&self, index: usize) -> bool {
+	pub fn defined_at(&self, index: usize) -> SdkResult<bool> {
 		let bv = self.defined_bitvec();
 		if bv.is_empty() {
-			return true;
+			return Ok(true);
 		}
-		match bv.get(index / 8) {
-			Some(b) => (b >> (index % 8)) & 1 == 1,
-			None => false,
-		}
+		bitvec_len(bv.len(), self.row_count(), self.name())?;
+		Ok(bv.get(index / 8).is_some_and(|b| (b >> (index % 8)) & 1 == 1))
 	}
 
-	pub(crate) fn family_cell_at<T: FamilyValue>(&self, index: usize) -> Result<Option<T>, SdkError> {
+	pub(crate) fn family_cell_at<T: FamilyValue>(&self, index: usize) -> SdkResult<Option<SdkResult<T>>> {
 		if self.type_code() != T::KIND {
 			return Ok(None);
 		}
@@ -277,26 +309,34 @@ impl<'a> BorrowedColumn<'a> {
 			))
 		})?;
 		let width = cell_width(precision);
+		if index >= self.row_count() {
+			return Ok(None);
+		}
 		let Some(cell) = index
 			.checked_mul(width)
 			.and_then(|start| self.data_bytes().get(start..start.checked_add(width)?))
 		else {
-			return Ok(None);
+			return Err(malformed(format!(
+				"extern-c column {} holds {} data bytes, too few for cell {index} of {width} bytes",
+				self.name(),
+				self.data_bytes().len()
+			)));
 		};
-		T::decode_cell(cell, scale).map(Some)
+		Ok(Some(T::decode_cell(cell, scale)))
 	}
 }
 
-fn varlen_cell<'a>(data: &'a [u8], offsets: &[u64], index: usize) -> &'a [u8] {
-	if index + 1 >= offsets.len() {
-		return &[];
+fn varlen_cell<'a>(column: &BorrowedColumn<'a>, index: usize) -> SdkResult<&'a [u8]> {
+	let offsets_len = column.extern_c.data.offsets.len;
+	if offsets_len % core::mem::size_of::<u64>() != 0 {
+		return Err(malformed(format!(
+			"extern-c column {} holds {offsets_len} offset bytes, not a whole number of u64s",
+			column.name()
+		)));
 	}
-	let start = offsets[index] as usize;
-	let end = offsets[index + 1] as usize;
-	if end > data.len() {
-		return &[];
-	}
-	&data[start..end]
+	let data = column.data_bytes();
+	let (start, end) = cell_range(column.offsets(), data.len(), index, column.name())?;
+	Ok(&data[start..end])
 }
 
 /// # Safety
