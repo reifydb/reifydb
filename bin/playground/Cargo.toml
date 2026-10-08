@@ -7,9 +7,16 @@ license.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+pco = ["reifydb/column-pco"]
+
 [[bin]]
 name = "playground"
 path = "src/main.rs"
+
+[[bin]]
+name = "ohlcv_bench"
+path = "src/ohlcv/main.rs"
 
 [dependencies]
 reifydb = { workspace = true, features = ["alloc-jemalloc", "column"] }
