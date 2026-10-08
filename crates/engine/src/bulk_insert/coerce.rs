@@ -87,7 +87,7 @@ impl RowCoercer {
 	}
 }
 
-pub(super) fn with_row_note(mut error: Error, source_name: &str, row_idx: usize) -> Error {
+pub(crate) fn with_row_note(mut error: Error, source_name: &str, row_idx: usize) -> Error {
 	error.0.notes.push(format!("row {} of the bulk insert into `{}`", row_idx + 1, source_name));
 	error
 }

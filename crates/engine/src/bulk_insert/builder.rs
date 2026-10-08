@@ -15,17 +15,12 @@ use reifydb_catalog::{
 };
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder, SourceRowBuilder},
-	pod::EncodedPodRow,
 	shape::RowShape,
-	table::EncodedTableRowBuilder,
 };
 use reifydb_core::{
 	common::TimeSource,
-	error::CoreError,
 	interface::catalog::{
 		column::Column,
-		id::IndexId,
-		key::PrimaryKey,
 		namespace::Namespace,
 		object::ObjectId,
 		policy::{DataOp, PolicyTargetType},
@@ -38,14 +33,15 @@ use reifydb_core::{
 	internal_error,
 	key::{
 		any::TaggedKey,
-		catalog::IndexEntryKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
 	partition::partition_of,
-	value::{batch::batch, column::builder::ColumnBuilder},
+	value::batch::batch,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_runtime::context::clock::Clock;
+#[cfg(feature = "testing")]
+use reifydb_transaction::counting::OpCounts;
 use reifydb_transaction::{
 	interceptor::{WithInterceptors, series_row::SeriesRowInterceptor},
 	transaction::{Transaction, command::CommandTransaction},
@@ -55,7 +51,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value, column_view::ColumnView, constraint::Constraint, datetime::DateTime, identity::IdentityId,
-		partition::Partition, row_number::RowNumber, value_type::ValueType,
+		partition::Partition, value_type::ValueType,
 	},
 };
 
@@ -72,20 +68,20 @@ use crate::{
 	},
 	engine::StandardEngine,
 	error::EngineError,
-	partition::{resolve_partition, table_partition_of_row},
+	partition::resolve_partition,
 	policy::PolicyEvaluator,
-	transaction::operation::table::{TableInsert, TableOperations},
 	vm::{
 		instruction::dml::{
 			coerce::key_out_of_range,
-			columns::{CastColumns, intern_dictionary_columns},
+			columns::{CastColumns, fill_sequences, intern_dictionary_columns},
 			partition::{compute_partition_col_indices, save_all_partition_metadata},
-			primary_key::{self, PrimaryKeyEncoder},
+			primary_key::Violation,
 			ringbuffer_insert::insert_ringbuffer_chunks,
 			series_insert::resolve_variant_tag,
 			shape::{
 				get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape,
 			},
+			table_insert::{EncodedTableRows, table_batch_partitions, write_table_rows},
 			time::{EventColumn, populator_index, resolve_time},
 		},
 		services::Services,
@@ -208,6 +204,15 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	}
 
 	pub fn execute(self) -> Result<BulkInsertResult> {
+		self.run(|_| ()).map(|(result, ())| result)
+	}
+
+	#[cfg(feature = "testing")]
+	pub fn execute_counted(self) -> Result<(BulkInsertResult, OpCounts)> {
+		self.run(CommandTransaction::op_counts)
+	}
+
+	fn run<T>(self, observe: impl FnOnce(&CommandTransaction) -> T) -> Result<(BulkInsertResult, T)> {
 		self.engine.reject_if_read_only()?;
 		let mut txn = self.engine.begin_command(self.identity)?;
 		let catalog = self.engine.catalog();
@@ -224,7 +229,14 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 				services: &services,
 				clock,
 			};
-			run_all_pending::<V>(&writer, txn, pending_tables, pending_ringbuffers, pending_series)
+			let result = run_all_pending::<V>(
+				&writer,
+				txn,
+				pending_tables,
+				pending_ringbuffers,
+				pending_series,
+			)?;
+			Ok((result, observe(txn)))
 		})
 	}
 
@@ -347,8 +359,7 @@ fn check_rows<V: ValidationMode>(
 
 	if let TimeSource::Event {
 		ts,
-	} = checks.time
-		&& let Some(index) = checks.columns.iter().position(|column| &column.name == ts)
+	} = checks.time && let Some(index) = checks.columns.iter().position(|column| &column.name == ts)
 		&& checks.columns[index].dictionary_id.is_none()
 	{
 		let view = &views[index];
@@ -453,7 +464,7 @@ fn execute_table_insert<V: ValidationMode>(
 	let catalog = writer.catalog;
 	let (namespace, table) = resolve_table(catalog, txn, pending)?;
 	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
-	let (mut columns, _) =
+	let (columns, _) =
 		coerce_columns(&pending.rows, &pending.batches, &table.columns, false, &table.name, txn.identity)?;
 	let rows = pending.row_count();
 	if rows == 0 {
@@ -475,19 +486,35 @@ fn execute_table_insert<V: ValidationMode>(
 		None,
 		rows,
 	)?;
-	fill_auto_increment(catalog, txn, &table, &filled, &mut columns)?;
-
-	let mut cast = [CastColumns::new(columns, rows)];
+	let fills = filled.into_iter().enumerate().filter(|(_, rows)| !rows.is_empty()).collect();
+	let mut cast = [CastColumns::with_fills(columns, fills, rows)];
 	intern_dictionary_columns(catalog, &mut Transaction::Command(txn), &table.columns, None, &mut cast)?;
-	let mut built: Vec<EncodedTableRowBuilder> = (0..rows).map(|_| shape.allocate_table()).collect();
-	cast[0].write(&shape, &mut built)?;
+	fill_sequences(catalog, &mut Transaction::Command(txn), &table.columns, table.id.into(), &mut cast)?;
+	let mut encoded = EncodedTableRows {
+		rows: (0..rows).map(|_| shape.allocate_table()).collect(),
+		..EncodedTableRows::default()
+	};
+	cast[0].write(&shape, &mut encoded.rows)?;
 	let now = writer.clock.now();
 	let event =
 		EventColumn::new(populator_index(&table.time, &shape).map(|index| cast[0].view(index)).transpose()?);
-	for (index, row) in built.iter_mut().enumerate() {
+	for (index, row) in encoded.rows.iter_mut().enumerate() {
 		stamp(row, &table.name, &table.time, &shape, now, event.at(index))?;
 	}
-	write_table_rows(catalog, txn, &table, &shape, pending, built)
+	table_batch_partitions(&table, &cast[0], &mut encoded)?;
+	write_table_rows(
+		catalog,
+		&mut Transaction::Command(txn),
+		&table,
+		&shape,
+		&mut encoded,
+		&Violation::BulkRow(&table.name),
+	)?;
+	Ok(TableInsertResult {
+		namespace: pending.namespace.clone(),
+		table: pending.table.clone(),
+		inserted: rows as u64,
+	})
 }
 
 fn auto_increment_rows(columns: &[Column], cast: &[(FieldRef, ArrayRef)]) -> Result<Vec<Vec<usize>>> {
@@ -503,32 +530,6 @@ fn auto_increment_rows(columns: &[Column], cast: &[(FieldRef, ArrayRef)]) -> Res
 		.collect()
 }
 
-fn fill_auto_increment(
-	catalog: &Catalog,
-	txn: &mut CommandTransaction,
-	table: &Table,
-	filled: &[Vec<usize>],
-	columns: &mut [(FieldRef, ArrayRef)],
-) -> Result<()> {
-	for ((column, rows), cast) in table.columns.iter().zip(filled).zip(columns.iter_mut()) {
-		if rows.is_empty() {
-			continue;
-		}
-		let current = ColumnView::try_from(&*cast)?;
-		let mut builder = ColumnBuilder::with_capacity(column.constraint.get_type(), current.len());
-		let mut next = rows.iter().peekable();
-		for row in 0..current.len() {
-			if next.next_if_eq(&&row).is_some() {
-				builder.push_value(catalog.column_sequence_next_value(txn, table.id, column.id)?);
-			} else {
-				builder.push_value(current.get_value(row));
-			}
-		}
-		*cast = builder.finish(&column.name);
-	}
-	Ok(())
-}
-
 #[inline]
 fn empty_table_result(pending: &PendingTableInsert) -> TableInsertResult {
 	TableInsertResult {
@@ -536,52 +537,6 @@ fn empty_table_result(pending: &PendingTableInsert) -> TableInsertResult {
 		table: pending.table.clone(),
 		inserted: 0,
 	}
-}
-
-#[inline]
-fn write_table_rows(
-	catalog: &Catalog,
-	txn: &mut CommandTransaction,
-	table: &Table,
-	shape: &RowShape,
-	pending: &PendingTableInsert,
-	encoded_bytes_list: Vec<EncodedTableRowBuilder>,
-) -> Result<TableInsertResult> {
-	let total_rows = encoded_bytes_list.len();
-	let row_numbers = catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
-	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), table)?;
-
-	let mut owned_rows = encoded_bytes_list;
-	let partitions: Vec<Partition> = match table.partition_by.is_empty() {
-		true => Vec::new(),
-		false => owned_rows.iter().map(|row| table_partition_of_row(table, shape, row)).collect(),
-	};
-	txn.insert_table(
-		table,
-		shape,
-		TableInsert {
-			ids: &row_numbers,
-			partitions: &partitions,
-			rows: &mut owned_rows,
-			index: Vec::new(),
-			key_columns: &[],
-		},
-	)?;
-
-	if let Some(ref pk_def) = pk_def
-		&& !owned_rows.is_empty()
-	{
-		let encoder = PrimaryKeyEncoder::new(pk_def, table)?;
-		for (row, &row_number) in owned_rows.iter().zip(row_numbers.iter()) {
-			write_primary_key_index(txn, table, shape, pk_def, &encoder, row, row_number)?;
-		}
-	}
-
-	Ok(TableInsertResult {
-		namespace: pending.namespace.clone(),
-		table: pending.table.clone(),
-		inserted: total_rows as u64,
-	})
 }
 
 fn resolve_namespace(catalog: &Catalog, txn: &mut CommandTransaction, name: &str) -> Result<Namespace> {
@@ -614,32 +569,6 @@ fn resolve_table(
 			.into()
 		})?;
 	Ok((namespace, table))
-}
-
-fn write_primary_key_index(
-	txn: &mut CommandTransaction,
-	table: &Table,
-	shape: &RowShape,
-	pk_def: &PrimaryKey,
-	encoder: &PrimaryKeyEncoder,
-	row: &[u8],
-	row_number: RowNumber,
-) -> Result<()> {
-	let index_key = encoder.encode(shape, row);
-	let index_entry_key = IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key);
-
-	if txn.contains(&index_entry_key)? {
-		let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
-		return Err(CoreError::PrimaryKeyViolation {
-			fragment: Fragment::None,
-			table_name: table.name.clone(),
-			key_columns,
-		}
-		.into());
-	}
-
-	txn.set(&index_entry_key, EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes())?;
-	Ok(())
 }
 
 fn execute_ringbuffer_insert<V: ValidationMode>(

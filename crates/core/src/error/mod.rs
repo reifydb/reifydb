@@ -146,13 +146,6 @@ pub enum CoreError {
 		kind: &'static str,
 	},
 
-	#[error("Primary key violation in table '{table_name}'")]
-	PrimaryKeyViolation {
-		fragment: Fragment,
-		table_name: String,
-		key_columns: Vec<String>,
-	},
-
 	#[error("Unique index violation in index '{index_name}' on table '{table_name}'")]
 	UniqueIndexViolation {
 		fragment: Fragment,

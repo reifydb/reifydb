@@ -127,7 +127,7 @@ sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:trac
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]
 sub_console = ["dep:reifydb-sub-console", "sub_server_ws"]
 server = ["sub_server_admin", "sub_server_grpc", "sub_server_http", "sub_server_otel", "sub_server_ws", "sub_tracing"]
-testing = ["reifydb-core/testing", "reifydb-transaction/testing", "sub_flow", "dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-flow", "dep:reifydb-testing-sdk", "dep:reifydb-test-harness"]
+testing = ["reifydb-core/testing", "reifydb-engine/testing", "reifydb-transaction/testing", "sub_flow", "dep:reifydb-testing", "dep:reifydb-testing-chaos", "dep:reifydb-testing-flow", "dep:reifydb-testing-sdk", "dep:reifydb-test-harness"]
 
 [[test]]
 name = "testing_surface"

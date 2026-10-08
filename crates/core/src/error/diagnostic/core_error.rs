@@ -199,36 +199,6 @@ impl IntoDiagnostic for CoreError {
 				kind,
 			} => flow_operator_timer_kind_reserved(kind),
 
-			CoreError::PrimaryKeyViolation {
-				fragment,
-				table_name,
-				key_columns,
-			} => {
-				let columns_str = if key_columns.is_empty() {
-					"(unknown columns)".to_string()
-				} else {
-					format!("({})", key_columns.join(", "))
-				};
-				Diagnostic {
-					code: "INDEX_001".to_string(),
-					rql: None,
-					message: format!(
-						"Primary key violation: duplicate key in table '{}' for columns {}",
-						table_name, columns_str
-					),
-					column: None,
-					fragment,
-					label: Some("primary key violation".to_string()),
-					help: Some(format!(
-						"A row with the same primary key {} already exists in table '{}'. Primary keys must be unique. Consider using a different value or updating the existing row instead.",
-						columns_str, table_name
-					)),
-					notes: vec![],
-					cause: None,
-					operator_chain: None,
-				}
-			}
-
 			CoreError::UniqueIndexViolation {
 				fragment,
 				table_name,

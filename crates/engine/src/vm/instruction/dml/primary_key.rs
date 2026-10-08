@@ -14,8 +14,8 @@ use reifydb_core::{
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
+	error::Error,
 	fragment::Fragment,
-	return_error,
 	value::{
 		date::Date,
 		datetime::DateTime,
@@ -28,7 +28,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::Result;
+use crate::{Result, bulk_insert::coerce::with_row_note};
 
 pub struct PrimaryKeyEncoder {
 	shape: IndexShape,
@@ -192,6 +192,11 @@ pub fn get_primary_key(catalog: &Catalog, txn: &mut Transaction<'_>, table: &Tab
 	}
 }
 
+pub(crate) enum Violation<'a> {
+	At(&'a Fragment),
+	BulkRow(&'a str),
+}
+
 pub(crate) fn checked_primary_keys(
 	txn: &mut Transaction<'_>,
 	table: &Table,
@@ -199,17 +204,25 @@ pub(crate) fn checked_primary_keys(
 	encoder: &PrimaryKeyEncoder,
 	shape: &RowShape,
 	rows: &[EncodedTableRowBuilder],
-	fragment: &Fragment,
+	violation: &Violation<'_>,
 ) -> Result<Vec<EncodedIndexKey>> {
 	let mut seen = HashSet::with_capacity(rows.len());
 	let mut keys = Vec::with_capacity(rows.len());
-	for row in rows {
+	for (index, row) in rows.iter().enumerate() {
 		let key = encoder.encode(shape, row);
 		if !seen.insert(key.clone())
 			|| txn.contains(&IndexEntryKey::new(table.id, IndexId::primary(pk.id), key.clone()))?
 		{
 			let key_columns = pk.columns.iter().map(|c| c.name.clone()).collect();
-			return_error!(primary_key_violation(fragment.clone(), table.name.clone(), key_columns));
+			let fragment = match violation {
+				Violation::At(fragment) => (*fragment).clone(),
+				Violation::BulkRow(_) => Fragment::None,
+			};
+			let error = Error(Box::new(primary_key_violation(fragment, table.name.clone(), key_columns)));
+			return Err(match violation {
+				Violation::At(_) => error,
+				Violation::BulkRow(source) => with_row_note(error, source, index),
+			});
 		}
 		keys.push(key);
 	}

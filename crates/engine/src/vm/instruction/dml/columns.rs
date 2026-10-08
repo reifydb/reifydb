@@ -105,6 +105,18 @@ impl CastColumns {
 		}
 	}
 
+	pub(crate) fn with_fills(
+		columns: Vec<(FieldRef, ArrayRef)>,
+		fills: Vec<(usize, Vec<usize>)>,
+		rows: usize,
+	) -> Self {
+		Self {
+			columns,
+			fills,
+			rows,
+		}
+	}
+
 	pub(crate) fn rows(&self) -> usize {
 		self.rows
 	}
@@ -117,6 +129,59 @@ impl CastColumns {
 		let views = self.columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
 		shape.write_columns(rows, &views)
 	}
+}
+
+pub(crate) fn fill_sequences(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	columns: &[Column],
+	object: ObjectId,
+	casts: &mut [CastColumns],
+) -> Result<()> {
+	let mut indices: Vec<usize> =
+		casts.iter().flat_map(|cast| cast.fills.iter().map(|(index, _)| *index)).collect();
+	indices.sort_unstable();
+	indices.dedup();
+	for index in indices {
+		let column = &columns[index];
+		let count: usize = casts
+			.iter()
+			.flat_map(|cast| cast.fills.iter().filter(|(filled, _)| *filled == index))
+			.map(|(_, rows)| rows.len())
+			.sum();
+		let (_, sequence) = catalog.column_sequence_next_values(txn, object, column.id, count as u64)?;
+		let mut next = 0;
+		for cast in casts.iter_mut() {
+			let Some((_, filled)) = cast.fills.iter().find(|(filled, _)| *filled == index) else {
+				continue;
+			};
+			let mut fill = filled.iter().peekable();
+			let pairs: Vec<(usize, usize)> = (0..cast.rows)
+				.map(|row| match fill.next_if_eq(&&row) {
+					Some(_) => {
+						next += 1;
+						(1, next - 1)
+					}
+					None => (0, row),
+				})
+				.collect();
+			let array = picked(&[cast.columns[index].1.as_ref(), sequence.as_ref()], &pairs);
+			let target = column.constraint.get_type();
+			let value_type = match target.is_option() || array.null_count() > 0 {
+				true => ValueType::Option(Box::new(target.inner_type().clone())),
+				false => target,
+			};
+			cast.columns[index] = named(
+				&column.name,
+				FieldType {
+					value_type: Some(value_type),
+					..FieldType::default()
+				},
+				array,
+			);
+		}
+	}
+	Ok(())
 }
 
 pub(crate) fn input_views<'a>(batch: &'a RecordBatch, columns: &[Column]) -> Result<Vec<Option<ColumnView<'a>>>> {
@@ -213,54 +278,10 @@ impl ColumnPipeline<'_> {
 		txn: &mut Transaction<'_>,
 		casts: &mut [CastColumns],
 	) -> Result<()> {
-		let Some(object) = self.sequences else {
-			return Ok(());
-		};
-		let mut indices: Vec<usize> =
-			casts.iter().flat_map(|cast| cast.fills.iter().map(|(index, _)| *index)).collect();
-		indices.sort_unstable();
-		indices.dedup();
-		for index in indices {
-			let column = &self.columns[index];
-			let count: usize = casts
-				.iter()
-				.flat_map(|cast| cast.fills.iter().filter(|(filled, _)| *filled == index))
-				.map(|(_, rows)| rows.len())
-				.sum();
-			let (_, sequence) =
-				services.catalog.column_sequence_next_values(txn, object, column.id, count as u64)?;
-			let mut next = 0;
-			for cast in casts.iter_mut() {
-				let Some((_, filled)) = cast.fills.iter().find(|(filled, _)| *filled == index) else {
-					continue;
-				};
-				let mut fill = filled.iter().peekable();
-				let pairs: Vec<(usize, usize)> = (0..cast.rows)
-					.map(|row| match fill.next_if_eq(&&row) {
-						Some(_) => {
-							next += 1;
-							(1, next - 1)
-						}
-						None => (0, row),
-					})
-					.collect();
-				let array = picked(&[cast.columns[index].1.as_ref(), sequence.as_ref()], &pairs);
-				let target = column.constraint.get_type();
-				let value_type = match target.is_option() || array.null_count() > 0 {
-					true => ValueType::Option(Box::new(target.inner_type().clone())),
-					false => target,
-				};
-				cast.columns[index] = named(
-					&column.name,
-					FieldType {
-						value_type: Some(value_type),
-						..FieldType::default()
-					},
-					array,
-				);
-			}
+		match self.sequences {
+			Some(object) => fill_sequences(&services.catalog, txn, self.columns, object, casts),
+			None => Ok(()),
 		}
-		Ok(())
 	}
 
 	fn filled_rows(&self, column: &Column, input: Option<&ColumnView<'_>>, rows: usize) -> Vec<usize> {
@@ -367,8 +388,7 @@ impl ColumnPipeline<'_> {
 				return Some((row, false, error));
 			}
 			if let Some((key, key_limit)) = checks.key
-				&& row < key_limit
-				&& !matches!(value, Value::None { .. })
+				&& row < key_limit && !matches!(value, Value::None { .. })
 				&& key.key_to_u64(value.clone()).is_none()
 			{
 				return Some((row, true, key_out_of_range(key, &value)));

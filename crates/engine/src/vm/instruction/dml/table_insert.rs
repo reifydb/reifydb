@@ -4,6 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::RecordBatch;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
 	shape::RowShape,
@@ -43,7 +44,7 @@ use tracing::instrument;
 use super::{
 	columns::{CastColumns, ColumnPipeline, input_views, intern_dictionary_columns},
 	context::TableTarget,
-	primary_key::{self, PrimaryKeyEncoder, checked_primary_keys, primary_key_index},
+	primary_key::{self, PrimaryKeyEncoder, Violation, checked_primary_keys, primary_key_index},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_table_shape,
 };
@@ -89,11 +90,7 @@ pub(crate) fn insert_table(
 	let mut input_node = compile(*input, txn, context.clone());
 	input_node.initialize(txn, &context)?;
 
-	let EncodedRows {
-		mut rows,
-		partitions,
-		distinct,
-	} = validate_and_encode_input_rows(
+	let mut encoded = validate_and_encode_input_rows(
 		services,
 		txn,
 		&target_data,
@@ -103,47 +100,25 @@ pub(crate) fn insert_table(
 		&mut input_node,
 		&fragments,
 	)?;
-
-	resolve_partitions(txn, ObjectId::Table(table.id), &distinct, &mut HashMap::new())?;
-
-	let total_rows = rows.len();
+	let row_numbers = write_table_rows(
+		&services.catalog,
+		txn,
+		&table,
+		&shape,
+		&mut encoded,
+		&Violation::At(target_data.fragment),
+	)?;
+	let total_rows = encoded.rows.len();
 	if total_rows == 0 {
 		return insert_table_result(namespace.name(), &table.name, 0);
 	}
 
-	let pk_def = primary_key::get_primary_key(&services.catalog, txn, &table)?;
-	let checked = match &pk_def {
-		Some(pk) => {
-			let encoder = PrimaryKeyEncoder::new(pk, &table)?;
-			let keys =
-				checked_primary_keys(txn, &table, pk, &encoder, &shape, &rows, target_data.fragment)?;
-			Some((pk, encoder.key_columns(), keys))
-		}
-		None => None,
-	};
-
-	let row_numbers = services.catalog.next_row_number_batch(txn, table.id, total_rows as u64)?;
-	assert_eq!(row_numbers.len(), rows.len());
-
-	let (index, key_columns) = match checked {
-		Some((pk, key_columns, keys)) => (primary_key_index(&table, pk, keys, &row_numbers), key_columns),
-		None => (Vec::new(), Vec::new()),
-	};
-	txn.insert_table(
-		&table,
-		&shape,
-		TableInsert {
-			ids: &row_numbers,
-			partitions: &partitions,
-			rows: &mut rows,
-			index,
-			key_columns: &key_columns,
-		},
-	)?;
-
 	if let Some(returning_exprs) = &returning {
-		let returned_rows: Vec<(RowNumber, EncodedBytes)> =
-			row_numbers.iter().copied().zip(rows.into_iter().map(|row| row.freeze_bytes())).collect();
+		let returned_rows: Vec<(RowNumber, EncodedBytes)> = row_numbers
+			.iter()
+			.copied()
+			.zip(encoded.rows.into_iter().map(|row| row.freeze_bytes()))
+			.collect();
 		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
 		let columns = decode_returning_dictionaries(services, txn, &table.columns, columns)?;
 		let columns = with_absent_pre_image(columns)?;
@@ -152,10 +127,76 @@ pub(crate) fn insert_table(
 	insert_table_result(namespace.name(), &table.name, total_rows as u64)
 }
 
-struct EncodedRows {
-	rows: Vec<EncodedTableRowBuilder>,
-	partitions: Vec<Partition>,
-	distinct: Vec<(Partition, Vec<Value>)>,
+#[derive(Default)]
+pub(crate) struct EncodedTableRows {
+	pub(crate) rows: Vec<EncodedTableRowBuilder>,
+	pub(crate) partitions: Vec<Partition>,
+	pub(crate) distinct: Vec<(Partition, Vec<Value>)>,
+}
+
+pub(crate) fn table_batch_partitions(table: &Table, cast: &CastColumns, encoded: &mut EncodedTableRows) -> Result<()> {
+	let indices = partition_col_indices(&table.columns, &table.partition_by);
+	if indices.is_empty() {
+		return Ok(());
+	}
+	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
+	let batch = partitions_of_batch(&keys, NoneCell::Untyped);
+	reifydb_assertions! {
+		for (partition, values) in &batch.distinct {
+			assert_eq!(
+				partition_of(&table.columns, &table.partition_by, values),
+				*partition,
+				"a batch partition must hash its values like the row-at-a-time partition"
+			);
+		}
+	}
+	encoded.partitions.extend(batch.rows);
+	encoded.distinct.extend(batch.distinct);
+	Ok(())
+}
+
+pub(crate) fn write_table_rows(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	table: &Table,
+	shape: &RowShape,
+	encoded: &mut EncodedTableRows,
+	violation: &Violation<'_>,
+) -> Result<Vec<RowNumber>> {
+	resolve_partitions(txn, ObjectId::Table(table.id), &encoded.distinct, &mut HashMap::new())?;
+	if encoded.rows.is_empty() {
+		return Ok(Vec::new());
+	}
+
+	let pk_def = primary_key::get_primary_key(catalog, txn, table)?;
+	let checked = match &pk_def {
+		Some(pk) => {
+			let encoder = PrimaryKeyEncoder::new(pk, table)?;
+			let keys = checked_primary_keys(txn, table, pk, &encoder, shape, &encoded.rows, violation)?;
+			Some((pk, encoder.key_columns(), keys))
+		}
+		None => None,
+	};
+
+	let row_numbers = catalog.next_row_number_batch(txn, table.id, encoded.rows.len() as u64)?;
+	assert_eq!(row_numbers.len(), encoded.rows.len());
+
+	let (index, key_columns) = match checked {
+		Some((pk, key_columns, keys)) => (primary_key_index(table, pk, keys, &row_numbers), key_columns),
+		None => (Vec::new(), Vec::new()),
+	};
+	txn.insert_table(
+		table,
+		shape,
+		TableInsert {
+			ids: &row_numbers,
+			partitions: &encoded.partitions,
+			rows: &mut encoded.rows,
+			index,
+			key_columns: &key_columns,
+		},
+	)?;
+	Ok(row_numbers)
 }
 
 #[inline]
@@ -208,7 +249,7 @@ fn validate_and_encode_input_rows(
 	symbols: &SymbolTable,
 	input_node: &mut Box<dyn QueryNode>,
 	fragments: &InputFragments,
-) -> Result<EncodedRows> {
+) -> Result<EncodedTableRows> {
 	let pipeline = ColumnPipeline {
 		columns: &target.table.columns,
 		sequences: Some(target.table.id.into()),
@@ -239,12 +280,7 @@ fn validate_and_encode_input_rows(
 	pipeline.fill_sequences(services, txn, &mut batches)?;
 
 	let populator = populator_index(&target.table.time, shape);
-	let partition_indices = partition_col_indices(&target.table.columns, &target.table.partition_by);
-	let mut encoded = EncodedRows {
-		rows: Vec::new(),
-		partitions: Vec::new(),
-		distinct: Vec::new(),
-	};
+	let mut encoded = EncodedTableRows::default();
 	for cast in &batches {
 		let mut rows: Vec<EncodedTableRowBuilder> = (0..cast.rows()).map(|_| shape.allocate_table()).collect();
 		cast.write(shape, &mut rows)?;
@@ -260,22 +296,7 @@ fn validate_and_encode_input_rows(
 			}
 			encoded.rows.push(row);
 		}
-		if !partition_indices.is_empty() {
-			let keys =
-				partition_indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
-			let batch = partitions_of_batch(&keys, NoneCell::Untyped);
-			reifydb_assertions! {
-				for (partition, values) in &batch.distinct {
-					assert_eq!(
-						partition_of(&target.table.columns, &target.table.partition_by, values),
-						*partition,
-						"a batch partition must hash its values like the row-at-a-time partition"
-					);
-				}
-			}
-			encoded.partitions.extend(batch.rows);
-			encoded.distinct.extend(batch.distinct);
-		}
+		table_batch_partitions(target.table, cast, &mut encoded)?;
 	}
 	Ok(encoded)
 }
