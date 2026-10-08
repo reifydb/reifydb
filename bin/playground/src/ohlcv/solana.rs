@@ -61,11 +61,11 @@ pub struct Pool {
 const MAX_PRICE: f64 = 1e17;
 const JUMP_PROBABILITY: f64 = 1e-4;
 
-fn log_uniform(lo: f64, hi: f64, u: f64) -> f64 {
+pub fn log_uniform(lo: f64, hi: f64, u: f64) -> f64 {
 	(lo.ln() + (hi.ln() - lo.ln()) * u).exp()
 }
 
-fn poisson(rng: &mut Rng, mean: f64) -> u64 {
+pub fn poisson(rng: &mut Rng, mean: f64) -> u64 {
 	if mean > 50.0 {
 		return (mean + mean.sqrt() * rng.normal()).round().max(0.0) as u64;
 	}
@@ -79,7 +79,7 @@ fn poisson(rng: &mut Rng, mean: f64) -> u64 {
 	count
 }
 
-fn student_t3(rng: &mut Rng) -> f64 {
+pub fn student_t3(rng: &mut Rng) -> f64 {
 	let z = rng.normal();
 	let chi = (0..3).map(|_| rng.normal().powi(2)).sum::<f64>();
 	z / (chi / 3.0).sqrt()

@@ -19,6 +19,7 @@ use reifydb::{
 		snapshot::ColumnBlock,
 		store::ColumnStore,
 	},
+	core::value::column::factory,
 };
 
 use crate::{
@@ -33,6 +34,7 @@ pub struct Layout {
 	pub name: &'static str,
 	pub blocks: Vec<Vec<RowRef>>,
 	pub with_pool: bool,
+	pub with_rownum: bool,
 }
 
 pub fn equity_layouts(ds: &Dataset) -> (Layout, Layout) {
@@ -41,11 +43,13 @@ pub fn equity_layouts(ds: &Dataset) -> (Layout, Layout) {
 		name: "1 block",
 		blocks: vec![(0..series.key.len()).map(|i| (0, i)).collect()],
 		with_pool: false,
+		with_rownum: false,
 	};
 	let daily = Layout {
 		name: "390-row blocks",
 		blocks: series.days.iter().map(|day| day.clone().map(|i| (0, i)).collect()).collect(),
 		with_pool: false,
+		with_rownum: false,
 	};
 	(one, daily)
 }
@@ -77,16 +81,19 @@ pub fn solana_layouts(ds: &Dataset, cfg: &SolanaConfig) -> Vec<Layout> {
 			name: "L1 pool x day",
 			blocks: per_pool,
 			with_pool: false,
+			with_rownum: false,
 		},
 		Layout {
 			name: "L2 day, by slot",
 			blocks: interleaved,
 			with_pool: true,
+			with_rownum: false,
 		},
 		Layout {
 			name: "L3 day, by pool",
 			blocks: clustered,
 			with_pool: true,
+			with_rownum: false,
 		},
 	]
 }
@@ -156,7 +163,10 @@ pub fn measure(ds: &Dataset, layout: &Layout, variant: Variant, profile: Compres
 	let mut inputs: Vec<Vec<Column>> = Vec::with_capacity(layout.blocks.len());
 	let mut names: Vec<String> = Vec::new();
 	for (b, rows) in layout.blocks.iter().enumerate() {
-		let cols = columns(ds, rows, variant, layout.with_pool);
+		let mut cols = columns(ds, rows, variant, layout.with_pool);
+		if layout.with_rownum {
+			cols.push(factory::uint8("#rownum", rows.iter().map(|&(_, i)| i as u64 + 1)));
+		}
 		names = cols.iter().map(|c| c.0.name().to_string()).collect();
 		let mut schema = Vec::with_capacity(cols.len());
 		let mut chunks = Vec::with_capacity(cols.len());

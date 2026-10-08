@@ -10,6 +10,8 @@ mod phase1;
 mod phase2;
 mod report;
 mod solana;
+mod solana1s;
+mod sweep;
 mod transform;
 
 use std::{env::args, process::exit};
@@ -23,6 +25,7 @@ use crate::{
 	phase2::Run,
 	report::Row,
 	solana::SolanaConfig,
+	solana1s::SecondConfig,
 };
 
 allocator::set_global_allocator!();
@@ -38,6 +41,7 @@ enum Phase {
 enum Selection {
 	Equity,
 	Solana,
+	Solana1s,
 	All,
 }
 
@@ -46,7 +50,7 @@ struct Args {
 	dataset: Selection,
 }
 
-const USAGE: &str = "usage: ohlcv_bench <phase1|phase2|all> [--dataset equity|solana|all]";
+const USAGE: &str = "usage: ohlcv_bench <phase1|phase2|all> [--dataset equity|solana|solana1s|all]";
 
 fn parse(mut input: impl Iterator<Item = String>) -> Result<Args, String> {
 	let phase = match input.next().as_deref() {
@@ -63,6 +67,7 @@ fn parse(mut input: impl Iterator<Item = String>) -> Result<Args, String> {
 				dataset = match input.next().as_deref() {
 					Some("equity") => Selection::Equity,
 					Some("solana") => Selection::Solana,
+					Some("solana1s") => Selection::Solana1s,
 					Some("all") => Selection::All,
 					Some(other) => return Err(format!("unknown dataset `{other}`")),
 					None => return Err("missing value for --dataset".to_string()),
@@ -184,6 +189,12 @@ fn phase2(ds: &Dataset, runs: Vec<Run>, rows: &mut Vec<Row>) {
 }
 
 fn run(args: Args) -> Result<(), String> {
+	if args.dataset == Selection::Solana1s {
+		if args.phase == Phase::Two {
+			return Err("solana1s runs phase1 only".to_string());
+		}
+		return sweep::run(&SecondConfig::default());
+	}
 	let one = matches!(args.phase, Phase::One | Phase::All);
 	let two = matches!(args.phase, Phase::Two | Phase::All);
 	let mut phase1_rows = Vec::new();

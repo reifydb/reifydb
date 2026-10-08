@@ -12,6 +12,7 @@ pub struct ColumnSize {
 	pub name: String,
 	pub bytes: u64,
 	pub encoding: String,
+	pub encodings: BTreeMap<String, usize>,
 }
 
 #[derive(Default)]
@@ -21,9 +22,15 @@ pub struct ColumnTally {
 
 impl ColumnTally {
 	pub fn add(&mut self, name: &str, bytes: u64, encoding: String) {
+		self.merge(name, bytes, &BTreeMap::from([(encoding, 1)]));
+	}
+
+	pub fn merge(&mut self, name: &str, bytes: u64, encodings: &BTreeMap<String, usize>) {
 		let entry = self.columns.entry(name.to_string()).or_default();
 		entry.0 += bytes;
-		*entry.1.entry(encoding).or_default() += 1;
+		for (encoding, count) in encodings {
+			*entry.1.entry(encoding.clone()).or_default() += count;
+		}
 	}
 
 	pub fn finish(mut self, order: &[String]) -> Vec<ColumnSize> {
@@ -31,7 +38,7 @@ impl ColumnTally {
 			.filter_map(|name| {
 				let (bytes, encodings) = self.columns.remove(name)?;
 				let total: usize = encodings.values().sum();
-				let mut ranked: Vec<_> = encodings.into_iter().collect();
+				let mut ranked: Vec<_> = encodings.clone().into_iter().collect();
 				ranked.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 				let encoding = if ranked.len() == 1 {
 					ranked[0].0.clone()
@@ -46,6 +53,7 @@ impl ColumnTally {
 					name: name.clone(),
 					bytes,
 					encoding,
+					encodings,
 				})
 			})
 			.collect()
