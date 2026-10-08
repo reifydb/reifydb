@@ -23,6 +23,8 @@ use uuid::{Builder, Uuid};
 pub mod accumulator;
 pub mod change;
 pub mod commit;
+#[cfg(feature = "testing")]
+pub mod counting;
 pub mod delta;
 pub mod dictionary;
 pub mod error;

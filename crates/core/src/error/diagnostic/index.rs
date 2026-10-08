@@ -30,6 +30,33 @@ pub fn primary_key_violation(fragment: Fragment, table_name: String, key_columns
 	}
 }
 
+pub fn primary_key_changed_by_hook(fragment: Fragment, table_name: String, key_columns: Vec<String>) -> Diagnostic {
+	let columns_str = if key_columns.is_empty() {
+		"(unknown columns)".to_string()
+	} else {
+		format!("({})", key_columns.join(", "))
+	};
+
+	Diagnostic {
+		code: "INDEX_004".to_string(),
+		rql: None,
+		message: format!(
+			"Primary key changed by a pre-insert hook in table '{}' for columns {}",
+			table_name, columns_str
+		),
+		column: None,
+		fragment,
+		label: Some("primary key changed by hook".to_string()),
+		help: Some(format!(
+			"The primary key {} of table '{}' is checked before pre-insert hooks run, so a hook must not change it.",
+			columns_str, table_name
+		)),
+		notes: vec![],
+		cause: None,
+		operator_chain: None,
+	}
+}
+
 pub fn unique_index_violation(
 	fragment: Fragment,
 	table_name: String,

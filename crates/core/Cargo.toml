@@ -33,6 +33,7 @@ serde = { workspace = true }
 uuid = { workspace = true }
 indexmap = { workspace = true }
 paste = { workspace = true }
+postcard = { workspace = true }
 smallvec = { workspace = true }
 tracing = { workspace = true }
 
@@ -41,5 +42,4 @@ tracing = { workspace = true }
 [dev-dependencies]
 reifydb-test-harness = { workspace = true }
 reifydb-engine = { workspace = true, features = ["tokio"] }
-postcard = { workspace = true }
 serde_json = { workspace = true }

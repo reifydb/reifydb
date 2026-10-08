@@ -72,9 +72,9 @@ use crate::{
 	},
 	engine::StandardEngine,
 	error::EngineError,
-	partition::resolve_partition,
+	partition::{resolve_partition, table_partition_of_row},
 	policy::PolicyEvaluator,
-	transaction::operation::table::TableOperations,
+	transaction::operation::table::{TableInsert, TableOperations},
 	vm::{
 		instruction::dml::{
 			coerce::key_out_of_range,
@@ -552,7 +552,21 @@ fn write_table_rows(
 	let pk_def = primary_key::get_primary_key(catalog, &mut Transaction::Command(txn), table)?;
 
 	let mut owned_rows = encoded_bytes_list;
-	txn.insert_table(table, shape, &row_numbers, &mut owned_rows)?;
+	let partitions: Vec<Partition> = match table.partition_by.is_empty() {
+		true => Vec::new(),
+		false => owned_rows.iter().map(|row| table_partition_of_row(table, shape, row)).collect(),
+	};
+	txn.insert_table(
+		table,
+		shape,
+		TableInsert {
+			ids: &row_numbers,
+			partitions: &partitions,
+			rows: &mut owned_rows,
+			index: Vec::new(),
+			key_columns: &[],
+		},
+	)?;
 
 	if let Some(ref pk_def) = pk_def
 		&& !owned_rows.is_empty()

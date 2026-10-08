@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use arrow_array::{ArrayRef, RecordBatch};
+use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{bytes::RowBuilder, shape::RowShape};
@@ -22,13 +22,17 @@ use reifydb_evaluate::expression::eval::loses_scale;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error::Error,
+	util::kernel::picked,
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
 		constraint::Constraint,
 		dictionary::DictionaryId,
 		system_columns::user_columns,
-		value_type::ValueType,
+		value_type::{
+			ValueType,
+			field::{FieldType, named},
+		},
 	},
 };
 
@@ -207,29 +211,54 @@ impl ColumnPipeline<'_> {
 		&self,
 		services: &Services,
 		txn: &mut Transaction<'_>,
-		cast: &mut CastColumns,
+		casts: &mut [CastColumns],
 	) -> Result<()> {
 		let Some(object) = self.sequences else {
 			return Ok(());
 		};
-		for (index, filled) in &cast.fills {
-			let column = &self.columns[*index];
-			let mut builder = ColumnBuilder::with_capacity(column.constraint.get_type(), cast.rows);
-			{
-				let current = ColumnView::try_from(&cast.columns[*index])?;
-				let mut next = filled.iter().peekable();
-				for row in 0..cast.rows {
-					if next.next_if_eq(&&row).is_some() {
-						builder.push_value(
-							services.catalog
-								.column_sequence_next_value(txn, object, column.id)?,
-						);
-					} else {
-						builder.push_value(current.get_value(row));
-					}
-				}
+		let mut indices: Vec<usize> =
+			casts.iter().flat_map(|cast| cast.fills.iter().map(|(index, _)| *index)).collect();
+		indices.sort_unstable();
+		indices.dedup();
+		for index in indices {
+			let column = &self.columns[index];
+			let count: usize = casts
+				.iter()
+				.flat_map(|cast| cast.fills.iter().filter(|(filled, _)| *filled == index))
+				.map(|(_, rows)| rows.len())
+				.sum();
+			let (_, sequence) =
+				services.catalog.column_sequence_next_values(txn, object, column.id, count as u64)?;
+			let mut next = 0;
+			for cast in casts.iter_mut() {
+				let Some((_, filled)) = cast.fills.iter().find(|(filled, _)| *filled == index) else {
+					continue;
+				};
+				let mut fill = filled.iter().peekable();
+				let pairs: Vec<(usize, usize)> = (0..cast.rows)
+					.map(|row| match fill.next_if_eq(&&row) {
+						Some(_) => {
+							next += 1;
+							(1, next - 1)
+						}
+						None => (0, row),
+					})
+					.collect();
+				let array = picked(&[cast.columns[index].1.as_ref(), sequence.as_ref()], &pairs);
+				let target = column.constraint.get_type();
+				let value_type = match target.is_option() || array.null_count() > 0 {
+					true => ValueType::Option(Box::new(target.inner_type().clone())),
+					false => target,
+				};
+				cast.columns[index] = named(
+					&column.name,
+					FieldType {
+						value_type: Some(value_type),
+						..FieldType::default()
+					},
+					array,
+				);
 			}
-			cast.columns[*index] = builder.finish(&column.name);
 		}
 		Ok(())
 	}
@@ -954,9 +983,9 @@ mod tests {
 		};
 		let mut txn = Transaction::Admin(&mut fixture.txn);
 		let inputs = input_views(input, &fixture.table.columns).unwrap();
-		let mut cast = pipeline.cast_target_columns(&inputs, input.num_rows(), None).unwrap();
-		pipeline.fill_sequences(&fixture.services, &mut txn, &mut cast).unwrap();
+		let cast = pipeline.cast_target_columns(&inputs, input.num_rows(), None).unwrap();
 		let mut batches = [cast];
+		pipeline.fill_sequences(&fixture.services, &mut txn, &mut batches).unwrap();
 		intern_dictionary_columns(
 			&fixture.services.catalog,
 			&mut txn,

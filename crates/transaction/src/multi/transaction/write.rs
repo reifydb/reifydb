@@ -39,6 +39,8 @@ use reifydb_value::{
 use tracing::{instrument, warn};
 
 use super::{MultiTransaction, version::StandardVersionProvider};
+#[cfg(feature = "testing")]
+use crate::counting::OpCounts;
 use crate::{
 	TransactionId,
 	delta::optimize_deltas,
@@ -93,6 +95,9 @@ pub struct MultiWriteTransaction {
 
 	pub(crate) self_lease: Option<VersionLeaseGuard>,
 
+	#[cfg(feature = "testing")]
+	pub(crate) op_counts: OpCounts,
+
 	pending_query_pin: Option<CommitVersion>,
 }
 
@@ -120,6 +125,8 @@ impl MultiWriteTransaction {
 			lifecycle: Lifecycle::Active,
 			self_lease: None,
 			pending_query_pin: None,
+			#[cfg(feature = "testing")]
+			op_counts: OpCounts::default(),
 		})
 	}
 
@@ -246,6 +253,10 @@ impl MultiWriteTransaction {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.key(key.kind()).sets += 1;
+		}
 		let encoded = key.encode();
 		self.modify(
 			encoded,
@@ -261,6 +272,56 @@ impl MultiWriteTransaction {
 
 	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		self.set_any(key.clone().into(), bytes.into())
+	}
+
+	#[instrument(name = "transaction::command::set_many", level = "trace", skip_all, fields(
+		txn_id = %self.id,
+		entries = entries.len()
+	))]
+	pub fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		if entries.is_empty() {
+			return Ok(());
+		}
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.set_many_call();
+			for (key, _) in &entries {
+				self.op_counts.key(key.kind()).batched += 1;
+			}
+		}
+		let version = self.base_version();
+		let pending: Vec<DeltaEntry> = entries
+			.into_iter()
+			.map(|(key, bytes)| DeltaEntry {
+				delta: Delta::Set {
+					key,
+					bytes,
+				},
+				version,
+			})
+			.collect();
+		reifydb_assertions! {
+			for entry in &pending {
+				assert!(
+					!matches!(entry.key(), TaggedKey::OperatorState(_)),
+					"operator state must reach the operator store through the committer split, never \
+					 the multi store: {}",
+					hex_display(entry.key().encode().as_ref())
+				);
+			}
+		}
+		let size = pending
+			.iter()
+			.fold(ByteSize::ZERO, |total, entry| total + self.pending_writes.estimate_size(entry));
+		self.admit(pending.len() as u64, size)?;
+		self.conflicts.reserve_writes(pending.len());
+		for entry in pending {
+			self.apply(entry);
+		}
+		Ok(())
 	}
 
 	#[instrument(name = "transaction::command::remove_with_pre", level = "trace", skip(self, pre), fields(
@@ -419,6 +480,10 @@ impl MultiWriteTransaction {
 		}
 
 		let key = key.clone().into();
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.key(key.kind()).contains += 1;
+		}
 		let version = self.version();
 		match self.pending_writes.get(&key) {
 			Some(pending) => {
@@ -443,6 +508,10 @@ impl MultiWriteTransaction {
 		}
 
 		let key = key.clone().into();
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.key(key.kind()).gets += 1;
+		}
 		let version = self.version();
 		if let Some(v) = self.pending_writes.get(&key) {
 			if let Some(bytes) = v.bytes() {
@@ -491,15 +560,25 @@ impl MultiWriteTransaction {
 			);
 		}
 
-		let cnt = self.count + 1;
-		let size = self.size + self.pending_writes.estimate_size(&pending);
+		let size = self.pending_writes.estimate_size(&pending);
+		self.admit(1, size)?;
+		self.apply(pending);
+		Ok(())
+	}
+
+	fn admit(&mut self, entries: u64, size: ByteSize) -> Result<()> {
+		let cnt = self.count + entries;
+		let size = self.size + size;
 		if cnt >= self.pending_writes.max_batch_entries() || size >= self.pending_writes.max_batch_size() {
 			return Err(TransactionError::TooLarge.into());
 		}
 
 		self.count = cnt;
 		self.size = size;
+		Ok(())
+	}
 
+	fn apply(&mut self, pending: DeltaEntry) {
 		self.conflicts.mark_write(pending.key());
 
 		let version = pending.version;
@@ -534,8 +613,6 @@ impl MultiWriteTransaction {
 
 		self.delta_log.push(pending.clone());
 		self.pending_writes.insert(pending);
-
-		Ok(())
 	}
 }
 

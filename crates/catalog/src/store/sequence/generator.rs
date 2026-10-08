@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{num::NonZeroU64, ops::RangeInclusive};
+
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{error::CoreError, key::any::TaggedKey, return_internal_error};
 use reifydb_transaction::{
@@ -143,6 +145,32 @@ macro_rules! impl_generator {
 					};
 					tx.commit()?;
 					Ok(result)
+				}
+
+				#[allow(clippy::unnecessary_fallible_conversions)]
+				pub(crate) fn next_run<K: Into<TaggedKey> + Clone>(
+					txn: &mut impl SequenceTransaction,
+					key: &K,
+					count: NonZeroU64,
+				) -> Result<RangeInclusive<$prim>> {
+					let encoded = key.clone().into().encode();
+					let mut tx = txn.begin_single_command([&encoded])?;
+					let first = match tx.get(key)? {
+						Some(row) => decode(EncodedPodRow::view(&row.bytes))?.checked_add(1),
+						None => Some($start),
+					};
+					let last = first
+						.zip(<$prim>::try_from(count.get() - 1).ok())
+						.and_then(|(first, span)| first.checked_add(span));
+					let (Some(first), Some(last)) = (first, last) else {
+						return Err(CoreError::SequenceExhausted {
+							value_type: $type_enum,
+						}
+						.into());
+					};
+					tx.set(key, encode(last).into_bytes())?;
+					tx.commit()?;
+					Ok(first..=last)
 				}
 
 				pub(crate) fn set<K: Into<TaggedKey> + Clone>(

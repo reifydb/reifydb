@@ -1,15 +1,113 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::row::shape::RowShape;
+use std::{collections::HashMap, hash::Hash, sync::LazyLock};
+
+use arrow_array::{ArrayRef, make_array};
+use arrow_row::{RowConverter, Rows, SortField};
+use postcard::{from_bytes, to_stdvec};
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, RowBuilder},
+	shape::{RowFamily, RowShape, RowShapeField},
+};
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{Value, partition::Partition, value_type::ValueType},
+	value::{Value, blob::Blob, column_view::ColumnView, partition::Partition, value_type::ValueType},
 };
 
 use crate::interface::catalog::{column::Column, object::ObjectId};
+
+static REGISTRY_SHAPE: LazyLock<RowShape> =
+	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoneCell {
+	Untyped,
+	Typed,
+}
+
+#[derive(Debug, Default)]
+pub struct BatchPartitions {
+	pub rows: Vec<Partition>,
+	pub distinct: Vec<(Partition, Vec<Value>)>,
+}
+
+pub fn partitions_of_batch(keys: &[ColumnView<'_>], none: NoneCell) -> BatchPartitions {
+	let rows = keys.first().map_or(0, ColumnView::len);
+	match converted_rows(keys) {
+		Some(converted) => assign(keys, none, rows, |row| converted.row(row)),
+		None => assign(keys, none, rows, |row| {
+			to_stdvec(&cell_values(keys, none, row)).expect("value postcard is total")
+		}),
+	}
+}
+
+fn converted_rows(keys: &[ColumnView<'_>]) -> Option<Rows> {
+	let fields = keys.iter().map(|key| SortField::new(key.array().data_type().clone())).collect();
+	let arrays: Vec<ArrayRef> = keys.iter().map(|key| make_array(key.array().to_data())).collect();
+	RowConverter::new(fields).ok()?.convert_columns(&arrays).ok()
+}
+
+fn assign<K: Hash + Eq>(
+	keys: &[ColumnView<'_>],
+	none: NoneCell,
+	rows: usize,
+	key_of: impl Fn(usize) -> K,
+) -> BatchPartitions {
+	let mut groups: HashMap<K, Partition> = HashMap::new();
+	let mut distinct = Vec::new();
+	let mut partitions = Vec::with_capacity(rows);
+	for row in 0..rows {
+		let partition = *groups.entry(key_of(row)).or_insert_with(|| {
+			let values = cell_values(keys, none, row);
+			let partition = Partition::of(&values);
+			distinct.push((partition, values));
+			partition
+		});
+		partitions.push(partition);
+	}
+	BatchPartitions {
+		rows: partitions,
+		distinct,
+	}
+}
+
+fn cell_values(keys: &[ColumnView<'_>], none: NoneCell, row: usize) -> Vec<Value> {
+	keys.iter()
+		.map(|key| match (key.get_value(row), none) {
+			(
+				Value::None {
+					..
+				},
+				NoneCell::Untyped,
+			) => Value::none(),
+			(value, _) => value,
+		})
+		.collect()
+}
+
+fn registry_blob(values: &[Value]) -> Value {
+	Value::Blob(Blob::from(to_stdvec(values).expect("value postcard is total")))
+}
+
+pub fn registry_row(values: &[Value]) -> EncodedBytes {
+	let mut row = REGISTRY_SHAPE.allocate_pod();
+	REGISTRY_SHAPE.set_value(&mut row, 0, &registry_blob(values));
+	row.freeze_bytes()
+}
+
+pub fn registry_matches(row: &[u8], values: &[Value]) -> bool {
+	REGISTRY_SHAPE.get_value(row, 0) == registry_blob(values)
+}
+
+pub fn registry_values(row: &[u8]) -> Vec<Value> {
+	match REGISTRY_SHAPE.get_value(row, 0) {
+		Value::Blob(blob) => from_bytes(blob.as_bytes()).expect("partition registry values must decode"),
+		other => panic!("partition registry row holds {other:?} where a blob is required"),
+	}
+}
 
 pub fn partition_values(shape: &RowShape, row: &[u8], indices: &[usize]) -> Vec<Value> {
 	indices.iter().map(|&i| shape.get_value(row, i)).collect()
@@ -67,6 +165,13 @@ pub enum PartitionError {
 		hash: u128,
 	},
 
+	#[error(
+		"partition column changed by a pre-insert hook on object {object}: the row no longer hashes to its partition"
+	)]
+	PartitionColumnChangedByHook {
+		object: ObjectId,
+	},
+
 	#[error("cannot partition by column `{column}`: a {ty} value cannot be a partition key")]
 	DigestPartitionColumn {
 		column: String,
@@ -114,6 +219,27 @@ impl IntoDiagnostic for PartitionError {
 				label: Some("128-bit hash collision".to_string()),
 				help: Some(
 					"two distinct partition value tuples produced the same 128-bit hash; this is astronomically unlikely and points to a hashing bug or data corruption, report it as a bug"
+						.to_string(),
+				),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			PartitionError::PartitionColumnChangedByHook {
+				object,
+			} => Diagnostic {
+				code: "PART_006".to_string(),
+				rql: None,
+				message: format!(
+					"partition column changed by a pre-insert hook on object {}: the row no longer hashes to its partition",
+					object
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("partition column change rejected".to_string()),
+				help: Some(
+					"a pre-insert hook must not change a partition column, since the row's partition is fixed before hooks run"
 						.to_string(),
 				),
 				notes: vec![],

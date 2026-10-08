@@ -23,10 +23,10 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedSeries},
 	},
 	key::{any::TaggedKey, partition::PartitionKey},
+	partition::registry_values,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
-	partition::decode_partition_values,
 	vm::volcano::{
 		query::{QueryContext, QueryNode, query_budget},
 		scan::series::SeriesScanNode,
@@ -306,7 +306,7 @@ impl SeriesMaterializationActor {
 		for entry in stream {
 			let entry = entry?;
 			if let TaggedKey::Partition(key) = entry.key {
-				partitions.push((key.partition, decode_partition_values(&entry.bytes)));
+				partitions.push((key.partition, registry_values(&entry.bytes)));
 			}
 		}
 		Ok(partitions)

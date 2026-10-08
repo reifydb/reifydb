@@ -7,7 +7,6 @@ use reifydb_core::common::TimeSource;
 use reifydb_value::{
 	Result,
 	value::{
-		Value,
 		column_view::{ColumnView, ViewData},
 		container::temporal_array::datetimes,
 		datetime::DateTime,
@@ -89,15 +88,17 @@ fn resolve_populator(object: &str, ts: &str, shape: &RowShape, row: &[u8]) -> Re
 		column: ts.to_string(),
 	})?;
 
-	match shape.get_value(row, index) {
-		Value::DateTime(dt) => Ok(dt),
-		found => Err(EngineError::TimePopulatorNotDateTime {
-			object: object.to_string(),
-			column: ts.to_string(),
-			found: format!("{found:?}"),
-		}
-		.into()),
+	if *shape.fields()[index].constraint.get_type().inner_type() == ValueType::DateTime
+		&& shape.is_defined(row, index)
+	{
+		return Ok(shape.get::<DateTime>(row, index));
 	}
+	Err(EngineError::TimePopulatorNotDateTime {
+		object: object.to_string(),
+		column: ts.to_string(),
+		found: format!("{:?}", shape.get_value(row, index)),
+	}
+	.into())
 }
 
 #[cfg(test)]
@@ -112,6 +113,7 @@ mod tests {
 	use reifydb_value::{
 		factory::time::at_nanos,
 		value::{
+			Value,
 			constraint::TypeConstraint,
 			datetime::DateTime,
 			dictionary::{DictionaryEntryId, DictionaryId},

@@ -574,6 +574,10 @@ impl<'a> Transaction<'a> {
 		Write::set(self.write_ops(), &key.clone().into(), bytes.into())
 	}
 
+	pub fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		Write::set_many(self.write_ops(), entries)
+	}
+
 	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
 		Write::remove_with_pre(self.write_ops(), &key.clone().into(), pre)
 	}

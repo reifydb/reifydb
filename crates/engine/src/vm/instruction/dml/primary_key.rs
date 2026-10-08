@@ -1,22 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::collections::HashSet;
+
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::shape::RowShape;
+use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape, table::EncodedTableRowBuilder};
 use reifydb_core::{
-	error::CoreError,
-	interface::catalog::{key::PrimaryKey, table::Table},
+	error::{CoreError, diagnostic::index::primary_key_violation},
+	interface::catalog::{id::IndexId, key::PrimaryKey, table::Table},
+	key::{any::TaggedKey, catalog::IndexEntryKey},
 	sort::SortDirection,
 	value::index::{encoded::EncodedIndexKey, shape::IndexShape},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
+	return_error,
 	value::{
 		date::Date,
 		datetime::DateTime,
 		duration::Duration,
 		identity::IdentityId,
+		row_number::RowNumber,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 		value_type::ValueType,
@@ -63,6 +68,10 @@ impl PrimaryKeyEncoder {
 			shape,
 			columns,
 		})
+	}
+
+	pub fn key_columns(&self) -> Vec<usize> {
+		self.columns.iter().map(|(index, _)| *index).collect()
 	}
 
 	pub fn encode(&self, shape: &RowShape, row: &[u8]) -> EncodedIndexKey {
@@ -181,4 +190,45 @@ pub fn get_primary_key(catalog: &Catalog, txn: &mut Transaction<'_>, table: &Tab
 	} else {
 		Ok(None)
 	}
+}
+
+pub(crate) fn checked_primary_keys(
+	txn: &mut Transaction<'_>,
+	table: &Table,
+	pk: &PrimaryKey,
+	encoder: &PrimaryKeyEncoder,
+	shape: &RowShape,
+	rows: &[EncodedTableRowBuilder],
+	fragment: &Fragment,
+) -> Result<Vec<EncodedIndexKey>> {
+	let mut seen = HashSet::with_capacity(rows.len());
+	let mut keys = Vec::with_capacity(rows.len());
+	for row in rows {
+		let key = encoder.encode(shape, row);
+		if !seen.insert(key.clone())
+			|| txn.contains(&IndexEntryKey::new(table.id, IndexId::primary(pk.id), key.clone()))?
+		{
+			let key_columns = pk.columns.iter().map(|c| c.name.clone()).collect();
+			return_error!(primary_key_violation(fragment.clone(), table.name.clone(), key_columns));
+		}
+		keys.push(key);
+	}
+	Ok(keys)
+}
+
+pub(crate) fn primary_key_index(
+	table: &Table,
+	pk: &PrimaryKey,
+	keys: Vec<EncodedIndexKey>,
+	row_numbers: &[RowNumber],
+) -> Vec<(TaggedKey, EncodedBytes)> {
+	keys.into_iter()
+		.zip(row_numbers)
+		.map(|(key, &row_number)| {
+			(
+				IndexEntryKey::new(table.id, IndexId::primary(pk.id), key).into(),
+				EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes(),
+			)
+		})
+		.collect()
 }

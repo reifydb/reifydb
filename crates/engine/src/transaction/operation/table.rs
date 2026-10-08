@@ -8,25 +8,31 @@ use reifydb_codec::row::{
 };
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
+	error::diagnostic::index::primary_key_changed_by_hook,
 	interface::{
 		catalog::{object::ObjectId, table::Table},
 		change::{Change, ChangeOrigin, Diff},
 	},
+	key::any::TaggedKey,
 	partition::PartitionError,
 	row::row_shape_from_columns,
 	value::batch::from_encoded_bytes,
 };
 use reifydb_transaction::{
 	change::{RowChange, TableRowInsertion},
-	interceptor::table_row::TableRowInterceptor,
-	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
+	interceptor::{WithInterceptors, table_row::TableRowInterceptor},
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, write::Write},
 };
-use reifydb_value::value::{datetime::DateTime, partition::Partition, row_number::RowNumber};
+use reifydb_value::{
+	fragment::Fragment,
+	return_error,
+	value::{Value, datetime::DateTime, partition::Partition, row_number::RowNumber},
+};
 use smallvec::smallvec;
 
 use crate::{
 	Result,
-	partition::{row_key_from_partition, table_partition_of_row, table_row_key},
+	partition::{row_key_from_partition, table_partition_of_row},
 };
 
 fn build_table_insert_change(
@@ -75,14 +81,96 @@ fn build_table_remove_change(
 	})
 }
 
+pub struct TableInsert<'a> {
+	pub ids: &'a [RowNumber],
+	pub partitions: &'a [Partition],
+	pub rows: &'a mut [EncodedTableRowBuilder],
+	pub index: Vec<(TaggedKey, EncodedBytes)>,
+	pub key_columns: &'a [usize],
+}
+
+fn insert_rows<T: WithInterceptors + Write>(
+	txn: &mut T,
+	table: &Table,
+	shape: &RowShape,
+	insert: TableInsert<'_>,
+) -> Result<()> {
+	let TableInsert {
+		ids,
+		partitions,
+		rows,
+		index,
+		key_columns,
+	} = insert;
+	assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
+	assert!(
+		if table.partition_by.is_empty() {
+			partitions.is_empty()
+		} else {
+			partitions.len() == ids.len()
+		},
+		"a partitioned table needs one partition per row, an unpartitioned table none"
+	);
+	if ids.is_empty() {
+		return Ok(());
+	}
+
+	if !txn.table_row_pre_insert_interceptors().is_empty() {
+		let keys = key_cells(shape, rows, key_columns);
+		TableRowInterceptor::pre_insert(txn, table, ids, rows)?;
+		if rows.iter()
+			.zip(partitions)
+			.any(|(row, &partition)| table_partition_of_row(table, shape, row) != partition)
+		{
+			return Err(PartitionError::PartitionColumnChangedByHook {
+				object: ObjectId::Table(table.id),
+			}
+			.into());
+		}
+		if key_cells(shape, rows, key_columns) != keys {
+			let key_columns = key_columns.iter().map(|&index| table.columns[index].name.clone()).collect();
+			return_error!(primary_key_changed_by_hook(Fragment::None, table.name.clone(), key_columns));
+		}
+	}
+
+	let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
+
+	let mut entries: Vec<(TaggedKey, EncodedBytes)> = Vec::with_capacity(frozen.len() + index.len());
+	for (row_index, (row, &row_number)) in frozen.iter().zip(ids).enumerate() {
+		entries.push((
+			row_key_from_partition(table.id, partitions.get(row_index).copied(), row_number),
+			row.clone(),
+		));
+	}
+	entries.extend(index);
+	txn.set_many(entries)?;
+
+	TableRowInterceptor::post_insert(txn, table, ids, &frozen)?;
+
+	let row_changes: Vec<RowChange> = ids
+		.iter()
+		.zip(frozen.iter())
+		.map(|(&row_number, row)| {
+			RowChange::TableInsert(TableRowInsertion {
+				table_id: table.id,
+				row_number,
+				encoded: row.clone(),
+			})
+		})
+		.collect();
+	txn.track_row_change(&row_changes);
+
+	txn.track_flow_change(build_table_insert_change(table, shape, ids, &frozen)?);
+
+	Ok(())
+}
+
+fn key_cells(shape: &RowShape, rows: &[EncodedTableRowBuilder], key_columns: &[usize]) -> Vec<Value> {
+	rows.iter().flat_map(|row| key_columns.iter().map(|&index| shape.get_value(row, index))).collect()
+}
+
 pub trait TableOperations {
-	fn insert_table(
-		&mut self,
-		table: &Table,
-		shape: &RowShape,
-		ids: &[RowNumber],
-		rows: &mut [EncodedTableRowBuilder],
-	) -> Result<()>;
+	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()>;
 
 	fn update_table(
 		&mut self,
@@ -101,44 +189,8 @@ pub trait TableOperations {
 }
 
 impl TableOperations for CommandTransaction {
-	fn insert_table(
-		&mut self,
-		table: &Table,
-		shape: &RowShape,
-		ids: &[RowNumber],
-		rows: &mut [EncodedTableRowBuilder],
-	) -> Result<()> {
-		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
-		if ids.is_empty() {
-			return Ok(());
-		}
-
-		TableRowInterceptor::pre_insert(self, table, ids, rows)?;
-
-		let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
-
-		for (row, &row_number) in frozen.iter().zip(ids.iter()) {
-			self.set(&table_row_key(table, shape, row, row_number), row.clone())?;
-		}
-
-		TableRowInterceptor::post_insert(self, table, ids, &frozen)?;
-
-		let row_changes: Vec<RowChange> = ids
-			.iter()
-			.zip(frozen.iter())
-			.map(|(&row_number, row)| {
-				RowChange::TableInsert(TableRowInsertion {
-					table_id: table.id,
-					row_number,
-					encoded: row.clone(),
-				})
-			})
-			.collect();
-		self.track_row_change(&row_changes);
-
-		self.track_flow_change(build_table_insert_change(table, shape, ids, &frozen)?);
-
-		Ok(())
+	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()> {
+		insert_rows(self, table, shape, insert)
 	}
 
 	fn update_table(
@@ -254,44 +306,8 @@ impl TableOperations for CommandTransaction {
 }
 
 impl TableOperations for AdminTransaction {
-	fn insert_table(
-		&mut self,
-		table: &Table,
-		shape: &RowShape,
-		ids: &[RowNumber],
-		rows: &mut [EncodedTableRowBuilder],
-	) -> Result<()> {
-		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
-		if ids.is_empty() {
-			return Ok(());
-		}
-
-		TableRowInterceptor::pre_insert(self, table, ids, rows)?;
-
-		let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
-
-		for (row, &row_number) in frozen.iter().zip(ids.iter()) {
-			self.set(&table_row_key(table, shape, row, row_number), row.clone())?;
-		}
-
-		TableRowInterceptor::post_insert(self, table, ids, &frozen)?;
-
-		let row_changes: Vec<RowChange> = ids
-			.iter()
-			.zip(frozen.iter())
-			.map(|(&row_number, row)| {
-				RowChange::TableInsert(TableRowInsertion {
-					table_id: table.id,
-					row_number,
-					encoded: row.clone(),
-				})
-			})
-			.collect();
-		self.track_row_change(&row_changes);
-
-		self.track_flow_change(build_table_insert_change(table, shape, ids, &frozen)?);
-
-		Ok(())
+	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()> {
+		insert_rows(self, table, shape, insert)
 	}
 
 	fn update_table(
@@ -407,17 +423,11 @@ impl TableOperations for AdminTransaction {
 }
 
 impl TableOperations for Transaction<'_> {
-	fn insert_table(
-		&mut self,
-		table: &Table,
-		shape: &RowShape,
-		ids: &[RowNumber],
-		rows: &mut [EncodedTableRowBuilder],
-	) -> Result<()> {
+	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()> {
 		match self {
-			Transaction::Command(txn) => txn.insert_table(table, shape, ids, rows),
-			Transaction::Admin(txn) => txn.insert_table(table, shape, ids, rows),
-			Transaction::Test(t) => t.inner.insert_table(table, shape, ids, rows),
+			Transaction::Command(txn) => txn.insert_table(table, shape, insert),
+			Transaction::Admin(txn) => txn.insert_table(table, shape, insert),
+			Transaction::Test(t) => t.inner.insert_table(table, shape, insert),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}

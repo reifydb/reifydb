@@ -23,6 +23,8 @@ use reifydb_core::{
 use reifydb_value::{Result, error::Diagnostic, params::Params, reifydb_assertions, value::identity::IdentityId};
 use tracing::instrument;
 
+#[cfg(feature = "testing")]
+use crate::counting::OpCounts;
 use crate::{
 	TransactionId,
 	accumulator::ChangeAccumulator,
@@ -379,6 +381,17 @@ impl AdminTransaction {
 	}
 
 	#[inline]
+	pub fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().set_many(entries)
+	}
+
+	#[cfg(feature = "testing")]
+	pub fn op_counts(&self) -> OpCounts {
+		self.cmd.as_ref().map(|cmd| cmd.op_counts.clone()).unwrap_or_default()
+	}
+
+	#[inline]
 	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_with_pre(key, pre)
@@ -455,6 +468,10 @@ impl Write for AdminTransaction {
 	#[inline]
 	fn set(&mut self, key: &TaggedKey, bytes: EncodedBytes) -> Result<()> {
 		AdminTransaction::set(self, key, bytes)
+	}
+	#[inline]
+	fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		AdminTransaction::set_many(self, entries)
 	}
 	#[inline]
 	fn remove_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()> {

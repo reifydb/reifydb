@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, sync::LazyLock};
+use std::collections::{HashMap, HashSet};
 
-use postcard::{from_bytes, to_stdvec};
-use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
+use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
 	interface::catalog::{id::TableId, object::ObjectId, table::Table},
 	key::{
@@ -12,28 +11,21 @@ use reifydb_core::{
 		partition::PartitionKey,
 		row::{PartitionedRowKey, RowKey},
 	},
-	partition::{PartitionError, partition_col_indices, partition_of, partition_values},
+	partition::{
+		PartitionError, partition_col_indices, partition_of, partition_values, registry_matches, registry_row,
+	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::value::{Value, blob::Blob, partition::Partition, row_number::RowNumber, value_type::ValueType};
+use reifydb_value::{
+	error::Error,
+	value::{Value, partition::Partition, row_number::RowNumber},
+};
 
 use crate::Result;
-
-static REGISTRY_SHAPE: LazyLock<RowShape> =
-	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
 
 pub fn table_partition_of_row(table: &Table, shape: &RowShape, row: &[u8]) -> Partition {
 	let indices = partition_col_indices(&table.columns, &table.partition_by);
 	partition_of(&table.columns, &table.partition_by, &partition_values(shape, row, &indices))
-}
-
-pub fn table_row_key(table: &Table, shape: &RowShape, row: &[u8], row_number: RowNumber) -> TaggedKey {
-	if table.partition_by.is_empty() {
-		RowKey::new(table.id, row_number).into()
-	} else {
-		let partition = table_partition_of_row(table, shape, row);
-		PartitionedRowKey::new(table.id, partition, row_number).into()
-	}
 }
 
 pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
@@ -43,11 +35,23 @@ pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, r
 	}
 }
 
-pub fn decode_partition_values(row: &[u8]) -> Vec<Value> {
-	match REGISTRY_SHAPE.get_value(row, 0) {
-		Value::Blob(blob) => from_bytes(blob.as_bytes()).expect("partition registry values must decode"),
-		other => panic!("partition registry row holds {other:?} where a blob is required"),
+pub fn resolve_partitions(
+	txn: &mut Transaction<'_>,
+	object: ObjectId,
+	distinct: &[(Partition, Vec<Value>)],
+	verified: &mut HashMap<Partition, Vec<Value>>,
+) -> Result<()> {
+	for (partition, values) in distinct {
+		match verified.get(partition) {
+			Some(known) if known != values => return Err(collision(object, *partition)),
+			Some(_) => {}
+			None => {
+				check_or_register(txn, object, *partition, values)?;
+				verified.insert(*partition, values.clone());
+			}
+		}
 	}
+	Ok(())
 }
 
 pub fn resolve_partition(
@@ -60,24 +64,27 @@ pub fn resolve_partition(
 	if !verified.insert(partition) {
 		return Ok(());
 	}
+	check_or_register(txn, object, partition, values)
+}
+
+fn check_or_register(
+	txn: &mut Transaction<'_>,
+	object: ObjectId,
+	partition: Partition,
+	values: &[Value],
+) -> Result<()> {
 	let key = PartitionKey::new(object, partition);
-	let encoded = to_stdvec(values).expect("value postcard is total");
-	let candidate = Value::Blob(Blob::from(encoded));
 	match txn.get(&key)? {
-		Some(multi) => {
-			if REGISTRY_SHAPE.get_value(&multi.bytes, 0) != candidate {
-				return Err(PartitionError::PartitionHashCollision {
-					object,
-					hash: partition.0,
-				}
-				.into());
-			}
-		}
-		None => {
-			let mut row = REGISTRY_SHAPE.allocate_pod();
-			REGISTRY_SHAPE.set_value(&mut row, 0, &candidate);
-			txn.set(&key, row.freeze())?;
-		}
+		Some(multi) if !registry_matches(&multi.bytes, values) => Err(collision(object, partition)),
+		Some(_) => Ok(()),
+		None => txn.set(&key, registry_row(values)),
 	}
-	Ok(())
+}
+
+fn collision(object: ObjectId, partition: Partition) -> Error {
+	PartitionError::PartitionHashCollision {
+		object,
+		hash: partition.0,
+	}
+	.into()
 }

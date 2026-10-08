@@ -481,14 +481,14 @@ fn validate_and_encode_input_rows(
 
 		let inputs = input_views(&columns, &target.queue.columns)?;
 		let earliest = Failure::earliest([not_before_failure, key_failure]);
-		let mut cast = pipeline.cast_target_columns(&inputs, rows, earliest)?;
-		pipeline.fill_sequences(services, txn, &mut cast)?;
+		let cast = pipeline.cast_target_columns(&inputs, rows, earliest)?;
 
 		statement_keys.push(key_view.as_ref().map(statement_key_bytes).transpose()?);
 		not_befores.push(not_before);
 		casts.push(cast);
 	}
 	intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut casts)?;
+	pipeline.fill_sequences(services, txn, &mut casts)?;
 
 	let populator = populator_index(&target.queue.time, shape);
 	let mut pending: Vec<PendingItem> = Vec::new();

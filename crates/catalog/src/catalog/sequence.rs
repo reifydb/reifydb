@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::ArrayRef;
+use arrow_schema::FieldRef;
 use reifydb_core::interface::catalog::{
 	id::{ColumnId, QueueId, RingBufferId, SequenceId, TableId},
 	object::ObjectId,
@@ -96,6 +98,17 @@ impl Catalog {
 		column: ColumnId,
 	) -> Result<Value> {
 		ColumnSequence::next_value(txn, object, column)
+	}
+
+	#[instrument(name = "catalog::sequence::column_sequence_next_values", level = "trace", skip(self, txn, object))]
+	pub fn column_sequence_next_values(
+		&self,
+		txn: &mut impl SequenceTransaction,
+		object: impl Into<ObjectId>,
+		column: ColumnId,
+		count: u64,
+	) -> Result<(FieldRef, ArrayRef)> {
+		ColumnSequence::next_values(txn, object, column, count)
 	}
 
 	#[instrument(name = "catalog::sequence::column_sequence_set_value", level = "trace", skip(self, txn, object))]
