@@ -328,7 +328,7 @@ impl<'a> BorrowedColumn<'a> {
 
 fn varlen_cell<'a>(column: &BorrowedColumn<'a>, index: usize) -> SdkResult<&'a [u8]> {
 	let offsets_len = column.extern_c.data.offsets.len;
-	if offsets_len % core::mem::size_of::<u64>() != 0 {
+	if !offsets_len.is_multiple_of(core::mem::size_of::<u64>()) {
 		return Err(malformed(format!(
 			"extern-c column {} holds {offsets_len} offset bytes, not a whole number of u64s",
 			column.name()

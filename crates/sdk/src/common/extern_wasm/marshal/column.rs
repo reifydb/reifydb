@@ -71,7 +71,7 @@ impl Arena {
 		} else {
 			ptr::null()
 		};
-		let time_defined = match system_column(batch, SystemColumn::Time).and_then(|array| array.nulls()) {
+		let time_defined = match system_column(batch, SystemColumn::Time).and_then(|array| array.logical_nulls()) {
 			Some(nulls) if !times.is_empty() && nulls.null_count() > 0 => {
 				self.marshal_bitvec(nulls.inner())
 			}

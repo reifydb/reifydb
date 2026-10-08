@@ -191,6 +191,7 @@ impl<'a> RowTimes<'a> {
 	}
 }
 
+#[allow(clippy::disallowed_methods)]
 pub fn row_times(batch: &RecordBatch) -> Result<RowTimes<'_>> {
 	let Some(array) = system_column(batch, SystemColumn::Time) else {
 		return Ok(RowTimes::EMPTY);
