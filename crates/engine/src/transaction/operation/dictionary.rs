@@ -119,6 +119,40 @@ fn get_many_through(
 		.collect()
 }
 
+fn get_through(
+	registry: Option<DictionaryAllocatorRegistry>,
+	dictionary: &Dictionary,
+	id: DictionaryEntryId,
+) -> Result<Option<Value>> {
+	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+	match registry.get(dictionary, id.to_u128())? {
+		Some(bytes) => {
+			let value: Value = from_bytes(&bytes)
+				.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
+			Ok(Some(value))
+		}
+		None => Ok(None),
+	}
+}
+
+fn find_through(
+	registry: Option<DictionaryAllocatorRegistry>,
+	dictionary: &Dictionary,
+	value: &Value,
+) -> Result<Option<DictionaryEntryId>> {
+	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+	registry.find(dictionary, value)
+}
+
+fn find_many_through(
+	registry: Option<DictionaryAllocatorRegistry>,
+	dictionary: &Dictionary,
+	values: &[Value],
+) -> Result<Vec<Option<DictionaryEntryId>>> {
+	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+	registry.find_batch(dictionary, values)
+}
+
 impl DictionaryOperations for CommandTransaction {
 	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>> {
 		Ok(intern_through_chains(self, CommandTransaction::dictionary_allocators, dictionary, values)?.ids)
@@ -133,24 +167,11 @@ impl DictionaryOperations for CommandTransaction {
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let registry = self
-			.dictionary_allocators()
-			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		match registry.get(dictionary, id.to_u128())? {
-			Some(bytes) => {
-				let value: Value = from_bytes(&bytes)
-					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
-				Ok(Some(value))
-			}
-			None => Ok(None),
-		}
+		get_through(self.dictionary_allocators(), dictionary, id)
 	}
 
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		let registry = self
-			.dictionary_allocators()
-			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		registry.find(dictionary, value)
+		find_through(self.dictionary_allocators(), dictionary, value)
 	}
 
 	fn find_many_in_dictionary(
@@ -158,10 +179,7 @@ impl DictionaryOperations for CommandTransaction {
 		dictionary: &Dictionary,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
-		let registry = self
-			.dictionary_allocators()
-			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		registry.find_batch(dictionary, values)
+		find_many_through(self.dictionary_allocators(), dictionary, values)
 	}
 }
 
@@ -188,24 +206,11 @@ impl DictionaryOperations for AdminTransaction {
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		let registry = self
-			.dictionary_allocators()
-			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		match registry.get(dictionary, id.to_u128())? {
-			Some(bytes) => {
-				let value: Value = from_bytes(&bytes)
-					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
-				Ok(Some(value))
-			}
-			None => Ok(None),
-		}
+		get_through(self.dictionary_allocators(), dictionary, id)
 	}
 
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		let registry = self
-			.dictionary_allocators()
-			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		registry.find(dictionary, value)
+		find_through(self.dictionary_allocators(), dictionary, value)
 	}
 
 	fn find_many_in_dictionary(
@@ -213,10 +218,7 @@ impl DictionaryOperations for AdminTransaction {
 		dictionary: &Dictionary,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
-		let registry = self
-			.dictionary_allocators()
-			.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-		registry.find_batch(dictionary, values)
+		find_many_through(self.dictionary_allocators(), dictionary, values)
 	}
 }
 

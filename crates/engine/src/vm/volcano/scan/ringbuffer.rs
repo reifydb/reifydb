@@ -18,6 +18,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
+	partition::partition_col_indices,
 	value::{
 		batch::{append_rows, batch},
 		column::{builder::ColumnBuilder, headers::ColumnHeaders},
@@ -90,12 +91,7 @@ impl RingBufferScan {
 			}
 		}
 
-		let partition_col_indices: Vec<usize> = ringbuffer
-			.def()
-			.partition_by
-			.iter()
-			.map(|pb_col| ringbuffer.columns().iter().position(|c| c.name == *pb_col).unwrap())
-			.collect();
+		let partition_col_indices = partition_col_indices(ringbuffer.columns(), &ringbuffer.def().partition_by);
 
 		let system_columns = source_system_columns(
 			!partition_col_indices.is_empty(),

@@ -5,7 +5,7 @@ use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{interface::catalog::queue::Queue, key::row::RowKey};
 use reifydb_transaction::{
 	change::{QueueRowInsertion, RowChange},
-	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
+	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, write::Write},
 };
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
@@ -39,39 +39,29 @@ fn row_changes(queue: &Queue, rows: &[QueueInsertRow]) -> Vec<RowChange> {
 		.collect()
 }
 
+fn insert_rows<T: Write>(txn: &mut T, queue: &Queue, rows: &[QueueInsertRow]) -> Result<()> {
+	if rows.is_empty() {
+		return Ok(());
+	}
+
+	txn.set_many(
+		rows.iter().map(|row| (RowKey::new(queue.id, row.row_number).into(), row.encoded.clone())).collect(),
+	)?;
+
+	txn.track_row_change(&row_changes(queue, rows));
+
+	Ok(())
+}
+
 impl QueueOperations for CommandTransaction {
 	fn insert_queue(&mut self, queue: &Queue, rows: &[QueueInsertRow]) -> Result<()> {
-		if rows.is_empty() {
-			return Ok(());
-		}
-
-		self.set_many(
-			rows.iter()
-				.map(|row| (RowKey::new(queue.id, row.row_number).into(), row.encoded.clone()))
-				.collect(),
-		)?;
-
-		self.track_row_change(&row_changes(queue, rows));
-
-		Ok(())
+		insert_rows(self, queue, rows)
 	}
 }
 
 impl QueueOperations for AdminTransaction {
 	fn insert_queue(&mut self, queue: &Queue, rows: &[QueueInsertRow]) -> Result<()> {
-		if rows.is_empty() {
-			return Ok(());
-		}
-
-		self.set_many(
-			rows.iter()
-				.map(|row| (RowKey::new(queue.id, row.row_number).into(), row.encoded.clone()))
-				.collect(),
-		)?;
-
-		self.track_row_change(&row_changes(queue, rows));
-
-		Ok(())
+		insert_rows(self, queue, rows)
 	}
 }
 

@@ -23,6 +23,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
+	partition::partition_col_indices,
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -37,7 +38,6 @@ use reifydb_value::{
 
 use super::{
 	context::{RingBufferTarget, WriteExecCtx},
-	partition::compute_partition_col_indices,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_ringbuffer_shape,
 };
@@ -72,7 +72,7 @@ pub(crate) fn delete_ringbuffer(
 		namespace: &namespace,
 		ringbuffer: &ringbuffer,
 	};
-	let partition_col_indices = compute_partition_col_indices(&ringbuffer);
+	let partition_col_indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 	let shape = get_or_create_ringbuffer_shape(&services.catalog, &ringbuffer, txn)?;
 
 	let exec = WriteExecCtx {

@@ -10,7 +10,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
-	partition::{BatchPartitions, NoneCell, partition_of, partitions_of_batch},
+	partition::{BatchPartitions, NoneCell, partition_col_indices, partition_of, partitions_of_batch},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -20,15 +20,6 @@ use reifydb_value::{
 
 use super::columns::CastColumns;
 use crate::Result;
-
-#[inline]
-pub(crate) fn compute_partition_col_indices(ringbuffer: &RingBuffer) -> Vec<usize> {
-	ringbuffer
-		.partition_by
-		.iter()
-		.map(|pb_col| ringbuffer.columns.iter().position(|c| c.name == *pb_col).unwrap())
-		.collect()
-}
 
 #[inline]
 pub(super) fn ensure_partition_metadata(
@@ -126,7 +117,7 @@ pub(crate) fn save_all_partition_metadata(
 }
 
 pub(crate) fn ringbuffer_batch_partitions(ringbuffer: &RingBuffer, cast: &CastColumns) -> Result<BatchPartitions> {
-	let indices = compute_partition_col_indices(ringbuffer);
+	let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
 	if indices.is_empty() {
 		return Ok(BatchPartitions::default());
 	}

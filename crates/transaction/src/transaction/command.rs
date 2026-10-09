@@ -94,7 +94,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, write::Write},
+	transaction::{RqlExecutor, Transaction, read::Read, write::Write},
 };
 
 pub struct CommandTransaction {
@@ -553,6 +553,17 @@ impl CommandTransaction {
 impl WithEventBus for CommandTransaction {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
+	}
+}
+
+impl Read for CommandTransaction {
+	#[inline]
+	fn get(&mut self, key: &TaggedKey) -> Result<Option<MultiVersionRow<TaggedKey>>> {
+		CommandTransaction::get(self, key)
+	}
+	#[inline]
+	fn get_committed_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		CommandTransaction::get_committed_many(self, keys)
 	}
 }
 

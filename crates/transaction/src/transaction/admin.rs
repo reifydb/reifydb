@@ -93,7 +93,7 @@ use crate::{
 		transaction::{MultiTransaction, write::MultiWriteTransaction},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
-	transaction::{RqlExecutor, Transaction, write::Write},
+	transaction::{RqlExecutor, Transaction, read::Read, write::Write},
 };
 
 pub struct AdminTransaction {
@@ -479,6 +479,17 @@ impl AdminTransaction {
 impl WithEventBus for AdminTransaction {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
+	}
+}
+
+impl Read for AdminTransaction {
+	#[inline]
+	fn get(&mut self, key: &TaggedKey) -> Result<Option<MultiVersionRow<TaggedKey>>> {
+		AdminTransaction::get(self, key)
+	}
+	#[inline]
+	fn get_committed_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		AdminTransaction::get_committed_many(self, keys)
 	}
 }
 

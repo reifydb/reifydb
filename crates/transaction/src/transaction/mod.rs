@@ -98,6 +98,7 @@ pub mod admin;
 pub mod catalog;
 pub mod command;
 pub mod query;
+pub mod read;
 pub mod write;
 
 pub struct Savepoint {
