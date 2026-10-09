@@ -77,6 +77,25 @@ fn ring_buffer_storage_is_refused_with_flow_084() {
 }
 
 #[test]
+fn series_storage_is_refused_with_flow_084() {
+	// The transactional flow runtime has no series sink, so a series view must be refused when it is created
+	// rather than accepted and left to fail when its flow is registered.
+	let t = TestEngine::new();
+	t.admin("CREATE NAMESPACE ns");
+	t.admin("CREATE TABLE ns::src { id: int4, region: utf8 } WITH { time: processing }");
+
+	let (code, message) = refused(
+		&t,
+		"CREATE TRANSACTIONAL SERIES VIEW ns::v { id: int4, region: utf8 } WITH { precision: millisecond, partition: { by: { region } } } AS { FROM ns::src }",
+	);
+
+	assert_eq!(code, "FLOW_084", "got: {message}");
+	assert!(message.contains("series storage"), "got: {message}");
+	assert_eq!(view_count(&t), 0);
+	assert_eq!(TestEngine::row_count(&t.query("from system::flows filter {name == 'v'}")), 0);
+}
+
+#[test]
 fn a_row_ttl_is_refused_with_flow_084() {
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE ns");

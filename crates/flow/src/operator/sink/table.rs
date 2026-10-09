@@ -152,11 +152,7 @@ impl TableSink {
 		let encoder = SourceRowEncoder::new(source, &self.shape, &field_columns)?;
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let row_numbers = if row_count == 0 {
-			&[][..]
-		} else {
-			require_row_numbers(source)?
-		};
+		let row_numbers = require_row_numbers(source)?;
 		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
 		let encoded = encoder.encode_all()?;
 		let partitions = self.resolved_partitions(txn, source)?;
@@ -200,11 +196,8 @@ impl TableSink {
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		let (pre_row_numbers, post_row_numbers) = if row_count == 0 {
-			(&[][..], &[][..])
-		} else {
-			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?)
-		};
+		let (pre_row_numbers, post_row_numbers) =
+			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?);
 		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
 		let mut post_runs = sort_runs(&self.sort, &coerced_post)?.into_iter();
 		let encoded = encoder.encode_all()?;
@@ -286,11 +279,7 @@ impl TableSink {
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = source.num_rows();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let row_numbers = if row_count == 0 {
-			&[][..]
-		} else {
-			require_row_numbers(source)?
-		};
+		let row_numbers = require_row_numbers(source)?;
 		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
 		let partitions = if self.is_partitioned() {
 			Some(partition_batch(&self.view, &self.partition_indices, source)?.rows)
