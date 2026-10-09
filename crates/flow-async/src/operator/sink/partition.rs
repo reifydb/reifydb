@@ -7,7 +7,7 @@ mod tests {
 	use std::collections::HashMap;
 
 	use reifydb_core::interface::catalog::{id::TableId, object::ObjectId};
-	use reifydb_flow::operator::sink::partition::resolve_partition_flow;
+	use reifydb_flow::operator::sink::partition::resolve_partitions_flow;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::{Value, partition::Partition};
 
@@ -29,10 +29,10 @@ mod tests {
 		let values = vec![Value::Utf8("sol".to_string())];
 		let partition = Partition::of(&values);
 
-		resolve_partition_flow(&mut txn, object, partition, &values, &mut verified).unwrap();
+		resolve_partitions_flow(&mut txn, object, &[(partition, values.clone())], &mut verified).unwrap();
 
 		let colliding = vec![Value::Utf8("usdc".to_string())];
-		let err = resolve_partition_flow(&mut txn, object, partition, &colliding, &mut verified);
+		let err = resolve_partitions_flow(&mut txn, object, &[(partition, colliding.clone())], &mut verified);
 		assert!(err.is_err(), "different values under a verified partition hash must be a hard error");
 	}
 }

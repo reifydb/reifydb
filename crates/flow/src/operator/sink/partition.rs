@@ -7,32 +7,16 @@ use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::catalog::{object::ObjectId, view::View},
 	key::partition::PartitionKey,
-	partition::{
-		BatchPartitions, NoneCell, PartitionError, partition_of as core_partition_of, partitions_of_batch,
-		registry_matches, registry_row,
-	},
+	partition::{BatchPartitions, NoneCell, PartitionError, partitions_of_batch, registry_matches, registry_row},
 };
 use reifydb_value::{
 	Result, reifydb_assertions,
 	value::{Value, column_view::ColumnView, partition::Partition, value_type::ValueType},
 };
 
-use crate::{
-	operator::sink::value_at,
-	txn::{Batch, Get},
-};
+use crate::txn::{Batch, Get};
 
 const VERIFIED_PARTITIONS_CAPACITY: usize = 65_536;
-
-pub fn partition_of(
-	view: &View,
-	indices: &[usize],
-	columns: &RecordBatch,
-	row_idx: usize,
-) -> Result<(Partition, Vec<Value>)> {
-	let values: Vec<Value> = indices.iter().map(|&i| value_at(columns, i, row_idx)).collect::<Result<Vec<_>>>()?;
-	Ok((core_partition_of(view.columns(), view.partition_by(), &values), values))
-}
 
 pub fn ensure_partition_unchanged(object: ObjectId, pre: Partition, post: Partition) -> Result<()> {
 	if pre != post {
@@ -65,16 +49,6 @@ pub fn partition_batch(view: &View, indices: &[usize], columns: &RecordBatch) ->
 		}
 	}
 	Ok(partitions_of_batch(&keys, NoneCell::Typed))
-}
-
-pub fn resolve_partition_flow<T: Get + Batch + ?Sized>(
-	txn: &mut T,
-	object: ObjectId,
-	partition: Partition,
-	values: &[Value],
-	verified: &mut HashMap<Partition, Vec<Value>>,
-) -> Result<()> {
-	resolve_partitions_flow(txn, object, &[(partition, values.to_vec())], verified)
 }
 
 pub fn resolve_partitions_flow<T: Get + Batch + ?Sized>(

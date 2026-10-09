@@ -35,7 +35,6 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	value::{
-		Value,
 		column_view::ColumnView,
 		datetime::DateTime,
 		identity::IdentityId,
@@ -207,10 +206,6 @@ impl<'a> SourceRowEncoder<'a> {
 	}
 }
 
-pub(crate) fn value_at(columns: &RecordBatch, index: usize, row_idx: usize) -> Result<Value> {
-	Ok(ColumnView::try_from((columns.column(index), columns.schema_ref().field(index)))?.get_value(row_idx))
-}
-
 #[cfg(test)]
 mod tests {
 	use std::sync::Arc;
@@ -219,6 +214,7 @@ mod tests {
 	use reifydb_codec::row::{shape::RowShapeField, table::EncodedTableRow};
 	use reifydb_core::value::{batch::batch, column::builder::ColumnBuilder};
 	use reifydb_value::value::{
+		Value,
 		container::temporal_array::datetime_array,
 		datetime::DateTime,
 		system_columns::{SystemColumn, keep_system_columns, with_system_column},

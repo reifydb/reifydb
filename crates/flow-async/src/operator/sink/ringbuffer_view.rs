@@ -61,7 +61,7 @@ use reifydb_flow::{
 	operator::{
 		sink::{
 			SourceRowEncoder, coerce_columns,
-			partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
+			partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
 			shape_field_columns,
 			table::{dictionary_encode_view_columns, dictionary_lookup_view_columns},
 		},
@@ -846,6 +846,9 @@ impl SinkRingBufferViewOperator {
 		post: &RecordBatch,
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
+		if post.num_rows() == 0 {
+			return Ok(());
+		}
 		let coerced = coerce_columns(post, view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_encode_view_columns(txn, view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
@@ -853,11 +856,7 @@ impl SinkRingBufferViewOperator {
 		let field_columns = shape_field_columns(source, shape);
 		let encoder = SourceRowEncoder::new(source, shape, &field_columns)?;
 		let times = row_times(source)?;
-		let row_numbers = if row_count == 0 {
-			&[][..]
-		} else {
-			require_row_numbers(source)?
-		};
+		let row_numbers = require_row_numbers(source)?;
 		let encoded = encoder.encode_all()?;
 		let mut evicted_rns: Vec<RowNumber> = Vec::new();
 		let mut evicted: Vec<EncodedBytes> = Vec::new();
@@ -865,27 +864,20 @@ impl SinkRingBufferViewOperator {
 		let mut values_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
 		if self.is_partitioned() {
-			let mut groups: Vec<(Partition, Vec<Value>, Vec<usize>)> = Vec::new();
-			let mut group_index: HashMap<Partition, usize> = HashMap::new();
-			for row_idx in 0..row_count {
-				let (partition, values) = partition_of(view, &self.partition_indices, source, row_idx)?;
-				match group_index.get(&partition) {
-					Some(&group) => groups[group].2.push(row_idx),
-					None => {
-						group_index.insert(partition, groups.len());
-						groups.push((partition, values, vec![row_idx]));
-					}
-				}
+			let parts = partition_batch(view, &self.partition_indices, source)?;
+			resolve_partitions_flow(txn, object_id.into(), &parts.distinct, &mut self.verified_partitions)?;
+			let group_index: HashMap<Partition, usize> = parts
+				.distinct
+				.iter()
+				.enumerate()
+				.map(|(group, (partition, _))| (*partition, group))
+				.collect();
+			let mut group_rows: Vec<Vec<usize>> = vec![Vec::new(); parts.distinct.len()];
+			for (row_idx, partition) in parts.rows.iter().enumerate() {
+				group_rows[group_index[partition]].push(row_idx);
 			}
-			for (partition, values, rows) in groups {
+			for ((partition, values), rows) in parts.distinct.into_iter().zip(group_rows) {
 				note_touched(touched, values.clone());
-				resolve_partition_flow(
-					txn,
-					object_id.into(),
-					partition,
-					&values,
-					&mut self.verified_partitions,
-				)?;
 				if !partition_metadata.contains_key(&values) {
 					let loaded = self.read_partition_metadata(txn, &values)?;
 					partition_metadata.insert(values.clone(), loaded);
@@ -1048,6 +1040,9 @@ impl SinkRingBufferViewOperator {
 				post.num_rows()
 			);
 		}
+		if post.num_rows() == 0 {
+			return Ok(());
+		}
 		let coerced_pre = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let coerced_post = coerce_columns(post, view.columns(), &self.runtime_context)?;
 		let dict_pre = dictionary_encode_view_columns(txn, view, &coerced_pre)?;
@@ -1058,27 +1053,32 @@ impl SinkRingBufferViewOperator {
 		let field_columns = shape_field_columns(source_post, shape);
 		let encoder = SourceRowEncoder::new(source_post, shape, &field_columns)?;
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
-		let pre_row_numbers = if row_count == 0 {
-			&[][..]
-		} else {
-			require_row_numbers(source_pre)?
-		};
+		let pre_row_numbers = require_row_numbers(source_pre)?;
 		let encoded = encoder.encode_all()?;
-		for (row_idx, &pre_source_rn) in pre_row_numbers.iter().enumerate() {
-			let partition = if self.is_partitioned() {
-				let (pre_partition, _) =
-					partition_of(view, &self.partition_indices, source_pre, row_idx)?;
-				let (post_partition, post_values) =
-					partition_of(view, &self.partition_indices, source_post, row_idx)?;
+		let post_parts = if self.is_partitioned() {
+			let pre_parts = partition_batch(view, &self.partition_indices, source_pre)?;
+			let post_parts = partition_batch(view, &self.partition_indices, source_post)?;
+			for (&pre_partition, &post_partition) in pre_parts.rows.iter().zip(&post_parts.rows) {
 				ensure_partition_unchanged(object_id.into(), pre_partition, post_partition)?;
-				resolve_partition_flow(
-					txn,
-					object_id.into(),
-					post_partition,
-					&post_values,
-					&mut self.verified_partitions,
-				)?;
-				note_touched(touched, post_values);
+			}
+			resolve_partitions_flow(
+				txn,
+				object_id.into(),
+				&post_parts.distinct,
+				&mut self.verified_partitions,
+			)?;
+			Some(post_parts)
+		} else {
+			None
+		};
+		let post_values: HashMap<Partition, &Vec<Value>> = post_parts
+			.iter()
+			.flat_map(|parts| parts.distinct.iter().map(|(partition, values)| (*partition, values)))
+			.collect();
+		for (row_idx, &pre_source_rn) in pre_row_numbers.iter().enumerate() {
+			let partition = if let Some(parts) = &post_parts {
+				let post_partition = parts.rows[row_idx];
+				note_touched(touched, post_values[&post_partition].clone());
 				Some(post_partition)
 			} else {
 				note_touched(touched, Vec::new());
@@ -1117,24 +1117,32 @@ impl SinkRingBufferViewOperator {
 		pre: &RecordBatch,
 		touched: &mut Vec<Vec<Value>>,
 	) -> Result<()> {
+		if pre.num_rows() == 0 {
+			return Ok(());
+		}
 		let coerced = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_lookup_view_columns(txn, view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
 		let row_count = coerced.num_rows();
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
-		let row_numbers = if row_count == 0 {
-			&[]
+		let row_numbers = require_row_numbers(&coerced)?;
+		let parts = if self.is_partitioned() {
+			Some(partition_batch(view, &self.partition_indices, source)?)
 		} else {
-			require_row_numbers(&coerced)?
+			None
 		};
-		for (row_idx, &source_rn) in row_numbers.iter().enumerate().take(row_count) {
+		let part_values: HashMap<Partition, &Vec<Value>> = parts
+			.iter()
+			.flat_map(|parts| parts.distinct.iter().map(|(partition, values)| (*partition, values)))
+			.collect();
+		for (row_idx, &source_rn) in row_numbers.iter().enumerate() {
 			let Some(storage_rn) = self.get_forward(txn, source_rn)? else {
 				continue;
 			};
 
-			let (partition, partition_values) = if self.is_partitioned() {
-				let (partition, partition_values) =
-					partition_of(view, &self.partition_indices, source, row_idx)?;
+			let (partition, partition_values) = if let Some(parts) = &parts {
+				let partition = parts.rows[row_idx];
+				let partition_values = part_values[&partition].clone();
 				note_touched(touched, partition_values.clone());
 				(Some(partition), Some(partition_values))
 			} else {
