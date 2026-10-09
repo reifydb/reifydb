@@ -30,6 +30,7 @@ use reifydb_core::{
 		tag::KeyTag,
 	},
 };
+use reifydb_store_commit::VersionedGetResult;
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -541,6 +542,39 @@ impl MultiWriteTransaction {
 		let version = self.version();
 		self.conflicts.mark_read(&key);
 		Ok(MultiVersionGet::get(&self.engine.store, &key, version)?.map(Into::into))
+	}
+
+	#[instrument(name = "transaction::command::get_committed_many", level = "trace", skip(self, keys), fields(
+		txn_id = %self.id,
+		keys = keys.len()
+	))]
+	pub fn get_committed_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		#[cfg(feature = "testing")]
+		self.op_counts.get_committed_many_call();
+		let version = self.version();
+		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
+		for key in keys {
+			self.conflicts.mark_read(key);
+		}
+		let found = self.engine.store.get_many_versioned(&encoded, version)?;
+		Ok(keys.iter()
+			.zip(&encoded)
+			.map(|(key, encoded)| match found.get(encoded) {
+				Some(VersionedGetResult::Value {
+					value,
+					version,
+				}) => Some(MultiVersionRow {
+					key: key.clone(),
+					bytes: EncodedBytes(value.clone()),
+					version: *version,
+				}
+				.into()),
+				_ => None,
+			})
+			.collect())
 	}
 }
 

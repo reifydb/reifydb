@@ -17,6 +17,7 @@ pub struct KeyCounts {
 pub struct OpCounts {
 	keys: HashMap<KeyTag, KeyCounts>,
 	set_many_calls: u64,
+	get_committed_many_calls: u64,
 }
 
 impl OpCounts {
@@ -28,11 +29,19 @@ impl OpCounts {
 		self.set_many_calls
 	}
 
+	pub fn get_committed_many_calls(&self) -> u64 {
+		self.get_committed_many_calls
+	}
+
 	pub(crate) fn key(&mut self, tag: KeyTag) -> &mut KeyCounts {
 		self.keys.entry(tag).or_default()
 	}
 
 	pub(crate) fn set_many_call(&mut self) {
 		self.set_many_calls += 1;
+	}
+
+	pub(crate) fn get_committed_many_call(&mut self) {
+		self.get_committed_many_calls += 1;
 	}
 }

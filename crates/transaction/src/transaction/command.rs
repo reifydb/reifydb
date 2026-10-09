@@ -360,6 +360,18 @@ impl CommandTransaction {
 	}
 
 	#[inline]
+	pub fn get_committed_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		self.check_active()?;
+		Ok(self.cmd
+			.as_mut()
+			.unwrap()
+			.get_committed_many(keys)?
+			.into_iter()
+			.map(|v| v.map(|v| v.into_multi_version_row()))
+			.collect())
+	}
+
+	#[inline]
 	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().contains(key)

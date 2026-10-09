@@ -15,7 +15,10 @@ use reifydb_core::{
 	},
 	internal_error,
 	value::column::{
-		builder::ColumnBuilder, cast::cast_column_data, factory::none_typed, write::check_digest_write,
+		cast::cast_column_data,
+		dictionary::{DictionaryNone, gather_dictionary_values, scatter_dictionary_ids},
+		factory::{self, none_typed},
+		write::check_digest_write,
 	},
 };
 use reifydb_evaluate::expression::eval::loses_scale;
@@ -456,42 +459,22 @@ pub(crate) fn intern_dictionary_columns(
 			)
 		})?;
 
+		let none = DictionaryNone::Sentinel(dictionary.id_type.none());
 		let mut values = Vec::new();
 		for batch in batches.iter() {
 			let views = indices.iter().map(|&index| batch.view(index)).collect::<Result<Vec<_>>>()?;
-			for row in 0..batch.rows {
-				for view in &views {
-					if !view.none_at(row) {
-						values.push(view.get_value(row));
-					}
-				}
-			}
+			gather_dictionary_values(&views, none, &mut values);
 		}
 
 		let mut ids = txn.intern_values(&dictionary, values)?.into_iter();
 		for batch in batches.iter_mut() {
-			let mut builders: Vec<ColumnBuilder> = indices
-				.iter()
-				.map(|_| ColumnBuilder::with_capacity(ValueType::DictionaryId, batch.rows))
-				.collect();
-			{
+			let scattered = {
 				let views =
 					indices.iter().map(|&index| batch.view(index)).collect::<Result<Vec<_>>>()?;
-				for row in 0..batch.rows {
-					for (view, builder) in views.iter().zip(builders.iter_mut()) {
-						let id = if view.none_at(row) {
-							dictionary.id_type.none()
-						} else {
-							ids.next().expect(
-								"the dictionary returns one id per interned value",
-							)
-						};
-						builder.push_value(id.to_value());
-					}
-				}
-			}
-			for (&index, builder) in indices.iter().zip(builders) {
-				batch.columns[index] = builder.finish(&columns[index].name);
+				scatter_dictionary_ids(&views, none, &mut ids)
+			};
+			for (&index, ids) in indices.iter().zip(scattered) {
+				batch.columns[index] = factory::dictionary_id(&columns[index].name, ids);
 			}
 		}
 	}

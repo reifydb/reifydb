@@ -3,6 +3,7 @@
 
 pub mod builder;
 pub mod cast;
+pub mod dictionary;
 pub mod factory;
 pub mod headers;
 pub mod key;

@@ -27,7 +27,13 @@ use reifydb_core::{
 	internal_err,
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
-	value::{batch::batch, column::builder::ColumnBuilder},
+	value::{
+		batch::batch,
+		column::{
+			dictionary::{DictionaryNone, gather_dictionary_values},
+			factory::dictionary_id,
+		},
+	},
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -35,7 +41,7 @@ use reifydb_value::{
 	error::Error,
 	value::{
 		Value, column_view::ColumnView, datetime::DateTime, partition::Partition, row_number::RowNumber,
-		system_columns::require_row_numbers, value_type::ValueType,
+		system_columns::require_row_numbers,
 	},
 };
 use tracing::instrument;
@@ -44,7 +50,7 @@ use crate::{
 	error::FlowSinkError,
 	operator::sink::{
 		SourceRowEncoder, coerce_columns,
-		partition::{ensure_partition_unchanged, partition_of, resolve_partition_flow},
+		partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
 		shape_field_columns,
 		view::{partitioned_key, sort_runs, sorted_view_key},
 	},
@@ -114,9 +120,30 @@ impl TableSink {
 		!self.partition_indices.is_empty()
 	}
 
+	fn resolved_partitions<T: Get + Batch>(
+		&mut self,
+		txn: &mut T,
+		source: &RecordBatch,
+	) -> Result<Option<Vec<Partition>>> {
+		if !self.is_partitioned() {
+			return Ok(None);
+		}
+		let partitions = partition_batch(&self.view, &self.partition_indices, source)?;
+		resolve_partitions_flow(
+			txn,
+			ObjectId::from(self.storage),
+			&partitions.distinct,
+			&mut self.verified_partitions,
+		)?;
+		Ok(Some(partitions.rows))
+	}
+
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
 	fn apply_insert<T: Get + Batch + Emit + Intern>(&mut self, txn: &mut T, post: &RecordBatch) -> Result<()> {
+		if post.num_rows() == 0 {
+			return Ok(());
+		}
 		let coerced = coerce_columns(post, self.view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_encode_view_columns(txn, &self.view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
@@ -132,19 +159,11 @@ impl TableSink {
 		};
 		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
 		let encoded = encoder.encode_all()?;
+		let partitions = self.resolved_partitions(txn, source)?;
 
 		for ((row_idx, &row_number), encoded) in row_numbers.iter().enumerate().take(row_count).zip(encoded) {
-			let key = if self.is_partitioned() {
-				let (partition, values) =
-					partition_of(&self.view, &self.partition_indices, source, row_idx)?;
-				resolve_partition_flow(
-					txn,
-					ObjectId::from(self.storage),
-					partition,
-					&values,
-					&mut self.verified_partitions,
-				)?;
-				partitioned_key(self.storage, runs.next(), partition, row_number)
+			let key = if let Some(partitions) = &partitions {
+				partitioned_key(self.storage, runs.next(), partitions[row_idx], row_number)
 			} else {
 				sorted_view_key(self.storage, runs.next(), row_number)
 			};
@@ -166,6 +185,9 @@ impl TableSink {
 		pre: &RecordBatch,
 		post: &RecordBatch,
 	) -> Result<()> {
+		if pre.num_rows() == 0 && post.num_rows() == 0 {
+			return Ok(());
+		}
 		let coerced_pre = coerce_columns(pre, self.view.columns(), &self.runtime_context)?;
 		let coerced_post = coerce_columns(post, self.view.columns(), &self.runtime_context)?;
 		let dict_pre = dictionary_encode_view_columns(txn, &self.view, &coerced_pre)?;
@@ -186,35 +208,35 @@ impl TableSink {
 		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
 		let mut post_runs = sort_runs(&self.sort, &coerced_post)?.into_iter();
 		let encoded = encoder.encode_all()?;
-		for (row_idx, mut post_encoded) in (0..row_count).zip(encoded) {
-			let pre_row_number = pre_row_numbers[row_idx];
-			let post_row_number = post_row_numbers[row_idx];
-
-			let (pre_key, post_key) = if self.is_partitioned() {
-				let (pre_partition, _pre_values) =
-					partition_of(&self.view, &self.partition_indices, source_pre, row_idx)?;
-				let (post_partition, post_values) =
-					partition_of(&self.view, &self.partition_indices, source_post, row_idx)?;
+		let partitions = if self.is_partitioned() {
+			let pre = partition_batch(&self.view, &self.partition_indices, source_pre)?;
+			let post = partition_batch(&self.view, &self.partition_indices, source_post)?;
+			for (&pre_partition, &post_partition) in pre.rows.iter().zip(&post.rows) {
 				ensure_partition_unchanged(
 					ObjectId::from(self.storage),
 					pre_partition,
 					post_partition,
 				)?;
-				resolve_partition_flow(
-					txn,
-					ObjectId::from(self.storage),
-					post_partition,
-					&post_values,
-					&mut self.verified_partitions,
-				)?;
+			}
+			resolve_partitions_flow(
+				txn,
+				ObjectId::from(self.storage),
+				&post.distinct,
+				&mut self.verified_partitions,
+			)?;
+			Some(post.rows)
+		} else {
+			None
+		};
+		for (row_idx, mut post_encoded) in (0..row_count).zip(encoded) {
+			let pre_row_number = pre_row_numbers[row_idx];
+			let post_row_number = post_row_numbers[row_idx];
+
+			let (pre_key, post_key) = if let Some(partitions) = &partitions {
+				let partition = partitions[row_idx];
 				(
-					partitioned_key(self.storage, pre_runs.next(), pre_partition, pre_row_number),
-					partitioned_key(
-						self.storage,
-						post_runs.next(),
-						post_partition,
-						post_row_number,
-					),
+					partitioned_key(self.storage, pre_runs.next(), partition, pre_row_number),
+					partitioned_key(self.storage, post_runs.next(), partition, post_row_number),
 				)
 			} else {
 				(
@@ -256,6 +278,9 @@ impl TableSink {
 	#[inline]
 	#[instrument(name = "flow::operator::sink::view::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
 	fn apply_remove<T: Get + Batch + Emit + Intern>(&mut self, txn: &mut T, pre: &RecordBatch) -> Result<()> {
+		if pre.num_rows() == 0 {
+			return Ok(());
+		}
 		let coerced = coerce_columns(pre, self.view.columns(), &self.runtime_context)?;
 		let dict_encoded = dictionary_lookup_view_columns(txn, &self.view, &coerced)?;
 		let source = dict_encoded.as_ref().unwrap_or(&coerced);
@@ -267,12 +292,15 @@ impl TableSink {
 			require_row_numbers(source)?
 		};
 		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
+		let partitions = if self.is_partitioned() {
+			Some(partition_batch(&self.view, &self.partition_indices, source)?.rows)
+		} else {
+			None
+		};
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			self.created_at.remove(&row_number);
-			let key = if self.is_partitioned() {
-				let (partition, _values) =
-					partition_of(&self.view, &self.partition_indices, source, row_idx)?;
-				partitioned_key(self.storage, runs.next(), partition, row_number)
+			let key = if let Some(partitions) = &partitions {
+				partitioned_key(self.storage, runs.next(), partitions[row_idx], row_number)
 			} else {
 				sorted_view_key(self.storage, runs.next(), row_number)
 			};
@@ -333,17 +361,11 @@ pub fn dictionary_encode_view_columns<T: Intern + ?Sized>(
 	let mut encoded = pairs(columns);
 	for (col_pos, dictionary) in &dict_columns {
 		let (field, array) = &encoded[*col_pos];
-		let column = ColumnView::try_from((array, field.as_ref()))?;
-		let row_count = column.len();
-		let values: Vec<Value> = (0..row_count).map(|row_idx| column.get_value(row_idx)).collect();
+		let views = [ColumnView::try_from((array, field.as_ref()))?];
+		let mut values = Vec::new();
+		gather_dictionary_values(&views, DictionaryNone::Interned, &mut values);
 		let ids = txn.intern(dictionary, &values)?;
-
-		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
-		for id in &ids {
-			new_data.push_value(id.to_value());
-		}
-		let name = field.name().clone();
-		encoded[*col_pos] = new_data.finish(&name);
+		encoded[*col_pos] = dictionary_id(field.name(), ids);
 	}
 
 	Ok(Some(batch(encoded)?))
@@ -362,9 +384,9 @@ pub fn dictionary_lookup_view_columns<T: Intern + ?Sized>(
 	let mut encoded = pairs(columns);
 	for (col_pos, dictionary) in &dict_columns {
 		let (field, array) = &encoded[*col_pos];
-		let column = ColumnView::try_from((array, field.as_ref()))?;
-		let row_count = column.len();
-		let values: Vec<Value> = (0..row_count).map(|row_idx| column.get_value(row_idx)).collect();
+		let views = [ColumnView::try_from((array, field.as_ref()))?];
+		let mut values = Vec::new();
+		gather_dictionary_values(&views, DictionaryNone::Interned, &mut values);
 		let ids = if values.is_empty() {
 			Vec::new()
 		} else {
@@ -377,18 +399,18 @@ pub fn dictionary_lookup_view_columns<T: Intern + ?Sized>(
 				values.len()
 			);
 		}
-		let mut new_data = ColumnBuilder::with_capacity(ValueType::DictionaryId, row_count);
-		for id in ids {
-			let id = id.ok_or_else(|| {
-				Error::from(FlowSinkError::DictionaryEntryNotFound {
-					dictionary_id: format!("{:?}", dictionary.id),
-					column: view.columns()[*col_pos].name.to_string(),
+		let ids = ids
+			.into_iter()
+			.map(|id| {
+				id.ok_or_else(|| {
+					Error::from(FlowSinkError::DictionaryEntryNotFound {
+						dictionary_id: format!("{:?}", dictionary.id),
+						column: view.columns()[*col_pos].name.to_string(),
+					})
 				})
-			})?;
-			new_data.push_value(id.to_value());
-		}
-		let name = field.name().clone();
-		encoded[*col_pos] = new_data.finish(&name);
+			})
+			.collect::<Result<Vec<_>>>()?;
+		encoded[*col_pos] = dictionary_id(field.name(), ids);
 	}
 
 	Ok(Some(batch(encoded)?))

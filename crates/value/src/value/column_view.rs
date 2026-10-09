@@ -474,6 +474,95 @@ impl<'a> ColumnView<'a> {
 		}
 	}
 
+	pub fn values(&self) -> Vec<Value> {
+		let none = Value::None {
+			inner: self.base_type(),
+		};
+		let len = self.len();
+		let nulls = self.logical_nulls();
+		let defined =
+			|index: usize| nulls.as_ref().is_none_or(|nulls| index < nulls.len() && nulls.is_valid(index));
+		macro_rules! collect {
+			($get:expr) => {
+				(0..len).map(|index| {
+					if defined(index) {
+						$get(index)
+					} else {
+						none.clone()
+					}
+				})
+				.collect()
+			};
+		}
+		match &self.data {
+			ViewData::Bool(a) => collect!(|i| bool_array::get_value(a, i)),
+			ViewData::Float4(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Float8(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Int1(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Int2(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Int4(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Int8(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Int16(a) => collect!(|i| wide_int_array::get_value::<i128>(a, i)),
+			ViewData::Uint1(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Uint2(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Uint4(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Uint8(a) => collect!(|i| primitive::get_value(*a, i)),
+			ViewData::Uint16(a) => collect!(|i| wide_int_array::get_value::<u128>(a, i)),
+			ViewData::Utf8 {
+				container,
+				..
+			} => collect!(|i| utf8_get_value(container, i)),
+			ViewData::Date(a) => {
+				let values = dates(a);
+				collect!(|i| temporal_array::get_value(values, i))
+			}
+			ViewData::DateTime(a) => {
+				let values = datetimes(a);
+				collect!(|i| temporal_array::get_value(values, i))
+			}
+			ViewData::Time(a) => {
+				let values = times(a);
+				collect!(|i| temporal_array::get_value(values, i))
+			}
+			ViewData::Duration(a) => {
+				let values = durations(a);
+				collect!(|i| temporal_array::get_value(values, i))
+			}
+			ViewData::IdentityId(a) => {
+				let values = identity_ids(a);
+				collect!(|i| uuid_array::identity_id_get_value(values, i))
+			}
+			ViewData::Uuid4(a) => {
+				let values = uuid4s(a);
+				collect!(|i| uuid_array::get_value(values, i))
+			}
+			ViewData::Uuid7(a) => {
+				let values = uuid7s(a);
+				collect!(|i| uuid_array::get_value(values, i))
+			}
+			ViewData::Blob {
+				container,
+				..
+			} => collect!(|i| blob_get_value(container, i)),
+			ViewData::Decimal(d) => collect!(|i| decimal_get_value(d, i)),
+			ViewData::Any {
+				container,
+				declared_type,
+			} => collect!(|i| any_array::get_value(container, declared_type.as_ref(), i)),
+			ViewData::DictionaryId {
+				container,
+				..
+			} => collect!(|i| dictionary_array::get_value(container, i)),
+			ViewData::Digest {
+				container,
+				..
+			} => collect!(|i| digest_array::get_value(container, i)),
+			ViewData::None {
+				..
+			} => vec![none; len],
+		}
+	}
+
 	pub fn as_string(&self, index: usize) -> String {
 		if self.none_at(index) {
 			return "none".to_string();

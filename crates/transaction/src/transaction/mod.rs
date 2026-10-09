@@ -305,6 +305,15 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
+	pub fn get_committed_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		match self {
+			Self::Command(txn) => txn.get_committed_many(keys),
+			Self::Admin(txn) => txn.get_committed_many(keys),
+			Self::Query(txn) => keys.iter().map(|key| txn.get(key)).collect(),
+			Self::Test(t) => t.inner.get_committed_many(keys),
+		}
+	}
+
 	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
 		match self {
 			Self::Command(txn) => txn.contains(key),

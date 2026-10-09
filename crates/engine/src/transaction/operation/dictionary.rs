@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
@@ -29,6 +29,7 @@ use smallvec::smallvec;
 use crate::Result;
 
 pub(crate) trait DictionaryOperations {
+	#[cfg(test)]
 	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
 		let ids = self.intern_values(dictionary, vec![value.clone()])?;
 		Ok(ids[0])
@@ -37,6 +38,12 @@ pub(crate) trait DictionaryOperations {
 	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>>;
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>>;
+
+	fn get_many_from_dictionary(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>>;
 
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>>;
 
@@ -91,9 +98,44 @@ fn intern_through_chains<T: WithInterceptors>(
 	})
 }
 
+fn get_many_through(
+	registry: Option<DictionaryAllocatorRegistry>,
+	dictionary: &Dictionary,
+	ids: &[DictionaryEntryId],
+) -> Result<Vec<Option<Value>>> {
+	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
+	let raw: Vec<u128> = ids.iter().map(|id| id.to_u128()).collect();
+	let answers = registry.get_batch(dictionary, &raw)?;
+	let mut decoded: HashMap<u128, Value> = HashMap::new();
+	raw.into_iter()
+		.zip(answers)
+		.map(|(id, bytes)| {
+			let Some(bytes) = bytes else {
+				return Ok(None);
+			};
+			let value = match decoded.entry(id) {
+				Entry::Occupied(found) => found.get().clone(),
+				Entry::Vacant(slot) => slot
+					.insert(from_bytes(&bytes)
+						.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?)
+					.clone(),
+			};
+			Ok(Some(value))
+		})
+		.collect()
+}
+
 impl DictionaryOperations for CommandTransaction {
 	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>> {
 		Ok(intern_through_chains(self, CommandTransaction::dictionary_allocators, dictionary, values)?.ids)
+	}
+
+	fn get_many_from_dictionary(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>> {
+		get_many_through(self.dictionary_allocators(), dictionary, ids)
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
@@ -141,6 +183,14 @@ fn dictionary_insert_change(dictionary: &Dictionary, value: Value) -> Result<Cha
 impl DictionaryOperations for AdminTransaction {
 	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>> {
 		Ok(intern_through_chains(self, AdminTransaction::dictionary_allocators, dictionary, values)?.ids)
+	}
+
+	fn get_many_from_dictionary(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>> {
+		get_many_through(self.dictionary_allocators(), dictionary, ids)
 	}
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
@@ -222,6 +272,21 @@ impl DictionaryOperations for Transaction<'_> {
 		}
 	}
 
+	fn get_many_from_dictionary(
+		&mut self,
+		dictionary: &Dictionary,
+		ids: &[DictionaryEntryId],
+	) -> Result<Vec<Option<Value>>> {
+		match self {
+			Transaction::Command(cmd) => cmd.get_many_from_dictionary(dictionary, ids),
+			Transaction::Admin(admin) => admin.get_many_from_dictionary(dictionary, ids),
+			Transaction::Test(t) => t.inner.get_many_from_dictionary(dictionary, ids),
+			Transaction::Query(_) => {
+				ids.iter().map(|id| self.get_from_dictionary(dictionary, *id)).collect()
+			}
+		}
+	}
+
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
 		match self {
 			Transaction::Command(cmd) => return cmd.find_in_dictionary(dictionary, value),
@@ -278,9 +343,11 @@ impl DictionaryOperations for Transaction<'_> {
 pub mod tests {
 	use reifydb_core::interface::catalog::{dictionary::Dictionary, id::NamespaceId};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 	use reifydb_value::value::{
 		Value,
 		dictionary::{DictionaryEntryId, DictionaryId},
+		identity::IdentityId,
 		value_type::ValueType,
 	};
 
@@ -427,5 +494,36 @@ pub mod tests {
 		let id = txn.insert_into_dictionary(&dict, &Value::Utf8("test".to_string())).unwrap();
 		assert_eq!(id, DictionaryEntryId::U4(1));
 		assert_eq!(id.id_type(), ValueType::Uint4);
+	}
+
+	#[test]
+	fn test_get_many_from_dictionary_on_a_query_reads_what_an_admin_reads() {
+		// A read transaction resolves dictionary ids through its own store path; it must answer each id,
+		// repeats and misses included, with the value a writer would see.
+		let mut txn = create_test_admin_transaction();
+		let dict = test_dictionary();
+		let ids = txn
+			.intern_values(&dict, vec![Value::Utf8("a".to_string()), Value::Utf8("b".to_string())])
+			.unwrap();
+		let probe = [ids[1], ids[0], ids[1], DictionaryEntryId::U8(99)];
+		let expected = txn.get_many_from_dictionary(&dict, &probe).unwrap();
+		let mut query = QueryTransaction::new(
+			txn.multi.begin_query().unwrap(),
+			txn.single.clone(),
+			IdentityId::system(),
+		);
+
+		let answered = Transaction::Query(&mut query).get_many_from_dictionary(&dict, &probe).unwrap();
+
+		assert_eq!(answered, expected);
+		assert_eq!(
+			answered,
+			vec![
+				Some(Value::Utf8("b".to_string())),
+				Some(Value::Utf8("a".to_string())),
+				Some(Value::Utf8("b".to_string())),
+				None
+			]
+		);
 	}
 }

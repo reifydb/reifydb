@@ -168,21 +168,19 @@ impl Get for FlowTransaction<'_> {
 
 impl Batch for FlowTransaction<'_> {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
-		for (key, row) in keys.iter().zip(rows) {
-			self.tx.set(&tagged(key), row)?;
-		}
-		Ok(())
+		self.tx.set_many(keys.iter().map(tagged).zip(rows).collect())
 	}
 
 	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-		for key in &keys {
-			let key = tagged(key);
-			match self.tx.get_committed(&key)? {
+		let keys: Vec<TaggedKey> = keys.iter().map(tagged).collect();
+		let committed = self.tx.get_committed_many(&keys)?;
+		for (key, committed) in keys.iter().zip(committed) {
+			match committed {
 				Some(committed) => {
-					self.tx.mark_preexisting(&key)?;
-					self.tx.remove_with_pre(&key, committed.bytes)?;
+					self.tx.mark_preexisting(key)?;
+					self.tx.remove_with_pre(key, committed.bytes)?;
 				}
-				None => self.tx.remove(&key)?,
+				None => self.tx.remove(key)?,
 			}
 		}
 		Ok(())
@@ -221,7 +219,7 @@ impl Resolve for FlowTransaction<'_> {
 	}
 
 	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
-		ids.iter().map(|&id| self.tx.get_from_dictionary(dictionary, id)).collect()
+		self.tx.get_many_from_dictionary(dictionary, ids)
 	}
 }
 
@@ -231,7 +229,7 @@ impl Intern for FlowTransaction<'_> {
 	}
 
 	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
-		values.iter().map(|value| self.tx.insert_into_dictionary(dictionary, value)).collect()
+		self.tx.intern_values(dictionary, values.to_vec())
 	}
 }
 

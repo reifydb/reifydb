@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	ops::Bound::{Excluded, Included, Unbounded},
 };
 
@@ -444,20 +444,19 @@ impl Intern for DeferredTransaction {
 	}
 
 	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
-		let mut prepared: Vec<Value> = Vec::with_capacity(values.len());
-		for value in values {
-			let mut values_buf = [value.clone()];
-			DictionaryRowInterceptor::pre_insert(self, dictionary, &mut values_buf)?;
-			let [value] = values_buf;
-			prepared.push(value);
+		if values.is_empty() {
+			return Ok(Vec::new());
 		}
+		let mut prepared = values.to_vec();
+		DictionaryRowInterceptor::pre_insert(self, dictionary, &mut prepared)?;
 
 		let outcomes = self.dictionary_allocators().intern_batch(dictionary, &prepared)?;
 
+		let mut seen = HashSet::new();
 		let mut created_ids: Vec<DictionaryEntryId> = Vec::new();
 		let mut created_values: Vec<Value> = Vec::new();
 		for (outcome, value) in outcomes.iter().zip(&prepared) {
-			if outcome.created {
+			if outcome.created && seen.insert(outcome.id) {
 				created_ids.push(outcome.id);
 				created_values.push(value.clone());
 			}
