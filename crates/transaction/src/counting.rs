@@ -8,6 +8,7 @@ use reifydb_core::key::tag::KeyTag;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct KeyCounts {
 	pub gets: u64,
+	pub committed_gets: u64,
 	pub contains: u64,
 	pub sets: u64,
 	pub batched: u64,

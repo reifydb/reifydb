@@ -459,6 +459,10 @@ impl MultiWriteTransaction {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.key(key.kind()).removes += 1;
+		}
 		let encoded = key.encode();
 		let announce = match self.get(&key)? {
 			Some(found) => RemoveAnnounce::Unobserved {
@@ -491,6 +495,10 @@ impl MultiWriteTransaction {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.key(key.kind()).removes += 1;
+		}
 		let encoded = key.encode();
 		self.modify(
 			encoded,
@@ -516,6 +524,10 @@ impl MultiWriteTransaction {
 	fn remove_silent_any(&mut self, key: TaggedKey) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
+		}
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.key(key.kind()).removes += 1;
 		}
 		let encoded = key.encode();
 		self.modify(
@@ -611,6 +623,10 @@ impl MultiWriteTransaction {
 			return Err(TransactionError::RolledBack.into());
 		}
 		let key = key.clone().into();
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.key(key.kind()).committed_gets += 1;
+		}
 		let version = self.version();
 		self.conflicts.mark_read(&key);
 		Ok(MultiVersionGet::get(&self.engine.store, &key, version)?.map(Into::into))
