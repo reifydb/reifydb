@@ -24,7 +24,6 @@ use reifydb_core::{
 			object::ObjectId,
 		},
 		cdc::Cdc,
-		change::Change,
 	},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -59,7 +58,7 @@ use crate::{
 	builder::CustomOperators,
 	commit::{
 		backfill::{Snapshot, UpstreamCut, backfill_reads, compute_backfill, upstream_write_after},
-		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply},
+		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply, produced_output},
 		merge::{HeldReads, ReadCache, ReadStream, StepCut, StreamRead, UpstreamRead, UpstreamReads, merge},
 		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
 	},
@@ -917,12 +916,10 @@ impl FlowActor {
 				state.durable_cursor,
 			);
 			match ticked {
-				Ok((pending, view_changes)) => {
+				Ok((pending, emitted)) => {
 					state.retry_count = 0;
-					let has_output =
-						pending.iter_sorted().next().is_some() || !view_changes.is_empty();
-					if has_output {
-						self.dispatch_tick_commit(state, ctx, pending, view_changes);
+					if produced_output(&pending, emitted) {
+						self.dispatch_tick_commit(state, ctx, pending);
 					}
 				}
 				Err(e) => {
@@ -949,13 +946,7 @@ impl FlowActor {
 		ctx.schedule_once(interval, || FlowActorMessage::Sample);
 	}
 
-	fn dispatch_tick_commit(
-		&self,
-		state: &mut FlowActorState,
-		ctx: &Context<FlowActorMessage>,
-		pending: Pending,
-		view_changes: Vec<Change>,
-	) {
+	fn dispatch_tick_commit(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, pending: Pending) {
 		reifydb_assertions! {
 			for (key, _) in pending.iter_sorted() {
 				assert!(
@@ -980,7 +971,6 @@ impl FlowActor {
 				flow_id: self.flow_id,
 				source: SourceVersion(state.cursor.0 + 1),
 				pending,
-				view_changes,
 				reply,
 			})
 			.is_err()
@@ -1199,7 +1189,7 @@ mod pull_protocol {
 				ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata},
 			},
 			cdc::CdcChange,
-			change::{ChangeOrigin, Diff},
+			change::{Change, ChangeOrigin, Diff},
 		},
 		key::{
 			bound::TaggedKeyBoundRange,
@@ -2288,8 +2278,7 @@ mod pull_protocol {
 				.as_ref()
 				.expect("the harness substrate carries an operator store")
 				.total_bytes()
-				.unwrap()
-				> ByteSize::ZERO,
+				.unwrap() > ByteSize::ZERO,
 			"the aggregate's operator state must land in the shared operator store"
 		);
 
@@ -3115,5 +3104,19 @@ mod tick_failures {
 			!pending.load(Ordering::SeqCst),
 			"the drain must clear the pending wake, or every later wake is merged away and the flow never wakes"
 		);
+	}
+
+	#[test]
+	fn a_tick_with_nothing_due_dispatches_no_commit() {
+		// Every ticking flow ticks on every interval; an idle tick that commits anyway costs a commit and a
+		// reader wake per flow per interval for no change at all.
+		let (_te, _health, actor) = actor_with(false, "silent", |engine| idle(engine, "idle-tick-committer"));
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: registration must succeed");
+
+		tick(&mut harness);
+
+		assert_eq!(harness.state().retry_count, 0, "precondition: the tick must compute cleanly");
+		assert!(!harness.state().committing, "a tick that fired nothing and wrote nothing dispatched a commit");
 	}
 }

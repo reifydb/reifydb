@@ -37,10 +37,7 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_runtime::context::clock::Clock;
-use reifydb_transaction::{
-	accumulator::ChangeAccumulator,
-	multi::{RangeScope, transaction::read::MultiReadTransaction},
-};
+use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
 use reifydb_value::{Result, error::Error, value::datetime::DateTime};
 
 pub struct EphemeralTransaction {
@@ -48,7 +45,6 @@ pub struct EphemeralTransaction {
 	pub pending: Pending,
 	pub query: MultiReadTransaction,
 	pub catalog: Catalog,
-	pub accumulator: ChangeAccumulator,
 	pub armed: Vec<TimerDue>,
 	pub clock: Clock,
 	pub change_coordinate: Option<ChangeCoordinate>,
@@ -76,7 +72,6 @@ impl EphemeralTransaction {
 			pending: Pending::new(),
 			query,
 			catalog,
-			accumulator: ChangeAccumulator::new(),
 			armed: Vec::new(),
 			clock,
 			change_coordinate: None,
@@ -238,10 +233,6 @@ impl FlowTransaction for EphemeralTransaction {
 
 	fn pending_mut(&mut self) -> &mut Pending {
 		&mut self.pending
-	}
-
-	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {
-		&mut self.accumulator
 	}
 
 	fn armed_mut(&mut self) -> &mut Vec<TimerDue> {

@@ -13,10 +13,10 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	actors::pending::Pending,
-	common::{ChangeVersion, CommitVersion, SourceVersion},
+	common::{CommitVersion, SourceVersion},
 	interface::{
-		catalog::{dictionary::Dictionary, flow::OperatorId, id::ViewId, object::ObjectId},
-		change::{Change, ChangeOrigin, Diff},
+		catalog::{dictionary::Dictionary, flow::OperatorId, id::ViewId},
+		change::{Change, Diff},
 		store::MultiVersionRow,
 	},
 	key::{any::TaggedKey, operator::state::GroupStateKey},
@@ -25,7 +25,6 @@ use reifydb_flow::txn::{Batch, Emit, Get, Intern, Resolve};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
-	accumulator::ChangeAccumulator,
 	interceptor::{
 		WithInterceptors,
 		authentication::{AuthenticationPostCreateInterceptor, AuthenticationPreDeleteInterceptor},
@@ -93,7 +92,6 @@ use reifydb_value::{
 		dictionary::{DictionaryEntryId, DictionaryId},
 	},
 };
-use smallvec::smallvec;
 use tracing::instrument;
 
 use crate::{
@@ -116,7 +114,7 @@ pub struct DeferredTransaction {
 	pub state_query: Option<MultiReadTransaction>,
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
-	pub accumulator: ChangeAccumulator,
+	pub emitted: bool,
 	pub armed: Vec<TimerDue>,
 	pub clock: Clock,
 
@@ -148,7 +146,7 @@ impl DeferredTransaction {
 			state_query: params.state_query,
 			catalog: params.catalog,
 			interceptors: params.interceptors,
-			accumulator: ChangeAccumulator::new(),
+			emitted: false,
 			armed: Vec::new(),
 			clock: params.clock,
 			change_coordinate: None,
@@ -316,10 +314,6 @@ impl FlowTransaction for DeferredTransaction {
 		&mut self.pending
 	}
 
-	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {
-		&mut self.accumulator
-	}
-
 	fn armed_mut(&mut self) -> &mut Vec<TimerDue> {
 		&mut self.armed
 	}
@@ -415,15 +409,8 @@ impl Batch for DeferredTransaction {
 }
 
 impl Emit for DeferredTransaction {
-	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
-		let version = ChangeVersion::from(self.version());
-		let changed_at = self.clock().now();
-		self.track_flow_change(Change {
-			origin: ChangeOrigin::Object(ObjectId::view(view)),
-			version,
-			diffs: smallvec![diff],
-			changed_at,
-		});
+	fn emit(&mut self, _view: ViewId, diff: Diff) -> Result<()> {
+		self.emitted |= diff.row_count() > 0;
 		Ok(())
 	}
 }
@@ -659,4 +646,31 @@ impl WithInterceptors for DeferredTransaction {
 		authentication_pre_delete,
 		AuthenticationPreDeleteInterceptor
 	);
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::Arc;
+
+	use arrow_array::{ArrayRef, Int32Array, RecordBatch};
+	use reifydb_core::value::batch::empty_batch;
+	use reifydb_test_harness::engine::TestEngine;
+
+	use super::*;
+	use crate::transaction::mock::FlowTxn;
+
+	#[test]
+	fn emit_marks_the_transaction_only_for_a_diff_with_rows() {
+		// The flag decides whether a step commits; emit owns that rule because an emitter may send an empty
+		// diff, and an empty diff that set the flag would commit a step that changed nothing.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().clock_millis(0).deferred();
+
+		txn.emit(ViewId(1), Diff::insert(empty_batch())).unwrap();
+		assert!(!txn.emitted, "an empty diff must not mark the transaction emitted");
+
+		let column: ArrayRef = Arc::new(Int32Array::from(vec![1]));
+		txn.emit(ViewId(1), Diff::insert(RecordBatch::try_from_iter([("c", column)]).unwrap())).unwrap();
+		assert!(txn.emitted, "a diff with a row must mark the transaction emitted");
+	}
 }

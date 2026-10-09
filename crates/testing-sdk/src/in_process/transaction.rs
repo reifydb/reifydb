@@ -23,7 +23,6 @@ use reifydb_flow_async::{
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
-	accumulator::ChangeAccumulator,
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::SingleTransaction,
@@ -36,7 +35,6 @@ pub struct TestFlowTransaction {
 	catalog: Catalog,
 	substrate: FlowSubstrate,
 	pending: Pending,
-	accumulator: ChangeAccumulator,
 	armed: Vec<TimerDue>,
 	change_coordinate: Option<ChangeCoordinate>,
 	flow_watermark: Option<DateTime>,
@@ -55,7 +53,6 @@ impl TestFlowTransaction {
 			catalog: Catalog::testing(),
 			substrate: FlowSubstrate::with_dictionary(dictionary, OperatorStore::testing_memory()),
 			pending: Pending::new(),
-			accumulator: ChangeAccumulator::new(),
 			armed: Vec::new(),
 			change_coordinate: None,
 			flow_watermark: None,
@@ -96,10 +93,6 @@ impl FlowTransaction for TestFlowTransaction {
 
 	fn pending_mut(&mut self) -> &mut Pending {
 		&mut self.pending
-	}
-
-	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {
-		&mut self.accumulator
 	}
 
 	fn armed_mut(&mut self) -> &mut Vec<TimerDue> {

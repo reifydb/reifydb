@@ -1167,10 +1167,7 @@ mod seal_tests {
 	use reifydb_rql::expression::parse_expression;
 	use reifydb_runtime::context::clock::Clock;
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::{
-		accumulator::ChangeAccumulator,
-		multi::{RangeScope, transaction::read::MultiReadTransaction},
-	};
+	use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
 	use reifydb_value::{
 		factory::time::at_millis,
 		value::{
@@ -1473,10 +1470,6 @@ mod seal_tests {
 
 		fn pending_mut(&mut self) -> &mut Pending {
 			self.inner.pending_mut()
-		}
-
-		fn accumulator_mut(&mut self) -> &mut ChangeAccumulator {
-			self.inner.accumulator_mut()
 		}
 
 		fn armed_mut(&mut self) -> &mut Vec<TimerDue> {

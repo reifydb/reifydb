@@ -11,7 +11,6 @@ use reifydb_core::{
 	interface::{
 		catalog::flow::FlowId,
 		cdc::{CdcConsumerId, ConsumerClass},
-		change::Change,
 	},
 	key::any::TaggedKey,
 	return_internal_error,
@@ -53,7 +52,6 @@ pub enum CommitterMessage {
 		flow_id: FlowId,
 		source: SourceVersion,
 		pending: Pending,
-		view_changes: Vec<Change>,
 		reply: TickCommitReply,
 	},
 
@@ -129,21 +127,13 @@ impl CommitterActor {
 	}
 
 	#[instrument(name = "flow::committer::submit_tick", level = "debug", skip_all, fields(committer = self.name))]
-	fn submit_tick(
-		&self,
-		flow_id: FlowId,
-		source: SourceVersion,
-		pending: Pending,
-		view_changes: Vec<Change>,
-		reply: TickCommitReply,
-	) {
+	fn submit_tick(&self, flow_id: FlowId, source: SourceVersion, pending: Pending, reply: TickCommitReply) {
 		let pending = Arc::new(pending);
 
 		let apply_committer = self.committer.clone();
 		let apply_pending = Arc::clone(&pending);
-		let apply: CommitApply = Box::new(move |transaction| {
-			apply_committer.apply_tick(transaction, &apply_pending, view_changes, source)
-		});
+		let apply: CommitApply =
+			Box::new(move |transaction| apply_committer.apply_tick(transaction, &apply_pending, source));
 
 		let completion_committer = self.committer.clone();
 		let completion: CommitCompletion = Box::new(move |result| match result {
@@ -195,11 +185,10 @@ impl Actor for CommitterActor {
 				flow_id,
 				source,
 				pending,
-				view_changes,
 				reply,
 			} => {
 				self.flush(state);
-				self.submit_tick(flow_id, source, pending, view_changes, reply)
+				self.submit_tick(flow_id, source, pending, reply)
 			}
 			CommitterMessage::Flush => {
 				state.flush_queued = false;
@@ -221,7 +210,7 @@ pub struct FlowSlice {
 
 	pub checkpoint_deletes: Vec<FlowId>,
 
-	pub view_changes: Vec<Change>,
+	pub emitted: bool,
 
 	pub control_cursor: Option<(CdcConsumerId, CommitVersion)>,
 
@@ -234,15 +223,19 @@ impl FlowSlice {
 			combined: Pending::new(),
 			checkpoints: Vec::new(),
 			checkpoint_deletes: Vec::new(),
-			view_changes: Vec::new(),
+			emitted: false,
 			control_cursor: None,
 			source: None,
 		}
 	}
 
 	fn produced_output(&self) -> bool {
-		self.combined.iter_sorted().next().is_some() || !self.view_changes.is_empty()
+		produced_output(&self.combined, self.emitted)
 	}
+}
+
+pub(crate) fn produced_output(pending: &Pending, emitted: bool) -> bool {
+	!pending.is_empty() || emitted
 }
 
 #[derive(Clone)]
@@ -345,10 +338,6 @@ impl Committer {
 		}
 		apply_pending_writes(transaction, &slice.combined)?;
 
-		for change in &slice.view_changes {
-			transaction.track_flow_change(change.clone());
-		}
-
 		if let Some((consumer_id, version)) = &slice.control_cursor {
 			CdcCheckpoint::persist(transaction, consumer_id, *version, ConsumerClass::Pinning)?;
 		}
@@ -399,15 +388,10 @@ impl Committer {
 		&self,
 		transaction: &mut CommandTransaction,
 		pending: &Pending,
-		view_changes: Vec<Change>,
 		source: SourceVersion,
 	) -> Result<()> {
 		transaction.stamp_source(source)?;
 		apply_pending_writes(transaction, pending)?;
-
-		for change in view_changes {
-			transaction.track_flow_change(change);
-		}
 
 		Ok(())
 	}
@@ -938,5 +922,42 @@ mod commit_integration {
 		assert_eq!(tracked.get(&FlowId(1)).copied(), Some(CommitVersion(101)));
 		assert_eq!(tracked.get(&FlowId(3)).copied(), Some(CommitVersion(103)));
 		assert_eq!(tracked.get(&FlowId(2)).copied(), None, "the failed slice must not advance its flow");
+	}
+
+	fn control_slice(emitted: bool) -> FlowSlice {
+		let mut slice = FlowSlice::empty();
+		slice.control_cursor = Some((CdcConsumerId::flow_consumer(), CommitVersion(5)));
+		slice.emitted = emitted;
+		slice
+	}
+
+	fn commit_one(handle: &CommitterHandle, slice: FlowSlice) -> CommitVersion {
+		let replies = SliceReplies::new(1);
+		send_slice(handle, slice, replies.reply(0));
+		replies.wait();
+		replies.versions()[0].1
+	}
+
+	#[test]
+	fn a_slice_that_emitted_without_writing_records_output() {
+		// No sink emits without writing today, so only this test sees the emitted half of the output rule; a
+		// rule that lost it would hide output from readers once a sink announces rows it did not store.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let (handle, committer) = build_committer_actor(&engine, CommitHandle::new(begin));
+
+		commit_one(&handle, control_slice(false));
+		assert_eq!(
+			committer.materialization.output_frontier(),
+			CommitVersion(0),
+			"a control-only slice produced no output, or the assertion below says nothing"
+		);
+
+		let version = commit_one(&handle, control_slice(true));
+
+		assert!(version > CommitVersion(0), "the control cursor must commit, or no version can be recorded");
+		assert_eq!(committer.materialization.output_frontier(), version);
 	}
 }

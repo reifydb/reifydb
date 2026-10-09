@@ -9,10 +9,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	delta::RemoveVisibility,
-	interface::{
-		catalog::object::ObjectId,
-		change::{Change, Diff},
-	},
+	interface::change::Change,
 	key::any::TaggedKey,
 	state::timer::TimerKind,
 };
@@ -142,14 +139,44 @@ impl<O> Harness<O> {
 	}
 }
 
+pub struct SinkStep {
+	pub writes: Vec<(EncodedKey, PendingWrite)>,
+	pub emitted: bool,
+}
+
 impl<O: DurableSink> Harness<O> {
-	pub fn apply_emitting_sink(&mut self, change: Change) -> Result<Vec<(ObjectId, Diff)>> {
+	pub fn apply_sink(&mut self, change: Change) -> Result<SinkStep> {
 		let at = coordinate_of(&change)?;
+		let before = self.pending.clone();
 		let mut txn = self.begin(at);
 		self.operator.apply(&mut txn, change)?;
-		let emitted = txn.take_accumulator_entries();
+		let writes = txn
+			.pending
+			.rows_ordered()
+			.filter(|(key, write)| !before.write_at(key).is_some_and(|earlier| same_write(earlier, write)))
+			.map(|(key, write)| (key.clone(), write.clone()))
+			.collect();
+		let emitted = txn.emitted;
 		self.end(txn);
-		Ok(emitted)
+		Ok(SinkStep {
+			writes,
+			emitted,
+		})
+	}
+}
+
+fn same_write(a: &PendingWrite, b: &PendingWrite) -> bool {
+	match (a, b) {
+		(PendingWrite::Set(a), PendingWrite::Set(b)) => a == b,
+		(
+			PendingWrite::Remove {
+				announce: a,
+			},
+			PendingWrite::Remove {
+				announce: b,
+			},
+		) => a == b,
+		_ => false,
 	}
 }
 

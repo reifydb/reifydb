@@ -39,7 +39,6 @@ use reifydb_flow_async::{
 	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction},
 };
 use reifydb_transaction::{
-	accumulator::ChangeAccumulator,
 	multi::{RangeScope, lease::VersionLeaseGuard},
 	transaction::Transaction,
 };
@@ -244,17 +243,13 @@ pub(crate) fn compute_backfill(
 	}
 
 	let holds = flow_engine.holds(&mut txn, flow.id)?;
-	let mut accumulator = ChangeAccumulator::new();
-	for (id, diff) in txn.take_accumulator_entries() {
-		accumulator.track(id, diff);
-	}
-	let view_changes = accumulator.take_changes(version, engine.clock().now())?;
+	let emitted = txn.emitted;
 
 	let slice = FlowSlice {
 		combined: txn.take_pending(),
 		checkpoints: vec![(flow.id, version)],
 		checkpoint_deletes: Vec::new(),
-		view_changes,
+		emitted,
 		control_cursor: None,
 		source: Some(SourceVersion(version.0)),
 	};
@@ -353,5 +348,110 @@ fn query_batch_size(engine: &StandardEngine) -> Result<NonZeroU64> {
 	match NonZeroU64::new(u64::from(engine.catalog().get_config_uint2(ConfigKey::QueryRowBatchSize))) {
 		Some(batch_size) => Ok(batch_size),
 		None => internal_err!("QUERY_ROW_BATCH_SIZE is 0, which its config validation rejects"),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::sync::{Arc, mpsc};
+
+	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
+	use reifydb_flow_async::{
+		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
+		transaction::substrate::FlowSubstrate,
+	};
+	use reifydb_runtime::context::RuntimeContext;
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_transaction::commit::{CommitBegin, CommitHandle};
+	use reifydb_value::value::duration::Duration;
+
+	use super::*;
+	use crate::{
+		commit::{
+			committer::{Committer, CommitterActor, CommitterMessage},
+			quiescence::FlowMaterialization,
+		},
+		progress::tracker::FlowPositionTracker,
+	};
+
+	fn backfill_and_commit(te: &TestEngine) -> (CommitVersion, FlowMaterialization) {
+		let engine = te.inner().clone();
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let flow_id = engine
+			.catalog()
+			.list_flows_all(&mut Transaction::Query(&mut query))
+			.expect("list flows")
+			.first()
+			.expect("one flow")
+			.id;
+		drop(query);
+
+		let mut flow_engine = FlowEngineInner::new(
+			engine.catalog(),
+			engine.executor().routines.clone(),
+			RuntimeContext::with_clock(engine.clock().clone()),
+			Arc::new(EmptyOperatorProvider),
+			FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
+			OperatorSampleRegistry::new(),
+		);
+		let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+		let flow =
+			engine.catalog().get_flow_dag(&mut Transaction::Command(&mut txn), flow_id).expect("load flow");
+		flow_engine.register(&mut txn, flow.clone()).expect("register");
+		txn.rollback().expect("rollback registration probe");
+
+		let (version, lease) = engine.acquire_current_snapshot_lease().expect("snapshot lease");
+		let snapshot = Snapshot {
+			version,
+			lease,
+			cuts: HashMap::new(),
+		};
+		let reads = backfill_reads(&flow, &flow_engine, &snapshot, &FlowUpstreams::default());
+		let (slice, _) = compute_backfill(&engine, &mut flow_engine, &flow, &snapshot, &reads)
+			.expect("compute backfill");
+		drop(snapshot);
+
+		let materialization = FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new());
+		let committer =
+			Committer::new(FlowPositionTracker::new(), materialization.clone(), engine.operator_state());
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let handle = engine.spawner().spawn_flow(
+			"backfill-test-committer",
+			CommitterActor::new(committer, CommitHandle::new(begin)),
+		);
+		let (sender, receiver) = mpsc::channel();
+		assert!(
+			handle.actor_ref()
+				.send(CommitterMessage::Slice {
+					slice,
+					reply: Box::new(move |result| {
+						let _ = sender.send(result);
+					}),
+				})
+				.is_ok(),
+			"the committer must accept the backfill slice"
+		);
+		let committed = receiver
+			.recv_timeout(Duration::from_seconds_const(10).to_std())
+			.expect("backfill reply timed out")
+			.expect("commit backfill");
+		(committed, materialization)
+	}
+
+	#[test]
+	fn a_backfill_over_existing_rows_commits_them_and_advances_the_output_frontier() {
+		// A new view's readers wait on the output frontier; a backfill that stores rows without moving it
+		// leaves them waiting for rows that are already there.
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
+		te.command("INSERT app::t [{id: 1, val: 10}, {id: 2, val: 20}, {id: 3, val: 30}]");
+		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
+
+		let (version, materialization) = backfill_and_commit(&te);
+
+		assert_eq!(materialization.output_frontier(), version);
+		assert_eq!(te.query("FROM app::v").first().map(|f| f.row_count()).unwrap_or(0), 3);
 	}
 }

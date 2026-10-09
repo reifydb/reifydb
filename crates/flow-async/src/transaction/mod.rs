@@ -16,8 +16,8 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::{CommitVersion, SourceVersion},
 	interface::{
-		catalog::{flow::OperatorId, id::ViewId, object::ObjectId},
-		change::{Change, ChangeOrigin, Diff},
+		catalog::{flow::OperatorId, id::ViewId},
+		change::Change,
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	internal_err,
@@ -27,7 +27,6 @@ use reifydb_flow::txn::{Batch, Get};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
-	accumulator::ChangeAccumulator,
 	dictionary::DictionaryAllocatorRegistry,
 	interceptor::interceptors::Interceptors,
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
@@ -127,8 +126,6 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 	fn pending(&self) -> &Pending;
 
 	fn pending_mut(&mut self) -> &mut Pending;
-
-	fn accumulator_mut(&mut self) -> &mut ChangeAccumulator;
 
 	fn armed_mut(&mut self) -> &mut Vec<TimerDue>;
 
@@ -292,19 +289,6 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 			Some(at) => at,
 			None => self.clock().now(),
 		}
-	}
-
-	fn track_flow_change(&mut self, change: Change) {
-		if let ChangeOrigin::Object(id) = change.origin {
-			let accumulator = self.accumulator_mut();
-			for diff in change.diffs {
-				accumulator.track(id, diff);
-			}
-		}
-	}
-
-	fn take_accumulator_entries(&mut self) -> Vec<(ObjectId, Diff)> {
-		self.accumulator_mut().take_entries()
 	}
 }
 

@@ -1539,11 +1539,38 @@ mod tests {
 				},
 			)
 			.unwrap();
-		let tracked = txn.take_accumulator_entries();
+		let row_writes: Vec<PendingWrite> = txn
+			.pending
+			.rows_ordered()
+			.filter(|(key, _)| {
+				matches!(
+					TaggedKey::decode(key),
+					Some(TaggedKey::Row(RowKey {
+						storage: RB,
+						..
+					})) | Some(TaggedKey::PartitionedRow(PartitionedRowKey {
+						storage: RB,
+						..
+					}))
+				)
+			})
+			.map(|(_, write)| write.clone())
+			.collect();
+		let emitted = txn.emitted;
 		commit_flow_pending(&engine, &mut txn);
 
 		assert!(out.is_some(), "reclaiming real rows must still advance the operator's watermark");
-		assert!(tracked.is_empty(), "ttl expiry must never track a diff for downstream views");
+		assert!(!emitted, "ttl expiry must never mark the transaction as having emitted output");
+		assert!(!row_writes.is_empty(), "ttl expiry must remove the expired rows");
+		assert!(
+			row_writes.iter().all(|write| matches!(
+				write,
+				PendingWrite::Remove {
+					announce: RemoveVisibility::Unobserved
+				}
+			)),
+			"ttl expiry must remove rows unobserved so no downstream view sees them: {row_writes:?}"
+		);
 		assert!(metadata(&engine, &base("us")).is_none(), "the expired partition's state is still reclaimed");
 	}
 

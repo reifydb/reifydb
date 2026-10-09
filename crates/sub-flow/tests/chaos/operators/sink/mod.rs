@@ -3,9 +3,9 @@
 
 //! The three view sinks, partitioned and not, over inserts, updates and removes.
 //!
-//! A sink's output is compared off the accumulator rather than off `apply`, because that is the
-//! channel consumers actually read. Routing it through the return value instead would strip the
-//! object tag those consumers key on.
+//! A sink's output is compared off the view rows it writes rather than off `apply`, because the
+//! stored rows are what CDC carries to every consumer. A step's writes are folded against the rows
+//! already stored into the insert, update or remove a reader of the view would observe.
 //!
 //! Table and series sinks look close to an identity, which is why the layouts are driven separately:
 //! what is under test is that coercion preserves values and that a partitioned write reaches the same
@@ -14,20 +14,37 @@
 
 pub mod oracle;
 
+use std::{collections::HashMap, slice};
+
+use arrow_array::RecordBatch;
 use rand::RngExt;
-use reifydb_core::interface::{
-	catalog::{
-		column::{Column, ColumnIndex},
-		flow::OperatorId,
-		id::{ColumnId, NamespaceId, ViewId},
-		namespace::Namespace,
-		object::ObjectId,
-		series::SeriesKey,
-		view::{RingBufferView, SeriesView, TableView, View, ViewKind},
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{
+		bytes::EncodedBytes,
+		shape::{RowFamily, RowShape},
 	},
-	change::{Change, Diff},
-	flow::OperatorCapability,
-	resolved::{ResolvedNamespace, ResolvedView},
+};
+use reifydb_core::{
+	actors::pending::PendingWrite,
+	delta::RemoveVisibility,
+	interface::{
+		catalog::{
+			column::{Column, ColumnIndex},
+			flow::OperatorId,
+			id::{ColumnId, NamespaceId, ViewId},
+			namespace::Namespace,
+			series::SeriesKey,
+			storage::StorageId,
+			view::{RingBufferView, SeriesView, TableView, View, ViewKind},
+		},
+		change::{Change, Diff},
+		flow::OperatorCapability,
+		resolved::{ResolvedNamespace, ResolvedView},
+	},
+	key::any::TaggedKey,
+	row::row_shape_from_columns,
+	value::batch::from_encoded_bytes,
 };
 use reifydb_flow::operator::sink::table::TableSink;
 use reifydb_flow_async::{
@@ -49,7 +66,7 @@ use reifydb_testing_chaos::{
 use reifydb_value::{
 	Result,
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, value_type::ValueType},
+	value::{constraint::TypeConstraint, row_number::RowNumber, value_type::ValueType},
 };
 
 use crate::{
@@ -233,26 +250,89 @@ pub fn build(kind: Kind, layout: Layout, runtime: RuntimeContext) -> SinkOp {
 	}
 }
 
-/// Turns the accumulator drain into the `Change` the framework expects.
+/// Turns a step's view-row writes into the `Change` the framework expects.
 pub struct SinkSubject {
 	harness: Harness<SinkOp>,
+	shape: RowShape,
+	stored: HashMap<EncodedKey, (RowNumber, EncodedBytes)>,
+	next: u64,
+}
+
+impl SinkSubject {
+	fn new(harness: Harness<SinkOp>, kind: Kind) -> Self {
+		let family = match kind {
+			Kind::Table => RowFamily::Table,
+			Kind::Series => RowFamily::Series,
+			Kind::Ring {
+				..
+			} => RowFamily::RingBuffer,
+		};
+		Self {
+			harness,
+			shape: row_shape_from_columns(family, &columns()),
+			stored: HashMap::new(),
+			next: 0,
+		}
+	}
+
+	fn decode(&self, number: RowNumber, bytes: &EncodedBytes) -> Result<RecordBatch> {
+		from_encoded_bytes(&self.shape, &[number], slice::from_ref(bytes))
+	}
+
+	fn diff_of(&mut self, key: EncodedKey, write: PendingWrite) -> Result<Option<Diff>> {
+		match write {
+			PendingWrite::Set(post) => match self.stored.get(&key).cloned() {
+				Some((number, pre)) => {
+					let diff =
+						Diff::update(self.decode(number, &pre)?, self.decode(number, &post)?);
+					self.stored.insert(key, (number, post));
+					Ok(Some(diff))
+				}
+				None => {
+					self.next += 1;
+					let number = RowNumber(self.next);
+					let diff = Diff::insert(self.decode(number, &post)?);
+					self.stored.insert(key, (number, post));
+					Ok(Some(diff))
+				}
+			},
+			PendingWrite::Remove {
+				announce,
+			} => match (self.stored.remove(&key), announce) {
+				(Some((number, pre)), RemoveVisibility::Announced) => {
+					Ok(Some(Diff::remove(self.decode(number, &pre)?)))
+				}
+				_ => Ok(None),
+			},
+		}
+	}
+}
+
+fn is_view_row(key: &EncodedKey) -> bool {
+	let view = StorageId::View(VIEW);
+	match TaggedKey::decode(key) {
+		Some(TaggedKey::Row(key)) => key.storage == view,
+		Some(TaggedKey::PartitionedRow(key)) => key.storage == view,
+		Some(TaggedKey::SeriesRow(key)) => key.storage == view,
+		Some(TaggedKey::PartitionedSeriesRow(key)) => key.storage == view,
+		_ => false,
+	}
 }
 
 impl Subject for SinkSubject {
 	fn apply(&mut self, change: Change) -> Result<Change> {
 		let version = change.version;
 		let changed_at = change.changed_at;
-		let entries = self.harness.apply_emitting_sink(change)?;
+		let step = self.harness.apply_sink(change)?;
 
-		let mut diffs: Vec<Diff> = Vec::with_capacity(entries.len());
-		for (object, diff) in entries {
-			// Another object's entry would make the comparison below one against a mixture.
-			assert_eq!(
-				object,
-				ObjectId::view(VIEW),
-				"a sink emitted a change for an object it does not own"
-			);
-			diffs.push(diff);
+		let mut diffs: Vec<Diff> = Vec::new();
+		for (key, write) in step.writes {
+			if !is_view_row(&key) {
+				continue;
+			}
+			if let Some(diff) = self.diff_of(key, write)? {
+				diffs.push(diff);
+			}
 		}
 		Ok(Change::from_flow(SINK, version, diffs, changed_at))
 	}
@@ -279,9 +359,7 @@ pub struct Params {
 
 pub fn drive(seed: u64, params: Params) -> Corpus {
 	let harness = Harness::new(|runtime| build(params.kind, params.layout, runtime));
-	let mut subject = SinkSubject {
-		harness,
-	};
+	let mut subject = SinkSubject::new(harness, params.kind);
 	let workload = AggregateWorkload {
 		groups: params.groups,
 		value_ceiling: params.value_ceiling,

@@ -20,11 +20,11 @@ use reifydb_flow_async::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
 	transaction::{DeferredParams, FlowTransaction, LookupContext, deferred::DeferredTransaction},
 };
-use reifydb_transaction::{accumulator::ChangeAccumulator, transaction::Transaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, value::identity::IdentityId};
 use tracing::instrument;
 
-use crate::commit::committer::FlowSlice;
+use crate::commit::committer::{FlowSlice, produced_output};
 
 pub struct SliceConfig {
 	pub checkpoint_lag: u64,
@@ -141,11 +141,8 @@ impl SliceComputer {
 			);
 		}
 
-		let (combined, view_changes, holds) = self.compute(flow_engine, cursor.flow_id, advance_to, changes)?;
-		if combined.is_empty()
-			&& view_changes.is_empty()
-			&& !checkpoint_due(advance_to, cursor.durable_cursor, config)
-		{
+		let (combined, emitted, holds) = self.compute(flow_engine, cursor.flow_id, advance_to, changes)?;
+		if !produced_output(&combined, emitted) && !checkpoint_due(advance_to, cursor.durable_cursor, config) {
 			return Ok(SliceStep::Skip {
 				advance_to,
 				more,
@@ -158,7 +155,7 @@ impl SliceComputer {
 				combined,
 				checkpoints: vec![(cursor.flow_id, advance_to)],
 				checkpoint_deletes: Vec::new(),
-				view_changes,
+				emitted,
 				control_cursor: None,
 				source,
 			},
@@ -229,7 +226,7 @@ impl SliceComputer {
 		flow_id: FlowId,
 		state_version: CommitVersion,
 		changes: Vec<Change>,
-	) -> Result<(Pending, Vec<Change>, WatermarkHolds)> {
+	) -> Result<(Pending, bool, WatermarkHolds)> {
 		let catalog: Catalog = self.engine.catalog();
 		let interceptors = self.engine.create_interceptors();
 
@@ -255,22 +252,9 @@ impl SliceComputer {
 		flow_engine.process_batch(&mut txn, changes, flow_id)?;
 		let holds = flow_engine.holds(&mut txn, flow_id)?;
 
-		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
-
+		let emitted = txn.emitted;
 		let pending = txn.take_pending();
-		Ok((pending, view_changes, holds))
-	}
-
-	fn consolidated_view_changes(
-		&self,
-		txn: &mut DeferredTransaction,
-		state_version: CommitVersion,
-	) -> Result<Vec<Change>> {
-		let mut accumulator = ChangeAccumulator::new();
-		for (id, diff) in txn.take_accumulator_entries() {
-			accumulator.track(id, diff);
-		}
-		accumulator.take_changes(state_version, self.engine.clock().now())
+		Ok((pending, emitted, holds))
 	}
 
 	pub fn tick(
@@ -278,7 +262,7 @@ impl SliceComputer {
 		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
 		checkpoint: CommitVersion,
-	) -> Result<(Pending, Vec<Change>)> {
+	) -> Result<(Pending, bool)> {
 		let (state_version, lease) = self.engine.acquire_current_snapshot_lease()?;
 		let query = self.engine.multi().begin_query_at_version(&lease)?;
 		let state_query = self.engine.multi().begin_query_at_version(&lease)?;
@@ -297,8 +281,8 @@ impl SliceComputer {
 
 		flow_engine.process_tick(&mut txn, flow_id, checkpoint)?;
 
-		let view_changes = self.consolidated_view_changes(&mut txn, state_version)?;
-		Ok((txn.take_pending(), view_changes))
+		let emitted = txn.emitted;
+		Ok((txn.take_pending(), emitted))
 	}
 }
 
@@ -1231,10 +1215,10 @@ mod integration {
 					slice,
 					..
 				}) => panic!(
-					"a step with no writes and no view changes committed {} writes and {} view changes \
+					"a step with no writes and no view changes committed {} writes with emitted {} \
 					 while the checkpoint was not due",
 					slice.combined.len(),
-					slice.view_changes.len()
+					slice.emitted
 				),
 				Some(SliceStep::Skip {
 					advance_to,
@@ -1482,5 +1466,131 @@ mod integration {
 				..
 			} => panic!("the first insert must produce view rows, not a skip to {advance_to:?}"),
 		}
+	}
+
+	fn spawn_observed_committer(engine: &StandardEngine) -> (CommitterHandle, FlowMaterialization) {
+		let materialization = FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new());
+		let committer =
+			Committer::new(FlowPositionTracker::new(), materialization.clone(), engine.operator_state());
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let handle = engine.spawner().spawn_flow(
+			"slice-test-observed-committer",
+			CommitterActor::new(committer, CommitHandle::new(begin)),
+		);
+		(handle, materialization)
+	}
+
+	fn settled_step(te: &TestEngine) -> SliceStep {
+		let engine = te.inner().clone();
+		let written = engine.current_version().expect("current version");
+		let mut caught_up = false;
+		for _ in 0..400 {
+			if engine.cdc_producer_watermark().min(engine.done_until()) >= written {
+				caught_up = true;
+				break;
+			}
+			sleep(Duration::from_milliseconds_const(5).to_std());
+		}
+		assert!(caught_up, "the cdc producer never caught up to {written:?}");
+		let (flow_id, mut flow_engine, source_objects) = one_view_flow(te);
+		let computer = SliceComputer::new(engine.clone());
+		pull_step(
+			&engine,
+			&computer,
+			&mut flow_engine,
+			SliceCursor {
+				flow_id,
+				source_objects: &source_objects,
+				completeness_objects: None,
+				cursor: CommitVersion(0),
+				durable_cursor: CommitVersion(0),
+				has_readers: false,
+			},
+			&SliceConfig {
+				checkpoint_lag: 10_000,
+			},
+		)
+		.expect("the write is visible, so the flow must step")
+	}
+
+	#[test]
+	fn a_step_that_writes_view_rows_commits_and_advances_the_output_frontier() {
+		// Readers of the view wait on the output frontier; a commit of view rows that does not move it leaves
+		// them waiting for rows that are already stored.
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
+		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
+		te.command("INSERT app::t [{id: 1, val: 10}, {id: 2, val: 20}]");
+		let (committer, materialization) = spawn_observed_committer(te.inner());
+
+		let SliceStep::Commit {
+			slice,
+			..
+		} = settled_step(&te)
+		else {
+			panic!("a step that writes view rows must commit them")
+		};
+		assert!(slice.combined.rows_ordered().next().is_some(), "the step must carry the view rows it wrote");
+		let version = commit(&committer, slice);
+
+		assert_eq!(materialization.output_frontier(), version);
+		assert_eq!(view_row_count(&te, "FROM app::v"), 2);
+	}
+
+	#[test]
+	fn a_step_that_writes_only_operator_state_still_commits() {
+		// State an operator wrote is what its next step reads; skipping the commit because nothing reached the
+		// view loses that state, and the next step computes from what was there before.
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, g: int4 }");
+		te.admin(
+			"CREATE DEFERRED VIEW app::v { g: int4, n: int8 } AS { FROM app::t | aggregate { n: math::count(id) } by { g } | filter { n > 1000 } }",
+		);
+		te.command("INSERT app::t [{id: 1, g: 1}, {id: 2, g: 1}]");
+
+		let SliceStep::Commit {
+			slice,
+			..
+		} = settled_step(&te)
+		else {
+			panic!("a step that wrote operator state skipped its commit")
+		};
+		assert!(
+			slice.combined.rows_ordered().next().is_none(),
+			"the filter drops every aggregate row, so the step must carry no view row"
+		);
+		assert!(!slice.combined.is_empty(), "the aggregate's state must ride on the commit");
+	}
+
+	#[test]
+	fn a_ringbuffer_step_whose_capacity_skips_rows_commits_only_the_rows_that_fit() {
+		// Rows that never fit are announced but never written; the step must still commit the rows that do
+		// fit, and none of the skipped ones may reach the view.
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
+		te.admin(
+			"CREATE DEFERRED RINGBUFFER VIEW app::v { id: int4, val: int4 } WITH { capacity: 2 } AS { FROM app::t MAP { id, val } }",
+		);
+		te.command(
+			"INSERT app::t [{id: 1, val: 10}, {id: 2, val: 20}, {id: 3, val: 30}, {id: 4, val: 40}, {id: 5, val: 50}]",
+		);
+		let (committer, materialization) = spawn_observed_committer(te.inner());
+
+		let SliceStep::Commit {
+			slice,
+			..
+		} = settled_step(&te)
+		else {
+			panic!("a step that stored the rows that fit skipped its commit")
+		};
+		let version = commit(&committer, slice);
+
+		assert_eq!(materialization.output_frontier(), version);
+		assert_eq!(view_row_count(&te, "FROM app::v"), 2);
+		assert_eq!(view_row_count(&te, "FROM app::v FILTER { id > 3 }"), 2, "only the two newest rows fit");
 	}
 }
