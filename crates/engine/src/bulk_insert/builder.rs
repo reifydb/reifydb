@@ -70,7 +70,7 @@ use crate::{
 				get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape,
 			},
 			table_insert::{EncodedTableRows, table_batch_partitions, write_table_rows},
-			time::{EventColumn, populator_index, resolve_time},
+			time::{RowTime, populator_index},
 		},
 		services::Services,
 	},
@@ -409,18 +409,9 @@ fn enforce_write_policies(
 	)
 }
 
-fn stamp<B: SourceRowBuilder>(
-	row: &mut B,
-	name: &str,
-	time: &TimeSource,
-	shape: &RowShape,
-	now: DateTime,
-	event: Option<DateTime>,
-) -> Result<()> {
+fn stamp<B: SourceRowBuilder>(row: &mut B, times: &RowTime<'_>, index: usize, now: DateTime) -> Result<()> {
 	row.set_timestamps(now, now);
-	if let Some(time) =
-		event.map_or_else(|| resolve_time(name, time, shape, row.as_slice(), now), |time| Ok(Some(time)))?
-	{
+	if let Some(time) = times.inserted(index, row.as_slice(), now)? {
 		row.set_time(time);
 	}
 	Ok(())
@@ -465,10 +456,14 @@ fn execute_table_insert<V: ValidationMode>(
 	};
 	cast[0].write(&shape, &mut encoded.rows)?;
 	let now = writer.clock.now();
-	let event =
-		EventColumn::new(populator_index(&table.time, &shape).map(|index| cast[0].view(index)).transpose()?);
+	let times = RowTime::new(
+		&table.name,
+		&table.time,
+		&shape,
+		populator_index(&table.time, &shape).map(|index| cast[0].view(index)).transpose()?,
+	);
 	for (index, row) in encoded.rows.iter_mut().enumerate() {
-		stamp(row, &table.name, &table.time, &shape, now, event.at(index))?;
+		stamp(row, &times, index, now)?;
 	}
 	table_batch_partitions(&table, &cast[0], &mut encoded)?;
 	write_table_rows(
@@ -628,12 +623,15 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		&mut verified,
 	)?;
 	let now = writer.clock.now();
-	let event = EventColumn::new(
+	let times = RowTime::new(
+		&ringbuffer.name,
+		&ringbuffer.time,
+		shape,
 		populator_index(&ringbuffer.time, shape).map(|index| cast[0].view(index)).transpose()?,
 	);
 	let mut entries = Vec::with_capacity(rows);
 	for (row, mut builder) in built.into_iter().enumerate() {
-		stamp(&mut builder, &ringbuffer.name, &ringbuffer.time, shape, now, event.at(row))?;
+		stamp(&mut builder, &times, row, now)?;
 		entries.push(builder.freeze_bytes());
 	}
 
@@ -756,7 +754,12 @@ fn insert_series_rows(
 	}
 	shape.write_columns(&mut built, &views)?;
 	let now = writer.clock.now();
-	let event = EventColumn::new(populator_index(&series.time, shape).map(|index| views[index].clone()));
+	let times = RowTime::new(
+		&series.name,
+		&series.time,
+		shape,
+		populator_index(&series.time, shape).map(|index| views[index].clone()),
+	);
 
 	let batch = series_batch_partitions(series, &cast, Some(&views[0]))?;
 	resolve_partitions(
@@ -776,7 +779,7 @@ fn insert_series_rows(
 		|_| Err(internal_error!("bulk insert into series {} kept a row without a key", series.name)),
 	)?;
 	for (row, builder) in built.iter_mut().enumerate() {
-		stamp(builder, &series.name, &series.time, shape, now, event.at(row))?;
+		stamp(builder, &times, row, now)?;
 	}
 	let written = write_series_rows(
 		&mut Transaction::Command(txn),

@@ -510,6 +510,7 @@ mod tests {
 		value::{
 			Value,
 			blob::Blob,
+			column_view::ColumnView,
 			constraint::{TypeConstraint, precision::Precision, scale::Scale},
 			date::Date,
 			datetime::DateTime,
@@ -927,11 +928,12 @@ mod tests {
 					.map(|view| view.get_value(row))
 					.unwrap_or_else(Value::none);
 				if column.auto_increment && matches!(value, Value::None { .. }) {
-					value = fixture
+					let drawn = fixture
 						.services
 						.catalog
-						.column_sequence_next_value(&mut txn, fixture.table.id, column.id)
+						.column_sequence_next_values(&mut txn, fixture.table.id, column.id, 1)
 						.unwrap();
+					value = ColumnView::try_from(&drawn).unwrap().get_value(0);
 				}
 				let resolved = ResolvedColumn::new(
 					Fragment::internal(&column.name),
@@ -958,10 +960,9 @@ mod tests {
 							Value::None {
 								..
 							} => dictionary.id_type.none().to_value(),
-							value => txn
-								.insert_into_dictionary(&dictionary, &value)
-								.unwrap()
-								.to_value(),
+							value => txn.intern_values(&dictionary, vec![value]).unwrap()
+								[0]
+							.to_value(),
 						}
 					}
 					None => value,

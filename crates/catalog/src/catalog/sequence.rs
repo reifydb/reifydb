@@ -33,11 +33,6 @@ impl Catalog {
 		CatalogStore::list_sequences(txn)
 	}
 
-	#[instrument(name = "catalog::sequence::next_row_number", level = "trace", skip(self, txn))]
-	pub fn next_row_number(&self, txn: &mut impl SequenceTransaction, table: TableId) -> Result<RowNumber> {
-		RowSequence::next_row_number(txn, table)
-	}
-
 	#[instrument(name = "catalog::sequence::next_row_number_batch", level = "trace", skip(self, txn))]
 	pub fn next_row_number_batch(
 		&self,
@@ -70,16 +65,6 @@ impl Catalog {
 		count: u64,
 	) -> Result<Vec<RowNumber>> {
 		RowSequence::next_row_number_batch_for_queue(txn, queue, count)
-	}
-
-	#[instrument(name = "catalog::sequence::column_sequence_next_value", level = "trace", skip(self, txn, object))]
-	pub fn column_sequence_next_value(
-		&self,
-		txn: &mut impl SequenceTransaction,
-		object: impl Into<ObjectId>,
-		column: ColumnId,
-	) -> Result<Value> {
-		ColumnSequence::next_value(txn, object, column)
 	}
 
 	#[instrument(name = "catalog::sequence::column_sequence_next_values", level = "trace", skip(self, txn, object))]

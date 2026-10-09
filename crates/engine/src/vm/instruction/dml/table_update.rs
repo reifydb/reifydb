@@ -72,7 +72,7 @@ use crate::{
 	vm::{
 		instruction::dml::{
 			coerce::InputFragments,
-			time::{EventColumn, populator_index, resolve_time_for_update},
+			time::{RowTime, populator_index},
 		},
 		services::Services,
 		volcano::{
@@ -259,7 +259,12 @@ fn run_table_update(
 		let mut rows: Vec<EncodedTableRowBuilder> = (0..row_count).map(|_| shape.allocate_table()).collect();
 		batches[0].write(shape, &mut rows)?;
 		let now = exec.services.runtime_context.clock.now();
-		let event = EventColumn::new(populator.map(|index| batches[0].view(index)).transpose()?);
+		let times = RowTime::new(
+			&target.table.name,
+			&target.table.time,
+			shape,
+			populator.map(|index| batches[0].view(index)).transpose()?,
+		);
 
 		let new_partitions =
 			cast_partitions(&target.table.columns, &target.table.partition_by, &batches[0])?.rows;
@@ -295,18 +300,7 @@ fn run_table_update(
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
 			row.set_timestamps(old_created_at, now);
-			if let Some(time) = event.at(row_idx).map_or_else(
-				|| {
-					resolve_time_for_update(
-						&target.table.name,
-						&target.table.time,
-						shape,
-						&row,
-						old_time,
-					)
-				},
-				|time| Ok(Some(time)),
-			)? {
+			if let Some(time) = times.updated(row_idx, &row, old_time)? {
 				row.set_time(time);
 			}
 

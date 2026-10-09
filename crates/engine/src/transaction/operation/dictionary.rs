@@ -29,12 +29,6 @@ use smallvec::smallvec;
 use crate::Result;
 
 pub(crate) trait DictionaryOperations {
-	#[cfg(test)]
-	fn insert_into_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<DictionaryEntryId> {
-		let ids = self.intern_values(dictionary, vec![value.clone()])?;
-		Ok(ids[0])
-	}
-
 	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>>;
 
 	fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>>;
@@ -370,7 +364,7 @@ pub mod tests {
 		let value = Value::Utf8("hello".to_string());
 
 		// Ids start at 1, so 0 stays available as a sentinel.
-		let id = txn.insert_into_dictionary(&dict, &value).unwrap();
+		let id = txn.intern_values(&dict, vec![value.clone()]).unwrap()[0];
 		assert_eq!(id, DictionaryEntryId::U8(1));
 	}
 
@@ -380,8 +374,8 @@ pub mod tests {
 		let dict = test_dictionary();
 		let value = Value::Utf8("hello".to_string());
 
-		let id1 = txn.insert_into_dictionary(&dict, &value).unwrap();
-		let id2 = txn.insert_into_dictionary(&dict, &value).unwrap();
+		let id1 = txn.intern_values(&dict, vec![value.clone()]).unwrap()[0];
+		let id2 = txn.intern_values(&dict, vec![value.clone()]).unwrap()[0];
 
 		// Interning is the point: a repeat must reuse the id, not allocate a second one.
 		assert_eq!(id1, id2);
@@ -393,9 +387,9 @@ pub mod tests {
 		let mut txn = create_test_admin_transaction();
 		let dict = test_dictionary();
 
-		let id1 = txn.insert_into_dictionary(&dict, &Value::Utf8("hello".to_string())).unwrap();
-		let id2 = txn.insert_into_dictionary(&dict, &Value::Utf8("world".to_string())).unwrap();
-		let id3 = txn.insert_into_dictionary(&dict, &Value::Utf8("foo".to_string())).unwrap();
+		let id1 = txn.intern_values(&dict, vec![Value::Utf8("hello".to_string())]).unwrap()[0];
+		let id2 = txn.intern_values(&dict, vec![Value::Utf8("world".to_string())]).unwrap()[0];
+		let id3 = txn.intern_values(&dict, vec![Value::Utf8("foo".to_string())]).unwrap()[0];
 
 		assert_eq!(id1, DictionaryEntryId::U8(1));
 		assert_eq!(id2, DictionaryEntryId::U8(2));
@@ -408,7 +402,7 @@ pub mod tests {
 		let dict = test_dictionary();
 		let value = Value::Utf8("hello".to_string());
 
-		let id = txn.insert_into_dictionary(&dict, &value).unwrap();
+		let id = txn.intern_values(&dict, vec![value.clone()]).unwrap()[0];
 		let retrieved = txn.get_from_dictionary(&dict, id).unwrap();
 
 		assert_eq!(retrieved, Some(value));
@@ -430,7 +424,7 @@ pub mod tests {
 		let dict = test_dictionary();
 		let value = Value::Utf8("hello".to_string());
 
-		let id = txn.insert_into_dictionary(&dict, &value).unwrap();
+		let id = txn.intern_values(&dict, vec![value.clone()]).unwrap()[0];
 
 		// The reverse index must see an uncommitted insert from the same transaction.
 		let found = txn.find_in_dictionary(&dict, &value).unwrap();
@@ -459,7 +453,7 @@ pub mod tests {
 			id_type: ValueType::Uint1,
 		};
 
-		let id = txn.insert_into_dictionary(&dict, &Value::Utf8("test".to_string())).unwrap();
+		let id = txn.intern_values(&dict, vec![Value::Utf8("test".to_string())]).unwrap()[0];
 		assert_eq!(id, DictionaryEntryId::U1(1));
 		assert_eq!(id.id_type(), ValueType::Uint1);
 	}
@@ -475,7 +469,7 @@ pub mod tests {
 			id_type: ValueType::Uint2,
 		};
 
-		let id = txn.insert_into_dictionary(&dict, &Value::Utf8("test".to_string())).unwrap();
+		let id = txn.intern_values(&dict, vec![Value::Utf8("test".to_string())]).unwrap()[0];
 		assert_eq!(id, DictionaryEntryId::U2(1));
 		assert_eq!(id.id_type(), ValueType::Uint2);
 	}
@@ -491,7 +485,7 @@ pub mod tests {
 			id_type: ValueType::Uint4,
 		};
 
-		let id = txn.insert_into_dictionary(&dict, &Value::Utf8("test".to_string())).unwrap();
+		let id = txn.intern_values(&dict, vec![Value::Utf8("test".to_string())]).unwrap()[0];
 		assert_eq!(id, DictionaryEntryId::U4(1));
 		assert_eq!(id.id_type(), ValueType::Uint4);
 	}

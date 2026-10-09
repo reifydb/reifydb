@@ -61,7 +61,7 @@ use crate::{
 	policy::PolicyEvaluator,
 	transaction::operation::ringbuffer::RingBufferOperations,
 	vm::{
-		instruction::dml::time::{EventColumn, populator_index, resolve_time},
+		instruction::dml::time::{RowTime, populator_index},
 		services::Services,
 		volcano::{
 			compile::compile,
@@ -188,14 +188,16 @@ fn drive_ringbuffer_insert(
 		resolve_partitions(txn, ObjectId::ringbuffer(ringbuffer.id), &batch.distinct, &mut verified)?;
 
 		let now = services.runtime_context.clock.now();
-		let event = EventColumn::new(populator.map(|index| batches[0].view(index)).transpose()?);
+		let times = RowTime::new(
+			&ringbuffer.name,
+			&ringbuffer.time,
+			shape,
+			populator.map(|index| batches[0].view(index)).transpose()?,
+		);
 		let mut rows = Vec::with_capacity(row_count);
 		for (index, mut row) in built.into_iter().enumerate() {
 			row.set_timestamps(now, now);
-			if let Some(time) = event.at(index).map_or_else(
-				|| resolve_time(&ringbuffer.name, &ringbuffer.time, shape, &row, now),
-				|time| Ok(Some(time)),
-			)? {
+			if let Some(time) = times.inserted(index, &row, now)? {
 				row.set_time(time);
 			}
 			rows.push(row.freeze_bytes());

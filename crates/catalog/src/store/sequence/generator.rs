@@ -11,6 +11,8 @@ use reifydb_transaction::{
 };
 use reifydb_value::{Result as TxResult, value::value_type::ValueType};
 
+use crate::Result;
+
 pub trait SequenceTransaction: Send {
 	fn begin_single_command<'a, I>(&self, keys: I) -> TxResult<SingleWriteTransaction<'_>>
 	where
@@ -91,63 +93,6 @@ macro_rules! impl_generator {
 			pub(crate) struct $generator {}
 
 			impl $generator {
-				pub(crate) fn next<K: Into<TaggedKey> + Clone>(
-					txn: &mut impl SequenceTransaction,
-					key: &K,
-					default: Option<$prim>,
-				) -> Result<$prim> {
-					Self::next_batched(txn, key, default, 1)
-				}
-
-				pub(crate) fn next_batched<K: Into<TaggedKey> + Clone>(
-					txn: &mut impl SequenceTransaction,
-					key: &K,
-					default: Option<$prim>,
-					incr: $prim,
-				) -> Result<$prim> {
-					let encoded = key.clone().into().encode();
-					let mut tx = txn.begin_single_command([&encoded])?;
-					let result = match tx.get(key)? {
-						Some(row) => {
-							let current_value = decode(EncodedPodRow::view(&row.bytes))?;
-							let Some(next_value) = current_value
-								.checked_add(incr)
-								.filter(|next| *next != current_value)
-							else {
-								return Err(CoreError::SequenceExhausted {
-									value_type: $type_enum,
-								}
-								.into());
-							};
-
-							tx.set(key, encode(next_value).into_bytes())?;
-							next_value
-						}
-						None => match default {
-							Some(value) => {
-								tx.set(key, encode(value).into_bytes())?;
-								value
-							}
-							None => {
-								let first = $start;
-								let last = first.saturating_add(incr.saturating_sub(1));
-
-								if first == last && incr > 1 {
-									return Err(CoreError::SequenceExhausted {
-										value_type: $type_enum,
-									}
-									.into());
-								}
-
-								tx.set(key, encode(last).into_bytes())?;
-								last
-							}
-						},
-					};
-					tx.commit()?;
-					Ok(result)
-				}
-
 				#[allow(clippy::unnecessary_fallible_conversions)]
 				pub(crate) fn next_run<K: Into<TaggedKey> + Clone>(
 					txn: &mut impl SequenceTransaction,
@@ -189,6 +134,8 @@ macro_rules! impl_generator {
 
 			#[cfg(test)]
 			mod tests {
+				use std::num::NonZeroU64;
+
 				use reifydb_codec::row::pod::EncodedPodRow;
 				use reifydb_core::{
 					error::CoreError, interface::catalog::id::QueueId,
@@ -232,9 +179,13 @@ macro_rules! impl_generator {
 						999u32.min(($max as u128).saturating_sub($start as u128) as u32);
 					let count = ($start as u128).saturating_add(iterations as u128) as $prim;
 					for expected in $start..count {
-						let got =
-							$generator::next(&mut txn, &seq_key("sequence"), None).unwrap();
-						assert_eq!(got, expected);
+						let got = $generator::next_run(
+							&mut txn,
+							&seq_key("sequence"),
+							NonZeroU64::MIN,
+						)
+						.unwrap();
+						assert_eq!(got, expected..=expected);
 					}
 
 					let key = seq_key("sequence");
@@ -257,40 +208,14 @@ macro_rules! impl_generator {
 					})
 					.unwrap();
 
-					let err = $generator::next(&mut txn, &seq_key("sequence"), None).unwrap_err();
+					let err = $generator::next_run(&mut txn, &seq_key("sequence"), NonZeroU64::MIN)
+						.unwrap_err();
 					assert_eq!(
 						err.diagnostic(),
 						CoreError::SequenceExhausted {
 							value_type: $type_enum
 						}
 						.into_diagnostic()
-					);
-				}
-
-				#[test]
-				fn testault() {
-					let mut txn = create_test_admin_transaction();
-
-					let default_val = ($start as u32).saturating_add(99).min($max as u32) as $prim;
-					let got = $generator::next(
-						&mut txn,
-						&seq_key("sequence_with_default"),
-						Some(default_val),
-					)
-					.unwrap();
-					assert_eq!(got, default_val);
-
-					let next_default =
-						($start as u32).saturating_add(998).min($max as u32) as $prim;
-					let got = $generator::next(
-						&mut txn,
-						&seq_key("sequence_with_default"),
-						Some(next_default),
-					)
-					.unwrap();
-					assert_eq!(
-						got,
-						(default_val as u32).saturating_add(1).min($max as u32) as $prim
 					);
 				}
 
@@ -318,17 +243,25 @@ macro_rules! impl_generator {
 						};
 
 					for i in 0..iterations_1 {
+						let first = ($start as u128)
+							.saturating_add((batch_size_1 as u128) * (i as u128))
+							as $prim;
 						let expected = ($start as u128)
 							.saturating_add((batch_size_1 as u128) * ((i as u128) + 1))
 							.saturating_sub(1) as $prim;
-						let got = $generator::next_batched(
+						let got = $generator::next_run(
 							&mut txn,
 							&seq_key("sequence_by_5000"),
-							None,
-							batch_size_1,
+							NonZeroU64::new(batch_size_1 as u64).unwrap(),
 						)
 						.unwrap();
-						assert_eq!(got, expected, "Call {} should return {}", i + 1, expected);
+						assert_eq!(
+							got,
+							first..=expected,
+							"Call {} should return up to {}",
+							i + 1,
+							expected
+						);
 					}
 
 					let key = seq_key("sequence_by_5000");
@@ -341,17 +274,25 @@ macro_rules! impl_generator {
 					assert_eq!(decode(EncodedPodRow::view(&single.bytes)).unwrap(), final_val);
 
 					for i in 0..iterations_2 {
+						let first = ($start as u128)
+							.saturating_add((batch_size_2 as u128) * (i as u128))
+							as $prim;
 						let expected = ($start as u128)
 							.saturating_add((batch_size_2 as u128) * ((i as u128) + 1))
 							.saturating_sub(1) as $prim;
-						let got = $generator::next_batched(
+						let got = $generator::next_run(
 							&mut txn,
 							&seq_key("sequence_by_10000"),
-							None,
-							batch_size_2,
+							NonZeroU64::new(batch_size_2 as u64).unwrap(),
 						)
 						.unwrap();
-						assert_eq!(got, expected, "Call {} should return {}", i + 1, expected);
+						assert_eq!(
+							got,
+							first..=expected,
+							"Call {} should return up to {}",
+							i + 1,
+							expected
+						);
 					}
 				}
 
@@ -361,7 +302,7 @@ macro_rules! impl_generator {
 
 					let batch_size_val =
 						5000u32.min((($max as u128).saturating_sub($start as u128) / 2) as u32);
-					let batch_size = batch_size_val as $prim;
+					let batch_size = NonZeroU64::new(batch_size_val as u64).unwrap();
 					let initial_val =
 						(($max as u128).saturating_sub((batch_size_val * 2) as u128)) as $prim;
 
@@ -371,25 +312,15 @@ macro_rules! impl_generator {
 					})
 					.unwrap();
 
-					let result = $generator::next_batched(
-						&mut txn,
-						&seq_key("sequence"),
-						None,
-						batch_size,
-					)
-					.unwrap();
+					let result = $generator::next_run(&mut txn, &seq_key("sequence"), batch_size)
+						.unwrap();
 					// Narrow types may not reach MAX in one batch, so only monotonicity holds here.
-					assert!(result > initial_val);
+					assert!(*result.end() > initial_val);
 
 					loop {
-						match $generator::next_batched(
-							&mut txn,
-							&seq_key("sequence"),
-							None,
-							batch_size,
-						) {
-							Ok(val) => {
-								if val == $max {
+						match $generator::next_run(&mut txn, &seq_key("sequence"), batch_size) {
+							Ok(run) => {
+								if *run.end() == $max {
 									break;
 								}
 							}
@@ -397,13 +328,8 @@ macro_rules! impl_generator {
 						}
 					}
 
-					let err = $generator::next_batched(
-						&mut txn,
-						&seq_key("sequence"),
-						None,
-						batch_size,
-					)
-					.unwrap_err();
+					let err = $generator::next_run(&mut txn, &seq_key("sequence"), batch_size)
+						.unwrap_err();
 					assert_eq!(
 						err.diagnostic(),
 						CoreError::SequenceExhausted {
@@ -415,8 +341,8 @@ macro_rules! impl_generator {
 
 				#[test]
 				fn a_batch_past_the_end_takes_nothing_and_leaves_the_tail_to_a_batch_that_fits() {
-					// A batch is handed out as last minus count plus one; a clamped last would
-					// re-issue numbers that are already in use, so it must fail and keep the tail.
+					// A batch past the end must fail without consuming the tail, otherwise the
+					// last numbers of the type are lost or re-issued.
 					let mut txn = create_test_admin_transaction();
 					let key = seq_key("tail");
 					txn.with_single_command([&key.encode()], |tx| {
@@ -424,7 +350,8 @@ macro_rules! impl_generator {
 					})
 					.unwrap();
 
-					let err = $generator::next_batched(&mut txn, &key, None, 5).unwrap_err();
+					let err = $generator::next_run(&mut txn, &key, NonZeroU64::new(5).unwrap())
+						.unwrap_err();
 					assert_eq!(
 						err.diagnostic(),
 						CoreError::SequenceExhausted {
@@ -432,40 +359,10 @@ macro_rules! impl_generator {
 						}
 						.into_diagnostic()
 					);
-					assert_eq!($generator::next_batched(&mut txn, &key, None, 2).unwrap(), $max);
-				}
-
-				#[test]
-				fn test_batched_default() {
-					let mut txn = create_test_admin_transaction();
-
-					let type_range = ($max as u128).saturating_sub($start as u128);
-					let default_val =
-						($start as u128).saturating_add(99.min(type_range / 4)) as $prim;
-					let batch_size = (5000u32.min((type_range / 4) as u32)) as $prim;
-					let got = $generator::next_batched(
-						&mut txn,
-						&seq_key("sequence_with_default"),
-						Some(default_val),
-						batch_size,
-					)
-					.unwrap();
-					assert_eq!(got, default_val);
-
-					let next_default =
-						($start as u128).saturating_add(998.min(type_range / 3)) as $prim;
-					let got = $generator::next_batched(
-						&mut txn,
-						&seq_key("sequence_with_default"),
-						Some(next_default),
-						batch_size,
-					)
-					.unwrap();
 					assert_eq!(
-						got,
-						(default_val as u128)
-							.saturating_add(batch_size as u128)
-							.min($max as u128) as $prim
+						$generator::next_run(&mut txn, &key, NonZeroU64::new(2).unwrap())
+							.unwrap(),
+						($max - 1)..=$max
 					);
 				}
 			}
@@ -562,3 +459,257 @@ impl_generator!(
 	start_value: 1i128,
 	max_value: i128::MAX
 );
+
+impl u64::GeneratorU64 {
+	pub(crate) fn next<K: Into<TaggedKey> + Clone>(
+		txn: &mut impl SequenceTransaction,
+		key: &K,
+		default: Option<u64>,
+	) -> Result<u64> {
+		Self::next_batched(txn, key, default, 1)
+	}
+
+	pub(crate) fn next_batched<K: Into<TaggedKey> + Clone>(
+		txn: &mut impl SequenceTransaction,
+		key: &K,
+		default: Option<u64>,
+		incr: u64,
+	) -> Result<u64> {
+		let encoded = key.clone().into().encode();
+		let mut tx = txn.begin_single_command([&encoded])?;
+		let result = match tx.get(key)? {
+			Some(row) => {
+				let current_value = u64::decode(EncodedPodRow::view(&row.bytes))?;
+				let Some(next_value) =
+					current_value.checked_add(incr).filter(|next| *next != current_value)
+				else {
+					return Err(CoreError::SequenceExhausted {
+						value_type: ValueType::Uint8,
+					}
+					.into());
+				};
+
+				tx.set(key, u64::encode(next_value).into_bytes())?;
+				next_value
+			}
+			None => match default {
+				Some(value) => {
+					tx.set(key, u64::encode(value).into_bytes())?;
+					value
+				}
+				None => {
+					let first = 1u64;
+					let last = first.saturating_add(incr.saturating_sub(1));
+
+					if first == last && incr > 1 {
+						return Err(CoreError::SequenceExhausted {
+							value_type: ValueType::Uint8,
+						}
+						.into());
+					}
+
+					tx.set(key, u64::encode(last).into_bytes())?;
+					last
+				}
+			},
+		};
+		tx.commit()?;
+		Ok(result)
+	}
+}
+
+#[cfg(test)]
+mod u64_next_tests {
+	use reifydb_codec::row::pod::EncodedPodRow;
+	use reifydb_core::{error::CoreError, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_value::{error::IntoDiagnostic, value::value_type::ValueType};
+
+	use super::u64::{GeneratorU64, decode, encode};
+
+	fn seq_key(name: &str) -> QueueDeduplicationKey {
+		QueueDeduplicationKey::new(QueueId(1), name.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>())
+	}
+
+	#[test]
+	fn test_ok() {
+		let mut txn = create_test_admin_transaction();
+		let iterations = 999u32.min((u64::MAX as u128).saturating_sub(1u64 as u128) as u32);
+		let count = (1u64 as u128).saturating_add(iterations as u128) as u64;
+		for expected in 1u64..count {
+			let got = GeneratorU64::next(&mut txn, &seq_key("sequence"), None).unwrap();
+			assert_eq!(got, expected);
+		}
+
+		let key = seq_key("sequence");
+		let encoded = key.encode();
+		let mut tx = txn.begin_single_query([&encoded]).unwrap();
+		let single = tx.get(&encoded).unwrap().unwrap();
+		let final_val = (1u64 as u128).saturating_add((iterations.saturating_sub(1)) as u128) as u64;
+		assert_eq!(decode(EncodedPodRow::view(&single.bytes)).unwrap(), final_val);
+	}
+
+	#[test]
+	fn test_exhaustion() {
+		let mut txn = create_test_admin_transaction();
+
+		let key = seq_key("sequence");
+		txn.with_single_command([&key.encode()], |tx| tx.set(&key, encode(u64::MAX).into_bytes())).unwrap();
+
+		let err = GeneratorU64::next(&mut txn, &seq_key("sequence"), None).unwrap_err();
+		assert_eq!(
+			err.diagnostic(),
+			CoreError::SequenceExhausted {
+				value_type: ValueType::Uint8
+			}
+			.into_diagnostic()
+		);
+	}
+
+	#[test]
+	fn testault() {
+		let mut txn = create_test_admin_transaction();
+
+		let default_val = (1u64 as u32).saturating_add(99).min(u64::MAX as u32) as u64;
+		let got = GeneratorU64::next(&mut txn, &seq_key("sequence_with_default"), Some(default_val)).unwrap();
+		assert_eq!(got, default_val);
+
+		let next_default = (1u64 as u32).saturating_add(998).min(u64::MAX as u32) as u64;
+		let got = GeneratorU64::next(&mut txn, &seq_key("sequence_with_default"), Some(next_default)).unwrap();
+		assert_eq!(got, (default_val as u32).saturating_add(1).min(u64::MAX as u32) as u64);
+	}
+
+	#[test]
+	fn test_batched_ok() {
+		let mut txn = create_test_admin_transaction();
+
+		// Batch sizes are scaled to the type's range so narrow types are not
+		// exhausted before the iteration count is reached.
+		let type_range = (u64::MAX as u128).saturating_sub(1u64 as u128);
+		let (batch_size_1, iterations_1, batch_size_2, iterations_2) = if type_range < 200_000 {
+			let bs1 = (5u32.min(type_range as u32 / 40)) as u64;
+			let bs2 = (10u32.min(type_range as u32 / 20)) as u64;
+			(
+				bs1,
+				20u32.min((type_range / (bs1 as u128)) as u32),
+				bs2,
+				10u32.min((type_range / (bs2 as u128)) as u32),
+			)
+		} else {
+			let bs1 = 5000u32 as u64;
+			let bs2 = 10000u32 as u64;
+			(bs1, 20, bs2, 10)
+		};
+
+		for i in 0..iterations_1 {
+			let expected = (1u64 as u128)
+				.saturating_add((batch_size_1 as u128) * ((i as u128) + 1))
+				.saturating_sub(1) as u64;
+			let got =
+				GeneratorU64::next_batched(&mut txn, &seq_key("sequence_by_5000"), None, batch_size_1)
+					.unwrap();
+			assert_eq!(got, expected, "Call {} should return {}", i + 1, expected);
+		}
+
+		let key = seq_key("sequence_by_5000");
+		let encoded = key.encode();
+		let mut tx = txn.begin_single_query([&encoded]).unwrap();
+		let single = tx.get(&encoded).unwrap().unwrap();
+		let final_val = (1u64 as u128)
+			.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
+			.saturating_sub(1) as u64;
+		assert_eq!(decode(EncodedPodRow::view(&single.bytes)).unwrap(), final_val);
+
+		for i in 0..iterations_2 {
+			let expected = (1u64 as u128)
+				.saturating_add((batch_size_2 as u128) * ((i as u128) + 1))
+				.saturating_sub(1) as u64;
+			let got =
+				GeneratorU64::next_batched(&mut txn, &seq_key("sequence_by_10000"), None, batch_size_2)
+					.unwrap();
+			assert_eq!(got, expected, "Call {} should return {}", i + 1, expected);
+		}
+	}
+
+	#[test]
+	fn test_batched_exhaustion() {
+		let mut txn = create_test_admin_transaction();
+
+		let batch_size_val = 5000u32.min(((u64::MAX as u128).saturating_sub(1u64 as u128) / 2) as u32);
+		let batch_size = batch_size_val as u64;
+		let initial_val = ((u64::MAX as u128).saturating_sub((batch_size_val * 2) as u128)) as u64;
+
+		let key = seq_key("sequence");
+		txn.with_single_command([&key.encode()], |tx| tx.set(&key, encode(initial_val).into_bytes())).unwrap();
+
+		let result = GeneratorU64::next_batched(&mut txn, &seq_key("sequence"), None, batch_size).unwrap();
+		// Narrow types may not reach MAX in one batch, so only monotonicity holds here.
+		assert!(result > initial_val);
+
+		loop {
+			match GeneratorU64::next_batched(&mut txn, &seq_key("sequence"), None, batch_size) {
+				Ok(val) => {
+					if val == u64::MAX {
+						break;
+					}
+				}
+				Err(_) => break,
+			}
+		}
+
+		let err = GeneratorU64::next_batched(&mut txn, &seq_key("sequence"), None, batch_size).unwrap_err();
+		assert_eq!(
+			err.diagnostic(),
+			CoreError::SequenceExhausted {
+				value_type: ValueType::Uint8
+			}
+			.into_diagnostic()
+		);
+	}
+
+	#[test]
+	fn a_batch_past_the_end_takes_nothing_and_leaves_the_tail_to_a_batch_that_fits() {
+		// A batch is handed out as last minus count plus one; a clamped last would
+		// re-issue numbers that are already in use, so it must fail and keep the tail.
+		let mut txn = create_test_admin_transaction();
+		let key = seq_key("tail");
+		txn.with_single_command([&key.encode()], |tx| tx.set(&key, encode(u64::MAX - 2).into_bytes())).unwrap();
+
+		let err = GeneratorU64::next_batched(&mut txn, &key, None, 5).unwrap_err();
+		assert_eq!(
+			err.diagnostic(),
+			CoreError::SequenceExhausted {
+				value_type: ValueType::Uint8
+			}
+			.into_diagnostic()
+		);
+		assert_eq!(GeneratorU64::next_batched(&mut txn, &key, None, 2).unwrap(), u64::MAX);
+	}
+
+	#[test]
+	fn test_batched_default() {
+		let mut txn = create_test_admin_transaction();
+
+		let type_range = (u64::MAX as u128).saturating_sub(1u64 as u128);
+		let default_val = (1u64 as u128).saturating_add(99.min(type_range / 4)) as u64;
+		let batch_size = (5000u32.min((type_range / 4) as u32)) as u64;
+		let got = GeneratorU64::next_batched(
+			&mut txn,
+			&seq_key("sequence_with_default"),
+			Some(default_val),
+			batch_size,
+		)
+		.unwrap();
+		assert_eq!(got, default_val);
+
+		let next_default = (1u64 as u128).saturating_add(998.min(type_range / 3)) as u64;
+		let got = GeneratorU64::next_batched(
+			&mut txn,
+			&seq_key("sequence_with_default"),
+			Some(next_default),
+			batch_size,
+		)
+		.unwrap();
+		assert_eq!(got, (default_val as u128).saturating_add(batch_size as u128).min(u64::MAX as u128) as u64);
+	}
+}

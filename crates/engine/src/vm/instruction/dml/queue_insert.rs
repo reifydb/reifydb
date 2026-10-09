@@ -79,7 +79,7 @@ use crate::{
 	vm::{
 		instruction::dml::{
 			coerce::InputFragments,
-			time::{EventColumn, populator_index, resolve_time},
+			time::{EventColumn, RowTime, populator_index},
 		},
 		services::Services,
 		volcano::{
@@ -496,17 +496,19 @@ fn validate_and_encode_input_rows(
 		let mut rows: Vec<EncodedQueueRowBuilder> = (0..cast.rows()).map(|_| shape.allocate_queue()).collect();
 		cast.write(shape, &mut rows)?;
 		let now = services.runtime_context.clock.now();
-		let event = EventColumn::new(populator.map(|index| cast.view(index)).transpose()?);
+		let times = RowTime::new(
+			&target.queue.name,
+			&target.queue.time,
+			shape,
+			populator.map(|index| cast.view(index)).transpose()?,
+		);
 		let mut encoded = Vec::with_capacity(rows.len());
 		for (index, (mut row, not_before)) in rows.into_iter().zip(&not_before).enumerate() {
 			if let Some(instant) = not_before {
 				row.set_not_before(*instant);
 			}
 			row.set_timestamps(now, now);
-			if let Some(time) = event.at(index).map_or_else(
-				|| resolve_time(&target.queue.name, &target.queue.time, shape, &row, now),
-				|time| Ok(Some(time)),
-			)? {
+			if let Some(time) = times.inserted(index, &row, now)? {
 				row.set_time(time);
 			}
 			encoded.push(row.freeze_bytes());

@@ -79,7 +79,7 @@ use crate::{
 		instruction::dml::{
 			coerce::{InputFragments, series_key},
 			shape::get_or_create_series_shape,
-			time::{EventColumn, populator_index, resolve_time_for_update},
+			time::{RowTime, populator_index},
 		},
 		services::Services,
 		volcano::{
@@ -213,7 +213,12 @@ pub(crate) fn update_series(
 		shape.write_columns(&mut builders, &views)?;
 		enforce_old_row_policies(services, symbols, txn, &target_data, &storage_keys, row_numbers, &shape)?;
 		let now = services.runtime_context.clock.now();
-		let event = EventColumn::new(populator_index(&series.time, &shape).map(|index| views[index].clone()));
+		let times = RowTime::new(
+			&series.name,
+			&series.time,
+			&shape,
+			populator_index(&series.time, &shape).map(|index| views[index].clone()),
+		);
 
 		let mut found = Vec::with_capacity(row_count);
 		let mut found_builders = Vec::with_capacity(row_count);
@@ -226,18 +231,7 @@ pub(crate) fn update_series(
 			let old_created_at = EncodedSeriesRow::view(&pre).created_at();
 			let old_time = EncodedSeriesRow::view(&pre).time();
 			builder.set_timestamps(old_created_at, now);
-			if let Some(time) = event.at(row).map_or_else(
-				|| {
-					resolve_time_for_update(
-						&series.name,
-						&series.time,
-						&shape,
-						builder.as_slice(),
-						old_time,
-					)
-				},
-				|time| Ok(Some(time)),
-			)? {
+			if let Some(time) = times.updated(row, builder.as_slice(), old_time)? {
 				builder.set_time(time);
 			}
 			found.push(row);

@@ -50,55 +50,104 @@ impl<'v> EventColumn<'v> {
 	}
 }
 
-pub(crate) fn resolve_time(
-	object: &str,
-	time: &TimeSource,
-	shape: &RowShape,
-	row: &[u8],
-	arrival: DateTime,
-) -> Result<Option<DateTime>> {
-	match time {
-		TimeSource::None => Ok(None),
-		TimeSource::Processing => Ok(Some(arrival)),
-		TimeSource::Event {
-			ts,
-		} => resolve_populator(object, ts, shape, row).map(Some),
-	}
+pub(crate) struct RowTime<'a> {
+	object: &'a str,
+	shape: &'a RowShape,
+	source: Source<'a>,
 }
 
-pub(crate) fn resolve_time_for_update(
-	object: &str,
-	time: &TimeSource,
-	shape: &RowShape,
-	row: &[u8],
-	previous_time: Option<DateTime>,
-) -> Result<Option<DateTime>> {
-	match time {
-		TimeSource::None => Ok(None),
-		TimeSource::Processing => Ok(previous_time),
-		TimeSource::Event {
-			ts,
-		} => resolve_populator(object, ts, shape, row).map(Some),
-	}
+enum Source<'a> {
+	None,
+	Processing,
+	Event {
+		ts: &'a str,
+		field: Option<usize>,
+		values: EventColumn<'a>,
+	},
 }
 
-fn resolve_populator(object: &str, ts: &str, shape: &RowShape, row: &[u8]) -> Result<DateTime> {
-	let index = shape.find_field_index(ts).ok_or_else(|| EngineError::TimePopulatorMissing {
-		object: object.to_string(),
-		column: ts.to_string(),
-	})?;
+impl<'a> RowTime<'a> {
+	pub(crate) fn new(
+		object: &'a str,
+		time: &'a TimeSource,
+		shape: &'a RowShape,
+		view: Option<ColumnView<'a>>,
+	) -> Self {
+		let source = match time {
+			TimeSource::None => Source::None,
+			TimeSource::Processing => Source::Processing,
+			TimeSource::Event {
+				ts,
+			} => Source::Event {
+				ts,
+				field: shape.find_field_index(ts),
+				values: EventColumn::new(view),
+			},
+		};
+		Self {
+			object,
+			shape,
+			source,
+		}
+	}
 
-	if *shape.fields()[index].constraint.get_type().inner_type() == ValueType::DateTime
-		&& shape.is_defined(row, index)
-	{
-		return Ok(shape.get::<DateTime>(row, index));
+	pub(crate) fn inserted(&self, index: usize, row: &[u8], arrival: DateTime) -> Result<Option<DateTime>> {
+		match &self.source {
+			Source::None => Ok(None),
+			Source::Processing => Ok(Some(arrival)),
+			Source::Event {
+				ts,
+				field,
+				values,
+			} => self.populated(ts, *field, values, index, row).map(Some),
+		}
 	}
-	Err(EngineError::TimePopulatorNotDateTime {
-		object: object.to_string(),
-		column: ts.to_string(),
-		found: format!("{:?}", shape.get_value(row, index)),
+
+	pub(crate) fn updated(
+		&self,
+		index: usize,
+		row: &[u8],
+		previous_time: Option<DateTime>,
+	) -> Result<Option<DateTime>> {
+		match &self.source {
+			Source::None => Ok(None),
+			Source::Processing => Ok(previous_time),
+			Source::Event {
+				ts,
+				field,
+				values,
+			} => self.populated(ts, *field, values, index, row).map(Some),
+		}
 	}
-	.into())
+
+	fn populated(
+		&self,
+		ts: &str,
+		field: Option<usize>,
+		values: &EventColumn<'_>,
+		index: usize,
+		row: &[u8],
+	) -> Result<DateTime> {
+		if let Some(time) = values.at(index) {
+			return Ok(time);
+		}
+		let field = field.ok_or_else(|| EngineError::TimePopulatorMissing {
+			object: self.object.to_string(),
+			column: ts.to_string(),
+		})?;
+		let shape = self.shape;
+		if *shape.fields()[field].constraint.get_type().inner_type() == ValueType::DateTime
+			&& shape.is_defined(row, field)
+		{
+			return Ok(shape.get::<DateTime>(row, field));
+		}
+		Err(EngineError::TimePopulatorNotDateTime {
+			object: self.object.to_string(),
+			column: ts.to_string(),
+			found: format!("{:?}", shape.get_value(row, field)),
+		}
+		.into())
+	}
 }
 
 #[cfg(test)]
@@ -150,7 +199,8 @@ mod tests {
 	}
 
 	fn unwrapped(object: &str, time: &TimeSource, shape: &RowShape, row: &[u8], arrival_nanos: i64) -> i64 {
-		resolve_time(object, time, shape, row, at_nanos(arrival_nanos))
+		RowTime::new(object, time, shape, None)
+			.inserted(0, row, at_nanos(arrival_nanos))
 			.expect("resolution must succeed")
 			.expect("a timed object must produce a #time")
 			.to_nanos()
@@ -163,14 +213,9 @@ mod tests {
 		// the age of the corpus.
 		let shape = shape();
 
-		let resolved = resolve_time(
-			"tokens",
-			&TimeSource::None,
-			&shape,
-			&encoded_bytes(&shape, BLOCK_TIME),
-			at_nanos(ARRIVAL),
-		)
-		.expect("resolution must succeed");
+		let resolved = RowTime::new("tokens", &TimeSource::None, &shape, None)
+			.inserted(0, &encoded_bytes(&shape, BLOCK_TIME), at_nanos(ARRIVAL))
+			.expect("resolution must succeed");
 
 		assert_eq!(resolved, None, "a time-less object must withhold #time rather than borrow the wall clock");
 	}
@@ -257,7 +302,8 @@ mod tests {
 			ts: "no_such_column".to_string(),
 		};
 
-		let err = resolve_time("trades", &time, &shape, &encoded_bytes(&shape, BLOCK_TIME), at_nanos(ARRIVAL))
+		let err = RowTime::new("trades", &time, &shape, None)
+			.inserted(0, &encoded_bytes(&shape, BLOCK_TIME), at_nanos(ARRIVAL))
 			.expect_err("an absent populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_001");
@@ -271,7 +317,8 @@ mod tests {
 			ts: "signature".to_string(),
 		};
 
-		let err = resolve_time("trades", &time, &shape, &encoded_bytes(&shape, BLOCK_TIME), at_nanos(ARRIVAL))
+		let err = RowTime::new("trades", &time, &shape, None)
+			.inserted(0, &encoded_bytes(&shape, BLOCK_TIME), at_nanos(ARRIVAL))
 			.expect_err("a utf8 populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_002");
@@ -286,7 +333,8 @@ mod tests {
 		shape.set_value(&mut r, 0, &Value::Utf8("sig".to_string()));
 		shape.set_none(&mut r, 1);
 
-		let err = resolve_time("trades", &event(), &shape, &r, at_nanos(ARRIVAL))
+		let err = RowTime::new("trades", &event(), &shape, None)
+			.inserted(0, &r, at_nanos(ARRIVAL))
 			.expect_err("a none populator must not resolve");
 
 		assert_eq!(err.diagnostic().code, "TIME_002");
@@ -301,7 +349,8 @@ mod tests {
 		row: &[u8],
 		previous_time_nanos: i64,
 	) -> i64 {
-		resolve_time_for_update(object, time, shape, row, Some(at_nanos(previous_time_nanos)))
+		RowTime::new(object, time, shape, None)
+			.updated(0, row, Some(at_nanos(previous_time_nanos)))
 			.expect("resolution must succeed")
 			.expect("a timed object must keep a #time across an update")
 			.to_nanos()
@@ -315,14 +364,9 @@ mod tests {
 		let shape = shape();
 
 		assert_eq!(
-			resolve_time_for_update(
-				"tokens",
-				&TimeSource::None,
-				&shape,
-				&encoded_bytes(&shape, CORRECTED_TIME),
-				None
-			)
-			.unwrap(),
+			RowTime::new("tokens", &TimeSource::None, &shape, None)
+				.updated(0, &encoded_bytes(&shape, CORRECTED_TIME), None)
+				.unwrap(),
 			None
 		);
 	}
@@ -391,20 +435,16 @@ mod tests {
 		let absent = TimeSource::Event {
 			ts: "no_such_column".to_string(),
 		};
-		let err = resolve_time_for_update(
-			"trades",
-			&absent,
-			&shape,
-			&encoded_bytes(&shape, CORRECTED_TIME),
-			Some(at_nanos(BLOCK_TIME)),
-		)
-		.expect_err("an absent populator must not resolve on update");
+		let err = RowTime::new("trades", &absent, &shape, None)
+			.updated(0, &encoded_bytes(&shape, CORRECTED_TIME), Some(at_nanos(BLOCK_TIME)))
+			.expect_err("an absent populator must not resolve on update");
 		assert_eq!(err.diagnostic().code, "TIME_001");
 
 		let mut none_row = shape.allocate_table();
 		shape.set_value(&mut none_row, 0, &Value::Utf8("sig".to_string()));
 		shape.set_none(&mut none_row, 1);
-		let err = resolve_time_for_update("trades", &event(), &shape, &none_row, Some(at_nanos(BLOCK_TIME)))
+		let err = RowTime::new("trades", &event(), &shape, None)
+			.updated(0, &none_row, Some(at_nanos(BLOCK_TIME)))
 			.expect_err("a none populator must not resolve on update");
 		assert_eq!(err.diagnostic().code, "TIME_002");
 	}
@@ -486,7 +526,10 @@ mod tests {
 		let views: Vec<ColumnView<'_>> =
 			columns.iter().map(|column| ColumnView::try_from(column).expect("the view reads")).collect();
 		let rows = written(shape, &views);
-		let event = EventColumn::new(populator_index(time, shape).map(|index| views[index].clone()));
+		let populator = populator_index(time, shape);
+		let event = EventColumn::new(populator.map(|index| views[index].clone()));
+		let batch = RowTime::new(object, time, shape, populator.map(|index| views[index].clone()));
+		let per_row = RowTime::new(object, time, shape, None);
 		let arrival = at_nanos(ARRIVAL);
 		let previous = Some(at_nanos(BLOCK_TIME));
 		let mut outcomes = Vec::new();
@@ -495,22 +538,13 @@ mod tests {
 			if event.at(index).is_some() {
 				hits.push(index);
 			}
-			let insert = event
-				.at(index)
-				.map_or_else(|| resolve_time(object, time, shape, row, arrival), |time| Ok(Some(time)));
-			let update = event.at(index).map_or_else(
-				|| resolve_time_for_update(object, time, shape, row, previous),
-				|time| Ok(Some(time)),
-			);
+			let insert = batch.inserted(index, row, arrival);
+			let update = batch.updated(index, row, previous);
 			let (insert, update) = (outcome(insert), outcome(update));
-			assert_eq!(
-				insert,
-				outcome(resolve_time(object, time, shape, row, arrival)),
-				"{object} row {index}"
-			);
+			assert_eq!(insert, outcome(per_row.inserted(index, row, arrival)), "{object} row {index}");
 			assert_eq!(
 				update,
-				outcome(resolve_time_for_update(object, time, shape, row, previous)),
+				outcome(per_row.updated(index, row, previous)),
 				"{object} update row {index}"
 			);
 			outcomes.push(insert);
@@ -624,5 +658,22 @@ mod tests {
 			batch_outcomes("trades", &at, &dictionary, &columns),
 			(found.iter().map(|text| Err(("TIME_002".to_string(), text.clone()))).collect(), vec![])
 		);
+	}
+
+	#[test]
+	fn a_written_row_takes_its_time_from_the_column_not_from_a_decode_of_the_row() {
+		// The batch reads the populator once per column; decoding every row again is the per-row
+		// path this resolver replaced, so a row whose bytes lack the value must still get it.
+		let shape = shape();
+		let column = datetimes_of("block_time", &[Some(BLOCK_TIME)]);
+		let view = ColumnView::try_from(&column).expect("the view reads");
+		let mut row = shape.allocate_table();
+		shape.set_value(&mut row, 0, &Value::Utf8("sig".to_string()));
+		shape.set_none(&mut row, 1);
+		let time = event();
+		let times = RowTime::new("trades", &time, &shape, Some(view));
+
+		assert_eq!(outcome(times.inserted(0, &row, at_nanos(ARRIVAL))), Ok(Some(BLOCK_TIME)));
+		assert_eq!(outcome(times.updated(0, &row, Some(at_nanos(CORRECTED_TIME)))), Ok(Some(BLOCK_TIME)));
 	}
 }

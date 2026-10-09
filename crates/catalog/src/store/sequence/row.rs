@@ -16,10 +16,6 @@ use crate::{Result, store::sequence::generator::u64::GeneratorU64};
 pub struct RowSequence {}
 
 impl RowSequence {
-	pub(crate) fn next_row_number(txn: &mut impl SequenceTransaction, table: TableId) -> Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::new(StorageId::from(table)), None).map(RowNumber)
-	}
-
 	pub(crate) fn next_row_number_batch(
 		txn: &mut impl SequenceTransaction,
 		table: TableId,

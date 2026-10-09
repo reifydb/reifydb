@@ -84,7 +84,7 @@ use crate::{
 	vm::{
 		instruction::dml::{
 			coerce::InputFragments,
-			time::{EventColumn, populator_index, resolve_time},
+			time::{RowTime, populator_index},
 		},
 		services::Services,
 		volcano::{
@@ -238,13 +238,11 @@ pub(crate) fn insert_series(
 		}
 		shape.write_columns(&mut batch_builders, &views)?;
 		let now = services.runtime_context.clock.now();
-		let event = EventColumn::new(populator.map(|index| views[index].clone()));
+		let times =
+			RowTime::new(&series.name, &series.time, &shape, populator.map(|index| views[index].clone()));
 		for (index, builder) in batch_builders.iter_mut().enumerate() {
 			builder.set_timestamps(now, now);
-			if let Some(time) = event.at(index).map_or_else(
-				|| resolve_time(&series.name, &series.time, &shape, builder, now),
-				|time| Ok(Some(time)),
-			)? {
+			if let Some(time) = times.inserted(index, builder, now)? {
 				builder.set_time(time);
 			}
 		}

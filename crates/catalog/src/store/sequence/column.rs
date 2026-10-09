@@ -29,29 +29,6 @@ use crate::{
 pub struct ColumnSequence {}
 
 impl ColumnSequence {
-	pub(crate) fn next_value(
-		txn: &mut impl SequenceTransaction,
-		object: impl Into<ObjectId>,
-		column: ColumnId,
-	) -> Result<Value> {
-		let column = CatalogStore::get_column(&mut txn.as_transaction(), column)?;
-		let key = ColumnSequenceKey::new(object, column.id);
-
-		Ok(match column.constraint.get_type() {
-			ValueType::Int1 => Value::Int1(GeneratorI8::next(txn, &key, None)?),
-			ValueType::Int2 => Value::Int2(GeneratorI16::next(txn, &key, None)?),
-			ValueType::Int4 => Value::Int4(GeneratorI32::next(txn, &key, None)?),
-			ValueType::Int8 => Value::Int8(GeneratorI64::next(txn, &key, None)?),
-			ValueType::Int16 => Value::Int16(GeneratorI128::next(txn, &key, None)?),
-			ValueType::Uint1 => Value::Uint1(GeneratorU8::next(txn, &key, None)?),
-			ValueType::Uint2 => Value::Uint2(GeneratorU16::next(txn, &key, None)?),
-			ValueType::Uint4 => Value::Uint4(GeneratorU32::next(txn, &key, None)?),
-			ValueType::Uint8 => Value::Uint8(GeneratorU64::next(txn, &key, None)?),
-			ValueType::Uint16 => Value::Uint16(GeneratorU128::next(txn, &key, None)?),
-			_ => Value::none(),
-		})
-	}
-
 	pub(crate) fn next_values(
 		txn: &mut impl SequenceTransaction,
 		object: impl Into<ObjectId>,
