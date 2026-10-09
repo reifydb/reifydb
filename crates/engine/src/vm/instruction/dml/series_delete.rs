@@ -237,6 +237,7 @@ fn drive_series_delete_input(
 		let tags = series_delete_tags(&columns, has_tag, row_count)?;
 		let mut removed = SeriesRemovedRows::default();
 		let mut removals: Vec<(TaggedKey, EncodedBytes, bool)> = Vec::new();
+		let mut found = Vec::new();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let sequence = u64::from(row_number);
 			let key_value = keys[row_idx];
@@ -268,10 +269,18 @@ fn drive_series_delete_input(
 			let Some(pre_entry) = txn.get(&key)? else {
 				continue;
 			};
-			let encoded_bytes = pre_entry.bytes;
-			let row_number = RowNumber::from(sequence);
-
-			let committed = txn.get_committed(&key)?.map(|v| v.bytes);
+			found.push((row_idx, key, pre_entry.bytes, partition, key_value, RowNumber::from(sequence)));
+		}
+		let committed_rows = if found.is_empty() {
+			Vec::new()
+		} else {
+			let found_keys: Vec<TaggedKey> = found.iter().map(|(_, key, ..)| key.clone()).collect();
+			txn.get_committed_many(&found_keys)?
+		};
+		for ((row_idx, key, encoded_bytes, partition, key_value, row_number), committed) in
+			found.into_iter().zip(committed_rows)
+		{
+			let committed = committed.map(|v| v.bytes);
 			let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_bytes.clone());
 
 			if has_returning {

@@ -1,14 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{BTreeSet, HashMap},
+	sync::Arc,
+};
 
 use arrow_array::RecordBatch;
-use reifydb_codec::row::{
-	bytes::EncodedBytes,
-	pod::EncodedPodRow,
-	shape::RowShape,
-	table::{EncodedTableRow, EncodedTableRowBuilder},
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{
+		bytes::EncodedBytes,
+		pod::EncodedPodRow,
+		shape::RowShape,
+		table::{EncodedTableRow, EncodedTableRowBuilder},
+	},
 };
 use reifydb_core::{
 	error::diagnostic::{
@@ -29,7 +35,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
-	key::catalog::IndexEntryKey,
+	key::{any::TaggedKey, catalog::IndexEntryKey},
 	partition::PartitionError,
 	value::batch::single_row,
 };
@@ -55,11 +61,12 @@ use super::{
 	primary_key::{self, PrimaryKeyEncoder},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_table_shape,
+	table_insert::cast_partitions,
 };
 use crate::{
 	Result,
 	error::EngineError,
-	partition::{row_key_from_partition, table_partition_of_row},
+	partition::row_key_from_partition,
 	policy::PolicyEvaluator,
 	transaction::operation::table::TableOperations,
 	vm::{
@@ -254,6 +261,9 @@ fn run_table_update(
 		let now = exec.services.runtime_context.clock.now();
 		let event = EventColumn::new(populator.map(|index| batches[0].view(index)).transpose()?);
 
+		let new_partitions =
+			cast_partitions(&target.table.columns, &target.table.partition_by, &batches[0])?.rows;
+		let mut rotation = KeyRotation::default();
 		let mut prepared_rows: Vec<EncodedTableRowBuilder> = Vec::with_capacity(row_count);
 		let mut partitions_out: Vec<Partition> = Vec::with_capacity(row_count);
 		let mut pre_by_row: HashMap<RowNumber, EncodedBytes> = HashMap::new();
@@ -261,8 +271,7 @@ fn run_table_update(
 			let partition = sidecar_partitions.get(row_idx).copied();
 
 			if let Some(old) = partition {
-				let new_partition = table_partition_of_row(target.table, shape, &row);
-				if new_partition != old {
+				if new_partitions[row_idx] != old {
 					return Err(PartitionError::ImmutablePartitionColumn {
 						object: ObjectId::Table(target.table.id),
 					}
@@ -276,7 +285,7 @@ fn run_table_update(
 					Some(encoder) => encoder,
 					None => encoder.insert(PrimaryKeyEncoder::new(pk_def, target.table)?),
 				};
-				rotate_table_pk_index(txn, target, shape, pk_def, encoder, old_row, &row, row_number)?;
+				rotation.rotate(txn, target, shape, pk_def, encoder, old_row, &row, row_number)?;
 			}
 
 			if has_returning {
@@ -307,7 +316,15 @@ fn run_table_update(
 			}
 		}
 
-		let stored = txn.update_table(target.table, &row_numbers, &partitions_out, &mut prepared_rows)?;
+		rotation.write(txn)?;
+		let key_columns = encoder.as_ref().map(PrimaryKeyEncoder::key_columns).unwrap_or_default();
+		let stored = txn.update_table(
+			target.table,
+			&row_numbers,
+			&partitions_out,
+			&mut prepared_rows,
+			&key_columns,
+		)?;
 		updated_count += stored.len() as u64;
 		if has_returning {
 			for (row_number, _) in &stored {
@@ -346,29 +363,63 @@ fn enforce_old_row_policies(
 	)
 }
 
-#[allow(clippy::too_many_arguments)]
-#[inline]
-fn rotate_table_pk_index(
-	txn: &mut Transaction<'_>,
-	target: &TableTarget<'_>,
-	shape: &RowShape,
-	pk_def: &PrimaryKey,
-	encoder: &PrimaryKeyEncoder,
-	pre_row: &[u8],
-	new_row: &[u8],
-	row_number: RowNumber,
-) -> Result<()> {
-	let pre_key = encoder.encode(shape, pre_row);
-	txn.remove(&IndexEntryKey::new(target.table.id, IndexId::primary(pk_def.id), pre_key))?;
+#[derive(Default)]
+struct KeyRotation {
+	removed: BTreeSet<EncodedKey>,
+	added: BTreeSet<EncodedKey>,
+	removes: Vec<(TaggedKey, Option<EncodedBytes>)>,
+	sets: Vec<(TaggedKey, EncodedBytes)>,
+}
 
-	let post_key = encoder.encode(shape, new_row);
-	let post_entry_key = IndexEntryKey::new(target.table.id, IndexId::primary(pk_def.id), post_key);
-	if txn.contains(&post_entry_key)? {
-		let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
-		return_error!(primary_key_violation(target.fragment.clone(), target.table.name.clone(), key_columns));
+impl KeyRotation {
+	#[allow(clippy::too_many_arguments)]
+	fn rotate(
+		&mut self,
+		txn: &mut Transaction<'_>,
+		target: &TableTarget<'_>,
+		shape: &RowShape,
+		pk_def: &PrimaryKey,
+		encoder: &PrimaryKeyEncoder,
+		pre_row: &[u8],
+		new_row: &[u8],
+		row_number: RowNumber,
+	) -> Result<()> {
+		let index = IndexId::primary(pk_def.id);
+		let pre_key: TaggedKey =
+			IndexEntryKey::new(target.table.id, index, encoder.encode(shape, pre_row)).into();
+		let pre_encoded = pre_key.encode();
+		self.added.remove(&pre_encoded);
+		self.removed.insert(pre_encoded);
+		self.removes.push((pre_key, None));
+
+		let post_key: TaggedKey =
+			IndexEntryKey::new(target.table.id, index, encoder.encode(shape, new_row)).into();
+		let post_encoded = post_key.encode();
+		let taken = if self.added.contains(&post_encoded) {
+			true
+		} else if self.removed.contains(&post_encoded) {
+			false
+		} else {
+			txn.contains(&post_key)?
+		};
+		if taken {
+			let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
+			return_error!(primary_key_violation(
+				target.fragment.clone(),
+				target.table.name.clone(),
+				key_columns
+			));
+		}
+		self.removed.remove(&post_encoded);
+		self.added.insert(post_encoded);
+		self.sets.push((post_key, EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes()));
+		Ok(())
 	}
-	txn.set(&post_entry_key, EncodedPodRow::new(&u64::from(row_number).to_be_bytes()).into_bytes())?;
-	Ok(())
+
+	fn write(self, txn: &mut Transaction<'_>) -> Result<()> {
+		txn.remove_many(self.removes)?;
+		txn.set_many(self.sets)
+	}
 }
 
 #[inline]

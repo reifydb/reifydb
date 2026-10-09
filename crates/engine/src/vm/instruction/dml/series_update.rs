@@ -54,6 +54,7 @@ use reifydb_value::{
 		column_view::{ColumnView, ViewData},
 		datetime::DateTime,
 		identity::IdentityId,
+		partition::Partition,
 		row_number::RowNumber,
 		system_columns::{column_view, partitions, row_numbers, user_columns},
 	},
@@ -73,7 +74,7 @@ use crate::{
 	Result,
 	error::EngineError,
 	policy::PolicyEvaluator,
-	transaction::operation::series::series_partition_of_bytes,
+	transaction::operation::series::moved_series_partitions,
 	vm::{
 		instruction::dml::{
 			coerce::{InputFragments, series_key},
@@ -249,18 +250,25 @@ pub(crate) fn update_series(
 		}
 		let posts: Vec<EncodedBytes> =
 			found_builders.into_iter().map(|builder| builder.freeze_bytes()).collect();
-		for (&row, post) in found.iter().zip(&posts) {
-			let storage_key = &storage_keys[row];
-			if partitioned && series_partition_of_bytes(&series, &shape, post) != sidecar_partitions[row] {
-				return Err(PartitionError::ImmutablePartitionColumn {
-					object: ObjectId::series(series.id),
+		let expected: Vec<Partition> = if partitioned {
+			found.iter().map(|&row| sidecar_partitions[row]).collect()
+		} else {
+			Vec::new()
+		};
+		if moved_series_partitions(&series, &shape, &expected, &posts)? {
+			return Err(PartitionError::ImmutablePartitionColumn {
+				object: ObjectId::series(series.id),
+			}
+			.into());
+		}
+		if !posts.is_empty() {
+			let written_keys: Vec<TaggedKey> = found.iter().map(|&row| storage_keys[row].clone()).collect();
+			for (key, committed) in written_keys.iter().zip(txn.get_committed_many(&written_keys)?) {
+				if committed.is_some() {
+					txn.mark_preexisting(key)?;
 				}
-				.into());
 			}
-			if txn.get_committed(storage_key)?.is_some() {
-				txn.mark_preexisting(storage_key)?;
-			}
-			txn.set(storage_key, post.clone())?;
+			txn.set_many(written_keys.into_iter().zip(posts.iter().cloned()).collect())?;
 		}
 		if !posts.is_empty() && !txn.series_row_post_update_interceptors().is_empty() {
 			SeriesRowInterceptor::post_update(txn, &series, &posts, &pres)?;

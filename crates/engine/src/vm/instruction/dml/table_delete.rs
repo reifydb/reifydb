@@ -207,6 +207,9 @@ fn run_table_delete_with_input(
 		}
 	}
 
+	if let Some(pk_index) = pk_index {
+		pk_index.write(txn)?;
+	}
 	let removed = txn.remove_from_table(target.table, &filtered_ids, &filtered_partitions)?;
 	let deleted_count = removed.len() as u64;
 	let returned_rows: Vec<(RowNumber, EncodedBytes)> = if has_returning {
@@ -290,6 +293,9 @@ fn run_table_delete_all(
 		}
 	}
 
+	if let Some(pk_index) = pk_index {
+		pk_index.write(txn)?;
+	}
 	let removed = txn.remove_from_table(table, &filtered_ids, &filtered_partitions)?;
 	let deleted_count = removed.len() as u64;
 	let returned_rows: Vec<(RowNumber, EncodedBytes)> = if has_returning {
@@ -304,6 +310,7 @@ struct PrimaryKeyIndex<'a> {
 	pk_def: &'a PrimaryKey,
 	encoder: Option<PrimaryKeyEncoder>,
 	shapes: HashMap<RowShapeFingerprint, RowShape>,
+	removes: Vec<(TaggedKey, Option<EncodedBytes>)>,
 }
 
 impl<'a> PrimaryKeyIndex<'a> {
@@ -312,6 +319,7 @@ impl<'a> PrimaryKeyIndex<'a> {
 			pk_def,
 			encoder: None,
 			shapes: HashMap::new(),
+			removes: Vec::new(),
 		}
 	}
 
@@ -342,8 +350,13 @@ impl<'a> PrimaryKeyIndex<'a> {
 			None => self.encoder.insert(PrimaryKeyEncoder::new(self.pk_def, table)?),
 		};
 		let index_key = encoder.encode(shape, values);
-		txn.remove(&IndexEntryKey::new(table.id, IndexId::primary(self.pk_def.id), index_key))?;
+		self.removes
+			.push((IndexEntryKey::new(table.id, IndexId::primary(self.pk_def.id), index_key).into(), None));
 		Ok(())
+	}
+
+	fn write(self, txn: &mut Transaction<'_>) -> Result<()> {
+		txn.remove_many(self.removes)
 	}
 }
 

@@ -446,6 +446,12 @@ impl CommandTransaction {
 	}
 
 	#[inline]
+	pub fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().remove_many(entries)
+	}
+
+	#[inline]
 	pub fn remove_unobserved<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_unobserved(key)
@@ -566,6 +572,10 @@ impl Write for CommandTransaction {
 	#[inline]
 	fn remove(&mut self, key: &TaggedKey) -> Result<()> {
 		CommandTransaction::remove(self, key)
+	}
+	#[inline]
+	fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+		CommandTransaction::remove_many(self, entries)
 	}
 	#[inline]
 	fn mark_preexisting(&mut self, key: &TaggedKey) -> Result<()> {

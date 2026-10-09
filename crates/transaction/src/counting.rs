@@ -11,6 +11,8 @@ pub struct KeyCounts {
 	pub contains: u64,
 	pub sets: u64,
 	pub batched: u64,
+	pub removes: u64,
+	pub batched_removes: u64,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -18,6 +20,7 @@ pub struct OpCounts {
 	keys: HashMap<KeyTag, KeyCounts>,
 	set_many_calls: u64,
 	get_committed_many_calls: u64,
+	remove_many_calls: u64,
 }
 
 impl OpCounts {
@@ -33,6 +36,10 @@ impl OpCounts {
 		self.get_committed_many_calls
 	}
 
+	pub fn remove_many_calls(&self) -> u64 {
+		self.remove_many_calls
+	}
+
 	pub(crate) fn key(&mut self, tag: KeyTag) -> &mut KeyCounts {
 		self.keys.entry(tag).or_default()
 	}
@@ -43,5 +50,9 @@ impl OpCounts {
 
 	pub(crate) fn get_committed_many_call(&mut self) {
 		self.get_committed_many_calls += 1;
+	}
+
+	pub(crate) fn remove_many_call(&mut self) {
+		self.remove_many_calls += 1;
 	}
 }

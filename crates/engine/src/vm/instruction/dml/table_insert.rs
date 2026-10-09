@@ -17,6 +17,7 @@ use reifydb_core::{
 	},
 	interface::{
 		catalog::{
+			column::Column,
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			object::ObjectId,
@@ -25,7 +26,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
-	partition::{NoneCell, partition_col_indices, partition_of, partitions_of_batch},
+	partition::{BatchPartitions, NoneCell, partition_col_indices, partition_of, partitions_of_batch},
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -135,24 +136,33 @@ pub(crate) struct EncodedTableRows {
 }
 
 pub(crate) fn table_batch_partitions(table: &Table, cast: &CastColumns, encoded: &mut EncodedTableRows) -> Result<()> {
-	let indices = partition_col_indices(&table.columns, &table.partition_by);
+	let batch = cast_partitions(&table.columns, &table.partition_by, cast)?;
+	encoded.partitions.extend(batch.rows);
+	encoded.distinct.extend(batch.distinct);
+	Ok(())
+}
+
+pub(crate) fn cast_partitions(
+	columns: &[Column],
+	partition_by: &[String],
+	cast: &CastColumns,
+) -> Result<BatchPartitions> {
+	let indices = partition_col_indices(columns, partition_by);
 	if indices.is_empty() {
-		return Ok(());
+		return Ok(BatchPartitions::default());
 	}
 	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
 	let batch = partitions_of_batch(&keys, NoneCell::Untyped);
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {
 			assert_eq!(
-				partition_of(&table.columns, &table.partition_by, values),
+				partition_of(columns, partition_by, values),
 				*partition,
 				"a batch partition must hash its values like the row-at-a-time partition"
 			);
 		}
 	}
-	encoded.partitions.extend(batch.rows);
-	encoded.distinct.extend(batch.distinct);
-	Ok(())
+	Ok(batch)
 }
 
 pub(crate) fn write_table_rows(

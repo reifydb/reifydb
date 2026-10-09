@@ -595,6 +595,10 @@ impl<'a> Transaction<'a> {
 		Write::remove(self.write_ops(), &key.clone().into())
 	}
 
+	pub fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+		Write::remove_many(self.write_ops(), entries)
+	}
+
 	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		Write::mark_preexisting(self.write_ops(), &key.clone().into())
 	}

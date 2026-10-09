@@ -29,7 +29,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
-	partition::{PartitionError, partition_col_indices, partition_of, partition_values},
+	partition::PartitionError,
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -53,6 +53,7 @@ use super::{
 	context::RingBufferTarget,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_ringbuffer_shape,
+	table_insert::cast_partitions,
 };
 use crate::{
 	Result,
@@ -139,6 +140,7 @@ pub(crate) fn update_ringbuffer(
 		let now = services.runtime_context.clock.now();
 		let event = EventColumn::new(populator.map(|index| batches[0].view(index)).transpose()?);
 
+		let new_partitions = cast_partitions(&ringbuffer.columns, &ringbuffer.partition_by, &batches[0])?.rows;
 		let mut ids = Vec::with_capacity(row_numbers.len());
 		let mut update_partitions = Vec::new();
 		let mut rows = Vec::with_capacity(row_numbers.len());
@@ -179,13 +181,7 @@ pub(crate) fn update_ringbuffer(
 			}
 
 			if !ringbuffer.partition_by.is_empty() {
-				let indices = partition_col_indices(&ringbuffer.columns, &ringbuffer.partition_by);
-				let new_partition = partition_of(
-					&ringbuffer.columns,
-					&ringbuffer.partition_by,
-					&partition_values(&shape, &row, &indices),
-				);
-				if Some(new_partition) != partition {
+				if Some(new_partitions[row_idx]) != partition {
 					return Err(PartitionError::ImmutablePartitionColumn {
 						object: ObjectId::ringbuffer(ringbuffer.id),
 					}

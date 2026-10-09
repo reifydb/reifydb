@@ -14,7 +14,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::any::TaggedKey,
-	partition::PartitionError,
+	partition::{PartitionError, partition_col_indices, partitions_of_rows},
 	row::row_shape_from_columns,
 	value::batch::from_encoded_bytes,
 };
@@ -30,10 +30,7 @@ use reifydb_value::{
 };
 use smallvec::smallvec;
 
-use crate::{
-	Result,
-	partition::{row_key_from_partition, table_partition_of_row},
-};
+use crate::{Result, partition::row_key_from_partition};
 
 fn build_table_insert_change(
 	table: &Table,
@@ -115,25 +112,26 @@ fn insert_rows<T: WithInterceptors + Write>(
 		return Ok(());
 	}
 
-	if !txn.table_row_pre_insert_interceptors().is_empty() {
+	let hooked = !txn.table_row_pre_insert_interceptors().is_empty();
+	let keys = if hooked {
 		let keys = key_cells(shape, rows, key_columns);
 		TableRowInterceptor::pre_insert(txn, table, ids, rows)?;
-		if rows.iter()
-			.zip(partitions)
-			.any(|(row, &partition)| table_partition_of_row(table, shape, row) != partition)
-		{
+		Some(keys)
+	} else {
+		None
+	};
+
+	let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
+
+	if let Some(keys) = keys {
+		if moved_partitions(table, shape, partitions, &frozen)? {
 			return Err(PartitionError::PartitionColumnChangedByHook {
 				object: ObjectId::Table(table.id),
 			}
 			.into());
 		}
-		if key_cells(shape, rows, key_columns) != keys {
-			let key_columns = key_columns.iter().map(|&index| table.columns[index].name.clone()).collect();
-			return_error!(primary_key_changed_by_hook(Fragment::None, table.name.clone(), key_columns));
-		}
+		refuse_changed_keys(table, shape, rows, key_columns, &keys)?;
 	}
-
-	let frozen: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
 
 	let mut entries: Vec<(TaggedKey, EncodedBytes)> = Vec::with_capacity(frozen.len() + index.len());
 	for (row_index, (row, &row_number)) in frozen.iter().zip(ids).enumerate() {
@@ -169,6 +167,50 @@ fn key_cells(shape: &RowShape, rows: &[EncodedTableRowBuilder], key_columns: &[u
 	rows.iter().flat_map(|row| key_columns.iter().map(|&index| shape.get_value(row, index))).collect()
 }
 
+fn refuse_changed_keys(
+	table: &Table,
+	shape: &RowShape,
+	rows: &[EncodedTableRowBuilder],
+	key_columns: &[usize],
+	keys: &[Value],
+) -> Result<()> {
+	if key_cells(shape, rows, key_columns) != keys {
+		let key_columns = key_columns.iter().map(|&index| table.columns[index].name.clone()).collect();
+		return_error!(primary_key_changed_by_hook(Fragment::None, table.name.clone(), key_columns));
+	}
+	Ok(())
+}
+
+fn moved_partitions(table: &Table, shape: &RowShape, partitions: &[Partition], rows: &[EncodedBytes]) -> Result<bool> {
+	let indices = partition_col_indices(&table.columns, &table.partition_by);
+	Ok(!indices.is_empty() && partitions_of_rows(shape, &indices, rows)? != partitions)
+}
+
+fn updated_rows<T: WithInterceptors>(
+	txn: &mut T,
+	table: &Table,
+	shape: &RowShape,
+	ids: &[RowNumber],
+	partitions: &[Partition],
+	rows: &mut [EncodedTableRowBuilder],
+	key_columns: &[usize],
+) -> Result<Vec<EncodedBytes>> {
+	if txn.table_row_pre_update_interceptors().is_empty() {
+		return Ok(rows.iter().map(|row| row.clone().freeze_bytes()).collect());
+	}
+	let keys = key_cells(shape, rows, key_columns);
+	TableRowInterceptor::pre_update(txn, table, ids, rows)?;
+	let posts: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
+	if moved_partitions(table, shape, partitions, &posts)? {
+		return Err(PartitionError::ImmutablePartitionColumn {
+			object: ObjectId::Table(table.id),
+		}
+		.into());
+	}
+	refuse_changed_keys(table, shape, rows, key_columns, &keys)?;
+	Ok(posts)
+}
+
 pub trait TableOperations {
 	fn insert_table(&mut self, table: &Table, shape: &RowShape, insert: TableInsert<'_>) -> Result<()>;
 
@@ -178,6 +220,7 @@ pub trait TableOperations {
 		ids: &[RowNumber],
 		partitions: &[Partition],
 		rows: &mut [EncodedTableRowBuilder],
+		key_columns: &[usize],
 	) -> Result<Vec<(RowNumber, EncodedBytes)>>;
 
 	fn remove_from_table(
@@ -199,6 +242,7 @@ impl TableOperations for CommandTransaction {
 		ids: &[RowNumber],
 		partitions: &[Partition],
 		rows: &mut [EncodedTableRowBuilder],
+		key_columns: &[usize],
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		if ids.is_empty() {
@@ -206,45 +250,37 @@ impl TableOperations for CommandTransaction {
 		}
 
 		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
+		let posts = updated_rows(self, table, &shape, ids, partitions, rows, key_columns)?;
 
-		TableRowInterceptor::pre_update(self, table, ids, rows)?;
-
-		if !table.partition_by.is_empty() {
-			for (idx, row) in rows.iter().enumerate() {
-				if let Some(&expected) = partitions.get(idx)
-					&& table_partition_of_row(table, &shape, row) != expected
-				{
-					return Err(PartitionError::ImmutablePartitionColumn {
-						object: ObjectId::Table(table.id),
-					}
-					.into());
-				}
-			}
-		}
-
+		let keys: Vec<TaggedKey> = ids
+			.iter()
+			.enumerate()
+			.map(|(idx, &row_number)| {
+				row_key_from_partition(table.id, partitions.get(idx).copied(), row_number)
+			})
+			.collect();
 		let mut matched_indices: Vec<usize> = Vec::with_capacity(ids.len());
 		let mut pres: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
-		for (idx, &row_number) in ids.iter().enumerate() {
-			let key = row_key_from_partition(table.id, partitions.get(idx).copied(), row_number);
-			let pre = match self.get(&key)? {
-				Some(v) => v.bytes,
-				None => continue,
-			};
-			if self.get_committed(&key)?.is_some() {
-				self.mark_preexisting(&key)?;
+		for (idx, key) in keys.iter().enumerate() {
+			if let Some(pre) = self.get(key)? {
+				matched_indices.push(idx);
+				pres.push(pre.bytes);
 			}
-			self.set(&key, rows[idx].clone().freeze())?;
-			matched_indices.push(idx);
-			pres.push(pre);
 		}
 
 		if matched_indices.is_empty() {
 			return Ok(Vec::new());
 		}
 
+		let matched_keys: Vec<TaggedKey> = matched_indices.iter().map(|&i| keys[i].clone()).collect();
+		for (key, committed) in matched_keys.iter().zip(self.get_committed_many(&matched_keys)?) {
+			if committed.is_some() {
+				self.mark_preexisting(key)?;
+			}
+		}
 		let matched_ids: Vec<RowNumber> = matched_indices.iter().map(|&i| ids[i]).collect();
-		let matched_posts: Vec<EncodedBytes> =
-			matched_indices.iter().map(|&i| rows[i].clone().freeze_bytes()).collect();
+		let matched_posts: Vec<EncodedBytes> = matched_indices.iter().map(|&i| posts[i].clone()).collect();
+		self.set_many(matched_keys.into_iter().zip(matched_posts.iter().cloned()).collect())?;
 
 		TableRowInterceptor::post_update(self, table, &matched_ids, &matched_posts, &pres)?;
 
@@ -264,37 +300,41 @@ impl TableOperations for CommandTransaction {
 		}
 
 		let mut matched_ids: Vec<RowNumber> = Vec::with_capacity(ids.len());
-		let mut matched_partitions: Vec<Option<Partition>> = Vec::with_capacity(ids.len());
+		let mut matched_keys: Vec<TaggedKey> = Vec::with_capacity(ids.len());
 		let mut displayed_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
-		let mut pre_for_cdc_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
 		for (idx, &row_number) in ids.iter().enumerate() {
-			let partition = partitions.get(idx).copied();
-			let key = row_key_from_partition(table.id, partition, row_number);
+			let key = row_key_from_partition(table.id, partitions.get(idx).copied(), row_number);
 			let displayed = match self.get(&key)? {
 				Some(v) => v.bytes,
 				None => continue,
 			};
-			let committed = self.get_committed(&key)?.map(|v| v.bytes);
-			let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
 			matched_ids.push(row_number);
-			matched_partitions.push(partition);
+			matched_keys.push(key);
 			displayed_bytes_vec.push(displayed);
-			pre_for_cdc_bytes_vec.push(pre_for_cdc);
 		}
 
 		if matched_ids.is_empty() {
 			return Ok(Vec::new());
 		}
 
+		let committed: Vec<Option<EncodedBytes>> =
+			self.get_committed_many(&matched_keys)?.into_iter().map(|row| row.map(|v| v.bytes)).collect();
+		let pre_for_cdc_bytes_vec: Vec<EncodedBytes> = committed
+			.iter()
+			.zip(&displayed_bytes_vec)
+			.map(|(committed, displayed)| committed.clone().unwrap_or_else(|| displayed.clone()))
+			.collect();
+
 		TableRowInterceptor::pre_delete(self, table, &matched_ids)?;
 
-		for (i, &row_number) in matched_ids.iter().enumerate() {
-			let key = row_key_from_partition(table.id, matched_partitions[i], row_number);
-			if self.get_committed(&key)?.is_some() {
-				self.mark_preexisting(&key)?;
+		for (key, committed) in matched_keys.iter().zip(&committed) {
+			if committed.is_some() {
+				self.mark_preexisting(key)?;
 			}
-			self.remove_with_pre(&key, pre_for_cdc_bytes_vec[i].clone())?;
 		}
+		self.remove_many(
+			matched_keys.into_iter().zip(pre_for_cdc_bytes_vec.iter().cloned().map(Some)).collect(),
+		)?;
 
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_bytes_vec)?;
 
@@ -316,6 +356,7 @@ impl TableOperations for AdminTransaction {
 		ids: &[RowNumber],
 		partitions: &[Partition],
 		rows: &mut [EncodedTableRowBuilder],
+		key_columns: &[usize],
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 		if ids.is_empty() {
@@ -323,45 +364,37 @@ impl TableOperations for AdminTransaction {
 		}
 
 		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
+		let posts = updated_rows(self, table, &shape, ids, partitions, rows, key_columns)?;
 
-		TableRowInterceptor::pre_update(self, table, ids, rows)?;
-
-		if !table.partition_by.is_empty() {
-			for (idx, row) in rows.iter().enumerate() {
-				if let Some(&expected) = partitions.get(idx)
-					&& table_partition_of_row(table, &shape, row) != expected
-				{
-					return Err(PartitionError::ImmutablePartitionColumn {
-						object: ObjectId::Table(table.id),
-					}
-					.into());
-				}
-			}
-		}
-
+		let keys: Vec<TaggedKey> = ids
+			.iter()
+			.enumerate()
+			.map(|(idx, &row_number)| {
+				row_key_from_partition(table.id, partitions.get(idx).copied(), row_number)
+			})
+			.collect();
 		let mut matched_indices: Vec<usize> = Vec::with_capacity(ids.len());
 		let mut pres: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
-		for (idx, &row_number) in ids.iter().enumerate() {
-			let key = row_key_from_partition(table.id, partitions.get(idx).copied(), row_number);
-			let pre = match self.get(&key)? {
-				Some(v) => v.bytes,
-				None => continue,
-			};
-			if self.get_committed(&key)?.is_some() {
-				self.mark_preexisting(&key)?;
+		for (idx, key) in keys.iter().enumerate() {
+			if let Some(pre) = self.get(key)? {
+				matched_indices.push(idx);
+				pres.push(pre.bytes);
 			}
-			self.set(&key, rows[idx].clone().freeze())?;
-			matched_indices.push(idx);
-			pres.push(pre);
 		}
 
 		if matched_indices.is_empty() {
 			return Ok(Vec::new());
 		}
 
+		let matched_keys: Vec<TaggedKey> = matched_indices.iter().map(|&i| keys[i].clone()).collect();
+		for (key, committed) in matched_keys.iter().zip(self.get_committed_many(&matched_keys)?) {
+			if committed.is_some() {
+				self.mark_preexisting(key)?;
+			}
+		}
 		let matched_ids: Vec<RowNumber> = matched_indices.iter().map(|&i| ids[i]).collect();
-		let matched_posts: Vec<EncodedBytes> =
-			matched_indices.iter().map(|&i| rows[i].clone().freeze_bytes()).collect();
+		let matched_posts: Vec<EncodedBytes> = matched_indices.iter().map(|&i| posts[i].clone()).collect();
+		self.set_many(matched_keys.into_iter().zip(matched_posts.iter().cloned()).collect())?;
 
 		TableRowInterceptor::post_update(self, table, &matched_ids, &matched_posts, &pres)?;
 
@@ -381,37 +414,41 @@ impl TableOperations for AdminTransaction {
 		}
 
 		let mut matched_ids: Vec<RowNumber> = Vec::with_capacity(ids.len());
-		let mut matched_partitions: Vec<Option<Partition>> = Vec::with_capacity(ids.len());
+		let mut matched_keys: Vec<TaggedKey> = Vec::with_capacity(ids.len());
 		let mut displayed_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
-		let mut pre_for_cdc_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(ids.len());
 		for (idx, &row_number) in ids.iter().enumerate() {
-			let partition = partitions.get(idx).copied();
-			let key = row_key_from_partition(table.id, partition, row_number);
+			let key = row_key_from_partition(table.id, partitions.get(idx).copied(), row_number);
 			let displayed = match self.get(&key)? {
 				Some(v) => v.bytes,
 				None => continue,
 			};
-			let committed = self.get_committed(&key)?.map(|v| v.bytes);
-			let pre_for_cdc = committed.clone().unwrap_or_else(|| displayed.clone());
 			matched_ids.push(row_number);
-			matched_partitions.push(partition);
+			matched_keys.push(key);
 			displayed_bytes_vec.push(displayed);
-			pre_for_cdc_bytes_vec.push(pre_for_cdc);
 		}
 
 		if matched_ids.is_empty() {
 			return Ok(Vec::new());
 		}
 
+		let committed: Vec<Option<EncodedBytes>> =
+			self.get_committed_many(&matched_keys)?.into_iter().map(|row| row.map(|v| v.bytes)).collect();
+		let pre_for_cdc_bytes_vec: Vec<EncodedBytes> = committed
+			.iter()
+			.zip(&displayed_bytes_vec)
+			.map(|(committed, displayed)| committed.clone().unwrap_or_else(|| displayed.clone()))
+			.collect();
+
 		TableRowInterceptor::pre_delete(self, table, &matched_ids)?;
 
-		for (i, &row_number) in matched_ids.iter().enumerate() {
-			let key = row_key_from_partition(table.id, matched_partitions[i], row_number);
-			if self.get_committed(&key)?.is_some() {
-				self.mark_preexisting(&key)?;
+		for (key, committed) in matched_keys.iter().zip(&committed) {
+			if committed.is_some() {
+				self.mark_preexisting(key)?;
 			}
-			self.remove_with_pre(&key, pre_for_cdc_bytes_vec[i].clone())?;
 		}
+		self.remove_many(
+			matched_keys.into_iter().zip(pre_for_cdc_bytes_vec.iter().cloned().map(Some)).collect(),
+		)?;
 
 		TableRowInterceptor::post_delete(self, table, &matched_ids, &pre_for_cdc_bytes_vec)?;
 
@@ -438,11 +475,12 @@ impl TableOperations for Transaction<'_> {
 		ids: &[RowNumber],
 		partitions: &[Partition],
 		rows: &mut [EncodedTableRowBuilder],
+		key_columns: &[usize],
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		match self {
-			Transaction::Command(txn) => txn.update_table(table, ids, partitions, rows),
-			Transaction::Admin(txn) => txn.update_table(table, ids, partitions, rows),
-			Transaction::Test(t) => t.inner.update_table(table, ids, partitions, rows),
+			Transaction::Command(txn) => txn.update_table(table, ids, partitions, rows, key_columns),
+			Transaction::Admin(txn) => txn.update_table(table, ids, partitions, rows, key_columns),
+			Transaction::Test(t) => t.inner.update_table(table, ids, partitions, rows, key_columns),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}

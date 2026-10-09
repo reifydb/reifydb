@@ -416,6 +416,12 @@ impl AdminTransaction {
 	}
 
 	#[inline]
+	pub fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().remove_many(entries)
+	}
+
+	#[inline]
 	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().mark_preexisting(key);
@@ -492,6 +498,10 @@ impl Write for AdminTransaction {
 	#[inline]
 	fn remove(&mut self, key: &TaggedKey) -> Result<()> {
 		AdminTransaction::remove(self, key)
+	}
+	#[inline]
+	fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+		AdminTransaction::remove_many(self, entries)
 	}
 	#[inline]
 	fn mark_preexisting(&mut self, key: &TaggedKey) -> Result<()> {

@@ -3,17 +3,14 @@
 
 use std::collections::HashMap;
 
-use reifydb_codec::row::shape::RowShape;
 use reifydb_core::{
-	interface::catalog::{id::TableId, object::ObjectId, table::Table},
+	interface::catalog::{id::TableId, object::ObjectId},
 	key::{
 		any::TaggedKey,
 		partition::PartitionKey,
 		row::{PartitionedRowKey, RowKey},
 	},
-	partition::{
-		PartitionError, partition_col_indices, partition_of, partition_values, registry_matches, registry_row,
-	},
+	partition::{PartitionError, registry_matches, registry_row},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -22,11 +19,6 @@ use reifydb_value::{
 };
 
 use crate::Result;
-
-pub fn table_partition_of_row(table: &Table, shape: &RowShape, row: &[u8]) -> Partition {
-	let indices = partition_col_indices(&table.columns, &table.partition_by);
-	partition_of(&table.columns, &table.partition_by, &partition_values(shape, row, &indices))
-}
 
 pub fn row_key_from_partition(table_id: TableId, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
 	match partition {

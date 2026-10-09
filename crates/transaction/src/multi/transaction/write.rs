@@ -334,6 +334,10 @@ impl MultiWriteTransaction {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.key(key.kind()).removes += 1;
+		}
 		let encoded = key.encode();
 		self.modify(
 			encoded,
@@ -356,6 +360,10 @@ impl MultiWriteTransaction {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.key(key.kind()).removes += 1;
+		}
 		let encoded = key.encode();
 		let announce = match self.get(&key)? {
 			Some(found) => RemoveAnnounce::Announced {
@@ -377,6 +385,70 @@ impl MultiWriteTransaction {
 
 	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.remove_any(key.clone().into())
+	}
+
+	#[instrument(name = "transaction::command::remove_many", level = "trace", skip(self, entries), fields(
+		txn_id = %self.id,
+		keys = entries.len()
+	))]
+	pub fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		if entries.is_empty() {
+			return Ok(());
+		}
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.remove_many_call();
+			for (key, _) in &entries {
+				self.op_counts.key(key.kind()).batched_removes += 1;
+			}
+		}
+		let version = self.base_version();
+		let mut removed: BTreeSet<EncodedKey> = BTreeSet::new();
+		let mut pending: Vec<DeltaEntry> = Vec::with_capacity(entries.len());
+		for (key, pre) in entries {
+			let first = removed.insert(key.encode());
+			let announce = match pre {
+				Some(pre) => RemoveAnnounce::Announced {
+					pre,
+				},
+				None if !first => RemoveAnnounce::Silent,
+				None => match self.get(&key)? {
+					Some(found) => RemoveAnnounce::Announced {
+						pre: found.bytes().clone(),
+					},
+					None => RemoveAnnounce::Silent,
+				},
+			};
+			pending.push(DeltaEntry {
+				delta: Delta::Remove {
+					key,
+					announce,
+				},
+				version,
+			});
+		}
+		reifydb_assertions! {
+			for entry in &pending {
+				assert!(
+					!matches!(entry.key(), TaggedKey::OperatorState(_)),
+					"operator state must reach the operator store through the committer split, never \
+					 the multi store: {}",
+					hex_display(entry.key().encode().as_ref())
+				);
+			}
+		}
+		let size = pending
+			.iter()
+			.fold(ByteSize::ZERO, |total, entry| total + self.pending_writes.estimate_size(entry));
+		self.admit(pending.len() as u64, size)?;
+		self.conflicts.reserve_writes(pending.len());
+		for entry in pending {
+			self.apply(entry);
+		}
+		Ok(())
 	}
 
 	#[instrument(name = "transaction::command::remove_unobserved", level = "trace", skip(self), fields(

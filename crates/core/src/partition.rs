@@ -11,13 +11,20 @@ use reifydb_codec::row::{
 	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_value::{
+	Result,
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{Value, blob::Blob, column_view::ColumnView, partition::Partition, value_type::ValueType},
+	value::{
+		Value, blob::Blob, column_view::ColumnView, constraint::Constraint, partition::Partition,
+		value_type::ValueType,
+	},
 };
 
-use crate::interface::catalog::{column::Column, object::ObjectId};
+use crate::{
+	interface::catalog::{column::Column, object::ObjectId},
+	value::{batch::decode_cells, column::builder::ColumnBuilder},
+};
 
 static REGISTRY_SHAPE: LazyLock<RowShape> =
 	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
@@ -109,8 +116,32 @@ pub fn registry_values(row: &[u8]) -> Vec<Value> {
 	}
 }
 
-pub fn partition_values(shape: &RowShape, row: &[u8], indices: &[usize]) -> Vec<Value> {
-	indices.iter().map(|&i| shape.get_value(row, i)).collect()
+pub fn partitions_of_rows(shape: &RowShape, indices: &[usize], rows: &[EncodedBytes]) -> Result<Vec<Partition>> {
+	let columns = indices
+		.iter()
+		.map(|&index| {
+			let field = &shape.fields()[index];
+			let mut builder = ColumnBuilder::with_capacity(field.constraint.get_type(), rows.len());
+			if let Some(Constraint::Dictionary(dictionary, _)) = field.constraint.constraint() {
+				builder.set_dictionary_id(*dictionary);
+			}
+			decode_cells(&mut builder, &field.name, shape, index, rows)?;
+			Ok(builder.finish(&field.name))
+		})
+		.collect::<Result<Vec<_>>>()?;
+	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
+	let partitions = partitions_of_batch(&views, NoneCell::Untyped).rows;
+	reifydb_assertions! {
+		for (row, partition) in rows.iter().zip(&partitions) {
+			let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(row, index)).collect();
+			assert_eq!(
+				Partition::of(&values),
+				*partition,
+				"a partition decoded from stored rows must hash the cells the row holds"
+			);
+		}
+	}
+	Ok(partitions)
 }
 
 #[cfg_attr(not(reifydb_assertions), allow(unused_variables))]

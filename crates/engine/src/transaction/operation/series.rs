@@ -17,7 +17,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin, Diff},
 	},
 	key::any::TaggedKey,
-	partition::{PartitionError, partition_of, partition_values},
+	partition::{PartitionError, partitions_of_rows},
 };
 use reifydb_transaction::{
 	interceptor::{WithInterceptors, series_row::SeriesRowInterceptor},
@@ -61,10 +61,8 @@ pub(crate) fn write_series_rows(
 	if !txn.series_row_pre_insert_interceptors().is_empty() {
 		let key_cells = series_key_cells(shape, &rows);
 		SeriesRowInterceptor::pre_insert(txn, series, &mut rows)?;
-		if rows.iter()
-			.zip(partitions)
-			.any(|(row, &partition)| series_partition_of_bytes(series, shape, row) != partition)
-		{
+		let written: Vec<EncodedBytes> = rows.iter().map(|row| row.clone().freeze_bytes()).collect();
+		if moved_series_partitions(series, shape, partitions, &written)? {
 			return Err(PartitionError::PartitionColumnChangedByHook {
 				object: ObjectId::series(series.id),
 			}
@@ -91,11 +89,9 @@ fn series_key_cells(shape: &RowShape, rows: &[EncodedSeriesRowBuilder]) -> Vec<V
 	rows.iter().map(|row| shape.get_value(row, 0)).collect()
 }
 
-#[inline]
-pub(crate) fn series_partition_of_bytes(series: &Series, shape: &RowShape, bytes: &[u8]) -> Partition {
+fn series_partition_indices(series: &Series) -> Vec<usize> {
 	let key_column = series.key.column();
-	let indices: Vec<usize> = series
-		.partition_by
+	series.partition_by
 		.iter()
 		.map(|name| {
 			if name == key_column {
@@ -107,8 +103,19 @@ pub(crate) fn series_partition_of_bytes(series: &Series, shape: &RowShape, bytes
 					.expect("partition column must exist (validated during planning)")
 			}
 		})
-		.collect();
-	partition_of(&series.columns, &series.partition_by, &partition_values(shape, bytes, &indices))
+		.collect()
+}
+
+pub(crate) fn moved_series_partitions(
+	series: &Series,
+	shape: &RowShape,
+	partitions: &[Partition],
+	rows: &[EncodedBytes],
+) -> Result<bool> {
+	if series.partition_by.is_empty() {
+		return Ok(false);
+	}
+	Ok(partitions_of_rows(shape, &series_partition_indices(series), rows)? != partitions)
 }
 
 pub(crate) fn emit_series_remove_change(txn: &mut Transaction<'_>, series: &Series, pre: RecordBatch) {
@@ -133,12 +140,14 @@ pub(crate) fn remove_series_rows(
 	if !txn.series_row_pre_delete_interceptors().is_empty() {
 		SeriesRowInterceptor::pre_delete(txn, series, ids)?;
 	}
-	for (key, pre_for_cdc, was_committed) in removals {
+	for (key, _, was_committed) in removals {
 		if *was_committed {
 			txn.mark_preexisting(key)?;
 		}
-		txn.remove_with_pre(key, pre_for_cdc.clone())?;
 	}
+	txn.remove_many(
+		removals.iter().map(|(key, pre_for_cdc, _)| (key.clone(), Some(pre_for_cdc.clone()))).collect(),
+	)?;
 	if !txn.series_row_post_delete_interceptors().is_empty() {
 		let pre_rows: Vec<EncodedBytes> =
 			removals.iter().map(|(_, pre_for_cdc, _)| pre_for_cdc.clone()).collect();
