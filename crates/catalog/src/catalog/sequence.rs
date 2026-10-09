@@ -62,15 +62,6 @@ impl Catalog {
 		RowSequence::next_row_number_batch_for_ringbuffer(txn, ringbuffer, count)
 	}
 
-	#[instrument(name = "catalog::sequence::next_row_number_for_queue", level = "trace", skip(self, txn))]
-	pub fn next_row_number_for_queue(
-		&self,
-		txn: &mut impl SequenceTransaction,
-		queue: QueueId,
-	) -> Result<RowNumber> {
-		RowSequence::next_row_number_for_queue(txn, queue)
-	}
-
 	#[instrument(name = "catalog::sequence::next_row_number_batch_for_queue", level = "trace", skip(self, txn))]
 	pub fn next_row_number_batch_for_queue(
 		&self,

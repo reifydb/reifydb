@@ -45,9 +45,11 @@ impl QueueOperations for CommandTransaction {
 			return Ok(());
 		}
 
-		for row in rows {
-			self.set(&RowKey::new(queue.id, row.row_number), row.encoded.clone())?;
-		}
+		self.set_many(
+			rows.iter()
+				.map(|row| (RowKey::new(queue.id, row.row_number).into(), row.encoded.clone()))
+				.collect(),
+		)?;
 
 		self.track_row_change(&row_changes(queue, rows));
 
@@ -61,9 +63,11 @@ impl QueueOperations for AdminTransaction {
 			return Ok(());
 		}
 
-		for row in rows {
-			self.set(&RowKey::new(queue.id, row.row_number), row.encoded.clone())?;
-		}
+		self.set_many(
+			rows.iter()
+				.map(|row| (RowKey::new(queue.id, row.row_number).into(), row.encoded.clone()))
+				.collect(),
+		)?;
 
 		self.track_row_change(&row_changes(queue, rows));
 

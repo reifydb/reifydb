@@ -29,12 +29,18 @@ pub fn placement_of(
 	ordered_by_index: Option<usize>,
 	row_number: RowNumber,
 ) -> QueuePlacement {
+	placement_for(queue, ordered_by_index.map(|index| stored_ordered_hash(shape, row, index)), row_number)
+}
+
+#[allow(clippy::disallowed_methods)]
+pub fn stored_ordered_hash(shape: &RowShape, row: &EncodedQueueRow, index: usize) -> Partition {
+	Partition::of(&[shape.get_value(row.as_slice(), index)])
+}
+
+pub fn placement_for(queue: &Queue, ordered: Option<Partition>, row_number: RowNumber) -> QueuePlacement {
 	#[allow(clippy::disallowed_methods)]
-	let hash = match ordered_by_index {
-		Some(index) => Partition::of(&[shape.get_value(row.as_slice(), index)]),
-		None => Partition::of(&[Value::Uint8(row_number.0)]),
-	};
-	placement_from_hash(hash, queue.partitions(), ordered_by_index.is_some())
+	let hash = ordered.unwrap_or_else(|| Partition::of(&[Value::Uint8(row_number.0)]));
+	placement_from_hash(hash, queue.partitions(), ordered.is_some())
 }
 
 fn placement_from_hash(hash: Partition, partitions: u16, keyed: bool) -> QueuePlacement {

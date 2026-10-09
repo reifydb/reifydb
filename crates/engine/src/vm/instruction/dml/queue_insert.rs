@@ -35,6 +35,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{queue::QueueDeduplicationKey, row::RowKey},
+	partition::{NoneCell, partitions_of_batch},
 	return_internal_error,
 	value::{
 		batch::{batch, decode_cells, single_row},
@@ -50,13 +51,14 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	params::Params,
-	return_error,
+	reifydb_assertions, return_error,
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
 		datetime::DateTime,
 		duration::Duration,
 		identity::IdentityId,
+		partition::Partition,
 		row_number::RowNumber,
 		system_columns::{SystemColumn, system_column, user_columns, with_system_column},
 		value_type::ValueType,
@@ -72,7 +74,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	queue::partition::{ordered_by_index, placement_of},
+	queue::partition::{ordered_by_index, placement_for, stored_ordered_hash},
 	transaction::operation::queue::{QueueInsertRow, QueueOperations},
 	vm::{
 		instruction::dml::{
@@ -148,7 +150,6 @@ pub(crate) fn insert_queue(
 		services.catalog.next_row_number_batch_for_queue(txn, queue.id, fresh_count as u64)?
 	};
 
-	let ordered_by_index = ordered_by_index(&queue)?;
 	let mut assigned = row_numbers.into_iter();
 	let mut rows: Vec<QueueInsertRow> = Vec::with_capacity(fresh_count);
 	let mut returned: Vec<ReturnedRow> = Vec::with_capacity(outcomes.len());
@@ -160,13 +161,7 @@ pub(crate) fn insert_queue(
 				if let Some(key) = &item.deduplication_key {
 					write_deduplication_record(txn, &queue, key, row_number, now)?;
 				}
-				let placement = placement_of(
-					&queue,
-					&shape,
-					EncodedQueueRow::view(&item.encoded),
-					ordered_by_index,
-					row_number,
-				);
+				let placement = placement_for(&queue, item.ordered, row_number);
 				rows.push(QueueInsertRow {
 					row_number,
 					partition: placement.partition,
@@ -213,6 +208,7 @@ pub(crate) fn insert_queue(
 
 struct PendingItem {
 	encoded: EncodedBytes,
+	ordered: Option<Partition>,
 	deduplication_key: Option<Vec<u8>>,
 	not_before: Option<DateTime>,
 }
@@ -439,6 +435,7 @@ fn validate_and_encode_input_rows(
 ) -> Result<Vec<PendingItem>> {
 	let mut mutable_context = (**context).clone();
 	let declared_key_indices = declared_key_indices(target.queue)?;
+	let ordered_by = ordered_by_index(target.queue)?;
 	let pipeline = ColumnPipeline {
 		columns: &target.queue.columns,
 		sequences: Some(target.queue.id.into()),
@@ -493,6 +490,9 @@ fn validate_and_encode_input_rows(
 	let populator = populator_index(&target.queue.time, shape);
 	let mut pending: Vec<PendingItem> = Vec::new();
 	for ((cast, not_before), statement_keys) in casts.iter().zip(not_befores).zip(statement_keys) {
+		let ordered = ordered_by
+			.map(|index| cast.view(index).map(|view| partitions_of_batch(&[view], NoneCell::Untyped).rows))
+			.transpose()?;
 		let mut rows: Vec<EncodedQueueRowBuilder> = (0..cast.rows()).map(|_| shape.allocate_queue()).collect();
 		cast.write(shape, &mut rows)?;
 		let now = services.runtime_context.clock.now();
@@ -517,9 +517,22 @@ fn validate_and_encode_input_rows(
 			(None, Some(keys)) => keys.into_iter().map(Some).collect(),
 			(None, None) => vec![None; encoded.len()],
 		};
-		for ((encoded, deduplication_key), not_before) in encoded.into_iter().zip(keys).zip(not_before) {
+		for (index, ((encoded, deduplication_key), not_before)) in
+			encoded.into_iter().zip(keys).zip(not_before).enumerate()
+		{
+			let ordered = ordered.as_ref().map(|hashes| hashes[index]);
+			reifydb_assertions! {
+				if let (Some(column), Some(hash)) = (ordered_by, ordered) {
+					assert_eq!(
+						stored_ordered_hash(shape, EncodedQueueRow::view(&encoded), column),
+						hash,
+						"a queue row must be placed where hydration places its stored row"
+					);
+				}
+			}
 			pending.push(PendingItem {
 				encoded,
+				ordered,
 				deduplication_key,
 				not_before,
 			});
@@ -586,6 +599,16 @@ fn read_not_before(
 	let Some(view) = view else {
 		return (vec![None; rows], None);
 	};
+	match view.data {
+		ViewData::DateTime(_) => {
+			let column = EventColumn::new(Some(view.clone()));
+			return ((0..rows).map(|row| column.at(row)).collect(), None);
+		}
+		ViewData::None {
+			..
+		} => return (vec![None; rows], None),
+		_ => {}
+	}
 	let mut values = Vec::with_capacity(rows);
 	for row in 0..rows {
 		match view.get_value(row) {

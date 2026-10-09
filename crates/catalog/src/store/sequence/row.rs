@@ -36,13 +36,6 @@ impl RowSequence {
 		Self::next_row_number_batch_for_source(txn, StorageId::from(ringbuffer), count)
 	}
 
-	pub(crate) fn next_row_number_for_queue(
-		txn: &mut impl SequenceTransaction,
-		queue: QueueId,
-	) -> Result<RowNumber> {
-		GeneratorU64::next(txn, &RowSequenceKey::new(StorageId::from(queue)), None).map(RowNumber)
-	}
-
 	pub(crate) fn next_row_number_batch_for_queue(
 		txn: &mut impl SequenceTransaction,
 		queue: QueueId,
