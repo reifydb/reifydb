@@ -4,7 +4,7 @@
 use core::mem;
 use std::{
 	cmp::Ordering,
-	collections::BTreeSet,
+	collections::{BTreeMap, BTreeSet},
 	iter,
 	ops::{Bound, RangeBounds},
 	sync::Arc,
@@ -63,6 +63,7 @@ pub struct WriteSavepoint {
 	pub(crate) size: ByteSize,
 	pub(crate) duplicates: Vec<DeltaEntry>,
 	pub(crate) delta_log_len: usize,
+	pub(crate) removed_after_set_len: usize,
 	pub(crate) conflicts: ConflictManager,
 	pub(crate) preexisting_keys: BTreeSet<TaggedKey>,
 }
@@ -91,6 +92,10 @@ pub struct MultiWriteTransaction {
 	pub(crate) delta_log: Vec<DeltaEntry>,
 
 	pub(crate) preexisting_keys: BTreeSet<TaggedKey>,
+
+	removed_after_set: Vec<TaggedKey>,
+
+	committed_pres: BTreeMap<TaggedKey, EncodedBytes>,
 
 	pub(crate) lifecycle: Lifecycle,
 
@@ -123,6 +128,8 @@ impl MultiWriteTransaction {
 			duplicates: Vec::new(),
 			delta_log: Vec::new(),
 			preexisting_keys: BTreeSet::new(),
+			removed_after_set: Vec::new(),
+			committed_pres: BTreeMap::new(),
 			lifecycle: Lifecycle::Active,
 			self_lease: None,
 			pending_query_pin: None,
@@ -203,6 +210,7 @@ impl MultiWriteTransaction {
 			size: self.size,
 			duplicates: self.duplicates.clone(),
 			delta_log_len: self.delta_log.len(),
+			removed_after_set_len: self.removed_after_set.len(),
 			conflicts: self.conflicts.clone(),
 			preexisting_keys: self.preexisting_keys.clone(),
 		}
@@ -214,6 +222,7 @@ impl MultiWriteTransaction {
 		self.size = sp.size;
 		self.duplicates = sp.duplicates;
 		self.delta_log.truncate(sp.delta_log_len);
+		self.removed_after_set.truncate(sp.removed_after_set_len);
 		self.conflicts = sp.conflicts;
 		self.preexisting_keys = sp.preexisting_keys;
 	}
@@ -562,6 +571,7 @@ impl MultiWriteTransaction {
 		self.conflicts.rollback();
 		self.delta_log.clear();
 		self.duplicates.clear();
+		self.removed_after_set.clear();
 		Ok(())
 	}
 
@@ -820,6 +830,20 @@ impl MultiWriteTransaction {
 			})
 		}
 
+		if matches!(pending.delta, Delta::Remove { .. })
+			&& matches!(
+				self.pending_writes.get_entry(pending.key()),
+				Some((
+					_,
+					DeltaEntry {
+						delta: Delta::Set { .. },
+						..
+					}
+				))
+			) {
+			self.removed_after_set.push(pending.key().clone());
+		}
+
 		self.delta_log.push(pending.clone());
 		self.pending_writes.insert(pending);
 	}
@@ -892,7 +916,25 @@ impl MultiWriteTransaction {
 		CowVec::new(optimize_deltas(
 			self.delta_log.iter().chain(self.duplicates.iter()).map(|pending| pending.delta.clone()),
 			self.preexisting_keys(),
+			&self.committed_pres,
 		))
+	}
+
+	fn resolve_removed_after_set(&mut self) -> Result<()> {
+		let mut keys = mem::take(&mut self.removed_after_set);
+		keys.retain(|key| !self.preexisting_keys.contains(key));
+		keys.sort();
+		keys.dedup();
+		if keys.is_empty() {
+			return Ok(());
+		}
+		let found = self.get_committed_many(&keys)?;
+		self.committed_pres = keys
+			.into_iter()
+			.zip(found)
+			.filter_map(|(key, found)| Some((key, found?.bytes().clone())))
+			.collect();
+		Ok(())
 	}
 
 	#[inline]
@@ -900,6 +942,8 @@ impl MultiWriteTransaction {
 		let _ = mem::take(&mut self.pending_writes);
 		let _ = mem::take(&mut self.duplicates);
 		let _ = mem::take(&mut self.delta_log);
+		let _ = mem::take(&mut self.removed_after_set);
+		let _ = mem::take(&mut self.committed_pres);
 	}
 }
 
@@ -915,6 +959,7 @@ impl MultiWriteTransaction {
 			before_publish(CommitVersion(0));
 			return Ok(CommitVersion(0));
 		}
+		self.resolve_removed_after_set()?;
 		let deltas = self.build_deltas();
 		let commit_version = self.commit_pending(deltas.clone())?;
 		self.finalize_commit(commit_version, deltas, before_publish)
@@ -926,6 +971,7 @@ impl MultiWriteTransaction {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
+		self.resolve_removed_after_set()?;
 		let deltas = self.build_deltas();
 		let commit_version = self.commit_pending_unchecked(deltas.clone())?;
 		self.finalize_commit(commit_version, deltas, |_| {})
@@ -1508,5 +1554,180 @@ mod tests {
 				);
 			}
 		}
+	}
+
+	fn committed_with(engine: &MultiTransaction, writes: &[(&str, &str)]) {
+		let mut txn = engine.begin_command().unwrap();
+		for (key, bytes) in writes {
+			txn.set(&test_key(key), test_bytes(bytes)).unwrap();
+		}
+		txn.commit().unwrap();
+	}
+
+	fn stored(engine: &MultiTransaction, key: &str) -> Option<EncodedBytes> {
+		let mut txn = engine.begin_command().unwrap();
+		txn.get(&test_key(key)).unwrap().map(|found| found.bytes().clone())
+	}
+
+	fn resolved_deltas(txn: &mut MultiWriteTransaction) -> Vec<Delta> {
+		txn.resolve_removed_after_set().unwrap();
+		txn.build_deltas().iter().cloned().collect()
+	}
+
+	#[test]
+	fn a_committed_key_set_then_removed_without_a_mark_is_deleted_from_storage() {
+		// The writer removed the row it overwrote; a merge that cancels the pair leaves the committed row
+		// readable at every later version.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("committed", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set(&test_key("committed"), test_bytes("v2")).unwrap();
+		txn.remove(&test_key("committed")).unwrap();
+		txn.set(&test_key("fresh"), test_bytes("f1")).unwrap();
+		txn.remove(&test_key("fresh")).unwrap();
+		txn.commit().unwrap();
+
+		assert_eq!((stored(&engine, "committed"), stored(&engine, "fresh")), (None, None));
+	}
+
+	#[test]
+	fn the_unchecked_commit_resolves_set_then_remove_the_same_way() {
+		// Unchecked commits carry flow and bulk writes; resolving only the checked path leaves their
+		// cancelled deletes in storage.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("committed", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set(&test_key("committed"), test_bytes("v2")).unwrap();
+		txn.remove(&test_key("committed")).unwrap();
+		txn.commit_unchecked().unwrap();
+
+		assert_eq!(stored(&engine, "committed"), None);
+	}
+
+	#[test]
+	fn set_then_remove_publishes_one_remove_with_the_committed_pre_image() {
+		// The delta is what the producer publishes: a cancelled pair publishes nothing, and an overwrite
+		// pre-image publishes bytes no consumer ever saw.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("committed", "v1"), ("again", "a1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set(&test_key("committed"), test_bytes("v2")).unwrap();
+		txn.remove(&test_key("committed")).unwrap();
+		txn.set(&test_key("fresh"), test_bytes("f1")).unwrap();
+		txn.remove(&test_key("fresh")).unwrap();
+		txn.remove(&test_key("again")).unwrap();
+		txn.set(&test_key("again"), test_bytes("a2")).unwrap();
+		txn.remove(&test_key("again")).unwrap();
+
+		assert_eq!(
+			resolved_deltas(&mut txn),
+			vec![
+				Delta::remove_announced(test_key("committed").into(), test_bytes("v1")),
+				Delta::remove_announced(test_key("again").into(), test_bytes("a1")),
+			]
+		);
+	}
+
+	#[test]
+	fn a_marked_key_is_neither_read_nor_changed() {
+		// Marking writers already resolve the pair without a read; reading them again costs a read per
+		// removed row and would replace the pre-image they publish today.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("marked", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set(&test_key("marked"), test_bytes("v2")).unwrap();
+		txn.mark_preexisting(&test_key("marked"));
+		txn.remove(&test_key("marked")).unwrap();
+
+		assert_eq!(
+			resolved_deltas(&mut txn),
+			vec![Delta::remove_announced(test_key("marked").into(), test_bytes("v2"))]
+		);
+		#[cfg(feature = "testing")]
+		assert_eq!(txn.op_counts.get_committed_many_calls(), 0);
+	}
+
+	#[cfg(feature = "testing")]
+	#[test]
+	fn every_set_then_remove_of_a_commit_is_resolved_by_one_read() {
+		// The resolution must stay one batched read per commit, never one per removed row, and a commit
+		// without such a pair must not read at all.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("a", "a1"), ("b", "b1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		for key in ["a", "b", "c"] {
+			txn.set(&test_key(key), test_bytes("new")).unwrap();
+			txn.remove(&test_key(key)).unwrap();
+		}
+		txn.set(&test_key("a"), test_bytes("again")).unwrap();
+		txn.remove(&test_key("a")).unwrap();
+		resolved_deltas(&mut txn);
+		assert_eq!(txn.op_counts.get_committed_many_calls(), 1);
+
+		let mut plain = engine.begin_command().unwrap();
+		plain.set(&test_key("d"), test_bytes("d1")).unwrap();
+		plain.remove(&test_key("a")).unwrap();
+		resolved_deltas(&mut plain);
+		assert_eq!(plain.op_counts.get_committed_many_calls(), 0);
+	}
+
+	#[test]
+	fn a_remove_rolled_back_to_a_savepoint_is_not_resolved() {
+		// A remove undone by a savepoint is not part of the commit; resolving it would delete a row the
+		// transaction kept.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("kept", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set(&test_key("kept"), test_bytes("v2")).unwrap();
+		let savepoint = txn.savepoint();
+		txn.remove(&test_key("kept")).unwrap();
+		txn.restore_savepoint(savepoint);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "kept"), Some(test_bytes("v2")));
+	}
+
+	#[test]
+	fn the_committed_read_behind_a_delete_is_seen_by_conflict_detection() {
+		// The delete is decided from the committed row; a concurrent commit that replaces that row after the
+		// read must fail this transaction instead of leaving the replacement behind a delete of the old one.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("contested", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set(&test_key("contested"), test_bytes("v2")).unwrap();
+		txn.remove(&test_key("contested")).unwrap();
+		txn.resolve_removed_after_set().unwrap();
+		committed_with(&engine, &[("contested", "v3")]);
+		let deltas = txn.build_deltas();
+
+		assert!(txn.commit_pending(deltas).is_err(), "the committed read was invalidated");
+	}
+
+	#[test]
+	fn a_set_then_remove_rolled_back_to_a_savepoint_is_neither_read_nor_conflicted() {
+		// The rolled-back remove is not part of the commit; reading its key costs a read and marks it, so a
+		// concurrent write to a key this transaction no longer touches would abort the commit.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("rolled_back", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		let savepoint = txn.savepoint();
+		txn.set(&test_key("rolled_back"), test_bytes("v2")).unwrap();
+		txn.remove(&test_key("rolled_back")).unwrap();
+		txn.restore_savepoint(savepoint);
+		txn.set(&test_key("other"), test_bytes("o1")).unwrap();
+		committed_with(&engine, &[("rolled_back", "v3")]);
+
+		assert!(txn.commit().is_ok(), "the rolled-back key must not take part in conflict detection");
+		#[cfg(feature = "testing")]
+		assert_eq!(txn.op_counts.get_committed_many_calls(), 0);
+		assert_eq!(stored(&engine, "rolled_back"), Some(test_bytes("v3")));
 	}
 }
