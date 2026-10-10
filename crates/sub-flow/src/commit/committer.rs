@@ -4,6 +4,7 @@
 use std::{collections::BTreeMap, mem::take, sync::Arc};
 
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::{CommitVersion, SourceVersion},
@@ -404,6 +405,7 @@ fn release_slices(slices: Arc<Vec<FlowSlice>>) {
 
 #[instrument(name = "flow::committer::apply_pending", level = "debug", skip_all)]
 fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending) -> Result<()> {
+	let mut writes: Vec<(TaggedKey, &PendingWrite)> = Vec::with_capacity(combined.len());
 	for (encoded, pw) in combined.rows_ordered() {
 		let Some(key) = TaggedKey::decode(encoded) else {
 			return_internal_error!(
@@ -411,38 +413,51 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 				hex_display(encoded.as_ref())
 			)
 		};
+		writes.push((key, pw));
+	}
+	let observed: Vec<TaggedKey> = writes
+		.iter()
+		.filter(|(_, pw)| {
+			matches!(
+				pw,
+				PendingWrite::Remove {
+					announce: RemoveVisibility::Announced | RemoveVisibility::Unobserved,
+				}
+			)
+		})
+		.map(|(key, _)| key.clone())
+		.collect();
+	let mut pres = transaction.get_many(&observed)?.into_iter();
+	let mut sets: Vec<(TaggedKey, EncodedBytes)> = Vec::new();
+	for (key, pw) in writes {
 		match pw {
-			PendingWrite::Set(value) => transaction.set(&key, value.clone())?,
+			PendingWrite::Set(value) => sets.push((key, value.clone())),
 			PendingWrite::Remove {
-				announce: RemoveVisibility::Announced,
+				announce,
 			} => {
-				if matches!(key, TaggedKey::Row(_) | TaggedKey::SeriesRow(_)) {
-					match transaction.get(&key)? {
-						Some(existing) => transaction.remove_with_pre(&key, existing.bytes)?,
-						None => transaction.remove(&key)?,
+				if !sets.is_empty() {
+					transaction.set_many(take(&mut sets))?;
+				}
+				let pre = match announce {
+					RemoveVisibility::Silent => None,
+					RemoveVisibility::Announced | RemoveVisibility::Unobserved => {
+						pres.next().flatten()
 					}
-				} else {
-					transaction.remove(&key)?;
+				};
+				match (announce, pre) {
+					(RemoveVisibility::Announced, Some(existing)) => {
+						transaction.remove_with_pre(&key, existing.bytes)?
+					}
+					(RemoveVisibility::Unobserved, Some(existing)) => {
+						transaction.remove_unobserved_with_pre(&key, existing.bytes)?
+					}
+					_ => transaction.remove_silent(&key)?,
 				}
 			}
-			PendingWrite::Remove {
-				announce: RemoveVisibility::Unobserved,
-			} => {
-				if matches!(key, TaggedKey::Row(_) | TaggedKey::SeriesRow(_)) {
-					match transaction.get(&key)? {
-						Some(existing) => {
-							transaction.remove_unobserved_with_pre(&key, existing.bytes)?
-						}
-						None => transaction.remove_unobserved(&key)?,
-					}
-				} else {
-					transaction.remove_unobserved(&key)?;
-				}
-			}
-			PendingWrite::Remove {
-				announce: RemoveVisibility::Silent,
-			} => transaction.remove_silent(&key)?,
 		}
+	}
+	if !sets.is_empty() {
+		transaction.set_many(sets)?;
 	}
 	Ok(())
 }
@@ -460,10 +475,14 @@ mod commit_integration {
 		row::{bytes::EncodedBytes, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
-		interface::catalog::{
-			flow::OperatorId,
-			id::{IndexId, TableId},
-			object::ObjectId,
+		interface::{
+			catalog::{
+				flow::OperatorId,
+				id::{IndexId, TableId},
+				object::ObjectId,
+				storage::StorageId,
+			},
+			cdc::CdcChange,
 		},
 		internal_error,
 		key::{
@@ -471,13 +490,23 @@ mod commit_integration {
 			catalog::IndexEntryKey,
 			cdc::CdcConsumerKey,
 			operator::state::{GroupStateKey, OperatorStateKey, unmanaged_key},
+			row::RowKey,
+			series::SeriesRowKey,
+			tag::KeyTag,
 		},
 		value::index::encoded::EncodedIndexKey,
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
+	use reifydb_store_cdc::storage::CdcStorage;
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::{commit::CommitBegin, multi::RangeScope, transaction::Transaction};
-	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec, value::duration::Duration};
+	use reifydb_transaction::{
+		commit::CommitBegin, counting::OpCounts, multi::RangeScope, transaction::Transaction,
+	};
+	use reifydb_value::{
+		byte_size::ByteSize,
+		util::cowvec::CowVec,
+		value::{duration::Duration, row_number::RowNumber},
+	};
 
 	use super::*;
 
@@ -959,5 +988,192 @@ mod commit_integration {
 
 		assert!(version > CommitVersion(0), "the control cursor must commit, or no version can be recorded");
 		assert_eq!(committer.materialization.output_frontier(), version);
+	}
+
+	fn row(number: u64) -> EncodedKey {
+		RowKey::encoded(StorageId::table(1), RowNumber(number))
+	}
+
+	fn series_row(sequence: u64) -> EncodedKey {
+		SeriesRowKey {
+			storage: StorageId::series(2),
+			variant_tag: None,
+			key: 1,
+			sequence,
+		}
+		.encode()
+	}
+
+	fn index_entry(value: u8) -> EncodedKey {
+		IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new([value]))
+			.encode()
+	}
+
+	fn payload(tag: u8) -> EncodedBytes {
+		EncodedBytes(CowVec::new(vec![tag; 4]))
+	}
+
+	fn tagged(encoded: &EncodedKey) -> TaggedKey {
+		TaggedKey::decode(encoded).expect("a fixture key must decode")
+	}
+
+	fn seed(engine: &StandardEngine, rows: &[(EncodedKey, u8)]) {
+		let mut txn = engine.begin_command(IdentityId::system()).expect("begin seed");
+		for (key, tag) in rows {
+			txn.set(&tagged(key), payload(*tag)).expect("seed row");
+		}
+		txn.commit().expect("commit seed");
+	}
+
+	fn commit_pending(te: &TestEngine, pending: &Pending) -> (OpCounts, Vec<CdcChange>) {
+		let engine = te.inner();
+		let mut txn = engine.begin_command(IdentityId::system()).expect("begin");
+		apply_pending_writes(&mut txn, pending).expect("apply pending writes");
+		let counts = txn.op_counts();
+		let version = txn.commit().expect("commit");
+		te.await_cdc();
+		let cdc =
+			engine.cdc_store().read(version).expect("read cdc").expect("the commit must write a cdc entry");
+		(counts, cdc.changes)
+	}
+
+	fn delete(key: EncodedKey, tag: u8, visible: bool) -> CdcChange {
+		CdcChange::Delete {
+			key,
+			pre: Some(payload(tag)),
+			visible,
+		}
+	}
+
+	#[test]
+	fn a_slice_reads_every_remove_pre_image_in_one_batch_and_announces_the_same_deletes() {
+		// A point read per remove makes a slice commit cost grow with every evicted or retracted row, and the
+		// batch must still give each delete the pre-image and visibility the per-key reads gave it.
+		let te = TestEngine::builder().with_cdc().build();
+		seed(
+			te.inner(),
+			&[
+				(row(1), 11),
+				(row(3), 13),
+				(row(4), 14),
+				(series_row(1), 21),
+				(series_row(2), 22),
+				(index_entry(101), 31),
+				(index_entry(102), 32),
+				(index_entry(104), 34),
+			],
+		);
+
+		let mut pending = Pending::new();
+		pending.insert(row(5), payload(15));
+		pending.insert(index_entry(104), payload(44));
+		pending.remove_silent(row(4));
+		pending.remove(row(1));
+		pending.remove(series_row(1));
+		pending.remove(index_entry(101));
+		pending.remove(row(6));
+		pending.remove(series_row(3));
+		pending.remove_unobserved(row(3));
+		pending.remove_unobserved(series_row(2));
+		pending.remove_unobserved(index_entry(102));
+		pending.remove_unobserved(index_entry(103));
+		pending.remove_unobserved(row(7));
+
+		let (counts, changes) = commit_pending(&te, &pending);
+
+		assert_eq!(
+			changes,
+			vec![
+				CdcChange::Insert {
+					key: row(5),
+					post: payload(15),
+				},
+				CdcChange::Update {
+					key: index_entry(104),
+					pre: payload(34),
+					post: payload(44),
+				},
+				delete(row(1), 11, true),
+				delete(series_row(1), 21, true),
+				delete(index_entry(101), 31, true),
+				delete(row(3), 13, false),
+				delete(series_row(2), 22, false),
+				delete(index_entry(102), 32, false),
+			]
+		);
+
+		let mut query = te.inner().begin_query(IdentityId::system()).expect("begin query");
+		for key in [row(1), row(3), row(4), row(6), row(7), series_row(1), series_row(2), index_entry(101)] {
+			assert!(
+				Transaction::Query(&mut query).get(&tagged(&key)).expect("read removed row").is_none(),
+				"every remove must land, the silent one included"
+			);
+		}
+
+		assert_eq!(counts.get_many_calls(), 1);
+		assert_eq!(counts.get_committed_many_calls(), 0);
+		assert_eq!(counts.set_many_calls(), 1);
+		assert_eq!(counts.remove_many_calls(), 0);
+		let row_counts = counts.of(KeyTag::Row);
+		let series_counts = counts.of(KeyTag::SeriesRow);
+		let index_counts = counts.of(KeyTag::IndexEntry);
+		for (kind, kind_counts, batched_gets, batched, removes) in [
+			("row", row_counts, 4, 1, 5),
+			("series row", series_counts, 3, 0, 3),
+			("index entry", index_counts, 3, 1, 3),
+		] {
+			assert_eq!(
+				(kind_counts.gets, kind_counts.committed_gets, kind_counts.batched_gets),
+				(0, 0, batched_gets),
+				"{kind}: no point read, every announced or unobserved remove in the one batch"
+			);
+			assert_eq!(
+				(kind_counts.sets, kind_counts.batched),
+				(0, batched),
+				"{kind}: sets go in the batch"
+			);
+			assert_eq!(
+				(kind_counts.removes, kind_counts.batched_removes),
+				(removes, 0),
+				"{kind}: removes stay single calls"
+			);
+		}
+	}
+
+	#[test]
+	fn a_slice_reaches_cdc_in_the_order_its_flows_wrote_it() {
+		// A version's changes are published in write order, so regrouping a slice's sets and removes changes
+		// the bytes every consumer reads for that version.
+		let te = TestEngine::builder().with_cdc().build();
+		seed(te.inner(), &[(row(2), 12), (series_row(1), 21)]);
+
+		let mut pending = Pending::new();
+		pending.insert(row(1), payload(1));
+		pending.remove(row(2));
+		pending.insert(row(3), payload(3));
+		pending.remove_unobserved(series_row(1));
+		pending.insert(index_entry(1), payload(5));
+
+		let (_, changes) = commit_pending(&te, &pending);
+
+		assert_eq!(
+			changes,
+			vec![
+				CdcChange::Insert {
+					key: row(1),
+					post: payload(1),
+				},
+				delete(row(2), 12, true),
+				CdcChange::Insert {
+					key: row(3),
+					post: payload(3),
+				},
+				delete(series_row(1), 21, false),
+				CdcChange::Insert {
+					key: index_entry(1),
+					post: payload(5),
+				},
+			]
+		);
 	}
 }
