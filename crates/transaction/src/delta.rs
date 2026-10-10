@@ -28,7 +28,6 @@ enum OptimizedDeltaState {
 
 pub fn optimize_deltas(
 	deltas: impl IntoIterator<Item = Delta>,
-	preexisting_keys: &BTreeSet<TaggedKey>,
 	committed: &BTreeMap<TaggedKey, EncodedBytes>,
 ) -> Vec<Delta> {
 	let deltas: Vec<Delta> = deltas.into_iter().collect();
@@ -39,7 +38,7 @@ pub fn optimize_deltas(
 	if !collided {
 		return deltas;
 	}
-	optimize_collided(deltas, preexisting_keys, committed)
+	optimize_collided(deltas, committed)
 }
 
 fn with_pre(announce: RemoveAnnounce, pre: EncodedBytes) -> RemoveAnnounce {
@@ -58,11 +57,7 @@ fn with_pre(announce: RemoveAnnounce, pre: EncodedBytes) -> RemoveAnnounce {
 	}
 }
 
-fn optimize_collided(
-	deltas: Vec<Delta>,
-	preexisting_keys: &BTreeSet<TaggedKey>,
-	committed: &BTreeMap<TaggedKey, EncodedBytes>,
-) -> Vec<Delta> {
+fn optimize_collided(deltas: Vec<Delta>, committed: &BTreeMap<TaggedKey, EncodedBytes>) -> Vec<Delta> {
 	let mut key_states: BTreeMap<TaggedKey, (OptimizedDeltaState, usize, SetPre)> = BTreeMap::new();
 
 	for (idx, delta) in deltas.into_iter().enumerate() {
@@ -115,7 +110,6 @@ fn optimize_collided(
 				key,
 				announce,
 			} => {
-				let preexisting = preexisting_keys.contains(&key);
 				let committed_pre = committed.get(&key);
 				let entry = key_states.entry(key);
 				match entry {
@@ -125,24 +119,14 @@ fn optimize_collided(
 							OptimizedDeltaState::Set {
 								..
 							} => {
-								let removed = if preexisting {
-									Some(announce)
-								} else {
-									match known {
-										SetPre::Absent => None,
-										SetPre::Present(pre) => Some(with_pre(
-											announce,
-											pre.clone(),
-										)),
-										SetPre::Unknown => {
-											committed_pre.map(|pre| {
-												with_pre(
-													announce,
-													pre.clone(),
-												)
-											})
-										}
+								let removed = match known {
+									SetPre::Absent => None,
+									SetPre::Present(pre) => {
+										Some(with_pre(announce, pre.clone()))
 									}
+									SetPre::Unknown => committed_pre.map(|pre| {
+										with_pre(announce, pre.clone())
+									}),
 								};
 								*state = match removed {
 									Some(announce) => OptimizedDeltaState::Remove {
@@ -245,8 +229,8 @@ pub mod tests {
 			Delta::remove_announced(make_key("key_c"), make_bytes("c")),
 		];
 
-		let fast = optimize_deltas(distinct.clone(), &BTreeSet::new(), &BTreeMap::new());
-		let collided = optimize_collided(distinct.clone(), &BTreeSet::new(), &BTreeMap::new());
+		let fast = optimize_deltas(distinct.clone(), &BTreeMap::new());
+		let collided = optimize_collided(distinct.clone(), &BTreeMap::new());
 
 		assert_eq!(fast.len(), distinct.len(), "a run of distinct keys must keep every delta");
 		assert_eq!(
@@ -272,7 +256,7 @@ pub mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(repeated, &BTreeSet::new(), &BTreeMap::new());
+		let optimized = optimize_deltas(repeated, &BTreeMap::new());
 
 		assert_eq!(optimized.len(), 1, "a repeated key must collapse to a single delta");
 		match &optimized[0] {
@@ -297,7 +281,7 @@ pub mod tests {
 			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
 
-		let optimized = optimize_deltas(from_delta_log, &BTreeSet::new(), &BTreeMap::new());
+		let optimized = optimize_deltas(from_delta_log, &BTreeMap::new());
 
 		assert!(optimized.is_empty(), "the delta-log path sees both writes and cancels them");
 	}
@@ -306,7 +290,7 @@ pub mod tests {
 	fn pending_writes_sourcing_emits_a_tombstone_for_the_same_transaction() {
 		let from_pending_writes = vec![Delta::remove_announced(make_key("key_a"), make_bytes("value1"))];
 
-		let optimized = optimize_deltas(from_pending_writes, &BTreeSet::new(), &BTreeMap::new());
+		let optimized = optimize_deltas(from_pending_writes, &BTreeMap::new());
 
 		assert_eq!(
 			optimized.len(),
@@ -328,7 +312,7 @@ pub mod tests {
 			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
 
-		let optimized = optimize_deltas(deltas, &BTreeSet::new(), &BTreeMap::new());
+		let optimized = optimize_deltas(deltas, &BTreeMap::new());
 
 		assert_eq!(optimized.len(), 0);
 	}
@@ -339,14 +323,12 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value1"),
-				pre: SetPre::Unknown,
+				pre: SetPre::Present(make_bytes("value1")),
 			},
 			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
 
-		let mut preexisting = BTreeSet::new();
-		preexisting.insert(make_key("key_a"));
-		let optimized = optimize_deltas(deltas, &preexisting, &BTreeMap::new());
+		let optimized = optimize_deltas(deltas, &BTreeMap::new());
 
 		// Dropping the tombstone here would leave the prior committed version visible.
 		assert_eq!(optimized.len(), 1);
@@ -376,14 +358,12 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value1"),
-				pre: SetPre::Unknown,
+				pre: SetPre::Present(make_bytes("value1")),
 			},
 			Delta::remove_silent(make_key("key_a")),
 		];
 
-		let mut preexisting = BTreeSet::new();
-		preexisting.insert(make_key("key_a"));
-		let optimized = optimize_deltas(deltas, &preexisting, &BTreeMap::new());
+		let optimized = optimize_deltas(deltas, &BTreeMap::new());
 
 		assert_eq!(optimized.len(), 1);
 		match &optimized[0] {
@@ -422,7 +402,7 @@ pub mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas, &BTreeSet::new(), &BTreeMap::new());
+		let optimized = optimize_deltas(deltas, &BTreeMap::new());
 
 		assert_eq!(optimized.len(), 1);
 		match &optimized[0] {
@@ -454,7 +434,7 @@ pub mod tests {
 			Delta::remove_announced(make_key("key_a"), make_bytes("value2")),
 		];
 
-		let optimized = optimize_deltas(deltas, &BTreeSet::new(), &BTreeMap::new());
+		let optimized = optimize_deltas(deltas, &BTreeMap::new());
 
 		assert_eq!(optimized.len(), 0);
 	}
@@ -480,7 +460,7 @@ pub mod tests {
 			},
 		];
 
-		let optimized = optimize_deltas(deltas, &BTreeSet::new(), &BTreeMap::new());
+		let optimized = optimize_deltas(deltas, &BTreeMap::new());
 
 		// key_a cancels; key_b and key_c survive.
 		assert_eq!(optimized.len(), 2);
@@ -515,7 +495,6 @@ pub mod tests {
 
 		let optimized = optimize_deltas(
 			deltas,
-			&BTreeSet::new(),
 			&committed(&[("key_a", "committed_a"), ("key_b", "committed_b"), ("key_c", "committed_c")]),
 		);
 
@@ -530,17 +509,15 @@ pub mod tests {
 	}
 
 	#[test]
-	fn a_marked_key_keeps_the_announce_of_its_remove_whatever_the_committed_read_says() {
-		// Marked keys are resolved without a read today; letting a read answer override them would change
-		// the pre-image every marking writer publishes.
+	fn a_known_present_tag_wins_over_the_committed_read() {
+		// A known tag is the writer's own pre-image; letting a read answer override it would change the
+		// pre-image that writer publishes.
 		let deltas = vec![
-			set("key_a", "overwrite_a", SetPre::Unknown),
+			set("key_a", "overwrite_a", SetPre::Present(make_bytes("overwrite_a"))),
 			Delta::remove_announced(make_key("key_a"), make_bytes("overwrite_a")),
 		];
-		let mut preexisting = BTreeSet::new();
-		preexisting.insert(make_key("key_a"));
 
-		let optimized = optimize_deltas(deltas, &preexisting, &committed(&[("key_a", "committed_a")]));
+		let optimized = optimize_deltas(deltas, &committed(&[("key_a", "committed_a")]));
 
 		assert_eq!(optimized, vec![Delta::remove_announced(make_key("key_a"), make_bytes("overwrite_a"))]);
 	}
@@ -556,11 +533,8 @@ pub mod tests {
 			Delta::remove_announced(make_key("key_b"), make_bytes("new_b")),
 		];
 
-		let optimized = optimize_deltas(
-			deltas,
-			&BTreeSet::new(),
-			&committed(&[("key_a", "committed_a"), ("key_b", "committed_b")]),
-		);
+		let optimized =
+			optimize_deltas(deltas, &committed(&[("key_a", "committed_a"), ("key_b", "committed_b")]));
 
 		assert_eq!(optimized, vec![Delta::remove_announced(make_key("key_b"), make_bytes("tagged_b"))]);
 	}
@@ -589,11 +563,8 @@ pub mod tests {
 			set("key_f", "f2", SetPre::Unknown),
 		];
 
-		let optimized = optimize_deltas(
-			deltas,
-			&BTreeSet::new(),
-			&committed(&[("key_c", "committed_c"), ("key_f", "committed_f")]),
-		);
+		let optimized =
+			optimize_deltas(deltas, &committed(&[("key_c", "committed_c"), ("key_f", "committed_f")]));
 
 		assert_eq!(
 			optimized,
@@ -616,15 +587,10 @@ pub mod tests {
 			set("key_a", "a1", SetPre::Present(make_bytes("tagged_a"))),
 			Delta::remove_announced(make_key("key_a"), make_bytes("a1")),
 			set("key_a", "a2", SetPre::Unknown),
-			set("key_b", "b1", SetPre::Absent),
-			Delta::remove_announced(make_key("key_b"), make_bytes("b1")),
-			set("key_b", "b2", SetPre::Unknown),
 		];
-		let mut preexisting = BTreeSet::new();
-		preexisting.insert(make_key("key_b"));
 
-		let optimized = optimize_deltas(deltas, &preexisting, &BTreeMap::new());
+		let optimized = optimize_deltas(deltas, &BTreeMap::new());
 
-		assert_eq!(optimized, vec![set("key_a", "a2", SetPre::Unknown), set("key_b", "b2", SetPre::Unknown)]);
+		assert_eq!(optimized, vec![set("key_a", "a2", SetPre::Unknown)]);
 	}
 }

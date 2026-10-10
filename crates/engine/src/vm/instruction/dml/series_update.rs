@@ -257,11 +257,7 @@ pub(crate) fn update_series(
 		}
 		if !posts.is_empty() {
 			let written_keys: Vec<TaggedKey> = found.iter().map(|&row| storage_keys[row].clone()).collect();
-			for (key, committed) in written_keys.iter().zip(txn.get_committed_many(&written_keys)?) {
-				if committed.is_some() {
-					txn.mark_preexisting(key)?;
-				}
-			}
+			txn.get_committed_many(&written_keys)?;
 			txn.set_many(written_keys.into_iter().zip(posts.iter().cloned()).collect())?;
 		}
 		if !posts.is_empty() && !txn.series_row_post_update_interceptors().is_empty() {

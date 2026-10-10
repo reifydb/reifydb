@@ -9,6 +9,7 @@ use reifydb_codec::row::{
 };
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
+	delta::SetPre,
 	interface::{
 		catalog::{
 			object::ObjectId,
@@ -150,14 +151,8 @@ fn insert_rows<T: WithInterceptors + Write + Read>(
 	rows: &[EncodedBytes],
 ) -> Result<Vec<EncodedBytes>> {
 	assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
-	let mut stored = Vec::with_capacity(rows.len());
-	let mut inserted_ids = Vec::new();
-	let mut inserted = Vec::new();
-	let mut replaced_ids = Vec::new();
-	let mut replaced_pres = Vec::new();
-	let mut replaced_posts = Vec::new();
 	if ids.is_empty() {
-		return Ok(stored);
+		return Ok(Vec::new());
 	}
 
 	let keys: Vec<TaggedKey> = ids
@@ -165,25 +160,6 @@ fn insert_rows<T: WithInterceptors + Write + Read>(
 		.enumerate()
 		.map(|(idx, &row_number)| ringbuffer_key(ringbuffer, partitions.get(idx).copied(), row_number))
 		.collect();
-	let mut pres = Vec::with_capacity(keys.len());
-	for key in &keys {
-		pres.push(txn.get(key)?.map(|v| v.bytes));
-	}
-
-	for (&row_number, pre) in ids.iter().zip(&pres) {
-		if let Some(pre) = pre {
-			replaced_ids.push(row_number);
-			replaced_pres.push(pre.clone());
-		}
-	}
-	if !replaced_ids.is_empty() {
-		if !txn.ringbuffer_row_pre_delete_interceptors().is_empty() {
-			RingBufferRowInterceptor::pre_delete(txn, ringbuffer, &replaced_ids)?;
-		}
-		if !txn.ringbuffer_row_post_delete_interceptors().is_empty() {
-			RingBufferRowInterceptor::post_delete(txn, ringbuffer, &replaced_ids, &replaced_pres)?;
-		}
-	}
 
 	let written: Vec<EncodedBytes> = if txn.ringbuffer_row_pre_insert_interceptors().is_empty() {
 		rows.to_vec()
@@ -201,38 +177,20 @@ fn insert_rows<T: WithInterceptors + Write + Read>(
 		written
 	};
 
-	txn.set_many(keys.iter().cloned().zip(written.iter().cloned()).collect())?;
+	txn.set_many_with_pre(
+		keys.into_iter()
+			.zip(written.iter().cloned())
+			.map(|(key, bytes)| (key, bytes, SetPre::Absent))
+			.collect(),
+	)?;
 
 	if !txn.ringbuffer_row_post_insert_interceptors().is_empty() {
 		RingBufferRowInterceptor::post_insert(txn, ringbuffer, ids, &written)?;
 	}
 
-	for ((&row_number, pre), bytes) in ids.iter().zip(&pres).zip(written) {
-		match pre {
-			Some(_) => replaced_posts.push(bytes.clone()),
-			None => {
-				inserted_ids.push(row_number);
-				inserted.push(bytes.clone());
-			}
-		}
-		stored.push(bytes);
-	}
+	txn.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, ids, &written)?);
 
-	if !inserted_ids.is_empty() {
-		txn.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, &inserted_ids, &inserted)?);
-	}
-	if !replaced_ids.is_empty() {
-		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
-		txn.track_flow_change(build_ringbuffer_update_change(
-			ringbuffer,
-			&shape,
-			&replaced_ids,
-			&replaced_pres,
-			&replaced_posts,
-		)?);
-	}
-
-	Ok(stored)
+	Ok(written)
 }
 
 fn update_rows<T: WithInterceptors + Write + Read>(
@@ -281,11 +239,7 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 
 	if !matched.is_empty() {
 		let matched_keys: Vec<TaggedKey> = matched.iter().map(|&idx| keys[idx].clone()).collect();
-		for (key, committed) in matched_keys.iter().zip(txn.get_committed_many(&matched_keys)?) {
-			if committed.is_some() {
-				txn.mark_preexisting(key)?;
-			}
-		}
+		txn.get_committed_many(&matched_keys)?;
 		txn.set_many(matched_keys.into_iter().zip(posts.iter().cloned()).collect())?;
 	}
 
@@ -349,11 +303,6 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 		RingBufferRowInterceptor::pre_delete(txn, ringbuffer, &removed_ids)?;
 	}
 
-	for (key, committed) in matched_keys.iter().zip(&committed) {
-		if committed.is_some() {
-			txn.mark_preexisting(key)?;
-		}
-	}
 	txn.remove_many(matched_keys.into_iter().zip(removed.iter().cloned().map(Some)).collect())?;
 
 	if !txn.ringbuffer_row_post_delete_interceptors().is_empty() {

@@ -6,6 +6,7 @@ use std::{mem::take, ops::Bound, sync::Arc};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
+	delta::SetPre,
 	event::EventBus,
 	execution::ExecutionResult,
 	interface::{
@@ -416,6 +417,12 @@ impl AdminTransaction {
 		self.cmd.as_mut().unwrap().set_many(entries)
 	}
 
+	#[inline]
+	pub fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().set_many_with_pre(entries)
+	}
+
 	#[cfg(feature = "testing")]
 	pub fn op_counts(&self) -> OpCounts {
 		self.cmd.as_ref().map(|cmd| cmd.op_counts.clone()).unwrap_or_default()
@@ -437,13 +444,6 @@ impl AdminTransaction {
 	pub fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_many(entries)
-	}
-
-	#[inline]
-	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().mark_preexisting(key);
-		Ok(())
 	}
 
 	#[inline]
@@ -521,6 +521,10 @@ impl Write for AdminTransaction {
 		AdminTransaction::set_many(self, entries)
 	}
 	#[inline]
+	fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+		AdminTransaction::set_many_with_pre(self, entries)
+	}
+	#[inline]
 	fn remove_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()> {
 		AdminTransaction::remove_with_pre(self, key, pre)
 	}
@@ -531,10 +535,6 @@ impl Write for AdminTransaction {
 	#[inline]
 	fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		AdminTransaction::remove_many(self, entries)
-	}
-	#[inline]
-	fn mark_preexisting(&mut self, key: &TaggedKey) -> Result<()> {
-		AdminTransaction::mark_preexisting(self, key)
 	}
 	#[inline]
 	fn track_row_change(&mut self, changes: &[RowChange]) {

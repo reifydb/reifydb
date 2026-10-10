@@ -8,6 +8,7 @@ use reifydb_codec::row::{
 };
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
+	delta::SetPre,
 	error::diagnostic::index::primary_key_changed_by_hook,
 	interface::{
 		catalog::{object::ObjectId, table::Table},
@@ -133,15 +134,16 @@ fn insert_rows<T: WithInterceptors + Write>(
 		refuse_changed_keys(table, shape, rows, key_columns, &keys)?;
 	}
 
-	let mut entries: Vec<(TaggedKey, EncodedBytes)> = Vec::with_capacity(frozen.len() + index.len());
+	let mut entries: Vec<(TaggedKey, EncodedBytes, SetPre)> = Vec::with_capacity(frozen.len() + index.len());
 	for (row_index, (row, &row_number)) in frozen.iter().zip(ids).enumerate() {
 		entries.push((
 			row_key_from_partition(table.id, partitions.get(row_index).copied(), row_number),
 			row.clone(),
+			SetPre::Absent,
 		));
 	}
-	entries.extend(index);
-	txn.set_many(entries)?;
+	entries.extend(index.into_iter().map(|(key, bytes)| (key, bytes, SetPre::Unknown)));
+	txn.set_many_with_pre(entries)?;
 
 	TableRowInterceptor::post_insert(txn, table, ids, &frozen)?;
 
@@ -266,14 +268,21 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 	}
 
 	let matched_keys: Vec<TaggedKey> = matched_indices.iter().map(|&i| keys[i].clone()).collect();
-	for (key, committed) in matched_keys.iter().zip(txn.get_committed_many(&matched_keys)?) {
-		if committed.is_some() {
-			txn.mark_preexisting(key)?;
-		}
-	}
+	let known: Vec<SetPre> = txn
+		.get_committed_many(&matched_keys)?
+		.into_iter()
+		.map(|committed| committed.map_or(SetPre::Unknown, |row| SetPre::Present(row.bytes)))
+		.collect();
 	let matched_ids: Vec<RowNumber> = matched_indices.iter().map(|&i| ids[i]).collect();
 	let matched_posts: Vec<EncodedBytes> = matched_indices.iter().map(|&i| posts[i].clone()).collect();
-	txn.set_many(matched_keys.into_iter().zip(matched_posts.iter().cloned()).collect())?;
+	txn.set_many_with_pre(
+		matched_keys
+			.into_iter()
+			.zip(matched_posts.iter().cloned())
+			.zip(known)
+			.map(|((key, post), pre)| (key, post, pre))
+			.collect(),
+	)?;
 
 	TableRowInterceptor::post_update(txn, table, &matched_ids, &matched_posts, &pres)?;
 
@@ -320,11 +329,6 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 
 	TableRowInterceptor::pre_delete(txn, table, &matched_ids)?;
 
-	for (key, committed) in matched_keys.iter().zip(&committed) {
-		if committed.is_some() {
-			txn.mark_preexisting(key)?;
-		}
-	}
 	txn.remove_many(matched_keys.into_iter().zip(pre_for_cdc_bytes_vec.iter().cloned().map(Some)).collect())?;
 
 	TableRowInterceptor::post_delete(txn, table, &matched_ids, &pre_for_cdc_bytes_vec)?;

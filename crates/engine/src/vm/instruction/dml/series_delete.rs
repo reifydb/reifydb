@@ -236,7 +236,7 @@ fn drive_series_delete_input(
 		let keys = series_delete_keys(series, &columns)?;
 		let tags = series_delete_tags(&columns, has_tag, row_count)?;
 		let mut removed = SeriesRemovedRows::default();
-		let mut removals: Vec<(TaggedKey, EncodedBytes, bool)> = Vec::new();
+		let mut removals: Vec<(TaggedKey, EncodedBytes)> = Vec::new();
 		let mut found = Vec::new();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let sequence = u64::from(row_number);
@@ -280,8 +280,7 @@ fn drive_series_delete_input(
 		for ((row_idx, key, encoded_bytes, partition, key_value, row_number), committed) in
 			found.into_iter().zip(committed_rows)
 		{
-			let committed = committed.map(|v| v.bytes);
-			let pre_for_cdc = committed.clone().unwrap_or_else(|| encoded_bytes.clone());
+			let pre_for_cdc = committed.map_or_else(|| encoded_bytes.clone(), |v| v.bytes);
 
 			if has_returning {
 				returned_rows.push((row_number, encoded_bytes));
@@ -291,7 +290,7 @@ fn drive_series_delete_input(
 			removed.row_numbers.push(row_number);
 			removed.pres.push(pre_for_cdc.clone());
 			removed.row_indices.push(row_idx);
-			removals.push((key, pre_for_cdc, committed.is_some()));
+			removals.push((key, pre_for_cdc));
 		}
 		remove_series_rows(txn, series, &removed.row_numbers, &removals)?;
 		if !removed.pres.is_empty() {

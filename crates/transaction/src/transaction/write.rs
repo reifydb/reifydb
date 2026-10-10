@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::bytes::EncodedBytes;
-use reifydb_core::{interface::change::Change, key::any::TaggedKey};
+use reifydb_core::{delta::SetPre, interface::change::Change, key::any::TaggedKey};
 use reifydb_value::Result;
 
 use crate::change::RowChange;
@@ -10,10 +10,10 @@ use crate::change::RowChange;
 pub trait Write {
 	fn set(&mut self, key: &TaggedKey, bytes: EncodedBytes) -> Result<()>;
 	fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()>;
+	fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()>;
 	fn remove_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()>;
 	fn remove(&mut self, key: &TaggedKey) -> Result<()>;
 	fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()>;
-	fn mark_preexisting(&mut self, key: &TaggedKey) -> Result<()>;
 
 	fn track_row_change(&mut self, changes: &[RowChange]);
 

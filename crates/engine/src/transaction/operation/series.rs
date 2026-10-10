@@ -131,7 +131,7 @@ pub(crate) fn remove_series_rows(
 	txn: &mut Transaction<'_>,
 	series: &Series,
 	ids: &[RowNumber],
-	removals: &[(TaggedKey, EncodedBytes, bool)],
+	removals: &[(TaggedKey, EncodedBytes)],
 ) -> Result<()> {
 	assert_eq!(ids.len(), removals.len(), "ids/removals length mismatch");
 	if ids.is_empty() {
@@ -140,17 +140,9 @@ pub(crate) fn remove_series_rows(
 	if !txn.series_row_pre_delete_interceptors().is_empty() {
 		SeriesRowInterceptor::pre_delete(txn, series, ids)?;
 	}
-	for (key, _, was_committed) in removals {
-		if *was_committed {
-			txn.mark_preexisting(key)?;
-		}
-	}
-	txn.remove_many(
-		removals.iter().map(|(key, pre_for_cdc, _)| (key.clone(), Some(pre_for_cdc.clone()))).collect(),
-	)?;
+	txn.remove_many(removals.iter().map(|(key, pre_for_cdc)| (key.clone(), Some(pre_for_cdc.clone()))).collect())?;
 	if !txn.series_row_post_delete_interceptors().is_empty() {
-		let pre_rows: Vec<EncodedBytes> =
-			removals.iter().map(|(_, pre_for_cdc, _)| pre_for_cdc.clone()).collect();
+		let pre_rows: Vec<EncodedBytes> = removals.iter().map(|(_, pre_for_cdc)| pre_for_cdc.clone()).collect();
 		SeriesRowInterceptor::post_delete(txn, series, &pre_rows)?;
 	}
 	Ok(())

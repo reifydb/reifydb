@@ -65,7 +65,6 @@ pub struct WriteSavepoint {
 	pub(crate) delta_log_len: usize,
 	pub(crate) removed_after_set_len: usize,
 	pub(crate) conflicts: ConflictManager,
-	pub(crate) preexisting_keys: BTreeSet<TaggedKey>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -90,8 +89,6 @@ pub struct MultiWriteTransaction {
 	pub(crate) duplicates: Vec<DeltaEntry>,
 
 	pub(crate) delta_log: Vec<DeltaEntry>,
-
-	pub(crate) preexisting_keys: BTreeSet<TaggedKey>,
 
 	removed_after_set: Vec<TaggedKey>,
 
@@ -127,7 +124,6 @@ impl MultiWriteTransaction {
 			pending_writes: PendingWrites::new(),
 			duplicates: Vec::new(),
 			delta_log: Vec::new(),
-			preexisting_keys: BTreeSet::new(),
 			removed_after_set: Vec::new(),
 			committed_pres: BTreeMap::new(),
 			lifecycle: Lifecycle::Active,
@@ -192,14 +188,6 @@ impl MultiWriteTransaction {
 	pub fn conflicts(&self) -> &ConflictManager {
 		&self.conflicts
 	}
-
-	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) {
-		self.preexisting_keys.insert(key.clone().into());
-	}
-
-	pub fn preexisting_keys(&self) -> &BTreeSet<TaggedKey> {
-		&self.preexisting_keys
-	}
 }
 
 impl MultiWriteTransaction {
@@ -212,7 +200,6 @@ impl MultiWriteTransaction {
 			delta_log_len: self.delta_log.len(),
 			removed_after_set_len: self.removed_after_set.len(),
 			conflicts: self.conflicts.clone(),
-			preexisting_keys: self.preexisting_keys.clone(),
 		}
 	}
 
@@ -224,7 +211,6 @@ impl MultiWriteTransaction {
 		self.delta_log.truncate(sp.delta_log_len);
 		self.removed_after_set.truncate(sp.removed_after_set_len);
 		self.conflicts = sp.conflicts;
-		self.preexisting_keys = sp.preexisting_keys;
 	}
 }
 
@@ -290,6 +276,14 @@ impl MultiWriteTransaction {
 		entries = entries.len()
 	))]
 	pub fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		self.set_many_with_pre(entries.into_iter().map(|(key, bytes)| (key, bytes, SetPre::Unknown)).collect())
+	}
+
+	#[instrument(name = "transaction::command::set_many_with_pre", level = "trace", skip_all, fields(
+		txn_id = %self.id,
+		entries = entries.len()
+	))]
+	pub fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -299,18 +293,18 @@ impl MultiWriteTransaction {
 		#[cfg(feature = "testing")]
 		{
 			self.op_counts.set_many_call();
-			for (key, _) in &entries {
+			for (key, _, _) in &entries {
 				self.op_counts.key(key.kind()).batched += 1;
 			}
 		}
 		let version = self.base_version();
 		let pending: Vec<DeltaEntry> = entries
 			.into_iter()
-			.map(|(key, bytes)| DeltaEntry {
+			.map(|(key, bytes, pre)| DeltaEntry {
 				delta: Delta::Set {
 					key,
 					bytes,
-					pre: SetPre::Unknown,
+					pre,
 				},
 				version,
 			})
@@ -915,16 +909,29 @@ impl MultiWriteTransaction {
 	fn build_deltas(&self) -> CowVec<Delta> {
 		CowVec::new(optimize_deltas(
 			self.delta_log.iter().chain(self.duplicates.iter()).map(|pending| pending.delta.clone()),
-			self.preexisting_keys(),
 			&self.committed_pres,
 		))
 	}
 
 	fn resolve_removed_after_set(&mut self) -> Result<()> {
 		let mut keys = mem::take(&mut self.removed_after_set);
-		keys.retain(|key| !self.preexisting_keys.contains(key));
 		keys.sort();
 		keys.dedup();
+		let mut first: BTreeSet<&TaggedKey> = BTreeSet::new();
+		let mut known: BTreeSet<&TaggedKey> = BTreeSet::new();
+		for entry in &self.delta_log {
+			if first.insert(entry.key())
+				&& matches!(
+					entry.delta,
+					Delta::Set {
+						pre: SetPre::Absent | SetPre::Present(_),
+						..
+					}
+				) {
+				known.insert(entry.key());
+			}
+		}
+		let keys: Vec<TaggedKey> = keys.into_iter().filter(|key| !known.contains(key)).collect();
 		if keys.is_empty() {
 			return Ok(());
 		}
@@ -935,6 +942,18 @@ impl MultiWriteTransaction {
 			.filter_map(|(key, found)| Some((key, found?.bytes().clone())))
 			.collect();
 		Ok(())
+	}
+
+	fn forget_present_tags(&mut self) {
+		for entry in &mut self.delta_log {
+			if let Delta::Set {
+				pre: pre @ SetPre::Present(_),
+				..
+			} = &mut entry.delta
+			{
+				*pre = SetPre::Unknown;
+			}
+		}
 	}
 
 	#[inline]
@@ -971,6 +990,7 @@ impl MultiWriteTransaction {
 			self.discard();
 			return Ok(CommitVersion(0));
 		}
+		self.forget_present_tags();
 		self.resolve_removed_after_set()?;
 		let deltas = self.build_deltas();
 		let commit_version = self.commit_pending_unchecked(deltas.clone())?;
@@ -1632,23 +1652,48 @@ mod tests {
 	}
 
 	#[test]
-	fn a_marked_key_is_neither_read_nor_changed() {
-		// Marking writers already resolve the pair without a read; reading them again costs a read per
-		// removed row and would replace the pre-image they publish today.
+	fn a_key_with_a_known_pre_image_is_neither_read_nor_changed() {
+		// A writer that tags its set already resolves the pair without a read; reading it again costs a read
+		// per removed row and would replace the pre-image it publishes.
 		let engine = MultiTransaction::testing();
-		committed_with(&engine, &[("marked", "v1")]);
+		committed_with(&engine, &[("known", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("marked"), test_bytes("v2")).unwrap();
-		txn.mark_preexisting(&test_key("marked"));
-		txn.remove(&test_key("marked")).unwrap();
+		txn.set_many_with_pre(vec![(
+			test_key("known").into(),
+			test_bytes("v2"),
+			SetPre::Present(test_bytes("v1")),
+		)])
+		.unwrap();
+		txn.remove(&test_key("known")).unwrap();
 
 		assert_eq!(
 			resolved_deltas(&mut txn),
-			vec![Delta::remove_announced(test_key("marked").into(), test_bytes("v2"))]
+			vec![Delta::remove_announced(test_key("known").into(), test_bytes("v1"))]
 		);
 		#[cfg(feature = "testing")]
 		assert_eq!(txn.op_counts.get_committed_many_calls(), 0);
+	}
+
+	#[cfg(feature = "testing")]
+	#[test]
+	fn an_unchecked_commit_reads_a_tagged_set_then_remove_instead_of_trusting_the_tag() {
+		// An unchecked commit sits outside the conflict window, so a pre-image tagged at its snapshot can be
+		// stale when it commits; it must fall back to the store like an untagged write.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("tagged", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set_many_with_pre(vec![(
+			test_key("tagged").into(),
+			test_bytes("v2"),
+			SetPre::Present(test_bytes("v1")),
+		)])
+		.unwrap();
+		txn.remove(&test_key("tagged")).unwrap();
+		txn.commit_unchecked().unwrap();
+
+		assert_eq!(txn.op_counts.get_committed_many_calls(), 1);
 	}
 
 	#[cfg(feature = "testing")]

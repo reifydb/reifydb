@@ -7,6 +7,7 @@ use arrow_array::RecordBatch;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
+	delta::SetPre,
 	execution::ExecutionResult,
 	interface::{
 		catalog::{object::ObjectId, policy::SessionOp, storage::StorageId},
@@ -606,6 +607,10 @@ impl<'a> Transaction<'a> {
 		Write::set_many(self.write_ops(), entries)
 	}
 
+	pub fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+		Write::set_many_with_pre(self.write_ops(), entries)
+	}
+
 	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
 		Write::remove_with_pre(self.write_ops(), &key.clone().into(), pre)
 	}
@@ -616,10 +621,6 @@ impl<'a> Transaction<'a> {
 
 	pub fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		Write::remove_many(self.write_ops(), entries)
-	}
-
-	pub fn mark_preexisting<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
-		Write::mark_preexisting(self.write_ops(), &key.clone().into())
 	}
 
 	pub fn track_row_change(&mut self, changes: &[RowChange]) {

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::bytes::EncodedBytes;
-use reifydb_core::{interface::catalog::queue::Queue, key::row::RowKey};
+use reifydb_core::{delta::SetPre, interface::catalog::queue::Queue, key::row::RowKey};
 use reifydb_transaction::{
 	change::{QueueRowInsertion, RowChange},
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction, write::Write},
@@ -44,8 +44,10 @@ fn insert_rows<T: Write>(txn: &mut T, queue: &Queue, rows: &[QueueInsertRow]) ->
 		return Ok(());
 	}
 
-	txn.set_many(
-		rows.iter().map(|row| (RowKey::new(queue.id, row.row_number).into(), row.encoded.clone())).collect(),
+	txn.set_many_with_pre(
+		rows.iter()
+			.map(|row| (RowKey::new(queue.id, row.row_number).into(), row.encoded.clone(), SetPre::Absent))
+			.collect(),
 	)?;
 
 	txn.track_row_change(&row_changes(queue, rows));

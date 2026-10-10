@@ -174,15 +174,12 @@ impl Batch for FlowTransaction<'_> {
 	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 		let keys: Vec<TaggedKey> = keys.iter().map(tagged).collect();
 		let committed = self.tx.get_committed_many(&keys)?;
-		let mut removes = Vec::with_capacity(keys.len());
-		for (key, committed) in keys.into_iter().zip(committed) {
-			let pre = committed.map(|row| row.bytes);
-			if pre.is_some() {
-				self.tx.mark_preexisting(&key)?;
-			}
-			removes.push((key, pre));
-		}
-		self.tx.remove_many(removes)
+		self.tx.remove_many(
+			keys.into_iter()
+				.zip(committed)
+				.map(|(key, committed)| (key, committed.map(|row| row.bytes)))
+				.collect(),
+		)
 	}
 }
 
