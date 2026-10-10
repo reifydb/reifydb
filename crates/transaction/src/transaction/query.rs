@@ -137,6 +137,16 @@ impl QueryTransaction {
 	}
 
 	#[inline]
+	pub fn get_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		Ok(self.multi.get_many(keys)?.into_iter().map(|v| v.map(|v| v.into_multi_version_row())).collect())
+	}
+
+	#[inline]
+	pub fn contains_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+		self.multi.contains_many(keys)
+	}
+
+	#[inline]
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		self.multi.prefix(prefix)
 	}

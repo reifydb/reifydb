@@ -72,6 +72,18 @@ impl MultiReadTransaction {
 		self.engine.contains_key(&key.clone().into(), version)
 	}
 
+	pub fn get_many(&self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+		if keys.is_empty() {
+			return Ok(Vec::new());
+		}
+		let version = self.tm.version();
+		Ok(self.engine.get_many(keys, version)?.into_iter().map(|found| found.map(Into::into)).collect())
+	}
+
+	pub fn contains_many(&self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+		Ok(self.get_many(keys)?.iter().map(Option::is_some).collect())
+	}
+
 	pub fn scan(&self) -> Result<MultiVersionBatch<TaggedKey>> {
 		let items: Vec<_> = self
 			.range_encoded(EncodedKeyRange::all(), RangeScope::All, 1024)

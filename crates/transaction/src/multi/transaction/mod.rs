@@ -11,6 +11,7 @@
 
 use std::{ops::Deref, sync::Arc};
 
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
@@ -29,6 +30,7 @@ use reifydb_runtime::{
 	},
 	version_epoch::VersionEpoch,
 };
+use reifydb_store_commit::VersionedGetResult;
 use reifydb_store_multi::MultiStore;
 use reifydb_value::{Result, value::duration::Duration};
 use tracing::{instrument, warn};
@@ -397,6 +399,26 @@ impl MultiTransaction {
 	#[instrument(name = "transaction::contains_key", level = "trace", skip(self, key), fields(version = version.0))]
 	pub fn contains_key(&self, key: &TaggedKey, version: CommitVersion) -> Result<bool> {
 		MultiVersionContains::contains(&self.store, key, version)
+	}
+
+	#[instrument(name = "transaction::get_many", level = "trace", skip(self, keys), fields(keys = keys.len(), version = version.0))]
+	pub fn get_many(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<Committed>>> {
+		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
+		let found = self.store.get_many_versioned(&encoded, version)?;
+		Ok(keys.iter()
+			.zip(&encoded)
+			.map(|(key, encoded)| match found.get(encoded) {
+				Some(VersionedGetResult::Value {
+					value,
+					version,
+				}) => Some(Committed {
+					key: key.clone(),
+					bytes: EncodedBytes(value.clone()),
+					version: *version,
+				}),
+				_ => None,
+			})
+			.collect())
 	}
 
 	pub fn store(&self) -> &MultiStore {

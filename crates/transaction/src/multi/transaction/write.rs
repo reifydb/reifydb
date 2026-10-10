@@ -407,15 +407,22 @@ impl MultiWriteTransaction {
 		}
 		let version = self.base_version();
 		let mut removed: BTreeSet<EncodedKey> = BTreeSet::new();
+		let first: Vec<bool> = entries.iter().map(|(key, _)| removed.insert(key.encode())).collect();
+		let unread: Vec<TaggedKey> = entries
+			.iter()
+			.zip(&first)
+			.filter(|((_, pre), first)| **first && pre.is_none())
+			.map(|((key, _), _)| key.clone())
+			.collect();
+		let mut read = self.get_many(&unread)?.into_iter();
 		let mut pending: Vec<DeltaEntry> = Vec::with_capacity(entries.len());
-		for (key, pre) in entries {
-			let first = removed.insert(key.encode());
+		for ((key, pre), first) in entries.into_iter().zip(first) {
 			let announce = match pre {
 				Some(pre) => RemoveAnnounce::Announced {
 					pre,
 				},
 				None if !first => RemoveAnnounce::Silent,
-				None => match self.get(&key)? {
+				None => match read.next().flatten() {
 					Some(found) => RemoveAnnounce::Announced {
 						pre: found.bytes().clone(),
 					},
@@ -663,6 +670,81 @@ impl MultiWriteTransaction {
 				_ => None,
 			})
 			.collect())
+	}
+
+	#[instrument(name = "transaction::command::get_many", level = "trace", skip(self, keys), fields(
+		txn_id = %self.id,
+		keys = keys.len()
+	))]
+	pub fn get_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		if keys.is_empty() {
+			return Ok(Vec::new());
+		}
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.get_many_call();
+			for key in keys {
+				self.op_counts.key(key.kind()).batched_gets += 1;
+			}
+		}
+		self.read_many(keys)
+	}
+
+	#[instrument(name = "transaction::command::contains_many", level = "trace", skip(self, keys), fields(
+		txn_id = %self.id,
+		keys = keys.len()
+	))]
+	pub fn contains_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+		if self.lifecycle == Lifecycle::Discarded {
+			return Err(TransactionError::RolledBack.into());
+		}
+		if keys.is_empty() {
+			return Ok(Vec::new());
+		}
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.contains_many_call();
+			for key in keys {
+				self.op_counts.key(key.kind()).batched_contains += 1;
+			}
+		}
+		Ok(self.read_many(keys)?.iter().map(Option::is_some).collect())
+	}
+
+	fn read_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+		let version = self.version();
+		let mut found: Vec<Option<TransactionValue>> = Vec::with_capacity(keys.len());
+		let mut unread: Vec<usize> = Vec::new();
+		for (slot, key) in keys.iter().enumerate() {
+			match self.pending_writes.get(key) {
+				Some(pending) => found.push(pending.bytes().map(|bytes| {
+					DeltaEntry {
+						delta: Delta::Set {
+							key: pending.key().clone(),
+							bytes: bytes.clone(),
+						},
+						version: pending.version,
+					}
+					.into()
+				})),
+				None => {
+					self.conflicts.mark_read(key);
+					unread.push(slot);
+					found.push(None);
+				}
+			}
+		}
+		if unread.is_empty() {
+			return Ok(found);
+		}
+		let snapshot: Vec<TaggedKey> = unread.iter().map(|&slot| keys[slot].clone()).collect();
+		for (slot, committed) in unread.into_iter().zip(self.engine.get_many(&snapshot, version)?) {
+			found[slot] = committed.map(Into::into);
+		}
+		Ok(found)
 	}
 }
 

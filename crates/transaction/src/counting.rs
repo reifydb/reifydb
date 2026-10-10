@@ -8,8 +8,10 @@ use reifydb_core::key::tag::KeyTag;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct KeyCounts {
 	pub gets: u64,
+	pub batched_gets: u64,
 	pub committed_gets: u64,
 	pub contains: u64,
+	pub batched_contains: u64,
 	pub sets: u64,
 	pub batched: u64,
 	pub removes: u64,
@@ -20,7 +22,9 @@ pub struct KeyCounts {
 pub struct OpCounts {
 	keys: HashMap<KeyTag, KeyCounts>,
 	set_many_calls: u64,
+	get_many_calls: u64,
 	get_committed_many_calls: u64,
+	contains_many_calls: u64,
 	remove_many_calls: u64,
 }
 
@@ -33,8 +37,16 @@ impl OpCounts {
 		self.set_many_calls
 	}
 
+	pub fn get_many_calls(&self) -> u64 {
+		self.get_many_calls
+	}
+
 	pub fn get_committed_many_calls(&self) -> u64 {
 		self.get_committed_many_calls
+	}
+
+	pub fn contains_many_calls(&self) -> u64 {
+		self.contains_many_calls
 	}
 
 	pub fn remove_many_calls(&self) -> u64 {
@@ -49,8 +61,16 @@ impl OpCounts {
 		self.set_many_calls += 1;
 	}
 
+	pub(crate) fn get_many_call(&mut self) {
+		self.get_many_calls += 1;
+	}
+
 	pub(crate) fn get_committed_many_call(&mut self) {
 		self.get_committed_many_calls += 1;
+	}
+
+	pub(crate) fn contains_many_call(&mut self) {
+		self.contains_many_calls += 1;
 	}
 
 	pub(crate) fn remove_many_call(&mut self) {

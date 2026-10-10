@@ -310,8 +310,17 @@ impl<'a> Transaction<'a> {
 		match self {
 			Self::Command(txn) => txn.get_committed_many(keys),
 			Self::Admin(txn) => txn.get_committed_many(keys),
-			Self::Query(txn) => keys.iter().map(|key| txn.get(key)).collect(),
+			Self::Query(txn) => txn.get_many(keys),
 			Self::Test(t) => t.inner.get_committed_many(keys),
+		}
+	}
+
+	pub fn get_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		match self {
+			Self::Command(txn) => txn.get_many(keys),
+			Self::Admin(txn) => txn.get_many(keys),
+			Self::Query(txn) => txn.get_many(keys),
+			Self::Test(t) => t.inner.get_many(keys),
 		}
 	}
 
@@ -321,6 +330,15 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.contains(key),
 			Self::Query(txn) => txn.contains(key),
 			Self::Test(t) => t.inner.contains(key),
+		}
+	}
+
+	pub fn contains_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+		match self {
+			Self::Command(txn) => txn.contains_many(keys),
+			Self::Admin(txn) => txn.contains_many(keys),
+			Self::Query(txn) => txn.contains_many(keys),
+			Self::Test(t) => t.inner.contains_many(keys),
 		}
 	}
 

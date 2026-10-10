@@ -378,6 +378,24 @@ impl CommandTransaction {
 	}
 
 	#[inline]
+	pub fn get_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		self.check_active()?;
+		Ok(self.cmd
+			.as_mut()
+			.unwrap()
+			.get_many(keys)?
+			.into_iter()
+			.map(|v| v.map(|v| v.into_multi_version_row()))
+			.collect())
+	}
+
+	#[inline]
+	pub fn contains_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().contains_many(keys)
+	}
+
+	#[inline]
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().prefix(prefix)
