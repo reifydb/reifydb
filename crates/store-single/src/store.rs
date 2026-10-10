@@ -292,6 +292,7 @@ impl StandardSingleStore {
 				Delta::Set {
 					key,
 					bytes,
+					..
 				} => (key.encode(), Some(CowVec::new(bytes.as_ref().to_vec()))),
 				Delta::Remove {
 					key,
@@ -534,6 +535,7 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<Vec<u8>>, Bound<Vec<u8>>
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod tests {
 	use reifydb_core::{
+		delta::SetPre,
 		interface::{catalog::id::QueueId, store::SingleVersionCommit},
 		key::{any::TaggedKey, queue::QueueDeduplicationKey},
 	};
@@ -554,6 +556,7 @@ mod tests {
 			CowVec::new(vec![Delta::Set {
 				key: k.clone(),
 				bytes: EncodedBytes(CowVec::new(b"7".to_vec())),
+				pre: SetPre::Unknown,
 			}]),
 		)
 		.unwrap();
@@ -584,6 +587,7 @@ mod tests {
 			CowVec::new(vec![Delta::Set {
 				key: k.clone(),
 				bytes: EncodedBytes(CowVec::new(b"1".to_vec())),
+				pre: SetPre::Unknown,
 			}]),
 		)
 		.unwrap();
@@ -595,6 +599,7 @@ mod tests {
 			CowVec::new(vec![Delta::Set {
 				key: key("lost"),
 				bytes: EncodedBytes(CowVec::new(b"2".to_vec())),
+				pre: SetPre::Unknown,
 			}]),
 		)
 		.unwrap();
@@ -627,6 +632,7 @@ mod tests {
 			CowVec::new(vec![Delta::Set {
 				key: present.clone(),
 				bytes: EncodedBytes(CowVec::new(b"7".to_vec())),
+				pre: SetPre::Unknown,
 			}]),
 		)
 		.unwrap();

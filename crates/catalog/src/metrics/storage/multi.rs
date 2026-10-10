@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::metrics::{
 			MetricsId,
@@ -154,6 +154,7 @@ impl<S: SingleVersionStore> StorageMetricsWriter<S> {
 				self.storage.commit(CowVec::new(vec![Delta::Set {
 					key: MetricStorageKey::new(tier, id).into(),
 					bytes: EncodedBytes(CowVec::new(encode_storage_stats(stats))),
+					pre: SetPre::Unknown,
 				}]))?;
 			}
 		}

@@ -9,7 +9,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::id::QueueId,
 		store::{EntryKind, MultiVersionCommit},
@@ -41,7 +41,8 @@ fn write(store: &MultiStore, k: &TaggedKey, payload: &[u8], version: CommitVersi
 		store,
 		cow_vec![Delta::Set {
 			key: k.clone(),
-			bytes
+			bytes,
+			pre: SetPre::Unknown,
 		}],
 		version,
 	)

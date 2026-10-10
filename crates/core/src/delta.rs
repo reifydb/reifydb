@@ -10,12 +10,22 @@ pub enum Delta {
 	Set {
 		key: TaggedKey,
 		bytes: EncodedBytes,
+		pre: SetPre,
 	},
 
 	Remove {
 		key: TaggedKey,
 		announce: RemoveAnnounce,
 	},
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SetPre {
+	Unknown,
+
+	Absent,
+
+	Present(EncodedBytes),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

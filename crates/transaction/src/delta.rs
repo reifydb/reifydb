@@ -8,7 +8,7 @@ use std::collections::{
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
-	delta::{Delta, RemoveAnnounce},
+	delta::{Delta, RemoveAnnounce, SetPre},
 	key::any::TaggedKey,
 };
 
@@ -45,6 +45,7 @@ fn optimize_collided(deltas: Vec<Delta>, preexisting_keys: &BTreeSet<TaggedKey>)
 			Delta::Set {
 				key,
 				bytes,
+				..
 			} => {
 				let entry = key_states.entry(key);
 				match entry {
@@ -136,6 +137,7 @@ fn optimize_collided(deltas: Vec<Delta>, preexisting_keys: &BTreeSet<TaggedKey>)
 					Delta::Set {
 						key,
 						bytes,
+						pre: SetPre::Unknown,
 					},
 				));
 			}
@@ -182,10 +184,12 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("a"),
+				pre: SetPre::Unknown,
 			},
 			Delta::Set {
 				key: make_key("key_b"),
 				bytes: make_bytes("b"),
+				pre: SetPre::Unknown,
 			},
 			Delta::remove_announced(make_key("key_c"), make_bytes("c")),
 		];
@@ -208,10 +212,12 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("first"),
+				pre: SetPre::Unknown,
 			},
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("second"),
+				pre: SetPre::Unknown,
 			},
 		];
 
@@ -235,6 +241,7 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value1"),
+				pre: SetPre::Unknown,
 			},
 			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
@@ -265,6 +272,7 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value1"),
+				pre: SetPre::Unknown,
 			},
 			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
@@ -280,6 +288,7 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value1"),
+				pre: SetPre::Unknown,
 			},
 			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 		];
@@ -316,6 +325,7 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value1"),
+				pre: SetPre::Unknown,
 			},
 			Delta::remove_silent(make_key("key_a")),
 		];
@@ -347,14 +357,17 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value1"),
+				pre: SetPre::Unknown,
 			},
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value2"),
+				pre: SetPre::Unknown,
 			},
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value3"),
+				pre: SetPre::Unknown,
 			},
 		];
 
@@ -365,6 +378,7 @@ pub mod tests {
 			Delta::Set {
 				key,
 				bytes,
+				..
 			} => {
 				assert_eq!(key, &make_key("key_a"));
 				assert_eq!(bytes.0.as_slice(), b"value3");
@@ -379,10 +393,12 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value1"),
+				pre: SetPre::Unknown,
 			},
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value2"),
+				pre: SetPre::Unknown,
 			},
 			Delta::remove_announced(make_key("key_a"), make_bytes("value2")),
 		];
@@ -398,15 +414,18 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key_a"),
 				bytes: make_bytes("value1"),
+				pre: SetPre::Unknown,
 			},
 			Delta::Set {
 				key: make_key("key_b"),
 				bytes: make_bytes("value2"),
+				pre: SetPre::Unknown,
 			},
 			Delta::remove_announced(make_key("key_a"), make_bytes("value1")),
 			Delta::Set {
 				key: make_key("key_c"),
 				bytes: make_bytes("value3"),
+				pre: SetPre::Unknown,
 			},
 		];
 

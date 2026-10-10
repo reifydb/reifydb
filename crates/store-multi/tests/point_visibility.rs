@@ -13,7 +13,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::{
 			id::{QueueId, TableId},
@@ -40,6 +40,7 @@ fn commit(store: &StandardMultiStore, k: &TaggedKey, version: u64, value: &str) 
 		cow_vec![Delta::Set {
 			key: k.clone(),
 			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
+			pre: SetPre::Unknown,
 		}],
 		CommitVersion(version),
 	)

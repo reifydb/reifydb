@@ -17,7 +17,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, SourceVersion},
-	delta::{Delta, RemoveAnnounce},
+	delta::{Delta, RemoveAnnounce, SetPre},
 	event::transaction::PostCommitEvent,
 	interface::{
 		catalog::{object::ObjectId, storage::StorageId},
@@ -265,6 +265,7 @@ impl MultiWriteTransaction {
 				delta: Delta::Set {
 					key,
 					bytes,
+					pre: SetPre::Unknown,
 				},
 				version: self.base_version(),
 			},
@@ -300,6 +301,7 @@ impl MultiWriteTransaction {
 				delta: Delta::Set {
 					key,
 					bytes,
+					pre: SetPre::Unknown,
 				},
 				version,
 			})
@@ -611,6 +613,7 @@ impl MultiWriteTransaction {
 					delta: Delta::Set {
 						key: v.key().clone(),
 						bytes: bytes.clone(),
+						pre: SetPre::Unknown,
 					},
 					version: v.version,
 				}
@@ -725,6 +728,7 @@ impl MultiWriteTransaction {
 						delta: Delta::Set {
 							key: pending.key().clone(),
 							bytes: bytes.clone(),
+							pre: SetPre::Unknown,
 						},
 						version: pending.version,
 					}
@@ -802,6 +806,7 @@ impl MultiWriteTransaction {
 					} => Delta::Set {
 						key: old_key,
 						bytes: bytes.clone(),
+						pre: SetPre::Unknown,
 					},
 					Delta::Remove {
 						announce,

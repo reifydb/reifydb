@@ -5,6 +5,7 @@ use std::{mem::take, ops::RangeBounds};
 
 use indexmap::IndexMap;
 use reifydb_core::{
+	delta::SetPre,
 	interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow},
 	key::any::TaggedKey,
 };
@@ -117,6 +118,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		let delta = Delta::Set {
 			key,
 			bytes: bytes.into(),
+			pre: SetPre::Unknown,
 		};
 		self.pending.insert(encoded, delta);
 		Ok(())

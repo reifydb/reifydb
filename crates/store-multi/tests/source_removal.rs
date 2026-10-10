@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{MultiVersionCommit, MultiVersionGet, classify_key},
@@ -136,6 +136,7 @@ fn source_removal_then_reinsert_resolves_per_read_version() {
 		cow_vec![Delta::Set {
 			key: k.clone(),
 			bytes: EncodedBytes(CowVec::new(b"new".to_vec())),
+			pre: SetPre::Unknown,
 		}],
 		CommitVersion(10),
 	)
@@ -190,6 +191,7 @@ fn memory_only_source_removal_keeps_every_version_below_the_tombstone() {
 		cow_vec![Delta::Set {
 			key: k.clone(),
 			bytes: EncodedBytes(CowVec::new(b"v1".to_vec())),
+			pre: SetPre::Unknown,
 		}],
 		CommitVersion(1),
 	)
@@ -199,6 +201,7 @@ fn memory_only_source_removal_keeps_every_version_below_the_tombstone() {
 		cow_vec![Delta::Set {
 			key: k.clone(),
 			bytes: EncodedBytes(CowVec::new(b"v2".to_vec())),
+			pre: SetPre::Unknown,
 		}],
 		CommitVersion(2),
 	)
@@ -224,6 +227,7 @@ fn repeated_removal_of_an_already_removed_key_is_accepted_and_stays_removed() {
 		cow_vec![Delta::Set {
 			key: k.clone(),
 			bytes: EncodedBytes(CowVec::new(b"v1".to_vec())),
+			pre: SetPre::Unknown,
 		}],
 		CommitVersion(1),
 	)

@@ -10,7 +10,7 @@ use std::{collections::HashMap, slice::from_ref};
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::{
 			id::{QueueId, TableId},
@@ -44,6 +44,7 @@ fn commit(store: &StandardMultiStore, n: u64, version: u64, value: &str) {
 		cow_vec![Delta::Set {
 			key: RowKey::new(STORAGE, n).into(),
 			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
+			pre: SetPre::Unknown,
 		}],
 		CommitVersion(version),
 	)
@@ -333,6 +334,7 @@ fn non_source_range_reads_through_with_warm_cache() {
 			cow_vec![Delta::Set {
 				key: key.clone(),
 				bytes: EncodedBytes(CowVec::new(format!("m{i}").into_bytes())),
+				pre: SetPre::Unknown,
 			}],
 			CommitVersion(1),
 		)

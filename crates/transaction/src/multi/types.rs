@@ -67,6 +67,7 @@ impl TransactionValue {
 				Delta::Set {
 					key,
 					bytes,
+					..
 				} => MultiVersionRow {
 					key,
 					bytes,

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
@@ -87,10 +87,12 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 			Delta::Set {
 				key: k_us1.clone(),
 				bytes: encoded_bytes(b"a"),
+				pre: SetPre::Unknown,
 			},
 			Delta::Set {
 				key: k_eu2.clone(),
 				bytes: encoded_bytes(b"b"),
+				pre: SetPre::Unknown,
 			},
 		]),
 		CommitVersion(1),
@@ -106,6 +108,7 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		CowVec::new(vec![Delta::Set {
 			key: k_us3.clone(),
 			bytes: encoded_bytes(b"c"),
+			pre: SetPre::Unknown,
 		}]),
 		CommitVersion(2),
 	)

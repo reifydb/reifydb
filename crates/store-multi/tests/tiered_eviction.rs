@@ -10,7 +10,7 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
@@ -75,6 +75,7 @@ fn commit(store: &StandardMultiStore, k: &TaggedKey, version: u64, value: &str) 
 		cow_vec![Delta::Set {
 			key: k.clone(),
 			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
+			pre: SetPre::Unknown,
 		}],
 		CommitVersion(version),
 	)

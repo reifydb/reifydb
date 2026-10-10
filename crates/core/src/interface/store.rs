@@ -326,6 +326,12 @@ pub trait MultiVersionGetPrevious: Send + Sync {
 		key: &TaggedKey,
 		before_version: CommitVersion,
 	) -> Result<Option<MultiVersionRow<TaggedKey>>>;
+
+	fn get_previous_many(
+		&self,
+		keys: &[TaggedKey],
+		before_version: CommitVersion,
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>>;
 }
 
 pub trait MultiVersionStore:

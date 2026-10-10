@@ -13,7 +13,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	event::{
 		EventBus, EventListener,
 		metric::{
@@ -256,7 +256,8 @@ impl TestRunner for Runner {
 					cow_vec![
 						(Delta::Set {
 							key: script_key(&key).into(),
-							bytes
+							bytes,
+							pre: SetPre::Unknown,
 						})
 					],
 					version,

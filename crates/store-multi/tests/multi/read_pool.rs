@@ -6,7 +6,7 @@ use std::thread;
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::id::QueueId,
 		store::{MultiVersionCommit, MultiVersionGet},
@@ -33,6 +33,7 @@ fn concurrent_reads_during_writes_no_deadlock() {
 		CowVec::new(vec![Delta::Set {
 			key: key.clone(),
 			bytes: encoded_bytes(b"v0"),
+			pre: SetPre::Unknown,
 		}]),
 		CommitVersion(1),
 	)
@@ -60,6 +61,7 @@ fn concurrent_reads_during_writes_no_deadlock() {
 			CowVec::new(vec![Delta::Set {
 				key: key.clone(),
 				bytes: encoded_bytes(format!("v{v}").as_bytes()),
+				pre: SetPre::Unknown,
 			}]),
 			CommitVersion(v),
 		)

@@ -16,7 +16,7 @@ use reifydb_codec::{
 	row::bytes::EncodedBytes,
 };
 use reifydb_core::{
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::{
 			id::{IndexId, TableId},
@@ -208,7 +208,8 @@ impl testscript::runner::Runner for Runner {
 					cow_vec![
 						(Delta::Set {
 							key: script_key(&key).into(),
-							bytes
+							bytes,
+							pre: SetPre::Unknown,
 						})
 					],
 				)?;

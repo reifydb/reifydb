@@ -13,7 +13,7 @@ use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	default,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -105,6 +105,7 @@ fn seeded_task(store: &StandardMultiStore, budget: u64) -> PersistentFlushTask {
 				)
 				.into(),
 				bytes: EncodedBytes(CowVec::new(b"v".to_vec())),
+				pre: SetPre::Unknown,
 			}]),
 			CommitVersion(n as u64),
 		)

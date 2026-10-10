@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet},
@@ -229,6 +229,7 @@ fn a_read_at_the_gc_cutoff_returns_the_buffered_version_not_an_older_persisted_r
 			cow_vec![Delta::Set {
 				key: k.clone(),
 				bytes: EncodedBytes(val(&version.to_string())),
+				pre: SetPre::Unknown,
 			}],
 			CommitVersion(version),
 		)

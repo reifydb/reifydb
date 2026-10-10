@@ -6,3 +6,6 @@ mod get_many;
 
 #[path = "multi/read_pool.rs"]
 mod read_pool;
+
+#[path = "multi/previous_many.rs"]
+mod previous_many;

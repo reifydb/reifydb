@@ -6,7 +6,7 @@ use std::{collections::HashMap, ops::Bound};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
 		store::{EntryKind, EntryLayout, MultiVersionCommit},
@@ -125,6 +125,7 @@ fn store_with_two_stale_chunks(stale_from: u64, fresh_row: u64) -> (StandardMult
 		cow_vec![Delta::Set {
 			key: RowKey::new(STORAGE, fresh_row).into(),
 			bytes: EncodedBytes(v("fresh")),
+			pre: SetPre::Unknown,
 		}],
 		CommitVersion(55),
 	)

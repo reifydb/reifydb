@@ -8,7 +8,7 @@
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::flow::OperatorId,
 		store::{MultiVersionCommit, MultiVersionGet},
@@ -88,6 +88,7 @@ fn committed_drop_is_invisible_to_next_transaction_get_and_range() {
 			(Delta::Set {
 				key: key_a.clone(),
 				bytes: encoded_bytes(b"one"),
+				pre: SetPre::Unknown,
 			})
 		],
 		CommitVersion(1),
@@ -99,6 +100,7 @@ fn committed_drop_is_invisible_to_next_transaction_get_and_range() {
 			(Delta::Set {
 				key: key_b.clone(),
 				bytes: encoded_bytes(b"two"),
+				pre: SetPre::Unknown,
 			})
 		],
 		CommitVersion(2),

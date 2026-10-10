@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::{flow::OperatorId, id::QueueId},
 		store::MultiVersionCommit,
@@ -48,14 +48,17 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 			Delta::Set {
 				key: k1.clone(),
 				bytes: encoded_bytes(b"n1"),
+				pre: SetPre::Unknown,
 			},
 			Delta::Set {
 				key: k2.clone(),
 				bytes: encoded_bytes(b"n2"),
+				pre: SetPre::Unknown,
 			},
 			Delta::Set {
 				key: p.clone(),
 				bytes: encoded_bytes(b"pp"),
+				pre: SetPre::Unknown,
 			},
 		]),
 		CommitVersion(1),
@@ -95,6 +98,7 @@ fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
 		deltas.push(Delta::Set {
 			key: key.clone(),
 			bytes: encoded_bytes(format!("v{}", i).as_bytes()),
+			pre: SetPre::Unknown,
 		});
 		present.push(key.encode());
 	}

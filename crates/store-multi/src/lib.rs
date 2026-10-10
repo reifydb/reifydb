@@ -223,6 +223,17 @@ impl MultiVersionGetPrevious for MultiStore {
 			MultiStore::Standard(store) => store.get_previous_version(key, before_version),
 		}
 	}
+
+	#[inline]
+	fn get_previous_many(
+		&self,
+		keys: &[TaggedKey],
+		before_version: CommitVersion,
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		match self {
+			MultiStore::Standard(store) => store.get_previous_many(keys, before_version),
+		}
+	}
 }
 
 pub type MultiVersionRangeIterator<'a> = Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'a>;

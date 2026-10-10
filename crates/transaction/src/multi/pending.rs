@@ -152,7 +152,10 @@ impl IntoIterator for PendingWrites {
 #[cfg(test)]
 pub mod tests {
 	use reifydb_core::{
-		common::CommitVersion, delta::Delta, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey,
+		common::CommitVersion,
+		delta::{Delta, SetPre},
+		interface::catalog::id::QueueId,
+		key::queue::QueueDeduplicationKey,
 	};
 	use reifydb_value::util::cowvec::CowVec;
 
@@ -179,6 +182,7 @@ pub mod tests {
 			delta: Delta::Set {
 				key: create_test_any(key),
 				bytes: create_test_bytes(values_data),
+				pre: SetPre::Unknown,
 			},
 			version,
 		}

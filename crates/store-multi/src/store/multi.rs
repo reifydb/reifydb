@@ -1160,6 +1160,32 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 			version: row.version,
 		}))
 	}
+
+	fn get_previous_many(
+		&self,
+		keys: &[TaggedKey],
+		before_version: CommitVersion,
+	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		if keys.is_empty() || before_version.0 == 0 {
+			return Ok(keys.iter().map(|_| None).collect());
+		}
+		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
+		let found = self.get_many_versioned(&encoded, CommitVersion(before_version.0 - 1))?;
+		Ok(keys.iter()
+			.zip(&encoded)
+			.map(|(key, encoded)| match found.get(encoded) {
+				Some(VersionedGetResult::Value {
+					value,
+					version,
+				}) => Some(MultiVersionRow {
+					key: key.clone(),
+					bytes: EncodedBytes(value.clone()),
+					version: *version,
+				}),
+				_ => None,
+			})
+			.collect())
+	}
 }
 
 impl StandardMultiStore {
@@ -1452,7 +1478,7 @@ mod cache_tests {
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 	use reifydb_core::{
 		common::CommitVersion,
-		delta::Delta,
+		delta::{Delta, SetPre},
 		interface::{
 			catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 			store::{
@@ -1602,6 +1628,7 @@ mod cache_tests {
 			cow_vec![Delta::Set {
 				key: TaggedKey::from(RowKey::new(STORAGE, n)),
 				bytes: EncodedBytes(CowVec::new(format!("v{n}").into_bytes())),
+				pre: SetPre::Unknown,
 			}],
 			CommitVersion(version),
 		)
@@ -1695,6 +1722,7 @@ mod cache_tests {
 			cow_vec![Delta::Set {
 				key: TaggedKey::from(opkey.clone()),
 				bytes: EncodedBytes(CowVec::new(b"state-v10".to_vec())),
+				pre: SetPre::Unknown,
 			}],
 			CommitVersion(10),
 		)
@@ -2401,7 +2429,7 @@ mod probe_tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
 		common::CommitVersion,
-		delta::Delta,
+		delta::{Delta, SetPre},
 		event::EventBus,
 		interface::{
 			catalog::{id::TableId, storage::StorageId},
@@ -2500,6 +2528,7 @@ mod probe_tests {
 			cow_vec![Delta::Set {
 				key: present.clone(),
 				bytes: EncodedBytes(CowVec::new(b"v1".to_vec())),
+				pre: SetPre::Unknown,
 			}],
 			CommitVersion(2),
 		)
@@ -2591,6 +2620,7 @@ mod probe_tests {
 			cow_vec![Delta::Set {
 				key: buffered.clone(),
 				bytes: EncodedBytes(CowVec::new(b"buffered".to_vec())),
+				pre: SetPre::Unknown,
 			}],
 			CommitVersion(2),
 		)
