@@ -25,10 +25,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
-	key::{
-		any::TaggedKey,
-		row::{PartitionedRowKey, RowKey},
-	},
+	key::any::TaggedKey,
 	partition::PartitionError,
 	value::batch::single_row,
 };
@@ -58,7 +55,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	transaction::operation::ringbuffer::RingBufferOperations,
+	transaction::operation::ringbuffer::{RingBufferOperations, ringbuffer_key},
 	vm::{
 		instruction::dml::time::{RowTime, populator_index},
 		services::Services,
@@ -128,9 +125,21 @@ pub(crate) fn update_ringbuffer(
 		if row_numbers(&columns)?.is_empty() {
 			return_error!(engine::missing_row_number_column());
 		}
-		enforce_old_row_policies(services, symbols, txn, &target_data, &shape, &columns)?;
 		let row_numbers = row_numbers(&columns)?;
 		let sidecar_partitions = system_columns::partitions(&columns)?;
+		let old_row_keys: Vec<TaggedKey> = row_numbers
+			.iter()
+			.enumerate()
+			.map(|(row_idx, &row_number)| {
+				ringbuffer_key(&ringbuffer, sidecar_partitions.get(row_idx).copied(), row_number)
+			})
+			.collect();
+		let old_rows: Vec<EncodedBytes> = txn
+			.get_many(&old_row_keys)?
+			.into_iter()
+			.map(|row| row.expect("bytes must exist for update").bytes)
+			.collect();
+		enforce_old_row_policies(services, symbols, txn, &target_data, &shape, row_numbers, &old_rows)?;
 		let inputs = input_views(&columns, &ringbuffer.columns)?;
 		let mut batches = [pipeline.cast_target_columns(&inputs, columns.num_rows(), None)?];
 		intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut batches)?;
@@ -149,19 +158,15 @@ pub(crate) fn update_ringbuffer(
 		let mut ids = Vec::with_capacity(row_numbers.len());
 		let mut update_partitions = Vec::new();
 		let mut rows = Vec::with_capacity(row_numbers.len());
+		let mut pres = Vec::with_capacity(row_numbers.len());
 		for (row_idx, (mut builder, &row_number)) in built.into_iter().zip(row_numbers.iter()).enumerate() {
 			let partition = if sidecar_partitions.is_empty() {
 				None
 			} else {
 				Some(sidecar_partitions[row_idx])
 			};
-			let old_row_key = match partition {
-				None => TaggedKey::from(RowKey::new(ringbuffer.id, row_number)),
-				Some(p) => TaggedKey::from(PartitionedRowKey::new(ringbuffer.id, p, row_number)),
-			};
-			let old_row = txn.get(&old_row_key)?.expect("bytes must exist for update").bytes;
-			let pre_row = old_row.clone();
-			let old_row = EncodedRingBufferRow::view(&old_row);
+			let pre_row = old_rows[row_idx].clone();
+			let old_row = EncodedRingBufferRow::view(&old_rows[row_idx]);
 			let old_created_at = old_row.created_at();
 			let old_time = old_row.time();
 			builder.set_timestamps(old_created_at, now);
@@ -184,14 +189,15 @@ pub(crate) fn update_ringbuffer(
 			}
 
 			if has_returning {
-				pre_rows.push((row_number, pre_row));
+				pre_rows.push((row_number, pre_row.clone()));
 			}
 			ids.push(row_number);
 			update_partitions.extend(partition);
 			rows.push(row);
+			pres.push(pre_row);
 		}
 
-		let stored = txn.update_ringbuffer(&ringbuffer, &update_partitions, &ids, &rows)?;
+		let stored = txn.update_ringbuffer(&ringbuffer, &update_partitions, &ids, &rows, &pres)?;
 		if has_returning {
 			returned_rows.extend(ids.iter().copied().zip(stored));
 		}
@@ -256,23 +262,14 @@ fn enforce_old_row_policies(
 	txn: &mut Transaction<'_>,
 	target: &RingBufferTarget<'_>,
 	shape: &RowShape,
-	columns: &RecordBatch,
+	row_numbers: &[RowNumber],
+	rows: &[EncodedBytes],
 ) -> Result<()> {
 	if txn.identity().is_privileged() {
 		return Ok(());
 	}
 	let ringbuffer = target.ringbuffer;
-	let mut old_rows: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(columns.num_rows());
-	let sidecar_partitions = system_columns::partitions(columns)?;
-	for (row_idx, &row_number) in row_numbers(columns)?.iter().enumerate() {
-		let old_row_key = if sidecar_partitions.is_empty() {
-			TaggedKey::from(RowKey::new(ringbuffer.id, row_number))
-		} else {
-			TaggedKey::from(PartitionedRowKey::new(ringbuffer.id, sidecar_partitions[row_idx], row_number))
-		};
-		let bytes = txn.get(&old_row_key)?.expect("bytes must exist for update").bytes;
-		old_rows.push((row_number, bytes));
-	}
+	let old_rows: Vec<(RowNumber, EncodedBytes)> = row_numbers.iter().copied().zip(rows.iter().cloned()).collect();
 	let old_columns = decode_rows_to_columns(shape, &old_rows)?;
 	let old_columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, old_columns)?;
 	PolicyEvaluator::new(services, symbols).enforce_write_policies(

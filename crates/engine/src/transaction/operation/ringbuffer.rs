@@ -37,7 +37,11 @@ use smallvec::smallvec;
 
 use crate::Result;
 
-fn ringbuffer_key(ringbuffer: &RingBuffer, partition: Option<Partition>, row_number: RowNumber) -> TaggedKey {
+pub(crate) fn ringbuffer_key(
+	ringbuffer: &RingBuffer,
+	partition: Option<Partition>,
+	row_number: RowNumber,
+) -> TaggedKey {
 	match partition {
 		None => RowKey::new(ringbuffer.id, row_number).into(),
 		Some(partition) => PartitionedRowKey::new(ringbuffer.id, partition, row_number).into(),
@@ -132,6 +136,7 @@ pub trait RingBufferOperations {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
+		pres: &[EncodedBytes],
 	) -> Result<Vec<EncodedBytes>>;
 
 	fn remove_from_ringbuffer(
@@ -139,6 +144,7 @@ pub trait RingBufferOperations {
 		ringbuffer: &RingBuffer,
 		partitions: &[Partition],
 		ids: &[RowNumber],
+		displayed: Vec<Option<EncodedBytes>>,
 	) -> Result<Vec<EncodedBytes>>;
 }
 
@@ -199,36 +205,26 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 	partitions: &[Partition],
 	ids: &[RowNumber],
 	rows: &[EncodedBytes],
+	pres: &[EncodedBytes],
 ) -> Result<Vec<EncodedBytes>> {
 	assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
+	assert_eq!(ids.len(), pres.len(), "ids/pres length mismatch");
 	let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
-	let mut updated_ids = Vec::new();
-	let mut pres = Vec::new();
-	let mut matched = Vec::new();
 
 	let keys: Vec<TaggedKey> = ids
 		.iter()
 		.enumerate()
 		.map(|(idx, &id)| ringbuffer_key(ringbuffer, partitions.get(idx).copied(), id))
 		.collect();
-	for (idx, key) in keys.iter().enumerate() {
-		if let Some(pre) = txn.get(key)? {
-			matched.push(idx);
-			updated_ids.push(ids[idx]);
-			pres.push(pre.bytes);
-		}
-	}
 
-	let posts: Vec<EncodedBytes> = if matched.is_empty() || txn.ringbuffer_row_pre_update_interceptors().is_empty()
-	{
-		matched.iter().map(|&idx| rows[idx].clone()).collect()
+	let posts: Vec<EncodedBytes> = if txn.ringbuffer_row_pre_update_interceptors().is_empty() {
+		rows.to_vec()
 	} else {
 		let mut builders: Vec<_> =
-			matched.iter().map(|&idx| EncodedRingBufferRow::from(rows[idx].clone()).thaw()).collect();
-		RingBufferRowInterceptor::pre_update(txn, ringbuffer, &updated_ids, &mut builders)?;
+			rows.iter().map(|bytes| EncodedRingBufferRow::from(bytes.clone()).thaw()).collect();
+		RingBufferRowInterceptor::pre_update(txn, ringbuffer, ids, &mut builders)?;
 		let posts: Vec<EncodedBytes> = builders.into_iter().map(|builder| builder.freeze_bytes()).collect();
-		let expected: Vec<Partition> = matched.iter().filter_map(|&idx| partitions.get(idx).copied()).collect();
-		if moved_partitions(ringbuffer, &shape, &expected, &posts)? {
+		if moved_partitions(ringbuffer, &shape, partitions, &posts)? {
 			return Err(PartitionError::ImmutablePartitionColumn {
 				object: ObjectId::ringbuffer(ringbuffer.id),
 			}
@@ -237,26 +233,15 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 		posts
 	};
 
-	if !matched.is_empty() {
-		let matched_keys: Vec<TaggedKey> = matched.iter().map(|&idx| keys[idx].clone()).collect();
-		txn.get_committed_many(&matched_keys)?;
-		txn.set_many(matched_keys.into_iter().zip(posts.iter().cloned()).collect())?;
+	txn.set_many(keys.into_iter().zip(posts.iter().cloned()).collect())?;
+
+	if !txn.ringbuffer_row_post_update_interceptors().is_empty() {
+		RingBufferRowInterceptor::post_update(txn, ringbuffer, ids, &posts, pres)?;
 	}
 
-	if !matched.is_empty() && !txn.ringbuffer_row_post_update_interceptors().is_empty() {
-		RingBufferRowInterceptor::post_update(txn, ringbuffer, &updated_ids, &posts, &pres)?;
-	}
+	txn.track_flow_change(build_ringbuffer_update_change(ringbuffer, &shape, ids, pres, &posts)?);
 
-	let mut stored: Vec<EncodedBytes> = rows.to_vec();
-	for (&idx, bytes) in matched.iter().zip(&posts) {
-		stored[idx] = bytes.clone();
-	}
-
-	if !updated_ids.is_empty() {
-		txn.track_flow_change(build_ringbuffer_update_change(ringbuffer, &shape, &updated_ids, &pres, &posts)?);
-	}
-
-	Ok(stored)
+	Ok(posts)
 }
 
 fn remove_rows<T: WithInterceptors + Write + Read>(
@@ -264,29 +249,25 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 	ringbuffer: &RingBuffer,
 	partitions: &[Partition],
 	ids: &[RowNumber],
+	displayed: Vec<Option<EncodedBytes>>,
 ) -> Result<Vec<EncodedBytes>> {
+	assert_eq!(ids.len(), displayed.len(), "ids/displayed length mismatch");
 	let mut displayed_rows = Vec::with_capacity(ids.len());
 	let mut removed_ids = Vec::new();
 	let mut matched_keys = Vec::new();
 	let mut matched_displayed = Vec::new();
 
-	for (idx, &id) in ids.iter().enumerate() {
-		let key = ringbuffer_key(ringbuffer, partitions.get(idx).copied(), id);
-
-		let displayed = match txn.get(&key)? {
-			Some(v) => v.bytes,
-			None => {
-				displayed_rows.push(EncodedBytes(CowVec::new(vec![])));
-				continue;
-			}
+	for (idx, (&id, displayed)) in ids.iter().zip(displayed).enumerate() {
+		let Some(displayed) = displayed else {
+			displayed_rows.push(EncodedBytes(CowVec::new(vec![])));
+			continue;
 		};
 
 		removed_ids.push(id);
-		matched_keys.push(key);
+		matched_keys.push(ringbuffer_key(ringbuffer, partitions.get(idx).copied(), id));
 		matched_displayed.push(displayed.clone());
 		displayed_rows.push(displayed);
 	}
-
 	if removed_ids.is_empty() {
 		return Ok(displayed_rows);
 	}
@@ -333,8 +314,9 @@ impl RingBufferOperations for CommandTransaction {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
+		pres: &[EncodedBytes],
 	) -> Result<Vec<EncodedBytes>> {
-		update_rows(self, ringbuffer, partitions, ids, rows)
+		update_rows(self, ringbuffer, partitions, ids, rows, pres)
 	}
 
 	fn remove_from_ringbuffer(
@@ -342,8 +324,9 @@ impl RingBufferOperations for CommandTransaction {
 		ringbuffer: &RingBuffer,
 		partitions: &[Partition],
 		ids: &[RowNumber],
+		displayed: Vec<Option<EncodedBytes>>,
 	) -> Result<Vec<EncodedBytes>> {
-		remove_rows(self, ringbuffer, partitions, ids)
+		remove_rows(self, ringbuffer, partitions, ids, displayed)
 	}
 }
 
@@ -365,8 +348,9 @@ impl RingBufferOperations for AdminTransaction {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
+		pres: &[EncodedBytes],
 	) -> Result<Vec<EncodedBytes>> {
-		update_rows(self, ringbuffer, partitions, ids, rows)
+		update_rows(self, ringbuffer, partitions, ids, rows, pres)
 	}
 
 	fn remove_from_ringbuffer(
@@ -374,8 +358,9 @@ impl RingBufferOperations for AdminTransaction {
 		ringbuffer: &RingBuffer,
 		partitions: &[Partition],
 		ids: &[RowNumber],
+		displayed: Vec<Option<EncodedBytes>>,
 	) -> Result<Vec<EncodedBytes>> {
-		remove_rows(self, ringbuffer, partitions, ids)
+		remove_rows(self, ringbuffer, partitions, ids, displayed)
 	}
 }
 
@@ -402,11 +387,12 @@ impl RingBufferOperations for Transaction<'_> {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		rows: &[EncodedBytes],
+		pres: &[EncodedBytes],
 	) -> Result<Vec<EncodedBytes>> {
 		match self {
-			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, partitions, ids, rows),
-			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, partitions, ids, rows),
-			Transaction::Test(t) => t.inner.update_ringbuffer(ringbuffer, partitions, ids, rows),
+			Transaction::Command(txn) => txn.update_ringbuffer(ringbuffer, partitions, ids, rows, pres),
+			Transaction::Admin(txn) => txn.update_ringbuffer(ringbuffer, partitions, ids, rows, pres),
+			Transaction::Test(t) => t.inner.update_ringbuffer(ringbuffer, partitions, ids, rows, pres),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}
@@ -416,11 +402,12 @@ impl RingBufferOperations for Transaction<'_> {
 		ringbuffer: &RingBuffer,
 		partitions: &[Partition],
 		ids: &[RowNumber],
+		displayed: Vec<Option<EncodedBytes>>,
 	) -> Result<Vec<EncodedBytes>> {
 		match self {
-			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, partitions, ids),
-			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, partitions, ids),
-			Transaction::Test(t) => t.inner.remove_from_ringbuffer(ringbuffer, partitions, ids),
+			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed),
+			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed),
+			Transaction::Test(t) => t.inner.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed),
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}

@@ -220,13 +220,15 @@ fn delete_ringbuffer_partitions(
 		};
 
 		let mut doomed = Vec::new();
-		for row_num in collect_partition_row_numbers(txn, ringbuffer, partition_hash, &partition)? {
+		let mut doomed_rows = Vec::new();
+		for (row_num, row) in collect_partition_rows(txn, ringbuffer, partition_hash, &partition)? {
 			let should_delete = match row_numbers_filter {
 				Some(filter) => filter.contains(&row_num),
 				None => true,
 			};
 			if should_delete {
 				doomed.push(row_num);
+				doomed_rows.push(Some(row));
 			} else {
 				min_remaining_row =
 					Some(min_remaining_row.map_or(row_num.0, |m: u64| m.min(row_num.0)));
@@ -236,7 +238,8 @@ fn delete_ringbuffer_partitions(
 			Some(partition) => vec![partition; doomed.len()],
 			None => Vec::new(),
 		};
-		let deleted_values = txn.remove_from_ringbuffer(ringbuffer, &doomed_partitions, &doomed)?;
+		let deleted_values =
+			txn.remove_from_ringbuffer(ringbuffer, &doomed_partitions, &doomed, doomed_rows)?;
 		if has_returning {
 			returned_rows.extend(doomed.iter().copied().zip(deleted_values));
 		}
@@ -269,21 +272,21 @@ fn delete_ringbuffer_result(namespace: &str, ringbuffer: &str, deleted: u64) -> 
 	])
 }
 
-fn collect_partition_row_numbers(
+fn collect_partition_rows(
 	txn: &mut Transaction<'_>,
 	ringbuffer: &RingBuffer,
 	partition: Option<Partition>,
 	metadata: &RingBufferMetadata,
-) -> Result<Vec<RowNumber>> {
+) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 	let Some(partition) = partition else {
-		let mut out = Vec::new();
-		for row_num_value in metadata.head..metadata.tail {
-			let row_num = RowNumber(row_num_value);
-			if txn.get(&RowKey::new(ringbuffer.id, row_num))?.is_some() {
-				out.push(row_num);
-			}
-		}
-		return Ok(out);
+		let row_nums: Vec<RowNumber> = (metadata.head..metadata.tail).map(RowNumber).collect();
+		let keys: Vec<TaggedKey> =
+			row_nums.iter().map(|&row_num| RowKey::new(ringbuffer.id, row_num).into()).collect();
+		return Ok(row_nums
+			.into_iter()
+			.zip(txn.get_many(&keys)?)
+			.filter_map(|(row_num, row)| row.map(|row| (row_num, row.bytes)))
+			.collect());
 	};
 
 	let mut out = Vec::new();
@@ -302,7 +305,7 @@ fn collect_partition_row_numbers(
 		let n = batch.len();
 		for entry in batch {
 			if let TaggedKey::PartitionedRow(pk) = &entry.key {
-				out.push(pk.row);
+				out.push((pk.row, entry.bytes.clone()));
 			}
 			last_key = Some(entry.key.clone());
 		}
@@ -311,6 +314,6 @@ fn collect_partition_row_numbers(
 		}
 	}
 
-	out.sort_by_key(|rn| rn.0);
+	out.sort_by_key(|(rn, _)| rn.0);
 	Ok(out)
 }

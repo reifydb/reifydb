@@ -29,6 +29,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
+	key::any::TaggedKey,
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -59,7 +60,7 @@ use crate::{
 	Result,
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
-	transaction::operation::ringbuffer::RingBufferOperations,
+	transaction::operation::ringbuffer::{RingBufferOperations, ringbuffer_key},
 	vm::{
 		instruction::dml::time::{RowTime, populator_index},
 		services::Services,
@@ -275,7 +276,16 @@ pub(crate) fn insert_ringbuffer_chunks(
 		}
 
 		if !victims.is_empty() {
-			txn.remove_from_ringbuffer(ringbuffer, &victim_partitions, &victims)?;
+			let victim_keys: Vec<TaggedKey> = victims
+				.iter()
+				.enumerate()
+				.map(|(idx, &victim)| {
+					ringbuffer_key(ringbuffer, victim_partitions.get(idx).copied(), victim)
+				})
+				.collect();
+			let displayed =
+				txn.get_many(&victim_keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect();
+			txn.remove_from_ringbuffer(ringbuffer, &victim_partitions, &victims, displayed)?;
 		}
 		let stored = txn.insert_ringbuffer(ringbuffer, shape, chunk_partitions, &ids, &rows[start..end])?;
 		if let Some(returned) = returned.as_mut() {

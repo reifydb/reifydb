@@ -208,23 +208,31 @@ pub(crate) fn checked_primary_keys(
 ) -> Result<Vec<EncodedIndexKey>> {
 	let mut seen = HashSet::with_capacity(rows.len());
 	let mut keys = Vec::with_capacity(rows.len());
+	let mut duplicate = None;
 	for (index, row) in rows.iter().enumerate() {
 		let key = encoder.encode(shape, row);
-		if !seen.insert(key.clone())
-			|| txn.contains(&IndexEntryKey::new(table.id, IndexId::primary(pk.id), key.clone()))?
-		{
-			let key_columns = pk.columns.iter().map(|c| c.name.clone()).collect();
-			let fragment = match violation {
-				Violation::At(fragment) => (*fragment).clone(),
-				Violation::BulkRow(_) => Fragment::None,
-			};
-			let error = Error(Box::new(primary_key_violation(fragment, table.name.clone(), key_columns)));
-			return Err(match violation {
-				Violation::At(_) => error,
-				Violation::BulkRow(source) => with_row_note(error, source, index),
-			});
+		if !seen.insert(key.clone()) {
+			duplicate = Some(index);
+			break;
 		}
 		keys.push(key);
+	}
+	let entries: Vec<TaggedKey> = keys
+		.iter()
+		.map(|key| IndexEntryKey::new(table.id, IndexId::primary(pk.id), key.clone()).into())
+		.collect();
+	let taken = txn.contains_many(&entries)?.into_iter().position(|taken| taken).or(duplicate);
+	if let Some(index) = taken {
+		let key_columns = pk.columns.iter().map(|c| c.name.clone()).collect();
+		let fragment = match violation {
+			Violation::At(fragment) => (*fragment).clone(),
+			Violation::BulkRow(_) => Fragment::None,
+		};
+		let error = Error(Box::new(primary_key_violation(fragment, table.name.clone(), key_columns)));
+		return Err(match violation {
+			Violation::At(_) => error,
+			Violation::BulkRow(source) => with_row_note(error, source, index),
+		});
 	}
 	Ok(keys)
 }

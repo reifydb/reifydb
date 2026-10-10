@@ -189,28 +189,36 @@ fn run_table_delete_with_input(
 	let pk_def = primary_key::get_primary_key(&exec.services.catalog, txn, target.table)?;
 	let mut pk_index = pk_def.as_ref().map(PrimaryKeyIndex::new);
 
+	let row_keys: Vec<TaggedKey> = row_numbers_to_delete
+		.iter()
+		.enumerate()
+		.map(|(idx, &row_number)| {
+			row_key_from_partition(target.table.id, partitions_to_delete.get(idx).copied(), row_number)
+		})
+		.collect();
+	let old_rows = txn.get_many(&row_keys)?;
+
 	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(row_numbers_to_delete.len());
 	let mut filtered_partitions: Vec<Partition> = Vec::with_capacity(partitions_to_delete.len());
-	for (idx, row_number) in row_numbers_to_delete.into_iter().enumerate() {
-		let partition = partitions_to_delete.get(idx).copied();
-		let row_key = row_key_from_partition(target.table.id, partition, row_number);
-		let bytes = match txn.get(&row_key)? {
-			Some(v) => v.bytes,
-			None => continue,
+	let mut filtered_rows: Vec<EncodedBytes> = Vec::with_capacity(row_numbers_to_delete.len());
+	for (idx, (row_number, old_row)) in row_numbers_to_delete.into_iter().zip(old_rows).enumerate() {
+		let Some(old_row) = old_row else {
+			continue;
 		};
 		if let Some(pk_index) = &mut pk_index {
-			pk_index.remove(exec.services, txn, target.table, &bytes)?;
+			pk_index.remove(exec.services, txn, target.table, &old_row.bytes)?;
 		}
 		filtered_ids.push(row_number);
-		if let Some(p) = partition {
+		if let Some(p) = partitions_to_delete.get(idx).copied() {
 			filtered_partitions.push(p);
 		}
+		filtered_rows.push(old_row.bytes);
 	}
 
 	if let Some(pk_index) = pk_index {
 		pk_index.write(txn)?;
 	}
-	let removed = txn.remove_from_table(target.table, &filtered_ids, &filtered_partitions)?;
+	let removed = txn.remove_from_table(target.table, &filtered_ids, &filtered_partitions, &filtered_rows)?;
 	let deleted_count = removed.len() as u64;
 	let returned_rows: Vec<(RowNumber, EncodedBytes)> = if has_returning {
 		removed
@@ -275,10 +283,12 @@ fn run_table_delete_all(
 
 	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(rows.len());
 	let mut filtered_partitions: Vec<Partition> = Vec::with_capacity(rows.len());
+	let mut filtered_rows: Vec<EncodedBytes> = Vec::with_capacity(rows.len());
 	for multi in rows {
 		if let Some(pk_index) = &mut pk_index {
 			pk_index.remove(services, txn, table, &multi.bytes)?;
 		}
+		filtered_rows.push(multi.bytes);
 		if partitioned {
 			let TaggedKey::PartitionedRow(key) = multi.key else {
 				panic!("valid PartitionedRowKey encoding");
@@ -296,7 +306,7 @@ fn run_table_delete_all(
 	if let Some(pk_index) = pk_index {
 		pk_index.write(txn)?;
 	}
-	let removed = txn.remove_from_table(table, &filtered_ids, &filtered_partitions)?;
+	let removed = txn.remove_from_table(table, &filtered_ids, &filtered_partitions, &filtered_rows)?;
 	let deleted_count = removed.len() as u64;
 	let returned_rows: Vec<(RowNumber, EncodedBytes)> = if has_returning {
 		removed

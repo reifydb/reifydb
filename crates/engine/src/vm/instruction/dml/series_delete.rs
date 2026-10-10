@@ -237,7 +237,7 @@ fn drive_series_delete_input(
 		let tags = series_delete_tags(&columns, has_tag, row_count)?;
 		let mut removed = SeriesRemovedRows::default();
 		let mut removals: Vec<(TaggedKey, EncodedBytes)> = Vec::new();
-		let mut found = Vec::new();
+		let mut candidates = Vec::with_capacity(row_count);
 		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
 			let sequence = u64::from(row_number);
 			let key_value = keys[row_idx];
@@ -266,11 +266,18 @@ fn drive_series_delete_input(
 				.into()
 			};
 
-			let Some(pre_entry) = txn.get(&key)? else {
-				continue;
-			};
-			found.push((row_idx, key, pre_entry.bytes, partition, key_value, RowNumber::from(sequence)));
+			candidates.push((row_idx, key, partition, key_value, RowNumber::from(sequence)));
 		}
+		let candidate_keys: Vec<TaggedKey> = candidates.iter().map(|(_, key, ..)| key.clone()).collect();
+		let found: Vec<_> = candidates
+			.into_iter()
+			.zip(txn.get_many(&candidate_keys)?)
+			.filter_map(|((row_idx, key, partition, key_value, row_number), pre_entry)| {
+				pre_entry.map(|pre_entry| {
+					(row_idx, key, pre_entry.bytes, partition, key_value, row_number)
+				})
+			})
+			.collect();
 		let committed_rows = if found.is_empty() {
 			Vec::new()
 		} else {

@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::RecordBatch;
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::catalog::object::ObjectId,
 	internal_error,
@@ -119,6 +120,7 @@ pub(crate) fn execute_alter_table(
 			let object = ObjectId::Table(table.id);
 
 			let mut ids: Vec<RowNumber> = Vec::new();
+			let mut rows: Vec<EncodedBytes> = Vec::new();
 			let mut last_key: Option<TaggedKey> = None;
 			while let Some(partition) = partition {
 				let batch: Vec<_> = txn
@@ -139,6 +141,7 @@ pub(crate) fn execute_alter_table(
 				for entry in batch {
 					if let TaggedKey::PartitionedRow(pk) = &entry.key {
 						ids.push(pk.row);
+						rows.push(entry.bytes.clone());
 					}
 					last_key = Some(entry.key.clone());
 				}
@@ -152,7 +155,7 @@ pub(crate) fn execute_alter_table(
 				&& !ids.is_empty()
 			{
 				let partitions = vec![partition; ids.len()];
-				txn.remove_from_table(&table, &ids, &partitions)?;
+				txn.remove_from_table(&table, &ids, &partitions, &rows)?;
 			}
 			if remove_registry {
 				if let Some(partition) = partition {

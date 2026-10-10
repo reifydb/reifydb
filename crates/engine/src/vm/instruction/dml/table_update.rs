@@ -236,15 +236,22 @@ fn run_table_update(
 		let row_numbers: Vec<RowNumber> = row_numbers(&columns)?.to_vec();
 		let sidecar_partitions: Vec<Partition> = partitions(&columns)?;
 		let row_count = columns.num_rows();
-		let mut old_rows: Vec<EncodedBytes> = Vec::with_capacity(row_count);
-		for (row_idx, &row_number) in row_numbers.iter().enumerate() {
-			let row_key = row_key_from_partition(
-				target.table.id,
-				sidecar_partitions.get(row_idx).copied(),
-				row_number,
-			);
-			old_rows.push(txn.get(&row_key)?.expect("bytes must exist for update").bytes);
-		}
+		let row_keys: Vec<TaggedKey> = row_numbers
+			.iter()
+			.enumerate()
+			.map(|(row_idx, &row_number)| {
+				row_key_from_partition(
+					target.table.id,
+					sidecar_partitions.get(row_idx).copied(),
+					row_number,
+				)
+			})
+			.collect();
+		let old_rows: Vec<EncodedBytes> = txn
+			.get_many(&row_keys)?
+			.into_iter()
+			.map(|row| row.expect("bytes must exist for update").bytes)
+			.collect();
 		enforce_old_row_policies(exec, txn, target, shape, &row_numbers, &old_rows)?;
 
 		let inputs = input_views(&columns, &target.table.columns)?;
@@ -318,6 +325,7 @@ fn run_table_update(
 			&partitions_out,
 			&mut prepared_rows,
 			&key_columns,
+			&old_rows,
 		)?;
 		updated_count += stored.len() as u64;
 		if has_returning {
@@ -381,28 +389,30 @@ impl KeyRotation {
 		let index = IndexId::primary(pk_def.id);
 		let pre_key: TaggedKey =
 			IndexEntryKey::new(target.table.id, index, encoder.encode(shape, pre_row)).into();
-		let pre_encoded = pre_key.encode();
-		self.added.remove(&pre_encoded);
-		self.removed.insert(pre_encoded);
-		self.removes.push((pre_key, None));
-
 		let post_key: TaggedKey =
 			IndexEntryKey::new(target.table.id, index, encoder.encode(shape, new_row)).into();
+		let pre_encoded = pre_key.encode();
 		let post_encoded = post_key.encode();
-		let taken = if self.added.contains(&post_encoded) {
-			true
-		} else if self.removed.contains(&post_encoded) {
-			false
-		} else {
-			txn.contains(&post_key)?
-		};
-		if taken {
-			let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
-			return_error!(primary_key_violation(
-				target.fragment.clone(),
-				target.table.name.clone(),
-				key_columns
-			));
+		if pre_encoded != post_encoded {
+			self.added.remove(&pre_encoded);
+			self.removed.insert(pre_encoded);
+			self.removes.push((pre_key, None));
+
+			let taken = if self.added.contains(&post_encoded) {
+				true
+			} else if self.removed.contains(&post_encoded) {
+				false
+			} else {
+				txn.contains(&post_key)?
+			};
+			if taken {
+				let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
+				return_error!(primary_key_violation(
+					target.fragment.clone(),
+					target.table.name.clone(),
+					key_columns
+				));
+			}
 		}
 		self.removed.remove(&post_encoded);
 		self.added.insert(post_encoded);

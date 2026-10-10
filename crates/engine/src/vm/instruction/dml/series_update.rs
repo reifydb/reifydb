@@ -27,6 +27,7 @@ use reifydb_core::{
 		},
 		change::{Change, ChangeOrigin, Diff},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedSeries},
+		store::MultiVersionRow,
 	},
 	internal_error,
 	key::{
@@ -211,7 +212,8 @@ pub(crate) fn update_series(
 			}
 		}
 		shape.write_columns(&mut builders, &views)?;
-		enforce_old_row_policies(services, symbols, txn, &target_data, &storage_keys, row_numbers, &shape)?;
+		let old_rows = txn.get_many(&storage_keys)?;
+		enforce_old_row_policies(services, symbols, txn, &target_data, &old_rows, row_numbers, &shape)?;
 		let now = services.runtime_context.clock.now();
 		let times = RowTime::new(
 			&series.name,
@@ -223,8 +225,8 @@ pub(crate) fn update_series(
 		let mut found = Vec::with_capacity(row_count);
 		let mut found_builders = Vec::with_capacity(row_count);
 		let mut pres = Vec::with_capacity(row_count);
-		for (row, mut builder) in builders.into_iter().enumerate() {
-			let Some(pre) = txn.get(&storage_keys[row])? else {
+		for (row, (mut builder, pre)) in builders.into_iter().zip(old_rows).enumerate() {
+			let Some(pre) = pre else {
 				continue;
 			};
 			let pre = pre.bytes;
@@ -257,7 +259,6 @@ pub(crate) fn update_series(
 		}
 		if !posts.is_empty() {
 			let written_keys: Vec<TaggedKey> = found.iter().map(|&row| storage_keys[row].clone()).collect();
-			txn.get_committed_many(&written_keys)?;
 			txn.set_many(written_keys.into_iter().zip(posts.iter().cloned()).collect())?;
 		}
 		if !posts.is_empty() && !txn.series_row_post_update_interceptors().is_empty() {
@@ -376,7 +377,7 @@ fn enforce_old_row_policies(
 	symbols: &SymbolTable,
 	txn: &mut Transaction<'_>,
 	target: &SeriesTarget<'_>,
-	keys: &[TaggedKey],
+	rows: &[Option<MultiVersionRow<TaggedKey>>],
 	row_numbers: &[RowNumber],
 	shape: &RowShape,
 ) -> Result<()> {
@@ -384,12 +385,11 @@ fn enforce_old_row_policies(
 		return Ok(());
 	}
 	let series = target.series;
-	let mut old_rows: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(keys.len());
-	for (key, &row_number) in keys.iter().zip(row_numbers) {
-		if let Some(old) = txn.get(key)? {
-			old_rows.push((row_number, old.bytes));
-		}
-	}
+	let old_rows: Vec<(RowNumber, EncodedBytes)> = rows
+		.iter()
+		.zip(row_numbers)
+		.filter_map(|(row, &row_number)| row.as_ref().map(|row| (row_number, row.bytes.clone())))
+		.collect();
 	let old_columns = decode_rows_to_columns(shape, &old_rows)?;
 	let old_columns = decode_returning_dictionaries(services, txn, &series.columns, old_columns)?;
 	PolicyEvaluator::new(services, symbols).enforce_write_policies(
