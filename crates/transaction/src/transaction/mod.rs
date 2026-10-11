@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, sync::Arc};
+use std::{collections::BTreeSet, ops::Bound, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -30,6 +30,7 @@ use reifydb_value::{
 
 use crate::{
 	TransactionId,
+	accumulator::FlowDiffNeed,
 	change::{CatalogChangesSavepoint, RowChange},
 	interceptor::{
 		WithInterceptors,
@@ -109,6 +110,8 @@ pub struct Savepoint {
 	write: WriteSavepoint,
 	row_changes_len: usize,
 	accumulator_len: usize,
+	touched_len: usize,
+	flow_diff_need: FlowDiffNeed,
 	changes: CatalogChangesSavepoint,
 }
 
@@ -139,6 +142,8 @@ impl<'a> TestTransaction<'a> {
 			write: inner.cmd.as_ref().unwrap().savepoint(),
 			row_changes_len: inner.row_changes.len(),
 			accumulator_len: inner.accumulator.len(),
+			touched_len: inner.accumulator.touched_len(),
+			flow_diff_need: inner.accumulator.replace_need(FlowDiffNeed::All),
 			changes: inner.changes.savepoint(),
 		};
 		Self {
@@ -159,6 +164,8 @@ impl<'a> TestTransaction<'a> {
 			self.inner.cmd.as_mut().unwrap().restore_savepoint(sp.write);
 			self.inner.row_changes.truncate(sp.row_changes_len);
 			self.inner.accumulator.truncate(sp.accumulator_len);
+			self.inner.accumulator.truncate_touched(sp.touched_len);
+			self.inner.accumulator.replace_need(sp.flow_diff_need);
 			self.inner.changes.restore_savepoint(sp.changes);
 			self.inner.unpoison();
 		}
@@ -248,8 +255,8 @@ impl<'a> Transaction<'a> {
 
 	pub fn has_unprocessed_flow_changes(&self) -> bool {
 		match self {
-			Self::Command(txn) => !txn.accumulator.is_empty(),
-			Self::Admin(txn) => !txn.accumulator.is_empty(),
+			Self::Command(txn) => txn.accumulator.has_touched(),
+			Self::Admin(txn) => txn.accumulator.has_touched(),
 			Self::Query(_) | Self::Test(_) => false,
 		}
 	}
@@ -259,6 +266,24 @@ impl<'a> Transaction<'a> {
 			Self::Command(txn) => txn.accumulator.pending_objects(),
 			Self::Admin(txn) => txn.accumulator.pending_objects(),
 			Self::Query(_) | Self::Test(_) => Vec::new(),
+		}
+	}
+
+	pub fn flow_diff_need_loaded(&self) -> bool {
+		match self {
+			Self::Command(txn) => txn.accumulator.need_loaded(),
+			Self::Admin(txn) => txn.accumulator.need_loaded(),
+			Self::Query(_) => true,
+			Self::Test(t) => t.inner.accumulator.need_loaded(),
+		}
+	}
+
+	pub fn set_flow_diff_need(&mut self, objects: BTreeSet<ObjectId>) {
+		match self {
+			Self::Command(txn) => txn.accumulator.set_needed_objects(objects),
+			Self::Admin(txn) => txn.accumulator.set_needed_objects(objects),
+			Self::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Self::Test(t) => t.inner.accumulator.set_needed_objects(objects),
 		}
 	}
 

@@ -55,7 +55,7 @@ use crate::{
 	},
 	engine::StandardEngine,
 	error::EngineError,
-	flow_sync::sync_transactional_views,
+	flow_sync::{load_flow_diff_need, sync_transactional_views},
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
 	transaction::operation::series::{SeriesRows, write_series_rows},
@@ -218,6 +218,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 				services: &services,
 				clock,
 			};
+			load_flow_diff_need(writer.catalog, &mut Transaction::Command(txn))?;
 			let result = run_all_pending::<V>(
 				&writer,
 				txn,

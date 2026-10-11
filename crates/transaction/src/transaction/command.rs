@@ -11,7 +11,7 @@ use reifydb_core::{
 	execution::ExecutionResult,
 	interface::{
 		WithEventBus,
-		catalog::storage::StorageId,
+		catalog::{object::ObjectId, storage::StorageId},
 		change::{Change, ChangeOrigin},
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
@@ -338,6 +338,14 @@ impl CommandTransaction {
 		}
 	}
 
+	pub fn wants_flow_diff(&self, object: ObjectId) -> bool {
+		self.accumulator.wants(object)
+	}
+
+	pub fn touch_flow_object(&mut self, object: ObjectId) {
+		self.accumulator.touch(object)
+	}
+
 	#[inline]
 	pub fn version(&self) -> CommitVersion {
 		self.cmd.as_ref().unwrap().version()
@@ -630,6 +638,14 @@ impl Write for CommandTransaction {
 	#[inline]
 	fn track_flow_change(&mut self, change: Change) {
 		CommandTransaction::track_flow_change(self, change)
+	}
+	#[inline]
+	fn wants_flow_diff(&self, object: ObjectId) -> bool {
+		CommandTransaction::wants_flow_diff(self, object)
+	}
+	#[inline]
+	fn touch_flow_object(&mut self, object: ObjectId) {
+		CommandTransaction::touch_flow_object(self, object)
 	}
 }
 

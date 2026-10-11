@@ -88,6 +88,7 @@ pub(crate) fn create_transactional_view(
 		&result,
 		*plan.as_clause,
 	)?;
+	txn.invalidate_flow_diff_need();
 
 	backfill_transactional_view(services, Transaction::Admin(txn), result.id())?;
 

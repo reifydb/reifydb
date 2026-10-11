@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{num::NonZeroU64, sync::Arc};
+use std::{collections::BTreeSet, num::NonZeroU64, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -54,6 +54,18 @@ pub(crate) fn sync_transactional_views(services: &Services, tx: Transaction<'_>)
 		return run(&mut TestingTxn::over(txn, hooks), &services.routines, &services.runtime_context);
 	}
 	run(&mut txn, &services.routines, &services.runtime_context)
+}
+
+pub(crate) fn load_flow_diff_need(catalog: &Catalog, tx: &mut Transaction<'_>) -> Result<()> {
+	if tx.flow_diff_need_loaded() {
+		return Ok(());
+	}
+	let mut objects = BTreeSet::new();
+	for flow in load_transactional_flows(catalog, tx)? {
+		objects.extend(flow_sources(&flow));
+	}
+	tx.set_flow_diff_need(objects);
+	Ok(())
 }
 
 pub(crate) fn backfill_transactional_view(

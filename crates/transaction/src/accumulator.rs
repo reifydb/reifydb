@@ -17,21 +17,72 @@ use reifydb_core::{
 use reifydb_value::{Result, value::datetime::DateTime};
 
 #[derive(Debug, Default)]
+pub(crate) enum FlowDiffNeed {
+	#[default]
+	Unloaded,
+	Objects(BTreeSet<ObjectId>),
+	All,
+}
+
+#[derive(Debug, Default)]
 pub struct ChangeAccumulator {
 	entries: Vec<(ObjectId, Diff)>,
 	cursor: usize,
+	touched: Vec<ObjectId>,
+	need: FlowDiffNeed,
 }
 
 impl ChangeAccumulator {
 	pub fn new() -> Self {
-		Self {
-			entries: Vec::new(),
-			cursor: 0,
-		}
+		Self::default()
 	}
 
 	pub fn track(&mut self, object: ObjectId, diff: Diff) {
+		self.touch(object);
 		self.entries.push((object, diff));
+	}
+
+	pub fn touch(&mut self, object: ObjectId) {
+		if self.touched.last() != Some(&object) {
+			self.touched.push(object);
+		}
+	}
+
+	pub fn wants(&self, object: ObjectId) -> bool {
+		match &self.need {
+			FlowDiffNeed::Objects(objects) => objects.contains(&object),
+			FlowDiffNeed::Unloaded | FlowDiffNeed::All => true,
+		}
+	}
+
+	pub fn need_loaded(&self) -> bool {
+		!matches!(self.need, FlowDiffNeed::Unloaded)
+	}
+
+	pub fn set_needed_objects(&mut self, objects: BTreeSet<ObjectId>) {
+		self.need = FlowDiffNeed::Objects(objects);
+	}
+
+	pub fn invalidate_need(&mut self) {
+		if matches!(self.need, FlowDiffNeed::Objects(_)) {
+			self.need = FlowDiffNeed::Unloaded;
+		}
+	}
+
+	pub(crate) fn replace_need(&mut self, need: FlowDiffNeed) -> FlowDiffNeed {
+		mem::replace(&mut self.need, need)
+	}
+
+	pub fn touched_len(&self) -> usize {
+		self.touched.len()
+	}
+
+	pub fn truncate_touched(&mut self, len: usize) {
+		self.touched.truncate(len);
+	}
+
+	pub fn has_touched(&self) -> bool {
+		!self.touched.is_empty()
 	}
 
 	pub fn len(&self) -> usize {
@@ -60,6 +111,8 @@ impl ChangeAccumulator {
 	pub fn clear(&mut self) {
 		self.entries.clear();
 		self.cursor = 0;
+		self.touched.clear();
+		self.need = FlowDiffNeed::Unloaded;
 	}
 
 	pub fn take_changes(&mut self, version: CommitVersion, changed_at: DateTime) -> Result<Vec<Change>> {
@@ -101,7 +154,7 @@ impl ChangeAccumulator {
 
 	pub fn pending_objects(&self) -> Vec<ObjectId> {
 		let mut seen = BTreeSet::new();
-		self.entries.iter().map(|(object, _)| *object).filter(|object| seen.insert(*object)).collect()
+		self.touched.iter().copied().filter(|object| seen.insert(*object)).collect()
 	}
 }
 

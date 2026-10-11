@@ -160,7 +160,11 @@ fn insert_rows<T: WithInterceptors + Write>(
 		.collect();
 	txn.track_row_change(&row_changes);
 
-	txn.track_flow_change(build_table_insert_change(table, shape, ids, &frozen)?);
+	let object = ObjectId::Table(table.id);
+	txn.touch_flow_object(object);
+	if txn.wants_flow_diff(object) {
+		txn.track_flow_change(build_table_insert_change(table, shape, ids, &frozen)?);
+	}
 
 	Ok(())
 }
@@ -273,7 +277,11 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 
 	TableRowInterceptor::post_update(txn, table, ids, &posts, pres)?;
 
-	txn.track_flow_change(build_table_update_change(table, &shape, ids, pres, &posts)?);
+	let object = ObjectId::Table(table.id);
+	txn.touch_flow_object(object);
+	if txn.wants_flow_diff(object) {
+		txn.track_flow_change(build_table_update_change(table, &shape, ids, pres, &posts)?);
+	}
 
 	Ok(ids.iter().copied().zip(posts).collect())
 }
@@ -309,8 +317,12 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 
 	TableRowInterceptor::post_delete(txn, table, ids, &pre_for_cdc_bytes_vec)?;
 
-	let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
-	txn.track_flow_change(build_table_remove_change(table, &shape, ids, displayed)?);
+	let object = ObjectId::Table(table.id);
+	txn.touch_flow_object(object);
+	if txn.wants_flow_diff(object) {
+		let shape = row_shape_from_columns(RowFamily::Table, &table.columns);
+		txn.track_flow_change(build_table_remove_change(table, &shape, ids, displayed)?);
+	}
 
 	Ok(ids.iter().copied().zip(displayed.iter().cloned()).collect())
 }
