@@ -613,15 +613,16 @@ fn read_not_before(
 	}
 	let mut values = Vec::with_capacity(rows);
 	for row in 0..rows {
-		match view.get_value(row) {
+		let value = view.get_value(row);
+		match value.unwrap_any() {
 			Value::None {
 				..
 			} => values.push(None),
-			Value::DateTime(instant) => values.push(Some(instant)),
-			other => {
+			Value::DateTime(instant) => values.push(Some(*instant)),
+			_ => {
 				let error = Error(Box::new(queue_not_before_not_datetime(
 					Fragment::internal(target.queue.name.clone()),
-					other.get_type().to_string().as_str(),
+					value.get_type().to_string().as_str(),
 				)));
 				values.resize(rows, None);
 				return (values, Some(Failure::before_columns(row, error)));
