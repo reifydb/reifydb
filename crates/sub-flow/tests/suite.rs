@@ -43,6 +43,8 @@ mod frontier_propagation;
 mod frontier_shutdown;
 #[path = "lifecycle_coverage.rs"]
 mod lifecycle_coverage;
+#[path = "lower_join_key.rs"]
+mod lower_join_key;
 #[path = "managed_reclaim.rs"]
 mod managed_reclaim;
 #[path = "operator_with_requirements.rs"]

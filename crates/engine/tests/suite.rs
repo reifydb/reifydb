@@ -136,6 +136,8 @@ mod lookup_ddl;
 mod lower_extend;
 #[path = "lower_filter.rs"]
 mod lower_filter;
+#[path = "lower_join.rs"]
+mod lower_join;
 #[path = "lower_map.rs"]
 mod lower_map;
 #[path = "lower_patch.rs"]

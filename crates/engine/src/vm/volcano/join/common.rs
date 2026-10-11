@@ -15,7 +15,7 @@ use reifydb_core::{
 		},
 	},
 };
-use reifydb_evaluate::expression::compile::CompiledExpr;
+use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
@@ -191,7 +191,7 @@ pub fn build_eval_columns(
 			} => typed_none(name, &col.get_type()),
 			value => from_one(name, value.clone()),
 		};
-		eval_columns.push(data);
+		eval_columns.push((Arc::new(col.field.clone()), data.1));
 	}
 
 	for (idx, col) in right_columns.iter().enumerate() {
@@ -205,7 +205,7 @@ pub fn build_eval_columns(
 			} => typed_none(&name, &col.get_type()),
 			value => from_one(&name, value.clone()),
 		};
-		eval_columns.push(data);
+		eval_columns.push((Arc::new(col.field.clone().with_name(name)), data.1));
 	}
 
 	eval_columns
@@ -213,7 +213,7 @@ pub fn build_eval_columns(
 
 pub struct JoinContext {
 	pub context: Option<Arc<QueryContext>>,
-	pub compiled: Vec<CompiledExpr>,
+	pub lowered: Vec<LoweredExpr>,
 }
 
 impl Default for JoinContext {
@@ -226,7 +226,7 @@ impl JoinContext {
 	pub fn new() -> Self {
 		Self {
 			context: None,
-			compiled: vec![],
+			lowered: vec![],
 		}
 	}
 
@@ -283,7 +283,7 @@ pub(crate) fn join_key_types(
 }
 
 pub(crate) fn eval_join_condition(
-	compiled: &[CompiledExpr],
+	lowered: &[LoweredExpr],
 	left_columns: &[ColumnView<'_>],
 	right_columns: &[ColumnView<'_>],
 	left_row: &[Value],
@@ -291,14 +291,14 @@ pub(crate) fn eval_join_condition(
 	alias: &Option<Fragment>,
 	ctx: &QueryContext,
 ) -> Result<bool> {
-	if compiled.is_empty() {
+	if lowered.is_empty() {
 		return Ok(true);
 	}
 	let eval_columns = build_eval_columns(left_columns, right_columns, left_row, right_row, alias);
 	let session = eval_context_from_query(ctx);
 	let exec_ctx = session.with_eval_join(batch(eval_columns)?);
-	for compiled_expr in compiled {
-		let col = compiled_expr.execute(&exec_ctx)?;
+	for lowered_expr in lowered {
+		let col = lowered_expr.evaluate(&exec_ctx)?;
 		if !matches!(ColumnView::try_from(&col)?.get_value(0), Value::Boolean(true)) {
 			return Ok(false);
 		}

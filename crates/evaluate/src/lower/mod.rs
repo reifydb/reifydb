@@ -172,6 +172,13 @@ impl LoweredExpr {
 		}
 	}
 
+	pub fn access_column_name(&self) -> Option<&str> {
+		match &self.expression {
+			Expression::AccessSource(access) => Some(access.column.name.text()),
+			_ => None,
+		}
+	}
+
 	pub fn evaluate(&self, ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
 		let ready = self.ready(ctx);
 		match &ready.plan {

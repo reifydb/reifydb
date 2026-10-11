@@ -15,10 +15,7 @@ use reifydb_core::{
 		column::headers::ColumnHeaders,
 	},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::CompileContext,
-};
+use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	error,
@@ -171,7 +168,7 @@ struct HashJoinState {
 	probe_exhausted: bool,
 	emitted: u64,
 
-	compiled_residual: Vec<CompiledExpr>,
+	lowered_residual: Vec<LoweredExpr>,
 }
 
 pub(crate) struct HashJoinNode {
@@ -289,11 +286,8 @@ impl HashJoinNode {
 		let key_types = key_types(&user_key_columns(&build_columns, &right_key_indices))?;
 		let (converter, hash_table) = key_table(&build_columns, &right_key_indices, &key_types)?;
 
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
-		let compiled_residual: Vec<CompiledExpr> =
-			self.residual.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<_>>()?;
+		let lowered_residual: Vec<LoweredExpr> =
+			self.residual.iter().map(|e| LoweredExpr::new(e.clone(), "join_residual")).collect();
 
 		self.state = Some(HashJoinState {
 			build_columns,
@@ -312,7 +306,7 @@ impl HashJoinNode {
 			current_row_matched: false,
 			probe_exhausted: false,
 			emitted: 0,
-			compiled_residual,
+			lowered_residual,
 		});
 
 		Ok(())
@@ -544,13 +538,13 @@ impl QueryNode for HashJoinNode {
 			let build_idx = state.current_matches[state.current_match_idx];
 			state.current_match_idx += 1;
 
-			if !state.compiled_residual.is_empty() {
+			if !state.lowered_residual.is_empty() {
 				let probe_views = user_views(probe)?;
 				let build_views = user_views(&state.build_columns)?;
 				let left_row = user_row(&probe_views, state.probe_row_idx);
 				let right_row = user_row(&build_views, build_idx);
 				if !eval_join_condition(
-					&state.compiled_residual,
+					&state.lowered_residual,
 					&probe_views,
 					&build_views,
 					&left_row,

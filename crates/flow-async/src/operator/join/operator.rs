@@ -28,10 +28,7 @@ use reifydb_core::{
 	state::timer::TimerKind,
 	value::{batch::empty_batch, column::factory::none},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::{CompileContext, EvalContext},
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_flow::{context::FlowContext, error::FlowGraphError};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -162,8 +159,8 @@ pub struct JoinOperator {
 	strategy: JoinStrategy,
 	left_node: OperatorId,
 	right_node: OperatorId,
-	compiled_left_exprs: Vec<CompiledExpr>,
-	compiled_right_exprs: Vec<CompiledExpr>,
+	lowered_left_exprs: Vec<LoweredExpr>,
+	lowered_right_exprs: Vec<LoweredExpr>,
 	alias: Option<String>,
 	left_schema: SchemaRef,
 	right_schema: SchemaRef,
@@ -205,23 +202,19 @@ impl JoinOperator {
 		let right_schema = right.schema;
 		let strategy = JoinStrategy::from(join_type, pick.is_some());
 
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
+		let lowered_left_exprs: Vec<LoweredExpr> =
+			left_exprs.iter().map(|e| LoweredExpr::new(e.clone(), "join_key")).collect();
 
-		let compiled_left_exprs: Vec<CompiledExpr> =
-			left_exprs.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
-
-		let compiled_right_exprs: Vec<CompiledExpr> =
-			right_exprs.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
+		let lowered_right_exprs: Vec<LoweredExpr> =
+			right_exprs.iter().map(|e| LoweredExpr::new(e.clone(), "join_key")).collect();
 
 		Ok(Self {
 			operator,
 			strategy,
 			left_node,
 			right_node,
-			compiled_left_exprs,
-			compiled_right_exprs,
+			lowered_left_exprs,
+			lowered_right_exprs,
 			columns: JoinedColumnsCache::new(alias.clone(), natural),
 			alias,
 			left_schema,
@@ -246,10 +239,10 @@ impl JoinOperator {
 		}
 	}
 
-	fn compiled_exprs_of(&self, side: JoinSide) -> &[CompiledExpr] {
+	fn lowered_exprs_of(&self, side: JoinSide) -> &[LoweredExpr] {
 		match side {
-			JoinSide::Left => &self.compiled_left_exprs,
-			JoinSide::Right => &self.compiled_right_exprs,
+			JoinSide::Left => &self.lowered_left_exprs,
+			JoinSide::Right => &self.lowered_right_exprs,
 		}
 	}
 
@@ -551,7 +544,7 @@ impl JoinOperator {
 	pub(crate) fn compute_join_keys(
 		&self,
 		columns: &RecordBatch,
-		compiled_exprs: &[CompiledExpr],
+		lowered_exprs: &[LoweredExpr],
 	) -> Result<Vec<Option<Hash128>>> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
@@ -572,9 +565,9 @@ impl JoinOperator {
 		};
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 
-		let mut expr_columns: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(compiled_exprs.len());
-		for compiled_expr in compiled_exprs.iter() {
-			let col = if let Some(col_name) = compiled_expr.access_column_name() {
+		let mut expr_columns: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(lowered_exprs.len());
+		for lowered_expr in lowered_exprs.iter() {
+			let col = if let Some(col_name) = lowered_expr.access_column_name() {
 				match resolve_column(columns, col_name) {
 					Some(index) => (
 						columns.schema_ref().fields()[index].clone(),
@@ -583,7 +576,7 @@ impl JoinOperator {
 					None => none(col_name, row_count),
 				}
 			} else {
-				compiled_expr.execute(&exec_ctx)?
+				lowered_expr.evaluate(&exec_ctx)?
 			};
 			expr_columns.push(col);
 		}
@@ -930,7 +923,7 @@ impl HostOperator for JoinOperator {
 			return Ok(Change::from_flow(self.operator, change.version, Vec::new(), DateTime::default()));
 		}
 
-		if self.natural && self.compiled_left_exprs.is_empty() {
+		if self.natural && self.lowered_left_exprs.is_empty() {
 			return Err(error!(natural_join_no_shared_column(
 				Fragment::None,
 				"the left input",
@@ -995,7 +988,7 @@ impl JoinOperator {
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		let keys = self.compute_join_keys(post, self.compiled_exprs_of(side))?;
+		let keys = self.compute_join_keys(post, self.lowered_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
 		let mut rows = JoinRows::new(post, side, host.written_at());
@@ -1035,7 +1028,7 @@ impl JoinOperator {
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		let keys = self.compute_join_keys(pre, self.compiled_exprs_of(side))?;
+		let keys = self.compute_join_keys(pre, self.lowered_exprs_of(side))?;
 
 		let (order, groups, undefined) = group_by_key(&keys);
 		let mut rows = JoinRows::new(pre, side, host.written_at());
@@ -1076,8 +1069,8 @@ impl JoinOperator {
 		state: &mut JoinState,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		let pre_keys = self.compute_join_keys(pre, self.compiled_exprs_of(side))?;
-		let post_keys = self.compute_join_keys(post, self.compiled_exprs_of(side))?;
+		let pre_keys = self.compute_join_keys(pre, self.lowered_exprs_of(side))?;
+		let post_keys = self.compute_join_keys(post, self.lowered_exprs_of(side))?;
 		let row_count = post.num_rows();
 		let post_times = match self.retention_of(side) {
 			Some(_) => row_times(post)?,
@@ -1264,10 +1257,10 @@ mod seal_tests {
 		with_system_column(columns, SystemColumn::Time, Arc::new(datetime_array(vec![at; keys.len()]))).unwrap()
 	}
 
-	fn exprs(op: &JoinOperator, side: JoinSide) -> &[CompiledExpr] {
+	fn exprs(op: &JoinOperator, side: JoinSide) -> &[LoweredExpr] {
 		match side {
-			JoinSide::Left => &op.compiled_left_exprs,
-			JoinSide::Right => &op.compiled_right_exprs,
+			JoinSide::Left => &op.lowered_left_exprs,
+			JoinSide::Right => &op.lowered_right_exprs,
 		}
 	}
 

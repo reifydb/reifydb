@@ -6,10 +6,7 @@ use reifydb_core::{
 	expression::Expression,
 	value::{batch::batch, column::headers::ColumnHeaders},
 };
-use reifydb_evaluate::expression::{
-	compile::compile_expression,
-	context::{CompileContext, EvalContext},
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -82,11 +79,7 @@ impl NestedLoopJoinNode {
 impl QueryNode for NestedLoopJoinNode {
 	#[instrument(level = "trace", skip_all, name = "volcano::join::nested_loop::initialize")]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
-		self.context.compiled =
-			self.on.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<_>>()?;
+		self.context.lowered = self.on.iter().map(|e| LoweredExpr::new(e.clone(), "join_on")).collect();
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
@@ -170,8 +163,8 @@ impl NestedLoopJoinNode {
 				let exec_ctx = session.with_eval_join(batch(eval_columns)?);
 
 				let mut all_true = true;
-				for compiled_expr in &self.context.compiled {
-					let col = compiled_expr.execute(&exec_ctx)?;
+				for lowered_expr in &self.context.lowered {
+					let col = lowered_expr.evaluate(&exec_ctx)?;
 					all_true &= matches!(
 						ColumnView::try_from(&col)?.get_value(0),
 						Value::Boolean(true)
