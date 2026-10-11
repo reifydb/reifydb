@@ -194,7 +194,11 @@ fn insert_rows<T: WithInterceptors + Write + Read>(
 		RingBufferRowInterceptor::post_insert(txn, ringbuffer, ids, &written)?;
 	}
 
-	txn.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, ids, &written)?);
+	let object = ObjectId::ringbuffer(ringbuffer.id);
+	txn.touch_flow_object(object);
+	if txn.wants_flow_diff(object) {
+		txn.track_flow_change(build_ringbuffer_insert_change(ringbuffer, shape, ids, &written)?);
+	}
 
 	Ok(written)
 }
@@ -239,7 +243,11 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 		RingBufferRowInterceptor::post_update(txn, ringbuffer, ids, &posts, pres)?;
 	}
 
-	txn.track_flow_change(build_ringbuffer_update_change(ringbuffer, &shape, ids, pres, &posts)?);
+	let object = ObjectId::ringbuffer(ringbuffer.id);
+	txn.touch_flow_object(object);
+	if txn.wants_flow_diff(object) {
+		txn.track_flow_change(build_ringbuffer_update_change(ringbuffer, &shape, ids, pres, &posts)?);
+	}
 
 	Ok(posts)
 }
@@ -290,8 +298,12 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 		RingBufferRowInterceptor::post_delete(txn, ringbuffer, &removed_ids, &removed)?;
 	}
 
-	let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
-	txn.track_flow_change(build_ringbuffer_remove_change(ringbuffer, &shape, &removed_ids, &removed)?);
+	let object = ObjectId::ringbuffer(ringbuffer.id);
+	txn.touch_flow_object(object);
+	if txn.wants_flow_diff(object) {
+		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
+		txn.track_flow_change(build_ringbuffer_remove_change(ringbuffer, &shape, &removed_ids, &removed)?);
+	}
 
 	Ok(displayed_rows)
 }

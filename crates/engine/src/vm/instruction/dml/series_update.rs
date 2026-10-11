@@ -127,6 +127,8 @@ pub(crate) fn update_series(
 		context: &context,
 	};
 	let mut statement_shape: Option<RowShape> = None;
+	let object = ObjectId::series(series.id);
+	let wants_diff = txn.wants_flow_diff(object);
 
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
@@ -271,20 +273,26 @@ pub(crate) fn update_series(
 			pre_rows.extend(found_numbers.iter().copied().zip(pres.iter().cloned()));
 		}
 		updated_count += posts.len() as u64;
-		let found_keys: Vec<u64> = found.iter().map(|&row| keys[row]).collect();
-		track_series_update_flow_change(
-			txn,
-			&series,
-			&shape,
-			&columns,
-			SeriesUpdatedRows {
-				keys: found_keys,
-				row_numbers: found_numbers,
-				row_indices: found,
-				pres,
-				posts,
-			},
-		)?;
+		if posts.is_empty() {
+			continue;
+		}
+		txn.touch_flow_object(object);
+		if wants_diff {
+			let found_keys: Vec<u64> = found.iter().map(|&row| keys[row]).collect();
+			track_series_update_flow_change(
+				txn,
+				&series,
+				&shape,
+				&columns,
+				SeriesUpdatedRows {
+					keys: found_keys,
+					row_numbers: found_numbers,
+					row_indices: found,
+					pres,
+					posts,
+				},
+			)?;
+		}
 	}
 
 	if let Some(returning_exprs) = &returning {
@@ -448,9 +456,6 @@ fn track_series_update_flow_change(
 	columns: &RecordBatch,
 	updated: SeriesUpdatedRows,
 ) -> Result<()> {
-	if updated.posts.is_empty() {
-		return Ok(());
-	}
 	let mut pre_columns = Vec::with_capacity(1 + series.columns.len());
 	pre_columns.push(series.key_column_data(updated.keys.clone()));
 	let fields = shape.fields();

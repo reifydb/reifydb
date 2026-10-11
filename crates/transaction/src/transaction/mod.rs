@@ -668,6 +668,19 @@ impl<'a> Transaction<'a> {
 		Write::track_flow_change(self.write_ops(), change)
 	}
 
+	pub fn wants_flow_diff(&self, object: ObjectId) -> bool {
+		match self {
+			Transaction::Command(txn) => txn.wants_flow_diff(object),
+			Transaction::Admin(txn) => txn.wants_flow_diff(object),
+			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
+			Transaction::Test(t) => t.inner.wants_flow_diff(object),
+		}
+	}
+
+	pub fn touch_flow_object(&mut self, object: ObjectId) {
+		Write::touch_flow_object(self.write_ops(), object)
+	}
+
 	pub fn record_test_event(
 		&mut self,
 		namespace: String,

@@ -152,6 +152,8 @@ pub(crate) fn insert_series(
 	let mut partitions: Vec<Partition> = Vec::new();
 	let mut row_numbers: Vec<RowNumber> = Vec::new();
 	let mut batches_changed: Vec<(Vec<(FieldRef, ArrayRef)>, usize)> = Vec::new();
+	let object = ObjectId::series(series.id);
+	let wants_diff = txn.wants_flow_diff(object);
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		enforce_series_write_policies(services, symbols, txn, &namespace, &series, &columns)?;
 		if let Some((unknown, _)) = user_columns(&columns).find(|(field, _)| {
@@ -194,12 +196,16 @@ pub(crate) fn insert_series(
 			Some(index) => series.key.keys_to_u64(&batches[0].view(index)?),
 			None => vec![None; rows],
 		};
-		let mut emitted = Vec::with_capacity(series.columns.len());
-		for (index, column) in series.columns.iter().enumerate() {
-			if Some(index) != key_index {
-				let mut builder = ColumnBuilder::with_capacity(column.constraint.get_type(), rows);
-				builder.append_values(&batches[0].view(index)?)?;
-				emitted.push(builder.finish(&column.name));
+		let mut emitted = Vec::new();
+		if wants_diff {
+			emitted.reserve(series.columns.len());
+			for (index, column) in series.columns.iter().enumerate() {
+				if Some(index) != key_index {
+					let mut builder =
+						ColumnBuilder::with_capacity(column.constraint.get_type(), rows);
+					builder.append_values(&batches[0].view(index)?)?;
+					emitted.push(builder.finish(&column.name));
+				}
 			}
 		}
 		intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut batches)?;
@@ -247,10 +253,12 @@ pub(crate) fn insert_series(
 			}
 		}
 
-		let mut changed = Vec::with_capacity(1 + emitted.len());
-		changed.push(key_column);
-		changed.extend(emitted);
-		batches_changed.push((changed, rows));
+		if wants_diff {
+			let mut changed = Vec::with_capacity(1 + emitted.len());
+			changed.push(key_column);
+			changed.extend(emitted);
+			batches_changed.push((changed, rows));
+		}
 		builders.extend(batch_builders);
 		storage_keys.extend(assigned.storage);
 		row_numbers.extend(assigned.row_numbers);
@@ -268,6 +276,9 @@ pub(crate) fn insert_series(
 		},
 	)?;
 	let inserted_count = written.len() as u64;
+	if !written.is_empty() {
+		txn.touch_flow_object(object);
+	}
 	let mut at = 0;
 	for (changed, rows) in batches_changed {
 		track_series_insert_flow_change(

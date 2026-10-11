@@ -206,6 +206,8 @@ fn drive_series_delete_input(
 	let mut deleted_by_partition: HashMap<Partition, SeriesDeleteTally> = HashMap::new();
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let mut mutable_context = context.clone();
+	let object = ObjectId::series(series.id);
+	let wants_diff = txn.wants_flow_diff(object);
 
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		let row_count = columns.num_rows();
@@ -299,14 +301,20 @@ fn drive_series_delete_input(
 				returned_rows.push((row_number, encoded_bytes));
 			}
 			deleted_by_partition.entry(partition).or_default().record(key_value);
-			removed.key_values.push(key_value);
 			removed.row_numbers.push(row_number);
-			removed.pres.push(pre_for_cdc.clone());
-			removed.row_indices.push(row_idx);
+			if wants_diff {
+				removed.key_values.push(key_value);
+				removed.pres.push(pre_for_cdc.clone());
+				removed.row_indices.push(row_idx);
+			}
 			removals.push((key, pre_for_cdc));
 		}
 		remove_series_rows(txn, series, &removed.row_numbers, &removals)?;
-		if !removed.pres.is_empty() {
+		if removed.row_numbers.is_empty() {
+			continue;
+		}
+		txn.touch_flow_object(object);
+		if wants_diff {
 			let pre = build_series_delete_pre_columns_from_input(series, &columns, removed)?;
 			emit_series_remove_change(txn, series, pre);
 		}
