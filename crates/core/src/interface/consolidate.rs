@@ -251,7 +251,7 @@ enum RowState {
 type StateKey = (usize, RowNumber);
 
 fn is_canonical(diffs: &[Diff]) -> Result<bool> {
-	let mut keys: HashSet<(Option<&ChangeOrigin>, RowNumber)> = HashSet::new();
+	let mut keys: Option<HashSet<(Option<&ChangeOrigin>, RowNumber)>> = None;
 	let mut closed: Vec<Option<&ChangeOrigin>> = Vec::new();
 	let mut run_start = 0;
 	for (position, diff) in diffs.iter().enumerate() {
@@ -275,13 +275,64 @@ fn is_canonical(diffs: &[Diff]) -> Result<bool> {
 				return Ok(false);
 			}
 		}
-		for &row in key_rows(diff)? {
-			if !keys.insert((diff.origin(), row)) {
-				return Ok(false);
+		let rows = key_rows(diff)?;
+		if keys.is_none() && !keys_apart(&diffs[run_start..position], rows)? {
+			keys = Some(seen_keys(&diffs[..position])?);
+		}
+		if let Some(keys) = keys.as_mut() {
+			for &row in rows {
+				if !keys.insert((diff.origin(), row)) {
+					return Ok(false);
+				}
 			}
 		}
 	}
 	Ok(true)
+}
+
+fn keys_apart(run: &[Diff], rows: &[RowNumber]) -> Result<bool> {
+	if !rows.is_sorted_by(|a, b| a < b) {
+		return Ok(false);
+	}
+	let (Some(&low), Some(&high)) = (rows.first(), rows.last()) else {
+		return Ok(true);
+	};
+	for earlier in run {
+		let known = unchecked_key_rows(earlier)?;
+		if let (Some(&known_low), Some(&known_high)) = (known.first(), known.last())
+			&& known_low <= high && low <= known_high
+		{
+			return Ok(false);
+		}
+	}
+	Ok(true)
+}
+
+fn seen_keys(diffs: &[Diff]) -> Result<HashSet<(Option<&ChangeOrigin>, RowNumber)>> {
+	let mut keys = HashSet::new();
+	for diff in diffs {
+		for &row in unchecked_key_rows(diff)? {
+			keys.insert((diff.origin(), row));
+		}
+	}
+	Ok(keys)
+}
+
+fn unchecked_key_rows(diff: &Diff) -> Result<&[RowNumber]> {
+	match diff {
+		Diff::Insert {
+			post,
+			..
+		}
+		| Diff::Update {
+			post,
+			..
+		} => row_numbers(post),
+		Diff::Remove {
+			pre,
+			..
+		} => row_numbers(pre),
+	}
 }
 
 fn consolidate_keyed(diffs: Vec<Diff>) -> Result<Vec<Diff>> {
@@ -850,5 +901,13 @@ mod tests {
 	fn a_mismatched_update_beside_a_disjoint_kind_still_trips_the_row_number_check() {
 		// The pre-check must key updates through the checked path, or a mismatched pre row slips by.
 		let _ = coalesce_diffs(vec![insert(&[(10, 100)]), update(&[(1, 10)], &[(2, 20)])]);
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "diff consolidation keys an update row by its post row number")]
+	fn a_mismatched_update_in_canonical_input_still_trips_the_row_number_check() {
+		// The canonical pre-check must key updates through the checked path, or a bad pre row comes back.
+		let _ = consolidate_diffs(vec![update(&[(1, 10)], &[(2, 20)])]);
 	}
 }
