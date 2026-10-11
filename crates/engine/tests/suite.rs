@@ -190,6 +190,8 @@ mod returning;
 mod ringbuffer;
 #[path = "run_tests_error_quotes_body.rs"]
 mod run_tests_error_quotes_body;
+#[path = "series_delete_metadata.rs"]
+mod series_delete_metadata;
 #[path = "series_key_write.rs"]
 mod series_key_write;
 #[path = "series_scan_column_types.rs"]

@@ -309,4 +309,16 @@ impl Catalog {
 	) -> Result<()> {
 		CatalogStore::update_series_metadata_txn(txn, series_id, partition, metadata)
 	}
+
+	#[instrument(name = "catalog::series::update_metadata_rebased_txn", level = "debug", skip(self, txn, change))]
+	pub fn update_series_metadata_rebased_txn(
+		&self,
+		txn: &mut Transaction<'_>,
+		series_id: SeriesId,
+		partition: Partition,
+		metadata: SeriesPartitionMetadata,
+		change: impl Fn(&mut SeriesPartitionMetadata) + Send + Sync + 'static,
+	) -> Result<()> {
+		CatalogStore::update_series_metadata_rebased_txn(txn, series_id, partition, metadata, change)
+	}
 }

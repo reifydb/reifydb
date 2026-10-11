@@ -20,7 +20,7 @@ use std::{
 use reifydb_core::{common::CommitVersion, delta::Delta};
 use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 
-use super::{CommitShared, CreateCommitResult, OracleState, SpanTiming};
+use super::{CommitRebase, CommitShared, CreateCommitResult, OracleState, SpanTiming};
 use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvider};
 
 const QUEUED: u32 = 0;
@@ -33,6 +33,7 @@ struct CommitPayload {
 	window_size: u64,
 	conflicts: Option<ConflictManager>,
 	deltas: Option<CowVec<Delta>>,
+	rebase: Option<CommitRebase>,
 	result: Option<Result<CreateCommitResult>>,
 }
 
@@ -49,13 +50,20 @@ struct CommitRequest {
 unsafe impl Sync for CommitRequest {}
 
 impl CommitRequest {
-	fn new(version: CommitVersion, window_size: u64, conflicts: ConflictManager, deltas: CowVec<Delta>) -> Self {
+	fn new(
+		version: CommitVersion,
+		window_size: u64,
+		conflicts: ConflictManager,
+		deltas: CowVec<Delta>,
+		rebase: Option<CommitRebase>,
+	) -> Self {
 		Self {
 			payload: UnsafeCell::new(CommitPayload {
 				version,
 				window_size,
 				conflicts: Some(conflicts),
 				deltas: Some(deltas),
+				rebase,
 				result: None,
 			}),
 			state: AtomicU32::new(QUEUED),
@@ -68,11 +76,13 @@ impl CommitRequest {
 		self.state.load(Ordering::Acquire) == DONE
 	}
 
-	fn take_result(&self) -> Result<CreateCommitResult> {
+	fn take_result(&self) -> Result<(CreateCommitResult, CowVec<Delta>)> {
 		// SAFETY: DONE was observed with Acquire ordering, so the servicing thread's writes
 		// to payload happened-before this access and it never touches the request again.
 		let payload = unsafe { &mut *self.payload.get() };
-		payload.result.take().expect("a serviced commit request must carry a result")
+		let result = payload.result.take().expect("a serviced commit request must carry a result");
+		let deltas = payload.deltas.take().expect("a serviced commit request must hand its deltas back");
+		result.map(|result| (result, deltas))
 	}
 }
 
@@ -210,9 +220,10 @@ where
 		version: CommitVersion,
 		conflicts: ConflictManager,
 		deltas: CowVec<Delta>,
+		rebase: Option<CommitRebase>,
 		window_size: u64,
-	) -> Result<CreateCommitResult> {
-		let request = CommitRequest::new(version, window_size, conflicts, deltas);
+	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
+		let request = CommitRequest::new(version, window_size, conflicts, deltas, rebase);
 		self.queue.push(&request as *const CommitRequest as *mut CommitRequest);
 		loop {
 			if self.queue.sequencer_active() {
@@ -268,12 +279,13 @@ where
 					.take()
 					.expect("a queued commit request must carry a conflict manager");
 				let deltas =
-					payload.deltas.take().expect("a queued commit request must carry its deltas");
+					payload.deltas.as_mut().expect("a queued commit request must carry its deltas");
 				let result = self.service(
 					state,
 					payload.version,
 					conflicts,
 					deltas,
+					payload.rebase.take(),
 					payload.window_size,
 					timing,
 				);

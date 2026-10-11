@@ -86,7 +86,10 @@ use crate::{
 			ViewPreUpdateInterceptor,
 		},
 	},
-	multi::{RangeScope, transaction::write::WriteSavepoint},
+	multi::{
+		RangeScope,
+		transaction::write::{Rebase, WriteSavepoint},
+	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{admin::AdminTransaction, command::CommandTransaction, query::QueryTransaction, write::Write},
 };
@@ -601,6 +604,15 @@ impl<'a> Transaction<'a> {
 
 	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		Write::set(self.write_ops(), &key.clone().into(), bytes.into())
+	}
+
+	pub fn set_rebased<K: Into<TaggedKey> + Clone>(
+		&mut self,
+		key: &K,
+		bytes: impl Into<EncodedBytes>,
+		rebase: Rebase,
+	) -> Result<()> {
+		Write::set_rebased(self.write_ops(), &key.clone().into(), bytes.into(), rebase)
 	}
 
 	pub fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {

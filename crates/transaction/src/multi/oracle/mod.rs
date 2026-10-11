@@ -154,6 +154,8 @@ pub(crate) struct CommittedTxn {
 	conflict_manager: Option<ConflictManager>,
 }
 
+pub(crate) type CommitRebase = Box<dyn FnOnce(&mut CowVec<Delta>, CommitVersion) -> Result<()> + Send>;
+
 pub(crate) enum CreateCommitResult {
 	Success(CommitVersion),
 	Conflict(ConflictManager),
@@ -281,7 +283,30 @@ where
 		deltas: CowVec<Delta>,
 	) -> Result<CreateCommitResult> {
 		let window_size = self.shared.config.get_config_uint8(ConfigKey::OracleWindowSize);
-		self.shared.commit(version, conflicts, deltas, window_size)
+		self.shared.commit(version, conflicts, deltas, None, window_size).map(|(result, _)| result)
+	}
+
+	#[instrument(name = "transaction::oracle::new_commit_rebased", level = "debug", skip(self, conflicts, deltas, rebase), fields(
+		%version,
+		read_keys = field::Empty,
+		write_keys = field::Empty,
+		windows_checked = field::Empty,
+		txns_checked = field::Empty,
+		conflict_check_us = field::Empty,
+		clock_next_us = field::Empty,
+		add_txn_us = field::Empty,
+		cleanup_us = field::Empty,
+		has_conflict = field::Empty
+	))]
+	pub(crate) fn new_commit_rebased(
+		&self,
+		version: CommitVersion,
+		conflicts: ConflictManager,
+		deltas: CowVec<Delta>,
+		rebase: CommitRebase,
+	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
+		let window_size = self.shared.config.get_config_uint8(ConfigKey::OracleWindowSize);
+		self.shared.commit(version, conflicts, deltas, Some(rebase), window_size)
 	}
 	pub(crate) fn bootstrapping_completed(&self) {
 		let mut inner = self.inner.write();
@@ -344,7 +369,8 @@ where
 		state: &mut OracleState,
 		version: CommitVersion,
 		conflicts: ConflictManager,
-		deltas: CowVec<Delta>,
+		deltas: &mut CowVec<Delta>,
+		rebase: Option<CommitRebase>,
 		window_size: u64,
 		timing: SpanTiming,
 	) -> Result<CreateCommitResult> {
@@ -356,7 +382,11 @@ where
 			return Ok(CreateCommitResult::Conflict(conflicts));
 		}
 
-		let commit_version = self.allocate_commit_version(timing, deltas)?;
+		if let Some(rebase) = rebase {
+			rebase(deltas, self.clock.current()?)?;
+		}
+
+		let commit_version = self.allocate_commit_version(timing, deltas.clone())?;
 
 		let add_start = timing.mark(&self.metrics_clock);
 		state.add_committed_transaction(commit_version, conflicts, window_size);

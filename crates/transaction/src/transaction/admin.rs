@@ -91,7 +91,10 @@ use crate::{
 	multi::{
 		RangeScope,
 		pending::PendingWrites,
-		transaction::{MultiTransaction, write::MultiWriteTransaction},
+		transaction::{
+			MultiTransaction,
+			write::{MultiWriteTransaction, Rebase},
+		},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
 	transaction::{RqlExecutor, Transaction, read::Read, write::Write},
@@ -412,6 +415,12 @@ impl AdminTransaction {
 	}
 
 	#[inline]
+	pub fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().set_rebased(key, bytes, rebase)
+	}
+
+	#[inline]
 	pub fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set_many(entries)
@@ -515,6 +524,10 @@ impl Write for AdminTransaction {
 	#[inline]
 	fn set(&mut self, key: &TaggedKey, bytes: EncodedBytes) -> Result<()> {
 		AdminTransaction::set(self, key, bytes)
+	}
+	#[inline]
+	fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()> {
+		AdminTransaction::set_rebased(self, key, bytes, rebase)
 	}
 	#[inline]
 	fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {

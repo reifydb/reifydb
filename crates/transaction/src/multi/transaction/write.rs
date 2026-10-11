@@ -51,11 +51,13 @@ use crate::{
 		conflict::ConflictManager,
 		lease::VersionLeaseGuard,
 		marker::Marker,
-		oracle::{CreateCommitResult, Oracle},
+		oracle::{CommitRebase, CreateCommitResult, Oracle},
 		pending::PendingWrites,
 		types::{DeltaEntry, TransactionValue},
 	},
 };
+
+pub type Rebase = Arc<dyn Fn(&EncodedBytes) -> Result<EncodedBytes> + Send + Sync>;
 
 pub struct WriteSavepoint {
 	pub(crate) pending_writes: PendingWrites,
@@ -65,6 +67,7 @@ pub struct WriteSavepoint {
 	pub(crate) delta_log_len: usize,
 	pub(crate) removed_after_set_len: usize,
 	pub(crate) conflicts: ConflictManager,
+	pub(crate) rebases: BTreeMap<TaggedKey, (EncodedBytes, Vec<Rebase>)>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -93,6 +96,8 @@ pub struct MultiWriteTransaction {
 	removed_after_set: Vec<TaggedKey>,
 
 	committed_pres: BTreeMap<TaggedKey, EncodedBytes>,
+
+	rebases: BTreeMap<TaggedKey, (EncodedBytes, Vec<Rebase>)>,
 
 	pub(crate) lifecycle: Lifecycle,
 
@@ -126,6 +131,7 @@ impl MultiWriteTransaction {
 			delta_log: Vec::new(),
 			removed_after_set: Vec::new(),
 			committed_pres: BTreeMap::new(),
+			rebases: BTreeMap::new(),
 			lifecycle: Lifecycle::Active,
 			self_lease: None,
 			pending_query_pin: None,
@@ -200,6 +206,7 @@ impl MultiWriteTransaction {
 			delta_log_len: self.delta_log.len(),
 			removed_after_set_len: self.removed_after_set.len(),
 			conflicts: self.conflicts.clone(),
+			rebases: self.rebases.clone(),
 		}
 	}
 
@@ -211,6 +218,7 @@ impl MultiWriteTransaction {
 		self.delta_log.truncate(sp.delta_log_len);
 		self.removed_after_set.truncate(sp.removed_after_set_len);
 		self.conflicts = sp.conflicts;
+		self.rebases = sp.rebases;
 	}
 }
 
@@ -269,6 +277,23 @@ impl MultiWriteTransaction {
 
 	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		self.set_any(key.clone().into(), bytes.into())
+	}
+
+	pub fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()> {
+		let pending = self.pending_writes.get(key).map(|entry| entry.bytes().cloned());
+		match (pending, self.rebases.get_mut(key)) {
+			(None, _) => {
+				self.rebases.insert(key.clone(), (bytes.clone(), vec![rebase]));
+			}
+			(Some(Some(pending)), Some((written, steps))) if pending == *written => {
+				*written = bytes.clone();
+				steps.push(rebase);
+			}
+			_ => {
+				self.rebases.remove(key);
+			}
+		}
+		self.set_any(key.clone(), bytes)
 	}
 
 	#[instrument(name = "transaction::command::set_many", level = "trace", skip_all, fields(
@@ -848,17 +873,24 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	fn commit_pending(&mut self, deltas: CowVec<Delta>) -> Result<CommitVersion> {
+	fn commit_pending(&mut self, deltas: CowVec<Delta>) -> Result<(CommitVersion, CowVec<Delta>)> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		let conflict_manager = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 
-		let result = self.oracle.new_commit(base_version, conflict_manager, deltas);
+		let result = match self.take_rebase() {
+			None => self
+				.oracle
+				.new_commit(base_version, conflict_manager, deltas.clone())
+				.map(|result| (result, deltas)),
+			Some(rebase) => self.oracle.new_commit_rebased(base_version, conflict_manager, deltas, rebase),
+		};
 		self.release_read_snapshot(base_version);
+		let (result, deltas) = result?;
 
-		match result? {
+		match result {
 			CreateCommitResult::Conflict(conflicts) => {
 				self.conflicts = conflicts;
 				Err(TransactionError::Conflict.into())
@@ -867,7 +899,7 @@ impl MultiWriteTransaction {
 			CreateCommitResult::Success(version) => {
 				self.pending_query_pin = Some(version);
 				self.clear_pending_state();
-				Ok(version)
+				Ok((version, deltas))
 			}
 		}
 	}
@@ -944,6 +976,45 @@ impl MultiWriteTransaction {
 		Ok(())
 	}
 
+	fn take_rebase(&mut self) -> Option<CommitRebase> {
+		let rebases: Vec<(TaggedKey, EncodedBytes, Vec<Rebase>)> = mem::take(&mut self.rebases)
+			.into_iter()
+			.filter(|(key, (written, _))| {
+				self.pending_writes.get(key).and_then(|entry| entry.bytes()) == Some(written)
+			})
+			.map(|(key, (written, steps))| (key, written, steps))
+			.collect();
+		if rebases.is_empty() {
+			return None;
+		}
+		let store = self.engine.store.clone();
+		Some(Box::new(move |deltas: &mut CowVec<Delta>, latest: CommitVersion| {
+			for (key, written, steps) in rebases {
+				let Some(found) = MultiVersionGet::get(&store, &key, latest)? else {
+					continue;
+				};
+				let mut rebased = found.bytes;
+				for step in &steps {
+					rebased = step(&rebased)?;
+				}
+				if rebased == written {
+					continue;
+				}
+				for delta in deltas.make_mut() {
+					if let Delta::Set {
+						key: set_key,
+						bytes,
+						..
+					} = delta && *set_key == key
+					{
+						*bytes = rebased.clone();
+					}
+				}
+			}
+			Ok(())
+		}))
+	}
+
 	fn forget_present_tags(&mut self) {
 		for entry in &mut self.delta_log {
 			if let Delta::Set {
@@ -978,9 +1049,21 @@ impl MultiWriteTransaction {
 			before_publish(CommitVersion(0));
 			return Ok(CommitVersion(0));
 		}
+		let deltas = self.prepare_commit()?;
+		self.commit_prepared(deltas, before_publish)
+	}
+
+	fn prepare_commit(&mut self) -> Result<CowVec<Delta>> {
 		self.resolve_removed_after_set()?;
-		let deltas = self.build_deltas();
-		let commit_version = self.commit_pending(deltas.clone())?;
+		Ok(self.build_deltas())
+	}
+
+	fn commit_prepared(
+		&mut self,
+		deltas: CowVec<Delta>,
+		before_publish: impl FnOnce(CommitVersion),
+	) -> Result<CommitVersion> {
+		let (commit_version, deltas) = self.commit_pending(deltas)?;
 		self.finalize_commit(commit_version, deltas, before_publish)
 	}
 
@@ -1433,7 +1516,11 @@ fn storage_span_end(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::key::serializer::KeySerializer;
-	use reifydb_core::{common::CommitVersion, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
+	use reifydb_core::{
+		common::CommitVersion, event::EventListener, interface::catalog::id::QueueId,
+		key::queue::QueueDeduplicationKey,
+	};
+	use reifydb_runtime::sync::mutex::Mutex;
 	use reifydb_value::{
 		util::cowvec::CowVec,
 		value::{duration::Duration, partition::Partition, row_number::RowNumber},
@@ -1463,7 +1550,7 @@ mod tests {
 
 		// Allocate commit_version exactly as commit() would, without finalizing it yet.
 		let deltas = txn.build_deltas();
-		let commit_version = txn.commit_pending(deltas.clone()).unwrap();
+		let (commit_version, _) = txn.commit_pending(deltas.clone()).unwrap();
 		assert_ne!(commit_version, CommitVersion(0));
 
 		// An unrelated transaction finishing at a higher version is the real-world trigger.
@@ -1774,5 +1861,322 @@ mod tests {
 		#[cfg(feature = "testing")]
 		assert_eq!(txn.op_counts.get_committed_many_calls(), 0);
 		assert_eq!(stored(&engine, "rolled_back"), Some(test_bytes("v3")));
+	}
+
+	fn unchecked_with(engine: &MultiTransaction, writes: &[(&str, &str)]) {
+		let mut txn = engine.begin_command().unwrap();
+		for (key, bytes) in writes {
+			txn.set(&test_key(key), test_bytes(bytes)).unwrap();
+		}
+		txn.commit_unchecked().unwrap();
+	}
+
+	fn appended(bytes: &EncodedBytes, tag: &str) -> EncodedBytes {
+		let mut out = bytes.to_vec();
+		out.extend_from_slice(tag.as_bytes());
+		EncodedBytes(CowVec::new(out))
+	}
+
+	fn appending(tag: &'static str) -> Rebase {
+		Arc::new(move |bytes: &EncodedBytes| Ok(appended(bytes, tag)))
+	}
+
+	#[test]
+	fn a_rebased_write_is_replayed_on_what_an_unchecked_commit_left() {
+		// An unchecked commit lands outside the conflict window; writing back the value derived from the
+		// snapshot would silently erase it.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "meta"), Some(appended(&test_bytes("v2"), "+d")));
+	}
+
+	#[test]
+	fn a_rebased_write_nobody_raced_commits_once_as_written() {
+		// Without a racing commit the replay reproduces the written bytes, so the published change must be
+		// exactly what was written.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		let written = appended(&test_bytes("v1"), "+d");
+		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
+		let deltas = txn.prepare_commit().unwrap();
+		let (_, published) = txn.commit_pending(deltas).unwrap();
+
+		assert_eq!(
+			published.iter().cloned().collect::<Vec<_>>(),
+			vec![Delta::Set {
+				key: test_key("meta").into(),
+				bytes: written,
+				pre: SetPre::Unknown,
+			}]
+		);
+	}
+
+	#[test]
+	fn rebased_writes_to_one_key_replay_in_order() {
+		// Every statement's change must survive the replay, in the order the statements ran.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		let first = appended(&test_bytes("v1"), "+a");
+		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
+		txn.set_rebased(&test_key("meta").into(), appended(&first, "+b"), appending("+b")).unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "meta"), Some(appended(&appended(&test_bytes("v2"), "+a"), "+b")));
+	}
+
+	#[test]
+	fn a_plain_write_after_a_rebased_one_commits_as_written() {
+		// The plain write is not a replayable change; replaying the earlier one would throw it away.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		txn.set(&test_key("meta"), test_bytes("plain")).unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "meta"), Some(test_bytes("plain")));
+	}
+
+	#[test]
+	fn a_rebased_write_over_an_earlier_plain_write_commits_as_written() {
+		// The rebased change was derived from this transaction's own plain write; replaying it on the stored
+		// value would drop that write.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set(&test_key("meta"), test_bytes("plain")).unwrap();
+		let written = appended(&test_bytes("plain"), "+d");
+		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "meta"), Some(written));
+	}
+
+	#[test]
+	fn a_plain_write_between_rebased_ones_stops_the_replay() {
+		// The later rebased change was derived from the plain write; replaying the chain on the stored value
+		// would drop the plain write.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+a"), appending("+a")).unwrap();
+		txn.set(&test_key("meta"), test_bytes("plain")).unwrap();
+		let written = appended(&test_bytes("plain"), "+b");
+		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+b")).unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "meta"), Some(written));
+	}
+
+	#[test]
+	fn a_plain_write_restoring_earlier_bytes_does_not_revive_a_stopped_replay() {
+		// Equal bytes do not make the chain replayable again: the rebased change before the plain writes would
+		// be replayed under statements that never saw it.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		let first = appended(&test_bytes("v1"), "+a");
+		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
+		txn.set(&test_key("meta"), test_bytes("plain")).unwrap();
+		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("plain"), "+b"), appending("+b"))
+			.unwrap();
+		txn.set(&test_key("meta"), first.clone()).unwrap();
+		let written = appended(&first, "+c");
+		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+c")).unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "meta"), Some(written));
+	}
+
+	#[test]
+	fn a_rebased_write_rolled_back_to_a_savepoint_is_not_replayed() {
+		// A rolled-back statement is not part of the commit; its change must neither be replayed nor stop the
+		// replay of the statements that stayed.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		let first = appended(&test_bytes("v1"), "+a");
+		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
+		let savepoint = txn.savepoint();
+		txn.set_rebased(&test_key("meta").into(), appended(&first, "+b"), appending("+b")).unwrap();
+		txn.restore_savepoint(savepoint);
+		unchecked_with(&engine, &[("meta", "v2")]);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "meta"), Some(appended(&test_bytes("v2"), "+a")));
+	}
+
+	#[test]
+	fn a_rebased_write_of_a_key_no_commit_holds_commits_as_written() {
+		// There is no stored value to replay on, so the written bytes are the only truth.
+		let engine = MultiTransaction::testing();
+
+		let mut txn = engine.begin_command().unwrap();
+		let written = appended(&test_bytes("fresh"), "+d");
+		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "meta"), Some(written));
+	}
+
+	#[test]
+	fn an_unchecked_commit_landing_after_the_commit_is_prepared_is_still_replayed_on() {
+		// Until the commit version is taken another unchecked commit can install; a replay read before that
+		// point writes back a value that erases it.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		let deltas = txn.prepare_commit().unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		txn.commit_prepared(deltas, |_| {}).unwrap();
+
+		assert_eq!(stored(&engine, "meta"), Some(appended(&test_bytes("v2"), "+d")));
+	}
+
+	#[test]
+	fn the_published_change_carries_the_bytes_replayed_under_the_commit() {
+		// Subscribers must see the value that was installed, not the one written before the race.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		let deltas = txn.prepare_commit().unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		let (_, published) = txn.commit_pending(deltas).unwrap();
+
+		assert_eq!(
+			published.iter().cloned().collect::<Vec<_>>(),
+			vec![Delta::Set {
+				key: test_key("meta").into(),
+				bytes: appended(&test_bytes("v2"), "+d"),
+				pre: SetPre::Unknown,
+			}]
+		);
+	}
+
+	struct Published(Arc<Mutex<Vec<Delta>>>);
+
+	impl EventListener<PostCommitEvent> for Published {
+		fn on(&self, event: &PostCommitEvent) {
+			self.0.lock().extend(event.deltas().iter().cloned());
+		}
+	}
+
+	#[test]
+	fn a_committed_rebased_write_publishes_what_it_installed() {
+		// Change data built from the pre-replay bytes would tell subscribers a value storage never held.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		let published = Arc::new(Mutex::new(Vec::new()));
+		engine.event_bus.register::<PostCommitEvent, _>(Published(published.clone()));
+		txn.commit().unwrap();
+		engine.event_bus.wait_for_completion();
+
+		assert_eq!(
+			*published.lock(),
+			vec![Delta::Set {
+				key: test_key("meta").into(),
+				bytes: appended(&test_bytes("v2"), "+d"),
+				pre: SetPre::Unknown,
+			}]
+		);
+	}
+
+	#[test]
+	fn a_replay_rewrites_only_its_own_key() {
+		// Other writes of the same commit must install as written while the rebased key is replayed.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.set(&test_key("other"), test_bytes("o1")).unwrap();
+		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		unchecked_with(&engine, &[("meta", "v2")]);
+		txn.commit().unwrap();
+
+		assert_eq!(stored(&engine, "other"), Some(test_bytes("o1")));
+		assert_eq!(stored(&engine, "meta"), Some(appended(&test_bytes("v2"), "+d")));
+	}
+
+	#[test]
+	fn a_checked_commit_after_the_read_still_conflicts_a_rebased_write() {
+		// The replay covers only commits outside the conflict window; a checked writer must still abort it.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.get(&test_key("meta")).unwrap();
+		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
+		committed_with(&engine, &[("meta", "v2")]);
+
+		assert!(txn.commit().is_err(), "the checked write after the read must conflict");
+		assert_eq!(stored(&engine, "meta"), Some(test_bytes("v2")));
+	}
+
+	#[test]
+	fn a_conflicting_commit_reports_the_conflict_before_running_its_replay() {
+		// A conflict must abort before the replay reads storage; a replay error would hide the retryable
+		// conflict.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		txn.get(&test_key("meta")).unwrap();
+		let failing: Rebase = Arc::new(|_: &EncodedBytes| Err(TransactionError::RolledBack.into()));
+		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), failing).unwrap();
+		committed_with(&engine, &[("meta", "v2")]);
+
+		assert_eq!(txn.commit().unwrap_err().0.code, "TXN_001");
+	}
+
+	#[test]
+	fn a_replay_that_reproduces_the_written_bytes_leaves_the_deltas_untouched() {
+		// An unraced replay must not copy the change set or swap in fresh bytes under the commit lock.
+		let engine = MultiTransaction::testing();
+		committed_with(&engine, &[("meta", "v1")]);
+
+		let mut txn = engine.begin_command().unwrap();
+		let written = appended(&test_bytes("v1"), "+d");
+		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
+		let deltas = txn.prepare_commit().unwrap();
+		let input = deltas.clone();
+		let (_, published) = txn.commit_pending(deltas).unwrap();
+
+		assert_eq!(published.as_slice().as_ptr(), input.as_slice().as_ptr());
+		let Delta::Set {
+			bytes,
+			..
+		} = &published.as_slice()[0]
+		else {
+			panic!("the rebased key must publish a set");
+		};
+		assert_eq!(bytes.as_slice().as_ptr(), written.as_slice().as_ptr());
 	}
 }

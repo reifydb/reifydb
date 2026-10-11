@@ -105,7 +105,13 @@ pub(crate) fn delete_series(
 			continue;
 		};
 		apply_series_metadata_after_delete(&mut metadata, &tally);
-		services.catalog.update_series_metadata_txn(txn, series.id, partition, metadata)?;
+		services.catalog.update_series_metadata_rebased_txn(
+			txn,
+			series.id,
+			partition,
+			metadata,
+			move |latest| apply_series_metadata_after_delete(latest, &tally),
+		)?;
 	}
 
 	if let Some(returning_exprs) = &returning {
