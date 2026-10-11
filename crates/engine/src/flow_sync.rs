@@ -197,12 +197,16 @@ impl Batch for FlowTransaction<'_> {
 
 impl Emit for FlowTransaction<'_> {
 	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
-		self.tx.track_flow_change(Change {
-			origin: ChangeOrigin::Object(ObjectId::view(view)),
-			diffs: smallvec![diff],
-			version: ChangeVersion::from(CommitVersion(0)),
-			changed_at: DateTime::default(),
-		});
+		let object = ObjectId::view(view);
+		self.tx.touch_flow_object(object);
+		if self.tx.wants_flow_diff(object) {
+			self.tx.track_flow_change(Change {
+				origin: ChangeOrigin::Object(object),
+				diffs: smallvec![diff],
+				version: ChangeVersion::from(CommitVersion(0)),
+				changed_at: DateTime::default(),
+			});
+		}
 		Ok(())
 	}
 }

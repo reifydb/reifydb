@@ -115,21 +115,6 @@ impl ChangeAccumulator {
 		self.need = FlowDiffNeed::Unloaded;
 	}
 
-	pub fn take_changes(&mut self, version: CommitVersion, changed_at: DateTime) -> Result<Vec<Change>> {
-		let entries = mem::take(&mut self.entries);
-		self.cursor = 0;
-		build_changes(entries, version, changed_at)
-	}
-
-	pub fn is_empty(&self) -> bool {
-		self.entries.is_empty()
-	}
-
-	pub fn take_entries(&mut self) -> Vec<(ObjectId, Diff)> {
-		self.cursor = 0;
-		mem::take(&mut self.entries)
-	}
-
 	pub fn take_changes_from(
 		&mut self,
 		offset: usize,
@@ -273,23 +258,6 @@ mod tests {
 
 		accumulator.truncate(2);
 		assert_eq!(accumulator.cursor(), 1);
-	}
-
-	#[test]
-	fn test_take_changes_resets_cursor_so_later_entries_are_not_skipped() {
-		let mut accumulator = ChangeAccumulator::new();
-		accumulator.track(ObjectId::Table(TableId(1)), Diff::insert(empty_batch()));
-		accumulator.track(ObjectId::Table(TableId(2)), Diff::insert(empty_batch()));
-		accumulator.set_cursor(2);
-
-		accumulator.take_changes(CommitVersion(1), DateTime::default()).unwrap();
-		assert_eq!(accumulator.cursor(), 0);
-
-		let next = ObjectId::View(ViewId(3));
-		accumulator.track(next, Diff::insert(empty_batch()));
-		let seen: Vec<ObjectId> =
-			accumulator.entries_from(accumulator.cursor()).iter().map(|(object, _)| *object).collect();
-		assert_eq!(seen, vec![next]);
 	}
 
 	#[test]
