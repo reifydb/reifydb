@@ -152,7 +152,6 @@ struct Node {
 enum Stop<'e> {
 	Unsupported(&'e Expression),
 	RowChanging,
-	NonPropagating,
 	Error(Error),
 }
 
@@ -241,7 +240,7 @@ impl LoweredExpr {
 				assert_not_claimed(self.operator, node);
 				self.old_plan(ctx)
 			}
-			Err(Stop::RowChanging) | Err(Stop::NonPropagating) => self.old_plan(ctx),
+			Err(Stop::RowChanging) => self.old_plan(ctx),
 		}
 	}
 

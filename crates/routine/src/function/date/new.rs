@@ -13,7 +13,7 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
-use crate::function::support::coerce::{CoerceMode, bare_type, coerce_column};
+use crate::function::support::coerce::{CoerceMode, bare_type, coerce_column, option_if_any_nullable};
 
 pub struct DateNew {
 	info: RoutineInfo,
@@ -70,6 +70,10 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 
 	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
 		ValueType::Date
+	}
+
+	fn return_type_of(&self, args: &[(ValueType, bool)]) -> ValueType {
+		option_if_any_nullable(ValueType::Date, args)
 	}
 
 	fn execute(

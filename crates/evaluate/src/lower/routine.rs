@@ -22,7 +22,14 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{column_view::ColumnView, identity::IdentityId, value_type::ValueType},
+	value::{
+		column_view::ColumnView,
+		identity::IdentityId,
+		value_type::{
+			ValueType,
+			field::{FieldType, to_field},
+		},
+	},
 };
 
 use crate::{
@@ -51,9 +58,6 @@ pub(super) fn lower_call<'e>(
 	})?;
 	if function.changes_row_count() {
 		return Err(Stop::RowChanging);
-	}
-	if !function.propagates_options() && !function.has_fixed_return_type() {
-		return Err(Stop::NonPropagating);
 	}
 	function.arity().check(&call.func.0, call.args.len()).map_err(Error::from)?;
 	let type_positions = function.type_argument_positions();
@@ -94,12 +98,15 @@ pub(super) fn lower_call<'e>(
 fn routine_field(name: &str, function: &dyn Function, args: &[FieldRef]) -> Result<FieldRef> {
 	let types = args
 		.iter()
-		.map(|field| Ok(ColumnView::try_from(&split_nulls(empty_of(field))?.0)?.get_type()))
-		.collect::<Result<Vec<ValueType>>>()?;
-	let value_type = function.return_type(&types);
-	let nullable = (function.propagates_options() && args.iter().any(|field| field.is_nullable()))
-		|| value_type.is_option();
-	Ok(typed_field(name, value_type.inner_type().clone(), nullable))
+		.map(|field| {
+			Ok((ColumnView::try_from(&split_nulls(empty_of(field))?.0)?.get_type(), field.is_nullable()))
+		})
+		.collect::<Result<Vec<(ValueType, bool)>>>()?;
+	let value_type = function.return_type_of(&types);
+	if !function.propagates_options() && value_type == ValueType::Option(Box::new(ValueType::Any)) {
+		return Ok(Arc::new(to_field(name, &FieldType::default())));
+	}
+	Ok(typed_field(name, value_type.inner_type().clone(), value_type.is_option()))
 }
 
 #[cfg_attr(not(reifydb_assertions), allow(unused_variables))]

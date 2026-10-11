@@ -137,6 +137,29 @@ pub(crate) fn promote_all(types: impl IntoIterator<Item = ValueType>) -> ValueTy
 	types.into_iter().reduce(promote_pair).unwrap_or(ValueType::Float8)
 }
 
+pub(crate) fn option_if_any_nullable(value_type: ValueType, args: &[(ValueType, bool)]) -> ValueType {
+	if args.iter().any(|(_, nullable)| *nullable) && !value_type.is_option() {
+		ValueType::Option(Box::new(value_type))
+	} else {
+		value_type
+	}
+}
+
+pub(crate) fn kernel_type(value_type: &ValueType) -> ValueType {
+	match value_type {
+		ValueType::Option(inner) if **inner == ValueType::Any => ValueType::Any,
+		other => other.clone(),
+	}
+}
+
+pub(crate) fn promoted_return_type(args: &[(ValueType, bool)]) -> ValueType {
+	let promoted = promote_all(args.iter().map(|(value_type, _)| kernel_type(value_type)));
+	if promoted == ValueType::Any {
+		return ValueType::Option(Box::new(ValueType::Any));
+	}
+	option_if_any_nullable(promoted, args)
+}
+
 #[cfg(test)]
 mod tests {
 	use std::sync::LazyLock;

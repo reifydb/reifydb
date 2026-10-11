@@ -15,7 +15,7 @@ use reifydb_value::value::{
 	value_type::{ValueType, input_types::InputTypes},
 };
 
-use crate::function::support::coerce::bare_type;
+use crate::function::support::coerce::{bare_type, option_if_any_nullable};
 
 pub struct ApproxPercentile {
 	info: RoutineInfo,
@@ -85,6 +85,11 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 
 	fn return_type(&self, input_types: &[ValueType]) -> ValueType {
 		input_types.first().map(output_type).unwrap_or(ValueType::Float8)
+	}
+
+	fn return_type_of(&self, args: &[(ValueType, bool)]) -> ValueType {
+		let bare: Vec<ValueType> = args.iter().map(|(value_type, _)| value_type.clone()).collect();
+		option_if_any_nullable(self.return_type(&bare), args)
 	}
 
 	fn propagates_options(&self) -> bool {

@@ -62,6 +62,16 @@ pub trait Routine<C: Context>: Send + Sync {
 
 	fn return_type(&self, input_types: &[ValueType]) -> ValueType;
 
+	fn return_type_of(&self, args: &[(ValueType, bool)]) -> ValueType {
+		let bare: Vec<ValueType> = args.iter().map(|(value_type, _)| value_type.clone()).collect();
+		let value_type = self.return_type(&bare);
+		if self.propagates_options() && args.iter().any(|(_, nullable)| *nullable) && !value_type.is_option() {
+			ValueType::Option(Box::new(value_type))
+		} else {
+			value_type
+		}
+	}
+
 	fn propagates_options(&self) -> bool {
 		true
 	}
@@ -151,10 +161,6 @@ pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
 	}
 
 	fn changes_row_count(&self) -> bool {
-		false
-	}
-
-	fn has_fixed_return_type(&self) -> bool {
 		false
 	}
 }

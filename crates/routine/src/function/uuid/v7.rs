@@ -118,8 +118,4 @@ impl Function for UuidV7 {
 	fn arity(&self) -> Arity {
 		Arity::Range(0, 1)
 	}
-
-	fn has_fixed_return_type(&self) -> bool {
-		true
-	}
 }

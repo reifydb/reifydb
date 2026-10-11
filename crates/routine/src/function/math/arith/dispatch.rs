@@ -30,7 +30,7 @@ use reifydb_value::{
 
 use crate::function::{
 	math::arith::op::{ArithOp, FamilyDigits, SafeNum},
-	support::coerce::{CoerceMode, all_rows_none, bare_type, coerce_column, promote_pair},
+	support::coerce::{CoerceMode, all_rows_none, bare_type, coerce_column, kernel_type, promote_pair},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -40,6 +40,13 @@ pub enum BasicStrategy {
 	Wrap,
 	Zero,
 	None,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ArithShape {
+	Two,
+	Fallback,
+	Strict,
 }
 
 enum RowMode {
@@ -162,6 +169,34 @@ fn family_target<Op: ArithOp>(
 	}
 }
 
+pub(crate) fn arith_target<Op: ArithOp>(a: &ValueType, b: &ValueType, fallback: Option<&ValueType>) -> ValueType {
+	let promoted = promote_pair(a.clone(), b.clone());
+	if promoted == ValueType::Any {
+		return ValueType::Any;
+	}
+	let a_operand = family_operand(a, &promoted);
+	let b_operand = family_operand(b, &promoted);
+	let d_operand = fallback.map(|d| family_operand(&unwrap_option(d.clone()), &promoted));
+	family_target::<Op>(&promoted, &a_operand, &b_operand, d_operand.as_ref())
+}
+
+pub(crate) fn arith_return_type_of<Op: ArithOp>(args: &[(ValueType, bool)], shape: ArithShape) -> ValueType {
+	let (Some((a, a_nullable)), Some((b, b_nullable))) = (args.first(), args.get(1)) else {
+		return ValueType::Float8;
+	};
+	let fallback = match shape {
+		ArithShape::Fallback => args.get(2),
+		_ => None,
+	};
+	let fallback_type = fallback.map(|(value_type, _)| kernel_type(value_type));
+	let target = arith_target::<Op>(&kernel_type(a), &kernel_type(b), fallback_type.as_ref());
+	if *a_nullable || *b_nullable || target == ValueType::Any {
+		ValueType::Option(Box::new(target))
+	} else {
+		target
+	}
+}
+
 fn family_bound(precision: Precision, negative: bool) -> i256 {
 	let max = unscaled::pow10(precision.value()).expect("a precision is at most 76 digits").wrapping_sub(i256::ONE);
 	if negative {
@@ -254,8 +289,9 @@ fn execute_arith<Op: ArithOp>(
 	}
 	let a_operand = family_operand(&bare_type(&a_data), &promoted);
 	let b_operand = family_operand(&bare_type(&b_data), &promoted);
-	let d_operand = d_view.as_ref().map(|d| family_operand(&unwrap_option(d.get_type()), &promoted));
-	let target = family_target::<Op>(&promoted, &a_operand, &b_operand, d_operand.as_ref());
+	let d_type = d_view.as_ref().map(ColumnView::get_type);
+	let d_operand = d_type.as_ref().map(|d| family_operand(&unwrap_option(d.clone()), &promoted));
+	let target = arith_target::<Op>(&bare_type(&a_data), &bare_type(&b_data), d_type.as_ref());
 
 	let a_cast = coerce_column(ctx, &a_view, a_operand.coerce_to.clone(), coerce_mode)?;
 	let b_cast = coerce_column(ctx, &b_view, b_operand.coerce_to.clone(), coerce_mode)?;

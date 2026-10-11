@@ -15,9 +15,15 @@ use reifydb_routine_abi::{
 	registry::Routines,
 };
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::value::value_type::{ValueType, field::from_field};
+use reifydb_value::value::{
+	Value,
+	value_type::{ValueType, field::from_field},
+};
 
-use crate::common::{Env, and, batch, between, call, column, none, number, registry, rows, strings};
+use crate::{
+	common::{Env, and, batch, between, call, cast, column, none, number, registry, rows, strings, text},
+	compare::{nullable_column, samples},
+};
 
 struct WrongReturnType {
 	info: RoutineInfo,
@@ -242,4 +248,148 @@ fn a_fixed_type_routine_lowers_with_the_rest_of_its_expression() {
 
 	assert_eq!(strings(&lowered), vec!["false", "true", "none"]);
 	assert_eq!(old.code, "OPERATOR_028");
+}
+
+fn numeric_samples() -> Vec<(Value, Value)> {
+	samples()
+		.into_iter()
+		.filter(|(value, _)| {
+			matches!(
+				value.get_type(),
+				ValueType::Int1
+					| ValueType::Int2
+					| ValueType::Int4
+					| ValueType::Int8
+					| ValueType::Int16
+					| ValueType::Uint1
+					| ValueType::Uint2
+					| ValueType::Uint4
+					| ValueType::Uint8
+					| ValueType::Uint16
+					| ValueType::Float4
+					| ValueType::Float8
+					| ValueType::Decimal { .. }
+			)
+		})
+		.collect()
+}
+
+#[test]
+fn every_two_argument_arith_routine_declares_the_kernel_field_for_every_numeric_pair() {
+	// The plan field must equal the kernel's for nullable and plain columns, otherwise an outer node types a wrong
+	// column.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+	let mut names = vec!["math::mod".to_string()];
+	for op in ["add", "sub", "mul", "div", "rem"] {
+		for variant in ["", "_none", "_saturate", "_wrap", "_zero"] {
+			names.push(format!("math::{op}{variant}"));
+		}
+	}
+
+	for left in numeric_samples() {
+		for right in numeric_samples() {
+			let nullable =
+				batch(vec![nullable_column("l", left.clone()), nullable_column("r", right.clone())]);
+			let plain = batch(vec![
+				factory::from_many("l", left.0.clone(), 2),
+				factory::from_many("r", right.1.clone(), 2),
+			]);
+			for name in &names {
+				let expression = call(name, vec![column("l"), column("r")]);
+				for input in [nullable.clone(), plain.clone()] {
+					let lowered = env.lowered(&expression, input.clone());
+					let old = env.old(&expression, input);
+					assert_eq!(
+						lowered,
+						old,
+						"{name}({:?}, {:?})",
+						left.0.get_type(),
+						right.0.get_type()
+					);
+				}
+			}
+		}
+	}
+}
+
+#[test]
+fn every_three_argument_arith_routine_declares_the_kernel_field_for_every_numeric_pair() {
+	// The fallback column feeds the decimal digits and the none rule, so its field must count in the plan too.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+
+	for left in numeric_samples() {
+		for right in numeric_samples() {
+			let input = batch(vec![
+				nullable_column("l", left.clone()),
+				nullable_column("r", right.clone()),
+				nullable_column("d", right.clone()),
+			]);
+			for op in ["add", "sub", "mul", "div", "rem"] {
+				for (name, third) in [
+					(format!("math::{op}_default"), column("d")),
+					(format!("math::{op}_strict"), text("overflow")),
+				] {
+					let expression = call(&name, vec![column("l"), column("r"), third]);
+					let lowered = env.lowered(&expression, input.clone());
+					let old = env.old(&expression, input.clone());
+					assert_eq!(
+						lowered,
+						old,
+						"{name}({:?}, {:?})",
+						left.0.get_type(),
+						right.0.get_type()
+					);
+				}
+			}
+		}
+	}
+}
+
+#[test]
+fn a_none_argument_reaches_an_outer_routine_as_an_option() {
+	// meta::type reads its argument field, so a declared int4 where the kernel answers Option(int4) shows the wrong
+	// type.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+	let expression = call("meta::type", vec![call("math::mod", vec![cast(number("7"), ValueType::Int4), none()])]);
+
+	let lowered = env.lowered(&expression, rows(1));
+	let old = env.old(&expression, rows(1));
+
+	assert!(old.is_ok(), "{old:?}");
+	assert_eq!(lowered, old);
+}
+
+#[test]
+fn an_untyped_none_first_argument_takes_the_other_arguments_type() {
+	// The kernel sees an untyped none as any and promotes to the other side, so the plan must not answer any.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+	let expression = call("math::power", vec![none(), cast(number("3"), ValueType::Uint8)]);
+
+	let lowered = env.lowered(&expression, rows(1));
+	let old = env.old(&expression, rows(1));
+
+	assert!(old.is_ok(), "{old:?}");
+	assert_eq!(lowered, old);
+}
+
+#[test]
+fn a_none_argument_reaches_meta_type_through_every_other_override() {
+	// An outer routine reads the declared field, so each override must declare an option when an argument holds a
+	// none.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+	let input = batch(vec![factory::int4_optional("a", [Some(2024), None])]);
+	let calls = [
+		call("math::power", vec![column("a"), number("2")]),
+		call("math::clamp", vec![column("a"), number("0"), number("10")]),
+		call("date::new", vec![column("a"), number("1"), number("1")]),
+		call("stats::approx_percentile", vec![none(), number("0.5")]),
+	];
+
+	for inner in calls {
+		let expression = call("meta::type", vec![inner]);
+		let lowered = env.lowered(&expression, input.clone());
+		let old = env.old(&expression, input.clone());
+		assert!(old.is_ok(), "{old:?}");
+		assert_eq!(lowered, old, "{expression:?}");
+	}
 }

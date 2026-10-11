@@ -28,7 +28,7 @@ use reifydb_value::{
 
 use crate::function::{
 	math::arith::dispatch::ensure_numeric,
-	support::coerce::{CoerceMode, all_rows_none, bare_type, coerce_column, promote_pair},
+	support::coerce::{CoerceMode, all_rows_none, bare_type, coerce_column, promote_pair, promoted_return_type},
 };
 
 pub struct Power {
@@ -64,6 +64,10 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 		} else {
 			ValueType::Float8
 		}
+	}
+
+	fn return_type_of(&self, args: &[(ValueType, bool)]) -> ValueType {
+		promoted_return_type(&args[..args.len().min(2)])
 	}
 
 	fn execute(

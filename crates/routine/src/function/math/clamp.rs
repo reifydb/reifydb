@@ -26,7 +26,7 @@ use reifydb_value::value::{
 
 use crate::function::{
 	math::arith::dispatch::ensure_numeric,
-	support::coerce::{CoerceMode, all_rows_none, bare_type, coerce_column, promote_all},
+	support::coerce::{CoerceMode, all_rows_none, bare_type, coerce_column, promote_all, promoted_return_type},
 };
 
 pub struct Clamp {
@@ -66,6 +66,10 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 		} else {
 			ValueType::Float8
 		}
+	}
+
+	fn return_type_of(&self, args: &[(ValueType, bool)]) -> ValueType {
+		promoted_return_type(&args[..args.len().min(3)])
 	}
 
 	fn execute(

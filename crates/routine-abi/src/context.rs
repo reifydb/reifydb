@@ -65,11 +65,11 @@ impl Context for FunctionContext<'_> {
 			&& nulls.null_count() == nulls.len()
 		{
 			let row_count = args.first().map_or(0, |(_, array)| array.len());
-			let mut input_types: Vec<ValueType> = Vec::with_capacity(unwrapped.len());
+			let mut input_types: Vec<(ValueType, bool)> = Vec::with_capacity(unwrapped.len());
 			for column in &unwrapped {
-				input_types.push(ColumnView::try_from(column)?.get_type());
+				input_types.push((ColumnView::try_from(column)?.get_type(), true));
 			}
-			let result_type = routine.return_type(&input_types);
+			let result_type = routine.return_type_of(&input_types);
 			return Ok(none_typed(&routine.info().name, result_type, row_count));
 		}
 

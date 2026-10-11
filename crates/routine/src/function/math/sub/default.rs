@@ -9,7 +9,10 @@ use reifydb_routine_abi::{
 use reifydb_value::value::value_type::ValueType;
 
 use crate::function::{
-	math::arith::{dispatch::dispatch_fallback, op::Sub as SubOp},
+	math::arith::{
+		dispatch::{ArithShape, arith_return_type_of, dispatch_fallback},
+		op::Sub as SubOp,
+	},
 	support::coerce::promote_pair,
 };
 
@@ -46,6 +49,10 @@ impl<'a> Routine<FunctionContext<'a>> for SubDefault {
 		} else {
 			input_types.first().cloned().unwrap_or(ValueType::Float8)
 		}
+	}
+
+	fn return_type_of(&self, args: &[(ValueType, bool)]) -> ValueType {
+		arith_return_type_of::<SubOp>(args, ArithShape::Fallback)
 	}
 
 	fn execute(

@@ -10,7 +10,7 @@ use reifydb_value::value::value_type::ValueType;
 
 use crate::function::{
 	math::arith::{
-		dispatch::{BasicStrategy, dispatch_two},
+		dispatch::{ArithShape, BasicStrategy, arith_return_type_of, dispatch_two},
 		op::Mul as MulOp,
 	},
 	support::coerce::promote_pair,
@@ -49,6 +49,10 @@ impl<'a> Routine<FunctionContext<'a>> for Mul {
 		} else {
 			input_types.first().cloned().unwrap_or(ValueType::Float8)
 		}
+	}
+
+	fn return_type_of(&self, args: &[(ValueType, bool)]) -> ValueType {
+		arith_return_type_of::<MulOp>(args, ArithShape::Two)
 	}
 
 	fn execute(
