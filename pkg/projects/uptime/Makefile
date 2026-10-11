@@ -25,7 +25,7 @@ help:
 test:
 	cargo test -p $(PKG)
 	cargo build --release -p reifydb-uptime-bridge
-	cd web && pnpm test
+	cd web && pnpm install --frozen-lockfile && pnpm test
 
 service:
 	cargo run -p $(PKG) -- --no-embedded-probes
