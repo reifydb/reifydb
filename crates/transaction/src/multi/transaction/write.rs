@@ -877,14 +877,18 @@ impl MultiWriteTransaction {
 
 	#[inline]
 	fn build_deltas(&self) -> CowVec<Delta> {
-		CowVec::new(optimize_deltas(
-			self.delta_log.iter().map(|pending| pending.delta.clone()),
-			&self.committed_pres,
-		))
+		let deltas = self.delta_log.iter().map(|pending| pending.delta.clone());
+		if self.delta_log.len() == self.pending_writes.len() {
+			return CowVec::new(deltas.collect());
+		}
+		CowVec::new(optimize_deltas(deltas, &self.committed_pres))
 	}
 
 	fn resolve_removed_after_set(&mut self) -> Result<()> {
 		let mut keys = mem::take(&mut self.removed_after_set);
+		if keys.is_empty() {
+			return Ok(());
+		}
 		keys.sort();
 		keys.dedup();
 		let mut first: BTreeSet<&TaggedKey> = BTreeSet::new();
