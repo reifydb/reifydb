@@ -46,6 +46,11 @@ pub enum BlockEncodingError {
 		name: String,
 	},
 
+	#[error("'{name}' decoded fields that differ from the user columns of the block")]
+	DecodedFieldsDiffer {
+		name: String,
+	},
+
 	#[error("'{name}' stored field '{field}' has no value type")]
 	UnsupportedStoredType {
 		name: String,
@@ -220,6 +225,21 @@ impl IntoDiagnostic for BlockEncodingError {
 				fragment: Fragment::None,
 				label: Some("encoded block without a decoder".to_string()),
 				help: Some("this scan path cannot read encoded blocks".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			BlockEncodingError::DecodedFieldsDiffer {
+				name,
+			} => Diagnostic {
+				code: "BENC_011".to_string(),
+				rql: None,
+				message: format!("'{name}' decoded fields that differ from the user columns of the block"),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("decoded fields differ from the block header".to_string()),
+				help: Some("decode must return exactly the user columns recorded in the block header, in order".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

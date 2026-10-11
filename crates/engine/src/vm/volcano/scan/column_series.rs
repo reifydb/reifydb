@@ -140,6 +140,10 @@ impl ColumnSeriesScanNode {
 			return Ok(ScanState::Done);
 		}
 
+		if pruned.is_empty() && !snapshots_were_empty {
+			return Ok(ScanState::Done);
+		}
+
 		if pruned.is_empty() {
 			return Err(Error(Box::new(no_column_snapshot(
 				self.series.identifier().clone(),

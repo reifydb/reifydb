@@ -96,6 +96,15 @@ impl BlockDecoder {
 			}
 			.into());
 		}
+		let decoded: Vec<_> =
+			user.schema().fields().iter().map(|f| (f.name().clone(), f.data_type().clone())).collect();
+		let expected: Vec<_> = user_fields.iter().map(|f| (f.name().clone(), f.data_type().clone())).collect();
+		if decoded != expected {
+			return Err(BlockEncodingError::DecodedFieldsDiffer {
+				name: header.name.clone(),
+			}
+			.into());
+		}
 		let mut schema = Vec::with_capacity(header.user.len() + system.len());
 		let mut columns = Vec::with_capacity(header.user.len() + system.len());
 		for ((column, field), array) in header.user.iter().zip(&user_fields).zip(user.columns()) {
@@ -182,6 +191,35 @@ pub(crate) mod tests {
 		fn decode(&self, version: u32, stored: RecordBatch) -> Result<RecordBatch> {
 			self.decodes.fetch_add(1, Ordering::SeqCst);
 			self.inner.decode(version, stored)
+		}
+	}
+
+	struct Truncating;
+
+	impl BlockEncoding for Truncating {
+		fn version(&self) -> u32 {
+			1
+		}
+
+		fn bind(&self, user: &[FieldRef], config: &[(String, Value)]) -> Result<Box<dyn BoundBlockEncoding>> {
+			Ok(Box::new(BoundTruncating(DeltaEncoding::new().bind(user, config)?)))
+		}
+	}
+
+	struct BoundTruncating(Box<dyn BoundBlockEncoding>);
+
+	impl BoundBlockEncoding for BoundTruncating {
+		fn stored_fields(&self) -> Vec<FieldRef> {
+			self.0.stored_fields()
+		}
+
+		fn encode(&self, user: RecordBatch) -> Result<RecordBatch> {
+			self.0.encode(user)
+		}
+
+		fn decode(&self, version: u32, stored: RecordBatch) -> Result<RecordBatch> {
+			let user = self.0.decode(version, stored)?;
+			Ok(user.project(&[0]).unwrap())
 		}
 	}
 
@@ -330,6 +368,18 @@ pub(crate) mod tests {
 		let (code, message) = error_of(delta_decoder().decode(encoded_block(vec![1, 2], vec![5, 6], 2), None));
 		assert_eq!(code, "BENC_002");
 		assert!(message.contains('2') && message.contains('1'), "the error must name both versions: {message}");
+	}
+
+	#[test]
+	fn a_decode_that_drops_a_user_column_fails() {
+		// Zipping a short decode against the header silently drops the missing user columns from every row.
+		let decoder = BlockDecoder::new(
+			BlockEncodings::builder().register(DELTA, || Truncating).configure(),
+			new_session(),
+		);
+		let (code, message) = error_of(decoder.decode(encoded_block(vec![1, 2, 3], vec![5, 6, 9], 1), None));
+		assert_eq!(code, "BENC_011");
+		assert!(message.contains(DELTA), "the error must name the encoding: {message}");
 	}
 
 	#[test]
