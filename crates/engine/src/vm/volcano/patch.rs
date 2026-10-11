@@ -13,10 +13,9 @@ use reifydb_core::{
 	},
 	value::column::{headers::ColumnHeaders, write::check_digest_write},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::{CompileContext, EvalContext},
-	eval::cast_for_write,
+use reifydb_evaluate::{
+	expression::{context::EvalContext, eval::cast_for_write},
+	lower::LoweredExpr,
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
@@ -43,7 +42,7 @@ pub(crate) struct PatchNode {
 	source: Option<ResolvedObject>,
 	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
-	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
+	context: Option<(Arc<QueryContext>, Vec<LoweredExpr>)>,
 }
 
 impl PatchNode {
@@ -82,15 +81,8 @@ impl QueryNode for PatchNode {
 		self.expressions = expressions;
 		self.udf_names = udf_names;
 
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
-		let compiled = self
-			.expressions
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>>>()?;
-		self.context = Some((Arc::new(ctx.clone()), compiled));
+		let lowered = self.expressions.iter().map(|e| LoweredExpr::new(e.clone(), "patch")).collect();
+		self.context = Some((Arc::new(ctx.clone()), lowered));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
@@ -150,7 +142,7 @@ impl QueryNode for PatchNode {
 
 impl Transform for PatchNode {
 	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
-		let (stored_ctx, compiled) =
+		let (stored_ctx, lowered) =
 			self.context.as_ref().expect("PatchNode::apply() called before initialize()");
 
 		let row_count = input.num_rows();
@@ -159,7 +151,7 @@ impl Transform for PatchNode {
 
 		let session = eval_context_from_transform(ctx, stored_ctx);
 		let mut patch_columns = Vec::with_capacity(self.expressions.len());
-		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
+		for (expr, lowered_expr) in self.expressions.iter().zip(lowered.iter()) {
 			let mut exec_ctx = Self::eval_context(&session, &input, row_count);
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
@@ -173,7 +165,7 @@ impl Transform for PatchNode {
 				}
 			}
 
-			let mut column = Self::eval_patch(compiled_expr, &exec_ctx)?;
+			let mut column = Self::eval_patch(lowered_expr, &exec_ctx)?;
 
 			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
 				let view = ColumnView::try_from(&column)?;
@@ -197,8 +189,8 @@ impl PatchNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::patch::eval")]
-	fn eval_patch(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
-		compiled.execute(exec_ctx)
+	fn eval_patch(lowered: &LoweredExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
+		lowered.evaluate(exec_ctx)
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::patch::merge")]

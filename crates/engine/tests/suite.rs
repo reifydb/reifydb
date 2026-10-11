@@ -138,6 +138,8 @@ mod lower_extend;
 mod lower_filter;
 #[path = "lower_map.rs"]
 mod lower_map;
+#[path = "lower_patch.rs"]
+mod lower_patch;
 #[path = "map_ends_in_a_comment.rs"]
 mod map_ends_in_a_comment;
 #[path = "memory_limit.rs"]
