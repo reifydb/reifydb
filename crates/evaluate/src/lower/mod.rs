@@ -6,6 +6,7 @@ mod cast;
 mod compare;
 mod error;
 mod literal;
+mod negate;
 mod routine;
 mod schema;
 
@@ -54,6 +55,7 @@ pub const CLAIMED: &[&str] = &[
 	"AccessSource",
 	"Constant",
 	"Prefix(Not)",
+	"Prefix(Minus)",
 	"And",
 	"Or",
 	"Equal",
@@ -326,6 +328,9 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 		}
 		Expression::Prefix(prefix) if matches!(prefix.operator, PrefixOperator::Not(_)) => {
 			lower_not(ctx, operator, expression, prefix)
+		}
+		Expression::Prefix(prefix) if matches!(prefix.operator, PrefixOperator::Minus(_)) => {
+			negate::lower_negate(ctx, operator, expression, prefix)
 		}
 		Expression::And(and) => lower_logical(
 			ctx,

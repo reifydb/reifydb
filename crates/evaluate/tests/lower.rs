@@ -17,6 +17,8 @@ mod literal;
 mod logic;
 #[path = "lower/lowered_expr.rs"]
 mod lowered_expr;
+#[path = "lower/negate.rs"]
+mod negate;
 #[path = "lower/routine.rs"]
 mod routine;
 #[path = "lower/schema.rs"]

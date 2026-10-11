@@ -32,6 +32,7 @@ fn the_claimed_list_is_exactly_the_lowered_kinds() {
 		"AccessSource",
 		"Constant",
 		"Prefix(Not)",
+		"Prefix(Minus)",
 		"And",
 		"Or",
 		"Equal",
@@ -78,6 +79,7 @@ fn every_claimed_name_is_a_kind_that_kind_can_return() {
 	samples.push(field_access(variable("$x"), "a"));
 	samples.push(alias("x", number("1")));
 	samples.push(cast(number("1"), ValueType::Int4));
+	samples.push(prefix(PrefixOperator::Minus(frag("-")), number("1")));
 
 	let kinds: BTreeSet<&str> = samples.iter().map(kind).collect();
 	let claimed: BTreeSet<&str> = CLAIMED.iter().copied().collect();
@@ -87,11 +89,11 @@ fn every_claimed_name_is_a_kind_that_kind_can_return() {
 
 #[test]
 fn prefix_kinds_are_split_by_operator() {
-	// Only not is claimed in this step, so minus and plus must not share its kind name.
+	// Not and minus are claimed and plus is not, so the three must not share a kind name.
 	assert_eq!(kind(&not(number("1"))), "Prefix(Not)");
 	assert_eq!(kind(&prefix(PrefixOperator::Minus(frag("-")), number("1"))), "Prefix(Minus)");
 	assert_eq!(kind(&prefix(PrefixOperator::Plus(frag("+")), number("1"))), "Prefix(Plus)");
-	assert!(!CLAIMED.contains(&"Prefix(Minus)"));
+	assert!(CLAIMED.contains(&"Prefix(Minus)"));
 	assert!(!CLAIMED.contains(&"Prefix(Plus)"));
 }
 
