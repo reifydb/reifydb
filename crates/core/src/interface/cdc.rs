@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, sync::OnceLock};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	sync::OnceLock,
+};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_value::value::datetime::DateTime;
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 use serde::{Deserialize, Serialize};
 
 use crate::{
 	common::{ChangeVersion, CommitVersion},
-	interface::catalog::object::ObjectId,
+	interface::{catalog::object::ObjectId, change::Change},
 };
 
 #[repr(transparent)]
@@ -152,6 +155,21 @@ pub struct Cdc {
 
 	#[serde(skip)]
 	changed_objects: OnceLock<BTreeSet<ObjectId>>,
+
+	#[serde(skip)]
+	lift: OnceLock<CdcLift>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CdcLift {
+	pub objects: BTreeMap<ObjectId, ObjectLift>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ObjectLift {
+	pub rows: Vec<(usize, RowNumber)>,
+	pub first_missing_pre: Option<usize>,
+	pub change: OnceLock<Option<Change>>,
 }
 
 impl Cdc {
@@ -161,11 +179,16 @@ impl Cdc {
 			timestamp,
 			changes,
 			changed_objects: OnceLock::new(),
+			lift: OnceLock::new(),
 		}
 	}
 
 	pub fn changed_objects_with(&self, compute: impl FnOnce(&Cdc) -> BTreeSet<ObjectId>) -> &BTreeSet<ObjectId> {
 		self.changed_objects.get_or_init(|| compute(self))
+	}
+
+	pub fn lift_with(&self, build: impl FnOnce(&Cdc) -> CdcLift) -> &CdcLift {
+		self.lift.get_or_init(|| build(self))
 	}
 }
 

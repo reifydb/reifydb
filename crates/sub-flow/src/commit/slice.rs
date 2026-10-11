@@ -559,9 +559,12 @@ mod integration {
 			dag::FlowDag,
 			operator::{FlowNode, OperatorDef},
 		},
-		interface::catalog::{
-			flow::{FlowEdge, OperatorId},
-			id::{SeriesId, TableId, ViewId},
+		interface::{
+			catalog::{
+				flow::{FlowEdge, OperatorId},
+				id::{SeriesId, TableId, ViewId},
+			},
+			change::Diff,
 		},
 		key::tag::KeyTag,
 	};
@@ -1592,5 +1595,62 @@ mod integration {
 		assert_eq!(materialization.output_frontier(), version);
 		assert_eq!(view_row_count(&te, "FROM app::v"), 2);
 		assert_eq!(view_row_count(&te, "FROM app::v FILTER { id > 3 }"), 2, "only the two newest rows fit");
+	}
+
+	#[test]
+	fn two_flows_reading_one_backlog_entry_share_its_decoded_columns() {
+		// Flow actors lift the backlog's shared commit, so lifting a copy of it would decode it once per flow.
+		let te = TestEngine::builder().with_cdc().build();
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
+		te.admin("CREATE TABLE app::u { id: int4, label: utf8 }");
+		let before = te.inner().current_version().expect("current version");
+		te.command("INSERT app::t [{id: 1, val: 10}]; INSERT app::u [{id: 2, label: 'b'}]");
+		let inserted = te.inner().current_version().expect("current version");
+		for _ in 0..400 {
+			if te.inner().cdc_producer_watermark().min(te.inner().done_until()) >= inserted {
+				break;
+			}
+			sleep(Duration::from_milliseconds_const(5).to_std());
+		}
+		let engine = te.inner().clone();
+		let batch = engine
+			.cdc_store()
+			.read_range(Bound::Excluded(before), Bound::Included(inserted), 1000)
+			.expect("read cdc range");
+		let commit = batch
+			.items
+			.into_iter()
+			.find(|cdc| changed_objects(cdc).len() == 2)
+			.map(Arc::new)
+			.expect("one commit writes both tables");
+		let objects: Vec<ObjectId> = changed_objects(&commit).iter().copied().collect();
+		let (t, u) = (objects[0], objects[1]);
+
+		let first = collect_flow_changes(&engine, &[&*commit], &BTreeSet::from([t]), None)
+			.expect("first flow lift");
+		let second = collect_flow_changes(&engine, &[&*commit], &BTreeSet::from([t, u]), None)
+			.expect("second flow lift");
+
+		let columns_of = |changes: &[Change]| {
+			let change = changes
+				.iter()
+				.find(|change| change.origin == ChangeOrigin::Object(t))
+				.expect("the lift holds the change of t");
+			change.diffs
+				.iter()
+				.flat_map(|diff| match diff {
+					Diff::Insert {
+						post,
+						..
+					} => post.columns().to_vec(),
+					other => panic!("only inserts were committed, got {other:?}"),
+				})
+				.collect::<Vec<_>>()
+		};
+		let (a, b) = (columns_of(&first), columns_of(&second));
+		assert!(!a.is_empty(), "precondition: t's change carries columns");
+		assert_eq!(a.len(), b.len());
+		assert!(a.iter().zip(b.iter()).all(|(a, b)| Arc::ptr_eq(a, b)), "the second flow decoded t again");
 	}
 }

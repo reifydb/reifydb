@@ -14,7 +14,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	interface::{
 		catalog::object::ObjectId,
-		cdc::{Cdc, CdcChange},
+		cdc::{Cdc, CdcChange, CdcLift, ObjectLift},
 		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	internal_error,
@@ -110,33 +110,50 @@ fn tracked_target(key: &EncodedKey) -> Option<RowTarget> {
 	Some(target)
 }
 
-pub fn changed_objects(cdc: &Cdc) -> &BTreeSet<ObjectId> {
-	cdc.changed_objects_with(|cdc| {
-		cdc.changes.iter().filter_map(|change| tracked_target(change.key())).map(|t| t.object).collect()
+fn lift_index(cdc: &Cdc) -> &CdcLift {
+	cdc.lift_with(|cdc| {
+		let mut objects: BTreeMap<ObjectId, ObjectLift> = BTreeMap::new();
+		for (index, cdc_change) in cdc.changes.iter().enumerate() {
+			let Some(target) = tracked_target(cdc_change.key()) else {
+				continue;
+			};
+			let object = objects.entry(target.object).or_default();
+			match cdc_change {
+				CdcChange::Delete {
+					visible: false,
+					..
+				} => {}
+				CdcChange::Delete {
+					pre: None,
+					visible: true,
+					..
+				} => {
+					object.first_missing_pre.get_or_insert(index);
+				}
+				_ => object.rows.push((index, target.row)),
+			}
+		}
+		CdcLift {
+			objects,
+		}
 	})
 }
 
-pub fn lifted_objects(cdc: &Cdc) -> Result<BTreeSet<ObjectId>> {
-	let mut objects = BTreeSet::new();
-	for cdc_change in &cdc.changes {
-		let Some(target) = tracked_target(cdc_change.key()) else {
-			continue;
-		};
-		match cdc_change {
-			CdcChange::Delete {
-				visible: false,
-				..
-			} => continue,
-			CdcChange::Delete {
-				key,
-				pre: None,
-				visible: true,
-			} => return Err(missing_pre_image(key, cdc)),
-			_ => {}
-		}
-		objects.insert(target.object);
+fn first_missing_pre<'a>(objects: impl Iterator<Item = &'a ObjectLift>, cdc: &Cdc) -> Result<()> {
+	match objects.filter_map(|object| object.first_missing_pre).min() {
+		Some(index) => Err(missing_pre_image(cdc.changes[index].key(), cdc)),
+		None => Ok(()),
 	}
-	Ok(objects)
+}
+
+pub fn changed_objects(cdc: &Cdc) -> &BTreeSet<ObjectId> {
+	cdc.changed_objects_with(|cdc| lift_index(cdc).objects.keys().copied().collect())
+}
+
+pub fn lifted_objects(cdc: &Cdc) -> Result<BTreeSet<ObjectId>> {
+	let index = lift_index(cdc);
+	first_missing_pre(index.objects.values(), cdc)?;
+	Ok(index.objects.iter().filter(|(_, object)| !object.rows.is_empty()).map(|(id, _)| *id).collect())
 }
 
 pub fn lift_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) -> Result<Vec<Change>> {
@@ -149,16 +166,37 @@ pub fn lift_selected_changes(
 	txn: &mut Transaction<'_>,
 	accept: impl Fn(ObjectId) -> bool,
 ) -> Result<Vec<Change>> {
-	let mut rows: Vec<LiftedRow> = Vec::with_capacity(cdc.changes.len());
+	let index = lift_index(cdc);
+	let accepted: Vec<(ObjectId, &ObjectLift)> =
+		index.objects.iter().filter(|(id, _)| accept(**id)).map(|(id, object)| (*id, object)).collect();
+	first_missing_pre(accepted.iter().map(|(_, object)| *object), cdc)?;
 
-	for cdc_change in &cdc.changes {
-		let Some(target) = tracked_target(cdc_change.key()) else {
-			continue;
+	let mut changes: Vec<Change> = Vec::with_capacity(accepted.len());
+	for (id, object) in accepted {
+		let lifted = match object.change.get() {
+			Some(lifted) => lifted,
+			None => {
+				let lifted = lift_object(cdc, id, &object.rows, catalog, txn)?;
+				object.change.get_or_init(|| lifted)
+			}
 		};
-		if !accept(target.object) {
-			continue;
+		if let Some(change) = lifted {
+			changes.push(change.clone());
 		}
-		let (pre, post) = match cdc_change {
+	}
+	Ok(changes)
+}
+
+fn lift_object(
+	cdc: &Cdc,
+	object: ObjectId,
+	indexed: &[(usize, RowNumber)],
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+) -> Result<Option<Change>> {
+	let mut rows: Vec<LiftedRow> = Vec::with_capacity(indexed.len());
+	for (index, row) in indexed {
+		let (pre, post) = match &cdc.changes[*index] {
 			CdcChange::Insert {
 				post,
 				..
@@ -169,20 +207,15 @@ pub fn lift_selected_changes(
 				..
 			} => (Some(pre.clone()), Some(post.clone())),
 			CdcChange::Delete {
-				visible: false,
-				..
-			} => continue,
-			CdcChange::Delete {
-				key,
 				pre,
-				visible: true,
-			} => {
-				let pre = pre.as_ref().ok_or_else(|| missing_pre_image(key, cdc))?;
-				(Some(pre.clone()), None)
-			}
+				..
+			} => (pre.clone(), None),
 		};
 		rows.push(LiftedRow {
-			target,
+			target: RowTarget {
+				object,
+				row: *row,
+			},
 			pre,
 			post,
 		});
@@ -190,7 +223,7 @@ pub fn lift_selected_changes(
 
 	pair_moved_rows(&mut rows);
 
-	let mut grouped: BTreeMap<ObjectId, BTreeMap<BucketKey, Bucket>> = BTreeMap::new();
+	let mut buckets: BTreeMap<BucketKey, Bucket> = BTreeMap::new();
 	for row in rows {
 		let key = match (&row.pre, &row.post) {
 			(None, Some(post)) => {
@@ -217,7 +250,7 @@ pub fn lift_selected_changes(
 			(None, None) => continue,
 		};
 
-		let bucket = grouped.entry(row.target.object).or_default().entry(key).or_default();
+		let bucket = buckets.entry(key).or_default();
 		bucket.ids.push(row.target.row);
 		if let Some(pre) = row.pre {
 			bucket.pre.push(pre);
@@ -227,41 +260,38 @@ pub fn lift_selected_changes(
 		}
 	}
 
-	let mut shapes: BTreeMap<RowShapeFingerprint, RowShape> = BTreeMap::new();
-	let mut changes: Vec<Change> = Vec::with_capacity(grouped.len());
-
-	for (object, buckets) in grouped {
-		let mut diffs: Diffs = Diffs::new();
-		for (key, bucket) in buckets {
-			let diff = match key.kind {
-				LiftedKind::Insert => {
-					let shape = load_shape(catalog, txn, &mut shapes, key.post_shape)?;
-					Diff::insert(from_encoded_bytes(&shape, &bucket.ids, &bucket.post)?)
-				}
-				LiftedKind::Update => {
-					let pre_shape = load_shape(catalog, txn, &mut shapes, key.pre_shape)?;
-					let post_shape = load_shape(catalog, txn, &mut shapes, key.post_shape)?;
-					Diff::update(
-						from_encoded_bytes(&pre_shape, &bucket.ids, &bucket.pre)?,
-						from_encoded_bytes(&post_shape, &bucket.ids, &bucket.post)?,
-					)
-				}
-				LiftedKind::Remove => {
-					let shape = load_shape(catalog, txn, &mut shapes, key.pre_shape)?;
-					Diff::remove(from_encoded_bytes(&shape, &bucket.ids, &bucket.pre)?)
-				}
-			};
-			diffs.push(diff);
-		}
-		changes.push(Change {
-			origin: ChangeOrigin::Object(object),
-			diffs,
-			version: cdc.version,
-			changed_at: cdc.timestamp,
-		});
+	if buckets.is_empty() {
+		return Ok(None);
 	}
 
-	Ok(changes)
+	let mut diffs: Diffs = Diffs::new();
+	for (key, bucket) in buckets {
+		let diff = match key.kind {
+			LiftedKind::Insert => {
+				let shape = load_shape(catalog, txn, key.post_shape)?;
+				Diff::insert(from_encoded_bytes(&shape, &bucket.ids, &bucket.post)?)
+			}
+			LiftedKind::Update => {
+				let pre_shape = load_shape(catalog, txn, key.pre_shape)?;
+				let post_shape = load_shape(catalog, txn, key.post_shape)?;
+				Diff::update(
+					from_encoded_bytes(&pre_shape, &bucket.ids, &bucket.pre)?,
+					from_encoded_bytes(&post_shape, &bucket.ids, &bucket.post)?,
+				)
+			}
+			LiftedKind::Remove => {
+				let shape = load_shape(catalog, txn, key.pre_shape)?;
+				Diff::remove(from_encoded_bytes(&shape, &bucket.ids, &bucket.pre)?)
+			}
+		};
+		diffs.push(diff);
+	}
+	Ok(Some(Change {
+		origin: ChangeOrigin::Object(object),
+		diffs,
+		version: cdc.version,
+		changed_at: cdc.timestamp,
+	}))
 }
 
 fn missing_pre_image(key: &EncodedKey, cdc: &Cdc) -> Error {
@@ -290,20 +320,10 @@ fn pair_moved_rows(rows: &mut Vec<LiftedRow>) {
 	rows.retain(|row| row.pre.is_some() || row.post.is_some());
 }
 
-fn load_shape(
-	catalog: &Catalog,
-	txn: &mut Transaction<'_>,
-	cache: &mut BTreeMap<RowShapeFingerprint, RowShape>,
-	fingerprint: RowShapeFingerprint,
-) -> Result<RowShape> {
-	if let Some(shape) = cache.get(&fingerprint) {
-		return Ok(shape.clone());
-	}
-	let shape = catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
+fn load_shape(catalog: &Catalog, txn: &mut Transaction<'_>, fingerprint: RowShapeFingerprint) -> Result<RowShape> {
+	catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
 		internal_error!("RowShape with fingerprint {:?} not found while lifting CDC changes", fingerprint)
-	})?;
-	cache.insert(fingerprint, shape.clone());
-	Ok(shape)
+	})
 }
 
 #[cfg(test)]
