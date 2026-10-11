@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, mem::size_of, ops::RangeBounds, vec::IntoIter as VecIntoIter};
+use std::{
+	collections::BTreeMap,
+	mem::{self, size_of},
+	ops::RangeBounds,
+};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -18,11 +22,9 @@ const ENTRY_OVERHEAD: usize = SLOT_COPIES_PER_ENTRY * (size_of::<EncodedKey>() +
 
 #[derive(Debug, Default, Clone)]
 pub struct PendingWrites {
-	entries: Vec<Option<DeltaEntry>>,
+	entries: Vec<DeltaEntry>,
 
 	index: BTreeMap<TaggedKeyBound, u32>,
-
-	estimated_size: ByteSize,
 }
 
 impl PendingWrites {
@@ -30,7 +32,6 @@ impl PendingWrites {
 		Self {
 			entries: Vec::new(),
 			index: BTreeMap::new(),
-			estimated_size: ByteSize::ZERO,
 		}
 	}
 
@@ -62,7 +63,7 @@ impl PendingWrites {
 
 	#[inline]
 	fn entry_at(&self, slot: u32) -> Option<&DeltaEntry> {
-		self.entries.get(slot as usize).and_then(|entry| entry.as_ref())
+		self.entries.get(slot as usize)
 	}
 
 	#[inline]
@@ -70,59 +71,26 @@ impl PendingWrites {
 		self.index.get(&TaggedKeyBound::Key(key.clone())).and_then(|slot| self.entry_at(*slot))
 	}
 
-	#[inline]
-	pub fn contains_key(&self, key: &TaggedKey) -> bool {
-		self.index.contains_key(&TaggedKeyBound::Key(key.clone()))
-	}
-
 	pub fn insert(&mut self, value: DeltaEntry) -> Option<DeltaEntry> {
 		let key = TaggedKeyBound::Key(value.key().clone());
-		let size_estimate = self.estimate_size(&value);
 
 		if let Some(&slot) = self.index.get(&key) {
-			let pre_size = self.entry_at(slot).map(|pre| self.estimate_size(pre));
-			let replaced = self.entries.get_mut(slot as usize).and_then(|entry| entry.replace(value));
-			if let Some(pre_size) = pre_size
-				&& size_estimate != pre_size
-			{
-				self.estimated_size =
-					self.estimated_size.saturating_sub(pre_size).saturating_add(size_estimate);
-			}
-			return replaced;
+			return self.entries.get_mut(slot as usize).map(|entry| mem::replace(entry, value));
 		}
 
 		let slot = self.entries.len() as u32;
-		self.entries.push(Some(value));
+		self.entries.push(value);
 		self.index.insert(key, slot);
-		self.estimated_size = self.estimated_size.saturating_add(size_estimate);
 		None
-	}
-
-	pub fn remove_entry(&mut self, key: &TaggedKey) -> Option<(TaggedKeyBound, DeltaEntry)> {
-		let (removed_key, slot) = self.index.remove_entry(&TaggedKeyBound::Key(key.clone()))?;
-		let removed_value = self.entries.get_mut(slot as usize).and_then(Option::take)?;
-		let size_estimate = self.estimate_size(&removed_value);
-		self.estimated_size = self.estimated_size.saturating_sub(size_estimate);
-		Some((removed_key, removed_value))
 	}
 
 	pub fn iter(&self) -> impl DoubleEndedIterator<Item = (&TaggedKeyBound, &DeltaEntry)> + '_ {
 		self.index.iter().filter_map(|(key, slot)| self.entry_at(*slot).map(|entry| (key, entry)))
 	}
 
-	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (TaggedKey, DeltaEntry)> {
-		self.entries.into_iter().flatten().map(|entry| (entry.key().clone(), entry))
-	}
-
 	pub fn rollback(&mut self) {
 		self.entries.clear();
 		self.index.clear();
-		self.estimated_size = ByteSize::ZERO;
-	}
-
-	#[inline]
-	pub fn total_estimated_size(&self) -> ByteSize {
-		self.estimated_size
 	}
 
 	pub fn range<R>(&self, range: R) -> impl DoubleEndedIterator<Item = (&TaggedKeyBound, &DeltaEntry)> + '_
@@ -130,15 +98,6 @@ impl PendingWrites {
 		R: RangeBounds<TaggedKeyBound>,
 	{
 		self.index.range(range).filter_map(|(key, slot)| self.entry_at(*slot).map(|entry| (key, entry)))
-	}
-}
-
-impl IntoIterator for PendingWrites {
-	type Item = (TaggedKey, DeltaEntry);
-	type IntoIter = VecIntoIter<(TaggedKey, DeltaEntry)>;
-
-	fn into_iter(self) -> Self::IntoIter {
-		self.into_iter_insertion_order().collect::<Vec<_>>().into_iter()
 	}
 }
 
@@ -195,7 +154,6 @@ pub mod tests {
 
 		assert!(!pw.is_empty());
 		assert_eq!(pw.len(), 1);
-		assert!(pw.contains_key(&key1));
 		assert_eq!(pw.get(&key1).unwrap(), &pending1);
 	}
 
@@ -271,13 +229,7 @@ pub mod tests {
 		assert_eq!(pw.len(), 1000);
 
 		let lookup_key = create_test_key("key000500");
-		assert!(pw.contains_key(&lookup_key));
 		assert!(pw.get(&lookup_key).is_some());
-
-		let removed = pw.remove_entry(&lookup_key);
-		assert!(removed.is_some());
-		assert_eq!(pw.len(), 999);
-		assert!(!pw.contains_key(&lookup_key));
 	}
 
 	#[test]
@@ -291,50 +243,15 @@ pub mod tests {
 		}
 
 		assert_eq!(pw.len(), 10);
-		assert!(pw.total_estimated_size() > ByteSize::ZERO);
 
 		pw.rollback();
 
 		assert!(pw.is_empty());
-		assert_eq!(pw.total_estimated_size(), ByteSize::ZERO);
-	}
-
-	fn test_key_name(key: &TaggedKey) -> Vec<u8> {
-		match key {
-			TaggedKey::QueueDeduplication(key) => key.tail.as_slice().iter().map(|b| !b).collect(),
-			other => panic!("unexpected test key {other:?}"),
-		}
-	}
-
-	fn insertion_keys(pw: &PendingWrites) -> Vec<String> {
-		pw.clone()
-			.into_iter_insertion_order()
-			.map(|(key, _)| String::from_utf8(test_key_name(&key)).expect("test keys are utf8"))
-			.collect()
 	}
 
 	#[test]
-	fn removing_a_middle_key_leaves_every_other_position_untouched() {
-		// Commit ordering is derived from this sequence, so a removal that transposes the tail
-		// into the vacated slot reorders the deltas the commit publishes.
-		let mut pw = PendingWrites::new();
-		for name in ["a", "b", "c", "d"] {
-			pw.insert(create_test_pending(CommitVersion(1), name, "v"));
-		}
-
-		pw.remove_entry(&create_test_key("b"));
-
-		assert_eq!(
-			insertion_keys(&pw),
-			vec!["a", "c", "d"],
-			"removing b must leave a, c, d in their original order; swap-remove yields a, d, c"
-		);
-	}
-
-	#[test]
-	fn rewriting_a_key_keeps_its_first_insertion_position() {
-		// The primary path sorts surviving deltas by first appearance, so a last-write-wins order
-		// here would disagree with the deltas that path commits for the same transaction.
+	fn rewriting_a_key_replaces_its_value_without_a_new_entry() {
+		// A re-write must replace the value and never add an entry, or the commit sees a stale or doubled row.
 		let mut pw = PendingWrites::new();
 		for name in ["a", "b", "c"] {
 			pw.insert(create_test_pending(CommitVersion(1), name, "v1"));
@@ -342,54 +259,12 @@ pub mod tests {
 
 		pw.insert(create_test_pending(CommitVersion(2), "a", "v2"));
 
-		assert_eq!(insertion_keys(&pw), vec!["a", "b", "c"], "a must hold its first position after a re-write");
 		assert_eq!(pw.len(), 3, "a re-write must not add an entry");
 		assert_eq!(
 			pw.get(&create_test_key("a")).expect("a is present").bytes().expect("a is a set"),
 			&create_test_bytes("v2"),
-			"the re-write must win on value even though it keeps the old position"
+			"the re-write must win on value"
 		);
-	}
-
-	#[test]
-	fn removing_then_reinserting_appends_at_the_end() {
-		let mut pw = PendingWrites::new();
-		for name in ["a", "b"] {
-			pw.insert(create_test_pending(CommitVersion(1), name, "v"));
-		}
-
-		pw.remove_entry(&create_test_key("a"));
-		pw.insert(create_test_pending(CommitVersion(1), "a", "v"));
-
-		assert_eq!(
-			insertion_keys(&pw),
-			vec!["b", "a"],
-			"a removed key loses its slot, so re-inserting it makes it the newest entry"
-		);
-	}
-
-	#[test]
-	fn removing_the_only_entry_empties_the_order() {
-		let mut pw = PendingWrites::new();
-		pw.insert(create_test_pending(CommitVersion(1), "a", "v"));
-
-		pw.remove_entry(&create_test_key("a"));
-
-		assert!(pw.is_empty());
-		assert!(insertion_keys(&pw).is_empty());
-		assert_eq!(pw.total_estimated_size(), ByteSize::ZERO, "removing the last entry must zero the estimate");
-	}
-
-	#[test]
-	fn removing_a_missing_key_changes_nothing() {
-		let mut pw = PendingWrites::new();
-		pw.insert(create_test_pending(CommitVersion(1), "a", "v"));
-		let before = pw.total_estimated_size();
-
-		assert!(pw.remove_entry(&create_test_key("zzz")).is_none());
-
-		assert_eq!(insertion_keys(&pw), vec!["a"]);
-		assert_eq!(pw.total_estimated_size(), before, "a failed removal must not touch the size estimate");
 	}
 
 	#[test]

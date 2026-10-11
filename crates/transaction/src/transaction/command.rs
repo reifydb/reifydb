@@ -91,7 +91,6 @@ use crate::{
 	multi::{
 		RangeScope,
 		lease::VersionLeaseGuard,
-		pending::PendingWrites,
 		transaction::{
 			MultiTransaction,
 			write::{MultiWriteTransaction, Rebase},
@@ -290,11 +289,6 @@ impl CommandTransaction {
 		} else {
 			unreachable!("Transaction state inconsistency")
 		}
-	}
-
-	#[instrument(name = "transaction::command::pending_writes", level = "trace", skip(self))]
-	pub fn pending_writes(&self) -> &PendingWrites {
-		self.cmd.as_ref().unwrap().pending_writes()
 	}
 
 	#[instrument(name = "transaction::command::with_single_command", level = "trace", skip(self, keys, f))]

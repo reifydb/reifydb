@@ -90,7 +90,6 @@ use crate::{
 	},
 	multi::{
 		RangeScope,
-		pending::PendingWrites,
 		transaction::{
 			MultiTransaction,
 			write::{MultiWriteTransaction, Rebase},
@@ -280,11 +279,6 @@ impl AdminTransaction {
 		} else {
 			unreachable!("Transaction state inconsistency")
 		}
-	}
-
-	#[instrument(name = "transaction::admin::pending_writes", level = "trace", skip(self))]
-	pub fn pending_writes(&self) -> &PendingWrites {
-		self.cmd.as_ref().unwrap().pending_writes()
 	}
 
 	#[instrument(name = "transaction::admin::with_single_command", level = "trace", skip(self, keys, f))]
