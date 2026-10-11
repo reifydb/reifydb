@@ -8,7 +8,7 @@ use reifydb_core::{
 		change::CatalogTrackSeriesChangeOperations,
 		id::{ColumnId, NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
-		series::{Series, SeriesKey, SeriesPartitionMetadata},
+		series::{Series, SeriesEncoding, SeriesKey, SeriesPartitionMetadata},
 	},
 	internal,
 	row::row_shape_from_columns,
@@ -50,6 +50,7 @@ pub struct SeriesToCreate {
 	pub key: SeriesKey,
 	pub partition_by: Vec<String>,
 	pub time: TimeSource,
+	pub encoding: Option<SeriesEncoding>,
 }
 
 impl From<SeriesColumnToCreate> for StoreSeriesColumnToCreate {
@@ -74,6 +75,7 @@ impl From<SeriesToCreate> for StoreSeriesToCreate {
 			key: to_create.key,
 			partition_by: to_create.partition_by,
 			time: to_create.time,
+			encoding: to_create.encoding,
 		}
 	}
 }

@@ -291,7 +291,7 @@ fn pinned() -> Vec<Pin> {
 		(
 			"series::series",
 			&*SERIES_SHAPE,
-			0x8564f5eb5ab70958,
+			0x4a9854d847a282b2,
 			&[
 				"id",
 				"namespace",
@@ -304,6 +304,8 @@ fn pinned() -> Vec<Pin> {
 				"partition_by",
 				"ts",
 				"time_domain",
+				"encoding_name",
+				"encoding_config",
 			],
 		),
 		("series::series_namespace", &*SERIES_NAMESPACE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),

@@ -193,6 +193,13 @@ pub struct Series {
 	pub primary_key: Option<PrimaryKey>,
 	pub partition_by: Vec<String>,
 	pub time: TimeSource,
+	pub encoding: Option<SeriesEncoding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SeriesEncoding {
+	pub name: String,
+	pub config: Vec<u8>,
 }
 
 impl Series {
@@ -229,6 +236,19 @@ impl Series {
 	pub fn data_columns(&self) -> impl Iterator<Item = &Column> {
 		let key_column = self.key.column().to_string();
 		self.columns.iter().filter(move |c| c.name != key_column)
+	}
+
+	pub fn encoding_user_fields(&self) -> Vec<FieldRef> {
+		let mut fields = vec![self.key_column_data(Vec::new()).0];
+		if self.tag.is_some() {
+			fields.push(factory::uint1("tag", Vec::new()).0);
+		}
+		for column in self.data_columns() {
+			fields.push(ColumnBuilder::with_capacity(column.constraint.get_type(), 0)
+				.finish(&column.name)
+				.0);
+		}
+		fields
 	}
 }
 
@@ -378,5 +398,89 @@ mod series_key_tests {
 		};
 
 		assert_eq!(key.key_to_u64(Value::DateTime(DateTime::from_nanos(-1))), None);
+	}
+}
+
+#[cfg(test)]
+mod encoding_user_fields_tests {
+	use reifydb_value::value::{
+		constraint::{Constraint, TypeConstraint, bytes::MaxBytes},
+		dictionary::DictionaryId,
+		sumtype::SumTypeId,
+		value_type::ValueType,
+	};
+
+	use super::{Series, SeriesKey};
+	use crate::{
+		common::TimeSource,
+		interface::catalog::{
+			column::{Column, ColumnIndex},
+			id::{ColumnId, NamespaceId, SeriesId},
+		},
+		value::column::builder::ColumnBuilder,
+	};
+
+	fn column(index: u8, name: &str, constraint: TypeConstraint, dictionary_id: Option<DictionaryId>) -> Column {
+		Column {
+			id: ColumnId(index as u64),
+			name: name.to_string(),
+			constraint,
+			properties: vec![],
+			index: ColumnIndex(index),
+			auto_increment: false,
+			dictionary_id,
+		}
+	}
+
+	#[test]
+	fn test_encoding_user_fields_keep_extension_tags() {
+		// Fields built from the bare value type drop the tags the seal scan sets, so bind sees another schema.
+		let data = [
+			(
+				"label",
+				TypeConstraint::with_constraint(
+					ValueType::Utf8,
+					Constraint::MaxBytes(MaxBytes::new(50)),
+				),
+			),
+			("region", TypeConstraint::dictionary(DictionaryId(3), ValueType::Uint4)),
+			("id", TypeConstraint::unconstrained(ValueType::Uuid7)),
+			("maybe", TypeConstraint::unconstrained(ValueType::Option(Box::new(ValueType::Int4)))),
+		];
+		let mut columns = vec![column(0, "ts", TypeConstraint::unconstrained(ValueType::Int8), None)];
+		for (i, (name, constraint)) in data.iter().enumerate() {
+			let dictionary = (*name == "region").then_some(DictionaryId(3));
+			columns.push(column(i as u8 + 1, name, constraint.clone(), dictionary));
+		}
+		let series = Series {
+			id: SeriesId(1),
+			namespace: NamespaceId(1),
+			name: "s".to_string(),
+			columns,
+			tag: Some(SumTypeId(9)),
+			key: SeriesKey::Integer {
+				column: "ts".to_string(),
+			},
+			primary_key: None,
+			partition_by: vec![],
+			time: TimeSource::Processing,
+			encoding: None,
+		};
+
+		let fields = series.encoding_user_fields();
+
+		let names: Vec<&str> = fields.iter().map(|f| f.name().as_str()).collect();
+		assert_eq!(
+			names,
+			vec!["ts", "tag", "label", "region", "id", "maybe"],
+			"key, tag, then data; no system columns"
+		);
+		for (name, constraint) in data.iter() {
+			let scanned = ColumnBuilder::with_capacity(constraint.get_type(), 0).finish(name).0;
+			let field = fields.iter().find(|f| f.name() == name).unwrap();
+			assert_eq!(field, &scanned, "field {name} must equal the seal scan field");
+		}
+		assert!(fields.iter().find(|f| f.name() == "maybe").unwrap().is_nullable());
+		assert!(!fields.iter().find(|f| f.name() == "ts").unwrap().is_nullable());
 	}
 }

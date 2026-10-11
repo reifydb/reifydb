@@ -259,6 +259,7 @@ impl<'bump> Compiler<'bump> {
 			ttl,
 			persistent,
 			time,
+			encoding: ast.column.and_then(|c| c.encoding),
 		}))
 	}
 }

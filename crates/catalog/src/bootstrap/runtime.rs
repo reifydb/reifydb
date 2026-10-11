@@ -80,6 +80,7 @@ pub fn bootstrap_runtime(
 					},
 					partition_by: vec![],
 					time: TimeSource::Processing,
+					encoding: None,
 				},
 				column_ids,
 			)?;

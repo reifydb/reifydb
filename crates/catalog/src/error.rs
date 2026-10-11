@@ -301,6 +301,12 @@ pub enum CatalogError {
 		reason: String,
 		fragment: Fragment,
 	},
+
+	#[error("stored config of block encoding '{name}' does not decode: {reason}")]
+	SeriesEncodingConfigCorrupt {
+		name: String,
+		reason: String,
+	},
 }
 
 impl From<(ConfigKey, AcceptError)> for CatalogError {
@@ -1432,6 +1438,22 @@ impl IntoDiagnostic for CatalogError {
 					"N:M cardinality requires THROUGH <table>(src_col, tgt_col); other cardinalities must omit THROUGH"
 						.to_string(),
 				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::SeriesEncodingConfigCorrupt {
+				name,
+				reason,
+			} => Diagnostic {
+				code: "CA_105".to_string(),
+				rql: None,
+				message: format!("stored config of block encoding '{}' does not decode: {}", name, reason),
+				fragment: Fragment::None,
+				label: Some("corrupt block encoding config".to_string()),
+				help: Some("the series catalog row is corrupt; restore it from a backup".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

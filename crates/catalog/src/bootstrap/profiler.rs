@@ -91,6 +91,7 @@ pub fn bootstrap_profiler(
 				},
 				partition_by: vec![],
 				time: TimeSource::Processing,
+				encoding: None,
 			},
 			&ColumnId::PROFILER_SPANS_SNAPSHOTS_COLUMNS,
 		)?;

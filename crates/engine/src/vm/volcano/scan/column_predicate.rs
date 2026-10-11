@@ -60,6 +60,7 @@ mod tests {
 			primary_key: None,
 			partition_by: vec![],
 			time: TimeSource::Processing,
+			encoding: None,
 		}
 	}
 

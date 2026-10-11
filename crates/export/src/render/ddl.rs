@@ -15,6 +15,7 @@ use reifydb_core::{
 	},
 	row::RowSettings,
 };
+use reifydb_value::value::Value;
 
 use crate::{
 	error::ExportError,
@@ -232,6 +233,7 @@ fn render_queue_dispatch(dispatch: &QueueDispatch) -> String {
 pub fn render_series(
 	series: &Series,
 	row: Option<&RowSettings>,
+	encoding_config: Option<&[(String, Value)]>,
 	resolver: &NameResolver,
 ) -> Result<String, ExportError> {
 	let name = qualified_name(resolver, series.namespace.0, &series.name, &series.name)?;
@@ -261,6 +263,25 @@ pub fn render_series(
 		with.push_str(&format!(", partition: {{ by: {{ {} }} }}", series.partition_by.join(", ")));
 	}
 	push_time_and_row(&mut with, &series.time, row);
+
+	if let (Some(encoding), Some(config)) = (&series.encoding, encoding_config) {
+		let params = config
+			.iter()
+			.map(|(key, value)| match value {
+				Value::Utf8(text) => Ok(format!("{}: {}", key, text)),
+				other => Err(ExportError::UnsupportedValue {
+					object: series.name.clone(),
+					column: key.clone(),
+					value_type: other.get_type().to_string(),
+				}),
+			})
+			.collect::<Result<Vec<_>, _>>()?;
+		with.push_str(&format!(
+			", column: {{ encoding: {{ {}: {{ {} }} }} }}",
+			encoding.name,
+			params.join(", ")
+		));
+	}
 
 	Ok(format!("CREATE SERIES {} {} WITH {{ {} }};", name, columns, with))
 }

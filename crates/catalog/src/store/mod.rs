@@ -32,7 +32,7 @@ pub(crate) mod role;
 pub mod row_settings;
 pub(crate) mod row_shape;
 pub(crate) mod sequence;
-pub(crate) mod series;
+pub mod series;
 pub(crate) mod sink;
 pub(crate) mod source;
 pub(crate) mod sumtype;

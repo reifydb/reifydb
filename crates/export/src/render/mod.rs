@@ -57,7 +57,12 @@ pub fn render_script(model: &ExportModel, options: &ExportOptions) -> Result<Str
 			out.push('\n');
 		}
 		for series in &model.series {
-			out.push_str(&ddl::render_series(&series.series, series.row.as_ref(), &model.resolver)?);
+			out.push_str(&ddl::render_series(
+				&series.series,
+				series.row.as_ref(),
+				series.encoding_config.as_deref(),
+				&model.resolver,
+			)?);
 			out.push('\n');
 		}
 		out.push('\n');

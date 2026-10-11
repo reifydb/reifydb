@@ -7,7 +7,9 @@ use reifydb_core::{
 		column::ColumnIndex,
 		id::{ColumnId, NamespaceId, SeriesId},
 		property::ColumnPropertyKind,
-		series::{Series, SeriesKey, SeriesPartitionMetadata, encode_series_partition_metadata},
+		series::{
+			Series, SeriesEncoding, SeriesKey, SeriesPartitionMetadata, encode_series_partition_metadata,
+		},
 	},
 	key::{
 		namespace::NamespaceSeriesKey,
@@ -17,7 +19,10 @@ use reifydb_core::{
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::{
 	fragment::Fragment,
-	value::{constraint::TypeConstraint, dictionary::DictionaryId, partition::Partition, sumtype::SumTypeId},
+	value::{
+		blob::Blob, constraint::TypeConstraint, dictionary::DictionaryId, partition::Partition,
+		sumtype::SumTypeId,
+	},
 };
 
 use crate::{
@@ -48,6 +53,7 @@ pub struct SeriesToCreate {
 	pub key: SeriesKey,
 	pub partition_by: Vec<String>,
 	pub time: TimeSource,
+	pub encoding: Option<SeriesEncoding>,
 }
 
 use crate::store::time_source::write_time_source;
@@ -124,6 +130,14 @@ impl CatalogStore {
 		series::set_precision(&mut row, precision_u8);
 		series::set_primary_key(&mut row, 0u64);
 		series::set_partition_by(&mut row, to_create.partition_by.join(","));
+
+		match &to_create.encoding {
+			Some(encoding) => {
+				series::set_encoding_name(&mut row, &encoding.name);
+				series::set_encoding_config(&mut row, &Blob::from(encoding.config.clone()));
+			}
+			None => series::set_encoding_config(&mut row, &Blob::from(Vec::new())),
+		}
 
 		write_time_source(&series::SHAPE, &mut row, series::TIME_DOMAIN, series::TS, &to_create.time);
 
@@ -260,6 +274,7 @@ mod time_declaration_tests {
 				time: TimeSource::Event {
 					ts: "recorded_at".to_string(),
 				},
+				encoding: None,
 			},
 		)
 		.unwrap();
@@ -294,11 +309,41 @@ mod time_declaration_tests {
 				key: key(),
 				partition_by: vec![],
 				time: TimeSource::Processing,
+				encoding: None,
 			},
 		)
 		.unwrap();
 
 		assert_eq!(created.time, TimeSource::Processing);
 		assert_eq!(created.time.ts(), None, "a temporal key is not a #time declaration");
+	}
+
+	#[test]
+	fn a_series_round_trips_its_encoding() {
+		// A reader that ignores the fields, or a writer that skips them, drops the encoding on reload.
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+		let encoding = SeriesEncoding {
+			name: "delta".to_string(),
+			config: vec![1, 2, 3],
+		};
+
+		let created = CatalogStore::create_series(
+			&mut txn,
+			SeriesToCreate {
+				namespace: namespace.id(),
+				name: Fragment::internal("encoded"),
+				columns: vec![],
+				tag: None,
+				key: key(),
+				partition_by: vec![],
+				time: TimeSource::Processing,
+				encoding: Some(encoding.clone()),
+			},
+		)
+		.unwrap();
+
+		let loaded = CatalogStore::find_series(&mut Transaction::Admin(&mut txn), created.id).unwrap().unwrap();
+		assert_eq!(loaded.encoding, Some(encoding));
 	}
 }

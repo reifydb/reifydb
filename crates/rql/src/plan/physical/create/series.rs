@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::{error::diagnostic::catalog::namespace_not_found, interface::resolved::ResolvedNamespace};
+use reifydb_catalog::{
+	error::{CatalogError, CatalogObjectKind},
+	store::series::shape::serialize_encoding_config,
+};
+use reifydb_core::{
+	error::diagnostic::catalog::namespace_not_found,
+	interface::{catalog::series::SeriesEncoding, resolved::ResolvedNamespace},
+};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, return_error};
+use reifydb_value::{fragment::Fragment, return_error, value::Value};
 
 use crate::{
 	Result,
@@ -88,6 +94,25 @@ impl<'bump> Compiler<'bump> {
 			ttl: create.ttl,
 			persistent: create.persistent,
 			time: create.time,
+			encoding: create.encoding.map(|encoding| {
+				let name = self.interner.intern_fragment(&encoding.name);
+				let config: Vec<(String, Value)> = encoding
+					.params
+					.iter()
+					.map(|(key, value)| {
+						(key.text().to_string(), Value::Utf8(value.text().to_string()))
+					})
+					.collect();
+				let config = serialize_encoding_config(&config);
+				let text = name.text().to_string();
+				(
+					name,
+					SeriesEncoding {
+						name: text,
+						config,
+					},
+				)
+			}),
 		}))
 	}
 }

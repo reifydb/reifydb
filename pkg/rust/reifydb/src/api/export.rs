@@ -3,6 +3,7 @@
 
 use std::{collections::HashSet, fs, path::Path};
 
+use reifydb_catalog::store::series::shape::deserialize_encoding_config;
 use reifydb_core::{
 	interface::catalog::{
 		column::Column,
@@ -315,6 +316,10 @@ impl Database {
 
 		let mut series_exports = Vec::with_capacity(series.len());
 		for (s, row) in series {
+			let encoding_config = match &s.encoding {
+				Some(encoding) => Some(deserialize_encoding_config(&encoding.name, &encoding.config)?),
+				None => None,
+			};
 			let rows = if include_data {
 				Some(self.read_object_rows(&resolver, s.namespace.0, &s.name)?)
 			} else {
@@ -323,6 +328,7 @@ impl Database {
 			series_exports.push(SeriesExport {
 				series: s,
 				row,
+				encoding_config,
 				rows,
 			});
 		}
