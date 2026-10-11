@@ -14,10 +14,9 @@ use reifydb_core::{
 	},
 	value::{batch::batch, column::headers::ColumnHeaders},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::{CompileContext, EvalContext},
-	eval::cast_for_write,
+use reifydb_evaluate::{
+	expression::{context::EvalContext, eval::cast_for_write},
+	lower::LoweredExpr,
 };
 use reifydb_extension::transform::{Transform, context::TransformContext};
 use reifydb_transaction::transaction::Transaction;
@@ -45,7 +44,7 @@ pub(crate) struct ExtendNode {
 	source: Option<ResolvedObject>,
 	udf_names: Vec<String>,
 	headers: Option<ColumnHeaders>,
-	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
+	context: Option<(Arc<QueryContext>, Vec<LoweredExpr>)>,
 }
 
 impl ExtendNode {
@@ -71,8 +70,8 @@ impl ExtendNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::extend::eval")]
-	fn eval_projection(compiled: &CompiledExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
-		compiled.execute(exec_ctx)
+	fn eval_projection(lowered: &LoweredExpr, exec_ctx: &EvalContext) -> Result<(FieldRef, ArrayRef)> {
+		lowered.evaluate(exec_ctx)
 	}
 }
 
@@ -97,15 +96,8 @@ impl QueryNode for ExtendNode {
 		self.expressions = expressions;
 		self.udf_names = udf_names;
 
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
-		let compiled = self
-			.expressions
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>>>()?;
-		self.context = Some((Arc::new(ctx.clone()), compiled));
+		let lowered = self.expressions.iter().map(|e| LoweredExpr::new(e.clone(), "extend")).collect();
+		self.context = Some((Arc::new(ctx.clone()), lowered));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
@@ -167,7 +159,7 @@ impl QueryNode for ExtendNode {
 
 impl Transform for ExtendNode {
 	fn apply(&self, ctx: &TransformContext, input: RecordBatch) -> Result<RecordBatch> {
-		let (stored_ctx, compiled) =
+		let (stored_ctx, lowered) =
 			self.context.as_ref().expect("ExtendNode::apply() called before initialize()");
 
 		let row_count = input.num_rows();
@@ -178,8 +170,8 @@ impl Transform for ExtendNode {
 		let session = eval_context_from_transform(ctx, stored_ctx);
 		let mut new_columns = user_pairs(&input);
 
-		let mut new_names = Vec::with_capacity(compiled.len());
-		for (expr, compiled_expr) in self.expressions.iter().zip(compiled.iter()) {
+		let mut new_names = Vec::with_capacity(lowered.len());
+		for (expr, lowered_expr) in self.expressions.iter().zip(lowered.iter()) {
 			let mut exec_ctx = Self::eval_context(&session, &new_columns, row_count)?;
 
 			if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
@@ -192,7 +184,7 @@ impl Transform for ExtendNode {
 				}
 			}
 
-			let mut column = Self::eval_projection(compiled_expr, &exec_ctx)?;
+			let mut column = Self::eval_projection(lowered_expr, &exec_ctx)?;
 
 			if let Some(target_type) = exec_ctx.target.as_ref().map(|t| t.column_type()) {
 				let view = ColumnView::try_from(&column)?;
@@ -217,7 +209,7 @@ pub(crate) struct ExtendWithoutInputNode {
 	headers: Option<ColumnHeaders>,
 
 	udf_columns: Option<RecordBatch>,
-	context: Option<(Arc<QueryContext>, Vec<CompiledExpr>)>,
+	context: Option<(Arc<QueryContext>, Vec<LoweredExpr>)>,
 }
 
 impl ExtendWithoutInputNode {
@@ -244,15 +236,8 @@ impl QueryNode for ExtendWithoutInputNode {
 			self.udf_columns = Some(udf_cols);
 		}
 
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
-		let compiled = self
-			.expressions
-			.iter()
-			.map(|e| compile_expression(&compile_ctx, e))
-			.collect::<Result<Vec<_>>>()?;
-		self.context = Some((Arc::new(ctx.clone()), compiled));
+		let lowered = self.expressions.iter().map(|e| LoweredExpr::new(e.clone(), "extend")).collect();
+		self.context = Some((Arc::new(ctx.clone()), lowered));
 		Ok(())
 	}
 
@@ -261,7 +246,7 @@ impl QueryNode for ExtendWithoutInputNode {
 		reifydb_assertions! {
 			assert!(self.context.is_some(), "ExtendWithoutInputNode::next() called before initialize()");
 		}
-		let (stored_ctx, compiled) = self.context.as_ref().unwrap();
+		let (stored_ctx, lowered) = self.context.as_ref().unwrap();
 
 		if self.headers.is_some() {
 			return Ok(None);
@@ -270,13 +255,13 @@ impl QueryNode for ExtendWithoutInputNode {
 		let session = eval_context_from_query(stored_ctx);
 		let mut new_columns = Vec::with_capacity(self.expressions.len());
 
-		for compiled_expr in compiled {
+		for lowered_expr in lowered {
 			let exec_ctx = match &self.udf_columns {
 				Some(udf_cols) => session.with_eval(udf_cols.clone(), 1),
 				None => session.with_eval_empty(),
 			};
 
-			let column = compiled_expr.execute(&exec_ctx)?;
+			let column = lowered_expr.evaluate(&exec_ctx)?;
 			new_columns.push(column);
 		}
 
