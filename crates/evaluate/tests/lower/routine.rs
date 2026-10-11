@@ -221,7 +221,7 @@ fn a_row_changing_routine_falls_back_and_keeps_its_rows() {
 }
 
 #[test]
-fn an_all_none_call_into_a_non_propagating_routine_falls_back_with_the_old_type() {
+fn an_all_none_call_into_a_non_propagating_routine_declares_the_old_type() {
 	// clamp declares float8 for untyped nones but answers an untyped none, so its field must never be declared.
 	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
 	let expression = call("math::clamp", vec![none(), none(), none()]);
@@ -392,4 +392,20 @@ fn a_none_argument_reaches_meta_type_through_every_other_override() {
 		assert!(old.is_ok(), "{old:?}");
 		assert_eq!(lowered, old, "{expression:?}");
 	}
+}
+
+#[test]
+fn a_non_propagating_routine_reports_the_same_type_with_and_without_a_none_in_the_column() {
+	// The column type, not the rows, must decide the declared type; otherwise one inserted none changes meta::type.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+	let expression = call("meta::type", vec![call("math::add_none", vec![column("a"), column("a")])]);
+	let (field, array) = factory::from_many("a", Value::Int1(1), 3);
+	let without_none = batch(vec![(Arc::new(field.as_ref().clone().with_nullable(true)), array)]);
+	let with_none = batch(vec![nullable_column("a", (Value::Int1(1), Value::Int1(2)))]);
+
+	let without = strings(&env.lowered(&expression, without_none.clone()).unwrap());
+	let with = strings(&env.lowered(&expression, with_none).unwrap());
+
+	assert_eq!(without, with);
+	assert_ne!(strings(&env.old(&expression, without_none).unwrap()), without);
 }
