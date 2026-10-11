@@ -23,6 +23,7 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedSeries},
 	},
 	key::{any::TaggedKey, partition::PartitionKey},
+	retry::is_conflict,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -135,9 +136,13 @@ impl SeriesMaterializationActor {
 		};
 		state.partitions.clear();
 		for series in series_list {
-			if let Err(e) =
-				self.materialize_series_buckets(state, &mut query_txn, &catalog, &series, now_wall)
-			{
+			if let Err(e) = skip_on_conflict(self.materialize_series_buckets(
+				state,
+				&mut query_txn,
+				&catalog,
+				&series,
+				now_wall,
+			)) {
 				panic!(
 					"series materialization failed for series {:?} ({}): {e}",
 					series.id, series.name
@@ -521,6 +526,13 @@ impl SeriesMaterializationActor {
 	}
 }
 
+fn skip_on_conflict(result: Result<()>) -> Result<()> {
+	match result {
+		Err(e) if is_conflict(&e) => Ok(()),
+		other => other,
+	}
+}
+
 fn commit_admin(mut admin: AdminTransaction) -> Result<()> {
 	admin.commit()?;
 	Ok(())
@@ -593,5 +605,27 @@ impl Actor for SeriesMaterializationActor {
 
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new().mailbox_capacity(64)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::error::diagnostic::transaction::{transaction_conflict, transaction_rolled_back};
+	use reifydb_value::error::Error;
+
+	use super::skip_on_conflict;
+
+	#[test]
+	fn a_conflicting_seal_is_skipped_until_the_next_tick() {
+		// A conflict with a user write must not panic the actor; the dirty mark survives and the next tick
+		// redoes it.
+		assert!(skip_on_conflict(Err(Error(Box::new(transaction_conflict())))).is_ok());
+	}
+
+	#[test]
+	fn any_other_seal_error_still_reaches_the_panic() {
+		// Only the conflict is expected; swallowing any other error would keep the actor running on wrong data.
+		let err = skip_on_conflict(Err(Error(Box::new(transaction_rolled_back())))).unwrap_err();
+		assert_eq!(err.code, "TXN_002");
 	}
 }
