@@ -14,7 +14,7 @@ pub const ITERATIONS: u64 = 100_000;
 pub fn scenario() -> Scenario {
 	Scenario {
 		name: "project",
-		description: "Map every row of a seeded table: plain columns, a cast and arithmetic",
+		description: "Map or extend every row of a seeded table: plain columns, a cast and arithmetic",
 		dataset: Dataset::generated(
 			vec![create_namespace(), create_users()],
 			vec![TableSeed {
@@ -24,13 +24,22 @@ pub fn scenario() -> Scenario {
 				row: user_row,
 			}],
 		),
-		queries: vec![NamedQuery::query(
-			"map_all",
-			QueryTemplate::Fixed(format!(
-				"from {}::users map {{ id, name, n: cast(id, utf8), m: id + 1 }}",
-				NAMESPACE
-			)),
-		)],
+		queries: vec![
+			NamedQuery::query(
+				"map_all",
+				QueryTemplate::Fixed(format!(
+					"from {}::users map {{ id, name, n: cast(id, utf8), m: id + 1 }}",
+					NAMESPACE
+				)),
+			),
+			NamedQuery::query(
+				"extend_all",
+				QueryTemplate::Fixed(format!(
+					"from {}::users extend {{ n: cast(id, utf8), m: id + 1, k: m * 2 }}",
+					NAMESPACE
+				)),
+			),
+		],
 		profiles: scaled_matrix(&THREADS, &SCALES, StopCondition::Iterations(ITERATIONS)),
 		teardown: vec![drop_namespace()],
 	}
