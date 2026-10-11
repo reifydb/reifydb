@@ -109,6 +109,21 @@ fn all_none_args_match_the_old_path() {
 }
 
 #[test]
+fn a_routine_over_a_nullable_column_without_nones_declares_the_old_field() {
+	// No none in the rows means no widening at evaluate, so the declared field alone must be nullable.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+	let (field, array) = factory::int4("a", [1, -2]);
+	let input = batch(vec![(Arc::new(field.as_ref().clone().with_nullable(true)), array)]);
+	let expression = call("math::abs", vec![column("a")]);
+
+	let lowered = env.lowered(&expression, input.clone());
+	let old = env.old(&expression, input);
+
+	assert!(old.is_ok(), "{old:?}");
+	assert_eq!(lowered, old);
+}
+
+#[test]
 fn seeded_rng_uuid_v4_sequence_matches_the_old_path() {
 	// The routine must draw from the shared rng, never a copy, otherwise a seeded run repeats uuids.
 	let expression = call("uuid::v4", vec![]);
