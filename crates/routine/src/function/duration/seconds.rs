@@ -37,14 +37,10 @@ fn is_integer_type(data: &ColumnView) -> bool {
 	matches!(
 		&data.data,
 		ViewData::Int1(_)
-			| ViewData::Int2(_)
-			| ViewData::Int4(_)
-			| ViewData::Int8(_)
-			| ViewData::Int16(_)
-			| ViewData::Uint1(_)
-			| ViewData::Uint2(_)
-			| ViewData::Uint4(_)
-			| ViewData::Uint8(_)
+			| ViewData::Int2(_) | ViewData::Int4(_)
+			| ViewData::Int8(_) | ViewData::Int16(_)
+			| ViewData::Uint1(_) | ViewData::Uint2(_)
+			| ViewData::Uint4(_) | ViewData::Uint8(_)
 			| ViewData::Uint16(_)
 	)
 }

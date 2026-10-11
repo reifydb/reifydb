@@ -55,8 +55,7 @@ impl TransactionalColumnSnapshotChanges for AdminTransaction {
 					return Some(snapshot);
 				}
 			} else if let Some(snapshot) = &change.pre
-				&& snapshot.id == id
-				&& change.op == Delete
+				&& snapshot.id == id && change.op == Delete
 			{
 				return None;
 			}

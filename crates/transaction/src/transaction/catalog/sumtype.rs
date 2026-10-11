@@ -45,8 +45,7 @@ impl TransactionalSumTypeChanges for AdminTransaction {
 					return Some(def);
 				}
 			} else if let Some(def) = &change.pre
-				&& def.id == id
-				&& change.op == Delete
+				&& def.id == id && change.op == Delete
 			{
 				return None;
 			}

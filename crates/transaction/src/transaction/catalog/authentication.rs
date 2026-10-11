@@ -49,8 +49,7 @@ impl TransactionalAuthenticationChanges for AdminTransaction {
 					return Some(auth);
 				}
 			} else if let Some(auth) = &change.pre
-				&& auth.id == id
-				&& change.op == Delete
+				&& auth.id == id && change.op == Delete
 			{
 				return None;
 			}

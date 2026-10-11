@@ -171,8 +171,7 @@ fn rows_need_sumtype_expansion(rows: &[Vec<AliasExpression>]) -> bool {
 			if matches!(
 				alias_expr.expression.as_ref(),
 				Expression::SumTypeConstructor(_)
-					| Expression::Column(_)
-					| Expression::Constant(ConstantExpression::None { .. })
+					| Expression::Column(_) | Expression::Constant(ConstantExpression::None { .. })
 			) {
 				return true;
 			}
@@ -770,8 +769,7 @@ impl InlineDataNode {
 				.map(|(_, ty, _)| ty.clone())
 				.filter(|ty| {
 					ty.is_floating_point()
-						|| ty.is_integer()
-						|| matches!(ty, ValueType::Decimal { .. })
+						|| ty.is_integer() || matches!(ty, ValueType::Decimal { .. })
 				})
 				.fold(first, |wide, ty| match wide {
 					ValueType::Decimal {

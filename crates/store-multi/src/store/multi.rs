@@ -431,8 +431,7 @@ impl StandardMultiStore {
 				if let VersionedGetResult::Value {
 					value,
 					version: v,
-				} = &result
-					&& let Some(point) = &self.point
+				} = &result && let Some(point) = &self.point
 				{
 					point.insert(
 						table,
@@ -2797,8 +2796,7 @@ impl StandardMultiStore {
 				}
 				if cursor.persistent.last_key().is_some_and(|last| *last > h)
 					|| (self.persistent.is_some()
-						&& cursor.persistent.is_exhausted()
-						&& !cursor.commit.is_exhausted())
+						&& cursor.persistent.is_exhausted() && !cursor.commit.is_exhausted())
 				{
 					cursor.persistent.resume(h);
 				}

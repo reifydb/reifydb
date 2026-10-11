@@ -19,8 +19,7 @@ pub fn extract_new_flows(cdcs: &[Arc<Cdc>]) -> Vec<(FlowId, CommitVersion)> {
 			if let CdcChange::Insert {
 				key,
 				..
-			} = change
-				&& let Some(flow_key) = FlowKey::decode(key)
+			} = change && let Some(flow_key) = FlowKey::decode(key)
 			{
 				flows.push((flow_key.flow, cdc.version.commit));
 			}
@@ -36,8 +35,7 @@ pub fn extract_deleted_flow_ids(cdcs: &[Arc<Cdc>]) -> Vec<FlowId> {
 			if let CdcChange::Delete {
 				key,
 				..
-			} = change
-				&& let Some(flow_key) = FlowKey::decode(key)
+			} = change && let Some(flow_key) = FlowKey::decode(key)
 			{
 				flow_ids.push(flow_key.flow);
 			}

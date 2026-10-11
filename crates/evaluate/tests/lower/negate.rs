@@ -24,12 +24,9 @@ fn every_signed_and_float_type_negates_like_the_old_path() {
 		matches!(
 			value_type,
 			ValueType::Int1
-				| ValueType::Int2
-				| ValueType::Int4
-				| ValueType::Int8
-				| ValueType::Int16
-				| ValueType::Float4
-				| ValueType::Float8
+				| ValueType::Int2 | ValueType::Int4
+				| ValueType::Int8 | ValueType::Int16
+				| ValueType::Float4 | ValueType::Float8
 				| ValueType::Decimal { .. }
 		)
 	};

@@ -123,7 +123,7 @@ pub(crate) mod tests {
 		atomic::{AtomicUsize, Ordering},
 	};
 
-	use arrow_array::{Array, Int64Array, RecordBatch};
+	use arrow_array::{Array, Int64Array, RecordBatch, UInt64Array};
 	use arrow_schema::FieldRef;
 	use reifydb_catalog::store::series::shape::serialize_encoding_config;
 	use reifydb_core::value::{batch::batch, column::factory};
@@ -385,7 +385,7 @@ pub(crate) mod tests {
 				batch.column_by_name(SystemColumn::CommitVersion.name())
 					.unwrap()
 					.as_any()
-					.downcast_ref::<arrow_array::UInt64Array>()
+					.downcast_ref::<UInt64Array>()
 					.unwrap()
 					.values()
 					.to_vec()

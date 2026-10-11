@@ -56,8 +56,7 @@ impl TransactionalIdentityChanges for AdminTransaction {
 					return Some(identity);
 				}
 			} else if let Some(identity) = &change.pre
-				&& identity.id == id
-				&& change.op == Delete
+				&& identity.id == id && change.op == Delete
 			{
 				return None;
 			}

@@ -421,8 +421,7 @@ fn has_real_source(flow: &FlowDag) -> bool {
 			matches!(
 				operator.ty,
 				OperatorDef::SourceTable { .. }
-					| OperatorDef::SourceView { .. }
-					| OperatorDef::SourceRingBuffer { .. }
+					| OperatorDef::SourceView { .. } | OperatorDef::SourceRingBuffer { .. }
 					| OperatorDef::SourceSeries { .. }
 			)
 		} else {

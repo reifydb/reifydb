@@ -97,10 +97,7 @@ impl StandardSingleStore {
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush_actor): (
-			Option<SinglePersistentTier>,
-			Option<ActorRef<FlushMessage>>,
-		) = {
+		let (persistent, flush_actor): (Option<SinglePersistentTier>, Option<ActorRef<FlushMessage>>) = {
 			let _ = config.persistent;
 			(None, None)
 		};
