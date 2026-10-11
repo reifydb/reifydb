@@ -156,10 +156,6 @@ pub fn lifted_objects(cdc: &Cdc) -> Result<BTreeSet<ObjectId>> {
 	Ok(index.objects.iter().filter(|(_, object)| !object.rows.is_empty()).map(|(id, _)| *id).collect())
 }
 
-pub fn lift_changes(cdc: &Cdc, catalog: &Catalog, txn: &mut Transaction<'_>) -> Result<Vec<Change>> {
-	lift_selected_changes(cdc, catalog, txn, |_| true)
-}
-
 pub fn lift_selected_changes(
 	cdc: &Cdc,
 	catalog: &Catalog,

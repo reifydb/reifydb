@@ -3,7 +3,7 @@
 
 use std::{collections::BTreeSet, ops::Bound};
 
-use reifydb_cdc::lift::lift_changes;
+use reifydb_cdc::lift::lift_selected_changes;
 use reifydb_core::interface::{
 	catalog::object::ObjectId,
 	cdc::Cdc,
@@ -92,7 +92,7 @@ fn last_cdc(t: &TestEngine) -> Cdc {
 
 fn view_origins(t: &TestEngine, cdc: &Cdc) -> BTreeSet<ObjectId> {
 	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
-	lift_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query))
+	lift_selected_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query), |_| true)
 		.expect("lift")
 		.into_iter()
 		.filter_map(|change| match change.origin {
@@ -104,25 +104,28 @@ fn view_origins(t: &TestEngine, cdc: &Cdc) -> BTreeSet<ObjectId> {
 
 fn view_inserted_rows(t: &TestEngine, cdc: &Cdc) -> Vec<usize> {
 	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
-	let mut counts: Vec<usize> = lift_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query))
-		.expect("lift")
-		.into_iter()
-		.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
-		.map(|change| {
-			change.diffs
-				.iter()
-				.map(|diff| match diff {
-					Diff::Insert {
-						post,
-						..
-					} => post.num_rows(),
-					other => {
-						panic!("an insert-only commit lifted a non-insert view diff: {other:?}")
-					}
-				})
-				.sum()
-		})
-		.collect();
+	let mut counts: Vec<usize> =
+		lift_selected_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query), |_| true)
+			.expect("lift")
+			.into_iter()
+			.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
+			.map(|change| {
+				change.diffs
+					.iter()
+					.map(|diff| match diff {
+						Diff::Insert {
+							post,
+							..
+						} => post.num_rows(),
+						other => {
+							panic!(
+								"an insert-only commit lifted a non-insert view diff: {other:?}"
+							)
+						}
+					})
+					.sum()
+			})
+			.collect();
 	counts.sort();
 	counts
 }

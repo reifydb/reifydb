@@ -4,7 +4,7 @@
 use std::ops::Bound;
 
 use arrow_array::RecordBatch;
-use reifydb_cdc::lift::lift_changes;
+use reifydb_cdc::lift::lift_selected_changes;
 use reifydb_core::interface::{
 	catalog::object::ObjectId,
 	cdc::Cdc,
@@ -113,7 +113,9 @@ fn cdc_entries(t: &TestEngine) -> Vec<Cdc> {
 fn object_origins(t: &TestEngine, cdc: &Cdc) -> Vec<ObjectId> {
 	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
 	let mut origins = Vec::new();
-	for change in lift_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query)).expect("lift") {
+	for change in
+		lift_selected_changes(cdc, &t.catalog(), &mut Transaction::Query(&mut query), |_| true).expect("lift")
+	{
 		if let ChangeOrigin::Object(object) = change.origin {
 			origins.push(object);
 		}
@@ -222,7 +224,8 @@ fn a_sort_value_change_reaches_the_view_cdc_as_one_update_of_its_row() {
 	t.command("UPDATE ns::src { v: 90 } FILTER { id == 1 }");
 	let last = cdc_entries(&t).pop().expect("the update must write a cdc record");
 	let mut query = t.begin_query(IdentityId::system()).expect("query transaction");
-	let changes = lift_changes(&last, &t.catalog(), &mut Transaction::Query(&mut query)).expect("lift");
+	let changes = lift_selected_changes(&last, &t.catalog(), &mut Transaction::Query(&mut query), |_| true)
+		.expect("lift");
 	let view = changes
 		.iter()
 		.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))

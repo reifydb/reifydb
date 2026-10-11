@@ -31,12 +31,9 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_commit::VersionedGetResult;
-use reifydb_value::{
-	Result,
-	byte_size::ByteSize,
-	reifydb_assertions,
-	util::{cowvec::CowVec, hex::display as hex_display},
-};
+#[cfg(reifydb_assertions)]
+use reifydb_value::util::hex::display as hex_display;
+use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
 use tracing::{instrument, warn};
 
 use super::{MultiTransaction, version::StandardVersionProvider};

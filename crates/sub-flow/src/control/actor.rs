@@ -1174,7 +1174,7 @@ mod pull_protocol {
 
 	use reifydb_cdc::{
 		consume::watermark::CdcConsumerWatermark,
-		lift::{changed_objects, lift_changes, row_target},
+		lift::{changed_objects, lift_selected_changes, row_target},
 		produce::watermark::CdcProducerWatermark,
 	};
 	use reifydb_codec::{
@@ -1540,7 +1540,9 @@ mod pull_protocol {
 			self.cdc_records()
 				.into_iter()
 				.filter(|cdc| cdc.version.commit > floor)
-				.flat_map(|cdc| lift_changes(&cdc, &catalog, &mut txn).expect("lift changes"))
+				.flat_map(|cdc| {
+					lift_selected_changes(&cdc, &catalog, &mut txn, |_| true).expect("lift changes")
+				})
 				.find(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 		}
 
@@ -2230,7 +2232,9 @@ mod pull_protocol {
 			.cdc_records()
 			.into_iter()
 			.filter(|cdc| cdc.version.commit > stable)
-			.flat_map(|cdc| lift_changes(&cdc, &catalog, &mut txn).expect("lift changes"))
+			.flat_map(|cdc| {
+				lift_selected_changes(&cdc, &catalog, &mut txn, |_| true).expect("lift changes")
+			})
 			.filter(|change| matches!(change.origin, ChangeOrigin::Object(ObjectId::View(_))))
 			.flat_map(|change| change.diffs)
 			.filter_map(|diff| match diff {
