@@ -696,6 +696,7 @@ mod tests {
 			to: TypeExpression {
 				fragment: frag("Int4"),
 				ty: ValueType::Int4,
+				constraint: None,
 			},
 		});
 		assert_eq!(canonical_name(&e).text(), "cast(y, Int4)");
@@ -997,6 +998,7 @@ mod tests {
 		let ty = Expression::Type(TypeExpression {
 			fragment: frag("Int4"),
 			ty: ValueType::Int4,
+			constraint: None,
 		});
 		assert!(collect(&ty).is_empty());
 	}
@@ -1026,6 +1028,7 @@ mod tests {
 			to: TypeExpression {
 				fragment: frag("Int4"),
 				ty: ValueType::Int4,
+				constraint: None,
 			},
 		});
 		let result = collect(&expr);

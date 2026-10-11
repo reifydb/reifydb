@@ -116,6 +116,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::Int4,
+					constraint: None,
 				},
 			}),
 		)
@@ -141,6 +142,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::Int4,
+					constraint: None,
 				},
 			}),
 		)
@@ -166,6 +168,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::Int1,
+					constraint: None,
 				},
 			}),
 		)
@@ -187,6 +190,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::Float8,
+					constraint: None,
 				},
 			}),
 		)
@@ -208,6 +212,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::Float4,
+					constraint: None,
 				},
 			}),
 		)
@@ -229,6 +234,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::Float4,
+					constraint: None,
 				},
 			}),
 		)
@@ -250,6 +256,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::Float8,
+					constraint: None,
 				},
 			}),
 		)
@@ -271,6 +278,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::Boolean,
+					constraint: None,
 				},
 			}),
 		)
@@ -292,6 +300,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::Boolean,
+					constraint: None,
 				},
 			}),
 		);
@@ -320,6 +329,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::Date,
+					constraint: None,
 				},
 			}),
 		);
@@ -345,6 +355,7 @@ pub mod tests {
 				to: TypeExpression {
 					fragment: Fragment::testing_empty(),
 					ty: ValueType::DECIMAL,
+					constraint: None,
 				},
 			}),
 		)

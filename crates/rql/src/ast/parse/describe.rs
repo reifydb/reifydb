@@ -30,7 +30,7 @@ pub mod tests {
 
 	use crate::{
 		ast::{
-			ast::{AstCast, AstDescribe},
+			ast::{AstCast, AstDescribe, AstType},
 			parse::parse,
 		},
 		token::tokenize,
@@ -53,13 +53,12 @@ pub mod tests {
 				assert_eq!(map.nodes.len(), 1);
 
 				let AstCast {
-					tuple,
+					expression,
+					ty,
 					..
 				} = map.nodes[0].as_cast();
-				assert_eq!(tuple.len(), 2);
-
-				assert_eq!(tuple.nodes[0].as_literal_number().value(), "9924");
-				assert!(matches!(tuple.nodes[1].as_identifier().text(), "int8"));
+				assert_eq!(expression.as_literal_number().value(), "9924");
+				assert!(matches!(ty, AstType::Unconstrained(name) if name.text() == "int8"));
 			}
 		};
 	}

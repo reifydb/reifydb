@@ -533,7 +533,10 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 		}
 		Ast::Cast(node) => {
 			buf.write_u8(tag::CAST);
-			fingerprint_ast_slice(buf, &node.tuple.nodes);
+			buf.write_u16(2);
+			fingerprint_ast(buf, &node.expression);
+			buf.write_u8(tag::IDENTIFIER);
+			buf.write_str(node.ty.name_fragment().text());
 		}
 		Ast::Closure(node) => {
 			buf.write_u8(tag::CLOSURE);

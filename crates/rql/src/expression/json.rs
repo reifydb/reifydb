@@ -21,7 +21,7 @@ use reifydb_value::{
 	error::{Error, TypeError},
 	fragment::Fragment,
 	value::{
-		constraint::{precision::Precision, scale::Scale},
+		constraint::{Constraint, bytes::MaxBytes, precision::Precision, scale::Scale},
 		value_type::ValueType,
 	},
 };
@@ -342,7 +342,7 @@ impl From<&Expression> for JsonExpression {
 			},
 			Expression::Cast(e) => JsonExpression::Cast {
 				expression: Box::new((&*e.expression).into()),
-				to: type_name(&e.to.ty),
+				to: cast_type_name(&e.to),
 			},
 			Expression::Call(e) => JsonExpression::Call {
 				function: e.func.name().to_string(),
@@ -616,12 +616,13 @@ impl TryFrom<JsonExpression> for Expression {
 				expression,
 				to,
 			} => {
-				let ty = parse_type(&to)?;
+				let (ty, constraint) = parse_cast_type(&to)?;
 				Expression::Cast(CastExpression {
 					expression: Box::new((*expression).try_into()?),
 					to: TypeExpression {
 						ty,
 						fragment: internal_fragment(&to),
+						constraint,
 					},
 					fragment: Fragment::None,
 				})
@@ -753,6 +754,7 @@ impl TryFrom<JsonExpression> for Expression {
 				Expression::Type(TypeExpression {
 					ty: parsed_ty,
 					fragment: internal_fragment(&ty),
+					constraint: None,
 				})
 			}
 			JsonExpression::FieldAccess {
@@ -772,6 +774,31 @@ fn type_name(ty: &ValueType) -> String {
 		Some(_) => ty.to_string(),
 		None => format!("{:?}", ty),
 	}
+}
+
+fn cast_type_name(to: &TypeExpression) -> String {
+	match &to.constraint {
+		Some(Constraint::MaxBytes(max)) => format!("{}({})", type_name(&to.ty), usize::from(*max)),
+		_ => type_name(&to.ty),
+	}
+}
+
+fn parse_cast_type(s: &str) -> Result<(ValueType, Option<Constraint>)> {
+	let lower = s.to_lowercase();
+	let sized = lower.strip_suffix(')').and_then(|rest| rest.split_once('('));
+	if let Some((name @ ("utf8" | "blob"), bytes)) = sized {
+		let max = bytes
+			.trim()
+			.parse::<u32>()
+			.map_err(|_| Error(Box::new(internal!("Invalid type parameter: {}", s))))?;
+		let ty = if name == "utf8" {
+			ValueType::Utf8
+		} else {
+			ValueType::Blob
+		};
+		return Ok((ty, Some(Constraint::MaxBytes(MaxBytes::new(max)))));
+	}
+	Ok((parse_type(s)?, None))
 }
 
 fn parse_family_type(s: &str) -> Result<Option<ValueType>> {
@@ -1278,6 +1305,7 @@ pub mod tests {
 			to: TypeExpression {
 				ty: ValueType::Int4,
 				fragment: internal_fragment("Int4"),
+				constraint: None,
 			},
 			fragment: Fragment::None,
 		});
@@ -1536,6 +1564,7 @@ pub mod tests {
 		let expr = Expression::Type(TypeExpression {
 			ty: ValueType::Utf8,
 			fragment: internal_fragment("Utf8"),
+			constraint: None,
 		});
 
 		let json = to_json(&expr);
@@ -1552,6 +1581,7 @@ pub mod tests {
 			let expr = Expression::Type(TypeExpression {
 				ty: ty.clone(),
 				fragment: internal_fragment("t"),
+				constraint: None,
 			});
 			let Expression::Type(recovered) = from_json(&to_json(&expr)).unwrap() else {
 				panic!("a type expression must come back as a type expression");

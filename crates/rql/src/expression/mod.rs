@@ -14,7 +14,7 @@ use crate::{
 		parse_str,
 	},
 	bump::BumpBox,
-	convert_data_type,
+	convert_data_type_with_constraints,
 };
 
 pub fn parse_expression(rql: &str) -> Result<Vec<Expression>> {
@@ -165,36 +165,14 @@ impl ExpressionCompiler {
 				}))
 			}
 			Ast::Cast(node) => {
-				let mut tuple = node.tuple;
-				// cast takes the value and the target type; anything else reaches here from a
-				// parse the compiler cannot serve, and must be reported rather than panic the
-				// statement's thread and with it the process.
-				if tuple.nodes.len() != 2 {
-					return Err(AstError::UnexpectedToken {
-						expected: "cast(value, type)".to_string(),
-						fragment: tuple.token.fragment.to_owned(),
-					}
-					.into());
-				}
-				let node = tuple.nodes.pop().unwrap();
-				let Ast::Identifier(target) = &node else {
-					return Err(AstError::ExpectedIdentifier {
-						fragment: node.token().fragment.to_owned(),
-					}
-					.into());
-				};
-				let bump_fragment = target.token.fragment;
-				let ty = convert_data_type(&bump_fragment)?;
-				let fragment = bump_fragment.to_owned();
-
-				let expr = tuple.nodes.pop().unwrap();
-
+				let target = convert_data_type_with_constraints(&node.ty)?;
 				Ok(Expression::Cast(CastExpression {
-					fragment: tuple.token.fragment.to_owned(),
-					expression: Box::new(Self::compile(expr)?),
+					fragment: node.paren.fragment.to_owned(),
+					expression: Box::new(Self::compile(BumpBox::into_inner(node.expression))?),
 					to: TypeExpression {
-						fragment,
-						ty,
+						fragment: node.ty.name_fragment().to_owned(),
+						ty: target.get_type(),
+						constraint: target.constraint().clone(),
 					},
 				}))
 			}

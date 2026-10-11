@@ -21,7 +21,7 @@ pub struct TypeConstraint {
 	constraint: Option<Constraint>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Constraint {
 	MaxBytes(MaxBytes),
 

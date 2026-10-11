@@ -3,17 +3,42 @@
 
 use crate::{
 	Result,
-	ast::{ast::AstCast, parse::Parser},
-	token::keyword::Keyword::Cast,
+	ast::{
+		ast::AstCast,
+		parse::{Parser, Precedence},
+	},
+	bump::BumpBox,
+	diagnostic::AstError,
+	token::{
+		keyword::Keyword::Cast,
+		operator::Operator::{CloseParen, OpenParen},
+		separator::Separator::Comma,
+		token::TokenKind,
+	},
 };
 
 impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_cast(&mut self) -> Result<AstCast<'bump>> {
 		let token = self.consume_keyword(Cast)?;
-		let tuple = self.parse_tuple()?;
+		let paren = self.consume_operator(OpenParen)?;
+		self.skip_new_line()?;
+		let expression = BumpBox::new_in(self.parse_node(Precedence::None)?, self.bump());
+		if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
+			return Err(AstError::UnexpectedToken {
+				expected: "cast(value, type)".to_string(),
+				fragment: self.current()?.fragment.to_owned(),
+			}
+			.into());
+		}
+		self.skip_new_line()?;
+		let ty = self.parse_type()?;
+		self.skip_new_line()?;
+		self.consume_operator(CloseParen)?;
 		Ok(AstCast {
 			token,
-			tuple,
+			paren,
+			expression,
+			ty,
 		})
 	}
 }
@@ -23,7 +48,10 @@ pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{
-		ast::{ast::AstCast, parse::parse},
+		ast::{
+			ast::{AstCast, AstType},
+			parse::parse,
+		},
 		token::tokenize,
 	};
 
@@ -36,12 +64,11 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let AstCast {
-			tuple,
+			expression,
+			ty,
 			..
 		} = result[0].first_unchecked().as_cast();
-		assert_eq!(tuple.len(), 2);
-
-		assert_eq!(tuple.nodes[0].as_literal_number().value(), "9924");
-		assert!(matches!(tuple.nodes[1].as_identifier().text(), "int8"));
+		assert_eq!(expression.as_literal_number().value(), "9924");
+		assert!(matches!(ty, AstType::Unconstrained(name) if name.text() == "int8"));
 	}
 }

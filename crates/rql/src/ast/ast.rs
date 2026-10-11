@@ -392,7 +392,9 @@ impl<'bump> Ast<'bump> {
 #[derive(Debug)]
 pub struct AstCast<'bump> {
 	pub token: Token<'bump>,
-	pub tuple: AstTuple<'bump>,
+	pub paren: Token<'bump>,
+	pub expression: BumpBox<'bump, Ast<'bump>>,
+	pub ty: AstType<'bump>,
 }
 
 #[derive(Debug)]

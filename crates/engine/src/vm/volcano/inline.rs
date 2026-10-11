@@ -455,6 +455,7 @@ fn cast_to_stored_type(
 			to: TypeExpression {
 				fragment: Fragment::internal(column.constraint.get_type().to_string()),
 				ty: column.constraint.get_type(),
+				constraint: None,
 			},
 		}),
 		None => expression,

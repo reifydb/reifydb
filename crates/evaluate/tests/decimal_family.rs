@@ -295,6 +295,7 @@ fn an_explicit_cast_still_rounds_before_the_write() {
 		to: TypeExpression {
 			fragment: Fragment::testing_empty(),
 			ty: target.clone(),
+			constraint: None,
 		},
 	});
 

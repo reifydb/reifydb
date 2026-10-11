@@ -10,7 +10,10 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{constraint::Constraint, value_type::ValueType},
+};
 use serde::{Deserialize, Serialize};
 
 use crate::interface::identifier::{ColumnIdentifier, ColumnObject};
@@ -222,6 +225,7 @@ impl CastExpression {
 pub struct TypeExpression {
 	pub fragment: Fragment,
 	pub ty: ValueType,
+	pub constraint: Option<Constraint>,
 }
 
 impl TypeExpression {

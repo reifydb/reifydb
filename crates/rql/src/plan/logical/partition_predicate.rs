@@ -208,6 +208,7 @@ mod tests {
 			to: TypeExpression {
 				fragment: Fragment::internal("ty"),
 				ty,
+				constraint: None,
 			},
 		})
 	}

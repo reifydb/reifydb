@@ -20,7 +20,7 @@ use reifydb_value::{
 	value::{
 		column_view::{ColumnView, ViewData},
 		container::{decimal_array::decimals, wide_int_array::wides},
-		decimal::Decimal,
+		decimal::{Decimal, unscaled},
 		is::IsNumber,
 		value_type::ValueType,
 	},
@@ -200,13 +200,12 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				Decimal(..),
 				decimals,
 				|values, bits| decimal_with_bitvec(ctx.fragment.text(), precision, scale, values, bits),
-				|b: &Decimal, e: &Decimal| e
-					.rescale(0)
-					.and_then(|e| family_exponent(e.unscaled()))
-					.and_then(|exp| b.checked_pow(exp))
-					.or_else(|| Decimal::from_f64(b.to_f64().powf(e.to_f64())))
-					.and_then(|value| value.round_to_scale(scale.value()))
-					.and_then(|value| value.fits(precision.value(), scale.value()))
+				|b: &Decimal, e: &Decimal| match e.rescale(0) {
+					Some(exponent) => exact_decimal_power(b, exponent.unscaled(), scale.value()),
+					None => Decimal::from_f64(b.to_f64().powf(e.to_f64()))
+						.and_then(|value| value.round_to_scale(scale.value())),
+				}
+				.and_then(|value| value.fits(precision.value(), scale.value()))
 			),
 			_ => unreachable!("promotion of numeric inputs yields a numeric type"),
 		};
@@ -215,8 +214,27 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 	}
 }
 
-fn family_exponent(exponent: i256) -> Option<u32> {
-	exponent.to_i128().and_then(|exp| u32::try_from(exp).ok())
+fn rounds_to_zero(base: &Decimal, exponent: i128, scale: u8) -> bool {
+	let magnitude = exponent as f64 * base.to_f64().abs().log10();
+	magnitude < 0.5f64.log10() - f64::from(scale) - 1.0
+}
+
+fn exact_decimal_power(base: &Decimal, exponent: i256, scale: u8) -> Option<Decimal> {
+	let exponent = exponent.to_i128()?;
+	let Some(magnitude) = base.checked_pow(u32::try_from(exponent.unsigned_abs()).ok()?) else {
+		return rounds_to_zero(base, exponent, scale).then(|| Decimal::from_parts(i256::ZERO, scale)).flatten();
+	};
+	if exponent >= 0 {
+		return magnitude.round_to_scale(scale);
+	}
+	let digits = u32::from(magnitude.scale()) + u32::from(scale);
+	let reciprocal = unscaled::divide_half_up(i256::ONE, magnitude.unscaled().wrapping_abs(), digits)?;
+	let signed = if magnitude.is_negative() {
+		reciprocal.wrapping_neg()
+	} else {
+		reciprocal
+	};
+	Decimal::from_parts(signed, scale)
 }
 
 fn pow_rows<T, F>(

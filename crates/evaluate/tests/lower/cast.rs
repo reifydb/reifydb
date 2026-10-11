@@ -12,10 +12,14 @@ use reifydb_evaluate::{
 	expression::{compile::compile_expression, context::CompileContext},
 	lower::LoweredExpr,
 };
-use reifydb_value::value::{column_view::ColumnView, value_type::ValueType};
+use reifydb_value::value::{
+	column_view::ColumnView,
+	constraint::{Constraint, bytes::MaxBytes},
+	value_type::ValueType,
+};
 
 use crate::{
-	common::{Env, batch, boolean, cast, column, none, rows, strings, text},
+	common::{Env, batch, boolean, cast, cast_constrained, column, none, rows, strings, text},
 	compare::{nullable_column, samples},
 };
 
@@ -107,4 +111,31 @@ fn a_cast_of_all_none_matches_the_old_path() {
 		assert!(old.is_ok(), "{to:?}: {old:?}");
 		assert_eq!(lowered, old, "{to:?}");
 	}
+}
+
+#[test]
+fn a_cast_over_its_byte_limit_fails_like_the_old_path() {
+	// Without the constraint check in the lowered cast, an over-long value passes where the old path fails.
+	let env = Env::new();
+	let expression = cast_constrained(column("a"), ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(4)));
+	let input = batch(vec![factory::utf8("a", ["ab", "abcdef"])]);
+
+	let lowered = env.lowered(&expression, input.clone());
+	let old = env.old(&expression, input);
+
+	assert!(old.is_err(), "{old:?}");
+	assert_eq!(lowered, old);
+}
+
+#[test]
+fn a_constrained_cast_of_a_constant_already_of_the_target_type_still_checks_its_limit() {
+	// The same-type constant shortcut must never skip the constraint, otherwise the limit is silently lost.
+	let env = Env::new();
+	let expression = cast_constrained(text("abcdef"), ValueType::Utf8, Constraint::MaxBytes(MaxBytes::new(4)));
+
+	let lowered = env.lowered(&expression, rows(1));
+	let old = env.old(&expression, rows(1));
+
+	assert!(old.is_err(), "{old:?}");
+	assert_eq!(lowered, old);
 }

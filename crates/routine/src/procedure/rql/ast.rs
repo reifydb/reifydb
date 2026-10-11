@@ -122,9 +122,12 @@ impl AstWalker {
 			}
 			Ast::Prefix(p) => ref_children.push(&p.node),
 			Ast::Cast(c) => {
-				for node in &c.tuple.nodes {
-					ref_children.push(node);
-				}
+				ref_children.push(&c.expression);
+				let type_token = Token {
+					kind: TokenKind::Identifier,
+					fragment: *c.ty.name_fragment(),
+				};
+				owned_children.push(Ast::Identifier(UnqualifiedIdentifier::new(type_token)));
 			}
 			Ast::Filter(f) => ref_children.push(&f.node),
 			Ast::Gate(f) => ref_children.push(&f.node),

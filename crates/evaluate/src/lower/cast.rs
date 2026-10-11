@@ -18,14 +18,14 @@ use reifydb_core::{
 use reifydb_value::{
 	fragment::Fragment,
 	reifydb_assertions,
-	value::{
-		column_view::ColumnView,
-		value_type::{ValueType, field::from_field},
-	},
+	value::{column_view::ColumnView, constraint::Constraint, value_type::ValueType},
 };
 
 use crate::{
-	expression::{compile::wrap_cast_error, context::EvalContext},
+	expression::{
+		compile::{enforce_cast_constraint, wrap_cast_error},
+		context::EvalContext,
+	},
 	lower::{Lowered, Node, empty_of, error::into_external, lower_node, typed_field, udf, volatile},
 };
 
@@ -40,7 +40,8 @@ pub(super) fn lower_cast<'e>(
 	let inner = lower_node(ctx, operator, &cast.expression)?;
 	let label = display_label(expression);
 	let to = cast.to.ty.clone();
-	if matches!(cast.expression.as_ref(), Expression::Constant(_))
+	if cast.to.constraint.is_none()
+		&& matches!(cast.expression.as_ref(), Expression::Constant(_))
 		&& ColumnView::try_from(&empty_of(&inner.field))?.get_type() == to
 	{
 		return Ok(Node {
@@ -53,6 +54,7 @@ pub(super) fn lower_cast<'e>(
 		expr: udf(
 			CastUdf {
 				to,
+				constraint: cast.to.constraint.clone(),
 				target: ctx.target.clone(),
 				fragment: cast.expression.full_fragment_owned(),
 				signature: volatile(),
@@ -71,7 +73,7 @@ fn cast_field(name: &str, to: &ValueType, input: &FieldRef) -> FieldRef {
 fn assert_cast_field(fragment: &Fragment, kernel: &FieldRef, declared: &FieldRef, array: &ArrayRef) {
 	reifydb_assertions! {
 		let inner = |field: &FieldRef| {
-			from_field(field)
+			reifydb_value::value::value_type::field::from_field(field)
 				.expect("a cast field always carries a parsable type")
 				.value_type
 				.map(|value_type| value_type.inner_type().clone())
@@ -94,6 +96,7 @@ fn assert_cast_field(fragment: &Fragment, kernel: &FieldRef, declared: &FieldRef
 #[derive(Debug)]
 struct CastUdf {
 	to: ValueType,
+	constraint: Option<Constraint>,
 	target: Option<TargetColumn>,
 	fragment: Fragment,
 	signature: Signature,
@@ -101,7 +104,7 @@ struct CastUdf {
 
 impl PartialEq for CastUdf {
 	fn eq(&self, other: &Self) -> bool {
-		self.to == other.to && self.fragment == other.fragment
+		self.to == other.to && self.constraint == other.constraint && self.fragment == other.fragment
 	}
 }
 
@@ -110,6 +113,7 @@ impl Eq for CastUdf {}
 impl Hash for CastUdf {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.to.hash(state);
+		self.constraint.hash(state);
 		self.fragment.hash(state);
 	}
 }
@@ -145,8 +149,10 @@ impl ScalarUDFImpl for CastUdf {
 		let target = TargetConvert {
 			target: self.target.as_ref(),
 		};
-		let (field, array) = cast_column_data(target, &view, self.to.clone(), &|| self.fragment.clone())
+		let casted = cast_column_data(target, &view, self.to.clone(), &|| self.fragment.clone())
 			.map_err(|error| into_external(wrap_cast_error(error, self.fragment.clone(), &self.to)))?;
+		enforce_cast_constraint(&casted, &self.to, &self.constraint, &self.fragment).map_err(into_external)?;
+		let (field, array) = casted;
 		assert_cast_field(&self.fragment, &field, &return_field, &array);
 		Ok(ColumnarValue::Array(array))
 	}

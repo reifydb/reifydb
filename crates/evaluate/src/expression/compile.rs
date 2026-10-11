@@ -28,7 +28,7 @@ use reifydb_value::{
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
-		constraint::{precision::Precision, scale::Scale},
+		constraint::{Constraint, TypeConstraint, precision::Precision, scale::Scale},
 		system_columns::{resolve_column, user_columns},
 		value_type::ValueType,
 	},
@@ -544,26 +544,36 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 			if let Expression::Constant(const_expr) = e.expression.as_ref() {
 				let const_expr = const_expr.clone();
 				let target_type = e.to.ty.clone();
+				let constraint = e.to.constraint.clone();
 				let inner_fragment = e.expression.full_fragment_owned();
 				let scalar = OnceLock::new();
 				CompiledExpr::new(move |ctx| {
 					let row_count = ctx.take.unwrap_or(ctx.row_count);
 					broadcast(&scalar, row_count, |rows| {
 						let data = constant_value(&const_expr, label.text(), rows)?;
-						if ColumnView::try_from(&data)?.get_type() == target_type {
-							Ok(data)
+						let casted = if ColumnView::try_from(&data)?.get_type() == target_type {
+							data
 						} else {
-							apply_cast(ctx, &data, &target_type, &inner_fragment)
-						}
+							apply_cast(ctx, &data, &target_type, &inner_fragment)?
+						};
+						enforce_cast_constraint(
+							&casted,
+							&target_type,
+							&constraint,
+							&inner_fragment,
+						)?;
+						Ok(casted)
 					})
 				})
 			} else {
 				let inner = compile_expression(_ctx, &e.expression)?;
 				let target_type = e.to.ty.clone();
+				let constraint = e.to.constraint.clone();
 				let inner_fragment = e.expression.full_fragment_owned();
 				CompiledExpr::new(move |ctx| {
 					let column = inner.execute(ctx)?;
 					let casted = apply_cast(ctx, &column, &target_type, &inner_fragment)?;
+					enforce_cast_constraint(&casted, &target_type, &constraint, &inner_fragment)?;
 					Ok(rename(casted, label.text()))
 				})
 			}
@@ -1308,6 +1318,26 @@ fn apply_cast(
 		.map_err(|e| wrap_cast_error(e, fragment.clone(), target))
 }
 
+pub(crate) fn enforce_cast_constraint(
+	column: &(FieldRef, ArrayRef),
+	target: &ValueType,
+	constraint: &Option<Constraint>,
+	fragment: &Fragment,
+) -> Result<()> {
+	let Some(constraint) = constraint else {
+		return Ok(());
+	};
+	let checked = TypeConstraint::with_constraint(target.clone(), constraint.clone());
+	let view = ColumnView::try_from(column)?;
+	for row in (0..view.len()).filter(|&row| !view.none_at(row)) {
+		if let Err(mut error) = checked.coerce(&mut view.get_value(row)) {
+			error.0.fragment = fragment.clone();
+			return Err(error);
+		}
+	}
+	Ok(())
+}
+
 pub(crate) fn wrap_cast_error(err: Error, fragment: Fragment, target: &ValueType) -> Error {
 	if err.0.code.starts_with("CAST_") {
 		return err;
@@ -1376,6 +1406,7 @@ mod tests {
 			to: TypeExpression {
 				fragment: Fragment::testing_empty(),
 				ty: ValueType::Int4,
+				constraint: None,
 			},
 		})
 	}

@@ -33,7 +33,7 @@ use reifydb_value::{
 	Result,
 	fragment::Fragment,
 	params::Params,
-	value::{column_view::ColumnView, identity::IdentityId, value_type::ValueType},
+	value::{column_view::ColumnView, constraint::Constraint, identity::IdentityId, value_type::ValueType},
 };
 
 pub struct Env {
@@ -323,6 +323,19 @@ pub fn cast(inner: Expression, to: ValueType) -> Expression {
 		to: TypeExpression {
 			fragment: frag("type"),
 			ty: to,
+			constraint: None,
+		},
+	})
+}
+
+pub fn cast_constrained(inner: Expression, to: ValueType, constraint: Constraint) -> Expression {
+	Expression::Cast(CastExpression {
+		fragment: frag("cast"),
+		expression: Box::new(inner),
+		to: TypeExpression {
+			fragment: frag("type"),
+			ty: to,
+			constraint: Some(constraint),
 		},
 	})
 }
