@@ -29,6 +29,7 @@ reifydb-transaction = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 thiserror = { workspace = true, optional = true }
 tracing = { workspace = true }
+vortex-session = { workspace = true, optional = true }
 
 
 [features]
@@ -45,6 +46,7 @@ column = [
 	"dep:reifydb-store-column",
 	"dep:reifydb-transaction",
 	"dep:thiserror",
+	"dep:vortex-session",
 ]
 pco = ["column", "reifydb-store-column/pco"]
 

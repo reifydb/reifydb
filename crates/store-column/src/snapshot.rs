@@ -7,6 +7,7 @@ use reifydb_value::{
 	Result, reifydb_assertions,
 	value::value_type::{ValueType, field::FieldType},
 };
+use serde::{Deserialize, Serialize};
 use vortex_array::ArrayRef;
 
 use crate::error::vortex;
@@ -72,12 +73,29 @@ impl ColumnChunks {
 	}
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BlockEncodingHeader {
+	pub name: String,
+	pub version: u32,
+	pub config: Vec<u8>,
+	pub user: Vec<BlockUserColumn>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BlockUserColumn {
+	pub name: String,
+	pub ty: ValueType,
+	pub nullable: bool,
+	pub field_type: FieldType,
+}
+
 pub type Schema = Arc<Vec<(String, ValueType, bool)>>;
 
 #[derive(Clone)]
 pub struct ColumnBlock {
 	pub schema: Schema,
 	pub columns: Vec<ColumnChunks>,
+	pub block_encoding: Option<BlockEncodingHeader>,
 }
 
 impl ColumnBlock {
@@ -88,7 +106,13 @@ impl ColumnBlock {
 		Self {
 			schema,
 			columns,
+			block_encoding: None,
 		}
+	}
+
+	pub fn with_block_encoding(mut self, block_encoding: Option<BlockEncodingHeader>) -> Self {
+		self.block_encoding = block_encoding;
+		self
 	}
 
 	pub fn len(&self) -> usize {
@@ -121,7 +145,8 @@ impl ColumnBlock {
 				sliced_chunks,
 			));
 		}
-		Ok(ColumnBlock::new(Arc::clone(&self.schema), sliced_columns))
+		Ok(ColumnBlock::new(Arc::clone(&self.schema), sliced_columns)
+			.with_block_encoding(self.block_encoding.clone()))
 	}
 }
 
@@ -223,5 +248,27 @@ mod tests {
 			}
 			panic!("out of range");
 		}
+	}
+
+	#[test]
+	fn view_range_keeps_the_block_encoding() {
+		// A sliced view without the header would be read as plain user columns.
+		let header = BlockEncodingHeader {
+			name: "delta".to_string(),
+			version: 1,
+			config: vec![7],
+			user: vec![BlockUserColumn {
+				name: "c".to_string(),
+				ty: ValueType::Int4,
+				nullable: false,
+				field_type: FieldType::from(ValueType::Int4),
+			}],
+		};
+		let block = ColumnBlock::new(
+			Arc::new(vec![("c".to_string(), ValueType::Int4, false)]),
+			vec![chunked_int4(&[&[1, 2, 3], &[4, 5]])],
+		)
+		.with_block_encoding(Some(header.clone()));
+		assert_eq!(block.view_range(1, 4).unwrap().block_encoding, Some(header));
 	}
 }

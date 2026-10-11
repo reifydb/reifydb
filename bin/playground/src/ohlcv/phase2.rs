@@ -29,6 +29,7 @@ use reifydb::{
 
 use crate::{
 	data::{Column, Dataset, RowRef, Variant, columns},
+	encoding::{OHLCV, OhlcvEncoding},
 	profile_name,
 	report::{ColumnTally, Row},
 	transform::{Derived, inverse},
@@ -44,6 +45,7 @@ pub struct Run {
 	pub layout: &'static str,
 	pub tick_ms: u64,
 	pub txn_rows: usize,
+	pub encoded: bool,
 }
 
 const INSERT_CHUNK: usize = 50_000;
@@ -87,19 +89,15 @@ fn to_rows(columns: &[Vec<i128>]) -> Vec<Box<[i128]>> {
 	rows
 }
 
-fn block_files(dir: &Path) -> Vec<(BlockKey, PathBuf, u64)> {
+fn block_files(dir: &Path) -> Result<Vec<(BlockKey, PathBuf, u64)>, String> {
 	let mut out = Vec::new();
-	let Ok(series_dirs) = fs::read_dir(dir) else {
-		return out;
-	};
-	for series_dir in series_dirs.flatten() {
+	for series_dir in fs::read_dir(dir).map_err(|e| e.to_string())? {
+		let series_dir = series_dir.map_err(|e| e.to_string())?;
 		let Some(series) = series_dir.file_name().to_str().and_then(|n| n.parse::<u64>().ok()) else {
 			continue;
 		};
-		let Ok(files) = fs::read_dir(series_dir.path()) else {
-			continue;
-		};
-		for file in files.flatten() {
+		for file in fs::read_dir(series_dir.path()).map_err(|e| e.to_string())? {
+			let file = file.map_err(|e| e.to_string())?;
 			let path = file.path();
 			let Some(name) = path
 				.extension()
@@ -110,7 +108,7 @@ fn block_files(dir: &Path) -> Vec<(BlockKey, PathBuf, u64)> {
 			else {
 				continue;
 			};
-			let size = file.metadata().map(|m| m.len()).unwrap_or(0);
+			let size = file.metadata().map_err(|e| e.to_string())?.len();
 			out.push((
 				BlockKey {
 					dir: series,
@@ -122,7 +120,7 @@ fn block_files(dir: &Path) -> Vec<(BlockKey, PathBuf, u64)> {
 		}
 	}
 	out.sort_by(|a, b| a.1.cmp(&b.1));
-	out
+	Ok(out)
 }
 
 fn await_blocks(store: &ColumnStore, dir: &Path, key: &str, expected: usize, tick_ms: u64) -> Result<usize, String> {
@@ -135,7 +133,7 @@ fn await_blocks(store: &ColumnStore, dir: &Path, key: &str, expected: usize, tic
 	let mut since_progress = clock.instant();
 	loop {
 		let mut total = 0;
-		for (block_key, path, size) in block_files(dir) {
+		for (block_key, path, size) in block_files(dir)? {
 			let rows = match counted.get(&path) {
 				Some(&(seen, rows)) if seen == size => rows,
 				_ => {
@@ -179,6 +177,29 @@ fn check_aggregate(db: &Database, run: &Run, expected: &[Column]) -> Result<(), 
 	Ok(())
 }
 
+fn check_column_read(db: &Database, run: &Run, expected: &[Column]) -> Result<(), String> {
+	let frames = db.query_column_as_root(&format!("FROM {}", run.series), Params::None).map_err(err)?;
+	let mut read: Vec<Vec<i128>> = vec![Vec::new(); expected.len()];
+	for frame in &frames {
+		for (c, (field, _)) in expected.iter().enumerate() {
+			let array = frame
+				.batch
+				.column_by_name(field.name())
+				.ok_or_else(|| format!("column read has no {}", field.name()))?;
+			read[c].extend(as_i128(array)?);
+		}
+	}
+	let inserted = to_rows(&expected.iter().map(|c| as_i128(&c.1)).collect::<Result<Vec<_>, _>>()?);
+	if to_rows(&read) != inserted {
+		return Err(format!(
+			"query_column rows differ from inserted ({} vs {})",
+			read[0].len(),
+			inserted.len()
+		));
+	}
+	Ok(())
+}
+
 fn check_inverse(restored: &[Box<[i128]>], ds: &Dataset) -> Result<(), String> {
 	let series = &ds.series[0];
 	let at = |row: &[i128], c: usize| row[c] as i64;
@@ -211,6 +232,7 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 			compression: profile,
 			..StorageConfig::default()
 		})
+		.with_block_encodings(|c| c.register(OHLCV, || OhlcvEncoding))
 		.build()
 		.map_err(err)?;
 	db.admin_as_root("CREATE NAMESPACE bench", Params::None).map_err(|e| format!("create namespace: {e}"))?;
@@ -253,6 +275,9 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 	let start = clock.instant();
 	let materialized = await_blocks(&store, &column_dir, &names[0], order.len(), run.tick_ms)?;
 	let seal_secs = start.elapsed().as_secs_f64();
+	if verified.is_ok() {
+		verified = check_column_read(&db, run, &expected);
+	}
 	db.stop().map_err(|e| format!("stop: {e}"))?;
 
 	let session = store.session().clone();
@@ -263,7 +288,7 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 	let mut empty_blocks = 0;
 	let mut stored: Vec<Vec<i128>> = vec![Vec::new(); names.len()];
 	let mut all_names: Vec<String> = Vec::new();
-	for (key, _, size) in block_files(&column_dir) {
+	for (key, _, size) in block_files(&column_dir)? {
 		let block = store.open(&key).map_err(err)?.ok_or("block vanished")?.read(None).map_err(err)?;
 		if block.column_by_name(&names[0]).is_none() {
 			continue;
@@ -287,7 +312,9 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 			if !all_names.contains(name) {
 				all_names.push(name.clone());
 			}
-			if let Some(c) = names.iter().position(|n| n == name) {
+			if !run.encoded
+				&& let Some(c) = names.iter().position(|n| n == name)
+			{
 				for chunk in &column.chunks {
 					let (_, array) = to_arrow(&session, name, &column.field_type, chunk.clone())
 						.map_err(err)?;
@@ -304,9 +331,13 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 		order.len()
 	);
 
-	let restored = to_rows(&stored);
+	let restored = if run.encoded {
+		Vec::new()
+	} else {
+		to_rows(&stored)
+	};
 	let inserted = to_rows(&expected.iter().map(|c| as_i128(&c.1)).collect::<Result<Vec<_>, _>>()?);
-	if verified.is_ok() && restored != inserted {
+	if verified.is_ok() && !run.encoded && restored != inserted {
 		verified = Err(format!("stored rows differ from inserted ({} vs {})", restored.len(), inserted.len()));
 	}
 	if verified.is_ok() && run.variant == Variant::Derived {
@@ -317,7 +348,15 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 		phase: "2",
 		dataset: ds.name.to_string(),
 		layout: run.layout.to_string(),
-		columns: format!("{} {}", run.name, run.variant.label()),
+		columns: format!(
+			"{} {}",
+			run.name,
+			if run.encoded {
+				"ohlcv encoded"
+			} else {
+				run.variant.label()
+			}
+		),
 		profile: profile_name(profile).to_string(),
 		blocks,
 		rows: order.len(),

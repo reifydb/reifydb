@@ -33,6 +33,7 @@ use reifydb_engine::{
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
+use reifydb_extension::block_encoding::registry::BlockEncodings;
 use reifydb_runtime::actor::{
 	context::Context,
 	system::ActorConfig,
@@ -44,7 +45,6 @@ use reifydb_store_column::{
 	compress::Compressor,
 	device::BlockKey,
 	snapshot::ColumnBlock,
-	stats::block_stats,
 	store::ColumnStore,
 };
 use reifydb_transaction::{
@@ -66,7 +66,10 @@ use tracing::debug;
 use crate::column::{
 	actor::{
 		SeriesMessage,
-		batches::{column_block_from_batches, system_column_schema},
+		batches::{
+			arrow_columns_from_batches, compress_columns, encode_series_block, stats_from_arrow,
+			system_column_schema,
+		},
 	},
 	error::SubStoreError,
 };
@@ -81,6 +84,7 @@ pub struct SeriesMaterializationActor {
 	engine: StandardEngine,
 	block_store: ColumnStore,
 	compressor: Compressor,
+	block_encodings: BlockEncodings,
 	tick_interval: Duration,
 	bucket_width: u64,
 	grace: Duration,
@@ -98,6 +102,7 @@ impl SeriesMaterializationActor {
 		engine: StandardEngine,
 		block_store: ColumnStore,
 		compressor: Compressor,
+		block_encodings: BlockEncodings,
 		tick_interval: Duration,
 		bucket_width: u64,
 		grace: Duration,
@@ -106,6 +111,7 @@ impl SeriesMaterializationActor {
 			engine,
 			block_store,
 			compressor,
+			block_encodings,
 			tick_interval,
 			bucket_width,
 			grace,
@@ -357,9 +363,8 @@ impl SeriesMaterializationActor {
 			);
 		}
 
-		let block = Arc::new(self.build_column_block(series, batches, sealed_at_commit_version)?);
-		let stats = block_stats(block.as_ref(), self.block_store.session())?;
-		self.upsert_snapshot_and_store(series, scope, &stats, bucket, sealed_at_commit_version, block)
+		let (block, stats) = self.build_column_block(series, batches, sealed_at_commit_version)?;
+		self.upsert_snapshot_and_store(series, scope, &stats, bucket, sealed_at_commit_version, Arc::new(block))
 	}
 
 	#[inline]
@@ -444,9 +449,17 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		batches: Vec<RecordBatch>,
 		version: CommitVersion,
-	) -> Result<ColumnBlock> {
+	) -> Result<(ColumnBlock, Vec<ColumnStats>)> {
 		let schema = scan_output_schema(series);
-		column_block_from_batches(schema, batches, version, &self.compressor)
+		let columns = arrow_columns_from_batches(&schema, &batches, version)?;
+		let stats = stats_from_arrow(&columns, self.block_store.session())?;
+		let block = match &series.encoding {
+			None => compress_columns(columns, &self.compressor)?,
+			Some(encoding) => {
+				encode_series_block(columns, series, encoding, &self.block_encodings, &self.compressor)?
+			}
+		};
+		Ok((block, stats))
 	}
 
 	#[inline]

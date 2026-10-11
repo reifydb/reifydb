@@ -12,6 +12,8 @@ use reifydb_core::util::ioc::IocContainer;
 #[cfg(feature = "column")]
 use reifydb_engine::engine::StandardEngine;
 #[cfg(feature = "column")]
+use reifydb_extension::block_encoding::registry::BlockEncodings;
+#[cfg(feature = "column")]
 use reifydb_runtime::actor::system::ActorSpawner;
 #[cfg(feature = "column")]
 use reifydb_store_column::{compress::Compressor, store::ColumnStore};
@@ -70,6 +72,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		let spawner = ioc.resolve::<ActorSpawner>()?;
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let event_bus = ioc.resolve::<EventBus>()?;
+		let block_encodings = ioc.resolve::<BlockEncodings>()?;
 
 		let block_store = match self.column_store.clone() {
 			Some(store) => store,
@@ -103,6 +106,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			engine,
 			block_store.clone(),
 			compressor(),
+			block_encodings,
 			self.config.series_tick_interval,
 			self.config.series_bucket_width,
 			self.config.series_grace,

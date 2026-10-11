@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 mod data;
+mod encoding;
 mod equity;
 mod phase1;
 mod phase2;
@@ -109,6 +110,9 @@ const EQ_DT: &str = "CREATE SERIES bench::eq_dt { ts: datetime, open: int8, high
 const EQ_DERIVED: &str = "CREATE SERIES bench::eq_derived { ts: int8, close: int8, gap: int8, upper: uint8, lower: uint8, volume: uint8 } WITH { key: ts }";
 const SOL_PART: &str = "CREATE SERIES bench::sol_part { slot: uint8, pool: uint4, open: int8, high: int8, low: int8, close: int8, volume: uint8 } WITH { key: slot, partition: { by: { pool } } }";
 const SOL_FLAT: &str = "CREATE SERIES bench::sol_flat { slot: uint8, pool: uint4, open: int8, high: int8, low: int8, close: int8, volume: uint8 } WITH { key: slot }";
+const EQ_ENC: &str = "CREATE SERIES bench::eq_enc { ts: int8, open: int8, high: int8, low: int8, close: int8, volume: uint8 } WITH { key: ts, column: { encoding: { ohlcv: { open: open, high: high, low: low, close: close } } } }";
+const SOL_PART_ENC: &str = "CREATE SERIES bench::sol_part_enc { slot: uint8, pool: uint4, open: int8, high: int8, low: int8, close: int8, volume: uint8 } WITH { key: slot, partition: { by: { pool } }, column: { encoding: { ohlcv: { open: open, high: high, low: low, close: close } } } }";
+const SOL_FLAT_ENC: &str = "CREATE SERIES bench::sol_flat_enc { slot: uint8, pool: uint4, open: int8, high: int8, low: int8, close: int8, volume: uint8 } WITH { key: slot, column: { encoding: { ohlcv: { open: open, high: high, low: low, close: close } } } }";
 
 fn equity_runs() -> Vec<Run> {
 	let run = |name, series, ddl, variant, width, layout| Run {
@@ -121,12 +125,17 @@ fn equity_runs() -> Vec<Run> {
 		layout,
 		tick_ms: 250,
 		txn_rows: TXN_ROWS,
+		encoded: false,
 	};
 	vec![
 		run("E1", "bench::eq_raw", EQ_RAW, Variant::Raw, EQUITY_ONE_BUCKET, "1 bucket"),
 		run("E2", "bench::eq_dt", EQ_DT, Variant::Datetime, EQUITY_ONE_BUCKET, "1 bucket"),
 		run("E3", "bench::eq_derived", EQ_DERIVED, Variant::Derived, EQUITY_ONE_BUCKET, "1 bucket"),
 		run("E1-daily", "bench::eq_raw", EQ_RAW, Variant::Raw, EQUITY_DAILY, "daily buckets"),
+		Run {
+			encoded: true,
+			..run("E4", "bench::eq_enc", EQ_ENC, Variant::Raw, EQUITY_ONE_BUCKET, "1 bucket, ohlcv")
+		},
 	]
 }
 
@@ -141,10 +150,19 @@ fn solana_runs() -> Vec<Run> {
 		layout,
 		tick_ms: SOLANA_TICK_MS,
 		txn_rows: TXN_ROWS,
+		encoded: false,
 	};
 	vec![
 		run("S1", "bench::sol_part", SOL_PART, "daily, by pool"),
 		run("S2", "bench::sol_flat", SOL_FLAT, "daily, flat"),
+		Run {
+			encoded: true,
+			..run("S3", "bench::sol_part_enc", SOL_PART_ENC, "daily, by pool, ohlcv")
+		},
+		Run {
+			encoded: true,
+			..run("S4", "bench::sol_flat_enc", SOL_FLAT_ENC, "daily, flat, ohlcv")
+		},
 	]
 }
 

@@ -16,7 +16,7 @@ default = ["tokio", "sqlite"]
 tokio = []
 sqlite = ["reifydb-store-multi/sqlite", "reifydb-store-single/sqlite"]
 testing = ["reifydb-flow-sync/testing", "reifydb-flow/testing"]
-column = ["dep:reifydb-store-column"]
+column = ["dep:reifydb-store-column", "dep:vortex-session"]
 
 [build-dependencies]
 reifydb-build = { workspace = true }
@@ -52,12 +52,13 @@ bumpalo = { workspace = true }
 smallvec = { workspace = true }
 tracing = { workspace = true }
 postcard = { workspace = true }
+vortex-session = { workspace = true, optional = true }
 
 [dev-dependencies]
 reifydb-core = { workspace = true, features = ["testing"] }
 reifydb-flow = { workspace = true, features = ["runtime", "testing"] }
 reifydb-routine = { workspace = true }
-reifydb-test-harness = { workspace = true }
+reifydb-test-harness = { workspace = true, features = ["column"] }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 reifydb-client = { workspace = true, features = ["grpc"] }
