@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape, table::EncodedTableRowBuilder};
+use reifydb_codec::row::{
+	bytes::{EncodedBytes, read_fingerprint},
+	pod::EncodedPodRow,
+	shape::{RowShape, fingerprint::RowShapeFingerprint},
+	table::EncodedTableRowBuilder,
+};
 use reifydb_core::{
 	error::{CoreError, diagnostic::index::primary_key_violation},
 	interface::catalog::{id::IndexId, key::PrimaryKey, table::Table},
+	internal_error,
 	key::{any::TaggedKey, catalog::IndexEntryKey},
 	sort::SortDirection,
 	value::index::{encoded::EncodedIndexKey, shape::IndexShape},
@@ -252,4 +258,57 @@ pub(crate) fn primary_key_index(
 			)
 		})
 		.collect()
+}
+
+pub(crate) struct PrimaryKeyIndex<'a> {
+	pk_def: &'a PrimaryKey,
+	encoder: Option<PrimaryKeyEncoder>,
+	shapes: HashMap<RowShapeFingerprint, RowShape>,
+	removes: Vec<(TaggedKey, Option<EncodedBytes>)>,
+}
+
+impl<'a> PrimaryKeyIndex<'a> {
+	pub(crate) fn new(pk_def: &'a PrimaryKey) -> Self {
+		Self {
+			pk_def,
+			encoder: None,
+			shapes: HashMap::new(),
+			removes: Vec::new(),
+		}
+	}
+
+	pub(crate) fn remove(
+		&mut self,
+		catalog: &Catalog,
+		txn: &mut Transaction<'_>,
+		table: &Table,
+		values: &EncodedBytes,
+	) -> Result<()> {
+		let fingerprint = read_fingerprint(values);
+		let shape = match self.shapes.entry(fingerprint) {
+			Entry::Occupied(entry) => entry.into_mut(),
+			Entry::Vacant(entry) => {
+				let shape = catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
+					internal_error!(
+						"Row shape with fingerprint {:?} not found for table {}",
+						fingerprint,
+						table.name
+					)
+				})?;
+				entry.insert(shape)
+			}
+		};
+		let encoder = match &mut self.encoder {
+			Some(encoder) => encoder,
+			None => self.encoder.insert(PrimaryKeyEncoder::new(self.pk_def, table)?),
+		};
+		let index_key = encoder.encode(shape, values);
+		self.removes
+			.push((IndexEntryKey::new(table.id, IndexId::primary(self.pk_def.id), index_key).into(), None));
+		Ok(())
+	}
+
+	pub(crate) fn write(self, txn: &mut Transaction<'_>) -> Result<()> {
+		txn.remove_many(self.removes)
+	}
 }

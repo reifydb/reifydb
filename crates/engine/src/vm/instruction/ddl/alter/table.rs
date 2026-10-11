@@ -20,7 +20,10 @@ use reifydb_value::value::{Value, row_number::RowNumber, value_type::ValueType};
 use crate::{
 	Result,
 	transaction::operation::{dictionary::DictionaryOperations, table::TableOperations},
-	vm::services::Services,
+	vm::{
+		instruction::dml::primary_key::{PrimaryKeyIndex, get_primary_key},
+		services::Services,
+	},
 };
 
 pub(crate) fn execute_alter_table(
@@ -154,6 +157,14 @@ pub(crate) fn execute_alter_table(
 			if let Some(partition) = partition
 				&& !ids.is_empty()
 			{
+				let mut tx = Transaction::Admin(txn);
+				if let Some(pk) = get_primary_key(&services.catalog, &mut tx, &table)? {
+					let mut index = PrimaryKeyIndex::new(&pk);
+					for row in &rows {
+						index.remove(&services.catalog, &mut tx, &table, row)?;
+					}
+					index.write(&mut tx)?;
+				}
 				let partitions = vec![partition; ids.len()];
 				txn.remove_from_table(&table, &ids, &partitions, &rows)?;
 			}

@@ -1,23 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, hash_map::Entry},
-	sync::Arc,
-};
+use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_codec::row::{
-	bytes::{EncodedBytes, read_fingerprint},
-	shape::{RowShape, fingerprint::RowShapeFingerprint},
-};
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
-			id::IndexId,
-			key::PrimaryKey,
 			namespace::Namespace,
 			object::ObjectId,
 			policy::{DataOp, PolicyTargetType},
@@ -25,10 +17,8 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
-	internal_error,
 	key::{
 		any::TaggedKey,
-		catalog::IndexEntryKey,
 		row::{PartitionedRowKey, RowKeyRange},
 	},
 	value::batch::single_row,
@@ -49,7 +39,7 @@ use reifydb_value::{
 
 use super::{
 	context::{TableTarget, WriteExecCtx},
-	primary_key::{self, PrimaryKeyEncoder},
+	primary_key::{self, PrimaryKeyIndex},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_table_shape,
 };
@@ -206,7 +196,7 @@ fn run_table_delete_with_input(
 			continue;
 		};
 		if let Some(pk_index) = &mut pk_index {
-			pk_index.remove(exec.services, txn, target.table, &old_row.bytes)?;
+			pk_index.remove(&exec.services.catalog, txn, target.table, &old_row.bytes)?;
 		}
 		filtered_ids.push(row_number);
 		if let Some(p) = partitions_to_delete.get(idx).copied() {
@@ -286,7 +276,7 @@ fn run_table_delete_all(
 	let mut filtered_rows: Vec<EncodedBytes> = Vec::with_capacity(rows.len());
 	for multi in rows {
 		if let Some(pk_index) = &mut pk_index {
-			pk_index.remove(services, txn, table, &multi.bytes)?;
+			pk_index.remove(&services.catalog, txn, table, &multi.bytes)?;
 		}
 		filtered_rows.push(multi.bytes);
 		if partitioned {
@@ -314,60 +304,6 @@ fn run_table_delete_all(
 		Vec::new()
 	};
 	Ok((deleted_count, returned_rows))
-}
-
-struct PrimaryKeyIndex<'a> {
-	pk_def: &'a PrimaryKey,
-	encoder: Option<PrimaryKeyEncoder>,
-	shapes: HashMap<RowShapeFingerprint, RowShape>,
-	removes: Vec<(TaggedKey, Option<EncodedBytes>)>,
-}
-
-impl<'a> PrimaryKeyIndex<'a> {
-	fn new(pk_def: &'a PrimaryKey) -> Self {
-		Self {
-			pk_def,
-			encoder: None,
-			shapes: HashMap::new(),
-			removes: Vec::new(),
-		}
-	}
-
-	fn remove(
-		&mut self,
-		services: &Arc<Services>,
-		txn: &mut Transaction<'_>,
-		table: &Table,
-		values: &EncodedBytes,
-	) -> Result<()> {
-		let fingerprint = read_fingerprint(values);
-		let shape = match self.shapes.entry(fingerprint) {
-			Entry::Occupied(entry) => entry.into_mut(),
-			Entry::Vacant(entry) => {
-				let shape =
-					services.catalog.get_or_load_row_shape(fingerprint, txn)?.ok_or_else(|| {
-						internal_error!(
-							"Row shape with fingerprint {:?} not found for table {}",
-							fingerprint,
-							table.name
-						)
-					})?;
-				entry.insert(shape)
-			}
-		};
-		let encoder = match &mut self.encoder {
-			Some(encoder) => encoder,
-			None => self.encoder.insert(PrimaryKeyEncoder::new(self.pk_def, table)?),
-		};
-		let index_key = encoder.encode(shape, values);
-		self.removes
-			.push((IndexEntryKey::new(table.id, IndexId::primary(self.pk_def.id), index_key).into(), None));
-		Ok(())
-	}
-
-	fn write(self, txn: &mut Transaction<'_>) -> Result<()> {
-		txn.remove_many(self.removes)
-	}
 }
 
 #[inline]
