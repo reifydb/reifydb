@@ -118,7 +118,7 @@ help:
 	@printf "  %-25s %s\n" "sweep" "Delete build artifacts unused for SWEEP_DAYS=1 days"
 	@printf "  %-25s %s\n" "sweep-dry" "Show what sweep would delete"
 	@printf "  %-25s %s\n" "sweep-install" "Install cargo-sweep (one-time)"
-	@printf "  %-25s %s\n" "format" "Format all code with rustfmt (nightly)"
+	@printf "  %-25s %s\n" "format" "Format all code with rustfmt ($(FORMAT_TOOLCHAIN))"
 	@printf "  %-25s %s\n" "format-check" "Format code and fail if files changed"
 	@printf "  %-25s %s\n" "build-wasm" "Build WebAssembly packages (requires wasm-pack)"
 	@echo ""
