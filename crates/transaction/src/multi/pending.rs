@@ -71,38 +71,31 @@ impl PendingWrites {
 	}
 
 	#[inline]
-	pub fn get_entry(&self, key: &TaggedKey) -> Option<(&TaggedKeyBound, &DeltaEntry)> {
-		let (key, slot) = self.index.get_key_value(&TaggedKeyBound::Key(key.clone()))?;
-		self.entry_at(*slot).map(|entry| (key, entry))
-	}
-
-	#[inline]
 	pub fn contains_key(&self, key: &TaggedKey) -> bool {
 		self.index.contains_key(&TaggedKeyBound::Key(key.clone()))
 	}
 
-	pub fn insert(&mut self, value: DeltaEntry) {
+	pub fn insert(&mut self, value: DeltaEntry) -> Option<DeltaEntry> {
 		let key = TaggedKeyBound::Key(value.key().clone());
 		let size_estimate = self.estimate_size(&value);
 
 		if let Some(&slot) = self.index.get(&key) {
 			let pre_size = self.entry_at(slot).map(|pre| self.estimate_size(pre));
-			if let Some(entry) = self.entries.get_mut(slot as usize) {
-				*entry = Some(value);
-			}
+			let replaced = self.entries.get_mut(slot as usize).and_then(|entry| entry.replace(value));
 			if let Some(pre_size) = pre_size
 				&& size_estimate != pre_size
 			{
 				self.estimated_size =
 					self.estimated_size.saturating_sub(pre_size).saturating_add(size_estimate);
 			}
-			return;
+			return replaced;
 		}
 
 		let slot = self.entries.len() as u32;
 		self.entries.push(Some(value));
 		self.index.insert(key, slot);
 		self.estimated_size = self.estimated_size.saturating_add(size_estimate);
+		None
 	}
 
 	pub fn remove_entry(&mut self, key: &TaggedKey) -> Option<(TaggedKeyBound, DeltaEntry)> {

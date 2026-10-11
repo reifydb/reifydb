@@ -340,6 +340,7 @@ impl MultiWriteTransaction {
 			.fold(ByteSize::ZERO, |total, entry| total + self.pending_writes.estimate_size(entry));
 		self.admit(pending.len() as u64, size)?;
 		self.conflicts.reserve_writes(pending.len());
+		self.delta_log.reserve(pending.len());
 		for entry in pending {
 			self.apply(entry);
 		}
@@ -465,6 +466,7 @@ impl MultiWriteTransaction {
 			.fold(ByteSize::ZERO, |total, entry| total + self.pending_writes.estimate_size(entry));
 		self.admit(pending.len() as u64, size)?;
 		self.conflicts.reserve_writes(pending.len());
+		self.delta_log.reserve(pending.len());
 		for entry in pending {
 			self.apply(entry);
 		}
@@ -787,22 +789,20 @@ impl MultiWriteTransaction {
 	fn apply(&mut self, pending: DeltaEntry) {
 		self.conflicts.mark_write(pending.key());
 
-		if matches!(pending.delta, Delta::Remove { .. })
-			&& matches!(
-				self.pending_writes.get_entry(pending.key()),
-				Some((
-					_,
-					DeltaEntry {
-						delta: Delta::Set { .. },
-						..
-					}
-				))
-			) {
-			self.removed_after_set.push(pending.key().clone());
-		}
-
 		self.delta_log.push(pending.clone());
-		self.pending_writes.insert(pending);
+		let removes = matches!(pending.delta, Delta::Remove { .. });
+		let replaced = self.pending_writes.insert(pending);
+		if removes
+			&& let Some(DeltaEntry {
+				delta: Delta::Set {
+					key,
+					..
+				},
+				..
+			}) = replaced
+		{
+			self.removed_after_set.push(key);
+		}
 	}
 }
 
