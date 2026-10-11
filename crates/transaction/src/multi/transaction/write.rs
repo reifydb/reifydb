@@ -256,18 +256,14 @@ impl MultiWriteTransaction {
 		{
 			self.op_counts.key(key.kind()).sets += 1;
 		}
-		let encoded = key.encode();
-		self.modify(
-			encoded,
-			DeltaEntry {
-				delta: Delta::Set {
-					key,
-					bytes,
-					pre: SetPre::Unknown,
-				},
-				version: self.base_version(),
+		self.modify(DeltaEntry {
+			delta: Delta::Set {
+				key,
+				bytes,
+				pre: SetPre::Unknown,
 			},
-		)
+			version: self.base_version(),
+		})
 	}
 
 	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
@@ -363,14 +359,10 @@ impl MultiWriteTransaction {
 		{
 			self.op_counts.key(key.kind()).removes += 1;
 		}
-		let encoded = key.encode();
-		self.modify(
-			encoded,
-			DeltaEntry {
-				delta: Delta::remove_announced(key, pre),
-				version: self.base_version(),
-			},
-		)
+		self.modify(DeltaEntry {
+			delta: Delta::remove_announced(key, pre),
+			version: self.base_version(),
+		})
 	}
 
 	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
@@ -389,23 +381,19 @@ impl MultiWriteTransaction {
 		{
 			self.op_counts.key(key.kind()).removes += 1;
 		}
-		let encoded = key.encode();
 		let announce = match self.get(&key)? {
 			Some(found) => RemoveAnnounce::Announced {
 				pre: found.bytes().clone(),
 			},
 			None => RemoveAnnounce::Silent,
 		};
-		self.modify(
-			encoded,
-			DeltaEntry {
-				delta: Delta::Remove {
-					key,
-					announce,
-				},
-				version: self.base_version(),
+		self.modify(DeltaEntry {
+			delta: Delta::Remove {
+				key,
+				announce,
 			},
-		)
+			version: self.base_version(),
+		})
 	}
 
 	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
@@ -431,8 +419,8 @@ impl MultiWriteTransaction {
 			}
 		}
 		let version = self.base_version();
-		let mut removed: BTreeSet<EncodedKey> = BTreeSet::new();
-		let first: Vec<bool> = entries.iter().map(|(key, _)| removed.insert(key.encode())).collect();
+		let mut removed: BTreeSet<&TaggedKey> = BTreeSet::new();
+		let first: Vec<bool> = entries.iter().map(|(key, _)| removed.insert(key)).collect();
 		let unread: Vec<TaggedKey> = entries
 			.iter()
 			.zip(&first)
@@ -495,23 +483,19 @@ impl MultiWriteTransaction {
 		{
 			self.op_counts.key(key.kind()).removes += 1;
 		}
-		let encoded = key.encode();
 		let announce = match self.get(&key)? {
 			Some(found) => RemoveAnnounce::Unobserved {
 				pre: found.bytes().clone(),
 			},
 			None => RemoveAnnounce::Silent,
 		};
-		self.modify(
-			encoded,
-			DeltaEntry {
-				delta: Delta::Remove {
-					key,
-					announce,
-				},
-				version: self.base_version(),
+		self.modify(DeltaEntry {
+			delta: Delta::Remove {
+				key,
+				announce,
 			},
-		)
+			version: self.base_version(),
+		})
 	}
 
 	pub fn remove_unobserved<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
@@ -531,14 +515,10 @@ impl MultiWriteTransaction {
 		{
 			self.op_counts.key(key.kind()).removes += 1;
 		}
-		let encoded = key.encode();
-		self.modify(
-			encoded,
-			DeltaEntry {
-				delta: Delta::remove_unobserved(key, pre),
-				version: self.base_version(),
-			},
-		)
+		self.modify(DeltaEntry {
+			delta: Delta::remove_unobserved(key, pre),
+			version: self.base_version(),
+		})
 	}
 
 	pub fn remove_unobserved_with_pre<K: Into<TaggedKey> + Clone>(
@@ -561,14 +541,10 @@ impl MultiWriteTransaction {
 		{
 			self.op_counts.key(key.kind()).removes += 1;
 		}
-		let encoded = key.encode();
-		self.modify(
-			encoded,
-			DeltaEntry {
-				delta: Delta::remove_silent(key),
-				version: self.base_version(),
-			},
-		)
+		self.modify(DeltaEntry {
+			delta: Delta::remove_silent(key),
+			version: self.base_version(),
+		})
 	}
 
 	pub fn remove_silent<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
@@ -778,16 +754,15 @@ impl MultiWriteTransaction {
 impl MultiWriteTransaction {
 	#[instrument(name = "transaction::command::modify", level = "trace", skip(self, pending), fields(
 		txn_id = %self.id,
-		key_hex = %hex_display(encoded.as_ref()),
 		is_remove = pending.was_removed()
 	))]
-	fn modify(&mut self, encoded: EncodedKey, pending: DeltaEntry) -> Result<()> {
+	fn modify(&mut self, pending: DeltaEntry) -> Result<()> {
 		reifydb_assertions! {
 			assert!(
 				!matches!(pending.key(), TaggedKey::OperatorState(_)),
 				"operator state must reach the operator store through the committer split, never the \
 				 multi store: {}",
-				hex_display(encoded.as_ref())
+				hex_display(pending.key().encode().as_ref())
 			);
 		}
 
