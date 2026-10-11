@@ -21,6 +21,7 @@ reifydb-catalog = { workspace = true, optional = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true, optional = true }
 reifydb-evaluate = { workspace = true, optional = true }
+reifydb-extension = { workspace = true, optional = true }
 reifydb-runtime = { workspace = true }
 reifydb-store-column = { workspace = true, optional = true }
 reifydb-sub-api = { workspace = true }
@@ -40,6 +41,7 @@ column = [
 	"dep:reifydb-engine",
 	"reifydb-engine/column",
 	"dep:reifydb-evaluate",
+	"dep:reifydb-extension",
 	"dep:reifydb-store-column",
 	"dep:reifydb-transaction",
 	"dep:thiserror",
