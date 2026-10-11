@@ -12,12 +12,16 @@ use reifydb_core::{
 		queue::Queue,
 		ringbuffer::RingBuffer,
 		series::Series,
+		storage::StorageId,
 		sumtype::{SumType, SumTypeKind},
 		table::Table,
+		view::View,
 	},
 	internal,
+	row::RowSettings,
 };
 use reifydb_export::{
+	error::ExportError,
 	model::{
 		ExportModel, NameResolver, ObjectRows, QueueExport, ResolvedDictionary, ResolvedSumType,
 		ResolvedVariant, RingBufferExport, SeriesExport, TableExport,
@@ -67,6 +71,7 @@ impl Database {
 			all_ringbuffers,
 			all_queues,
 			all_series,
+			all_views,
 		) = {
 			let mut qt = self.engine().begin_query(IdentityId::system())?;
 			let mut txn = Transaction::Query(&mut qt);
@@ -86,25 +91,38 @@ impl Database {
 				all_sumtypes.extend(catalog.list_sumtypes(&mut txn, ns.id())?);
 			}
 
-			let all_tables: Vec<Table> = catalog
-				.list_tables(&mut txn)?
-				.into_iter()
-				.filter(|t| user_ids.contains(&t.namespace.0))
-				.collect();
-			let all_ringbuffers: Vec<RingBuffer> = catalog
+			let mut all_tables: Vec<(Table, Option<RowSettings>)> = Vec::new();
+			for t in
+				catalog.list_tables(&mut txn)?.into_iter().filter(|t| user_ids.contains(&t.namespace.0))
+			{
+				let row = catalog.find_row_settings(&mut txn, StorageId::Table(t.id))?;
+				all_tables.push((t, row));
+			}
+			let mut all_ringbuffers: Vec<(RingBuffer, Option<RowSettings>)> = Vec::new();
+			for r in catalog
 				.list_ringbuffers(&mut txn)?
 				.into_iter()
 				.filter(|r| user_ids.contains(&r.namespace.0))
-				.collect();
+			{
+				let row = catalog.find_row_settings(&mut txn, StorageId::RingBuffer(r.id))?;
+				all_ringbuffers.push((r, row));
+			}
 			let all_queues: Vec<Queue> = catalog
 				.list_queues(&mut txn)?
 				.into_iter()
 				.filter(|q| user_ids.contains(&q.namespace.0))
 				.collect();
-			let all_series: Vec<Series> = catalog
-				.list_series(&mut txn)?
+			let mut all_series: Vec<(Series, Option<RowSettings>)> = Vec::new();
+			for s in
+				catalog.list_series(&mut txn)?.into_iter().filter(|s| user_ids.contains(&s.namespace.0))
+			{
+				let row = catalog.find_row_settings(&mut txn, StorageId::Series(s.id))?;
+				all_series.push((s, row));
+			}
+			let all_views: Vec<View> = catalog
+				.list_views_all(&mut txn)?
 				.into_iter()
-				.filter(|s| user_ids.contains(&s.namespace.0))
+				.filter(|v| user_ids.contains(&v.namespace().0))
 				.collect();
 
 			(
@@ -115,6 +133,7 @@ impl Database {
 				all_ringbuffers,
 				all_queues,
 				all_series,
+				all_views,
 			)
 		};
 
@@ -153,35 +172,52 @@ impl Database {
 			);
 		}
 
-		let tables: Vec<Table> = all_tables
+		if let Some(view) =
+			all_views.iter().find(|v| select_object(options, &resolver, v.namespace().0, v.name(), None))
+		{
+			return Err(Error(Box::new(internal!(
+				"{}",
+				ExportError::UnsupportedView {
+					view: qualify(&resolver, view.namespace().0, view.name()),
+				}
+			))));
+		}
+
+		let tables: Vec<(Table, Option<RowSettings>)> = all_tables
 			.into_iter()
-			.filter(|t| select_object(options, &resolver, t.namespace.0, &t.name, ObjectKind::Table))
+			.filter(|(t, _)| {
+				select_object(options, &resolver, t.namespace.0, &t.name, Some(ObjectKind::Table))
+			})
 			.collect();
-		let ringbuffers: Vec<RingBuffer> = all_ringbuffers
+		let ringbuffers: Vec<(RingBuffer, Option<RowSettings>)> = all_ringbuffers
 			.into_iter()
-			.filter(|r| select_object(options, &resolver, r.namespace.0, &r.name, ObjectKind::RingBuffer))
+			.filter(|(r, _)| {
+				select_object(options, &resolver, r.namespace.0, &r.name, Some(ObjectKind::RingBuffer))
+			})
 			.collect();
 		let queues: Vec<Queue> = all_queues
 			.into_iter()
-			.filter(|q| select_object(options, &resolver, q.namespace.0, &q.name, ObjectKind::Queue))
+			.filter(|q| select_object(options, &resolver, q.namespace.0, &q.name, Some(ObjectKind::Queue)))
 			.collect();
-		let series: Vec<Series> = all_series
+		let series: Vec<(Series, Option<RowSettings>)> = all_series
 			.into_iter()
-			.filter(|s| select_object(options, &resolver, s.namespace.0, &s.name, ObjectKind::Series))
+			.filter(|(s, _)| {
+				select_object(options, &resolver, s.namespace.0, &s.name, Some(ObjectKind::Series))
+			})
 			.collect();
 
 		let mut referenced_dicts: HashSet<u64> = HashSet::new();
 		let mut referenced_sumtypes: HashSet<u64> = HashSet::new();
 		for columns in tables
 			.iter()
-			.map(|t| &t.columns)
-			.chain(ringbuffers.iter().map(|r| &r.columns))
+			.map(|(t, _)| &t.columns)
+			.chain(ringbuffers.iter().map(|(r, _)| &r.columns))
 			.chain(queues.iter().map(|q| &q.columns))
-			.chain(series.iter().map(|s| &s.columns))
+			.chain(series.iter().map(|(s, _)| &s.columns))
 		{
 			collect_referenced(columns, &mut referenced_dicts, &mut referenced_sumtypes);
 		}
-		for s in &series {
+		for (s, _) in &series {
 			if let Some(tag) = &s.tag {
 				referenced_sumtypes.insert(tag.to_u64());
 			}
@@ -196,7 +232,7 @@ impl Database {
 						&resolver,
 						d.namespace.0,
 						&d.name,
-						ObjectKind::Dictionary,
+						Some(ObjectKind::Dictionary),
 					)
 			})
 			.collect();
@@ -210,23 +246,23 @@ impl Database {
 						&resolver,
 						st.namespace.0,
 						&st.name,
-						ObjectKind::Enum,
+						Some(ObjectKind::Enum),
 					);
 				referenced || selected
 			})
 			.collect();
 
 		let mut needed_namespaces: HashSet<u64> = HashSet::new();
-		for t in &tables {
+		for (t, _) in &tables {
 			needed_namespaces.insert(t.namespace.0);
 		}
-		for r in &ringbuffers {
+		for (r, _) in &ringbuffers {
 			needed_namespaces.insert(r.namespace.0);
 		}
 		for q in &queues {
 			needed_namespaces.insert(q.namespace.0);
 		}
-		for s in &series {
+		for (s, _) in &series {
 			needed_namespaces.insert(s.namespace.0);
 		}
 		for d in &dictionaries {
@@ -243,7 +279,7 @@ impl Database {
 		let include_data = options.includes_data();
 
 		let mut table_exports = Vec::with_capacity(tables.len());
-		for table in tables {
+		for (table, row) in tables {
 			let rows = if include_data {
 				Some(self.read_object_rows(&resolver, table.namespace.0, &table.name)?)
 			} else {
@@ -251,12 +287,13 @@ impl Database {
 			};
 			table_exports.push(TableExport {
 				table,
+				row,
 				rows,
 			});
 		}
 
 		let mut ringbuffer_exports = Vec::with_capacity(ringbuffers.len());
-		for ringbuffer in ringbuffers {
+		for (ringbuffer, row) in ringbuffers {
 			let rows = if include_data {
 				Some(self.read_object_rows(&resolver, ringbuffer.namespace.0, &ringbuffer.name)?)
 			} else {
@@ -264,6 +301,7 @@ impl Database {
 			};
 			ringbuffer_exports.push(RingBufferExport {
 				ringbuffer,
+				row,
 				rows,
 			});
 		}
@@ -276,7 +314,7 @@ impl Database {
 			.collect();
 
 		let mut series_exports = Vec::with_capacity(series.len());
-		for s in series {
+		for (s, row) in series {
 			let rows = if include_data {
 				Some(self.read_object_rows(&resolver, s.namespace.0, &s.name)?)
 			} else {
@@ -284,6 +322,7 @@ impl Database {
 			};
 			series_exports.push(SeriesExport {
 				series: s,
+				row,
 				rows,
 			});
 		}
@@ -349,14 +388,14 @@ fn select_object(
 	resolver: &NameResolver,
 	namespace_id: u64,
 	name: &str,
-	kind: ObjectKind,
+	kind: Option<ObjectKind>,
 ) -> bool {
 	match &options.selection {
 		ExportSelection::All => true,
 		ExportSelection::Namespaces(names) => {
 			resolver.namespaces.get(&namespace_id).map(|ns| names.iter().any(|n| n == ns)).unwrap_or(false)
 		}
-		ExportSelection::Kinds(kinds) => kinds.contains(&kind),
+		ExportSelection::Kinds(kinds) => kind.is_some_and(|kind| kinds.contains(&kind)),
 		ExportSelection::Objects(objects) => match resolver.namespaces.get(&namespace_id) {
 			Some(ns) => objects.iter().any(|s| &s.namespace == ns && s.name == name),
 			None => false,

@@ -13,6 +13,7 @@ use reifydb_core::{
 		sumtype::{Field, SumType, SumTypeKind, Variant},
 		table::Table,
 	},
+	row::{RowSettings, Ttl},
 };
 use reifydb_export::{
 	model::{NameResolver, ResolvedDictionary, ResolvedSumType, ResolvedVariant},
@@ -103,7 +104,7 @@ fn table(name: &str, columns: Vec<Column>) -> Table {
 		columns,
 		primary_key: None,
 		partition_by: vec![],
-		time: TimeSource::Processing,
+		time: TimeSource::None,
 	}
 }
 
@@ -125,11 +126,11 @@ fn table_with_plain_and_constrained_columns() {
 		],
 	);
 	assert_eq!(
-		render_table(&t, &resolver(), false).unwrap(),
+		render_table(&t, None, &resolver(), false).unwrap(),
 		"CREATE TABLE sales::orders { id: int4, name: utf8(50), note: option(utf8) };"
 	);
 	assert_eq!(
-		render_table(&t, &resolver(), true).unwrap(),
+		render_table(&t, None, &resolver(), true).unwrap(),
 		"CREATE TABLE IF NOT EXISTS sales::orders { id: int4, name: utf8(50), note: option(utf8) };"
 	);
 }
@@ -138,7 +139,7 @@ fn table_with_plain_and_constrained_columns() {
 fn table_with_dictionary_column_via_constraint() {
 	let t = table("t", vec![column(0, "code", TypeConstraint::dictionary(DictionaryId(DICT), ValueType::Uint4))]);
 	assert_eq!(
-		render_table(&t, &resolver(), false).unwrap(),
+		render_table(&t, None, &resolver(), false).unwrap(),
 		"CREATE TABLE sales::t { code: utf8 with { dictionary: sales::tokens } };"
 	);
 }
@@ -148,7 +149,7 @@ fn table_with_dictionary_column_via_dictionary_id_field() {
 	let mut col = column(0, "code", TypeConstraint::unconstrained(ValueType::Utf8));
 	col.dictionary_id = Some(DictionaryId(DICT));
 	assert_eq!(
-		render_table(&table("t", vec![col]), &resolver(), false).unwrap(),
+		render_table(&table("t", vec![col]), None, &resolver(), false).unwrap(),
 		"CREATE TABLE sales::t { code: utf8 with { dictionary: sales::tokens } };"
 	);
 }
@@ -156,7 +157,10 @@ fn table_with_dictionary_column_via_dictionary_id_field() {
 #[test]
 fn table_with_sumtype_column() {
 	let t = table("t", vec![column(0, "state", TypeConstraint::sumtype(SumTypeId(SUM)))]);
-	assert_eq!(render_table(&t, &resolver(), false).unwrap(), "CREATE TABLE sales::t { state: sales::status };");
+	assert_eq!(
+		render_table(&t, None, &resolver(), false).unwrap(),
+		"CREATE TABLE sales::t { state: sales::status };"
+	);
 }
 
 #[test]
@@ -172,10 +176,10 @@ fn ring_buffer_with_partition_by() {
 		capacity: 1000,
 		primary_key: None,
 		partition_by: vec!["region".to_string()],
-		time: TimeSource::Processing,
+		time: TimeSource::None,
 	};
 	assert_eq!(
-		render_ringbuffer(&rb, &resolver()).unwrap(),
+		render_ringbuffer(&rb, None, &resolver()).unwrap(),
 		"CREATE RINGBUFFER sales::events { id: int4, region: utf8 } WITH { capacity: 1000, partition: { by: { region } } };"
 	);
 }
@@ -197,10 +201,10 @@ fn series_datetime_key_with_precision_and_tag() {
 		},
 		primary_key: None,
 		partition_by: vec![],
-		time: TimeSource::Processing,
+		time: TimeSource::None,
 	};
 	assert_eq!(
-		render_series(&series, &resolver()).unwrap(),
+		render_series(&series, None, &resolver()).unwrap(),
 		"CREATE SERIES sales::metrics { ts: datetime, value: int4 } WITH { key: ts, tag: sales::status, precision: millisecond };"
 	);
 }
@@ -221,11 +225,81 @@ fn series_integer_key_has_no_precision() {
 		},
 		primary_key: None,
 		partition_by: vec![],
+		time: TimeSource::None,
+	};
+	assert_eq!(
+		render_series(&series, None, &resolver()).unwrap(),
+		"CREATE SERIES sales::seq { k: int8, value: int4 } WITH { key: k };"
+	);
+}
+
+fn one_hour_ttl(persistent: bool) -> RowSettings {
+	RowSettings {
+		ttl: Some(Ttl {
+			duration: Duration::from_hours_const(1),
+		}),
+		persistent,
+	}
+}
+
+#[test]
+fn table_with_processing_time_and_row_ttl() {
+	// A table without other WITH keys must still gain a WITH block, else time and ttl are lost on re-import.
+	let mut t = table("t", vec![column(0, "id", TypeConstraint::unconstrained(ValueType::Int4))]);
+	t.time = TimeSource::Processing;
+	assert_eq!(
+		render_table(&t, Some(&one_hour_ttl(true)), &resolver(), false).unwrap(),
+		"CREATE TABLE sales::t { id: int4 } WITH { time: processing, row: { ttl: 1h } };"
+	);
+}
+
+#[test]
+fn ring_buffer_with_partition_time_and_row_ttl() {
+	// time must follow the existing keys and precede row, otherwise exports of older objects change byte for byte.
+	let rb = RingBuffer {
+		id: RingBufferId(1),
+		namespace: NamespaceId(NS),
+		name: "events".to_string(),
+		columns: vec![
+			column(0, "id", TypeConstraint::unconstrained(ValueType::Int4)),
+			column(1, "region", TypeConstraint::unconstrained(ValueType::Utf8)),
+		],
+		capacity: 1000,
+		primary_key: None,
+		partition_by: vec!["region".to_string()],
 		time: TimeSource::Processing,
 	};
 	assert_eq!(
-		render_series(&series, &resolver()).unwrap(),
-		"CREATE SERIES sales::seq { k: int8, value: int4 } WITH { key: k };"
+		render_ringbuffer(&rb, Some(&one_hour_ttl(true)), &resolver()).unwrap(),
+		"CREATE RINGBUFFER sales::events { id: int4, region: utf8 } WITH { capacity: 1000, partition: { by: { region } }, time: processing, row: { ttl: 1h } };"
+	);
+}
+
+#[test]
+fn series_with_event_time_and_full_row_settings() {
+	// Without event(ts) the series stamps processing time; without persistent false it re-imports as persistent.
+	let series = Series {
+		id: SeriesId(1),
+		namespace: NamespaceId(NS),
+		name: "metrics".to_string(),
+		columns: vec![
+			column(0, "ts", TypeConstraint::unconstrained(ValueType::DateTime)),
+			column(1, "value", TypeConstraint::unconstrained(ValueType::Int4)),
+		],
+		tag: None,
+		key: SeriesKey::DateTime {
+			column: "ts".to_string(),
+			precision: TimestampPrecision::Millisecond,
+		},
+		primary_key: None,
+		partition_by: vec![],
+		time: TimeSource::Event {
+			ts: "ts".to_string(),
+		},
+	};
+	assert_eq!(
+		render_series(&series, Some(&one_hour_ttl(false)), &resolver()).unwrap(),
+		"CREATE SERIES sales::metrics { ts: datetime, value: int4 } WITH { key: ts, precision: millisecond, time: event(ts), row: { ttl: 1h, persistent: false } };"
 	);
 }
 
@@ -310,7 +384,7 @@ fn enum_unit_column_collapses_tag_to_logical() {
 		],
 	);
 	assert_eq!(
-		render_table(&t, &resolver(), false).unwrap(),
+		render_table(&t, None, &resolver(), false).unwrap(),
 		"CREATE TABLE sales::t { id: int4, state: sales::status };"
 	);
 }
@@ -332,7 +406,7 @@ fn enum_structured_column_absorbs_field_columns() {
 		],
 	);
 	assert_eq!(
-		render_table(&t, &resolver(), false).unwrap(),
+		render_table(&t, None, &resolver(), false).unwrap(),
 		"CREATE TABLE sales::t { id: int4, shape: sales::shape };"
 	);
 }

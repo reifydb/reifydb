@@ -35,7 +35,12 @@ pub fn render_script(model: &ExportModel, options: &ExportOptions) -> Result<Str
 			out.push('\n');
 		}
 		for table in &model.tables {
-			out.push_str(&ddl::render_table(&table.table, &model.resolver, options.if_not_exists)?);
+			out.push_str(&ddl::render_table(
+				&table.table,
+				table.row.as_ref(),
+				&model.resolver,
+				options.if_not_exists,
+			)?);
 			out.push('\n');
 		}
 		for queue in &model.queues {
@@ -44,11 +49,15 @@ pub fn render_script(model: &ExportModel, options: &ExportOptions) -> Result<Str
 		}
 
 		for ringbuffer in &model.ringbuffers {
-			out.push_str(&ddl::render_ringbuffer(&ringbuffer.ringbuffer, &model.resolver)?);
+			out.push_str(&ddl::render_ringbuffer(
+				&ringbuffer.ringbuffer,
+				ringbuffer.row.as_ref(),
+				&model.resolver,
+			)?);
 			out.push('\n');
 		}
 		for series in &model.series {
-			out.push_str(&ddl::render_series(&series.series, &model.resolver)?);
+			out.push_str(&ddl::render_series(&series.series, series.row.as_ref(), &model.resolver)?);
 			out.push('\n');
 		}
 		out.push('\n');

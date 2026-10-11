@@ -32,6 +32,11 @@ pub enum ExportError {
 		value_type: String,
 	},
 
+	#[error("view {view} cannot be exported")]
+	UnsupportedView {
+		view: String,
+	},
+
 	#[error("unresolved {kind} reference with id {id} while rendering {object}")]
 	UnresolvedReference {
 		kind: &'static str,

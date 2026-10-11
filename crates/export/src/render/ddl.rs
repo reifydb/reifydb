@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	column::Column,
-	dictionary::Dictionary,
-	namespace::Namespace,
-	queue::{Queue, QueueDispatch},
-	ringbuffer::RingBuffer,
-	series::{Series, SeriesKey, TimestampPrecision},
-	sumtype::{Field, SumType},
-	table::Table,
+use reifydb_core::{
+	common::TimeSource,
+	interface::catalog::{
+		column::Column,
+		dictionary::Dictionary,
+		namespace::Namespace,
+		queue::{Queue, QueueDispatch},
+		ringbuffer::RingBuffer,
+		series::{Series, SeriesKey, TimestampPrecision},
+		sumtype::{Field, SumType},
+		table::Table,
+	},
+	row::RowSettings,
 };
 
 use crate::{
@@ -137,18 +141,33 @@ pub fn render_dictionary(
 	Ok(format!("CREATE DICTIONARY{} {} FOR {} AS {};", keyword_prefix(if_not_exists), name, value_type, id_type))
 }
 
-pub fn render_table(table: &Table, resolver: &NameResolver, if_not_exists: bool) -> Result<String, ExportError> {
+pub fn render_table(
+	table: &Table,
+	row: Option<&RowSettings>,
+	resolver: &NameResolver,
+	if_not_exists: bool,
+) -> Result<String, ExportError> {
 	let name = qualified_name(resolver, table.namespace.0, &table.name, &table.name)?;
 	let columns = render_columns_block(&table.columns, resolver, &table.name)?;
-	let with = if table.partition_by.is_empty() {
+	let mut parts = Vec::new();
+	if !table.partition_by.is_empty() {
+		parts.push(format!("partition: {{ by: {{ {} }} }}", table.partition_by.join(", ")));
+	}
+	parts.extend(render_time(&table.time));
+	parts.extend(render_row(row));
+	let with = if parts.is_empty() {
 		String::new()
 	} else {
-		format!(" WITH {{ partition: {{ by: {{ {} }} }} }}", table.partition_by.join(", "))
+		format!(" WITH {{ {} }}", parts.join(", "))
 	};
 	Ok(format!("CREATE TABLE{} {} {}{};", keyword_prefix(if_not_exists), name, columns, with))
 }
 
-pub fn render_ringbuffer(ringbuffer: &RingBuffer, resolver: &NameResolver) -> Result<String, ExportError> {
+pub fn render_ringbuffer(
+	ringbuffer: &RingBuffer,
+	row: Option<&RowSettings>,
+	resolver: &NameResolver,
+) -> Result<String, ExportError> {
 	let name = qualified_name(resolver, ringbuffer.namespace.0, &ringbuffer.name, &ringbuffer.name)?;
 	let columns = render_columns_block(&ringbuffer.columns, resolver, &ringbuffer.name)?;
 
@@ -156,6 +175,7 @@ pub fn render_ringbuffer(ringbuffer: &RingBuffer, resolver: &NameResolver) -> Re
 	if !ringbuffer.partition_by.is_empty() {
 		with.push_str(&format!(", partition: {{ by: {{ {} }} }}", ringbuffer.partition_by.join(", ")));
 	}
+	push_time_and_row(&mut with, &ringbuffer.time, row);
 
 	Ok(format!("CREATE RINGBUFFER {} {} WITH {{ {} }};", name, columns, with))
 }
@@ -209,7 +229,11 @@ fn render_queue_dispatch(dispatch: &QueueDispatch) -> String {
 	}
 }
 
-pub fn render_series(series: &Series, resolver: &NameResolver) -> Result<String, ExportError> {
+pub fn render_series(
+	series: &Series,
+	row: Option<&RowSettings>,
+	resolver: &NameResolver,
+) -> Result<String, ExportError> {
 	let name = qualified_name(resolver, series.namespace.0, &series.name, &series.name)?;
 	let columns = render_columns_block(&series.columns, resolver, &series.name)?;
 
@@ -236,8 +260,42 @@ pub fn render_series(series: &Series, resolver: &NameResolver) -> Result<String,
 	if !series.partition_by.is_empty() {
 		with.push_str(&format!(", partition: {{ by: {{ {} }} }}", series.partition_by.join(", ")));
 	}
+	push_time_and_row(&mut with, &series.time, row);
 
 	Ok(format!("CREATE SERIES {} {} WITH {{ {} }};", name, columns, with))
+}
+
+fn push_time_and_row(with: &mut String, time: &TimeSource, row: Option<&RowSettings>) {
+	for part in render_time(time).into_iter().chain(render_row(row)) {
+		with.push_str(", ");
+		with.push_str(&part);
+	}
+}
+
+fn render_time(time: &TimeSource) -> Option<String> {
+	match time {
+		TimeSource::None => None,
+		TimeSource::Processing => Some("time: processing".to_string()),
+		TimeSource::Event {
+			ts,
+		} => Some(format!("time: event({})", ts)),
+	}
+}
+
+fn render_row(row: Option<&RowSettings>) -> Option<String> {
+	let row = row?;
+	let mut parts = Vec::new();
+	if let Some(ttl) = &row.ttl {
+		parts.push(format!("ttl: {}", ttl.duration));
+	}
+	if !row.persistent {
+		parts.push("persistent: false".to_string());
+	}
+	if parts.is_empty() {
+		None
+	} else {
+		Some(format!("row: {{ {} }}", parts.join(", ")))
+	}
 }
 
 fn render_precision(precision: &TimestampPrecision) -> &'static str {

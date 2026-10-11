@@ -3,9 +3,12 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::catalog::{
-	dictionary::Dictionary, namespace::Namespace, queue::Queue, ringbuffer::RingBuffer, series::Series,
-	sumtype::SumType, table::Table,
+use reifydb_core::{
+	interface::catalog::{
+		dictionary::Dictionary, namespace::Namespace, queue::Queue, ringbuffer::RingBuffer, series::Series,
+		sumtype::SumType, table::Table,
+	},
+	row::RowSettings,
 };
 use reifydb_value::value::{Value, value_type::ValueType};
 
@@ -16,6 +19,7 @@ pub struct ObjectRows {
 
 pub struct TableExport {
 	pub table: Table,
+	pub row: Option<RowSettings>,
 	pub rows: Option<ObjectRows>,
 }
 
@@ -25,11 +29,13 @@ pub struct QueueExport {
 
 pub struct RingBufferExport {
 	pub ringbuffer: RingBuffer,
+	pub row: Option<RowSettings>,
 	pub rows: Option<ObjectRows>,
 }
 
 pub struct SeriesExport {
 	pub series: Series,
+	pub row: Option<RowSettings>,
 	pub rows: Option<ObjectRows>,
 }
 
