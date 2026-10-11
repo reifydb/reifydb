@@ -161,10 +161,6 @@ impl TransformLoader {
 		self.load_transform(&path, params)?
 			.ok_or_else(|| SdkError::Other(format!("Transform library no longer valid: {}", name)))
 	}
-
-	pub fn has_transform(&self, name: &str) -> bool {
-		self.transform_paths.contains_key(name)
-	}
 }
 
 #[derive(Debug, Clone)]

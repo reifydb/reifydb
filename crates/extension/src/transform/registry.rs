@@ -37,10 +37,6 @@ impl TransformsInner {
 	pub fn get_transform(&self, name: &str) -> Option<Box<dyn Transform>> {
 		self.transforms.get(name).map(|func| func())
 	}
-
-	pub fn has_transform(&self, name: &str) -> bool {
-		self.transforms.contains_key(name)
-	}
 }
 
 pub struct TransformsConfigurator(TransformsInner);
