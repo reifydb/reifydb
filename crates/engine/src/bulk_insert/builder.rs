@@ -347,8 +347,7 @@ fn check_rows<V: ValidationMode>(
 
 	if let TimeSource::Event {
 		ts,
-	} = checks.time
-		&& let Some(index) = checks.columns.iter().position(|column| &column.name == ts)
+	} = checks.time && let Some(index) = checks.columns.iter().position(|column| &column.name == ts)
 		&& checks.columns[index].dictionary_id.is_none()
 	{
 		let view = &views[index];

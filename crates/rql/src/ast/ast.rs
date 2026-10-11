@@ -280,12 +280,9 @@ impl<'bump> Ast<'bump> {
 		matches!(
 			self,
 			Ast::Create(_)
-				| Ast::Alter(_)
-				| Ast::Drop(_)
-				| Ast::Grant(_)
-				| Ast::Revoke(_)
-				| Ast::Migrate(_)
-				| Ast::RollbackMigration(_)
+				| Ast::Alter(_) | Ast::Drop(_)
+				| Ast::Grant(_) | Ast::Revoke(_)
+				| Ast::Migrate(_) | Ast::RollbackMigration(_)
 				| Ast::RunTests(_)
 		)
 	}

@@ -2660,8 +2660,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if let Some(p) = &persistent
-			&& !p.value
-			&& duration.is_none()
+			&& !p.value && duration.is_none()
 		{
 			let fragment = p.token.fragment.to_owned();
 			return Err(Error::from(TypeError::Ast {

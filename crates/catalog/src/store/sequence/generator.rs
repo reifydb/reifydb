@@ -291,8 +291,7 @@ macro_rules! impl_generator {
 					for i in 0..iterations_1 {
 						let expected = ($start as u128)
 							.saturating_add((batch_size_1 as u128) * ((i as u128) + 1))
-							.saturating_sub(1)
-							as $prim;
+							.saturating_sub(1) as $prim;
 						let got = $generator::next_batched(
 							&mut txn,
 							&seq_key("sequence_by_5000"),
@@ -315,8 +314,7 @@ macro_rules! impl_generator {
 					for i in 0..iterations_2 {
 						let expected = ($start as u128)
 							.saturating_add((batch_size_2 as u128) * ((i as u128) + 1))
-							.saturating_sub(1)
-							as $prim;
+							.saturating_sub(1) as $prim;
 						let got = $generator::next_batched(
 							&mut txn,
 							&seq_key("sequence_by_10000"),

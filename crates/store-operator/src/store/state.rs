@@ -382,12 +382,10 @@ impl StandardOperatorStore {
 
 		while items.len() < target {
 			let scanning = buffer_index < buffered.len()
-				|| !buffer_exhausted
-				|| page_index < page.len()
+				|| !buffer_exhausted || page_index < page.len()
 				|| !source.is_exhausted();
 			if consumed >= scan_budget
-				&& scanning
-				&& !items.is_empty()
+				&& scanning && !items.is_empty()
 				&& let Some(key) = walked.take()
 			{
 				resume = Some(key);

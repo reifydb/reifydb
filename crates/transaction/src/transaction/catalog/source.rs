@@ -48,8 +48,7 @@ impl TransactionalSourceChanges for AdminTransaction {
 				return Some(source);
 			}
 			if let Some(source) = &change.pre
-				&& source.id == id
-				&& change.op == Delete
+				&& source.id == id && change.op == Delete
 			{
 				return None;
 			}
@@ -67,8 +66,7 @@ impl TransactionalSourceChanges for AdminTransaction {
 			}
 			if let Some(source) = &change.pre
 				&& source.namespace == namespace
-				&& source.name == name
-				&& change.op == Delete
+				&& source.name == name && change.op == Delete
 			{
 				return None;
 			}
