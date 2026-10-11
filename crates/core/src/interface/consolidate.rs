@@ -61,6 +61,9 @@ fn has_cross_kind_overlap(diffs: &[Diff]) -> Result<bool> {
 	if !all_row_keyed(diffs.iter().filter(|diff| diff.row_count() > 0))? {
 		return Ok(false);
 	}
+	if !kind_ranges_meet(diffs)? {
+		return Ok(false);
+	}
 	let mut seen: HashMap<(Option<&ChangeOrigin>, RowNumber), u8> = HashMap::new();
 	for diff in diffs {
 		if diff.row_count() == 0 {
@@ -77,6 +80,55 @@ fn has_cross_kind_overlap(diffs: &[Diff]) -> Result<bool> {
 		}
 	}
 	Ok(false)
+}
+
+type KindRanges<'a> = (Option<&'a ChangeOrigin>, [Option<(RowNumber, RowNumber)>; 3]);
+
+fn kind_ranges_meet(diffs: &[Diff]) -> Result<bool> {
+	let mut first: Option<KindRanges> = None;
+	let mut rest: Vec<KindRanges> = Vec::new();
+	for diff in diffs {
+		if diff.row_count() == 0 {
+			continue;
+		}
+		let origin = diff.origin();
+		let rows = key_rows(diff)?;
+		let (_, ranges) = if first.as_ref().is_none_or(|(head, _)| *head == origin) {
+			first.get_or_insert((origin, [None; 3]))
+		} else if let Some(at) = rest.iter().position(|(known, _)| *known == origin) {
+			&mut rest[at]
+		} else {
+			let at = rest.len();
+			rest.push((origin, [None; 3]));
+			&mut rest[at]
+		};
+		let Some((&lead, tail)) = rows.split_first() else {
+			continue;
+		};
+		let (low, high) = tail.iter().fold((lead, lead), |(low, high), &row| (low.min(row), high.max(row)));
+		let kind = kind_rank(diff.kind());
+		let range = ranges[kind]
+			.map_or((low, high), |(known_low, known_high)| (known_low.min(low), known_high.max(high)));
+		ranges[kind] = Some(range);
+		let meets = ranges.iter().enumerate().any(|(other, known)| {
+			other != kind
+				&& known.is_some_and(|(known_low, known_high)| {
+					known_low <= range.1 && range.0 <= known_high
+				})
+		});
+		if meets {
+			return Ok(true);
+		}
+	}
+	Ok(false)
+}
+
+fn kind_rank(kind: DiffType) -> usize {
+	match kind {
+		DiffType::Insert => 0,
+		DiffType::Update => 1,
+		DiffType::Remove => 2,
+	}
 }
 
 fn kind_bit(kind: DiffType) -> u8 {
@@ -790,5 +842,13 @@ mod tests {
 			} => assert_eq!(rows_of(post), vec![(1, 20)]),
 			other => panic!("expected insert, got {:?}", other.kind()),
 		}
+	}
+
+	#[test]
+	#[cfg(reifydb_assertions)]
+	#[should_panic(expected = "diff consolidation keys an update row by its post row number")]
+	fn a_mismatched_update_beside_a_disjoint_kind_still_trips_the_row_number_check() {
+		// The pre-check must key updates through the checked path, or a mismatched pre row slips by.
+		let _ = coalesce_diffs(vec![insert(&[(10, 100)]), update(&[(1, 10)], &[(2, 20)])]);
 	}
 }
