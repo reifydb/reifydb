@@ -55,6 +55,7 @@ use crate::{
 	},
 	engine::StandardEngine,
 	error::EngineError,
+	flow_sync::sync_transactional_views,
 	partition::resolve_partitions,
 	policy::PolicyEvaluator,
 	transaction::operation::series::{SeriesRows, write_series_rows},
@@ -224,6 +225,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 				pending_ringbuffers,
 				pending_series,
 			)?;
+			sync_transactional_views(writer.services, Transaction::Command(txn))?;
 			Ok((result, observe(txn)))
 		})
 	}
