@@ -14,6 +14,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		catalog::{ColumnPropertyKey, PrimaryKeyKey},
 		column::{ColumnKey, ColumnSequenceKey, ColumnsKey},
+		partition::PartitionKey,
 		row::RowSequenceKey,
 	},
 	return_internal_error,
@@ -62,6 +63,20 @@ pub(crate) fn drop_object_metadata(
 		txn.remove(&ColumnsKey::new(*col_id))?;
 
 		txn.remove(col_key)?;
+	}
+
+	let mut partition_stream =
+		txn.range(PartitionKey::full_scan(ObjectId::from(storage)), RangeScope::All, 1024)?;
+	let mut partition_keys = Vec::new();
+	for entry in partition_stream.by_ref() {
+		let TaggedKey::Partition(key) = entry?.key else {
+			return_internal_error!("partition scan yielded a key that is not a PartitionKey");
+		};
+		partition_keys.push(key);
+	}
+	drop(partition_stream);
+	for key in partition_keys {
+		txn.remove(&key)?;
 	}
 
 	if let Some(pk_id) = pk_id {
