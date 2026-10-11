@@ -156,11 +156,18 @@ pub fn encode_series_block(
 	encodings: &BlockEncodings,
 	compressor: &Compressor,
 ) -> Result<ColumnBlock> {
-	let (system, user): (Vec<_>, Vec<_>) =
+	let (system, mut user): (Vec<_>, Vec<_>) =
 		columns.into_iter().partition(|(name, _, _)| SystemColumn::from_name(name).is_some());
 	let name = encoding.name.as_str();
-	let user_batch = batch(user.iter().map(|(_, _, column)| column.clone()).collect())?;
 	let expected = series.encoding_user_fields();
+	if user.iter().all(|(_, _, (_, array))| array.is_empty()) {
+		for ((column, _, (field, _)), want) in user.iter_mut().zip(&expected) {
+			if column == want.name() {
+				*field = Arc::clone(want);
+			}
+		}
+	}
+	let user_batch = batch(user.iter().map(|(_, _, column)| column.clone()).collect())?;
 	if user_batch.schema().fields().iter().ne(expected.iter()) {
 		return Err(BlockEncodingError::UserFieldsDiffer {
 			name: name.to_string(),
@@ -498,6 +505,27 @@ mod tests {
 
 	fn encode(series: &Series, columns: Columns) -> Result<ColumnBlock> {
 		encode_series_block(columns, series, series.encoding.as_ref().unwrap(), &registry(), &compressor())
+	}
+
+	#[test]
+	fn an_empty_bucket_scanned_with_nullable_fields_encodes_with_the_catalog_fields() {
+		// An empty bucket scan marks user fields nullable; rejecting it aborts the seal of any series with a
+		// key gap.
+		let encoded = series("ts", false, delta_on("value"));
+		let nullable: Columns = columns(&encoded, vec![], vec![])
+			.into_iter()
+			.map(|(name, ty, (field, array))| {
+				let field = match SystemColumn::from_name(&name) {
+					Some(_) => field,
+					None => Arc::new(field.as_ref().clone().with_nullable(true)),
+				};
+				(name, ty, (field, array))
+			})
+			.collect();
+		let block = encode(&encoded, nullable).unwrap();
+		assert_eq!(block.len(), 0);
+		let header = block.block_encoding.expect("an encoded block must carry its header");
+		assert!(header.user.iter().all(|column| !column.nullable), "{:?}", header.user);
 	}
 
 	fn error_of(result: Result<ColumnBlock>) -> (String, String) {
