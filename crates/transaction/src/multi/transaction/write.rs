@@ -63,7 +63,6 @@ pub struct WriteSavepoint {
 	pub(crate) pending_writes: PendingWrites,
 	pub(crate) count: u64,
 	pub(crate) size: ByteSize,
-	pub(crate) duplicates: Vec<DeltaEntry>,
 	pub(crate) delta_log_len: usize,
 	pub(crate) removed_after_set_len: usize,
 	pub(crate) conflicts: ConflictManager,
@@ -89,7 +88,6 @@ pub struct MultiWriteTransaction {
 	pub(crate) oracle: Arc<Oracle<StandardVersionProvider>>,
 	pub(crate) conflicts: ConflictManager,
 	pub(crate) pending_writes: PendingWrites,
-	pub(crate) duplicates: Vec<DeltaEntry>,
 
 	pub(crate) delta_log: Vec<DeltaEntry>,
 
@@ -127,7 +125,6 @@ impl MultiWriteTransaction {
 			oracle,
 			conflicts: ConflictManager::new(),
 			pending_writes: PendingWrites::new(),
-			duplicates: Vec::new(),
 			delta_log: Vec::new(),
 			removed_after_set: Vec::new(),
 			committed_pres: BTreeMap::new(),
@@ -202,7 +199,6 @@ impl MultiWriteTransaction {
 			pending_writes: self.pending_writes.clone(),
 			count: self.count,
 			size: self.size,
-			duplicates: self.duplicates.clone(),
 			delta_log_len: self.delta_log.len(),
 			removed_after_set_len: self.removed_after_set.len(),
 			conflicts: self.conflicts.clone(),
@@ -214,7 +210,6 @@ impl MultiWriteTransaction {
 		self.pending_writes = sp.pending_writes;
 		self.count = sp.count;
 		self.size = sp.size;
-		self.duplicates = sp.duplicates;
 		self.delta_log.truncate(sp.delta_log_len);
 		self.removed_after_set.truncate(sp.removed_after_set_len);
 		self.conflicts = sp.conflicts;
@@ -589,7 +584,6 @@ impl MultiWriteTransaction {
 		self.pending_writes.rollback();
 		self.conflicts.rollback();
 		self.delta_log.clear();
-		self.duplicates.clear();
 		self.removed_after_set.clear();
 		Ok(())
 	}
@@ -818,37 +812,6 @@ impl MultiWriteTransaction {
 	fn apply(&mut self, pending: DeltaEntry) {
 		self.conflicts.mark_write(pending.key());
 
-		let version = pending.version;
-
-		let superseded = self
-			.pending_writes
-			.get_entry(pending.key())
-			.filter(|(_, old_value)| old_value.version != version)
-			.map(|(_, old_value)| old_value.key().clone());
-
-		if let Some(old_key) = superseded {
-			self.duplicates.push(DeltaEntry {
-				delta: match &pending.delta {
-					Delta::Set {
-						bytes,
-						..
-					} => Delta::Set {
-						key: old_key,
-						bytes: bytes.clone(),
-						pre: SetPre::Unknown,
-					},
-					Delta::Remove {
-						announce,
-						..
-					} => Delta::Remove {
-						key: old_key,
-						announce: announce.clone(),
-					},
-				},
-				version,
-			})
-		}
-
 		if matches!(pending.delta, Delta::Remove { .. })
 			&& matches!(
 				self.pending_writes.get_entry(pending.key()),
@@ -940,7 +903,7 @@ impl MultiWriteTransaction {
 	#[inline]
 	fn build_deltas(&self) -> CowVec<Delta> {
 		CowVec::new(optimize_deltas(
-			self.delta_log.iter().chain(self.duplicates.iter()).map(|pending| pending.delta.clone()),
+			self.delta_log.iter().map(|pending| pending.delta.clone()),
 			&self.committed_pres,
 		))
 	}
@@ -1030,7 +993,6 @@ impl MultiWriteTransaction {
 	#[inline]
 	fn clear_pending_state(&mut self) {
 		let _ = mem::take(&mut self.pending_writes);
-		let _ = mem::take(&mut self.duplicates);
 		let _ = mem::take(&mut self.delta_log);
 		let _ = mem::take(&mut self.removed_after_set);
 		let _ = mem::take(&mut self.committed_pres);
