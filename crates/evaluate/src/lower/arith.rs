@@ -72,7 +72,8 @@ fn arith_field(name: &str, op: ArithOp, arith: &ArithContext, left: &FieldRef, r
 			name,
 			arith_target(op, inner_type(left)?, inner_type(right)?),
 			left.is_nullable()
-				|| right.is_nullable() || matches!(arith.saturation_policy(), ColumnSaturationStrategy::None),
+				|| right.is_nullable()
+				|| matches!(arith.saturation_policy(), ColumnSaturationStrategy::None),
 		)),
 	}
 }

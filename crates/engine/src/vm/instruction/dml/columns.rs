@@ -338,7 +338,8 @@ impl ColumnPipeline<'_> {
 				return Some((row, false, error));
 			}
 			if let Some((key, key_limit)) = checks.key
-				&& row < key_limit && !matches!(value, Value::None { .. })
+				&& row < key_limit
+				&& !matches!(value, Value::None { .. })
 				&& key.key_to_u64(value.clone()).is_none()
 			{
 				return Some((row, true, key_out_of_range(key, &value)));

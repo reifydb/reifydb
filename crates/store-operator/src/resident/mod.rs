@@ -621,7 +621,8 @@ impl Resident {
 		for _ in 0..CLOCK_PASSES {
 			let (mut bytes, mut entries) = self.overshoot();
 			if bytes.as_bytes() == 0
-				&& entries == 0 && !self.shared.operator_over_local_cap.load(Ordering::Acquire)
+				&& entries == 0
+				&& !self.shared.operator_over_local_cap.load(Ordering::Acquire)
 			{
 				break;
 			}
@@ -674,7 +675,8 @@ impl Resident {
 			let global_deficit_remains = bytes.as_bytes() > 0 || *tombstones > 0;
 			let starved = inner.sweeps_since_swept >= SWEEP_STARVATION_LIMIT;
 			if !global_deficit_remains
-				&& local_byte_overage == 0 && local_tombstone_overage == 0
+				&& local_byte_overage == 0
+				&& local_tombstone_overage == 0
 				&& !starved
 			{
 				inner.sweeps_since_swept += 1;

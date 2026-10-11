@@ -39,11 +39,16 @@ fn is_relevant_cdc_change(change: &CdcChange) -> bool {
 			matches!(
 				kind,
 				KeyTag::Row
-					| KeyTag::SeriesRow | KeyTag::PartitionedRow
-					| KeyTag::PartitionedSeriesRow | KeyTag::SortedViewRow
-					| KeyTag::PartitionedSortedViewRow | KeyTag::Flow
-					| KeyTag::Operator | KeyTag::OperatorByFlow
-					| KeyTag::FlowEdge | KeyTag::FlowEdgeByFlow
+					| KeyTag::SeriesRow
+					| KeyTag::PartitionedRow
+					| KeyTag::PartitionedSeriesRow
+					| KeyTag::SortedViewRow
+					| KeyTag::PartitionedSortedViewRow
+					| KeyTag::Flow
+					| KeyTag::Operator
+					| KeyTag::OperatorByFlow
+					| KeyTag::FlowEdge
+					| KeyTag::FlowEdgeByFlow
 					| KeyTag::NamespaceFlow
 			)
 		})

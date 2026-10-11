@@ -48,7 +48,8 @@ impl TransactionalFlowChanges for AdminTransaction {
 				return Some(entry);
 			}
 			if let Some(entry) = &change.pre
-				&& entry.flow.id == id && change.op == Delete
+				&& entry.flow.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}
@@ -66,7 +67,8 @@ impl TransactionalFlowChanges for AdminTransaction {
 			}
 			if let Some(entry) = &change.pre
 				&& entry.flow.namespace == namespace
-				&& entry.flow.name == name && change.op == Delete
+				&& entry.flow.name == name
+				&& change.op == Delete
 			{
 				return None;
 			}

@@ -2288,7 +2288,8 @@ mod pull_protocol {
 				.as_ref()
 				.expect("the harness substrate carries an operator store")
 				.total_bytes()
-				.unwrap() > ByteSize::ZERO,
+				.unwrap()
+				> ByteSize::ZERO,
 			"the aggregate's operator state must land in the shared operator store"
 		);
 

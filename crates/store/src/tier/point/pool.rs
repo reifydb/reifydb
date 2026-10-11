@@ -187,7 +187,8 @@ impl<D: PointDomain> PointTier<D> {
 						other.key.dimension == entry.key.dimension
 							&& other.key.key == entry.key.key
 					})
-					.copied() == Some(position as u32)
+					.copied()
+						== Some(position as u32)
 				})
 		})
 	}

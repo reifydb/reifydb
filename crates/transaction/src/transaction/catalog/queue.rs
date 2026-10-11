@@ -48,7 +48,8 @@ impl TransactionalQueueChanges for AdminTransaction {
 				return Some(queue);
 			}
 			if let Some(queue) = &change.pre
-				&& queue.id == id && change.op == Delete
+				&& queue.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}
@@ -66,7 +67,8 @@ impl TransactionalQueueChanges for AdminTransaction {
 			}
 			if let Some(queue) = &change.pre
 				&& queue.namespace == namespace
-				&& queue.name == name && change.op == Delete
+				&& queue.name == name
+				&& change.op == Delete
 			{
 				return None;
 			}

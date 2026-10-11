@@ -52,7 +52,8 @@ impl CatalogStore {
 					bucket_start: bs,
 					partition: p,
 					..
-				} = snap.source && bs == bucket_start
+				} = snap.source
+				&& bs == bucket_start
 				&& p == partition
 			{
 				return Ok(Some(snap));

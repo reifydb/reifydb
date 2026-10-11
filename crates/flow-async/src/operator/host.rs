@@ -422,8 +422,8 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		let commit = self.txn.lookup_view_version(view, source);
 		let floor = self.txn.lookup_floor();
 		if let Some(floor) = floor
-			&& floor.0 > source.0 && commit
-			.is_none_or(|commit| self.txn.lookup_view_commit_through(view, floor) != Some(commit))
+			&& floor.0 > source.0
+			&& commit.is_none_or(|commit| self.txn.lookup_view_commit_through(view, floor) != Some(commit))
 		{
 			panic!(
 				"lookup of view {view:?} for source {source:?} sits below the held lease floor {floor:?} and its \

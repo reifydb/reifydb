@@ -144,8 +144,9 @@ where
 			let buffer: RollingTopKBuffer<S, Accumulator> = match get_classified::<
 				_,
 				RollingTopKBuffer<S, Accumulator>,
-			>(store, &buffer_key)?
-			{
+			>(
+				store, &buffer_key
+			)? {
 				Some(buffer) if !buffer.is_empty() => buffer,
 				_ => return internal_err!("a rolling top-k expiry row names a group with no buffer"),
 			};

@@ -256,9 +256,8 @@ impl Catalog {
 				let mut auths = self.cache.list_authentications_by_method_at(method, admin.version());
 				for change in &admin.changes.authentication {
 					if let Some(auth) = &change.post
-						&& auth.method == method && !auths
-						.iter()
-						.any(|existing| existing.id == auth.id)
+						&& auth.method == method
+						&& !auths.iter().any(|existing| existing.id == auth.id)
 					{
 						auths.push(auth.clone());
 					}
@@ -273,9 +272,8 @@ impl Catalog {
 				let mut auths = self.cache.list_authentications_by_method_at(method, t.inner.version());
 				for change in &t.inner.changes.authentication {
 					if let Some(auth) = &change.post
-						&& auth.method == method && !auths
-						.iter()
-						.any(|existing| existing.id == auth.id)
+						&& auth.method == method
+						&& !auths.iter().any(|existing| existing.id == auth.id)
 					{
 						auths.push(auth.clone());
 					}

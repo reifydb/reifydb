@@ -125,9 +125,8 @@ impl Catalog {
 
 				for change in &admin.changes.test {
 					if let Some(t) = &change.post
-						&& t.namespace == namespace && !tests
-						.iter()
-						.any(|existing| existing.id == t.id)
+						&& t.namespace == namespace
+						&& !tests.iter().any(|existing| existing.id == t.id)
 					{
 						tests.push(t.clone());
 					}
@@ -142,9 +141,8 @@ impl Catalog {
 
 				for change in &t.inner.changes.test {
 					if let Some(tst) = &change.post
-						&& tst.namespace == namespace && !tests
-						.iter()
-						.any(|existing| existing.id == tst.id)
+						&& tst.namespace == namespace
+						&& !tests.iter().any(|existing| existing.id == tst.id)
 					{
 						tests.push(tst.clone());
 					}

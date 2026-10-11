@@ -49,9 +49,13 @@ pub(crate) fn create_primary_key(
 			|| matches!(
 				ty,
 				ValueType::Option(_)
-					| ValueType::Decimal { .. } | ValueType::Utf8
-					| ValueType::Blob | ValueType::Any | ValueType::List(_)
-					| ValueType::Record(_) | ValueType::Tuple(_)
+					| ValueType::Decimal { .. }
+					| ValueType::Utf8
+					| ValueType::Blob
+					| ValueType::Any
+					| ValueType::List(_)
+					| ValueType::Record(_)
+					| ValueType::Tuple(_)
 					| ValueType::Digest { .. }
 			) {
 			return_error!(primary_key_invalid_type(pk_column.column.clone(), &column.name, ty));

@@ -982,9 +982,12 @@ where
 						Some((pre_group, pre_value)),
 						Some((post_group, post_value)),
 					) = (pre_coord, post_coord, &before, &after)
-						&& pre_group == post_group && (pre_coord == post_coord
-						|| engine.refuses(&Self::tracker_now(&batch, pre_group), post_coord))
-					{
+						&& pre_group == post_group
+						&& (pre_coord == post_coord
+							|| engine.refuses(
+								&Self::tracker_now(&batch, pre_group),
+								post_coord,
+							)) {
 						match Self::holding_session(
 							engine, &mut batch, ctx, pre_group, number, horizon,
 						)? {

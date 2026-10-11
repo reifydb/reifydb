@@ -78,7 +78,8 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if has_subject
-			&& !self.is_eof() && self.current()?.is_identifier()
+			&& !self.is_eof()
+			&& self.current()?.is_identifier()
 			&& self.position + 1 < self.tokens.len()
 		{
 			let next = self.tokens[self.position + 1];

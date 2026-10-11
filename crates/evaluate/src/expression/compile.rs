@@ -396,7 +396,8 @@ pub fn compile_expression(_ctx: &CompileContext, expr: &Expression) -> Result<Co
 					(ColumnView::try_from(&ge_result)?, ColumnView::try_from(&le_result)?);
 				if !matches!(ge_view.data, ViewData::Bool(_))
 					|| !matches!(le_view.data, ViewData::Bool(_))
-					|| ge_result.0.is_nullable() || le_result.0.is_nullable()
+					|| ge_result.0.is_nullable()
+					|| le_result.0.is_nullable()
 				{
 					return Err(TypeError::BinaryOperatorNotApplicable {
 						operator: BinaryOp::Between,

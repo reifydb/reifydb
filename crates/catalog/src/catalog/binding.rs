@@ -166,9 +166,8 @@ impl Catalog {
 
 				for change in &admin.changes.binding {
 					if let Some(b) = &change.post
-						&& b.procedure_id == procedure_id && !bindings
-						.iter()
-						.any(|existing| existing.id == b.id)
+						&& b.procedure_id == procedure_id
+						&& !bindings.iter().any(|existing| existing.id == b.id)
 					{
 						bindings.push(b.clone());
 					}
@@ -186,9 +185,8 @@ impl Catalog {
 
 				for change in &t.inner.changes.binding {
 					if let Some(b) = &change.post
-						&& b.procedure_id == procedure_id && !bindings
-						.iter()
-						.any(|existing| existing.id == b.id)
+						&& b.procedure_id == procedure_id
+						&& !bindings.iter().any(|existing| existing.id == b.id)
 					{
 						bindings.push(b.clone());
 					}

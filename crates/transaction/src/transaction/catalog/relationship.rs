@@ -47,7 +47,8 @@ impl TransactionalRelationshipChanges for AdminTransaction {
 					return Some(rel);
 				}
 			} else if let Some(rel) = &change.pre
-				&& rel.id == id && change.op == Delete
+				&& rel.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}
@@ -84,7 +85,8 @@ impl TransactionalRelationshipChanges for AdminTransaction {
 					.as_ref()
 					.map(|r| {
 						r.namespace == namespace
-							&& r.source_table == source_table && r.name == name
+							&& r.source_table == source_table
+							&& r.name == name
 					})
 					.unwrap_or(false)
 		})

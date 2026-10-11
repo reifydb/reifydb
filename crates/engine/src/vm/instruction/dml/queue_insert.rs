@@ -347,8 +347,10 @@ fn declared_keys(shape: &RowShape, rows: &[EncodedBytes], indices: &[usize]) -> 
 		if matches!(
 			field_type.inner_type(),
 			ValueType::Digest { .. }
-				| ValueType::Any | ValueType::List(_)
-				| ValueType::Record(_) | ValueType::Tuple(_)
+				| ValueType::Any
+				| ValueType::List(_)
+				| ValueType::Record(_)
+				| ValueType::Tuple(_)
 		) {
 			for (key, row) in keys.iter_mut().zip(rows) {
 				let value = shape.get_value(row, index);

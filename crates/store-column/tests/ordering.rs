@@ -207,8 +207,10 @@ fn has_no_vortex_bounds(ty: &ValueType) -> bool {
 	matches!(
 		ty,
 		ValueType::Int16
-			| ValueType::Uint16 | ValueType::Uuid4
-			| ValueType::Uuid7 | ValueType::IdentityId
+			| ValueType::Uint16
+			| ValueType::Uuid4
+			| ValueType::Uuid7
+			| ValueType::IdentityId
 			| ValueType::DictionaryId
 			| ValueType::Duration
 	)

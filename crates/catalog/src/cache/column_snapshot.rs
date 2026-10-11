@@ -33,7 +33,8 @@ impl CatalogCache {
 
 		for (bs, p, snap_id) in buckets.iter() {
 			if *bs == bucket_start
-				&& *p == partition && let Some(snap) = self.find_column_snapshot_at(*snap_id, version)
+				&& *p == partition
+				&& let Some(snap) = self.find_column_snapshot_at(*snap_id, version)
 			{
 				return Some(snap);
 			}

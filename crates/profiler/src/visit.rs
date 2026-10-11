@@ -59,7 +59,8 @@ impl Visit for SpecFields {
 			if let DimSource::Number {
 				field: dim_field,
 				prefix,
-			} = source && *dim_field == name
+			} = source
+				&& *dim_field == name
 			{
 				self.dims[slot].clear();
 				self.dims[slot].push_str(prefix);

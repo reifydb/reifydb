@@ -161,17 +161,23 @@ pub fn should_exclude_from_cdc(kind: KeyTag) -> bool {
 	matches!(
 		kind,
 		KeyTag::OperatorState
-			| KeyTag::CdcConsumer | KeyTag::Metric
+			| KeyTag::CdcConsumer
+			| KeyTag::Metric
 			| KeyTag::SystemSequence
-			| KeyTag::RowSequence | KeyTag::ColumnSequence
+			| KeyTag::RowSequence
+			| KeyTag::ColumnSequence
 			| KeyTag::SystemVersion
 			| KeyTag::TransactionVersion
-			| KeyTag::FlowVersion | KeyTag::RingBufferMetadata
-			| KeyTag::Index | KeyTag::ConfigStorage
-			| KeyTag::Token | KeyTag::VersionEpoch
+			| KeyTag::FlowVersion
+			| KeyTag::RingBufferMetadata
+			| KeyTag::Index
+			| KeyTag::ConfigStorage
+			| KeyTag::Token
+			| KeyTag::VersionEpoch
 			| KeyTag::QueuePartition
 			| KeyTag::QueueItemState
-			| KeyTag::QueueDue | KeyTag::QueueKeyActive
+			| KeyTag::QueueDue
+			| KeyTag::QueueKeyActive
 	)
 }
 

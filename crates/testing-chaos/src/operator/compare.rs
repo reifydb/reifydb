@@ -291,9 +291,12 @@ fn is_integer_value(v: &Value) -> bool {
 	matches!(
 		v,
 		Value::Int1(_)
-			| Value::Int2(_) | Value::Int4(_)
-			| Value::Int8(_) | Value::Uint1(_)
-			| Value::Uint2(_) | Value::Uint4(_)
+			| Value::Int2(_)
+			| Value::Int4(_)
+			| Value::Int8(_)
+			| Value::Uint1(_)
+			| Value::Uint2(_)
+			| Value::Uint4(_)
 			| Value::Uint8(_)
 	)
 }

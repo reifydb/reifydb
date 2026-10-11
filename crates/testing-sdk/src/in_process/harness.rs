@@ -121,7 +121,8 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 				};
 				let decoded = OperatorStateKey::decode(key)?;
 				if decoded.operator != self.operator_id
-					|| !decoded.group.is_root() || decoded.keyspace != KeyspaceId::TIMER_WHEEL
+					|| !decoded.group.is_root()
+					|| decoded.keyspace != KeyspaceId::TIMER_WHEEL
 				{
 					return None;
 				}
@@ -188,7 +189,8 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 				.filter_map(|(key, _)| {
 					let decoded = OperatorStateKey::decode(key)?;
 					let doomed = decoded.operator == self.operator_id
-						&& !decoded.group.is_root() && groups.contains(&decoded.group)
+						&& !decoded.group.is_root()
+						&& groups.contains(&decoded.group)
 						&& erase(decoded.keyspace);
 					doomed.then(|| key.clone())
 				})

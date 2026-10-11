@@ -48,7 +48,8 @@ impl TransactionalSinkChanges for AdminTransaction {
 				return Some(sink);
 			}
 			if let Some(sink) = &change.pre
-				&& sink.id == id && change.op == Delete
+				&& sink.id == id
+				&& change.op == Delete
 			{
 				return None;
 			}
@@ -66,7 +67,8 @@ impl TransactionalSinkChanges for AdminTransaction {
 			}
 			if let Some(sink) = &change.pre
 				&& sink.namespace == namespace
-				&& sink.name == name && change.op == Delete
+				&& sink.name == name
+				&& change.op == Delete
 			{
 				return None;
 			}
