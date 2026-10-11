@@ -120,6 +120,9 @@ pub struct CommandTransaction {
 	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
 
 	poison_cause: Option<Diagnostic>,
+
+	#[cfg(feature = "testing")]
+	committed_op_counts: OpCounts,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -153,6 +156,8 @@ impl CommandTransaction {
 			executor: None,
 			dictionary_allocators: None,
 			poison_cause: None,
+			#[cfg(feature = "testing")]
+			committed_op_counts: OpCounts::default(),
 		})
 	}
 
@@ -235,7 +240,7 @@ impl CommandTransaction {
 
 	#[inline]
 	fn commit_and_post(
-		&self,
+		&mut self,
 		mut multi: MultiWriteTransaction,
 		id: TransactionId,
 		row_changes: Vec<RowChange>,
@@ -247,6 +252,10 @@ impl CommandTransaction {
 		} else {
 			multi.commit()?
 		};
+		#[cfg(feature = "testing")]
+		{
+			self.committed_op_counts = multi.op_counts.clone();
+		}
 		let self_lease = multi.take_self_lease();
 		self.run_post_commit(PostCommitContext::new(id, version, changes, row_changes))?;
 		release_multi(self_lease, multi);
@@ -452,7 +461,7 @@ impl CommandTransaction {
 
 	#[cfg(feature = "testing")]
 	pub fn op_counts(&self) -> OpCounts {
-		self.cmd.as_ref().map(|cmd| cmd.op_counts.clone()).unwrap_or_default()
+		self.cmd.as_ref().map(|cmd| cmd.op_counts.clone()).unwrap_or_else(|| self.committed_op_counts.clone())
 	}
 
 	#[inline]

@@ -360,7 +360,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_insert_into_dictionary() {
+	fn the_first_interned_value_gets_id_one() {
 		let mut txn = create_test_admin_transaction();
 		let dict = test_dictionary();
 		let value = Value::Utf8("hello".to_string());

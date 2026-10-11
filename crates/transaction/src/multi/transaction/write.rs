@@ -1764,7 +1764,7 @@ mod tests {
 	}
 
 	#[test]
-	fn the_committed_read_behind_a_delete_is_seen_by_conflict_detection() {
+	fn a_concurrent_replace_of_a_deleted_row_fails_the_commit() {
 		// The delete is decided from the committed row; a concurrent commit that replaces that row after the
 		// read must fail this transaction instead of leaving the replacement behind a delete of the old one.
 		let engine = MultiTransaction::testing();
