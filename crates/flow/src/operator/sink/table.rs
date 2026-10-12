@@ -30,7 +30,7 @@ use reifydb_core::{
 	value::{
 		batch::batch,
 		column::{
-			dictionary::{DictionaryNone, gather_dictionary_values},
+			dictionary::{gather_dictionary_values, scatter_dictionary_ids},
 			factory::dictionary_id,
 		},
 	},
@@ -352,8 +352,9 @@ pub fn dictionary_encode_view_columns<T: Intern + ?Sized>(
 		let (field, array) = &encoded[*col_pos];
 		let views = [ColumnView::try_from((array, field.as_ref()))?];
 		let mut values = Vec::new();
-		gather_dictionary_values(&views, DictionaryNone::Interned, &mut values);
+		gather_dictionary_values(&views, &mut values);
 		let ids = txn.intern(dictionary, &values)?;
+		let ids = scatter_dictionary_ids(&views, dictionary.id_type.none(), &mut ids.into_iter()).remove(0);
 		encoded[*col_pos] = dictionary_id(field.name(), ids);
 	}
 
@@ -375,7 +376,7 @@ pub fn dictionary_lookup_view_columns<T: Intern + ?Sized>(
 		let (field, array) = &encoded[*col_pos];
 		let views = [ColumnView::try_from((array, field.as_ref()))?];
 		let mut values = Vec::new();
-		gather_dictionary_values(&views, DictionaryNone::Interned, &mut values);
+		gather_dictionary_values(&views, &mut values);
 		let ids = if values.is_empty() {
 			Vec::new()
 		} else {
@@ -399,6 +400,7 @@ pub fn dictionary_lookup_view_columns<T: Intern + ?Sized>(
 				})
 			})
 			.collect::<Result<Vec<_>>>()?;
+		let ids = scatter_dictionary_ids(&views, dictionary.id_type.none(), &mut ids.into_iter()).remove(0);
 		encoded[*col_pos] = dictionary_id(field.name(), ids);
 	}
 

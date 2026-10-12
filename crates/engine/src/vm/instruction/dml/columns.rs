@@ -16,7 +16,7 @@ use reifydb_core::{
 	internal_error,
 	value::column::{
 		cast::cast_column_data,
-		dictionary::{DictionaryNone, gather_dictionary_values, scatter_dictionary_ids},
+		dictionary::{gather_dictionary_values, scatter_dictionary_ids},
 		factory::{self, none_typed},
 		write::check_digest_write,
 	},
@@ -459,11 +459,11 @@ pub(crate) fn intern_dictionary_columns(
 			)
 		})?;
 
-		let none = DictionaryNone::Sentinel(dictionary.id_type.none());
+		let none = dictionary.id_type.none();
 		let mut values = Vec::new();
 		for batch in batches.iter() {
 			let views = indices.iter().map(|&index| batch.view(index)).collect::<Result<Vec<_>>>()?;
-			gather_dictionary_values(&views, none, &mut values);
+			gather_dictionary_values(&views, &mut values);
 		}
 
 		let mut ids = txn.intern_values(&dictionary, values)?.into_iter();
