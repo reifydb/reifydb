@@ -35,7 +35,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{queue::QueueDeduplicationKey, row::RowKey},
-	partition::{NoneCell, partitions_of_batch},
+	partition::partitions_of_batch,
 	return_internal_error,
 	value::{
 		batch::{batch, decode_cells, single_row},
@@ -491,7 +491,7 @@ fn validate_and_encode_input_rows(
 	let mut pending: Vec<PendingItem> = Vec::new();
 	for ((cast, not_before), statement_keys) in casts.iter().zip(not_befores).zip(statement_keys) {
 		let ordered = ordered_by
-			.map(|index| cast.view(index).map(|view| partitions_of_batch(&[view], NoneCell::Untyped).rows))
+			.map(|index| cast.view(index).map(|view| partitions_of_batch(&[view]).rows))
 			.transpose()?;
 		let mut rows: Vec<EncodedQueueRowBuilder> = (0..cast.rows()).map(|_| shape.allocate_queue()).collect();
 		cast.write(shape, &mut rows)?;

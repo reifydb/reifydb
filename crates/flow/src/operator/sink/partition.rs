@@ -7,7 +7,7 @@ use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::catalog::{object::ObjectId, view::View},
 	key::partition::PartitionKey,
-	partition::{BatchPartitions, NoneCell, PartitionError, partitions_of_batch, registry_matches, registry_row},
+	partition::{BatchPartitions, PartitionError, partitions_of_batch, registry_matches, registry_row},
 };
 use reifydb_value::{
 	Result, reifydb_assertions,
@@ -48,7 +48,7 @@ pub fn partition_batch(view: &View, indices: &[usize], columns: &RecordBatch) ->
 			);
 		}
 	}
-	Ok(partitions_of_batch(&keys, NoneCell::Typed))
+	Ok(partitions_of_batch(&keys))
 }
 
 pub fn resolve_partitions_flow<T: Get + Batch + ?Sized>(

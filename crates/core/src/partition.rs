@@ -29,25 +29,17 @@ use crate::{
 static REGISTRY_SHAPE: LazyLock<RowShape> =
 	LazyLock::new(|| RowShape::new(RowFamily::Pod, vec![RowShapeField::unconstrained("values", ValueType::Blob)]));
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NoneCell {
-	Untyped,
-	Typed,
-}
-
 #[derive(Debug, Default)]
 pub struct BatchPartitions {
 	pub rows: Vec<Partition>,
 	pub distinct: Vec<(Partition, Vec<Value>)>,
 }
 
-pub fn partitions_of_batch(keys: &[ColumnView<'_>], none: NoneCell) -> BatchPartitions {
+pub fn partitions_of_batch(keys: &[ColumnView<'_>]) -> BatchPartitions {
 	let rows = keys.first().map_or(0, ColumnView::len);
 	match converted_rows(keys) {
-		Some(converted) => assign(keys, none, rows, |row| converted.row(row)),
-		None => assign(keys, none, rows, |row| {
-			to_stdvec(&cell_values(keys, none, row)).expect("value postcard is total")
-		}),
+		Some(converted) => assign(keys, rows, |row| converted.row(row)),
+		None => assign(keys, rows, |row| to_stdvec(&cell_values(keys, row)).expect("value postcard is total")),
 	}
 }
 
@@ -57,18 +49,13 @@ fn converted_rows(keys: &[ColumnView<'_>]) -> Option<Rows> {
 	RowConverter::new(fields).ok()?.convert_columns(&arrays).ok()
 }
 
-fn assign<K: Hash + Eq>(
-	keys: &[ColumnView<'_>],
-	none: NoneCell,
-	rows: usize,
-	key_of: impl Fn(usize) -> K,
-) -> BatchPartitions {
+fn assign<K: Hash + Eq>(keys: &[ColumnView<'_>], rows: usize, key_of: impl Fn(usize) -> K) -> BatchPartitions {
 	let mut groups: HashMap<K, Partition> = HashMap::new();
 	let mut distinct = Vec::new();
 	let mut partitions = Vec::with_capacity(rows);
 	for row in 0..rows {
 		let partition = *groups.entry(key_of(row)).or_insert_with(|| {
-			let values = cell_values(keys, none, row);
+			let values = cell_values(keys, row);
 			let partition = Partition::of(&values);
 			distinct.push((partition, values));
 			partition
@@ -81,16 +68,13 @@ fn assign<K: Hash + Eq>(
 	}
 }
 
-fn cell_values(keys: &[ColumnView<'_>], none: NoneCell, row: usize) -> Vec<Value> {
+fn cell_values(keys: &[ColumnView<'_>], row: usize) -> Vec<Value> {
 	keys.iter()
-		.map(|key| match (key.get_value(row), none) {
-			(
-				Value::None {
-					..
-				},
-				NoneCell::Untyped,
-			) => Value::none(),
-			(value, _) => value,
+		.map(|key| match key.get_value(row) {
+			Value::None {
+				..
+			} => Value::none(),
+			value => value,
 		})
 		.collect()
 }
@@ -130,7 +114,7 @@ pub fn partitions_of_rows(shape: &RowShape, indices: &[usize], rows: &[EncodedBy
 		})
 		.collect::<Result<Vec<_>>>()?;
 	let views = columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
-	let partitions = partitions_of_batch(&views, NoneCell::Untyped).rows;
+	let partitions = partitions_of_batch(&views).rows;
 	reifydb_assertions! {
 		for (row, partition) in rows.iter().zip(&partitions) {
 			let values: Vec<Value> = indices.iter().map(|&index| shape.get_value(row, index)).collect();

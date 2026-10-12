@@ -10,7 +10,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey},
 	},
-	partition::{BatchPartitions, NoneCell, partition_col_indices, partition_of, partitions_of_batch},
+	partition::{BatchPartitions, partition_col_indices, partition_of, partitions_of_batch},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -122,7 +122,7 @@ pub(crate) fn ringbuffer_batch_partitions(ringbuffer: &RingBuffer, cast: &CastCo
 		return Ok(BatchPartitions::default());
 	}
 	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
-	let batch = partitions_of_batch(&keys, NoneCell::Untyped);
+	let batch = partitions_of_batch(&keys);
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {
 			assert_eq!(

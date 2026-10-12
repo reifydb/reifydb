@@ -38,7 +38,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
-	partition::{BatchPartitions, NoneCell, partition_of, partitions_of_batch},
+	partition::{BatchPartitions, partition_of, partitions_of_batch},
 	value::{
 		batch::single_row,
 		column::{builder::ColumnBuilder, write::check_digest_write},
@@ -442,7 +442,7 @@ pub(crate) fn series_batch_partitions(
 			(false, _) => cast.view(index),
 		})
 		.collect::<Result<Vec<_>>>()?;
-	let batch = partitions_of_batch(&views, NoneCell::Untyped);
+	let batch = partitions_of_batch(&views);
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {
 			assert_eq!(

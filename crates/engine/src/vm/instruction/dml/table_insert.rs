@@ -26,7 +26,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
-	partition::{BatchPartitions, NoneCell, partition_col_indices, partition_of, partitions_of_batch},
+	partition::{BatchPartitions, partition_col_indices, partition_of, partitions_of_batch},
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -152,7 +152,7 @@ pub(crate) fn cast_partitions(
 		return Ok(BatchPartitions::default());
 	}
 	let keys = indices.iter().map(|&index| cast.view(index)).collect::<Result<Vec<_>>>()?;
-	let batch = partitions_of_batch(&keys, NoneCell::Untyped);
+	let batch = partitions_of_batch(&keys);
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {
 			assert_eq!(
