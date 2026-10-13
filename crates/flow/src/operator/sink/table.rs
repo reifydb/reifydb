@@ -197,9 +197,7 @@ impl TableSink {
 		let row_count = source_post.num_rows();
 		let field_columns = shape_field_columns(source_post, &self.shape);
 		let encoder = SourceRowEncoder::new(source_post, &self.shape, &field_columns)?;
-		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
+		let mut writes = KeyWrites::with_capacity(row_count);
 		let (pre_row_numbers, post_row_numbers) =
 			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?);
 		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
@@ -261,13 +259,17 @@ impl TableSink {
 
 			remember_created_at(&mut self.created_at, post_row_number, read_created_at(&post_encoded));
 
-			pre_keys.push(pre_key);
-			post_keys.push(post_key);
-			post_encoded_bytes_vec.push(post_encoded);
+			if pre_key.as_slice() != post_key.as_slice() {
+				writes.put(pre_key, None);
+			}
+			writes.put(post_key, Some(post_encoded));
 		}
 
-		txn.remove(pre_keys)?;
-		txn.set(post_keys, post_encoded_bytes_vec)?;
+		let (removes, set_keys, set_rows) = writes.split();
+		if !removes.is_empty() {
+			txn.remove(removes)?;
+		}
+		txn.set(set_keys, set_rows)?;
 
 		txn.emit(self.view.id(), Diff::update(coerced_pre, coerced_post))
 	}
@@ -433,4 +435,44 @@ fn lookup_dictionary_columns<T: Intern + ?Sized>(
 
 fn pairs(columns: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {
 	columns.schema_ref().fields().iter().cloned().zip(columns.columns().iter().cloned()).collect()
+}
+
+struct KeyWrites {
+	writes: Vec<(EncodedKey, Option<EncodedBytes>)>,
+	slots: HashMap<EncodedKey, usize>,
+}
+
+impl KeyWrites {
+	fn with_capacity(capacity: usize) -> Self {
+		Self {
+			writes: Vec::with_capacity(capacity * 2),
+			slots: HashMap::with_capacity(capacity * 2),
+		}
+	}
+
+	fn put(&mut self, key: EncodedKey, row: Option<EncodedBytes>) {
+		match self.slots.get(&key) {
+			Some(&slot) => self.writes[slot].1 = row,
+			None => {
+				self.slots.insert(key.clone(), self.writes.len());
+				self.writes.push((key, row));
+			}
+		}
+	}
+
+	fn split(self) -> (Vec<EncodedKey>, Vec<EncodedKey>, Vec<EncodedBytes>) {
+		let mut removes = Vec::new();
+		let mut set_keys = Vec::with_capacity(self.writes.len());
+		let mut set_rows = Vec::with_capacity(self.writes.len());
+		for (key, row) in self.writes {
+			match row {
+				Some(row) => {
+					set_keys.push(key);
+					set_rows.push(row);
+				}
+				None => removes.push(key),
+			}
+		}
+		(removes, set_keys, set_rows)
+	}
 }

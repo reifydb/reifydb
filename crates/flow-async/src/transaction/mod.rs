@@ -255,7 +255,9 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 		}
 		let pending = self.pending_mut();
 		for ((pre_key, post_key), row) in pre_keys.into_iter().zip(post_keys).zip(rows) {
-			pending.remove(pre_key);
+			if pre_key != post_key {
+				pending.remove(pre_key);
+			}
 			pending.insert(post_key, row);
 		}
 		Ok(())
