@@ -129,6 +129,18 @@ pub struct DeferredTransaction {
 	pub substrate: FlowSubstrate,
 
 	pub lookup: Option<LookupContext>,
+
+	#[cfg(test)]
+	pub storage_counts: StorageCounts,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct StorageCounts {
+	pub gets: usize,
+	pub get_many_calls: usize,
+	pub state_fetch_calls: usize,
+	pub ranges: usize,
 }
 
 impl DeferredTransaction {
@@ -155,6 +167,8 @@ impl DeferredTransaction {
 			row_shape_cache: HashMap::new(),
 			substrate: params.substrate,
 			lookup: params.lookup,
+			#[cfg(test)]
+			storage_counts: StorageCounts::default(),
 		}
 	}
 }
@@ -386,6 +400,10 @@ impl FlowTransaction for DeferredTransaction {
 	}
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
+		#[cfg(test)]
+		{
+			self.storage_counts.gets += 1;
+		}
 		deferred_storage_get(
 			self.substrate.operators.as_ref(),
 			self.query.as_ref(),
@@ -395,6 +413,10 @@ impl FlowTransaction for DeferredTransaction {
 	}
 
 	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		#[cfg(test)]
+		{
+			self.storage_counts.get_many_calls += 1;
+		}
 		deferred_storage_get_many(
 			self.substrate.operators.as_ref(),
 			self.query.as_ref(),
@@ -418,6 +440,10 @@ impl FlowTransaction for DeferredTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		#[cfg(test)]
+		{
+			self.storage_counts.ranges += 1;
+		}
 		deferred_storage_range(
 			self.substrate.operators.as_ref(),
 			self.query.as_ref(),
@@ -430,6 +456,10 @@ impl FlowTransaction for DeferredTransaction {
 	}
 
 	fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		#[cfg(test)]
+		if !keys.is_empty() {
+			self.storage_counts.state_fetch_calls += 1;
+		}
 		deferred_fetch_state(self.substrate.operators.as_ref(), id, keys)
 	}
 }
