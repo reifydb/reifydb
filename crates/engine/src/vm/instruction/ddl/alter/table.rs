@@ -88,8 +88,7 @@ pub(crate) fn execute_alter_table(
 					.columns
 					.iter()
 					.find(|c| &c.name == col_name)
-					.map(|c| c.constraint.get_type())
-					== Some(ValueType::Utf8);
+					.map(|c| c.constraint.get_type()) == Some(ValueType::Utf8);
 				if !is_utf8 {
 					return Err(internal_error!(
 						"DROP PARTITION currently supports only Utf8 partition columns (column {})",
@@ -166,7 +165,7 @@ pub(crate) fn execute_alter_table(
 					index.write(&mut tx)?;
 				}
 				let partitions = vec![partition; ids.len()];
-				txn.remove_from_table(&table, &ids, &partitions, &rows)?;
+				txn.remove_from_table(&services.catalog, &table, &ids, &partitions, &rows)?;
 			}
 			if remove_registry {
 				if let Some(partition) = partition {

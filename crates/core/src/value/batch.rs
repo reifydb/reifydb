@@ -246,6 +246,25 @@ pub fn append_rows(
 	rows: impl IntoIterator<Item = impl Into<EncodedBytes>>,
 	row_numbers: Vec<RowNumber>,
 ) -> Result<RecordBatch> {
+	append_shaped_rows(batch, shape, rows, row_numbers, false)
+}
+
+pub fn append_rows_fitted(
+	batch: RecordBatch,
+	shape: &RowShape,
+	rows: impl IntoIterator<Item = impl Into<EncodedBytes>>,
+	row_numbers: Vec<RowNumber>,
+) -> Result<RecordBatch> {
+	append_shaped_rows(batch, shape, rows, row_numbers, true)
+}
+
+fn append_shaped_rows(
+	batch: RecordBatch,
+	shape: &RowShape,
+	rows: impl IntoIterator<Item = impl Into<EncodedBytes>>,
+	row_numbers: Vec<RowNumber>,
+	fit: bool,
+) -> Result<RecordBatch> {
 	let schema = batch.schema();
 	let user: Vec<usize> = schema
 		.fields()
@@ -254,7 +273,7 @@ pub fn append_rows(
 		.filter(|(_, field)| !is_system_field(field))
 		.map(|(index, _)| index)
 		.collect();
-	if user.len() != shape.field_count() {
+	if user.len() < shape.field_count() || (!fit && user.len() != shape.field_count()) {
 		return Err(CoreError::FrameError {
 			message: format!(
 				"mismatched column count: expected {}, got {}",
@@ -286,6 +305,15 @@ pub fn append_rows(
 
 	for (index, (builder, name)) in builders.iter_mut().zip(&names).enumerate() {
 		decode_cells(builder, name, shape, index, &rows)?;
+	}
+
+	for &index in &user[shape.field_count()..] {
+		let view = ColumnView::try_from((batch.column(index), schema.field(index)))?;
+		let mut builder = ColumnBuilder::from_view(&view);
+		for _ in 0..rows.len() {
+			builder.push_none();
+		}
+		builders.push(builder);
 	}
 
 	let columns = names.iter().zip(builders).map(|(name, builder)| builder.finish(name)).collect();

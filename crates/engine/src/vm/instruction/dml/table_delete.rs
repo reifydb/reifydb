@@ -208,7 +208,13 @@ fn run_table_delete_with_input(
 	if let Some(pk_index) = pk_index {
 		pk_index.write(txn)?;
 	}
-	let removed = txn.remove_from_table(target.table, &filtered_ids, &filtered_partitions, &filtered_rows)?;
+	let removed = txn.remove_from_table(
+		&exec.services.catalog,
+		target.table,
+		&filtered_ids,
+		&filtered_partitions,
+		&filtered_rows,
+	)?;
 	let deleted_count = removed.len() as u64;
 	let returned_rows: Vec<(RowNumber, EncodedBytes)> = if has_returning {
 		removed
@@ -296,7 +302,8 @@ fn run_table_delete_all(
 	if let Some(pk_index) = pk_index {
 		pk_index.write(txn)?;
 	}
-	let removed = txn.remove_from_table(table, &filtered_ids, &filtered_partitions, &filtered_rows)?;
+	let removed =
+		txn.remove_from_table(&services.catalog, table, &filtered_ids, &filtered_partitions, &filtered_rows)?;
 	let deleted_count = removed.len() as u64;
 	let returned_rows: Vec<(RowNumber, EncodedBytes)> = if has_returning {
 		removed

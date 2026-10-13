@@ -5,7 +5,11 @@ use std::{ops::Bound, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::FieldRef;
-use reifydb_codec::row::{bytes::EncodedBytes, shape::RowShape, table::EncodedTableRow};
+use reifydb_codec::row::{
+	bytes::EncodedBytes,
+	shape::{RowShape, fingerprint::RowShapeFingerprint},
+	table::EncodedTableRow,
+};
 use reifydb_core::{
 	common::TimeSource,
 	error::diagnostic,
@@ -19,7 +23,7 @@ use reifydb_core::{
 		row::{PartitionedRowKey, RowKeyRange, StoragePartitionedRowKey, StorageRowKey},
 	},
 	value::{
-		batch::{append_rows, batch},
+		batch::{append_rows_fitted, batch},
 		column::{builder::ColumnBuilder, headers::ColumnHeaders},
 	},
 };
@@ -130,12 +134,16 @@ impl TableScanNode {
 		self
 	}
 
-	fn get_or_load_shape<'a>(&mut self, rx: &mut Transaction<'a>, first: &EncodedBytes) -> Result<RowShape> {
-		if let Some(shape) = &self.shape {
+	fn get_or_load_shape<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		fingerprint: RowShapeFingerprint,
+	) -> Result<RowShape> {
+		if let Some(shape) = &self.shape
+			&& shape.fingerprint() == fingerprint
+		{
 			return Ok(shape.clone());
 		}
-
-		let fingerprint = EncodedTableRow::view(first).fingerprint();
 
 		let stored_ctx = self.context.as_ref().expect("TableScanNode context not set");
 		let shape = stored_ctx.services.catalog.get_or_load_row_shape(fingerprint, rx)?.ok_or_else(|| {
@@ -235,8 +243,22 @@ impl TableScanNode {
 		bytes_vec: Vec<EncodedBytes>,
 		row_numbers: Vec<RowNumber>,
 	) -> Result<RecordBatch> {
-		let shape = self.get_or_load_shape(rx, &bytes_vec[0])?;
-		append_rows(columns, &shape, bytes_vec, row_numbers)
+		let mut columns = columns;
+		let mut rows = bytes_vec.into_iter().peekable();
+		let mut numbers = row_numbers.into_iter();
+		while let Some(first) = rows.next() {
+			let fingerprint = EncodedTableRow::view(&first).fingerprint();
+			let mut run = vec![first];
+			while let Some(next) =
+				rows.next_if(|row| EncodedTableRow::view(row).fingerprint() == fingerprint)
+			{
+				run.push(next);
+			}
+			let run_numbers: Vec<RowNumber> = numbers.by_ref().take(run.len()).collect();
+			let shape = self.get_or_load_shape(rx, fingerprint)?;
+			columns = append_rows_fitted(columns, &shape, run, run_numbers)?;
+		}
+		Ok(columns)
 	}
 }
 
