@@ -8,7 +8,7 @@ use arrow_schema::FieldRef;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
-		bytes::{EncodedBytes, SHAPE_HEADER_SIZE, read_created_at},
+		bytes::{EncodedBytes, read_created_at},
 		shape::{RowFamily, RowShape},
 	},
 };
@@ -54,7 +54,7 @@ use crate::{
 	operator::sink::{
 		SourceRowEncoder, coerce_columns,
 		partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
-		shape_field_columns,
+		shape_field_columns, stored_created_at_many,
 		view::{partitioned_key, sort_runs, sorted_view_key},
 	},
 	txn::{Batch, Emit, Get, Intern},
@@ -240,33 +240,18 @@ impl TableSink {
 		}
 
 		let may_clear = self.created_at.len() + row_count >= CREATED_AT_CACHE_CAPACITY;
-		let mut reads: Vec<EncodedKey> = Vec::new();
-		let mut read_slots: Vec<Option<(usize, Option<usize>)>> = Vec::with_capacity(row_count);
+		let mut reads: Vec<(EncodedKey, Option<EncodedKey>)> = Vec::new();
+		let mut read_slots: Vec<Option<usize>> = Vec::with_capacity(row_count);
 		for (row_idx, (pre_key, post_key)) in keys.iter().enumerate() {
 			if !may_clear && cached_created_at(&self.created_at, post_row_numbers[row_idx]).is_some() {
 				read_slots.push(None);
 				continue;
 			}
-			let post_slot = reads.len();
-			reads.push(post_key.clone());
-			let pre_slot = (pre_key.as_slice() != post_key.as_slice()).then(|| {
-				reads.push(pre_key.clone());
-				post_slot + 1
-			});
-			read_slots.push(Some((post_slot, pre_slot)));
+			read_slots.push(Some(reads.len()));
+			let pre = (pre_key.as_slice() != post_key.as_slice()).then(|| pre_key.clone());
+			reads.push((post_key.clone(), pre));
 		}
-		let stored: Vec<Option<DateTime>> = if reads.is_empty() {
-			Vec::new()
-		} else {
-			txn.get_many(&reads)?
-				.into_iter()
-				.map(|row| {
-					row.filter(|row| row.len() >= SHAPE_HEADER_SIZE)
-						.map(|row| read_created_at(&row))
-						.filter(|c| !c.is_epoch())
-				})
-				.collect()
-		};
+		let stored = stored_created_at_many(txn, &reads)?;
 
 		let incoming = created_at(source_post)?;
 		let mut created: Vec<DateTime> = Vec::with_capacity(row_count);
@@ -275,13 +260,13 @@ impl TableSink {
 			let prior = match cached_created_at(&self.created_at, post_row_number) {
 				Some(cached) => Some(cached),
 				None => {
-					let Some((post_slot, pre_slot)) = read_slots[row_idx] else {
+					let Some(slot) = read_slots[row_idx] else {
 						return internal_err!(
 							"view row {} lost its cached created_at without a stored read",
 							post_row_number.0
 						);
 					};
-					stored[post_slot].or_else(|| pre_slot.and_then(|slot| stored[slot]))
+					stored[slot]
 				}
 			};
 			let Some(stamp) = prior.or_else(|| incoming.get(row_idx).copied()) else {

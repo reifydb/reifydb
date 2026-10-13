@@ -9,9 +9,12 @@ use std::sync::LazyLock;
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
-use reifydb_codec::row::{
-	bytes::{EncodedBytes, SourceRowBuilder},
-	shape::{RowFamily, RowShape},
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{
+		bytes::{EncodedBytes, SHAPE_HEADER_SIZE, SourceRowBuilder, read_created_at},
+		shape::{RowFamily, RowShape},
+	},
 };
 use reifydb_core::{
 	interface::{
@@ -42,7 +45,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{error::FlowSinkError, operator::with_system_columns_of};
+use crate::{error::FlowSinkError, operator::with_system_columns_of, txn::Get};
 
 static EMPTY_PARAMS: Params = Params::None;
 static EMPTY_SYMBOL_TABLE: LazyLock<SymbolTable> = LazyLock::new(SymbolTable::new);
@@ -133,6 +136,34 @@ pub fn shape_field_columns(columns: &RecordBatch, shape: &RowShape) -> Vec<usize
 				.unwrap_or_else(|| panic!("Column '{}' not found in the batch", field_name))
 		})
 		.collect()
+}
+
+pub fn stored_created_at_many<T: Get + ?Sized>(
+	txn: &mut T,
+	rows: &[(EncodedKey, Option<EncodedKey>)],
+) -> Result<Vec<Option<DateTime>>> {
+	if rows.is_empty() {
+		return Ok(Vec::new());
+	}
+	let mut reads = Vec::with_capacity(rows.len() * 2);
+	for (post, pre) in rows {
+		reads.push(post.clone());
+		if let Some(pre) = pre {
+			reads.push(pre.clone());
+		}
+	}
+	let mut stored = txn.get_many(&reads)?.into_iter().map(|row| {
+		row.filter(|row| row.len() >= SHAPE_HEADER_SIZE)
+			.map(|row| read_created_at(&row))
+			.filter(|c| !c.is_epoch())
+	});
+	Ok(rows.iter()
+		.map(|(_, pre)| {
+			let post = stored.next().flatten();
+			let pre = pre.as_ref().and_then(|_| stored.next().flatten());
+			post.or(pre)
+		})
+		.collect())
 }
 
 pub struct SourceRowEncoder<'a> {

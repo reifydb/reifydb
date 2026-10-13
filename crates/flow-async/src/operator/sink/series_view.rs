@@ -27,7 +27,7 @@ use reifydb_flow::{
 	operator::sink::{
 		SourceRowEncoder, coerce_columns,
 		partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
-		shape_field_columns,
+		shape_field_columns, stored_created_at_many,
 		table::{
 			dictionary_encode_view_columns, dictionary_lookup_partition_columns,
 			dictionary_lookup_view_columns,
@@ -44,7 +44,7 @@ use reifydb_value::{
 		Value,
 		column_view::ColumnView,
 		partition::Partition,
-		system_columns::{SystemColumn, column_view, require_row_numbers},
+		system_columns::{SystemColumn, column_view, created_at, require_row_numbers},
 		value_type::ValueType,
 	},
 };
@@ -272,16 +272,12 @@ impl SinkSeriesViewOperator {
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let row_count = source_post.num_rows();
-		let field_columns = shape_field_columns(source_post, shape);
-		let encoder = SourceRowEncoder::new(source_post, shape, &field_columns)?;
 		let mut pre_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut post_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
-		let mut post_encoded_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let pre_row_numbers = require_row_numbers(source_pre)?;
 		let post_row_numbers = require_row_numbers(source_post)?;
 		let pre_series_keys = self.series_keys(&coerced_pre)?;
 		let post_series_keys = self.series_keys(&coerced_post)?;
-		let encoded = encoder.encode_all()?;
 		let pre_series_keys = self.checked_series_keys(&pre_series_keys)?;
 		let post_series_keys = self.checked_series_keys(&post_series_keys)?;
 		let partitions = if self.is_partitioned() {
@@ -295,7 +291,7 @@ impl SinkSeriesViewOperator {
 		} else {
 			None
 		};
-		for (row_idx, post_encoded) in (0..row_count).zip(encoded) {
+		for row_idx in 0..row_count {
 			let pre_row_number = pre_row_numbers[row_idx];
 			let post_row_number = post_row_numbers[row_idx];
 
@@ -340,9 +336,23 @@ impl SinkSeriesViewOperator {
 			};
 			pre_keys.push(pre_key);
 			post_keys.push(post_key);
-			post_encoded_bytes_vec.push(post_encoded);
 		}
-		txn.replace_batch(pre_keys, post_keys, post_encoded_bytes_vec)?;
+		let reads: Vec<(EncodedKey, Option<EncodedKey>)> = pre_keys
+			.iter()
+			.zip(&post_keys)
+			.map(|(pre_key, post_key)| (post_key.clone(), (pre_key != post_key).then(|| pre_key.clone())))
+			.collect();
+		let mut created = created_at(source_post)?.to_vec();
+		for (slot, stored) in created.iter_mut().zip(stored_created_at_many(txn, &reads)?) {
+			if let Some(stamp) = stored {
+				*slot = stamp;
+			}
+		}
+		let field_columns = shape_field_columns(source_post, shape);
+		let encoded = SourceRowEncoder::new(source_post, shape, &field_columns)?
+			.with_created_at(&created)
+			.encode_all()?;
+		txn.replace_batch(pre_keys, post_keys, encoded)?;
 		txn.emit(view.id(), Diff::update(coerced_pre, coerced_post))?;
 		Ok(())
 	}

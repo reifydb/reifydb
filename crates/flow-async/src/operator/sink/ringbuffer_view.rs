@@ -62,7 +62,7 @@ use reifydb_flow::{
 		sink::{
 			SourceRowEncoder, coerce_columns,
 			partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
-			shape_field_columns,
+			shape_field_columns, stored_created_at_many,
 			table::{
 				dictionary_encode_view_columns, dictionary_lookup_partition_columns,
 				dictionary_lookup_view_columns,
@@ -80,8 +80,13 @@ use reifydb_value::{
 	error::Error,
 	reifydb_assertions,
 	value::{
-		Value, datetime::DateTime, duration::Duration, partition::Partition, row_number::RowNumber,
-		system_columns::require_row_numbers, value_type::ValueType,
+		Value,
+		datetime::DateTime,
+		duration::Duration,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{created_at, require_row_numbers},
+		value_type::ValueType,
 	},
 };
 
@@ -1057,11 +1062,8 @@ impl SinkRingBufferViewOperator {
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let row_count = source_post.num_rows();
-		let field_columns = shape_field_columns(source_post, shape);
-		let encoder = SourceRowEncoder::new(source_post, shape, &field_columns)?;
 		let mut applied: Vec<usize> = Vec::with_capacity(row_count);
 		let pre_row_numbers = require_row_numbers(source_pre)?;
-		let encoded = encoder.encode_all()?;
 		let post_parts = if self.is_partitioned() {
 			let pre_parts = partition_batch(view, &self.partition_indices, source_pre)?;
 			let post_parts = partition_batch(view, &self.partition_indices, source_post)?;
@@ -1082,6 +1084,7 @@ impl SinkRingBufferViewOperator {
 			.iter()
 			.flat_map(|parts| parts.distinct.iter().map(|(partition, values)| (*partition, values)))
 			.collect();
+		let mut targets: Vec<(EncodedKey, Option<EncodedKey>)> = Vec::with_capacity(row_count);
 		for (row_idx, &pre_source_rn) in pre_row_numbers.iter().enumerate() {
 			let partition = if let Some(parts) = &post_parts {
 				let post_partition = parts.rows[row_idx];
@@ -1095,10 +1098,21 @@ impl SinkRingBufferViewOperator {
 			let Some(storage_rn) = self.get_forward(txn, pre_source_rn)? else {
 				continue;
 			};
-			let key = self.rb_key(object_id, storage_rn, partition);
-
-			txn.set_one(&key, encoded[row_idx].clone())?;
+			targets.push((self.rb_key(object_id, storage_rn, partition), None));
 			applied.push(row_idx);
+		}
+		let mut created = created_at(source_post)?.to_vec();
+		for (&row_idx, stored) in applied.iter().zip(stored_created_at_many(txn, &targets)?) {
+			if let (Some(stamp), Some(slot)) = (stored, created.get_mut(row_idx)) {
+				*slot = stamp;
+			}
+		}
+		let field_columns = shape_field_columns(source_post, shape);
+		let encoded = SourceRowEncoder::new(source_post, shape, &field_columns)?
+			.with_created_at(&created)
+			.encode_all()?;
+		for ((key, _), &row_idx) in targets.iter().zip(&applied) {
+			txn.set_one(key, encoded[row_idx].clone())?;
 		}
 		if !applied.is_empty() {
 			txn.emit(
