@@ -652,11 +652,15 @@ impl Evictor {
 				continue;
 			};
 			apply_series_metadata_after_delete(&mut metadata, &tally);
-			catalog.update_series_metadata_txn(
+			catalog.update_series_metadata_rebased_txn(
 				&mut Transaction::Command(&mut txn),
 				series.id,
 				partition,
 				metadata,
+				move |latest| {
+					apply_series_metadata_after_delete(latest, &tally);
+					Ok(())
+				},
 			)?;
 		}
 		txn.commit()?;
@@ -734,7 +738,10 @@ impl LifecycleTask for RetentionEvictTask {
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod tests {
-	use std::thread::sleep;
+	use std::{
+		sync::atomic::{AtomicBool, Ordering},
+		thread::{scope, sleep},
+	};
 
 	use reifydb_catalog::cache::{CatalogCache, load::CatalogCacheLoader};
 	use reifydb_cdc::produce::watermark::CdcProducerWatermark;
@@ -757,7 +764,10 @@ mod tests {
 	use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
-	use reifydb_value::value::{duration::Duration as ValueDuration, row_number::RowNumber};
+	use reifydb_value::{
+		params,
+		value::{duration::Duration as ValueDuration, row_number::RowNumber},
+	};
 
 	use super::*;
 
@@ -1118,6 +1128,46 @@ mod tests {
 		Evictor::new((*test).clone()).run_tick(&mut state, RetentionClass::RowTtl, now);
 
 		assert_eq!(row_count(&test, "from test::t"), 2, "nothing may be evicted on a guess about age");
+	}
+
+	#[test]
+	fn series_eviction_never_loses_the_count_of_an_unchecked_bulk_landing_mid_batch() {
+		// Eviction must decrement the latest count, otherwise a racing unchecked bulk's rows are lost from it.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(
+			"create series test::s { k: int8, v: int4 } WITH { time: processing, key: k, row: { ttl: 1h } }",
+		);
+		test.set_config(ConfigKey::RetentionEvictBatchSize, Value::Uint8(50));
+		test.set_config(ConfigKey::RetentionEvictMaxBatchesPerTick, Value::Uint8(1_000));
+		let expired: Vec<String> = (0..4_000).map(|k| format!("{{ k: {k}, v: 1 }}")).collect();
+		test.command(&format!("INSERT test::s [{}]", expired.join(", ")));
+		age_past_ttl(&test);
+
+		let engine = test.inner().clone();
+		let done = AtomicBool::new(false);
+		scope(|scope| {
+			scope.spawn(|| {
+				let mut k = 1_000_000i64;
+				while !done.load(Ordering::Acquire) {
+					let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
+					builder.series("test::s").rows([params! { k: k, v: 2 }]).done();
+					builder.execute().expect("the unchecked bulk commits");
+					k += 1;
+				}
+			});
+			let mut state = EvictorState::default();
+			tick_now(&test, &mut state, RetentionClass::RowTtl);
+			done.store(true, Ordering::Release);
+		});
+
+		let stored = row_count(&test, "from test::s");
+		assert!(stored > 0, "the racing bulk must have landed rows for the race to be checked");
+		assert_eq!(
+			series_metadata(&test, "s").row_count as usize,
+			stored,
+			"row_count must match the stored rows after eviction raced unchecked bulks"
+		);
 	}
 
 	#[test]
