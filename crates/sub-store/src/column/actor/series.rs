@@ -248,7 +248,11 @@ impl SeriesMaterializationActor {
 		}
 		metadata.dirty_from_key = u64::MAX;
 		metadata.dirty_to_key = 0;
-		catalog.update_series_metadata_txn(&mut tx, series.id, partition, metadata)?;
+		catalog.update_series_metadata_rebased_txn(&mut tx, series.id, partition, metadata, |latest| {
+			latest.dirty_from_key = u64::MAX;
+			latest.dirty_to_key = 0;
+			Ok(())
+		})?;
 		commit_admin(admin)
 	}
 
@@ -273,7 +277,13 @@ impl SeriesMaterializationActor {
 		}
 		metadata.dirty_from_key = u64::MAX;
 		metadata.dirty_to_key = 0;
-		catalog.update_series_metadata_txn(&mut tx, series.id, partition, metadata)?;
+		catalog.update_series_metadata_rebased_txn(&mut tx, series.id, partition, metadata, move |latest| {
+			if latest.dirty_from_key >= observed_from && latest.dirty_to_key <= observed_to {
+				latest.dirty_from_key = u64::MAX;
+				latest.dirty_to_key = 0;
+			}
+			Ok(())
+		})?;
 		commit_admin(admin)
 	}
 
@@ -580,5 +590,99 @@ impl Actor for SeriesMaterializationActor {
 
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new().mailbox_capacity(64)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::thread::scope;
+
+	use reifydb_test_harness::engine::TestEngine;
+	use reifydb_value::params;
+
+	use super::*;
+
+	fn stored_metadata(engine: &StandardEngine) -> SeriesPartitionMetadata {
+		let catalog = engine.catalog();
+		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut tx = Transaction::Command(&mut txn);
+		let namespace = catalog.find_namespace_by_name(&mut tx, "test").unwrap().unwrap();
+		let series = catalog.find_series_by_name(&mut tx, namespace.id(), "s").unwrap().unwrap();
+		let metadata = catalog.find_series_metadata(&mut tx, series.id, Partition::default()).unwrap().unwrap();
+		txn.rollback().unwrap();
+		metadata
+	}
+
+	fn race_unchecked_bulks(mark: impl Fn(&SeriesMaterializationActor, &StandardEngine, &Series)) {
+		// Every mark write races 20000 unchecked bulks; the counter and count must still equal the stored rows.
+		let test = TestEngine::new();
+		test.admin("CREATE NAMESPACE test");
+		test.admin("CREATE SERIES test::s { k: int8, v: int4 } WITH { key: k }");
+		test.command("INSERT test::s [{ k: 0, v: 0 }]");
+		let engine = test.inner().clone();
+		let store = ColumnStore::memory().unwrap();
+		let compressor = Compressor::new(store.session().clone());
+		let actor = SeriesMaterializationActor::new(
+			engine.clone(),
+			store,
+			compressor,
+			Duration::from_milliseconds(50).unwrap(),
+			1_000,
+			Duration::from_milliseconds(0).unwrap(),
+		);
+		let series = {
+			let catalog = engine.catalog();
+			let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+			let mut tx = Transaction::Command(&mut txn);
+			let namespace = catalog.find_namespace_by_name(&mut tx, "test").unwrap().unwrap();
+			let series = catalog.find_series_by_name(&mut tx, namespace.id(), "s").unwrap().unwrap();
+			txn.rollback().unwrap();
+			series
+		};
+
+		scope(|scope| {
+			let bulk = scope.spawn(|| {
+				for k in 1..=20_000i64 {
+					let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
+					builder.series("test::s").rows([params! { k: k, v: 1 }]).done();
+					builder.execute().expect("the unchecked bulk commits");
+				}
+			});
+			while !bulk.is_finished() {
+				mark(&actor, &engine, &series);
+			}
+			bulk.join().expect("the bulk writer never fails");
+		});
+
+		let stored = TestEngine::row_count(&test.query("FROM test::s")) as u64;
+		let metadata = stored_metadata(&engine);
+		assert_eq!(metadata.row_count, stored, "row_count must count every committed row");
+		assert_eq!(
+			metadata.sequence_counter, stored,
+			"the counter must never rewind below the rows it numbered"
+		);
+	}
+
+	#[test]
+	fn a_dirty_mark_reset_never_rewinds_what_an_unchecked_bulk_committed() {
+		// A reset must clear the latest dirty range, otherwise it writes back a stale counter and count.
+		race_unchecked_bulks(|actor, _, series| {
+			actor.reset_dirty_mark(series, Partition::default()).expect("the reset commits");
+		});
+	}
+
+	#[test]
+	fn a_dirty_mark_clear_never_rewinds_what_an_unchecked_bulk_committed() {
+		// A clear must judge the latest dirty range, otherwise it writes back a stale counter and count.
+		race_unchecked_bulks(|actor, engine, series| {
+			let observed = stored_metadata(engine);
+			actor.clear_dirty_mark(
+				series,
+				Partition::default(),
+				observed.dirty_from_key,
+				observed.dirty_to_key,
+			)
+			.expect("the clear commits");
+		});
 	}
 }
