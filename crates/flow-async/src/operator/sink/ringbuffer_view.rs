@@ -63,7 +63,10 @@ use reifydb_flow::{
 			SourceRowEncoder, coerce_columns,
 			partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
 			shape_field_columns,
-			table::{dictionary_encode_view_columns, dictionary_lookup_view_columns},
+			table::{
+				dictionary_encode_view_columns, dictionary_lookup_partition_columns,
+				dictionary_lookup_view_columns,
+			},
 		},
 		source::decode_dictionary_columns,
 	},
@@ -1045,7 +1048,11 @@ impl SinkRingBufferViewOperator {
 		}
 		let coerced_pre = coerce_columns(pre, view.columns(), &self.runtime_context)?;
 		let coerced_post = coerce_columns(post, view.columns(), &self.runtime_context)?;
-		let dict_pre = dictionary_encode_view_columns(txn, view, &coerced_pre)?;
+		let dict_pre = if self.is_partitioned() {
+			dictionary_lookup_partition_columns(txn, view, &self.partition_indices, &coerced_pre)?
+		} else {
+			None
+		};
 		let dict_post = dictionary_encode_view_columns(txn, view, &coerced_post)?;
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);

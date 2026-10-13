@@ -186,7 +186,11 @@ impl TableSink {
 		}
 		let coerced_pre = coerce_columns(pre, self.view.columns(), &self.runtime_context)?;
 		let coerced_post = coerce_columns(post, self.view.columns(), &self.runtime_context)?;
-		let dict_pre = dictionary_encode_view_columns(txn, &self.view, &coerced_pre)?;
+		let dict_pre = if self.is_partitioned() {
+			dictionary_lookup_partition_columns(txn, &self.view, &self.partition_indices, &coerced_pre)?
+		} else {
+			None
+		};
 		let dict_post = dictionary_encode_view_columns(txn, &self.view, &coerced_post)?;
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
@@ -367,6 +371,26 @@ pub fn dictionary_lookup_view_columns<T: Intern + ?Sized>(
 	columns: &RecordBatch,
 ) -> Result<Option<RecordBatch>> {
 	let dict_columns = view_dictionaries(txn, view)?;
+	lookup_dictionary_columns(txn, view, columns, dict_columns)
+}
+
+pub fn dictionary_lookup_partition_columns<T: Intern + ?Sized>(
+	txn: &mut T,
+	view: &View,
+	partition_indices: &[usize],
+	columns: &RecordBatch,
+) -> Result<Option<RecordBatch>> {
+	let mut dict_columns = view_dictionaries(txn, view)?;
+	dict_columns.retain(|(pos, _)| partition_indices.contains(pos));
+	lookup_dictionary_columns(txn, view, columns, dict_columns)
+}
+
+fn lookup_dictionary_columns<T: Intern + ?Sized>(
+	txn: &mut T,
+	view: &View,
+	columns: &RecordBatch,
+	dict_columns: Vec<(usize, Dictionary)>,
+) -> Result<Option<RecordBatch>> {
 	if dict_columns.is_empty() {
 		return Ok(None);
 	}
