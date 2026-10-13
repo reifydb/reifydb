@@ -93,7 +93,7 @@ use crate::{
 		lease::VersionLeaseGuard,
 		transaction::{
 			MultiTransaction,
-			write::{MultiWriteTransaction, Rebase},
+			write::{MultiWriteTransaction, Rebase, Rewrite},
 		},
 	},
 	single::{SingleTransaction, read::SingleReadTransaction, write::SingleWriteTransaction},
@@ -445,6 +445,13 @@ impl CommandTransaction {
 	pub fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set_rebased(key, bytes, rebase)
+	}
+
+	#[inline]
+	pub fn rewrite_on(&mut self, key: &TaggedKey, rewrite: Rewrite) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().rewrite_on(key, rewrite);
+		Ok(())
 	}
 
 	#[inline]

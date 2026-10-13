@@ -56,6 +56,9 @@ use crate::{
 
 pub type Rebase = Arc<dyn Fn(&EncodedBytes) -> Result<EncodedBytes> + Send + Sync>;
 
+pub type Rewrite =
+	Arc<dyn Fn(&mut CowVec<Delta>, Option<&EncodedBytes>, Option<&EncodedBytes>) -> Result<()> + Send + Sync>;
+
 pub struct WriteSavepoint {
 	pub(crate) pending_writes: PendingWrites,
 	pub(crate) count: u64,
@@ -64,6 +67,7 @@ pub struct WriteSavepoint {
 	pub(crate) removed_after_set_len: usize,
 	pub(crate) conflicts: ConflictManager,
 	pub(crate) rebases: BTreeMap<TaggedKey, (EncodedBytes, Vec<Rebase>)>,
+	pub(crate) rewrites: BTreeMap<TaggedKey, Rewrite>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -93,6 +97,8 @@ pub struct MultiWriteTransaction {
 	committed_pres: BTreeMap<TaggedKey, EncodedBytes>,
 
 	rebases: BTreeMap<TaggedKey, (EncodedBytes, Vec<Rebase>)>,
+
+	rewrites: BTreeMap<TaggedKey, Rewrite>,
 
 	pub(crate) lifecycle: Lifecycle,
 
@@ -126,6 +132,7 @@ impl MultiWriteTransaction {
 			removed_after_set: Vec::new(),
 			committed_pres: BTreeMap::new(),
 			rebases: BTreeMap::new(),
+			rewrites: BTreeMap::new(),
 			lifecycle: Lifecycle::Active,
 			self_lease: None,
 			pending_query_pin: None,
@@ -200,6 +207,7 @@ impl MultiWriteTransaction {
 			removed_after_set_len: self.removed_after_set.len(),
 			conflicts: self.conflicts.clone(),
 			rebases: self.rebases.clone(),
+			rewrites: self.rewrites.clone(),
 		}
 	}
 
@@ -211,6 +219,7 @@ impl MultiWriteTransaction {
 		self.removed_after_set.truncate(sp.removed_after_set_len);
 		self.conflicts = sp.conflicts;
 		self.rebases = sp.rebases;
+		self.rewrites = sp.rewrites;
 	}
 }
 
@@ -265,6 +274,10 @@ impl MultiWriteTransaction {
 
 	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
 		self.set_any(key.clone().into(), bytes.into())
+	}
+
+	pub fn rewrite_on(&mut self, key: &TaggedKey, rewrite: Rewrite) {
+		self.rewrites.entry(key.clone()).or_insert(rewrite);
 	}
 
 	pub fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()> {
@@ -925,11 +938,18 @@ impl MultiWriteTransaction {
 			})
 			.map(|(key, (written, steps))| (key, written, steps))
 			.collect();
-		if rebases.is_empty() {
+		let rewrites: Vec<(TaggedKey, Rewrite)> = mem::take(&mut self.rewrites).into_iter().collect();
+		if rebases.is_empty() && rewrites.is_empty() {
 			return None;
 		}
 		let store = self.engine.store.clone();
+		let base = self.base_version();
 		Some(Box::new(move |deltas: &mut CowVec<Delta>, latest: CommitVersion| {
+			for (key, rewrite) in rewrites {
+				let at_base = MultiVersionGet::get(&store, &key, base)?.map(|row| row.bytes);
+				let at_latest = MultiVersionGet::get(&store, &key, latest)?.map(|row| row.bytes);
+				rewrite(deltas, at_base.as_ref(), at_latest.as_ref())?;
+			}
 			for (key, written, steps) in rebases {
 				let Some(found) = MultiVersionGet::get(&store, &key, latest)? else {
 					continue;

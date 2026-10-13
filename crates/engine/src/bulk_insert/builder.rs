@@ -10,28 +10,35 @@ use reifydb_catalog::{
 	error::{CatalogError, CatalogObjectKind},
 };
 use reifydb_codec::row::{
-	bytes::{RowBuilder, SourceRowBuilder},
+	bytes::{EncodedBytes, RowBuilder, SourceRowBuilder},
+	pod::EncodedPodRow,
 	shape::RowShape,
 };
 use reifydb_core::{
 	common::TimeSource,
+	delta::Delta,
 	interface::catalog::{
 		column::Column,
 		namespace::Namespace,
 		object::ObjectId,
 		policy::{DataOp, PolicyTargetType},
 		ringbuffer::RingBuffer,
-		series::{Series, SeriesPartitionMetadata},
+		series::{Series, SeriesPartitionMetadata, decode_series_partition_metadata},
+		storage::StorageId,
 		table::Table,
 	},
 	internal_error,
+	key::{any::TaggedKey, series::SeriesPartitionMetadataKey},
 	value::batch::batch,
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_runtime::context::clock::Clock;
 #[cfg(feature = "testing")]
 use reifydb_transaction::counting::OpCounts;
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::{
+	multi::transaction::write::Rewrite,
+	transaction::{Transaction, command::CommandTransaction},
+};
 use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
@@ -714,6 +721,12 @@ fn execute_series_insert<V: ValidationMode>(
 			now,
 			V::VALIDATED,
 		)?;
+		if !V::VALIDATED {
+			txn.rewrite_on(
+				&SeriesPartitionMetadataKey::new(series.id, partition).into(),
+				renumber_series_rows(StorageId::series(series.id), partition),
+			)?;
+		}
 	}
 	Ok(SeriesInsertResult {
 		namespace: pending.namespace.clone(),
@@ -818,6 +831,49 @@ fn insert_series_rows(
 		},
 	)?;
 	Ok(written.len() as u64)
+}
+
+fn renumber_series_rows(storage: StorageId, partition: Partition) -> Rewrite {
+	Arc::new(move |deltas, at_base, at_latest| {
+		let counter = |bytes: Option<&EncodedBytes>| -> Result<u64> {
+			Ok(match bytes {
+				Some(bytes) => {
+					decode_series_partition_metadata(EncodedPodRow::view(bytes))?.sequence_counter
+				}
+				None => 0,
+			})
+		};
+		let base = counter(at_base)?;
+		let gap = counter(at_latest)?.checked_sub(base).ok_or_else(|| {
+			internal_error!(
+				"series {storage:?} partition counter fell below the bulk's snapshot counter {base}"
+			)
+		})?;
+		if gap == 0 {
+			return Ok(());
+		}
+		for delta in deltas.make_mut() {
+			if let Delta::Set {
+				key,
+				..
+			} = delta
+			{
+				match key {
+					TaggedKey::SeriesRow(row) if row.storage == storage && row.sequence > base => {
+						row.sequence += gap;
+					}
+					TaggedKey::PartitionedSeriesRow(row)
+						if row.storage == storage
+							&& row.partition == partition && row.sequence > base =>
+					{
+						row.sequence += gap;
+					}
+					_ => {}
+				}
+			}
+		}
+		Ok(())
+	})
 }
 
 fn parse_qualified_name(qualified_name: &str) -> (String, String) {
