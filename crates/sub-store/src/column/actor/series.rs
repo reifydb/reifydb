@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{HashMap, HashSet},
+	ops::Range,
 	sync::Arc,
 };
 
@@ -180,6 +181,10 @@ impl SeriesMaterializationActor {
 			}
 			let first = bucket_for(metadata.oldest_key, self.bucket_width);
 			let last = bucket_for(metadata.newest_key, self.bucket_width);
+			let live = first.start..last.end;
+			if metadata.dirty_from_key < live.start || metadata.dirty_to_key > live.end {
+				self.drop_snapshots_outside(state, series, partition, live)?;
+			}
 			let mut start = first.start;
 			let mut deferred = false;
 			let scope = PartitionScope {
@@ -198,12 +203,7 @@ impl SeriesMaterializationActor {
 					.maybe_materialize_bucket(state, query_txn, series, scope, &bucket, now_wall)?;
 			}
 			if !deferred {
-				self.clear_dirty_mark(
-					series,
-					partition,
-					metadata.dirty_from_key,
-					metadata.dirty_to_key,
-				)?;
+				self.clear_dirty_mark(series, partition, &metadata)?;
 			}
 		}
 		Ok(())
@@ -215,6 +215,19 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		partition: Partition,
 	) -> Result<()> {
+		if self.drop_snapshots_outside(state, series, partition, 0..0)? {
+			self.reset_dirty_mark(series, partition)?;
+		}
+		Ok(())
+	}
+
+	fn drop_snapshots_outside(
+		&self,
+		state: &mut SeriesMaterializationState,
+		series: &Series,
+		partition: Partition,
+		live: Range<u64>,
+	) -> Result<bool> {
 		let stored_partition = if series.partition_by.is_empty() {
 			None
 		} else {
@@ -228,13 +241,14 @@ impl SeriesMaterializationActor {
 			.filter(|snapshot| match snapshot.source {
 				ColumnSnapshotSource::SeriesBucket {
 					partition,
+					bucket_start,
 					..
-				} => partition == stored_partition,
+				} => partition == stored_partition && !live.contains(&bucket_start),
 				_ => false,
 			})
 			.collect();
 		if stale.is_empty() {
-			return Ok(());
+			return Ok(false);
 		}
 		for snapshot in &stale {
 			catalog.drop_column_snapshot(&mut admin, snapshot.id)?;
@@ -243,8 +257,10 @@ impl SeriesMaterializationActor {
 		for snapshot in &stale {
 			self.block_store.remove(&BlockKey::of(snapshot))?;
 		}
-		state.bucket_state.retain(|(id, part, _)| *id != series.id || *part != partition);
-		self.reset_dirty_mark(series, partition)
+		state.bucket_state.retain(|(id, part, bucket)| {
+			*id != series.id || *part != partition || live.contains(&bucket.0)
+		});
+		Ok(true)
 	}
 
 	fn reset_dirty_mark(&self, series: &Series, partition: Partition) -> Result<()> {
@@ -267,10 +283,9 @@ impl SeriesMaterializationActor {
 		&self,
 		series: &Series,
 		partition: Partition,
-		observed_from: u64,
-		observed_to: u64,
+		observed: &SeriesPartitionMetadata,
 	) -> Result<()> {
-		if observed_from >= observed_to {
+		if observed.dirty_from_key >= observed.dirty_to_key {
 			return Ok(());
 		}
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
@@ -279,7 +294,7 @@ impl SeriesMaterializationActor {
 		let Some(mut metadata) = catalog.find_series_metadata(&mut tx, series.id, partition)? else {
 			return Ok(());
 		};
-		if metadata.dirty_from_key < observed_from || metadata.dirty_to_key > observed_to {
+		if !unchanged_since_scan(&metadata, observed) {
 			return Ok(());
 		}
 		metadata.dirty_from_key = u64::MAX;
@@ -533,6 +548,10 @@ fn skip_on_conflict(result: Result<()>) -> Result<()> {
 	}
 }
 
+fn unchanged_since_scan(current: &SeriesPartitionMetadata, observed: &SeriesPartitionMetadata) -> bool {
+	current == observed
+}
+
 fn commit_admin(mut admin: AdminTransaction) -> Result<()> {
 	admin.commit()?;
 	Ok(())
@@ -610,10 +629,13 @@ impl Actor for SeriesMaterializationActor {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::error::diagnostic::transaction::{transaction_conflict, transaction_rolled_back};
+	use reifydb_core::{
+		error::diagnostic::transaction::{transaction_conflict, transaction_rolled_back},
+		interface::catalog::series::SeriesPartitionMetadata,
+	};
 	use reifydb_value::error::Error;
 
-	use super::skip_on_conflict;
+	use super::{skip_on_conflict, unchanged_since_scan};
 
 	#[test]
 	fn a_conflicting_seal_is_skipped_until_the_next_tick() {
@@ -627,5 +649,30 @@ mod tests {
 		// Only the conflict is expected; swallowing any other error would keep the actor running on wrong data.
 		let err = skip_on_conflict(Err(Error(Box::new(transaction_rolled_back())))).unwrap_err();
 		assert_eq!(err.code, "TXN_002");
+	}
+
+	fn scanned() -> SeriesPartitionMetadata {
+		SeriesPartitionMetadata {
+			row_count: 35,
+			oldest_key: 4,
+			newest_key: 88,
+			dirty_from_key: 4,
+			dirty_to_key: 89,
+			..SeriesPartitionMetadata::new()
+		}
+	}
+
+	#[test]
+	fn a_delete_inside_the_dirty_range_after_the_scan_keeps_the_dirty_mark() {
+		// The block was built from the pre-delete snapshot; clearing the mark would bring the deleted row back.
+		let mut current = scanned();
+		current.row_count -= 1;
+		assert!(!unchanged_since_scan(&current, &scanned()));
+	}
+
+	#[test]
+	fn a_partition_untouched_since_the_scan_clears_its_dirty_mark() {
+		// Without this the mark never clears and every tick rebuilds the same buckets.
+		assert!(unchanged_since_scan(&scanned(), &scanned()));
 	}
 }
