@@ -71,7 +71,7 @@ use crate::{
 			coerce::key_out_of_range,
 			columns::{CastColumns, fill_sequences, intern_dictionary_columns},
 			partition::{ringbuffer_batch_partitions, save_all_partition_metadata},
-			primary_key::Violation,
+			primary_key::{Violation, get_primary_key},
 			ringbuffer_insert::insert_ringbuffer_chunks,
 			series_insert::{assign_series_keys, series_batch_partitions, write_inserted_series_metadata},
 			shape::{
@@ -218,7 +218,8 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		let pending_tables = self.pending_tables;
 		let pending_ringbuffers = self.pending_ringbuffers;
 		let pending_series = self.pending_series;
-		let checked_commit = !pending_ringbuffers.is_empty();
+		let checked_commit =
+			!pending_ringbuffers.is_empty() || has_keyed_table(&catalog, &mut txn, &pending_tables)?;
 
 		let body = move |txn: &mut CommandTransaction| {
 			let writer = Writer {
@@ -529,6 +530,20 @@ fn resolve_namespace(catalog: &Catalog, txn: &mut CommandTransaction, name: &str
 		}
 		.into()
 	})
+}
+
+fn has_keyed_table(
+	catalog: &Catalog,
+	txn: &mut CommandTransaction,
+	pending_tables: &[PendingTableInsert],
+) -> Result<bool> {
+	for pending in pending_tables {
+		let (_, table) = resolve_table(catalog, txn, pending)?;
+		if get_primary_key(catalog, &mut Transaction::Command(txn), &table)?.is_some() {
+			return Ok(true);
+		}
+	}
+	Ok(false)
 }
 
 fn resolve_table(
