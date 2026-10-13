@@ -846,7 +846,9 @@ fn renumber_series_rows(storage: StorageId, partition: Partition) -> Rewrite {
 		let base = counter(at_base)?;
 		let gap = counter(at_latest)?.checked_sub(base).ok_or_else(|| {
 			internal_error!(
-				"series {storage:?} partition counter fell below the bulk's snapshot counter {base}"
+				"series {:?} partition counter fell below the bulk's snapshot counter {}",
+				storage,
+				base
 			)
 		})?;
 		if gap == 0 {
