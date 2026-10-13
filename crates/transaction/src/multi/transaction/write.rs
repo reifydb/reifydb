@@ -843,23 +843,25 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	fn commit_pending_unchecked(&mut self, deltas: CowVec<Delta>) -> Result<CommitVersion> {
+	fn commit_pending_unchecked(&mut self, deltas: CowVec<Delta>) -> Result<(CommitVersion, CowVec<Delta>)> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		let _ = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 
-		let result = self.oracle.advance_unchecked(base_version, deltas);
+		let rebase = self.take_rebase();
+		let result = self.oracle.advance_unchecked(base_version, deltas, rebase);
 		self.release_read_snapshot(base_version);
+		let (result, deltas) = result?;
 
-		match result? {
+		match result {
 			CreateCommitResult::Conflict(_) => unreachable!("advance_unchecked never reports a conflict"),
 			CreateCommitResult::TooOld => Err(TransactionError::TooOld.into()),
 			CreateCommitResult::Success(version) => {
 				self.pending_query_pin = Some(version);
 				self.clear_pending_state();
-				Ok(version)
+				Ok((version, deltas))
 			}
 		}
 	}
@@ -1014,7 +1016,7 @@ impl MultiWriteTransaction {
 		self.forget_present_tags();
 		self.resolve_removed_after_set()?;
 		let deltas = self.build_deltas();
-		let commit_version = self.commit_pending_unchecked(deltas.clone())?;
+		let (commit_version, deltas) = self.commit_pending_unchecked(deltas)?;
 		self.finalize_commit(commit_version, deltas, |_| {})
 	}
 

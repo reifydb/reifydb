@@ -346,17 +346,21 @@ where
 	pub(crate) fn advance_unchecked(
 		&self,
 		version: CommitVersion,
-		deltas: CowVec<Delta>,
-	) -> Result<CreateCommitResult> {
+		mut deltas: CowVec<Delta>,
+		rebase: Option<CommitRebase>,
+	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
 		let inner = self.inner.write();
 		if version < inner.evicted_up_through {
-			return Ok(CreateCommitResult::TooOld);
+			return Ok((CreateCommitResult::TooOld, deltas));
 		}
 
-		let commit_version = self.allocate_commit_version(SpanTiming::current(), deltas)?;
+		if let Some(rebase) = rebase {
+			rebase(&mut deltas, self.clock.current()?)?;
+		}
+		let commit_version = self.allocate_commit_version(SpanTiming::current(), deltas.clone())?;
 		drop(inner);
 
-		Ok(CreateCommitResult::Success(commit_version))
+		Ok((CreateCommitResult::Success(commit_version), deltas))
 	}
 }
 

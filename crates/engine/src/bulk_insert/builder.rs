@@ -66,7 +66,7 @@ use crate::{
 			partition::{ringbuffer_batch_partitions, save_all_partition_metadata},
 			primary_key::Violation,
 			ringbuffer_insert::insert_ringbuffer_chunks,
-			series_insert::{assign_series_keys, series_batch_partitions},
+			series_insert::{assign_series_keys, series_batch_partitions, write_inserted_series_metadata},
 			shape::{
 				get_or_create_ringbuffer_shape, get_or_create_series_shape, get_or_create_table_shape,
 			},
@@ -662,6 +662,7 @@ fn execute_series_insert<V: ValidationMode>(
 	let catalog = writer.catalog;
 	let (namespace, series) = resolve_series(catalog, txn, pending)?;
 	let mut metadata_by_partition: HashMap<Partition, SeriesPartitionMetadata> = HashMap::new();
+	let mut inserted_keys: HashMap<Partition, Vec<u64>> = HashMap::new();
 	let shape = get_or_create_series_shape(catalog, &series, &mut Transaction::Command(txn))?;
 	let sumtype = series.tag.map(|id| catalog.get_sumtype(&mut Transaction::Command(txn), id)).transpose()?;
 	let (columns, tags) = coerce_columns(
@@ -689,12 +690,30 @@ fn execute_series_insert<V: ValidationMode>(
 			tags,
 			rows,
 		)?;
-		insert_series_rows(writer, txn, &series, &shape, columns, checked, &mut metadata_by_partition)?
+		insert_series_rows(
+			writer,
+			txn,
+			&series,
+			&shape,
+			columns,
+			checked,
+			&mut metadata_by_partition,
+			&mut inserted_keys,
+		)?
 	};
 	let now = writer.clock.now();
-	for (partition, mut metadata) in metadata_by_partition {
-		metadata.last_write_at = now;
-		catalog.update_series_metadata_txn(&mut Transaction::Command(txn), series.id, partition, metadata)?;
+	for (partition, metadata) in metadata_by_partition {
+		let keys = inserted_keys.remove(&partition).unwrap_or_default();
+		write_inserted_series_metadata(
+			catalog,
+			&mut Transaction::Command(txn),
+			&series,
+			partition,
+			metadata,
+			keys,
+			now,
+			V::VALIDATED,
+		)?;
 	}
 	Ok(SeriesInsertResult {
 		namespace: pending.namespace.clone(),
@@ -732,6 +751,7 @@ fn insert_series_rows(
 	columns: Vec<(FieldRef, ArrayRef)>,
 	checked: Checked,
 	metadata_by_partition: &mut HashMap<Partition, SeriesPartitionMetadata>,
+	inserted_keys: &mut HashMap<Partition, Vec<u64>>,
 ) -> Result<u64> {
 	let catalog = writer.catalog;
 	let rows = checked.keys.len();
@@ -781,6 +801,9 @@ fn insert_series_rows(
 		metadata_by_partition,
 		|_| Err(internal_error!("bulk insert into series {} kept a row without a key", series.name)),
 	)?;
+	for (row, &key) in assigned.keys.iter().enumerate() {
+		inserted_keys.entry(batch.rows.get(row).copied().unwrap_or_default()).or_default().push(key);
+	}
 	for (row, builder) in built.iter_mut().enumerate() {
 		stamp(builder, &times, row, now)?;
 	}

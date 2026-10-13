@@ -357,27 +357,9 @@ fn finalize_series_insert(
 	returned_rows: &[(RowNumber, EncodedBytes)],
 ) -> Result<RecordBatch> {
 	let now = services.runtime_context.clock.now();
-	for (partition, mut metadata) in metadata_by_partition {
-		metadata.last_write_at = now;
+	for (partition, metadata) in metadata_by_partition {
 		let keys = inserted_keys.remove(&partition).unwrap_or_default();
-		let numbered_from = metadata.sequence_counter - keys.len() as u64;
-		services.catalog.update_series_metadata_rebased_txn(
-			txn,
-			series.id,
-			partition,
-			metadata,
-			move |latest| {
-				if latest.sequence_counter != numbered_from {
-					return Err(TransactionError::Conflict.into());
-				}
-				for &key in &keys {
-					latest.sequence_counter += 1;
-					update_series_metadata_for_insert(latest, key);
-				}
-				latest.last_write_at = now;
-				Ok(())
-			},
-		)?;
+		write_inserted_series_metadata(&services.catalog, txn, series, partition, metadata, keys, now, true)?;
 	}
 
 	if let Some(returning_exprs) = returning {
@@ -676,6 +658,32 @@ fn track_series_insert_flow_change(
 }
 
 #[inline]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn write_inserted_series_metadata(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	series: &Series,
+	partition: Partition,
+	mut metadata: SeriesPartitionMetadata,
+	keys: Vec<u64>,
+	now: DateTime,
+	refuse_moved_counter: bool,
+) -> Result<()> {
+	metadata.last_write_at = now;
+	let numbered_from = metadata.sequence_counter - keys.len() as u64;
+	catalog.update_series_metadata_rebased_txn(txn, series.id, partition, metadata, move |latest| {
+		if refuse_moved_counter && latest.sequence_counter != numbered_from {
+			return Err(TransactionError::Conflict.into());
+		}
+		for &key in &keys {
+			latest.sequence_counter += 1;
+			update_series_metadata_for_insert(latest, key);
+		}
+		latest.last_write_at = now;
+		Ok(())
+	})
+}
+
 pub(crate) fn update_series_metadata_for_insert(metadata: &mut SeriesPartitionMetadata, key_value: u64) {
 	if metadata.row_count == 0 {
 		metadata.oldest_key = key_value;
