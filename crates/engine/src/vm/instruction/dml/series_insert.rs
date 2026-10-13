@@ -46,7 +46,7 @@ use reifydb_core::{
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_rql::nodes::InsertSeriesNode;
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{error::TransactionError, transaction::Transaction};
 use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
@@ -109,6 +109,7 @@ pub(crate) fn insert_series(
 	} = plan;
 	let (namespace, series) = resolve_insert_series_target(services, txn, &target)?;
 	let mut metadata: HashMap<Partition, SeriesPartitionMetadata> = HashMap::new();
+	let mut inserted_keys: HashMap<Partition, Vec<u64>> = HashMap::new();
 	let context = build_insert_series_query_context(
 		services,
 		&SeriesTarget {
@@ -231,6 +232,9 @@ pub(crate) fn insert_series(
 			&mut metadata,
 			|metadata| generate_series_key(services, &series, metadata),
 		)?;
+		for (row, &key) in assigned.keys.iter().enumerate() {
+			inserted_keys.entry(batch.rows.get(row).copied().unwrap_or_default()).or_default().push(key);
+		}
 
 		let key_column = series.key_column_data(assigned.keys);
 		let mut batch_builders: Vec<EncodedSeriesRowBuilder> =
@@ -312,6 +316,7 @@ pub(crate) fn insert_series(
 		&series,
 		&shape,
 		metadata,
+		inserted_keys,
 		inserted_count,
 		&returning,
 		&returned_rows,
@@ -346,6 +351,7 @@ fn finalize_series_insert(
 	series: &Series,
 	shape: &RowShape,
 	metadata_by_partition: HashMap<Partition, SeriesPartitionMetadata>,
+	mut inserted_keys: HashMap<Partition, Vec<u64>>,
 	inserted_count: u64,
 	returning: &Option<Vec<Expression>>,
 	returned_rows: &[(RowNumber, EncodedBytes)],
@@ -353,7 +359,25 @@ fn finalize_series_insert(
 	let now = services.runtime_context.clock.now();
 	for (partition, mut metadata) in metadata_by_partition {
 		metadata.last_write_at = now;
-		services.catalog.update_series_metadata_txn(txn, series.id, partition, metadata)?;
+		let keys = inserted_keys.remove(&partition).unwrap_or_default();
+		let numbered_from = metadata.sequence_counter - keys.len() as u64;
+		services.catalog.update_series_metadata_rebased_txn(
+			txn,
+			series.id,
+			partition,
+			metadata,
+			move |latest| {
+				if latest.sequence_counter != numbered_from {
+					return Err(TransactionError::Conflict.into());
+				}
+				for &key in &keys {
+					latest.sequence_counter += 1;
+					update_series_metadata_for_insert(latest, key);
+				}
+				latest.last_write_at = now;
+				Ok(())
+			},
+		)?;
 	}
 
 	if let Some(returning_exprs) = returning {

@@ -317,7 +317,7 @@ impl Catalog {
 		series_id: SeriesId,
 		partition: Partition,
 		metadata: SeriesPartitionMetadata,
-		change: impl Fn(&mut SeriesPartitionMetadata) + Send + Sync + 'static,
+		change: impl Fn(&mut SeriesPartitionMetadata) -> Result<()> + Send + Sync + 'static,
 	) -> Result<()> {
 		CatalogStore::update_series_metadata_rebased_txn(txn, series_id, partition, metadata, change)
 	}

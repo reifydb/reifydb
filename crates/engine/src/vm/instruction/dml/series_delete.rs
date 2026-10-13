@@ -110,7 +110,10 @@ pub(crate) fn delete_series(
 			series.id,
 			partition,
 			metadata,
-			move |latest| apply_series_metadata_after_delete(latest, &tally),
+			move |latest| {
+				apply_series_metadata_after_delete(latest, &tally);
+				Ok(())
+			},
 		)?;
 	}
 

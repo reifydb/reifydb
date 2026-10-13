@@ -33,12 +33,12 @@ impl CatalogStore {
 		series_id: SeriesId,
 		partition: Partition,
 		metadata: SeriesPartitionMetadata,
-		change: impl Fn(&mut SeriesPartitionMetadata) + Send + Sync + 'static,
+		change: impl Fn(&mut SeriesPartitionMetadata) -> Result<()> + Send + Sync + 'static,
 	) -> Result<()> {
 		let row = encode_series_partition_metadata(&metadata);
 		let rebase: Rebase = Arc::new(move |bytes: &EncodedBytes| {
 			let mut latest = decode_series_partition_metadata(EncodedPodRow::view(bytes))?;
-			change(&mut latest);
+			change(&mut latest)?;
 			Ok(encode_series_partition_metadata(&latest).into_bytes())
 		});
 		txn.set_rebased(&SeriesPartitionMetadataKey::new(series_id, partition), row.into_bytes(), rebase)?;
