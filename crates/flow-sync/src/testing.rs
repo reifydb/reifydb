@@ -148,6 +148,10 @@ impl<T: Get> Get for TestingTxn<T> {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		self.txn.get(key)
 	}
+
+	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		self.txn.get_many(keys)
+	}
 }
 
 impl<T: Batch> Batch for TestingTxn<T> {
@@ -318,6 +322,10 @@ impl Changes for TestingTx {
 impl Get for TestingTx {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		Ok(self.rows.get(key).cloned())
+	}
+
+	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		Ok(keys.iter().map(|key| self.rows.get(key).cloned()).collect())
 	}
 }
 

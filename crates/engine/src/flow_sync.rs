@@ -176,6 +176,11 @@ impl Get for FlowTransaction<'_> {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		Ok(self.tx.get(&tagged(key))?.map(|row| row.bytes))
 	}
+
+	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		let keys: Vec<TaggedKey> = keys.iter().map(tagged).collect();
+		Ok(self.tx.get_many(&keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect())
+	}
 }
 
 impl Batch for FlowTransaction<'_> {

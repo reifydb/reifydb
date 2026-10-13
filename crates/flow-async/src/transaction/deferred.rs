@@ -100,7 +100,7 @@ use crate::{
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction, LookupContext,
 		dictionary::DictionaryExtension,
-		pending_get,
+		pending_get, pending_get_many,
 		read::{OperatorStateRangeIter, ReadFrom, read_from},
 		scope::{OperatorRangeScope, OperatorScope, operator_state_coordinates, operator_state_scope},
 		substrate::FlowSubstrate,
@@ -187,6 +187,41 @@ pub(crate) fn deferred_storage_get(
 	};
 	let key = TaggedKey::decode(key).expect(UNDECODABLE_KEY);
 	Ok(query.expect(NO_READ_TRANSACTION).get(&key)?.map(|value| value.into_multi_version_row().bytes))
+}
+
+pub(crate) fn deferred_storage_get_many(
+	operators: Option<&OperatorStore>,
+	query: Option<&MultiReadTransaction>,
+	state_query: Option<&MultiReadTransaction>,
+	keys: &[EncodedKey],
+) -> Result<Vec<Option<EncodedBytes>>> {
+	let mut rows = vec![None; keys.len()];
+	let (mut state_slots, mut state_keys) = (Vec::new(), Vec::new());
+	let (mut query_slots, mut query_keys) = (Vec::new(), Vec::new());
+	for (slot, key) in keys.iter().enumerate() {
+		match read_from(key) {
+			ReadFrom::OperatorState => {
+				rows[slot] = deferred_storage_get(operators, query, state_query, key)?
+			}
+			ReadFrom::StateQuery | ReadFrom::OwnedRow => {
+				state_slots.push(slot);
+				state_keys.push(TaggedKey::decode(key).expect(UNDECODABLE_KEY));
+			}
+			ReadFrom::Query => {
+				query_slots.push(slot);
+				query_keys.push(TaggedKey::decode(key).expect(UNDECODABLE_KEY));
+			}
+		}
+	}
+	for (read, slots, tagged) in [(state_query, state_slots, state_keys), (query, query_slots, query_keys)] {
+		if tagged.is_empty() {
+			continue;
+		}
+		for (slot, value) in slots.into_iter().zip(read.expect(NO_READ_TRANSACTION).get_many(&tagged)?) {
+			rows[slot] = value.map(|value| value.into_multi_version_row().bytes);
+		}
+	}
+	Ok(rows)
 }
 
 pub(crate) fn deferred_storage_contains(
@@ -359,6 +394,15 @@ impl FlowTransaction for DeferredTransaction {
 		)
 	}
 
+	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		deferred_storage_get_many(
+			self.substrate.operators.as_ref(),
+			self.query.as_ref(),
+			self.state_query.as_ref(),
+			keys,
+		)
+	}
+
 	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool> {
 		deferred_storage_contains(
 			self.substrate.operators.as_ref(),
@@ -393,6 +437,10 @@ impl FlowTransaction for DeferredTransaction {
 impl Get for DeferredTransaction {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		pending_get(self, key)
+	}
+
+	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		pending_get_many(self, keys)
 	}
 }
 

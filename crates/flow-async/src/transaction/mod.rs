@@ -147,6 +147,10 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 
 	fn storage_get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>>;
 
+	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		keys.iter().map(|key| self.storage_get(key)).collect()
+	}
+
 	fn storage_contains(&mut self, key: &EncodedKey) -> Result<bool>;
 
 	fn storage_range(
@@ -299,4 +303,26 @@ pub fn pending_get<T: FlowTransaction>(txn: &mut T, key: &EncodedKey) -> Result<
 		Some(overlay) => Ok(overlay),
 		None => txn.storage_get(key),
 	}
+}
+
+pub fn pending_get_many<T: FlowTransaction>(txn: &mut T, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	let mut rows = Vec::with_capacity(keys.len());
+	let mut misses = Vec::new();
+	let mut miss_keys = Vec::new();
+	for (slot, key) in keys.iter().enumerate() {
+		match txn.lookup_overlays(key) {
+			Some(overlay) => rows.push(overlay),
+			None => {
+				rows.push(None);
+				misses.push(slot);
+				miss_keys.push(key.clone());
+			}
+		}
+	}
+	if !miss_keys.is_empty() {
+		for (slot, row) in misses.into_iter().zip(txn.storage_get_many(&miss_keys)?) {
+			rows[slot] = row;
+		}
+	}
+	Ok(rows)
 }

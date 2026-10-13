@@ -1185,7 +1185,7 @@ mod seal_tests {
 			deferred::DeferredTransaction,
 			join_expiry::{join_due_range, join_expiry_key},
 			mock::FlowTxn,
-			pending_get,
+			pending_get, pending_get_many,
 			row_number::RowNumberExtension,
 			state::{StateExtension, StateRange},
 			substrate::{FlowSubstrate, apply_operator_state},
@@ -1428,6 +1428,10 @@ mod seal_tests {
 	impl Get for CountingTxn {
 		fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 			pending_get(self, key)
+		}
+
+		fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+			pending_get_many(self, keys)
 		}
 	}
 

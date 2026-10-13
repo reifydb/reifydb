@@ -30,7 +30,7 @@ use reifydb_flow_async::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
 	transaction::{
-		ChangeCoordinate, FlowTransaction, pending_get,
+		ChangeCoordinate, FlowTransaction, pending_get, pending_get_many,
 		read::{ReadFrom, read_from},
 		scope::scoped_key,
 		substrate::FlowSubstrate,
@@ -191,6 +191,10 @@ fn ephemeral_fetch_state(
 impl Get for EphemeralTransaction {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		pending_get(self, key)
+	}
+
+	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		pending_get_many(self, keys)
 	}
 }
 

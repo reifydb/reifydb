@@ -8,9 +8,8 @@ use arrow_schema::FieldRef;
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
-		bytes::{EncodedBytes, RowBuilder, SHAPE_HEADER_SIZE, read_created_at},
+		bytes::{EncodedBytes, SHAPE_HEADER_SIZE, read_created_at},
 		shape::{RowFamily, RowShape},
-		table::EncodedTableRow,
 	},
 };
 use reifydb_core::{
@@ -40,8 +39,12 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	value::{
-		Value, column_view::ColumnView, datetime::DateTime, partition::Partition, row_number::RowNumber,
-		system_columns::require_row_numbers,
+		Value,
+		column_view::ColumnView,
+		datetime::DateTime,
+		partition::Partition,
+		row_number::RowNumber,
+		system_columns::{created_at, require_row_numbers},
 	},
 };
 use tracing::instrument;
@@ -195,14 +198,10 @@ impl TableSink {
 		let source_pre = dict_pre.as_ref().unwrap_or(&coerced_pre);
 		let source_post = dict_post.as_ref().unwrap_or(&coerced_post);
 		let row_count = source_post.num_rows();
-		let field_columns = shape_field_columns(source_post, &self.shape);
-		let encoder = SourceRowEncoder::new(source_post, &self.shape, &field_columns)?;
-		let mut writes = KeyWrites::with_capacity(row_count);
 		let (pre_row_numbers, post_row_numbers) =
 			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?);
 		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
 		let mut post_runs = sort_runs(&self.sort, &coerced_post)?.into_iter();
-		let encoded = encoder.encode_all()?;
 		let partitions = if self.is_partitioned() {
 			let pre = partition_batch(&self.view, &self.partition_indices, source_pre)?;
 			let post = partition_batch(&self.view, &self.partition_indices, source_post)?;
@@ -223,11 +222,10 @@ impl TableSink {
 		} else {
 			None
 		};
-		for (row_idx, mut post_encoded) in (0..row_count).zip(encoded) {
-			let pre_row_number = pre_row_numbers[row_idx];
-			let post_row_number = post_row_numbers[row_idx];
-
-			let (pre_key, post_key) = if let Some(partitions) = &partitions {
+		let mut keys: Vec<(EncodedKey, EncodedKey)> = Vec::with_capacity(row_count);
+		for row_idx in 0..row_count {
+			let (pre_row_number, post_row_number) = (pre_row_numbers[row_idx], post_row_numbers[row_idx]);
+			keys.push(if let Some(partitions) = &partitions {
 				let partition = partitions[row_idx];
 				(
 					partitioned_key(self.storage, pre_runs.next(), partition, pre_row_number),
@@ -238,27 +236,70 @@ impl TableSink {
 					sorted_view_key(self.storage, pre_runs.next(), pre_row_number),
 					sorted_view_key(self.storage, post_runs.next(), post_row_number),
 				)
-			};
+			});
+		}
 
-			let mut prior_created =
-				self.created_at.get(&post_row_number).copied().filter(|c| !c.is_epoch());
-			if prior_created.is_none() {
-				prior_created = stored_created_at(txn, &post_key)?;
-				if prior_created.is_none() && pre_key.as_slice() != post_key.as_slice() {
-					prior_created = stored_created_at(txn, &pre_key)?;
+		let may_clear = self.created_at.len() + row_count >= CREATED_AT_CACHE_CAPACITY;
+		let mut reads: Vec<EncodedKey> = Vec::new();
+		let mut read_slots: Vec<Option<(usize, Option<usize>)>> = Vec::with_capacity(row_count);
+		for (row_idx, (pre_key, post_key)) in keys.iter().enumerate() {
+			if !may_clear && cached_created_at(&self.created_at, post_row_numbers[row_idx]).is_some() {
+				read_slots.push(None);
+				continue;
+			}
+			let post_slot = reads.len();
+			reads.push(post_key.clone());
+			let pre_slot = (pre_key.as_slice() != post_key.as_slice()).then(|| {
+				reads.push(pre_key.clone());
+				post_slot + 1
+			});
+			read_slots.push(Some((post_slot, pre_slot)));
+		}
+		let stored: Vec<Option<DateTime>> = if reads.is_empty() {
+			Vec::new()
+		} else {
+			txn.get_many(&reads)?
+				.into_iter()
+				.map(|row| {
+					row.filter(|row| row.len() >= SHAPE_HEADER_SIZE)
+						.map(|row| read_created_at(&row))
+						.filter(|c| !c.is_epoch())
+				})
+				.collect()
+		};
+
+		let incoming = created_at(source_post)?;
+		let mut created: Vec<DateTime> = Vec::with_capacity(row_count);
+		for row_idx in 0..row_count {
+			let post_row_number = post_row_numbers[row_idx];
+			let prior = match cached_created_at(&self.created_at, post_row_number) {
+				Some(cached) => Some(cached),
+				None => {
+					let Some((post_slot, pre_slot)) = read_slots[row_idx] else {
+						return internal_err!(
+							"view row {} lost its cached created_at without a stored read",
+							post_row_number.0
+						);
+					};
+					stored[post_slot].or_else(|| pre_slot.and_then(|slot| stored[slot]))
 				}
-			}
-			if let Some(c) = prior_created
-				&& post_encoded.len() >= SHAPE_HEADER_SIZE
-			{
-				let updated = self.shape.updated_at(&post_encoded);
-				let mut builder = EncodedTableRow::from(post_encoded).thaw();
-				builder.set_timestamps(c, updated);
-				post_encoded = builder.freeze_bytes();
-			}
+			};
+			let Some(stamp) = prior.or_else(|| incoming.get(row_idx).copied()) else {
+				return Err(Error::from(FlowSinkError::MissingSystemColumn {
+					column: "created_at",
+					row_idx,
+				}));
+			};
+			remember_created_at(&mut self.created_at, post_row_number, stamp);
+			created.push(stamp);
+		}
 
-			remember_created_at(&mut self.created_at, post_row_number, read_created_at(&post_encoded));
-
+		let field_columns = shape_field_columns(source_post, &self.shape);
+		let encoded = SourceRowEncoder::new(source_post, &self.shape, &field_columns)?
+			.with_created_at(&created)
+			.encode_all()?;
+		let mut writes = KeyWrites::with_capacity(row_count);
+		for ((pre_key, post_key), post_encoded) in keys.into_iter().zip(encoded) {
 			if pre_key.as_slice() != post_key.as_slice() {
 				writes.put(pre_key, None);
 			}
@@ -308,13 +349,8 @@ impl TableSink {
 	}
 }
 
-fn stored_created_at<T: Get>(txn: &mut T, key: &EncodedKey) -> Result<Option<DateTime>> {
-	Ok(match txn.get(key)? {
-		Some(prior) if prior.len() >= SHAPE_HEADER_SIZE => {
-			Some(read_created_at(&prior)).filter(|c| !c.is_epoch())
-		}
-		_ => None,
-	})
+fn cached_created_at(cache: &HashMap<RowNumber, DateTime>, row_number: RowNumber) -> Option<DateTime> {
+	cache.get(&row_number).copied().filter(|c| !c.is_epoch())
 }
 
 fn remember_created_at(cache: &mut HashMap<RowNumber, DateTime>, row_number: RowNumber, created_at: DateTime) {

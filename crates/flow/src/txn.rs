@@ -16,6 +16,8 @@ use reifydb_value::{
 
 pub trait Get {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>>;
+
+	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>>;
 }
 
 pub trait Batch {

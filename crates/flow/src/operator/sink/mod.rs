@@ -160,6 +160,13 @@ impl<'a> SourceRowEncoder<'a> {
 		})
 	}
 
+	pub fn with_created_at(self, created_at: &'a [DateTime]) -> Self {
+		Self {
+			created_at,
+			..self
+		}
+	}
+
 	pub fn encode_all(&self) -> Result<Vec<EncodedBytes>> {
 		match self.shape.family() {
 			RowFamily::Table => {

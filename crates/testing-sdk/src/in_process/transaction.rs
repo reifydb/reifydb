@@ -18,7 +18,7 @@ use reifydb_flow::txn::{Batch, Get};
 use reifydb_flow_async::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
-	transaction::{ChangeCoordinate, FlowTransaction, pending_get, substrate::FlowSubstrate},
+	transaction::{ChangeCoordinate, FlowTransaction, pending_get, pending_get_many, substrate::FlowSubstrate},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -156,6 +156,10 @@ impl FlowTransaction for TestFlowTransaction {
 impl Get for TestFlowTransaction {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		pending_get(self, key)
+	}
+
+	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		pending_get_many(self, keys)
 	}
 }
 
