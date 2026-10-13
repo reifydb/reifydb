@@ -5,10 +5,11 @@ use std::sync::Arc;
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::FieldRef;
+use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::RowShape};
 use reifydb_core::{
 	expression::Expression,
-	interface::catalog::{column::Column, dictionary::Dictionary},
+	interface::catalog::{column::Column, dictionary::Dictionary, table::Table},
 	internal_err,
 	value::{
 		batch::{batch, empty_batch, from_encoded_bytes},
@@ -37,12 +38,24 @@ use reifydb_value::{
 
 use crate::{
 	Result,
+	transaction::operation::table::{decode_table_rows, load_stored_shape},
 	vm::{services::Services, volcano::decode_dictionary_columns},
 };
 
 pub(crate) fn decode_rows_to_columns(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Result<RecordBatch> {
 	let (ids, encoded): (Vec<RowNumber>, Vec<EncodedBytes>) = rows.iter().cloned().unzip();
 	from_encoded_bytes(shape, &ids, &encoded)
+}
+
+pub(crate) fn decode_stored_table_rows(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	table: &Table,
+	shape: &RowShape,
+	rows: &[(RowNumber, EncodedBytes)],
+) -> Result<RecordBatch> {
+	let (ids, encoded): (Vec<RowNumber>, Vec<EncodedBytes>) = rows.iter().cloned().unzip();
+	decode_table_rows(shape, &ids, &encoded, |fingerprint| load_stored_shape(catalog, txn, table, fingerprint))
 }
 
 pub(crate) fn with_series_stamps(

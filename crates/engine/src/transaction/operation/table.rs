@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{
 	bytes::{EncodedBytes, RowBuilder},
@@ -55,12 +56,13 @@ fn build_table_update_change(
 	ids: &[RowNumber],
 	pres: &[EncodedBytes],
 	posts: &[EncodedBytes],
+	stored_shape: impl FnMut(RowShapeFingerprint) -> Result<RowShape>,
 ) -> Result<Change> {
 	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
 		diffs: smallvec![Diff::update(
-			from_encoded_bytes(shape, ids, pres)?,
+			decode_table_rows(shape, ids, pres, stored_shape)?,
 			from_encoded_bytes(shape, ids, posts)?,
 		)],
 		changed_at: DateTime::default(),
@@ -72,39 +74,46 @@ fn build_table_remove_change(
 	shape: &RowShape,
 	ids: &[RowNumber],
 	bytes_slice: &[EncodedBytes],
-	mut stored_shape: impl FnMut(RowShapeFingerprint) -> Result<RowShape>,
+	stored_shape: impl FnMut(RowShapeFingerprint) -> Result<RowShape>,
 ) -> Result<Change> {
-	let current = shape.fingerprint();
-	let removed = if bytes_slice.iter().all(|row| EncodedTableRow::view(row).fingerprint() == current) {
-		from_encoded_bytes(shape, ids, bytes_slice)?
-	} else {
-		let mut removed = from_encoded_bytes(shape, &[], &[])?;
-		let mut start = 0;
-		while start < bytes_slice.len() {
-			let fingerprint = EncodedTableRow::view(&bytes_slice[start]).fingerprint();
-			let end = bytes_slice[start..]
-				.iter()
-				.position(|row| EncodedTableRow::view(row).fingerprint() != fingerprint)
-				.map_or(bytes_slice.len(), |offset| start + offset);
-			removed = append_rows_fitted(
-				removed,
-				&stored_shape(fingerprint)?,
-				bytes_slice[start..end].iter().cloned(),
-				ids[start..end].to_vec(),
-			)?;
-			start = end;
-		}
-		removed
-	};
 	Ok(Change {
 		origin: ChangeOrigin::Object(ObjectId::Table(table.id)),
 		version: ChangeVersion::from(CommitVersion(0)),
-		diffs: smallvec![Diff::remove(removed)],
+		diffs: smallvec![Diff::remove(decode_table_rows(shape, ids, bytes_slice, stored_shape)?)],
 		changed_at: DateTime::default(),
 	})
 }
 
-fn load_stored_shape(
+pub(crate) fn decode_table_rows(
+	shape: &RowShape,
+	ids: &[RowNumber],
+	bytes_slice: &[EncodedBytes],
+	mut stored_shape: impl FnMut(RowShapeFingerprint) -> Result<RowShape>,
+) -> Result<RecordBatch> {
+	let current = shape.fingerprint();
+	if bytes_slice.iter().all(|row| EncodedTableRow::view(row).fingerprint() == current) {
+		return from_encoded_bytes(shape, ids, bytes_slice);
+	}
+	let mut decoded = from_encoded_bytes(shape, &[], &[])?;
+	let mut start = 0;
+	while start < bytes_slice.len() {
+		let fingerprint = EncodedTableRow::view(&bytes_slice[start]).fingerprint();
+		let end = bytes_slice[start..]
+			.iter()
+			.position(|row| EncodedTableRow::view(row).fingerprint() != fingerprint)
+			.map_or(bytes_slice.len(), |offset| start + offset);
+		decoded = append_rows_fitted(
+			decoded,
+			&stored_shape(fingerprint)?,
+			bytes_slice[start..end].iter().cloned(),
+			ids[start..end].to_vec(),
+		)?;
+		start = end;
+	}
+	Ok(decoded)
+}
+
+pub(crate) fn load_stored_shape(
 	catalog: &Catalog,
 	txn: &mut Transaction<'_>,
 	table: &Table,
@@ -264,6 +273,7 @@ pub trait TableOperations {
 		rows: &mut [EncodedTableRowBuilder],
 		key_columns: &[usize],
 		pres: &[EncodedBytes],
+		catalog: &Catalog,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>>;
 
 	fn remove_from_table(
@@ -284,6 +294,7 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 	rows: &mut [EncodedTableRowBuilder],
 	key_columns: &[usize],
 	pres: &[EncodedBytes],
+	mut stored_shape: impl FnMut(&mut T, RowShapeFingerprint) -> Result<RowShape>,
 ) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 	assert_eq!(ids.len(), rows.len(), "ids/rows length mismatch");
 	assert_eq!(ids.len(), pres.len(), "ids/pres length mismatch");
@@ -317,7 +328,10 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 	let object = ObjectId::Table(table.id);
 	txn.touch_flow_object(object);
 	if txn.wants_flow_diff(object) {
-		txn.track_flow_change(build_table_update_change(table, &shape, ids, pres, &posts)?);
+		let change = build_table_update_change(table, &shape, ids, pres, &posts, |fingerprint| {
+			stored_shape(txn, fingerprint)
+		})?;
+		txn.track_flow_change(change);
 	}
 
 	Ok(ids.iter().copied().zip(posts).collect())
@@ -381,8 +395,11 @@ impl TableOperations for CommandTransaction {
 		rows: &mut [EncodedTableRowBuilder],
 		key_columns: &[usize],
 		pres: &[EncodedBytes],
+		catalog: &Catalog,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-		update_rows(self, table, ids, partitions, rows, key_columns, pres)
+		update_rows(self, table, ids, partitions, rows, key_columns, pres, |txn, fingerprint| {
+			load_stored_shape(catalog, &mut Transaction::Command(txn), table, fingerprint)
+		})
 	}
 
 	fn remove_from_table(
@@ -412,8 +429,11 @@ impl TableOperations for AdminTransaction {
 		rows: &mut [EncodedTableRowBuilder],
 		key_columns: &[usize],
 		pres: &[EncodedBytes],
+		catalog: &Catalog,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
-		update_rows(self, table, ids, partitions, rows, key_columns, pres)
+		update_rows(self, table, ids, partitions, rows, key_columns, pres, |txn, fingerprint| {
+			load_stored_shape(catalog, &mut Transaction::Admin(txn), table, fingerprint)
+		})
 	}
 
 	fn remove_from_table(
@@ -448,11 +468,18 @@ impl TableOperations for Transaction<'_> {
 		rows: &mut [EncodedTableRowBuilder],
 		key_columns: &[usize],
 		pres: &[EncodedBytes],
+		catalog: &Catalog,
 	) -> Result<Vec<(RowNumber, EncodedBytes)>> {
 		match self {
-			Transaction::Command(txn) => txn.update_table(table, ids, partitions, rows, key_columns, pres),
-			Transaction::Admin(txn) => txn.update_table(table, ids, partitions, rows, key_columns, pres),
-			Transaction::Test(t) => t.inner.update_table(table, ids, partitions, rows, key_columns, pres),
+			Transaction::Command(txn) => {
+				txn.update_table(table, ids, partitions, rows, key_columns, pres, catalog)
+			}
+			Transaction::Admin(txn) => {
+				txn.update_table(table, ids, partitions, rows, key_columns, pres, catalog)
+			}
+			Transaction::Test(t) => {
+				t.inner.update_table(table, ids, partitions, rows, key_columns, pres, catalog)
+			}
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}

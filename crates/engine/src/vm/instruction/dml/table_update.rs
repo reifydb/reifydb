@@ -59,7 +59,10 @@ use super::{
 	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
 	context::{TableTarget, WriteExecCtx},
 	primary_key::{self, PrimaryKeyEncoder},
-	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
+	returning::{
+		decode_returning_dictionaries, decode_rows_to_columns, decode_stored_table_rows, evaluate_returning,
+		with_pre_image,
+	},
 	shape::get_or_create_table_shape,
 	table_insert::cast_partitions,
 };
@@ -68,7 +71,7 @@ use crate::{
 	error::EngineError,
 	partition::row_key_from_partition,
 	policy::PolicyEvaluator,
-	transaction::operation::table::TableOperations,
+	transaction::operation::table::{TableOperations, load_stored_shape},
 	vm::{
 		instruction::dml::{
 			coerce::InputFragments,
@@ -126,7 +129,7 @@ pub(crate) fn update_table(
 	if let Some(returning_exprs) = &returning {
 		let columns = decode_rows_to_columns(&shape, &returned_rows)?;
 		let columns = decode_returning_dictionaries(services, txn, &table.columns, columns)?;
-		let pre_columns = decode_rows_to_columns(&shape, &pre_rows)?;
+		let pre_columns = decode_stored_table_rows(&services.catalog, txn, &table, &shape, &pre_rows)?;
 		let pre_columns = decode_returning_dictionaries(services, txn, &table.columns, pre_columns)?;
 		let columns = with_pre_image(columns, &pre_columns)?;
 		return evaluate_returning(services, symbols, returning_exprs, columns, txn.identity());
@@ -297,7 +300,22 @@ fn run_table_update(
 					Some(encoder) => encoder,
 					None => encoder.insert(PrimaryKeyEncoder::new(pk_def, target.table)?),
 				};
-				rotation.rotate(txn, target, shape, pk_def, encoder, old_row, &row, row_number)?;
+				let fingerprint = EncodedTableRow::view(old_row).fingerprint();
+				let loaded;
+				let pre_shape = if fingerprint == shape.fingerprint() {
+					shape
+				} else {
+					loaded = load_stored_shape(
+						&exec.services.catalog,
+						txn,
+						target.table,
+						fingerprint,
+					)?;
+					&loaded
+				};
+				rotation.rotate(
+					txn, target, shape, pre_shape, pk_def, encoder, old_row, &row, row_number,
+				)?;
 			}
 
 			if has_returning {
@@ -326,6 +344,7 @@ fn run_table_update(
 			&mut prepared_rows,
 			&key_columns,
 			&old_rows,
+			&exec.services.catalog,
 		)?;
 		updated_count += stored.len() as u64;
 		if has_returning {
@@ -353,7 +372,7 @@ fn enforce_old_row_policies(
 		return Ok(());
 	}
 	let old_rows: ReturnedRows = row_numbers.iter().copied().zip(rows.iter().cloned()).collect();
-	let old_columns = decode_rows_to_columns(shape, &old_rows)?;
+	let old_columns = decode_stored_table_rows(&exec.services.catalog, txn, target.table, shape, &old_rows)?;
 	let old_columns = decode_returning_dictionaries(exec.services, txn, &target.table.columns, old_columns)?;
 	PolicyEvaluator::new(exec.services, exec.symbols).enforce_write_policies(
 		txn,
@@ -380,6 +399,7 @@ impl KeyRotation {
 		txn: &mut Transaction<'_>,
 		target: &TableTarget<'_>,
 		shape: &RowShape,
+		pre_shape: &RowShape,
 		pk_def: &PrimaryKey,
 		encoder: &PrimaryKeyEncoder,
 		pre_row: &[u8],
@@ -388,7 +408,7 @@ impl KeyRotation {
 	) -> Result<()> {
 		let index = IndexId::primary(pk_def.id);
 		let pre_key: TaggedKey =
-			IndexEntryKey::new(target.table.id, index, encoder.encode(shape, pre_row)).into();
+			IndexEntryKey::new(target.table.id, index, encoder.encode(pre_shape, pre_row)).into();
 		let post_key: TaggedKey =
 			IndexEntryKey::new(target.table.id, index, encoder.encode(shape, new_row)).into();
 		let pre_encoded = pre_key.encode();
