@@ -218,8 +218,9 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		let pending_tables = self.pending_tables;
 		let pending_ringbuffers = self.pending_ringbuffers;
 		let pending_series = self.pending_series;
+		let checked_commit = !pending_ringbuffers.is_empty();
 
-		V::run(&mut txn, total_rows, move |txn| {
+		let body = move |txn: &mut CommandTransaction| {
 			let writer = Writer {
 				catalog: &catalog,
 				services: &services,
@@ -235,7 +236,12 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 			)?;
 			sync_transactional_views(writer.services, Transaction::Command(txn))?;
 			Ok((result, observe(txn)))
-		})
+		};
+		if checked_commit {
+			run_checked(&mut txn, total_rows, body)
+		} else {
+			V::run(&mut txn, total_rows, body)
+		}
 	}
 
 	#[inline]
