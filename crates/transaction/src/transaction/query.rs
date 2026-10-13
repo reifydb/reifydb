@@ -55,6 +55,8 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
+#[cfg(feature = "testing")]
+use crate::counting::OpCounts;
 use crate::{
 	TransactionId,
 	change::{
@@ -124,6 +126,11 @@ impl QueryTransaction {
 	#[inline]
 	pub fn id(&self) -> TransactionId {
 		self.multi.tm.id()
+	}
+
+	#[cfg(feature = "testing")]
+	pub fn op_counts(&self) -> OpCounts {
+		self.multi.op_counts()
 	}
 
 	#[inline]

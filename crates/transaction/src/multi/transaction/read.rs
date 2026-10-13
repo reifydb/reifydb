@@ -2,6 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::ops::Bound;
+#[cfg(feature = "testing")]
+use std::sync::Mutex;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
@@ -19,6 +21,8 @@ use reifydb_core::{
 use reifydb_value::Result;
 
 use super::{MultiTransaction, manager::TransactionManagerQuery, version::StandardVersionProvider};
+#[cfg(feature = "testing")]
+use crate::counting::OpCounts;
 use crate::multi::{RangeScope, lease::VersionLeaseGuard, types::TransactionValue};
 
 pub struct MultiReadTransaction {
@@ -26,6 +30,8 @@ pub struct MultiReadTransaction {
 	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider>,
 	#[allow(dead_code)]
 	pub(crate) lease: Option<VersionLeaseGuard>,
+	#[cfg(feature = "testing")]
+	op_counts: Mutex<OpCounts>,
 }
 
 impl MultiReadTransaction {
@@ -35,6 +41,8 @@ impl MultiReadTransaction {
 			engine,
 			tm,
 			lease: None,
+			#[cfg(feature = "testing")]
+			op_counts: Mutex::default(),
 		})
 	}
 
@@ -45,6 +53,8 @@ impl MultiReadTransaction {
 			engine,
 			tm,
 			lease: Some(lease),
+			#[cfg(feature = "testing")]
+			op_counts: Mutex::default(),
 		})
 	}
 }
@@ -62,19 +72,42 @@ impl MultiReadTransaction {
 		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1))
 	}
 
+	#[cfg(feature = "testing")]
+	pub fn op_counts(&self) -> OpCounts {
+		self.op_counts.lock().unwrap().clone()
+	}
+
 	pub fn get<K: Into<TaggedKey> + Clone>(&self, key: &K) -> Result<Option<TransactionValue>> {
 		let version = self.tm.version();
-		Ok(self.engine.get(&key.clone().into(), version)?.map(Into::into))
+		let key = key.clone().into();
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.lock().unwrap().key(key.kind()).gets += 1;
+		}
+		Ok(self.engine.get(&key, version)?.map(Into::into))
 	}
 
 	pub fn contains<K: Into<TaggedKey> + Clone>(&self, key: &K) -> Result<bool> {
 		let version = self.tm.version();
-		self.engine.contains_key(&key.clone().into(), version)
+		let key = key.clone().into();
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.lock().unwrap().key(key.kind()).contains += 1;
+		}
+		self.engine.contains_key(&key, version)
 	}
 
 	pub fn get_many(&self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
 		if keys.is_empty() {
 			return Ok(Vec::new());
+		}
+		#[cfg(feature = "testing")]
+		{
+			let mut counts = self.op_counts.lock().unwrap();
+			counts.get_many_call();
+			for key in keys {
+				counts.key(key.kind()).batched_gets += 1;
+			}
 		}
 		let version = self.tm.version();
 		Ok(self.engine.get_many(keys, version)?.into_iter().map(|found| found.map(Into::into)).collect())
@@ -185,6 +218,8 @@ impl Clone for MultiReadTransaction {
 			engine: self.engine.clone(),
 			tm: self.tm.clone(),
 			lease: None,
+			#[cfg(feature = "testing")]
+			op_counts: Mutex::default(),
 		}
 	}
 }
