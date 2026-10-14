@@ -17,7 +17,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{Result, transaction::operation::dictionary::DictionaryOperations};
+use crate::Result;
 
 #[instrument(level = "trace", skip_all, name = "volcano::scan::dictionaries")]
 pub(crate) fn decode_dictionary_columns(

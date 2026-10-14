@@ -102,6 +102,7 @@ pub trait RqlExecutor: Send + Sync {
 pub mod admin;
 pub mod catalog;
 pub mod command;
+pub mod dictionary;
 pub mod query;
 pub mod read;
 pub mod write;

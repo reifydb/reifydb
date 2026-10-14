@@ -10,12 +10,15 @@ use reifydb_codec::row::{
 };
 use reifydb_core::{
 	common::TimeSource,
-	interface::{catalog::storage::StorageId, resolved::ResolvedObject},
+	interface::{
+		catalog::{dictionary::Dictionary, storage::StorageId},
+		resolved::ResolvedObject,
+	},
 	internal_err, internal_error,
 	key::row::RowKey,
 	value::{
-		batch::{append_rows, empty_batch, empty_for},
-		column::headers::ColumnHeaders,
+		batch::{append_rows, batch, empty_batch, empty_for},
+		column::{builder::ColumnBuilder, headers::ColumnHeaders},
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -32,6 +35,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	vm::volcano::{
+		decode_dictionary_columns,
 		query::{QueryContext, QueryNode},
 		scan::{empty_scan, guard_view_read, scan_headers, source_system_columns},
 		user_pairs,
@@ -57,6 +61,7 @@ pub(crate) struct RowPointLookupNode {
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
 	system_columns: Vec<SystemColumn>,
+	dictionaries: Vec<Option<(Dictionary, ValueType)>>,
 	shape: Option<RowShape>,
 	exhausted: bool,
 }
@@ -72,6 +77,7 @@ impl RowPointLookupNode {
 			context: Some(context),
 			headers,
 			system_columns,
+			dictionaries: Vec::new(),
 			shape: None,
 			exhausted: false,
 		})
@@ -110,7 +116,9 @@ impl RowPointLookupNode {
 impl QueryNode for RowPointLookupNode {
 	#[instrument(name = "volcano::lookup::point::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		guard_source_read(&self.source, rx, ctx)
+		guard_source_read(&self.source, rx, ctx)?;
+		self.dictionaries = lookup_dictionaries(&self.source, rx, ctx)?;
+		Ok(())
 	}
 
 	#[instrument(name = "volcano::lookup::point::next", level = "trace", skip_all)]
@@ -124,8 +132,9 @@ impl QueryNode for RowPointLookupNode {
 		let encoded_key = RowKey::new(object_id, RowNumber(self.row_number));
 
 		if let Some(multi_values) = rx.get(&encoded_key)? {
-			let columns = columns_from_object(&self.source)?;
+			let columns = storage_columns(&self.source, &self.dictionaries)?;
 			let columns = self.append_batch(rx, columns, multi_values.bytes)?;
+			let columns = decode_dictionary_columns(columns, &self.dictionaries, rx)?;
 
 			Ok(Some(with_commit_versions(columns, &self.system_columns, vec![multi_values.version.0])?))
 		} else {
@@ -144,6 +153,7 @@ pub(crate) struct RowListLookupNode {
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
 	system_columns: Vec<SystemColumn>,
+	dictionaries: Vec<Option<(Dictionary, ValueType)>>,
 	shape: Option<RowShape>,
 	current_index: usize,
 	emitted: bool,
@@ -160,6 +170,7 @@ impl RowListLookupNode {
 			context: Some(context),
 			headers,
 			system_columns,
+			dictionaries: Vec::new(),
 			shape: None,
 			current_index: 0,
 			emitted: false,
@@ -233,7 +244,9 @@ impl RowListLookupNode {
 impl QueryNode for RowListLookupNode {
 	#[instrument(name = "volcano::lookup::list::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		guard_source_read(&self.source, rx, ctx)
+		guard_source_read(&self.source, rx, ctx)?;
+		self.dictionaries = lookup_dictionaries(&self.source, rx, ctx)?;
+		Ok(())
 	}
 
 	#[instrument(name = "volcano::lookup::list::next", level = "trace", skip_all)]
@@ -261,8 +274,9 @@ impl QueryNode for RowListLookupNode {
 			return self.finish();
 		}
 
-		let columns = columns_from_object(&self.source)?;
+		let columns = storage_columns(&self.source, &self.dictionaries)?;
 		let columns = self.append_batch(rx, columns, batch, found_row_numbers)?;
+		let columns = decode_dictionary_columns(columns, &self.dictionaries, rx)?;
 
 		self.emitted = true;
 		Ok(Some(with_commit_versions(columns, &self.system_columns, commit_versions)?))
@@ -279,6 +293,7 @@ pub(crate) struct RowRangeScanNode {
 	context: Option<Arc<QueryContext>>,
 	headers: ColumnHeaders,
 	system_columns: Vec<SystemColumn>,
+	dictionaries: Vec<Option<(Dictionary, ValueType)>>,
 	shape: Option<RowShape>,
 	current_row: u64,
 	exhausted: bool,
@@ -296,6 +311,7 @@ impl RowRangeScanNode {
 			context: Some(context),
 			headers,
 			system_columns,
+			dictionaries: Vec::new(),
 			shape: None,
 			current_row: start,
 			exhausted: false,
@@ -370,7 +386,9 @@ impl RowRangeScanNode {
 impl QueryNode for RowRangeScanNode {
 	#[instrument(name = "volcano::scan::range::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
-		guard_source_read(&self.source, rx, ctx)
+		guard_source_read(&self.source, rx, ctx)?;
+		self.dictionaries = lookup_dictionaries(&self.source, rx, ctx)?;
+		Ok(())
 	}
 
 	#[instrument(name = "volcano::scan::range::next", level = "trace", skip_all)]
@@ -401,8 +419,9 @@ impl QueryNode for RowRangeScanNode {
 			return self.finish();
 		}
 
-		let columns = columns_from_object(&self.source)?;
+		let columns = storage_columns(&self.source, &self.dictionaries)?;
 		let columns = self.append_batch(rx, columns, batch, found_row_numbers)?;
+		let columns = decode_dictionary_columns(columns, &self.dictionaries, rx)?;
 
 		self.emitted = true;
 		Ok(Some(with_commit_versions(columns, &self.system_columns, commit_versions)?))
@@ -449,6 +468,42 @@ fn columns_from_object(source: &ResolvedObject) -> Result<RecordBatch> {
 		ResolvedObject::RingBuffer(rb) => empty_for(rb.columns())?,
 		_ => empty_batch(),
 	})
+}
+
+fn lookup_dictionaries(
+	source: &ResolvedObject,
+	rx: &mut Transaction<'_>,
+	ctx: &QueryContext,
+) -> Result<Vec<Option<(Dictionary, ValueType)>>> {
+	let columns = match source {
+		ResolvedObject::Table(table) => table.columns(),
+		ResolvedObject::View(view) => view.columns(),
+		ResolvedObject::RingBuffer(rb) => rb.columns(),
+		_ => return Ok(Vec::new()),
+	};
+	let mut dictionaries = Vec::with_capacity(columns.len());
+	for column in columns {
+		dictionaries.push(match column.dictionary_id {
+			Some(id) => ctx
+				.services
+				.catalog
+				.find_dictionary(rx, id)?
+				.map(|dictionary| (dictionary, column.constraint.get_type())),
+			None => None,
+		});
+	}
+	Ok(dictionaries)
+}
+
+fn storage_columns(source: &ResolvedObject, dictionaries: &[Option<(Dictionary, ValueType)>]) -> Result<RecordBatch> {
+	batch(user_pairs(&columns_from_object(source)?)
+		.into_iter()
+		.enumerate()
+		.map(|(index, (field, array))| match dictionaries.get(index).and_then(Option::as_ref) {
+			Some(_) => ColumnBuilder::with_capacity(ValueType::DictionaryId, 0).finish(field.name()),
+			None => (field, array),
+		})
+		.collect())
 }
 
 fn lookup_system_columns(source: &ResolvedObject) -> Vec<SystemColumn> {

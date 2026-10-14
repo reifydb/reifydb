@@ -11,9 +11,12 @@ use arrow_schema::FieldRef;
 use reifydb_codec::row::{pod::EncodedPodRow, queue::EncodedQueueRow};
 use reifydb_core::{
 	interface::{
-		catalog::queue::{
-			Queue, QueueItemStatus, decode_queue_item_state, decode_queue_partition_counters,
-			encode_queue_item_state, encode_queue_partition_counters,
+		catalog::{
+			dictionary::Dictionary,
+			queue::{
+				Queue, QueueItemStatus, decode_queue_item_state, decode_queue_partition_counters,
+				encode_queue_item_state, encode_queue_partition_counters,
+			},
 		},
 		store::SingleVersionRangeRev,
 	},
@@ -23,7 +26,7 @@ use reifydb_core::{
 	},
 	value::{
 		batch::{batch, decode_cells},
-		column::{builder::ColumnBuilder, factory},
+		column::{builder::ColumnBuilder, dictionary::decode_dictionary_ids, factory},
 	},
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
@@ -355,10 +358,24 @@ fn claimed_columns(
 	let mut items = Vec::with_capacity(leases.len());
 	let mut attempts = Vec::with_capacity(leases.len());
 	let mut deadlines = Vec::with_capacity(leases.len());
+	let mut dictionaries: Vec<Option<Dictionary>> = Vec::with_capacity(queue.columns.len());
+	for column in &queue.columns {
+		dictionaries.push(match column.dictionary_id {
+			Some(id) => ctx.catalog.find_dictionary(ctx.tx, id)?,
+			None => None,
+		});
+	}
 	let mut payloads: Vec<ColumnBuilder> = queue
 		.columns
 		.iter()
-		.map(|column| ColumnBuilder::with_capacity(column.constraint.get_type(), leases.len()))
+		.zip(&dictionaries)
+		.map(|(column, dictionary)| {
+			let stored = match dictionary {
+				Some(_) => ValueType::DictionaryId,
+				None => column.constraint.get_type(),
+			};
+			ColumnBuilder::with_capacity(stored, leases.len())
+		})
 		.collect();
 
 	for lease in leases {
@@ -384,8 +401,16 @@ fn claimed_columns(
 		factory::datetime("deadline", deadlines),
 	];
 
-	for (column, data) in queue.columns.iter().zip(payloads) {
-		columns.push(data.finish(&column.name));
+	for ((column, data), dictionary) in queue.columns.iter().zip(payloads).zip(&dictionaries) {
+		let (field, array) = data.finish(&column.name);
+		columns.push(match dictionary {
+			Some(dictionary) => {
+				decode_dictionary_ids(&field, &array, column.constraint.get_type(), |ids| {
+					ctx.tx.get_many_from_dictionary(dictionary, ids)
+				})?
+			}
+			None => (field, array),
+		});
 	}
 
 	let row_numbers: Vec<u64> = leases.iter().map(|lease| lease.row.0).collect();
