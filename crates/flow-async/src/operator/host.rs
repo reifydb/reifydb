@@ -163,6 +163,8 @@ pub struct TxnHostContext<'a, T: FlowTransaction> {
 	operator: OperatorId,
 	now: DateTime,
 	retention: Option<Duration>,
+	#[cfg(test)]
+	pub dictionary_resolves: usize,
 }
 
 impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
@@ -177,6 +179,8 @@ impl<'a, T: FlowTransaction> TxnHostContext<'a, T> {
 			operator,
 			now,
 			retention,
+			#[cfg(test)]
+			dictionary_resolves: 0,
 		}
 	}
 
@@ -616,6 +620,10 @@ impl<T: FlowTransaction> Resolve for TxnHostContext<'_, T> {
 	}
 
 	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+		#[cfg(test)]
+		{
+			self.dictionary_resolves += 1;
+		}
 		self.txn.get_many_from_dictionary(dictionary, ids)
 	}
 }

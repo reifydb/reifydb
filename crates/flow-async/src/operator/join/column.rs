@@ -209,6 +209,26 @@ impl JoinedColumnsBuilder {
 		Self::assemble(row_numbers, left, &left_rows, right_columns, times)
 	}
 
+	pub(crate) fn join_pairs(
+		&self,
+		row_numbers: &[RowNumber],
+		left: &RecordBatch,
+		left_indices: &[usize],
+		right: &RecordBatch,
+		right_indices: &[usize],
+	) -> Result<RecordBatch> {
+		reifydb_assertions! {
+			assert_eq!(left_indices.len(), right_indices.len(), "every left row pairs with exactly one right row");
+			assert_eq!(row_numbers.len(), left_indices.len(), "row_numbers must match pair count");
+		}
+
+		let right_times = row_times(right)?;
+		let times =
+			right_indices.iter().map(|&right_idx| right_times.get(right_idx).copied().flatten()).collect();
+		let right_columns = self.right_columns(&gather(right, right_indices)?);
+		Self::assemble(row_numbers, left, left_indices, right_columns, times)
+	}
+
 	pub(crate) fn unmatched_left(
 		&self,
 		row_number: RowNumber,

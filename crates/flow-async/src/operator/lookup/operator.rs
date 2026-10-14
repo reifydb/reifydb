@@ -19,7 +19,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	state::timer::TimerKind,
 	value::{
-		batch::{concat, empty_batch, from_encoded_bytes},
+		batch::{empty_batch, from_encoded_bytes},
 		column::factory::none,
 	},
 };
@@ -100,44 +100,75 @@ struct Resolved {
 	right: Option<(RowNumber, EncodedBytes)>,
 }
 
+#[derive(Clone, Copy)]
 enum Published {
-	Matched(RecordBatch),
-	Unmatched(RecordBatch),
+	Matched {
+		left_idx: usize,
+		output_id: RowNumber,
+		right: usize,
+	},
+	Unmatched {
+		left_idx: usize,
+		output_id: RowNumber,
+	},
 }
 
 impl Published {
 	fn kind(&self) -> usize {
 		match self {
-			Published::Matched(_) => 0,
-			Published::Unmatched(_) => 1,
-		}
-	}
-
-	fn into_batch(self) -> RecordBatch {
-		match self {
-			Published::Matched(batch) | Published::Unmatched(batch) => batch,
+			Published::Matched {
+				..
+			} => 0,
+			Published::Unmatched {
+				..
+			} => 1,
 		}
 	}
 }
 
+type Side<'a> = Option<(&'a RecordBatch, &'a JoinedColumnsBuilder)>;
+
 #[derive(Default)]
 struct Output {
-	removed: [Vec<RecordBatch>; 2],
-	updated: [(Vec<RecordBatch>, Vec<RecordBatch>); 2],
-	inserted: [Vec<RecordBatch>; 2],
+	removed: [Vec<Published>; 2],
+	updated: [(Vec<Published>, Vec<Published>); 2],
+	inserted: [Vec<Published>; 2],
+	right_numbers: Vec<RowNumber>,
+	right_rows: Vec<EncodedBytes>,
 	cleared: Vec<RowNumber>,
 	armed: Vec<(RowNumber, DateTime)>,
 }
 
 impl Output {
+	fn published(
+		&mut self,
+		left_idx: usize,
+		output_id: RowNumber,
+		right: Option<(RowNumber, EncodedBytes)>,
+	) -> Published {
+		match right {
+			Some((right_number, bytes)) => {
+				self.right_numbers.push(right_number);
+				self.right_rows.push(bytes);
+				Published::Matched {
+					left_idx,
+					output_id,
+					right: self.right_rows.len() - 1,
+				}
+			}
+			None => Published::Unmatched {
+				left_idx,
+				output_id,
+			},
+		}
+	}
+
 	fn remove(&mut self, published: Published) {
-		let kind = published.kind();
-		self.removed[kind].push(published.into_batch());
+		self.removed[published.kind()].push(published);
 	}
 
 	fn insert(&mut self, published: Published) {
-		let kind = published.kind();
-		self.inserted[kind].push(published.into_batch());
+		self.inserted[published.kind()].push(published);
 	}
 
 	fn update(&mut self, pre: Published, post: Published) {
@@ -147,27 +178,8 @@ impl Output {
 			return;
 		}
 		let kind = pre.kind();
-		self.updated[kind].0.push(pre.into_batch());
-		self.updated[kind].1.push(post.into_batch());
-	}
-
-	fn into_diffs(self, result: &mut Vec<Diff>) -> Result<()> {
-		for batches in self.removed {
-			if !batches.is_empty() {
-				result.push(Diff::remove(concat(&batches)?));
-			}
-		}
-		for (pre, post) in self.updated {
-			if !pre.is_empty() {
-				result.push(Diff::update(concat(&pre)?, concat(&post)?));
-			}
-		}
-		for batches in self.inserted {
-			if !batches.is_empty() {
-				result.push(Diff::insert(concat(&batches)?));
-			}
-		}
-		Ok(())
+		self.updated[kind].0.push(pre);
+		self.updated[kind].1.push(post);
 	}
 }
 
@@ -274,36 +286,6 @@ impl LookupOperator {
 		host.lookup_read(self.config.storage, partition, version)
 	}
 
-	fn build(
-		&self,
-		host: &mut dyn HostContext,
-		builder: &JoinedColumnsBuilder,
-		left: &RecordBatch,
-		left_idx: usize,
-		row_number: RowNumber,
-		right: Option<(RowNumber, EncodedBytes)>,
-	) -> Result<Published> {
-		match right {
-			Some((right_number, bytes)) => {
-				let mut right = from_encoded_bytes(&self.config.shape, &[right_number], &[bytes])?;
-				decode_dictionary_columns(&mut right, host)?;
-				Ok(Published::Matched(builder.join_cartesian(
-					&[row_number],
-					left,
-					&[left_idx],
-					&right,
-					&[0],
-				)?))
-			}
-			None => Ok(Published::Unmatched(builder.unmatched_left_batch(
-				&[row_number],
-				left,
-				&[left_idx],
-				&self.config.right_schema,
-			)?)),
-		}
-	}
-
 	fn resolve(
 		&self,
 		host: &mut dyn HostContext,
@@ -330,8 +312,6 @@ impl LookupOperator {
 	fn publish(
 		&self,
 		host: &mut dyn HostContext,
-		builder: &JoinedColumnsBuilder,
-		post: &RecordBatch,
 		left_idx: usize,
 		times: &[Option<DateTime>],
 		row_number: RowNumber,
@@ -339,7 +319,7 @@ impl LookupOperator {
 		resolved: Resolved,
 		output: &mut Output,
 	) -> Result<Published> {
-		let published = self.build(host, builder, post, left_idx, output_id, resolved.right)?;
+		let published = output.published(left_idx, output_id, resolved.right);
 		store_read(host, row_number, resolved.version, output_id)?;
 		if let Some(at) = times.get(left_idx).copied().flatten() {
 			output.armed.push((row_number, at));
@@ -351,7 +331,6 @@ impl LookupOperator {
 	fn undo(
 		&self,
 		host: &mut dyn HostContext,
-		builder: &JoinedColumnsBuilder,
 		partitions: &PartitionLookup,
 		dictionary: &mut DictionaryMemo,
 		pre: &RecordBatch,
@@ -372,7 +351,7 @@ impl LookupOperator {
 				version.0
 			);
 		}
-		Ok(Some((self.build(host, builder, pre, left_idx, output_id, right)?, output_id)))
+		Ok(Some((output.published(left_idx, output_id, right), output_id)))
 	}
 
 	fn apply_insert(
@@ -393,15 +372,12 @@ impl LookupOperator {
 		}
 		let mut output = Output::default();
 		if !resolved.is_empty() {
-			let builder = self.builder(post.schema_ref());
 			let times = row_times(post)?;
 			let row_numbers = require_row_numbers(post)?;
 			let first = mint_row_numbers(host, resolved.len() as u64)?;
 			for (minted, (left_idx, read)) in (first.0..).zip(resolved) {
 				let published = self.publish(
 					host,
-					&builder,
-					post,
 					left_idx,
 					&times,
 					row_numbers[left_idx],
@@ -412,7 +388,8 @@ impl LookupOperator {
 				output.insert(published);
 			}
 		}
-		self.finish(host, output, result)
+		let builder = self.builder(post.schema_ref());
+		self.finish(host, output, None, Some((post, &builder)), result)
 	}
 
 	fn apply_remove(
@@ -429,7 +406,6 @@ impl LookupOperator {
 		for (left_idx, key) in keys.iter().enumerate() {
 			if let Some((published, _)) = self.undo(
 				host,
-				&builder,
 				&partitions,
 				&mut reads.dictionary,
 				pre,
@@ -440,7 +416,7 @@ impl LookupOperator {
 				output.remove(published);
 			}
 		}
-		self.finish(host, output, result)
+		self.finish(host, output, Some((pre, &builder)), None, result)
 	}
 
 	fn apply_update(
@@ -463,7 +439,6 @@ impl LookupOperator {
 		for left_idx in 0..post.num_rows() {
 			let undone = self.undo(
 				host,
-				&pre_builder,
 				&partitions,
 				&mut reads.dictionary,
 				pre,
@@ -486,8 +461,6 @@ impl LookupOperator {
 					};
 					Some(self.publish(
 						host,
-						&post_builder,
-						post,
 						left_idx,
 						&times,
 						row_number,
@@ -506,14 +479,104 @@ impl LookupOperator {
 			}
 		}
 		reserve.commit(host)?;
-		self.finish(host, output, result)
+		self.finish(host, output, Some((pre, &pre_builder)), Some((post, &post_builder)), result)
 	}
 
-	fn finish(&mut self, host: &mut dyn HostContext, mut output: Output, result: &mut Vec<Diff>) -> Result<()> {
+	fn finish(
+		&mut self,
+		host: &mut dyn HostContext,
+		mut output: Output,
+		pre: Side<'_>,
+		post: Side<'_>,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
 		let cleared = mem::take(&mut output.cleared);
 		let armed = mem::take(&mut output.armed);
 		self.expiry.move_rows(host, &cleared, &armed)?;
-		output.into_diffs(result)
+		let right = match output.right_rows.is_empty() {
+			true => None,
+			false => {
+				let mut right = from_encoded_bytes(
+					&self.config.shape,
+					&output.right_numbers,
+					&output.right_rows,
+				)?;
+				decode_dictionary_columns(&mut right, host)?;
+				Some(right)
+			}
+		};
+		let right = right.as_ref();
+		for rows in &output.removed {
+			if !rows.is_empty() {
+				result.push(Diff::remove(self.joined(rows, pre, right)?));
+			}
+		}
+		for (pre_rows, post_rows) in &output.updated {
+			if !pre_rows.is_empty() {
+				result.push(Diff::update(
+					self.joined(pre_rows, pre, right)?,
+					self.joined(post_rows, post, right)?,
+				));
+			}
+		}
+		for rows in &output.inserted {
+			if !rows.is_empty() {
+				result.push(Diff::insert(self.joined(rows, post, right)?));
+			}
+		}
+		Ok(())
+	}
+
+	fn joined(&self, rows: &[Published], side: Side<'_>, right: Option<&RecordBatch>) -> Result<RecordBatch> {
+		let Some((left, builder)) = side else {
+			return internal_err!(
+				"lookup published {} rows from a side its change does not carry",
+				rows.len()
+			);
+		};
+		let mut output_ids = Vec::with_capacity(rows.len());
+		let mut left_indices = Vec::with_capacity(rows.len());
+		let mut right_indices = Vec::with_capacity(rows.len());
+		for row in rows {
+			match *row {
+				Published::Matched {
+					left_idx,
+					output_id,
+					right,
+				} => {
+					output_ids.push(output_id);
+					left_indices.push(left_idx);
+					right_indices.push(right);
+				}
+				Published::Unmatched {
+					left_idx,
+					output_id,
+				} => {
+					output_ids.push(output_id);
+					left_indices.push(left_idx);
+				}
+			}
+		}
+		match (rows[0], right) {
+			(
+				Published::Matched {
+					..
+				},
+				Some(right),
+			) => builder.join_pairs(&output_ids, left, &left_indices, right, &right_indices),
+			(
+				Published::Matched {
+					..
+				},
+				None,
+			) => internal_err!("lookup matched {} rows without a decoded right side", rows.len()),
+			(
+				Published::Unmatched {
+					..
+				},
+				_,
+			) => builder.unmatched_left_batch(&output_ids, left, &left_indices, &self.config.right_schema),
+		}
 	}
 }
 
@@ -1151,6 +1214,58 @@ mod tests {
 			None,
 			"the miss must not have interned the value"
 		);
+	}
+
+	fn resolves_for(
+		op: &mut LookupOperator,
+		txn: &mut DeferredTransaction,
+		source: CommitVersion,
+		diff: Diff,
+	) -> usize {
+		let change = Change::from_flow(
+			OperatorId(LEFT),
+			ChangeVersion::from(source),
+			vec![diff],
+			DateTime::default(),
+		);
+		let mut host = TxnHostContext::new(txn, OperatorId(OP));
+		op.apply(&mut host, change).unwrap();
+		host.dictionary_resolves
+	}
+
+	#[test]
+	fn a_change_reads_the_right_dictionary_once_whatever_its_matched_row_count() {
+		// a decode per matched row turns one dictionary batch read per change into one per row, on both sides
+		// of an update.
+		for count in [1u64, 4] {
+			let engine = TestEngine::new();
+			let table = right_table(&engine, true);
+			put_right(&engine, "a", 10);
+			let version = put_right(&engine, "b", 20);
+			let mut op = lookup(&table, JoinType::Inner, None);
+			let mut txn = txn_at(&engine, version);
+			let numbers: Vec<u64> = (1..=count).collect();
+			let pre_keys: Vec<Option<&str>> = numbers.iter().map(|_| Some("a")).collect();
+			let post_keys: Vec<Option<&str>> = numbers.iter().map(|_| Some("b")).collect();
+
+			let inserted = resolves_for(
+				&mut op,
+				&mut txn,
+				version,
+				Diff::insert(rows(&pre_keys, &numbers, at_millis(5))),
+			);
+			let updated = resolves_for(
+				&mut op,
+				&mut txn,
+				version,
+				Diff::update(
+					rows(&pre_keys, &numbers, at_millis(5)),
+					rows(&post_keys, &numbers, at_millis(6)),
+				),
+			);
+
+			assert_eq!((inserted, updated), (1, 1), "{count} matched rows");
+		}
 	}
 
 	#[test]
