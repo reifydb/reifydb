@@ -160,7 +160,7 @@ fn intern_partitions(touched: &[Hash128]) -> WindowGroups {
 }
 
 fn rolling_runnable(operator: &WindowOperator, kinds: &[SlotKind]) -> bool {
-	!operator.is_count_based() && RowAccumulator::invertible(kinds, operator.immutable())
+	RowAccumulator::invertible(kinds, operator.immutable())
 }
 
 fn counted_row_engine(
@@ -1380,7 +1380,7 @@ mod tests {
 	}
 
 	#[test]
-	fn a_digest_slot_takes_the_running_path_unless_a_sealed_min_or_max_or_a_count_frame_sends_it_to_recombine() {
+	fn a_digest_slot_takes_the_running_path_unless_a_sealed_min_or_max_sends_it_to_recombine() {
 		// A sealed extreme on the running path unmerges a slot that cannot unmerge, so it must recombine.
 		let immutable = Some(Duration::from_seconds(30).unwrap());
 		let cases = [
@@ -1389,7 +1389,7 @@ mod tests {
 			(minute(), immutable, vec![digest_kind()], true),
 			(minute(), immutable, vec![SlotKind::Min, digest_kind()], false),
 			(minute(), immutable, vec![digest_kind(), SlotKind::Max], false),
-			(WindowSize::Count(8), None, vec![digest_kind()], false),
+			(WindowSize::Count(8), None, vec![digest_kind()], true),
 		];
 		for (size, immutable, kinds, runnable) in cases {
 			let operator = rolling_operator(size.clone(), immutable);
@@ -1427,17 +1427,15 @@ mod tests {
 		const CAPACITY: usize = 6;
 		for kinds in [vec![digest_kind()], vec![SlotKind::Min, digest_kind()]] {
 			assert!(
-				!rolling_runnable(&rolling_operator(WindowSize::Count(CAPACITY as u64), None), &kinds),
-				"a count frame must recombine {kinds:?}"
+				rolling_runnable(&rolling_operator(WindowSize::Count(CAPACITY as u64), None), &kinds),
+				"a count frame must take the running path {kinds:?}"
 			);
-			let mut engine = RollingEngine::<Hash128, OrdinalCoord, RowAccumulator>::new(
+			let mut engine = RollingEngine::<Hash128, OrdinalCoord, RowAccumulator>::new_runnable(
 				WindowEngineConfig::builder().build(),
-			);
+			)
+			.with_lag(RowSpan::ZERO);
 			let mut store = MockStore::default();
 			let new_accumulator = || RowAccumulator::new(&kinds, None);
-			let combine = |_group: &Hash128, buffer: &RollingBuffer<OrdinalCoord, RowAccumulator>| {
-				combine_rolling::<OrdinalCoord>(buffer, &kinds, RowSpan::ZERO, None)
-			};
 			let mut rng = Lcg(0xD16E_5744_0003);
 			let mut table: TestBTreeMap<u64, (Hash128, Option<f64>)> = TestBTreeMap::new();
 			let mut frames: TestBTreeMap<Hash128, TestBTreeMap<u64, Vec<Option<f64>>>> =
@@ -1521,13 +1519,12 @@ mod tests {
 				}
 
 				let results = engine
-					.apply_evicting(
+					.apply_running(
 						&mut store,
 						buckets,
 						RollingEviction::Capacity(CAPACITY),
 						group_key,
 						&new_accumulator,
-						&combine,
 					)
 					.unwrap();
 				for result in &results {

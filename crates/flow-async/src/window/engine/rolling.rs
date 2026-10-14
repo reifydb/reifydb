@@ -789,11 +789,13 @@ where
 				"apply_running requires an engine constructed with new_runnable"
 			);
 		}
-		let evict_cutoff = match eviction {
-			RollingEviction::Before(cutoff) => Some(cutoff),
-			RollingEviction::Nothing => None,
-			RollingEviction::Capacity(_) | RollingEviction::Span(_) => {
-				unimplemented!("apply_running supports only Before eviction")
+		let indexed = IndexedPane::of(&eviction);
+		let (evict_cutoff, capacity) = match eviction {
+			RollingEviction::Before(cutoff) => (Some(cutoff), None),
+			RollingEviction::Nothing => (None, None),
+			RollingEviction::Capacity(capacity) => (None, Some(capacity)),
+			RollingEviction::Span(_) => {
+				unimplemented!("apply_running supports Before, Capacity and Nothing eviction")
 			}
 		};
 		let mut meta_loaded = self.load_meta(store, &buckets)?;
@@ -867,6 +869,16 @@ where
 			if !accumulator.is_empty() {
 				group_slot.buffer.insert(slot, accumulator);
 			}
+			if let Some(capacity) = capacity {
+				while group_slot.buffer.len() > capacity {
+					let Some((evicted_slot, evicted)) = group_slot.buffer.pop_first() else {
+						break;
+					};
+					if is_merged_coord(evicted_slot.order_key(), group_slot.old_frontier) {
+						group_slot.running.unmerge(&evicted);
+					}
+				}
+			}
 			group_slot.buffer_changed = true;
 
 			meta.observe(slot);
@@ -907,7 +919,7 @@ where
 				}
 			}
 			let new_min = coord_min_key(&group_slot.buffer);
-			if new_min != group_slot.prior_min {
+			if indexed.is_some() && new_min != group_slot.prior_min {
 				if let Some(old) = group_slot.prior_min {
 					expiry_drop(store, &rolling_expiry_key(old, group_hash(&group)?))?;
 				}
