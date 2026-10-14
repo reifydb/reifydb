@@ -251,6 +251,7 @@ fn route_count_tumbling(
 				let pre_views = operator.core.slot_views(pre, &pre_cols)?;
 				let post_views = operator.core.slot_views(post, &post_cols)?;
 				let times = operator.row_times(post, post.num_rows())?;
+				let pre_times = operator.row_times(pre, pre.num_rows())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let row_number = pre_rows[row_idx];
@@ -281,7 +282,7 @@ fn route_count_tumbling(
 							times[row_idx],
 						);
 					} else {
-						let pre_contrib = pre_views.contribution(row_idx, times[row_idx]);
+						let pre_contrib = pre_views.contribution(row_idx, pre_times[row_idx]);
 						let post_contrib = post_views.contribution(row_idx, times[row_idx]);
 						let coord = slot_coord(true, times[row_idx], pre_rows[row_idx].0);
 						let targets = if post_hash != hash {
@@ -309,7 +310,7 @@ fn route_count_tumbling(
 								ordinal_window_span(window_id),
 								coord,
 								AccumulatorEvent::Remove(pre_contrib.clone()),
-								times[row_idx],
+								pre_times[row_idx],
 							);
 						}
 						for window_id in targets {
