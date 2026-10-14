@@ -10,6 +10,7 @@ use reifydb_codec::{
 };
 use reifydb_value::{
 	Result,
+	util::hash::{Hash128, xxh3_128},
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
@@ -153,6 +154,19 @@ pub fn extend_value_bytes(view: &ColumnView, rows: &mut [Vec<u8>]) -> Result<()>
 		}
 		Ok(())
 	})
+}
+
+pub fn value_key_hashes(views: &[ColumnView], rows: usize) -> Result<Vec<Option<Hash128>>> {
+	let mut bytes = vec![Vec::new(); rows];
+	let mut none = vec![false; rows];
+	for view in views {
+		extend_value_bytes(view, &mut bytes)?;
+		for_each_cell(view, rows, |index, cell| {
+			none[index] |= matches!(cell, Cell::None | Cell::Value(Value::None { .. }));
+			Ok(())
+		})?;
+	}
+	Ok(bytes.iter().zip(none).map(|(row, none)| (!none).then(|| xxh3_128(row))).collect())
 }
 
 fn postcard_into<T: Serialize + ?Sized>(row: &mut Vec<u8>, value: &T) {

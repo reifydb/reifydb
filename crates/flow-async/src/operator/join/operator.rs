@@ -8,7 +8,6 @@ use std::{
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, SchemaRef};
-use postcard::to_extend;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::JoinType,
@@ -26,7 +25,10 @@ use reifydb_core::{
 	metrics::{heap::OperatorSample, instruments::counter::Counter},
 	row::JoinPick,
 	state::timer::TimerKind,
-	value::{batch::empty_batch, column::factory::none},
+	value::{
+		batch::empty_batch,
+		column::{factory::none, key::value_key_hashes},
+	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_flow::{context::FlowContext, error::FlowGraphError};
@@ -37,9 +39,8 @@ use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
 	reifydb_assertions,
-	util::hash::{Hash128, xxh3_128},
+	util::hash::Hash128,
 	value::{
-		Value,
 		column_view::ColumnView,
 		datetime::DateTime,
 		duration::Duration,
@@ -590,36 +591,7 @@ impl JoinOperator {
 			}
 		}
 
-		let mut hashes = Vec::with_capacity(row_count);
-		let mut buf: Vec<u8> = Vec::with_capacity(256);
-		for row_idx in 0..row_count {
-			buf.clear();
-			let mut has_undefined = false;
-
-			for view in &expr_views {
-				let value = view.get_value(row_idx);
-
-				if matches!(value, Value::None { .. }) {
-					has_undefined = true;
-					break;
-				}
-
-				buf = to_extend(&value, buf).map_err(|e| {
-					Error::from(FlowStateError::Encode {
-						state: "value for hash",
-						cause: e.to_string(),
-					})
-				})?;
-			}
-
-			if has_undefined {
-				hashes.push(None);
-			} else {
-				hashes.push(Some(xxh3_128(&buf)));
-			}
-		}
-
-		Ok(hashes)
+		value_key_hashes(&expr_views, row_count)
 	}
 
 	pub(crate) fn unmatched_left_columns(
