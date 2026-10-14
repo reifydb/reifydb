@@ -8,9 +8,10 @@ use std::{
 };
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use postcard::{from_bytes, to_stdvec};
 use reifydb_core::{
+	key::operator::state::GroupId,
 	metrics::heap::HeapSize,
 	value::{batch::batch, column::builder::ColumnBuilder},
 };
@@ -175,6 +176,8 @@ pub(super) struct DistinctState {
 	pub(super) dirty: HashSet<Hash128>,
 
 	pub(super) layout_changed: bool,
+
+	pub(super) withdrawn: IndexSet<GroupId>,
 }
 
 impl Default for DistinctState {
@@ -184,6 +187,7 @@ impl Default for DistinctState {
 			layout: DistinctLayout::new(),
 			dirty: HashSet::new(),
 			layout_changed: false,
+			withdrawn: IndexSet::new(),
 		}
 	}
 }
@@ -194,5 +198,6 @@ impl HeapSize for DistinctState {
 			+ self.entries.values().map(HeapSize::heap_size).sum::<usize>()
 			+ self.layout.heap_size()
 			+ self.dirty.heap_size()
+			+ self.withdrawn.capacity() * size_of::<GroupId>()
 	}
 }

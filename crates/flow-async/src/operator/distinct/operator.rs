@@ -8,8 +8,11 @@ use std::{
 };
 
 use arrow_schema::SchemaRef;
-use indexmap::IndexMap;
-use reifydb_codec::row::operator::state::{OperatorState, decode};
+use indexmap::{IndexMap, IndexSet};
+use reifydb_codec::row::{
+	operator::state::{OperatorState, decode},
+	pod::EncodedPodRow,
+};
 use reifydb_core::{
 	expression::Expression,
 	interface::{
@@ -36,7 +39,6 @@ use crate::{
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
 		drops::SealedDrops,
 		host::HostContext,
-		state::store,
 	},
 };
 
@@ -108,9 +110,8 @@ impl DistinctPlan {
 		GroupStateKey::root(KeyspaceId::DISTINCT_LAYOUT, vec![])
 	}
 
-	#[instrument(name = "flow::operator::distinct::load_entry", level = "trace", skip_all)]
-	fn load_entry(&self, host: &mut dyn HostContext, group: GroupId) -> Result<LoadedEntry> {
-		match store::state_get(host, &Self::entry_key(group))? {
+	fn decode_entry(row: Option<EncodedPodRow>) -> Result<LoadedEntry> {
+		match row {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(LoadedEntry::Empty);
@@ -127,9 +128,8 @@ impl DistinctPlan {
 		}
 	}
 
-	#[instrument(name = "flow::operator::distinct::load_layout", level = "trace", skip_all)]
-	fn load_layout(&self, host: &mut dyn HostContext) -> Result<DistinctLayout> {
-		match store::state_get(host, &Self::layout_storage_key())? {
+	fn decode_layout(row: Option<EncodedPodRow>) -> Result<DistinctLayout> {
+		match row {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(DistinctLayout::new());
@@ -152,6 +152,8 @@ impl DistinctPlan {
 		groups: &HashMap<Hash128, GroupId>,
 	) -> Result<()> {
 		let dirty: Vec<Hash128> = state.dirty.drain().collect();
+		let mut sets = Vec::new();
+		let mut removes = Vec::new();
 		for hash in dirty {
 			let key = Self::entry_key(groups[&hash]);
 			match state.entries.get(&hash) {
@@ -162,9 +164,9 @@ impl DistinctPlan {
 							cause: e.to_string(),
 						})
 					})?;
-					store::state_set(host, &key, row)?;
+					sets.push((key, row));
 				}
-				None => store::state_remove(host, &key)?,
+				None => removes.push(key),
 			}
 		}
 		if take(&mut state.layout_changed) {
@@ -174,9 +176,12 @@ impl DistinctPlan {
 					cause: e.to_string(),
 				})
 			})?;
-			store::state_set(host, &Self::layout_storage_key(), layout_row)?;
+			sets.push((Self::layout_storage_key(), layout_row));
 		}
-		Ok(())
+		host.state_set_many(sets)?;
+		host.state_remove_many(&removes)?;
+		let withdrawn: Vec<GroupId> = state.withdrawn.drain(..).collect();
+		host.remove_row_numbers_for_groups(&withdrawn)
 	}
 
 	#[instrument(name = "flow::operator::distinct::batch_hashes", level = "trace", skip_all, fields(diffs = diffs.len()))]
@@ -229,18 +234,26 @@ impl HostOperator for DistinctOperator {
 		let operator_id = plan.operator;
 		let (ordered, diff_hashes) = plan.batch_hashes(&change.diffs)?;
 
-		let mut state = DistinctState {
-			entries: IndexMap::new(),
-			layout: plan.load_layout(host)?,
-			dirty: HashSet::new(),
-			layout_changed: false,
-		};
-
 		let mut groups: HashMap<Hash128, GroupId> = HashMap::with_capacity(ordered.len());
+		let mut keys = Vec::with_capacity(ordered.len() + 1);
+		keys.push(DistinctPlan::layout_storage_key());
 		for hash in ordered.iter() {
 			let group = GroupId::hashed(*hash);
 			groups.insert(*hash, group);
-			match plan.load_entry(host, group)? {
+			keys.push(DistinctPlan::entry_key(group));
+		}
+		let mut rows = host.state_get_many(&keys)?.into_iter();
+
+		let mut state = DistinctState {
+			entries: IndexMap::new(),
+			layout: DistinctPlan::decode_layout(rows.next().flatten())?,
+			dirty: HashSet::new(),
+			layout_changed: false,
+			withdrawn: IndexSet::new(),
+		};
+
+		for (hash, row) in ordered.iter().zip(rows) {
+			match DistinctPlan::decode_entry(row)? {
 				LoadedEntry::Present(entry) => {
 					state.entries.insert(*hash, entry);
 				}
