@@ -1,24 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
-
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
 use reifydb_core::{
 	interface::catalog::dictionary::Dictionary,
-	internal_err,
-	value::{
-		batch::{batch, take_rows_or_none},
-		column::builder::ColumnBuilder,
-	},
+	value::{batch::batch, column::dictionary::decode_dictionary_ids},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		column_view::{ColumnView, ViewData},
-		container::dictionary_array,
 		system_columns::{is_system_field, user_columns},
 		value_type::ValueType,
 	},
@@ -62,43 +54,7 @@ pub(crate) fn decode_dictionary_column(
 	target: ValueType,
 	rx: &mut Transaction,
 ) -> Result<(FieldRef, ArrayRef)> {
-	let view = ColumnView::try_from((array, field.as_ref()))?;
-	let ViewData::DictionaryId {
-		container,
-		..
-	} = view.data
-	else {
-		return internal_err!(
-			"dictionary column {} holds {} instead of dictionary ids",
-			field.name(),
-			view.get_type()
-		);
-	};
-	let mut slots: HashMap<u128, Option<usize>> = HashMap::new();
-	let mut values = ColumnBuilder::with_capacity(target, 0);
-	let mut picks = Vec::with_capacity(view.len());
-	for (row, id) in dictionary_array::iter(container).enumerate() {
-		if !view.is_defined(row) {
-			picks.push(None);
-			continue;
-		}
-		let key = id.to_u128();
-		if let Some(&slot) = slots.get(&key) {
-			picks.push(slot);
-			continue;
-		}
-		let slot = match rx.get_from_dictionary(dictionary, id)? {
-			Some(value) => {
-				values.push_value(value);
-				Some(values.len() - 1)
-			}
-			None => None,
-		};
-		slots.insert(key, slot);
-		picks.push(slot);
-	}
-	let decoded = take_rows_or_none(&batch(vec![values.finish(field.name())])?, &picks)?;
-	Ok((decoded.schema_ref().fields()[0].clone(), decoded.column(0).clone()))
+	decode_dictionary_ids(field, array, target, |ids| rx.get_many_from_dictionary(dictionary, ids))
 }
 
 pub(crate) fn user_pairs(batch: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {
