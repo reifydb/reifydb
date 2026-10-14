@@ -157,8 +157,13 @@ where
 			if let Some(snapshot) = get_classified::<_, RollingTopKEmit<SK, Output>>(store, &emit_key)? {
 				let keys: Vec<EncodedKey> =
 					snapshot.keys().map(|sk| row_key(&entry.group, sk)).collect();
-				let rows = store.get_or_create_row_numbers(entry.group_id, &keys)?;
-				for ((_, value), (row_number, _)) in snapshot.into_iter().zip(rows) {
+				let rows = store.get_row_numbers(entry.group_id, &keys)?;
+				for ((_, value), row_number) in snapshot.into_iter().zip(rows) {
+					let Some(row_number) = row_number else {
+						return internal_err!(
+							"a rolling top-k expiry removes a ranked row with no row number"
+						);
+					};
 					out.push((row_number, value));
 				}
 				store.remove_row_numbers(entry.group_id, &keys)?;
@@ -495,8 +500,13 @@ where
 			let removed: Vec<(&SK, &Output)> =
 				group_slot.prior_emit.iter().filter(|(sk, _)| !new_emit.contains_key(sk)).collect();
 			let removed_keys: Vec<EncodedKey> = removed.iter().map(|(sk, _)| row_key(&group, sk)).collect();
-			let removed_rows = store.get_or_create_row_numbers(group_slot.group_id, &removed_keys)?;
-			for ((_, prior_out), (rn, _is_new_alloc)) in removed.iter().zip(removed_rows) {
+			let removed_rows = store.get_row_numbers(group_slot.group_id, &removed_keys)?;
+			for ((_, prior_out), rn) in removed.iter().zip(removed_rows) {
+				let Some(rn) = rn else {
+					return internal_err!(
+						"a rolling top-k withdrawal removes a ranked row with no row number"
+					);
+				};
 				emits.push(TopKEmit::Remove {
 					row_number: rn,
 					value: (*prior_out).clone(),

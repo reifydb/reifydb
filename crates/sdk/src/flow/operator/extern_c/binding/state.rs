@@ -658,6 +658,39 @@ pub(crate) fn get_or_create_row_numbers(
 	Ok(row_numbers.into_iter().zip(is_new).map(|(rn, new)| (RowNumber(rn), new != 0)).collect())
 }
 
+pub(crate) fn get_row_numbers(
+	ctx: &mut ExternCContext,
+	group: GroupId,
+	keys: &[EncodedKey],
+) -> Result<Vec<Option<RowNumber>>> {
+	if keys.is_empty() {
+		return Ok(Vec::new());
+	}
+	let key_refs = key_refs(keys);
+	let mut row_numbers = vec![0u64; keys.len()];
+	let mut present = vec![0u8; keys.len()];
+
+	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
+	// for the whole guest call; key_refs borrows keys for the duration of the call, and row_numbers and present
+	// are live, initialised arrays of exactly keys.len() slots each for the host to fill.
+	unsafe {
+		let result = ((*ctx.ctx).callbacks.state.get_row_numbers)(
+			(*ctx.ctx).operator_id,
+			ctx.ctx,
+			wire_group(group),
+			key_refs.as_ptr(),
+			key_refs.len(),
+			row_numbers.as_mut_ptr(),
+			present.as_mut_ptr(),
+		);
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host_get_row_numbers failed with code {}", result)));
+		}
+	}
+
+	Ok(row_numbers.into_iter().zip(present).map(|(rn, present)| (present != 0).then_some(RowNumber(rn))).collect())
+}
+
 pub(crate) fn remove_row_number(ctx: &mut ExternCContext, group: GroupId, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid

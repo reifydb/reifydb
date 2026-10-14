@@ -701,6 +701,44 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 	}
 }
 
+pub(super) extern "C" fn host_get_row_numbers(
+	_operator_id: u64,
+	ctx: *mut ExternCContextRaw,
+	group: ExternCGroupId,
+	keys: *const ExternCKeyRef,
+	keys_len: usize,
+	row_numbers_out: *mut u64,
+	present_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if keys_len > 0 && (keys.is_null() || row_numbers_out.is_null() || present_out.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: `ctx` is null-checked above, and for a non-zero `keys_len` so are `keys`,
+	// `row_numbers_out` and `present_out`; the guest must pass back the ExternCContextRaw the host handed it
+	// for this call, `keys` satisfying encoded_keys, and both out arrays valid and aligned for
+	// `keys_len` writes - get_row_numbers returns exactly one result per key.
+	unsafe {
+		let host = get_host_mut(&mut *ctx);
+		let Some(encoded_keys) = encoded_keys(keys, keys_len) else {
+			return EXTERN_C_ERROR_NULL_PTR;
+		};
+		match host.get_row_numbers(host_group(group), &encoded_keys) {
+			Ok(results) => {
+				for (i, row_number) in results.iter().enumerate() {
+					*row_numbers_out.add(i) = row_number.map_or(0, |row_number| row_number.0);
+					*present_out.add(i) = row_number.is_some() as u8;
+				}
+				EXTERN_C_OK
+			}
+			Err(_) => EXTERN_C_ERROR_INTERNAL,
+		}
+	}
+}
+
 pub(super) extern "C" fn host_remove_row_number(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
@@ -1081,6 +1119,10 @@ mod join_row_expiry_guard_tests {
 			Ok(Vec::new())
 		}
 
+		fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+			Ok(Vec::new())
+		}
+
 		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
 			Ok(())
 		}
@@ -1230,10 +1272,6 @@ mod join_row_expiry_guard_tests {
 
 		fn reclaim_group_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
 			Ok(ReclaimOutcome::NOTHING)
-		}
-
-		fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
-			Ok(Vec::new())
 		}
 
 		fn get_row_numbers_for_groups(&mut self, _groups: &[GroupId]) -> Result<Vec<Option<RowNumber>>> {

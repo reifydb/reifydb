@@ -128,6 +128,10 @@ impl StateStore for SingleEntryHost {
 		unimplemented!()
 	}
 
+	fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+		unimplemented!()
+	}
+
 	fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
 		unimplemented!()
 	}
@@ -224,10 +228,6 @@ impl HostContext for SingleEntryHost {
 	}
 
 	fn reclaim_group_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
-		unimplemented!()
-	}
-
-	fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
 		unimplemented!()
 	}
 

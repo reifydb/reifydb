@@ -867,6 +867,16 @@ mod tests {
 				.map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new())))
 				.collect())
 		}
+
+		fn get_row_numbers(
+			&mut self,
+			group: GroupId,
+			keys: &[EncodedKey],
+		) -> ValueResult<Vec<Option<RowNumber>>> {
+			Ok(keys.iter()
+				.map(|key| self.rows.get(&(group, key.as_bytes().to_vec())).map(|&row| RowNumber(row)))
+				.collect())
+		}
 		fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> ValueResult<()> {
 			self.rows.remove(&(group, key.as_bytes().to_vec()));
 			Ok(())

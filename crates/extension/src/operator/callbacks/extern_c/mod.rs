@@ -36,6 +36,7 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			batch_write: state::host_state_batch_write,
 			get_or_create_row_numbers: state::host_get_or_create_row_numbers,
 			get_or_create_row_numbers_for_groups: state::host_get_or_create_row_numbers_for_groups,
+			get_row_numbers: state::host_get_row_numbers,
 			remove_row_number: state::host_remove_row_number,
 			remove_row_numbers: state::host_remove_row_numbers,
 			remove_row_numbers_for_groups: state::host_remove_row_numbers_for_groups,

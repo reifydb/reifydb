@@ -373,6 +373,11 @@ impl GuestEmitContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).get_or_create_row_numbers_for_groups(groups) }.map_err(to_sdk_err)
 	}
+	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> SdkResult<Vec<Option<RowNumber>>> {
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).get_row_numbers(group, keys) }.map_err(to_sdk_err)
+	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.

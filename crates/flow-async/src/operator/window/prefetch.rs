@@ -170,6 +170,10 @@ impl StateStore for Prefetched<'_> {
 		self.store.get_or_create_row_numbers_for_groups(groups)
 	}
 
+	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+		self.store.get_row_numbers(group, keys)
+	}
+
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		self.store.remove_row_number(group, key)
 	}

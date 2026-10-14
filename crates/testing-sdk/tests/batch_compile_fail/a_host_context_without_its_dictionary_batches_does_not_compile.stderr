@@ -1,7 +1,7 @@
 error[E0046]: not all trait items implemented, missing: `dictionary_find_many`, `dictionary_get_many`
-   --> tests/batch_compile_fail/a_host_context_without_its_dictionary_batches_does_not_compile.rs:168:1
+   --> tests/batch_compile_fail/a_host_context_without_its_dictionary_batches_does_not_compile.rs:172:1
     |
-168 | impl HostContext for SingleEntryHost {
+172 | impl HostContext for SingleEntryHost {
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `dictionary_find_many`, `dictionary_get_many` in implementation
     |
     = help: implement the missing item: `fn dictionary_find_many(&mut self, _: reifydb_value::value::dictionary::DictionaryId, _: &[Value]) -> Result<Vec<std::option::Option<DictionaryEntryId>>, reifydb_value::error::Error> { todo!() }`

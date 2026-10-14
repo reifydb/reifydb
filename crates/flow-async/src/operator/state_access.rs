@@ -362,6 +362,10 @@ mod tests {
 			Ok(groups.iter().enumerate().map(|(i, _)| (RowNumber(i as u64 + 1), true)).collect())
 		}
 
+		fn get_row_numbers(&mut self, _group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+			Ok(keys.iter().enumerate().map(|(i, _)| Some(RowNumber(i as u64 + 1))).collect())
+		}
+
 		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
 			Ok(())
 		}

@@ -54,6 +54,10 @@ impl StateStore for SingleKeyStore {
 		Ok(Vec::new())
 	}
 
+	fn get_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+		Ok(Vec::new())
+	}
+
 	fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
 		Ok(())
 	}

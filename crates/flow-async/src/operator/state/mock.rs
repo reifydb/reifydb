@@ -291,6 +291,11 @@ impl StateStore for MockStore {
 	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>> {
 		Ok(groups.iter().map(|group| self.row_number_for(*group, &EncodedKey::new(Vec::new()))).collect())
 	}
+	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
+		Ok(keys.iter()
+			.map(|key| self.rows.get(&(group, key.as_bytes().to_vec())).map(|rn| RowNumber(*rn)))
+			.collect())
+	}
 	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
 		self.rows.remove(&(group, key.as_bytes().to_vec()));
 		Ok(())
