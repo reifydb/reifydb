@@ -97,10 +97,7 @@ impl StandardSingleStore {
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, flush_actor): (
-			Option<SinglePersistentTier>,
-			Option<ActorRef<FlushMessage>>,
-		) = {
+		let (persistent, flush_actor): (Option<SinglePersistentTier>, Option<ActorRef<FlushMessage>>) = {
 			let _ = config.persistent;
 			(None, None)
 		};
@@ -250,6 +247,50 @@ impl SingleVersionGet for StandardSingleStore {
 		}
 
 		Ok(None)
+	}
+
+	#[instrument(name = "store::single::get_many", level = "trace", skip(self, keys), fields(keys = keys.len()))]
+	fn get_many(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
+		let mut rows = Vec::with_capacity(keys.len());
+		let mut misses = Vec::new();
+		for (index, key) in keys.iter().enumerate() {
+			let buffered = match &self.commit {
+				Some(buffer) => buffer.get_with_tombstone(key.as_ref())?,
+				None => None,
+			};
+			rows.push(match buffered {
+				Some(value) => value.map(|value| SingleVersionRow {
+					key: key.clone(),
+					bytes: EncodedBytes(value),
+				}),
+				None => {
+					misses.push(index);
+					None
+				}
+			});
+		}
+
+		if let Some(persistent) = &self.persistent
+			&& !misses.is_empty()
+		{
+			let probed: Vec<&[u8]> = misses.iter().map(|&index| keys[index].as_ref()).collect();
+			self.persistent_probes.fetch_add(misses.len() as u64, Ordering::Relaxed);
+			for (index, value) in misses.into_iter().zip(persistent.get_many(&probed)?) {
+				match value {
+					Some(value) => {
+						rows[index] = Some(SingleVersionRow {
+							key: keys[index].clone(),
+							bytes: EncodedBytes(value),
+						});
+					}
+					None => {
+						self.persistent_absent.fetch_add(1, Ordering::Relaxed);
+					}
+				}
+			}
+		}
+
+		Ok(rows)
 	}
 }
 

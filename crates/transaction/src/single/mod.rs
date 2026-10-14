@@ -2,6 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::sync::Arc;
+#[cfg(feature = "testing")]
+use std::sync::Mutex;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_codec::{
@@ -20,6 +22,9 @@ use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_value::Result;
 use write::{KeyWriteLock, SingleWriteTransaction};
 
+#[cfg(feature = "testing")]
+use crate::counting::OpCounts;
+
 #[derive(Clone)]
 pub struct SingleTransaction {
 	inner: Arc<SingleTransactionInner>,
@@ -29,6 +34,8 @@ pub(crate) struct SingleTransactionInner {
 	pub(crate) store: RwLock<SingleStore>,
 	pub(crate) event_bus: EventBus,
 	pub(crate) key_locks: SkipMap<EncodedKey, ArcRwLock<()>>,
+	#[cfg(feature = "testing")]
+	pub(crate) op_counts: Mutex<OpCounts>,
 }
 
 impl SingleTransactionInner {
@@ -48,8 +55,20 @@ impl SingleTransaction {
 				store: RwLock::new(store),
 				event_bus,
 				key_locks: SkipMap::new(),
+				#[cfg(feature = "testing")]
+				op_counts: Mutex::new(OpCounts::default()),
 			}),
 		}
+	}
+
+	#[cfg(feature = "testing")]
+	pub fn op_counts(&self) -> OpCounts {
+		self.inner.op_counts.lock().unwrap().clone()
+	}
+
+	#[cfg(feature = "testing")]
+	pub(crate) fn range_call(&self) {
+		self.inner.op_counts.lock().unwrap().range_call();
 	}
 
 	pub fn read_store(&self) -> SingleStore {

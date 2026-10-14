@@ -140,6 +140,28 @@ impl SqlitePersistentStorage {
 			connections_total: Count::new(1),
 		}
 	}
+
+	#[instrument(name = "store::single::persistent::get_many", level = "trace", skip(self, keys), fields(keys = keys.len()))]
+	pub fn get_many(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Ok(vec![None; keys.len()]);
+		};
+
+		let mut stmt =
+			match conn.prepare_cached(&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME)) {
+				Ok(stmt) => stmt,
+				Err(e) if e.to_string().contains("no such table") => return Ok(vec![None; keys.len()]),
+				Err(e) => return Err(internal_error!("Failed to get_many: {}", e)),
+			};
+		keys.iter()
+			.map(|key| match stmt.query_row(params![key], |row| row.get::<_, Option<Vec<u8>>>(0)) {
+				Ok(value) => Ok(value.map(CowVec::new)),
+				Err(QueryReturnedNoRows) => Ok(None),
+				Err(e) => Err(internal_error!("Failed to get_many: {}", e)),
+			})
+			.collect()
+	}
 }
 
 impl TierStorage for SqlitePersistentStorage {

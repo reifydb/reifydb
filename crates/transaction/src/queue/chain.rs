@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -16,6 +16,7 @@ use crate::single::{SingleTransaction, write::SingleWriteTransaction};
 pub struct ChainOverlay {
 	added: BTreeSet<(u64, RowNumber)>,
 	removed: BTreeSet<(u64, RowNumber)>,
+	stored: HashMap<(u64, u64), Vec<RowNumber>>,
 }
 
 impl ChainOverlay {
@@ -33,24 +34,29 @@ pub enum ChainHead {
 
 pub fn chain_peek(
 	single: &SingleTransaction,
-	overlay: &ChainOverlay,
+	overlay: &mut ChainOverlay,
 	queue: QueueId,
 	partition: u16,
 	key_hash: u64,
 ) -> Result<ChainHead> {
-	let store = single.read_store();
 	let budget = 2 + ChainOverlay::of_key(&overlay.removed, key_hash).count() as u64;
-	let batch = SingleVersionRangeRev::range_rev_batch(
-		&store,
-		QueueKeyActiveKey::key_scan(queue, partition, key_hash).encode(),
-		budget,
-	)?;
+	if !overlay.stored.contains_key(&(key_hash, budget)) {
+		#[cfg(feature = "testing")]
+		single.range_call();
+		let store = single.read_store();
+		let batch = SingleVersionRangeRev::range_rev_batch(
+			&store,
+			QueueKeyActiveKey::key_scan(queue, partition, key_hash).encode(),
+			budget,
+		)?;
+		let stored =
+			batch.items.iter().filter_map(|item| QueueKeyActiveKey::decode(&item.key)).map(|key| key.row);
+		overlay.stored.insert((key_hash, budget), stored.collect());
+	}
 
-	let mut rows: BTreeSet<RowNumber> = batch
-		.items
+	let mut rows: BTreeSet<RowNumber> = overlay.stored[&(key_hash, budget)]
 		.iter()
-		.filter_map(|item| QueueKeyActiveKey::decode(&item.key))
-		.map(|key| key.row)
+		.copied()
 		.filter(|row| !overlay.removed.contains(&(key_hash, *row)))
 		.collect();
 	rows.extend(ChainOverlay::of_key(&overlay.added, key_hash));

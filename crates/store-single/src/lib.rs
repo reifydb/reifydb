@@ -132,6 +132,13 @@ impl SingleVersionGet for SingleStore {
 			SingleStore::Standard(store) => SingleVersionGet::get(store, key),
 		}
 	}
+
+	#[inline]
+	fn get_many(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
+		match self {
+			SingleStore::Standard(store) => SingleVersionGet::get_many(store, keys),
+		}
+	}
 }
 
 impl SingleVersionContains for SingleStore {

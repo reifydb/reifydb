@@ -10,7 +10,10 @@ use reifydb_core::{
 			decode_queue_partition_counters, encode_queue_item_state, encode_queue_partition_counters,
 		},
 	},
-	key::queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
+	key::{
+		any::TaggedKey,
+		queue::{QueueDueKey, QueueItemStateKey, QueueKeyActiveKey, QueuePartitionKey},
+	},
 };
 use reifydb_value::{
 	Result,
@@ -56,6 +59,11 @@ pub fn admit_ready_items(
 	let lock_key = QueuePartitionKey::new(queue, partition);
 	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
 
+	let mut keys: Vec<_> =
+		items.iter().map(|item| QueueItemStateKey::new(queue, partition, item.row).into()).collect();
+	keys.push(lock_key.clone().into());
+	tx.prefetch::<TaggedKey>(&keys)?;
+
 	let mut overlay = ChainOverlay::default();
 	let mut admitted = 0u64;
 	let mut blocked_delta = 0i64;
@@ -69,7 +77,7 @@ pub fn admit_ready_items(
 		state.key_hash = item.key_hash.unwrap_or_default();
 
 		if let Some(key_hash) = item.key_hash {
-			match chain_peek(single, &overlay, queue, partition, key_hash)? {
+			match chain_peek(single, &mut overlay, queue, partition, key_hash)? {
 				ChainHead::Empty => {}
 				ChainHead::Single(_) => {
 					state.status = QueueItemStatus::Parked;
@@ -111,6 +119,11 @@ pub fn apply_ack_transitions(
 
 	let lock_key = QueuePartitionKey::new(queue, partition);
 	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
+
+	let mut keys: Vec<_> =
+		acks.iter().map(|ack| QueueItemStateKey::new(queue, partition, ack.row_number).into()).collect();
+	keys.push(lock_key.clone().into());
+	tx.prefetch::<TaggedKey>(&keys)?;
 
 	let mut overlay = ChainOverlay::default();
 	let mut applied = 0u64;
@@ -168,53 +181,68 @@ pub struct ExpiredLease {
 	pub lease_deadline: DateTime,
 }
 
-pub fn apply_reap_transition(
+pub fn apply_reap_transitions(
 	single: &SingleTransaction,
 	queue: QueueId,
 	partition: u16,
-	lease: &ExpiredLease,
-	transition: &QueueAckTransition,
+	reaps: &[(ExpiredLease, QueueAckTransition)],
 	now: DateTime,
-) -> Result<bool> {
+) -> Result<Vec<bool>> {
+	if reaps.is_empty() {
+		return Ok(Vec::new());
+	}
+
 	let lock_key = QueuePartitionKey::new(queue, partition);
 	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
 
-	let state_key = QueueItemStateKey::new(queue, partition, lease.row);
-	let Some(stored) = tx.get(&state_key)? else {
-		return Ok(false);
-	};
-	let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
-		return Ok(false);
-	};
-
-	if state.status != QueueItemStatus::Leased
-		|| state.attempt != lease.attempt
-		|| state.lease_deadline != Some(lease.lease_deadline)
-		|| lease.lease_deadline > now
-	{
-		debug!(
-			queue = queue.0,
-			partition,
-			item = lease.row.0,
-			attempt = lease.attempt,
-			"the lease moved between the reaper's scan and its compare-and-set"
-		);
-		return Ok(false);
-	}
+	let mut keys: Vec<_> =
+		reaps.iter().map(|(lease, _)| QueueItemStateKey::new(queue, partition, lease.row).into()).collect();
+	keys.push(lock_key.clone().into());
+	tx.prefetch::<TaggedKey>(&keys)?;
 
 	let mut overlay = ChainOverlay::default();
-	let effect = apply_state_transition(
-		single,
-		&mut tx,
-		&mut overlay,
-		TransitionTarget::for_lease(queue, partition, lease),
-		&mut state,
-		transition,
-	)?;
-	adjust_counters(&mut tx, &lock_key, 1, u64::from(effect.requeued), effect.blocked_delta)?;
+	let mut applied = Vec::with_capacity(reaps.len());
+	for (lease, transition) in reaps {
+		let state_key = QueueItemStateKey::new(queue, partition, lease.row);
+		let Some(stored) = tx.get(&state_key)? else {
+			applied.push(false);
+			continue;
+		};
+		let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
+			applied.push(false);
+			continue;
+		};
+
+		if state.status != QueueItemStatus::Leased
+			|| state.attempt != lease.attempt
+			|| state.lease_deadline != Some(lease.lease_deadline)
+			|| lease.lease_deadline > now
+		{
+			debug!(
+				queue = queue.0,
+				partition,
+				item = lease.row.0,
+				attempt = lease.attempt,
+				"the lease moved between the reaper's scan and its compare-and-set"
+			);
+			applied.push(false);
+			continue;
+		}
+
+		let effect = apply_state_transition(
+			single,
+			&mut tx,
+			&mut overlay,
+			TransitionTarget::for_lease(queue, partition, lease),
+			&mut state,
+			transition,
+		)?;
+		adjust_counters(&mut tx, &lock_key, 1, u64::from(effect.requeued), effect.blocked_delta)?;
+		applied.push(true);
+	}
 	tx.commit()?;
 
-	Ok(true)
+	Ok(applied)
 }
 
 pub enum ReplayOutcome {
@@ -255,7 +283,7 @@ pub fn apply_replay_transition(
 	let mut overlay = ChainOverlay::default();
 	let mut blocked_delta = 0i64;
 	if let Some(key_hash) = key_hash {
-		match chain_peek(single, &overlay, queue, partition, key_hash)? {
+		match chain_peek(single, &mut overlay, queue, partition, key_hash)? {
 			ChainHead::Empty => {}
 			ChainHead::Single(_) => {
 				state.status = QueueItemStatus::Parked;
@@ -297,6 +325,9 @@ pub fn remove_item_states(
 
 	let lock_key = QueuePartitionKey::new(queue, partition);
 	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
+
+	let keys: Vec<_> = rows.iter().map(|row| QueueItemStateKey::new(queue, partition, *row)).collect();
+	tx.prefetch(&keys)?;
 
 	let mut removed = 0u64;
 	for row in rows {
@@ -411,7 +442,7 @@ fn apply_state_transition(
 fn promote_next(
 	single: &SingleTransaction,
 	tx: &mut SingleWriteTransaction<'_>,
-	overlay: &ChainOverlay,
+	overlay: &mut ChainOverlay,
 	queue: QueueId,
 	partition: u16,
 	key_hash: u64,

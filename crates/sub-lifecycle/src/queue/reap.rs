@@ -27,7 +27,7 @@ use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::{
 	change::QueueAckTransition,
-	queue::scheduling::{ExpiredLease, apply_reap_transition},
+	queue::scheduling::{ExpiredLease, apply_reap_transitions},
 	transaction::Transaction,
 };
 use reifydb_value::{
@@ -175,37 +175,63 @@ impl QueueLeaseReapTask {
 	}
 
 	#[instrument(
-		name = "queue::reap::item",
+		name = "queue::reap::batch",
 		level = "trace",
 		skip_all,
-		fields(queue = queue.id.0, partition = partition, item = candidate.row.0)
+		fields(queue = queue.id.0, partition = partition, candidates = candidates.len())
 	)]
-	fn reap(&self, queue: &Queue, partition: u16, candidate: &Candidate, now: DateTime) -> Result<bool> {
-		let Some(lease_deadline) = candidate.state.lease_deadline else {
-			return Ok(false);
-		};
+	fn reap(&self, queue: &Queue, partition: u16, candidates: &[Candidate], now: DateTime) -> u64 {
+		let mut reaps = Vec::new();
+		for candidate in candidates {
+			let Some(lease_deadline) = candidate.state.lease_deadline else {
+				continue;
+			};
+			if !Self::is_expired(&candidate.state, now) {
+				continue;
+			}
+			match self.decide(queue, candidate, now) {
+				Ok(transition) => reaps.push((
+					ExpiredLease {
+						row: candidate.row,
+						attempt: candidate.state.attempt,
+						key_hash: queue
+							.ordered_by()
+							.is_some()
+							.then_some(candidate.state.key_hash),
+						lease_deadline,
+					},
+					transition,
+				)),
+				Err(e) => {
+					warn!(queue = queue.id.0, partition, item = candidate.row.0, error = %e, "queue reaper failed to transition an expired lease")
+				}
+			}
+		}
 
-		let transition = self.decide(queue, candidate, now)?;
-		let lease = ExpiredLease {
-			row: candidate.row,
-			attempt: candidate.state.attempt,
-			key_hash: queue.ordered_by().is_some().then_some(candidate.state.key_hash),
-			lease_deadline,
-		};
-
-		let applied = apply_reap_transition(
+		let applied = match apply_reap_transitions(
 			&self.engine.single_owned(),
 			queue.id,
 			partition,
-			&lease,
-			&transition,
+			&reaps,
 			now,
-		)?;
-		if applied && releases_work(queue, &transition, now) {
-			self.engine.queue_wake().nudge(queue.id, 1);
-		}
+		) {
+			Ok(applied) => applied,
+			Err(e) => {
+				warn!(queue = queue.id.0, partition, leases = reaps.len(), error = %e, "queue reaper failed to transition expired leases");
+				return 0;
+			}
+		};
 
-		Ok(applied)
+		let mut reaped = 0;
+		for ((_, transition), applied) in reaps.iter().zip(applied) {
+			if applied {
+				reaped += 1;
+				if releases_work(queue, transition, now) {
+					self.engine.queue_wake().nudge(queue.id, 1);
+				}
+			}
+		}
+		reaped
 	}
 
 	fn is_expired(state: &QueueItemState, now: DateTime) -> bool {
@@ -288,18 +314,7 @@ impl LifecycleTask for QueueLeaseReapTask {
 					after = candidates.last().map(|candidate| candidate.key.clone());
 					let drained = candidates.len() < remaining;
 
-					for candidate in &candidates {
-						if !Self::is_expired(&candidate.state, now) {
-							continue;
-						}
-						match self.reap(queue, partition, candidate, now) {
-							Ok(true) => reaped += 1,
-							Ok(false) => {}
-							Err(e) => {
-								warn!(queue = queue.id.0, partition, item = candidate.row.0, error = %e, "queue reaper failed to transition an expired lease")
-							}
-						}
-					}
+					reaped += self.reap(queue, partition, &candidates, now);
 
 					if drained {
 						break;

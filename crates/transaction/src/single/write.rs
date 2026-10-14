@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem::take, ops::RangeBounds};
+use std::{collections::HashMap, mem::take, ops::RangeBounds};
 
 use indexmap::IndexMap;
 use reifydb_core::{
@@ -36,6 +36,7 @@ pub struct SingleWriteTransaction<'a> {
 	pub(super) ranges: Vec<EncodedKeyRange>,
 	pub(super) _key_locks: Vec<KeyWriteLock>,
 	pub(super) pending: IndexMap<EncodedKey, Delta>,
+	pub(super) fetched: HashMap<EncodedKey, Option<EncodedBytes>>,
 	pub(super) completed: bool,
 }
 
@@ -52,6 +53,7 @@ impl<'a> SingleWriteTransaction<'a> {
 			ranges,
 			_key_locks: key_locks,
 			pending: IndexMap::new(),
+			fetched: HashMap::new(),
 			completed: false,
 		}
 	}
@@ -87,12 +89,58 @@ impl<'a> SingleWriteTransaction<'a> {
 			};
 		}
 
+		if let Some(fetched) = self.fetched.get(&encoded) {
+			return Ok(fetched.clone().map(|bytes| SingleVersionRow {
+				key: encoded,
+				bytes,
+			}));
+		}
+
+		#[cfg(feature = "testing")]
+		{
+			self.inner.op_counts.lock().unwrap().key(key.clone().into().kind()).gets += 1;
+		}
 		let store = self.inner.store.read().clone();
 		SingleVersionGet::get(&store, &encoded)
 	}
 
+	pub fn prefetch<K: Into<TaggedKey> + Clone>(&mut self, keys: &[K]) -> Result<()> {
+		let mut missing = Vec::new();
+		#[cfg(feature = "testing")]
+		let mut kinds = Vec::new();
+		for key in keys {
+			let key: TaggedKey = key.clone().into();
+			let encoded = key.encode();
+			self.check_key_allowed(&encoded)?;
+			if !self.pending.contains_key(&encoded) && !self.fetched.contains_key(&encoded) {
+				self.fetched.insert(encoded.clone(), None);
+				missing.push(encoded);
+				#[cfg(feature = "testing")]
+				kinds.push(key.kind());
+			}
+		}
+		if missing.is_empty() {
+			return Ok(());
+		}
+
+		#[cfg(feature = "testing")]
+		{
+			let mut counts = self.inner.op_counts.lock().unwrap();
+			counts.get_many_call();
+			for kind in kinds {
+				counts.key(kind).batched_gets += 1;
+			}
+		}
+		let store = self.inner.store.read().clone();
+		for (key, row) in missing.iter().zip(SingleVersionGet::get_many(&store, &missing)?) {
+			self.fetched.insert(key.clone(), row.map(|row| row.bytes));
+		}
+		Ok(())
+	}
+
 	pub fn contains_key<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
-		let key = &key.clone().into().encode();
+		let tagged: TaggedKey = key.clone().into();
+		let key = &tagged.encode();
 		self.check_key_allowed(key)?;
 
 		if let Some(delta) = self.pending.get(key) {
@@ -106,6 +154,14 @@ impl<'a> SingleWriteTransaction<'a> {
 			};
 		}
 
+		if let Some(fetched) = self.fetched.get(key) {
+			return Ok(fetched.is_some());
+		}
+
+		#[cfg(feature = "testing")]
+		{
+			self.inner.op_counts.lock().unwrap().key(tagged.kind()).contains += 1;
+		}
 		let store = self.inner.store.read().clone();
 		SingleVersionContains::contains(&store, key)
 	}

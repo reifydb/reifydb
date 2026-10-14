@@ -60,11 +60,21 @@ impl SinglePersistentTier {
 			Self::Sqlite(storage) => storage.page_cache_metrics(),
 		}
 	}
+
+	pub fn get_many(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+		match self {
+			Self::Sqlite(storage) => storage.get_many(keys),
+		}
+	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl SinglePersistentTier {
 	pub fn page_cache_metrics(&self) -> SinglePageCacheMetrics {
+		match *self {}
+	}
+
+	pub fn get_many(&self, _keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		match *self {}
 	}
 }

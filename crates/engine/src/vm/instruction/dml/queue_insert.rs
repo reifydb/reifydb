@@ -34,7 +34,7 @@ use reifydb_core::{
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedQueue},
 	},
 	internal_error,
-	key::{queue::QueueDeduplicationKey, row::RowKey},
+	key::{any::TaggedKey, queue::QueueDeduplicationKey, row::RowKey},
 	partition::partitions_of_batch,
 	return_internal_error,
 	value::{
@@ -151,6 +151,7 @@ pub(crate) fn insert_queue(
 	};
 
 	let mut assigned = row_numbers.into_iter();
+	let mut records = Vec::new();
 	let mut rows: Vec<QueueInsertRow> = Vec::with_capacity(fresh_count);
 	let mut returned: Vec<ReturnedRow> = Vec::with_capacity(outcomes.len());
 
@@ -159,7 +160,7 @@ pub(crate) fn insert_queue(
 			Outcome::Fresh => {
 				let row_number = assigned.next().expect("a row number per fresh item");
 				if let Some(key) = &item.deduplication_key {
-					write_deduplication_record(txn, &queue, key, row_number, now)?;
+					records.push(deduplication_record(&queue, key, row_number, now));
 				}
 				let placement = placement_for(&queue, item.ordered, row_number);
 				rows.push(QueueInsertRow {
@@ -197,6 +198,7 @@ pub(crate) fn insert_queue(
 		}
 	}
 
+	txn.set_many(records)?;
 	txn.insert_queue(&queue, &rows)?;
 
 	if let Some(returning_exprs) = &returning {
@@ -230,17 +232,10 @@ struct ReturnedRow {
 	encoded: EncodedBytes,
 }
 
-fn write_deduplication_record(
-	txn: &mut Transaction<'_>,
-	queue: &Queue,
-	key: &[u8],
-	row_number: RowNumber,
-	now: DateTime,
-) -> Result<()> {
+fn deduplication_record(queue: &Queue, key: &[u8], row_number: RowNumber, now: DateTime) -> (TaggedKey, EncodedBytes) {
 	let ttl = queue.deduplicate.as_ref().map(|d| d.ttl).unwrap_or(Duration::MAX);
 	let record = encode_queue_deduplication(row_number, now.saturating_add(ttl));
-	txn.set(&QueueDeduplicationKey::new(queue.id, key), record.into_bytes())?;
-	Ok(())
+	(QueueDeduplicationKey::new(queue.id, key).into(), record.into_bytes())
 }
 
 fn resolve_duplicates(
@@ -249,9 +244,52 @@ fn resolve_duplicates(
 	pending: &[PendingItem],
 	now: DateTime,
 ) -> Result<Vec<Outcome>> {
+	let mut lookups: HashMap<&[u8], usize> = HashMap::new();
+	let mut record_keys = Vec::new();
+	for key in pending.iter().filter_map(|item| item.deduplication_key.as_deref()) {
+		lookups.entry(key).or_insert_with(|| {
+			record_keys.push(QueueDeduplicationKey::new(queue.id, key).into());
+			record_keys.len() - 1
+		});
+	}
+	if record_keys.is_empty() {
+		return Ok(pending.iter().map(|_| Outcome::Fresh).collect());
+	}
+
+	let mut live = Vec::with_capacity(record_keys.len());
+	for stored in txn.get_many(&record_keys)? {
+		let Some(stored) = stored else {
+			live.push(None);
+			continue;
+		};
+		let Some((row_number, expires_at)) =
+			decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&stored.bytes))
+		else {
+			return_internal_error!(
+				"Queue {} deduplication record is {} bytes wide, too short for its header. This indicates a corrupt record.",
+				queue.name,
+				stored.bytes.len()
+			)
+		};
+		live.push((expires_at > now).then_some(row_number));
+	}
+
+	let mut duplicate_rows: Vec<RowNumber> = live.iter().flatten().copied().collect();
+	duplicate_rows.sort();
+	duplicate_rows.dedup();
+	let row_keys: Vec<TaggedKey> = duplicate_rows.iter().map(|row| RowKey::new(queue.id, *row).into()).collect();
+	let encoded_rows: HashMap<RowNumber, EncodedBytes> = if row_keys.is_empty() {
+		HashMap::new()
+	} else {
+		duplicate_rows
+			.iter()
+			.zip(txn.get_many(&row_keys)?)
+			.filter_map(|(row, stored)| stored.map(|stored| (*row, stored.bytes)))
+			.collect()
+	};
+
 	let mut outcomes = Vec::with_capacity(pending.len());
 	let mut seen: HashMap<&[u8], usize> = HashMap::new();
-
 	for (index, item) in pending.iter().enumerate() {
 		let Some(key) = item.deduplication_key.as_deref() else {
 			outcomes.push(Outcome::Fresh);
@@ -265,25 +303,12 @@ fn resolve_duplicates(
 			continue;
 		}
 
-		let stored = txn.get(&QueueDeduplicationKey::new(queue.id, key))?;
-		if let Some(stored) = stored {
-			let Some((row_number, expires_at)) =
-				decode_queue_deduplication(EncodedQueueDeduplicationRow::view(&stored.bytes))
-			else {
-				return_internal_error!(
-					"Queue {} deduplication record is {} bytes wide, too short for its header. This indicates a corrupt record.",
-					queue.name,
-					stored.bytes.len()
-				)
-			};
-			if expires_at > now {
-				let encoded = txn.get(&RowKey::new(queue.id, row_number))?.map(|item| item.bytes);
-				outcomes.push(Outcome::Duplicate {
-					row_number,
-					encoded,
-				});
-				continue;
-			}
+		if let Some(row_number) = live[lookups[key]] {
+			outcomes.push(Outcome::Duplicate {
+				row_number,
+				encoded: encoded_rows.get(&row_number).cloned(),
+			});
+			continue;
 		}
 
 		seen.insert(key, index);
@@ -343,10 +368,8 @@ fn declared_keys(shape: &RowShape, rows: &[EncodedBytes], indices: &[usize]) -> 
 		if matches!(
 			field_type.inner_type(),
 			ValueType::Digest { .. }
-				| ValueType::Any
-				| ValueType::List(_)
-				| ValueType::Record(_)
-				| ValueType::Tuple(_)
+				| ValueType::Any | ValueType::List(_)
+				| ValueType::Record(_) | ValueType::Tuple(_)
 		) {
 			for (key, row) in keys.iter_mut().zip(rows) {
 				let value = shape.get_value(row, index);

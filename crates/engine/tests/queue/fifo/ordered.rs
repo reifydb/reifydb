@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{
 	change::QueueAckTransition,
-	queue::scheduling::{ExpiredLease, apply_reap_transition},
+	queue::scheduling::{ExpiredLease, apply_reap_transitions},
 	transaction::Transaction,
 };
 use reifydb_value::value::{Value, frame::frame::Frame, row_number::RowNumber};
@@ -155,20 +155,13 @@ fn reap(t: &TestEngine, queue: QueueId, row: u64, transition: QueueAckTransition
 	let (_, state) = states(t, queue).into_iter().find(|(key, _)| key.row.0 == row).unwrap();
 	let now = t.mock_clock().now();
 
-	apply_reap_transition(
-		t.inner().single(),
-		queue,
-		0,
-		&ExpiredLease {
-			row: RowNumber(row),
-			attempt: state.attempt,
-			key_hash: Some(state.key_hash),
-			lease_deadline: state.lease_deadline.expect("a reaped item must hold a lease"),
-		},
-		&transition,
-		now,
-	)
-	.unwrap()
+	let lease = ExpiredLease {
+		row: RowNumber(row),
+		attempt: state.attempt,
+		key_hash: Some(state.key_hash),
+		lease_deadline: state.lease_deadline.expect("a reaped item must hold a lease"),
+	};
+	apply_reap_transitions(t.inner().single(), queue, 0, &[(lease, transition)], now).unwrap()[0]
 }
 
 #[test]
