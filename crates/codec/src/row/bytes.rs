@@ -50,6 +50,12 @@ impl<I: Iterator<Item = EncodedBytes>> EncodedBytesIterator for I {}
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EncodedBytes(pub CowVec<u8>);
 
+impl AsRef<[u8]> for EncodedBytes {
+	fn as_ref(&self) -> &[u8] {
+		&self.0
+	}
+}
+
 impl Deref for EncodedBytes {
 	type Target = CowVec<u8>;
 

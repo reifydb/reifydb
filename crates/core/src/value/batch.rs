@@ -142,6 +142,14 @@ pub fn try_from_records(param: &str, records: &[Value]) -> Result<RecordBatch> {
 }
 
 pub fn from_encoded_bytes(shape: &RowShape, ids: &[RowNumber], rows: &[EncodedBytes]) -> Result<RecordBatch> {
+	from_encoded(shape, ids, rows)
+}
+
+pub fn from_encoded_slices(shape: &RowShape, ids: &[RowNumber], rows: &[&[u8]]) -> Result<RecordBatch> {
+	from_encoded(shape, ids, rows)
+}
+
+fn from_encoded<R: AsRef<[u8]>>(shape: &RowShape, ids: &[RowNumber], rows: &[R]) -> Result<RecordBatch> {
 	assert_eq!(ids.len(), rows.len(), "ids length must match rows length");
 
 	let mut columns = Vec::with_capacity(shape.field_count());
@@ -551,7 +559,11 @@ fn record_shape_error(param: &str, row: usize, detail: &str) -> Error {
 	}))
 }
 
-fn stamps(shape: &RowShape, rows: &[EncodedBytes], row_numbers: &[RowNumber]) -> Result<Vec<(SystemColumn, ArrayRef)>> {
+fn stamps<R: AsRef<[u8]>>(
+	shape: &RowShape,
+	rows: &[R],
+	row_numbers: &[RowNumber],
+) -> Result<Vec<(SystemColumn, ArrayRef)>> {
 	let mut columns: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 	if !row_numbers.is_empty() {
 		let values = UInt64Array::from_iter_values(row_numbers.iter().map(|row_number| row_number.0));
@@ -564,16 +576,16 @@ fn stamps(shape: &RowShape, rows: &[EncodedBytes], row_numbers: &[RowNumber]) ->
 	if carried.contains(&SystemColumn::CreatedAt) {
 		columns.push((
 			SystemColumn::CreatedAt,
-			Arc::new(datetime_array(rows.iter().map(|row| shape.created_at(row)))),
+			Arc::new(datetime_array(rows.iter().map(|row| shape.created_at(row.as_ref())))),
 		));
 	}
 	if carried.contains(&SystemColumn::UpdatedAt) {
 		columns.push((
 			SystemColumn::UpdatedAt,
-			Arc::new(datetime_array(rows.iter().map(|row| shape.updated_at(row)))),
+			Arc::new(datetime_array(rows.iter().map(|row| shape.updated_at(row.as_ref())))),
 		));
 	}
-	let time: Vec<DateTime> = rows.iter().filter_map(|row| shape.time(row)).collect();
+	let time: Vec<DateTime> = rows.iter().filter_map(|row| shape.time(row.as_ref())).collect();
 	match time.len() {
 		0 => {}
 		stamped if stamped == rows.len() => columns.push((SystemColumn::Time, Arc::new(datetime_array(time)))),
@@ -644,15 +656,16 @@ fn retyped(view: &ColumnView, field: &RowShapeField, appended: usize) -> ColumnB
 	builder
 }
 
-pub fn decode_cells(
+pub fn decode_cells<R: AsRef<[u8]>>(
 	builder: &mut ColumnBuilder,
 	name: &str,
 	shape: &RowShape,
 	index: usize,
-	rows: &[EncodedBytes],
+	rows: &[R],
 ) -> Result<()> {
 	let value_type = shape.fields()[index].constraint.get_type();
 	for row in rows {
+		let row = row.as_ref();
 		if !shape.is_defined(row, index) {
 			builder.push_none();
 			continue;
@@ -676,7 +689,7 @@ fn append_encoded(
 	column: &mut ColumnBuilder,
 	value_type: &ValueType,
 	shape: &RowShape,
-	bytes: &EncodedBytes,
+	bytes: &[u8],
 	index: usize,
 ) -> bool {
 	match (&mut column.inner, value_type) {

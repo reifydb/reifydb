@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{iter::repeat_n, sync::Arc};
+use std::{fmt::Debug, iter::repeat_n, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -16,16 +16,15 @@ use reifydb_core::{
 	internal,
 	key::operator::state::GroupId,
 	value::{
-		batch::{batch, concat_columns, from_encoded_bytes},
-		column::builder::ColumnBuilder,
+		batch::{batch, concat_columns, from_encoded_slices},
+		column::{builder::ColumnBuilder, push::Push},
 	},
 };
 use reifydb_value::{
 	Result,
 	error::Error,
-	util::{cowvec::CowVec, hash::Hash128},
+	util::hash::Hash128,
 	value::{
-		Value,
 		column_view::ColumnView,
 		container::temporal_array::datetime_array,
 		datetime::DateTime,
@@ -298,40 +297,30 @@ fn decode_run(
 	for bytes in bytes_slice {
 		envelopes.push(Envelope::try_view(EncodedPodRow::view(bytes))?);
 	}
-	let bodies: Vec<EncodedBytes> =
-		envelopes.iter().map(|envelope| EncodedBytes(CowVec::new(envelope.body().to_vec()))).collect();
+	let bodies: Vec<&[u8]> = envelopes.iter().map(|envelope| envelope.body()).collect();
 
-	let mut decoded = from_encoded_bytes(&shape, ids, &bodies)?;
+	let mut decoded = from_encoded_slices(&shape, ids, &bodies)?;
 	let stamps: Vec<(SystemColumn, Option<ArrayRef>)> = match store.side() {
 		JoinSide::Left => vec![
 			(
 				SystemColumn::Partitions,
 				left_stamps(&envelopes, SystemColumn::Partitions, |envelope| {
-					envelope.partition().map(|partition| Value::Uint16(partition.0))
+					envelope.partition().map(|partition| partition.0)
 				}),
 			),
 			(
 				SystemColumn::CreatedAt,
-				left_stamps(&envelopes, SystemColumn::CreatedAt, |envelope| {
-					envelope.created_at().map(Value::DateTime)
-				}),
+				left_stamps(&envelopes, SystemColumn::CreatedAt, |envelope| envelope.created_at()),
 			),
 			(
 				SystemColumn::UpdatedAt,
-				left_stamps(&envelopes, SystemColumn::UpdatedAt, |envelope| {
-					envelope.updated_at().map(Value::DateTime)
-				}),
+				left_stamps(&envelopes, SystemColumn::UpdatedAt, |envelope| envelope.updated_at()),
 			),
-			(
-				SystemColumn::Time,
-				left_stamps(&envelopes, SystemColumn::Time, |envelope| {
-					envelope.time().map(Value::DateTime)
-				}),
-			),
+			(SystemColumn::Time, left_stamps(&envelopes, SystemColumn::Time, |envelope| envelope.time())),
 			(
 				SystemColumn::CommitVersion,
 				left_stamps(&envelopes, SystemColumn::CommitVersion, |envelope| {
-					envelope.commit_version().map(Value::Uint8)
+					envelope.commit_version()
 				}),
 			),
 		],
@@ -360,19 +349,22 @@ fn decode_run(
 	Ok(decoded)
 }
 
-fn left_stamps(
+fn left_stamps<T: Debug>(
 	envelopes: &[&Envelope],
 	column: SystemColumn,
-	read: impl Fn(&Envelope) -> Option<Value>,
-) -> Option<ArrayRef> {
-	let stamps: Vec<Value> = envelopes.iter().filter_map(|envelope| read(envelope)).collect();
+	read: impl Fn(&Envelope) -> Option<T>,
+) -> Option<ArrayRef>
+where
+	ColumnBuilder: Push<T>,
+{
+	let stamps: Vec<T> = envelopes.iter().filter_map(|envelope| read(envelope)).collect();
 	assert_all_or_none(column, stamps.len(), envelopes.len());
 	if stamps.is_empty() {
 		return None;
 	}
 	let mut builder = ColumnBuilder::with_capacity(column.ty(), stamps.len());
 	for stamp in stamps {
-		builder.push_value(stamp);
+		builder.push(stamp);
 	}
 	Some(builder.finish(column.name()).1)
 }
@@ -383,6 +375,17 @@ fn assert_all_or_none(column: SystemColumn, stamps: usize, rows: usize) {
 		"{rows} stored left rows hold {stamps} {} stamps; a join side must stamp all of its rows or none",
 		column.name()
 	);
+}
+
+fn concatenates(target: &ValueType, view: &ColumnView) -> bool {
+	let base = view.base_type();
+	base == *target.inner_type()
+		&& !matches!(
+			base,
+			ValueType::Any
+				| ValueType::Tuple(_) | ValueType::List(_)
+				| ValueType::Record(_) | ValueType::Digest { .. }
+		)
 }
 
 #[instrument(name = "flow::operator::join::merge_runs", level = "trace", skip_all, fields(runs = runs.len()))]
@@ -402,9 +405,10 @@ fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<RecordBatch> {
 		let views: Vec<Option<ColumnView>> =
 			runs.iter().map(|run| column_view(run, name)).collect::<Result<_>>()?;
 		let target_type = views.iter().flatten().next().map(ColumnView::get_type).unwrap_or(ValueType::Any);
-		let mut buf = ColumnBuilder::with_capacity(target_type, total);
+		let mut buf = ColumnBuilder::with_capacity(target_type.clone(), total);
 		for (run, view) in runs.iter().zip(&views) {
 			match view {
+				Some(view) if concatenates(&target_type, view) => buf.append_values(view)?,
 				Some(view) => {
 					for row_idx in 0..run.num_rows() {
 						buf.push_value(view.get_value(row_idx));
@@ -412,7 +416,7 @@ fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<RecordBatch> {
 				}
 				None => {
 					for _ in 0..run.num_rows() {
-						buf.push_value(Value::none());
+						buf.push_none();
 					}
 				}
 			}
@@ -721,7 +725,10 @@ mod tests {
 	use arrow_array::UInt64Array;
 	use reifydb_core::{interface::catalog::flow::OperatorId, value::column::factory::int4};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::value::system_columns::{created_at, updated_at, with_system_column};
+	use reifydb_value::value::{
+		Value,
+		system_columns::{created_at, updated_at, with_system_column},
+	};
 
 	use super::*;
 	use crate::{
