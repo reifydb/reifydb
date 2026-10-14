@@ -39,7 +39,7 @@ use reifydb_core::{
 	return_internal_error,
 	value::{
 		batch::{batch, decode_cells, single_row},
-		column::{builder::ColumnBuilder, key::extend_keys},
+		column::{builder::ColumnBuilder, factory, key::extend_keys},
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -334,13 +334,9 @@ fn project_returning(
 	let columns = decode_returning_dictionaries(services, txn, &queue.columns, columns)?;
 	let columns = with_absent_pre_image(columns)?;
 
-	let mut created = ColumnBuilder::with_capacity(ValueType::Boolean, returned.len());
-	for row in returned {
-		created.push_value(Value::Boolean(row.created));
-	}
 	let mut user: Vec<(FieldRef, ArrayRef)> =
 		user_columns(&columns).map(|(field, array)| (field.clone(), array.clone())).collect();
-	user.push(created.finish(QUEUE_CREATED_COLUMN));
+	user.push(factory::bool(QUEUE_CREATED_COLUMN, returned.iter().map(|row| row.created)));
 	let columns = rebuild_with_user_columns(&columns, user)?;
 
 	evaluate_returning(services, symbols, returning_exprs, columns, txn.identity())
