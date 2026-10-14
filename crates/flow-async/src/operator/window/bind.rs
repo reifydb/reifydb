@@ -43,15 +43,19 @@ pub(super) struct SlidingBound {
 }
 
 impl SlidingBound {
-	pub(super) fn anchors(&self, timestamp_or_row_index: u64) -> Vec<u64> {
-		if let Some(kind) = &self.over_time {
-			let instant = <DateTime as Coord>::from_order(timestamp_or_row_index);
-			return kind.anchors(EventCoord::of(&instant));
-		}
-		if let Some(kind) = &self.over_rows {
-			return kind.anchors(OrdinalCoord::from_arrival_counter(timestamp_or_row_index));
-		}
-		vec![0]
+	pub(super) fn anchors(&self, timestamp_or_row_index: u64) -> impl Iterator<Item = u64> + use<> {
+		let over_time = self.over_time.as_ref().map(|kind| {
+			kind.anchors(EventCoord::of(&<DateTime as Coord>::from_order(timestamp_or_row_index)))
+		});
+		let over_rows = match over_time {
+			Some(_) => None,
+			None => self
+				.over_rows
+				.as_ref()
+				.map(|kind| kind.anchors(OrdinalCoord::from_arrival_counter(timestamp_or_row_index))),
+		};
+		let neither = (over_time.is_none() && over_rows.is_none()).then_some(0);
+		over_time.into_iter().flatten().chain(over_rows.into_iter().flatten()).chain(neither)
 	}
 
 	pub(super) fn span(&self, anchor: u64) -> WindowSpan<DateTime> {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use std::collections::{BTreeMap, HashMap, HashSet, hash_map::Entry};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::key::encoded::EncodedKey;
@@ -28,7 +28,7 @@ use crate::{
 			accumulator::{RowAccumulator, WindowSlotKey},
 			core::{BatchGroups, SlotRow},
 			engine::{
-				EarliestTimes, EngineBuckets, GatedMeta, SessionBounds, Stamp, WindowGroups,
+				EngineBuckets, GatedMeta, Routed, Routing, SessionBounds, Stamp, WindowGroups,
 				finish_tumbling_engine, intern_window_groups, route_into_buckets, slot_coord,
 			},
 		},
@@ -52,17 +52,13 @@ use crate::{
 	},
 };
 
-#[allow(clippy::too_many_arguments)]
 #[instrument(name = "flow::operator::window::route", level = "trace", skip_all, fields(rows = columns.num_rows()))]
 fn route_engine_columns(
 	operator: &WindowOperator,
 	columns: &RecordBatch,
 	is_add: bool,
 	window_size: Duration,
-	buckets: &mut EngineBuckets,
-	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
-	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
+	routing: &mut Routing,
 ) -> Result<()> {
 	let timestamps = operator.row_times(columns, columns.num_rows())?;
 	route_into_buckets(
@@ -73,20 +69,12 @@ fn route_engine_columns(
 			let ts = timestamps[row_idx];
 			(WindowSpan::for_coord(ts, window_size), ts)
 		},
-		buckets,
-		group_values,
-		arrival,
-		window_max_ts,
+		routing,
 	)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn push_count_event(
-	buckets: &mut EngineBuckets,
-	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
-	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
-	window_min_ts: &mut EarliestTimes,
+	routing: &mut Routing,
 	hash: Hash128,
 	gvals: &[Value],
 	span: WindowSpan<DateTime>,
@@ -94,22 +82,11 @@ fn push_count_event(
 	event: AccumulatorEvent<SlotRow>,
 	event_ts: DateTime,
 ) {
-	let now = event_ts;
-	let key = (hash, span);
 	let event = match event {
 		AccumulatorEvent::Add(c) => AccumulatorEvent::Add((coord, c)),
 		AccumulatorEvent::Remove(c) => AccumulatorEvent::Remove((coord, c)),
 	};
-	if matches!(event, AccumulatorEvent::Add(_)) {
-		let entry = window_max_ts.entry(key).or_default();
-		*entry = (*entry).max(now);
-		window_min_ts.entry(key).and_modify(|first| *first = (*first).min(now)).or_insert(now);
-	}
-	if !buckets.contains_key(&key) {
-		arrival.push(key);
-	}
-	buckets.entry(key).or_default().push(event);
-	group_values.entry(hash).or_insert_with(|| gvals.to_vec());
+	routing.push(hash, gvals, span, event, event_ts);
 }
 
 struct DiffGroups {
@@ -167,16 +144,11 @@ fn row_index_keys(operator: &WindowOperator, change: &Change, grouped: &[DiffGro
 	Ok(keys)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn route_count_tumbling(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	change: &Change,
-	buckets: &mut EngineBuckets,
-	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
-	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
-	window_min_ts: &mut EarliestTimes,
+	routing: &mut Routing,
 ) -> Result<()> {
 	let rows = TumblingOverRows::holding(RowSpan::of(operator.size_count().unwrap_or(1)));
 	let grouped = count_routing_groups(operator, change)?;
@@ -200,11 +172,7 @@ fn route_count_tumbling(
 					let contribution = views.contribution(row_idx, times[row_idx]);
 					let coord = slot_coord(true, times[row_idx], post_rows[row_idx].0);
 					push_count_event(
-						buckets,
-						group_values,
-						arrival,
-						window_max_ts,
-						window_min_ts,
+						routing,
 						*hash,
 						gvals,
 						ordinal_window_span(window_id),
@@ -230,11 +198,7 @@ fn route_count_tumbling(
 						operator.lookup_row_index(&mut store, *hash, pre_rows[row_idx])?
 					{
 						push_count_event(
-							buckets,
-							group_values,
-							arrival,
-							window_max_ts,
-							window_min_ts,
+							routing,
 							*hash,
 							gvals,
 							ordinal_window_span(window_id),
@@ -278,11 +242,7 @@ fn route_count_tumbling(
 						let contribution = post_views.contribution(row_idx, times[row_idx]);
 						let coord = slot_coord(true, times[row_idx], post_rows[row_idx].0);
 						push_count_event(
-							buckets,
-							group_values,
-							arrival,
-							window_max_ts,
-							window_min_ts,
+							routing,
 							*post_hash,
 							post_gvals,
 							ordinal_window_span(window_id),
@@ -309,11 +269,7 @@ fn route_count_tumbling(
 						};
 						for window_id in existing {
 							push_count_event(
-								buckets,
-								group_values,
-								arrival,
-								window_max_ts,
-								window_min_ts,
+								routing,
 								*hash,
 								gvals,
 								ordinal_window_span(window_id),
@@ -324,11 +280,7 @@ fn route_count_tumbling(
 						}
 						for window_id in targets {
 							push_count_event(
-								buckets,
-								group_values,
-								arrival,
-								window_max_ts,
-								window_min_ts,
+								routing,
 								*post_hash,
 								post_gvals,
 								ordinal_window_span(window_id),
@@ -354,82 +306,40 @@ pub fn apply_tumbling_engine(
 	let window_size = operator.size_duration().unwrap_or_default();
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 
-	let mut buckets: EngineBuckets = BTreeMap::new();
-	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
-	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
-	let mut window_min_ts: EarliestTimes = HashMap::new();
+	let mut routing = Routing::default();
 
 	if operator.is_count_based() {
-		route_count_tumbling(
-			operator,
-			host,
-			&change,
-			&mut buckets,
-			&mut group_values,
-			&mut arrival,
-			&mut window_max_ts,
-			&mut window_min_ts,
-		)?;
+		route_count_tumbling(operator, host, &change, &mut routing)?;
 	} else {
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => route_engine_columns(
-					operator,
-					post,
-					true,
-					window_size,
-					&mut buckets,
-					&mut group_values,
-					&mut arrival,
-					&mut window_max_ts,
-				)?,
+				} => route_engine_columns(operator, post, true, window_size, &mut routing)?,
 				Diff::Remove {
 					pre,
 					..
-				} => route_engine_columns(
-					operator,
-					pre,
-					false,
-					window_size,
-					&mut buckets,
-					&mut group_values,
-					&mut arrival,
-					&mut window_max_ts,
-				)?,
+				} => route_engine_columns(operator, pre, false, window_size, &mut routing)?,
 				Diff::Update {
 					pre,
 					post,
 					..
 				} => {
-					route_engine_columns(
-						operator,
-						pre,
-						false,
-						window_size,
-						&mut buckets,
-						&mut group_values,
-						&mut arrival,
-						&mut window_max_ts,
-					)?;
-					route_engine_columns(
-						operator,
-						post,
-						true,
-						window_size,
-						&mut buckets,
-						&mut group_values,
-						&mut arrival,
-						&mut window_max_ts,
-					)?;
+					route_engine_columns(operator, pre, false, window_size, &mut routing)?;
+					route_engine_columns(operator, post, true, window_size, &mut routing)?;
 				}
 			}
 		}
 	}
 
+	let Routed {
+		mut buckets,
+		group_values,
+		mut arrival,
+		window_max_ts,
+		window_min_ts,
+	} = routing.finish();
 	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
 	drop_sealed_events(
 		operator,
@@ -489,20 +399,15 @@ fn sliding_insert_anchors(
 	hash: Hash128,
 ) -> Result<Vec<u64>> {
 	let coord = operator.get_and_increment_global_count(store, hash)?.value();
-	Ok(bound.anchors(coord))
+	Ok(bound.anchors(coord).collect())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn route_time_sliding(
 	operator: &WindowOperator,
 	bound: &SlidingBound,
 	columns: &RecordBatch,
 	is_add: bool,
-	buckets: &mut EngineBuckets,
-	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
-	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
-	window_min_ts: &mut EarliestTimes,
+	routing: &mut Routing,
 ) -> Result<()> {
 	let groups = operator.core.compute_groups(columns)?;
 	let row_numbers = required_row_numbers(columns)?;
@@ -519,35 +424,18 @@ fn route_time_sliding(
 			} else {
 				AccumulatorEvent::Remove(contribution.clone())
 			};
-			push_count_event(
-				buckets,
-				group_values,
-				arrival,
-				window_max_ts,
-				window_min_ts,
-				*hash,
-				gvals,
-				bound.span(wid),
-				coord,
-				event,
-				event_ts,
-			);
+			push_count_event(routing, *hash, gvals, bound.span(wid), coord, event, event_ts);
 		}
 	}
 	Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn route_count_sliding(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
 	bound: &SlidingBound,
 	change: &Change,
-	buckets: &mut EngineBuckets,
-	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
-	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
-	window_min_ts: &mut EarliestTimes,
+	routing: &mut Routing,
 ) -> Result<()> {
 	let grouped = count_routing_groups(operator, change)?;
 	let keys = count_routing_keys(operator, change, &grouped)?;
@@ -574,11 +462,7 @@ fn route_count_sliding(
 					operator.store_row_indexes(&mut store, *hash, post_rows[row_idx], &window_ids)?;
 					for wid in &window_ids {
 						push_count_event(
-							buckets,
-							group_values,
-							arrival,
-							window_max_ts,
-							window_min_ts,
+							routing,
 							*hash,
 							gvals,
 							bound.span(*wid),
@@ -607,11 +491,7 @@ fn route_count_sliding(
 					let coord = slot_coord(true, DateTime::default(), pre_rows[row_idx].0);
 					for wid in operator.lookup_row_index(&mut store, *hash, pre_rows[row_idx])? {
 						push_count_event(
-							buckets,
-							group_values,
-							arrival,
-							window_max_ts,
-							window_min_ts,
+							routing,
 							*hash,
 							gvals,
 							bound.span(wid),
@@ -660,11 +540,7 @@ fn route_count_sliding(
 						)?;
 						for wid in &window_ids {
 							push_count_event(
-								buckets,
-								group_values,
-								arrival,
-								window_max_ts,
-								window_min_ts,
+								routing,
 								*post_hash,
 								post_gvals,
 								bound.span(*wid),
@@ -698,11 +574,7 @@ fn route_count_sliding(
 						};
 						for wid in existing {
 							push_count_event(
-								buckets,
-								group_values,
-								arrival,
-								window_max_ts,
-								window_min_ts,
+								routing,
 								*hash,
 								gvals,
 								bound.span(wid),
@@ -713,11 +585,7 @@ fn route_count_sliding(
 						}
 						for wid in targets {
 							push_count_event(
-								buckets,
-								group_values,
-								arrival,
-								window_max_ts,
-								window_min_ts,
+								routing,
 								*post_hash,
 								post_gvals,
 								bound.span(wid),
@@ -745,87 +613,40 @@ pub fn apply_sliding_engine(
 	let window_size = operator.size_duration().unwrap_or_default();
 	let bound = operator.sliding_bound();
 
-	let mut buckets: EngineBuckets = BTreeMap::new();
-	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
-	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
-	let mut window_min_ts: EarliestTimes = HashMap::new();
+	let mut routing = Routing::default();
 
 	if is_count {
-		route_count_sliding(
-			operator,
-			host,
-			&bound,
-			&change,
-			&mut buckets,
-			&mut group_values,
-			&mut arrival,
-			&mut window_max_ts,
-			&mut window_min_ts,
-		)?;
+		route_count_sliding(operator, host, &bound, &change, &mut routing)?;
 	} else {
 		for diff in change.diffs.iter() {
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => route_time_sliding(
-					operator,
-					&bound,
-					post,
-					true,
-					&mut buckets,
-					&mut group_values,
-					&mut arrival,
-					&mut window_max_ts,
-					&mut window_min_ts,
-				)?,
+				} => route_time_sliding(operator, &bound, post, true, &mut routing)?,
 				Diff::Remove {
 					pre,
 					..
-				} => route_time_sliding(
-					operator,
-					&bound,
-					pre,
-					false,
-					&mut buckets,
-					&mut group_values,
-					&mut arrival,
-					&mut window_max_ts,
-					&mut window_min_ts,
-				)?,
+				} => route_time_sliding(operator, &bound, pre, false, &mut routing)?,
 				Diff::Update {
 					pre,
 					post,
 					..
 				} => {
-					route_time_sliding(
-						operator,
-						&bound,
-						pre,
-						false,
-						&mut buckets,
-						&mut group_values,
-						&mut arrival,
-						&mut window_max_ts,
-						&mut window_min_ts,
-					)?;
-					route_time_sliding(
-						operator,
-						&bound,
-						post,
-						true,
-						&mut buckets,
-						&mut group_values,
-						&mut arrival,
-						&mut window_max_ts,
-						&mut window_min_ts,
-					)?;
+					route_time_sliding(operator, &bound, pre, false, &mut routing)?;
+					route_time_sliding(operator, &bound, post, true, &mut routing)?;
 				}
 			}
 		}
 	}
 
+	let Routed {
+		mut buckets,
+		group_values,
+		mut arrival,
+		window_max_ts,
+		window_min_ts,
+	} = routing.finish();
 	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
 	drop_sealed_events(
 		operator,
@@ -960,11 +781,7 @@ pub fn apply_session_engine(
 	let kinds = operator.core.slot_kinds.clone().expect("engine mode requires slot kinds");
 	let kind = operator.session_kind();
 
-	let mut buckets: EngineBuckets = BTreeMap::new();
-	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
-	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
-	let mut window_min_ts: EarliestTimes = HashMap::new();
+	let mut routing = Routing::default();
 	let mut trackers: HashMap<Hash128, BatchTracker> = HashMap::new();
 	let mut bounds: SessionBounds = HashMap::new();
 	let mut index_events: Vec<IndexEvent> = Vec::new();
@@ -1012,11 +829,7 @@ pub fn apply_session_engine(
 					let contribution = views.contribution(row_idx, timestamps[row_idx]);
 					let coord = slot_coord(false, event_ts, row_number.0);
 					push_count_event(
-						&mut buckets,
-						&mut group_values,
-						&mut arrival,
-						&mut window_max_ts,
-						&mut window_min_ts,
+						&mut routing,
 						*hash,
 						gvals,
 						ordinal_window_span(session_id),
@@ -1044,11 +857,7 @@ pub fn apply_session_engine(
 						operator.lookup_row_index(&mut store, *hash, pre_rows[row_idx])?
 					{
 						push_count_event(
-							&mut buckets,
-							&mut group_values,
-							&mut arrival,
-							&mut window_max_ts,
-							&mut window_min_ts,
+							&mut routing,
 							*hash,
 							gvals,
 							ordinal_window_span(session_id),
@@ -1125,11 +934,7 @@ pub fn apply_session_engine(
 								post_views.contribution(row_idx, timestamps[row_idx]);
 							let coord = slot_coord(false, event_ts, post_rows[row_idx].0);
 							push_count_event(
-								&mut buckets,
-								&mut group_values,
-								&mut arrival,
-								&mut window_max_ts,
-								&mut window_min_ts,
+								&mut routing,
 								*post_hash,
 								post_gvals,
 								ordinal_window_span(session_id),
@@ -1214,11 +1019,7 @@ pub fn apply_session_engine(
 						};
 						for session_id in existing {
 							push_count_event(
-								&mut buckets,
-								&mut group_values,
-								&mut arrival,
-								&mut window_max_ts,
-								&mut window_min_ts,
+								&mut routing,
 								*hash,
 								gvals,
 								ordinal_window_span(session_id),
@@ -1243,11 +1044,7 @@ pub fn apply_session_engine(
 						}
 						for session_id in targets {
 							push_count_event(
-								&mut buckets,
-								&mut group_values,
-								&mut arrival,
-								&mut window_max_ts,
-								&mut window_min_ts,
+								&mut routing,
 								*post_hash,
 								post_gvals,
 								ordinal_window_span(session_id),
@@ -1268,6 +1065,13 @@ pub fn apply_session_engine(
 	let gap = operator.session_gap();
 	operator.note_refused_rows(refused);
 
+	let Routed {
+		mut buckets,
+		group_values,
+		mut arrival,
+		window_max_ts,
+		..
+	} = routing.finish();
 	let (gated, sealed) = drop_sealed_events(
 		operator,
 		host,
@@ -1924,21 +1728,13 @@ mod seal_arm_tests {
 		let mut txn = txn_at(&engine, 100);
 		{
 			let mut host = TxnHostContext::new(&mut txn, id);
-			let mut buckets: EngineBuckets = BTreeMap::new();
-			let mut group_values = HashMap::new();
-			let mut arrival = Vec::new();
-			let mut window_max_ts = HashMap::new();
-			let mut window_min_ts = HashMap::new();
+			let mut routing = Routing::default();
 			for event in [
 				AccumulatorEvent::Add(slot_row(Vec::new())),
 				AccumulatorEvent::Remove(slot_row(Vec::new())),
 			] {
 				push_count_event(
-					&mut buckets,
-					&mut group_values,
-					&mut arrival,
-					&mut window_max_ts,
-					&mut window_min_ts,
+					&mut routing,
 					hash,
 					&[],
 					span,
@@ -1947,6 +1743,13 @@ mod seal_arm_tests {
 					start,
 				);
 			}
+			let Routed {
+				buckets,
+				group_values,
+				arrival,
+				window_max_ts,
+				..
+			} = routing.finish();
 			let groups = intern_batch(&arrival);
 			let change = Change::from_flow(id, ChangeVersion::from(CommitVersion(100)), Vec::new(), start);
 			let config = operator.engine_config();

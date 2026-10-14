@@ -264,20 +264,7 @@ where
 				accumulator.finalize()
 			};
 
-			for event in events {
-				match event {
-					AccumulatorEvent::Add(c) => {
-						accumulator.add(&c);
-					}
-					AccumulatorEvent::Remove(c) => {
-						if accumulator.is_empty() {
-							self.dropped_retractions += 1;
-							continue;
-						}
-						accumulator.remove(&c);
-					}
-				}
-			}
+			self.dropped_retractions += accumulator.apply(&events).dropped;
 
 			let value = accumulator.finalize();
 			session.set(slot, &accumulator)?;

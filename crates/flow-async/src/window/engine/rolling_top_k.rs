@@ -35,7 +35,7 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, BatchMeta, BufferKey, EmitKey, GroupMeta, KeyspaceFamily, MetaSweep,
+			BatchMeta, BufferKey, EmitKey, GroupMeta, KeyspaceFamily, MetaSweep,
 			config::WindowEngineConfig,
 			group_hash, load_batch_meta, meta_key_for, note_when_expiry_capped, persist_batch_meta,
 			rolling::{RollingBuckets, coord_max_key},
@@ -367,22 +367,7 @@ where
 			};
 
 			let mut accumulator = group_slot.buffer.remove(&slot).unwrap_or_default();
-			let mut touched = false;
-			for event in events {
-				match event {
-					AccumulatorEvent::Add(c) => {
-						accumulator.add(&c);
-						touched = true;
-					}
-					AccumulatorEvent::Remove(c) => {
-						if accumulator.is_empty() {
-							continue;
-						}
-						accumulator.remove(&c);
-						touched = true;
-					}
-				}
-			}
+			let touched = accumulator.apply(&events).touched;
 			if !accumulator.is_empty() {
 				group_slot.buffer.insert(slot, accumulator);
 			}

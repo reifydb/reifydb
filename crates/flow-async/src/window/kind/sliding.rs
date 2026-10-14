@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::iter::successors;
+
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
 
 use crate::{
@@ -39,17 +41,15 @@ impl SlidingOverTime {
 		WindowSpan::new(start, start.saturating_add(self.size))
 	}
 
-	pub fn anchors(&self, coord: EventCoord) -> Vec<u64> {
+	pub fn anchors(&self, coord: EventCoord) -> impl Iterator<Item = u64> + use<> {
 		let instant = coord.at();
-		let mut start = instant.saturating_sub(self.size).floor_to(self.slide);
-		let mut anchors = Vec::new();
-		while start <= instant {
-			if instant < start.saturating_add(self.size) {
-				anchors.push(start.to_order());
-			}
-			start = start.saturating_add(self.slide);
-		}
-		anchors
+		let (size, slide) = (self.size, self.slide);
+		successors(Some(instant.saturating_sub(size).floor_to(slide)), move |start| {
+			Some(start.saturating_add(slide))
+		})
+		.take_while(move |start| *start <= instant)
+		.filter(move |start| instant < start.saturating_add(size))
+		.map(|start| start.to_order())
 	}
 }
 
@@ -71,7 +71,7 @@ impl SlidingOverRows {
 		ordinal_window_span(anchor)
 	}
 
-	pub fn anchors(&self, coord: OrdinalCoord) -> Vec<u64> {
+	pub fn anchors(&self, coord: OrdinalCoord) -> impl Iterator<Item = u64> + use<> {
 		let row = coord.value() + 1;
 		let size = self.size.rows();
 		let slide = self.slide.rows();
@@ -81,12 +81,10 @@ impl SlidingOverRows {
 			0
 		};
 		let highest = (row - 1) / slide;
-		(lowest..=highest)
-			.filter(|window| {
-				let first = window * slide + 1;
-				row >= first && row < first + size
-			})
-			.collect()
+		(lowest..=highest).filter(move |window| {
+			let first = window * slide + 1;
+			row >= first && row < first + size
+		})
 	}
 }
 
@@ -135,7 +133,7 @@ mod tests {
 		// One row contributes to several overlapping windows, and missing one under-counts that
 		// window forever. Size 1000 with slide 250 covers an instant with exactly four windows.
 		assert_eq!(
-			timed().anchors(event_coord_at_millis(5_000)),
+			timed().anchors(event_coord_at_millis(5_000)).collect::<Vec<_>>(),
 			vec![order(4_250), order(4_500), order(4_750), order(5_000)]
 		);
 	}
@@ -145,11 +143,11 @@ mod tests {
 		// Wrapping through u64 here would underflow to near u64::MAX and iterate a range the size of the
 		// address space.
 		assert_eq!(
-			timed().anchors(event_coord_at_millis(0)),
+			timed().anchors(event_coord_at_millis(0)).collect::<Vec<_>>(),
 			vec![order(-750), order(-500), order(-250), order(0)]
 		);
 		assert_eq!(
-			timed().anchors(event_coord_at_millis(250)),
+			timed().anchors(event_coord_at_millis(250)).collect::<Vec<_>>(),
 			vec![order(-500), order(-250), order(0), order(250)]
 		);
 	}
@@ -159,9 +157,9 @@ mod tests {
 		// The count domain is 1-based where the time domain is 0-based: window 0 holds rows 1..=size,
 		// so ordinal 0 is row 1. That offset shifts every count window by one row for the operator's
 		// whole life, and nothing downstream can tell.
-		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(0)), vec![0]);
-		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(3)), vec![0, 1]);
-		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(4)), vec![1, 2]);
+		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(0)).collect::<Vec<_>>(), vec![0]);
+		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(3)).collect::<Vec<_>>(), vec![0, 1]);
+		assert_eq!(counted().anchors(OrdinalCoord::from_arrival_counter(4)).collect::<Vec<_>>(), vec![1, 2]);
 	}
 
 	#[test]
@@ -170,13 +168,13 @@ mod tests {
 		// from every aggregate with nothing logged.
 		for instant in (0..4_000).step_by(37) {
 			assert!(
-				!timed().anchors(event_coord_at_millis(instant)).is_empty(),
+				timed().anchors(event_coord_at_millis(instant)).next().is_some(),
 				"instant {instant} joined no window"
 			);
 		}
 		for ordinal in 0..500 {
 			assert!(
-				!counted().anchors(OrdinalCoord::from_arrival_counter(ordinal)).is_empty(),
+				counted().anchors(OrdinalCoord::from_arrival_counter(ordinal)).next().is_some(),
 				"ordinal {ordinal} joined no window"
 			);
 		}

@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	sync::Arc,
-};
+use std::sync::Arc;
 
 use arrow_schema::SchemaRef;
 use reifydb_core::{
@@ -19,26 +16,19 @@ use reifydb_core::{
 use reifydb_flow::{aggregate::AggregateContext, context::FlowContext};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{
-	Result,
-	util::hash::Hash128,
-	value::{Value, datetime::DateTime},
-};
+use reifydb_value::{Result, util::hash::Hash128, value::datetime::DateTime};
 
 use super::{
-	accumulator::WindowSlotKey,
-	core::{Aggregation, SlotRow},
-	engine::{Stamp, finish_tumbling_engine, intern_partition_groups, route_into_buckets},
+	core::Aggregation,
+	engine::{Routed, Routing, Stamp, finish_tumbling_engine, intern_partition_groups, route_into_buckets},
 };
 use crate::{
 	operator::{HostOperator, host::HostContext, state::seal::coord::Coord},
 	window::{
-		engine::{ExpiryAnchor, config::WindowEngineConfig, tumbling::TumblingBuckets},
+		engine::{ExpiryAnchor, config::WindowEngineConfig},
 		span::WindowSpan,
 	},
 };
-
-type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, SlotRow)>;
 
 pub struct AggregateOperator {
 	core: Aggregation,
@@ -97,10 +87,7 @@ impl HostOperator for AggregateOperator {
 pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 	let kinds = core.slot_kinds.clone().expect("aggregate requires representable slot kinds");
 
-	let mut buckets: EngineBuckets = BTreeMap::new();
-	let mut group_values: HashMap<Hash128, Vec<Value>> = HashMap::new();
-	let mut arrival: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
-	let mut window_max_ts: HashMap<(Hash128, WindowSpan<DateTime>), DateTime> = HashMap::new();
+	let mut routing = Routing::default();
 
 	let degenerate_span = |_row_idx: usize| {
 		(
@@ -114,58 +101,29 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 			Diff::Insert {
 				post,
 				..
-			} => route_into_buckets(
-				core,
-				post,
-				true,
-				degenerate_span,
-				&mut buckets,
-				&mut group_values,
-				&mut arrival,
-				&mut window_max_ts,
-			)?,
+			} => route_into_buckets(core, post, true, degenerate_span, &mut routing)?,
 			Diff::Remove {
 				pre,
 				..
-			} => route_into_buckets(
-				core,
-				pre,
-				false,
-				degenerate_span,
-				&mut buckets,
-				&mut group_values,
-				&mut arrival,
-				&mut window_max_ts,
-			)?,
+			} => route_into_buckets(core, pre, false, degenerate_span, &mut routing)?,
 			Diff::Update {
 				pre,
 				post,
 				..
 			} => {
-				route_into_buckets(
-					core,
-					pre,
-					false,
-					degenerate_span,
-					&mut buckets,
-					&mut group_values,
-					&mut arrival,
-					&mut window_max_ts,
-				)?;
-				route_into_buckets(
-					core,
-					post,
-					true,
-					degenerate_span,
-					&mut buckets,
-					&mut group_values,
-					&mut arrival,
-					&mut window_max_ts,
-				)?;
+				route_into_buckets(core, pre, false, degenerate_span, &mut routing)?;
+				route_into_buckets(core, post, true, degenerate_span, &mut routing)?;
 			}
 		}
 	}
 
+	let Routed {
+		buckets,
+		group_values,
+		arrival,
+		window_max_ts,
+		..
+	} = routing.finish();
 	let engine_config = WindowEngineConfig::builder().build();
 
 	let windows: Vec<(Hash128, u64)> = arrival.iter().map(|(hash, span)| (*hash, span.start.to_order())).collect();

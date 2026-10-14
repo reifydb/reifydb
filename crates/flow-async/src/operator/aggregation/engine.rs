@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, hash_map::Entry};
 
 use arrow_array::RecordBatch;
 use reifydb_core::{
@@ -49,6 +49,83 @@ pub(crate) type EarliestTimes = HashMap<(Hash128, WindowSpan<DateTime>), DateTim
 
 pub(crate) type GatedMeta = HashMap<(Hash128, WindowSpan<DateTime>), Option<EngineMeta>>;
 
+type WindowKey = (Hash128, WindowSpan<DateTime>);
+
+struct RoutedWindow {
+	key: WindowKey,
+	events: Vec<AccumulatorEvent<(WindowSlotKey, SlotRow)>>,
+	latest: Option<DateTime>,
+	earliest: Option<DateTime>,
+}
+
+#[derive(Default)]
+pub(crate) struct Routing {
+	index: HashMap<WindowKey, usize>,
+	windows: Vec<RoutedWindow>,
+	group_values: HashMap<Hash128, Vec<Value>>,
+}
+
+pub(crate) struct Routed {
+	pub buckets: EngineBuckets,
+	pub group_values: HashMap<Hash128, Vec<Value>>,
+	pub arrival: Vec<WindowKey>,
+	pub window_max_ts: HashMap<WindowKey, DateTime>,
+	pub window_min_ts: EarliestTimes,
+}
+
+impl Routing {
+	pub(crate) fn push(
+		&mut self,
+		hash: Hash128,
+		gvals: &[Value],
+		span: WindowSpan<DateTime>,
+		event: AccumulatorEvent<(WindowSlotKey, SlotRow)>,
+		event_ts: DateTime,
+	) {
+		let key = (hash, span);
+		let index = match self.index.entry(key) {
+			Entry::Occupied(slot) => *slot.get(),
+			Entry::Vacant(slot) => {
+				self.group_values.entry(hash).or_insert_with(|| gvals.to_vec());
+				self.windows.push(RoutedWindow {
+					key,
+					events: Vec::new(),
+					latest: None,
+					earliest: None,
+				});
+				*slot.insert(self.windows.len() - 1)
+			}
+		};
+		let window = &mut self.windows[index];
+		if matches!(event, AccumulatorEvent::Add(_)) {
+			window.latest = Some(window.latest.unwrap_or_default().max(event_ts));
+			window.earliest = Some(window.earliest.map_or(event_ts, |first| first.min(event_ts)));
+		}
+		window.events.push(event);
+	}
+
+	pub(crate) fn finish(self) -> Routed {
+		let mut routed = Routed {
+			buckets: EngineBuckets::new(),
+			group_values: self.group_values,
+			arrival: Vec::with_capacity(self.windows.len()),
+			window_max_ts: HashMap::with_capacity(self.windows.len()),
+			window_min_ts: HashMap::with_capacity(self.windows.len()),
+		};
+		for window in self.windows {
+			routed.arrival.push(window.key);
+			if let Some(latest) = window.latest {
+				routed.window_max_ts.insert(window.key, latest);
+			}
+			if let Some(earliest) = window.earliest {
+				routed.window_min_ts.insert(window.key, earliest);
+			}
+			routed.buckets.insert(window.key, window.events);
+		}
+		routed
+	}
+}
+
 pub(crate) enum Stamp<'a> {
 	SpanStart,
 	Session(Duration, &'a SessionBounds, &'a GatedMeta),
@@ -92,17 +169,13 @@ pub(crate) fn slot_coord(is_count: bool, event_ts: DateTime, row_number: u64) ->
 	WindowSlotKey::new(timestamp, row_number)
 }
 
-#[allow(clippy::too_many_arguments)]
 #[instrument(name = "flow::operator::aggregation::route", level = "trace", skip_all, fields(rows = columns.num_rows()))]
 pub(crate) fn route_into_buckets<F>(
 	core: &Aggregation,
 	columns: &RecordBatch,
 	is_add: bool,
 	assign: F,
-	buckets: &mut EngineBuckets,
-	group_values: &mut HashMap<Hash128, Vec<Value>>,
-	arrival: &mut Vec<(Hash128, WindowSpan<DateTime>)>,
-	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
+	routing: &mut Routing,
 ) -> Result<()>
 where
 	F: Fn(usize) -> (WindowSpan<DateTime>, DateTime),
@@ -119,19 +192,12 @@ where
 		let (span, event_ts) = assign(row_idx);
 		let coord = slot_coord(false, event_ts, row_numbers[row_idx].0);
 		let contribution = (coord, views.contribution(row_idx, event_ts));
-		let key = (*hash, span);
 		let event = if is_add {
-			let entry = window_max_ts.entry(key).or_default();
-			*entry = (*entry).max(event_ts);
 			AccumulatorEvent::Add(contribution)
 		} else {
 			AccumulatorEvent::Remove(contribution)
 		};
-		if !buckets.contains_key(&key) {
-			arrival.push(key);
-		}
-		buckets.entry(key).or_default().push(event);
-		group_values.entry(*hash).or_insert_with(|| gvals.to_vec());
+		routing.push(*hash, gvals, span, event, event_ts);
 	}
 	Ok(())
 }

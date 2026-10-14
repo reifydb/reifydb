@@ -422,22 +422,7 @@ where
 			};
 
 			let mut accumulator = group_slot.buffer.remove(&slot).unwrap_or_else(new_accumulator);
-			let mut touched = false;
-			for event in events {
-				match event {
-					AccumulatorEvent::Add(c) => {
-						accumulator.add(&c);
-						touched = true;
-					}
-					AccumulatorEvent::Remove(c) => {
-						if accumulator.is_empty() {
-							continue;
-						}
-						accumulator.remove(&c);
-						touched = true;
-					}
-				}
-			}
+			let touched = accumulator.apply(&events).touched;
 			if !accumulator.is_empty() {
 				group_slot.buffer.insert(slot, accumulator);
 			}
@@ -864,22 +849,7 @@ where
 
 			let before = group_slot.buffer.remove(&slot);
 			let mut accumulator = before.clone().unwrap_or_else(&new_accumulator);
-			let mut touched = false;
-			for event in events {
-				match event {
-					AccumulatorEvent::Add(c) => {
-						accumulator.add(&c);
-						touched = true;
-					}
-					AccumulatorEvent::Remove(c) => {
-						if accumulator.is_empty() {
-							continue;
-						}
-						accumulator.remove(&c);
-						touched = true;
-					}
-				}
-			}
+			let touched = accumulator.apply(&events).touched;
 			if !touched {
 				if let Some(before) = before {
 					group_slot.buffer.insert(slot, before);

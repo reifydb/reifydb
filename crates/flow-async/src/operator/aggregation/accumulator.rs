@@ -24,8 +24,10 @@ use crate::{
 	},
 	window::{
 		accumulator::{
-			MergeAccumulator, UnmergeAccumulator, WindowAccumulator, invertible::multiset::Multiset,
+			Applied, MergeAccumulator, UnmergeAccumulator, WindowAccumulator,
+			invertible::multiset::Multiset,
 		},
+		engine::AccumulatorEvent,
 		span::Slot,
 	},
 };
@@ -243,14 +245,21 @@ impl AggregateSlot {
 		}
 	}
 
-	fn add(&mut self, coord: WindowSlotKey, input: Option<&Value>) {
+	fn apply(&mut self, index: usize, events: &[AccumulatorEvent<Contribution>]) {
 		match self {
 			AggregateSlot::Count {
 				n,
 				count_star,
 			} => {
-				if *count_star || present(input).is_some() {
-					*n += 1;
+				for event in events {
+					let (adding, _, row) = parts(event);
+					if *count_star || present(row.cell(index).as_deref()).is_some() {
+						if adding {
+							*n += 1;
+						} else {
+							*n -= 1;
+						}
+					}
 				}
 			}
 			AggregateSlot::Sum {
@@ -259,17 +268,38 @@ impl AggregateSlot {
 				compensation,
 				seen_negative,
 			} => {
-				if let Some(v) = present(input) {
-					if is_negative(v) {
-						*seen_negative = true;
-					}
-					*accumulator = if *n == 0 {
-						*compensation = 0.0;
-						widen(v)
-					} else {
-						accumulate(accumulator, compensation, v, false)
+				for event in events {
+					let (adding, _, row) = parts(event);
+					let cell = row.cell(index);
+					let Some(v) = present(cell.as_deref()) else {
+						continue;
 					};
-					*n += 1;
+					if adding {
+						if is_negative(v) {
+							*seen_negative = true;
+						}
+						*accumulator = if *n == 0 {
+							*compensation = 0.0;
+							widen(v)
+						} else {
+							accumulate(accumulator, compensation, v, false)
+						};
+						*n += 1;
+					} else {
+						if *n == 0 {
+							#[cfg(reifydb_assertions)]
+							panic!("Sum remove from an empty slot");
+							#[cfg(not(reifydb_assertions))]
+							continue;
+						}
+						*n -= 1;
+						*accumulator = if *n == 0 {
+							*compensation = 0.0;
+							Value::none()
+						} else {
+							accumulate(accumulator, compensation, v, true)
+						};
+					}
 				}
 			}
 			AggregateSlot::Avg {
@@ -278,124 +308,108 @@ impl AggregateSlot {
 				compensation,
 				seen_negative,
 			} => {
-				if let Some(v) = present(input) {
-					if is_negative(v) {
-						*seen_negative = true;
-					}
-					*sum = if *n == 0 {
-						*compensation = 0.0;
-						widen(v)
-					} else {
-						accumulate(sum, compensation, v, false)
+				for event in events {
+					let (adding, _, row) = parts(event);
+					let cell = row.cell(index);
+					let Some(v) = present(cell.as_deref()) else {
+						continue;
 					};
-					*n += 1;
+					if adding {
+						if is_negative(v) {
+							*seen_negative = true;
+						}
+						*sum = if *n == 0 {
+							*compensation = 0.0;
+							widen(v)
+						} else {
+							accumulate(sum, compensation, v, false)
+						};
+						*n += 1;
+					} else {
+						*n -= 1;
+						*sum = if *n == 0 {
+							*compensation = 0.0;
+							Value::none()
+						} else {
+							accumulate(sum, compensation, v, true)
+						};
+					}
 				}
 			}
 			AggregateSlot::Min(set) | AggregateSlot::Max(set) => {
-				if let Some(v) = present(input) {
-					set.add(v.clone());
+				for event in events {
+					let (adding, _, row) = parts(event);
+					let cell = row.cell(index);
+					if let Some(v) = present(cell.as_deref()) {
+						if adding {
+							set.add(v.clone());
+						} else {
+							set.remove(v);
+						}
+					}
 				}
 			}
 			AggregateSlot::MinSealed(s) => {
-				if let Some(v) = present(input) {
-					s.add(&(coord, v.clone()));
+				for event in events {
+					let (adding, coord, row) = parts(event);
+					let cell = row.cell(index);
+					if let Some(v) = present(cell.as_deref()) {
+						if adding {
+							s.add(&(coord, v.clone()));
+						} else {
+							s.remove(&(coord, v.clone()));
+						}
+					}
 				}
 			}
 			AggregateSlot::MaxSealed(s) => {
-				if let Some(v) = present(input) {
-					s.add(&(coord, v.clone()));
+				for event in events {
+					let (adding, coord, row) = parts(event);
+					let cell = row.cell(index);
+					if let Some(v) = present(cell.as_deref()) {
+						if adding {
+							s.add(&(coord, v.clone()));
+						} else {
+							s.remove(&(coord, v.clone()));
+						}
+					}
 				}
 			}
 			AggregateSlot::First(e) | AggregateSlot::Last(e) => {
-				if let Some(v) = present(input) {
-					e.add(&(coord, v.clone()));
+				for event in events {
+					let (adding, coord, row) = parts(event);
+					let cell = row.cell(index);
+					if let Some(v) = present(cell.as_deref()) {
+						if adding {
+							e.add(&(coord, v.clone()));
+						} else {
+							e.remove(&(coord, v.clone()));
+						}
+					}
 				}
 			}
 			AggregateSlot::Span {
 				n,
-			} => *n += 1,
-			AggregateSlot::Digest(slot) => {
-				if let Some(v) = present(input) {
-					slot.add(v);
-				}
-			}
-		}
-	}
-
-	fn remove(&mut self, coord: WindowSlotKey, input: Option<&Value>) {
-		match self {
-			AggregateSlot::Count {
-				n,
-				count_star,
 			} => {
-				if *count_star || present(input).is_some() {
-					*n -= 1;
-				}
-			}
-			AggregateSlot::Sum {
-				accumulator,
-				n,
-				compensation,
-				..
-			} => {
-				if let Some(v) = present(input) {
-					if *n == 0 {
-						#[cfg(reifydb_assertions)]
-						panic!("Sum remove from an empty slot");
-						#[cfg(not(reifydb_assertions))]
-						return;
+				for event in events {
+					if parts(event).0 {
+						*n += 1;
+					} else {
+						*n -= 1;
 					}
-					*n -= 1;
-					*accumulator = if *n == 0 {
-						*compensation = 0.0;
-						Value::none()
-					} else {
-						accumulate(accumulator, compensation, v, true)
-					};
 				}
 			}
-			AggregateSlot::Avg {
-				sum,
-				n,
-				compensation,
-				..
-			} => {
-				if let Some(v) = present(input) {
-					*n -= 1;
-					*sum = if *n == 0 {
-						*compensation = 0.0;
-						Value::none()
-					} else {
-						accumulate(sum, compensation, v, true)
-					};
-				}
-			}
-			AggregateSlot::Min(set) | AggregateSlot::Max(set) => {
-				if let Some(v) = present(input) {
-					set.remove(v);
-				}
-			}
-			AggregateSlot::MinSealed(s) => {
-				if let Some(v) = present(input) {
-					s.remove(&(coord, v.clone()));
-				}
-			}
-			AggregateSlot::MaxSealed(s) => {
-				if let Some(v) = present(input) {
-					s.remove(&(coord, v.clone()));
-				}
-			}
-			AggregateSlot::First(e) | AggregateSlot::Last(e) => {
-				if let Some(v) = present(input) {
-					e.remove(&(coord, v.clone()));
-				}
-			}
-			AggregateSlot::Span {
-				n,
-			} => *n -= 1,
 			AggregateSlot::Digest(slot) => {
-				if let Some(v) = present(input) {
-					slot.remove(v);
+				for event in events {
+					let (adding, _, row) = parts(event);
+					let cell = row.cell(index);
+					if let Some(v) = present(cell.as_deref()) {
+						if adding {
+							slot.add(v);
+						} else {
+							slot.remove(v);
+						}
+					}
 				}
 			}
 		}
@@ -678,6 +692,38 @@ impl RowAccumulator {
 		});
 	}
 
+	fn run(&mut self, events: &[AccumulatorEvent<Contribution>]) {
+		if events.is_empty() {
+			return;
+		}
+		reifydb_assertions! {
+			for event in events {
+				let width = parts(event).2.width();
+				assert!(
+					width == self.slots.len(),
+					"RowAccumulator contribution length {} != slot count {}; a default-constructed \
+					 zero-slot accumulator (e.g. routed through an engine that builds empties via Default \
+					 instead of new(kinds)) would silently swallow every contribution and retraction",
+					width,
+					self.slots.len()
+				);
+			}
+		}
+		for (index, slot) in self.slots.iter_mut().enumerate() {
+			slot.apply(index, events);
+		}
+		for event in events {
+			if parts(event).0 {
+				self.rows += 1;
+			} else {
+				self.rows = self
+					.rows
+					.checked_sub(1)
+					.expect("RowAccumulator remove of a row it never added");
+			}
+		}
+	}
+
 	pub fn invertible(kinds: &[SlotKind], immutable: Option<Duration>) -> bool {
 		kinds.iter().all(|kind| match kind {
 			SlotKind::Count {
@@ -696,45 +742,39 @@ impl RowAccumulator {
 }
 
 impl WindowAccumulator for RowAccumulator {
-	type Contribution = (WindowSlotKey, SlotRow);
+	type Contribution = Contribution;
 	type Output = Vec<Value>;
 
 	fn add(&mut self, contribution: &Self::Contribution) {
-		let (coord, row) = contribution;
-		reifydb_assertions! {
-			assert!(
-				row.width() == self.slots.len(),
-				"RowAccumulator contribution length {} != slot count {}; the zip below truncates to the \
-				 shorter side, so a default-constructed zero-slot accumulator (e.g. routed through an engine \
-				 that builds empties via Default instead of new(kinds)) would silently swallow every \
-				 contribution",
-				row.width(),
-				self.slots.len()
-			);
-		}
-		for (index, slot) in self.slots.iter_mut().enumerate() {
-			slot.add(*coord, row.cell(index).as_deref());
-		}
-		self.rows += 1;
+		self.run(&[AccumulatorEvent::Add(contribution.clone())]);
 	}
 
 	fn remove(&mut self, contribution: &Self::Contribution) {
-		let (coord, row) = contribution;
-		reifydb_assertions! {
-			assert!(
-				row.width() == self.slots.len(),
-				"RowAccumulator contribution length {} != slot count {}; the zip below truncates to the \
-				 shorter side, so a default-constructed zero-slot accumulator (e.g. routed through an engine \
-				 that builds empties via Default instead of new(kinds)) would silently swallow every \
-				 retraction",
-				row.width(),
-				self.slots.len()
-			);
+		self.run(&[AccumulatorEvent::Remove(contribution.clone())]);
+	}
+
+	fn apply(&mut self, events: &[AccumulatorEvent<Self::Contribution>]) -> Applied {
+		let mut applied = Applied::default();
+		let mut start = 0;
+		let mut rows = self.rows;
+		for (at, event) in events.iter().enumerate() {
+			match event {
+				AccumulatorEvent::Add(_) => rows += 1,
+				AccumulatorEvent::Remove(_) if rows > 0 => rows -= 1,
+				AccumulatorEvent::Remove(_) => {
+					self.run(&events[start..at]);
+					start = at + 1;
+					if self.is_empty() {
+						applied.dropped += 1;
+						continue;
+					}
+					self.run(&events[at..=at]);
+				}
+			}
+			applied.touched = true;
 		}
-		for (index, slot) in self.slots.iter_mut().enumerate() {
-			slot.remove(*coord, row.cell(index).as_deref());
-		}
-		self.rows = self.rows.checked_sub(1).expect("RowAccumulator remove of a row it never added");
+		self.run(&events[start..]);
+		applied
 	}
 
 	fn finalize(&self) -> Option<Self::Output> {
@@ -758,6 +798,15 @@ impl MergeAccumulator for RowAccumulator {
 impl UnmergeAccumulator for RowAccumulator {
 	fn unmerge(&mut self, other: &Self) {
 		RowAccumulator::unmerge(self, other);
+	}
+}
+
+type Contribution = (WindowSlotKey, SlotRow);
+
+fn parts(event: &AccumulatorEvent<Contribution>) -> (bool, WindowSlotKey, &SlotRow) {
+	match event {
+		AccumulatorEvent::Add((coord, row)) => (true, *coord, row),
+		AccumulatorEvent::Remove((coord, row)) => (false, *coord, row),
 	}
 }
 
@@ -843,12 +892,17 @@ fn finalize_compensated(accumulator: &Value, compensation: f64, seen_negative: b
 
 #[cfg(test)]
 mod tests {
+	use std::sync::Arc;
+
 	use reifydb_codec::row::operator::state::{OperatorState, decode};
 	use reifydb_value::value::value_type::ValueType;
 
 	use super::*;
 	use crate::{
-		operator::{aggregation::core::slot_rows::slot_row, state::seal::coord::Coord},
+		operator::{
+			aggregation::core::{SlotColumn, SlotColumns, slot_rows::slot_row},
+			state::seal::coord::Coord,
+		},
 		window::{
 			accumulator::testkit::{Op, drive},
 			span::WindowSpan,
@@ -1778,5 +1832,107 @@ mod tests {
 			count_star: true,
 		}]);
 		a.remove(&(at(0), slot_row(vec![None])));
+	}
+
+	fn one_event_at_a_time(a: &mut RowAccumulator, events: &[AccumulatorEvent<Contribution>]) -> Applied {
+		// The engines' per-event loop before slot-ordered apply: the reference the batch path must match.
+		let mut applied = Applied::default();
+		for event in events {
+			match event {
+				AccumulatorEvent::Add(contribution) => a.add(contribution),
+				AccumulatorEvent::Remove(contribution) => {
+					if a.is_empty() {
+						applied.dropped += 1;
+						continue;
+					}
+					a.remove(contribution);
+				}
+			}
+			applied.touched = true;
+		}
+		applied
+	}
+
+	#[test]
+	fn applying_a_random_event_list_at_once_leaves_the_state_bit_identical_to_one_event_at_a_time() {
+		// Reordering one slot's adds and removes moves its compensated sum, and a misplaced empty check drops
+		// or applies the wrong retraction.
+		let kinds = [
+			SlotKind::Count {
+				count_star: false,
+			},
+			SlotKind::Count {
+				count_star: true,
+			},
+			SlotKind::Sum,
+			SlotKind::Avg,
+			SlotKind::Min,
+			SlotKind::Max,
+			SlotKind::First,
+			SlotKind::Last,
+			SlotKind::WindowStart,
+			digest_kind(Some(PPM)),
+		];
+		let magnitudes = [1e16, 1.0, -1e16, 0.1, -3.7, 2.5e-8, 7e12];
+		for seed in 0..64u64 {
+			let mut rng = Lcg(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1);
+			let mut batched = accumulator(&kinds);
+			let mut stepped = accumulator(&kinds);
+			let mut live: Vec<Contribution> = Vec::new();
+			let mut seq = 0u64;
+			for round in 0..40 {
+				let width = 1 + (rng.next() % 6) as usize;
+				let columns: Vec<SlotColumn> = (0..kinds.len())
+					.map(|_| {
+						SlotColumn::Values(
+							(0..width)
+								.map(|_| match rng.next() % 5 {
+									0 => Value::none(),
+									_ => Value::float8(
+										magnitudes[(rng.next() % 7) as usize]
+											* (1 + rng.next() % 9) as f64,
+									),
+								})
+								.collect(),
+						)
+					})
+					.collect();
+				let batch = Arc::new(SlotColumns(columns));
+				let mut events = Vec::new();
+				let mut fresh = 0;
+				for _ in 0..rng.next() % 12 {
+					match rng.next() % 3 {
+						0 if !live.is_empty() => {
+							let index = (rng.next() % live.len() as u64) as usize;
+							events.push(AccumulatorEvent::Remove(live.swap_remove(index)));
+						}
+						0 => events.push(AccumulatorEvent::Remove((
+							at(u64::MAX),
+							SlotRow::new(batch.clone(), 0, DateTime::default()),
+						))),
+						_ if fresh < width => {
+							let contribution = (
+								at(seq),
+								SlotRow::new(batch.clone(), fresh, DateTime::default()),
+							);
+							seq += 1;
+							fresh += 1;
+							live.push(contribution.clone());
+							events.push(AccumulatorEvent::Add(contribution));
+						}
+						_ => {}
+					}
+				}
+				let want = one_event_at_a_time(&mut stepped, &events);
+				let got = batched.apply(&events);
+				assert_eq!(got, want, "seed {seed} round {round}: touched / dropped differ");
+				assert_eq!(
+					batched.encode_state().unwrap(),
+					stepped.encode_state().unwrap(),
+					"seed {seed} round {round}: state bytes differ"
+				);
+				assert_eq!(batched.finalize(), stepped.finalize(), "seed {seed} round {round}");
+			}
+		}
 	}
 }

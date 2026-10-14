@@ -31,8 +31,8 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, KeyspaceFamily, MetaFate, MetaHighWater, MetaKey, MetaSweep,
-			WindowResult, WindowStateKey, config::TumblingCarryConfig, group_hash, meta_key_for,
+			EmitKind, KeyspaceFamily, MetaFate, MetaHighWater, MetaKey, MetaSweep, WindowResult,
+			WindowStateKey, config::TumblingCarryConfig, group_hash, meta_key_for,
 			tumbling::TumblingBuckets,
 		},
 		span::{SlotSpan, WindowAnchor, WindowSpan},
@@ -238,22 +238,7 @@ where
 			let slot = slot_of[&(group.clone(), span.start)];
 
 			let mut accumulator: Accumulator = windows.value(slot)?.unwrap_or_else(&new_accumulator);
-			let mut changed = false;
-			for event in events {
-				match event {
-					AccumulatorEvent::Add(c) => {
-						accumulator.add(&c);
-						changed = true;
-					}
-					AccumulatorEvent::Remove(c) => {
-						if accumulator.is_empty() {
-							continue;
-						}
-						accumulator.remove(&c);
-						changed = true;
-					}
-				}
-			}
+			let changed = accumulator.apply(&events).touched;
 			if !changed {
 				continue;
 			}
@@ -523,7 +508,8 @@ mod tests {
 	use crate::{
 		operator::state::seal::coord::Coord,
 		window::{
-			accumulator::invertible::retained_map::RetainedAccumulator, engine::config::WindowEngineConfig,
+			accumulator::invertible::retained_map::RetainedAccumulator,
+			engine::{AccumulatorEvent, config::WindowEngineConfig},
 		},
 	};
 
