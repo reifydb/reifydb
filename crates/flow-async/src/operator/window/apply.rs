@@ -1328,6 +1328,19 @@ fn drop_sealed_events(
 		return Ok((gated, SealedWindows::new()));
 	}
 	let gate = operator.seal_gate(host, rule)?;
+	if matches!(anchor, ExpiryAnchor::LastEvent) && !buckets.is_empty() {
+		let keys = buckets
+			.keys()
+			.map(|key| {
+				(&EngineMetaKey(GroupId::window(key.0, key.1.start.to_order()))).into_group_state_key()
+			})
+			.collect();
+		let mut store = Prefetched::read(host, keys)?;
+		for key in buckets.keys() {
+			let group = GroupId::window(key.0, key.1.start.to_order());
+			gated.insert(*key, get_classified::<_, EngineMeta>(&mut store, &EngineMetaKey(group))?);
+		}
+	}
 	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();
 	let mut dropped = 0u64;
 	{
@@ -1335,11 +1348,12 @@ fn drop_sealed_events(
 			let window_start = key.1.start.to_order();
 			let horizon = match anchor {
 				ExpiryAnchor::LastEvent => {
-					let group = GroupId::window(key.0, window_start);
-					let prior = get_classified::<_, EngineMeta>(host, &EngineMetaKey(group))?;
-					let prior_last = prior.as_ref().map(|meta| meta.last_event_time);
+					let prior_last = gated
+						.get(key)
+						.expect("the gate reads the engine meta of every bucket")
+						.as_ref()
+						.map(|meta| meta.last_event_time);
 					let batch_last = window_max_ts.get(key).map(|ts| ts.to_order());
-					gated.insert(*key, prior);
 					anchor.of(window_start, prior_last.max(batch_last))
 				}
 				ExpiryAnchor::WindowStart | ExpiryAnchor::Unindexed => anchor.of(window_start, None),

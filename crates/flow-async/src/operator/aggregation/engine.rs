@@ -6,7 +6,8 @@ use std::collections::{HashMap, HashSet};
 use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::change::{Change, Diff},
-	key::operator::state::GroupId,
+	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
+	state::timer::StateStore,
 };
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
@@ -25,6 +26,7 @@ use crate::{
 		host::HostContext,
 		state::{seal::coord::Coord, store},
 		state_access::{get_classified, put, remove},
+		window::prefetch::Prefetched,
 	},
 	window::{
 		engine::{
@@ -54,7 +56,7 @@ pub(crate) enum Stamp<'a> {
 }
 
 fn prior_engine_meta(
-	host: &mut dyn HostContext,
+	store: &mut dyn StateStore,
 	stamp: &Stamp<'_>,
 	window: &(Hash128, WindowSpan<DateTime>),
 	group: GroupId,
@@ -64,7 +66,7 @@ fn prior_engine_meta(
 			.get(window)
 			.cloned()
 			.expect("the seal gate reads the engine meta of every session window it admits")),
-		Stamp::SpanStart | Stamp::Earliest(_) => get_classified::<_, EngineMeta>(host, &EngineMetaKey(group)),
+		Stamp::SpanStart | Stamp::Earliest(_) => get_classified::<_, EngineMeta>(store, &EngineMetaKey(group)),
 	}
 }
 
@@ -174,11 +176,26 @@ pub(crate) fn finish_tumbling_engine(
 		);
 	}
 
+	let keys: Vec<GroupStateKey> = match stamp {
+		Stamp::Session(..) => results
+			.iter()
+			.map(|r| {
+				(&SessionKey(group_of(groups, r.group, r.span.start.to_order()))).into_group_state_key()
+			})
+			.collect(),
+		Stamp::SpanStart | Stamp::Earliest(_) => arrival
+			.iter()
+			.map(|(hash, span)| {
+				(&EngineMetaKey(group_of(groups, *hash, span.start.to_order()))).into_group_state_key()
+			})
+			.collect(),
+	};
+	let mut store = Prefetched::read(host, keys)?;
 	let mut spans = Vec::with_capacity(results.len());
 	for r in &results {
 		let group = group_of(groups, r.group, r.span.start.to_order());
 		let window_start = r.span.start.to_order();
-		let prior_meta = prior_engine_meta(host, &stamp, &(r.group, r.span), group)?;
+		let prior_meta = prior_engine_meta(&mut store, &stamp, &(r.group, r.span), group)?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
 		let prior_first = prior_meta.as_ref().map(|m| m.first_event_time);
@@ -190,7 +207,7 @@ pub(crate) fn finish_tumbling_engine(
 		match r.kind {
 			EmitKind::Remove => {
 				engine.reindex_window(
-					host,
+					&mut store,
 					&r.group,
 					r.span.start,
 					group,
@@ -204,7 +221,7 @@ pub(crate) fn finish_tumbling_engine(
 				let last_event_time = prior_last.max(batch_max);
 				let new_index = anchor.of(window_start, last_event_time);
 				engine.reindex_window(
-					host,
+					&mut store,
 					&r.group,
 					r.span.start,
 					group,
@@ -216,7 +233,7 @@ pub(crate) fn finish_tumbling_engine(
 					last_event_time: last_event_time.unwrap_or_default(),
 					first_event_time: first.unwrap_or_default(),
 				};
-				put(host, &EngineMetaKey(group), meta)?;
+				put(&mut store, &EngineMetaKey(group), meta)?;
 			}
 		}
 		spans.push(match stamp {
@@ -241,13 +258,14 @@ pub(crate) fn finish_tumbling_engine(
 				(span(pre), span(now))
 			}
 			Stamp::Session(gap, bounds, _) => {
-				let before =
-					get_classified::<_, SessionState>(host, &SessionKey(group))?.map(|state| {
+				let before = get_classified::<_, SessionState>(&mut store, &SessionKey(group))?.map(
+					|state| {
 						(
 							<DateTime as Coord>::from_order(state.session_start),
 							<DateTime as Coord>::from_order(state.last_event_time),
 						)
-					});
+					},
+				);
 				let now = bounds.get(&(r.group, window_start)).copied().or(before);
 				let pre = match r.kind {
 					EmitKind::Insert => now,
@@ -259,9 +277,9 @@ pub(crate) fn finish_tumbling_engine(
 					);
 				};
 				match r.kind {
-					EmitKind::Remove => remove(host, &SessionKey(group))?,
+					EmitKind::Remove => remove(&mut store, &SessionKey(group))?,
 					EmitKind::Insert | EmitKind::Update => put(
-						host,
+						&mut store,
 						&SessionKey(group),
 						SessionState {
 							session_id: window_start,
@@ -282,7 +300,7 @@ pub(crate) fn finish_tumbling_engine(
 	for (hash, span) in arrival.iter().filter(|key| !published.contains(key)) {
 		let group = group_of(groups, *hash, span.start.to_order());
 		let window_start = span.start.to_order();
-		let prior_meta = prior_engine_meta(host, &stamp, &(*hash, *span), group)?;
+		let prior_meta = prior_engine_meta(&mut store, &stamp, &(*hash, *span), group)?;
 		let prior_last = prior_meta.as_ref().map(|m| m.last_event_time);
 		let prior_index = prior_meta.is_some().then(|| anchor.of(window_start, prior_last)).flatten();
 		let prior_first = prior_meta.as_ref().map(|m| m.first_event_time);
@@ -294,13 +312,22 @@ pub(crate) fn finish_tumbling_engine(
 		let batch_max = window_max_ts.get(&(*hash, *span)).map(|ts| ts.to_order());
 		let last_event_time = prior_last.max(batch_max);
 		let new_index = anchor.of(window_start, last_event_time);
-		engine.reindex_window(host, hash, span.start, group, &store::empty_key(), prior_index, new_index)?;
+		engine.reindex_window(
+			&mut store,
+			hash,
+			span.start,
+			group,
+			&store::empty_key(),
+			prior_index,
+			new_index,
+		)?;
 		let meta = EngineMeta {
 			last_event_time: last_event_time.unwrap_or_default(),
 			first_event_time: first.unwrap_or_default(),
 		};
-		put(host, &EngineMetaKey(group), meta)?;
+		put(&mut store, &EngineMetaKey(group), meta)?;
 	}
+	store.write()?;
 	*core.tumbling_engine_slot() = Some(engine);
 
 	let mut inserts = Vec::new();
