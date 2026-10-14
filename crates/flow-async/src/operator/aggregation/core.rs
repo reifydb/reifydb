@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{iter::repeat_n, sync::Arc};
+use std::{collections::HashMap, iter::repeat_n, sync::Arc};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::{FieldRef, Schema, SchemaRef};
-use postcard::to_stdvec;
 use reifydb_core::{
 	error::diagnostic::{
 		flow::{
@@ -19,7 +18,7 @@ use reifydb_core::{
 	internal_err,
 	value::{
 		batch::{batch, batch_with, empty_batch},
-		column::builder::ColumnBuilder,
+		column::{builder::ColumnBuilder, key::extend_value_bytes},
 	},
 };
 use reifydb_evaluate::expression::{
@@ -59,10 +58,34 @@ use reifydb_value::{
 };
 
 use crate::{
-	error::FlowStateError,
 	operator::aggregation::accumulator::RowAccumulator,
 	window::{engine::tumbling::TumblingEngine, span::WindowSpan},
 };
+
+#[derive(Default)]
+pub struct BatchGroups {
+	pub hashes: Vec<Hash128>,
+	pub values: HashMap<Hash128, Vec<Value>>,
+}
+
+impl BatchGroups {
+	pub fn row(&self, row: usize) -> (&Hash128, &[Value]) {
+		let hash = &self.hashes[row];
+		(hash, &self.values[hash])
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = (&Hash128, &[Value])> {
+		self.hashes.iter().map(|hash| (hash, self.values[hash].as_slice()))
+	}
+}
+
+fn first_seen_values(views: &[ColumnView], hashes: &[Hash128]) -> HashMap<Hash128, Vec<Value>> {
+	let mut values = HashMap::new();
+	for (row, hash) in hashes.iter().enumerate() {
+		values.entry(*hash).or_insert_with(|| views.iter().map(|view| view.get_value(row)).collect());
+	}
+	values
+}
 
 #[derive(Clone, Debug)]
 pub enum SlotInput {
@@ -415,13 +438,17 @@ impl Aggregation {
 		&mut self.tumbling_engine
 	}
 
-	pub fn compute_groups(&self, columns: &RecordBatch) -> Result<Vec<(Hash128, Vec<Value>)>> {
+	pub fn compute_groups(&self, columns: &RecordBatch) -> Result<BatchGroups> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
-			return Ok(Vec::new());
+			return Ok(BatchGroups::default());
 		}
 		if self.compiled_group_by.is_empty() {
-			return Ok(vec![(Hash128::from(0u128), Vec::new()); row_count]);
+			let hash = Hash128::from(0u128);
+			return Ok(BatchGroups {
+				hashes: vec![hash; row_count],
+				values: HashMap::from([(hash, Vec::new())]),
+			});
 		}
 
 		let session = self.eval_session();
@@ -440,25 +467,16 @@ impl Aggregation {
 		}
 		let group_views = group_columns.iter().map(ColumnView::try_from).collect::<Result<Vec<_>>>()?;
 
-		let mut out = Vec::with_capacity(row_count);
-		let mut buf = Vec::with_capacity(128);
-		for row_idx in 0..row_count {
-			buf.clear();
-			let mut values = Vec::with_capacity(group_views.len());
-			for col in &group_views {
-				let value = col.get_value(row_idx);
-				let bytes = to_stdvec(&value).map_err(|e| {
-					Error::from(FlowStateError::Encode {
-						state: "group-by value",
-						cause: e.to_string(),
-					})
-				})?;
-				buf.extend_from_slice(&bytes);
-				values.push(value);
-			}
-			out.push((xxh3_128(&buf), values));
+		let mut rows = vec![Vec::new(); row_count];
+		for view in &group_views {
+			extend_value_bytes(view, &mut rows)?;
 		}
-		Ok(out)
+		let hashes: Vec<Hash128> = rows.iter().map(|bytes| xxh3_128(bytes)).collect();
+		let values = first_seen_values(&group_views, &hashes);
+		Ok(BatchGroups {
+			hashes,
+			values,
+		})
 	}
 
 	pub fn evaluate_slot_inputs(&self, columns: &RecordBatch) -> Result<Vec<(FieldRef, ArrayRef)>> {

@@ -26,6 +26,7 @@ use crate::{
 	operator::{
 		aggregation::{
 			accumulator::{RowAccumulator, WindowSlotKey},
+			core::BatchGroups,
 			engine::{
 				EarliestTimes, EngineBuckets, GatedMeta, SessionBounds, Stamp, WindowGroups,
 				finish_tumbling_engine, intern_window_groups, route_into_buckets, slot_coord,
@@ -112,8 +113,8 @@ fn push_count_event(
 }
 
 struct DiffGroups {
-	pre: Vec<(Hash128, Vec<Value>)>,
-	post: Vec<(Hash128, Vec<Value>)>,
+	pre: BatchGroups,
+	post: BatchGroups,
 }
 
 fn count_routing_groups(operator: &WindowOperator, change: &Change) -> Result<Vec<DiffGroups>> {
@@ -138,7 +139,7 @@ fn count_routing_keys(
 ) -> Result<Vec<GroupStateKey>> {
 	let mut keys = row_index_keys(operator, change, grouped)?;
 	for groups in grouped {
-		for (hash, _) in &groups.post {
+		for hash in &groups.post.hashes {
 			keys.push((&CountKey(operator.partition_group(*hash))).into_group_state_key());
 		}
 	}
@@ -152,14 +153,14 @@ fn row_index_keys(operator: &WindowOperator, change: &Change, grouped: &[DiffGro
 			Some(pre) => required_row_numbers(pre)?,
 			None => &[],
 		};
-		for ((hash, _), row_number) in groups.pre.iter().zip(pre_rows) {
+		for (hash, row_number) in groups.pre.hashes.iter().zip(pre_rows) {
 			keys.push((&RowIndexKey(operator.partition_group(*hash), *row_number)).into_group_state_key());
 		}
 		let post_rows = match diff.post() {
 			Some(post) => required_row_numbers(post)?,
 			None => &[],
 		};
-		for ((hash, _), row_number) in groups.post.iter().zip(post_rows) {
+		for (hash, row_number) in groups.post.hashes.iter().zip(post_rows) {
 			keys.push((&RowIndexKey(operator.partition_group(*hash), *row_number)).into_group_state_key());
 		}
 	}
@@ -261,7 +262,7 @@ fn route_count_tumbling(
 				let times = operator.row_times(post, post.num_rows())?;
 				let pre_times = operator.row_times(pre, pre.num_rows())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-					let (post_hash, post_gvals) = &post_groups[row_idx];
+					let (post_hash, post_gvals) = post_groups.row(row_idx);
 					let row_number = pre_rows[row_idx];
 					let existing = operator.lookup_row_index(&mut store, *hash, row_number)?;
 					if existing.is_empty() {
@@ -563,7 +564,7 @@ fn route_count_sliding(
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				let views = operator.core.slot_views(post, &slot_cols)?;
 				for row_idx in 0..post.num_rows() {
-					let (hash, gvals) = &groups[row_idx];
+					let (hash, gvals) = groups.row(row_idx);
 					let window_ids = sliding_insert_anchors(operator, &mut store, bound, *hash)?;
 					let contribution = views.contribution(
 						row_idx,
@@ -598,7 +599,7 @@ fn route_count_sliding(
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let views = operator.core.slot_views(pre, &slot_cols)?;
 				for row_idx in 0..pre.num_rows() {
-					let (hash, gvals) = &groups[row_idx];
+					let (hash, gvals) = groups.row(row_idx);
 					let contribution = views.contribution(
 						row_idx,
 						timestamps.get(row_idx).copied().unwrap_or_default(),
@@ -638,8 +639,8 @@ fn route_count_sliding(
 				let pre_views = operator.core.slot_views(pre, &pre_cols)?;
 				let post_views = operator.core.slot_views(post, &post_cols)?;
 				for row_idx in 0..pre.num_rows() {
-					let (hash, gvals) = &groups[row_idx];
-					let (post_hash, post_gvals) = &post_groups[row_idx];
+					let (hash, gvals) = groups.row(row_idx);
+					let (post_hash, post_gvals) = post_groups.row(row_idx);
 					let row_number = pre_rows[row_idx];
 					let existing = operator.lookup_row_index(&mut store, *hash, row_number)?;
 					if existing.is_empty() {
@@ -984,7 +985,7 @@ pub fn apply_session_engine(
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				let views = operator.core.slot_views(post, &slot_cols)?;
 				for row_idx in 0..post.num_rows() {
-					let (hash, gvals) = &groups[row_idx];
+					let (hash, gvals) = groups.row(row_idx);
 					let event_ts = timestamps[row_idx];
 					let row_number = post_rows[row_idx];
 					let Some(session_id) = session_assign(
@@ -1035,7 +1036,7 @@ pub fn apply_session_engine(
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let views = operator.core.slot_views(pre, &slot_cols)?;
 				for row_idx in 0..pre.num_rows() {
-					let (hash, gvals) = &groups[row_idx];
+					let (hash, gvals) = groups.row(row_idx);
 					let event_ts = timestamps[row_idx];
 					let contribution = views.contribution(row_idx, timestamps[row_idx]);
 					let coord = slot_coord(false, event_ts, pre_rows[row_idx].0);
@@ -1087,8 +1088,8 @@ pub fn apply_session_engine(
 				let pre_views = operator.core.slot_views(pre, &pre_cols)?;
 				let post_views = operator.core.slot_views(post, &post_cols)?;
 				for row_idx in 0..pre.num_rows() {
-					let (hash, gvals) = &groups[row_idx];
-					let (post_hash, post_gvals) = &post_groups[row_idx];
+					let (hash, gvals) = groups.row(row_idx);
+					let (post_hash, post_gvals) = post_groups.row(row_idx);
 					let event_ts = timestamps[row_idx];
 					let existing =
 						operator.lookup_row_index(&mut store, *hash, pre_rows[row_idx])?;

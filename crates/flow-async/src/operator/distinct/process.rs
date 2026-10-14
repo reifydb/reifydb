@@ -14,7 +14,7 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	value::{
 		batch::{empty_batch, take_row, take_rows},
-		column::key::extend_key,
+		column::key::extend_keys,
 	},
 };
 use reifydb_evaluate::expression::context::EvalContext;
@@ -52,16 +52,11 @@ fn row_hashes(key_columns: &[ColumnView], row_count: usize) -> Result<Vec<Hash12
 	for view in key_columns {
 		ensure_distinct_keyable(view)?;
 	}
-	let mut hashes = Vec::with_capacity(row_count);
-	for row_idx in 0..row_count {
-		let mut serializer = KeySerializer::new();
-		for view in key_columns {
-			extend_key(view, row_idx, &mut serializer)?;
-		}
-		let key = serializer.to_encoded_key();
-		hashes.push(xxh3_128(key.as_bytes()));
+	let mut rows: Vec<KeySerializer> = (0..row_count).map(|_| KeySerializer::new()).collect();
+	for view in key_columns {
+		extend_keys(view, &mut rows)?;
 	}
-	Ok(hashes)
+	Ok(rows.into_iter().map(|row| xxh3_128(row.to_encoded_key().as_bytes())).collect())
 }
 
 fn restamped(columns: &RecordBatch, row_numbers: Vec<u64>) -> Result<RecordBatch> {

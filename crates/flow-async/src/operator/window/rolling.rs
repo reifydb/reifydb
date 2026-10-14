@@ -298,7 +298,7 @@ fn route_rolling_columns<S: RollingDomain>(
 			AccumulatorEvent::Remove(contribution)
 		};
 		buckets.entry((*hash, slot)).or_default().push(event);
-		group_values.entry(*hash).or_insert_with(|| gvals.clone());
+		group_values.entry(*hash).or_insert_with(|| gvals.to_vec());
 		if touched_set.insert(*hash) {
 			touched.push(*hash);
 		}

@@ -131,7 +131,7 @@ where
 			arrival.push(key);
 		}
 		buckets.entry(key).or_default().push(event);
-		group_values.entry(*hash).or_insert_with(|| gvals.clone());
+		group_values.entry(*hash).or_insert_with(|| gvals.to_vec());
 	}
 	Ok(())
 }
