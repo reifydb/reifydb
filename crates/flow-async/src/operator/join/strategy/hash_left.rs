@@ -355,13 +355,6 @@ impl LeftHashJoin {
 		let pre_row_number = require_row_numbers(pre)?[row_idx];
 
 		if ctx.operator.snapshot {
-			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
-				ledger: &ledger,
-				operator: ctx.operator,
-				right_store: &ctx.state.right,
-			};
-			let resynced = resync_joined(host, &snapshot_ctx, keys, pre, post, row_idx, true)?;
 			if !update_single_row_in_entry(
 				host,
 				&ctx.state.left,
@@ -372,7 +365,13 @@ impl LeftHashJoin {
 			)? {
 				return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
 			}
-			return Ok(resynced);
+			let ledger = ctx.operator.snapshot_ledger();
+			let snapshot_ctx = SnapshotJoinContext {
+				ledger: &ledger,
+				operator: ctx.operator,
+				right_store: &ctx.state.right,
+			};
+			return resync_joined(host, &snapshot_ctx, keys, pre, post, row_idx, true);
 		}
 
 		if !update_single_row_in_entry(host, &ctx.state.left, keys.pre, pre_row_number, ctx.rows, row_idx)? {

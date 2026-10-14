@@ -232,35 +232,42 @@ impl InnerHashJoin {
 
 		if ctx.operator.snapshot {
 			let ledger = ctx.operator.snapshot_ledger();
-			let snapshot_ctx = SnapshotJoinContext {
-				ledger: &ledger,
-				operator: ctx.operator,
-				right_store: &ctx.state.right,
-			};
 			return match ctx.side {
 				JoinSide::Left => {
-					let diffs =
-						resync_joined(host, &snapshot_ctx, keys, pre, post, row_idx, false)?;
-					update_single_row_in_entry(
+					if !update_single_row_in_entry(
 						host,
 						&ctx.state.left,
 						keys.pre,
 						pre_row_number,
 						ctx.rows,
 						row_idx,
-					)?;
-					Ok(diffs)
+					)? {
+						return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
+					}
+					let snapshot_ctx = SnapshotJoinContext {
+						ledger: &ledger,
+						operator: ctx.operator,
+						right_store: &ctx.state.right,
+					};
+					resync_joined(host, &snapshot_ctx, keys, pre, post, row_idx, false)
 				}
 				JoinSide::Right => {
+					let snapshot_ctx = SnapshotJoinContext {
+						ledger: &ledger,
+						operator: ctx.operator,
+						right_store: &ctx.state.right,
+					};
 					retire_right(host, &snapshot_ctx, keys.pre, pre_row_number)?;
-					update_single_row_in_entry(
+					if !update_single_row_in_entry(
 						host,
 						&ctx.state.right,
 						keys.pre,
 						pre_row_number,
 						ctx.rows,
 						row_idx,
-					)?;
+					)? {
+						return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
+					}
 					Ok(Vec::new())
 				}
 			};
@@ -287,10 +294,6 @@ impl InnerHashJoin {
 
 		if !updated {
 			return self.handle_insert(host, post, &[row_idx], keys.post, ctx);
-		}
-
-		if ctx.operator.snapshot && matches!(ctx.side, JoinSide::Right) {
-			return Ok(Vec::new());
 		}
 
 		let emit_ctx = JoinEmitContext {
