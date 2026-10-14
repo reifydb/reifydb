@@ -139,14 +139,14 @@ where
 		note_when_expiry_capped(due.len(), self.expire_batch);
 
 		let mut out: Vec<(RowNumber, Output)> = Vec::new();
+		let mut withdrawn_groups = Vec::new();
 		for (index_key, entry) in due {
 			let buffer_key = BufferKey::of_row(self.family, entry.group_id, entry.state_row_number);
 			let buffer: RollingTopKBuffer<S, Accumulator> = match get_classified::<
 				_,
 				RollingTopKBuffer<S, Accumulator>,
-			>(
-				store, &buffer_key
-			)? {
+			>(store, &buffer_key)?
+			{
 				Some(buffer) if !buffer.is_empty() => buffer,
 				_ => return internal_err!("a rolling top-k expiry row names a group with no buffer"),
 			};
@@ -165,10 +165,11 @@ where
 			}
 			remove(store, &buffer_key)?;
 			remove(store, &emit_key)?;
-			store.remove_row_number_for_group(entry.group_id)?;
+			withdrawn_groups.push(entry.group_id);
 			expiry_drop(store, &index_key)?;
 		}
 
+		store.remove_row_numbers_for_groups(&withdrawn_groups)?;
 		self.expiry.settle(store)?;
 		Ok(out)
 	}
@@ -438,6 +439,7 @@ where
 		CB: Fn(&G, &RollingTopKBuffer<S, Accumulator>) -> RollingTopKEmit<SK, Output>,
 	{
 		let mut emits: Vec<TopKEmit<Output>> = Vec::new();
+		let mut withdrawn_groups = Vec::new();
 
 		for (group, group_slot) in group_slots {
 			if !group_slot.buffer_changed {
@@ -511,7 +513,7 @@ where
 						group_slot.state_row_number,
 					),
 				)?;
-				store.remove_row_number_for_group(group_slot.group_id)?;
+				withdrawn_groups.push(group_slot.group_id);
 			} else {
 				put(
 					store,
@@ -529,6 +531,7 @@ where
 				put(store, &EmitKey::new(group_slot.group_id, group_slot.state_row_number), new_emit)?;
 			}
 		}
+		store.remove_row_numbers_for_groups(&withdrawn_groups)?;
 
 		Ok(emits)
 	}

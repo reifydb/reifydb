@@ -10,7 +10,9 @@ use arrow_array::RecordBatch;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::change::{Change, Diff},
+	key::operator::state::{GroupStateKey, IntoGroupStateKey},
 	metrics::heap::HeapSize,
+	state::timer::StateStore,
 };
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
@@ -20,7 +22,10 @@ use reifydb_value::{
 };
 use tracing::{Span, instrument};
 
-use super::operator::{RollingEngineSlot, WindowOperator, required_row_numbers};
+use super::{
+	operator::{RollingEngineSlot, WindowOperator, required_row_numbers},
+	prefetch::Prefetched,
+};
 use crate::{
 	operator::{
 		aggregation::{
@@ -47,7 +52,7 @@ use crate::{
 			},
 		},
 		kind::rolling::{RollingOverRows, RollingOverTime},
-		meta::RollingMeta,
+		meta::{RollingMeta, RollingMetaKey},
 		span::WindowAnchor,
 	},
 };
@@ -202,13 +207,13 @@ fn timed_row_engine(
 
 fn load_rolling_priors(
 	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
+	state: &mut dyn StateStore,
 	touched: &[Hash128],
 	groups: &WindowGroups,
 ) -> Result<RollingPriors> {
 	let mut priors = RollingPriors::with_capacity(touched.len());
 	for hash in touched {
-		let meta = operator.meta_slot().rolling_meta(host, group_of(groups, *hash, 0))?;
+		let meta = operator.meta_slot().rolling_meta(state, group_of(groups, *hash, 0))?;
 		priors.insert(*hash, meta);
 	}
 	Ok(priors)
@@ -415,35 +420,41 @@ fn apply_rolling<S: RollingDomain>(
 	let armed_before = rolling_earliest_expiry::<S>(operator, host, runnable, lag)?;
 
 	let groups = intern_partitions(&touched);
-	let (results, mut priors) = if runnable {
+	let mut keys: Vec<GroupStateKey> = touched
+		.iter()
+		.map(|hash| (&RollingMetaKey(group_of(&groups, *hash, 0))).into_group_state_key())
+		.collect();
+	keys.extend(S::engine(operator, runnable, lag)
+		.state_keys(&buckets, |hash| (group_of(&groups, *hash, 0), store::empty_key()))?);
+	let mut state = Prefetched::read(host, keys)?;
+	let mut priors = load_rolling_priors(operator, &mut state, &touched, &groups)?;
+	let results = if runnable {
 		let engine = S::engine(operator, true, lag);
-		let results = engine.apply_running(
-			host,
+		engine.apply_running(
+			&mut state,
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
 			|| RowAccumulator::new(&kinds, immutable),
-		)?;
-		(results, RollingPriors::new())
+		)?
 	} else {
-		let priors = load_rolling_priors(operator, host, &touched, &groups)?;
 		let engine = S::engine(operator, false, lag);
-		let results = engine.apply_evicting_with_prior(
-			host,
+		engine.apply_evicting_with_prior(
+			&mut state,
 			buckets,
 			eviction,
 			|hash| (group_of(&groups, *hash, 0), store::empty_key()),
 			|| RowAccumulator::new(&kinds, immutable),
 			|group, buffer| published_prior::<S>(&priors, group, buffer, &kinds, lag, immutable),
 			|_g, buffer| combine_rolling::<S>(buffer, &kinds, lag, immutable),
-		)?;
-		(results, priors)
+		)?
 	};
+	let diffs =
+		finish_rolling_results(operator, &mut state, &change, &results, &group_values, &groups, &mut priors)?;
+	state.write()?;
 
 	rearm_rolling_seal::<S>(operator, host, armed_before, runnable, lag)?;
 	arm_stranded_meta_seals::<S>(operator, host, runnable, lag)?;
-
-	let diffs = finish_rolling_results(operator, host, &change, &results, &group_values, &groups, &mut priors)?;
 	Ok(Change::from_flow(operator.core.operator, change.version, diffs, change.changed_at))
 }
 
@@ -493,7 +504,7 @@ fn arm_stranded_meta_seals<S: RollingDomain>(
 
 fn finish_rolling_results(
 	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
+	state: &mut dyn StateStore,
 	change: &Change,
 	results: &[RollingResult<Hash128, Vec<Value>>],
 	group_values: &HashMap<Hash128, Vec<Value>>,
@@ -507,7 +518,7 @@ fn finish_rolling_results(
 		let group_id = group_of(groups, r.group, 0);
 		let prior = match priors.remove(&r.group) {
 			Some(loaded) => loaded,
-			None => operator.meta_slot().rolling_meta(host, group_id)?,
+			None => operator.meta_slot().rolling_meta(state, group_id)?,
 		};
 		if matches!(r.kind, EmitKind::Remove) {
 			if let Some(m) = prior {
@@ -517,7 +528,7 @@ fn finish_rolling_results(
 					row_number: RowNumber(m.row_number),
 					span: None,
 				});
-				operator.meta_slot().drop_rolling_meta(host, group_id)?;
+				operator.meta_slot().drop_rolling_meta(state, group_id)?;
 			}
 			continue;
 		}
@@ -534,7 +545,7 @@ fn finish_rolling_results(
 			(_, None) => updates.push((emit(r.value.clone()), emit(r.value.clone()))),
 		}
 		operator.meta_slot().put_rolling_meta(
-			host,
+			state,
 			group_id,
 			RollingMeta {
 				group_hash: r.group.0,

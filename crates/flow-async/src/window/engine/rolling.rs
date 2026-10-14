@@ -18,7 +18,7 @@ use reifydb_core::{
 	internal_err,
 	key::operator::{
 		keyspace::expiry::Expiry,
-		state::{GroupId, GroupStateKey},
+		state::{GroupId, GroupStateKey, IntoGroupStateKey},
 	},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
@@ -270,6 +270,26 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
+	pub fn state_keys<K>(
+		&self,
+		buckets: &RollingBuckets<G, S, Accumulator::Contribution>,
+		row_key: K,
+	) -> Result<Vec<GroupStateKey>>
+	where
+		K: Fn(&G) -> (GroupId, EncodedKey),
+	{
+		let mut keys = Vec::new();
+		for (group, _) in buckets.keys() {
+			let (group_id, key) = row_key(group);
+			keys.push((&meta_key_for(group_hash(group)?)).into_group_state_key());
+			keys.push((&BufferKey::new(self.family, group_id, key.clone())).into_group_state_key());
+			if self.runnable {
+				keys.push((&RunningKey::new(self.family, group_id, key)).into_group_state_key());
+			}
+		}
+		Ok(keys)
+	}
+
 	pub fn apply_evicting_with_prior<K, NA, PB, CB, Output>(
 		&mut self,
 		store: &mut dyn StateStore,
@@ -529,6 +549,7 @@ where
 			}
 		}
 
+		let mut withdrawn_groups = Vec::new();
 		if pairs.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -540,7 +561,7 @@ where
 			pending.into_iter().zip(pairs).zip(rows)
 		{
 			if withdrawn {
-				store.remove_row_number_for_group(group_id)?;
+				withdrawn_groups.push(group_id);
 				results.push(RollingResult {
 					row_number,
 					group,
@@ -563,6 +584,7 @@ where
 				});
 			}
 		}
+		store.remove_row_numbers_for_groups(&withdrawn_groups)?;
 		Ok(results)
 	}
 
@@ -978,6 +1000,7 @@ where
 		}
 
 		let mut results: Vec<RollingResult<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
+		let mut withdrawn_groups = Vec::new();
 		if !pairs.is_empty() {
 			let rows = store.get_or_create_row_numbers_for_groups(
 				&pairs.iter().map(|(group, _)| *group).collect::<Vec<_>>(),
@@ -986,7 +1009,7 @@ where
 				pending.into_iter().zip(pairs).zip(rows)
 			{
 				if withdrawn {
-					store.remove_row_number_for_group(group_id)?;
+					withdrawn_groups.push(group_id);
 					results.push(RollingResult {
 						row_number,
 						group,
@@ -1010,6 +1033,7 @@ where
 				}
 			}
 		}
+		store.remove_row_numbers_for_groups(&withdrawn_groups)?;
 		self.persist_meta(store, meta_loaded)?;
 		Ok(results)
 	}
