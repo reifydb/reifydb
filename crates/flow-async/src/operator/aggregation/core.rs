@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, iter::repeat_n, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, iter::repeat_n, sync::Arc};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::{FieldRef, Schema, SchemaRef};
@@ -144,23 +144,50 @@ fn bare_slot(output: &Expression, slot_count: usize) -> Option<usize> {
 	}
 }
 
-enum SlotView<'a> {
+#[derive(Debug)]
+pub enum SlotColumn {
 	Absent,
-	Column(ColumnView<'a>),
+	Values(Vec<Value>),
 	EventTime,
 }
 
-pub struct SlotViews<'a>(Vec<SlotView<'a>>);
+#[derive(Debug)]
+pub struct SlotColumns(pub(crate) Vec<SlotColumn>);
 
-impl SlotViews<'_> {
-	pub fn contribution(&self, row_idx: usize, event_time: DateTime) -> Vec<Option<Value>> {
-		self.0.iter()
-			.map(|view| match view {
-				SlotView::Absent => None,
-				SlotView::Column(column) => Some(column.get_value(row_idx)),
-				SlotView::EventTime => Some(Value::DateTime(event_time)),
-			})
-			.collect()
+#[derive(Clone, Debug)]
+pub struct SlotRow {
+	columns: Arc<SlotColumns>,
+	row: usize,
+	event_time: DateTime,
+}
+
+impl SlotRow {
+	pub fn new(columns: Arc<SlotColumns>, row: usize, event_time: DateTime) -> Self {
+		Self {
+			columns,
+			row,
+			event_time,
+		}
+	}
+
+	pub fn width(&self) -> usize {
+		self.columns.0.len()
+	}
+
+	pub fn cell(&self, slot: usize) -> Option<Cow<'_, Value>> {
+		match &self.columns.0[slot] {
+			SlotColumn::Absent => None,
+			SlotColumn::Values(values) => Some(Cow::Borrowed(&values[self.row])),
+			SlotColumn::EventTime => Some(Cow::Owned(Value::DateTime(self.event_time))),
+		}
+	}
+}
+
+pub struct SlotViews(Arc<SlotColumns>);
+
+impl SlotViews {
+	pub fn contribution(&self, row_idx: usize, event_time: DateTime) -> SlotRow {
+		SlotRow::new(self.0.clone(), row_idx, event_time)
 	}
 }
 
@@ -517,30 +544,28 @@ impl Aggregation {
 		Ok(())
 	}
 
-	pub fn slot_views<'a>(
-		&self,
-		columns: &'a RecordBatch,
-		slot_cols: &'a [(FieldRef, ArrayRef)],
-	) -> Result<SlotViews<'a>> {
-		if columns.num_rows() == 0 {
-			return Ok(SlotViews(Vec::new()));
+	pub fn slot_views(&self, columns: &RecordBatch, slot_cols: &[(FieldRef, ArrayRef)]) -> Result<SlotViews> {
+		let row_count = columns.num_rows();
+		if row_count == 0 {
+			return Ok(SlotViews(Arc::new(SlotColumns(Vec::new()))));
 		}
-		let views =
-			self.slot_inputs
-				.iter()
-				.map(|input| -> Result<SlotView<'a>> {
-					Ok(match input {
-						SlotInput::Star => SlotView::Absent,
-						SlotInput::Column(name) => column_view(columns, name)?
-							.map_or(SlotView::Absent, SlotView::Column),
-						SlotInput::Expr(idx) => {
-							SlotView::Column(ColumnView::try_from(&slot_cols[*idx])?)
-						}
-						SlotInput::EventTime => SlotView::EventTime,
-					})
+		let values =
+			|view: ColumnView| SlotColumn::Values((0..row_count).map(|row| view.get_value(row)).collect());
+		let slots = self
+			.slot_inputs
+			.iter()
+			.map(|input| -> Result<SlotColumn> {
+				Ok(match input {
+					SlotInput::Star => SlotColumn::Absent,
+					SlotInput::Column(name) => {
+						column_view(columns, name)?.map_or(SlotColumn::Absent, values)
+					}
+					SlotInput::Expr(idx) => values(ColumnView::try_from(&slot_cols[*idx])?),
+					SlotInput::EventTime => SlotColumn::EventTime,
 				})
-				.collect::<Result<Vec<_>>>()?;
-		Ok(SlotViews(views))
+			})
+			.collect::<Result<Vec<_>>>()?;
+		Ok(SlotViews(Arc::new(SlotColumns(slots))))
 	}
 
 	pub fn needs_event_time(&self) -> bool {
@@ -704,6 +729,26 @@ impl Aggregation {
 			target: None,
 			take: None,
 		}
+	}
+}
+
+#[cfg(test)]
+pub(crate) mod slot_rows {
+	use std::sync::Arc;
+
+	use reifydb_value::value::{Value, datetime::DateTime};
+
+	use super::{SlotColumn, SlotColumns, SlotRow};
+
+	pub(crate) fn slot_row(values: Vec<Option<Value>>) -> SlotRow {
+		let columns = values
+			.into_iter()
+			.map(|value| match value {
+				Some(value) => SlotColumn::Values(vec![value]),
+				None => SlotColumn::Absent,
+			})
+			.collect();
+		SlotRow::new(Arc::new(SlotColumns(columns)), 0, DateTime::default())
 	}
 }
 

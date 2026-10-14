@@ -30,7 +30,7 @@ use crate::{
 	operator::{
 		aggregation::{
 			accumulator::{RowAccumulator, WindowSlotKey},
-			core::EmitRow,
+			core::{EmitRow, SlotRow},
 			engine::{WindowGroups, group_of, intern_window_groups},
 		},
 		host::HostContext,
@@ -149,7 +149,7 @@ fn rolling_span(operator: &WindowOperator, lag: Duration) -> Duration {
 	rolling_over_time(operator, lag).span()
 }
 
-type RollingEngineBuckets<S> = RollingBuckets<Hash128, S, (WindowSlotKey, Vec<Option<Value>>)>;
+type RollingEngineBuckets<S> = RollingBuckets<Hash128, S, (WindowSlotKey, SlotRow)>;
 
 type RollingPriors = HashMap<Hash128, Option<RollingMeta>>;
 
@@ -684,6 +684,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{
+			aggregation::core::slot_rows::slot_row,
 			state::seal::{coord::Coord, rule::EvictionRule},
 			window::operator::{WindowConfig, WindowOperator},
 		},
@@ -941,9 +942,9 @@ mod tests {
 		(GroupId::ROOT, EncodedKey::builder().u128(hash.0).build())
 	}
 
-	fn contribution(seq: u64, dollars: [f64; 3]) -> (WindowSlotKey, Vec<Option<Value>>) {
+	fn contribution(seq: u64, dollars: [f64; 3]) -> (WindowSlotKey, SlotRow) {
 		let slot_key = WindowSlotKey::new(DateTime::from_epoch_secs(seq as i64).unwrap(), seq);
-		(slot_key, dollars.iter().map(|d| Some(Value::float8(*d))).collect())
+		(slot_key, slot_row(dollars.iter().map(|d| Some(Value::float8(*d))).collect()))
 	}
 
 	fn assert_rows_close(legacy: &[Value], runnable: &[Value], context: &str) {
@@ -1168,9 +1169,9 @@ mod tests {
 		WindowSize::Duration(Duration::from_seconds(60).unwrap())
 	}
 
-	fn inputs(kinds: &[SlotKind], latency: Option<f64>) -> Vec<Option<Value>> {
+	fn inputs(kinds: &[SlotKind], latency: Option<f64>) -> SlotRow {
 		let value = latency.map(Value::float8).unwrap_or_else(Value::none);
-		kinds.iter().map(|_| Some(value.clone())).collect()
+		slot_row(kinds.iter().map(|_| Some(value.clone())).collect())
 	}
 
 	fn assert_frame(kinds: &[SlotKind], output: &[Value], frame: &[Option<f64>], context: &str) {

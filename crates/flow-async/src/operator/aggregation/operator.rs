@@ -27,7 +27,7 @@ use reifydb_value::{
 
 use super::{
 	accumulator::WindowSlotKey,
-	core::Aggregation,
+	core::{Aggregation, SlotRow},
 	engine::{Stamp, finish_tumbling_engine, intern_partition_groups, route_into_buckets},
 };
 use crate::{
@@ -38,7 +38,7 @@ use crate::{
 	},
 };
 
-type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Option<Value>>)>;
+type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, SlotRow)>;
 
 pub struct AggregateOperator {
 	core: Aggregation,

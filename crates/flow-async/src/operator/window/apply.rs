@@ -26,7 +26,7 @@ use crate::{
 	operator::{
 		aggregation::{
 			accumulator::{RowAccumulator, WindowSlotKey},
-			core::BatchGroups,
+			core::{BatchGroups, SlotRow},
 			engine::{
 				EarliestTimes, EngineBuckets, GatedMeta, SessionBounds, Stamp, WindowGroups,
 				finish_tumbling_engine, intern_window_groups, route_into_buckets, slot_coord,
@@ -91,7 +91,7 @@ fn push_count_event(
 	gvals: &[Value],
 	span: WindowSpan<DateTime>,
 	coord: WindowSlotKey,
-	event: AccumulatorEvent<Vec<Option<Value>>>,
+	event: AccumulatorEvent<SlotRow>,
 	event_ts: DateTime,
 ) {
 	let now = event_ts;
@@ -1723,6 +1723,7 @@ mod seal_arm_tests {
 	use super::*;
 	use crate::{
 		operator::{
+			aggregation::core::slot_rows::slot_row,
 			host::TxnHostContext,
 			window::operator::{WindowConfig, WindowOperator},
 		},
@@ -1928,7 +1929,10 @@ mod seal_arm_tests {
 			let mut arrival = Vec::new();
 			let mut window_max_ts = HashMap::new();
 			let mut window_min_ts = HashMap::new();
-			for event in [AccumulatorEvent::Add(Vec::new()), AccumulatorEvent::Remove(Vec::new())] {
+			for event in [
+				AccumulatorEvent::Add(slot_row(Vec::new())),
+				AccumulatorEvent::Remove(slot_row(Vec::new())),
+			] {
 				push_count_event(
 					&mut buckets,
 					&mut group_values,

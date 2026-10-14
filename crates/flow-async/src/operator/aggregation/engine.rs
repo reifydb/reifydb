@@ -19,7 +19,7 @@ use tracing::instrument;
 
 use super::{
 	accumulator::{RowAccumulator, WindowSlotKey},
-	core::{Aggregation, EmitRow},
+	core::{Aggregation, EmitRow, SlotRow},
 };
 use crate::{
 	operator::{
@@ -39,7 +39,7 @@ use crate::{
 	},
 };
 
-pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, Vec<Option<Value>>)>;
+pub(crate) type EngineBuckets = TumblingBuckets<Hash128, DateTime, (WindowSlotKey, SlotRow)>;
 
 pub(crate) type WindowGroups = HashMap<(Hash128, u64), GroupId>;
 
