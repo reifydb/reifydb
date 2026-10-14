@@ -50,7 +50,7 @@ use super::{
 	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
 	context::RingBufferTarget,
 	partition::{
-		ensure_partition_metadata, ringbuffer_batch_partitions, save_all_partition_metadata,
+		VictimProbe, ensure_partition_metadata, ringbuffer_batch_partitions, save_all_partition_metadata,
 		select_oldest_for_partition, update_metadata_after_insert,
 	},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
@@ -247,6 +247,7 @@ pub(crate) fn insert_ringbuffer_chunks(
 
 		let mut chosen = HashSet::new();
 		let mut pending = HashSet::new();
+		let mut probe = VictimProbe::default();
 		let mut victims = Vec::new();
 		let mut victim_partitions = Vec::new();
 		let ids = catalog.next_row_number_batch_for_ringbuffer(txn, ringbuffer.id, (end - start) as u64)?;
@@ -265,6 +266,8 @@ pub(crate) fn insert_ringbuffer_chunks(
 					current_metadata,
 					&chosen,
 					&pending,
+					&mut probe,
+					ids.len() - offset,
 				)? {
 				chosen.insert(victim);
 				victims.push(victim);

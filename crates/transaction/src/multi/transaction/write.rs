@@ -1182,6 +1182,8 @@ impl MultiWriteTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
@@ -1206,6 +1208,8 @@ impl MultiWriteTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
 		let range = row_bounds_to_typed(storage, &start, &end);
 		let (mut marker, pw) = self.marker_with_pending_writes();
@@ -1236,6 +1240,8 @@ impl MultiWriteTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
 		let range = partitioned_row_bounds_to_typed(storage, &start, &end);
 		let (mut marker, pw) = self.marker_with_pending_writes();
@@ -1266,6 +1272,8 @@ impl MultiWriteTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
@@ -1288,6 +1296,8 @@ impl MultiWriteTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();
@@ -1311,6 +1321,8 @@ impl MultiWriteTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
 		let encoded = range.encode();
 		let (mut marker, pw) = self.marker_with_pending_writes();

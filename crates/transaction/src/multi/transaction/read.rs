@@ -153,6 +153,8 @@ impl MultiReadTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range(range, multi_scope, batch_size))
 	}
@@ -163,6 +165,8 @@ impl MultiReadTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range_rev(range, multi_scope, batch_size))
 	}
@@ -173,6 +177,8 @@ impl MultiReadTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range(range.encode(), multi_scope, batch_size))
 	}
@@ -185,6 +191,8 @@ impl MultiReadTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StorageRowKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range_row(storage, start, end, multi_scope, batch_size))
 	}
@@ -197,6 +205,8 @@ impl MultiReadTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<StoragePartitionedRowKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range_partitioned_row(storage, start, end, multi_scope, batch_size))
 	}
@@ -207,6 +217,8 @@ impl MultiReadTransaction {
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range_rev(range.encode(), multi_scope, batch_size))
 	}

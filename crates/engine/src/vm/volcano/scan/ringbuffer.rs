@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{ops::Bound, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -16,7 +16,7 @@ use reifydb_core::{
 	internal_error,
 	key::{
 		any::TaggedKey,
-		row::{PartitionedRowKey, RowKey},
+		row::{PartitionedRowKey, StorageRowKey},
 	},
 	partition::partition_col_indices,
 	value::{
@@ -238,13 +238,20 @@ impl RingBufferScan {
 		let rb_id = self.ringbuffer.def().id;
 
 		if self.partition_col_indices.is_empty() {
-			let mut out = Vec::new();
-			for rn_value in pm.metadata.head..pm.metadata.tail {
-				let rn = RowNumber(rn_value);
-				if let Some(multi) = txn.get(&RowKey::new(rb_id, rn))? {
-					out.push((rn, multi.bytes));
-				}
+			if pm.metadata.head >= pm.metadata.tail {
+				return Ok(Vec::new());
 			}
+			let mut out = txn
+				.range_row(
+					rb_id.into(),
+					Bound::Included(StorageRowKey::new(RowNumber(pm.metadata.tail - 1))),
+					Bound::Included(StorageRowKey::new(RowNumber(pm.metadata.head))),
+					RangeScope::All,
+					1024,
+				)?
+				.map(|entry| entry.map(|entry| (entry.key.row(), entry.bytes)))
+				.collect::<Result<Vec<_>>>()?;
+			out.sort_by_key(|(rn, _)| rn.0);
 			return Ok(out);
 		}
 

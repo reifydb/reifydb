@@ -26,6 +26,7 @@ pub struct OpCounts {
 	get_committed_many_calls: u64,
 	contains_many_calls: u64,
 	remove_many_calls: u64,
+	ranges: u64,
 }
 
 impl OpCounts {
@@ -53,6 +54,10 @@ impl OpCounts {
 		self.remove_many_calls
 	}
 
+	pub fn ranges(&self) -> u64 {
+		self.ranges
+	}
+
 	pub(crate) fn key(&mut self, tag: KeyTag) -> &mut KeyCounts {
 		self.keys.entry(tag).or_default()
 	}
@@ -75,5 +80,9 @@ impl OpCounts {
 
 	pub(crate) fn remove_many_call(&mut self) {
 		self.remove_many_calls += 1;
+	}
+
+	pub(crate) fn range_call(&mut self) {
+		self.ranges += 1;
 	}
 }
