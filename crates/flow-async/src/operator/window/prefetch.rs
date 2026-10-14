@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -25,6 +25,7 @@ pub struct Prefetched<'a> {
 	store: &'a mut dyn StateStore,
 	batch: StateBatch,
 	slots: HashMap<GroupStateKey, usize>,
+	blind: BTreeMap<GroupStateKey, Option<EncodedPodRow>>,
 }
 
 impl<'a> Prefetched<'a> {
@@ -42,18 +43,37 @@ impl<'a> Prefetched<'a> {
 			store,
 			batch,
 			slots,
+			blind: BTreeMap::new(),
 		})
 	}
 
 	pub fn write(self) -> Result<()> {
-		self.store.state_write_batch(self.batch)
+		self.store.state_write_batch(self.batch)?;
+		let mut sets = Vec::new();
+		let mut removes = Vec::new();
+		for (key, row) in self.blind {
+			match row {
+				Some(row) => sets.push((key, row)),
+				None => removes.push(key),
+			}
+		}
+		if !sets.is_empty() {
+			self.store.state_set_many(sets)?;
+		}
+		if !removes.is_empty() {
+			self.store.state_remove_many(&removes)?;
+		}
+		Ok(())
 	}
 }
 
 impl StateStore for Prefetched<'_> {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		let Some(&slot) = self.slots.get(key) else {
-			return self.store.state_get(key);
+			return match self.blind.get(key) {
+				Some(row) => Ok(row.clone()),
+				None => self.store.state_get(key),
+			};
 		};
 		Ok(match self.batch.op(slot) {
 			Some(PendingWrite::Set(row)) => Some(EncodedPodRow::from(row.clone())),
@@ -80,7 +100,10 @@ impl StateStore for Prefetched<'_> {
 				self.batch.set(slot, payload);
 				Ok(())
 			}
-			None => self.store.state_set(key, payload),
+			None => {
+				self.blind.insert(key.clone(), Some(payload));
+				Ok(())
+			}
 		}
 	}
 
@@ -90,7 +113,10 @@ impl StateStore for Prefetched<'_> {
 				self.batch.remove(slot);
 				Ok(())
 			}
-			None => self.store.state_remove(key),
+			None => {
+				self.blind.insert(key.clone(), None);
+				Ok(())
+			}
 		}
 	}
 

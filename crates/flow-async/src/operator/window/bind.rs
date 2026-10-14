@@ -86,11 +86,11 @@ impl WindowOperator {
 
 	pub(super) fn load_session_tracker(
 		&mut self,
-		host: &mut dyn HostContext,
+		store: &mut dyn StateStore,
 		group_hash: Hash128,
 	) -> Result<SessionTracker> {
 		let group = self.partition_group(group_hash);
-		self.meta_slot().load_session(host, group)
+		self.meta_slot().load_session(store, group)
 	}
 
 	pub(super) fn stored_session_tracker(
@@ -175,13 +175,13 @@ impl WindowOperator {
 
 	pub(super) fn withdraw_row_index(
 		&mut self,
-		host: &mut dyn HostContext,
+		store: &mut dyn StateStore,
 		group_hash: Hash128,
 		row_number: RowNumber,
 		window_id: u64,
 	) -> Result<()> {
 		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).withdraw_membership(host, group, row_number, window_id)
+		Mint::new(self.meta_slot()).withdraw_membership(store, group, row_number, window_id)
 	}
 
 	pub(super) fn lookup_row_index(
@@ -206,22 +206,22 @@ impl WindowOperator {
 
 	pub(super) fn store_session_member(
 		&mut self,
-		host: &mut dyn HostContext,
+		store: &mut dyn StateStore,
 		group_hash: Hash128,
 		session_id: u64,
 		row_number: RowNumber,
 	) -> Result<()> {
-		self.meta_slot().store_session_member(host, GroupId::window(group_hash, session_id), row_number)
+		self.meta_slot().store_session_member(store, GroupId::window(group_hash, session_id), row_number)
 	}
 
 	pub(super) fn drop_session_member(
 		&mut self,
-		host: &mut dyn HostContext,
+		store: &mut dyn StateStore,
 		group_hash: Hash128,
 		session_id: u64,
 		row_number: RowNumber,
 	) -> Result<()> {
-		self.meta_slot().drop_session_member(host, GroupId::window(group_hash, session_id), row_number)
+		self.meta_slot().drop_session_member(store, GroupId::window(group_hash, session_id), row_number)
 	}
 
 	pub fn get_and_increment_global_count(

@@ -136,6 +136,16 @@ fn count_routing_keys(
 	change: &Change,
 	grouped: &[DiffGroups],
 ) -> Result<Vec<GroupStateKey>> {
+	let mut keys = row_index_keys(operator, change, grouped)?;
+	for groups in grouped {
+		for (hash, _) in &groups.post {
+			keys.push((&CountKey(operator.partition_group(*hash))).into_group_state_key());
+		}
+	}
+	Ok(keys)
+}
+
+fn row_index_keys(operator: &WindowOperator, change: &Change, grouped: &[DiffGroups]) -> Result<Vec<GroupStateKey>> {
 	let mut keys = Vec::new();
 	for (diff, groups) in change.diffs.iter().zip(grouped) {
 		let pre_rows = match diff.pre() {
@@ -150,9 +160,7 @@ fn count_routing_keys(
 			None => &[],
 		};
 		for ((hash, _), row_number) in groups.post.iter().zip(post_rows) {
-			let group = operator.partition_group(*hash);
-			keys.push((&CountKey(group)).into_group_state_key());
-			keys.push((&RowIndexKey(group, *row_number)).into_group_state_key());
+			keys.push((&RowIndexKey(operator.partition_group(*hash), *row_number)).into_group_state_key());
 		}
 	}
 	Ok(keys)
@@ -911,7 +919,7 @@ fn withdraw_sealed_admissions(
 
 fn session_assign(
 	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
+	store: &mut dyn StateStore,
 	hash: Hash128,
 	event_ts: DateTime,
 	kind: &SessionKind,
@@ -921,7 +929,7 @@ fn session_assign(
 	let batch = match trackers.entry(hash) {
 		Entry::Occupied(entry) => entry.into_mut(),
 		Entry::Vacant(entry) => {
-			let loaded = operator.load_session_tracker(host, hash)?;
+			let loaded = operator.load_session_tracker(store, hash)?;
 			entry.insert(BatchTracker {
 				loaded,
 				current: loaded,
@@ -961,13 +969,16 @@ pub fn apply_session_engine(
 	let mut index_events: Vec<IndexEvent> = Vec::new();
 	let mut refused = 0u64;
 
-	for diff in change.diffs.iter() {
+	let grouped = count_routing_groups(operator, &change)?;
+	let keys = row_index_keys(operator, &change, &grouped)?;
+	let mut store = Prefetched::read(host, keys)?;
+	for (diff, diff_groups) in change.diffs.iter().zip(&grouped) {
 		match diff {
 			Diff::Insert {
 				post,
 				..
 			} => {
-				let groups = operator.core.compute_groups(post)?;
+				let groups = &diff_groups.post;
 				let post_rows = required_row_numbers(post)?;
 				let timestamps = operator.row_times(post, post.num_rows())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
@@ -978,7 +989,7 @@ pub fn apply_session_engine(
 					let row_number = post_rows[row_idx];
 					let Some(session_id) = session_assign(
 						operator,
-						host,
+						&mut store,
 						*hash,
 						event_ts,
 						&kind,
@@ -989,8 +1000,8 @@ pub fn apply_session_engine(
 						refused += 1;
 						continue;
 					};
-					operator.store_row_index(host, *hash, row_number, session_id)?;
-					operator.store_session_member(host, *hash, session_id, row_number)?;
+					operator.store_row_index(&mut store, *hash, row_number, session_id)?;
+					operator.store_session_member(&mut store, *hash, session_id, row_number)?;
 					index_events.push(IndexEvent {
 						hash: *hash,
 						row_number,
@@ -1018,7 +1029,7 @@ pub fn apply_session_engine(
 				pre,
 				..
 			} => {
-				let groups = operator.core.compute_groups(pre)?;
+				let groups = &diff_groups.pre;
 				let pre_rows = required_row_numbers(pre)?;
 				let timestamps = operator.row_times(pre, pre.num_rows())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
@@ -1028,7 +1039,9 @@ pub fn apply_session_engine(
 					let event_ts = timestamps[row_idx];
 					let contribution = views.contribution(row_idx, timestamps[row_idx]);
 					let coord = slot_coord(false, event_ts, pre_rows[row_idx].0);
-					for session_id in operator.lookup_row_index(host, *hash, pre_rows[row_idx])? {
+					for session_id in
+						operator.lookup_row_index(&mut store, *hash, pre_rows[row_idx])?
+					{
 						push_count_event(
 							&mut buckets,
 							&mut group_values,
@@ -1049,13 +1062,13 @@ pub fn apply_session_engine(
 							added: false,
 						});
 						operator.drop_session_member(
-							host,
+							&mut store,
 							*hash,
 							session_id,
 							pre_rows[row_idx],
 						)?;
 					}
-					operator.drop_row_index(host, *hash, pre_rows[row_idx])?;
+					operator.drop_row_index(&mut store, *hash, pre_rows[row_idx])?;
 				}
 			}
 			Diff::Update {
@@ -1063,9 +1076,9 @@ pub fn apply_session_engine(
 				post,
 				..
 			} => {
-				let groups = operator.core.compute_groups(pre)?;
+				let groups = &diff_groups.pre;
 				let pre_rows = required_row_numbers(pre)?;
-				let post_groups = operator.core.compute_groups(post)?;
+				let post_groups = &diff_groups.post;
 				let post_rows = required_row_numbers(post)?;
 				let timestamps = operator.row_times(post, post.num_rows())?;
 				let pre_timestamps = operator.row_times(pre, pre.num_rows())?;
@@ -1077,11 +1090,12 @@ pub fn apply_session_engine(
 					let (hash, gvals) = &groups[row_idx];
 					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let event_ts = timestamps[row_idx];
-					let existing = operator.lookup_row_index(host, *hash, pre_rows[row_idx])?;
+					let existing =
+						operator.lookup_row_index(&mut store, *hash, pre_rows[row_idx])?;
 					if existing.is_empty() {
 						if let Some(session_id) = session_assign(
 							operator,
-							host,
+							&mut store,
 							*post_hash,
 							event_ts,
 							&kind,
@@ -1089,13 +1103,13 @@ pub fn apply_session_engine(
 							&mut bounds,
 						)? {
 							operator.store_row_index(
-								host,
+								&mut store,
 								*post_hash,
 								post_rows[row_idx],
 								session_id,
 							)?;
 							operator.store_session_member(
-								host,
+								&mut store,
 								*post_hash,
 								session_id,
 								post_rows[row_idx],
@@ -1139,7 +1153,7 @@ pub fn apply_session_engine(
 						{
 							session_assign(
 								operator,
-								host,
+								&mut store,
 								*post_hash,
 								event_ts,
 								&kind,
@@ -1152,26 +1166,26 @@ pub fn apply_session_engine(
 						let targets = match assigned {
 							Some(session_id) => {
 								operator.drop_row_index(
-									host,
+									&mut store,
 									*hash,
 									pre_rows[row_idx],
 								)?;
 								for prior in &existing {
 									operator.drop_session_member(
-										host,
+										&mut store,
 										*hash,
 										*prior,
 										pre_rows[row_idx],
 									)?;
 								}
 								operator.store_row_index(
-									host,
+									&mut store,
 									*post_hash,
 									pre_rows[row_idx],
 									session_id,
 								)?;
 								operator.store_session_member(
-									host,
+									&mut store,
 									*post_hash,
 									session_id,
 									pre_rows[row_idx],
@@ -1180,13 +1194,13 @@ pub fn apply_session_engine(
 							}
 							None if regrouped => {
 								operator.drop_row_index(
-									host,
+									&mut store,
 									*hash,
 									pre_rows[row_idx],
 								)?;
 								for prior in &existing {
 									operator.drop_session_member(
-										host,
+										&mut store,
 										*hash,
 										*prior,
 										pre_rows[row_idx],
@@ -1246,6 +1260,8 @@ pub fn apply_session_engine(
 			}
 		}
 	}
+
+	store.write()?;
 
 	let rule = operator.session_rule();
 	let gap = operator.session_gap();
