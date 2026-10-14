@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt::Debug, iter::repeat_n, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, iter::repeat_n, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::FieldRef;
@@ -60,6 +60,7 @@ pub(crate) struct JoinRows {
 	side: JoinSide,
 	now: DateTime,
 	encoded: Option<EncodedRows>,
+	held: HashMap<RowNumber, bool>,
 }
 
 impl JoinRows {
@@ -69,7 +70,12 @@ impl JoinRows {
 			side,
 			now,
 			encoded: None,
+			held: HashMap::new(),
 		}
+	}
+
+	pub(crate) fn hold(&mut self, held: HashMap<RowNumber, bool>) {
+		self.held = held;
 	}
 
 	pub(crate) fn encoded(&mut self, host: &mut dyn HostContext, store: &Store) -> Result<&EncodedRows> {
@@ -265,16 +271,18 @@ pub(crate) fn update_row_in_entry(
 	let encoded = rows.encoded(host, store)?;
 	let row = encoded.row(row_idx).clone();
 	let post_row_number = encoded.number(row_idx);
-	if pre_row_number == post_row_number {
-		store.update_row_in(host, prepared.group, post_row_number, &row)
-	} else {
-		if store.get_row_in(host, prepared.group, pre_row_number)?.is_none() {
-			return Ok(false);
-		}
-		store.remove_row_in(host, prepared.group, pre_row_number)?;
-		store.write_row(host, prepared.group, post_row_number, &row)?;
-		Ok(true)
+	let held = match rows.held.remove(&pre_row_number) {
+		Some(held) => held,
+		None => store.get_row_in(host, prepared.group, pre_row_number)?.is_some(),
+	};
+	if !held {
+		return Ok(false);
 	}
+	if pre_row_number != post_row_number {
+		store.remove_row_in(host, prepared.group, pre_row_number)?;
+	}
+	store.write_row(host, prepared.group, post_row_number, &row)?;
+	Ok(true)
 }
 
 pub(crate) fn update_single_row_in_entry(
@@ -285,18 +293,10 @@ pub(crate) fn update_single_row_in_entry(
 	rows: &mut JoinRows,
 	row_idx: usize,
 ) -> Result<bool> {
-	let encoded = rows.encoded(host, store)?;
-	let row = encoded.row(row_idx).clone();
-	let post_row_number = encoded.number(row_idx);
-	if pre_row_number == post_row_number {
-		store.update_row(host, key_hash, post_row_number, &row)
-	} else {
-		if !store.remove_row(host, key_hash, pre_row_number)? {
-			return Ok(false);
-		}
-		store.put_row(host, key_hash, post_row_number, &row)?;
-		Ok(true)
-	}
+	let prepared = EntryUpdate {
+		group: store.group_of(key_hash),
+	};
+	update_row_in_entry(host, store, &prepared, pre_row_number, rows, row_idx)
 }
 
 pub(crate) fn is_first_right_row(host: &mut dyn HostContext, right_store: &Store, key_hash: &Hash128) -> Result<bool> {

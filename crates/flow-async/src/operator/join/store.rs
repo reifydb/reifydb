@@ -122,17 +122,6 @@ impl Store {
 		}
 	}
 
-	#[instrument(name = "flow::operator::join::store::put_row", level = "trace", skip_all)]
-	pub(crate) fn put_row(
-		&self,
-		host: &mut dyn HostContext,
-		hash: &Hash128,
-		row_number: RowNumber,
-		row: &EncodedPodRow,
-	) -> Result<()> {
-		self.write_row(host, self.group_of(hash), row_number, row)
-	}
-
 	pub(crate) fn write_row(
 		&self,
 		host: &mut dyn HostContext,
@@ -165,42 +154,16 @@ impl Store {
 		Ok(self.read_row(host, group, row_number)?.as_ref().map(body_bytes))
 	}
 
-	pub(crate) fn update_row(
-		&self,
-		host: &mut dyn HostContext,
-		hash: &Hash128,
-		row_number: RowNumber,
-		row: &EncodedPodRow,
-	) -> Result<bool> {
-		self.update_row_in(host, self.group_of(hash), row_number, row)
-	}
-
-	pub(crate) fn update_row_in(
-		&self,
-		host: &mut dyn HostContext,
-		group: GroupId,
-		row_number: RowNumber,
-		row: &EncodedPodRow,
-	) -> Result<bool> {
-		if self.read_row(host, group, row_number)?.is_none() {
-			return Ok(false);
-		}
-		self.store_row(host, group, row_number, row.clone())?;
-		Ok(true)
-	}
-
-	pub(crate) fn remove_row(
-		&self,
-		host: &mut dyn HostContext,
-		hash: &Hash128,
-		row_number: RowNumber,
-	) -> Result<bool> {
-		let group = self.group_of(hash);
-		if self.get_row_in(host, group, row_number)?.is_none() {
-			return Ok(false);
-		}
-		self.remove_row_in(host, group, row_number)?;
-		Ok(true)
+	pub(crate) fn held_rows(&self, host: &mut dyn HostContext, rows: &[(GroupId, RowNumber)]) -> Result<Vec<bool>> {
+		let keys = rows
+			.iter()
+			.map(|(group, number)| match self.side {
+				JoinSide::Left => typed_key::<JoinLeft>(*group, &Asc(*number)),
+				JoinSide::Right => typed_key::<JoinRight>(*group, &Asc(*number)),
+			})
+			.collect();
+		let batch = host.state_batch(keys)?;
+		Ok((0..rows.len()).map(|slot| batch.value(slot).is_some()).collect())
 	}
 
 	pub(crate) fn remove_rows(
@@ -392,9 +355,9 @@ mod tests {
 		let operator = OperatorId(1);
 		let store = Store::new(JoinSide::Left);
 
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(2), &row(0x20)).unwrap();
-		store.put_row(&mut b(&mut txn, operator), &h(0xBBB), rn(3), &row(0x30)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(2), &row(0x20)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xBBB)), rn(3), &row(0x30)).unwrap();
 
 		let rows_a = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 64).unwrap();
 		assert_eq!(rows_a.len(), 2);
@@ -416,8 +379,8 @@ mod tests {
 		let left = Store::new(JoinSide::Left);
 		let right = Store::new(JoinSide::Right);
 
-		left.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		right.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x20)).unwrap();
+		left.write_row(&mut b(&mut txn, operator), left.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
+		right.write_row(&mut b(&mut txn, operator), right.group_of(&h(0xAAA)), rn(1), &row(0x20)).unwrap();
 
 		let left_row = get_row(&left, operator, &mut txn, &h(0xAAA), rn(1)).unwrap().expect("left row present");
 		let right_row =
@@ -440,14 +403,16 @@ mod tests {
 		let operator = OperatorId(51);
 		let store = Store::new(JoinSide::Left);
 
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
 		let before = txn.state_scan_all(operator).unwrap();
 
 		assert!(get_row(&store, operator, &mut txn, &h(0xCCC), rn(1)).unwrap().is_none());
 		assert!(store.rows_for_key(&mut b(&mut txn, operator), &h(0xCCC), None, 8).unwrap().is_empty());
 		assert!(!store.contains_key(&mut b(&mut txn, operator), &h(0xCCC)).unwrap());
-		assert!(!store.remove_row(&mut b(&mut txn, operator), &h(0xCCC), rn(1)).unwrap());
-		assert!(!store.update_row(&mut b(&mut txn, operator), &h(0xCCC), rn(1), &row(0x20)).unwrap());
+		assert_eq!(
+			store.held_rows(&mut b(&mut txn, operator), &[(store.group_of(&h(0xCCC)), rn(1))]).unwrap(),
+			vec![false]
+		);
 
 		let after = txn.state_scan_all(operator).unwrap();
 		assert_eq!(after.items.len(), before.items.len(), "no probe may leave a row behind");
@@ -462,8 +427,9 @@ mod tests {
 		let operator = OperatorId(5);
 		let store = Store::new(JoinSide::Right);
 
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), RowNumber::MAX, &row(0x20)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), RowNumber::MAX, &row(0x20))
+			.unwrap();
 
 		let slot = get_row(&store, operator, &mut txn, &h(0xAAA), RowNumber::MAX).unwrap();
 		assert_eq!(slot.expect("slot present").as_slice(), &[0x20u8][..]);
@@ -479,14 +445,14 @@ mod tests {
 	}
 
 	#[test]
-	fn update_row_overwrites_existing_returns_true() {
+	fn write_row_overwrites_the_row_already_held() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(2);
 		let store = Store::new(JoinSide::Right);
 
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		assert!(store.update_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x99)).unwrap());
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x99)).unwrap();
 
 		let rows = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 64).unwrap();
 		assert_eq!(rows.len(), 1);
@@ -494,34 +460,46 @@ mod tests {
 	}
 
 	#[test]
-	fn update_row_returns_false_when_missing() {
+	fn held_rows_answers_per_row_and_only_for_its_own_group() {
+		// a missing row reported held turns an expired row's update into a write of a row nobody holds
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(3);
 		let store = Store::new(JoinSide::Left);
 
-		assert!(!store.update_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap());
-		assert!(store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 64).unwrap().is_empty());
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
+		let held = store
+			.held_rows(
+				&mut b(&mut txn, operator),
+				&[
+					(store.group_of(&h(0xAAA)), rn(2)),
+					(store.group_of(&h(0xAAA)), rn(1)),
+					(store.group_of(&h(0xBBB)), rn(1)),
+				],
+			)
+			.unwrap();
+		assert_eq!(held, vec![false, true, false]);
 	}
 
 	#[test]
-	fn remove_row_returns_existence_and_contains_key_reports_empty() {
+	fn remove_rows_returns_existence_and_contains_key_reports_empty() {
 		let engine = TestEngine::new();
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(4);
 		let store = Store::new(JoinSide::Left);
 
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(2), &row(0x20)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(2), &row(0x20)).unwrap();
 		assert!(store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap());
 
-		assert!(store.remove_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1)).unwrap());
+		let group = store.group_of(&h(0xAAA));
+		assert_eq!(store.remove_rows(&mut b(&mut txn, operator), group, &[rn(1)]).unwrap(), vec![true]);
 		assert!(store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap());
 
-		assert!(store.remove_row(&mut b(&mut txn, operator), &h(0xAAA), rn(2)).unwrap());
+		assert_eq!(store.remove_rows(&mut b(&mut txn, operator), group, &[rn(2)]).unwrap(), vec![true]);
 		assert!(!store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap());
 
-		assert!(!store.remove_row(&mut b(&mut txn, operator), &h(0xAAA), rn(99)).unwrap());
+		assert_eq!(store.remove_rows(&mut b(&mut txn, operator), group, &[rn(99)]).unwrap(), vec![false]);
 	}
 
 	#[test]
@@ -534,8 +512,8 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(46);
 		let store = Store::new(JoinSide::Left);
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(3), &row(0x30)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(3), &row(0x30)).unwrap();
 		let group = store.group_of(&h(0xAAA));
 
 		store.remove_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap();
@@ -656,10 +634,11 @@ mod tests {
 		let store = Store::new(JoinSide::Left);
 
 		for i in 1..=4u64 {
-			store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(i), &row(i as u8)).unwrap();
+			store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(i), &row(i as u8))
+				.unwrap();
 		}
 		// A different hash must not leak into the scanned key's blocks.
-		store.put_row(&mut b(&mut txn, operator), &h(0xBBB), rn(99), &row(0xFF)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xBBB)), rn(99), &row(0xFF)).unwrap();
 
 		let page1 = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 2).unwrap();
 		assert_eq!(page1.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(), vec![rn(1), rn(2)]);
@@ -686,7 +665,8 @@ mod tests {
 		let block_size = txn.catalog().get_config_uint8(ConfigKey::FlowJoinProbeBlockSize);
 		let total = block_size + 3;
 		for i in 1..=total {
-			store.put_row(&mut b(&mut txn, operator), &h(0xCCC), rn(i), &row(0x01)).unwrap();
+			store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xCCC)), rn(i), &row(0x01))
+				.unwrap();
 		}
 
 		let mut got: Vec<u64> = Vec::new();
@@ -785,13 +765,19 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(40);
 		let store = Store::new(JoinSide::Right);
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
 
 		assert!(!store.contains_key(&mut b(&mut txn, operator), &h(0xBBB)).unwrap());
 		assert!(store.rows_for_key(&mut b(&mut txn, operator), &h(0xBBB), None, 8).unwrap().is_empty());
 		assert!(get_row(&store, operator, &mut txn, &h(0xBBB), RowNumber::MAX).unwrap().is_none());
-		assert!(!store.remove_row(&mut b(&mut txn, operator), &h(0xBBB), rn(1)).unwrap());
-		assert!(!store.update_row(&mut b(&mut txn, operator), &h(0xBBB), rn(1), &row(0x20)).unwrap());
+		assert_eq!(
+			store.held_rows(&mut b(&mut txn, operator), &[(store.group_of(&h(0xBBB)), rn(1))]).unwrap(),
+			vec![false]
+		);
+		assert_eq!(
+			store.remove_rows(&mut b(&mut txn, operator), store.group_of(&h(0xBBB)), &[rn(1)]).unwrap(),
+			vec![false]
+		);
 	}
 
 	#[test]
@@ -802,13 +788,14 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(41);
 		let store = Store::new(JoinSide::Left);
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
-		store.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(2), &row(0x20)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
+		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(2), &row(0x20)).unwrap();
 
-		assert!(store.remove_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1)).unwrap());
+		let group = store.group_of(&h(0xAAA));
+		assert_eq!(store.remove_rows(&mut b(&mut txn, operator), group, &[rn(1)]).unwrap(), vec![true]);
 		assert!(store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap(), "one row remains");
 
-		assert!(store.remove_row(&mut b(&mut txn, operator), &h(0xAAA), rn(2)).unwrap());
+		assert_eq!(store.remove_rows(&mut b(&mut txn, operator), group, &[rn(2)]).unwrap(), vec![true]);
 		assert!(!store.contains_key(&mut b(&mut txn, operator), &h(0xAAA)).unwrap());
 	}
 
@@ -820,7 +807,7 @@ mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator = OperatorId(45);
 		let writer = Store::new(JoinSide::Right);
-		writer.put_row(&mut b(&mut txn, operator), &h(0xAAA), rn(1), &row(0x10)).unwrap();
+		writer.write_row(&mut b(&mut txn, operator), writer.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
 
 		let restarted = Store::new(JoinSide::Right);
 		assert!(

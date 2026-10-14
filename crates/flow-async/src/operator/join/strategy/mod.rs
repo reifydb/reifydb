@@ -136,6 +136,15 @@ impl JoinStrategy {
 		}
 	}
 
+	pub(crate) fn rewrites_in_place(&self, side: JoinSide, snapshot: bool) -> bool {
+		match self {
+			JoinStrategy::Left(_) | JoinStrategy::Inner(_) => true,
+			JoinStrategy::LatestLeft(_) | JoinStrategy::LatestInner(_) => {
+				side == JoinSide::Left && !snapshot
+			}
+		}
+	}
+
 	pub(crate) fn handle_update(
 		&self,
 		host: &mut dyn HostContext,

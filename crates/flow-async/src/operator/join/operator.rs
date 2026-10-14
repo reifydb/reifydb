@@ -83,6 +83,8 @@ const SEAL_BATCH: usize = 256;
 
 const QUEUE_SWEEP_EVERY: u64 = 1024;
 
+type ExpiryMoves = (Vec<(GroupId, RowNumber)>, Vec<(GroupId, RowNumber, DateTime)>);
+
 fn group_by_key(keys: &[Option<Hash128>]) -> (Vec<Hash128>, HashMap<Hash128, Vec<usize>>, Vec<usize>) {
 	let mut order: Vec<Hash128> = Vec::new();
 	let mut groups: HashMap<Hash128, Vec<usize>> = HashMap::new();
@@ -380,30 +382,27 @@ impl JoinOperator {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn move_row_join_expiry(
-		&mut self,
-		host: &mut dyn HostContext,
+	fn row_join_expiry(
+		&self,
 		side: JoinSide,
-		pre: &RecordBatch,
-		post: &RecordBatch,
+		(pre, post): (&RecordBatch, &RecordBatch),
 		post_times: &[Option<DateTime>],
 		row_idx: usize,
 		keys: (Option<Hash128>, Option<Hash128>),
+		moves: &mut ExpiryMoves,
 	) -> Result<()> {
 		if self.retention_of(side).is_none() {
 			return Ok(());
 		}
-		let mut cleared: Vec<(GroupId, RowNumber)> = Vec::new();
 		if let Some(group) = self.expiry_group(side, keys.0) {
-			cleared.push((group, require_row_numbers(pre)?[row_idx]));
+			moves.0.push((group, require_row_numbers(pre)?[row_idx]));
 		}
-		let mut armed: Vec<(GroupId, RowNumber, DateTime)> = Vec::new();
 		if let (Some(group), Some(at)) =
 			(self.expiry_group(side, keys.1), post_times.get(row_idx).copied().flatten())
 		{
-			armed.push((group, require_row_numbers(post)?[row_idx], at));
+			moves.1.push((group, require_row_numbers(post)?[row_idx], at));
 		}
-		self.move_join_expiries(host, side, &cleared, &armed)
+		Ok(())
 	}
 
 	fn free_expired_left_row(
@@ -1049,6 +1048,32 @@ impl JoinOperator {
 			None => Vec::new(),
 		};
 		let mut rows = JoinRows::new(post, side, host.written_at());
+		let pre_numbers = require_row_numbers(pre)?;
+		let post_numbers = require_row_numbers(post)?;
+		let mut seen = HashSet::with_capacity(row_count * 2);
+		let distinct = (0..row_count).all(|idx| {
+			seen.insert(pre_numbers[idx])
+				&& (post_numbers[idx] == pre_numbers[idx] || seen.insert(post_numbers[idx]))
+		});
+		if distinct && self.strategy.rewrites_in_place(side, self.snapshot) {
+			let store = match side {
+				JoinSide::Left => &state.left,
+				JoinSide::Right => &state.right,
+			};
+			let in_place: Vec<(GroupId, RowNumber)> = (0..row_count)
+				.filter_map(|idx| match (pre_keys[idx], post_keys[idx]) {
+					(Some(pre_key), Some(post_key)) if pre_key == post_key => {
+						Some((store.group_of(&pre_key), pre_numbers[idx]))
+					}
+					_ => None,
+				})
+				.collect();
+			if !in_place.is_empty() {
+				let held = store.held_rows(host, &in_place)?;
+				rows.hold(in_place.iter().map(|(_, number)| *number).zip(held).collect());
+			}
+		}
+		let mut moves: ExpiryMoves = (Vec::new(), Vec::new());
 
 		for row_idx in 0..row_count {
 			let mut ctx = JoinContext {
@@ -1095,18 +1120,20 @@ impl JoinOperator {
 					.handle_update_both_undefined(host, pre, post, row_idx, &mut ctx)?,
 			};
 			result.extend(diffs);
-			self.move_row_join_expiry(
-				host,
+			self.row_join_expiry(
 				side,
-				pre,
-				post,
+				(pre, post),
 				&post_times,
 				row_idx,
 				(pre_keys[row_idx], post_keys[row_idx]),
+				&mut moves,
 			)?;
+			if !distinct {
+				self.move_join_expiries(host, side, &moves.0, &moves.1)?;
+				moves = (Vec::new(), Vec::new());
+			}
 		}
-
-		Ok(())
+		self.move_join_expiries(host, side, &moves.0, &moves.1)
 	}
 }
 
