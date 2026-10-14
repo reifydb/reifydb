@@ -9,18 +9,24 @@ use std::{
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use indexmap::{IndexMap, IndexSet};
-use postcard::{from_bytes, to_stdvec};
+use reifydb_codec::row::{
+	bytes::EncodedBytes,
+	pod::EncodedPodRowBuilder,
+	shape::{RowFamily, RowShape, RowShapeField},
+};
 use reifydb_core::{
 	key::operator::state::GroupId,
 	metrics::heap::HeapSize,
-	value::{batch::batch, column::builder::ColumnBuilder},
+	value::{
+		batch::{batch, decode_cells},
+		column::builder::ColumnBuilder,
+	},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
-	util::hash::Hash128,
+	util::{cowvec::CowVec, hash::Hash128},
 	value::{
-		Value,
 		column_view::ColumnView,
 		container::temporal_array::datetime_array,
 		datetime::DateTime,
@@ -33,7 +39,7 @@ use reifydb_value::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::operator::time_at;
+use crate::operator::row_times;
 
 pub(super) fn user_views(columns: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
 	user_columns(columns).map(|(field, array)| ColumnView::try_from((array, field.as_ref()))).collect()
@@ -59,57 +65,15 @@ pub(super) struct SerializedRow {
 	created_at: DateTime,
 	updated_at: DateTime,
 	time: DateTime,
+	width: u32,
 
 	#[serde(with = "serde_bytes")]
-	values_bytes: Vec<u8>,
+	body: Vec<u8>,
 }
 
 impl HeapSize for SerializedRow {
 	fn heap_size(&self) -> usize {
-		self.values_bytes.capacity()
-	}
-}
-
-impl SerializedRow {
-	pub(super) fn from_columns_at_index(columns: &RecordBatch, row_idx: usize) -> Result<Self> {
-		let number = require_row_numbers(columns)?[row_idx];
-		let created_at = created_at(columns)?.get(row_idx).copied().unwrap_or_default();
-		let updated_at = updated_at(columns)?.get(row_idx).copied().unwrap_or_default();
-		let time = time_at(columns, row_idx)?.unwrap_or_default();
-
-		let values: Vec<Value> = user_views(columns)?.iter().map(|view| view.get_value(row_idx)).collect();
-
-		let values_bytes = to_stdvec(&values).expect("Failed to serialize column values");
-
-		Ok(Self {
-			number,
-			created_at,
-			updated_at,
-			time,
-			values_bytes,
-		})
-	}
-
-	pub(super) fn to_columns(&self, layout: &DistinctLayout) -> Result<RecordBatch> {
-		let values: Vec<Value> = from_bytes(&self.values_bytes).expect("Failed to deserialize column values");
-
-		let mut columns_vec = Vec::with_capacity(layout.names.len());
-		for (i, (name, typ)) in layout.names.iter().zip(layout.types.iter()).enumerate() {
-			let value = values.get(i).cloned().unwrap_or(Value::none());
-			let mut col_data = ColumnBuilder::with_capacity(typ.clone(), 1);
-			col_data.push_value(value);
-			columns_vec.push(col_data.finish(name));
-		}
-
-		let stamps: [(SystemColumn, ArrayRef); 4] = [
-			(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![self.number.0]))),
-			(SystemColumn::CreatedAt, Arc::new(datetime_array([self.created_at]))),
-			(SystemColumn::UpdatedAt, Arc::new(datetime_array([self.updated_at]))),
-			(SystemColumn::Time, Arc::new(datetime_array([self.time]))),
-		];
-		stamps.into_iter().try_fold(batch(columns_vec)?, |columns, (column, array)| {
-			with_system_column(columns, column, array)
-		})
+		self.body.capacity()
 	}
 }
 
@@ -119,6 +83,76 @@ impl DistinctLayout {
 			names: Vec::new(),
 			types: Vec::new(),
 		}
+	}
+
+	fn shape(&self, width: usize) -> RowShape {
+		let fields = self.names[..width]
+			.iter()
+			.zip(&self.types[..width])
+			.map(|(name, typ)| RowShapeField::unconstrained(name.clone(), typ.clone()))
+			.collect();
+		RowShape::new(RowFamily::Pod, fields)
+	}
+
+	pub(super) fn encode(&self, columns: &RecordBatch) -> Result<Vec<SerializedRow>> {
+		let views = user_views(columns)?;
+		let shape = self.shape(views.len());
+		let mut bodies: Vec<EncodedPodRowBuilder> =
+			(0..columns.num_rows()).map(|_| shape.allocate_pod()).collect();
+		shape.write_columns(&mut bodies, &views)?;
+		let numbers = require_row_numbers(columns)?;
+		let created = created_at(columns)?;
+		let updated = updated_at(columns)?;
+		let times = row_times(columns)?;
+		Ok(bodies
+			.into_iter()
+			.enumerate()
+			.map(|(row, body)| SerializedRow {
+				number: numbers[row],
+				created_at: created.get(row).copied().unwrap_or_default(),
+				updated_at: updated.get(row).copied().unwrap_or_default(),
+				time: times.get(row).copied().flatten().unwrap_or_default(),
+				width: views.len() as u32,
+				body: body.freeze().as_slice().to_vec(),
+			})
+			.collect())
+	}
+
+	pub(super) fn decode(&self, rows: &[SerializedRow]) -> Result<RecordBatch> {
+		let mut runs: Vec<(RowShape, Vec<EncodedBytes>)> = Vec::new();
+		for row in rows {
+			let width = row.width as usize;
+			if runs.last().is_none_or(|(shape, _)| shape.field_count() != width) {
+				runs.push((self.shape(width), Vec::new()));
+			}
+			runs.last_mut().unwrap().1.push(EncodedBytes(CowVec::new(row.body.clone())));
+		}
+
+		let mut columns_vec = Vec::with_capacity(self.names.len());
+		for (index, (name, typ)) in self.names.iter().zip(&self.types).enumerate() {
+			let mut builder = ColumnBuilder::with_capacity(typ.clone(), rows.len());
+			for (shape, bodies) in &runs {
+				if index < shape.field_count() {
+					decode_cells(&mut builder, name, shape, index, bodies)?;
+				} else {
+					bodies.iter().for_each(|_| builder.push_none());
+				}
+			}
+			columns_vec.push(builder.finish(name));
+		}
+
+		let stamps: [(SystemColumn, ArrayRef); 4] = [
+			(
+				SystemColumn::RowNumbers,
+				Arc::new(UInt64Array::from_iter_values(rows.iter().map(|row| row.number.0))),
+			),
+			(SystemColumn::CreatedAt, Arc::new(datetime_array(rows.iter().map(|row| row.created_at)))),
+			(SystemColumn::UpdatedAt, Arc::new(datetime_array(rows.iter().map(|row| row.updated_at)))),
+			(SystemColumn::Time, Arc::new(datetime_array(rows.iter().map(|row| row.time)))),
+		];
+		stamps.into_iter().try_fold(batch(columns_vec)?, |columns, (column, array)| {
+			with_system_column(columns, column, array)
+		})
 	}
 
 	pub(super) fn update_from_columns(&mut self, columns: &RecordBatch) -> Result<bool> {
