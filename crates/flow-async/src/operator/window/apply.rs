@@ -7,8 +7,8 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::WindowKind,
 	interface::change::{Change, Diff},
-	key::operator::state::GroupId,
-	state::timer::TimerKind,
+	key::operator::state::{GroupId, GroupStateKey, IntoGroupStateKey},
+	state::timer::{StateStore, TimerKind},
 };
 use reifydb_value::{
 	Result,
@@ -20,6 +20,7 @@ use tracing::{Span, instrument};
 use super::{
 	bind::SlidingBound,
 	operator::{WindowOperator, required_row_numbers},
+	prefetch::Prefetched,
 };
 use crate::{
 	operator::{
@@ -45,7 +46,7 @@ use crate::{
 			session::{SessionKind, SessionTracker},
 			tumbling::TumblingOverRows,
 		},
-		meta::{EngineMeta, EngineMetaKey},
+		meta::{CountKey, EngineMeta, EngineMetaKey, RowIndexKey},
 		span::WindowSpan,
 	},
 };
@@ -110,6 +111,53 @@ fn push_count_event(
 	group_values.entry(hash).or_insert_with(|| gvals.to_vec());
 }
 
+struct DiffGroups {
+	pre: Vec<(Hash128, Vec<Value>)>,
+	post: Vec<(Hash128, Vec<Value>)>,
+}
+
+fn count_routing_groups(operator: &WindowOperator, change: &Change) -> Result<Vec<DiffGroups>> {
+	let mut grouped = Vec::with_capacity(change.diffs.len());
+	for diff in change.diffs.iter() {
+		grouped.push(DiffGroups {
+			pre: diff.pre().map(|pre| operator.core.compute_groups(pre)).transpose()?.unwrap_or_default(),
+			post: diff
+				.post()
+				.map(|post| operator.core.compute_groups(post))
+				.transpose()?
+				.unwrap_or_default(),
+		});
+	}
+	Ok(grouped)
+}
+
+fn count_routing_keys(
+	operator: &WindowOperator,
+	change: &Change,
+	grouped: &[DiffGroups],
+) -> Result<Vec<GroupStateKey>> {
+	let mut keys = Vec::new();
+	for (diff, groups) in change.diffs.iter().zip(grouped) {
+		let pre_rows = match diff.pre() {
+			Some(pre) => required_row_numbers(pre)?,
+			None => &[],
+		};
+		for ((hash, _), row_number) in groups.pre.iter().zip(pre_rows) {
+			keys.push((&RowIndexKey(operator.partition_group(*hash), *row_number)).into_group_state_key());
+		}
+		let post_rows = match diff.post() {
+			Some(post) => required_row_numbers(post)?,
+			None => &[],
+		};
+		for ((hash, _), row_number) in groups.post.iter().zip(post_rows) {
+			let group = operator.partition_group(*hash);
+			keys.push((&CountKey(group)).into_group_state_key());
+			keys.push((&RowIndexKey(group, *row_number)).into_group_state_key());
+		}
+	}
+	Ok(keys)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn route_count_tumbling(
 	operator: &mut WindowOperator,
@@ -122,21 +170,24 @@ fn route_count_tumbling(
 	window_min_ts: &mut EarliestTimes,
 ) -> Result<()> {
 	let rows = TumblingOverRows::holding(RowSpan::of(operator.size_count().unwrap_or(1)));
-	for diff in change.diffs.iter() {
+	let grouped = count_routing_groups(operator, change)?;
+	let keys = count_routing_keys(operator, change, &grouped)?;
+	let mut store = Prefetched::read(host, keys)?;
+	for (diff, diff_groups) in change.diffs.iter().zip(&grouped) {
 		match diff {
 			Diff::Insert {
 				post,
 				..
 			} => {
-				let groups = operator.core.compute_groups(post)?;
+				let groups = &diff_groups.post;
 				let post_rows = required_row_numbers(post)?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				let views = operator.core.slot_views(post, &slot_cols)?;
 				let times = operator.row_times(post, post.num_rows())?;
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
-					let ordinal = operator.get_and_increment_global_count(host, *hash)?;
+					let ordinal = operator.get_and_increment_global_count(&mut store, *hash)?;
 					let window_id = rows.window_id(ordinal);
-					operator.store_row_index(host, *hash, post_rows[row_idx], window_id)?;
+					operator.store_row_index(&mut store, *hash, post_rows[row_idx], window_id)?;
 					let contribution = views.contribution(row_idx, times[row_idx]);
 					let coord = slot_coord(true, times[row_idx], post_rows[row_idx].0);
 					push_count_event(
@@ -158,7 +209,7 @@ fn route_count_tumbling(
 				pre,
 				..
 			} => {
-				let groups = operator.core.compute_groups(pre)?;
+				let groups = &diff_groups.pre;
 				let pre_rows = required_row_numbers(pre)?;
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let views = operator.core.slot_views(pre, &slot_cols)?;
@@ -166,7 +217,9 @@ fn route_count_tumbling(
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let contribution = views.contribution(row_idx, times[row_idx]);
 					let coord = slot_coord(true, times[row_idx], pre_rows[row_idx].0);
-					for window_id in operator.lookup_row_index(host, *hash, pre_rows[row_idx])? {
+					for window_id in
+						operator.lookup_row_index(&mut store, *hash, pre_rows[row_idx])?
+					{
 						push_count_event(
 							buckets,
 							group_values,
@@ -181,7 +234,7 @@ fn route_count_tumbling(
 							times[row_idx],
 						);
 					}
-					operator.drop_row_index(host, *hash, pre_rows[row_idx])?;
+					operator.drop_row_index(&mut store, *hash, pre_rows[row_idx])?;
 				}
 			}
 			Diff::Update {
@@ -189,9 +242,9 @@ fn route_count_tumbling(
 				post,
 				..
 			} => {
-				let groups = operator.core.compute_groups(pre)?;
+				let groups = &diff_groups.pre;
 				let pre_rows = required_row_numbers(pre)?;
-				let post_groups = operator.core.compute_groups(post)?;
+				let post_groups = &diff_groups.post;
 				let post_rows = required_row_numbers(post)?;
 				let pre_cols = operator.core.evaluate_slot_inputs(pre)?;
 				let post_cols = operator.core.evaluate_slot_inputs(post)?;
@@ -201,13 +254,13 @@ fn route_count_tumbling(
 				for (row_idx, (hash, gvals)) in groups.iter().enumerate() {
 					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let row_number = pre_rows[row_idx];
-					let existing = operator.lookup_row_index(host, *hash, row_number)?;
+					let existing = operator.lookup_row_index(&mut store, *hash, row_number)?;
 					if existing.is_empty() {
-						let ordinal =
-							operator.get_and_increment_global_count(host, *post_hash)?;
+						let ordinal = operator
+							.get_and_increment_global_count(&mut store, *post_hash)?;
 						let window_id = rows.window_id(ordinal);
 						operator.store_row_index(
-							host,
+							&mut store,
 							*post_hash,
 							post_rows[row_idx],
 							window_id,
@@ -232,12 +285,13 @@ fn route_count_tumbling(
 						let post_contrib = post_views.contribution(row_idx, times[row_idx]);
 						let coord = slot_coord(true, times[row_idx], pre_rows[row_idx].0);
 						let targets = if post_hash != hash {
-							operator.drop_row_index(host, *hash, row_number)?;
-							let ordinal = operator
-								.get_and_increment_global_count(host, *post_hash)?;
+							operator.drop_row_index(&mut store, *hash, row_number)?;
+							let ordinal = operator.get_and_increment_global_count(
+								&mut store, *post_hash,
+							)?;
 							let window_id = rows.window_id(ordinal);
 							operator.store_row_index(
-								host, *post_hash, row_number, window_id,
+								&mut store, *post_hash, row_number, window_id,
 							)?;
 							vec![window_id]
 						} else {
@@ -278,7 +332,7 @@ fn route_count_tumbling(
 			}
 		}
 	}
-	Ok(())
+	store.write()
 }
 
 #[instrument(name = "flow::operator::window::tumbling", level = "trace", skip_all)]
@@ -420,11 +474,11 @@ fn intern_batch(arrival: &[(Hash128, WindowSpan<DateTime>)]) -> WindowGroups {
 
 fn sliding_insert_anchors(
 	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
+	store: &mut dyn StateStore,
 	bound: &SlidingBound,
 	hash: Hash128,
 ) -> Result<Vec<u64>> {
-	let coord = operator.get_and_increment_global_count(host, hash)?.value();
+	let coord = operator.get_and_increment_global_count(store, hash)?.value();
 	Ok(bound.anchors(coord))
 }
 
@@ -485,26 +539,29 @@ fn route_count_sliding(
 	window_max_ts: &mut HashMap<(Hash128, WindowSpan<DateTime>), DateTime>,
 	window_min_ts: &mut EarliestTimes,
 ) -> Result<()> {
-	for diff in change.diffs.iter() {
+	let grouped = count_routing_groups(operator, change)?;
+	let keys = count_routing_keys(operator, change, &grouped)?;
+	let mut store = Prefetched::read(host, keys)?;
+	for (diff, diff_groups) in change.diffs.iter().zip(&grouped) {
 		match diff {
 			Diff::Insert {
 				post,
 				..
 			} => {
-				let groups = operator.core.compute_groups(post)?;
+				let groups = &diff_groups.post;
 				let post_rows = required_row_numbers(post)?;
 				let timestamps = operator.row_times(post, post.num_rows())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(post)?;
 				let views = operator.core.slot_views(post, &slot_cols)?;
 				for row_idx in 0..post.num_rows() {
 					let (hash, gvals) = &groups[row_idx];
-					let window_ids = sliding_insert_anchors(operator, host, bound, *hash)?;
+					let window_ids = sliding_insert_anchors(operator, &mut store, bound, *hash)?;
 					let contribution = views.contribution(
 						row_idx,
 						timestamps.get(row_idx).copied().unwrap_or_default(),
 					);
 					let coord = slot_coord(true, DateTime::default(), post_rows[row_idx].0);
-					operator.store_row_indexes(host, *hash, post_rows[row_idx], &window_ids)?;
+					operator.store_row_indexes(&mut store, *hash, post_rows[row_idx], &window_ids)?;
 					for wid in &window_ids {
 						push_count_event(
 							buckets,
@@ -526,7 +583,7 @@ fn route_count_sliding(
 				pre,
 				..
 			} => {
-				let groups = operator.core.compute_groups(pre)?;
+				let groups = &diff_groups.pre;
 				let pre_rows = required_row_numbers(pre)?;
 				let timestamps = operator.row_times(pre, pre.num_rows())?;
 				let slot_cols = operator.core.evaluate_slot_inputs(pre)?;
@@ -538,7 +595,7 @@ fn route_count_sliding(
 						timestamps.get(row_idx).copied().unwrap_or_default(),
 					);
 					let coord = slot_coord(true, DateTime::default(), pre_rows[row_idx].0);
-					for wid in operator.lookup_row_index(host, *hash, pre_rows[row_idx])? {
+					for wid in operator.lookup_row_index(&mut store, *hash, pre_rows[row_idx])? {
 						push_count_event(
 							buckets,
 							group_values,
@@ -553,7 +610,7 @@ fn route_count_sliding(
 							timestamps[row_idx],
 						);
 					}
-					operator.drop_row_index(host, *hash, pre_rows[row_idx])?;
+					operator.drop_row_index(&mut store, *hash, pre_rows[row_idx])?;
 				}
 			}
 			Diff::Update {
@@ -561,9 +618,9 @@ fn route_count_sliding(
 				post,
 				..
 			} => {
-				let groups = operator.core.compute_groups(pre)?;
+				let groups = &diff_groups.pre;
 				let pre_rows = required_row_numbers(pre)?;
-				let post_groups = operator.core.compute_groups(post)?;
+				let post_groups = &diff_groups.post;
 				let post_rows = required_row_numbers(post)?;
 				let timestamps = operator.row_times(post, post.num_rows())?;
 				let pre_timestamps = operator.row_times(pre, pre.num_rows())?;
@@ -575,17 +632,18 @@ fn route_count_sliding(
 					let (hash, gvals) = &groups[row_idx];
 					let (post_hash, post_gvals) = &post_groups[row_idx];
 					let row_number = pre_rows[row_idx];
-					let existing = operator.lookup_row_index(host, *hash, row_number)?;
+					let existing = operator.lookup_row_index(&mut store, *hash, row_number)?;
 					if existing.is_empty() {
-						let window_ids =
-							sliding_insert_anchors(operator, host, bound, *post_hash)?;
+						let window_ids = sliding_insert_anchors(
+							operator, &mut store, bound, *post_hash,
+						)?;
 						let contribution = post_views.contribution(
 							row_idx,
 							timestamps.get(row_idx).copied().unwrap_or_default(),
 						);
 						let coord = slot_coord(true, DateTime::default(), row_number.0);
 						operator.store_row_indexes(
-							host,
+							&mut store,
 							*post_hash,
 							post_rows[row_idx],
 							&window_ids,
@@ -614,12 +672,12 @@ fn route_count_sliding(
 						);
 						let coord = slot_coord(true, DateTime::default(), row_number.0);
 						let targets = if post_hash != hash {
-							operator.drop_row_index(host, *hash, row_number)?;
+							operator.drop_row_index(&mut store, *hash, row_number)?;
 							let window_ids = sliding_insert_anchors(
-								operator, host, bound, *post_hash,
+								operator, &mut store, bound, *post_hash,
 							)?;
 							operator.store_row_indexes(
-								host,
+								&mut store,
 								*post_hash,
 								row_number,
 								&window_ids,
@@ -663,7 +721,7 @@ fn route_count_sliding(
 			}
 		}
 	}
-	Ok(())
+	store.write()
 }
 
 #[instrument(name = "flow::operator::window::sliding", level = "trace", skip_all)]

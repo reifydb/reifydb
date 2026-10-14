@@ -4,6 +4,7 @@
 use reifydb_core::{
 	common::{WindowKind, WindowSize},
 	key::operator::state::GroupId,
+	state::timer::StateStore,
 };
 use reifydb_value::{
 	Result,
@@ -152,24 +153,24 @@ impl WindowOperator {
 
 	pub fn store_row_index(
 		&mut self,
-		host: &mut dyn HostContext,
+		store: &mut dyn StateStore,
 		group_hash: Hash128,
 		row_number: RowNumber,
 		window_id: u64,
 	) -> Result<()> {
 		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).record_membership(host, group, row_number, window_id)
+		Mint::new(self.meta_slot()).record_membership(store, group, row_number, window_id)
 	}
 
 	pub(super) fn store_row_indexes(
 		&mut self,
-		host: &mut dyn HostContext,
+		store: &mut dyn StateStore,
 		group_hash: Hash128,
 		row_number: RowNumber,
 		window_ids: &[u64],
 	) -> Result<()> {
 		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).record_memberships(host, group, row_number, window_ids)
+		Mint::new(self.meta_slot()).record_memberships(store, group, row_number, window_ids)
 	}
 
 	pub(super) fn withdraw_row_index(
@@ -185,22 +186,22 @@ impl WindowOperator {
 
 	pub(super) fn lookup_row_index(
 		&mut self,
-		host: &mut dyn HostContext,
+		store: &mut dyn StateStore,
 		group_hash: Hash128,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
 		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).membership(host, group, row_number)
+		Mint::new(self.meta_slot()).membership(store, group, row_number)
 	}
 
 	pub(super) fn drop_row_index(
 		&mut self,
-		host: &mut dyn HostContext,
+		store: &mut dyn StateStore,
 		group_hash: Hash128,
 		row_number: RowNumber,
 	) -> Result<()> {
 		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).drop_membership(host, group, row_number)
+		Mint::new(self.meta_slot()).drop_membership(store, group, row_number)
 	}
 
 	pub(super) fn store_session_member(
@@ -225,11 +226,11 @@ impl WindowOperator {
 
 	pub fn get_and_increment_global_count(
 		&mut self,
-		host: &mut dyn HostContext,
+		store: &mut dyn StateStore,
 		group_hash: Hash128,
 	) -> Result<OrdinalCoord> {
 		let group = self.partition_group(group_hash);
-		Mint::new(self.meta_slot()).ordinal(host, group)
+		Mint::new(self.meta_slot()).ordinal(store, group)
 	}
 
 	pub(super) fn seal_ledger(&mut self, host: &mut dyn HostContext) -> Result<SealedThrough> {
