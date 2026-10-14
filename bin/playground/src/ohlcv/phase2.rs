@@ -177,8 +177,12 @@ fn check_aggregate(db: &Database, run: &Run, expected: &[Column]) -> Result<(), 
 	Ok(())
 }
 
-fn check_column_read(db: &Database, run: &Run, expected: &[Column]) -> Result<(), String> {
-	let frames = db.query_column_as_root(&format!("FROM {}", run.series), Params::None).map_err(err)?;
+fn column_read(db: &Database, run: &Run, expected: &[Column]) -> Result<Option<Vec<Vec<i128>>>, String> {
+	let frames = match db.query_column_as_root(&format!("FROM {}", run.series), Params::None) {
+		Ok(frames) => frames,
+		Err(e) if e.code == "QUERY_012" => return Ok(None),
+		Err(e) => return Err(err(e)),
+	};
 	let mut read: Vec<Vec<i128>> = vec![Vec::new(); expected.len()];
 	for frame in &frames {
 		for (c, (field, _)) in expected.iter().enumerate() {
@@ -189,15 +193,34 @@ fn check_column_read(db: &Database, run: &Run, expected: &[Column]) -> Result<()
 			read[c].extend(as_i128(array)?);
 		}
 	}
+	Ok(Some(read))
+}
+
+fn check_column_read(db: &Database, run: &Run, expected: &[Column]) -> Result<(), String> {
 	let inserted = to_rows(&expected.iter().map(|c| as_i128(&c.1)).collect::<Result<Vec<_>, _>>()?);
-	if to_rows(&read) != inserted {
-		return Err(format!(
-			"query_column rows differ from inserted ({} vs {})",
-			read[0].len(),
-			inserted.len()
-		));
+	let poll = Duration::from_milliseconds(250).map_err(|e| e.to_string())?.to_std();
+	let visible_limit = Duration::from_milliseconds(60_000).map_err(|e| e.to_string())?.to_std();
+	let clock = Clock::Real;
+	let start = clock.instant();
+	loop {
+		let read = column_read(db, run, expected)?;
+		let visible = read.as_ref().map_or(0, |read| read[0].len());
+		if visible < inserted.len() && start.elapsed() <= visible_limit {
+			sleep(poll);
+			continue;
+		}
+		let Some(read) = read else {
+			return Err("query_column found no materialized block".to_string());
+		};
+		if to_rows(&read) != inserted {
+			return Err(format!(
+				"query_column rows differ from inserted ({} vs {})",
+				read[0].len(),
+				inserted.len()
+			));
+		}
+		return Ok(());
 	}
-	Ok(())
 }
 
 fn check_inverse(restored: &[Box<[i128]>], ds: &Dataset) -> Result<(), String> {
