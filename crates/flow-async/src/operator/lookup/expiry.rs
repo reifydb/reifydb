@@ -8,7 +8,7 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 };
 
-use super::store::take_read;
+use super::store::ReadLedger;
 use crate::{
 	operator::{
 		host::HostContext,
@@ -83,8 +83,12 @@ impl LookupExpiry {
 			if page.due.is_empty() {
 				break page.next;
 			}
+			let mut ledger = ReadLedger::read(host, page.due.iter().map(|entry| entry.row_number))?;
 			for entry in &page.due {
-				take_read(host, entry.row_number)?;
+				ledger.take(entry.row_number)?;
+			}
+			ledger.commit(host)?;
+			for entry in &page.due {
 				host.join_expiry_free(entry)?;
 			}
 			if !page.more {

@@ -42,14 +42,14 @@ use reifydb_value::{
 		duration::Duration,
 		partition::Partition,
 		row_number::RowNumber,
-		system_columns::{require_row_numbers, resolve_column},
+		system_columns::{require_row_numbers, resolve_column, row_numbers},
 	},
 };
 
 use super::{
 	expiry::LookupExpiry,
 	partition::{DictionaryMemo, PartitionLookup, RowKey},
-	store::{oldest_read, store_read, take_read},
+	store::{ReadLedger, oldest_read},
 };
 use crate::{
 	operator::{
@@ -317,7 +317,7 @@ impl LookupOperator {
 	#[allow(clippy::too_many_arguments)]
 	fn publish(
 		&self,
-		host: &mut dyn HostContext,
+		ledger: &mut ReadLedger,
 		left_idx: usize,
 		times: &[Option<DateTime>],
 		row_number: RowNumber,
@@ -326,7 +326,7 @@ impl LookupOperator {
 		output: &mut Output,
 	) -> Result<Published> {
 		let published = output.published(left_idx, output_id, resolved.right);
-		store_read(host, row_number, resolved.version, output_id)?;
+		ledger.store(row_number, resolved.version, output_id)?;
 		if let Some(at) = times.get(left_idx).copied().flatten() {
 			output.armed.push((row_number, at));
 		}
@@ -339,13 +339,14 @@ impl LookupOperator {
 		host: &mut dyn HostContext,
 		partitions: &PartitionLookup,
 		reads: &mut ChangeReads,
+		ledger: &mut ReadLedger,
 		pre: &RecordBatch,
 		left_idx: usize,
 		key: &RowKey,
 		output: &mut Output,
 	) -> Result<Option<(Published, RowNumber)>> {
 		let row_number = require_row_numbers(pre)?[left_idx];
-		let Some((version, output_id)) = take_read(host, row_number)? else {
+		let Some((version, output_id)) = ledger.take(row_number)? else {
 			return Ok(None);
 		};
 		output.cleared.push(row_number);
@@ -380,10 +381,12 @@ impl LookupOperator {
 		if !resolved.is_empty() {
 			let times = row_times(post)?;
 			let row_numbers = require_row_numbers(post)?;
+			let mut ledger =
+				ReadLedger::read(host, resolved.iter().map(|(left_idx, _)| row_numbers[*left_idx]))?;
 			let first = mint_row_numbers(host, resolved.len() as u64)?;
 			for (minted, (left_idx, read)) in (first.0..).zip(resolved) {
 				let published = self.publish(
-					host,
+					&mut ledger,
 					left_idx,
 					&times,
 					row_numbers[left_idx],
@@ -393,6 +396,7 @@ impl LookupOperator {
 				)?;
 				output.insert(published);
 			}
+			ledger.commit(host)?;
 		}
 		let builder = self.builder(post.schema_ref());
 		self.finish(host, output, None, Some((post, &builder)), result)
@@ -408,14 +412,16 @@ impl LookupOperator {
 		let partitions = PartitionLookup::new(&self.config.columns, &self.config.partition_by);
 		let keys = self.key_values(host, &partitions, reads, pre)?;
 		let builder = self.builder(pre.schema_ref());
+		let mut ledger = ReadLedger::read(host, row_numbers(pre)?.iter().copied())?;
 		let mut output = Output::default();
 		for (left_idx, key) in keys.iter().enumerate() {
 			if let Some((published, _)) =
-				self.undo(host, &partitions, reads, pre, left_idx, key, &mut output)?
+				self.undo(host, &partitions, reads, &mut ledger, pre, left_idx, key, &mut output)?
 			{
 				output.remove(published);
 			}
 		}
+		ledger.commit(host)?;
 		self.finish(host, output, Some((pre, &builder)), None, result)
 	}
 
@@ -435,12 +441,14 @@ impl LookupOperator {
 		let post_builder = self.builder(post.schema_ref());
 		let times = row_times(post)?;
 		let mut reserve = RowNumberReserve::default();
+		let mut ledger = ReadLedger::read(host, row_numbers(pre)?.iter().chain(row_numbers(post)?).copied())?;
 		let mut output = Output::default();
 		for left_idx in 0..post.num_rows() {
 			let undone = self.undo(
 				host,
 				&partitions,
 				reads,
+				&mut ledger,
 				pre,
 				left_idx,
 				pre_keys.get(left_idx).unwrap_or(&RowKey::Missing),
@@ -460,7 +468,7 @@ impl LookupOperator {
 						None => reserve.take(host)?,
 					};
 					Some(self.publish(
-						host,
+						&mut ledger,
 						left_idx,
 						&times,
 						row_number,
@@ -478,6 +486,7 @@ impl LookupOperator {
 				(None, None) => {}
 			}
 		}
+		ledger.commit(host)?;
 		reserve.commit(host)?;
 		self.finish(host, output, Some((pre, &pre_builder)), Some((post, &post_builder)), result)
 	}
@@ -676,6 +685,7 @@ mod tests {
 		},
 		key::{any::TaggedKey, row::StoragePartitionedRowKey},
 		row::row_shape_from_columns,
+		state::timer::StateStore,
 		value::{
 			batch::batch,
 			column::factory::{int4, utf8, utf8_with_bitvec},
@@ -701,7 +711,11 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::{host::TxnHostContext, lookup::store::stored_read, sink::DurableSink},
+		operator::{
+			host::TxnHostContext,
+			lookup::store::{decode_read, read_key},
+			sink::DurableSink,
+		},
 		timer::extension::TimerExtension,
 		transaction::{
 			FlowTransaction, LookupContext, LookupVersions, deferred::DeferredTransaction, mock::FlowTxn,
@@ -809,15 +823,17 @@ mod tests {
 		apply_operator_state(&engine.inner().operator_state(), &txn.take_pending());
 	}
 
+	fn stored_read(txn: &mut DeferredTransaction, row: u64) -> Option<(CommitVersion, RowNumber)> {
+		let stored = TxnHostContext::new(txn, OperatorId(OP)).state_get(&read_key(RowNumber(row))).unwrap();
+		stored.map(|stored| decode_read(&stored).unwrap())
+	}
+
 	fn stored(txn: &mut DeferredTransaction, row: u64) -> Option<CommitVersion> {
-		stored_read(&mut TxnHostContext::new(txn, OperatorId(OP)), RowNumber(row))
-			.unwrap()
-			.map(|(version, _)| version)
+		stored_read(txn, row).map(|(version, _)| version)
 	}
 
 	fn stored_output(txn: &mut DeferredTransaction, row: u64) -> RowNumber {
-		let read = stored_read(&mut TxnHostContext::new(txn, OperatorId(OP)), RowNumber(row)).unwrap();
-		read.unwrap_or_else(|| panic!("row {row} has no stored read")).1
+		stored_read(txn, row).unwrap_or_else(|| panic!("row {row} has no stored read")).1
 	}
 
 	fn oldest(op: &LookupOperator, txn: &mut DeferredTransaction) -> Option<CommitVersion> {
