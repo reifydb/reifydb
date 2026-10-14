@@ -10,8 +10,6 @@ use reifydb::{
 	value::{Result, value::Value},
 };
 
-use crate::transform::{Derived, Ohlc, forward, inverse};
-
 pub const OHLCV: &str = "ohlcv";
 
 const PRICES: [&str; 4] = ["open", "high", "low", "close"];
@@ -56,11 +54,11 @@ impl BlockEncoding for OhlcvEncoding {
 			<[String; 4]>::try_from(columns).map_err(|_| invalid("four prices".into()))?;
 		let mut stored = Vec::with_capacity(user.len() + 1);
 		for field in user {
-			if [&open, &high, &low].contains(&field.name()) {
+			if [&high, &low, &close].contains(&field.name()) {
 				continue;
 			}
 			stored.push(Arc::clone(field));
-			if field.name() == &close {
+			if field.name() == &open {
 				stored.push(Arc::new(Field::new("gap", DataType::Int64, false)));
 				stored.push(Arc::new(Field::new("upper", DataType::UInt64, false)));
 				stored.push(Arc::new(Field::new("lower", DataType::UInt64, false)));
@@ -92,22 +90,37 @@ impl BoundBlockEncoding for BoundOhlcv {
 	}
 
 	fn encode(&self, user: RecordBatch) -> Result<RecordBatch> {
+		let open = int64(&user, &self.open)?;
+		let high = int64(&user, &self.high)?;
+		let low = int64(&user, &self.low)?;
+		let close = int64(&user, &self.close)?;
 		let rows = user.num_rows();
-		let bars = Ohlc {
-			open: int64(&user, &self.open)?,
-			high: int64(&user, &self.high)?,
-			low: int64(&user, &self.low)?,
-			close: int64(&user, &self.close)?,
-		};
-		let derived = forward(&bars, &[0..rows]).map_err(invalid)?;
+		let mut gap = Vec::with_capacity(rows);
+		let mut upper = Vec::with_capacity(rows);
+		let mut lower = Vec::with_capacity(rows);
+		for i in 0..rows {
+			let next_open = open[i.saturating_sub(1)];
+			gap.push(close[i]
+				.checked_sub(next_open)
+				.ok_or_else(|| invalid(format!("gap overflows at row {i}")))?);
+			let body_high = open[i].max(close[i]);
+			let body_low = open[i].min(close[i]);
+			let above = high[i]
+				.checked_sub(body_high)
+				.ok_or_else(|| invalid(format!("upper overflows at row {i}")))?;
+			let below = body_low
+				.checked_sub(low[i])
+				.ok_or_else(|| invalid(format!("lower overflows at row {i}")))?;
+			upper.push(u64::try_from(above).map_err(|_| invalid(format!("high below body at row {i}")))?);
+			lower.push(u64::try_from(below).map_err(|_| invalid(format!("low above body at row {i}")))?);
+		}
 		let mut columns: Vec<ArrayRef> = Vec::with_capacity(self.stored.len());
 		for field in &self.stored {
 			let name = field.name().as_str();
 			columns.push(match name {
-				"gap" => Arc::new(Int64Array::from(derived.gap.clone())),
-				"upper" => Arc::new(UInt64Array::from(derived.upper.clone())),
-				"lower" => Arc::new(UInt64Array::from(derived.lower.clone())),
-				_ if name == self.close => Arc::new(Int64Array::from(derived.close.clone())),
+				"gap" => Arc::new(Int64Array::from(gap.clone())),
+				"upper" => Arc::new(UInt64Array::from(upper.clone())),
+				"lower" => Arc::new(UInt64Array::from(lower.clone())),
 				_ => copied(&user, name)?,
 			});
 		}
@@ -118,22 +131,40 @@ impl BoundBlockEncoding for BoundOhlcv {
 		if version != 1 {
 			return Err(invalid(format!("cannot decode version {version}, knows 1")).into());
 		}
+		let open = int64(&stored, &self.open)?;
+		let gap = int64(&stored, "gap")?;
+		let upper = uint64(&stored, "upper")?;
+		let lower = uint64(&stored, "lower")?;
 		let rows = stored.num_rows();
-		let derived = Derived {
-			close: int64(&stored, &self.close)?,
-			gap: int64(&stored, "gap")?,
-			upper: uint64(&stored, "upper")?,
-			lower: uint64(&stored, "lower")?,
-		};
-		let bars = inverse(&derived, &[0..rows]).map_err(invalid)?;
+		let mut high = Vec::with_capacity(rows);
+		let mut low = Vec::with_capacity(rows);
+		let mut close = Vec::with_capacity(rows);
+		for i in 0..rows {
+			let next_open = open[i.saturating_sub(1)];
+			let c = next_open
+				.checked_add(gap[i])
+				.ok_or_else(|| invalid(format!("close overflows at row {i}")))?;
+			let above =
+				i64::try_from(upper[i]).map_err(|_| invalid(format!("upper overflows at row {i}")))?;
+			let below =
+				i64::try_from(lower[i]).map_err(|_| invalid(format!("lower overflows at row {i}")))?;
+			high.push(open[i]
+				.max(c)
+				.checked_add(above)
+				.ok_or_else(|| invalid(format!("high overflows at row {i}")))?);
+			low.push(open[i]
+				.min(c)
+				.checked_sub(below)
+				.ok_or_else(|| invalid(format!("low overflows at row {i}")))?);
+			close.push(c);
+		}
 		let mut columns: Vec<ArrayRef> = Vec::with_capacity(self.user.len());
 		for field in &self.user {
 			let name = field.name();
 			columns.push(match name {
-				_ if *name == self.open => Arc::new(Int64Array::from(bars.open.clone())),
-				_ if *name == self.high => Arc::new(Int64Array::from(bars.high.clone())),
-				_ if *name == self.low => Arc::new(Int64Array::from(bars.low.clone())),
-				_ if *name == self.close => Arc::new(Int64Array::from(bars.close.clone())),
+				_ if *name == self.high => Arc::new(Int64Array::from(high.clone())),
+				_ if *name == self.low => Arc::new(Int64Array::from(low.clone())),
+				_ if *name == self.close => Arc::new(Int64Array::from(close.clone())),
 				_ => copied(&stored, name)?,
 			});
 		}
@@ -177,7 +208,7 @@ mod tests {
 	use std::sync::Arc;
 
 	use reifydb::{
-		arrow_array::{ArrayRef, Int64Array, RecordBatch, UInt64Array},
+		arrow_array::{Array, ArrayRef, Int64Array, RecordBatch, UInt64Array},
 		arrow_schema::{DataType, Field, FieldRef, Schema},
 		extension::block_encoding::BlockEncoding,
 		value::value::Value,
@@ -229,15 +260,50 @@ mod tests {
 	}
 
 	#[test]
-	fn ohlcv_stores_close_gap_upper_lower_in_place_of_the_prices() {
-		// Storing open, high or low next to the derived columns would keep the bytes the encoding exists to
+	fn ohlcv_stores_open_gap_upper_lower_in_place_of_the_prices() {
+		// Storing high, low or close next to the derived columns would keep the bytes the encoding exists to
 		// remove.
 		let bound = OhlcvEncoding.bind(&fields(), &config()).unwrap();
 		let names: Vec<_> = bound.stored_fields().iter().map(|field| field.name().clone()).collect();
-		assert_eq!(names, vec!["ts", "close", "gap", "upper", "lower", "volume"]);
+		assert_eq!(names, vec!["ts", "open", "gap", "upper", "lower", "volume"]);
 		let stored = bound.encode(bars_desc()).unwrap();
 		let stored_names: Vec<_> = stored.schema().fields().iter().map(|field| field.name().clone()).collect();
 		assert_eq!(stored_names, names);
+	}
+
+	fn bars(rows: &[[i64; 5]]) -> RecordBatch {
+		// Rows are ts, open, high, low, close in stored order, newest first, as a seal writes them.
+		let column =
+			|c: usize| -> ArrayRef { Arc::new(Int64Array::from_iter_values(rows.iter().map(|r| r[c]))) };
+		let volume: ArrayRef = Arc::new(UInt64Array::from_iter_values(rows.iter().map(|_| 1)));
+		let columns = vec![column(0), column(1), column(2), column(3), column(4), volume];
+		RecordBatch::try_new(Arc::new(Schema::new(fields())), columns).unwrap()
+	}
+
+	fn stored_gap(stored: &RecordBatch) -> Vec<i64> {
+		stored.column_by_name("gap").unwrap().as_any().downcast_ref::<Int64Array>().unwrap().values().to_vec()
+	}
+
+	#[test]
+	fn ohlcv_gap_is_zero_where_a_bar_opens_at_the_previous_close() {
+		// The encoding only saves bytes if a chained series stores gap as zeros; walking the chain the wrong
+		// way makes every gap a bar-to-bar move and brings the noise back.
+		let bound = OhlcvEncoding.bind(&fields(), &config()).unwrap();
+		let block = bars(&[[300, 102, 104, 101, 103], [200, 101, 103, 100, 102], [100, 100, 102, 99, 101]]);
+		let stored = bound.encode(block.clone()).unwrap();
+		assert_eq!(stored_gap(&stored), vec![1, 0, 0], "only the newest bar may carry a nonzero gap");
+		assert_eq!(bound.decode(1, stored).unwrap(), block);
+	}
+
+	#[test]
+	fn ohlcv_round_trips_a_bar_that_opens_away_from_the_previous_close() {
+		// Real bars do not always open at the previous close; dropping the gap correction would return a
+		// close, high and low that were never written.
+		let bound = OhlcvEncoding.bind(&fields(), &config()).unwrap();
+		let block = bars(&[[300, 102, 104, 101, 103], [200, 101, 106, 100, 105], [100, 100, 102, 99, 101]]);
+		let stored = bound.encode(block.clone()).unwrap();
+		assert_eq!(stored_gap(&stored), vec![1, 3, 0], "the jump must be kept as a nonzero gap");
+		assert_eq!(bound.decode(1, stored).unwrap(), block);
 	}
 
 	#[test]
