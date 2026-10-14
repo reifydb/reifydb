@@ -182,11 +182,6 @@ pub(crate) fn row_times(columns: &RecordBatch) -> Result<Vec<Option<DateTime>>> 
 	}
 }
 
-#[cfg(feature = "runtime")]
-pub(crate) fn time_at(columns: &RecordBatch, row_idx: usize) -> Result<Option<DateTime>> {
-	Ok(row_times(&columns.slice(row_idx, 1))?.first().copied().flatten())
-}
-
 #[cfg_attr(not(feature = "runtime"), allow(dead_code))]
 pub(crate) fn time_column(times: impl IntoIterator<Item = Option<DateTime>>) -> ArrayRef {
 	Arc::new(

@@ -2,8 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap},
-	slice::from_ref,
+	collections::{BTreeMap, HashMap, HashSet},
 	sync::Arc,
 };
 
@@ -13,7 +12,7 @@ use reifydb_codec::row::{
 	bytes::EncodedBytes,
 	envelope::{Envelope, EnvelopeBuilder},
 	operator::state::{decode, encode},
-	pod::EncodedPodRow,
+	pod::{EncodedPodRow, EncodedPodRowBuilder},
 	shape::{RowFamily, RowShape, RowShapeField},
 };
 use reifydb_core::{
@@ -31,7 +30,7 @@ use reifydb_core::{
 	},
 	metrics::heap::HeapSize,
 	state::typed::typed_key,
-	value::batch::{from_encoded_bytes, take_row, take_rows},
+	value::batch::{from_encoded_bytes, take_rows},
 };
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -40,7 +39,6 @@ use reifydb_value::{
 	reifydb_assertions,
 	util::cowvec::CowVec,
 	value::{
-		Value,
 		column_view::ColumnView,
 		container::temporal_array::datetime_array,
 		datetime::DateTime,
@@ -54,7 +52,7 @@ use tracing::instrument;
 
 use crate::{
 	error::FlowStateError,
-	operator::{HostOperator, host::HostContext, state::store, time_at},
+	operator::{HostOperator, host::HostContext, row_times, state::store},
 };
 
 #[operator_state]
@@ -125,34 +123,165 @@ fn row_shape_for(cache: &mut Option<(SchemaRef, RowShape)>, cols: &RecordBatch) 
 	Ok(shape)
 }
 
-fn encode_take_bytes(shape: &RowShape, columns: &RecordBatch, row_idx: usize) -> Result<EncodedBytes> {
-	let values: Vec<Value> = user_views(columns)?.iter().map(|view| view.get_value(row_idx)).collect();
-	let mut encoded = shape.allocate_pod();
-	shape.set_values(&mut encoded, &values);
-	let body = encoded.freeze();
-
-	let mut envelope = EnvelopeBuilder::new()
-		.created_at(created_at(columns)?.get(row_idx).copied().unwrap_or_default())
-		.updated_at(updated_at(columns)?.get(row_idx).copied().unwrap_or_default());
-	if let Some(time) = time_at(columns, row_idx)? {
-		envelope = envelope.time(time);
-	}
-	Ok(envelope.build(body.as_slice()).into_bytes())
+fn encode_take_rows(shape: &RowShape, columns: &RecordBatch) -> Result<Vec<EncodedBytes>> {
+	let views = user_views(columns)?;
+	let mut bodies: Vec<EncodedPodRowBuilder> = (0..columns.num_rows()).map(|_| shape.allocate_pod()).collect();
+	shape.write_columns(&mut bodies, &views)?;
+	let created = created_at(columns)?;
+	let updated = updated_at(columns)?;
+	let times = row_times(columns)?;
+	Ok(bodies
+		.into_iter()
+		.enumerate()
+		.map(|(row, body)| {
+			let mut envelope = EnvelopeBuilder::new()
+				.created_at(created.get(row).copied().unwrap_or_default())
+				.updated_at(updated.get(row).copied().unwrap_or_default());
+			if let Some(time) = times.get(row).copied().flatten() {
+				envelope = envelope.time(time);
+			}
+			envelope.build(body.freeze().as_slice()).into_bytes()
+		})
+		.collect())
 }
 
-fn decode_take_bytes(shape: &RowShape, row_number: RowNumber, encoded: &EncodedBytes) -> Result<RecordBatch> {
-	let envelope = Envelope::try_view(EncodedPodRow::view(encoded))?;
-	let body = EncodedBytes(CowVec::new(envelope.body().to_vec()));
+fn decode_take_rows(shape: &RowShape, rows: &[(RowNumber, EncodedBytes)]) -> Result<RecordBatch> {
+	let mut envelopes: Vec<&Envelope> = Vec::with_capacity(rows.len());
+	for (_, encoded) in rows {
+		envelopes.push(Envelope::try_view(EncodedPodRow::view(encoded))?);
+	}
+	let bodies: Vec<EncodedBytes> =
+		envelopes.iter().map(|envelope| EncodedBytes(CowVec::new(envelope.body().to_vec()))).collect();
+	let numbers: Vec<RowNumber> = rows.iter().map(|&(row_number, _)| row_number).collect();
 
-	let decoded = from_encoded_bytes(shape, &[row_number], from_ref(&body))?;
+	let decoded = from_encoded_bytes(shape, &numbers, &bodies)?;
 	let mut stamps: Vec<(SystemColumn, ArrayRef)> = vec![
-		(SystemColumn::CreatedAt, Arc::new(datetime_array([envelope.created_at().unwrap_or_default()]))),
-		(SystemColumn::UpdatedAt, Arc::new(datetime_array([envelope.updated_at().unwrap_or_default()]))),
+		(
+			SystemColumn::CreatedAt,
+			Arc::new(datetime_array(
+				envelopes.iter().map(|envelope| envelope.created_at().unwrap_or_default()),
+			)),
+		),
+		(
+			SystemColumn::UpdatedAt,
+			Arc::new(datetime_array(
+				envelopes.iter().map(|envelope| envelope.updated_at().unwrap_or_default()),
+			)),
+		),
 	];
-	if let Some(time) = envelope.time() {
-		stamps.push((SystemColumn::Time, Arc::new(datetime_array([time]))));
+	if let Some(times) = envelopes.iter().map(|envelope| envelope.time()).collect::<Option<Vec<DateTime>>>() {
+		stamps.push((SystemColumn::Time, Arc::new(datetime_array(times))));
 	}
 	stamp_system_columns(decoded, stamps)
+}
+
+fn is_timed(encoded: &EncodedBytes) -> Result<bool> {
+	Ok(Envelope::try_view(EncodedPodRow::view(encoded))?.time().is_some())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Kind {
+	Insert,
+	Update,
+	Remove,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Source {
+	Input,
+	Stored {
+		timed: bool,
+	},
+}
+
+struct Group {
+	kind: Kind,
+	source: Source,
+	indices: Vec<usize>,
+	stored: Vec<(RowNumber, EncodedBytes)>,
+}
+
+struct Output<'a> {
+	pre: &'a RecordBatch,
+	post: &'a RecordBatch,
+	epochs: Vec<Vec<Group>>,
+	seen: HashSet<RowNumber>,
+}
+
+impl<'a> Output<'a> {
+	fn new(pre: &'a RecordBatch, post: &'a RecordBatch) -> Self {
+		Self {
+			pre,
+			post,
+			epochs: vec![Vec::new()],
+			seen: HashSet::new(),
+		}
+	}
+
+	fn input(&mut self, kind: Kind, row_number: RowNumber, row_idx: usize) {
+		self.group(kind, Source::Input, row_number).indices.push(row_idx);
+	}
+
+	fn stored(&mut self, kind: Kind, row_number: RowNumber, encoded: &EncodedBytes) -> Result<()> {
+		let source = Source::Stored {
+			timed: is_timed(encoded)?,
+		};
+		self.group(kind, source, row_number).stored.push((row_number, encoded.clone()));
+		Ok(())
+	}
+
+	fn group(&mut self, kind: Kind, source: Source, row_number: RowNumber) -> &mut Group {
+		if !self.seen.insert(row_number) {
+			self.seen.clear();
+			self.seen.insert(row_number);
+			self.epochs.push(Vec::new());
+		}
+		let epoch = self.epochs.last_mut().unwrap();
+		match epoch.iter().position(|group| group.kind == kind && group.source == source) {
+			Some(position) => &mut epoch[position],
+			None => {
+				epoch.push(Group {
+					kind,
+					source,
+					indices: Vec::new(),
+					stored: Vec::new(),
+				});
+				epoch.last_mut().unwrap()
+			}
+		}
+	}
+
+	fn finish(self, shape: &RowShape, output_diffs: &mut Vec<Diff>) -> Result<()> {
+		for group in self.epochs.into_iter().flatten() {
+			match (group.kind, group.source) {
+				(Kind::Insert, Source::Input) => {
+					output_diffs.push(Diff::insert(take_rows(self.post, &group.indices)?))
+				}
+				(Kind::Remove, Source::Input) => {
+					output_diffs.push(Diff::remove(take_rows(self.pre, &group.indices)?))
+				}
+				(Kind::Update, _) => output_diffs.push(Diff::update(
+					take_rows(self.pre, &group.indices)?,
+					take_rows(self.post, &group.indices)?,
+				)),
+				(
+					kind,
+					Source::Stored {
+						..
+					},
+				) => {
+					let cols = decode_take_rows(shape, &group.stored)?;
+					if user_columns(&cols).next().is_some() {
+						output_diffs.push(match kind {
+							Kind::Insert => Diff::insert(cols),
+							_ => Diff::remove(cols),
+						});
+					}
+				}
+			}
+		}
+		Ok(())
+	}
 }
 
 impl TakeOperator {
@@ -240,12 +369,7 @@ impl TakePlan {
 	}
 
 	#[inline]
-	fn promote_one_candidate(
-		&self,
-		state: &mut TakeState,
-		schema: &RowShape,
-		output_diffs: &mut Vec<Diff>,
-	) -> Result<()> {
+	fn promote_one_candidate(&self, state: &mut TakeState, output: &mut Output) -> Result<()> {
 		let Some((&age, &row_number)) = state.candidates_by_age.iter().next_back() else {
 			return Ok(());
 		};
@@ -256,10 +380,7 @@ impl TakePlan {
 		state.by_row.insert(row_number, (age, count));
 
 		if let Some(encoded) = state.row_data.get(&row_number) {
-			let cols = decode_take_bytes(schema, row_number, encoded)?;
-			if user_columns(&cols).next().is_some() {
-				output_diffs.push(Diff::insert(cols));
-			}
+			output.stored(Kind::Insert, row_number, encoded)?;
 		}
 		Ok(())
 	}
@@ -270,16 +391,15 @@ impl TakePlan {
 		state: &mut TakeState,
 		row_number: RowNumber,
 		created_at: Option<DateTime>,
-		single_row: RecordBatch,
-		schema: &RowShape,
-		output_diffs: &mut Vec<Diff>,
+		(row_idx, encoded): (usize, EncodedBytes),
+		output: &mut Output,
 	) -> Result<()> {
 		if self.limit == 0 {
 			return Ok(());
 		}
 
 		let age = RowAge::of(created_at, row_number);
-		state.row_data.insert(row_number, encode_take_bytes(schema, &single_row, 0)?);
+		state.row_data.insert(row_number, encoded);
 
 		if state.by_age.len() >= self.limit
 			&& state.by_age.keys().next().is_some_and(|oldest_live| age <= *oldest_live)
@@ -292,7 +412,7 @@ impl TakePlan {
 
 		state.by_age.insert(age, row_number);
 		state.by_row.insert(row_number, (age, 1));
-		output_diffs.push(Diff::insert(single_row));
+		output.input(Kind::Insert, row_number, row_idx);
 
 		if state.by_age.len() > self.limit {
 			let oldest = state.by_age.iter().next().map(|(a, r)| (*a, *r));
@@ -303,10 +423,7 @@ impl TakePlan {
 				state.candidates_by_age.insert(oldest_age, oldest_row);
 				state.candidates_by_row.insert(oldest_row, (oldest_age, count));
 				if let Some(encoded) = state.row_data.get(&oldest_row) {
-					let cols = decode_take_bytes(schema, oldest_row, encoded)?;
-					if user_columns(&cols).next().is_some() {
-						output_diffs.push(Diff::remove(cols));
-					}
+					output.stored(Kind::Remove, oldest_row, encoded)?;
 				}
 			}
 		}
@@ -331,6 +448,8 @@ impl TakePlan {
 		let schema = row_shape_for(shapes, &post)?;
 		let row_numbers = require_row_numbers(&post)?;
 		let created = created_at(&post)?;
+		let encoded = encode_take_rows(&schema, &post)?;
+		let mut output = Output::new(&post, &post);
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
 				slot.1 += 1;
@@ -342,17 +461,15 @@ impl TakePlan {
 				continue;
 			}
 
-			let single = take_row(&post, row_idx)?;
 			self.admit_new_row(
 				state,
 				row_number,
 				created.get(row_idx).copied(),
-				single,
-				&schema,
-				output_diffs,
+				(row_idx, encoded[row_idx].clone()),
+				&mut output,
 			)?;
 		}
-		Ok(())
+		output.finish(&schema, output_diffs)
 	}
 
 	#[inline]
@@ -372,38 +489,35 @@ impl TakePlan {
 		let schema = row_shape_for(shapes, &post)?;
 		let row_numbers = require_row_numbers(&post)?;
 		let created = created_at(&post)?;
-		let mut update_indices: Vec<usize> = Vec::new();
+		let encoded = encode_take_rows(&schema, &post)?;
+		let mut output = Output::new(&pre, &post);
+		let mut updated: Vec<(RowNumber, usize)> = Vec::new();
 
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if state.by_row.contains_key(&row_number) {
-				update_indices.push(row_idx);
-				state.row_data.insert(row_number, encode_take_bytes(&schema, &post, row_idx)?);
+				updated.push((row_number, row_idx));
+				state.row_data.insert(row_number, encoded[row_idx].clone());
 				continue;
 			}
 
 			if state.candidates_by_row.contains_key(&row_number) {
-				state.row_data.insert(row_number, encode_take_bytes(&schema, &post, row_idx)?);
+				state.row_data.insert(row_number, encoded[row_idx].clone());
 				continue;
 			}
 
-			let single = take_row(&post, row_idx)?;
 			self.admit_new_row(
 				state,
 				row_number,
 				created.get(row_idx).copied(),
-				single,
-				&schema,
-				output_diffs,
+				(row_idx, encoded[row_idx].clone()),
+				&mut output,
 			)?;
 		}
 
-		if !update_indices.is_empty() {
-			output_diffs.push(Diff::update(
-				take_rows(&pre, &update_indices)?,
-				take_rows(&post, &update_indices)?,
-			));
+		for (row_number, row_idx) in updated {
+			output.input(Kind::Update, row_number, row_idx);
 		}
-		Ok(())
+		output.finish(&schema, output_diffs)
 	}
 
 	#[inline]
@@ -421,6 +535,7 @@ impl TakePlan {
 		}
 		let schema = row_shape_for(shapes, &pre)?;
 		let row_numbers = require_row_numbers(&pre)?;
+		let mut output = Output::new(&pre, &pre);
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
 				if slot.1 > 1 {
@@ -431,10 +546,10 @@ impl TakePlan {
 				state.by_row.remove(&row_number);
 				state.by_age.remove(&age);
 				state.row_data.remove(&row_number);
-				output_diffs.push(Diff::remove(take_row(&pre, row_idx)?));
+				output.input(Kind::Remove, row_number, row_idx);
 
 				if state.by_age.len() < self.limit && !state.candidates_by_age.is_empty() {
-					self.promote_one_candidate(state, &schema, output_diffs)?;
+					self.promote_one_candidate(state, &mut output)?;
 				}
 				continue;
 			}
@@ -450,7 +565,7 @@ impl TakePlan {
 				}
 			}
 		}
-		Ok(())
+		output.finish(&schema, output_diffs)
 	}
 }
 
@@ -517,7 +632,10 @@ mod tests {
 		value::{batch::batch, column::factory::int4},
 	};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::value::system_columns::{row_numbers, system_column, time, with_system_column};
+	use reifydb_value::value::{
+		Value,
+		system_columns::{row_numbers, system_column, time, with_system_column},
+	};
 
 	use super::*;
 	use crate::{
@@ -633,8 +751,8 @@ mod tests {
 		// The pod body carries no header, so every stamp must survive in the envelope or it is lost.
 		let cols = stamped_row(7, 1_000, 2_000, Some(3_000));
 		let shape = row_shape_from_columns(&cols).unwrap();
-		let encoded = encode_take_bytes(&shape, &cols, 0).unwrap();
-		let decoded = decode_take_bytes(&shape, RowNumber(7), &encoded).unwrap();
+		let encoded = encode_take_rows(&shape, &cols).unwrap().remove(0);
+		let decoded = decode_take_rows(&shape, &[(RowNumber(7), encoded)]).unwrap();
 
 		assert_eq!(created_at(&decoded).unwrap(), &[DateTime::from_nanos(1_000)]);
 		assert_eq!(updated_at(&decoded).unwrap(), &[DateTime::from_nanos(2_000)]);
@@ -648,8 +766,8 @@ mod tests {
 		// A timeless source must never gain a fabricated #time, and must still hand the sink a created_at.
 		let cols = stamped_row(9, 4_000, 5_000, None);
 		let shape = row_shape_from_columns(&cols).unwrap();
-		let encoded = encode_take_bytes(&shape, &cols, 0).unwrap();
-		let decoded = decode_take_bytes(&shape, RowNumber(9), &encoded).unwrap();
+		let encoded = encode_take_rows(&shape, &cols).unwrap().remove(0);
+		let decoded = decode_take_rows(&shape, &[(RowNumber(9), encoded)]).unwrap();
 
 		assert!(
 			system_column(&decoded, SystemColumn::Time).is_none(),
@@ -665,9 +783,9 @@ mod tests {
 		// The envelope must charge only for the fields set, otherwise a timeless row pays for a slot.
 		let timed = stamped_row(1, 1_000, 2_000, Some(3_000));
 		let timeless = stamped_row(2, 1_000, 2_000, None);
-		let timed_bytes = encode_take_bytes(&row_shape_from_columns(&timed).unwrap(), &timed, 0).unwrap();
+		let timed_bytes = encode_take_rows(&row_shape_from_columns(&timed).unwrap(), &timed).unwrap().remove(0);
 		let timeless_bytes =
-			encode_take_bytes(&row_shape_from_columns(&timeless).unwrap(), &timeless, 0).unwrap();
+			encode_take_rows(&row_shape_from_columns(&timeless).unwrap(), &timeless).unwrap().remove(0);
 
 		assert_eq!(Envelope::try_view(EncodedPodRow::view(&timed_bytes)).unwrap().header_size(), 25);
 		assert_eq!(Envelope::try_view(EncodedPodRow::view(&timeless_bytes)).unwrap().header_size(), 17);
