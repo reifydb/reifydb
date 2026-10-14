@@ -69,6 +69,10 @@ impl ReadLedger {
 		})
 	}
 
+	pub(crate) fn held(&self, row: RowNumber) -> Option<CommitVersion> {
+		self.initial.get(&row).copied().flatten().map(|(version, _)| version)
+	}
+
 	pub(crate) fn take(&mut self, row: RowNumber) -> Result<Option<(CommitVersion, RowNumber)>> {
 		Ok(self.slot(row)?.take())
 	}

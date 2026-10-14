@@ -146,12 +146,12 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 		ids: &[DictionaryEntryId],
 	) -> Result<Vec<Option<Value>>>;
 
-	fn lookup_read(
+	fn lookup_read_many(
 		&mut self,
 		storage: StorageId,
-		partition: Partition,
 		version: CommitVersion,
-	) -> Result<Option<(RowNumber, EncodedBytes)>>;
+		partitions: &[Partition],
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>>;
 
 	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion;
 
@@ -414,12 +414,12 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.version()
 	}
 
-	fn lookup_read(
+	fn lookup_read_many(
 		&mut self,
 		storage: StorageId,
-		partition: Partition,
 		version: CommitVersion,
-	) -> Result<Option<(RowNumber, EncodedBytes)>> {
+		partitions: &[Partition],
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
 		if let Some(floor) = self.txn.lookup_floor()
 			&& version < floor
 		{
@@ -428,23 +428,22 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		}
 		let mut query = self.txn.query();
 		query.read_as_of_version_inclusive(version);
-		let key = |row: u64| StoragePartitionedRowKey::new(partition, RowNumber(row));
-		let first = query
-			.range_partitioned_row(
-				storage,
-				Bound::Included(key(u64::MAX)),
-				Bound::Included(key(0)),
-				RangeScope::All,
-				1,
-			)
-			.next();
-		match first {
-			Some(row) => {
-				let row = row?;
-				Ok(Some((row.key.row.0, row.bytes)))
-			}
-			None => Ok(None),
-		}
+		partitions
+			.iter()
+			.map(|&partition| {
+				let key = |row: u64| StoragePartitionedRowKey::new(partition, RowNumber(row));
+				query.range_partitioned_row(
+					storage,
+					Bound::Included(key(u64::MAX)),
+					Bound::Included(key(0)),
+					RangeScope::All,
+					1,
+				)
+				.next()
+				.map(|row| row.map(|row| (row.key.row.0, row.bytes)))
+				.transpose()
+			})
+			.collect()
 	}
 
 	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion {

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{HashMap, hash_map::Entry},
+	collections::{HashMap, HashSet, hash_map::Entry},
 	mem,
 	sync::Arc,
 };
@@ -287,9 +287,67 @@ impl LookupOperator {
 		match reads.rows.entry((partition, version)) {
 			Entry::Occupied(read) => Ok(read.get().clone()),
 			Entry::Vacant(slot) => {
-				Ok(slot.insert(host.lookup_read(self.config.storage, partition, version)?).clone())
+				let read = host
+					.lookup_read_many(self.config.storage, version, &[partition])?
+					.pop()
+					.flatten();
+				Ok(slot.insert(read).clone())
 			}
 		}
+	}
+
+	fn prefetch(
+		&self,
+		host: &mut dyn HostContext,
+		reads: &mut ChangeReads,
+		wanted: Vec<(Partition, CommitVersion)>,
+	) -> Result<()> {
+		let mut queued = HashSet::new();
+		let mut groups: Vec<(CommitVersion, Vec<Partition>)> = Vec::new();
+		for (partition, version) in wanted {
+			if reads.rows.contains_key(&(partition, version)) || !queued.insert((partition, version)) {
+				continue;
+			}
+			match groups.iter_mut().find(|(at, _)| *at == version) {
+				Some((_, partitions)) => partitions.push(partition),
+				None => groups.push((version, vec![partition])),
+			}
+		}
+		for (version, partitions) in groups {
+			let rows = host.lookup_read_many(self.config.storage, version, &partitions)?;
+			reads.rows.extend(partitions.into_iter().map(|partition| (partition, version)).zip(rows));
+		}
+		Ok(())
+	}
+
+	fn wanted(
+		&self,
+		host: &dyn HostContext,
+		reads: &mut ChangeReads,
+		ledger: &ReadLedger,
+		pre: (&[RowNumber], &[RowKey]),
+		post: Option<(&[RowNumber], &[RowKey], SourceVersion)>,
+		count: usize,
+	) -> Vec<(Partition, CommitVersion)> {
+		let mut touched = HashSet::new();
+		let mut wanted = Vec::new();
+		for left_idx in 0..count {
+			if let Some(&row) = pre.0.get(left_idx)
+				&& touched.insert(row) && let (Some(version), Some(RowKey::Found(partition))) =
+				(ledger.held(row), pre.1.get(left_idx))
+			{
+				wanted.push((*partition, version));
+			}
+			if let Some((rows, keys, source)) = post {
+				if let Some(RowKey::Found(partition)) = keys.get(left_idx) {
+					wanted.push((*partition, self.read_version(host, source, reads)));
+				}
+				if let Some(&row) = rows.get(left_idx) {
+					touched.insert(row);
+				}
+			}
+		}
+		wanted
 	}
 
 	fn resolve(
@@ -371,6 +429,14 @@ impl LookupOperator {
 	) -> Result<()> {
 		let partitions = PartitionLookup::new(&self.config.columns, &self.config.partition_by);
 		let keys = self.key_values(host, &partitions, reads, post)?;
+		let wanted = keys
+			.iter()
+			.filter_map(|key| match key {
+				RowKey::Found(partition) => Some((*partition, self.read_version(host, source, reads))),
+				_ => None,
+			})
+			.collect();
+		self.prefetch(host, reads, wanted)?;
 		let mut resolved = Vec::with_capacity(keys.len());
 		for (left_idx, key) in keys.iter().enumerate() {
 			if let Some(read) = self.resolve(host, &partitions, reads, key, source)? {
@@ -413,6 +479,8 @@ impl LookupOperator {
 		let keys = self.key_values(host, &partitions, reads, pre)?;
 		let builder = self.builder(pre.schema_ref());
 		let mut ledger = ReadLedger::read(host, row_numbers(pre)?.iter().copied())?;
+		let wanted = self.wanted(host, reads, &ledger, (row_numbers(pre)?, &keys), None, keys.len());
+		self.prefetch(host, reads, wanted)?;
 		let mut output = Output::default();
 		for (left_idx, key) in keys.iter().enumerate() {
 			if let Some((published, _)) =
@@ -442,6 +510,15 @@ impl LookupOperator {
 		let times = row_times(post)?;
 		let mut reserve = RowNumberReserve::default();
 		let mut ledger = ReadLedger::read(host, row_numbers(pre)?.iter().chain(row_numbers(post)?).copied())?;
+		let wanted = self.wanted(
+			host,
+			reads,
+			&ledger,
+			(row_numbers(pre)?, &pre_keys),
+			Some((row_numbers(post)?, &post_keys, source)),
+			post.num_rows(),
+		);
+		self.prefetch(host, reads, wanted)?;
 		let mut output = Output::default();
 		for left_idx in 0..post.num_rows() {
 			let undone = self.undo(

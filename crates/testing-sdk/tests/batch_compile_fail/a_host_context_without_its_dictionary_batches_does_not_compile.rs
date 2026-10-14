@@ -267,12 +267,12 @@ impl HostContext for SingleEntryHost {
 		unimplemented!()
 	}
 
-	fn lookup_read(
+	fn lookup_read_many(
 		&mut self,
 		_storage: StorageId,
-		_partition: Partition,
 		_version: CommitVersion,
-	) -> Result<Option<(RowNumber, EncodedBytes)>> {
+		_partitions: &[Partition],
+	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
 		unimplemented!()
 	}
 
