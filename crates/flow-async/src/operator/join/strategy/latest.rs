@@ -24,7 +24,7 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use super::hash::{JoinRows, columns_from_block};
+use super::hash::{JoinRows, columns_from_block, merge_runs};
 use crate::operator::{
 	host::HostContext,
 	join::{Identity, operator::JoinOperator, store::Store},
@@ -147,6 +147,11 @@ pub(crate) fn read_right_slot(
 	Ok(winning_right_row(host, right, right.group_of(key_hash))?.map(|(_, _, columns)| columns))
 }
 
+pub(crate) struct SlotChange {
+	old: Option<RecordBatch>,
+	written: Option<(RowNumber, EncodedBytes)>,
+}
+
 #[instrument(name = "flow::operator::join::latest::store_right_rows", level = "trace", skip_all, fields(rows = indices.len()))]
 pub(crate) fn write_right_rows(
 	host: &mut dyn HostContext,
@@ -155,35 +160,48 @@ pub(crate) fn write_right_rows(
 	rows: &mut JoinRows,
 	indices: &[usize],
 	pick: &JoinPick,
-) -> Result<()> {
+) -> Result<SlotChange> {
 	if indices.is_empty() {
-		return Ok(());
+		return Ok(SlotChange {
+			old: None,
+			written: None,
+		});
 	}
-	let encoded = rows.encoded(host, right)?;
 	let group = right.group_of(key_hash);
-
+	let held = read_slot(host, right, group)?;
+	let old = held.clone().map(|held| columns_from_block(host, right, vec![held])).transpose()?;
+	let encoded = rows.encoded(host, right)?;
 	let mut candidates: Vec<(RowNumber, EncodedBytes)> = Vec::with_capacity(indices.len() + 1);
 	for &idx in indices {
 		candidates.push((encoded.number(idx), encoded.row(idx).clone().into_bytes()));
 	}
-	let held = read_slot(host, right, group)?;
-	if let Some(held) = &held
+	let mut all = rows.stored_right_columns(indices)?;
+	let mut held_at = None;
+	if let (Some(held), Some(held_columns)) = (&held, &old)
 		&& !candidates.iter().any(|(number, _)| *number == held.0)
 	{
+		held_at = Some(candidates.len());
 		candidates.push(held.clone());
+		all = merge_runs(vec![all, held_columns.clone()], right.side())?;
 	}
 
-	let all = columns_from_block(host, right, candidates.clone())?;
 	let Some(winner) = winner_index(&all, pick)? else {
-		return Ok(());
+		return Ok(SlotChange {
+			old,
+			written: None,
+		});
 	};
 	let (number, content) = candidates[winner].clone();
-	if let Some((previous, _)) = held
-		&& previous != number
+	if let Some((previous, _)) = &held
+		&& *previous != number
 	{
-		right.remove_row_in(host, group, previous)?;
+		right.remove_row_in(host, group, *previous)?;
 	}
-	right.write_row(host, group, number, &EncodedPodRow::from(content))
+	right.write_row(host, group, number, &EncodedPodRow::from(content.clone()))?;
+	Ok(SlotChange {
+		old,
+		written: (held_at != Some(winner)).then_some((number, content)),
+	})
 }
 
 pub(crate) fn overwrite_right_slot(
@@ -193,12 +211,16 @@ pub(crate) fn overwrite_right_slot(
 	rows: &mut JoinRows,
 	indices: &[usize],
 	pick: &JoinPick,
-) -> Result<Option<RecordBatch>> {
+) -> Result<(Option<RecordBatch>, Option<RecordBatch>)> {
 	if indices.is_empty() {
-		return Ok(None);
+		return Ok((read_right_slot(host, right, key_hash)?, None));
 	}
-	write_right_rows(host, right, key_hash, rows, indices, pick)?;
-	read_right_slot(host, right, key_hash)
+	let change = write_right_rows(host, right, key_hash, rows, indices, pick)?;
+	let new = match change.written {
+		Some(winner) => Some(columns_from_block(host, right, vec![winner])?),
+		None => change.old.clone(),
+	};
+	Ok((change.old, new))
 }
 
 #[instrument(name = "flow::operator::join::latest::remove_right_rows", level = "trace", skip_all)]

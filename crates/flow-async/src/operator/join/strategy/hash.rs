@@ -3,7 +3,7 @@
 
 use std::{fmt::Debug, iter::repeat_n, sync::Arc};
 
-use arrow_array::{ArrayRef, RecordBatch};
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::FieldRef;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
@@ -16,7 +16,7 @@ use reifydb_core::{
 	internal,
 	key::operator::state::GroupId,
 	value::{
-		batch::{batch, concat_columns, from_encoded_slices},
+		batch::{batch, concat_columns, from_encoded_slices, take_rows},
 		column::{builder::ColumnBuilder, push::Push},
 	},
 };
@@ -87,6 +87,27 @@ impl JoinRows {
 			}
 		};
 		Ok(self.encoded.insert(encoded))
+	}
+
+	pub(crate) fn stored_right_columns(&self, indices: &[usize]) -> Result<RecordBatch> {
+		let taken = take_rows(&self.columns, indices)?;
+		let times = row_times(&taken)?;
+		let times: Vec<Option<DateTime>> =
+			(0..indices.len()).map(|row| times.get(row).copied().flatten()).collect();
+		let instants: ArrayRef =
+			Arc::new(datetime_array(times.iter().map(|time| time.unwrap_or(self.now)).collect::<Vec<_>>()));
+		let numbers: ArrayRef = Arc::new(UInt64Array::from_iter_values(
+			require_row_numbers(&taken)?.iter().map(|number| number.value()),
+		));
+		let user = user_columns(&taken).map(|(field, array)| (field.clone(), array.clone())).collect();
+		stamp_system_columns(
+			batch(user)?,
+			vec![
+				(SystemColumn::RowNumbers, numbers),
+				(SystemColumn::CreatedAt, instants.clone()),
+				(SystemColumn::UpdatedAt, instants),
+			],
+		)
 	}
 }
 
@@ -389,7 +410,7 @@ fn concatenates(target: &ValueType, view: &ColumnView) -> bool {
 }
 
 #[instrument(name = "flow::operator::join::merge_runs", level = "trace", skip_all, fields(runs = runs.len()))]
-fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<RecordBatch> {
+pub(crate) fn merge_runs(runs: Vec<RecordBatch>, side: JoinSide) -> Result<RecordBatch> {
 	let mut names: Vec<String> = Vec::new();
 	for run in &runs {
 		for (field, _) in user_columns(run) {

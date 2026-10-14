@@ -175,8 +175,7 @@ impl LatestLeftHashJoin {
 			write_right_rows(host, &ctx.state.right, key_hash, ctx.rows, indices, ctx.operator.pick())?;
 			return Ok(Vec::new());
 		}
-		let old = read_right_slot(host, &ctx.state.right, key_hash)?;
-		let new =
+		let (old, new) =
 			overwrite_right_slot(host, &ctx.state.right, key_hash, ctx.rows, indices, ctx.operator.pick())?;
 		let operator = ctx.operator;
 		let mut result = Vec::new();
