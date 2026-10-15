@@ -162,7 +162,7 @@ impl FlowEngineInner {
 	}
 }
 
-#[cfg(test)]
+#[cfg(all(test, reifydb_assertions))]
 mod tests {
 	use std::sync::Arc;
 

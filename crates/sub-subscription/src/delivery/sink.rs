@@ -20,7 +20,7 @@ use reifydb_value::{
 	value::{
 		diff_type::DiffType,
 		row_number::RowNumber,
-		system_columns::{SystemColumn, keep_system_columns, require_row_numbers, system_column},
+		system_columns::{SystemColumn, keep_system_columns, require_row_numbers},
 	},
 };
 
@@ -70,7 +70,7 @@ impl EphemeralSinkPlan {
 		let batch = keep_system_columns(batch, &self.keep)?;
 		reifydb_assertions! {
 			assert!(
-				batch.num_rows() == 0 || system_column(&batch, SystemColumn::RowNumbers).is_some(),
+				batch.num_rows() == 0 || reifydb_value::value::system_columns::system_column(&batch, SystemColumn::RowNumbers).is_some(),
 				"a staged change batch carries no row numbers for {} rows, so a subscriber could not \
 				 identify which entity changed and would leak or drop rows",
 				batch.num_rows()

@@ -387,7 +387,7 @@ fn insert_ringbuffer_result(namespace: &str, ringbuffer: &str, inserted: u64) ->
 	])
 }
 
-#[cfg(test)]
+#[cfg(all(test, reifydb_assertions))]
 mod tests {
 	use std::{collections::HashMap, sync::Arc};
 

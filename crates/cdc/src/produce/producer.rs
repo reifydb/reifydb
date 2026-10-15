@@ -354,8 +354,9 @@ where
 
 #[cfg(test)]
 pub mod tests {
+	#[cfg(reifydb_assertions)]
+	use std::panic::{AssertUnwindSafe, catch_unwind};
 	use std::{
-		panic::{AssertUnwindSafe, catch_unwind},
 		sync::atomic::{AtomicUsize, Ordering},
 		thread::sleep,
 	};

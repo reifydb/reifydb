@@ -124,22 +124,34 @@ pub fn eval_context_from_transform<'a>(ctx: &'a TransformContext<'a>, stored: &'
 
 #[cfg(test)]
 mod tests {
+	#[cfg(reifydb_assertions)]
 	use std::sync::Arc;
 
+	#[cfg(reifydb_assertions)]
 	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
 	use reifydb_core::{
 		util::budget::MemoryBudget,
 		value::{
 			batch::{batch, heap_size},
-			column::{factory::int4, headers::ColumnHeaders},
+			column::factory::int4,
 		},
 	};
+	#[cfg(reifydb_assertions)]
+	use reifydb_core::value::column::headers::ColumnHeaders;
+	#[cfg(reifydb_assertions)]
 	use reifydb_evaluate::stack::SymbolTable;
+	#[cfg(reifydb_assertions)]
 	use reifydb_test_harness::engine::create_test_admin_transaction;
+	#[cfg(reifydb_assertions)]
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::{byte_size::ByteSize, params::Params, value::identity::IdentityId};
+	use reifydb_value::byte_size::ByteSize;
+	#[cfg(reifydb_assertions)]
+	use reifydb_value::{params::Params, value::identity::IdentityId};
 
-	use super::{QueryContext, QueryNode, charge_query_memory_bytes, query_budget};
+	use super::charge_query_memory_bytes;
+	#[cfg(reifydb_assertions)]
+	use super::{QueryContext, QueryNode, query_budget};
+	#[cfg(reifydb_assertions)]
 	use crate::{Result, vm::services::Services};
 
 	#[test]
@@ -169,8 +181,10 @@ mod tests {
 		assert_eq!(err.0.code, "QUERY_006", "an over-budget charge must raise the memory-limit diagnostic");
 	}
 
+	#[cfg(reifydb_assertions)]
 	struct NegativeZeroNode;
 
+	#[cfg(reifydb_assertions)]
 	impl QueryNode for NegativeZeroNode {
 		fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
 			Ok(())

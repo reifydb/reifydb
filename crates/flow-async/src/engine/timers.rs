@@ -172,6 +172,7 @@ impl FlowEngineInner {
 mod tests {
 	use std::sync::Arc;
 
+	#[cfg(reifydb_assertions)]
 	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
@@ -185,11 +186,13 @@ mod tests {
 				flow::{FlowId, OperatorId},
 				id::ViewId,
 			},
-			change::{Change, Diff},
+			change::Change,
 			flow::OperatorCapability,
 		},
 		state::timer::TimerKind,
 	};
+	#[cfg(reifydb_assertions)]
+	use reifydb_core::interface::change::Diff;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{
@@ -247,8 +250,10 @@ mod tests {
 		}
 	}
 
+	#[cfg(reifydb_assertions)]
 	struct NegativeZeroTimer(fn(RecordBatch) -> Diff);
 
+	#[cfg(reifydb_assertions)]
 	impl HostOperator for NegativeZeroTimer {
 		fn id(&self) -> OperatorId {
 			OPERATOR
