@@ -9,7 +9,7 @@ use reifydb_core::{
 		id::{ColumnId, NamespaceId, QueueId, RingBufferId, SeriesId, TableId},
 		queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
 		ringbuffer::RingBuffer,
-		series::{Series, SeriesKey, TimestampPrecision},
+		series::{Series, SeriesEncoding, SeriesKey, TimestampPrecision},
 		sumtype::{Field, SumType, SumTypeKind, Variant},
 		table::Table,
 	},
@@ -23,6 +23,7 @@ use reifydb_export::{
 	},
 };
 use reifydb_value::value::{
+	Value,
 	constraint::{Constraint, TypeConstraint, bytes::MaxBytes},
 	dictionary::DictionaryId,
 	duration::Duration,
@@ -202,9 +203,10 @@ fn series_datetime_key_with_precision_and_tag() {
 		primary_key: None,
 		partition_by: vec![],
 		time: TimeSource::None,
+		encoding: None,
 	};
 	assert_eq!(
-		render_series(&series, None, &resolver()).unwrap(),
+		render_series(&series, None, None, &resolver()).unwrap(),
 		"CREATE SERIES sales::metrics { ts: datetime, value: int4 } WITH { key: ts, tag: sales::status, precision: millisecond };"
 	);
 }
@@ -226,9 +228,10 @@ fn series_integer_key_has_no_precision() {
 		primary_key: None,
 		partition_by: vec![],
 		time: TimeSource::None,
+		encoding: None,
 	};
 	assert_eq!(
-		render_series(&series, None, &resolver()).unwrap(),
+		render_series(&series, None, None, &resolver()).unwrap(),
 		"CREATE SERIES sales::seq { k: int8, value: int4 } WITH { key: k };"
 	);
 }
@@ -296,10 +299,46 @@ fn series_with_event_time_and_full_row_settings() {
 		time: TimeSource::Event {
 			ts: "ts".to_string(),
 		},
+		encoding: None,
 	};
 	assert_eq!(
-		render_series(&series, Some(&one_hour_ttl(false)), &resolver()).unwrap(),
+		render_series(&series, Some(&one_hour_ttl(false)), None, &resolver()).unwrap(),
 		"CREATE SERIES sales::metrics { ts: datetime, value: int4 } WITH { key: ts, precision: millisecond, time: event(ts), row: { ttl: 1h, persistent: false } };"
+	);
+}
+
+#[test]
+fn series_with_column_encoding_keeps_name_and_param_order() {
+	// Without the column block the re-imported series stores plain blocks; reordered params change the config
+	// bytes.
+	let series = Series {
+		id: SeriesId(1),
+		namespace: NamespaceId(NS),
+		name: "metrics".to_string(),
+		columns: vec![
+			column(0, "ts", TypeConstraint::unconstrained(ValueType::DateTime)),
+			column(1, "value", TypeConstraint::unconstrained(ValueType::Int4)),
+		],
+		tag: None,
+		key: SeriesKey::DateTime {
+			column: "ts".to_string(),
+			precision: TimestampPrecision::Millisecond,
+		},
+		primary_key: None,
+		partition_by: vec![],
+		time: TimeSource::None,
+		encoding: Some(SeriesEncoding {
+			name: "delta".to_string(),
+			config: vec![],
+		}),
+	};
+	let config = vec![
+		("column".to_string(), Value::Utf8("value".to_string())),
+		("base".to_string(), Value::Utf8("first".to_string())),
+	];
+	assert_eq!(
+		render_series(&series, None, Some(&config), &resolver()).unwrap(),
+		"CREATE SERIES sales::metrics { ts: datetime, value: int4 } WITH { key: ts, precision: millisecond, column: { encoding: { delta: { column: value, base: first } } } };"
 	);
 }
 

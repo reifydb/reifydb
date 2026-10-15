@@ -8,6 +8,8 @@ use std::sync::Arc;
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::cache::CatalogCache;
 use reifydb_core::interface::{auth::AuthenticationProvider, catalog::config::ConfigKey};
+#[cfg(feature = "column")]
+use reifydb_extension::block_encoding::registry::BlockEncodingsConfigurator;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_profiler::{
 	event::{ProfilerScopeBatchEvent, ProfilerScopeClosedEvent},
@@ -135,6 +137,9 @@ pub struct ServerBuilder {
 	console_factory: Option<Box<dyn SubsystemFactory>>,
 	routines_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
 	handlers_configurator: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static>>,
+	#[cfg(feature = "column")]
+	block_encodings_configurator:
+		Option<Box<dyn FnOnce(BlockEncodingsConfigurator) -> BlockEncodingsConfigurator + Send + 'static>>,
 	#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 	procedure_dir: Option<PathBuf>,
 	#[cfg(feature = "sub_tracing")]
@@ -166,6 +171,8 @@ impl ServerBuilder {
 			console_factory: None,
 			routines_configurator: None,
 			handlers_configurator: None,
+			#[cfg(feature = "column")]
+			block_encodings_configurator: None,
 			#[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 			procedure_dir: None,
 			#[cfg(feature = "sub_tracing")]
@@ -237,6 +244,15 @@ impl ServerBuilder {
 		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + Send + 'static,
 	{
 		self.routines_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	#[cfg(feature = "column")]
+	pub fn with_block_encodings<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(BlockEncodingsConfigurator) -> BlockEncodingsConfigurator + Send + 'static,
+	{
+		self.block_encodings_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -395,6 +411,11 @@ impl ServerBuilder {
 				.with_interceptor_builder(self.interceptors)
 				.with_stores(multi_store, single_store, operator_store, cdc_store);
 
+		#[cfg(feature = "column")]
+		if let Some(configurator) = self.block_encodings_configurator {
+			database_builder = database_builder.with_block_encodings(configurator);
+		}
+
 		if self.fast_shutdown {
 			database_builder = database_builder.with_fast_shutdown();
 		}
@@ -434,9 +455,7 @@ impl ServerBuilder {
 
 		#[cfg(feature = "sub_metric_profiler")]
 		#[allow(unused_variables)]
-		let profiler_layer: Option<ProfilerLayer> = if let Some(configurator_fn) =
-			self.profiler_configurator.take()
-		{
+		let profiler_layer: Option<ProfilerLayer> = if let Some(configurator_fn) = self.profiler_configurator.take() {
 			let cfg = configurator_fn(ProfilerConfigurator::new());
 			let interner = Arc::new(DimInterner::new());
 			let instruments = Arc::new(ProfilerInstruments::new());
@@ -546,9 +565,9 @@ impl ServerBuilder {
 		{
 			let inner = self.tracing_configurator.unwrap_or_else(|| Box::new(|t| t));
 			#[cfg(feature = "sub_metric_profiler")]
-			let configurator: Box<
-				dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send,
-			> = if let Some(layer) = profiler_layer {
+			let configurator: Box<dyn FnOnce(TracingConfigurator) -> TracingConfigurator + Send> = if let Some(layer) =
+				profiler_layer
+			{
 				Box::new(move |t| inner(t.with_layer(layer).with_layer_filter(LevelFilter::TRACE)))
 			} else {
 				inner

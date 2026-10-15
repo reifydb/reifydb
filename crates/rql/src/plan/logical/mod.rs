@@ -54,8 +54,8 @@ use crate::{
 		ast::{
 			Ast, AstAlterPolicyAction, AstBindingProtocol, AstBodyEntry, AstConfigPair, AstInfix,
 			AstPolicyOperationEntry, AstPolicyScope, AstPolicyTargetType, AstProcedureParam,
-			AstRelationshipCardinality, AstRunTests, AstStatement, AstType, AstVariant, AstViewStorageKind,
-			InfixOperator,
+			AstRelationshipCardinality, AstRunTests, AstSeriesEncoding, AstStatement, AstType, AstVariant,
+			AstViewStorageKind, InfixOperator,
 		},
 		identifier::{
 			MaybeQualifiedBindingIdentifier, MaybeQualifiedColumnIdentifier,
@@ -1162,6 +1162,7 @@ pub struct CreateSeriesNode<'bump> {
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
 	pub time: TimeSource,
+	pub encoding: Option<AstSeriesEncoding<'bump>>,
 }
 
 #[derive(Debug)]

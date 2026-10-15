@@ -2,6 +2,8 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod assert;
+#[cfg(feature = "column")]
+pub mod block_encoding;
 
 #[cfg(feature = "engine")]
 pub mod engine;

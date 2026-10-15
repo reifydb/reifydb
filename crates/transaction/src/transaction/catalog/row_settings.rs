@@ -36,8 +36,7 @@ impl TransactionalRowSettingsChanges for AdminTransaction {
 					return Some(settings);
 				}
 			} else if let Some((s, _)) = &change.pre
-				&& *s == storage
-				&& change.op == Delete
+				&& *s == storage && change.op == Delete
 			{
 				return None;
 			}

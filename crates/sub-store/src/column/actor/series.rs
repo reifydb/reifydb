@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{HashMap, HashSet},
+	ops::Range,
 	sync::Arc,
 };
 
@@ -24,6 +25,7 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, partition::PartitionKey},
 	partition::registry_values,
+	retry::is_conflict,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
@@ -33,6 +35,7 @@ use reifydb_engine::{
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
+use reifydb_extension::block_encoding::registry::BlockEncodings;
 use reifydb_runtime::actor::{
 	context::Context,
 	system::ActorConfig,
@@ -44,7 +47,6 @@ use reifydb_store_column::{
 	compress::Compressor,
 	device::BlockKey,
 	snapshot::ColumnBlock,
-	stats::block_stats,
 	store::ColumnStore,
 };
 use reifydb_transaction::{
@@ -66,7 +68,10 @@ use tracing::debug;
 use crate::column::{
 	actor::{
 		SeriesMessage,
-		batches::{column_block_from_batches, system_column_schema},
+		batches::{
+			arrow_columns_from_batches, compress_columns, encode_series_block, stats_from_arrow,
+			system_column_schema,
+		},
 	},
 	error::SubStoreError,
 };
@@ -81,6 +86,7 @@ pub struct SeriesMaterializationActor {
 	engine: StandardEngine,
 	block_store: ColumnStore,
 	compressor: Compressor,
+	block_encodings: BlockEncodings,
 	tick_interval: Duration,
 	bucket_width: u64,
 	grace: Duration,
@@ -98,6 +104,7 @@ impl SeriesMaterializationActor {
 		engine: StandardEngine,
 		block_store: ColumnStore,
 		compressor: Compressor,
+		block_encodings: BlockEncodings,
 		tick_interval: Duration,
 		bucket_width: u64,
 		grace: Duration,
@@ -106,6 +113,7 @@ impl SeriesMaterializationActor {
 			engine,
 			block_store,
 			compressor,
+			block_encodings,
 			tick_interval,
 			bucket_width,
 			grace,
@@ -129,9 +137,13 @@ impl SeriesMaterializationActor {
 		};
 		state.partitions.clear();
 		for series in series_list {
-			if let Err(e) =
-				self.materialize_series_buckets(state, &mut query_txn, &catalog, &series, now_wall)
-			{
+			if let Err(e) = skip_on_conflict(self.materialize_series_buckets(
+				state,
+				&mut query_txn,
+				&catalog,
+				&series,
+				now_wall,
+			)) {
 				panic!(
 					"series materialization failed for series {:?} ({}): {e}",
 					series.id, series.name
@@ -169,6 +181,10 @@ impl SeriesMaterializationActor {
 			}
 			let first = bucket_for(metadata.oldest_key, self.bucket_width);
 			let last = bucket_for(metadata.newest_key, self.bucket_width);
+			let live = first.start..last.end;
+			if metadata.dirty_from_key < live.start || metadata.dirty_to_key > live.end {
+				self.drop_snapshots_outside(state, series, partition, live)?;
+			}
 			let mut start = first.start;
 			let mut deferred = false;
 			let scope = PartitionScope {
@@ -187,12 +203,7 @@ impl SeriesMaterializationActor {
 					.maybe_materialize_bucket(state, query_txn, series, scope, &bucket, now_wall)?;
 			}
 			if !deferred {
-				self.clear_dirty_mark(
-					series,
-					partition,
-					metadata.dirty_from_key,
-					metadata.dirty_to_key,
-				)?;
+				self.clear_dirty_mark(series, partition, &metadata)?;
 			}
 		}
 		Ok(())
@@ -204,6 +215,19 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		partition: Partition,
 	) -> Result<()> {
+		if self.drop_snapshots_outside(state, series, partition, 0..0)? {
+			self.reset_dirty_mark(series, partition)?;
+		}
+		Ok(())
+	}
+
+	fn drop_snapshots_outside(
+		&self,
+		state: &mut SeriesMaterializationState,
+		series: &Series,
+		partition: Partition,
+		live: Range<u64>,
+	) -> Result<bool> {
 		let stored_partition = if series.partition_by.is_empty() {
 			None
 		} else {
@@ -217,13 +241,14 @@ impl SeriesMaterializationActor {
 			.filter(|snapshot| match snapshot.source {
 				ColumnSnapshotSource::SeriesBucket {
 					partition,
+					bucket_start,
 					..
-				} => partition == stored_partition,
+				} => partition == stored_partition && !live.contains(&bucket_start),
 				_ => false,
 			})
 			.collect();
 		if stale.is_empty() {
-			return Ok(());
+			return Ok(false);
 		}
 		for snapshot in &stale {
 			catalog.drop_column_snapshot(&mut admin, snapshot.id)?;
@@ -232,8 +257,10 @@ impl SeriesMaterializationActor {
 		for snapshot in &stale {
 			self.block_store.remove(&BlockKey::of(snapshot))?;
 		}
-		state.bucket_state.retain(|(id, part, _)| *id != series.id || *part != partition);
-		self.reset_dirty_mark(series, partition)
+		state.bucket_state.retain(|(id, part, bucket)| {
+			*id != series.id || *part != partition || live.contains(&bucket.0)
+		});
+		Ok(true)
 	}
 
 	fn reset_dirty_mark(&self, series: &Series, partition: Partition) -> Result<()> {
@@ -260,10 +287,9 @@ impl SeriesMaterializationActor {
 		&self,
 		series: &Series,
 		partition: Partition,
-		observed_from: u64,
-		observed_to: u64,
+		observed: &SeriesPartitionMetadata,
 	) -> Result<()> {
-		if observed_from >= observed_to {
+		if observed.dirty_from_key >= observed.dirty_to_key {
 			return Ok(());
 		}
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
@@ -272,13 +298,14 @@ impl SeriesMaterializationActor {
 		let Some(mut metadata) = catalog.find_series_metadata(&mut tx, series.id, partition)? else {
 			return Ok(());
 		};
-		if metadata.dirty_from_key < observed_from || metadata.dirty_to_key > observed_to {
+		if !unchanged_since_scan(&metadata, observed) {
 			return Ok(());
 		}
 		metadata.dirty_from_key = u64::MAX;
 		metadata.dirty_to_key = 0;
+		let observed = observed.clone();
 		catalog.update_series_metadata_rebased_txn(&mut tx, series.id, partition, metadata, move |latest| {
-			if latest.dirty_from_key >= observed_from && latest.dirty_to_key <= observed_to {
+			if unchanged_since_scan(latest, &observed) {
 				latest.dirty_from_key = u64::MAX;
 				latest.dirty_to_key = 0;
 			}
@@ -367,9 +394,8 @@ impl SeriesMaterializationActor {
 			);
 		}
 
-		let block = Arc::new(self.build_column_block(series, batches, sealed_at_commit_version)?);
-		let stats = block_stats(block.as_ref(), self.block_store.session())?;
-		self.upsert_snapshot_and_store(series, scope, &stats, bucket, sealed_at_commit_version, block)
+		let (block, stats) = self.build_column_block(series, batches, sealed_at_commit_version)?;
+		self.upsert_snapshot_and_store(series, scope, &stats, bucket, sealed_at_commit_version, Arc::new(block))
 	}
 
 	#[inline]
@@ -454,9 +480,17 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		batches: Vec<RecordBatch>,
 		version: CommitVersion,
-	) -> Result<ColumnBlock> {
+	) -> Result<(ColumnBlock, Vec<ColumnStats>)> {
 		let schema = scan_output_schema(series);
-		column_block_from_batches(schema, batches, version, &self.compressor)
+		let columns = arrow_columns_from_batches(&schema, &batches, version)?;
+		let stats = stats_from_arrow(&columns, self.block_store.session())?;
+		let block = match &series.encoding {
+			None => compress_columns(columns, &self.compressor)?,
+			Some(encoding) => {
+				encode_series_block(columns, series, encoding, &self.block_encodings, &self.compressor)?
+			}
+		};
+		Ok((block, stats))
 	}
 
 	#[inline]
@@ -516,6 +550,17 @@ impl SeriesMaterializationActor {
 		commit_admin(admin)?;
 		Ok(())
 	}
+}
+
+fn skip_on_conflict(result: Result<()>) -> Result<()> {
+	match result {
+		Err(e) if is_conflict(&e) => Ok(()),
+		other => other,
+	}
+}
+
+fn unchanged_since_scan(current: &SeriesPartitionMetadata, observed: &SeriesPartitionMetadata) -> bool {
+	current == observed
 }
 
 fn commit_admin(mut admin: AdminTransaction) -> Result<()> {
@@ -595,10 +640,14 @@ impl Actor for SeriesMaterializationActor {
 
 #[cfg(test)]
 mod tests {
-	use std::thread::scope;
+	use std::{cell::Cell, thread::scope};
 
+	use reifydb_core::{
+		error::diagnostic::transaction::{transaction_conflict, transaction_rolled_back},
+		interface::catalog::series::SeriesPartitionMetadata,
+	};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::params;
+	use reifydb_value::{error::Error, params};
 
 	use super::*;
 
@@ -626,6 +675,7 @@ mod tests {
 			engine.clone(),
 			store,
 			compressor,
+			BlockEncodings::empty(),
 			Duration::from_milliseconds(50).unwrap(),
 			1_000,
 			Duration::from_milliseconds(0).unwrap(),
@@ -674,15 +724,58 @@ mod tests {
 	#[test]
 	fn a_dirty_mark_clear_never_rewinds_what_an_unchecked_bulk_committed() {
 		// A clear must judge the latest dirty range, otherwise it writes back a stale counter and count.
+		// Without counting clears that wrote, the equality check could skip every one and pass vacuously.
+		let cleared = Cell::new(0u64);
 		race_unchecked_bulks(|actor, engine, series| {
 			let observed = stored_metadata(engine);
-			actor.clear_dirty_mark(
-				series,
-				Partition::default(),
-				observed.dirty_from_key,
-				observed.dirty_to_key,
-			)
-			.expect("the clear commits");
+			actor.clear_dirty_mark(series, Partition::default(), &observed).expect("the clear commits");
+			let after = stored_metadata(engine);
+			if observed.dirty_from_key < observed.dirty_to_key
+				&& after.dirty_from_key == u64::MAX
+				&& after.dirty_to_key == 0
+			{
+				cleared.set(cleared.get() + 1);
+			}
 		});
+		assert!(cleared.get() > 0, "no clear wrote during the race, so nothing was tested");
+	}
+
+	#[test]
+	fn a_conflicting_seal_is_skipped_until_the_next_tick() {
+		// A conflict with a user write must not panic the actor; the dirty mark survives and the next tick
+		// redoes it.
+		assert!(skip_on_conflict(Err(Error(Box::new(transaction_conflict())))).is_ok());
+	}
+
+	#[test]
+	fn any_other_seal_error_still_reaches_the_panic() {
+		// Only the conflict is expected; swallowing any other error would keep the actor running on wrong data.
+		let err = skip_on_conflict(Err(Error(Box::new(transaction_rolled_back())))).unwrap_err();
+		assert_eq!(err.code, "TXN_002");
+	}
+
+	fn scanned() -> SeriesPartitionMetadata {
+		SeriesPartitionMetadata {
+			row_count: 35,
+			oldest_key: 4,
+			newest_key: 88,
+			dirty_from_key: 4,
+			dirty_to_key: 89,
+			..SeriesPartitionMetadata::new()
+		}
+	}
+
+	#[test]
+	fn a_delete_inside_the_dirty_range_after_the_scan_keeps_the_dirty_mark() {
+		// The block was built from the pre-delete snapshot; clearing the mark would bring the deleted row back.
+		let mut current = scanned();
+		current.row_count -= 1;
+		assert!(!unchanged_since_scan(&current, &scanned()));
+	}
+
+	#[test]
+	fn a_partition_untouched_since_the_scan_clears_its_dirty_mark() {
+		// Without this the mark never clears and every tick rebuilds the same buckets.
+		assert!(unchanged_since_scan(&scanned(), &scanned()));
 	}
 }

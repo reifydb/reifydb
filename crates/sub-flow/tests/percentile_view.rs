@@ -699,8 +699,7 @@ fn poisoned_before_flows_catch_up(db: &TestDb) -> Option<String> {
 			db.get_all_component_health().remove("flow").expect("the flow subsystem is registered").status;
 		if let HealthStatus::Degraded {
 			description,
-		} = &status
-			&& description.contains("poisoned")
+		} = &status && description.contains("poisoned")
 		{
 			return Some(description.clone());
 		}

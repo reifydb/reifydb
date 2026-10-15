@@ -20,7 +20,7 @@ use reifydb_value::value::sumtype::SumTypeId;
 use super::CatalogCache;
 use crate::{
 	CatalogStore, Result,
-	store::series::{decode_series_time, shape::series},
+	store::series::{decode_series_encoding, decode_series_time, shape::series},
 };
 
 pub(crate) fn load_series(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
@@ -86,6 +86,7 @@ fn convert_series<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryKey>)
 		primary_key,
 		partition_by,
 		time: decode_series_time(&bytes),
+		encoding: decode_series_encoding(&bytes)?,
 	})
 }
 
@@ -95,5 +96,54 @@ fn get_series_primary_key_id<K>(multi: &MultiVersionRow<K>) -> Option<PrimaryKey
 		None
 	} else {
 		Some(PrimaryKeyId(pk_id_raw))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		common::{CommitVersion, TimeSource},
+		interface::catalog::series::{SeriesEncoding, SeriesKey},
+	};
+	use reifydb_test_harness::engine::create_test_admin_transaction;
+	use reifydb_value::fragment::Fragment;
+
+	use super::*;
+	use crate::{
+		cache::load::CatalogCacheLoader, store::series::create::SeriesToCreate,
+		test_utils::ensure_test_namespace,
+	};
+
+	#[test]
+	fn the_cache_loader_keeps_the_encoding() {
+		// A loader that sets no encoding makes every encoded series read as plain after a restart.
+		let mut txn = create_test_admin_transaction();
+		let namespace = ensure_test_namespace(&mut txn);
+		let encoding = SeriesEncoding {
+			name: "delta".to_string(),
+			config: vec![9, 8, 7],
+		};
+		let created = CatalogStore::create_series(
+			&mut txn,
+			SeriesToCreate {
+				namespace: namespace.id(),
+				name: Fragment::internal("encoded"),
+				columns: vec![],
+				tag: None,
+				key: SeriesKey::Integer {
+					column: "k".to_string(),
+				},
+				partition_by: vec![],
+				time: TimeSource::Processing,
+				encoding: Some(encoding.clone()),
+			},
+		)
+		.unwrap();
+
+		let catalog = CatalogCache::new();
+		CatalogCacheLoader::load_all(&mut Transaction::Admin(&mut txn), &catalog).unwrap();
+
+		let cached = catalog.find_series_at(created.id, CommitVersion(u64::MAX)).expect("series in the cache");
+		assert_eq!(cached.encoding, Some(encoding));
 	}
 }

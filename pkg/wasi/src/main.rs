@@ -40,7 +40,7 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
-use reifydb_extension::transform::registry::Transforms;
+use reifydb_extension::{block_encoding::registry::BlockEncodings, transform::registry::Transforms};
 use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::RqlVersion;
@@ -167,6 +167,7 @@ impl Bridge {
 				runtime_context: RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone()),
 				routines,
 				transforms: Transforms::empty(),
+				block_encodings: BlockEncodings::empty(),
 				ioc,
 				auth_registry: Arc::new(AuthenticationRegistry::new(clock.clone(), rng.clone())),
 				#[cfg(not(reifydb_single_threaded))]

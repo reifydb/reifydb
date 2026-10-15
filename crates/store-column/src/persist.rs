@@ -31,7 +31,7 @@ use vortex_session::{
 use crate::{
 	convert::to_vortex,
 	error::{ColumnError, fs, vortex},
-	snapshot::{ColumnBlock, ColumnChunks},
+	snapshot::{BlockEncodingHeader, ColumnBlock, ColumnChunks},
 };
 
 const MAGIC: &[u8; 4] = b"BORG";
@@ -43,6 +43,7 @@ struct BorgHeader {
 	align: u32,
 	encodings: Vec<String>,
 	columns: Vec<BorgColumn>,
+	block_encoding: Option<BlockEncodingHeader>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -126,6 +127,7 @@ pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<V
 		align: align as u32,
 		encodings: array_ctx.to_ids().iter().map(|id| id.as_str().to_string()).collect(),
 		columns,
+		block_encoding: block.block_encoding.clone(),
 	};
 	let header = to_stdvec(&header).map_err(|err| ColumnError::PersistSerialize {
 		reason: err.to_string(),
@@ -255,7 +257,7 @@ impl<R: Pread + Len> BlockHandle<R> {
 				chunks,
 			));
 		}
-		Ok(ColumnBlock::new(Arc::new(schema), out))
+		Ok(ColumnBlock::new(Arc::new(schema), out).with_block_encoding(self.header.block_encoding.clone()))
 	}
 }
 
@@ -330,7 +332,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::{convert::to_arrow, session::new_session};
+	use crate::{convert::to_arrow, session::new_session, snapshot::BlockUserColumn};
 
 	fn chunks(ty: ValueType, nullable: bool, column: &(FieldRef, ArrowArrayRef)) -> ColumnChunks {
 		let array = to_vortex(&new_session(), column).unwrap();
@@ -556,5 +558,59 @@ mod tests {
 		assert_eq!(*log.0.lock(), expected, "reading b must touch only the byte ranges of its chunks");
 		assert_eq!(read.schema.iter().map(|(name, _, _)| name.as_str()).collect::<Vec<_>>(), vec!["b"]);
 		assert_eq!(block_values(&read), vec![block_values(&block)[1].clone()]);
+	}
+
+	fn encoded_header() -> BlockEncodingHeader {
+		BlockEncodingHeader {
+			name: "delta".to_string(),
+			version: 3,
+			config: vec![1, 2, 3],
+			user: vec![BlockUserColumn {
+				name: "value".to_string(),
+				ty: ValueType::Int8,
+				nullable: false,
+				field_type: from_field(&factory::int8("value", [0i64]).0).unwrap(),
+			}],
+		}
+	}
+
+	fn int8_block() -> ColumnBlock {
+		let schema = Arc::new(vec![("value_delta".to_string(), ValueType::Int8, false)]);
+		ColumnBlock::new(
+			schema,
+			vec![chunks(ValueType::Int8, false, &factory::int8("value_delta", [5i64, 1, 1]))],
+		)
+	}
+
+	fn stored_header(block: &ColumnBlock) -> BorgHeader {
+		let session = new_session();
+		let bytes = serialize_block(block, &session).unwrap();
+		let fs = MemoryFs::new();
+		let path = Path::new("/block.borg");
+		fs.create(path, bytes.len() as u64).unwrap().pwrite(0, &bytes).unwrap();
+		BlockHandle::open(fs.open(path).unwrap(), session).unwrap().header
+	}
+
+	#[test]
+	fn block_encoding_survives_serialize_and_read() {
+		// A header lost on disk makes the read return stored columns as if they were user columns.
+		let restored = round_trip(&int8_block().with_block_encoding(Some(encoded_header())));
+		assert_eq!(restored.block_encoding, Some(encoded_header()));
+	}
+
+	#[test]
+	fn a_block_without_encoding_reads_back_none() {
+		// A plain block that reads back with a header would be sent through a decoder it never had.
+		assert_eq!(round_trip(&int8_block()).block_encoding, None);
+	}
+
+	#[test]
+	fn encodings_field_still_holds_only_vortex_ids() {
+		// The read context resolves every `encodings` id in the vortex registry; a block encoding name there
+		// breaks the read.
+		let plain = stored_header(&int8_block());
+		let encoded = stored_header(&int8_block().with_block_encoding(Some(encoded_header())));
+		assert_eq!(plain.encodings, encoded.encodings);
+		assert!(!encoded.encodings.iter().any(|id| id == "delta"));
 	}
 }

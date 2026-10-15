@@ -13,16 +13,16 @@ use crate::{
 	ast::{
 		ast::{
 			AstBindingProtocolKind, AstColumnProperty, AstColumnPropertyEntry, AstColumnPropertyKind,
-			AstColumnToCreate, AstCreate, AstCreateColumnProperty, AstCreateDeferredView,
-			AstCreateDictionary, AstCreateEvent, AstCreateHandler, AstCreateMigration, AstCreateNamespace,
-			AstCreatePrimaryKey, AstCreateProcedure, AstCreateQueue, AstCreateRelationship,
-			AstCreateRemoteNamespace, AstCreateRingBuffer, AstCreateSeries, AstCreateSumType,
-			AstCreateTable, AstCreateTag, AstCreateTest, AstCreateTransactionalView, AstIndexColumn,
-			AstPersistent, AstPolicyTargetType, AstPrimaryKey, AstProcedureParam, AstQueueDeduplicate,
-			AstQueueDispatch, AstQueueFifo, AstQueueRetention, AstQueueRetry, AstRelationshipCardinality,
-			AstRelationshipJunction, AstRowSettings, AstStatement, AstTimeDeclaration,
-			AstTimestampPrecision, AstTtl, AstType, AstTypeParameter, AstVariant, AstViewStorageKind,
-			AstViewWithClause,
+			AstColumnSettings, AstColumnToCreate, AstCreate, AstCreateColumnProperty,
+			AstCreateDeferredView, AstCreateDictionary, AstCreateEvent, AstCreateHandler,
+			AstCreateMigration, AstCreateNamespace, AstCreatePrimaryKey, AstCreateProcedure,
+			AstCreateQueue, AstCreateRelationship, AstCreateRemoteNamespace, AstCreateRingBuffer,
+			AstCreateSeries, AstCreateSumType, AstCreateTable, AstCreateTag, AstCreateTest,
+			AstCreateTransactionalView, AstIndexColumn, AstPersistent, AstPolicyTargetType, AstPrimaryKey,
+			AstProcedureParam, AstQueueDeduplicate, AstQueueDispatch, AstQueueFifo, AstQueueRetention,
+			AstQueueRetry, AstRelationshipCardinality, AstRelationshipJunction, AstRowSettings,
+			AstSeriesEncoding, AstStatement, AstTimeDeclaration, AstTimestampPrecision, AstTtl, AstType,
+			AstTypeParameter, AstVariant, AstViewStorageKind, AstViewWithClause,
 		},
 		identifier::{
 			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedDictionaryIdentifier,
@@ -59,6 +59,17 @@ const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
 const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', or 'on'";
+const SERIES_WITH_KEYS: &str = "'key', 'tag', 'precision', 'partition', 'row', 'time', or 'column'";
+
+fn unexpected_option(token: &Token<'_>, expected: &str) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: expected.to_string(),
+		},
+		message: format!("expected {}, found `{}`", expected, token.fragment.text()),
+		fragment: token.fragment.to_owned(),
+	})
+}
 
 fn unexpected_queue_option(token: &Token<'_>, expected: &str) -> Error {
 	Error::from(TypeError::Ast {
@@ -692,6 +703,7 @@ impl<'bump> Parser<'bump> {
 		let mut settings = None;
 		let mut partition_by: Vec<String> = Vec::new();
 		let mut time_declaration = AstTimeDeclaration::default();
+		let mut column = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -717,11 +729,11 @@ impl<'bump> Parser<'bump> {
 						_ => {
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'key', 'tag', 'precision', or 'ttl'"
-										.to_string(),
+									expected: SERIES_WITH_KEYS.to_string(),
 								},
 								message: format!(
-									"expected 'key', 'tag', 'precision', or 'row', found `{}`",
+									"expected {}, found `{}`",
+									SERIES_WITH_KEYS,
 									current.fragment.text()
 								),
 								fragment: current.fragment.to_owned(),
@@ -778,16 +790,24 @@ impl<'bump> Parser<'bump> {
 					"time" => {
 						time_declaration = self.parse_time_declaration()?;
 					}
+					"column" => {
+						if column.is_some() {
+							return Err(unexpected_option(
+								&with_key,
+								"'column' given once",
+							));
+						}
+						column = Some(self.parse_column_config()?);
+					}
 					_other => {
 						let fragment = with_key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'key', 'tag', 'precision', 'partition', 'row', or 'time'"
-									.to_string(),
+								expected: SERIES_WITH_KEYS.to_string(),
 							},
 							message: format!(
 								"Unexpected token: expected {}, got {}",
-								"'key', 'tag', 'precision', 'partition', 'row', or 'time'",
+								SERIES_WITH_KEYS,
 								fragment.text()
 							),
 							fragment,
@@ -832,6 +852,7 @@ impl<'bump> Parser<'bump> {
 			partition_by,
 			settings,
 			time_declaration,
+			column,
 		}))
 	}
 
@@ -2573,6 +2594,87 @@ impl<'bump> Parser<'bump> {
 		Ok(clause)
 	}
 
+	fn parse_column_config(&mut self) -> Result<AstColumnSettings<'bump>> {
+		self.consume_operator(Operator::OpenCurly)?;
+		let mut settings = AstColumnSettings::default();
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume_identifier()?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"encoding" => {
+					if settings.encoding.is_some() {
+						return Err(unexpected_option(&key, "'encoding' given once"));
+					}
+					settings.encoding = Some(self.parse_encoding_config()?);
+				}
+				_other => return Err(unexpected_option(&key, "'encoding'")),
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok(settings)
+	}
+
+	fn parse_encoding_config(&mut self) -> Result<AstSeriesEncoding<'bump>> {
+		let open = self.consume_operator(Operator::OpenCurly)?;
+		self.skip_new_line()?;
+		if self.current()?.is_operator(Operator::CloseCurly) {
+			return Err(unexpected_option(&open, "exactly one encoding name"));
+		}
+		let name = self.consume_identifier()?;
+		self.consume_operator(Operator::Colon)?;
+		self.consume_operator(Operator::OpenCurly)?;
+		let mut params: Vec<(BumpFragment<'bump>, BumpFragment<'bump>)> = Vec::new();
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume_identifier()?;
+			if params.iter().any(|(existing, _)| existing.text() == key.fragment.text()) {
+				return Err(unexpected_option(&key, "unique encoding parameter names"));
+			}
+			self.consume_operator(Operator::Colon)?;
+			let value = self.consume_identifier()?;
+			params.push((key.fragment, value.fragment));
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+		self.consume_operator(Operator::CloseCurly)?;
+		self.skip_new_line()?;
+		let current = self.current()?;
+		if !current.is_operator(Operator::CloseCurly) {
+			return Err(unexpected_option(&current, "exactly one encoding name"));
+		}
+		self.consume_operator(Operator::CloseCurly)?;
+		Ok(AstSeriesEncoding {
+			name: name.fragment,
+			params,
+		})
+	}
+
 	fn parse_row_config(&mut self) -> Result<AstRowSettings<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
@@ -2660,8 +2762,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if let Some(p) = &persistent
-			&& !p.value
-			&& duration.is_none()
+			&& !p.value && duration.is_none()
 		{
 			let fragment = p.token.fragment.to_owned();
 			return Err(Error::from(TypeError::Ast {
@@ -2913,12 +3014,13 @@ enum ViewStorageKindHint {
 
 #[cfg(test)]
 pub mod tests {
-	use bumpalo::Bump;
+	use bumpalo::{Bump, boxed::Box};
 
 	use crate::{
+		Result,
 		ast::{
 			ast::{
-				AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
+				Ast, AstColumnProperty, AstCreate, AstCreateDeferredView, AstCreateDictionary,
 				AstCreateNamespace, AstCreateQueue, AstCreateRingBuffer, AstCreateSeries,
 				AstCreateSumType, AstCreateTable, AstCreateTransactionalView, AstQueueDispatch,
 				AstType,
@@ -4046,6 +4148,142 @@ pub mod tests {
 		);
 
 		assert!(!msg.is_empty(), "expected a parse error message");
+	}
+
+	fn parse_series<'b>(bump: &'b Bump, source: &'b str) -> Result<AstCreateSeries<'b>> {
+		let tokens = tokenize(bump, source)?.into_iter().collect();
+		let mut parser = Parser::new(bump, source, tokens);
+		let mut result = parser.parse()?;
+		let statement = result.pop().unwrap();
+		let Some(Ast::Create(create)) = statement.nodes.into_iter().next() else {
+			panic!("expected CREATE SERIES");
+		};
+		match Box::into_inner(create) {
+			AstCreate::Series(series) => Ok(series),
+			_ => panic!("expected CREATE SERIES"),
+		}
+	}
+
+	fn series_error(source: &str) -> String {
+		let bump = Bump::new();
+		let err = parse_series(&bump, source).expect_err("the DDL must be rejected");
+		format!("{:?}", err.diagnostic())
+	}
+
+	#[test]
+	fn test_create_series_with_encoding_keeps_name_and_param_order() {
+		// A map or sort over the params changes the stored config bytes and the order the encoding reads.
+		let bump = Bump::new();
+		let series = parse_series(
+			&bump,
+			"create series ns::s { ts: int8, open: int8, high: int8, low: int8, close: int8 } with { key: ts, column: { encoding: { ohlcv: { open: o, high: h, low: l, close: c } } } }",
+		)
+		.unwrap();
+		let encoding = series.column.unwrap().encoding.unwrap();
+		assert_eq!(encoding.name.text(), "ohlcv");
+		let params: Vec<(&str, &str)> = encoding.params.iter().map(|(k, v)| (k.text(), v.text())).collect();
+		assert_eq!(params, vec![("open", "o"), ("high", "h"), ("low", "l"), ("close", "c")]);
+		assert_eq!(series.key.unwrap().text(), "ts");
+	}
+
+	#[test]
+	fn test_create_series_encoding_with_two_names_fails() {
+		// A block holds exactly one encoding; a second name would be silently dropped.
+		let message = series_error(
+			"create series ns::s { ts: int8, v: int8 } with { key: ts, column: { encoding: { a: {}, b: {} } } }",
+		);
+		assert!(message.contains("exactly one encoding name"), "{message}");
+	}
+
+	#[test]
+	fn test_create_series_encoding_duplicate_param_fails() {
+		// A repeated key lets the later value win without the author noticing.
+		let message = series_error(
+			"create series ns::s { ts: int8, v: int8 } with { key: ts, column: { encoding: { d: { column: a, column: b } } } }",
+		);
+		assert!(message.contains("unique encoding parameter names"), "{message}");
+	}
+
+	#[test]
+	fn test_create_series_encoding_rejects_non_identifier_value() {
+		// Param values are identifiers only; a number would need a typed config the encodings do not read.
+		series_error(
+			"create series ns::s { ts: int8, v: int8 } with { key: ts, column: { encoding: { d: { column: 1 } } } }",
+		);
+	}
+
+	#[test]
+	fn test_create_series_without_encoding_has_none() {
+		// A default encoding would reshape every plain series.
+		let bump = Bump::new();
+		let series = parse_series(&bump, "create series ns::s { ts: int8, v: int8 } with { key: ts }").unwrap();
+		assert!(series.column.is_none());
+	}
+
+	#[test]
+	fn test_create_series_with_empty_column_block_has_no_encoding() {
+		// An empty column block is valid and means no encoding.
+		let bump = Bump::new();
+		let series =
+			parse_series(&bump, "create series ns::s { ts: int8, v: int8 } with { key: ts, column: {} }")
+				.unwrap();
+		assert!(series.column.unwrap().encoding.is_none());
+	}
+
+	#[test]
+	fn test_create_series_with_empty_encoding_fails() {
+		// An encoding block without a name names nothing to bind.
+		let message = series_error(
+			"create series ns::s { ts: int8, v: int8 } with { key: ts, column: { encoding: {} } }",
+		);
+		assert!(message.contains("exactly one encoding name"), "{message}");
+	}
+
+	#[test]
+	fn test_create_series_column_given_twice_fails() {
+		// Otherwise the later column block silently wins.
+		let message = series_error(
+			"create series ns::s { ts: int8, v: int8 } with { key: ts, column: {}, column: { encoding: { d: { column: v } } } }",
+		);
+		assert!(message.contains("'column' given once"), "{message}");
+	}
+
+	#[test]
+	fn test_create_series_encoding_given_twice_in_column_fails() {
+		// Otherwise the later encoding silently wins.
+		let message = series_error(
+			"create series ns::s { ts: int8, v: int8 } with { key: ts, column: { encoding: { a: {} }, encoding: { b: {} } } }",
+		);
+		assert!(message.contains("'encoding' given once"), "{message}");
+	}
+
+	#[test]
+	fn test_create_series_column_block_rejects_unknown_key() {
+		// An ignored key hides a typo the author meant as an option.
+		let message = series_error(
+			"create series ns::s { ts: int8, v: int8 } with { key: ts, column: { stats: x } }",
+		);
+		assert!(message.contains("'encoding'"), "{message}");
+	}
+
+	#[test]
+	fn test_create_series_non_identifier_with_key_names_all_seven_keys() {
+		// The diagnostic must offer `column`, or the author never learns the option exists.
+		let message = series_error("create series ns::s { ts: int8, v: int8 } with { 1: x }");
+		assert!(
+			message.contains("'key', 'tag', 'precision', 'partition', 'row', 'time', or 'column'"),
+			"{message}"
+		);
+	}
+
+	#[test]
+	fn test_create_table_rejects_column_block() {
+		// Tables have no block encodings; accepting the key would drop it silently.
+		let bump = Bump::new();
+		let source = "create table ns::t { id: int4 } with { column: { encoding: { d: { column: id } } } }";
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		assert!(parser.parse().is_err());
 	}
 }
 

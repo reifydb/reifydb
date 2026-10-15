@@ -14,6 +14,8 @@ doctest = false
 reifydb-build = { workspace = true }
 
 [dependencies]
+arrow-array = { workspace = true, optional = true }
+arrow-schema = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 reifydb-catalog = { workspace = true, optional = true }
 reifydb-core = { workspace = true, optional = true }
@@ -66,6 +68,9 @@ operator = [
     "dep:reifydb-flow-async",
 ]
 column = [
+    "dep:arrow-array",
+    "dep:arrow-schema",
+    "dep:reifydb-extension",
     "dep:reifydb-store-column",
     "reifydb-store-column/testing",
     "dep:reifydb-runtime",

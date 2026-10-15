@@ -128,7 +128,7 @@ impl RetryStrategy {
 	}
 }
 
-fn is_conflict(err: &Error) -> bool {
+pub fn is_conflict(err: &Error) -> bool {
 	err.code == "TXN_001"
 }
 

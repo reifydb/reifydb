@@ -40,6 +40,8 @@ use crate::{Result, vm::services::Services};
 #[cfg(feature = "column")]
 pub mod column_block_sequence;
 #[cfg(feature = "column")]
+pub mod column_decode;
+#[cfg(feature = "column")]
 pub mod column_predicate;
 #[cfg(feature = "column")]
 pub mod column_prune;

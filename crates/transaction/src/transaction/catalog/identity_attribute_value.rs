@@ -61,8 +61,7 @@ impl TransactionalIdentityAttributeValueChanges for AdminTransaction {
 					return Some(v);
 				}
 			} else if let Some(v) = &change.pre
-				&& v.identity == identity
-				&& v.attribute == attribute
+				&& v.identity == identity && v.attribute == attribute
 				&& change.op == Delete
 			{
 				return None;

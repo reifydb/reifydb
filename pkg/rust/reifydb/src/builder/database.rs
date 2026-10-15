@@ -39,11 +39,16 @@ use reifydb_core::{
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_engine::remote::RemoteRegistry;
 use reifydb_engine::{EngineVersion, engine::StandardEngine, vm::services::EngineConfig};
+#[cfg(feature = "column")]
+use reifydb_extension::block_encoding::registry::BlockEncodingsConfigurator;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_extension::procedure::extern_c::loader::register_procedures_from_dir;
 #[cfg(feature = "wasm")]
 use reifydb_extension::procedure::extern_wasm::loader::register_extern_wasm_procedures_from_dir;
-use reifydb_extension::transform::registry::{Transforms, TransformsConfigurator};
+use reifydb_extension::{
+	block_encoding::registry::BlockEncodings,
+	transform::registry::{Transforms, TransformsConfigurator},
+};
 use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_rql::RqlVersion;
@@ -104,6 +109,9 @@ pub struct DatabaseBuilder {
 	wasm_procedure_dir: Option<PathBuf>,
 	transforms_configurator:
 		Option<Box<dyn FnOnce(TransformsConfigurator) -> TransformsConfigurator + Send + 'static>>,
+	#[cfg(feature = "column")]
+	block_encodings_configurator:
+		Option<Box<dyn FnOnce(BlockEncodingsConfigurator) -> BlockEncodingsConfigurator + Send + 'static>>,
 	multi_store: Option<MultiStore>,
 	single_store: Option<SingleStore>,
 	operator_store: Option<OperatorStore>,
@@ -157,6 +165,8 @@ impl DatabaseBuilder {
 			procedure_dir: None,
 			wasm_procedure_dir: None,
 			transforms_configurator: None,
+			#[cfg(feature = "column")]
+			block_encodings_configurator: None,
 			multi_store: None,
 			single_store: None,
 			operator_store: None,
@@ -301,6 +311,15 @@ impl DatabaseBuilder {
 		self
 	}
 
+	#[cfg(feature = "column")]
+	pub fn with_block_encodings<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(BlockEncodingsConfigurator) -> BlockEncodingsConfigurator + Send + 'static,
+	{
+		self.block_encodings_configurator = Some(Box::new(configurator));
+		self
+	}
+
 	/// Ownership passes to the `Database`, which shuts the runtime down only after every
 	/// subsystem has stopped and before the stores are torn down.
 	pub fn with_runtime(mut self, runtime: Runtime) -> Self {
@@ -441,6 +460,16 @@ impl DatabaseBuilder {
 			Transforms::empty()
 		};
 
+		#[cfg(feature = "column")]
+		let block_encodings = if let Some(configurator) = self.block_encodings_configurator {
+			configurator(BlockEncodings::builder()).configure()
+		} else {
+			BlockEncodings::empty()
+		};
+		#[cfg(not(feature = "column"))]
+		let block_encodings = BlockEncodings::empty();
+		self.ioc = self.ioc.register(block_encodings.clone());
+
 		let routines = {
 			let mut routines_builder = Routines::builder();
 			routines_builder = default_in_process_functions(routines_builder);
@@ -494,6 +523,7 @@ impl DatabaseBuilder {
 				),
 				routines,
 				transforms,
+				block_encodings,
 				ioc: self.ioc.clone(),
 				auth_registry: auth_registry.clone(),
 				#[cfg(not(reifydb_single_threaded))]

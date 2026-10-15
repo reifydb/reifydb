@@ -81,7 +81,7 @@ use reifydb_codec::{
 	frame::{decode::decode_frames, encode::encode_frames, format::Encoding, options::EncodeOptions},
 	json::{fixture::frames_from_fixture_json, from::frames_from_json, to::frames_to_json},
 };
-use reifydb_extension::transform::registry::Transforms;
+use reifydb_extension::{block_encoding::registry::BlockEncodings, transform::registry::Transforms};
 use reifydb_runtime::context::RuntimeContext;
 
 #[wasm_bindgen(js_name = encode_rbcf)]
@@ -296,6 +296,7 @@ impl WasmDB {
 				runtime_context: RuntimeContext::new(clock.clone(), rng.clone(), version_epoch.clone()),
 				routines,
 				transforms: Transforms::empty(),
+				block_encodings: BlockEncodings::empty(),
 				ioc,
 				auth_registry: auth_registry.clone(),
 				#[cfg(not(reifydb_single_threaded))]

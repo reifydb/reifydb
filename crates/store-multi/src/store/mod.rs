@@ -158,10 +158,7 @@ impl StandardMultiStore {
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-		let (persistent, filter): (
-			Option<MultiPersistentTier>,
-			Option<ActorRef<FilterMessage>>,
-		) = {
+		let (persistent, filter): (Option<MultiPersistentTier>, Option<ActorRef<FilterMessage>>) = {
 			let _ = config.persistent;
 			(None, None)
 		};

@@ -53,8 +53,7 @@ impl TransactionalIdentityAttributeChanges for AdminTransaction {
 					return Some(attribute);
 				}
 			} else if let Some(attribute) = &change.pre
-				&& attribute.id == id
-				&& change.op == Delete
+				&& attribute.id == id && change.op == Delete
 			{
 				return None;
 			}
@@ -69,8 +68,7 @@ impl TransactionalIdentityAttributeChanges for AdminTransaction {
 					return Some(attribute);
 				}
 			} else if let Some(attribute) = &change.pre
-				&& attribute.name == name
-				&& change.op == Delete
+				&& attribute.name == name && change.op == Delete
 			{
 				return None;
 			}

@@ -257,17 +257,11 @@ fn numeric_samples() -> Vec<(Value, Value)> {
 			matches!(
 				value.get_type(),
 				ValueType::Int1
-					| ValueType::Int2
-					| ValueType::Int4
-					| ValueType::Int8
-					| ValueType::Int16
-					| ValueType::Uint1
-					| ValueType::Uint2
-					| ValueType::Uint4
-					| ValueType::Uint8
-					| ValueType::Uint16
-					| ValueType::Float4
-					| ValueType::Float8
+					| ValueType::Int2 | ValueType::Int4 | ValueType::Int8
+					| ValueType::Int16 | ValueType::Uint1
+					| ValueType::Uint2 | ValueType::Uint4
+					| ValueType::Uint8 | ValueType::Uint16
+					| ValueType::Float4 | ValueType::Float8
 					| ValueType::Decimal { .. }
 			)
 		})

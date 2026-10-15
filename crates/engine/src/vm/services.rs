@@ -10,7 +10,7 @@ use reifydb_catalog::{
 	vtable::{system::operator_libary::OperatorLibrary, user::registry::UserVTableRegistry},
 };
 use reifydb_core::util::ioc::IocContainer;
-use reifydb_extension::transform::registry::Transforms;
+use reifydb_extension::{block_encoding::registry::BlockEncodings, transform::registry::Transforms};
 #[cfg(test)]
 use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
 use reifydb_routine_abi::{Procedure, registry::Routines};
@@ -30,6 +30,7 @@ pub struct EngineConfig {
 	pub runtime_context: RuntimeContext,
 	pub routines: Routines,
 	pub transforms: Transforms,
+	pub block_encodings: BlockEncodings,
 	pub ioc: IocContainer,
 	pub auth_registry: Arc<AuthenticationRegistry>,
 	#[cfg(not(reifydb_single_threaded))]
@@ -42,6 +43,7 @@ pub struct Services {
 	pub compiler: Compiler,
 	pub routines: Routines,
 	pub transforms: Transforms,
+	pub block_encodings: BlockEncodings,
 	pub operators: OperatorLibrary,
 	pub virtual_table_registry: UserVTableRegistry,
 	pub metrics_reader: MetricsReader<SingleStore>,
@@ -65,6 +67,7 @@ impl Services {
 			runtime_context: config.runtime_context,
 			routines: config.routines,
 			transforms: config.transforms,
+			block_encodings: config.block_encodings,
 			operators: operator_store,
 			virtual_table_registry: UserVTableRegistry::new(),
 			metrics_reader,
@@ -99,6 +102,7 @@ impl Services {
 				runtime_context: RuntimeContext::with_clock(Clock::Real),
 				routines,
 				transforms: Transforms::empty(),
+				block_encodings: BlockEncodings::empty(),
 				ioc: IocContainer::new(),
 				auth_registry: Arc::new(AuthenticationRegistry::default()),
 				#[cfg(not(reifydb_single_threaded))]

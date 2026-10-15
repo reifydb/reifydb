@@ -217,6 +217,7 @@ pub(super) fn ensure_snapshot_series(
 				},
 				partition_by: vec![],
 				time: TimeSource::Processing,
+				encoding: None,
 			},
 			column_ids,
 		)?;

@@ -22,7 +22,7 @@ use reifydb_core::{
 			property::ColumnPropertyKind,
 			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 			relationship::RelationshipCardinality,
-			series::SeriesKey,
+			series::{SeriesEncoding, SeriesKey},
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDictionary, ResolvedNamespace, ResolvedObject, ResolvedQueue,
@@ -237,6 +237,7 @@ pub struct CreateSeriesNode {
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
 	pub time: TimeSource,
+	pub encoding: Option<(Fragment, SeriesEncoding)>,
 }
 
 #[derive(Debug, Clone)]

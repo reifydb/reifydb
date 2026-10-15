@@ -280,12 +280,9 @@ impl<'bump> Ast<'bump> {
 		matches!(
 			self,
 			Ast::Create(_)
-				| Ast::Alter(_)
-				| Ast::Drop(_)
-				| Ast::Grant(_)
-				| Ast::Revoke(_)
-				| Ast::Migrate(_)
-				| Ast::RollbackMigration(_)
+				| Ast::Alter(_) | Ast::Drop(_)
+				| Ast::Grant(_) | Ast::Revoke(_)
+				| Ast::Migrate(_) | Ast::RollbackMigration(_)
 				| Ast::RunTests(_)
 		)
 	}
@@ -874,6 +871,17 @@ pub struct AstRowSettings<'bump> {
 }
 
 #[derive(Debug, Default)]
+pub struct AstColumnSettings<'bump> {
+	pub encoding: Option<AstSeriesEncoding<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstSeriesEncoding<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub params: Vec<(BumpFragment<'bump>, BumpFragment<'bump>)>,
+}
+
+#[derive(Debug, Default)]
 pub enum AstTimeDeclaration<'bump> {
 	#[default]
 	Undeclared,
@@ -902,6 +910,7 @@ pub struct AstCreateSeries<'bump> {
 	pub partition_by: Vec<String>,
 	pub settings: Option<AstRowSettings<'bump>>,
 	pub time_declaration: AstTimeDeclaration<'bump>,
+	pub column: Option<AstColumnSettings<'bump>>,
 }
 
 #[derive(Debug)]

@@ -36,6 +36,7 @@ pub struct RingBufferExport {
 pub struct SeriesExport {
 	pub series: Series,
 	pub row: Option<RowSettings>,
+	pub encoding_config: Option<Vec<(String, Value)>>,
 	pub rows: Option<ObjectRows>,
 }
 

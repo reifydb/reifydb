@@ -69,6 +69,8 @@ fn pool_config_from_sources(
 }
 
 #[cfg(feature = "column")]
+use reifydb_extension::block_encoding::registry::BlockEncodingsConfigurator;
+#[cfg(feature = "column")]
 use reifydb_store_column::store::ColumnStore;
 #[cfg(feature = "column")]
 use reifydb_sub_store::subsystem::StorageConfig;
@@ -157,6 +159,15 @@ impl EmbeddedBuilder {
 	#[cfg(feature = "column")]
 	pub fn with_column_store(mut self, store: ColumnStore) -> Self {
 		self.dependencies.push(Box::new(move |builder| builder.with_column_store(store)));
+		self
+	}
+
+	#[cfg(feature = "column")]
+	pub fn with_block_encodings<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(BlockEncodingsConfigurator) -> BlockEncodingsConfigurator + Send + 'static,
+	{
+		self.dependencies.push(Box::new(move |builder| builder.with_block_encodings(configurator)));
 		self
 	}
 

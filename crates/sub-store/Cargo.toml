@@ -21,6 +21,7 @@ reifydb-catalog = { workspace = true, optional = true }
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true, optional = true }
 reifydb-evaluate = { workspace = true, optional = true }
+reifydb-extension = { workspace = true, optional = true }
 reifydb-runtime = { workspace = true }
 reifydb-store-column = { workspace = true, optional = true }
 reifydb-sub-api = { workspace = true }
@@ -28,6 +29,7 @@ reifydb-transaction = { workspace = true, optional = true }
 reifydb-value = { workspace = true }
 thiserror = { workspace = true, optional = true }
 tracing = { workspace = true }
+vortex-session = { workspace = true, optional = true }
 
 
 [features]
@@ -40,9 +42,11 @@ column = [
 	"dep:reifydb-engine",
 	"reifydb-engine/column",
 	"dep:reifydb-evaluate",
+	"dep:reifydb-extension",
 	"dep:reifydb-store-column",
 	"dep:reifydb-transaction",
 	"dep:thiserror",
+	"dep:vortex-session",
 ]
 pco = ["column", "reifydb-store-column/pco"]
 

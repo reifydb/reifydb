@@ -18,7 +18,7 @@ use reifydb_value::value::{partition::Partition, sumtype::SumTypeId};
 use crate::{
 	CatalogStore, Result,
 	store::series::{
-		decode_series_time,
+		decode_series_encoding, decode_series_time,
 		shape::{series, series_namespace},
 	},
 };
@@ -59,6 +59,7 @@ impl CatalogStore {
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
 			time: decode_series_time(&bytes),
+			encoding: decode_series_encoding(&bytes)?,
 		}))
 	}
 

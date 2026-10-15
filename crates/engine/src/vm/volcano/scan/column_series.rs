@@ -30,8 +30,9 @@ use crate::{
 	vm::volcano::{
 		query::{QueryContext, QueryNode},
 		scan::{
-			column_block_sequence::BlockSequenceReader, column_predicate::series_scan_predicate,
-			column_prune::prune_series_snapshots, empty_scan, scan_headers, source_system_columns,
+			column_block_sequence::BlockSequenceReader, column_decode::BlockDecoder,
+			column_predicate::series_scan_predicate, column_prune::prune_series_snapshots, empty_scan,
+			scan_headers, source_system_columns,
 		},
 	},
 };
@@ -139,6 +140,10 @@ impl ColumnSeriesScanNode {
 			return Ok(ScanState::Done);
 		}
 
+		if pruned.is_empty() && !snapshots_were_empty {
+			return Ok(ScanState::Done);
+		}
+
 		if pruned.is_empty() {
 			return Err(Error(Box::new(no_column_snapshot(
 				self.series.identifier().clone(),
@@ -157,8 +162,12 @@ impl ColumnSeriesScanNode {
 
 		Ok(ScanState::Reading {
 			reader: Box::new(
-				BlockSequenceReader::new(store, pruned, self.context.batch_size as usize)
-					.with_predicate(predicate),
+				BlockSequenceReader::new(Arc::clone(&store), pruned, self.context.batch_size as usize)
+					.with_predicate(predicate)
+					.with_decoder(Some(BlockDecoder::new(
+						services.block_encodings.clone(),
+						store.session().clone(),
+					))),
 			),
 			emitted: false,
 		})

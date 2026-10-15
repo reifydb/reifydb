@@ -223,8 +223,7 @@ impl<'a> Parser<'a> {
 			}
 
 			if let Some(ch) = self.peek_char()
-				&& ch.is_whitespace()
-				&& ch != '\n'
+				&& ch.is_whitespace() && ch != '\n'
 			{
 				return Err(self.error("Command cannot start with whitespace"));
 			}
@@ -389,8 +388,7 @@ impl<'a> Parser<'a> {
 
 				let value = if matches!(self.peek_char(), Some(ch) if ch.is_whitespace())
 					|| matches!(self.peek_char(), Some('[' | ')' | '#'))
-					|| self.peek_char().is_none()
-					|| self.peek_str(2) == "//"
+					|| self.peek_char().is_none() || self.peek_str(2) == "//"
 				{
 					String::new()
 				} else {
