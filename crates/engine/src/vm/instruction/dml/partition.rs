@@ -13,7 +13,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		row::{PartitionedRowKey, RowKey, StorageRowKey},
 	},
-	partition::{BatchPartitions, partition_col_indices, partition_of, partitions_of_batch},
+	partition::{BatchPartitions, partition_col_indices, partitions_of_batch},
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
@@ -206,7 +206,7 @@ pub(crate) fn ringbuffer_batch_partitions(ringbuffer: &RingBuffer, cast: &CastCo
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {
 			assert_eq!(
-				partition_of(&ringbuffer.columns, &ringbuffer.partition_by, values),
+				reifydb_core::partition::partition_of(&ringbuffer.columns, &ringbuffer.partition_by, values),
 				*partition,
 				"a batch partition must hash its values like the row-at-a-time partition"
 			);

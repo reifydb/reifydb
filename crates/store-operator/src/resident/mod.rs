@@ -467,7 +467,7 @@ impl Resident {
 		total
 	}
 
-	#[cfg(any(test, reifydb_assertions))]
+	#[cfg(reifydb_assertions)]
 	pub(crate) fn dirty_bytes(&self) -> ByteSize {
 		let mut total = ByteSize::ZERO;
 		for operator in self.shared.operators() {

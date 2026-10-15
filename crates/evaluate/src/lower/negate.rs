@@ -10,7 +10,7 @@ use arrow_schema::{DataType, FieldRef};
 use datafusion_common::{DataFusionError, internal_err};
 use datafusion_expr::{ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature};
 use reifydb_core::expression::{Expression, PrefixExpression, PrefixOperator, name::display_label};
-use reifydb_value::{fragment::Fragment, reifydb_assertions, value::value_type::field::from_field};
+use reifydb_value::{fragment::Fragment, reifydb_assertions};
 
 use crate::{
 	Result,
@@ -60,7 +60,7 @@ fn negate_field(name: &str, input: &FieldRef, fragment: &Fragment) -> Result<Fie
 fn assert_negate_field(fragment: &Fragment, kernel: &FieldRef, declared: &FieldRef) {
 	reifydb_assertions! {
 		let inner = |field: &FieldRef| {
-			from_field(field)
+			reifydb_value::value::value_type::field::from_field(field)
 				.expect("a negate field always carries a parsable type")
 				.value_type
 				.map(|value_type| value_type.inner_type().clone())

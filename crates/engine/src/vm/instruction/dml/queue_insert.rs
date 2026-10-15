@@ -10,7 +10,7 @@ use reifydb_codec::{
 	key::serializer::KeySerializer,
 	row::{
 		bytes::{EncodedBytes, RowBuilder},
-		queue::{EncodedQueueRow, EncodedQueueRowBuilder},
+		queue::EncodedQueueRowBuilder,
 		queue_deduplication::EncodedQueueDeduplicationRow,
 		shape::RowShape,
 	},
@@ -74,7 +74,7 @@ use super::{
 use crate::{
 	Result,
 	policy::PolicyEvaluator,
-	queue::partition::{ordered_by_index, placement_for, stored_ordered_hash},
+	queue::partition::{ordered_by_index, placement_for},
 	transaction::operation::queue::{QueueInsertRow, QueueOperations},
 	vm::{
 		instruction::dml::{
@@ -545,7 +545,11 @@ fn validate_and_encode_input_rows(
 			reifydb_assertions! {
 				if let (Some(column), Some(hash)) = (ordered_by, ordered) {
 					assert_eq!(
-						stored_ordered_hash(shape, EncodedQueueRow::view(&encoded), column),
+						crate::queue::partition::stored_ordered_hash(
+							shape,
+							reifydb_codec::row::queue::EncodedQueueRow::view(&encoded),
+							column,
+						),
 						hash,
 						"a queue row must be placed where hydration places its stored row"
 					);

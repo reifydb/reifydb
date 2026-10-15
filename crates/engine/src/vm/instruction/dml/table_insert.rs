@@ -26,7 +26,7 @@ use reifydb_core::{
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedTable},
 	},
-	partition::{BatchPartitions, partition_col_indices, partition_of, partitions_of_batch},
+	partition::{BatchPartitions, partition_col_indices, partitions_of_batch},
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -156,7 +156,7 @@ pub(crate) fn cast_partitions(
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {
 			assert_eq!(
-				partition_of(columns, partition_by, values),
+				reifydb_core::partition::partition_of(columns, partition_by, values),
 				*partition,
 				"a batch partition must hash its values like the row-at-a-time partition"
 			);

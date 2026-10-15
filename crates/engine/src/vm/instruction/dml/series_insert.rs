@@ -38,7 +38,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 	},
-	partition::{BatchPartitions, partition_of, partitions_of_batch},
+	partition::{BatchPartitions, partitions_of_batch},
 	value::{
 		batch::single_row,
 		column::{builder::ColumnBuilder, write::check_digest_write},
@@ -452,7 +452,7 @@ pub(crate) fn series_batch_partitions(
 	reifydb_assertions! {
 		for (partition, values) in &batch.distinct {
 			assert_eq!(
-				partition_of(&series.columns, &series.partition_by, values),
+				reifydb_core::partition::partition_of(&series.columns, &series.partition_by, values),
 				*partition,
 				"a batch partition must hash its values like the row-at-a-time partition"
 			);

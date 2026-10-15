@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_value::{
 	Result, reifydb_assertions,
-	value::{Value, column_view::ColumnView, partition::Partition, value_type::ValueType},
+	value::{Value, column_view::ColumnView, partition::Partition},
 };
 
 use crate::txn::{Batch, Get};
@@ -39,7 +39,7 @@ pub fn partition_batch(view: &View, indices: &[usize], columns: &RecordBatch) ->
 			let column = &view.columns()[i];
 			assert!(
 				column.dictionary_id.is_none()
-					|| key.base_type() == ValueType::DictionaryId
+					|| key.base_type() == reifydb_value::value::value_type::ValueType::DictionaryId
 					|| key.none_count() == key.len(),
 				"partition column '{}' is dictionary-encoded but was hashed from {:?}: stored rows hash the \
 				 entry id, so a plain value lands in a different partition",
