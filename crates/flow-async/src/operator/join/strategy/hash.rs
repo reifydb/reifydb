@@ -496,6 +496,18 @@ pub(crate) fn columns_from_block(
 	store: &Store,
 	block: Vec<(RowNumber, EncodedBytes)>,
 ) -> Result<RecordBatch> {
+	let runs = decode_runs(host, store, block)?;
+	if runs.len() == 1 {
+		return Ok(runs.into_iter().next().unwrap());
+	}
+	merge_runs(runs, store.side())
+}
+
+pub(crate) fn decode_runs(
+	host: &mut dyn HostContext,
+	store: &Store,
+	block: Vec<(RowNumber, EncodedBytes)>,
+) -> Result<Vec<RecordBatch>> {
 	let mut runs: Vec<RecordBatch> = Vec::new();
 	let mut run_fingerprint: Option<RowShapeFingerprint> = None;
 	let mut run_ids: Vec<RowNumber> = Vec::new();
@@ -517,11 +529,7 @@ pub(crate) fn columns_from_block(
 	if let Some(fingerprint) = run_fingerprint {
 		runs.push(decode_run(host, store, fingerprint, &run_ids, &run)?);
 	}
-
-	if runs.len() == 1 {
-		return Ok(runs.into_iter().next().unwrap());
-	}
-	merge_runs(runs, store.side())
+	Ok(runs)
 }
 
 fn stream_join_blocks<F>(

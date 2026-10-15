@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::{cell::RefCell, collections::HashMap, mem::take};
+
 use arrow_array::RecordBatch;
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
@@ -37,11 +39,11 @@ use crate::{
 			store::Store,
 			strategy::{
 				UpdateKeys,
-				hash::{columns_from_block, stream_join_blocks_encoded},
+				hash::{columns_from_block, decode_runs, stream_join_blocks_encoded},
 				latest::winning_right_row,
 			},
 		},
-		state::store::{state_get, state_remove, state_set},
+		state::store::state_get,
 		state_access::mint_row_numbers,
 	},
 };
@@ -63,6 +65,7 @@ pub(crate) struct Published {
 }
 
 #[operator_state]
+#[derive(Clone)]
 struct Pin {
 	refs: u64,
 
@@ -87,11 +90,69 @@ struct PublishedSet {
 	entries: Vec<PublishedEntry>,
 }
 
-pub(crate) struct SnapshotLedger;
+type Cache<T> = RefCell<HashMap<GroupStateKey, (Option<T>, bool)>>;
+
+#[derive(Default)]
+pub(crate) struct SnapshotLedger {
+	sets: Cache<PublishedSet>,
+	pins: Cache<Pin>,
+	written: RefCell<Vec<GroupStateKey>>,
+}
+
+fn cached<T: Clone>(
+	host: &mut dyn HostContext,
+	cache: &Cache<T>,
+	key: &GroupStateKey,
+	decode: fn(&EncodedPodRow) -> Result<T>,
+) -> Result<Option<T>> {
+	if let Some((value, _)) = cache.borrow().get(key) {
+		return Ok(value.clone());
+	}
+	let value = state_get(host, key)?.map(|row| decode(&row)).transpose()?;
+	cache.borrow_mut().insert(key.clone(), (value.clone(), false));
+	Ok(value)
+}
 
 impl SnapshotLedger {
 	pub(crate) fn new() -> Self {
-		Self
+		Self::default()
+	}
+
+	fn hold<T>(&self, cache: &Cache<T>, key: GroupStateKey, value: Option<T>) {
+		let mut cache = cache.borrow_mut();
+		if !cache.get(&key).is_some_and(|(_, written)| *written) {
+			self.written.borrow_mut().push(key.clone());
+		}
+		cache.insert(key, (value, true));
+	}
+
+	pub(crate) fn flush(&self, host: &mut dyn HostContext) -> Result<()> {
+		let written = take(&mut *self.written.borrow_mut());
+		let mut sets = take(&mut *self.sets.borrow_mut());
+		let mut pins = take(&mut *self.pins.borrow_mut());
+		let mut rows = Vec::new();
+		let mut removes = Vec::new();
+		for key in written {
+			let row = match sets.remove(&key) {
+				Some((set, _)) => set.map(|set| encode_published_set(&set)).transpose()?,
+				None => pins
+					.remove(&key)
+					.and_then(|(pin, _)| pin)
+					.map(|pin| encode_pin(&pin))
+					.transpose()?,
+			};
+			match row {
+				Some(row) => rows.push((key, row)),
+				None => removes.push(key),
+			}
+		}
+		if !rows.is_empty() {
+			host.state_set_many(rows)?;
+		}
+		if !removes.is_empty() {
+			host.state_remove_many(&removes)?;
+		}
+		Ok(())
 	}
 
 	fn published_key(&self, group: GroupId, left: RowNumber) -> GroupStateKey {
@@ -99,22 +160,15 @@ impl SnapshotLedger {
 	}
 
 	fn published_set(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<PublishedSet> {
-		match state_get(host, &self.published_key(group, left))? {
-			Some(row) => decode_published_set(&row),
-			None => Ok(PublishedSet::default()),
-		}
+		Ok(cached(host, &self.sets, &self.published_key(group, left), decode_published_set)?
+			.unwrap_or_default())
 	}
 
-	fn write_published_set(
-		&self,
-		host: &mut dyn HostContext,
-		group: GroupId,
-		left: RowNumber,
-		set: &PublishedSet,
-	) -> Result<()> {
+	fn write_published_set(&self, group: GroupId, left: RowNumber, set: &PublishedSet) -> Result<()> {
 		let key = self.published_key(group, left);
 		if set.entries.is_empty() {
-			return state_remove(host, &key);
+			self.hold(&self.sets, key, None);
+			return Ok(());
 		}
 		reifydb_assertions! {
 			const MAX_PUBLISHED_FAN_OUT: usize = 1024;
@@ -125,7 +179,8 @@ impl SnapshotLedger {
 				set.entries.len()
 			);
 		}
-		state_set(host, &key, encode_published_set(set)?)
+		self.hold(&self.sets, key, Some(set.clone()));
+		Ok(())
 	}
 
 	fn pin_key(&self, group: GroupId, right: RowNumber, version: ContentVersion) -> GroupStateKey {
@@ -187,7 +242,7 @@ impl SnapshotLedger {
 				}
 			};
 		sort_entries(&mut set);
-		self.write_published_set(host, group, left, &set)?;
+		self.write_published_set(group, left, &set)?;
 		self.pin(host, group, right, version)?;
 		Ok(published)
 	}
@@ -242,7 +297,7 @@ impl SnapshotLedger {
 			row_number: row_number.0,
 		});
 		sort_entries(&mut set);
-		self.write_published_set(host, group, left, &set)?;
+		self.write_published_set(group, left, &set)?;
 		Ok((row_number, true))
 	}
 
@@ -254,7 +309,7 @@ impl SnapshotLedger {
 	) -> Result<()> {
 		let mut set = self.published_set(host, group, left)?;
 		set.entries.retain(|entry| entry.tag != TAG_UNMATCHED);
-		self.write_published_set(host, group, left, &set)
+		self.write_published_set(group, left, &set)
 	}
 
 	pub(crate) fn release_all(&self, host: &mut dyn HostContext, group: GroupId, left: RowNumber) -> Result<()> {
@@ -272,7 +327,7 @@ impl SnapshotLedger {
 		if set.entries.len() == held {
 			return Ok(());
 		}
-		self.write_published_set(host, group, left, &set)?;
+		self.write_published_set(group, left, &set)?;
 		for (right, version) in joined {
 			self.unpin(host, group, right, version)?;
 		}
@@ -293,7 +348,7 @@ impl SnapshotLedger {
 			return Ok(None);
 		};
 		let version = ContentVersion(set.entries.remove(index).version);
-		self.write_published_set(host, group, left, &set)?;
+		self.write_published_set(group, left, &set)?;
 		self.unpin(host, group, right, version)
 	}
 
@@ -306,16 +361,15 @@ impl SnapshotLedger {
 	) -> Result<()> {
 		let version = ContentVersion::of(content);
 		let key = self.pin_key(group, right, version);
-		let Some(existing) = state_get(host, &key)? else {
+		let Some(mut pin) = cached(host, &self.pins, &key, decode_pin)? else {
 			return Ok(());
 		};
-		let mut pin = decode_pin(&existing)?;
 		if pin.retired.is_some() {
 			return Ok(());
 		}
 		pin.retired = Some(content.0.to_vec());
-		let row = encode_pin(&pin)?;
-		state_set(host, &key, row)
+		self.hold(&self.pins, key, Some(pin));
+		Ok(())
 	}
 
 	fn pin(
@@ -326,16 +380,13 @@ impl SnapshotLedger {
 		version: ContentVersion,
 	) -> Result<()> {
 		let key = self.pin_key(group, right, version);
-		let mut pin = match state_get(host, &key)? {
-			Some(existing) => decode_pin(&existing)?,
-			None => Pin {
-				refs: 0,
-				retired: None,
-			},
-		};
+		let mut pin = cached(host, &self.pins, &key, decode_pin)?.unwrap_or(Pin {
+			refs: 0,
+			retired: None,
+		});
 		pin.refs += 1;
-		let row = encode_pin(&pin)?;
-		state_set(host, &key, row)
+		self.hold(&self.pins, key, Some(pin));
+		Ok(())
 	}
 
 	fn unpin(
@@ -346,18 +397,23 @@ impl SnapshotLedger {
 		version: ContentVersion,
 	) -> Result<Option<EncodedBytes>> {
 		let key = self.pin_key(group, right, version);
-		let Some(existing) = state_get(host, &key)? else {
+		let existing = cached(host, &self.pins, &key, decode_pin)?;
+		reifydb_assertions! {
+			assert!(
+				existing.as_ref().is_some_and(|pin| pin.refs > 0),
+				"an unpin of right row {} found no live reference; every published pair holds one, so the \
+				 count has drifted and the retired bytes a later withdraw needs are gone",
+				right.0
+			);
+		}
+		let Some(mut pin) = existing else {
 			return Ok(None);
 		};
-		let mut pin = decode_pin(&existing)?;
 		pin.refs = pin.refs.saturating_sub(1);
 		let content = pin.retired.clone().map(|bytes| EncodedBytes(CowVec::new(bytes)));
 		match pin.refs {
-			0 => state_remove(host, &key)?,
-			_ => {
-				let row = encode_pin(&pin)?;
-				state_set(host, &key, row)?
-			}
+			0 => self.hold(&self.pins, key, None),
+			_ => self.hold(&self.pins, key, Some(pin)),
 		}
 		Ok(content)
 	}
@@ -472,12 +528,14 @@ pub(crate) fn publish_joined(
 		})?;
 
 	if !diffs.is_empty() || !outer {
+		ctx.ledger.flush(host)?;
 		return Ok(diffs);
 	}
 	let mut carried = Vec::with_capacity(left_numbers.len());
 	for left_number in &left_numbers {
 		carried.push(ctx.ledger.publish_unmatched(host, group, *left_number)?);
 	}
+	ctx.ledger.flush(host)?;
 	diffs.extend(ctx
 		.operator
 		.unmatched_left_columns_batch(host, left, left_indices, Identity::Carried(&carried))?
@@ -494,19 +552,13 @@ pub(crate) fn withdraw_joined(
 ) -> Result<Vec<Diff>> {
 	let group = ctx.right_store.group_of(key_hash);
 	let left_number = require_row_numbers(left)?[left_idx];
-	let mut out = Vec::new();
+	let mut withdrawals = Vec::new();
+	let mut block = Vec::new();
 	for entry in ctx.ledger.published(host, group, left_number)? {
-		let carried = [(entry.row_number, false)];
 		let right_number = match entry.right {
 			PublishedRight::Unmatched => {
 				ctx.ledger.release_unmatched(host, group, left_number)?;
-				let unmatched = ctx.operator.unmatched_left_columns(
-					host,
-					left,
-					left_idx,
-					Identity::Carried(&carried),
-				)?;
-				out.extend(unmatched.withdrawn());
+				withdrawals.push((entry.row_number, None));
 				continue;
 			}
 			PublishedRight::Row(right_number) => right_number,
@@ -516,19 +568,54 @@ pub(crate) fn withdraw_joined(
 			Some(retired) => Some(retired),
 			None => ctx.right_store.get_row_in(host, group, right_number)?,
 		};
+		reifydb_assertions! {
+			assert!(
+				content.is_some(),
+				"left row {} published right row {} but neither its retired bytes nor the stored row \
+				 exist, so the published row can never be withdrawn",
+				left_number.0,
+				right_number.0
+			);
+		}
 		let Some(content) = content else {
 			continue;
 		};
-		let opposite = columns_from_block(host, ctx.right_store, vec![(right_number, content)])?;
-		let joined = ctx.operator.join_columns_cartesian(
-			host,
-			left,
-			&[left_idx],
-			&opposite,
-			&[0],
-			Identity::Carried(&carried),
-		)?;
-		out.extend(joined.withdrawn());
+		withdrawals.push((entry.row_number, Some(block.len())));
+		block.push((right_number, content));
+	}
+	ctx.ledger.flush(host)?;
+
+	let runs = decode_runs(host, ctx.right_store, block)?;
+	let mut positions = Vec::new();
+	for (run, columns) in runs.iter().enumerate() {
+		positions.extend((0..columns.num_rows()).map(|row| (run, row)));
+	}
+	let mut out = Vec::new();
+	for (row_number, position) in withdrawals {
+		let carried = [(row_number, false)];
+		match position {
+			None => {
+				let unmatched = ctx.operator.unmatched_left_columns(
+					host,
+					left,
+					left_idx,
+					Identity::Carried(&carried),
+				)?;
+				out.extend(unmatched.withdrawn());
+			}
+			Some(position) => {
+				let (run, row) = positions[position];
+				let joined = ctx.operator.join_columns_cartesian(
+					host,
+					left,
+					&[left_idx],
+					&runs[run],
+					&[row],
+					Identity::Carried(&carried),
+				)?;
+				out.extend(joined.withdrawn());
+			}
+		}
 	}
 	Ok(out)
 }
@@ -571,6 +658,7 @@ pub(crate) fn publish_slot(
 		for left_number in &left_numbers {
 			ids.push(ctx.ledger.publish_unmatched_as(host, group, *left_number, reuse)?.0);
 		}
+		ctx.ledger.flush(host)?;
 		return Ok(Some(ctx.operator.unmatched_left_latest(left, left_indices, &ids)?));
 	};
 
@@ -578,6 +666,7 @@ pub(crate) fn publish_slot(
 	for left_number in &left_numbers {
 		ids.push(ctx.ledger.publish_as(host, group, *left_number, number, &content, reuse)?.0);
 	}
+	ctx.ledger.flush(host)?;
 	Ok(Some(ctx.operator.join_left_with_slot(left, left_indices, &slot, &ids)?))
 }
 
@@ -593,6 +682,7 @@ pub(crate) fn withdraw_slot(
 		let right_number = match entry.right {
 			PublishedRight::Unmatched => {
 				ctx.ledger.release_unmatched(host, group, left_number)?;
+				ctx.ledger.flush(host)?;
 				let columns =
 					ctx.operator.unmatched_left_latest(left, &[left_idx], &[entry.row_number])?;
 				return Ok(Some((columns, entry.row_number)));
@@ -607,13 +697,24 @@ pub(crate) fn withdraw_slot(
 				_ => None,
 			},
 		};
+		reifydb_assertions! {
+			assert!(
+				content.is_some(),
+				"left row {} published right row {} but neither its retired bytes nor the winning slot \
+				 hold it, so the published row can never be withdrawn",
+				left_number.0,
+				right_number.0
+			);
+		}
 		let Some(content) = content else {
 			continue;
 		};
+		ctx.ledger.flush(host)?;
 		let slot = columns_from_block(host, ctx.right_store, vec![(right_number, content)])?;
 		let columns = ctx.operator.join_left_with_slot(left, &[left_idx], &slot, &[entry.row_number])?;
 		return Ok(Some((columns, entry.row_number)));
 	}
+	ctx.ledger.flush(host)?;
 	Ok(None)
 }
 
@@ -627,6 +728,7 @@ pub(crate) fn retain_published_slot(
 		return Ok(None);
 	};
 	let mut records = ctx.ledger.published(host, group, left)?;
+	ctx.ledger.flush(host)?;
 	let Some(entry) = records.pop() else {
 		return Ok(None);
 	};
@@ -642,7 +744,10 @@ pub(crate) fn retain_published_slot(
 pub(crate) fn retire_slot(host: &mut dyn HostContext, ctx: &SnapshotJoinContext, key_hash: &Hash128) -> Result<()> {
 	let group = ctx.right_store.group_of(key_hash);
 	match winning_right_row(host, ctx.right_store, group)? {
-		Some((number, content, _)) => ctx.ledger.retire(host, group, number, &content),
+		Some((number, content, _)) => {
+			ctx.ledger.retire(host, group, number, &content)?;
+			ctx.ledger.flush(host)
+		}
 		None => Ok(()),
 	}
 }
@@ -657,7 +762,8 @@ pub(crate) fn retire_right(
 	let Some(content) = ctx.right_store.get_row_in(host, group, row_number)? else {
 		return Ok(());
 	};
-	ctx.ledger.retire(host, group, row_number, &content)
+	ctx.ledger.retire(host, group, row_number, &content)?;
+	ctx.ledger.flush(host)
 }
 
 #[cfg(test)]
@@ -771,6 +877,7 @@ mod tests {
 		ledger.retire(&mut b(&mut txn), group(), rn(7), &content).unwrap();
 
 		ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).unwrap();
+		ledger.flush(&mut b(&mut txn)).unwrap();
 		let key = ledger.pin_key(group(), rn(7), version);
 		assert!(
 			state_get(&mut b(&mut txn), &key).unwrap().is_some(),
@@ -778,6 +885,7 @@ mod tests {
 		);
 
 		ledger.release(&mut b(&mut txn), group(), rn(2), rn(7)).unwrap();
+		ledger.flush(&mut b(&mut txn)).unwrap();
 		assert!(
 			state_get(&mut b(&mut txn), &key).unwrap().is_none(),
 			"the last release must take the record with it"
@@ -817,6 +925,7 @@ mod tests {
 
 		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &first).unwrap();
 		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &second).unwrap();
+		ledger.flush(&mut b(&mut txn)).unwrap();
 
 		assert!(
 			state_get(&mut b(&mut txn), &stale).unwrap().is_none(),
@@ -885,6 +994,7 @@ mod tests {
 		let content = encoded_bytes(b"v1");
 
 		ledger.retire(&mut b(&mut txn), group(), rn(7), &content).unwrap();
+		ledger.flush(&mut b(&mut txn)).unwrap();
 
 		let key = ledger.pin_key(group(), rn(7), ContentVersion::of(&content));
 		assert!(state_get(&mut b(&mut txn), &key).unwrap().is_none());

@@ -414,7 +414,9 @@ impl JoinOperator {
 		let group = entry.group;
 		let row_number = entry.row_number;
 		if self.snapshot {
-			self.snapshot_ledger().release_all(host, group, row_number)?;
+			let ledger = self.snapshot_ledger();
+			ledger.release_all(host, group, row_number)?;
+			ledger.flush(host)?;
 		}
 		self.cleanup_left_row_joins(host, row_number.0)?;
 		state.left.remove_row_in(host, group, row_number)?;
@@ -433,7 +435,9 @@ impl JoinOperator {
 		if self.snapshot
 			&& let Some(content) = state.right.get_row_in(host, group, row_number)?
 		{
-			self.snapshot_ledger().retire(host, group, row_number, &content)?;
+			let ledger = self.snapshot_ledger();
+			ledger.retire(host, group, row_number, &content)?;
+			ledger.flush(host)?;
 		}
 		let composites: Vec<JoinRowMappingKey> = match self.strategy {
 			JoinStrategy::LatestLeft(_) | JoinStrategy::LatestInner(_) => Vec::new(),

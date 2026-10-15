@@ -39,7 +39,9 @@ fn publish_unkeyed(
 	reuse: Option<RowNumber>,
 ) -> Result<RecordBatch> {
 	let left_number = require_row_numbers(left)?[row_idx];
-	let (id, _) = operator.snapshot_ledger().publish_unmatched_as(host, GroupId::UNKEYED, left_number, reuse)?;
+	let ledger = operator.snapshot_ledger();
+	let (id, _) = ledger.publish_unmatched_as(host, GroupId::UNKEYED, left_number, reuse)?;
+	ledger.flush(host)?;
 	operator.unmatched_left_latest(left, &[row_idx], &[id])
 }
 
