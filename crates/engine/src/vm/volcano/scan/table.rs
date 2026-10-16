@@ -68,6 +68,7 @@ pub struct TableScanNode {
 	system_columns: Vec<SystemColumn>,
 
 	oldest_first: bool,
+	keep_dictionary_ids: bool,
 
 	merge: Option<PartitionMerge>,
 
@@ -124,6 +125,7 @@ impl TableScanNode {
 			partition,
 			system_columns,
 			oldest_first: false,
+			keep_dictionary_ids: false,
 			merge: None,
 			storage_batch: None,
 		})
@@ -131,6 +133,11 @@ impl TableScanNode {
 
 	pub(crate) fn oldest_first(mut self) -> Self {
 		self.oldest_first = true;
+		self
+	}
+
+	pub(crate) fn keep_dictionary_ids(mut self) -> Self {
+		self.keep_dictionary_ids = true;
 		self
 	}
 
@@ -412,6 +419,9 @@ impl QueryNode for TableScanNode {
 		stamps.push((SystemColumn::CommitVersion, Arc::new(UInt64Array::from(scanned.commit_versions))));
 		let columns = stamp_system_columns(columns, stamps)?;
 
+		if self.keep_dictionary_ids {
+			return Ok(Some(columns));
+		}
 		Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, rx)?))
 	}
 

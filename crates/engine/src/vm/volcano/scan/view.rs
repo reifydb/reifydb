@@ -91,6 +91,7 @@ pub(crate) struct ViewScanNode {
 	system_columns: Vec<SystemColumn>,
 	oldest_first: bool,
 	merge: Option<PartitionMerge>,
+	keep_dictionary_ids: bool,
 }
 
 impl ViewScanNode {
@@ -145,12 +146,18 @@ impl ViewScanNode {
 			partition,
 			system_columns,
 			oldest_first: false,
+			keep_dictionary_ids: false,
 			merge: None,
 		})
 	}
 
 	pub(crate) fn oldest_first(mut self) -> Self {
 		self.oldest_first = !self.sorted;
+		self
+	}
+
+	pub(crate) fn keep_dictionary_ids(mut self) -> Self {
+		self.keep_dictionary_ids = true;
 		self
 	}
 
@@ -445,6 +452,9 @@ impl QueryNode for ViewScanNode {
 		let columns = batch(self.storage_columns())?;
 		let columns = self.append_batch(rx, columns, batch_rows, row_numbers)?;
 
+		if self.keep_dictionary_ids {
+			return Ok(Some(columns));
+		}
 		Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, rx)?))
 	}
 

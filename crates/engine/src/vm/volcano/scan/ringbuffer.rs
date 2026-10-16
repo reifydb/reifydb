@@ -65,6 +65,7 @@ pub struct RingBufferScan {
 	initialized: bool,
 	system_columns: Vec<SystemColumn>,
 	merge: Option<PartitionMerge>,
+	keep_dictionary_ids: bool,
 }
 
 impl RingBufferScan {
@@ -117,6 +118,7 @@ impl RingBufferScan {
 			initialized: false,
 			system_columns,
 			merge: None,
+			keep_dictionary_ids: false,
 		})
 	}
 
@@ -124,6 +126,11 @@ impl RingBufferScan {
 		if !self.partition_col_indices.is_empty() {
 			self.merge = Some(PartitionMerge::new(MergeLayout::Row, self.ringbuffer.def().id.into(), None));
 		}
+		self
+	}
+
+	pub(crate) fn keep_dictionary_ids(mut self) -> Self {
+		self.keep_dictionary_ids = true;
 		self
 	}
 
@@ -322,6 +329,9 @@ impl QueryNode for RingBufferScan {
 				)?;
 			}
 
+			if self.keep_dictionary_ids {
+				return Ok(Some(columns));
+			}
 			return Ok(Some(decode_dictionary_columns(columns, &self.dictionaries, txn)?));
 		}
 

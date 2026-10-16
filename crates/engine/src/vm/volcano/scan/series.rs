@@ -65,6 +65,7 @@ pub struct SeriesScanNode {
 	oldest_first: bool,
 	merge: Option<PartitionMerge>,
 	schema: Option<SchemaRef>,
+	keep_dictionary_ids: bool,
 }
 
 impl SeriesScanNode {
@@ -102,6 +103,7 @@ impl SeriesScanNode {
 			exhausted: false,
 			system_columns,
 			oldest_first: false,
+			keep_dictionary_ids: false,
 			merge: None,
 			schema: None,
 		})
@@ -109,6 +111,11 @@ impl SeriesScanNode {
 
 	pub(crate) fn oldest_first(mut self) -> Self {
 		self.oldest_first = true;
+		self
+	}
+
+	pub(crate) fn keep_dictionary_ids(mut self) -> Self {
+		self.keep_dictionary_ids = true;
 		self
 	}
 
@@ -235,6 +242,11 @@ impl SeriesScanNode {
 						scanned.rows.len(),
 					);
 					decode_cells(&mut ids, &col_def.name, read_shape, col_idx + 1, &scanned.rows)?;
+					if self.keep_dictionary_ids {
+						ids.set_dictionary_id(dictionary.id);
+						result_columns.push(ids.finish(&col_def.name));
+						continue;
+					}
 					let (field, array) = ids.finish(&col_def.name);
 					result_columns.push(decode_dictionary_column(
 						&field,

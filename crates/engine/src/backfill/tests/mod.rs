@@ -11,10 +11,11 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, object::ObjectId, view::View},
-		change::{Change, ChangeOrigin, Diff},
+		change::{Change, ChangeOrigin, Diff, Diffs},
 	},
 	key::row::RowKey,
 	row::row_shape_from_columns,
+	value::batch::batch,
 };
 #[cfg(feature = "testing")]
 use reifydb_flow::backfill::testing::{InstalledScanHooks, ScanHooks};
@@ -38,8 +39,9 @@ use reifydb_value::{
 	params::Params,
 	value::{
 		Value,
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
 		datetime::DateTime,
+		dictionary::DictionaryId,
 		identity::IdentityId,
 		row_number::RowNumber,
 		system_columns::{
@@ -51,7 +53,7 @@ use reifydb_value::{
 
 use crate::{
 	backfill::{TransactionScan, run},
-	vm::{Admin, Command, executor::Executor},
+	vm::{Admin, Command, executor::Executor, volcano::decode_dictionary_column},
 };
 
 const DROPPED: [&str; 2] = ["#commit_version", "#partition"];
@@ -945,14 +947,61 @@ fn chunks_over_a_table_with_deleted_rows_have_no_gap_or_duplicate() {
 	}
 }
 
+fn decoded(db: &Db, tx: &mut Transaction<'_>, changes: &[Change]) -> Vec<Change> {
+	changes.iter()
+		.map(|change| {
+			let post = post(change);
+			let mut columns = Vec::with_capacity(post.num_columns());
+			for (field, array) in post.schema_ref().fields().iter().zip(post.columns()) {
+				let view = ColumnView::try_from((array, field.as_ref())).unwrap();
+				let ViewData::DictionaryId {
+					dictionary_id: Some(id),
+					..
+				} = view.data
+				else {
+					columns.push((field.clone(), array.clone()));
+					continue;
+				};
+				let dictionary = db.executor.catalog.find_dictionary(tx, id).unwrap().unwrap();
+				let target = dictionary.value_type.clone();
+				columns.push(decode_dictionary_column(field, array, &dictionary, target, tx).unwrap());
+			}
+			let mut diffs = Diffs::new();
+			diffs.push(Diff::insert(batch(columns).unwrap()));
+			Change {
+				diffs,
+				..change.clone()
+			}
+		})
+		.collect()
+}
+
+fn dictionary_of(changes: &[Change], column: &str) -> Vec<Option<DictionaryId>> {
+	changes.iter()
+		.map(|change| {
+			let post = post(change);
+			let index = post.schema_ref().index_of(column).unwrap();
+			let view = ColumnView::try_from((post.column(index), post.schema_ref().field(index))).unwrap();
+			match view.data {
+				ViewData::DictionaryId {
+					dictionary_id,
+					..
+				} => dictionary_id,
+				_ => None,
+			}
+		})
+		.collect()
+}
+
 #[test]
-fn dictionary_columns_are_decoded_exactly_as_from_shows_them() {
-	// Live flows see decoded values; a snapshot handing over raw dictionary ids would write ids into views.
+fn dictionary_columns_hand_over_ids_that_decode_to_what_from_shows() {
+	// Live changes carry ids and every reader decodes at its entry; a decoded snapshot would be read as ids again.
 	let db = Db::new();
 	db.commit(&[
 		"CREATE NAMESPACE ns",
 		"CREATE DICTIONARY ns::syms FOR utf8 AS uint2",
 		"CREATE TABLE ns::t { id: int4, sym: utf8 with { dictionary: ns::syms } }",
+		"CREATE TRANSACTIONAL VIEW ns::v { id: int4, sym: utf8 with { dictionary: ns::syms } } AS { FROM ns::t }",
 		"CREATE RINGBUFFER ns::rb { id: int4, sym: utf8 with { dictionary: ns::syms } } WITH { capacity: 10 }",
 		"CREATE SERIES ns::s { id: int8, sym: utf8 with { dictionary: ns::syms } } WITH { key: id }",
 		"INSERT ns::t [{ id: 1, sym: 'sol' }, { id: 2, sym: 'eth' }, { id: 3, sym: 'sol' }]",
@@ -966,12 +1015,18 @@ fn dictionary_columns_are_decoded_exactly_as_from_shows_them() {
 	]);
 	let mut q = db.query();
 	let t = db.id(&mut Transaction::Query(&mut q), Kind::Table, "t");
+	let v_ = db.id(&mut Transaction::Query(&mut q), Kind::View, "v");
 	let rb = db.id(&mut Transaction::Query(&mut q), Kind::RingBuffer, "rb");
 	let s = db.id(&mut Transaction::Query(&mut q), Kind::Series, "s");
-	let (v, changes) = db.snapshot(Transaction::Query(&mut q), &[t, rb, s], 2);
+	let syms = match db.id(&mut Transaction::Query(&mut q), Kind::Dictionary, "syms") {
+		ObjectId::Dictionary(id) => id,
+		other => panic!("syms is a dictionary, got {other:?}"),
+	};
+	let (v, changes) = db.snapshot(Transaction::Query(&mut q), &[t, v_, rb, s], 2);
 	let symbols = [text("sol"), text("btc"), text("sol")];
 	for (source, name, id) in [
 		(t, "ns::t", Value::Int4 as fn(i32) -> Value),
+		(v_, "ns::v", Value::Int4 as fn(i32) -> Value),
 		(rb, "ns::rb", Value::Int4 as fn(i32) -> Value),
 		(s, "ns::s", (|id| Value::Int8(id as i64)) as fn(i32) -> Value),
 	] {
@@ -980,6 +1035,13 @@ fn dictionary_columns_are_decoded_exactly_as_from_shows_them() {
 			.filter(|change| change.origin == ChangeOrigin::Object(source))
 			.cloned()
 			.collect();
+		assert!(!own.is_empty(), "{name} must hand over its rows");
+		assert!(
+			dictionary_of(&own, "sym").iter().all(|bound| *bound == Some(syms)),
+			"{name} must hand over sym as ids bound to ns::syms, got {:?}",
+			dictionary_of(&own, "sym")
+		);
+		let own = decoded(&db, &mut Transaction::Query(&mut q), &own);
 		let from = db.from(&mut Transaction::Query(&mut q), name);
 		assert_matches_from(&own, source, v, &from, &DROPPED);
 		let expected: Vec<Vec<Value>> = symbols
@@ -987,7 +1049,7 @@ fn dictionary_columns_are_decoded_exactly_as_from_shows_them() {
 			.enumerate()
 			.map(|(index, sym)| vec![id(index as i32 + 1), sym.clone()])
 			.collect();
-		assert_eq!(user_values(&own), expected, "{name} must hand over decoded symbols");
+		assert_eq!(user_values(&own), expected, "{name} ids must decode to its symbols");
 	}
 }
 
