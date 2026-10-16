@@ -18,6 +18,8 @@ pub trait ViewCell<'a>: Sized {
 
 pub trait BorrowedCell<'a>: Sized {
 	fn read_borrowed(column: &BorrowedColumn<'a>, index: usize) -> Result<Option<Self>, SdkError>;
+
+	fn read_value(value: &'a Value, column: &BorrowedColumn<'_>) -> Result<Option<Self>, SdkError>;
 }
 
 pub trait CursorValue<'a>: ViewCell<'a> + BorrowedCell<'a> {}

@@ -3,10 +3,16 @@
 
 use core::{slice, str};
 
-use reifydb_codec::tag::ValueKind;
+use reifydb_codec::{extern_c::cells::decode_dictionary_id_cell, tag::ValueKind};
 use reifydb_value::{
 	reifydb_assertions,
-	value::{datetime::DateTime, diff_type::DiffType, row_number::RowNumber, system_columns::RowTimes},
+	value::{
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		diff_type::DiffType,
+		row_number::RowNumber,
+		system_columns::RowTimes,
+	},
 };
 
 use crate::{
@@ -288,6 +294,25 @@ impl<'a> BorrowedColumn<'a> {
 			return Ok(None);
 		}
 		varlen_cell(self, index).map(Some)
+	}
+
+	pub fn dictionary(&self) -> Option<DictionaryId> {
+		match (self.type_code(), self.extern_c.data.dictionary_id) {
+			(ValueKind::DictionaryId, id) if id != 0 => Some(DictionaryId(id)),
+			_ => None,
+		}
+	}
+
+	pub(crate) fn dictionary_id_at(&self, index: usize) -> SdkResult<Option<DictionaryEntryId>> {
+		let Some(bytes) = self.bytes_at(index)? else {
+			return Ok(None);
+		};
+		decode_dictionary_id_cell(bytes).map(Some).map_err(|err| {
+			malformed(format!(
+				"extern-c column {} cell {index} is not a dictionary id: {err:?}",
+				self.name()
+			))
+		})
 	}
 
 	#[inline]

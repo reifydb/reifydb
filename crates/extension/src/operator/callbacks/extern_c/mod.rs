@@ -50,6 +50,7 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			find: dictionary::host_dictionary_find,
 			get: dictionary::host_dictionary_get,
 		},
+		dictionary_get_many: dictionary::host_dictionary_get_many,
 		builder: BuilderCallbacks {
 			acquire: builder::host_builder_acquire,
 			data_ptr: builder::host_builder_data_ptr,

@@ -21,6 +21,8 @@ pub struct ExternCColumnData {
 	pub defined_bitvec: ExternCBuffer,
 
 	pub offsets: ExternCBuffer,
+
+	pub dictionary_id: u64,
 }
 
 impl ExternCColumnData {
@@ -33,6 +35,7 @@ impl ExternCColumnData {
 			data: ExternCBuffer::empty(),
 			defined_bitvec: ExternCBuffer::empty(),
 			offsets: ExternCBuffer::empty(),
+			dictionary_id: 0,
 		}
 	}
 }

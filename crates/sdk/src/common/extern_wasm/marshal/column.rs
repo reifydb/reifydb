@@ -126,6 +126,13 @@ impl Arena {
 	pub(super) fn marshal_column_data(&mut self, view: &ColumnView<'_>) -> ExternCColumnData {
 		let row_count = view.len();
 		let (precision, scale) = column_params(view);
+		let dictionary_id = match &view.data {
+			ViewData::DictionaryId {
+				dictionary_id: Some(dictionary),
+				..
+			} => dictionary.0,
+			_ => 0,
+		};
 
 		if row_count == 0 {
 			return ExternCColumnData {
@@ -136,6 +143,7 @@ impl Arena {
 				data: ExternCBuffer::empty(),
 				defined_bitvec: ExternCBuffer::empty(),
 				offsets: ExternCBuffer::empty(),
+				dictionary_id,
 			};
 		}
 
@@ -157,6 +165,7 @@ impl Arena {
 			data: data_buffer,
 			defined_bitvec,
 			offsets: offsets_buffer,
+			dictionary_id,
 		}
 	}
 }

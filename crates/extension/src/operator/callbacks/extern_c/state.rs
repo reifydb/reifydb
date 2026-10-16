@@ -283,7 +283,7 @@ pub(super) extern "C" fn host_state_batch_read(
 	}
 }
 
-unsafe fn free_rows(rows: *mut ExternCBuffer, present: *mut u8, count: usize) {
+pub(super) unsafe fn free_rows(rows: *mut ExternCBuffer, present: *mut u8, count: usize) {
 	for slot in 0..count {
 		// SAFETY: callers pass `rows` and `present` valid for `count` reads and writes, with every present row
 		// owning a host-allocated buffer of its `len`; `slot` is below `count`.

@@ -7,8 +7,18 @@ use reifydb_codec::tag::{TypeTag, ValueKind};
 use reifydb_value::{
 	error::ColumnReadReason,
 	value::{
-		date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-		row_number::RowNumber, system_columns::RowTimes, time::Time, value_type::ValueType,
+		Value,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		dictionary::DictionaryEntryId,
+		diff_type::DiffType,
+		duration::Duration,
+		row_number::RowNumber,
+		system_columns::RowTimes,
+		time::Time,
+		try_from::{FromValueError, TryFromValue},
+		value_type::ValueType,
 	},
 };
 
@@ -20,37 +30,94 @@ use crate::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
-		view::{BorrowedCell, ChangeView, ColumnCursor, ColumnsView, CursorValue, DiffView, RowView},
+		view::{
+			BorrowedCell, ChangeView, ColumnCursor, ColumnsView, CursorValue, DiffView, RowView,
+			in_process::DictionaryValues,
+		},
 	},
 };
 
+type Entries<'a> = Option<&'a HashMap<DictionaryEntryId, Value>>;
+
 struct ExternCNames<'a> {
 	columns: BorrowedColumns<'a>,
-	positions: OnceCell<Option<HashMap<&'a str, BorrowedColumn<'a>>>>,
+	dictionary: Option<&'a DictionaryValues>,
+	positions: OnceCell<Option<HashMap<&'a str, (usize, BorrowedColumn<'a>)>>>,
 }
 
 impl<'a> ExternCNames<'a> {
-	fn new(columns: BorrowedColumns<'a>) -> Rc<Self> {
+	fn new(columns: BorrowedColumns<'a>, dictionary: Option<&'a DictionaryValues>) -> Rc<Self> {
 		Rc::new(Self {
 			columns,
+			dictionary,
 			positions: OnceCell::new(),
 		})
 	}
 
-	fn column(&self, name: &str) -> SdkResult<Option<BorrowedColumn<'a>>> {
+	fn column(&self, name: &str) -> SdkResult<Option<(BorrowedColumn<'a>, Entries<'a>)>> {
 		let positions = self.positions.get_or_init(|| {
 			let mut positions = HashMap::with_capacity(self.columns.column_count());
-			for column in self.columns.columns() {
-				positions.entry(column.checked_name().ok()?).or_insert(column);
+			for (index, column) in self.columns.columns().enumerate() {
+				positions.entry(column.checked_name().ok()?).or_insert((index, column));
 			}
 			Some(positions)
 		});
-		match positions {
-			Some(positions) => {
-				positions.get(name).map(|column| self.columns.checked_rows(name, *column)).transpose()
+		let found = match positions {
+			Some(positions) => positions.get(name).copied(),
+			None => {
+				let mut found = None;
+				for (index, column) in self.columns.columns().enumerate() {
+					if column.checked_name()? == name {
+						found = Some((index, column));
+						break;
+					}
+				}
+				found
 			}
-			None => self.columns.column(name),
-		}
+		};
+		found.map(|(index, column)| {
+			Ok((
+				self.columns.checked_rows(name, column)?,
+				self.dictionary.and_then(|dictionary| dictionary.get(&index)),
+			))
+		})
+		.transpose()
+	}
+}
+
+fn read_cell<'a, T: BorrowedCell<'a>>(
+	col: &BorrowedColumn<'a>,
+	entries: Entries<'a>,
+	index: usize,
+) -> SdkResult<Option<T>> {
+	if !col.defined_at(index)? {
+		return Ok(None);
+	}
+	let Some(entries) = entries else {
+		return T::read_borrowed(col, index);
+	};
+	match col.dictionary_id_at(index)?.and_then(|id| entries.get(&id)) {
+		Some(value) => T::read_value(value, col),
+		None => Ok(None),
+	}
+}
+
+fn value_cell<T: TryFromValue>(value: &Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<T>> {
+	match value {
+		Value::None {
+			..
+		} => Ok(None),
+		value => T::try_from_value(value).map(Some).map_err(|err| {
+			let reason = match err {
+				FromValueError::TypeMismatch {
+					..
+				} => ColumnReadReason::WrongType,
+				FromValueError::OutOfRange {
+					..
+				} => ColumnReadReason::DoesNotFit,
+			};
+			read_error::<T>(col, reason)
+		}),
 	}
 }
 
@@ -62,21 +129,26 @@ pub struct ExternCRowView<'a> {
 
 impl<'a> ExternCRowView<'a> {
 	fn read<T: BorrowedCell<'a>>(&self, name: &str) -> SdkResult<Option<T>> {
-		let Some(col) = self.names.column(name)? else {
-			return Ok(None);
-		};
-		if !col.defined_at(self.index)? {
-			return Ok(None);
+		match self.names.column(name)? {
+			Some((col, entries)) => read_cell(&col, entries, self.index),
+			None => Ok(None),
 		}
-		T::read_borrowed(&col, self.index)
 	}
 }
 
 impl<'a> RowView for ExternCRowView<'a> {
 	fn is_defined(&self, name: &str) -> Result<bool, SdkError> {
-		match self.names.column(name)? {
-			Some(col) => col.defined_at(self.index),
-			None => Ok(false),
+		let Some((col, entries)) = self.names.column(name)? else {
+			return Ok(false);
+		};
+		if !col.defined_at(self.index)? {
+			return Ok(false);
+		}
+		match entries {
+			Some(entries) => {
+				Ok(col.dictionary_id_at(self.index)?.is_some_and(|id| entries.contains_key(&id)))
+			}
+			None => Ok(true),
 		}
 	}
 
@@ -176,6 +248,16 @@ impl<'a> BorrowedCell<'a> for &'a str {
 		}
 		col.str_at(index)
 	}
+
+	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+		match value {
+			Value::Utf8(text) => Ok(Some(text.as_str())),
+			Value::None {
+				..
+			} => Ok(None),
+			_ => Err(read_error::<&str>(col, ColumnReadReason::WrongType)),
+		}
+	}
 }
 
 impl<'a> BorrowedCell<'a> for &'a [u8] {
@@ -184,6 +266,16 @@ impl<'a> BorrowedCell<'a> for &'a [u8] {
 			return Err(read_error::<&[u8]>(col, ColumnReadReason::WrongType));
 		}
 		col.bytes_at(index)
+	}
+
+	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+		match value {
+			Value::Blob(blob) => Ok(Some(blob.as_bytes())),
+			Value::None {
+				..
+			} => Ok(None),
+			_ => Err(read_error::<&[u8]>(col, ColumnReadReason::WrongType)),
+		}
 	}
 }
 
@@ -195,6 +287,10 @@ impl<'a> BorrowedCell<'a> for bool {
 		bitvec_len(col.data_bytes().len(), col.row_count(), col.name())?;
 		Ok(col.data_bytes().get(index / 8).map(|byte| (byte >> (index % 8)) & 1 == 1))
 	}
+
+	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+		value_cell(value, col)
+	}
 }
 
 macro_rules! widening_cell {
@@ -205,6 +301,10 @@ macro_rules! widening_cell {
 					$(ValueKind::$kind => Ok(fixed_at::<$source>(col, index)?.map(<$t>::from)),)*
 					_ => Err(read_error::<$t>(col, ColumnReadReason::WrongType)),
 				}
+			}
+
+			fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+				value_cell(value, col)
 			}
 		}
 	};
@@ -240,6 +340,10 @@ impl<'a> BorrowedCell<'a> for Decimal {
 			_ => Err(read_error::<Decimal>(col, ColumnReadReason::WrongType)),
 		}
 	}
+
+	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+		value_cell(value, col)
+	}
 }
 
 macro_rules! temporal_cell {
@@ -251,6 +355,10 @@ macro_rules! temporal_cell {
 				}
 				fixed_at::<$t>(col, index)
 			}
+
+			fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+				value_cell(value, col)
+			}
 		}
 	)*};
 }
@@ -259,6 +367,7 @@ temporal_cell!(Date => Date, DateTime => DateTime, Time => Time, Duration => Dur
 
 pub struct ExternCCursor<'a, T> {
 	col: BorrowedColumn<'a>,
+	entries: Entries<'a>,
 	_value: PhantomData<fn() -> T>,
 }
 
@@ -271,10 +380,7 @@ impl<'a, T: BorrowedCell<'a>> ColumnCursor<T> for ExternCCursor<'a, T> {
 				self.col.row_count()
 			)));
 		}
-		if !self.col.defined_at(index)? {
-			return Ok(None);
-		}
-		T::read_borrowed(&self.col, index)
+		read_cell(&self.col, self.entries, index)
 	}
 }
 
@@ -313,13 +419,13 @@ impl<'a> BorrowedColumns<'a> {
 			return None;
 		}
 		Some(ExternCRowView {
-			names: ExternCNames::new(self),
+			names: ExternCNames::new(self, None),
 			index,
 		})
 	}
 
 	pub fn rows(self) -> impl Iterator<Item = ExternCRowView<'a>> {
-		let names = ExternCNames::new(self);
+		let names = ExternCNames::new(self, None);
 		(0..self.row_count()).map(move |index| ExternCRowView {
 			names: Rc::clone(&names),
 			index,
@@ -337,8 +443,9 @@ impl<'a> ColumnsView for ExternCColumnsView<'a> {
 	}
 
 	fn column<'c, T: CursorValue<'c> + 'c>(&'c self, name: &str) -> SdkResult<Option<impl ColumnCursor<T> + 'c>> {
-		Ok(self.names.column(name)?.map(|col| ExternCCursor {
+		Ok(self.names.column(name)?.map(|(col, entries)| ExternCCursor {
 			col,
+			entries,
 			_value: PhantomData,
 		}))
 	}
@@ -370,6 +477,7 @@ impl<'a> ColumnsView for BorrowedColumns<'a> {
 	fn column<'c, T: CursorValue<'c> + 'c>(&'c self, name: &str) -> SdkResult<Option<impl ColumnCursor<T> + 'c>> {
 		Ok(BorrowedColumns::column(self, name)?.map(|col| ExternCCursor {
 			col,
+			entries: None,
 			_value: PhantomData,
 		}))
 	}
@@ -387,48 +495,66 @@ impl<'a> ColumnsView for BorrowedColumns<'a> {
 	}
 }
 
-fn diff_kind(code: DiffType) -> DiffType {
-	code
+pub struct ExternCChangeView<'a> {
+	change: BorrowedChange<'a>,
+	dictionary: &'a [[DictionaryValues; 2]],
 }
 
-impl<'a> DiffView for BorrowedDiff<'a> {
+impl<'a> ExternCChangeView<'a> {
+	pub fn new(change: BorrowedChange<'a>, dictionary: &'a [[DictionaryValues; 2]]) -> Self {
+		Self {
+			change,
+			dictionary,
+		}
+	}
+}
+
+struct ExternCDiffView<'a> {
+	diff: BorrowedDiff<'a>,
+	dictionary: Option<&'a [DictionaryValues; 2]>,
+}
+
+impl<'a> DiffView for ExternCDiffView<'a> {
 	fn kind(&self) -> DiffType {
-		diff_kind(BorrowedDiff::kind(self))
+		self.diff.kind()
 	}
 
 	fn pre(&self) -> Option<impl ColumnsView + '_> {
-		match BorrowedDiff::kind(self) {
+		match self.diff.kind() {
 			DiffType::Update | DiffType::Remove => Some(ExternCColumnsView {
-				names: ExternCNames::new(self.pre()),
+				names: ExternCNames::new(self.diff.pre(), self.dictionary.map(|[pre, _]| pre)),
 			}),
 			DiffType::Insert => None,
 		}
 	}
 
 	fn post(&self) -> Option<impl ColumnsView + '_> {
-		match BorrowedDiff::kind(self) {
+		match self.diff.kind() {
 			DiffType::Insert | DiffType::Update => Some(ExternCColumnsView {
-				names: ExternCNames::new(self.post()),
+				names: ExternCNames::new(self.diff.post(), self.dictionary.map(|[_, post]| post)),
 			}),
 			DiffType::Remove => None,
 		}
 	}
 }
 
-impl<'a> ChangeView for BorrowedChange<'a> {
+impl<'a> ChangeView for ExternCChangeView<'a> {
 	fn version(&self) -> u64 {
-		BorrowedChange::version(self)
+		self.change.version()
 	}
 
 	fn changed_at_nanos(&self) -> i64 {
-		BorrowedChange::changed_at_nanos(self)
+		self.change.changed_at_nanos()
 	}
 
 	fn diff_count(&self) -> usize {
-		BorrowedChange::diff_count(self)
+		self.change.diff_count()
 	}
 
 	fn diff(&self, index: usize) -> Option<impl DiffView + '_> {
-		self.diff_at(index)
+		self.change.diff_at(index).map(|diff| ExternCDiffView {
+			diff,
+			dictionary: self.dictionary.get(index),
+		})
 	}
 }

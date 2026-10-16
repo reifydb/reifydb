@@ -35,14 +35,14 @@ pub type DictionaryValues = HashMap<usize, HashMap<DictionaryEntryId, Value>>;
 
 struct ResolvedColumns<'a> {
 	batch: &'a RecordBatch,
-	values: Option<&'a DictionaryValues>,
+	dictionary: Option<&'a DictionaryValues>,
 	positions: HashMap<&'a str, usize>,
 	views: Box<[OnceLock<Option<ColumnView<'a>>>]>,
 	times: OnceLock<RowTimes<'a>>,
 }
 
 impl<'a> ResolvedColumns<'a> {
-	fn new(batch: &'a RecordBatch, values: Option<&'a DictionaryValues>) -> Self {
+	fn new(batch: &'a RecordBatch, dictionary: Option<&'a DictionaryValues>) -> Self {
 		let fields = batch.schema_ref().fields();
 		let mut positions = HashMap::with_capacity(fields.len());
 		for (index, field) in fields.iter().enumerate() {
@@ -50,7 +50,7 @@ impl<'a> ResolvedColumns<'a> {
 		}
 		Self {
 			batch,
-			values,
+			dictionary,
 			positions,
 			views: fields.iter().map(|_| OnceLock::new()).collect(),
 			times: OnceLock::new(),
@@ -79,7 +79,7 @@ impl<'a> ResolvedColumns<'a> {
 	}
 
 	fn entries(&self, name: &str) -> Option<&'a HashMap<DictionaryEntryId, Value>> {
-		self.values.and_then(|values| values.get(self.positions.get(name)?))
+		self.dictionary.and_then(|dictionary| dictionary.get(self.positions.get(name)?))
 	}
 
 	fn row_numbers(&self) -> &'a [RowNumber] {
@@ -333,9 +333,9 @@ impl<'a> InProcessColumnsView<'a> {
 		Self::with_values(batch, None)
 	}
 
-	pub fn with_values(batch: &'a RecordBatch, values: Option<&'a DictionaryValues>) -> Self {
+	pub fn with_values(batch: &'a RecordBatch, dictionary: Option<&'a DictionaryValues>) -> Self {
 		Self {
-			columns: Arc::new(ResolvedColumns::new(batch, values)),
+			columns: Arc::new(ResolvedColumns::new(batch, dictionary)),
 		}
 	}
 }
@@ -378,14 +378,14 @@ impl<'a> ColumnsView for InProcessColumnsView<'a> {
 
 pub struct InProcessDiffView<'a> {
 	diff: &'a Diff,
-	values: Option<&'a [DictionaryValues; 2]>,
+	dictionary: Option<&'a [DictionaryValues; 2]>,
 }
 
 impl<'a> InProcessDiffView<'a> {
 	pub fn new(diff: &'a Diff) -> Self {
 		Self {
 			diff,
-			values: None,
+			dictionary: None,
 		}
 	}
 }
@@ -396,26 +396,28 @@ impl<'a> DiffView for InProcessDiffView<'a> {
 	}
 
 	fn pre(&self) -> Option<impl ColumnsView + '_> {
-		self.diff.pre().map(|batch| InProcessColumnsView::with_values(batch, self.values.map(|[pre, _]| pre)))
+		self.diff
+			.pre()
+			.map(|batch| InProcessColumnsView::with_values(batch, self.dictionary.map(|[pre, _]| pre)))
 	}
 
 	fn post(&self) -> Option<impl ColumnsView + '_> {
 		self.diff
 			.post()
-			.map(|batch| InProcessColumnsView::with_values(batch, self.values.map(|[_, post]| post)))
+			.map(|batch| InProcessColumnsView::with_values(batch, self.dictionary.map(|[_, post]| post)))
 	}
 }
 
 pub struct InProcessChangeView<'a> {
 	change: &'a Change,
-	values: &'a [[DictionaryValues; 2]],
+	dictionary: &'a [[DictionaryValues; 2]],
 }
 
 impl<'a> InProcessChangeView<'a> {
-	pub fn new(change: &'a Change, values: &'a [[DictionaryValues; 2]]) -> Self {
+	pub fn new(change: &'a Change, dictionary: &'a [[DictionaryValues; 2]]) -> Self {
 		Self {
 			change,
-			values,
+			dictionary,
 		}
 	}
 }
@@ -436,7 +438,7 @@ impl<'a> ChangeView for InProcessChangeView<'a> {
 	fn diff(&self, index: usize) -> Option<impl DiffView + '_> {
 		self.change.diffs.get(index).map(|diff| InProcessDiffView {
 			diff,
-			values: self.values.get(index),
+			dictionary: self.dictionary.get(index),
 		})
 	}
 }

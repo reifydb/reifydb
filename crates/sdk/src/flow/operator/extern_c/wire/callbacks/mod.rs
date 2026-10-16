@@ -5,7 +5,13 @@ pub mod dictionary;
 pub mod state;
 
 use self::{dictionary::DictionaryCallbacks, state::StateCallbacks};
-use crate::common::extern_c::wire::callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks};
+use crate::{
+	common::extern_c::wire::{
+		buffer::ExternCBuffer,
+		callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks},
+	},
+	flow::operator::extern_c::wire::context::ExternCContextRaw,
+};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -17,4 +23,13 @@ pub struct OperatorCallbacks {
 	pub builder: BuilderCallbacks,
 
 	pub dictionary: DictionaryCallbacks,
+
+	pub dictionary_get_many: extern "C" fn(
+		ctx: *mut ExternCContextRaw,
+		dictionary: u64,
+		ids: *const u128,
+		n: usize,
+		values_out: *mut ExternCBuffer,
+		present_out: *mut u8,
+	) -> i32,
 }
