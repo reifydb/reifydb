@@ -488,10 +488,7 @@ impl ConfigKey {
 				 I/O; lower values keep the WAL small at the cost of more frequent checkpoints. Read \
 				 once at boot; changing it requires a restart."
 			}
-			Self::FlowTick => {
-				"How often the deferred and transactional flow tick coordinators wake up to dispatch \
-				 due flows."
-			}
+			Self::FlowTick => "How often each deferred flow actor wakes up to dispatch due flows.",
 			Self::FlowSampleInterval => {
 				"How often each flow actor samples its operators' approximate memory into the \
 				 system::metrics::runtime::memory samples (scope operator::N). Runs on the operator's \

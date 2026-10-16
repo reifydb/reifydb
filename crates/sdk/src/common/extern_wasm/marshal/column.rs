@@ -71,12 +71,13 @@ impl Arena {
 		} else {
 			ptr::null()
 		};
-		let time_defined = match system_column(batch, SystemColumn::Time).and_then(|array| array.logical_nulls()) {
-			Some(nulls) if !times.is_empty() && nulls.null_count() > 0 => {
-				self.marshal_bitvec(nulls.inner())
-			}
-			_ => ExternCBuffer::empty(),
-		};
+		let time_defined =
+			match system_column(batch, SystemColumn::Time).and_then(|array| array.logical_nulls()) {
+				Some(nulls) if !times.is_empty() && nulls.null_count() > 0 => {
+					self.marshal_bitvec(nulls.inner())
+				}
+				_ => ExternCBuffer::empty(),
+			};
 
 		let columns_size = column_count * size_of::<ExternCColumn>();
 		let columns_ptr = self.alloc(columns_size) as *mut ExternCColumn;

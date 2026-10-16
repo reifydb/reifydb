@@ -411,7 +411,7 @@ pub fn flow_sink_dictionary_not_found(dictionary_id: String, column: &str) -> Di
 
 pub fn flow_sink_dictionary_entry_not_found(dictionary_id: String, column: &str) -> Diagnostic {
 	flow_diagnostic(
-		"FLOW_084",
+		"FLOW_088",
 		format!("dictionary {} has no entry for a value removed from view column '{}'", dictionary_id, column),
 		"A view sink removed a row whose dictionary-encoded value was never interned, so the stored row cannot exist.",
 	)
@@ -854,7 +854,7 @@ pub fn flow_operator_timer_kind_reserved(kind: &str) -> Diagnostic {
 
 pub fn extern_library_load_failed(path: &str, cause: String) -> Diagnostic {
 	flow_diagnostic(
-		"FLOW_082",
+		"FLOW_087",
 		format!("extern operator library failed to load: {}: {}", path, cause),
 		"The shared library exports the operator magic symbol but the dynamic loader rejected it. Check its \
 		 dependencies and that it was built for this platform.",
