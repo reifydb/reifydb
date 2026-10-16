@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, interface::catalog::view::ViewKind};
+use reifydb_core::common::CommitVersion;
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -57,7 +57,6 @@ pub enum TransactionError {
 	#[error("View '{view}' cannot be read: this transaction holds unprocessed changes to upstream {upstream:?}")]
 	ViewPendingUpstreamChanges {
 		view: String,
-		kind: ViewKind,
 		upstream: Vec<String>,
 		fragment: Fragment,
 	},
@@ -244,25 +243,13 @@ impl IntoDiagnostic for TransactionError {
 				operator_chain: None,
 			},
 
-			TransactionError::ViewPendingUpstreamChanges { view, kind, upstream, fragment } => {
-				let (message, help) = match kind {
-					ViewKind::Transactional => (
-						format!(
-							"Transactional view '{}' cannot be read in this transaction: it is derived from {}, which this transaction has modified; those changes are applied to the view only at commit, so a read now would return stale contents",
-							view,
-							upstream.join(", ")
-						),
-						"Split the write and the read into separate requests, or read from the view's sources directly instead of the view",
-					),
-					ViewKind::Deferred => (
-						format!(
-							"Deferred view '{}' cannot be read in this transaction: it is derived from {}, which this transaction has modified; the view is updated asynchronously after commit, so a read now would return stale contents",
-							view,
-							upstream.join(", ")
-						),
-						"Deferred views update asynchronously after commit; read the view's sources directly, or consume the view through a subscription",
-					),
-				};
+			TransactionError::ViewPendingUpstreamChanges { view, upstream, fragment } => {
+				let message = format!(
+					"Deferred view '{}' cannot be read in this transaction: it is derived from {}, which this transaction has modified; the view is updated asynchronously after commit, so a read now would return stale contents",
+					view,
+					upstream.join(", ")
+				);
+				let help = "Deferred views update asynchronously after commit; read the view's sources directly, or consume the view through a subscription";
 				Diagnostic {
 					code: "TXN_015".to_string(),
 					rql: None,

@@ -121,9 +121,6 @@ pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, ser
 	if view.def().kind() == ViewKind::Transactional {
 		return Ok(());
 	}
-	if matches!(rx, Transaction::Test(_)) {
-		unimplemented!("RUN TESTS view reads; see plan-operator.md follow-up");
-	}
 	if !rx.has_unprocessed_flow_changes() {
 		return Ok(());
 	}
@@ -141,7 +138,6 @@ pub(crate) fn guard_view_read(view: &ResolvedView, rx: &mut Transaction<'_>, ser
 	}
 	Err(TransactionError::ViewPendingUpstreamChanges {
 		view: view.fully_qualified_name(),
-		kind: view.def().kind(),
 		upstream: resolve_object_names(services, rx, &offending),
 		fragment: view.identifier().clone(),
 	}

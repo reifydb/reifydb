@@ -105,6 +105,31 @@ fn run_tests_reads_the_view_its_own_body_updated_and_leaves_nothing_behind() {
 	assert!(ids(&t.query("FROM ns::v")).is_empty());
 }
 
+#[test]
+fn run_tests_reads_a_deferred_view_whose_upstream_the_body_left_alone() {
+	// a test reading only committed upstream data must see the deferred view, not abort the process
+	let t = setup();
+	t.admin("CREATE DEFERRED VIEW ns::d { id: int4 } AS { FROM ns::src }");
+	t.admin("CREATE TEST ns::reads_d { FROM ns::d | aggregate { n: math::count(id) } | ASSERT { n == 0 } }");
+	let result = t.inner().admin_as(TestEngine::identity(), "RUN TESTS ns", Params::None);
+	assert!(result.error.is_none(), "RUN TESTS itself must not fail, got: {:?}", result.error);
+	let rows: Vec<_> = result.frames[0].rows().collect();
+	assert_eq!(rows[0].get::<String>("outcome").unwrap().unwrap(), "pass");
+}
+
+#[test]
+fn run_tests_refuses_a_deferred_view_whose_upstream_the_body_wrote() {
+	// the deferred flow cannot run inside the test, so the read would silently miss the body's row
+	let t = setup();
+	t.admin("CREATE DEFERRED VIEW ns::d { id: int4 } AS { FROM ns::src }");
+	t.admin("CREATE TEST ns::writes_then_reads_d { INSERT ns::src [{ id: 2 }]; FROM ns::d }");
+	let result = t.inner().admin_as(TestEngine::identity(), "RUN TESTS ns", Params::None);
+	assert!(result.error.is_none(), "RUN TESTS itself must not fail, got: {:?}", result.error);
+	let rows: Vec<_> = result.frames[0].rows().collect();
+	assert_ne!(rows[0].get::<String>("outcome").unwrap().unwrap(), "pass");
+	assert!(rows[0].get::<String>("message").unwrap().unwrap().contains("TXN_015"));
+}
+
 fn cdc_entries(t: &TestEngine) -> Vec<Cdc> {
 	t.await_cdc();
 	t.cdc_store().read_range(Bound::Unbounded, Bound::Unbounded, 10_000).expect("cdc read").items

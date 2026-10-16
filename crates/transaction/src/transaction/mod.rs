@@ -258,7 +258,8 @@ impl<'a> Transaction<'a> {
 		match self {
 			Self::Command(txn) => txn.accumulator.has_touched(),
 			Self::Admin(txn) => txn.accumulator.has_touched(),
-			Self::Query(_) | Self::Test(_) => false,
+			Self::Test(t) => t.inner.accumulator.has_touched(),
+			Self::Query(_) => false,
 		}
 	}
 
@@ -266,7 +267,8 @@ impl<'a> Transaction<'a> {
 		match self {
 			Self::Command(txn) => txn.accumulator.pending_objects(),
 			Self::Admin(txn) => txn.accumulator.pending_objects(),
-			Self::Query(_) | Self::Test(_) => Vec::new(),
+			Self::Test(t) => t.inner.accumulator.pending_objects(),
+			Self::Query(_) => Vec::new(),
 		}
 	}
 
