@@ -1402,9 +1402,7 @@ mod pull_protocol {
 					checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 					retry_limit: 3,
 					retry_backoff: Duration::from_milliseconds(50).unwrap(),
-					wake_coalesce: Duration::from_nanoseconds_const(
-						FLOW_WAKE_COALESCE_NANOS,
-					),
+					wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
 					batch_size: 8,
 				}),
 			);
@@ -1452,20 +1450,14 @@ mod pull_protocol {
 				checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
-				wake_coalesce: Duration::from_nanoseconds_const(
-					FLOW_WAKE_COALESCE_NANOS,
-				),
+				wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
 				batch_size: 8,
 			});
 			let pending = actor.wake_pending();
 			let handle = self.engine.spawner().spawn_flow("pull-protocol-flow", actor);
 			self.tracker.set_waker(
 				flow_id,
-				FlowWaker::new(
-					handle.actor_ref().clone(),
-					pending,
-					self.engine.clock().clone(),
-				),
+				FlowWaker::new(handle.actor_ref().clone(), pending, self.engine.clock().clone()),
 			);
 
 			assert_eq!(
@@ -1957,10 +1949,7 @@ mod pull_protocol {
 				)
 				.actor_ref()
 				.clone();
-		h.tracker.set_waker(
-			h.flow_id,
-			FlowWaker::new(recorder, pending, h.engine.clock().clone()),
-		);
+		h.tracker.set_waker(h.flow_id, FlowWaker::new(recorder, pending, h.engine.clock().clone()));
 
 		h.te.command("INSERT app::t [{ id: 1 }]");
 		let safe = h.engine.current_version().expect("current version");
@@ -2486,8 +2475,7 @@ mod pull_protocol {
 				.as_ref()
 				.expect("the harness substrate carries an operator store")
 				.total_bytes()
-				.unwrap()
-				> ByteSize::ZERO,
+				.unwrap() > ByteSize::ZERO,
 			"the aggregate's operator state must land in the shared operator store"
 		);
 
@@ -2570,9 +2558,7 @@ mod pull_protocol {
 				checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
-				wake_coalesce: Duration::from_nanoseconds_const(
-					FLOW_WAKE_COALESCE_NANOS,
-				),
+				wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
 				batch_size: 8,
 			}),
 		);
@@ -3030,9 +3016,7 @@ mod tick_failures {
 			checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 			retry_limit: RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(50).unwrap(),
-			wake_coalesce: Duration::from_nanoseconds_const(
-				FLOW_WAKE_COALESCE_NANOS,
-			),
+			wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
 			batch_size: 8,
 		});
 
