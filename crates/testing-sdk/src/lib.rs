@@ -7,6 +7,7 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 pub mod builders;
+pub mod state_store;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 pub mod chaos;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
