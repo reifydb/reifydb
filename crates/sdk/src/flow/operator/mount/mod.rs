@@ -37,6 +37,7 @@ use crate::{
 	error::Result as SdkResult,
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
+		column::operator::{OperatorColumn, reads_entry_ids},
 		mount::context::InProcessContext,
 		timer::Timer as SdkTimer,
 		view::in_process::{DictionaryValues, InProcessChangeView},
@@ -62,7 +63,11 @@ fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -
 	}
 }
 
-fn dictionary_values(host: &mut dyn HostContext, batch: Option<&RecordBatch>) -> Result<DictionaryValues> {
+fn dictionary_values(
+	host: &mut dyn HostContext,
+	input_columns: &[OperatorColumn],
+	batch: Option<&RecordBatch>,
+) -> Result<DictionaryValues> {
 	let mut values = DictionaryValues::new();
 	let Some(batch) = batch else {
 		return Ok(values);
@@ -76,6 +81,9 @@ fn dictionary_values(host: &mut dyn HostContext, batch: Option<&RecordBatch>) ->
 		else {
 			continue;
 		};
+		if reads_entry_ids(input_columns, field.name()) {
+			continue;
+		}
 		let mut ids: Vec<DictionaryEntryId> = (0..view.len())
 			.filter(|&row| view.is_defined(row))
 			.filter_map(|row| match view.get_value(row) {
@@ -105,6 +113,7 @@ pub fn mount<C: MountedOperator + OperatorMetadata + 'static>(
 		logic,
 		operator,
 		capabilities,
+		input_columns: C::INPUT_COLUMNS,
 	})
 }
 
@@ -112,6 +121,7 @@ struct GuestAdapter<C> {
 	logic: C,
 	operator: OperatorId,
 	capabilities: &'static [OperatorCapability],
+	input_columns: &'static [OperatorColumn],
 }
 
 impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
@@ -133,7 +143,12 @@ impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 		let values = change
 			.diffs
 			.iter()
-			.map(|diff| Ok([dictionary_values(host, diff.pre())?, dictionary_values(host, diff.post())?]))
+			.map(|diff| {
+				Ok([
+					dictionary_values(host, self.input_columns, diff.pre())?,
+					dictionary_values(host, self.input_columns, diff.post())?,
+				])
+			})
 			.collect::<Result<Vec<_>>>()?;
 		let mut ctx = InProcessContext::new(host, self.operator);
 		{

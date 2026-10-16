@@ -15,19 +15,26 @@ use crate::{
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		change::{BorrowedChange, BorrowedColumns},
-		column::operator::OperatorColumn,
+		column::operator::{OperatorColumn, reads_entry_ids},
 		extern_c::binding::{context::ExternCContext, dictionary::raw_get_many, view::ExternCChangeView},
 		timer::Timer,
 		view::in_process::DictionaryValues,
 	},
 };
 
-fn dictionary_values(ctx: &ExternCContext, columns: BorrowedColumns<'_>) -> Result<DictionaryValues> {
+fn dictionary_values(
+	ctx: &ExternCContext,
+	input_columns: &[OperatorColumn],
+	columns: BorrowedColumns<'_>,
+) -> Result<DictionaryValues> {
 	let mut values = DictionaryValues::new();
 	for (index, column) in columns.columns().enumerate() {
 		let Some(dictionary) = column.dictionary() else {
 			continue;
 		};
+		if reads_entry_ids(input_columns, column.name()) {
+			continue;
+		}
 		let mut ids = Vec::with_capacity(column.row_count());
 		for row in 0..column.row_count() {
 			if !column.defined_at(row)? {
@@ -89,7 +96,12 @@ impl<C: MountedOperator + OperatorMetadata + 'static> ExternCOperator for Extern
 	fn apply(&mut self, ctx: &mut ExternCContext, input: BorrowedChange<'_>) -> Result<()> {
 		let values = input
 			.diffs()
-			.map(|diff| Ok([dictionary_values(ctx, diff.pre())?, dictionary_values(ctx, diff.post())?]))
+			.map(|diff| {
+				Ok([
+					dictionary_values(ctx, C::INPUT_COLUMNS, diff.pre())?,
+					dictionary_values(ctx, C::INPUT_COLUMNS, diff.post())?,
+				])
+			})
 			.collect::<Result<Vec<_>>>()?;
 		self.core.apply(ctx, ExternCChangeView::new(input, &values))
 	}

@@ -200,6 +200,10 @@ impl<'a> RowView for InProcessRowView<'a> {
 		self.read(name)
 	}
 
+	fn dictionary_id(&self, name: &str) -> Result<Option<DictionaryEntryId>, SdkError> {
+		self.read(name)
+	}
+
 	fn row_number(&self) -> Option<RowNumber> {
 		self.columns.row_numbers().get(self.index).copied()
 	}
@@ -247,6 +251,38 @@ impl<'a> ViewCell<'a> for &'a [u8] {
 	}
 }
 
+impl<'a> ViewCell<'a> for DictionaryEntryId {
+	const READS_ENTRY_ID: bool = true;
+
+	fn read_view(view: &ColumnView<'a>, index: usize) -> Result<Option<Self>, SdkError> {
+		if !matches!(view.data, ViewData::DictionaryId { .. }) {
+			return Err(column_read::<DictionaryEntryId>(
+				view.field.name(),
+				view,
+				ColumnReadReason::WrongType,
+			));
+		}
+		match view.get_value(index) {
+			Value::DictionaryId(id) => Ok(Some(id)),
+			_ => Ok(None),
+		}
+	}
+
+	fn read_value(value: &'a Value, view: &ColumnView<'_>) -> Result<Option<Self>, SdkError> {
+		match value {
+			Value::DictionaryId(id) => Ok(Some(*id)),
+			Value::None {
+				..
+			} => Ok(None),
+			_ => Err(column_read::<DictionaryEntryId>(
+				view.field.name(),
+				view,
+				ColumnReadReason::WrongType,
+			)),
+		}
+	}
+}
+
 macro_rules! view_cell_from_column_view {
 	($($t:ty),*) => {$(
 		impl<'a> ViewCell<'a> for $t {
@@ -283,7 +319,7 @@ fn read_cell<'r, T: ViewCell<'r>>(
 	if !view.is_defined(index) {
 		return Ok(None);
 	}
-	let Some(entries) = entries else {
+	let Some(entries) = entries.filter(|_| !T::READS_ENTRY_ID) else {
 		return T::read_view(view, index);
 	};
 	match view.get_value(index) {

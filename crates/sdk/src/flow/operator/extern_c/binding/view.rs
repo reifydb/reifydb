@@ -93,7 +93,7 @@ fn read_cell<'a, T: BorrowedCell<'a>>(
 	if !col.defined_at(index)? {
 		return Ok(None);
 	}
-	let Some(entries) = entries else {
+	let Some(entries) = entries.filter(|_| !T::READS_ENTRY_ID) else {
 		return T::read_borrowed(col, index);
 	};
 	match col.dictionary_id_at(index)?.and_then(|id| entries.get(&id)) {
@@ -232,6 +232,10 @@ impl<'a> RowView for ExternCRowView<'a> {
 		self.read(name)
 	}
 
+	fn dictionary_id(&self, name: &str) -> Result<Option<DictionaryEntryId>, SdkError> {
+		self.read(name)
+	}
+
 	fn row_number(&self) -> Option<RowNumber> {
 		self.names.columns.row_numbers().get(self.index).copied()
 	}
@@ -256,6 +260,27 @@ impl<'a> BorrowedCell<'a> for &'a str {
 				..
 			} => Ok(None),
 			_ => Err(read_error::<&str>(col, ColumnReadReason::WrongType)),
+		}
+	}
+}
+
+impl<'a> BorrowedCell<'a> for DictionaryEntryId {
+	const READS_ENTRY_ID: bool = true;
+
+	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+		if col.type_code() != ValueKind::DictionaryId {
+			return Err(read_error::<DictionaryEntryId>(col, ColumnReadReason::WrongType));
+		}
+		col.dictionary_id_at(index)
+	}
+
+	fn read_value(value: &'a Value, col: &BorrowedColumn<'_>) -> SdkResult<Option<Self>> {
+		match value {
+			Value::DictionaryId(id) => Ok(Some(*id)),
+			Value::None {
+				..
+			} => Ok(None),
+			_ => Err(read_error::<DictionaryEntryId>(col, ColumnReadReason::WrongType)),
 		}
 	}
 }

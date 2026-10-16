@@ -4,19 +4,24 @@
 pub mod in_process;
 
 use reifydb_value::value::{
-	Value, column_view::ColumnView, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType,
-	duration::Duration, row_number::RowNumber, system_columns::RowTimes, time::Time,
+	Value, column_view::ColumnView, date::Date, datetime::DateTime, decimal::Decimal,
+	dictionary::DictionaryEntryId, diff_type::DiffType, duration::Duration, row_number::RowNumber,
+	system_columns::RowTimes, time::Time,
 };
 
 use crate::{error::SdkError, flow::operator::change::BorrowedColumn};
 
 pub trait ViewCell<'a>: Sized {
+	const READS_ENTRY_ID: bool = false;
+
 	fn read_view(view: &ColumnView<'a>, index: usize) -> Result<Option<Self>, SdkError>;
 
 	fn read_value(value: &'a Value, view: &ColumnView<'_>) -> Result<Option<Self>, SdkError>;
 }
 
 pub trait BorrowedCell<'a>: Sized {
+	const READS_ENTRY_ID: bool = false;
+
 	fn read_borrowed(column: &BorrowedColumn<'a>, index: usize) -> Result<Option<Self>, SdkError>;
 
 	fn read_value(value: &'a Value, column: &BorrowedColumn<'_>) -> Result<Option<Self>, SdkError>;
@@ -52,6 +57,7 @@ pub trait RowView {
 	fn datetime(&self, name: &str) -> Result<Option<DateTime>, SdkError>;
 	fn time(&self, name: &str) -> Result<Option<Time>, SdkError>;
 	fn duration(&self, name: &str) -> Result<Option<Duration>, SdkError>;
+	fn dictionary_id(&self, name: &str) -> Result<Option<DictionaryEntryId>, SdkError>;
 	fn row_number(&self) -> Option<RowNumber>;
 	fn row_time(&self) -> Option<DateTime>;
 }
