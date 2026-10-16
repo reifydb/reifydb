@@ -26,6 +26,7 @@ use reifydb_value::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		dictionary::DictionaryEntryId,
 		digest::Digest,
 		duration::Duration,
 		identity::IdentityId,
@@ -132,7 +133,7 @@ macro_rules! zero_heap {
 
 zero_heap!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64, bool, char, ());
 zero_heap!(OrderedF32, OrderedF64, Date, DateTime, Time, Duration, IdentityId, Uuid4, Uuid7, RowNumber, Hash128);
-zero_heap!(Partition, RowShapeFingerprint, TimerKind, ContentVersion);
+zero_heap!(Partition, RowShapeFingerprint, TimerKind, ContentVersion, DictionaryEntryId);
 
 const BIGNUM_APPROX_HEAP: usize = 32;
 
