@@ -13,30 +13,36 @@ use reifydb_core::interface::change::{Change, Diff};
 use reifydb_value::{
 	error::ColumnReadReason,
 	value::{
+		Value,
 		column_view::{ColumnView, FromColumnView, ViewData},
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
+		dictionary::DictionaryEntryId,
 		diff_type::DiffType,
 		duration::Duration,
 		row_number::RowNumber,
 		system_columns::{RowTimes, is_system_field, row_numbers, row_times},
 		time::Time,
+		try_from::{FromValueError, TryFromValue},
 	},
 };
 
 use super::{ChangeView, ColumnCursor, ColumnsView, CursorValue, DiffView, RowView, ViewCell};
 use crate::error::SdkError;
 
+pub type DictionaryValues = HashMap<usize, HashMap<DictionaryEntryId, Value>>;
+
 struct ResolvedColumns<'a> {
 	batch: &'a RecordBatch,
+	values: Option<&'a DictionaryValues>,
 	positions: HashMap<&'a str, usize>,
 	views: Box<[OnceLock<Option<ColumnView<'a>>>]>,
 	times: OnceLock<RowTimes<'a>>,
 }
 
 impl<'a> ResolvedColumns<'a> {
-	fn new(batch: &'a RecordBatch) -> Self {
+	fn new(batch: &'a RecordBatch, values: Option<&'a DictionaryValues>) -> Self {
 		let fields = batch.schema_ref().fields();
 		let mut positions = HashMap::with_capacity(fields.len());
 		for (index, field) in fields.iter().enumerate() {
@@ -44,6 +50,7 @@ impl<'a> ResolvedColumns<'a> {
 		}
 		Self {
 			batch,
+			values,
 			positions,
 			views: fields.iter().map(|_| OnceLock::new()).collect(),
 			times: OnceLock::new(),
@@ -62,6 +69,17 @@ impl<'a> ResolvedColumns<'a> {
 		let view = ColumnView::try_from((batch.column(index), batch.schema_ref().field(index)))
 			.map_err(|err| SdkError::InvalidInput(err.0.message))?;
 		Ok(slot.get_or_init(|| Some(view).filter(|view| !is_system_field(view.field))).as_ref())
+	}
+
+	fn read<'r, T: ViewCell<'r>>(&'r self, name: &str, index: usize) -> Result<Option<T>, SdkError> {
+		match self.view(name)? {
+			Some(view) => read_cell(view, self.entries(name), index),
+			None => Ok(None),
+		}
+	}
+
+	fn entries(&self, name: &str) -> Option<&'a HashMap<DictionaryEntryId, Value>> {
+		self.values.and_then(|values| values.get(self.positions.get(name)?))
 	}
 
 	fn row_numbers(&self) -> &'a [RowNumber] {
@@ -84,16 +102,22 @@ impl<'a> InProcessRowView<'a> {
 	}
 
 	fn read<'r, T: ViewCell<'r>>(&'r self, name: &str) -> Result<Option<T>, SdkError> {
-		match self.buffer(name)? {
-			Some(view) if view.is_defined(self.index) => T::read_view(view, self.index),
-			_ => Ok(None),
-		}
+		self.columns.read(name, self.index)
 	}
 }
 
 impl<'a> RowView for InProcessRowView<'a> {
 	fn is_defined(&self, name: &str) -> Result<bool, SdkError> {
-		Ok(self.buffer(name)?.is_some_and(|view| view.is_defined(self.index)))
+		let Some(view) = self.buffer(name)? else {
+			return Ok(false);
+		};
+		if !view.is_defined(self.index) {
+			return Ok(false);
+		}
+		Ok(match (self.columns.entries(name), view.get_value(self.index)) {
+			(Some(entries), Value::DictionaryId(id)) => entries.contains_key(&id),
+			_ => true,
+		})
 	}
 
 	fn utf8(&self, name: &str) -> Result<Option<&str>, SdkError> {
@@ -192,6 +216,16 @@ impl<'a> ViewCell<'a> for &'a str {
 		}
 		Ok(view.get_str(index))
 	}
+
+	fn read_value(value: &'a Value, view: &ColumnView<'_>) -> Result<Option<Self>, SdkError> {
+		match value {
+			Value::Utf8(text) => Ok(Some(text.as_str())),
+			Value::None {
+				..
+			} => Ok(None),
+			_ => Err(column_read::<&str>(view.field.name(), view, ColumnReadReason::WrongType)),
+		}
+	}
 }
 
 impl<'a> ViewCell<'a> for &'a [u8] {
@@ -200,6 +234,16 @@ impl<'a> ViewCell<'a> for &'a [u8] {
 			return Err(column_read::<&[u8]>(view.field.name(), view, ColumnReadReason::WrongType));
 		}
 		Ok(view.get_bytes(index))
+	}
+
+	fn read_value(value: &'a Value, view: &ColumnView<'_>) -> Result<Option<Self>, SdkError> {
+		match value {
+			Value::Blob(blob) => Ok(Some(blob.as_bytes())),
+			Value::None {
+				..
+			} => Ok(None),
+			_ => Err(column_read::<&[u8]>(view.field.name(), view, ColumnReadReason::WrongType)),
+		}
 	}
 }
 
@@ -210,6 +254,19 @@ macro_rules! view_cell_from_column_view {
 				<$t as FromColumnView>::from_column_view(view, index)
 					.map_err(|reason| column_read::<$t>(view.field.name(), view, reason))
 			}
+
+			fn read_value(value: &'a Value, view: &ColumnView<'_>) -> Result<Option<Self>, SdkError> {
+				match value {
+					Value::None { .. } => Ok(None),
+					value => <$t as TryFromValue>::try_from_value(value).map(Some).map_err(|err| {
+						let reason = match err {
+							FromValueError::TypeMismatch { .. } => ColumnReadReason::WrongType,
+							FromValueError::OutOfRange { .. } => ColumnReadReason::DoesNotFit,
+						};
+						column_read::<$t>(view.field.name(), view, reason)
+					}),
+				}
+			}
 		}
 	)*};
 }
@@ -218,7 +275,28 @@ view_cell_from_column_view!(
 	bool, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64, Decimal, Date, DateTime, Time, Duration
 );
 
+fn read_cell<'r, T: ViewCell<'r>>(
+	view: &ColumnView<'r>,
+	entries: Option<&'r HashMap<DictionaryEntryId, Value>>,
+	index: usize,
+) -> Result<Option<T>, SdkError> {
+	if !view.is_defined(index) {
+		return Ok(None);
+	}
+	let Some(entries) = entries else {
+		return T::read_view(view, index);
+	};
+	match view.get_value(index) {
+		Value::DictionaryId(id) => match entries.get(&id) {
+			Some(value) => T::read_value(value, view),
+			None => Ok(None),
+		},
+		_ => Err(column_read::<T>(view.field.name(), view, ColumnReadReason::WrongType)),
+	}
+}
+
 pub struct InProcessCursor<'c, T> {
+	entries: Option<&'c HashMap<DictionaryEntryId, Value>>,
 	view: &'c ColumnView<'c>,
 	rows: usize,
 	_value: PhantomData<fn() -> T>,
@@ -233,10 +311,7 @@ impl<'c, T: ViewCell<'c>> ColumnCursor<T> for InProcessCursor<'c, T> {
 				self.rows
 			)));
 		}
-		if !self.view.is_defined(index) {
-			return Ok(None);
-		}
-		T::read_view(self.view, index)
+		read_cell(self.view, self.entries, index)
 	}
 }
 
@@ -255,8 +330,12 @@ pub struct InProcessColumnsView<'a> {
 
 impl<'a> InProcessColumnsView<'a> {
 	pub fn new(batch: &'a RecordBatch) -> Self {
+		Self::with_values(batch, None)
+	}
+
+	pub fn with_values(batch: &'a RecordBatch, values: Option<&'a DictionaryValues>) -> Self {
 		Self {
-			columns: Arc::new(ResolvedColumns::new(batch)),
+			columns: Arc::new(ResolvedColumns::new(batch, values)),
 		}
 	}
 }
@@ -281,6 +360,7 @@ impl<'a> ColumnsView for InProcessColumnsView<'a> {
 		name: &str,
 	) -> Result<Option<impl ColumnCursor<T> + 'c>, SdkError> {
 		Ok(self.columns.view(name)?.map(|view| InProcessCursor {
+			entries: self.columns.entries(name),
 			view,
 			rows: self.columns.batch.num_rows(),
 			_value: PhantomData,
@@ -298,12 +378,14 @@ impl<'a> ColumnsView for InProcessColumnsView<'a> {
 
 pub struct InProcessDiffView<'a> {
 	diff: &'a Diff,
+	values: Option<&'a [DictionaryValues; 2]>,
 }
 
 impl<'a> InProcessDiffView<'a> {
 	pub fn new(diff: &'a Diff) -> Self {
 		Self {
 			diff,
+			values: None,
 		}
 	}
 }
@@ -314,22 +396,26 @@ impl<'a> DiffView for InProcessDiffView<'a> {
 	}
 
 	fn pre(&self) -> Option<impl ColumnsView + '_> {
-		self.diff.pre().map(InProcessColumnsView::new)
+		self.diff.pre().map(|batch| InProcessColumnsView::with_values(batch, self.values.map(|[pre, _]| pre)))
 	}
 
 	fn post(&self) -> Option<impl ColumnsView + '_> {
-		self.diff.post().map(InProcessColumnsView::new)
+		self.diff
+			.post()
+			.map(|batch| InProcessColumnsView::with_values(batch, self.values.map(|[_, post]| post)))
 	}
 }
 
 pub struct InProcessChangeView<'a> {
 	change: &'a Change,
+	values: &'a [[DictionaryValues; 2]],
 }
 
 impl<'a> InProcessChangeView<'a> {
-	pub fn new(change: &'a Change) -> Self {
+	pub fn new(change: &'a Change, values: &'a [[DictionaryValues; 2]]) -> Self {
 		Self {
 			change,
+			values,
 		}
 	}
 }
@@ -348,6 +434,9 @@ impl<'a> ChangeView for InProcessChangeView<'a> {
 	}
 
 	fn diff(&self, index: usize) -> Option<impl DiffView + '_> {
-		self.change.diffs.get(index).map(InProcessDiffView::new)
+		self.change.diffs.get(index).map(|diff| InProcessDiffView {
+			diff,
+			values: self.values.get(index),
+		})
 	}
 }

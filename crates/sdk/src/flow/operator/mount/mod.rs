@@ -5,9 +5,11 @@ pub mod context;
 
 use std::{
 	backtrace::Backtrace,
+	collections::HashMap,
 	panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
 };
 
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	common::ChangeVersion,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
@@ -23,14 +25,21 @@ use reifydb_runtime::fatal::{
 };
 use reifydb_value::{
 	Result,
-	value::system_columns::{row_numbers, row_times},
+	value::{
+		Value,
+		column_view::{ColumnView, ViewData},
+		dictionary::DictionaryEntryId,
+		system_columns::{row_numbers, row_times},
+	},
 };
 
 use crate::{
 	error::Result as SdkResult,
 	flow::operator::{
-		MountedOperator, OperatorMetadata, mount::context::InProcessContext, timer::Timer as SdkTimer,
-		view::in_process::InProcessChangeView,
+		MountedOperator, OperatorMetadata,
+		mount::context::InProcessContext,
+		timer::Timer as SdkTimer,
+		view::in_process::{DictionaryValues, InProcessChangeView},
 	},
 };
 
@@ -51,6 +60,40 @@ fn run_or_abort<R>(operator: OperatorId, stage: &'static str, f: impl FnOnce() -
 			.with("stage", stage)
 			.backtrace(Backtrace::force_capture().to_string())),
 	}
+}
+
+fn dictionary_values(host: &mut dyn HostContext, batch: Option<&RecordBatch>) -> Result<DictionaryValues> {
+	let mut values = DictionaryValues::new();
+	let Some(batch) = batch else {
+		return Ok(values);
+	};
+	for (index, (field, array)) in batch.schema_ref().fields().iter().zip(batch.columns()).enumerate() {
+		let view = ColumnView::try_from((array, field.as_ref()))?;
+		let ViewData::DictionaryId {
+			dictionary_id: Some(dictionary),
+			..
+		} = view.data
+		else {
+			continue;
+		};
+		let mut ids: Vec<DictionaryEntryId> = (0..view.len())
+			.filter(|&row| view.is_defined(row))
+			.filter_map(|row| match view.get_value(row) {
+				Value::DictionaryId(id) => Some(id),
+				_ => None,
+			})
+			.collect();
+		ids.sort_unstable();
+		ids.dedup();
+		let found = host.dictionary_get_many(dictionary, &ids)?;
+		let entries = ids
+			.into_iter()
+			.zip(found)
+			.filter_map(|(id, value)| value.map(|value| (id, value)))
+			.collect::<HashMap<_, _>>();
+		values.insert(index, entries);
+	}
+	Ok(values)
 }
 
 pub fn mount<C: MountedOperator + OperatorMetadata + 'static>(
@@ -87,9 +130,14 @@ impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 		}
 		let version = change.version;
 		let changed_at = change.changed_at;
+		let values = change
+			.diffs
+			.iter()
+			.map(|diff| Ok([dictionary_values(host, diff.pre())?, dictionary_values(host, diff.post())?]))
+			.collect::<Result<Vec<_>>>()?;
 		let mut ctx = InProcessContext::new(host, self.operator);
 		{
-			let view = InProcessChangeView::new(&change);
+			let view = InProcessChangeView::new(&change, &values);
 			let logic = &mut self.logic;
 			run_or_abort(self.operator, "apply", || logic.apply(&mut ctx, view));
 		}

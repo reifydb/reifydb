@@ -4,7 +4,7 @@
 pub mod in_process;
 
 use reifydb_value::value::{
-	column_view::ColumnView, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType,
+	Value, column_view::ColumnView, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType,
 	duration::Duration, row_number::RowNumber, system_columns::RowTimes, time::Time,
 };
 
@@ -12,6 +12,8 @@ use crate::{error::SdkError, flow::operator::change::BorrowedColumn};
 
 pub trait ViewCell<'a>: Sized {
 	fn read_view(view: &ColumnView<'a>, index: usize) -> Result<Option<Self>, SdkError>;
+
+	fn read_value(value: &'a Value, view: &ColumnView<'_>) -> Result<Option<Self>, SdkError>;
 }
 
 pub trait BorrowedCell<'a>: Sized {
