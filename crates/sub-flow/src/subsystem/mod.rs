@@ -31,10 +31,7 @@ use reifydb_core::{
 	event::operator::OperatorLoadedEvent,
 	interface::{
 		WithEventBus,
-		catalog::{
-			config::{ConfigKey, GetConfig},
-			flow::FlowId,
-		},
+		catalog::config::{ConfigKey, GetConfig},
 		cdc::CdcConsumerId,
 		flow::FlowWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
@@ -51,16 +48,12 @@ use reifydb_flow_async::{
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
 use reifydb_store_cdc::store::CdcStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_transaction::{
-	commit::{CommitBegin, CommitHandle},
-	transaction::Transaction,
-};
+use reifydb_transaction::commit::{CommitBegin, CommitHandle};
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
 	value::{duration::Duration, identity::IdentityId},
 };
-use tracing::warn;
 
 use crate::{
 	builder::{CustomOperators, FlowConfig},
@@ -198,12 +191,16 @@ impl FlowSubsystem {
 		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));
 
 		let (scan_from, scan_lease) = engine.acquire_current_snapshot_lease()?;
-		let bootstrap_flows = Self::bootstrap_flows(&engine);
-		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Bootstrap {
-			flows: bootstrap_flows,
-			scan_from,
-			scan_lease,
-		});
+		if supervisor_handle
+			.actor_ref()
+			.send(FlowSupervisorMessage::Bootstrap {
+				scan_from,
+				scan_lease,
+			})
+			.is_err()
+		{
+			panic!("flow supervisor refused its bootstrap message");
+		}
 
 		let supervisor_ref = supervisor_handle.actor_ref().clone();
 		backlog.set_waker(move || {
@@ -289,20 +286,6 @@ impl FlowSubsystem {
 				})
 			}
 		}));
-	}
-
-	#[inline]
-	fn bootstrap_flows(engine: &StandardEngine) -> Vec<FlowId> {
-		let mut bootstrap_flows = Vec::new();
-		if let Ok(mut query) = engine.begin_query(IdentityId::system()) {
-			match engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)) {
-				Ok(existing_flows) => {
-					bootstrap_flows.extend(existing_flows.into_iter().map(|existing| existing.id));
-				}
-				Err(e) => warn!(error = %e, "failed to list flows during bootstrap"),
-			}
-		}
-		bootstrap_flows
 	}
 }
 

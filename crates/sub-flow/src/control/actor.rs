@@ -3112,8 +3112,7 @@ mod tick_failures {
 
 	#[test]
 	fn a_tick_with_nothing_due_dispatches_no_commit() {
-		// Every ticking flow ticks on every interval; an idle tick that commits anyway costs a commit and a
-		// reader wake per flow per interval for no change at all.
+		// otherwise every idle flow costs a commit and a reader wake on every interval
 		let (_te, _health, actor) = actor_with(false, "silent", |engine| idle(engine, "idle-tick-committer"));
 		let mut harness = TestHarness::new(actor);
 		assert!(!harness.state().poisoned, "precondition: registration must succeed");

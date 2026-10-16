@@ -40,7 +40,7 @@ use reifydb_value::{
 	byte_size::ByteSize,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use crate::{
 	builder::CustomOperators,
@@ -75,7 +75,6 @@ pub type FlowSupervisorHandle = ActorHandle<FlowSupervisorMessage>;
 
 pub enum FlowSupervisorMessage {
 	Bootstrap {
-		flows: Vec<FlowId>,
 		scan_from: CommitVersion,
 		scan_lease: VersionLeaseGuard,
 	},
@@ -189,33 +188,36 @@ impl FlowSupervisor {
 	fn handle_bootstrap(
 		&self,
 		state: &mut SupervisorState,
-		flows: Vec<FlowId>,
 		scan_from: CommitVersion,
 		scan_lease: VersionLeaseGuard,
 	) {
-		let mut known: BTreeSet<FlowId> = flows.iter().copied().collect();
-
-		let mut query = match self.engine.begin_query(IdentityId::system()) {
+		let mut query = match self.engine.begin_query_at_version(&scan_lease, IdentityId::system()) {
 			Ok(q) => q,
-			Err(e) => {
-				error!(error = %e, "failed to begin query during flow bootstrap");
-				return;
-			}
+			Err(e) => panic!(
+				"flow supervisor cannot open its bootstrap snapshot at version {}: {e}",
+				scan_from.0
+			),
 		};
+
+		let known: BTreeSet<FlowId> =
+			match self.engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)) {
+				Ok(listed) => listed.into_iter().map(|flow| flow.id).collect(),
+				Err(e) => panic!("flow supervisor cannot list flows at bootstrap: {e}"),
+			};
 
 		let operators = self.engine.operator_state();
 		let mut to_spawn: Vec<(FlowDag, Option<CommitVersion>)> = Vec::new();
-		for flow_id in flows {
+		for &flow_id in &known {
 			let flow = match self
 				.engine
 				.catalog()
 				.get_flow_dag(&mut Transaction::Query(&mut query), flow_id)
 			{
 				Ok(flow) => flow,
-				Err(e) => {
-					warn!(flow_id = flow_id.0, error = %e, "failed to load flow during bootstrap, skipping");
-					continue;
-				}
+				Err(e) => panic!(
+					"flow {} unreadable at bootstrap snapshot {}: {e}",
+					flow_id.0, scan_from.0
+				),
 			};
 			if self.is_transactional_flow(&flow) {
 				continue;
@@ -225,17 +227,8 @@ impl FlowSupervisor {
 			to_spawn.push((flow, checkpoint));
 		}
 
-		match self.engine.catalog().list_flows_all(&mut Transaction::Query(&mut query)) {
-			Ok(listed) => {
-				known.extend(listed.into_iter().map(|flow| flow.id));
-				let reaped = reap_orphan_checkpoints(&operators, &known);
-				if reaped > 0 {
-					debug!(count = reaped, "reaped orphan flow checkpoints");
-				}
-			}
-			Err(e) => {
-				warn!(error = %e, "failed to list flows during bootstrap; orphan flow checkpoints stay and keep pinning cdc retention")
-			}
+		if let Err(e) = reap_orphan_checkpoints(&operators, &known) {
+			panic!("flow supervisor cannot list flow checkpoints at bootstrap: {e}");
 		}
 
 		drop(query);
@@ -292,9 +285,7 @@ impl FlowSupervisor {
 				}
 				self.substrate.frontiers.hydrate(entries);
 			}
-			Err(e) => {
-				warn!(error = %e, "failed to hydrate output frontiers; every consumer stays at the epoch until its producer republishes")
-			}
+			Err(e) => panic!("flow supervisor cannot hydrate output frontiers: {e}"),
 		}
 	}
 
@@ -414,7 +405,11 @@ impl FlowSupervisor {
 		let mut changed = false;
 		let mut lineage_dirty = false;
 		for flow_id in &deleted {
-			if retire_flow(&operators, &mut state.flows, *flow_id) {
+			let retired = match retire_flow(&operators, &mut state.flows, *flow_id) {
+				Ok(retired) => retired,
+				Err(e) => panic!("flow {} checkpoint removal failed: {e}", flow_id.0),
+			};
+			if retired {
 				changed = true;
 			}
 			state.sources.remove(flow_id);
@@ -432,9 +427,7 @@ impl FlowSupervisor {
 			if state.flows.contains_key(&flow_id) {
 				continue;
 			}
-			let Some((flow, lease)) = self.load_flow_at(flow_id, version) else {
-				continue;
-			};
+			let (flow, lease) = self.load_flow_at(flow_id, version);
 			if self.is_transactional_flow(&flow) {
 				continue;
 			}
@@ -501,31 +494,28 @@ impl FlowSupervisor {
 		}
 	}
 
-	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> Option<(FlowDag, VersionLeaseGuard)> {
+	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> (FlowDag, VersionLeaseGuard) {
 		let lease = match self.engine.acquire_version_lease(version) {
 			Ok(lease) => lease,
 			Err(e) if e.0.code == "TXN_012" => panic!(
 				"flow supervisor could not lease create version {} of flow {} under its scan lease: {e}",
 				version.0, flow_id.0
 			),
-			Err(e) => {
-				warn!(flow_id = flow_id.0, error = %e, "failed to lease creation version for new flow, skipping");
-				return None;
-			}
+			Err(e) => panic!(
+				"flow supervisor cannot lease create version {} of flow {}: {e}",
+				version.0, flow_id.0
+			),
 		};
 		let mut query = match self.engine.begin_query_at_version(&lease, IdentityId::system()) {
 			Ok(q) => q,
-			Err(e) => {
-				warn!(flow_id = flow_id.0, error = %e, "failed to begin query for new flow, skipping");
-				return None;
-			}
+			Err(e) => panic!(
+				"flow supervisor cannot open create version {} of flow {}: {e}",
+				version.0, flow_id.0
+			),
 		};
 		match self.engine.catalog().get_flow_dag(&mut Transaction::Query(&mut query), flow_id) {
-			Ok(loaded) => Some((loaded, lease)),
-			Err(e) => {
-				warn!(flow_id = flow_id.0, error = %e, "failed to load flow in supervisor, skipping");
-				None
-			}
+			Ok(loaded) => (loaded, lease),
+			Err(e) => panic!("flow {} unreadable at its create version {}: {e}", flow_id.0, version.0),
 		}
 	}
 
@@ -645,10 +635,14 @@ impl FlowSupervisor {
 	}
 }
 
-fn retire_flow(operators: &OperatorStore, flows: &mut BTreeMap<FlowId, FlowActorHandle>, flow_id: FlowId) -> bool {
+fn retire_flow(
+	operators: &OperatorStore,
+	flows: &mut BTreeMap<FlowId, FlowActorHandle>,
+	flow_id: FlowId,
+) -> reifydb_store_operator::error::Result<bool> {
 	let Some(handle) = flows.remove(&flow_id) else {
-		remove_checkpoint(operators, flow_id);
-		return false;
+		operators.checkpoint_remove(flow_id)?;
+		return Ok(false);
 	};
 	if handle
 		.actor_ref()
@@ -658,9 +652,9 @@ fn retire_flow(operators: &OperatorStore, flows: &mut BTreeMap<FlowId, FlowActor
 		})
 		.is_err()
 	{
-		remove_checkpoint(operators, flow_id);
+		operators.checkpoint_remove(flow_id)?;
 	}
-	true
+	Ok(true)
 }
 
 fn wake_sets(
@@ -696,22 +690,17 @@ fn stored_checkpoint(operators: &OperatorStore, flow_id: FlowId) -> Option<Commi
 	}
 }
 
-fn remove_checkpoint(operators: &OperatorStore, flow_id: FlowId) {
-	if let Err(e) = operators.checkpoint_remove(flow_id) {
-		warn!(flow_id = flow_id.0, error = %e, "flow checkpoint removal failed");
-	}
-}
-
-fn reap_orphan_checkpoints(operators: &OperatorStore, known: &BTreeSet<FlowId>) -> usize {
-	let mut reaped = 0;
-	for flow_id in operators.checkpoint_list().unwrap_or_default() {
+fn reap_orphan_checkpoints(
+	operators: &OperatorStore,
+	known: &BTreeSet<FlowId>,
+) -> reifydb_store_operator::error::Result<()> {
+	for flow_id in operators.checkpoint_list()? {
 		if known.contains(&flow_id) {
 			continue;
 		}
-		remove_checkpoint(operators, flow_id);
-		reaped += 1;
+		operators.checkpoint_remove(flow_id)?;
 	}
-	reaped
+	Ok(())
 }
 
 impl Actor for FlowSupervisor {
@@ -739,10 +728,9 @@ impl Actor for FlowSupervisor {
 	fn handle(&self, state: &mut Self::State, msg: Self::Message, ctx: &Context<Self::Message>) -> Directive {
 		match msg {
 			FlowSupervisorMessage::Bootstrap {
-				flows,
 				scan_from,
 				scan_lease,
-			} => self.handle_bootstrap(state, flows, scan_from, scan_lease),
+			} => self.handle_bootstrap(state, scan_from, scan_lease),
 			FlowSupervisorMessage::Wake => self.handle_wake(state, ctx),
 			FlowSupervisorMessage::WakeAll => self.handle_wake_all(state),
 			FlowSupervisorMessage::PersistFrontiers => self.handle_persist_frontiers(ctx),
@@ -864,15 +852,27 @@ mod tests {
 	}
 
 	#[test]
+	fn an_unreadable_checkpoint_list_fails_the_reap_instead_of_reaping_nothing() {
+		// a list read as empty reaps nothing, so every orphan keeps pinning cdc retention forever
+		let (store, _guard) = OperatorStore::testing_memory_with_persistent_sqlite();
+		store.checkpoint_set(FlowId(2), CommitVersion(20)).unwrap();
+		store.shutdown();
+
+		assert!(
+			reap_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)])).is_err(),
+			"a closed store must surface as an error, never as an empty checkpoint table"
+		);
+	}
+
+	#[test]
 	fn bootstrap_reaps_a_checkpoint_whose_flow_the_catalog_no_longer_lists() {
 		// the retention floor is the minimum over these rows, so one orphan pins cdc truncation forever
 		let store = OperatorStore::testing_memory();
 		store.checkpoint_set(FlowId(1), CommitVersion(10)).unwrap();
 		store.checkpoint_set(FlowId(2), CommitVersion(20)).unwrap();
 
-		let reaped = reap_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)]));
+		reap_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)])).unwrap();
 
-		assert_eq!(reaped, 1, "exactly the row with no flow behind it is the one that must go");
 		assert_eq!(
 			store.checkpoint_get(FlowId(1)).unwrap(),
 			Some(CommitVersion(10)),
@@ -906,7 +906,7 @@ mod tests {
 		let mut flows = BTreeMap::new();
 		flows.insert(FlowId(1), handle);
 
-		let stopped = retire_flow(&store, &mut flows, FlowId(1));
+		let stopped = retire_flow(&store, &mut flows, FlowId(1)).unwrap();
 
 		assert!(stopped, "a live handle must be stopped");
 		assert_eq!(
@@ -929,7 +929,7 @@ mod tests {
 		store.checkpoint_set(FlowId(1), CommitVersion(10)).unwrap();
 		let mut flows = BTreeMap::new();
 
-		let stopped = retire_flow(&store, &mut flows, FlowId(1));
+		let stopped = retire_flow(&store, &mut flows, FlowId(1)).unwrap();
 
 		assert!(!stopped, "there is no live handle to stop, which is the case the stop path cannot cover");
 		assert!(
