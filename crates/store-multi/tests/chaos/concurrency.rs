@@ -17,7 +17,7 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 		store::{MultiVersionCommit, MultiVersionGet},
@@ -194,6 +194,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 								CowVec::new(vec![Delta::Set {
 									key: conc_op_key(row),
 									bytes: EncodedBytes(CowVec::new(value.clone())),
+									pre: SetPre::Unknown,
 								}]),
 								CommitVersion(v),
 							)
@@ -218,6 +219,7 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 								CowVec::new(vec![Delta::Set {
 									key: RowKey::new(STORAGE, row).into(),
 									bytes: EncodedBytes(CowVec::new(value.clone())),
+									pre: SetPre::Unknown,
 								}]),
 								CommitVersion(v),
 							)

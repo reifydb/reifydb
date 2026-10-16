@@ -12,7 +12,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious},
 	key::{any::TaggedKey, row::RowKey},
 };
@@ -309,6 +309,7 @@ pub fn drive(seed: u64, p: Params) {
 						Some(bytes) => Delta::Set {
 							key: RowKey::new(STORAGE, *row).into(),
 							bytes: EncodedBytes(CowVec::new(bytes.clone())),
+							pre: SetPre::Unknown,
 						},
 						None => Delta::remove_silent(RowKey::new(STORAGE, *row).into()),
 					})

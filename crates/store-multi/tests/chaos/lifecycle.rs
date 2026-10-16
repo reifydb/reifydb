@@ -11,7 +11,7 @@ use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	interface::store::{EntryKind, EntryLayout, MultiVersionCommit},
 	key::row::RowKey,
 };
@@ -154,6 +154,7 @@ pub fn drive(seed: u64, p: Params) {
 						Some(bytes) => Delta::Set {
 							key: RowKey::new(STORAGE, *row).into(),
 							bytes: EncodedBytes(CowVec::new(bytes.clone())),
+							pre: SetPre::Unknown,
 						},
 						None => Delta::remove_silent(RowKey::new(STORAGE, *row).into()),
 					})

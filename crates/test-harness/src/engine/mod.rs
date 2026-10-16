@@ -44,6 +44,7 @@ use reifydb_runtime::{
 		rng::Rng,
 	},
 	pool::PoolConfig,
+	shutdown::Shutdown,
 	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -75,6 +76,12 @@ pub struct TestEngine {
 	mock_clock: MockClock,
 	_runtime: Runtime,
 	_operator_guard: SqliteTempPathGuard,
+}
+
+impl Drop for TestEngine {
+	fn drop(&mut self) {
+		self.engine.operator_state().shutdown();
+	}
 }
 
 impl Default for TestEngine {

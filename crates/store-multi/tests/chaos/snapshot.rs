@@ -7,7 +7,12 @@
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::row::bytes::EncodedBytes;
-use reifydb_core::{common::CommitVersion, delta::Delta, interface::store::MultiVersionCommit, key::row::RowKey};
+use reifydb_core::{
+	common::CommitVersion,
+	delta::{Delta, SetPre},
+	interface::store::MultiVersionCommit,
+	key::row::RowKey,
+};
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_testing_chaos::fuzz::pick;
@@ -43,6 +48,7 @@ fn commit_rows(
 				Some(bytes) => Delta::Set {
 					key: RowKey::new(STORAGE, *row).into(),
 					bytes: EncodedBytes(CowVec::new(bytes.clone())),
+					pre: SetPre::Unknown,
 				},
 				None => Delta::remove_silent(RowKey::new(STORAGE, *row).into()),
 			})
