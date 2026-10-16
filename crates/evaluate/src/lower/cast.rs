@@ -65,6 +65,23 @@ pub(super) fn lower_cast<'e>(
 	})
 }
 
+pub(super) fn cast_node(ctx: &EvalContext, node: Node, to: &ValueType, fragment: &Fragment) -> Node {
+	let field = cast_field(node.field.name(), to, &node.field);
+	Node {
+		expr: udf(
+			CastUdf {
+				to: to.clone(),
+				constraint: None,
+				target: ctx.target.clone(),
+				fragment: fragment.clone(),
+				signature: volatile(),
+			},
+			vec![node.expr],
+		),
+		field,
+	}
+}
+
 fn cast_field(name: &str, to: &ValueType, input: &FieldRef) -> FieldRef {
 	typed_field(name, to.inner_type().clone(), input.is_nullable() || to.is_option())
 }

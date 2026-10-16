@@ -4,8 +4,10 @@
 mod arith;
 mod cast;
 mod compare;
+mod conditional;
 mod error;
 mod field_access;
+mod in_list;
 mod literal;
 mod prefix;
 mod routine;
@@ -67,6 +69,8 @@ pub const CLAIMED: &[&str] = &[
 	"GreaterThan",
 	"GreaterThanEqual",
 	"Between",
+	"In",
+	"If",
 	"Add",
 	"Sub",
 	"Mul",
@@ -302,6 +306,17 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 			.or_else(|| first_unclaimed(&e.lower))
 			.or_else(|| first_unclaimed(&e.upper)),
 		Expression::Call(e) => e.args.iter().find_map(first_unclaimed),
+		Expression::If(e) => first_unclaimed(&e.condition)
+			.or_else(|| first_unclaimed(&e.then_expr))
+			.or_else(|| {
+				e.else_ifs.iter().find_map(|ei| {
+					first_unclaimed(&ei.condition).or_else(|| first_unclaimed(&ei.then_expr))
+				})
+			})
+			.or_else(|| e.else_expr.as_deref().and_then(first_unclaimed)),
+		Expression::In(e) => {
+			first_unclaimed(&e.value).or_else(|| in_list::items(&e.list).iter().find_map(first_unclaimed))
+		}
 		_ => Some(expression),
 	}
 }
@@ -475,6 +490,8 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 			})
 		}
 		Expression::Cast(cast) => lower_cast(ctx, operator, expression, cast),
+		Expression::In(e) => in_list::lower_in(ctx, operator, expression, e),
+		Expression::If(e) => conditional::lower_if(ctx, operator, expression, e),
 		_ => Err(Stop::Unsupported(expression)),
 	}
 }

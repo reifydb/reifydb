@@ -11,6 +11,10 @@ mod cast;
 mod common;
 #[path = "lower/compare.rs"]
 mod compare;
+#[path = "lower/conditional.rs"]
+mod conditional;
+#[path = "lower/in_list.rs"]
+mod in_list;
 #[path = "lower/literal.rs"]
 mod literal;
 #[path = "lower/logic.rs"]

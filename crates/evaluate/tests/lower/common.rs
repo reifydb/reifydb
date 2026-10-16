@@ -8,11 +8,11 @@ use arrow_schema::{FieldRef, Schema};
 use reifydb_core::{
 	expression::{
 		AccessObjectExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
-		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression,
-		Expression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression,
-		LessThanEqExpression, LessThanExpression, MulExpression, NotEqExpression, OrExpression,
-		PrefixExpression, PrefixOperator, RemExpression, SubExpression, TypeExpression, VariableExpression,
-		XorExpression,
+		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, ElseIfExpression,
+		EqExpression, Expression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression,
+		IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression, MulExpression,
+		NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression,
+		TupleExpression, TypeExpression, VariableExpression, XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 	value::column::factory,
@@ -363,5 +363,43 @@ pub fn closure() -> Variable {
 			captures: vec![],
 		},
 		captured: HashMap::new(),
+	})
+}
+
+pub fn in_list(value: Expression, items: Vec<Expression>, negated: bool) -> Expression {
+	Expression::In(InExpression {
+		value: Box::new(value),
+		list: Box::new(Expression::Tuple(TupleExpression {
+			expressions: items,
+			fragment: frag("(..)"),
+		})),
+		negated,
+		fragment: frag(if negated {
+			"not in"
+		} else {
+			"in"
+		}),
+	})
+}
+
+pub fn conditional(
+	condition: Expression,
+	then_expr: Expression,
+	else_ifs: Vec<(Expression, Expression)>,
+	else_expr: Option<Expression>,
+) -> Expression {
+	Expression::If(IfExpression {
+		condition: Box::new(condition),
+		then_expr: Box::new(then_expr),
+		else_ifs: else_ifs
+			.into_iter()
+			.map(|(condition, then_expr)| ElseIfExpression {
+				condition: Box::new(condition),
+				then_expr: Box::new(then_expr),
+				fragment: frag("else if"),
+			})
+			.collect(),
+		else_expr: else_expr.map(Box::new),
+		fragment: frag("if"),
 	})
 }

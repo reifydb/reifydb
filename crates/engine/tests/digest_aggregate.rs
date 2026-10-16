@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
-use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,
@@ -129,12 +128,6 @@ fn engine() -> TestEngine {
 	t
 }
 
-fn one_row_batches() -> TestEngine {
-	let t = engine();
-	t.set_config(ConfigKey::QueryRowBatchSize, Value::Uint2(1));
-	t
-}
-
 fn empty_engine() -> TestEngine {
 	let t = TestEngine::new();
 	create_table(&t);
@@ -231,14 +224,6 @@ fn assert_groups_match_oracle(rql: &str, inner: ValueType, values: fn(Option<i32
 			}
 		}
 	}
-}
-
-fn with_digests(pairs: &[(&str, Digest)]) -> Params {
-	let map: HashMap<String, Value> = pairs
-		.iter()
-		.map(|(name, digest)| (name.to_string(), Value::Digest(Box::new(digest.clone()))))
-		.collect();
-	Params::from(map)
 }
 
 #[test]

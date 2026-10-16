@@ -1116,7 +1116,7 @@ fn negate_column(col: (FieldRef, ArrayRef), fragment: Fragment) -> (FieldRef, Ar
 	.unwrap()
 }
 
-fn is_truthy(value: &Value) -> bool {
+pub(crate) fn is_truthy(value: &Value) -> bool {
 	match value {
 		Value::Boolean(true) => true,
 		Value::Boolean(false) => false,

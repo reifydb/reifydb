@@ -20,7 +20,7 @@ use reifydb_value::value::value_type::ValueType;
 
 use crate::common::{
 	ARITH_OPS, COMPARE_OPS, Env, access, alias, and, arith, batch, between, boolean, call, cast, column, compare,
-	field_access, frag, not, number, or, prefix, rows, strings, variable, xor,
+	conditional, field_access, frag, in_list, not, number, or, prefix, rows, strings, variable, xor,
 };
 
 #[test]
@@ -43,6 +43,8 @@ fn the_claimed_list_is_exactly_the_lowered_kinds() {
 		"GreaterThan",
 		"GreaterThanEqual",
 		"Between",
+		"In",
+		"If",
 		"Add",
 		"Sub",
 		"Mul",
@@ -75,6 +77,8 @@ fn every_claimed_name_is_a_kind_that_kind_can_return() {
 		and(boolean("true"), boolean("true")),
 		or(boolean("true"), boolean("true")),
 		between(number("1"), number("0"), number("2")),
+		in_list(number("1"), vec![number("1")], false),
+		conditional(boolean("true"), number("1"), vec![], None),
 	];
 	samples.extend(COMPARE_OPS.map(|op| compare(op, number("1"), number("2"))));
 	samples.extend(ARITH_OPS.map(|op| arith(op, number("1"), number("2"))));
