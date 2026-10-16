@@ -180,18 +180,20 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn apply<SKF, RKF, CB>(
+	pub fn apply<SKF, RKF, NA, CB>(
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
 		window: SlotSpan<S>,
 		state_key: SKF,
 		row_key: RKF,
+		new_accumulator: NA,
 		combine: CB,
 	) -> Result<Vec<TopKEmit<Output>>>
 	where
 		SKF: Fn(&G) -> EncodedKey,
 		RKF: Fn(&G, &SK) -> EncodedKey,
+		NA: Fn() -> Accumulator,
 		CB: Fn(&G, &RollingTopKBuffer<S, Accumulator>) -> RollingTopKEmit<SK, Output>,
 	{
 		if buckets.is_empty() {
@@ -206,6 +208,7 @@ where
 			&state_rows,
 			&state_key,
 			window,
+			&new_accumulator,
 		)?;
 		let emits = self.diff_emits(store, group_slots, &row_key, &combine)?;
 		self.persist_meta(store, meta_loaded)?;
@@ -315,7 +318,7 @@ where
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	fn apply_events_into_buffers<SKF>(
+	fn apply_events_into_buffers<SKF, NA>(
 		&mut self,
 		store: &mut dyn StateStore,
 		buckets: RollingBuckets<G, S, Accumulator::Contribution>,
@@ -323,9 +326,11 @@ where
 		state_rows: &StateRows<G>,
 		state_key: &SKF,
 		window: SlotSpan<S>,
+		new_accumulator: &NA,
 	) -> Result<BTreeMap<G, GroupSlot<S, Accumulator, SK, Output>>>
 	where
 		SKF: Fn(&G) -> EncodedKey,
+		NA: Fn() -> Accumulator,
 	{
 		let mut group_slots: BTreeMap<G, GroupSlot<S, Accumulator, SK, Output>> = BTreeMap::new();
 		let fallback_rows = self.resolve_fallback_rows(store, &buckets, state_rows, state_key)?;
@@ -366,7 +371,7 @@ where
 				}
 			};
 
-			let mut accumulator = group_slot.buffer.remove(&slot).unwrap_or_default();
+			let mut accumulator = group_slot.buffer.remove(&slot).unwrap_or_else(new_accumulator);
 			let touched = accumulator.apply(&events).touched;
 			if !accumulator.is_empty() {
 				group_slot.buffer.insert(slot, accumulator);
@@ -590,7 +595,9 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
-		let published = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		let published = engine
+			.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 		assert_eq!(published.len(), 1);
 		let published_row = match &published[0] {
 			TopKEmit::Insert {
@@ -607,7 +614,9 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
-		let withdrawn = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		let withdrawn = engine
+			.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the group emits exactly one terminal diff");
 		match &withdrawn[0] {
@@ -639,7 +648,9 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
-		let published = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		let published = engine
+			.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 		let published_row = match &published[0] {
 			TopKEmit::Insert {
 				row_number,
@@ -658,7 +669,9 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(3)]);
-		let republished = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		let republished = engine
+			.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 
 		assert_eq!(republished.len(), 1);
 		match &republished[0] {
@@ -686,7 +699,8 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
-		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 		// the mapping is scoped to the group, not ROOT, and reclamation deletes by group prefix
 		let group = GroupId::of(&state_key(&1));
 		assert!(
@@ -696,7 +710,8 @@ mod tests {
 
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
-		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 		assert!(
 			!store.contains_guest_row_mapping(group, &ranked_key),
 			"withdrawing the ranking must reclaim its row-number mapping, not leak it"
@@ -714,7 +729,17 @@ mod tests {
 		for group in 1u32..=11u32 {
 			let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 			buckets.insert((group, at_millis(10)), vec![AccumulatorEvent::Add(i64::from(group))]);
-			let out = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+			let out = engine
+				.apply(
+					&mut store,
+					buckets,
+					window(),
+					state_key,
+					row_key,
+					SumAccumulator::default,
+					combine,
+				)
+				.unwrap();
 			if group == 1 {
 				assert_eq!(out.len(), 1);
 				published_row_1 = match &out[0] {
@@ -735,7 +760,9 @@ mod tests {
 		// re-read its GroupState from the store to apply this retraction.
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(1)]);
-		let withdrawn = engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		let withdrawn = engine
+			.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 
 		assert_eq!(withdrawn.len(), 1, "emptying the evicted group emits exactly one terminal diff");
 		match &withdrawn[0] {
@@ -830,6 +857,7 @@ mod tests {
 					Duration::from_milliseconds_const(WINDOW_MILLIS as i64),
 					state_key,
 					row_key,
+					SumAccumulator::default,
 					combine,
 				)
 				.unwrap();
@@ -867,7 +895,8 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
 		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
-		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 
 		assert_eq!(
 			engine.earliest_expiry(&mut store).unwrap(),
@@ -891,7 +920,7 @@ mod tests {
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
 		buckets.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
 		let published: Vec<(RowNumber, i64)> = engine
-			.apply(&mut store, buckets, window(), state_key, row_key, rank_panes)
+			.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, rank_panes)
 			.unwrap()
 			.into_iter()
 			.map(|emit| match emit {
@@ -926,7 +955,7 @@ mod tests {
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
 		assert!(engine
-			.apply(&mut store, buckets, window(), state_key, row_key, rank_nothing)
+			.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, rank_nothing)
 			.unwrap()
 			.is_empty());
 
@@ -946,7 +975,8 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
-		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 		store.drop_group_data_entries();
 
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
@@ -962,11 +992,13 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut first: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		first.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
-		engine.apply(&mut store, first, window(), state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, first, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 		store.drop_group_data_entries();
 		let mut later: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		later.insert((1u32, at_millis(20)), vec![AccumulatorEvent::Add(2)]);
-		engine.apply(&mut store, later, window(), state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, later, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let err = engine.expire_dead(&mut store, at_millis(10), row_key).unwrap_err();
@@ -982,14 +1014,52 @@ mod tests {
 		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
-		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 		assert!(store.contains_row_mapping(group), "precondition: the group row is mapped while it ranks");
 
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Remove(5)]);
-		engine.apply(&mut store, buckets, window(), state_key, row_key, combine).unwrap();
+		engine.apply(&mut store, buckets, window(), state_key, row_key, SumAccumulator::default, combine)
+			.unwrap();
 
 		assert!(!store.contains_row_mapping(group));
 		assert_eq!(store.index_entry_count(), 0);
+	}
+
+	#[test]
+	fn a_new_pane_starts_from_the_operator_accumulator_and_an_existing_pane_keeps_its_state() {
+		// A default-built pane drops operator config such as a per-pane bound, so new panes must come from the
+		// factory.
+		let mut store = MockStore::default();
+		let mut engine = RollingTopKEngine::<u32, DateTime, SumAccumulator, u32, i64>::new(test_config());
+		let seeded = || SumAccumulator {
+			sum: 100,
+			count: 0,
+		};
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
+		let published =
+			engine.apply(&mut store, buckets, window(), state_key, row_key, seeded, combine).unwrap();
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(1)]);
+		let updated = engine.apply(&mut store, buckets, window(), state_key, row_key, seeded, combine).unwrap();
+
+		let values: Vec<i64> = published
+			.iter()
+			.chain(updated.iter())
+			.map(|emit| match emit {
+				TopKEmit::Insert {
+					value,
+					..
+				}
+				| TopKEmit::Update {
+					value,
+					..
+				} => *value,
+				_ => panic!("expected an Insert then an Update"),
+			})
+			.collect();
+		assert_eq!(values, vec![105, 106]);
 	}
 }

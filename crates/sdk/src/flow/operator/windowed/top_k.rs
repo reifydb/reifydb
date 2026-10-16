@@ -352,6 +352,7 @@ where
 				settings.fixed_size(),
 				|group| group.into_encoded_key(),
 				|group, secondary| Self::row_key(group, secondary),
+				|| aggregator.new_accumulator(settings),
 				|group, buffer| Self::combine(aggregator, settings, pane, group, buffer),
 			)?
 		};
