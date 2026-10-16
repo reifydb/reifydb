@@ -5,19 +5,14 @@ use std::{fmt::Display, result::Result as StdResult};
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
-use reifydb_core::value::column::cast::{
-	cast_column_data,
-	convert::{Convert, TargetConvert},
-};
+use reifydb_core::value::column::cast::{cast_column_data, convert::TargetConvert};
 use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
 use reifydb_value::{
-	Result,
 	fragment::Fragment,
 	value::{
 		column_view::{ColumnView, ViewData},
 		container::wide_int_array,
-		number::safe::convert::SafeConvert,
-		value_type::{ValueType, get::GetType},
+		value_type::ValueType,
 	},
 };
 
@@ -77,20 +72,6 @@ fn out_of_range(function: &Fragment, value: impl Display, target: ValueType) -> 
 #[derive(Clone, Copy)]
 pub(crate) enum CoerceMode {
 	Error,
-	None,
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct NoneConvert;
-
-impl Convert for NoneConvert {
-	fn convert<From, To>(&self, from: From, _fragment: impl Into<Fragment>) -> Result<Option<To>>
-	where
-		From: SafeConvert<To> + GetType,
-		To: GetType,
-	{
-		Ok(from.checked_convert())
-	}
 }
 
 pub(crate) fn coerce_column(
@@ -109,7 +90,6 @@ pub(crate) fn coerce_column(
 			target,
 			fragment,
 		)?,
-		CoerceMode::None => cast_column_data(NoneConvert, data, target, fragment)?,
 	};
 	Ok(cast)
 }
@@ -165,11 +145,7 @@ mod tests {
 	use std::sync::LazyLock;
 
 	use arrow_buffer::{BooleanBuffer, NullBuffer};
-	use reifydb_core::value::column::{
-		cast::convert::{Convert, TargetConvert},
-		factory::int2,
-		nulls::with_nulls,
-	};
+	use reifydb_core::value::column::{factory::int2, nulls::with_nulls};
 	use reifydb_routine_abi::context::FunctionContext;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_value::{
@@ -178,7 +154,7 @@ mod tests {
 		value::{column_view::ColumnView, identity::IdentityId, value_type::ValueType},
 	};
 
-	use super::{CoerceMode, NoneConvert, coerce_column, promote_all};
+	use super::{CoerceMode, coerce_column, promote_all};
 
 	fn ctx() -> FunctionContext<'static> {
 		static RUNTIME: LazyLock<RuntimeContext> = LazyLock::new(|| RuntimeContext::testing(0, 0));
@@ -191,21 +167,6 @@ mod tests {
 	}
 
 	#[test]
-	fn none_policy_matches_targetconvert_none_arm() {
-		// A checked_convert failure must become Ok(None) here, not an error.
-		let out: Option<i8> = NoneConvert.convert(300i16, Fragment::internal("300")).unwrap();
-		assert_eq!(out, None);
-		let out: Option<i8> = NoneConvert.convert(100i16, Fragment::internal("100")).unwrap();
-		assert_eq!(out, Some(100));
-		// TargetConvert with the default (Error) mode errors on the same input.
-		let err = TargetConvert {
-			target: None,
-		}
-		.convert::<i16, i8>(300i16, Fragment::internal("300"));
-		assert!(err.is_err());
-	}
-
-	#[test]
 	fn error_policy_raises_number_out_of_range() {
 		// Out-of-range must surface as the house cast diagnostic, not a generic failure.
 		let ctx = ctx();
@@ -213,18 +174,6 @@ mod tests {
 		let input = ColumnView::try_from(&data).unwrap();
 		let err = coerce_column(&ctx, &input, ValueType::Int1, CoerceMode::Error).unwrap_err();
 		assert_eq!(err.into_diagnostic().code, "NUMBER_002");
-	}
-
-	#[test]
-	fn none_policy_turns_overflow_into_none() {
-		// The same input the Error mode rejects must become an undefined row here.
-		let ctx = ctx();
-		let data = int2("value", [300, 100]);
-		let input = ColumnView::try_from(&data).unwrap();
-		let cast = coerce_column(&ctx, &input, ValueType::Int1, CoerceMode::None).unwrap();
-		let view = ColumnView::try_from(&cast).unwrap();
-		assert!(!view.is_defined(0));
-		assert!(view.is_defined(1));
 	}
 
 	#[test]

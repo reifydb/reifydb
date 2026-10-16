@@ -5,8 +5,11 @@ use std::sync::LazyLock;
 
 use arrow_array::RecordBatch;
 use reifydb_core::{
-	interface::{catalog::property::ColumnSaturationStrategy, evaluate::TargetColumn},
-	value::{batch::empty_batch, column::cast::convert::TargetConvert},
+	interface::evaluate::TargetColumn,
+	value::{
+		batch::empty_batch,
+		column::arith::context::{ArithContext, Overflow},
+	},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
@@ -74,20 +77,7 @@ impl<'a> EvalContext<'a> {
 	pub fn arith(&self) -> ArithContext {
 		ArithContext {
 			target: self.target.clone(),
+			overflow: Overflow::Target,
 		}
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct ArithContext {
-	pub target: Option<TargetColumn>,
-}
-
-impl ArithContext {
-	pub(crate) fn saturation_policy(&self) -> ColumnSaturationStrategy {
-		TargetConvert {
-			target: self.target.as_ref(),
-		}
-		.saturation_policy()
 	}
 }

@@ -8,14 +8,14 @@ use arrow_schema::{FieldRef, Schema};
 use reifydb_core::{
 	expression::{CallExpression, Expression, name::display_label},
 	internal_error,
-	value::column::factory::rename,
+	value::column::{arith::length_mismatch, factory::rename},
 };
 use reifydb_routine_abi::Function;
 use reifydb_value::{error::Error, fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
-	expression::{call::call_builtin, compare::length_mismatch, compile::type_column, context::EvalContext},
+	expression::{call::call_builtin, compile::type_column, context::EvalContext},
 	lower::{LoweredExpr, variant::children},
 };
 

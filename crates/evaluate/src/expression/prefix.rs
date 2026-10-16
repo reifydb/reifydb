@@ -4,7 +4,11 @@
 use arrow_arith::boolean::not;
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
-use reifydb_core::{error::CoreError, expression::PrefixOperator, value::column::factory};
+use reifydb_core::{
+	error::CoreError,
+	expression::PrefixOperator,
+	value::column::{arith::option::unary_op_unwrap_option, factory},
+};
 use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
@@ -16,10 +20,7 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	Result,
-	expression::{logic::bool_column, option::unary_op_unwrap_option},
-};
+use crate::{Result, expression::logic::bool_column};
 
 macro_rules! prefix_signed_int {
 	($column:expr, $values:expr, $operator:expr, $fragment:expr, $variant:ident, $value_type:expr) => {{

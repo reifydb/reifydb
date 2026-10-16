@@ -3,16 +3,14 @@
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
+use reifydb_core::value::column::arith::ArithOp;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::value_type::ValueType;
 
 use crate::function::{
-	math::arith::{
-		dispatch::{ArithShape, arith_return_type_of, dispatch_strict},
-		op::Sub as SubOp,
-	},
+	math::arith::dispatch::{ArithShape, arith_return_type_of, dispatch_strict},
 	support::coerce::promote_pair,
 };
 
@@ -52,7 +50,7 @@ impl<'a> Routine<FunctionContext<'a>> for SubStrict {
 	}
 
 	fn return_type_of(&self, args: &[(ValueType, bool)]) -> ValueType {
-		arith_return_type_of::<SubOp>(args, ArithShape::Strict)
+		arith_return_type_of(args, ArithOp::Sub, ArithShape::Strict)
 	}
 
 	fn execute(
@@ -60,7 +58,7 @@ impl<'a> Routine<FunctionContext<'a>> for SubStrict {
 		ctx: &mut FunctionContext<'a>,
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
-		dispatch_strict::<SubOp>(ctx, args)
+		dispatch_strict(ctx, args, ArithOp::Sub)
 	}
 }
 

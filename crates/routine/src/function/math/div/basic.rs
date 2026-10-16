@@ -3,16 +3,14 @@
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
+use reifydb_core::value::column::arith::ArithOp;
 use reifydb_routine_abi::{
 	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::value::value_type::ValueType;
 
 use crate::function::{
-	math::arith::{
-		dispatch::{ArithShape, BasicStrategy, arith_return_type_of, dispatch_two},
-		op::Div as DivOp,
-	},
+	math::arith::dispatch::{ArithShape, BasicStrategy, arith_return_type_of, dispatch_two},
 	support::coerce::promote_pair,
 };
 
@@ -52,7 +50,7 @@ impl<'a> Routine<FunctionContext<'a>> for Div {
 	}
 
 	fn return_type_of(&self, args: &[(ValueType, bool)]) -> ValueType {
-		arith_return_type_of::<DivOp>(args, ArithShape::Two)
+		arith_return_type_of(args, ArithOp::Div, ArithShape::Two)
 	}
 
 	fn execute(
@@ -60,7 +58,7 @@ impl<'a> Routine<FunctionContext<'a>> for Div {
 		ctx: &mut FunctionContext<'a>,
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
-		dispatch_two::<DivOp>(ctx, args, BasicStrategy::Default)
+		dispatch_two(ctx, args, ArithOp::Div, BasicStrategy::Default)
 	}
 }
 

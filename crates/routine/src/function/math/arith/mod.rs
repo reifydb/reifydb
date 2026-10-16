@@ -2,4 +2,3 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod dispatch;
-pub mod op;

@@ -30,7 +30,7 @@ use datafusion_physical_expr::{PhysicalExpr, create_physical_expr};
 use reifydb_core::{
 	expression::{Expression, PrefixExpression, PrefixOperator, name::display_label},
 	internal_error,
-	value::column::factory::default_typed,
+	value::column::{arith::ArithOp, factory::default_typed},
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
@@ -47,7 +47,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	expression::{arith::ArithOp, context::EvalContext, logic::execute_logical_op, prefix::prefix_apply},
+	expression::{context::EvalContext, logic::execute_logical_op, prefix::prefix_apply},
 	lower::{
 		cast::lower_cast,
 		direct::{Direct, Spliced},

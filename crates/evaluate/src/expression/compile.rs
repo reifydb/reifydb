@@ -9,7 +9,12 @@ use reifydb_core::{
 	expression::VariableExpression,
 	value::{
 		batch::{is_scalar, scalar_value},
-		column::{builder::ColumnBuilder, cast::error::CastError, factory},
+		column::{
+			arith::{length_mismatch, option::binary_op_unwrap_option},
+			builder::ColumnBuilder,
+			cast::error::CastError,
+			factory,
+		},
 	},
 };
 use reifydb_value::{
@@ -24,11 +29,10 @@ use reifydb_value::{
 	},
 };
 
-use super::option::binary_op_unwrap_option;
 use crate::{
 	Result,
 	expression::{
-		compare::{Equal, compare_columns, length_mismatch},
+		compare::{Equal, compare_columns},
 		context::EvalContext,
 	},
 	stack::Variable,

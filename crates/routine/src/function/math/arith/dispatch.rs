@@ -1,36 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::convert::identity;
-
-use arrow_array::ArrayRef;
-use arrow_buffer::{BooleanBuffer, NullBuffer, i256};
+use arrow_array::{Array, ArrayRef};
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::{
-	factory::{
-		decimal_with_bitvec, float4_with_bitvec, float8_with_bitvec, int1_with_bitvec, int2_with_bitvec,
-		int4_with_bitvec, int8_with_bitvec, int16_with_bitvec, none, uint1_with_bitvec, uint2_with_bitvec,
-		uint4_with_bitvec, uint8_with_bitvec, uint16_with_bitvec,
+	arith::{
+		ArithOp as CoreArithOp,
+		add::add_columns,
+		arith_target as core_arith_target,
+		context::{ArithContext, Overflow},
+		div::div_columns,
+		family_digits, is_family,
+		mul::mul_columns,
+		rem::rem_columns,
+		sub::sub_columns,
 	},
+	builder::ColumnBuilder,
+	factory::{default_typed, none},
 	nulls::split_nulls,
 };
 use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
-use reifydb_value::{
-	error::TypeError,
-	value::{
-		column_view::{ColumnView, ViewData},
-		constraint::{precision::Precision, scale::Scale},
-		container::{decimal_array::decimals, varlen_array, wide_int_array::wides},
-		decimal::{Decimal, unscaled},
-		is::IsNumber,
-		number::safe::div::SafeDiv,
-		value_type::{ValueType, input_types::InputTypes},
-	},
+use reifydb_value::value::{
+	Value,
+	column_view::{ColumnView, ViewData},
+	constraint::{precision::Precision, scale::Scale},
+	container::varlen_array,
+	decimal::unscaled,
+	value_type::{ValueType, input_types::InputTypes},
 };
 
-use crate::function::{
-	math::arith::op::{ArithOp, FamilyDigits, SafeNum},
-	support::coerce::{CoerceMode, all_rows_none, bare_type, coerce_column, kernel_type, promote_pair},
+use crate::function::support::coerce::{
+	CoerceMode, all_rows_none, bare_type, coerce_column, kernel_type, promote_pair,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -47,35 +47,6 @@ pub enum ArithShape {
 	Two,
 	Fallback,
 	Strict,
-}
-
-enum RowMode {
-	Default,
-	Saturate,
-	Wrap,
-	Zero,
-	None,
-	Strict,
-	Fallback,
-}
-
-impl BasicStrategy {
-	fn row_mode(&self) -> RowMode {
-		match self {
-			BasicStrategy::Default => RowMode::Default,
-			BasicStrategy::Saturate => RowMode::Saturate,
-			BasicStrategy::Wrap => RowMode::Wrap,
-			BasicStrategy::Zero => RowMode::Zero,
-			BasicStrategy::None => RowMode::None,
-		}
-	}
-
-	fn coerce_mode(&self) -> CoerceMode {
-		match self {
-			BasicStrategy::None => CoerceMode::None,
-			_ => CoerceMode::Error,
-		}
-	}
 }
 
 pub(crate) fn ensure_numeric(
@@ -95,49 +66,6 @@ pub(crate) fn ensure_numeric(
 	Ok(())
 }
 
-struct FamilyOperand {
-	coerce_to: ValueType,
-	digits: FamilyDigits,
-}
-
-fn family_operand(original: &ValueType, promoted: &ValueType) -> FamilyOperand {
-	let (integer, scale) = match original {
-		ValueType::Decimal {
-			precision,
-			scale,
-		} => (precision.value().saturating_sub(scale.value()), Some(scale.value())),
-		ValueType::Int1 | ValueType::Uint1 => (3, Some(0)),
-		ValueType::Int2 | ValueType::Uint2 => (5, Some(0)),
-		ValueType::Int4 | ValueType::Uint4 => (10, Some(0)),
-		ValueType::Int8 => (19, Some(0)),
-		ValueType::Uint8 => (20, Some(0)),
-		ValueType::Int16 | ValueType::Uint16 => (39, Some(0)),
-		_ => (unscaled::MAX_DIGITS, None),
-	};
-	match promoted {
-		ValueType::Decimal {
-			scale: promoted_scale,
-			..
-		} => {
-			let scale = scale.unwrap_or(promoted_scale.value());
-			FamilyOperand {
-				coerce_to: ValueType::decimal(Precision::MAX, Scale::new(scale)),
-				digits: FamilyDigits {
-					integer,
-					scale,
-				},
-			}
-		}
-		other => FamilyOperand {
-			coerce_to: other.clone(),
-			digits: FamilyDigits {
-				integer,
-				scale: 0,
-			},
-		},
-	}
-}
-
 fn unwrap_option(ty: ValueType) -> ValueType {
 	match ty {
 		ValueType::Option(inner) => *inner,
@@ -145,42 +73,40 @@ fn unwrap_option(ty: ValueType) -> ValueType {
 	}
 }
 
-fn family_target<Op: ArithOp>(
-	promoted: &ValueType,
-	left: &FamilyOperand,
-	right: &FamilyOperand,
-	fallback: Option<&FamilyOperand>,
-) -> ValueType {
-	let mut digits = Op::family_digits(left.digits, right.digits);
-	if let Some(fallback) = fallback {
-		digits.integer = digits.integer.max(fallback.digits.integer);
-		digits.scale = digits.scale.max(fallback.digits.scale);
-	}
-	let max = unscaled::MAX_DIGITS;
-	let scale = digits.scale.min(max);
-	match promoted {
-		ValueType::Decimal {
-			..
-		} => ValueType::decimal(
-			Precision::new(digits.integer.saturating_add(scale).clamp(1, max)),
-			Scale::new(scale),
-		),
-		other => other.clone(),
-	}
-}
-
-pub(crate) fn arith_target<Op: ArithOp>(a: &ValueType, b: &ValueType, fallback: Option<&ValueType>) -> ValueType {
+pub(crate) fn arith_target(op: CoreArithOp, a: &ValueType, b: &ValueType, fallback: Option<&ValueType>) -> ValueType {
 	let promoted = promote_pair(a.clone(), b.clone());
 	if promoted == ValueType::Any {
 		return ValueType::Any;
 	}
-	let a_operand = family_operand(a, &promoted);
-	let b_operand = family_operand(b, &promoted);
-	let d_operand = fallback.map(|d| family_operand(&unwrap_option(d.clone()), &promoted));
-	family_target::<Op>(&promoted, &a_operand, &b_operand, d_operand.as_ref())
+	if *a == ValueType::Any || *b == ValueType::Any {
+		return promoted;
+	}
+	let target = core_arith_target(op, a.clone(), b.clone());
+	let Some(fallback) = fallback.map(|fallback| unwrap_option(fallback.clone())) else {
+		return target;
+	};
+	if !is_family(&target) {
+		return target;
+	}
+	let digits = |ty: &ValueType| {
+		if ty.is_floating_point() {
+			family_digits(&ValueType::DECIMAL)
+		} else {
+			family_digits(ty)
+		}
+	};
+	let (Some((target_digits, target_scale)), Some((fallback_digits, fallback_scale))) =
+		(digits(&target), digits(&fallback))
+	else {
+		return target;
+	};
+	let max = unscaled::MAX_DIGITS;
+	let scale = target_scale.max(fallback_scale).min(max);
+	let integer = target_digits.max(fallback_digits);
+	ValueType::decimal(Precision::new(integer.saturating_add(scale).clamp(1, max)), Scale::new(scale))
 }
 
-pub(crate) fn arith_return_type_of<Op: ArithOp>(args: &[(ValueType, bool)], shape: ArithShape) -> ValueType {
+pub(crate) fn arith_return_type_of(args: &[(ValueType, bool)], op: CoreArithOp, shape: ArithShape) -> ValueType {
 	let (Some((a, a_nullable)), Some((b, b_nullable))) = (args.first(), args.get(1)) else {
 		return ValueType::Float8;
 	};
@@ -189,20 +115,11 @@ pub(crate) fn arith_return_type_of<Op: ArithOp>(args: &[(ValueType, bool)], shap
 		_ => None,
 	};
 	let fallback_type = fallback.map(|(value_type, _)| kernel_type(value_type));
-	let target = arith_target::<Op>(&kernel_type(a), &kernel_type(b), fallback_type.as_ref());
+	let target = arith_target(op, &kernel_type(a), &kernel_type(b), fallback_type.as_ref());
 	if *a_nullable || *b_nullable || target == ValueType::Any {
 		ValueType::Option(Box::new(target))
 	} else {
 		target
-	}
-}
-
-fn family_bound(precision: Precision, negative: bool) -> i256 {
-	let max = unscaled::pow10(precision.value()).expect("a precision is at most 76 digits").wrapping_sub(i256::ONE);
-	if negative {
-		max.wrapping_neg()
-	} else {
-		max
 	}
 }
 
@@ -220,26 +137,59 @@ fn make_strict_error(ctx: &FunctionContext, msg_col: &ColumnView, i: usize) -> R
 	}
 }
 
-pub fn dispatch_two<Op: ArithOp>(
+pub fn dispatch_two(
 	ctx: &mut FunctionContext,
 	args: &[(FieldRef, ArrayRef)],
+	op: CoreArithOp,
 	strategy: BasicStrategy,
 ) -> Result<(FieldRef, ArrayRef), RoutineError> {
-	execute_arith::<Op>(ctx, &args[0], &args[1], strategy.row_mode(), strategy.coerce_mode(), None, None)
+	if let Some(early) = preamble(ctx, &args[0], &args[1])? {
+		return Ok(early);
+	}
+	match strategy {
+		BasicStrategy::Default => kernel(ctx, &args[0], &args[1], op, Overflow::Error),
+		BasicStrategy::None => kernel(ctx, &args[0], &args[1], op, Overflow::None),
+		BasicStrategy::Saturate => kernel(ctx, &args[0], &args[1], op, Overflow::Saturate),
+		BasicStrategy::Wrap => kernel(ctx, &args[0], &args[1], op, Overflow::Wrap),
+		BasicStrategy::Zero => {
+			let result = kernel(ctx, &args[0], &args[1], op, Overflow::None)?;
+			let view = ColumnView::try_from(&result)?;
+			let (zero_field, zero_array) = default_typed("zero", view.get_type().inner_type().clone(), 1);
+			let zero = ColumnView::try_from((&zero_array, zero_field.as_ref()))?.get_value(0);
+			refill(ctx, &args[0], &args[1], &result, |_| Ok(Some(zero.clone())))
+		}
+	}
 }
 
-pub fn dispatch_fallback<Op: ArithOp>(
+pub fn dispatch_fallback(
 	ctx: &mut FunctionContext,
 	args: &[(FieldRef, ArrayRef)],
+	op: CoreArithOp,
 ) -> Result<(FieldRef, ArrayRef), RoutineError> {
 	let (d_bare, _) = split_nulls(args[2].clone())?;
 	ensure_numeric(ctx, &ColumnView::try_from(&d_bare)?, 2)?;
-	execute_arith::<Op>(ctx, &args[0], &args[1], RowMode::Fallback, CoerceMode::Error, Some(&args[2]), None)
+	if let Some(early) = preamble(ctx, &args[0], &args[1])? {
+		return Ok(early);
+	}
+	let result = kernel(ctx, &args[0], &args[1], op, Overflow::None)?;
+	let bare = |column: &(FieldRef, ArrayRef)| -> Result<ValueType, RoutineError> {
+		let (bare, _) = split_nulls(column.clone())?;
+		Ok(bare_type(&ColumnView::try_from(&bare)?))
+	};
+	let target = arith_target(op, &bare(&args[0])?, &bare(&args[1])?, Some(&bare(&args[2])?));
+	let result = match ColumnView::try_from(&result)?.get_type().inner_type() == &target {
+		true => result,
+		false => coerce_column(ctx, &ColumnView::try_from(&result)?, target.clone(), CoerceMode::Error)?,
+	};
+	let fallback = coerce_column(ctx, &ColumnView::try_from(&args[2])?, target, CoerceMode::Error)?;
+	let fallback = ColumnView::try_from(&fallback)?;
+	refill(ctx, &args[0], &args[1], &result, |row| Ok(fallback.is_defined(row).then(|| fallback.get_value(row))))
 }
 
-pub fn dispatch_strict<Op: ArithOp>(
+pub fn dispatch_strict(
 	ctx: &mut FunctionContext,
 	args: &[(FieldRef, ArrayRef)],
+	op: CoreArithOp,
 ) -> Result<(FieldRef, ArrayRef), RoutineError> {
 	let (msg_bare, _) = split_nulls(args[2].clone())?;
 	let msg_data = ColumnView::try_from(&msg_bare)?;
@@ -252,33 +202,27 @@ pub fn dispatch_strict<Op: ArithOp>(
 			actual,
 		});
 	}
-	execute_arith::<Op>(ctx, &args[0], &args[1], RowMode::Strict, CoerceMode::Error, None, Some(&msg_data))
+	if let Some(early) = preamble(ctx, &args[0], &args[1])? {
+		return Ok(early);
+	}
+	let result = kernel(ctx, &args[0], &args[1], op, Overflow::None)?;
+	refill(ctx, &args[0], &args[1], &result, |row| Err(make_strict_error(ctx, &msg_data, row)))
 }
 
-fn execute_arith<Op: ArithOp>(
+fn preamble(
 	ctx: &mut FunctionContext,
 	a_col: &(FieldRef, ArrayRef),
 	b_col: &(FieldRef, ArrayRef),
-	mode: RowMode,
-	coerce_mode: CoerceMode,
-	fallback_col: Option<&(FieldRef, ArrayRef)>,
-	strict_msg: Option<&ColumnView>,
-) -> Result<(FieldRef, ArrayRef), RoutineError> {
+) -> Result<Option<(FieldRef, ArrayRef)>, RoutineError> {
 	let (a_bare, _) = split_nulls(a_col.clone())?;
 	let (b_bare, _) = split_nulls(b_col.clone())?;
 	let a_data = ColumnView::try_from(&a_bare)?;
 	let b_data = ColumnView::try_from(&b_bare)?;
 	ensure_numeric(ctx, &a_data, 0)?;
 	ensure_numeric(ctx, &b_data, 1)?;
-
-	let a_view = ColumnView::try_from(a_col)?;
-	let b_view = ColumnView::try_from(b_col)?;
-	let d_view = fallback_col.map(ColumnView::try_from).transpose()?;
-
-	let promoted = promote_pair(bare_type(&a_data), bare_type(&b_data));
-	if promoted == ValueType::Any {
-		if all_rows_none(&a_view) && all_rows_none(&b_view) {
-			return Ok(none(ctx.fragment.text(), a_data.len()));
+	if promote_pair(bare_type(&a_data), bare_type(&b_data)) == ValueType::Any {
+		if all_rows_none(&ColumnView::try_from(a_col)?) && all_rows_none(&ColumnView::try_from(b_col)?) {
+			return Ok(Some(none(ctx.fragment.text(), a_data.len())));
 		}
 		return Err(RoutineError::FunctionInvalidArgumentType {
 			function: ctx.fragment.clone(),
@@ -287,291 +231,65 @@ fn execute_arith<Op: ArithOp>(
 			actual: ValueType::Any,
 		});
 	}
-	let a_operand = family_operand(&bare_type(&a_data), &promoted);
-	let b_operand = family_operand(&bare_type(&b_data), &promoted);
-	let d_type = d_view.as_ref().map(ColumnView::get_type);
-	let d_operand = d_type.as_ref().map(|d| family_operand(&unwrap_option(d.clone()), &promoted));
-	let target = arith_target::<Op>(&bare_type(&a_data), &bare_type(&b_data), d_type.as_ref());
-
-	let a_cast = coerce_column(ctx, &a_view, a_operand.coerce_to.clone(), coerce_mode)?;
-	let b_cast = coerce_column(ctx, &b_view, b_operand.coerce_to.clone(), coerce_mode)?;
-	let d_cast = match (&d_view, &d_operand) {
-		(Some(d), Some(operand)) => Some(coerce_column(ctx, d, operand.coerce_to.clone(), CoerceMode::Error)?),
-		_ => None,
-	};
-
-	let a_inner = ColumnView::try_from(&a_cast)?;
-	let b_inner = ColumnView::try_from(&b_cast)?;
-	let d_inner = d_cast.as_ref().map(ColumnView::try_from).transpose()?;
-	let a_nulls = a_inner.logical_nulls();
-	let b_nulls = b_inner.logical_nulls();
-	let d_nulls = d_inner.as_ref().and_then(ColumnView::logical_nulls);
-	let a_bv = a_nulls.as_ref().map(NullBuffer::inner);
-	let b_bv = b_nulls.as_ref().map(NullBuffer::inner);
-	let d_parts = d_inner.as_ref().map(|d| (d, d_nulls.as_ref().map(NullBuffer::inner)));
-
-	macro_rules! run {
-		($container_variant:ident) => {{
-			let (ViewData::$container_variant(l), ViewData::$container_variant(r)) =
-				(&a_inner.data, &b_inner.data)
-			else {
-				unreachable!()
-			};
-			let d = d_parts.as_ref().map(|(inner, bv)| {
-				let ViewData::$container_variant(c) = &inner.data else {
-					unreachable!()
-				};
-				(&c.values()[..], *bv)
-			});
-			compute_rows::<_, Op>(
-				ctx,
-				&target,
-				(l.values(), a_bv),
-				(r.values(), b_bv),
-				&mode,
-				d,
-				strict_msg,
-				Some,
-				identity,
-			)?
-		}};
-		($container_variant:ident(..), $decode:ident, $fit:expr, $clamp:expr) => {{
-			let (ViewData::$container_variant(l), ViewData::$container_variant(r)) =
-				(&a_inner.data, &b_inner.data)
-			else {
-				unreachable!()
-			};
-			let d = d_parts.as_ref().map(|(inner, bv)| {
-				let ViewData::$container_variant(c) = &inner.data else {
-					unreachable!()
-				};
-				($decode(c), *bv)
-			});
-			compute_rows::<_, Op>(
-				ctx,
-				&target,
-				(&$decode(l), a_bv),
-				(&$decode(r), b_bv),
-				&mode,
-				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
-				strict_msg,
-				$fit,
-				$clamp,
-			)?
-		}};
-	}
-
-	let result = match target {
-		ValueType::Int1 => {
-			let (values, bits) = run!(Int1);
-			int1_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Int2 => {
-			let (values, bits) = run!(Int2);
-			int2_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Int4 => {
-			let (values, bits) = run!(Int4);
-			int4_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Int8 => {
-			let (values, bits) = run!(Int8);
-			int8_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Int16 => {
-			let (ViewData::Int16(l), ViewData::Int16(r)) = (&a_inner.data, &b_inner.data) else {
-				unreachable!()
-			};
-			let d = d_parts.as_ref().map(|(inner, bv)| {
-				let ViewData::Int16(c) = &inner.data else {
-					unreachable!()
-				};
-				(wides::<i128>(c), *bv)
-			});
-			let (values, bits) = compute_rows::<_, Op>(
-				ctx,
-				&target,
-				(&wides::<i128>(l), a_bv),
-				(&wides::<i128>(r), b_bv),
-				&mode,
-				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
-				strict_msg,
-				Some,
-				identity,
-			)?;
-			int16_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Uint1 => {
-			let (values, bits) = run!(Uint1);
-			uint1_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Uint2 => {
-			let (values, bits) = run!(Uint2);
-			uint2_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Uint4 => {
-			let (values, bits) = run!(Uint4);
-			uint4_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Uint8 => {
-			let (values, bits) = run!(Uint8);
-			uint8_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Uint16 => {
-			let (ViewData::Uint16(l), ViewData::Uint16(r)) = (&a_inner.data, &b_inner.data) else {
-				unreachable!()
-			};
-			let d = d_parts.as_ref().map(|(inner, bv)| {
-				let ViewData::Uint16(c) = &inner.data else {
-					unreachable!()
-				};
-				(wides::<u128>(c), *bv)
-			});
-			let (values, bits) = compute_rows::<_, Op>(
-				ctx,
-				&target,
-				(&wides::<u128>(l), a_bv),
-				(&wides::<u128>(r), b_bv),
-				&mode,
-				d.as_ref().map(|(values, bv)| (&values[..], *bv)),
-				strict_msg,
-				Some,
-				identity,
-			)?;
-			uint16_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Float4 => {
-			let (values, bits) = run!(Float4);
-			float4_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Float8 => {
-			let (values, bits) = run!(Float8);
-			float8_with_bitvec(ctx.fragment.text(), values, bits)
-		}
-		ValueType::Decimal {
-			precision,
-			scale,
-		} => {
-			let (values, bits) = run!(
-				Decimal(..),
-				decimals,
-				|value: Decimal| value.fits(precision.value(), scale.value()),
-				|value: Decimal| {
-					value.round_to_scale(scale.value())
-						.and_then(|value| value.fits(precision.value(), scale.value()))
-						.unwrap_or_else(|| {
-							Decimal::from_parts(
-								family_bound(precision, value.is_negative()),
-								scale.value(),
-							)
-							.expect("a precision bound is in range")
-						})
-				}
-			);
-			decimal_with_bitvec(ctx.fragment.text(), precision, scale, values, bits)
-		}
-		other => {
-			return Err(RoutineError::FunctionInvalidArgumentType {
-				function: ctx.fragment.clone(),
-				argument_index: 0,
-				expected: InputTypes::numeric().expected_at(0).to_vec(),
-				actual: other,
-			});
-		}
-	};
-
-	Ok(result)
+	Ok(None)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn compute_rows<T: SafeNum, Op: ArithOp>(
+fn kernel(
 	ctx: &FunctionContext,
-	target: &ValueType,
-	l: (&[T], Option<&BooleanBuffer>),
-	r: (&[T], Option<&BooleanBuffer>),
-	mode: &RowMode,
-	fallback: Option<(&[T], Option<&BooleanBuffer>)>,
-	strict_msg: Option<&ColumnView>,
-	fit: impl Fn(T) -> Option<T>,
-	clamp: impl Fn(T) -> T,
-) -> Result<(Vec<T>, Vec<bool>), RoutineError> {
-	fn defined<T: IsNumber>(c: &[T], bv: Option<&BooleanBuffer>, i: usize) -> bool {
-		i < c.len() && bv.is_none_or(|b| b.value(i))
+	a: &(FieldRef, ArrayRef),
+	b: &(FieldRef, ArrayRef),
+	op: CoreArithOp,
+	overflow: Overflow,
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let arith = ArithContext {
+		target: None,
+		overflow,
+	};
+	let fragment = &ctx.fragment;
+	let lazy = || fragment.clone();
+	let result = match op {
+		CoreArithOp::Add => add_columns(&arith, a, b, lazy),
+		CoreArithOp::Sub => sub_columns(&arith, a, b, lazy),
+		CoreArithOp::Mul => mul_columns(&arith, a, b, lazy),
+		CoreArithOp::Div => div_columns(&arith, a, b, lazy),
+		CoreArithOp::Rem => rem_columns(&arith, a, b, lazy),
+	};
+	Ok(result?)
+}
+
+fn refill(
+	ctx: &FunctionContext,
+	a: &(FieldRef, ArrayRef),
+	b: &(FieldRef, ArrayRef),
+	result: &(FieldRef, ArrayRef),
+	mut overflowed: impl FnMut(usize) -> Result<Option<Value>, RoutineError>,
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let view = ColumnView::try_from(result)?;
+	let overflow_rows: Vec<usize> = (0..view.len())
+		.filter(|&row| !view.is_defined(row) && a.1.is_valid(row) && b.1.is_valid(row))
+		.collect();
+	if overflow_rows.is_empty() {
+		return Ok(result.clone());
 	}
-
-	let (l, l_bv) = l;
-	let (r, r_bv) = r;
-	let row_count = l.len();
-	let mut values = Vec::with_capacity(row_count);
-	let mut bits = Vec::with_capacity(row_count);
-
-	for i in 0..row_count {
-		if !defined(l, l_bv, i) || !defined(r, r_bv, i) {
-			values.push(T::default());
-			bits.push(false);
-			continue;
+	let target = view.get_type().inner_type().clone();
+	let mut builder = ColumnBuilder::with_capacity(target.clone(), view.len());
+	let mut next = overflow_rows.iter().peekable();
+	for row in 0..view.len() {
+		if next.peek() == Some(&&row) {
+			next.next();
+			match overflowed(row)? {
+				Some(value) => builder.push_value(value),
+				None => builder.push_none(),
+			}
+		} else if view.is_defined(row) {
+			builder.push_value(view.get_value(row));
+		} else {
+			builder.push_none();
 		}
-		let lv = l.get(i).expect("defined row has a value");
-		let rv = r.get(i).expect("defined row has a value");
-
-		let out_of_range = || -> RoutineError {
-			TypeError::NumberOutOfRange {
-				target: target.clone(),
-				fragment: ctx.fragment.clone(),
-				descriptor: None,
-			}
-			.into()
-		};
-		let value = match mode {
-			RowMode::Default => {
-				if Op::DIVISIVE && SafeDiv::is_zero(rv) {
-					return Err(TypeError::DivisionByZero {
-						target: target.clone(),
-						fragment: ctx.fragment.clone(),
-					}
-					.into());
-				}
-				Op::checked(lv, rv).and_then(&fit).ok_or_else(out_of_range)?
-			}
-			RowMode::Strict => match Op::checked(lv, rv).and_then(&fit) {
-				Some(v) => v,
-				None => {
-					return Err(make_strict_error(
-						ctx,
-						strict_msg.expect("strict mode carries a message column"),
-						i,
-					));
-				}
-			},
-			RowMode::Saturate => clamp(Op::saturating(lv, rv)),
-			RowMode::Wrap => clamp(Op::wrapping(lv, rv)),
-			RowMode::Zero => Op::checked(lv, rv).and_then(&fit).unwrap_or_default(),
-			RowMode::None => match Op::checked(lv, rv).and_then(&fit) {
-				Some(v) => v,
-				None => {
-					values.push(T::default());
-					bits.push(false);
-					continue;
-				}
-			},
-			RowMode::Fallback => match Op::checked(lv, rv).and_then(&fit) {
-				Some(v) => v,
-				None => {
-					let (d, d_bv) = fallback.expect("fallback mode carries a fallback column");
-					if defined(d, d_bv, i) {
-						fit(d.get(i).expect("defined row has a value").clone())
-							.ok_or_else(out_of_range)?
-					} else {
-						values.push(T::default());
-						bits.push(false);
-						continue;
-					}
-				}
-			},
-		};
-		values.push(value);
-		bits.push(true);
 	}
-
-	Ok((values, bits))
+	let built = builder.finish(ctx.fragment.text());
+	if ColumnView::try_from(&built)?.get_type().inner_type() == &target {
+		return Ok(built);
+	}
+	coerce_column(ctx, &ColumnView::try_from(&built)?, target, CoerceMode::Error)
 }

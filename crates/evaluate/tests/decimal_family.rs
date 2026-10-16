@@ -9,10 +9,12 @@ use factory::{float8, uint8};
 use reifydb_core::{
 	expression::{CastExpression, ConstantExpression, Expression, PrefixOperator, TypeExpression},
 	interface::evaluate::TargetColumn,
-	value::column::factory,
+	value::column::{
+		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
+		factory,
+	},
 };
 use reifydb_evaluate::expression::{
-	arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
 	compare::{CompareOp, Equal, GreaterThan, LessThan, compare_columns},
 	context::EvalContext,
 	eval::evaluate,

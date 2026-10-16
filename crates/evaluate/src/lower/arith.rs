@@ -13,6 +13,10 @@ use datafusion_expr::{ColumnarValue, ReturnFieldArgs, ScalarFunctionArgs, Scalar
 use reifydb_core::{
 	expression::{Expression, name::display_label},
 	interface::catalog::property::ColumnSaturationStrategy,
+	value::column::arith::{
+		ArithOp, add::add_columns, arith_target, context::ArithContext, div::div_columns, mul::mul_columns,
+		rem::rem_columns, sub::sub_columns,
+	},
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -22,13 +26,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	expression::{
-		arith::{
-			ArithOp, add::add_columns, arith_target, div::div_columns, mul::mul_columns, rem::rem_columns,
-			sub::sub_columns,
-		},
-		context::{ArithContext, EvalContext},
-	},
+	expression::context::EvalContext,
 	lower::{
 		Lowered, Node, error::into_external, inner_type, is_untyped_none, lower_node, typed_field, udf,
 		volatile,
@@ -170,20 +168,16 @@ impl ScalarUDFImpl for ArithUdf {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::value::column::arith::{ArithOp, context::ArithContext};
 	use reifydb_value::fragment::Fragment;
 
 	use super::ArithUdf;
-	use crate::{
-		expression::{arith::ArithOp, context::ArithContext},
-		lower::volatile,
-	};
+	use crate::lower::volatile;
 
 	fn add_at(column: u32) -> ArithUdf {
 		ArithUdf {
 			op: ArithOp::Add,
-			arith: ArithContext {
-				target: None,
-			},
+			arith: ArithContext::default(),
 			fragment: Fragment::statement("a+b", 1, column),
 			signature: volatile(),
 		}
