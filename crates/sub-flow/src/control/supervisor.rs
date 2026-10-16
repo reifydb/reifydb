@@ -18,7 +18,13 @@ use reifydb_core::{
 	common::{CommitVersion, SourceVersion},
 	flow::dag::FlowDag,
 	interface::{
-		catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind},
+		catalog::{
+			config::{ConfigKey, GetConfig},
+			flow::FlowId,
+			id::ViewId,
+			object::ObjectId,
+			view::ViewKind,
+		},
 		cdc::{Cdc, CdcConsumerId},
 	},
 };
@@ -93,8 +99,8 @@ pub enum FlowSupervisorMessage {
 
 pub struct FlowSupervisorParams {
 	pub engine: StandardEngine,
-	pub committer: ActorRef<CommitterMessage>,
-	pub terminal_committer: ActorRef<CommitterMessage>,
+	pub committers: Vec<ActorRef<CommitterMessage>>,
+	pub terminal_committers: Vec<ActorRef<CommitterMessage>>,
 	pub backlog: FlowBacklog,
 	pub loader: ActorRef<LoaderMessage>,
 	pub control: ControlFrontier,
@@ -118,8 +124,8 @@ pub struct FlowSupervisorParams {
 
 pub struct FlowSupervisor {
 	engine: StandardEngine,
-	committer: ActorRef<CommitterMessage>,
-	terminal_committer: ActorRef<CommitterMessage>,
+	committers: Vec<ActorRef<CommitterMessage>>,
+	terminal_committers: Vec<ActorRef<CommitterMessage>>,
 	backlog: FlowBacklog,
 	loader: ActorRef<LoaderMessage>,
 	control: ControlFrontier,
@@ -164,8 +170,8 @@ impl FlowSupervisor {
 	pub fn new(params: FlowSupervisorParams) -> Self {
 		Self {
 			engine: params.engine,
-			committer: params.committer,
-			terminal_committer: params.terminal_committer,
+			committers: params.committers,
+			terminal_committers: params.terminal_committers,
 			backlog: params.backlog,
 			loader: params.loader,
 			control: params.control,
@@ -574,8 +580,10 @@ impl FlowSupervisor {
 		self.flow_tracker.update_committed(flow_id, cursor, self.engine.done_until(), SourceVersion(cursor.0));
 		let params = FlowActorParams {
 			engine: self.engine.clone(),
-			committer: self.committer.clone(),
-			terminal_committer: self.terminal_committer.clone(),
+			committer: self.committers[flow_id.0 as usize % self.committers.len()].clone(),
+			terminal_committer: self.terminal_committers
+				[flow_id.0 as usize % self.terminal_committers.len()]
+			.clone(),
 			backlog: self.backlog.clone(),
 			loader: self.loader.clone(),
 			control: self.control.clone(),
@@ -595,6 +603,8 @@ impl FlowSupervisor {
 			checkpoint_max_age: self.checkpoint_max_age,
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
+			wake_coalesce: self.engine.catalog().get_config_duration(ConfigKey::FlowWakeCoalesce),
+			batch_size: self.engine.catalog().get_config_uint2(ConfigKey::FlowActorBatchSize) as usize,
 		};
 		let actor = match start {
 			FlowStart::Resume(_) => FlowActor::new(params),
@@ -604,8 +614,11 @@ impl FlowSupervisor {
 		};
 		let pending = actor.wake_pending();
 		let handle = self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), actor);
-		self.flow_tracker
-			.set_waker(flow_id, FlowWaker::new(handle.actor_ref().clone(), pending, self.clock.clone()));
+		self.flow_tracker.set_waker(
+			flow_id,
+			FlowWaker::new(handle.actor_ref().clone(), pending, self.clock.clone())
+				.with_coalesce(self.engine.catalog().get_config_duration(ConfigKey::FlowWakeCoalesce)),
+		);
 		handle
 	}
 
@@ -620,7 +633,7 @@ impl FlowSupervisor {
 		let mut slice = FlowSlice::empty();
 		slice.control_cursor = Some((self.consumer_id.clone(), cursor));
 		let reply: SliceCommitReply = Box::new(|_| {});
-		let _ = self.committer.send(CommitterMessage::Slice {
+		let _ = self.committers[0].send(CommitterMessage::Slice {
 			slice,
 			reply,
 		});

@@ -67,7 +67,7 @@ use crate::{
 	operator::provider::StandardOperatorProvider,
 	progress::{
 		frontier::ControlFrontier,
-		tracker::{FLOW_WAKE_COALESCE_NANOS, FlowPositionTracker, FlowUpstreams},
+		tracker::{FlowPositionTracker, FlowUpstreams},
 	},
 };
 
@@ -94,6 +94,8 @@ pub struct FlowActorParams {
 	pub checkpoint_max_age: Duration,
 	pub retry_limit: u32,
 	pub retry_backoff: Duration,
+	pub wake_coalesce: Duration,
+	pub batch_size: usize,
 }
 
 pub struct FlowActor {
@@ -119,6 +121,8 @@ pub struct FlowActor {
 	load_batch_bytes: ByteSize,
 	retry_limit: u32,
 	retry_backoff: Duration,
+	wake_coalesce: Duration,
+	batch_size: usize,
 	checkpoint_max_age: Duration,
 	initial_source_objects: Arc<BTreeSet<ObjectId>>,
 	initial_completeness_objects: Option<Arc<BTreeSet<u64>>>,
@@ -184,6 +188,8 @@ impl FlowActor {
 			has_lookup,
 			retry_limit: params.retry_limit,
 			retry_backoff: params.retry_backoff,
+			wake_coalesce: params.wake_coalesce,
+			batch_size: params.batch_size,
 			checkpoint_max_age: params.checkpoint_max_age,
 			initial_source_objects: params.source_objects,
 			initial_completeness_objects: params.completeness_objects,
@@ -1095,10 +1101,7 @@ impl Actor for FlowActor {
 			}
 			FlowActorMessage::Wake => {
 				if !state.poisoned {
-					ctx.schedule_once(
-						Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
-						|| FlowActorMessage::TrailingWake,
-					);
+					ctx.schedule_once(self.wake_coalesce, || FlowActorMessage::TrailingWake);
 					if state.committing || state.awaiting_load {
 						state.drain_after_commit = true;
 					} else {
@@ -1109,10 +1112,7 @@ impl Actor for FlowActor {
 			}
 			FlowActorMessage::TrailingWake => {
 				if !state.poisoned && self.wake_pending.load(Ordering::SeqCst) {
-					ctx.schedule_once(
-						Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
-						|| FlowActorMessage::TrailingWake,
-					);
+					ctx.schedule_once(self.wake_coalesce, || FlowActorMessage::TrailingWake);
 					if state.committing || state.awaiting_load {
 						state.drain_after_commit = true;
 					} else {
@@ -1179,7 +1179,7 @@ impl Actor for FlowActor {
 	}
 
 	fn config(&self) -> ActorConfig {
-		ActorConfig::new()
+		ActorConfig::new().batch_size(self.batch_size)
 	}
 }
 
@@ -1401,6 +1401,10 @@ mod pull_protocol {
 					checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 					retry_limit: 3,
 					retry_backoff: Duration::from_milliseconds(50).unwrap(),
+					wake_coalesce: Duration::from_nanoseconds_const(
+						crate::progress::tracker::FLOW_WAKE_COALESCE_NANOS,
+					),
+					batch_size: 8,
 				}),
 			);
 
@@ -1447,6 +1451,10 @@ mod pull_protocol {
 				checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
+				wake_coalesce: Duration::from_nanoseconds_const(
+					crate::progress::tracker::FLOW_WAKE_COALESCE_NANOS,
+				),
+				batch_size: 8,
 			});
 			let pending = actor.wake_pending();
 			let handle = self.engine.spawner().spawn_flow("pull-protocol-flow", actor);
@@ -2477,7 +2485,8 @@ mod pull_protocol {
 				.as_ref()
 				.expect("the harness substrate carries an operator store")
 				.total_bytes()
-				.unwrap() > ByteSize::ZERO,
+				.unwrap()
+				> ByteSize::ZERO,
 			"the aggregate's operator state must land in the shared operator store"
 		);
 
@@ -2560,6 +2569,10 @@ mod pull_protocol {
 				checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
+				wake_coalesce: Duration::from_nanoseconds_const(
+					crate::progress::tracker::FLOW_WAKE_COALESCE_NANOS,
+				),
+				batch_size: 8,
 			}),
 		);
 
@@ -3016,6 +3029,10 @@ mod tick_failures {
 			checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
 			retry_limit: RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(50).unwrap(),
+			wake_coalesce: Duration::from_nanoseconds_const(
+				crate::progress::tracker::FLOW_WAKE_COALESCE_NANOS,
+			),
+			batch_size: 8,
 		});
 
 		(te, health, actor)

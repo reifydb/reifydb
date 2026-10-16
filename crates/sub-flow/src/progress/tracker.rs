@@ -17,6 +17,7 @@ use reifydb_core::{
 };
 use reifydb_flow_async::transaction::LookupVersions;
 use reifydb_runtime::{actor::mailbox::ActorRef, context::clock::Clock, sync::rwlock::RwLock};
+use reifydb_value::value::duration::Duration;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Clone)]
@@ -78,6 +79,7 @@ pub struct FlowWaker {
 	pending: Arc<AtomicBool>,
 	clock: Clock,
 	next_wake_nanos: Arc<AtomicI64>,
+	coalesce_nanos: i64,
 }
 
 impl FlowWaker {
@@ -87,7 +89,14 @@ impl FlowWaker {
 			pending,
 			clock,
 			next_wake_nanos: Arc::new(AtomicI64::new(0)),
+			coalesce_nanos: FLOW_WAKE_COALESCE_NANOS,
 		}
+	}
+
+	pub fn with_coalesce(mut self, coalesce: Duration) -> Self {
+		self.coalesce_nanos =
+			coalesce.as_nanos().expect("a flow wake coalesce window must be a plain nanosecond duration");
+		self
 	}
 
 	pub fn wake(&self) {
@@ -100,7 +109,7 @@ impl FlowWaker {
 			}
 			return;
 		}
-		let deadline = now.saturating_add(FLOW_WAKE_COALESCE_NANOS);
+		let deadline = now.saturating_add(self.coalesce_nanos);
 		if self.next_wake_nanos.compare_exchange(next, deadline, Ordering::SeqCst, Ordering::Relaxed).is_err() {
 			return;
 		}
@@ -108,7 +117,7 @@ impl FlowWaker {
 	}
 
 	pub fn wake_now(&self) {
-		let deadline = self.clock.now().to_nanos().saturating_add(FLOW_WAKE_COALESCE_NANOS);
+		let deadline = self.clock.now().to_nanos().saturating_add(self.coalesce_nanos);
 		self.next_wake_nanos.store(deadline, Ordering::SeqCst);
 		self.send();
 	}
@@ -708,7 +717,8 @@ mod tests {
 
 	fn coalescing_harness(
 		source_count: usize,
-	) -> (Clock, FlowPositionTracker, ActorRef<FlowActorMessage>, Arc<AtomicBool>, mpsc::Receiver<&'static str>) {
+	) -> (Clock, FlowPositionTracker, ActorRef<FlowActorMessage>, Arc<AtomicBool>, mpsc::Receiver<&'static str>)
+	{
 		let clock = Clock::Mock(MockClock::from_millis(0));
 		let actor_system = ActorSystem::testing(Clock::testing());
 		let (sender, received) = mpsc::channel();
