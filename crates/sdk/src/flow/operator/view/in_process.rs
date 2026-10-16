@@ -4,6 +4,7 @@
 use std::{
 	any::type_name,
 	collections::HashMap,
+	marker::PhantomData,
 	sync::{Arc, OnceLock},
 };
 
@@ -24,7 +25,7 @@ use reifydb_value::{
 	},
 };
 
-use super::{ChangeView, ColumnsView, DiffView, RowView};
+use super::{ChangeView, ColumnCursor, ColumnsView, CursorValue, DiffView, RowView, ViewCell};
 use crate::error::SdkError;
 
 struct ResolvedColumns<'a> {
@@ -82,15 +83,11 @@ impl<'a> InProcessRowView<'a> {
 		self.columns.view(name)
 	}
 
-	fn defined(&self, name: &str) -> Result<Option<&ColumnView<'a>>, SdkError> {
-		Ok(self.buffer(name)?.filter(|view| view.is_defined(self.index)))
-	}
-
-	fn typed<T: FromColumnView>(&self, name: &str) -> Result<Option<T>, SdkError> {
-		let Some(view) = self.defined(name)? else {
-			return Ok(None);
-		};
-		T::from_column_view(view, self.index).map_err(|reason| column_read::<T>(name, view, reason))
+	fn read<'r, T: ViewCell<'r>>(&'r self, name: &str) -> Result<Option<T>, SdkError> {
+		match self.buffer(name)? {
+			Some(view) if view.is_defined(self.index) => T::read_view(view, self.index),
+			_ => Ok(None),
+		}
 	}
 }
 
@@ -100,95 +97,83 @@ impl<'a> RowView for InProcessRowView<'a> {
 	}
 
 	fn utf8(&self, name: &str) -> Result<Option<&str>, SdkError> {
-		let Some(view) = self.defined(name)? else {
-			return Ok(None);
-		};
-		if !matches!(view.data, ViewData::Utf8 { .. }) {
-			return Err(column_read::<&str>(name, view, ColumnReadReason::WrongType));
-		}
-		Ok(view.get_str(self.index))
+		self.read(name)
 	}
 
 	fn blob(&self, name: &str) -> Result<Option<&[u8]>, SdkError> {
-		let Some(view) = self.defined(name)? else {
-			return Ok(None);
-		};
-		if !matches!(view.data, ViewData::Blob { .. }) {
-			return Err(column_read::<&[u8]>(name, view, ColumnReadReason::WrongType));
-		}
-		Ok(view.get_bytes(self.index))
+		self.read(name)
 	}
 
 	fn bool(&self, name: &str) -> Result<Option<bool>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn u8(&self, name: &str) -> Result<Option<u8>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn u16(&self, name: &str) -> Result<Option<u16>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn u32(&self, name: &str) -> Result<Option<u32>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn u64(&self, name: &str) -> Result<Option<u64>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn u128(&self, name: &str) -> Result<Option<u128>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn i8(&self, name: &str) -> Result<Option<i8>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn i16(&self, name: &str) -> Result<Option<i16>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn i32(&self, name: &str) -> Result<Option<i32>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn i64(&self, name: &str) -> Result<Option<i64>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn i128(&self, name: &str) -> Result<Option<i128>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn f32(&self, name: &str) -> Result<Option<f32>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn f64(&self, name: &str) -> Result<Option<f64>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn decimal(&self, name: &str) -> Result<Option<Decimal>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn date(&self, name: &str) -> Result<Option<Date>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn datetime(&self, name: &str) -> Result<Option<DateTime>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn time(&self, name: &str) -> Result<Option<Time>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn duration(&self, name: &str) -> Result<Option<Duration>, SdkError> {
-		self.typed(name)
+		self.read(name)
 	}
 
 	fn row_number(&self) -> Option<RowNumber> {
@@ -197,6 +182,61 @@ impl<'a> RowView for InProcessRowView<'a> {
 
 	fn row_time(&self) -> Option<DateTime> {
 		self.columns.times().get(self.index)
+	}
+}
+
+impl<'a> ViewCell<'a> for &'a str {
+	fn read_view(view: &ColumnView<'a>, index: usize) -> Result<Option<Self>, SdkError> {
+		if !matches!(view.data, ViewData::Utf8 { .. }) {
+			return Err(column_read::<&str>(view.field.name(), view, ColumnReadReason::WrongType));
+		}
+		Ok(view.get_str(index))
+	}
+}
+
+impl<'a> ViewCell<'a> for &'a [u8] {
+	fn read_view(view: &ColumnView<'a>, index: usize) -> Result<Option<Self>, SdkError> {
+		if !matches!(view.data, ViewData::Blob { .. }) {
+			return Err(column_read::<&[u8]>(view.field.name(), view, ColumnReadReason::WrongType));
+		}
+		Ok(view.get_bytes(index))
+	}
+}
+
+macro_rules! view_cell_from_column_view {
+	($($t:ty),*) => {$(
+		impl<'a> ViewCell<'a> for $t {
+			fn read_view(view: &ColumnView<'a>, index: usize) -> Result<Option<Self>, SdkError> {
+				<$t as FromColumnView>::from_column_view(view, index)
+					.map_err(|reason| column_read::<$t>(view.field.name(), view, reason))
+			}
+		}
+	)*};
+}
+
+view_cell_from_column_view!(
+	bool, u8, u16, u32, u64, u128, i8, i16, i32, i64, i128, f32, f64, Decimal, Date, DateTime, Time, Duration
+);
+
+pub struct InProcessCursor<'c, T> {
+	view: &'c ColumnView<'c>,
+	rows: usize,
+	_value: PhantomData<fn() -> T>,
+}
+
+impl<'c, T: ViewCell<'c>> ColumnCursor<T> for InProcessCursor<'c, T> {
+	fn get(&self, index: usize) -> Result<Option<T>, SdkError> {
+		if index >= self.rows {
+			return Err(SdkError::InvalidInput(format!(
+				"row {index} is out of range for column {} with {} rows",
+				self.view.field.name(),
+				self.rows
+			)));
+		}
+		if !self.view.is_defined(index) {
+			return Ok(None);
+		}
+		T::read_view(self.view, index)
 	}
 }
 
@@ -234,6 +274,17 @@ impl<'a> ColumnsView for InProcessColumnsView<'a> {
 			columns: Arc::clone(&self.columns),
 			index,
 		})
+	}
+
+	fn column<'c, T: CursorValue<'c> + 'c>(
+		&'c self,
+		name: &str,
+	) -> Result<Option<impl ColumnCursor<T> + 'c>, SdkError> {
+		Ok(self.columns.view(name)?.map(|view| InProcessCursor {
+			view,
+			rows: self.columns.batch.num_rows(),
+			_value: PhantomData,
+		}))
 	}
 
 	fn row_numbers(&self) -> &[RowNumber] {

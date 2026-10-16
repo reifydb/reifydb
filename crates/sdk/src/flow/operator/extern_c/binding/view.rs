@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::any::type_name;
+use std::{any::type_name, marker::PhantomData};
 
 use reifydb_codec::tag::{TypeTag, ValueKind};
 use reifydb_value::{
@@ -20,7 +20,7 @@ use crate::{
 	error::{Result as SdkResult, SdkError},
 	flow::operator::{
 		change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
-		view::{ChangeView, ColumnsView, DiffView, RowView},
+		view::{BorrowedCell, ChangeView, ColumnCursor, ColumnsView, CursorValue, DiffView, RowView},
 	},
 };
 
@@ -38,37 +38,15 @@ impl<'a> ExternCRowView<'a> {
 		}
 	}
 
-	fn column_defined(&self, name: &str) -> SdkResult<Option<BorrowedColumn<'a>>> {
+	fn read<T: BorrowedCell<'a>>(&self, name: &str) -> SdkResult<Option<T>> {
 		let Some(col) = self.columns.column(name)? else {
 			return Ok(None);
 		};
 		if !col.defined_at(self.index)? {
 			return Ok(None);
 		}
-		Ok(Some(col))
+		T::read_borrowed(&col, self.index)
 	}
-
-	fn temporal<T: Copy>(&self, name: &str, kind: ValueKind) -> Result<Option<T>, SdkError> {
-		let Some(col) = self.column_defined(name)? else {
-			return Ok(None);
-		};
-		if col.type_code() != kind {
-			return Err(read_error::<T>(&col, ColumnReadReason::WrongType));
-		}
-		fixed_at::<T>(&col, self.index)
-	}
-}
-
-macro_rules! widening_read {
-	($self:ident, $name:ident, $t:ty => [$($kind:ident: $source:ty),*]) => {{
-		let Some(col) = $self.column_defined($name)? else {
-			return Ok(None);
-		};
-		match col.type_code() {
-			$(ValueKind::$kind => Ok(fixed_at::<$source>(&col, $self.index)?.map(<$t>::from)),)*
-			_ => Err(read_error::<$t>(&col, ColumnReadReason::WrongType)),
-		}
-	}};
 }
 
 impl<'a> RowView for ExternCRowView<'a> {
@@ -80,118 +58,83 @@ impl<'a> RowView for ExternCRowView<'a> {
 	}
 
 	fn utf8(&self, name: &str) -> Result<Option<&str>, SdkError> {
-		let Some(col) = self.column_defined(name)? else {
-			return Ok(None);
-		};
-		if col.type_code() != ValueKind::Utf8 {
-			return Err(read_error::<&str>(&col, ColumnReadReason::WrongType));
-		}
-		col.str_at(self.index)
+		self.read(name)
 	}
 
 	fn blob(&self, name: &str) -> Result<Option<&[u8]>, SdkError> {
-		let Some(col) = self.column_defined(name)? else {
-			return Ok(None);
-		};
-		if col.type_code() != ValueKind::Blob {
-			return Err(read_error::<&[u8]>(&col, ColumnReadReason::WrongType));
-		}
-		col.bytes_at(self.index)
+		self.read(name)
 	}
 
 	fn bool(&self, name: &str) -> Result<Option<bool>, SdkError> {
-		let Some(col) = self.column_defined(name)? else {
-			return Ok(None);
-		};
-		if col.type_code() != ValueKind::Boolean {
-			return Err(read_error::<bool>(&col, ColumnReadReason::WrongType));
-		}
-		bitvec_len(col.data_bytes().len(), col.row_count(), col.name())?;
-		Ok(col.data_bytes().get(self.index / 8).map(|byte| (byte >> (self.index % 8)) & 1 == 1))
+		self.read(name)
 	}
 
 	fn u8(&self, name: &str) -> Result<Option<u8>, SdkError> {
-		widening_read!(self, name, u8 => [Uint1: u8])
+		self.read(name)
 	}
 
 	fn u16(&self, name: &str) -> Result<Option<u16>, SdkError> {
-		widening_read!(self, name, u16 => [Uint1: u8, Uint2: u16])
+		self.read(name)
 	}
 
 	fn u32(&self, name: &str) -> Result<Option<u32>, SdkError> {
-		widening_read!(self, name, u32 => [Uint1: u8, Uint2: u16, Uint4: u32])
+		self.read(name)
 	}
 
 	fn u64(&self, name: &str) -> Result<Option<u64>, SdkError> {
-		widening_read!(self, name, u64 => [Uint1: u8, Uint2: u16, Uint4: u32, Uint8: u64])
+		self.read(name)
 	}
 
 	fn u128(&self, name: &str) -> Result<Option<u128>, SdkError> {
-		widening_read!(self, name, u128 => [Uint1: u8, Uint2: u16, Uint4: u32, Uint8: u64, Uint16: u128])
+		self.read(name)
 	}
 
 	fn i8(&self, name: &str) -> Result<Option<i8>, SdkError> {
-		widening_read!(self, name, i8 => [Int1: i8])
+		self.read(name)
 	}
 
 	fn i16(&self, name: &str) -> Result<Option<i16>, SdkError> {
-		widening_read!(self, name, i16 => [Int1: i8, Int2: i16])
+		self.read(name)
 	}
 
 	fn i32(&self, name: &str) -> Result<Option<i32>, SdkError> {
-		widening_read!(self, name, i32 => [Int1: i8, Int2: i16, Int4: i32])
+		self.read(name)
 	}
 
 	fn i64(&self, name: &str) -> Result<Option<i64>, SdkError> {
-		widening_read!(self, name, i64 => [Int1: i8, Int2: i16, Int4: i32, Int8: i64])
+		self.read(name)
 	}
 
 	fn i128(&self, name: &str) -> Result<Option<i128>, SdkError> {
-		widening_read!(self, name, i128 => [Int1: i8, Int2: i16, Int4: i32, Int8: i64, Int16: i128])
+		self.read(name)
 	}
 
 	fn f32(&self, name: &str) -> Result<Option<f32>, SdkError> {
-		widening_read!(self, name, f32 => [Float4: f32])
+		self.read(name)
 	}
 
 	fn f64(&self, name: &str) -> Result<Option<f64>, SdkError> {
-		widening_read!(self, name, f64 => [Float4: f32, Float8: f64])
+		self.read(name)
 	}
 
 	fn decimal(&self, name: &str) -> Result<Option<Decimal>, SdkError> {
-		let Some(col) = self.column_defined(name)? else {
-			return Ok(None);
-		};
-		let does_not_fit = || read_error::<Decimal>(&col, ColumnReadReason::DoesNotFit);
-		match col.type_code() {
-			ValueKind::Decimal => match col.family_cell_at::<Decimal>(self.index)? {
-				Some(decoded) => decoded.map(Some).map_err(|_| does_not_fit()),
-				None => Ok(None),
-			},
-			ValueKind::Float8 => fixed_at::<f64>(&col, self.index)?
-				.map(|v| Decimal::from_f64(v).ok_or_else(does_not_fit))
-				.transpose(),
-			ValueKind::Float4 => fixed_at::<f32>(&col, self.index)?
-				.map(|v| Decimal::from_f32(v).ok_or_else(does_not_fit))
-				.transpose(),
-			_ => Err(read_error::<Decimal>(&col, ColumnReadReason::WrongType)),
-		}
+		self.read(name)
 	}
 
 	fn date(&self, name: &str) -> Result<Option<Date>, SdkError> {
-		self.temporal(name, ValueKind::Date)
+		self.read(name)
 	}
 
 	fn datetime(&self, name: &str) -> Result<Option<DateTime>, SdkError> {
-		self.temporal(name, ValueKind::DateTime)
+		self.read(name)
 	}
 
 	fn time(&self, name: &str) -> Result<Option<Time>, SdkError> {
-		self.temporal(name, ValueKind::Time)
+		self.read(name)
 	}
 
 	fn duration(&self, name: &str) -> Result<Option<Duration>, SdkError> {
-		self.temporal(name, ValueKind::Duration)
+		self.read(name)
 	}
 
 	fn row_number(&self) -> Option<RowNumber> {
@@ -200,6 +143,115 @@ impl<'a> RowView for ExternCRowView<'a> {
 
 	fn row_time(&self) -> Option<DateTime> {
 		self.columns.times().get(self.index)
+	}
+}
+
+impl<'a> BorrowedCell<'a> for &'a str {
+	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+		if col.type_code() != ValueKind::Utf8 {
+			return Err(read_error::<&str>(col, ColumnReadReason::WrongType));
+		}
+		col.str_at(index)
+	}
+}
+
+impl<'a> BorrowedCell<'a> for &'a [u8] {
+	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+		if col.type_code() != ValueKind::Blob {
+			return Err(read_error::<&[u8]>(col, ColumnReadReason::WrongType));
+		}
+		col.bytes_at(index)
+	}
+}
+
+impl<'a> BorrowedCell<'a> for bool {
+	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+		if col.type_code() != ValueKind::Boolean {
+			return Err(read_error::<bool>(col, ColumnReadReason::WrongType));
+		}
+		bitvec_len(col.data_bytes().len(), col.row_count(), col.name())?;
+		Ok(col.data_bytes().get(index / 8).map(|byte| (byte >> (index % 8)) & 1 == 1))
+	}
+}
+
+macro_rules! widening_cell {
+	($t:ty => [$($kind:ident: $source:ty),*]) => {
+		impl<'a> BorrowedCell<'a> for $t {
+			fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+				match col.type_code() {
+					$(ValueKind::$kind => Ok(fixed_at::<$source>(col, index)?.map(<$t>::from)),)*
+					_ => Err(read_error::<$t>(col, ColumnReadReason::WrongType)),
+				}
+			}
+		}
+	};
+}
+
+widening_cell!(u8 => [Uint1: u8]);
+widening_cell!(u16 => [Uint1: u8, Uint2: u16]);
+widening_cell!(u32 => [Uint1: u8, Uint2: u16, Uint4: u32]);
+widening_cell!(u64 => [Uint1: u8, Uint2: u16, Uint4: u32, Uint8: u64]);
+widening_cell!(u128 => [Uint1: u8, Uint2: u16, Uint4: u32, Uint8: u64, Uint16: u128]);
+widening_cell!(i8 => [Int1: i8]);
+widening_cell!(i16 => [Int1: i8, Int2: i16]);
+widening_cell!(i32 => [Int1: i8, Int2: i16, Int4: i32]);
+widening_cell!(i64 => [Int1: i8, Int2: i16, Int4: i32, Int8: i64]);
+widening_cell!(i128 => [Int1: i8, Int2: i16, Int4: i32, Int8: i64, Int16: i128]);
+widening_cell!(f32 => [Float4: f32]);
+widening_cell!(f64 => [Float4: f32, Float8: f64]);
+
+impl<'a> BorrowedCell<'a> for Decimal {
+	fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+		let does_not_fit = || read_error::<Decimal>(col, ColumnReadReason::DoesNotFit);
+		match col.type_code() {
+			ValueKind::Decimal => match col.family_cell_at::<Decimal>(index)? {
+				Some(decoded) => decoded.map(Some).map_err(|_| does_not_fit()),
+				None => Ok(None),
+			},
+			ValueKind::Float8 => fixed_at::<f64>(col, index)?
+				.map(|v| Decimal::from_f64(v).ok_or_else(does_not_fit))
+				.transpose(),
+			ValueKind::Float4 => fixed_at::<f32>(col, index)?
+				.map(|v| Decimal::from_f32(v).ok_or_else(does_not_fit))
+				.transpose(),
+			_ => Err(read_error::<Decimal>(col, ColumnReadReason::WrongType)),
+		}
+	}
+}
+
+macro_rules! temporal_cell {
+	($($t:ty => $kind:ident),*) => {$(
+		impl<'a> BorrowedCell<'a> for $t {
+			fn read_borrowed(col: &BorrowedColumn<'a>, index: usize) -> SdkResult<Option<Self>> {
+				if col.type_code() != ValueKind::$kind {
+					return Err(read_error::<$t>(col, ColumnReadReason::WrongType));
+				}
+				fixed_at::<$t>(col, index)
+			}
+		}
+	)*};
+}
+
+temporal_cell!(Date => Date, DateTime => DateTime, Time => Time, Duration => Duration);
+
+pub struct ExternCCursor<'a, T> {
+	col: BorrowedColumn<'a>,
+	_value: PhantomData<fn() -> T>,
+}
+
+impl<'a, T: BorrowedCell<'a>> ColumnCursor<T> for ExternCCursor<'a, T> {
+	fn get(&self, index: usize) -> SdkResult<Option<T>> {
+		if index >= self.col.row_count() {
+			return Err(SdkError::InvalidInput(format!(
+				"row {index} is out of range for column {} with {} rows",
+				self.col.name(),
+				self.col.row_count()
+			)));
+		}
+		if !self.col.defined_at(index)? {
+			return Ok(None);
+		}
+		T::read_borrowed(&self.col, index)
 	}
 }
 
@@ -248,6 +300,13 @@ impl<'a> BorrowedColumns<'a> {
 impl<'a> ColumnsView for BorrowedColumns<'a> {
 	fn row_count(&self) -> usize {
 		BorrowedColumns::row_count(self)
+	}
+
+	fn column<'c, T: CursorValue<'c> + 'c>(&'c self, name: &str) -> SdkResult<Option<impl ColumnCursor<T> + 'c>> {
+		Ok(BorrowedColumns::column(self, name)?.map(|col| ExternCCursor {
+			col,
+			_value: PhantomData,
+		}))
 	}
 
 	fn row(&self, index: usize) -> Option<impl RowView + '_> {

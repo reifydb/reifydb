@@ -4,11 +4,27 @@
 pub mod in_process;
 
 use reifydb_value::value::{
-	date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType, duration::Duration,
-	row_number::RowNumber, system_columns::RowTimes, time::Time,
+	column_view::ColumnView, date::Date, datetime::DateTime, decimal::Decimal, diff_type::DiffType,
+	duration::Duration, row_number::RowNumber, system_columns::RowTimes, time::Time,
 };
 
-use crate::error::SdkError;
+use crate::{error::SdkError, flow::operator::change::BorrowedColumn};
+
+pub trait ViewCell<'a>: Sized {
+	fn read_view(view: &ColumnView<'a>, index: usize) -> Result<Option<Self>, SdkError>;
+}
+
+pub trait BorrowedCell<'a>: Sized {
+	fn read_borrowed(column: &BorrowedColumn<'a>, index: usize) -> Result<Option<Self>, SdkError>;
+}
+
+pub trait CursorValue<'a>: ViewCell<'a> + BorrowedCell<'a> {}
+
+impl<'a, T: ViewCell<'a> + BorrowedCell<'a>> CursorValue<'a> for T {}
+
+pub trait ColumnCursor<T> {
+	fn get(&self, index: usize) -> Result<Option<T>, SdkError>;
+}
 
 pub trait RowView {
 	fn is_defined(&self, name: &str) -> Result<bool, SdkError>;
@@ -39,6 +55,10 @@ pub trait RowView {
 pub trait ColumnsView {
 	fn row_count(&self) -> usize;
 	fn row(&self, index: usize) -> Option<impl RowView + '_>;
+	fn column<'c, T: CursorValue<'c> + 'c>(
+		&'c self,
+		name: &str,
+	) -> Result<Option<impl ColumnCursor<T> + 'c>, SdkError>;
 	fn row_numbers(&self) -> &[RowNumber];
 	fn times(&self) -> RowTimes<'_>;
 }
