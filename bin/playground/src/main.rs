@@ -6,8 +6,8 @@
 #![allow(clippy::tabs_in_doc_comments)]
 
 use reifydb::{
-	Database, Frame, IdentityId, Result, allocator, server, transaction::transaction::command::CommandTransaction,
-	value::params::Params,
+	Database, Frame, IdentityId, Result, allocator, core::durability::Durability, server,
+	transaction::transaction::command::CommandTransaction, value::params::Params,
 };
 
 allocator::set_global_allocator!();
@@ -86,7 +86,7 @@ fn main() {
 	command(&db, "4. Delete Carol", "DELETE shop::orders FILTER { id == 3 }");
 	query(&db, "4. View after the delete (expect 1)", "FROM shop::big_orders");
 
-	let mut txn = db.engine().begin_command(IdentityId::root()).unwrap();
+	let mut txn = db.engine().begin_command(IdentityId::root(), Durability::Async).unwrap();
 	in_txn(
 		&mut txn,
 		"5. In one txn: insert Erin 200",
@@ -96,7 +96,7 @@ fn main() {
 	txn.commit().unwrap();
 	query(&db, "5. After commit (expect 1 and 5)", "FROM shop::big_orders");
 
-	let mut txn = db.engine().begin_command(IdentityId::root()).unwrap();
+	let mut txn = db.engine().begin_command(IdentityId::root(), Durability::Async).unwrap();
 	in_txn(
 		&mut txn,
 		"6. In one txn: insert Frank 999",

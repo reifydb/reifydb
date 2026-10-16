@@ -9,6 +9,7 @@ use std::{
 use reifydb_cdc::lift::lift_selected_changes;
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	interface::{
 		catalog::{config::ConfigKey, object::ObjectId},
 		cdc::Cdc,
@@ -570,7 +571,7 @@ fn a_late_create_commits_its_backfill_in_one_version_and_leaves_other_views_alon
 fn rows_written_earlier_in_the_create_txn_land_in_the_view_exactly_once() {
 	// The scan sees the txn's own pending rows; feeding them again from the txn's change list would double them.
 	let t = seeded_with_an_early_view();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	in_txn(&mut txn, "INSERT bf::src [{ id: 4, v: 40 }, { id: 5, v: 50 }]");
 	in_txn(&mut txn, "UPDATE bf::src { v: 11 } FILTER { id == 1 }");
 	in_txn(&mut txn, "CREATE TRANSACTIONAL VIEW bf::late { id: int4, v: int4 } AS { FROM bf::src }");
@@ -589,7 +590,7 @@ fn rows_written_earlier_in_the_create_txn_land_in_the_view_exactly_once() {
 fn dml_after_the_create_in_the_same_txn_reaches_the_view_exactly_once() {
 	// Writes after the create must reach the new flow exactly once, on top of the backfill, old rows or new.
 	let t = seeded_with_an_early_view();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	in_txn(&mut txn, "INSERT bf::src [{ id: 4, v: 40 }]");
 	in_txn(&mut txn, "CREATE TRANSACTIONAL VIEW bf::late { id: int4, v: int4 } AS { FROM bf::src }");
 	in_txn(&mut txn, "INSERT bf::src [{ id: 6, v: 60 }]");
@@ -614,7 +615,7 @@ fn dml_after_the_create_in_the_same_txn_reaches_the_view_exactly_once() {
 fn a_row_deleted_before_the_create_in_the_same_txn_stays_out_of_the_view() {
 	// The snapshot is the txn's own view of the table, so rows it already deleted must never reach the view.
 	let t = seeded_with_an_early_view();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	in_txn(&mut txn, "INSERT bf::src [{ id: 4, v: 40 }]");
 	in_txn(&mut txn, "DELETE bf::src FILTER { id == 4 }");
 	in_txn(&mut txn, "DELETE bf::src FILTER { id == 2 }");
@@ -630,7 +631,7 @@ fn rolling_back_the_create_txn_leaves_no_view_no_view_rows_and_no_source_rows() 
 	// Backfilled rows live in the create txn's write set; anything written beside it survives the rollback.
 	let t = seeded_with_an_early_view();
 	let before = t.current_version().expect("current version");
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	in_txn(&mut txn, "INSERT bf::src [{ id: 4, v: 40 }]");
 	in_txn(&mut txn, "CREATE TRANSACTIONAL VIEW bf::late { id: int4, v: int4 } AS { FROM bf::src }");
 	assert_eq!(
@@ -653,7 +654,7 @@ fn rolling_back_the_create_txn_leaves_no_view_no_view_rows_and_no_source_rows() 
 fn a_chain_created_over_existing_rows_in_one_txn_and_written_after_holds_each_row_once() {
 	// The second create scans the first view's pending rows; the next write must not feed them to it a second time.
 	let t = seeded_with_an_early_view();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	in_txn(
 		&mut txn,
 		"CREATE TRANSACTIONAL VIEW bf::late1 { id: int4, v: int4 } AS { FROM bf::src | filter { v > 10 } }",
@@ -694,7 +695,7 @@ fn sorted(frames: &[Frame]) -> Vec<String> {
 
 fn create_after_a_partition_removal_in_one_txn(removal: &str, after: Option<&str>, want: &[i32]) {
 	let t = partitioned_with_an_early_view();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	in_txn(&mut txn, &format!("ALTER TABLE bf::p {removal} PARTITION {{ pool: 'a' }}"));
 	in_txn(&mut txn, "CREATE TRANSACTIONAL VIEW bf::late { id: int4, pool: utf8 } AS { FROM bf::p }");
 	if let Some(rql) = after {

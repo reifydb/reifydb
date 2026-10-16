@@ -7,6 +7,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::pending::Pending,
+	durability::Durability,
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
@@ -51,7 +52,7 @@ fn join_key(left: u64, right: u64) -> JoinRowMappingKey {
 }
 
 fn deferred(engine: &TestEngine) -> DeferredTransaction {
-	let parent = engine.begin_admin(IdentityId::system()).unwrap();
+	let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,

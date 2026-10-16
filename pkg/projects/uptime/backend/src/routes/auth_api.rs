@@ -9,7 +9,9 @@ use axum::{
 	http::{HeaderMap, StatusCode},
 };
 use reifydb::{
-	Error, IdentityId, auth::method::password::PasswordProvider, core::interface::auth::AuthenticationProvider,
+	Error, IdentityId,
+	auth::method::password::PasswordProvider,
+	core::{durability::Durability, interface::auth::AuthenticationProvider},
 	value::params,
 };
 
@@ -83,7 +85,7 @@ pub async fn register(
 	st.tokio.spawn_blocking(move || -> Result<(), Error> {
 		let props = PasswordProvider
 			.create(&st_blocking.rng, &HashMap::from([("password".to_string(), password)]))?;
-		let mut txn = st_blocking.engine.begin_admin(IdentityId::root())?;
+		let mut txn = st_blocking.engine.begin_admin(IdentityId::root(), Durability::Async)?;
 		st_blocking.catalog.create_authentication(&mut txn, identity, "password", props)?;
 		txn.commit()?;
 		Ok(())

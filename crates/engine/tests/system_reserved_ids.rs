@@ -15,6 +15,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	common::TimeSource,
+	durability::Durability,
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, SeriesId, TableId},
 };
@@ -48,6 +49,7 @@ fn system_series_use_reserved_ids_and_first_user_source_starts_at_16385() {
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
+		Durability::Async,
 	)
 	.expect("admin transaction");
 

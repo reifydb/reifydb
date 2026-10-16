@@ -21,6 +21,7 @@ use reifydb_cdc::consume::{
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	interface::{
 		catalog::{
 			config::ConfigKey,
@@ -526,7 +527,7 @@ fn test_non_table_events_filtered() {
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 
-	let mut txn = t.begin_command(IdentityId::system()).expect("Failed to begin transaction");
+	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).expect("Failed to begin transaction");
 
 	let table_key = RowKey::new(StorageId::table(1), RowNumber(1));
 	txn.set(vec![(table_key.clone().into(), EncodedBytes(CowVec::new(b"table_value".to_vec())))])
@@ -984,7 +985,7 @@ impl CdcConsume for TestConsumer {
 		// The poll actor only sees progress through the persisted checkpoint.
 		let latest_version = transactions.last().map(|c| c.version.commit);
 		if let Some(version) = latest_version {
-			match self.host.begin_command(IdentityId::system()) {
+			match self.host.begin_command(IdentityId::system(), Durability::Async) {
 				Ok(mut txn) => {
 					if let Err(e) = CdcCheckpoint::persist(
 						&mut txn,
@@ -1039,7 +1040,7 @@ fn await_until<F: Fn() -> bool>(label: &str, check: F) {
 
 fn insert_test_events(engine: &StandardEngine, count: usize) {
 	for i in 0..count {
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		let key = RowKey::new(StorageId::table(1), RowNumber((i + 1) as u64));
 		let value = format!("value_{}", i);
 		txn.set(vec![(key.clone().into(), EncodedBytes(CowVec::new(value.into_bytes())))]).unwrap();
@@ -1116,7 +1117,7 @@ fn an_overtaken_consumer_resyncs_through_its_hook_and_resumes_past_the_gap() {
 	let head = t.inner().current_version().unwrap();
 	await_until("cdc produced up to head", || cdc_store.max_version().unwrap().unwrap_or(CommitVersion(0)) >= head);
 
-	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
+	let mut txn = t.inner().begin_command(IdentityId::system(), Durability::Async).unwrap();
 	CdcCheckpoint::persist(&mut txn, &consumer_id, CommitVersion(1), ConsumerClass::Ephemeral).unwrap();
 	txn.commit().unwrap();
 
@@ -1258,7 +1259,7 @@ fn an_invalidated_checkpoint_row_triggers_resync_at_startup() {
 	let cdc_store = t.cdc_store();
 	let consumer_id = CdcConsumerId::new("restarted-consumer");
 
-	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
+	let mut txn = t.inner().begin_command(IdentityId::system(), Durability::Async).unwrap();
 	CdcCheckpoint::persist(&mut txn, &consumer_id, CommitVersion(7), ConsumerClass::Ephemeral).unwrap();
 	CdcCheckpoint::invalidate(&mut txn, &consumer_id).unwrap();
 	txn.commit().unwrap();

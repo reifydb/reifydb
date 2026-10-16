@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	params::Params,
@@ -12,7 +13,7 @@ fn columns(frames: &[Frame]) -> Vec<Vec<String>> {
 }
 
 fn in_transaction(t: &TestEngine, rql: &str) -> Vec<Frame> {
-	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
+	let mut txn = t.inner().begin_command(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(rql, Params::None);
 	if let Some(e) = r.error {
 		panic!("rql failed: {e:?}\nrql: {rql}")

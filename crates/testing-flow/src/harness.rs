@@ -9,6 +9,7 @@ use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
 	delta::RemoveVisibility,
+	durability::Durability,
 	interface::change::Change,
 	key::{any::TaggedKey, operator::state::OperatorStateKey},
 	state::timer::TimerKind,
@@ -196,14 +197,24 @@ impl Harness<ApplyOperator> {
 impl<O: HostOperator> Harness<O> {
 	pub fn with_dictionaries(mut self) -> Self {
 		self.catalog = self.engine.inner().catalog().clone();
-		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
+		let single = self
+			.engine
+			.begin_admin(IdentityId::system(), Durability::Async)
+			.expect("begin admin")
+			.single
+			.clone();
 		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
 		self.substrate = FlowSubstrate::with_dictionary(registry, self.engine.inner().operator_state());
 		self
 	}
 
 	pub fn dictionary_registry(&self) -> DictionaryAllocatorRegistry {
-		let single = self.engine.begin_admin(IdentityId::system()).expect("begin admin").single.clone();
+		let single = self
+			.engine
+			.begin_admin(IdentityId::system(), Durability::Async)
+			.expect("begin admin")
+			.single
+			.clone();
 		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)))
 	}
 

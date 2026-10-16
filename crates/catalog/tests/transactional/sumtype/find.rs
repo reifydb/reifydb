@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -13,7 +14,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	t.admin("CREATE ENUM stf_ns_a::keep { Active, Inactive }");
 
 	let (ns_id, keep_id) = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "stf_ns_a")
 			.unwrap()
@@ -27,7 +28,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 		ids
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE ENUM stf_ns_a::new { Pending, Done }", Params::None);
 	txn.rql("DROP ENUM stf_ns_a::keep", Params::None);
 
@@ -59,7 +60,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	t.admin("CREATE ENUM stf_ns_b::keep { Active, Inactive }");
 
 	let (ns_id, keep_id) = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "stf_ns_b")
 			.unwrap()
@@ -73,12 +74,12 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 		ids
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE ENUM stf_ns_b::new { Pending, Done }", Params::None);
 	txn.rql("DROP ENUM stf_ns_b::keep", Params::None);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(catalog.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "new").unwrap().is_none());
 	assert!(catalog.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "keep").unwrap().is_some());
 	assert!(
@@ -95,7 +96,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	t.admin("CREATE ENUM stf_ns_c::keep { Active, Inactive }");
 
 	let (ns_id, keep_id) = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "stf_ns_c")
 			.unwrap()
@@ -109,12 +110,12 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 		ids
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE ENUM stf_ns_c::new { Pending, Done }", Params::None);
 	txn.rql("DROP ENUM stf_ns_c::keep", Params::None);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let new_sumtype = catalog
 		.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "new")
 		.unwrap()
@@ -139,7 +140,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	t.admin("CREATE ENUM stf_ns_d::keep { Active, Inactive }");
 
 	let (ns_id, keep_id) = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "stf_ns_d")
 			.unwrap()
@@ -153,11 +154,11 @@ fn concurrent_txn_sees_only_committed_state() {
 		ids
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn1.rql("CREATE ENUM stf_ns_d::new { Pending, Done }", Params::None);
 	txn1.rql("DROP ENUM stf_ns_d::keep", Params::None);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(catalog.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "new").unwrap().is_none());
 	assert!(catalog.find_sumtype_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "keep").unwrap().is_some());
 	assert!(
@@ -168,7 +169,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let new_sumtype = catalog
 		.find_sumtype_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "new")
 		.unwrap()

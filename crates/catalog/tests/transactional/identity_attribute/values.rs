@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -39,7 +40,7 @@ fn uncommitted_value_is_visible_within_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iav_org_a: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE USER iav_alice_a { iav_org_a: 'acme' }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
@@ -56,12 +57,12 @@ fn rolled_back_value_is_not_visible() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iav_org_b: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE USER iav_alice_b { iav_org_b: 'acme' }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_b").unwrap().is_none(),
 		"rolled-back create must remove the identity and its values"
@@ -74,12 +75,12 @@ fn committed_value_is_visible_in_new_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iav_org_c: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE USER iav_alice_c { iav_org_c: 'acme' }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_c", "iav_org_c"),
 		Some("acme".to_string()),
@@ -93,11 +94,11 @@ fn uncommitted_value_is_isolated_from_concurrent_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iav_org_d: utf8");
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1.rql("CREATE USER iav_alice_d { iav_org_d: 'acme' }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_d").unwrap().is_none(),
 		"concurrent txn must not see uncommitted identity or values"
@@ -106,7 +107,7 @@ fn uncommitted_value_is_isolated_from_concurrent_txn() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn3), "iav_alice_d", "iav_org_d"),
 		Some("acme".to_string()),
@@ -121,14 +122,14 @@ fn drop_user_removes_its_values() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_e: utf8");
 	t.admin("CREATE USER iav_alice_e { iav_org_e: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_e").unwrap().unwrap();
 	let r = txn.rql("DROP USER iav_alice_e", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn2), identity.id).unwrap();
 	assert!(values.is_empty(), "dropping a user must cascade its attribute values, found {:?}", values);
 }
@@ -142,7 +143,7 @@ fn drop_attribute_removes_its_values() {
 
 	t.admin("DROP USER ATTRIBUTE iav_org_f");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_f").unwrap().unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
@@ -154,14 +155,14 @@ fn undeclared_attribute_key_is_rejected() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE USER iav_dave { iav_undeclared: 'x' }", Params::None);
 	let error = r.error.expect("undeclared attribute key must be rejected");
 	assert_eq!(error.diagnostic().code, "CA_091");
 	// The failed statement poisons the transaction, so absence is asserted in a fresh one.
 	drop(txn);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_dave").unwrap().is_none(),
 		"rejected create must not leave the identity behind"
@@ -173,7 +174,7 @@ fn duplicate_attribute_key_in_body_is_rejected() {
 	let t = TestEngine::new();
 	t.admin("CREATE USER ATTRIBUTE iav_org_g: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE USER iav_erin { iav_org_g: 'acme'; iav_org_g: 'globex' }", Params::None);
 	let error = r.error.expect("duplicate attribute key must be rejected");
 	assert_eq!(error.diagnostic().code, "CA_090");
@@ -186,7 +187,7 @@ fn removed_value_is_gone_and_fails_closed() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_j: utf8");
 	t.admin("CREATE USER iav_alice_j { iav_org_j: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_j").unwrap().unwrap();
 	let definition = catalog
@@ -202,7 +203,7 @@ fn removed_value_is_gone_and_fails_closed() {
 	);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_j", "iav_org_j"),
 		None,
@@ -216,7 +217,7 @@ fn value_created_then_removed_in_one_txn_is_absent_from_overlay() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iav_org_m: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE USER iav_alice_m { iav_org_m: 'acme' }", Params::None);
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_m").unwrap().unwrap();
@@ -241,7 +242,7 @@ fn rolled_back_value_removal_restores_value() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_k: utf8");
 	t.admin("CREATE USER iav_alice_k { iav_org_k: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_k").unwrap().unwrap();
 	let definition = catalog
@@ -251,7 +252,7 @@ fn rolled_back_value_removal_restores_value() {
 	catalog.remove_identity_attribute_value(&mut txn, identity.id, definition.id).unwrap();
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_k", "iav_org_k"),
 		Some("acme".to_string()),
@@ -264,14 +265,14 @@ fn declare_and_use_in_same_txn() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE USER ATTRIBUTE iav_org_i: utf8", Params::None);
 	assert!(r.error.is_none(), "declare failed: {:?}", r.error);
 	let r = txn.rql("CREATE USER iav_alice_i { iav_org_i: 'acme' }", Params::None);
 	assert!(r.error.is_none(), "create with same-txn declared attribute failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_i", "iav_org_i"),
 		Some("acme".to_string()),
@@ -290,7 +291,7 @@ fn alter_user_assigns_value_to_existing_user() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_n: utf8");
 	t.admin("CREATE USER iav_alice_n");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("ALTER USER iav_alice_n { iav_org_n: 'acme' }", Params::None);
 	assert!(r.error.is_none(), "alter failed: {:?}", r.error);
 
@@ -301,7 +302,7 @@ fn alter_user_assigns_value_to_existing_user() {
 	);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_n", "iav_org_n"),
 		Some("acme".to_string()),
@@ -316,7 +317,7 @@ fn uncommitted_overwrite_is_isolated_from_concurrent_txn() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_o: utf8");
 	t.admin("CREATE USER iav_alice_o { iav_org_o: 'acme' }");
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1.rql("ALTER USER iav_alice_o { iav_org_o: 'globex' }", Params::None);
 	assert!(r.error.is_none(), "alter failed: {:?}", r.error);
 	assert_eq!(
@@ -325,7 +326,7 @@ fn uncommitted_overwrite_is_isolated_from_concurrent_txn() {
 		"overwriting txn must see its own new value"
 	);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_o", "iav_org_o"),
 		Some("acme".to_string()),
@@ -340,12 +341,12 @@ fn rolled_back_overwrite_restores_old_value() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_p: utf8");
 	t.admin("CREATE USER iav_alice_p { iav_org_p: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("ALTER USER iav_alice_p { iav_org_p: 'globex' }", Params::None);
 	assert!(r.error.is_none(), "alter failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_p", "iav_org_p"),
 		Some("acme".to_string()),
@@ -361,7 +362,7 @@ fn committed_overwrite_supersedes_old_value() {
 	t.admin("CREATE USER iav_alice_q { iav_org_q: 'acme' }");
 	t.admin("ALTER USER iav_alice_q { iav_org_q: 'globex' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_q").unwrap().unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
@@ -383,7 +384,7 @@ fn alter_user_sets_multiple_attributes_in_one_statement() {
 	t.admin("CREATE USER iav_alice_r { iav_org_r: 'acme' }");
 	t.admin("ALTER USER iav_alice_r { iav_org_r: 'globex'; iav_tier_r: 'pro' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_r", "iav_org_r"),
 		Some("globex".to_string()),
@@ -405,7 +406,7 @@ fn alter_user_leaves_unlisted_attributes_untouched() {
 	t.admin("CREATE USER iav_alice_s { iav_org_s: 'acme'; iav_tier_s: 'pro' }");
 	t.admin("ALTER USER iav_alice_s { iav_tier_s: 'enterprise' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_s", "iav_org_s"),
 		Some("acme".to_string()),
@@ -423,7 +424,7 @@ fn alter_user_on_nonexistent_user_is_rejected() {
 	let t = TestEngine::new();
 	t.admin("CREATE USER ATTRIBUTE iav_org_t: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("ALTER USER iav_ghost_t { iav_org_t: 'acme' }", Params::None);
 	let error = r.error.expect("altering a nonexistent user must be rejected");
 	assert_eq!(error.diagnostic().code, "CA_043");
@@ -436,7 +437,7 @@ fn alter_user_with_undeclared_attribute_is_rejected_and_writes_nothing() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_u: utf8");
 	t.admin("CREATE USER iav_alice_u { iav_org_u: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	// The declared key comes first: the statement must be all-or-nothing, so even the
 	// valid leading assignment must not stick when a later key is undeclared.
 	let r = txn.rql("ALTER USER iav_alice_u { iav_org_u: 'globex'; iav_undeclared_u: 'x' }", Params::None);
@@ -444,7 +445,7 @@ fn alter_user_with_undeclared_attribute_is_rejected_and_writes_nothing() {
 	assert_eq!(error.diagnostic().code, "CA_091");
 	drop(txn);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_u", "iav_org_u"),
 		Some("acme".to_string()),
@@ -458,7 +459,7 @@ fn alter_user_with_duplicate_key_is_rejected() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_v: utf8");
 	t.admin("CREATE USER iav_alice_v");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("ALTER USER iav_alice_v { iav_org_v: 'acme'; iav_org_v: 'globex' }", Params::None);
 	let error = r.error.expect("duplicate attribute key must be rejected");
 	assert_eq!(error.diagnostic().code, "CA_090");
@@ -470,14 +471,14 @@ fn declare_and_alter_in_same_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER iav_alice_w");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE USER ATTRIBUTE iav_org_w: utf8", Params::None);
 	assert!(r.error.is_none(), "declare failed: {:?}", r.error);
 	let r = txn.rql("ALTER USER iav_alice_w { iav_org_w: 'acme' }", Params::None);
 	assert!(r.error.is_none(), "alter with same-txn declared attribute failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_w", "iav_org_w"),
 		Some("acme".to_string()),
@@ -496,7 +497,7 @@ fn call_set_attribute_assigns_value() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_aa: utf8");
 	t.admin("CREATE USER iav_alice_aa");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CALL identity::set_attribute('iav_alice_aa', 'iav_org_aa', 'acme')", Params::None);
 	assert!(r.error.is_none(), "call failed: {:?}", r.error);
 
@@ -507,7 +508,7 @@ fn call_set_attribute_assigns_value() {
 	);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_aa", "iav_org_aa"),
 		Some("acme".to_string()),
@@ -522,7 +523,7 @@ fn call_set_attribute_by_id() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_ab: utf8");
 	t.admin("CREATE USER iav_alice_ab");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_ab").unwrap().unwrap();
 	let r = txn.rql(
@@ -532,7 +533,7 @@ fn call_set_attribute_by_id() {
 	assert!(r.error.is_none(), "call by id failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_ab", "iav_org_ab"),
 		Some("acme".to_string()),
@@ -548,7 +549,7 @@ fn call_set_attribute_overwrites_committed_value() {
 	t.admin("CREATE USER iav_alice_ac { iav_org_ac: 'acme' }");
 	t.admin("CALL identity::set_attribute('iav_alice_ac', 'iav_org_ac', 'globex')");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_ac").unwrap().unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
@@ -563,12 +564,12 @@ fn rolled_back_call_set_is_not_visible() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_ad: utf8");
 	t.admin("CREATE USER iav_alice_ad { iav_org_ad: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CALL identity::set_attribute('iav_alice_ad', 'iav_org_ad', 'globex')", Params::None);
 	assert!(r.error.is_none(), "call failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_ad", "iav_org_ad"),
 		Some("acme".to_string()),
@@ -584,7 +585,7 @@ fn call_remove_attribute_unsets_value() {
 	t.admin("CREATE USER iav_alice_ae { iav_org_ae: 'acme' }");
 	t.admin("CALL identity::remove_attribute('iav_alice_ae', 'iav_org_ae')");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_ae", "iav_org_ae"),
 		None,
@@ -598,7 +599,7 @@ fn call_remove_unset_attribute_is_noop() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_af: utf8");
 	t.admin("CREATE USER iav_alice_af");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CALL identity::remove_attribute('iav_alice_af', 'iav_org_af')", Params::None);
 	assert!(r.error.is_none(), "removing an unset attribute must be a no-op success: {:?}", r.error);
 }
@@ -608,7 +609,7 @@ fn call_set_unknown_attribute_is_rejected() {
 	let t = TestEngine::new();
 	t.admin("CREATE USER iav_alice_ag");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CALL identity::set_attribute('iav_alice_ag', 'iav_undeclared_ag', 'x')", Params::None);
 	let error = r.error.expect("undeclared attribute must be rejected");
 	let diagnostic = error.diagnostic();
@@ -621,7 +622,7 @@ fn call_set_unknown_user_is_rejected() {
 	let t = TestEngine::new();
 	t.admin("CREATE USER ATTRIBUTE iav_org_ah: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CALL identity::set_attribute('iav_ghost_ah', 'iav_org_ah', 'x')", Params::None);
 	let error = r.error.expect("unknown user must be rejected");
 	let diagnostic = error.diagnostic();
@@ -638,7 +639,7 @@ fn create_user_with_param_value() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iav_org_ai: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE USER iav_alice_ai { iav_org_ai: $new_org }",
 		named_params(&[("new_org", Value::Utf8("acme".to_string()))]),
@@ -646,7 +647,7 @@ fn create_user_with_param_value() {
 	assert!(r.error.is_none(), "create with param value failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_ai", "iav_org_ai"),
 		Some("acme".to_string()),
@@ -661,7 +662,7 @@ fn alter_user_with_param_value() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_aj: utf8");
 	t.admin("CREATE USER iav_alice_aj { iav_org_aj: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"ALTER USER iav_alice_aj { iav_org_aj: $new_org }",
 		named_params(&[("new_org", Value::Utf8("globex".to_string()))]),
@@ -669,7 +670,7 @@ fn alter_user_with_param_value() {
 	assert!(r.error.is_none(), "alter with param value failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_aj", "iav_org_aj"),
 		Some("globex".to_string()),
@@ -684,12 +685,12 @@ fn int_body_value_casts_to_declared_utf8_type() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iav_org_ak: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE USER iav_alice_ak { iav_org_ak: 123 }", Params::None);
 	assert!(r.error.is_none(), "castable body value must be accepted: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn2), "iav_alice_ak", "iav_org_ak"),
 		Some("123".to_string()),
@@ -703,12 +704,12 @@ fn uncastable_body_value_is_rejected() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iav_rank_am: int4");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE USER iav_alice_am { iav_rank_am: 'not_a_number' }", Params::None);
 	assert!(r.error.is_some(), "an uncastable body value must be rejected");
 	drop(txn);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_am").unwrap().is_none(),
 		"rejected create must not leave the identity behind"
@@ -722,7 +723,7 @@ fn typed_int_attribute_via_ddl_literal_and_call() {
 	t.admin("CREATE USER ATTRIBUTE iav_rank_an: int4");
 	t.admin("CREATE USER iav_alice_an { iav_rank_an: 3 }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_an").unwrap().unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
@@ -731,7 +732,7 @@ fn typed_int_attribute_via_ddl_literal_and_call() {
 
 	// CALL with an int literal coerces to the declared int4 through the same cast rules.
 	t.admin("CALL identity::set_attribute('iav_alice_an', 'iav_rank_an', 7)");
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn2), identity.id).unwrap();
 	assert_eq!(values.len(), 1, "overwrite must supersede, found {:?}", values);
 	assert_eq!(values[0].value, Value::Int4(7));
@@ -744,12 +745,12 @@ fn typed_int_attribute_via_named_param() {
 	t.admin("CREATE USER ATTRIBUTE iav_rank_ao: int4");
 	t.admin("CREATE USER iav_alice_ao");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("ALTER USER iav_alice_ao { iav_rank_ao: $rank }", named_params(&[("rank", Value::Int4(9))]));
 	assert!(r.error.is_none(), "typed param must bind: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_ao").unwrap().unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn2), identity.id).unwrap();
@@ -763,7 +764,7 @@ fn typed_bool_attribute_roundtrip() {
 	t.admin("CREATE USER ATTRIBUTE iav_admin_ap: bool");
 	t.admin("CREATE USER iav_alice_ap { iav_admin_ap: true }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "iav_alice_ap").unwrap().unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn), identity.id).unwrap();
@@ -777,12 +778,12 @@ fn typed_overwrite_survives_commit_and_rollback() {
 	t.admin("CREATE USER ATTRIBUTE iav_rank_aq: int4");
 	t.admin("CREATE USER iav_alice_aq { iav_rank_aq: 1 }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("ALTER USER iav_alice_aq { iav_rank_aq: 2 }", Params::None);
 	assert!(r.error.is_none(), "typed overwrite failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let identity =
 		catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn2), "iav_alice_aq").unwrap().unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn2), identity.id).unwrap();
@@ -790,7 +791,7 @@ fn typed_overwrite_survives_commit_and_rollback() {
 	drop(txn2);
 
 	t.admin("ALTER USER iav_alice_aq { iav_rank_aq: 2 }");
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let values = catalog.find_identity_attribute_values(&mut Transaction::Admin(&mut txn3), identity.id).unwrap();
 	assert_eq!(values[0].value, Value::Int4(2), "committed typed overwrite must persist");
 }
@@ -799,7 +800,7 @@ fn typed_overwrite_survives_commit_and_rollback() {
 fn option_attribute_declaration_is_rejected() {
 	let t = TestEngine::new();
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE USER ATTRIBUTE iav_opt_ar: option(int4)", Params::None);
 	let error = r.error.expect("option attribute types must be rejected");
 	assert_eq!(error.diagnostic().code, "CA_092");
@@ -811,7 +812,7 @@ fn none_param_body_value_is_rejected() {
 	t.admin("CREATE USER ATTRIBUTE iav_org_al: utf8");
 	t.admin("CREATE USER iav_alice_al { iav_org_al: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn
 		.rql("ALTER USER iav_alice_al { iav_org_al: $new_org }", named_params(&[("new_org", Value::none())]));
 	let error = r.error.expect("none body value must be rejected, not silently unset");
@@ -827,7 +828,7 @@ fn drop_and_redeclare_does_not_resurrect_old_value() {
 	t.admin("DROP USER ATTRIBUTE iav_org_h");
 	t.admin("CREATE USER ATTRIBUTE iav_org_h: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert_eq!(
 		value_of(&catalog, &mut Transaction::Admin(&mut txn), "iav_alice_h", "iav_org_h"),
 		None,

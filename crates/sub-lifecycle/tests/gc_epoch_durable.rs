@@ -10,6 +10,7 @@
 use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
 		cdc::{CdcConsumerId, ConsumerClass},
@@ -34,7 +35,8 @@ const MINUTE_SECS: u64 = 60;
 
 /// Advances the head commit version; the epoch only records a sample once the head has moved.
 fn commit_a_version(engine: &StandardEngine, consumer: &str, at: u64) {
-	let mut txn = engine.begin_command(IdentityId::system()).expect("system command transaction");
+	let mut txn =
+		engine.begin_command(IdentityId::system(), Durability::Async).expect("system command transaction");
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new(consumer), CommitVersion(at), ConsumerClass::Ephemeral)
 		.expect("checkpoint write");
 	txn.commit().expect("commit");

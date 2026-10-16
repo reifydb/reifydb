@@ -8,7 +8,7 @@ use std::sync::{
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
-	common::CommitVersion, event::EventBus, interface::catalog::id::QueueId, internal_err,
+	common::CommitVersion, durability::Durability, event::EventBus, interface::catalog::id::QueueId, internal_err,
 	key::queue::QueueDeduplicationKey, testing::ProfileConfig,
 };
 use reifydb_runtime::{
@@ -68,6 +68,7 @@ fn harness() -> Harness {
 			bus.clone(),
 			Interceptors::new(),
 			IdentityId::system(),
+			Durability::Async,
 		)
 	});
 

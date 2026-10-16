@@ -4,7 +4,10 @@
 use std::collections::HashMap;
 
 use reifydb_catalog::cache::{CatalogCache, load::CatalogCacheLoader};
-use reifydb_core::interface::catalog::{column::Column, id::NamespaceId};
+use reifydb_core::{
+	durability::Durability,
+	interface::catalog::{column::Column, id::NamespaceId},
+};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -62,7 +65,7 @@ fn column_type(columns: &[Column], name: &str) -> ValueType {
 
 fn reloaded_catalog(t: &TestEngine) -> CatalogCache {
 	let cold = CatalogCache::new();
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
+	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
 	CatalogCacheLoader::load_all(&mut Transaction::Command(&mut txn), &cold).unwrap();
 	txn.rollback().unwrap();
 	cold

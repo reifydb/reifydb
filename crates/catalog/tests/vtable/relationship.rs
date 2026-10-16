@@ -2,9 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::relationship::RelationshipToCreate;
-use reifydb_core::interface::catalog::{
-	id::{ColumnId, NamespaceId, TableId},
-	relationship::{RelationshipCardinality, RelationshipJunction},
+use reifydb_core::{
+	durability::Durability,
+	interface::catalog::{
+		id::{ColumnId, NamespaceId, TableId},
+		relationship::{RelationshipCardinality, RelationshipJunction},
+	},
 };
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -32,7 +35,7 @@ impl Fixture {
 		t.admin(&format!("CREATE TABLE {ns}::link {{ src_id: int4, tgt_id: int4 }}"));
 
 		let catalog = t.catalog();
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let namespace =
 			catalog.find_namespace_by_name(&mut Transaction::Admin(&mut probe), ns).unwrap().unwrap().id();
 		let source_table = catalog
@@ -79,7 +82,7 @@ fn vtable_returns_one_row_per_relationship_with_correct_columns() {
 	let catalog = t.catalog();
 
 	{
-		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		catalog.create_relationship(&mut txn, mk_simple(&f, "r_one_one", RelationshipCardinality::OneToOne))
 			.unwrap();
 		catalog.create_relationship(&mut txn, mk_simple(&f, "r_many_one", RelationshipCardinality::ManyToOne))
@@ -171,7 +174,7 @@ fn vtable_filter_by_source_table_id_returns_only_matching_rows() {
 	let catalog = t.catalog();
 
 	{
-		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		catalog.create_relationship(&mut txn, mk_simple(&f, "from_parent", RelationshipCardinality::OneToMany))
 			.unwrap();
 		catalog.create_relationship(

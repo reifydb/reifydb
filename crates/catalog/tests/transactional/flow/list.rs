@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -22,7 +23,7 @@ fn committed_flow_is_listed() {
 	t.admin(SETUP_V_A);
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "fns_list_a")
 			.unwrap()
@@ -50,7 +51,7 @@ fn committed_drop_removes_flow_from_list() {
 	t.admin(SETUP_V_B);
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "fns_list_b")
 			.unwrap()
@@ -80,7 +81,7 @@ fn uncommitted_create_is_listed_within_txn() {
 	t.admin("CREATE TABLE fns_list_c::src { id: int4 }");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "fns_list_c")
 			.unwrap()
@@ -90,7 +91,7 @@ fn uncommitted_create_is_listed_within_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(SETUP_V_C, Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
@@ -112,7 +113,7 @@ fn uncommitted_drop_is_not_listed_within_txn() {
 	t.admin(SETUP_V_D);
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "fns_list_d")
 			.unwrap()
@@ -122,7 +123,7 @@ fn uncommitted_drop_is_not_listed_within_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP VIEW fns_list_d::v", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
@@ -144,7 +145,7 @@ fn dropped_flow_is_still_listed_at_version_before_drop() {
 	t.admin(SETUP_V_E);
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "fns_list_e")
 			.unwrap()

@@ -7,7 +7,7 @@ use reifydb::{
 	Clock, Error, IdentityId,
 	auth::method::password::PasswordProvider,
 	catalog::catalog::Catalog,
-	core::interface::auth::AuthenticationProvider,
+	core::{durability::Durability, interface::auth::AuthenticationProvider},
 	engine::engine::StandardEngine,
 	runtime::context::rng::Rng,
 	transaction::transaction::Transaction,
@@ -26,7 +26,7 @@ pub fn guest_session_ttl() -> Duration {
 #[instrument(name = "uptime::guest::create", level = "info", skip(catalog, engine, clock, rng))]
 pub fn create_guest(catalog: &Catalog, engine: &StandardEngine, clock: &Clock, rng: &Rng) -> Result<IdentityId, Error> {
 	let name = format!("{GUEST_NAME_PREFIX}{}", Uuid7::generate(clock, rng));
-	let mut txn = engine.begin_admin(IdentityId::root())?;
+	let mut txn = engine.begin_admin(IdentityId::root(), Durability::Async)?;
 	let identity = catalog.create_identity(&mut txn, &name, IdentityKind::Guest, clock, rng)?;
 	txn.commit()?;
 	Ok(identity.id)
@@ -55,7 +55,7 @@ pub fn promote_guest(
 ) -> Result<(), PromotionError> {
 	let properties = PasswordProvider.create(rng, &HashMap::from([("password".to_string(), password)]))?;
 
-	let mut txn = engine.begin_admin(IdentityId::root())?;
+	let mut txn = engine.begin_admin(IdentityId::root(), Durability::Async)?;
 
 	let found = catalog.find_identity(&mut Transaction::Admin(&mut txn), identity)?;
 	if found.map(|found| found.resolved_kind()) != Some(IdentityKind::Guest) {

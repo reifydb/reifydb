@@ -24,6 +24,8 @@ use reifydb_cdc::{
 		watermark::CdcProducerWatermark,
 	},
 };
+#[cfg(not(reifydb_dst))]
+use reifydb_core::durability::Durability;
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	common::{CommitVersion, TimeSource},
@@ -147,7 +149,7 @@ impl TestEngine {
 
 	pub fn set_config(&self, key: ConfigKey, value: Value) {
 		let catalog = self.engine.catalog();
-		let mut admin = self.engine.begin_admin(IdentityId::system()).unwrap();
+		let mut admin = self.engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		catalog.set_config(&mut admin, key, value).unwrap();
 		admin.commit().unwrap();
 	}
@@ -459,8 +461,15 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let dictionary_allocators =
 		DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single.clone())));
 
-	let mut txn =
-		AdminTransaction::new(multi, single, event_bus, Interceptors::new(), IdentityId::system()).unwrap();
+	let mut txn = AdminTransaction::new(
+		multi,
+		single,
+		event_bus,
+		Interceptors::new(),
+		IdentityId::system(),
+		Durability::Async,
+	)
+	.unwrap();
 	txn.set_dictionary_allocators(dictionary_allocators);
 	txn
 }
@@ -493,6 +502,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		event_bus.clone(),
 		Interceptors::new(),
 		IdentityId::system(),
+		Durability::Async,
 	)
 	.unwrap();
 	result.set_dictionary_allocators(dictionary_allocators);

@@ -3,7 +3,9 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::{actors::pending::Pending, interface::catalog::flow::OperatorId, state::timer::TimerKind};
+use reifydb_core::{
+	actors::pending::Pending, durability::Durability, interface::catalog::flow::OperatorId, state::timer::TimerKind,
+};
 use reifydb_flow_async::{
 	timer::{
 		Timer, TimerDue,
@@ -28,7 +30,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 }
 
 fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
-	let parent = engine.begin_admin(IdentityId::system()).unwrap();
+	let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let version = parent.version();
 	DeferredTransaction::new(DeferredParams {
 		version,

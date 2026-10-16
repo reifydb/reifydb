@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::{engine::TestEngine, fixture::identity::identity};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -28,7 +29,7 @@ fn a_caller_must_not_choose_the_identity_of_its_own_transaction() {
 	// catalog procedures; the transaction identity must survive the call untouched.
 	let (t, alice) = guarded_engine();
 
-	let mut txn = t.inner().begin_command(alice).unwrap();
+	let mut txn = t.inner().begin_command(alice, Durability::Async).unwrap();
 	let r = Transaction::Command(&mut txn).rql(&format!("CALL identity::inject({})", root_literal()), Params::None);
 	assert!(r.error.is_some(), "identity::inject must be rejected outside a test transaction");
 
@@ -64,7 +65,7 @@ fn an_anonymous_caller_must_not_inject_root() {
 	// The root identity is a fixed public constant, so this needs no credentials at all.
 	let (t, _alice) = guarded_engine();
 
-	let mut txn = t.inner().begin_command(IdentityId::anonymous()).unwrap();
+	let mut txn = t.inner().begin_command(IdentityId::anonymous(), Durability::Async).unwrap();
 	let _ = Transaction::Command(&mut txn).rql(&format!("CALL identity::inject({})", root_literal()), Params::None);
 
 	assert!(!txn.identity.is_privileged(), "an unauthenticated caller escalated to a privileged identity");

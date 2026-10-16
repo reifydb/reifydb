@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
+	durability::Durability,
 	interface::catalog::{id::SeriesId, series::SeriesPartitionMetadata},
 	key::{any::TaggedKey, series::SeriesPartitionMetadataKey},
 };
@@ -33,7 +34,7 @@ fn metadata(t: &TestEngine) -> SeriesPartitionMetadata {
 }
 
 fn open(t: &TestEngine, rql: &[&str]) -> CommandTransaction {
-	let mut txn = t.begin_command(TestEngine::identity()).expect("begin command");
+	let mut txn = t.begin_command(TestEngine::identity(), Durability::Async).expect("begin command");
 	for statement in rql {
 		if let Some(error) = txn.rql(statement, params::Params::None).error {
 			panic!("{statement} failed inside its transaction: {error:?}");
@@ -163,7 +164,7 @@ fn an_admin_delete_racing_an_unchecked_bulk_keeps_the_bulk_rows_in_the_metadata(
 	// A delete run inside an admin transaction writes the same metadata and commits the same way; it must not
 	// rewind the counter either.
 	let t = engine();
-	let mut delete = t.inner().begin_admin(TestEngine::identity()).expect("begin admin");
+	let mut delete = t.inner().begin_admin(TestEngine::identity(), Durability::Async).expect("begin admin");
 	if let Some(error) = delete.rql("DELETE test::s FILTER { k == 2 }", params::Params::None).error {
 		panic!("the delete failed inside its transaction: {error:?}");
 	}
@@ -183,9 +184,9 @@ fn a_rebased_write_on_a_finished_transaction_is_refused() {
 	let key: TaggedKey = SeriesPartitionMetadataKey::new(SeriesId(1), Partition::default()).into();
 	let bytes = EncodedBytes(CowVec::new(vec![0]));
 	let rebase: Rebase = Arc::new(|bytes: &EncodedBytes| Ok(bytes.clone()));
-	let mut command = t.begin_command(TestEngine::identity()).expect("begin command");
+	let mut command = t.begin_command(TestEngine::identity(), Durability::Async).expect("begin command");
 	command.commit().expect("the empty command commits");
-	let mut admin = t.inner().begin_admin(TestEngine::identity()).expect("begin admin");
+	let mut admin = t.inner().begin_admin(TestEngine::identity(), Durability::Async).expect("begin admin");
 	admin.commit().expect("the empty admin commits");
 
 	let refused = [

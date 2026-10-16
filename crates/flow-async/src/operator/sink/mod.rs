@@ -35,6 +35,7 @@ mod tests {
 	use reifydb_core::{
 		actors::pending::{Pending, PendingWrite},
 		common::{ChangeVersion, CommitVersion},
+		durability::Durability,
 		interface::{
 			catalog::{
 				column::{Column, ColumnIndex},
@@ -76,7 +77,7 @@ mod tests {
 	};
 
 	fn flow_txn(engine: &TestEngine, registry: &DictionaryAllocatorRegistry) -> DeferredTransaction {
-		let parent = engine.begin_admin(IdentityId::system()).unwrap();
+		let parent = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let version = parent.version();
 		DeferredTransaction::new(DeferredParams {
 			version,
@@ -138,7 +139,7 @@ mod tests {
 		let dictionary =
 			catalog.cache().find_dictionary_by_name(namespace.id(), "syms").expect("dictionary syms");
 
-		let single = engine.begin_admin(IdentityId::system()).unwrap().single.clone();
+		let single = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap().single.clone();
 
 		let entry_id = {
 			let registry =
@@ -182,7 +183,7 @@ mod tests {
 		// An unresolvable dictionary must fail the decode; skipping the column emits raw internal ids as user
 		// values.
 		let engine = TestEngine::new();
-		let single = engine.begin_admin(IdentityId::system()).unwrap().single.clone();
+		let single = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap().single.clone();
 		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
 		let mut txn = flow_txn(&engine, &registry);
 
@@ -261,7 +262,7 @@ mod tests {
 	}
 
 	fn interned(engine: &TestEngine, dictionary: &Dictionary, values: &[&str]) -> Vec<DictionaryEntryId> {
-		let single = engine.begin_admin(IdentityId::system()).unwrap().single.clone();
+		let single = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap().single.clone();
 		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(single)));
 		let values: Vec<Value> = values.iter().map(|value| Value::Utf8(value.to_string())).collect();
 		registry.intern_batch(dictionary, &values).unwrap().into_iter().map(|entry| entry.id).collect()
@@ -275,7 +276,7 @@ mod tests {
 		let dictionary = syms(&engine, "syms");
 		let sol = interned(&engine, &dictionary, &["sol"])[0];
 
-		let single = engine.begin_admin(IdentityId::system()).unwrap().single.clone();
+		let single = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap().single.clone();
 		let store = Arc::new(SingleDictionaryStore::new(single));
 		let mut txn = flow_txn(&engine, &DictionaryAllocatorRegistry::new(store.clone()));
 		let before = store.read_count();
@@ -307,7 +308,7 @@ mod tests {
 		);
 
 		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
-			engine.begin_admin(IdentityId::system()).unwrap().single.clone(),
+			engine.begin_admin(IdentityId::system(), Durability::Async).unwrap().single.clone(),
 		)));
 		let mut from_foreign = flow_txn(&engine, &registry);
 		DurableSink::apply(
@@ -344,7 +345,7 @@ mod tests {
 		let view = [("m", &target), ("n", &source)];
 
 		let registry = DictionaryAllocatorRegistry::new(Arc::new(SingleDictionaryStore::new(
-			engine.begin_admin(IdentityId::system()).unwrap().single.clone(),
+			engine.begin_admin(IdentityId::system(), Durability::Async).unwrap().single.clone(),
 		)));
 		let mut from_foreign = flow_txn(&engine, &registry);
 		let foreign_m = dictionary_columns(&[("m", source.id, foreign), ("n", source.id, foreign)]);

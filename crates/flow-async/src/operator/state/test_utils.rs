@@ -6,6 +6,7 @@ pub mod test {
 
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 	use reifydb_core::{
+		durability::Durability,
 		interface::{catalog::flow::OperatorId, store::MultiVersionRow},
 		key::{
 			any::TaggedKey,
@@ -56,6 +57,6 @@ pub mod test {
 
 	pub fn create_test_transaction() -> AdminTransaction {
 		let t = TestEngine::new();
-		t.begin_admin(IdentityId::system()).unwrap()
+		t.begin_admin(IdentityId::system(), Durability::Async).unwrap()
 	}
 }

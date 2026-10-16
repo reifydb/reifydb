@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -11,7 +12,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE ns_list_keep_a");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE NAMESPACE ns_list_new_a", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	let r = txn.rql("DROP NAMESPACE ns_list_keep_a", Params::None);
@@ -34,14 +35,14 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE ns_list_keep_b");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE NAMESPACE ns_list_new_b", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	let r = txn.rql("DROP NAMESPACE ns_list_keep_b", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let all = catalog.list_namespaces_all(&mut Transaction::Admin(&mut txn2)).unwrap();
 	assert!(
 		!all.iter().any(|n| n.name() == "ns_list_new_b"),
@@ -59,14 +60,14 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE ns_list_keep_c");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("CREATE NAMESPACE ns_list_new_c", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	let r = txn.rql("DROP NAMESPACE ns_list_keep_c", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let all = catalog.list_namespaces_all(&mut Transaction::Admin(&mut txn2)).unwrap();
 	assert!(
 		all.iter().any(|n| n.name() == "ns_list_new_c"),
@@ -84,13 +85,13 @@ fn concurrent_txn_sees_only_committed_state() {
 	let catalog = t.catalog();
 	t.admin("CREATE NAMESPACE ns_list_keep_d");
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1.rql("CREATE NAMESPACE ns_list_new_d", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	let r = txn1.rql("DROP NAMESPACE ns_list_keep_d", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let all_in_txn2 = catalog.list_namespaces_all(&mut Transaction::Admin(&mut txn2)).unwrap();
 	assert!(
 		!all_in_txn2.iter().any(|n| n.name() == "ns_list_new_d"),
@@ -104,7 +105,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let all_in_txn3 = catalog.list_namespaces_all(&mut Transaction::Admin(&mut txn3)).unwrap();
 	assert!(
 		all_in_txn3.iter().any(|n| n.name() == "ns_list_new_d"),

@@ -5,7 +5,10 @@ use std::collections::HashMap;
 
 use reifydb_auth::method::{github::GithubProvider, password::PasswordProvider, solana::SolanaProvider};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::interface::{auth::AuthenticationProvider, catalog::identity::Identity};
+use reifydb_core::{
+	durability::Durability,
+	interface::{auth::AuthenticationProvider, catalog::identity::Identity},
+};
 use reifydb_runtime::context::{clock::Clock, rng::Rng};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::{
@@ -92,7 +95,7 @@ impl IdentityBuilder {
 		let clock = Clock::Real;
 		let rng = Rng::seeded(42);
 
-		let mut admin = engine.begin_admin(IdentityId::root()).unwrap();
+		let mut admin = engine.begin_admin(IdentityId::root(), Durability::Async).unwrap();
 		let identity = catalog.create_identity(&mut admin, &self.name, self.kind, &clock, &rng).unwrap();
 
 		for attribute in &self.attributes {

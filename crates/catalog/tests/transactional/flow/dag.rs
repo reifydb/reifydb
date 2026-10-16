@@ -3,6 +3,7 @@
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
+	durability::Durability,
 	flow::dag::FlowDag,
 	interface::catalog::{
 		flow::{Flow, FlowEntry, FlowId, FlowStatus},
@@ -17,7 +18,7 @@ use reifydb_value::{params::Params, value::identity::IdentityId};
 
 fn committed_flow_id(t: &TestEngine, catalog: &Catalog, namespace: &str) -> FlowId {
 	// Must read committed state, so each test starts from the id every later reader sees.
-	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let ns = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut probe), namespace).unwrap().unwrap();
 	catalog.find_flow_by_name(&mut Transaction::Admin(&mut probe), ns.id(), "v").unwrap().unwrap().id
 }
@@ -90,7 +91,7 @@ fn list_flow_dags_asc_includes_a_flow_created_in_the_same_txn() {
 	t.admin("CREATE NAMESPACE fns_dag_d");
 	t.admin("CREATE TABLE fns_dag_d::src { id: int4 }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE DEFERRED VIEW fns_dag_d::v { id: int4 } AS { FROM fns_dag_d::src MAP { id: id } }",
 		Params::None,
@@ -123,7 +124,7 @@ fn list_flow_dags_asc_excludes_a_flow_dropped_in_the_same_txn() {
 	t.admin("CREATE DEFERRED VIEW fns_dag_e::v { id: int4 } AS { FROM fns_dag_e::src MAP { id: id } }");
 	let flow_id = committed_flow_id(&t, &catalog, "fns_dag_e");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP VIEW fns_dag_e::v", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
@@ -161,7 +162,7 @@ fn test_txn_find_flow_reads_the_cache() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let cached = Flow {
 		id: FlowId(u64::MAX - 7),
 		namespace: NamespaceId(u64::MAX - 7),

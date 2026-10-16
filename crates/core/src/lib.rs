@@ -12,6 +12,7 @@ pub mod actors;
 pub mod common;
 pub mod default;
 pub mod delta;
+pub mod durability;
 pub mod error;
 pub mod event;
 pub mod execution;

@@ -5,6 +5,7 @@
 // `RqlTrigger::Event { variant }`, so a handler is only reachable through the
 // procedure-for-variant index. The DROP side lives in `drop.rs`.
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -21,7 +22,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	t.admin("CREATE TABLE hns_create_a::sink { id: int4 }");
 
 	let variant_ref = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "hns_create_a")
 			.unwrap()
@@ -39,7 +40,7 @@ fn uncommitted_create_is_visible_within_txn() {
 		v
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE HANDLER hns_create_a::h1 ON hns_create_a::evt::Foo { INSERT hns_create_a::sink [{ id: 1 }] }",
 		Params::None,
@@ -62,7 +63,7 @@ fn rolled_back_create_is_not_visible() {
 	t.admin("CREATE TABLE hns_create_b::sink { id: int4 }");
 
 	let variant_ref = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "hns_create_b")
 			.unwrap()
@@ -80,7 +81,7 @@ fn rolled_back_create_is_not_visible() {
 		v
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE HANDLER hns_create_b::h1 ON hns_create_b::evt::Foo { INSERT hns_create_b::sink [{ id: 1 }] }",
 		Params::None,
@@ -88,7 +89,7 @@ fn rolled_back_create_is_not_visible() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let procs = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
 	assert!(!procs.iter().any(|p| p.name() == "h1"));
 }
@@ -102,7 +103,7 @@ fn committed_create_is_visible_in_new_txn() {
 	t.admin("CREATE TABLE hns_create_c::sink { id: int4 }");
 
 	let variant_ref = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "hns_create_c")
 			.unwrap()
@@ -120,7 +121,7 @@ fn committed_create_is_visible_in_new_txn() {
 		v
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE HANDLER hns_create_c::h1 ON hns_create_c::evt::Foo { INSERT hns_create_c::sink [{ id: 1 }] }",
 		Params::None,
@@ -128,7 +129,7 @@ fn committed_create_is_visible_in_new_txn() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let procs = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
 	assert!(procs.iter().any(|p| p.name() == "h1"));
 }
@@ -142,7 +143,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	t.admin("CREATE TABLE hns_create_d::sink { id: int4 }");
 
 	let variant_ref = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "hns_create_d")
 			.unwrap()
@@ -160,21 +161,21 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 		v
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1.rql(
 		"CREATE HANDLER hns_create_d::h1 ON hns_create_d::evt::Foo { INSERT hns_create_d::sink [{ id: 1 }] }",
 		Params::None,
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let in_txn2 = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
 	assert!(!in_txn2.iter().any(|p| p.name() == "h1"), "txn2 must not observe txn1's uncommitted CREATE HANDLER");
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let in_txn3 = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn3), variant_ref).unwrap();
 	assert!(in_txn3.iter().any(|p| p.name() == "h1"));
 }

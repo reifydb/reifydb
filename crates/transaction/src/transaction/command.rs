@@ -7,6 +7,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::{CommitVersion, SourceVersion},
 	delta::SetPre,
+	durability::Durability,
 	event::EventBus,
 	execution::ExecutionResult,
 	interface::{
@@ -115,6 +116,8 @@ pub struct CommandTransaction {
 
 	pub identity: IdentityId,
 
+	durability: Durability,
+
 	pub(crate) executor: Option<Arc<dyn RqlExecutor>>,
 
 	pub(crate) dictionary_allocators: Option<DictionaryAllocatorRegistry>,
@@ -141,6 +144,7 @@ impl CommandTransaction {
 		event_bus: EventBus,
 		interceptors: Interceptors,
 		identity: IdentityId,
+		durability: Durability,
 	) -> Result<Self> {
 		let cmd = multi.begin_command()?;
 		Ok(Self {
@@ -153,6 +157,7 @@ impl CommandTransaction {
 			row_changes: Vec::new(),
 			accumulator: ChangeAccumulator::new(),
 			identity,
+			durability,
 			executor: None,
 			dictionary_allocators: None,
 			poison_cause: None,

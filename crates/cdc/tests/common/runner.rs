@@ -8,6 +8,7 @@ use std::{collections::Bound, error::Error as StdError, fmt::Write as _, thread:
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	interface::{
 		catalog::{
 			id::{IndexId, TableId},
@@ -61,7 +62,7 @@ impl Runner {
 
 	fn ensure_txn(&mut self) -> Result<&mut CommandTransaction, Box<dyn StdError>> {
 		if self.active_txn.is_none() {
-			self.active_txn = Some(self.engine.begin_command(IdentityId::system())?);
+			self.active_txn = Some(self.engine.begin_command(IdentityId::system(), Durability::Async)?);
 		}
 		Ok(self.active_txn.as_mut().unwrap())
 	}

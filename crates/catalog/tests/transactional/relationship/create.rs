@@ -4,7 +4,7 @@
 use reifydb_catalog::{
 	bootstrap::load_catalog_cache, cache::CatalogCache, catalog::relationship::RelationshipToCreate,
 };
-use reifydb_core::interface::catalog::relationship::RelationshipCardinality;
+use reifydb_core::{durability::Durability, interface::catalog::relationship::RelationshipCardinality};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
@@ -17,7 +17,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	let catalog = t.catalog();
 	let f = SourceFixture::new(&t, "rel_create_a");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let rel = catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).expect("create_relationship failed");
 
 	// Visible by id within the same txn
@@ -42,11 +42,11 @@ fn rolled_back_create_is_invisible_to_new_txn() {
 	let catalog = t.catalog();
 	let f = SourceFixture::new(&t, "rel_create_b");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 	txn.rollback().unwrap();
 
-	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog
 		.find_relationship_by_name(&mut Transaction::Admin(&mut probe), f.namespace, f.source_table, "owns")
 		.unwrap();
@@ -59,12 +59,12 @@ fn committed_create_is_visible_via_materialized_in_new_txn() {
 	let catalog = t.catalog();
 	let f = SourceFixture::new(&t, "rel_create_c");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let rel = catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 	txn.commit().unwrap();
 
 	// New txn -> the post-commit interceptor must have populated CatalogCache.
-	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog
 		.find_relationship_by_name(&mut Transaction::Admin(&mut probe), f.namespace, f.source_table, "owns")
 		.unwrap()
@@ -85,11 +85,11 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	let catalog = t.catalog();
 	let f = SourceFixture::new(&t, "rel_create_d");
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.create_relationship(&mut txn1, mk_rel(&f, "owns")).unwrap();
 
 	// Concurrent admin txn must NOT see the uncommitted relationship.
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let in_txn2 = catalog
 		.find_relationship_by_name(&mut Transaction::Admin(&mut txn2), f.namespace, f.source_table, "owns")
 		.unwrap();
@@ -98,7 +98,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let in_txn3 = catalog
 		.find_relationship_by_name(&mut Transaction::Admin(&mut txn3), f.namespace, f.source_table, "owns")
 		.unwrap();
@@ -111,7 +111,7 @@ fn restart_recovery_repopulates_materialized_catalog() {
 	let catalog = t.catalog();
 	let f = SourceFixture::new(&t, "rel_create_e");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let rel = catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 	txn.commit().unwrap();
 

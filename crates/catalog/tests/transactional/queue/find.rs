@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::id::NamespaceId;
+use reifydb_core::{durability::Durability, interface::catalog::id::NamespaceId};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
 
 fn namespace_id(t: &TestEngine, name: &str) -> NamespaceId {
 	let catalog = t.catalog();
-	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let id = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut probe), name).unwrap().unwrap().id();
 	drop(probe);
 	id
@@ -23,7 +23,7 @@ fn uncommitted_create_is_findable_by_id_and_by_name() {
 	t.admin("CREATE NAMESPACE qns_find_a");
 	let ns_id = namespace_id(&t, "qns_find_a");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE QUEUE qns_find_a::jobs { msg: utf8 } WITH { fifo: {} }", Params::None);
 
 	let by_name = catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn), ns_id, "jobs").unwrap().unwrap();
@@ -43,7 +43,7 @@ fn uncommitted_drop_hides_the_queue_by_id() {
 	let ns_id = namespace_id(&t, "qns_find_b");
 
 	let queue_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_queue_by_name(&mut Transaction::Admin(&mut probe), ns_id, "jobs")
 			.unwrap()
@@ -53,7 +53,7 @@ fn uncommitted_drop_hides_the_queue_by_id() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("DROP QUEUE qns_find_b::jobs", Params::None);
 
 	assert!(catalog.find_queue(&mut Transaction::Admin(&mut txn), queue_id).unwrap().is_none());
@@ -70,7 +70,7 @@ fn uncommitted_create_does_not_leak_into_another_namespace() {
 	let ns_id = namespace_id(&t, "qns_find_c");
 	let other_id = namespace_id(&t, "qns_find_c_other");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE QUEUE qns_find_c::jobs { msg: utf8 } WITH { fifo: {} }", Params::None);
 
 	assert!(catalog.find_queue_by_name(&mut Transaction::Admin(&mut txn), ns_id, "jobs").unwrap().is_some());

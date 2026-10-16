@@ -5,6 +5,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	interface::catalog::config::{ConfigKey, GetConfig},
 	key::{any::TaggedKey, system::VersionEpochKey},
 	return_internal_error,
@@ -53,7 +54,7 @@ impl EpochLog {
 			return Ok(false);
 		}
 
-		let mut txn = self.engine.begin_command(IdentityId::system())?;
+		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
 		txn.set(vec![(VersionEpochKey::new(period).into(), encode(at, version).into_bytes())])?;
 		let written_at = txn.commit_unchecked()?;
 

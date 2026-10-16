@@ -5,7 +5,9 @@
 // views, but register through a separate path, so the read contract is covered twice.
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::{interface::catalog::flow::OperatorId, lifecycle::operator::ListOperatorRetention};
+use reifydb_core::{
+	durability::Durability, interface::catalog::flow::OperatorId, lifecycle::operator::ListOperatorRetention,
+};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{duration::Duration, identity::IdentityId};
@@ -21,7 +23,7 @@ fn deferred_append_view_persists_no_operator_retention() {
 	t.admin("CREATE DEFERRED VIEW os_app_d::merged { id: int4, val: int4 } AS { \
 		 FROM os_app_d::s1 append { FROM os_app_d::s2 } }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let ns = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "os_app_d").unwrap().unwrap();
 	let flow = catalog
 		.find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "merged")
@@ -62,7 +64,7 @@ fn deferred_join_view_persists_join_ttl() {
 		 inner join { FROM os_join_d::rhs } as r using (k, r.k) with { retention: { left: 1s } } \
 		 map { k: k, lv: lv, rv: r_rv } }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let ns = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "os_join_d").unwrap().unwrap();
 	let flow = catalog
 		.find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "joined")

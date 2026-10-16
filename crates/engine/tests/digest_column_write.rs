@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_catalog::catalog::primary_key::PrimaryKeyToCreate;
-use reifydb_core::{execution::ExecutionResult, interface::catalog::object::ObjectId};
+use reifydb_core::{durability::Durability, execution::ExecutionResult, interface::catalog::object::ObjectId};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -389,7 +389,7 @@ fn a_table_keyed_by_a_digest_or_optional_digest_column_refuses_rows_naming_the_c
 		assert_eq!(err.fragment.text(), "d", "{rql}: the refusal must name the digest key column");
 	}
 	let catalog = t.catalog();
-	let mut admin = t.begin_admin(TestEngine::identity()).unwrap();
+	let mut admin = t.begin_admin(TestEngine::identity(), Durability::Async).unwrap();
 	let namespace = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut admin), "test").unwrap().unwrap();
 	for (table, key) in [("pk", &["d"][..]), ("opk", &["k", "d"][..])] {
 		let table = catalog

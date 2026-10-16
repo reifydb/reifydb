@@ -3,7 +3,10 @@
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
-use reifydb_core::value::{batch::batch, column::factory};
+use reifydb_core::{
+	durability::Durability,
+	value::{batch::batch, column::factory},
+};
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
@@ -43,7 +46,7 @@ fn call_with(arg: (FieldRef, ArrayRef)) -> RecordBatch {
 	let catalog = services.catalog.clone();
 	let params = Params::None;
 	let identity = IdentityId::system();
-	let mut txn = t.inner().begin_command(identity).expect("command transaction");
+	let mut txn = t.inner().begin_command(identity, Durability::Async).expect("command transaction");
 	let mut tx = Transaction::Command(&mut txn);
 	let mut ctx = ProcedureContext {
 		fragment: Fragment::internal("reports_none_arguments"),

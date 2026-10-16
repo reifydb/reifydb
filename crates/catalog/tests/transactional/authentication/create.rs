@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -12,7 +13,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	t.admin("CREATE USER aut_create_a");
 
 	let ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aut_create_a")
 			.unwrap()
@@ -22,7 +23,7 @@ fn uncommitted_create_is_visible_within_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn
 		.rql("CREATE AUTHENTICATION FOR aut_create_a { method: password; password: 'secret' }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
@@ -46,7 +47,7 @@ fn rolled_back_create_is_not_visible() {
 	t.admin("CREATE USER aut_create_b");
 
 	let ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aut_create_b")
 			.unwrap()
@@ -56,13 +57,13 @@ fn rolled_back_create_is_not_visible() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn
 		.rql("CREATE AUTHENTICATION FOR aut_create_b { method: password; password: 'secret' }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(
 		catalog.find_authentication_by_identity_and_method(
 			&mut Transaction::Admin(&mut txn2),
@@ -82,7 +83,7 @@ fn committed_create_is_visible_in_new_txn() {
 	t.admin("CREATE USER aut_create_c");
 
 	let ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aut_create_c")
 			.unwrap()
@@ -92,13 +93,13 @@ fn committed_create_is_visible_in_new_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn
 		.rql("CREATE AUTHENTICATION FOR aut_create_c { method: password; password: 'secret' }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(
 		catalog.find_authentication_by_identity_and_method(
 			&mut Transaction::Admin(&mut txn2),
@@ -118,7 +119,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	t.admin("CREATE USER aut_create_d");
 
 	let ident_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_identity_by_name(&mut Transaction::Admin(&mut probe), "aut_create_d")
 			.unwrap()
@@ -128,12 +129,12 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 		id
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1
 		.rql("CREATE AUTHENTICATION FOR aut_create_d { method: password; password: 'secret' }", Params::None);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(
 		catalog.find_authentication_by_identity_and_method(
 			&mut Transaction::Admin(&mut txn2),
@@ -148,7 +149,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(
 		catalog.find_authentication_by_identity_and_method(
 			&mut Transaction::Admin(&mut txn3),

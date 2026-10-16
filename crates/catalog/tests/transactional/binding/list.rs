@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -16,7 +17,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	);
 
 	let (ns_id, proc_id, keep_id) = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "bnd_list_a")
 			.unwrap()
@@ -34,7 +35,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 		ids
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE HTTP BINDING bnd_list_a::new_bnd FOR bnd_list_a::greet WITH { method: \"GET\", path: \"/new/a\", format: \"json\" }",
 		Params::None,
@@ -61,7 +62,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	);
 
 	let (ns_id, proc_id, keep_id) = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "bnd_list_b")
 			.unwrap()
@@ -79,7 +80,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 		ids
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE HTTP BINDING bnd_list_b::new_bnd FOR bnd_list_b::greet WITH { method: \"GET\", path: \"/new/b\", format: \"json\" }",
 		Params::None,
@@ -89,7 +90,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let bindings = catalog.list_bindings_for_procedure(&mut Transaction::Admin(&mut txn2), proc_id).unwrap();
 	assert!(catalog.find_binding_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "new_bnd").unwrap().is_none());
 	assert!(bindings.iter().any(|b| b.id == keep_id));
@@ -106,7 +107,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	);
 
 	let (ns_id, proc_id, keep_id) = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "bnd_list_c")
 			.unwrap()
@@ -124,7 +125,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 		ids
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE HTTP BINDING bnd_list_c::new_bnd FOR bnd_list_c::greet WITH { method: \"GET\", path: \"/new/c\", format: \"json\" }",
 		Params::None,
@@ -134,7 +135,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let new_id =
 		catalog.find_binding_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "new_bnd").unwrap().unwrap().id;
 	let bindings = catalog.list_bindings_for_procedure(&mut Transaction::Admin(&mut txn2), proc_id).unwrap();
@@ -153,7 +154,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	);
 
 	let (ns_id, proc_id, keep_id) = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "bnd_list_d")
 			.unwrap()
@@ -171,7 +172,7 @@ fn concurrent_txn_sees_only_committed_state() {
 		ids
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1.rql(
 		"CREATE HTTP BINDING bnd_list_d::new_bnd FOR bnd_list_d::greet WITH { method: \"GET\", path: \"/new/d\", format: \"json\" }",
 		Params::None,
@@ -180,7 +181,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	let r = txn1.rql("DROP BINDING bnd_list_d::keep", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let bindings_txn2 = catalog.list_bindings_for_procedure(&mut Transaction::Admin(&mut txn2), proc_id).unwrap();
 	assert!(catalog.find_binding_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "new_bnd").unwrap().is_none());
 	assert!(bindings_txn2.iter().any(|b| b.id == keep_id));
@@ -188,7 +189,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let new_id =
 		catalog.find_binding_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "new_bnd").unwrap().unwrap().id;
 	let bindings_txn3 = catalog.list_bindings_for_procedure(&mut Transaction::Admin(&mut txn3), proc_id).unwrap();

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -13,7 +14,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	t.admin("CREATE PROCEDURE pns_drop_a::greet AS { \"hi\" }");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "pns_drop_a")
 			.unwrap()
@@ -23,7 +24,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP PROCEDURE pns_drop_a::greet", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
@@ -39,7 +40,7 @@ fn rolled_back_drop_leaves_procedure_intact() {
 	t.admin("CREATE PROCEDURE pns_drop_b::greet AS { \"hi\" }");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "pns_drop_b")
 			.unwrap()
@@ -49,12 +50,12 @@ fn rolled_back_drop_leaves_procedure_intact() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP PROCEDURE pns_drop_b::greet", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "greet").unwrap();
 	assert!(found.is_some(), "rolled-back DROP must leave the procedure visible in a later txn");
 }
@@ -67,7 +68,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 	t.admin("CREATE PROCEDURE pns_drop_c::greet AS { \"hi\" }");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "pns_drop_c")
 			.unwrap()
@@ -77,12 +78,12 @@ fn committed_drop_is_invisible_in_new_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP PROCEDURE pns_drop_c::greet", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "greet").unwrap();
 	assert!(found.is_none(), "committed DROP PROCEDURE must not be visible in a new txn");
 }
@@ -95,7 +96,7 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	t.admin("CREATE PROCEDURE pns_drop_d::greet AS { \"hi\" }");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "pns_drop_d")
 			.unwrap()
@@ -105,18 +106,18 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 		id
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1.rql("DROP PROCEDURE pns_drop_d::greet", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found_in_txn2 = catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "greet").unwrap();
 	assert!(found_in_txn2.is_some(), "txn2 must still observe the procedure while txn1's DROP is uncommitted");
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found_in_txn3 = catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "greet").unwrap();
 	assert!(found_in_txn3.is_none(), "after txn1 commits, the procedure must not be visible in a later txn");
 }

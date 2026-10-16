@@ -6,6 +6,7 @@
 
 use std::collections::HashSet;
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::identity::IdentityId;
@@ -18,7 +19,7 @@ fn deferred_view_flow_loads_with_a_connected_sink() {
 	t.admin("CREATE TABLE fn_d::src { id: int4, name: utf8 }");
 	t.admin("CREATE DEFERRED VIEW fn_d::v { id: int4, name: utf8 } AS { FROM fn_d::src }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let ns = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "fn_d").unwrap().unwrap();
 	let flow = catalog
 		.find_flow_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "v")

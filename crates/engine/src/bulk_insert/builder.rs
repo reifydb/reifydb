@@ -17,6 +17,7 @@ use reifydb_codec::row::{
 use reifydb_core::{
 	common::TimeSource,
 	delta::Delta,
+	durability::Durability,
 	interface::catalog::{
 		column::Column,
 		namespace::Namespace,
@@ -212,7 +213,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 
 	fn run<T>(self, observe: impl FnOnce(&CommandTransaction, &RowCoercer) -> T) -> Result<(BulkInsertResult, T)> {
 		self.engine.reject_if_read_only()?;
-		let mut txn = self.engine.begin_command(self.identity)?;
+		let mut txn = self.engine.begin_command(self.identity, Durability::Async)?;
 		let catalog = self.engine.catalog();
 		let services = self.engine.services();
 		let clock = self.engine.clock();

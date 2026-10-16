@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{event::EventBus, interface::catalog::id::NamespaceId};
+use reifydb_core::{durability::Durability, event::EventBus, interface::catalog::id::NamespaceId};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction, single::SingleTransaction,
 	transaction::admin::AdminTransaction,
@@ -24,6 +24,7 @@ pub fn bootstrap_proc(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
+		Durability::Async,
 	)?;
 
 	ensure_namespace(

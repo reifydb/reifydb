@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::{testing::db::TestDb, value::value::identity::IdentityId};
+use reifydb::{core::durability::Durability, testing::db::TestDb, value::value::identity::IdentityId};
 use reifydb_test_harness::auth::{AuthResponseAssert, password_credentials};
 
 fn setup_user_and_login(db: &TestDb) -> (IdentityId, String) {
@@ -22,7 +22,7 @@ fn test_disabled_identity_token_is_rejected() {
 
 	assert!(db.auth_service().validate_token(&token).unwrap().is_some(), "a freshly minted token must validate");
 
-	let mut txn = db.engine().begin_admin(IdentityId::root()).unwrap();
+	let mut txn = db.engine().begin_admin(IdentityId::root(), Durability::Async).unwrap();
 	db.catalog().disable_identity(&mut txn, identity).unwrap();
 	txn.commit().unwrap();
 
@@ -40,13 +40,13 @@ fn test_reenabled_identity_token_validates_again() {
 	let mut db = TestDb::memory();
 	let (identity, token) = setup_user_and_login(&db);
 
-	let mut txn = db.engine().begin_admin(IdentityId::root()).unwrap();
+	let mut txn = db.engine().begin_admin(IdentityId::root(), Durability::Async).unwrap();
 	db.catalog().disable_identity(&mut txn, identity).unwrap();
 	txn.commit().unwrap();
 
 	assert!(db.auth_service().validate_token(&token).unwrap().is_none(), "the disabled account must be locked out");
 
-	let mut txn = db.engine().begin_admin(IdentityId::root()).unwrap();
+	let mut txn = db.engine().begin_admin(IdentityId::root(), Durability::Async).unwrap();
 	db.catalog().enable_identity(&mut txn, identity).unwrap();
 	txn.commit().unwrap();
 

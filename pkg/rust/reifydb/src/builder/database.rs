@@ -26,6 +26,7 @@ use reifydb_cdc::{
 use reifydb_core::{
 	CoreVersion,
 	actors::cdc::CdcProduceHandle,
+	durability::Durability,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
 		auth::AuthenticationProvider,
@@ -578,7 +579,8 @@ impl DatabaseBuilder {
 
 		let commit_handle = {
 			let begin_engine = engine.clone();
-			let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+			let begin: CommitBegin =
+				Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
 			CommitHandle::new(begin)
 		};
 		self.ioc = self.ioc.register(commit_handle);

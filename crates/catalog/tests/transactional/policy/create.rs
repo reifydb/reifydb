@@ -5,6 +5,7 @@
 // admin-transaction change log, so uncommitted state is cross-checked through
 // `find_policy_by_name` instead.
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -16,7 +17,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	t.admin("CREATE NAMESPACE pol_create_a");
 	t.admin("CREATE TABLE pol_create_a::t { id: int4 }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE TABLE POLICY pol_create_a_policy ON pol_create_a::t { from: { filter { true } } }",
 		Params::None,
@@ -34,7 +35,7 @@ fn rolled_back_create_is_not_visible() {
 	t.admin("CREATE NAMESPACE pol_create_b");
 	t.admin("CREATE TABLE pol_create_b::t { id: int4 }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE TABLE POLICY pol_create_b_policy ON pol_create_b::t { from: { filter { true } } }",
 		Params::None,
@@ -42,7 +43,7 @@ fn rolled_back_create_is_not_visible() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_create_b_policy").unwrap();
 	assert!(found.is_none());
 }
@@ -54,7 +55,7 @@ fn committed_create_is_visible_in_new_txn() {
 	t.admin("CREATE NAMESPACE pol_create_c");
 	t.admin("CREATE TABLE pol_create_c::t { id: int4 }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE TABLE POLICY pol_create_c_policy ON pol_create_c::t { from: { filter { true } } }",
 		Params::None,
@@ -62,7 +63,7 @@ fn committed_create_is_visible_in_new_txn() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_create_c_policy").unwrap();
 	assert!(found.is_some());
 }
@@ -74,14 +75,14 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	t.admin("CREATE NAMESPACE pol_create_d");
 	t.admin("CREATE TABLE pol_create_d::t { id: int4 }");
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1.rql(
 		"CREATE TABLE POLICY pol_create_d_policy ON pol_create_d::t { from: { filter { true } } }",
 		Params::None,
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found_in_txn2 =
 		catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_create_d_policy").unwrap();
 	assert!(found_in_txn2.is_none());
@@ -89,7 +90,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found_in_txn3 =
 		catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn3), "pol_create_d_policy").unwrap();
 	assert!(found_in_txn3.is_some());

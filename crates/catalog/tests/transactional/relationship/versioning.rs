@@ -4,6 +4,7 @@
 use reifydb_catalog::catalog::relationship::RelationshipToCreate;
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	interface::catalog::relationship::{Relationship, RelationshipCardinality},
 };
 use reifydb_test_harness::engine::TestEngine;
@@ -21,7 +22,7 @@ fn rename_does_not_leak_old_name_in_materialized_index() {
 	let catalog = t.catalog();
 	let f = SourceFixture::new(&t, "rel_ver_rename");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let v1_rel = catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 	let v_create = txn.commit().unwrap();
 
@@ -47,7 +48,7 @@ fn historical_query_returns_old_version() {
 	let catalog = t.catalog();
 	let f = SourceFixture::new(&t, "rel_ver_history");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let v1_rel = catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 	let v_create = txn.commit().unwrap();
 

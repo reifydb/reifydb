@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -13,7 +14,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	t.admin("CREATE DICTIONARY dns_list_a::keep FOR utf8 AS uint2");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "dns_list_a")
 			.unwrap()
@@ -23,7 +24,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE DICTIONARY dns_list_a::new FOR utf8 AS uint2", Params::None);
 	txn.rql("DROP DICTIONARY dns_list_a::keep", Params::None);
 
@@ -44,7 +45,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	t.admin("CREATE DICTIONARY dns_list_b::keep FOR utf8 AS uint2");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "dns_list_b")
 			.unwrap()
@@ -54,12 +55,12 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE DICTIONARY dns_list_b::new FOR utf8 AS uint2", Params::None);
 	txn.rql("DROP DICTIONARY dns_list_b::keep", Params::None);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let in_ns = catalog.list_dictionaries(&mut Transaction::Admin(&mut txn2), ns_id).unwrap();
 	assert!(!in_ns.iter().any(|x| x.name() == "new"));
 	assert!(in_ns.iter().any(|x| x.name() == "keep"));
@@ -77,7 +78,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	t.admin("CREATE DICTIONARY dns_list_c::keep FOR utf8 AS uint2");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "dns_list_c")
 			.unwrap()
@@ -87,12 +88,12 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE DICTIONARY dns_list_c::new FOR utf8 AS uint2", Params::None);
 	txn.rql("DROP DICTIONARY dns_list_c::keep", Params::None);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let in_ns = catalog.list_dictionaries(&mut Transaction::Admin(&mut txn2), ns_id).unwrap();
 	assert!(in_ns.iter().any(|x| x.name() == "new"));
 	assert!(!in_ns.iter().any(|x| x.name() == "keep"));
@@ -110,7 +111,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	t.admin("CREATE DICTIONARY dns_list_d::keep FOR utf8 AS uint2");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "dns_list_d")
 			.unwrap()
@@ -120,11 +121,11 @@ fn concurrent_txn_sees_only_committed_state() {
 		id
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn1.rql("CREATE DICTIONARY dns_list_d::new FOR utf8 AS uint2", Params::None);
 	txn1.rql("DROP DICTIONARY dns_list_d::keep", Params::None);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let in_ns_txn2 = catalog.list_dictionaries(&mut Transaction::Admin(&mut txn2), ns_id).unwrap();
 	assert!(!in_ns_txn2.iter().any(|x| x.name() == "new"));
 	assert!(in_ns_txn2.iter().any(|x| x.name() == "keep"));
@@ -136,7 +137,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let in_ns_txn3 = catalog.list_dictionaries(&mut Transaction::Admin(&mut txn3), ns_id).unwrap();
 	assert!(in_ns_txn3.iter().any(|x| x.name() == "new"));
 	assert!(!in_ns_txn3.iter().any(|x| x.name() == "keep"));

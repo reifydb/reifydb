@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -19,7 +20,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	t.admin(SETUP_V_A);
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "vns_drop_a")
 			.unwrap()
@@ -29,7 +30,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP VIEW vns_drop_a::v", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
@@ -49,7 +50,7 @@ fn rolled_back_drop_leaves_view_intact() {
 	t.admin(SETUP_V_B);
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "vns_drop_b")
 			.unwrap()
@@ -59,12 +60,12 @@ fn rolled_back_drop_leaves_view_intact() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP VIEW vns_drop_b::v", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v").unwrap();
 	assert!(found.is_some());
 }
@@ -78,7 +79,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 	t.admin(SETUP_V_C);
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "vns_drop_c")
 			.unwrap()
@@ -88,12 +89,12 @@ fn committed_drop_is_invisible_in_new_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP VIEW vns_drop_c::v", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v").unwrap();
 	assert!(found.is_none());
 }
@@ -107,7 +108,7 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	t.admin(SETUP_V_D);
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "vns_drop_d")
 			.unwrap()
@@ -117,18 +118,18 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 		id
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1.rql("DROP VIEW vns_drop_d::v", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found_in_txn2 = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v").unwrap();
 	assert!(found_in_txn2.is_some());
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found_in_txn3 = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "v").unwrap();
 	assert!(found_in_txn3.is_none());
 }

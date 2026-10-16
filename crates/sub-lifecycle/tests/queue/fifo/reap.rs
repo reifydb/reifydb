@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use reifydb_codec::row::{pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow};
 use reifydb_core::{
+	durability::Durability,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -125,7 +126,7 @@ fn claimable(t: &TestEngine) -> usize {
 }
 
 fn plant_attempt(t: &TestEngine, queue: QueueId, row: u64, attempt: u32, record: QueueAttemptRecord) {
-	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
+	let mut txn = t.inner().begin_command(IdentityId::system(), Durability::Async).unwrap();
 	txn.set(vec![(
 		QueueAttemptKey::new(queue, RowNumber(row), attempt).into(),
 		encode_queue_attempt(&record).into(),

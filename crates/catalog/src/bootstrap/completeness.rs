@@ -3,6 +3,7 @@
 
 use reifydb_core::{
 	common::TimeSource,
+	durability::Durability,
 	event::EventBus,
 	interface::catalog::id::{ColumnId, NamespaceId, TableId},
 };
@@ -38,6 +39,7 @@ pub fn bootstrap_completeness(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
+		Durability::Async,
 	)?;
 
 	let ns = ensure_namespace(

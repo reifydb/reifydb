@@ -1268,6 +1268,7 @@ mod tests {
 		actors::pending::PendingWrite,
 		common::CommitVersion,
 		delta::RemoveVisibility,
+		durability::Durability,
 		interface::{
 			catalog::{
 				column::{Column as CatalogColumn, ColumnIndex},
@@ -1386,7 +1387,7 @@ mod tests {
 	fn commit_flow_pending(engine: &TestEngine, txn: &mut DeferredTransaction) {
 		// Mirrors the committer split: state to the operator state store, everything else to the multi store.
 		let pending = txn.take_pending();
-		let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
+		let mut cmd = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		for (key, pw) in pending.rows_ordered() {
 			let key = TaggedKey::decode(key).unwrap();
 			match pw {

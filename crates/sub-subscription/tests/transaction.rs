@@ -7,6 +7,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	interface::catalog::{
 		id::{QueueId, TableId},
 		storage::StorageId,
@@ -68,7 +69,7 @@ fn row_reads_stay_pinned_to_requested_version() {
 	let row_key = row.encode();
 	let row_value = make_value("own_row").into_bytes();
 
-	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
+	let mut cmd = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
 	cmd.set(vec![(
 		QueueDeduplicationKey::new(QueueId(1), b"warmup".iter().map(|b| !b).collect::<Vec<u8>>()).into(),
@@ -77,7 +78,7 @@ fn row_reads_stay_pinned_to_requested_version() {
 	.unwrap();
 	let low_version = cmd.commit_unchecked().unwrap();
 
-	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
+	let mut cmd = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
 	cmd.set(vec![(row.clone().into(), row_value)]).unwrap();
 	let committed_at = cmd.commit_unchecked().unwrap();

@@ -17,6 +17,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	common::TimeSource,
+	durability::Durability,
 	interface::catalog::{id::NamespaceId, namespace::Namespace, table::Table, view::View},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -59,7 +60,7 @@ impl NamespaceBuilder {
 	pub fn create(self, engine: &impl AsEngine) -> Namespace {
 		let engine = engine.engine();
 		let catalog = engine.catalog();
-		let mut admin = engine.begin_admin(IdentityId::root()).unwrap();
+		let mut admin = engine.begin_admin(IdentityId::root(), Durability::Async).unwrap();
 		let namespace = ensure_namespace(&catalog, &mut admin, &self.name);
 		admin.commit().unwrap();
 		namespace
@@ -93,7 +94,7 @@ impl TableBuilder {
 	pub fn create(self, engine: &impl AsEngine) -> Table {
 		let engine = engine.engine();
 		let catalog = engine.catalog();
-		let mut admin = engine.begin_admin(IdentityId::root()).unwrap();
+		let mut admin = engine.begin_admin(IdentityId::root(), Durability::Async).unwrap();
 		let namespace = ensure_namespace(&catalog, &mut admin, &self.namespace);
 		let table = catalog
 			.create_table(
@@ -133,7 +134,7 @@ impl ViewBuilder {
 	pub fn create(self, engine: &impl AsEngine) -> View {
 		let engine = engine.engine();
 		let catalog = engine.catalog();
-		let mut admin = engine.begin_admin(IdentityId::root()).unwrap();
+		let mut admin = engine.begin_admin(IdentityId::root(), Durability::Async).unwrap();
 		let namespace = ensure_namespace(&catalog, &mut admin, &self.namespace);
 		let view = catalog
 			.create_deferred_view(

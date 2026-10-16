@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::relationship::RelationshipToCreate;
-use reifydb_core::interface::catalog::relationship::RelationshipCardinality;
+use reifydb_core::{durability::Durability, interface::catalog::relationship::RelationshipCardinality};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
 
@@ -14,7 +14,7 @@ fn duplicate_namespace_source_name_returns_already_exists() {
 	let catalog = t.catalog();
 	let f = SourceFixture::new(&t, "rel_err_dup");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 	let err = catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).expect_err("expected duplicate to fail");
 
@@ -39,7 +39,7 @@ fn many_to_many_without_junction_returns_mismatch() {
 		cardinality: RelationshipCardinality::ManyToMany,
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = catalog.create_relationship(&mut txn, to_create).expect_err("expected cardinality/junction mismatch");
 	let msg = format!("{err:?}");
 	assert!(msg.contains("CA_022") || msg.contains("THROUGH"), "wrong error: {msg}");

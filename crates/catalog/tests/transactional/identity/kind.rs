@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::identity::{IdentityId, IdentityKind};
 
 fn identity_id(t: &TestEngine, name: &str) -> IdentityId {
 	let catalog = t.catalog();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), name)
 		.unwrap()
 		.unwrap_or_else(|| panic!("identity `{name}` not found"))
@@ -18,7 +19,7 @@ fn identity_id(t: &TestEngine, name: &str) -> IdentityId {
 // through the catalog directly - which is also the only way uptime makes one.
 fn guest_id(t: &TestEngine, name: &str) -> IdentityId {
 	let catalog = t.catalog();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let id = catalog.create_identity(&mut txn, name, IdentityKind::Guest, t.clock(), t.rng()).unwrap().id;
 	txn.commit().unwrap();
 	id
@@ -30,7 +31,7 @@ fn uncommitted_promotion_is_visible_within_txn() {
 	let catalog = t.catalog();
 	let id = guest_id(&t, "idn_kind_a");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.promote_guest_to_user(&mut txn, id).unwrap();
 
 	let found = catalog.find_identity(&mut Transaction::Admin(&mut txn), id).unwrap().unwrap();
@@ -43,11 +44,11 @@ fn rolled_back_promotion_keeps_the_guest_kind() {
 	let catalog = t.catalog();
 	let id = guest_id(&t, "idn_kind_b");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.promote_guest_to_user(&mut txn, id).unwrap();
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_identity(&mut Transaction::Admin(&mut txn2), id).unwrap().unwrap();
 	assert_eq!(found.kind, IdentityKind::Guest, "a rolled-back promotion must not persist");
 }
@@ -58,11 +59,11 @@ fn committed_promotion_is_visible_in_a_new_txn() {
 	let catalog = t.catalog();
 	let id = guest_id(&t, "idn_kind_c");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.promote_guest_to_user(&mut txn, id).unwrap();
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_identity(&mut Transaction::Admin(&mut txn2), id).unwrap().unwrap();
 	assert_eq!(found.kind, IdentityKind::User);
 	assert_eq!(found.name, "idn_kind_c", "a promotion must not disturb the name");
@@ -80,7 +81,7 @@ fn promotion_is_reflected_by_the_system_identities_vtable() {
 	let frames = t.query("from system::identities filter { name == 'idn_kind_d' } map { kind }");
 	assert!(frames[0].to_string().contains("guest"), "vtable must report the guest kind: {}", frames[0]);
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.promote_guest_to_user(&mut txn, id).unwrap();
 	txn.commit().unwrap();
 
@@ -100,7 +101,7 @@ fn a_user_cannot_be_promoted() {
 	t.admin("CREATE USER idn_kind_user");
 	let id = identity_id(&t, "idn_kind_user");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = catalog.promote_guest_to_user(&mut txn, id).unwrap_err();
 	assert_eq!(err.diagnostic().code, "CA_095");
 
@@ -117,7 +118,7 @@ fn a_service_cannot_be_promoted() {
 	t.admin("CREATE SERVICE idn_kind_probe");
 	let id = identity_id(&t, "idn_kind_probe");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = catalog.promote_guest_to_user(&mut txn, id).unwrap_err();
 	assert_eq!(err.diagnostic().code, "CA_095");
 
@@ -133,11 +134,11 @@ fn a_guest_cannot_be_promoted_twice() {
 	let catalog = t.catalog();
 	let id = guest_id(&t, "idn_kind_once");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.promote_guest_to_user(&mut txn, id).unwrap();
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = catalog.promote_guest_to_user(&mut txn2, id).unwrap_err();
 	assert_eq!(err.diagnostic().code, "CA_095");
 }
@@ -151,14 +152,14 @@ fn renaming_a_guest_keeps_it_a_guest() {
 	let catalog = t.catalog();
 	let id = guest_id(&t, "idn_kind_guest_rename");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let renamed = catalog.rename_identity(&mut txn, id, "claimed@example.com").unwrap();
 	assert_eq!(renamed.kind, IdentityKind::Guest, "a rename must not promote by itself");
 
 	catalog.promote_guest_to_user(&mut txn, id).unwrap();
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_identity(&mut Transaction::Admin(&mut txn2), id).unwrap().unwrap();
 	assert_eq!(found.kind, IdentityKind::User);
 }
@@ -172,12 +173,12 @@ fn renaming_a_user_cannot_move_it_back_to_guest() {
 	let catalog = t.catalog();
 	let id = guest_id(&t, "idn_kind_rename");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.promote_guest_to_user(&mut txn, id).unwrap();
 	catalog.rename_identity(&mut txn, id, "renamed@example.com").unwrap();
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_identity(&mut Transaction::Admin(&mut txn2), id).unwrap().unwrap();
 	assert_eq!(found.kind, IdentityKind::User, "a rename must never move an identity back to guest");
 	assert_eq!(found.name, "renamed@example.com");
@@ -188,7 +189,7 @@ fn promotion_of_a_builtin_identity_is_rejected() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	for id in [IdentityId::root(), IdentityId::system(), IdentityId::anonymous()] {
 		let err = catalog.promote_guest_to_user(&mut txn, id).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_095", "identity {id} must be rejected");
@@ -201,7 +202,7 @@ fn promotion_of_an_unknown_identity_is_rejected() {
 	let catalog = t.catalog();
 	let unknown = IdentityId::generate(t.clock(), t.rng());
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = catalog.promote_guest_to_user(&mut txn, unknown).unwrap_err();
 	assert_eq!(err.diagnostic().code, "CA_043");
 }

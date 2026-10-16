@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::RecordBatch;
+use reifydb_core::durability::Durability;
 use reifydb_routine::procedure::identity::{
 	remove_attribute::RemoveIdentityAttribute, set_attribute::SetIdentityAttribute,
 };
@@ -82,7 +83,7 @@ fn utf8(s: &str) -> Value {
 #[test]
 fn set_with_no_args_is_arity_mismatch() {
 	let t = TestEngine::new();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(&t, &mut Transaction::Admin(&mut txn), IdentityId::system(), vec![]).unwrap_err();
 	match err {
 		RoutineError::ProcedureArityMismatch {
@@ -100,7 +101,7 @@ fn set_with_no_args_is_arity_mismatch() {
 #[test]
 fn set_with_two_args_is_arity_mismatch() {
 	let t = TestEngine::new();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -124,7 +125,7 @@ fn set_with_two_args_is_arity_mismatch() {
 #[test]
 fn set_with_four_args_is_arity_mismatch() {
 	let t = TestEngine::new();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -144,7 +145,7 @@ fn set_with_four_args_is_arity_mismatch() {
 #[test]
 fn set_with_non_identity_user_arg_is_type_error() {
 	let t = TestEngine::new();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -170,7 +171,7 @@ fn set_with_non_identity_user_arg_is_type_error() {
 #[test]
 fn set_with_non_utf8_attribute_arg_is_type_error() {
 	let t = TestEngine::new();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -194,7 +195,7 @@ fn set_bool_value_into_utf8_attribute_casts() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_o: utf8");
 	t.admin("CREATE USER rp_alice_o");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -215,7 +216,7 @@ fn set_uncastable_value_is_cast_error() {
 	t.admin("CREATE USER ATTRIBUTE rp_rank_p: int4");
 	t.admin("CREATE USER rp_alice_p");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -243,7 +244,7 @@ fn set_with_none_value_arg_is_type_error() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_q: utf8");
 	t.admin("CREATE USER rp_alice_q");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -270,7 +271,7 @@ fn set_by_name_stores_value_and_reports_columns() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_a: utf8");
 	t.admin("CREATE USER rp_alice_a");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let columns = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -295,7 +296,7 @@ fn set_by_identity_id_stores_value() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_b: utf8");
 	t.admin("CREATE USER rp_alice_b");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let catalog = t.catalog();
 	let identity = catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "rp_alice_b").unwrap().unwrap();
 	let columns = run_set(
@@ -321,7 +322,7 @@ fn set_overwrites_previous_value() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_c: utf8");
 	t.admin("CREATE USER rp_alice_c { rp_org_c: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -342,7 +343,7 @@ fn set_unknown_user_by_name_is_ca_043() {
 	let t = TestEngine::new();
 	t.admin("CREATE USER ATTRIBUTE rp_org_d: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -362,13 +363,13 @@ fn set_unknown_user_by_id_is_ca_043() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_e: utf8");
 	t.admin("CREATE USER rp_temp_e");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let catalog = t.catalog();
 	let stale = catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "rp_temp_e").unwrap().unwrap().id;
 	drop(txn);
 	t.admin("DROP USER rp_temp_e");
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn2),
@@ -387,7 +388,7 @@ fn set_undeclared_attribute_is_ca_091() {
 	let t = TestEngine::new();
 	t.admin("CREATE USER rp_alice_f");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -407,7 +408,7 @@ fn set_on_command_transaction_is_rejected() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_g: utf8");
 	t.admin("CREATE USER rp_alice_g");
 
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
+	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_set(
 		&t,
 		&mut Transaction::Command(&mut txn),
@@ -449,7 +450,7 @@ fn set_on_query_transaction_is_rejected() {
 #[test]
 fn remove_with_one_arg_is_arity_mismatch() {
 	let t = TestEngine::new();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_remove(&t, &mut Transaction::Admin(&mut txn), IdentityId::system(), vec![utf8("alice")])
 		.unwrap_err();
 	match err {
@@ -468,7 +469,7 @@ fn remove_with_one_arg_is_arity_mismatch() {
 #[test]
 fn remove_with_non_utf8_attribute_arg_is_type_error() {
 	let t = TestEngine::new();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_remove(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -491,7 +492,7 @@ fn remove_unsets_value_and_reports_columns() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_i: utf8");
 	t.admin("CREATE USER rp_alice_i { rp_org_i: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let columns = run_remove(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -516,7 +517,7 @@ fn remove_by_identity_id_unsets_value() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_j: utf8");
 	t.admin("CREATE USER rp_alice_j { rp_org_j: 'acme' }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let catalog = t.catalog();
 	let identity = catalog.find_identity_by_name(&mut Transaction::Admin(&mut txn), "rp_alice_j").unwrap().unwrap();
 	run_remove(
@@ -536,7 +537,7 @@ fn remove_unset_attribute_is_noop_success() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_k: utf8");
 	t.admin("CREATE USER rp_alice_k");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let columns = run_remove(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -552,7 +553,7 @@ fn remove_unknown_user_is_ca_043() {
 	let t = TestEngine::new();
 	t.admin("CREATE USER ATTRIBUTE rp_org_l: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_remove(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -571,7 +572,7 @@ fn remove_undeclared_attribute_is_ca_091() {
 	let t = TestEngine::new();
 	t.admin("CREATE USER rp_alice_m");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_remove(
 		&t,
 		&mut Transaction::Admin(&mut txn),
@@ -591,7 +592,7 @@ fn remove_on_command_transaction_is_rejected() {
 	t.admin("CREATE USER ATTRIBUTE rp_org_n: utf8");
 	t.admin("CREATE USER rp_alice_n { rp_org_n: 'acme' }");
 
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
+	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
 	let err = run_remove(
 		&t,
 		&mut Transaction::Command(&mut txn),

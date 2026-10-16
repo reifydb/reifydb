@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -18,7 +19,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	t.admin("CREATE HANDLER hns_list_a::keep ON hns_list_a::evt::Foo { INSERT hns_list_a::sink [{ id: 1 }] }");
 
 	let variant_ref = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "hns_list_a")
 			.unwrap()
@@ -36,7 +37,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 		v
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE HANDLER hns_list_a::fresh ON hns_list_a::evt::Foo { INSERT hns_list_a::sink [{ id: 2 }] }",
 		Params::None,
@@ -66,7 +67,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	t.admin("CREATE HANDLER hns_list_b::keep ON hns_list_b::evt::Foo { INSERT hns_list_b::sink [{ id: 1 }] }");
 
 	let variant_ref = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "hns_list_b")
 			.unwrap()
@@ -84,7 +85,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 		v
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql(
 		"CREATE HANDLER hns_list_b::fresh ON hns_list_b::evt::Foo { INSERT hns_list_b::sink [{ id: 2 }] }",
 		Params::None,
@@ -92,7 +93,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	txn.rql("DROP HANDLER hns_list_b::keep", Params::None);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let procs = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
 	assert!(!procs.iter().any(|p| p.name() == "fresh"));
 	assert!(procs.iter().any(|p| p.name() == "keep"));
@@ -108,7 +109,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	t.admin("CREATE HANDLER hns_list_c::keep ON hns_list_c::evt::Foo { INSERT hns_list_c::sink [{ id: 1 }] }");
 
 	let variant_ref = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "hns_list_c")
 			.unwrap()
@@ -126,7 +127,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 		v
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql(
 		"CREATE HANDLER hns_list_c::fresh ON hns_list_c::evt::Foo { INSERT hns_list_c::sink [{ id: 2 }] }",
 		Params::None,
@@ -134,7 +135,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	txn.rql("DROP HANDLER hns_list_c::keep", Params::None);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let procs = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
 	assert!(procs.iter().any(|p| p.name() == "fresh"));
 	assert!(!procs.iter().any(|p| p.name() == "keep"));
@@ -150,7 +151,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	t.admin("CREATE HANDLER hns_list_d::keep ON hns_list_d::evt::Foo { INSERT hns_list_d::sink [{ id: 1 }] }");
 
 	let variant_ref = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let ns = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "hns_list_d")
 			.unwrap()
@@ -168,14 +169,14 @@ fn concurrent_txn_sees_only_committed_state() {
 		v
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn1.rql(
 		"CREATE HANDLER hns_list_d::fresh ON hns_list_d::evt::Foo { INSERT hns_list_d::sink [{ id: 2 }] }",
 		Params::None,
 	);
 	txn1.rql("DROP HANDLER hns_list_d::keep", Params::None);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let in_txn2 = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn2), variant_ref).unwrap();
 	assert!(!in_txn2.iter().any(|p| p.name() == "fresh"));
 	assert!(in_txn2.iter().any(|p| p.name() == "keep"));
@@ -183,7 +184,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let in_txn3 = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn3), variant_ref).unwrap();
 	assert!(in_txn3.iter().any(|p| p.name() == "fresh"));
 	assert!(!in_txn3.iter().any(|p| p.name() == "keep"));

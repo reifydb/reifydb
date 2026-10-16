@@ -7,6 +7,7 @@ use reifydb_catalog::{cache::CatalogCache, catalog::Catalog};
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	event::EventBus,
 	interface::catalog::id::QueueId,
 	key::{any::TaggedKey, queue::QueueDeduplicationKey},
@@ -96,6 +97,7 @@ impl CdcHost for TestCdcHost {
 			self.event_bus.clone(),
 			Interceptors::new(),
 			IdentityId::system(),
+			Durability::Async,
 		)
 	}
 

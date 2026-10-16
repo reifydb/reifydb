@@ -5,7 +5,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::bootstrap::bootstrap_system_objects;
-use reifydb_core::event::EventBus;
+use reifydb_core::{durability::Durability, event::EventBus};
 use reifydb_routine::procedure::storage::advance::StorageAdvanceProcedure;
 use reifydb_routine_abi::{Routine, context::ProcedureContext, error::RoutineError};
 use reifydb_test_harness::engine::TestEngine;
@@ -69,7 +69,7 @@ fn run_directly(t: &TestEngine, identity: IdentityId, args: Vec<Value>) -> Resul
 	let services = t.inner().services();
 	let catalog = services.catalog.clone();
 	let params = Params::from(args);
-	let mut txn = t.inner().begin_command(identity).expect("command transaction");
+	let mut txn = t.inner().begin_command(identity, Durability::Async).expect("command transaction");
 	let mut tx = Transaction::Command(&mut txn);
 	let mut ctx = ProcedureContext {
 		fragment: Fragment::internal("storage::advance"),

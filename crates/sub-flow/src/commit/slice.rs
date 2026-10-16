@@ -730,6 +730,7 @@ mod integration {
 	use reifydb_core::{
 		actors::pending::PendingWrite,
 		common::TimeDomain,
+		durability::Durability,
 		flow::{
 			dag::FlowDag,
 			operator::{FlowNode, OperatorDef},
@@ -782,7 +783,8 @@ mod integration {
 			engine.operator_state(),
 		);
 		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let begin: CommitBegin =
+			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
 		engine.spawner()
 			.spawn_flow("slice-test-committer", CommitterActor::new(committer, CommitHandle::new(begin)))
 	}
@@ -1004,7 +1006,7 @@ mod integration {
 
 		let mut flow_engine = build_flow_engine(&engine);
 		{
-			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("command");
 			let flow = engine
 				.catalog()
 				.get_flow_dag(&mut Transaction::Command(&mut txn), flow_id)
@@ -1098,7 +1100,7 @@ mod integration {
 
 		let mut flow_engine = build_flow_engine(&engine);
 		{
-			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("command");
 			let flow = engine
 				.catalog()
 				.get_flow_dag(&mut Transaction::Command(&mut txn), flow_id)
@@ -1218,7 +1220,7 @@ mod integration {
 
 		let mut flow_engine = build_flow_engine(&engine);
 		{
-			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("command");
 			let flow = engine
 				.catalog()
 				.get_flow_dag(&mut Transaction::Command(&mut txn), flow_id)
@@ -1353,7 +1355,7 @@ mod integration {
 
 		let mut flow_engine = build_flow_engine(&engine);
 		{
-			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("command");
 			let flow = engine
 				.catalog()
 				.get_flow_dag(&mut Transaction::Command(&mut txn), flow_id)
@@ -1456,7 +1458,7 @@ mod integration {
 
 		let mut flow_engine = build_flow_engine(&engine);
 		{
-			let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+			let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("command");
 			let flow = engine
 				.catalog()
 				.get_flow_dag(&mut Transaction::Command(&mut txn), flow_id)
@@ -1655,7 +1657,8 @@ mod integration {
 		let committer =
 			Committer::new(FlowPositionTracker::new(), materialization.clone(), engine.operator_state());
 		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let begin: CommitBegin =
+			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
 		let handle = engine.spawner().spawn_flow(
 			"slice-test-observed-committer",
 			CommitterActor::new(committer, CommitHandle::new(begin)),

@@ -27,6 +27,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	error::diagnostic::engine::read_only_rejection,
 	event::{Event, EventBus},
 	execution::ExecutionResult,
@@ -97,7 +98,7 @@ impl WithEventBus for StandardEngine {
 
 impl AuthEngine for StandardEngine {
 	fn begin_admin(&self) -> Result<AdminTransaction> {
-		StandardEngine::begin_admin(self, IdentityId::system())
+		StandardEngine::begin_admin(self, IdentityId::system(), Durability::Async)
 	}
 
 	fn begin_query(&self) -> Result<QueryTransaction> {
@@ -111,7 +112,7 @@ impl AuthEngine for StandardEngine {
 
 impl StandardEngine {
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self, identity: IdentityId) -> Result<CommandTransaction> {
+	pub fn begin_command(&self, identity: IdentityId, durability: Durability) -> Result<CommandTransaction> {
 		reifydb_assertions! {
 			assert!(
 				!self.is_read_only(),
@@ -126,6 +127,7 @@ impl StandardEngine {
 			self.event_bus.clone(),
 			interceptors,
 			identity,
+			durability,
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
 		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
@@ -133,7 +135,7 @@ impl StandardEngine {
 	}
 
 	#[instrument(name = "engine::transaction::begin_admin", level = "debug", skip(self))]
-	pub fn begin_admin(&self, identity: IdentityId) -> Result<AdminTransaction> {
+	pub fn begin_admin(&self, identity: IdentityId, durability: Durability) -> Result<AdminTransaction> {
 		let interceptors = self.interceptors.create();
 		let mut txn = AdminTransaction::new(
 			self.multi.clone(),
@@ -141,6 +143,7 @@ impl StandardEngine {
 			self.event_bus.clone(),
 			interceptors,
 			identity,
+			durability,
 		)?;
 		txn.set_executor(Arc::new(self.executor.clone()));
 		txn.set_dictionary_allocators(self.dictionary_allocators.clone());
@@ -171,7 +174,7 @@ impl StandardEngine {
 		if let Some(e) = self.reject_request(identity) {
 			return ExecutionResult::from_error(e);
 		}
-		let mut txn = match self.begin_admin(identity) {
+		let mut txn = match self.begin_admin(identity, Durability::Async) {
 			Ok(t) => t,
 			Err(mut e) => {
 				e.with_rql(rql.to_string());
@@ -230,7 +233,7 @@ impl StandardEngine {
 		if let Some(e) = self.reject_request(identity) {
 			return ExecutionResult::from_error(e);
 		}
-		let mut txn = match self.begin_command(identity) {
+		let mut txn = match self.begin_command(identity, Durability::Async) {
 			Ok(t) => t,
 			Err(mut e) => {
 				e.with_rql(rql.to_string());
@@ -368,7 +371,7 @@ impl StandardEngine {
 
 impl CdcHost for StandardEngine {
 	fn begin_command(&self) -> Result<CommandTransaction> {
-		StandardEngine::begin_command(self, IdentityId::system())
+		StandardEngine::begin_command(self, IdentityId::system(), Durability::Async)
 	}
 
 	fn begin_query(&self) -> Result<QueryTransaction> {

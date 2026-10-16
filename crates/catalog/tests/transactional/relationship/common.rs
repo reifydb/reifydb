@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::id::{ColumnId, NamespaceId, TableId};
+use reifydb_core::{
+	durability::Durability,
+	interface::catalog::id::{ColumnId, NamespaceId, TableId},
+};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::identity::IdentityId;
@@ -24,7 +27,7 @@ impl SourceFixture {
 		t.admin(&format!("CREATE TABLE {ns}::child {{ parent_id: int4 }}"));
 
 		let catalog = t.catalog();
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let namespace =
 			catalog.find_namespace_by_name(&mut Transaction::Admin(&mut probe), ns).unwrap().unwrap().id();
 		let source_table = catalog

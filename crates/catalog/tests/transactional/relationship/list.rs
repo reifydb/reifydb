@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::relationship::RelationshipToCreate;
-use reifydb_core::interface::catalog::relationship::RelationshipCardinality;
+use reifydb_core::{durability::Durability, interface::catalog::relationship::RelationshipCardinality};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
@@ -16,12 +16,12 @@ fn list_from_includes_pending_create_and_excludes_pending_drop() {
 	let f = SourceFixture::new(&t, "rel_list_a");
 
 	{
-		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 		txn.commit().unwrap();
 	}
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 
 	catalog.create_relationship(&mut txn, mk_rel(&f, "manages")).unwrap();
 	catalog.drop_relationship(&mut txn, f.namespace, f.source_table, "owns").unwrap();
@@ -40,7 +40,7 @@ fn list_from_uses_materialized_cache_in_command_txn() {
 	let f = SourceFixture::new(&t, "rel_list_b");
 
 	{
-		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 		catalog.create_relationship(&mut txn, mk_rel(&f, "manages")).unwrap();
 		txn.commit().unwrap();

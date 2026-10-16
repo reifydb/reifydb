@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -13,7 +14,7 @@ fn uncommitted_create_is_visible_within_txn() {
 	t.admin("CREATE TABLE vns_create_a::src { id: int4 }");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "vns_create_a")
 			.unwrap()
@@ -23,7 +24,7 @@ fn uncommitted_create_is_visible_within_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE DEFERRED VIEW vns_create_a::v { id: int4 } AS { FROM vns_create_a::src MAP { id: id } }",
 		Params::None,
@@ -45,7 +46,7 @@ fn rolled_back_create_is_not_visible() {
 	t.admin("CREATE TABLE vns_create_b::src { id: int4 }");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "vns_create_b")
 			.unwrap()
@@ -55,7 +56,7 @@ fn rolled_back_create_is_not_visible() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE DEFERRED VIEW vns_create_b::v { id: int4 } AS { FROM vns_create_b::src MAP { id: id } }",
 		Params::None,
@@ -63,7 +64,7 @@ fn rolled_back_create_is_not_visible() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v").unwrap();
 	assert!(found.is_none());
 }
@@ -76,7 +77,7 @@ fn committed_create_is_visible_in_new_txn() {
 	t.admin("CREATE TABLE vns_create_c::src { id: int4 }");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "vns_create_c")
 			.unwrap()
@@ -86,7 +87,7 @@ fn committed_create_is_visible_in_new_txn() {
 		id
 	};
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE DEFERRED VIEW vns_create_c::v { id: int4 } AS { FROM vns_create_c::src MAP { id: id } }",
 		Params::None,
@@ -94,7 +95,7 @@ fn committed_create_is_visible_in_new_txn() {
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v").unwrap();
 	assert!(found.is_some());
 }
@@ -107,7 +108,7 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	t.admin("CREATE TABLE vns_create_d::src { id: int4 }");
 
 	let ns_id = {
-		let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+		let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let id = catalog
 			.find_namespace_by_name(&mut Transaction::Admin(&mut probe), "vns_create_d")
 			.unwrap()
@@ -117,21 +118,21 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 		id
 	};
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1.rql(
 		"CREATE DEFERRED VIEW vns_create_d::v { id: int4 } AS { FROM vns_create_d::src MAP { id: id } }",
 		Params::None,
 	);
 	assert!(r.error.is_none(), "create failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found_in_txn2 = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn2), ns_id, "v").unwrap();
 	assert!(found_in_txn2.is_none());
 
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found_in_txn3 = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "v").unwrap();
 	assert!(found_in_txn3.is_some());
 }
@@ -143,7 +144,7 @@ fn create_with_non_query_body_is_rejected_with_query_005() {
 	t.admin("CREATE NAMESPACE vns_create_e");
 	t.admin("CREATE TABLE vns_create_e::src { id: int4 }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql(
 		"CREATE DEFERRED VIEW vns_create_e::v { id: int4 } AS { CREATE TABLE vns_create_e::other { id: int4 } }",
 		Params::None,

@@ -368,6 +368,7 @@ mod tests {
 	use std::sync::{Arc, mpsc};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
+	use reifydb_core::durability::Durability;
 	use reifydb_flow_async::{
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::substrate::FlowSubstrate,
@@ -406,7 +407,7 @@ mod tests {
 			FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
 			OperatorSampleRegistry::new(),
 		);
-		let mut txn = engine.begin_command(IdentityId::system()).expect("command");
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("command");
 		let flow =
 			engine.catalog().get_flow_dag(&mut Transaction::Command(&mut txn), flow_id).expect("load flow");
 		flow_engine.register(&mut txn, flow.clone()).expect("register");
@@ -427,7 +428,8 @@ mod tests {
 		let committer =
 			Committer::new(FlowPositionTracker::new(), materialization.clone(), engine.operator_state());
 		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let begin: CommitBegin =
+			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
 		let handle = engine.spawner().spawn_flow(
 			"backfill-test-committer",
 			CommitterActor::new(committer, CommitHandle::new(begin)),

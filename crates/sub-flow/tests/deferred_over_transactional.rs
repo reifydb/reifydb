@@ -5,6 +5,7 @@ use reifydb::{
 	WithSubsystem, embedded,
 	testing::db::{TestDb, await_value},
 };
+use reifydb_core::durability::Durability;
 use reifydb_value::{
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
@@ -36,7 +37,7 @@ fn await_pairs(db: &TestDb, rql: &str, want: Vec<(i32, i32)>) -> Vec<(i32, i32)>
 }
 
 fn run_in_txn(db: &TestDb, statements: &[&str], commit: bool) {
-	let mut txn = db.engine().begin_command(IdentityId::root()).expect("begin command");
+	let mut txn = db.engine().begin_command(IdentityId::root(), Durability::Async).expect("begin command");
 	for rql in statements {
 		let r = txn.rql(rql, Params::None);
 		assert!(r.error.is_none(), "{rql} failed: {:?}", r.error);

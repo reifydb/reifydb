@@ -8,6 +8,7 @@ use reifydb_codec::{
 	row::{pod::EncodedPodRow, queue_attempt::EncodedQueueAttemptRow},
 };
 use reifydb_core::{
+	durability::Durability,
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -125,7 +126,7 @@ impl QueueLeaseReapTask {
 	}
 
 	fn write_lost_attempt(&self, queue: QueueId, row: RowNumber, attempt: u32, now: DateTime) -> Result<()> {
-		let mut txn = self.engine.begin_command(IdentityId::system())?;
+		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
 		let key = QueueAttemptKey::new(queue, row, attempt);
 		if txn.get(&[key.clone().into()])?.pop().flatten().is_some() {
 			return Ok(());

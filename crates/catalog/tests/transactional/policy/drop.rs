@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -13,7 +14,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	t.admin("CREATE TABLE pol_drop_a::t { id: int4 }");
 	t.admin("CREATE TABLE POLICY pol_drop_a_policy ON pol_drop_a::t { from: { filter { true } } }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP TABLE POLICY pol_drop_a_policy", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
@@ -29,12 +30,12 @@ fn rolled_back_drop_leaves_policy_intact() {
 	t.admin("CREATE TABLE pol_drop_b::t { id: int4 }");
 	t.admin("CREATE TABLE POLICY pol_drop_b_policy ON pol_drop_b::t { from: { filter { true } } }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP TABLE POLICY pol_drop_b_policy", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_drop_b_policy").unwrap();
 	assert!(found.is_some());
 }
@@ -47,12 +48,12 @@ fn committed_drop_is_invisible_in_new_txn() {
 	t.admin("CREATE TABLE pol_drop_c::t { id: int4 }");
 	t.admin("CREATE TABLE POLICY pol_drop_c_policy ON pol_drop_c::t { from: { filter { true } } }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP TABLE POLICY pol_drop_c_policy", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_drop_c_policy").unwrap();
 	assert!(found.is_none());
 }
@@ -65,11 +66,11 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	t.admin("CREATE TABLE pol_drop_d::t { id: int4 }");
 	t.admin("CREATE TABLE POLICY pol_drop_d_policy ON pol_drop_d::t { from: { filter { true } } }");
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn1.rql("DROP TABLE POLICY pol_drop_d_policy", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found_in_txn2 =
 		catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn2), "pol_drop_d_policy").unwrap();
 	assert!(found_in_txn2.is_some());
@@ -77,7 +78,7 @@ fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found_in_txn3 =
 		catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn3), "pol_drop_d_policy").unwrap();
 	assert!(found_in_txn3.is_none());

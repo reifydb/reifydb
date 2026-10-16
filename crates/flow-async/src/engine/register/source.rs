@@ -88,6 +88,7 @@ mod tests {
 	use std::sync::Arc;
 
 	use reifydb_core::{
+		durability::Durability,
 		flow::operator::{FlowNode, OperatorDef},
 		interface::catalog::flow::FlowId,
 	};
@@ -121,7 +122,7 @@ mod tests {
 			OperatorSampleRegistry::new(),
 		);
 
-		let mut admin = engine.begin_admin(IdentityId::system()).unwrap();
+		let mut admin = engine.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		let mut txn = Transaction::Admin(&mut admin);
 		let namespace = engine.catalog().find_namespace_by_name(&mut txn, "app").unwrap().unwrap();
 		let view = engine.catalog().find_view_by_name(&mut txn, namespace.id(), "v").unwrap().unwrap();

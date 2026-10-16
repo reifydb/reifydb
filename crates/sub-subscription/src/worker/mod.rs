@@ -11,6 +11,7 @@ use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	flow::dag::FlowDag,
 	interface::{
 		catalog::{flow::FlowId, id::SubscriptionId, object::ObjectId},
@@ -224,7 +225,7 @@ impl SubscriptionWorkerActor {
 			return;
 		}
 
-		let result = self.engine.begin_command(IdentityId::system()).and_then(|mut cmd| {
+		let result = self.engine.begin_command(IdentityId::system(), Durability::Async).and_then(|mut cmd| {
 			let mut txn = Transaction::Command(&mut cmd);
 			register_ephemeral_flow(&mut state.flow_engine, &mut txn, flow_dag, &ctx, self.delivery.clone())
 		});

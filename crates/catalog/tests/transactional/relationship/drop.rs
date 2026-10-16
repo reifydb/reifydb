@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_catalog::catalog::relationship::RelationshipToCreate;
-use reifydb_core::interface::catalog::relationship::RelationshipCardinality;
+use reifydb_core::{durability::Durability, interface::catalog::relationship::RelationshipCardinality};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{change::TransactionalRelationshipChanges, transaction::Transaction};
 use reifydb_value::{fragment::Fragment, value::identity::IdentityId};
@@ -16,12 +16,12 @@ fn uncommitted_drop_is_reflected_within_txn() {
 	let f = SourceFixture::new(&t, "rel_drop_a");
 
 	{
-		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 		txn.commit().unwrap();
 	}
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.drop_relationship(&mut txn, f.namespace, f.source_table, "owns").unwrap();
 
 	// Same-txn lookup must miss.
@@ -50,16 +50,16 @@ fn rolled_back_drop_leaves_relationship_intact() {
 	let f = SourceFixture::new(&t, "rel_drop_b");
 
 	{
-		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 		txn.commit().unwrap();
 	}
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	catalog.drop_relationship(&mut txn, f.namespace, f.source_table, "owns").unwrap();
 	txn.rollback().unwrap();
 
-	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog
 		.find_relationship_by_name(&mut Transaction::Admin(&mut probe), f.namespace, f.source_table, "owns")
 		.unwrap();
@@ -73,18 +73,18 @@ fn committed_drop_is_invisible_in_new_txn() {
 	let f = SourceFixture::new(&t, "rel_drop_c");
 
 	{
-		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		catalog.create_relationship(&mut txn, mk_rel(&f, "owns")).unwrap();
 		txn.commit().unwrap();
 	}
 
 	{
-		let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+		let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 		catalog.drop_relationship(&mut txn, f.namespace, f.source_table, "owns").unwrap();
 		txn.commit().unwrap();
 	}
 
-	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let found = catalog
 		.find_relationship_by_name(&mut Transaction::Admin(&mut probe), f.namespace, f.source_table, "owns")
 		.unwrap();

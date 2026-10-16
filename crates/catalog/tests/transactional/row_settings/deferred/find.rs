@@ -4,6 +4,7 @@
 // A deferred view persists its row TTL in the same create-view commit, so the read contract
 // must hold there too.
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{duration::Duration, identity::IdentityId};
@@ -18,7 +19,7 @@ fn deferred_view_persists_row_ttl() {
 		 WITH { row: { ttl: 1h } } \
 		 AS { FROM rs_d::src MAP { id: id } }");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let ns = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "rs_d").unwrap().unwrap();
 	let view = catalog
 		.find_view_by_name(&mut Transaction::Admin(&mut txn), ns.id(), "v")

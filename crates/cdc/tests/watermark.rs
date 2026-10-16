@@ -7,6 +7,7 @@ use reifydb_cdc::consume::{checkpoint::CdcCheckpoint, watermark::compute_pinning
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
+	durability::Durability,
 	interface::cdc::{Cdc, CdcChange, CdcConsumerId, ConsumerClass},
 };
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
@@ -50,7 +51,7 @@ fn len(store: &CdcStore) -> usize {
 }
 
 fn persist(t: &TestEngine, consumer: &str, version: u64, class: ConsumerClass) {
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
+	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
 	CdcCheckpoint::persist(&mut txn, &CdcConsumerId::new(consumer), CommitVersion(version), class).unwrap();
 	txn.commit().unwrap();
 }
@@ -221,7 +222,7 @@ fn the_floor_handles_very_large_version_numbers() {
 fn the_floor_finds_the_minimum_among_many_consumers() {
 	let t = TestEngine::new();
 
-	let mut txn = t.begin_command(IdentityId::system()).unwrap();
+	let mut txn = t.begin_command(IdentityId::system(), Durability::Async).unwrap();
 	for i in 0..100 {
 		let consumer_id = CdcConsumerId::new(format!("consumer_{}", i));
 		let version = CommitVersion(100 + (i * 10));

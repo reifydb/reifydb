@@ -6,6 +6,7 @@ use reifydb_catalog::{
 	catalog::Catalog,
 };
 use reifydb_core::{
+	durability::Durability,
 	flow::{
 		dag::FlowDag,
 		operator::{FlowNode, OperatorDef},
@@ -22,7 +23,7 @@ use reifydb_value::{params::Params, value::identity::IdentityId};
 
 fn committed_flow_id(t: &TestEngine, catalog: &Catalog, namespace: &str) -> FlowId {
 	// Must read committed state, so each test starts from the id every later reader sees.
-	let mut probe = t.begin_admin(IdentityId::system()).unwrap();
+	let mut probe = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let ns = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut probe), namespace).unwrap().unwrap();
 	catalog.find_flow_by_name(&mut Transaction::Admin(&mut probe), ns.id(), "v").unwrap().unwrap().id
 }
@@ -99,7 +100,7 @@ fn same_txn_create_is_found_without_a_storage_read() {
 	// The entry is only a pending change with no storage row, so any storage read here returns none or errors.
 	let t = TestEngine::new();
 	let catalog = t.catalog();
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 
 	let id = FlowId(u64::MAX - 11);
 	let mut builder = FlowDag::builder(id);
@@ -153,7 +154,7 @@ fn namespace_drop_removes_its_flows_from_the_cache() {
 	create_view(&t, "fns_cache_d");
 	let flow_id = committed_flow_id(&t, &catalog, "fns_cache_d");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	let r = txn.rql("DROP NAMESPACE fns_cache_d", Params::None);
 	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
 	txn.commit().unwrap();

@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	event::EventBus,
 	interface::catalog::{config::ConfigKey, id::NamespaceId},
 	key::config::ConfigStorageKey,
@@ -114,6 +115,7 @@ pub fn apply_bootstrap_configs(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
+		Durability::Async,
 	)?;
 
 	let catalog_api = Catalog::new(catalog.clone());

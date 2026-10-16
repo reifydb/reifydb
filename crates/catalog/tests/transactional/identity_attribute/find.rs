@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::identity::IdentityId};
@@ -11,7 +12,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iaf_keep_a: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE USER ATTRIBUTE iaf_new_a: utf8", Params::None);
 	txn.rql("DROP USER ATTRIBUTE iaf_keep_a", Params::None);
 
@@ -31,12 +32,12 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iaf_keep_b: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE USER ATTRIBUTE iaf_new_b: utf8", Params::None);
 	txn.rql("DROP USER ATTRIBUTE iaf_keep_b", Params::None);
 	txn.rollback().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(catalog
 		.find_identity_attribute_by_name(&mut Transaction::Admin(&mut txn2), "iaf_new_b")
 		.unwrap()
@@ -53,12 +54,12 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iaf_keep_c: utf8");
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE USER ATTRIBUTE iaf_new_c: utf8", Params::None);
 	txn.rql("DROP USER ATTRIBUTE iaf_keep_c", Params::None);
 	txn.commit().unwrap();
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(catalog
 		.find_identity_attribute_by_name(&mut Transaction::Admin(&mut txn2), "iaf_new_c")
 		.unwrap()
@@ -74,7 +75,7 @@ fn create_then_drop_same_txn_is_not_findable_by_name() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE USER ATTRIBUTE iaf_ephem: utf8", Params::None);
 	txn.rql("DROP USER ATTRIBUTE iaf_ephem", Params::None);
 
@@ -90,7 +91,7 @@ fn create_then_drop_same_txn_is_not_findable_by_name() {
 fn create_user_with_same_txn_dropped_attribute_is_rejected() {
 	let t = TestEngine::new();
 
-	let mut txn = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn.rql("CREATE USER ATTRIBUTE iaf_gone: utf8", Params::None);
 	txn.rql("DROP USER ATTRIBUTE iaf_gone", Params::None);
 	let r = txn.rql("CREATE USER iaf_victim { iaf_gone: 'x' }", Params::None);
@@ -104,11 +105,11 @@ fn concurrent_txn_sees_only_committed_state() {
 	let catalog = t.catalog();
 	t.admin("CREATE USER ATTRIBUTE iaf_keep_d: utf8");
 
-	let mut txn1 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	txn1.rql("CREATE USER ATTRIBUTE iaf_new_d: utf8", Params::None);
 	txn1.rql("DROP USER ATTRIBUTE iaf_keep_d", Params::None);
 
-	let mut txn2 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(catalog
 		.find_identity_attribute_by_name(&mut Transaction::Admin(&mut txn2), "iaf_new_d")
 		.unwrap()
@@ -121,7 +122,7 @@ fn concurrent_txn_sees_only_committed_state() {
 	txn1.commit().unwrap();
 	drop(txn2);
 
-	let mut txn3 = t.begin_admin(IdentityId::system()).unwrap();
+	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(catalog
 		.find_identity_attribute_by_name(&mut Transaction::Admin(&mut txn3), "iaf_new_d")
 		.unwrap()

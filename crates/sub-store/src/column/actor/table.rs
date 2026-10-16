@@ -8,6 +8,7 @@ use dashmap::DashMap;
 use reifydb_catalog::store::column_block::create::ColumnBlockToCreate;
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	event::{EventListener, transaction::PostCommitEvent},
 	interface::catalog::{
 		column_block::{ColumnBlock, ColumnBlockSource},
@@ -235,7 +236,7 @@ impl TableMaterializationActor {
 	#[inline]
 	fn store_table_block(&self, table: &Table, version: CommitVersion, data: Arc<BlockData>) -> Result<()> {
 		let row_count = data.len() as u64;
-		let mut admin = self.engine.begin_admin(IdentityId::system())?;
+		let mut admin = self.engine.begin_admin(IdentityId::system(), Durability::Async)?;
 		let catalog = self.engine.catalog();
 		let block = catalog.create_column_block(
 			&mut admin,

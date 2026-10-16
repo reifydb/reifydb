@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_codec::{key::encoded::EncodedKey, row::shape::RowFamily};
 use reifydb_core::{
+	durability::Durability,
 	event::row::RowsExpiredEvent,
 	interface::{
 		WithEventBus,
@@ -278,7 +279,7 @@ impl Evictor {
 		stats: &mut TickStats,
 	) -> Result<()> {
 		let storage = StorageId::View(id);
-		let mut txn = self.engine.begin_command(IdentityId::system())?;
+		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
 		let view = self.engine.catalog().find_view(&mut Transaction::Command(&mut txn), id)?;
 		txn.rollback()?;
 
@@ -404,7 +405,7 @@ impl Evictor {
 		keyspace: &TaggedKeyBoundRange,
 	) -> Result<(u64, bool)> {
 		let cursor_key = (storage, scan::keyspace_start(keyspace));
-		let mut txn = self.engine.begin_command(IdentityId::system())?;
+		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
 
 		if !self.row_owner_exists(&mut txn, storage)? {
 			txn.rollback()?;
@@ -470,7 +471,7 @@ impl Evictor {
 		let storage = StorageId::RingBuffer(id);
 		let cursor_key = (storage, scan::keyspace_start(keyspace));
 		let catalog = self.engine.catalog();
-		let mut txn = self.engine.begin_command(IdentityId::system())?;
+		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
 
 		let Some(ringbuffer) = catalog.find_ringbuffer(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
@@ -602,7 +603,7 @@ impl Evictor {
 	) -> Result<(u64, bool)> {
 		let storage = StorageId::Series(id);
 		let catalog = self.engine.catalog();
-		let mut txn = self.engine.begin_command(IdentityId::system())?;
+		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
 
 		let Some(series) = catalog.find_series(&mut Transaction::Command(&mut txn), id)? else {
 			txn.rollback()?;
@@ -748,6 +749,7 @@ mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::CommitVersion,
+		durability::Durability,
 		interface::{
 			catalog::{
 				ringbuffer::{
@@ -793,7 +795,7 @@ mod tests {
 
 	fn ringbuffer_partitions(engine: &StandardEngine, name: &str) -> Vec<PartitionedMetadata> {
 		let catalog = engine.catalog();
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		let namespace =
 			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
 		let ringbuffer = catalog
@@ -808,7 +810,7 @@ mod tests {
 
 	fn series_metadata(engine: &StandardEngine, name: &str) -> SeriesPartitionMetadata {
 		let catalog = engine.catalog();
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		let namespace =
 			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
 		let series = catalog
@@ -825,7 +827,7 @@ mod tests {
 
 	fn ringbuffer_by_name(engine: &StandardEngine, name: &str) -> RingBuffer {
 		let catalog = engine.catalog();
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		let namespace =
 			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
 		let ringbuffer = catalog
@@ -838,7 +840,7 @@ mod tests {
 
 	fn view_by_name(engine: &StandardEngine, name: &str) -> View {
 		let catalog = engine.catalog();
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		let namespace =
 			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
 		let view = catalog
@@ -851,7 +853,7 @@ mod tests {
 
 	fn table_storage_by_name(engine: &StandardEngine, name: &str) -> StorageId {
 		let catalog = engine.catalog();
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		let namespace =
 			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
 		let table = catalog
@@ -863,13 +865,13 @@ mod tests {
 	}
 
 	fn put_row(engine: &StandardEngine, storage: StorageId, row_number: RowNumber, bytes: EncodedBytes) {
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		txn.set(vec![(RowKey::new(storage, row_number).into(), bytes)]).unwrap();
 		txn.commit().unwrap();
 	}
 
 	fn seed_partition(engine: &StandardEngine, storage: StorageId, values: Vec<Value>) {
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		let mut metadata = RingBufferMetadata::new();
 		metadata.count = 1;
 		metadata.tail = 2;
@@ -882,7 +884,7 @@ mod tests {
 	}
 
 	fn partition_metadata_values(engine: &StandardEngine, storage: StorageId) -> Vec<Vec<Value>> {
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		let values: Vec<Vec<Value>> = txn
 			.range(RingBufferMetadataKey::full_scan_for_storage(storage), RangeScope::All, 1024)
 			.unwrap()
@@ -907,7 +909,7 @@ mod tests {
 		} else {
 			RowKey::full_scan(storage)
 		};
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		let rows: Vec<MultiVersionRow<TaggedKey>> =
 			txn.range(keyspace, RangeScope::All, 1024).unwrap().map(|row| row.unwrap()).collect();
 		txn.rollback().unwrap();
@@ -921,7 +923,7 @@ mod tests {
 		row_number: RowNumber,
 		bytes: EncodedBytes,
 	) {
-		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		txn.set(vec![(
 			PartitionedRowKey::new(storage, Partition::of(partition_values), row_number).into(),
 			bytes,
@@ -1636,7 +1638,7 @@ mod tests {
 		let object = object_with_row_ttl(&test, HOUR_NANOS);
 
 		let cold = CatalogCache::new();
-		let mut txn = test.begin_command(IdentityId::system()).unwrap();
+		let mut txn = test.begin_command(IdentityId::system(), Durability::Async).unwrap();
 		CatalogCacheLoader::load_all(&mut Transaction::Command(&mut txn), &cold).unwrap();
 		txn.rollback().unwrap();
 

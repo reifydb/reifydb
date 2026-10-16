@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::event::EventBus;
+use reifydb_core::{durability::Durability, event::EventBus};
 use reifydb_transaction::{
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
@@ -33,6 +33,7 @@ pub fn bootstrap_root_identity(
 		eventbus.clone(),
 		Interceptors::default(),
 		IdentityId::system(),
+		Durability::Async,
 	)?;
 
 	CatalogStore::create_identity_with_id(&mut admin, "root", IdentityId::root(), IdentityKind::Root)?;
