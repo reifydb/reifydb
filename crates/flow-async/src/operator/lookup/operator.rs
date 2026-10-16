@@ -31,7 +31,11 @@ use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::{CompileContext, EvalContext},
 };
-use reifydb_flow::{context::FlowContext, error::FlowGraphError, operator::source::decode_dictionary_columns};
+use reifydb_flow::{
+	context::FlowContext,
+	error::FlowGraphError,
+	operator::source::{decode_change, decode_dictionary_columns},
+};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -680,6 +684,7 @@ impl HostOperator for LookupOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		let change = decode_change(host, change)?;
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.config.operator
 		{

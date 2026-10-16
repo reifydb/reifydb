@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	metrics::heap::OperatorSample,
 };
-use reifydb_flow::{aggregate::AggregateContext, context::FlowContext};
+use reifydb_flow::{aggregate::AggregateContext, context::FlowContext, operator::source::decode_change};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, util::hash::Hash128, value::datetime::DateTime};
@@ -72,6 +72,7 @@ impl HostOperator for AggregateOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		let change = decode_change(host, change)?;
 		apply_aggregate_engine(&mut self.core, host, change)
 	}
 

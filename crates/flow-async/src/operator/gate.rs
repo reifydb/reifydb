@@ -24,7 +24,7 @@ use reifydb_evaluate::{
 	},
 	lower::LoweredExpr,
 };
-use reifydb_flow::context::FlowContext;
+use reifydb_flow::{context::FlowContext, operator::source::decode_change};
 use reifydb_macro::operator_state;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -181,6 +181,7 @@ impl HostOperator for GateOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		let change = decode_change(host, change)?;
 		let mut result = Vec::new();
 
 		for diff in change.diffs {

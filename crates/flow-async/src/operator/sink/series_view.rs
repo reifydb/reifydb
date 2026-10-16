@@ -24,14 +24,17 @@ use reifydb_core::{
 };
 use reifydb_flow::{
 	error::FlowSinkError,
-	operator::sink::{
-		SourceRowEncoder, coerce_columns,
-		partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
-		shape_field_columns, stored_created_at_many,
-		table::{
-			dictionary_encode_view_columns, dictionary_lookup_partition_columns,
-			dictionary_lookup_view_columns,
+	operator::{
+		sink::{
+			SourceRowEncoder, coerce_columns,
+			partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
+			shape_field_columns, stored_created_at_many,
+			table::{
+				dictionary_encode_view_columns, dictionary_lookup_partition_columns,
+				dictionary_lookup_view_columns,
+			},
 		},
+		source::decode_change,
 	},
 	txn::{Batch, Emit},
 };
@@ -166,6 +169,7 @@ impl DurableSink for SinkSeriesViewOperator {
 	}
 
 	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
+		let change = decode_change(txn, change)?;
 		let resolved = self.view.clone();
 		let view = resolved.def();
 		let shape = self.shape.clone();

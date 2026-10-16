@@ -31,7 +31,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
-use reifydb_flow::{context::FlowContext, error::FlowGraphError};
+use reifydb_flow::{context::FlowContext, error::FlowGraphError, operator::source::decode_change};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -892,6 +892,7 @@ impl HostOperator for JoinOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		let change = decode_change(host, change)?;
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
 		{

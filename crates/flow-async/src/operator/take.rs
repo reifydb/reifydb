@@ -32,6 +32,7 @@ use reifydb_core::{
 	state::typed::typed_key,
 	value::batch::{from_encoded_bytes, take_rows},
 };
+use reifydb_flow::operator::source::decode_change;
 use reifydb_macro::operator_state;
 use reifydb_value::{
 	Result,
@@ -579,6 +580,7 @@ impl HostOperator for TakeOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		let change = decode_change(host, change)?;
 		let mut state = self.plan.load_take_state(host)?;
 
 		let mut output_diffs = Vec::new();

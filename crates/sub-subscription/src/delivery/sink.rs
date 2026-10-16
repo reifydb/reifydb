@@ -13,6 +13,7 @@ use reifydb_core::{
 	metrics::heap::HeapSize,
 	value::batch::take_rows,
 };
+use reifydb_flow::operator::source::decode_change;
 use reifydb_flow_async::operator::{HostOperator, host::HostContext};
 use reifydb_macro::operator_state;
 use reifydb_value::{
@@ -97,7 +98,8 @@ impl HostOperator for EphemeralSinkSubscriptionOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		let change = decode_change(host, change)?;
 		let plan = self.plan.clone();
 		let state = &mut self.state;
 

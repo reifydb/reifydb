@@ -26,7 +26,7 @@ use reifydb_evaluate::expression::{
 	compile::{CompiledExpr, compile_expression},
 	context::CompileContext,
 };
-use reifydb_flow::context::FlowContext;
+use reifydb_flow::{context::FlowContext, operator::source::decode_change};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{Result, error::Error, util::hash::Hash128};
@@ -230,6 +230,7 @@ impl HostOperator for DistinctOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		let change = decode_change(host, change)?;
 		let plan = &self.plan;
 		let operator_id = plan.operator;
 		let (ordered, diff_hashes) = plan.batch_hashes(&change.diffs)?;

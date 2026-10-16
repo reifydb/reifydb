@@ -95,6 +95,30 @@ impl SourceOperator {
 	}
 }
 
+pub fn decode_change<T: Resolve + ?Sized>(txn: &mut T, mut change: Change) -> Result<Change> {
+	for diff in change.diffs.iter_mut() {
+		match diff {
+			Diff::Insert {
+				post,
+				..
+			} => decode_dictionary_columns(post, txn)?,
+			Diff::Update {
+				pre,
+				post,
+				..
+			} => {
+				decode_dictionary_columns(pre, txn)?;
+				decode_dictionary_columns(post, txn)?;
+			}
+			Diff::Remove {
+				pre,
+				..
+			} => decode_dictionary_columns(pre, txn)?,
+		}
+	}
+	Ok(change)
+}
+
 pub fn catalog_schema(columns: &[Column]) -> SchemaRef {
 	Arc::new(Schema::new(
 		columns.iter()

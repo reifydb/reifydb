@@ -12,7 +12,7 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	state::timer::TimerKind,
 };
-use reifydb_flow::{aggregate::AggregateContext, context::FlowContext};
+use reifydb_flow::{aggregate::AggregateContext, context::FlowContext, operator::source::decode_change};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -195,6 +195,7 @@ impl HostOperator for WindowOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		let change = decode_change(host, change)?;
 		let out = match self.kind {
 			WindowKind::Tumbling {
 				..
