@@ -381,17 +381,19 @@ impl GuestEmitContext for ExternCContext {
 		ExternCContext::remove_row_numbers_for_groups(self, groups)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCInsertEmit<'_>> {
+		let ctx = self.ctx;
 		let mut builder = self.builder();
-		let sink = ExternCRowSink::new::<R>(&mut builder, row_capacity)?;
+		let sink = ExternCRowSink::new::<R>(&mut builder, ctx, row_capacity)?;
 		Ok(ExternCInsertEmit {
 			builder,
 			sink,
 		})
 	}
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCUpdateEmit<'_>> {
+		let ctx = self.ctx;
 		let mut builder = self.builder();
-		let pre = ExternCRowSink::new::<R>(&mut builder, row_capacity)?;
-		let post = ExternCRowSink::new::<R>(&mut builder, row_capacity)?;
+		let pre = ExternCRowSink::new::<R>(&mut builder, ctx, row_capacity)?;
+		let post = ExternCRowSink::new::<R>(&mut builder, ctx, row_capacity)?;
 		Ok(ExternCUpdateEmit {
 			builder,
 			pre,
@@ -399,8 +401,9 @@ impl GuestEmitContext for ExternCContext {
 		})
 	}
 	fn remove_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCRemoveEmit<'_>> {
+		let ctx = self.ctx;
 		let mut builder = self.builder();
-		let sink = ExternCRowSink::new::<R>(&mut builder, row_capacity)?;
+		let sink = ExternCRowSink::new::<R>(&mut builder, ctx, row_capacity)?;
 		Ok(ExternCRemoveEmit {
 			builder,
 			sink,

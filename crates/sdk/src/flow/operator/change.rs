@@ -20,7 +20,7 @@ use crate::{
 		buffer_check::{bitvec_len, cell_range, malformed},
 		extern_c::wire::{
 			buffer::ExternCBuffer,
-			columns::{ExternCColumn, ExternCColumns},
+			columns::{ExternCColumn, ExternCColumnData, ExternCColumns},
 		},
 		family::{FamilyValue, cell_width, family_params},
 	},
@@ -210,6 +210,10 @@ pub struct BorrowedColumn<'a> {
 }
 
 impl<'a> BorrowedColumn<'a> {
+	pub(crate) fn wire(&self) -> &'a ExternCColumnData {
+		&self.extern_c.data
+	}
+
 	pub fn name(&self) -> &'a str {
 		// SAFETY: `self.extern_c` came from a `BorrowedChange::from_raw` / `BorrowedColumns::from_extern_c`
 		// caller, whose contract keeps every buffer this `ExternCColumn` describes live for `'a`.

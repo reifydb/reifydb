@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use core::ptr;
+
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::value::{
 	date::Date, datetime::DateTime, decimal::Decimal, dictionary::DictionaryEntryId, duration::Duration, time::Time,
@@ -8,22 +10,34 @@ use reifydb_value::value::{
 
 use crate::{
 	common::{
-		extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
+		extern_c::{
+			binding::builder::{ColumnsBuilder, CommittedColumn},
+			wire::status::EXTERN_C_OK,
+		},
 		family::default_family_params,
 	},
 	error::SdkError,
-	flow::operator::column::{
-		row::Row,
-		sink::{ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, unsupported_column},
-		writer::{
-			BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DictionaryIdWriter,
-			DurationWriter, F32Writer, F64Writer, I8Writer, I16Writer, I32Writer, I64Writer, I128Writer,
-			TimeWriter, U8Writer, U16Writer, U32Writer, U64Writer, U128Writer, Utf8Writer,
+	flow::operator::{
+		column::{
+			row::Row,
+			sink::{
+				ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, foreign_source,
+				pass_after_push, pass_kind, pass_source, passed_column, unsupported_column,
+			},
+			writer::{
+				BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DictionaryIdWriter,
+				DurationWriter, F32Writer, F64Writer, I8Writer, I16Writer, I32Writer, I64Writer,
+				I128Writer, TimeWriter, U8Writer, U16Writer, U32Writer, U64Writer, U128Writer,
+				Utf8Writer,
+			},
 		},
+		extern_c::wire::context::ExternCContextRaw,
+		view::{ColumnsView, PassSource},
 	},
 };
 
 pub struct ExternCRowSink<'a> {
+	ctx: *mut ExternCContextRaw,
 	writers: Vec<AnyWriter<'a>>,
 	columns: &'static [(&'static str, ValueKind)],
 	row_capacity: usize,
@@ -51,6 +65,7 @@ enum AnyWriter<'a> {
 	Blob(BlobWriter<'a>),
 	Decimal(DecimalWriter<'a>),
 	DictionaryId(DictionaryIdWriter<'a>),
+	Passed(CommittedColumn),
 }
 
 impl<'a> AnyWriter<'a> {
@@ -94,6 +109,33 @@ impl<'a> AnyWriter<'a> {
 		})
 	}
 
+	fn len(&self) -> usize {
+		match self {
+			AnyWriter::U8(w) => w.len(),
+			AnyWriter::U16(w) => w.len(),
+			AnyWriter::U32(w) => w.len(),
+			AnyWriter::U64(w) => w.len(),
+			AnyWriter::U128(w) => w.len(),
+			AnyWriter::I8(w) => w.len(),
+			AnyWriter::I16(w) => w.len(),
+			AnyWriter::I32(w) => w.len(),
+			AnyWriter::I64(w) => w.len(),
+			AnyWriter::I128(w) => w.len(),
+			AnyWriter::F32(w) => w.len(),
+			AnyWriter::F64(w) => w.len(),
+			AnyWriter::Date(w) => w.len(),
+			AnyWriter::DateTime(w) => w.len(),
+			AnyWriter::Time(w) => w.len(),
+			AnyWriter::Duration(w) => w.len(),
+			AnyWriter::Bool(w) => w.len(),
+			AnyWriter::Utf8(w) => w.len(),
+			AnyWriter::Blob(w) => w.len(),
+			AnyWriter::Decimal(w) => w.len(),
+			AnyWriter::DictionaryId(w) => w.len(),
+			AnyWriter::Passed(c) => c.row_count(),
+		}
+	}
+
 	fn finish(self) -> Result<CommittedColumn, SdkError> {
 		match self {
 			AnyWriter::U8(w) => w.finish(),
@@ -117,12 +159,17 @@ impl<'a> AnyWriter<'a> {
 			AnyWriter::Blob(w) => w.finish(),
 			AnyWriter::Decimal(w) => w.finish(),
 			AnyWriter::DictionaryId(w) => w.finish(),
+			AnyWriter::Passed(c) => Ok(c),
 		}
 	}
 }
 
 impl<'a> ExternCRowSink<'a> {
-	pub(crate) fn new<R: Row>(builder: &mut ColumnsBuilder<'a>, row_capacity: usize) -> Result<Self, SdkError> {
+	pub(crate) fn new<R: Row>(
+		builder: &mut ColumnsBuilder<'a>,
+		ctx: *mut ExternCContextRaw,
+		row_capacity: usize,
+	) -> Result<Self, SdkError> {
 		let mut writers = Vec::with_capacity(R::COLUMNS.len());
 		let var_count =
 			R::COLUMNS.iter().filter(|(_, t)| matches!(t, ValueKind::Utf8 | ValueKind::Blob)).count();
@@ -135,6 +182,7 @@ impl<'a> ExternCRowSink<'a> {
 			writers.push(AnyWriter::new(builder, *type_code, row_capacity, var_bytes_per)?);
 		}
 		Ok(Self {
+			ctx,
 			writers,
 			columns: R::COLUMNS,
 			row_capacity,
@@ -159,9 +207,29 @@ impl<'a> ExternCRowSink<'a> {
 	}
 }
 
+impl ExternCRowSink<'_> {
+	#[inline]
+	fn open(&self, col: usize) -> Result<(), SdkError> {
+		match self.writers[col] {
+			AnyWriter::Passed(_) => Err(passed_column(col)),
+			_ => Ok(()),
+		}
+	}
+
+	fn pass_nones(&mut self, col: usize, mask: &[bool]) -> Result<(), SdkError> {
+		for _ in mask.iter().filter(|&&keep| keep) {
+			self.push_none(col)?;
+		}
+		let committed = self.writers.remove(col).finish()?;
+		self.writers.insert(col, AnyWriter::Passed(committed));
+		Ok(())
+	}
+}
+
 impl RowSink for ExternCRowSink<'_> {
 	#[inline]
 	fn u8_column(&mut self, col: usize) -> Result<impl ColumnWriter<u8> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::U8(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "u8")),
@@ -170,6 +238,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn u16_column(&mut self, col: usize) -> Result<impl ColumnWriter<u16> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::U16(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "u16")),
@@ -178,6 +247,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn u32_column(&mut self, col: usize) -> Result<impl ColumnWriter<u32> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::U32(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "u32")),
@@ -186,6 +256,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn u64_column(&mut self, col: usize) -> Result<impl ColumnWriter<u64> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::U64(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "u64")),
@@ -194,6 +265,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn u128_column(&mut self, col: usize) -> Result<impl ColumnWriter<u128> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::U128(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "u128")),
@@ -202,6 +274,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn i8_column(&mut self, col: usize) -> Result<impl ColumnWriter<i8> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::I8(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "i8")),
@@ -210,6 +283,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn i16_column(&mut self, col: usize) -> Result<impl ColumnWriter<i16> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::I16(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "i16")),
@@ -218,6 +292,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn i32_column(&mut self, col: usize) -> Result<impl ColumnWriter<i32> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::I32(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "i32")),
@@ -226,6 +301,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn i64_column(&mut self, col: usize) -> Result<impl ColumnWriter<i64> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::I64(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "i64")),
@@ -234,6 +310,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn i128_column(&mut self, col: usize) -> Result<impl ColumnWriter<i128> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::I128(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "i128")),
@@ -242,6 +319,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn f32_column(&mut self, col: usize) -> Result<impl ColumnWriter<f32> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::F32(w) => Ok(NoneOnNan(w)),
 			_ => Err(column_mismatch(col, self.columns[col].1, "f32")),
@@ -250,6 +328,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn f64_column(&mut self, col: usize) -> Result<impl ColumnWriter<f64> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::F64(w) => Ok(NoneOnNan(w)),
 			_ => Err(column_mismatch(col, self.columns[col].1, "f64")),
@@ -258,6 +337,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn date_column(&mut self, col: usize) -> Result<impl ColumnWriter<Date> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::Date(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "date")),
@@ -266,6 +346,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn datetime_column(&mut self, col: usize) -> Result<impl ColumnWriter<DateTime> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::DateTime(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "datetime")),
@@ -274,6 +355,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn time_column(&mut self, col: usize) -> Result<impl ColumnWriter<Time> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::Time(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "time")),
@@ -282,6 +364,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn duration_column(&mut self, col: usize) -> Result<impl ColumnWriter<Duration> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::Duration(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "duration")),
@@ -290,6 +373,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn bool_column(&mut self, col: usize) -> Result<impl ColumnWriter<bool> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::Bool(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "bool")),
@@ -298,6 +382,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn utf8_column(&mut self, col: usize) -> Result<impl ColumnWriter<str> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::Utf8(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "utf8")),
@@ -306,6 +391,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn blob_column(&mut self, col: usize) -> Result<impl ColumnWriter<[u8]> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::Blob(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "blob")),
@@ -314,6 +400,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn decimal_column(&mut self, col: usize) -> Result<impl ColumnWriter<Decimal> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::Decimal(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "decimal")),
@@ -322,6 +409,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn dictionary_id_column(&mut self, col: usize) -> Result<impl ColumnWriter<DictionaryEntryId> + '_, SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::DictionaryId(w) => Ok(w),
 			_ => Err(column_mismatch(col, self.columns[col].1, "dictionary id")),
@@ -330,6 +418,7 @@ impl RowSink for ExternCRowSink<'_> {
 
 	#[inline]
 	fn push_none(&mut self, col: usize) -> Result<(), SdkError> {
+		self.open(col)?;
 		match &mut self.writers[col] {
 			AnyWriter::U8(w) => w.push_none(),
 			AnyWriter::U16(w) => w.push_none(),
@@ -352,6 +441,46 @@ impl RowSink for ExternCRowSink<'_> {
 			AnyWriter::Blob(w) => w.push_none(),
 			AnyWriter::Decimal(w) => w.push_none(),
 			AnyWriter::DictionaryId(w) => w.push_none(),
+			AnyWriter::Passed(_) => Err(passed_column(col)),
 		}
+	}
+
+	fn pass_through(
+		&mut self,
+		col: usize,
+		input: &impl ColumnsView,
+		name: &str,
+		mask: &[bool],
+	) -> Result<(), SdkError> {
+		self.open(col)?;
+		if self.writers[col].len() != 0 {
+			return Err(pass_after_push(col));
+		}
+		let PassSource::ExternC(wire) = pass_source(input, name, mask)? else {
+			return Err(foreign_source(col));
+		};
+		pass_kind(col, self.columns[col].1, wire.type_code)?;
+		if wire.type_code == ValueKind::None {
+			return self.pass_nones(col, mask);
+		}
+		let mut handle = ptr::null_mut();
+		// SAFETY: the host keeps the ExternCContextRaw behind `self.ctx` valid for the whole guest call;
+		// `wire` borrows the live input, `mask` is `mask.len()` bytes of 0 / 1 (a bool is one byte), and
+		// `handle` is a live out slot the host writes before returning.
+		let code = unsafe {
+			((*self.ctx).callbacks.pass_through)(
+				self.ctx,
+				wire,
+				mask.as_ptr().cast::<u8>(),
+				mask.len(),
+				&mut handle,
+			)
+		};
+		if code != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host pass_through failed with code {code}")));
+		}
+		let rows = mask.iter().filter(|&&keep| keep).count();
+		self.writers[col] = AnyWriter::Passed(CommittedColumn::passed(handle, rows));
+		Ok(())
 	}
 }

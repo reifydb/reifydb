@@ -432,6 +432,10 @@ pub struct DictionaryIdWriter<'a> {
 }
 
 impl DictionaryIdWriter<'_> {
+	pub(crate) fn len(&self) -> usize {
+		self.inner.item_cursor
+	}
+
 	pub fn finish(self) -> Result<CommittedColumn, SdkError> {
 		self.inner.finish()
 	}

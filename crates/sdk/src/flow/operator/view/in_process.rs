@@ -28,7 +28,7 @@ use reifydb_value::{
 	},
 };
 
-use super::{ChangeView, ColumnCursor, ColumnsView, CursorValue, DiffView, RowView, ViewCell};
+use super::{ChangeView, ColumnCursor, ColumnsView, CursorValue, DiffView, PassSource, RowView, ViewCell};
 use crate::error::SdkError;
 
 pub type DictionaryValues = HashMap<usize, HashMap<DictionaryEntryId, Value>>;
@@ -401,6 +401,10 @@ impl<'a> ColumnsView for InProcessColumnsView<'a> {
 			rows: self.columns.batch.num_rows(),
 			_value: PhantomData,
 		}))
+	}
+
+	fn pass_source(&self, name: &str) -> Result<Option<PassSource<'_>>, SdkError> {
+		Ok(self.columns.view(name)?.map(PassSource::InProcess))
 	}
 
 	fn row_numbers(&self) -> &[RowNumber] {

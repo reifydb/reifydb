@@ -23,7 +23,9 @@ use reifydb_core::value::{
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_sdk::common::{
 	extern_c::wire::{
+		buffer::ExternCBuffer,
 		callbacks::builder::{ColumnBufferHandle, EmitDiffKind},
+		columns::ExternCColumnData,
 		status::{
 			EXTERN_C_ERROR_INTERNAL, EXTERN_C_ERROR_INVALID_UTF8, EXTERN_C_ERROR_MARSHAL,
 			EXTERN_C_ERROR_NULL_PTR, EXTERN_C_ERROR_ROW_NUMBER_MISMATCH, EXTERN_C_OK,
@@ -33,6 +35,7 @@ use reifydb_sdk::common::{
 };
 use reifydb_value::{
 	reifydb_assertions,
+	util::kernel::shared_predicate,
 	value::{
 		Value,
 		constraint::{precision::Precision, scale::Scale},
@@ -159,6 +162,72 @@ pub fn with_registry<R>(registry: &BuilderRegistry, f: impl FnOnce() -> R) -> R 
 	let result = f();
 	REGISTRY.with(|cell| cell.set(prev));
 	result
+}
+
+/// # Safety
+/// Every buffer `input` describes must be live and hold the bytes its lengths state, as the host
+/// marshaller laid them out for this call.
+pub(crate) unsafe fn commit_passed(input: &ExternCColumnData, mask: &[u8]) -> Result<*mut ColumnBufferHandle, i32> {
+	let Some(registry) = current_registry() else {
+		return Err(EXTERN_C_ERROR_INTERNAL);
+	};
+	let rows = input.row_count;
+	if mask.len() != rows {
+		return Err(EXTERN_C_ERROR_MARSHAL);
+	}
+	let family =
+		match is_family(input.type_code) {
+			true => Some(family_params(input.type_code, input.precision, input.scale)
+				.ok_or(EXTERN_C_ERROR_MARSHAL)?),
+			false => None,
+		};
+	// SAFETY: discharged by this function's contract.
+	let (data, offsets, bitvec) =
+		unsafe { (wire_bytes(&input.data), wire_bytes(&input.offsets), wire_bytes(&input.defined_bitvec)) };
+	let (data, offsets) = match is_var_len(input.type_code) {
+		true => {
+			let offsets: Vec<u64> = offsets
+				.chunks_exact(8)
+				.map(|bytes| u64::from_ne_bytes(bytes.try_into().unwrap()))
+				.collect();
+			let start = offsets.first().copied().unwrap_or(0);
+			let end = offsets.last().copied().unwrap_or(0);
+			let data = data.get(start as usize..end as usize).ok_or(EXTERN_C_ERROR_MARSHAL)?.to_vec();
+			(data, Some(offsets.iter().map(|offset| offset - start).collect()))
+		}
+		false => (data.to_vec(), None),
+	};
+	let bitvec = (!bitvec.is_empty()).then(|| bitvec.to_vec());
+	let (field, array) = finalize_buffer(input.type_code, family, data, offsets, bitvec, rows)?;
+	let keep = BooleanBuffer::from_iter(mask.iter().map(|&keep| keep != 0));
+	let selected = shared_predicate(&keep, rows).filter(array.as_ref()).map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+	let row_count = selected.len();
+	let mut inner = registry.inner.lock();
+	let id = inner.next_id;
+	inner.next_id = inner.next_id.checked_add(1).unwrap_or(1);
+	inner.slots.insert(
+		id,
+		BuilderSlot::Committed(CommittedBuilder {
+			type_code: input.type_code,
+			buffer: (field, selected),
+			row_count,
+		}),
+	);
+	Ok(Handle {
+		id,
+		generation: 1,
+	}
+	.encode())
+}
+
+/// # Safety
+/// `buffer` must be live for the returned borrow, and a non-null `ptr` must hold `len` bytes.
+unsafe fn wire_bytes(buffer: &ExternCBuffer) -> &[u8] {
+	if buffer.ptr.is_null() || buffer.len == 0 {
+		return &[];
+	}
+	// SAFETY: the caller keeps `buffer` live for the returned borrow and `ptr` holds `len` bytes.
+	unsafe { slice::from_raw_parts(buffer.ptr, buffer.len) }
 }
 
 /// # Safety

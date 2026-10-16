@@ -29,6 +29,13 @@ pub struct CommittedColumn {
 }
 
 impl CommittedColumn {
+	pub(crate) fn passed(handle: *mut ColumnBufferHandle, row_count: usize) -> Self {
+		Self {
+			handle,
+			row_count,
+		}
+	}
+
 	pub(crate) fn row_count(&self) -> usize {
 		self.row_count
 	}

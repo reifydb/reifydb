@@ -9,7 +9,9 @@ use reifydb_value::value::{
 	system_columns::RowTimes, time::Time,
 };
 
-use crate::{error::SdkError, flow::operator::change::BorrowedColumn};
+use crate::{
+	common::extern_c::wire::columns::ExternCColumnData, error::SdkError, flow::operator::change::BorrowedColumn,
+};
 
 pub trait ViewCell<'a>: Sized {
 	const READS_ENTRY_ID: bool = false;
@@ -62,6 +64,11 @@ pub trait RowView {
 	fn row_time(&self) -> Option<DateTime>;
 }
 
+pub enum PassSource<'c> {
+	InProcess(&'c ColumnView<'c>),
+	ExternC(&'c ExternCColumnData),
+}
+
 pub trait ColumnsView {
 	fn row_count(&self) -> usize;
 	fn row(&self, index: usize) -> Option<impl RowView + '_>;
@@ -69,6 +76,7 @@ pub trait ColumnsView {
 		&'c self,
 		name: &str,
 	) -> Result<Option<impl ColumnCursor<T> + 'c>, SdkError>;
+	fn pass_source(&self, name: &str) -> Result<Option<PassSource<'_>>, SdkError>;
 	fn row_numbers(&self) -> &[RowNumber];
 	fn times(&self) -> RowTimes<'_>;
 }

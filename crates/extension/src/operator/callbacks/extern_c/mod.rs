@@ -4,6 +4,7 @@
 pub mod context;
 pub mod dictionary;
 mod marshal;
+mod pass_through;
 pub mod state;
 pub mod state_iterator;
 
@@ -44,6 +45,7 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			reclaim_group_identity: state::host_reclaim_group_identity,
 		},
 		dictionary_get_many: dictionary::host_dictionary_get_many,
+		pass_through: pass_through::host_pass_through,
 		builder: BuilderCallbacks {
 			acquire: builder::host_builder_acquire,
 			data_ptr: builder::host_builder_data_ptr,

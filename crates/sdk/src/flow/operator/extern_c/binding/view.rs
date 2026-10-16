@@ -31,8 +31,8 @@ use crate::{
 	flow::operator::{
 		change::{BorrowedChange, BorrowedColumn, BorrowedColumns, BorrowedDiff},
 		view::{
-			BorrowedCell, ChangeView, ColumnCursor, ColumnsView, CursorValue, DiffView, RowView,
-			in_process::DictionaryValues,
+			BorrowedCell, ChangeView, ColumnCursor, ColumnsView, CursorValue, DiffView, PassSource,
+			RowView, in_process::DictionaryValues,
 		},
 	},
 };
@@ -485,6 +485,10 @@ impl<'a> ColumnsView for ExternCColumnsView<'a> {
 		})
 	}
 
+	fn pass_source(&self, name: &str) -> SdkResult<Option<PassSource<'_>>> {
+		Ok(self.names.column(name)?.map(|(col, _)| PassSource::ExternC(col.wire())))
+	}
+
 	fn row_numbers(&self) -> &[RowNumber] {
 		self.names.columns.row_numbers()
 	}
@@ -509,6 +513,10 @@ impl<'a> ColumnsView for BorrowedColumns<'a> {
 
 	fn row(&self, index: usize) -> Option<impl RowView + '_> {
 		(*self).row(index)
+	}
+
+	fn pass_source(&self, name: &str) -> SdkResult<Option<PassSource<'_>>> {
+		Ok(BorrowedColumns::column(self, name)?.map(|col| PassSource::ExternC(col.wire())))
 	}
 
 	fn row_numbers(&self) -> &[RowNumber] {

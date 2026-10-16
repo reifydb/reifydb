@@ -4,37 +4,47 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
+use arrow_buffer::BooleanBuffer;
 use reifydb_codec::tag::ValueKind;
 use reifydb_core::value::{
 	batch::batch,
 	column::{builder::ColumnBuilder, push::Push},
 };
-use reifydb_value::value::{
-	blob::Blob,
-	constraint::{precision::Precision, scale::Scale},
-	container::temporal_array::datetime_array,
-	date::Date,
-	datetime::DateTime,
-	decimal::Decimal,
-	dictionary::DictionaryEntryId,
-	duration::Duration,
-	row_number::RowNumber,
-	system_columns::{SystemColumn, stamp_system_columns},
-	time::Time,
+use reifydb_value::{
+	util::kernel::shared_predicate,
+	value::{
+		blob::Blob,
+		column_view::ColumnView,
+		constraint::{precision::Precision, scale::Scale},
+		container::temporal_array::datetime_array,
+		date::Date,
+		datetime::DateTime,
+		decimal::Decimal,
+		dictionary::DictionaryEntryId,
+		duration::Duration,
+		row_number::RowNumber,
+		system_columns::{SystemColumn, stamp_system_columns},
+		time::Time,
+	},
 };
 
 use crate::{
-	common::family::default_family_params,
+	common::{extern_wasm::marshal::util::column_data_to_type_code, family::default_family_params},
 	error::SdkError,
 	flow::operator::{
-		column::sink::{ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type},
+		column::sink::{
+			ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, foreign_source,
+			pass_after_push, pass_kind, pass_source, passed_column,
+		},
 		context::check_emit_count,
+		view::{ColumnsView, PassSource},
 	},
 };
 
 pub struct InProcessRowSink {
 	columns: &'static [(&'static str, ValueKind)],
 	cols: Vec<ColumnBuilder>,
+	passed: Vec<bool>,
 }
 
 impl InProcessRowSink {
@@ -46,6 +56,7 @@ impl InProcessRowSink {
 		Ok(Self {
 			columns,
 			cols,
+			passed: vec![false; columns.len()],
 		})
 	}
 
@@ -67,6 +78,9 @@ impl InProcessRowSink {
 
 	#[inline]
 	fn column(&mut self, col: usize, kind: ValueKind, cell: &str) -> Result<&mut ColumnBuilder, SdkError> {
+		if self.passed[col] {
+			return Err(passed_column(col));
+		}
 		let declared = self.columns[col].1;
 		if declared != kind {
 			return Err(column_mismatch(col, declared, cell));
@@ -239,7 +253,35 @@ impl RowSink for InProcessRowSink {
 	}
 	#[inline]
 	fn push_none(&mut self, col: usize) -> Result<(), SdkError> {
+		if self.passed[col] {
+			return Err(passed_column(col));
+		}
 		self.cols[col].push_none();
+		Ok(())
+	}
+
+	fn pass_through(
+		&mut self,
+		col: usize,
+		input: &impl ColumnsView,
+		name: &str,
+		mask: &[bool],
+	) -> Result<(), SdkError> {
+		if self.passed[col] {
+			return Err(passed_column(col));
+		}
+		if !self.cols[col].is_empty() {
+			return Err(pass_after_push(col));
+		}
+		let PassSource::InProcess(view) = pass_source(input, name, mask)? else {
+			return Err(foreign_source(col));
+		};
+		pass_kind(col, self.columns[col].1, column_data_to_type_code(view))?;
+		let selected = shared_predicate(&BooleanBuffer::from(mask), mask.len())
+			.filter(view.array())
+			.map_err(|err| SdkError::Other(err.to_string()))?;
+		self.cols[col].append_values(&ColumnView::try_from((&selected, view.field))?)?;
+		self.passed[col] = true;
 		Ok(())
 	}
 }

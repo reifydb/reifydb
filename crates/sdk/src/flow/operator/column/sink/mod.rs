@@ -9,7 +9,10 @@ use reifydb_value::value::{
 	time::Time, value_type::ValueType,
 };
 
-use crate::error::SdkError;
+use crate::{
+	error::SdkError,
+	flow::operator::view::{ColumnsView, PassSource},
+};
 
 pub trait ColumnWriter<T: ?Sized> {
 	fn push(&mut self, value: &T) -> Result<(), SdkError>;
@@ -51,6 +54,13 @@ pub trait RowSink {
 	fn decimal_column(&mut self, col: usize) -> Result<impl ColumnWriter<Decimal> + '_, SdkError>;
 	fn dictionary_id_column(&mut self, col: usize) -> Result<impl ColumnWriter<DictionaryEntryId> + '_, SdkError>;
 	fn push_none(&mut self, col: usize) -> Result<(), SdkError>;
+	fn pass_through(
+		&mut self,
+		col: usize,
+		input: &impl ColumnsView,
+		name: &str,
+		mask: &[bool],
+	) -> Result<(), SdkError>;
 
 	fn push_u8(&mut self, col: usize, v: u8) -> Result<(), SdkError> {
 		self.u8_column(col)?.push(&v)
@@ -134,6 +144,42 @@ impl<F: Copy + Into<f64>, W: ColumnWriter<F>> ColumnWriter<F> for NoneOnNan<W> {
 
 pub(crate) fn column_mismatch(col: usize, kind: ValueKind, cell: &str) -> SdkError {
 	SdkError::InvalidInput(format!("column {col} is {kind:?}, cannot push {cell}"))
+}
+
+pub(crate) fn pass_source<'c>(
+	input: &'c impl ColumnsView,
+	name: &str,
+	mask: &[bool],
+) -> Result<PassSource<'c>, SdkError> {
+	let rows = input.row_count();
+	if mask.len() != rows {
+		return Err(SdkError::InvalidInput(format!(
+			"pass through of {name} has a mask of {} for {rows} rows",
+			mask.len()
+		)));
+	}
+	input.pass_source(name)?.ok_or_else(|| {
+		SdkError::InvalidInput(format!("pass through of {name}, which the input does not carry"))
+	})
+}
+
+pub(crate) fn pass_kind(col: usize, declared: ValueKind, source: ValueKind) -> Result<(), SdkError> {
+	if source == declared || source == ValueKind::None {
+		return Ok(());
+	}
+	Err(SdkError::InvalidInput(format!("column {col} is {declared:?}, cannot pass through a {source:?} column")))
+}
+
+pub(crate) fn passed_column(col: usize) -> SdkError {
+	SdkError::InvalidInput(format!("column {col} was passed through and takes no other write"))
+}
+
+pub(crate) fn pass_after_push(col: usize) -> SdkError {
+	SdkError::InvalidInput(format!("column {col} already holds pushed cells, so it cannot be passed through"))
+}
+
+pub(crate) fn foreign_source(col: usize) -> SdkError {
+	SdkError::InvalidInput(format!("column {col} cannot pass through an input of the other binding"))
 }
 
 pub(crate) fn unsupported_column(kind: ValueKind) -> SdkError {

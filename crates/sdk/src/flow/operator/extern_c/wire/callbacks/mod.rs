@@ -7,7 +7,11 @@ use self::state::StateCallbacks;
 use crate::{
 	common::extern_c::wire::{
 		buffer::ExternCBuffer,
-		callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks},
+		callbacks::{
+			builder::{BuilderCallbacks, ColumnBufferHandle},
+			memory::MemoryCallbacks,
+		},
+		columns::ExternCColumnData,
 	},
 	flow::operator::extern_c::wire::context::ExternCContextRaw,
 };
@@ -28,5 +32,13 @@ pub struct OperatorCallbacks {
 		n: usize,
 		values_out: *mut ExternCBuffer,
 		present_out: *mut u8,
+	) -> i32,
+
+	pub pass_through: extern "C" fn(
+		ctx: *mut ExternCContextRaw,
+		input: *const ExternCColumnData,
+		mask: *const u8,
+		mask_len: usize,
+		handle_out: *mut *mut ColumnBufferHandle,
 	) -> i32,
 }
