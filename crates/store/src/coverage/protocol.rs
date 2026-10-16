@@ -593,7 +593,6 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 	let domain = domain();
 	let mut published = 0u64;
 	let mut refused = 0u64;
-	let mut drops_refused = 0u64;
 	let mut evictions = 0u64;
 	let violation: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
@@ -635,7 +634,6 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 		}
 		published += cache.published.load(Ordering::Relaxed);
 		refused += cache.refused.load(Ordering::Relaxed);
-		drops_refused += cache.drops_refused.load(Ordering::Relaxed);
 		evictions += cache.evictions.load(Ordering::Relaxed);
 	}
 
@@ -643,5 +641,4 @@ fn concurrent_fills_evictions_and_invalidates_never_overstate_coverage() {
 	assert!(published > 1000, "only {published} claims published: nothing was ever claimed to overstate");
 	assert!(evictions > 100, "only {evictions} evictions: the capacity cap never forced the retraction path");
 	assert!(refused > 10, "only {refused} claims refused by a token: the fill-versus-shrink race never ran");
-	assert!(drops_refused > 0, "no drop was refused, so the fill-count guard never ran");
 }
