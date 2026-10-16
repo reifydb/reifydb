@@ -34,7 +34,10 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_store_operator::store::{OperatorStore, pin::CheckpointPin};
+use reifydb_store_operator::{
+	error::Result,
+	store::{OperatorStore, pin::CheckpointPin},
+};
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -639,7 +642,7 @@ fn retire_flow(
 	operators: &OperatorStore,
 	flows: &mut BTreeMap<FlowId, FlowActorHandle>,
 	flow_id: FlowId,
-) -> reifydb_store_operator::error::Result<bool> {
+) -> Result<bool> {
 	let Some(handle) = flows.remove(&flow_id) else {
 		operators.checkpoint_remove(flow_id)?;
 		return Ok(false);
@@ -690,10 +693,7 @@ fn stored_checkpoint(operators: &OperatorStore, flow_id: FlowId) -> Option<Commi
 	}
 }
 
-fn reap_orphan_checkpoints(
-	operators: &OperatorStore,
-	known: &BTreeSet<FlowId>,
-) -> reifydb_store_operator::error::Result<()> {
+fn reap_orphan_checkpoints(operators: &OperatorStore, known: &BTreeSet<FlowId>) -> Result<()> {
 	for flow_id in operators.checkpoint_list()? {
 		if known.contains(&flow_id) {
 			continue;
