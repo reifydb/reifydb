@@ -17,20 +17,10 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	Result,
-	expression::{
-		compile::compile_expression,
-		context::{CompileContext, EvalContext},
-	},
-};
+use crate::{Result, expression::context::EvalContext, lower::LoweredExpr};
 
 pub fn evaluate(ctx: &EvalContext, expr: &Expression) -> Result<(FieldRef, ArrayRef)> {
-	let compile_ctx = CompileContext {
-		symbols: ctx.symbols,
-	};
-	let compiled = compile_expression(&compile_ctx, expr)?;
-	let column = compiled.execute(ctx)?;
+	let column = LoweredExpr::new(expr.clone(), "evaluate").evaluate(ctx)?;
 
 	if let Some(ty) = ctx.target.as_ref().map(|c| c.column_type()) {
 		let view = ColumnView::try_from(&column)?;

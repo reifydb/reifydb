@@ -4,13 +4,7 @@
 use std::{collections::HashMap, sync::LazyLock};
 
 use reifydb_core::{expression::Expression, value::batch::empty_batch};
-use reifydb_evaluate::{
-	expression::{
-		compile::compile_expression,
-		context::{CompileContext, EvalContext},
-	},
-	stack::SymbolTable,
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr, stack::SymbolTable};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -28,10 +22,6 @@ pub fn evaluate_operator_params(
 	runtime_context: &RuntimeContext,
 ) -> Result<HashMap<String, Value>> {
 	let mut result = HashMap::new();
-
-	let compile_ctx = CompileContext {
-		symbols: &EMPTY_SYMBOL_TABLE,
-	};
 
 	let session = EvalContext {
 		params: &EMPTY_PARAMS,
@@ -51,8 +41,8 @@ pub fn evaluate_operator_params(
 		if let Expression::Alias(alias_expr) = expr {
 			let key = alias_expr.alias.name().to_string();
 
-			let expr = compile_expression(&compile_ctx, &alias_expr.expression)?;
-			let column = expr.execute(&exec_ctx)?;
+			let column = LoweredExpr::new(alias_expr.expression.as_ref().clone(), "config")
+				.evaluate(&exec_ctx)?;
 			let view = ColumnView::try_from(&column)?;
 
 			let value = if !view.is_empty() {

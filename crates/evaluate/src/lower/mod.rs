@@ -184,6 +184,13 @@ impl From<Error> for Stop<'_> {
 
 type Lowered<'e, T> = std::result::Result<T, Stop<'e>>;
 
+pub fn compile_check(expression: &Expression) -> Result<()> {
+	match variant::compile_time_error(expression) {
+		Some(error) => Err(error),
+		None => Ok(()),
+	}
+}
+
 impl LoweredExpr {
 	pub fn new(expression: Expression, operator: &'static str) -> Self {
 		Self {
@@ -223,6 +230,10 @@ impl LoweredExpr {
 				let array = value
 					.into_array(ctx.row_count)
 					.map_err(|err| from_datafusion(self.operator, err))?;
+				let array = match ctx.take {
+					Some(take) if take < array.len() => array.slice(0, take),
+					_ => array,
+				};
 				if !field.is_nullable() && array.logical_null_count() > 0 {
 					let mut field_type = from_field(field)?;
 					field_type.value_type = field_type

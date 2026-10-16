@@ -9,13 +9,7 @@ use reifydb_core::{
 	interface::catalog::policy::{CallableOp, DataOp, PolicyTargetType, SessionOp},
 	value::batch::empty_batch,
 };
-use reifydb_evaluate::{
-	expression::{
-		compile::compile_expression,
-		context::{CompileContext, EvalContext},
-	},
-	stack::SymbolTable,
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr, stack::SymbolTable};
 use reifydb_policy::{
 	enforce::{PolicyTarget, enforce_identity_policy, enforce_session_policy, enforce_write_policies},
 	evaluate::PolicyEvaluator as PolicyEvaluatorTrait,
@@ -98,10 +92,7 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 		row_count: usize,
 		identity: IdentityId,
 	) -> Result<bool> {
-		let compile_ctx = CompileContext {
-			symbols: self.symbols,
-		};
-		let compiled = compile_expression(&compile_ctx, expr)?;
+		let lowered = LoweredExpr::new(expr.clone(), "policy");
 
 		let base = EvalContext {
 			params: &Params::None,
@@ -117,7 +108,7 @@ impl PolicyEvaluatorTrait for PolicyEvaluator<'_> {
 		};
 		let eval_ctx = base.with_eval(batch.clone(), row_count);
 
-		let result = compiled.execute(&eval_ctx)?;
+		let result = lowered.evaluate(&eval_ctx)?;
 		let view = ColumnView::try_from(&result)?;
 
 		let denied = match &view.data {

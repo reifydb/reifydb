@@ -18,11 +18,8 @@ use reifydb_core::{
 	value::batch::{empty_batch, take_rows},
 };
 use reifydb_evaluate::{
-	expression::{
-		compile::compile_expression,
-		context::{CompileContext, EvalContext},
-	},
-	lower::LoweredExpr,
+	expression::context::EvalContext,
+	lower::{LoweredExpr, compile_check},
 };
 use reifydb_flow::{context::FlowContext, operator::source::decode_change};
 use reifydb_macro::operator_state;
@@ -85,11 +82,8 @@ impl GateOperator {
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self> {
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
 		for condition in &conditions {
-			compile_expression(&compile_ctx, condition)?;
+			compile_check(condition)?;
 		}
 		let lowered_conditions: Vec<LoweredExpr> =
 			conditions.into_iter().map(|condition| LoweredExpr::new(condition, "gate")).collect();

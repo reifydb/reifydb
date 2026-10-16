@@ -18,10 +18,10 @@ use reifydb_core::{
 };
 use reifydb_evaluate::{
 	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
+		context::EvalContext,
 		udf_extract::{ExtractedUdf, extract_udf_calls},
 	},
+	lower::{LoweredExpr, compile_check},
 	stack::{SymbolTable, Variable, strip_dollar_prefix},
 };
 use reifydb_rql::instruction::Instruction;
@@ -49,16 +49,16 @@ use crate::{
 	},
 };
 
-struct CompiledUdfCall {
+struct LoweredUdfCall {
 	udf: ExtractedUdf,
 
-	compiled_args: Vec<CompiledExpr>,
+	lowered_args: Vec<LoweredExpr>,
 }
 
 pub(crate) struct UdfEvalNode {
 	input: Box<dyn QueryNode>,
 	udf_calls: Vec<ExtractedUdf>,
-	context: Option<(Arc<QueryContext>, Vec<CompiledUdfCall>)>,
+	context: Option<(Arc<QueryContext>, Vec<LoweredUdfCall>)>,
 }
 
 impl UdfEvalNode {
@@ -96,10 +96,10 @@ impl UdfEvalNode {
 	}
 
 	#[instrument(level = "trace", skip_all, name = "volcano::udf_eval::args")]
-	fn eval_args(call: &CompiledUdfCall, eval_ctx: &EvalContext) -> Result<Vec<(FieldRef, ArrayRef)>> {
-		let mut arg_columns = Vec::with_capacity(call.compiled_args.len());
-		for (compiled_arg, parameter) in call.compiled_args.iter().zip(call.udf.callable.parameters.iter()) {
-			let argument = compiled_arg.execute(eval_ctx)?;
+	fn eval_args(call: &LoweredUdfCall, eval_ctx: &EvalContext) -> Result<Vec<(FieldRef, ArrayRef)>> {
+		let mut arg_columns = Vec::with_capacity(call.lowered_args.len());
+		for (lowered_arg, parameter) in call.lowered_args.iter().zip(call.udf.callable.parameters.iter()) {
+			let argument = lowered_arg.evaluate(eval_ctx)?;
 			arg_columns.push(cast_to_parameter_type(eval_ctx, parameter, argument)?);
 		}
 		Ok(arg_columns)
@@ -110,7 +110,7 @@ impl UdfEvalNode {
 		rx: &mut Transaction<'a>,
 		stored_ctx: &QueryContext,
 		eval_ctx: &EvalContext,
-		call: &CompiledUdfCall,
+		call: &LoweredUdfCall,
 		arg_columns: &[(FieldRef, ArrayRef)],
 		row_count: usize,
 	) -> Result<(FieldRef, ArrayRef)> {
@@ -167,7 +167,7 @@ impl UdfEvalNode {
 		rx: &mut Transaction<'a>,
 		stored_ctx: &QueryContext,
 		eval_ctx: &EvalContext,
-		call: &CompiledUdfCall,
+		call: &LoweredUdfCall,
 		arg_columns: &[(FieldRef, ArrayRef)],
 		row_count: usize,
 	) -> Result<(FieldRef, ArrayRef)> {
@@ -225,27 +225,26 @@ impl QueryNode for UdfEvalNode {
 			check_arity(&udf.callable.parameters, udf.arg_expressions.len(), &udf.name, &udf.fragment)?;
 		}
 
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
-
-		let compiled: Vec<CompiledUdfCall> = self
+		let lowered: Vec<LoweredUdfCall> = self
 			.udf_calls
 			.drain(..)
 			.map(|udf| {
-				let compiled_args = udf
+				for expression in &udf.arg_expressions {
+					compile_check(expression)?;
+				}
+				let lowered_args = udf
 					.arg_expressions
 					.iter()
-					.map(|e| compile_expression(&compile_ctx, e))
-					.collect::<Result<Vec<_>>>()?;
-				Ok(CompiledUdfCall {
+					.map(|e| LoweredExpr::new(e.clone(), "udf_arg"))
+					.collect();
+				Ok(LoweredUdfCall {
 					udf,
-					compiled_args,
+					lowered_args,
 				})
 			})
 			.collect::<Result<Vec<_>>>()?;
 
-		self.context = Some((Arc::new(ctx.clone()), compiled));
+		self.context = Some((Arc::new(ctx.clone()), lowered));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
@@ -361,9 +360,6 @@ pub(crate) fn evaluate_udfs_no_input(
 		return Ok(None);
 	}
 
-	let compile_ctx = CompileContext {
-		symbols: &ctx.symbols,
-	};
 	let session = eval_context_from_query(ctx);
 	let mut result_columns = Vec::new();
 
@@ -377,9 +373,8 @@ pub(crate) fn evaluate_udfs_no_input(
 		}
 
 		for (param, arg_expr) in udf.callable.parameters.iter().zip(udf.arg_expressions.iter()) {
-			let compiled_arg = compile_expression(&compile_ctx, arg_expr)?;
 			let eval_ctx = session.with_eval_empty();
-			let arg_col = compiled_arg.execute(&eval_ctx)?;
+			let arg_col = LoweredExpr::new(arg_expr.clone(), "udf_arg").evaluate(&eval_ctx)?;
 			let cast = cast_to_parameter_type(&eval_ctx, param, arg_col)?;
 			let value = ColumnView::try_from(&cast)?.get_value(0);
 			let param_name = strip_dollar_prefix(param.name.text()).to_string();

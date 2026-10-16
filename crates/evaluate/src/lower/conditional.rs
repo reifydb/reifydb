@@ -47,7 +47,25 @@ pub(super) fn lower_if<'e>(
 
 	let name = branches[0].field.name().clone();
 	let all: Vec<&Node> = branches.iter().chain(otherwise.iter()).collect();
-	let (target, mismatches) = layout(&all, &e.fragment)?;
+	let expressions: Vec<&Expression> = [e.then_expr.as_ref()]
+		.into_iter()
+		.chain(e.else_ifs.iter().map(|else_if| else_if.then_expr.as_ref()))
+		.chain(e.else_expr.as_deref())
+		.collect();
+	let mut columns = Vec::with_capacity(all.len());
+	for (node, expression) in all.iter().zip(&expressions) {
+		columns.push(branch_columns(ctx, operator, expression, node)?);
+	}
+	let (target, mut mismatches) = layout(&columns, &e.fragment)?;
+	if columns.iter().any(|fields| fields.len() != columns[0].len())
+		&& let Some(diagnostic) = mismatches.iter().flatten().next().cloned()
+	{
+		for (index, fields) in columns.iter().enumerate() {
+			if fields.len() != 1 && mismatches[index].is_none() {
+				mismatches[index] = Some(diagnostic.clone());
+			}
+		}
+	}
 	let nullable = otherwise.is_none() || all.iter().any(|node| node.field.is_nullable());
 	let first = all[0].field.clone();
 
@@ -75,7 +93,11 @@ pub(super) fn lower_if<'e>(
 					field: typed_field(&name, target.clone(), true),
 					signature: volatile(),
 				},
-				vec![node.expr],
+				if columns[index].len() == 1 {
+					vec![node.expr]
+				} else {
+					vec![]
+				},
 			));
 		}
 		if !is_untyped_none(&node.field)? && inner_type(&node.field)? == target {
@@ -98,37 +120,58 @@ pub(super) fn lower_if<'e>(
 	})
 }
 
-fn layout(nodes: &[&Node], fragment: &Fragment) -> Result<(Option<ValueType>, Vec<Option<Diagnostic>>)> {
-	let describe = |node: &Node| -> Result<(String, ValueType, bool)> {
-		let untyped = is_untyped_none(&node.field)?;
+fn branch_columns<'e>(
+	ctx: &EvalContext,
+	operator: &'static str,
+	expression: &'e Expression,
+	node: &Node,
+) -> Lowered<'e, Vec<FieldRef>> {
+	let parts = match expression {
+		Expression::Map(map) if map.expressions.len() != 1 => &map.expressions,
+		Expression::Extend(extend) if extend.expressions.len() != 1 => &extend.expressions,
+		_ => return Ok(vec![node.field.clone()]),
+	};
+	let mut fields = Vec::with_capacity(parts.len());
+	for part in parts {
+		fields.push(lower_node(ctx, operator, part)?.field);
+	}
+	Ok(fields)
+}
+
+type Described = Vec<(String, ValueType, bool)>;
+
+fn layout(branches: &[Vec<FieldRef>], fragment: &Fragment) -> Result<(Option<ValueType>, Vec<Option<Diagnostic>>)> {
+	let describe = |field: &FieldRef| -> Result<(String, ValueType, bool)> {
+		let untyped = is_untyped_none(field)?;
 		let value_type = if untyped {
 			ValueType::Any
 		} else {
-			inner_type(&node.field)?
+			inner_type(field)?
 		};
-		Ok((node.field.name().clone(), value_type, untyped))
+		Ok((field.name().clone(), value_type, untyped))
 	};
-	let described = nodes.iter().map(|node| describe(node)).collect::<Result<Vec<_>>>()?;
-	let entry = |index: usize| {
-		let (name, ty, untyped) = &described[index];
-		(name.as_str(), ty.clone(), *untyped)
-	};
+	let described = branches
+		.iter()
+		.map(|fields| fields.iter().map(describe).collect::<Result<Described>>())
+		.collect::<Result<Vec<_>>>()?;
+	let entries =
+		|index: usize| described[index].iter().map(|(name, ty, untyped)| (name.as_str(), ty.clone(), *untyped));
 	let build = |accepted: &[usize]| -> Result<BranchLayout> {
-		let mut layout = BranchLayout::new([entry(accepted[0])]);
+		let mut layout = BranchLayout::new(entries(accepted[0]));
 		for &index in &accepted[1..] {
-			layout.admit([entry(index)], fragment)?;
+			layout.admit(entries(index), fragment)?;
 		}
 		Ok(layout)
 	};
 	let mut accepted = vec![0];
 	let mut mismatches = vec![None; described.len()];
 	for index in 1..described.len() {
-		match build(&accepted)?.admit([entry(index)], fragment) {
+		match build(&accepted)?.admit(entries(index), fragment) {
 			Ok(()) => accepted.push(index),
 			Err(error) => mismatches[index] = Some(*error.0),
 		}
 	}
-	if accepted.iter().all(|&index| described[index].2) {
+	if accepted.iter().all(|&index| described[index].iter().all(|(_, _, untyped)| *untyped)) {
 		return Ok((None, mismatches));
 	}
 	Ok((Some(build(&accepted)?.types()[0].clone()), mismatches))

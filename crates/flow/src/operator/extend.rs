@@ -14,11 +14,8 @@ use reifydb_core::{
 	value::{batch::empty_batch, column::factory::rename},
 };
 use reifydb_evaluate::{
-	expression::{
-		compile::compile_expression,
-		context::{CompileContext, EvalContext},
-	},
-	lower::LoweredExpr,
+	expression::context::EvalContext,
+	lower::{LoweredExpr, compile_check},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -50,11 +47,8 @@ impl ExtendOperator {
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self> {
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
 		for expression in &expressions {
-			compile_expression(&compile_ctx, expression)?;
+			compile_check(expression)?;
 		}
 		let lowered_expressions: Vec<LoweredExpr> =
 			expressions.iter().map(|expression| LoweredExpr::new(expression.clone(), "extend")).collect();

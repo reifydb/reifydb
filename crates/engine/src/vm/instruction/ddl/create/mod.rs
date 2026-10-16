@@ -29,10 +29,7 @@ use reifydb_core::{
 	operator_with::ApplyWith,
 	sort::SortKey,
 };
-use reifydb_evaluate::{
-	expression::{compile::compile_expression, context::CompileContext, udf_extract::extract_udf_calls},
-	stack::SymbolTable,
-};
+use reifydb_evaluate::{expression::udf_extract::extract_udf_calls, lower::compile_check, stack::SymbolTable};
 use reifydb_flow::{
 	compiler::compile_flow,
 	time_domain::{check_join_retention_requirements, check_window_time_requirements, source_time_domain},
@@ -211,15 +208,12 @@ fn resolve_flow_variants(catalog: &Catalog, txn: &mut AdminTransaction, plan: &m
 	inputs.into_iter().try_for_each(|input| resolve_flow_variants(catalog, txn, input))
 }
 
-fn ensure_flow_expressions_compile(plan: &mut QueryPlan, symbols: &SymbolTable) -> Result<()> {
+fn ensure_flow_expressions_compile(plan: &mut QueryPlan) -> Result<()> {
 	let (expressions, inputs) = plan_expressions_and_inputs(plan);
-	let compile_ctx = CompileContext {
-		symbols,
-	};
 	for expression in expressions {
-		compile_expression(&compile_ctx, expression)?;
+		compile_check(expression)?;
 	}
-	inputs.into_iter().try_for_each(|input| ensure_flow_expressions_compile(input, symbols))
+	inputs.into_iter().try_for_each(ensure_flow_expressions_compile)
 }
 
 fn ensure_no_lookup(plan: &mut QueryPlan) -> Result<()> {
@@ -352,7 +346,7 @@ pub(crate) fn create_deferred_view_flow(
 	ensure_no_script_routine_call(&mut plan, symbols)?;
 	ensure_apply_operators_registered(&mut plan, operators)?;
 	resolve_flow_variants(catalog, txn, &mut plan)?;
-	ensure_flow_expressions_compile(&mut plan, symbols)?;
+	ensure_flow_expressions_compile(&mut plan)?;
 	let flow_id = catalog.next_flow_id(txn)?;
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow_id)?;
 	check_window_time_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
@@ -473,7 +467,7 @@ pub(crate) fn create_transactional_view_flow(
 	ensure_no_script_routine_call(&mut plan, symbols)?;
 	ensure_apply_operators_registered(&mut plan, operators)?;
 	resolve_flow_variants(catalog, txn, &mut plan)?;
-	ensure_flow_expressions_compile(&mut plan, symbols)?;
+	ensure_flow_expressions_compile(&mut plan)?;
 	let flow_id = catalog.next_flow_id(txn)?;
 	let dag = compile_flow(catalog, routines, txn, plan, Some(view), flow_id)?;
 	check_transactional_flow(catalog, txn, &dag)?;
