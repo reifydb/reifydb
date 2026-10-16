@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{any::type_name, marker::PhantomData};
+use std::{any::type_name, cell::OnceCell, collections::HashMap, marker::PhantomData, rc::Rc};
 
 use reifydb_codec::tag::{TypeTag, ValueKind};
 use reifydb_value::{
@@ -24,22 +24,45 @@ use crate::{
 	},
 };
 
-#[derive(Clone, Copy)]
-pub struct ExternCRowView<'a> {
+struct ExternCNames<'a> {
 	columns: BorrowedColumns<'a>,
+	positions: OnceCell<Option<HashMap<&'a str, BorrowedColumn<'a>>>>,
+}
+
+impl<'a> ExternCNames<'a> {
+	fn new(columns: BorrowedColumns<'a>) -> Rc<Self> {
+		Rc::new(Self {
+			columns,
+			positions: OnceCell::new(),
+		})
+	}
+
+	fn column(&self, name: &str) -> SdkResult<Option<BorrowedColumn<'a>>> {
+		let positions = self.positions.get_or_init(|| {
+			let mut positions = HashMap::with_capacity(self.columns.column_count());
+			for column in self.columns.columns() {
+				positions.entry(column.checked_name().ok()?).or_insert(column);
+			}
+			Some(positions)
+		});
+		match positions {
+			Some(positions) => {
+				positions.get(name).map(|column| self.columns.checked_rows(name, *column)).transpose()
+			}
+			None => self.columns.column(name),
+		}
+	}
+}
+
+#[derive(Clone)]
+pub struct ExternCRowView<'a> {
+	names: Rc<ExternCNames<'a>>,
 	index: usize,
 }
 
 impl<'a> ExternCRowView<'a> {
-	pub(crate) fn new(columns: BorrowedColumns<'a>, index: usize) -> Self {
-		Self {
-			columns,
-			index,
-		}
-	}
-
 	fn read<T: BorrowedCell<'a>>(&self, name: &str) -> SdkResult<Option<T>> {
-		let Some(col) = self.columns.column(name)? else {
+		let Some(col) = self.names.column(name)? else {
 			return Ok(None);
 		};
 		if !col.defined_at(self.index)? {
@@ -51,7 +74,7 @@ impl<'a> ExternCRowView<'a> {
 
 impl<'a> RowView for ExternCRowView<'a> {
 	fn is_defined(&self, name: &str) -> Result<bool, SdkError> {
-		match self.columns.column(name)? {
+		match self.names.column(name)? {
 			Some(col) => col.defined_at(self.index),
 			None => Ok(false),
 		}
@@ -138,11 +161,11 @@ impl<'a> RowView for ExternCRowView<'a> {
 	}
 
 	fn row_number(&self) -> Option<RowNumber> {
-		self.columns.row_numbers().get(self.index).copied()
+		self.names.columns.row_numbers().get(self.index).copied()
 	}
 
 	fn row_time(&self) -> Option<DateTime> {
-		self.columns.times().get(self.index)
+		self.names.columns.times().get(self.index)
 	}
 }
 
@@ -289,11 +312,53 @@ impl<'a> BorrowedColumns<'a> {
 		if index >= self.row_count() {
 			return None;
 		}
-		Some(ExternCRowView::new(self, index))
+		Some(ExternCRowView {
+			names: ExternCNames::new(self),
+			index,
+		})
 	}
 
 	pub fn rows(self) -> impl Iterator<Item = ExternCRowView<'a>> {
-		(0..self.row_count()).map(move |i| ExternCRowView::new(self, i))
+		let names = ExternCNames::new(self);
+		(0..self.row_count()).map(move |index| ExternCRowView {
+			names: Rc::clone(&names),
+			index,
+		})
+	}
+}
+
+struct ExternCColumnsView<'a> {
+	names: Rc<ExternCNames<'a>>,
+}
+
+impl<'a> ColumnsView for ExternCColumnsView<'a> {
+	fn row_count(&self) -> usize {
+		self.names.columns.row_count()
+	}
+
+	fn column<'c, T: CursorValue<'c> + 'c>(&'c self, name: &str) -> SdkResult<Option<impl ColumnCursor<T> + 'c>> {
+		Ok(self.names.column(name)?.map(|col| ExternCCursor {
+			col,
+			_value: PhantomData,
+		}))
+	}
+
+	fn row(&self, index: usize) -> Option<impl RowView + '_> {
+		if index >= self.names.columns.row_count() {
+			return None;
+		}
+		Some(ExternCRowView {
+			names: Rc::clone(&self.names),
+			index,
+		})
+	}
+
+	fn row_numbers(&self) -> &[RowNumber] {
+		self.names.columns.row_numbers()
+	}
+
+	fn times(&self) -> RowTimes<'_> {
+		self.names.columns.times()
 	}
 }
 
@@ -333,14 +398,18 @@ impl<'a> DiffView for BorrowedDiff<'a> {
 
 	fn pre(&self) -> Option<impl ColumnsView + '_> {
 		match BorrowedDiff::kind(self) {
-			DiffType::Update | DiffType::Remove => Some(self.pre()),
+			DiffType::Update | DiffType::Remove => Some(ExternCColumnsView {
+				names: ExternCNames::new(self.pre()),
+			}),
 			DiffType::Insert => None,
 		}
 	}
 
 	fn post(&self) -> Option<impl ColumnsView + '_> {
 		match BorrowedDiff::kind(self) {
-			DiffType::Insert | DiffType::Update => Some(self.post()),
+			DiffType::Insert | DiffType::Update => Some(ExternCColumnsView {
+				names: ExternCNames::new(self.post()),
+			}),
 			DiffType::Remove => None,
 		}
 	}

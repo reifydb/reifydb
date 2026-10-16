@@ -181,16 +181,20 @@ impl<'a> BorrowedColumns<'a> {
 			if column.checked_name()? != name {
 				continue;
 			}
-			if column.row_count() != self.row_count() {
-				return Err(malformed(format!(
-					"extern-c column {name} holds {} rows in a batch of {}",
-					column.row_count(),
-					self.row_count()
-				)));
-			}
-			return Ok(Some(column));
+			return self.checked_rows(name, column).map(Some);
 		}
 		Ok(None)
+	}
+
+	pub(crate) fn checked_rows(&self, name: &str, column: BorrowedColumn<'a>) -> SdkResult<BorrowedColumn<'a>> {
+		if column.row_count() != self.row_count() {
+			return Err(malformed(format!(
+				"extern-c column {name} holds {} rows in a batch of {}",
+				column.row_count(),
+				self.row_count()
+			)));
+		}
+		Ok(column)
 	}
 }
 
