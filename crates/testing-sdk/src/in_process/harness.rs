@@ -42,7 +42,13 @@ use reifydb_value::{
 	value::{Value, datetime::DateTime},
 };
 
-use crate::{builders::TestChangeBuilder, in_process::transaction::TestFlowTransaction};
+use crate::{
+	builders::TestChangeBuilder,
+	in_process::{
+		counting::{Call, CountingHost},
+		transaction::TestFlowTransaction,
+	},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ReclaimedGroups {
@@ -64,6 +70,7 @@ pub struct InProcessOperatorHarness<C: MountedOperator + OperatorMetadata + 'sta
 	with: ApplyWith,
 	operator_id: OperatorId,
 	history: Vec<Change>,
+	calls: Option<Vec<Call>>,
 	_phantom: PhantomData<C>,
 }
 
@@ -84,8 +91,11 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 
 	pub fn apply(&mut self, input: Change) -> Result<Change> {
 		let retention = self.operator.retention();
-		let mut host = TxnHostContext::with_retention(&mut self.txn, self.operator_id, retention);
-		let output = self.operator.apply(&mut host, input)?;
+		let host = TxnHostContext::with_retention(&mut self.txn, self.operator_id, retention);
+		let output = match self.calls.as_mut() {
+			Some(calls) => self.operator.apply(&mut CountingHost::new(host, calls), input)?,
+			None => self.operator.apply(&mut { host }, input)?,
+		};
 		self.history.push(output.clone());
 		Ok(output)
 	}
@@ -97,15 +107,16 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 
 	pub fn on_timer(&mut self, at: DateTime, kind: TimerKind, key: &[u8]) -> Result<Option<Change>> {
 		let retention = self.operator.retention();
-		let mut host = TxnHostContext::with_retention(&mut self.txn, self.operator_id, retention);
-		let output = self.operator.on_timer(
-			&mut host,
-			Timer {
-				due: at,
-				kind,
-				key: EncodedKey::new(key),
-			},
-		)?;
+		let host = TxnHostContext::with_retention(&mut self.txn, self.operator_id, retention);
+		let timer = Timer {
+			due: at,
+			kind,
+			key: EncodedKey::new(key),
+		};
+		let output = match self.calls.as_mut() {
+			Some(calls) => self.operator.on_timer(&mut CountingHost::new(host, calls), timer)?,
+			None => self.operator.on_timer(&mut { host }, timer)?,
+		};
 		if let Some(change) = &output {
 			self.history.push(change.clone());
 		}
@@ -218,6 +229,16 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 		self
 	}
 
+	pub fn calls(&self) -> &[Call] {
+		self.calls.as_deref().expect("calls() needs a harness built with counting()")
+	}
+
+	pub fn clear_calls(&mut self) {
+		if let Some(calls) = self.calls.as_mut() {
+			calls.clear();
+		}
+	}
+
 	pub fn history_len(&self) -> usize {
 		self.history.len()
 	}
@@ -277,6 +298,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 		self.txn.row_shape_cache(self.operator_id).clear();
 		self.txn.set_version(CommitVersion(1));
 		self.history.clear();
+		self.clear_calls();
 
 		self.operator = Self::mount_operator(self.operator_id, &self.params, &self.with)?;
 		Ok(())
@@ -322,6 +344,7 @@ pub struct InProcessOperatorHarnessBuilder<C: MountedOperator + OperatorMetadata
 	version: CommitVersion,
 	clock: Clock,
 	dictionaries: Vec<(Dictionary, Vec<Value>)>,
+	counting: bool,
 	_phantom: PhantomData<C>,
 }
 
@@ -340,6 +363,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarnessBu
 			version: CommitVersion(1),
 			clock: Clock::Mock(MockClock::new(0)),
 			dictionaries: Vec::new(),
+			counting: false,
 			_phantom: PhantomData,
 		}
 	}
@@ -383,6 +407,11 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarnessBu
 		self
 	}
 
+	pub fn counting(mut self) -> Self {
+		self.counting = true;
+		self
+	}
+
 	pub fn build(self) -> Result<InProcessOperatorHarness<C>> {
 		let txn = TestFlowTransaction::new(self.version, self.clock);
 		for (dictionary, values) in &self.dictionaries {
@@ -400,6 +429,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarnessBu
 			with: self.with,
 			operator_id: self.operator_id,
 			history: Vec::new(),
+			calls: self.counting.then(Vec::new),
 			_phantom: PhantomData,
 		})
 	}
@@ -512,5 +542,44 @@ mod tests {
 		assert_eq!(stored_value(&harness, 3), 30i64);
 
 		assert_eq!(harness.snapshot_state().len(), 3);
+	}
+
+	#[test]
+	fn counting_records_every_host_call_of_an_apply_and_leaves_its_result_unchanged() {
+		// Counter gates read these calls, so a wrapper that skips, merges or alters one would prove a false
+		// win.
+		let input = || {
+			TestChangeBuilder::new()
+				.insert_row(1, vec![Value::Int8(10i64)])
+				.insert_row(2, vec![Value::Int8(20i64)])
+				.build()
+		};
+		let mut plain = InProcessOperatorHarnessBuilder::<UnmanagedMount<StatefulTestOperator>>::new()
+			.build()
+			.expect("a plain harness builds");
+		let mut counted = InProcessOperatorHarnessBuilder::<UnmanagedMount<StatefulTestOperator>>::new()
+			.counting()
+			.build()
+			.expect("a counting harness builds");
+
+		let plain_out = plain.apply(input()).expect("plain apply");
+		let counted_out = counted.apply(input()).expect("counted apply");
+
+		assert_eq!(format!("{counted_out:?}"), format!("{plain_out:?}"));
+		assert_eq!(counted.snapshot_state(), plain.snapshot_state());
+		assert_eq!(counted.calls(), &[("state_set", 1), ("state_set", 1)]);
+
+		counted.clear_calls();
+		assert!(counted.calls().is_empty(), "clear_calls must drop every recorded call");
+	}
+
+	#[test]
+	#[should_panic(expected = "counting()")]
+	fn calls_on_a_harness_built_without_counting_panics() {
+		// A gate reading calls from an uncounted harness would see nothing and pass for the wrong reason.
+		let harness = InProcessOperatorHarnessBuilder::<UnmanagedMount<StatefulTestOperator>>::new()
+			.build()
+			.expect("a plain harness builds");
+		let _ = harness.calls();
 	}
 }
