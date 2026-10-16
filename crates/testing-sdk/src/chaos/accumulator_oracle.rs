@@ -31,7 +31,7 @@ use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::flow::operator::{
 	column::{row::Row, sink::in_process::InProcessRowSink},
 	mount::context::InProcessContext,
-	view::{ColumnsView, in_process::InProcessColumnsView},
+	view::in_process::InProcessColumnsView,
 	windowed::operator::{CarryEmit, Contribution, Emit, WindowedOperator},
 };
 use reifydb_testing_chaos::operator::{
@@ -168,10 +168,15 @@ where
 	let columns = from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded))
 		.unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
-	let row_view = view.row(0)?;
-	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
-	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract(ctx, &row_view))
-		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))?;
+	let coord = aggregate
+		.coord_batch(&view, &[0])
+		.unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))
+		.pop()
+		.flatten()?;
+	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract_batch(ctx, &view, &[0]))
+		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))
+		.pop()
+		.flatten()?;
 	Some((group, coord, contribution))
 }
 
@@ -439,10 +444,15 @@ where
 	let columns = from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded))
 		.unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
-	let row_view = view.row(0)?;
-	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
-	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract(ctx, &row_view))
-		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))?;
+	let coord = aggregate
+		.coord_batch(&view, &[0])
+		.unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))
+		.pop()
+		.flatten()?;
+	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract_batch(ctx, &view, &[0]))
+		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))
+		.pop()
+		.flatten()?;
 	Some((group, coord.floor_to(pane), contribution))
 }
 
@@ -683,9 +693,14 @@ where
 	let columns = from_encoded_bytes(&row.shape, &[row.number], slice::from_ref(&row.encoded))
 		.unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
-	let row_view = view.row(0)?;
-	let coord = aggregate.coord(&row_view).unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))?;
-	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract(ctx, &row_view))
-		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))?;
+	let coord = aggregate
+		.coord_batch(&view, &[0])
+		.unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))
+		.pop()
+		.flatten()?;
+	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract_batch(ctx, &view, &[0]))
+		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))
+		.pop()
+		.flatten()?;
 	Some((group, coord, contribution))
 }

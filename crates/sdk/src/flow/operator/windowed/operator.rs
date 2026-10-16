@@ -39,13 +39,17 @@ pub trait WindowedOperator: OperatorMetadata + Send + Sync + Sized {
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<Self::Coord>>;
+	fn coord(&self, _row: &impl RowView) -> Result<Option<Self::Coord>> {
+		Err(batch_only::<Self>("coord"))
+	}
 
 	fn extract(
 		&self,
-		ctx: &mut impl GuestContext<Windowed>,
-		row: &impl RowView,
-	) -> Result<Option<(Self::GroupKey, Contribution<Self>)>>;
+		_ctx: &mut impl GuestContext<Windowed>,
+		_row: &impl RowView,
+	) -> Result<Option<(Self::GroupKey, Contribution<Self>)>> {
+		Err(batch_only::<Self>("extract"))
+	}
 
 	fn coord_batch(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<Self::Coord>>> {
 		rows.iter().map(|&i| cols.row(i).map(|row| self.coord(&row)).transpose().map(Option::flatten)).collect()
@@ -86,6 +90,10 @@ pub(crate) fn extract_rows<T: WindowedOperator>(
 			extracted.map(|(group, contribution)| (i, coord, group, contribution))
 		})
 		.collect())
+}
+
+fn batch_only<T: WindowedOperator>(method: &str) -> SdkError {
+	SdkError::OperatorError(format!("{} reads rows only in batches, {method} is not implemented", T::NAME))
 }
 
 pub(crate) fn batch_len<T: WindowedOperator, V>(values: Vec<V>, rows: usize, method: &str) -> Result<Vec<V>> {
