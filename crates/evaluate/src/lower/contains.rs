@@ -27,7 +27,7 @@ pub(super) fn lower_contains<'e>(
 	operator: &'static str,
 	_expression: &'e Expression,
 	contains: &'e ContainsExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let name = contains.fragment.text();
 	let value = lower_node(ctx, operator, &contains.value)?;
 	let items = items(&contains.list);

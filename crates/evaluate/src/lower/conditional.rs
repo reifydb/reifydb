@@ -33,7 +33,7 @@ pub(super) fn lower_if<'e>(
 	operator: &'static str,
 	_expression: &'e Expression,
 	e: &'e IfExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let mut conditions = vec![truthy(lower_node(ctx, operator, &e.condition)?)?];
 	let mut branches = vec![lower_node(ctx, operator, &e.then_expr)?];
 	for else_if in &e.else_ifs {
@@ -125,7 +125,7 @@ fn branch_columns<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	node: &Node,
-) -> Lowered<'e, Vec<FieldRef>> {
+) -> Lowered<Vec<FieldRef>> {
 	let parts = match expression {
 		Expression::Map(map) if map.expressions.len() != 1 => &map.expressions,
 		Expression::Extend(extend) if extend.expressions.len() != 1 => &extend.expressions,

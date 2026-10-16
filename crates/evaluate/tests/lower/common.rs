@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fs, sync::Arc, thread};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, Schema};
@@ -19,10 +19,7 @@ use reifydb_core::{
 	value::column::factory,
 };
 use reifydb_evaluate::{
-	expression::{
-		compile::compile_expression,
-		context::{CompileContext, EvalContext},
-	},
+	expression::context::EvalContext,
 	lower::LoweredExpr,
 	stack::{ClosureValue, SymbolTable, Variable},
 };
@@ -83,7 +80,6 @@ impl Env {
 			take: None,
 			params: &self.params,
 			symbols: &self.symbols,
-			is_aggregate_context: false,
 			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			identity: IdentityId::root(),
@@ -92,13 +88,6 @@ impl Env {
 
 	pub fn lowered(&self, expression: &Expression, batch: RecordBatch) -> Result<(FieldRef, ArrayRef)> {
 		LoweredExpr::new(expression.clone(), "test").evaluate(&self.ctx(batch))
-	}
-
-	pub fn old(&self, expression: &Expression, batch: RecordBatch) -> Result<(FieldRef, ArrayRef)> {
-		let compile_ctx = CompileContext {
-			symbols: &self.symbols,
-		};
-		compile_expression(&compile_ctx, expression)?.execute(&self.ctx(batch))
 	}
 }
 
@@ -446,4 +435,96 @@ pub fn map(expressions: Vec<Expression>) -> Expression {
 		expressions,
 		fragment: frag("map"),
 	})
+}
+
+pub fn describe(result: &Result<(FieldRef, ArrayRef)>) -> String {
+	match result {
+		Ok(column) => format!("{:?} {:?}", column.0, strings(column)),
+		Err(error) => format!("{} {:?} {} {:?}", error.code, error.fragment.text(), error.message, error.notes),
+	}
+	.replace('\n', "\\n")
+}
+
+pub struct Frozen {
+	answers: Vec<String>,
+	next: usize,
+}
+
+impl Frozen {
+	pub fn load(test: &str) -> Self {
+		let path = format!("{}/tests/lower/frozen/{test}.txt", env!("CARGO_MANIFEST_DIR"));
+		let answers = fs::read_to_string(&path).unwrap().lines().map(str::to_string).collect();
+		Self {
+			answers,
+			next: 0,
+		}
+	}
+
+	pub fn inline(answers: &[&str]) -> Self {
+		Self {
+			answers: answers.iter().map(|answer| answer.to_string()).collect(),
+			next: 0,
+		}
+	}
+
+	pub fn recorded(&mut self) -> String {
+		self.next()
+	}
+
+	pub fn old(&mut self, env: &Env, expression: &Expression, batch: RecordBatch) -> Result<(FieldRef, ArrayRef)> {
+		self.answer(env.lowered(expression, batch))
+	}
+
+	pub fn answer(&mut self, result: Result<(FieldRef, ArrayRef)>) -> Result<(FieldRef, ArrayRef)> {
+		let expected = self.next();
+		assert_eq!(describe(&result), expected, "frozen old answer {}", self.next);
+		result
+	}
+
+	pub fn next(&mut self) -> String {
+		self.next += 1;
+		self.answers[self.next - 1].clone()
+	}
+
+	pub fn exhausted(&self) -> bool {
+		self.next == self.answers.len()
+	}
+}
+
+impl Drop for Frozen {
+	fn drop(&mut self) {
+		if !thread::panicking() {
+			assert!(
+				self.exhausted(),
+				"only {} of {} frozen old answers were checked",
+				self.next,
+				self.answers.len()
+			);
+		}
+	}
+}
+
+pub fn code_of(answer: &str) -> &str {
+	answer.split(' ').next().unwrap()
+}
+
+pub fn name_of(answer: &str) -> String {
+	let mut name = String::new();
+	let mut chars = answer.strip_prefix("Field { name: \"").unwrap().chars();
+	while let Some(c) = chars.next() {
+		match c {
+			'\\' => name.push(chars.next().unwrap()),
+			'"' => break,
+			other => name.push(other),
+		}
+	}
+	name
+}
+
+pub fn values_of(answer: &str) -> Vec<String> {
+	let list = &answer[answer.rfind(" [").unwrap() + 2..answer.len() - 1];
+	if list.is_empty() {
+		return vec![];
+	}
+	list.split(", ").map(|value| value.trim_matches('"').to_string()).collect()
 }

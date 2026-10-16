@@ -27,7 +27,7 @@ pub(super) fn lower_field_access<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	access: &'e FieldAccessExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let object = lower_node(ctx, operator, &access.object)?;
 	let field = Arc::new(object.field.as_ref().clone().with_name(display_label(expression).text()));
 	Ok(Node {

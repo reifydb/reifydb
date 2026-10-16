@@ -21,7 +21,6 @@ pub struct EvalContext<'a> {
 	pub take: Option<usize>,
 	pub params: &'a Params,
 	pub symbols: &'a SymbolTable,
-	pub is_aggregate_context: bool,
 	pub routines: &'a Routines,
 	pub runtime_context: &'a RuntimeContext,
 	pub identity: IdentityId,
@@ -42,7 +41,6 @@ impl<'a> EvalContext<'a> {
 			take: None,
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
 			routines: &EMPTY_ROUTINES,
 			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			identity: IdentityId::system(),
@@ -57,7 +55,6 @@ impl<'a> EvalContext<'a> {
 			take: None,
 			params: self.params,
 			symbols: self.symbols,
-			is_aggregate_context: self.is_aggregate_context,
 			routines: self.routines,
 			runtime_context: self.runtime_context,
 			identity: self.identity,
@@ -93,8 +90,4 @@ impl ArithContext {
 		}
 		.saturation_policy()
 	}
-}
-
-pub struct CompileContext<'a> {
-	pub symbols: &'a SymbolTable,
 }

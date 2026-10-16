@@ -187,7 +187,6 @@ impl<'a> Vm<'a> {
 			routines: self.routines,
 			runtime_context: self.runtime_context,
 			identity: self.identity,
-			is_aggregate_context: false,
 			batch: empty_batch(),
 			row_count: self.batch_size,
 			target: None,

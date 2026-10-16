@@ -69,7 +69,7 @@ fn hashes(by: &str) -> Vec<u128> {
 
 #[test]
 fn a_computed_by_takes_the_lowered_path() {
-	// Between over a nullable column groups per row only on the lowered path; the old path errors.
+	// A computed by must group between over a nullable column per row, or a none row fails the view.
 	let groups = grouped(&TestEngine::new(), "a between 2 and 10", "n: math::count(a)")
 		.compute_groups(&rows())
 		.expect("the by keys every row");
@@ -116,7 +116,7 @@ fn a_computed_by_keeps_the_stored_group_hashes() {
 
 #[test]
 fn a_computed_flow_slot_arg_takes_the_lowered_path() {
-	// Between over a nullable column answers per row only on the lowered path; the old path errors.
+	// A computed slot input must answer between per row over a nullable column, or a none row fails the view.
 	let core = grouped(&TestEngine::new(), "a", "n: math::count(a between 2 and 10)");
 
 	let inputs = core.evaluate_slot_inputs(&rows()).expect("the slot input evaluates every row");

@@ -5,7 +5,7 @@ use reifydb_test_harness::engine::TestEngine;
 
 #[test]
 fn between_over_a_nullable_column_answers_per_row_in_an_extend() {
-	// An extend over a table must take the lowered path, where between answers per row while the old path errors.
+	// An extend over a table must answer between per row, otherwise a none row fails the whole batch.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::t { a: Option(int4) }");
@@ -21,7 +21,7 @@ fn between_over_a_nullable_column_answers_per_row_in_an_extend() {
 
 #[test]
 fn an_extend_column_reads_an_earlier_new_column_on_the_lowered_path() {
-	// A later extend column must see the earlier one on the lowered path, otherwise chained extends break.
+	// A later extend column must see the earlier one, otherwise chained extends break.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::t { a: Option(int4) }");
@@ -37,7 +37,7 @@ fn an_extend_column_reads_an_earlier_new_column_on_the_lowered_path() {
 
 #[test]
 fn between_with_a_none_bound_follows_kleene_in_an_extend_with_no_input() {
-	// An extend with no input must take the lowered path too, where a none bound gives none instead of an error.
+	// An extend with no input must give none for a none bound, never an error.
 	let t = TestEngine::new();
 
 	let frames = t.query("EXTEND { b: 1 between none and 3 }");

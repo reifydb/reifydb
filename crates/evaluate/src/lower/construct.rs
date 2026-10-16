@@ -42,7 +42,7 @@ pub(super) fn lower_construct<'e>(
 	shape: Shape,
 	items: &'e [Expression],
 	fragment: &Fragment,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	if shape == Shape::Tuple && items.len() == 1 {
 		return lower_node(ctx, operator, &items[0]);
 	}
@@ -75,7 +75,7 @@ pub(super) fn lower_projection<'e>(
 	operator: &'static str,
 	expressions: &'e [Expression],
 	fragment: &Fragment,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	if expressions.len() == 1 {
 		return lower_node(ctx, operator, &expressions[0]);
 	}

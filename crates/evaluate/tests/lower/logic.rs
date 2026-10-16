@@ -6,7 +6,9 @@ use arrow_buffer::BooleanBuffer;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory;
 
-use crate::common::{Env, and, batch, boolean, column, none, not, number, or, rows, strings};
+use crate::common::{
+	Env, Frozen, and, batch, boolean, code_of, column, none, not, number, or, rows, strings, values_of,
+};
 
 fn operands() -> RecordBatch {
 	let left = [Some(true), Some(true), Some(true), Some(false), Some(false), Some(false), None, None, None];
@@ -53,11 +55,16 @@ fn not_keeps_none_and_flips_the_rest() {
 #[test]
 fn the_lowered_truth_tables_match_the_old_path_row_for_row() {
 	// Any row where the two paths disagree is a filter result that changes under the new path.
+	let mut frozen = Frozen::inline(&[
+		"Field { name: \"l and r\", data_type: Boolean, nullable: true } [\"true\", \"false\", \"none\", \"false\", \"false\", \"false\", \"none\", \"false\", \"none\"]",
+		"Field { name: \"l or r\", data_type: Boolean, nullable: true } [\"true\", \"true\", \"true\", \"true\", \"false\", \"none\", \"true\", \"none\", \"none\"]",
+		"Field { name: \"not l\", data_type: Boolean, nullable: true } [\"false\", \"false\", \"false\", \"true\", \"true\", \"true\", \"none\", \"none\", \"none\"]",
+	]);
 	let env = Env::new();
 
 	for expression in [and(column("l"), column("r")), or(column("l"), column("r")), not(column("l"))] {
 		let lowered = env.lowered(&expression, operands()).unwrap();
-		let old = env.old(&expression, operands()).unwrap();
+		let old = frozen.old(&env, &expression, operands()).unwrap();
 		assert_eq!(strings(&lowered), strings(&old), "{expression:?}");
 	}
 }
@@ -65,6 +72,7 @@ fn the_lowered_truth_tables_match_the_old_path_row_for_row() {
 #[test]
 fn an_untyped_none_operand_acts_as_a_none_bool() {
 	// A bare none literal must take part in three valued logic, not raise a type error.
+	let mut frozen = Frozen::load("an_untyped_none_operand_acts_as_a_none_bool");
 	let env = Env::new();
 	let cases = [
 		(and(none(), boolean("true")), "none"),
@@ -76,20 +84,24 @@ fn an_untyped_none_operand_acts_as_a_none_bool() {
 
 	for (expression, expected) in cases {
 		let lowered = env.lowered(&expression, rows(1)).unwrap();
-		let old = env.old(&expression, rows(1)).unwrap();
 		assert_eq!(strings(&lowered), vec![expected], "{expression:?}");
-		assert_eq!(strings(&lowered), strings(&old), "{expression:?}");
+		assert_eq!(strings(&lowered), values_of(&frozen.recorded()), "{expression:?}");
 	}
 }
 
 #[test]
 fn a_number_operand_fails_with_the_same_error_as_the_old_path() {
 	// The type error must keep its code and fragment, or goldens that pin it move.
+	let mut frozen = Frozen::inline(&[
+		"OPERATOR_005 \"1andtrue\" Cannot apply AND operator to number [\"AND is a logical operator that combines boolean values\", \"To convert numbers to boolean, use comparison operators like: value != 0\", \"For bitwise operations on integers, use the bitwise AND (&) operator instead\"]",
+		"OPERATOR_009 \"falseor1\" Cannot apply OR operator to number [\"OR is a logical operator that combines boolean values\", \"To convert numbers to boolean, use comparison operators like: value != 0\", \"For bitwise operations on integers, use the bitwise OR (|) operator instead\"]",
+		"OPERATOR_001 \"not1\" Cannot apply NOT operator to number [\"NOT is a logical operator that inverts boolean values (true becomes false, false becomes true)\", \"For numeric negation, use the minus (-) operator instead\", \"To convert numbers to boolean, use comparison operators like: value != 0\"]",
+	]);
 	let env = Env::new();
 
 	for expression in [and(number("1"), boolean("true")), or(boolean("false"), number("1")), not(number("1"))] {
 		let lowered = env.lowered(&expression, rows(1)).unwrap_err();
-		let old = env.old(&expression, rows(1)).unwrap_err();
+		let old = frozen.old(&env, &expression, rows(1)).unwrap_err();
 		assert_eq!(lowered.code, old.code, "{expression:?}");
 		assert_eq!(lowered.fragment.text(), old.fragment.text(), "{expression:?}");
 	}
@@ -98,6 +110,7 @@ fn a_number_operand_fails_with_the_same_error_as_the_old_path() {
 #[test]
 fn a_type_error_on_the_right_is_raised_even_when_the_left_decides() {
 	// The type check runs at lowering, so a deciding left side no longer hides a bad right side.
+	let mut frozen = Frozen::load("a_type_error_on_the_right_is_raised_even_when_the_left_decides");
 	let env = Env::new();
 
 	let cases = [
@@ -105,11 +118,10 @@ fn a_type_error_on_the_right_is_raised_even_when_the_left_decides() {
 		(and(boolean("false"), number("1")), and(number("1"), boolean("false")), "false"),
 	];
 
-	for (expression, swapped, today) in cases {
+	for (expression, _swapped, today) in cases {
 		let lowered = env.lowered(&expression, rows(1)).unwrap_err();
-		let old_swapped = env.old(&swapped, rows(1)).unwrap_err();
-		assert_eq!(lowered.code, old_swapped.code, "{expression:?}");
-		assert_eq!(strings(&env.old(&expression, rows(1)).unwrap()), vec![today], "{expression:?}");
+		assert_eq!(lowered.code, code_of(&frozen.recorded()), "{expression:?}");
+		assert_eq!(values_of(&frozen.recorded()), vec![today], "{expression:?}");
 	}
 }
 

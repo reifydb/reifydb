@@ -4,17 +4,18 @@
 use reifydb_core::value::column::factory;
 use reifydb_value::value::value_type::{ValueType, field::from_field};
 
-use crate::common::{Env, alias, arith, batch, column, strings};
+use crate::common::{Env, Frozen, alias, arith, batch, column, strings};
 
 #[test]
 fn an_alias_over_a_column_lowers_to_the_column_renamed() {
 	// A map output column is named by its alias, so keeping the inner name would rename the user's column.
+	let mut frozen = Frozen::inline(&["Field { name: \"x\", data_type: Int32 } [\"1\", \"2\"]"]);
 	let env = Env::new();
 	let input = batch(vec![factory::int4("a", [1, 2])]);
 	let expression = alias("x", column("a"));
 
 	let lowered = env.lowered(&expression, input.clone()).unwrap();
-	let old = env.old(&expression, input).unwrap();
+	let old = frozen.old(&env, &expression, input).unwrap();
 
 	assert_eq!(lowered, old);
 	assert_eq!(lowered.0.name(), "x");
@@ -24,12 +25,13 @@ fn an_alias_over_a_column_lowers_to_the_column_renamed() {
 #[test]
 fn an_alias_over_arithmetic_keeps_the_arith_type_and_takes_the_alias_name() {
 	// The rename must touch only the name, never the promoted type or nullability of the node below it.
+	let mut frozen = Frozen::inline(&["Field { name: \"total\", data_type: Int64 } [\"3\"]"]);
 	let env = Env::new();
 	let input = batch(vec![factory::int4("l", [1]), factory::int4("r", [2])]);
 	let expression = alias("total", arith("+", column("l"), column("r")));
 
 	let lowered = env.lowered(&expression, input.clone()).unwrap();
-	let old = env.old(&expression, input).unwrap();
+	let old = frozen.old(&env, &expression, input).unwrap();
 
 	assert_eq!(lowered, old);
 	assert_eq!(lowered.0.name(), "total");

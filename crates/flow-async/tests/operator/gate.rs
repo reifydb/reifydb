@@ -75,7 +75,7 @@ fn inserted(change: &Change, column: &str) -> Vec<String> {
 
 #[test]
 fn the_gate_drops_none_false_and_non_boolean_rows() {
-	// Only true may open the gate, and the lowered between must answer per row where the old path errors.
+	// Only true may open the gate, and between must answer per row over a nullable column.
 	let rows = batch(vec![factory::int4_optional("a", [Some(1), None, Some(5)])]).unwrap();
 
 	let out = apply(&mut gate("a between 2 and 10"), insert(rows.clone())).unwrap();

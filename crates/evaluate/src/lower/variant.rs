@@ -37,7 +37,7 @@ pub(super) fn compile_time_error(expression: &Expression) -> Option<Error> {
 	children(expression).into_iter().find_map(compile_time_error)
 }
 
-fn children(expression: &Expression) -> Vec<&Expression> {
+pub(super) fn children(expression: &Expression) -> Vec<&Expression> {
 	match expression {
 		Expression::Alias(e) => vec![&e.expression],
 		Expression::Cast(e) => vec![&e.expression],

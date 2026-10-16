@@ -13,7 +13,7 @@ fn engine() -> TestEngine {
 
 #[test]
 fn a_computed_slot_input_takes_the_lowered_path() {
-	// Between over a nullable column answers per row only on the lowered path; the old path errors.
+	// A computed slot input must answer between per row over a nullable column, or a none row fails the batch.
 	// The none row stays none, so count sees only the two defined rows.
 	let t = engine();
 

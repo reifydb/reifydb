@@ -28,7 +28,7 @@ pub(super) fn lower_prefix<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	prefix: &'e PrefixExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let inner = lower_node(ctx, operator, &prefix.expression)?;
 	let label = display_label(expression);
 	if is_untyped_none(&inner.field)? {

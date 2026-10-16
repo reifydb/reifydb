@@ -7,6 +7,7 @@ mod compare;
 mod conditional;
 mod construct;
 mod contains;
+mod direct;
 mod error;
 mod field_access;
 mod in_list;
@@ -35,7 +36,6 @@ use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::{
 	error::{BinaryOp, Diagnostic, Error, LogicalOp},
 	fragment::Fragment,
-	reifydb_assertions,
 	value::{
 		column_view::ColumnView,
 		value_type::{
@@ -47,103 +47,14 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	expression::{
-		arith::ArithOp,
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-		logic::execute_logical_op,
-		prefix::prefix_apply,
+	expression::{arith::ArithOp, context::EvalContext, logic::execute_logical_op, prefix::prefix_apply},
+	lower::{
+		cast::lower_cast,
+		direct::{Direct, Spliced},
+		error::from_datafusion,
+		schema::positional_schema,
 	},
-	lower::{cast::lower_cast, error::from_datafusion, schema::positional_schema},
 };
-
-pub const CLAIMED: &[&str] = &[
-	"Column",
-	"AccessSource",
-	"Constant",
-	"Prefix(Not)",
-	"Prefix(Minus)",
-	"Prefix(Plus)",
-	"And",
-	"Or",
-	"Equal",
-	"NotEqual",
-	"LessThan",
-	"LessThanEqual",
-	"GreaterThan",
-	"GreaterThanEqual",
-	"Between",
-	"In",
-	"If",
-	"Xor",
-	"Contains",
-	"IsVariant",
-	"SumTypeConstructor",
-	"Tuple",
-	"List",
-	"Map",
-	"Extend",
-	"Add",
-	"Sub",
-	"Mul",
-	"Div",
-	"Rem",
-	"Call",
-	"Variable",
-	"Parameter",
-	"Type",
-	"FieldAccess(Variable)",
-	"FieldAccess(Other)",
-	"Alias",
-	"Cast",
-];
-
-pub fn kind(expression: &Expression) -> &'static str {
-	match expression {
-		Expression::AccessSource(_) => "AccessSource",
-		Expression::Alias(_) => "Alias",
-		Expression::Cast(_) => "Cast",
-		Expression::Constant(_) => "Constant",
-		Expression::Column(_) => "Column",
-		Expression::Add(_) => "Add",
-		Expression::Div(_) => "Div",
-		Expression::Call(_) => "Call",
-		Expression::Rem(_) => "Rem",
-		Expression::Mul(_) => "Mul",
-		Expression::Sub(_) => "Sub",
-		Expression::Tuple(_) => "Tuple",
-		Expression::List(_) => "List",
-		Expression::Prefix(prefix) => match prefix.operator {
-			PrefixOperator::Minus(_) => "Prefix(Minus)",
-			PrefixOperator::Plus(_) => "Prefix(Plus)",
-			PrefixOperator::Not(_) => "Prefix(Not)",
-		},
-		Expression::GreaterThan(_) => "GreaterThan",
-		Expression::GreaterThanEqual(_) => "GreaterThanEqual",
-		Expression::LessThan(_) => "LessThan",
-		Expression::LessThanEqual(_) => "LessThanEqual",
-		Expression::Equal(_) => "Equal",
-		Expression::NotEqual(_) => "NotEqual",
-		Expression::Between(_) => "Between",
-		Expression::And(_) => "And",
-		Expression::Or(_) => "Or",
-		Expression::Xor(_) => "Xor",
-		Expression::In(_) => "In",
-		Expression::Contains(_) => "Contains",
-		Expression::Type(_) => "Type",
-		Expression::Parameter(_) => "Parameter",
-		Expression::Variable(_) => "Variable",
-		Expression::If(_) => "If",
-		Expression::Map(_) => "Map",
-		Expression::Extend(_) => "Extend",
-		Expression::SumTypeConstructor(_) => "SumTypeConstructor",
-		Expression::IsVariant(_) => "IsVariant",
-		Expression::FieldAccess(access) => match access.object.as_ref() {
-			Expression::Variable(_) => "FieldAccess(Variable)",
-			_ => "FieldAccess(Other)",
-		},
-	}
-}
 
 pub struct LoweredExpr {
 	expression: Expression,
@@ -161,7 +72,8 @@ enum Plan {
 		expr: Arc<dyn PhysicalExpr>,
 		field: FieldRef,
 	},
-	Old(CompiledExpr),
+	Direct(Direct),
+	Spliced(Spliced),
 	Failed(Box<Diagnostic>),
 }
 
@@ -170,19 +82,18 @@ struct Node {
 	field: FieldRef,
 }
 
-enum Stop<'e> {
-	Unsupported(&'e Expression),
+enum Stop {
 	RowChanging,
 	Error(Error),
 }
 
-impl From<Error> for Stop<'_> {
+impl From<Error> for Stop {
 	fn from(error: Error) -> Self {
 		Stop::Error(error)
 	}
 }
 
-type Lowered<'e, T> = std::result::Result<T, Stop<'e>>;
+type Lowered<T> = std::result::Result<T, Stop>;
 
 pub fn compile_check(expression: &Expression) -> Result<()> {
 	match variant::compile_time_error(expression) {
@@ -243,7 +154,8 @@ impl LoweredExpr {
 				}
 				Ok((field.clone(), array))
 			}
-			Plan::Old(compiled) => compiled.execute(ctx),
+			Plan::Direct(direct) => direct.evaluate(ctx),
+			Plan::Spliced(spliced) => spliced.evaluate(ctx),
 			Plan::Failed(diagnostic) => Err(Error(diagnostic.clone())),
 		}
 	}
@@ -260,108 +172,34 @@ impl LoweredExpr {
 			plan: self.plan(ctx),
 			schema,
 		});
-		*state = Some(ready.clone());
+		if !matches!(ready.plan, Plan::Failed(_)) {
+			*state = Some(ready.clone());
+		}
 		ready
 	}
 
 	fn plan(&self, ctx: &EvalContext) -> Plan {
-		if let Some(node) = first_unclaimed(&self.expression) {
-			assert_not_claimed(self.operator, node);
-			return self.old_plan(ctx);
-		}
 		match lower_root(ctx, self.operator, &self.expression) {
 			Ok((expr, field)) => Plan::Lowered {
 				expr,
 				field,
 			},
 			Err(Stop::Error(error)) => Plan::Failed(error.0),
-			Err(Stop::Unsupported(node)) => {
-				assert_not_claimed(self.operator, node);
-				self.old_plan(ctx)
+			Err(Stop::RowChanging) => {
+				let planned = match &self.expression {
+					Expression::Call(_) => {
+						Direct::new(ctx, self.operator, &self.expression).map(Plan::Direct)
+					}
+					Expression::Alias(alias)
+						if matches!(alias.expression.as_ref(), Expression::Call(_)) =>
+					{
+						Direct::new(ctx, self.operator, &self.expression).map(Plan::Direct)
+					}
+					_ => Spliced::new(ctx, self.operator, &self.expression).map(Plan::Spliced),
+				};
+				planned.unwrap_or_else(|error| Plan::Failed(error.0))
 			}
-			Err(Stop::RowChanging) => self.old_plan(ctx),
 		}
-	}
-
-	fn old_plan(&self, ctx: &EvalContext) -> Plan {
-		let compile_ctx = CompileContext {
-			symbols: ctx.symbols,
-		};
-		match compile_expression(&compile_ctx, &self.expression) {
-			Ok(compiled) => Plan::Old(compiled),
-			Err(error) => Plan::Failed(error.0),
-		}
-	}
-}
-
-fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
-	if !CLAIMED.contains(&kind(expression)) {
-		return Some(expression);
-	}
-	match expression {
-		Expression::Column(_)
-		| Expression::AccessSource(_)
-		| Expression::Constant(_)
-		| Expression::Variable(_)
-		| Expression::Parameter(_)
-		| Expression::Type(_)
-		| Expression::IsVariant(_)
-		| Expression::SumTypeConstructor(_) => None,
-		Expression::FieldAccess(e) => match e.object.as_ref() {
-			Expression::Variable(_) => None,
-			object => first_unclaimed(object),
-		},
-		Expression::Alias(e) => first_unclaimed(&e.expression),
-		Expression::Cast(e) => first_unclaimed(&e.expression),
-		Expression::Prefix(e) => first_unclaimed(&e.expression),
-		Expression::And(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::Or(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::Equal(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::NotEqual(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::LessThan(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::LessThanEqual(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::GreaterThan(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::GreaterThanEqual(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::Add(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::Sub(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::Mul(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::Div(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::Rem(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::Between(e) => first_unclaimed(&e.value)
-			.or_else(|| first_unclaimed(&e.lower))
-			.or_else(|| first_unclaimed(&e.upper)),
-		Expression::Call(e) => e.args.iter().find_map(first_unclaimed),
-		Expression::Xor(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
-		Expression::Tuple(e) => e.expressions.iter().find_map(first_unclaimed),
-		Expression::List(e) => e.expressions.iter().find_map(first_unclaimed),
-		Expression::Map(e) => e.expressions.iter().find_map(first_unclaimed),
-		Expression::Extend(e) => e.expressions.iter().find_map(first_unclaimed),
-		Expression::Contains(e) => {
-			first_unclaimed(&e.value).or_else(|| in_list::items(&e.list).iter().find_map(first_unclaimed))
-		}
-		Expression::If(e) => first_unclaimed(&e.condition)
-			.or_else(|| first_unclaimed(&e.then_expr))
-			.or_else(|| {
-				e.else_ifs.iter().find_map(|ei| {
-					first_unclaimed(&ei.condition).or_else(|| first_unclaimed(&ei.then_expr))
-				})
-			})
-			.or_else(|| e.else_expr.as_deref().and_then(first_unclaimed)),
-		Expression::In(e) => {
-			first_unclaimed(&e.value).or_else(|| in_list::items(&e.list).iter().find_map(first_unclaimed))
-		}
-	}
-}
-
-#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
-fn assert_not_claimed(operator: &str, node: &Expression) {
-	reifydb_assertions! {
-		let kind = kind(node);
-		assert!(
-			!CLAIMED.contains(&kind),
-			"{operator}: claimed kind {kind} fell back at {:?}",
-			node.full_fragment_owned().text()
-		);
 	}
 }
 
@@ -373,7 +211,7 @@ fn lower_root<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	expression: &'e Expression,
-) -> Lowered<'e, (Arc<dyn PhysicalExpr>, FieldRef)> {
+) -> Lowered<(Arc<dyn PhysicalExpr>, FieldRef)> {
 	if let Some(error) = variant::compile_time_error(expression) {
 		return Err(Stop::Error(error));
 	}
@@ -385,21 +223,19 @@ fn lower_root<'e>(
 	Ok((expr, node.field))
 }
 
-fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Expression) -> Lowered<'e, Node> {
+fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Expression) -> Lowered<Node> {
 	match expression {
 		Expression::Column(column) => Ok(schema::column(ctx, operator, column)?),
 		Expression::AccessSource(access) => Ok(schema::access(ctx, access)?),
 		Expression::Constant(constant) => {
 			Ok(literal::constant(operator, constant, display_label(expression).text())?)
 		}
-		Expression::Prefix(prefix) if matches!(prefix.operator, PrefixOperator::Not(_)) => {
-			lower_not(ctx, operator, expression, prefix)
-		}
-		Expression::Prefix(prefix)
-			if matches!(prefix.operator, PrefixOperator::Minus(_) | PrefixOperator::Plus(_)) =>
-		{
-			prefix::lower_prefix(ctx, operator, expression, prefix)
-		}
+		Expression::Prefix(prefix) => match prefix.operator {
+			PrefixOperator::Not(_) => lower_not(ctx, operator, expression, prefix),
+			PrefixOperator::Minus(_) | PrefixOperator::Plus(_) => {
+				prefix::lower_prefix(ctx, operator, expression, prefix)
+			}
+		},
 		Expression::And(and) => lower_logical(
 			ctx,
 			operator,
@@ -505,9 +341,7 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 			e.full_fragment_owned(),
 			ArithOp::Rem,
 		),
-		Expression::Call(call) if !ctx.is_aggregate_context => {
-			routine::lower_call(ctx, operator, expression, call)
-		}
+		Expression::Call(call) => routine::lower_call(ctx, operator, expression, call),
 		Expression::Variable(variable) => Ok(literal::variable(ctx, operator, variable)?),
 		Expression::Parameter(parameter) => Ok(literal::parameter(ctx, operator, parameter)?),
 		Expression::Type(ty) => Ok(literal::type_literal(operator, &ty.ty, &ty.fragment)?),
@@ -538,7 +372,9 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 		Expression::Extend(e) => construct::lower_projection(ctx, operator, &e.expressions, &e.fragment),
 		Expression::Contains(e) => contains::lower_contains(ctx, operator, expression, e),
 		Expression::IsVariant(e) => Ok(variant::lower_is_variant(ctx, operator, e)?),
-		_ => Err(Stop::Unsupported(expression)),
+		Expression::SumTypeConstructor(_) => Err(Stop::Error(
+			variant::compile_time_error(expression).expect("a sum type constructor is a compile error"),
+		)),
 	}
 }
 
@@ -549,7 +385,7 @@ fn lower_logical<'e>(
 	(left, right): (&'e Expression, &'e Expression),
 	fragment: &Fragment,
 	(logical_op, df_op): (LogicalOp, Operator),
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let left = lower_node(ctx, operator, left)?;
 	let right = lower_node(ctx, operator, right)?;
 	execute_logical_op(&logic_probe(&left.field)?, &logic_probe(&right.field)?, fragment, logical_op)?;
@@ -569,7 +405,7 @@ fn lower_not<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	prefix: &'e PrefixExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let inner = lower_node(ctx, operator, &prefix.expression)?;
 	if !is_untyped_none(&inner.field)? {
 		let fragment = prefix.full_fragment_owned();

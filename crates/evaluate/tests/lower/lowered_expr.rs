@@ -1,169 +1,42 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeSet;
-
 use reifydb_core::{
-	expression::{
-		Expression, ExtendExpression, ParameterExpression, PrefixOperator, SumTypeConstructorExpression,
-		TypeExpression,
-	},
 	interface::{
 		catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy},
 		evaluate::TargetColumn,
-		identifier::ColumnObject,
 	},
 	value::{batch::empty_batch, column::factory},
 };
-use reifydb_evaluate::{
-	expression::{compile::compile_expression, context::CompileContext},
-	lower::{CLAIMED, LoweredExpr, kind},
-};
+use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_value::value::value_type::ValueType;
 
 use crate::common::{
-	ARITH_OPS, COMPARE_OPS, Env, access, alias, and, arith, batch, between, boolean, call, cast, column, compare,
-	conditional, contains, field_access, frag, in_list, is_variant, list, map, not, number, or, prefix, rows,
-	strings, tuple, variable, xor,
+	Env, Frozen, and, arith, batch, between, boolean, cast, column, compare, field_access, number, rows, strings,
 };
-
-#[test]
-fn the_claimed_list_is_exactly_the_lowered_kinds() {
-	// A kind missing from the list falls back silently; an extra kind panics before its step lowers it.
-	let claimed: BTreeSet<&str> = CLAIMED.iter().copied().collect();
-	let expected: BTreeSet<&str> = [
-		"Column",
-		"AccessSource",
-		"Constant",
-		"Prefix(Not)",
-		"Prefix(Minus)",
-		"Prefix(Plus)",
-		"And",
-		"Or",
-		"Equal",
-		"NotEqual",
-		"LessThan",
-		"LessThanEqual",
-		"GreaterThan",
-		"GreaterThanEqual",
-		"Between",
-		"In",
-		"If",
-		"Xor",
-		"Contains",
-		"IsVariant",
-		"SumTypeConstructor",
-		"Tuple",
-		"List",
-		"Map",
-		"Extend",
-		"Add",
-		"Sub",
-		"Mul",
-		"Div",
-		"Rem",
-		"Call",
-		"Variable",
-		"Parameter",
-		"Type",
-		"FieldAccess(Variable)",
-		"FieldAccess(Other)",
-		"Alias",
-		"Cast",
-	]
-	.into_iter()
-	.collect();
-
-	assert_eq!(claimed, expected);
-	assert_eq!(CLAIMED.len(), expected.len(), "the claimed list must not repeat a kind");
-}
-
-#[test]
-fn every_claimed_name_is_a_kind_that_kind_can_return() {
-	// A typo in the list would never match, so that kind would fall back without the panic.
-	let mut samples = vec![
-		column("a"),
-		access(ColumnObject::Alias(frag("t")), "a"),
-		number("1"),
-		not(boolean("true")),
-		and(boolean("true"), boolean("true")),
-		or(boolean("true"), boolean("true")),
-		between(number("1"), number("0"), number("2")),
-		in_list(number("1"), vec![number("1")], false),
-		conditional(boolean("true"), number("1"), vec![], None),
-	];
-	samples.extend(COMPARE_OPS.map(|op| compare(op, number("1"), number("2"))));
-	samples.extend(ARITH_OPS.map(|op| arith(op, number("1"), number("2"))));
-	samples.push(call("math::abs", vec![number("1")]));
-	samples.push(variable("$x"));
-	samples.push(Expression::Parameter(ParameterExpression::Positional {
-		fragment: frag("$1"),
-	}));
-	samples.push(Expression::Type(TypeExpression {
-		fragment: frag("int4"),
-		ty: ValueType::Int4,
-		constraint: None,
-	}));
-	samples.push(field_access(variable("$x"), "a"));
-	samples.push(field_access(number("1"), "a"));
-	samples.push(alias("x", number("1")));
-	samples.push(cast(number("1"), ValueType::Int4));
-	samples.push(prefix(PrefixOperator::Minus(frag("-")), number("1")));
-	samples.push(prefix(PrefixOperator::Plus(frag("+")), number("1")));
-	samples.push(xor(boolean("true"), boolean("false")));
-	samples.push(contains(column("l"), vec![number("1")]));
-	samples.push(is_variant("shape", Some(0)));
-	samples.push(tuple(vec![number("1"), number("2")]));
-	samples.push(list(vec![number("1")]));
-	samples.push(map(vec![number("1")]));
-	samples.push(Expression::Extend(ExtendExpression {
-		expressions: vec![number("1")],
-		fragment: frag("extend"),
-	}));
-	samples.push(Expression::SumTypeConstructor(SumTypeConstructorExpression {
-		namespace: frag("ns"),
-		sumtype_name: frag("shape"),
-		variant_name: frag("circle"),
-		columns: vec![],
-		fragment: frag("circle"),
-	}));
-
-	let kinds: BTreeSet<&str> = samples.iter().map(kind).collect();
-	let claimed: BTreeSet<&str> = CLAIMED.iter().copied().collect();
-
-	assert_eq!(kinds, claimed);
-}
-
-#[test]
-fn prefix_kinds_are_split_by_operator() {
-	// Not lowers apart from minus and plus, so the three must not share a kind name.
-	assert_eq!(kind(&not(number("1"))), "Prefix(Not)");
-	assert_eq!(kind(&prefix(PrefixOperator::Minus(frag("-")), number("1"))), "Prefix(Minus)");
-	assert_eq!(kind(&prefix(PrefixOperator::Plus(frag("+")), number("1"))), "Prefix(Plus)");
-	assert!(CLAIMED.contains(&"Prefix(Minus)"));
-	assert!(CLAIMED.contains(&"Prefix(Plus)"));
-}
 
 #[test]
 fn a_field_on_a_non_variable_object_keeps_the_old_error() {
 	// A field on any other object must still run the object first and raise the old error.
+	let mut frozen = Frozen::inline(&[
+		"RUNTIME_009 \"\" Field 'f' not found on variable '<expression>' []",
+		"QUERY_001 \"missing\" column not found []",
+	]);
 	let env = Env::new();
 	let input = batch(vec![factory::int4("a", [1, 2])]);
 
 	for (object, code) in [("a", "RUNTIME_009"), ("missing", "QUERY_001")] {
 		let expression = field_access(column(object), "f");
-		assert_eq!(kind(&expression), "FieldAccess(Other)");
 		let lowered = env.lowered(&expression, input.clone()).unwrap_err();
-		let old = env.old(&expression, input.clone()).unwrap_err();
+		let old = frozen.old(&env, &expression, input.clone()).unwrap_err();
 		assert_eq!(lowered, old, "error of {object}.f");
 		assert_eq!(lowered.code, code, "code of {object}.f");
 	}
-	assert!(CLAIMED.contains(&"FieldAccess(Other)"));
 }
 
 #[test]
 fn a_field_on_a_non_variable_object_lowers_with_the_rest_of_its_expression() {
-	// Left unclaimed, the whole and falls back and between over a nullable column errors before the field does.
+	// The field error must surface at run time after the between over a nullable column answers.
 	let env = Env::new();
 	let input = batch(vec![factory::int4_optional("a", [Some(5), None, Some(20)])]);
 	let expression = and(
@@ -205,6 +78,9 @@ fn the_same_schema_reuses_the_lowering_for_later_batches() {
 #[test]
 fn a_lowering_error_is_returned_on_every_evaluate() {
 	// Returning Ok after the first error would let a broken filter pass rows on the second batch.
+	let mut frozen = Frozen::inline(&[
+		"OPERATOR_005 \"1andtrue\" Cannot apply AND operator to number [\"AND is a logical operator that combines boolean values\", \"To convert numbers to boolean, use comparison operators like: value != 0\", \"For bitwise operations on integers, use the bitwise AND (&) operator instead\"]",
+	]);
 	let env = Env::new();
 	let expression = LoweredExpr::new(and(number("1"), boolean("true")), "test");
 
@@ -213,27 +89,20 @@ fn a_lowering_error_is_returned_on_every_evaluate() {
 
 	assert_eq!(first.code, second.code);
 	assert_eq!(first.fragment.text(), second.fragment.text());
-	assert_eq!(first.code, env.old(&and(number("1"), boolean("true")), rows(2)).unwrap_err().code);
+	assert_eq!(first.code, frozen.old(&env, &and(number("1"), boolean("true")), rows(2)).unwrap_err().code);
 }
 
 #[test]
 fn an_expression_on_a_batch_with_no_columns_answers_row_count_rows() {
 	// A map with no input runs on an empty batch, so its row count must come from the context, never the batch.
+	let mut frozen = Frozen::inline(&["Field { name: \"1 + 2\", data_type: Int16 } [\"3\"]"]);
 	let env = Env::new();
 	let expression = arith("+", number("1"), number("2"));
 	let mut ctx = env.ctx(empty_batch());
 	ctx.row_count = 1;
 
 	let lowered = LoweredExpr::new(expression.clone(), "test").evaluate(&ctx).unwrap();
-	let old = compile_expression(
-		&CompileContext {
-			symbols: &env.symbols,
-		},
-		&expression,
-	)
-	.unwrap()
-	.execute(&ctx)
-	.unwrap();
+	let old = frozen.answer(LoweredExpr::new(expression.clone(), "test").evaluate(&ctx)).unwrap();
 
 	assert_eq!(lowered, old);
 	assert_eq!(strings(&lowered), vec!["3"]);
@@ -242,6 +111,9 @@ fn an_expression_on_a_batch_with_no_columns_answers_row_count_rows() {
 #[test]
 fn a_field_that_holds_a_none_is_widened_to_an_option() {
 	// A map builds a batch from the field, and a non-nullable field holding a none is refused there.
+	let mut frozen = Frozen::inline(&[
+		"Field { name: \"cast(a, type)\", data_type: Int8, nullable: true } [\"1\", \"none\"]",
+	]);
 	let env = Env::new();
 	let expression = cast(column("a"), ValueType::Int1);
 	let mut ctx = env.ctx(batch(vec![factory::int4("a", [1, 300])]));
@@ -253,15 +125,7 @@ fn a_field_that_holds_a_none_is_widened_to_an_option() {
 	});
 
 	let lowered = LoweredExpr::new(expression.clone(), "test").evaluate(&ctx).unwrap();
-	let old = compile_expression(
-		&CompileContext {
-			symbols: &env.symbols,
-		},
-		&expression,
-	)
-	.unwrap()
-	.execute(&ctx)
-	.unwrap();
+	let old = frozen.answer(LoweredExpr::new(expression.clone(), "test").evaluate(&ctx)).unwrap();
 
 	assert!(lowered.0.is_nullable());
 	assert_eq!(lowered, old);

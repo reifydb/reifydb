@@ -7,7 +7,7 @@ use reifydb_core::{
 	value::column::factory,
 };
 
-use crate::common::{Env, and, batch, between, column, compare, frag, list, map, number, strings, text, tuple};
+use crate::common::{Env, Frozen, and, batch, between, column, compare, frag, list, map, number, strings, text, tuple};
 
 fn input() -> RecordBatch {
 	batch(vec![
@@ -20,6 +20,7 @@ fn input() -> RecordBatch {
 #[test]
 fn every_constructor_shape_matches_the_old_path() {
 	// Tuples, lists and one-column maps reach goldens through in, contains and match; each must equal today.
+	let mut frozen = Frozen::load("every_constructor_shape_matches_the_old_path");
 	let env = Env::new();
 	for expression in [
 		tuple(vec![column("a")]),
@@ -29,7 +30,7 @@ fn every_constructor_shape_matches_the_old_path() {
 		map(vec![column("s")]),
 	] {
 		let lowered = env.lowered(&expression, input()).unwrap();
-		let old = env.old(&expression, input()).unwrap();
+		let old = frozen.old(&env, &expression, input()).unwrap();
 		assert_eq!(lowered.0, old.0, "field of {expression:?}");
 		assert_eq!(strings(&lowered), strings(&old), "values of {expression:?}");
 	}
@@ -38,30 +39,35 @@ fn every_constructor_shape_matches_the_old_path() {
 #[test]
 fn an_empty_list_matches_the_old_path_on_one_row() {
 	// The old path built one row for an empty list whatever the batch, so only a one-row batch can compare.
+	let mut frozen = Frozen::inline(&[
+		"Field { name: \"[..]\", data_type: LargeBinary, metadata: {\"ARROW:extension:name\": \"reifydb.any\"} } [\"[]\"]",
+	]);
 	let env = Env::new();
 	let one = batch(vec![factory::int4("a", [1])]);
 	let expression = list(vec![]);
 
 	let lowered = env.lowered(&expression, one.clone()).unwrap();
 
-	assert_eq!(strings(&lowered), strings(&env.old(&expression, one).unwrap()));
+	assert_eq!(strings(&lowered), strings(&frozen.old(&env, &expression, one).unwrap()));
 	assert_eq!(strings(&env.lowered(&expression, input()).unwrap()).len(), 2, "one empty list per row");
 }
 
 #[test]
 fn a_map_of_several_columns_errors_like_the_old_path() {
 	// One value is required here, so a multi-column map must keep today's error.
+	let mut frozen =
+		Frozen::inline(&["RUNTIME_010 \"\" expression produces more than one column where one is required []"]);
 	let env = Env::new();
 	let expression = map(vec![column("a"), column("s")]);
 
 	let lowered = env.lowered(&expression, input()).unwrap_err();
 
-	assert_eq!(lowered.code, env.old(&expression, input()).unwrap_err().code);
+	assert_eq!(lowered.code, frozen.old(&env, &expression, input()).unwrap_err().code);
 }
 
 #[test]
 fn a_constructor_lowers_with_the_rest_of_its_expression() {
-	// Left unclaimed, the whole and falls back and between over a nullable column errors there.
+	// A constructor must keep the between beside it answering per row over a nullable column.
 	let env = Env::new();
 	let guard = || between(column("n"), number("0"), number("10"));
 	let extend = Expression::Extend(ExtendExpression {

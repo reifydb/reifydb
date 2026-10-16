@@ -232,7 +232,6 @@ impl LookupOperator {
 			routines: &self.config.routines,
 			runtime_context: &self.config.runtime_context,
 			identity: self.config.ctx.identity,
-			is_aggregate_context: false,
 			batch: empty_batch(),
 			row_count: 1,
 			target: None,

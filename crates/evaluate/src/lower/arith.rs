@@ -44,7 +44,7 @@ pub(super) fn lower_arith<'e>(
 	(left, right): (&'e Expression, &'e Expression),
 	fragment: Fragment,
 	op: ArithOp,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let left = lower_node(ctx, operator, left)?;
 	let right = lower_node(ctx, operator, right)?;
 	let arith = ctx.arith();

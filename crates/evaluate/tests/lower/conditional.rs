@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use arrow_array::RecordBatch;
 use reifydb_core::value::column::factory;
 
 use crate::common::{
-	Env, and, arith, batch, between, boolean, column, compare, conditional, none, number, strings, text,
+	Env, Frozen, and, arith, batch, between, boolean, code_of, column, compare, conditional, describe, name_of,
+	none, number, strings, text,
 };
 
 fn input() -> RecordBatch {
@@ -23,6 +26,7 @@ fn input() -> RecordBatch {
 #[test]
 fn every_if_shape_matches_the_old_path() {
 	// Every map, extend and match over a conditional moves if the lowered field or values differ from today.
+	let mut frozen = Frozen::load("every_if_shape_matches_the_old_path");
 	let env = Env::new();
 	let shapes = [
 		conditional(column("c"), number("1"), vec![], Some(number("2"))),
@@ -37,17 +41,17 @@ fn every_if_shape_matches_the_old_path() {
 		conditional(column("c"), column("a"), vec![], Some(none())),
 	];
 	for expression in shapes {
-		match (env.lowered(&expression, input()), env.old(&expression, input())) {
-			(Ok(lowered), Ok(old)) => {
-				assert_eq!(
-					lowered.0.as_ref().clone().with_name(old.0.name()),
-					*old.0,
-					"field of {expression:?}"
-				);
-				assert_eq!(strings(&lowered), strings(&old), "values of {expression:?}");
+		let old = frozen.recorded();
+		match env.lowered(&expression, input()) {
+			Ok(lowered) if old.starts_with("Field {") => {
+				let renamed =
+					(Arc::new(lowered.0.as_ref().clone().with_name(name_of(&old))), lowered.1);
+				assert_eq!(describe(&Ok(renamed)), old, "{expression:?}");
 			}
-			(Err(lowered), Err(old)) => assert_eq!(lowered.code, old.code, "error of {expression:?}"),
-			(lowered, old) => panic!("{expression:?}: lowered {lowered:?}, old {old:?}"),
+			Err(lowered) if !old.starts_with("Field {") => {
+				assert_eq!(lowered.code, code_of(&old), "{expression:?}")
+			}
+			lowered => panic!("{expression:?}: lowered {lowered:?}, old {old}"),
 		}
 	}
 }
@@ -65,7 +69,7 @@ fn an_if_is_named_after_its_then_branch_whatever_the_rows_pick() {
 
 #[test]
 fn an_if_lowers_with_the_rest_of_its_expression() {
-	// An if left unclaimed sends the whole and to the old path, where between over a nullable column errors.
+	// An if must keep the between beside it answering per row over a nullable column, never a type error.
 	let env = Env::new();
 	let expression = and(
 		between(column("n"), number("0"), number("10")),
@@ -80,6 +84,7 @@ fn an_if_lowers_with_the_rest_of_its_expression() {
 #[test]
 fn a_branch_runs_only_on_the_rows_that_pick_it() {
 	// The old path ran a picked branch on the whole batch, so a guarded division by zero still raised there.
+	let mut frozen = Frozen::inline(&["NUMBER_007 \"10/v\" division by zero []"]);
 	let env = Env::new();
 	let expression = conditional(
 		compare("!=", column("v"), number("0")),
@@ -91,18 +96,21 @@ fn a_branch_runs_only_on_the_rows_that_pick_it() {
 	let lowered = env.lowered(&expression, input()).unwrap();
 
 	assert_eq!(strings(&lowered), vec!["0", "10", "5", "0"]);
-	assert!(env.old(&expression, input()).is_err(), "today the guard does not protect the division");
+	assert_eq!(code_of(&frozen.recorded()), "NUMBER_007", "today the guard does not protect the division");
 }
 
 #[test]
 fn a_branch_of_another_type_errors_only_when_a_row_picks_it() {
 	// A match whose default never fires must still run, as today; the mismatch surfaces only on a row that takes
 	// it.
+	let mut frozen = Frozen::inline(&[
+		"RUNTIME_012 \"if\" conditional branches produce different columns [\"first branch yields: [a: Int4]\", \"this branch yields: [\\\"x\\\": Utf8]\"]",
+	]);
 	let env = Env::new();
 	let never = conditional(boolean("true"), column("a"), vec![], Some(text("x")));
 	let sometimes = conditional(column("c"), column("a"), vec![], Some(text("x")));
 
 	assert_eq!(strings(&env.lowered(&never, input()).unwrap()), vec!["10", "20", "30", "40"]);
 	assert_eq!(env.lowered(&sometimes, input()).unwrap_err().code, "RUNTIME_012");
-	assert_eq!(env.old(&sometimes, input()).unwrap_err().code, "RUNTIME_012");
+	assert_eq!(frozen.old(&env, &sometimes, input()).unwrap_err().code, "RUNTIME_012");
 }

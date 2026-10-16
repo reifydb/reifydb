@@ -29,7 +29,6 @@ pub fn evaluate_operator_params(
 		routines,
 		runtime_context,
 		identity: IdentityId::system(),
-		is_aggregate_context: false,
 		batch: empty_batch(),
 		row_count: 1,
 		target: None,

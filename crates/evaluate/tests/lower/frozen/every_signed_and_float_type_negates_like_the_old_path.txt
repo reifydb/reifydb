@@ -1,0 +1,8 @@
+Field { name: "-a", data_type: Int8, nullable: true } ["-1", "-2", "none"]
+Field { name: "-a", data_type: Int16, nullable: true } ["-1", "-2", "none"]
+Field { name: "-a", data_type: Int32, nullable: true } ["-1", "-2", "none"]
+Field { name: "-a", data_type: Int64, nullable: true } ["-1", "-2", "none"]
+Field { name: "-a", data_type: FixedSizeBinary(16), nullable: true, metadata: {"ARROW:extension:name": "reifydb.int16"} } ["-1", "-2", "none"]
+Field { name: "-a", data_type: Float32, nullable: true } ["-1", "-2.5", "none"]
+Field { name: "-a", data_type: Float64, nullable: true } ["-1", "-2.5", "none"]
+Field { name: "-a", data_type: Decimal256(76, 0), nullable: true } ["-1", "-2", "none"]

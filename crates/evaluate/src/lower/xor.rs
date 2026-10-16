@@ -21,7 +21,7 @@ pub(super) fn lower_xor<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	xor: &'e XorExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let left = lower_node(ctx, operator, &xor.left)?;
 	let right = lower_node(ctx, operator, &xor.right)?;
 	let fragment = xor.full_fragment_owned();

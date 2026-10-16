@@ -36,7 +36,7 @@ pub(super) fn lower_cast<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	cast: &'e CastExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let inner = lower_node(ctx, operator, &cast.expression)?;
 	let label = display_label(expression);
 	let to = cast.to.ty.clone();

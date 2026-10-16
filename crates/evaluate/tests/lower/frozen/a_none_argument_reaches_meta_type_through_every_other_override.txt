@@ -1,0 +1,4 @@
+Field { name: "meta::type(math::power(a, 2))", data_type: LargeUtf8 } ["Option(Int8)", "Option(Int8)"]
+Field { name: "meta::type(math::clamp(a, 0, 10))", data_type: LargeUtf8 } ["Option(Int16)", "Option(Int16)"]
+Field { name: "meta::type(date::new(a, 1, 1))", data_type: LargeUtf8 } ["Option(Date)", "Option(Date)"]
+Field { name: "meta::type(stats::approx_percentile(none, 0.5))", data_type: LargeUtf8 } ["Option(Float8)", "Option(Float8)"]

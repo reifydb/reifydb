@@ -20,7 +20,7 @@ fn ids(t: &TestEngine, rql: &str) -> Vec<i32> {
 
 #[test]
 fn a_prefix_plus_lowers_with_the_rest_of_its_expression() {
-	// A plus left unclaimed sends the whole filter to the old path, where between over a nullable column errors.
+	// Plus must keep the between beside it answering per row over a nullable column, never a type error.
 	let t = engine();
 
 	assert_eq!(ids(&t, "FROM test::t FILTER +a between 2 and 10"), vec![1]);

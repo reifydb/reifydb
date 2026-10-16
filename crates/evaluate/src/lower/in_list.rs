@@ -28,7 +28,7 @@ pub(super) fn lower_in<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	e: &'e InExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let name = e.fragment.text();
 	let items = items(&e.list);
 	if items.is_empty() {

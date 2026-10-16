@@ -1,0 +1,5 @@
+OPERATOR_017 "true+1" Cannot apply '+' operator to Boolean and Int1 ["Left operand is of type: Boolean", "Right operand is of type: Int1", "Consider converting operands to compatible numeric types first"]
+OPERATOR_018 "true-1" Cannot apply '-' operator to Boolean and Int1 ["Left operand is of type: Boolean", "Right operand is of type: Int1", "Consider converting operands to compatible numeric types first"]
+OPERATOR_019 "true*1" Cannot apply '*' operator to Boolean and Int1 ["Left operand is of type: Boolean", "Right operand is of type: Int1", "Consider converting operands to compatible numeric types first"]
+OPERATOR_020 "true/1" Cannot apply '/' operator to Boolean and Int1 ["Left operand is of type: Boolean", "Right operand is of type: Int1", "Consider converting operands to compatible numeric types first"]
+OPERATOR_021 "true%1" Cannot apply '%' operator to Boolean and Int1 ["Left operand is of type: Boolean", "Right operand is of type: Int1", "Consider converting operands to compatible numeric types first"]

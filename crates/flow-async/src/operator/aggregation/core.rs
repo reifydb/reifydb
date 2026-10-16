@@ -715,7 +715,6 @@ impl Aggregation {
 			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			identity: self.ctx.identity,
-			is_aggregate_context: false,
 			batch: empty_batch(),
 			row_count: 1,
 			target: None,

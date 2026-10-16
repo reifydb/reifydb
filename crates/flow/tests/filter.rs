@@ -59,7 +59,7 @@ fn inserted(change: &Change, column: &str) -> Vec<String> {
 
 #[test]
 fn the_filter_drops_none_and_false_and_rejects_a_non_boolean() {
-	// None and false must drop a row, and the lowered between must answer per row where the old path errors.
+	// None and false must drop a row, and between must answer per row over a nullable column.
 	let rows = batch(vec![factory::int4_optional("a", [Some(1), None, Some(5)])]).unwrap();
 
 	let out = filter("a between 2 and 10").apply(insert(rows.clone())).unwrap();
