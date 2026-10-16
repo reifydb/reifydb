@@ -143,6 +143,7 @@ pub struct FlowActorState {
 	last_checkpoint_at: DateTime,
 	view_cursors: HashMap<FlowId, CommitVersion>,
 	pending_view_cursors: HashMap<FlowId, CommitVersion>,
+	asked: HashMap<FlowId, CommitVersion>,
 	read_cache: ReadCache,
 	held_reads: HeldReads,
 	loading_from: CommitVersion,
@@ -549,6 +550,19 @@ impl FlowActor {
 		};
 		let merged = merge(cursor, &tables, &upstream_reads.reads, &cut);
 		if merged.target <= cursor {
+			let lagging: Vec<FlowId> = upstream_reads
+				.reads
+				.iter()
+				.filter(|(_, upstream)| upstream.position.is_none_or(|position| position < safe))
+				.map(|(producer, _)| *producer)
+				.filter(|producer| state.asked.get(producer).is_none_or(|asked| *asked < safe))
+				.collect();
+			for producer in &lagging {
+				state.asked.insert(*producer, safe);
+			}
+			if !lagging.is_empty() {
+				self.flow_tracker.wake_flows_now(lagging);
+			}
 			let moved = self.advance_view_cursors(state, &upstream_reads, cursor);
 			if moved && merged.more {
 				let _ = ctx.self_ref().send(FlowActorMessage::Drain);
@@ -1057,6 +1071,7 @@ impl Actor for FlowActor {
 			last_checkpoint_at: self.clock.now(),
 			view_cursors: HashMap::new(),
 			pending_view_cursors: HashMap::new(),
+			asked: HashMap::new(),
 			read_cache: ReadCache::default(),
 			held_reads: HeldReads::default(),
 			loading_from: self.initial_cursor,
@@ -1387,6 +1402,61 @@ mod pull_protocol {
 					retry_limit: 3,
 					retry_backoff: Duration::from_milliseconds(50).unwrap(),
 				}),
+			);
+
+			assert_eq!(
+				self.await_flow_position(flow_id, cursor, seconds(10)),
+				Some(cursor),
+				"the init Drain must be consumed, and the cursor settled at {}, before the test \
+				 writes anything a wake will deliver",
+				cursor.0
+			);
+			handle
+		}
+
+		fn spawn_flow_actor_with_waker(
+			&self,
+			flow: FlowDag,
+			source_objects: Arc<BTreeSet<ObjectId>>,
+			cursor: CommitVersion,
+			substrate: FlowSubstrate,
+		) -> FlowActorHandle {
+			let flow_id = flow.id;
+			self.await_safe_watermark(cursor);
+
+			let actor = FlowActor::new(FlowActorParams {
+				engine: self.engine.clone(),
+				committer: self.committer_handle.actor_ref().clone(),
+				terminal_committer: self.committer_handle.actor_ref().clone(),
+				backlog: self.backlog.clone(),
+				loader: self.loader_handle.actor_ref().clone(),
+				control: self.control.clone(),
+				custom_operators: CustomOperators::new(HashMap::new()),
+				substrate,
+				operator_samples: OperatorSampleRegistry::new(),
+				clock: self.engine.clock().clone(),
+				health: self.health.clone(),
+				flow_tracker: self.tracker.clone(),
+				flow,
+				source_objects,
+				completeness_objects: None,
+				cursor: CommitVersion(cursor.0 - 1),
+				pull_batch_bytes: ByteSize::from_mib(8),
+				load_batch_bytes: ByteSize::from_mib(8),
+				checkpoint_lag: 10_000,
+				checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
+				retry_limit: 3,
+				retry_backoff: Duration::from_milliseconds(50).unwrap(),
+			});
+			let pending = actor.wake_pending();
+			let handle = self.engine.spawner().spawn_flow("pull-protocol-flow", actor);
+			self.tracker.set_waker(
+				flow_id,
+				crate::progress::tracker::FlowWaker::new(
+					handle.actor_ref().clone(),
+					pending,
+					self.engine.clock().clone(),
+				),
 			);
 
 			assert_eq!(
@@ -1771,6 +1841,131 @@ mod pull_protocol {
 			behinds,
 			"a pull from the published position fell behind an eviction at that position, so the position \
 			 passed a version the reader had not handled"
+		);
+		drop(consumer);
+		drop(producer);
+	}
+
+	#[test]
+	fn a_gated_reader_held_below_its_safe_bound_wakes_its_lagging_producer() {
+		let h = harness();
+		h.te.admin("CREATE DEFERRED VIEW app::w { id: int4 } AS { FROM app::v MAP { id } }");
+		let (reader, reader_sources, upstreams) = h.reader_flow();
+		let reader_id = reader.id;
+		assert!(
+			upstreams.contains_key(&h.flow_id),
+			"precondition: the reader must gate on the producer, otherwise it never takes the merged path"
+		);
+		h.tracker.set_upstreams(reader_id, upstreams);
+		let v0 = h.engine.current_version().expect("current version");
+		h.control.store(CommitVersion(u64::MAX));
+		let producer = h.spawn_flow_actor_with_waker(
+			h.flow.clone(),
+			h.source_objects.clone(),
+			v0,
+			h.substrate.clone(),
+		);
+		let consumer = h.spawn_flow_actor_with_waker(reader, reader_sources, v0, h.substrate.clone());
+
+		h.te.command("INSERT app::t [{ id: 1 }]");
+		let safe = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(safe);
+		assert_eq!(
+			h.flow_position(h.flow_id),
+			Some(v0),
+			"precondition: the producer must still sit at v0, or the reader is never held on it"
+		);
+		h.wake(&consumer);
+
+		assert!(
+			h.await_position_at_least(safe, seconds(2)).is_some(),
+			"the held reader must wake its producer, or the producer stays at v0 until a full wake that never comes"
+		);
+		assert_eq!(
+			h.await_query_rows("FROM app::w", 1, seconds(2)),
+			Some(1),
+			"the producer's confirmed position must release the reader, so the row reaches app::w"
+		);
+		drop(consumer);
+		drop(producer);
+	}
+
+	#[test]
+	fn a_held_reader_wakes_its_lagging_producer_once_per_safe_bound() {
+		struct DrainingRecorder {
+			pending: Arc<AtomicBool>,
+			received: std::sync::mpsc::Sender<()>,
+		}
+
+		impl Actor for DrainingRecorder {
+			type State = ();
+			type Message = FlowActorMessage;
+
+			fn init(&self, _ctx: &Context<Self::Message>) {}
+
+			fn handle(
+				&self,
+				_state: &mut (),
+				msg: Self::Message,
+				_ctx: &Context<Self::Message>,
+			) -> Directive {
+				if matches!(msg, FlowActorMessage::Wake) {
+					self.pending.store(false, Ordering::SeqCst);
+					self.received.send(()).expect("the test still counts wakes");
+				}
+				Directive::Continue
+			}
+
+			fn config(&self) -> ActorConfig {
+				ActorConfig::new()
+			}
+		}
+
+		let h = harness();
+		h.te.admin("CREATE DEFERRED VIEW app::w { id: int4 } AS { FROM app::v MAP { id } }");
+		let (reader, reader_sources, upstreams) = h.reader_flow();
+		let reader_id = reader.id;
+		assert!(
+			upstreams.contains_key(&h.flow_id),
+			"precondition: the reader must gate on the producer, otherwise it never takes the merged path"
+		);
+		h.tracker.set_upstreams(reader_id, upstreams);
+		h.control.store(CommitVersion(u64::MAX));
+		let v0 = h.engine.current_version().expect("current version");
+		let producer = h.spawn_actor(v0);
+		let consumer = h.spawn_flow_actor(reader, reader_sources, v0, h.substrate.clone());
+
+		let (sender, received) = std::sync::mpsc::channel();
+		let pending = Arc::new(AtomicBool::new(false));
+		let recorder =
+			h.engine.spawner()
+				.spawn_ephemeral(
+					"draining-recorder",
+					DrainingRecorder {
+						pending: Arc::clone(&pending),
+						received: sender,
+					},
+				)
+				.actor_ref()
+				.clone();
+		h.tracker.set_waker(
+			h.flow_id,
+			crate::progress::tracker::FlowWaker::new(recorder, pending, h.engine.clock().clone()),
+		);
+
+		h.te.command("INSERT app::t [{ id: 1 }]");
+		let safe = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(safe);
+		for _ in 0..5 {
+			assert!(consumer.actor_ref().send(FlowActorMessage::Drain).is_ok(), "send drain");
+			sleep(millis(30).to_std());
+		}
+		sleep(millis(100).to_std());
+
+		let wakes = received.try_iter().count();
+		assert_eq!(
+			wakes, 1,
+			"five drains held at one safe bound must wake the producer exactly once, or each drain buys it an idle drain"
 		);
 		drop(consumer);
 		drop(producer);

@@ -94,7 +94,10 @@ impl FlowWaker {
 		let now = self.clock.now().to_nanos();
 		let next = self.next_wake_nanos.load(Ordering::Relaxed);
 		if now < next {
-			self.pending.store(true, Ordering::SeqCst);
+			let was = self.pending.swap(true, Ordering::SeqCst);
+			if !was {
+				let _ = self.actor.send(FlowActorMessage::Wake);
+			}
 			return;
 		}
 		let deadline = now.saturating_add(FLOW_WAKE_COALESCE_NANOS);
@@ -729,33 +732,35 @@ mod tests {
 	}
 
 	#[test]
-	fn a_reader_that_folds_drops_upstream_wakes_inside_the_coalesce_window() {
-		// A folding reader woken on every producer commit never accumulates a backlog worth folding, so
-		// wakes inside the window must be dropped rather than queued.
+	fn a_folding_reader_merges_wakes_while_pending_and_is_woken_after_every_drain() {
+		// a wake dropped after the reader cleared pending leaves it stranded until an unrelated drain.
 		let (clock, tracker, reader, pending, received) = coalescing_harness(1);
 
 		tracker.update(PRODUCER, CommitVersion(1));
 		assert_eq!(next_message(&received), "wake", "the first upstream step must wake a folding reader");
 
-		pending.store(false, Ordering::SeqCst);
 		tracker.update(PRODUCER, CommitVersion(2));
 		send_marker(&reader, FlowActorMessage::Sample);
 		assert_eq!(
 			next_message(&received),
 			"sample",
-			"a step inside the coalesce window must be dropped, or the reader never folds"
+			"a step while the first wake is still pending must merge into it, or the reader never folds"
 		);
 
 		pending.store(false, Ordering::SeqCst);
-		clock.as_mock().expect("the harness drives a mock clock").advance_millis(21);
 		tracker.update(PRODUCER, CommitVersion(3));
 		send_marker(&reader, FlowActorMessage::Tick);
 		assert_eq!(
 			next_message(&received),
 			"wake",
-			"a step after the window elapses must wake the reader, or it stalls until the full wake"
+			"a step inside the window after the reader drained must wake it, or it stalls until an unrelated drain"
 		);
-		assert_eq!(next_message(&received), "tick", "exactly one wake must follow the elapsed window");
+		assert_eq!(next_message(&received), "tick", "exactly one wake must follow the drained flag");
+
+		clock.as_mock().expect("the harness drives a mock clock").advance_millis(21);
+		pending.store(false, Ordering::SeqCst);
+		tracker.update(PRODUCER, CommitVersion(4));
+		assert_eq!(next_message(&received), "wake", "a step after the window elapses must wake the reader");
 	}
 
 	#[test]
