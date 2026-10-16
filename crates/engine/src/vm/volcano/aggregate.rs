@@ -21,10 +21,7 @@ use reifydb_core::{
 		},
 	},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::CompileContext,
-};
+use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_flow::aggregate::{
 	DigestSlots, PERCENTILE_FUNCTION, PercentileCallError, rewrite_aggregate_calls, synthetic_aggregate_column_name,
 };
@@ -110,7 +107,7 @@ struct Aggregation {
 	keys: Vec<String>,
 	projections: Vec<Projection>,
 	slots: Vec<AggregateSlot>,
-	inputs: Vec<CompiledExpr>,
+	inputs: Vec<LoweredExpr>,
 }
 
 pub(crate) struct AggregateNode {
@@ -183,7 +180,7 @@ impl AggregateNode {
 			let inputs = aggregation
 				.inputs
 				.iter()
-				.map(|compiled| compiled.execute(&evaluation))
+				.map(|lowered| lowered.evaluate(&evaluation))
 				.collect::<Result<Vec<_>>>()?;
 			let columns = evaluation.batch;
 
@@ -214,9 +211,6 @@ impl AggregateNode {
 			.map(|(idx, slot)| Ok(rename(slot.finalize(dict)?, &synthetic_aggregate_column_name(idx))))
 			.collect::<Result<Vec<_>>>()?;
 		let evaluation = eval_context_from_query(ctx).with_eval(batch(slot_columns)?, dict.len());
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
 		let mut result_columns = Vec::new();
 
 		for projection in projections {
@@ -237,8 +231,8 @@ impl AggregateNode {
 					alias,
 					expression,
 				} => {
-					let compiled = compile_expression(&compile_ctx, &expression)?;
-					result_columns.push(rename(compiled.execute(&evaluation)?, alias.fragment()));
+					let lowered = LoweredExpr::new(expression, "aggregate_output");
+					result_columns.push(rename(lowered.evaluate(&evaluation)?, alias.fragment()));
 				}
 			}
 		}
@@ -259,13 +253,10 @@ impl QueryNode for AggregateNode {
 		);
 		self.input = input;
 
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
 		let inputs = input_expressions
-			.iter()
-			.map(|expression| compile_expression(&compile_ctx, expression))
-			.collect::<Result<Vec<_>>>()?;
+			.into_iter()
+			.map(|expression| LoweredExpr::new(expression, "aggregate_input"))
+			.collect();
 		self.aggregation = Some(Aggregation {
 			keys,
 			projections,

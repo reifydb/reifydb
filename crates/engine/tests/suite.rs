@@ -132,6 +132,8 @@ mod join_using_unknown_key_column;
 mod list_param_insert;
 #[path = "lookup_ddl.rs"]
 mod lookup_ddl;
+#[path = "lower_aggregate.rs"]
+mod lower_aggregate;
 #[path = "lower_extend.rs"]
 mod lower_extend;
 #[path = "lower_filter.rs"]
