@@ -23,6 +23,7 @@ reifydb-codec = { workspace = true }
 reifydb-macro = { workspace = true }
 reifydb-value = { workspace = true }
 datafusion-common = { workspace = true }
+reifydb-wal = { workspace = true }
 arrow-array = { workspace = true }
 arrow-buffer = { workspace = true }
 arrow-row = { workspace = true }

@@ -26,6 +26,7 @@ pub enum WalError {
 		oldest: Lsn,
 	},
 	SyncStopped,
+	Body(String),
 }
 
 impl From<LogError> for WalError {
@@ -57,6 +58,7 @@ impl Display for WalError {
 				oldest.as_u64()
 			),
 			Self::SyncStopped => write!(f, "the wal sync loop has stopped"),
+			Self::Body(reason) => write!(f, "{reason}"),
 		}
 	}
 }

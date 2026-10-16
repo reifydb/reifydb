@@ -33,6 +33,7 @@ pub mod state;
 pub mod testing;
 pub mod util;
 pub mod value;
+pub mod wal;
 
 pub struct CoreVersion;
 
