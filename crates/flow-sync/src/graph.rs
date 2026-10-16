@@ -23,9 +23,16 @@ use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
 	operator::{
-		append::AppendOperator, extend::ExtendOperator, filter::FilterOperator, first_input, map::MapOperator,
-		sink::table::TableSink, sort::SortOperator, source::SourceOperator,
+		append::AppendOperator,
+		extend::ExtendOperator,
+		filter::FilterOperator,
+		first_input,
+		map::MapOperator,
+		sink::table::TableSink,
+		sort::SortOperator,
+		source::{SourceOperator, decoded_schema},
 	},
+	txn::Resolve,
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -33,7 +40,7 @@ use reifydb_value::{Result, error::Error};
 
 use crate::{node::Node, txn::Lookup};
 
-pub fn build<T: Lookup>(
+pub fn build<T: Lookup + Resolve>(
 	txn: &mut T,
 	flow: &FlowDag,
 	routines: &Routines,
@@ -63,7 +70,7 @@ pub fn build<T: Lookup>(
 			Filter {
 				conditions,
 			} => Node::Filter(FilterOperator::new(
-				parent_schema(&nodes, first_input(inputs)?)?,
+				decoded_parent_schema(txn, &nodes, first_input(inputs)?)?,
 				*operator_id,
 				conditions,
 				routines.clone(),
@@ -73,7 +80,7 @@ pub fn build<T: Lookup>(
 			Map {
 				expressions,
 			} => Node::Map(MapOperator::new(
-				parent_schema(&nodes, first_input(inputs)?)?,
+				decoded_parent_schema(txn, &nodes, first_input(inputs)?)?,
 				*operator_id,
 				expressions,
 				routines.clone(),
@@ -83,7 +90,7 @@ pub fn build<T: Lookup>(
 			Extend {
 				expressions,
 			} => Node::Extend(ExtendOperator::new(
-				parent_schema(&nodes, first_input(inputs)?)?,
+				decoded_parent_schema(txn, &nodes, first_input(inputs)?)?,
 				*operator_id,
 				expressions,
 				routines.clone(),
@@ -158,6 +165,14 @@ fn require_parent(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<&No
 
 fn parent_schema(nodes: &[(OperatorId, Node)], input: OperatorId) -> Result<Option<SchemaRef>> {
 	Ok(require_parent(nodes, input)?.output_schema())
+}
+
+fn decoded_parent_schema<T: Resolve>(
+	txn: &mut T,
+	nodes: &[(OperatorId, Node)],
+	input: OperatorId,
+) -> Result<Option<SchemaRef>> {
+	parent_schema(nodes, input)?.map(|schema| decoded_schema(&schema, |id| txn.dictionary(id))).transpose()
 }
 
 #[cfg(test)]

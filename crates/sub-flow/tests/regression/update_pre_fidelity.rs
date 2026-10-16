@@ -654,7 +654,7 @@ mod source {
 	}
 
 	#[test]
-	fn every_source_decodes_both_halves_of_an_update() {
+	fn every_source_hands_over_both_halves_of_an_update_as_given() {
 		for kind in ["series", "table", "view", "ringbuffer"] {
 			let mut harness = Harness::with_engine(|engine, _| {
 				declare(engine);
@@ -681,13 +681,15 @@ mod source {
 					.id
 			};
 
+			let before = intern(BEFORE);
+			let after = intern(AFTER);
 			let out = harness
 				.apply(Change::from_flow(
 					SOURCE,
 					ChangeVersion::from(CommitVersion(1)),
 					vec![Diff::update(
-						encoded(dictionary.id, &intern(BEFORE)),
-						encoded(dictionary.id, &intern(AFTER)),
+						encoded(dictionary.id, &before),
+						encoded(dictionary.id, &after),
 					)],
 					DateTime::default(),
 				))
@@ -696,19 +698,15 @@ mod source {
 			let (pre, post) = super::sole_update(&out, kind);
 			assert_eq!(
 				pre,
-				vec![Value::Utf8(BEFORE.to_string())],
-				"{kind}: the retracted half must carry the decoded symbol, not a raw id"
+				vec![Value::DictionaryId(before)],
+				"{kind}: the retracted half must carry the id it was given, not one rebuilt from the post"
 			);
-			assert_eq!(
-				post,
-				vec![Value::Utf8(AFTER.to_string())],
-				"{kind}: and so must the published half"
-			);
+			assert_eq!(post, vec![Value::DictionaryId(after)], "{kind}: and so must the published half");
 		}
 	}
 
 	#[test]
-	fn every_source_decodes_the_row_it_removes() {
+	fn every_source_hands_over_the_row_it_removes_as_given() {
 		for kind in ["series", "table", "view", "ringbuffer"] {
 			let mut harness = Harness::with_engine(|engine, _| {
 				declare(engine);
@@ -746,8 +744,8 @@ mod source {
 			let removed = out.diffs.iter().find_map(|diff| diff.pre()).expect("a remove carries a pre");
 			assert_eq!(
 				values(removed),
-				vec![Value::Utf8(BEFORE.to_string())],
-				"{kind}: a removal must name the decoded row, since a consumer retracts from it verbatim"
+				vec![Value::DictionaryId(entry)],
+				"{kind}: a removal must name the row it was given, since a consumer retracts from it verbatim"
 			);
 		}
 	}

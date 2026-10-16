@@ -29,6 +29,7 @@ use reifydb_core::{
 use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
+	operator::source::decoded_schema,
 	time_domain::{check_join_retention_requirements, check_window_time_requirements},
 };
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
@@ -216,22 +217,22 @@ impl FlowEngineInner {
 			}
 			Filter {
 				conditions,
-			} => self.add_filter(flow_id, operator_id, &inputs, conditions, ctx)?,
+			} => self.add_filter(txn, flow_id, operator_id, &inputs, conditions, ctx)?,
 			Gate {
 				conditions,
-			} => self.add_gate(flow_id, operator_id, &inputs, conditions, ctx)?,
+			} => self.add_gate(txn, flow_id, operator_id, &inputs, conditions, ctx)?,
 			Map {
 				expressions,
-			} => self.add_map(flow_id, operator_id, &inputs, expressions, ctx)?,
+			} => self.add_map(txn, flow_id, operator_id, &inputs, expressions, ctx)?,
 			Extend {
 				expressions,
-			} => self.add_extend(flow_id, operator_id, &inputs, expressions, ctx)?,
+			} => self.add_extend(txn, flow_id, operator_id, &inputs, expressions, ctx)?,
 			Sort {
 				by: _,
 			} => self.add_sort(flow_id, operator_id, &inputs)?,
 			Take {
 				limit,
-			} => self.add_take(flow_id, operator_id, &inputs, limit)?,
+			} => self.add_take(txn, flow_id, operator_id, &inputs, limit)?,
 			Join {
 				join_type,
 				left,
@@ -240,6 +241,7 @@ impl FlowEngineInner {
 				natural,
 				with,
 			} => self.add_join(
+				txn,
 				flow_id,
 				operator_id,
 				&inputs,
@@ -254,7 +256,7 @@ impl FlowEngineInner {
 			Distinct {
 				expressions,
 				with,
-			} => self.add_distinct(flow_id, operator_id, &inputs, expressions, with, ctx)?,
+			} => self.add_distinct(txn, flow_id, operator_id, &inputs, expressions, with, ctx)?,
 			Append {} => self.add_append(flow, flow_id, operator_id, &inputs)?,
 			Apply {
 				operator,
@@ -265,12 +267,12 @@ impl FlowEngineInner {
 				by,
 				map,
 				with,
-			} => self.add_aggregate(flow_id, operator_id, &inputs, by, map, with)?,
+			} => self.add_aggregate(txn, flow_id, operator_id, &inputs, by, map, with)?,
 			Window {
 				group_by,
 				aggregations,
 				with,
-			} => self.add_window(flow_id, operator_id, &inputs, group_by, aggregations, with, ctx)?,
+			} => self.add_window(txn, flow_id, operator_id, &inputs, group_by, aggregations, with, ctx)?,
 			Lookup {
 				join_type,
 				right,
@@ -304,5 +306,16 @@ impl FlowEngineInner {
 
 	fn parent_schema(&self, flow_id: FlowId, input: OperatorId) -> Result<Option<SchemaRef>> {
 		Ok(self.require_parent(flow_id, input)?.output_schema())
+	}
+
+	fn decoded_parent_schema(
+		&self,
+		txn: &mut Transaction<'_>,
+		flow_id: FlowId,
+		input: OperatorId,
+	) -> Result<Option<SchemaRef>> {
+		self.parent_schema(flow_id, input)?
+			.map(|schema| decoded_schema(&schema, |id| self.catalog.find_dictionary(txn, id)))
+			.transpose()
 	}
 }

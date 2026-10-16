@@ -5,8 +5,13 @@ use arrow_schema::SchemaRef;
 use reifydb_core::interface::{catalog::flow::OperatorId, change::Change};
 use reifydb_flow::{
 	operator::{
-		append::AppendOperator, extend::ExtendOperator, filter::FilterOperator, map::MapOperator,
-		sink::table::TableSink, sort::SortOperator, source::SourceOperator,
+		append::AppendOperator,
+		extend::ExtendOperator,
+		filter::FilterOperator,
+		map::MapOperator,
+		sink::table::TableSink,
+		sort::SortOperator,
+		source::{SourceOperator, decode_change},
 	},
 	txn::{Batch, Emit, Get, Intern},
 };
@@ -49,13 +54,14 @@ impl Node {
 
 	pub fn apply<T: Get + Batch + Emit + Intern>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		match self {
-			Node::Source(source) => source.apply(txn, change),
-			Node::Filter(filter) => filter.apply(change),
-			Node::Map(map) => map.apply(change),
-			Node::Extend(extend) => extend.apply(change),
+			Node::Source(source) => Ok(source.apply(change)),
+			Node::Filter(filter) => filter.apply(decode_change(txn, change)?),
+			Node::Map(map) => map.apply(decode_change(txn, change)?),
+			Node::Extend(extend) => extend.apply(decode_change(txn, change)?),
 			Node::Append(append) => append.apply(change),
 			Node::Sort(sort) => Ok(sort.apply(change)),
 			Node::Sink(sink) => {
+				let change = decode_change(txn, change)?;
 				let version = change.version;
 				let changed_at = change.changed_at;
 				sink.apply(txn, change)?;
@@ -102,7 +108,7 @@ mod tests {
 			dictionary::{DictionaryEntryId, DictionaryId},
 			row_number::RowNumber,
 			system_columns::{SystemColumn, row_numbers, with_system_column},
-			value_type::ValueType,
+			value_type::{ValueType, field::from_field},
 		},
 	};
 
@@ -190,7 +196,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_table_source_hands_downstream_the_dictionary_values_instead_of_the_entry_ids() {
+	fn a_table_source_hands_downstream_the_entry_ids_it_was_given() {
+		// Decoding at the source pays a dictionary read per row every reader would repeat; ids must pass
+		// through.
 		let mut txn = TestingTx::default();
 		txn.dictionaries.insert(SYMBOLS, symbols());
 		let sol = txn.intern(&symbols(), &[utf8("sol")]).unwrap()[0];
@@ -222,7 +230,7 @@ mod tests {
 		else {
 			panic!("the insert must stay an insert: {:?}", out.diffs[0]);
 		};
-		assert_eq!(values(post, 1), vec![utf8("sol"), utf8("eth")]);
+		assert_eq!(values(post, 1), vec![Value::DictionaryId(sol), Value::DictionaryId(eth)]);
 		assert_eq!(values(post, 0), vec![Value::Int8(10), Value::Int8(20)]);
 		assert_eq!(row_numbers(post).unwrap(), &[RowNumber(1), RowNumber(2)]);
 		let Diff::Update {
@@ -233,8 +241,8 @@ mod tests {
 		else {
 			panic!("the update must stay an update: {:?}", out.diffs[1]);
 		};
-		assert_eq!(values(pre, 1), vec![utf8("sol")]);
-		assert_eq!(values(post, 1), vec![utf8("eth")]);
+		assert_eq!(values(pre, 1), vec![Value::DictionaryId(sol)]);
+		assert_eq!(values(post, 1), vec![Value::DictionaryId(eth)]);
 		let Diff::Remove {
 			pre,
 			..
@@ -242,7 +250,9 @@ mod tests {
 		else {
 			panic!("the remove must stay a remove: {:?}", out.diffs[2]);
 		};
-		assert_eq!(values(pre, 1), vec![utf8("eth")]);
+		assert_eq!(values(pre, 1), vec![Value::DictionaryId(eth)]);
+		let schema = source.output_schema().expect("a source declares its schema");
+		assert_eq!(from_field(schema.field(1)).unwrap().dictionary_id, Some(SYMBOLS));
 	}
 
 	#[test]

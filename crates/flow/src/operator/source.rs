@@ -21,6 +21,7 @@ use reifydb_value::{
 	value::{
 		column_view::{ColumnView, ViewData},
 		dictionary::DictionaryId,
+		value_type::{ValueType, field::from_field},
 	},
 };
 
@@ -41,9 +42,7 @@ impl SourceOperator {
 
 	pub fn from_series(operator: OperatorId, series: &Series) -> Self {
 		let key = series.key_column_data(vec![]).0;
-		let data = series
-			.data_columns()
-			.map(|col| ColumnBuilder::with_capacity(col.constraint.get_type(), 0).finish(&col.name).0);
+		let data = series.data_columns().map(|col| column_field(col).0);
 		Self {
 			operator,
 			schema: Arc::new(Schema::new(once(key).chain(data).collect::<Vec<_>>())),
@@ -58,40 +57,8 @@ impl SourceOperator {
 		Some(self.schema.clone())
 	}
 
-	pub fn apply<T: Resolve + ?Sized>(&self, txn: &mut T, change: Change) -> Result<Change> {
-		let mut decoded_diffs = Vec::with_capacity(change.diffs.len());
-		for diff in change.diffs {
-			decoded_diffs.push(match diff {
-				Diff::Insert {
-					post,
-					..
-				} => {
-					let mut decoded = post;
-					decode_dictionary_columns(&mut decoded, txn)?;
-					Diff::insert(decoded)
-				}
-				Diff::Update {
-					pre,
-					post,
-					..
-				} => {
-					let mut decoded_pre = pre;
-					let mut decoded_post = post;
-					decode_dictionary_columns(&mut decoded_pre, txn)?;
-					decode_dictionary_columns(&mut decoded_post, txn)?;
-					Diff::update(decoded_pre, decoded_post)
-				}
-				Diff::Remove {
-					pre,
-					..
-				} => {
-					let mut decoded = pre;
-					decode_dictionary_columns(&mut decoded, txn)?;
-					Diff::remove(decoded)
-				}
-			});
-		}
-		Ok(Change::from_flow(self.operator, change.version, decoded_diffs, change.changed_at))
+	pub fn apply(&self, change: Change) -> Change {
+		Change::from_flow(self.operator, change.version, change.diffs, change.changed_at)
 	}
 }
 
@@ -119,14 +86,50 @@ pub fn decode_change<T: Resolve + ?Sized>(txn: &mut T, mut change: Change) -> Re
 	Ok(change)
 }
 
-pub fn catalog_schema(columns: &[Column]) -> SchemaRef {
-	Arc::new(Schema::new(
-		columns.iter()
-			.map(|column| {
-				ColumnBuilder::with_capacity(column.constraint.get_type(), 0).finish(&column.name).0
+pub fn decoded_schema(
+	schema: &SchemaRef,
+	mut dictionary: impl FnMut(DictionaryId) -> Result<Option<Dictionary>>,
+) -> Result<SchemaRef> {
+	let mut fields = Vec::with_capacity(schema.fields().len());
+	for field in schema.fields() {
+		let field_type = from_field(field)?;
+		let (optional, bare) = match field_type.value_type {
+			Some(ValueType::Option(inner)) => (true, *inner),
+			Some(bare) => (false, bare),
+			None => {
+				fields.push(field.clone());
+				continue;
+			}
+		};
+		let (ValueType::DictionaryId, Some(id)) = (bare, field_type.dictionary_id) else {
+			fields.push(field.clone());
+			continue;
+		};
+		let dictionary = dictionary(id)?.ok_or_else(|| {
+			Error::from(FlowSinkError::DictionaryNotFound {
+				dictionary_id: format!("{:?}", id),
+				column: field.name().clone(),
 			})
-			.collect::<Vec<_>>(),
-	))
+		})?;
+		let value_type = match optional {
+			true => ValueType::Option(Box::new(dictionary.value_type)),
+			false => dictionary.value_type,
+		};
+		fields.push(ColumnBuilder::with_capacity(value_type, 0).finish(field.name()).0);
+	}
+	Ok(Arc::new(Schema::new(fields)))
+}
+
+pub fn catalog_schema(columns: &[Column]) -> SchemaRef {
+	Arc::new(Schema::new(columns.iter().map(|column| column_field(column).0).collect::<Vec<_>>()))
+}
+
+fn column_field(column: &Column) -> (FieldRef, ArrayRef) {
+	let mut builder = ColumnBuilder::with_capacity(column.constraint.get_type(), 0);
+	if let Some(id) = column.dictionary_id {
+		builder.set_dictionary_id(id);
+	}
+	builder.finish(&column.name)
 }
 
 pub fn decode_dictionary_columns<T: Resolve + ?Sized>(columns: &mut RecordBatch, txn: &mut T) -> Result<()> {

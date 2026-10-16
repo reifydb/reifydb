@@ -27,8 +27,13 @@ use reifydb_flow::{
 	context::FlowContext,
 	error::FlowGraphError,
 	operator::{
-		append::AppendOperator, extend::ExtendOperator, filter::FilterOperator, first_input, map::MapOperator,
-		sort::SortOperator, source::catalog_schema,
+		append::AppendOperator,
+		extend::ExtendOperator,
+		filter::FilterOperator,
+		first_input,
+		map::MapOperator,
+		sort::SortOperator,
+		source::{catalog_schema, decoded_schema},
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -59,13 +64,14 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_filter(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(FilterOperator::new(
@@ -83,13 +89,14 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_gate(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(GateOperator::new(
@@ -107,13 +114,14 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_map(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(MapOperator::new(
@@ -131,13 +139,14 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_extend(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(ExtendOperator::new(
@@ -167,12 +176,13 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_take(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		limit: usize,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		self.operators
 			.insert((flow_id, operator_id), Box::new(TakeOperator::new(parent_schema, operator_id, limit)));
 		Ok(())
@@ -182,6 +192,7 @@ impl FlowEngineInner {
 	#[allow(clippy::too_many_arguments)]
 	pub(super) fn add_join(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
@@ -214,6 +225,7 @@ impl FlowEngineInner {
 			})?
 			.output_schema()
 			.unwrap_or_else(|| Arc::new(Schema::empty()));
+		let left_schema = decoded_schema(&left_schema, |id| self.catalog.find_dictionary(txn, id))?;
 
 		let right_schema = self
 			.operators
@@ -225,6 +237,7 @@ impl FlowEngineInner {
 			})?
 			.output_schema()
 			.expect("right side of join must have a statically known schema");
+		let right_schema = decoded_schema(&right_schema, |id| self.catalog.find_dictionary(txn, id))?;
 
 		let (left_exprs, right_exprs) = if natural {
 			let common = common_column_names(&left_schema, &right_schema);
@@ -300,6 +313,7 @@ impl FlowEngineInner {
 			})?
 			.output_schema()
 			.unwrap_or_else(|| Arc::new(Schema::empty()));
+		let left_schema = decoded_schema(&left_schema, |id| self.catalog.find_dictionary(txn, id))?;
 
 		let (storage, deferred, columns, partition_by) = match right {
 			LookupObject::Table(table) => {
@@ -322,7 +336,8 @@ impl FlowEngineInner {
 		ensure_lookup_key_types(&left, &left_schema, &columns, &partition_by)?;
 
 		let shape = row_shape_from_columns(RowFamily::Table, &columns);
-		let right_schema = catalog_schema(&columns);
+		let right_schema =
+			decoded_schema(&catalog_schema(&columns), |id| self.catalog.find_dictionary(txn, id))?;
 		let left_retention = with.retention.as_ref().map(|retention| retention.duration);
 
 		let operator = LookupOperator::new(LookupConfig {
@@ -354,6 +369,7 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_distinct(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
@@ -361,7 +377,7 @@ impl FlowEngineInner {
 		_with: DistinctWith,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(DistinctOperator::new(
@@ -434,6 +450,7 @@ impl FlowEngineInner {
 	#[allow(clippy::too_many_arguments)]
 	pub(super) fn add_window(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
@@ -442,7 +459,7 @@ impl FlowEngineInner {
 		with: WindowWith,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		let operator = WindowOperator::new(WindowConfig {
 			parent_schema,
 			operator: operator_id,
@@ -462,6 +479,7 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_aggregate(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
@@ -469,7 +487,7 @@ impl FlowEngineInner {
 		map: Vec<Expression>,
 		_with: AggregateWith,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
 		let operator = AggregateOperator::new(
 			parent_schema,
 			operator_id,

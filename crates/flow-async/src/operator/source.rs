@@ -17,8 +17,8 @@ impl HostOperator for SourceOperator {
 		OperatorCapability::STANDARD
 	}
 
-	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		SourceOperator::apply(self, host, change)
+	fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+		Ok(SourceOperator::apply(self, change))
 	}
 
 	fn output_schema(&self) -> Option<SchemaRef> {
