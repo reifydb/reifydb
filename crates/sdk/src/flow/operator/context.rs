@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{marker::PhantomData, ops::Bound};
+use std::{collections::HashMap, marker::PhantomData, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{operator::state::OperatorState, pod::EncodedPodRow},
 };
 use reifydb_core::{
+	actors::pending::PendingWrite,
 	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{
@@ -23,7 +24,7 @@ use crate::{
 	error::{Result, SdkError},
 	flow::operator::{
 		column::{row::Row, sink::RowSink},
-		state::encode_payload,
+		state::{decode_payload, encode_payload},
 	},
 };
 
@@ -211,13 +212,39 @@ impl WindowClass for Windowed {}
 
 pub struct ClassBatch<C, T> {
 	batch: StateBatch,
+	first: Vec<usize>,
 	_marker: PhantomData<fn() -> (C, T)>,
 }
 
 impl<C: CustomClass, T: OperatorState> ClassBatch<C, T> {
+	fn new(batch: StateBatch) -> Self {
+		let mut seen: HashMap<&GroupStateKey, usize> = HashMap::with_capacity(batch.len());
+		let first = (0..batch.len()).map(|slot| *seen.entry(batch.key(slot)).or_insert(slot)).collect();
+		Self {
+			batch,
+			first,
+			_marker: PhantomData,
+		}
+	}
+
+	pub fn get(&self, slot: usize) -> Result<Option<T>> {
+		let slot = self.first[slot];
+		match self.batch.op(slot) {
+			Some(PendingWrite::Set(bytes)) => Ok(Some(decode_payload(EncodedPodRow::view(bytes))?)),
+			Some(PendingWrite::Remove {
+				..
+			}) => Ok(None),
+			None => self.batch.value(slot).map(decode_payload).transpose(),
+		}
+	}
+
 	pub fn set(&mut self, slot: usize, value: &T) -> Result<()> {
-		self.batch.set(slot, encode_payload(value)?);
+		self.batch.set(self.first[slot], encode_payload(value)?);
 		Ok(())
+	}
+
+	pub fn remove(&mut self, slot: usize) {
+		self.batch.remove(self.first[slot]);
 	}
 
 	pub fn commit(self, state: &mut impl ClassState<C>) -> Result<()> {
@@ -249,10 +276,7 @@ impl<C: CustomClass, S: GuestState> ClassState<C> for S {
 	}
 	fn batch<T: OperatorState>(&mut self, keys: &[C::Key]) -> Result<ClassBatch<C, T>> {
 		let keys = keys.iter().map(|key| key.as_ref().clone()).collect();
-		Ok(ClassBatch {
-			batch: self.batch_bytes(keys)?,
-			_marker: PhantomData,
-		})
+		Ok(ClassBatch::new(self.batch_bytes(keys)?))
 	}
 	fn write_batch<T: OperatorState>(&mut self, batch: ClassBatch<C, T>) -> Result<()> {
 		check_class_batch(C::CLASS, &batch.batch)?;
