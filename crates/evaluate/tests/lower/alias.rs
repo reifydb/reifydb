@@ -2,10 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::value::column::factory;
-use reifydb_evaluate::lower::{CLAIMED, kind};
 use reifydb_value::value::value_type::{ValueType, field::from_field};
 
-use crate::common::{Env, alias, arith, batch, column, strings, tuple, xor};
+use crate::common::{Env, alias, arith, batch, column, strings};
 
 #[test]
 fn an_alias_over_a_column_lowers_to_the_column_renamed() {
@@ -36,20 +35,4 @@ fn an_alias_over_arithmetic_keeps_the_arith_type_and_takes_the_alias_name() {
 	assert_eq!(lowered.0.name(), "total");
 	assert_eq!(from_field(&lowered.0).unwrap().value_type, Some(ValueType::Int8));
 	assert_eq!(strings(&lowered), vec!["3"]);
-}
-
-#[test]
-fn an_alias_over_an_unclaimed_kind_falls_back_without_a_panic() {
-	// The panic must name the unclaimed node below the alias, so a claimed alias over a tuple falls back quietly.
-	let env = Env::new();
-	let input = batch(vec![factory::bool("l", [true, false]), factory::bool("r", [false, false])]);
-	let expression = alias("x", tuple(vec![xor(column("l"), column("r"))]));
-	assert!(CLAIMED.contains(&kind(&expression)));
-
-	let lowered = env.lowered(&expression, input.clone()).unwrap();
-	let old = env.old(&expression, input).unwrap();
-
-	assert_eq!(lowered, old);
-	assert_eq!(lowered.0.name(), "x");
-	assert_eq!(strings(&lowered), vec!["true", "false"]);
 }

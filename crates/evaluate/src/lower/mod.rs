@@ -5,6 +5,7 @@ mod arith;
 mod cast;
 mod compare;
 mod conditional;
+mod construct;
 mod contains;
 mod error;
 mod field_access;
@@ -78,6 +79,10 @@ pub const CLAIMED: &[&str] = &[
 	"Contains",
 	"IsVariant",
 	"SumTypeConstructor",
+	"Tuple",
+	"List",
+	"Map",
+	"Extend",
 	"Add",
 	"Sub",
 	"Mul",
@@ -316,6 +321,10 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 			.or_else(|| first_unclaimed(&e.upper)),
 		Expression::Call(e) => e.args.iter().find_map(first_unclaimed),
 		Expression::Xor(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
+		Expression::Tuple(e) => e.expressions.iter().find_map(first_unclaimed),
+		Expression::List(e) => e.expressions.iter().find_map(first_unclaimed),
+		Expression::Map(e) => e.expressions.iter().find_map(first_unclaimed),
+		Expression::Extend(e) => e.expressions.iter().find_map(first_unclaimed),
 		Expression::Contains(e) => {
 			first_unclaimed(&e.value).or_else(|| in_list::items(&e.list).iter().find_map(first_unclaimed))
 		}
@@ -330,7 +339,6 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 		Expression::In(e) => {
 			first_unclaimed(&e.value).or_else(|| in_list::items(&e.list).iter().find_map(first_unclaimed))
 		}
-		_ => Some(expression),
 	}
 }
 
@@ -509,6 +517,14 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 		Expression::In(e) => in_list::lower_in(ctx, operator, expression, e),
 		Expression::If(e) => conditional::lower_if(ctx, operator, expression, e),
 		Expression::Xor(e) => xor::lower_xor(ctx, operator, expression, e),
+		Expression::Tuple(e) => {
+			construct::lower_construct(ctx, operator, construct::Shape::Tuple, &e.expressions, &e.fragment)
+		}
+		Expression::List(e) => {
+			construct::lower_construct(ctx, operator, construct::Shape::List, &e.expressions, &e.fragment)
+		}
+		Expression::Map(e) => construct::lower_projection(ctx, operator, &e.expressions, &e.fragment),
+		Expression::Extend(e) => construct::lower_projection(ctx, operator, &e.expressions, &e.fragment),
 		Expression::Contains(e) => contains::lower_contains(ctx, operator, expression, e),
 		Expression::IsVariant(e) => Ok(variant::lower_is_variant(ctx, operator, e)?),
 		_ => Err(Stop::Unsupported(expression)),

@@ -4,7 +4,10 @@
 use std::collections::BTreeSet;
 
 use reifydb_core::{
-	expression::{Expression, ParameterExpression, PrefixOperator, SumTypeConstructorExpression, TypeExpression},
+	expression::{
+		Expression, ExtendExpression, ParameterExpression, PrefixOperator, SumTypeConstructorExpression,
+		TypeExpression,
+	},
 	interface::{
 		catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy},
 		evaluate::TargetColumn,
@@ -20,8 +23,8 @@ use reifydb_value::value::value_type::ValueType;
 
 use crate::common::{
 	ARITH_OPS, COMPARE_OPS, Env, access, alias, and, arith, batch, between, boolean, call, cast, column, compare,
-	conditional, contains, field_access, frag, in_list, is_variant, not, number, or, prefix, rows, strings, tuple,
-	variable, xor,
+	conditional, contains, field_access, frag, in_list, is_variant, list, map, not, number, or, prefix, rows,
+	strings, tuple, variable, xor,
 };
 
 #[test]
@@ -50,6 +53,10 @@ fn the_claimed_list_is_exactly_the_lowered_kinds() {
 		"Contains",
 		"IsVariant",
 		"SumTypeConstructor",
+		"Tuple",
+		"List",
+		"Map",
+		"Extend",
 		"Add",
 		"Sub",
 		"Mul",
@@ -106,6 +113,13 @@ fn every_claimed_name_is_a_kind_that_kind_can_return() {
 	samples.push(xor(boolean("true"), boolean("false")));
 	samples.push(contains(column("l"), vec![number("1")]));
 	samples.push(is_variant("shape", Some(0)));
+	samples.push(tuple(vec![number("1"), number("2")]));
+	samples.push(list(vec![number("1")]));
+	samples.push(map(vec![number("1")]));
+	samples.push(Expression::Extend(ExtendExpression {
+		expressions: vec![number("1")],
+		fragment: frag("extend"),
+	}));
 	samples.push(Expression::SumTypeConstructor(SumTypeConstructorExpression {
 		namespace: frag("ns"),
 		sumtype_name: frag("shape"),
@@ -128,34 +142,6 @@ fn prefix_kinds_are_split_by_operator() {
 	assert_eq!(kind(&prefix(PrefixOperator::Plus(frag("+")), number("1"))), "Prefix(Plus)");
 	assert!(CLAIMED.contains(&"Prefix(Minus)"));
 	assert!(CLAIMED.contains(&"Prefix(Plus)"));
-}
-
-#[test]
-fn an_unclaimed_kind_falls_back_to_the_old_path_with_the_same_result() {
-	// A tuple is not lowered yet, so it must run on the old path and answer exactly as today.
-	let env = Env::new();
-	let input = batch(vec![factory::bool("l", [true, true, false]), factory::bool("r", [true, false, false])]);
-	let expression = tuple(vec![xor(column("l"), column("r"))]);
-
-	let lowered = env.lowered(&expression, input.clone()).unwrap();
-	let old = env.old(&expression, input).unwrap();
-
-	assert_eq!(lowered, old);
-	assert_eq!(strings(&lowered), vec!["false", "true", "false"]);
-}
-
-#[test]
-fn an_unclaimed_kind_under_a_claimed_parent_falls_back_without_a_panic() {
-	// The panic must look at the node that failed to lower, not at the claimed and above it.
-	let env = Env::new();
-	let input = batch(vec![factory::bool("l", [true, false]), factory::bool("r", [false, false])]);
-	let expression = and(tuple(vec![xor(column("l"), column("r"))]), column("l"));
-
-	let lowered = env.lowered(&expression, input.clone()).unwrap();
-	let old = env.old(&expression, input).unwrap();
-
-	assert_eq!(strings(&lowered), strings(&old));
-	assert_eq!(strings(&lowered), vec!["true", "false"]);
 }
 
 #[test]

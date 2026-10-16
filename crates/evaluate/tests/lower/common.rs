@@ -11,9 +11,9 @@ use reifydb_core::{
 		CallExpression, CastExpression, ColumnExpression, ConstantExpression, ContainsExpression,
 		DivExpression, ElseIfExpression, EqExpression, Expression, FieldAccessExpression,
 		GreaterThanEqExpression, GreaterThanExpression, IdentExpression, IfExpression, InExpression,
-		IsVariantExpression, LessThanEqExpression, LessThanExpression, MulExpression, NotEqExpression,
-		OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression,
-		TypeExpression, VariableExpression, XorExpression,
+		IsVariantExpression, LessThanEqExpression, LessThanExpression, ListExpression, MapExpression,
+		MulExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, RemExpression,
+		SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 	value::column::factory,
@@ -431,5 +431,19 @@ pub fn tuple(expressions: Vec<Expression>) -> Expression {
 	Expression::Tuple(TupleExpression {
 		expressions,
 		fragment: frag("(..)"),
+	})
+}
+
+pub fn list(expressions: Vec<Expression>) -> Expression {
+	Expression::List(ListExpression {
+		expressions,
+		fragment: frag("[..]"),
+	})
+}
+
+pub fn map(expressions: Vec<Expression>) -> Expression {
+	Expression::Map(MapExpression {
+		expressions,
+		fragment: frag("map"),
 	})
 }

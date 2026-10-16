@@ -13,6 +13,8 @@ mod common;
 mod compare;
 #[path = "lower/conditional.rs"]
 mod conditional;
+#[path = "lower/construct.rs"]
+mod construct;
 #[path = "lower/in_list.rs"]
 mod in_list;
 #[path = "lower/literal.rs"]
