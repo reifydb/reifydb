@@ -185,7 +185,7 @@ while ($i < $n) {
             $end++ while $end < $n && substr($content, $end, 1) ne "\n";
             my $line = substr($content, $i, $end-$i);
             (my $t = $line) =~ s/^\s+|\s+$//g;
-            if ($t eq '#[cfg(test)]') {
+            if ($t eq '#[cfg(test)]' || $t =~ /^#\[cfg\(all\(test\b/) {
                 $ptest = 1;
                 $out .= $line . ($end < $n ? "\n" : "");
                 $i = $end < $n ? $end+1 : $end;
