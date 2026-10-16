@@ -144,6 +144,8 @@ mod lower_join;
 mod lower_map;
 #[path = "lower_patch.rs"]
 mod lower_patch;
+#[path = "lower_small_kinds.rs"]
+mod lower_small_kinds;
 #[path = "map_ends_in_a_comment.rs"]
 mod map_ends_in_a_comment;
 #[path = "memory_limit.rs"]

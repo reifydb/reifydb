@@ -5,8 +5,9 @@ mod arith;
 mod cast;
 mod compare;
 mod error;
+mod field_access;
 mod literal;
-mod negate;
+mod prefix;
 mod routine;
 mod schema;
 
@@ -56,6 +57,7 @@ pub const CLAIMED: &[&str] = &[
 	"Constant",
 	"Prefix(Not)",
 	"Prefix(Minus)",
+	"Prefix(Plus)",
 	"And",
 	"Or",
 	"Equal",
@@ -72,7 +74,10 @@ pub const CLAIMED: &[&str] = &[
 	"Rem",
 	"Call",
 	"Variable",
+	"Parameter",
+	"Type",
 	"FieldAccess(Variable)",
+	"FieldAccess(Other)",
 	"Alias",
 	"Cast",
 ];
@@ -271,7 +276,12 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 		| Expression::AccessSource(_)
 		| Expression::Constant(_)
 		| Expression::Variable(_)
-		| Expression::FieldAccess(_) => None,
+		| Expression::Parameter(_)
+		| Expression::Type(_) => None,
+		Expression::FieldAccess(e) => match e.object.as_ref() {
+			Expression::Variable(_) => None,
+			object => first_unclaimed(object),
+		},
 		Expression::Alias(e) => first_unclaimed(&e.expression),
 		Expression::Cast(e) => first_unclaimed(&e.expression),
 		Expression::Prefix(e) => first_unclaimed(&e.expression),
@@ -335,8 +345,10 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 		Expression::Prefix(prefix) if matches!(prefix.operator, PrefixOperator::Not(_)) => {
 			lower_not(ctx, operator, expression, prefix)
 		}
-		Expression::Prefix(prefix) if matches!(prefix.operator, PrefixOperator::Minus(_)) => {
-			negate::lower_negate(ctx, operator, expression, prefix)
+		Expression::Prefix(prefix)
+			if matches!(prefix.operator, PrefixOperator::Minus(_) | PrefixOperator::Plus(_)) =>
+		{
+			prefix::lower_prefix(ctx, operator, expression, prefix)
 		}
 		Expression::And(and) => lower_logical(
 			ctx,
@@ -447,11 +459,13 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 			routine::lower_call(ctx, operator, expression, call)
 		}
 		Expression::Variable(variable) => Ok(literal::variable(ctx, operator, variable)?),
+		Expression::Parameter(parameter) => Ok(literal::parameter(ctx, operator, parameter)?),
+		Expression::Type(ty) => Ok(literal::type_literal(operator, &ty.ty, &ty.fragment)?),
 		Expression::FieldAccess(access) => match access.object.as_ref() {
 			Expression::Variable(variable) => {
 				Ok(literal::variable_field(ctx, operator, variable, access.field.text())?)
 			}
-			_ => Err(Stop::Unsupported(expression)),
+			_ => field_access::lower_field_access(ctx, operator, expression, access),
 		},
 		Expression::Alias(alias) => {
 			let inner = lower_node(ctx, operator, &alias.expression)?;

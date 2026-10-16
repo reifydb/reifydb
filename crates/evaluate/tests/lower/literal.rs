@@ -1,16 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::{batch::batch as scalar_batch, column::factory};
+use reifydb_core::{
+	expression::{Expression, ParameterExpression, TypeExpression},
+	value::{batch::batch as scalar_batch, column::factory},
+};
 use reifydb_evaluate::{
 	expression::{compile::compile_expression, context::CompileContext},
 	lower::LoweredExpr,
 	stack::Variable,
 };
-use reifydb_value::value::Value;
+use reifydb_runtime::context::RuntimeContext;
+use reifydb_value::{
+	params::Params,
+	value::{Value, value_type::ValueType},
+};
 
 use crate::common::{
-	Env, boolean, closure, duration, field_access, none, number, rows, strings, symbols, temporal, text, variable,
+	Env, and, batch, between, boolean, call, closure, column, compare, duration, field_access, frag, none, number,
+	registry, rows, strings, symbols, temporal, text, variable,
 };
 
 #[test]
@@ -250,4 +258,41 @@ fn one_lowered_expr_keeps_the_first_variable_value_after_the_symbol_changes() {
 
 	assert_eq!(strings(&lowered.evaluate(&env.ctx(rows(2))).unwrap()), vec!["1", "1"]);
 	assert_eq!(strings(&old.execute(&env.ctx(rows(2))).unwrap()), vec!["1", "1"]);
+}
+
+#[test]
+fn a_parameter_lowers_with_the_rest_of_its_expression() {
+	// A parameter left unclaimed sends the whole expression to the old path, where between over a nullable column
+	// errors.
+	let env = Env::with_params(Params::from(vec![Value::Int4(99)]));
+	let input = batch(vec![factory::int4_optional("a", [Some(5), None, Some(20)]), factory::int4("id", [1, 2, 3])]);
+	let parameter = Expression::Parameter(ParameterExpression::Positional {
+		fragment: frag("$1"),
+	});
+	let expression = and(between(column("a"), number("2"), number("10")), compare("!=", column("id"), parameter));
+
+	let lowered = env.lowered(&expression, input).unwrap();
+
+	assert_eq!(strings(&lowered), vec!["true", "none", "false"]);
+}
+
+#[test]
+fn a_type_literal_lowers_with_the_rest_of_its_expression() {
+	// A type left unclaimed sends the whole expression to the old path, where between over a nullable column
+	// errors.
+	let env = Env::with_routines(registry(), RuntimeContext::testing(0, 0));
+	let input = batch(vec![factory::int4_optional("a", [Some(5), None, Some(20)])]);
+	let int4 = || {
+		Expression::Type(TypeExpression {
+			fragment: frag("int4"),
+			ty: ValueType::Int4,
+			constraint: None,
+		})
+	};
+	let expression =
+		and(between(column("a"), number("2"), number("10")), call("is::type", vec![column("a"), int4()]));
+
+	let lowered = env.lowered(&expression, input).unwrap();
+
+	assert_eq!(strings(&lowered), vec!["true", "false", "false"]);
 }

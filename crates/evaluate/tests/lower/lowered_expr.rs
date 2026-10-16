@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use reifydb_core::{
-	expression::PrefixOperator,
+	expression::{Expression, ParameterExpression, PrefixOperator, TypeExpression},
 	interface::{
 		catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy},
 		evaluate::TargetColumn,
@@ -33,6 +33,7 @@ fn the_claimed_list_is_exactly_the_lowered_kinds() {
 		"Constant",
 		"Prefix(Not)",
 		"Prefix(Minus)",
+		"Prefix(Plus)",
 		"And",
 		"Or",
 		"Equal",
@@ -49,7 +50,10 @@ fn the_claimed_list_is_exactly_the_lowered_kinds() {
 		"Rem",
 		"Call",
 		"Variable",
+		"Parameter",
+		"Type",
 		"FieldAccess(Variable)",
+		"FieldAccess(Other)",
 		"Alias",
 		"Cast",
 	]
@@ -76,10 +80,20 @@ fn every_claimed_name_is_a_kind_that_kind_can_return() {
 	samples.extend(ARITH_OPS.map(|op| arith(op, number("1"), number("2"))));
 	samples.push(call("math::abs", vec![number("1")]));
 	samples.push(variable("$x"));
+	samples.push(Expression::Parameter(ParameterExpression::Positional {
+		fragment: frag("$1"),
+	}));
+	samples.push(Expression::Type(TypeExpression {
+		fragment: frag("int4"),
+		ty: ValueType::Int4,
+		constraint: None,
+	}));
 	samples.push(field_access(variable("$x"), "a"));
+	samples.push(field_access(number("1"), "a"));
 	samples.push(alias("x", number("1")));
 	samples.push(cast(number("1"), ValueType::Int4));
 	samples.push(prefix(PrefixOperator::Minus(frag("-")), number("1")));
+	samples.push(prefix(PrefixOperator::Plus(frag("+")), number("1")));
 
 	let kinds: BTreeSet<&str> = samples.iter().map(kind).collect();
 	let claimed: BTreeSet<&str> = CLAIMED.iter().copied().collect();
@@ -89,12 +103,12 @@ fn every_claimed_name_is_a_kind_that_kind_can_return() {
 
 #[test]
 fn prefix_kinds_are_split_by_operator() {
-	// Not and minus are claimed and plus is not, so the three must not share a kind name.
+	// Not lowers apart from minus and plus, so the three must not share a kind name.
 	assert_eq!(kind(&not(number("1"))), "Prefix(Not)");
 	assert_eq!(kind(&prefix(PrefixOperator::Minus(frag("-")), number("1"))), "Prefix(Minus)");
 	assert_eq!(kind(&prefix(PrefixOperator::Plus(frag("+")), number("1"))), "Prefix(Plus)");
 	assert!(CLAIMED.contains(&"Prefix(Minus)"));
-	assert!(!CLAIMED.contains(&"Prefix(Plus)"));
+	assert!(CLAIMED.contains(&"Prefix(Plus)"));
 }
 
 #[test]
@@ -126,8 +140,8 @@ fn an_unclaimed_kind_under_a_claimed_parent_falls_back_without_a_panic() {
 }
 
 #[test]
-fn a_field_on_a_non_variable_object_falls_back_with_the_old_error() {
-	// Only a field on a variable is claimed, so any other object must fall back and run before its field error.
+fn a_field_on_a_non_variable_object_keeps_the_old_error() {
+	// A field on any other object must still run the object first and raise the old error.
 	let env = Env::new();
 	let input = batch(vec![factory::int4("a", [1, 2])]);
 
@@ -139,7 +153,22 @@ fn a_field_on_a_non_variable_object_falls_back_with_the_old_error() {
 		assert_eq!(lowered, old, "error of {object}.f");
 		assert_eq!(lowered.code, code, "code of {object}.f");
 	}
-	assert!(!CLAIMED.contains(&"FieldAccess(Other)"));
+	assert!(CLAIMED.contains(&"FieldAccess(Other)"));
+}
+
+#[test]
+fn a_field_on_a_non_variable_object_lowers_with_the_rest_of_its_expression() {
+	// Left unclaimed, the whole and falls back and between over a nullable column errors before the field does.
+	let env = Env::new();
+	let input = batch(vec![factory::int4_optional("a", [Some(5), None, Some(20)])]);
+	let expression = and(
+		between(column("a"), number("2"), number("10")),
+		compare("==", field_access(number("1"), "y"), number("1")),
+	);
+
+	let lowered = env.lowered(&expression, input).unwrap_err();
+
+	assert_eq!(lowered.code, "RUNTIME_009");
 }
 
 #[test]

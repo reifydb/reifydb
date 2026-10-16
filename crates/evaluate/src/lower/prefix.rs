@@ -23,7 +23,7 @@ use crate::{
 
 type DfResult<T> = std::result::Result<T, DataFusionError>;
 
-pub(super) fn lower_negate<'e>(
+pub(super) fn lower_prefix<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	expression: &'e Expression,
@@ -38,10 +38,11 @@ pub(super) fn lower_negate<'e>(
 		});
 	}
 	let fragment = prefix.full_fragment_owned();
-	let field = negate_field(label.text(), &inner.field, &fragment)?;
+	let field = prefix_field(label.text(), &inner.field, &prefix.operator, &fragment)?;
 	Ok(Node {
 		expr: udf(
-			NegateUdf {
+			PrefixUdf {
+				operator: prefix.operator.clone(),
 				fragment,
 				signature: volatile(),
 			},
@@ -51,52 +52,53 @@ pub(super) fn lower_negate<'e>(
 	})
 }
 
-fn negate_field(name: &str, input: &FieldRef, fragment: &Fragment) -> Result<FieldRef> {
-	let (probe, _) = prefix_apply(&empty_of(input), &PrefixOperator::Minus(fragment.clone()), fragment)?;
+fn prefix_field(name: &str, input: &FieldRef, operator: &PrefixOperator, fragment: &Fragment) -> Result<FieldRef> {
+	let (probe, _) = prefix_apply(&empty_of(input), operator, fragment)?;
 	Ok(typed_field(name, inner_type(&probe)?, input.is_nullable()))
 }
 
 #[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
-fn assert_negate_field(fragment: &Fragment, kernel: &FieldRef, declared: &FieldRef) {
+fn assert_prefix_field(fragment: &Fragment, kernel: &FieldRef, declared: &FieldRef) {
 	reifydb_assertions! {
 		let inner = |field: &FieldRef| {
 			reifydb_value::value::value_type::field::from_field(field)
-				.expect("a negate field always carries a parsable type")
+				.expect("a prefix field always carries a parsable type")
 				.value_type
 				.map(|value_type| value_type.inner_type().clone())
 		};
 		assert_eq!(
 			inner(kernel),
 			inner(declared),
-			"negate at {:?}: the kernel answered {kernel:?}, the plan declared {declared:?}",
+			"prefix at {:?}: the kernel answered {kernel:?}, the plan declared {declared:?}",
 			fragment.text()
 		);
 	}
 }
 
 #[derive(Debug)]
-struct NegateUdf {
+struct PrefixUdf {
+	operator: PrefixOperator,
 	fragment: Fragment,
 	signature: Signature,
 }
 
-impl PartialEq for NegateUdf {
+impl PartialEq for PrefixUdf {
 	fn eq(&self, other: &Self) -> bool {
 		self.fragment == other.fragment
 	}
 }
 
-impl Eq for NegateUdf {}
+impl Eq for PrefixUdf {}
 
-impl Hash for NegateUdf {
+impl Hash for PrefixUdf {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.fragment.hash(state);
 	}
 }
 
-impl ScalarUDFImpl for NegateUdf {
+impl ScalarUDFImpl for PrefixUdf {
 	fn name(&self) -> &str {
-		"negate"
+		"prefix"
 	}
 
 	fn signature(&self) -> &Signature {
@@ -104,11 +106,11 @@ impl ScalarUDFImpl for NegateUdf {
 	}
 
 	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
-		internal_err!("negate types its output through return_field_from_args")
+		internal_err!("prefix types its output through return_field_from_args")
 	}
 
 	fn return_field_from_args(&self, args: ReturnFieldArgs) -> DfResult<FieldRef> {
-		negate_field(self.name(), &args.arg_fields[0], &self.fragment).map_err(into_external)
+		prefix_field(self.name(), &args.arg_fields[0], &self.operator, &self.fragment).map_err(into_external)
 	}
 
 	fn invoke_with_args(&self, args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
@@ -120,10 +122,8 @@ impl ScalarUDFImpl for NegateUdf {
 			..
 		} = args;
 		let column = (arg_fields[0].clone(), values[0].clone().into_array(number_rows)?);
-		let (field, array) =
-			prefix_apply(&column, &PrefixOperator::Minus(self.fragment.clone()), &self.fragment)
-				.map_err(into_external)?;
-		assert_negate_field(&self.fragment, &field, &return_field);
+		let (field, array) = prefix_apply(&column, &self.operator, &self.fragment).map_err(into_external)?;
+		assert_prefix_field(&self.fragment, &field, &return_field);
 		Ok(ColumnarValue::Array(array))
 	}
 
@@ -134,13 +134,15 @@ impl ScalarUDFImpl for NegateUdf {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::expression::PrefixOperator;
 	use reifydb_value::fragment::Fragment;
 
-	use super::NegateUdf;
+	use super::PrefixUdf;
 	use crate::lower::volatile;
 
-	fn negate_at(column: u32) -> NegateUdf {
-		NegateUdf {
+	fn negate_at(column: u32) -> PrefixUdf {
+		PrefixUdf {
+			operator: PrefixOperator::Minus(Fragment::statement("-", 1, column)),
 			fragment: Fragment::statement("-", 1, column),
 			signature: volatile(),
 		}

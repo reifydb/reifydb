@@ -5,14 +5,16 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use datafusion_common::{ScalarValue, metadata::FieldMetadata};
 use datafusion_expr::Expr;
-use reifydb_core::expression::{ConstantExpression, VariableExpression};
+use reifydb_core::expression::{ConstantExpression, ParameterExpression, VariableExpression};
+use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
 use crate::{
 	Result,
 	expression::{
-		compile::{variable_column, variable_field_column},
+		compile::{type_column, variable_column, variable_field_column},
 		constant::constant_value,
 		context::EvalContext,
+		parameter::parameter_lookup,
 	},
 	lower::{Node, bool_field, error::from_datafusion},
 };
@@ -24,6 +26,16 @@ pub(super) fn constant(operator: &str, constant: &ConstantExpression, label: &st
 
 pub(super) fn variable(ctx: &EvalContext, operator: &str, variable: &VariableExpression) -> Result<Node> {
 	let (field, array) = variable_column(ctx, variable, 1)?;
+	row_zero(operator, &field, &array)
+}
+
+pub(super) fn parameter(ctx: &EvalContext, operator: &str, parameter: &ParameterExpression) -> Result<Node> {
+	let (field, array) = parameter_lookup(ctx, parameter, 1)?;
+	row_zero(operator, &field, &array)
+}
+
+pub(super) fn type_literal(operator: &str, ty: &ValueType, fragment: &Fragment) -> Result<Node> {
+	let (field, array) = type_column(1, ty, fragment);
 	row_zero(operator, &field, &array)
 }
 
