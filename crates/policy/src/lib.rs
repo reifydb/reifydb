@@ -163,10 +163,6 @@ fn inject_plan<'a>(
 			};
 			Ok(LogicalPlan::Return(node))
 		}
-		LogicalPlan::Scalarize(mut node) => {
-			node.input = inject_boxed(node.input, bump, catalog, tx)?;
-			Ok(LogicalPlan::Scalarize(node))
-		}
 		LogicalPlan::JoinInner(mut node) => {
 			node.subquery = inject_plans(node.subquery, bump, catalog, tx)?;
 			Ok(LogicalPlan::JoinInner(node))

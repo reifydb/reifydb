@@ -204,7 +204,6 @@ fn visit(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Found> {
 			&node.input,
 			scope.fresh().with(references(node.group_by.iter().chain(node.aggregations.iter()))),
 		),
-		PhysicalPlan::Scalarize(node) => visit(&node.input, scope.fresh()),
 		PhysicalPlan::JoinInner(node) => join(&node.left, &node.right, &node.on, scope),
 		PhysicalPlan::JoinLeft(node) => join(&node.left, &node.right, &node.on, scope),
 		PhysicalPlan::JoinNatural(node) => join(&node.left, &node.right, &[], scope),

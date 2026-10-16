@@ -519,10 +519,6 @@ fn materialize_query_plan_with(
 			with: node.with,
 			fragment: node.fragment,
 		}),
-		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
-			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
-			fragment: node.fragment,
-		}),
 
 		PhysicalPlan::Append(physical::AppendPhysicalNode::Query {
 			fragment,
@@ -1695,10 +1691,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(QueryPlan::Environment(node)));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::Scalarize(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Scalarize(node))?));
-				self.emit(Instruction::Emit);
-			}
 		}
 		Ok(())
 	}
@@ -2016,9 +2008,6 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::Window(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Window(node))?));
-			}
-			PhysicalPlan::Scalarize(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Scalarize(node))?));
 			}
 
 			other => {

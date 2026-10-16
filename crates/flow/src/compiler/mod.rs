@@ -284,9 +284,6 @@ impl FlowCompiler {
 			QueryPlan::Variable(_) => {
 				panic!("Variable references are not supported in flow graphs");
 			}
-			QueryPlan::Scalarize(_) => {
-				panic!("Scalarize operations are not supported in flow graphs");
-			}
 			QueryPlan::Environment(_) => {
 				panic!("Environment operations are not supported in flow graphs");
 			}
@@ -368,7 +365,6 @@ fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
 		QueryPlan::Distinct(n) => vec![&n.input],
 		QueryPlan::Sort(n) => vec![&n.input],
 		QueryPlan::Take(n) => vec![&n.input],
-		QueryPlan::Scalarize(n) => vec![&n.input],
 		QueryPlan::Map(n) => n.input.as_deref().into_iter().collect(),
 		QueryPlan::Extend(n) => n.input.as_deref().into_iter().collect(),
 		QueryPlan::Patch(n) => n.input.as_deref().into_iter().collect(),

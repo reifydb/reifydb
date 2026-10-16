@@ -222,6 +222,12 @@ pub enum RqlError {
 		count: usize,
 	},
 
+	#[error("{operator} needs an input")]
+	MissingInput {
+		operator: &'static str,
+		fragment: Fragment,
+	},
+
 	#[error("Internal error in function {name}: {details}")]
 	InternalFunctionError {
 		name: String,
@@ -974,6 +980,18 @@ impl IntoDiagnostic for RqlError {
 				fragment: Fragment::None,
 				label: None,
 				help: Some("Use CONTINUE inside a LOOP, WHILE, or FOR block".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			RqlError::MissingInput { operator, fragment } => Diagnostic {
+				code: "QUERY_015".to_string(),
+				rql: None,
+				message: format!("{} needs an input", operator),
+				column: None,
+				fragment,
+				label: None,
+				help: Some(format!("start the query with a source, e.g. `from ns::table {}`", operator)),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

@@ -120,7 +120,6 @@ pub mod query;
 pub(crate) mod rank;
 pub mod row_lookup;
 pub mod run_tests;
-pub mod scalarize;
 pub mod scan;
 pub mod sort;
 pub mod take;

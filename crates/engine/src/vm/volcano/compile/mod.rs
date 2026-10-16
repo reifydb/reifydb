@@ -46,7 +46,6 @@ use crate::vm::volcano::{
 	lookup::UnsupportedLookupNode,
 	query::{QueryContext, QueryNode},
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
-	scalarize::ScalarizeNode,
 	scan::{
 		dictionary::DictionaryScanNode, index::IndexScanNode, queue::QueueScan, remote::RemoteFetchNode,
 		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
@@ -291,10 +290,6 @@ pub(crate) fn compile<'a>(
 		}) => Box::new(GeneratorNode::new(name, expressions)),
 		RqlQueryPlan::Variable(node) => Box::new(VariableNode::new(node.variable_expr)),
 		RqlQueryPlan::Environment(_) => Box::new(EnvironmentNode::new()),
-		RqlQueryPlan::Scalarize(node) => {
-			let input = compile(*node.input, rx, context.clone());
-			Box::new(ScalarizeNode::new(input))
-		}
 		RqlQueryPlan::Apply(node) => {
 			let Some(transform) = context.services.transforms.get_transform(node.operator.text()) else {
 				return Box::new(UnknownTransformNode::new(node.operator));

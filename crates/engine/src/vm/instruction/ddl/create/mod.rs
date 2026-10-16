@@ -139,7 +139,6 @@ fn plan_expressions_and_inputs(plan: &mut QueryPlan) -> (Vec<&mut Expression>, V
 		QueryPlan::Distinct(node) => (Vec::new(), vec![&mut node.input]),
 		QueryPlan::Sort(node) => (Vec::new(), vec![&mut node.input]),
 		QueryPlan::Take(node) => (Vec::new(), vec![&mut node.input]),
-		QueryPlan::Scalarize(node) => (Vec::new(), vec![&mut node.input]),
 		QueryPlan::InlineData(node) => {
 			(node.rows.iter_mut().flatten().map(|field| field.expression.as_mut()).collect(), Vec::new())
 		}

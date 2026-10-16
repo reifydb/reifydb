@@ -440,12 +440,6 @@ pub struct FunctionParameter {
 }
 
 #[derive(Debug, Clone)]
-pub struct ScalarizeNode {
-	pub input: Box<QueryPlan>,
-	pub fragment: Fragment,
-}
-
-#[derive(Debug, Clone)]
 pub struct AggregateNode {
 	pub input: Box<QueryPlan>,
 	pub by: Vec<Expression>,

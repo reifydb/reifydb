@@ -16,6 +16,7 @@ pub mod row_predicate;
 pub mod scripting;
 pub mod series_predicate;
 pub mod time_domain;
+pub mod tree;
 pub mod variable;
 
 use std::{
@@ -454,8 +455,6 @@ pub enum LogicalPlan<'bump> {
 	VariableSource(VariableSourceNode<'bump>),
 	Environment(EnvironmentNode),
 
-	Scalarize(ScalarizeNode<'bump>),
-
 	Pipeline(PipelineNode<'bump>),
 
 	DefineFunction(function::DefineFunctionNode<'bump>),
@@ -482,12 +481,6 @@ pub enum LogicalPlan<'bump> {
 #[derive(Debug)]
 pub struct PipelineNode<'bump> {
 	pub steps: BumpVec<'bump, LogicalPlan<'bump>>,
-}
-
-#[derive(Debug)]
-pub struct ScalarizeNode<'bump> {
-	pub input: BumpBox<'bump, LogicalPlan<'bump>>,
-	pub fragment: BumpFragment<'bump>,
 }
 
 #[derive(Debug)]
