@@ -282,10 +282,6 @@ impl DictionaryAllocatorRegistry {
 		Ok(self.find_batch(dictionary, slice::from_ref(value))?.remove(0))
 	}
 
-	pub fn get(&self, dictionary: &Dictionary, id: u128) -> Result<Option<Arc<[u8]>>> {
-		Ok(self.get_batch(dictionary, slice::from_ref(&id))?.remove(0))
-	}
-
 	fn find_one(&self, dictionary: &Dictionary, value_bytes: &[u8]) -> Result<Option<DictionaryEntryId>> {
 		let hash = xxh3_128(value_bytes).0.to_be_bytes();
 

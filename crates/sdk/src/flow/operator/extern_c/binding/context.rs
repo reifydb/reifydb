@@ -14,12 +14,7 @@ use reifydb_core::{
 	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
-use reifydb_value::value::{
-	Value,
-	datetime::DateTime,
-	dictionary::{DictionaryEntryId, DictionaryId},
-	row_number::RowNumber,
-};
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
 	common::extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
@@ -27,11 +22,9 @@ use crate::{
 	flow::operator::{
 		column::row::Row,
 		context::{
-			ClassState, CustomClass, GuestBound, GuestContext, GuestDictionary, GuestEmit,
-			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass, check_class_batch, class_framed,
-			class_keyspace,
+			ClassState, CustomClass, GuestBound, GuestContext, GuestEmit, GuestEmitContext, GuestState,
+			GuestUpdateEmit, WindowClass, check_class_batch, class_framed, class_keyspace,
 		},
-		dictionary::Dictionary,
 		extern_c::{
 			binding::{
 				sink::ExternCRowSink,
@@ -136,10 +129,6 @@ impl ExternCContext {
 
 	pub fn state(&mut self) -> State<'_> {
 		State::new(self)
-	}
-
-	pub fn dictionary(&mut self) -> Dictionary<'_> {
-		Dictionary::new(self)
 	}
 
 	pub fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
@@ -350,18 +339,6 @@ impl GuestState for ClassFramedState<'_> {
 	}
 }
 
-impl GuestDictionary for Dictionary<'_> {
-	fn id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {
-		Dictionary::id_by_name(self, name)
-	}
-	fn find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		Dictionary::find(self, dictionary, value)
-	}
-	fn get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>> {
-		Dictionary::get(self, dictionary, id)
-	}
-}
-
 impl GuestEmitContext for ExternCContext {
 	type InsertEmit<'a> = ExternCInsertEmit<'a>;
 	type UpdateEmit<'a> = ExternCUpdateEmit<'a>;
@@ -374,9 +351,6 @@ impl GuestEmitContext for ExternCContext {
 		// SAFETY: ExternCContext::new asserts self.ctx is non-null, and the host keeps the
 		// ExternCContextRaw alive and aligned for at least the lifetime of &self.
 		DateTime::from_nanos(unsafe { (*self.ctx).written_at_nanos })
-	}
-	fn dictionary(&mut self) -> impl GuestDictionary + '_ {
-		ExternCContext::dictionary(self)
 	}
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		ExternCContext::arm_timer(self, due, kind, key)

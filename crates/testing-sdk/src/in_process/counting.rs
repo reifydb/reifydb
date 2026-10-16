@@ -335,11 +335,6 @@ impl<T: FlowTransaction> HostContext for CountingHost<'_, T> {
 		self.inner.remove_join_row_numbers_for_left(tag, left)
 	}
 
-	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {
-		self.record("dictionary_id_by_name", 1);
-		self.inner.dictionary_id_by_name(name)
-	}
-
 	fn dictionary_id_type(&mut self, dictionary: DictionaryId) -> Option<ValueType> {
 		self.record("dictionary_id_type", 1);
 		self.inner.dictionary_id_type(dictionary)
@@ -348,11 +343,6 @@ impl<T: FlowTransaction> HostContext for CountingHost<'_, T> {
 	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>> {
 		self.record("dictionary_find", 1);
 		self.inner.dictionary_find(dictionary, value)
-	}
-
-	fn dictionary_get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>> {
-		self.record("dictionary_get", 1);
-		self.inner.dictionary_get(dictionary, id)
 	}
 
 	fn dictionary_find_many(

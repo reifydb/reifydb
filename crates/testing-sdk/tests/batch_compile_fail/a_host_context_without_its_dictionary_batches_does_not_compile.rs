@@ -251,19 +251,11 @@ impl HostContext for SingleEntryHost {
 		unimplemented!()
 	}
 
-	fn dictionary_id_by_name(&mut self, _name: &str) -> Result<Option<DictionaryId>> {
-		unimplemented!()
-	}
-
 	fn dictionary_id_type(&mut self, _dictionary: DictionaryId) -> Option<ValueType> {
 		unimplemented!()
 	}
 
 	fn dictionary_find(&mut self, _dictionary: DictionaryId, _value: &Value) -> Result<Option<DictionaryEntryId>> {
-		unimplemented!()
-	}
-
-	fn dictionary_get(&mut self, _dictionary: DictionaryId, _id: DictionaryEntryId) -> Result<Option<Value>> {
 		unimplemented!()
 	}
 

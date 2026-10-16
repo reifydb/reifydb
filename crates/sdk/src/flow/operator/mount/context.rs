@@ -17,12 +17,7 @@ use reifydb_core::{
 use reifydb_flow_async::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
 use reifydb_value::{
 	error::Error as ValueError,
-	value::{
-		Value,
-		datetime::DateTime,
-		dictionary::{DictionaryEntryId, DictionaryId},
-		row_number::RowNumber,
-	},
+	value::{datetime::DateTime, row_number::RowNumber},
 };
 
 use crate::{
@@ -30,9 +25,9 @@ use crate::{
 	flow::operator::{
 		column::{row::Row, sink::in_process::InProcessRowSink},
 		context::{
-			ClassState, CustomClass, GuestBound, GuestContext, GuestDictionary, GuestEmit,
-			GuestEmitContext, GuestState, GuestUpdateEmit, WindowClass, check_class_batch,
-			check_row_number_keys, class_framed, class_keyspace, guest_sweep_mask,
+			ClassState, CustomClass, GuestBound, GuestContext, GuestEmit, GuestEmitContext, GuestState,
+			GuestUpdateEmit, WindowClass, check_class_batch, check_row_number_keys, class_framed,
+			class_keyspace, guest_sweep_mask,
 		},
 		state::{decode_payload, encode_payload},
 	},
@@ -292,29 +287,6 @@ impl GuestState for InProcessState<'_> {
 	}
 }
 
-pub struct InProcessDictionary<'a> {
-	host: *mut (dyn HostContext + 'a),
-	_marker: PhantomData<&'a mut (dyn HostContext + 'a)>,
-}
-
-impl GuestDictionary for InProcessDictionary<'_> {
-	fn id_by_name(&mut self, name: &str) -> SdkResult<Option<DictionaryId>> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).dictionary_id_by_name(name) }.map_err(to_sdk_err)
-	}
-	fn find(&mut self, dictionary: DictionaryId, value: &Value) -> SdkResult<Option<DictionaryEntryId>> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).dictionary_find(dictionary, value) }.map_err(to_sdk_err)
-	}
-	fn get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> SdkResult<Option<Value>> {
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).dictionary_get(dictionary, id) }.map_err(to_sdk_err)
-	}
-}
-
 impl GuestEmitContext for InProcessContext<'_> {
 	type InsertEmit<'a>
 		= InProcessInsertEmit<'a>
@@ -334,12 +306,6 @@ impl GuestEmitContext for InProcessContext<'_> {
 	}
 	fn written_at(&self) -> DateTime {
 		self.now
-	}
-	fn dictionary(&mut self) -> impl GuestDictionary + '_ {
-		InProcessDictionary {
-			host: self.host,
-			_marker: PhantomData,
-		}
 	}
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> SdkResult<()> {
 		reject_reserved_kind(kind)?;

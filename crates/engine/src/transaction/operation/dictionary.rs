@@ -292,9 +292,9 @@ pub mod tests {
 		let value = Value::Utf8("hello".to_string());
 
 		let id = txn.intern_values(&dict, vec![value.clone()]).unwrap()[0];
-		let retrieved = Transaction::Admin(&mut txn).get_from_dictionary(&dict, id).unwrap();
+		let retrieved = Transaction::Admin(&mut txn).get_many_from_dictionary(&dict, &[id]).unwrap();
 
-		assert_eq!(retrieved, Some(value));
+		assert_eq!(retrieved, vec![Some(value)]);
 	}
 
 	#[test]
@@ -303,9 +303,10 @@ pub mod tests {
 		let dict = test_dictionary();
 
 		// An unknown id must be none, not an error or a garbage entry.
-		let retrieved =
-			Transaction::Admin(&mut txn).get_from_dictionary(&dict, DictionaryEntryId::U8(999)).unwrap();
-		assert_eq!(retrieved, None);
+		let retrieved = Transaction::Admin(&mut txn)
+			.get_many_from_dictionary(&dict, &[DictionaryEntryId::U8(999)])
+			.unwrap();
+		assert_eq!(retrieved, vec![None]);
 	}
 
 	#[test]

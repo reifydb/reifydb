@@ -17,12 +17,7 @@ use reifydb_core::{
 	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
-use reifydb_value::value::{
-	Value,
-	datetime::DateTime,
-	dictionary::{DictionaryEntryId, DictionaryId},
-	row_number::RowNumber,
-};
+use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
 
 use crate::{
 	error::{Result, SdkError},
@@ -170,12 +165,6 @@ pub trait GuestState {
 	}
 }
 
-pub trait GuestDictionary {
-	fn id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
-	fn find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>>;
-	fn get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
-}
-
 pub struct Managed;
 
 pub struct Unmanaged;
@@ -284,7 +273,6 @@ pub trait GuestEmitContext {
 
 	fn operator_id(&self) -> OperatorId;
 	fn written_at(&self) -> DateTime;
-	fn dictionary(&mut self) -> impl GuestDictionary + '_;
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>>;
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;

@@ -167,7 +167,11 @@ mod tests {
 		);
 		assert!(!second.created, "a cold registry must resolve the durable entry, not remint it");
 
-		let bytes = cold.get(&dictionary, first.id.to_u128()).unwrap().expect("index row must resolve");
+		let bytes = cold
+			.get_batch(&dictionary, slice::from_ref(&first.id.to_u128()))
+			.unwrap()
+			.remove(0)
+			.expect("index row must resolve");
 		assert_eq!(
 			bytes.as_ref(),
 			to_stdvec(&value).unwrap().as_slice(),

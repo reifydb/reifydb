@@ -99,8 +99,8 @@ fn an_interned_mint_is_durable_so_a_restart_still_resolves_it() {
 		"after a restart the mint must resolve through its durable entry"
 	);
 	assert_eq!(
-		txn.get_from_dictionary(&dictionary, interned).unwrap(),
-		Some(mint()),
+		txn.get_many_from_dictionary(&dictionary, &[interned]).unwrap(),
+		vec![Some(mint())],
 		"the id must decode back to its value after a restart"
 	);
 }

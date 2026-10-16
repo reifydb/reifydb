@@ -126,13 +126,9 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 
 	fn remove_join_row_numbers_for_left(&mut self, tag: u8, left: u64) -> Result<()>;
 
-	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>>;
-
 	fn dictionary_id_type(&mut self, dictionary: DictionaryId) -> Option<ValueType>;
 
 	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>>;
-
-	fn dictionary_get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>>;
 
 	fn dictionary_find_many(
 		&mut self,
@@ -568,10 +564,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.remove_join_row_numbers_for_left(self.operator, tag, left)
 	}
 
-	fn dictionary_id_by_name(&mut self, name: &str) -> Result<Option<DictionaryId>> {
-		Ok(self.txn.find_dictionary_by_name(name).map(|d| d.id))
-	}
-
 	fn dictionary_id_type(&mut self, dictionary: DictionaryId) -> Option<ValueType> {
 		self.txn.find_dictionary(dictionary).map(|d| d.id_type)
 	}
@@ -579,13 +571,6 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>> {
 		match self.txn.find_dictionary(dictionary) {
 			Some(dict) => self.txn.find_in_dictionary(&dict, value),
-			None => Ok(None),
-		}
-	}
-
-	fn dictionary_get(&mut self, dictionary: DictionaryId, id: DictionaryEntryId) -> Result<Option<Value>> {
-		match self.txn.find_dictionary(dictionary) {
-			Some(dict) => self.txn.get_from_dictionary(&dict, id),
 			None => Ok(None),
 		}
 	}

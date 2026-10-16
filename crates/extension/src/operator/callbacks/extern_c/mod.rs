@@ -9,9 +9,7 @@ pub mod state_iterator;
 
 use reifydb_sdk::{
 	common::extern_c::wire::callbacks::{builder::BuilderCallbacks, memory::MemoryCallbacks},
-	flow::operator::extern_c::wire::callbacks::{
-		OperatorCallbacks, dictionary::DictionaryCallbacks, state::StateCallbacks,
-	},
+	flow::operator::extern_c::wire::callbacks::{OperatorCallbacks, state::StateCallbacks},
 };
 
 use crate::{callbacks::extern_c::builder, procedure::callbacks::extern_c::memory};
@@ -44,11 +42,6 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			disarm_timer: state::host_disarm_timer,
 			flow_watermark: state::host_flow_watermark,
 			reclaim_group_identity: state::host_reclaim_group_identity,
-		},
-		dictionary: DictionaryCallbacks {
-			id_by_name: dictionary::host_dictionary_id_by_name,
-			find: dictionary::host_dictionary_find,
-			get: dictionary::host_dictionary_get,
 		},
 		dictionary_get_many: dictionary::host_dictionary_get_many,
 		builder: BuilderCallbacks {

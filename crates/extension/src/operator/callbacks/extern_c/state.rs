@@ -1297,10 +1297,6 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
-		fn dictionary_id_by_name(&mut self, _name: &str) -> Result<Option<DictionaryId>> {
-			Ok(None)
-		}
-
 		fn dictionary_id_type(&mut self, _dictionary: DictionaryId) -> Option<ValueType> {
 			None
 		}
@@ -1310,14 +1306,6 @@ mod join_row_expiry_guard_tests {
 			_dictionary: DictionaryId,
 			_value: &Value,
 		) -> Result<Option<DictionaryEntryId>> {
-			Ok(None)
-		}
-
-		fn dictionary_get(
-			&mut self,
-			_dictionary: DictionaryId,
-			_id: DictionaryEntryId,
-		) -> Result<Option<Value>> {
 			Ok(None)
 		}
 

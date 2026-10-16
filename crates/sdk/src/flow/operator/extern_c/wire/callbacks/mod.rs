@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-pub mod dictionary;
 pub mod state;
 
-use self::{dictionary::DictionaryCallbacks, state::StateCallbacks};
+use self::state::StateCallbacks;
 use crate::{
 	common::extern_c::wire::{
 		buffer::ExternCBuffer,
@@ -21,8 +20,6 @@ pub struct OperatorCallbacks {
 	pub state: StateCallbacks,
 
 	pub builder: BuilderCallbacks,
-
-	pub dictionary: DictionaryCallbacks,
 
 	pub dictionary_get_many: extern "C" fn(
 		ctx: *mut ExternCContextRaw,

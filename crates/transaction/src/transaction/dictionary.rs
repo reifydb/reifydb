@@ -17,15 +17,6 @@ use reifydb_value::{
 use crate::{dictionary::DictionaryAllocatorRegistry, transaction::Transaction};
 
 impl Transaction<'_> {
-	pub fn get_from_dictionary(&mut self, dictionary: &Dictionary, id: DictionaryEntryId) -> Result<Option<Value>> {
-		match self {
-			Transaction::Command(cmd) => get_from_registry(cmd.dictionary_allocators(), dictionary, id),
-			Transaction::Admin(admin) => get_from_registry(admin.dictionary_allocators(), dictionary, id),
-			Transaction::Test(t) => get_from_registry(t.inner.dictionary_allocators(), dictionary, id),
-			Transaction::Query(_) => self.get_from_single_store(dictionary, id),
-		}
-	}
-
 	pub fn get_many_from_dictionary(
 		&mut self,
 		dictionary: &Dictionary,
@@ -89,20 +80,4 @@ fn get_many_from_registry(
 			Ok(Some(value))
 		})
 		.collect()
-}
-
-fn get_from_registry(
-	registry: Option<DictionaryAllocatorRegistry>,
-	dictionary: &Dictionary,
-	id: DictionaryEntryId,
-) -> Result<Option<Value>> {
-	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-	match registry.get(dictionary, id.to_u128())? {
-		Some(bytes) => {
-			let value: Value = from_bytes(&bytes)
-				.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
-			Ok(Some(value))
-		}
-		None => Ok(None),
-	}
 }
