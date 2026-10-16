@@ -1185,7 +1185,7 @@ impl Actor for FlowActor {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod pull_protocol {
-	use std::{collections::HashMap, ops::Bound, thread::sleep};
+	use std::{collections::HashMap, ops::Bound, sync::mpsc, thread::sleep};
 
 	use reifydb_cdc::{
 		consume::watermark::CdcConsumerWatermark,
@@ -1244,6 +1244,7 @@ mod pull_protocol {
 			loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 			routing,
 		},
+		progress::tracker::{FLOW_WAKE_COALESCE_NANOS, FlowWaker},
 	};
 
 	struct Harness {
@@ -1402,7 +1403,7 @@ mod pull_protocol {
 					retry_limit: 3,
 					retry_backoff: Duration::from_milliseconds(50).unwrap(),
 					wake_coalesce: Duration::from_nanoseconds_const(
-						crate::progress::tracker::FLOW_WAKE_COALESCE_NANOS,
+						FLOW_WAKE_COALESCE_NANOS,
 					),
 					batch_size: 8,
 				}),
@@ -1452,7 +1453,7 @@ mod pull_protocol {
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
 				wake_coalesce: Duration::from_nanoseconds_const(
-					crate::progress::tracker::FLOW_WAKE_COALESCE_NANOS,
+					FLOW_WAKE_COALESCE_NANOS,
 				),
 				batch_size: 8,
 			});
@@ -1460,7 +1461,7 @@ mod pull_protocol {
 			let handle = self.engine.spawner().spawn_flow("pull-protocol-flow", actor);
 			self.tracker.set_waker(
 				flow_id,
-				crate::progress::tracker::FlowWaker::new(
+				FlowWaker::new(
 					handle.actor_ref().clone(),
 					pending,
 					self.engine.clock().clone(),
@@ -1902,7 +1903,7 @@ mod pull_protocol {
 	fn a_held_reader_wakes_its_lagging_producer_once_per_safe_bound() {
 		struct DrainingRecorder {
 			pending: Arc<AtomicBool>,
-			received: std::sync::mpsc::Sender<()>,
+			received: mpsc::Sender<()>,
 		}
 
 		impl Actor for DrainingRecorder {
@@ -1943,7 +1944,7 @@ mod pull_protocol {
 		let producer = h.spawn_actor(v0);
 		let consumer = h.spawn_flow_actor(reader, reader_sources, v0, h.substrate.clone());
 
-		let (sender, received) = std::sync::mpsc::channel();
+		let (sender, received) = mpsc::channel();
 		let pending = Arc::new(AtomicBool::new(false));
 		let recorder =
 			h.engine.spawner()
@@ -1958,7 +1959,7 @@ mod pull_protocol {
 				.clone();
 		h.tracker.set_waker(
 			h.flow_id,
-			crate::progress::tracker::FlowWaker::new(recorder, pending, h.engine.clock().clone()),
+			FlowWaker::new(recorder, pending, h.engine.clock().clone()),
 		);
 
 		h.te.command("INSERT app::t [{ id: 1 }]");
@@ -2570,7 +2571,7 @@ mod pull_protocol {
 				retry_limit: 3,
 				retry_backoff: Duration::from_milliseconds(50).unwrap(),
 				wake_coalesce: Duration::from_nanoseconds_const(
-					crate::progress::tracker::FLOW_WAKE_COALESCE_NANOS,
+					FLOW_WAKE_COALESCE_NANOS,
 				),
 				batch_size: 8,
 			}),
@@ -2728,7 +2729,7 @@ mod tick_failures {
 	use super::*;
 	use crate::{
 		builder::{CustomOperatorEntry, CustomOperators},
-		progress::tracker::FlowWaker,
+		progress::tracker::{FLOW_WAKE_COALESCE_NANOS, FlowWaker},
 	};
 
 	const FLOW: FlowId = FlowId(9_000);
@@ -3030,7 +3031,7 @@ mod tick_failures {
 			retry_limit: RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(50).unwrap(),
 			wake_coalesce: Duration::from_nanoseconds_const(
-				crate::progress::tracker::FLOW_WAKE_COALESCE_NANOS,
+				FLOW_WAKE_COALESCE_NANOS,
 			),
 			batch_size: 8,
 		});

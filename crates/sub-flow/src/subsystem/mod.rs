@@ -12,6 +12,7 @@ mod tests;
 
 use std::{
 	any::Any,
+	mem::take,
 	path::PathBuf,
 	sync::{
 		Arc,
@@ -312,7 +313,7 @@ impl Shutdown for FlowSubsystem {
 			let _ = handle.join();
 		}
 
-		for handle in std::mem::take(&mut *self.committer_handles.lock()) {
+		for handle in take(&mut *self.committer_handles.lock()) {
 			let _ = handle.join();
 		}
 

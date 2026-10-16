@@ -264,6 +264,10 @@ impl PrePublishInterceptor for CatalogCacheInterceptor {
 			self.catalog.set_flow(id, version, change.post.clone());
 		}
 
+		if !ctx.changes.view.is_empty() || !ctx.changes.flow.is_empty() {
+			self.catalog.refresh_transactional_flows(version);
+		}
+
 		for change in &ctx.changes.source {
 			let id = change
 				.post

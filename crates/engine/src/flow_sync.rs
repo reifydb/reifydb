@@ -16,7 +16,7 @@ use reifydb_core::{
 			id::{TableId, ViewId},
 			object::ObjectId,
 			table::Table,
-			view::{View, ViewKind},
+			view::View,
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
@@ -61,8 +61,8 @@ pub(crate) fn load_flow_diff_need(catalog: &Catalog, tx: &mut Transaction<'_>) -
 		return Ok(());
 	}
 	let mut objects = BTreeSet::new();
-	for flow in load_transactional_flows(catalog, tx)? {
-		objects.extend(flow_sources(&flow));
+	for flow in catalog.list_transactional_flow_dags(tx)?.iter() {
+		objects.extend(flow_sources(flow));
 	}
 	tx.set_flow_diff_need(objects);
 	Ok(())
@@ -139,25 +139,6 @@ fn tagged(key: &EncodedKey) -> TaggedKey {
 	TaggedKey::decode(key).unwrap_or_else(|| panic!("flow sync produced an undecodable key {key:?}"))
 }
 
-fn load_transactional_flows(catalog: &Catalog, tx: &mut Transaction<'_>) -> Result<Vec<FlowDag>> {
-	let mut flows = Vec::new();
-	for dag in catalog.list_flow_dags_asc(tx)? {
-		if is_transactional(catalog, tx, &dag)? {
-			flows.push(dag);
-		}
-	}
-	Ok(flows)
-}
-
-fn is_transactional(catalog: &Catalog, tx: &mut Transaction<'_>, dag: &FlowDag) -> Result<bool> {
-	for view in dag.sink_views() {
-		if catalog.find_view(tx, view)?.is_some_and(|def| def.kind() == ViewKind::Transactional) {
-			return Ok(true);
-		}
-	}
-	Ok(false)
-}
-
 impl Changes for FlowTransaction<'_> {
 	fn cursor(&self) -> usize {
 		self.tx.flow_cursor()
@@ -218,7 +199,7 @@ impl Emit for FlowTransaction<'_> {
 
 impl Lookup for FlowTransaction<'_> {
 	fn transactional_flows(&mut self) -> Result<Vec<FlowDag>> {
-		load_transactional_flows(self.catalog, &mut self.tx)
+		Ok(self.catalog.list_transactional_flow_dags(&mut self.tx)?.to_vec())
 	}
 
 	fn view(&mut self, id: ViewId) -> Result<View> {
