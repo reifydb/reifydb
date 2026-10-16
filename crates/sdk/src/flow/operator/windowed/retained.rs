@@ -54,7 +54,7 @@ use crate::{
 			group_of,
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
-			operator::{Emit, WindowedOperator},
+			operator::{Emit, WindowedOperator, extract_rows},
 			publish::{Emitted, UpdateRow, publish_row},
 			seal_frontier, timer_frontier, window_engine_config,
 		},
@@ -145,16 +145,8 @@ where
 		buckets: &mut Buckets<A, K, V>,
 		is_add: bool,
 	) -> Result<()> {
-		for i in 0..cols.row_count() {
-			let Some(row) = cols.row(i) else {
-				continue;
-			};
-			let Some(coord) = self.aggregator.coord(&row)? else {
-				continue;
-			};
-			let Some((group, contribution)) = self.aggregator.extract(ctx, &row)? else {
-				continue;
-			};
+		let rows: Vec<usize> = (0..cols.row_count()).collect();
+		for (_, coord, group, contribution) in extract_rows(&self.aggregator, ctx, cols, &rows)? {
 			let span = self.window_span(coord);
 			let event = if is_add {
 				AccumulatorEvent::Add(contribution)

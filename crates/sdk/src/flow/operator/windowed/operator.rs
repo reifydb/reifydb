@@ -17,12 +17,12 @@ use reifydb_flow_async::{
 use reifydb_value::config::ExtensionParams;
 
 use crate::{
-	error::Result,
+	error::{Result, SdkError},
 	flow::operator::{
 		OperatorMetadata,
 		column::row::{OutputRows, Row},
 		context::{GuestContext, Windowed},
-		view::RowView,
+		view::{ColumnsView, RowView},
 		windowed::{carry::CarryDriver, plain::PlainDriver, retained::RetainedDriver, top_k::TopKDriver},
 	},
 };
@@ -47,7 +47,56 @@ pub trait WindowedOperator: OperatorMetadata + Send + Sync + Sized {
 		row: &impl RowView,
 	) -> Result<Option<(Self::GroupKey, Contribution<Self>)>>;
 
+	fn coord_batch(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<Self::Coord>>> {
+		rows.iter().map(|&i| cols.row(i).map(|row| self.coord(&row)).transpose().map(Option::flatten)).collect()
+	}
+
+	fn extract_batch(
+		&self,
+		ctx: &mut impl GuestContext<Windowed>,
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(Self::GroupKey, Contribution<Self>)>>> {
+		rows.iter()
+			.map(|&i| cols.row(i).map(|row| self.extract(ctx, &row)).transpose().map(Option::flatten))
+			.collect()
+	}
+
 	fn new_accumulator(&self, settings: &WindowSettings<Self::Coord>) -> Self::Accumulator;
+}
+
+pub(crate) type Extracted<T> =
+	(usize, <T as WindowedOperator>::Coord, <T as WindowedOperator>::GroupKey, Contribution<T>);
+
+pub(crate) fn extract_rows<T: WindowedOperator>(
+	aggregator: &T,
+	ctx: &mut impl GuestContext<Windowed>,
+	cols: &impl ColumnsView,
+	rows: &[usize],
+) -> Result<Vec<Extracted<T>>> {
+	let coords = batch_len::<T, _>(aggregator.coord_batch(cols, rows)?, rows.len(), "coord_batch")?;
+	let kept: Vec<(usize, T::Coord)> =
+		rows.iter().copied().zip(coords).filter_map(|(i, coord)| Some((i, coord?))).collect();
+	let indices: Vec<usize> = kept.iter().map(|(i, _)| *i).collect();
+	let extracted =
+		batch_len::<T, _>(aggregator.extract_batch(ctx, cols, &indices)?, indices.len(), "extract_batch")?;
+	Ok(kept.into_iter()
+		.zip(extracted)
+		.filter_map(|((i, coord), extracted)| {
+			extracted.map(|(group, contribution)| (i, coord, group, contribution))
+		})
+		.collect())
+}
+
+pub(crate) fn batch_len<T: WindowedOperator, V>(values: Vec<V>, rows: usize, method: &str) -> Result<Vec<V>> {
+	if values.len() != rows {
+		return Err(SdkError::OperatorError(format!(
+			"{} {method} returned {} results for {rows} rows",
+			T::NAME,
+			values.len()
+		)));
+	}
+	Ok(values)
 }
 
 pub trait Emit: WindowedOperator {

@@ -59,7 +59,7 @@ use crate::{
 			WindowGroups, group_of,
 			guest_as_host::GuestAsHost,
 			intern_window_groups, observe_batch,
-			operator::{Contribution, Emit, KindSet, WindowedOperator},
+			operator::{Contribution, Emit, KindSet, WindowedOperator, batch_len, extract_rows},
 			publish::{Emitted, Rows, UpdateRow, UpdateRows, publish_row},
 			seal_frontier, timer_frontier, window_engine_config,
 		},
@@ -213,16 +213,8 @@ where
 		buckets: &mut Buckets<A>,
 		is_add: bool,
 	) -> Result<()> {
-		for i in 0..cols.row_count() {
-			let Some(row) = cols.row(i) else {
-				continue;
-			};
-			let Some(coord) = self.aggregator.coord(&row)? else {
-				continue;
-			};
-			let Some((group, contribution)) = self.aggregator.extract(ctx, &row)? else {
-				continue;
-			};
+		let rows: Vec<usize> = (0..cols.row_count()).collect();
+		for (_, coord, group, contribution) in extract_rows(&self.aggregator, ctx, cols, &rows)? {
 			match &self.sliding {
 				Some(mode) => {
 					for span in mode.engine.spans(coord) {
@@ -807,23 +799,14 @@ where
 						continue;
 					};
 					let numbers = cols.row_numbers();
-					for i in 0..cols.row_count() {
-						let Some(row) = cols.row(i) else {
-							continue;
-						};
-						let Some(&number) = numbers.get(i) else {
-							*refused += 1;
-							continue;
-						};
-						let Some(coord) = aggregator.coord(&row)? else {
-							continue;
-						};
-						let Some((group, contribution)) = aggregator.extract(ctx, &row)? else {
-							continue;
-						};
+					let numbered: Vec<usize> = (0..cols.row_count().min(numbers.len())).collect();
+					*refused += (cols.row_count() - numbered.len()) as u64;
+					for (i, coord, group, contribution) in
+						extract_rows(aggregator, ctx, &cols, &numbered)?
+					{
 						rows.push(SessionRow::Admit {
 							group,
-							number,
+							number: numbers[i],
 							coord,
 							contribution,
 						});
@@ -834,20 +817,20 @@ where
 						continue;
 					};
 					let numbers = cols.row_numbers();
-					for i in 0..cols.row_count() {
-						let Some(row) = cols.row(i) else {
-							continue;
-						};
-						let Some(&number) = numbers.get(i) else {
-							*refused += 1;
-							continue;
-						};
-						let Some((group, contribution)) = aggregator.extract(ctx, &row)? else {
+					let numbered: Vec<usize> = (0..cols.row_count().min(numbers.len())).collect();
+					*refused += (cols.row_count() - numbered.len()) as u64;
+					let extracted = batch_len::<A, _>(
+						aggregator.extract_batch(ctx, &cols, &numbered)?,
+						numbered.len(),
+						"extract_batch",
+					)?;
+					for (i, extracted) in numbered.into_iter().zip(extracted) {
+						let Some((group, contribution)) = extracted else {
 							continue;
 						};
 						rows.push(SessionRow::Retract {
 							group,
-							number,
+							number: numbers[i],
 							contribution,
 						});
 					}
@@ -857,20 +840,39 @@ where
 						continue;
 					};
 					let numbers = pre.row_numbers();
-					for i in 0..pre.row_count() {
-						let (Some(pre_row), Some(post_row)) = (pre.row(i), post.row(i)) else {
-							continue;
-						};
-						let Some(&number) = numbers.get(i) else {
-							*refused += 2;
-							continue;
-						};
-						let pre_coord = aggregator.coord(&pre_row)?;
-						let post_coord = aggregator.coord(&post_row)?;
-						let before = aggregator.extract(ctx, &pre_row)?;
-						let after = aggregator.extract(ctx, &post_row)?;
+					let paired = pre.row_count().min(post.row_count());
+					let numbered: Vec<usize> = (0..paired.min(numbers.len())).collect();
+					*refused += 2 * (paired - numbered.len()) as u64;
+					let rows_len = numbered.len();
+					let pre_coords = batch_len::<A, _>(
+						aggregator.coord_batch(&pre, &numbered)?,
+						rows_len,
+						"coord_batch",
+					)?;
+					let post_coords = batch_len::<A, _>(
+						aggregator.coord_batch(&post, &numbered)?,
+						rows_len,
+						"coord_batch",
+					)?;
+					let before = batch_len::<A, _>(
+						aggregator.extract_batch(ctx, &pre, &numbered)?,
+						rows_len,
+						"extract_batch",
+					)?;
+					let after = batch_len::<A, _>(
+						aggregator.extract_batch(ctx, &post, &numbered)?,
+						rows_len,
+						"extract_batch",
+					)?;
+					let paired_rows = numbered
+						.into_iter()
+						.zip(pre_coords)
+						.zip(post_coords)
+						.zip(before)
+						.zip(after);
+					for ((((i, pre_coord), post_coord), before), after) in paired_rows {
 						rows.push(SessionRow::Update {
-							number,
+							number: numbers[i],
 							pre_coord,
 							post_coord,
 							before,
