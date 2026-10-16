@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{
+	hash::{Hash, Hasher},
+	sync::Arc,
+};
 
 use arrow_array::BooleanArray;
 use arrow_schema::{DataType, FieldRef};
@@ -9,6 +12,7 @@ use datafusion_common::{DataFusionError, internal_err};
 use datafusion_expr::{ColumnarValue, Expr, ReturnFieldArgs, ScalarFunctionArgs, ScalarUDFImpl, Signature, expr::Case};
 use reifydb_core::expression::{Expression, IfExpression};
 use reifydb_value::{
+	error::{Diagnostic, Error},
 	fragment::Fragment,
 	value::{column_view::ColumnView, value_type::ValueType},
 };
@@ -43,7 +47,7 @@ pub(super) fn lower_if<'e>(
 
 	let name = branches[0].field.name().clone();
 	let all: Vec<&Node> = branches.iter().chain(otherwise.iter()).collect();
-	let target = layout_type(&all, &e.fragment)?;
+	let (target, mismatches) = layout(&all, &e.fragment)?;
 	let nullable = otherwise.is_none() || all.iter().any(|node| node.field.is_nullable());
 	let first = all[0].field.clone();
 
@@ -62,18 +66,30 @@ pub(super) fn lower_if<'e>(
 		});
 	};
 
-	let shaped = |node: Node| -> Result<Expr> {
+	let shaped = |index: usize, node: Node| -> Result<Expr> {
+		if let Some(diagnostic) = &mismatches[index] {
+			return Ok(udf(
+				MismatchUdf {
+					diagnostic: diagnostic.clone(),
+					index,
+					field: typed_field(&name, target.clone(), true),
+					signature: volatile(),
+				},
+				vec![node.expr],
+			));
+		}
 		if !is_untyped_none(&node.field)? && inner_type(&node.field)? == target {
 			return Ok(node.expr);
 		}
 		Ok(cast_node(ctx, node, &target, &e.fragment).expr)
 	};
+	let branch_count = branches.len();
 	let mut when_then = Vec::with_capacity(conditions.len());
-	for (condition, branch) in conditions.into_iter().zip(branches) {
-		when_then.push((Box::new(condition), Box::new(shaped(branch)?)));
+	for (index, (condition, branch)) in conditions.into_iter().zip(branches).enumerate() {
+		when_then.push((Box::new(condition), Box::new(shaped(index, branch)?)));
 	}
 	let otherwise = match otherwise {
-		Some(node) => Some(Box::new(shaped(node)?)),
+		Some(node) => Some(Box::new(shaped(branch_count, node)?)),
 		None => None,
 	};
 	Ok(Node {
@@ -82,7 +98,7 @@ pub(super) fn lower_if<'e>(
 	})
 }
 
-fn layout_type(nodes: &[&Node], fragment: &Fragment) -> Result<Option<ValueType>> {
+fn layout(nodes: &[&Node], fragment: &Fragment) -> Result<(Option<ValueType>, Vec<Option<Diagnostic>>)> {
 	let describe = |node: &Node| -> Result<(String, ValueType, bool)> {
 		let untyped = is_untyped_none(&node.field)?;
 		let value_type = if untyped {
@@ -93,14 +109,29 @@ fn layout_type(nodes: &[&Node], fragment: &Fragment) -> Result<Option<ValueType>
 		Ok((node.field.name().clone(), value_type, untyped))
 	};
 	let described = nodes.iter().map(|node| describe(node)).collect::<Result<Vec<_>>>()?;
-	let mut layout = BranchLayout::new(described[..1].iter().map(|(n, t, u)| (n.as_str(), t.clone(), *u)));
-	for (name, ty, untyped) in &described[1..] {
-		layout.admit([(name.as_str(), ty.clone(), *untyped)], fragment)?;
+	let entry = |index: usize| {
+		let (name, ty, untyped) = &described[index];
+		(name.as_str(), ty.clone(), *untyped)
+	};
+	let build = |accepted: &[usize]| -> Result<BranchLayout> {
+		let mut layout = BranchLayout::new([entry(accepted[0])]);
+		for &index in &accepted[1..] {
+			layout.admit([entry(index)], fragment)?;
+		}
+		Ok(layout)
+	};
+	let mut accepted = vec![0];
+	let mut mismatches = vec![None; described.len()];
+	for index in 1..described.len() {
+		match build(&accepted)?.admit([entry(index)], fragment) {
+			Ok(()) => accepted.push(index),
+			Err(error) => mismatches[index] = Some(*error.0),
+		}
 	}
-	if described.iter().all(|(_, _, untyped)| *untyped) {
-		return Ok(None);
+	if accepted.iter().all(|&index| described[index].2) {
+		return Ok((None, mismatches));
 	}
-	Ok(Some(layout.types()[0].clone()))
+	Ok((Some(build(&accepted)?.types()[0].clone()), mismatches))
 }
 
 fn truthy(node: Node) -> Result<Expr> {
@@ -113,6 +144,55 @@ fn truthy(node: Node) -> Result<Expr> {
 		},
 		vec![node.expr],
 	))
+}
+
+#[derive(Debug)]
+struct MismatchUdf {
+	diagnostic: Diagnostic,
+	index: usize,
+	field: FieldRef,
+	signature: Signature,
+}
+
+impl PartialEq for MismatchUdf {
+	fn eq(&self, other: &Self) -> bool {
+		self.diagnostic.fragment == other.diagnostic.fragment && self.index == other.index
+	}
+}
+
+impl Eq for MismatchUdf {}
+
+impl Hash for MismatchUdf {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.diagnostic.fragment.hash(state);
+		self.index.hash(state);
+	}
+}
+
+impl ScalarUDFImpl for MismatchUdf {
+	fn name(&self) -> &str {
+		"branch_mismatch"
+	}
+
+	fn signature(&self) -> &Signature {
+		&self.signature
+	}
+
+	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
+		internal_err!("branch_mismatch types its output through return_field_from_args")
+	}
+
+	fn return_field_from_args(&self, _args: ReturnFieldArgs) -> DfResult<FieldRef> {
+		Ok(self.field.clone())
+	}
+
+	fn invoke_with_args(&self, _args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
+		Err(into_external(Error(Box::new(self.diagnostic.clone()))))
+	}
+
+	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
+		Ok(arg_types.to_vec())
+	}
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]

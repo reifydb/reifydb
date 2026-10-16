@@ -23,6 +23,8 @@ mod logic;
 mod lowered_expr;
 #[path = "lower/negate.rs"]
 mod negate;
+#[path = "lower/own_udfs.rs"]
+mod own_udfs;
 #[path = "lower/routine.rs"]
 mod routine;
 #[path = "lower/schema.rs"]

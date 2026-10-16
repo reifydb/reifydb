@@ -93,3 +93,16 @@ fn a_branch_runs_only_on_the_rows_that_pick_it() {
 	assert_eq!(strings(&lowered), vec!["0", "10", "5", "0"]);
 	assert!(env.old(&expression, input()).is_err(), "today the guard does not protect the division");
 }
+
+#[test]
+fn a_branch_of_another_type_errors_only_when_a_row_picks_it() {
+	// A match whose default never fires must still run, as today; the mismatch surfaces only on a row that takes
+	// it.
+	let env = Env::new();
+	let never = conditional(boolean("true"), column("a"), vec![], Some(text("x")));
+	let sometimes = conditional(column("c"), column("a"), vec![], Some(text("x")));
+
+	assert_eq!(strings(&env.lowered(&never, input()).unwrap()), vec!["10", "20", "30", "40"]);
+	assert_eq!(env.lowered(&sometimes, input()).unwrap_err().code, "RUNTIME_012");
+	assert_eq!(env.old(&sometimes, input()).unwrap_err().code, "RUNTIME_012");
+}

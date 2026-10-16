@@ -5,6 +5,7 @@ mod arith;
 mod cast;
 mod compare;
 mod conditional;
+mod contains;
 mod error;
 mod field_access;
 mod in_list;
@@ -12,6 +13,8 @@ mod literal;
 mod prefix;
 mod routine;
 mod schema;
+mod variant;
+mod xor;
 
 use std::sync::Arc;
 
@@ -71,6 +74,10 @@ pub const CLAIMED: &[&str] = &[
 	"Between",
 	"In",
 	"If",
+	"Xor",
+	"Contains",
+	"IsVariant",
+	"SumTypeConstructor",
 	"Add",
 	"Sub",
 	"Mul",
@@ -281,7 +288,9 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 		| Expression::Constant(_)
 		| Expression::Variable(_)
 		| Expression::Parameter(_)
-		| Expression::Type(_) => None,
+		| Expression::Type(_)
+		| Expression::IsVariant(_)
+		| Expression::SumTypeConstructor(_) => None,
 		Expression::FieldAccess(e) => match e.object.as_ref() {
 			Expression::Variable(_) => None,
 			object => first_unclaimed(object),
@@ -306,6 +315,10 @@ fn first_unclaimed(expression: &Expression) -> Option<&Expression> {
 			.or_else(|| first_unclaimed(&e.lower))
 			.or_else(|| first_unclaimed(&e.upper)),
 		Expression::Call(e) => e.args.iter().find_map(first_unclaimed),
+		Expression::Xor(e) => first_unclaimed(&e.left).or_else(|| first_unclaimed(&e.right)),
+		Expression::Contains(e) => {
+			first_unclaimed(&e.value).or_else(|| in_list::items(&e.list).iter().find_map(first_unclaimed))
+		}
 		Expression::If(e) => first_unclaimed(&e.condition)
 			.or_else(|| first_unclaimed(&e.then_expr))
 			.or_else(|| {
@@ -342,6 +355,9 @@ fn lower_root<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 ) -> Lowered<'e, (Arc<dyn PhysicalExpr>, FieldRef)> {
+	if let Some(error) = variant::compile_time_error(expression) {
+		return Err(Stop::Error(error));
+	}
 	let node = lower_node(ctx, operator, expression)?;
 	let schema = positional_schema(operator, ctx.batch.schema_ref())?;
 	let expr =
@@ -492,6 +508,9 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 		Expression::Cast(cast) => lower_cast(ctx, operator, expression, cast),
 		Expression::In(e) => in_list::lower_in(ctx, operator, expression, e),
 		Expression::If(e) => conditional::lower_if(ctx, operator, expression, e),
+		Expression::Xor(e) => xor::lower_xor(ctx, operator, expression, e),
+		Expression::Contains(e) => contains::lower_contains(ctx, operator, expression, e),
+		Expression::IsVariant(e) => Ok(variant::lower_is_variant(ctx, operator, e)?),
 		_ => Err(Stop::Unsupported(expression)),
 	}
 }

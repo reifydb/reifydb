@@ -913,7 +913,7 @@ pub(crate) fn type_column(row_count: usize, ty: &ValueType, fragment: &Fragment)
 	factory::any(fragment.text(), values)
 }
 
-fn combine_bool_columns(
+pub(crate) fn combine_bool_columns(
 	left: (FieldRef, ArrayRef),
 	right: (FieldRef, ArrayRef),
 	fragment: Fragment,
@@ -1068,7 +1068,7 @@ fn build_homogeneous_buffer(items: &[Value], name: &str) -> Option<(FieldRef, Ar
 	}
 }
 
-fn list_contains_element(
+pub(crate) fn list_contains_element(
 	list_col: &(FieldRef, ArrayRef),
 	element_col: &(FieldRef, ArrayRef),
 	fragment: &Fragment,

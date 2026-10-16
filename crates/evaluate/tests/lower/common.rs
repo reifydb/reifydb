@@ -8,11 +8,12 @@ use arrow_schema::{FieldRef, Schema};
 use reifydb_core::{
 	expression::{
 		AccessObjectExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
-		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, ElseIfExpression,
-		EqExpression, Expression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression,
-		IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression, MulExpression,
-		NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression,
-		TupleExpression, TypeExpression, VariableExpression, XorExpression,
+		CallExpression, CastExpression, ColumnExpression, ConstantExpression, ContainsExpression,
+		DivExpression, ElseIfExpression, EqExpression, Expression, FieldAccessExpression,
+		GreaterThanEqExpression, GreaterThanExpression, IdentExpression, IfExpression, InExpression,
+		IsVariantExpression, LessThanEqExpression, LessThanExpression, MulExpression, NotEqExpression,
+		OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression,
+		TypeExpression, VariableExpression, XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 	value::column::factory,
@@ -401,5 +402,34 @@ pub fn conditional(
 			.collect(),
 		else_expr: else_expr.map(Box::new),
 		fragment: frag("if"),
+	})
+}
+
+pub fn contains(value: Expression, items: Vec<Expression>) -> Expression {
+	Expression::Contains(ContainsExpression {
+		value: Box::new(value),
+		list: Box::new(Expression::Tuple(TupleExpression {
+			expressions: items,
+			fragment: frag("(..)"),
+		})),
+		fragment: frag("contains"),
+	})
+}
+
+pub fn is_variant(column_name: &str, tag: Option<u8>) -> Expression {
+	Expression::IsVariant(IsVariantExpression {
+		expression: Box::new(column(column_name)),
+		namespace: None,
+		sumtype_name: frag("shape"),
+		variant_name: frag("circle"),
+		tag,
+		fragment: frag("is circle"),
+	})
+}
+
+pub fn tuple(expressions: Vec<Expression>) -> Expression {
+	Expression::Tuple(TupleExpression {
+		expressions,
+		fragment: frag("(..)"),
 	})
 }

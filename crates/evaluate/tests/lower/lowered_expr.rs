@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use reifydb_core::{
-	expression::{Expression, ParameterExpression, PrefixOperator, TypeExpression},
+	expression::{Expression, ParameterExpression, PrefixOperator, SumTypeConstructorExpression, TypeExpression},
 	interface::{
 		catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy},
 		evaluate::TargetColumn,
@@ -20,7 +20,8 @@ use reifydb_value::value::value_type::ValueType;
 
 use crate::common::{
 	ARITH_OPS, COMPARE_OPS, Env, access, alias, and, arith, batch, between, boolean, call, cast, column, compare,
-	conditional, field_access, frag, in_list, not, number, or, prefix, rows, strings, variable, xor,
+	conditional, contains, field_access, frag, in_list, is_variant, not, number, or, prefix, rows, strings, tuple,
+	variable, xor,
 };
 
 #[test]
@@ -45,6 +46,10 @@ fn the_claimed_list_is_exactly_the_lowered_kinds() {
 		"Between",
 		"In",
 		"If",
+		"Xor",
+		"Contains",
+		"IsVariant",
+		"SumTypeConstructor",
 		"Add",
 		"Sub",
 		"Mul",
@@ -98,6 +103,16 @@ fn every_claimed_name_is_a_kind_that_kind_can_return() {
 	samples.push(cast(number("1"), ValueType::Int4));
 	samples.push(prefix(PrefixOperator::Minus(frag("-")), number("1")));
 	samples.push(prefix(PrefixOperator::Plus(frag("+")), number("1")));
+	samples.push(xor(boolean("true"), boolean("false")));
+	samples.push(contains(column("l"), vec![number("1")]));
+	samples.push(is_variant("shape", Some(0)));
+	samples.push(Expression::SumTypeConstructor(SumTypeConstructorExpression {
+		namespace: frag("ns"),
+		sumtype_name: frag("shape"),
+		variant_name: frag("circle"),
+		columns: vec![],
+		fragment: frag("circle"),
+	}));
 
 	let kinds: BTreeSet<&str> = samples.iter().map(kind).collect();
 	let claimed: BTreeSet<&str> = CLAIMED.iter().copied().collect();
@@ -117,10 +132,10 @@ fn prefix_kinds_are_split_by_operator() {
 
 #[test]
 fn an_unclaimed_kind_falls_back_to_the_old_path_with_the_same_result() {
-	// xor is not lowered yet, so it must run on the old path and answer exactly as today.
+	// A tuple is not lowered yet, so it must run on the old path and answer exactly as today.
 	let env = Env::new();
 	let input = batch(vec![factory::bool("l", [true, true, false]), factory::bool("r", [true, false, false])]);
-	let expression = xor(column("l"), column("r"));
+	let expression = tuple(vec![xor(column("l"), column("r"))]);
 
 	let lowered = env.lowered(&expression, input.clone()).unwrap();
 	let old = env.old(&expression, input).unwrap();
@@ -134,7 +149,7 @@ fn an_unclaimed_kind_under_a_claimed_parent_falls_back_without_a_panic() {
 	// The panic must look at the node that failed to lower, not at the claimed and above it.
 	let env = Env::new();
 	let input = batch(vec![factory::bool("l", [true, false]), factory::bool("r", [false, false])]);
-	let expression = and(xor(column("l"), column("r")), column("l"));
+	let expression = and(tuple(vec![xor(column("l"), column("r"))]), column("l"));
 
 	let lowered = env.lowered(&expression, input.clone()).unwrap();
 	let old = env.old(&expression, input).unwrap();
