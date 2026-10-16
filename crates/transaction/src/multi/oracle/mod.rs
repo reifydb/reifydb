@@ -180,12 +180,12 @@ pub(crate) struct CommitShared<L>
 where
 	L: VersionProvider,
 {
-	pub(crate) clock: L,
+	pub(crate) versions: L,
 	pub(crate) inner: OracleLock,
 	pub(crate) query: WaterMark,
 	pub(crate) command: WaterMark,
 	store: Arc<dyn MultiVersionCommit>,
-	metrics_clock: Clock,
+	clock: Clock,
 	version_epoch: VersionEpoch,
 	config: Arc<dyn GetConfig>,
 	queue: CommitQueue,
@@ -221,10 +221,10 @@ where
 {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
-		clock: L,
+		versions: L,
 		spawner: ActorSpawner,
 		store: Arc<dyn MultiVersionCommit>,
-		metrics_clock: Clock,
+		clock: Clock,
 		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
@@ -233,7 +233,7 @@ where
 		L: 'static,
 	{
 		let shared = Arc::new(CommitShared {
-			clock,
+			versions,
 			inner: OracleLock::new(OracleState {
 				time_windows: BTreeMap::new(),
 				evicted_up_through: CommitVersion(0),
@@ -242,7 +242,7 @@ where
 			query: WaterMark::with_advancer("txn-mark-query".into(), &spawner),
 			command: WaterMark::with_advancer("txn-mark-cmd".into(), &spawner),
 			store,
-			metrics_clock,
+			clock,
 			version_epoch,
 			config,
 			queue: CommitQueue::new(),
@@ -267,8 +267,8 @@ where
 		self.spawner.clone()
 	}
 
-	pub fn metrics_clock(&self) -> &Clock {
-		&self.metrics_clock
+	pub fn clock(&self) -> &Clock {
+		&self.clock
 	}
 
 	pub fn rng(&self) -> &Rng {
@@ -329,13 +329,13 @@ where
 	}
 
 	pub(crate) fn version(&self) -> Result<CommitVersion> {
-		self.clock.current()
+		self.versions.current()
 	}
 
 	pub(crate) fn freeze_commits(&self) -> Result<CommitVersion> {
 		let mut state = self.inner.write();
 		state.frozen = true;
-		self.clock.current()
+		self.versions.current()
 	}
 
 	pub fn stop(&mut self) {
@@ -376,7 +376,7 @@ where
 		}
 
 		if let Some(rebase) = rebase {
-			rebase(&mut deltas, self.clock.current()?)?;
+			rebase(&mut deltas, self.versions.current()?)?;
 		}
 		let commit_version = self.allocate_commit_version(&inner, SpanTiming::current(), deltas.clone())?;
 		drop(inner);
@@ -408,17 +408,17 @@ where
 		}
 
 		if let Some(rebase) = rebase {
-			rebase(deltas, self.clock.current()?)?;
+			rebase(deltas, self.versions.current()?)?;
 		}
 
 		let commit_version = self.allocate_commit_version(state, timing, deltas.clone())?;
 
-		let add_start = timing.mark(&self.metrics_clock);
+		let add_start = timing.mark(&self.clock);
 		state.add_committed_transaction(commit_version, conflicts, window_size);
 		timing.record_micros(add_start, "add_txn_us");
 
 		if state.time_windows.len() > 1 {
-			let cleanup_start = timing.mark(&self.metrics_clock);
+			let cleanup_start = timing.mark(&self.clock);
 			let safe_evict_below = self.query.done_until();
 			cleanup_old_windows(&mut state.time_windows, &mut state.evicted_up_through, safe_evict_below);
 			timing.record_micros(cleanup_start, "cleanup_us");
@@ -457,7 +457,7 @@ where
 			}
 		}
 
-		let conflict_start = timing.mark(&self.metrics_clock);
+		let conflict_start = timing.mark(&self.clock);
 		let mut windows_checked = 0u64;
 		let mut txns_checked = 0u64;
 		for window in state.time_windows.values() {
@@ -506,8 +506,8 @@ where
 		if state.frozen {
 			return Err(TransactionError::ShuttingDown.into());
 		}
-		let clock_start = timing.mark(&self.metrics_clock);
-		let commit_version = self.clock.reserve()?;
+		let clock_start = timing.mark(&self.clock);
+		let commit_version = self.versions.reserve()?;
 		self.query.register_in_flight(commit_version);
 		self.command.register_in_flight(commit_version);
 		reifydb_assertions! {
@@ -521,7 +521,7 @@ where
 		}
 
 		let installed = self.store.commit(deltas, commit_version);
-		self.clock.publish(commit_version);
+		self.versions.publish(commit_version);
 		if let Err(err) = installed {
 			self.query.mark_finished(commit_version);
 			self.command.mark_finished(commit_version);
@@ -531,7 +531,7 @@ where
 
 		self.version_epoch.record(
 			EpochSeconds::new(
-				u64::try_from(self.metrics_clock.now().to_secs())
+				u64::try_from(self.clock.now().to_secs())
 					.expect("system clock is never before the Unix epoch"),
 			),
 			commit_version.0,
@@ -842,7 +842,7 @@ mod tests {
 		assert_eq!(commit_v_b, CommitVersion(50));
 
 		// Skip the clock forward so T_a lands in window @ 500 with a bloom disjoint from window @ 0.
-		oracle.clock.advance_to(CommitVersion(749));
+		oracle.versions.advance_to(CommitVersion(749));
 
 		let mut conflicts_a = ConflictManager::new();
 		conflicts_a.mark_write(&key_alpha);

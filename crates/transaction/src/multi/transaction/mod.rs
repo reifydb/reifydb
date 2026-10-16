@@ -75,13 +75,13 @@ where
 	#[instrument(
 		name = "transaction::manager::new",
 		level = "debug",
-		skip(clock, spawner, store, metrics_clock, version_epoch, rng, config)
+		skip(versions, spawner, store, clock, version_epoch, rng, config)
 	)]
 	pub fn new(
-		clock: L,
+		versions: L,
 		spawner: ActorSpawner,
 		store: Arc<dyn MultiVersionCommit>,
-		metrics_clock: Clock,
+		clock: Clock,
 		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
@@ -89,8 +89,8 @@ where
 	where
 		L: 'static,
 	{
-		let version = clock.next()?;
-		let oracle = Oracle::new(clock, spawner, store, metrics_clock, version_epoch, rng, config);
+		let version = versions.next()?;
+		let oracle = Oracle::new(versions, spawner, store, clock, version_epoch, rng, config);
 		oracle.query.advance_to(version);
 		oracle.command.advance_to(version);
 		Ok(Self {
@@ -136,14 +136,14 @@ where
 				.into());
 			}
 			TransactionManagerQuery::new_time_travel(
-				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
+				TransactionId::generate(self.inner.clock(), self.inner.rng()),
 				self.clone(),
 				version,
 			)
 		} else {
 			let safe_version = self.inner.query.register_in_flight_with(|| self.inner.version())?;
 			TransactionManagerQuery::new_current(
-				TransactionId::generate(self.inner.metrics_clock(), self.inner.rng()),
+				TransactionId::generate(self.inner.clock(), self.inner.rng()),
 				self.clone(),
 				safe_version,
 			)
@@ -178,7 +178,7 @@ where
 	}
 
 	pub fn advance_version_to(&self, version: CommitVersion) {
-		self.inner.clock.advance_to(version);
+		self.inner.versions.advance_to(version);
 		self.inner.command.advance_to(version);
 		self.inner.query.advance_to(version);
 	}
@@ -235,7 +235,7 @@ impl Inner {
 		single: SingleTransaction,
 		event_bus: EventBus,
 		spawner: ActorSpawner,
-		metrics_clock: Clock,
+		clock: Clock,
 		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
@@ -245,7 +245,7 @@ impl Inner {
 			version_provider,
 			spawner,
 			Arc::new(store.clone()),
-			metrics_clock,
+			clock,
 			version_epoch,
 			rng,
 			config,
@@ -303,7 +303,7 @@ impl MultiTransaction {
 	#[instrument(
 		name = "transaction::new",
 		level = "debug",
-		skip(store, single, event_bus, spawner, metrics_clock, version_epoch, rng, config)
+		skip(store, single, event_bus, spawner, clock, version_epoch, rng, config)
 	)]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
@@ -311,21 +311,12 @@ impl MultiTransaction {
 		single: SingleTransaction,
 		event_bus: EventBus,
 		spawner: ActorSpawner,
-		metrics_clock: Clock,
+		clock: Clock,
 		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 	) -> Result<Self> {
-		Ok(Self(Arc::new(Inner::new(
-			store,
-			single,
-			event_bus,
-			spawner,
-			metrics_clock,
-			version_epoch,
-			rng,
-			config,
-		)?)))
+		Ok(Self(Arc::new(Inner::new(store, single, event_bus, spawner, clock, version_epoch, rng, config)?)))
 	}
 
 	pub fn spawner(&self) -> ActorSpawner {

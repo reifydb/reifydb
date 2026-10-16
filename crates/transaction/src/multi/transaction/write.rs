@@ -116,7 +116,7 @@ impl MultiWriteTransaction {
 		let oracle = engine.tm.oracle().clone();
 		let version = oracle.query.register_in_flight_with(|| oracle.version())?;
 
-		let id = TransactionId::generate(oracle.metrics_clock(), oracle.rng());
+		let id = TransactionId::generate(oracle.clock(), oracle.rng());
 		Ok(Self {
 			engine,
 			id,
