@@ -2,7 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
+use reifydb_value::value::{
+	date::Date, datetime::DateTime, decimal::Decimal, dictionary::DictionaryEntryId, duration::Duration, time::Time,
+};
 
 use crate::{
 	common::{
@@ -14,9 +16,9 @@ use crate::{
 		row::Row,
 		sink::{ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, unsupported_column},
 		writer::{
-			BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DurationWriter, F32Writer,
-			F64Writer, I8Writer, I16Writer, I32Writer, I64Writer, I128Writer, TimeWriter, U8Writer,
-			U16Writer, U32Writer, U64Writer, U128Writer, Utf8Writer,
+			BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DictionaryIdWriter,
+			DurationWriter, F32Writer, F64Writer, I8Writer, I16Writer, I32Writer, I64Writer, I128Writer,
+			TimeWriter, U8Writer, U16Writer, U32Writer, U64Writer, U128Writer, Utf8Writer,
 		},
 	},
 };
@@ -48,6 +50,7 @@ enum AnyWriter<'a> {
 	Utf8(Utf8Writer<'a>),
 	Blob(BlobWriter<'a>),
 	Decimal(DecimalWriter<'a>),
+	DictionaryId(DictionaryIdWriter<'a>),
 }
 
 impl<'a> AnyWriter<'a> {
@@ -86,6 +89,7 @@ impl<'a> AnyWriter<'a> {
 			ValueKind::Boolean => AnyWriter::Bool(builder.bool_writer(row_capacity)?),
 			ValueKind::Utf8 => AnyWriter::Utf8(builder.utf8_writer(row_capacity, var_bytes_hint)?),
 			ValueKind::Blob => AnyWriter::Blob(builder.blob_writer(row_capacity, var_bytes_hint)?),
+			ValueKind::DictionaryId => AnyWriter::DictionaryId(builder.dictionary_id_writer(row_capacity)?),
 			other => return Err(unsupported_column(other)),
 		})
 	}
@@ -112,6 +116,7 @@ impl<'a> AnyWriter<'a> {
 			AnyWriter::Utf8(w) => w.finish(),
 			AnyWriter::Blob(w) => w.finish(),
 			AnyWriter::Decimal(w) => w.finish(),
+			AnyWriter::DictionaryId(w) => w.finish(),
 		}
 	}
 }
@@ -316,6 +321,14 @@ impl RowSink for ExternCRowSink<'_> {
 	}
 
 	#[inline]
+	fn dictionary_id_column(&mut self, col: usize) -> Result<impl ColumnWriter<DictionaryEntryId> + '_, SdkError> {
+		match &mut self.writers[col] {
+			AnyWriter::DictionaryId(w) => Ok(w),
+			_ => Err(column_mismatch(col, self.columns[col].1, "dictionary id")),
+		}
+	}
+
+	#[inline]
 	fn push_none(&mut self, col: usize) -> Result<(), SdkError> {
 		match &mut self.writers[col] {
 			AnyWriter::U8(w) => w.push_none(),
@@ -338,6 +351,7 @@ impl RowSink for ExternCRowSink<'_> {
 			AnyWriter::Utf8(w) => w.push_none(),
 			AnyWriter::Blob(w) => w.push_none(),
 			AnyWriter::Decimal(w) => w.push_none(),
+			AnyWriter::DictionaryId(w) => w.push_none(),
 		}
 	}
 }

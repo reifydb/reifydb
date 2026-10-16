@@ -5,7 +5,7 @@ pub mod partition;
 pub mod table;
 pub mod view;
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -38,10 +38,11 @@ use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
 	value::{
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
 		datetime::DateTime,
 		identity::IdentityId,
 		system_columns::{column_view, created_at, time, updated_at, user_columns},
+		value_type::field::{from_field, to_field},
 	},
 };
 
@@ -111,6 +112,19 @@ pub fn coerce_columns(
 
 		if let Some(source_col) = column_view(columns, &target_col.name)? {
 			check_digest_write(&source_col, &target_type, Fragment::internal(&target_col.name))?;
+			if let (
+				Some(dictionary_id),
+				ViewData::DictionaryId {
+					..
+				},
+			) = (target_col.dictionary_id, &source_col.data)
+			{
+				let mut field_type = from_field(&source_col.field)?;
+				field_type.dictionary_id = Some(dictionary_id);
+				let field: FieldRef = Arc::new(to_field(&target_col.name, &field_type));
+				result_columns.push((field, source_col.array().slice(0, source_col.len())));
+				continue;
+			}
 			let casted = cast_column_data(
 				&ctx,
 				&source_col,

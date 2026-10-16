@@ -24,12 +24,13 @@ use reifydb_core::{
 		change::{Change, Diff},
 	},
 	internal_err,
+	key::sort_run::SortRun,
 	partition::partition_col_indices,
 	row::row_shape_from_columns,
 	value::{
 		batch::batch,
 		column::{
-			dictionary::{gather_dictionary_values, scatter_dictionary_ids},
+			dictionary::{decode_dictionary_ids, gather_dictionary_values, scatter_dictionary_ids},
 			factory::dictionary_id,
 		},
 	},
@@ -40,8 +41,10 @@ use reifydb_value::{
 	error::Error,
 	value::{
 		Value,
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
+		container::dictionary_array,
 		datetime::DateTime,
+		dictionary::DictionaryEntryId,
 		partition::Partition,
 		row_number::RowNumber,
 		system_columns::{created_at, require_row_numbers},
@@ -156,7 +159,7 @@ impl TableSink {
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut encoded_bytes_list: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 		let row_numbers = require_row_numbers(source)?;
-		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
+		let mut runs = value_sort_runs(txn, &self.sort, &coerced)?.into_iter();
 		let encoded = encoder.encode_all()?;
 		let partitions = self.resolved_partitions(txn, source)?;
 
@@ -200,8 +203,8 @@ impl TableSink {
 		let row_count = source_post.num_rows();
 		let (pre_row_numbers, post_row_numbers) =
 			(require_row_numbers(source_pre)?, require_row_numbers(source_post)?);
-		let mut pre_runs = sort_runs(&self.sort, &coerced_pre)?.into_iter();
-		let mut post_runs = sort_runs(&self.sort, &coerced_post)?.into_iter();
+		let mut pre_runs = value_sort_runs(txn, &self.sort, &coerced_pre)?.into_iter();
+		let mut post_runs = value_sort_runs(txn, &self.sort, &coerced_post)?.into_iter();
 		let partitions = if self.is_partitioned() {
 			let pre = partition_batch(&self.view, &self.partition_indices, source_pre)?;
 			let post = partition_batch(&self.view, &self.partition_indices, source_post)?;
@@ -312,7 +315,7 @@ impl TableSink {
 		let row_count = source.num_rows();
 		let mut keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let row_numbers = require_row_numbers(source)?;
-		let mut runs = sort_runs(&self.sort, &coerced)?.into_iter();
+		let mut runs = value_sort_runs(txn, &self.sort, &coerced)?.into_iter();
 		let partitions = if self.is_partitioned() {
 			Some(partition_batch(&self.view, &self.partition_indices, source)?.rows)
 		} else {
@@ -378,6 +381,10 @@ pub fn dictionary_encode_view_columns<T: Intern + ?Sized>(
 	for (col_pos, dictionary) in &dict_columns {
 		let (field, array) = &encoded[*col_pos];
 		let views = [ColumnView::try_from((array, field.as_ref()))?];
+		if let Some(ids) = entry_ids(&views[0], dictionary)? {
+			encoded[*col_pos] = dictionary_id(field.name(), ids);
+			continue;
+		}
 		let mut values = Vec::new();
 		gather_dictionary_values(&views, &mut values);
 		let ids = txn.intern(dictionary, &values)?;
@@ -422,6 +429,10 @@ fn lookup_dictionary_columns<T: Intern + ?Sized>(
 	for (col_pos, dictionary) in &dict_columns {
 		let (field, array) = &encoded[*col_pos];
 		let views = [ColumnView::try_from((array, field.as_ref()))?];
+		if let Some(ids) = entry_ids(&views[0], dictionary)? {
+			encoded[*col_pos] = dictionary_id(field.name(), ids);
+			continue;
+		}
 		let mut values = Vec::new();
 		gather_dictionary_values(&views, &mut values);
 		let ids = if values.is_empty() {
@@ -452,6 +463,58 @@ fn lookup_dictionary_columns<T: Intern + ?Sized>(
 	}
 
 	Ok(Some(batch(encoded)?))
+}
+
+fn entry_ids(view: &ColumnView<'_>, dictionary: &Dictionary) -> Result<Option<Vec<DictionaryEntryId>>> {
+	let ViewData::DictionaryId {
+		container,
+		..
+	} = view.data
+	else {
+		return Ok(None);
+	};
+	dictionary_array::iter(container)
+		.enumerate()
+		.map(|(row, id)| match view.is_defined(row) {
+			true => DictionaryEntryId::from_u128(id.to_u128(), dictionary.id_type.clone()),
+			false => Ok(dictionary.id_type.none()),
+		})
+		.collect::<Result<Vec<_>>>()
+		.map(Some)
+}
+
+fn value_sort_runs<T: Intern + ?Sized>(
+	txn: &mut T,
+	sort: &[ViewSortKey],
+	columns: &RecordBatch,
+) -> Result<Vec<SortRun>> {
+	let mut decoded: Option<Vec<(FieldRef, ArrayRef)>> = None;
+	for key in sort {
+		let index = key.column.0 as usize;
+		let field = columns.schema_ref().field(index);
+		let ViewData::DictionaryId {
+			dictionary_id: Some(id),
+			..
+		} = ColumnView::try_from((columns.column(index), field))?.data
+		else {
+			continue;
+		};
+		let dictionary = txn.dictionary(id)?.ok_or_else(|| {
+			Error::from(FlowSinkError::DictionaryNotFound {
+				dictionary_id: format!("{:?}", id),
+				column: field.name().clone(),
+			})
+		})?;
+		let pairs = decoded.get_or_insert_with(|| pairs(columns));
+		let (field, array) = &pairs[index];
+		pairs[index] = decode_dictionary_ids(field, array, dictionary.value_type.clone(), |ids| {
+			txn.resolve(&dictionary, ids)
+		})?;
+	}
+	match decoded {
+		Some(pairs) => sort_runs(sort, &batch(pairs)?),
+		None => sort_runs(sort, columns),
+	}
 }
 
 fn pairs(columns: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {

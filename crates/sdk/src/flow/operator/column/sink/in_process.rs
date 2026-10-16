@@ -16,6 +16,7 @@ use reifydb_value::value::{
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
+	dictionary::DictionaryEntryId,
 	duration::Duration,
 	row_number::RowNumber,
 	system_columns::{SystemColumn, stamp_system_columns},
@@ -232,6 +233,9 @@ impl RowSink for InProcessRowSink {
 			precision,
 			scale,
 		})
+	}
+	fn dictionary_id_column(&mut self, col: usize) -> Result<impl ColumnWriter<DictionaryEntryId> + '_, SdkError> {
+		self.scalar(col, ValueKind::DictionaryId, "dictionary id")
 	}
 	#[inline]
 	fn push_none(&mut self, col: usize) -> Result<(), SdkError> {

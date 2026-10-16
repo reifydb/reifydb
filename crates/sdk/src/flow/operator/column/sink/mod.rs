@@ -5,7 +5,8 @@ pub mod in_process;
 
 use reifydb_codec::tag::{TypeTag, ValueKind};
 use reifydb_value::value::{
-	date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time, value_type::ValueType,
+	date::Date, datetime::DateTime, decimal::Decimal, dictionary::DictionaryEntryId, duration::Duration,
+	time::Time, value_type::ValueType,
 };
 
 use crate::error::SdkError;
@@ -48,6 +49,7 @@ pub trait RowSink {
 	fn utf8_column(&mut self, col: usize) -> Result<impl ColumnWriter<str> + '_, SdkError>;
 	fn blob_column(&mut self, col: usize) -> Result<impl ColumnWriter<[u8]> + '_, SdkError>;
 	fn decimal_column(&mut self, col: usize) -> Result<impl ColumnWriter<Decimal> + '_, SdkError>;
+	fn dictionary_id_column(&mut self, col: usize) -> Result<impl ColumnWriter<DictionaryEntryId> + '_, SdkError>;
 	fn push_none(&mut self, col: usize) -> Result<(), SdkError>;
 
 	fn push_u8(&mut self, col: usize, v: u8) -> Result<(), SdkError> {
@@ -151,7 +153,7 @@ pub(crate) fn column_type(kind: ValueKind) -> Result<ValueType, SdkError> {
 			| ValueKind::Date | ValueKind::DateTime
 			| ValueKind::Time | ValueKind::Duration
 			| ValueKind::Utf8 | ValueKind::Blob
-			| ValueKind::Decimal
+			| ValueKind::Decimal | ValueKind::DictionaryId
 	) {
 		return Err(unsupported_column(kind));
 	}

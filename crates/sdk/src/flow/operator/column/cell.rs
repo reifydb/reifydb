@@ -4,7 +4,9 @@
 use std::{iter::once, sync::Arc};
 
 use reifydb_codec::tag::ValueKind;
-use reifydb_value::value::{date::Date, datetime::DateTime, decimal::Decimal, duration::Duration, time::Time};
+use reifydb_value::value::{
+	date::Date, datetime::DateTime, decimal::Decimal, dictionary::DictionaryEntryId, duration::Duration, time::Time,
+};
 
 use crate::{
 	error::SdkError,
@@ -85,6 +87,7 @@ impl_cell!(Date, ValueKind::Date, 0, date_column, |v| v);
 impl_cell!(DateTime, ValueKind::DateTime, 0, datetime_column, |v| v);
 impl_cell!(Time, ValueKind::Time, 0, time_column, |v| v);
 impl_cell!(Duration, ValueKind::Duration, 0, duration_column, |v| v);
+impl_cell!(DictionaryEntryId, ValueKind::DictionaryId, 0, dictionary_id_column, |v| v);
 
 impl<T: Cell> Cell for Option<T> {
 	const COLUMN_TYPE: ValueKind = T::COLUMN_TYPE;

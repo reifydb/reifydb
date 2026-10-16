@@ -3,12 +3,13 @@
 
 use core::marker::PhantomData;
 
-use reifydb_codec::tag::ValueKind;
+use reifydb_codec::{extern_c::cells::encode_dictionary_id_cell, tag::ValueKind};
 use reifydb_value::value::{
 	constraint::{precision::Precision, scale::Scale},
 	date::Date,
 	datetime::DateTime,
 	decimal::Decimal,
+	dictionary::DictionaryEntryId,
 	duration::Duration,
 	time::Time,
 };
@@ -278,8 +279,8 @@ impl<'a> VarLenWriter<'a> {
 		}
 		let data = inner.data_ptr();
 		let offsets = inner.offsets_ptr();
-		// SAFETY: Utf8 and Blob are both var-len type codes, so `offsets` is non-null, fetched after the
-		// last grow, and the acquire reserved `capacity + 1` aligned `u64` slots; this writes slot 0.
+		// SAFETY: Utf8, Blob and DictionaryId are var-len type codes, so `offsets` is non-null, fetched after
+		// the last grow, and the acquire reserved `capacity + 1` aligned `u64` slots; this writes slot 0.
 		unsafe {
 			core::ptr::write(offsets, 0u64);
 		}
@@ -332,6 +333,14 @@ impl<'a> VarLenWriter<'a> {
 			d.push(true);
 		}
 		self.item_cursor += 1;
+		Ok(())
+	}
+
+	fn push_undefined(&mut self, bytes: &[u8]) -> Result<(), SdkError> {
+		self.push_bytes(bytes)?;
+		let cursor = self.item_cursor;
+		let defined = self.defined.get_or_insert_with(|| vec![true; cursor]);
+		defined[cursor - 1] = false;
 		Ok(())
 	}
 
@@ -417,6 +426,33 @@ impl ColumnWriter<[u8]> for BlobWriter<'_> {
 	}
 }
 
+pub struct DictionaryIdWriter<'a> {
+	inner: VarLenWriter<'a>,
+	cell: Vec<u8>,
+}
+
+impl DictionaryIdWriter<'_> {
+	pub fn finish(self) -> Result<CommittedColumn, SdkError> {
+		self.inner.finish()
+	}
+}
+
+impl ColumnWriter<DictionaryEntryId> for DictionaryIdWriter<'_> {
+	#[inline]
+	fn push(&mut self, value: &DictionaryEntryId) -> Result<(), SdkError> {
+		self.cell.clear();
+		encode_dictionary_id_cell(value, &mut self.cell);
+		self.inner.push_bytes(&self.cell)
+	}
+
+	#[inline]
+	fn push_none(&mut self) -> Result<(), SdkError> {
+		self.cell.clear();
+		encode_dictionary_id_cell(&DictionaryEntryId::default(), &mut self.cell);
+		self.inner.push_undefined(&self.cell)
+	}
+}
+
 pub type U8Writer<'a> = ScalarWriter<'a, u8>;
 pub type U16Writer<'a> = ScalarWriter<'a, u16>;
 pub type U32Writer<'a> = ScalarWriter<'a, u32>;
@@ -492,6 +528,13 @@ impl<'a> ColumnsBuilder<'a> {
 	}
 	pub fn blob_writer(&mut self, capacity: usize, expected_bytes: usize) -> Result<BlobWriter<'_>, SdkError> {
 		Ok(BlobWriter(VarLenWriter::new(self.acquire(ValueKind::Blob, capacity)?, capacity, expected_bytes)?))
+	}
+	pub fn dictionary_id_writer(&mut self, capacity: usize) -> Result<DictionaryIdWriter<'_>, SdkError> {
+		let inner = self.acquire(ValueKind::DictionaryId, capacity)?;
+		Ok(DictionaryIdWriter {
+			inner: VarLenWriter::new(inner, capacity, capacity * 17)?,
+			cell: Vec::with_capacity(17),
+		})
 	}
 	pub fn decimal_writer(
 		&mut self,
