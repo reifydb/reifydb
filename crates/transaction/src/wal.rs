@@ -178,9 +178,6 @@ pub fn replay(wal: &CommitWal, store: &CommitStore, saved_through: CommitVersion
 			note_lsn(&mut lsns, version, replayed.lsn);
 		}
 	}
-	wal.sync().unwrap_or_else(|err| {
-		panic!("commit log failed to flush after replay through version {}: {err}", last.0)
-	});
 	Recovery {
 		last,
 		lsns,
