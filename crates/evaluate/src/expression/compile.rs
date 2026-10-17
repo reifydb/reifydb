@@ -1229,7 +1229,7 @@ fn execute_if_multi(
 	if let Some(layout) = &layout {
 		for columns in evaluated.iter_mut().flatten() {
 			for (column, target) in columns.iter_mut().zip(layout.types()) {
-				if is_family(target)
+				if (is_family(target) || target.is_floating_point())
 					&& ColumnView::try_from(&*column)?.get_type().inner_type() != target
 				{
 					*column = apply_cast(ctx, column, target, _fragment)?;
@@ -1387,6 +1387,8 @@ pub(crate) fn wrap_cast_error(err: Error, fragment: Fragment, target: &ValueType
 
 #[cfg(test)]
 mod tests {
+	use std::str::FromStr;
+
 	use arrow_array::{ArrayRef, RecordBatch};
 	use arrow_schema::FieldRef;
 	use reifydb_core::{
@@ -1399,7 +1401,13 @@ mod tests {
 	};
 	use reifydb_value::{
 		fragment::Fragment,
-		value::{Value, column_view::ColumnView, value_type::ValueType},
+		value::{
+			Value,
+			column_view::ColumnView,
+			constraint::{precision::Precision, scale::Scale},
+			decimal::Decimal,
+			value_type::ValueType,
+		},
 	};
 
 	use super::combine_bool_columns;
@@ -1683,6 +1691,39 @@ mod tests {
 			.expect_err("an unselected branch of another type must be rejected");
 
 		assert_eq!(err.code, "RUNTIME_012", "expected a conditional branch mismatch, got {err:?}");
+	}
+
+	#[test]
+	fn decimal_and_float8_branches_unify_to_float8_in_either_order() {
+		// A decimal literal next to a float branch must not be a mismatch, and its rows must be cast, never
+		// pushed raw.
+		let base = EvalContext::testing();
+		let decimals = ["10.5", "20.5", "30.5", "40.5"].map(|text| Decimal::from_str(text).unwrap());
+		let ctx = base.with_eval(
+			four_row_ctx(vec![
+				factory::float8("f", [1.5, 2.5, 3.5, 4.5]),
+				factory::decimal("d", Precision::new(3), Scale::new(1), decimals),
+			]),
+			4,
+		);
+
+		let float_then = evaluate(&ctx, &conditional(column("flag"), column("f"), vec![], Some(column("d"))))
+			.expect("a float then branch must unify with a decimal else branch");
+		let view = ColumnView::try_from(&float_then).unwrap();
+		assert_eq!(*view.get_type().inner_type(), ValueType::Float8);
+		assert_eq!(view.get_value(0), Value::float8(1.5));
+		assert_eq!(view.get_value(1), Value::float8(20.5));
+		assert_eq!(view.get_value(2), Value::float8(30.5));
+		assert_eq!(view.get_value(3), Value::float8(4.5));
+
+		let decimal_then = evaluate(&ctx, &conditional(column("flag"), column("d"), vec![], Some(column("f"))))
+			.expect("a decimal then branch must unify with a float else branch");
+		let view = ColumnView::try_from(&decimal_then).unwrap();
+		assert_eq!(*view.get_type().inner_type(), ValueType::Float8);
+		assert_eq!(view.get_value(0), Value::float8(10.5));
+		assert_eq!(view.get_value(1), Value::float8(2.5));
+		assert_eq!(view.get_value(2), Value::float8(3.5));
+		assert_eq!(view.get_value(3), Value::float8(40.5));
 	}
 
 	#[test]

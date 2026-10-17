@@ -8,7 +8,7 @@ use reifydb_value::{
 	value::value_type::ValueType,
 };
 
-use crate::Result;
+use crate::{Result, expression::compare::is_family};
 
 pub struct BranchLayout {
 	types: Vec<ValueType>,
@@ -56,6 +56,11 @@ impl BranchLayout {
 				} else if ty != slot {
 					match common_key_type(slot, ty) {
 						Some(common) => *slot = common,
+						None if (is_family(slot) && ty.is_floating_point())
+							|| (slot.is_floating_point() && is_family(ty)) =>
+						{
+							*slot = ValueType::Float8
+						}
 						None => {
 							disagrees = true;
 							break;
