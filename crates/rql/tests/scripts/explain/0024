@@ -1,0 +1,23 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A filter that drops every row must stay, otherwise a deny policy would let rows through.
+
+admin 'create table test::t24 { id: int4, a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t24   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t24 filter {false}")'
+---
+> +-------+---------+----------+-------------+-------------------+
+> |  idx  |  depth  |  parent  |    kind     |      detail       |
+> +-------+---------+----------+-------------+-------------------+
+> |   0   |    0    |   none   |   Filter    |  Constant(false)  |
+> |   1   |    1    |    0     |  TableScan  |     test::t24     |
+> +-------+---------+----------+-------------+-------------------+
+>

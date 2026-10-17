@@ -4,11 +4,11 @@
 use bumpalo::Bump;
 use datafusion_common::tree_node::TreeNode;
 use reifydb_core::expression::{
-	Expression,
+	ConstantExpression, Expression,
 	name::{column_refs, display_label},
 };
 use reifydb_routine_abi::registry::Routines;
-use reifydb_value::value::system_columns::SystemColumn;
+use reifydb_value::value::{Value, system_columns::SystemColumn};
 
 use crate::{
 	bump::BumpBox,
@@ -33,6 +33,10 @@ type Input<'bump> = BumpBox<'bump, QueryTree<'bump>>;
 impl<'a, 'bump> Rules<'a, 'bump> {
 	fn optimize(&self, tree: QueryTree<'bump>) -> QueryTree<'bump> {
 		match self.map_inputs(tree) {
+			QueryTree::Filter {
+				node,
+				input,
+			} if is_true(&node.condition) => BumpBox::into_inner(input),
 			QueryTree::Filter {
 				node,
 				input,
@@ -358,6 +362,10 @@ impl<'a, 'bump> Rules<'a, 'bump> {
 			| QueryTree::Statement(_)) => leaf,
 		}
 	}
+}
+
+fn is_true(condition: &Expression) -> bool {
+	matches!(condition, Expression::Constant(constant @ ConstantExpression::Bool { .. }) if matches!(constant.to_value(), Ok(Value::Boolean(true))))
 }
 
 fn is_system_column(name: &str) -> bool {

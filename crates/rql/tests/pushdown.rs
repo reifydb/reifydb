@@ -29,3 +29,24 @@ fn a_filter_after_the_map_drops_the_zero_row_first() {
 	assert!(text.contains("|  5  |  2  |"), "expected the a = 5 row with x = 2, got:\n{text}");
 	assert!(!text.contains("|  0  |"), "the a = 0 row must be filtered out, got:\n{text}");
 }
+
+#[test]
+fn an_update_with_filter_true_still_updates_every_row() {
+	// Dropping the always-true filter must keep every row in the update, never fewer.
+	let engine = engine();
+	engine.command("UPDATE pd::t { a: 7 } FILTER { true }");
+	let text = engine.query("FROM pd::t FILTER { a == 7 }").iter().map(|f| f.to_string()).collect::<String>();
+	assert!(
+		text.contains("|  1   |  7  |") && text.contains("|  2   |  7  |"),
+		"both rows must be updated, got:\n{text}"
+	);
+}
+
+#[test]
+fn a_delete_with_filter_true_still_deletes_every_row() {
+	// Dropping the always-true filter must keep every row in the delete, never fewer.
+	let engine = engine();
+	engine.command("DELETE pd::t FILTER { true }");
+	let text = engine.query("FROM pd::t").iter().map(|f| f.to_string()).collect::<String>();
+	assert!(!text.contains("|  1   |") && !text.contains("|  2   |"), "no row may survive, got:\n{text}");
+}

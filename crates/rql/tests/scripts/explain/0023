@@ -1,0 +1,22 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A filter that can never drop a row must disappear, otherwise every row pays for a no-op pass.
+
+admin 'create table test::t23 { id: int4, a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t23   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t23 filter {true}")'
+---
+> +-------+---------+----------+-------------+-------------+
+> |  idx  |  depth  |  parent  |    kind     |   detail    |
+> +-------+---------+----------+-------------+-------------+
+> |   0   |    0    |   none   |  TableScan  |  test::t23  |
+> +-------+---------+----------+-------------+-------------+
+>
