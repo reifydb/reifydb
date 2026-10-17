@@ -1,53 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+mod common;
+
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::{dictionary::Dictionary, flow::OperatorId},
+		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
 	value::{batch::batch, column::factory},
 };
-use reifydb_flow::{
-	context::FlowContext,
-	operator::filter::FilterOperator,
-	txn::{Find, Resolve},
-};
+use reifydb_flow::{context::FlowContext, operator::filter::FilterOperator};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
-use reifydb_value::{
-	Result,
-	value::{
-		Value,
-		column_view::ColumnView,
-		datetime::DateTime,
-		dictionary::{DictionaryEntryId, DictionaryId},
-		value_type::ValueType,
-	},
-};
+use reifydb_value::value::{column_view::ColumnView, datetime::DateTime, value_type::ValueType};
 
-struct NoDictionaries;
-
-impl Resolve for NoDictionaries {
-	fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>> {
-		panic!("a filter over plain columns must never read a dictionary")
-	}
-
-	fn resolve(&mut self, _dictionary: &Dictionary, _ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
-		panic!("a filter over plain columns must never decode")
-	}
-}
-
-impl Find for NoDictionaries {
-	fn find(&mut self, _dictionary: &Dictionary, _values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
-		panic!("a filter over plain columns must never find a literal")
-	}
-}
+use crate::common::NoDictionaries;
 
 fn filter(condition: &str) -> FilterOperator {
 	FilterOperator::new(

@@ -16,7 +16,14 @@ use reifydb_value::{
 	Result,
 	error::Error,
 	reifydb_assertions,
-	value::system_columns::{require_row_numbers, restamp_row_numbers},
+	value::{
+		dictionary::DictionaryId,
+		system_columns::{require_row_numbers, restamp_row_numbers},
+		value_type::{
+			ValueType,
+			field::{FieldType, from_field},
+		},
+	},
 };
 use tracing::instrument;
 
@@ -41,6 +48,38 @@ pub struct AppendOperator {
 	input_nodes: Vec<OperatorId>,
 
 	lanes: AppendLanes,
+}
+
+fn check_lanes(first: &SchemaRef, second: &SchemaRef) -> Result<()> {
+	for field in first.fields() {
+		let Ok(other) = second.field_with_name(field.name()) else {
+			continue;
+		};
+		if let (Some(expected), Some(found)) = (lane_type(&from_field(field)?), lane_type(&from_field(other)?))
+			&& expected != found
+		{
+			return Err(Error::from(FlowGraphError::AppendLaneMismatch {
+				column: field.name().clone(),
+				expected: describe(&expected),
+				found: describe(&found),
+			}));
+		}
+	}
+	Ok(())
+}
+
+fn lane_type(field: &FieldType) -> Option<(ValueType, Option<DictionaryId>)> {
+	match field.value_type.as_ref().map(ValueType::inner_type) {
+		None | Some(ValueType::Any) => None,
+		Some(value_type) => Some((value_type.clone(), field.dictionary_id)),
+	}
+}
+
+fn describe((value_type, dictionary): &(ValueType, Option<DictionaryId>)) -> String {
+	match dictionary {
+		Some(dictionary) => format!("{value_type} of dictionary {}", dictionary.0),
+		None => value_type.to_string(),
+	}
 }
 
 impl AppendOperator {
@@ -78,6 +117,9 @@ impl AppendOperator {
 				expected: "exactly 2",
 				found: inputs.len(),
 			}));
+		}
+		if let [Some(first), Some(second)] = parent_schemas.as_slice() {
+			check_lanes(first, second)?;
 		}
 		let parent_schema = parent_schemas.swap_remove(0);
 		let lanes = assign_lanes(flow, operator)?;

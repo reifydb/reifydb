@@ -20,12 +20,14 @@ use reifydb_core::{
 		column::{builder::ColumnBuilder, push::Push},
 	},
 };
+use reifydb_flow::error::FlowSinkError;
 use reifydb_value::{
 	Result,
 	error::Error,
 	util::hash::Hash128,
 	value::{
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
+		constraint::TypeConstraint,
 		container::temporal_array::datetime_array,
 		datetime::DateTime,
 		partition::Partition,
@@ -45,13 +47,27 @@ use crate::operator::{
 	row_times, time_column,
 };
 
-pub(crate) fn build_shape(columns: &RecordBatch) -> Result<RowShape> {
-	let fields: Vec<RowShapeField> = user_columns(columns)
-		.map(|(field, array)| {
-			let view = ColumnView::try_from((array, field.as_ref()))?;
-			Ok(RowShapeField::unconstrained(field.name().clone(), view.get_type()))
-		})
-		.collect::<Result<_>>()?;
+pub(crate) fn build_shape(host: &mut dyn HostContext, columns: &RecordBatch) -> Result<RowShape> {
+	let mut fields: Vec<RowShapeField> = Vec::with_capacity(columns.num_columns());
+	for (field, array) in user_columns(columns) {
+		let view = ColumnView::try_from((array, field.as_ref()))?;
+		let constraint = match &view.data {
+			ViewData::DictionaryId {
+				dictionary_id: Some(id),
+				..
+			} => {
+				let dictionary = host.dictionary(*id)?.ok_or_else(|| {
+					Error::from(FlowSinkError::DictionaryNotFound {
+						dictionary_id: format!("{:?}", id),
+						column: field.name().clone(),
+					})
+				})?;
+				TypeConstraint::dictionary(*id, dictionary.id_type)
+			}
+			_ => TypeConstraint::unconstrained(view.get_type()),
+		};
+		fields.push(RowShapeField::new(field.name().clone(), constraint));
+	}
 	Ok(RowShape::new(RowFamily::Pod, fields))
 }
 
@@ -82,7 +98,7 @@ impl JoinRows {
 		let encoded = match self.encoded.take() {
 			Some(encoded) => encoded,
 			None => {
-				let shape = build_shape(&self.columns)?;
+				let shape = build_shape(host, &self.columns)?;
 				store.set_row_shape(host, &shape)?;
 				let numbers = require_row_numbers(&self.columns)?.to_vec();
 				let rows = encode_rows(&shape, &self.columns, self.side, self.now)?;
@@ -803,7 +819,7 @@ mod tests {
 
 		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
 		let columns = columns_with_time(&[("mint", 7)], 1, None);
-		let shape = build_shape(&columns).unwrap();
+		let shape = build_shape(&mut host(&mut txn, operator), &columns).unwrap();
 
 		let row = JoinRows::new(&columns, JoinSide::Right, now)
 			.encoded(&mut host(&mut txn, operator), &store)
@@ -849,7 +865,7 @@ mod tests {
 		let now = DateTime::from_nanos(1_700_000_000_000_000_000);
 		let event = DateTime::from_nanos(1_600_000_000_000_000_000);
 		let columns = columns_with_time(&[("mint", 9)], 2, Some(event));
-		let shape = build_shape(&columns).unwrap();
+		let shape = build_shape(&mut host(&mut txn, operator), &columns).unwrap();
 
 		let row = JoinRows::new(&columns, JoinSide::Right, now)
 			.encoded(&mut host(&mut txn, operator), &store)
@@ -889,7 +905,7 @@ mod tests {
 		let first = columns_with_time(&[("mint", 1)], 1, None);
 		let second = columns_with_time(&[("mint", 2)], 2, Some(event));
 		let third = columns_with_time(&[("mint", 3)], 3, None);
-		let shape = build_shape(&first).unwrap();
+		let shape = build_shape(&mut host(&mut txn, operator), &first).unwrap();
 		store.set_row_shape(&mut host(&mut txn, operator), &shape).unwrap();
 
 		let rows: Vec<EncodedBytes> = [&first, &second, &third]

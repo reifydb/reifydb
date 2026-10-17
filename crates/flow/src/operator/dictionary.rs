@@ -7,9 +7,9 @@ use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::{FieldRef, SchemaRef};
 use reifydb_core::{
 	expression::{
-		AndExpression, ColumnExpression, ConstantExpression, EqExpression, Expression, InExpression,
-		ListExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, TupleExpression,
-		XorExpression,
+		AliasExpression, AndExpression, ColumnExpression, ConstantExpression, EqExpression, Expression,
+		InExpression, ListExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator,
+		TupleExpression, XorExpression,
 	},
 	interface::{
 		catalog::dictionary::Dictionary,
@@ -20,6 +20,7 @@ use reifydb_core::{
 		column::{builder::ColumnBuilder, dictionary::decode_dictionary_ids},
 	},
 };
+use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_value::{
 	Result,
 	error::Error,
@@ -45,13 +46,60 @@ pub(crate) struct DictionaryBinding {
 	decoded: Vec<usize>,
 }
 
+pub(crate) struct BoundExpressions {
+	expressions: Vec<Expression>,
+	passing: bool,
+	label: &'static str,
+	bound: Option<(DictionaryBinding, Vec<LoweredExpr>)>,
+}
+
+impl BoundExpressions {
+	pub(crate) fn new(expressions: Vec<Expression>, passing: bool, label: &'static str) -> Self {
+		Self {
+			expressions,
+			passing,
+			label,
+			bound: None,
+		}
+	}
+
+	pub(crate) fn expressions(&self) -> &[Expression] {
+		&self.expressions
+	}
+
+	pub(crate) fn bind<T: Find + ?Sized>(
+		&mut self,
+		txn: &mut T,
+		literals: &mut Option<BoundLiterals>,
+		columns: &RecordBatch,
+	) -> Result<(RecordBatch, &[LoweredExpr])> {
+		if !self.bound.as_ref().is_some_and(|(binding, _)| binding.matches(&columns.schema())) {
+			let binding = DictionaryBinding::new(columns, &self.expressions, self.passing)?;
+			let lowered = binding
+				.expressions()
+				.iter()
+				.map(|expression| LoweredExpr::new(expression.clone(), self.label))
+				.collect();
+			self.bound = Some((binding, lowered));
+			*literals = None;
+		}
+		let (binding, lowered) = self.bound.as_ref().expect("the binding was set above");
+		if literals.is_none() {
+			*literals = Some(binding.bind_literals(txn)?);
+		}
+		let columns =
+			binding.columns(txn, literals.as_ref().expect("the literals were bound above"), columns)?;
+		Ok((columns, lowered))
+	}
+}
+
 pub(crate) struct BoundLiterals {
 	dictionaries: HashMap<usize, Dictionary>,
 	ids: Vec<DictionaryEntryId>,
 }
 
 impl DictionaryBinding {
-	pub(crate) fn new(columns: &RecordBatch, expressions: &[Expression]) -> Result<Self> {
+	pub(crate) fn new(columns: &RecordBatch, expressions: &[Expression], passing: bool) -> Result<Self> {
 		let schema = columns.schema();
 		let mut dictionary_columns = HashMap::new();
 		for (position, field) in schema.fields().iter().enumerate() {
@@ -66,7 +114,7 @@ impl DictionaryBinding {
 			literals: Vec::new(),
 		};
 		let expressions: Vec<Expression> =
-			expressions.iter().map(|expression| binder.bind(expression)).collect();
+			expressions.iter().map(|expression| binder.top(expression, passing)).collect();
 		let (ids, literals) = (binder.ids, binder.literals);
 		let mut decoded: Vec<usize> = dictionary_columns
 			.keys()
@@ -184,6 +232,24 @@ struct Binder<'a> {
 }
 
 impl Binder<'_> {
+	fn top(&mut self, expression: &Expression, passing: bool) -> Expression {
+		if passing {
+			if let Some((position, _)) = self.dictionary_column(expression) {
+				return self.id(position);
+			}
+			if let Expression::Alias(alias) = expression
+				&& let Some((position, _)) = self.dictionary_column(&alias.expression)
+			{
+				return Expression::Alias(AliasExpression {
+					alias: alias.alias.clone(),
+					expression: Box::new(self.id(position)),
+					fragment: alias.fragment.clone(),
+				});
+			}
+		}
+		self.bind(expression)
+	}
+
 	fn bind(&mut self, expression: &Expression) -> Expression {
 		match expression {
 			Expression::And(e) => Expression::And(AndExpression {

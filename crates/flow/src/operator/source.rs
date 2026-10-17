@@ -72,19 +72,19 @@ pub fn decode_change_keeping<T: Resolve + ?Sized>(txn: &mut T, mut change: Chang
 			Diff::Insert {
 				post,
 				..
-			} => decode_dictionary_columns_keeping(post, txn, kept)?,
+			} => decode_dictionary_columns_where(post, txn, &keeps(kept))?,
 			Diff::Update {
 				pre,
 				post,
 				..
 			} => {
-				decode_dictionary_columns_keeping(pre, txn, kept)?;
-				decode_dictionary_columns_keeping(post, txn, kept)?;
+				decode_dictionary_columns_where(pre, txn, &keeps(kept))?;
+				decode_dictionary_columns_where(post, txn, &keeps(kept))?;
 			}
 			Diff::Remove {
 				pre,
 				..
-			} => decode_dictionary_columns_keeping(pre, txn, kept)?,
+			} => decode_dictionary_columns_where(pre, txn, &keeps(kept))?,
 		}
 	}
 	Ok(change)
@@ -137,13 +137,25 @@ fn column_field(column: &Column) -> (FieldRef, ArrayRef) {
 }
 
 pub fn decode_dictionary_columns<T: Resolve + ?Sized>(columns: &mut RecordBatch, txn: &mut T) -> Result<()> {
-	decode_dictionary_columns_keeping(columns, txn, &[])
+	decode_dictionary_columns_where(columns, txn, &|_, _| false)
 }
 
-fn decode_dictionary_columns_keeping<T: Resolve + ?Sized>(
+pub fn decode_dictionary_columns_except<T: Resolve + ?Sized>(
 	columns: &mut RecordBatch,
 	txn: &mut T,
-	kept: &[Column],
+	kept: &[(String, DictionaryId)],
+) -> Result<()> {
+	decode_dictionary_columns_where(columns, txn, &|name, id| kept.iter().any(|(n, d)| n == name && *d == id))
+}
+
+fn keeps(kept: &[Column]) -> impl Fn(&str, DictionaryId) -> bool + '_ {
+	move |name, id| kept.iter().any(|column| column.name == name && column.dictionary_id == Some(id))
+}
+
+fn decode_dictionary_columns_where<T: Resolve + ?Sized>(
+	columns: &mut RecordBatch,
+	txn: &mut T,
+	keep: &dyn Fn(&str, DictionaryId) -> bool,
 ) -> Result<()> {
 	let dict_columns: Vec<(usize, Dictionary)> = {
 		let mut ids: Vec<(usize, DictionaryId)> = Vec::new();
@@ -152,8 +164,7 @@ fn decode_dictionary_columns_keeping<T: Resolve + ?Sized>(
 				dictionary_id: Some(id),
 				..
 			} = ColumnView::try_from((array, field.as_ref()))?.data
-				&& !kept.iter()
-					.any(|column| column.name == *field.name() && column.dictionary_id == Some(id))
+				&& !keep(field.name(), id)
 			{
 				ids.push((pos, id));
 			}

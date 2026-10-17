@@ -13,12 +13,9 @@ use reifydb_core::{
 	},
 	value::{batch::empty_batch, column::factory::rename},
 };
-use reifydb_evaluate::{
-	expression::{
-		compile::compile_expression,
-		context::{CompileContext, EvalContext},
-	},
-	lower::LoweredExpr,
+use reifydb_evaluate::expression::{
+	compile::compile_expression,
+	context::{CompileContext, EvalContext},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -33,15 +30,18 @@ use tracing::instrument;
 
 use crate::{
 	context::FlowContext,
-	operator::{forward_system_columns, with_system_columns_of},
+	operator::{
+		dictionary::{BoundExpressions, BoundLiterals},
+		forward_system_columns, with_system_columns_of,
+	},
+	txn::Find,
 };
 
 pub struct MapOperator {
 	parent_schema: Option<SchemaRef>,
 	operator: OperatorId,
-	expressions: Vec<Expression>,
+	expressions: BoundExpressions,
 	labels: Vec<String>,
-	lowered_expressions: Vec<LoweredExpr>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ctx: Arc<FlowContext>,
@@ -62,16 +62,13 @@ impl MapOperator {
 		for expression in &expressions {
 			compile_expression(&compile_ctx, expression)?;
 		}
-		let lowered_expressions: Vec<LoweredExpr> =
-			expressions.iter().map(|expression| LoweredExpr::new(expression.clone(), "map")).collect();
 		let labels = expressions.iter().map(|expr| display_label(expr).text().to_string()).collect();
 
 		Ok(Self {
 			parent_schema,
 			operator,
-			expressions,
+			expressions: BoundExpressions::new(expressions, true, "map"),
 			labels,
-			lowered_expressions,
 			routines,
 			runtime_context,
 			ctx,
@@ -81,6 +78,7 @@ impl MapOperator {
 	pub fn output_schema(&self) -> Option<SchemaRef> {
 		Some(Arc::new(Schema::new(
 			self.expressions
+				.expressions()
 				.iter()
 				.map(|expr| schema_column(self.parent_schema.as_ref(), expr))
 				.collect::<Vec<FieldRef>>(),
@@ -88,7 +86,12 @@ impl MapOperator {
 	}
 
 	#[instrument(name = "flow::operator::map::project", level = "trace", skip_all, fields(rows = columns.num_rows()))]
-	fn project(&self, columns: &RecordBatch) -> Result<RecordBatch> {
+	fn project<T: Find + ?Sized>(
+		&mut self,
+		txn: &mut T,
+		literals: &mut Option<BoundLiterals>,
+		columns: &RecordBatch,
+	) -> Result<RecordBatch> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(empty_batch());
@@ -106,11 +109,12 @@ impl MapOperator {
 			target: None,
 			take: None,
 		};
-		let exec_ctx = session.with_eval(columns.clone(), row_count);
+		let (bound, lowered_expressions) = self.expressions.bind(txn, literals, columns)?;
+		let exec_ctx = session.with_eval(bound, row_count);
 
-		let mut result_columns = Vec::with_capacity(self.expressions.len());
+		let mut result_columns = Vec::with_capacity(self.labels.len());
 
-		for (lowered_expr, label) in self.lowered_expressions.iter().zip(&self.labels) {
+		for (lowered_expr, label) in lowered_expressions.iter().zip(&self.labels) {
 			let evaluated_col = lowered_expr.evaluate(&exec_ctx)?;
 			result_columns.push(rename(evaluated_col, label));
 		}
@@ -140,8 +144,9 @@ impl MapOperator {
 		self.operator
 	}
 
-	pub fn apply(&mut self, change: Change) -> Result<Change> {
+	pub fn apply<T: Find + ?Sized>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
+		let mut literals = None;
 
 		for diff in change.diffs.into_iter() {
 			match diff {
@@ -149,7 +154,7 @@ impl MapOperator {
 					post,
 					..
 				} => {
-					let projected = self.project(&post)?;
+					let projected = self.project(txn, &mut literals, &post)?;
 
 					if projected.num_columns() > 0 {
 						result.push(Diff::insert(projected));
@@ -160,8 +165,8 @@ impl MapOperator {
 					post,
 					..
 				} => {
-					let projected_post = self.project(&post)?;
-					let projected_pre = self.project(&pre)?;
+					let projected_post = self.project(txn, &mut literals, &post)?;
+					let projected_pre = self.project(txn, &mut literals, &pre)?;
 
 					if projected_post.num_columns() > 0 {
 						result.push(Diff::update(projected_pre, projected_post));
@@ -171,7 +176,7 @@ impl MapOperator {
 					pre,
 					..
 				} => {
-					let projected_pre = self.project(&pre)?;
+					let projected_pre = self.project(txn, &mut literals, &pre)?;
 					if projected_pre.num_columns() > 0 {
 						result.push(Diff::remove(projected_pre));
 					}

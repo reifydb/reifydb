@@ -223,10 +223,10 @@ impl FlowEngineInner {
 			} => self.add_gate(txn, flow_id, operator_id, &inputs, conditions, ctx)?,
 			Map {
 				expressions,
-			} => self.add_map(txn, flow_id, operator_id, &inputs, expressions, ctx)?,
+			} => self.add_map(flow_id, operator_id, &inputs, expressions, ctx)?,
 			Extend {
 				expressions,
-			} => self.add_extend(txn, flow_id, operator_id, &inputs, expressions, ctx)?,
+			} => self.add_extend(flow_id, operator_id, &inputs, expressions, ctx)?,
 			Sort {
 				by: _,
 			} => self.add_sort(flow_id, operator_id, &inputs)?,

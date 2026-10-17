@@ -31,7 +31,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
-use reifydb_flow::{context::FlowContext, error::FlowGraphError, operator::source::decode_change};
+use reifydb_flow::{context::FlowContext, error::FlowGraphError, operator::source::decode_dictionary_columns_except};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -43,6 +43,7 @@ use reifydb_value::{
 	value::{
 		column_view::ColumnView,
 		datetime::DateTime,
+		dictionary::DictionaryId,
 		duration::Duration,
 		row_number::RowNumber,
 		system_columns::{require_row_numbers, resolve_column},
@@ -53,6 +54,7 @@ use tracing::instrument;
 
 use super::{
 	column::{JoinedColumnsBuilder, JoinedColumnsCache},
+	kept::dictionary_columns,
 	snapshot::SnapshotLedger,
 	state::{JoinSide, JoinState},
 	strategy::{JoinContext, JoinStrategy, UpdateKeys, hash::JoinRows},
@@ -167,6 +169,8 @@ pub struct JoinOperator {
 	alias: Option<String>,
 	left_schema: SchemaRef,
 	right_schema: SchemaRef,
+	left_kept: Vec<(String, DictionaryId)>,
+	right_kept: Vec<(String, DictionaryId)>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	pub(crate) snapshot: bool,
@@ -204,6 +208,8 @@ impl JoinOperator {
 		let left_schema = left.schema;
 		let right_schema = right.schema;
 		let strategy = JoinStrategy::from(join_type, pick.is_some());
+		let left_kept = dictionary_columns(&left_schema)?.into_iter().collect();
+		let right_kept = dictionary_columns(&right_schema)?.into_iter().collect();
 
 		let lowered_left_exprs: Vec<LoweredExpr> =
 			left_exprs.iter().map(|e| LoweredExpr::new(e.clone(), "join_key")).collect();
@@ -222,6 +228,8 @@ impl JoinOperator {
 			alias,
 			left_schema,
 			right_schema,
+			left_kept,
+			right_kept,
 			routines,
 			runtime_context,
 			snapshot,
@@ -852,6 +860,15 @@ impl JoinOperator {
 		Self::split(built, &fresh, &existing)
 	}
 
+	fn entry(&self, host: &mut dyn HostContext, side: JoinSide, mut columns: RecordBatch) -> Result<RecordBatch> {
+		let kept = match side {
+			JoinSide::Left => &self.left_kept,
+			JoinSide::Right => &self.right_kept,
+		};
+		decode_dictionary_columns_except(&mut columns, host, kept)?;
+		Ok(columns)
+	}
+
 	fn determine_side_from_origin(&self, origin: &ChangeOrigin) -> Option<JoinSide> {
 		match origin {
 			ChangeOrigin::Flow(from_node) => {
@@ -892,7 +909,6 @@ impl HostOperator for JoinOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		let change = decode_change(host, change)?;
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
 		{
@@ -924,16 +940,25 @@ impl HostOperator for JoinOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_join_insert(host, &post, side, &mut state, &mut result)?,
+				} => {
+					let post = self.entry(host, side, post)?;
+					self.apply_join_insert(host, &post, side, &mut state, &mut result)?
+				}
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_join_remove(host, &pre, side, &mut state, &mut result)?,
+				} => {
+					let pre = self.entry(host, side, pre)?;
+					self.apply_join_remove(host, &pre, side, &mut state, &mut result)?
+				}
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_join_update(host, &pre, &post, side, &mut state, &mut result)?,
+				} => {
+					let (pre, post) = (self.entry(host, side, pre)?, self.entry(host, side, post)?);
+					self.apply_join_update(host, &pre, &post, side, &mut state, &mut result)?
+				}
 			}
 		}
 

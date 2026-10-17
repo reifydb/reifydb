@@ -294,6 +294,18 @@ pub fn flow_operator_input_arity(operator: &str, expected: &str, found: usize) -
 	)
 }
 
+pub fn flow_append_lane_mismatch(column: &str, expected: &str, found: &str) -> Diagnostic {
+	flow_diagnostic(
+		"FLOW_089",
+		format!(
+			"append lanes disagree on column '{}': the first lane is {}, the second is {}",
+			column, expected, found
+		),
+		"Every lane of an append must carry a column with the same type and dictionary, otherwise rows of one lane \
+		 would land in a column typed by the other.",
+	)
+}
+
 pub fn flow_parent_operator_not_found(input: String) -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_025",

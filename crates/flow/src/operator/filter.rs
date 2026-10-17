@@ -14,12 +14,9 @@ use reifydb_core::{
 	internal_err,
 	value::batch::{empty_batch, take_rows},
 };
-use reifydb_evaluate::{
-	expression::{
-		compile::compile_expression,
-		context::{CompileContext, EvalContext},
-	},
-	lower::LoweredExpr,
+use reifydb_evaluate::expression::{
+	compile::compile_expression,
+	context::{CompileContext, EvalContext},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -32,7 +29,7 @@ use tracing::instrument;
 use crate::{
 	context::FlowContext,
 	operator::{
-		dictionary::{BoundLiterals, DictionaryBinding},
+		dictionary::{BoundExpressions, BoundLiterals},
 		forward_system_columns,
 	},
 	txn::Find,
@@ -41,8 +38,7 @@ use crate::{
 pub struct FilterOperator {
 	parent_schema: Option<SchemaRef>,
 	operator: OperatorId,
-	conditions: Vec<Expression>,
-	bound: Option<(DictionaryBinding, Vec<LoweredExpr>)>,
+	conditions: BoundExpressions,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ctx: Arc<FlowContext>,
@@ -67,8 +63,7 @@ impl FilterOperator {
 		Ok(Self {
 			parent_schema,
 			operator,
-			conditions,
-			bound: None,
+			conditions: BoundExpressions::new(conditions, false, "filter"),
 			routines,
 			runtime_context,
 			ctx,
@@ -86,22 +81,7 @@ impl FilterOperator {
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
-		if !self.bound.as_ref().is_some_and(|(binding, _)| binding.matches(&columns.schema())) {
-			let binding = DictionaryBinding::new(columns, &self.conditions)?;
-			let lowered = binding
-				.expressions()
-				.iter()
-				.map(|condition| LoweredExpr::new(condition.clone(), "filter"))
-				.collect();
-			self.bound = Some((binding, lowered));
-			*literals = None;
-		}
-		let (binding, lowered_conditions) = self.bound.as_ref().expect("the binding was set above");
-		if literals.is_none() {
-			*literals = Some(binding.bind_literals(txn)?);
-		}
-		let columns =
-			binding.columns(txn, literals.as_ref().expect("the literals were bound above"), columns)?;
+		let (columns, lowered_conditions) = self.conditions.bind(txn, literals, columns)?;
 
 		let session = EvalContext {
 			params: &self.ctx.params,

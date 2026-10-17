@@ -53,7 +53,10 @@ use crate::{
 		apply::ApplyOperator,
 		distinct::operator::DistinctOperator,
 		gate::GateOperator,
-		join::operator::{JoinOperator, JoinSideConfig},
+		join::{
+			kept::{entry_schema, kept_dictionary_columns},
+			operator::{JoinOperator, JoinSideConfig},
+		},
 		lookup::operator::{LookupConfig, LookupOperator},
 		take::TakeOperator,
 		window::operator::{WindowConfig, WindowOperator},
@@ -113,14 +116,13 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_map(
 		&mut self,
-		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(MapOperator::new(
@@ -138,14 +140,13 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_extend(
 		&mut self,
-		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(ExtendOperator::new(
@@ -224,7 +225,7 @@ impl FlowEngineInner {
 			})?
 			.output_schema()
 			.unwrap_or_else(|| Arc::new(Schema::empty()));
-		let left_schema = decoded_schema(&left_schema, |id| self.catalog.find_dictionary(txn, id))?;
+		let left_decoded = decoded_schema(&left_schema, |id| self.catalog.find_dictionary(txn, id))?;
 
 		let right_schema = self
 			.operators
@@ -236,7 +237,7 @@ impl FlowEngineInner {
 			})?
 			.output_schema()
 			.expect("right side of join must have a statically known schema");
-		let right_schema = decoded_schema(&right_schema, |id| self.catalog.find_dictionary(txn, id))?;
+		let right_decoded = decoded_schema(&right_schema, |id| self.catalog.find_dictionary(txn, id))?;
 
 		let (left_exprs, right_exprs) = if natural {
 			let common = common_column_names(&left_schema, &right_schema);
@@ -245,6 +246,15 @@ impl FlowEngineInner {
 		} else {
 			(left, right)
 		};
+		let (left_kept, right_kept) = kept_dictionary_columns(
+			&left_schema,
+			&right_schema,
+			&left_exprs,
+			&right_exprs,
+			with.pick.as_ref(),
+		)?;
+		let left_schema = entry_schema(&left_schema, &left_decoded, &left_kept);
+		let right_schema = entry_schema(&right_schema, &right_decoded, &right_kept);
 
 		let left_retention = with.retention.as_ref().and_then(|j| j.left.as_ref()).map(|t| t.duration);
 		let right_retention = with.retention.as_ref().and_then(|j| j.right.as_ref()).map(|t| t.duration);
