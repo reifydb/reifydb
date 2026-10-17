@@ -5,8 +5,13 @@ pub mod in_process;
 
 use reifydb_codec::tag::{TypeTag, ValueKind};
 use reifydb_value::value::{
-	date::Date, datetime::DateTime, decimal::Decimal, dictionary::DictionaryEntryId, duration::Duration,
-	time::Time, value_type::ValueType,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	dictionary::{DictionaryEntryId, DictionaryId},
+	duration::Duration,
+	time::Time,
+	value_type::ValueType,
 };
 
 use crate::{
@@ -53,6 +58,7 @@ pub trait RowSink {
 	fn blob_column(&mut self, col: usize) -> Result<impl ColumnWriter<[u8]> + '_, SdkError>;
 	fn decimal_column(&mut self, col: usize) -> Result<impl ColumnWriter<Decimal> + '_, SdkError>;
 	fn dictionary_id_column(&mut self, col: usize) -> Result<impl ColumnWriter<DictionaryEntryId> + '_, SdkError>;
+	fn bind_dictionary(&mut self, col: usize, dictionary: DictionaryId) -> Result<(), SdkError>;
 	fn push_none(&mut self, col: usize) -> Result<(), SdkError>;
 	fn pass_through(
 		&mut self,
@@ -191,6 +197,14 @@ pub(crate) fn pass_decoded(
 		}
 	}
 	Ok(())
+}
+
+pub(crate) fn unbindable_column(col: usize, kind: ValueKind) -> SdkError {
+	SdkError::InvalidInput(format!("column {col} is {kind:?}, only a dictionary id column takes a dictionary"))
+}
+
+pub(crate) fn pass_after_bind(col: usize) -> SdkError {
+	SdkError::InvalidInput(format!("column {col} is bound to a dictionary, so it cannot be passed through"))
 }
 
 pub(crate) fn passed_column(col: usize) -> SdkError {

@@ -32,7 +32,7 @@ use crate::{
 		},
 		extern_c::{
 			binding::{
-				dictionary::raw_find_many,
+				dictionary::{raw_find_many, raw_intern_many},
 				sink::ExternCRowSink,
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
@@ -374,6 +374,13 @@ impl GuestEmitContext for ExternCContext {
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
 		raw_find_many(self, dictionary, values)
+	}
+	fn dictionary_intern_many(
+		&mut self,
+		dictionary: DictionaryId,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>> {
+		raw_intern_many(self, dictionary, values)
 	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		ExternCContext::get_or_create_row_numbers(self, group, keys)

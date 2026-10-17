@@ -4,9 +4,17 @@
 pub mod in_process;
 
 use reifydb_value::value::{
-	Value, column_view::ColumnView, date::Date, datetime::DateTime, decimal::Decimal,
-	dictionary::DictionaryEntryId, diff_type::DiffType, duration::Duration, row_number::RowNumber,
-	system_columns::RowTimes, time::Time,
+	Value,
+	column_view::ColumnView,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	dictionary::{DictionaryEntryId, DictionaryId},
+	diff_type::DiffType,
+	duration::Duration,
+	row_number::RowNumber,
+	system_columns::RowTimes,
+	time::Time,
 };
 
 use crate::{
@@ -77,6 +85,7 @@ pub trait ColumnsView {
 		name: &str,
 	) -> Result<Option<impl ColumnCursor<T> + 'c>, SdkError>;
 	fn pass_source(&self, name: &str) -> Result<Option<PassSource<'_>>, SdkError>;
+	fn dictionary(&self, name: &str) -> Result<Option<DictionaryId>, SdkError>;
 	fn row_numbers(&self) -> &[RowNumber];
 	fn times(&self) -> RowTimes<'_>;
 }

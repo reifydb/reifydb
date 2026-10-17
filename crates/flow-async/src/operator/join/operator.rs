@@ -1181,7 +1181,7 @@ mod seal_tests {
 	use reifydb_core::{
 		actors::pending::Pending,
 		common::CommitVersion,
-		interface::store::MultiVersionRow,
+		interface::{catalog::dictionary::Dictionary, store::MultiVersionRow},
 		key::{
 			any::TaggedKey,
 			operator::{
@@ -1192,7 +1192,7 @@ mod seal_tests {
 		},
 		value::{batch::batch, column::factory::int4},
 	};
-	use reifydb_flow::txn::{Batch, Get};
+	use reifydb_flow::txn::{Batch, Find, Get, Intern, Resolve};
 	use reifydb_rql::expression::parse_expression;
 	use reifydb_runtime::context::clock::Clock;
 	use reifydb_test_harness::engine::TestEngine;
@@ -1200,7 +1200,9 @@ mod seal_tests {
 	use reifydb_value::{
 		factory::time::at_millis,
 		value::{
+			Value,
 			container::temporal_array::datetime_array,
+			dictionary::DictionaryEntryId,
 			system_columns::{SystemColumn, with_system_column},
 		},
 	};
@@ -1473,6 +1475,36 @@ mod seal_tests {
 		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 			self.pending_mut().remove_batch(keys);
 			Ok(())
+		}
+	}
+
+	impl Resolve for CountingTxn {
+		fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>> {
+			panic!("a join over plain columns never resolves a dictionary")
+		}
+
+		fn resolve(
+			&mut self,
+			_dictionary: &Dictionary,
+			_ids: &[DictionaryEntryId],
+		) -> Result<Vec<Option<Value>>> {
+			panic!("a join over plain columns never resolves a dictionary")
+		}
+	}
+
+	impl Find for CountingTxn {
+		fn find(
+			&mut self,
+			_dictionary: &Dictionary,
+			_values: &[Value],
+		) -> Result<Vec<Option<DictionaryEntryId>>> {
+			panic!("a join over plain columns never finds a dictionary value")
+		}
+	}
+
+	impl Intern for CountingTxn {
+		fn intern(&mut self, _dictionary: &Dictionary, _values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+			panic!("a join over plain columns never interns a dictionary value")
 		}
 	}
 

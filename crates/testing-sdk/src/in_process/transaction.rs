@@ -11,14 +11,21 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::Pending,
 	common::CommitVersion,
-	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
+	interface::{
+		catalog::{dictionary::Dictionary, flow::OperatorId},
+		change::Change,
+		store::MultiVersionRow,
+	},
 	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
-use reifydb_flow::txn::{Batch, Get};
+use reifydb_flow::txn::{Batch, Find, Get, Intern, Resolve};
 use reifydb_flow_async::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
-	transaction::{ChangeCoordinate, FlowTransaction, pending_get, pending_get_many, substrate::FlowSubstrate},
+	transaction::{
+		ChangeCoordinate, FlowTransaction, dictionary::DictionaryExtension, pending_get, pending_get_many,
+		substrate::FlowSubstrate,
+	},
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
@@ -27,7 +34,14 @@ use reifydb_transaction::{
 	multi::{RangeScope, transaction::read::MultiReadTransaction},
 	single::SingleTransaction,
 };
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	value::{
+		Value,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+	},
+};
 
 pub struct TestFlowTransaction {
 	version: CommitVersion,
@@ -172,5 +186,31 @@ impl Batch for TestFlowTransaction {
 	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 		self.pending_mut().remove_batch(keys);
 		Ok(())
+	}
+}
+
+impl Resolve for TestFlowTransaction {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+		Ok(self.find_dictionary(id))
+	}
+
+	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+		self.get_many_from_dictionary(dictionary, ids)
+	}
+}
+
+impl Find for TestFlowTransaction {
+	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		self.find_many_in_dictionary(dictionary, values)
+	}
+}
+
+impl Intern for TestFlowTransaction {
+	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+		Ok(self.dictionary_allocators()
+			.intern_batch(dictionary, values)?
+			.into_iter()
+			.map(|outcome| outcome.id)
+			.collect())
 	}
 }

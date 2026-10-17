@@ -11,6 +11,7 @@ use reifydb_core::{
 		object::ObjectId,
 	},
 };
+use reifydb_flow::txn::Intern;
 use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
@@ -67,7 +68,7 @@ impl FlowEngineInner {
 		Ok(held)
 	}
 
-	pub fn oldest_read_version<T: FlowTransaction>(
+	pub fn oldest_read_version<T: FlowTransaction + Intern>(
 		&self,
 		txn: &mut T,
 		flow_id: FlowId,

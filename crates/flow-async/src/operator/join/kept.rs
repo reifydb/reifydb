@@ -78,6 +78,7 @@ pub(crate) fn dictionary_columns(schema: &Schema) -> Result<HashMap<String, Dict
 fn bare(expression: &Expression) -> Option<&str> {
 	match expression {
 		Expression::Column(column) => Some(column.0.name.text()),
+		Expression::AccessSource(access) => Some(access.column.name.text()),
 		_ => None,
 	}
 }
@@ -97,7 +98,8 @@ mod tests {
 
 	use arrow_schema::Schema;
 	use reifydb_core::{
-		expression::Expression,
+		expression::{AccessObjectExpression, Expression},
+		interface::identifier::{ColumnIdentifier, ColumnObject},
 		row::JoinPick,
 		sort::{SortDirection, SortKey},
 		value::column::builder::ColumnBuilder,
@@ -166,6 +168,30 @@ mod tests {
 			None,
 		);
 		assert_eq!(out, (owned(&["k", "p"]), owned(&["k", "q"])));
+	}
+
+	#[test]
+	fn a_qualified_key_pair_of_one_dictionary_keeps_its_ids() {
+		// a source-qualified key names the column a bare key names, so missing it decodes ids that hash alike.
+		let qualified = Expression::AccessSource(AccessObjectExpression {
+			column: ColumnIdentifier {
+				object: ColumnObject::Alias(Fragment::internal("bt")),
+				name: Fragment::internal("mint"),
+			},
+		});
+		let left_keys = parse_expression("mint").unwrap();
+		let (l, r) = kept_dictionary_columns(
+			&side(&[("mint", Some(SYMS))]),
+			&side(&[("mint", Some(SYMS))]),
+			&left_keys,
+			&[qualified],
+			None,
+		)
+		.unwrap();
+		assert_eq!(
+			(l.into_keys().collect::<Vec<_>>(), r.into_keys().collect::<Vec<_>>()),
+			(owned(&["mint"]), owned(&["mint"]))
+		);
 	}
 
 	#[test]

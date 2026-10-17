@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_schema::SchemaRef;
+use std::{collections::BTreeSet, sync::Arc};
+
+use arrow_schema::{FieldRef, Schema, SchemaRef};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
@@ -9,16 +11,26 @@ use reifydb_core::{
 	metrics::heap::OperatorSample,
 	operator_with::{ApplyWith, WithSpan},
 	state::timer::TimerKind,
+	value::column::builder::ColumnBuilder,
 };
 use reifydb_value::{
 	Result,
-	value::{datetime::DateTime, duration::Duration},
+	value::{
+		constraint::TypeConstraint,
+		datetime::DateTime,
+		duration::Duration,
+		value_type::{
+			ValueType,
+			field::{from_field, to_field},
+		},
+	},
 };
 
 use crate::{
 	operator::{
 		BoxedHostOperator, HostOperator,
 		host::HostContext,
+		join::kept::dictionary_columns,
 		max_input_time, stamp_output_time,
 		state::{
 			expiry::{expiry_drop, expiry_due, managed_due_group, managed_latest_key},
@@ -30,7 +42,7 @@ use crate::{
 };
 
 pub struct ApplyOperator {
-	parent_schema: Option<SchemaRef>,
+	schema: Option<SchemaRef>,
 	operator: OperatorId,
 	inner: BoxedHostOperator,
 	seal_span: Option<Duration>,
@@ -39,13 +51,13 @@ pub struct ApplyOperator {
 
 impl ApplyOperator {
 	pub fn new(
-		parent_schema: Option<SchemaRef>,
+		schema: Option<SchemaRef>,
 		operator: OperatorId,
 		inner: BoxedHostOperator,
 		with: &ApplyWith,
 	) -> Self {
 		Self {
-			parent_schema,
+			schema,
 			operator,
 			inner,
 			seal_span: engine_seal_span(with),
@@ -54,7 +66,7 @@ impl ApplyOperator {
 	}
 
 	pub(crate) fn output_schema(&self) -> Option<SchemaRef> {
-		self.parent_schema.clone()
+		self.schema.clone()
 	}
 }
 
@@ -102,6 +114,46 @@ impl HostOperator for ApplyOperator {
 	fn output_schema(&self) -> Option<SchemaRef> {
 		self.output_schema()
 	}
+}
+
+pub fn declared_schema<'a>(columns: impl IntoIterator<Item = (&'a str, &'a TypeConstraint)>) -> Option<SchemaRef> {
+	let fields: Vec<FieldRef> = columns
+		.into_iter()
+		.map(|(name, constraint)| ColumnBuilder::with_capacity(constraint.get_type(), 0).finish(name).0)
+		.collect();
+	(!fields.is_empty()).then(|| Arc::new(Schema::new(fields)))
+}
+
+pub fn output_schema_of(parent: Option<SchemaRef>, declared: Option<SchemaRef>) -> Result<Option<SchemaRef>> {
+	let Some(declared) = declared else {
+		return Ok(parent);
+	};
+	let dictionaries: BTreeSet<_> = match &parent {
+		Some(parent) => dictionary_columns(parent)?.into_values().collect(),
+		None => BTreeSet::new(),
+	};
+	let mut dictionaries = dictionaries.into_iter();
+	let (Some(dictionary), None) = (dictionaries.next(), dictionaries.next()) else {
+		return Ok(Some(declared));
+	};
+	let fields = declared
+		.fields()
+		.iter()
+		.map(|field| {
+			let mut field_type = from_field(field)?;
+			let untagged_id = field_type.dictionary_id.is_none()
+				&& field_type
+					.value_type
+					.as_ref()
+					.is_some_and(|t| *t.inner_type() == ValueType::DictionaryId);
+			if !untagged_id {
+				return Ok(field.clone());
+			}
+			field_type.dictionary_id = Some(dictionary);
+			Ok(Arc::new(to_field(field.name(), &field_type)))
+		})
+		.collect::<Result<Vec<FieldRef>>>()?;
+	Ok(Some(Arc::new(Schema::new(fields))))
 }
 
 pub fn engine_seal_span(with: &ApplyWith) -> Option<Duration> {
@@ -647,5 +699,98 @@ mod reclaim_tests {
 		fire(&mut operator, &mut txn, TimerKind::Maintenance, 13_000);
 
 		assert_eq!(guest_timers.load(Ordering::SeqCst), 2);
+	}
+}
+
+#[cfg(test)]
+mod output_schema_tests {
+	use std::iter::empty;
+
+	use reifydb_value::value::{dictionary::DictionaryId, value_type::field::FieldType};
+
+	use super::*;
+
+	const MINTS: DictionaryId = DictionaryId(1);
+	const OTHER: DictionaryId = DictionaryId(2);
+
+	fn parent(dictionaries: &[DictionaryId]) -> Option<SchemaRef> {
+		let fields: Vec<FieldRef> = dictionaries
+			.iter()
+			.enumerate()
+			.map(|(index, dictionary)| {
+				let mut builder = ColumnBuilder::with_capacity(ValueType::DictionaryId, 0);
+				builder.set_dictionary_id(*dictionary);
+				builder.finish(&format!("in{index}")).0
+			})
+			.chain([ColumnBuilder::with_capacity(ValueType::Uint8, 0).finish("amount").0])
+			.collect();
+		Some(Arc::new(Schema::new(fields)))
+	}
+
+	fn declared() -> Option<SchemaRef> {
+		let id = TypeConstraint::unconstrained(ValueType::DictionaryId);
+		let maybe = TypeConstraint::unconstrained(ValueType::Option(Box::new(ValueType::DictionaryId)));
+		let n = TypeConstraint::unconstrained(ValueType::Uint8);
+		declared_schema([("base", &id), ("quote", &maybe), ("n", &n)])
+	}
+
+	fn shape(schema: Option<SchemaRef>) -> Vec<(String, FieldType)> {
+		schema.expect("a schema")
+			.fields()
+			.iter()
+			.map(|field| (field.name().clone(), from_field(field).expect("the field reads back")))
+			.collect()
+	}
+
+	fn dictionaries(schema: Option<SchemaRef>) -> Vec<(String, Option<DictionaryId>)> {
+		shape(schema).into_iter().map(|(name, field)| (name, field.dictionary_id)).collect()
+	}
+
+	#[test]
+	fn an_apply_that_declares_nothing_keeps_its_parent_schema() {
+		// an operator with no declaration makes no claim, so downstream must still see the input it passes on.
+		assert_eq!(output_schema_of(parent(&[MINTS]), None).unwrap(), parent(&[MINTS]));
+		assert_eq!(declared_schema(empty()), None);
+	}
+
+	#[test]
+	fn a_declared_id_takes_the_one_dictionary_its_input_ids_share() {
+		// a declared id with no dictionary can never be decoded or joined as an id downstream.
+		let out = output_schema_of(parent(&[MINTS, MINTS]), declared()).unwrap();
+		assert_eq!(
+			dictionaries(out.clone()),
+			vec![("base".into(), Some(MINTS)), ("quote".into(), Some(MINTS)), ("n".into(), None)]
+		);
+		let types: Vec<_> = shape(out).into_iter().map(|(_, field)| field.value_type).collect();
+		assert_eq!(
+			types,
+			vec![
+				Some(ValueType::DictionaryId),
+				Some(ValueType::Option(Box::new(ValueType::DictionaryId))),
+				Some(ValueType::Uint8)
+			],
+			"the declared types, optionality included, are what the apply emits"
+		);
+	}
+
+	#[test]
+	fn a_declared_id_stays_untagged_when_its_input_has_no_single_dictionary() {
+		// guessing between two dictionaries would decode an id against the wrong values.
+		let untagged = vec![("base".into(), None), ("quote".into(), None), ("n".into(), None)];
+		assert_eq!(dictionaries(output_schema_of(parent(&[MINTS, OTHER]), declared()).unwrap()), untagged);
+		assert_eq!(dictionaries(output_schema_of(parent(&[]), declared()).unwrap()), untagged);
+		assert_eq!(dictionaries(output_schema_of(None, declared()).unwrap()), untagged);
+	}
+
+	#[test]
+	fn a_declared_id_that_already_names_a_dictionary_keeps_it() {
+		// the declaration is the stronger claim, so the input's dictionary never overrides it.
+		let mut builder = ColumnBuilder::with_capacity(ValueType::DictionaryId, 0);
+		builder.set_dictionary_id(OTHER);
+		let declared = Some(Arc::new(Schema::new(vec![builder.finish("base").0])));
+		assert_eq!(
+			dictionaries(output_schema_of(parent(&[MINTS]), declared).unwrap()),
+			vec![("base".into(), Some(OTHER))]
+		);
 	}
 }

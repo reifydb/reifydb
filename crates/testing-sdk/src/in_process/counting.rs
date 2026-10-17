@@ -19,7 +19,7 @@ use reifydb_core::{
 		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 	},
 };
-use reifydb_flow::txn::Resolve;
+use reifydb_flow::txn::{Intern, Resolve};
 use reifydb_flow_async::{
 	operator::{
 		host::{HostContext, TxnHostContext},
@@ -233,7 +233,7 @@ impl<T: FlowTransaction> Resolve for CountingHost<'_, T> {
 	}
 }
 
-impl<T: FlowTransaction> HostContext for CountingHost<'_, T> {
+impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 	fn version(&self) -> CommitVersion {
 		self.inner.version()
 	}
@@ -361,6 +361,15 @@ impl<T: FlowTransaction> HostContext for CountingHost<'_, T> {
 	) -> Result<Vec<Option<Value>>> {
 		self.record("dictionary_get_many", ids.len());
 		self.inner.dictionary_get_many(dictionary, ids)
+	}
+
+	fn dictionary_intern_many(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>> {
+		self.record("dictionary_intern_many", values.len());
+		self.inner.dictionary_intern_many(dictionary, values)
 	}
 
 	fn lookup_read_many(

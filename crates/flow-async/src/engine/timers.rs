@@ -9,6 +9,7 @@ use reifydb_core::{
 	interface::{catalog::flow::OperatorId, change::Change},
 	key::operator::keyspace::timer::TimerWheelKey,
 };
+use reifydb_flow::txn::Intern;
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
@@ -22,7 +23,7 @@ const MAX_TIMER_ROUNDS: u32 = 4_096;
 const MAX_TIMERS_PER_DISPATCH: usize = 8_192;
 
 impl FlowEngineInner {
-	pub(super) fn dispatch_due_timers<T: FlowTransaction>(
+	pub(super) fn dispatch_due_timers<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,
@@ -40,7 +41,7 @@ impl FlowEngineInner {
 		Ok(fired)
 	}
 
-	fn dispatch_staged_timers<T: FlowTransaction>(
+	fn dispatch_staged_timers<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,

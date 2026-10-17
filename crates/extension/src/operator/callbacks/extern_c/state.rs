@@ -1325,6 +1325,14 @@ mod join_row_expiry_guard_tests {
 			Ok(vec![None; ids.len()])
 		}
 
+		fn dictionary_intern_many(
+			&mut self,
+			_dictionary: &Dictionary,
+			_values: &[Value],
+		) -> Result<Vec<DictionaryEntryId>> {
+			panic!("the recording host never interns a dictionary value")
+		}
+
 		fn lookup_read_many(
 			&mut self,
 			_storage: StorageId,

@@ -51,4 +51,15 @@ pub struct OperatorCallbacks {
 		present_out: *mut u8,
 		id_width_out: *mut u8,
 	) -> i32,
+
+	pub dictionary_intern_many: extern "C" fn(
+		ctx: *mut ExternCContextRaw,
+		dictionary: u64,
+		values: *const ExternCBuffer,
+		n: usize,
+		ids_out: *mut u128,
+		id_width_out: *mut u8,
+	) -> i32,
+
+	pub builder_bind_dictionary: unsafe extern "C" fn(handle: *mut ColumnBufferHandle, dictionary: u64) -> i32,
 }

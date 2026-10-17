@@ -129,10 +129,15 @@ pub fn catalog_schema(columns: &[Column]) -> SchemaRef {
 }
 
 fn column_field(column: &Column) -> (FieldRef, ArrayRef) {
-	let mut builder = ColumnBuilder::with_capacity(column.constraint.get_type(), 0);
-	if let Some(id) = column.dictionary_id {
-		builder.set_dictionary_id(id);
-	}
+	let Some(id) = column.dictionary_id else {
+		return ColumnBuilder::with_capacity(column.constraint.get_type(), 0).finish(&column.name);
+	};
+	let value_type = match column.constraint.get_type() {
+		ValueType::Option(_) => ValueType::Option(Box::new(ValueType::DictionaryId)),
+		_ => ValueType::DictionaryId,
+	};
+	let mut builder = ColumnBuilder::with_capacity(value_type, 0);
+	builder.set_dictionary_id(id);
 	builder.finish(&column.name)
 }
 

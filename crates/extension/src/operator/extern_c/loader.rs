@@ -255,7 +255,7 @@ pub struct ColumnInfo {
 /// # Safety
 /// `columns` must address `column_count` initialized `ExternCOperatorColumn`, each with buffers valid for the
 /// duration of the call.
-unsafe fn extract_column_defs(column_defs: &ExternCOperatorColumns) -> Vec<ColumnInfo> {
+pub unsafe fn extract_column_defs(column_defs: &ExternCOperatorColumns) -> Vec<ColumnInfo> {
 	if column_defs.columns.is_null() || column_defs.column_count == 0 {
 		return Vec::new();
 	}

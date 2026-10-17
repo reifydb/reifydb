@@ -20,11 +20,12 @@ use reifydb_value::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
-		dictionary::DictionaryEntryId,
+		dictionary::{DictionaryEntryId, DictionaryId},
 		duration::Duration,
 		row_number::RowNumber,
 		system_columns::{SystemColumn, stamp_system_columns},
 		time::Time,
+		value_type::field::from_field,
 	},
 };
 
@@ -34,7 +35,8 @@ use crate::{
 	flow::operator::{
 		column::sink::{
 			ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, decodes_on_pass,
-			foreign_source, pass_after_push, pass_decoded, pass_kind, pass_source, passed_column,
+			foreign_source, pass_after_bind, pass_after_push, pass_decoded, pass_kind, pass_source,
+			passed_column, unbindable_column,
 		},
 		context::check_emit_count,
 		view::{ColumnsView, PassSource},
@@ -251,6 +253,18 @@ impl RowSink for InProcessRowSink {
 	fn dictionary_id_column(&mut self, col: usize) -> Result<impl ColumnWriter<DictionaryEntryId> + '_, SdkError> {
 		self.scalar(col, ValueKind::DictionaryId, "dictionary id")
 	}
+
+	fn bind_dictionary(&mut self, col: usize, dictionary: DictionaryId) -> Result<(), SdkError> {
+		if self.passed[col] {
+			return Err(passed_column(col));
+		}
+		let declared = self.columns[col].1;
+		if declared != ValueKind::DictionaryId {
+			return Err(unbindable_column(col, declared));
+		}
+		self.cols[col].set_dictionary_id(dictionary);
+		Ok(())
+	}
 	#[inline]
 	fn push_none(&mut self, col: usize) -> Result<(), SdkError> {
 		if self.passed[col] {
@@ -273,6 +287,9 @@ impl RowSink for InProcessRowSink {
 		if !self.cols[col].is_empty() {
 			return Err(pass_after_push(col));
 		}
+		if self.cols[col].dictionary_id().is_some() {
+			return Err(pass_after_bind(col));
+		}
 		let PassSource::InProcess(view) = pass_source(input, name, mask)? else {
 			return Err(foreign_source(col));
 		};
@@ -287,6 +304,9 @@ impl RowSink for InProcessRowSink {
 			.filter(view.array())
 			.map_err(|err| SdkError::Other(err.to_string()))?;
 		self.cols[col].append_values(&ColumnView::try_from((&selected, view.field))?)?;
+		if let Some(dictionary) = from_field(view.field)?.dictionary_id {
+			self.cols[col].set_dictionary_id(dictionary);
+		}
 		self.passed[col] = true;
 		Ok(())
 	}

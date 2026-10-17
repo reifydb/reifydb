@@ -38,7 +38,7 @@ use reifydb_core::{
 		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 	},
 };
-use reifydb_flow::txn::{Find, Resolve};
+use reifydb_flow::txn::{Find, Intern, Resolve};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
@@ -141,6 +141,12 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 		dictionary: DictionaryId,
 		ids: &[DictionaryEntryId],
 	) -> Result<Vec<Option<Value>>>;
+
+	fn dictionary_intern_many(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>>;
 
 	fn lookup_read_many(
 		&mut self,
@@ -405,7 +411,7 @@ impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
 	}
 }
 
-impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
+impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 	fn version(&self) -> CommitVersion {
 		self.txn.version()
 	}
@@ -595,6 +601,14 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 			Some(dict) => self.txn.get_many_from_dictionary(&dict, ids),
 			None => Ok(vec![None; ids.len()]),
 		}
+	}
+
+	fn dictionary_intern_many(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>> {
+		self.txn.intern(dictionary, values)
 	}
 }
 

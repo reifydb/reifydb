@@ -42,7 +42,7 @@ use reifydb_value::{
 		container::{any_array::any_array_optional, temporal_array::datetime_array},
 		date::Date,
 		datetime::DateTime,
-		dictionary::DictionaryEntryId,
+		dictionary::{DictionaryEntryId, DictionaryId},
 		duration::Duration,
 		identity::IdentityId,
 		system_columns::{SystemColumn, stamp_system_columns},
@@ -50,7 +50,7 @@ use reifydb_value::{
 		uuid::{Uuid4, Uuid7},
 		value_type::{
 			ValueType,
-			field::{FieldType, named},
+			field::{FieldType, from_field, named, to_field},
 		},
 	},
 };
@@ -199,6 +199,14 @@ pub(crate) unsafe fn commit_passed(input: &ExternCColumnData, mask: &[u8]) -> Re
 	};
 	let bitvec = (!bitvec.is_empty()).then(|| bitvec.to_vec());
 	let (field, array) = finalize_buffer(input.type_code, family, data, offsets, bitvec, rows)?;
+	let field = match (input.type_code, input.dictionary_id) {
+		(ValueKind::DictionaryId, dictionary) if dictionary != 0 => {
+			let mut field_type = from_field(&field).map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+			field_type.dictionary_id = Some(DictionaryId(dictionary));
+			Arc::new(to_field(field.name(), &field_type))
+		}
+		_ => field,
+	};
 	let keep = BooleanBuffer::from_iter(mask.iter().map(|&keep| keep != 0));
 	let selected = shared_predicate(&keep, rows).filter(array.as_ref()).map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
 	let row_count = selected.len();
@@ -373,6 +381,30 @@ pub unsafe extern "C" fn host_builder_grow(handle: *mut ColumnBufferHandle, addi
 		}
 		_ => EXTERN_C_ERROR_INTERNAL,
 	}
+}
+
+/// # Safety
+/// `handle` must be a value returned by `host_builder_acquire`, or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn host_builder_bind_dictionary(handle: *mut ColumnBufferHandle, dictionary: u64) -> i32 {
+	let Some(registry) = current_registry() else {
+		return EXTERN_C_ERROR_INTERNAL;
+	};
+	let h = Handle::decode(handle);
+	let mut inner = registry.inner.lock();
+	let Some(BuilderSlot::Committed(committed)) = inner.slots.get_mut(&h.id) else {
+		return EXTERN_C_ERROR_INTERNAL;
+	};
+	if committed.type_code != ValueKind::DictionaryId {
+		return EXTERN_C_ERROR_INTERNAL;
+	}
+	let (field, array) = &committed.buffer;
+	let Ok(mut field_type) = from_field(field) else {
+		return EXTERN_C_ERROR_INTERNAL;
+	};
+	field_type.dictionary_id = Some(DictionaryId(dictionary));
+	committed.buffer = (Arc::new(to_field(field.name(), &field_type)), array.clone());
+	EXTERN_C_OK
 }
 
 /// # Safety

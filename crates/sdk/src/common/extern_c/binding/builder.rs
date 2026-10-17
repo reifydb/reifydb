@@ -39,6 +39,10 @@ impl CommittedColumn {
 	pub(crate) fn row_count(&self) -> usize {
 		self.row_count
 	}
+
+	pub(crate) fn handle(&self) -> *mut ColumnBufferHandle {
+		self.handle
+	}
 }
 
 impl<'a> ColumnBuilder<'a> {

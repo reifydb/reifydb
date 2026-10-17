@@ -50,7 +50,7 @@ use crate::{
 	engine::{FlowEngineInner, register::config::evaluate_operator_params},
 	operator::{
 		aggregation::operator::AggregateOperator,
-		apply::ApplyOperator,
+		apply::{ApplyOperator, output_schema_of},
 		distinct::operator::DistinctOperator,
 		gate::GateOperator,
 		join::{
@@ -447,10 +447,11 @@ impl FlowEngineInner {
 
 		let provider = self.operator_provider.clone();
 		let inner = provider.provide(operator_id, &params, &with)?;
+		let schema = output_schema_of(parent_schema, inner.output_schema())?;
 
 		self.operators.insert(
 			(flow_id, operator_id),
-			Box::new(ApplyOperator::new(parent_schema, operator_id, inner, &with)),
+			Box::new(ApplyOperator::new(schema, operator_id, inner, &with)),
 		);
 		Ok(())
 	}

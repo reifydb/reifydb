@@ -316,6 +316,11 @@ pub trait GuestEmitContext {
 		dictionary: DictionaryId,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>>;
+	fn dictionary_intern_many(
+		&mut self,
+		dictionary: DictionaryId,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>>;
 
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::InsertEmit<'_>>;
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::UpdateEmit<'_>>;

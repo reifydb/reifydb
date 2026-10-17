@@ -14,6 +14,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
+use reifydb_flow::txn::Intern;
 use reifydb_value::{
 	Result, reifydb_assertions,
 	value::{Value, datetime::DateTime, system_columns::column_view},
@@ -55,7 +56,12 @@ impl FlowEngineInner {
 		row_count = change.row_count(),
 		nodes_processed = field::Empty
 	))]
-	pub fn process<T: FlowTransaction>(&mut self, txn: &mut T, change: Change, flow_id: FlowId) -> Result<()> {
+	pub fn process<T: FlowTransaction + Intern>(
+		&mut self,
+		txn: &mut T,
+		change: Change,
+		flow_id: FlowId,
+	) -> Result<()> {
 		self.process_batch(txn, vec![change], flow_id)
 	}
 
@@ -66,7 +72,7 @@ impl FlowEngineInner {
 		version_count = field::Empty,
 		nodes_processed = field::Empty
 	))]
-	pub fn process_batch<T: FlowTransaction>(
+	pub fn process_batch<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		changes: Vec<Change>,
@@ -127,7 +133,7 @@ impl FlowEngineInner {
 	}
 
 	#[inline]
-	fn process_version<T: FlowTransaction>(
+	fn process_version<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,
@@ -188,7 +194,7 @@ impl FlowEngineInner {
 		Ok(nodes_processed)
 	}
 
-	pub(super) fn run_topology<T: FlowTransaction>(
+	pub(super) fn run_topology<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,

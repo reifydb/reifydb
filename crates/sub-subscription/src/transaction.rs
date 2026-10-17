@@ -19,18 +19,24 @@ use reifydb_codec::{
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
-	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
+	interface::{
+		catalog::{dictionary::Dictionary, flow::OperatorId},
+		change::Change,
+		store::MultiVersionRow,
+	},
 	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
 use reifydb_flow::{
 	error::FlowGraphError,
-	txn::{Batch, Get},
+	txn::{Batch, Find, Get, Intern, Resolve},
 };
 use reifydb_flow_async::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
 	transaction::{
-		ChangeCoordinate, FlowTransaction, pending_get, pending_get_many,
+		ChangeCoordinate, FlowTransaction,
+		dictionary::DictionaryExtension,
+		pending_get, pending_get_many,
 		read::{ReadFrom, read_from},
 		scope::scoped_key,
 		substrate::FlowSubstrate,
@@ -38,7 +44,15 @@ use reifydb_flow_async::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
-use reifydb_value::{Result, error::Error, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	error::Error,
+	value::{
+		Value,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+	},
+};
 
 pub struct EphemeralTransaction {
 	pub version: CommitVersion,
@@ -207,6 +221,30 @@ impl Batch for EphemeralTransaction {
 	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 		self.pending_mut().remove_batch(keys);
 		Ok(())
+	}
+}
+
+impl Resolve for EphemeralTransaction {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+		Ok(self.find_dictionary(id))
+	}
+
+	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+		self.get_many_from_dictionary(dictionary, ids)
+	}
+}
+
+impl Find for EphemeralTransaction {
+	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		self.find_many_in_dictionary(dictionary, values)
+	}
+}
+
+impl Intern for EphemeralTransaction {
+	fn intern(&mut self, _dictionary: &Dictionary, _values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+		Err(Error::from(FlowGraphError::UnsupportedNode {
+			kind: "DictionaryIntern",
+		}))
 	}
 }
 

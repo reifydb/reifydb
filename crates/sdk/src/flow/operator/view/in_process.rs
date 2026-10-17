@@ -18,13 +18,14 @@ use reifydb_value::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
-		dictionary::DictionaryEntryId,
+		dictionary::{DictionaryEntryId, DictionaryId},
 		diff_type::DiffType,
 		duration::Duration,
 		row_number::RowNumber,
 		system_columns::{RowTimes, is_system_field, row_numbers, row_times},
 		time::Time,
 		try_from::{FromValueError, TryFromValue},
+		value_type::field::from_field,
 	},
 };
 
@@ -405,6 +406,13 @@ impl<'a> ColumnsView for InProcessColumnsView<'a> {
 
 	fn pass_source(&self, name: &str) -> Result<Option<PassSource<'_>>, SdkError> {
 		Ok(self.columns.view(name)?.map(PassSource::InProcess))
+	}
+
+	fn dictionary(&self, name: &str) -> Result<Option<DictionaryId>, SdkError> {
+		let Some(view) = self.columns.view(name)? else {
+			return Ok(None);
+		};
+		Ok(from_field(view.field).map_err(|err| SdkError::InvalidInput(err.0.message))?.dictionary_id)
 	}
 
 	fn row_numbers(&self) -> &[RowNumber] {

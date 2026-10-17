@@ -10,6 +10,7 @@ use reifydb_core::{
 		change::{Change, ChangeOrigin},
 	},
 };
+use reifydb_flow::txn::Intern;
 use reifydb_value::{Result, reifydb_assertions};
 use tracing::{Span, field, instrument};
 
@@ -80,7 +81,7 @@ impl FlowEngineInner {
 		}
 	}
 
-	pub(super) fn dispatch_node<T: FlowTransaction>(
+	pub(super) fn dispatch_node<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		flow_id: FlowId,
@@ -113,7 +114,7 @@ impl FlowEngineInner {
 		lock_wait_us = field::Empty,
 		apply_time_us = field::Empty
 	))]
-	fn apply<T: FlowTransaction>(
+	fn apply<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		flow_id: FlowId,

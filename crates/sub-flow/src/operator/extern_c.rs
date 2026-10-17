@@ -8,6 +8,7 @@ use std::{
 	process::abort,
 };
 
+use arrow_schema::SchemaRef;
 use reifydb_core::{
 	common::{ChangeVersion, OperatorClass},
 	interface::{
@@ -20,13 +21,16 @@ use reifydb_core::{
 };
 use reifydb_extension::{
 	callbacks::extern_c::builder::{BuilderRegistry, with_registry},
-	operator::callbacks::extern_c::{
-		context::{ExternCHostContext, new_extern_c_context},
-		create_host_callbacks,
+	operator::{
+		callbacks::extern_c::{
+			context::{ExternCHostContext, new_extern_c_context},
+			create_host_callbacks,
+		},
+		extern_c::loader::extract_column_defs,
 	},
 };
 use reifydb_flow_async::{
-	operator::{HostOperator, host::HostContext},
+	operator::{HostOperator, apply::declared_schema, host::HostContext},
 	timer::Timer,
 };
 use reifydb_sdk::{
@@ -64,6 +68,7 @@ pub struct ExternCOperatorHandle {
 	operator_id: OperatorId,
 
 	builder_registry: BuilderRegistry,
+	schema: Option<SchemaRef>,
 }
 
 impl ExternCOperatorHandle {
@@ -75,9 +80,14 @@ impl ExternCOperatorHandle {
 	) -> Self {
 		let vtable = descriptor.vtable;
 		let capabilities = from_bitmask(descriptor.capabilities).into_boxed_slice();
+		// SAFETY: the descriptor comes from the loaded library, whose column buffers stay mapped while it is
+		// loaded.
+		let outputs = unsafe { extract_column_defs(&descriptor.output_columns) };
+		let schema = declared_schema(outputs.iter().map(|column| (column.name.as_str(), &column.field_type)));
 
 		Self {
 			capabilities,
+			schema,
 			class,
 			vtable,
 			instance,
@@ -143,6 +153,10 @@ impl HostOperator for ExternCOperatorHandle {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		&self.capabilities
+	}
+
+	fn output_schema(&self) -> Option<SchemaRef> {
+		self.schema.clone()
 	}
 
 	#[instrument(name = "flow::extern_c::apply", level = "trace", skip_all, fields(

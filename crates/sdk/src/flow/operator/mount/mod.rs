@@ -10,13 +10,14 @@ use std::{
 };
 
 use arrow_array::RecordBatch;
+use arrow_schema::SchemaRef;
 use reifydb_core::{
 	common::ChangeVersion,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 };
 use reifydb_flow_async::{
-	operator::{BoxedHostOperator, HostOperator, host::HostContext},
+	operator::{BoxedHostOperator, HostOperator, apply::declared_schema, host::HostContext},
 	timer::Timer,
 };
 use reifydb_runtime::fatal::{
@@ -114,6 +115,7 @@ pub fn mount<C: MountedOperator + OperatorMetadata + 'static>(
 		operator,
 		capabilities,
 		input_columns: C::INPUT_COLUMNS,
+		output_columns: C::OUTPUT_COLUMNS,
 	})
 }
 
@@ -122,6 +124,7 @@ struct GuestAdapter<C> {
 	operator: OperatorId,
 	capabilities: &'static [OperatorCapability],
 	input_columns: &'static [OperatorColumn],
+	output_columns: &'static [OperatorColumn],
 }
 
 impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
@@ -131,6 +134,10 @@ impl<C: MountedOperator + 'static> HostOperator for GuestAdapter<C> {
 
 	fn capabilities(&self) -> &[OperatorCapability] {
 		self.capabilities
+	}
+
+	fn output_schema(&self) -> Option<SchemaRef> {
+		declared_schema(self.output_columns.iter().map(|column| (column.name, &column.type_constraint)))
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
