@@ -318,6 +318,10 @@ impl FlowPositionTracker {
 		self.inner.write().advance_last_commit(flow_id, commit);
 	}
 
+	pub fn last_commit(&self, flow_id: FlowId) -> Option<CommitVersion> {
+		self.inner.read().last_commits.get(&flow_id).copied()
+	}
+
 	pub fn upstream_complete_through(&self, flow_id: FlowId, read_to: CommitVersion) -> Option<CommitVersion> {
 		self.inner.read().complete_through(flow_id, read_to)
 	}

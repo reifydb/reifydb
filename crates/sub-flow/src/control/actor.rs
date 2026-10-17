@@ -573,6 +573,11 @@ impl FlowActor {
 			if moved && merged.more {
 				let _ = ctx.self_ref().send(FlowActorMessage::Drain);
 			} else {
+				if upstream_reads.reads.keys().any(|producer| {
+					self.flow_tracker.last_commit(*producer).is_some_and(|commit| commit > safe)
+				}) {
+					ctx.schedule_once(self.wake_coalesce, || FlowActorMessage::Drain);
+				}
 				self.checkpoint_if_stale(state, ctx);
 			}
 			return;
