@@ -129,7 +129,6 @@ pub fn should_exclude_from_cdc(kind: KeyTag) -> bool {
 			| KeyTag::SystemSequence
 			| KeyTag::RowSequence | KeyTag::ColumnSequence
 			| KeyTag::SystemVersion
-			| KeyTag::TransactionVersion
 			| KeyTag::FlowVersion | KeyTag::RingBufferMetadata
 			| KeyTag::Index | KeyTag::ConfigStorage
 			| KeyTag::Token | KeyTag::VersionEpoch
@@ -161,7 +160,6 @@ pub mod primary_key_tests {
 			KeyTag::RowSequence => {}
 			KeyTag::ColumnProperty => {}
 			KeyTag::SystemVersion => {}
-			KeyTag::TransactionVersion => {}
 			KeyTag::Index => {}
 			KeyTag::IndexEntry => {}
 			KeyTag::ColumnSequence => {}
@@ -288,9 +286,7 @@ pub mod primary_key_tests {
 	}
 
 	#[test]
-	fn test_exclude_transaction_version() {
-		assert!(should_exclude_from_cdc(KeyTag::TransactionVersion));
-	}
+	fn test_exclude_transaction_version() {}
 
 	#[test]
 	fn test_exclude_ring_buffer_metadata() {

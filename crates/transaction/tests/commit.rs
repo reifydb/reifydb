@@ -29,7 +29,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::command::CommandTransaction,
-	wal::memory_wal,
+	wal::{memory_wal, replay},
 };
 use reifydb_value::{
 	Result,
@@ -45,20 +45,21 @@ struct Harness {
 
 fn harness() -> Harness {
 	let multi_store = MultiStore::testing_memory();
-	let single_store = SingleStore::testing_memory();
 	let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 	let spawner = actor_system.spawner();
 	let bus = EventBus::new(&spawner);
+	let wal = memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap();
+	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 	let multi = MultiTransaction::new(
 		multi_store,
-		SingleTransaction::new(single_store, bus.clone()),
 		bus.clone(),
 		spawner.clone(),
 		Clock::Mock(MockClock::from_millis(1000)),
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(ProfileConfig),
-		memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap(),
+		wal,
+		recovery,
 	)
 	.unwrap();
 	let single = SingleTransaction::new(SingleStore::testing_memory(), bus.clone());

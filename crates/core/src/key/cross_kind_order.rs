@@ -69,14 +69,14 @@ use crate::{
 		series::{PartitionedSeriesRowKey, SeriesKey, SeriesPartitionMetadataKey, SeriesRowKey},
 		system::{
 			MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersion, SystemVersionKey,
-			TransactionVersionKey, VersionEpochKey,
+			VersionEpochKey,
 		},
 		tag::KeyTag,
 	},
 	value::index::encoded::EncodedIndexKey,
 };
 
-const DECLARED_KINDS: usize = 87;
+const DECLARED_KINDS: usize = 86;
 
 fn bare(kind: KeyTag) -> EncodedKey {
 	let mut serializer = KeySerializer::with_capacity(1);
@@ -130,7 +130,6 @@ fn representative(kind: KeyTag) -> EncodedKey {
 			version: SystemVersion::Storage,
 		}
 		.encode(),
-		KeyTag::TransactionVersion => TransactionVersionKey {}.encode(),
 		KeyTag::Index => IndexKey {
 			object: ObjectId::table(TableId(1)),
 			index: IndexId::primary(PrimaryKeyId(1)),

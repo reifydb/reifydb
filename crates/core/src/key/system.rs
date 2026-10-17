@@ -124,31 +124,6 @@ pub mod system_version_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
-#[key(tag = TransactionVersion)]
-pub struct TransactionVersionKey {}
-
-impl TransactionVersionKey {
-	pub fn encoded() -> EncodedKey {
-		Self {}.encode()
-	}
-}
-
-#[cfg(test)]
-pub mod transaction_version_key_tests {
-	use super::TransactionVersionKey;
-
-	#[test]
-	fn test_encode_decode() {
-		let key = TransactionVersionKey {};
-		let encoded = key.encode();
-		let expected = vec![0xF4];
-		assert_eq!(encoded.as_slice(), expected);
-
-		TransactionVersionKey::decode(&encoded).unwrap();
-	}
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, KeyCodec, Hash)]
 #[key(tag = VersionEpoch)]
 pub struct VersionEpochKey {

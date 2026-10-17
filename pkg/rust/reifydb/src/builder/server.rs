@@ -7,7 +7,10 @@ use std::sync::Arc;
 
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::cache::CatalogCache;
-use reifydb_core::interface::{auth::AuthenticationProvider, catalog::config::ConfigKey};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{auth::AuthenticationProvider, catalog::config::ConfigKey},
+};
 #[cfg(feature = "column")]
 use reifydb_extension::block_encoding::registry::BlockEncodingsConfigurator;
 #[cfg(feature = "sub_metric_profiler")]
@@ -18,12 +21,11 @@ use reifydb_profiler::{
 	sink::ProfilerSink,
 };
 use reifydb_routine_abi::registry::RoutinesConfigurator;
-#[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
-use reifydb_runtime::context::clock::Clock;
 #[cfg(feature = "sub_metric_profiler")]
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_runtime::{
-	Runtime, RuntimeConfig, fatal::install as install_fatal, pool::PoolConfig, version_epoch::VersionEpoch,
+	Runtime, RuntimeConfig, context::clock::Clock, fatal::install as install_fatal, pool::PoolConfig,
+	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_store_cdc::{config::CdcCommitConfig, tier::read::CdcReadConfig};
@@ -64,7 +66,10 @@ use reifydb_sub_server_otel::{config::OtelConfigurator, factory::OtelSubsystemFa
 use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
-use reifydb_transaction::interceptor::builder::InterceptorBuilder;
+use reifydb_transaction::{
+	interceptor::builder::InterceptorBuilder,
+	wal::{CommitWal, Recovery, replay},
+};
 use reifydb_value::value::{Value, duration::Duration};
 #[cfg(all(feature = "sub_metric_profiler", feature = "sub_tracing"))]
 use tracing_subscriber::filter::LevelFilter;
@@ -85,15 +90,24 @@ type PoolConfigSources = (
 	ResidentLimits,
 	Duration,
 	Duration,
+	CommitWal,
+	Recovery,
 );
 
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
 	cdc_memory: bool,
+	clock: &Clock,
 ) -> Result<PoolConfigSources> {
 	let multi_commit_store = factory.open_multi_commit_store();
 	let multi_persistent = factory.open_multi_persistent();
+	let saved_through = match multi_persistent.as_ref() {
+		Some(persistent) => persistent.saved_through()?,
+		None => CommitVersion(0),
+	};
+	let wal = commit_wal(factory, clock);
+	let recovery = replay(&wal, &multi_commit_store, saved_through);
 	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides, cdc_memory)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
@@ -112,6 +126,8 @@ fn pool_config_from_sources(
 		resolved.operator_resident,
 		resolved.operator_flush_interval,
 		resolved.sync_interval,
+		wal,
+		recovery,
 	))
 }
 
@@ -357,6 +373,7 @@ impl ServerBuilder {
 		// limit to the hard limit before any listener is bound so concurrent load
 		// does not exhaust it (`accept error: Too many open files`).
 		raise_fd_limit();
+		let boot_clock = self.runtime_config.as_ref().map_or(Clock::Real, |config| config.clock.clone());
 
 		let (
 			multi_commit_store,
@@ -372,7 +389,14 @@ impl ServerBuilder {
 			operator_resident,
 			operator_flush_interval,
 			sync_interval,
-		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, self.cdc_memory)?;
+			wal,
+			recovery,
+		) = pool_config_from_sources(
+			&self.storage_factory,
+			&self.bootstrap_configs,
+			self.cdc_memory,
+			&boot_clock,
+		)?;
 
 		let runtime_config = self.runtime_config.unwrap_or_default();
 		install_fatal(runtime_config.fatal);
@@ -399,7 +423,6 @@ impl ServerBuilder {
 				None,
 				&spawner,
 			);
-		let wal = commit_wal(&self.storage_factory, &clock);
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
 		let (multi, single, eventbus) = transaction(
@@ -410,6 +433,8 @@ impl ServerBuilder {
 			rng,
 			Arc::new(catalog_cache.clone()),
 			wal,
+			recovery,
+			&cdc_store,
 		);
 
 		let mut database_builder =

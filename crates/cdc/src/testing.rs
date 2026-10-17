@@ -27,7 +27,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::{command::CommandTransaction, query::QueryTransaction},
-	wal::memory_wal,
+	wal::{memory_wal, replay},
 };
 use reifydb_value::{
 	Result,
@@ -58,16 +58,18 @@ impl TestCdcHost {
 		let catalog_cache = CatalogCache::new();
 		let mock = MockClock::new(initial_nanos);
 		let clock = Clock::Mock(mock.clone());
+		let wal = memory_wal(clock.clone()).unwrap();
+		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 		let multi = MultiTransaction::new(
 			multi_store,
-			single.clone(),
 			event_bus.clone(),
 			spawner,
 			clock.clone(),
 			VersionEpoch::new(),
 			Rng::seeded(42),
 			Arc::new(catalog_cache.clone()),
-			memory_wal(clock.clone()).unwrap(),
+			wal,
+			recovery,
 		)
 		.unwrap();
 		Self {

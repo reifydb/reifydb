@@ -19,6 +19,7 @@ use reifydb_benches::{
 };
 use reifydb_codec::{key as keycode, row::bytes::EncodedBytes};
 use reifydb_core::{
+	common::CommitVersion,
 	durability::Durability,
 	event::EventBus,
 	interface::{
@@ -34,8 +35,10 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_store_single::SingleStore;
-use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction, wal::memory_wal};
+use reifydb_transaction::{
+	multi::transaction::MultiTransaction,
+	wal::{memory_wal, replay},
+};
 use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{duration::Duration, row_number::RowNumber},
@@ -74,16 +77,19 @@ fn build_stack() -> (ActorSystem, MultiTransaction) {
 	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
 	let event_bus = EventBus::new(&spawner);
+	let multi_store = MultiStore::testing_memory();
+	let wal = memory_wal(Clock::Real).expect("benchmark commit log must build");
+	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 	let multi = MultiTransaction::new(
-		MultiStore::testing_memory(),
-		SingleTransaction::new(SingleStore::testing_memory(), event_bus.clone()),
+		multi_store,
 		event_bus,
 		spawner,
 		Clock::Real,
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(ProfileConfig),
-		memory_wal(Clock::Real).expect("benchmark commit log must build"),
+		wal,
+		recovery,
 	)
 	.expect("benchmark transaction stack must build");
 	(actor_system, multi)

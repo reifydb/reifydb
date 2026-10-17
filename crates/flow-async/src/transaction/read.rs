@@ -56,7 +56,6 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyTag::RowSequence => ReadFrom::Query,
 			KeyTag::ColumnProperty => ReadFrom::Query,
 			KeyTag::SystemVersion => ReadFrom::Query,
-			KeyTag::TransactionVersion => ReadFrom::Query,
 			KeyTag::Index => ReadFrom::Query,
 			KeyTag::IndexEntry => ReadFrom::Query,
 			KeyTag::ColumnSequence => ReadFrom::Query,

@@ -131,14 +131,14 @@ impl MultiVersionCommit for StandardMultiStore {
 	}
 }
 
-struct ClassifiedDeltas {
-	writes: Vec<MultiWrite>,
-	deletes: Vec<MultiDelete>,
-	batches: TierBatch,
+pub struct ClassifiedDeltas {
+	pub(crate) writes: Vec<MultiWrite>,
+	pub(crate) deletes: Vec<MultiDelete>,
+	pub batches: TierBatch,
 }
 
 #[inline]
-fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
+pub fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 	let mut writes: Vec<MultiWrite> = Vec::new();
 	let mut deletes: Vec<MultiDelete> = Vec::new();
 	let mut batches: TierBatch = HashMap::new();

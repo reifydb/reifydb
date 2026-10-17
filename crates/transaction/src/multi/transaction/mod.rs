@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{ops::Deref, sync::Arc};
+use std::{collections::VecDeque, ops::Deref, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -33,6 +33,7 @@ use reifydb_runtime::{
 use reifydb_store_commit::VersionedGetResult;
 use reifydb_store_multi::MultiStore;
 use reifydb_value::{Result, value::duration::Duration};
+use reifydb_wal::lsn::Lsn;
 use tracing::{instrument, warn};
 use version::{StandardVersionProvider, VersionProvider};
 
@@ -41,16 +42,13 @@ use crate::{
 	TransactionId,
 	error::TransactionError,
 	multi::types::*,
-	single::SingleTransaction,
-	wal::{CheckpointedStore, CommitWal, StoreCheckpoint, memory_wal},
+	wal::{CheckpointedStore, CommitWal, Recovery, StoreCheckpoint, memory_wal, replay},
 };
 
 pub mod manager;
 pub mod read;
 pub(crate) mod version;
 pub mod write;
-
-use reifydb_store_single::SingleStore;
 
 use crate::multi::{
 	MultiReadTransaction, MultiWriteTransaction,
@@ -84,7 +82,7 @@ where
 	#[instrument(
 		name = "transaction::manager::new",
 		level = "debug",
-		skip(versions, spawner, store, clock, version_epoch, rng, config, wal)
+		skip(versions, spawner, store, clock, version_epoch, rng, config, wal, lsns)
 	)]
 	pub fn new(
 		versions: L,
@@ -95,12 +93,13 @@ where
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 		wal: CommitWal,
+		lsns: VecDeque<(CommitVersion, Lsn)>,
 	) -> Result<Self>
 	where
 		L: 'static,
 	{
 		let version = versions.next()?;
-		let oracle = Oracle::new(versions, spawner, store, clock, version_epoch, rng, config, wal);
+		let oracle = Oracle::new(versions, spawner, store, clock, version_epoch, rng, config, wal, lsns);
 		oracle.query.advance_to(version);
 		oracle.command.advance_to(version);
 		Ok(Self {
@@ -242,7 +241,6 @@ impl Inner {
 	#[allow(clippy::too_many_arguments)]
 	fn new(
 		store: MultiStore,
-		single: SingleTransaction,
 		event_bus: EventBus,
 		spawner: ActorSpawner,
 		clock: Clock,
@@ -250,8 +248,9 @@ impl Inner {
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 		wal: CommitWal,
+		recovery: Recovery,
 	) -> Result<Self> {
-		let version_provider = StandardVersionProvider::new(single)?;
+		let version_provider = StandardVersionProvider::new(recovery.last);
 		let tm = TransactionManager::new(
 			version_provider,
 			spawner,
@@ -261,6 +260,7 @@ impl Inner {
 			rng,
 			config,
 			wal,
+			recovery.lsns,
 		)?;
 
 		Ok(Self {
@@ -290,7 +290,6 @@ impl MultiTransaction {
 
 	pub fn testing() -> Self {
 		let multi_store = MultiStore::testing_memory();
-		let single_store = SingleStore::testing_memory();
 		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
@@ -298,10 +297,10 @@ impl MultiTransaction {
 		let config = Arc::new(ProfileConfig);
 		let clock = Clock::Mock(MockClock::from_millis(1000));
 		let wal = memory_wal(clock.clone()).expect("failed to create testing commit log");
+		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 
 		Self::new(
 			multi_store,
-			SingleTransaction::new(single_store, event_bus.clone()),
 			event_bus,
 			spawner,
 			clock,
@@ -309,6 +308,7 @@ impl MultiTransaction {
 			Rng::seeded(42),
 			config,
 			wal,
+			recovery,
 		)
 		.expect("failed to create testing MultiTransaction")
 	}
@@ -318,12 +318,11 @@ impl MultiTransaction {
 	#[instrument(
 		name = "transaction::new",
 		level = "debug",
-		skip(store, single, event_bus, spawner, clock, version_epoch, rng, config, wal)
+		skip(store, event_bus, spawner, clock, version_epoch, rng, config, wal, recovery)
 	)]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		store: MultiStore,
-		single: SingleTransaction,
 		event_bus: EventBus,
 		spawner: ActorSpawner,
 		clock: Clock,
@@ -331,10 +330,10 @@ impl MultiTransaction {
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 		wal: CommitWal,
+		recovery: Recovery,
 	) -> Result<Self> {
 		Ok(Self(Arc::new(Inner::new(
 			store,
-			single,
 			event_bus,
 			spawner,
 			clock,
@@ -342,6 +341,7 @@ impl MultiTransaction {
 			rng,
 			config,
 			wal,
+			recovery,
 		)?)))
 	}
 

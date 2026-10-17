@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
+	common::CommitVersion,
 	durability::Durability,
 	event::EventBus,
 	interface::catalog::{id::TableId, storage::StorageId},
@@ -25,34 +26,33 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
 	multi::{
 		RangeScope,
 		transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
 	},
-	single::SingleTransaction,
-	wal::memory_wal,
+	wal::{memory_wal, replay},
 };
 use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 
 fn test_engine() -> MultiTransaction {
 	let multi_store = MultiStore::testing_memory();
-	let single_store = SingleStore::testing_memory();
 	let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 	let spawner = actor_system.spawner();
 	std::mem::forget(actor_system);
 	let bus = EventBus::new(&spawner);
+	let wal = memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap();
+	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 	MultiTransaction::new(
 		multi_store,
-		SingleTransaction::new(single_store, bus.clone()),
 		bus,
 		spawner,
 		Clock::Mock(MockClock::from_millis(1000)),
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(ProfileConfig),
-		memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap(),
+		wal,
+		recovery,
 	)
 	.unwrap()
 }

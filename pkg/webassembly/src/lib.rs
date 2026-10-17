@@ -34,6 +34,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	CoreVersion,
+	common::CommitVersion,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
 		catalog::config::ConfigKey,
@@ -61,8 +62,11 @@ use reifydb_store_operator::{OperatorStoreVersion, store::OperatorStore};
 use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
-	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
-	single::SingleTransaction, wal::memory_wal,
+	TransactionVersion,
+	interceptor::factory::InterceptorFactory,
+	multi::transaction::MultiTransaction,
+	single::SingleTransaction,
+	wal::{memory_wal, replay},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -232,16 +236,18 @@ impl WasmDB {
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
+		let wal = memory_wal(clock.clone()).map_err(|e| JsError::from_error(&e))?;
+		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
-			single.clone(),
 			eventbus.clone(),
 			spawner.clone(),
 			clock.clone(),
 			version_epoch.clone(),
 			rng.clone(),
 			Arc::new(catalog_cache.clone()),
-			memory_wal(clock.clone()).map_err(|e| JsError::from_error(&e))?,
+			wal,
+			recovery,
 		)
 		.map_err(|e| JsError::from_error(&e))?;
 

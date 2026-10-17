@@ -54,10 +54,7 @@ use crate::{
 			RowShapeFieldKey, RowShapeKey, SortedViewRowKey, encode_sort_run,
 		},
 		series::{PartitionedSeriesRowKey, SeriesKey, SeriesPartitionMetadataKey, SeriesRowKey},
-		system::{
-			MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersionKey, TransactionVersionKey,
-			VersionEpochKey,
-		},
+		system::{MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersionKey, VersionEpochKey},
 		tag::KeyTag,
 	},
 };
@@ -80,7 +77,6 @@ pub enum TaggedKey {
 	RowSequence(RowSequenceKey),
 	ColumnProperty(ColumnPropertyKey),
 	SystemVersion(SystemVersionKey),
-	TransactionVersion(TransactionVersionKey),
 	Index(IndexKey),
 	IndexEntry(IndexEntryKey),
 	ColumnSequence(ColumnSequenceKey),
@@ -172,7 +168,6 @@ impl TaggedKey {
 			Self::RowSequence(_) => KeyTag::RowSequence,
 			Self::ColumnProperty(_) => KeyTag::ColumnProperty,
 			Self::SystemVersion(_) => KeyTag::SystemVersion,
-			Self::TransactionVersion(_) => KeyTag::TransactionVersion,
 			Self::Index(_) => KeyTag::Index,
 			Self::IndexEntry(_) => KeyTag::IndexEntry,
 			Self::ColumnSequence(_) => KeyTag::ColumnSequence,
@@ -264,7 +259,6 @@ impl TaggedKey {
 			Self::RowSequence(key) => key.encode(),
 			Self::ColumnProperty(key) => key.encode(),
 			Self::SystemVersion(key) => key.encode(),
-			Self::TransactionVersion(key) => key.encode(),
 			Self::Index(key) => key.encode(),
 			Self::IndexEntry(key) => key.encode(),
 			Self::ColumnSequence(key) => key.encode(),
@@ -357,7 +351,6 @@ impl TaggedKey {
 			KeyTag::RowSequence => RowSequenceKey::decode(key).map(Self::RowSequence),
 			KeyTag::ColumnProperty => ColumnPropertyKey::decode(key).map(Self::ColumnProperty),
 			KeyTag::SystemVersion => SystemVersionKey::decode(key).map(Self::SystemVersion),
-			KeyTag::TransactionVersion => TransactionVersionKey::decode(key).map(Self::TransactionVersion),
 			KeyTag::Index => IndexKey::decode(key).map(Self::Index),
 			KeyTag::IndexEntry => IndexEntryKey::decode(key).map(Self::IndexEntry),
 			KeyTag::ColumnSequence => ColumnSequenceKey::decode(key).map(Self::ColumnSequence),
@@ -516,12 +509,6 @@ impl From<ColumnPropertyKey> for TaggedKey {
 impl From<SystemVersionKey> for TaggedKey {
 	fn from(key: SystemVersionKey) -> Self {
 		Self::SystemVersion(key)
-	}
-}
-
-impl From<TransactionVersionKey> for TaggedKey {
-	fn from(key: TransactionVersionKey) -> Self {
-		Self::TransactionVersion(key)
 	}
 }
 
@@ -1179,7 +1166,6 @@ impl KeyFields for TaggedKey {
 			Self::RowSequence(key) => key.fields(),
 			Self::ColumnProperty(key) => key.fields(),
 			Self::SystemVersion(key) => key.fields(),
-			Self::TransactionVersion(key) => key.fields(),
 			Self::Index(key) => key.fields(),
 			Self::IndexEntry(key) => key.fields(),
 			Self::ColumnSequence(key) => key.fields(),
@@ -1273,7 +1259,6 @@ impl Ord for TaggedKey {
 			(Self::RowSequence(left), Self::RowSequence(right)) => left.cmp_fields(right),
 			(Self::ColumnProperty(left), Self::ColumnProperty(right)) => left.cmp_fields(right),
 			(Self::SystemVersion(left), Self::SystemVersion(right)) => left.cmp_fields(right),
-			(Self::TransactionVersion(left), Self::TransactionVersion(right)) => left.cmp_fields(right),
 			(Self::Index(left), Self::Index(right)) => left.cmp_fields(right),
 			(Self::IndexEntry(left), Self::IndexEntry(right)) => left.cmp_fields(right),
 			(Self::ColumnSequence(left), Self::ColumnSequence(right)) => left.cmp_fields(right),
@@ -1444,7 +1429,7 @@ mod tests {
 			sort_run::SortRun,
 			system::{
 				MigrationEventKey, MigrationKey, SystemSequenceKey, SystemVersion, SystemVersionKey,
-				TransactionVersionKey, VersionEpochKey,
+				VersionEpochKey,
 			},
 			tag::KeyTag,
 		},
@@ -1764,7 +1749,6 @@ mod tests {
 			probe(SystemVersionKey {
 				version: SystemVersion::Storage,
 			}),
-			probe(TransactionVersionKey {}),
 			probe(TableKey {
 				table: TableId(1),
 			}),
@@ -2127,7 +2111,6 @@ mod tests {
 			probe(SystemVersionKey {
 				version: SystemVersion::Storage,
 			}),
-			probe(TransactionVersionKey {}),
 			probe(IndexKey {
 				object: ObjectId::table(14),
 				index: IndexId::primary(PrimaryKeyId(15)),
@@ -2541,7 +2524,7 @@ mod tests {
 		let mut kinds: Vec<u8> = all_probes().iter().map(|(key, _)| key.kind() as u8).collect();
 		kinds.sort_unstable();
 		kinds.dedup();
-		assert_eq!(kinds.len(), 87);
+		assert_eq!(kinds.len(), 86);
 	}
 
 	#[test]

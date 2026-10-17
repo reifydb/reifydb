@@ -3,7 +3,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
-use reifydb_core::{event::EventBus, interface::catalog::config::GetConfig};
+use reifydb_core::{common::CommitVersion, event::EventBus, interface::catalog::config::GetConfig};
 use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	context::{clock::Clock, rng::Rng},
@@ -13,6 +13,7 @@ use reifydb_runtime::{
 use reifydb_sqlite::{DbPath, JournalMode, SqliteConfig, SynchronousMode};
 use reifydb_store_cdc::{
 	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
+	storage::CdcStorage,
 	store::CdcStore,
 	tier::read::{CdcReadBufferTier, CdcReadConfig},
 };
@@ -43,7 +44,7 @@ use reifydb_store_single::{
 use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{CheckpointedStore, CommitWal, memory_wal, open_wal},
+	wal::{CheckpointedStore, CommitWal, Recovery, memory_wal, open_wal},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -342,10 +343,18 @@ pub(crate) fn transaction(
 	rng: Rng,
 	config: Arc<dyn GetConfig>,
 	wal: CommitWal,
+	recovery: Recovery,
+	cdc_store: &CdcStore,
 ) -> (MultiTransaction, SingleTransaction, EventBus) {
+	let cdc_head = CdcStorage::max_version(cdc_store)
+		.unwrap_or_else(|err| panic!("cdc head could not be read at boot: {err}"))
+		.unwrap_or(CommitVersion(0));
+	let recovery = Recovery {
+		last: recovery.last.max(cdc_head),
+		..recovery
+	};
 	let multi = MultiTransaction::new(
 		input.0,
-		input.2.clone(),
 		input.3.clone(),
 		spawner,
 		clock,
@@ -353,6 +362,7 @@ pub(crate) fn transaction(
 		rng,
 		config,
 		wal,
+		recovery,
 	)
 	.unwrap();
 	let checkpoint = multi.store_checkpoint(CheckpointedStore::Multi).unwrap();

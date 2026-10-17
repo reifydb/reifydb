@@ -64,7 +64,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
-	wal::{CheckpointedStore, memory_wal},
+	wal::{CheckpointedStore, memory_wal, replay},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -294,16 +294,18 @@ impl TestEngineBuilder {
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
+		let wal = memory_wal(clock.clone()).unwrap();
+		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
-			single.clone(),
 			eventbus.clone(),
 			spawner.clone(),
 			clock.clone(),
 			version_epoch.clone(),
 			rng.clone(),
 			Arc::new(catalog_cache.clone()),
-			memory_wal(clock.clone()).unwrap(),
+			wal,
+			recovery,
 		)
 		.unwrap();
 		multi_store.set_wal_checkpoint(multi.store_checkpoint(CheckpointedStore::Multi).unwrap());
@@ -438,16 +440,18 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let spawner = actor_system.spawner();
 	let event_bus = EventBus::new(&spawner);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
+	let wal = memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap();
+	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 	let multi = MultiTransaction::new(
 		multi_store,
-		single.clone(),
 		event_bus.clone(),
 		spawner,
 		Clock::Mock(MockClock::from_millis(1000)),
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(CatalogCache::new()),
-		memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap(),
+		wal,
+		recovery,
 	)
 	.unwrap();
 
@@ -475,16 +479,18 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let spawner = actor_system.spawner();
 	let event_bus = EventBus::new(&spawner);
 	let single = SingleTransaction::new(single_store, event_bus.clone());
+	let wal = memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap();
+	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 	let multi = MultiTransaction::new(
 		multi_store,
-		single.clone(),
 		event_bus.clone(),
 		spawner,
 		Clock::Mock(MockClock::from_millis(1000)),
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(CatalogCache::new()),
-		memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap(),
+		wal,
+		recovery,
 	)
 	.unwrap();
 	let dictionary_allocators =

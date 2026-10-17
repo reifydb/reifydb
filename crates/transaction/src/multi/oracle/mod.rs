@@ -248,6 +248,7 @@ where
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
 		wal: CommitWal,
+		lsns: VecDeque<(CommitVersion, Lsn)>,
 	) -> Self
 	where
 		L: 'static,
@@ -259,7 +260,7 @@ where
 				evicted_up_through: CommitVersion(0),
 				frozen: false,
 				last_unchecked: CommitVersion(0),
-				lsns: VecDeque::new(),
+				lsns,
 			}),
 			query: WaterMark::with_advancer("txn-mark-query".into(), &spawner),
 			command: WaterMark::with_advancer("txn-mark-cmd".into(), &spawner),
@@ -673,11 +674,15 @@ where
 	}
 }
 
+pub(crate) fn note_lsn(lsns: &mut VecDeque<(CommitVersion, Lsn)>, version: CommitVersion, lsn: Lsn) {
+	if lsns.back().is_none_or(|(last, _)| last.0 / LSN_STEP < version.0 / LSN_STEP) {
+		lsns.push_back((version, lsn));
+	}
+}
+
 impl OracleState {
 	fn note_lsn(&mut self, version: CommitVersion, lsn: Lsn) {
-		if self.lsns.back().is_none_or(|(last, _)| last.0 / LSN_STEP < version.0 / LSN_STEP) {
-			self.lsns.push_back((version, lsn));
-		}
+		note_lsn(&mut self.lsns, version, lsn);
 	}
 
 	pub(crate) fn lsn_through(&mut self, version: CommitVersion) -> Option<Lsn> {
@@ -845,6 +850,7 @@ mod tests {
 			Rng::seeded(42),
 			config,
 			memory_wal(time).unwrap(),
+			VecDeque::new(),
 		)
 	}
 

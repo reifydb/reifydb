@@ -5,11 +5,15 @@ use std::{path::PathBuf, sync::Arc};
 
 use reifydb_auth::service::AuthConfigurator;
 use reifydb_catalog::cache::CatalogCache;
-use reifydb_core::interface::{auth::AuthenticationProvider, catalog::config::ConfigKey};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{auth::AuthenticationProvider, catalog::config::ConfigKey},
+};
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::{
-	Runtime, RuntimeConfig, fatal::install as install_fatal, pool::PoolConfig, version_epoch::VersionEpoch,
+	Runtime, RuntimeConfig, context::clock::Clock, fatal::install as install_fatal, pool::PoolConfig,
+	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_store_cdc::{config::CdcCommitConfig, tier::read::CdcReadConfig};
@@ -23,7 +27,10 @@ use reifydb_sub_flow::builder::FlowConfigurator;
 use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::ProfilerSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::builder::TracingConfigurator;
-use reifydb_transaction::interceptor::builder::InterceptorBuilder;
+use reifydb_transaction::{
+	interceptor::builder::InterceptorBuilder,
+	wal::{CommitWal, Recovery, replay},
+};
 use reifydb_value::value::{Value, duration::Duration};
 
 type PoolConfigSources = (
@@ -40,15 +47,24 @@ type PoolConfigSources = (
 	ResidentLimits,
 	Duration,
 	Duration,
+	CommitWal,
+	Recovery,
 );
 
 fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
 	cdc_memory: bool,
+	clock: &Clock,
 ) -> Result<PoolConfigSources> {
 	let multi_commit_store = factory.open_multi_commit_store();
 	let multi_persistent = factory.open_multi_persistent();
+	let saved_through = match multi_persistent.as_ref() {
+		Some(persistent) => persistent.saved_through()?,
+		None => CommitVersion(0),
+	};
+	let wal = commit_wal(factory, clock);
+	let recovery = replay(&wal, &multi_commit_store, saved_through);
 	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides, cdc_memory)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);
@@ -67,6 +83,8 @@ fn pool_config_from_sources(
 		resolved.operator_resident,
 		resolved.operator_flush_interval,
 		resolved.sync_interval,
+		wal,
+		recovery,
 	))
 }
 
@@ -252,6 +270,7 @@ impl EmbeddedBuilder {
 	}
 
 	pub fn build(self) -> Result<Database> {
+		let boot_clock = self.runtime_config.as_ref().map_or(Clock::Real, |config| config.clock.clone());
 		let (
 			multi_commit_store,
 			multi_persistent,
@@ -266,7 +285,14 @@ impl EmbeddedBuilder {
 			operator_resident,
 			operator_flush_interval,
 			sync_interval,
-		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, self.cdc_memory)?;
+			wal,
+			recovery,
+		) = pool_config_from_sources(
+			&self.storage_factory,
+			&self.bootstrap_configs,
+			self.cdc_memory,
+			&boot_clock,
+		)?;
 		#[cfg(all(feature = "column", reifydb_target = "host"))]
 		let column_dir = match &self.storage_factory {
 			StorageFactory::Sqlite(config) => Some(api::column_dir(config)),
@@ -297,7 +323,6 @@ impl EmbeddedBuilder {
 				self.operator_persistent,
 				&spawner,
 			);
-		let wal = commit_wal(&self.storage_factory, &clock);
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
 		let (multi, single, eventbus) = transaction(
@@ -308,6 +333,8 @@ impl EmbeddedBuilder {
 			rng,
 			Arc::new(catalog_cache.clone()),
 			wal,
+			recovery,
+			&cdc_store,
 		);
 
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)

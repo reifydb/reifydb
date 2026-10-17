@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	collections::VecDeque,
 	path::Path,
 	sync::{Arc, Weak},
 };
@@ -12,14 +13,16 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	io::fs::{Fs, ReadDir, memory::MemoryFs},
 };
+use reifydb_store_commit::store::CommitStore;
 use reifydb_store_log::{error::LogError, log::Log, partition::Config};
-use reifydb_value::{Result, byte_size::ByteSize};
-use reifydb_wal::{error::Result as WalResult, floor::Floor, wal::Wal};
+use reifydb_store_multi::store::multi::classify_deltas;
+use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_wal::{error::Result as WalResult, floor::Floor, lsn::Lsn, wal::Wal};
 
 use crate::{
 	error::TransactionError,
 	multi::{
-		oracle::CommitShared,
+		oracle::{CommitShared, note_lsn},
 		transaction::version::{StandardVersionProvider, VersionProvider},
 	},
 };
@@ -131,5 +134,55 @@ impl WalCheckpoint for StoreCheckpoint {
 			)
 		});
 		Ok(())
+	}
+}
+
+pub struct Recovery {
+	pub last: CommitVersion,
+	pub lsns: VecDeque<(CommitVersion, Lsn)>,
+}
+
+pub fn replay(wal: &CommitWal, store: &CommitStore, saved_through: CommitVersion) -> Recovery {
+	let floor_name = CheckpointedStore::Multi.floor_name();
+	let cursors = wal.cursors().unwrap_or_else(|err| panic!("commit log cursors could not be read at boot: {err}"));
+	let from = cursors
+		.floors
+		.into_iter()
+		.find(|(name, _)| name == floor_name)
+		.and_then(|(_, lsn)| lsn)
+		.map_or(Lsn::FIRST, |lsn| Lsn::new(lsn.as_u64() + 1));
+	let mut last = saved_through;
+	let mut previous: Option<CommitVersion> = None;
+	let mut lsns = VecDeque::new();
+	let records = wal
+		.replay(from)
+		.unwrap_or_else(|err| panic!("commit log replay from lsn {} failed to start: {err}", from.as_u64()));
+	for replayed in records {
+		let replayed = replayed
+			.unwrap_or_else(|err| panic!("commit log replay failed after lsn {}: {err}", from.as_u64()));
+		let version = replayed.body.version;
+		reifydb_assertions! {
+			assert!(
+				previous.is_none_or(|previous| version > previous),
+				"commit log replay met version {} after version {:?} at lsn {}, so two records claim one \
+				 version or a record is out of order",
+				version.0,
+				previous,
+				replayed.lsn.as_u64()
+			);
+		}
+		previous = Some(version);
+		last = last.max(version);
+		if version > saved_through {
+			store.set(version, classify_deltas(&CowVec::new(replayed.body.deltas)).batches);
+			note_lsn(&mut lsns, version, replayed.lsn);
+		}
+	}
+	wal.sync().unwrap_or_else(|err| {
+		panic!("commit log failed to flush after replay through version {}: {err}", last.0)
+	});
+	Recovery {
+		last,
+		lsns,
 	}
 }

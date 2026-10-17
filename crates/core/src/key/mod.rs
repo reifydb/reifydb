@@ -60,7 +60,7 @@ pub mod tests {
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			row::{RowKey, RowSequenceKey},
 			series::SeriesRowKey,
-			system::{SystemSequenceKey, TransactionVersionKey},
+			system::SystemSequenceKey,
 		},
 	};
 
@@ -247,13 +247,6 @@ pub mod tests {
 		let decoded = ColumnSequenceKey::decode(&encoded).expect("Failed to decode key");
 		assert_eq!(decoded.object, ObjectId::table(42));
 		assert_eq!(decoded.column, 123);
-	}
-
-	#[test]
-	fn test_transaction_version() {
-		let key = TransactionVersionKey {};
-		let encoded = key.encode();
-		TransactionVersionKey::decode(&encoded).expect("Failed to decode key");
 	}
 
 	#[test]

@@ -51,15 +51,13 @@ use reifydb_runtime::{
 	version_epoch::VersionEpoch,
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_store_single::SingleStore;
 use reifydb_testing::testscript::{
 	command::Command,
 	runner::{Runner, run_path},
 };
 use reifydb_transaction::{
 	multi::transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
-	single::SingleTransaction,
-	wal::memory_wal,
+	wal::{memory_wal, replay},
 };
 use reifydb_value::util::cowvec::CowVec;
 
@@ -75,20 +73,21 @@ test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all 
 
 fn test_serializable(path: &Path) {
 	let multi_store = MultiStore::testing_memory();
-	let single_store = SingleStore::testing_memory();
 	let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 	let spawner = actor_system.spawner();
 	let bus = EventBus::new(&spawner);
+	let wal = memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap();
+	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 	let engine = MultiTransaction::new(
 		multi_store,
-		SingleTransaction::new(single_store, bus.clone()),
 		bus,
 		spawner,
 		Clock::Mock(MockClock::from_millis(1000)),
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(ProfileConfig),
-		memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap(),
+		wal,
+		recovery,
 	)
 	.unwrap();
 
