@@ -1,0 +1,24 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A filter on a dropped user column named like a system column must stay above the map, otherwise it answers instead of failing.
+
+admin 'create table test::t25 { id: int4, time: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t25   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t25 map {id} filter {time > 1}")'
+---
+> +-------+---------+----------+-------------+------------------------+
+> |  idx  |  depth  |  parent  |    kind     |         detail         |
+> +-------+---------+----------+-------------+------------------------+
+> |   0   |    0    |   none   |   Filter    |  (time > Constant(1))  |
+> |   1   |    1    |    0     |     Map     |           id           |
+> |   2   |    2    |    1     |  TableScan  |       test::t25        |
+> +-------+---------+----------+-------------+------------------------+
+>

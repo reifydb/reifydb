@@ -3,9 +3,12 @@
 
 use bumpalo::Bump;
 use datafusion_common::tree_node::TreeNode;
-use reifydb_core::expression::{
-	ConstantExpression, Expression,
-	name::{column_refs, display_label},
+use reifydb_core::{
+	expression::{
+		ConstantExpression, Expression,
+		name::{column_refs, display_label},
+	},
+	interface::resolved::ResolvedObject,
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_value::value::{Value, system_columns::SystemColumn};
@@ -56,7 +59,7 @@ impl<'a, 'bump> Rules<'a, 'bump> {
 			QueryTree::Map {
 				node,
 				input: Some(inner),
-			} if self.passes_map(&filter, &node) => QueryTree::Map {
+			} if self.passes_map(&filter, &node, &inner) => QueryTree::Map {
 				node,
 				input: Some(self.boxed(self.push_filter(filter, inner))),
 			},
@@ -89,13 +92,13 @@ impl<'a, 'bump> Rules<'a, 'bump> {
 		qualified || self.changes_row_count(&filter.condition)
 	}
 
-	fn passes_map(&self, filter: &FilterNode, map: &MapNode) -> bool {
+	fn passes_map(&self, filter: &FilterNode, map: &MapNode, input: &QueryTree<'bump>) -> bool {
 		if map.map.iter().any(|e| self.changes_row_count(e)) {
 			return false;
 		}
 		column_refs(&filter.condition).iter().all(|r| {
 			let name = r.name.text();
-			is_system_column(name)
+			(is_system_column(name) && user_column_below(input, name) == Some(false))
 				|| map.map.iter().any(|e| matches!(e, Expression::Column(c) if c.0.name.text() == name))
 		})
 	}
@@ -361,6 +364,58 @@ impl<'a, 'bump> Rules<'a, 'bump> {
 			}
 			| QueryTree::Statement(_)) => leaf,
 		}
+	}
+}
+
+fn user_column_below(tree: &QueryTree<'_>, name: &str) -> Option<bool> {
+	match tree {
+		QueryTree::SourceScan {
+			node,
+		} => match &node.source {
+			ResolvedObject::Dictionary(_) => None,
+			source => Some(source.find_column(name).is_some()),
+		},
+		QueryTree::Filter {
+			input,
+			..
+		}
+		| QueryTree::Order {
+			input,
+			..
+		}
+		| QueryTree::Take {
+			input,
+			..
+		}
+		| QueryTree::Distinct {
+			input,
+			..
+		}
+		| QueryTree::Gate {
+			input,
+			..
+		}
+		| QueryTree::Patch {
+			input: Some(input),
+			..
+		} => user_column_below(input, name),
+		QueryTree::Extend {
+			node,
+			input,
+		} => {
+			if node.extend.iter().any(|e| display_label(e).text() == name) {
+				return Some(true);
+			}
+			match input {
+				Some(input) => user_column_below(input, name),
+				None => Some(false),
+			}
+		}
+		QueryTree::Map {
+			node,
+			..
+		} => Some(node.map.iter().any(|e| display_label(e).text() == name)),
+		_ => None,
 	}
 }
 

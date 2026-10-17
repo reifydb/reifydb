@@ -50,3 +50,14 @@ fn a_delete_with_filter_true_still_deletes_every_row() {
 	let text = engine.query("FROM pd::t").iter().map(|f| f.to_string()).collect::<String>();
 	assert!(!text.contains("|  1   |") && !text.contains("|  2   |"), "no row may survive, got:\n{text}");
 }
+
+#[test]
+fn a_dropped_user_column_named_like_a_system_column_is_still_not_found() {
+	// The map drops the user column time, so a later filter on it must fail instead of reading it below the map.
+	let engine = TestEngine::new();
+	engine.admin("CREATE NAMESPACE sc");
+	engine.admin("CREATE TABLE sc::t { id: int4, time: int4 }");
+	engine.command("INSERT sc::t [{ id: 1, time: 5 }, { id: 2, time: 0 }]");
+	let err = engine.query_err("FROM sc::t MAP { id } FILTER { time > 1 }");
+	assert!(err.contains("QUERY_001"), "expected QUERY_001, got: {err}");
+}
