@@ -96,6 +96,10 @@ impl TableSink {
 		}
 	}
 
+	pub fn view(&self) -> &View {
+		&self.view
+	}
+
 	pub fn id(&self) -> OperatorId {
 		self.operator
 	}

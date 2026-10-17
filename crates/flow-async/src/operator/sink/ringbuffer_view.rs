@@ -68,7 +68,7 @@ use reifydb_flow::{
 				dictionary_lookup_view_columns,
 			},
 		},
-		source::decode_change,
+		source::decode_change_keeping,
 	},
 	txn::{Batch, Emit, Get},
 };
@@ -594,7 +594,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 	}
 
 	fn apply(&mut self, txn: &mut DeferredTransaction, change: Change) -> Result<Change> {
-		let change = decode_change(txn, change)?;
+		let change = decode_change_keeping(txn, change, self.view.def().columns())?;
 		let resolved = self.view.clone();
 		let view = resolved.def();
 		let shape = self.shape.clone();

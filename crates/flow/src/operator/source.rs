@@ -62,25 +62,29 @@ impl SourceOperator {
 	}
 }
 
-pub fn decode_change<T: Resolve + ?Sized>(txn: &mut T, mut change: Change) -> Result<Change> {
+pub fn decode_change<T: Resolve + ?Sized>(txn: &mut T, change: Change) -> Result<Change> {
+	decode_change_keeping(txn, change, &[])
+}
+
+pub fn decode_change_keeping<T: Resolve + ?Sized>(txn: &mut T, mut change: Change, kept: &[Column]) -> Result<Change> {
 	for diff in change.diffs.iter_mut() {
 		match diff {
 			Diff::Insert {
 				post,
 				..
-			} => decode_dictionary_columns(post, txn)?,
+			} => decode_dictionary_columns_keeping(post, txn, kept)?,
 			Diff::Update {
 				pre,
 				post,
 				..
 			} => {
-				decode_dictionary_columns(pre, txn)?;
-				decode_dictionary_columns(post, txn)?;
+				decode_dictionary_columns_keeping(pre, txn, kept)?;
+				decode_dictionary_columns_keeping(post, txn, kept)?;
 			}
 			Diff::Remove {
 				pre,
 				..
-			} => decode_dictionary_columns(pre, txn)?,
+			} => decode_dictionary_columns_keeping(pre, txn, kept)?,
 		}
 	}
 	Ok(change)
@@ -133,6 +137,14 @@ fn column_field(column: &Column) -> (FieldRef, ArrayRef) {
 }
 
 pub fn decode_dictionary_columns<T: Resolve + ?Sized>(columns: &mut RecordBatch, txn: &mut T) -> Result<()> {
+	decode_dictionary_columns_keeping(columns, txn, &[])
+}
+
+fn decode_dictionary_columns_keeping<T: Resolve + ?Sized>(
+	columns: &mut RecordBatch,
+	txn: &mut T,
+	kept: &[Column],
+) -> Result<()> {
 	let dict_columns: Vec<(usize, Dictionary)> = {
 		let mut ids: Vec<(usize, DictionaryId)> = Vec::new();
 		for (pos, (field, array)) in columns.schema_ref().fields().iter().zip(columns.columns()).enumerate() {
@@ -140,6 +152,8 @@ pub fn decode_dictionary_columns<T: Resolve + ?Sized>(columns: &mut RecordBatch,
 				dictionary_id: Some(id),
 				..
 			} = ColumnView::try_from((array, field.as_ref()))?.data
+				&& !kept.iter()
+					.any(|column| column.name == *field.name() && column.dictionary_id == Some(id))
 			{
 				ids.push((pos, id));
 			}
