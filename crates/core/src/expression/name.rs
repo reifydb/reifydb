@@ -1,13 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashSet;
-
+use datafusion_common::tree_node::{TreeNode, TreeNodeRecursion};
 use reifydb_value::fragment::Fragment;
 
 use crate::{
 	expression::{AccessObjectExpression, ConstantExpression, Expression, ParameterExpression, PrefixOperator},
-	interface::identifier::ColumnObject,
+	interface::identifier::{ColumnIdentifier, ColumnObject},
 };
 
 pub fn canonical_name(expr: &Expression) -> Fragment {
@@ -288,139 +287,18 @@ fn constant_label(c: &ConstantExpression) -> Fragment {
 	}
 }
 
-pub fn collect_column_names(expr: &Expression, names: &mut HashSet<String>) {
-	match expr {
-		Expression::Column(col) => {
-			names.insert(col.0.name.text().to_string());
+pub fn column_refs(expr: &Expression) -> Vec<&ColumnIdentifier> {
+	let mut refs = Vec::new();
+	expr.apply(|e| {
+		match e {
+			Expression::Column(col) => refs.push(&col.0),
+			Expression::AccessSource(access) => refs.push(&access.column),
+			_ => {}
 		}
-		Expression::AccessSource(a) => {
-			names.insert(a.column.name.text().to_string());
-		}
-		Expression::Alias(a) => collect_column_names(&a.expression, names),
-		Expression::Call(c) => {
-			for arg in &c.args {
-				collect_column_names(arg, names);
-			}
-		}
-		Expression::Cast(c) => collect_column_names(&c.expression, names),
-		Expression::Prefix(p) => collect_column_names(&p.expression, names),
-		Expression::Add(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::Sub(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::Mul(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::Div(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::Rem(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::GreaterThan(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::GreaterThanEqual(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::LessThan(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::LessThanEqual(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::Equal(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::NotEqual(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::And(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::Or(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::Xor(e) => {
-			collect_column_names(&e.left, names);
-			collect_column_names(&e.right, names);
-		}
-		Expression::Between(b) => {
-			collect_column_names(&b.value, names);
-			collect_column_names(&b.lower, names);
-			collect_column_names(&b.upper, names);
-		}
-		Expression::In(i) => {
-			collect_column_names(&i.value, names);
-			collect_column_names(&i.list, names);
-		}
-		Expression::Contains(c) => {
-			collect_column_names(&c.value, names);
-			collect_column_names(&c.list, names);
-		}
-		Expression::If(i) => {
-			collect_column_names(&i.condition, names);
-			collect_column_names(&i.then_expr, names);
-			for else_if in &i.else_ifs {
-				collect_column_names(&else_if.condition, names);
-				collect_column_names(&else_if.then_expr, names);
-			}
-			if let Some(else_expr) = &i.else_expr {
-				collect_column_names(else_expr, names);
-			}
-		}
-		Expression::Tuple(t) => {
-			for e in &t.expressions {
-				collect_column_names(e, names);
-			}
-		}
-		Expression::List(l) => {
-			for e in &l.expressions {
-				collect_column_names(e, names);
-			}
-		}
-		Expression::Map(m) => {
-			for e in &m.expressions {
-				collect_column_names(e, names);
-			}
-		}
-		Expression::Extend(ext) => {
-			for e in &ext.expressions {
-				collect_column_names(e, names);
-			}
-		}
-		Expression::SumTypeConstructor(s) => {
-			for (_, e) in &s.columns {
-				collect_column_names(e, names);
-			}
-		}
-		Expression::IsVariant(v) => collect_column_names(&v.expression, names),
-		Expression::FieldAccess(f) => collect_column_names(&f.object, names),
-		Expression::Constant(_) | Expression::Type(_) | Expression::Parameter(_) | Expression::Variable(_) => {}
-	}
-}
-
-pub fn collect_all_column_names(expressions: &[Expression]) -> HashSet<String> {
-	let mut names = HashSet::new();
-	for expr in expressions {
-		collect_column_names(expr, &mut names);
-	}
-	names
+		Ok(TreeNodeRecursion::Continue)
+	})
+	.expect("traversal is infallible");
+	refs
 }
 
 #[cfg(test)]
@@ -429,7 +307,7 @@ mod tests {
 
 	use reifydb_value::{fragment::Fragment, value::value_type::ValueType};
 
-	use super::{canonical_name, collect_all_column_names, collect_column_names, display_label};
+	use super::{canonical_name, column_refs, display_label};
 	use crate::{
 		expression::{
 			AccessObjectExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
@@ -553,9 +431,7 @@ mod tests {
 	}
 
 	fn collect(expr: &Expression) -> HashSet<String> {
-		let mut names = HashSet::new();
-		collect_column_names(expr, &mut names);
-		names
+		column_refs(expr).into_iter().map(|c| c.name.text().to_string()).collect()
 	}
 
 	#[test]
@@ -1163,7 +1039,7 @@ mod tests {
 	#[test]
 	fn collect_all_column_names_across_expressions() {
 		let exprs = vec![col("x"), col("y"), num("1"), col("x")];
-		let result = collect_all_column_names(&exprs);
+		let result: HashSet<String> = exprs.iter().flat_map(collect).collect();
 		assert_eq!(result, HashSet::from(["x".to_string(), "y".to_string()]));
 	}
 }

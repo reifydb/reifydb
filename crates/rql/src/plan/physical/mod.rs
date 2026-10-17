@@ -39,6 +39,7 @@ use reifydb_core::{
 	row::Ttl,
 	sort::SortKey,
 };
+use reifydb_routine_abi::registry::Routines;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -62,6 +63,7 @@ use crate::{
 		RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode, SeriesScanNode,
 		TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
+	optimize::rules::optimize_tree,
 	plan::{
 		logical,
 		logical::{
@@ -596,19 +598,22 @@ pub struct WindowNode<'bump> {
 
 pub(crate) struct Compiler<'bump> {
 	pub catalog: Catalog,
+	pub routines: Routines,
 	pub interner: FragmentInterner,
 	pub bump: &'bump Bump,
 }
 
-#[instrument(name = "rql::compile::physical", level = "trace", skip(bump, catalog, rx, logical))]
+#[instrument(name = "rql::compile::physical", level = "trace", skip(bump, catalog, routines, rx, logical))]
 pub fn compile_physical<'b>(
 	bump: &'b Bump,
 	catalog: &Catalog,
+	routines: &Routines,
 	rx: &mut Transaction<'_>,
 	logical: impl IntoIterator<Item = LogicalPlan<'b>>,
 ) -> Result<Option<PhysicalPlan<'b>>> {
 	Compiler {
 		catalog: catalog.clone(),
+		routines: routines.clone(),
 		interner: FragmentInterner::new(),
 		bump,
 	}
@@ -626,7 +631,10 @@ impl<'bump> Compiler<'bump> {
 		logical: impl IntoIterator<Item = LogicalPlan<'bump>>,
 	) -> Result<Option<PhysicalPlan<'bump>>> {
 		match fold(self.bump, logical)? {
-			Some(tree) => Ok(Some(self.compile_tree(rx, tree)?)),
+			Some(tree) => {
+				let tree = optimize_tree(self.bump, &self.routines, tree);
+				Ok(Some(self.compile_tree(rx, tree)?))
+			}
 			None => Ok(None),
 		}
 	}

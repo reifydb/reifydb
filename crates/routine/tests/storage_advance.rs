@@ -79,6 +79,7 @@ fn run_directly(t: &TestEngine, identity: IdentityId, args: Vec<Value>) -> Resul
 		tx: &mut tx,
 		params: &params,
 		catalog: &catalog,
+		routines: &services.routines,
 		ioc: &services.ioc,
 	};
 	StorageAdvanceProcedure::new().execute(&mut ctx, &[])

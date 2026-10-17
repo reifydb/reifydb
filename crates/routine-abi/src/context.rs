@@ -21,7 +21,7 @@ use reifydb_value::{
 	value::{column_view::ColumnView, identity::IdentityId, value_type::ValueType},
 };
 
-use super::{Context, Routine, error::RoutineError, sealed};
+use super::{Context, Routine, error::RoutineError, registry::Routines, sealed};
 
 pub struct FunctionContext<'a> {
 	pub fragment: Fragment,
@@ -93,6 +93,7 @@ pub struct ProcedureContext<'a, 'tx> {
 	pub tx: &'a mut Transaction<'tx>,
 	pub params: &'a Params,
 	pub catalog: &'a Catalog,
+	pub routines: &'a Routines,
 	pub ioc: &'a IocContainer,
 }
 

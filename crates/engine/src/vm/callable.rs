@@ -47,6 +47,7 @@ pub(crate) fn invoke_procedure_routine(
 		tx,
 		params: call.params,
 		catalog: &services.catalog,
+		routines: &services.routines,
 		ioc: &services.ioc,
 	};
 	call.routine.call(&mut ctx, &[]).map_err(|e| e.with_context(call.fragment.clone(), true))

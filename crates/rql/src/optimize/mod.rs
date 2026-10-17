@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod fold;
+pub(crate) mod rules;
 pub mod walk;
 
 use crate::plan::physical::PhysicalPlan;

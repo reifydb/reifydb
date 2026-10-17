@@ -1,0 +1,24 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A filter on a column the extend creates must stay above it, otherwise the column does not exist yet.
+
+admin 'create table test::t18 { id: int4, a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t18   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t18 extend {b: a + 1} filter {b > 1}")'
+---
+> +-------+---------+----------+-------------+--------------------------+
+> |  idx  |  depth  |  parent  |    kind     |          detail          |
+> +-------+---------+----------+-------------+--------------------------+
+> |   0   |    0    |   none   |   Filter    |    (b > Constant(1))     |
+> |   1   |    1    |    0     |   Extend    |  (a + Constant(1)) as b  |
+> |   2   |    2    |    1     |  TableScan  |        test::t18         |
+> +-------+---------+----------+-------------+--------------------------+
+>

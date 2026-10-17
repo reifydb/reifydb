@@ -31,6 +31,7 @@ fn run_set(
 		tx,
 		params: &params,
 		catalog: &catalog,
+		routines: &services.routines,
 		ioc: t.ioc(),
 	};
 	SetIdentityAttribute::new().execute(&mut ctx, &[])
@@ -53,6 +54,7 @@ fn run_remove(
 		tx,
 		params: &params,
 		catalog: &catalog,
+		routines: &services.routines,
 		ioc: t.ioc(),
 	};
 	RemoveIdentityAttribute::new().execute(&mut ctx, &[])

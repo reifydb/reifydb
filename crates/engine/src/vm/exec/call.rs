@@ -772,6 +772,7 @@ impl<'a> Vm<'a> {
 						tx: ctx.tx,
 						params: &call_params,
 						catalog: &ctx.services.catalog,
+						routines: &ctx.services.routines,
 						ioc: &ctx.services.ioc,
 					};
 					let attach_metadata = routine.attaches_row_metadata();

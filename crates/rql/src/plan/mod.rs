@@ -4,6 +4,7 @@
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::expression::Expression;
+use reifydb_routine_abi::registry::Routines;
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
 
@@ -22,22 +23,24 @@ pub mod system_columns;
 
 pub type RowToInsert = Vec<Expression>;
 
-#[instrument(name = "rql::plan", level = "trace", skip(bump, catalog, rx, statement))]
+#[instrument(name = "rql::plan", level = "trace", skip(bump, catalog, routines, rx, statement))]
 pub fn plan<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
+	routines: &Routines,
 	rx: &mut Transaction<'_>,
 	statement: AstStatement<'a>,
 ) -> Result<Option<PhysicalPlan<'a>>> {
 	let logical = compile_logical(bump, catalog, rx, statement)?;
-	let physical = compile_physical(bump, catalog, rx, logical)?;
+	let physical = compile_physical(bump, catalog, routines, rx, logical)?;
 	Ok(physical)
 }
 
-#[instrument(name = "rql::plan_with_policy", level = "trace", skip(bump, catalog, rx, statement, policy))]
+#[instrument(name = "rql::plan_with_policy", level = "trace", skip(bump, catalog, routines, rx, statement, policy))]
 pub fn plan_with_policy<'a>(
 	bump: &'a Bump,
 	catalog: &Catalog,
+	routines: &Routines,
 	rx: &mut Transaction<'_>,
 	statement: AstStatement<'a>,
 	policy: impl Fn(
@@ -49,6 +52,6 @@ pub fn plan_with_policy<'a>(
 ) -> Result<Option<PhysicalPlan<'a>>> {
 	let logical = compile_logical(bump, catalog, rx, statement)?;
 	let logical = policy(logical, bump, catalog, rx)?;
-	let physical = compile_physical(bump, catalog, rx, logical)?;
+	let physical = compile_physical(bump, catalog, routines, rx, logical)?;
 	Ok(physical)
 }

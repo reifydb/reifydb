@@ -1,0 +1,26 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A filter must move past every eligible operator until it reaches the scan.
+
+admin 'create table test::t22 { id: int4, a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t22   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t22 map {id, a} sort {id:asc} extend {b: a + 1} filter {id == 1}")'
+---
+> +-------+---------+----------+-------------+--------------------------+
+> |  idx  |  depth  |  parent  |    kind     |          detail          |
+> +-------+---------+----------+-------------+--------------------------+
+> |   0   |    0    |   none   |   Extend    |  (a + Constant(1)) as b  |
+> |   1   |    1    |    0     |    Sort     |          id ASC          |
+> |   2   |    2    |    1     |     Map     |          id, a           |
+> |   3   |    3    |    2     |   Filter    |   (id == Constant(1))    |
+> |   4   |    4    |    3     |  TableScan  |        test::t22         |
+> +-------+---------+----------+-------------+--------------------------+
+>

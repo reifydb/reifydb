@@ -72,7 +72,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RqlExplain {
 		let mut walker = PhysicalWalker::default();
 		for statement in statements {
 			let logical = compile_logical(&bump, ctx.catalog, ctx.tx, statement)?;
-			if let Some(mut plan) = compile_physical(&bump, ctx.catalog, ctx.tx, logical)? {
+			if let Some(mut plan) = compile_physical(&bump, ctx.catalog, ctx.routines, ctx.tx, logical)? {
 				optimize_physical(&mut plan);
 				check_system_columns(&plan)?;
 				walker.walk(&plan, 0, None);

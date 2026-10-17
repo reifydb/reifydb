@@ -18,6 +18,7 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 bumpalo = { workspace = true }
+datafusion-common = { workspace = true }
 reifydb-core = {workspace = true}
 reifydb-catalog = { workspace = true }
 reifydb-routine-abi = { workspace = true }

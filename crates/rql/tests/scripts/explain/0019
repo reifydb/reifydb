@@ -1,0 +1,24 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A filter must move below a sort, since a sort never changes values or rows.
+
+admin 'create table test::t19 { id: int4, a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t19   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t19 sort {id:asc} filter {a > 1}")'
+---
+> +-------+---------+----------+-------------+---------------------+
+> |  idx  |  depth  |  parent  |    kind     |       detail        |
+> +-------+---------+----------+-------------+---------------------+
+> |   0   |    0    |   none   |    Sort     |       id ASC        |
+> |   1   |    1    |    0     |   Filter    |  (a > Constant(1))  |
+> |   2   |    2    |    1     |  TableScan  |      test::t19      |
+> +-------+---------+----------+-------------+---------------------+
+>
