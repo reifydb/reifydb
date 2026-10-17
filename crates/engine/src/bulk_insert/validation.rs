@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::iter;
+use std::{iter, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
-use arrow_schema::FieldRef;
+use arrow_schema::{FieldRef, Schema};
 use reifydb_core::{
 	interface::catalog::{column::Column, sumtype::SumType},
 	internal_error,
-	value::column::builder::ColumnBuilder,
+	value::{batch::batch_with, column::builder::ColumnBuilder},
 };
 use reifydb_value::{
 	error::Error,
@@ -17,7 +17,6 @@ use reifydb_value::{
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
-		identity::IdentityId,
 		system_columns::{column_view, is_system_field},
 	},
 };
@@ -36,20 +35,19 @@ struct Segment<'a> {
 
 pub type CoercedTags = (Vec<Option<u8>>, Option<(usize, Error)>);
 
-pub fn coerce_columns(
+pub(super) fn coerce_columns(
 	rows: &[Params],
 	batches: &[(usize, RecordBatch)],
 	columns: &[Column],
 	sumtype: Option<&SumType>,
 	source_name: &str,
-	identity: IdentityId,
+	coercer: &RowCoercer,
 ) -> Result<(Vec<(FieldRef, ArrayRef)>, Option<CoercedTags>)> {
-	let coercer = RowCoercer::new(identity);
 	let segment = Segment {
 		columns,
 		tagged: sumtype.is_some(),
 		source_name,
-		coercer: &coercer,
+		coercer,
 	};
 	let total = rows.len() + batches.iter().map(|(_, batch)| batch.num_rows()).sum::<usize>();
 	let mut builders: Vec<ColumnBuilder> =
@@ -172,64 +170,27 @@ fn collect_rows_to_columns(
 	rows: &[Params],
 	first_row: usize,
 	builders: &mut [ColumnBuilder],
-	mut tags: Option<&mut VariantTags<'_>>,
+	tags: Option<&mut VariantTags<'_>>,
 ) -> Result<usize> {
 	let columns = segment.columns;
 	let source_name = segment.source_name;
-	let coercer = segment.coercer;
 	let num_cols = columns.len();
-
-	for (row_idx, params) in rows.iter().enumerate() {
-		match params {
-			Params::Named(map) => {
-				for (col_idx, col) in columns.iter().enumerate() {
-					let value = map.get(&col.name).cloned().unwrap_or(Value::none());
-					builders[col_idx].push_value(coercer.coerce(
-						value,
-						col,
-						source_name,
-						first_row + row_idx,
-					)?);
-				}
-				if let Some(tags) = tags.as_deref_mut() {
-					tags.push(map.get(TAG).cloned().unwrap_or(Value::none()));
-				}
-			}
-			Params::Positional(vals) => {
-				if vals.len() > num_cols {
-					return Err(EngineError::BulkInsertTooManyValues {
-						fragment: Fragment::None,
-						expected: num_cols,
-						actual: vals.len(),
-					}
-					.into());
-				}
-				for ((col_data, col), val) in builders
-					.iter_mut()
-					.zip(columns.iter())
-					.zip(vals.iter().map(Some).chain(iter::repeat(None)))
-				{
-					let value = val.cloned().unwrap_or(Value::none());
-					col_data.push_value(coercer.coerce(
-						value,
-						col,
-						source_name,
-						first_row + row_idx,
-					)?);
-				}
-				if let Some(tags) = tags.as_deref_mut() {
-					tags.push(Value::none());
-				}
-			}
-			Params::None => {
-				for col_data in builders.iter_mut() {
-					col_data.push_none();
-				}
-				if let Some(tags) = tags.as_deref_mut() {
-					tags.push(Value::none());
-				}
-			}
+	let too_many =
+		rows.iter().position(|params| matches!(params, Params::Positional(vals) if vals.len() > num_cols));
+	let accepted = &rows[..too_many.unwrap_or(rows.len())];
+	match params_batch(segment, accepted)? {
+		Some(batch) => {
+			coerce_batch(segment, &batch, first_row, builders, None)?;
 		}
+		None => coerce_rows(segment, accepted, first_row, builders)?,
+	}
+	if let Some(Params::Positional(vals)) = too_many.map(|row| &rows[row]) {
+		return Err(EngineError::BulkInsertTooManyValues {
+			fragment: Fragment::None,
+			expected: num_cols,
+			actual: vals.len(),
+		}
+		.into());
 	}
 
 	for params in rows {
@@ -247,5 +208,100 @@ fn collect_rows_to_columns(
 		}
 	}
 
+	if let Some(tags) = tags {
+		for params in rows {
+			tags.push(match params {
+				Params::Named(map) => map.get(TAG).cloned().unwrap_or(Value::none()),
+				_ => Value::none(),
+			});
+		}
+	}
+
 	Ok(rows.len())
+}
+
+fn params_batch(segment: &Segment<'_>, rows: &[Params]) -> Result<Option<RecordBatch>> {
+	let cell = |params: &Params, index: usize, name: &str| match params {
+		Params::Named(map) => map.get(name).cloned(),
+		Params::Positional(vals) => vals.get(index).cloned(),
+		Params::None => None,
+	};
+	let mut fields = Vec::with_capacity(segment.columns.len());
+	for (index, column) in segment.columns.iter().enumerate() {
+		match params_column(&column.name, rows.iter().map(|params| cell(params, index, &column.name)).collect())
+		{
+			ParamsColumn::Typed(field) => fields.push(field),
+			ParamsColumn::Absent => {}
+			ParamsColumn::Mixed => return Ok(None),
+		}
+	}
+	batch_with(&Arc::new(Schema::empty()), fields, rows.len()).map(Some)
+}
+
+enum ParamsColumn {
+	Typed((FieldRef, ArrayRef)),
+	Absent,
+	Mixed,
+}
+
+fn params_column(name: &str, values: Vec<Option<Value>>) -> ParamsColumn {
+	let present = |value: &&Option<Value>| matches!(value, Some(value) if !matches!(value, Value::None { .. }));
+	let mut types = values.iter().filter(present).flatten().map(Value::get_type);
+	let Some(first) = types.next() else {
+		return ParamsColumn::Absent;
+	};
+	if !types.all(|other| other == first) {
+		return ParamsColumn::Mixed;
+	}
+	let mut builder = ColumnBuilder::with_capacity(first, values.len());
+	for value in values {
+		match value {
+			Some(value) if !matches!(value, Value::None { .. }) => builder.push_value(value),
+			_ => builder.push_none(),
+		}
+	}
+	ParamsColumn::Typed(builder.finish(name))
+}
+
+fn coerce_rows(segment: &Segment<'_>, rows: &[Params], first_row: usize, builders: &mut [ColumnBuilder]) -> Result<()> {
+	let columns = segment.columns;
+	let source_name = segment.source_name;
+	let coercer = segment.coercer;
+
+	for (row_idx, params) in rows.iter().enumerate() {
+		match params {
+			Params::Named(map) => {
+				for (col_idx, col) in columns.iter().enumerate() {
+					let value = map.get(&col.name).cloned().unwrap_or(Value::none());
+					builders[col_idx].push_value(coercer.coerce(
+						value,
+						col,
+						source_name,
+						first_row + row_idx,
+					)?);
+				}
+			}
+			Params::Positional(vals) => {
+				for ((col_data, col), val) in builders
+					.iter_mut()
+					.zip(columns.iter())
+					.zip(vals.iter().map(Some).chain(iter::repeat(None)))
+				{
+					let value = val.cloned().unwrap_or(Value::none());
+					col_data.push_value(coercer.coerce(
+						value,
+						col,
+						source_name,
+						first_row + row_idx,
+					)?);
+				}
+			}
+			Params::None => {
+				for col_data in builders.iter_mut() {
+					col_data.push_none();
+				}
+			}
+		}
+	}
+	Ok(())
 }

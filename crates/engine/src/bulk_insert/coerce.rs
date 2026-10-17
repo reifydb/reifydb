@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[cfg(feature = "testing")]
+use std::cell::Cell;
+
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::{
@@ -26,11 +29,26 @@ use reifydb_value::{
 
 use crate::Result;
 
+#[cfg(feature = "testing")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CoerceCounts {
+	column_casts: u64,
+}
+
+#[cfg(feature = "testing")]
+impl CoerceCounts {
+	pub fn column_casts(&self) -> u64 {
+		self.column_casts
+	}
+}
+
 pub(super) struct RowCoercer {
 	runtime_context: RuntimeContext,
 	routines: Routines,
 	symbols: SymbolTable,
 	identity: IdentityId,
+	#[cfg(feature = "testing")]
+	column_casts: Cell<u64>,
 }
 
 impl RowCoercer {
@@ -40,6 +58,15 @@ impl RowCoercer {
 			routines: Routines::empty(),
 			symbols: SymbolTable::new(),
 			identity,
+			#[cfg(feature = "testing")]
+			column_casts: Cell::new(0),
+		}
+	}
+
+	#[cfg(feature = "testing")]
+	pub(super) fn counts(&self) -> CoerceCounts {
+		CoerceCounts {
+			column_casts: self.column_casts.get(),
 		}
 	}
 
@@ -54,6 +81,8 @@ impl RowCoercer {
 		let target = column.constraint.get_type();
 		let fragment = || Fragment::internal(&column.name);
 		check_digest_write(view, &target, fragment)?;
+		#[cfg(feature = "testing")]
+		self.column_casts.set(self.column_casts.get() + 1);
 		cast_column_data(&self.context(view.len()), view, target.inner_type().clone(), fragment)
 	}
 
@@ -65,6 +94,8 @@ impl RowCoercer {
 		if value.get_type() == cast_target {
 			return Ok(value);
 		}
+		#[cfg(feature = "testing")]
+		self.column_casts.set(self.column_casts.get() + 1);
 		let column = from_one("value", value);
 		let casted =
 			cast_column_data(&self.context(1), &ColumnView::try_from(&column)?, cast_target, fragment)?;
