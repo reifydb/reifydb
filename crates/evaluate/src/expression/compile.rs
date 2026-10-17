@@ -1180,28 +1180,44 @@ fn execute_if_multi(
 		}
 	}
 
+	let branch_exprs = |branch: usize| -> &[CompiledExpr] {
+		if branch == 0 {
+			then_expr
+		} else if branch < else_index {
+			&else_ifs[branch - 1].1
+		} else {
+			else_branch.as_deref().unwrap()
+		}
+	};
+
 	let mut evaluated: Vec<Option<Vec<(FieldRef, ArrayRef)>>> = (0..=else_index).map(|_| None).collect();
 	for &branch in &selection {
 		if branch == NO_BRANCH || evaluated[branch].is_some() {
 			continue;
 		}
-		let columns = if branch == 0 {
-			execute_multi_exprs(ctx, then_expr)?
-		} else if branch < else_index {
-			execute_multi_exprs(ctx, &else_ifs[branch - 1].1)?
-		} else {
-			execute_multi_exprs(ctx, else_branch.as_ref().unwrap())?
-		};
-		evaluated[branch] = Some(columns);
+		evaluated[branch] = Some(execute_multi_exprs(ctx, branch_exprs(branch))?);
+	}
+
+	let probe = ctx.with_eval(ctx.batch.slice(0, 0), 0);
+	let mut probed: Vec<Vec<(FieldRef, ArrayRef)>> = Vec::new();
+	for (branch, columns) in evaluated.iter().enumerate() {
+		if columns.is_some() || (branch == else_index && else_branch.is_none()) {
+			continue;
+		}
+		probed.push(execute_multi_exprs(&probe, branch_exprs(branch))?);
 	}
 
 	let mut layout: Option<BranchLayout> = None;
-	for columns in evaluated.iter().flatten() {
+	let picked = evaluated.iter().flatten().map(|columns| (columns, false));
+	for (columns, is_probe) in picked.chain(probed.iter().map(|columns| (columns, true))) {
 		let named_types = columns
 			.iter()
 			.map(|col| {
 				let view = ColumnView::try_from(col)?;
-				Ok((col.0.name().as_str(), view.get_type(), view.is_untyped_none()))
+				let ty = view.get_type();
+				let fits_any =
+					view.is_untyped_none() || (is_probe && *ty.inner_type() == ValueType::Any);
+				Ok((col.0.name().as_str(), ty, fits_any))
 			})
 			.collect::<Result<Vec<_>>>()?;
 		let Some(expected) = layout.as_mut() else {
@@ -1649,9 +1665,9 @@ mod tests {
 	}
 
 	#[test]
-	fn a_mismatched_branch_no_row_selects_is_still_not_rejected() {
-		// Validation must read only the branches that were evaluated, otherwise it resurrects the
-		// eager evaluation that the guard exists to prevent.
+	fn a_mismatched_branch_no_row_selects_is_rejected() {
+		// A branch type must not depend on which rows a batch holds, so an unselected mismatch is still an
+		// error.
 		let base = EvalContext::testing();
 		let ctx = base.with_eval(
 			batch(vec![
@@ -1663,11 +1679,10 @@ mod tests {
 			4,
 		);
 
-		let result =
-			evaluate(&ctx, &conditional(column("flag"), column("small"), vec![], Some(column("wide"))))
-				.expect("an unselected branch must not be validated");
+		let err = evaluate(&ctx, &conditional(column("flag"), column("small"), vec![], Some(column("wide"))))
+			.expect_err("an unselected branch of another type must be rejected");
 
-		assert_eq!(result.1.len(), 4);
+		assert_eq!(err.code, "RUNTIME_012", "expected a conditional branch mismatch, got {err:?}");
 	}
 
 	#[test]
