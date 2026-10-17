@@ -17,7 +17,12 @@ use reifydb_core::{
 use reifydb_flow_async::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
 use reifydb_value::{
 	error::Error as ValueError,
-	value::{datetime::DateTime, row_number::RowNumber},
+	value::{
+		Value,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		row_number::RowNumber,
+	},
 };
 
 use crate::{
@@ -324,6 +329,15 @@ impl GuestEmitContext for InProcessContext<'_> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).flow_watermark() }.map_err(to_sdk_err)
+	}
+	fn dictionary_find_many(
+		&mut self,
+		dictionary: DictionaryId,
+		values: &[Value],
+	) -> SdkResult<Vec<Option<DictionaryEntryId>>> {
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		unsafe { (*self.host).dictionary_find_many(dictionary, values) }.map_err(to_sdk_err)
 	}
 	fn get_or_create_row_numbers(
 		&mut self,

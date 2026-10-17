@@ -41,4 +41,14 @@ pub struct OperatorCallbacks {
 		mask_len: usize,
 		handle_out: *mut *mut ColumnBufferHandle,
 	) -> i32,
+
+	pub dictionary_find_many: extern "C" fn(
+		ctx: *mut ExternCContextRaw,
+		dictionary: u64,
+		values: *const ExternCBuffer,
+		n: usize,
+		ids_out: *mut u128,
+		present_out: *mut u8,
+		id_width_out: *mut u8,
+	) -> i32,
 }

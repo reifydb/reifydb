@@ -14,7 +14,12 @@ use reifydb_core::{
 	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::state::reclaim::ReclaimOutcome;
-use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
+use reifydb_value::value::{
+	Value,
+	datetime::DateTime,
+	dictionary::{DictionaryEntryId, DictionaryId},
+	row_number::RowNumber,
+};
 
 use crate::{
 	common::extern_c::binding::builder::{ColumnsBuilder, CommittedColumn},
@@ -27,6 +32,7 @@ use crate::{
 		},
 		extern_c::{
 			binding::{
+				dictionary::raw_find_many,
 				sink::ExternCRowSink,
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
@@ -361,6 +367,13 @@ impl GuestEmitContext for ExternCContext {
 
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
 		ExternCContext::flow_watermark(self)
+	}
+	fn dictionary_find_many(
+		&mut self,
+		dictionary: DictionaryId,
+		values: &[Value],
+	) -> Result<Vec<Option<DictionaryEntryId>>> {
+		raw_find_many(self, dictionary, values)
 	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		ExternCContext::get_or_create_row_numbers(self, group, keys)

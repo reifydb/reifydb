@@ -3,7 +3,7 @@
 
 use std::slice::{from_raw_parts, from_raw_parts_mut};
 
-use reifydb_codec::value::encode_value;
+use reifydb_codec::value::{decode_value, encode_value};
 use reifydb_sdk::{
 	common::extern_c::wire::{
 		buffer::ExternCBuffer,
@@ -11,7 +11,10 @@ use reifydb_sdk::{
 	},
 	flow::operator::extern_c::wire::context::ExternCContextRaw,
 };
-use reifydb_value::value::dictionary::{DictionaryEntryId, DictionaryId};
+use reifydb_value::value::{
+	dictionary::{DictionaryEntryId, DictionaryId},
+	value_type::ValueType,
+};
 
 use super::{context::get_host_mut, marshal::write_buffer, state::free_rows};
 
@@ -78,5 +81,82 @@ pub(super) extern "C" fn host_dictionary_get_many(
 			present_out[slot] = 1;
 		}
 		EXTERN_C_OK
+	}
+}
+
+#[cfg_attr(not(test), unsafe(no_mangle))]
+pub(super) extern "C" fn host_dictionary_find_many(
+	ctx: *mut ExternCContextRaw,
+	dictionary_id: u64,
+	values: *const ExternCBuffer,
+	n: usize,
+	ids_out: *mut u128,
+	present_out: *mut u8,
+	id_width_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() || id_width_out.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if n > 0 && (values.is_null() || ids_out.is_null() || present_out.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: every pointer is null-checked above; the guest must pass back the ExternCContextRaw the host
+	// handed it for this call (discharging get_host_mut), `values` valid for `n` reads each naming `len`
+	// readable bytes, `ids_out` / `present_out` valid and aligned for `n` writes and `id_width_out` for one.
+	unsafe {
+		let (values, ids_out, present_out): (&[ExternCBuffer], &mut [u128], &mut [u8]) = if n == 0 {
+			(&[], &mut [], &mut [])
+		} else {
+			(from_raw_parts(values, n), from_raw_parts_mut(ids_out, n), from_raw_parts_mut(present_out, n))
+		};
+		ids_out.fill(0);
+		present_out.fill(0);
+
+		let host = get_host_mut(&mut *ctx);
+		let dictionary = DictionaryId(dictionary_id);
+		let Some(id_type) = host.dictionary_id_type(dictionary) else {
+			return EXTERN_C_NOT_FOUND;
+		};
+		let Some(width) = id_width(&id_type) else {
+			return EXTERN_C_ERROR_INTERNAL;
+		};
+		let Ok(decoded) = values
+			.iter()
+			.map(|buffer| {
+				if buffer.ptr.is_null() {
+					return decode_value(&[]);
+				}
+				decode_value(from_raw_parts(buffer.ptr, buffer.len))
+			})
+			.collect::<Result<Vec<_>, _>>()
+		else {
+			return EXTERN_C_ERROR_INTERNAL;
+		};
+		let Ok(found) = host.dictionary_find_many(dictionary, &decoded) else {
+			return EXTERN_C_ERROR_INTERNAL;
+		};
+		if found.len() != n {
+			return EXTERN_C_ERROR_INTERNAL;
+		}
+		for (slot, id) in found.into_iter().enumerate() {
+			if let Some(id) = id {
+				ids_out[slot] = id.to_u128();
+				present_out[slot] = 1;
+			}
+		}
+		*id_width_out = width;
+		EXTERN_C_OK
+	}
+}
+
+fn id_width(id_type: &ValueType) -> Option<u8> {
+	match id_type {
+		ValueType::Uint1 => Some(1),
+		ValueType::Uint2 => Some(2),
+		ValueType::Uint4 => Some(4),
+		ValueType::Uint8 => Some(8),
+		ValueType::Uint16 => Some(16),
+		_ => None,
 	}
 }

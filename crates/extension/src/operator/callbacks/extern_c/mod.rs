@@ -46,6 +46,7 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 		},
 		dictionary_get_many: dictionary::host_dictionary_get_many,
 		pass_through: pass_through::host_pass_through,
+		dictionary_find_many: dictionary::host_dictionary_find_many,
 		builder: BuilderCallbacks {
 			acquire: builder::host_builder_acquire,
 			data_ptr: builder::host_builder_data_ptr,
