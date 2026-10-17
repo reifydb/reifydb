@@ -27,6 +27,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::{command::CommandTransaction, query::QueryTransaction},
+	wal::memory_wal,
 };
 use reifydb_value::{
 	Result,
@@ -66,6 +67,7 @@ impl TestCdcHost {
 			VersionEpoch::new(),
 			Rng::seeded(42),
 			Arc::new(catalog_cache.clone()),
+			memory_wal(clock.clone()).unwrap(),
 		)
 		.unwrap();
 		Self {

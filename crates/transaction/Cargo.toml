@@ -26,8 +26,10 @@ reifydb-core = { workspace = true }
 reifydb-store-commit = { workspace = true }
 reifydb-store-multi = { workspace = true }
 reifydb-store-single = { workspace = true }
+reifydb-store-log = { workspace = true }
 reifydb-value = { workspace = true }
 reifydb-runtime = { workspace = true }
+reifydb-wal = { workspace = true }
 arrow-array = { workspace = true }
 dashmap = { workspace = true }
 

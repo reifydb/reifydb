@@ -88,8 +88,9 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	byte_size::ByteSize,
-	value::{Value, identity::IdentityId},
+	value::{Value, duration::Duration, identity::IdentityId},
 };
+use reifydb_wal::sync::SyncMode;
 
 #[cfg(not(reifydb_single_threaded))]
 use crate::system::tasks::create_system_tasks;
@@ -99,6 +100,7 @@ use crate::{
 
 pub struct DatabaseBuilder {
 	version_epoch: VersionEpoch,
+	sync_interval: Option<Duration>,
 	interceptors: InterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
@@ -156,6 +158,7 @@ impl DatabaseBuilder {
 
 		Self {
 			version_epoch,
+			sync_interval: None,
 			interceptors: InterceptorBuilder::new(),
 			factories: Vec::new(),
 			ioc,
@@ -212,6 +215,11 @@ impl DatabaseBuilder {
 
 	pub fn with_fast_shutdown(mut self) -> Self {
 		self.fast_shutdown = true;
+		self
+	}
+
+	pub fn with_sync_interval(mut self, interval: Duration) -> Self {
+		self.sync_interval = Some(interval);
 		self
 	}
 
@@ -399,12 +407,21 @@ impl DatabaseBuilder {
 		seed_bootstrap_configs(&multi, &catalog, &self.bootstrap_configs)?;
 
 		multi.bootstrapping_completed();
+		multi.wal()
+			.sync()
+			.unwrap_or_else(|err| panic!("bootstrap commits failed to flush the commit log: {err}"));
 
 		let runtime = self.runtime.take().expect("Runtime must be set via with_runtime()");
 		let spawner = runtime.spawner();
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
 		let runtime_handle = runtime.handle();
+		multi.wal().spawn_sync(
+			&spawner,
+			SyncMode::GroupCommit {
+				window: self.sync_interval.expect("Sync interval must be set via with_sync_interval()"),
+			},
+		);
 		#[cfg(not(reifydb_single_threaded))]
 		let tokio_handle = runtime.tokio();
 
@@ -551,7 +568,6 @@ impl DatabaseBuilder {
 		let cdc_handle = spawn_cdc_producer(
 			&spawner,
 			cdc_store,
-			multi_store,
 			eventbus.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,

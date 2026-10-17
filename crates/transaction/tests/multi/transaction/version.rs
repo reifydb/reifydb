@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{common::CommitVersion, key::bound::TaggedKeyBoundRange};
+use reifydb_core::{common::CommitVersion, durability::Durability, key::bound::TaggedKeyBoundRange};
 use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
@@ -24,7 +24,7 @@ fn test_versions() {
 	for i in 1..10 {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(vec![(k0.clone(), as_values!(i))]).unwrap();
-		txn.commit().unwrap();
+		txn.commit(Durability::Async).unwrap();
 		assert_eq!(i + 1, engine.version().unwrap());
 	}
 
@@ -80,7 +80,7 @@ fn test_as_of_version_bounds() {
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(vec![(k0.clone(), as_values!(1))]).unwrap();
-	txn.commit().unwrap();
+	txn.commit(Durability::Async).unwrap();
 	let committed_at = engine.version().unwrap();
 	assert_eq!(CommitVersion(2), committed_at);
 

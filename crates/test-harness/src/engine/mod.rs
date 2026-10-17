@@ -24,11 +24,10 @@ use reifydb_cdc::{
 		watermark::CdcProducerWatermark,
 	},
 };
-#[cfg(not(reifydb_dst))]
-use reifydb_core::durability::Durability;
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
 	common::{CommitVersion, TimeSource},
+	durability::Durability,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::catalog::{config::ConfigKey, id::NamespaceId},
 	util::ioc::IocContainer,
@@ -65,6 +64,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
+	wal::memory_wal,
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -303,6 +303,7 @@ impl TestEngineBuilder {
 			version_epoch.clone(),
 			rng.clone(),
 			Arc::new(catalog_cache.clone()),
+			memory_wal(clock.clone()).unwrap(),
 		)
 		.unwrap();
 
@@ -374,7 +375,6 @@ impl TestEngineBuilder {
 				&spawner,
 				clock.clone(),
 				cdc_store,
-				multi_store,
 				&eventbus,
 				ioc_for_cdc,
 				cdc_producer_watermark,
@@ -415,22 +415,13 @@ fn register_cdc_producer(
 	spawner: &ActorSpawner,
 	clock: Clock,
 	cdc_store: CdcStore,
-	multi_store: MultiStore,
 	eventbus: &EventBus,
 	ioc_for_cdc: IocContainer,
 	watermark: CdcProducerWatermark,
 	wake_registry: CdcWakeRegistry,
 	backlog: FlowBacklog,
 ) {
-	let cdc_handle = spawn_cdc_producer(
-		spawner,
-		cdc_store,
-		multi_store,
-		eventbus.clone(),
-		watermark,
-		wake_registry,
-		backlog,
-	);
+	let cdc_handle = spawn_cdc_producer(spawner, cdc_store, eventbus.clone(), watermark, wake_registry, backlog);
 	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 		cdc_handle.actor_ref().clone(),
 		clock.clone(),
@@ -455,6 +446,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(CatalogCache::new()),
+		memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap(),
 	)
 	.unwrap();
 
@@ -491,6 +483,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(CatalogCache::new()),
+		memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap(),
 	)
 	.unwrap();
 	let dictionary_allocators =

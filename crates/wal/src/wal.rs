@@ -205,6 +205,12 @@ impl<T: Body, L: ReadFrom + Reclaim> Wal<T, L> {
 
 impl<T: Body, L: Append + Flush> Wal<T, L> {
 	pub fn append(&self, at: DateTime, body: &T) -> Result<Lsn> {
+		let mut payload = Vec::new();
+		body.encode(&mut payload);
+		self.append_encoded(at, body.kind(), payload)
+	}
+
+	pub fn append_encoded(&self, at: DateTime, kind: u32, payload: Vec<u8>) -> Result<Lsn> {
 		if let Some(failed) = &self.0.progress.lock().failed {
 			return Err(failed.clone());
 		}
@@ -223,16 +229,8 @@ impl<T: Body, L: Append + Flush> Wal<T, L> {
 					appender.last
 				);
 			}
-			let mut payload = Vec::new();
-			body.encode(&mut payload);
-			let record = Record::new(
-				lsn.into(),
-				lsn.into(),
-				Term::new(0),
-				at,
-				RecordKind::new(body.kind()),
-				payload,
-			);
+			let record =
+				Record::new(lsn.into(), lsn.into(), Term::new(0), at, RecordKind::new(kind), payload);
 			self.0.device.append(&record)?;
 			appender.last = Some(lsn);
 			lsn

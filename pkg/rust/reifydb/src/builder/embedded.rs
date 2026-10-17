@@ -39,6 +39,7 @@ type PoolConfigSources = (
 	u32,
 	ResidentLimits,
 	Duration,
+	Duration,
 );
 
 fn pool_config_from_sources(
@@ -65,6 +66,7 @@ fn pool_config_from_sources(
 		resolved.operator_wal_autocheckpoint,
 		resolved.operator_resident,
 		resolved.operator_flush_interval,
+		resolved.sync_interval,
 	))
 }
 
@@ -80,7 +82,7 @@ use super::{DatabaseBuilder, WithInterceptorBuilder, startup::resolve_startup_co
 use crate::api;
 use crate::{
 	Database, MigrationSource, Result,
-	api::{StorageFactory, transaction},
+	api::{StorageFactory, commit_wal, transaction},
 };
 
 pub struct EmbeddedBuilder {
@@ -263,6 +265,7 @@ impl EmbeddedBuilder {
 			operator_wal_autocheckpoint,
 			operator_resident,
 			operator_flush_interval,
+			sync_interval,
 		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, self.cdc_memory)?;
 		#[cfg(all(feature = "column", reifydb_target = "host"))]
 		let column_dir = match &self.storage_factory {
@@ -294,6 +297,7 @@ impl EmbeddedBuilder {
 				self.operator_persistent,
 				&spawner,
 			);
+		let wal = commit_wal(&self.storage_factory, &clock);
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
 		let (multi, single, eventbus) = transaction(
@@ -303,9 +307,11 @@ impl EmbeddedBuilder {
 			version_epoch.clone(),
 			rng,
 			Arc::new(catalog_cache.clone()),
+			wal,
 		);
 
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)
+			.with_sync_interval(sync_interval)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime)
 			.with_stores(multi_store, single_store, operator_store, cdc_store);

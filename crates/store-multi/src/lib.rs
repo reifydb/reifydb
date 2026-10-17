@@ -122,6 +122,12 @@ impl MultiStore {
 		}
 	}
 
+	pub fn is_persistent(&self, key: &TaggedKey) -> bool {
+		match self {
+			MultiStore::Standard(store) => store.is_persistent(key),
+		}
+	}
+
 	pub fn metrics_collectors(&self) -> Vec<Arc<dyn MetricsCollector>> {
 		match self {
 			MultiStore::Standard(store) => store.metrics_collectors(),

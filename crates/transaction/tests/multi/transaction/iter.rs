@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{common::CommitVersion, key::bound::TaggedKeyBoundRange};
+use reifydb_core::{common::CommitVersion, durability::Durability, key::bound::TaggedKeyBoundRange};
 use reifydb_transaction::multi::RangeScope;
 
 use super::test_multi;
@@ -22,7 +22,7 @@ fn test_iter() {
 	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
 	txn.set(vec![(as_key!(2), as_values!(2))]).unwrap();
 	txn.set(vec![(as_key!(3), as_values!(3))]).unwrap();
-	txn.commit().unwrap();
+	txn.commit(Durability::Async).unwrap();
 
 	let txn = engine.begin_query().unwrap();
 	let items: Vec<_> =
@@ -68,7 +68,7 @@ fn test_iter2() {
 		assert_eq!(tv.bytes, as_values!(expected));
 		assert_eq!(tv.version, 1);
 	}
-	txn.commit().unwrap();
+	txn.commit(Durability::Async).unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(vec![(as_key!(4), as_values!(4))]).unwrap();
@@ -120,7 +120,7 @@ fn test_iter3() {
 		assert_eq!(tv.version, 1);
 	}
 
-	txn.commit().unwrap();
+	txn.commit(Durability::Async).unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
@@ -155,7 +155,7 @@ fn test_iter_edge_case() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(vec![(as_key!(3), as_values!(31u64))]).unwrap();
-		txn.commit().unwrap();
+		txn.commit(Durability::Async).unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
 
@@ -164,7 +164,7 @@ fn test_iter_edge_case() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(vec![(as_key!(1), as_values!(12u64))]).unwrap();
 		txn.set(vec![(as_key!(3), as_values!(32u64))]).unwrap();
-		txn.commit().unwrap();
+		txn.commit(Durability::Async).unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
 
@@ -173,7 +173,7 @@ fn test_iter_edge_case() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(vec![(as_key!(1), as_values!(13u64))]).unwrap();
 		txn.set(vec![(as_key!(2), as_values!(23u64))]).unwrap();
-		txn.commit().unwrap();
+		txn.commit(Durability::Async).unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
 
@@ -187,7 +187,7 @@ fn test_iter_edge_case() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		txn.remove(vec![(as_key!(2), None)]).unwrap();
-		txn.commit().unwrap();
+		txn.commit(Durability::Async).unwrap();
 		assert_eq!(5, engine.version().unwrap());
 	}
 
@@ -272,7 +272,7 @@ fn test_iter_edge_case2() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(vec![(as_key!(3), as_values!(31u64))]).unwrap();
-		txn.commit().unwrap();
+		txn.commit(Durability::Async).unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
 
@@ -281,7 +281,7 @@ fn test_iter_edge_case2() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(vec![(as_key!(1), as_values!(12u64))]).unwrap();
 		txn.set(vec![(as_key!(3), as_values!(32u64))]).unwrap();
-		txn.commit().unwrap();
+		txn.commit(Durability::Async).unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
 
@@ -290,7 +290,7 @@ fn test_iter_edge_case2() {
 		let mut txn = engine.begin_command().unwrap();
 		txn.set(vec![(as_key!(1), as_values!(13u64))]).unwrap();
 		txn.set(vec![(as_key!(2), as_values!(23u64))]).unwrap();
-		txn.commit().unwrap();
+		txn.commit(Durability::Async).unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
 
@@ -298,7 +298,7 @@ fn test_iter_edge_case2() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		txn.remove(vec![(as_key!(2), None)]).unwrap();
-		txn.commit().unwrap();
+		txn.commit(Durability::Async).unwrap();
 		assert_eq!(5, engine.version().unwrap());
 	}
 

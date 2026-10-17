@@ -19,6 +19,7 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
+	durability::Durability,
 	event::EventBus,
 	interface::{
 		catalog::{
@@ -58,6 +59,7 @@ use reifydb_testing::testscript::{
 use reifydb_transaction::{
 	multi::transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
 	single::SingleTransaction,
+	wal::memory_wal,
 };
 use reifydb_value::util::cowvec::CowVec;
 
@@ -86,6 +88,7 @@ fn test_serializable(path: &Path) {
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(ProfileConfig),
+		memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap(),
 	)
 	.unwrap();
 
@@ -169,7 +172,7 @@ impl Runner for MvccRunner {
 						unreachable!("can not call commit on rx")
 					}
 					TransactionHandle::Write(mut tx) => {
-						tx.commit()?;
+						tx.commit(Durability::Async)?;
 					}
 				}
 			}
@@ -269,7 +272,7 @@ impl Runner for MvccRunner {
 					}
 				}
 				args.reject_rest()?;
-				tx.commit()?;
+				tx.commit(Durability::Async)?;
 			}
 
 			// tx: rollback

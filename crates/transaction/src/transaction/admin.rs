@@ -265,11 +265,17 @@ impl AdminTransaction {
 	) -> Result<CommitVersion> {
 		let id = multi.id();
 		let pre_publish = &self.interceptors.pre_publish;
-		let version = multi.commit_with(|version| {
-			if let Err(err) = pre_publish.execute(PrePublishContext::new(id, version, &changes)) {
-				panic!("catalog cache fill for committed version {} failed: {}", version.0, err);
-			}
-		})?;
+		let version = multi.commit_with(
+			|version| {
+				if let Err(err) = pre_publish.execute(PrePublishContext::new(id, version, &changes)) {
+					panic!(
+						"catalog cache fill for committed version {} failed: {}",
+						version.0, err
+					);
+				}
+			},
+			self.durability,
+		)?;
 		let _self_lease = multi.take_self_lease();
 		self.remove_dropped_dictionaries(&changes)?;
 		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;

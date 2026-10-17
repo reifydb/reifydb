@@ -14,8 +14,6 @@ use crate::{
 	key::any::TaggedKey,
 };
 
-const KIND: u32 = 1;
-
 const OP_SET: u8 = 0;
 const OP_REMOVE: u8 = 1;
 
@@ -32,15 +30,17 @@ pub struct CommitRecord {
 	pub deltas: Vec<Delta>,
 }
 
-impl Body for CommitRecord {
-	fn kind(&self) -> u32 {
-		KIND
+impl CommitRecord {
+	pub const KIND: u32 = 1;
+
+	pub fn stamp_version(encoded: &mut [u8], version: CommitVersion) {
+		encoded[..8].copy_from_slice(&version.0.to_le_bytes());
 	}
 
-	fn encode(&self, out: &mut Vec<u8>) {
-		out.extend_from_slice(&self.version.0.to_le_bytes());
-		put_len(out, self.deltas.len());
-		for delta in &self.deltas {
+	pub fn encode_refs(version: CommitVersion, deltas: &[&Delta], out: &mut Vec<u8>) {
+		out.extend_from_slice(&version.0.to_le_bytes());
+		put_len(out, deltas.len());
+		for delta in deltas {
 			match delta {
 				Delta::Set {
 					key,
@@ -58,7 +58,7 @@ impl Body for CommitRecord {
 						}
 						SetPre::Unknown => panic!(
 							"commit {} has an unresolved pre for key {:?}",
-							self.version.0, key
+							version.0, key
 						),
 					}
 				}
@@ -87,9 +87,19 @@ impl Body for CommitRecord {
 			}
 		}
 	}
+}
+
+impl Body for CommitRecord {
+	fn kind(&self) -> u32 {
+		Self::KIND
+	}
+
+	fn encode(&self, out: &mut Vec<u8>) {
+		Self::encode_refs(self.version, &self.deltas.iter().collect::<Vec<_>>(), out);
+	}
 
 	fn decode(kind: u32, bytes: &[u8]) -> Result<Self> {
-		if kind != KIND {
+		if kind != Self::KIND {
 			return Err(WalError::Body(format!("unknown commit record kind {kind}")));
 		}
 		let mut reader = Reader {

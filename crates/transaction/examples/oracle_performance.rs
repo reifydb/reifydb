@@ -4,7 +4,7 @@
 use std::{sync::Arc, thread::spawn};
 
 use reifydb_codec::{key::serializer::KeySerializer, row::bytes::EncodedBytes};
-use reifydb_core::{interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
+use reifydb_core::{durability::Durability, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::multi::transaction::MultiTransaction;
 use reifydb_value::util::cowvec::CowVec;
@@ -56,7 +56,7 @@ pub fn oracle_performance_benchmark() {
 			let value = as_values!(format!("value_{}", i));
 
 			tx.set(vec![(key.clone().into(), value)]).unwrap();
-			tx.commit().unwrap();
+			tx.commit(Durability::Async).unwrap();
 		}
 
 		let duration = start.elapsed();
@@ -96,7 +96,7 @@ pub fn concurrent_oracle_benchmark() {
 					let value = as_values!(i);
 
 					tx.set(vec![(key.clone().into(), value)]).unwrap();
-					tx.commit().unwrap();
+					tx.commit(Durability::Async).unwrap();
 				}
 			});
 			handles.push(handle);
@@ -125,7 +125,7 @@ pub fn conflict_detection_benchmark() {
 		let key = as_key!(format!("shared_key_{}", i % 100));
 		let value = as_values!(i);
 		tx.set(vec![(key.clone().into(), value)]).unwrap();
-		tx.commit().unwrap();
+		tx.commit(Durability::Async).unwrap();
 	}
 
 	println!("Pre-populated with 1000 transactions across 100 keys");
@@ -142,7 +142,7 @@ pub fn conflict_detection_benchmark() {
 
 		tx.set(vec![(key.clone().into(), value)]).unwrap();
 
-		match tx.commit() {
+		match tx.commit(Durability::Async) {
 			Ok(_) => {}
 			Err(e) if e.code == "TXN_001" => {
 				conflicts += 1;

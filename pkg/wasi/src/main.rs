@@ -64,7 +64,7 @@ use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
 	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
-	single::SingleTransaction,
+	single::SingleTransaction, wal::memory_wal,
 };
 use reifydb_value::{byte_size::ByteSize, params::Params, value::identity::IdentityId};
 use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
@@ -121,6 +121,7 @@ impl Bridge {
 			version_epoch.clone(),
 			rng.clone(),
 			Arc::new(catalog_cache.clone()),
+			memory_wal(clock.clone())?,
 		)?;
 
 		let mut ioc = IocContainer::new();
@@ -180,7 +181,6 @@ impl Bridge {
 		let cdc_producer_handle = spawn_cdc_producer(
 			&spawner,
 			cdc_store,
-			multi_store.clone(),
 			eventbus_clone.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,

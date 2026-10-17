@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+	error::Error,
+	fmt::{self, Display, Formatter},
+};
 
 use reifydb_store_log::error::LogError;
 
@@ -62,3 +65,5 @@ impl Display for WalError {
 		}
 	}
 }
+
+impl Error for WalError {}

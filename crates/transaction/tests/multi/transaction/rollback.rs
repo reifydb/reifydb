@@ -9,6 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use reifydb_core::durability::Durability;
+
 use super::test_multi;
 use crate::{as_key, as_values};
 
@@ -45,7 +47,7 @@ fn test_savepoint_restore_drops_post_savepoint_writes() {
 	txn.set(vec![(as_key!(2), as_values!(2))]).unwrap();
 	txn.restore_savepoint(sp);
 
-	let v = txn.commit().unwrap();
+	let v = txn.commit(Durability::Async).unwrap();
 	assert!(v.0 > 0, "commit should produce a non-zero version");
 
 	let rx = engine.begin_query().unwrap();

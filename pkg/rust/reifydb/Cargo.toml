@@ -42,6 +42,7 @@ reifydb-sub-core = { workspace = true }
 reifydb-sub-metrics = { workspace = true }
 reifydb-subscription = { workspace = true}
 reifydb-transaction = { workspace = true }
+reifydb-wal = { workspace = true }
 reifydb-value = { workspace = true }
 
 tracing = { workspace = true }

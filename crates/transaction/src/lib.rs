@@ -33,6 +33,7 @@ pub mod multi;
 pub mod queue;
 pub mod single;
 pub mod transaction;
+pub mod wal;
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, Default)]

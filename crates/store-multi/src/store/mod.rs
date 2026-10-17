@@ -15,7 +15,8 @@ use reifydb_core::metrics::sample::MetricsSample;
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
-	interface::store::{EntryKind, storage_key},
+	interface::store::{EntryKind, storage_key, storage_key_of},
+	key::any::TaggedKey,
 	lifecycle::watermark::EvictionWatermark,
 	metrics::collect::MetricsCollector,
 };
@@ -223,6 +224,17 @@ impl StandardMultiStore {
 
 	pub fn set_row_settings_provider(&self, provider: Arc<dyn ObjectPersistence>) {
 		let _ = self.row_settings_provider.set(provider);
+	}
+
+	pub fn is_persistent(&self, key: &TaggedKey) -> bool {
+		match storage_key_of(key).0 {
+			EntryKind::Source(storage, _) | EntryKind::PartitionedSource(storage, _) => self
+				.row_settings_provider
+				.get()
+				.map(|provider| provider.is_persistent(storage))
+				.unwrap_or(true),
+			EntryKind::Multi => true,
+		}
 	}
 
 	pub fn set_eviction_watermark(&self, watermark: Arc<dyn EvictionWatermark>) {

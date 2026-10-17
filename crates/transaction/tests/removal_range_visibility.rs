@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
+	durability::Durability,
 	event::EventBus,
 	interface::catalog::{id::TableId, storage::StorageId},
 	key::{any::TaggedKey, row::RowKey},
@@ -31,6 +32,7 @@ use reifydb_transaction::{
 		transaction::{MultiTransaction, read::MultiReadTransaction, write::MultiWriteTransaction},
 	},
 	single::SingleTransaction,
+	wal::memory_wal,
 };
 use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
 
@@ -50,6 +52,7 @@ fn test_engine() -> MultiTransaction {
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(ProfileConfig),
+		memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap(),
 	)
 	.unwrap()
 }
@@ -77,7 +80,7 @@ fn committed_drop_is_invisible_to_later_range_scan() {
 	let mut tx = MultiWriteTransaction::new(engine.clone()).unwrap();
 	tx.set(vec![(key_a.clone().into(), EncodedBytes(CowVec::new(b"one".to_vec())))]).unwrap();
 	tx.set(vec![(key_b.clone().into(), EncodedBytes(CowVec::new(b"two".to_vec())))]).unwrap();
-	tx.commit().unwrap();
+	tx.commit(Durability::Async).unwrap();
 
 	// Row keys are keycode-encoded, so a scan returns them by descending row number.
 	assert_eq!(
@@ -88,7 +91,7 @@ fn committed_drop_is_invisible_to_later_range_scan() {
 
 	let mut tx = MultiWriteTransaction::new(engine.clone()).unwrap();
 	tx.remove_silent(&key_a).unwrap();
-	tx.commit().unwrap();
+	tx.commit(Durability::Async).unwrap();
 
 	assert_eq!(
 		range_keys(&engine, node),

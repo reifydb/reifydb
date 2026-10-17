@@ -29,6 +29,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::command::CommandTransaction,
+	wal::memory_wal,
 };
 use reifydb_value::{
 	Result,
@@ -57,6 +58,7 @@ fn harness() -> Harness {
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(ProfileConfig),
+		memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap(),
 	)
 	.unwrap();
 	let single = SingleTransaction::new(SingleStore::testing_memory(), bus.clone());

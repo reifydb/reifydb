@@ -253,9 +253,9 @@ impl CommandTransaction {
 	) -> Result<CommitVersion> {
 		let changes = TransactionalCatalogChanges::default();
 		let version = if unchecked {
-			multi.commit_unchecked()?
+			multi.commit_unchecked(self.durability)?
 		} else {
-			multi.commit()?
+			multi.commit(self.durability)?
 		};
 		#[cfg(feature = "testing")]
 		{

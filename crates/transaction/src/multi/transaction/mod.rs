@@ -15,7 +15,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
-	interface::{catalog::config::GetConfig, store::MultiVersionCommit},
+	interface::catalog::config::GetConfig,
 	key::any::TaggedKey,
 	testing::ProfileConfig,
 };
@@ -34,7 +34,13 @@ use tracing::{instrument, warn};
 use version::{StandardVersionProvider, VersionProvider};
 
 pub(crate) use crate::multi::oracle::Oracle;
-use crate::{TransactionId, error::TransactionError, multi::types::*, single::SingleTransaction};
+use crate::{
+	TransactionId,
+	error::TransactionError,
+	multi::types::*,
+	single::SingleTransaction,
+	wal::{CommitWal, memory_wal},
+};
 
 pub mod manager;
 pub mod read;
@@ -75,22 +81,23 @@ where
 	#[instrument(
 		name = "transaction::manager::new",
 		level = "debug",
-		skip(versions, spawner, store, clock, version_epoch, rng, config)
+		skip(versions, spawner, store, clock, version_epoch, rng, config, wal)
 	)]
 	pub fn new(
 		versions: L,
 		spawner: ActorSpawner,
-		store: Arc<dyn MultiVersionCommit>,
+		store: MultiStore,
 		clock: Clock,
 		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
+		wal: CommitWal,
 	) -> Result<Self>
 	where
 		L: 'static,
 	{
 		let version = versions.next()?;
-		let oracle = Oracle::new(versions, spawner, store, clock, version_epoch, rng, config);
+		let oracle = Oracle::new(versions, spawner, store, clock, version_epoch, rng, config, wal);
 		oracle.query.advance_to(version);
 		oracle.command.advance_to(version);
 		Ok(Self {
@@ -239,16 +246,18 @@ impl Inner {
 		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
+		wal: CommitWal,
 	) -> Result<Self> {
 		let version_provider = StandardVersionProvider::new(single)?;
 		let tm = TransactionManager::new(
 			version_provider,
 			spawner,
-			Arc::new(store.clone()),
+			store.clone(),
 			clock,
 			version_epoch,
 			rng,
 			config,
+			wal,
 		)?;
 
 		Ok(Self {
@@ -284,16 +293,19 @@ impl MultiTransaction {
 		let event_bus = EventBus::new(&spawner);
 
 		let config = Arc::new(ProfileConfig);
+		let clock = Clock::Mock(MockClock::from_millis(1000));
+		let wal = memory_wal(clock.clone()).expect("failed to create testing commit log");
 
 		Self::new(
 			multi_store,
 			SingleTransaction::new(single_store, event_bus.clone()),
 			event_bus,
 			spawner,
-			Clock::Mock(MockClock::from_millis(1000)),
+			clock,
 			VersionEpoch::new(),
 			Rng::seeded(42),
 			config,
+			wal,
 		)
 		.expect("failed to create testing MultiTransaction")
 	}
@@ -303,7 +315,7 @@ impl MultiTransaction {
 	#[instrument(
 		name = "transaction::new",
 		level = "debug",
-		skip(store, single, event_bus, spawner, clock, version_epoch, rng, config)
+		skip(store, single, event_bus, spawner, clock, version_epoch, rng, config, wal)
 	)]
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
@@ -315,8 +327,19 @@ impl MultiTransaction {
 		version_epoch: VersionEpoch,
 		rng: Rng,
 		config: Arc<dyn GetConfig>,
+		wal: CommitWal,
 	) -> Result<Self> {
-		Ok(Self(Arc::new(Inner::new(store, single, event_bus, spawner, clock, version_epoch, rng, config)?)))
+		Ok(Self(Arc::new(Inner::new(
+			store,
+			single,
+			event_bus,
+			spawner,
+			clock,
+			version_epoch,
+			rng,
+			config,
+			wal,
+		)?)))
 	}
 
 	pub fn spawner(&self) -> ActorSpawner {
@@ -337,6 +360,10 @@ impl MultiTransaction {
 
 	pub fn bootstrapping_completed(&self) {
 		self.0.bootstrapping_completed();
+	}
+
+	pub fn wal(&self) -> &CommitWal {
+		&self.0.tm.oracle().wal
 	}
 
 	#[instrument(name = "transaction::query_done_until", level = "trace", skip(self))]

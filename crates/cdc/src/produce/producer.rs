@@ -12,11 +12,8 @@ use reifydb_core::{
 		metric::{CdcWrite, CdcWrittenEvent},
 		transaction::PostCommitEvent,
 	},
-	interface::{
-		cdc::{Cdc, CdcChange},
-		store::{MultiVersionGetPrevious, MultiVersionRow},
-	},
-	key::{any::TaggedKey, cdc::should_exclude_from_cdc},
+	interface::cdc::{Cdc, CdcChange},
+	key::cdc::should_exclude_from_cdc,
 };
 use reifydb_runtime::{
 	actor::{
@@ -28,7 +25,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 };
 use reifydb_store_cdc::storage::{CdcStorage, CdcStorageResult};
-use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::datetime::DateTime};
+use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 use tracing::{debug, error, info};
 
 use crate::{
@@ -36,9 +33,8 @@ use crate::{
 	produce::watermark::CdcProducerWatermark,
 };
 
-pub struct CdcProducerActor<S, T> {
+pub struct CdcProducerActor<S> {
 	storage: Arc<S>,
-	transaction_store: Arc<T>,
 	event_bus: EventBus,
 
 	watermark: CdcProducerWatermark,
@@ -46,14 +42,12 @@ pub struct CdcProducerActor<S, T> {
 	backlog: FlowBacklog,
 }
 
-impl<S, T> CdcProducerActor<S, T>
+impl<S> CdcProducerActor<S>
 where
 	S: CdcStorage + Send + Sync + 'static,
-	T: MultiVersionGetPrevious + Send + Sync + 'static,
 {
 	pub fn new(
 		storage: S,
-		transaction_store: T,
 		event_bus: EventBus,
 		watermark: CdcProducerWatermark,
 		wake_registry: CdcWakeRegistry,
@@ -61,7 +55,6 @@ where
 	) -> Self {
 		Self {
 			storage: Arc::new(storage),
-			transaction_store: Arc::new(transaction_store),
 			event_bus,
 			watermark,
 			wake_registry,
@@ -73,25 +66,8 @@ where
 		debug!(version = version.commit.0, delta_count = deltas.len(), "Processing CDC");
 
 		let deltas: Vec<Delta> = deltas.into_iter().filter(|delta| !Self::is_excluded_kind(delta)).collect();
-		let unknown: Vec<TaggedKey> = deltas
-			.iter()
-			.filter_map(|delta| match delta {
-				Delta::Set {
-					key,
-					pre: SetPre::Unknown,
-					..
-				} => Some(key.clone()),
-				_ => None,
-			})
-			.collect();
-		let mut previous = self.transaction_store.get_previous(&unknown, version.commit)?.into_iter();
 
-		reifydb_assertions! {
-			self.assert_known_pres(&deltas, version.commit);
-		}
-
-		let cdc_changes: Vec<CdcChange> =
-			deltas.iter().filter_map(|delta| delta_to_raw_cdc_change(delta, &mut previous)).collect();
+		let cdc_changes: Vec<CdcChange> = deltas.iter().filter_map(delta_to_raw_cdc_change).collect();
 
 		self.write_and_emit(version, changed_at, cdc_changes)
 	}
@@ -99,45 +75,6 @@ where
 	#[inline]
 	fn is_excluded_kind(delta: &Delta) -> bool {
 		should_exclude_from_cdc(delta.key().kind())
-	}
-
-	#[cfg(reifydb_assertions)]
-	fn assert_known_pres(&self, deltas: &[Delta], version: CommitVersion) {
-		let mut keys = Vec::new();
-		let mut expected = Vec::new();
-		for delta in deltas {
-			let Delta::Set {
-				key,
-				pre,
-				..
-			} = delta
-			else {
-				continue;
-			};
-			let known = match pre {
-				SetPre::Unknown => continue,
-				SetPre::Absent => None,
-				SetPre::Present(bytes) => Some(bytes),
-			};
-			keys.push(key.clone());
-			expected.push(known);
-		}
-		if keys.is_empty() {
-			return;
-		}
-		let stored = self
-			.transaction_store
-			.get_previous(&keys, version)
-			.expect("the previous version of a set with a known pre-image must be readable to check it");
-		for ((key, known), stored) in keys.iter().zip(expected).zip(stored) {
-			assert_eq!(
-				stored.as_ref().map(|row| &row.bytes),
-				known,
-				"a set's known pre-image disagrees with the store before version {}: {:?}",
-				version.0,
-				key
-			);
-		}
 	}
 
 	#[inline]
@@ -209,10 +146,7 @@ where
 }
 
 #[inline]
-fn delta_to_raw_cdc_change(
-	delta: &Delta,
-	previous: &mut impl Iterator<Item = Option<MultiVersionRow<TaggedKey>>>,
-) -> Option<CdcChange> {
+fn delta_to_raw_cdc_change(delta: &Delta) -> Option<CdcChange> {
 	match delta {
 		Delta::Set {
 			key,
@@ -221,7 +155,9 @@ fn delta_to_raw_cdc_change(
 		} => {
 			let encoded = key.encode();
 			let pre = match pre {
-				SetPre::Unknown => previous.next().flatten().map(|row| row.bytes),
+				SetPre::Unknown => {
+					panic!("a published set reached cdc with an unresolved pre: {:?}", key)
+				}
 				SetPre::Absent => None,
 				SetPre::Present(bytes) => Some(bytes.clone()),
 			};
@@ -276,10 +212,9 @@ pub struct CdcProducerState {
 	parked: BTreeMap<u64, Parked>,
 }
 
-impl<S, T> Actor for CdcProducerActor<S, T>
+impl<S> Actor for CdcProducerActor<S>
 where
 	S: CdcStorage + Send + Sync + 'static,
-	T: MultiVersionGetPrevious + Send + Sync + 'static,
 {
 	type State = CdcProducerState;
 	type Message = CdcProduceMessage;
@@ -345,10 +280,9 @@ impl EventListener<PostCommitEvent> for CdcProducerEventListener {
 	}
 }
 
-pub fn spawn_cdc_producer<S, T>(
+pub fn spawn_cdc_producer<S>(
 	spawner: &ActorSpawner,
 	storage: S,
-	transaction_store: T,
 	event_bus: EventBus,
 	watermark: CdcProducerWatermark,
 	wake_registry: CdcWakeRegistry,
@@ -356,9 +290,8 @@ pub fn spawn_cdc_producer<S, T>(
 ) -> CdcProduceHandle
 where
 	S: CdcStorage + Send + Sync + 'static,
-	T: MultiVersionGetPrevious + Send + Sync + 'static,
 {
-	let actor = CdcProducerActor::new(storage, transaction_store, event_bus, watermark, wake_registry, backlog);
+	let actor = CdcProducerActor::new(storage, event_bus, watermark, wake_registry, backlog);
 	spawner.spawn_coordination("cdc-producer", actor)
 }
 
@@ -372,19 +305,13 @@ pub mod tests {
 	};
 
 	use reifydb_core::{
-		interface::{
-			catalog::storage::StorageId,
-			store::{MultiVersionCommit, MultiVersionRow},
-		},
-		key::{any::TaggedKey, ringbuffer::RingBufferMetadataKey, row::RowKey},
+		interface::catalog::storage::StorageId,
+		key::{ringbuffer::RingBufferMetadataKey, row::RowKey},
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
-	use reifydb_store_cdc::{config::CdcStoreConfig, error::CdcError, store::CdcStore};
-	use reifydb_store_multi::MultiStore;
+	use reifydb_store_cdc::{config::CdcStoreConfig, store::CdcStore};
 	use reifydb_value::{
-		Result,
 		byte_size::ByteSize,
-		util::cowvec::CowVec,
 		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 	};
 
@@ -396,63 +323,6 @@ pub mod tests {
 
 	fn test_backlog() -> FlowBacklog {
 		FlowBacklog::new(ByteSize::from_mib(16))
-	}
-
-	struct FailingStore;
-
-	impl MultiVersionGetPrevious for FailingStore {
-		fn get_previous(
-			&self,
-			_keys: &[TaggedKey],
-			_before_version: CommitVersion,
-		) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
-			Err(CdcError::Internal("the previous versions cannot be read".to_string()).into())
-		}
-	}
-
-	#[derive(Clone, Default)]
-	struct Reads {
-		batches: Arc<AtomicUsize>,
-		batched_keys: Arc<AtomicUsize>,
-	}
-
-	struct CountingStore {
-		inner: MultiStore,
-		reads: Reads,
-	}
-
-	impl MultiVersionGetPrevious for CountingStore {
-		fn get_previous(
-			&self,
-			keys: &[TaggedKey],
-			before_version: CommitVersion,
-		) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
-			self.reads.batches.fetch_add(1, Ordering::SeqCst);
-			self.reads.batched_keys.fetch_add(keys.len(), Ordering::SeqCst);
-			self.inner.get_previous(keys, before_version)
-		}
-	}
-
-	fn seeded() -> MultiStore {
-		let store = MultiStore::testing_memory();
-		MultiVersionCommit::commit(
-			&store,
-			CowVec::new(vec![
-				Delta::Set {
-					key: make_key("b"),
-					bytes: make_bytes("old_b"),
-					pre: SetPre::Unknown,
-				},
-				Delta::Set {
-					key: make_key("c"),
-					bytes: make_bytes("old_c"),
-					pre: SetPre::Unknown,
-				},
-			]),
-			CommitVersion(1),
-		)
-		.unwrap();
-		store
 	}
 
 	fn set(key: &str, bytes: &str, pre: SetPre) -> Delta {
@@ -485,29 +355,22 @@ pub mod tests {
 	}
 
 	#[test]
-	fn a_produce_reads_previous_versions_once_and_only_for_sets_whose_pre_image_is_unknown() {
-		// The producer's read per set is the cost the pre-image tags remove; a set with a known pre-image
-		// that is still read, or unknown sets read one by one, keep that cost, and a read answer handed to
-		// the wrong set publishes another row's pre-image.
+	fn known_pre_images_render_as_inserts_and_updates() {
+		// The tag alone must decide insert versus update; a wrong mapping hands consumers a new row where a row
+		// changed.
 		let deltas = vec![
 			set("a", "new_a", SetPre::Absent),
 			set("b", "new_b", SetPre::Present(make_bytes("old_b"))),
-			set("c", "new_c", SetPre::Unknown),
+			set("c", "new_c", SetPre::Present(make_bytes("old_c"))),
 			Delta::Set {
 				key: RingBufferMetadataKey::new(StorageId::table(1)).into(),
 				bytes: make_bytes("meta"),
-				pre: SetPre::Unknown,
+				pre: SetPre::Absent,
 			},
-			set("d", "new_d", SetPre::Unknown),
+			set("d", "new_d", SetPre::Absent),
 			Delta::remove_silent(make_key("e")),
 		];
-		let inner = seeded();
-		MultiVersionCommit::commit(&inner, CowVec::new(deltas.clone()), CommitVersion(2)).unwrap();
-		let reads = Reads::default();
-		let (actor, storage, _system) = actor_over(CountingStore {
-			inner,
-			reads: reads.clone(),
-		});
+		let (actor, storage, _system) = actor_over();
 
 		actor.process(ChangeVersion::from(CommitVersion(2)), DateTime::from_nanos(1), deltas).unwrap();
 
@@ -521,50 +384,14 @@ pub mod tests {
 				format!("insert {:?} {:?}", make_key("d").encode(), b"new_d"),
 			]
 		);
-		let (check_batches, check_keys) = if cfg!(reifydb_assertions) {
-			(1, 2)
-		} else {
-			(0, 0)
-		};
-		assert_eq!(
-			reads.batches.load(Ordering::SeqCst),
-			1 + check_batches,
-			"one read for the whole commit, plus one check of the known pre-images"
-		);
-		assert_eq!(
-			reads.batched_keys.load(Ordering::SeqCst),
-			2 + check_keys,
-			"only the unknown sets of included kinds, plus the known pre-images being checked"
-		);
 	}
 
-	#[cfg(reifydb_assertions)]
-	#[test]
-	fn a_known_pre_image_that_disagrees_with_the_store_is_caught() {
-		// A wrong tag publishes an insert for a changed row or an update for a new one; every assertion
-		// build must catch it at the producer instead of handing it to consumers.
-		let (actor, _storage, _system) = actor_over(seeded());
-
-		let produced = catch_unwind(AssertUnwindSafe(|| {
-			actor.process(
-				ChangeVersion::from(CommitVersion(2)),
-				DateTime::from_nanos(1),
-				vec![set("c", "new_c", SetPre::Absent)],
-			)
-		}));
-
-		assert!(produced.is_err(), "a set tagged absent over a stored row must be caught");
-	}
-
-	fn actor_over<T: MultiVersionGetPrevious + Send + Sync + 'static>(
-		store: T,
-	) -> (CdcProducerActor<CdcStore, T>, CdcStore, ActorSystem) {
+	fn actor_over() -> (CdcProducerActor<CdcStore>, CdcStore, ActorSystem) {
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
 		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
 		let actor = CdcProducerActor::new(
 			storage.clone(),
-			store,
 			EventBus::new(&spawner),
 			CdcProducerWatermark::new(),
 			CdcWakeRegistry::new(),
@@ -574,29 +401,31 @@ pub mod tests {
 	}
 
 	#[test]
-	fn a_set_whose_previous_version_cannot_be_read_fails_the_produce_instead_of_becoming_an_insert() {
-		// A read error that is taken for "no previous version" publishes an update as an insert, so every
-		// consumer sees a new row where a row changed; the produce must fail instead.
-		let (actor, storage, _system) = actor_over(FailingStore);
+	fn an_unresolved_pre_that_reaches_the_producer_stops_it_instead_of_becoming_an_insert() {
+		// Pre-images are resolved under the commit lock; an unknown one reaching cdc taken as "no previous
+		// version" would publish an update as an insert, so the producer must stop and write nothing.
+		let (actor, storage, _system) = actor_over();
 
-		let produced = actor.process(
-			ChangeVersion::from(CommitVersion(3)),
-			DateTime::from_nanos(1),
-			vec![Delta::Set {
-				key: RowKey::new(StorageId::table(1), RowNumber(1)).into(),
-				bytes: make_bytes("row"),
-				pre: SetPre::Unknown,
-			}],
-		);
+		let produced = catch_unwind(AssertUnwindSafe(|| {
+			actor.process(
+				ChangeVersion::from(CommitVersion(3)),
+				DateTime::from_nanos(1),
+				vec![Delta::Set {
+					key: RowKey::new(StorageId::table(1), RowNumber(1)).into(),
+					bytes: make_bytes("row"),
+					pre: SetPre::Unknown,
+				}],
+			)
+		}));
 
-		assert!(produced.is_err(), "the read error must reach the producer");
+		let message = produced.expect_err("an unresolved pre must stop the producer");
+		let message = message.downcast_ref::<String>().cloned().unwrap_or_default();
+		assert!(message.starts_with("a published set reached cdc with an unresolved pre"), "got {message}");
 		assert!(storage.read(CommitVersion(3)).unwrap().is_none(), "nothing may be written for the version");
 	}
 
 	#[test]
 	fn test_producer_processes_insert() {
-		let store = MultiStore::testing_memory();
-		let resolver = store;
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
 		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
@@ -604,7 +433,6 @@ pub mod tests {
 		let handle = spawn_cdc_producer(
 			&spawner,
 			storage.clone(),
-			resolver,
 			event_bus,
 			CdcProducerWatermark::new(),
 			CdcWakeRegistry::new(),
@@ -614,7 +442,7 @@ pub mod tests {
 		let deltas = vec![Delta::Set {
 			key: make_key("test_key"),
 			bytes: make_bytes("test_value"),
-			pre: SetPre::Unknown,
+			pre: SetPre::Absent,
 		}];
 
 		handle.actor_ref()
@@ -647,8 +475,6 @@ pub mod tests {
 
 	#[test]
 	fn test_producer_skips_drop_operations() {
-		let store = MultiStore::testing_memory();
-		let resolver = store;
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
 		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
@@ -656,7 +482,6 @@ pub mod tests {
 		let handle = spawn_cdc_producer(
 			&spawner,
 			storage.clone(),
-			resolver,
 			event_bus,
 			CdcProducerWatermark::new(),
 			CdcWakeRegistry::new(),
@@ -667,7 +492,7 @@ pub mod tests {
 			Delta::Set {
 				key: make_key("key1"),
 				bytes: make_bytes("value1"),
-				pre: SetPre::Unknown,
+				pre: SetPre::Absent,
 			},
 			Delta::remove_silent(make_key("key2")),
 		];
@@ -692,7 +517,6 @@ pub mod tests {
 		// The backlog is the flow hot path's only transport, so a produced commit must land there
 		// and wake it without any consumer touching storage. A flow-irrelevant commit must still
 		// extend coverage, or the next pull goes Behind for nothing.
-		let store = MultiStore::testing_memory();
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
 		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
@@ -706,7 +530,6 @@ pub mod tests {
 		let handle = spawn_cdc_producer(
 			&spawner,
 			storage.clone(),
-			store,
 			event_bus,
 			CdcProducerWatermark::new(),
 			CdcWakeRegistry::new(),
@@ -720,7 +543,7 @@ pub mod tests {
 				deltas: vec![Delta::Set {
 					key: RowKey::new(StorageId::table(1), RowNumber(1)).into(),
 					bytes: make_bytes("row"),
-					pre: SetPre::Unknown,
+					pre: SetPre::Absent,
 				}],
 			})
 			.unwrap();
@@ -731,7 +554,7 @@ pub mod tests {
 				deltas: vec![Delta::Set {
 					key: make_key("unknown_kind_key"),
 					bytes: make_bytes("value"),
-					pre: SetPre::Unknown,
+					pre: SetPre::Absent,
 				}],
 			})
 			.unwrap();

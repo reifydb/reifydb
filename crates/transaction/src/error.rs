@@ -61,6 +61,12 @@ pub enum TransactionError {
 		fragment: Fragment,
 	},
 
+	#[error("Commit of {bytes} bytes exceeds the commit log record limit of {limit} bytes")]
+	CommitTooLarge {
+		bytes: u64,
+		limit: u64,
+	},
+
 	#[error(transparent)]
 	Dictionary(#[from] DictionaryError),
 }
@@ -263,6 +269,22 @@ impl IntoDiagnostic for TransactionError {
 					operator_chain: None,
 				}
 			}
+
+			TransactionError::CommitTooLarge { bytes, limit } => Diagnostic {
+				code: "TXN_017".to_string(),
+				rql: None,
+				message: format!(
+					"Commit of {} bytes exceeds the commit log record limit of {} bytes",
+					bytes, limit
+				),
+				column: None,
+				fragment: Fragment::None,
+				label: None,
+				help: Some("Split the transaction into smaller batches".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
 
 			TransactionError::Dictionary(err) => err.into_diagnostic(),
 		}

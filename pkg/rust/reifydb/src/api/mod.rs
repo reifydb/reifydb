@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-#[cfg(all(feature = "column", reifydb_target = "host"))]
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use reifydb_core::{event::EventBus, interface::catalog::config::GetConfig};
 use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	context::{clock::Clock, rng::Rng},
+	io::fs::{Fs, host::HostFs},
 	version_epoch::VersionEpoch,
 };
 use reifydb_sqlite::{DbPath, JournalMode, SqliteConfig};
@@ -41,7 +40,11 @@ use reifydb_store_single::{
 	},
 	tier::commit::buffer::SingleCommitBufferTier,
 };
-use reifydb_transaction::{multi::transaction::MultiTransaction, single::SingleTransaction};
+use reifydb_transaction::{
+	multi::transaction::MultiTransaction,
+	single::SingleTransaction,
+	wal::{CommitWal, memory_wal, open_wal},
+};
 use reifydb_value::value::duration::Duration;
 
 pub mod embedded;
@@ -167,6 +170,24 @@ pub(crate) fn cdc_sqlite_config(config: &SqliteConfig, wal_autocheckpoint: u32) 
 pub(crate) fn column_dir(config: &SqliteConfig) -> PathBuf {
 	match &config.path {
 		DbPath::File(p) | DbPath::Memory(p) | DbPath::Tmpfs(p) => p.with_extension("").join("column"),
+	}
+}
+
+pub(crate) fn wal_dir(config: &SqliteConfig) -> PathBuf {
+	match &config.path {
+		DbPath::File(p) | DbPath::Memory(p) | DbPath::Tmpfs(p) => p.with_extension("").join("wal"),
+	}
+}
+
+pub(crate) fn commit_wal(factory: &StorageFactory, clock: &Clock) -> CommitWal {
+	match factory {
+		StorageFactory::Memory => memory_wal(clock.clone())
+			.unwrap_or_else(|err| panic!("in-memory commit log failed to open: {err}")),
+		StorageFactory::Sqlite(config) => {
+			let dir = wal_dir(config);
+			open_wal(Fs::Host(HostFs::new()), clock.clone(), &dir)
+				.unwrap_or_else(|err| panic!("commit log at {} failed to open: {err}", dir.display()))
+		}
 	}
 }
 
@@ -319,6 +340,7 @@ pub(crate) fn transaction(
 	version_epoch: VersionEpoch,
 	rng: Rng,
 	config: Arc<dyn GetConfig>,
+	wal: CommitWal,
 ) -> (MultiTransaction, SingleTransaction, EventBus) {
 	let multi = MultiTransaction::new(
 		input.0,
@@ -329,6 +351,7 @@ pub(crate) fn transaction(
 		version_epoch,
 		rng,
 		config,
+		wal,
 	)
 	.unwrap();
 	(multi, input.2, input.3)

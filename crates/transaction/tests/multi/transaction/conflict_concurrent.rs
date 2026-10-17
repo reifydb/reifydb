@@ -18,7 +18,10 @@ use std::sync::{
 	atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
-use reifydb_core::key::{any::TaggedKey, bound::TaggedKeyBoundRange};
+use reifydb_core::{
+	durability::Durability,
+	key::{any::TaggedKey, bound::TaggedKeyBoundRange},
+};
 use reifydb_transaction::multi::{RangeScope, transaction::write::MultiWriteTransaction};
 
 use super::test_multi;
@@ -58,7 +61,7 @@ fn test_conflict_point_get_admits_exactly_one_writer() {
 
 					if absent {
 						txn.set(vec![(key.clone(), as_values!(1u64))]).unwrap();
-						if txn.commit().is_ok() {
+						if txn.commit(Durability::Async).is_ok() {
 							committed.fetch_add(1, Ordering::SeqCst);
 						}
 					}
@@ -110,7 +113,7 @@ fn test_conflict_range_scan_admits_exactly_one_writer() {
 
 					if !found {
 						txn.set(vec![(key.clone(), as_values!(1u64))]).unwrap();
-						if txn.commit().is_ok() {
+						if txn.commit(Durability::Async).is_ok() {
 							committed.fetch_add(1, Ordering::SeqCst);
 						}
 					}
@@ -145,7 +148,7 @@ fn test_read_after_write_is_visible_to_a_later_transaction() {
 
 				let mut writer = engine.begin_command().unwrap();
 				writer.set(vec![(key.clone(), as_values!(i))]).unwrap();
-				writer.commit().unwrap();
+				writer.commit(Durability::Async).unwrap();
 
 				let mut reader = engine.begin_command().unwrap();
 				assert_eq!(
@@ -177,7 +180,7 @@ fn test_concurrent_writers_never_expose_a_partial_commit() {
 	for i in 0..ACCOUNTS {
 		seed.set(vec![(as_key!(i), as_values!(OPENING))]).unwrap();
 	}
-	seed.commit().unwrap();
+	seed.commit(Durability::Async).unwrap();
 
 	let stop = Arc::new(AtomicBool::new(false));
 	let observations = Arc::new(AtomicU64::new(0));
@@ -221,7 +224,7 @@ fn test_concurrent_writers_never_expose_a_partial_commit() {
 					for i in ACCOUNTS / 2..ACCOUNTS {
 						txn.set(vec![(as_key!(i), as_values!(OPENING + delta))]).unwrap();
 					}
-					if txn.commit().is_ok() {
+					if txn.commit(Durability::Async).is_ok() {
 						return;
 					}
 				}

@@ -62,7 +62,7 @@ use reifydb_store_single::{SingleStore, SingleStoreVersion};
 use reifydb_sub_flow::{builder::FlowConfig, subsystem::FlowSubsystem};
 use reifydb_transaction::{
 	TransactionVersion, interceptor::factory::InterceptorFactory, multi::transaction::MultiTransaction,
-	single::SingleTransaction,
+	single::SingleTransaction, wal::memory_wal,
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -241,6 +241,7 @@ impl WasmDB {
 			version_epoch.clone(),
 			rng.clone(),
 			Arc::new(catalog_cache.clone()),
+			memory_wal(clock.clone()).map_err(|e| JsError::from_error(&e))?,
 		)
 		.map_err(|e| JsError::from_error(&e))?;
 
@@ -309,7 +310,6 @@ impl WasmDB {
 		let cdc_producer_handle = spawn_cdc_producer(
 			&spawner,
 			cdc_store,
-			multi_store.clone(),
 			eventbus_clone.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,

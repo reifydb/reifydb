@@ -33,6 +33,7 @@ pub(crate) struct StartupConfig {
 	pub operator_wal_autocheckpoint: u32,
 	pub operator_resident: ResidentLimits,
 	pub operator_flush_interval: Duration,
+	pub sync_interval: Duration,
 	pub cdc_commit: CdcCommitConfig,
 	pub cdc_read: Option<CdcReadConfig>,
 }
@@ -60,6 +61,7 @@ const STARTUP_KEYS: &[ConfigKey] = &[
 	ConfigKey::CdcCommitBufferBytes,
 	ConfigKey::CdcBlockCutBytes,
 	ConfigKey::CdcReadBufferBytes,
+	ConfigKey::SyncInterval,
 ];
 
 pub(crate) fn resolve_startup_configs(
@@ -186,6 +188,7 @@ pub(crate) fn resolve_startup_configs(
 			..ResidentLimits::default()
 		},
 		operator_flush_interval: duration(ConfigKey::OperatorFlushInterval),
+		sync_interval: duration(ConfigKey::SyncInterval),
 		cdc_commit,
 		cdc_read,
 	})

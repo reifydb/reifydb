@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::durability::Durability;
+
 use super::test_multi;
 use crate::{as_key, as_values};
 
@@ -19,7 +21,7 @@ fn test_read_after_write() {
 
 				let mut txn = db.begin_command().unwrap();
 				txn.set(vec![(k.clone(), v.clone())]).unwrap();
-				txn.commit().unwrap();
+				txn.commit(Durability::Async).unwrap();
 
 				let txn = db.begin_query().unwrap();
 				let sv = txn.get(&[k.clone()]).unwrap().pop().flatten().unwrap();
