@@ -74,6 +74,14 @@ pub(crate) fn variable_column(
 				}
 				other => other,
 			};
+			if matches!(
+				value,
+				Value::None {
+					inner: ValueType::Any
+				}
+			) {
+				return Ok(factory::none(variable_name, row_count));
+			}
 			let mut data = ColumnBuilder::with_capacity(value.get_type(), row_count);
 			for _ in 0..row_count {
 				data.push_value(value.clone());

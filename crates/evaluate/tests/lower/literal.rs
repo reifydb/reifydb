@@ -82,11 +82,10 @@ fn a_variable_lowers_to_the_field_and_array_of_the_old_path() {
 	let env = Env::with_symbols(symbols(vec![
 		("x", Variable::scalar(Value::Int4(7))),
 		("t", Variable::scalar(Value::Utf8("abc".to_string()))),
-		("n", Variable::scalar(Value::none())),
 		("1", Variable::scalar(Value::Int4(9))),
 	]));
 
-	for (text, name, expected) in [("$x", "x", "7"), ("$t", "t", "abc"), ("$n", "n", "none"), ("$1", "1", "9")] {
+	for (text, name, expected) in [("$x", "x", "7"), ("$t", "t", "abc"), ("$1", "1", "9")] {
 		let lowered = env.lowered(&variable(text), rows(3)).unwrap();
 		let old = frozen.old(&env, &variable(text), rows(3)).unwrap();
 		assert_eq!(lowered.0, old.0, "field of {text}");
@@ -94,6 +93,21 @@ fn a_variable_lowers_to_the_field_and_array_of_the_old_path() {
 		assert_eq!(lowered.0.name(), name, "field name of {text}");
 		assert_eq!(strings(&lowered), vec![expected; 3], "values of {text}");
 	}
+}
+
+#[test]
+fn a_none_variable_lowers_like_a_literal_none_and_not_as_any() {
+	// A none variable typed as any makes every compare on it error where a literal none answers none.
+	let env = Env::with_symbols(symbols(vec![("n", Variable::scalar(Value::none()))]));
+
+	let lowered = env.lowered(&variable("$n"), rows(3)).unwrap();
+	let literal = env.lowered(&none(), rows(3)).unwrap();
+
+	assert_eq!(lowered.0.data_type(), literal.0.data_type());
+	assert_eq!(lowered.0.metadata(), literal.0.metadata());
+	assert_eq!(lowered.0.is_nullable(), literal.0.is_nullable());
+	assert_eq!(lowered.0.name(), "n");
+	assert_eq!(strings(&lowered), vec!["none"; 3]);
 }
 
 #[test]

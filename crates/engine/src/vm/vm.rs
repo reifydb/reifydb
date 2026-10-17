@@ -24,7 +24,10 @@ use reifydb_value::{
 };
 
 use super::{
-	exec::mask::{LoopMaskState, MaskFrame, extract_bool_bitvec},
+	exec::{
+		comparison::CompareExprs,
+		mask::{LoopMaskState, MaskFrame, extract_bool_bitvec},
+	},
 	instruction::{
 		ddl::{
 			alter::{
@@ -107,6 +110,8 @@ pub struct Vm<'a> {
 
 	pub(crate) udf_call: UdfCall,
 
+	pub(crate) compare: CompareExprs,
+
 	pub(crate) params: &'a Params,
 	pub(crate) routines: &'a Routines,
 	pub(crate) runtime_context: &'a RuntimeContext,
@@ -173,6 +178,7 @@ impl<'a> Vm<'a> {
 			returned_mask: None,
 			pending_return: None,
 			udf_call,
+			compare: CompareExprs::new(),
 			params,
 			routines,
 			runtime_context,

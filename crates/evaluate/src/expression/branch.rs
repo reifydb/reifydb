@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::view::group_by::common_key_type;
+use reifydb_core::value::column::{arith::is_family, view::group_by::common_key_type};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	value::value_type::ValueType,
 };
 
-use crate::{Result, expression::compare::is_family};
+use crate::Result;
 
 pub struct BranchLayout {
 	types: Vec<ValueType>,
