@@ -445,7 +445,6 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	#[should_panic(expected = "is not canonical")]
 	fn test_drive_with_negative_zero_panics() {
-		// The insert root skips the Box check, so the loop must check or a raw -0.0 is stored.
 		let services = Services::testing();
 		let mut txn = create_test_admin_transaction();
 		let namespace = Namespace::Local {

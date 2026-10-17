@@ -129,6 +129,8 @@ mod tests {
 
 	#[cfg(reifydb_assertions)]
 	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
+	#[cfg(reifydb_assertions)]
+	use reifydb_core::value::column::headers::ColumnHeaders;
 	use reifydb_core::{
 		util::budget::MemoryBudget,
 		value::{
@@ -136,8 +138,6 @@ mod tests {
 			column::factory::int4,
 		},
 	};
-	#[cfg(reifydb_assertions)]
-	use reifydb_core::value::column::headers::ColumnHeaders;
 	#[cfg(reifydb_assertions)]
 	use reifydb_evaluate::stack::SymbolTable;
 	#[cfg(reifydb_assertions)]

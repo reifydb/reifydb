@@ -175,6 +175,8 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
 	use reifydb_codec::key::encoded::EncodedKey;
+	#[cfg(reifydb_assertions)]
+	use reifydb_core::interface::change::Diff;
 	use reifydb_core::{
 		common::{ChangeVersion, CommitVersion},
 		flow::{
@@ -191,8 +193,6 @@ mod tests {
 		},
 		state::timer::TimerKind,
 	};
-	#[cfg(reifydb_assertions)]
-	use reifydb_core::interface::change::Diff;
 	use reifydb_runtime::context::RuntimeContext;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::{

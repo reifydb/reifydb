@@ -231,7 +231,6 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	#[should_panic(expected = "is not canonical")]
 	fn an_operator_output_holding_negative_zero_panics() {
-		// Every operator's output passes through apply, so a raw -0.0 must stop here or a compare splits zero.
 		let engine = TestEngine::new();
 		let mut inner = engine_inner(&engine);
 		inner.insert_operator(FLOW, OPERATOR, Box::new(NegativeZeroOperator(Diff::insert)));
@@ -255,7 +254,6 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	#[should_panic(expected = "is not canonical")]
 	fn an_operator_removal_holding_negative_zero_panics() {
-		// A removal carries its batch in pre only, so a check on post alone must never let its -0.0 through.
 		let engine = TestEngine::new();
 		let mut inner = engine_inner(&engine);
 		inner.insert_operator(FLOW, OPERATOR, Box::new(NegativeZeroOperator(Diff::remove)));

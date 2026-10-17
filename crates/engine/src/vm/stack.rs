@@ -91,7 +91,6 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	#[should_panic(expected = "is not canonical")]
 	fn test_push_columns_with_negative_zero_panics() {
-		// Every VM value goes through push, so a raw -0.0 must stop here or a later compare splits zero.
 		Stack::new().push(Variable::Columns {
 			batch: negative_zero_batch(),
 		});
@@ -101,7 +100,6 @@ mod tests {
 	#[cfg(reifydb_assertions)]
 	#[should_panic(expected = "is not canonical")]
 	fn test_push_for_iterator_with_negative_zero_panics() {
-		// A for loop's batch is pushed as its own variant, so the check must cover it too or -0.0 slips past.
 		Stack::new().push(Variable::ForIterator {
 			batch: negative_zero_batch(),
 			index: 0,
