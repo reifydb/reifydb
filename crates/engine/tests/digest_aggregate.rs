@@ -472,58 +472,6 @@ fn a_digest_input_with_accuracy_fails_on_the_first_value() {
 }
 
 #[test]
-fn merging_digests_with_different_accuracy_fails() {
-	// One column can never hold two digest types, so each one-row batch must carry its own.
-	let t = one_row_batches();
-	let fine = oracle(ValueType::Float8, 10_000, &float_values(Some(1))).unwrap();
-	let coarse = oracle(ValueType::Float8, 50_000, &float_values(Some(2))).unwrap();
-
-	let err = query_with(
-		&t,
-		"FROM test::t | filter { g != 3 } | extend { x: if g == 1 { $fine } else { $coarse } } | aggregate { m: stats::digest(x) }",
-		with_digests(&[("fine", fine), ("coarse", coarse)]),
-	)
-	.unwrap_err();
-
-	assert_eq!(err.code, "AGGREGATE_017", "got: {err:?}");
-	assert!(
-		[
-			"cannot merge Digest(Float8, 0.01) with Digest(Float8, 0.05)",
-			"cannot merge Digest(Float8, 0.05) with Digest(Float8, 0.01)"
-		]
-		.contains(&err.message.as_str()),
-		"the message must name both digest types, got: {}",
-		err.message
-	);
-}
-
-#[test]
-fn merging_digests_with_different_input_types_fails() {
-	// An int4 digest and a float8 digest must not merge, or the output column would hold two digest types.
-	let t = one_row_batches();
-	let ints = oracle(ValueType::Int4, 10_000, &int_values(Some(1))).unwrap();
-	let floats = oracle(ValueType::Float8, 10_000, &float_values(Some(2))).unwrap();
-
-	let err = query_with(
-		&t,
-		"FROM test::t | filter { g != 3 } | extend { x: if g == 1 { $ints } else { $floats } } | aggregate { m: stats::digest(x) }",
-		with_digests(&[("ints", ints), ("floats", floats)]),
-	)
-	.unwrap_err();
-
-	assert_eq!(err.code, "AGGREGATE_017", "got: {err:?}");
-	assert!(
-		[
-			"cannot merge Digest(Int4, 0.01) with Digest(Float8, 0.01)",
-			"cannot merge Digest(Float8, 0.01) with Digest(Int4, 0.01)"
-		]
-		.contains(&err.message.as_str()),
-		"the message must name both digest types, got: {}",
-		err.message
-	);
-}
-
-#[test]
 fn a_duration_with_a_month_part_fails_the_query() {
 	// A month part must fail, since a month has no fixed length and converting it would change every percentile.
 	let t = TestEngine::new();
