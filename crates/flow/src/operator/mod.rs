@@ -13,6 +13,7 @@ use reifydb_value::{
 use crate::error::FlowGraphError;
 
 pub mod append;
+pub(crate) mod dictionary;
 pub mod extend;
 pub mod filter;
 pub mod map;

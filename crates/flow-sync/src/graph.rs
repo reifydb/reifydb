@@ -70,7 +70,7 @@ pub fn build<T: Lookup + Resolve>(
 			Filter {
 				conditions,
 			} => Node::Filter(FilterOperator::new(
-				decoded_parent_schema(txn, &nodes, first_input(inputs)?)?,
+				parent_schema(&nodes, first_input(inputs)?)?,
 				*operator_id,
 				conditions,
 				routines.clone(),

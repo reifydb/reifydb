@@ -17,7 +17,7 @@ use reifydb_value::{
 use crate::{
 	Result,
 	expression::{
-		compare::{GreaterThanEqual, LessThanEqual, cast_to, compare_columns, compare_target},
+		compare::{GreaterThanEqual, LessThanEqual, cast_to, compare_columns, field_compare_target},
 		context::EvalContext,
 		logic::execute_logical_op,
 	},
@@ -47,7 +47,9 @@ pub(super) fn lower_compare<'e>(
 		});
 	}
 	let (left_type, right_type) = (inner_type(&left.field)?, inner_type(&right.field)?);
-	let Some(target) = compare_target(&left_type, &right_type) else {
+	let equality = matches!(binary_op, BinaryOp::Equal | BinaryOp::NotEqual);
+	let Some(target) = field_compare_target((&left.field, &left_type), (&right.field, &right_type), equality)?
+	else {
 		return Err(not_applicable(binary_op, left_type, right_type, fragment).into());
 	};
 	Ok(Node {
@@ -89,7 +91,7 @@ fn check_between(value: &Node, bound: &Node, fragment: &Fragment) -> Result<()> 
 		return Ok(());
 	}
 	let (value_type, bound_type) = (inner_type(&value.field)?, inner_type(&bound.field)?);
-	match compare_target(&value_type, &bound_type) {
+	match field_compare_target((&value.field, &value_type), (&bound.field, &bound_type), false)? {
 		Some(_) => Ok(()),
 		None => Err(not_applicable(BinaryOp::Between, value_type, bound_type, fragment.clone())),
 	}

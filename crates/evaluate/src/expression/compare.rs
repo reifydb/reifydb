@@ -12,7 +12,7 @@ use arrow_array::{
 };
 use arrow_buffer::i256;
 use arrow_ord::cmp;
-use arrow_schema::FieldRef;
+use arrow_schema::{Field, FieldRef};
 use reifydb_core::{
 	error::CoreError,
 	value::column::{factory::none_typed, nulls::split_nulls},
@@ -31,7 +31,7 @@ use reifydb_value::{
 		},
 		decimal::unscaled,
 		ordered_f64::OrderedF64,
-		value_type::ValueType,
+		value_type::{ValueType, field::from_field},
 	},
 };
 
@@ -39,6 +39,8 @@ use super::{logic::bool_column, option::is_all_none};
 use crate::Result;
 
 pub trait CompareOp {
+	const EQUALITY: bool = false;
+
 	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray>;
 }
 
@@ -50,12 +52,16 @@ pub struct LessThan;
 pub struct LessThanEqual;
 
 impl CompareOp for Equal {
+	const EQUALITY: bool = true;
+
 	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
 		arrow_result(cmp::eq(left, right))
 	}
 }
 
 impl CompareOp for NotEqual {
+	const EQUALITY: bool = true;
+
 	fn kernel(left: &dyn Datum, right: &dyn Datum) -> Result<BooleanArray> {
 		arrow_result(cmp::neq(left, right))
 	}
@@ -185,7 +191,7 @@ pub(crate) fn compare_target(left: &ValueType, right: &ValueType) -> Option<Valu
 				| ValueType::Date | ValueType::DateTime
 				| ValueType::Time | ValueType::Duration
 				| ValueType::Uuid4 | ValueType::Uuid7
-				| ValueType::IdentityId
+				| ValueType::IdentityId | ValueType::DictionaryId
 		)
 		.then(|| left.clone());
 	}
@@ -198,6 +204,20 @@ pub(crate) fn compare_target(left: &ValueType, right: &ValueType) -> Option<Valu
 		(Some(s), _, _, Some(u)) | (_, Some(u), Some(s), _) => Some(signed_of_rank(s.max(u + 1))),
 		_ => None,
 	}
+}
+
+pub(crate) fn field_compare_target(
+	(left, left_type): (&Field, &ValueType),
+	(right, right_type): (&Field, &ValueType),
+	equality: bool,
+) -> Result<Option<ValueType>> {
+	let target = compare_target(left_type, right_type);
+	if target != Some(ValueType::DictionaryId) {
+		return Ok(target);
+	}
+	let dictionary = from_field(left)?.dictionary_id;
+	Ok((equality && dictionary.is_some() && dictionary == from_field(right)?.dictionary_id)
+		.then_some(ValueType::DictionaryId))
 }
 
 fn wide_unary<W: WideInt, T: ArrowPrimitiveType>(
@@ -406,7 +426,7 @@ pub fn compare_columns<Op: CompareOp>(
 	}
 	let (left_type, right_type) =
 		(ColumnView::try_from(&left_data)?.get_type(), ColumnView::try_from(&right_data)?.get_type());
-	let Some(target) = compare_target(&left_type, &right_type) else {
+	let Some(target) = field_compare_target((&left.0, &left_type), (&right.0, &right_type), Op::EQUALITY)? else {
 		return_error!(error_fn(fragment, left_type, right_type))
 	};
 	if is_all_none(left_nulls.as_ref()) || is_all_none(right_nulls.as_ref()) {
@@ -424,4 +444,39 @@ fn kernel_compare<Op: CompareOp>(left_array: ArrayRef, right_array: ArrayRef) ->
 		(l, 1) if l != 1 => Op::kernel(&left_array, &Scalar::new(right_array))?,
 		_ => Op::kernel(&left_array, &right_array)?,
 	})
+}
+
+#[cfg(test)]
+mod tests {
+	use arrow_schema::FieldRef;
+	use reifydb_core::value::column::builder::ColumnBuilder;
+	use reifydb_value::value::{dictionary::DictionaryId, value_type::ValueType};
+
+	use super::field_compare_target;
+
+	fn id_field(dictionary: Option<DictionaryId>) -> FieldRef {
+		let mut builder = ColumnBuilder::with_capacity(ValueType::DictionaryId, 0);
+		if let Some(dictionary) = dictionary {
+			builder.set_dictionary_id(dictionary);
+		}
+		builder.finish("c").0
+	}
+
+	fn target(left: Option<DictionaryId>, right: Option<DictionaryId>, equality: bool) -> Option<ValueType> {
+		let (left, right) = (id_field(left), id_field(right));
+		field_compare_target((&left, &ValueType::DictionaryId), (&right, &ValueType::DictionaryId), equality)
+			.unwrap()
+	}
+
+	#[test]
+	fn ids_compare_as_ids_only_for_equality_within_one_dictionary() {
+		// entry id 1 names a different text in every dictionary, and ids carry no text order, so any other pair
+		// must not compare ids.
+		let (syms, other) = (DictionaryId(1), DictionaryId(2));
+		assert_eq!(target(Some(syms), Some(syms), true), Some(ValueType::DictionaryId));
+		assert_eq!(target(Some(syms), Some(other), true), None);
+		assert_eq!(target(Some(syms), Some(syms), false), None);
+		assert_eq!(target(Some(syms), None, true), None);
+		assert_eq!(target(None, None, true), None);
+	}
 }

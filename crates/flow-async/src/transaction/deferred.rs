@@ -21,7 +21,7 @@ use reifydb_core::{
 	},
 	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
-use reifydb_flow::txn::{Batch, Emit, Get, Intern, Resolve};
+use reifydb_flow::txn::{Batch, Emit, Find, Get, Intern, Resolve};
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_transaction::{
@@ -503,11 +503,13 @@ impl Resolve for DeferredTransaction {
 	}
 }
 
-impl Intern for DeferredTransaction {
+impl Find for DeferredTransaction {
 	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
 		self.find_many_in_dictionary(dictionary, values)
 	}
+}
 
+impl Intern for DeferredTransaction {
 	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
 		if values.is_empty() {
 			return Ok(Vec::new());

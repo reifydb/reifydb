@@ -38,7 +38,7 @@ use reifydb_core::{
 		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 	},
 };
-use reifydb_flow::txn::Resolve;
+use reifydb_flow::txn::{Find, Resolve};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
@@ -609,6 +609,24 @@ impl<T: FlowTransaction> Resolve for TxnHostContext<'_, T> {
 			self.dictionary_resolves += 1;
 		}
 		self.txn.get_many_from_dictionary(dictionary, ids)
+	}
+}
+
+pub(crate) struct HostFind<'a>(pub(crate) &'a mut dyn HostContext);
+
+impl Resolve for HostFind<'_> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+		self.0.dictionary(id)
+	}
+
+	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+		self.0.resolve(dictionary, ids)
+	}
+}
+
+impl Find for HostFind<'_> {
+	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		self.0.dictionary_find_many(dictionary.id, values)
 	}
 }
 

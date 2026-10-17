@@ -64,14 +64,13 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_filter(
 		&mut self,
-		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		conditions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
+		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(FilterOperator::new(

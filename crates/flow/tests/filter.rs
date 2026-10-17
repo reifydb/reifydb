@@ -7,16 +7,47 @@ use arrow_array::RecordBatch;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
-		catalog::flow::OperatorId,
+		catalog::{dictionary::Dictionary, flow::OperatorId},
 		change::{Change, Diff},
 	},
 	value::{batch::batch, column::factory},
 };
-use reifydb_flow::{context::FlowContext, operator::filter::FilterOperator};
+use reifydb_flow::{
+	context::FlowContext,
+	operator::filter::FilterOperator,
+	txn::{Find, Resolve},
+};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
-use reifydb_value::value::{column_view::ColumnView, datetime::DateTime, value_type::ValueType};
+use reifydb_value::{
+	Result,
+	value::{
+		Value,
+		column_view::ColumnView,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+		value_type::ValueType,
+	},
+};
+
+struct NoDictionaries;
+
+impl Resolve for NoDictionaries {
+	fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>> {
+		panic!("a filter over plain columns must never read a dictionary")
+	}
+
+	fn resolve(&mut self, _dictionary: &Dictionary, _ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+		panic!("a filter over plain columns must never decode")
+	}
+}
+
+impl Find for NoDictionaries {
+	fn find(&mut self, _dictionary: &Dictionary, _values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		panic!("a filter over plain columns must never find a literal")
+	}
+}
 
 fn filter(condition: &str) -> FilterOperator {
 	FilterOperator::new(
@@ -62,10 +93,10 @@ fn the_filter_drops_none_and_false_and_rejects_a_non_boolean() {
 	// None and false must drop a row, and the lowered between must answer per row where the old path errors.
 	let rows = batch(vec![factory::int4_optional("a", [Some(1), None, Some(5)])]).unwrap();
 
-	let out = filter("a between 2 and 10").apply(insert(rows.clone())).unwrap();
+	let out = filter("a between 2 and 10").apply(&mut NoDictionaries, insert(rows.clone())).unwrap();
 	assert_eq!(inserted(&out, "a"), vec!["5"]);
 
-	let error = filter("a").apply(insert(rows)).unwrap_err();
+	let error = filter("a").apply(&mut NoDictionaries, insert(rows)).unwrap_err();
 	assert_eq!(error.code, "INTERNAL_ERROR");
 }
 
@@ -75,8 +106,8 @@ fn a_type_mismatch_builds_the_filter_and_fails_every_apply_even_on_all_none() {
 	let mut operator = filter("a > 'x'");
 	let rows = batch(vec![factory::none_typed("a", ValueType::Int4, 2)]).unwrap();
 
-	let first = operator.apply(insert(rows.clone())).unwrap_err();
-	let second = operator.apply(insert(rows)).unwrap_err();
+	let first = operator.apply(&mut NoDictionaries, insert(rows.clone())).unwrap_err();
+	let second = operator.apply(&mut NoDictionaries, insert(rows)).unwrap_err();
 
 	assert_eq!(first, second);
 	assert!(first.code.starts_with("OPERATOR_02"), "{}", first.code);
@@ -88,7 +119,7 @@ fn an_empty_change_passes_a_broken_filter_without_an_error() {
 	let mut operator = filter("a > 'x'");
 	let rows = batch(vec![factory::int4("a", Vec::<i32>::new())]).unwrap();
 
-	let out = operator.apply(insert(rows)).unwrap();
+	let out = operator.apply(&mut NoDictionaries, insert(rows)).unwrap();
 
 	assert!(out.diffs.is_empty());
 }
@@ -100,6 +131,6 @@ fn a_later_batch_with_moved_columns_reads_the_right_column() {
 	let first = batch(vec![factory::int4("a", [2]), factory::int4("b", [0])]).unwrap();
 	let moved = batch(vec![factory::int4("b", [0, 5]), factory::int4("a", [5, 0])]).unwrap();
 
-	assert_eq!(inserted(&operator.apply(insert(first)).unwrap(), "a"), vec!["2"]);
-	assert_eq!(inserted(&operator.apply(insert(moved)).unwrap(), "a"), vec!["5"]);
+	assert_eq!(inserted(&operator.apply(&mut NoDictionaries, insert(first)).unwrap(), "a"), vec!["2"]);
+	assert_eq!(inserted(&operator.apply(&mut NoDictionaries, insert(moved)).unwrap(), "a"), vec!["5"]);
 }

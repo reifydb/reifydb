@@ -20,7 +20,7 @@ use reifydb_core::{
 	},
 };
 #[cfg(any(test, feature = "testing"))]
-use reifydb_flow::txn::{Batch, Emit, Get, Intern, Resolve};
+use reifydb_flow::txn::{Batch, Emit, Find, Get, Intern, Resolve};
 use reifydb_runtime::context::clock::MockClock;
 use reifydb_value::{
 	Result,
@@ -233,7 +233,7 @@ impl<T: Resolve> Resolve for TestingTxn<T> {
 	}
 }
 
-impl<T: Intern> Intern for TestingTxn<T> {
+impl<T: Find> Find for TestingTxn<T> {
 	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
 		for _ in values {
 			if let Outcome::Err(error) = self.hooks.on_find(dictionary.id) {
@@ -242,7 +242,9 @@ impl<T: Intern> Intern for TestingTxn<T> {
 		}
 		self.txn.find(dictionary, values)
 	}
+}
 
+impl<T: Intern> Intern for TestingTxn<T> {
 	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
 		let mut ids = Vec::with_capacity(values.len());
 		for value in values {
@@ -397,7 +399,7 @@ impl Resolve for TestingTx {
 }
 
 #[cfg(any(test, feature = "testing"))]
-impl Intern for TestingTx {
+impl Find for TestingTx {
 	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
 		values.iter()
 			.map(|value| {
@@ -412,7 +414,10 @@ impl Intern for TestingTx {
 			})
 			.collect()
 	}
+}
 
+#[cfg(any(test, feature = "testing"))]
+impl Intern for TestingTx {
 	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
 		let mut ids = Vec::with_capacity(values.len());
 		for value in values {

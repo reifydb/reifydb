@@ -217,7 +217,7 @@ impl FlowEngineInner {
 			}
 			Filter {
 				conditions,
-			} => self.add_filter(txn, flow_id, operator_id, &inputs, conditions, ctx)?,
+			} => self.add_filter(flow_id, operator_id, &inputs, conditions, ctx)?,
 			Gate {
 				conditions,
 			} => self.add_gate(txn, flow_id, operator_id, &inputs, conditions, ctx)?,
