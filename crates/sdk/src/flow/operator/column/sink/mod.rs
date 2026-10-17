@@ -11,7 +11,7 @@ use reifydb_value::value::{
 
 use crate::{
 	error::SdkError,
-	flow::operator::view::{ColumnsView, PassSource},
+	flow::operator::view::{ColumnCursor, ColumnsView, PassSource},
 };
 
 pub trait ColumnWriter<T: ?Sized> {
@@ -168,6 +168,29 @@ pub(crate) fn pass_kind(col: usize, declared: ValueKind, source: ValueKind) -> R
 		return Ok(());
 	}
 	Err(SdkError::InvalidInput(format!("column {col} is {declared:?}, cannot pass through a {source:?} column")))
+}
+
+pub(crate) fn decodes_on_pass(declared: ValueKind, source: ValueKind) -> bool {
+	declared == ValueKind::Utf8 && source == ValueKind::DictionaryId
+}
+
+pub(crate) fn pass_decoded(
+	sink: &mut impl RowSink,
+	col: usize,
+	input: &impl ColumnsView,
+	name: &str,
+	mask: &[bool],
+) -> Result<(), SdkError> {
+	let texts = input.column::<&str>(name)?.ok_or_else(|| {
+		SdkError::InvalidInput(format!("pass through of {name}, which the input does not carry"))
+	})?;
+	for row in (0..mask.len()).filter(|&row| mask[row]) {
+		match texts.get(row)? {
+			Some(text) => sink.push_utf8(col, text)?,
+			None => sink.push_none(col)?,
+		}
+	}
+	Ok(())
 }
 
 pub(crate) fn passed_column(col: usize) -> SdkError {

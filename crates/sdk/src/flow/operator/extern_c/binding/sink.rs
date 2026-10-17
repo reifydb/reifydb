@@ -21,8 +21,9 @@ use crate::{
 		column::{
 			row::Row,
 			sink::{
-				ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, foreign_source,
-				pass_after_push, pass_kind, pass_source, passed_column, unsupported_column,
+				ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, decodes_on_pass,
+				foreign_source, pass_after_push, pass_decoded, pass_kind, pass_source, passed_column,
+				unsupported_column,
 			},
 			writer::{
 				BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DictionaryIdWriter,
@@ -459,6 +460,9 @@ impl RowSink for ExternCRowSink<'_> {
 		let PassSource::ExternC(wire) = pass_source(input, name, mask)? else {
 			return Err(foreign_source(col));
 		};
+		if decodes_on_pass(self.columns[col].1, wire.type_code) {
+			return pass_decoded(self, col, input, name, mask);
+		}
 		pass_kind(col, self.columns[col].1, wire.type_code)?;
 		if wire.type_code == ValueKind::None {
 			return self.pass_nones(col, mask);

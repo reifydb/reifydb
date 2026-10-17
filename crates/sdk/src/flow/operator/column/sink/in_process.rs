@@ -33,8 +33,8 @@ use crate::{
 	error::SdkError,
 	flow::operator::{
 		column::sink::{
-			ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, foreign_source,
-			pass_after_push, pass_kind, pass_source, passed_column,
+			ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, decodes_on_pass,
+			foreign_source, pass_after_push, pass_decoded, pass_kind, pass_source, passed_column,
 		},
 		context::check_emit_count,
 		view::{ColumnsView, PassSource},
@@ -276,7 +276,13 @@ impl RowSink for InProcessRowSink {
 		let PassSource::InProcess(view) = pass_source(input, name, mask)? else {
 			return Err(foreign_source(col));
 		};
-		pass_kind(col, self.columns[col].1, column_data_to_type_code(view))?;
+		let source = column_data_to_type_code(view);
+		if decodes_on_pass(self.columns[col].1, source) {
+			pass_decoded(self, col, input, name, mask)?;
+			self.passed[col] = true;
+			return Ok(());
+		}
+		pass_kind(col, self.columns[col].1, source)?;
 		let selected = shared_predicate(&BooleanBuffer::from(mask), mask.len())
 			.filter(view.array())
 			.map_err(|err| SdkError::Other(err.to_string()))?;
