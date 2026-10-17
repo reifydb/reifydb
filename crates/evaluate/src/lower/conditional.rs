@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	hash::{Hash, Hasher},
-	sync::Arc,
-};
+use std::{hash::Hash, sync::Arc};
 
 use arrow_array::BooleanArray;
 use arrow_schema::{DataType, FieldRef};
@@ -56,15 +53,9 @@ pub(super) fn lower_if<'e>(
 	for (node, expression) in all.iter().zip(&expressions) {
 		columns.push(branch_columns(ctx, operator, expression, node)?);
 	}
-	let (target, mut mismatches) = layout(&columns, &e.fragment)?;
-	if columns.iter().any(|fields| fields.len() != columns[0].len())
-		&& let Some(diagnostic) = mismatches.iter().flatten().next().cloned()
-	{
-		for (index, fields) in columns.iter().enumerate() {
-			if fields.len() != 1 && mismatches[index].is_none() {
-				mismatches[index] = Some(diagnostic.clone());
-			}
-		}
+	let (target, mismatches) = layout(&columns, &e.fragment)?;
+	if let Some(diagnostic) = mismatches.iter().flatten().next() {
+		return Err(Error(Box::new(diagnostic.clone())).into());
 	}
 	let nullable = otherwise.is_none() || all.iter().any(|node| node.field.is_nullable());
 	let first = all[0].field.clone();
@@ -84,34 +75,18 @@ pub(super) fn lower_if<'e>(
 		});
 	};
 
-	let shaped = |index: usize, node: Node| -> Result<Expr> {
-		if let Some(diagnostic) = &mismatches[index] {
-			return Ok(udf(
-				MismatchUdf {
-					diagnostic: diagnostic.clone(),
-					index,
-					field: typed_field(&name, target.clone(), true),
-					signature: volatile(),
-				},
-				if columns[index].len() == 1 {
-					vec![node.expr]
-				} else {
-					vec![]
-				},
-			));
-		}
+	let shaped = |node: Node| -> Result<Expr> {
 		if !is_untyped_none(&node.field)? && inner_type(&node.field)? == target {
 			return Ok(node.expr);
 		}
 		Ok(cast_node(ctx, node, &target, &e.fragment).expr)
 	};
-	let branch_count = branches.len();
 	let mut when_then = Vec::with_capacity(conditions.len());
-	for (index, (condition, branch)) in conditions.into_iter().zip(branches).enumerate() {
-		when_then.push((Box::new(condition), Box::new(shaped(index, branch)?)));
+	for (condition, branch) in conditions.into_iter().zip(branches) {
+		when_then.push((Box::new(condition), Box::new(shaped(branch)?)));
 	}
 	let otherwise = match otherwise {
-		Some(node) => Some(Box::new(shaped(branch_count, node)?)),
+		Some(node) => Some(Box::new(shaped(node)?)),
 		None => None,
 	};
 	Ok(Node {
@@ -187,55 +162,6 @@ fn truthy(node: Node) -> Result<Expr> {
 		},
 		vec![node.expr],
 	))
-}
-
-#[derive(Debug)]
-struct MismatchUdf {
-	diagnostic: Diagnostic,
-	index: usize,
-	field: FieldRef,
-	signature: Signature,
-}
-
-impl PartialEq for MismatchUdf {
-	fn eq(&self, other: &Self) -> bool {
-		self.diagnostic.fragment == other.diagnostic.fragment && self.index == other.index
-	}
-}
-
-impl Eq for MismatchUdf {}
-
-impl Hash for MismatchUdf {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.diagnostic.fragment.hash(state);
-		self.index.hash(state);
-	}
-}
-
-impl ScalarUDFImpl for MismatchUdf {
-	fn name(&self) -> &str {
-		"branch_mismatch"
-	}
-
-	fn signature(&self) -> &Signature {
-		&self.signature
-	}
-
-	fn return_type(&self, _arg_types: &[DataType]) -> DfResult<DataType> {
-		internal_err!("branch_mismatch types its output through return_field_from_args")
-	}
-
-	fn return_field_from_args(&self, _args: ReturnFieldArgs) -> DfResult<FieldRef> {
-		Ok(self.field.clone())
-	}
-
-	fn invoke_with_args(&self, _args: ScalarFunctionArgs) -> DfResult<ColumnarValue> {
-		Err(into_external(Error(Box::new(self.diagnostic.clone()))))
-	}
-
-	fn coerce_types(&self, arg_types: &[DataType]) -> DfResult<Vec<DataType>> {
-		Ok(arg_types.to_vec())
-	}
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]

@@ -100,9 +100,8 @@ fn a_branch_runs_only_on_the_rows_that_pick_it() {
 }
 
 #[test]
-fn a_branch_of_another_type_errors_only_when_a_row_picks_it() {
-	// A match whose default never fires must still run, as today; the mismatch surfaces only on a row that takes
-	// it.
+fn a_branch_of_another_type_errors_even_when_no_row_picks_it() {
+	// A branch type must never depend on which rows pick it, otherwise the same query fails only on some batches.
 	let mut frozen = Frozen::inline(&[
 		"RUNTIME_012 \"if\" conditional branches produce different columns [\"first branch yields: [a: Int4]\", \"this branch yields: [\\\"x\\\": Utf8]\"]",
 	]);
@@ -110,7 +109,7 @@ fn a_branch_of_another_type_errors_only_when_a_row_picks_it() {
 	let never = conditional(boolean("true"), column("a"), vec![], Some(text("x")));
 	let sometimes = conditional(column("c"), column("a"), vec![], Some(text("x")));
 
-	assert_eq!(strings(&env.lowered(&never, input()).unwrap()), vec!["10", "20", "30", "40"]);
+	assert_eq!(env.lowered(&never, input()).unwrap_err().code, "RUNTIME_012");
 	assert_eq!(env.lowered(&sometimes, input()).unwrap_err().code, "RUNTIME_012");
 	assert_eq!(frozen.old(&env, &sometimes, input()).unwrap_err().code, "RUNTIME_012");
 }
