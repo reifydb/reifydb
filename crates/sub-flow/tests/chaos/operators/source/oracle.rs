@@ -1,35 +1,44 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! What a source owes: every row it was handed, with the interned column resolved back to the value
-//! the corpus interned.
+//! What a source owes: every row it was handed, with the interned column kept as the id the corpus
+//! interned.
 //!
-//! The symbol is stated as the literal the workload drew, never by resolving an id, so nothing here
-//! shares a code path with the operator's decode.
+//! The id is the one the workload interned, never one read back from the operator, so nothing here
+//! shares a code path with the operator.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
+use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_testing_chaos::operator::model::Model;
-use reifydb_value::value::{Value, row_number::RowNumber};
+use reifydb_value::value::{Value, dictionary::DictionaryEntryId, row_number::RowNumber};
 
 use crate::operators::source::workload::SourceRow;
 
 pub struct SourceOracle {
 	live: BTreeMap<RowNumber, SourceRow>,
+	interned: Arc<Mutex<BTreeMap<&'static str, DictionaryEntryId>>>,
 }
 
 impl SourceOracle {
-	pub fn new() -> Self {
+	pub fn new(interned: Arc<Mutex<BTreeMap<&'static str, DictionaryEntryId>>>) -> Self {
 		Self {
 			live: BTreeMap::new(),
+			interned,
 		}
 	}
 
 	fn claim(&self) -> Vec<Vec<Value>> {
+		let interned = self.interned.lock();
 		let mut rows: Vec<Vec<Value>> = self
 			.live
 			.values()
-			.map(|row| vec![Value::Utf8(row.symbol.to_string()), Value::Int8(row.value)])
+			.map(|row| {
+				let id = interned
+					.get(row.symbol)
+					.expect("the workload interned every symbol it emitted");
+				vec![Value::DictionaryId(*id), Value::Int8(row.value)]
+			})
 			.collect();
 		rows.sort_by(|a, b| format!("{a:?}").cmp(&format!("{b:?}")));
 		rows

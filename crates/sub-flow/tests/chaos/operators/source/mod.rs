@@ -14,6 +14,8 @@
 pub mod oracle;
 pub mod workload;
 
+use std::sync::Arc;
+
 use arrow_schema::SchemaRef;
 use rand::RngExt;
 use reifydb_core::{
@@ -200,7 +202,7 @@ pub fn drive(seed: u64, params: Params) -> Corpus {
 		registry: harness.dictionary_registry(),
 		interned: Default::default(),
 	};
-	let mut model = SourceOracle::new();
+	let mut model = SourceOracle::new(Arc::clone(&workload.interned));
 
 	driver::drive(
 		seed,
