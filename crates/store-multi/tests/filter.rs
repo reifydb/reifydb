@@ -146,10 +146,13 @@ fn a_key_written_through_the_sweep_path_is_afterwards_maybe_present() {
 	// negative until the next rebuild.
 	let (storage, _guard) = SqlitePersistentStorage::in_memory();
 
-	storage.persist_sweep(vec![(
-		CommitVersion(9),
-		batch(EntryKind::Multi, vec![(key(11), Some(body(11))), (key(12), Some(body(12)))]),
-	)])
+	storage.persist_sweep(
+		vec![(
+			CommitVersion(9),
+			batch(EntryKind::Multi, vec![(key(11), Some(body(11))), (key(12), Some(body(12)))]),
+		)],
+		None,
+	)
 	.expect("the sweep write failed");
 
 	assert!(storage.filter().may_contain((EntryKind::Multi, &key(11))), "the sweep path did not feed the filter");

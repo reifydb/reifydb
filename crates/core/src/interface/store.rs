@@ -329,6 +329,12 @@ pub trait MultiVersionStore:
 {
 }
 
+pub trait WalCheckpoint: Send + Sync + 'static {
+	fn make_durable(&self) -> Result<CommitVersion>;
+
+	fn saved_through(&self, version: CommitVersion) -> Result<()>;
+}
+
 #[derive(Debug, Clone)]
 pub struct SingleVersionBatch {
 	pub items: Vec<SingleVersionRow>,

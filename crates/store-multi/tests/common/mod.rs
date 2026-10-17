@@ -24,7 +24,7 @@ use reifydb_core::{
 			id::{IndexId, TableId},
 			object::ObjectId,
 		},
-		store::{MultiVersionCommit, MultiVersionGet, MultiVersionRow, classify_key},
+		store::{MultiVersionCommit, MultiVersionGet, MultiVersionRow, WalCheckpoint, classify_key},
 	},
 	key::{any::TaggedKey, catalog::IndexEntryKey},
 	lifecycle::watermark::EvictionWatermark,
@@ -46,7 +46,7 @@ use reifydb_store_multi::{
 	tier::TierStorage,
 };
 use reifydb_testing::testscript;
-use reifydb_value::{cow_vec, util::cowvec::CowVec};
+use reifydb_value::{Result as ValueResult, cow_vec, util::cowvec::CowVec};
 use testscript::command::Command;
 
 /// Shared testscript runner for every per-backend test binary. With `auto_flush` each committing command
@@ -480,6 +480,24 @@ impl testscript::runner::Runner for Runner {
 
 /// Constant eviction cutoff injected by the `watermark` testscript command, letting a script pin W before
 /// issuing `flush`. The store keeps it in a `OnceLock`, so only the first `watermark` per script takes effect.
+pub struct NoWalCheckpoint;
+
+impl WalCheckpoint for NoWalCheckpoint {
+	fn make_durable(&self) -> ValueResult<CommitVersion> {
+		// Must never cap a real cutoff and must fit sqlite INTEGER, otherwise flush_all panics.
+		Ok(CommitVersion(i64::MAX as u64))
+	}
+
+	fn saved_through(&self, _version: CommitVersion) -> ValueResult<()> {
+		Ok(())
+	}
+}
+
+pub fn without_wal(store: StandardMultiStore) -> StandardMultiStore {
+	store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
+	store
+}
+
 struct FixedWatermark(CommitVersion);
 
 impl EvictionWatermark for FixedWatermark {

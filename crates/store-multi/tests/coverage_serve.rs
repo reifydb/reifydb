@@ -35,6 +35,8 @@ use reifydb_store_multi::{
 };
 use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
 
+use crate::common::without_wal;
+
 const STORAGES: [StorageId; 4] = [
 	StorageId::Table(TableId(1)),
 	StorageId::Table(TableId(2)),
@@ -94,8 +96,10 @@ fn pair_with(rows_per_partition: u64, budget: ByteSize) -> Pair {
 	};
 	let (point, range) = tiers(Some(budget));
 	let (hot, hot_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(point, range);
+	let hot = without_wal(hot);
 	let (point, range) = tiers(None);
 	let (cold, cold_guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(point, range);
+	let cold = without_wal(cold);
 	assert!(!hot.range_shard_metrics().is_empty(), "the hot store must have a range tier");
 	assert!(cold.range_shard_metrics().is_empty(), "the cold store must have no range tier to consult");
 	Pair {

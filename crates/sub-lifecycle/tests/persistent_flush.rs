@@ -20,7 +20,7 @@ use reifydb_core::{
 			id::QueueId,
 			storage::StorageId,
 		},
-		store::MultiVersionCommit,
+		store::{MultiVersionCommit, WalCheckpoint},
 	},
 	key::queue::QueueDeduplicationKey,
 	lifecycle::{progress::Progress, task::LifecycleTask, watermark::EvictionWatermark},
@@ -35,12 +35,26 @@ use reifydb_sub_lifecycle::{
 	store::flush::PersistentFlushTask,
 };
 use reifydb_value::{
+	Result,
 	byte_size::ByteSize,
 	util::cowvec::CowVec,
 	value::{Value, duration::Duration},
 };
 
 const ROWS: u8 = 8;
+
+struct NoWalCheckpoint;
+
+impl WalCheckpoint for NoWalCheckpoint {
+	fn make_durable(&self) -> Result<CommitVersion> {
+		// Must never cap a real cutoff and must fit sqlite INTEGER, otherwise flush_all panics.
+		Ok(CommitVersion(i64::MAX as u64))
+	}
+
+	fn saved_through(&self, _version: CommitVersion) -> Result<()> {
+		Ok(())
+	}
+}
 
 struct Unpinned;
 
@@ -112,6 +126,7 @@ fn seeded_task(store: &StandardMultiStore, budget: u64) -> PersistentFlushTask {
 		.unwrap();
 	}
 	store.set_eviction_watermark(Arc::new(StaticWatermark(CommitVersion(u64::MAX))));
+	store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 
 	let plane = RetentionPlane::new(Arc::new(Unpinned), VersionEpoch::new());
 	PersistentFlushTask::new(

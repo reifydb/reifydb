@@ -15,7 +15,10 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
-	interface::catalog::config::GetConfig,
+	interface::{
+		catalog::config::GetConfig,
+		store::WalCheckpoint,
+	},
 	key::any::TaggedKey,
 	testing::ProfileConfig,
 };
@@ -39,7 +42,7 @@ use crate::{
 	error::TransactionError,
 	multi::types::*,
 	single::SingleTransaction,
-	wal::{CommitWal, memory_wal},
+	wal::{CheckpointedStore, CommitWal, StoreCheckpoint, memory_wal},
 };
 
 pub mod manager;
@@ -364,6 +367,14 @@ impl MultiTransaction {
 
 	pub fn wal(&self) -> &CommitWal {
 		&self.0.tm.oracle().wal
+	}
+
+	pub fn store_checkpoint(&self, store: CheckpointedStore) -> Result<Arc<dyn WalCheckpoint>> {
+		let oracle = self.0.tm.oracle();
+		let floor = oracle.wal.floor(store.floor_name()).unwrap_or_else(|err| {
+			panic!("commit log floor {} could not be taken: {err}", store.floor_name())
+		});
+		Ok(Arc::new(StoreCheckpoint::new(Arc::downgrade(oracle.shared()), floor)))
 	}
 
 	#[instrument(name = "transaction::query_done_until", level = "trace", skip(self))]

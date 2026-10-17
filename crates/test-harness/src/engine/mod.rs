@@ -64,7 +64,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
-	wal::memory_wal,
+	wal::{CheckpointedStore, memory_wal},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -306,6 +306,7 @@ impl TestEngineBuilder {
 			memory_wal(clock.clone()).unwrap(),
 		)
 		.unwrap();
+		multi_store.set_wal_checkpoint(multi.store_checkpoint(CheckpointedStore::Multi).unwrap());
 
 		let mut ioc = IocContainer::new();
 		ioc = ioc.register(catalog_cache.clone());

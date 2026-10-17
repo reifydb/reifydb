@@ -26,6 +26,8 @@ use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
+use crate::common::without_wal;
+
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
 /// The default shift of 16 keeps rows 0..65535 in bucket 0, so a full scan materializes that page's coverage.
@@ -40,7 +42,8 @@ impl EvictionWatermark for StaticWatermark {
 }
 
 fn store() -> (StandardMultiStore, impl Drop) {
-	StandardMultiStore::testing_memory_with_persistent_sqlite()
+	let (store, guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	(without_wal(store), guard)
 }
 
 fn commit_set(store: &StandardMultiStore, row: u64, version: u64, value: &str) {

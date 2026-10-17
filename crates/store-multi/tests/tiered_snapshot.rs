@@ -19,7 +19,7 @@ use reifydb_store_multi::{
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
 
-use crate::common::Runner;
+use crate::common::{Runner, without_wal};
 
 test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/flush" as ts_flush => test_snapshot }
 test_each_path! { in "crates/store-multi/tests/scripts/tiered_snapshot/versions" as ts_versions => test_snapshot }
@@ -53,7 +53,7 @@ fn test_snapshot(path: &Path) {
 				clock: Clock::Real,
 			})
 			.unwrap();
-			run_path(&mut Runner::from_store_no_auto_flush(store), path)
+			run_path(&mut Runner::from_store_no_auto_flush(without_wal(store)), path)
 		})
 		.unwrap_or_else(|e| panic!("read_pool_size={read_pool_size}: {e}"));
 	}

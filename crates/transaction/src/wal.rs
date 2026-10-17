@@ -1,19 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::path::Path;
+use std::{
+	path::Path,
+	sync::{Arc, Weak},
+};
 
 use reifydb_codec::log::record::HEADER_BYTES;
-use reifydb_core::wal::CommitRecord;
+use reifydb_core::{common::CommitVersion, interface::store::WalCheckpoint, wal::CommitRecord};
 use reifydb_runtime::{
 	context::clock::Clock,
 	io::fs::{Fs, ReadDir, memory::MemoryFs},
 };
 use reifydb_store_log::{error::LogError, log::Log, partition::Config};
 use reifydb_value::{Result, byte_size::ByteSize};
-use reifydb_wal::{error::Result as WalResult, wal::Wal};
+use reifydb_wal::{error::Result as WalResult, floor::Floor, wal::Wal};
 
-use crate::error::TransactionError;
+use crate::{
+	error::TransactionError,
+	multi::{
+		oracle::CommitShared,
+		transaction::version::{StandardVersionProvider, VersionProvider},
+	},
+};
 
 pub type CommitWal = Wal<CommitRecord, Log<Fs, Clock>>;
 
@@ -48,4 +57,79 @@ pub(crate) fn check_record_size(encoded: &[u8]) -> Result<()> {
 		.into());
 	}
 	Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CheckpointedStore {
+	Multi,
+}
+
+impl CheckpointedStore {
+	pub(crate) fn floor_name(self) -> &'static str {
+		match self {
+			Self::Multi => "multi",
+		}
+	}
+}
+
+pub(crate) struct StoreCheckpoint {
+	shared: Weak<CommitShared<StandardVersionProvider>>,
+	floor: Floor<CommitRecord, Log<Fs, Clock>>,
+}
+
+impl StoreCheckpoint {
+	pub(crate) fn new(
+		shared: Weak<CommitShared<StandardVersionProvider>>,
+		floor: Floor<CommitRecord, Log<Fs, Clock>>,
+	) -> Self {
+		Self {
+			shared,
+			floor,
+		}
+	}
+
+	fn shared(&self) -> Arc<CommitShared<StandardVersionProvider>> {
+		self.shared.upgrade().unwrap_or_else(|| {
+			panic!("commit log checkpoint for {} outlived its transaction manager", self.floor.name())
+		})
+	}
+}
+
+impl WalCheckpoint for StoreCheckpoint {
+	fn make_durable(&self) -> Result<CommitVersion> {
+		let shared = self.shared();
+		let version = shared.versions.current()?;
+		shared.wal.sync().unwrap_or_else(|err| {
+			panic!(
+				"commit log failed to flush for the {} checkpoint at version {}: {err}",
+				self.floor.name(),
+				version.0
+			)
+		});
+		Ok(version)
+	}
+
+	fn saved_through(&self, version: CommitVersion) -> Result<()> {
+		let shared = self.shared();
+		let Some(lsn) = shared.inner.write().lsn_through(version) else {
+			return Ok(());
+		};
+		self.floor.advance(lsn).unwrap_or_else(|err| {
+			panic!(
+				"commit log floor {} failed to advance to lsn {} for version {}: {err}",
+				self.floor.name(),
+				lsn.as_u64(),
+				version.0
+			)
+		});
+		shared.wal.gc().unwrap_or_else(|err| {
+			panic!(
+				"commit log gc failed after floor {} reached lsn {} for version {}: {err}",
+				self.floor.name(),
+				lsn.as_u64(),
+				version.0
+			)
+		});
+		Ok(())
+	}
 }

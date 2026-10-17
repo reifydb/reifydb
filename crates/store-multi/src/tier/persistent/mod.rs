@@ -247,9 +247,19 @@ impl MultiPersistentTier {
 		}
 	}
 
-	pub fn persist_sweep(&self, batches: Vec<(CommitVersion, TierBatch)>) -> Result<Vec<EncodedKey>> {
+	pub fn persist_sweep(
+		&self,
+		batches: Vec<(CommitVersion, TierBatch)>,
+		saved_through: Option<CommitVersion>,
+	) -> Result<Vec<EncodedKey>> {
 		match self {
-			Self::Sqlite(s) => s.persist_sweep(batches),
+			Self::Sqlite(s) => s.persist_sweep(batches, saved_through),
+		}
+	}
+
+	pub fn saved_through(&self) -> Result<CommitVersion> {
+		match self {
+			Self::Sqlite(s) => s.saved_through(),
 		}
 	}
 
@@ -297,8 +307,16 @@ impl MultiPersistentTier {
 		match *self {}
 	}
 
-	pub fn persist_sweep(&self, _batches: Vec<(CommitVersion, TierBatch)>) -> Result<Vec<EncodedKey>> {
+	pub fn persist_sweep(
+		&self,
+		_batches: Vec<(CommitVersion, TierBatch)>,
+		_saved_through: Option<CommitVersion>,
+	) -> Result<Vec<EncodedKey>> {
 		match *self {}
+	}
+
+	pub fn saved_through(&self) -> Result<CommitVersion> {
+		Ok(CommitVersion(0))
 	}
 
 	pub fn is_shut_down(&self) -> bool {

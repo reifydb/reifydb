@@ -36,7 +36,7 @@ use crate::{
 	plane::{RetentionPlane, horizon::max_retention_horizon, measured::Measured},
 	queue::{reap::QueueLeaseReapTask, retention::QueueRetentionTask},
 	retention::evictor::RetentionEvictTask,
-	store::flush::PersistentFlushTask,
+	store::{checkpoint::CommitLogCheckpointTask, flush::PersistentFlushTask},
 	subsystem::LifecycleSubsystem,
 };
 
@@ -122,6 +122,16 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			)));
 		} else {
 			coverage.absent(RetentionClass::PersistentFlush, NO_FLUSH_ENGINE);
+			let checkpoint = store
+				.wal_checkpoint()
+				.expect("a store without a flush engine still needs its commit log checkpoint");
+			registry.register(Box::new(Measured::new(
+				CommitLogCheckpointTask::new(
+					checkpoint,
+					catalog.get_config_duration(ConfigKey::SyncInterval),
+				),
+				plane.clone(),
+			)));
 		}
 
 		registry.register(Box::new(Measured::new(

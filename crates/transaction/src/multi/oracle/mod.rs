@@ -4,7 +4,7 @@
 #[cfg(not(reifydb_single_threaded))]
 use std::thread::JoinHandle;
 use std::{
-	collections::{BTreeMap, HashMap, HashSet},
+	collections::{BTreeMap, HashMap, HashSet, VecDeque},
 	ops::Deref,
 	sync::Arc,
 };
@@ -82,6 +82,8 @@ impl SpanTiming {
 pub(crate) type OracleLock = RwLock<OracleState>;
 
 const WINDOW_KEY_CAPACITY: usize = 500;
+
+const LSN_STEP: u64 = 4096;
 
 pub(crate) struct ModifiedKeyIndex {
 	hashes: HashSet<u64>,
@@ -166,6 +168,8 @@ pub(crate) struct OracleState {
 	frozen: bool,
 
 	pub last_unchecked: CommitVersion,
+
+	pub lsns: VecDeque<(CommitVersion, Lsn)>,
 }
 
 pub(crate) struct Prepared {
@@ -255,6 +259,7 @@ where
 				evicted_up_through: CommitVersion(0),
 				frozen: false,
 				last_unchecked: CommitVersion(0),
+				lsns: VecDeque::new(),
 			}),
 			query: WaterMark::with_advancer("txn-mark-query".into(), &spawner),
 			command: WaterMark::with_advancer("txn-mark-cmd".into(), &spawner),
@@ -279,6 +284,10 @@ where
 
 	pub fn config(&self) -> Arc<dyn GetConfig> {
 		self.config.clone()
+	}
+
+	pub(crate) fn shared(&self) -> &Arc<CommitShared<L>> {
+		&self.shared
 	}
 
 	pub fn spawner(&self) -> ActorSpawner {
@@ -401,6 +410,7 @@ where
 			rebase(&mut deltas, self.versions.current()?)?;
 		}
 		let (version, lsn) = self.allocate_commit_version(&inner, SpanTiming::current(), &mut deltas, None, false)?;
+		inner.note_lsn(version, lsn);
 		inner.last_unchecked = version;
 		drop(inner);
 
@@ -443,6 +453,7 @@ where
 
 		let fresh = state.last_unchecked <= version;
 		let (commit_version, lsn) = self.allocate_commit_version(state, timing, deltas, prepared, fresh)?;
+		state.note_lsn(commit_version, lsn);
 
 		let add_start = timing.mark(&self.clock);
 		state.add_committed_transaction(commit_version, conflicts, window_size);
@@ -663,6 +674,21 @@ where
 }
 
 impl OracleState {
+	fn note_lsn(&mut self, version: CommitVersion, lsn: Lsn) {
+		if self.lsns.back().is_none_or(|(last, _)| last.0 / LSN_STEP < version.0 / LSN_STEP) {
+			self.lsns.push_back((version, lsn));
+		}
+	}
+
+	pub(crate) fn lsn_through(&mut self, version: CommitVersion) -> Option<Lsn> {
+		let found = self.lsns.partition_point(|(noted, _)| *noted <= version);
+		if found == 0 {
+			return None;
+		}
+		self.lsns.drain(..found - 1);
+		self.lsns.front().map(|(_, lsn)| *lsn)
+	}
+
 	fn add_committed_transaction(&mut self, version: CommitVersion, conflicts: ConflictManager, window_size: u64) {
 		let window_start = CommitVersion((version.0 / window_size) * window_size);
 
@@ -1335,5 +1361,35 @@ mod tests {
 			 write at v={}",
 			v1.0
 		);
+	}
+
+	#[test]
+	fn lsn_through_errs_low_keeps_its_answer_and_drops_only_older_entries() {
+		// A floor picked above the saved version lets gc drop records a crash still needs.
+		let mut state = OracleState {
+			time_windows: BTreeMap::new(),
+			evicted_up_through: CommitVersion(0),
+			frozen: false,
+			last_unchecked: CommitVersion(0),
+			lsns: VecDeque::new(),
+		};
+		for (version, lsn) in [(5u64, 1u64), (4096, 7), (4100, 8), (8192, 12)] {
+			state.note_lsn(CommitVersion(version), Lsn::new(lsn));
+		}
+		assert_eq!(
+			state.lsns.iter().map(|(v, _)| v.0).collect::<Vec<_>>(),
+			vec![5, 4096, 8192],
+			"exactly one entry per 4096 step, the first commit of each"
+		);
+		assert_eq!(state.lsn_through(CommitVersion(4)), None, "nothing is saved below the first entry");
+		assert_eq!(
+			state.lsn_through(CommitVersion(8191)),
+			Some(Lsn::new(7)),
+			"the last entry at or below wins"
+		);
+		assert_eq!(state.lsns.front().map(|(v, _)| v.0), Some(4096), "the answer stays for the next lookup");
+		assert_eq!(state.lsn_through(CommitVersion(8191)), Some(Lsn::new(7)), "a repeat lookup is stable");
+		assert_eq!(state.lsn_through(CommitVersion(u64::MAX)), Some(Lsn::new(12)));
+		assert_eq!(state.lsns.len(), 1, "every entry before the answer is pruned");
 	}
 }

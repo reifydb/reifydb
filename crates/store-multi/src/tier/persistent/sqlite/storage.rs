@@ -51,7 +51,10 @@ use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
-use rusqlite::{Connection, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior, params_from_iter};
+use rusqlite::{
+	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
+	params_from_iter,
+};
 use tracing::{instrument, warn};
 
 use super::schema::row_from_sql;
@@ -245,6 +248,26 @@ impl SqlitePersistentStorage {
 			}
 		};
 		Ok(CommitVersion(opened.max(self.inner.written_high_water.load(Ordering::SeqCst))))
+	}
+
+	pub fn saved_through(&self) -> Result<CommitVersion> {
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Err(error!(internal(
+				"Persistent storage is shut down; refusing to report a saved-through version it cannot read"
+					.to_string()
+			)));
+		};
+		match conn.query_row(r#"SELECT value FROM "multi_meta" WHERE key = 'saved_through'"#, [], |row| {
+			row.get::<_, i64>(0)
+		}) {
+			Ok(value) => Ok(CommitVersion(
+				u64::try_from(value).expect("a saved-through version is never negative"),
+			)),
+			Err(QueryReturnedNoRows) => Ok(CommitVersion(0)),
+			Err(e) if e.to_string().contains("no such table") => Ok(CommitVersion(0)),
+			Err(e) => Err(error!(internal(format!("Failed to read saved_through: {}", e)))),
+		}
 	}
 
 	fn probe_high_water(&self) -> Result<u64> {
@@ -723,9 +746,13 @@ impl SqlitePersistentStorage {
 	}
 
 	#[instrument(name = "store::multi::persistent::sqlite::persist_sweep", level = "debug", skip(self, batches), fields(batch_count = batches.len()))]
-	pub fn persist_sweep(&self, batches: Vec<(CommitVersion, TierBatch)>) -> Result<Vec<EncodedKey>> {
+	pub fn persist_sweep(
+		&self,
+		batches: Vec<(CommitVersion, TierBatch)>,
+		saved_through: Option<CommitVersion>,
+	) -> Result<Vec<EncodedKey>> {
 		let mut accepted = Vec::new();
-		if batches.iter().all(|(_, batch)| batch.is_empty()) {
+		if saved_through.is_none() && batches.iter().all(|(_, batch)| batch.is_empty()) {
 			return Ok(accepted);
 		}
 
@@ -759,6 +786,9 @@ impl SqlitePersistentStorage {
 					&mut accepted,
 				)?;
 			}
+		}
+		if let Some(version) = saved_through {
+			write_saved_through(&tx, version)?;
 		}
 
 		tx.commit().map_err(|e| error!(internal(format!("Failed to commit persistent transaction: {}", e))))?;
@@ -1655,6 +1685,20 @@ impl SqlitePersistentStorage {
 			has_more,
 		})
 	}
+}
+
+fn write_saved_through(tx: &Transaction<'_>, version: CommitVersion) -> Result<()> {
+	tx.execute_batch(r#"CREATE TABLE IF NOT EXISTS "multi_meta" (key TEXT PRIMARY KEY, value INTEGER NOT NULL)"#)
+		.map_err(|e| error!(internal(format!("Failed to ensure multi_meta: {}", e))))?;
+	let value = i64::try_from(version.0).expect("a saved-through version fits a sqlite integer");
+	tx.prepare_cached(
+		r#"INSERT INTO "multi_meta" (key, value) VALUES ('saved_through', ?1)
+		   ON CONFLICT(key) DO UPDATE SET value = excluded.value WHERE excluded.value > value"#,
+	)
+	.map_err(|e| error!(internal(format!("Failed to prepare saved_through: {}", e))))?
+	.execute([value])
+	.map_err(|e| error!(internal(format!("Failed to write saved_through: {}", e))))?;
+	Ok(())
 }
 
 fn any_current_row(conn: &Connection) -> bool {
@@ -2612,7 +2656,7 @@ mod tests {
 		let batches = vec![(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"v")))])]))];
 
 		assert!(
-			s.persist_sweep(batches).is_err(),
+			s.persist_sweep(batches, None).is_err(),
 			"a shut-down persistent tier must refuse the sweep loudly so the buffer is not dropped"
 		);
 	}

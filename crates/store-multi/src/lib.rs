@@ -30,7 +30,7 @@ use reifydb_core::{
 		catalog::storage::StorageId,
 		store::{
 			MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious, MultiVersionRow,
-			MultiVersionStore,
+			MultiVersionStore, WalCheckpoint,
 		},
 	},
 	key::{
@@ -125,6 +125,18 @@ impl MultiStore {
 	pub fn is_persistent(&self, key: &TaggedKey) -> bool {
 		match self {
 			MultiStore::Standard(store) => store.is_persistent(key),
+		}
+	}
+
+	pub fn set_wal_checkpoint(&self, checkpoint: Arc<dyn WalCheckpoint>) {
+		match self {
+			MultiStore::Standard(store) => store.set_wal_checkpoint(checkpoint),
+		}
+	}
+
+	pub fn wal_checkpoint(&self) -> Option<Arc<dyn WalCheckpoint>> {
+		match self {
+			MultiStore::Standard(store) => store.wal_checkpoint(),
 		}
 	}
 

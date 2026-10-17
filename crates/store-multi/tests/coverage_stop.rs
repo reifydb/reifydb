@@ -29,6 +29,8 @@ use reifydb_store_multi::{
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
+use crate::common::without_wal;
+
 /// The store's own persistent chunk size. Every boundary here is stated against it, so a chunk that comes
 /// back exactly this full is the one case a short-page test must not confuse with a scan that ran out.
 const CHUNK: u64 = 32;
@@ -44,7 +46,8 @@ impl EvictionWatermark for StaticWatermark {
 }
 
 fn store() -> (StandardMultiStore, impl Drop) {
-	StandardMultiStore::testing_memory_with_persistent_sqlite()
+	let (store, guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	(without_wal(store), guard)
 }
 
 fn commit_set(store: &StandardMultiStore, row: u64, version: u64) {

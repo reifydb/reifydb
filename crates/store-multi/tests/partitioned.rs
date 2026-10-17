@@ -37,6 +37,8 @@ use reifydb_value::{
 	value::{Value, partition::Partition, row_number::RowNumber},
 };
 
+use crate::common::without_wal;
+
 fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
 	EncodedBytes(CowVec::new(bytes.to_vec()))
 }
@@ -73,6 +75,7 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		clock: Clock::Real,
 	})
 	.unwrap();
+	let store = without_wal(store);
 
 	let storage = StorageId::Table(TableId(1));
 	let us = Partition::of(&[Value::Utf8("us".to_string())]);

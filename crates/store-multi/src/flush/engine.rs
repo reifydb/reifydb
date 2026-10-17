@@ -17,7 +17,7 @@ use reifydb_core::{
 	default,
 	interface::store::{EntryKind, storage_key},
 };
-use reifydb_core::{event::EventBus, lifecycle::watermark::EvictionWatermark};
+use reifydb_core::{event::EventBus, interface::store::WalCheckpoint, lifecycle::watermark::EvictionWatermark};
 use reifydb_runtime::{
 	context::clock::Clock,
 	sync::{mutex::Mutex, rwlock::RwLock},
@@ -54,6 +54,12 @@ pub struct FlushEngineState {
 	resume_from: Option<EntryKind>,
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	resume_keys: HashMap<EntryKind, EncodedKey>,
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	synced_through: Option<CommitVersion>,
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pass_cutoff: Option<CommitVersion>,
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	saved: Option<CommitVersion>,
 }
 
 #[allow(dead_code)]
@@ -61,6 +67,7 @@ pub struct FlushEngine {
 	commit: CommitStore,
 	persistent: MultiPersistentTier,
 	persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
+	checkpoint: Arc<OnceLock<Arc<dyn WalCheckpoint>>>,
 	eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 	point: Option<MultiPointTier>,
 	range: Option<MultiRangeTier>,
@@ -90,6 +97,7 @@ impl FlushEngine {
 		commit: CommitStore,
 		persistent: MultiPersistentTier,
 		persistence: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
+		checkpoint: Arc<OnceLock<Arc<dyn WalCheckpoint>>>,
 		eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 		clock: Clock,
 		event_bus: EventBus,
@@ -98,6 +106,7 @@ impl FlushEngine {
 			commit,
 			persistent,
 			persistence,
+			checkpoint,
 			eviction_watermark,
 			point: None,
 			range: None,
@@ -171,6 +180,12 @@ impl FlushEngine {
 		Some(cutoff)
 	}
 
+	fn checkpoint(&self) -> &Arc<dyn WalCheckpoint> {
+		self.checkpoint
+			.get()
+			.expect("flush ran before the commit log checkpoint was attached to the multi store")
+	}
+
 	fn is_persistent_object(&self, kind: EntryKind) -> bool {
 		match kind {
 			EntryKind::Source(storage, _) | EntryKind::PartitionedSource(storage, _) => {
@@ -199,6 +214,19 @@ impl FlushEngine {
 		cutoff: CommitVersion,
 		budget: ByteSize,
 	) -> Result<(Progress, u64)> {
+		let synced = match state.synced_through {
+			Some(synced) if synced >= cutoff => synced,
+			_ => {
+				let durable = self.checkpoint().make_durable()?;
+				state.synced_through = Some(durable);
+				durable
+			}
+		};
+		let cutoff = cutoff.min(synced);
+		if state.resume_keys.is_empty() {
+			state.pass_cutoff = Some(cutoff);
+		}
+
 		let mut entry_kinds = self.list_evictable_kinds();
 		if let Some(resume) = state.resume_from
 			&& let Some(position) = entry_kinds.iter().position(|kind| *kind == resume)
@@ -237,12 +265,29 @@ impl FlushEngine {
 			}
 			plan.push((kind, persistent_object, (to_persist, to_drop), next));
 		}
+		let marker = match state.pass_cutoff {
+			Some(pass) if !more && state.saved.is_none_or(|saved| pass > saved) => Some(pass),
+			_ => None,
+		};
+		if !more {
+			state.pass_cutoff = None;
+		}
 		if plan.is_empty() {
+			if let Some(marker) = marker {
+				match self.persistent.persist_sweep(Vec::new(), Some(marker)) {
+					Ok(_) => {
+						self.checkpoint().saved_through(marker)?;
+						state.saved = Some(marker);
+					}
+					Err(_) if self.persistent.is_shut_down() => {}
+					Err(e) => return Err(e),
+				}
+			}
 			return Ok((Progress::Exhausted, 0));
 		}
 
-		let accepted = if batches.values().any(|batch| !batch.is_empty()) {
-			match self.persistent.persist_sweep(batches.into_iter().collect()) {
+		let accepted = if marker.is_some() || batches.values().any(|batch| !batch.is_empty()) {
+			match self.persistent.persist_sweep(batches.into_iter().collect(), marker) {
 				Ok(accepted) => accepted,
 				Err(_) if self.persistent.is_shut_down() => return Ok((Progress::Exhausted, 0)),
 				Err(e) => return Err(e),
@@ -250,6 +295,10 @@ impl FlushEngine {
 		} else {
 			Vec::new()
 		};
+		if let Some(marker) = marker {
+			self.checkpoint().saved_through(marker)?;
+			state.saved = Some(marker);
+		}
 		let persisted = accepted.len();
 
 		let accepted_keys: HashSet<&[u8]> = accepted.iter().map(|k| k.as_slice()).collect();
@@ -484,6 +533,7 @@ mod tests {
 				buffer,
 				persistent,
 				persistence_lock,
+				no_wal_checkpoint(),
 				watermark_lock,
 				Clock::Real,
 				testing_event_bus(),
@@ -500,7 +550,34 @@ mod tests {
 		if let Some(w) = watermark {
 			*watermark_lock.write() = Some(Arc::new(StaticWatermark(w)));
 		}
-		FlushEngine::new(buffer, persistent, persistence_lock, watermark_lock, Clock::Real, testing_event_bus())
+		FlushEngine::new(
+			buffer,
+			persistent,
+			persistence_lock,
+			no_wal_checkpoint(),
+			watermark_lock,
+			Clock::Real,
+			testing_event_bus(),
+		)
+	}
+
+	struct NoWalCheckpoint;
+
+	impl WalCheckpoint for NoWalCheckpoint {
+		fn make_durable(&self) -> Result<CommitVersion> {
+			// Must never cap a real cutoff and must fit sqlite INTEGER, otherwise flush_all panics.
+			Ok(CommitVersion(i64::MAX as u64))
+		}
+
+		fn saved_through(&self, _version: CommitVersion) -> Result<()> {
+			Ok(())
+		}
+	}
+
+	fn no_wal_checkpoint() -> Arc<OnceLock<Arc<dyn WalCheckpoint>>> {
+		let lock: Arc<OnceLock<Arc<dyn WalCheckpoint>>> = Arc::new(OnceLock::new());
+		let _ = lock.set(Arc::new(NoWalCheckpoint));
+		lock
 	}
 
 	fn testing_event_bus() -> EventBus {
@@ -534,7 +611,15 @@ mod tests {
 		event_bus.register::<MultiSweptEvent, _>(collector.clone());
 
 		(
-			FlushEngine::new(buffer, persistent, persistence_lock, watermark_lock, Clock::Real, event_bus),
+			FlushEngine::new(
+				buffer,
+				persistent,
+				persistence_lock,
+				no_wal_checkpoint(),
+				watermark_lock,
+				Clock::Real,
+				event_bus,
+			),
 			guard,
 			collector,
 		)
@@ -610,6 +695,7 @@ mod tests {
 				buffer,
 				persistent,
 				persistence_lock,
+				no_wal_checkpoint(),
 				watermark_lock,
 				Clock::Real,
 				testing_event_bus(),
@@ -1100,7 +1186,7 @@ mod tests {
 		let kind = EntryKind::Source(StorageId::Table(TableId(32)), EntryLayout::Row);
 		let batches = vec![(CommitVersion(1), HashMap::from([(kind, vec![(ek("k"), Some(val("v")))])]))];
 		assert!(
-			persistent.persist_sweep(batches).is_err(),
+			persistent.persist_sweep(batches, None).is_err(),
 			"a shut-down persistent tier must refuse the sweep loudly so the buffer is not dropped"
 		);
 	}

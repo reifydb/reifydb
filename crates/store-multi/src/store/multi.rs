@@ -1236,6 +1236,7 @@ mod cache_tests {
 		ops::{Bound, RangeInclusive},
 		rc::Rc,
 		slice::from_ref,
+		sync::Arc,
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
@@ -1245,7 +1246,8 @@ mod cache_tests {
 		interface::{
 			catalog::{flow::OperatorId, id::TableId, storage::StorageId},
 			store::{
-				EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet, classify_key, storage_key,
+				EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet, WalCheckpoint,
+				classify_key, storage_key,
 			},
 		},
 		key::{
@@ -1257,11 +1259,26 @@ mod cache_tests {
 	use reifydb_store_commit::{
 		MultiVersionScope, RangeCursor, RangeStop, RawEntry, TierBatch, VersionedGetResult,
 	};
-	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
+	use reifydb_value::{
+		Result as ValueResult, byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber,
+	};
 
 	use super::{
 		MultiVersionRangeCursor, RowRangeCursor, TIER_SCAN_CHUNK_SIZE, arm_pass_interlock, arm_read_interlock,
 	};
+
+	struct NoWalCheckpoint;
+
+	impl WalCheckpoint for NoWalCheckpoint {
+		fn make_durable(&self) -> ValueResult<CommitVersion> {
+			// Must never cap a real cutoff and must fit sqlite INTEGER, otherwise flush_all panics.
+			Ok(CommitVersion(i64::MAX as u64))
+		}
+
+		fn saved_through(&self, _version: CommitVersion) -> ValueResult<()> {
+			Ok(())
+		}
+	}
 	use crate::{
 		store::StandardMultiStore,
 		tier::{
@@ -1972,6 +1989,7 @@ mod cache_tests {
 		const FLUSHED: u64 = 21;
 		const RESUMED: u64 = 30;
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 		for n in (1..=40).filter(|n| *n != FLUSHED) {
 			commit_row(&store, n, 1);
 		}
@@ -2051,6 +2069,7 @@ mod cache_tests {
 				..MultiRangeConfig::testing()
 			},
 		);
+		store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 		let budget = |store: &StandardMultiStore| {
 			let shards = store.range_shard_metrics();
 			assert_eq!(shards.len(), 1, "the fill and the claim must charge the same budget");
@@ -2146,6 +2165,7 @@ mod cache_tests {
 				..MultiRangeConfig::testing()
 			},
 		);
+		store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 		let shard = |store: &StandardMultiStore| {
 			let shards = store.range_shard_metrics();
 			assert_eq!(shards.len(), 1, "the fillers and the targets must charge the same budget");
@@ -2236,7 +2256,7 @@ mod probe_tests {
 		}
 		store.persistent()
 			.expect("persistent tier configured")
-			.persist_sweep(vec![(CommitVersion(1), batch)])
+			.persist_sweep(vec![(CommitVersion(1), batch)], None)
 			.unwrap();
 	}
 

@@ -15,7 +15,7 @@ use reifydb_core::metrics::sample::MetricsSample;
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
-	interface::store::{EntryKind, storage_key, storage_key_of},
+	interface::store::{EntryKind, WalCheckpoint, storage_key, storage_key_of},
 	key::any::TaggedKey,
 	lifecycle::watermark::EvictionWatermark,
 	metrics::collect::MetricsCollector,
@@ -99,6 +99,7 @@ pub struct StandardMultiStoreInner {
 	pub(crate) flush_engine: Option<Arc<FlushEngine>>,
 	#[allow(dead_code)]
 	pub(crate) row_settings_provider: Arc<OnceLock<Arc<dyn ObjectPersistence>>>,
+	pub(crate) wal_checkpoint: Arc<OnceLock<Arc<dyn WalCheckpoint>>>,
 	#[allow(dead_code)]
 	pub(crate) eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>>,
 
@@ -118,6 +119,8 @@ impl StandardMultiStore {
 		let commit = config.commit.storage;
 
 		let row_settings_provider: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
+
+		let wal_checkpoint: Arc<OnceLock<Arc<dyn WalCheckpoint>>> = Arc::new(OnceLock::new());
 
 		let eviction_watermark: Arc<RwLock<Option<Arc<dyn EvictionWatermark>>>> = Arc::new(RwLock::new(None));
 
@@ -146,6 +149,7 @@ impl StandardMultiStore {
 						commit.clone(),
 						persistent_storage.clone(),
 						row_settings_provider.clone(),
+						wal_checkpoint.clone(),
 						eviction_watermark.clone(),
 						config.clock.clone(),
 						config.event_bus.clone(),
@@ -175,6 +179,7 @@ impl StandardMultiStore {
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			flush_engine,
 			row_settings_provider,
+			wal_checkpoint,
 			eviction_watermark,
 			event_bus: config.event_bus,
 			persistent_probes: AtomicU64::new(0),
@@ -224,6 +229,18 @@ impl StandardMultiStore {
 
 	pub fn set_row_settings_provider(&self, provider: Arc<dyn ObjectPersistence>) {
 		let _ = self.row_settings_provider.set(provider);
+	}
+
+	pub fn set_wal_checkpoint(&self, checkpoint: Arc<dyn WalCheckpoint>) {
+		if self.wal_checkpoint.set(checkpoint).is_err() {
+			panic!(
+				"the commit log checkpoint was attached twice; a second floor holder would fight the first"
+			);
+		}
+	}
+
+	pub fn wal_checkpoint(&self) -> Option<Arc<dyn WalCheckpoint>> {
+		self.wal_checkpoint.get().cloned()
 	}
 
 	pub fn is_persistent(&self, key: &TaggedKey) -> bool {

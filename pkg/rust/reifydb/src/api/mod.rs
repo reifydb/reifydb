@@ -10,7 +10,7 @@ use reifydb_runtime::{
 	io::fs::{Fs, host::HostFs},
 	version_epoch::VersionEpoch,
 };
-use reifydb_sqlite::{DbPath, JournalMode, SqliteConfig};
+use reifydb_sqlite::{DbPath, JournalMode, SqliteConfig, SynchronousMode};
 use reifydb_store_cdc::{
 	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
 	store::CdcStore,
@@ -43,7 +43,7 @@ use reifydb_store_single::{
 use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{CommitWal, memory_wal, open_wal},
+	wal::{CheckpointedStore, CommitWal, memory_wal, open_wal},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -130,6 +130,7 @@ pub(crate) fn multi_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
 	};
 	SqliteConfig {
 		path,
+		synchronous_mode: Some(SynchronousMode::Full),
 		wal_autocheckpoint: None,
 		..config.clone()
 	}
@@ -354,5 +355,7 @@ pub(crate) fn transaction(
 		wal,
 	)
 	.unwrap();
+	let checkpoint = multi.store_checkpoint(CheckpointedStore::Multi).unwrap();
+	multi.store().set_wal_checkpoint(checkpoint);
 	(multi, input.2, input.3)
 }

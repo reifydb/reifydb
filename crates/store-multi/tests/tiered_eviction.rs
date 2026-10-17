@@ -33,10 +33,13 @@ use reifydb_store_multi::{
 };
 use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::duration::Duration};
 
+use crate::common::without_wal;
+
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
 fn store_with_persistent() -> (StandardMultiStore, impl Drop) {
-	StandardMultiStore::testing_memory_with_persistent_sqlite()
+	let (store, guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	(without_wal(store), guard)
 }
 
 fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
@@ -62,7 +65,7 @@ fn store_with_fast_flush() -> (StandardMultiStore, impl Drop) {
 		clock,
 	})
 	.unwrap();
-	(store, guard)
+	(without_wal(store), guard)
 }
 
 fn row_key(row: u64) -> TaggedKey {

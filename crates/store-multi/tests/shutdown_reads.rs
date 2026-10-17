@@ -30,6 +30,8 @@ use reifydb_store_multi::{
 };
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 
+use crate::common::without_wal;
+
 /// The store's own persistent chunk size, so a row count stated as a multiple of it lands a known number
 /// of chunks either side of the shutdown.
 const CHUNK: u64 = 32;
@@ -47,7 +49,8 @@ impl EvictionWatermark for StaticWatermark {
 }
 
 fn store() -> (StandardMultiStore, impl Drop) {
-	StandardMultiStore::testing_memory_with_persistent_sqlite()
+	let (store, guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	(without_wal(store), guard)
 }
 
 fn commit_set(store: &StandardMultiStore, row: u64, version: u64) {
