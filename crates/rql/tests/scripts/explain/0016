@@ -1,0 +1,23 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A rownum filter after a map must reach the row lookup, otherwise the map hides the fast path.
+
+admin 'create table test::t16 { id: int4, a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t16   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t16 map {id, a} filter {rownum == 1}")'
+---
+> +-------+---------+----------+------------------+--------------------+
+> |  idx  |  depth  |  parent  |       kind       |       detail       |
+> +-------+---------+----------+------------------+--------------------+
+> |   0   |    0    |   none   |       Map        |       id, a        |
+> |   1   |    1    |    0     |  RowPointLookup  |  source=t16 row=1  |
+> +-------+---------+----------+------------------+--------------------+
+>

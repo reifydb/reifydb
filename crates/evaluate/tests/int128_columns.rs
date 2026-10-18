@@ -3,9 +3,11 @@
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
-use reifydb_core::{expression::PrefixOperator, value::column::factory};
+use reifydb_core::{
+	expression::PrefixOperator,
+	value::column::{arith::add::add_columns, factory},
+};
 use reifydb_evaluate::expression::{
-	arith::add::add_columns,
 	compare::{CompareOp, Equal, GreaterThan, LessThan, NotEqual, compare_columns},
 	context::EvalContext,
 	prefix::prefix_apply,

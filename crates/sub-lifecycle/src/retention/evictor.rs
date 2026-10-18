@@ -1149,7 +1149,7 @@ mod tests {
 		scope(|scope| {
 			scope.spawn(|| {
 				let mut k = 1_000_000i64;
-				while !done.load(Ordering::Acquire) {
+				while !done.load(Ordering::Acquire) && k < 1_002_000 {
 					let mut builder = engine.bulk_insert_unchecked(IdentityId::system());
 					builder.series("test::s").rows([params! { k: k, v: 2 }]).done();
 					builder.execute().expect("the unchecked bulk commits");

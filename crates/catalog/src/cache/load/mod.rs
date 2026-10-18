@@ -77,6 +77,7 @@ impl CatalogCacheLoader {
 		load_relationships(rx, catalog)?;
 		load_views(rx, catalog)?;
 		load_flows(rx, catalog)?;
+		catalog.refresh_transactional_flows(rx.version());
 		load_ringbuffers(rx, catalog)?;
 		load_queues(rx, catalog)?;
 		load_series(rx, catalog)?;

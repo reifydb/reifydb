@@ -132,6 +132,8 @@ mod join_using_unknown_key_column;
 mod list_param_insert;
 #[path = "lookup_ddl.rs"]
 mod lookup_ddl;
+#[path = "lower_aggregate.rs"]
+mod lower_aggregate;
 #[path = "lower_extend.rs"]
 mod lower_extend;
 #[path = "lower_filter.rs"]
@@ -142,6 +144,8 @@ mod lower_join;
 mod lower_map;
 #[path = "lower_patch.rs"]
 mod lower_patch;
+#[path = "lower_small_kinds.rs"]
+mod lower_small_kinds;
 #[path = "map_ends_in_a_comment.rs"]
 mod map_ends_in_a_comment;
 #[path = "memory_limit.rs"]
@@ -260,6 +264,8 @@ mod udf_parameter_type;
 mod udf_parameter_type_paths;
 #[path = "virtual_table_diagnostics.rs"]
 mod virtual_table_diagnostics;
+#[path = "vm_compare_answers_as_query.rs"]
+mod vm_compare_answers_as_query;
 #[path = "window_batch_query.rs"]
 mod window_batch_query;
 #[path = "window_batch_query_fragment.rs"]

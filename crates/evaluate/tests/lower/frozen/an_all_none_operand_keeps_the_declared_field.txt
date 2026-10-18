@@ -1,0 +1,5 @@
+Field { name: "l + r", data_type: Int64, nullable: true } ["none", "none"]
+Field { name: "l - r", data_type: Int64, nullable: true } ["none", "none"]
+Field { name: "l * r", data_type: Int64, nullable: true } ["none", "none"]
+Field { name: "l / r", data_type: Int64, nullable: true } ["none", "none"]
+Field { name: "l % r", data_type: Int64, nullable: true } ["none", "none"]

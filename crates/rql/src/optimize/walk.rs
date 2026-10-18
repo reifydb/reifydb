@@ -67,7 +67,6 @@ pub fn walk_expressions_mut(
 		PhysicalPlan::Take(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::Sort(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::Distinct(n) => walk_expressions_mut(&mut n.input, internal, projection),
-		PhysicalPlan::Scalarize(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::Map(n) => {
 			for e in &mut n.map {
 				projection(e);

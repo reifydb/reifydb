@@ -16,13 +16,7 @@ use reifydb_core::{
 		column::factory,
 	},
 };
-use reifydb_evaluate::{
-	expression::{
-		compile::{CompiledExpr, compile_expression},
-		context::{CompileContext, EvalContext},
-	},
-	stack::SymbolTable,
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr, stack::SymbolTable};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	params::Params,
@@ -172,12 +166,8 @@ pub(crate) fn evaluate_returning(
 		return Ok(columns);
 	}
 
-	let compile_ctx = CompileContext {
-		symbols,
-	};
-
-	let compiled: Vec<CompiledExpr> =
-		returning_exprs.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
+	let lowered: Vec<LoweredExpr> =
+		returning_exprs.iter().map(|e| LoweredExpr::new(e.clone(), "returning")).collect();
 
 	let row_count = input.num_rows();
 	let base = EvalContext {
@@ -186,17 +176,16 @@ pub(crate) fn evaluate_returning(
 		routines: &services.routines,
 		runtime_context: &services.runtime_context,
 		identity,
-		is_aggregate_context: false,
 		batch: empty_batch(),
 		row_count: 1,
 		target: None,
 		take: None,
 	};
 
-	let mut new_columns = Vec::with_capacity(compiled.len());
-	for compiled_expr in &compiled {
+	let mut new_columns = Vec::with_capacity(lowered.len());
+	for lowered_expr in &lowered {
 		let exec_ctx = base.with_eval(input.clone(), row_count);
-		let column = compiled_expr.execute(&exec_ctx)?;
+		let column = lowered_expr.evaluate(&exec_ctx)?;
 		new_columns.push(column);
 	}
 

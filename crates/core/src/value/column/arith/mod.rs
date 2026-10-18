@@ -96,21 +96,26 @@ macro_rules! dispatch_arith {
 }
 
 pub mod add;
+pub mod context;
 pub mod div;
 pub mod mul;
+pub mod option;
 pub mod rem;
+pub mod scalar;
 pub mod sub;
 
-use reifydb_value::value::{
-	constraint::{precision::Precision, scale::Scale},
-	decimal::unscaled::MAX_DIGITS,
-	value_type::ValueType,
+use reifydb_value::{
+	error::{Error, RuntimeErrorKind, TypeError},
+	fragment::Fragment,
+	value::{
+		constraint::{precision::Precision, scale::Scale},
+		decimal::unscaled::MAX_DIGITS,
+		value_type::ValueType,
+	},
 };
 
-use crate::expression::compare::{family_digits, is_family};
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum ArithOp {
+pub enum ArithOp {
 	Add,
 	Sub,
 	Mul,
@@ -125,7 +130,7 @@ fn arith_digits(ty: &ValueType) -> Option<(u8, u8)> {
 	family_digits(ty)
 }
 
-pub(crate) fn arith_target(op: ArithOp, left: ValueType, right: ValueType) -> ValueType {
+pub fn arith_target(op: ArithOp, left: ValueType, right: ValueType) -> ValueType {
 	if !(is_family(&left) || is_family(&right)) {
 		return ValueType::promote(left, right);
 	}
@@ -150,4 +155,42 @@ pub(crate) fn arith_target(op: ArithOp, left: ValueType, right: ValueType) -> Va
 	let scale = scale.min(MAX_DIGITS);
 	let precision = Precision::new(digits.saturating_add(scale).clamp(1, MAX_DIGITS));
 	ValueType::decimal(precision, Scale::new(scale))
+}
+
+fn integer_digits(ty: &ValueType) -> Option<u8> {
+	match ty {
+		ValueType::Int1 | ValueType::Uint1 => Some(3),
+		ValueType::Int2 | ValueType::Uint2 => Some(5),
+		ValueType::Int4 | ValueType::Uint4 => Some(10),
+		ValueType::Int8 => Some(19),
+		ValueType::Uint8 => Some(20),
+		ValueType::Int16 | ValueType::Uint16 => Some(39),
+		_ => None,
+	}
+}
+
+pub fn family_digits(ty: &ValueType) -> Option<(u8, u8)> {
+	match ty {
+		ValueType::Decimal {
+			precision,
+			scale,
+		} => Some((precision.value() - scale.value(), scale.value())),
+		_ => integer_digits(ty).map(|digits| (digits, 0)),
+	}
+}
+
+pub fn is_family(ty: &ValueType) -> bool {
+	matches!(ty, ValueType::Decimal { .. })
+}
+
+pub fn length_mismatch(left: usize, right: usize, fragment: &Fragment) -> Error {
+	TypeError::Runtime {
+		kind: RuntimeErrorKind::ColumnLengthMismatch {
+			left,
+			right,
+			fragment: fragment.clone(),
+		},
+		message: format!("cannot combine a column of {left} rows with a column of {right} rows"),
+	}
+	.into()
 }

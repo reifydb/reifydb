@@ -11,6 +11,12 @@ mod cast;
 mod common;
 #[path = "lower/compare.rs"]
 mod compare;
+#[path = "lower/conditional.rs"]
+mod conditional;
+#[path = "lower/construct.rs"]
+mod construct;
+#[path = "lower/in_list.rs"]
+mod in_list;
 #[path = "lower/literal.rs"]
 mod literal;
 #[path = "lower/logic.rs"]
@@ -19,6 +25,8 @@ mod logic;
 mod lowered_expr;
 #[path = "lower/negate.rs"]
 mod negate;
+#[path = "lower/own_udfs.rs"]
+mod own_udfs;
 #[path = "lower/routine.rs"]
 mod routine;
 #[path = "lower/schema.rs"]

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	flow::dag::FlowDag,
 	interface::catalog::{
 		change::CatalogTrackFlowChangeOperations,
 		flow::{Flow, FlowEdgeId, FlowEntry, FlowId, FlowStatus, OperatorId},
 		id::NamespaceId,
+		view::ViewKind,
 	},
 	internal,
 };
@@ -396,6 +399,31 @@ impl Catalog {
 		};
 		entries.sort_by_key(|entry| entry.flow.id);
 		Ok(entries.into_iter().map(|entry| entry.dag).collect())
+	}
+
+	pub fn list_transactional_flow_dags(&self, txn: &mut Transaction<'_>) -> Result<Arc<[FlowDag]>> {
+		match txn.reborrow() {
+			Transaction::Command(cmd) => Ok(self.cache.transactional_flows_at(cmd.version())),
+			Transaction::Query(qry) => Ok(self.cache.transactional_flows_at(qry.version())),
+			Transaction::Admin(_) | Transaction::Test(_) => {
+				let mut flows = Vec::new();
+				for dag in self.list_flow_dags_asc(txn)? {
+					if self.is_transactional(txn, &dag)? {
+						flows.push(dag);
+					}
+				}
+				Ok(Arc::from(flows))
+			}
+		}
+	}
+
+	fn is_transactional(&self, txn: &mut Transaction<'_>, dag: &FlowDag) -> Result<bool> {
+		for view in dag.sink_views() {
+			if self.find_view(txn, view)?.is_some_and(|def| def.kind() == ViewKind::Transactional) {
+				return Ok(true);
+			}
+		}
+		Ok(false)
 	}
 
 	#[instrument(name = "catalog::flow::update_name", level = "debug", skip(self, txn))]

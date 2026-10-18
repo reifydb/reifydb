@@ -85,7 +85,6 @@ pub(crate) fn dispatch(
 		routines: &services.routines,
 		runtime_context: &services.runtime_context,
 		identity: tx.identity(),
-		is_aggregate_context: false,
 		batch: empty_batch(),
 		row_count: 1,
 		target: None,

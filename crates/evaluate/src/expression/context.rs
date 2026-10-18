@@ -5,8 +5,11 @@ use std::sync::LazyLock;
 
 use arrow_array::RecordBatch;
 use reifydb_core::{
-	interface::{catalog::property::ColumnSaturationStrategy, evaluate::TargetColumn},
-	value::{batch::empty_batch, column::cast::convert::TargetConvert},
+	interface::evaluate::TargetColumn,
+	value::{
+		batch::empty_batch,
+		column::arith::context::{ArithContext, Overflow},
+	},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
@@ -21,7 +24,6 @@ pub struct EvalContext<'a> {
 	pub take: Option<usize>,
 	pub params: &'a Params,
 	pub symbols: &'a SymbolTable,
-	pub is_aggregate_context: bool,
 	pub routines: &'a Routines,
 	pub runtime_context: &'a RuntimeContext,
 	pub identity: IdentityId,
@@ -42,7 +44,6 @@ impl<'a> EvalContext<'a> {
 			take: None,
 			params: &EMPTY_PARAMS,
 			symbols: &EMPTY_SYMBOL_TABLE,
-			is_aggregate_context: false,
 			routines: &EMPTY_ROUTINES,
 			runtime_context: &DEFAULT_RUNTIME_CONTEXT,
 			identity: IdentityId::system(),
@@ -57,7 +58,6 @@ impl<'a> EvalContext<'a> {
 			take: None,
 			params: self.params,
 			symbols: self.symbols,
-			is_aggregate_context: self.is_aggregate_context,
 			routines: self.routines,
 			runtime_context: self.runtime_context,
 			identity: self.identity,
@@ -77,24 +77,7 @@ impl<'a> EvalContext<'a> {
 	pub fn arith(&self) -> ArithContext {
 		ArithContext {
 			target: self.target.clone(),
+			overflow: Overflow::Target,
 		}
 	}
-}
-
-#[derive(Debug, Clone)]
-pub struct ArithContext {
-	pub target: Option<TargetColumn>,
-}
-
-impl ArithContext {
-	pub(crate) fn saturation_policy(&self) -> ColumnSaturationStrategy {
-		TargetConvert {
-			target: self.target.as_ref(),
-		}
-		.saturation_policy()
-	}
-}
-
-pub struct CompileContext<'a> {
-	pub symbols: &'a SymbolTable,
 }

@@ -65,7 +65,7 @@ fn inserted(change: &Change, column: &str) -> Vec<String> {
 
 #[test]
 fn the_flow_extend_keeps_the_input_and_answers_between_per_row() {
-	// The input must pass through, and the lowered between must answer per row where the old path errors.
+	// The input must pass through, and between must answer per row over a nullable column.
 	let rows = batch(vec![factory::int4_optional("a", [Some(1), None, Some(5)])]).unwrap();
 
 	let out = extend(&["b: a between 2 and 10"]).unwrap().apply(&mut NoDictionaries, insert(rows)).unwrap();

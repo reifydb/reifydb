@@ -12,6 +12,7 @@ mod tests;
 
 use std::{
 	any::Any,
+	mem::take,
 	path::PathBuf,
 	sync::{
 		Arc,
@@ -81,8 +82,7 @@ const FLOW_FRONTIER_PERSIST_MS: i64 = 5_000;
 pub struct FlowSubsystem {
 	flow_scope: ActorSpawner,
 	loader_handle: Mutex<Option<LoaderHandle>>,
-	committer_handle: Mutex<Option<CommitterHandle>>,
-	terminal_committer_handle: Mutex<Option<CommitterHandle>>,
+	committer_handles: Mutex<Vec<CommitterHandle>>,
 	supervisor_handle: Mutex<Option<FlowSupervisorHandle>>,
 	view_lineage: ViewLineage,
 	health: FlowHealthRegistry,
@@ -120,14 +120,23 @@ impl FlowSubsystem {
 			materialization.clone(),
 			substrate.operators.clone().expect("the flow substrate is built with an operator store"),
 		);
-		let committer_handle = flow_scope
-			.spawn_flow("flow-committer", CommitterActor::new(committer.clone(), commit_handle.clone()));
-		let terminal_committer_handle = flow_scope.spawn_flow(
-			"flow-committer-terminal",
-			CommitterActor::new(committer, commit_handle).named("flow-committer-terminal"),
-		);
-		let committer_ref = committer_handle.actor_ref().clone();
-		let terminal_committer_ref = terminal_committer_handle.actor_ref().clone();
+		let shards = engine.catalog().get_config_uint2(ConfigKey::FlowCommitterShards).max(1) as usize;
+		let mut committer_handles = Vec::with_capacity(shards * 2);
+		let mut committer_refs = Vec::with_capacity(shards);
+		let mut terminal_committer_refs = Vec::with_capacity(shards);
+		for _ in 0..shards {
+			let handle = flow_scope.spawn_flow(
+				"flow-committer",
+				CommitterActor::new(committer.clone(), commit_handle.clone()),
+			);
+			committer_refs.push(handle.actor_ref().clone());
+			committer_handles.push(handle);
+			let terminal = CommitterActor::new(committer.clone(), commit_handle.clone())
+				.named("flow-committer-terminal");
+			let handle = flow_scope.spawn_flow("flow-committer-terminal", terminal);
+			terminal_committer_refs.push(handle.actor_ref().clone());
+			committer_handles.push(handle);
+		}
 
 		let health = FlowHealthRegistry::new();
 		let operator_samples = OperatorSampleRegistry::new();
@@ -154,8 +163,8 @@ impl FlowSubsystem {
 			"flow-supervisor",
 			FlowSupervisor::new(FlowSupervisorParams {
 				engine: engine.clone(),
-				committer: committer_ref,
-				terminal_committer: terminal_committer_ref,
+				committers: committer_refs,
+				terminal_committers: terminal_committer_refs,
 				backlog: backlog.clone(),
 				loader: loader_handle.actor_ref().clone(),
 				control,
@@ -211,8 +220,7 @@ impl FlowSubsystem {
 		Ok(Self {
 			flow_scope,
 			loader_handle: Mutex::new(Some(loader_handle)),
-			committer_handle: Mutex::new(Some(committer_handle)),
-			terminal_committer_handle: Mutex::new(Some(terminal_committer_handle)),
+			committer_handles: Mutex::new(committer_handles),
 			supervisor_handle: Mutex::new(Some(supervisor_handle)),
 			view_lineage,
 			health,
@@ -305,11 +313,7 @@ impl Shutdown for FlowSubsystem {
 			let _ = handle.join();
 		}
 
-		if let Some(handle) = self.committer_handle.lock().take() {
-			let _ = handle.join();
-		}
-
-		if let Some(handle) = self.terminal_committer_handle.lock().take() {
+		for handle in take(&mut *self.committer_handles.lock()) {
 			let _ = handle.join();
 		}
 

@@ -13,10 +13,7 @@ use reifydb_core::{
 	},
 	value::{batch::empty_batch, column::factory::rename},
 };
-use reifydb_evaluate::expression::{
-	compile::compile_expression,
-	context::{CompileContext, EvalContext},
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::compile_check};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -56,11 +53,8 @@ impl MapOperator {
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self> {
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
 		for expression in &expressions {
-			compile_expression(&compile_ctx, expression)?;
+			compile_check(expression)?;
 		}
 		let labels = expressions.iter().map(|expr| display_label(expr).text().to_string()).collect();
 
@@ -103,7 +97,6 @@ impl MapOperator {
 			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			identity: self.ctx.identity,
-			is_aggregate_context: false,
 			batch: empty_batch(),
 			row_count: 1,
 			target: None,

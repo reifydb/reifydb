@@ -1,0 +1,4 @@
+OPERATOR_009 "1ortrue" Cannot apply OR operator to number ["OR is a logical operator that combines boolean values", "To convert numbers to boolean, use comparison operators like: value != 0", "For bitwise operations on integers, use the bitwise OR (|) operator instead"]
+Field { name: "true or 1", data_type: Boolean } ["true"]
+OPERATOR_005 "1andfalse" Cannot apply AND operator to number ["AND is a logical operator that combines boolean values", "To convert numbers to boolean, use comparison operators like: value != 0", "For bitwise operations on integers, use the bitwise AND (&) operator instead"]
+Field { name: "false and 1", data_type: Boolean } ["false"]

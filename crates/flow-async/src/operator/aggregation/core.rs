@@ -21,10 +21,7 @@ use reifydb_core::{
 		column::{builder::ColumnBuilder, key::extend_value_bytes},
 	},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::{CompileContext, EvalContext},
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
 use reifydb_flow::{
 	aggregate::{
 		AggregateContext, DigestSlots, SlotArg, SlotKind, rewrite_aggregates, synthetic_aggregate_column_name,
@@ -315,7 +312,7 @@ fn row_types(row: &EmitRow) -> Vec<Option<ValueType>> {
 pub struct Aggregation {
 	pub operator: OperatorId,
 	pub output_schema: SchemaRef,
-	pub compiled_group_by: Vec<CompiledExpr>,
+	pub lowered_group_by: Vec<LoweredExpr>,
 	pub group_names: Vec<String>,
 	pub aggregate_output_names: Vec<String>,
 
@@ -323,9 +320,9 @@ pub struct Aggregation {
 
 	pub slot_inputs: Vec<SlotInput>,
 
-	pub compiled_slot_args: Vec<CompiledExpr>,
+	pub lowered_slot_args: Vec<LoweredExpr>,
 
-	pub compiled_outputs: Vec<CompiledExpr>,
+	pub lowered_outputs: Vec<LoweredExpr>,
 
 	bare_outputs: Option<Vec<usize>>,
 
@@ -352,12 +349,8 @@ impl Aggregation {
 		context: AggregateContext,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self> {
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
-
-		let compiled_group_by: Vec<CompiledExpr> =
-			group_by.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
+		let lowered_group_by: Vec<LoweredExpr> =
+			group_by.iter().map(|e| LoweredExpr::new(e.clone(), "aggregate_by")).collect();
 
 		let aggregate_output_names: Vec<String> =
 			aggregations.iter().map(|e| display_label(e).text().to_string()).collect();
@@ -383,31 +376,30 @@ impl Aggregation {
 			}
 		}
 		let slot_count = slots.len();
-		let (slot_kinds, slot_inputs, compiled_slot_args, compiled_outputs, bare_outputs) = if all_representable
-		{
+		let (slot_kinds, slot_inputs, lowered_slot_args, lowered_outputs, bare_outputs) = if all_representable {
 			let mut kinds = Vec::with_capacity(slots.len());
 			let mut inputs = Vec::with_capacity(slots.len());
-			let mut compiled_args = Vec::new();
+			let mut lowered_args = Vec::new();
 			for (kind, arg) in slots {
 				kinds.push(kind);
 				inputs.push(match arg {
 					SlotArg::Star => SlotInput::Star,
 					SlotArg::Column(name) => SlotInput::Column(name),
 					SlotArg::Expr(expr) => {
-						let idx = compiled_args.len();
-						compiled_args.push(compile_expression(&compile_ctx, &expr)?);
+						let idx = lowered_args.len();
+						lowered_args.push(LoweredExpr::new(expr, "aggregate_input"));
 						SlotInput::Expr(idx)
 					}
 					SlotArg::EventTime => SlotInput::EventTime,
 				});
 			}
-			let outputs: Vec<CompiledExpr> = rewritten_outputs
+			let outputs: Vec<LoweredExpr> = rewritten_outputs
 				.iter()
-				.map(|e| compile_expression(&compile_ctx, e))
-				.collect::<Result<Vec<_>>>()?;
+				.map(|e| LoweredExpr::new(e.clone(), "aggregate_output"))
+				.collect();
 			let bare: Option<Vec<usize>> =
 				rewritten_outputs.iter().map(|output| bare_slot(output, slot_count)).collect();
-			(Some(kinds), inputs, compiled_args, outputs, bare)
+			(Some(kinds), inputs, lowered_args, outputs, bare)
 		} else {
 			(None, Vec::new(), Vec::new(), Vec::new(), None)
 		};
@@ -441,13 +433,13 @@ impl Aggregation {
 		Ok(Self {
 			operator,
 			output_schema,
-			compiled_group_by,
+			lowered_group_by,
 			group_names,
 			aggregate_output_names,
 			slot_kinds,
 			slot_inputs,
-			compiled_slot_args,
-			compiled_outputs,
+			lowered_slot_args,
+			lowered_outputs,
 			bare_outputs,
 			slot_types,
 			emit_schema: None,
@@ -470,7 +462,7 @@ impl Aggregation {
 		if row_count == 0 {
 			return Ok(BatchGroups::default());
 		}
-		if self.compiled_group_by.is_empty() {
+		if self.lowered_group_by.is_empty() {
 			let hash = Hash128::from(0u128);
 			return Ok(BatchGroups {
 				hashes: vec![hash; row_count],
@@ -481,8 +473,8 @@ impl Aggregation {
 		let session = self.eval_session();
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 		let mut group_columns: Vec<(FieldRef, ArrayRef)> = Vec::new();
-		for compiled_expr in &self.compiled_group_by {
-			let column = compiled_expr.execute(&exec_ctx)?;
+		for lowered_expr in &self.lowered_group_by {
+			let column = lowered_expr.evaluate(&exec_ctx)?;
 			let ty = ColumnView::try_from(&column)?.get_type();
 			if !ty.is_scalar() {
 				return Err(Error(Box::new(aggregate_group_by_unkeyable(
@@ -507,13 +499,13 @@ impl Aggregation {
 	}
 
 	pub fn evaluate_slot_inputs(&self, columns: &RecordBatch) -> Result<Vec<(FieldRef, ArrayRef)>> {
-		let mut out = Vec::with_capacity(self.compiled_slot_args.len());
-		if !self.compiled_slot_args.is_empty() {
+		let mut out = Vec::with_capacity(self.lowered_slot_args.len());
+		if !self.lowered_slot_args.is_empty() {
 			let row_count = columns.num_rows();
 			let session = self.eval_session();
 			let exec_ctx = session.with_eval(columns.clone(), row_count);
-			for compiled in &self.compiled_slot_args {
-				out.push(compiled.execute(&exec_ctx)?);
+			for lowered in &self.lowered_slot_args {
+				out.push(lowered.evaluate(&exec_ctx)?);
 			}
 		}
 		self.check_digest_inputs(columns, &out)?;
@@ -683,7 +675,7 @@ impl Aggregation {
 		slot_columns: Vec<(FieldRef, ArrayRef)>,
 		count: usize,
 	) -> Result<Vec<(FieldRef, ArrayRef)>> {
-		if self.compiled_outputs.is_empty() {
+		if self.lowered_outputs.is_empty() {
 			return Ok(slot_columns);
 		}
 		let Some(bare) = &self.bare_outputs else {
@@ -713,7 +705,7 @@ impl Aggregation {
 	) -> Result<Vec<(FieldRef, ArrayRef)>> {
 		let session = self.eval_session();
 		let exec_ctx = session.with_eval(batch(slot_columns.to_vec())?, count);
-		self.compiled_outputs.iter().map(|compiled| compiled.execute(&exec_ctx)).collect()
+		self.lowered_outputs.iter().map(|lowered| lowered.evaluate(&exec_ctx)).collect()
 	}
 
 	fn eval_session(&self) -> EvalContext<'_> {
@@ -723,7 +715,6 @@ impl Aggregation {
 			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			identity: self.ctx.identity,
-			is_aggregate_context: false,
 			batch: empty_batch(),
 			row_count: 1,
 			target: None,

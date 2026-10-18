@@ -8,6 +8,7 @@ use reifydb_core::{
 	expression::{AndExpression, EqExpression, Expression, OrExpression},
 };
 use reifydb_transaction::transaction::Transaction;
+use reifydb_value::fragment::Fragment;
 
 use crate::{
 	Result,
@@ -16,6 +17,7 @@ use crate::{
 		identifier::UnresolvedObjectIdentifier,
 	},
 	bump::{BumpBox, BumpFragment},
+	error::RqlError,
 	expression::join::JoinConditionCompiler,
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::SourceScan,
@@ -162,7 +164,13 @@ impl<'bump> Compiler<'bump> {
 		tx: &mut Transaction<'_>,
 	) -> Result<BumpVec<'bump, LogicalPlan<'bump>>> {
 		let mut nodes = subquery.statement.nodes.into_iter();
-		let first = nodes.next().expect("Empty subquery in join");
+		let Some(first) = nodes.next() else {
+			return Err(RqlError::MissingInput {
+				operator: "join",
+				fragment: Fragment::internal("join"),
+			}
+			.into());
+		};
 
 		let source_plan = match first {
 			Ast::From(AstFrom::Source {

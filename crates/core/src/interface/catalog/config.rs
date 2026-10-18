@@ -81,6 +81,9 @@ pub enum ConfigKey {
 	OperatorWalAutocheckpoint,
 	FlowTick,
 	FlowSampleInterval,
+	FlowWakeCoalesce,
+	FlowActorBatchSize,
+	FlowCommitterShards,
 	FlowBacklogMemoryLimit,
 	FlowPullBatchBytes,
 	FlowLoadBatchBytes,
@@ -138,6 +141,9 @@ impl ConfigKey {
 			Self::OperatorWalAutocheckpoint,
 			Self::FlowTick,
 			Self::FlowSampleInterval,
+			Self::FlowWakeCoalesce,
+			Self::FlowActorBatchSize,
+			Self::FlowCommitterShards,
 			Self::FlowBacklogMemoryLimit,
 			Self::FlowPullBatchBytes,
 			Self::FlowLoadBatchBytes,
@@ -221,6 +227,9 @@ impl ConfigKey {
 			}
 			Self::FlowTick => Value::Duration(default::flow::TICK),
 			Self::FlowSampleInterval => Value::Duration(default::flow::SAMPLE_INTERVAL),
+			Self::FlowWakeCoalesce => Value::Duration(default::flow::WAKE_COALESCE),
+			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE),
+			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS),
 			Self::FlowBacklogMemoryLimit => Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH.as_bytes()),
@@ -304,6 +313,9 @@ impl ConfigKey {
 			}
 			Self::FlowTick => Value::Duration(default::flow::TICK_TESTING),
 			Self::FlowSampleInterval => Value::Duration(default::flow::SAMPLE_INTERVAL_TESTING),
+			Self::FlowWakeCoalesce => Value::Duration(default::flow::WAKE_COALESCE_TESTING),
+			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE_TESTING),
+			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS_TESTING),
 			Self::FlowBacklogMemoryLimit => {
 				Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT_TESTING.as_bytes())
 			}
@@ -495,6 +507,21 @@ impl ConfigKey {
 				 own thread, off the apply path. When none, operator sampling is disabled entirely; when \
 				 set, must be > 0."
 			}
+			Self::FlowWakeCoalesce => {
+				"How long a flow that folds its input waits after one wake before it takes the next, so upstream \
+				 steps inside the window merge into one drain. Zero wakes on every step. Read once at boot; \
+				 changing it requires a restart."
+			}
+			Self::FlowActorBatchSize => {
+				"How many messages a flow actor handles per turn on its worker thread before yielding to the \
+				 other actors pinned to that thread. Smaller values let a woken flow run sooner. Must be >= 1. \
+				 Read once at boot; changing it requires a restart."
+			}
+			Self::FlowCommitterShards => {
+				"How many committer actors share the flow commits. Each flow always commits through the same \
+				 shard, so its own commits stay in order while different flows commit side by side. Must be \
+				 >= 1. Read once at boot; changing it requires a restart."
+			}
 			Self::FlowBacklogMemoryLimit => {
 				"Byte ceiling of the shared in-memory backlog of decoded CDC entries that feeds flow \
 				 consumers. Producer-fed at commit granularity; entries below every flow's cursor are \
@@ -618,6 +645,9 @@ impl ConfigKey {
 			Self::OperatorWalAutocheckpoint => true,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => false,
+			Self::FlowWakeCoalesce => true,
+			Self::FlowActorBatchSize => true,
+			Self::FlowCommitterShards => true,
 			Self::FlowBacklogMemoryLimit => true,
 			Self::FlowPullBatchBytes => true,
 			Self::FlowLoadBatchBytes => true,
@@ -675,6 +705,9 @@ impl ConfigKey {
 			Self::OperatorWalAutocheckpoint => &[ValueType::Uint8],
 			Self::FlowTick => &[ValueType::Duration],
 			Self::FlowSampleInterval => &[ValueType::Duration],
+			Self::FlowWakeCoalesce => &[ValueType::Duration],
+			Self::FlowActorBatchSize => &[ValueType::Uint2],
+			Self::FlowCommitterShards => &[ValueType::Uint2],
 			Self::FlowBacklogMemoryLimit => &[ValueType::Uint8],
 			Self::FlowPullBatchBytes => &[ValueType::Uint8],
 			Self::FlowLoadBatchBytes => &[ValueType::Uint8],
@@ -732,6 +765,9 @@ impl ConfigKey {
 			Self::OperatorWalAutocheckpoint => false,
 			Self::FlowTick => false,
 			Self::FlowSampleInterval => true,
+			Self::FlowWakeCoalesce => false,
+			Self::FlowActorBatchSize => false,
+			Self::FlowCommitterShards => false,
 			Self::FlowBacklogMemoryLimit => false,
 			Self::FlowPullBatchBytes => false,
 			Self::FlowLoadBatchBytes => false,
@@ -946,6 +982,18 @@ impl ConfigKey {
 				}
 				_ => Ok(()),
 			},
+			Self::FlowWakeCoalesce => match value {
+				Value::Duration(d) if d.is_negative() => Err("FLOW_WAKE_COALESCE must not be negative".to_string()),
+				_ => Ok(()),
+			},
+			Self::FlowActorBatchSize => match value {
+				Value::Uint2(0) => Err("FLOW_ACTOR_BATCH_SIZE must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::FlowCommitterShards => match value {
+				Value::Uint2(0) => Err("FLOW_COMMITTER_SHARDS must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
 			Self::CdcConsumeWaitTimeout => match value {
 				Value::Duration(d) => {
 					if d.is_positive() {
@@ -1086,6 +1134,9 @@ impl fmt::Display for ConfigKey {
 			Self::OperatorWalAutocheckpoint => write!(f, "OPERATOR_WAL_AUTOCHECKPOINT"),
 			Self::FlowTick => write!(f, "FLOW_TICK"),
 			Self::FlowSampleInterval => write!(f, "FLOW_SAMPLE_INTERVAL"),
+			Self::FlowWakeCoalesce => write!(f, "FLOW_WAKE_COALESCE"),
+			Self::FlowActorBatchSize => write!(f, "FLOW_ACTOR_BATCH_SIZE"),
+			Self::FlowCommitterShards => write!(f, "FLOW_COMMITTER_SHARDS"),
 			Self::FlowBacklogMemoryLimit => write!(f, "FLOW_BACKLOG_MEMORY_LIMIT"),
 			Self::FlowPullBatchBytes => write!(f, "FLOW_PULL_BATCH_BYTES"),
 			Self::FlowLoadBatchBytes => write!(f, "FLOW_LOAD_BATCH_BYTES"),
@@ -1147,6 +1198,9 @@ impl FromStr for ConfigKey {
 			"OPERATOR_WAL_AUTOCHECKPOINT" => Ok(Self::OperatorWalAutocheckpoint),
 			"FLOW_TICK" => Ok(Self::FlowTick),
 			"FLOW_SAMPLE_INTERVAL" => Ok(Self::FlowSampleInterval),
+			"FLOW_WAKE_COALESCE" => Ok(Self::FlowWakeCoalesce),
+			"FLOW_ACTOR_BATCH_SIZE" => Ok(Self::FlowActorBatchSize),
+			"FLOW_COMMITTER_SHARDS" => Ok(Self::FlowCommitterShards),
 			"FLOW_BACKLOG_MEMORY_LIMIT" => Ok(Self::FlowBacklogMemoryLimit),
 			"FLOW_PULL_BATCH_BYTES" => Ok(Self::FlowPullBatchBytes),
 			"FLOW_LOAD_BATCH_BYTES" => Ok(Self::FlowLoadBatchBytes),
@@ -1337,7 +1391,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 52);
+		assert_eq!(all.len(), 55);
 		assert!(all.contains(&ConfigKey::QueryMemoryLimit));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
@@ -1472,6 +1526,59 @@ mod tests {
 
 		let zero = Value::duration_seconds(0);
 		assert!(matches!(ConfigKey::FlowSampleInterval.accept(zero), Err(AcceptError::InvalidValue(_))));
+	}
+
+	#[test]
+	fn test_flow_latency_knobs_default_to_the_behaviour_they_replaced() {
+		// a default that drifts from the old constant silently changes every deployment that never set it.
+		assert_eq!(ConfigKey::FlowWakeCoalesce.default_value(), Value::duration_milliseconds(20));
+		assert_eq!(ConfigKey::FlowActorBatchSize.default_value(), Value::Uint2(8));
+		assert_eq!(ConfigKey::FlowCommitterShards.default_value(), Value::Uint2(1));
+		assert_eq!(ConfigKey::FlowWakeCoalesce.expected_types(), &[ValueType::Duration]);
+		assert_eq!(ConfigKey::FlowActorBatchSize.expected_types(), &[ValueType::Uint2]);
+		assert_eq!(ConfigKey::FlowCommitterShards.expected_types(), &[ValueType::Uint2]);
+		for key in [ConfigKey::FlowWakeCoalesce, ConfigKey::FlowActorBatchSize, ConfigKey::FlowCommitterShards]
+		{
+			assert!(key.requires_restart(), "{key} is read once when the flow subsystem starts");
+			assert!(!key.is_optional(), "{key} has no off state");
+		}
+	}
+
+	#[test]
+	fn test_flow_latency_knobs_round_trip_their_names() {
+		for (name, key) in [
+			("FLOW_WAKE_COALESCE", ConfigKey::FlowWakeCoalesce),
+			("FLOW_ACTOR_BATCH_SIZE", ConfigKey::FlowActorBatchSize),
+			("FLOW_COMMITTER_SHARDS", ConfigKey::FlowCommitterShards),
+		] {
+			assert_eq!(name.parse::<ConfigKey>().unwrap(), key);
+			assert_eq!(format!("{key}"), name);
+		}
+	}
+
+	#[test]
+	fn test_flow_latency_knobs_reject_values_that_stall_or_break_the_flows() {
+		// zero shards or a zero batch never runs a commit or a message, a negative window is meaningless.
+		let zero = Value::duration_seconds(0);
+		assert_eq!(
+			ConfigKey::FlowWakeCoalesce.accept(zero.clone()).unwrap(),
+			zero,
+			"zero turns coalescing off"
+		);
+		assert!(matches!(
+			ConfigKey::FlowWakeCoalesce.accept(Value::duration_milliseconds(-1)),
+			Err(AcceptError::InvalidValue(_))
+		));
+		assert!(matches!(
+			ConfigKey::FlowActorBatchSize.accept(Value::Uint2(0)),
+			Err(AcceptError::InvalidValue(_))
+		));
+		assert!(matches!(
+			ConfigKey::FlowCommitterShards.accept(Value::Uint2(0)),
+			Err(AcceptError::InvalidValue(_))
+		));
+		assert_eq!(ConfigKey::FlowActorBatchSize.accept(Value::Uint2(1)).unwrap(), Value::Uint2(1));
+		assert_eq!(ConfigKey::FlowCommitterShards.accept(Value::Uint2(4)).unwrap(), Value::Uint2(4));
 	}
 
 	#[test]

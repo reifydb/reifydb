@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -42,12 +42,12 @@ use reifydb_value::{
 	value::{
 		Value,
 		column_view::{ColumnView, ViewData},
-		container::dictionary_array,
+		container::{dictionary_array, temporal_array::datetime_array},
 		datetime::DateTime,
 		dictionary::DictionaryEntryId,
 		partition::Partition,
 		row_number::RowNumber,
-		system_columns::{created_at, require_row_numbers},
+		system_columns::{SystemColumn, created_at, require_row_numbers, with_system_column},
 	},
 };
 use tracing::instrument;
@@ -304,7 +304,9 @@ impl TableSink {
 		}
 		txn.set(set_keys, set_rows)?;
 
-		txn.emit(self.view.id(), Diff::update(coerced_pre, coerced_post))
+		let emitted_pre = with_stored_created_at(coerced_pre, &created)?;
+		let emitted_post = with_stored_created_at(coerced_post, &created)?;
+		txn.emit(self.view.id(), Diff::update(emitted_pre, emitted_post))
 	}
 
 	#[inline]
@@ -325,20 +327,52 @@ impl TableSink {
 		} else {
 			None
 		};
+		let mut cached: Vec<Option<DateTime>> = Vec::with_capacity(row_count);
+		let mut reads: Vec<(EncodedKey, Option<EncodedKey>)> = Vec::new();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			self.created_at.remove(&row_number);
 			let key = if let Some(partitions) = &partitions {
 				partitioned_key(self.storage, runs.next(), partitions[row_idx], row_number)
 			} else {
 				sorted_view_key(self.storage, runs.next(), row_number)
 			};
+			let hit = cached_created_at(&self.created_at, row_number);
+			self.created_at.remove(&row_number);
+			if hit.is_none() {
+				reads.push((key.clone(), None));
+			}
+			cached.push(hit);
 			keys.push(key);
+		}
+		let mut stored = stored_created_at_many(txn, &reads)?.into_iter();
+
+		let incoming = created_at(source)?;
+		let mut created: Vec<DateTime> = Vec::with_capacity(row_count);
+		for (row_idx, hit) in cached.into_iter().enumerate() {
+			let prior = match hit {
+				Some(hit) => Some(hit),
+				None => stored.next().flatten(),
+			};
+			let Some(stamp) = prior.or_else(|| incoming.get(row_idx).copied()) else {
+				return Err(Error::from(FlowSinkError::MissingSystemColumn {
+					column: "created_at",
+					row_idx,
+				}));
+			};
+			created.push(stamp);
 		}
 
 		txn.remove(keys)?;
 
-		txn.emit(self.view.id(), Diff::remove(coerced))
+		txn.emit(self.view.id(), Diff::remove(with_stored_created_at(coerced, &created)?))
 	}
+}
+
+fn with_stored_created_at(batch: RecordBatch, created: &[DateTime]) -> Result<RecordBatch> {
+	with_system_column(
+		batch,
+		SystemColumn::CreatedAt,
+		Arc::new(datetime_array(created.iter().copied())) as ArrayRef,
+	)
 }
 
 fn cached_created_at(cache: &HashMap<RowNumber, DateTime>, row_number: RowNumber) -> Option<DateTime> {

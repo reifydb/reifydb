@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	common::CommitVersion,
+	flow::dag::FlowDag,
 	interface::catalog::{
 		flow::{Flow, FlowEntry, FlowId},
 		id::NamespaceId,
+		view::ViewKind,
 	},
 };
 
@@ -46,6 +50,26 @@ impl CatalogCache {
 		self.list_flow_entries_at(version).into_iter().map(|entry| entry.flow).collect()
 	}
 
+	pub fn transactional_flows_at(&self, version: CommitVersion) -> Arc<[FlowDag]> {
+		self.transactional_flows.get(version).unwrap_or_else(|| Arc::from(Vec::new()))
+	}
+
+	pub fn refresh_transactional_flows(&self, version: CommitVersion) {
+		let flows: Vec<FlowDag> = self
+			.flows
+			.iter()
+			.filter_map(|entry| entry.value().get(version))
+			.filter(|entry| {
+				entry.dag.sink_views().any(|view| {
+					self.find_view_at(view, version)
+						.is_some_and(|def| def.kind() == ViewKind::Transactional)
+				})
+			})
+			.map(|entry| entry.dag)
+			.collect();
+		self.transactional_flows.insert(version, Arc::from(flows));
+	}
+
 	pub fn set_flow(&self, id: FlowId, version: CommitVersion, entry: Option<FlowEntry>) {
 		let _guard = self.write_lock.lock();
 		if let Some(existing) = self.flows.get(&id)
@@ -66,9 +90,118 @@ impl CatalogCache {
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::{flow::dag::FlowDag, interface::catalog::flow::FlowStatus};
+	use reifydb_core::{
+		flow::{
+			dag::FlowDag,
+			operator::{FlowNode, OperatorDef},
+		},
+		interface::catalog::{
+			flow::{FlowStatus, OperatorId},
+			id::ViewId,
+			view::{TableView, View, ViewKind},
+		},
+	};
 
 	use super::*;
+
+	fn view(id: u64, kind: ViewKind) -> View {
+		View::Table(TableView {
+			id: ViewId(id),
+			namespace: NamespaceId::SYSTEM,
+			name: format!("view_{id}"),
+			kind,
+			columns: vec![],
+			primary_key: None,
+			partition_by: vec![],
+			sort: vec![],
+		})
+	}
+
+	fn sinking_entry(flow: u64, sink: u64) -> FlowEntry {
+		let mut builder = FlowDag::builder(FlowId(flow));
+		builder.add_node(FlowNode {
+			id: OperatorId(1),
+			ty: OperatorDef::SinkTableView {
+				view: ViewId(sink),
+			},
+			inputs: vec![],
+			outputs: vec![],
+		});
+		FlowEntry {
+			flow: create_test_flow(FlowId(flow), NamespaceId::SYSTEM, &format!("flow_{flow}")),
+			dag: builder.build(),
+		}
+	}
+
+	fn transactional_ids(catalog: &CatalogCache, version: u64) -> Vec<FlowId> {
+		catalog.transactional_flows_at(CommitVersion(version)).iter().map(|dag| dag.id).collect()
+	}
+
+	#[test]
+	fn the_transactional_flow_index_keeps_only_flows_that_sink_into_transactional_views() {
+		// a deferred flow in the index makes every write diff for it, a missing transactional flow skips its
+		// view.
+		let catalog = CatalogCache::new();
+		catalog.set_view(ViewId(10), CommitVersion(1), Some(view(10, ViewKind::Deferred)));
+		catalog.set_flow(FlowId(1), CommitVersion(1), Some(sinking_entry(1, 10)));
+		catalog.refresh_transactional_flows(CommitVersion(1));
+		assert_eq!(
+			transactional_ids(&catalog, 1),
+			Vec::<FlowId>::new(),
+			"a deferred-only catalog has no transactional flows"
+		);
+
+		catalog.set_view(ViewId(20), CommitVersion(2), Some(view(20, ViewKind::Transactional)));
+		catalog.set_flow(FlowId(2), CommitVersion(2), Some(sinking_entry(2, 20)));
+		catalog.refresh_transactional_flows(CommitVersion(2));
+		assert_eq!(
+			transactional_ids(&catalog, 2),
+			vec![FlowId(2)],
+			"the transactional flow must be listed once created"
+		);
+	}
+
+	#[test]
+	fn the_transactional_flow_index_answers_as_of_each_commit_version() {
+		// a write that reads the newest set misses a view created after its snapshot or diffs one already
+		// dropped.
+		let catalog = CatalogCache::new();
+		assert_eq!(
+			transactional_ids(&catalog, 1),
+			Vec::<FlowId>::new(),
+			"before any refresh no flow exists, so the set is empty"
+		);
+
+		catalog.set_view(ViewId(20), CommitVersion(2), Some(view(20, ViewKind::Transactional)));
+		catalog.set_flow(FlowId(2), CommitVersion(2), Some(sinking_entry(2, 20)));
+		catalog.refresh_transactional_flows(CommitVersion(2));
+		catalog.set_flow(FlowId(2), CommitVersion(3), None);
+		catalog.set_view(ViewId(20), CommitVersion(3), None);
+		catalog.refresh_transactional_flows(CommitVersion(3));
+
+		assert_eq!(
+			transactional_ids(&catalog, 1),
+			Vec::<FlowId>::new(),
+			"a version before the create must not see the flow"
+		);
+		assert_eq!(transactional_ids(&catalog, 2), vec![FlowId(2)], "the create version must see the flow");
+		assert_eq!(
+			transactional_ids(&catalog, 5),
+			Vec::<FlowId>::new(),
+			"a version after the drop must not see the flow"
+		);
+	}
+
+	#[test]
+	fn the_transactional_flow_index_does_not_depend_on_view_and_flow_apply_order() {
+		// one refresh after the whole commit sees both halves, a refresh between them would see a flow without
+		// its view.
+		let catalog = CatalogCache::new();
+		catalog.set_flow(FlowId(2), CommitVersion(2), Some(sinking_entry(2, 20)));
+		catalog.set_view(ViewId(20), CommitVersion(2), Some(view(20, ViewKind::Transactional)));
+		catalog.refresh_transactional_flows(CommitVersion(2));
+		assert_eq!(transactional_ids(&catalog, 2), vec![FlowId(2)]);
+	}
 
 	fn create_test_flow(id: FlowId, namespace: NamespaceId, name: &str) -> Flow {
 		Flow {

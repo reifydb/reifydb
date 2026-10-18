@@ -146,9 +146,6 @@ impl LogicalWalker {
 					self.walk(child, depth, parent);
 				}
 			}
-			LogicalPlan::Scalarize(scalarize) => {
-				self.walk(&scalarize.input, depth, parent);
-			}
 			LogicalPlan::DeleteTable(node) => {
 				if let Some(input) = &node.input {
 					self.walk(input, depth, parent);
@@ -502,7 +499,6 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 		LogicalPlan::Declare(node) => ("Declare", format!("{} = {}", node.name.text(), node.value)),
 		LogicalPlan::Assign(node) => ("Assign", format!("{} = {}", node.name.text(), node.value)),
 		LogicalPlan::Conditional(node) => ("Conditional", format!("if {}", node.condition)),
-		LogicalPlan::Scalarize(_) => ("Scalarize", String::new()),
 		LogicalPlan::AlterTable(node) => {
 			let name = if let Some(ns) = node.table.namespace.first() {
 				format!("{}::{}", ns.text(), node.table.name.text())

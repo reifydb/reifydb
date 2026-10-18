@@ -222,7 +222,7 @@ impl DistinctPlan {
 			return Ok(Vec::new());
 		}
 
-		if self.compiled_expressions.is_empty() {
+		if self.lowered_expressions.is_empty() {
 			row_hashes(&user_views(columns)?, row_count)
 		} else {
 			let session = EvalContext {
@@ -231,7 +231,6 @@ impl DistinctPlan {
 				routines: &self.routines,
 				runtime_context: &self.runtime_context,
 				identity: self.ctx.identity,
-				is_aggregate_context: false,
 				batch: empty_batch(),
 				row_count: 1,
 				target: None,
@@ -239,8 +238,8 @@ impl DistinctPlan {
 			};
 			let exec_ctx = session.with_eval(columns.clone(), row_count);
 			let mut expr_columns = Vec::new();
-			for compiled_expr in &self.compiled_expressions {
-				let col = compiled_expr.execute(&exec_ctx)?;
+			for lowered_expr in &self.lowered_expressions {
+				let col = lowered_expr.evaluate(&exec_ctx)?;
 				expr_columns.push(col);
 			}
 			let key_columns: Vec<ColumnView> =

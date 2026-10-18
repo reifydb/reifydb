@@ -92,7 +92,6 @@ pub fn coerce_columns(
 		routines: &EMPTY_ROUTINES,
 		runtime_context,
 		identity: IdentityId::system(),
-		is_aggregate_context: false,
 		batch: empty_batch(),
 		row_count: 1,
 		target: None,

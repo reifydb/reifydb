@@ -17,7 +17,7 @@ use reifydb_core::{
 			dictionary_not_found, namespace_not_found, queue_not_found, queue_reserved_column_collision,
 			ringbuffer_not_found, series_not_found, table_not_found,
 		},
-		operation::{lookup_block_not_bare_from, lookup_right_unsupported},
+		operation::lookup_right_unsupported,
 	},
 	expression::{
 		ConstantExpression, Expression, Expression::Constant, VariableExpression, extract_variable_names,
@@ -39,6 +39,7 @@ use reifydb_core::{
 	row::Ttl,
 	sort::SortKey,
 };
+use reifydb_routine_abi::registry::Routines;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -52,7 +53,6 @@ use crate::{
 	ast::ast::{AstAlterPolicyAction, AstPolicyScope, AstViewStorageKind},
 	bump::{BumpBox, FragmentInterner},
 	convert_data_type_with_constraints,
-	diagnostic::AstError,
 	error::RqlError,
 	expression::ExpressionCompiler,
 	nodes,
@@ -63,6 +63,7 @@ use crate::{
 		RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode, SeriesScanNode,
 		TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
+	optimize::rules::optimize_tree,
 	plan::{
 		logical,
 		logical::{
@@ -70,6 +71,7 @@ use crate::{
 			partition_predicate::extract_partition,
 			row_predicate::{RowPredicate, extract_row_predicate},
 			series_predicate::extract_series_predicate,
+			tree::{QueryTree, fold},
 		},
 	},
 };
@@ -187,7 +189,6 @@ pub enum PhysicalPlan<'bump> {
 	QueueScan(QueueScanNode),
 	Generator(GeneratorNode),
 	Window(WindowNode<'bump>),
-	Scalarize(ScalarizeNode<'bump>),
 
 	CreateIdentity(nodes::CreateIdentityNode),
 	CreateIdentityAttribute(nodes::CreateIdentityAttributeNode),
@@ -595,27 +596,24 @@ pub struct WindowNode<'bump> {
 	pub fragment: Fragment,
 }
 
-#[derive(Debug)]
-pub struct ScalarizeNode<'bump> {
-	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
-	pub fragment: Fragment,
-}
-
 pub(crate) struct Compiler<'bump> {
 	pub catalog: Catalog,
+	pub routines: Routines,
 	pub interner: FragmentInterner,
 	pub bump: &'bump Bump,
 }
 
-#[instrument(name = "rql::compile::physical", level = "trace", skip(bump, catalog, rx, logical))]
+#[instrument(name = "rql::compile::physical", level = "trace", skip(bump, catalog, routines, rx, logical))]
 pub fn compile_physical<'b>(
 	bump: &'b Bump,
 	catalog: &Catalog,
+	routines: &Routines,
 	rx: &mut Transaction<'_>,
 	logical: impl IntoIterator<Item = LogicalPlan<'b>>,
 ) -> Result<Option<PhysicalPlan<'b>>> {
 	Compiler {
 		catalog: catalog.clone(),
+		routines: routines.clone(),
 		interner: FragmentInterner::new(),
 		bump,
 	}
@@ -632,830 +630,437 @@ impl<'bump> Compiler<'bump> {
 		rx: &mut Transaction<'_>,
 		logical: impl IntoIterator<Item = LogicalPlan<'bump>>,
 	) -> Result<Option<PhysicalPlan<'bump>>> {
-		let mut stack: Vec<PhysicalPlan<'bump>> = Vec::new();
-		for plan in logical {
-			match plan {
-				LogicalPlan::Aggregate(aggregate) => {
-					let input = stack.pop().unwrap(); // FIXME
+		match fold(self.bump, logical)? {
+			Some(tree) => {
+				let tree = optimize_tree(self.bump, &self.routines, tree);
+				Ok(Some(self.compile_tree(rx, tree)?))
+			}
+			None => Ok(None),
+		}
+	}
 
-					let mut vars = Vec::new();
-					for expr in aggregate.by.iter().chain(aggregate.map.iter()) {
-						vars.extend(extract_variable_names(expr));
-					}
+	fn compile_tree(&mut self, rx: &mut Transaction<'_>, tree: QueryTree<'bump>) -> Result<PhysicalPlan<'bump>> {
+		match tree {
+			QueryTree::Aggregate {
+				node: aggregate,
+				input,
+			} => {
+				let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
+
+				let mut vars = Vec::new();
+				for expr in aggregate.by.iter().chain(aggregate.map.iter()) {
+					vars.extend(extract_variable_names(expr));
+				}
+				if let Some(pushed) =
+					try_remote_push_down_with_vars(&input, || Some(aggregate.rql.clone()), vars)
+				{
+					return Ok(pushed);
+				}
+
+				return Ok(PhysicalPlan::Aggregate(AggregateNode {
+					by: aggregate.by,
+					map: aggregate.map,
+					with: aggregate.with,
+					input: self.bump_box(input),
+				}));
+			}
+
+			QueryTree::Assert {
+				node: assert_node,
+				input,
+			} => {
+				let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
+				let input = input.map(|p| self.bump_box(p));
+
+				if let Some(ref boxed_input) = input {
+					let vars = extract_variable_names(&assert_node.condition);
 					if let Some(pushed) = try_remote_push_down_with_vars(
-						&input,
-						|| Some(aggregate.rql.clone()),
+						boxed_input,
+						|| Some(assert_node.rql.clone()),
 						vars,
 					) {
-						stack.push(pushed);
-						continue;
+						return Ok(pushed);
 					}
-
-					stack.push(PhysicalPlan::Aggregate(AggregateNode {
-						by: aggregate.by,
-						map: aggregate.map,
-						with: aggregate.with,
-						input: self.bump_box(input),
-					}));
 				}
 
-				LogicalPlan::CreateNamespace(create) => {
-					stack.push(self.compile_create_namespace(rx, create)?);
+				return Ok(PhysicalPlan::Assert(AssertNode {
+					conditions: vec![assert_node.condition],
+					message: assert_node.message,
+					input,
+				}));
+			}
+
+			QueryTree::Filter {
+				node: filter,
+				input,
+			} => {
+				let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
+
+				let vars = extract_variable_names(&filter.condition);
+				if let Some(pushed) =
+					try_remote_push_down_with_vars(&input, || Some(filter.rql.clone()), vars)
+				{
+					return Ok(pushed);
 				}
 
-				LogicalPlan::CreateRemoteNamespace(create) => {
-					stack.push(self.compile_create_remote_namespace(rx, create)?);
-				}
-
-				LogicalPlan::CreateTable(create) => {
-					stack.push(self.compile_create_table(rx, create)?);
-				}
-
-				LogicalPlan::CreateRingBuffer(create) => {
-					stack.push(self.compile_create_ringbuffer(rx, create)?);
-				}
-
-				LogicalPlan::CreateQueue(create) => {
-					stack.push(self.compile_create_queue(rx, create)?);
-				}
-
-				LogicalPlan::CreateDeferredView(create) => {
-					stack.push(self.compile_create_deferred(rx, create)?);
-				}
-
-				LogicalPlan::CreateTransactionalView(create) => {
-					stack.push(self.compile_create_transactional(rx, create)?);
-				}
-
-				LogicalPlan::CreateDictionary(create) => {
-					stack.push(self.compile_create_dictionary(rx, create)?);
-				}
-
-				LogicalPlan::CreateSumType(create) => {
-					stack.push(self.compile_create_sumtype(rx, create)?);
-				}
-
-				LogicalPlan::AlterSequence(alter) => {
-					stack.push(self.compile_alter_sequence(rx, alter)?);
-				}
-
-				LogicalPlan::CreatePrimaryKey(create) => {
-					stack.push(self.compile_create_primary_key(rx, create)?);
-				}
-
-				LogicalPlan::CreateColumnProperty(create) => {
-					stack.push(self.compile_create_column_property(rx, create)?);
-				}
-
-				LogicalPlan::CreateProcedure(create) => {
-					stack.push(self.compile_create_procedure(rx, create)?);
-				}
-
-				LogicalPlan::CreateTest(create) => {
-					stack.push(self.compile_create_test(rx, create)?);
-				}
-
-				LogicalPlan::RunTests(scope) => match scope {
-					logical::RunTestsNode::All => {
-						stack.push(PhysicalPlan::RunTests(nodes::RunTestsNode {
-							scope: nodes::RunTestsScope::All,
-						}));
-					}
-					logical::RunTestsNode::Namespace(ns) => {
-						let ns_segments: Vec<&str> =
-							ns.segments.iter().map(|n| n.text()).collect();
-						let namespace_name = ns_segments.join("::");
-						let Some(namespace_def) =
-							self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-						else {
-							let ns_fragment = if let Some(n) = ns.segments.first() {
-								let interned = self.interner.intern_fragment(n);
-								interned.with_text(&namespace_name)
-							} else {
-								Fragment::internal("default")
-							};
-							return_error!(namespace_not_found(
-								ns_fragment,
-								&namespace_name
-							));
-						};
-						let namespace_id = if let Some(n) = ns.segments.first() {
-							let interned = self.interner.intern_fragment(n);
-							interned.with_text(&namespace_name)
-						} else {
-							Fragment::internal(namespace_name)
-						};
-						let resolved_namespace =
-							ResolvedNamespace::new(namespace_id, namespace_def);
-						stack.push(PhysicalPlan::RunTests(nodes::RunTestsNode {
-							scope: nodes::RunTestsScope::Namespace(resolved_namespace),
-						}));
-					}
-					logical::RunTestsNode::Single(test) => {
-						let ns_segments: Vec<&str> =
-							test.namespace.iter().map(|n| n.text()).collect();
-						let namespace_name = if ns_segments.is_empty() {
-							"default".to_string()
-						} else {
-							ns_segments.join("::")
-						};
-						let Some(namespace_def) =
-							self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-						else {
-							let ns_fragment = if let Some(n) = test.namespace.first() {
-								let interned = self.interner.intern_fragment(n);
-								interned.with_text(&namespace_name)
-							} else {
-								Fragment::internal("default")
-							};
-							return_error!(namespace_not_found(
-								ns_fragment,
-								&namespace_name
-							));
-						};
-						let namespace_id = if let Some(n) = test.namespace.first() {
-							let interned = self.interner.intern_fragment(n);
-							interned.with_text(&namespace_name)
-						} else {
-							Fragment::internal(namespace_name)
-						};
-						let resolved_namespace =
-							ResolvedNamespace::new(namespace_id, namespace_def);
-						stack.push(PhysicalPlan::RunTests(nodes::RunTestsNode {
-							scope: nodes::RunTestsScope::Single(
-								resolved_namespace,
-								self.interner
-									.intern_fragment(&test.name)
-									.text()
-									.to_string(),
-							),
-						}));
-					}
-				},
-
-				LogicalPlan::CreateSeries(create) => {
-					stack.push(self.compile_create_series(rx, create)?);
-				}
-
-				LogicalPlan::CreateEvent(create) => {
-					stack.push(self.compile_create_event(rx, create)?);
-				}
-
-				LogicalPlan::CreateTag(create) => {
-					stack.push(self.compile_create_tag(rx, create)?);
-				}
-
-				LogicalPlan::CreateSource(create) => {
-					stack.push(self.compile_create_source(rx, create)?);
-				}
-
-				LogicalPlan::CreateSink(create) => {
-					stack.push(self.compile_create_sink(rx, create)?);
-				}
-
-				LogicalPlan::CreateBinding(create) => {
-					stack.push(self.compile_create_binding(rx, create)?);
-				}
-
-				LogicalPlan::CreateRelationship(create) => {
-					stack.push(self.compile_create_relationship(rx, BumpBox::into_inner(create))?);
-				}
-
-				LogicalPlan::CreateMigration(create) => {
-					stack.push(PhysicalPlan::CreateMigration(nodes::CreateMigrationNode {
-						name: create.name,
-						body_source: create.body_source,
-						rollback_body_source: create.rollback_body_source,
-					}));
-				}
-
-				LogicalPlan::Migrate(node) => {
-					stack.push(PhysicalPlan::Migrate(nodes::MigrateNode {
-						target: node.target,
-					}));
-				}
-
-				LogicalPlan::RollbackMigration(node) => {
-					stack.push(PhysicalPlan::RollbackMigration(nodes::RollbackMigrationNode {
-						target: node.target,
-					}));
-				}
-
-				LogicalPlan::Dispatch(dispatch) => {
-					stack.push(self.compile_dispatch(rx, dispatch)?);
-				}
-
-				LogicalPlan::AlterTable(alter) => {
-					stack.push(self.compile_alter_table(rx, alter)?);
-				}
-
-				LogicalPlan::AlterRemoteNamespace(alter) => {
-					let ns_name: String =
-						alter.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
-					let namespace = Fragment::internal(ns_name);
-					stack.push(PhysicalPlan::AlterRemoteNamespace(
-						nodes::AlterRemoteNamespaceNode {
-							namespace,
-							grpc: self.interner.intern_fragment(&alter.grpc),
-						},
-					));
-				}
-
-				LogicalPlan::DropNamespace(drop) => {
-					stack.push(self.compile_drop_namespace(rx, drop)?);
-				}
-				LogicalPlan::DropTable(drop) => {
-					stack.push(self.compile_drop_table(rx, drop)?);
-				}
-				LogicalPlan::DropView(drop) => {
-					stack.push(self.compile_drop_view(rx, drop)?);
-				}
-				LogicalPlan::DropRingBuffer(drop) => {
-					stack.push(self.compile_drop_ringbuffer(rx, drop)?);
-				}
-				LogicalPlan::DropQueue(drop) => {
-					stack.push(self.compile_drop_queue(rx, drop)?);
-				}
-				LogicalPlan::DropDictionary(drop) => {
-					stack.push(self.compile_drop_dictionary(rx, drop)?);
-				}
-				LogicalPlan::DropSumType(drop) => {
-					stack.push(self.compile_drop_sumtype(rx, drop)?);
-				}
-				LogicalPlan::DropSeries(drop) => {
-					stack.push(self.compile_drop_series(rx, drop)?);
-				}
-				LogicalPlan::DropSource(drop) => {
-					stack.push(self.compile_drop_source(rx, drop)?);
-				}
-				LogicalPlan::DropSink(drop) => {
-					stack.push(self.compile_drop_sink(rx, drop)?);
-				}
-				LogicalPlan::DropProcedure(drop) => {
-					stack.push(self.compile_drop_procedure(rx, drop)?);
-				}
-				LogicalPlan::DropHandler(drop) => {
-					stack.push(self.compile_drop_handler(rx, drop)?);
-				}
-				LogicalPlan::DropTest(drop) => {
-					stack.push(self.compile_drop_test(rx, drop)?);
-				}
-				LogicalPlan::DropBinding(drop) => {
-					stack.push(self.compile_drop_binding(rx, drop)?);
-				}
-				LogicalPlan::DropRelationship(drop) => {
-					stack.push(self.compile_drop_relationship(rx, drop)?);
-				}
-
-				LogicalPlan::CreateIdentity(node) => {
-					let mut attributes = Vec::with_capacity(node.entries.len());
-					for entry in node.entries {
-						attributes.push(nodes::IdentityAttributeAssignment {
-							name: self.interner.intern_fragment(&entry.key),
-							value: ExpressionCompiler::compile(entry.value)?,
-						});
-					}
-					stack.push(PhysicalPlan::CreateIdentity(nodes::CreateIdentityNode {
-						name: self.interner.intern_fragment(&node.name),
-						kind: node.kind,
-						attributes,
-					}));
-				}
-				LogicalPlan::AlterIdentity(node) => {
-					let mut attributes = Vec::with_capacity(node.entries.len());
-					for entry in node.entries {
-						attributes.push(nodes::IdentityAttributeAssignment {
-							name: self.interner.intern_fragment(&entry.key),
-							value: ExpressionCompiler::compile(entry.value)?,
-						});
-					}
-					stack.push(PhysicalPlan::AlterIdentity(nodes::AlterIdentityNode {
-						name: self.interner.intern_fragment(&node.name),
-						attributes,
-					}));
-				}
-				LogicalPlan::CreateIdentityAttribute(node) => {
-					let value_type =
-						convert_data_type_with_constraints(&node.value_type)?.get_type();
-					stack.push(PhysicalPlan::CreateIdentityAttribute(
-						nodes::CreateIdentityAttributeNode {
-							name: self.interner.intern_fragment(&node.name),
-							value_type,
-						},
-					));
-				}
-				LogicalPlan::CreateRole(node) => {
-					stack.push(PhysicalPlan::CreateRole(nodes::CreateRoleNode {
-						name: self.interner.intern_fragment(&node.name),
-					}));
-				}
-				LogicalPlan::Grant(node) => {
-					stack.push(PhysicalPlan::Grant(nodes::GrantNode {
-						role: self.interner.intern_fragment(&node.role),
-						user: self.interner.intern_fragment(&node.user),
-					}));
-				}
-				LogicalPlan::Revoke(node) => {
-					stack.push(PhysicalPlan::Revoke(nodes::RevokeNode {
-						role: self.interner.intern_fragment(&node.role),
-						user: self.interner.intern_fragment(&node.user),
-					}));
-				}
-				LogicalPlan::DropIdentity(node) => {
-					stack.push(PhysicalPlan::DropIdentity(nodes::DropIdentityNode {
-						name: self.interner.intern_fragment(&node.name),
-						kind: node.kind,
-						if_exists: node.if_exists,
-					}));
-				}
-				LogicalPlan::DropIdentityAttribute(node) => {
-					stack.push(PhysicalPlan::DropIdentityAttribute(
-						nodes::DropIdentityAttributeNode {
-							name: self.interner.intern_fragment(&node.name),
-							if_exists: node.if_exists,
-						},
-					));
-				}
-				LogicalPlan::DropRole(node) => {
-					stack.push(PhysicalPlan::DropRole(nodes::DropRoleNode {
-						name: self.interner.intern_fragment(&node.name),
-						if_exists: node.if_exists,
-					}));
-				}
-				LogicalPlan::CreateAuthentication(node) => {
-					let mut method_str = String::new();
-					let mut config = collections::HashMap::new();
-					for entry in &node.entries {
-						let key = entry.key.text().to_string();
-						let value = entry.value.value().to_string();
-						if key == "method" {
-							method_str = value;
-						} else {
-							config.insert(key, value);
+				if let Some(predicate) = extract_row_predicate(&filter.condition) {
+					let source = match &input {
+						PhysicalPlan::TableScan(scan)
+							if scan.source.def().partition_by.is_empty() =>
+						{
+							Some(ResolvedObject::Table(scan.source.clone()))
 						}
-					}
-					stack.push(PhysicalPlan::CreateAuthentication(
-						nodes::CreateAuthenticationNode {
-							user: self.interner.intern_fragment(&node.user),
-							method: Fragment::internal(&method_str),
-							config,
-						},
-					));
-				}
-				LogicalPlan::DropAuthentication(node) => {
-					stack.push(PhysicalPlan::DropAuthentication(nodes::DropAuthenticationNode {
-						user: self.interner.intern_fragment(&node.user),
-						method: self.interner.intern_fragment(&node.method),
-						if_exists: node.if_exists,
-					}));
-				}
-				LogicalPlan::CreatePolicy(node) => {
-					let name = node.name.map(|n| self.interner.intern_fragment(&n));
-					let target_type = node.target_type.as_str().to_string();
-					let (scope_namespace, scope_object) = match &node.scope {
-						AstPolicyScope::Specific(segments) => {
-							if segments.len() >= 2 {
-								let seg_strs: Vec<&str> =
-									segments.iter().map(|s| s.text()).collect();
-								let full_path = seg_strs.join("::");
-								let parent_segs = &seg_strs[..seg_strs.len() - 1];
-								let parent_path = parent_segs.join("::");
-								let ns_fragment =
-									self.interner.intern_fragment(&segments[0]);
-								if self.catalog
-									.find_namespace_by_segments(rx, &seg_strs)?
-									.is_some()
-								{
-									(Some(ns_fragment.with_text(&full_path)), None)
-								} else if self
-									.catalog
-									.find_namespace_by_segments(rx, parent_segs)?
-									.is_some()
-								{
-									(
-										Some(ns_fragment
-											.with_text(&parent_path)),
-										Some(self.interner.intern_fragment(
-											&segments[segments.len() - 1],
-										)),
-									)
-								} else {
-									return_error!(namespace_not_found(
-										ns_fragment.with_text(&full_path),
-										&full_path,
-									));
-								}
-							} else if segments.len() == 1 {
-								(
-									Some(self
-										.interner
-										.intern_fragment(&segments[0])),
-									None,
-								)
-							} else {
-								(None, None)
-							}
+						PhysicalPlan::ViewScan(scan)
+							if scan.source.def().sort().is_empty()
+								&& scan.source.def().partition_by().is_empty() && scan
+								.source
+								.def()
+								.storage_kind()
+								!= ViewStorageKind::Series =>
+						{
+							Some(ResolvedObject::View(scan.source.clone()))
 						}
-						AstPolicyScope::NamespaceWide(ns) => {
-							(Some(self.interner.intern_fragment(ns)), None)
+						PhysicalPlan::RingBufferScan(scan)
+							if scan.source.def().partition_by.is_empty() =>
+						{
+							Some(ResolvedObject::RingBuffer(scan.source.clone()))
 						}
-						AstPolicyScope::Global => (None, None),
-					};
-					let operations = node
-						.operations
-						.iter()
-						.map(|op| nodes::PolicyOperationNode {
-							operation: op.operation.text().to_string(),
-							body_source: op.body_source.clone(),
-						})
-						.collect();
-					stack.push(PhysicalPlan::CreatePolicy(nodes::CreatePolicyNode {
-						name,
-						target_type,
-						scope_namespace,
-						scope_object,
-						operations,
-					}));
-				}
-				LogicalPlan::AlterPolicy(node) => {
-					let enable = node.action == AstAlterPolicyAction::Enable;
-					stack.push(PhysicalPlan::AlterPolicy(nodes::AlterPolicyNode {
-						target_type: node.target_type.as_str().to_string(),
-						name: self.interner.intern_fragment(&node.name),
-						enable,
-					}));
-				}
-				LogicalPlan::DropPolicy(node) => {
-					stack.push(PhysicalPlan::DropPolicy(nodes::DropPolicyNode {
-						target_type: node.target_type.as_str().to_string(),
-						name: self.interner.intern_fragment(&node.name),
-						if_exists: node.if_exists,
-					}));
-				}
-
-				LogicalPlan::Assert(assert_node) => {
-					let input = stack.pop().map(|p| self.bump_box(p));
-
-					if let Some(ref boxed_input) = input {
-						let vars = extract_variable_names(&assert_node.condition);
-						if let Some(pushed) = try_remote_push_down_with_vars(
-							boxed_input,
-							|| Some(assert_node.rql.clone()),
-							vars,
-						) {
-							stack.push(pushed);
-							continue;
-						}
-					}
-
-					stack.push(PhysicalPlan::Assert(AssertNode {
-						conditions: vec![assert_node.condition],
-						message: assert_node.message,
-						input,
-					}));
-				}
-
-				LogicalPlan::AssertBlock(node) => {
-					stack.push(PhysicalPlan::AssertBlock(AssertBlockNode {
-						rql: node.rql,
-						expect_error: node.expect_error,
-						message: node.message,
-					}));
-				}
-
-				LogicalPlan::Filter(filter) => {
-					let input = stack.pop().unwrap(); // FIXME
-
-					let vars = extract_variable_names(&filter.condition);
-					if let Some(pushed) = try_remote_push_down_with_vars(
-						&input,
-						|| Some(filter.rql.clone()),
-						vars,
-					) {
-						stack.push(pushed);
-						continue;
-					}
-
-					if let Some(predicate) = extract_row_predicate(&filter.condition) {
-						let source = match &input {
-							PhysicalPlan::TableScan(scan)
-								if scan.source.def().partition_by.is_empty() =>
-							{
-								Some(ResolvedObject::Table(scan.source.clone()))
-							}
-							PhysicalPlan::ViewScan(scan)
-								if scan.source.def().sort().is_empty()
-									&& scan.source
-										.def()
-										.partition_by()
-										.is_empty() && scan.source.def().storage_kind()
-									!= ViewStorageKind::Series =>
-							{
-								Some(ResolvedObject::View(scan.source.clone()))
-							}
-							PhysicalPlan::RingBufferScan(scan)
-								if scan.source.def().partition_by.is_empty() =>
-							{
-								Some(ResolvedObject::RingBuffer(scan.source.clone()))
-							}
-							_ => None,
-						};
-
-						if let Some(source) = source {
-							match predicate {
-								RowPredicate::Point(row_number) => {
-									stack.push(PhysicalPlan::RowPointLookup(
-										RowPointLookupNode {
-											source,
-											row_number,
-										},
-									));
-									continue;
-								}
-								RowPredicate::List(row_numbers) => {
-									stack.push(PhysicalPlan::RowListLookup(
-										RowListLookupNode {
-											source,
-											row_numbers,
-										},
-									));
-									continue;
-								}
-								RowPredicate::Range {
-									start,
-									end,
-								} => {
-									stack.push(PhysicalPlan::RowRangeScan(
-										RowRangeScanNode {
-											source,
-											start,
-											end,
-										},
-									));
-									continue;
-								}
-							}
-						}
-					}
-
-					if let PhysicalPlan::SeriesScan(ref scan) = input {
-						let def = scan.source.def();
-						let partitioned = !def.partition_by.is_empty();
-						let partition = if partitioned {
-							extract_partition(
-								&filter.condition,
-								&def.columns,
-								&def.partition_by,
-							)
-						} else {
-							None
-						};
-
-						let pushable = if partitioned && partition.is_none() {
-							None
-						} else {
-							extract_series_predicate(&filter.condition, def.key.column())
-								.filter(|sp| {
-									def.tag.is_none()
-										|| sp.variant_tag.is_some() || (sp
-										.key_start
-										.is_none()
-										&& sp.key_end.is_none())
-								})
-						};
-
-						if pushable.is_some() || partition.is_some() {
-							let rewritten = PhysicalPlan::SeriesScan(SeriesScanNode {
-								source: scan.source.clone(),
-								key_range_start: pushable
-									.as_ref()
-									.and_then(|sp| sp.key_start)
-									.or(scan.key_range_start),
-								key_range_end: pushable
-									.as_ref()
-									.and_then(|sp| sp.key_end)
-									.or(scan.key_range_end),
-								variant_tag: pushable
-									.as_ref()
-									.and_then(|sp| sp.variant_tag)
-									.or(scan.variant_tag),
-								partition: partition.or(scan.partition),
-							});
-							let remaining = match pushable {
-								Some(sp) => sp.remaining,
-								None => vec![filter.condition],
-							};
-							if remaining.is_empty() {
-								stack.push(rewritten);
-							} else {
-								stack.push(PhysicalPlan::Filter(FilterNode {
-									conditions: remaining,
-									input: self.bump_box(rewritten),
-								}));
-							}
-							continue;
-						}
-					}
-
-					if let PhysicalPlan::TableScan(ref scan) = input {
-						let def = scan.source.def();
-						if !def.partition_by.is_empty()
-							&& let Some(partition) = extract_partition(
-								&filter.condition,
-								&def.columns,
-								&def.partition_by,
-							) {
-							let pruned = PhysicalPlan::TableScan(TableScanNode {
-								source: scan.source.clone(),
-								partition: Some(partition),
-							});
-							stack.push(PhysicalPlan::Filter(FilterNode {
-								conditions: vec![filter.condition],
-								input: self.bump_box(pruned),
-							}));
-							continue;
-						}
-					}
-
-					if let PhysicalPlan::ViewScan(ref scan) = input {
-						let def = scan.source.def();
-						if !def.partition_by().is_empty()
-							&& let Some(partition) = extract_partition(
-								&filter.condition,
-								def.columns(),
-								def.partition_by(),
-							) {
-							let pruned = PhysicalPlan::ViewScan(ViewScanNode {
-								source: scan.source.clone(),
-								partition: Some(partition),
-							});
-							stack.push(PhysicalPlan::Filter(FilterNode {
-								conditions: vec![filter.condition],
-								input: self.bump_box(pruned),
-							}));
-							continue;
-						}
-					}
-
-					stack.push(PhysicalPlan::Filter(FilterNode {
-						conditions: vec![filter.condition],
-						input: self.bump_box(input),
-					}));
-				}
-
-				LogicalPlan::Gate(gate) => {
-					let input = stack.pop().unwrap();
-
-					let vars = extract_variable_names(&gate.condition);
-					if let Some(pushed) =
-						try_remote_push_down_with_vars(&input, || Some(gate.rql.clone()), vars)
-					{
-						stack.push(pushed);
-						continue;
-					}
-
-					stack.push(PhysicalPlan::Gate(GateNode {
-						conditions: vec![gate.condition],
-						input: self.bump_box(input),
-					}));
-				}
-
-				LogicalPlan::InlineData(inline) => {
-					stack.push(PhysicalPlan::InlineData(InlineDataNode {
-						rows: inline.rows,
-					}));
-				}
-
-				LogicalPlan::Generator(generator) => {
-					stack.push(PhysicalPlan::Generator(GeneratorNode {
-						name: self.interner.intern_fragment(&generator.name),
-						expressions: generator.expressions,
-					}));
-				}
-
-				LogicalPlan::DeleteTable(delete) => {
-					let input = if let Some(delete_input) = delete.input {
-						let sub_plan = self
-							.compile(rx, once(BumpBox::into_inner(delete_input)))?
-							.expect("Delete input must produce a plan");
-						Some(self.bump_box(sub_plan))
-					} else {
-						stack.pop().map(|i| self.bump_box(i))
+						_ => None,
 					};
 
-					let target = if let Some(table_id) = delete.target {
-						let ns_segments: Vec<&str> =
-							table_id.namespace.iter().map(|n| n.text()).collect();
-						let namespace = self
-							.catalog
-							.find_namespace_by_segments(rx, &ns_segments)?
-							.unwrap();
-						let Some(table_def) = self.catalog.find_table_by_name(
-							rx,
-							namespace.id(),
-							table_id.name.text(),
-						)?
-						else {
-							return_error!(table_not_found(
-								self.interner.intern_fragment(&table_id.name),
-								namespace.name(),
-								table_id.name.text()
-							));
-						};
+					if let Some(source) = source {
+						match predicate {
+							RowPredicate::Point(row_number) => {
+								return Ok(PhysicalPlan::RowPointLookup(
+									RowPointLookupNode {
+										source,
+										row_number,
+									},
+								));
+							}
+							RowPredicate::List(row_numbers) => {
+								return Ok(PhysicalPlan::RowListLookup(
+									RowListLookupNode {
+										source,
+										row_numbers,
+									},
+								));
+							}
+							RowPredicate::Range {
+								start,
+								end,
+							} => {
+								return Ok(PhysicalPlan::RowRangeScan(
+									RowRangeScanNode {
+										source,
+										start,
+										end,
+									},
+								));
+							}
+						}
+					}
+				}
 
-						let namespace_id = if let Some(n) = table_id.namespace.first() {
-							let interned = self.interner.intern_fragment(n);
-							interned.with_text(namespace.name())
-						} else {
-							Fragment::internal(namespace.name())
-						};
-						let resolved_namespace =
-							ResolvedNamespace::new(namespace_id, namespace);
-						Some(ResolvedTable::new(
-							self.interner.intern_fragment(&table_id.name),
-							resolved_namespace,
-							table_def,
-						))
+				if let PhysicalPlan::SeriesScan(ref scan) = input {
+					let def = scan.source.def();
+					let partitioned = !def.partition_by.is_empty();
+					let partition = if partitioned {
+						extract_partition(&filter.condition, &def.columns, &def.partition_by)
 					} else {
 						None
 					};
 
-					stack.push(PhysicalPlan::Delete(DeleteTableNode {
-						input,
-						target,
-						returning: delete.returning,
-					}))
+					let pushable = if partitioned && partition.is_none() {
+						None
+					} else {
+						extract_series_predicate(&filter.condition, def.key.column()).filter(
+							|sp| {
+								def.tag.is_none()
+									|| sp.variant_tag.is_some() || (sp.key_start.is_none()
+									&& sp.key_end.is_none())
+							},
+						)
+					};
+
+					if pushable.is_some() || partition.is_some() {
+						let rewritten = PhysicalPlan::SeriesScan(SeriesScanNode {
+							source: scan.source.clone(),
+							key_range_start: pushable
+								.as_ref()
+								.and_then(|sp| sp.key_start)
+								.or(scan.key_range_start),
+							key_range_end: pushable
+								.as_ref()
+								.and_then(|sp| sp.key_end)
+								.or(scan.key_range_end),
+							variant_tag: pushable
+								.as_ref()
+								.and_then(|sp| sp.variant_tag)
+								.or(scan.variant_tag),
+							partition: partition.or(scan.partition),
+						});
+						let remaining = match pushable {
+							Some(sp) => sp.remaining,
+							None => vec![filter.condition],
+						};
+						if remaining.is_empty() {
+							return Ok(rewritten);
+						} else {
+							return Ok(PhysicalPlan::Filter(FilterNode {
+								conditions: remaining,
+								input: self.bump_box(rewritten),
+							}));
+						}
+					}
 				}
 
-				LogicalPlan::DeleteRingBuffer(delete) => {
-					let input = if let Some(delete_input) = delete.input {
-						let sub_plan = self
-							.compile(rx, once(BumpBox::into_inner(delete_input)))?
-							.expect("Delete input must produce a plan");
-						Some(self.bump_box(sub_plan))
-					} else {
-						stack.pop().map(|i| self.bump_box(i))
-					};
+				if let PhysicalPlan::TableScan(ref scan) = input {
+					let def = scan.source.def();
+					if !def.partition_by.is_empty()
+						&& let Some(partition) = extract_partition(
+							&filter.condition,
+							&def.columns,
+							&def.partition_by,
+						) {
+						let pruned = PhysicalPlan::TableScan(TableScanNode {
+							source: scan.source.clone(),
+							partition: Some(partition),
+						});
+						return Ok(PhysicalPlan::Filter(FilterNode {
+							conditions: vec![filter.condition],
+							input: self.bump_box(pruned),
+						}));
+					}
+				}
 
-					let ringbuffer_id = delete.target;
+				if let PhysicalPlan::ViewScan(ref scan) = input {
+					let def = scan.source.def();
+					if !def.partition_by().is_empty()
+						&& let Some(partition) = extract_partition(
+							&filter.condition,
+							def.columns(),
+							def.partition_by(),
+						) {
+						let pruned = PhysicalPlan::ViewScan(ViewScanNode {
+							source: scan.source.clone(),
+							partition: Some(partition),
+						});
+						return Ok(PhysicalPlan::Filter(FilterNode {
+							conditions: vec![filter.condition],
+							input: self.bump_box(pruned),
+						}));
+					}
+				}
+
+				return Ok(PhysicalPlan::Filter(FilterNode {
+					conditions: vec![filter.condition],
+					input: self.bump_box(input),
+				}));
+			}
+
+			QueryTree::Gate {
+				node: gate,
+				input,
+			} => {
+				let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
+
+				let vars = extract_variable_names(&gate.condition);
+				if let Some(pushed) =
+					try_remote_push_down_with_vars(&input, || Some(gate.rql.clone()), vars)
+				{
+					return Ok(pushed);
+				}
+
+				return Ok(PhysicalPlan::Gate(GateNode {
+					conditions: vec![gate.condition],
+					input: self.bump_box(input),
+				}));
+			}
+
+			QueryTree::InlineData {
+				node: inline,
+			} => {
+				return Ok(PhysicalPlan::InlineData(InlineDataNode {
+					rows: inline.rows,
+				}));
+			}
+
+			QueryTree::Generator {
+				node: generator,
+			} => {
+				return Ok(PhysicalPlan::Generator(GeneratorNode {
+					name: self.interner.intern_fragment(&generator.name),
+					expressions: generator.expressions,
+				}));
+			}
+
+			QueryTree::DeleteTable {
+				target,
+				returning,
+				input,
+			} => {
+				let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
+				let input = input.map(|i| self.bump_box(i));
+
+				let target = if let Some(table_id) = target {
 					let ns_segments: Vec<&str> =
-						ringbuffer_id.namespace.iter().map(|n| n.text()).collect();
-					let Some(namespace) =
-						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-					else {
-						let ns_name = ns_segments.join("::");
-						let fragment = ringbuffer_id
-							.namespace
-							.first()
-							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&ns_name));
-						return_error!(namespace_not_found(fragment, &ns_name));
-					};
-					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
+						table_id.namespace.iter().map(|n| n.text()).collect();
+					let namespace =
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?.unwrap();
+					let Some(table_def) = self.catalog.find_table_by_name(
 						rx,
 						namespace.id(),
-						ringbuffer_id.name.text(),
+						table_id.name.text(),
 					)?
 					else {
-						return_error!(ringbuffer_not_found(
-							self.interner.intern_fragment(&ringbuffer_id.name),
+						return_error!(table_not_found(
+							self.interner.intern_fragment(&table_id.name),
 							namespace.name(),
-							ringbuffer_id.name.text()
+							table_id.name.text()
 						));
 					};
 
-					let namespace_id = if let Some(n) = ringbuffer_id.namespace.first() {
+					let namespace_id = if let Some(n) = table_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
 						interned.with_text(namespace.name())
 					} else {
 						Fragment::internal(namespace.name())
 					};
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
-					let target = ResolvedRingBuffer::new(
-						self.interner.intern_fragment(&ringbuffer_id.name),
+					Some(ResolvedTable::new(
+						self.interner.intern_fragment(&table_id.name),
 						resolved_namespace,
-						ringbuffer_def,
-					);
+						table_def,
+					))
+				} else {
+					None
+				};
 
-					stack.push(PhysicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
-						input,
-						target,
-						returning: delete.returning,
-					}))
-				}
+				return Ok(PhysicalPlan::Delete(DeleteTableNode {
+					input,
+					target,
+					returning,
+				}));
+			}
 
-				LogicalPlan::InsertTable(insert) => {
-					let input = self
-						.compile(rx, once(BumpBox::into_inner(insert.source)))?
-						.expect("Insert source must produce a plan");
+			QueryTree::DeleteRingBuffer {
+				target,
+				returning,
+				input,
+			} => {
+				let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
+				let input = input.map(|i| self.bump_box(i));
 
-					let table = insert.target;
-					let ns_segments: Vec<&str> = table.namespace.iter().map(|n| n.text()).collect();
+				let ringbuffer_id = target;
+				let ns_segments: Vec<&str> = ringbuffer_id.namespace.iter().map(|n| n.text()).collect();
+				let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+					let ns_name = ns_segments.join("::");
+					let fragment = ringbuffer_id
+						.namespace
+						.first()
+						.map(|n| self.interner.intern_fragment(n))
+						.unwrap_or_else(|| Fragment::internal(&ns_name));
+					return_error!(namespace_not_found(fragment, &ns_name));
+				};
+				let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
+					rx,
+					namespace.id(),
+					ringbuffer_id.name.text(),
+				)?
+				else {
+					return_error!(ringbuffer_not_found(
+						self.interner.intern_fragment(&ringbuffer_id.name),
+						namespace.name(),
+						ringbuffer_id.name.text()
+					));
+				};
+
+				let namespace_id = if let Some(n) = ringbuffer_id.namespace.first() {
+					let interned = self.interner.intern_fragment(n);
+					interned.with_text(namespace.name())
+				} else {
+					Fragment::internal(namespace.name())
+				};
+				let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
+				let target = ResolvedRingBuffer::new(
+					self.interner.intern_fragment(&ringbuffer_id.name),
+					resolved_namespace,
+					ringbuffer_def,
+				);
+
+				return Ok(PhysicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
+					input,
+					target,
+					returning,
+				}));
+			}
+
+			QueryTree::DeleteSeries {
+				target,
+				returning,
+				input,
+			} => {
+				let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
+				let input = input.map(|i| self.bump_box(i));
+
+				let series_id = target;
+				let ns_segments: Vec<&str> = series_id.namespace.iter().map(|n| n.text()).collect();
+				let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+					let ns_name = ns_segments.join("::");
+					let fragment = series_id
+						.namespace
+						.first()
+						.map(|n| self.interner.intern_fragment(n))
+						.unwrap_or_else(|| Fragment::internal(&ns_name));
+					return_error!(namespace_not_found(fragment, &ns_name));
+				};
+				let Some(series_def) =
+					self.catalog.find_series_by_name(rx, namespace.id(), series_id.name.text())?
+				else {
+					return_error!(series_not_found(
+						self.interner.intern_fragment(&series_id.name),
+						namespace.name(),
+						series_id.name.text()
+					));
+				};
+
+				let namespace_id = if let Some(n) = series_id.namespace.first() {
+					let interned = self.interner.intern_fragment(n);
+					interned.with_text(namespace.name())
+				} else {
+					Fragment::internal(namespace.name())
+				};
+				let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
+				let target = ResolvedSeries::new(
+					self.interner.intern_fragment(&series_id.name),
+					resolved_namespace,
+					series_def,
+				);
+
+				return Ok(PhysicalPlan::DeleteSeries(DeleteSeriesNode {
+					input,
+					target,
+					returning,
+				}));
+			}
+
+			QueryTree::Update {
+				target,
+				returning,
+				input,
+			} => {
+				let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
+				let input = self.bump_box(input);
+
+				let target = if let Some(table_id) = target {
+					let ns_segments: Vec<&str> =
+						table_id.namespace.iter().map(|n| n.text()).collect();
 					let Some(namespace) =
 						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
 					else {
 						let ns_name = ns_segments.join("::");
-						let fragment = table
+						let fragment = table_id
 							.namespace
 							.first()
 							.map(|n| self.interner.intern_fragment(n))
@@ -1465,1261 +1070,1566 @@ impl<'bump> Compiler<'bump> {
 					let Some(table_def) = self.catalog.find_table_by_name(
 						rx,
 						namespace.id(),
-						table.name.text(),
+						table_id.name.text(),
 					)?
 					else {
 						return_error!(table_not_found(
-							self.interner.intern_fragment(&table.name),
+							self.interner.intern_fragment(&table_id.name),
 							namespace.name(),
-							table.name.text()
+							table_id.name.text()
 						));
 					};
 
-					let namespace_id = if let Some(n) = table.namespace.first() {
+					let namespace_id = if let Some(n) = table_id.namespace.first() {
 						let interned = self.interner.intern_fragment(n);
 						interned.with_text(namespace.name())
 					} else {
 						Fragment::internal(namespace.name())
 					};
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
-					let target = ResolvedTable::new(
-						self.interner.intern_fragment(&table.name),
+					Some(ResolvedTable::new(
+						self.interner.intern_fragment(&table_id.name),
 						resolved_namespace,
+						table_def,
+					))
+				} else {
+					None
+				};
+
+				return Ok(PhysicalPlan::Update(UpdateTableNode {
+					input,
+					target,
+					returning,
+				}));
+			}
+
+			QueryTree::UpdateRingBuffer {
+				target,
+				returning,
+				input,
+			} => {
+				let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
+				let input = self.bump_box(input);
+
+				let ringbuffer_id = target;
+				let ns_segments: Vec<&str> = ringbuffer_id.namespace.iter().map(|n| n.text()).collect();
+				let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+					let ns_name = ns_segments.join("::");
+					let fragment = ringbuffer_id
+						.namespace
+						.first()
+						.map(|n| self.interner.intern_fragment(n))
+						.unwrap_or_else(|| Fragment::internal(&ns_name));
+					return_error!(namespace_not_found(fragment, &ns_name));
+				};
+				let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
+					rx,
+					namespace.id(),
+					ringbuffer_id.name.text(),
+				)?
+				else {
+					return_error!(ringbuffer_not_found(
+						self.interner.intern_fragment(&ringbuffer_id.name),
+						namespace.name(),
+						ringbuffer_id.name.text()
+					));
+				};
+
+				let namespace_id = if let Some(n) = ringbuffer_id.namespace.first() {
+					let interned = self.interner.intern_fragment(n);
+					interned.with_text(namespace.name())
+				} else {
+					Fragment::internal(namespace.name())
+				};
+				let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
+				let target = ResolvedRingBuffer::new(
+					self.interner.intern_fragment(&ringbuffer_id.name),
+					resolved_namespace,
+					ringbuffer_def,
+				);
+
+				return Ok(PhysicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
+					input,
+					target,
+					returning,
+				}));
+			}
+
+			QueryTree::UpdateSeries {
+				target,
+				returning,
+				input,
+			} => {
+				let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
+				let input = self.bump_box(input);
+
+				let series_id = target;
+				let ns_segments: Vec<&str> = series_id.namespace.iter().map(|n| n.text()).collect();
+				let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+					let ns_name = ns_segments.join("::");
+					let fragment = series_id
+						.namespace
+						.first()
+						.map(|n| self.interner.intern_fragment(n))
+						.unwrap_or_else(|| Fragment::internal(&ns_name));
+					return_error!(namespace_not_found(fragment, &ns_name));
+				};
+				let Some(series_def) =
+					self.catalog.find_series_by_name(rx, namespace.id(), series_id.name.text())?
+				else {
+					return_error!(series_not_found(
+						self.interner.intern_fragment(&series_id.name),
+						namespace.name(),
+						series_id.name.text()
+					));
+				};
+
+				let namespace_id = if let Some(n) = series_id.namespace.first() {
+					let interned = self.interner.intern_fragment(n);
+					interned.with_text(namespace.name())
+				} else {
+					Fragment::internal(namespace.name())
+				};
+				let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
+				let target = ResolvedSeries::new(
+					self.interner.intern_fragment(&series_id.name),
+					resolved_namespace,
+					series_def,
+				);
+
+				return Ok(PhysicalPlan::UpdateSeries(UpdateSeriesNode {
+					input,
+					target,
+					returning,
+				}));
+			}
+
+			QueryTree::JoinInner {
+				on,
+				alias,
+				with,
+				rql,
+				input,
+				right,
+			} => {
+				let left = self.compile_tree(rx, BumpBox::into_inner(input))?;
+				let right = self.compile_tree(rx, BumpBox::into_inner(right))?;
+
+				if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) = (&left, &right)
+					&& l.address == r.address
+				{
+					let mut pushed = l.clone();
+					pushed.remote_rql = format!("{} | {}", pushed.remote_rql, rql);
+					pushed.variables.extend(r.variables.iter().cloned());
+					return Ok(PhysicalPlan::RemoteScan(pushed));
+				}
+
+				let alias = alias.map(|a| self.interner.intern_fragment(&a));
+				return Ok(PhysicalPlan::JoinInner(JoinInnerNode {
+					left: self.bump_box(left),
+					right: self.bump_box(right),
+					on,
+					alias,
+					with,
+				}));
+			}
+
+			QueryTree::JoinLeft {
+				on,
+				alias,
+				with,
+				rql,
+				input,
+				right,
+			} => {
+				let left = self.compile_tree(rx, BumpBox::into_inner(input))?;
+				let right = self.compile_tree(rx, BumpBox::into_inner(right))?;
+
+				if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) = (&left, &right)
+					&& l.address == r.address
+				{
+					let mut pushed = l.clone();
+					pushed.remote_rql = format!("{} | {}", pushed.remote_rql, rql);
+					pushed.variables.extend(r.variables.iter().cloned());
+					return Ok(PhysicalPlan::RemoteScan(pushed));
+				}
+
+				let alias = alias.map(|a| self.interner.intern_fragment(&a));
+				return Ok(PhysicalPlan::JoinLeft(JoinLeftNode {
+					left: self.bump_box(left),
+					right: self.bump_box(right),
+					on,
+					alias,
+					with,
+				}));
+			}
+
+			QueryTree::JoinNatural {
+				join_type,
+				fragment,
+				alias,
+				with,
+				rql,
+				input,
+				right,
+			} => {
+				let left = self.compile_tree(rx, BumpBox::into_inner(input))?;
+				let right = self.compile_tree(rx, BumpBox::into_inner(right))?;
+
+				if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) = (&left, &right)
+					&& l.address == r.address
+				{
+					let mut pushed = l.clone();
+					pushed.remote_rql = format!("{} | {}", pushed.remote_rql, rql);
+					pushed.variables.extend(r.variables.iter().cloned());
+					return Ok(PhysicalPlan::RemoteScan(pushed));
+				}
+
+				let alias = alias.map(|a| self.interner.intern_fragment(&a));
+				return Ok(PhysicalPlan::JoinNatural(JoinNaturalNode {
+					left: self.bump_box(left),
+					right: self.bump_box(right),
+					join_type,
+					fragment: self.interner.intern_fragment(&fragment),
+					alias,
+					with,
+				}));
+			}
+
+			QueryTree::Lookup {
+				join_type,
+				on,
+				alias,
+				with,
+				input,
+				right,
+			} => {
+				let alias = self.interner.intern_fragment(&alias);
+				let left = self.compile_tree(rx, BumpBox::into_inner(input))?;
+				let right = self.compile_tree(rx, BumpBox::into_inner(right))?;
+				if let PhysicalPlan::RemoteScan(remote) = &right {
+					return_error!(lookup_right_unsupported(alias, &remote.remote_name));
+				}
+
+				return Ok(PhysicalPlan::Lookup(LookupNode {
+					left: self.bump_box(left),
+					right: self.bump_box(right),
+					on,
+					alias,
+					join_type,
+					with,
+				}));
+			}
+
+			QueryTree::Order {
+				node: order,
+				input,
+			} => {
+				let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
+
+				if let Some(pushed) = try_remote_push_down(&input, || Some(order.rql.clone())) {
+					return Ok(pushed);
+				}
+
+				return Ok(PhysicalPlan::Sort(SortNode {
+					by: order.by,
+					input: self.bump_box(input),
+				}));
+			}
+
+			QueryTree::Distinct {
+				node: distinct,
+				input,
+			} => {
+				let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
+
+				if let Some(pushed) = try_remote_push_down(&input, || Some(distinct.rql.clone())) {
+					return Ok(pushed);
+				}
+
+				let mut resolved_columns = Vec::with_capacity(distinct.columns.len());
+				for col in distinct.columns {
+					let namespace = ResolvedNamespace::new(
+						Fragment::internal("_context"),
+						Namespace::Local {
+							id: NamespaceId::SYSTEM,
+							name: "_context".to_string(),
+							local_name: "_context".to_string(),
+							parent_id: NamespaceId::ROOT,
+						},
+					);
+
+					let table_def = Table {
+						id: TableId(1),
+						namespace: NamespaceId::SYSTEM,
+						name: "_context".to_string(),
+						columns: vec![],
+						primary_key: None,
+						partition_by: vec![],
+						time: TimeSource::Processing,
+					};
+
+					let resolved_table = ResolvedTable::new(
+						Fragment::internal("_context"),
+						namespace,
 						table_def,
 					);
 
-					stack.push(PhysicalPlan::InsertTable(InsertTableNode {
-						input: self.bump_box(input),
-						target,
-						returning: insert.returning,
-					}))
+					let resolved_source = ResolvedObject::Table(resolved_table);
+
+					let column_def = Column {
+						id: ColumnId(1),
+						name: col.name.text().to_string(),
+						constraint: TypeConstraint::unconstrained(ValueType::Utf8),
+						properties: vec![],
+						index: ColumnIndex(0),
+						auto_increment: false,
+						dictionary_id: None,
+					};
+
+					resolved_columns.push(ResolvedColumn::new(
+						self.interner.intern_fragment(&col.name),
+						resolved_source,
+						column_def,
+					));
 				}
 
-				LogicalPlan::InsertRingBuffer(insert_rb) => {
-					let input = self
-						.compile(rx, once(BumpBox::into_inner(insert_rb.source)))?
-						.expect("Insert source must produce a plan");
+				return Ok(PhysicalPlan::Distinct(DistinctNode {
+					columns: resolved_columns,
+					with: distinct.with,
+					input: self.bump_box(input),
+				}));
+			}
 
-					let ringbuffer_id = insert_rb.target;
-					let ns_segments: Vec<&str> =
-						ringbuffer_id.namespace.iter().map(|n| n.text()).collect();
-					let Some(namespace) =
-						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-					else {
-						let ns_name = ns_segments.join("::");
-						let fragment = ringbuffer_id
-							.namespace
-							.first()
-							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&ns_name));
-						return_error!(namespace_not_found(fragment, &ns_name));
-					};
-					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
-						rx,
-						namespace.id(),
-						ringbuffer_id.name.text(),
-					)?
-					else {
-						return_error!(ringbuffer_not_found(
-							self.interner.intern_fragment(&ringbuffer_id.name),
-							namespace.name(),
-							ringbuffer_id.name.text()
-						));
-					};
+			QueryTree::Map {
+				node: map,
+				input,
+			} => {
+				let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
+				let input = input.map(|p| self.bump_box(p));
 
-					let namespace_id = if let Some(n) = ringbuffer_id.namespace.first() {
-						let interned = self.interner.intern_fragment(n);
-						interned.with_text(namespace.name())
-					} else {
-						Fragment::internal(namespace.name())
-					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
-					let target = ResolvedRingBuffer::new(
-						self.interner.intern_fragment(&ringbuffer_id.name),
-						resolved_namespace,
-						ringbuffer_def,
-					);
-
-					stack.push(PhysicalPlan::InsertRingBuffer(InsertRingBufferNode {
-						input: self.bump_box(input),
-						target,
-						returning: insert_rb.returning,
-					}))
-				}
-
-				LogicalPlan::InsertQueue(insert_queue) => {
-					let input = self
-						.compile(rx, once(BumpBox::into_inner(insert_queue.source)))?
-						.expect("Insert source must produce a plan");
-
-					let queue_id = insert_queue.target;
-					let ns_segments: Vec<&str> =
-						queue_id.namespace.iter().map(|n| n.text()).collect();
-					let Some(namespace) =
-						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-					else {
-						let ns_name = ns_segments.join("::");
-						let fragment = queue_id
-							.namespace
-							.first()
-							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&ns_name));
-						return_error!(namespace_not_found(fragment, &ns_name));
-					};
-					let Some(queue_def) = self.catalog.find_queue_by_name(
-						rx,
-						namespace.id(),
-						queue_id.name.text(),
-					)?
-					else {
-						return_error!(queue_not_found(
-							self.interner.intern_fragment(&queue_id.name),
-							namespace.name(),
-							queue_id.name.text()
-						));
-					};
-
-					if let Some(key) = &insert_queue.deduplication_key
-						&& let Some(deduplicate) = &queue_def.deduplicate
-					{
-						return Err(RqlError::InsertWithKeyOnDeduplicatingQueue {
-							fragment: key.full_fragment_owned(),
-							queue: format!(
-								"{}::{}",
-								namespace.name(),
-								queue_id.name.text()
-							),
-							by: deduplicate.by.join(", "),
-						}
-						.into());
+				if let Some(ref boxed_input) = input {
+					let mut vars = Vec::new();
+					for expr in &map.map {
+						vars.extend(extract_variable_names(expr));
 					}
+					if let Some(pushed) = try_remote_push_down_with_vars(
+						boxed_input,
+						|| Some(map.rql.clone()),
+						vars,
+					) {
+						return Ok(pushed);
+					}
+				}
 
-					let namespace_id = if let Some(n) = queue_id.namespace.first() {
-						let interned = self.interner.intern_fragment(n);
-						interned.with_text(namespace.name())
+				return Ok(PhysicalPlan::Map(MapNode {
+					map: map.map,
+					input,
+				}));
+			}
+
+			QueryTree::Extend {
+				node: extend,
+				input,
+			} => {
+				let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
+				let input = input.map(|p| self.bump_box(p));
+
+				if let Some(ref boxed_input) = input {
+					let mut vars = Vec::new();
+					for expr in &extend.extend {
+						vars.extend(extract_variable_names(expr));
+					}
+					if let Some(pushed) = try_remote_push_down_with_vars(
+						boxed_input,
+						|| Some(extend.rql.clone()),
+						vars,
+					) {
+						return Ok(pushed);
+					}
+				}
+
+				return Ok(PhysicalPlan::Extend(ExtendNode {
+					extend: extend.extend,
+					input,
+				}));
+			}
+
+			QueryTree::Patch {
+				node: patch,
+				input,
+			} => {
+				let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
+				let input = input.map(|p| self.bump_box(p));
+
+				if let Some(ref boxed_input) = input {
+					let mut vars = Vec::new();
+					for expr in &patch.assignments {
+						vars.extend(extract_variable_names(expr));
+					}
+					if let Some(pushed) = try_remote_push_down_with_vars(
+						boxed_input,
+						|| Some(patch.rql.clone()),
+						vars,
+					) {
+						return Ok(pushed);
+					}
+				}
+
+				return Ok(PhysicalPlan::Patch(PatchNode {
+					assignments: patch.assignments,
+					input,
+				}));
+			}
+
+			QueryTree::Apply {
+				node: apply,
+				input,
+			} => {
+				let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
+				let input = input.map(|p| self.bump_box(p));
+
+				if let Some(ref boxed_input) = input {
+					let mut vars = Vec::new();
+					for expr in &apply.params {
+						vars.extend(extract_variable_names(expr));
+					}
+					if let Some(pushed) = try_remote_push_down_with_vars(
+						boxed_input,
+						|| Some(apply.rql.clone()),
+						vars,
+					) {
+						return Ok(pushed);
+					}
+				}
+
+				return Ok(PhysicalPlan::Apply(ApplyNode {
+					operator: self.interner.intern_fragment(&apply.operator),
+					params: apply.params,
+					with: apply.with,
+					input,
+				}));
+			}
+
+			QueryTree::SourceScan {
+				node: scan,
+			} => match &scan.source {
+				ResolvedObject::Table(resolved_table) => {
+					if let Some(index) = &scan.index {
+						return Ok(PhysicalPlan::IndexScan(IndexScanNode {
+							source: resolved_table.clone(),
+							index_name: index.identifier().text().to_string(),
+						}));
 					} else {
-						Fragment::internal(namespace.name())
-					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
-					let target = ResolvedQueue::new(
-						self.interner.intern_fragment(&queue_id.name),
-						resolved_namespace,
-						queue_def,
+						return Ok(PhysicalPlan::TableScan(TableScanNode {
+							source: resolved_table.clone(),
+							partition: None,
+						}));
+					}
+				}
+				ResolvedObject::View(resolved_view) => {
+					if scan.index.is_some() {
+						unimplemented!("views do not support indexes yet");
+					}
+					return Ok(PhysicalPlan::ViewScan(ViewScanNode {
+						source: resolved_view.clone(),
+						partition: None,
+					}));
+				}
+				ResolvedObject::DeferredView(resolved_view) => {
+					if scan.index.is_some() {
+						unimplemented!("views do not support indexes yet");
+					}
+					let view = ResolvedView::new(
+						resolved_view.identifier().clone(),
+						resolved_view.namespace().clone(),
+						resolved_view.def().clone(),
 					);
+					return Ok(PhysicalPlan::ViewScan(ViewScanNode {
+						source: view,
+						partition: None,
+					}));
+				}
+				ResolvedObject::TransactionalView(resolved_view) => {
+					if scan.index.is_some() {
+						unimplemented!("views do not support indexes yet");
+					}
+					let view = ResolvedView::new(
+						resolved_view.identifier().clone(),
+						resolved_view.namespace().clone(),
+						resolved_view.def().clone(),
+					);
+					return Ok(PhysicalPlan::ViewScan(ViewScanNode {
+						source: view,
+						partition: None,
+					}));
+				}
 
-					if insert_queue.deduplication_key.is_some() || insert_queue.not_before.is_some()
-					{
-						for reserved in [QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD]
-						{
-							if target.find_column(reserved).is_some() {
-								return_error!(queue_reserved_column_collision(
-									self.interner.intern_fragment(&queue_id.name),
-									target.name(),
-									reserved
+				ResolvedObject::TableVirtual(resolved_virtual) => {
+					if scan.index.is_some() {
+						unimplemented!("virtual tables do not support indexes yet");
+					}
+					return Ok(PhysicalPlan::TableVirtualScan(TableVirtualScanNode {
+						source: resolved_virtual.clone(),
+						pushdown_context: None,
+					}));
+				}
+				ResolvedObject::RingBuffer(resolved_ringbuffer) => {
+					if scan.index.is_some() {
+						unimplemented!("ring buffers do not support indexes yet");
+					}
+					return Ok(PhysicalPlan::RingBufferScan(RingBufferScanNode {
+						source: resolved_ringbuffer.clone(),
+					}));
+				}
+
+				ResolvedObject::Dictionary(resolved_dictionary) => {
+					if scan.index.is_some() {
+						unimplemented!("dictionaries do not support indexes");
+					}
+					return Ok(PhysicalPlan::DictionaryScan(DictionaryScanNode {
+						source: resolved_dictionary.clone(),
+					}));
+				}
+				ResolvedObject::Series(resolved_series) => {
+					if scan.index.is_some() {
+						unimplemented!("series do not support indexes");
+					}
+					return Ok(PhysicalPlan::SeriesScan(SeriesScanNode {
+						source: resolved_series.clone(),
+						key_range_start: None,
+						key_range_end: None,
+						variant_tag: None,
+						partition: None,
+					}));
+				}
+				ResolvedObject::Queue(resolved_queue) => {
+					if scan.index.is_some() {
+						unimplemented!("queues do not support indexes");
+					}
+					return Ok(PhysicalPlan::QueueScan(QueueScanNode {
+						source: resolved_queue.clone(),
+					}));
+				}
+			},
+
+			QueryTree::RemoteScan {
+				node: scan,
+			} => {
+				return Ok(PhysicalPlan::RemoteScan(nodes::RemoteScanNode {
+					address: scan.address,
+					token: scan.token,
+					remote_rql: format!("FROM {}::{}", scan.local_namespace, scan.remote_name),
+					local_namespace: scan.local_namespace,
+					remote_name: scan.remote_name,
+					variables: Vec::new(),
+				}));
+			}
+
+			QueryTree::Take {
+				node: take,
+				input,
+			} => {
+				let input = self.compile_tree(rx, BumpBox::into_inner(input))?;
+
+				if let Some(pushed) =
+					try_remote_push_down(&input, || Some(format!("TAKE {}", take.take)))
+				{
+					return Ok(pushed);
+				}
+
+				return Ok(PhysicalPlan::Take(TakeNode {
+					take: take.take,
+					input: self.bump_box(input),
+				}));
+			}
+
+			QueryTree::Window {
+				node: window,
+				input,
+			} => {
+				let input = input.map(|i| self.compile_tree(rx, BumpBox::into_inner(i))).transpose()?;
+				let input = input.map(|p| self.bump_box(p));
+				return Ok(PhysicalPlan::Window(WindowNode {
+					group_by: window.group_by,
+					aggregations: window.aggregations,
+					with: window.with,
+					fragment: window.fragment,
+					input,
+				}));
+			}
+
+			QueryTree::VariableSource {
+				node: source,
+			} => {
+				let variable_expr = VariableExpression {
+					fragment: self.interner.intern_fragment(&source.name),
+				};
+
+				return Ok(PhysicalPlan::Variable(VariableNode {
+					variable_expr,
+				}));
+			}
+
+			QueryTree::Environment {
+				..
+			} => {
+				return Ok(PhysicalPlan::Environment(EnvironmentNode {}));
+			}
+
+			QueryTree::AppendQuery {
+				fragment,
+				input,
+				right,
+			} => {
+				let left = self.compile_tree(rx, BumpBox::into_inner(input))?;
+				let right = self.compile_tree(rx, BumpBox::into_inner(right))?;
+				return Ok(PhysicalPlan::Append(AppendPhysicalNode::Query {
+					fragment: self.interner.intern_fragment(&fragment),
+					left: self.bump_box(left),
+					right: self.bump_box(right),
+				}));
+			}
+
+			QueryTree::Statement(plan) => self.compile_statement(rx, plan),
+		}
+	}
+
+	fn compile_statement(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		plan: LogicalPlan<'bump>,
+	) -> Result<PhysicalPlan<'bump>> {
+		match plan {
+			LogicalPlan::CreateNamespace(create) => {
+				return Ok(self.compile_create_namespace(rx, create)?);
+			}
+
+			LogicalPlan::CreateRemoteNamespace(create) => {
+				return Ok(self.compile_create_remote_namespace(rx, create)?);
+			}
+
+			LogicalPlan::CreateTable(create) => {
+				return Ok(self.compile_create_table(rx, create)?);
+			}
+
+			LogicalPlan::CreateRingBuffer(create) => {
+				return Ok(self.compile_create_ringbuffer(rx, create)?);
+			}
+
+			LogicalPlan::CreateQueue(create) => {
+				return Ok(self.compile_create_queue(rx, create)?);
+			}
+
+			LogicalPlan::CreateDeferredView(create) => {
+				return Ok(self.compile_create_deferred(rx, create)?);
+			}
+
+			LogicalPlan::CreateTransactionalView(create) => {
+				return Ok(self.compile_create_transactional(rx, create)?);
+			}
+
+			LogicalPlan::CreateDictionary(create) => {
+				return Ok(self.compile_create_dictionary(rx, create)?);
+			}
+
+			LogicalPlan::CreateSumType(create) => {
+				return Ok(self.compile_create_sumtype(rx, create)?);
+			}
+
+			LogicalPlan::AlterSequence(alter) => {
+				return Ok(self.compile_alter_sequence(rx, alter)?);
+			}
+
+			LogicalPlan::CreatePrimaryKey(create) => {
+				return Ok(self.compile_create_primary_key(rx, create)?);
+			}
+
+			LogicalPlan::CreateColumnProperty(create) => {
+				return Ok(self.compile_create_column_property(rx, create)?);
+			}
+
+			LogicalPlan::CreateProcedure(create) => {
+				return Ok(self.compile_create_procedure(rx, create)?);
+			}
+
+			LogicalPlan::CreateTest(create) => {
+				return Ok(self.compile_create_test(rx, create)?);
+			}
+
+			LogicalPlan::RunTests(scope) => match scope {
+				logical::RunTestsNode::All => {
+					return Ok(PhysicalPlan::RunTests(nodes::RunTestsNode {
+						scope: nodes::RunTestsScope::All,
+					}));
+				}
+				logical::RunTestsNode::Namespace(ns) => {
+					let ns_segments: Vec<&str> = ns.segments.iter().map(|n| n.text()).collect();
+					let namespace_name = ns_segments.join("::");
+					let Some(namespace_def) =
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
+					else {
+						let ns_fragment = if let Some(n) = ns.segments.first() {
+							let interned = self.interner.intern_fragment(n);
+							interned.with_text(&namespace_name)
+						} else {
+							Fragment::internal("default")
+						};
+						return_error!(namespace_not_found(ns_fragment, &namespace_name));
+					};
+					let namespace_id = if let Some(n) = ns.segments.first() {
+						let interned = self.interner.intern_fragment(n);
+						interned.with_text(&namespace_name)
+					} else {
+						Fragment::internal(namespace_name)
+					};
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					return Ok(PhysicalPlan::RunTests(nodes::RunTestsNode {
+						scope: nodes::RunTestsScope::Namespace(resolved_namespace),
+					}));
+				}
+				logical::RunTestsNode::Single(test) => {
+					let ns_segments: Vec<&str> = test.namespace.iter().map(|n| n.text()).collect();
+					let namespace_name = if ns_segments.is_empty() {
+						"default".to_string()
+					} else {
+						ns_segments.join("::")
+					};
+					let Some(namespace_def) =
+						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
+					else {
+						let ns_fragment = if let Some(n) = test.namespace.first() {
+							let interned = self.interner.intern_fragment(n);
+							interned.with_text(&namespace_name)
+						} else {
+							Fragment::internal("default")
+						};
+						return_error!(namespace_not_found(ns_fragment, &namespace_name));
+					};
+					let namespace_id = if let Some(n) = test.namespace.first() {
+						let interned = self.interner.intern_fragment(n);
+						interned.with_text(&namespace_name)
+					} else {
+						Fragment::internal(namespace_name)
+					};
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					return Ok(PhysicalPlan::RunTests(nodes::RunTestsNode {
+						scope: nodes::RunTestsScope::Single(
+							resolved_namespace,
+							self.interner.intern_fragment(&test.name).text().to_string(),
+						),
+					}));
+				}
+			},
+
+			LogicalPlan::CreateSeries(create) => {
+				return Ok(self.compile_create_series(rx, create)?);
+			}
+
+			LogicalPlan::CreateEvent(create) => {
+				return Ok(self.compile_create_event(rx, create)?);
+			}
+
+			LogicalPlan::CreateTag(create) => {
+				return Ok(self.compile_create_tag(rx, create)?);
+			}
+
+			LogicalPlan::CreateSource(create) => {
+				return Ok(self.compile_create_source(rx, create)?);
+			}
+
+			LogicalPlan::CreateSink(create) => {
+				return Ok(self.compile_create_sink(rx, create)?);
+			}
+
+			LogicalPlan::CreateBinding(create) => {
+				return Ok(self.compile_create_binding(rx, create)?);
+			}
+
+			LogicalPlan::CreateRelationship(create) => {
+				return Ok(self.compile_create_relationship(rx, BumpBox::into_inner(create))?);
+			}
+
+			LogicalPlan::CreateMigration(create) => {
+				return Ok(PhysicalPlan::CreateMigration(nodes::CreateMigrationNode {
+					name: create.name,
+					body_source: create.body_source,
+					rollback_body_source: create.rollback_body_source,
+				}));
+			}
+
+			LogicalPlan::Migrate(node) => {
+				return Ok(PhysicalPlan::Migrate(nodes::MigrateNode {
+					target: node.target,
+				}));
+			}
+
+			LogicalPlan::RollbackMigration(node) => {
+				return Ok(PhysicalPlan::RollbackMigration(nodes::RollbackMigrationNode {
+					target: node.target,
+				}));
+			}
+
+			LogicalPlan::Dispatch(dispatch) => {
+				return Ok(self.compile_dispatch(rx, dispatch)?);
+			}
+
+			LogicalPlan::AlterTable(alter) => {
+				return Ok(self.compile_alter_table(rx, alter)?);
+			}
+
+			LogicalPlan::AlterRemoteNamespace(alter) => {
+				let ns_name: String =
+					alter.namespace.iter().map(|s| s.text()).collect::<Vec<_>>().join("::");
+				let namespace = Fragment::internal(ns_name);
+				return Ok(PhysicalPlan::AlterRemoteNamespace(nodes::AlterRemoteNamespaceNode {
+					namespace,
+					grpc: self.interner.intern_fragment(&alter.grpc),
+				}));
+			}
+
+			LogicalPlan::DropNamespace(drop) => {
+				return Ok(self.compile_drop_namespace(rx, drop)?);
+			}
+			LogicalPlan::DropTable(drop) => {
+				return Ok(self.compile_drop_table(rx, drop)?);
+			}
+			LogicalPlan::DropView(drop) => {
+				return Ok(self.compile_drop_view(rx, drop)?);
+			}
+			LogicalPlan::DropRingBuffer(drop) => {
+				return Ok(self.compile_drop_ringbuffer(rx, drop)?);
+			}
+			LogicalPlan::DropQueue(drop) => {
+				return Ok(self.compile_drop_queue(rx, drop)?);
+			}
+			LogicalPlan::DropDictionary(drop) => {
+				return Ok(self.compile_drop_dictionary(rx, drop)?);
+			}
+			LogicalPlan::DropSumType(drop) => {
+				return Ok(self.compile_drop_sumtype(rx, drop)?);
+			}
+			LogicalPlan::DropSeries(drop) => {
+				return Ok(self.compile_drop_series(rx, drop)?);
+			}
+			LogicalPlan::DropSource(drop) => {
+				return Ok(self.compile_drop_source(rx, drop)?);
+			}
+			LogicalPlan::DropSink(drop) => {
+				return Ok(self.compile_drop_sink(rx, drop)?);
+			}
+			LogicalPlan::DropProcedure(drop) => {
+				return Ok(self.compile_drop_procedure(rx, drop)?);
+			}
+			LogicalPlan::DropHandler(drop) => {
+				return Ok(self.compile_drop_handler(rx, drop)?);
+			}
+			LogicalPlan::DropTest(drop) => {
+				return Ok(self.compile_drop_test(rx, drop)?);
+			}
+			LogicalPlan::DropBinding(drop) => {
+				return Ok(self.compile_drop_binding(rx, drop)?);
+			}
+			LogicalPlan::DropRelationship(drop) => {
+				return Ok(self.compile_drop_relationship(rx, drop)?);
+			}
+
+			LogicalPlan::CreateIdentity(node) => {
+				let mut attributes = Vec::with_capacity(node.entries.len());
+				for entry in node.entries {
+					attributes.push(nodes::IdentityAttributeAssignment {
+						name: self.interner.intern_fragment(&entry.key),
+						value: ExpressionCompiler::compile(entry.value)?,
+					});
+				}
+				return Ok(PhysicalPlan::CreateIdentity(nodes::CreateIdentityNode {
+					name: self.interner.intern_fragment(&node.name),
+					kind: node.kind,
+					attributes,
+				}));
+			}
+			LogicalPlan::AlterIdentity(node) => {
+				let mut attributes = Vec::with_capacity(node.entries.len());
+				for entry in node.entries {
+					attributes.push(nodes::IdentityAttributeAssignment {
+						name: self.interner.intern_fragment(&entry.key),
+						value: ExpressionCompiler::compile(entry.value)?,
+					});
+				}
+				return Ok(PhysicalPlan::AlterIdentity(nodes::AlterIdentityNode {
+					name: self.interner.intern_fragment(&node.name),
+					attributes,
+				}));
+			}
+			LogicalPlan::CreateIdentityAttribute(node) => {
+				let value_type = convert_data_type_with_constraints(&node.value_type)?.get_type();
+				return Ok(PhysicalPlan::CreateIdentityAttribute(nodes::CreateIdentityAttributeNode {
+					name: self.interner.intern_fragment(&node.name),
+					value_type,
+				}));
+			}
+			LogicalPlan::CreateRole(node) => {
+				return Ok(PhysicalPlan::CreateRole(nodes::CreateRoleNode {
+					name: self.interner.intern_fragment(&node.name),
+				}));
+			}
+			LogicalPlan::Grant(node) => {
+				return Ok(PhysicalPlan::Grant(nodes::GrantNode {
+					role: self.interner.intern_fragment(&node.role),
+					user: self.interner.intern_fragment(&node.user),
+				}));
+			}
+			LogicalPlan::Revoke(node) => {
+				return Ok(PhysicalPlan::Revoke(nodes::RevokeNode {
+					role: self.interner.intern_fragment(&node.role),
+					user: self.interner.intern_fragment(&node.user),
+				}));
+			}
+			LogicalPlan::DropIdentity(node) => {
+				return Ok(PhysicalPlan::DropIdentity(nodes::DropIdentityNode {
+					name: self.interner.intern_fragment(&node.name),
+					kind: node.kind,
+					if_exists: node.if_exists,
+				}));
+			}
+			LogicalPlan::DropIdentityAttribute(node) => {
+				return Ok(PhysicalPlan::DropIdentityAttribute(nodes::DropIdentityAttributeNode {
+					name: self.interner.intern_fragment(&node.name),
+					if_exists: node.if_exists,
+				}));
+			}
+			LogicalPlan::DropRole(node) => {
+				return Ok(PhysicalPlan::DropRole(nodes::DropRoleNode {
+					name: self.interner.intern_fragment(&node.name),
+					if_exists: node.if_exists,
+				}));
+			}
+			LogicalPlan::CreateAuthentication(node) => {
+				let mut method_str = String::new();
+				let mut config = collections::HashMap::new();
+				for entry in &node.entries {
+					let key = entry.key.text().to_string();
+					let value = entry.value.value().to_string();
+					if key == "method" {
+						method_str = value;
+					} else {
+						config.insert(key, value);
+					}
+				}
+				return Ok(PhysicalPlan::CreateAuthentication(nodes::CreateAuthenticationNode {
+					user: self.interner.intern_fragment(&node.user),
+					method: Fragment::internal(&method_str),
+					config,
+				}));
+			}
+			LogicalPlan::DropAuthentication(node) => {
+				return Ok(PhysicalPlan::DropAuthentication(nodes::DropAuthenticationNode {
+					user: self.interner.intern_fragment(&node.user),
+					method: self.interner.intern_fragment(&node.method),
+					if_exists: node.if_exists,
+				}));
+			}
+			LogicalPlan::CreatePolicy(node) => {
+				let name = node.name.map(|n| self.interner.intern_fragment(&n));
+				let target_type = node.target_type.as_str().to_string();
+				let (scope_namespace, scope_object) = match &node.scope {
+					AstPolicyScope::Specific(segments) => {
+						if segments.len() >= 2 {
+							let seg_strs: Vec<&str> =
+								segments.iter().map(|s| s.text()).collect();
+							let full_path = seg_strs.join("::");
+							let parent_segs = &seg_strs[..seg_strs.len() - 1];
+							let parent_path = parent_segs.join("::");
+							let ns_fragment = self.interner.intern_fragment(&segments[0]);
+							if self.catalog
+								.find_namespace_by_segments(rx, &seg_strs)?
+								.is_some()
+							{
+								(Some(ns_fragment.with_text(&full_path)), None)
+							} else if self
+								.catalog
+								.find_namespace_by_segments(rx, parent_segs)?
+								.is_some()
+							{
+								(
+									Some(ns_fragment.with_text(&parent_path)),
+									Some(self.interner.intern_fragment(
+										&segments[segments.len() - 1],
+									)),
+								)
+							} else {
+								return_error!(namespace_not_found(
+									ns_fragment.with_text(&full_path),
+									&full_path,
 								));
 							}
+						} else if segments.len() == 1 {
+							(Some(self.interner.intern_fragment(&segments[0])), None)
+						} else {
+							(None, None)
 						}
 					}
+					AstPolicyScope::NamespaceWide(ns) => {
+						(Some(self.interner.intern_fragment(ns)), None)
+					}
+					AstPolicyScope::Global => (None, None),
+				};
+				let operations = node
+					.operations
+					.iter()
+					.map(|op| nodes::PolicyOperationNode {
+						operation: op.operation.text().to_string(),
+						body_source: op.body_source.clone(),
+					})
+					.collect();
+				return Ok(PhysicalPlan::CreatePolicy(nodes::CreatePolicyNode {
+					name,
+					target_type,
+					scope_namespace,
+					scope_object,
+					operations,
+				}));
+			}
+			LogicalPlan::AlterPolicy(node) => {
+				let enable = node.action == AstAlterPolicyAction::Enable;
+				return Ok(PhysicalPlan::AlterPolicy(nodes::AlterPolicyNode {
+					target_type: node.target_type.as_str().to_string(),
+					name: self.interner.intern_fragment(&node.name),
+					enable,
+				}));
+			}
+			LogicalPlan::DropPolicy(node) => {
+				return Ok(PhysicalPlan::DropPolicy(nodes::DropPolicyNode {
+					target_type: node.target_type.as_str().to_string(),
+					name: self.interner.intern_fragment(&node.name),
+					if_exists: node.if_exists,
+				}));
+			}
 
-					stack.push(PhysicalPlan::InsertQueue(InsertQueueNode {
-						input: self.bump_box(input),
-						target,
-						deduplication_key: insert_queue.deduplication_key,
-						not_before: insert_queue.not_before,
-						returning: insert_queue.returning,
-					}))
-				}
+			LogicalPlan::AssertBlock(node) => {
+				return Ok(PhysicalPlan::AssertBlock(AssertBlockNode {
+					rql: node.rql,
+					expect_error: node.expect_error,
+					message: node.message,
+				}));
+			}
 
-				LogicalPlan::InsertDictionary(insert_dict) => {
-					let input = self
-						.compile(rx, once(BumpBox::into_inner(insert_dict.source)))?
-						.expect("Insert source must produce a plan");
+			LogicalPlan::InsertTable(insert) => {
+				let input = self
+					.compile(rx, once(BumpBox::into_inner(insert.source)))?
+					.expect("Insert source must produce a plan");
 
-					let dictionary_id = insert_dict.target;
-					let ns_segments: Vec<&str> =
-						dictionary_id.namespace.iter().map(|n| n.text()).collect();
-					let Some(namespace) =
-						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-					else {
-						let ns_name = ns_segments.join("::");
-						let fragment = dictionary_id
-							.namespace
-							.first()
-							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&ns_name));
-						return_error!(namespace_not_found(fragment, &ns_name));
-					};
-					let Some(dictionary_def) = self.catalog.find_dictionary_by_name(
-						rx,
-						namespace.id(),
-						dictionary_id.name.text(),
-					)?
-					else {
-						return_error!(dictionary_not_found(
-							self.interner.intern_fragment(&dictionary_id.name),
-							namespace.name(),
-							dictionary_id.name.text()
-						));
-					};
+				let table = insert.target;
+				let ns_segments: Vec<&str> = table.namespace.iter().map(|n| n.text()).collect();
+				let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+					let ns_name = ns_segments.join("::");
+					let fragment = table
+						.namespace
+						.first()
+						.map(|n| self.interner.intern_fragment(n))
+						.unwrap_or_else(|| Fragment::internal(&ns_name));
+					return_error!(namespace_not_found(fragment, &ns_name));
+				};
+				let Some(table_def) =
+					self.catalog.find_table_by_name(rx, namespace.id(), table.name.text())?
+				else {
+					return_error!(table_not_found(
+						self.interner.intern_fragment(&table.name),
+						namespace.name(),
+						table.name.text()
+					));
+				};
 
-					let namespace_id = if let Some(n) = dictionary_id.namespace.first() {
-						let interned = self.interner.intern_fragment(n);
-						interned.with_text(namespace.name())
-					} else {
-						Fragment::internal(namespace.name())
-					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
-					let target = ResolvedDictionary::new(
-						self.interner.intern_fragment(&dictionary_id.name),
-						resolved_namespace,
-						dictionary_def,
-					);
+				let namespace_id = if let Some(n) = table.namespace.first() {
+					let interned = self.interner.intern_fragment(n);
+					interned.with_text(namespace.name())
+				} else {
+					Fragment::internal(namespace.name())
+				};
+				let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
+				let target = ResolvedTable::new(
+					self.interner.intern_fragment(&table.name),
+					resolved_namespace,
+					table_def,
+				);
 
-					stack.push(PhysicalPlan::InsertDictionary(InsertDictionaryNode {
-						input: self.bump_box(input),
-						target,
-						returning: insert_dict.returning,
-					}))
-				}
+				return Ok(PhysicalPlan::InsertTable(InsertTableNode {
+					input: self.bump_box(input),
+					target,
+					returning: insert.returning,
+				}));
+			}
 
-				LogicalPlan::InsertSeries(insert_series) => {
-					let input = self
-						.compile(rx, once(BumpBox::into_inner(insert_series.source)))?
-						.expect("Insert source must produce a plan");
+			LogicalPlan::InsertRingBuffer(insert_rb) => {
+				let input = self
+					.compile(rx, once(BumpBox::into_inner(insert_rb.source)))?
+					.expect("Insert source must produce a plan");
 
-					let series_id = insert_series.target;
-					let ns_segments: Vec<&str> =
-						series_id.namespace.iter().map(|n| n.text()).collect();
-					let Some(namespace) =
-						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-					else {
-						let ns_name = ns_segments.join("::");
-						let fragment = series_id
-							.namespace
-							.first()
-							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&ns_name));
-						return_error!(namespace_not_found(fragment, &ns_name));
-					};
-					let Some(series_def) = self.catalog.find_series_by_name(
-						rx,
-						namespace.id(),
-						series_id.name.text(),
-					)?
-					else {
-						return_error!(series_not_found(
-							self.interner.intern_fragment(&series_id.name),
-							namespace.name(),
-							series_id.name.text()
-						));
-					};
-
-					let namespace_id = if let Some(n) = series_id.namespace.first() {
-						let interned = self.interner.intern_fragment(n);
-						interned.with_text(namespace.name())
-					} else {
-						Fragment::internal(namespace.name())
-					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
-					let target = ResolvedSeries::new(
-						self.interner.intern_fragment(&series_id.name),
-						resolved_namespace,
-						series_def,
-					);
-
-					stack.push(PhysicalPlan::InsertSeries(InsertSeriesNode {
-						input: self.bump_box(input),
-						target,
-						returning: insert_series.returning,
-					}))
-				}
-
-				LogicalPlan::DeleteSeries(delete_series) => {
-					let input = if let Some(delete_input) = delete_series.input {
-						let sub_plan = self
-							.compile(rx, once(BumpBox::into_inner(delete_input)))?
-							.expect("Delete input must produce a plan");
-						Some(self.bump_box(sub_plan))
-					} else {
-						stack.pop().map(|i| self.bump_box(i))
-					};
-
-					let series_id = delete_series.target;
-					let ns_segments: Vec<&str> =
-						series_id.namespace.iter().map(|n| n.text()).collect();
-					let Some(namespace) =
-						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-					else {
-						let ns_name = ns_segments.join("::");
-						let fragment = series_id
-							.namespace
-							.first()
-							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&ns_name));
-						return_error!(namespace_not_found(fragment, &ns_name));
-					};
-					let Some(series_def) = self.catalog.find_series_by_name(
-						rx,
-						namespace.id(),
-						series_id.name.text(),
-					)?
-					else {
-						return_error!(series_not_found(
-							self.interner.intern_fragment(&series_id.name),
-							namespace.name(),
-							series_id.name.text()
-						));
-					};
-
-					let namespace_id = if let Some(n) = series_id.namespace.first() {
-						let interned = self.interner.intern_fragment(n);
-						interned.with_text(namespace.name())
-					} else {
-						Fragment::internal(namespace.name())
-					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
-					let target = ResolvedSeries::new(
-						self.interner.intern_fragment(&series_id.name),
-						resolved_namespace,
-						series_def,
-					);
-
-					stack.push(PhysicalPlan::DeleteSeries(DeleteSeriesNode {
-						input,
-						target,
-						returning: delete_series.returning,
-					}))
-				}
-
-				LogicalPlan::Update(update) => {
-					let input = if let Some(update_input) = update.input {
-						let sub_plan = self
-							.compile(rx, once(BumpBox::into_inner(update_input)))?
-							.expect("Update input must produce a plan");
-						self.bump_box(sub_plan)
-					} else {
-						self.bump_box(stack.pop().expect("Update requires input"))
-					};
-
-					let target = if let Some(table_id) = update.target {
-						let ns_segments: Vec<&str> =
-							table_id.namespace.iter().map(|n| n.text()).collect();
-						let Some(namespace) =
-							self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-						else {
-							let ns_name = ns_segments.join("::");
-							let fragment = table_id
-								.namespace
-								.first()
-								.map(|n| self.interner.intern_fragment(n))
-								.unwrap_or_else(|| Fragment::internal(&ns_name));
-							return_error!(namespace_not_found(fragment, &ns_name));
-						};
-						let Some(table_def) = self.catalog.find_table_by_name(
-							rx,
-							namespace.id(),
-							table_id.name.text(),
-						)?
-						else {
-							return_error!(table_not_found(
-								self.interner.intern_fragment(&table_id.name),
-								namespace.name(),
-								table_id.name.text()
-							));
-						};
-
-						let namespace_id = if let Some(n) = table_id.namespace.first() {
-							let interned = self.interner.intern_fragment(n);
-							interned.with_text(namespace.name())
-						} else {
-							Fragment::internal(namespace.name())
-						};
-						let resolved_namespace =
-							ResolvedNamespace::new(namespace_id, namespace);
-						Some(ResolvedTable::new(
-							self.interner.intern_fragment(&table_id.name),
-							resolved_namespace,
-							table_def,
-						))
-					} else {
-						None
-					};
-
-					stack.push(PhysicalPlan::Update(UpdateTableNode {
-						input,
-						target,
-						returning: update.returning,
-					}))
-				}
-
-				LogicalPlan::UpdateRingBuffer(update_rb) => {
-					let input = if let Some(update_input) = update_rb.input {
-						let sub_plan = self
-							.compile(rx, once(BumpBox::into_inner(update_input)))?
-							.expect("UpdateRingBuffer input must produce a plan");
-						self.bump_box(sub_plan)
-					} else {
-						self.bump_box(stack.pop().expect("UpdateRingBuffer requires input"))
-					};
-
-					let ringbuffer_id = update_rb.target;
-					let ns_segments: Vec<&str> =
-						ringbuffer_id.namespace.iter().map(|n| n.text()).collect();
-					let Some(namespace) =
-						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-					else {
-						let ns_name = ns_segments.join("::");
-						let fragment = ringbuffer_id
-							.namespace
-							.first()
-							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&ns_name));
-						return_error!(namespace_not_found(fragment, &ns_name));
-					};
-					let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
-						rx,
-						namespace.id(),
-						ringbuffer_id.name.text(),
-					)?
-					else {
-						return_error!(ringbuffer_not_found(
-							self.interner.intern_fragment(&ringbuffer_id.name),
-							namespace.name(),
-							ringbuffer_id.name.text()
-						));
-					};
-
-					let namespace_id = if let Some(n) = ringbuffer_id.namespace.first() {
-						let interned = self.interner.intern_fragment(n);
-						interned.with_text(namespace.name())
-					} else {
-						Fragment::internal(namespace.name())
-					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
-					let target = ResolvedRingBuffer::new(
+				let ringbuffer_id = insert_rb.target;
+				let ns_segments: Vec<&str> = ringbuffer_id.namespace.iter().map(|n| n.text()).collect();
+				let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+					let ns_name = ns_segments.join("::");
+					let fragment = ringbuffer_id
+						.namespace
+						.first()
+						.map(|n| self.interner.intern_fragment(n))
+						.unwrap_or_else(|| Fragment::internal(&ns_name));
+					return_error!(namespace_not_found(fragment, &ns_name));
+				};
+				let Some(ringbuffer_def) = self.catalog.find_ringbuffer_by_name(
+					rx,
+					namespace.id(),
+					ringbuffer_id.name.text(),
+				)?
+				else {
+					return_error!(ringbuffer_not_found(
 						self.interner.intern_fragment(&ringbuffer_id.name),
-						resolved_namespace,
-						ringbuffer_def,
-					);
+						namespace.name(),
+						ringbuffer_id.name.text()
+					));
+				};
 
-					stack.push(PhysicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
-						input,
-						target,
-						returning: update_rb.returning,
-					}))
-				}
+				let namespace_id = if let Some(n) = ringbuffer_id.namespace.first() {
+					let interned = self.interner.intern_fragment(n);
+					interned.with_text(namespace.name())
+				} else {
+					Fragment::internal(namespace.name())
+				};
+				let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
+				let target = ResolvedRingBuffer::new(
+					self.interner.intern_fragment(&ringbuffer_id.name),
+					resolved_namespace,
+					ringbuffer_def,
+				);
 
-				LogicalPlan::UpdateSeries(update_series) => {
-					let input = if let Some(update_input) = update_series.input {
-						let sub_plan = self
-							.compile(rx, once(BumpBox::into_inner(update_input)))?
-							.expect("UpdateSeries input must produce a plan");
-						self.bump_box(sub_plan)
-					} else {
-						self.bump_box(stack.pop().expect("UpdateSeries requires input"))
-					};
+				return Ok(PhysicalPlan::InsertRingBuffer(InsertRingBufferNode {
+					input: self.bump_box(input),
+					target,
+					returning: insert_rb.returning,
+				}));
+			}
 
-					let series_id = update_series.target;
-					let ns_segments: Vec<&str> =
-						series_id.namespace.iter().map(|n| n.text()).collect();
-					let Some(namespace) =
-						self.catalog.find_namespace_by_segments(rx, &ns_segments)?
-					else {
-						let ns_name = ns_segments.join("::");
-						let fragment = series_id
-							.namespace
-							.first()
-							.map(|n| self.interner.intern_fragment(n))
-							.unwrap_or_else(|| Fragment::internal(&ns_name));
-						return_error!(namespace_not_found(fragment, &ns_name));
-					};
-					let Some(series_def) = self.catalog.find_series_by_name(
-						rx,
-						namespace.id(),
-						series_id.name.text(),
-					)?
-					else {
-						return_error!(series_not_found(
-							self.interner.intern_fragment(&series_id.name),
-							namespace.name(),
-							series_id.name.text()
-						));
-					};
+			LogicalPlan::InsertQueue(insert_queue) => {
+				let input = self
+					.compile(rx, once(BumpBox::into_inner(insert_queue.source)))?
+					.expect("Insert source must produce a plan");
 
-					let namespace_id = if let Some(n) = series_id.namespace.first() {
-						let interned = self.interner.intern_fragment(n);
-						interned.with_text(namespace.name())
-					} else {
-						Fragment::internal(namespace.name())
-					};
-					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
-					let target = ResolvedSeries::new(
-						self.interner.intern_fragment(&series_id.name),
-						resolved_namespace,
-						series_def,
-					);
+				let queue_id = insert_queue.target;
+				let ns_segments: Vec<&str> = queue_id.namespace.iter().map(|n| n.text()).collect();
+				let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+					let ns_name = ns_segments.join("::");
+					let fragment = queue_id
+						.namespace
+						.first()
+						.map(|n| self.interner.intern_fragment(n))
+						.unwrap_or_else(|| Fragment::internal(&ns_name));
+					return_error!(namespace_not_found(fragment, &ns_name));
+				};
+				let Some(queue_def) =
+					self.catalog.find_queue_by_name(rx, namespace.id(), queue_id.name.text())?
+				else {
+					return_error!(queue_not_found(
+						self.interner.intern_fragment(&queue_id.name),
+						namespace.name(),
+						queue_id.name.text()
+					));
+				};
 
-					stack.push(PhysicalPlan::UpdateSeries(UpdateSeriesNode {
-						input,
-						target,
-						returning: update_series.returning,
-					}))
-				}
-
-				LogicalPlan::JoinInner(join) => {
-					let left = stack.pop().unwrap(); // FIXME;
-					let right = self.compile(rx, join.subquery)?.unwrap();
-
-					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
-						(&left, &right) && l.address == r.address
-					{
-						let mut pushed = l.clone();
-						pushed.remote_rql = format!("{} | {}", pushed.remote_rql, join.rql);
-						pushed.variables.extend(r.variables.iter().cloned());
-						stack.push(PhysicalPlan::RemoteScan(pushed));
-						continue;
+				if let Some(key) = &insert_queue.deduplication_key
+					&& let Some(deduplicate) = &queue_def.deduplicate
+				{
+					return Err(RqlError::InsertWithKeyOnDeduplicatingQueue {
+						fragment: key.full_fragment_owned(),
+						queue: format!("{}::{}", namespace.name(), queue_id.name.text()),
+						by: deduplicate.by.join(", "),
 					}
-
-					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
-					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
-						left: self.bump_box(left),
-						right: self.bump_box(right),
-						on: join.on,
-						alias,
-						with: join.with,
-					}));
+					.into());
 				}
 
-				LogicalPlan::JoinLeft(join) => {
-					let left = stack.pop().unwrap(); // FIXME;
-					let right = self.compile(rx, join.subquery)?.unwrap();
+				let namespace_id = if let Some(n) = queue_id.namespace.first() {
+					let interned = self.interner.intern_fragment(n);
+					interned.with_text(namespace.name())
+				} else {
+					Fragment::internal(namespace.name())
+				};
+				let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
+				let target = ResolvedQueue::new(
+					self.interner.intern_fragment(&queue_id.name),
+					resolved_namespace,
+					queue_def,
+				);
 
-					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
-						(&left, &right) && l.address == r.address
-					{
-						let mut pushed = l.clone();
-						pushed.remote_rql = format!("{} | {}", pushed.remote_rql, join.rql);
-						pushed.variables.extend(r.variables.iter().cloned());
-						stack.push(PhysicalPlan::RemoteScan(pushed));
-						continue;
-					}
-
-					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
-					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
-						left: self.bump_box(left),
-						right: self.bump_box(right),
-						on: join.on,
-						alias,
-						with: join.with,
-					}));
-				}
-
-				LogicalPlan::JoinNatural(join) => {
-					let left = stack.pop().unwrap(); // FIXME;
-					let right = self.compile(rx, join.subquery)?.unwrap();
-
-					if let (PhysicalPlan::RemoteScan(l), PhysicalPlan::RemoteScan(r)) =
-						(&left, &right) && l.address == r.address
-					{
-						let mut pushed = l.clone();
-						pushed.remote_rql = format!("{} | {}", pushed.remote_rql, join.rql);
-						pushed.variables.extend(r.variables.iter().cloned());
-						stack.push(PhysicalPlan::RemoteScan(pushed));
-						continue;
-					}
-
-					let alias = join.alias.map(|a| self.interner.intern_fragment(&a));
-					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
-						left: self.bump_box(left),
-						right: self.bump_box(right),
-						join_type: join.join_type,
-						fragment: self.interner.intern_fragment(&join.fragment),
-						alias,
-						with: join.with,
-					}));
-				}
-
-				LogicalPlan::Lookup(lookup) => {
-					let alias = self.interner.intern_fragment(&lookup.alias);
-					let Some(left) = stack.pop() else {
-						return Err(AstError::UnsupportedAstNode {
-							node_type: "lookup without a left input".to_string(),
-							fragment: alias,
-						}
-						.into());
-					};
-					let right = match self.compile(rx, lookup.subquery)? {
-						Some(PhysicalPlan::RemoteScan(remote)) => {
-							return_error!(lookup_right_unsupported(
-								alias,
-								&remote.remote_name
+				if insert_queue.deduplication_key.is_some() || insert_queue.not_before.is_some() {
+					for reserved in [QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD] {
+						if target.find_column(reserved).is_some() {
+							return_error!(queue_reserved_column_collision(
+								self.interner.intern_fragment(&queue_id.name),
+								target.name(),
+								reserved
 							));
 						}
-						Some(right) => right,
-						None => return_error!(lookup_block_not_bare_from(alias)),
-					};
-
-					stack.push(PhysicalPlan::Lookup(LookupNode {
-						left: self.bump_box(left),
-						right: self.bump_box(right),
-						on: lookup.on,
-						alias,
-						join_type: lookup.join_type,
-						with: lookup.with,
-					}));
-				}
-
-				LogicalPlan::Order(order) => {
-					let input = stack.pop().unwrap(); // FIXME
-
-					if let Some(pushed) = try_remote_push_down(&input, || Some(order.rql.clone())) {
-						stack.push(pushed);
-						continue;
-					}
-
-					stack.push(PhysicalPlan::Sort(SortNode {
-						by: order.by,
-						input: self.bump_box(input),
-					}));
-				}
-
-				LogicalPlan::Distinct(distinct) => {
-					let input = stack.pop().unwrap(); // FIXME
-
-					if let Some(pushed) =
-						try_remote_push_down(&input, || Some(distinct.rql.clone()))
-					{
-						stack.push(pushed);
-						continue;
-					}
-
-					let mut resolved_columns = Vec::with_capacity(distinct.columns.len());
-					for col in distinct.columns {
-						let namespace = ResolvedNamespace::new(
-							Fragment::internal("_context"),
-							Namespace::Local {
-								id: NamespaceId::SYSTEM,
-								name: "_context".to_string(),
-								local_name: "_context".to_string(),
-								parent_id: NamespaceId::ROOT,
-							},
-						);
-
-						let table_def = Table {
-							id: TableId(1),
-							namespace: NamespaceId::SYSTEM,
-							name: "_context".to_string(),
-							columns: vec![],
-							primary_key: None,
-							partition_by: vec![],
-							time: TimeSource::Processing,
-						};
-
-						let resolved_table = ResolvedTable::new(
-							Fragment::internal("_context"),
-							namespace,
-							table_def,
-						);
-
-						let resolved_source = ResolvedObject::Table(resolved_table);
-
-						let column_def = Column {
-							id: ColumnId(1),
-							name: col.name.text().to_string(),
-							constraint: TypeConstraint::unconstrained(ValueType::Utf8),
-							properties: vec![],
-							index: ColumnIndex(0),
-							auto_increment: false,
-							dictionary_id: None,
-						};
-
-						resolved_columns.push(ResolvedColumn::new(
-							self.interner.intern_fragment(&col.name),
-							resolved_source,
-							column_def,
-						));
-					}
-
-					stack.push(PhysicalPlan::Distinct(DistinctNode {
-						columns: resolved_columns,
-						with: distinct.with,
-						input: self.bump_box(input),
-					}));
-				}
-
-				LogicalPlan::Map(map) => {
-					let input = stack.pop().map(|p| self.bump_box(p));
-
-					if let Some(ref boxed_input) = input {
-						let mut vars = Vec::new();
-						for expr in &map.map {
-							vars.extend(extract_variable_names(expr));
-						}
-						if let Some(pushed) = try_remote_push_down_with_vars(
-							boxed_input,
-							|| Some(map.rql.clone()),
-							vars,
-						) {
-							stack.push(pushed);
-							continue;
-						}
-					}
-
-					stack.push(PhysicalPlan::Map(MapNode {
-						map: map.map,
-						input,
-					}));
-				}
-
-				LogicalPlan::Extend(extend) => {
-					let input = stack.pop().map(|p| self.bump_box(p));
-
-					if let Some(ref boxed_input) = input {
-						let mut vars = Vec::new();
-						for expr in &extend.extend {
-							vars.extend(extract_variable_names(expr));
-						}
-						if let Some(pushed) = try_remote_push_down_with_vars(
-							boxed_input,
-							|| Some(extend.rql.clone()),
-							vars,
-						) {
-							stack.push(pushed);
-							continue;
-						}
-					}
-
-					stack.push(PhysicalPlan::Extend(ExtendNode {
-						extend: extend.extend,
-						input,
-					}));
-				}
-
-				LogicalPlan::Patch(patch) => {
-					let input = stack.pop().map(|p| self.bump_box(p));
-
-					if let Some(ref boxed_input) = input {
-						let mut vars = Vec::new();
-						for expr in &patch.assignments {
-							vars.extend(extract_variable_names(expr));
-						}
-						if let Some(pushed) = try_remote_push_down_with_vars(
-							boxed_input,
-							|| Some(patch.rql.clone()),
-							vars,
-						) {
-							stack.push(pushed);
-							continue;
-						}
-					}
-
-					stack.push(PhysicalPlan::Patch(PatchNode {
-						assignments: patch.assignments,
-						input,
-					}));
-				}
-
-				LogicalPlan::Apply(apply) => {
-					let input = stack.pop().map(|p| self.bump_box(p));
-
-					if let Some(ref boxed_input) = input {
-						let mut vars = Vec::new();
-						for expr in &apply.params {
-							vars.extend(extract_variable_names(expr));
-						}
-						if let Some(pushed) = try_remote_push_down_with_vars(
-							boxed_input,
-							|| Some(apply.rql.clone()),
-							vars,
-						) {
-							stack.push(pushed);
-							continue;
-						}
-					}
-
-					stack.push(PhysicalPlan::Apply(ApplyNode {
-						operator: self.interner.intern_fragment(&apply.operator),
-						params: apply.params,
-						with: apply.with,
-						input,
-					}));
-				}
-
-				LogicalPlan::SourceScan(scan) => match &scan.source {
-					ResolvedObject::Table(resolved_table) => {
-						if let Some(index) = &scan.index {
-							stack.push(PhysicalPlan::IndexScan(IndexScanNode {
-								source: resolved_table.clone(),
-								index_name: index.identifier().text().to_string(),
-							}));
-						} else {
-							stack.push(PhysicalPlan::TableScan(TableScanNode {
-								source: resolved_table.clone(),
-								partition: None,
-							}));
-						}
-					}
-					ResolvedObject::View(resolved_view) => {
-						if scan.index.is_some() {
-							unimplemented!("views do not support indexes yet");
-						}
-						stack.push(PhysicalPlan::ViewScan(ViewScanNode {
-							source: resolved_view.clone(),
-							partition: None,
-						}));
-					}
-					ResolvedObject::DeferredView(resolved_view) => {
-						if scan.index.is_some() {
-							unimplemented!("views do not support indexes yet");
-						}
-						let view = ResolvedView::new(
-							resolved_view.identifier().clone(),
-							resolved_view.namespace().clone(),
-							resolved_view.def().clone(),
-						);
-						stack.push(PhysicalPlan::ViewScan(ViewScanNode {
-							source: view,
-							partition: None,
-						}));
-					}
-					ResolvedObject::TransactionalView(resolved_view) => {
-						if scan.index.is_some() {
-							unimplemented!("views do not support indexes yet");
-						}
-						let view = ResolvedView::new(
-							resolved_view.identifier().clone(),
-							resolved_view.namespace().clone(),
-							resolved_view.def().clone(),
-						);
-						stack.push(PhysicalPlan::ViewScan(ViewScanNode {
-							source: view,
-							partition: None,
-						}));
-					}
-
-					ResolvedObject::TableVirtual(resolved_virtual) => {
-						if scan.index.is_some() {
-							unimplemented!("virtual tables do not support indexes yet");
-						}
-						stack.push(PhysicalPlan::TableVirtualScan(TableVirtualScanNode {
-							source: resolved_virtual.clone(),
-							pushdown_context: None,
-						}));
-					}
-					ResolvedObject::RingBuffer(resolved_ringbuffer) => {
-						if scan.index.is_some() {
-							unimplemented!("ring buffers do not support indexes yet");
-						}
-						stack.push(PhysicalPlan::RingBufferScan(RingBufferScanNode {
-							source: resolved_ringbuffer.clone(),
-						}));
-					}
-
-					ResolvedObject::Dictionary(resolved_dictionary) => {
-						if scan.index.is_some() {
-							unimplemented!("dictionaries do not support indexes");
-						}
-						stack.push(PhysicalPlan::DictionaryScan(DictionaryScanNode {
-							source: resolved_dictionary.clone(),
-						}));
-					}
-					ResolvedObject::Series(resolved_series) => {
-						if scan.index.is_some() {
-							unimplemented!("series do not support indexes");
-						}
-						stack.push(PhysicalPlan::SeriesScan(SeriesScanNode {
-							source: resolved_series.clone(),
-							key_range_start: None,
-							key_range_end: None,
-							variant_tag: None,
-							partition: None,
-						}));
-					}
-					ResolvedObject::Queue(resolved_queue) => {
-						if scan.index.is_some() {
-							unimplemented!("queues do not support indexes");
-						}
-						stack.push(PhysicalPlan::QueueScan(QueueScanNode {
-							source: resolved_queue.clone(),
-						}));
-					}
-				},
-
-				LogicalPlan::RemoteScan(scan) => {
-					stack.push(PhysicalPlan::RemoteScan(nodes::RemoteScanNode {
-						address: scan.address,
-						token: scan.token,
-						remote_rql: format!(
-							"FROM {}::{}",
-							scan.local_namespace, scan.remote_name
-						),
-						local_namespace: scan.local_namespace,
-						remote_name: scan.remote_name,
-						variables: Vec::new(),
-					}));
-				}
-
-				LogicalPlan::Take(take) => {
-					let input = stack.pop().unwrap(); // FIXME
-
-					if let Some(pushed) =
-						try_remote_push_down(&input, || Some(format!("TAKE {}", take.take)))
-					{
-						stack.push(pushed);
-						continue;
-					}
-
-					stack.push(PhysicalPlan::Take(TakeNode {
-						take: take.take,
-						input: self.bump_box(input),
-					}));
-				}
-
-				LogicalPlan::Window(window) => {
-					let input = stack.pop().map(|p| self.bump_box(p));
-					stack.push(PhysicalPlan::Window(WindowNode {
-						group_by: window.group_by,
-						aggregations: window.aggregations,
-						with: window.with,
-						fragment: window.fragment,
-						input,
-					}));
-				}
-
-				LogicalPlan::Pipeline(pipeline) => {
-					let pipeline_result = self.compile(rx, pipeline.steps)?;
-					if let Some(result) = pipeline_result {
-						stack.push(result);
 					}
 				}
 
-				LogicalPlan::Declare(declare_node) => {
-					let value = match declare_node.value {
-						logical::LetValue::Expression(expr) => LetValue::Expression(expr),
-						logical::LetValue::Statement(logical_plans) => {
-							match self.compile(rx, logical_plans)? {
-								Some(plan) => LetValue::Statement(self.bump_box(plan)),
-								None => LetValue::Expression(Constant(
-									ConstantExpression::None {
-										fragment: Fragment::internal("none"),
-									},
-								)),
-							}
+				return Ok(PhysicalPlan::InsertQueue(InsertQueueNode {
+					input: self.bump_box(input),
+					target,
+					deduplication_key: insert_queue.deduplication_key,
+					not_before: insert_queue.not_before,
+					returning: insert_queue.returning,
+				}));
+			}
+
+			LogicalPlan::InsertDictionary(insert_dict) => {
+				let input = self
+					.compile(rx, once(BumpBox::into_inner(insert_dict.source)))?
+					.expect("Insert source must produce a plan");
+
+				let dictionary_id = insert_dict.target;
+				let ns_segments: Vec<&str> = dictionary_id.namespace.iter().map(|n| n.text()).collect();
+				let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+					let ns_name = ns_segments.join("::");
+					let fragment = dictionary_id
+						.namespace
+						.first()
+						.map(|n| self.interner.intern_fragment(n))
+						.unwrap_or_else(|| Fragment::internal(&ns_name));
+					return_error!(namespace_not_found(fragment, &ns_name));
+				};
+				let Some(dictionary_def) = self.catalog.find_dictionary_by_name(
+					rx,
+					namespace.id(),
+					dictionary_id.name.text(),
+				)?
+				else {
+					return_error!(dictionary_not_found(
+						self.interner.intern_fragment(&dictionary_id.name),
+						namespace.name(),
+						dictionary_id.name.text()
+					));
+				};
+
+				let namespace_id = if let Some(n) = dictionary_id.namespace.first() {
+					let interned = self.interner.intern_fragment(n);
+					interned.with_text(namespace.name())
+				} else {
+					Fragment::internal(namespace.name())
+				};
+				let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
+				let target = ResolvedDictionary::new(
+					self.interner.intern_fragment(&dictionary_id.name),
+					resolved_namespace,
+					dictionary_def,
+				);
+
+				return Ok(PhysicalPlan::InsertDictionary(InsertDictionaryNode {
+					input: self.bump_box(input),
+					target,
+					returning: insert_dict.returning,
+				}));
+			}
+
+			LogicalPlan::InsertSeries(insert_series) => {
+				let input = self
+					.compile(rx, once(BumpBox::into_inner(insert_series.source)))?
+					.expect("Insert source must produce a plan");
+
+				let series_id = insert_series.target;
+				let ns_segments: Vec<&str> = series_id.namespace.iter().map(|n| n.text()).collect();
+				let Some(namespace) = self.catalog.find_namespace_by_segments(rx, &ns_segments)? else {
+					let ns_name = ns_segments.join("::");
+					let fragment = series_id
+						.namespace
+						.first()
+						.map(|n| self.interner.intern_fragment(n))
+						.unwrap_or_else(|| Fragment::internal(&ns_name));
+					return_error!(namespace_not_found(fragment, &ns_name));
+				};
+				let Some(series_def) =
+					self.catalog.find_series_by_name(rx, namespace.id(), series_id.name.text())?
+				else {
+					return_error!(series_not_found(
+						self.interner.intern_fragment(&series_id.name),
+						namespace.name(),
+						series_id.name.text()
+					));
+				};
+
+				let namespace_id = if let Some(n) = series_id.namespace.first() {
+					let interned = self.interner.intern_fragment(n);
+					interned.with_text(namespace.name())
+				} else {
+					Fragment::internal(namespace.name())
+				};
+				let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace);
+				let target = ResolvedSeries::new(
+					self.interner.intern_fragment(&series_id.name),
+					resolved_namespace,
+					series_def,
+				);
+
+				return Ok(PhysicalPlan::InsertSeries(InsertSeriesNode {
+					input: self.bump_box(input),
+					target,
+					returning: insert_series.returning,
+				}));
+			}
+
+			LogicalPlan::Declare(declare_node) => {
+				let value = match declare_node.value {
+					logical::LetValue::Expression(expr) => LetValue::Expression(expr),
+					logical::LetValue::Statement(logical_plans) => {
+						match self.compile(rx, logical_plans)? {
+							Some(plan) => LetValue::Statement(self.bump_box(plan)),
+							None => LetValue::Expression(Constant(
+								ConstantExpression::None {
+									fragment: Fragment::internal("none"),
+								},
+							)),
 						}
-						logical::LetValue::EmptyFrame => LetValue::EmptyFrame,
-					};
+					}
+					logical::LetValue::EmptyFrame => LetValue::EmptyFrame,
+				};
 
-					stack.push(PhysicalPlan::Declare(DeclareNode {
-						name: self.interner.intern_fragment(&declare_node.name),
-						value,
-					}));
-				}
+				return Ok(PhysicalPlan::Declare(DeclareNode {
+					name: self.interner.intern_fragment(&declare_node.name),
+					value,
+				}));
+			}
 
-				LogicalPlan::Assign(assign_node) => {
-					let value = match assign_node.value {
-						logical::AssignValue::Expression(expr) => AssignValue::Expression(expr),
-						logical::AssignValue::Statement(logical_plans) => {
-							match self.compile(rx, logical_plans)? {
-								Some(plan) => {
-									AssignValue::Statement(self.bump_box(plan))
-								}
-								None => AssignValue::Expression(Constant(
-									ConstantExpression::None {
-										fragment: Fragment::internal("none"),
-									},
-								)),
-							}
+			LogicalPlan::Assign(assign_node) => {
+				let value = match assign_node.value {
+					logical::AssignValue::Expression(expr) => AssignValue::Expression(expr),
+					logical::AssignValue::Statement(logical_plans) => {
+						match self.compile(rx, logical_plans)? {
+							Some(plan) => AssignValue::Statement(self.bump_box(plan)),
+							None => AssignValue::Expression(Constant(
+								ConstantExpression::None {
+									fragment: Fragment::internal("none"),
+								},
+							)),
 						}
-					};
-
-					stack.push(PhysicalPlan::Assign(AssignNode {
-						name: self.interner.intern_fragment(&assign_node.name),
-						value,
-					}));
-				}
-
-				LogicalPlan::Append(append_node) => match append_node {
-					logical::AppendNode::IntoVariable {
-						target,
-						source,
-					} => {
-						let source = match source {
-							logical::AppendSourcePlan::Statement(logical_plans) => {
-								let mut physical_plans = Vec::new();
-								if let Some(physical_plan) =
-									self.compile(rx, logical_plans)?
-								{
-									physical_plans.push(physical_plan);
-								}
-								AppendPhysicalSource::Statement(physical_plans)
-							}
-							logical::AppendSourcePlan::Inline(inline) => {
-								AppendPhysicalSource::Inline(InlineDataNode {
-									rows: inline.rows,
-								})
-							}
-						};
-						stack.push(PhysicalPlan::Append(AppendPhysicalNode::IntoVariable {
-							target: self.interner.intern_fragment(&target),
-							source,
-						}));
 					}
-					logical::AppendNode::Query {
-						fragment,
-						with,
-					} => {
-						let left = stack.pop().unwrap();
-						let right = self.compile(rx, with)?.unwrap();
-						stack.push(PhysicalPlan::Append(AppendPhysicalNode::Query {
-							fragment: self.interner.intern_fragment(&fragment),
-							left: self.bump_box(left),
-							right: self.bump_box(right),
-						}));
-					}
-				},
+				};
 
-				LogicalPlan::VariableSource(source) => {
-					let variable_expr = VariableExpression {
-						fragment: self.interner.intern_fragment(&source.name),
-					};
+				return Ok(PhysicalPlan::Assign(AssignNode {
+					name: self.interner.intern_fragment(&assign_node.name),
+					value,
+				}));
+			}
 
-					stack.push(PhysicalPlan::Variable(VariableNode {
-						variable_expr,
-					}));
-				}
-
-				LogicalPlan::Environment(_) => {
-					stack.push(PhysicalPlan::Environment(EnvironmentNode {}));
-				}
-
-				LogicalPlan::Conditional(conditional_node) => {
-					let then_branch = if let Some(then_plan) = self
-						.compile(rx, once(BumpBox::into_inner(conditional_node.then_branch)))?
-					{
-						self.bump_box(then_plan)
-					} else {
-						return Err(RqlError::InternalFunctionError {
-							name: "compile_physical".to_string(),
-							fragment: Fragment::internal("compile_physical"),
-							details: "Failed to compile conditional then branch"
-								.to_string(),
+			LogicalPlan::Append(logical::AppendNode::IntoVariable {
+				target,
+				source,
+			}) => {
+				let source = match source {
+					logical::AppendSourcePlan::Statement(logical_plans) => {
+						let mut physical_plans = Vec::new();
+						if let Some(physical_plan) = self.compile(rx, logical_plans)? {
+							physical_plans.push(physical_plan);
 						}
-						.into());
-					};
-
-					let mut else_ifs = Vec::new();
-					for else_if in conditional_node.else_ifs {
-						let condition = else_if.condition;
-						let then_branch = if let Some(plan) = self
-							.compile(rx, once(BumpBox::into_inner(else_if.then_branch)))?
-						{
-							self.bump_box(plan)
-						} else {
-							return Err(RqlError::InternalFunctionError {
-								name: "compile_physical".to_string(),
-								fragment: Fragment::internal("compile_physical"),
-								details: "Failed to compile conditional else if branch"
-									.to_string(),
-							}
-							.into());
-						};
-						else_ifs.push(ElseIfBranch {
-							condition,
-							then_branch,
-						});
+						AppendPhysicalSource::Statement(physical_plans)
 					}
+					logical::AppendSourcePlan::Inline(inline) => {
+						AppendPhysicalSource::Inline(InlineDataNode {
+							rows: inline.rows,
+						})
+					}
+				};
+				return Ok(PhysicalPlan::Append(AppendPhysicalNode::IntoVariable {
+					target: self.interner.intern_fragment(&target),
+					source,
+				}));
+			}
 
-					let else_branch =
-						if let Some(else_logical) = conditional_node.else_branch {
-							if let Some(plan) = self
-								.compile(rx, once(BumpBox::into_inner(else_logical)))?
-							{
-								Some(self.bump_box(plan))
-							} else {
-								return Err(RqlError::InternalFunctionError {
-							name: "compile_physical".to_string(),
-							fragment: Fragment::internal("compile_physical"),
-							details: "Failed to compile conditional else branch".to_string(),
-						}.into());
-							}
-						} else {
-							None
-						};
+			LogicalPlan::Conditional(conditional_node) => {
+				let then_branch = if let Some(then_plan) =
+					self.compile(rx, once(BumpBox::into_inner(conditional_node.then_branch)))?
+				{
+					self.bump_box(then_plan)
+				} else {
+					return Err(RqlError::InternalFunctionError {
+						name: "compile_physical".to_string(),
+						fragment: Fragment::internal("compile_physical"),
+						details: "Failed to compile conditional then branch".to_string(),
+					}
+					.into());
+				};
 
-					stack.push(PhysicalPlan::Conditional(ConditionalNode {
-						condition: conditional_node.condition,
-						then_branch,
-						else_ifs,
-						else_branch,
-					}));
-				}
-
-				LogicalPlan::Scalarize(scalarize_node) => {
-					let input_plan = if let Some(plan) =
-						self.compile(rx, once(BumpBox::into_inner(scalarize_node.input)))?
+				let mut else_ifs = Vec::new();
+				for else_if in conditional_node.else_ifs {
+					let condition = else_if.condition;
+					let then_branch = if let Some(plan) =
+						self.compile(rx, once(BumpBox::into_inner(else_if.then_branch)))?
 					{
 						self.bump_box(plan)
 					} else {
 						return Err(RqlError::InternalFunctionError {
 							name: "compile_physical".to_string(),
 							fragment: Fragment::internal("compile_physical"),
-							details: "Failed to compile scalarize input".to_string(),
+							details: "Failed to compile conditional else if branch"
+								.to_string(),
 						}
 						.into());
 					};
-
-					stack.push(PhysicalPlan::Scalarize(ScalarizeNode {
-						input: input_plan,
-						fragment: self.interner.intern_fragment(&scalarize_node.fragment),
-					}));
+					else_ifs.push(ElseIfBranch {
+						condition,
+						then_branch,
+					});
 				}
 
-				LogicalPlan::Loop(loop_node) => {
-					let mut body = Vec::new();
-					for statement_plans in loop_node.body {
-						if let Some(physical_plan) = self.compile(rx, statement_plans)? {
-							body.push(physical_plan);
+				let else_branch = if let Some(else_logical) = conditional_node.else_branch {
+					if let Some(plan) = self.compile(rx, once(BumpBox::into_inner(else_logical)))? {
+						Some(self.bump_box(plan))
+					} else {
+						return Err(RqlError::InternalFunctionError {
+							name: "compile_physical".to_string(),
+							fragment: Fragment::internal("compile_physical"),
+							details: "Failed to compile conditional else branch"
+								.to_string(),
 						}
+						.into());
 					}
-					stack.push(PhysicalPlan::Loop(LoopNode {
-						body,
-					}));
-				}
+				} else {
+					None
+				};
 
-				LogicalPlan::While(while_node) => {
-					let mut body = Vec::new();
-					for statement_plans in while_node.body {
-						if let Some(physical_plan) = self.compile(rx, statement_plans)? {
-							body.push(physical_plan);
-						}
-					}
-					stack.push(PhysicalPlan::While(WhileNode {
-						condition: while_node.condition,
-						body,
-					}));
-				}
-
-				LogicalPlan::For(for_node) => {
-					let iterable = self
-						.compile(rx, for_node.iterable)?
-						.expect("For iterable must produce a plan");
-					let mut body = Vec::new();
-					for statement_plans in for_node.body {
-						if let Some(physical_plan) = self.compile(rx, statement_plans)? {
-							body.push(physical_plan);
-						}
-					}
-					stack.push(PhysicalPlan::For(ForNode {
-						variable_name: self.interner.intern_fragment(&for_node.variable_name),
-						iterable: self.bump_box(iterable),
-						body,
-					}));
-				}
-
-				LogicalPlan::Break => {
-					stack.push(PhysicalPlan::Break);
-				}
-
-				LogicalPlan::Continue => {
-					stack.push(PhysicalPlan::Continue);
-				}
-
-				LogicalPlan::DefineFunction(def_node) => {
-					let mut parameters = Vec::with_capacity(def_node.parameters.len());
-					for p in def_node.parameters {
-						parameters.push(nodes::FunctionParameter {
-							name: self.interner.intern_fragment(&p.name),
-							type_constraint: p.type_constraint,
-						});
-					}
-
-					let mut body = Vec::new();
-					for statement_plans in def_node.body {
-						if let Some(physical_plan) = self.compile(rx, statement_plans)? {
-							body.push(physical_plan);
-						}
-					}
-
-					stack.push(PhysicalPlan::DefineFunction(DefineFunctionNode {
-						name: self.interner.intern_fragment(&def_node.name),
-						parameters,
-						return_type: def_node.return_type,
-						body,
-					}));
-				}
-
-				LogicalPlan::Return(ret_node) => {
-					let value = match ret_node.value {
-						Some(logical::function::ReturnValue::Expression(expr)) => {
-							Some(ReturnValue::Expression(expr))
-						}
-						Some(logical::function::ReturnValue::Statement(logical_plans)) => {
-							match self.compile(rx, logical_plans)? {
-								Some(plan) => Some(ReturnValue::Statement(
-									self.bump_box(plan),
-								)),
-								None => Some(ReturnValue::Expression(Constant(
-									ConstantExpression::None {
-										fragment: Fragment::internal("none"),
-									},
-								))),
-							}
-						}
-						None => None,
-					};
-
-					stack.push(PhysicalPlan::Return(ReturnNode {
-						value,
-					}));
-				}
-
-				LogicalPlan::CallFunction(call_node) => {
-					stack.push(PhysicalPlan::CallFunction(CallFunctionNode {
-						name: self.interner.intern_fragment(&call_node.name),
-						arguments: call_node.arguments,
-						is_procedure_call: call_node.is_procedure_call,
-					}));
-				}
-
-				LogicalPlan::DefineClosure(closure_node) => {
-					let mut parameters = Vec::with_capacity(closure_node.parameters.len());
-					for p in closure_node.parameters {
-						parameters.push(nodes::FunctionParameter {
-							name: self.interner.intern_fragment(&p.name),
-							type_constraint: p.type_constraint,
-						});
-					}
-
-					let mut body = Vec::new();
-					for statement_plans in closure_node.body {
-						if let Some(physical_plan) = self.compile(rx, statement_plans)? {
-							body.push(physical_plan);
-						}
-					}
-
-					stack.push(PhysicalPlan::DefineClosure(DefineClosureNode {
-						parameters,
-						body,
-					}));
-				}
-
-				_ => unimplemented!(),
+				return Ok(PhysicalPlan::Conditional(ConditionalNode {
+					condition: conditional_node.condition,
+					then_branch,
+					else_ifs,
+					else_branch,
+				}));
 			}
-		}
 
-		if stack.is_empty() {
-			return Ok(None);
-		}
-
-		if stack.len() != 1 {
-			return Err(RqlError::MissingSemicolon {
-				fragment: Fragment::internal("compile_physical"),
-				count: stack.len(),
+			LogicalPlan::Loop(loop_node) => {
+				let mut body = Vec::new();
+				for statement_plans in loop_node.body {
+					if let Some(physical_plan) = self.compile(rx, statement_plans)? {
+						body.push(physical_plan);
+					}
+				}
+				return Ok(PhysicalPlan::Loop(LoopNode {
+					body,
+				}));
 			}
-			.into());
-		}
 
-		Ok(Some(stack.pop().unwrap()))
+			LogicalPlan::While(while_node) => {
+				let mut body = Vec::new();
+				for statement_plans in while_node.body {
+					if let Some(physical_plan) = self.compile(rx, statement_plans)? {
+						body.push(physical_plan);
+					}
+				}
+				return Ok(PhysicalPlan::While(WhileNode {
+					condition: while_node.condition,
+					body,
+				}));
+			}
+
+			LogicalPlan::For(for_node) => {
+				let iterable =
+					self.compile(rx, for_node.iterable)?.expect("For iterable must produce a plan");
+				let mut body = Vec::new();
+				for statement_plans in for_node.body {
+					if let Some(physical_plan) = self.compile(rx, statement_plans)? {
+						body.push(physical_plan);
+					}
+				}
+				return Ok(PhysicalPlan::For(ForNode {
+					variable_name: self.interner.intern_fragment(&for_node.variable_name),
+					iterable: self.bump_box(iterable),
+					body,
+				}));
+			}
+
+			LogicalPlan::Break => {
+				return Ok(PhysicalPlan::Break);
+			}
+
+			LogicalPlan::Continue => {
+				return Ok(PhysicalPlan::Continue);
+			}
+
+			LogicalPlan::DefineFunction(def_node) => {
+				let mut parameters = Vec::with_capacity(def_node.parameters.len());
+				for p in def_node.parameters {
+					parameters.push(nodes::FunctionParameter {
+						name: self.interner.intern_fragment(&p.name),
+						type_constraint: p.type_constraint,
+					});
+				}
+
+				let mut body = Vec::new();
+				for statement_plans in def_node.body {
+					if let Some(physical_plan) = self.compile(rx, statement_plans)? {
+						body.push(physical_plan);
+					}
+				}
+
+				return Ok(PhysicalPlan::DefineFunction(DefineFunctionNode {
+					name: self.interner.intern_fragment(&def_node.name),
+					parameters,
+					return_type: def_node.return_type,
+					body,
+				}));
+			}
+
+			LogicalPlan::Return(ret_node) => {
+				let value = match ret_node.value {
+					Some(logical::function::ReturnValue::Expression(expr)) => {
+						Some(ReturnValue::Expression(expr))
+					}
+					Some(logical::function::ReturnValue::Statement(logical_plans)) => {
+						match self.compile(rx, logical_plans)? {
+							Some(plan) => Some(ReturnValue::Statement(self.bump_box(plan))),
+							None => Some(ReturnValue::Expression(Constant(
+								ConstantExpression::None {
+									fragment: Fragment::internal("none"),
+								},
+							))),
+						}
+					}
+					None => None,
+				};
+
+				return Ok(PhysicalPlan::Return(ReturnNode {
+					value,
+				}));
+			}
+
+			LogicalPlan::CallFunction(call_node) => {
+				return Ok(PhysicalPlan::CallFunction(CallFunctionNode {
+					name: self.interner.intern_fragment(&call_node.name),
+					arguments: call_node.arguments,
+					is_procedure_call: call_node.is_procedure_call,
+				}));
+			}
+
+			LogicalPlan::DefineClosure(closure_node) => {
+				let mut parameters = Vec::with_capacity(closure_node.parameters.len());
+				for p in closure_node.parameters {
+					parameters.push(nodes::FunctionParameter {
+						name: self.interner.intern_fragment(&p.name),
+						type_constraint: p.type_constraint,
+					});
+				}
+
+				let mut body = Vec::new();
+				for statement_plans in closure_node.body {
+					if let Some(physical_plan) = self.compile(rx, statement_plans)? {
+						body.push(physical_plan);
+					}
+				}
+
+				return Ok(PhysicalPlan::DefineClosure(DefineClosureNode {
+					parameters,
+					body,
+				}));
+			}
+
+			_ => unimplemented!(),
+		}
 	}
 }
 

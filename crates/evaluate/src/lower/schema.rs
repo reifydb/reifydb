@@ -68,7 +68,7 @@ pub(super) fn access(ctx: &EvalContext, access: &AccessObjectExpression) -> Resu
 	})
 }
 
-fn positional(index: usize) -> Expr {
+pub(super) fn positional(index: usize) -> Expr {
 	Expr::Column(Column::from_name(positional_name(index)))
 }
 

@@ -3,20 +3,14 @@
 
 use std::sync::Arc;
 
-use arrow_array::{ArrayRef, RecordBatch};
-use arrow_schema::FieldRef;
+use arrow_array::RecordBatch;
 use reifydb_core::{
 	error::diagnostic::query::column_not_found, expression::AccessObjectExpression,
 	interface::identifier::ColumnObject,
 };
 use reifydb_value::{error, fragment::Fragment, value::system_columns::is_system_field};
 
-use crate::{Result, expression::context::EvalContext};
-
-pub(crate) fn access_lookup(ctx: &EvalContext, expr: &AccessObjectExpression) -> Result<(FieldRef, ArrayRef)> {
-	let index = access_position(&ctx.batch, expr)?;
-	Ok((ctx.batch.schema_ref().fields()[index].clone(), ctx.batch.column(index).clone()))
-}
+use crate::Result;
 
 pub(crate) fn access_position(batch: &RecordBatch, expr: &AccessObjectExpression) -> Result<usize> {
 	let source = match &expr.column.object {

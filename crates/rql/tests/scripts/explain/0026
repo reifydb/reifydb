@@ -1,0 +1,25 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A system-named column made by an extend below the map must also keep the filter above the map.
+
+admin 'create table test::t26 { id: int4, a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t26   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t26 extend {time: 5} map {id} filter {time > 1}")'
+---
+> +-------+---------+----------+-------------+------------------------+
+> |  idx  |  depth  |  parent  |    kind     |         detail         |
+> +-------+---------+----------+-------------+------------------------+
+> |   0   |    0    |   none   |   Filter    |  (time > Constant(1))  |
+> |   1   |    1    |    0     |     Map     |           id           |
+> |   2   |    2    |    1     |   Extend    |  Constant(5) as time   |
+> |   3   |    3    |    2     |  TableScan  |       test::t26        |
+> +-------+---------+----------+-------------+------------------------+
+>

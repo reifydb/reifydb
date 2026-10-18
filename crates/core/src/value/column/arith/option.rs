@@ -4,7 +4,14 @@
 use arrow_array::{Array, ArrayRef};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_schema::FieldRef;
-use reifydb_core::value::{
+use reifydb_value::{
+	Result,
+	fragment::Fragment,
+	util::bitmap::and_nulls,
+	value::{column_view::ColumnView, value_type::ValueType},
+};
+
+use crate::value::{
 	batch::{batch, filter},
 	column::{
 		builder::ColumnBuilder,
@@ -12,19 +19,12 @@ use reifydb_core::value::{
 		nulls::{split_nulls, with_nulls},
 	},
 };
-use reifydb_value::{
-	fragment::Fragment,
-	util::bitmap::and_nulls,
-	value::{column_view::ColumnView, value_type::ValueType},
-};
 
-use crate::Result;
-
-pub(crate) fn is_all_none(nulls: Option<&NullBuffer>) -> bool {
+pub fn is_all_none(nulls: Option<&NullBuffer>) -> bool {
 	nulls.is_some_and(|nulls| nulls.null_count() == nulls.len())
 }
 
-pub(crate) fn combine_option_bitvecs(a: Option<&NullBuffer>, b: Option<&NullBuffer>) -> Option<NullBuffer> {
+pub fn combine_option_bitvecs(a: Option<&NullBuffer>, b: Option<&NullBuffer>) -> Option<NullBuffer> {
 	match (a, b) {
 		(Some(a), Some(b)) => Some(and_nulls(a, b)),
 		(Some(a), None) => Some(a.clone()),
@@ -42,7 +42,7 @@ fn empty_like(column: &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)> {
 	Ok(ColumnBuilder::like(&ColumnView::try_from(column)?, 0).finish(column.0.name()))
 }
 
-pub(crate) fn arith_op_unwrap_option(
+pub fn arith_op_unwrap_option(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: Fragment,
@@ -94,7 +94,7 @@ pub(crate) fn arith_op_unwrap_option(
 	with_nulls(builder.finish(fragment.text()), nulls)
 }
 
-pub(crate) fn binary_op_unwrap_option(
+pub fn binary_op_unwrap_option(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: Fragment,
@@ -124,7 +124,7 @@ pub(crate) fn binary_op_unwrap_option(
 	}
 }
 
-pub(crate) fn unary_op_unwrap_option(
+pub fn unary_op_unwrap_option(
 	col: &(FieldRef, ArrayRef),
 	inner: impl FnOnce(&(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef)>,
 ) -> Result<(FieldRef, ArrayRef)> {

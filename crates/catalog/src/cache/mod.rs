@@ -43,6 +43,7 @@ use crossbeam_skiplist::SkipMap;
 use reifydb_codec::row::shape::{RowShape, fingerprint::RowShapeFingerprint};
 use reifydb_core::{
 	common::CommitVersion,
+	flow::dag::FlowDag,
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
 		binding::Binding,
@@ -169,6 +170,8 @@ pub struct CatalogCacheInner {
 	pub(crate) flows: SkipMap<FlowId, MultiVersionFlow>,
 
 	pub(crate) flows_by_name: SkipMap<(NamespaceId, String), FlowId>,
+
+	pub(crate) transactional_flows: MultiVersionContainer<Arc<[FlowDag]>>,
 
 	pub(crate) procedures: SkipMap<ProcedureId, MultiVersionProcedure>,
 
@@ -331,6 +334,7 @@ impl CatalogCache {
 			views_by_name: SkipMap::new(),
 			flows: SkipMap::new(),
 			flows_by_name: SkipMap::new(),
+			transactional_flows: MultiVersionContainer::new(),
 			primary_keys: SkipMap::new(),
 			primary_keys_by_object: SkipMap::new(),
 			relationships: SkipMap::new(),

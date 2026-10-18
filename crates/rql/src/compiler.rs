@@ -151,7 +151,7 @@ impl Compiler {
 			let is_output = statement.is_output;
 			let fingerprint = fingerprint_statement(&statement);
 			let normalized_rql = normalize_statement(&statement);
-			if let Some(mut physical) = plan(bump, &self.0.catalog, tx, statement)? {
+			if let Some(mut physical) = plan(bump, &self.0.catalog, &self.0.routines, tx, statement)? {
 				optimize_physical(&mut physical);
 				let named_system_columns = named_system_columns(&physical)?;
 				plans.push(Compiled {
@@ -184,7 +184,7 @@ impl Compiler {
 		let is_output = statement.is_output;
 		let fingerprint = fingerprint_statement(&statement);
 		let normalized_rql = normalize_statement(&statement);
-		if let Some(mut physical) = plan(&bump, &self.0.catalog, tx, statement)? {
+		if let Some(mut physical) = plan(&bump, &self.0.catalog, &self.0.routines, tx, statement)? {
 			optimize_physical(&mut physical);
 			let named_system_columns = named_system_columns(&physical)?;
 			Ok(Some(Compiled {
@@ -242,7 +242,9 @@ impl Compiler {
 			let is_output = statement.is_output;
 			let fingerprint = fingerprint_statement(&statement);
 			let normalized_rql = normalize_statement(&statement);
-			if let Some(mut physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, &policy)? {
+			if let Some(mut physical) =
+				plan_with_policy(&bump, &self.0.catalog, &self.0.routines, tx, statement, &policy)?
+			{
 				optimize_physical(&mut physical);
 				let named_system_columns = named_system_columns(&physical)?;
 				plans.push(Compiled {
@@ -277,7 +279,9 @@ impl Compiler {
 			&mut Transaction<'_>,
 		) -> Result<BumpVec<'a, LogicalPlan<'a>>>,
 	{
-		let Some(mut physical) = plan_with_policy(bump, &self.0.catalog, tx, statement, &policy)? else {
+		let Some(mut physical) =
+			plan_with_policy(bump, &self.0.catalog, &self.0.routines, tx, statement, &policy)?
+		else {
 			return Ok(None);
 		};
 		optimize_physical(&mut physical);
@@ -314,7 +318,9 @@ impl Compiler {
 		let is_output = statement.is_output;
 		let fingerprint = fingerprint_statement(&statement);
 		let normalized_rql = normalize_statement(&statement);
-		if let Some(mut physical) = plan_with_policy(&bump, &self.0.catalog, tx, statement, policy)? {
+		if let Some(mut physical) =
+			plan_with_policy(&bump, &self.0.catalog, &self.0.routines, tx, statement, policy)?
+		{
 			optimize_physical(&mut physical);
 			let named_system_columns = named_system_columns(&physical)?;
 			Ok(Some(Compiled {
@@ -517,10 +523,6 @@ fn materialize_query_plan_with(
 			group_by: node.group_by,
 			aggregations: node.aggregations,
 			with: node.with,
-			fragment: node.fragment,
-		}),
-		PhysicalPlan::Scalarize(node) => QueryPlan::Scalarize(nodes::ScalarizeNode {
-			input: Box::new(materialize_query_plan(BumpBox::into_inner(node.input))?),
 			fragment: node.fragment,
 		}),
 
@@ -1695,10 +1697,6 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(QueryPlan::Environment(node)));
 				self.emit(Instruction::Emit);
 			}
-			PhysicalPlan::Scalarize(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Scalarize(node))?));
-				self.emit(Instruction::Emit);
-			}
 		}
 		Ok(())
 	}
@@ -2016,9 +2014,6 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::Window(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Window(node))?));
-			}
-			PhysicalPlan::Scalarize(node) => {
-				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Scalarize(node))?));
 			}
 
 			other => {

@@ -11,9 +11,8 @@ use crate::nodes::{
 	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode, DistinctNode,
 	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
 	JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PatchNode, QueueScanNode, RemoteScanNode,
-	RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode, RunTestsNode, ScalarizeNode,
-	SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode,
-	WindowNode,
+	RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode, RunTestsNode, SeriesScanNode,
+	SortNode, TableScanNode, TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
 };
 
 #[derive(Debug, Clone)]
@@ -57,8 +56,6 @@ pub enum QueryPlan {
 	Variable(VariableNode),
 	Environment(EnvironmentNode),
 
-	Scalarize(ScalarizeNode),
-
 	RunTests(RunTestsNode),
 
 	CallFunction(CallFunctionNode),
@@ -100,7 +97,6 @@ impl QueryPlan {
 			QueryPlan::Window(_) => "window",
 			QueryPlan::Variable(_) => "variable",
 			QueryPlan::Environment(_) => "environment",
-			QueryPlan::Scalarize(_) => "scalarize",
 			QueryPlan::RunTests(_) => "run_tests",
 			QueryPlan::CallFunction(_) => "call_function",
 		}

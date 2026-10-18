@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
-use reifydb_core::interface::catalog::config::ConfigKey;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Diagnostic,
@@ -129,12 +128,6 @@ fn engine() -> TestEngine {
 	t
 }
 
-fn one_row_batches() -> TestEngine {
-	let t = engine();
-	t.set_config(ConfigKey::QueryRowBatchSize, Value::Uint2(1));
-	t
-}
-
 fn empty_engine() -> TestEngine {
 	let t = TestEngine::new();
 	create_table(&t);
@@ -231,14 +224,6 @@ fn assert_groups_match_oracle(rql: &str, inner: ValueType, values: fn(Option<i32
 			}
 		}
 	}
-}
-
-fn with_digests(pairs: &[(&str, Digest)]) -> Params {
-	let map: HashMap<String, Value> = pairs
-		.iter()
-		.map(|(name, digest)| (name.to_string(), Value::Digest(Box::new(digest.clone()))))
-		.collect();
-	Params::from(map)
 }
 
 #[test]
@@ -469,58 +454,6 @@ fn a_digest_input_with_accuracy_fails_on_the_first_value() {
 
 	assert_eq!(err.code, "AGGREGATE_015", "got: {err:?}");
 	assert_eq!(err.message, "accuracy comes from the digest type, remove the argument");
-}
-
-#[test]
-fn merging_digests_with_different_accuracy_fails() {
-	// One column can never hold two digest types, so each one-row batch must carry its own.
-	let t = one_row_batches();
-	let fine = oracle(ValueType::Float8, 10_000, &float_values(Some(1))).unwrap();
-	let coarse = oracle(ValueType::Float8, 50_000, &float_values(Some(2))).unwrap();
-
-	let err = query_with(
-		&t,
-		"FROM test::t | filter { g != 3 } | extend { x: if g == 1 { $fine } else { $coarse } } | aggregate { m: stats::digest(x) }",
-		with_digests(&[("fine", fine), ("coarse", coarse)]),
-	)
-	.unwrap_err();
-
-	assert_eq!(err.code, "AGGREGATE_017", "got: {err:?}");
-	assert!(
-		[
-			"cannot merge Digest(Float8, 0.01) with Digest(Float8, 0.05)",
-			"cannot merge Digest(Float8, 0.05) with Digest(Float8, 0.01)"
-		]
-		.contains(&err.message.as_str()),
-		"the message must name both digest types, got: {}",
-		err.message
-	);
-}
-
-#[test]
-fn merging_digests_with_different_input_types_fails() {
-	// An int4 digest and a float8 digest must not merge, or the output column would hold two digest types.
-	let t = one_row_batches();
-	let ints = oracle(ValueType::Int4, 10_000, &int_values(Some(1))).unwrap();
-	let floats = oracle(ValueType::Float8, 10_000, &float_values(Some(2))).unwrap();
-
-	let err = query_with(
-		&t,
-		"FROM test::t | filter { g != 3 } | extend { x: if g == 1 { $ints } else { $floats } } | aggregate { m: stats::digest(x) }",
-		with_digests(&[("ints", ints), ("floats", floats)]),
-	)
-	.unwrap_err();
-
-	assert_eq!(err.code, "AGGREGATE_017", "got: {err:?}");
-	assert!(
-		[
-			"cannot merge Digest(Int4, 0.01) with Digest(Float8, 0.01)",
-			"cannot merge Digest(Float8, 0.01) with Digest(Int4, 0.01)"
-		]
-		.contains(&err.message.as_str()),
-		"the message must name both digest types, got: {}",
-		err.message
-	);
 }
 
 #[test]

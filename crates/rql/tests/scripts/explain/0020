@@ -1,0 +1,24 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A filter must stay above a write-cast, otherwise it compares the value before the cast.
+
+admin 'create table test::t20 { id: int4, a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t20   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t20 map {id, a: cast(a, int8)} filter {a == 1}")'
+---
+> +-------+---------+----------+-------------+----------------------+
+> |  idx  |  depth  |  parent  |    kind     |        detail        |
+> +-------+---------+----------+-------------+----------------------+
+> |   0   |    0    |   none   |   Filter    |  (a == Constant(1))  |
+> |   1   |    1    |    0     |     Map     |      id, a as a      |
+> |   2   |    2    |    1     |  TableScan  |      test::t20       |
+> +-------+---------+----------+-------------+----------------------+
+>

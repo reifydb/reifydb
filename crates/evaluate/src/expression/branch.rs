@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::column::view::group_by::common_key_type;
+use reifydb_core::value::column::{arith::is_family, view::group_by::common_key_type};
 use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
@@ -56,6 +56,11 @@ impl BranchLayout {
 				} else if ty != slot {
 					match common_key_type(slot, ty) {
 						Some(common) => *slot = common,
+						None if (is_family(slot) && ty.is_floating_point())
+							|| (slot.is_floating_point() && is_family(ty)) =>
+						{
+							*slot = ValueType::Float8
+						}
 						None => {
 							disagrees = true;
 							break;

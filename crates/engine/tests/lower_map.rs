@@ -5,7 +5,7 @@ use reifydb_test_harness::engine::TestEngine;
 
 #[test]
 fn between_over_a_nullable_column_answers_per_row_in_a_map() {
-	// A map over a table must take the lowered path, where between answers per row while the old path errors.
+	// A map over a table must answer between per row, otherwise a none row fails the whole batch.
 	let t = TestEngine::new();
 	t.admin("CREATE NAMESPACE test");
 	t.admin("CREATE TABLE test::t { a: Option(int4) }");
@@ -21,7 +21,7 @@ fn between_over_a_nullable_column_answers_per_row_in_a_map() {
 
 #[test]
 fn between_with_a_none_bound_follows_kleene_in_a_map_with_no_input() {
-	// A map with no input must take the lowered path too, where a none bound gives none instead of an error.
+	// A map with no input must give none for a none bound, never an error.
 	let t = TestEngine::new();
 
 	let frames = t.query("MAP { b: 1 between none and 3 }");

@@ -1,0 +1,25 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# Below an operator whose columns are unknown the filter must stay above the map, otherwise it may read a dropped user column.
+
+admin 'create table test::t27 { id: int4, a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t27   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t27 aggregate { time: math::sum(a) } by { id } map { id } filter { time > 1 }")'
+---
+> +-------+---------+----------+-------------+--------------------------------------+
+> |  idx  |  depth  |  parent  |    kind     |                detail                |
+> +-------+---------+----------+-------------+--------------------------------------+
+> |   0   |    0    |   none   |   Filter    |         (time > Constant(1))         |
+> |   1   |    1    |    0     |     Map     |                  id                  |
+> |   2   |    2    |    1     |  Aggregate  |  by=[id] map=[math::sum(a) as time]  |
+> |   3   |    3    |    2     |  TableScan  |              test::t27               |
+> +-------+---------+----------+-------------+--------------------------------------+
+>

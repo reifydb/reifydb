@@ -7,8 +7,8 @@ query 'CALL rql::explain("from users map {id, name} filter {id == 10} sort {id:a
 > |  idx  |  depth  |  parent  |    kind     |         detail         |
 > +-------+---------+----------+-------------+------------------------+
 > |   0   |    0    |   none   |    Sort     |         id ASC         |
-> |   1   |    1    |    0     |   Filter    |  (id == Constant(10))  |
-> |   2   |    2    |    1     |     Map     |        id, name        |
+> |   1   |    1    |    0     |     Map     |        id, name        |
+> |   2   |    2    |    1     |   Filter    |  (id == Constant(10))  |
 > |   3   |    3    |    2     |  TableScan  |     default::users     |
 > +-------+---------+----------+-------------+------------------------+
 >

@@ -7,10 +7,7 @@ use arrow_arith::boolean::{and_kleene, or_kleene};
 use arrow_array::{Array, ArrayRef, BooleanArray};
 use arrow_buffer::{BooleanBuffer, NullBuffer};
 use arrow_schema::FieldRef;
-use reifydb_core::{
-	error::CoreError,
-	value::column::{factory, nulls::split_nulls},
-};
+use reifydb_core::{error::CoreError, value::column::nulls::split_nulls};
 use reifydb_value::{
 	error::{LogicalOp, OperandCategory, TypeError},
 	fragment::Fragment,
@@ -31,44 +28,6 @@ pub(crate) fn bool_column(name: &str, values: BooleanArray, nullable: bool) -> (
 		false => ValueType::Boolean,
 	};
 	named(name, FieldType::from(ty), Arc::new(values))
-}
-
-pub(crate) fn try_short_circuit_and(
-	l: &(FieldRef, ArrayRef),
-	fragment: &Fragment,
-	row_count: usize,
-) -> Result<Option<(FieldRef, ArrayRef)>> {
-	if is_all_false_defined(&ColumnView::try_from(l)?) {
-		Ok(Some(factory::bool(fragment.text(), vec![false; row_count])))
-	} else {
-		Ok(None)
-	}
-}
-
-pub(crate) fn try_short_circuit_or(
-	l: &(FieldRef, ArrayRef),
-	fragment: &Fragment,
-	row_count: usize,
-) -> Result<Option<(FieldRef, ArrayRef)>> {
-	if is_all_true_defined(&ColumnView::try_from(l)?) {
-		Ok(Some(factory::bool(fragment.text(), vec![true; row_count])))
-	} else {
-		Ok(None)
-	}
-}
-
-fn is_all_false_defined(view: &ColumnView) -> bool {
-	match &view.data {
-		ViewData::Bool(c) => view.none_count() == 0 && !c.is_empty() && !c.values().has_true(),
-		_ => false,
-	}
-}
-
-fn is_all_true_defined(view: &ColumnView) -> bool {
-	match &view.data {
-		ViewData::Bool(c) => view.none_count() == 0 && !c.is_empty() && !c.values().has_false(),
-		_ => false,
-	}
 }
 
 fn is_all_none(bv: Option<&BooleanBuffer>) -> bool {

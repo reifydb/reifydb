@@ -25,7 +25,7 @@ fn stored_b(t: &TestEngine) -> Vec<(i32, Option<bool>)> {
 
 #[test]
 fn between_over_a_nullable_column_answers_per_row_in_a_patch() {
-	// A patch must take the lowered path, where between answers per row while the old path errors.
+	// A patch must answer between per row over a nullable column, otherwise a none row fails the update.
 	let t = engine();
 
 	let frames = t.query("FROM test::t | patch { b: a between 2 and 10 }");

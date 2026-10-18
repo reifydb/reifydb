@@ -36,7 +36,7 @@ pub(super) fn lower_cast<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	cast: &'e CastExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let inner = lower_node(ctx, operator, &cast.expression)?;
 	let label = display_label(expression);
 	let to = cast.to.ty.clone();
@@ -63,6 +63,23 @@ pub(super) fn lower_cast<'e>(
 		),
 		field,
 	})
+}
+
+pub(super) fn cast_node(ctx: &EvalContext, node: Node, to: &ValueType, fragment: &Fragment) -> Node {
+	let field = cast_field(node.field.name(), to, &node.field);
+	Node {
+		expr: udf(
+			CastUdf {
+				to: to.clone(),
+				constraint: None,
+				target: ctx.target.clone(),
+				fragment: fragment.clone(),
+				signature: volatile(),
+			},
+			vec![node.expr],
+		),
+		field,
+	}
 }
 
 fn cast_field(name: &str, to: &ValueType, input: &FieldRef) -> FieldRef {

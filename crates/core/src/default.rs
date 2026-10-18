@@ -135,6 +135,15 @@ pub mod flow {
 	pub const SAMPLE_INTERVAL: Duration = Duration::from_seconds_const(60);
 	pub const SAMPLE_INTERVAL_TESTING: Duration = Duration::from_seconds_const(60);
 
+	pub const WAKE_COALESCE: Duration = Duration::from_milliseconds_const(20);
+	pub const WAKE_COALESCE_TESTING: Duration = Duration::from_milliseconds_const(20);
+
+	pub const ACTOR_BATCH_SIZE: u16 = 8;
+	pub const ACTOR_BATCH_SIZE_TESTING: u16 = 8;
+
+	pub const COMMITTER_SHARDS: u16 = 1;
+	pub const COMMITTER_SHARDS_TESTING: u16 = 1;
+
 	pub const BACKLOG_MEMORY_LIMIT: ByteSize = ByteSize::from_mib(64);
 	pub const BACKLOG_MEMORY_LIMIT_TESTING: ByteSize = ByteSize::from_kib(64);
 

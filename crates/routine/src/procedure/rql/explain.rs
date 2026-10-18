@@ -72,7 +72,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for RqlExplain {
 		let mut walker = PhysicalWalker::default();
 		for statement in statements {
 			let logical = compile_logical(&bump, ctx.catalog, ctx.tx, statement)?;
-			if let Some(mut plan) = compile_physical(&bump, ctx.catalog, ctx.tx, logical)? {
+			if let Some(mut plan) = compile_physical(&bump, ctx.catalog, ctx.routines, ctx.tx, logical)? {
 				optimize_physical(&mut plan);
 				check_system_columns(&plan)?;
 				walker.walk(&plan, 0, None);
@@ -221,7 +221,6 @@ impl PhysicalWalker {
 					self.walk(else_branch, depth, parent);
 				}
 			}
-			PhysicalPlan::Scalarize(scalarize) => self.walk(&scalarize.input, depth, parent),
 			PhysicalPlan::DefineFunction(def) => {
 				for child in def.body.iter() {
 					self.walk(child, depth, parent);
@@ -488,7 +487,6 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 		PhysicalPlan::Assign(node) => ("Assign", format!("{} = {}", node.name.text(), node.value)),
 		PhysicalPlan::Variable(node) => ("Variable", node.variable_expr.fragment.text().to_string()),
 		PhysicalPlan::Conditional(node) => ("Conditional", format!("if {}", node.condition)),
-		PhysicalPlan::Scalarize(_) => ("Scalarize", String::new()),
 		PhysicalPlan::Environment(_) => ("Environment", String::new()),
 		PhysicalPlan::RowPointLookup(lookup) => {
 			let source_name = source_name_of(&lookup.source);

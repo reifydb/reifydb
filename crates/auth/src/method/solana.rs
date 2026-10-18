@@ -152,10 +152,7 @@ impl SolanaProvider {
 		let statement =
 			credentials.get("statement").cloned().unwrap_or_else(|| "Sign in to ReifyDB".to_string());
 
-		let issued_at = credentials
-			.get("issued_at")
-			.cloned()
-			.unwrap_or_else(|| (self.clock.now().to_secs()).to_string());
+		let issued_at = credentials.get("issued_at").cloned().unwrap_or_else(|| self.clock.now().to_string());
 
 		let message = format!(
 			"{domain} wants you to sign in with your Solana account:\n\
@@ -271,7 +268,7 @@ mod tests {
 		let message = challenge_data.get("message").unwrap();
 		assert!(message.contains("wants you to sign in with your Solana account"));
 		assert!(message.contains("Nonce:"));
-		assert!(message.contains("Issued At: 1700000000"));
+		assert!(message.contains("Issued At: 2023-11-14T22:13:20.000000000Z"));
 
 		let signature = signing_key.sign(message.as_bytes());
 		let signature_b58 = bs58_encode(signature.to_bytes()).into_string();

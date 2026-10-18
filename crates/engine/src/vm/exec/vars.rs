@@ -14,8 +14,10 @@ use reifydb_value::{
 	error::{RuntimeErrorKind, TypeError},
 	fragment::Fragment,
 	value::{
+		Value,
 		column_view::ColumnView,
 		system_columns::{is_system_field, user_columns},
+		value_type::ValueType,
 	},
 };
 
@@ -30,11 +32,22 @@ impl<'a> Vm<'a> {
 			}) if is_scalar(c) => {
 				if self.batch_size != 1 {
 					let value = scalar_value(c)?;
-					let mut data = ColumnBuilder::with_capacity(value.get_type(), self.batch_size);
-					for _ in 0..self.batch_size {
-						data.push_value(value.clone());
-					}
-					self.stack.push(Variable::columns(batch(vec![data.finish(name)])?));
+					let column = if matches!(
+						value,
+						Value::None {
+							inner: ValueType::Any
+						}
+					) {
+						factory::none(name, self.batch_size)
+					} else {
+						let mut data =
+							ColumnBuilder::with_capacity(value.get_type(), self.batch_size);
+						for _ in 0..self.batch_size {
+							data.push_value(value.clone());
+						}
+						data.finish(name)
+					};
+					self.stack.push(Variable::columns(batch(vec![column])?));
 				} else {
 					self.stack.push(Variable::columns(c.clone()));
 				}

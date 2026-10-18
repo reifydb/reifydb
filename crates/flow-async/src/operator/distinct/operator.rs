@@ -22,10 +22,7 @@ use reifydb_core::{
 	},
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::CompileContext,
-};
+use reifydb_evaluate::lower::{LoweredExpr, compile_check};
 use reifydb_flow::{context::FlowContext, operator::source::decode_change};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -57,7 +54,7 @@ enum LoadedEntry {
 pub struct DistinctPlan {
 	parent_schema: Option<SchemaRef>,
 	pub(super) operator: OperatorId,
-	pub(super) compiled_expressions: Vec<CompiledExpr>,
+	pub(super) lowered_expressions: Vec<LoweredExpr>,
 	pub(super) routines: Routines,
 	pub(super) runtime_context: RuntimeContext,
 	pub(super) ctx: Arc<FlowContext>,
@@ -77,17 +74,17 @@ impl DistinctOperator {
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self> {
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
-		let compiled_expressions: Vec<CompiledExpr> =
-			expressions.iter().map(|e| compile_expression(&compile_ctx, e)).collect::<Result<Vec<_>>>()?;
+		for expression in &expressions {
+			compile_check(expression)?;
+		}
+		let lowered_expressions: Vec<LoweredExpr> =
+			expressions.iter().map(|e| LoweredExpr::new(e.clone(), "distinct")).collect();
 
 		Ok(Self {
 			plan: DistinctPlan {
 				parent_schema,
 				operator,
-				compiled_expressions,
+				lowered_expressions,
 				routines,
 				runtime_context,
 				ctx,

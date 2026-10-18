@@ -6,6 +6,7 @@
 # =============================================================================
 
 FORMAT_TOOLCHAIN := nightly-2026-08-15
+FORMAT_RUSTFMT_COMMIT := d453bdd8f0
 
 .PHONY: format format-rust format-workspace format-check strip-comments
 
@@ -49,6 +50,11 @@ ensure-rustfmt:
 		echo "Installing rustfmt for nightly..."; \
 		rustup component add rustfmt --toolchain $(FORMAT_TOOLCHAIN); \
 	fi
+	@version="$$(cargo +$(FORMAT_TOOLCHAIN) fmt --version)"; \
+	case "$$version" in \
+		*"($(FORMAT_RUSTFMT_COMMIT) "*) ;; \
+		*) echo "❌ rustfmt is $$version, expected $(FORMAT_RUSTFMT_COMMIT) ($(FORMAT_TOOLCHAIN))"; exit 1 ;; \
+	esac
 
 # Format entire workspace (includes crates/, bin/, and pkg/rust/)
 format-workspace:

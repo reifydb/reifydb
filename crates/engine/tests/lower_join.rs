@@ -49,7 +49,7 @@ fn a_none_and_a_value_row_join_alike() {
 
 #[test]
 fn a_hash_join_residual_takes_the_lowered_path() {
-	// Between over a nullable column answers per row only on the lowered path; the old path errors.
+	// A hash residual must answer between per pair over a nullable column, or a none row fails the join.
 	let t = engine();
 
 	let ids = joined_ids(
@@ -62,7 +62,7 @@ fn a_hash_join_residual_takes_the_lowered_path() {
 
 #[test]
 fn a_nested_loop_condition_takes_the_lowered_path() {
-	// An or leaves no equi key, so the nested loop must answer the between per pair on the lowered path.
+	// An or leaves no equi key, so the nested loop must answer the between per pair over a nullable column.
 	let t = engine();
 
 	let ids = joined_ids(

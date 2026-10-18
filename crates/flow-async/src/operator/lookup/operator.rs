@@ -27,9 +27,9 @@ use reifydb_core::{
 		column::factory::none,
 	},
 };
-use reifydb_evaluate::expression::{
-	compile::{CompiledExpr, compile_expression},
-	context::{CompileContext, EvalContext},
+use reifydb_evaluate::{
+	expression::context::EvalContext,
+	lower::{LoweredExpr, compile_check},
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -91,7 +91,7 @@ pub struct LookupConfig {
 
 pub struct LookupOperator {
 	config: LookupConfig,
-	compiled_left: Vec<CompiledExpr>,
+	lowered_left: Vec<LoweredExpr>,
 	expiry: LookupExpiry,
 	columns: JoinedColumnsCache,
 }
@@ -193,19 +193,19 @@ impl Output {
 
 impl LookupOperator {
 	pub fn new(config: LookupConfig) -> Result<Self> {
-		let compile_ctx = CompileContext {
-			symbols: &config.ctx.symbols,
-		};
-		let compiled_left = config
+		for expression in &config.left {
+			compile_check(expression)?;
+		}
+		let lowered_left = config
 			.left
 			.iter()
-			.map(|expression| compile_expression(&compile_ctx, expression))
-			.collect::<Result<Vec<_>>>()?;
+			.map(|expression| LoweredExpr::new(expression.clone(), "lookup_key"))
+			.collect();
 		let expiry = LookupExpiry::new(config.left_retention);
 		let columns = JoinedColumnsCache::new(config.alias.clone(), false);
 		Ok(Self {
 			config,
-			compiled_left,
+			lowered_left,
 			expiry,
 			columns,
 		})
@@ -232,7 +232,6 @@ impl LookupOperator {
 			routines: &self.config.routines,
 			runtime_context: &self.config.runtime_context,
 			identity: self.config.ctx.identity,
-			is_aggregate_context: false,
 			batch: empty_batch(),
 			row_count: 1,
 			target: None,
@@ -240,9 +239,9 @@ impl LookupOperator {
 		};
 		let exec_ctx = session.with_eval(columns.clone(), row_count);
 
-		let mut key_columns: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(self.compiled_left.len());
-		for compiled in &self.compiled_left {
-			let column = match compiled.access_column_name() {
+		let mut key_columns: Vec<(FieldRef, ArrayRef)> = Vec::with_capacity(self.lowered_left.len());
+		for lowered in &self.lowered_left {
+			let column = match lowered.access_column_name() {
 				Some(name) => match resolve_column(columns, name) {
 					Some(index) => (
 						columns.schema_ref().fields()[index].clone(),
@@ -250,7 +249,7 @@ impl LookupOperator {
 					),
 					None => none(name, row_count),
 				},
-				None => compiled.execute(&exec_ctx)?,
+				None => lowered.evaluate(&exec_ctx)?,
 			};
 			key_columns.push(column);
 		}

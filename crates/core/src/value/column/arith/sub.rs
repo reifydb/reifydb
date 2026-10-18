@@ -3,8 +3,8 @@
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
-use reifydb_core::value::column::{builder::ColumnBuilder, factory, push::Push};
 use reifydb_value::{
+	Result,
 	error::{BinaryOp, TypeError},
 	fragment::LazyFragment,
 	reifydb_assertions,
@@ -17,15 +17,14 @@ use reifydb_value::{
 	},
 };
 
-use crate::{
-	Result,
-	expression::{
-		arith::{ArithOp, arith_target},
-		compare::length_mismatch,
-		context::ArithContext,
-		option::arith_op_unwrap_option,
+use crate::value::column::{
+	arith::{
+		ArithOp, arith_target, context::ArithContext, length_mismatch, option::arith_op_unwrap_option,
 		scalar::FitFamily,
 	},
+	builder::ColumnBuilder,
+	factory,
+	push::Push,
 };
 
 pub fn sub_columns(

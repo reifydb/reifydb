@@ -128,5 +128,5 @@ fn a_lookup_with_no_left_input_is_an_error() {
 	// With nothing on the left there is no row to look up; it must be an error, never a panic.
 	let engine = engine();
 	let rql = format!("INNER LOOKUP {BLOCK} AS p USING {USING}{WITH}");
-	assert_code(&engine.query_err(&rql), "AST_009");
+	assert_code(&engine.query_err(&rql), "QUERY_015");
 }

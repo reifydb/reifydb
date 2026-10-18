@@ -48,7 +48,6 @@ pub(crate) fn alter_table_sequence(
 		routines: &services.routines,
 		runtime_context: &services.runtime_context,
 		identity: txn.identity,
-		is_aggregate_context: false,
 		batch: empty_batch(),
 		row_count: 1,
 		target: None,

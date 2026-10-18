@@ -3,6 +3,7 @@
 
 pub mod fragment;
 pub mod name;
+mod tree_node;
 
 use std::{
 	fmt,

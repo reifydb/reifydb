@@ -6,8 +6,8 @@ query 'CALL rql::explain("from users map {id, name} filter {id == 10}")'
 > +-------+---------+----------+-------------+------------------------+
 > |  idx  |  depth  |  parent  |    kind     |         detail         |
 > +-------+---------+----------+-------------+------------------------+
-> |   0   |    0    |   none   |   Filter    |  (id == Constant(10))  |
-> |   1   |    1    |    0     |     Map     |        id, name        |
+> |   0   |    0    |   none   |     Map     |        id, name        |
+> |   1   |    1    |    0     |   Filter    |  (id == Constant(10))  |
 > |   2   |    2    |    1     |  TableScan  |     default::users     |
 > +-------+---------+----------+-------------+------------------------+
 >

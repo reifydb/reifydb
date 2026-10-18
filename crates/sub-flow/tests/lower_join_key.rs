@@ -138,7 +138,7 @@ fn joined_rows(engine: &TestEngine, operator: &mut JoinOperator) -> usize {
 
 #[test]
 fn a_computed_join_key_takes_the_lowered_path() {
-	// Between over a nullable column keys per row only on the lowered path; the old path errors.
+	// A computed join key must answer between per row over a nullable column, or a none row fails the join.
 	let engine = TestEngine::new();
 	let mut operator =
 		join(&engine, parse_expression("a between 2 and 10").unwrap(), parse_expression("flag").unwrap());

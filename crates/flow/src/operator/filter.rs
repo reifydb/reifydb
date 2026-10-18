@@ -14,10 +14,7 @@ use reifydb_core::{
 	internal_err,
 	value::batch::{empty_batch, take_rows},
 };
-use reifydb_evaluate::expression::{
-	compile::compile_expression,
-	context::{CompileContext, EvalContext},
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::compile_check};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -53,11 +50,8 @@ impl FilterOperator {
 		runtime_context: RuntimeContext,
 		ctx: Arc<FlowContext>,
 	) -> Result<Self> {
-		let compile_ctx = CompileContext {
-			symbols: &ctx.symbols,
-		};
 		for condition in &conditions {
-			compile_expression(&compile_ctx, condition)?;
+			compile_check(condition)?;
 		}
 
 		Ok(Self {
@@ -89,7 +83,6 @@ impl FilterOperator {
 			routines: &self.routines,
 			runtime_context: &self.runtime_context,
 			identity: self.ctx.identity,
-			is_aggregate_context: false,
 			batch: empty_batch(),
 			row_count: 1,
 			target: None,

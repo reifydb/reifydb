@@ -53,6 +53,7 @@ fn call_with(arg: (FieldRef, ArrayRef)) -> RecordBatch {
 		tx: &mut tx,
 		params: &params,
 		catalog: &catalog,
+		routines: &services.routines,
 		ioc: &services.ioc,
 	};
 	let args = vec![arg];

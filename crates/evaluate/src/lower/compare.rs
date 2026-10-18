@@ -36,7 +36,7 @@ pub(super) fn lower_compare<'e>(
 	(left, right): (&'e Expression, &'e Expression),
 	fragment: Fragment,
 	(binary_op, df_op): (BinaryOp, Operator),
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let left = lower_node(ctx, operator, left)?;
 	let right = lower_node(ctx, operator, right)?;
 	let field = bool_field(display_label(expression).text(), left.field.is_nullable() || right.field.is_nullable());
@@ -67,7 +67,7 @@ pub(super) fn lower_between<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	between: &'e BetweenExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let value = lower_node(ctx, operator, &between.value)?;
 	let lower = lower_node(ctx, operator, &between.lower)?;
 	let upper = lower_node(ctx, operator, &between.upper)?;

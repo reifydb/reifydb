@@ -1,0 +1,6 @@
+OPERATOR_022 "l==x" Cannot apply '==' operator to Int4 and Utf8 ["Left operand is of type: Int4", "Right operand is of type: Utf8", "Equality comparison is only supported between compatible types"]
+OPERATOR_023 "l!=x" Cannot apply '!=' operator to Int4 and Utf8 ["Left operand is of type: Int4", "Right operand is of type: Utf8", "Inequality comparison is only supported between compatible types"]
+OPERATOR_024 "l<x" Cannot apply '<' operator to Int4 and Utf8 ["Left operand is of type: Int4", "Right operand is of type: Utf8", "Less than comparison is only supported between compatible types"]
+OPERATOR_025 "l<=x" Cannot apply '<=' operator to Int4 and Utf8 ["Left operand is of type: Int4", "Right operand is of type: Utf8", "Less than or equal comparison is only supported between compatible types"]
+OPERATOR_026 "l>x" Cannot apply '>' operator to Int4 and Utf8 ["Left operand is of type: Int4", "Right operand is of type: Utf8", "Greater than comparison is only supported between compatible types"]
+OPERATOR_027 "l>=x" Cannot apply '>=' operator to Int4 and Utf8 ["Left operand is of type: Int4", "Right operand is of type: Utf8", "Greater than or equal comparison is only supported between compatible types"]

@@ -15,10 +15,14 @@ use arrow_ord::cmp;
 use arrow_schema::{Field, FieldRef};
 use reifydb_core::{
 	error::CoreError,
-	value::column::{factory::none_typed, nulls::split_nulls},
+	value::column::{
+		arith::{family_digits, is_family, length_mismatch, option::is_all_none},
+		factory::none_typed,
+		nulls::split_nulls,
+	},
 };
 use reifydb_value::{
-	error::{Diagnostic, Error, RuntimeErrorKind, TypeError},
+	error::Diagnostic,
 	fragment::Fragment,
 	return_error,
 	value::{
@@ -35,7 +39,7 @@ use reifydb_value::{
 	},
 };
 
-use super::{logic::bool_column, option::is_all_none};
+use super::logic::bool_column;
 use crate::Result;
 
 pub trait CompareOp {
@@ -138,32 +142,6 @@ fn unsigned_of_rank(rank: u8) -> ValueType {
 		4 => ValueType::Uint8,
 		_ => ValueType::Uint16,
 	}
-}
-
-fn integer_digits(ty: &ValueType) -> Option<u8> {
-	match ty {
-		ValueType::Int1 | ValueType::Uint1 => Some(3),
-		ValueType::Int2 | ValueType::Uint2 => Some(5),
-		ValueType::Int4 | ValueType::Uint4 => Some(10),
-		ValueType::Int8 => Some(19),
-		ValueType::Uint8 => Some(20),
-		ValueType::Int16 | ValueType::Uint16 => Some(39),
-		_ => None,
-	}
-}
-
-pub(crate) fn family_digits(ty: &ValueType) -> Option<(u8, u8)> {
-	match ty {
-		ValueType::Decimal {
-			precision,
-			scale,
-		} => Some((precision.value() - scale.value(), scale.value())),
-		_ => integer_digits(ty).map(|digits| (digits, 0)),
-	}
-}
-
-pub(crate) fn is_family(ty: &ValueType) -> bool {
-	matches!(ty, ValueType::Decimal { .. })
 }
 
 pub(crate) fn compare_target(left: &ValueType, right: &ValueType) -> Option<ValueType> {
@@ -393,18 +371,6 @@ fn family_array(column: &ArrayRef, view: &ColumnView, precision: Precision, scal
 		};
 		Arc::new(array.with_data_type(data_type))
 	}
-}
-
-pub(crate) fn length_mismatch(left: usize, right: usize, fragment: &Fragment) -> Error {
-	TypeError::Runtime {
-		kind: RuntimeErrorKind::ColumnLengthMismatch {
-			left,
-			right,
-			fragment: fragment.clone(),
-		},
-		message: format!("cannot combine a column of {left} rows with a column of {right} rows"),
-	}
-	.into()
 }
 
 pub fn compare_columns<Op: CompareOp>(

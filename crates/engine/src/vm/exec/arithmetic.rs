@@ -3,15 +3,17 @@
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
-use reifydb_core::{expression::PrefixOperator, value::batch::batch};
-use reifydb_evaluate::{
-	expression::{
-		arith::{add::add_columns, div::div_columns, mul::mul_columns, rem::rem_columns, sub::sub_columns},
-		context::ArithContext,
-		prefix::prefix_apply,
+use reifydb_core::{
+	expression::PrefixOperator,
+	value::{
+		batch::batch,
+		column::arith::{
+			add::add_columns, context::ArithContext, div::div_columns, mul::mul_columns, rem::rem_columns,
+			sub::sub_columns,
+		},
 	},
-	stack::Variable,
 };
+use reifydb_evaluate::{expression::prefix::prefix_apply, stack::Variable};
 use reifydb_value::fragment::Fragment;
 
 use super::broadcast::broadcast_to_match;

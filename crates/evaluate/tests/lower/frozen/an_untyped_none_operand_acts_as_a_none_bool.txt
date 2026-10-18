@@ -1,0 +1,5 @@
+Field { name: "none and true", data_type: Boolean, nullable: true } ["none"]
+Field { name: "false and none", data_type: Boolean } ["false"]
+Field { name: "none or true", data_type: Boolean, nullable: true } ["true"]
+Field { name: "false or none", data_type: Boolean, nullable: true } ["none"]
+Field { name: "not none", data_type: Boolean, nullable: true } ["none"]

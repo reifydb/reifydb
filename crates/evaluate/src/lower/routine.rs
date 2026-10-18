@@ -25,6 +25,7 @@ use reifydb_value::{
 	value::{
 		column_view::ColumnView,
 		identity::IdentityId,
+		system_columns::resolve_column,
 		value_type::{
 			ValueType,
 			field::{FieldType, to_field},
@@ -36,7 +37,10 @@ use crate::{
 	Result,
 	error::EvaluateError,
 	expression::{compile::type_column, context::EvalContext},
-	lower::{Lowered, Node, Stop, empty_of, error::into_external, literal, lower_node, typed_field, udf, volatile},
+	lower::{
+		Lowered, Node, Stop, direct::splice_key, empty_of, error::into_external, literal, lower_node,
+		schema::positional, typed_field, udf, volatile,
+	},
 };
 
 type DfResult<T> = std::result::Result<T, DataFusionError>;
@@ -46,7 +50,7 @@ pub(super) fn lower_call<'e>(
 	operator: &'static str,
 	expression: &'e Expression,
 	call: &'e CallExpression,
-) -> Lowered<'e, Node> {
+) -> Lowered<Node> {
 	let name = call.func.0.text();
 	assert!(ctx.symbols.get_function(name).is_none(), "UDF '{}' should have been hoisted to UdfEvalNode", name);
 	let function = ctx.routines.get_scalar_function(name).ok_or_else(|| -> Error {
@@ -57,7 +61,18 @@ pub(super) fn lower_call<'e>(
 		.into()
 	})?;
 	if function.changes_row_count() {
-		return Err(Stop::RowChanging);
+		return match resolve_column(&ctx.batch, &splice_key(call)) {
+			Some(index) => Ok(Node {
+				expr: positional(index),
+				field: Arc::new(
+					ctx.batch.schema_ref().fields()[index]
+						.as_ref()
+						.clone()
+						.with_name(display_label(expression).text()),
+				),
+			}),
+			None => Err(Stop::RowChanging),
+		};
 	}
 	function.arity().check(&call.func.0, call.args.len()).map_err(Error::from)?;
 	let type_positions = function.type_argument_positions();
@@ -77,7 +92,7 @@ pub(super) fn lower_call<'e>(
 			}
 			_ => lower_node(ctx, operator, arg),
 		})
-		.collect::<Lowered<'e, Vec<Node>>>()?;
+		.collect::<Lowered<Vec<Node>>>()?;
 	let fields: Vec<FieldRef> = args.iter().map(|node| node.field.clone()).collect();
 	let field = routine_field(display_label(expression).text(), function.as_ref(), &fields)?;
 	Ok(Node {
