@@ -266,6 +266,8 @@ mod udf_parameter_type_paths;
 mod virtual_table_diagnostics;
 #[path = "vm_compare_answers_as_query.rs"]
 mod vm_compare_answers_as_query;
+#[path = "vm_logic_answers_as_query.rs"]
+mod vm_logic_answers_as_query;
 #[path = "window_batch_query.rs"]
 mod window_batch_query;
 #[path = "window_batch_query_fragment.rs"]

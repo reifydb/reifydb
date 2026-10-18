@@ -65,12 +65,4 @@ impl<'a> Vm<'a> {
 		self.stack.push(Variable::columns(batch(vec![result])?));
 		Ok(())
 	}
-
-	pub(crate) fn exec_logic_not(&mut self) -> Result<()> {
-		let col = self.pop_as_column()?;
-		let frag = Fragment::internal("vm_not");
-		let result = prefix_apply(&col, &PrefixOperator::Not(frag.clone()), &frag)?;
-		self.stack.push(Variable::columns(batch(vec![result])?));
-		Ok(())
-	}
 }
