@@ -26,7 +26,7 @@ use reifydb_value::{Result, reifydb_assertions};
 use crate::{
 	operator::{
 		state::{
-			expiry::{ExpiryIndex, expiry_drop, tumbling_expiry_key},
+			expiry::{ExpiryIndex, tumbling_expiry_key},
 			reaper::Reaper,
 		},
 		state_access::batch,
@@ -115,41 +115,6 @@ where
 
 	pub fn dropped_retractions(&self) -> u64 {
 		self.dropped_retractions
-	}
-
-	#[allow(clippy::too_many_arguments)]
-	pub fn reindex_window(
-		&mut self,
-		store: &mut dyn StateStore,
-		group: &G,
-		window_start: S,
-		id: GroupId,
-		slot_key: &EncodedKey,
-		prior: Option<u64>,
-		new: Option<u64>,
-	) -> Result<()> {
-		if prior == new {
-			return Ok(());
-		}
-		let order = window_start.order_key().to_order();
-		if let Some(old) = prior {
-			expiry_drop(store, &tumbling_expiry_key(old, group_hash(group)?, order))?;
-			if self.earliest.is_some_and(|known| known.is_none_or(|earliest| old <= earliest)) {
-				self.earliest = None;
-			}
-		}
-		if let Some(new) = new {
-			let entry = TumblingIndexEntry {
-				group: group.clone(),
-				window_start,
-				group_id: id,
-				slot_key: slot_key.as_bytes().to_vec(),
-			};
-			self.expiry.set(store, tumbling_expiry_key(new, group_hash(group)?, order), entry)?;
-			self.earliest =
-				self.earliest.map(|known| Some(known.map_or(new, |earliest| earliest.min(new))));
-		}
-		Ok(())
 	}
 
 	pub fn reindex_windows(
@@ -471,7 +436,7 @@ mod tests {
 		window::{
 			accumulator::{WindowAccumulator, mock::SumAccumulator},
 			engine::{
-				AccumulatorEvent, EmitKind, WindowResult,
+				AccumulatorEvent, EmitKind, WindowReindex, WindowResult,
 				config::WindowEngineConfig,
 				tumbling::{TumblingBuckets, TumblingEngine},
 			},
@@ -525,14 +490,16 @@ mod tests {
 		new: Option<u64>,
 	) -> Result<()> {
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		engine.reindex_window(
+		engine.reindex_windows(
 			store,
-			group,
-			window_start,
-			slot_key(group, window_start).0,
-			&row_key(group, window_start),
-			prior,
-			new,
+			&[WindowReindex {
+				group,
+				window_start,
+				id: slot_key(group, window_start).0,
+				slot_key: &row_key(group, window_start),
+				prior,
+				new,
+			}],
 		)
 	}
 
@@ -625,14 +592,16 @@ mod tests {
 		let published = &results[0];
 		let (group, _) = group_slot(&published.group, published.span.start);
 		let (_, slot_key) = group_slot(&published.group, published.span.start);
-		engine.reindex_window(
+		engine.reindex_windows(
 			&mut store,
-			&published.group,
-			published.span.start,
-			group,
-			&slot_key,
-			None,
-			Some(10),
+			&[WindowReindex {
+				group: &published.group,
+				window_start: published.span.start,
+				id: group,
+				slot_key: &slot_key,
+				prior: None,
+				new: Some(10),
+			}],
 		)
 		.unwrap();
 

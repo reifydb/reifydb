@@ -1538,6 +1538,7 @@ mod seal_arm_tests {
 			mock::FlowTxn,
 			state::{StateExtension, StateRange},
 		},
+		window::engine::WindowReindex,
 	};
 
 	const SIZE_MS: u64 = 10_000;
@@ -1599,21 +1600,29 @@ mod seal_arm_tests {
 			operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
 			});
-		for (n, start_ms) in starts.iter().enumerate() {
-			let start = at_millis(
-				i64::try_from(*start_ms).expect("test window start fits in i64 milliseconds"),
-			);
-			engine.reindex_window(
-				host,
-				&Hash128::from(n as u128),
-				start,
-				GroupId::window(Hash128::from(n as u128), start.to_order()),
-				&EncodedKey::new(Vec::new()),
-				None,
-				Some(start.to_order()),
-			)
-			.unwrap();
-		}
+		let slot_key = EncodedKey::new(Vec::new());
+		let windows: Vec<(Hash128, DateTime)> = starts
+			.iter()
+			.enumerate()
+			.map(|(n, start_ms)| {
+				let start = at_millis(
+					i64::try_from(*start_ms).expect("test window start fits in i64 milliseconds"),
+				);
+				(Hash128::from(n as u128), start)
+			})
+			.collect();
+		let entries: Vec<WindowReindex<'_, Hash128, DateTime>> = windows
+			.iter()
+			.map(|(group, start)| WindowReindex {
+				group,
+				window_start: *start,
+				id: GroupId::window(*group, start.to_order()),
+				slot_key: &slot_key,
+				prior: None,
+				new: Some(start.to_order()),
+			})
+			.collect();
+		engine.reindex_windows(host, &entries).unwrap();
 		*operator.core.tumbling_engine_slot() = Some(engine);
 	}
 

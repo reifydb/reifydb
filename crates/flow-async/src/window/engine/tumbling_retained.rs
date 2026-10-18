@@ -140,36 +140,6 @@ where
 		}
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	pub fn reindex_window(
-		&mut self,
-		store: &mut dyn StateStore,
-		group: &G,
-		window_start: S,
-		id: GroupId,
-		slot_key: &EncodedKey,
-		prior: Option<u64>,
-		new: Option<u64>,
-	) -> Result<()> {
-		if prior == new {
-			return Ok(());
-		}
-		let order = window_start.order_key().to_order();
-		if let Some(old) = prior {
-			expiry_drop(store, &tumbling_expiry_key(old, group_hash(group)?, order))?;
-		}
-		if let Some(new) = new {
-			let entry = TumblingIndexEntry {
-				group: group.clone(),
-				window_start,
-				group_id: id,
-				slot_key: slot_key.as_bytes().to_vec(),
-			};
-			self.expiry.set(store, tumbling_expiry_key(new, group_hash(group)?, order), entry)?;
-		}
-		Ok(())
-	}
-
 	pub fn reindex_windows(
 		&mut self,
 		store: &mut dyn StateStore,
@@ -634,7 +604,7 @@ mod tests {
 			accumulator::invertible::retained_map::RetainedAccumulator,
 			engine::{
 				AccumulatorEvent::{self, Add, Remove},
-				EmitKind, KeyspaceFamily, WindowResult, WindowStateKey,
+				EmitKind, KeyspaceFamily, WindowReindex, WindowResult, WindowStateKey,
 				config::WindowEngineConfig,
 				tumbling::{TumblingBuckets, TumblingEngine},
 			},
@@ -790,7 +760,18 @@ mod tests {
 			2,
 			"precondition: entries exist"
 		);
-		engine.reindex_window(&mut store, &1, at_millis(0), group, &slot, None, Some(10)).unwrap();
+		engine.reindex_windows(
+			&mut store,
+			&[WindowReindex {
+				group: &1,
+				window_start: at_millis(0),
+				id: group,
+				slot_key: &slot,
+				prior: None,
+				new: Some(10),
+			}],
+		)
+		.unwrap();
 
 		let expired = engine.expire(&mut store, 10).unwrap();
 		assert_eq!(expired.len(), 1);
