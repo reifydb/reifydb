@@ -24,6 +24,7 @@ use reifydb_evaluate::{
 	lower::{LoweredExpr, compile_check},
 	stack::{SymbolTable, Variable, strip_dollar_prefix},
 };
+use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::instruction::Instruction;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{
@@ -265,7 +266,11 @@ impl QueryNode for UdfEvalNode {
 
 			let arg_columns = Self::eval_args(call, &eval_ctx)?;
 
-			let result_column = if is_vectorizable(&call.udf.callable.body) {
+			let result_column = if is_vectorizable(
+				&call.udf.callable.body,
+				&stored_ctx.services.routines,
+				&stored_ctx.symbols,
+			) {
 				Self::run_vectorized(rx, stored_ctx, &eval_ctx, call, &arg_columns, row_count)?
 			} else {
 				Self::run_scalar(rx, stored_ctx, &eval_ctx, call, &arg_columns, row_count)?
@@ -291,12 +296,19 @@ fn returns_void_early(instructions: &[Instruction]) -> bool {
 	})
 }
 
-pub(crate) fn is_vectorizable(instructions: &[Instruction]) -> bool {
+pub(crate) fn is_vectorizable(instructions: &[Instruction], routines: &Routines, symbols: &SymbolTable) -> bool {
 	if returns_void_early(instructions) {
 		return false;
 	}
 
 	instructions.iter().all(|instr| {
+		if let Instruction::Call {
+			name,
+			..
+		} = instr
+		{
+			return runs_over_columns(name.text(), routines, symbols);
+		}
 		matches!(
 			instr,
 			Instruction::PushConst(_)
@@ -320,10 +332,16 @@ pub(crate) fn is_vectorizable(instructions: &[Instruction]) -> bool {
 				| Instruction::ReturnValue | Instruction::ReturnVoid
 				| Instruction::DefineFunction(_)
 				| Instruction::DefineClosure(_)
-				| Instruction::Call { .. } | Instruction::Nop
-				| Instruction::Halt
+				| Instruction::Nop | Instruction::Halt
 		)
 	})
+}
+
+fn runs_over_columns(name: &str, routines: &Routines, symbols: &SymbolTable) -> bool {
+	symbols.resolve_callable(name).is_some()
+		|| (routines.get_function(name).is_some_and(|function| !function.changes_row_count())
+			&& routines.get_procedure(name).is_none()
+			&& routines.get_generator_function(name).is_none())
 }
 
 fn named_after(original: &Expression, rewritten: Expression, udfs: &[ExtractedUdf]) -> Expression {

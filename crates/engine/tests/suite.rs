@@ -252,6 +252,8 @@ mod udf_arity;
 mod udf_arity_paths;
 #[path = "udf_body_builtin_call_over_rows.rs"]
 mod udf_body_builtin_call_over_rows;
+#[path = "udf_body_procedure_call_over_rows.rs"]
+mod udf_body_procedure_call_over_rows;
 #[path = "udf_body_unknown_call_over_rows.rs"]
 mod udf_body_unknown_call_over_rows;
 #[path = "udf_call_without_alias.rs"]
