@@ -120,12 +120,9 @@ impl BlockSequenceReader {
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_core::{
-		common::CommitVersion,
-		interface::catalog::{
-			column_block::{ColumnBlock, ColumnBlockSource},
-			id::{ColumnBlockId, NamespaceId, SeriesId},
-		},
+	use reifydb_core::interface::catalog::{
+		column_block::{ColumnBlock, ColumnBlockSource},
+		id::{ColumnBlockId, NamespaceId, SeriesId},
 	};
 	use reifydb_store_column::{device::BlockFileKey, store::ColumnStore};
 
@@ -138,13 +135,11 @@ mod tests {
 		let block = ColumnBlock {
 			id: ColumnBlockId(42),
 			namespace: NamespaceId(1),
-			source: ColumnBlockSource::SeriesBucket {
+			source: ColumnBlockSource::Series {
 				series_id: SeriesId(9),
-				bucket_start: 0,
-				bucket_width: 100,
 				partition: None,
-				sequence_counter: 0,
-				sealed_at_commit_version: CommitVersion(7),
+				start: 0,
+				end: 100,
 			},
 			row_count: 2,
 			partition_values: Vec::new(),

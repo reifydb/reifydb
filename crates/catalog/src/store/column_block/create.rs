@@ -64,27 +64,23 @@ impl CatalogStore {
 				commit_version,
 			} => {
 				column_block::set_source_id(&mut row, u64::from(*table_id));
-				column_block::set_bucket_start(&mut row, 0u64);
-				column_block::set_bucket_width(&mut row, 0u64);
+				column_block::set_start(&mut row, 0u64);
+				column_block::set_end(&mut row, 0u64);
 				column_block::set_partition_hi_none(&mut row);
 				column_block::set_partition_lo_none(&mut row);
-				column_block::set_sequence_counter(&mut row, 0u64);
 				column_block::set_read_version(&mut row, commit_version.0);
 			}
-			ColumnBlockSource::SeriesBucket {
+			ColumnBlockSource::Series {
 				series_id,
-				bucket_start,
-				bucket_width,
 				partition,
-				sequence_counter,
-				sealed_at_commit_version,
+				start,
+				end,
 			} => {
 				column_block::set_source_id(&mut row, u64::from(*series_id));
-				column_block::set_bucket_start(&mut row, *bucket_start);
-				column_block::set_bucket_width(&mut row, *bucket_width);
+				column_block::set_start(&mut row, *start);
+				column_block::set_end(&mut row, *end);
 				set_partition(&mut row, *partition);
-				column_block::set_sequence_counter(&mut row, *sequence_counter);
-				column_block::set_read_version(&mut row, sealed_at_commit_version.0);
+				column_block::set_read_version(&mut row, 0u64);
 			}
 		}
 
@@ -110,7 +106,7 @@ impl CatalogStore {
 			} => {
 				txn.set(&TableColumnBlockKey::new(*table_id, id), row.into_bytes())?;
 			}
-			ColumnBlockSource::SeriesBucket {
+			ColumnBlockSource::Series {
 				series_id,
 				partition,
 				..
@@ -187,13 +183,11 @@ pub mod tests {
 			&mut txn,
 			ColumnBlockToCreate {
 				namespace: NamespaceId(1),
-				source: ColumnBlockSource::SeriesBucket {
+				source: ColumnBlockSource::Series {
 					series_id: SeriesId(202),
-					bucket_start: 1000,
-					bucket_width: 100,
 					partition: None,
-					sequence_counter: 5,
-					sealed_at_commit_version: CommitVersion(11),
+					start: 1000,
+					end: 1100,
 				},
 				row_count: 50,
 				partition_values: Vec::new(),
@@ -203,7 +197,6 @@ pub mod tests {
 		.unwrap();
 
 		assert!(block.id.0 > 0);
-		assert_eq!(block.read_version(), CommitVersion(11));
-		assert_eq!(block.source.series_bucket_range(), Some((1000, 1100)));
+		assert_eq!(block.source.series_range(), Some((1000, 1100)));
 	}
 }

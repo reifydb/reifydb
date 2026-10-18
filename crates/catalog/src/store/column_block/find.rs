@@ -97,9 +97,8 @@ pub(crate) fn decode_column_block(bytes: &EncodedCatalogRow) -> ColumnBlock {
 	let kind_byte = column_block::get_kind(bytes);
 	let kind = ColumnBlockKind::try_from(kind_byte).expect("invalid stored ColumnBlockKind");
 	let source_id = column_block::get_source_id(bytes);
-	let bucket_start = column_block::get_bucket_start(bytes);
-	let bucket_width = column_block::get_bucket_width(bytes);
-	let sequence_counter = column_block::get_sequence_counter(bytes);
+	let start = column_block::get_start(bytes);
+	let end = column_block::get_end(bytes);
 	let read_version = CommitVersion(column_block::get_read_version(bytes));
 	let row_count = column_block::get_row_count(bytes);
 	let partition = column_block::try_get_partition_hi(bytes)
@@ -111,13 +110,11 @@ pub(crate) fn decode_column_block(bytes: &EncodedCatalogRow) -> ColumnBlock {
 			table_id: TableId(source_id),
 			commit_version: read_version,
 		},
-		ColumnBlockKind::SeriesBucket => ColumnBlockSource::SeriesBucket {
+		ColumnBlockKind::Series => ColumnBlockSource::Series {
 			series_id: SeriesId(source_id),
-			bucket_start,
-			bucket_width,
 			partition,
-			sequence_counter,
-			sealed_at_commit_version: read_version,
+			start,
+			end,
 		},
 	};
 
@@ -155,13 +152,11 @@ pub mod tests {
 	) -> ColumnBlockToCreate {
 		ColumnBlockToCreate {
 			namespace: NamespaceId(1),
-			source: ColumnBlockSource::SeriesBucket {
+			source: ColumnBlockSource::Series {
 				series_id: SeriesId(series),
-				bucket_start,
-				bucket_width: 100,
 				partition: Some(partition),
-				sequence_counter: 0,
-				sealed_at_commit_version: CommitVersion(1),
+				start: bucket_start,
+				end: bucket_start + 100,
 			},
 			row_count: 0,
 			partition_values: vec![Value::Utf8(region.to_string())],
@@ -169,16 +164,14 @@ pub mod tests {
 		}
 	}
 
-	fn series_to_create(series: u64, bucket_start: u64, sealed_at: u64) -> ColumnBlockToCreate {
+	fn series_to_create(series: u64, bucket_start: u64) -> ColumnBlockToCreate {
 		ColumnBlockToCreate {
 			namespace: NamespaceId(1),
-			source: ColumnBlockSource::SeriesBucket {
+			source: ColumnBlockSource::Series {
 				series_id: SeriesId(series),
-				bucket_start,
-				bucket_width: 100,
 				partition: None,
-				sequence_counter: 0,
-				sealed_at_commit_version: CommitVersion(sealed_at),
+				start: bucket_start,
+				end: bucket_start + 100,
 			},
 			row_count: 0,
 			partition_values: Vec::new(),
@@ -254,11 +247,11 @@ pub mod tests {
 
 		assert_eq!(found.partition_values, vec![Value::Utf8("us".to_string())]);
 		match found.source {
-			ColumnBlockSource::SeriesBucket {
+			ColumnBlockSource::Series {
 				partition,
 				..
 			} => assert_eq!(partition, Some(us)),
-			other => panic!("expected SeriesBucket source, got {other:?}"),
+			other => panic!("expected Series source, got {other:?}"),
 		}
 	}
 
@@ -267,18 +260,18 @@ pub mod tests {
 		// a zero hash and an absent partition must stay distinguishable, so the row stores
 		// the halves as none rather than as two zeroes
 		let mut txn = create_test_admin_transaction();
-		let created = CatalogStore::create_column_block(&mut txn, series_to_create(202, 1000, 11)).unwrap();
+		let created = CatalogStore::create_column_block(&mut txn, series_to_create(202, 1000)).unwrap();
 
 		let found = CatalogStore::find_column_block(&mut Transaction::Admin(&mut txn), created.id)
 			.unwrap()
 			.expect("block should exist");
 
 		match found.source {
-			ColumnBlockSource::SeriesBucket {
+			ColumnBlockSource::Series {
 				partition,
 				..
 			} => assert_eq!(partition, None),
-			other => panic!("expected SeriesBucket source, got {other:?}"),
+			other => panic!("expected Series source, got {other:?}"),
 		}
 	}
 

@@ -112,9 +112,9 @@ impl CatalogCache {
 
 	fn insert_secondary_index_entry(&self, block: &ColumnBlock) {
 		match &block.source {
-			ColumnBlockSource::SeriesBucket {
+			ColumnBlockSource::Series {
 				series_id,
-				bucket_start,
+				start,
 				partition,
 				..
 			} => {
@@ -123,7 +123,7 @@ impl CatalogCache {
 					.get(series_id)
 					.map(|e| e.value().clone())
 					.unwrap_or_default();
-				existing.insert((*bucket_start, *partition, block.id));
+				existing.insert((*start, *partition, block.id));
 				self.column_blocks_for_series.insert(*series_id, existing);
 			}
 			ColumnBlockSource::Table {
@@ -143,15 +143,15 @@ impl CatalogCache {
 
 	fn remove_secondary_index_entry(&self, block: &ColumnBlock) {
 		match &block.source {
-			ColumnBlockSource::SeriesBucket {
+			ColumnBlockSource::Series {
 				series_id,
-				bucket_start,
+				start,
 				partition,
 				..
 			} => {
 				if let Some(entry) = self.column_blocks_for_series.get(series_id) {
 					let mut updated = entry.value().clone();
-					updated.remove(&(*bucket_start, *partition, block.id));
+					updated.remove(&(*start, *partition, block.id));
 					if updated.is_empty() {
 						self.column_blocks_for_series.remove(series_id);
 					} else {
@@ -185,17 +185,15 @@ mod tests {
 
 	use super::*;
 
-	fn series_block(id: u64, series_id: u64, bucket_start: u64, sealed_at: u64) -> ColumnBlock {
+	fn series_block(id: u64, series_id: u64, bucket_start: u64) -> ColumnBlock {
 		ColumnBlock {
 			id: ColumnBlockId(id),
 			namespace: NamespaceId(1),
-			source: ColumnBlockSource::SeriesBucket {
+			source: ColumnBlockSource::Series {
 				series_id: SeriesId(series_id),
-				bucket_start,
-				bucket_width: 100,
 				partition: None,
-				sequence_counter: 0,
-				sealed_at_commit_version: CommitVersion(sealed_at),
+				start: bucket_start,
+				end: bucket_start + 100,
 			},
 			row_count: 0,
 			partition_values: Vec::new(),
@@ -207,13 +205,11 @@ mod tests {
 		ColumnBlock {
 			id: ColumnBlockId(id),
 			namespace: NamespaceId(1),
-			source: ColumnBlockSource::SeriesBucket {
+			source: ColumnBlockSource::Series {
 				series_id: SeriesId(series_id),
-				bucket_start,
-				bucket_width: 100,
 				partition: Some(partition),
-				sequence_counter: 0,
-				sealed_at_commit_version: CommitVersion(1),
+				start: bucket_start,
+				end: bucket_start + 100,
 			},
 			row_count: 0,
 			partition_values: Vec::new(),
@@ -238,18 +234,18 @@ mod tests {
 	#[test]
 	fn series_blocks_listed_in_bucket_order() {
 		let cat = CatalogCache::new();
-		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(series_block(1, 7, 200, 1)));
-		cat.set_column_block(ColumnBlockId(2), CommitVersion(1), Some(series_block(2, 7, 0, 1)));
-		cat.set_column_block(ColumnBlockId(3), CommitVersion(1), Some(series_block(3, 7, 100, 1)));
+		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(series_block(1, 7, 200)));
+		cat.set_column_block(ColumnBlockId(2), CommitVersion(1), Some(series_block(2, 7, 0)));
+		cat.set_column_block(ColumnBlockId(3), CommitVersion(1), Some(series_block(3, 7, 100)));
 
 		let all = cat.list_column_blocks_for_series_at(SeriesId(7), CommitVersion(1));
 		let starts: Vec<u64> = all
 			.iter()
 			.map(|s| match s.source {
-				ColumnBlockSource::SeriesBucket {
-					bucket_start,
+				ColumnBlockSource::Series {
+					start,
 					..
-				} => bucket_start,
+				} => start,
 				_ => unreachable!(),
 			})
 			.collect();
@@ -313,7 +309,7 @@ mod tests {
 	#[test]
 	fn delete_removes_secondary_indexes() {
 		let cat = CatalogCache::new();
-		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(series_block(1, 7, 100, 1)));
+		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(series_block(1, 7, 100)));
 		assert_eq!(cat.list_column_blocks_for_series_at(SeriesId(7), CommitVersion(1)).len(), 1);
 		cat.set_column_block(ColumnBlockId(1), CommitVersion(2), None);
 		assert!(cat.list_column_blocks_for_series_at(SeriesId(7), CommitVersion(2)).is_empty());
@@ -323,7 +319,7 @@ mod tests {
 	fn historical_query_sees_pre_delete_value() {
 		// A delete is version-scoped: readers pinned before it must still see the row.
 		let cat = CatalogCache::new();
-		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(series_block(1, 7, 100, 1)));
+		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(series_block(1, 7, 100)));
 		cat.set_column_block(ColumnBlockId(1), CommitVersion(2), None);
 
 		assert!(cat.find_column_block_at(ColumnBlockId(1), CommitVersion(1)).is_some());
@@ -333,7 +329,7 @@ mod tests {
 	#[test]
 	fn version_below_insert_returns_none() {
 		let cat = CatalogCache::new();
-		cat.set_column_block(ColumnBlockId(1), CommitVersion(10), Some(series_block(1, 7, 0, 1)));
+		cat.set_column_block(ColumnBlockId(1), CommitVersion(10), Some(series_block(1, 7, 0)));
 
 		assert!(cat.find_column_block_at(ColumnBlockId(1), CommitVersion(5)).is_none());
 		assert!(cat.find_column_block_at(ColumnBlockId(1), CommitVersion(10)).is_some());
@@ -343,9 +339,9 @@ mod tests {
 	#[test]
 	fn list_for_series_isolates_per_series() {
 		let cat = CatalogCache::new();
-		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(series_block(1, 7, 0, 1)));
-		cat.set_column_block(ColumnBlockId(2), CommitVersion(1), Some(series_block(2, 7, 100, 1)));
-		cat.set_column_block(ColumnBlockId(3), CommitVersion(1), Some(series_block(3, 8, 0, 1)));
+		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(series_block(1, 7, 0)));
+		cat.set_column_block(ColumnBlockId(2), CommitVersion(1), Some(series_block(2, 7, 100)));
+		cat.set_column_block(ColumnBlockId(3), CommitVersion(1), Some(series_block(3, 8, 0)));
 
 		let s7 = cat.list_column_blocks_for_series_at(SeriesId(7), CommitVersion(1));
 		let s8 = cat.list_column_blocks_for_series_at(SeriesId(8), CommitVersion(1));
@@ -369,9 +365,9 @@ mod tests {
 	fn find_returns_latest_matching_version() {
 		// The unversioned accessor must resolve to the newest version, not the first.
 		let cat = CatalogCache::new();
-		let mut v1 = series_block(1, 7, 100, 1);
+		let mut v1 = series_block(1, 7, 100);
 		v1.row_count = 10;
-		let mut v2 = series_block(1, 7, 100, 1);
+		let mut v2 = series_block(1, 7, 100);
 		v2.row_count = 99;
 		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(v1));
 		cat.set_column_block(ColumnBlockId(1), CommitVersion(2), Some(v2));

@@ -229,11 +229,11 @@ impl SeriesMaterializationActor {
 			.list_column_blocks_for_series(&mut Transaction::Admin(&mut admin), series.id)?
 			.into_iter()
 			.filter(|block| match block.source {
-				ColumnBlockSource::SeriesBucket {
+				ColumnBlockSource::Series {
 					partition,
-					bucket_start,
+					start,
 					..
-				} => partition == stored_partition && !live.contains(&bucket_start),
+				} => partition == stored_partition && !live.contains(&start),
 				_ => false,
 			})
 			.collect();
@@ -347,17 +347,6 @@ impl SeriesMaterializationActor {
 			return Ok(());
 		}
 
-		reifydb_assertions! {
-			let after_scan = admin.version();
-			assert!(
-				sealed_at_commit_version == after_scan,
-				"query snapshot version moved during the bucket scan, so the block would record a \
-				 sealed_at_commit_version that the scanned rows were not actually read at; a time-travel \
-				 reader of the block would then see data inconsistent with its recorded read_version \
-				 (captured before scan={sealed_at_commit_version:?}, observed after scan={after_scan:?})"
-			);
-		}
-
 		let storage = StorageId::series(series.id);
 		let tagged = series.tag.is_some();
 		let mut keys = Vec::new();
@@ -398,16 +387,7 @@ impl SeriesMaterializationActor {
 			);
 		}
 
-		self.create_block_and_drain_rows(
-			&mut admin,
-			series,
-			scope,
-			&stats,
-			bucket,
-			sealed_at_commit_version,
-			&keys,
-			Arc::new(data),
-		)?;
+		self.create_block_and_drain_rows(&mut admin, series, scope, &stats, bucket, &keys, Arc::new(data))?;
 		commit_admin(admin)
 	}
 
@@ -511,7 +491,6 @@ impl SeriesMaterializationActor {
 		scope: PartitionScope<'_>,
 		stats: &[ColumnStats],
 		bucket: &Bucket,
-		sealed_at_commit_version: CommitVersion,
 		keys: &[TaggedKey],
 		data: Arc<BlockData>,
 	) -> Result<()> {
@@ -524,13 +503,11 @@ impl SeriesMaterializationActor {
 			admin,
 			ColumnBlockToCreate {
 				namespace: series.namespace,
-				source: ColumnBlockSource::SeriesBucket {
+				source: ColumnBlockSource::Series {
 					series_id: series.id,
-					bucket_start: bucket.start,
-					bucket_width: bucket.width,
 					partition: stored_partition,
-					sequence_counter: scope.metadata.sequence_counter,
-					sealed_at_commit_version,
+					start: bucket.start,
+					end: bucket.end,
 				},
 				row_count: data.len() as u64,
 				partition_values: scope.values.to_vec(),

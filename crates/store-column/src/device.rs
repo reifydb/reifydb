@@ -38,7 +38,7 @@ impl BlockFileKey {
 				dir: table_id.0,
 				name: block.id.0,
 			},
-			ColumnBlockSource::SeriesBucket {
+			ColumnBlockSource::Series {
 				series_id,
 				..
 			} => Self {

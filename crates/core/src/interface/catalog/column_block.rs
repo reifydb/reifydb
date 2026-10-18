@@ -17,7 +17,7 @@ use crate::{
 #[serde(try_from = "u8", into = "u8")]
 pub enum ColumnBlockKind {
 	Table = 0,
-	SeriesBucket = 1,
+	Series = 1,
 }
 
 impl From<ColumnBlockKind> for u8 {
@@ -32,7 +32,7 @@ impl TryFrom<u8> for ColumnBlockKind {
 	fn try_from(value: u8) -> Result<Self, Self::Error> {
 		match value {
 			0 => Ok(Self::Table),
-			1 => Ok(Self::SeriesBucket),
+			1 => Ok(Self::Series),
 			_ => Err(de::Error::custom(format!("invalid ColumnBlockKind value: {value}"))),
 		}
 	}
@@ -44,13 +44,11 @@ pub enum ColumnBlockSource {
 		table_id: TableId,
 		commit_version: CommitVersion,
 	},
-	SeriesBucket {
+	Series {
 		series_id: SeriesId,
-		bucket_start: u64,
-		bucket_width: u64,
 		partition: Option<Partition>,
-		sequence_counter: u64,
-		sealed_at_commit_version: CommitVersion,
+		start: u64,
+		end: u64,
 	},
 }
 
@@ -60,9 +58,9 @@ impl ColumnBlockSource {
 			Self::Table {
 				..
 			} => ColumnBlockKind::Table,
-			Self::SeriesBucket {
+			Self::Series {
 				..
-			} => ColumnBlockKind::SeriesBucket,
+			} => ColumnBlockKind::Series,
 		}
 	}
 
@@ -72,20 +70,19 @@ impl ColumnBlockSource {
 				commit_version,
 				..
 			} => *commit_version,
-			Self::SeriesBucket {
-				sealed_at_commit_version,
+			Self::Series {
 				..
-			} => *sealed_at_commit_version,
+			} => panic!("a series block has no read version, only table blocks are versioned copies"),
 		}
 	}
 
-	pub fn series_bucket_range(&self) -> Option<(u64, u64)> {
+	pub fn series_range(&self) -> Option<(u64, u64)> {
 		match self {
-			Self::SeriesBucket {
-				bucket_start,
-				bucket_width,
+			Self::Series {
+				start,
+				end,
 				..
-			} => Some((*bucket_start, *bucket_start + *bucket_width)),
+			} => Some((*start, *end)),
 			Self::Table {
 				..
 			} => None,

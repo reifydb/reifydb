@@ -29,10 +29,10 @@ impl CatalogStore {
 		}
 
 		out.sort_by_key(|s| match s.source {
-			ColumnBlockSource::SeriesBucket {
-				bucket_start,
+			ColumnBlockSource::Series {
+				start,
 				..
-			} => bucket_start,
+			} => start,
 			_ => 0,
 		});
 		Ok(out)
@@ -52,10 +52,10 @@ impl CatalogStore {
 		}
 
 		out.sort_by_key(|s| match s.source {
-			ColumnBlockSource::SeriesBucket {
-				bucket_start,
+			ColumnBlockSource::Series {
+				start,
 				..
-			} => bucket_start,
+			} => start,
 			_ => 0,
 		});
 		Ok(out)
@@ -97,13 +97,11 @@ pub mod tests {
 	fn partitioned_series_to_create(series: u64, bucket_start: u64, partition: Partition) -> ColumnBlockToCreate {
 		ColumnBlockToCreate {
 			namespace: NamespaceId(1),
-			source: ColumnBlockSource::SeriesBucket {
+			source: ColumnBlockSource::Series {
 				series_id: SeriesId(series),
-				bucket_start,
-				bucket_width: 100,
 				partition: Some(partition),
-				sequence_counter: 0,
-				sealed_at_commit_version: CommitVersion(1),
+				start: bucket_start,
+				end: bucket_start + 100,
 			},
 			row_count: 0,
 			partition_values: Vec::new(),
@@ -111,16 +109,14 @@ pub mod tests {
 		}
 	}
 
-	fn series_to_create(series: u64, bucket_start: u64, sealed_at: u64) -> ColumnBlockToCreate {
+	fn series_to_create(series: u64, bucket_start: u64) -> ColumnBlockToCreate {
 		ColumnBlockToCreate {
 			namespace: NamespaceId(1),
-			source: ColumnBlockSource::SeriesBucket {
+			source: ColumnBlockSource::Series {
 				series_id: SeriesId(series),
-				bucket_start,
-				bucket_width: 100,
 				partition: None,
-				sequence_counter: 0,
-				sealed_at_commit_version: CommitVersion(sealed_at),
+				start: bucket_start,
+				end: bucket_start + 100,
 			},
 			row_count: 0,
 			partition_values: Vec::new(),
@@ -144,10 +140,10 @@ pub mod tests {
 	fn series_bucket_starts(snaps: &[ColumnBlock]) -> Vec<u64> {
 		snaps.iter()
 			.map(|s| match s.source {
-				ColumnBlockSource::SeriesBucket {
-					bucket_start,
+				ColumnBlockSource::Series {
+					start,
 					..
-				} => bucket_start,
+				} => start,
 				_ => panic!("expected series-bucket source"),
 			})
 			.collect()
@@ -166,9 +162,9 @@ pub mod tests {
 	fn test_list_column_blocks_for_series_orders_by_bucket_start() {
 		let mut txn = create_test_admin_transaction();
 		// Insert in non-monotonic bucket order to prove the sort.
-		CatalogStore::create_column_block(&mut txn, series_to_create(7, 200, 1)).unwrap();
-		CatalogStore::create_column_block(&mut txn, series_to_create(7, 0, 1)).unwrap();
-		CatalogStore::create_column_block(&mut txn, series_to_create(7, 100, 1)).unwrap();
+		CatalogStore::create_column_block(&mut txn, series_to_create(7, 200)).unwrap();
+		CatalogStore::create_column_block(&mut txn, series_to_create(7, 0)).unwrap();
+		CatalogStore::create_column_block(&mut txn, series_to_create(7, 100)).unwrap();
 
 		let result =
 			CatalogStore::list_column_blocks_for_series(&mut Transaction::Admin(&mut txn), SeriesId(7))
@@ -181,9 +177,9 @@ pub mod tests {
 	#[test]
 	fn test_list_column_blocks_for_series_isolates_by_series() {
 		let mut txn = create_test_admin_transaction();
-		CatalogStore::create_column_block(&mut txn, series_to_create(1, 0, 1)).unwrap();
-		CatalogStore::create_column_block(&mut txn, series_to_create(2, 0, 1)).unwrap();
-		CatalogStore::create_column_block(&mut txn, series_to_create(2, 100, 1)).unwrap();
+		CatalogStore::create_column_block(&mut txn, series_to_create(1, 0)).unwrap();
+		CatalogStore::create_column_block(&mut txn, series_to_create(2, 0)).unwrap();
+		CatalogStore::create_column_block(&mut txn, series_to_create(2, 100)).unwrap();
 
 		let s1 = CatalogStore::list_column_blocks_for_series(&mut Transaction::Admin(&mut txn), SeriesId(1))
 			.unwrap();

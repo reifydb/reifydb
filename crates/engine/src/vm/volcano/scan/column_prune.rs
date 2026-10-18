@@ -20,19 +20,18 @@ pub(crate) fn prune_series_blocks(
 }
 
 fn overlaps_key_range(block: &ColumnBlock, start: Option<u64>, end: Option<u64>) -> bool {
-	let ColumnBlockSource::SeriesBucket {
-		bucket_start,
-		bucket_width,
+	let ColumnBlockSource::Series {
+		start: block_start,
+		end: block_end,
 		..
 	} = block.source
 	else {
 		return true;
 	};
-	let bucket_end = bucket_start.saturating_add(bucket_width);
-	if start.is_some_and(|start| bucket_end <= start) {
+	if start.is_some_and(|start| block_end <= start) {
 		return false;
 	}
-	if end.is_some_and(|end| bucket_start >= end) {
+	if end.is_some_and(|end| block_start >= end) {
 		return false;
 	}
 	true
@@ -85,12 +84,9 @@ fn comparable(bound: &Value, probe: &Value) -> bool {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		common::CommitVersion,
-		interface::catalog::{
-			column_block::ColumnStats,
-			id::{ColumnBlockId, NamespaceId, SeriesId},
-		},
+	use reifydb_core::interface::catalog::{
+		column_block::ColumnStats,
+		id::{ColumnBlockId, NamespaceId, SeriesId},
 	};
 
 	use super::*;
@@ -99,13 +95,11 @@ mod tests {
 		ColumnBlock {
 			id: ColumnBlockId(start),
 			namespace: NamespaceId(1),
-			source: ColumnBlockSource::SeriesBucket {
+			source: ColumnBlockSource::Series {
 				series_id: SeriesId(1),
-				bucket_start: start,
-				bucket_width: width,
 				partition: None,
-				sequence_counter: 0,
-				sealed_at_commit_version: CommitVersion(1),
+				start,
+				end: start + width,
 			},
 			row_count: 10,
 			partition_values: Vec::new(),
@@ -125,10 +119,10 @@ mod tests {
 	fn starts(blocks: &[ColumnBlock]) -> Vec<u64> {
 		blocks.iter()
 			.map(|block| match block.source {
-				ColumnBlockSource::SeriesBucket {
-					bucket_start,
+				ColumnBlockSource::Series {
+					start,
 					..
-				} => bucket_start,
+				} => start,
 				_ => panic!("fixture builds series buckets only"),
 			})
 			.collect()

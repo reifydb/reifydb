@@ -19,7 +19,7 @@ impl CatalogStore {
 				} => {
 					txn.remove(&TableColumnBlockKey::new(table_id, id))?;
 				}
-				ColumnBlockSource::SeriesBucket {
+				ColumnBlockSource::Series {
 					series_id,
 					partition,
 					..
@@ -91,13 +91,11 @@ pub mod tests {
 			&mut txn,
 			ColumnBlockToCreate {
 				namespace: NamespaceId(1),
-				source: ColumnBlockSource::SeriesBucket {
+				source: ColumnBlockSource::Series {
 					series_id: SeriesId(202),
-					bucket_start: 1000,
-					bucket_width: 100,
 					partition: None,
-					sequence_counter: 0,
-					sealed_at_commit_version: CommitVersion(11),
+					start: 1000,
+					end: 1100,
 				},
 				row_count: 0,
 				partition_values: Vec::new(),

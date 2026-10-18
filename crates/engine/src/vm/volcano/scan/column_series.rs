@@ -176,11 +176,11 @@ impl ColumnSeriesScanNode {
 
 fn bucket_order(block: &ColumnBlock) -> (u64, Option<Partition>) {
 	match block.source {
-		ColumnBlockSource::SeriesBucket {
-			bucket_start,
+		ColumnBlockSource::Series {
+			start,
 			partition,
 			..
-		} => (bucket_start, partition),
+		} => (start, partition),
 		ColumnBlockSource::Table {
 			..
 		} => (0, None),
