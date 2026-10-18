@@ -1030,6 +1030,7 @@ mod join_row_expiry_guard_tests {
 			host::HostContext,
 			state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 		},
+		timer::TimerMove,
 		transaction::join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
 	};
 	use reifydb_value::{
@@ -1209,6 +1210,10 @@ mod join_row_expiry_guard_tests {
 		}
 
 		fn disarm_timer_by_key(&mut self, _kind: TimerKind, _key: &EncodedKey) -> Result<()> {
+			Ok(())
+		}
+
+		fn rearm_timers(&mut self, _kind: TimerKind, _moves: &[TimerMove]) -> Result<()> {
 			Ok(())
 		}
 

@@ -62,7 +62,7 @@ use crate::{
 		reclaim::ReclaimOutcome,
 		seal::rule::SEAL_GATE_STEP,
 	},
-	timer::{Timer, extension::TimerExtension},
+	timer::{Timer, TimerMove, extension::TimerExtension},
 	transaction::{
 		FlowTransaction,
 		dictionary::DictionaryExtension,
@@ -77,6 +77,8 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 	fn version(&self) -> CommitVersion;
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
+
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()>;
 
 	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()>;
 
@@ -479,6 +481,10 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.txn.disarm_timer_by_key(self.operator, kind, key)
+	}
+
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+		self.txn.rearm_timers(self.operator, kind, moves)
 	}
 
 	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {

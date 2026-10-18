@@ -34,7 +34,7 @@ const TIMER_WHEEL_SCAN: &str = "timer wheel scan must not fail";
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
-	timer::{Timer, TimerDue},
+	timer::{Timer, TimerDue, TimerMove},
 	transaction::{
 		FlowTransaction,
 		state::{StateExtension, StateRange, decode_payload, encode_payload},
@@ -99,6 +99,51 @@ impl TimerWheel {
 			}
 		}
 		txn.state_remove(operator, &timer_key(timer.due, timer.kind, &timer.key))?;
+		Ok(())
+	}
+
+	pub fn rearm_many(
+		operator: OperatorId,
+		txn: &mut impl FlowTransaction,
+		kind: TimerKind,
+		moves: &[TimerMove],
+	) -> Result<()> {
+		let moving: Vec<&TimerMove> = moves.iter().filter(|timer| timer.before != timer.after).collect();
+		reifydb_assertions! {
+			assert!(
+				!kind.is_maintenance(),
+				"a maintenance kind keeps a timer index that a batched rearm never updates, so the index \
+				 would name instants the wheel no longer holds (operator={}, kind={})",
+				operator.0,
+				kind as u8
+			);
+			let mut seen: std::collections::HashMap<&[u8], usize> = std::collections::HashMap::new();
+			for timer in &moving {
+				*seen.entry(timer.key.as_bytes()).or_default() += 1;
+			}
+			assert!(
+				moving.iter().all(|timer| timer.before.is_none() || seen[timer.key.as_bytes()] == 1),
+				"a key disarmed in a batched rearm must not move twice in it, otherwise its removal runs \
+				 after the other arm and cancels a live timer (operator={})",
+				operator.0
+			);
+		}
+		let removes: Vec<GroupStateKey> = moving
+			.iter()
+			.filter_map(|timer| timer.before.map(|due| timer_key(due, kind, &timer.key)))
+			.collect();
+		let mut sets = Vec::new();
+		for timer in &moving {
+			if let Some(due) = timer.after {
+				sets.push((timer_key(due, kind, &timer.key), encode_payload(&timer.key.to_vec())?));
+			}
+		}
+		if !removes.is_empty() {
+			txn.state_remove_many(operator, &removes)?;
+		}
+		if !sets.is_empty() {
+			txn.state_set_many(operator, sets)?;
+		}
 		Ok(())
 	}
 

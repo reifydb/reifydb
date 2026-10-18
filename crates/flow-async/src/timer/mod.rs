@@ -19,6 +19,13 @@ pub struct Timer {
 	pub key: EncodedKey,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimerMove {
+	pub key: EncodedKey,
+	pub before: Option<DateTime>,
+	pub after: Option<DateTime>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TimerDue {
 	pub operator_id: OperatorId,

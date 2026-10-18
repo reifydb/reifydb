@@ -35,7 +35,13 @@ use crate::{
 		host::HostContext,
 		state::{
 			reaper::{drain, enqueue},
-			seal::{coord::Coord, gate::rearm_seal, ledger::FiredAt, rule::SealRule, sweep::SealSweep},
+			seal::{
+				coord::Coord,
+				gate::{rearm_seal, seal_move},
+				ledger::FiredAt,
+				rule::SealRule,
+				sweep::SealSweep,
+			},
 		},
 		state_access::get_classified,
 	},
@@ -1084,14 +1090,21 @@ pub fn apply_session_engine(
 	if !sealed.is_empty() {
 		withdraw_sealed_admissions(operator, host, &index_events, &sealed)?;
 	}
+	let mut moves = Vec::with_capacity(trackers.len());
 	for (hash, batch) in &trackers {
 		let Some(tracker) = batch.admitted(*hash, &sealed) else {
 			continue;
 		};
 		let before = (!batch.loaded.is_unopened()).then(|| batch.loaded.last.saturating_add(gap).to_order());
 		operator.save_session_tracker(host, *hash, &tracker)?;
-		rearm_seal(host, rule, &tracker_key(*hash), before, Some(tracker.last.saturating_add(gap).to_order()))?;
+		moves.push(seal_move(
+			rule,
+			tracker_key(*hash),
+			before,
+			Some(tracker.last.saturating_add(gap).to_order()),
+		));
 	}
+	host.rearm_timers(TimerKind::Seal, &moves)?;
 
 	let groups = intern_batch(&arrival);
 

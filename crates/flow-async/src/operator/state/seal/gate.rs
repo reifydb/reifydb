@@ -8,7 +8,10 @@ use reifydb_value::{
 	value::{datetime::DateTime, duration::Duration},
 };
 
-use crate::operator::state::seal::rule::{EvictionRule, SealRule, SealedThrough};
+use crate::{
+	operator::state::seal::rule::{EvictionRule, SealRule, SealedThrough},
+	timer::TimerMove,
+};
 
 pub struct SealGate {
 	rule: SealRule,
@@ -48,6 +51,14 @@ pub fn rearm_seal(
 	Ok(())
 }
 
+pub fn seal_move(rule: SealRule, key: EncodedKey, before: Option<u64>, after: Option<u64>) -> TimerMove {
+	TimerMove {
+		key,
+		before: before.map(|order| rule.seal_instant_from_order(order).at()),
+		after: after.map(|order| rule.seal_instant_from_order(order).at()),
+	}
+}
+
 pub struct EvictionGate {
 	rule: EvictionRule,
 }
@@ -76,6 +87,14 @@ impl EvictionGate {
 			store.arm_timer(self.rule.eviction_instant_from_order(after).at(), TimerKind::Seal, key)?;
 		}
 		Ok(())
+	}
+
+	pub fn eviction_move(&self, key: EncodedKey, before: Option<u64>, after: Option<u64>) -> TimerMove {
+		TimerMove {
+			key,
+			before: before.map(|order| self.rule.eviction_instant_from_order(order).at()),
+			after: after.map(|order| self.rule.eviction_instant_from_order(order).at()),
+		}
 	}
 }
 

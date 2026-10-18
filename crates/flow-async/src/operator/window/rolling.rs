@@ -12,7 +12,7 @@ use reifydb_core::{
 	interface::change::{Change, Diff},
 	key::operator::state::{GroupStateKey, IntoGroupStateKey},
 	metrics::heap::HeapSize,
-	state::timer::StateStore,
+	state::timer::{StateStore, TimerKind},
 };
 use reifydb_flow::aggregate::SlotKind;
 use reifydb_value::{
@@ -496,10 +496,13 @@ fn arm_stranded_meta_seals<S: RollingDomain>(
 		return Ok(());
 	}
 	let gate = EvictionGate::new(rolling_span(operator, operator.rolling_lag()));
-	for (group, high_water) in stranded {
-		gate.rearm(host, &EncodedKey::new(group.0.to_be_bytes()), None, Some(high_water))?;
-	}
-	Ok(())
+	let moves: Vec<_> = stranded
+		.into_iter()
+		.map(|(group, high_water)| {
+			gate.eviction_move(EncodedKey::new(group.0.to_be_bytes()), None, Some(high_water))
+		})
+		.collect();
+	host.rearm_timers(TimerKind::Seal, &moves)
 }
 
 fn finish_rolling_results(

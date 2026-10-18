@@ -178,6 +178,10 @@ impl HostContext for SingleEntryHost {
 		unimplemented!()
 	}
 
+	fn rearm_timers(&mut self, _kind: TimerKind, _moves: &[reifydb_flow_async::timer::TimerMove]) -> Result<()> {
+		unimplemented!()
+	}
+
 	fn join_expiry_arm_many(&mut self, _side: u8, _rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
 		unimplemented!()
 	}

@@ -25,6 +25,7 @@ use reifydb_flow_async::{
 		host::{HostContext, TxnHostContext},
 		state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 	},
+	timer::TimerMove,
 	transaction::{
 		FlowTransaction,
 		join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
@@ -241,6 +242,11 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()> {
 		self.record("disarm_timer_by_key", 1);
 		self.inner.disarm_timer_by_key(kind, key)
+	}
+
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+		self.record("rearm_timers", moves.len());
+		self.inner.rearm_timers(kind, moves)
 	}
 
 	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
