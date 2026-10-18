@@ -462,6 +462,12 @@ impl AdminTransaction {
 	}
 
 	#[inline]
+	pub fn remove_silent<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().remove_silent(key)
+	}
+
+	#[inline]
 	pub fn range(
 		&mut self,
 		range: TaggedKeyBoundRange,

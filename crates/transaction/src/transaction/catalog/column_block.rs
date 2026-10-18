@@ -9,7 +9,7 @@ use reifydb_value::Result;
 use crate::{
 	change::{
 		Change,
-		OperationType::{Create, Delete, Update},
+		OperationType::{Create, Delete},
 		TransactionalColumnBlockChanges,
 	},
 	transaction::admin::AdminTransaction,
@@ -21,16 +21,6 @@ impl CatalogTrackColumnBlockChangeOperations for AdminTransaction {
 			pre: None,
 			post: Some(block),
 			op: Create,
-		};
-		self.changes.add_column_block_change(change);
-		Ok(())
-	}
-
-	fn track_column_block_updated(&mut self, pre: ColumnBlock, post: ColumnBlock) -> Result<()> {
-		let change = Change {
-			pre: Some(pre),
-			post: Some(post),
-			op: Update,
 		};
 		self.changes.add_column_block_change(change);
 		Ok(())

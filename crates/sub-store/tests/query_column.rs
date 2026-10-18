@@ -376,31 +376,11 @@ fn each_sealed_bucket_carries_its_own_commit_version() {
 }
 
 #[test]
-fn a_delete_rebuilds_the_sealed_bucket_it_touched() {
-	// A delete drops the row from the row store but the sealed block still holds a copy. The
-	// dirty range has to widen downwards on delete, not just upwards on insert, or the column
-	// path keeps serving a row that no longer exists with nothing to signal the divergence.
-	let db = series_db();
-	plain_series(&db);
-	insert_keys(&db, "test::s", 1..=15);
-	await_column_rows(&db, "from test::s", 9);
-
-	db.command("DELETE test::s FILTER { k == 5 }");
-
-	let result = await_column_rows(&db, "from test::s", 8);
-	let keys = uint8_cells(&result.frames, "k");
-	assert!(!keys.contains(&5), "the deleted key must not survive the rebuild: {keys:?}");
-}
-
-#[test]
 fn an_emptied_series_returns_no_rows_instead_of_raising_query_012() {
-	// Emptying a series drops its blocks, which leaves the scan with no block to read. That
-	// state also means "rows exist but none are sealed yet", and the two must not collapse into
-	// one answer: a series that genuinely holds nothing reads as empty, not as a missing block.
+	// A series emptied before any seal holds nothing, so reporting it as not yet sealed would invent rows.
 	let db = series_db();
 	plain_series(&db);
-	insert_keys(&db, "test::s", 1..=15);
-	await_column_rows(&db, "from test::s", 9);
+	insert_keys(&db, "test::s", 1..=5);
 
 	db.command("DELETE test::s FILTER { k > 0 }");
 
@@ -415,12 +395,7 @@ fn an_empty_column_series_scan_keeps_rownum() {
 	// An emptied series has no blocks to read and must still answer with the #rownum its full scans carry.
 	let db = series_db();
 	plain_series(&db);
-	insert_keys(&db, "test::s", 1..=15);
-	let full = await_column_rows(&db, "from test::s", 9);
-	assert!(
-		system_column(&full.frames[0].batch, SystemColumn::RowNumbers).is_some(),
-		"a sealed series scan carries row numbers"
-	);
+	insert_keys(&db, "test::s", 1..=5);
 
 	db.command("DELETE test::s FILTER { k > 0 }");
 

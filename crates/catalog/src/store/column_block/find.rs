@@ -37,27 +37,6 @@ impl CatalogStore {
 		Ok(Some(decode_column_block(EncodedCatalogRow::view(&multi.bytes))))
 	}
 
-	pub(crate) fn find_column_block_for_series_bucket(
-		rx: &mut Transaction<'_>,
-		series_id: SeriesId,
-		partition: Option<Partition>,
-		bucket_start: u64,
-	) -> Result<Option<ColumnBlock>> {
-		for id in collect_series_partition_block_ids(rx, series_id, partition.unwrap_or_default())? {
-			if let Some(block) = Self::find_column_block(rx, id)?
-				&& let ColumnBlockSource::SeriesBucket {
-					bucket_start: bs,
-					partition: p,
-					..
-				} = block.source && bs == bucket_start
-				&& p == partition
-			{
-				return Ok(Some(block));
-			}
-		}
-		Ok(None)
-	}
-
 	pub(crate) fn find_latest_column_block_for_table(
 		rx: &mut Transaction<'_>,
 		table_id: TableId,
@@ -243,104 +222,20 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_find_column_block_for_series_bucket_exists() {
-		let mut txn = create_test_admin_transaction();
-		let created = CatalogStore::create_column_block(&mut txn, series_to_create(202, 1000, 11)).unwrap();
-
-		let found = CatalogStore::find_column_block_for_series_bucket(
-			&mut Transaction::Admin(&mut txn),
-			SeriesId(202),
-			None,
-			1000,
-		)
-		.unwrap()
-		.expect("block for bucket should exist");
-
-		assert_eq!(found.id, created.id);
-	}
-
-	#[test]
-	fn test_find_column_block_for_series_bucket_wrong_bucket_returns_none() {
-		let mut txn = create_test_admin_transaction();
-		CatalogStore::create_column_block(&mut txn, series_to_create(202, 1000, 11)).unwrap();
-
-		let result = CatalogStore::find_column_block_for_series_bucket(
-			&mut Transaction::Admin(&mut txn),
-			SeriesId(202),
-			None,
-			500,
-		)
-		.unwrap();
-		assert!(result.is_none());
-	}
-
-	#[test]
-	fn test_find_column_block_for_series_bucket_wrong_series_returns_none() {
-		let mut txn = create_test_admin_transaction();
-		CatalogStore::create_column_block(&mut txn, series_to_create(202, 1000, 11)).unwrap();
-
-		let result = CatalogStore::find_column_block_for_series_bucket(
-			&mut Transaction::Admin(&mut txn),
-			SeriesId(999),
-			None,
-			1000,
-		)
-		.unwrap();
-		assert!(result.is_none());
-	}
-
-	#[test]
-	fn test_two_partitions_of_one_bucket_resolve_to_distinct_blocks() {
-		// without the partition in the lookup both partitions of a bucket resolve to the
-		// same block, so materializing the second overwrites the first block
-		let mut txn = create_test_admin_transaction();
-		let us = Partition::of(&[Value::Utf8("us".to_string())]);
-		let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
-		let us_block =
-			CatalogStore::create_column_block(&mut txn, partitioned_series_to_create(202, 1000, us, "us"))
-				.unwrap();
-		let eu_block =
-			CatalogStore::create_column_block(&mut txn, partitioned_series_to_create(202, 1000, eu, "eu"))
-				.unwrap();
-		assert_ne!(us_block.id, eu_block.id, "each partition must get its own block");
-
-		let found_us = CatalogStore::find_column_block_for_series_bucket(
-			&mut Transaction::Admin(&mut txn),
-			SeriesId(202),
-			Some(us),
-			1000,
-		)
-		.unwrap()
-		.expect("the us partition of the bucket must be found");
-		let found_eu = CatalogStore::find_column_block_for_series_bucket(
-			&mut Transaction::Admin(&mut txn),
-			SeriesId(202),
-			Some(eu),
-			1000,
-		)
-		.unwrap()
-		.expect("the eu partition of the bucket must be found");
-
-		assert_eq!(found_us.id, us_block.id);
-		assert_eq!(found_eu.id, eu_block.id);
-	}
-
-	#[test]
 	fn test_unpartitioned_lookup_does_not_match_a_partitioned_bucket() {
-		// a none partition and a hashed one are different buckets, so neither may stand in
-		// for the other and hand the reader the wrong block
+		// An unpartitioned series lists under the default partition; a hashed partition leaking in hands the
+		// reader foreign rows.
 		let mut txn = create_test_admin_transaction();
 		let us = Partition::of(&[Value::Utf8("us".to_string())]);
 		CatalogStore::create_column_block(&mut txn, partitioned_series_to_create(202, 1000, us, "us")).unwrap();
 
-		let result = CatalogStore::find_column_block_for_series_bucket(
+		let result = CatalogStore::list_column_blocks_for_series_partition(
 			&mut Transaction::Admin(&mut txn),
 			SeriesId(202),
-			None,
-			1000,
+			Partition::default(),
 		)
 		.unwrap();
-		assert!(result.is_none());
+		assert!(result.is_empty());
 	}
 
 	#[test]

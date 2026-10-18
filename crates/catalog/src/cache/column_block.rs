@@ -21,26 +21,6 @@ impl CatalogCache {
 		self.column_blocks.get(&id).and_then(|entry| entry.value().get_latest())
 	}
 
-	pub fn find_column_block_for_series_bucket_at(
-		&self,
-		series_id: SeriesId,
-		partition: Option<Partition>,
-		bucket_start: u64,
-		version: CommitVersion,
-	) -> Option<ColumnBlock> {
-		let entry = self.column_blocks_for_series.get(&series_id)?;
-		let buckets = entry.value();
-
-		for (bs, p, block_id) in buckets.iter() {
-			if *bs == bucket_start
-				&& *p == partition && let Some(block) = self.find_column_block_at(*block_id, version)
-			{
-				return Some(block);
-			}
-		}
-		None
-	}
-
 	pub fn find_latest_column_block_for_table_at(
 		&self,
 		table_id: TableId,
@@ -277,40 +257,16 @@ mod tests {
 	}
 
 	#[test]
-	fn find_for_series_bucket_returns_match() {
-		let cat = CatalogCache::new();
-		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(series_block(1, 7, 100, 1)));
-		let found = cat
-			.find_column_block_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(1))
-			.expect("should find");
-		assert_eq!(found.id, ColumnBlockId(1));
-
-		assert!(cat.find_column_block_for_series_bucket_at(SeriesId(7), None, 999, CommitVersion(1)).is_none());
-	}
-
-	#[test]
-	fn find_for_series_bucket_distinguishes_partitions() {
-		// the cache is consulted before the store, so a cache that ignores the partition
-		// hands back another partition's block while the store would have been right
+	fn unpartitioned_listing_does_not_see_a_partitioned_block() {
+		// The cache is consulted before the store, so a default-partition listing that matches a hashed one
+		// hands back foreign rows.
 		let cat = CatalogCache::new();
 		let us = Partition::of(&[Value::Utf8("us".to_string())]);
-		let eu = Partition::of(&[Value::Utf8("eu".to_string())]);
 		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(partitioned_series_block(1, 7, 100, us)));
-		cat.set_column_block(ColumnBlockId(2), CommitVersion(1), Some(partitioned_series_block(2, 7, 100, eu)));
 
-		let found_us = cat
-			.find_column_block_for_series_bucket_at(SeriesId(7), Some(us), 100, CommitVersion(1))
-			.expect("the us partition must be found");
-		let found_eu = cat
-			.find_column_block_for_series_bucket_at(SeriesId(7), Some(eu), 100, CommitVersion(1))
-			.expect("the eu partition must be found");
-		assert_eq!(found_us.id, ColumnBlockId(1));
-		assert_eq!(found_eu.id, ColumnBlockId(2));
-
-		assert!(
-			cat.find_column_block_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(1)).is_none(),
-			"an unpartitioned lookup must not match a partitioned bucket"
-		);
+		assert!(cat
+			.list_column_blocks_for_series_partition_at(SeriesId(7), Partition::default(), CommitVersion(1))
+			.is_empty());
 	}
 
 	#[test]
@@ -358,9 +314,9 @@ mod tests {
 	fn delete_removes_secondary_indexes() {
 		let cat = CatalogCache::new();
 		cat.set_column_block(ColumnBlockId(1), CommitVersion(1), Some(series_block(1, 7, 100, 1)));
-		assert!(cat.find_column_block_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(1)).is_some());
+		assert_eq!(cat.list_column_blocks_for_series_at(SeriesId(7), CommitVersion(1)).len(), 1);
 		cat.set_column_block(ColumnBlockId(1), CommitVersion(2), None);
-		assert!(cat.find_column_block_for_series_bucket_at(SeriesId(7), None, 100, CommitVersion(2)).is_none());
+		assert!(cat.list_column_blocks_for_series_at(SeriesId(7), CommitVersion(2)).is_empty());
 	}
 
 	#[test]

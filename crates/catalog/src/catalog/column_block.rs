@@ -3,21 +3,17 @@
 
 use reifydb_core::interface::catalog::{
 	change::CatalogTrackColumnBlockChangeOperations,
-	column_block::{ColumnBlock, ColumnBlockSource},
+	column_block::ColumnBlock,
 	id::{ColumnBlockId, SeriesId, TableId},
 };
 use reifydb_transaction::{
-	change::{OperationType, TransactionalColumnBlockChanges},
+	change::TransactionalColumnBlockChanges,
 	transaction::{Transaction, admin::AdminTransaction},
 };
 use reifydb_value::value::partition::Partition;
 use tracing::{instrument, warn};
 
-use crate::{
-	CatalogStore, Result,
-	catalog::Catalog,
-	store::column_block::{create::ColumnBlockToCreate, update::ColumnBlockToUpdate},
-};
+use crate::{CatalogStore, Result, catalog::Catalog, store::column_block::create::ColumnBlockToCreate};
 
 impl Catalog {
 	#[instrument(name = "catalog::column_block::find", level = "trace", skip(self, txn))]
@@ -74,91 +70,6 @@ impl Catalog {
 				}
 				CatalogStore::find_column_block(&mut Transaction::Test(Box::new(t.reborrow())), id)
 			}
-		}
-	}
-
-	#[instrument(name = "catalog::column_block::find_for_series_bucket", level = "trace", skip(self, txn))]
-	pub fn find_column_block_for_series_bucket(
-		&self,
-		txn: &mut Transaction<'_>,
-		series_id: SeriesId,
-		partition: Option<Partition>,
-		bucket_start: u64,
-	) -> Result<Option<ColumnBlock>> {
-		match txn.reborrow() {
-			Transaction::Command(cmd) => Ok(self
-				.cache
-				.find_column_block_for_series_bucket_at(
-					series_id,
-					partition,
-					bucket_start,
-					cmd.version(),
-				)
-				.or(CatalogStore::find_column_block_for_series_bucket(
-					&mut Transaction::Command(&mut *cmd),
-					series_id,
-					partition,
-					bucket_start,
-				)?)),
-			Transaction::Admin(admin) => {
-				for change in admin.changes.column_block.iter().rev() {
-					if let Some(block) = &change.post
-						&& let ColumnBlockSource::SeriesBucket {
-							series_id: sid,
-							bucket_start: bs,
-							partition: p,
-							..
-						} = block.source && sid == series_id && bs == bucket_start
-						&& p == partition
-					{
-						return Ok(Some(block.clone()));
-					} else if let Some(block) = &change.pre
-						&& let ColumnBlockSource::SeriesBucket {
-							series_id: sid,
-							bucket_start: bs,
-							partition: p,
-							..
-						} = block.source && sid == series_id && bs == bucket_start
-						&& p == partition && change.op == OperationType::Delete
-					{
-						return Ok(None);
-					}
-				}
-				if let Some(block) = self.cache.find_column_block_for_series_bucket_at(
-					series_id,
-					partition,
-					bucket_start,
-					admin.version(),
-				) {
-					return Ok(Some(block));
-				}
-				CatalogStore::find_column_block_for_series_bucket(
-					&mut Transaction::Admin(&mut *admin),
-					series_id,
-					partition,
-					bucket_start,
-				)
-			}
-			Transaction::Query(qry) => Ok(self
-				.cache
-				.find_column_block_for_series_bucket_at(
-					series_id,
-					partition,
-					bucket_start,
-					qry.version(),
-				)
-				.or(CatalogStore::find_column_block_for_series_bucket(
-					&mut Transaction::Query(&mut *qry),
-					series_id,
-					partition,
-					bucket_start,
-				)?)),
-			Transaction::Test(mut t) => CatalogStore::find_column_block_for_series_bucket(
-				&mut Transaction::Test(Box::new(t.reborrow())),
-				series_id,
-				partition,
-				bucket_start,
-			),
 		}
 	}
 
@@ -256,19 +167,6 @@ impl Catalog {
 		let block = CatalogStore::create_column_block(txn, to_create)?;
 		txn.track_column_block_created(block.clone())?;
 		Ok(block)
-	}
-
-	#[instrument(name = "catalog::column_block::update", level = "debug", skip(self, txn, patch))]
-	pub fn update_column_block(
-		&self,
-		txn: &mut AdminTransaction,
-		id: ColumnBlockId,
-		patch: ColumnBlockToUpdate,
-	) -> Result<ColumnBlock> {
-		let pre = CatalogStore::get_column_block(&mut Transaction::Admin(&mut *txn), id)?;
-		let post = CatalogStore::update_column_block(txn, id, patch)?;
-		txn.track_column_block_updated(pre, post.clone())?;
-		Ok(post)
 	}
 
 	#[instrument(name = "catalog::column_block::drop", level = "info", skip(self, txn))]

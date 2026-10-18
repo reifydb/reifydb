@@ -85,8 +85,6 @@ pub trait CatalogTrackDictionaryChangeOperations {
 pub trait CatalogTrackColumnBlockChangeOperations {
 	fn track_column_block_created(&mut self, block: ColumnBlock) -> Result<()>;
 
-	fn track_column_block_updated(&mut self, pre: ColumnBlock, post: ColumnBlock) -> Result<()>;
-
 	fn track_column_block_deleted(&mut self, block: ColumnBlock) -> Result<()>;
 }
 
