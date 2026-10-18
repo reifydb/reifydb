@@ -10,12 +10,12 @@ use reifydb_value::{
 
 #[derive(Debug, thiserror::Error)]
 pub enum SubStoreError {
-	#[error("column_block_from_batches: scan output missing column '{column}'")]
+	#[error("block_data_from_batches: scan output missing column '{column}'")]
 	MissingColumnInBatch {
 		column: String,
 	},
 
-	#[error("column_block_from_batches: no batches to materialize column '{column}'")]
+	#[error("block_data_from_batches: no batches to materialize column '{column}'")]
 	NoBatchesForMaterialization {
 		column: String,
 	},
@@ -59,7 +59,7 @@ impl IntoDiagnostic for SubStoreError {
 			} => Diagnostic {
 				code: "SCOL_001".to_string(),
 				rql: None,
-				message: format!("column_block_from_batches: scan output missing column '{column}'"),
+				message: format!("block_data_from_batches: scan output missing column '{column}'"),
 				column: None,
 				fragment: Fragment::None,
 				label: Some("column missing in scan batch".to_string()),
@@ -74,7 +74,7 @@ impl IntoDiagnostic for SubStoreError {
 			} => Diagnostic {
 				code: "SCOL_002".to_string(),
 				rql: None,
-				message: format!("column_block_from_batches: no batches to materialize column '{column}'"),
+				message: format!("block_data_from_batches: no batches to materialize column '{column}'"),
 				column: None,
 				fragment: Fragment::None,
 				label: None,
@@ -162,7 +162,7 @@ fn time_mismatch_message(timed: bool, present: bool) -> String {
 	} else {
 		"absent"
 	};
-	format!("column_block_from_batches: #time is {presence} but the object {declaration}")
+	format!("block_data_from_batches: #time is {presence} but the object {declaration}")
 }
 
 fn partition_mismatch_message(partitioned: bool, present: bool) -> String {
@@ -176,5 +176,5 @@ fn partition_mismatch_message(partitioned: bool, present: bool) -> String {
 	} else {
 		"absent"
 	};
-	format!("column_block_from_batches: #partition is {presence} but the object {declaration}")
+	format!("block_data_from_batches: #partition is {presence} but the object {declaration}")
 }

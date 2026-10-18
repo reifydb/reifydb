@@ -88,7 +88,7 @@ impl KeyColumn {
 			| KeyColumn::RelationshipId
 			| KeyColumn::MigrationId
 			| KeyColumn::MigrationEventId
-			| KeyColumn::ColumnSnapshotId
+			| KeyColumn::ColumnBlockId
 			| KeyColumn::PrimaryKeyId => {
 				format!("vec![{ty}(0), {ty}(1), {ty}(u64::MAX - 1), {ty}(u64::MAX)]")
 			}
@@ -141,7 +141,7 @@ impl KeyColumn {
 			| KeyColumn::RelationshipId
 			| KeyColumn::MigrationId
 			| KeyColumn::MigrationEventId
-			| KeyColumn::ColumnSnapshotId
+			| KeyColumn::ColumnBlockId
 			| KeyColumn::PrimaryKeyId => vec![desc("$.0")],
 		}
 	}

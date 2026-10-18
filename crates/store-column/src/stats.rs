@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::column_snapshot::ColumnStats;
+use reifydb_core::interface::catalog::column_block::ColumnStats;
 use reifydb_value::{
 	Result,
 	value::{Value, value_type::ValueType},
@@ -13,9 +13,9 @@ use vortex_array::{
 use vortex_session::VortexSession;
 
 use crate::{
+	block::{BlockData, ColumnChunks},
 	error::vortex,
 	scalar::to_value,
-	snapshot::{ColumnBlock, ColumnChunks},
 };
 
 pub fn has_ordering(ty: &ValueType) -> bool {
@@ -26,9 +26,9 @@ pub fn has_ordering(ty: &ValueType) -> bool {
 	}
 }
 
-pub fn block_stats(block: &ColumnBlock, session: &VortexSession) -> Result<Vec<ColumnStats>> {
-	let mut stats = Vec::with_capacity(block.schema.len());
-	for ((name, ty, _), chunks) in block.schema.iter().zip(&block.columns) {
+pub fn block_stats(data: &BlockData, session: &VortexSession) -> Result<Vec<ColumnStats>> {
+	let mut stats = Vec::with_capacity(data.schema.len());
+	for ((name, ty, _), chunks) in data.schema.iter().zip(&data.columns) {
 		let (min, max) = if has_ordering(ty) {
 			fold_min_max(name, chunks, session)?
 		} else {
@@ -103,15 +103,15 @@ mod tests {
 		ColumnChunks::new(ty.clone(), false, ty.into(), vec![])
 	}
 
-	fn block(columns: Vec<(&str, ValueType, ColumnChunks)>) -> ColumnBlock {
+	fn data(columns: Vec<(&str, ValueType, ColumnChunks)>) -> BlockData {
 		let schema = Arc::new(
 			columns.iter().map(|(name, ty, ch)| (name.to_string(), ty.clone(), ch.nullable)).collect(),
 		);
-		ColumnBlock::new(schema, columns.into_iter().map(|(_, _, ch)| ch).collect())
+		BlockData::new(schema, columns.into_iter().map(|(_, _, ch)| ch).collect())
 	}
 
-	fn stats_of(block: &ColumnBlock) -> Vec<ColumnStats> {
-		block_stats(block, &new_session()).unwrap()
+	fn stats_of(data: &BlockData) -> Vec<ColumnStats> {
+		block_stats(data, &new_session()).unwrap()
 	}
 
 	fn int4_chunks(parts: &[&[i32]]) -> ColumnChunks {
@@ -120,7 +120,7 @@ mod tests {
 
 	#[test]
 	fn a_single_chunk_yields_its_own_min_and_max() {
-		let t = block(vec![("id", ValueType::Int4, int4_chunks(&[&[7, 2, 9, 4]]))]);
+		let t = data(vec![("id", ValueType::Int4, int4_chunks(&[&[7, 2, 9, 4]]))]);
 		let stats = stats_of(&t);
 		assert_eq!(stats.len(), 1);
 		assert_eq!(stats[0].column, "id");
@@ -134,7 +134,7 @@ mod tests {
 		// The global max sits in chunk 0 and the global min in chunk 2, so an implementation
 		// that reads chunks[0] alone reports max 50 / min 40 and prunes away blocks that
 		// really do hold matching rows. This is the defect the whole fold exists to prevent.
-		let t = block(vec![("id", ValueType::Int4, int4_chunks(&[&[40, 50], &[41, 42], &[3, 44]]))]);
+		let t = data(vec![("id", ValueType::Int4, int4_chunks(&[&[40, 50], &[41, 42], &[3, 44]]))]);
 		let stats = stats_of(&t);
 		assert_eq!(stats[0].min, Some(Value::Int4(3)), "min lives in the last chunk");
 		assert_eq!(stats[0].max, Some(Value::Int4(50)), "max lives in the first chunk");
@@ -150,7 +150,7 @@ mod tests {
 				factory::int4_optional("id", vec![None, Some(8)]),
 			],
 		);
-		let t = block(vec![("id", ValueType::Int4, chunks)]);
+		let t = data(vec![("id", ValueType::Int4, chunks)]);
 		let stats = stats_of(&t);
 		assert_eq!(stats[0].none_count, 2, "nones are counted, not rows");
 		assert_eq!(stats[0].min, Some(Value::Int4(1)), "a none must not drag the min down");
@@ -162,7 +162,7 @@ mod tests {
 		// Absent stats mean keep the block, which is the conservative direction; a bogus
 		// min/max would prune live rows away.
 		let chunks = chunks(ValueType::Int4, true, vec![factory::int4_optional("id", vec![None, None, None])]);
-		let t = block(vec![("id", ValueType::Int4, chunks)]);
+		let t = data(vec![("id", ValueType::Int4, chunks)]);
 		let stats = stats_of(&t);
 		assert_eq!(stats[0].min, None);
 		assert_eq!(stats[0].max, None);
@@ -173,7 +173,7 @@ mod tests {
 	fn an_empty_block_still_yields_one_stat_per_column() {
 		// A pruner reading zero stats for a column cannot tell "no rows" from "not computed",
 		// so an empty block must produce stats rather than an empty vector or an error.
-		let t = block(vec![
+		let t = data(vec![
 			("id", ValueType::Int4, empty(ValueType::Int4)),
 			("name", ValueType::Utf8, empty(ValueType::Utf8)),
 		]);
@@ -190,7 +190,7 @@ mod tests {
 	fn stats_follow_schema_order() {
 		// The pruner pairs stats with schema positions, so a reordering silently applies one
 		// column's bounds to another.
-		let t = block(vec![
+		let t = data(vec![
 			("c", ValueType::Int4, int4_chunks(&[&[3]])),
 			("a", ValueType::Int4, int4_chunks(&[&[1]])),
 			("b", ValueType::Int4, int4_chunks(&[&[2]])),
@@ -207,7 +207,7 @@ mod tests {
 	fn min_and_max_carry_the_columns_own_type() {
 		// A stat widened to Int8 would compare unequal against an Int4 predicate literal and
 		// the pruner would silently stop matching.
-		let t = block(vec![("id", ValueType::Int4, int4_chunks(&[&[5, 6]]))]);
+		let t = data(vec![("id", ValueType::Int4, int4_chunks(&[&[5, 6]]))]);
 		let stats = stats_of(&t);
 		assert!(matches!(stats[0].min, Some(Value::Int4(_))));
 		assert!(matches!(stats[0].max, Some(Value::Int4(_))));
@@ -223,7 +223,7 @@ mod tests {
 				factory::datetime("ts", vec![DateTime::from_nanos(900)]),
 			],
 		);
-		let t = block(vec![("ts", ValueType::DateTime, chunks)]);
+		let t = data(vec![("ts", ValueType::DateTime, chunks)]);
 		let stats = stats_of(&t);
 		assert_eq!(stats[0].min, Some(Value::DateTime(DateTime::from_nanos(100))));
 		assert_eq!(stats[0].max, Some(Value::DateTime(DateTime::from_nanos(900))));
@@ -233,7 +233,7 @@ mod tests {
 	fn a_utf8_column_gets_min_and_max() {
 		let chunks =
 			chunks(ValueType::Utf8, false, vec![factory::utf8("name", vec!["pear", "apple", "quince"])]);
-		let t = block(vec![("name", ValueType::Utf8, chunks)]);
+		let t = data(vec![("name", ValueType::Utf8, chunks)]);
 		let stats = stats_of(&t);
 		assert_eq!(stats[0].min, Some(Value::Utf8("apple".to_string())));
 		assert_eq!(stats[0].max, Some(Value::Utf8("quince".to_string())));
@@ -242,7 +242,7 @@ mod tests {
 	#[test]
 	fn a_boolean_column_gets_min_and_max() {
 		let chunks = chunks(ValueType::Boolean, false, vec![factory::bool("flag", vec![true, false])]);
-		let t = block(vec![("flag", ValueType::Boolean, chunks)]);
+		let t = data(vec![("flag", ValueType::Boolean, chunks)]);
 		let stats = stats_of(&t);
 		assert_eq!(stats[0].min, Some(Value::Boolean(false)));
 		assert_eq!(stats[0].max, Some(Value::Boolean(true)));
@@ -254,7 +254,7 @@ mod tests {
 		// refusing the way it used to.
 		let chunks =
 			chunks(ValueType::Float8, false, vec![factory::float8("v", vec![2.5f64, -1.5f64, 9.0f64])]);
-		let t = block(vec![("v", ValueType::Float8, chunks)]);
+		let t = data(vec![("v", ValueType::Float8, chunks)]);
 		let stats = stats_of(&t);
 		assert_eq!(stats[0].min, Some(Value::float8(-1.5)));
 		assert_eq!(stats[0].max, Some(Value::float8(9.0)));
@@ -271,7 +271,7 @@ mod tests {
 	#[test]
 	fn wide_int_columns_report_no_bounds_so_the_block_is_kept() {
 		// A made-up bound on a byte-list column would let the pruner drop blocks holding matching rows.
-		let t = block(vec![
+		let t = data(vec![
 			(
 				"u",
 				ValueType::Uint16,
@@ -314,7 +314,7 @@ mod tests {
 			precision: Precision::new(10),
 			scale: Scale::new(2),
 		};
-		let t = block(vec![("c", ty.clone(), chunks(ty, true, vec![column]))]);
+		let t = data(vec![("c", ty.clone(), chunks(ty, true, vec![column]))]);
 		let stats = stats_of(&t);
 		let min = stats[0].min.clone().expect("decimal column has a min");
 		let max = stats[0].max.clone().expect("decimal column has a max");

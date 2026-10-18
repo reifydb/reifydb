@@ -15,11 +15,11 @@ use reifydb_core::{
 	value::{batch, column::factory},
 };
 use reifydb_store_column::{
-	compress::Compressor, device::BlockKey, reader::SnapshotReader, session::new_session, snapshot::ColumnBlock,
+	block::BlockData, compress::Compressor, device::BlockFileKey, reader::BlockReader, session::new_session,
 	store::ColumnStore,
 };
 use reifydb_sub_store::{
-	column::actor::batches::{column_block_from_batches, system_column_schema},
+	column::actor::batches::{block_data_from_batches, system_column_schema},
 	subsystem::{StorageConfig, StorageSubsystem},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -54,7 +54,7 @@ fn at(second: u64) -> DateTime {
 	DateTime::from_ymd_hms(2020, 1, 1, 0, 0, second as u32).unwrap()
 }
 
-fn owned_blocks(db: &TestDb, store: &ColumnStore, object: &Object, name: &str) -> Vec<Arc<ColumnBlock>> {
+fn owned_blocks(db: &TestDb, store: &ColumnStore, object: &Object, name: &str) -> Vec<Arc<BlockData>> {
 	let engine = db.engine();
 	let catalog = engine.catalog();
 	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
@@ -66,22 +66,22 @@ fn owned_blocks(db: &TestDb, store: &ColumnStore, object: &Object, name: &str) -
 				.find_table_by_name(&mut tx, namespace.id(), name)
 				.expect("find table")
 				.expect("table");
-			catalog.list_column_snapshots_for_table(&mut tx, table.id).expect("list table snapshots")
+			catalog.list_column_blocks_for_table(&mut tx, table.id).expect("list table blocks")
 		}
 		Object::Series => {
 			let series = catalog
 				.find_series_by_name(&mut tx, namespace.id(), name)
 				.expect("find series")
 				.expect("series");
-			catalog.list_column_snapshots_for_series(&mut tx, series.id).expect("list series snapshots")
+			catalog.list_column_blocks_for_series(&mut tx, series.id).expect("list series blocks")
 		}
 	};
 	owned.into_iter()
-		.map(|snapshot| {
+		.map(|block| {
 			Arc::new(
-				store.open(&BlockKey::of(&snapshot))
+				store.open(&BlockFileKey::of(&block))
 					.expect("open block")
-					.expect("a cataloged snapshot must have a block file")
+					.expect("a cataloged block must have a block file")
 					.read(None)
 					.expect("read block"),
 			)
@@ -89,8 +89,8 @@ fn owned_blocks(db: &TestDb, store: &ColumnStore, object: &Object, name: &str) -
 		.collect()
 }
 
-fn schema_names(block: &ColumnBlock) -> Vec<&str> {
-	block.schema.iter().map(|(n, _, _)| n.as_str()).collect()
+fn schema_names(data: &BlockData) -> Vec<&str> {
+	data.schema.iter().map(|(n, _, _)| n.as_str()).collect()
 }
 
 fn datetime_at(columns: &RecordBatch, name: &str, row: usize) -> DateTime {
@@ -132,12 +132,12 @@ fn a_timed_table_block_carries_time_and_a_timeless_one_does_not() {
 		} else {
 			&["id", "at", "#rownum", "#created_at", "#updated_at", "#commit_version"]
 		};
-		for block in &blocks {
-			assert_eq!(schema_names(block), expected_schema, "test::{name}");
+		for data in &blocks {
+			assert_eq!(schema_names(data), expected_schema, "test::{name}");
 		}
 
-		let block = blocks.into_iter().find(|b| b.len() == 3).expect("3-row block");
-		let mut reader = SnapshotReader::new(block, 100, store.session().clone());
+		let data = blocks.into_iter().find(|b| b.len() == 3).expect("3-row block");
+		let mut reader = BlockReader::new(data, 100, store.session().clone());
 		let batch = reader.next().expect("batch present").expect("read batch");
 		assert!(reader.next().is_none(), "reader should yield a single batch for 3 rows");
 		assert_eq!(batch.num_rows(), 3);
@@ -204,12 +204,12 @@ fn a_timed_series_block_carries_time_and_a_timeless_one_does_not() {
 			&["k", "at", "value", "#rownum", "#created_at", "#updated_at", "#commit_version"]
 		};
 		let mut keys = BTreeSet::new();
-		for block in blocks {
-			assert_eq!(schema_names(&block), expected_schema, "test::{name}");
-			assert!(!block.is_empty(), "test::{name}: a closed bucket must hold rows");
+		for data in blocks {
+			assert_eq!(schema_names(&data), expected_schema, "test::{name}");
+			assert!(!data.is_empty(), "test::{name}: a closed bucket must hold rows");
 
-			let len = block.len();
-			let mut reader = SnapshotReader::new(block, 100, store.session().clone());
+			let len = data.len();
+			let mut reader = BlockReader::new(data, 100, store.session().clone());
 			let batch = reader.next().expect("batch present").expect("read batch");
 			assert!(reader.next().is_none(), "reader should yield a single batch per bucket");
 			assert_eq!(batch.num_rows(), len);
@@ -281,7 +281,7 @@ fn a_timed_block_refuses_a_batch_without_time() {
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
 	schema.extend(system_column_schema(&TimeSource::Processing, false));
 
-	let err = column_block_from_batches(schema, vec![batch], CommitVersion(1), &Compressor::new(new_session()))
+	let err = block_data_from_batches(schema, vec![batch], CommitVersion(1), &Compressor::new(new_session()))
 		.err()
 		.expect("a timed block must not be built from a batch with no #time");
 
@@ -296,7 +296,7 @@ fn a_timeless_block_refuses_a_batch_that_carries_time() {
 	let mut schema = vec![("id".to_string(), ValueType::Int4)];
 	schema.extend(system_column_schema(&TimeSource::None, false));
 
-	let err = column_block_from_batches(schema, vec![batch], CommitVersion(1), &Compressor::new(new_session()))
+	let err = block_data_from_batches(schema, vec![batch], CommitVersion(1), &Compressor::new(new_session()))
 		.err()
 		.expect("a timeless block must not be built from a batch that carries #time");
 

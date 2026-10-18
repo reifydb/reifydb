@@ -14,9 +14,9 @@ use reifydb_value::{Result, error::Error};
 use vortex_session::VortexSession;
 
 use crate::{
-	device::{BlockKey, Device, OpenBlock, RemoveBlock, WriteBlock},
+	block::BlockData,
+	device::{BlockFileKey, Device, OpenBlock, RemoveBlock, WriteBlock},
 	persist::BlockHandle,
-	snapshot::ColumnBlock,
 	store::FsColumnStore,
 };
 
@@ -39,15 +39,15 @@ pub enum RemoveOutcome {
 }
 
 pub trait ColumnHooks: Send + Sync {
-	fn on_write(&self, _key: &BlockKey) -> WriteOutcome {
+	fn on_write(&self, _key: &BlockFileKey) -> WriteOutcome {
 		WriteOutcome::Land
 	}
 
-	fn on_open(&self, _key: &BlockKey) -> OpenOutcome {
+	fn on_open(&self, _key: &BlockFileKey) -> OpenOutcome {
 		OpenOutcome::Honest
 	}
 
-	fn on_remove(&self, _key: &BlockKey) -> RemoveOutcome {
+	fn on_remove(&self, _key: &BlockFileKey) -> RemoveOutcome {
 		RemoveOutcome::Land
 	}
 
@@ -101,10 +101,10 @@ impl<F> WriteBlock for TestingColumnStore<F>
 where
 	F: Filesystem + Create + Mkdir + OpenMut + SyncDir + Send + Sync + 'static,
 {
-	fn write(&self, key: &BlockKey, block: &ColumnBlock) -> Result<()> {
+	fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<()> {
 		self.call();
 		match self.0.hooks.on_write(key) {
-			WriteOutcome::Land => self.0.store.write(key, block),
+			WriteOutcome::Land => self.0.store.write(key, data),
 			WriteOutcome::Err(error) => Err(error),
 		}
 	}
@@ -113,7 +113,7 @@ where
 impl<F: Filesystem + Open + Send + Sync + 'static> OpenBlock for TestingColumnStore<F> {
 	type File = F::File;
 
-	fn open(&self, key: &BlockKey) -> Result<Option<BlockHandle<F::File>>> {
+	fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<F::File>>> {
 		self.call();
 		match self.0.hooks.on_open(key) {
 			OpenOutcome::Honest => self.0.store.open(key),
@@ -123,7 +123,7 @@ impl<F: Filesystem + Open + Send + Sync + 'static> OpenBlock for TestingColumnSt
 }
 
 impl<F: Filesystem + Unlink + Send + Sync + 'static> RemoveBlock for TestingColumnStore<F> {
-	fn remove(&self, key: &BlockKey) -> Result<()> {
+	fn remove(&self, key: &BlockFileKey) -> Result<()> {
 		self.call();
 		match self.0.hooks.on_remove(key) {
 			RemoveOutcome::Land => self.0.store.remove(key),
@@ -146,16 +146,16 @@ mod tests {
 	use super::*;
 	use crate::{compress::Compressor, error::ColumnError, session::new_session};
 
-	const KEY: BlockKey = BlockKey {
+	const KEY: BlockFileKey = BlockFileKey {
 		dir: 1,
 		name: 1,
 	};
 
-	fn block(values: &[i32]) -> ColumnBlock {
+	fn data(values: &[i32]) -> BlockData {
 		let column = Compressor::new(new_session())
 			.compress(ValueType::Int4, &factory::int4("a", values.to_vec()))
 			.unwrap();
-		ColumnBlock::new(StdArc::new(vec![("a".to_string(), ValueType::Int4, false)]), vec![column])
+		BlockData::new(StdArc::new(vec![("a".to_string(), ValueType::Int4, false)]), vec![column])
 	}
 
 	fn injected() -> Error {
@@ -172,7 +172,7 @@ mod tests {
 	struct FailRemove;
 
 	impl ColumnHooks for FailRemove {
-		fn on_remove(&self, _key: &BlockKey) -> RemoveOutcome {
+		fn on_remove(&self, _key: &BlockFileKey) -> RemoveOutcome {
 			RemoveOutcome::Err(injected())
 		}
 	}
@@ -193,7 +193,7 @@ mod tests {
 	fn no_faults_passes_every_call_through() {
 		let inner = FsColumnStore::new(Fs::Memory(MemoryFs::new()), PathBuf::from("/column")).unwrap();
 		let store = TestingColumnStore::over(inner, StdArc::new(NoFaults));
-		store.write(&KEY, &block(&[1, 2, 3])).unwrap();
+		store.write(&KEY, &data(&[1, 2, 3])).unwrap();
 		let read = store.open(&KEY).unwrap().expect("a written block must open").read(None).unwrap();
 		assert_eq!(read.len(), 3, "the block must read back with every row");
 		store.remove(&KEY).unwrap();
@@ -204,7 +204,7 @@ mod tests {
 	fn a_failing_remove_returns_its_error_and_keeps_the_file() {
 		let inner = FsColumnStore::new(Fs::Memory(MemoryFs::new()), PathBuf::from("/column")).unwrap();
 		let store = TestingColumnStore::over(inner, StdArc::new(FailRemove));
-		store.write(&KEY, &block(&[1, 2, 3])).unwrap();
+		store.write(&KEY, &data(&[1, 2, 3])).unwrap();
 		assert_eq!(store.remove(&KEY).err(), Some(injected()), "remove must return the hook's error");
 		assert!(store.open(&KEY).unwrap().is_some(), "a failed remove must leave the file in place");
 	}
@@ -213,7 +213,7 @@ mod tests {
 	fn a_crash_hook_panics_at_the_named_call() {
 		let inner = FsColumnStore::new(Fs::Memory(MemoryFs::new()), PathBuf::from("/column")).unwrap();
 		let store = TestingColumnStore::over(inner, StdArc::new(CrashAt(3)));
-		store.write(&KEY, &block(&[1, 2, 3])).unwrap();
+		store.write(&KEY, &data(&[1, 2, 3])).unwrap();
 		assert!(store.open(&KEY).unwrap().is_some(), "the second call must still pass");
 		let payload =
 			catch_unwind(AssertUnwindSafe(|| store.remove(&KEY))).expect_err("the third call must crash");

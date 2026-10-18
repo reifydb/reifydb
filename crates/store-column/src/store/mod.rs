@@ -15,11 +15,11 @@ use vortex_session::VortexSession;
 #[cfg(feature = "testing")]
 use crate::testing::TestingColumnStore;
 use crate::{
-	device::{BlockKey, Device, OpenBlock, RemoveBlock, WriteBlock},
+	block::BlockData,
+	device::{BlockFileKey, Device, OpenBlock, RemoveBlock, WriteBlock},
 	error::{self, fs},
 	persist::{BlockHandle, serialize_block, write_all},
 	session::new_session,
-	snapshot::ColumnBlock,
 };
 
 #[derive(Clone)]
@@ -53,11 +53,11 @@ impl<F: Filesystem> FsColumnStore<F> {
 		&self.session
 	}
 
-	fn dir(&self, key: &BlockKey) -> PathBuf {
+	fn dir(&self, key: &BlockFileKey) -> PathBuf {
 		self.root.join(key.dir.to_string())
 	}
 
-	fn path(&self, key: &BlockKey) -> PathBuf {
+	fn path(&self, key: &BlockFileKey) -> PathBuf {
 		self.dir(key).join(format!("{:020}.borg", key.name))
 	}
 }
@@ -68,8 +68,8 @@ impl<F> WriteBlock for FsColumnStore<F>
 where
 	F: Filesystem + Create + Mkdir + OpenMut + SyncDir + Send + Sync + 'static,
 {
-	fn write(&self, key: &BlockKey, block: &ColumnBlock) -> Result<()> {
-		let bytes = serialize_block(block, &self.session)?;
+	fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<()> {
+		let bytes = serialize_block(data, &self.session)?;
 		let dir = self.dir(key);
 		match self.fs.mkdir(&dir) {
 			Ok(()) => self.fs.sync_dir(&self.root).map_err(fs("write"))?,
@@ -99,7 +99,7 @@ where
 impl<F: Filesystem + Open + Send + Sync + 'static> OpenBlock for FsColumnStore<F> {
 	type File = F::File;
 
-	fn open(&self, key: &BlockKey) -> Result<Option<BlockHandle<F::File>>> {
+	fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<F::File>>> {
 		let file = match self.fs.open(&self.path(key)) {
 			Ok(file) => file,
 			Err(FsError::NotFound(_)) => return Ok(None),
@@ -110,7 +110,7 @@ impl<F: Filesystem + Open + Send + Sync + 'static> OpenBlock for FsColumnStore<F
 }
 
 impl<F: Filesystem + Unlink + Send + Sync + 'static> RemoveBlock for FsColumnStore<F> {
-	fn remove(&self, key: &BlockKey) -> Result<()> {
+	fn remove(&self, key: &BlockFileKey) -> Result<()> {
 		self.fs.unlink(&self.path(key)).map_err(fs("remove"))
 	}
 }
@@ -132,15 +132,15 @@ impl ColumnStore {
 		Ok(Self::Store(FsColumnStore::new(Fs::Memory(MemoryFs::new()), PathBuf::from("/column"))?))
 	}
 
-	pub fn write(&self, key: &BlockKey, block: &ColumnBlock) -> Result<()> {
+	pub fn write(&self, key: &BlockFileKey, data: &BlockData) -> Result<()> {
 		match self {
-			Self::Store(store) => store.write(key, block),
+			Self::Store(store) => store.write(key, data),
 			#[cfg(feature = "testing")]
-			Self::Testing(store) => store.write(key, block),
+			Self::Testing(store) => store.write(key, data),
 		}
 	}
 
-	pub fn open(&self, key: &BlockKey) -> Result<Option<BlockHandle<File>>> {
+	pub fn open(&self, key: &BlockFileKey) -> Result<Option<BlockHandle<File>>> {
 		match self {
 			Self::Store(store) => store.open(key),
 			#[cfg(feature = "testing")]
@@ -148,7 +148,7 @@ impl ColumnStore {
 		}
 	}
 
-	pub fn remove(&self, key: &BlockKey) -> Result<()> {
+	pub fn remove(&self, key: &BlockFileKey) -> Result<()> {
 		match self {
 			Self::Store(store) => store.remove(key),
 			#[cfg(feature = "testing")]
@@ -180,21 +180,21 @@ mod tests {
 	use super::*;
 	use crate::{compress::Compressor, convert::to_arrow};
 
-	const KEY: BlockKey = BlockKey {
+	const KEY: BlockFileKey = BlockFileKey {
 		dir: 1,
 		name: 1,
 	};
 
-	fn block(values: &[i32]) -> ColumnBlock {
+	fn data(values: &[i32]) -> BlockData {
 		let column = Compressor::new(new_session())
 			.compress(ValueType::Int4, &factory::int4("a", values.to_vec()))
 			.unwrap();
-		ColumnBlock::new(Arc::new(vec![("a".to_string(), ValueType::Int4, false)]), vec![column])
+		BlockData::new(Arc::new(vec![("a".to_string(), ValueType::Int4, false)]), vec![column])
 	}
 
-	fn values(block: &ColumnBlock) -> Vec<Value> {
+	fn values(data: &BlockData) -> Vec<Value> {
 		let session = new_session();
-		let column = &block.columns[0];
+		let column = &data.columns[0];
 		let mut out = Vec::new();
 		for chunk in &column.chunks {
 			let exported = to_arrow(&session, "a", &column.field_type, chunk.clone()).unwrap();
@@ -236,7 +236,7 @@ mod tests {
 	fn open_fails_on_a_corrupt_read() {
 		let fs = Fs::Testing(TestingFs::new(MemoryFs::new(), Arc::new(CorruptFirstSector)));
 		let store = FsColumnStore::new(fs, PathBuf::from("/column")).unwrap();
-		store.write(&KEY, &block(&[1, 2, 3])).unwrap();
+		store.write(&KEY, &data(&[1, 2, 3])).unwrap();
 		match store.open(&KEY) {
 			Err(err) => assert_eq!(err.0.code, "COL_019"),
 			Ok(None) => panic!("a corrupt read must fail open, not read as missing"),
@@ -247,12 +247,12 @@ mod tests {
 	#[test]
 	fn open_on_a_missing_key_returns_none() {
 		let store = ColumnStore::memory().unwrap();
-		store.write(&KEY, &block(&[1])).unwrap();
-		let missing_file = BlockKey {
+		store.write(&KEY, &data(&[1])).unwrap();
+		let missing_file = BlockFileKey {
 			dir: 1,
 			name: 2,
 		};
-		let missing_dir = BlockKey {
+		let missing_dir = BlockFileKey {
 			dir: 2,
 			name: 1,
 		};
@@ -264,8 +264,8 @@ mod tests {
 	fn a_rewrite_of_the_same_key_reads_back_only_the_new_rows() {
 		let memory = MemoryFs::new();
 		let store = FsColumnStore::new(Fs::Memory(memory.clone()), PathBuf::from("/column")).unwrap();
-		let first = block(&(0..1000).map(|i| (i * 7919) % 1_000_003).collect::<Vec<_>>());
-		let second = block(&[9, 10]);
+		let first = data(&(0..1000).map(|i| (i * 7919) % 1_000_003).collect::<Vec<_>>());
+		let second = data(&[9, 10]);
 		let second_len = serialize_block(&second, store.session()).unwrap().len() as u64;
 		assert!(
 			serialize_block(&first, store.session()).unwrap().len() as u64 > second_len,

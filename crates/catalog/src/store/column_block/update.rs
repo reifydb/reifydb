@@ -4,21 +4,21 @@
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
-		column_snapshot::{ColumnSnapshot, ColumnSnapshotSource, ColumnStats},
-		id::ColumnSnapshotId,
+		column_block::{ColumnBlock, ColumnBlockSource, ColumnStats},
+		id::ColumnBlockId,
 	},
-	key::column::ColumnSnapshotKey,
+	key::column::ColumnBlockKey,
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::Value;
 
 use crate::{
 	CatalogStore, Result,
-	store::column_snapshot::shape::{column_snapshot, serialize_partition_values, serialize_stats},
+	store::column_block::shape::{column_block, serialize_partition_values, serialize_stats},
 };
 
 #[derive(Debug, Clone)]
-pub struct ColumnSnapshotToUpdate {
+pub struct ColumnBlockToUpdate {
 	pub sequence_counter: u64,
 	pub read_version: CommitVersion,
 	pub row_count: u64,
@@ -27,33 +27,33 @@ pub struct ColumnSnapshotToUpdate {
 }
 
 impl CatalogStore {
-	pub(crate) fn update_column_snapshot(
+	pub(crate) fn update_column_block(
 		txn: &mut AdminTransaction,
-		id: ColumnSnapshotId,
-		patch: ColumnSnapshotToUpdate,
-	) -> Result<ColumnSnapshot> {
-		let existing = Self::get_column_snapshot(&mut Transaction::Admin(&mut *txn), id)?;
+		id: ColumnBlockId,
+		patch: ColumnBlockToUpdate,
+	) -> Result<ColumnBlock> {
+		let existing = Self::get_column_block(&mut Transaction::Admin(&mut *txn), id)?;
 
-		let mut row = column_snapshot::allocate();
-		column_snapshot::set_id(&mut row, u64::from(existing.id));
-		column_snapshot::set_namespace(&mut row, u64::from(existing.namespace));
-		column_snapshot::set_kind(&mut row, existing.source.kind() as u8);
+		let mut row = column_block::allocate();
+		column_block::set_id(&mut row, u64::from(existing.id));
+		column_block::set_namespace(&mut row, u64::from(existing.namespace));
+		column_block::set_kind(&mut row, existing.source.kind() as u8);
 
 		let updated_source = match existing.source {
-			ColumnSnapshotSource::Table {
+			ColumnBlockSource::Table {
 				table_id,
 				..
-			} => ColumnSnapshotSource::Table {
+			} => ColumnBlockSource::Table {
 				table_id,
 				commit_version: patch.read_version,
 			},
-			ColumnSnapshotSource::SeriesBucket {
+			ColumnBlockSource::SeriesBucket {
 				series_id,
 				bucket_start,
 				bucket_width,
 				partition,
 				..
-			} => ColumnSnapshotSource::SeriesBucket {
+			} => ColumnBlockSource::SeriesBucket {
 				series_id,
 				bucket_start,
 				bucket_width,
@@ -64,18 +64,18 @@ impl CatalogStore {
 		};
 
 		match &updated_source {
-			ColumnSnapshotSource::Table {
+			ColumnBlockSource::Table {
 				table_id,
 				..
 			} => {
-				column_snapshot::set_source_id(&mut row, u64::from(*table_id));
-				column_snapshot::set_bucket_start(&mut row, 0u64);
-				column_snapshot::set_bucket_width(&mut row, 0u64);
-				column_snapshot::set_partition_hi_none(&mut row);
-				column_snapshot::set_partition_lo_none(&mut row);
-				column_snapshot::set_sequence_counter(&mut row, 0u64);
+				column_block::set_source_id(&mut row, u64::from(*table_id));
+				column_block::set_bucket_start(&mut row, 0u64);
+				column_block::set_bucket_width(&mut row, 0u64);
+				column_block::set_partition_hi_none(&mut row);
+				column_block::set_partition_lo_none(&mut row);
+				column_block::set_sequence_counter(&mut row, 0u64);
 			}
-			ColumnSnapshotSource::SeriesBucket {
+			ColumnBlockSource::SeriesBucket {
 				series_id,
 				bucket_start,
 				bucket_width,
@@ -83,31 +83,31 @@ impl CatalogStore {
 				sequence_counter,
 				..
 			} => {
-				column_snapshot::set_source_id(&mut row, u64::from(*series_id));
-				column_snapshot::set_bucket_start(&mut row, *bucket_start);
-				column_snapshot::set_bucket_width(&mut row, *bucket_width);
+				column_block::set_source_id(&mut row, u64::from(*series_id));
+				column_block::set_bucket_start(&mut row, *bucket_start);
+				column_block::set_bucket_width(&mut row, *bucket_width);
 				match partition {
 					Some(partition) => {
-						column_snapshot::set_partition_hi(&mut row, (partition.0 >> 64) as u64);
-						column_snapshot::set_partition_lo(&mut row, partition.0 as u64);
+						column_block::set_partition_hi(&mut row, (partition.0 >> 64) as u64);
+						column_block::set_partition_lo(&mut row, partition.0 as u64);
 					}
 					None => {
-						column_snapshot::set_partition_hi_none(&mut row);
-						column_snapshot::set_partition_lo_none(&mut row);
+						column_block::set_partition_hi_none(&mut row);
+						column_block::set_partition_lo_none(&mut row);
 					}
 				}
-				column_snapshot::set_sequence_counter(&mut row, *sequence_counter);
+				column_block::set_sequence_counter(&mut row, *sequence_counter);
 			}
 		}
 
-		column_snapshot::set_read_version(&mut row, patch.read_version.0);
-		column_snapshot::set_row_count(&mut row, patch.row_count);
-		column_snapshot::set_partition_values(&mut row, &serialize_partition_values(&patch.partition_values));
-		column_snapshot::set_stats(&mut row, &serialize_stats(&patch.stats));
+		column_block::set_read_version(&mut row, patch.read_version.0);
+		column_block::set_row_count(&mut row, patch.row_count);
+		column_block::set_partition_values(&mut row, &serialize_partition_values(&patch.partition_values));
+		column_block::set_stats(&mut row, &serialize_stats(&patch.stats));
 
-		txn.set(&ColumnSnapshotKey::new(existing.id), row.freeze())?;
+		txn.set(&ColumnBlockKey::new(existing.id), row.freeze())?;
 
-		Ok(ColumnSnapshot {
+		Ok(ColumnBlock {
 			id: existing.id,
 			namespace: existing.namespace,
 			source: updated_source,
@@ -123,8 +123,8 @@ pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::catalog::{
-			column_snapshot::{ColumnSnapshotSource, ColumnStats},
-			id::{ColumnSnapshotId, NamespaceId, SeriesId, TableId},
+			column_block::{ColumnBlockSource, ColumnStats},
+			id::{ColumnBlockId, NamespaceId, SeriesId, TableId},
 		},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
@@ -133,17 +133,17 @@ pub mod tests {
 
 	use crate::{
 		CatalogStore,
-		store::column_snapshot::{create::ColumnSnapshotToCreate, update::ColumnSnapshotToUpdate},
+		store::column_block::{create::ColumnBlockToCreate, update::ColumnBlockToUpdate},
 	};
 
 	#[test]
 	fn test_update_series_bucket_preserves_id_and_immutable_fields() {
 		let mut txn = create_test_admin_transaction();
-		let created = CatalogStore::create_column_snapshot(
+		let created = CatalogStore::create_column_block(
 			&mut txn,
-			ColumnSnapshotToCreate {
+			ColumnBlockToCreate {
 				namespace: NamespaceId(1),
-				source: ColumnSnapshotSource::SeriesBucket {
+				source: ColumnBlockSource::SeriesBucket {
 					series_id: SeriesId(202),
 					bucket_start: 1000,
 					bucket_width: 100,
@@ -158,10 +158,10 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let updated = CatalogStore::update_column_snapshot(
+		let updated = CatalogStore::update_column_block(
 			&mut txn,
 			created.id,
-			ColumnSnapshotToUpdate {
+			ColumnBlockToUpdate {
 				sequence_counter: 17,
 				read_version: CommitVersion(42),
 				row_count: 99,
@@ -177,7 +177,7 @@ pub mod tests {
 		assert_eq!(updated.read_version(), CommitVersion(42));
 
 		match updated.source {
-			ColumnSnapshotSource::SeriesBucket {
+			ColumnBlockSource::SeriesBucket {
 				series_id,
 				bucket_start,
 				bucket_width,
@@ -196,9 +196,9 @@ pub mod tests {
 		}
 
 		// The update must reach storage, not just the returned value.
-		let reread = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut txn), created.id)
+		let reread = CatalogStore::find_column_block(&mut Transaction::Admin(&mut txn), created.id)
 			.unwrap()
-			.expect("snapshot still present");
+			.expect("block still present");
 		assert_eq!(reread.row_count, 99);
 		assert_eq!(reread.read_version(), CommitVersion(42));
 	}
@@ -206,11 +206,11 @@ pub mod tests {
 	#[test]
 	fn test_update_table_preserves_id_and_table_id() {
 		let mut txn = create_test_admin_transaction();
-		let created = CatalogStore::create_column_snapshot(
+		let created = CatalogStore::create_column_block(
 			&mut txn,
-			ColumnSnapshotToCreate {
+			ColumnBlockToCreate {
 				namespace: NamespaceId(1),
-				source: ColumnSnapshotSource::Table {
+				source: ColumnBlockSource::Table {
 					table_id: TableId(50),
 					commit_version: CommitVersion(5),
 				},
@@ -221,10 +221,10 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let updated = CatalogStore::update_column_snapshot(
+		let updated = CatalogStore::update_column_block(
 			&mut txn,
 			created.id,
-			ColumnSnapshotToUpdate {
+			ColumnBlockToUpdate {
 				sequence_counter: 0,
 				read_version: CommitVersion(99),
 				row_count: 7,
@@ -236,7 +236,7 @@ pub mod tests {
 
 		assert_eq!(updated.id, created.id);
 		match updated.source {
-			ColumnSnapshotSource::Table {
+			ColumnBlockSource::Table {
 				table_id,
 				commit_version,
 			} => {
@@ -253,11 +253,11 @@ pub mod tests {
 		// If an update carried the old min/max forward, pruning would drop a block that does hold
 		// matching rows, which is a silent wrong answer rather than a slow one.
 		let mut txn = create_test_admin_transaction();
-		let created = CatalogStore::create_column_snapshot(
+		let created = CatalogStore::create_column_block(
 			&mut txn,
-			ColumnSnapshotToCreate {
+			ColumnBlockToCreate {
 				namespace: NamespaceId(1),
-				source: ColumnSnapshotSource::SeriesBucket {
+				source: ColumnBlockSource::SeriesBucket {
 					series_id: SeriesId(303),
 					bucket_start: 0,
 					bucket_width: 100,
@@ -277,10 +277,10 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let updated = CatalogStore::update_column_snapshot(
+		let updated = CatalogStore::update_column_block(
 			&mut txn,
 			created.id,
-			ColumnSnapshotToUpdate {
+			ColumnBlockToUpdate {
 				sequence_counter: 2,
 				read_version: CommitVersion(2),
 				row_count: 3,
@@ -298,21 +298,21 @@ pub mod tests {
 		assert_eq!(updated.stats[0].max, Some(Value::Int4(999)), "the new max must replace the old one");
 		assert_eq!(updated.stats[0].none_count, 1, "the new none_count must replace the old one");
 
-		let reread = CatalogStore::find_column_snapshot(&mut Transaction::Admin(&mut txn), created.id)
+		let reread = CatalogStore::find_column_block(&mut Transaction::Admin(&mut txn), created.id)
 			.unwrap()
-			.expect("snapshot still present");
+			.expect("block still present");
 		assert_eq!(reread.stats[0].max, Some(Value::Int4(999)), "the overwrite must reach storage");
 		assert_eq!(reread.stats[0].none_count, 1);
 		assert_eq!(reread.partition_values, vec![Value::Utf8("eu".to_string())]);
 	}
 
 	#[test]
-	fn test_update_nonexistent_column_snapshot_errors() {
+	fn test_update_nonexistent_column_block_errors() {
 		let mut txn = create_test_admin_transaction();
-		let err = CatalogStore::update_column_snapshot(
+		let err = CatalogStore::update_column_block(
 			&mut txn,
-			ColumnSnapshotId(999_999),
-			ColumnSnapshotToUpdate {
+			ColumnBlockId(999_999),
+			ColumnBlockToUpdate {
 				sequence_counter: 1,
 				read_version: CommitVersion(1),
 				row_count: 0,
@@ -325,7 +325,7 @@ pub mod tests {
 		let diag = err.diagnostic();
 		assert_eq!(diag.code, "INTERNAL_ERROR", "expected INTERNAL_ERROR diagnostic, got {}", diag.code);
 		assert!(
-			diag.message.contains("ColumnSnapshot with ID"),
+			diag.message.contains("ColumnBlock with ID"),
 			"diagnostic should name the entity, got: {}",
 			diag.message
 		);

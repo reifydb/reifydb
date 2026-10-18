@@ -6,10 +6,10 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use reifydb_core::value::column::factory;
 use reifydb_store_column::{
+	block::{BlockData, ColumnChunks},
 	compress::Compressor,
-	reader::SnapshotReader,
+	reader::BlockReader,
 	session::new_session,
-	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_value::value::{
 	Value,
@@ -85,7 +85,7 @@ fn schema() -> Vec<(String, ValueType, bool)> {
 	]
 }
 
-fn fixture(bounds: &[usize]) -> Arc<ColumnBlock> {
+fn fixture(bounds: &[usize]) -> Arc<BlockData> {
 	let schema = schema();
 	let compressor = Compressor::new(new_session());
 	let mut per_column: Vec<Option<ColumnChunks>> = vec![None; schema.len()];
@@ -114,7 +114,7 @@ fn fixture(bounds: &[usize]) -> Arc<ColumnBlock> {
 		}
 	}
 	let columns = per_column.into_iter().map(|c| c.expect("fixture has rows")).collect();
-	Arc::new(ColumnBlock::new(Arc::new(schema), columns))
+	Arc::new(BlockData::new(Arc::new(schema), columns))
 }
 
 #[track_caller]
@@ -144,10 +144,10 @@ fn assert_batch_rows(batch: &RecordBatch, start: usize, end: usize) {
 	}
 }
 
-fn scan(block: &Arc<ColumnBlock>, mut check: impl FnMut(&RecordBatch, usize, usize)) {
+fn scan(data: &Arc<BlockData>, mut check: impl FnMut(&RecordBatch, usize, usize)) {
 	let mut start = 0usize;
 	let mut batches = 0usize;
-	for batch in SnapshotReader::new(Arc::clone(block), BATCH, new_session()) {
+	for batch in BlockReader::new(Arc::clone(data), BATCH, new_session()) {
 		let batch = batch.expect("scan batch");
 		let end = (start + BATCH).min(ROWS);
 		assert_batch_rows(&batch, start, end);
@@ -162,23 +162,23 @@ fn scan(block: &Arc<ColumnBlock>, mut check: impl FnMut(&RecordBatch, usize, usi
 #[test]
 fn a_second_scan_over_the_same_block_reads_identical_rows() {
 	// A scan that mutated the shared block would make the rescan read different rows.
-	let block = fixture(&[0, 5_000, ROWS]);
+	let data = fixture(&[0, 5_000, ROWS]);
 	let mut first = Vec::new();
-	scan(&block, |batch, _, _| first.push(int4_slice(&column_view(batch, "value").unwrap().unwrap()).to_vec()));
+	scan(&data, |batch, _, _| first.push(int4_slice(&column_view(batch, "value").unwrap().unwrap()).to_vec()));
 	let mut second = Vec::new();
-	scan(&block, |batch, _, _| second.push(int4_slice(&column_view(batch, "value").unwrap().unwrap()).to_vec()));
+	scan(&data, |batch, _, _| second.push(int4_slice(&column_view(batch, "value").unwrap().unwrap()).to_vec()));
 	assert_eq!(first, second, "a rescan must read exactly the rows of the first scan");
 }
 
 #[test]
 fn a_batch_keeps_its_rows_after_the_block_is_dropped() {
 	// A batch borrowing block memory would read freed rows once the block is dropped.
-	let block = fixture(&[0, ROWS]);
-	let mut reader = SnapshotReader::new(Arc::clone(&block), BATCH, new_session());
+	let data = fixture(&[0, ROWS]);
+	let mut reader = BlockReader::new(Arc::clone(&data), BATCH, new_session());
 	let batch = reader.next().unwrap().unwrap();
 	let second = reader.next().unwrap().unwrap();
 	drop(reader);
-	drop(block);
+	drop(data);
 	assert_batch_rows(&batch, 0, BATCH);
 	assert_batch_rows(&second, BATCH, 2 * BATCH);
 }

@@ -6,16 +6,16 @@ use std::{path::Path, sync::Arc};
 use reifydb_core::value::column::factory;
 use reifydb_runtime::io::fs::{Create, Open, Pwrite, memory::MemoryFs};
 use reifydb_store_column::{
+	block::BlockData,
 	compress::Compressor,
 	convert::to_arrow,
 	persist::{BlockHandle, serialize_block},
 	session::new_session,
-	snapshot::ColumnBlock,
 };
 use reifydb_value::{Result, value::value_type::ValueType};
 use vortex_session::VortexSession;
 
-fn load(bytes: &[u8], session: &VortexSession) -> Result<ColumnBlock> {
+fn load(bytes: &[u8], session: &VortexSession) -> Result<BlockData> {
 	let fs = MemoryFs::new();
 	let path = Path::new("/block.borg");
 	let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();
@@ -27,8 +27,8 @@ fn one_chunk_bytes() -> Vec<u8> {
 	let session = new_session();
 	let column =
 		Compressor::new(session.clone()).compress(ValueType::Int4, &factory::int4("a", [1, 5, 2, 9])).unwrap();
-	let block = ColumnBlock::new(Arc::new(vec![("a".to_string(), ValueType::Int4, false)]), vec![column]);
-	serialize_block(&block, &session).unwrap()
+	let data = BlockData::new(Arc::new(vec![("a".to_string(), ValueType::Int4, false)]), vec![column]);
+	serialize_block(&data, &session).unwrap()
 }
 
 fn rejection_code(bytes: &[u8]) -> String {
@@ -95,7 +95,7 @@ fn a_cut_file_fails_at_open_even_when_the_damaged_column_is_not_read() {
 		compressor.compress(ValueType::Int4, &factory::int4("a", [1, 5, 2, 9])).unwrap(),
 		compressor.compress(ValueType::Int4, &factory::int4("b", [3, 4, 6, 7])).unwrap(),
 	];
-	let bytes = serialize_block(&ColumnBlock::new(Arc::new(schema), columns), &session).unwrap();
+	let bytes = serialize_block(&BlockData::new(Arc::new(schema), columns), &session).unwrap();
 	let cut = &bytes[..bytes.len() - 1];
 	let fs = MemoryFs::new();
 	let path = Path::new("/block.borg");
@@ -113,8 +113,8 @@ fn a_cut_file_fails_at_open_even_when_the_damaged_column_is_not_read() {
 fn utf8_block_with_invalid_bytes(values: Vec<String>) -> Vec<u8> {
 	let session = new_session();
 	let column = Compressor::new(session.clone()).compress(ValueType::Utf8, &factory::utf8("s", values)).unwrap();
-	let block = ColumnBlock::new(Arc::new(vec![("s".to_string(), ValueType::Utf8, false)]), vec![column]);
-	let mut bytes = serialize_block(&block, &session).unwrap();
+	let data = BlockData::new(Arc::new(vec![("s".to_string(), ValueType::Utf8, false)]), vec![column]);
+	let mut bytes = serialize_block(&data, &session).unwrap();
 	let at = bytes
 		.windows(2)
 		.position(|pair| pair == "\u{e9}".as_bytes())
@@ -134,8 +134,8 @@ fn a_utf8_column_whose_stored_bytes_are_not_utf8_fails_to_read() {
 		let session = new_session();
 		let code = match load(&utf8_block_with_invalid_bytes(values), &session) {
 			Err(err) => err.0.code.clone(),
-			Ok(block) => {
-				let column = &block.columns[0];
+			Ok(data) => {
+				let column = &data.columns[0];
 				let read = column
 					.chunks
 					.iter()

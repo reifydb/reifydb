@@ -2,12 +2,12 @@
 // Copyright (c) 2026 ReifyDB
 
 use postcard::{from_bytes, to_allocvec, to_extend};
-use reifydb_core::interface::catalog::column_snapshot::ColumnStats;
+use reifydb_core::interface::catalog::column_block::ColumnStats;
 use reifydb_macro::catalog_shape;
 use reifydb_value::value::{Value, blob::Blob};
 
 catalog_shape! {
-	pub(crate) column_snapshot {
+	pub(crate) column_block {
 		id: u64,
 		namespace: u64,
 		kind: u8,
@@ -35,7 +35,7 @@ pub(crate) fn deserialize_partition_values(blob: &Blob) -> Vec<Value> {
 	if bytes.is_empty() {
 		return Vec::new();
 	}
-	from_bytes(bytes).expect("stored column snapshot partition values must decode")
+	from_bytes(bytes).expect("stored column block partition values must decode")
 }
 
 pub(crate) fn serialize_stats(stats: &[ColumnStats]) -> Blob {
@@ -48,13 +48,13 @@ pub(crate) fn deserialize_stats(blob: &Blob) -> Vec<ColumnStats> {
 	let Some((version, rest)) = blob.as_bytes().split_first() else {
 		return Vec::new();
 	};
-	assert_eq!(*version, STATS_ENCODING_V1, "unknown column snapshot stats encoding version {version}");
-	from_bytes(rest).expect("stored column snapshot stats must decode")
+	assert_eq!(*version, STATS_ENCODING_V1, "unknown column block stats encoding version {version}");
+	from_bytes(rest).expect("stored column block stats must decode")
 }
 
 #[cfg(test)]
 pub mod tests {
-	use reifydb_core::interface::catalog::column_snapshot::ColumnStats;
+	use reifydb_core::interface::catalog::column_block::ColumnStats;
 	use reifydb_value::value::{Value, blob::Blob};
 
 	use super::{deserialize_partition_values, deserialize_stats, serialize_partition_values, serialize_stats};
@@ -104,7 +104,7 @@ pub mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "unknown column snapshot stats encoding version")]
+	#[should_panic(expected = "unknown column block stats encoding version")]
 	fn test_stats_with_unknown_version_panics() {
 		// An unrecognised version must stop the read, never decode as version 1.
 		deserialize_stats(&Blob::from(vec![2u8, 0u8]));

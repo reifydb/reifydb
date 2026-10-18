@@ -17,12 +17,12 @@ use reifydb_core::value::{
 };
 use reifydb_runtime::io::fs::{Create, Open, Pwrite, memory::MemoryFs};
 use reifydb_store_column::{
+	block::BlockData,
 	compress::Compressor,
 	convert::to_arrow,
 	persist::{BlockHandle, serialize_block},
-	reader::SnapshotReader,
+	reader::BlockReader,
 	session::new_session,
-	snapshot::ColumnBlock,
 };
 use reifydb_value::{
 	Result,
@@ -54,7 +54,7 @@ use vortex_session::VortexSession;
 
 type Column = (FieldRef, ArrayRef);
 
-fn load(bytes: &[u8], session: &VortexSession) -> Result<ColumnBlock> {
+fn load(bytes: &[u8], session: &VortexSession) -> Result<BlockData> {
 	let fs = MemoryFs::new();
 	let path = Path::new("/block.borg");
 	let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();
@@ -84,13 +84,13 @@ fn round_trip_all(label: &str, columns: &[Column]) -> Vec<Column> {
 			.compress(ty, column)
 			.unwrap_or_else(|err| panic!("{label}: compress failed: {err}")));
 	}
-	let block = ColumnBlock::new(Arc::new(schema), chunks);
+	let data = BlockData::new(Arc::new(schema), chunks);
 	let bytes =
-		serialize_block(&block, &new_session()).unwrap_or_else(|err| panic!("{label}: persist failed: {err}"));
+		serialize_block(&data, &new_session()).unwrap_or_else(|err| panic!("{label}: persist failed: {err}"));
 	let session = new_session();
 	let restored = load(&bytes, &session).unwrap_or_else(|err| panic!("{label}: load failed: {err}"));
 	let restored = Arc::new(restored);
-	let mut reader = SnapshotReader::new(Arc::clone(&restored), rows.max(1), session.clone());
+	let mut reader = BlockReader::new(Arc::clone(&restored), rows.max(1), session.clone());
 	match reader.next() {
 		Some(batch) => {
 			let batch = batch.unwrap_or_else(|err| panic!("{label}: read failed: {err}"));

@@ -8,12 +8,12 @@ use arrow_schema::FieldRef;
 use reifydb_core::value::column::builder::ColumnBuilder;
 use reifydb_runtime::io::fs::{Create, Open, Pwrite, memory::MemoryFs};
 use reifydb_store_column::{
+	block::BlockData,
 	compress::Compressor,
 	persist::{BlockHandle, serialize_block},
 	predicate::{ColRef, Predicate, evaluate},
 	selection::Selection,
 	session::new_session,
-	snapshot::ColumnBlock,
 	stats::{block_stats, has_ordering},
 };
 use reifydb_value::value::{
@@ -39,7 +39,7 @@ type Column = (FieldRef, ArrayRef);
 
 const OPS: [&str; 6] = ["eq", "ne", "lt", "lt_eq", "gt", "gt_eq"];
 
-fn load(bytes: &[u8], session: &VortexSession) -> reifydb_value::Result<ColumnBlock> {
+fn load(bytes: &[u8], session: &VortexSession) -> reifydb_value::Result<BlockData> {
 	let fs = MemoryFs::new();
 	let path = Path::new("/block.borg");
 	let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();
@@ -164,11 +164,11 @@ fn fixtures() -> Vec<(ValueType, Vec<Value>)> {
 	]
 }
 
-fn reloaded(ty: &ValueType, column: &Column) -> Result<ColumnBlock, String> {
+fn reloaded(ty: &ValueType, column: &Column) -> Result<BlockData, String> {
 	let chunks =
 		Compressor::new(new_session()).compress(ty.clone(), column).map_err(|e| format!("compress: {e}"))?;
-	let block = ColumnBlock::new(Arc::new(vec![("c".to_string(), ty.clone(), true)]), vec![chunks]);
-	let bytes = serialize_block(&block, &new_session()).map_err(|e| format!("persist: {e}"))?;
+	let data = BlockData::new(Arc::new(vec![("c".to_string(), ty.clone(), true)]), vec![chunks]);
+	let bytes = serialize_block(&data, &new_session()).map_err(|e| format!("persist: {e}"))?;
 	load(&bytes, &new_session()).map_err(|e| format!("load: {e}"))
 }
 
@@ -219,15 +219,15 @@ fn check(ty: &ValueType, values: &[Value]) -> Vec<String> {
 	let view = ColumnView::try_from(&column).unwrap();
 	let rows: Vec<Option<Value>> =
 		(0..column.1.len()).map(|i| view.is_defined(i).then(|| view.get_value(i))).collect();
-	let block = match reloaded(ty, &column) {
-		Ok(block) => block,
+	let data = match reloaded(ty, &column) {
+		Ok(data) => data,
 		Err(err) => return vec![format!("{ty}: {err}")],
 	};
 	let session = new_session();
 	let mut failures = Vec::new();
 	for value in rows.iter().flatten() {
 		for op in OPS {
-			let got = match evaluate(&block, &predicate(op, value), &session) {
+			let got = match evaluate(&data, &predicate(op, value), &session) {
 				Ok(selection) => selected(selection, rows.len()),
 				Err(err) => {
 					failures.push(format!("{ty} {op} {value}: evaluate failed: {err}"));
@@ -245,7 +245,7 @@ fn check(ty: &ValueType, values: &[Value]) -> Vec<String> {
 			}
 		}
 	}
-	let stats = match block_stats(&block, &session) {
+	let stats = match block_stats(&data, &session) {
 		Ok(mut stats) => stats.remove(0),
 		Err(err) => return [failures, vec![format!("{ty}: block_stats failed: {err}")]].concat(),
 	};
@@ -316,12 +316,12 @@ fn a_column_of_only_the_minimum_datetime_compresses_bounds_and_filters() {
 	// A Vortex timestamp scalar at i64::MIN nanos panics, so a constant MIN column must never become one.
 	let values = vec![Value::DateTime(DateTime::MIN); 200];
 	let column = column_of(&ValueType::DateTime, &values);
-	let block = reloaded(&ValueType::DateTime, &column).unwrap();
+	let data = reloaded(&ValueType::DateTime, &column).unwrap();
 	let session = new_session();
-	let stats = block_stats(&block, &session).unwrap().remove(0);
+	let stats = block_stats(&data, &session).unwrap().remove(0);
 	assert_eq!(stats.min, Some(Value::DateTime(DateTime::MIN)));
 	assert_eq!(stats.max, Some(Value::DateTime(DateTime::MIN)));
 	assert_eq!(stats.none_count, 1);
-	let rows = selected(evaluate(&block, &predicate("eq", &values[0]), &session).unwrap(), column.1.len());
+	let rows = selected(evaluate(&data, &predicate("eq", &values[0]), &session).unwrap(), column.1.len());
 	assert_eq!(rows, [vec![true; 200], vec![false]].concat());
 }

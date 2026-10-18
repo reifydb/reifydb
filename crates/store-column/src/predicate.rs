@@ -11,10 +11,10 @@ use vortex_mask::Mask;
 use vortex_session::VortexSession;
 
 use crate::{
+	block::{BlockData, ColumnChunks},
 	error::{ColumnError, vortex},
 	scalar::to_scalar,
 	selection::Selection,
-	snapshot::{ColumnBlock, ColumnChunks},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -48,60 +48,60 @@ pub enum Predicate {
 	Not(Box<Predicate>),
 }
 
-pub fn evaluate(block: &ColumnBlock, predicate: &Predicate, session: &VortexSession) -> Result<Selection> {
-	let len = block.len();
-	let mask = evaluate_mask(block, predicate, len, session)?;
+pub fn evaluate(data: &BlockData, predicate: &Predicate, session: &VortexSession) -> Result<Selection> {
+	let len = data.len();
+	let mask = evaluate_mask(data, predicate, len, session)?;
 	Ok(mask_to_selection(mask))
 }
 
 fn evaluate_mask(
-	block: &ColumnBlock,
+	data: &BlockData,
 	predicate: &Predicate,
 	len: usize,
 	session: &VortexSession,
 ) -> Result<BooleanBuffer> {
 	match predicate {
-		Predicate::Eq(col, v) => compare_mask(block, col, v, Operator::Eq, session),
-		Predicate::Ne(col, v) => compare_mask(block, col, v, Operator::NotEq, session),
-		Predicate::Lt(col, v) => compare_mask(block, col, v, Operator::Lt, session),
-		Predicate::LtEq(col, v) => compare_mask(block, col, v, Operator::Lte, session),
-		Predicate::Gt(col, v) => compare_mask(block, col, v, Operator::Gt, session),
-		Predicate::GtEq(col, v) => compare_mask(block, col, v, Operator::Gte, session),
+		Predicate::Eq(col, v) => compare_mask(data, col, v, Operator::Eq, session),
+		Predicate::Ne(col, v) => compare_mask(data, col, v, Operator::NotEq, session),
+		Predicate::Lt(col, v) => compare_mask(data, col, v, Operator::Lt, session),
+		Predicate::LtEq(col, v) => compare_mask(data, col, v, Operator::Lte, session),
+		Predicate::Gt(col, v) => compare_mask(data, col, v, Operator::Gt, session),
+		Predicate::GtEq(col, v) => compare_mask(data, col, v, Operator::Gte, session),
 		Predicate::In(col, values) => {
 			let mut acc = BooleanBuffer::new_unset(len);
 			for v in values {
-				acc = &acc | &compare_mask(block, col, v, Operator::Eq, session)?;
+				acc = &acc | &compare_mask(data, col, v, Operator::Eq, session)?;
 			}
 			Ok(acc)
 		}
-		Predicate::IsNone(col) => is_none_mask(column(block, col)?, session),
-		Predicate::IsNotNone(col) => Ok(!&is_none_mask(column(block, col)?, session)?),
+		Predicate::IsNone(col) => is_none_mask(column(data, col)?, session),
+		Predicate::IsNotNone(col) => Ok(!&is_none_mask(column(data, col)?, session)?),
 		Predicate::And(clauses) => {
 			let mut acc = BooleanBuffer::new_set(len);
 			for c in clauses {
-				acc = &acc & &evaluate_mask(block, c, len, session)?;
+				acc = &acc & &evaluate_mask(data, c, len, session)?;
 			}
 			Ok(acc)
 		}
 		Predicate::Or(clauses) => {
 			let mut acc = BooleanBuffer::new_unset(len);
 			for c in clauses {
-				acc = &acc | &evaluate_mask(block, c, len, session)?;
+				acc = &acc | &evaluate_mask(data, c, len, session)?;
 			}
 			Ok(acc)
 		}
-		Predicate::Not(inner) => Ok(!&evaluate_mask(block, inner, len, session)?),
+		Predicate::Not(inner) => Ok(!&evaluate_mask(data, inner, len, session)?),
 	}
 }
 
 fn compare_mask(
-	block: &ColumnBlock,
+	data: &BlockData,
 	col: &ColRef,
 	rhs: &Value,
 	op: Operator,
 	session: &VortexSession,
 ) -> Result<BooleanBuffer> {
-	let ch = column(block, col)?;
+	let ch = column(data, col)?;
 	if ch.chunks.is_empty() {
 		return Ok(BooleanBuffer::new_unset(0));
 	}
@@ -132,8 +132,8 @@ fn to_bits(mask: &Mask) -> BooleanBuffer {
 	BooleanBuffer::from(mask.to_bit_buffer())
 }
 
-fn column<'a>(block: &'a ColumnBlock, col: &ColRef) -> Result<&'a ColumnChunks> {
-	block.column_by_name(&col.0).map(|(_, ch)| ch).ok_or_else(|| {
+fn column<'a>(data: &'a BlockData, col: &ColRef) -> Result<&'a ColumnChunks> {
+	data.column_by_name(&col.0).map(|(_, ch)| ch).ok_or_else(|| {
 		ColumnError::ColumnNotInSchema {
 			operation: "predicate::evaluate",
 			name: col.0.clone(),
@@ -172,11 +172,11 @@ mod tests {
 		ColumnChunks::new(ty, nullable, field_type, arrays)
 	}
 
-	fn run(block: &ColumnBlock, predicate: &Predicate) -> Selection {
-		evaluate(block, predicate, &new_session()).unwrap()
+	fn run(data: &BlockData, predicate: &Predicate) -> Selection {
+		evaluate(data, predicate, &new_session()).unwrap()
 	}
 
-	fn mkblock(rows: [(i32, bool); 5]) -> ColumnBlock {
+	fn mkblock(rows: [(i32, bool); 5]) -> BlockData {
 		let ids = factory::int4("id", rows.map(|(v, _)| v).to_vec());
 		let flags = factory::bool("flag", rows.map(|(_, v)| v).to_vec());
 		let id_col = chunks(ValueType::Int4, false, &[ids]);
@@ -185,7 +185,7 @@ mod tests {
 			("id".to_string(), ValueType::Int4, false),
 			("flag".to_string(), ValueType::Boolean, false),
 		]);
-		ColumnBlock::new(schema, vec![id_col, flag_col])
+		BlockData::new(schema, vec![id_col, flag_col])
 	}
 
 	#[test]
@@ -251,7 +251,7 @@ mod tests {
 		let nullable_ids = nullable_ids.finish("id");
 		let id_col = chunks(ValueType::Int4, true, &[nullable_ids]);
 		let schema = Arc::new(vec![("id".to_string(), ValueType::Int4, true)]);
-		let t = ColumnBlock::new(schema, vec![id_col]);
+		let t = BlockData::new(schema, vec![id_col]);
 
 		let Selection::Mask(m) = run(&t, &Predicate::IsNone(ColRef::from("id"))) else {
 			panic!("expected Mask selection");
@@ -266,10 +266,10 @@ mod tests {
 		chunks(ValueType::Int4, false, &parts)
 	}
 
-	fn mkblock_chunked(id_parts: &[&[i32]]) -> ColumnBlock {
+	fn mkblock_chunked(id_parts: &[&[i32]]) -> BlockData {
 		let id_col = int4_chunked(id_parts);
 		let schema = Arc::new(vec![("id".to_string(), ValueType::Int4, false)]);
-		ColumnBlock::new(schema, vec![id_col])
+		BlockData::new(schema, vec![id_col])
 	}
 
 	#[test]
@@ -297,7 +297,7 @@ mod tests {
 			("id".to_string(), ValueType::Int4, false),
 			("other".to_string(), ValueType::Int4, false),
 		]);
-		let t = ColumnBlock::new(schema, vec![id_col, other_col]);
+		let t = BlockData::new(schema, vec![id_col, other_col]);
 
 		let p = Predicate::And(vec![
 			Predicate::Gt(ColRef::from("id"), Value::Int4(2)),
@@ -327,7 +327,7 @@ mod tests {
 		let b = b.finish("id");
 		let id_col = chunks(ValueType::Int4, true, &[a, b]);
 		let schema = Arc::new(vec![("id".to_string(), ValueType::Int4, true)]);
-		let t = ColumnBlock::new(schema, vec![id_col]);
+		let t = BlockData::new(schema, vec![id_col]);
 
 		let Selection::Mask(m) = run(&t, &Predicate::IsNone(ColRef::from("id"))) else {
 			panic!("expected Mask selection");

@@ -21,10 +21,10 @@ use reifydb_core::value::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_column::{
+	block::{BlockData, ColumnChunks},
 	compress::Compressor,
-	reader::SnapshotReader,
+	reader::BlockReader,
 	session::new_session,
-	snapshot::{ColumnBlock, ColumnChunks},
 };
 use reifydb_value::value::{
 	Value, datetime::DateTime, decimal::Decimal, duration::Duration, system_columns::SystemColumn, uuid::Uuid7,
@@ -183,7 +183,7 @@ fn columns_fixture(start: usize, end: usize) -> RecordBatch {
 	.expect("bench columns share one length")
 }
 
-fn snapshot_block(rows: usize, compressor: &Compressor) -> Arc<ColumnBlock> {
+fn block_data(rows: usize, compressor: &Compressor) -> Arc<BlockData> {
 	let schema = vec![
 		(SystemColumn::RowNumbers.name().to_string(), ValueType::Uint8, false),
 		(SystemColumn::CreatedAt.name().to_string(), ValueType::DateTime, false),
@@ -215,7 +215,7 @@ fn snapshot_block(rows: usize, compressor: &Compressor) -> Arc<ColumnBlock> {
 			}
 		}
 	}
-	Arc::new(ColumnBlock::new(Arc::new(schema), per_column.into_iter().map(|c| c.expect("rows > 0")).collect()))
+	Arc::new(BlockData::new(Arc::new(schema), per_column.into_iter().map(|c| c.expect("rows > 0")).collect()))
 }
 
 fn bench_push(report: &mut BenchReport, rows: usize, repeats: usize) {
@@ -286,20 +286,20 @@ fn bench_columns(report: &mut BenchReport, rows: usize, repeats: usize) {
 	record(report, "concat/16", rows, sample);
 
 	let session = new_session();
-	let block = snapshot_block(rows, &Compressor::new(session.clone()));
+	let data = block_data(rows, &Compressor::new(session.clone()));
 	let sample = measure(
 		repeats,
 		|| (),
 		|()| {
 			let mut seen = 0usize;
-			for batch in SnapshotReader::new(Arc::clone(&block), SCAN_BATCH, session.clone()) {
-				seen += batch.expect("snapshot batch materializes").num_rows();
+			for batch in BlockReader::new(Arc::clone(&data), SCAN_BATCH, session.clone()) {
+				seen += batch.expect("block batch materializes").num_rows();
 			}
-			assert_eq!(seen, rows, "snapshot scan must return every row");
+			assert_eq!(seen, rows, "block scan must return every row");
 			seen
 		},
 	);
-	record(report, "snapshot_scan/full", rows, sample);
+	record(report, "block_scan/full", rows, sample);
 }
 
 fn insert_statement(start: usize, end: usize) -> String {

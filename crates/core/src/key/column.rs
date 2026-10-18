@@ -8,7 +8,7 @@ use reifydb_value::value::partition::Partition;
 use super::KeyTag;
 use crate::{
 	interface::catalog::{
-		id::{ColumnId, ColumnSnapshotId, SeriesId, TableId},
+		id::{ColumnBlockId, ColumnId, SeriesId, TableId},
 		object::ObjectId,
 	},
 	key::{
@@ -164,20 +164,20 @@ pub mod column_sequence_key_tests {
 }
 
 #[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
-#[key(tag = ColumnSnapshot)]
-pub struct ColumnSnapshotKey {
-	pub snapshot: ColumnSnapshotId,
+#[key(tag = ColumnBlock)]
+pub struct ColumnBlockKey {
+	pub block: ColumnBlockId,
 }
 
-impl ColumnSnapshotKey {
-	pub fn new(snapshot: ColumnSnapshotId) -> Self {
+impl ColumnBlockKey {
+	pub fn new(block: ColumnBlockId) -> Self {
 		Self {
-			snapshot,
+			block,
 		}
 	}
 
-	pub fn encoded(snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		Self::new(snapshot.into()).encode()
+	pub fn encoded(block: impl Into<ColumnBlockId>) -> EncodedKey {
+		Self::new(block.into()).encode()
 	}
 
 	pub fn full_scan() -> TaggedKeyBoundRange {
@@ -186,28 +186,28 @@ impl ColumnSnapshotKey {
 }
 
 #[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
-#[key(tag = SeriesColumnSnapshot)]
-pub struct SeriesColumnSnapshotKey {
+#[key(tag = SeriesColumnBlock)]
+pub struct SeriesColumnBlockKey {
 	pub series: SeriesId,
 	pub partition: Partition,
-	pub snapshot: ColumnSnapshotId,
+	pub block: ColumnBlockId,
 }
 
-impl SeriesColumnSnapshotKey {
-	pub fn new(series: SeriesId, partition: Partition, snapshot: ColumnSnapshotId) -> Self {
+impl SeriesColumnBlockKey {
+	pub fn new(series: SeriesId, partition: Partition, block: ColumnBlockId) -> Self {
 		Self {
 			series,
 			partition,
-			snapshot,
+			block,
 		}
 	}
 
 	pub fn encoded(
 		series: impl Into<SeriesId>,
 		partition: Partition,
-		snapshot: impl Into<ColumnSnapshotId>,
+		block: impl Into<ColumnBlockId>,
 	) -> EncodedKey {
-		Self::new(series.into(), partition, snapshot.into()).encode()
+		Self::new(series.into(), partition, block.into()).encode()
 	}
 
 	pub fn full_scan(series: SeriesId) -> TaggedKeyBoundRange {
@@ -223,22 +223,22 @@ impl SeriesColumnSnapshotKey {
 }
 
 #[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
-#[key(tag = TableColumnSnapshot)]
-pub struct TableColumnSnapshotKey {
+#[key(tag = TableColumnBlock)]
+pub struct TableColumnBlockKey {
 	pub table: TableId,
-	pub snapshot: ColumnSnapshotId,
+	pub block: ColumnBlockId,
 }
 
-impl TableColumnSnapshotKey {
-	pub fn new(table: TableId, snapshot: ColumnSnapshotId) -> Self {
+impl TableColumnBlockKey {
+	pub fn new(table: TableId, block: ColumnBlockId) -> Self {
 		Self {
 			table,
-			snapshot,
+			block,
 		}
 	}
 
-	pub fn encoded(table: impl Into<TableId>, snapshot: impl Into<ColumnSnapshotId>) -> EncodedKey {
-		Self::new(table.into(), snapshot.into()).encode()
+	pub fn encoded(table: impl Into<TableId>, block: impl Into<ColumnBlockId>) -> EncodedKey {
+		Self::new(table.into(), block.into()).encode()
 	}
 
 	pub fn full_scan(table: TableId) -> TaggedKeyBoundRange {
@@ -247,7 +247,7 @@ impl TableColumnSnapshotKey {
 }
 
 #[cfg(test)]
-pub mod column_snapshot_key_tests {
+pub mod column_block_key_tests {
 	use std::ops::Bound;
 
 	use reifydb_codec::key::encoded::EncodedKey;
@@ -269,59 +269,59 @@ pub mod column_snapshot_key_tests {
 	}
 
 	#[test]
-	fn a_snapshot_key_reports_its_own_kind_from_its_first_byte() {
-		// the leading version byte made KeyTag::of read every snapshot key as a namespace key, so the
+	fn a_block_key_reports_its_own_kind_from_its_first_byte() {
+		// the leading version byte made KeyTag::of read every block key as a namespace key, so the
 		// metrics parser and the entry classifier both routed them to an owner they never belonged to
-		assert_eq!(KeyTag::of(ColumnSnapshotKey::encoded(ColumnSnapshotId(1))), Some(KeyTag::ColumnSnapshot));
+		assert_eq!(KeyTag::of(ColumnBlockKey::encoded(ColumnBlockId(1))), Some(KeyTag::ColumnBlock));
 		assert_eq!(
-			KeyTag::of(SeriesColumnSnapshotKey::encoded(SeriesId(1), Partition(3), ColumnSnapshotId(2))),
-			Some(KeyTag::SeriesColumnSnapshot)
+			KeyTag::of(SeriesColumnBlockKey::encoded(SeriesId(1), Partition(3), ColumnBlockId(2))),
+			Some(KeyTag::SeriesColumnBlock)
 		);
 		assert_eq!(
-			KeyTag::of(TableColumnSnapshotKey::encoded(TableId(1), ColumnSnapshotId(2))),
-			Some(KeyTag::TableColumnSnapshot)
+			KeyTag::of(TableColumnBlockKey::encoded(TableId(1), ColumnBlockId(2))),
+			Some(KeyTag::TableColumnBlock)
 		);
 	}
 
 	#[test]
-	fn test_column_snapshot_key_encode_decode() {
-		let key = ColumnSnapshotKey {
-			snapshot: ColumnSnapshotId(0x1234),
+	fn test_column_block_key_encode_decode() {
+		let key = ColumnBlockKey {
+			block: ColumnBlockId(0x1234),
 		};
 		let encoded = key.encode();
-		let decoded = ColumnSnapshotKey::decode(&encoded).unwrap();
-		assert_eq!(decoded.snapshot, key.snapshot);
+		let decoded = ColumnBlockKey::decode(&encoded).unwrap();
+		assert_eq!(decoded.block, key.block);
 	}
 
 	#[test]
-	fn test_column_snapshot_key_full_scan() {
-		let range = ColumnSnapshotKey::full_scan();
+	fn test_column_block_key_full_scan() {
+		let range = ColumnBlockKey::full_scan();
 		assert!(matches!(range.start, Bound::Included(_) | Bound::Excluded(_)));
 		assert!(matches!(range.end, Bound::Included(_) | Bound::Excluded(_)));
 	}
 
 	#[test]
-	fn test_series_column_snapshot_key_encode_decode() {
-		let key = SeriesColumnSnapshotKey {
+	fn test_series_column_block_key_encode_decode() {
+		let key = SeriesColumnBlockKey {
 			series: SeriesId(42),
 			partition: Partition(0x0123_4567_89AB_CDEF_FEDC_BA98_7654_3210),
-			snapshot: ColumnSnapshotId(99),
+			block: ColumnBlockId(99),
 		};
 		let encoded = key.encode();
-		let decoded = SeriesColumnSnapshotKey::decode(&encoded).unwrap();
+		let decoded = SeriesColumnBlockKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.series, key.series);
 		assert_eq!(decoded.partition, key.partition);
-		assert_eq!(decoded.snapshot, key.snapshot);
+		assert_eq!(decoded.block, key.block);
 	}
 
 	#[test]
-	fn test_series_column_snapshot_partition_scan_excludes_other_partitions() {
+	fn test_series_column_block_partition_scan_excludes_other_partitions() {
 		// the scoped listing reads this range directly, so a prefix that still covers a
 		// neighbouring partition would hand the scan another partition's blocks
-		let range = SeriesColumnSnapshotKey::partition_scan(SeriesId(42), Partition(7));
-		let inside = SeriesColumnSnapshotKey::encoded(SeriesId(42), Partition(7), ColumnSnapshotId(1));
-		let other_partition = SeriesColumnSnapshotKey::encoded(SeriesId(42), Partition(8), ColumnSnapshotId(1));
-		let other_series = SeriesColumnSnapshotKey::encoded(SeriesId(43), Partition(7), ColumnSnapshotId(1));
+		let range = SeriesColumnBlockKey::partition_scan(SeriesId(42), Partition(7));
+		let inside = SeriesColumnBlockKey::encoded(SeriesId(42), Partition(7), ColumnBlockId(1));
+		let other_partition = SeriesColumnBlockKey::encoded(SeriesId(42), Partition(8), ColumnBlockId(1));
+		let other_series = SeriesColumnBlockKey::encoded(SeriesId(43), Partition(7), ColumnBlockId(1));
 
 		assert!(contains(&range, &inside), "the scanned partition must be inside its own range");
 		assert!(!contains(&range, &other_partition), "a different partition must fall outside");
@@ -329,27 +329,27 @@ pub mod column_snapshot_key_tests {
 	}
 
 	#[test]
-	fn test_series_column_snapshot_full_scan_spans_every_partition() {
+	fn test_series_column_block_full_scan_spans_every_partition() {
 		// a query with no partition filter still needs every block of the series
-		let range = SeriesColumnSnapshotKey::full_scan(SeriesId(42));
+		let range = SeriesColumnBlockKey::full_scan(SeriesId(42));
 		for partition in [Partition(0), Partition(7), Partition(u128::MAX)] {
-			let key = SeriesColumnSnapshotKey::encoded(SeriesId(42), partition, ColumnSnapshotId(1));
+			let key = SeriesColumnBlockKey::encoded(SeriesId(42), partition, ColumnBlockId(1));
 			assert!(contains(&range, &key), "partition {:?} must be inside the full scan", partition);
 		}
-		let other_series = SeriesColumnSnapshotKey::encoded(SeriesId(43), Partition(7), ColumnSnapshotId(1));
+		let other_series = SeriesColumnBlockKey::encoded(SeriesId(43), Partition(7), ColumnBlockId(1));
 		assert!(!contains(&range, &other_series), "a different series must fall outside");
 	}
 
 	#[test]
-	fn test_table_column_snapshot_key_encode_decode() {
-		let key = TableColumnSnapshotKey {
+	fn test_table_column_block_key_encode_decode() {
+		let key = TableColumnBlockKey {
 			table: TableId(42),
-			snapshot: ColumnSnapshotId(99),
+			block: ColumnBlockId(99),
 		};
 		let encoded = key.encode();
-		let decoded = TableColumnSnapshotKey::decode(&encoded).unwrap();
+		let decoded = TableColumnBlockKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.table, key.table);
-		assert_eq!(decoded.snapshot, key.snapshot);
+		assert_eq!(decoded.block, key.block);
 	}
 }
 

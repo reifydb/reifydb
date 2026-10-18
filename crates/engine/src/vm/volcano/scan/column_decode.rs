@@ -7,10 +7,10 @@ use reifydb_catalog::store::series::shape::deserialize_encoding_config;
 use reifydb_core::value::batch::{batch, concat_columns};
 use reifydb_extension::block_encoding::{error::BlockEncodingError, registry::BlockEncodings};
 use reifydb_store_column::{
+	block::{BlockData, ColumnChunks, Schema},
 	convert::{to_arrow, to_vortex},
 	predicate::{Predicate, evaluate},
 	selection::Selection,
-	snapshot::{ColumnBlock, ColumnChunks, Schema},
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -22,7 +22,7 @@ use crate::Result;
 
 pub(crate) enum Decoded {
 	Skip(Schema),
-	Block(ColumnBlock),
+	Block(BlockData),
 }
 
 pub(crate) struct BlockDecoder {
@@ -38,16 +38,16 @@ impl BlockDecoder {
 		}
 	}
 
-	pub(crate) fn decode(&self, block: ColumnBlock, predicate: Option<&Predicate>) -> Result<Decoded> {
-		let Some(header) = block.block_encoding.clone() else {
-			return Ok(Decoded::Block(block));
+	pub(crate) fn decode(&self, data: BlockData, predicate: Option<&Predicate>) -> Result<Decoded> {
+		let Some(header) = data.block_encoding.clone() else {
+			return Ok(Decoded::Block(data));
 		};
 		if let Some(predicate) = predicate
-			&& matches!(evaluate(&block, predicate, &self.session)?, Selection::None_)
+			&& matches!(evaluate(&data, predicate, &self.session)?, Selection::None_)
 		{
 			let mut schema: Vec<_> =
 				header.user.iter().map(|c| (c.name.clone(), c.ty.clone(), c.nullable)).collect();
-			schema.extend(block
+			schema.extend(data
 				.schema
 				.iter()
 				.filter(|(name, _, _)| SystemColumn::from_name(name).is_some())
@@ -66,10 +66,10 @@ impl BlockDecoder {
 			}
 			.into());
 		}
-		let rows = block.len();
+		let rows = data.len();
 		let mut stored = Vec::new();
 		let mut system = Vec::new();
-		for ((name, ty, nullable), chunks) in block.schema.iter().zip(&block.columns) {
+		for ((name, ty, nullable), chunks) in data.schema.iter().zip(&data.columns) {
 			if SystemColumn::from_name(name).is_some() {
 				system.push(((name.clone(), ty.clone(), *nullable), chunks.clone()));
 				continue;
@@ -121,7 +121,7 @@ impl BlockDecoder {
 			schema.push(entry);
 			columns.push(chunks);
 		}
-		Ok(Decoded::Block(ColumnBlock::new(Arc::new(schema), columns)))
+		Ok(Decoded::Block(BlockData::new(Arc::new(schema), columns)))
 	}
 }
 
@@ -138,11 +138,11 @@ pub(crate) mod tests {
 	use reifydb_core::value::{batch::batch, column::factory};
 	use reifydb_extension::block_encoding::{BlockEncoding, BoundBlockEncoding, registry::BlockEncodings};
 	use reifydb_store_column::{
+		block::{BlockData, BlockEncodingHeader, BlockUserColumn, ColumnChunks},
 		convert::to_vortex,
 		predicate::Predicate,
-		reader::SnapshotReader,
+		reader::BlockReader,
 		session::new_session,
-		snapshot::{BlockEncodingHeader, BlockUserColumn, ColumnBlock, ColumnChunks},
 	};
 	use reifydb_test_harness::block_encoding::{DELTA, DeltaEncoding};
 	use reifydb_value::{
@@ -237,7 +237,7 @@ pub(crate) mod tests {
 		)
 	}
 
-	pub(crate) fn encoded_block(keys: Vec<i64>, values: Vec<i64>, version: u32) -> ColumnBlock {
+	pub(crate) fn encoded_block(keys: Vec<i64>, values: Vec<i64>, version: u32) -> BlockData {
 		let rows = keys.len();
 		let user = vec![factory::int8("ts", keys), factory::int8("value", values)];
 		let user_columns = user
@@ -269,7 +269,7 @@ pub(crate) mod tests {
 			let ty = SystemColumn::from_name(column.0.name()).unwrap().ty();
 			schema.push((column.0.name().clone(), ty, false));
 		}
-		ColumnBlock::new(Arc::new(schema), columns).with_block_encoding(Some(BlockEncodingHeader {
+		BlockData::new(Arc::new(schema), columns).with_block_encoding(Some(BlockEncodingHeader {
 			name: DELTA.to_string(),
 			version,
 			config: serialize_encoding_config(&config()),
@@ -284,15 +284,15 @@ pub(crate) mod tests {
 		)
 	}
 
-	fn decoded(result: Result<Decoded>) -> ColumnBlock {
+	fn decoded(result: Result<Decoded>) -> BlockData {
 		match result.unwrap() {
-			Decoded::Block(block) => block,
+			Decoded::Block(data) => data,
 			Decoded::Skip(_) => panic!("expected a decoded block, got a skip"),
 		}
 	}
 
-	fn read_all(block: ColumnBlock, predicate: Option<Predicate>) -> Vec<RecordBatch> {
-		let reader = SnapshotReader::new(Arc::new(block), 1024, new_session());
+	fn read_all(data: BlockData, predicate: Option<Predicate>) -> Vec<RecordBatch> {
+		let reader = BlockReader::new(Arc::new(data), 1024, new_session());
 		let reader = match predicate {
 			Some(predicate) => reader.with_predicate(predicate),
 			None => reader,
@@ -334,8 +334,8 @@ pub(crate) mod tests {
 				.configure(),
 			new_session(),
 		);
-		let block = encoded_block(vec![1, 2, 3, 4], vec![10, 20, 30, 40], 1);
-		let outcome = decoder.decode(block, Some(&Predicate::Gt("ts".into(), Value::Int8(1000)))).unwrap();
+		let data = encoded_block(vec![1, 2, 3, 4], vec![10, 20, 30, 40], 1);
+		let outcome = decoder.decode(data, Some(&Predicate::Gt("ts".into(), Value::Int8(1000)))).unwrap();
 		assert!(matches!(outcome, Decoded::Skip(_)), "a block with no matching row must be skipped");
 		assert_eq!(decodes.load(Ordering::SeqCst), 0, "a skipped block must never reach decode");
 	}
@@ -343,12 +343,12 @@ pub(crate) mod tests {
 	#[test]
 	fn mask_decodes_the_whole_block() {
 		// Delta values depend on every earlier row; decoding only the masked rows returns wrong values.
-		let block = encoded_block(vec![1, 2, 3, 4], vec![10, 25, 31, 47], 1);
+		let data = encoded_block(vec![1, 2, 3, 4], vec![10, 25, 31, 47], 1);
 		let predicate = Predicate::Gt("ts".into(), Value::Int8(2));
-		let block = decoded(delta_decoder().decode(block, Some(&predicate)));
-		assert_eq!(block.len(), 4, "the decoder must return every row of the block, not a cut");
-		assert_eq!(int8_values(&read_all(block.clone(), None), "value"), vec![10, 25, 31, 47]);
-		let kept = read_all(block, Some(predicate));
+		let data = decoded(delta_decoder().decode(data, Some(&predicate)));
+		assert_eq!(data.len(), 4, "the decoder must return every row of the block, not a cut");
+		assert_eq!(int8_values(&read_all(data.clone(), None), "value"), vec![10, 25, 31, 47]);
+		let kept = read_all(data, Some(predicate));
 		assert_eq!(int8_values(&kept, "ts"), vec![3, 4]);
 		assert_eq!(int8_values(&kept, "value"), vec![31, 47]);
 	}
@@ -395,8 +395,8 @@ pub(crate) mod tests {
 			Decoded::Skip(schema) => schema,
 			Decoded::Block(_) => panic!("expected a skip"),
 		};
-		let block = decoded(delta_decoder().decode(encoded_block(vec![1, 2], vec![5, 6], 1), None));
-		assert_eq!(*skipped, *block.schema);
+		let data = decoded(delta_decoder().decode(encoded_block(vec![1, 2], vec![5, 6], 1), None));
+		assert_eq!(*skipped, *data.schema);
 		let names: Vec<_> = skipped.iter().map(|(name, _, _)| name.as_str()).collect();
 		assert_eq!(
 			names,
@@ -414,8 +414,8 @@ pub(crate) mod tests {
 	#[test]
 	fn system_columns_rejoin_in_order() {
 		// System columns must come back after the user columns and unchanged, or row metadata shifts.
-		let block = decoded(delta_decoder().decode(encoded_block(vec![1, 2, 3], vec![5, 6, 9], 1), None));
-		let schema: Vec<_> = block.schema.iter().map(|(name, ty, _)| (name.as_str(), ty.clone())).collect();
+		let data = decoded(delta_decoder().decode(encoded_block(vec![1, 2, 3], vec![5, 6, 9], 1), None));
+		let schema: Vec<_> = data.schema.iter().map(|(name, ty, _)| (name.as_str(), ty.clone())).collect();
 		assert_eq!(
 			schema,
 			vec![
@@ -427,8 +427,8 @@ pub(crate) mod tests {
 				(SystemColumn::CommitVersion.name(), ValueType::Uint8),
 			]
 		);
-		assert!(block.block_encoding.is_none(), "a decoded block must not carry the header into the reader");
-		let batches = read_all(block, None);
+		assert!(data.block_encoding.is_none(), "a decoded block must not carry the header into the reader");
+		let batches = read_all(data, None);
 		let commit: Vec<u64> = batches
 			.iter()
 			.flat_map(|batch| {

@@ -20,8 +20,8 @@ use crate::{
 		},
 		cdc::CdcConsumerKey,
 		column::{
-			ColumnKey, ColumnSequenceKey, ColumnSnapshotKey, ColumnsKey, SeriesColumnSnapshotKey,
-			TableColumnSnapshotKey,
+			ColumnBlockKey, ColumnKey, ColumnSequenceKey, ColumnsKey, SeriesColumnBlockKey,
+			TableColumnBlockKey,
 		},
 		config::ConfigStorageKey,
 		flow::{FlowEdgeByFlowKey, FlowEdgeKey, FlowKey, FlowVersionKey},
@@ -136,9 +136,9 @@ pub enum TaggedKey {
 	Binding(BindingKey),
 	NamespaceBinding(NamespaceBindingKey),
 	OperatorRetention(OperatorRetentionKey),
-	ColumnSnapshot(ColumnSnapshotKey),
-	SeriesColumnSnapshot(SeriesColumnSnapshotKey),
-	TableColumnSnapshot(TableColumnSnapshotKey),
+	ColumnBlock(ColumnBlockKey),
+	SeriesColumnBlock(SeriesColumnBlockKey),
+	TableColumnBlock(TableColumnBlockKey),
 	VersionEpoch(VersionEpochKey),
 	IdentityAttribute(IdentityAttributeKey),
 	IdentityAttributeValue(IdentityAttributeValueKey),
@@ -228,9 +228,9 @@ impl TaggedKey {
 			Self::Binding(_) => KeyTag::Binding,
 			Self::NamespaceBinding(_) => KeyTag::NamespaceBinding,
 			Self::OperatorRetention(_) => KeyTag::OperatorRetention,
-			Self::ColumnSnapshot(_) => KeyTag::ColumnSnapshot,
-			Self::SeriesColumnSnapshot(_) => KeyTag::SeriesColumnSnapshot,
-			Self::TableColumnSnapshot(_) => KeyTag::TableColumnSnapshot,
+			Self::ColumnBlock(_) => KeyTag::ColumnBlock,
+			Self::SeriesColumnBlock(_) => KeyTag::SeriesColumnBlock,
+			Self::TableColumnBlock(_) => KeyTag::TableColumnBlock,
 			Self::VersionEpoch(_) => KeyTag::VersionEpoch,
 			Self::IdentityAttribute(_) => KeyTag::IdentityAttribute,
 			Self::IdentityAttributeValue(_) => KeyTag::IdentityAttributeValue,
@@ -321,9 +321,9 @@ impl TaggedKey {
 			Self::Binding(key) => key.encode(),
 			Self::NamespaceBinding(key) => key.encode(),
 			Self::OperatorRetention(key) => key.encode(),
-			Self::ColumnSnapshot(key) => key.encode(),
-			Self::SeriesColumnSnapshot(key) => key.encode(),
-			Self::TableColumnSnapshot(key) => key.encode(),
+			Self::ColumnBlock(key) => key.encode(),
+			Self::SeriesColumnBlock(key) => key.encode(),
+			Self::TableColumnBlock(key) => key.encode(),
 			Self::VersionEpoch(key) => key.encode(),
 			Self::IdentityAttribute(key) => key.encode(),
 			Self::IdentityAttributeValue(key) => key.encode(),
@@ -421,13 +421,9 @@ impl TaggedKey {
 			KeyTag::Binding => BindingKey::decode(key).map(Self::Binding),
 			KeyTag::NamespaceBinding => NamespaceBindingKey::decode(key).map(Self::NamespaceBinding),
 			KeyTag::OperatorRetention => OperatorRetentionKey::decode(key).map(Self::OperatorRetention),
-			KeyTag::ColumnSnapshot => ColumnSnapshotKey::decode(key).map(Self::ColumnSnapshot),
-			KeyTag::SeriesColumnSnapshot => {
-				SeriesColumnSnapshotKey::decode(key).map(Self::SeriesColumnSnapshot)
-			}
-			KeyTag::TableColumnSnapshot => {
-				TableColumnSnapshotKey::decode(key).map(Self::TableColumnSnapshot)
-			}
+			KeyTag::ColumnBlock => ColumnBlockKey::decode(key).map(Self::ColumnBlock),
+			KeyTag::SeriesColumnBlock => SeriesColumnBlockKey::decode(key).map(Self::SeriesColumnBlock),
+			KeyTag::TableColumnBlock => TableColumnBlockKey::decode(key).map(Self::TableColumnBlock),
 			KeyTag::VersionEpoch => VersionEpochKey::decode(key).map(Self::VersionEpoch),
 			KeyTag::IdentityAttribute => IdentityAttributeKey::decode(key).map(Self::IdentityAttribute),
 			KeyTag::IdentityAttributeValue => {
@@ -853,21 +849,21 @@ impl From<OperatorRetentionKey> for TaggedKey {
 	}
 }
 
-impl From<ColumnSnapshotKey> for TaggedKey {
-	fn from(key: ColumnSnapshotKey) -> Self {
-		Self::ColumnSnapshot(key)
+impl From<ColumnBlockKey> for TaggedKey {
+	fn from(key: ColumnBlockKey) -> Self {
+		Self::ColumnBlock(key)
 	}
 }
 
-impl From<SeriesColumnSnapshotKey> for TaggedKey {
-	fn from(key: SeriesColumnSnapshotKey) -> Self {
-		Self::SeriesColumnSnapshot(key)
+impl From<SeriesColumnBlockKey> for TaggedKey {
+	fn from(key: SeriesColumnBlockKey) -> Self {
+		Self::SeriesColumnBlock(key)
 	}
 }
 
-impl From<TableColumnSnapshotKey> for TaggedKey {
-	fn from(key: TableColumnSnapshotKey) -> Self {
-		Self::TableColumnSnapshot(key)
+impl From<TableColumnBlockKey> for TaggedKey {
+	fn from(key: TableColumnBlockKey) -> Self {
+		Self::TableColumnBlock(key)
 	}
 }
 
@@ -1248,9 +1244,9 @@ impl KeyFields for TaggedKey {
 			Self::Binding(key) => key.fields(),
 			Self::NamespaceBinding(key) => key.fields(),
 			Self::OperatorRetention(key) => key.fields(),
-			Self::ColumnSnapshot(key) => key.fields(),
-			Self::SeriesColumnSnapshot(key) => key.fields(),
-			Self::TableColumnSnapshot(key) => key.fields(),
+			Self::ColumnBlock(key) => key.fields(),
+			Self::SeriesColumnBlock(key) => key.fields(),
+			Self::TableColumnBlock(key) => key.fields(),
 			Self::VersionEpoch(key) => key.fields(),
 			Self::IdentityAttribute(key) => key.fields(),
 			Self::IdentityAttributeValue(key) => key.fields(),
@@ -1304,7 +1300,7 @@ mod tests {
 				config::ConfigKey,
 				flow::{FlowEdgeId, FlowId, OperatorId},
 				id::{
-					BindingId, ColumnId, ColumnPropertyId, ColumnSnapshotId, HandlerId, IndexId,
+					BindingId, ColumnBlockId, ColumnId, ColumnPropertyId, HandlerId, IndexId,
 					MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, QueueId,
 					RelationshipId, RingBufferId, SequenceId, SeriesId, SinkId, SourceId, TableId,
 					ViewId,
@@ -1325,8 +1321,8 @@ mod tests {
 			},
 			cdc::CdcConsumerKey,
 			column::{
-				ColumnKey, ColumnSequenceKey, ColumnSnapshotKey, ColumnsKey, SeriesColumnSnapshotKey,
-				TableColumnSnapshotKey,
+				ColumnBlockKey, ColumnKey, ColumnSequenceKey, ColumnsKey, SeriesColumnBlockKey,
+				TableColumnBlockKey,
 			},
 			config::ConfigStorageKey,
 			flow::{FlowEdgeByFlowKey, FlowEdgeKey, FlowKey, FlowVersionKey},
@@ -2235,17 +2231,17 @@ mod tests {
 			probe(OperatorRetentionKey {
 				operator: OperatorId(87),
 			}),
-			probe(ColumnSnapshotKey {
-				snapshot: ColumnSnapshotId(88),
+			probe(ColumnBlockKey {
+				block: ColumnBlockId(88),
 			}),
-			probe(SeriesColumnSnapshotKey {
+			probe(SeriesColumnBlockKey {
 				series: SeriesId(89),
 				partition: Partition(0xDEAD_BEEF_0000_0001_0000_0000_0000_0002),
-				snapshot: ColumnSnapshotId(90),
+				block: ColumnBlockId(90),
 			}),
-			probe(TableColumnSnapshotKey {
+			probe(TableColumnBlockKey {
 				table: TableId(91),
-				snapshot: ColumnSnapshotId(92),
+				block: ColumnBlockId(92),
 			}),
 			probe(VersionEpochKey {
 				bucket: EpochSeconds::new(93),

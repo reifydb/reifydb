@@ -9,8 +9,8 @@ use crate::store::{
 	authentication::shape::authentication::SHAPE as AUTHENTICATION_SHAPE,
 	binding::shape::{binding::SHAPE as BINDING_SHAPE, binding_namespace::SHAPE as BINDING_NAMESPACE_SHAPE},
 	column::shape::{column::SHAPE as COLUMN_SHAPE, object_column::SHAPE as OBJECT_COLUMN_SHAPE},
+	column_block::shape::column_block::SHAPE as COLUMN_BLOCK_SHAPE,
 	column_property::shape::column_property::SHAPE as COLUMN_PROPERTY_SHAPE,
-	column_snapshot::shape::column_snapshot::SHAPE as COLUMN_SNAPSHOT_SHAPE,
 	config::shape::config::SHAPE as CONFIG_SHAPE,
 	dictionary::shape::{
 		dictionary::SHAPE as DICTIONARY_SHAPE, dictionary_namespace::SHAPE as DICTIONARY_NAMESPACE_SHAPE,
@@ -120,8 +120,8 @@ fn pinned() -> Vec<Pin> {
 		),
 		("column::object_column", &*OBJECT_COLUMN_SHAPE, 0x0c2cd6dc1e3f9c7a, &["id", "name", "index"]),
 		(
-			"column_snapshot::column_snapshot",
-			&*COLUMN_SNAPSHOT_SHAPE,
+			"column_block::column_block",
+			&*COLUMN_BLOCK_SHAPE,
 			0xd08779fec50bf830,
 			&[
 				"id",

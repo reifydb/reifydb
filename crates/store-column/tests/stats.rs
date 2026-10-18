@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
-use reifydb_core::{interface::catalog::column_snapshot::ColumnStats, value::column::factory};
+use reifydb_core::{interface::catalog::column_block::ColumnStats, value::column::factory};
 use reifydb_store_column::{
+	block::{BlockData, ColumnChunks},
 	convert::to_vortex,
 	session::new_session,
-	snapshot::{ColumnBlock, ColumnChunks},
 	stats::block_stats,
 };
 use reifydb_value::value::{
@@ -27,15 +27,15 @@ fn chunks(ty: ValueType, nullable: bool, parts: &[(FieldRef, ArrayRef)]) -> Colu
 	ColumnChunks::new(ty, nullable, field_type, parts.iter().map(chunk).collect())
 }
 
-fn one_column_block(ty: ValueType, chunks: ColumnChunks) -> ColumnBlock {
+fn one_column_block(ty: ValueType, chunks: ColumnChunks) -> BlockData {
 	let nullable = chunks.nullable;
-	ColumnBlock::new(Arc::new(vec![("id".to_string(), ty, nullable)]), vec![chunks])
+	BlockData::new(Arc::new(vec![("id".to_string(), ty, nullable)]), vec![chunks])
 }
 
 fn stats_of(ty: ValueType, column: (FieldRef, ArrayRef)) -> ColumnStats {
 	let nullable = column.0.is_nullable();
-	let block = one_column_block(ty.clone(), chunks(ty, nullable, &[column]));
-	block_stats(&block, &new_session()).unwrap().remove(0)
+	let data = one_column_block(ty.clone(), chunks(ty, nullable, &[column]));
+	block_stats(&data, &new_session()).unwrap().remove(0)
 }
 
 fn bounds(ty: ValueType, column: (FieldRef, ArrayRef)) -> (Option<Value>, Option<Value>) {

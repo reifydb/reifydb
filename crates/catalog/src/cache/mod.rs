@@ -3,7 +3,7 @@
 
 pub mod authentication;
 pub mod binding;
-pub mod column_snapshot;
+pub mod column_block;
 pub mod config;
 pub mod dictionary;
 pub mod flow;
@@ -47,15 +47,15 @@ use reifydb_core::{
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
 		binding::Binding,
-		column_snapshot::ColumnSnapshot,
+		column_block::ColumnBlock,
 		config::{Config, ConfigKey, GetConfig},
 		dictionary::Dictionary,
 		flow::{FlowEntry, FlowId, OperatorId},
 		handler::Handler,
 		id::{
-			BindingId, ColumnSnapshotId, HandlerId, MigrationEventId, MigrationId, NamespaceId,
-			PrimaryKeyId, ProcedureId, QueueId, RelationshipId, RingBufferId, SeriesId, SinkId, SourceId,
-			TableId, TestId, ViewId,
+			BindingId, ColumnBlockId, HandlerId, MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId,
+			ProcedureId, QueueId, RelationshipId, RingBufferId, SeriesId, SinkId, SourceId, TableId,
+			TestId, ViewId,
 		},
 		identity::{
 			GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue, Role,
@@ -108,7 +108,7 @@ pub type MultiVersionFlow = MultiVersionContainer<FlowEntry>;
 pub type MultiVersionPrimaryKey = MultiVersionContainer<PrimaryKey>;
 pub type MultiVersionRelationship = MultiVersionContainer<Relationship>;
 pub type MultiVersionDictionary = MultiVersionContainer<Dictionary>;
-pub type MultiVersionColumnSnapshot = MultiVersionContainer<ColumnSnapshot>;
+pub type MultiVersionColumnBlock = MultiVersionContainer<ColumnBlock>;
 pub type MultiVersionHandler = MultiVersionContainer<Handler>;
 pub type MultiVersionMigration = MultiVersionContainer<Migration>;
 pub type MultiVersionMigrationEvent = MultiVersionContainer<MigrationEvent>;
@@ -269,9 +269,9 @@ pub struct CatalogCacheInner {
 	pub(crate) vtable_user_by_name: SkipMap<(NamespaceId, String), VTableId>,
 
 	pub(crate) row_shapes: SkipMap<RowShapeFingerprint, RowShape>,
-	pub(crate) column_snapshots: SkipMap<ColumnSnapshotId, MultiVersionColumnSnapshot>,
-	pub(crate) column_snapshots_for_series: SkipMap<SeriesId, BTreeSet<(u64, Option<Partition>, ColumnSnapshotId)>>,
-	pub(crate) column_snapshots_for_table: SkipMap<TableId, BTreeMap<CommitVersion, ColumnSnapshotId>>,
+	pub(crate) column_blocks: SkipMap<ColumnBlockId, MultiVersionColumnBlock>,
+	pub(crate) column_blocks_for_series: SkipMap<SeriesId, BTreeSet<(u64, Option<Partition>, ColumnBlockId)>>,
+	pub(crate) column_blocks_for_table: SkipMap<TableId, BTreeMap<CommitVersion, ColumnBlockId>>,
 
 	pub(crate) write_lock: Mutex<()>,
 }
@@ -378,9 +378,9 @@ impl CatalogCache {
 			vtable_user: SkipMap::new(),
 			vtable_user_by_name: SkipMap::new(),
 			row_shapes: SkipMap::new(),
-			column_snapshots: SkipMap::new(),
-			column_snapshots_for_series: SkipMap::new(),
-			column_snapshots_for_table: SkipMap::new(),
+			column_blocks: SkipMap::new(),
+			column_blocks_for_series: SkipMap::new(),
+			column_blocks_for_table: SkipMap::new(),
 			write_lock: Mutex::new(()),
 		};
 

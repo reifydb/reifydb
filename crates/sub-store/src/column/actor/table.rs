@@ -5,12 +5,12 @@ use std::{collections::HashMap, sync::Arc};
 
 use arrow_array::RecordBatch;
 use dashmap::DashMap;
-use reifydb_catalog::store::column_snapshot::create::ColumnSnapshotToCreate;
+use reifydb_catalog::store::column_block::create::ColumnBlockToCreate;
 use reifydb_core::{
 	common::CommitVersion,
 	event::{EventListener, transaction::PostCommitEvent},
 	interface::catalog::{
-		column_snapshot::{ColumnSnapshot, ColumnSnapshotSource},
+		column_block::{ColumnBlock, ColumnBlockSource},
 		id::TableId,
 		storage::StorageId,
 		table::Table,
@@ -34,7 +34,7 @@ use reifydb_runtime::actor::{
 	timers::TimerHandle,
 	traits::{Actor, Directive},
 };
-use reifydb_store_column::{compress::Compressor, device::BlockKey, snapshot::ColumnBlock, store::ColumnStore};
+use reifydb_store_column::{block::BlockData, compress::Compressor, device::BlockFileKey, store::ColumnStore};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction, query::QueryTransaction};
 use reifydb_value::{
 	Result,
@@ -46,7 +46,7 @@ use tracing::debug;
 
 use crate::column::actor::{
 	TableMessage,
-	batches::{column_block_from_batches, system_column_schema},
+	batches::{block_data_from_batches, system_column_schema},
 };
 
 #[derive(Clone, Default)]
@@ -173,7 +173,7 @@ impl TableMaterializationActor {
 			let scan_version = query_txn.version();
 			assert!(
 				scan_version == version,
-				"table materialization scans at query version {} but records the column snapshot under commit_version {}; a mismatch makes the snapshot metadata claim a version the materialized rows do not reflect, so later reads resolve the wrong block for table {:?}",
+				"table materialization scans at query version {} but records the column block under commit_version {}; a mismatch makes the block metadata claim a version the materialized rows do not reflect, so later reads resolve the wrong block for table {:?}",
 				scan_version,
 				version,
 				table.id
@@ -182,7 +182,7 @@ impl TableMaterializationActor {
 		let context = self.build_query_context();
 		let batches = self.scan_table_batches(query_txn, table, &context)?;
 		let block_arc = Arc::new(self.build_column_block(table, batches, version)?);
-		self.store_table_snapshot(table, version, block_arc)
+		self.store_table_block(table, version, block_arc)
 	}
 
 	#[inline]
@@ -225,28 +225,23 @@ impl TableMaterializationActor {
 		table: &Table,
 		batches: Vec<RecordBatch>,
 		version: CommitVersion,
-	) -> Result<ColumnBlock> {
+	) -> Result<BlockData> {
 		let mut schema: Vec<(String, ValueType)> =
 			table.columns.iter().map(|c| (c.name.clone(), c.constraint.get_type())).collect();
 		schema.extend(system_column_schema(&table.time, !table.partition_by.is_empty()));
-		column_block_from_batches(schema, batches, version, &self.compressor)
+		block_data_from_batches(schema, batches, version, &self.compressor)
 	}
 
 	#[inline]
-	fn store_table_snapshot(
-		&self,
-		table: &Table,
-		version: CommitVersion,
-		block_arc: Arc<ColumnBlock>,
-	) -> Result<()> {
+	fn store_table_block(&self, table: &Table, version: CommitVersion, block_arc: Arc<BlockData>) -> Result<()> {
 		let row_count = block_arc.len() as u64;
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
-		let column_snapshot = catalog.create_column_snapshot(
+		let column_block = catalog.create_column_block(
 			&mut admin,
-			ColumnSnapshotToCreate {
+			ColumnBlockToCreate {
 				namespace: table.namespace,
-				source: ColumnSnapshotSource::Table {
+				source: ColumnBlockSource::Table {
 					table_id: table.id,
 					commit_version: version,
 				},
@@ -255,18 +250,18 @@ impl TableMaterializationActor {
 				stats: Vec::new(),
 			},
 		)?;
-		let old: Vec<ColumnSnapshot> = catalog
-			.list_column_snapshots_for_table(&mut Transaction::Admin(&mut admin), table.id)?
+		let old: Vec<ColumnBlock> = catalog
+			.list_column_blocks_for_table(&mut Transaction::Admin(&mut admin), table.id)?
 			.into_iter()
-			.filter(|snapshot| snapshot.id != column_snapshot.id)
+			.filter(|block| block.id != column_block.id)
 			.collect();
-		for snapshot in &old {
-			catalog.drop_column_snapshot(&mut admin, snapshot.id)?;
+		for block in &old {
+			catalog.drop_column_block(&mut admin, block.id)?;
 		}
-		self.block_store.write(&BlockKey::of(&column_snapshot), block_arc.as_ref())?;
+		self.block_store.write(&BlockFileKey::of(&column_block), block_arc.as_ref())?;
 		commit_admin(admin)?;
-		for snapshot in &old {
-			self.block_store.remove(&BlockKey::of(snapshot))?;
+		for block in &old {
+			self.block_store.remove(&BlockFileKey::of(block))?;
 		}
 		Ok(())
 	}

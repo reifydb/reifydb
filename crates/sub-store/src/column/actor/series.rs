@@ -10,13 +10,13 @@ use std::{
 use arrow_array::RecordBatch;
 use reifydb_catalog::{
 	catalog::Catalog,
-	store::column_snapshot::{create::ColumnSnapshotToCreate, update::ColumnSnapshotToUpdate},
+	store::column_block::{create::ColumnBlockToCreate, update::ColumnBlockToUpdate},
 };
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
 		catalog::{
-			column_snapshot::{ColumnSnapshot, ColumnSnapshotSource, ColumnStats},
+			column_block::{ColumnBlock, ColumnBlockSource, ColumnStats},
 			id::SeriesId,
 			object::ObjectId,
 			series::{Series, SeriesPartitionMetadata},
@@ -43,10 +43,10 @@ use reifydb_runtime::actor::{
 	traits::{Actor, Directive},
 };
 use reifydb_store_column::{
+	block::BlockData,
 	bucket::{Bucket, BucketId, bucket_for, is_closed},
 	compress::Compressor,
-	device::BlockKey,
-	snapshot::ColumnBlock,
+	device::BlockFileKey,
 	store::ColumnStore,
 };
 use reifydb_transaction::{
@@ -176,14 +176,14 @@ impl SeriesMaterializationActor {
 				continue;
 			};
 			if metadata.row_count == 0 {
-				self.drop_partition_snapshots(state, series, partition)?;
+				self.drop_partition_blocks(state, series, partition)?;
 				continue;
 			}
 			let first = bucket_for(metadata.oldest_key, self.bucket_width);
 			let last = bucket_for(metadata.newest_key, self.bucket_width);
 			let live = first.start..last.end;
 			if metadata.dirty_from_key < live.start || metadata.dirty_to_key > live.end {
-				self.drop_snapshots_outside(state, series, partition, live)?;
+				self.drop_blocks_outside(state, series, partition, live)?;
 			}
 			let mut start = first.start;
 			let mut deferred = false;
@@ -209,19 +209,19 @@ impl SeriesMaterializationActor {
 		Ok(())
 	}
 
-	fn drop_partition_snapshots(
+	fn drop_partition_blocks(
 		&self,
 		state: &mut SeriesMaterializationState,
 		series: &Series,
 		partition: Partition,
 	) -> Result<()> {
-		if self.drop_snapshots_outside(state, series, partition, 0..0)? {
+		if self.drop_blocks_outside(state, series, partition, 0..0)? {
 			self.reset_dirty_mark(series, partition)?;
 		}
 		Ok(())
 	}
 
-	fn drop_snapshots_outside(
+	fn drop_blocks_outside(
 		&self,
 		state: &mut SeriesMaterializationState,
 		series: &Series,
@@ -235,11 +235,11 @@ impl SeriesMaterializationActor {
 		};
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
-		let stale: Vec<ColumnSnapshot> = catalog
-			.list_column_snapshots_for_series(&mut Transaction::Admin(&mut admin), series.id)?
+		let stale: Vec<ColumnBlock> = catalog
+			.list_column_blocks_for_series(&mut Transaction::Admin(&mut admin), series.id)?
 			.into_iter()
-			.filter(|snapshot| match snapshot.source {
-				ColumnSnapshotSource::SeriesBucket {
+			.filter(|block| match block.source {
+				ColumnBlockSource::SeriesBucket {
 					partition,
 					bucket_start,
 					..
@@ -250,12 +250,12 @@ impl SeriesMaterializationActor {
 		if stale.is_empty() {
 			return Ok(false);
 		}
-		for snapshot in &stale {
-			catalog.drop_column_snapshot(&mut admin, snapshot.id)?;
+		for block in &stale {
+			catalog.drop_column_block(&mut admin, block.id)?;
 		}
 		commit_admin(admin)?;
-		for snapshot in &stale {
-			self.block_store.remove(&BlockKey::of(snapshot))?;
+		for block in &stale {
+			self.block_store.remove(&BlockFileKey::of(block))?;
 		}
 		state.bucket_state.retain(|(id, part, bucket)| {
 			*id != series.id || *part != partition || live.contains(&bucket.0)
@@ -387,15 +387,15 @@ impl SeriesMaterializationActor {
 			let after_scan = query_txn.version();
 			assert!(
 				sealed_at_commit_version == after_scan,
-				"query snapshot version moved during the bucket scan, so the snapshot would record a \
+				"query snapshot version moved during the bucket scan, so the block would record a \
 				 sealed_at_commit_version that the scanned rows were not actually read at; a time-travel \
-				 reader of the snapshot would then see data inconsistent with its recorded read_version \
+				 reader of the block would then see data inconsistent with its recorded read_version \
 				 (captured before scan={sealed_at_commit_version:?}, observed after scan={after_scan:?})"
 			);
 		}
 
-		let (block, stats) = self.build_column_block(series, batches, sealed_at_commit_version)?;
-		self.upsert_snapshot_and_store(series, scope, &stats, bucket, sealed_at_commit_version, Arc::new(block))
+		let (data, stats) = self.build_column_block(series, batches, sealed_at_commit_version)?;
+		self.upsert_block_and_store(series, scope, &stats, bucket, sealed_at_commit_version, Arc::new(data))
 	}
 
 	#[inline]
@@ -480,30 +480,30 @@ impl SeriesMaterializationActor {
 		series: &Series,
 		batches: Vec<RecordBatch>,
 		version: CommitVersion,
-	) -> Result<(ColumnBlock, Vec<ColumnStats>)> {
+	) -> Result<(BlockData, Vec<ColumnStats>)> {
 		let schema = scan_output_schema(series);
 		let columns = arrow_columns_from_batches(&schema, &batches, version)?;
 		let stats = stats_from_arrow(&columns, self.block_store.session())?;
-		let block = match &series.encoding {
+		let data = match &series.encoding {
 			None => compress_columns(columns, &self.compressor)?,
 			Some(encoding) => {
 				encode_series_block(columns, series, encoding, &self.block_encodings, &self.compressor)?
 			}
 		};
-		Ok((block, stats))
+		Ok((data, stats))
 	}
 
 	#[inline]
-	fn upsert_snapshot_and_store(
+	fn upsert_block_and_store(
 		&self,
 		series: &Series,
 		scope: PartitionScope<'_>,
 		stats: &[ColumnStats],
 		bucket: &Bucket,
 		sealed_at_commit_version: CommitVersion,
-		block: Arc<ColumnBlock>,
+		data: Arc<BlockData>,
 	) -> Result<()> {
-		let row_count = block.len() as u64;
+		let row_count = data.len() as u64;
 		let stored_partition = if series.partition_by.is_empty() {
 			None
 		} else {
@@ -511,16 +511,16 @@ impl SeriesMaterializationActor {
 		};
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let cat = self.engine.catalog();
-		let column_snapshot = match cat.find_column_snapshot_for_series_bucket(
+		let block = match cat.find_column_block_for_series_bucket(
 			&mut Transaction::Admin(&mut admin),
 			series.id,
 			stored_partition,
 			bucket.start,
 		)? {
-			Some(existing) => cat.update_column_snapshot(
+			Some(existing) => cat.update_column_block(
 				&mut admin,
 				existing.id,
-				ColumnSnapshotToUpdate {
+				ColumnBlockToUpdate {
 					sequence_counter: scope.metadata.sequence_counter,
 					read_version: sealed_at_commit_version,
 					row_count,
@@ -528,11 +528,11 @@ impl SeriesMaterializationActor {
 					stats: stats.to_vec(),
 				},
 			)?,
-			None => cat.create_column_snapshot(
+			None => cat.create_column_block(
 				&mut admin,
-				ColumnSnapshotToCreate {
+				ColumnBlockToCreate {
 					namespace: series.namespace,
-					source: ColumnSnapshotSource::SeriesBucket {
+					source: ColumnBlockSource::SeriesBucket {
 						series_id: series.id,
 						bucket_start: bucket.start,
 						bucket_width: bucket.width,
@@ -546,7 +546,7 @@ impl SeriesMaterializationActor {
 				},
 			)?,
 		};
-		self.block_store.write(&BlockKey::of(&column_snapshot), block.as_ref())?;
+		self.block_store.write(&BlockFileKey::of(&block), data.as_ref())?;
 		commit_admin(admin)?;
 		Ok(())
 	}

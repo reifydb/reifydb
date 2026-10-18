@@ -17,15 +17,15 @@ use vortex_mask::Mask;
 use vortex_session::VortexSession;
 
 use crate::{
+	block::{BlockData, ColumnChunks, Schema},
 	convert::to_arrow,
 	error::vortex,
 	predicate::{self, Predicate},
 	selection::Selection,
-	snapshot::{ColumnBlock, ColumnChunks, Schema},
 };
 
-pub struct SnapshotReader {
-	block: Arc<ColumnBlock>,
+pub struct BlockReader {
+	data: Arc<BlockData>,
 	batch_size: usize,
 	offset: usize,
 	row_count: usize,
@@ -33,11 +33,11 @@ pub struct SnapshotReader {
 	session: VortexSession,
 }
 
-impl SnapshotReader {
-	pub fn new(block: Arc<ColumnBlock>, batch_size: usize, session: VortexSession) -> Self {
-		let row_count = block.columns.first().map(|c| c.len()).unwrap_or(0);
+impl BlockReader {
+	pub fn new(data: Arc<BlockData>, batch_size: usize, session: VortexSession) -> Self {
+		let row_count = data.columns.first().map(|c| c.len()).unwrap_or(0);
 		Self {
-			block,
+			data,
 			batch_size,
 			offset: 0,
 			row_count,
@@ -53,13 +53,13 @@ impl SnapshotReader {
 
 	fn read_next_batch(&mut self) -> Result<Option<RecordBatch>> {
 		let (start, end) = self.advance_batch_window();
-		let block = self.block.as_ref();
+		let data = self.data.as_ref();
 
 		let Some(predicate) = self.predicate.as_ref() else {
-			return Ok(Some(materialize_full(block, start, end, &self.session)?));
+			return Ok(Some(materialize_full(data, start, end, &self.session)?));
 		};
 
-		evaluate_and_materialize(block, predicate, start, end, &self.session)
+		evaluate_and_materialize(data, predicate, start, end, &self.session)
 	}
 
 	#[inline]
@@ -82,14 +82,14 @@ impl SnapshotReader {
 
 #[inline]
 fn evaluate_and_materialize(
-	block: &ColumnBlock,
+	data: &BlockData,
 	predicate: &Predicate,
 	start: usize,
 	end: usize,
 	session: &VortexSession,
 ) -> Result<Option<RecordBatch>> {
-	let schema = &block.schema;
-	let view = block.view_range(start, end)?;
+	let schema = &data.schema;
+	let view = data.view_range(start, end)?;
 	let selection = predicate::evaluate(&view, predicate, session)?;
 	match selection {
 		Selection::None_ => Ok(None),
@@ -113,13 +113,13 @@ fn materialize(
 	Ok(materialized)
 }
 
-fn materialize_full(block: &ColumnBlock, start: usize, end: usize, session: &VortexSession) -> Result<RecordBatch> {
-	materialize(&block.schema, |name, i| read_range(name, &block.columns[i], start, end, session))
+fn materialize_full(data: &BlockData, start: usize, end: usize, session: &VortexSession) -> Result<RecordBatch> {
+	materialize(&data.schema, |name, i| read_range(name, &data.columns[i], start, end, session))
 }
 
 fn materialize_view_full(
 	schema: &Schema,
-	view: &ColumnBlock,
+	view: &BlockData,
 	_start: usize,
 	_end: usize,
 	session: &VortexSession,
@@ -129,7 +129,7 @@ fn materialize_view_full(
 
 fn materialize_filtered(
 	schema: &Schema,
-	view: &ColumnBlock,
+	view: &BlockData,
 	_batch_start: usize,
 	mask: &BooleanBuffer,
 	session: &VortexSession,
@@ -191,7 +191,7 @@ fn read_range(
 	concat_columns(&out)
 }
 
-impl Iterator for SnapshotReader {
+impl Iterator for BlockReader {
 	type Item = Result<RecordBatch>;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -222,9 +222,9 @@ mod tests {
 
 	use super::*;
 	use crate::{
+		block::{BlockData, ColumnChunks},
 		convert::to_vortex,
 		session::new_session,
-		snapshot::{ColumnBlock, ColumnChunks},
 	};
 
 	fn array_from_column_data(cd: &(FieldRef, ArrayRef)) -> VortexArrayRef {
@@ -255,7 +255,7 @@ mod tests {
 		]
 	}
 
-	fn mk_block(rows: usize) -> Arc<ColumnBlock> {
+	fn mk_block(rows: usize) -> Arc<BlockData> {
 		let a_col = factory::int4("a", (0..rows as i32).collect::<Vec<_>>());
 		let b_col = factory::utf8("b", (0..rows).map(|i| format!("row-{i}")).collect::<Vec<_>>());
 
@@ -269,20 +269,20 @@ mod tests {
 			schema_entries.push(entry);
 			chunks.push(chunk);
 		}
-		Arc::new(ColumnBlock::new(Arc::new(schema_entries), chunks))
+		Arc::new(BlockData::new(Arc::new(schema_entries), chunks))
 	}
 
 	#[test]
-	fn reader_returns_none_for_empty_snapshot() {
-		let snap = mk_block(0);
-		let mut reader = SnapshotReader::new(snap, 4, new_session());
+	fn reader_returns_none_for_empty_block() {
+		let data = mk_block(0);
+		let mut reader = BlockReader::new(data, 4, new_session());
 		assert!(reader.next().is_none());
 	}
 
 	#[test]
 	fn reader_emits_batches_matching_batch_size() {
-		let snap = mk_block(5);
-		let mut reader = SnapshotReader::new(snap, 2, new_session());
+		let data = mk_block(5);
+		let mut reader = BlockReader::new(data, 2, new_session());
 
 		let batch = reader.next().expect("first batch").unwrap();
 		assert_eq!(batch.num_rows(), 2);
@@ -308,7 +308,7 @@ mod tests {
 		assert!(reader.next().is_none());
 	}
 
-	fn mk_chunked_block(parts: &[&[i32]]) -> Arc<ColumnBlock> {
+	fn mk_chunked_block(parts: &[&[i32]]) -> Arc<BlockData> {
 		let total_rows: usize = parts.iter().map(|p| p.len()).sum();
 		let columns: Vec<(FieldRef, ArrayRef)> = parts.iter().map(|p| factory::int4("a", p.to_vec())).collect();
 		let chunked_a = multi(ValueType::Int4, false, &columns);
@@ -319,14 +319,14 @@ mod tests {
 			schema_entries.push(entry);
 			all_chunks.push(chunk);
 		}
-		Arc::new(ColumnBlock::new(Arc::new(schema_entries), all_chunks))
+		Arc::new(BlockData::new(Arc::new(schema_entries), all_chunks))
 	}
 
 	#[test]
 	fn reader_handles_multi_chunk_column() {
-		let snap = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
-		assert_eq!(snap.len(), 9);
-		let mut reader = SnapshotReader::new(snap, 100, new_session());
+		let data = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
+		assert_eq!(data.len(), 9);
+		let mut reader = BlockReader::new(data, 100, new_session());
 
 		let batch = reader.next().unwrap().unwrap();
 		assert_eq!(batch.num_rows(), 9);
@@ -340,8 +340,8 @@ mod tests {
 	fn reader_batch_spans_chunk_boundary() {
 		// Batch size 4 lands on no chunk boundary, so the first two batches each have to stitch two chunks
 		// together and the third is a short tail.
-		let snap = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
-		let mut reader = SnapshotReader::new(snap, 4, new_session());
+		let data = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
+		let mut reader = BlockReader::new(data, 4, new_session());
 
 		let b0 = reader.next().unwrap().unwrap();
 		assert_eq!(b0.num_rows(), 4);
@@ -364,8 +364,8 @@ mod tests {
 	#[test]
 	fn reader_batch_starts_mid_chunk() {
 		// Batch size 3 over a single 10-row chunk makes every batch after the first start mid-chunk.
-		let snap = mk_chunked_block(&[&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]);
-		let mut reader = SnapshotReader::new(snap, 3, new_session());
+		let data = mk_chunked_block(&[&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]]);
+		let mut reader = BlockReader::new(data, 3, new_session());
 
 		let b0 = reader.next().unwrap().unwrap();
 		assert_eq!(b0.num_rows(), 3);
@@ -382,9 +382,9 @@ mod tests {
 
 	#[test]
 	fn pushdown_eq_predicate_keeps_only_matching_rows() {
-		let snap = mk_block(5);
+		let data = mk_block(5);
 		let p = Predicate::Eq(ColRef::from("a"), Value::Int4(3));
-		let mut reader = SnapshotReader::new(snap, 100, new_session()).with_predicate(p);
+		let mut reader = BlockReader::new(data, 100, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.num_rows(), 1);
@@ -396,10 +396,10 @@ mod tests {
 
 	#[test]
 	fn pushdown_filters_across_chunk_boundary() {
-		// The whole snapshot arrives as one batch, so the filter has to select across chunk boundaries.
-		let snap = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
+		// The whole block arrives as one batch, so the filter has to select across chunk boundaries.
+		let data = mk_chunked_block(&[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]]);
 		let p = Predicate::In(ColRef::from("a"), vec![Value::Int4(30), Value::Int4(80)]);
-		let mut reader = SnapshotReader::new(snap, 100, new_session()).with_predicate(p);
+		let mut reader = BlockReader::new(data, 100, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.num_rows(), 2);
@@ -415,9 +415,9 @@ mod tests {
 	fn pushdown_skips_empty_batches() {
 		// The first two batches select nothing; the iterator must skip them rather than hand back empty
 		// batches.
-		let snap = mk_block(6);
+		let data = mk_block(6);
 		let p = Predicate::Eq(ColRef::from("a"), Value::Int4(4));
-		let mut reader = SnapshotReader::new(snap, 2, new_session()).with_predicate(p);
+		let mut reader = BlockReader::new(data, 2, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("only matching batch").unwrap();
 		assert_eq!(batch.num_rows(), 1);
@@ -430,9 +430,9 @@ mod tests {
 	fn pushdown_selection_all_passes_batch_through() {
 		// A predicate matching every row takes the Selection::All path, which must pass the batch through
 		// intact.
-		let snap = mk_block(5);
+		let data = mk_block(5);
 		let p = Predicate::GtEq(ColRef::from("a"), Value::Int4(0));
-		let mut reader = SnapshotReader::new(snap, 100, new_session()).with_predicate(p);
+		let mut reader = BlockReader::new(data, 100, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.num_rows(), 5);
@@ -463,10 +463,10 @@ mod tests {
 			schema_entries.push(entry);
 			block_chunks.push(chunk);
 		}
-		let block = Arc::new(ColumnBlock::new(Arc::new(schema_entries), block_chunks));
+		let data = Arc::new(BlockData::new(Arc::new(schema_entries), block_chunks));
 
 		let p = Predicate::IsNone(ColRef::from("a"));
-		let mut reader = SnapshotReader::new(block, 100, new_session()).with_predicate(p);
+		let mut reader = BlockReader::new(data, 100, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.num_rows(), 2);
@@ -501,13 +501,13 @@ mod tests {
 			schema_entries.push(entry);
 			block_chunks.push(chunk);
 		}
-		let block = Arc::new(ColumnBlock::new(Arc::new(schema_entries), block_chunks));
+		let data = Arc::new(BlockData::new(Arc::new(schema_entries), block_chunks));
 
 		let p = Predicate::Or(vec![
 			Predicate::IsNone(ColRef::from("a")),
 			Predicate::Gt(ColRef::from("a"), Value::Int4(125)),
 		]);
-		let reader = SnapshotReader::new(block, 8, new_session()).with_predicate(p);
+		let reader = BlockReader::new(data, 8, new_session()).with_predicate(p);
 
 		let mut rows = Vec::new();
 		for batch in reader {
@@ -558,10 +558,10 @@ mod tests {
 			schema_entries.push(entry);
 			block_chunks.push(chunk);
 		}
-		let block = Arc::new(ColumnBlock::new(Arc::new(schema_entries), block_chunks));
+		let data = Arc::new(BlockData::new(Arc::new(schema_entries), block_chunks));
 
 		let p = Predicate::In(ColRef::from("a"), vec![Value::Int4(0), Value::Int4(2)]);
-		let mut reader = SnapshotReader::new(block, 100, new_session()).with_predicate(p);
+		let mut reader = BlockReader::new(data, 100, new_session()).with_predicate(p);
 
 		let batch = reader.next().expect("batch").unwrap();
 		assert_eq!(batch.num_rows(), 2);

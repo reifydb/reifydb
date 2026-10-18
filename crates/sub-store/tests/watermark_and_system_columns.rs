@@ -10,7 +10,7 @@ use reifydb::{
 	testing::db::{TestDb, poll_until},
 };
 use reifydb_core::common::CommitVersion;
-use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, snapshot::ColumnBlock, store::ColumnStore};
+use reifydb_store_column::{block::BlockData, device::BlockFileKey, reader::BlockReader, store::ColumnStore};
 use reifydb_sub_store::subsystem::{StorageConfig, StorageSubsystem};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{
@@ -21,21 +21,21 @@ use reifydb_value::value::{
 	system_columns::{created_at, row_numbers, updated_at},
 };
 
-fn table_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<Arc<ColumnBlock>> {
+fn table_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<Arc<BlockData>> {
 	let engine = db.engine();
 	let catalog = engine.catalog();
 	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
 	let mut tx = Transaction::Query(&mut txn);
 	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
 	let table = catalog.find_table_by_name(&mut tx, namespace.id(), name).expect("find table").expect("table");
-	catalog.list_column_snapshots_for_table(&mut tx, table.id)
-		.expect("list table snapshots")
+	catalog.list_column_blocks_for_table(&mut tx, table.id)
+		.expect("list table blocks")
 		.into_iter()
-		.map(|snapshot| {
+		.map(|block| {
 			Arc::new(
-				store.open(&BlockKey::of(&snapshot))
+				store.open(&BlockFileKey::of(&block))
 					.expect("open block")
-					.expect("a cataloged snapshot must have a block file")
+					.expect("a cataloged block must have a block file")
 					.read(None)
 					.expect("read block"),
 			)
@@ -43,21 +43,21 @@ fn table_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<Arc<ColumnB
 		.collect()
 }
 
-fn series_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<Arc<ColumnBlock>> {
+fn series_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<Arc<BlockData>> {
 	let engine = db.engine();
 	let catalog = engine.catalog();
 	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
 	let mut tx = Transaction::Query(&mut txn);
 	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
 	let series = catalog.find_series_by_name(&mut tx, namespace.id(), name).expect("find series").expect("series");
-	catalog.list_column_snapshots_for_series(&mut tx, series.id)
-		.expect("list series snapshots")
+	catalog.list_column_blocks_for_series(&mut tx, series.id)
+		.expect("list series blocks")
 		.into_iter()
-		.map(|snapshot| {
+		.map(|block| {
 			Arc::new(
-				store.open(&BlockKey::of(&snapshot))
+				store.open(&BlockFileKey::of(&block))
 					.expect("open block")
-					.expect("a cataloged snapshot must have a block file")
+					.expect("a cataloged block must have a block file")
 					.read(None)
 					.expect("read block"),
 			)
@@ -66,7 +66,7 @@ fn series_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<Arc<Column
 }
 
 #[test]
-fn series_snapshot_records_sealed_at_commit_version() {
+fn series_block_records_sealed_at_commit_version() {
 	// Only checks that a bucket materializes and that the engine's version does not go backwards;
 	// `sealed_at_commit_version` itself is never read here.
 	let fast_config = StorageConfig {
@@ -106,7 +106,7 @@ fn series_snapshot_records_sealed_at_commit_version() {
 		},
 		Duration::from_seconds(5).unwrap().to_std(),
 	)
-	.expect("series snapshot did not materialize within 5 seconds");
+	.expect("series block did not materialize within 5 seconds");
 
 	// A trivial admin query as a liveness check; its result is deliberately discarded.
 	let admin_check = db.try_admin("FROM []");
@@ -122,7 +122,7 @@ fn series_snapshot_records_sealed_at_commit_version() {
 }
 
 #[test]
-fn series_snapshot_system_columns_match_row_metadata() {
+fn series_block_system_columns_match_row_metadata() {
 	// System columns must come from the row header, so the two synthetic shapes a reader can fall back
 	// to - a sequential RowNumber and a default DateTime - are both rejected below.
 	let fast_config = StorageConfig {
@@ -149,17 +149,17 @@ fn series_snapshot_system_columns_match_row_metadata() {
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 	let block_store = storage.block_store().clone();
 
-	let block = poll_until(
+	let data = poll_until(
 		|| series_blocks(&db, &block_store, "s").into_iter().find(|b| !b.is_empty()),
 		Duration::from_seconds(5).unwrap().to_std(),
 	)
-	.expect("series snapshot did not materialize within 5 seconds");
+	.expect("series block did not materialize within 5 seconds");
 
-	let mut reader = SnapshotReader::new(Arc::clone(&block), 100, block_store.session().clone());
+	let mut reader = BlockReader::new(Arc::clone(&data), 100, block_store.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");
 
 	let n = batch.num_rows();
-	assert!(n > 0, "expected non-empty snapshot batch");
+	assert!(n > 0, "expected non-empty block batch");
 
 	for i in 0..n {
 		let rn = row_numbers(&batch).expect("#rownum")[i];
@@ -180,7 +180,7 @@ fn series_snapshot_system_columns_match_row_metadata() {
 }
 
 #[test]
-fn table_snapshot_system_columns_match_row_metadata() {
+fn table_block_system_columns_match_row_metadata() {
 	// The same header-metadata requirement as the series case, on the table materialization path.
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
@@ -197,13 +197,13 @@ fn table_snapshot_system_columns_match_row_metadata() {
 	let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 	let block_store = storage.block_store().clone();
 
-	let block = poll_until(
+	let data = poll_until(
 		|| table_blocks(&db, &block_store, "t").into_iter().find(|b| b.len() == 3),
 		Duration::from_seconds(5).unwrap().to_std(),
 	)
-	.expect("table snapshot did not materialize within 5 seconds");
+	.expect("table block did not materialize within 5 seconds");
 
-	let mut reader = SnapshotReader::new(Arc::clone(&block), 100, block_store.session().clone());
+	let mut reader = BlockReader::new(Arc::clone(&data), 100, block_store.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");
 	assert_eq!(batch.num_rows(), 3);
 

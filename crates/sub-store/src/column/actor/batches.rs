@@ -9,7 +9,7 @@ use reifydb_catalog::store::series::shape::deserialize_encoding_config;
 use reifydb_core::{
 	common::{CommitVersion, TimeSource},
 	interface::catalog::{
-		column_snapshot::ColumnStats,
+		column_block::ColumnStats,
 		series::{Series, SeriesEncoding},
 	},
 	value::{
@@ -19,9 +19,9 @@ use reifydb_core::{
 };
 use reifydb_extension::block_encoding::{error::BlockEncodingError, registry::BlockEncodings};
 use reifydb_store_column::{
+	block::{BlockData, BlockEncodingHeader, BlockUserColumn, ColumnChunks},
 	compress::Compressor,
 	convert::to_vortex,
-	snapshot::{BlockEncodingHeader, BlockUserColumn, ColumnBlock, ColumnChunks},
 	stats::block_stats,
 };
 use reifydb_value::{
@@ -114,7 +114,7 @@ pub fn arrow_columns_from_batches(
 pub fn compress_columns(
 	columns: Vec<(String, ValueType, (FieldRef, ArrayRef))>,
 	compressor: &Compressor,
-) -> Result<ColumnBlock> {
+) -> Result<BlockData> {
 	let mut schema = Vec::with_capacity(columns.len());
 	let mut chunked = Vec::with_capacity(columns.len());
 	for (name, ty, column) in columns {
@@ -122,15 +122,15 @@ pub fn compress_columns(
 		schema.push((name, ty, chunks.nullable));
 		chunked.push(chunks);
 	}
-	Ok(ColumnBlock::new(Arc::new(schema), chunked))
+	Ok(BlockData::new(Arc::new(schema), chunked))
 }
 
-pub fn column_block_from_batches(
+pub fn block_data_from_batches(
 	schema: Vec<(String, ValueType)>,
 	batches: Vec<RecordBatch>,
 	version: CommitVersion,
 	compressor: &Compressor,
-) -> Result<ColumnBlock> {
+) -> Result<BlockData> {
 	compress_columns(arrow_columns_from_batches(&schema, &batches, version)?, compressor)
 }
 
@@ -146,7 +146,7 @@ pub fn stats_from_arrow(
 		chunks.push(ColumnChunks::single(ty.clone(), nullable, field_type, to_vortex(session, column)?));
 		schema.push((name.clone(), ty.clone(), nullable));
 	}
-	block_stats(&ColumnBlock::new(Arc::new(schema), chunks), session)
+	block_stats(&BlockData::new(Arc::new(schema), chunks), session)
 }
 
 pub fn encode_series_block(
@@ -155,7 +155,7 @@ pub fn encode_series_block(
 	encoding: &SeriesEncoding,
 	encodings: &BlockEncodings,
 	compressor: &Compressor,
-) -> Result<ColumnBlock> {
+) -> Result<BlockData> {
 	let (system, mut user): (Vec<_>, Vec<_>) =
 		columns.into_iter().partition(|(name, _, _)| SystemColumn::from_name(name).is_some());
 	let name = encoding.name.as_str();
@@ -503,7 +503,7 @@ mod tests {
 			.configure()
 	}
 
-	fn encode(series: &Series, columns: Columns) -> Result<ColumnBlock> {
+	fn encode(series: &Series, columns: Columns) -> Result<BlockData> {
 		encode_series_block(columns, series, series.encoding.as_ref().unwrap(), &registry(), &compressor())
 	}
 
@@ -522,28 +522,28 @@ mod tests {
 				(name, ty, (field, array))
 			})
 			.collect();
-		let block = encode(&encoded, nullable).unwrap();
-		assert_eq!(block.len(), 0);
-		let header = block.block_encoding.expect("an encoded block must carry its header");
+		let data = encode(&encoded, nullable).unwrap();
+		assert_eq!(data.len(), 0);
+		let header = data.block_encoding.expect("an encoded block must carry its header");
 		assert!(header.user.iter().all(|column| !column.nullable), "{:?}", header.user);
 	}
 
-	fn error_of(result: Result<ColumnBlock>) -> (String, String) {
+	fn error_of(result: Result<BlockData>) -> (String, String) {
 		let Err(Error(diagnostic)) = result else {
 			panic!("expected the seal to fail");
 		};
 		(diagnostic.code.clone(), diagnostic.message.clone())
 	}
 
-	fn names(block: &ColumnBlock) -> Vec<String> {
-		block.schema.iter().map(|(name, _, _)| name.clone()).collect()
+	fn names(data: &BlockData) -> Vec<String> {
+		data.schema.iter().map(|(name, _, _)| name.clone()).collect()
 	}
 
 	#[test]
 	fn table_build_is_byte_identical_after_split() {
 		// The table path must keep building exactly the block it built before the split, and never a header.
 		let plain = series("ts", false, None);
-		let joined = column_block_from_batches(
+		let joined = block_data_from_batches(
 			schema(&plain),
 			batches(&plain, vec![1, 2, 3], vec![10, 20, 30]),
 			CommitVersion(7),
@@ -623,10 +623,10 @@ mod tests {
 		// Moving stats before compression must not change what the catalog stores for a plain series.
 		let plain = series("ts", false, None);
 		let session = new_session();
-		let block = compress_columns(columns(&plain, vec![1, 5, 3], vec![9, 2, 4]), &compressor()).unwrap();
+		let data = compress_columns(columns(&plain, vec![1, 5, 3], vec![9, 2, 4]), &compressor()).unwrap();
 		assert_eq!(
 			stats_from_arrow(&columns(&plain, vec![1, 5, 3], vec![9, 2, 4]), &session).unwrap(),
-			block_stats(&block, &session).unwrap()
+			block_stats(&data, &session).unwrap()
 		);
 	}
 
@@ -634,10 +634,10 @@ mod tests {
 	fn system_columns_bypass_the_encoding() {
 		// An encoding that saw `#` columns could rewrite row numbers or commit versions.
 		let encoded = series("ts", false, delta_on("value"));
-		let block = encode(&encoded, columns(&encoded, vec![1, 2, 3], vec![10, 20, 30])).unwrap();
-		let header = block.block_encoding.clone().expect("an encoded block must carry its header");
+		let data = encode(&encoded, columns(&encoded, vec![1, 2, 3], vec![10, 20, 30])).unwrap();
+		let header = data.block_encoding.clone().expect("an encoded block must carry its header");
 		assert!(header.user.iter().all(|column| SystemColumn::from_name(&column.name).is_none()));
-		let names = names(&block);
+		let names = names(&data);
 		assert_eq!(&names[..2], &["ts".to_string(), "value_delta".to_string()]);
 		assert!(names.contains(&SystemColumn::CommitVersion.name().to_string()));
 	}

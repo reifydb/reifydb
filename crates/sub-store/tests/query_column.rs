@@ -87,18 +87,18 @@ fn rows_by_id(frames: &[Frame]) -> BTreeMap<i32, (String, f64)> {
 	out
 }
 
-fn latest_snapshot_version(db: &TestDb, table: &str) -> u64 {
+fn latest_block_version(db: &TestDb, table: &str) -> u64 {
 	let engine = db.engine();
 	let catalog = engine.catalog();
 	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
 	let mut tx = Transaction::Query(&mut txn);
 	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
 	let table = catalog.find_table_by_name(&mut tx, namespace.id(), table).expect("find table").expect("table");
-	let snapshot = catalog
-		.find_latest_column_snapshot_for_table(&mut tx, table.id)
-		.expect("find snapshot")
-		.expect("snapshot recorded");
-	snapshot.read_version().0
+	let block = catalog
+		.find_latest_column_block_for_table(&mut tx, table.id)
+		.expect("find block")
+		.expect("block recorded");
+	block.read_version().0
 }
 
 #[test]
@@ -130,19 +130,19 @@ fn column_scan_headers_are_the_row_scan_headers() {
 }
 
 #[test]
-fn commit_version_column_equals_the_snapshot_read_version() {
+fn commit_version_column_equals_the_block_read_version() {
 	// The column names the version the rows reflect; any other value makes staleness invisible.
 	let db = materializing_db();
 	db.admin("CREATE TABLE test::t { id: int4, name: utf8, score: float8 }");
 	db.command(INSERT_THREE);
 
 	let column = await_column_rows(&db, "from test::t map { id, #commit_version }", 3);
-	let recorded = latest_snapshot_version(&db, "t");
+	let recorded = latest_block_version(&db, "t");
 
 	let versions = cells(&column.frames[0], "commit_version");
 	assert_eq!(versions.len(), 3);
 	for (i, v) in versions.iter().enumerate() {
-		assert_eq!(v, &Value::Uint8(recorded), "row {i} carries a version other than the snapshot's");
+		assert_eq!(v, &Value::Uint8(recorded), "row {i} carries a version other than the block's");
 	}
 }
 
@@ -179,7 +179,7 @@ fn an_empty_column_table_scan_keeps_rownum() {
 }
 
 #[test]
-fn missing_snapshot_raises_query_012_naming_the_table() {
+fn missing_block_raises_query_012_naming_the_table() {
 	// Returning an empty result here would read as "the table has no rows", which is wrong.
 	let db = TestDb::memory();
 	db.admin("CREATE NAMESPACE test");
@@ -188,7 +188,7 @@ fn missing_snapshot_raises_query_012_naming_the_table() {
 
 	let result = column_query(&db, "from test::t");
 
-	let err = result.error.expect("a table without a snapshot must fail, not come back empty");
+	let err = result.error.expect("a table without a block must fail, not come back empty");
 	assert_eq!(err.code, "QUERY_012");
 	assert!(err.message.contains("test::t"), "the diagnostic must name the table: {}", err.message);
 	assert!(result.frames.is_empty(), "no partial frames may accompany the error");
@@ -356,7 +356,7 @@ fn the_open_series_bucket_is_absent_from_the_column_path() {
 #[test]
 fn each_sealed_bucket_carries_its_own_commit_version() {
 	// The version is stamped per block, not per query. An implementation that stamps the newest
-	// snapshot's version across every block reports rows as fresher than they are, and a test
+	// block's version across every block reports rows as fresher than they are, and a test
 	// that only checks the values are non-zero would pass on exactly that bug.
 	let db = series_db();
 	plain_series(&db);
@@ -394,9 +394,9 @@ fn a_delete_rebuilds_the_sealed_bucket_it_touched() {
 
 #[test]
 fn an_emptied_series_returns_no_rows_instead_of_raising_query_012() {
-	// Emptying a series drops its blocks, which leaves the scan with no snapshot to read. That
+	// Emptying a series drops its blocks, which leaves the scan with no block to read. That
 	// state also means "rows exist but none are sealed yet", and the two must not collapse into
-	// one answer: a series that genuinely holds nothing reads as empty, not as a missing snapshot.
+	// one answer: a series that genuinely holds nothing reads as empty, not as a missing block.
 	let db = series_db();
 	plain_series(&db);
 	insert_keys(&db, "test::s", 1..=15);

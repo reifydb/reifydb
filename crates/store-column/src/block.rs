@@ -92,16 +92,16 @@ pub struct BlockUserColumn {
 pub type Schema = Arc<Vec<(String, ValueType, bool)>>;
 
 #[derive(Clone)]
-pub struct ColumnBlock {
+pub struct BlockData {
 	pub schema: Schema,
 	pub columns: Vec<ColumnChunks>,
 	pub block_encoding: Option<BlockEncodingHeader>,
 }
 
-impl ColumnBlock {
+impl BlockData {
 	pub fn new(schema: Schema, columns: Vec<ColumnChunks>) -> Self {
 		reifydb_assertions! {
-			assert_eq!(schema.len(), columns.len(), "ColumnBlock::new: schema and columns length mismatch");
+			assert_eq!(schema.len(), columns.len(), "BlockData::new: schema and columns length mismatch");
 		}
 		Self {
 			schema,
@@ -127,7 +127,7 @@ impl ColumnBlock {
 		self.schema.iter().position(|(n, _, _)| n == name).map(|i| (i, &self.columns[i]))
 	}
 
-	pub fn view_range(&self, start: usize, end: usize) -> Result<ColumnBlock> {
+	pub fn view_range(&self, start: usize, end: usize) -> Result<BlockData> {
 		reifydb_assertions! {
 			assert!(start <= end, "view_range: start {start} > end {end}");
 		}
@@ -145,7 +145,7 @@ impl ColumnBlock {
 				sliced_chunks,
 			));
 		}
-		Ok(ColumnBlock::new(Arc::clone(&self.schema), sliced_columns)
+		Ok(BlockData::new(Arc::clone(&self.schema), sliced_columns)
 			.with_block_encoding(self.block_encoding.clone()))
 	}
 }
@@ -198,17 +198,17 @@ mod tests {
 		assert_eq!(ch.iter_range_chunks(0, 6), vec![(0, 0, 2), (1, 0, 3), (2, 0, 1)]);
 	}
 
-	fn block_with_columns(named: &[(&str, &[&[i32]])]) -> ColumnBlock {
+	fn block_with_columns(named: &[(&str, &[&[i32]])]) -> BlockData {
 		let schema: Schema =
 			Arc::new(named.iter().map(|(n, _)| ((*n).to_string(), ValueType::Int4, false)).collect());
 		let cols = named.iter().map(|(_, parts)| chunked_int4(parts)).collect();
-		ColumnBlock::new(schema, cols)
+		BlockData::new(schema, cols)
 	}
 
 	#[test]
 	fn view_range_empty_window_yields_empty_per_column() {
-		let block = block_with_columns(&[("a", &[&[1, 2, 3]])]);
-		let view = block.view_range(2, 2).unwrap();
+		let data = block_with_columns(&[("a", &[&[1, 2, 3]])]);
+		let view = data.view_range(2, 2).unwrap();
 		assert_eq!(view.len(), 0);
 		assert_eq!(view.columns[0].chunks.len(), 0);
 	}
@@ -217,8 +217,8 @@ mod tests {
 	fn view_range_spanning_chunks_preserves_total_length() {
 		// The range starts and ends mid-chunk, so both partial end chunks still have to be carried into the
 		// view.
-		let block = block_with_columns(&[("a", &[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]])]);
-		let view = block.view_range(2, 7).unwrap();
+		let data = block_with_columns(&[("a", &[&[10, 20, 30], &[40, 50], &[60, 70, 80, 90]])]);
+		let view = data.view_range(2, 7).unwrap();
 		assert_eq!(view.len(), 5);
 		assert_eq!(view.schema.len(), 1);
 		assert_eq!(view.columns[0].chunks.len(), 3);
@@ -229,8 +229,8 @@ mod tests {
 
 	#[test]
 	fn view_range_multi_column_aligns_per_column_lengths() {
-		let block = block_with_columns(&[("a", &[&[1, 2, 3, 4, 5]]), ("b", &[&[10, 20], &[30, 40, 50]])]);
-		let view = block.view_range(1, 4).unwrap();
+		let data = block_with_columns(&[("a", &[&[1, 2, 3, 4, 5]]), ("b", &[&[10, 20], &[30, 40, 50]])]);
+		let view = data.view_range(1, 4).unwrap();
 		assert_eq!(view.len(), 3);
 		assert_eq!(view.columns[0].len(), 3);
 		assert_eq!(view.columns[1].len(), 3);
@@ -264,11 +264,11 @@ mod tests {
 				field_type: FieldType::from(ValueType::Int4),
 			}],
 		};
-		let block = ColumnBlock::new(
+		let data = BlockData::new(
 			Arc::new(vec![("c".to_string(), ValueType::Int4, false)]),
 			vec![chunked_int4(&[&[1, 2, 3], &[4, 5]])],
 		)
 		.with_block_encoding(Some(header.clone()));
-		assert_eq!(block.view_range(1, 4).unwrap().block_encoding, Some(header));
+		assert_eq!(data.view_range(1, 4).unwrap().block_encoding, Some(header));
 	}
 }

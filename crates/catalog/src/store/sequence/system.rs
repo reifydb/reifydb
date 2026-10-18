@@ -5,9 +5,9 @@ use reifydb_core::{
 	interface::catalog::{
 		authentication::AuthenticationId,
 		id::{
-			BindingId, ColumnId, ColumnPropertyId, ColumnSnapshotId, HandlerId, MigrationEventId,
-			MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, QueueId, RelationshipId, RingBufferId,
-			SeriesId, TableId, TestId, ViewId,
+			BindingId, ColumnBlockId, ColumnId, ColumnPropertyId, HandlerId, MigrationEventId, MigrationId,
+			NamespaceId, PrimaryKeyId, ProcedureId, QueueId, RelationshipId, RingBufferId, SeriesId,
+			TableId, TestId, ViewId,
 		},
 		identity::{IdentityAttributeId, RoleId},
 		policy::PolicyId,
@@ -22,7 +22,7 @@ use crate::{
 	Result,
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		AUTHENTICATION, BINDING, COLUMN, COLUMN_PROPERTY, COLUMN_SNAPSHOT, FLOW, FLOW_EDGE, HANDLER,
+		AUTHENTICATION, BINDING, COLUMN, COLUMN_BLOCK, COLUMN_PROPERTY, FLOW, FLOW_EDGE, HANDLER,
 		IDENTITY_ATTRIBUTE, MIGRATION, MIGRATION_EVENT, NAMESPACE, OPERATOR, POLICY, PRIMARY_KEY, PROCEDURE,
 		RELATIONSHIP, ROLE, SOURCE, TEST, TOKEN,
 	},
@@ -104,8 +104,8 @@ const BINDING_KEY: SystemSequenceKey = SystemSequenceKey {
 	sequence: BINDING,
 };
 
-const COLUMN_SNAPSHOT_KEY: SystemSequenceKey = SystemSequenceKey {
-	sequence: COLUMN_SNAPSHOT,
+const COLUMN_BLOCK_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: COLUMN_BLOCK,
 };
 const RELATIONSHIP_KEY: SystemSequenceKey = SystemSequenceKey {
 	sequence: RELATIONSHIP,
@@ -204,8 +204,8 @@ impl SystemSequence {
 		GeneratorU64::next(txn, &BINDING_KEY, Some(SYSTEM_RESERVED)).map(BindingId)
 	}
 
-	pub(crate) fn next_column_snapshot_id(txn: &mut AdminTransaction) -> Result<ColumnSnapshotId> {
-		GeneratorU64::next(txn, &COLUMN_SNAPSHOT_KEY, Some(SYSTEM_RESERVED)).map(ColumnSnapshotId)
+	pub(crate) fn next_column_block_id(txn: &mut AdminTransaction) -> Result<ColumnBlockId> {
+		GeneratorU64::next(txn, &COLUMN_BLOCK_KEY, Some(SYSTEM_RESERVED)).map(ColumnBlockId)
 	}
 
 	pub(crate) fn next_relationship_id(txn: &mut AdminTransaction) -> Result<RelationshipId> {

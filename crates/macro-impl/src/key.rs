@@ -51,7 +51,7 @@ pub enum KeyColumn {
 	MigrationId,
 	MigrationEventId,
 	PrimaryKeyId,
-	ColumnSnapshotId,
+	ColumnBlockId,
 	IndexId,
 	OptionU8,
 	ReprU8,
@@ -90,7 +90,7 @@ impl KeyColumn {
 			| KeyColumn::RelationshipId
 			| KeyColumn::MigrationId
 			| KeyColumn::MigrationEventId
-			| KeyColumn::ColumnSnapshotId
+			| KeyColumn::ColumnBlockId
 			| KeyColumn::PrimaryKeyId
 			| KeyColumn::IndexId => 8,
 			KeyColumn::ObjectId | KeyColumn::StorageId => 9,
@@ -155,7 +155,7 @@ impl KeyColumn {
 			| KeyColumn::RelationshipId
 			| KeyColumn::MigrationId
 			| KeyColumn::MigrationEventId
-			| KeyColumn::ColumnSnapshotId
+			| KeyColumn::ColumnBlockId
 			| KeyColumn::PrimaryKeyId => u("U64", format!("self.{field}.0")),
 		}
 	}
@@ -193,7 +193,7 @@ impl KeyColumn {
 			| KeyColumn::RelationshipId
 			| KeyColumn::MigrationId
 			| KeyColumn::MigrationEventId
-			| KeyColumn::ColumnSnapshotId
+			| KeyColumn::ColumnBlockId
 			| KeyColumn::PrimaryKeyId => format!("serializer.extend_u64(self.{field}.0);"),
 			KeyColumn::ProcedureId => format!("serializer.extend_u64(*self.{field});"),
 			KeyColumn::EpochSeconds => format!("serializer.extend_u64(self.{field}.seconds());"),
@@ -246,7 +246,7 @@ impl KeyColumn {
 			| KeyColumn::RelationshipId
 			| KeyColumn::MigrationId
 			| KeyColumn::MigrationEventId
-			| KeyColumn::ColumnSnapshotId
+			| KeyColumn::ColumnBlockId
 			| KeyColumn::PrimaryKeyId => format!("{field_type}(de.read_u64().ok()?)"),
 			KeyColumn::ProcedureId => "ProcedureId::from_raw(de.read_u64().ok()?)".to_string(),
 			KeyColumn::EpochSeconds => "EpochSeconds::new(de.read_u64().ok()?)".to_string(),
@@ -524,7 +524,7 @@ fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
 		"MigrationId" => Some(KeyColumn::MigrationId),
 		"MigrationEventId" => Some(KeyColumn::MigrationEventId),
 		"PrimaryKeyId" => Some(KeyColumn::PrimaryKeyId),
-		"ColumnSnapshotId" => Some(KeyColumn::ColumnSnapshotId),
+		"ColumnBlockId" => Some(KeyColumn::ColumnBlockId),
 		_ => None,
 	}
 }

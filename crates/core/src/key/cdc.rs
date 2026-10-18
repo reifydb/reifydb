@@ -253,9 +253,9 @@ pub mod primary_key_tests {
 			KeyTag::Binding => {}
 			KeyTag::OperatorRetention => {}
 			KeyTag::NamespaceBinding => {}
-			KeyTag::ColumnSnapshot => {}
-			KeyTag::SeriesColumnSnapshot => {}
-			KeyTag::TableColumnSnapshot => {}
+			KeyTag::ColumnBlock => {}
+			KeyTag::SeriesColumnBlock => {}
+			KeyTag::TableColumnBlock => {}
 			KeyTag::IdentityAttribute => {}
 			KeyTag::IdentityAttributeValue => {}
 			KeyTag::PartitionedRow => {}

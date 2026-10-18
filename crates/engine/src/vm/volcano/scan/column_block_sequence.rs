@@ -4,10 +4,10 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
-use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::column_snapshot::ColumnSnapshot};
+use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::column_block::ColumnBlock};
 use reifydb_extension::block_encoding::error::BlockEncodingError;
 use reifydb_store_column::{
-	device::BlockKey, predicate::Predicate, reader::SnapshotReader, snapshot::Schema, store::ColumnStore,
+	block::Schema, device::BlockFileKey, predicate::Predicate, reader::BlockReader, store::ColumnStore,
 };
 use reifydb_value::error::Error;
 
@@ -18,20 +18,20 @@ use crate::{
 
 pub(crate) struct BlockSequenceReader {
 	store: Arc<ColumnStore>,
-	snapshots: Vec<ColumnSnapshot>,
+	blocks: Vec<ColumnBlock>,
 	batch_size: usize,
 	index: usize,
-	current: Option<SnapshotReader>,
+	current: Option<BlockReader>,
 	schema: Option<Schema>,
 	predicate: Option<Predicate>,
 	decoder: Option<BlockDecoder>,
 }
 
 impl BlockSequenceReader {
-	pub(crate) fn new(store: Arc<ColumnStore>, snapshots: Vec<ColumnSnapshot>, batch_size: usize) -> Self {
+	pub(crate) fn new(store: Arc<ColumnStore>, blocks: Vec<ColumnBlock>, batch_size: usize) -> Self {
 		Self {
 			store,
-			snapshots,
+			blocks,
 			batch_size,
 			index: 0,
 			current: None,
@@ -64,50 +64,50 @@ impl BlockSequenceReader {
 				}
 			}
 
-			if self.index >= self.snapshots.len() {
+			if self.index >= self.blocks.len() {
 				return Ok(None);
 			}
 
-			let snapshot = &self.snapshots[self.index];
+			let block = &self.blocks[self.index];
 			self.index += 1;
 
-			let block = self
+			let data = self
 				.store
-				.open(&BlockKey::of(snapshot))?
+				.open(&BlockFileKey::of(block))?
 				.ok_or_else(|| {
 					Error(Box::new(internal(format!(
-						"column block for snapshot {} is missing from the column store",
-						snapshot.id
+						"column block for block {} is missing from the column store",
+						block.id
 					))))
 				})?
 				.read(None)?;
 
-			let block = match (&self.decoder, &block.block_encoding) {
-				(_, None) => block,
+			let data = match (&self.decoder, &data.block_encoding) {
+				(_, None) => data,
 				(None, Some(header)) => {
 					return Err(BlockEncodingError::NoDecoder {
 						name: header.name.clone(),
-						snapshot: snapshot.id,
+						block: block.id,
 					}
 					.into());
 				}
-				(Some(decoder), Some(_)) => match decoder.decode(block, self.predicate.as_ref())? {
+				(Some(decoder), Some(_)) => match decoder.decode(data, self.predicate.as_ref())? {
 					Decoded::Skip(schema) => {
 						if self.schema.is_none() {
 							self.schema = Some(schema);
 						}
 						continue;
 					}
-					Decoded::Block(block) => block,
+					Decoded::Block(data) => data,
 				},
 			};
-			let block = Arc::new(block);
+			let data = Arc::new(data);
 
 			if self.schema.is_none() {
-				self.schema = Some(Arc::clone(&block.schema));
+				self.schema = Some(Arc::clone(&data.schema));
 			}
 
-			let reader = SnapshotReader::new(block, self.batch_size, self.store.session().clone());
+			let reader = BlockReader::new(data, self.batch_size, self.store.session().clone());
 			self.current = Some(match self.predicate.clone() {
 				Some(predicate) => reader.with_predicate(predicate),
 				None => reader,
@@ -123,11 +123,11 @@ mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::catalog::{
-			column_snapshot::{ColumnSnapshot, ColumnSnapshotSource},
-			id::{ColumnSnapshotId, NamespaceId, SeriesId},
+			column_block::{ColumnBlock, ColumnBlockSource},
+			id::{ColumnBlockId, NamespaceId, SeriesId},
 		},
 	};
-	use reifydb_store_column::{device::BlockKey, store::ColumnStore};
+	use reifydb_store_column::{device::BlockFileKey, store::ColumnStore};
 
 	use super::BlockSequenceReader;
 	use crate::vm::volcano::scan::column_decode::tests::encoded_block;
@@ -135,10 +135,10 @@ mod tests {
 	#[test]
 	fn encoded_block_without_decoder_fails() {
 		// A scan without a decoder must never hand stored columns to the query as if they were user columns.
-		let snapshot = ColumnSnapshot {
-			id: ColumnSnapshotId(42),
+		let block = ColumnBlock {
+			id: ColumnBlockId(42),
 			namespace: NamespaceId(1),
-			source: ColumnSnapshotSource::SeriesBucket {
+			source: ColumnBlockSource::SeriesBucket {
 				series_id: SeriesId(9),
 				bucket_start: 0,
 				bucket_width: 100,
@@ -151,12 +151,12 @@ mod tests {
 			stats: Vec::new(),
 		};
 		let store = ColumnStore::memory().unwrap();
-		store.write(&BlockKey::of(&snapshot), &encoded_block(vec![1, 2], vec![5, 6], 1)).unwrap();
-		let mut reader = BlockSequenceReader::new(Arc::new(store), vec![snapshot], 1024);
+		store.write(&BlockFileKey::of(&block), &encoded_block(vec![1, 2], vec![5, 6], 1)).unwrap();
+		let mut reader = BlockSequenceReader::new(Arc::new(store), vec![block], 1024);
 		let Err(err) = reader.next() else {
 			panic!("an encoded block read without a decoder must fail");
 		};
 		assert_eq!(err.0.code, "BENC_009");
-		assert!(err.0.message.contains("42"), "the error must name the snapshot: {}", err.0.message);
+		assert!(err.0.message.contains("42"), "the error must name the block: {}", err.0.message);
 	}
 }

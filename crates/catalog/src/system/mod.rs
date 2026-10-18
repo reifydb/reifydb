@@ -842,7 +842,7 @@ pub mod ids {
 		pub const SOURCE_CONNECTOR: SequenceId = SequenceId(19);
 		pub const SINK_CONNECTOR: SequenceId = SequenceId(20);
 		pub const BINDING: SequenceId = SequenceId(21);
-		pub const COLUMN_SNAPSHOT: SequenceId = SequenceId(22);
+		pub const COLUMN_BLOCK: SequenceId = SequenceId(22);
 		pub const IDENTITY_ATTRIBUTE: SequenceId = SequenceId(23);
 		pub const RELATIONSHIP: SequenceId = SequenceId(24);
 
@@ -868,7 +868,7 @@ pub mod ids {
 			(SOURCE_CONNECTOR, "source_connector"),
 			(SINK_CONNECTOR, "sink_connector"),
 			(BINDING, "binding"),
-			(COLUMN_SNAPSHOT, "column_snapshot"),
+			(COLUMN_BLOCK, "column_block"),
 			(IDENTITY_ATTRIBUTE, "identity_attribute"),
 			(RELATIONSHIP, "relationship"),
 		];

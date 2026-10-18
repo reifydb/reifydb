@@ -14,13 +14,13 @@ use reifydb::{
 	SqliteConfig, embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_core::{execution::ExecutionResult, interface::catalog::column_snapshot::ColumnSnapshot};
+use reifydb_core::{execution::ExecutionResult, interface::catalog::column_block::ColumnBlock};
 use reifydb_runtime::io::fs::{
 	Len, Open, Unlink,
 	memory::{MemoryFs, SECTOR_BYTES},
 	testing::NoFaults as FsNoFaults,
 };
-use reifydb_store_column::{device::BlockKey, store::ColumnStore, testing::NoFaults};
+use reifydb_store_column::{device::BlockFileKey, store::ColumnStore, testing::NoFaults};
 use reifydb_sub_store::subsystem::StorageConfig;
 use reifydb_test_harness::fixture::column::{
 	CorruptReads, LyingSync, MEMORY_ROOT, PauseOnObjectSyncDir, PauseOnRemove, SyncDirLog, TornWrites, block_path,
@@ -81,14 +81,14 @@ fn insert_rows(db: &TestDb, ids: impl IntoIterator<Item = u64>) {
 	db.command(&format!("INSERT test::t [{}]", rows.join(", ")));
 }
 
-fn table_snapshots(db: &TestDb) -> Vec<ColumnSnapshot> {
+fn table_blocks(db: &TestDb) -> Vec<ColumnBlock> {
 	let engine = db.engine();
 	let catalog = engine.catalog();
 	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
 	let mut tx = Transaction::Query(&mut txn);
 	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
 	let table = catalog.find_table_by_name(&mut tx, namespace.id(), "t").expect("find table").expect("table");
-	catalog.list_column_snapshots_for_table(&mut tx, table.id).expect("list table snapshots")
+	catalog.list_column_blocks_for_table(&mut tx, table.id).expect("list table blocks")
 }
 
 fn table_id(db: &TestDb) -> u64 {
@@ -100,12 +100,12 @@ fn table_id(db: &TestDb) -> u64 {
 	catalog.find_table_by_name(&mut tx, namespace.id(), "t").expect("find table").expect("table").id.0
 }
 
-fn await_snapshot(db: &TestDb, rows: u64) -> ColumnSnapshot {
+fn await_block(db: &TestDb, rows: u64) -> ColumnBlock {
 	poll_until(
-		|| table_snapshots(db).into_iter().find(|snapshot| snapshot.row_count == rows),
+		|| table_blocks(db).into_iter().find(|block| block.row_count == rows),
 		Duration::from_seconds(5).unwrap().to_std(),
 	)
-	.unwrap_or_else(|| panic!("no {rows}-row table snapshot was committed within 5 seconds"))
+	.unwrap_or_else(|| panic!("no {rows}-row table block was committed within 5 seconds"))
 }
 
 fn column_query(db: &TestDb) -> ExecutionResult {
@@ -148,8 +148,8 @@ fn a_torn_block_write_fails_the_column_scan_instead_of_returning_rows() {
 	let db = memory_db(memory_store(memory.clone(), Arc::new(TornWrites), Arc::new(NoFaults)).expect("store"));
 	create_table(&db);
 	insert_rows(&db, 0..2000);
-	let snapshot = await_snapshot(&db, 2000);
-	let path = block_path(Path::new(MEMORY_ROOT), &BlockKey::of(&snapshot));
+	let block = await_block(&db, 2000);
+	let path = block_path(Path::new(MEMORY_ROOT), &BlockFileKey::of(&block));
 	let len = memory.open(&path).expect("open block file").len().expect("block file length");
 	assert!(len > SECTOR_BYTES as u64, "the block must span more than one sector, or the torn write loses nothing");
 
@@ -162,7 +162,7 @@ fn a_corrupt_block_read_fails_the_column_scan_instead_of_returning_rows() {
 	let db = memory_db(memory_store(MemoryFs::new(), Arc::new(CorruptReads), Arc::new(NoFaults)).expect("store"));
 	create_table(&db);
 	insert_rows(&db, 0..3);
-	await_snapshot(&db, 3);
+	await_block(&db, 3);
 
 	assert_scan_fails_with_column_error(&column_query(&db), "a corrupt read");
 }
@@ -174,8 +174,8 @@ fn a_cataloged_block_whose_file_is_gone_fails_the_scan_instead_of_reading_empty(
 	let db = memory_db(memory_store(memory.clone(), Arc::new(FsNoFaults), Arc::new(NoFaults)).expect("store"));
 	create_table(&db);
 	insert_rows(&db, 0..3);
-	let snapshot = await_snapshot(&db, 3);
-	memory.unlink(&block_path(Path::new(MEMORY_ROOT), &BlockKey::of(&snapshot))).expect("unlink block file");
+	let block = await_block(&db, 3);
+	memory.unlink(&block_path(Path::new(MEMORY_ROOT), &BlockFileKey::of(&block))).expect("unlink block file");
 
 	let result = column_query(&db);
 
@@ -202,7 +202,7 @@ fn an_honest_sync_keeps_a_committed_block_through_a_crash() {
 		let mut db = sqlite_db(&db_path, ticking(), Some(store));
 		create_table(&db);
 		insert_rows(&db, 0..3);
-		await_snapshot(&db, 3);
+		await_block(&db, 3);
 		db.stop();
 	}
 
@@ -226,7 +226,7 @@ fn a_lying_sync_loses_the_block_and_the_scan_fails_instead_of_reading_empty() {
 		let mut db = sqlite_db(&db_path, ticking(), Some(store));
 		create_table(&db);
 		insert_rows(&db, 0..3);
-		await_snapshot(&db, 3);
+		await_block(&db, 3);
 		db.stop();
 	}
 
@@ -239,7 +239,7 @@ fn a_lying_sync_loses_the_block_and_the_scan_fails_instead_of_reading_empty() {
 
 #[test]
 fn a_delete_paused_after_the_catalog_commit_leaves_an_orphan_and_the_latest_reads() {
-	// Otherwise a crash at the old-file delete can lose the latest snapshot or its file.
+	// Otherwise a crash at the old-file delete can lose the latest block or its file.
 	let dir = tempfile::tempdir().expect("create test dir");
 	let root = dir.path().join("column");
 	let (hook, pause) = PauseOnRemove::new();
@@ -248,17 +248,17 @@ fn a_delete_paused_after_the_catalog_commit_leaves_an_orphan_and_the_latest_read
 	create_table(&db);
 	hook.target(table_id(&db));
 	insert_rows(&db, 0..1);
-	let first = await_snapshot(&db, 1);
+	let first = await_block(&db, 1);
 	insert_rows(&db, 1..2);
 
 	let removing =
 		pause.reached(Duration::from_seconds(5).unwrap()).expect("the old file delete was never reached");
 
-	assert_eq!(removing, first.id.0, "the delete must target the previous snapshot");
-	let snapshots = table_snapshots(&db);
-	assert_eq!(snapshots.len(), 1, "the catalog must already have dropped the old row when its file is deleted");
-	assert_eq!(snapshots[0].row_count, 2, "the committed row must be the latest snapshot");
-	let latest = BlockKey::of(&snapshots[0]);
+	assert_eq!(removing, first.id.0, "the delete must target the previous block");
+	let blocks = table_blocks(&db);
+	assert_eq!(blocks.len(), 1, "the catalog must already have dropped the old row when its file is deleted");
+	assert_eq!(blocks[0].row_count, 2, "the committed row must be the latest block");
+	let latest = BlockFileKey::of(&blocks[0]);
 	let folder = root.join(latest.dir.to_string());
 	assert_eq!(
 		file_names(&folder),
@@ -266,13 +266,13 @@ fn a_delete_paused_after_the_catalog_commit_leaves_an_orphan_and_the_latest_read
 		"a crash here must leave the old file as an orphan next to the latest"
 	);
 	let restarted = ColumnStore::host(root.clone()).expect("reopen column dir");
-	let block = restarted
+	let data = restarted
 		.open(&latest)
 		.expect("open latest block")
-		.expect("the latest snapshot must have its file on disk")
+		.expect("the latest block must have its file on disk")
 		.read(None)
 		.expect("read latest block");
-	assert_eq!(block.len(), 2, "a fresh store over the same folder must read the latest block whole");
+	assert_eq!(data.len(), 2, "a fresh store over the same folder must read the latest block whole");
 
 	pause.release();
 	poll_until(
@@ -283,7 +283,7 @@ fn a_delete_paused_after_the_catalog_commit_leaves_an_orphan_and_the_latest_read
 }
 
 #[test]
-fn the_snapshot_row_stays_invisible_until_its_object_folder_is_synced() {
+fn the_block_row_stays_invisible_until_its_object_folder_is_synced() {
 	// Otherwise a catalog row can point at a file whose folder entry a crash would drop.
 	let (hook, pause) = PauseOnObjectSyncDir::new();
 	let hook = Arc::new(hook);
@@ -297,13 +297,13 @@ fn the_snapshot_row_stays_invisible_until_its_object_folder_is_synced() {
 		pause.reached(Duration::from_seconds(5).unwrap()).expect("the object folder sync was never reached");
 
 	assert_eq!(syncing, PathBuf::from(MEMORY_ROOT).join(table.to_string()));
-	assert!(table_snapshots(&db).is_empty(), "no snapshot row may be visible before its folder is synced");
+	assert!(table_blocks(&db).is_empty(), "no block row may be visible before its folder is synced");
 	pause.release();
-	await_snapshot(&db, 3);
+	await_block(&db, 3);
 }
 
 #[test]
-fn the_root_is_synced_once_per_new_object_folder_and_the_object_folder_once_per_snapshot() {
+fn the_root_is_synced_once_per_new_object_folder_and_the_object_folder_once_per_block() {
 	// Otherwise a new folder entry is never made durable and a crash drops it with its files.
 	let log = Arc::new(SyncDirLog::default());
 	let store = memory_store(MemoryFs::new(), log.clone(), Arc::new(NoFaults)).expect("store");
@@ -313,15 +313,15 @@ fn the_root_is_synced_once_per_new_object_folder_and_the_object_folder_once_per_
 	create_table(&db);
 	let object = PathBuf::from(MEMORY_ROOT).join(table_id(&db).to_string());
 	insert_rows(&db, 0..1);
-	await_snapshot(&db, 1);
+	await_block(&db, 1);
 	assert_folder_syncs(&log.paths(), &object, 1);
 
 	insert_rows(&db, 1..2);
-	await_snapshot(&db, 2);
+	await_block(&db, 2);
 	assert_folder_syncs(&log.paths(), &object, 2);
 }
 
-fn assert_folder_syncs(paths: &[PathBuf], object: &Path, snapshots: usize) {
+fn assert_folder_syncs(paths: &[PathBuf], object: &Path, blocks: usize) {
 	let root = Path::new(MEMORY_ROOT);
 	let folders: BTreeSet<&PathBuf> = paths.iter().filter(|path| path.parent() == Some(root)).collect();
 	assert!(folders.contains(&object.to_path_buf()), "the table's object folder must be synced: {paths:?}");
@@ -332,7 +332,7 @@ fn assert_folder_syncs(paths: &[PathBuf], object: &Path, snapshots: usize) {
 	);
 	assert_eq!(
 		paths.iter().filter(|path| path.as_path() == object).count(),
-		snapshots,
-		"the object folder must be synced once per snapshot: {paths:?}"
+		blocks,
+		"the object folder must be synced once per block: {paths:?}"
 	);
 }

@@ -11,13 +11,13 @@ use reifydb_core::{
 		catalog::{
 			authentication::{Authentication, AuthenticationId},
 			binding::Binding,
-			column_snapshot::ColumnSnapshot,
+			column_block::ColumnBlock,
 			dictionary::Dictionary,
 			flow::{FlowEntry, FlowId},
 			handler::Handler,
 			id::{
-				BindingId, ColumnSnapshotId, HandlerId, NamespaceId, ProcedureId, QueueId,
-				RelationshipId, RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
+				BindingId, ColumnBlockId, HandlerId, NamespaceId, ProcedureId, QueueId, RelationshipId,
+				RingBufferId, SeriesId, SinkId, SourceId, TableId, TestId, ViewId,
 			},
 			identity::{
 				GrantedRole, Identity, IdentityAttribute, IdentityAttributeId, IdentityAttributeValue,
@@ -61,7 +61,7 @@ use crate::{
 	TransactionId,
 	change::{
 		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
-		TransactionalColumnSnapshotChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
+		TransactionalColumnBlockChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
 		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityAttributeChanges,
 		TransactionalIdentityAttributeValueChanges, TransactionalIdentityChanges,
 		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalPolicyChanges,
@@ -239,12 +239,12 @@ impl TransactionalDictionaryChanges for QueryTransaction {
 	}
 }
 
-impl TransactionalColumnSnapshotChanges for QueryTransaction {
-	fn find_column_snapshot(&self, _id: ColumnSnapshotId) -> Option<&ColumnSnapshot> {
+impl TransactionalColumnBlockChanges for QueryTransaction {
+	fn find_column_block(&self, _id: ColumnBlockId) -> Option<&ColumnBlock> {
 		None
 	}
 
-	fn is_column_snapshot_deleted(&self, _id: ColumnSnapshotId) -> bool {
+	fn is_column_block_deleted(&self, _id: ColumnBlockId) -> bool {
 		false
 	}
 }

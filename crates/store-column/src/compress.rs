@@ -13,7 +13,7 @@ use vortex_btrblocks::schemes::{float::PcoScheme as FloatPcoScheme, integer::Pco
 use vortex_btrblocks::{BtrBlocksCompressor, BtrBlocksCompressorBuilder};
 use vortex_session::VortexSession;
 
-use crate::{convert::to_vortex, error::vortex, snapshot::ColumnChunks};
+use crate::{block::ColumnChunks, convert::to_vortex, error::vortex};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CompressionProfile {

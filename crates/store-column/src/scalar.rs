@@ -15,9 +15,9 @@ use vortex_array::{IntoArray, VortexSessionExecute, arrays::ConstantArray, scala
 use vortex_session::VortexSession;
 
 use crate::{
+	block::ColumnChunks,
 	convert::{to_arrow, to_vortex},
 	error::{ColumnError, vortex},
-	snapshot::ColumnChunks,
 };
 
 pub fn to_scalar(session: &VortexSession, name: &str, column: &ColumnChunks, value: &Value) -> Result<Scalar> {

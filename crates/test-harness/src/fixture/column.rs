@@ -21,7 +21,7 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_store_column::{
-	device::BlockKey,
+	device::BlockFileKey,
 	store::{ColumnStore, FsColumnStore},
 	testing::{ColumnHooks, RemoveOutcome, TestingColumnStore},
 };
@@ -40,7 +40,7 @@ pub fn host_store(dir: PathBuf, hooks: Arc<dyn ColumnHooks>) -> Result<ColumnSto
 	Ok(ColumnStore::Testing(TestingColumnStore::over(store, hooks)))
 }
 
-pub fn block_path(root: &Path, key: &BlockKey) -> PathBuf {
+pub fn block_path(root: &Path, key: &BlockFileKey) -> PathBuf {
 	root.join(key.dir.to_string()).join(format!("{:020}.borg", key.name))
 }
 
@@ -168,7 +168,7 @@ impl PauseOnRemove {
 }
 
 impl ColumnHooks for PauseOnRemove {
-	fn on_remove(&self, key: &BlockKey) -> RemoveOutcome {
+	fn on_remove(&self, key: &BlockFileKey) -> RemoveOutcome {
 		self.0.hold(key.dir, key.name);
 		RemoveOutcome::Land
 	}

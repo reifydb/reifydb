@@ -18,8 +18,8 @@ use reifydb::{
 	},
 	arrow_schema::{DataType, TimeUnit},
 	column::{
-		compress::CompressionProfile, convert::to_arrow, device::BlockKey, persist::serialize_block,
-		snapshot::ColumnBlock, store::ColumnStore,
+		block::BlockData, compress::CompressionProfile, convert::to_arrow, device::BlockFileKey,
+		persist::serialize_block, store::ColumnStore,
 	},
 	core::value::batch::batch,
 	embedded,
@@ -89,7 +89,7 @@ fn to_rows(columns: &[Vec<i128>]) -> Vec<Box<[i128]>> {
 	rows
 }
 
-fn block_files(dir: &Path) -> Result<Vec<(BlockKey, PathBuf, u64)>, String> {
+fn block_files(dir: &Path) -> Result<Vec<(BlockFileKey, PathBuf, u64)>, String> {
 	let mut out = Vec::new();
 	for series_dir in fs::read_dir(dir).map_err(|e| e.to_string())? {
 		let series_dir = series_dir.map_err(|e| e.to_string())?;
@@ -110,7 +110,7 @@ fn block_files(dir: &Path) -> Result<Vec<(BlockKey, PathBuf, u64)>, String> {
 			};
 			let size = file.metadata().map_err(|e| e.to_string())?.len();
 			out.push((
-				BlockKey {
+				BlockFileKey {
 					dir: series,
 					name,
 				},
@@ -140,11 +140,11 @@ fn await_blocks(store: &ColumnStore, dir: &Path, key: &str, expected: usize, tic
 					let Some(handle) = store.open(&block_key).map_err(err)? else {
 						continue;
 					};
-					let Ok(block) = handle.read(Some(&[key])) else {
+					let Ok(data) = handle.read(Some(&[key])) else {
 						continue;
 					};
-					counted.insert(path, (size, block.len()));
-					block.len()
+					counted.insert(path, (size, data.len()));
+					data.len()
 				}
 			};
 			total += rows;
@@ -312,17 +312,17 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 	let mut stored: Vec<Vec<i128>> = vec![Vec::new(); names.len()];
 	let mut all_names: Vec<String> = Vec::new();
 	for (key, _, size) in block_files(&column_dir)? {
-		let block = store.open(&key).map_err(err)?.ok_or("block vanished")?.read(None).map_err(err)?;
-		if block.column_by_name(&names[0]).is_none() {
+		let data = store.open(&key).map_err(err)?.ok_or("block vanished")?.read(None).map_err(err)?;
+		if data.column_by_name(&names[0]).is_none() {
 			continue;
 		}
 		blocks += 1;
-		if block.is_empty() {
+		if data.is_empty() {
 			empty_blocks += 1;
 		}
 		bytes += size;
-		for ((name, ty, nullable), column) in block.schema.iter().zip(&block.columns) {
-			let single = ColumnBlock::new(
+		for ((name, ty, nullable), column) in data.schema.iter().zip(&data.columns) {
+			let single = BlockData::new(
 				Arc::new(vec![(name.clone(), ty.clone(), *nullable)]),
 				vec![column.clone()],
 			);

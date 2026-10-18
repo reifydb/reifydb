@@ -6,11 +6,11 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use reifydb_core::{
 	common::TimeSource,
-	error::diagnostic::{internal::internal, query::no_column_snapshot},
+	error::diagnostic::{internal::internal, query::no_column_block},
 	interface::resolved::ResolvedTable,
 	value::column::{builder::ColumnBuilder, headers::ColumnHeaders},
 };
-use reifydb_store_column::{snapshot::Schema, store::ColumnStore};
+use reifydb_store_column::{block::Schema, store::ColumnStore};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{error::Error, value::system_columns::SystemColumn};
 
@@ -58,10 +58,9 @@ impl ColumnTableScanNode {
 		let services = &self.context.services;
 		let name = self.table.fully_qualified_name();
 
-		let snapshot =
-			services.catalog.find_latest_column_snapshot_for_table(rx, self.table.def().id)?.ok_or_else(
-				|| Error(Box::new(no_column_snapshot(self.table.identifier().clone(), "table", &name))),
-			)?;
+		let block = services.catalog.find_latest_column_block_for_table(rx, self.table.def().id)?.ok_or_else(
+			|| Error(Box::new(no_column_block(self.table.identifier().clone(), "table", &name))),
+		)?;
 
 		let store = services.ioc.try_resolve::<Arc<ColumnStore>>().ok_or_else(|| {
 			Error(Box::new(internal(format!("column store is not registered, cannot read table {}", name))))
@@ -70,7 +69,7 @@ impl ColumnTableScanNode {
 		Ok(ScanState::Reading {
 			reader: Box::new(BlockSequenceReader::new(
 				store,
-				vec![snapshot],
+				vec![block],
 				self.context.batch_size as usize,
 			)),
 			emitted: false,

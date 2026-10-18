@@ -9,31 +9,31 @@ use reifydb::{
 	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_core::interface::catalog::column_snapshot::ColumnSnapshot;
-use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, snapshot::ColumnBlock, store::ColumnStore};
+use reifydb_core::interface::catalog::column_block::ColumnBlock;
+use reifydb_store_column::{block::BlockData, device::BlockFileKey, reader::BlockReader, store::ColumnStore};
 use reifydb_sub_store::subsystem::{StorageConfig, StorageSubsystem};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
 
-fn table_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<(ColumnSnapshot, Arc<ColumnBlock>)> {
+fn table_blocks(db: &TestDb, store: &ColumnStore, name: &str) -> Vec<(ColumnBlock, Arc<BlockData>)> {
 	let engine = db.engine();
 	let catalog = engine.catalog();
 	let mut txn = engine.begin_query(IdentityId::system()).expect("begin query");
 	let mut tx = Transaction::Query(&mut txn);
 	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
 	let table = catalog.find_table_by_name(&mut tx, namespace.id(), name).expect("find table").expect("table");
-	catalog.list_column_snapshots_for_table(&mut tx, table.id)
-		.expect("list table snapshots")
+	catalog.list_column_blocks_for_table(&mut tx, table.id)
+		.expect("list table blocks")
 		.into_iter()
-		.map(|snapshot| {
-			let block = Arc::new(
-				store.open(&BlockKey::of(&snapshot))
+		.map(|block| {
+			let data = Arc::new(
+				store.open(&BlockFileKey::of(&block))
 					.expect("open block")
-					.expect("a cataloged snapshot must have a block file")
+					.expect("a cataloged block must have a block file")
 					.read(None)
 					.expect("read block"),
 			);
-			(snapshot, block)
+			(block, data)
 		})
 		.collect()
 }
@@ -43,7 +43,7 @@ fn materialized_columns_persist_to_disk_and_reload_after_restart() {
 	// Two opens of one column dir simulate a restart: the first writes blocks, a fresh store reads them back.
 	let column_dir = tempfile::tempdir().expect("create column dir");
 
-	let snapshot = {
+	let block = {
 		let storage_config = StorageConfig {
 			table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 			series_tick_interval: Duration::from_milliseconds(50).unwrap(),
@@ -68,27 +68,27 @@ fn materialized_columns_persist_to_disk_and_reload_after_restart() {
 		let storage = db.subsystem::<StorageSubsystem>().expect("StorageSubsystem registered");
 		let block_store = storage.block_store().clone();
 
-		let (snapshot, _) = poll_until(
+		let (block, _) = poll_until(
 			|| table_blocks(&db, &block_store, "t").into_iter().find(|(_, b)| b.len() == 3),
 			Duration::from_seconds(5).unwrap().to_std(),
 		)
 		.expect("a 3-row block did not materialize within 5 seconds");
 
 		db.stop();
-		snapshot
+		block
 	};
 
 	// The reload runs with no database and no re-materialization, so only disk state can satisfy it.
 	let reloaded = ColumnStore::host(column_dir.path().to_path_buf()).expect("reopen column dir");
-	let block = Arc::new(
-		reloaded.open(&BlockKey::of(&snapshot))
+	let data = Arc::new(
+		reloaded.open(&BlockFileKey::of(&block))
 			.expect("open block")
 			.expect("reloaded block store must contain the 3-row block from disk")
 			.read(None)
 			.expect("read block"),
 	);
 
-	let mut reader = SnapshotReader::new(block, 100, reloaded.session().clone());
+	let mut reader = BlockReader::new(data, 100, reloaded.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");
 	assert_eq!(batch.num_rows(), 3);
 

@@ -7,15 +7,15 @@ use arrow_array::ArrayRef as ArrowArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory;
 use reifydb_runtime::io::fs::{Create, Open, Pwrite, memory::MemoryFs};
-#[cfg(feature = "pco")]
-use reifydb_store_column::{compress::CompressionProfile, convert::to_arrow};
 use reifydb_store_column::{
+	block::{BlockData, ColumnChunks},
 	compress::Compressor,
 	convert::to_vortex,
 	persist::{BlockHandle, serialize_block},
 	session::new_session,
-	snapshot::{ColumnBlock, ColumnChunks},
 };
+#[cfg(feature = "pco")]
+use reifydb_store_column::{compress::CompressionProfile, convert::to_arrow};
 #[cfg(feature = "pco")]
 use reifydb_value::value::datetime::DateTime;
 use reifydb_value::value::value_type::{ValueType, field::from_field};
@@ -62,13 +62,13 @@ fn columns(rows: usize) -> Vec<(ValueType, Column)> {
 	]
 }
 
-fn block(compressor: &Compressor, columns: &[(ValueType, Column)]) -> ColumnBlock {
+fn data(compressor: &Compressor, columns: &[(ValueType, Column)]) -> BlockData {
 	let schema = columns.iter().map(|(ty, column)| (column.0.name().to_string(), ty.clone(), false)).collect();
 	let chunks = columns.iter().map(|(ty, column)| compressor.compress(ty.clone(), column).unwrap()).collect();
-	ColumnBlock::new(Arc::new(schema), chunks)
+	BlockData::new(Arc::new(schema), chunks)
 }
 
-fn load(bytes: &[u8], session: &VortexSession) -> ColumnBlock {
+fn load(bytes: &[u8], session: &VortexSession) -> BlockData {
 	let fs = MemoryFs::new();
 	let path = Path::new("/block.borg");
 	fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();
@@ -77,7 +77,7 @@ fn load(bytes: &[u8], session: &VortexSession) -> ColumnBlock {
 
 #[cfg(feature = "pco")]
 fn assert_round_trip(label: &str, compressor: &Compressor, columns: &[(ValueType, Column)]) {
-	let bytes = serialize_block(&block(compressor, columns), &new_session()).unwrap();
+	let bytes = serialize_block(&data(compressor, columns), &new_session()).unwrap();
 	let session = new_session();
 	let restored = load(&bytes, &session);
 	for (_, column) in columns {
@@ -97,8 +97,8 @@ fn assert_round_trip(label: &str, compressor: &Compressor, columns: &[(ValueType
 	}
 }
 
-fn encodings(block: &ColumnBlock) -> Vec<String> {
-	block.columns
+fn encodings(data: &BlockData) -> Vec<String> {
+	data.columns
 		.iter()
 		.flat_map(|column| column.chunks.iter())
 		.flat_map(|chunk| chunk.depth_first_traversal())
@@ -119,8 +119,8 @@ fn the_default_profile_compresses_exactly_like_plain_btrblocks() {
 		let expected = ColumnChunks::single(ty.clone(), false, from_field(&column.0).unwrap(), plain);
 		let schema = Arc::new(vec![(column.0.name().to_string(), ty, false)]);
 		assert_eq!(
-			serialize_block(&ColumnBlock::new(schema.clone(), vec![actual]), &session).unwrap(),
-			serialize_block(&ColumnBlock::new(schema, vec![expected]), &session).unwrap(),
+			serialize_block(&BlockData::new(schema.clone(), vec![actual]), &session).unwrap(),
+			serialize_block(&BlockData::new(schema, vec![expected]), &session).unwrap(),
 			"{}",
 			column.0.name()
 		);
@@ -131,7 +131,7 @@ fn the_default_profile_compresses_exactly_like_plain_btrblocks() {
 fn the_default_profile_never_writes_pco() {
 	// A default build cannot decode pco, so a pco array in a default-profile block would be unreadable by it.
 	let session = new_session();
-	let written = block(&Compressor::new(session.clone()), &columns(20_000));
+	let written = data(&Compressor::new(session.clone()), &columns(20_000));
 	let restored = load(&serialize_block(&written, &session).unwrap(), &session);
 	assert!(!encodings(&restored).iter().any(|id| id == "vortex.pco"), "{:?}", encodings(&restored));
 }
@@ -142,7 +142,7 @@ fn the_compact_profile_picks_pco_for_a_random_walk() {
 	// The compact profile exists to get pco onto price-like columns; if BtrBlocks never picks it the profile is
 	// a no-op and every size measured with it is meaningless.
 	let session = new_session();
-	let written = block(&Compressor::with_profile(session.clone(), CompressionProfile::Compact), &columns(20_000));
+	let written = data(&Compressor::with_profile(session.clone(), CompressionProfile::Compact), &columns(20_000));
 	let restored = load(&serialize_block(&written, &session).unwrap(), &session);
 	assert!(encodings(&restored).iter().any(|id| id == "vortex.pco"), "{:?}", encodings(&restored));
 }

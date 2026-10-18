@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::id::ColumnSnapshotId;
+use reifydb_core::interface::catalog::id::ColumnBlockId;
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -63,10 +63,10 @@ pub enum BlockEncodingError {
 		reason: String,
 	},
 
-	#[error("encoded block '{name}' in snapshot {snapshot} reached a scan without a decoder")]
+	#[error("encoded block '{name}' in block {block} reached a scan without a decoder")]
 	NoDecoder {
 		name: String,
-		snapshot: ColumnSnapshotId,
+		block: ColumnBlockId,
 	},
 
 	#[error("series '{series}' user fields at seal differ from its catalog definition for encoding '{name}'")]
@@ -216,11 +216,11 @@ impl IntoDiagnostic for BlockEncodingError {
 
 			BlockEncodingError::NoDecoder {
 				name,
-				snapshot,
+				block,
 			} => Diagnostic {
 				code: "BENC_009".to_string(),
 				rql: None,
-				message: format!("encoded block '{name}' in snapshot {snapshot} reached a scan without a decoder"),
+				message: format!("encoded block '{name}' in block {block} reached a scan without a decoder"),
 				column: None,
 				fragment: Fragment::None,
 				label: Some("encoded block without a decoder".to_string()),

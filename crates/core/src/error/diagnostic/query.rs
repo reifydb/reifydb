@@ -228,7 +228,7 @@ pub fn append_requires_deferred_view(fragment: Fragment) -> Diagnostic {
 	}
 }
 
-pub fn no_column_snapshot(fragment: Fragment, kind: &str, name: &str) -> Diagnostic {
+pub fn no_column_block(fragment: Fragment, kind: &str, name: &str) -> Diagnostic {
 	let help = match kind {
 		"series" => format!("wait for the bucket to seal, or read the {} with a regular query", kind),
 		_ => format!("wait for the column store to materialize the {}, or read it with a regular query", kind),
@@ -236,7 +236,7 @@ pub fn no_column_snapshot(fragment: Fragment, kind: &str, name: &str) -> Diagnos
 	Diagnostic {
 		code: "QUERY_012".to_string(),
 		rql: None,
-		message: format!("no column snapshot for {} '{}'", kind, name),
+		message: format!("no column block for {} '{}'", kind, name),
 		fragment,
 		label: Some(format!("this {} has not been materialized into the column store yet", kind)),
 		help: Some(help),
@@ -253,7 +253,7 @@ pub fn unsupported_in_column_layout(what: &str) -> Diagnostic {
 		rql: None,
 		message: format!("{} cannot be read from the column store", what),
 		fragment: Fragment::None,
-		label: Some("a column query reads only materialized table snapshots".to_string()),
+		label: Some("a column query reads only materialized table blocks".to_string()),
 		help: Some("run this query with a regular query instead".to_string()),
 		column: None,
 		notes: vec![],

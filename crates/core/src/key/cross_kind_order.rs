@@ -17,7 +17,7 @@ use crate::{
 			config::ConfigKey,
 			flow::{FlowEdgeId, FlowId, OperatorId},
 			id::{
-				BindingId, ColumnId, ColumnPropertyId, ColumnSnapshotId, HandlerId, IndexId,
+				BindingId, ColumnBlockId, ColumnId, ColumnPropertyId, HandlerId, IndexId,
 				MigrationEventId, MigrationId, NamespaceId, PrimaryKeyId, ProcedureId, QueueId,
 				RelationshipId, RingBufferId, SequenceId, SeriesId, SinkId, SourceId, TableId, ViewId,
 			},
@@ -34,8 +34,8 @@ use crate::{
 		},
 		cdc::CdcConsumerKey,
 		column::{
-			ColumnKey, ColumnSequenceKey, ColumnSnapshotKey, ColumnsKey, SeriesColumnSnapshotKey,
-			TableColumnSnapshotKey,
+			ColumnBlockKey, ColumnKey, ColumnSequenceKey, ColumnsKey, SeriesColumnBlockKey,
+			TableColumnBlockKey,
 		},
 		config::ConfigStorageKey,
 		flow::{FlowEdgeByFlowKey, FlowEdgeKey, FlowKey, FlowVersionKey},
@@ -374,19 +374,19 @@ fn representative(kind: KeyTag) -> EncodedKey {
 			operator: OperatorId(1),
 		}
 		.encode(),
-		KeyTag::ColumnSnapshot => ColumnSnapshotKey {
-			snapshot: ColumnSnapshotId(1),
+		KeyTag::ColumnBlock => ColumnBlockKey {
+			block: ColumnBlockId(1),
 		}
 		.encode(),
-		KeyTag::SeriesColumnSnapshot => SeriesColumnSnapshotKey {
+		KeyTag::SeriesColumnBlock => SeriesColumnBlockKey {
 			series: SeriesId(1),
 			partition: Partition(1),
-			snapshot: ColumnSnapshotId(1),
+			block: ColumnBlockId(1),
 		}
 		.encode(),
-		KeyTag::TableColumnSnapshot => TableColumnSnapshotKey {
+		KeyTag::TableColumnBlock => TableColumnBlockKey {
 			table: TableId(1),
-			snapshot: ColumnSnapshotId(1),
+			block: ColumnBlockId(1),
 		}
 		.encode(),
 		KeyTag::VersionEpoch => VersionEpochKey {

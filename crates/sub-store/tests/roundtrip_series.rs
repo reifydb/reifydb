@@ -9,7 +9,7 @@ use reifydb::{
 	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_store_column::{device::BlockKey, reader::SnapshotReader};
+use reifydb_store_column::{device::BlockFileKey, reader::BlockReader};
 use reifydb_sub_store::subsystem::{StorageConfig, StorageSubsystem};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
@@ -58,19 +58,19 @@ fn series_materialization_populates_block_store() {
 				.expect("find series")
 				.expect("series test::s");
 			let entries: Vec<_> = catalog
-				.list_column_snapshots_for_series(&mut tx, series.id)
-				.expect("list series snapshots")
+				.list_column_blocks_for_series(&mut tx, series.id)
+				.expect("list series blocks")
 				.into_iter()
-				.map(|snapshot| {
-					let block = Arc::new(
+				.map(|block| {
+					let data = Arc::new(
 						block_store
-							.open(&BlockKey::of(&snapshot))
+							.open(&BlockFileKey::of(&block))
 							.expect("open block")
-							.expect("a cataloged snapshot must have a block file")
+							.expect("a cataloged block must have a block file")
 							.read(None)
 							.expect("read block"),
 					);
-					(snapshot.id, block)
+					(block.id, data)
 				})
 				.collect();
 			if entries.len() >= 2 {
@@ -86,24 +86,24 @@ fn series_materialization_populates_block_store() {
 	assert!(blocks.len() >= 2, "expected >= 2 blocks for closed buckets, got {}", blocks.len());
 
 	let mut all_keys: BTreeSet<u64> = BTreeSet::new();
-	for (_id, block) in &blocks {
-		assert!(!block.is_empty());
+	for (_id, data) in &blocks {
+		assert!(!data.is_empty());
 
-		let schema_names: Vec<&str> = block.schema.iter().map(|(n, _, _)| n.as_str()).collect();
+		let schema_names: Vec<&str> = data.schema.iter().map(|(n, _, _)| n.as_str()).collect();
 		assert_eq!(
 			schema_names,
 			vec!["k", "value", "#rownum", "#created_at", "#updated_at", "#commit_version"]
 		);
 
-		let mut reader = SnapshotReader::new(Arc::clone(block), 100, block_store.session().clone());
+		let mut reader = BlockReader::new(Arc::clone(data), 100, block_store.session().clone());
 		let batch = reader.next().expect("batch present").expect("read batch");
 		assert!(reader.next().is_none(), "reader should yield a single batch per bucket");
-		assert_eq!(batch.num_rows(), block.len());
+		assert_eq!(batch.num_rows(), data.len());
 
 		let k_col = column_view(&batch, "k").expect("k view").expect("k column");
 		let v_col = column_view(&batch, "value").expect("value view").expect("value column");
 
-		for i in 0..block.len() {
+		for i in 0..data.len() {
 			let k = match k_col.get_value(i) {
 				Value::Uint8(v) => v,
 				other => panic!("row {i}: expected Uint8, got {other:?}"),
@@ -113,7 +113,7 @@ fn series_materialization_populates_block_store() {
 				other => panic!("row {i}: expected Float8, got {other:?}"),
 			};
 			assert_eq!(v, k as f64, "value should equal key for k={k}");
-			assert!(all_keys.insert(k), "duplicate key {k} across snapshots");
+			assert!(all_keys.insert(k), "duplicate key {k} across blocks");
 		}
 	}
 

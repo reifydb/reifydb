@@ -8,6 +8,7 @@
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
+pub mod block;
 pub mod bucket;
 pub mod compress;
 pub mod convert;
@@ -19,7 +20,6 @@ pub mod reader;
 pub mod scalar;
 pub mod selection;
 pub mod session;
-pub mod snapshot;
 pub mod stats;
 pub mod store;
 #[cfg(feature = "testing")]
@@ -35,7 +35,7 @@ impl HasVersion for ColumnStoreVersion {
 				.unwrap_or(env!("CARGO_PKG_NAME"))
 				.to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "Columnar block storage for materialized snapshots".to_string(),
+			description: "Columnar block storage for sealed series and materialized tables".to_string(),
 			r#type: ComponentType::Module,
 		}
 	}

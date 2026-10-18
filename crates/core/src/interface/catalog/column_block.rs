@@ -9,37 +9,37 @@ use serde::{Deserialize, Serialize, de};
 
 use crate::{
 	common::CommitVersion,
-	interface::catalog::id::{ColumnSnapshotId, NamespaceId, SeriesId, TableId},
+	interface::catalog::id::{ColumnBlockId, NamespaceId, SeriesId, TableId},
 };
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]
-pub enum ColumnSnapshotKind {
+pub enum ColumnBlockKind {
 	Table = 0,
 	SeriesBucket = 1,
 }
 
-impl From<ColumnSnapshotKind> for u8 {
-	fn from(kind: ColumnSnapshotKind) -> Self {
+impl From<ColumnBlockKind> for u8 {
+	fn from(kind: ColumnBlockKind) -> Self {
 		kind as u8
 	}
 }
 
-impl TryFrom<u8> for ColumnSnapshotKind {
+impl TryFrom<u8> for ColumnBlockKind {
 	type Error = Error;
 
 	fn try_from(value: u8) -> Result<Self, Self::Error> {
 		match value {
 			0 => Ok(Self::Table),
 			1 => Ok(Self::SeriesBucket),
-			_ => Err(de::Error::custom(format!("invalid ColumnSnapshotKind value: {value}"))),
+			_ => Err(de::Error::custom(format!("invalid ColumnBlockKind value: {value}"))),
 		}
 	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ColumnSnapshotSource {
+pub enum ColumnBlockSource {
 	Table {
 		table_id: TableId,
 		commit_version: CommitVersion,
@@ -54,15 +54,15 @@ pub enum ColumnSnapshotSource {
 	},
 }
 
-impl ColumnSnapshotSource {
-	pub fn kind(&self) -> ColumnSnapshotKind {
+impl ColumnBlockSource {
+	pub fn kind(&self) -> ColumnBlockKind {
 		match self {
 			Self::Table {
 				..
-			} => ColumnSnapshotKind::Table,
+			} => ColumnBlockKind::Table,
 			Self::SeriesBucket {
 				..
-			} => ColumnSnapshotKind::SeriesBucket,
+			} => ColumnBlockKind::SeriesBucket,
 		}
 	}
 
@@ -102,17 +102,17 @@ pub struct ColumnStats {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ColumnSnapshot {
-	pub id: ColumnSnapshotId,
+pub struct ColumnBlock {
+	pub id: ColumnBlockId,
 	pub namespace: NamespaceId,
-	pub source: ColumnSnapshotSource,
+	pub source: ColumnBlockSource,
 	pub row_count: u64,
 	pub partition_values: Vec<Value>,
 	pub stats: Vec<ColumnStats>,
 }
 
-impl ColumnSnapshot {
-	pub fn kind(&self) -> ColumnSnapshotKind {
+impl ColumnBlock {
+	pub fn kind(&self) -> ColumnBlockKind {
 		self.source.kind()
 	}
 

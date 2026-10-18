@@ -7,7 +7,7 @@ use crate::{
 	interface::catalog::{
 		authentication::Authentication,
 		binding::Binding,
-		column_snapshot::ColumnSnapshot,
+		column_block::ColumnBlock,
 		config::Config,
 		dictionary::Dictionary,
 		flow::{FlowEntry, OperatorId},
@@ -82,12 +82,12 @@ pub trait CatalogTrackDictionaryChangeOperations {
 	fn track_dictionary_deleted(&mut self, dictionary: Dictionary) -> Result<()>;
 }
 
-pub trait CatalogTrackColumnSnapshotChangeOperations {
-	fn track_column_snapshot_created(&mut self, snapshot: ColumnSnapshot) -> Result<()>;
+pub trait CatalogTrackColumnBlockChangeOperations {
+	fn track_column_block_created(&mut self, block: ColumnBlock) -> Result<()>;
 
-	fn track_column_snapshot_updated(&mut self, pre: ColumnSnapshot, post: ColumnSnapshot) -> Result<()>;
+	fn track_column_block_updated(&mut self, pre: ColumnBlock, post: ColumnBlock) -> Result<()>;
 
-	fn track_column_snapshot_deleted(&mut self, snapshot: ColumnSnapshot) -> Result<()>;
+	fn track_column_block_deleted(&mut self, block: ColumnBlock) -> Result<()>;
 }
 
 pub trait CatalogTrackSeriesChangeOperations {
@@ -220,7 +220,7 @@ pub trait CatalogTrackOperatorRetentionChangeOperations {
 
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackBindingChangeOperations
-	+ CatalogTrackColumnSnapshotChangeOperations
+	+ CatalogTrackColumnBlockChangeOperations
 	+ CatalogTrackDictionaryChangeOperations
 	+ CatalogTrackFlowChangeOperations
 	+ CatalogTrackPrimaryKeyChangeOperations

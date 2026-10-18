@@ -11,12 +11,12 @@ use reifydb::{
 		types::{Int64Type, UInt64Type},
 	},
 	column::{
+		block::BlockData,
 		compress::{CompressionProfile, Compressor},
 		convert::to_arrow,
-		device::BlockKey,
+		device::BlockFileKey,
 		persist::serialize_block,
 		session::new_session,
-		snapshot::ColumnBlock,
 		store::ColumnStore,
 	},
 	core::value::column::factory,
@@ -173,7 +173,7 @@ pub fn measure(ds: &Dataset, layout: &Layout, variant: Variant, profile: Compres
 		for col in &cols {
 			let ty = value_type(col);
 			let chunk = compressor.compress(ty.clone(), col).map_err(err)?;
-			let single = ColumnBlock::new(
+			let single = BlockData::new(
 				Arc::new(vec![(col.0.name().to_string(), ty.clone(), false)]),
 				vec![chunk.clone()],
 			);
@@ -182,14 +182,14 @@ pub fn measure(ds: &Dataset, layout: &Layout, variant: Variant, profile: Compres
 			schema.push((col.0.name().to_string(), ty, false));
 			chunks.push(chunk);
 		}
-		let block = ColumnBlock::new(Arc::new(schema), chunks);
-		bytes += serialize_block(&block, &session).map_err(err)?.len() as u64;
+		let data = BlockData::new(Arc::new(schema), chunks);
+		bytes += serialize_block(&data, &session).map_err(err)?.len() as u64;
 		store.write(
-			&BlockKey {
+			&BlockFileKey {
 				dir: 1,
 				name: b as u64,
 			},
-			&block,
+			&data,
 		)
 		.map_err(err)?;
 		inputs.push(cols);
@@ -197,7 +197,7 @@ pub fn measure(ds: &Dataset, layout: &Layout, variant: Variant, profile: Compres
 
 	let handles = (0..layout.blocks.len())
 		.map(|b| {
-			store.open(&BlockKey {
+			store.open(&BlockFileKey {
 				dir: 1,
 				name: b as u64,
 			})
@@ -209,9 +209,9 @@ pub fn measure(ds: &Dataset, layout: &Layout, variant: Variant, profile: Compres
 	let mut restored: Vec<Vec<ArrayRef>> = Vec::with_capacity(handles.len());
 	let mut verified: Result<(), String> = Ok(());
 	for (b, handle) in handles.iter().enumerate() {
-		let block = handle.read(None).map_err(err)?;
-		let mut arrays = Vec::with_capacity(block.columns.len());
-		for ((name, _, _), column) in block.schema.iter().zip(&block.columns) {
+		let data = handle.read(None).map_err(err)?;
+		let mut arrays = Vec::with_capacity(data.columns.len());
+		for ((name, _, _), column) in data.schema.iter().zip(&data.columns) {
 			if column.chunks.len() != 1 {
 				verified = Err(format!("block {b} column {name} has {} chunks", column.chunks.len()));
 			}
@@ -237,8 +237,8 @@ pub fn measure(ds: &Dataset, layout: &Layout, variant: Variant, profile: Compres
 	for _ in 0..5 {
 		let start = clock.instant();
 		for handle in &handles {
-			let block = handle.read(None).map_err(err)?;
-			for ((name, _, _), column) in block.schema.iter().zip(&block.columns) {
+			let data = handle.read(None).map_err(err)?;
+			for ((name, _, _), column) in data.schema.iter().zip(&data.columns) {
 				for chunk in &column.chunks {
 					to_arrow(&session, name, &column.field_type, chunk.clone()).map_err(err)?;
 				}

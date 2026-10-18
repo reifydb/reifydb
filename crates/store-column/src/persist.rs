@@ -29,9 +29,9 @@ use vortex_session::{
 };
 
 use crate::{
+	block::{BlockData, BlockEncodingHeader, ColumnChunks},
 	convert::to_vortex,
 	error::{ColumnError, fs, vortex},
-	snapshot::{BlockEncodingHeader, ColumnBlock, ColumnChunks},
 };
 
 const MAGIC: &[u8; 4] = b"BORG";
@@ -39,7 +39,7 @@ const VERSION: u16 = 1;
 const PREFIX: usize = 10;
 
 #[derive(Serialize, Deserialize)]
-struct BorgHeader {
+struct BlockFileHeader {
 	align: u32,
 	encodings: Vec<String>,
 	columns: Vec<BorgColumn>,
@@ -63,15 +63,15 @@ struct BorgChunk {
 	rows: u64,
 }
 
-pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<Vec<u8>> {
+pub fn serialize_block(data: &BlockData, session: &VortexSession) -> Result<Vec<u8>> {
 	let array_ctx = ArrayContext::empty();
 	let options = SerializeOptions {
 		offset: 0,
 		include_padding: true,
 	};
 	let mut align = 1usize;
-	let mut serialized = Vec::with_capacity(block.columns.len());
-	for ((name, _, _), column) in block.schema.iter().zip(&block.columns) {
+	let mut serialized = Vec::with_capacity(data.columns.len());
+	for ((name, _, _), column) in data.schema.iter().zip(&data.columns) {
 		let dtype = expected_dtype(session, name, &column.field_type)?;
 		let mut chunks = Vec::with_capacity(column.chunks.len());
 		for chunk in &column.chunks {
@@ -90,14 +90,13 @@ pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<V
 		}
 		serialized.push((dtype, chunks));
 	}
-	let mut data: Vec<u8> = Vec::new();
-	let mut columns = Vec::with_capacity(block.columns.len());
-	for (((name, ty, nullable), column), (dtype, chunks)) in block.schema.iter().zip(&block.columns).zip(serialized)
-	{
+	let mut body: Vec<u8> = Vec::new();
+	let mut columns = Vec::with_capacity(data.columns.len());
+	for (((name, ty, nullable), column), (dtype, chunks)) in data.schema.iter().zip(&data.columns).zip(serialized) {
 		let mut borg_chunks = Vec::with_capacity(chunks.len());
 		for (parts, rows) in chunks {
-			data.resize(align_up(data.len(), align), 0);
-			let offset = data.len();
+			body.resize(align_up(body.len(), align), 0);
+			let offset = body.len();
 			reifydb_assertions! {
 				assert_eq!(
 					offset % align,
@@ -106,11 +105,11 @@ pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<V
 				);
 			}
 			for part in &parts {
-				data.extend_from_slice(part.as_slice());
+				body.extend_from_slice(part.as_slice());
 			}
 			borg_chunks.push(BorgChunk {
 				offset: offset as u64,
-				len: (data.len() - offset) as u64,
+				len: (body.len() - offset) as u64,
 				rows: rows as u64,
 			});
 		}
@@ -123,11 +122,11 @@ pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<V
 			chunks: borg_chunks,
 		});
 	}
-	let header = BorgHeader {
+	let header = BlockFileHeader {
 		align: align as u32,
 		encodings: array_ctx.to_ids().iter().map(|id| id.as_str().to_string()).collect(),
 		columns,
-		block_encoding: block.block_encoding.clone(),
+		block_encoding: data.block_encoding.clone(),
 	};
 	let header = to_stdvec(&header).map_err(|err| ColumnError::PersistSerialize {
 		reason: err.to_string(),
@@ -135,19 +134,19 @@ pub fn serialize_block(block: &ColumnBlock, session: &VortexSession) -> Result<V
 	let header_len = u32::try_from(header.len()).map_err(|_| ColumnError::PersistSerialize {
 		reason: format!("header of {} bytes does not fit u32", header.len()),
 	})?;
-	let mut out = Vec::with_capacity(PREFIX + header.len() + data.len());
+	let mut out = Vec::with_capacity(PREFIX + header.len() + body.len());
 	out.extend_from_slice(MAGIC);
 	out.extend_from_slice(&VERSION.to_le_bytes());
 	out.extend_from_slice(&header_len.to_le_bytes());
 	out.extend_from_slice(&header);
 	out.resize(align_up(out.len(), align), 0);
-	out.extend_from_slice(&data);
+	out.extend_from_slice(&body);
 	Ok(out)
 }
 
 pub struct BlockHandle<R: Pread + Len> {
 	file: R,
-	header: BorgHeader,
+	header: BlockFileHeader,
 	data_start: u64,
 	session: VortexSession,
 }
@@ -175,7 +174,7 @@ impl<R: Pread + Len> BlockHandle<R> {
 		if !read_exact(&file, PREFIX as u64, &mut header).map_err(fs("open"))? {
 			return Err(corrupt("header runs past the end of the block"));
 		}
-		let header: BorgHeader = from_bytes(&header).map_err(|err| ColumnError::PersistDeserialize {
+		let header: BlockFileHeader = from_bytes(&header).map_err(|err| ColumnError::PersistDeserialize {
 			reason: err.to_string(),
 		})?;
 		let align = header.align as u64;
@@ -204,7 +203,7 @@ impl<R: Pread + Len> BlockHandle<R> {
 		})
 	}
 
-	pub fn read(&self, columns: Option<&[&str]>) -> Result<ColumnBlock> {
+	pub fn read(&self, columns: Option<&[&str]>) -> Result<BlockData> {
 		if let Some(names) = columns
 			&& let Some(missing) = names
 				.iter()
@@ -257,7 +256,7 @@ impl<R: Pread + Len> BlockHandle<R> {
 				chunks,
 			));
 		}
-		Ok(ColumnBlock::new(Arc::new(schema), out).with_block_encoding(self.header.block_encoding.clone()))
+		Ok(BlockData::new(Arc::new(schema), out).with_block_encoding(self.header.block_encoding.clone()))
 	}
 }
 
@@ -332,18 +331,18 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::{convert::to_arrow, session::new_session, snapshot::BlockUserColumn};
+	use crate::{block::BlockUserColumn, convert::to_arrow, session::new_session};
 
 	fn chunks(ty: ValueType, nullable: bool, column: &(FieldRef, ArrowArrayRef)) -> ColumnChunks {
 		let array = to_vortex(&new_session(), column).unwrap();
 		ColumnChunks::single(ty, nullable, from_field(&column.0).unwrap(), array)
 	}
 
-	fn exported(block: &ColumnBlock) -> Vec<Vec<(FieldRef, ArrowArrayRef)>> {
+	fn exported(data: &BlockData) -> Vec<Vec<(FieldRef, ArrowArrayRef)>> {
 		let session = new_session();
-		block.schema
+		data.schema
 			.iter()
-			.zip(&block.columns)
+			.zip(&data.columns)
 			.map(|((name, _, _), column)| {
 				column.chunks
 					.iter()
@@ -355,8 +354,8 @@ mod tests {
 			.collect()
 	}
 
-	fn block_values(block: &ColumnBlock) -> Vec<Vec<Value>> {
-		exported(block)
+	fn block_values(data: &BlockData) -> Vec<Vec<Value>> {
+		exported(data)
 			.iter()
 			.map(|column| {
 				let mut out = Vec::new();
@@ -371,7 +370,7 @@ mod tests {
 			.collect()
 	}
 
-	fn load(bytes: &[u8], session: &VortexSession) -> Result<ColumnBlock> {
+	fn load(bytes: &[u8], session: &VortexSession) -> Result<BlockData> {
 		let fs = MemoryFs::new();
 		let path = Path::new("/block.borg");
 		let written = fs.create(path, bytes.len() as u64).unwrap().pwrite(0, bytes).unwrap();
@@ -379,17 +378,17 @@ mod tests {
 		BlockHandle::open(fs.open(path).unwrap(), session.clone())?.read(None)
 	}
 
-	fn round_trip(block: &ColumnBlock) -> ColumnBlock {
+	fn round_trip(data: &BlockData) -> BlockData {
 		let session = new_session();
-		load(&serialize_block(block, &session).unwrap(), &session).unwrap()
+		load(&serialize_block(data, &session).unwrap(), &session).unwrap()
 	}
 
-	fn assert_round_trips(block: ColumnBlock) {
-		let restored = round_trip(&block);
-		assert_eq!(*block.schema, *restored.schema, "schema must survive the round trip");
-		assert_eq!(block.len(), restored.len(), "row count must survive the round trip");
-		assert_eq!(block_values(&block), block_values(&restored), "values must survive the round trip");
-		for (original, reloaded) in block.columns.iter().zip(&restored.columns) {
+	fn assert_round_trips(data: BlockData) {
+		let restored = round_trip(&data);
+		assert_eq!(*data.schema, *restored.schema, "schema must survive the round trip");
+		assert_eq!(data.len(), restored.len(), "row count must survive the round trip");
+		assert_eq!(block_values(&data), block_values(&restored), "values must survive the round trip");
+		for (original, reloaded) in data.columns.iter().zip(&restored.columns) {
 			assert_eq!(original.field_type, reloaded.field_type, "field type must survive the round trip");
 		}
 	}
@@ -398,14 +397,14 @@ mod tests {
 	fn round_trips_fixed_width_column() {
 		let schema = Arc::new(vec![("a".to_string(), ValueType::Int4, false)]);
 		let column = chunks(ValueType::Int4, false, &factory::int4("a", [1i32, 2, 3, 4]));
-		assert_round_trips(ColumnBlock::new(schema, vec![column]));
+		assert_round_trips(BlockData::new(schema, vec![column]));
 	}
 
 	#[test]
 	fn round_trips_varlen_column() {
 		let schema = Arc::new(vec![("s".to_string(), ValueType::Utf8, false)]);
 		let column = chunks(ValueType::Utf8, false, &factory::utf8("s", ["alpha", "bravo", "charlie"]));
-		assert_round_trips(ColumnBlock::new(schema, vec![column]));
+		assert_round_trips(BlockData::new(schema, vec![column]));
 	}
 
 	#[test]
@@ -418,7 +417,7 @@ mod tests {
 			chunks(ValueType::Uint8, false, &factory::uint8("id", vec![1u64, 2, 3])),
 			chunks(ValueType::Utf8, false, &factory::utf8("name", ["x", "y", "z"])),
 		];
-		assert_round_trips(ColumnBlock::new(schema, columns));
+		assert_round_trips(BlockData::new(schema, columns));
 	}
 
 	#[test]
@@ -433,12 +432,12 @@ mod tests {
 
 		let column = chunks(ValueType::Int4, true, &built);
 		let schema = Arc::new(vec![("a".to_string(), ValueType::Int4, true)]);
-		let block = ColumnBlock::new(schema, vec![column]);
+		let data = BlockData::new(schema, vec![column]);
 
-		let restored = round_trip(&block);
+		let restored = round_trip(&data);
 
 		assert!(restored.columns[0].nullable, "nullability must survive the round trip");
-		assert_eq!(block_values(&block), block_values(&restored));
+		assert_eq!(block_values(&data), block_values(&restored));
 		let reloaded = &exported(&restored)[0][0].1;
 		let is_defined = |row: usize| reloaded.is_valid(row);
 		assert!(is_defined(0));
@@ -482,12 +481,12 @@ mod tests {
 			schema.push((column.0.name().clone(), *bare.clone(), true));
 			block_chunks.push(chunks(*bare, true, column));
 		}
-		let block = ColumnBlock::new(Arc::new(schema), block_chunks);
+		let data = BlockData::new(Arc::new(schema), block_chunks);
 
-		let restored = round_trip(&block);
+		let restored = round_trip(&data);
 
-		assert_eq!(block_values(&block), block_values(&restored), "values must survive the round trip");
-		for (index, (original, reloaded)) in exported(&block).iter().zip(exported(&restored)).enumerate() {
+		assert_eq!(block_values(&data), block_values(&restored), "values must survive the round trip");
+		for (index, (original, reloaded)) in exported(&data).iter().zip(exported(&restored)).enumerate() {
 			let (original_field, _) = &original[0];
 			let (reloaded_field, reloaded_array) = &reloaded[0];
 			assert_eq!(
@@ -531,9 +530,9 @@ mod tests {
 			chunks(ValueType::Utf8, false, &factory::utf8("b", ["x", "y", "z"])),
 			chunks(ValueType::Uint8, false, &factory::uint8("c", vec![7u64, 8, 9])),
 		];
-		let block = ColumnBlock::new(schema, columns);
+		let data = BlockData::new(schema, columns);
 		let session = new_session();
-		let bytes = serialize_block(&block, &session).unwrap();
+		let bytes = serialize_block(&data, &session).unwrap();
 		let log = Arc::new(ReadLog(Mutex::new(Vec::new())));
 		let fs = TestingFs::new(MemoryFs::new(), log.clone());
 		let path = Path::new("/block.borg");
@@ -557,7 +556,7 @@ mod tests {
 		assert!(!expected.is_empty(), "column b must own at least one chunk");
 		assert_eq!(*log.0.lock(), expected, "reading b must touch only the byte ranges of its chunks");
 		assert_eq!(read.schema.iter().map(|(name, _, _)| name.as_str()).collect::<Vec<_>>(), vec!["b"]);
-		assert_eq!(block_values(&read), vec![block_values(&block)[1].clone()]);
+		assert_eq!(block_values(&read), vec![block_values(&data)[1].clone()]);
 	}
 
 	fn encoded_header() -> BlockEncodingHeader {
@@ -574,17 +573,17 @@ mod tests {
 		}
 	}
 
-	fn int8_block() -> ColumnBlock {
+	fn int8_block() -> BlockData {
 		let schema = Arc::new(vec![("value_delta".to_string(), ValueType::Int8, false)]);
-		ColumnBlock::new(
+		BlockData::new(
 			schema,
 			vec![chunks(ValueType::Int8, false, &factory::int8("value_delta", [5i64, 1, 1]))],
 		)
 	}
 
-	fn stored_header(block: &ColumnBlock) -> BorgHeader {
+	fn stored_header(data: &BlockData) -> BlockFileHeader {
 		let session = new_session();
-		let bytes = serialize_block(block, &session).unwrap();
+		let bytes = serialize_block(data, &session).unwrap();
 		let fs = MemoryFs::new();
 		let path = Path::new("/block.borg");
 		fs.create(path, bytes.len() as u64).unwrap().pwrite(0, &bytes).unwrap();

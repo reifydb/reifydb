@@ -1790,15 +1790,15 @@ impl<'de> Deserialize<'de> for BindingId {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct ColumnSnapshotId(pub u64);
+pub struct ColumnBlockId(pub u64);
 
-impl Display for ColumnSnapshotId {
+impl Display for ColumnBlockId {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		Display::fmt(&self.0, f)
 	}
 }
 
-impl Deref for ColumnSnapshotId {
+impl Deref for ColumnBlockId {
 	type Target = u64;
 
 	fn deref(&self) -> &Self::Target {
@@ -1806,25 +1806,25 @@ impl Deref for ColumnSnapshotId {
 	}
 }
 
-impl PartialEq<u64> for ColumnSnapshotId {
+impl PartialEq<u64> for ColumnBlockId {
 	fn eq(&self, other: &u64) -> bool {
 		self.0.eq(other)
 	}
 }
 
-impl From<ColumnSnapshotId> for u64 {
-	fn from(value: ColumnSnapshotId) -> Self {
+impl From<ColumnBlockId> for u64 {
+	fn from(value: ColumnBlockId) -> Self {
 		value.0
 	}
 }
 
-impl From<u64> for ColumnSnapshotId {
+impl From<u64> for ColumnBlockId {
 	fn from(value: u64) -> Self {
 		Self(value)
 	}
 }
 
-impl Serialize for ColumnSnapshotId {
+impl Serialize for ColumnBlockId {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -1833,22 +1833,22 @@ impl Serialize for ColumnSnapshotId {
 	}
 }
 
-impl<'de> Deserialize<'de> for ColumnSnapshotId {
-	fn deserialize<D>(deserializer: D) -> Result<ColumnSnapshotId, D::Error>
+impl<'de> Deserialize<'de> for ColumnBlockId {
+	fn deserialize<D>(deserializer: D) -> Result<ColumnBlockId, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
 		struct U64Visitor;
 
 		impl Visitor<'_> for U64Visitor {
-			type Value = ColumnSnapshotId;
+			type Value = ColumnBlockId;
 
 			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
 			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
-				Ok(ColumnSnapshotId(value))
+				Ok(ColumnBlockId(value))
 			}
 		}
 

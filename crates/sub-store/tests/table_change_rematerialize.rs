@@ -9,7 +9,7 @@ use reifydb::{
 	embedded as db_embedded,
 	testing::db::{TestDb, poll_until},
 };
-use reifydb_store_column::{device::BlockKey, reader::SnapshotReader, store::ColumnStore};
+use reifydb_store_column::{device::BlockFileKey, reader::BlockReader, store::ColumnStore};
 use reifydb_sub_store::subsystem::{StorageConfig, StorageSubsystem};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::value::{Value, duration::Duration, identity::IdentityId, system_columns::column_view};
@@ -38,23 +38,23 @@ fn latest_rows(db: &TestDb, store: &ColumnStore) -> Option<BTreeMap<i32, i32>> {
 	let namespace = catalog.find_namespace_by_name(&mut tx, "test").expect("find namespace").expect("namespace");
 	let table = catalog.find_table_by_name(&mut tx, namespace.id(), "t").expect("find table").expect("table");
 	let latest = catalog
-		.list_column_snapshots_for_table(&mut tx, table.id)
-		.expect("list table snapshots")
+		.list_column_blocks_for_table(&mut tx, table.id)
+		.expect("list table blocks")
 		.into_iter()
-		.max_by_key(|snapshot| snapshot.id)?;
-	let block = Arc::new(
-		store.open(&BlockKey::of(&latest))
+		.max_by_key(|block| block.id)?;
+	let data = Arc::new(
+		store.open(&BlockFileKey::of(&latest))
 			.expect("open block")
-			.expect("a cataloged snapshot must have a block file")
+			.expect("a cataloged block must have a block file")
 			.read(None)
 			.expect("read block"),
 	);
 
 	let mut rows = BTreeMap::new();
-	if block.is_empty() {
+	if data.is_empty() {
 		return Some(rows);
 	}
-	let mut reader = SnapshotReader::new(block, 100, store.session().clone());
+	let mut reader = BlockReader::new(data, 100, store.session().clone());
 	let batch = reader.next().expect("batch present").expect("read batch");
 	for row in 0..batch.num_rows() {
 		let id = match column_view(&batch, "id").expect("id view").expect("id column").get_value(row) {
@@ -78,13 +78,13 @@ fn await_latest(db: &TestDb, store: &ColumnStore, expected: &[(i32, i32)], what:
 	);
 	assert!(
 		seen.is_some(),
-		"{what}: the latest snapshot of test::t never held {expected:?}; last seen {:?}",
+		"{what}: the latest block of test::t never held {expected:?}; last seen {:?}",
 		latest_rows(db, store)
 	);
 }
 
 #[test]
-fn an_update_only_change_is_snapshotted_again() {
+fn an_update_only_change_is_rematerialized_again() {
 	// Without updates counting as a change, the latest block keeps the old value while the row count stays equal.
 	let mut db = db();
 	db.command("INSERT test::t [{id: 1, v: 1}, {id: 2, v: 2}]");
@@ -98,7 +98,7 @@ fn an_update_only_change_is_snapshotted_again() {
 }
 
 #[test]
-fn a_delete_only_change_is_snapshotted_again() {
+fn a_delete_only_change_is_rematerialized_again() {
 	// Without removals counting as a change, a deleted row lives on in the latest block.
 	let mut db = db();
 	db.command("INSERT test::t [{id: 1, v: 1}, {id: 2, v: 2}]");
@@ -112,8 +112,8 @@ fn a_delete_only_change_is_snapshotted_again() {
 }
 
 #[test]
-fn an_insert_after_the_first_snapshot_is_snapshotted_again() {
-	// Without later commits raising the recorded change version, rows added after the first snapshot never land.
+fn an_insert_after_the_first_block_is_rematerialized_again() {
+	// Without later commits raising the recorded change version, rows added after the first block never land.
 	let mut db = db();
 	db.command("INSERT test::t [{id: 1, v: 1}]");
 	let store = block_store(&db);

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{column_snapshot::ColumnSnapshot, id::ColumnSnapshotId},
+	interface::catalog::{column_block::ColumnBlock, id::ColumnBlockId},
 	return_internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -10,11 +10,11 @@ use reifydb_transaction::transaction::Transaction;
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
-	pub(crate) fn get_column_snapshot(rx: &mut Transaction<'_>, id: ColumnSnapshotId) -> Result<ColumnSnapshot> {
-		match Self::find_column_snapshot(rx, id)? {
-			Some(snap) => Ok(snap),
+	pub(crate) fn get_column_block(rx: &mut Transaction<'_>, id: ColumnBlockId) -> Result<ColumnBlock> {
+		match Self::find_column_block(rx, id)? {
+			Some(block) => Ok(block),
 			None => return_internal_error!(
-				"ColumnSnapshot with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+				"ColumnBlock with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
 			),
 		}
@@ -26,23 +26,23 @@ pub mod tests {
 	use reifydb_core::{
 		common::CommitVersion,
 		interface::catalog::{
-			column_snapshot::ColumnSnapshotSource,
-			id::{ColumnSnapshotId, NamespaceId, TableId},
+			column_block::ColumnBlockSource,
+			id::{ColumnBlockId, NamespaceId, TableId},
 		},
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
 
-	use crate::{CatalogStore, store::column_snapshot::create::ColumnSnapshotToCreate};
+	use crate::{CatalogStore, store::column_block::create::ColumnBlockToCreate};
 
 	#[test]
-	fn test_get_column_snapshot_exists() {
+	fn test_get_column_block_exists() {
 		let mut txn = create_test_admin_transaction();
-		let created = CatalogStore::create_column_snapshot(
+		let created = CatalogStore::create_column_block(
 			&mut txn,
-			ColumnSnapshotToCreate {
+			ColumnBlockToCreate {
 				namespace: NamespaceId(1),
-				source: ColumnSnapshotSource::Table {
+				source: ColumnBlockSource::Table {
 					table_id: TableId(101),
 					commit_version: CommitVersion(7),
 				},
@@ -53,7 +53,7 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let result = CatalogStore::get_column_snapshot(&mut Transaction::Admin(&mut txn), created.id).unwrap();
+		let result = CatalogStore::get_column_block(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 
 		assert_eq!(result.id, created.id);
 		assert_eq!(result.row_count, 42);
@@ -61,17 +61,17 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_get_column_snapshot_not_exists() {
+	fn test_get_column_block_not_exists() {
 		let mut txn = create_test_admin_transaction();
-		let missing = ColumnSnapshotId(999_999);
+		let missing = ColumnBlockId(999_999);
 
-		let err = CatalogStore::get_column_snapshot(&mut Transaction::Admin(&mut txn), missing)
-			.expect_err("missing snapshot must error");
+		let err = CatalogStore::get_column_block(&mut Transaction::Admin(&mut txn), missing)
+			.expect_err("missing block must error");
 
 		let diag = err.diagnostic();
 		assert_eq!(diag.code, "INTERNAL_ERROR", "expected INTERNAL_ERROR diagnostic, got {}", diag.code);
 		assert!(
-			diag.message.contains("ColumnSnapshot with ID"),
+			diag.message.contains("ColumnBlock with ID"),
 			"diagnostic message should name the entity, got: {}",
 			diag.message
 		);

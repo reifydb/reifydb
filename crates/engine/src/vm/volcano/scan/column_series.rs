@@ -6,10 +6,10 @@ use std::{cmp::Reverse, sync::Arc};
 use arrow_array::RecordBatch;
 use reifydb_core::{
 	common::TimeSource,
-	error::diagnostic::{internal::internal, query::no_column_snapshot},
+	error::diagnostic::{internal::internal, query::no_column_block},
 	interface::{
 		catalog::{
-			column_snapshot::{ColumnSnapshot, ColumnSnapshotSource},
+			column_block::{ColumnBlock, ColumnBlockSource},
 			object::ObjectId,
 			series::Series,
 		},
@@ -18,7 +18,7 @@ use reifydb_core::{
 	key::{any::TaggedKey, partition::PartitionKey},
 	value::column::{builder::ColumnBuilder, headers::ColumnHeaders},
 };
-use reifydb_store_column::{snapshot::Schema, store::ColumnStore};
+use reifydb_store_column::{block::Schema, store::ColumnStore};
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::{
 	error::Error,
@@ -31,7 +31,7 @@ use crate::{
 		query::{QueryContext, QueryNode},
 		scan::{
 			column_block_sequence::BlockSequenceReader, column_decode::BlockDecoder,
-			column_predicate::series_scan_predicate, column_prune::prune_series_snapshots, empty_scan,
+			column_predicate::series_scan_predicate, column_prune::prune_series_blocks, empty_scan,
 			scan_headers, source_system_columns,
 		},
 	},
@@ -123,29 +123,29 @@ impl ColumnSeriesScanNode {
 		let name = self.series.fully_qualified_name();
 		let def = self.series.def();
 
-		let snapshots = match self.partition {
+		let blocks = match self.partition {
 			Some(partition) => {
-				services.catalog.list_column_snapshots_for_series_partition(rx, def.id, partition)?
+				services.catalog.list_column_blocks_for_series_partition(rx, def.id, partition)?
 			}
-			None => services.catalog.list_column_snapshots_for_series(rx, def.id)?,
+			None => services.catalog.list_column_blocks_for_series(rx, def.id)?,
 		};
 
-		let snapshots_were_empty = snapshots.is_empty();
+		let blocks_were_empty = blocks.is_empty();
 
 		let predicate = series_scan_predicate(def, self.key_range_start, self.key_range_end, self.variant_tag);
 
 		let mut pruned =
-			prune_series_snapshots(snapshots, self.key_range_start, self.key_range_end, predicate.as_ref());
-		if snapshots_were_empty && self.series_reads_as_empty(rx, def)? {
+			prune_series_blocks(blocks, self.key_range_start, self.key_range_end, predicate.as_ref());
+		if blocks_were_empty && self.series_reads_as_empty(rx, def)? {
 			return Ok(ScanState::Done);
 		}
 
-		if pruned.is_empty() && !snapshots_were_empty {
+		if pruned.is_empty() && !blocks_were_empty {
 			return Ok(ScanState::Done);
 		}
 
 		if pruned.is_empty() {
-			return Err(Error(Box::new(no_column_snapshot(
+			return Err(Error(Box::new(no_column_block(
 				self.series.identifier().clone(),
 				"series",
 				&name,
@@ -174,14 +174,14 @@ impl ColumnSeriesScanNode {
 	}
 }
 
-fn bucket_order(snapshot: &ColumnSnapshot) -> (u64, Option<Partition>) {
-	match snapshot.source {
-		ColumnSnapshotSource::SeriesBucket {
+fn bucket_order(block: &ColumnBlock) -> (u64, Option<Partition>) {
+	match block.source {
+		ColumnBlockSource::SeriesBucket {
 			bucket_start,
 			partition,
 			..
 		} => (bucket_start, partition),
-		ColumnSnapshotSource::Table {
+		ColumnBlockSource::Table {
 			..
 		} => (0, None),
 	}
