@@ -181,8 +181,8 @@ impl TableMaterializationActor {
 		}
 		let context = self.build_query_context();
 		let batches = self.scan_table_batches(query_txn, table, &context)?;
-		let block_arc = Arc::new(self.build_column_block(table, batches, version)?);
-		self.store_table_block(table, version, block_arc)
+		let data = Arc::new(self.build_column_block(table, batches, version)?);
+		self.store_table_block(table, version, data)
 	}
 
 	#[inline]
@@ -233,11 +233,11 @@ impl TableMaterializationActor {
 	}
 
 	#[inline]
-	fn store_table_block(&self, table: &Table, version: CommitVersion, block_arc: Arc<BlockData>) -> Result<()> {
-		let row_count = block_arc.len() as u64;
+	fn store_table_block(&self, table: &Table, version: CommitVersion, data: Arc<BlockData>) -> Result<()> {
+		let row_count = data.len() as u64;
 		let mut admin = self.engine.begin_admin(IdentityId::system())?;
 		let catalog = self.engine.catalog();
-		let column_block = catalog.create_column_block(
+		let block = catalog.create_column_block(
 			&mut admin,
 			ColumnBlockToCreate {
 				namespace: table.namespace,
@@ -253,15 +253,15 @@ impl TableMaterializationActor {
 		let old: Vec<ColumnBlock> = catalog
 			.list_column_blocks_for_table(&mut Transaction::Admin(&mut admin), table.id)?
 			.into_iter()
-			.filter(|block| block.id != column_block.id)
+			.filter(|older| older.id != block.id)
 			.collect();
-		for block in &old {
-			catalog.drop_column_block(&mut admin, block.id)?;
+		for older in &old {
+			catalog.drop_column_block(&mut admin, older.id)?;
 		}
-		self.block_store.write(&BlockFileKey::of(&column_block), block_arc.as_ref())?;
+		self.block_store.write(&BlockFileKey::of(&block), data.as_ref())?;
 		commit_admin(admin)?;
-		for block in &old {
-			self.block_store.remove(&BlockFileKey::of(block))?;
+		for older in &old {
+			self.block_store.remove(&BlockFileKey::of(older))?;
 		}
 		Ok(())
 	}

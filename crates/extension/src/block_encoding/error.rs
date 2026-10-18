@@ -63,7 +63,7 @@ pub enum BlockEncodingError {
 		reason: String,
 	},
 
-	#[error("encoded block '{name}' in block {block} reached a scan without a decoder")]
+	#[error("block {block} is encoded with '{name}' but reached a scan without a decoder")]
 	NoDecoder {
 		name: String,
 		block: ColumnBlockId,
@@ -220,7 +220,7 @@ impl IntoDiagnostic for BlockEncodingError {
 			} => Diagnostic {
 				code: "BENC_009".to_string(),
 				rql: None,
-				message: format!("encoded block '{name}' in block {block} reached a scan without a decoder"),
+				message: format!("block {block} is encoded with '{name}' but reached a scan without a decoder"),
 				column: None,
 				fragment: Fragment::None,
 				label: Some("encoded block without a decoder".to_string()),

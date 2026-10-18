@@ -76,7 +76,7 @@ impl BlockSequenceReader {
 				.open(&BlockFileKey::of(block))?
 				.ok_or_else(|| {
 					Error(Box::new(internal(format!(
-						"column block for block {} is missing from the column store",
+						"column block {} is missing from the column store",
 						block.id
 					))))
 				})?
