@@ -33,6 +33,10 @@ pub struct StorageConfig {
 
 	pub series_grace: Duration,
 
+	pub series_merge_buckets: u64,
+
+	pub series_merge_file_delay: Duration,
+
 	#[cfg(feature = "column")]
 	pub compression: CompressionProfile,
 }
@@ -45,6 +49,8 @@ impl Default for StorageConfig {
 
 			series_bucket_width: 3_600 * 1_000_000_000,
 			series_grace: Duration::from_seconds(5).unwrap(),
+			series_merge_buckets: 1,
+			series_merge_file_delay: Duration::from_seconds(60).unwrap(),
 
 			#[cfg(feature = "column")]
 			compression: CompressionProfile::Default,

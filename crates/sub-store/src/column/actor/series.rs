@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Range, sync::Arc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	ops::Range,
+	sync::Arc,
+};
 
-use arrow_array::RecordBatch;
+use arrow_array::{ArrayRef, RecordBatch, UInt32Array};
+use arrow_ord::sort::{SortColumn, SortOptions, lexsort_to_indices};
+use arrow_schema::{ArrowError, FieldRef};
+use arrow_select::take::take;
 use reifydb_catalog::{catalog::Catalog, store::column_block::create::ColumnBlockToCreate};
 use reifydb_core::{
 	common::CommitVersion,
@@ -24,12 +31,17 @@ use reifydb_core::{
 	},
 	partition::registry_values,
 	retry::is_conflict,
+	value::batch::concat_columns,
 };
 use reifydb_engine::{
 	engine::StandardEngine,
 	vm::volcano::{
 		query::{QueryContext, QueryNode, query_budget},
-		scan::series::SeriesScanNode,
+		scan::{
+			column_decode::{BlockDecoder, Decoded},
+			column_encode::{compress_columns, encode_series_block},
+			series::SeriesScanNode,
+		},
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
@@ -44,6 +56,7 @@ use reifydb_store_column::{
 	block::BlockData,
 	bucket::{Bucket, bucket_for, is_closed},
 	compress::Compressor,
+	convert::to_arrow,
 	device::BlockFileKey,
 	store::ColumnStore,
 };
@@ -53,12 +66,13 @@ use reifydb_transaction::{
 };
 use reifydb_value::{
 	Result,
+	error::Error,
 	fragment::Fragment,
 	params::Params,
 	reifydb_assertions,
 	value::{
 		Value, datetime::DateTime, duration::Duration, identity::IdentityId, partition::Partition,
-		value_type::ValueType,
+		system_columns::SystemColumn, value_type::ValueType,
 	},
 };
 use tracing::debug;
@@ -66,16 +80,14 @@ use tracing::debug;
 use crate::column::{
 	actor::{
 		SeriesMessage,
-		batches::{
-			arrow_columns_from_batches, compress_columns, encode_series_block, stats_from_arrow,
-			system_column_schema,
-		},
+		batches::{arrow_columns_from_batches, stats_from_arrow, system_column_schema},
 	},
 	error::SubStoreError,
 };
 
 pub struct SeriesMaterializationState {
 	pub partitions: HashMap<SeriesId, Vec<(Partition, Vec<Value>)>>,
+	pub pending_removals: Vec<(BlockFileKey, DateTime)>,
 	_timer_handle: Option<TimerHandle>,
 }
 
@@ -87,6 +99,8 @@ pub struct SeriesMaterializationActor {
 	tick_interval: Duration,
 	bucket_width: u64,
 	grace: Duration,
+	merge_buckets: u64,
+	merge_file_delay: Duration,
 }
 
 #[derive(Clone, Copy)]
@@ -105,6 +119,8 @@ impl SeriesMaterializationActor {
 		tick_interval: Duration,
 		bucket_width: u64,
 		grace: Duration,
+		merge_buckets: u64,
+		merge_file_delay: Duration,
 	) -> Self {
 		Self {
 			engine,
@@ -114,6 +130,8 @@ impl SeriesMaterializationActor {
 			tick_interval,
 			bucket_width,
 			grace,
+			merge_buckets,
+			merge_file_delay,
 		}
 	}
 
@@ -132,6 +150,9 @@ impl SeriesMaterializationActor {
 			Ok(series_list) => series_list,
 			Err(e) => panic!("series materialization: list_series failed: {e}"),
 		};
+		if let Err(e) = self.remove_due_files(state, now_wall) {
+			panic!("series materialization: removing merged block files failed: {e}");
+		}
 		state.partitions.clear();
 		for series in series_list {
 			if let Err(e) = skip_on_conflict(self.materialize_series_buckets(
@@ -206,6 +227,7 @@ impl SeriesMaterializationActor {
 			if !deferred {
 				self.clear_dirty_mark(series, partition, &metadata)?;
 			}
+			self.merge_windows(state, series, scope, now_wall)?;
 		}
 		Ok(())
 	}
@@ -232,8 +254,9 @@ impl SeriesMaterializationActor {
 				ColumnBlockSource::Series {
 					partition,
 					start,
+					end,
 					..
-				} => partition == stored_partition && !live.contains(&start),
+				} => partition == stored_partition && (end <= live.start || start >= live.end),
 				_ => false,
 			})
 			.collect();
@@ -471,7 +494,14 @@ impl SeriesMaterializationActor {
 		version: CommitVersion,
 	) -> Result<(BlockData, Vec<ColumnStats>)> {
 		let schema = scan_output_schema(series);
-		let columns = arrow_columns_from_batches(&schema, &batches, version)?;
+		self.encode_columns(series, arrow_columns_from_batches(&schema, &batches, version)?)
+	}
+
+	fn encode_columns(
+		&self,
+		series: &Series,
+		columns: Vec<(String, ValueType, (FieldRef, ArrayRef))>,
+	) -> Result<(BlockData, Vec<ColumnStats>)> {
 		let stats = stats_from_arrow(&columns, self.block_store.session())?;
 		let data = match &series.encoding {
 			None => compress_columns(columns, &self.compressor)?,
@@ -480,6 +510,165 @@ impl SeriesMaterializationActor {
 			}
 		};
 		Ok((data, stats))
+	}
+
+	fn remove_due_files(&self, state: &mut SeriesMaterializationState, now: DateTime) -> Result<()> {
+		let delay = self.merge_file_delay.to_std();
+		let mut kept = Vec::with_capacity(state.pending_removals.len());
+		for (key, merged_at) in state.pending_removals.drain(..) {
+			if now.saturating_duration_since(merged_at).to_std() >= delay {
+				self.block_store.remove(&key)?;
+			} else {
+				kept.push((key, merged_at));
+			}
+		}
+		state.pending_removals = kept;
+		Ok(())
+	}
+
+	fn merge_windows(
+		&self,
+		state: &mut SeriesMaterializationState,
+		series: &Series,
+		scope: PartitionScope<'_>,
+		now_wall: DateTime,
+	) -> Result<()> {
+		if self.merge_buckets == 0 {
+			return Ok(());
+		}
+		let window_width = self.bucket_width.saturating_mul(self.merge_buckets);
+		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
+		let blocks = self.engine.catalog().list_column_blocks_for_series_partition(
+			&mut Transaction::Query(&mut query_txn),
+			series.id,
+			scope.partition,
+		)?;
+		let mut windows: BTreeMap<u64, Vec<ColumnBlock>> = BTreeMap::new();
+		for block in blocks {
+			if let ColumnBlockSource::Series {
+				start,
+				..
+			} = block.source
+			{
+				windows.entry(start - start % window_width).or_default().push(block);
+			}
+		}
+		for (window_start, inputs) in windows {
+			if inputs.len() < 2 {
+				continue;
+			}
+			let window = window_start..window_start.saturating_add(window_width);
+			let last = Bucket {
+				start: window.end - self.bucket_width,
+				end: window.end,
+				width: self.bucket_width,
+			};
+			if !is_closed(&last, series, scope.metadata, now_wall, self.grace) {
+				continue;
+			}
+			self.merge_window(state, series, scope, window, &inputs, now_wall)?;
+		}
+		Ok(())
+	}
+
+	fn merge_window(
+		&self,
+		state: &mut SeriesMaterializationState,
+		series: &Series,
+		scope: PartitionScope<'_>,
+		window: Range<u64>,
+		inputs: &[ColumnBlock],
+		now_wall: DateTime,
+	) -> Result<()> {
+		let decoder = BlockDecoder::new(self.block_encodings.clone(), self.block_store.session().clone());
+		let mut per_block = Vec::with_capacity(inputs.len());
+		for block in inputs {
+			let stored = self
+				.block_store
+				.open(&BlockFileKey::of(block))?
+				.ok_or(SubStoreError::BlockFileMissing {
+					block: block.id,
+				})?
+				.read(None)?;
+			let Decoded::Block(data) = decoder.decode(stored, None)? else {
+				return Err(SubStoreError::BlockFileMissing {
+					block: block.id,
+				}
+				.into());
+			};
+			per_block.push(self.block_columns(&data)?);
+		}
+		let schema: Vec<(String, ValueType)> =
+			per_block[0].iter().map(|(name, ty, _)| (name.clone(), ty.clone())).collect();
+		if per_block.iter().any(|columns| {
+			columns.iter().map(|(name, ty, _)| (name, ty)).ne(schema.iter().map(|(name, ty)| (name, ty)))
+		}) {
+			return Ok(());
+		}
+		let mut merged = Vec::with_capacity(schema.len());
+		for (index, (name, ty)) in schema.iter().enumerate() {
+			let parts: Vec<(FieldRef, ArrayRef)> =
+				per_block.iter().map(|columns| columns[index].2.clone()).collect();
+			merged.push((name.clone(), ty.clone(), concat_columns(&parts)?));
+		}
+		let order = merge_order(series, &merged)?;
+		let mut sorted = Vec::with_capacity(merged.len());
+		for (name, ty, (field, array)) in merged {
+			sorted.push((name, ty, (field, take(array.as_ref(), &order, None).map_err(arrow_error)?)));
+		}
+		let row_count: u64 = inputs.iter().map(|block| block.row_count).sum();
+		let (data, stats) = self.encode_columns(series, sorted)?;
+
+		reifydb_assertions! {
+			assert_eq!(
+				data.len() as u64,
+				row_count,
+				"a merge must keep every input row exactly once, otherwise rows are lost or duplicated"
+			);
+		}
+
+		let stored_partition = if series.partition_by.is_empty() {
+			None
+		} else {
+			Some(scope.partition)
+		};
+		let mut admin = self.engine.begin_admin(IdentityId::system())?;
+		let catalog = self.engine.catalog();
+		let block = catalog.create_column_block(
+			&mut admin,
+			ColumnBlockToCreate {
+				namespace: series.namespace,
+				source: ColumnBlockSource::Series {
+					series_id: series.id,
+					partition: stored_partition,
+					start: window.start,
+					end: window.end,
+				},
+				row_count,
+				partition_values: scope.values.to_vec(),
+				stats,
+			},
+		)?;
+		for input in inputs {
+			catalog.drop_column_block(&mut admin, input.id)?;
+		}
+		self.block_store.write(&BlockFileKey::of(&block), &data)?;
+		commit_admin(admin)?;
+		state.pending_removals.extend(inputs.iter().map(|input| (BlockFileKey::of(input), now_wall)));
+		Ok(())
+	}
+
+	fn block_columns(&self, data: &BlockData) -> Result<Vec<(String, ValueType, (FieldRef, ArrayRef))>> {
+		let session = self.block_store.session();
+		let mut columns = Vec::with_capacity(data.columns.len());
+		for ((name, ty, _), chunks) in data.schema.iter().zip(&data.columns) {
+			let mut parts = Vec::with_capacity(chunks.chunks.len());
+			for chunk in &chunks.chunks {
+				parts.push(to_arrow(session, name, &chunks.field_type, chunk.clone())?);
+			}
+			columns.push((name.clone(), ty.clone(), concat_columns(&parts)?));
+		}
+		Ok(columns)
 	}
 
 	#[inline]
@@ -579,6 +768,7 @@ impl Actor for SeriesMaterializationActor {
 			ctx.schedule_tick(self.tick_interval, |nanos| SeriesMessage::Tick(DateTime::from_nanos(nanos)));
 		SeriesMaterializationState {
 			partitions: HashMap::new(),
+			pending_removals: Vec::new(),
 			_timer_handle: Some(handle),
 		}
 	}
@@ -604,6 +794,34 @@ impl Actor for SeriesMaterializationActor {
 	fn config(&self) -> ActorConfig {
 		ActorConfig::new().mailbox_capacity(64)
 	}
+}
+
+fn merge_order(series: &Series, columns: &[(String, ValueType, (FieldRef, ArrayRef))]) -> Result<UInt32Array> {
+	let descending = Some(SortOptions {
+		descending: true,
+		nulls_first: false,
+	});
+	let mut keys = Vec::with_capacity(3);
+	let names = series.tag.map(|_| "tag").into_iter().chain([series.key.column(), SystemColumn::RowNumbers.name()]);
+	for name in names {
+		let (_, _, (_, array)) = columns.iter().find(|(column, _, _)| column == name).ok_or_else(|| {
+			SubStoreError::MissingColumnInBatch {
+				column: name.to_string(),
+			}
+		})?;
+		keys.push(SortColumn {
+			values: array.clone(),
+			options: descending,
+		});
+	}
+	lexsort_to_indices(&keys, None).map_err(arrow_error)
+}
+
+fn arrow_error(e: ArrowError) -> Error {
+	SubStoreError::Arrow {
+		reason: e.to_string(),
+	}
+	.into()
 }
 
 #[cfg(test)]
@@ -647,6 +865,8 @@ mod tests {
 			Duration::from_milliseconds(50).unwrap(),
 			1_000,
 			Duration::from_milliseconds(0).unwrap(),
+			1,
+			Duration::from_seconds(60).unwrap(),
 		);
 		let series = {
 			let catalog = engine.catalog();

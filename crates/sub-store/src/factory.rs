@@ -110,6 +110,8 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			self.config.series_tick_interval,
 			self.config.series_bucket_width,
 			self.config.series_grace,
+			self.config.series_merge_buckets,
+			self.config.series_merge_file_delay,
 		);
 		let series_handle = spawner.spawn_coordination("storage-materialize-series", series_actor);
 		let series_ref = series_handle.actor_ref().clone();

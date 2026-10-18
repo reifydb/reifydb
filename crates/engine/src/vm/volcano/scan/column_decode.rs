@@ -20,25 +20,25 @@ use vortex_session::VortexSession;
 
 use crate::Result;
 
-pub(crate) enum Decoded {
+pub enum Decoded {
 	Skip(Schema),
 	Block(BlockData),
 }
 
-pub(crate) struct BlockDecoder {
+pub struct BlockDecoder {
 	encodings: BlockEncodings,
 	session: VortexSession,
 }
 
 impl BlockDecoder {
-	pub(crate) fn new(encodings: BlockEncodings, session: VortexSession) -> Self {
+	pub fn new(encodings: BlockEncodings, session: VortexSession) -> Self {
 		Self {
 			encodings,
 			session,
 		}
 	}
 
-	pub(crate) fn decode(&self, data: BlockData, predicate: Option<&Predicate>) -> Result<Decoded> {
+	pub fn decode(&self, data: BlockData, predicate: Option<&Predicate>) -> Result<Decoded> {
 		let Some(header) = data.block_encoding.clone() else {
 			return Ok(Decoded::Block(data));
 		};

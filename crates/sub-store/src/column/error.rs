@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::id::{NamespaceId, SeriesId};
+use reifydb_core::interface::catalog::id::{ColumnBlockId, NamespaceId, SeriesId};
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -42,6 +42,16 @@ pub enum SubStoreError {
 	PartitionMismatch {
 		partitioned: bool,
 		present: bool,
+	},
+
+	#[error("series merge: block {block:?} is cataloged but its file is missing or unreadable")]
+	BlockFileMissing {
+		block: ColumnBlockId,
+	},
+
+	#[error("series merge: arrow kernel failed: {reason}")]
+	Arrow {
+		reason: String,
 	},
 }
 
@@ -143,6 +153,36 @@ impl IntoDiagnostic for SubStoreError {
 				fragment: Fragment::None,
 				label: Some("#partition does not match the partition declaration".to_string()),
 				help: Some("a partitioned object stamps #partition on every row, and an unpartitioned object stamps it on none".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			SubStoreError::BlockFileMissing {
+				block,
+			} => Diagnostic {
+				code: "SCOL_007".to_string(),
+				rql: None,
+				message: format!("series merge: block {block:?} is cataloged but its file is missing or unreadable"),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("merge input block has no readable file".to_string()),
+				help: Some("a cataloged block must keep its file until no reader can see it".to_string()),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			SubStoreError::Arrow {
+				reason,
+			} => Diagnostic {
+				code: "SCOL_008".to_string(),
+				rql: None,
+				message: format!("series merge: arrow kernel failed: {reason}"),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("sorting or reordering merge input rows failed".to_string()),
+				help: None,
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

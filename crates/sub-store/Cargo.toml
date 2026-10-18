@@ -15,7 +15,9 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 arrow-array = { workspace = true, optional = true }
+arrow-ord = { workspace = true, optional = true }
 arrow-schema = { workspace = true, optional = true }
+arrow-select = { workspace = true, optional = true }
 dashmap = { workspace = true, optional = true }
 reifydb-catalog = { workspace = true, optional = true }
 reifydb-core = { workspace = true }
@@ -36,7 +38,9 @@ vortex-session = { workspace = true, optional = true }
 default = []
 column = [
 	"dep:arrow-array",
+	"dep:arrow-ord",
 	"dep:arrow-schema",
+	"dep:arrow-select",
 	"dep:dashmap",
 	"dep:reifydb-catalog",
 	"dep:reifydb-engine",
