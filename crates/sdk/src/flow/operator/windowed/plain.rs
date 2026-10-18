@@ -1147,22 +1147,35 @@ where
 		)?;
 
 		let mut records = Vec::new();
+		let mut moved = Vec::new();
 		for ((group, id), session) in &sessions {
 			if session.before == Some((session.start, session.last)) {
 				continue;
 			}
-			let (session_group, key) = group_of(&groups, group, <A::Coord as Coord>::from_order(*id));
+			let window_start = <A::Coord as Coord>::from_order(*id);
+			let (session_group, key) = group_of(&groups, group, window_start);
 			records.push((session_group, session.start, session.last));
-			mode.engine.reindex_session(
-				&mut store,
+			moved.push((
 				group,
-				*id,
+				window_start,
 				session_group,
-				&key,
+				key,
 				session.before.map(|(_, last)| last),
 				session.last,
-			)?;
+			));
 		}
+		let entries: Vec<_> = moved
+			.iter()
+			.map(|(group, window_start, session_group, key, prior, last)| WindowReindex {
+				group: *group,
+				window_start: *window_start,
+				id: *session_group,
+				slot_key: key,
+				prior: prior.map(Coord::to_order),
+				new: Some(last.to_order()),
+			})
+			.collect();
+		mode.engine.tumbling_mut().reindex_windows(&mut store, &entries)?;
 		let changed: Vec<(GroupId, GuestSession<A::Coord>)> = trackers
 			.values()
 			.filter(|(_, before, now)| before != now)
