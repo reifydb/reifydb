@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
 use reifydb_core::{
-	expression::Expression,
+	expression::{AliasExpression, Expression, IdentExpression, name::display_label},
 	value::{
 		batch::{batch, is_scalar, scalar_value},
 		column::{
@@ -81,6 +81,7 @@ impl UdfEvalNode {
 			.iter()
 			.map(|e| {
 				let (expr, udfs) = extract_udf_calls(e, symbols, &mut counter);
+				let expr = named_after(e, expr, &udfs);
 				all_udfs.extend(udfs);
 				expr
 			})
@@ -325,6 +326,18 @@ pub(crate) fn is_vectorizable(instructions: &[Instruction]) -> bool {
 	})
 }
 
+fn named_after(original: &Expression, rewritten: Expression, udfs: &[ExtractedUdf]) -> Expression {
+	if udfs.is_empty() || matches!(original, Expression::Alias(_)) {
+		return rewritten;
+	}
+	let label = display_label(original);
+	Expression::Alias(AliasExpression {
+		alias: IdentExpression(label.clone()),
+		expression: Box::new(rewritten),
+		fragment: label,
+	})
+}
+
 pub(crate) fn strip_udf_columns(columns: RecordBatch, udf_names: &[String]) -> Result<RecordBatch> {
 	if udf_names.is_empty() {
 		return Ok(columns);
@@ -351,6 +364,7 @@ pub(crate) fn evaluate_udfs_no_input(
 		.iter()
 		.map(|e| {
 			let (expr, udfs) = extract_udf_calls(e, &ctx.symbols, &mut counter);
+			let expr = named_after(e, expr, &udfs);
 			all_udfs.extend(udfs);
 			expr
 		})
