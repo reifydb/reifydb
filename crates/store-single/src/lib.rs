@@ -25,12 +25,10 @@ use reifydb_core::{
 	delta::Delta,
 	interface::store::{
 		SingleVersionBatch, SingleVersionCommit, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
-		SingleVersionRow, SingleVersionStore, SingleWalCheckpoint,
+		SingleVersionRow, SingleVersionStore,
 	},
 };
 use reifydb_runtime::shutdown::Shutdown;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::util::cowvec::CowVec;
 use reifydb_wal::lsn::Lsn;
 use store::{PendingFlush, SinglePersistentProbeMetrics, StandardSingleStore};
@@ -121,14 +119,6 @@ impl SingleStore {
 		match self {
 			SingleStore::Standard(store) => store.saved_lsn(),
 		}
-	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite(
-		checkpoint: Arc<dyn SingleWalCheckpoint>,
-	) -> (Self, SqliteTempPathGuard) {
-		let (store, guard) = StandardSingleStore::testing_memory_with_persistent_sqlite(checkpoint);
-		(SingleStore::Standard(store), guard)
 	}
 }
 

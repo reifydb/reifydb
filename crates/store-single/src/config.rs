@@ -42,16 +42,6 @@ impl SingleStoreConfig {
 			clock,
 		}
 	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite_unbuffered(persistent: PersistentConfig, spawner: ActorSpawner, clock: Clock) -> Self {
-		Self {
-			commit: None,
-			persistent: Some(persistent),
-			spawner,
-			clock,
-		}
-	}
 }
 
 #[derive(Clone)]

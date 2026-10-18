@@ -256,9 +256,12 @@ fn create_memory_store_with(
 		clock: Clock::Real,
 	});
 
-	let saved_lsn = single_store.saved_lsn().unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
+	let saved_lsn = single_store
+		.saved_lsn()
+		.unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
 	replay_single(wal, &single_store, saved_lsn);
-	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
+	let transaction_single =
+		SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)
 }
 
@@ -344,9 +347,12 @@ fn create_sqlite_store_with(
 		clock: Clock::Real,
 	});
 
-	let saved_lsn = single_store.saved_lsn().unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
+	let saved_lsn = single_store
+		.saved_lsn()
+		.unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
 	replay_single(wal, &single_store, saved_lsn);
-	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
+	let transaction_single =
+		SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)
 }
 

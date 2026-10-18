@@ -14,11 +14,7 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::bytes::EncodedBytes,
 };
-use reifydb_core::{
-	delta::Delta,
-	interface::store::{SingleVersionRow, SingleWalCheckpoint},
-	metrics::collect::MetricsCollector,
-};
+use reifydb_core::{delta::Delta, interface::store::SingleVersionRow, metrics::collect::MetricsCollector};
 use reifydb_runtime::{
 	actor::{
 		mailbox::ActorRef,
@@ -28,8 +24,6 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::{
 	count::Count,
 	reifydb_assertions,
@@ -39,6 +33,8 @@ use reifydb_value::{
 use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use crate::flush::actor::FlushActor;
 use crate::{
 	Result, SingleVersionBatch, SingleVersionCommit, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
 	SingleVersionStore,
@@ -50,8 +46,6 @@ use crate::{
 		persistent::{SinglePageCacheMetrics, SinglePersistentTier},
 	},
 };
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::{config::PersistentConfig, flush::actor::FlushActor};
 
 pub type DirtyMap = HashMap<EncodedKey, Option<CowVec<u8>>>;
 
@@ -246,26 +240,6 @@ impl StandardSingleStore {
 		})
 		.unwrap()
 	}
-
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn testing_memory_with_persistent_sqlite(
-		checkpoint: Arc<dyn SingleWalCheckpoint>,
-	) -> (Self, SqliteTempPathGuard) {
-		let clock = Clock::testing();
-		let actor_system = ActorSystem::testing(clock.clone());
-		let spawner = actor_system.spawner();
-		let (persistent, guard) = PersistentConfig::sqlite_in_memory(checkpoint);
-		let store = Self::new(SingleStoreConfig {
-			commit: Some(CommitBufferConfig {
-				storage: SingleCommitBufferTier::memory(),
-			}),
-			persistent: Some(persistent),
-			spawner,
-			clock,
-		})
-		.unwrap();
-		(store, guard)
-	}
 }
 
 impl SingleVersionGet for StandardSingleStore {
@@ -356,8 +330,6 @@ impl StandardSingleStore {
 					*self.through.lock() = lsn;
 				}
 			}
-		} else if let Some(persistent) = &self.persistent {
-			persistent.set(entries)?;
 		}
 
 		Ok(())
@@ -582,11 +554,16 @@ mod tests {
 
 	use reifydb_core::{
 		delta::SetPre,
-		interface::{catalog::id::QueueId, store::SingleVersionCommit},
+		interface::{
+			catalog::id::QueueId,
+			store::{SingleVersionCommit, SingleWalCheckpoint},
+		},
 		key::{any::TaggedKey, queue::QueueDeduplicationKey},
 	};
+	use reifydb_sqlite::SqliteTempPathGuard;
 
 	use super::*;
+	use crate::config::PersistentConfig;
 
 	struct NoWal;
 
@@ -600,6 +577,25 @@ mod tests {
 		}
 	}
 
+	fn memory_with_persistent_sqlite(
+		checkpoint: Arc<dyn SingleWalCheckpoint>,
+	) -> (StandardSingleStore, SqliteTempPathGuard) {
+		let clock = Clock::testing();
+		let actor_system = ActorSystem::testing(clock.clone());
+		let spawner = actor_system.spawner();
+		let (persistent, guard) = PersistentConfig::sqlite_in_memory(checkpoint);
+		let store = StandardSingleStore::new(SingleStoreConfig {
+			commit: Some(CommitBufferConfig {
+				storage: SingleCommitBufferTier::memory(),
+			}),
+			persistent: Some(persistent),
+			spawner,
+			clock,
+		})
+		.unwrap();
+		(store, guard)
+	}
+
 	fn key(name: &str) -> TaggedKey {
 		QueueDeduplicationKey::new(QueueId(1), name.as_bytes().iter().map(|b| !b).collect::<Vec<u8>>()).into()
 	}
@@ -607,7 +603,7 @@ mod tests {
 	#[test]
 	fn a_flush_that_cannot_persist_stops_with_a_named_panic() {
 		// The flush panics on the actor thread, so only a process-wide hook can see its message.
-		let (mut store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite(Arc::new(NoWal));
+		let (mut store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
 
 		let k = key("counter");
 		SingleVersionCommit::commit(
@@ -649,7 +645,7 @@ mod tests {
 
 	#[test]
 	fn flush_pending_blocking_reports_whether_the_batch_became_durable() {
-		let (mut store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite(Arc::new(NoWal));
+		let (mut store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
 
 		let k = key("intern");
 		SingleVersionCommit::commit(
@@ -679,7 +675,7 @@ mod tests {
 
 	#[test]
 	fn a_read_the_commit_buffer_answers_never_counts_a_persistent_probe() {
-		let (mut store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite(Arc::new(NoWal));
+		let (mut store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
 
 		let present = key("buffered");
 		SingleVersionCommit::commit(
@@ -708,7 +704,7 @@ mod tests {
 
 	#[test]
 	fn a_persistent_read_that_finds_a_row_counts_a_probe_but_no_absence() {
-		let (store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite(Arc::new(NoWal));
+		let (store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
 
 		let k = key("resident");
 		seed_persistent(&store, &k, "9");
@@ -724,7 +720,7 @@ mod tests {
 
 	#[test]
 	fn a_persistent_read_that_finds_nothing_counts_a_probe_and_an_absence() {
-		let (store, _guard) = StandardSingleStore::testing_memory_with_persistent_sqlite(Arc::new(NoWal));
+		let (store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
 
 		let k = key("never-written");
 

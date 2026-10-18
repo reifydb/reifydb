@@ -24,7 +24,7 @@ use reifydb_core::{
 		},
 		store::{
 			SingleVersionCommit, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
-			SingleVersionRow, SingleWalCheckpoint,
+			SingleVersionRow,
 		},
 	},
 	key::catalog::IndexEntryKey,
@@ -39,9 +39,8 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
-use reifydb_wal::lsn::Lsn;
 use reifydb_store_single::{
-	config::{CommitBufferConfig, PersistentConfig, SingleStoreConfig},
+	config::{CommitBufferConfig, SingleStoreConfig},
 	store::StandardSingleStore,
 	tier::{TierStorage, commit::buffer::SingleCommitBufferTier},
 };
@@ -49,25 +48,13 @@ use reifydb_testing::testscript;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 use testscript::command::Command;
 
-pub struct NoWal;
-
-impl SingleWalCheckpoint for NoWal {
-	fn make_durable(&self, _through: Lsn) -> reifydb_value::Result<()> {
-		// Store-level scripts never log a commit, so there is no lsn to make durable.
-		Ok(())
-	}
-
-	fn saved_through(&self, _through: Lsn) -> reifydb_value::Result<()> {
-		Ok(())
-	}
-}
-
 /// Shared testscript runner for every per-backend integration test. With `auto_flush` each committing
 /// command is followed by `begin_flush_pending().wait()`; without it (the default) the explicit `flush`
 /// command is the only way to move data into persistent, which is what lets a script control timing.
 pub struct Runner {
 	pub store: StandardSingleStore,
 	pub auto_flush: bool,
+	pub reads: Option<StandardSingleStore>,
 }
 
 impl Runner {
@@ -90,26 +77,7 @@ impl Runner {
 		Self {
 			store,
 			auto_flush: false,
-		}
-	}
-
-	/// Persistent-only constructor, so reads and writes bypass the buffer tier entirely.
-	#[allow(dead_code)]
-	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite_unbuffered(persistent: PersistentConfig) -> Self {
-		let pools = Pools::new(PoolConfig::default());
-		let actor_system = ActorSystem::new(pools, Clock::Real);
-		let spawner = actor_system.spawner();
-		std::mem::forget(actor_system);
-		let store = StandardSingleStore::new(SingleStoreConfig::sqlite_unbuffered(
-			persistent,
-			spawner,
-			Clock::Real,
-		))
-		.unwrap();
-		Self {
-			store,
-			auto_flush: false,
+			reads: None,
 		}
 	}
 
@@ -119,6 +87,7 @@ impl Runner {
 		Self {
 			store,
 			auto_flush: true,
+			reads: None,
 		}
 	}
 
@@ -128,7 +97,12 @@ impl Runner {
 		Self {
 			store,
 			auto_flush: false,
+			reads: None,
 		}
+	}
+
+	fn reader(&self) -> &StandardSingleStore {
+		self.reads.as_ref().unwrap_or(&self.store)
 	}
 
 	#[inline]
@@ -149,7 +123,7 @@ impl testscript::runner::Runner for Runner {
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 				let value: Option<SingleVersionRow> =
-					self.store.get(&[script_key(&key).encode()])?.pop().flatten();
+					self.reader().get(&[script_key(&key).encode()])?.pop().flatten();
 				let value = value.map(|sv| sv.bytes.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
@@ -160,11 +134,13 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch = SingleVersionRange::range(&self.store, EncodedKeyRange::all())?;
+					let batch = SingleVersionRange::range(self.reader(), EncodedKeyRange::all())?;
 					print(&mut output, batch.items.into_iter())
 				} else {
-					let batch =
-						SingleVersionRangeRev::range_rev(&self.store, EncodedKeyRange::all())?;
+					let batch = SingleVersionRangeRev::range_rev(
+						self.reader(),
+						EncodedKeyRange::all(),
+					)?;
 					print(&mut output, batch.items.into_iter())
 				};
 			}
@@ -178,10 +154,10 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch = SingleVersionRange::range(&self.store, range)?;
+					let batch = SingleVersionRange::range(self.reader(), range)?;
 					print(&mut output, batch.items.into_iter())
 				} else {
-					let batch = SingleVersionRangeRev::range_rev(&self.store, range)?;
+					let batch = SingleVersionRangeRev::range_rev(self.reader(), range)?;
 					print(&mut output, batch.items.into_iter())
 				};
 			}
@@ -195,10 +171,10 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					let batch = SingleVersionRange::prefix(&self.store, &prefix)?;
+					let batch = SingleVersionRange::prefix(self.reader(), &prefix)?;
 					print(&mut output, batch.items.into_iter())
 				} else {
-					let batch = SingleVersionRangeRev::prefix_rev(&self.store, &prefix)?;
+					let batch = SingleVersionRangeRev::prefix_rev(self.reader(), &prefix)?;
 					print(&mut output, batch.items.into_iter())
 				};
 			}

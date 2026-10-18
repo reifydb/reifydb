@@ -7,10 +7,9 @@ use std::mem;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, atomic::AtomicBool};
 
-use reifydb_core::interface::store::SingleWalCheckpoint;
-
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::interface::store::SingleWalCheckpoint;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_runtime::actor::{
 	context::Context,
@@ -23,9 +22,9 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
-use reifydb_wal::lsn::Lsn;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
+use reifydb_wal::lsn::Lsn;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::debug;
 

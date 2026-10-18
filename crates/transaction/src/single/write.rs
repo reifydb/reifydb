@@ -199,9 +199,16 @@ impl<'a> SingleWriteTransaction<'a> {
 		SingleRecord::encode_deltas(&deltas, &mut encoded);
 		check_record_size(&encoded)?;
 		let store = self.inner.store.write();
-		let lsn = self.inner.wal.append_encoded(self.inner.clock.now(), SingleRecord::KIND, encoded).unwrap_or_else(
-			|err| panic!("single commit of {} deltas failed to append to the commit log: {err}", deltas.len()),
-		);
+		let lsn = self
+			.inner
+			.wal
+			.append_encoded(self.inner.clock.now(), SingleRecord::KIND, encoded)
+			.unwrap_or_else(|err| {
+				panic!(
+					"single commit of {} deltas failed to append to the commit log: {err}",
+					deltas.len()
+				)
+			});
 		if let Err(err) = store.commit_logged(CowVec::new(deltas), lsn) {
 			panic!("single commit is in the commit log but failed to install in the store: {err}");
 		}

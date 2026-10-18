@@ -19,13 +19,12 @@ pub mod write;
 
 use read::{KeyReadLock, SingleReadTransaction};
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
-
-use crate::wal::{CommitWal, memory_wal};
 use reifydb_value::Result;
 use write::{KeyWriteLock, SingleWriteTransaction};
 
 #[cfg(feature = "testing")]
 use crate::counting::OpCounts;
+use crate::wal::{CommitWal, memory_wal};
 
 #[derive(Clone)]
 pub struct SingleTransaction {
@@ -84,7 +83,8 @@ impl SingleTransaction {
 	pub fn testing() -> Self {
 		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
-		let wal = memory_wal(Clock::Real).unwrap_or_else(|err| panic!("in-memory commit log failed to open: {err}"));
+		let wal = memory_wal(Clock::Real)
+			.unwrap_or_else(|err| panic!("in-memory commit log failed to open: {err}"));
 		Self::new(SingleStore::testing_memory(), EventBus::new(&spawner), wal, Clock::Real)
 	}
 

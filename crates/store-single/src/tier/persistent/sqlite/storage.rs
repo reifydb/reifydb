@@ -24,11 +24,11 @@ use reifydb_sqlite::{
 use reifydb_value::{
 	Result, byte_size::ByteSize, count::Count, reifydb_assertions, util::cowvec::CowVec, value::duration::Duration,
 };
+use reifydb_wal::lsn::Lsn;
 use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction,
 	TransactionBehavior, params,
 };
-use reifydb_wal::lsn::Lsn;
 use tracing::{instrument, warn};
 
 use super::query::build_range_query;
@@ -137,10 +137,8 @@ impl SqlitePersistentStorage {
 			))
 			.map_err(|e| internal_error!("Failed to ensure {}: {}", META_TABLE_NAME, e))?;
 			tx.execute(
-				&format!(
-					"INSERT INTO \"{META_TABLE_NAME}\" (key, value) VALUES ('saved_lsn', ?1) \
-					 ON CONFLICT(key) DO UPDATE SET value = excluded.value"
-				),
+				&format!("INSERT INTO \"{META_TABLE_NAME}\" (key, value) VALUES ('saved_lsn', ?1) \
+					 ON CONFLICT(key) DO UPDATE SET value = excluded.value"),
 				params![lsn.as_u64().to_le_bytes().to_vec()],
 			)
 			.map_err(|e| internal_error!("Failed to write saved_lsn {}: {}", lsn.as_u64(), e))?;

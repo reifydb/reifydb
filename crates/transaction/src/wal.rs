@@ -19,8 +19,8 @@ use reifydb_runtime::{
 };
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_log::{error::LogError, log::Log, partition::Config};
-use reifydb_store_single::SingleStore;
 use reifydb_store_multi::store::multi::classify_deltas;
+use reifydb_store_single::SingleStore;
 use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
 use reifydb_wal::{
 	error::{Result as WalResult, WalError},
@@ -258,7 +258,11 @@ impl SingleWalCheckpoint for SingleStoreCheckpoint {
 
 	fn saved_through(&self, through: Lsn) -> Result<()> {
 		self.floor.advance(through).unwrap_or_else(|err| {
-			panic!("commit log floor {} failed to advance to lsn {}: {err}", self.floor.name(), through.as_u64())
+			panic!(
+				"commit log floor {} failed to advance to lsn {}: {err}",
+				self.floor.name(),
+				through.as_u64()
+			)
 		});
 		self.wal.gc().unwrap_or_else(|err| {
 			panic!(
