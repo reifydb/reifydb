@@ -125,6 +125,103 @@ impl Body for CommitRecord {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SingleRecord {
+	pub deltas: Vec<Delta>,
+}
+
+impl SingleRecord {
+	pub const KIND: u32 = 2;
+
+	pub fn encode_deltas(deltas: &[Delta], out: &mut Vec<u8>) {
+		put_len(out, deltas.len());
+		for delta in deltas {
+			match delta {
+				Delta::Set {
+					key,
+					bytes,
+					..
+				} => {
+					out.push(OP_SET);
+					put_bytes(out, key.encode().as_bytes());
+					put_bytes(out, bytes.as_ref());
+				}
+				Delta::Remove {
+					key,
+					..
+				} => {
+					out.push(OP_REMOVE);
+					put_bytes(out, key.encode().as_bytes());
+				}
+			}
+		}
+	}
+}
+
+impl Body for SingleRecord {
+	fn kind(&self) -> u32 {
+		Self::KIND
+	}
+
+	fn encode(&self, out: &mut Vec<u8>) {
+		Self::encode_deltas(&self.deltas, out);
+	}
+
+	fn decode(kind: u32, bytes: &[u8]) -> Result<Self> {
+		if kind != Self::KIND {
+			return Err(WalError::Body(format!("unknown single record kind {kind}")));
+		}
+		let mut reader = Reader {
+			bytes,
+			at: 0,
+		};
+		let count = reader.u32()?;
+		let mut deltas = Vec::new();
+		for _ in 0..count {
+			deltas.push(reader.single_delta()?);
+		}
+		if reader.at != bytes.len() {
+			return Err(WalError::Body(format!(
+				"{} trailing bytes after single delta {count}",
+				bytes.len() - reader.at
+			)));
+		}
+		Ok(Self {
+			deltas,
+		})
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WalRecord {
+	Multi(CommitRecord),
+	Single(SingleRecord),
+}
+
+impl Body for WalRecord {
+	fn kind(&self) -> u32 {
+		match self {
+			Self::Multi(record) => record.kind(),
+			Self::Single(record) => record.kind(),
+		}
+	}
+
+	fn encode(&self, out: &mut Vec<u8>) {
+		match self {
+			Self::Multi(record) => record.encode(out),
+			Self::Single(record) => record.encode(out),
+		}
+	}
+
+	fn decode(kind: u32, bytes: &[u8]) -> Result<Self> {
+		match kind {
+			CommitRecord::KIND => Ok(Self::Multi(CommitRecord::decode(kind, bytes)?)),
+			SingleRecord::KIND => Ok(Self::Single(SingleRecord::decode(kind, bytes)?)),
+			kind => Err(WalError::Body(format!("unknown wal record kind {kind}"))),
+		}
+	}
+}
+
 fn put_len(out: &mut Vec<u8>, len: usize) {
 	let len = u32::try_from(len).unwrap_or_else(|_| panic!("commit record length {len} does not fit in u32"));
 	out.extend_from_slice(&len.to_le_bytes());
@@ -230,6 +327,23 @@ impl<'a> Reader<'a> {
 				})
 			}
 			op => Err(WalError::Body(format!("unknown delta op {op} at byte {at}"))),
+		}
+	}
+
+	fn single_delta(&mut self) -> Result<Delta> {
+		let at = self.at;
+		match self.u8()? {
+			OP_SET => {
+				let key = self.key()?;
+				let bytes = self.encoded()?;
+				Ok(Delta::Set {
+					key,
+					bytes,
+					pre: SetPre::Unknown,
+				})
+			}
+			OP_REMOVE => Ok(Delta::remove_silent(self.key()?)),
+			op => Err(WalError::Body(format!("unknown single delta op {op} at byte {at}"))),
 		}
 	}
 }

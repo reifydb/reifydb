@@ -58,11 +58,16 @@ fn harness() -> Harness {
 		VersionEpoch::new(),
 		Rng::seeded(42),
 		Arc::new(ProfileConfig),
-		wal,
+		wal.clone(),
 		recovery,
 	)
 	.unwrap();
-	let single = SingleTransaction::new(SingleStore::testing_memory(), bus.clone());
+	let single = SingleTransaction::new(
+		SingleStore::testing_memory(),
+		bus.clone(),
+		wal,
+		Clock::Mock(MockClock::from_millis(1000)),
+	);
 
 	let begin: CommitBegin = Arc::new(move || {
 		CommandTransaction::new(

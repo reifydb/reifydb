@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use reifydb_runtime::{
 	actor::system::ActorSystem,
@@ -17,7 +17,7 @@ use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
 
 mod common;
-use common::Runner;
+use common::{NoWal, Runner};
 
 test_each_path! { in "crates/store-single/tests/scripts/single" as tiered_single => test_tiered }
 
@@ -27,7 +27,7 @@ fn test_tiered(path: &Path) {
 		let actor_system = ActorSystem::new(pools, Clock::Real);
 		let spawner = actor_system.spawner();
 		std::mem::forget(actor_system);
-		let (persistent, _guard) = PersistentConfig::sqlite_in_memory();
+		let (persistent, _guard) = PersistentConfig::sqlite_in_memory(Arc::new(NoWal));
 		let store = StandardSingleStore::new(SingleStoreConfig {
 			commit: Some(CommitBufferConfig {
 				storage: SingleCommitBufferTier::memory(),

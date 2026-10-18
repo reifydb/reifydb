@@ -6,8 +6,9 @@ use std::{collections::HashMap, mem::take, ops::RangeBounds};
 use indexmap::IndexMap;
 use reifydb_core::{
 	delta::SetPre,
-	interface::store::{SingleVersionCommit, SingleVersionGet, SingleVersionRow},
+	interface::store::{SingleVersionGet, SingleVersionRow},
 	key::any::TaggedKey,
+	wal::SingleRecord,
 };
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockWriteGuard};
 use reifydb_value::{
@@ -16,7 +17,7 @@ use reifydb_value::{
 };
 
 use super::*;
-use crate::error::TransactionError;
+use crate::{error::TransactionError, wal::check_record_size};
 
 pub struct KeyWriteLock {
 	pub(super) _guard: OwnedRwLockWriteGuard<()>,
@@ -194,8 +195,17 @@ impl<'a> SingleWriteTransaction<'a> {
 			);
 		}
 
-		let mut store = self.inner.store.write();
-		SingleVersionCommit::commit(&mut *store, CowVec::new(deltas))
+		let mut encoded = Vec::new();
+		SingleRecord::encode_deltas(&deltas, &mut encoded);
+		check_record_size(&encoded)?;
+		let store = self.inner.store.write();
+		let lsn = self.inner.wal.append_encoded(self.inner.clock.now(), SingleRecord::KIND, encoded).unwrap_or_else(
+			|err| panic!("single commit of {} deltas failed to append to the commit log: {err}", deltas.len()),
+		);
+		if let Err(err) = store.commit_logged(CowVec::new(deltas), lsn) {
+			panic!("single commit is in the commit log but failed to install in the store: {err}");
+		}
+		Ok(())
 	}
 
 	pub fn rollback(&mut self) -> Result<()> {

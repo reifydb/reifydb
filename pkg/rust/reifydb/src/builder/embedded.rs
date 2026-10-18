@@ -321,6 +321,8 @@ impl EmbeddedBuilder {
 				operator_resident,
 				operator_flush_interval,
 				self.operator_persistent,
+				&wal,
+				&clock,
 				&spawner,
 			);
 		let catalog_cache = CatalogCache::new();

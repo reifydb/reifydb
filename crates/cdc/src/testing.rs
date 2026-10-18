@@ -54,11 +54,11 @@ impl TestCdcHost {
 		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
 		let event_bus = EventBus::new(&spawner);
-		let single = SingleTransaction::new(single_store, event_bus.clone());
 		let catalog_cache = CatalogCache::new();
 		let mock = MockClock::new(initial_nanos);
 		let clock = Clock::Mock(mock.clone());
 		let wal = memory_wal(clock.clone()).unwrap();
+		let single = SingleTransaction::new(single_store, event_bus.clone(), wal.clone(), clock.clone());
 		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 		let multi = MultiTransaction::new(
 			multi_store,

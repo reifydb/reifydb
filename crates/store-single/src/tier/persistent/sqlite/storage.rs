@@ -28,12 +28,14 @@ use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction,
 	TransactionBehavior, params,
 };
-use tracing::instrument;
+use reifydb_wal::lsn::Lsn;
+use tracing::{instrument, warn};
 
 use super::query::build_range_query;
 use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage, persistent::SinglePageCacheMetrics};
 
 const TABLE_NAME: &str = "entries";
+const META_TABLE_NAME: &str = "single_meta";
 
 struct ReadPool {
 	conns: Vec<Mutex<Option<Connection>>>,
@@ -112,6 +114,61 @@ impl SqlitePersistentStorage {
 				cache_hits: AtomicU64::new(0),
 				cache_misses: AtomicU64::new(0),
 			}),
+		}
+	}
+
+	pub fn persist(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>, saved_lsn: Option<Lsn>) -> Result<()> {
+		if entries.is_empty() && saved_lsn.is_none() {
+			return Ok(());
+		}
+
+		let guard = self.inner.conn.lock();
+		let Some(conn) = guard.as_ref() else {
+			return Err(internal_error!("Failed to persist: the persistent connection is closed"));
+		};
+
+		let tx = self.begin_tx(conn)?;
+		if !entries.is_empty() {
+			self.insert_with_create_table_retry(&tx, &entries)?;
+		}
+		if let Some(lsn) = saved_lsn {
+			tx.execute_batch(&format!(
+				"CREATE TABLE IF NOT EXISTS \"{META_TABLE_NAME}\" (key TEXT PRIMARY KEY, value BLOB)"
+			))
+			.map_err(|e| internal_error!("Failed to ensure {}: {}", META_TABLE_NAME, e))?;
+			tx.execute(
+				&format!(
+					"INSERT INTO \"{META_TABLE_NAME}\" (key, value) VALUES ('saved_lsn', ?1) \
+					 ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+				),
+				params![lsn.as_u64().to_le_bytes().to_vec()],
+			)
+			.map_err(|e| internal_error!("Failed to write saved_lsn {}: {}", lsn.as_u64(), e))?;
+		}
+		self.commit_tx(tx)
+	}
+
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+		let guard = self.inner.readers.acquire();
+		let Some(conn) = guard.as_ref() else {
+			return Err(internal_error!(
+				"Persistent storage is shut down; refusing to report a saved lsn it cannot read"
+			));
+		};
+		match conn.query_row(
+			&format!("SELECT value FROM \"{META_TABLE_NAME}\" WHERE key = 'saved_lsn'"),
+			[],
+			|row| row.get::<_, Vec<u8>>(0),
+		) {
+			Ok(bytes) => {
+				let bytes: [u8; 8] = bytes.as_slice().try_into().map_err(|_| {
+					internal_error!("saved_lsn holds {} bytes, expected 8", bytes.len())
+				})?;
+				Ok(Some(Lsn::new(u64::from_le_bytes(bytes))))
+			}
+			Err(QueryReturnedNoRows) => Ok(None),
+			Err(e) if e.to_string().contains("no such table") => Ok(None),
+			Err(e) => Err(internal_error!("Failed to read saved_lsn: {}", e)),
 		}
 	}
 

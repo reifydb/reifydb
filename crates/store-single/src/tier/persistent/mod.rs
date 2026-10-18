@@ -8,6 +8,7 @@ use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_value::{Result, byte_size::ByteSize, count::Count, util::cowvec::CowVec};
+use reifydb_wal::lsn::Lsn;
 
 use crate::tier::{RangeBatch, RangeCursor, TierBackend, TierStorage};
 
@@ -60,11 +61,31 @@ impl SinglePersistentTier {
 			Self::Sqlite(storage) => storage.page_cache_metrics(),
 		}
 	}
+
+	pub fn persist(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>, saved_lsn: Option<Lsn>) -> Result<()> {
+		match self {
+			Self::Sqlite(storage) => storage.persist(entries, saved_lsn),
+		}
+	}
+
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+		match self {
+			Self::Sqlite(storage) => storage.saved_lsn(),
+		}
+	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl SinglePersistentTier {
 	pub fn page_cache_metrics(&self) -> SinglePageCacheMetrics {
+		match *self {}
+	}
+
+	pub fn persist(&self, _entries: Vec<(EncodedKey, Option<CowVec<u8>>)>, _saved_lsn: Option<Lsn>) -> Result<()> {
+		match *self {}
+	}
+
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
 		match *self {}
 	}
 }

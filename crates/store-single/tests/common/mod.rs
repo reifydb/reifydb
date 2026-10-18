@@ -24,7 +24,7 @@ use reifydb_core::{
 		},
 		store::{
 			SingleVersionCommit, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
-			SingleVersionRow,
+			SingleVersionRow, SingleWalCheckpoint,
 		},
 	},
 	key::catalog::IndexEntryKey,
@@ -39,6 +39,7 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
+use reifydb_wal::lsn::Lsn;
 use reifydb_store_single::{
 	config::{CommitBufferConfig, PersistentConfig, SingleStoreConfig},
 	store::StandardSingleStore,
@@ -47,6 +48,19 @@ use reifydb_store_single::{
 use reifydb_testing::testscript;
 use reifydb_value::{cow_vec, util::cowvec::CowVec};
 use testscript::command::Command;
+
+pub struct NoWal;
+
+impl SingleWalCheckpoint for NoWal {
+	fn make_durable(&self, _through: Lsn) -> reifydb_value::Result<()> {
+		// Store-level scripts never log a commit, so there is no lsn to make durable.
+		Ok(())
+	}
+
+	fn saved_through(&self, _through: Lsn) -> reifydb_value::Result<()> {
+		Ok(())
+	}
+}
 
 /// Shared testscript runner for every per-backend integration test. With `auto_flush` each committing
 /// command is followed by `begin_flush_pending().wait()`; without it (the default) the explicit `flush`

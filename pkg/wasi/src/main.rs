@@ -113,10 +113,10 @@ impl Bridge {
 		});
 		let single_store = SingleStore::testing_memory();
 		let operator_store = OperatorStore::testing_memory();
-		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
+		let wal = memory_wal(clock.clone())?;
+		let single = SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
-		let wal = memory_wal(clock.clone())?;
 		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 		let multi = MultiTransaction::new(
 			multi_store.clone(),

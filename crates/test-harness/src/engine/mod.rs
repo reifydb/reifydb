@@ -291,10 +291,10 @@ impl TestEngineBuilder {
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory();
 		let (operator_store, operator_guard) = OperatorStore::testing_memory_with_persistent_sqlite();
-		let single = SingleTransaction::new(single_store.clone(), eventbus.clone());
+		let wal = memory_wal(clock.clone()).unwrap();
+		let single = SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
-		let wal = memory_wal(clock.clone()).unwrap();
 		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
@@ -439,8 +439,13 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
 	let event_bus = EventBus::new(&spawner);
-	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let wal = memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap();
+	let single = SingleTransaction::new(
+		single_store,
+		event_bus.clone(),
+		wal.clone(),
+		Clock::Mock(MockClock::from_millis(1000)),
+	);
 	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 	let multi = MultiTransaction::new(
 		multi_store,
@@ -478,8 +483,13 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
 	let event_bus = EventBus::new(&spawner);
-	let single = SingleTransaction::new(single_store, event_bus.clone());
 	let wal = memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap();
+	let single = SingleTransaction::new(
+		single_store,
+		event_bus.clone(),
+		wal.clone(),
+		Clock::Mock(MockClock::from_millis(1000)),
+	);
 	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
 	let multi = MultiTransaction::new(
 		multi_store,

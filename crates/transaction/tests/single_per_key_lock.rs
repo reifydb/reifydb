@@ -11,7 +11,7 @@ use reifydb_codec::row::shape::{RowFamily, RowShape};
 use reifydb_core::{event::EventBus, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 use reifydb_store_single::SingleStore;
-use reifydb_transaction::single::SingleTransaction;
+use reifydb_transaction::{single::SingleTransaction, wal::memory_wal};
 use reifydb_value::value::value_type::ValueType;
 
 fn u64_shape() -> RowShape {
@@ -27,7 +27,8 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 	let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 	let spawner = actor_system.spawner();
 	let bus = EventBus::new(&spawner);
-	let txn = SingleTransaction::new(SingleStore::testing_memory(), bus);
+	let wal = memory_wal(Clock::Real).unwrap();
+	let txn = SingleTransaction::new(SingleStore::testing_memory(), bus, wal, Clock::Real);
 
 	const THREADS: u64 = 8;
 	const ROUNDS: u64 = 100;

@@ -44,7 +44,7 @@ use reifydb_store_single::{
 use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{CheckpointedStore, CommitWal, Recovery, memory_wal, open_wal},
+	wal::{CheckpointedStore, CommitWal, Recovery, memory_wal, open_wal, replay_single, single_checkpoint},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -89,6 +89,8 @@ impl StorageFactory {
 		operator_resident: ResidentLimits,
 		operator_flush_interval: Duration,
 		operator_persistent: Option<PersistentTier>,
+		wal: &CommitWal,
+		clock: &Clock,
 		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 		match self {
@@ -99,6 +101,8 @@ impl StorageFactory {
 				operator_resident,
 				operator_flush_interval,
 				operator_persistent,
+				wal,
+				clock,
 				spawner,
 			),
 			StorageFactory::Sqlite(config) => create_sqlite_store_with(
@@ -116,6 +120,8 @@ impl StorageFactory {
 				operator_flush_interval,
 				operator_persistent,
 				config.clone(),
+				wal,
+				clock,
 				spawner,
 			),
 		}
@@ -148,6 +154,7 @@ pub(crate) fn single_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
 	SqliteConfig {
 		path,
 		journal_mode: Some(JournalMode::Persist),
+		synchronous_mode: Some(SynchronousMode::Full),
 		wal_autocheckpoint: None,
 		..config.clone()
 	}
@@ -200,6 +207,8 @@ fn create_memory_store_with(
 	operator_resident: ResidentLimits,
 	operator_flush_interval: Duration,
 	operator_persistent: Option<PersistentTier>,
+	wal: &CommitWal,
+	clock: &Clock,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(spawner);
@@ -247,7 +256,9 @@ fn create_memory_store_with(
 		clock: Clock::Real,
 	});
 
-	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
+	let saved_lsn = single_store.saved_lsn().unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
+	replay_single(wal, &single_store, saved_lsn);
+	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)
 }
 
@@ -267,6 +278,8 @@ fn create_sqlite_store_with(
 	operator_flush_interval: Duration,
 	operator_persistent: Option<PersistentTier>,
 	config: SqliteConfig,
+	wal: &CommitWal,
+	clock: &Clock,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(spawner);
@@ -290,7 +303,7 @@ fn create_sqlite_store_with(
 		commit: Some(SingleCommitBufferConfig {
 			storage: SingleCommitBufferTier::memory(),
 		}),
-		persistent: Some(SinglePersistentConfig::sqlite(single_config)),
+		persistent: Some(SinglePersistentConfig::sqlite(single_config, single_checkpoint(wal))),
 		spawner: spawner.clone(),
 		clock: Clock::Real,
 	});
@@ -331,7 +344,9 @@ fn create_sqlite_store_with(
 		clock: Clock::Real,
 	});
 
-	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone());
+	let saved_lsn = single_store.saved_lsn().unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
+	replay_single(wal, &single_store, saved_lsn);
+	let transaction_single = SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)
 }
 

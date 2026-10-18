@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
+use reifydb_core::interface::store::SingleWalCheckpoint;
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
@@ -60,24 +63,27 @@ pub struct CommitBufferConfig {
 pub struct PersistentConfig {
 	pub storage: SinglePersistentTier,
 	pub flush_interval: Duration,
+	pub checkpoint: Arc<dyn SingleWalCheckpoint>,
 }
 
 impl PersistentConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(sqlite_config: SqliteConfig) -> Self {
+	pub fn sqlite(sqlite_config: SqliteConfig, checkpoint: Arc<dyn SingleWalCheckpoint>) -> Self {
 		Self {
 			storage: SinglePersistentTier::sqlite(sqlite_config),
 			flush_interval: Duration::from_seconds(5).unwrap(),
+			checkpoint,
 		}
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite_in_memory() -> (Self, SqliteTempPathGuard) {
+	pub fn sqlite_in_memory(checkpoint: Arc<dyn SingleWalCheckpoint>) -> (Self, SqliteTempPathGuard) {
 		let (storage, guard) = SinglePersistentTier::sqlite_in_memory();
 		(
 			Self {
 				storage,
 				flush_interval: Duration::from_seconds(5).unwrap(),
+				checkpoint,
 			},
 			guard,
 		)

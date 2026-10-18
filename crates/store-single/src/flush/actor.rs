@@ -7,6 +7,8 @@ use std::mem;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, atomic::AtomicBool};
 
+use reifydb_core::interface::store::SingleWalCheckpoint;
+
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -21,13 +23,12 @@ use reifydb_runtime::{
 	sync::{mutex::Mutex, waiter::WaiterHandle},
 };
 use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_wal::lsn::Lsn;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use tracing::{debug, error};
+use tracing::debug;
 
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::tier::TierStorage;
 use crate::{store::DirtyMap, tier::persistent::SinglePersistentTier};
 
 #[derive(Clone)]
@@ -49,27 +50,39 @@ pub struct FlushActorState {
 #[allow(dead_code)]
 pub struct FlushActor {
 	dirty: Arc<Mutex<DirtyMap>>,
+	through: Arc<Mutex<Option<Lsn>>>,
 	persistent: SinglePersistentTier,
 	flush_interval: Duration,
+	checkpoint: Arc<dyn SingleWalCheckpoint>,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl FlushActor {
-	pub fn new(dirty: Arc<Mutex<DirtyMap>>, persistent: SinglePersistentTier, flush_interval: Duration) -> Self {
+	pub fn new(
+		dirty: Arc<Mutex<DirtyMap>>,
+		through: Arc<Mutex<Option<Lsn>>>,
+		persistent: SinglePersistentTier,
+		flush_interval: Duration,
+		checkpoint: Arc<dyn SingleWalCheckpoint>,
+	) -> Self {
 		Self {
 			dirty,
+			through,
 			persistent,
 			flush_interval,
+			checkpoint,
 		}
 	}
 
 	pub fn spawn(
 		spawner: &ActorSpawner,
 		dirty: Arc<Mutex<DirtyMap>>,
+		through: Arc<Mutex<Option<Lsn>>>,
 		persistent: SinglePersistentTier,
 		flush_interval: Duration,
+		checkpoint: Arc<dyn SingleWalCheckpoint>,
 	) -> ActorRef<FlushMessage> {
-		let actor = Self::new(dirty, persistent, flush_interval);
+		let actor = Self::new(dirty, through, persistent, flush_interval, checkpoint);
 		spawner.spawn_coordination("single-persistent-flush", actor).actor_ref().clone()
 	}
 
@@ -78,7 +91,7 @@ impl FlushActor {
 			return false;
 		}
 
-		let drained = self.take_dirty();
+		let (drained, through) = self.take_dirty();
 		if drained.is_empty() {
 			state.flushing = false;
 			return true;
@@ -93,9 +106,9 @@ impl FlushActor {
 			);
 		}
 
-		let flushed = self.flush_to_persistent(drained);
+		self.flush_to_persistent(drained, through);
 		state.flushing = false;
-		flushed
+		true
 	}
 
 	#[inline]
@@ -108,32 +121,37 @@ impl FlushActor {
 	}
 
 	#[inline]
-	fn take_dirty(&self) -> DirtyMap {
+	fn take_dirty(&self) -> (DirtyMap, Option<Lsn>) {
 		let mut guard = self.dirty.lock();
-		mem::take(&mut *guard)
+		let through = self.through.lock().take();
+		(mem::take(&mut *guard), through)
 	}
 
 	#[inline]
-	fn flush_to_persistent(&self, drained: DirtyMap) -> bool {
+	fn flush_to_persistent(&self, drained: DirtyMap, through: Option<Lsn>) {
 		let entries: Vec<(EncodedKey, Option<CowVec<u8>>)> =
 			drained.iter().map(|(key, value)| (key.clone(), value.clone())).collect();
 		let count = entries.len();
-		if let Err(e) = self.persistent.set(entries) {
-			error!(error = %e, rows = count, "single persistent flush: set failed, returning rows for retry");
-			self.restore_dirty(drained);
-			false
-		} else {
-			debug!(rows = count, "single persistent flush completed");
-			true
+		if let Some(through) = through {
+			self.checkpoint.make_durable(through).unwrap_or_else(|err| {
+				panic!(
+					"single flush could not make the commit log durable through lsn {}: {err}",
+					through.as_u64()
+				)
+			});
 		}
-	}
-
-	#[inline]
-	fn restore_dirty(&self, drained: DirtyMap) {
-		let mut guard = self.dirty.lock();
-		for (key, value) in drained {
-			guard.entry(key).or_insert(value);
+		self.persistent.persist(entries, through).unwrap_or_else(|err| {
+			panic!("single flush could not persist {count} rows through lsn {through:?}: {err}")
+		});
+		if let Some(through) = through {
+			self.checkpoint.saved_through(through).unwrap_or_else(|err| {
+				panic!(
+					"single flush saved through lsn {} but could not move its commit log floor: {err}",
+					through.as_u64()
+				)
+			});
 		}
+		debug!(rows = count, "single persistent flush completed");
 	}
 }
 

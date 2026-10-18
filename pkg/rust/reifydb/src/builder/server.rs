@@ -421,6 +421,8 @@ impl ServerBuilder {
 				operator_resident,
 				operator_flush_interval,
 				None,
+				&wal,
+				&clock,
 				&spawner,
 			);
 		let catalog_cache = CatalogCache::new();

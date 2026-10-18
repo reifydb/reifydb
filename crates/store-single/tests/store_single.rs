@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use reifydb_store_single::{config::PersistentConfig, tier::commit::buffer::SingleCommitBufferTier};
 use reifydb_testing::{tempdir::temp_dir, testscript::runner::run_path};
 use test_each_file::test_each_path;
 
 mod common;
-use common::Runner;
+use common::{NoWal, Runner};
 
 test_each_path! { in "crates/store-single/tests/scripts/single" as store_single_memory => test_memory }
 test_each_path! { in "crates/store-single/tests/scripts/single" as store_single_sqlite_unbuffered => test_sqlite_unbuffered }
@@ -20,7 +20,7 @@ fn test_memory(path: &Path) {
 
 fn test_sqlite_unbuffered(path: &Path) {
 	temp_dir(|_db_path| {
-		let (config, _guard) = PersistentConfig::sqlite_in_memory();
+		let (config, _guard) = PersistentConfig::sqlite_in_memory(Arc::new(NoWal));
 		run_path(&mut Runner::sqlite_unbuffered(config), path)
 	})
 	.expect("test failed")

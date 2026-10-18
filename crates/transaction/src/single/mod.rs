@@ -19,6 +19,8 @@ pub mod write;
 
 use read::{KeyReadLock, SingleReadTransaction};
 use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
+
+use crate::wal::{CommitWal, memory_wal};
 use reifydb_value::Result;
 use write::{KeyWriteLock, SingleWriteTransaction};
 
@@ -33,6 +35,8 @@ pub struct SingleTransaction {
 pub(crate) struct SingleTransactionInner {
 	pub(crate) store: RwLock<SingleStore>,
 	pub(crate) event_bus: EventBus,
+	pub(crate) wal: CommitWal,
+	pub(crate) clock: Clock,
 	pub(crate) key_locks: SkipMap<EncodedKey, ArcRwLock<()>>,
 	#[cfg(feature = "testing")]
 	pub(crate) op_counts: Mutex<OpCounts>,
@@ -49,11 +53,13 @@ impl SingleTransactionInner {
 }
 
 impl SingleTransaction {
-	pub fn new(store: SingleStore, event_bus: EventBus) -> Self {
+	pub fn new(store: SingleStore, event_bus: EventBus, wal: CommitWal, clock: Clock) -> Self {
 		Self {
 			inner: Arc::new(SingleTransactionInner {
 				store: RwLock::new(store),
 				event_bus,
+				wal,
+				clock,
 				key_locks: SkipMap::new(),
 				#[cfg(feature = "testing")]
 				op_counts: Mutex::new(OpCounts::default()),
@@ -78,7 +84,8 @@ impl SingleTransaction {
 	pub fn testing() -> Self {
 		let actor_system = ActorSystem::testing(Clock::Real);
 		let spawner = actor_system.spawner();
-		Self::new(SingleStore::testing_memory(), EventBus::new(&spawner))
+		let wal = memory_wal(Clock::Real).unwrap_or_else(|err| panic!("in-memory commit log failed to open: {err}"));
+		Self::new(SingleStore::testing_memory(), EventBus::new(&spawner), wal, Clock::Real)
 	}
 
 	pub fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> Result<R>
