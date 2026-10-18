@@ -130,6 +130,8 @@ mod join_using_condition_fragment;
 mod join_using_unknown_key_column;
 #[path = "list_param_insert.rs"]
 mod list_param_insert;
+#[path = "literal_logic_answers_as_variables.rs"]
+mod literal_logic_answers_as_variables;
 #[path = "lookup_ddl.rs"]
 mod lookup_ddl;
 #[path = "lower_aggregate.rs"]
