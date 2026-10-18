@@ -32,7 +32,7 @@ use crate::{
 	window::{
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, RetainedEntryKey,
-			WindowStateKey,
+			WindowReindex, WindowStateKey,
 			config::WindowEngineConfig,
 			group_hash, meta_key_for, note_when_expiry_capped,
 			tumbling::{ExpiredWindow, TumblingBuckets, TumblingIndexEntry},
@@ -166,6 +166,40 @@ where
 				slot_key: slot_key.as_bytes().to_vec(),
 			};
 			self.expiry.set(store, tumbling_expiry_key(new, group_hash(group)?, order), entry)?;
+		}
+		Ok(())
+	}
+
+	pub fn reindex_windows(
+		&mut self,
+		store: &mut dyn StateStore,
+		entries: &[WindowReindex<'_, G, S>],
+	) -> Result<()> {
+		let mut drops = Vec::new();
+		let mut sets = Vec::new();
+		for entry in entries.iter().filter(|entry| entry.prior != entry.new) {
+			let owner = group_hash(entry.group)?;
+			let order = entry.window_start.order_key().to_order();
+			if let Some(old) = entry.prior {
+				drops.push(tumbling_expiry_key(old, owner, order));
+			}
+			if let Some(new) = entry.new {
+				sets.push((
+					tumbling_expiry_key(new, owner, order),
+					TumblingIndexEntry {
+						group: entry.group.clone(),
+						window_start: entry.window_start,
+						group_id: entry.id,
+						slot_key: entry.slot_key.as_bytes().to_vec(),
+					},
+				));
+			}
+		}
+		if !drops.is_empty() {
+			store.state_remove_many(&drops)?;
+		}
+		if !sets.is_empty() {
+			self.expiry.set_many(store, sets)?;
 		}
 		Ok(())
 	}

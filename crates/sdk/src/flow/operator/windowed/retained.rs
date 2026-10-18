@@ -26,7 +26,7 @@ use reifydb_flow_async::{
 	window::{
 		accumulator::invertible::retained_map::RetainedAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, PublishKey,
+			AccumulatorEvent, EmitKind, PublishKey, WindowReindex,
 			publish::PublishState,
 			tumbling::{ExpiredWindow, TumblingBuckets},
 			tumbling_retained::{RetainedEntry, RetainedTumblingEngine},
@@ -352,21 +352,23 @@ where
 		};
 
 		if seal_span.is_some() {
-			let mut store = GuestAsHost(ctx);
-			for r in &results {
-				if r.kind == EmitKind::Insert {
-					let (_, key) = group_of(&groups, &r.group, r.span.start);
-					engine.reindex_window(
-						&mut store,
-						&r.group,
-						r.span.start,
-						r.group_id,
-						&key,
-						None,
-						Some(r.span.start.to_order()),
-					)?;
-				}
-			}
+			let inserted: Vec<_> = results
+				.iter()
+				.filter(|r| r.kind == EmitKind::Insert)
+				.map(|r| (r, group_of(&groups, &r.group, r.span.start).1))
+				.collect();
+			let entries: Vec<_> = inserted
+				.iter()
+				.map(|(r, key)| WindowReindex {
+					group: &r.group,
+					window_start: r.span.start,
+					id: r.group_id,
+					slot_key: key,
+					prior: None,
+					new: Some(r.span.start.to_order()),
+				})
+				.collect();
+			engine.reindex_windows(&mut GuestAsHost(ctx), &entries)?;
 		}
 
 		if results.is_empty() {

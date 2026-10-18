@@ -50,6 +50,15 @@ use crate::{
 	window::span::{Slot, WindowSpan},
 };
 
+pub struct WindowReindex<'a, G, S> {
+	pub group: &'a G,
+	pub window_start: S,
+	pub id: GroupId,
+	pub slot_key: &'a EncodedKey,
+	pub prior: Option<u64>,
+	pub new: Option<u64>,
+}
+
 pub enum AccumulatorEvent<Contribution> {
 	Add(Contribution),
 	Remove(Contribution),
