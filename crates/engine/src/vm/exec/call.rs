@@ -15,6 +15,7 @@ use reifydb_core::{
 	value::{
 		batch::{batch, is_scalar, scalar_value},
 		column::{
+			arith::length_mismatch,
 			builder::ColumnBuilder,
 			cast::{cast_column_data, convert::Convert},
 			factory,
@@ -57,7 +58,6 @@ use crate::{
 	policy::PolicyEvaluator,
 	vm::{
 		callable::{CallSite, ProcedureCall, invoke_procedure_routine},
-		exec::broadcast::broadcast_many,
 		services::Services,
 		stack::ControlFlow,
 		vm::{EMPTY_PARAMS, UdfCall, Vm},
@@ -426,7 +426,7 @@ impl<'a> Vm<'a> {
 		})?;
 		function.arity().check(name, arity)?;
 
-		let arg_columns = self.pop_args_as_columns(arity)?;
+		let arg_columns = self.pop_args_as_columns(arity, name)?;
 		let identity = tx.identity();
 		let mut fn_ctx = RoutineFunctionContext {
 			fragment: name.clone(),
@@ -523,7 +523,7 @@ impl<'a> Vm<'a> {
 		arity: usize,
 		name: &Fragment,
 	) -> Result<()> {
-		let arg_columns = self.pop_args_as_columns(arity)?;
+		let arg_columns = self.pop_args_as_columns(arity, name)?;
 		check_arity(&callable.parameters, arity, name.text(), name)?;
 
 		if is_vectorizable(&callable.body, &services.routines, &self.symbols) {
@@ -566,13 +566,19 @@ impl<'a> Vm<'a> {
 			.collect()
 	}
 
-	fn pop_args_as_columns(&mut self, arity: usize) -> Result<Vec<(FieldRef, ArrayRef)>> {
+	fn pop_args_as_columns(&mut self, arity: usize, name: &Fragment) -> Result<Vec<(FieldRef, ArrayRef)>> {
 		let mut arg_columns = Vec::with_capacity(arity);
 		for _ in 0..arity {
 			arg_columns.push(self.pop_as_column()?);
 		}
 		arg_columns.reverse();
-		broadcast_many(arg_columns)
+		if let Some(first) = arg_columns.first() {
+			let row_count = first.1.len();
+			if let Some(other) = arg_columns.iter().find(|column| column.1.len() != row_count) {
+				return Err(length_mismatch(row_count, other.1.len(), name).into());
+			}
+		}
+		Ok(arg_columns)
 	}
 
 	#[allow(clippy::too_many_arguments)]
