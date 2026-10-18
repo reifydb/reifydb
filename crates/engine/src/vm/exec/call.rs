@@ -332,6 +332,16 @@ impl<'a> Vm<'a> {
 			return Ok(());
 		}
 
+		if self.batch_size != 1 && self.resolves_to_nothing(services, tx, func_name)? {
+			return Err(match is_procedure_call {
+				true => unknown_procedure_error(func_name, name),
+				false => ReifyError::from(EngineError::UnknownCallable {
+					name: func_name.to_string(),
+					fragment: name.clone(),
+				}),
+			});
+		}
+
 		let args = self.pop_scalar_args(arity)?;
 
 		if let Some(callable) = self.symbols.resolve_callable(func_name) {
@@ -402,6 +412,22 @@ impl<'a> Vm<'a> {
 			return Ok(false);
 		}
 		if services.routines.get_procedure(func_name).is_some()
+			|| services.routines.get_generator_function(func_name).is_some()
+		{
+			return Ok(false);
+		}
+		let mut tx_tmp = tx.reborrow();
+		Ok(services.catalog.find_procedure_by_qualified_name(&mut tx_tmp, func_name)?.is_none())
+	}
+
+	fn resolves_to_nothing(
+		&self,
+		services: &Arc<Services>,
+		tx: &mut Transaction<'_>,
+		func_name: &str,
+	) -> Result<bool> {
+		if services.routines.get_function(func_name).is_some()
+			|| services.routines.get_procedure(func_name).is_some()
 			|| services.routines.get_generator_function(func_name).is_some()
 		{
 			return Ok(false);
