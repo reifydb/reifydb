@@ -26,6 +26,7 @@ use reifydb_value::{
 use super::{
 	exec::{
 		comparison::{CompareExprs, LogicExprs},
+		logic::MembershipExprs,
 		mask::{LoopMaskState, MaskFrame, extract_bool_bitvec},
 	},
 	instruction::{
@@ -112,6 +113,7 @@ pub struct Vm<'a> {
 
 	pub(crate) compare: CompareExprs,
 	pub(crate) logic: LogicExprs,
+	pub(crate) membership: MembershipExprs,
 
 	pub(crate) params: &'a Params,
 	pub(crate) routines: &'a Routines,
@@ -181,6 +183,7 @@ impl<'a> Vm<'a> {
 			udf_call,
 			compare: CompareExprs::new(),
 			logic: LogicExprs::new(),
+			membership: MembershipExprs::new(),
 			params,
 			routines,
 			runtime_context,

@@ -191,7 +191,7 @@ impl LogicExprs {
 	}
 }
 
-fn operand(name: &str) -> Box<Expression> {
+pub(super) fn operand(name: &str) -> Box<Expression> {
 	Box::new(Expression::Column(ColumnExpression(ColumnIdentifier {
 		object: ColumnObject::Alias(Fragment::internal("vm")),
 		name: Fragment::internal(name),

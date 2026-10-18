@@ -1,30 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::{Array, ArrayRef};
-use arrow_schema::FieldRef;
+use std::collections::HashMap;
+
 use reifydb_core::{
-	expression::PrefixOperator,
+	expression::{BetweenExpression, Expression, InExpression, TupleExpression},
 	value::{
 		batch::batch,
-		column::{cast::cast_column_data, factory},
+		column::{arith::length_mismatch, cast::cast_column_data, factory::rename},
 	},
 };
-use reifydb_evaluate::{
-	expression::{
-		compare::{Equal, GreaterThanEqual, LessThanEqual, compare_columns},
-		logic::execute_logical_op,
-		prefix::prefix_apply,
-	},
-	stack::Variable,
-};
+use reifydb_evaluate::{lower::LoweredExpr, stack::Variable};
 use reifydb_value::{
-	error::{BinaryOp, IntoDiagnostic, LogicalOp, TypeError},
 	fragment::Fragment,
 	value::{column_view::ColumnView, value_type::ValueType},
 };
 
-use super::broadcast::broadcast_many;
+use super::comparison::operand;
 use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
@@ -32,84 +24,42 @@ impl<'a> Vm<'a> {
 		let upper = self.pop_as_column()?;
 		let lower = self.pop_as_column()?;
 		let value = self.pop_as_column()?;
-		let cols = broadcast_many(vec![value, lower, upper])?;
-		let mut iter = cols.into_iter();
-		let value = iter.next().unwrap();
-		let lower = iter.next().unwrap();
-		let upper = iter.next().unwrap();
-
-		let frag = Fragment::internal("vm_between");
-		let ge = compare_columns::<GreaterThanEqual>(&value, &lower, frag.clone(), |frag, lt, rt| {
-			TypeError::BinaryOperatorNotApplicable {
-				operator: BinaryOp::GreaterThanEqual,
-				left: lt,
-				right: rt,
-				fragment: frag,
+		let fragment = Fragment::internal("vm_between");
+		let row_count = value.1.len();
+		for bound in [&lower, &upper] {
+			if bound.1.len() != row_count {
+				return Err(length_mismatch(row_count, bound.1.len(), &fragment).into());
 			}
-			.into_diagnostic()
-		})?;
-		let le = compare_columns::<LessThanEqual>(&value, &upper, frag.clone(), |frag, lt, rt| {
-			TypeError::BinaryOperatorNotApplicable {
-				operator: BinaryOp::LessThanEqual,
-				left: lt,
-				right: rt,
-				fragment: frag,
-			}
-			.into_diagnostic()
-		})?;
-		let result = execute_logical_op(&ge, &le, &frag, LogicalOp::And)?;
-		self.stack.push(Variable::columns(batch(vec![result])?));
+		}
+		let operands = batch(vec![rename(value, "value"), rename(lower, "lower"), rename(upper, "upper")])?;
+		let ctx = self.eval_ctx();
+		let result = self.membership.between.evaluate(&ctx.with_eval(operands, row_count))?;
+		self.stack.push(Variable::columns(batch(vec![rename(result, fragment.text())])?));
 		Ok(())
 	}
 
 	pub(crate) fn exec_in_list(&mut self, count: u16, negated: bool) -> Result<()> {
-		let count = count as usize;
-		let mut list_items = Vec::with_capacity(count);
+		let mut items = Vec::with_capacity(count as usize);
 		for _ in 0..count {
-			list_items.push(self.pop_as_column()?);
+			items.push(self.pop_as_column()?);
 		}
-		list_items.reverse();
-		let probe = self.pop_as_column()?;
-
-		let mut all = Vec::with_capacity(count + 1);
-		all.push(probe);
-		all.extend(list_items);
-		let mut all = broadcast_many(all)?;
-		let probe = all.remove(0);
-		let list_items = all;
-
-		let frag = Fragment::internal("vm_in_list");
-		let mut accumulator: Option<(FieldRef, ArrayRef)> = None;
-		for item in &list_items {
-			let eq = compare_columns::<Equal>(&probe, item, frag.clone(), |frag, lt, rt| {
-				TypeError::BinaryOperatorNotApplicable {
-					operator: BinaryOp::Equal,
-					left: lt,
-					right: rt,
-					fragment: frag,
-				}
-				.into_diagnostic()
-			})?;
-			accumulator = Some(match accumulator {
-				None => eq,
-				Some(acc) => execute_logical_op(&acc, &eq, &frag, LogicalOp::Or)?,
-			});
+		items.reverse();
+		let value = self.pop_as_column()?;
+		let fragment = Fragment::internal("vm_in_list");
+		let row_count = value.1.len();
+		let mut operands = vec![rename(value, "value")];
+		for (index, item) in items.into_iter().enumerate() {
+			if item.1.len() != row_count {
+				return Err(length_mismatch(row_count, item.1.len(), &fragment).into());
+			}
+			operands.push(rename(item, &format!("item{index}")));
 		}
-
-		let result = match accumulator {
-			Some(col) => {
-				if negated {
-					prefix_apply(&col, &PrefixOperator::Not(frag.clone()), &frag)?
-				} else {
-					col
-				}
-			}
-			None => {
-				let len = probe.1.len().max(1);
-				factory::bool(frag.text(), vec![negated; len])
-			}
-		};
-		self.stack.push(Variable::columns(batch(vec![result])?));
+		let operands = batch(operands)?;
+		self.membership.in_list.entry((count, negated)).or_insert_with(|| in_list(count, negated));
+		let ctx = self.eval_ctx();
+		let result =
+			self.membership.in_list[&(count, negated)].evaluate(&ctx.with_eval(operands, row_count))?;
+		self.stack.push(Variable::columns(batch(vec![rename(result, fragment.text())])?));
 		Ok(())
 	}
 
@@ -121,4 +71,42 @@ impl<'a> Vm<'a> {
 		self.stack.push(Variable::columns(batch(vec![cast])?));
 		Ok(())
 	}
+}
+
+pub(crate) struct MembershipExprs {
+	between: LoweredExpr,
+	in_list: HashMap<(u16, bool), LoweredExpr>,
+}
+
+impl MembershipExprs {
+	pub(crate) fn new() -> Self {
+		Self {
+			between: LoweredExpr::new(
+				Expression::Between(BetweenExpression {
+					value: operand("value"),
+					lower: operand("lower"),
+					upper: operand("upper"),
+					fragment: Fragment::internal("vm_between"),
+				}),
+				"vm_between",
+			),
+			in_list: HashMap::new(),
+		}
+	}
+}
+
+fn in_list(count: u16, negated: bool) -> LoweredExpr {
+	let fragment = Fragment::internal("vm_in_list");
+	LoweredExpr::new(
+		Expression::In(InExpression {
+			value: operand("value"),
+			list: Box::new(Expression::Tuple(TupleExpression {
+				expressions: (0..count).map(|index| *operand(&format!("item{index}"))).collect(),
+				fragment: fragment.clone(),
+			})),
+			negated,
+			fragment,
+		}),
+		"vm_in_list",
+	)
 }
