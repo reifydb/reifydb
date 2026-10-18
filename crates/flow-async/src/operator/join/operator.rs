@@ -328,17 +328,19 @@ impl JoinOperator {
 		}
 		let rule = SealRule::of(retention);
 
-		for &(group, row_number) in cleared {
-			if let Some(at) = host.join_expiry_clear(group, side.tag(), row_number)? {
-				self.expiry.cleared(at);
-			}
+		for at in host.join_expiry_clear_many(side.tag(), cleared)?.into_iter().flatten() {
+			self.expiry.cleared(at);
 		}
 
+		let mut sealed = Vec::with_capacity(armed.len());
 		for &(group, row_number, at) in armed {
-			let sealed = rule.seal_instant(at).at();
+			let at = rule.seal_instant(at).at();
 			host.state_remove(&queue_key(group))?;
-			host.join_expiry_arm(group, side.tag(), row_number, sealed)?;
-			self.expiry.armed(sealed);
+			sealed.push((group, row_number, at));
+		}
+		host.join_expiry_arm_many(side.tag(), &sealed)?;
+		for &(.., at) in &sealed {
+			self.expiry.armed(at);
 		}
 
 		self.resync_timer(host, None)
@@ -427,8 +429,7 @@ impl JoinOperator {
 			ledger.flush(host)?;
 		}
 		self.cleanup_left_row_joins(host, row_number.0)?;
-		state.left.remove_row_in(host, group, row_number)?;
-		host.join_expiry_free(entry)
+		state.left.remove_row_in(host, group, row_number)
 	}
 
 	fn free_expired_right_row(
@@ -455,8 +456,7 @@ impl JoinOperator {
 				.collect(),
 		};
 		host.remove_join_row_numbers(&composites)?;
-		state.right.remove_row_in(host, group, row_number)?;
-		host.join_expiry_free(entry)
+		state.right.remove_row_in(host, group, row_number)
 	}
 
 	fn free_due_join_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
@@ -514,6 +514,7 @@ impl JoinOperator {
 					emptied.push(*group);
 				}
 			}
+			host.join_expiry_free_many(&page.due)?;
 			if !page.more {
 				break page.next;
 			}

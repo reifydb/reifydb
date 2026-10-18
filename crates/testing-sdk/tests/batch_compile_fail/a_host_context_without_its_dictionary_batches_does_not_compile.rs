@@ -178,20 +178,15 @@ impl HostContext for SingleEntryHost {
 		unimplemented!()
 	}
 
-	fn join_expiry_arm(&mut self, _group: GroupId, _side: u8, _row_number: RowNumber, _at: DateTime) -> Result<()> {
+	fn join_expiry_arm_many(&mut self, _side: u8, _rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
 		unimplemented!()
 	}
 
-	fn join_expiry_clear(
-		&mut self,
-		_group: GroupId,
-		_side: u8,
-		_row_number: RowNumber,
-	) -> Result<Option<DateTime>> {
+	fn join_expiry_clear_many(&mut self, _side: u8, _rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>> {
 		unimplemented!()
 	}
 
-	fn join_expiry_free(&mut self, _entry: &JoinDueEntry) -> Result<()> {
+	fn join_expiry_free_many(&mut self, _entries: &[JoinDueEntry]) -> Result<()> {
 		unimplemented!()
 	}
 

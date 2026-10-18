@@ -78,11 +78,11 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 
-	fn join_expiry_arm(&mut self, group: GroupId, side: u8, row_number: RowNumber, at: DateTime) -> Result<()>;
+	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()>;
 
-	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>>;
+	fn join_expiry_clear_many(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>>;
 
-	fn join_expiry_free(&mut self, entry: &JoinDueEntry) -> Result<()>;
+	fn join_expiry_free_many(&mut self, entries: &[JoinDueEntry]) -> Result<()>;
 
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>>;
 
@@ -481,16 +481,16 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		self.txn.disarm_timer_by_key(self.operator, kind, key)
 	}
 
-	fn join_expiry_arm(&mut self, group: GroupId, side: u8, row_number: RowNumber, at: DateTime) -> Result<()> {
-		self.txn.join_expiry_arm(self.operator, group, side, row_number, at)
+	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+		self.txn.join_expiry_arm_many(self.operator, side, rows)
 	}
 
-	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>> {
-		self.txn.join_expiry_clear(self.operator, group, side, row_number)
+	fn join_expiry_clear_many(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>> {
+		self.txn.join_expiry_clear_many(self.operator, side, rows)
 	}
 
-	fn join_expiry_free(&mut self, entry: &JoinDueEntry) -> Result<()> {
-		self.txn.join_expiry_free(self.operator, entry)
+	fn join_expiry_free_many(&mut self, entries: &[JoinDueEntry]) -> Result<()> {
+		self.txn.join_expiry_free_many(self.operator, entries)
 	}
 
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>> {

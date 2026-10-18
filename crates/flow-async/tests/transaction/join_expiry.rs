@@ -15,6 +15,7 @@ use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	join_expiry::{DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension, join_expiry_key},
+	state::StateExtension,
 	substrate::{FlowSubstrate, apply_operator_state, classify_pending, operator_writes},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -24,7 +25,7 @@ use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
 	factory::time::at_millis,
 	util::hash::Hash128,
-	value::{identity::IdentityId, row_number::RowNumber},
+	value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
 
 const NODE: OperatorId = OperatorId(1);
@@ -68,12 +69,14 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 }
 
 fn arm_in(txn: &mut DeferredTransaction, group: GroupId, side: u8, row_number: u64, millis: u64) {
-	txn.join_expiry_arm(
+	txn.join_expiry_arm_many(
 		NODE,
-		group,
 		side,
-		RowNumber(row_number),
-		at_millis(i64::try_from(millis).expect("test expiry millis fits in i64")),
+		&[(
+			group,
+			RowNumber(row_number),
+			at_millis(i64::try_from(millis).expect("test expiry millis fits in i64")),
+		)],
 	)
 	.unwrap();
 }
@@ -83,7 +86,13 @@ fn arm(txn: &mut DeferredTransaction, side: u8, row_number: u64, millis: u64) {
 }
 
 fn clear(txn: &mut DeferredTransaction, side: u8, row_number: u64) {
-	txn.join_expiry_clear(NODE, group(), side, RowNumber(row_number)).unwrap();
+	txn.join_expiry_clear_many(NODE, side, &[(group(), RowNumber(row_number))]).unwrap();
+}
+
+fn expiry_at(txn: &mut DeferredTransaction, row_number: u64) -> Option<DateTime> {
+	txn.state_get(NODE, &join_expiry_key(group(), LEFT, RowNumber(row_number)))
+		.unwrap()
+		.map(|row| JoinRowExpiry::decode_state(&row).unwrap().at)
 }
 
 fn entry(group: GroupId, side: u8, row_number: u64, millis: u64) -> JoinDueEntry {
@@ -214,11 +223,7 @@ fn a_join_expiry_removed_after_its_row_committed_is_invisible_to_the_minimum() {
 		Some(at_millis(9_000)),
 		"a pending remove must hide its own committed row from the minimum"
 	);
-	assert_eq!(
-		txn.join_expiry_at(NODE, group(), LEFT, RowNumber(1)).unwrap(),
-		None,
-		"and the point read must agree with it"
-	);
+	assert_eq!(expiry_at(&mut txn, 1), None, "and the point read must agree with it");
 }
 
 #[test]
@@ -244,7 +249,7 @@ fn an_expiry_moved_later_in_the_batch_wins_over_the_committed_earlier_one() {
 		Some(at_millis(20_000)),
 		"the batch's own later expiry must win, not the committed earlier one"
 	);
-	assert_eq!(txn.join_expiry_at(NODE, group(), LEFT, RowNumber(1)).unwrap(), Some(at_millis(20_000)));
+	assert_eq!(expiry_at(&mut txn, 1), Some(at_millis(20_000)));
 }
 
 #[test]
@@ -459,7 +464,7 @@ fn a_join_expiry_only_ever_written_in_this_batch_is_read_back_without_a_committe
 	arm(&mut txn, LEFT, 1, 5_000);
 
 	assert_eq!(txn.join_expiry_min(NODE).unwrap(), Some(at_millis(5_000)));
-	assert_eq!(txn.join_expiry_at(NODE, group(), LEFT, RowNumber(1)).unwrap(), Some(at_millis(5_000)));
+	assert_eq!(expiry_at(&mut txn, 1), Some(at_millis(5_000)));
 }
 
 #[test]
@@ -482,7 +487,7 @@ fn a_due_page_hands_every_group_back_under_its_own_identity() {
 		"and each due entry names the group whose row it frees"
 	);
 	assert_eq!(
-		txn.join_expiry_at(NODE, group(), LEFT, RowNumber(1)).unwrap(),
+		expiry_at(&mut txn, 1),
 		Some(at_millis(9_000)),
 		"the point read stays group scoped and must not answer with a neighbour's instant"
 	);
@@ -629,12 +634,12 @@ fn clearing_a_join_expiry_answers_with_the_instant_it_freed() {
 	commit(&engine, &mut txn);
 
 	assert_eq!(
-		txn.join_expiry_clear(NODE, group(), LEFT, RowNumber(42)).unwrap(),
+		txn.join_expiry_clear_many(NODE, LEFT, &[(group(), RowNumber(42))]).unwrap()[0],
 		Some(at_millis(5_000)),
 		"a clear must name the instant it removed"
 	);
 	assert_eq!(
-		txn.join_expiry_clear(NODE, group(), LEFT, RowNumber(42)).unwrap(),
+		txn.join_expiry_clear_many(NODE, LEFT, &[(group(), RowNumber(42))]).unwrap()[0],
 		None,
 		"and answer with nothing when the row held no expiry"
 	);
@@ -662,9 +667,7 @@ fn a_due_page_reports_the_first_instant_past_the_fire() {
 		"the page must name the first instant it refused, and that instant is the next minimum"
 	);
 
-	for entry in page.due {
-		txn.join_expiry_free(NODE, &entry).unwrap();
-	}
+	txn.join_expiry_free_many(NODE, &page.due).unwrap();
 
 	assert_eq!(
 		txn.join_expiry_min(NODE).unwrap(),
