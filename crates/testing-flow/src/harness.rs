@@ -252,6 +252,24 @@ impl<O: HostOperator> Harness<O> {
 		Ok(out)
 	}
 
+	pub fn apply_all(&mut self, changes: Vec<Change>) -> Result<Vec<Change>> {
+		let Some(first) = changes.first() else {
+			return Ok(Vec::new());
+		};
+		let operator = self.operator.id();
+		let mut txn = self.begin(coordinate_of(first)?);
+		let mut outs = Vec::with_capacity(changes.len());
+		for change in changes {
+			txn.set_change_coordinate(ChangeCoordinate {
+				at: Some(coordinate_of(&change)?),
+			});
+			let mut host = TxnHostContext::new(&mut txn, operator);
+			outs.push(self.operator.apply(&mut host, change)?);
+		}
+		self.end(txn);
+		Ok(outs)
+	}
+
 	pub fn on_timer(&mut self, timer: Timer) -> Result<Option<Change>> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(timer.due);
