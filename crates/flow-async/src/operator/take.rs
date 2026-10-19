@@ -286,7 +286,9 @@ impl Output {
 		for group in self.epochs.into_iter().flatten() {
 			match (group.kind, group.source) {
 				(Kind::Insert, Source::Input) => {
-					output_diffs.push(Diff::insert(take_rows(&self.post, &group.indices)?))
+					let mut indices = group.indices;
+					indices.sort_unstable();
+					output_diffs.push(Diff::insert(take_rows(&self.post, &indices)?))
 				}
 				(Kind::Remove, Source::Input) => {
 					output_diffs.push(Diff::remove(take_rows(&self.pre, &group.indices)?))
@@ -478,13 +480,35 @@ impl TakePlan {
 		output.stored(Kind::Insert, row_number, timed, rows.fresh.get(&row_number).cloned());
 	}
 
+	fn admit_batch(
+		&self,
+		state: &mut TakeState,
+		rows: &mut TakeRows,
+		fresh: Vec<(RowNumber, usize, usize)>,
+		created: &[DateTime],
+		encoded: &[EncodedBytes],
+		output: &mut Output,
+	) -> Result<()> {
+		let mut fresh: Vec<(RowAge, usize, usize)> = fresh
+			.into_iter()
+			.map(|(row_number, row_idx, count)| {
+				(RowAge::of(created.get(row_idx).copied(), row_number), row_idx, count)
+			})
+			.collect();
+		fresh.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+		for (age, row_idx, count) in fresh {
+			self.admit_new_row(state, rows, age, count, (row_idx, encoded[row_idx].clone()), output)?;
+		}
+		Ok(())
+	}
+
 	#[inline]
 	fn admit_new_row(
 		&self,
 		state: &mut TakeState,
 		rows: &mut TakeRows,
-		row_number: RowNumber,
-		created_at: Option<DateTime>,
+		age: RowAge,
+		count: usize,
 		(row_idx, encoded): (usize, EncodedBytes),
 		output: &mut Output,
 	) -> Result<()> {
@@ -492,7 +516,7 @@ impl TakePlan {
 			return Ok(());
 		}
 
-		let age = RowAge::of(created_at, row_number);
+		let row_number = age.row;
 		let timed = is_timed(&encoded)?;
 		rows.fresh.insert(row_number, encoded);
 
@@ -500,13 +524,13 @@ impl TakePlan {
 			&& state.by_age.keys().next().is_some_and(|oldest_live| age <= *oldest_live)
 		{
 			state.candidates_by_age.insert(age, row_number);
-			state.candidates_by_row.insert(row_number, (age, 1, timed));
+			state.candidates_by_row.insert(row_number, (age, count, timed));
 			self.prune_candidates(state, rows);
 			return Ok(());
 		}
 
 		state.by_age.insert(age, row_number);
-		state.by_row.insert(row_number, (age, 1, timed));
+		state.by_row.insert(row_number, (age, count, timed));
 		output.input(Kind::Insert, row_number, row_idx);
 
 		if state.by_age.len() > self.limit {
@@ -549,6 +573,8 @@ impl TakePlan {
 		let created = created_at(&post)?;
 		let encoded = encode_take_rows(&schema, &post)?;
 		let mut output = Output::new(schema, post.clone(), post.clone());
+		let mut fresh: Vec<(RowNumber, usize, usize)> = Vec::new();
+		let mut pending: HashMap<RowNumber, usize> = HashMap::new();
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
 				slot.1 += 1;
@@ -560,15 +586,15 @@ impl TakePlan {
 				continue;
 			}
 
-			self.admit_new_row(
-				state,
-				rows,
-				row_number,
-				created.get(row_idx).copied(),
-				(row_idx, encoded[row_idx].clone()),
-				&mut output,
-			)?;
+			if let Some(&at) = pending.get(&row_number) {
+				fresh[at].2 += 1;
+				continue;
+			}
+
+			pending.insert(row_number, fresh.len());
+			fresh.push((row_number, row_idx, 1));
 		}
+		self.admit_batch(state, rows, fresh, created, &encoded, &mut output)?;
 		Ok(Some(output))
 	}
 
@@ -592,6 +618,8 @@ impl TakePlan {
 		let encoded = encode_take_rows(&schema, &post)?;
 		let mut output = Output::new(schema, pre, post.clone());
 		let mut updated: Vec<(RowNumber, usize)> = Vec::new();
+		let mut fresh: Vec<(RowNumber, usize, usize)> = Vec::new();
+		let mut pending: HashMap<RowNumber, usize> = HashMap::new();
 
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
@@ -607,15 +635,15 @@ impl TakePlan {
 				continue;
 			}
 
-			self.admit_new_row(
-				state,
-				rows,
-				row_number,
-				created.get(row_idx).copied(),
-				(row_idx, encoded[row_idx].clone()),
-				&mut output,
-			)?;
+			if let Some(&at) = pending.get(&row_number) {
+				fresh[at].1 = row_idx;
+				continue;
+			}
+
+			pending.insert(row_number, fresh.len());
+			fresh.push((row_number, row_idx, 1));
 		}
+		self.admit_batch(state, rows, fresh, created, &encoded, &mut output)?;
 
 		for (row_number, row_idx) in updated {
 			output.input(Kind::Update, row_number, row_idx);
