@@ -93,6 +93,11 @@ impl Catalog {
 		CatalogStore::find_latest_column_block_for_table(txn, table_id)
 	}
 
+	#[instrument(name = "catalog::column_block::list", level = "trace", skip(self, txn))]
+	pub fn list_column_blocks(&self, txn: &mut Transaction<'_>) -> Result<Vec<ColumnBlock>> {
+		CatalogStore::list_column_blocks(txn)
+	}
+
 	#[instrument(name = "catalog::column_block::list_for_series", level = "trace", skip(self, txn))]
 	pub fn list_column_blocks_for_series(
 		&self,

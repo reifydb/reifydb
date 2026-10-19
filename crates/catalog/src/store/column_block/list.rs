@@ -1,21 +1,37 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::{
-	column_block::{ColumnBlock, ColumnBlockSource},
-	id::{SeriesId, TableId},
+use reifydb_codec::row::catalog::EncodedCatalogRow;
+use reifydb_core::{
+	interface::catalog::{
+		column_block::{ColumnBlock, ColumnBlockSource},
+		id::{SeriesId, TableId},
+	},
+	key::column::ColumnBlockKey,
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::partition::Partition;
 
 use crate::{
 	CatalogStore, Result,
 	store::column_block::find::{
 		collect_series_block_ids, collect_series_partition_block_ids, collect_table_block_ids,
+		decode_column_block,
 	},
 };
 
 impl CatalogStore {
+	pub(crate) fn list_column_blocks(rx: &mut Transaction<'_>) -> Result<Vec<ColumnBlock>> {
+		let mut out = Vec::new();
+		let mut stream = rx.range(ColumnBlockKey::full_scan(), RangeScope::All, 1024)?;
+		for entry in stream.by_ref() {
+			let multi = entry?;
+			out.push(decode_column_block(EncodedCatalogRow::view(&multi.bytes)));
+		}
+		drop(stream);
+		Ok(out)
+	}
+
 	pub(crate) fn list_column_blocks_for_series(
 		rx: &mut Transaction<'_>,
 		series_id: SeriesId,

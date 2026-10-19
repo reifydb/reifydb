@@ -7,7 +7,7 @@ use std::sync::{
 };
 
 use reifydb_runtime::{
-	io::fs::{Create, Filesystem, Mkdir, Open, OpenMut, SyncDir, Unlink, testing::Continue},
+	io::fs::{Create, Filesystem, Mkdir, Open, OpenMut, ReadDir, SyncDir, Unlink, testing::Continue},
 	sync::Arc,
 };
 use reifydb_value::{Result, error::Error};
@@ -15,7 +15,7 @@ use vortex_session::VortexSession;
 
 use crate::{
 	block::BlockData,
-	device::{BlockFileKey, Device, OpenBlock, RemoveBlock, WriteBlock},
+	device::{BlockFileKey, Device, ListBlocks, OpenBlock, RemoveBlock, WriteBlock},
 	persist::BlockHandle,
 	store::FsColumnStore,
 };
@@ -23,6 +23,7 @@ use crate::{
 #[derive(Debug, PartialEq)]
 pub enum WriteOutcome {
 	Land,
+	LandThenErr(Error),
 	Err(Error),
 }
 
@@ -105,6 +106,10 @@ where
 		self.call();
 		match self.0.hooks.on_write(key) {
 			WriteOutcome::Land => self.0.store.write(key, data),
+			WriteOutcome::LandThenErr(error) => {
+				self.0.store.write(key, data)?;
+				Err(error)
+			}
 			WriteOutcome::Err(error) => Err(error),
 		}
 	}
@@ -129,6 +134,13 @@ impl<F: Filesystem + Unlink + Send + Sync + 'static> RemoveBlock for TestingColu
 			RemoveOutcome::Land => self.0.store.remove(key),
 			RemoveOutcome::Err(error) => Err(error),
 		}
+	}
+}
+
+impl<F: Filesystem + ReadDir + Send + Sync + 'static> ListBlocks for TestingColumnStore<F> {
+	fn list(&self) -> Result<Vec<BlockFileKey>> {
+		self.call();
+		self.0.store.list()
 	}
 }
 

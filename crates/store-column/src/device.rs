@@ -23,6 +23,10 @@ pub trait RemoveBlock: Device {
 	fn remove(&self, key: &BlockFileKey) -> Result<()>;
 }
 
+pub trait ListBlocks: Device {
+	fn list(&self) -> Result<Vec<BlockFileKey>>;
+}
+
 pub struct BlockFileKey {
 	pub dir: u64,
 	pub name: u64,

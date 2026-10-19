@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::path::PathBuf;
+use std::{ffi::OsStr, path::PathBuf};
 
 #[cfg(reifydb_target = "host")]
 use reifydb_runtime::io::fs::host::HostFs;
 use reifydb_runtime::io::fs::{
-	Create, File, Filesystem, Fs, FsError, Mkdir, Open, OpenMut, SyncData, SyncDir, Truncate, Unlink,
+	Create, File, Filesystem, Fs, FsError, Mkdir, Open, OpenMut, ReadDir, SyncData, SyncDir, Truncate, Unlink,
 	memory::MemoryFs,
 };
 use reifydb_value::Result;
@@ -16,7 +16,7 @@ use vortex_session::VortexSession;
 use crate::testing::TestingColumnStore;
 use crate::{
 	block::BlockData,
-	device::{BlockFileKey, Device, OpenBlock, RemoveBlock, WriteBlock},
+	device::{BlockFileKey, Device, ListBlocks, OpenBlock, RemoveBlock, WriteBlock},
 	error::{self, fs},
 	persist::{BlockHandle, serialize_block, write_all},
 	session::new_session,
@@ -115,6 +115,32 @@ impl<F: Filesystem + Unlink + Send + Sync + 'static> RemoveBlock for FsColumnSto
 	}
 }
 
+impl<F: Filesystem + ReadDir + Send + Sync + 'static> ListBlocks for FsColumnStore<F> {
+	fn list(&self) -> Result<Vec<BlockFileKey>> {
+		let mut keys = Vec::new();
+		for dir_path in self.fs.read_dir(&self.root).map_err(fs("list"))? {
+			let Some(dir) = number(dir_path.file_name()) else {
+				continue;
+			};
+			for file_path in self.fs.read_dir(&dir_path).map_err(fs("list"))? {
+				if file_path.extension().is_some_and(|extension| extension == "borg")
+					&& let Some(name) = number(file_path.file_stem())
+				{
+					keys.push(BlockFileKey {
+						dir,
+						name,
+					});
+				}
+			}
+		}
+		Ok(keys)
+	}
+}
+
+fn number(part: Option<&OsStr>) -> Option<u64> {
+	part.and_then(|part| part.to_str()).and_then(|part| part.parse().ok())
+}
+
 #[derive(Clone)]
 pub enum ColumnStore {
 	Store(FsColumnStore<Fs>),
@@ -153,6 +179,14 @@ impl ColumnStore {
 			Self::Store(store) => store.remove(key),
 			#[cfg(feature = "testing")]
 			Self::Testing(store) => store.remove(key),
+		}
+	}
+
+	pub fn list(&self) -> Result<Vec<BlockFileKey>> {
+		match self {
+			Self::Store(store) => store.list(),
+			#[cfg(feature = "testing")]
+			Self::Testing(store) => store.list(),
 		}
 	}
 

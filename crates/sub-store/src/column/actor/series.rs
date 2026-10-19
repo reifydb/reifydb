@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap},
+	collections::{BTreeMap, HashMap, HashSet},
 	ops::Range,
 	sync::Arc,
 };
@@ -87,7 +87,7 @@ use crate::column::{
 
 pub struct SeriesMaterializationState {
 	pub partitions: HashMap<SeriesId, Vec<(Partition, Vec<Value>)>>,
-	pub pending_removals: Vec<(BlockFileKey, DateTime)>,
+	pub unnamed_files: HashMap<(u64, u64), DateTime>,
 	_timer_handle: Option<TimerHandle>,
 }
 
@@ -150,8 +150,8 @@ impl SeriesMaterializationActor {
 			Ok(series_list) => series_list,
 			Err(e) => panic!("series materialization: list_series failed: {e}"),
 		};
-		if let Err(e) = self.remove_due_files(state, now_wall) {
-			panic!("series materialization: removing merged block files failed: {e}");
+		if let Err(e) = self.sweep_unnamed_files(state, &mut query_txn, &catalog, now_wall) {
+			panic!("series materialization: sweeping unnamed block files failed: {e}");
 		}
 		state.partitions.clear();
 		for series in series_list {
@@ -227,7 +227,7 @@ impl SeriesMaterializationActor {
 			if !deferred {
 				self.clear_dirty_mark(series, partition, &metadata)?;
 			}
-			self.merge_windows(state, series, scope, now_wall)?;
+			self.merge_windows(series, scope, now_wall)?;
 		}
 		Ok(())
 	}
@@ -512,27 +512,40 @@ impl SeriesMaterializationActor {
 		Ok((data, stats))
 	}
 
-	fn remove_due_files(&self, state: &mut SeriesMaterializationState, now: DateTime) -> Result<()> {
+	fn sweep_unnamed_files(
+		&self,
+		state: &mut SeriesMaterializationState,
+		query_txn: &mut QueryTransaction,
+		catalog: &Catalog,
+		now: DateTime,
+	) -> Result<()> {
+		let named: HashSet<(u64, u64)> = catalog
+			.list_column_blocks(&mut Transaction::Query(query_txn))?
+			.iter()
+			.map(|block| {
+				let key = BlockFileKey::of(block);
+				(key.dir, key.name)
+			})
+			.collect();
 		let delay = self.merge_file_delay.to_std();
-		let mut kept = Vec::with_capacity(state.pending_removals.len());
-		for (key, merged_at) in state.pending_removals.drain(..) {
-			if now.saturating_duration_since(merged_at).to_std() >= delay {
+		let mut unnamed = HashMap::new();
+		for key in self.block_store.list()? {
+			let id = (key.dir, key.name);
+			if named.contains(&id) {
+				continue;
+			}
+			let first_seen = state.unnamed_files.get(&id).copied().unwrap_or(now);
+			if now.saturating_duration_since(first_seen).to_std() >= delay {
 				self.block_store.remove(&key)?;
 			} else {
-				kept.push((key, merged_at));
+				unnamed.insert(id, first_seen);
 			}
 		}
-		state.pending_removals = kept;
+		state.unnamed_files = unnamed;
 		Ok(())
 	}
 
-	fn merge_windows(
-		&self,
-		state: &mut SeriesMaterializationState,
-		series: &Series,
-		scope: PartitionScope<'_>,
-		now_wall: DateTime,
-	) -> Result<()> {
+	fn merge_windows(&self, series: &Series, scope: PartitionScope<'_>, now_wall: DateTime) -> Result<()> {
 		if self.merge_buckets == 0 {
 			return Ok(());
 		}
@@ -566,19 +579,17 @@ impl SeriesMaterializationActor {
 			if !is_closed(&last, series, scope.metadata, now_wall, self.grace) {
 				continue;
 			}
-			self.merge_window(state, series, scope, window, &inputs, now_wall)?;
+			self.merge_window(series, scope, window, &inputs)?;
 		}
 		Ok(())
 	}
 
 	fn merge_window(
 		&self,
-		state: &mut SeriesMaterializationState,
 		series: &Series,
 		scope: PartitionScope<'_>,
 		window: Range<u64>,
 		inputs: &[ColumnBlock],
-		now_wall: DateTime,
 	) -> Result<()> {
 		let decoder = BlockDecoder::new(self.block_encodings.clone(), self.block_store.session().clone());
 		let mut per_block = Vec::with_capacity(inputs.len());
@@ -653,9 +664,7 @@ impl SeriesMaterializationActor {
 			catalog.drop_column_block(&mut admin, input.id)?;
 		}
 		self.block_store.write(&BlockFileKey::of(&block), &data)?;
-		commit_admin(admin)?;
-		state.pending_removals.extend(inputs.iter().map(|input| (BlockFileKey::of(input), now_wall)));
-		Ok(())
+		commit_admin(admin)
 	}
 
 	fn block_columns(&self, data: &BlockData) -> Result<Vec<(String, ValueType, (FieldRef, ArrayRef))>> {
@@ -768,7 +777,7 @@ impl Actor for SeriesMaterializationActor {
 			ctx.schedule_tick(self.tick_interval, |nanos| SeriesMessage::Tick(DateTime::from_nanos(nanos)));
 		SeriesMaterializationState {
 			partitions: HashMap::new(),
-			pending_removals: Vec::new(),
+			unnamed_files: HashMap::new(),
 			_timer_handle: Some(handle),
 		}
 	}

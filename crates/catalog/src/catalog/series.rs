@@ -281,6 +281,10 @@ impl Catalog {
 
 	#[instrument(name = "catalog::series::drop", level = "info", skip(self, txn))]
 	pub fn drop_series(&self, txn: &mut AdminTransaction, series: Series) -> Result<()> {
+		for block in CatalogStore::list_column_blocks_for_series(&mut Transaction::Admin(&mut *txn), series.id)?
+		{
+			self.drop_column_block(txn, block.id)?;
+		}
 		CatalogStore::drop_series(txn, series.id)?;
 		txn.track_series_deleted(series)?;
 		Ok(())
