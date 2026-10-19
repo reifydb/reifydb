@@ -1903,9 +1903,7 @@ mod tests {
 
 	#[test]
 	fn per_coord_storage_leaves_nothing_behind_after_terminal_drain() {
-		// After every group expires no slot, running or expiry-index entry may remain. The two
-		// apply paths share per-slot storage, so a leak on either is the unbounded state growth
-		// this engine exists to prevent.
+		// a slot, running or expiry entry left on either apply path is unbounded state growth
 		let mut store = MockStore::default();
 		let mut recombine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
