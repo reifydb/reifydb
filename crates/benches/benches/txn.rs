@@ -79,7 +79,7 @@ fn build_stack() -> (ActorSystem, MultiTransaction) {
 	let event_bus = EventBus::new(&spawner);
 	let multi_store = MultiStore::testing_memory();
 	let wal = memory_wal(Clock::Real).expect("benchmark commit log must build");
-	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
+	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0), CommitVersion(0));
 	let multi = MultiTransaction::new(
 		multi_store,
 		event_bus,

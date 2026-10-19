@@ -102,12 +102,12 @@ fn pool_config_from_sources(
 ) -> Result<PoolConfigSources> {
 	let multi_commit_store = factory.open_multi_commit_store();
 	let multi_persistent = factory.open_multi_persistent();
-	let saved_through = match multi_persistent.as_ref() {
-		Some(persistent) => persistent.saved_through()?,
-		None => CommitVersion(0),
+	let (saved_through, persisted_high) = match multi_persistent.as_ref() {
+		Some(persistent) => (persistent.saved_through()?, persistent.install_floor()?),
+		None => (CommitVersion(0), CommitVersion(0)),
 	};
 	let wal = commit_wal(factory, clock);
-	let recovery = replay(&wal, &multi_commit_store, saved_through);
+	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
 	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides, cdc_memory)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
 		persistent.set_checkpoint_threshold(resolved.multi_wal_autocheckpoint);

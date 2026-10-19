@@ -297,7 +297,7 @@ impl MultiTransaction {
 		let config = Arc::new(ProfileConfig);
 		let clock = Clock::Mock(MockClock::from_millis(1000));
 		let wal = memory_wal(clock.clone()).expect("failed to create testing commit log");
-		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
+		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0), CommitVersion(0));
 
 		Self::new(
 			multi_store,

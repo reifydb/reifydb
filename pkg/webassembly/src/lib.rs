@@ -237,7 +237,7 @@ impl WasmDB {
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
-		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
+		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0), CommitVersion(0));
 		let multi = MultiTransaction::new(
 			multi_store.clone(),
 			eventbus.clone(),

@@ -154,7 +154,12 @@ pub struct Recovery {
 	pub lsns: VecDeque<(CommitVersion, Lsn)>,
 }
 
-pub fn replay(wal: &CommitWal, store: &CommitStore, saved_through: CommitVersion) -> Recovery {
+pub fn replay(
+	wal: &CommitWal,
+	store: &CommitStore,
+	saved_through: CommitVersion,
+	persisted_high: CommitVersion,
+) -> Recovery {
 	let floor_name = CheckpointedStore::Multi.floor_name();
 	let cursors = wal.cursors().unwrap_or_else(|err| panic!("commit log cursors could not be read at boot: {err}"));
 	let from = cursors
@@ -163,7 +168,7 @@ pub fn replay(wal: &CommitWal, store: &CommitStore, saved_through: CommitVersion
 		.find(|(name, _)| name == floor_name)
 		.and_then(|(_, lsn)| lsn)
 		.map_or(Lsn::FIRST, |lsn| Lsn::new(lsn.as_u64() + 1));
-	let mut last = saved_through;
+	let mut last = saved_through.max(persisted_high);
 	let mut previous: Option<CommitVersion> = None;
 	let mut lsns = VecDeque::new();
 	let records = wal

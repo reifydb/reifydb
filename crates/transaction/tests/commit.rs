@@ -49,7 +49,7 @@ fn harness() -> Harness {
 	let spawner = actor_system.spawner();
 	let bus = EventBus::new(&spawner);
 	let wal = memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap();
-	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
+	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0), CommitVersion(0));
 	let multi = MultiTransaction::new(
 		multi_store,
 		bus.clone(),

@@ -59,7 +59,7 @@ impl TestCdcHost {
 		let clock = Clock::Mock(mock.clone());
 		let wal = memory_wal(clock.clone()).unwrap();
 		let single = SingleTransaction::new(single_store, event_bus.clone(), wal.clone(), clock.clone());
-		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0));
+		let recovery = replay(&wal, multi_store.commit(), CommitVersion(0), CommitVersion(0));
 		let multi = MultiTransaction::new(
 			multi_store,
 			event_bus.clone(),
