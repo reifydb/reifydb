@@ -160,7 +160,7 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: pull-siblings precheck build build-testcontainer test-full-local test-chaos-ci test-crate-loom test-regression all-siblings push-testcontainer push
+all: pull-siblings precheck precheck-all build build-testcontainer test-full-local test-chaos-ci test-crate-loom test-regression all-siblings push-testcontainer push
 
 .PHONY: precheck
 precheck: format-check check-code-quality check-workspace
