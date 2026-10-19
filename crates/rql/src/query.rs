@@ -10,10 +10,10 @@ use reifydb_value::value::constraint::Constraint;
 use crate::nodes::{
 	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode, DistinctNode,
 	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
-	JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PatchNode, QueueScanNode, RemoteScanNode,
-	RingBufferScanNode, RowListLookupNode, RowParameterLookupNode, RowPointLookupNode, RowRangeScanNode,
-	RunTestsNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode, VariableNode,
-	ViewScanNode, WindowNode,
+	JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PartitionParameterScanNode, PatchNode, QueueScanNode,
+	RemoteScanNode, RingBufferScanNode, RowListLookupNode, RowParameterLookupNode, RowPointLookupNode,
+	RowRangeScanNode, RunTestsNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode,
+	VariableNode, ViewScanNode, WindowNode,
 };
 
 #[derive(Debug, Clone)]
@@ -35,6 +35,8 @@ pub enum QueryPlan {
 	RowRangeScan(RowRangeScanNode),
 
 	RowParameterLookup(RowParameterLookupNode),
+
+	PartitionParameterScan(PartitionParameterScanNode),
 
 	Aggregate(AggregateNode),
 	Assert(AssertNode),
@@ -80,6 +82,7 @@ impl QueryPlan {
 			QueryPlan::RowListLookup(_) => "row_list_lookup",
 			QueryPlan::RowRangeScan(_) => "row_range_scan",
 			QueryPlan::RowParameterLookup(_) => "row_parameter_lookup",
+			QueryPlan::PartitionParameterScan(_) => "partition_parameter_scan",
 			QueryPlan::Aggregate(_) => "aggregate",
 			QueryPlan::Assert(_) => "assert",
 			QueryPlan::Distinct(_) => "distinct",

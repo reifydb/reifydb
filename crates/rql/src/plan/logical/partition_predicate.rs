@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	expression::{ColumnExpression, ConstantExpression, Expression},
+	expression::{ColumnExpression, ConstantExpression, Expression, ParameterExpression, VariableExpression},
 	interface::catalog::column::Column,
 };
 use reifydb_value::{
@@ -19,6 +19,8 @@ use reifydb_value::{
 		value_type::ValueType,
 	},
 };
+
+use crate::nodes::PartitionKey;
 
 #[allow(clippy::disallowed_methods)]
 pub fn extract_partition(condition: &Expression, columns: &[Column], partition_by: &[String]) -> Option<Partition> {
@@ -41,6 +43,66 @@ pub fn extract_partition(condition: &Expression, columns: &[Column], partition_b
 	}
 
 	Some(Partition::of(&values))
+}
+
+#[allow(clippy::disallowed_methods)]
+pub fn extract_partition_keys(
+	condition: &Expression,
+	columns: &[Column],
+	partition_by: &[String],
+) -> Option<Vec<PartitionKey>> {
+	if partition_by.is_empty() {
+		return None;
+	}
+
+	let mut conjuncts = Vec::new();
+	flatten_and(condition, &mut conjuncts);
+
+	let mut keys = Vec::with_capacity(partition_by.len());
+	for col_name in partition_by {
+		let col = columns.iter().find(|c| c.name == *col_name)?;
+		if col.dictionary_id.is_some() {
+			return None;
+		}
+		let value_type = col.constraint.get_type();
+		keys.push(conjuncts.iter().find_map(|e| eq_key_for(e, col_name, &value_type))?);
+	}
+
+	keys.iter().any(|key| matches!(key, PartitionKey::Variable { .. })).then_some(keys)
+}
+
+fn eq_key_for(expr: &Expression, col_name: &str, value_type: &ValueType) -> Option<PartitionKey> {
+	let Expression::Equal(eq) = expr else {
+		return None;
+	};
+	let other = if is_column(&eq.left, col_name) {
+		&eq.right
+	} else if is_column(&eq.right, col_name) {
+		&eq.left
+	} else {
+		return None;
+	};
+	let variable = match other.as_ref() {
+		Expression::Variable(variable) => variable.clone(),
+		Expression::Parameter(
+			ParameterExpression::Positional {
+				fragment,
+			}
+			| ParameterExpression::Named {
+				fragment,
+			},
+		) => VariableExpression {
+			fragment: fragment.clone(),
+		},
+		_ => {
+			let fragment = literal_fragment(other, value_type)?;
+			return partition_value(value_type, fragment).map(PartitionKey::Constant);
+		}
+	};
+	Some(PartitionKey::Variable {
+		variable,
+		ty: value_type.clone(),
+	})
 }
 
 fn flatten_and<'a>(expr: &'a Expression, out: &mut Vec<&'a Expression>) {

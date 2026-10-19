@@ -421,6 +421,12 @@ fn materialize_query_plan_with(
 				fallback: Box::new(materialize_query_plan(BumpBox::into_inner(node.fallback))?),
 			})
 		}
+		PhysicalPlan::PartitionParameterScan(node) => {
+			QueryPlan::PartitionParameterScan(nodes::PartitionParameterScanNode {
+				keys: node.keys,
+				scan: Box::new(materialize_query_plan(BumpBox::into_inner(node.scan))?),
+			})
+		}
 		PhysicalPlan::InlineData(node) => QueryPlan::InlineData(node),
 		PhysicalPlan::RemoteScan(node) => QueryPlan::RemoteScan(node),
 		PhysicalPlan::Generator(node) => QueryPlan::Generator(node),
@@ -1615,6 +1621,12 @@ impl InstructionCompiler {
 				)?));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::PartitionParameterScan(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(
+					PhysicalPlan::PartitionParameterScan(node),
+				)?));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::Aggregate(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Aggregate(node))?));
 				self.emit(Instruction::Emit);
@@ -1960,6 +1972,11 @@ impl InstructionCompiler {
 			PhysicalPlan::RowParameterLookup(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(
 					PhysicalPlan::RowParameterLookup(node),
+				)?));
+			}
+			PhysicalPlan::PartitionParameterScan(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(
+					PhysicalPlan::PartitionParameterScan(node),
 				)?));
 			}
 			PhysicalPlan::InlineData(node) => {

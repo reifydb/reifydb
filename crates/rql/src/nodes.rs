@@ -37,8 +37,8 @@ use reifydb_core::{
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		constraint::TypeConstraint, dictionary::DictionaryId, identity::IdentityKind, partition::Partition,
-		sumtype::SumTypeId, value_type::ValueType,
+		Value, constraint::TypeConstraint, dictionary::DictionaryId, identity::IdentityKind,
+		partition::Partition, sumtype::SumTypeId, value_type::ValueType,
 	},
 };
 
@@ -650,6 +650,21 @@ pub struct TableScanNode {
 pub struct ViewScanNode {
 	pub source: ResolvedView,
 	pub partition: Option<Partition>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PartitionKey {
+	Constant(Value),
+	Variable {
+		variable: VariableExpression,
+		ty: ValueType,
+	},
+}
+
+#[derive(Debug, Clone)]
+pub struct PartitionParameterScanNode {
+	pub keys: Vec<PartitionKey>,
+	pub scan: Box<QueryPlan>,
 }
 
 #[derive(Debug, Clone)]

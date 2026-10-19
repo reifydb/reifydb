@@ -12,9 +12,11 @@ use reifydb_evaluate::stack::Variable;
 use reifydb_rql::{
 	nodes::{
 		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, GeneratorNode as RqlGeneratorNode,
-		InlineDataNode as RqlInlineDataNode, RowListLookupNode as RqlRowListLookupNode,
-		RowParameterLookupNode as RqlRowParameterLookupNode, RowPointLookupNode as RqlRowPointLookupNode,
-		RowRangeScanNode as RqlRowRangeScanNode, SortNode as RqlSortNode, TakeLimit, TakeNode as RqlTakeNode,
+		InlineDataNode as RqlInlineDataNode, PartitionParameterScanNode as RqlPartitionParameterScanNode,
+		RowListLookupNode as RqlRowListLookupNode, RowParameterLookupNode as RqlRowParameterLookupNode,
+		RowPointLookupNode as RqlRowPointLookupNode, RowRangeScanNode as RqlRowRangeScanNode,
+		SortNode as RqlSortNode, TableScanNode as RqlTableScanNode, TakeLimit, TakeNode as RqlTakeNode,
+		ViewScanNode as RqlViewScanNode,
 	},
 	plan::logical::row_predicate::RowPredicate,
 	query::QueryPlan as RqlQueryPlan,
@@ -45,6 +47,7 @@ use crate::vm::volcano::{
 	generator::GeneratorNode,
 	inline::InlineDataNode,
 	lookup::UnsupportedLookupNode,
+	partition_parameter::choose_partition,
 	query::{QueryContext, QueryNode},
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode, choose_row_lookup},
 	scan::{
@@ -282,6 +285,27 @@ pub(crate) fn compile<'a>(
 			)
 		}
 
+		RqlQueryPlan::PartitionParameterScan(RqlPartitionParameterScanNode {
+			keys,
+			scan,
+		}) => {
+			let scan = match (*scan, choose_partition(&keys, rx.layout(), &context.symbols)) {
+				(RqlQueryPlan::TableScan(node), Some(partition)) => {
+					RqlQueryPlan::TableScan(RqlTableScanNode {
+						partition: Some(partition),
+						..node
+					})
+				}
+				(RqlQueryPlan::ViewScan(node), Some(partition)) => {
+					RqlQueryPlan::ViewScan(RqlViewScanNode {
+						partition: Some(partition),
+						..node
+					})
+				}
+				(scan, _) => scan,
+			};
+			compile(scan, rx, context)
+		}
 		RqlQueryPlan::RowParameterLookup(RqlRowParameterLookupNode {
 			source,
 			predicate,

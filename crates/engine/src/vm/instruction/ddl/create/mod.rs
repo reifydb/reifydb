@@ -108,6 +108,8 @@ pub mod transactional;
 fn plan_expressions_and_inputs(plan: &mut QueryPlan) -> (Vec<&mut Expression>, Vec<&mut QueryPlan>) {
 	match plan {
 		QueryPlan::Filter(node) => (node.conditions.iter_mut().collect(), vec![&mut node.input]),
+		QueryPlan::RowParameterLookup(node) => (Vec::new(), vec![&mut node.fallback]),
+		QueryPlan::PartitionParameterScan(node) => (Vec::new(), vec![&mut node.scan]),
 		QueryPlan::Gate(node) => (node.conditions.iter_mut().collect(), vec![&mut node.input]),
 		QueryPlan::Map(node) => {
 			(node.map.iter_mut().collect(), node.input.as_deref_mut().into_iter().collect())
@@ -156,7 +158,6 @@ fn plan_expressions_and_inputs(plan: &mut QueryPlan) -> (Vec<&mut Expression>, V
 		| QueryPlan::RowPointLookup(_)
 		| QueryPlan::RowListLookup(_)
 		| QueryPlan::RowRangeScan(_)
-		| QueryPlan::RowParameterLookup(_)
 		| QueryPlan::Variable(_)
 		| QueryPlan::Environment(_)
 		| QueryPlan::RunTests(_) => (Vec::new(), Vec::new()),

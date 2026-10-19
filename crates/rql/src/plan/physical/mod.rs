@@ -59,7 +59,7 @@ use crate::{
 	nodes::{
 		AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateQueueNode, CreateRingBufferNode,
 		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
-		InlineDataNode, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD, QueueScanNode,
+		InlineDataNode, PartitionKey, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD, QueueScanNode,
 		RingBufferScanNode, RowKeyPredicate, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
 		SeriesScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
@@ -68,7 +68,7 @@ use crate::{
 		logical,
 		logical::{
 			LogicalPlan,
-			partition_predicate::extract_partition,
+			partition_predicate::{extract_partition, extract_partition_keys},
 			row_predicate::{RowPredicate, extract_row_key_predicate, extract_row_predicate},
 			series_predicate::extract_series_predicate,
 			tree::{QueryTree, fold},
@@ -169,6 +169,7 @@ pub enum PhysicalPlan<'bump> {
 	RowListLookup(RowListLookupNode),
 	RowRangeScan(RowRangeScanNode),
 	RowParameterLookup(RowParameterLookupNode<'bump>),
+	PartitionParameterScan(PartitionParameterScanNode<'bump>),
 	JoinInner(JoinInnerNode<'bump>),
 	JoinLeft(JoinLeftNode<'bump>),
 	JoinNatural(JoinNaturalNode<'bump>),
@@ -504,6 +505,12 @@ pub struct AssertBlockNode {
 pub struct FilterNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub conditions: Vec<Expression>,
+}
+
+#[derive(Debug)]
+pub struct PartitionParameterScanNode<'bump> {
+	pub keys: Vec<PartitionKey>,
+	pub scan: BumpBox<'bump, PhysicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
@@ -861,6 +868,23 @@ impl<'bump> Compiler<'bump> {
 							input: self.bump_box(pruned),
 						}));
 					}
+					if !def.partition_by.is_empty()
+						&& let Some(keys) = extract_partition_keys(
+							&filter.condition,
+							&def.columns,
+							&def.partition_by,
+						) {
+						let pruned = PhysicalPlan::PartitionParameterScan(
+							PartitionParameterScanNode {
+								keys,
+								scan: self.bump_box(input),
+							},
+						);
+						return Ok(PhysicalPlan::Filter(FilterNode {
+							conditions: vec![filter.condition],
+							input: self.bump_box(pruned),
+						}));
+					}
 				}
 
 				if let PhysicalPlan::ViewScan(ref scan) = input {
@@ -875,6 +899,23 @@ impl<'bump> Compiler<'bump> {
 							source: scan.source.clone(),
 							partition: Some(partition),
 						});
+						return Ok(PhysicalPlan::Filter(FilterNode {
+							conditions: vec![filter.condition],
+							input: self.bump_box(pruned),
+						}));
+					}
+					if !def.partition_by().is_empty()
+						&& let Some(keys) = extract_partition_keys(
+							&filter.condition,
+							def.columns(),
+							def.partition_by(),
+						) {
+						let pruned = PhysicalPlan::PartitionParameterScan(
+							PartitionParameterScanNode {
+								keys,
+								scan: self.bump_box(input),
+							},
+						);
 						return Ok(PhysicalPlan::Filter(FilterNode {
 							conditions: vec![filter.condition],
 							input: self.bump_box(pruned),

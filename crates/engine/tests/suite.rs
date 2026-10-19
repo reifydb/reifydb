@@ -162,6 +162,8 @@ mod nested_read_policy_bypass;
 mod none_operand_expression_types;
 #[path = "output_rule.rs"]
 mod output_rule;
+#[path = "partition_parameter_scan.rs"]
+mod partition_parameter_scan;
 #[path = "percentile_aggregate.rs"]
 mod percentile_aggregate;
 #[path = "percentile_aggregate_errors.rs"]

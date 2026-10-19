@@ -115,6 +115,7 @@ pub mod join;
 pub(crate) mod key_rows;
 pub mod lookup;
 pub mod map;
+pub(crate) mod partition_parameter;
 pub mod patch;
 pub mod query;
 pub(crate) mod rank;

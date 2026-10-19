@@ -14,14 +14,15 @@ use reifydb_core::{
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::{
 	ast::parse_str,
-	nodes::{AlterSequenceNode, RowKey, RowKeyPredicate},
+	nodes::{AlterSequenceNode, PartitionKey, RowKey, RowKeyPredicate},
 	optimize::optimize_physical,
 	plan::{
 		logical::compile_logical,
 		physical::{
 			AggregateNode, AppendPhysicalNode, ApplyNode, AssertNode, DistinctNode, ExtendNode, FilterNode,
-			GateNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PatchNode,
-			PhysicalPlan, RowParameterLookupNode, SortNode, TakeNode, compile_physical,
+			GateNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LookupNode, MapNode,
+			PartitionParameterScanNode, PatchNode, PhysicalPlan, RowParameterLookupNode, SortNode,
+			TakeNode, compile_physical,
 		},
 		system_columns::check_system_columns,
 	},
@@ -133,6 +134,10 @@ impl PhysicalWalker {
 				fallback,
 				..
 			}) => self.walk(fallback, depth, parent),
+			PhysicalPlan::PartitionParameterScan(PartitionParameterScanNode {
+				scan,
+				..
+			}) => self.walk(scan, depth, parent),
 			PhysicalPlan::Gate(GateNode {
 				input,
 				..
@@ -520,6 +525,24 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 			};
 			("RowParameterLookup", format!("source={} {}", source_name, keys))
 		}
+		PhysicalPlan::PartitionParameterScan(node) => {
+			let (source_name, columns) = match &*node.scan {
+				PhysicalPlan::TableScan(scan) => {
+					(scan.source.name().to_string(), scan.source.def().partition_by.clone())
+				}
+				PhysicalPlan::ViewScan(scan) => {
+					(scan.source.name().to_string(), scan.source.def().partition_by().to_vec())
+				}
+				_ => (String::new(), Vec::new()),
+			};
+			let keys = columns
+				.iter()
+				.zip(&node.keys)
+				.map(|(column, key)| format!("{}={}", column, partition_key_text(key)))
+				.collect::<Vec<_>>()
+				.join(", ");
+			("PartitionParameterScan", format!("source={} keys=[{}]", source_name, keys))
+		}
 		PhysicalPlan::DefineFunction(def) => {
 			let params: Vec<String> = def
 				.parameters
@@ -570,6 +593,16 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 				.collect();
 			("DefineClosure", format!("[{}]", params.join(", ")))
 		}
+	}
+}
+
+fn partition_key_text(key: &PartitionKey) -> String {
+	match key {
+		PartitionKey::Constant(value) => value.to_string(),
+		PartitionKey::Variable {
+			variable,
+			..
+		} => variable.fragment.text().to_string(),
 	}
 }
 
