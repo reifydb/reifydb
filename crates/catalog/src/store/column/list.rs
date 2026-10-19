@@ -95,6 +95,34 @@ impl CatalogStore {
 			}
 		}
 
+		let series = CatalogStore::list_series(rx)?;
+		for series in series {
+			for column in series.columns {
+				result.push(ColumnInfo {
+					column,
+					object_id: series.id.into(),
+					is_view: false,
+					entity_kind: "series",
+					entity_name: series.name.clone(),
+					namespace: series.namespace,
+				});
+			}
+		}
+
+		let queues = CatalogStore::list_queues(rx)?;
+		for queue in queues {
+			for column in queue.columns {
+				result.push(ColumnInfo {
+					column,
+					object_id: queue.id.into(),
+					is_view: false,
+					entity_kind: "queue",
+					entity_name: queue.name.clone(),
+					namespace: queue.namespace,
+				});
+			}
+		}
+
 		Ok(result)
 	}
 }
