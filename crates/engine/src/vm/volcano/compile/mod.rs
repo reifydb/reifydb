@@ -12,10 +12,14 @@ use reifydb_evaluate::stack::Variable;
 use reifydb_rql::{
 	nodes::{
 		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, GeneratorNode as RqlGeneratorNode,
-		InlineDataNode as RqlInlineDataNode, RowListLookupNode as RqlRowListLookupNode,
+		InlineDataNode as RqlInlineDataNode, PartitionParameterScanNode as RqlPartitionParameterScanNode,
+		RowListLookupNode as RqlRowListLookupNode, RowParameterLookupNode as RqlRowParameterLookupNode,
 		RowPointLookupNode as RqlRowPointLookupNode, RowRangeScanNode as RqlRowRangeScanNode,
-		SortNode as RqlSortNode, TakeLimit, TakeNode as RqlTakeNode,
+		SeriesParameterScanNode as RqlSeriesParameterScanNode, SeriesScanNode as RqlSeriesScanNode,
+		SortNode as RqlSortNode, TableScanNode as RqlTableScanNode, TakeLimit, TakeNode as RqlTakeNode,
+		ViewScanNode as RqlViewScanNode,
 	},
+	plan::logical::row_predicate::RowPredicate,
 	query::QueryPlan as RqlQueryPlan,
 };
 use reifydb_transaction::transaction::{ScanLayout, Transaction};
@@ -44,13 +48,15 @@ use crate::vm::volcano::{
 	generator::GeneratorNode,
 	inline::InlineDataNode,
 	lookup::UnsupportedLookupNode,
+	partition_parameter::choose_partition,
 	query::{QueryContext, QueryNode},
-	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
+	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode, choose_row_lookup},
 	scan::{
 		dictionary::DictionaryScanNode, index::IndexScanNode, queue::QueueScan, remote::RemoteFetchNode,
 		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
 		view::ViewScanNode,
 	},
+	series_parameter::choose_series_range,
 	sort::SortNode,
 	take::TakeNode,
 	top_k::TopKNode,
@@ -280,6 +286,80 @@ pub(crate) fn compile<'a>(
 					.expect("Failed to create RowRangeScanNode"),
 			)
 		}
+
+		RqlQueryPlan::PartitionParameterScan(RqlPartitionParameterScanNode {
+			keys,
+			scan,
+		}) => {
+			let scan = match (*scan, choose_partition(&keys, rx.layout(), &context.symbols)) {
+				(RqlQueryPlan::TableScan(node), Some(partition)) => {
+					RqlQueryPlan::TableScan(RqlTableScanNode {
+						partition: Some(partition),
+						..node
+					})
+				}
+				(RqlQueryPlan::ViewScan(node), Some(partition)) => {
+					RqlQueryPlan::ViewScan(RqlViewScanNode {
+						partition: Some(partition),
+						..node
+					})
+				}
+				(scan, _) => scan,
+			};
+			compile(scan, rx, context)
+		}
+		RqlQueryPlan::SeriesParameterScan(RqlSeriesParameterScanNode {
+			starts,
+			ends,
+			partition_keys,
+			scan,
+		}) => {
+			let scan = match *scan {
+				RqlQueryPlan::SeriesScan(node) => match choose_series_range(
+					&starts,
+					&ends,
+					partition_keys.as_deref(),
+					&node.source.def().key,
+					rx.layout(),
+					&context.symbols,
+				) {
+					Some(range) => RqlQueryPlan::SeriesScan(RqlSeriesScanNode {
+						key_range_start: node.key_range_start.max(range.start),
+						key_range_end: match (node.key_range_end, range.end) {
+							(Some(planned), Some(end)) => Some(planned.min(end)),
+							(planned, end) => planned.or(end),
+						},
+						partition: range.partition.or(node.partition),
+						..node
+					}),
+					None => RqlQueryPlan::SeriesScan(node),
+				},
+				other => other,
+			};
+			compile(scan, rx, context)
+		}
+		RqlQueryPlan::RowParameterLookup(RqlRowParameterLookupNode {
+			source,
+			predicate,
+			fallback,
+		}) => match choose_row_lookup(&predicate, rx.layout(), &context.symbols) {
+			Some(RowPredicate::Point(row_number)) => Box::new(
+				RowPointLookupNode::new(source, row_number, context)
+					.expect("Failed to create RowPointLookupNode"),
+			),
+			Some(RowPredicate::List(row_numbers)) => Box::new(
+				RowListLookupNode::new(source, row_numbers, context)
+					.expect("Failed to create RowListLookupNode"),
+			),
+			Some(RowPredicate::Range {
+				start,
+				end,
+			}) => Box::new(
+				RowRangeScanNode::new(source, start, end, context)
+					.expect("Failed to create RowRangeScanNode"),
+			),
+			None => compile(*fallback, rx, context),
+		},
 
 		RqlQueryPlan::InlineData(RqlInlineDataNode {
 			rows,

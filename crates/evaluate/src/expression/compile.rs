@@ -8,7 +8,7 @@ use arrow_schema::FieldRef;
 use reifydb_core::{
 	expression::VariableExpression,
 	value::{
-		batch::{is_scalar, scalar_value},
+		batch::{is_scalar, scalar_value, scalar_value_type},
 		column::{
 			arith::{length_mismatch, option::binary_op_unwrap_option},
 			builder::ColumnBuilder,
@@ -82,7 +82,7 @@ pub(crate) fn variable_column(
 			) {
 				return Ok(factory::none(variable_name, row_count));
 			}
-			let mut data = ColumnBuilder::with_capacity(value.get_type(), row_count);
+			let mut data = ColumnBuilder::with_capacity(scalar_value_type(batch, &value)?, row_count);
 			for _ in 0..row_count {
 				data.push_value(value.clone());
 			}

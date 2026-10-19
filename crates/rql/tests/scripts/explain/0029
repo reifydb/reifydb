@@ -1,0 +1,24 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A partition key given as a parameter must plan the run-time partition scan under the kept filter.
+
+admin 'create table test::t29 { id: int4, region: utf8 } with { partition: { by: { region } } }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t29   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t29 filter {region == $1}")'
+---
+> +-------+---------+----------+--------------------------+-------------------------------+
+> |  idx  |  depth  |  parent  |           kind           |            detail             |
+> +-------+---------+----------+--------------------------+-------------------------------+
+> |   0   |    0    |   none   |          Filter          |        (region == $1)         |
+> |   1   |    1    |    0     |  PartitionParameterScan  |  source=t29 keys=[region=$1]  |
+> |   2   |    2    |    1     |        TableScan         |           test::t29           |
+> +-------+---------+----------+--------------------------+-------------------------------+
+>

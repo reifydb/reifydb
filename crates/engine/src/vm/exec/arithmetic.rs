@@ -8,15 +8,14 @@ use reifydb_core::{
 	value::{
 		batch::batch,
 		column::arith::{
-			add::add_columns, context::ArithContext, div::div_columns, mul::mul_columns, rem::rem_columns,
-			sub::sub_columns,
+			add::add_columns, context::ArithContext, div::div_columns, length_mismatch, mul::mul_columns,
+			rem::rem_columns, sub::sub_columns,
 		},
 	},
 };
 use reifydb_evaluate::{expression::prefix::prefix_apply, stack::Variable};
 use reifydb_value::fragment::Fragment;
 
-use super::broadcast::broadcast_to_match;
 use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
@@ -31,7 +30,9 @@ impl<'a> Vm<'a> {
 	{
 		let right = self.pop_as_column()?;
 		let left = self.pop_as_column()?;
-		let (left, right) = broadcast_to_match(left, right)?;
+		if left.1.len() != right.1.len() {
+			return Err(length_mismatch(left.1.len(), right.1.len(), &frag()).into());
+		}
 		let ctx = self.eval_ctx();
 		let result = op(&ctx.arith(), &left, &right, frag)?;
 		self.stack.push(Variable::columns(batch(vec![result])?));
@@ -62,14 +63,6 @@ impl<'a> Vm<'a> {
 		let col = self.pop_as_column()?;
 		let frag = Fragment::internal("vm_negate");
 		let result = prefix_apply(&col, &PrefixOperator::Minus(frag.clone()), &frag)?;
-		self.stack.push(Variable::columns(batch(vec![result])?));
-		Ok(())
-	}
-
-	pub(crate) fn exec_logic_not(&mut self) -> Result<()> {
-		let col = self.pop_as_column()?;
-		let frag = Fragment::internal("vm_not");
-		let result = prefix_apply(&col, &PrefixOperator::Not(frag.clone()), &frag)?;
 		self.stack.push(Variable::columns(batch(vec![result])?));
 		Ok(())
 	}

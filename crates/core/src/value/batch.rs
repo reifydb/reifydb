@@ -427,6 +427,17 @@ pub fn scalar_value(batch: &RecordBatch) -> Result<Value> {
 	Ok(user[0].get_value(0))
 }
 
+pub fn scalar_value_type(batch: &RecordBatch, value: &Value) -> Result<ValueType> {
+	let user = user_views(batch)?;
+	if user.len() != 1 {
+		return internal_err!("scalar_value_type() requires exactly 1 column, got {}", user.len());
+	}
+	Ok(match user[0].get_type() {
+		ValueType::Option(inner) if *inner == value.get_type() => ValueType::Option(inner),
+		_ => value.get_type(),
+	})
+}
+
 pub fn is_scalar(batch: &RecordBatch) -> bool {
 	batch.schema_ref().fields().iter().filter(|field| !is_system_field(field)).count() == 1 && batch.num_rows() == 1
 }

@@ -195,6 +195,23 @@ fn missing_snapshot_raises_query_012_naming_the_table() {
 }
 
 #[test]
+fn an_inverted_series_key_range_answers_no_rows_on_the_column_path() {
+	// Bounds that exclude each other must answer no rows on the column path, never abort the scan.
+	let db = series_db();
+	plain_series(&db);
+	insert_keys(&db, "test::s", 1..=25);
+	await_column_rows(&db, "from test::s", 19);
+
+	let inverted = column_query(&db, "from test::s filter { k > 15 and k < 2 }");
+	let window = column_query(&db, "from test::s filter { k > 3 and k < 7 }");
+
+	assert!(inverted.error.is_none(), "an inverted range must not raise: {:?}", inverted.error);
+	assert_eq!(inverted.frames.iter().map(|f| f.row_count()).sum::<usize>(), 0);
+	assert!(window.error.is_none(), "{:?}", window.error);
+	assert_eq!(window.frames.iter().map(|f| f.row_count()).sum::<usize>(), 3);
+}
+
+#[test]
 fn a_never_written_series_reads_as_empty_on_the_column_path() {
 	// A never-written series has no rows, so the column path must answer empty like the row path.
 	let db = TestDb::memory();

@@ -275,16 +275,31 @@ fn fold_logic(left: &Expression, right: &Expression, op: LogicOp) -> Option<Expr
 		(Some(a), Some(b), LogicOp::Or) => Some(bool_constant(a || b)),
 		(Some(a), Some(b), LogicOp::Xor) => Some(bool_constant(a != b)),
 
-		(Some(false), _, LogicOp::And) => Some(bool_constant(false)),
-		(_, Some(false), LogicOp::And) => Some(bool_constant(false)),
-		(Some(true), _, LogicOp::And) => Some(right.clone()),
-		(_, Some(true), LogicOp::And) => Some(left.clone()),
-
-		(Some(true), _, LogicOp::Or) => Some(bool_constant(true)),
-		(_, Some(true), LogicOp::Or) => Some(bool_constant(true)),
-		(Some(false), _, LogicOp::Or) => Some(right.clone()),
-		(_, Some(false), LogicOp::Or) => Some(left.clone()),
+		(Some(true), _, LogicOp::And) | (Some(false), _, LogicOp::Or) if is_boolean_shape(right) => {
+			Some(right.clone())
+		}
+		(_, Some(true), LogicOp::And) | (_, Some(false), LogicOp::Or) if is_boolean_shape(left) => {
+			Some(left.clone())
+		}
 		_ => None,
+	}
+}
+
+fn is_boolean_shape(expr: &Expression) -> bool {
+	match expr {
+		Expression::Equal(_)
+		| Expression::NotEqual(_)
+		| Expression::LessThan(_)
+		| Expression::LessThanEqual(_)
+		| Expression::GreaterThan(_)
+		| Expression::GreaterThanEqual(_)
+		| Expression::And(_)
+		| Expression::Or(_)
+		| Expression::Xor(_)
+		| Expression::Between(_)
+		| Expression::In(_) => true,
+		Expression::Prefix(prefix) => matches!(prefix.operator, PrefixOperator::Not(_)),
+		_ => as_bool_constant(expr).is_some(),
 	}
 }
 
@@ -551,31 +566,57 @@ mod tests {
 	}
 
 	#[test]
-	fn algebraic_true_and_col_to_col() {
+	fn true_and_an_untyped_column_is_not_folded() {
+		// The column may not be boolean, so folding it away would hide the type error true and 1 must raise.
 		let mut e = and(boolean("true"), col("x"));
 		fold(&mut e);
-		assert!(matches!(e, Expression::Column(_)));
+		assert!(matches!(e, Expression::And(_)));
 	}
 
 	#[test]
-	fn algebraic_false_and_col_to_false() {
+	fn false_and_an_untyped_column_is_not_folded() {
+		// Dropping the column would erase any type error inside it, so false and x must stay unfolded.
 		let mut e = and(boolean("false"), col("x"));
 		fold(&mut e);
-		assert_constant_bool(&e, false);
+		assert!(matches!(e, Expression::And(_)));
 	}
 
 	#[test]
-	fn algebraic_false_or_col_to_col() {
+	fn false_or_an_untyped_column_is_not_folded() {
+		// The column may not be boolean, so folding it away would hide the type error false or 1 must raise.
 		let mut e = or(boolean("false"), col("x"));
 		fold(&mut e);
-		assert!(matches!(e, Expression::Column(_)));
+		assert!(matches!(e, Expression::Or(_)));
 	}
 
 	#[test]
-	fn algebraic_true_or_col_to_true() {
+	fn true_or_an_untyped_column_is_not_folded() {
+		// Dropping the column would erase any type error inside it, so true or x must stay unfolded.
 		let mut e = or(boolean("true"), col("x"));
 		fold(&mut e);
-		assert_constant_bool(&e, true);
+		assert!(matches!(e, Expression::Or(_)));
+	}
+
+	#[test]
+	fn true_and_a_compare_folds_to_the_compare() {
+		// A compare is boolean by shape, so true and it must fold to exactly the compare on either side.
+		for mut e in
+			[and(boolean("true"), gt(col("x"), num("1"))), and(gt(col("x"), num("1")), boolean("true"))]
+		{
+			fold(&mut e);
+			assert!(matches!(e, Expression::GreaterThan(_)), "{e:?}");
+		}
+	}
+
+	#[test]
+	fn false_or_a_compare_folds_to_the_compare() {
+		// A compare is boolean by shape, so false or it must fold to exactly the compare on either side.
+		for mut e in
+			[or(boolean("false"), gt(col("x"), num("1"))), or(gt(col("x"), num("1")), boolean("false"))]
+		{
+			fold(&mut e);
+			assert!(matches!(e, Expression::GreaterThan(_)), "{e:?}");
+		}
 	}
 
 	#[test]

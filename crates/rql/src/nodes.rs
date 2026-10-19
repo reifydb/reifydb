@@ -37,8 +37,8 @@ use reifydb_core::{
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		constraint::TypeConstraint, dictionary::DictionaryId, identity::IdentityKind, partition::Partition,
-		sumtype::SumTypeId, value_type::ValueType,
+		Value, constraint::TypeConstraint, dictionary::DictionaryId, identity::IdentityKind,
+		partition::Partition, sumtype::SumTypeId, value_type::ValueType,
 	},
 };
 
@@ -652,6 +652,35 @@ pub struct ViewScanNode {
 	pub partition: Option<Partition>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum PartitionKey {
+	Constant(Value),
+	Variable {
+		variable: VariableExpression,
+		ty: ValueType,
+	},
+}
+
+#[derive(Debug, Clone)]
+pub struct PartitionParameterScanNode {
+	pub keys: Vec<PartitionKey>,
+	pub scan: Box<QueryPlan>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum SeriesBound {
+	Constant(u64),
+	Variable(VariableExpression),
+}
+
+#[derive(Debug, Clone)]
+pub struct SeriesParameterScanNode {
+	pub starts: Vec<SeriesBound>,
+	pub ends: Vec<SeriesBound>,
+	pub partition_keys: Option<Vec<PartitionKey>>,
+	pub scan: Box<QueryPlan>,
+}
+
 #[derive(Debug, Clone)]
 pub struct RingBufferScanNode {
 	pub source: ResolvedRingBuffer,
@@ -761,6 +790,29 @@ pub struct RowRangeScanNode {
 	pub start: u64,
 
 	pub end: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RowKey {
+	Constant(u64),
+	Variable(VariableExpression),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RowKeyPredicate {
+	Point(RowKey),
+	List(Vec<RowKey>),
+	Range {
+		start: RowKey,
+		end: RowKey,
+	},
+}
+
+#[derive(Debug, Clone)]
+pub struct RowParameterLookupNode {
+	pub source: ResolvedObject,
+	pub predicate: RowKeyPredicate,
+	pub fallback: Box<QueryPlan>,
 }
 
 #[derive(Debug, Clone)]

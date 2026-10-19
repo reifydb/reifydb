@@ -11,6 +11,5 @@ pub mod context;
 pub mod convert;
 pub mod eval;
 pub mod logic;
-pub mod parameter;
 pub mod prefix;
 pub mod udf_extract;

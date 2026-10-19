@@ -7,10 +7,7 @@ use reifydb_core::{
 };
 use reifydb_evaluate::{lower::LoweredExpr, stack::Variable};
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{
-	params::Params,
-	value::{Value, value_type::ValueType},
-};
+use reifydb_value::value::{Value, value_type::ValueType};
 
 use crate::common::{
 	Env, Frozen, and, batch, between, boolean, call, closure, column, compare, duration, field_access, frag, none,
@@ -298,7 +295,7 @@ fn one_lowered_expr_keeps_the_first_variable_value_after_the_symbol_changes() {
 #[test]
 fn a_parameter_lowers_with_the_rest_of_its_expression() {
 	// A parameter must keep the between beside it answering per row over a nullable column.
-	let env = Env::with_params(Params::from(vec![Value::Int4(99)]));
+	let env = Env::with_symbols(symbols(vec![("1", Variable::scalar(Value::Int4(99)))]));
 	let input = batch(vec![factory::int4_optional("a", [Some(5), None, Some(20)]), factory::int4("id", [1, 2, 3])]);
 	let parameter = Expression::Parameter(ParameterExpression::Positional {
 		fragment: frag("$1"),

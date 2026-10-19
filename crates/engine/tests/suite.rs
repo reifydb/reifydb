@@ -130,6 +130,8 @@ mod join_using_condition_fragment;
 mod join_using_unknown_key_column;
 #[path = "list_param_insert.rs"]
 mod list_param_insert;
+#[path = "literal_logic_answers_as_variables.rs"]
+mod literal_logic_answers_as_variables;
 #[path = "lookup_ddl.rs"]
 mod lookup_ddl;
 #[path = "lower_aggregate.rs"]
@@ -160,6 +162,8 @@ mod nested_read_policy_bypass;
 mod none_operand_expression_types;
 #[path = "output_rule.rs"]
 mod output_rule;
+#[path = "partition_parameter_scan.rs"]
+mod partition_parameter_scan;
 #[path = "percentile_aggregate.rs"]
 mod percentile_aggregate;
 #[path = "percentile_aggregate_errors.rs"]
@@ -192,12 +196,16 @@ mod read_only;
 mod returning;
 #[path = "ringbuffer.rs"]
 mod ringbuffer;
+#[path = "row_parameter_lookup.rs"]
+mod row_parameter_lookup;
 #[path = "run_tests_error_quotes_body.rs"]
 mod run_tests_error_quotes_body;
 #[path = "series_delete_metadata.rs"]
 mod series_delete_metadata;
 #[path = "series_key_write.rs"]
 mod series_key_write;
+#[path = "series_parameter_scan.rs"]
+mod series_parameter_scan;
 #[path = "series_scan_column_types.rs"]
 mod series_scan_column_types;
 #[path = "series_tag_constructor_field.rs"]
@@ -250,6 +258,12 @@ mod udf_arity;
 mod udf_arity_paths;
 #[path = "udf_body_builtin_call_over_rows.rs"]
 mod udf_body_builtin_call_over_rows;
+#[path = "udf_body_procedure_call_over_rows.rs"]
+mod udf_body_procedure_call_over_rows;
+#[path = "udf_body_unknown_call_over_rows.rs"]
+mod udf_body_unknown_call_over_rows;
+#[path = "udf_call_without_alias.rs"]
+mod udf_call_without_alias;
 #[path = "udf_declared_return_type.rs"]
 mod udf_declared_return_type;
 #[path = "udf_declared_return_type_paths.rs"]
@@ -266,6 +280,10 @@ mod udf_parameter_type_paths;
 mod virtual_table_diagnostics;
 #[path = "vm_compare_answers_as_query.rs"]
 mod vm_compare_answers_as_query;
+#[path = "vm_logic_answers_as_query.rs"]
+mod vm_logic_answers_as_query;
+#[path = "vm_membership_answers_as_query.rs"]
+mod vm_membership_answers_as_query;
 #[path = "window_batch_query.rs"]
 mod window_batch_query;
 #[path = "window_batch_query_fragment.rs"]

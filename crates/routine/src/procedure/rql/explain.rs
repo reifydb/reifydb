@@ -14,14 +14,15 @@ use reifydb_core::{
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::{
 	ast::parse_str,
-	nodes::AlterSequenceNode,
+	nodes::{AlterSequenceNode, PartitionKey, RowKey, RowKeyPredicate, SeriesBound},
 	optimize::optimize_physical,
 	plan::{
 		logical::compile_logical,
 		physical::{
 			AggregateNode, AppendPhysicalNode, ApplyNode, AssertNode, DistinctNode, ExtendNode, FilterNode,
-			GateNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PatchNode,
-			PhysicalPlan, SortNode, TakeNode, compile_physical,
+			GateNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LookupNode, MapNode,
+			PartitionParameterScanNode, PatchNode, PhysicalPlan, RowParameterLookupNode,
+			SeriesParameterScanNode, SortNode, TakeNode, compile_physical,
 		},
 		system_columns::check_system_columns,
 	},
@@ -129,6 +130,18 @@ impl PhysicalWalker {
 				input,
 				..
 			}) => self.walk(input, depth, parent),
+			PhysicalPlan::RowParameterLookup(RowParameterLookupNode {
+				fallback,
+				..
+			}) => self.walk(fallback, depth, parent),
+			PhysicalPlan::PartitionParameterScan(PartitionParameterScanNode {
+				scan,
+				..
+			}) => self.walk(scan, depth, parent),
+			PhysicalPlan::SeriesParameterScan(SeriesParameterScanNode {
+				scan,
+				..
+			}) => self.walk(scan, depth, parent),
 			PhysicalPlan::Gate(GateNode {
 				input,
 				..
@@ -501,6 +514,66 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 			let source_name = source_name_of(&scan.source);
 			("RowRangeScan", format!("source={} range={}..={}", source_name, scan.start, scan.end))
 		}
+		PhysicalPlan::RowParameterLookup(lookup) => {
+			let source_name = source_name_of(&lookup.source);
+			let keys = match &lookup.predicate {
+				RowKeyPredicate::Point(key) => format!("key={}", row_key_text(key)),
+				RowKeyPredicate::List(keys) => {
+					let keys = keys.iter().map(row_key_text).collect::<Vec<_>>().join(", ");
+					format!("keys=[{}]", keys)
+				}
+				RowKeyPredicate::Range {
+					start,
+					end,
+				} => format!("range={}..={}", row_key_text(start), row_key_text(end)),
+			};
+			("RowParameterLookup", format!("source={} {}", source_name, keys))
+		}
+		PhysicalPlan::PartitionParameterScan(node) => {
+			let (source_name, columns) = match &*node.scan {
+				PhysicalPlan::TableScan(scan) => {
+					(scan.source.name().to_string(), scan.source.def().partition_by.clone())
+				}
+				PhysicalPlan::ViewScan(scan) => {
+					(scan.source.name().to_string(), scan.source.def().partition_by().to_vec())
+				}
+				_ => (String::new(), Vec::new()),
+			};
+			let keys = columns
+				.iter()
+				.zip(&node.keys)
+				.map(|(column, key)| format!("{}={}", column, partition_key_text(key)))
+				.collect::<Vec<_>>()
+				.join(", ");
+			("PartitionParameterScan", format!("source={} keys=[{}]", source_name, keys))
+		}
+		PhysicalPlan::SeriesParameterScan(node) => {
+			let (source_name, columns) = match &*node.scan {
+				PhysicalPlan::SeriesScan(scan) => {
+					(scan.source.name().to_string(), scan.source.def().partition_by.clone())
+				}
+				_ => (String::new(), Vec::new()),
+			};
+			let mut parts = vec![format!("source={}", source_name)];
+			if !node.starts.is_empty() {
+				let starts = node.starts.iter().map(series_bound_text).collect::<Vec<_>>().join(", ");
+				parts.push(format!("start=[{}]", starts));
+			}
+			if !node.ends.is_empty() {
+				let ends = node.ends.iter().map(series_bound_text).collect::<Vec<_>>().join(", ");
+				parts.push(format!("end=[{}]", ends));
+			}
+			if let Some(keys) = &node.partition_keys {
+				let keys = columns
+					.iter()
+					.zip(keys)
+					.map(|(column, key)| format!("{}={}", column, partition_key_text(key)))
+					.collect::<Vec<_>>()
+					.join(", ");
+				parts.push(format!("partition=[{}]", keys));
+			}
+			("SeriesParameterScan", parts.join(" "))
+		}
 		PhysicalPlan::DefineFunction(def) => {
 			let params: Vec<String> = def
 				.parameters
@@ -551,6 +624,30 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 				.collect();
 			("DefineClosure", format!("[{}]", params.join(", ")))
 		}
+	}
+}
+
+fn series_bound_text(bound: &SeriesBound) -> String {
+	match bound {
+		SeriesBound::Constant(value) => value.to_string(),
+		SeriesBound::Variable(variable) => variable.fragment.text().to_string(),
+	}
+}
+
+fn partition_key_text(key: &PartitionKey) -> String {
+	match key {
+		PartitionKey::Constant(value) => value.to_string(),
+		PartitionKey::Variable {
+			variable,
+			..
+		} => variable.fragment.text().to_string(),
+	}
+}
+
+fn row_key_text(key: &RowKey) -> String {
+	match key {
+		RowKey::Constant(row_number) => row_number.to_string(),
+		RowKey::Variable(variable) => variable.fragment.text().to_string(),
 	}
 }
 

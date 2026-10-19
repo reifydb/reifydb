@@ -4,30 +4,21 @@
 use reifydb_runtime::testing::dst_seed;
 
 #[test]
-fn dst_seed_reproduces_from_env_var() {
-	// SAFETY: nextest runs each test in its own process, so no other thread reads or writes
-	// the environment concurrently.
-	unsafe {
-		std::env::set_var("REIFYDB_DST_SEED", "424242");
-	}
+fn dst_seed_reads_the_env_var_and_falls_back_to_random_without_it() {
+	// Both cases share one env var, so they must run in one test or they race on it under a threaded runner.
+	let seeded = {
+		// SAFETY: this is the only test that touches REIFYDB_DST_SEED, so nothing reads or writes it
+		// concurrently.
+		unsafe {
+			std::env::set_var("REIFYDB_DST_SEED", "424242");
+		}
+		dst_seed()
+	};
+	assert_eq!(seeded, 424242);
 
-	assert_eq!(dst_seed(), 424242);
-
-	// SAFETY: same single-threaded process, no concurrent environment access.
-	unsafe {
-		std::env::remove_var("REIFYDB_DST_SEED");
-	}
-}
-
-#[test]
-fn dst_seed_falls_back_to_random_without_env_var() {
-	// SAFETY: nextest runs each test in its own process, so no other thread reads or writes
-	// the environment concurrently.
+	// SAFETY: same single test, no concurrent environment access.
 	unsafe {
 		std::env::remove_var("REIFYDB_DST_SEED");
 	}
-
-	// The value is unconstrained; only that resolving a seed without the env var set is not
-	// a panic.
 	let _seed = dst_seed();
 }

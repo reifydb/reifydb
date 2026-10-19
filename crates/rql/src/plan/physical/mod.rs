@@ -59,18 +59,18 @@ use crate::{
 	nodes::{
 		AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateQueueNode, CreateRingBufferNode,
 		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
-		InlineDataNode, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD, QueueScanNode,
-		RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode, SeriesScanNode,
-		TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
+		InlineDataNode, PartitionKey, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD, QueueScanNode,
+		RingBufferScanNode, RowKeyPredicate, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
+		SeriesBound, SeriesScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
 	optimize::rules::optimize_tree,
 	plan::{
 		logical,
 		logical::{
 			LogicalPlan,
-			partition_predicate::extract_partition,
-			row_predicate::{RowPredicate, extract_row_predicate},
-			series_predicate::extract_series_predicate,
+			partition_predicate::{extract_partition, extract_partition_keys},
+			row_predicate::{RowPredicate, extract_row_key_predicate, extract_row_predicate},
+			series_predicate::{extract_series_bounds, extract_series_predicate},
 			tree::{QueryTree, fold},
 		},
 	},
@@ -168,6 +168,9 @@ pub enum PhysicalPlan<'bump> {
 	RowPointLookup(RowPointLookupNode),
 	RowListLookup(RowListLookupNode),
 	RowRangeScan(RowRangeScanNode),
+	RowParameterLookup(RowParameterLookupNode<'bump>),
+	PartitionParameterScan(PartitionParameterScanNode<'bump>),
+	SeriesParameterScan(SeriesParameterScanNode<'bump>),
 	JoinInner(JoinInnerNode<'bump>),
 	JoinLeft(JoinLeftNode<'bump>),
 	JoinNatural(JoinNaturalNode<'bump>),
@@ -506,6 +509,27 @@ pub struct FilterNode<'bump> {
 }
 
 #[derive(Debug)]
+pub struct SeriesParameterScanNode<'bump> {
+	pub starts: Vec<SeriesBound>,
+	pub ends: Vec<SeriesBound>,
+	pub partition_keys: Option<Vec<PartitionKey>>,
+	pub scan: BumpBox<'bump, PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct PartitionParameterScanNode<'bump> {
+	pub keys: Vec<PartitionKey>,
+	pub scan: BumpBox<'bump, PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct RowParameterLookupNode<'bump> {
+	pub source: ResolvedObject,
+	pub predicate: RowKeyPredicate,
+	pub fallback: BumpBox<'bump, PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
 pub struct GateNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub conditions: Vec<Expression>,
@@ -703,7 +727,12 @@ impl<'bump> Compiler<'bump> {
 					return Ok(pushed);
 				}
 
-				if let Some(predicate) = extract_row_predicate(&filter.condition) {
+				let row_predicate = extract_row_predicate(&filter.condition);
+				let row_key_predicate = match row_predicate {
+					Some(_) => None,
+					None => extract_row_key_predicate(&filter.condition),
+				};
+				if row_predicate.is_some() || row_key_predicate.is_some() {
 					let source = match &input {
 						PhysicalPlan::TableScan(scan)
 							if scan.source.def().partition_by.is_empty() =>
@@ -729,34 +758,50 @@ impl<'bump> Compiler<'bump> {
 					};
 
 					if let Some(source) = source {
-						match predicate {
-							RowPredicate::Point(row_number) => {
-								return Ok(PhysicalPlan::RowPointLookup(
-									RowPointLookupNode {
-										source,
-										row_number,
-									},
-								));
-							}
-							RowPredicate::List(row_numbers) => {
-								return Ok(PhysicalPlan::RowListLookup(
-									RowListLookupNode {
-										source,
-										row_numbers,
-									},
-								));
-							}
-							RowPredicate::Range {
-								start,
-								end,
-							} => {
-								return Ok(PhysicalPlan::RowRangeScan(
-									RowRangeScanNode {
-										source,
-										start,
-										end,
-									},
-								));
+						if let Some(predicate) = row_key_predicate {
+							let fallback = PhysicalPlan::Filter(FilterNode {
+								conditions: vec![filter.condition],
+								input: self.bump_box(input),
+							});
+							return Ok(PhysicalPlan::RowParameterLookup(
+								RowParameterLookupNode {
+									source,
+									predicate,
+									fallback: self.bump_box(fallback),
+								},
+							));
+						}
+
+						if let Some(predicate) = row_predicate {
+							match predicate {
+								RowPredicate::Point(row_number) => {
+									return Ok(PhysicalPlan::RowPointLookup(
+										RowPointLookupNode {
+											source,
+											row_number,
+										},
+									));
+								}
+								RowPredicate::List(row_numbers) => {
+									return Ok(PhysicalPlan::RowListLookup(
+										RowListLookupNode {
+											source,
+											row_numbers,
+										},
+									));
+								}
+								RowPredicate::Range {
+									start,
+									end,
+								} => {
+									return Ok(PhysicalPlan::RowRangeScan(
+										RowRangeScanNode {
+											source,
+											start,
+											end,
+										},
+									));
+								}
 							}
 						}
 					}
@@ -771,6 +816,30 @@ impl<'bump> Compiler<'bump> {
 						None
 					};
 
+					if partitioned
+						&& partition.is_none() && let Some(partition_keys) = extract_partition_keys(
+						&filter.condition,
+						&def.columns,
+						&def.partition_by,
+					) {
+						let (starts, ends) = if def.tag.is_none() {
+							extract_series_bounds(&filter.condition, def.key.column())
+						} else {
+							(Vec::new(), Vec::new())
+						};
+						let deferred =
+							PhysicalPlan::SeriesParameterScan(SeriesParameterScanNode {
+								starts,
+								ends,
+								partition_keys: Some(partition_keys),
+								scan: self.bump_box(input),
+							});
+						return Ok(PhysicalPlan::Filter(FilterNode {
+							conditions: vec![filter.condition],
+							input: self.bump_box(deferred),
+						}));
+					}
+
 					let pushable = if partitioned && partition.is_none() {
 						None
 					} else {
@@ -783,23 +852,56 @@ impl<'bump> Compiler<'bump> {
 						)
 					};
 
-					if pushable.is_some() || partition.is_some() {
-						let rewritten = PhysicalPlan::SeriesScan(SeriesScanNode {
-							source: scan.source.clone(),
-							key_range_start: pushable
+					let ranged = !(partitioned && partition.is_none())
+						&& (def.tag.is_none()
+							|| pushable
 								.as_ref()
-								.and_then(|sp| sp.key_start)
-								.or(scan.key_range_start),
-							key_range_end: pushable
-								.as_ref()
-								.and_then(|sp| sp.key_end)
-								.or(scan.key_range_end),
-							variant_tag: pushable
-								.as_ref()
-								.and_then(|sp| sp.variant_tag)
-								.or(scan.variant_tag),
-							partition: partition.or(scan.partition),
-						});
+								.is_some_and(|sp| sp.variant_tag.is_some()));
+					let (starts, ends) = if ranged {
+						let (starts, ends) =
+							extract_series_bounds(&filter.condition, def.key.column());
+						let variable =
+							|bound: &SeriesBound| matches!(bound, SeriesBound::Variable(_));
+						(
+							starts.into_iter().filter(variable).collect::<Vec<_>>(),
+							ends.into_iter().filter(variable).collect::<Vec<_>>(),
+						)
+					} else {
+						(Vec::new(), Vec::new())
+					};
+					let deferred = !starts.is_empty() || !ends.is_empty();
+
+					if pushable.is_some() || partition.is_some() || deferred {
+						let rewritten = if pushable.is_some() || partition.is_some() {
+							PhysicalPlan::SeriesScan(SeriesScanNode {
+								source: scan.source.clone(),
+								key_range_start: pushable
+									.as_ref()
+									.and_then(|sp| sp.key_start)
+									.or(scan.key_range_start),
+								key_range_end: pushable
+									.as_ref()
+									.and_then(|sp| sp.key_end)
+									.or(scan.key_range_end),
+								variant_tag: pushable
+									.as_ref()
+									.and_then(|sp| sp.variant_tag)
+									.or(scan.variant_tag),
+								partition: partition.or(scan.partition),
+							})
+						} else {
+							input
+						};
+						let rewritten = if deferred {
+							PhysicalPlan::SeriesParameterScan(SeriesParameterScanNode {
+								starts,
+								ends,
+								partition_keys: None,
+								scan: self.bump_box(rewritten),
+							})
+						} else {
+							rewritten
+						};
 						let remaining = match pushable {
 							Some(sp) => sp.remaining,
 							None => vec![filter.condition],
@@ -832,6 +934,23 @@ impl<'bump> Compiler<'bump> {
 							input: self.bump_box(pruned),
 						}));
 					}
+					if !def.partition_by.is_empty()
+						&& let Some(keys) = extract_partition_keys(
+							&filter.condition,
+							&def.columns,
+							&def.partition_by,
+						) {
+						let pruned = PhysicalPlan::PartitionParameterScan(
+							PartitionParameterScanNode {
+								keys,
+								scan: self.bump_box(input),
+							},
+						);
+						return Ok(PhysicalPlan::Filter(FilterNode {
+							conditions: vec![filter.condition],
+							input: self.bump_box(pruned),
+						}));
+					}
 				}
 
 				if let PhysicalPlan::ViewScan(ref scan) = input {
@@ -846,6 +965,23 @@ impl<'bump> Compiler<'bump> {
 							source: scan.source.clone(),
 							partition: Some(partition),
 						});
+						return Ok(PhysicalPlan::Filter(FilterNode {
+							conditions: vec![filter.condition],
+							input: self.bump_box(pruned),
+						}));
+					}
+					if !def.partition_by().is_empty()
+						&& let Some(keys) = extract_partition_keys(
+							&filter.condition,
+							def.columns(),
+							def.partition_by(),
+						) {
+						let pruned = PhysicalPlan::PartitionParameterScan(
+							PartitionParameterScanNode {
+								keys,
+								scan: self.bump_box(input),
+							},
+						);
 						return Ok(PhysicalPlan::Filter(FilterNode {
 							conditions: vec![filter.condition],
 							input: self.bump_box(pruned),

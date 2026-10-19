@@ -14,7 +14,6 @@ use crate::{
 		compile::{type_column, variable_column, variable_field_column},
 		constant::constant_value,
 		context::EvalContext,
-		parameter::parameter_lookup,
 	},
 	lower::{Node, bool_field, error::from_datafusion},
 };
@@ -30,8 +29,21 @@ pub(super) fn variable(ctx: &EvalContext, operator: &str, variable: &VariableExp
 }
 
 pub(super) fn parameter(ctx: &EvalContext, operator: &str, parameter: &ParameterExpression) -> Result<Node> {
-	let (field, array) = parameter_lookup(ctx, parameter, 1)?;
-	row_zero(operator, &field, &array)
+	let fragment = match parameter {
+		ParameterExpression::Positional {
+			fragment,
+		}
+		| ParameterExpression::Named {
+			fragment,
+		} => fragment.clone(),
+	};
+	variable(
+		ctx,
+		operator,
+		&VariableExpression {
+			fragment,
+		},
+	)
 }
 
 pub(super) fn type_literal(operator: &str, ty: &ValueType, fragment: &Fragment) -> Result<Node> {

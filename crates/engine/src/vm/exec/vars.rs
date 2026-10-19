@@ -5,7 +5,7 @@ use arrow_array::RecordBatch;
 use reifydb_core::{
 	internal_error,
 	value::{
-		batch::{batch, is_scalar, scalar_value},
+		batch::{batch, is_scalar, scalar_value, scalar_value_type},
 		column::{builder::ColumnBuilder, factory},
 	},
 };
@@ -40,8 +40,10 @@ impl<'a> Vm<'a> {
 					) {
 						factory::none(name, self.batch_size)
 					} else {
-						let mut data =
-							ColumnBuilder::with_capacity(value.get_type(), self.batch_size);
+						let mut data = ColumnBuilder::with_capacity(
+							scalar_value_type(c, &value)?,
+							self.batch_size,
+						);
 						for _ in 0..self.batch_size {
 							data.push_value(value.clone());
 						}
@@ -97,7 +99,7 @@ impl<'a> Vm<'a> {
 		let variable = match sv {
 			Variable::Columns {
 				batch: c,
-			} if is_scalar(&c) => Variable::scalar_named(name, scalar_value(&c)?),
+			} if is_scalar(&c) => Variable::columns(rename_user_columns(&c, name)?),
 			Variable::Columns {
 				batch: c,
 			}

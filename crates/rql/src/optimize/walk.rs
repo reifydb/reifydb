@@ -201,6 +201,9 @@ pub fn walk_expressions_mut(
 				walk_expressions_mut(input, internal, projection);
 			}
 		}
+		PhysicalPlan::RowParameterLookup(n) => walk_expressions_mut(&mut n.fallback, internal, projection),
+		PhysicalPlan::PartitionParameterScan(n) => walk_expressions_mut(&mut n.scan, internal, projection),
+		PhysicalPlan::SeriesParameterScan(n) => walk_expressions_mut(&mut n.scan, internal, projection),
 		PhysicalPlan::InsertTable(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::InsertRingBuffer(n) => walk_expressions_mut(&mut n.input, internal, projection),
 		PhysicalPlan::InsertQueue(n) => walk_expressions_mut(&mut n.input, internal, projection),
