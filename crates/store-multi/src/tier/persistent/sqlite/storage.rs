@@ -812,13 +812,17 @@ impl SqlitePersistentStorage {
 		};
 		let lower = to_sql_bound(req.start);
 		let upper = to_sql_bound(req.end);
-		let last_row = cursor.last_key().map(|key| row_to_sql(key.row().0));
+		let (lower, upper) = resume_bounds(
+			lower,
+			upper,
+			cursor.last_key().map(|key| row_to_sql(key.row().0)),
+			req.descending,
+		);
 
 		let sql = build_range_current_sql_row(
 			&table_sql.table_name,
 			bound_shape_of(&lower),
 			bound_shape_of(&upper),
-			last_row.is_some(),
 			req.descending,
 			limit_i64,
 		);
@@ -838,9 +842,6 @@ impl SqlitePersistentStorage {
 			params.push(Box::new(v));
 		}
 		if let Some(v) = bound_value(upper) {
-			params.push(Box::new(v));
-		}
-		if let Some(v) = last_row {
 			params.push(Box::new(v));
 		}
 		params.push(Box::new(version_bytes));
@@ -912,13 +913,13 @@ impl SqlitePersistentStorage {
 		};
 		let lower = to_sql_bound(req.start);
 		let upper = to_sql_bound(req.end);
-		let last_triple = cursor.last_key().map(partitioned_triple);
+		let (lower, upper) =
+			resume_bounds(lower, upper, cursor.last_key().map(partitioned_triple), req.descending);
 
 		let sql = build_range_current_sql_partitioned(
 			&table_sql.table_name,
 			bound_shape_of(&lower),
 			bound_shape_of(&upper),
-			last_triple.is_some(),
 			req.descending,
 			limit_i64,
 		);
@@ -940,11 +941,6 @@ impl SqlitePersistentStorage {
 			params.push(Box::new(row));
 		}
 		if let Some((hi, lo, row)) = bound_value(upper) {
-			params.push(Box::new(hi));
-			params.push(Box::new(lo));
-			params.push(Box::new(row));
-		}
-		if let Some((hi, lo, row)) = last_triple {
 			params.push(Box::new(hi));
 			params.push(Box::new(lo));
 			params.push(Box::new(row));
@@ -1024,13 +1020,12 @@ impl SqlitePersistentStorage {
 		};
 		let lower = to_sql_bound(req.start);
 		let upper = to_sql_bound(req.end);
-		let last_triple = cursor.last_key().map(series_triple);
+		let (lower, upper) = resume_bounds(lower, upper, cursor.last_key().map(series_triple), req.descending);
 
 		let sql = build_range_current_sql_series(
 			&table_sql.table_name,
 			bound_shape_of(&lower),
 			bound_shape_of(&upper),
-			last_triple.is_some(),
 			req.descending,
 			limit_i64,
 		);
@@ -1046,7 +1041,7 @@ impl SqlitePersistentStorage {
 		};
 
 		let mut params: Vec<Box<dyn ToSql>> = Vec::new();
-		for triple in [bound_value(lower), bound_value(upper), last_triple].into_iter().flatten() {
+		for triple in [bound_value(lower), bound_value(upper)].into_iter().flatten() {
 			params.push(Box::new(triple.0));
 			params.push(Box::new(triple.1));
 			params.push(Box::new(triple.2));
@@ -1126,13 +1121,13 @@ impl SqlitePersistentStorage {
 		};
 		let lower = to_sql_bound(req.start);
 		let upper = to_sql_bound(req.end);
-		let last_columns = cursor.last_key().map(partitioned_series_columns);
+		let (lower, upper) =
+			resume_bounds(lower, upper, cursor.last_key().map(partitioned_series_columns), req.descending);
 
 		let sql = build_range_current_sql_partitioned_series(
 			&table_sql.table_name,
 			bound_shape_of(&lower),
 			bound_shape_of(&upper),
-			last_columns.is_some(),
 			req.descending,
 			limit_i64,
 		);
@@ -1148,7 +1143,7 @@ impl SqlitePersistentStorage {
 		};
 
 		let mut params: Vec<Box<dyn ToSql>> = Vec::new();
-		for columns in [bound_value(lower), bound_value(upper), last_columns].into_iter().flatten() {
+		for columns in [bound_value(lower), bound_value(upper)].into_iter().flatten() {
 			params.push(Box::new(columns.0));
 			params.push(Box::new(columns.1));
 			params.push(Box::new(columns.2));
@@ -1232,11 +1227,16 @@ impl SqlitePersistentStorage {
 
 		let raw: Vec<RawEntry> = match table_sql.schema {
 			SqliteSchema::Blob => {
+				let (start, end) = resume_bounds(
+					req.start.map(<[u8]>::to_vec),
+					req.end.map(<[u8]>::to_vec),
+					cursor.last_key().map(|k| k.as_slice().to_vec()),
+					req.descending,
+				);
 				let sql = build_range_current_sql(
 					&table_sql.table_name,
-					bound_shape(req.start),
-					bound_shape(req.end),
-					cursor.last_key().is_some(),
+					bound_shape_of(&start),
+					bound_shape_of(&end),
 					req.descending,
 					limit_i64,
 				);
@@ -1254,16 +1254,8 @@ impl SqlitePersistentStorage {
 					}
 				};
 				let mut params: Vec<Box<dyn ToSql>> = Vec::new();
-				match req.start {
-					Bound::Included(s) | Bound::Excluded(s) => params.push(Box::new(s.to_vec())),
-					Bound::Unbounded => {}
-				}
-				match req.end {
-					Bound::Included(e) | Bound::Excluded(e) => params.push(Box::new(e.to_vec())),
-					Bound::Unbounded => {}
-				}
-				if let Some(k) = cursor.last_key().map(|k| k.as_slice()) {
-					params.push(Box::new(k.to_vec()));
+				for bound in [bound_value_ref(&start), bound_value_ref(&end)].into_iter().flatten() {
+					params.push(Box::new(bound.clone()));
 				}
 				params.push(Box::new(version_bytes.clone()));
 				match stmt.query_map(params_from_iter(params), |row| {
@@ -1303,11 +1295,12 @@ impl SqlitePersistentStorage {
 								})
 						})
 						.transpose()?;
+				let (lower, upper) =
+					resume_bounds(bounds.lower, bounds.upper, last_row, req.descending);
 				let sql = build_range_current_sql_row(
 					&table_sql.table_name,
-					bound_shape_of(&bounds.lower),
-					bound_shape_of(&bounds.upper),
-					last_row.is_some(),
+					bound_shape_of(&lower),
+					bound_shape_of(&upper),
 					req.descending,
 					limit_i64,
 				);
@@ -1325,13 +1318,10 @@ impl SqlitePersistentStorage {
 					}
 				};
 				let mut params: Vec<Box<dyn ToSql>> = Vec::new();
-				if let Some(v) = bound_value(bounds.lower) {
+				if let Some(v) = bound_value(lower) {
 					params.push(Box::new(v));
 				}
-				if let Some(v) = bound_value(bounds.upper) {
-					params.push(Box::new(v));
-				}
-				if let Some(v) = last_row {
+				if let Some(v) = bound_value(upper) {
 					params.push(Box::new(v));
 				}
 				params.push(Box::new(version_bytes.clone()));
@@ -1387,11 +1377,12 @@ impl SqlitePersistentStorage {
 									})
 							})
 							.transpose()?;
+						let (lower_row, upper_row) =
+							resume_bounds(lower_row, upper_row, last_row, req.descending);
 						let sql = build_range_current_sql_partitioned_exact(
 							&table_sql.table_name,
 							bound_shape_of(&lower_row),
 							bound_shape_of(&upper_row),
-							last_row.is_some(),
 							req.descending,
 							limit_i64,
 						);
@@ -1414,9 +1405,6 @@ impl SqlitePersistentStorage {
 							params.push(Box::new(v));
 						}
 						if let Some(v) = bound_value(upper_row) {
-							params.push(Box::new(v));
-						}
-						if let Some(v) = last_row {
 							params.push(Box::new(v));
 						}
 						params.push(Box::new(version_bytes.clone()));
@@ -1477,11 +1465,12 @@ impl SqlitePersistentStorage {
 										})
 								})
 								.transpose()?;
+						let (lower, upper) =
+							resume_bounds(lower, upper, last_triple, req.descending);
 						let sql = build_range_current_sql_partitioned(
 							&table_sql.table_name,
 							bound_shape_of(&lower),
 							bound_shape_of(&upper),
-							last_triple.is_some(),
 							req.descending,
 							limit_i64,
 						);
@@ -1505,11 +1494,6 @@ impl SqlitePersistentStorage {
 							params.push(Box::new(r));
 						}
 						if let Some((hi, lo, r)) = bound_value(upper) {
-							params.push(Box::new(hi));
-							params.push(Box::new(lo));
-							params.push(Box::new(r));
-						}
-						if let Some((hi, lo, r)) = last_triple {
 							params.push(Box::new(hi));
 							params.push(Box::new(lo));
 							params.push(Box::new(r));
@@ -1586,13 +1570,13 @@ impl SqlitePersistentStorage {
 						})
 					})
 					.transpose()?;
+				let (lower, upper) = resume_bounds(lower, upper, last_columns, req.descending);
 				let partitioned = table_sql.schema == SqliteSchema::PartitionedSeries;
 				let sql = if partitioned {
 					build_range_current_sql_partitioned_series(
 						&table_sql.table_name,
 						bound_shape_of(&lower),
 						bound_shape_of(&upper),
-						last_columns.is_some(),
 						req.descending,
 						limit_i64,
 					)
@@ -1601,7 +1585,6 @@ impl SqlitePersistentStorage {
 						&table_sql.table_name,
 						bound_shape_of(&lower),
 						bound_shape_of(&upper),
-						last_columns.is_some(),
 						req.descending,
 						limit_i64,
 					)
@@ -1620,9 +1603,7 @@ impl SqlitePersistentStorage {
 					}
 				};
 				let mut params: Vec<Box<dyn ToSql>> = Vec::new();
-				for columns in [bound_value_ref(&lower), bound_value_ref(&upper), last_columns.as_ref()]
-					.into_iter()
-					.flatten()
+				for columns in [bound_value_ref(&lower), bound_value_ref(&upper)].into_iter().flatten()
 				{
 					for column in columns {
 						params.push(Box::new(*column));
@@ -1934,11 +1915,36 @@ fn expiry_stamp(table: EntryKind, value: Option<&CowVec<u8>>) -> Option<DateTime
 	}
 }
 
-fn bound_shape(b: Bound<&[u8]>) -> Bound<()> {
-	match b {
-		Bound::Included(_) => Bound::Included(()),
-		Bound::Excluded(_) => Bound::Excluded(()),
-		Bound::Unbounded => Bound::Unbounded,
+fn resume_bounds<T: Ord>(lower: Bound<T>, upper: Bound<T>, last: Option<T>, descending: bool) -> (Bound<T>, Bound<T>) {
+	let Some(last) = last else {
+		return (lower, upper);
+	};
+	if descending {
+		let tighter = match &upper {
+			Bound::Included(end) | Bound::Excluded(end) => last <= *end,
+			Bound::Unbounded => true,
+		};
+		(
+			lower,
+			if tighter {
+				Bound::Excluded(last)
+			} else {
+				upper
+			},
+		)
+	} else {
+		let tighter = match &lower {
+			Bound::Included(start) | Bound::Excluded(start) => last >= *start,
+			Bound::Unbounded => true,
+		};
+		(
+			if tighter {
+				Bound::Excluded(last)
+			} else {
+				lower
+			},
+			upper,
+		)
 	}
 }
 
@@ -2357,7 +2363,9 @@ mod tests {
 		},
 	};
 	use reifydb_value::value::{partition::Partition, row_number::RowNumber};
-	use rusqlite::ffi::{SQLITE_STMTSTATUS_REPREPARE, sqlite3_next_stmt, sqlite3_stmt_status};
+	use rusqlite::ffi::{
+		SQLITE_STMTSTATUS_REPREPARE, SQLITE_STMTSTATUS_VM_STEP, sqlite3_next_stmt, sqlite3_stmt_status,
+	};
 
 	use super::*;
 	use crate::tier::persistent::sqlite::schema::row_from_sql;
@@ -3898,5 +3906,76 @@ mod tests {
 		assert_eq!(drain(&blob, t, &range, true), 6);
 		assert_eq!(key_pages(&blob, t), 4);
 		assert_eq!(reader_reprepares(&blob), 0, "every blob range shape must reuse its prepared statement");
+	}
+
+	fn take_reader_vm_steps(s: &SqlitePersistentStorage) -> i32 {
+		let guard = s.inner.readers.acquire();
+		let conn = guard.as_ref().expect("read connection is present");
+		let mut total = 0;
+		// SAFETY: the guard keeps conn alive for the whole walk, and with it every statement it owns
+		unsafe {
+			let db = conn.handle();
+			let mut stmt = sqlite3_next_stmt(db, null_mut());
+			while !stmt.is_null() {
+				total += sqlite3_stmt_status(stmt, SQLITE_STMTSTATUS_VM_STEP, 1);
+				stmt = sqlite3_next_stmt(db, stmt);
+			}
+		}
+		total
+	}
+
+	fn chunk_steps(s: &SqlitePersistentStorage, t: EntryKind, keys: &[EncodedKey], reverse: bool) -> Vec<i32> {
+		let mut sorted = keys.to_vec();
+		sorted.sort();
+		let start = Bound::Included(sorted[0].as_slice());
+		let end = Bound::Included(sorted[sorted.len() - 1].as_slice());
+		let mut cursor = RangeCursor::default();
+		let mut served: Vec<EncodedKey> = Vec::new();
+		let mut steps = Vec::new();
+		take_reader_vm_steps(s);
+		while !cursor.is_exhausted() {
+			let scope = MultiVersionScope::AsOf {
+				read: CommitVersion(10),
+			};
+			let batch = if reverse {
+				s.range_rev_next(t, &mut cursor, start, end, scope, 8)
+			} else {
+				s.range_next(t, &mut cursor, start, end, scope, 8)
+			};
+			served.extend(batch.unwrap().entries.into_iter().map(|e| e.key));
+			steps.push(take_reader_vm_steps(s));
+		}
+		served.sort();
+		assert_eq!(served, sorted, "a chunked bounded range must serve every row exactly once");
+		steps
+	}
+
+	#[test]
+	fn a_deep_chunk_of_a_bounded_range_costs_what_the_first_chunk_costs() {
+		// A resumed chunk that keeps the range bound next to the cursor bound lets SQLite seek on the range
+		// bound and filter on the cursor, so chunk n walks every row before it and a big bucket never seals.
+		let (s, _guard) = one_reader();
+		let shapes: [(EntryKind, Vec<EncodedKey>); 3] = [
+			(table(), (1u64..=2000).map(key).collect()),
+			(series_table(), (0u64..2000).map(|n| series_key(None, n, 0)).collect()),
+			(partitioned_series_table(), (0u64..2000).map(|n| partitioned_series_key(7, n, 0)).collect()),
+		];
+		for (t, keys) in &shapes {
+			s.set(
+				CommitVersion(1),
+				HashMap::from([(*t, keys.iter().map(|k| (k.clone(), Some(row(b"v")))).collect())]),
+			)
+			.unwrap();
+			for reverse in [false, true] {
+				let steps = chunk_steps(&s, *t, keys, reverse);
+				let first = steps[0];
+				let deepest = steps[steps.len() - 2];
+				assert!(
+					deepest <= first * 4,
+					"{t:?} reverse={reverse}: the last full chunk took {deepest} vm steps against {first} for \
+					 the first, so each resumed chunk rescans the rows before it"
+				);
+			}
+		}
 	}
 }

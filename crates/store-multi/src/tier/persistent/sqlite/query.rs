@@ -320,7 +320,6 @@ pub(super) fn build_range_current_sql_row(
 	table_name: &str,
 	lower: Bound<()>,
 	upper: Bound<()>,
-	has_last_key: bool,
 	descending: bool,
 	limit: i64,
 ) -> String {
@@ -335,13 +334,6 @@ pub(super) fn build_range_current_sql_row(
 		Bound::Excluded(()) => sql.push_str(" AND key < ?"),
 		Bound::Unbounded => {}
 	}
-	if has_last_key {
-		sql.push_str(if descending {
-			" AND key < ?"
-		} else {
-			" AND key > ?"
-		});
-	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
 		sql.push_str(&format!(" ORDER BY key DESC LIMIT {limit}"));
@@ -355,7 +347,6 @@ pub(super) fn build_range_current_sql_partitioned(
 	table_name: &str,
 	lower: Bound<()>,
 	upper: Bound<()>,
-	has_last_key: bool,
 	descending: bool,
 	limit: i64,
 ) -> String {
@@ -371,13 +362,6 @@ pub(super) fn build_range_current_sql_partitioned(
 		Bound::Excluded(()) => sql.push_str(" AND (partition_hi, partition_lo, row) < (?, ?, ?)"),
 		Bound::Unbounded => {}
 	}
-	if has_last_key {
-		sql.push_str(if descending {
-			" AND (partition_hi, partition_lo, row) < (?, ?, ?)"
-		} else {
-			" AND (partition_hi, partition_lo, row) > (?, ?, ?)"
-		});
-	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
 		sql.push_str(&format!(" ORDER BY partition_hi DESC, partition_lo DESC, row DESC LIMIT {limit}"));
@@ -391,7 +375,6 @@ pub(super) fn build_range_current_sql_partitioned_exact(
 	table_name: &str,
 	lower_row: Bound<()>,
 	upper_row: Bound<()>,
-	has_last_key: bool,
 	descending: bool,
 	limit: i64,
 ) -> String {
@@ -410,13 +393,6 @@ pub(super) fn build_range_current_sql_partitioned_exact(
 		Bound::Excluded(()) => sql.push_str(" AND row < ?"),
 		Bound::Unbounded => {}
 	}
-	if has_last_key {
-		sql.push_str(if descending {
-			" AND row < ?"
-		} else {
-			" AND row > ?"
-		});
-	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
 		sql.push_str(&format!(" ORDER BY row DESC LIMIT {limit}"));
@@ -430,7 +406,6 @@ pub(super) fn build_range_current_sql(
 	table_name: &str,
 	start: Bound<()>,
 	end: Bound<()>,
-	has_last_key: bool,
 	descending: bool,
 	limit: i64,
 ) -> String {
@@ -445,13 +420,6 @@ pub(super) fn build_range_current_sql(
 		Bound::Excluded(()) => sql.push_str(" AND key < ?"),
 		Bound::Unbounded => {}
 	}
-	if has_last_key {
-		sql.push_str(if descending {
-			" AND key < ?"
-		} else {
-			" AND key > ?"
-		});
-	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
 		sql.push_str(&format!(" ORDER BY key DESC LIMIT {limit}"));
@@ -465,7 +433,6 @@ pub(super) fn build_range_current_sql_series(
 	table_name: &str,
 	lower: Bound<()>,
 	upper: Bound<()>,
-	has_last_key: bool,
 	descending: bool,
 	limit: i64,
 ) -> String {
@@ -480,13 +447,6 @@ pub(super) fn build_range_current_sql_series(
 		Bound::Excluded(()) => sql.push_str(" AND (variant_tag, key, sequence) < (?, ?, ?)"),
 		Bound::Unbounded => {}
 	}
-	if has_last_key {
-		sql.push_str(if descending {
-			" AND (variant_tag, key, sequence) < (?, ?, ?)"
-		} else {
-			" AND (variant_tag, key, sequence) > (?, ?, ?)"
-		});
-	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
 		sql.push_str(&format!(" ORDER BY variant_tag DESC, key DESC, sequence DESC LIMIT {limit}"));
@@ -500,7 +460,6 @@ pub(super) fn build_range_current_sql_partitioned_series(
 	table_name: &str,
 	lower: Bound<()>,
 	upper: Bound<()>,
-	has_last_key: bool,
 	descending: bool,
 	limit: i64,
 ) -> String {
@@ -525,13 +484,6 @@ pub(super) fn build_range_current_sql_partitioned_series(
 			sql.push_str(" AND (partition_hi, partition_lo, variant_tag, key, sequence) < (?, ?, ?, ?, ?)")
 		}
 		Bound::Unbounded => {}
-	}
-	if has_last_key {
-		sql.push_str(if descending {
-			" AND (partition_hi, partition_lo, variant_tag, key, sequence) < (?, ?, ?, ?, ?)"
-		} else {
-			" AND (partition_hi, partition_lo, variant_tag, key, sequence) > (?, ?, ?, ?, ?)"
-		});
 	}
 	sql.push_str(" AND value IS NOT NULL AND version <= ?");
 	if descending {
