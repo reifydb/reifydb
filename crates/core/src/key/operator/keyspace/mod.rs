@@ -499,7 +499,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 54, "the catalogue is forty nine keyspaces");
+		assert_eq!(seen.len(), 54, "a keyspace was added or removed without updating the catalogue size");
 	}
 
 	#[test]
@@ -519,7 +519,7 @@ mod tests {
 	}
 
 	#[test]
-	fn exactly_twenty_seven_of_the_forty_nine_keyspaces_are_group_scoped() {
+	fn the_group_scoped_keyspace_count_is_pinned() {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
