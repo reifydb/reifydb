@@ -142,6 +142,7 @@ help:
 	@echo "  ───────────────────────────────────────────────────────────────"
 	@printf "  %-25s %s\n" "check-code-quality" "Validate code quality standards"
 	@printf "  %-25s %s\n" "check-value-no-features" "Check reifydb-value tests compile with no features"
+	@printf "  %-25s %s\n" "check-flow-async-no-features" "Check reifydb-flow-async compiles with no features"
 	@printf "  %-25s %s\n" "check" "Cargo check all features, all targets, plus siblings"
 	@printf "  %-25s %s\n" "check-workspace" "Check for uncommitted changes"
 	@printf "  %-25s %s\n" "precheck" "Format, lint, and uncommitted checks (no build/test)"
@@ -203,6 +204,7 @@ check-code-quality:
 	@./scripts/check-section-comments.sh
 	@./scripts/check-em-dashes.sh
 	@$(MAKE) --no-print-directory check-value-no-features
+	@$(MAKE) --no-print-directory check-flow-async-no-features
 	cd $(TEST_SUITE_DIR) && $(MAKE) check-code-quality
 	cd $(TEST_CRATE_DIR) && $(MAKE) check-code-quality
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) check-code-quality
