@@ -12,6 +12,7 @@ TEST_CHAOS_DIR ?= ../testchaos
 TEST_CRATE_DIR ?= ../testcrate
 TEST_REGRESSION_DIR ?= ../testregression
 TEST_QUERY_DIR ?= ../testquery
+TEST_FUZZ_DIR ?= ../testfuzz
 EXTERNAL_DIR ?= ../external
 TEST_PKG_DIR := ./pkg
 
@@ -62,6 +63,7 @@ help:
 	@printf "  %-25s %s\n" "test-workspace" "Run only workspace tests (REPEAT=K to repeat K times)"
 	@printf "  %-25s %s\n" "test-dst" "Run deterministic simulation tests"
 	@printf "  %-25s %s\n" "test-chaos" "Run chaos mirror tests in ../testchaos (N= per workload, REPEAT=, SEED=, FILTER=, SUITE=)"
+	@printf "  %-25s %s\n" "test-fuzz" "Replay tracked fuzz crash files in ../testfuzz"
 	@printf "  %-25s %s\n" "test-workspace-chaos N=64" "Run workspace chaos tests (N= per workload, FILTER=, SEED=, PACKAGE=, PACKAGES=)"
 	@printf "  %-25s %s\n" "list-chaos" "List chaos tests (PACKAGE=, PACKAGES=, FILTER=)"
 	@echo ""
@@ -103,13 +105,6 @@ help:
 	@printf "  %-25s %s\n" "bench-queue" "Queue enqueue/claim/ack loop (mode x transport x workers x partitions)"
 	@printf "  %-25s %s\n" "bench-queue-help" "Document every bench-queue variable, with examples"
 	@printf "  %-25s %s\n" "bench-report" "List the most recent benchmark result files"
-	@echo ""
-	@echo "  🔬 Fuzz Testing"
-	@echo "  ───────────────────────────────────────────────────────────────"
-	@printf "  %-25s %s\n" "fuzz-list" "List all available fuzz targets"
-	@printf "  %-25s %s\n" "fuzz-run TARGET=<name>" "Run a fuzz target (DURATION=60)"
-	@printf "  %-25s %s\n" "fuzz-smoke" "Smoke-test all fuzz targets (10s each)"
-	@printf "  %-25s %s\n" "fuzz-regression" "Replay all checked-in fuzz artifacts"
 	@echo ""
 	@echo "  🏗️  Building"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -173,6 +168,7 @@ precheck-all:
 	cd $(TEST_CHAOS_DIR) && $(MAKE) precheck
 	cd $(TEST_QUERY_DIR) && $(MAKE) precheck
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) precheck
+	cd $(TEST_FUZZ_DIR) && $(MAKE) precheck
 
 .PHONY: test-chaos-ci
 test-chaos-ci:
@@ -180,11 +176,11 @@ test-chaos-ci:
 
 .PHONY: pull-siblings
 pull-siblings:
-	@./scripts/pull-siblings.sh $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_REGRESSION_DIR)
+	@./scripts/pull-siblings.sh $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_REGRESSION_DIR) $(TEST_FUZZ_DIR)
 
 .PHONY: rebase
 rebase:
-	@./scripts/pull-siblings.sh . $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_REGRESSION_DIR)
+	@./scripts/pull-siblings.sh . $(TEST_SUITE_DIR) $(TEST_CRATE_DIR) $(TEST_CHAOS_DIR) $(TEST_QUERY_DIR) $(TEST_REGRESSION_DIR) $(TEST_FUZZ_DIR)
 
 .PHONY: all-siblings
 all-siblings:
@@ -193,6 +189,7 @@ all-siblings:
 	cd $(TEST_CHAOS_DIR) && $(MAKE) all
 	cd $(TEST_QUERY_DIR) && $(MAKE) all
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) all
+	cd $(TEST_FUZZ_DIR) && $(MAKE) all
 
 .PHONY: check-code-quality
 check-code-quality:
@@ -210,6 +207,7 @@ check-code-quality:
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) check-code-quality
 	cd $(TEST_CHAOS_DIR) && $(MAKE) check-code-quality
 	cd $(TEST_QUERY_DIR) && $(MAKE) check-code-quality
+	cd $(TEST_FUZZ_DIR) && $(MAKE) check-code-quality
 #	@MAKEFLAGS= cargo clippy --release --workspace --all-targets -- -D warnings
 
 .PHONY: check-workspace
@@ -251,10 +249,10 @@ push: check-workspace
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-crate test-regression test-query test-chaos test-external test-pkg-typescript test-projects fuzz-regression
+test-full: test-workspace test-dst test-pkg-rust test-examples test-suite test-crate test-regression test-query test-chaos test-external test-pkg-typescript test-projects test-fuzz
 	@echo "✅ All tests completed successfully!"
 
-test-full-local: test-workspace test-dst test-pkg-rust test-examples test-external test-pkg-typescript test-projects fuzz-regression
+test-full-local: test-workspace test-dst test-pkg-rust test-examples test-external test-pkg-typescript test-projects test-fuzz
 
 test-dev: test-workspace test-dst test-pkg-rust test-examples test-suite-dev test-crate-dev test-regression test-query-dev
 	@echo "🚀 Development tests completed!"
@@ -287,4 +285,4 @@ include mk/build.mk
 include mk/format.mk
 include mk/container.mk
 include mk/release.mk
-include mk/fuzz.mk
+include mk/test-fuzz.mk

@@ -32,6 +32,7 @@ check:
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) check
 	cd $(TEST_CHAOS_DIR) && $(MAKE) check
 	cd $(TEST_QUERY_DIR) && $(MAKE) check
+	cd $(TEST_FUZZ_DIR) && $(MAKE) check
 
 check-value-no-features:
 	@echo "Checking reifydb-value tests compile without features..."

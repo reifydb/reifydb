@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-exclude = ["pkg/rust/tests/fuzz", "scripts/proto-gen", "patch/datafusion-common"]
+exclude = ["scripts/proto-gen", "patch/datafusion-common"]
 
 members = [
     # Core crates

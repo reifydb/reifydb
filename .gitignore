@@ -5,11 +5,6 @@
 /pkg/rust/*/target/
 /pkg/rust/tests/*/target/
 
-# Fuzz testing artifacts
-/pkg/rust/tests/fuzz/target/
-/pkg/rust/tests/fuzz/corpus/
-/pkg/rust/tests/fuzz/artifacts/**/target/
-
 Cargo.lock
 !/vendor/**/Cargo.lock
 

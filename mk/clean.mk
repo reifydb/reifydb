@@ -17,12 +17,12 @@ clean-siblings:
 	cd $(TEST_REGRESSION_DIR) && $(MAKE) clean
 	cd $(TEST_CHAOS_DIR) && $(MAKE) clean
 	cd $(TEST_QUERY_DIR) && $(MAKE) clean
+	cd $(TEST_FUZZ_DIR) && $(MAKE) clean
 
 # Clean the entire cargo target directory
 clean-cargo:
 	@echo "📦 Running cargo clean..."
 	@cargo clean
-	@rm -rf pkg/rust/tests/fuzz/target
 
 # Clean only reifydb workspace member crates (preserves vendored dependency builds)
 clean-workspace:
