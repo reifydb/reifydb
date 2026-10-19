@@ -68,6 +68,11 @@ pub struct GateVisibilityKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
+pub struct TakeRowKey {
+	pub row: Asc<RowNumber>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct GroupRowMappingKey {
 	pub group: Desc<GroupId>,
 }
@@ -207,6 +212,26 @@ impl Keyspace for GateVisibility {
 
 	type GroupedKey = GateVisibilityKey;
 	type Suffix = GateVisibilityKey;
+
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
+		(GroupId::ROOT, *key)
+	}
+
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		suffix
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TakeRow;
+
+impl Keyspace for TakeRow {
+	const ID: KeyspaceId = KeyspaceId::TAKE_ROW;
+	const NAME: &'static str = "TAKE_ROW";
+	const RANGE_CACHED: bool = true;
+
+	type GroupedKey = TakeRowKey;
+	type Suffix = TakeRowKey;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{BTreeMap, HashMap, HashSet},
+	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
 	sync::Arc,
 };
 
@@ -21,9 +21,10 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
+	internal_err,
 	key::{
 		operator::{
-			keyspace::root::{CustomUnmanaged, CustomUnmanagedSuffix},
+			keyspace::root::{CustomUnmanaged, CustomUnmanagedSuffix, TakeRow, TakeRowKey},
 			state::{GroupId, GroupStateKey},
 		},
 		typed::direction::Asc,
@@ -84,10 +85,29 @@ impl RowAge {
 #[derive(Debug, Clone, Default, HeapSize)]
 struct TakeState {
 	by_age: BTreeMap<RowAge, RowNumber>,
-	by_row: HashMap<RowNumber, (RowAge, usize)>,
+	by_row: HashMap<RowNumber, (RowAge, usize, bool)>,
 	candidates_by_age: BTreeMap<RowAge, RowNumber>,
-	candidates_by_row: HashMap<RowNumber, (RowAge, usize)>,
-	row_data: HashMap<RowNumber, EncodedBytes>,
+	candidates_by_row: HashMap<RowNumber, (RowAge, usize, bool)>,
+}
+
+impl TakeState {
+	fn holds(&self, row: &RowNumber) -> bool {
+		self.by_row.contains_key(row) || self.candidates_by_row.contains_key(row)
+	}
+}
+
+struct TakeRows {
+	stored: HashSet<RowNumber>,
+	fresh: HashMap<RowNumber, EncodedBytes>,
+}
+
+impl TakeRows {
+	fn of(state: &TakeState) -> Self {
+		Self {
+			stored: state.by_row.keys().chain(state.candidates_by_row.keys()).copied().collect(),
+			fresh: HashMap::new(),
+		}
+	}
 }
 
 pub struct TakePlan {
@@ -199,19 +219,21 @@ struct Group {
 	kind: Kind,
 	source: Source,
 	indices: Vec<usize>,
-	stored: Vec<(RowNumber, EncodedBytes)>,
+	stored: Vec<(RowNumber, Option<EncodedBytes>)>,
 }
 
-struct Output<'a> {
-	pre: &'a RecordBatch,
-	post: &'a RecordBatch,
+struct Output {
+	shape: RowShape,
+	pre: RecordBatch,
+	post: RecordBatch,
 	epochs: Vec<Vec<Group>>,
 	seen: HashSet<RowNumber>,
 }
 
-impl<'a> Output<'a> {
-	fn new(pre: &'a RecordBatch, post: &'a RecordBatch) -> Self {
+impl Output {
+	fn new(shape: RowShape, pre: RecordBatch, post: RecordBatch) -> Self {
 		Self {
+			shape,
 			pre,
 			post,
 			epochs: vec![Vec::new()],
@@ -219,16 +241,24 @@ impl<'a> Output<'a> {
 		}
 	}
 
+	fn unread(&self) -> impl Iterator<Item = RowNumber> + '_ {
+		self.epochs
+			.iter()
+			.flatten()
+			.flat_map(|group| group.stored.iter())
+			.filter(|(_, encoded)| encoded.is_none())
+			.map(|(row, _)| *row)
+	}
+
 	fn input(&mut self, kind: Kind, row_number: RowNumber, row_idx: usize) {
 		self.group(kind, Source::Input, row_number).indices.push(row_idx);
 	}
 
-	fn stored(&mut self, kind: Kind, row_number: RowNumber, encoded: &EncodedBytes) -> Result<()> {
+	fn stored(&mut self, kind: Kind, row_number: RowNumber, timed: bool, encoded: Option<EncodedBytes>) {
 		let source = Source::Stored {
-			timed: is_timed(encoded)?,
+			timed,
 		};
-		self.group(kind, source, row_number).stored.push((row_number, encoded.clone()));
-		Ok(())
+		self.group(kind, source, row_number).stored.push((row_number, encoded));
 	}
 
 	fn group(&mut self, kind: Kind, source: Source, row_number: RowNumber) -> &mut Group {
@@ -252,18 +282,18 @@ impl<'a> Output<'a> {
 		}
 	}
 
-	fn finish(self, shape: &RowShape, output_diffs: &mut Vec<Diff>) -> Result<()> {
+	fn finish(self, loaded: &HashMap<RowNumber, EncodedBytes>, output_diffs: &mut Vec<Diff>) -> Result<()> {
 		for group in self.epochs.into_iter().flatten() {
 			match (group.kind, group.source) {
 				(Kind::Insert, Source::Input) => {
-					output_diffs.push(Diff::insert(take_rows(self.post, &group.indices)?))
+					output_diffs.push(Diff::insert(take_rows(&self.post, &group.indices)?))
 				}
 				(Kind::Remove, Source::Input) => {
-					output_diffs.push(Diff::remove(take_rows(self.pre, &group.indices)?))
+					output_diffs.push(Diff::remove(take_rows(&self.pre, &group.indices)?))
 				}
 				(Kind::Update, _) => output_diffs.push(Diff::update(
-					take_rows(self.pre, &group.indices)?,
-					take_rows(self.post, &group.indices)?,
+					take_rows(&self.pre, &group.indices)?,
+					take_rows(&self.post, &group.indices)?,
 				)),
 				(
 					kind,
@@ -271,7 +301,22 @@ impl<'a> Output<'a> {
 						..
 					},
 				) => {
-					let cols = decode_take_rows(shape, &group.stored)?;
+					let mut stored = Vec::with_capacity(group.stored.len());
+					for (row, encoded) in group.stored {
+						let encoded = match encoded {
+							Some(encoded) => encoded,
+							None => match loaded.get(&row) {
+								Some(encoded) => encoded.clone(),
+								None => {
+									return internal_err!(
+										"a stored take row was emitted without its bytes"
+									);
+								}
+							},
+						};
+						stored.push((row, encoded));
+					}
+					let cols = decode_take_rows(&self.shape, &stored)?;
 					if user_columns(&cols).next().is_some() {
 						output_diffs.push(match kind {
 							Kind::Insert => Diff::insert(cols),
@@ -312,6 +357,55 @@ impl TakePlan {
 		)
 	}
 
+	fn row_key(row: RowNumber) -> GroupStateKey {
+		typed_key::<TakeRow>(
+			GroupId::ROOT,
+			&TakeRowKey {
+				row: Asc(row),
+			},
+		)
+	}
+
+	fn load_rows(
+		&self,
+		host: &mut dyn HostContext,
+		outputs: &[Output],
+	) -> Result<HashMap<RowNumber, EncodedBytes>> {
+		let wanted: BTreeSet<RowNumber> = outputs.iter().flat_map(Output::unread).collect();
+		if wanted.is_empty() {
+			return Ok(HashMap::new());
+		}
+		let keys: Vec<GroupStateKey> = wanted.iter().map(|row| Self::row_key(*row)).collect();
+		let found = host.state_get_many(&keys)?;
+		let mut loaded = HashMap::with_capacity(keys.len());
+		for ((row, key), found) in wanted.into_iter().zip(&keys).zip(found) {
+			let Some(found) = found else {
+				return internal_err!("a take row its index names has no stored bytes");
+			};
+			host.state_classify(key, Some(found.byte_size()));
+			loaded.insert(row, found.into_bytes());
+		}
+		Ok(loaded)
+	}
+
+	fn store_rows(&self, host: &mut dyn HostContext, state: &TakeState, rows: TakeRows) -> Result<()> {
+		let mut sets = Vec::new();
+		for (row, encoded) in rows.fresh {
+			if !state.holds(&row) {
+				continue;
+			}
+			let key = Self::row_key(row);
+			if !rows.stored.contains(&row) {
+				host.state_classify(&key, None);
+			}
+			sets.push((key, EncodedPodRow::from(encoded)));
+		}
+		let removes: Vec<GroupStateKey> =
+			rows.stored.iter().filter(|row| !state.holds(row)).map(|row| Self::row_key(*row)).collect();
+		host.state_set_many(sets)?;
+		host.state_remove_many(&removes)
+	}
+
 	fn load_take_state(&self, host: &mut dyn HostContext) -> Result<TakeState> {
 		let key = Self::state_key();
 		let Some(row) = store::state_get(host, &key)? else {
@@ -339,7 +433,7 @@ impl TakePlan {
 	}
 
 	#[inline]
-	fn prune_candidates(&self, state: &mut TakeState) {
+	fn prune_candidates(&self, state: &mut TakeState, rows: &mut TakeRows) {
 		let cap = self.limit.saturating_mul(4);
 		while state.candidates_by_age.len() > cap {
 			let Some((&oldest_age, &oldest_row)) = state.candidates_by_age.iter().next() else {
@@ -347,7 +441,7 @@ impl TakePlan {
 			};
 			state.candidates_by_age.remove(&oldest_age);
 			state.candidates_by_row.remove(&oldest_row);
-			state.row_data.remove(&oldest_row);
+			rows.fresh.remove(&oldest_row);
 		}
 	}
 
@@ -370,26 +464,25 @@ impl TakePlan {
 	}
 
 	#[inline]
-	fn promote_one_candidate(&self, state: &mut TakeState, output: &mut Output) -> Result<()> {
+	fn promote_one_candidate(&self, state: &mut TakeState, rows: &TakeRows, output: &mut Output) {
 		let Some((&age, &row_number)) = state.candidates_by_age.iter().next_back() else {
-			return Ok(());
+			return;
 		};
-		let count = state.candidates_by_row.get(&row_number).map(|(_, c)| *c).unwrap_or(1);
+		let (count, timed) =
+			state.candidates_by_row.get(&row_number).map(|(_, c, t)| (*c, *t)).unwrap_or((1, false));
 		state.candidates_by_age.remove(&age);
 		state.candidates_by_row.remove(&row_number);
 		state.by_age.insert(age, row_number);
-		state.by_row.insert(row_number, (age, count));
+		state.by_row.insert(row_number, (age, count, timed));
 
-		if let Some(encoded) = state.row_data.get(&row_number) {
-			output.stored(Kind::Insert, row_number, encoded)?;
-		}
-		Ok(())
+		output.stored(Kind::Insert, row_number, timed, rows.fresh.get(&row_number).cloned());
 	}
 
 	#[inline]
 	fn admit_new_row(
 		&self,
 		state: &mut TakeState,
+		rows: &mut TakeRows,
 		row_number: RowNumber,
 		created_at: Option<DateTime>,
 		(row_idx, encoded): (usize, EncodedBytes),
@@ -400,36 +493,41 @@ impl TakePlan {
 		}
 
 		let age = RowAge::of(created_at, row_number);
-		state.row_data.insert(row_number, encoded);
+		let timed = is_timed(&encoded)?;
+		rows.fresh.insert(row_number, encoded);
 
 		if state.by_age.len() >= self.limit
 			&& state.by_age.keys().next().is_some_and(|oldest_live| age <= *oldest_live)
 		{
 			state.candidates_by_age.insert(age, row_number);
-			state.candidates_by_row.insert(row_number, (age, 1));
-			self.prune_candidates(state);
+			state.candidates_by_row.insert(row_number, (age, 1, timed));
+			self.prune_candidates(state, rows);
 			return Ok(());
 		}
 
 		state.by_age.insert(age, row_number);
-		state.by_row.insert(row_number, (age, 1));
+		state.by_row.insert(row_number, (age, 1, timed));
 		output.input(Kind::Insert, row_number, row_idx);
 
 		if state.by_age.len() > self.limit {
 			let oldest = state.by_age.iter().next().map(|(a, r)| (*a, *r));
 			if let Some((oldest_age, oldest_row)) = oldest {
-				let count = state.by_row.get(&oldest_row).map(|(_, c)| *c).unwrap_or(1);
+				let (count, oldest_timed) =
+					state.by_row.get(&oldest_row).map(|(_, c, t)| (*c, *t)).unwrap_or((1, false));
 				state.by_age.remove(&oldest_age);
 				state.by_row.remove(&oldest_row);
 				state.candidates_by_age.insert(oldest_age, oldest_row);
-				state.candidates_by_row.insert(oldest_row, (oldest_age, count));
-				if let Some(encoded) = state.row_data.get(&oldest_row) {
-					output.stored(Kind::Remove, oldest_row, encoded)?;
-				}
+				state.candidates_by_row.insert(oldest_row, (oldest_age, count, oldest_timed));
+				output.stored(
+					Kind::Remove,
+					oldest_row,
+					oldest_timed,
+					rows.fresh.get(&oldest_row).cloned(),
+				);
 			}
 		}
 
-		self.prune_candidates(state);
+		self.prune_candidates(state, rows);
 		Ok(())
 	}
 
@@ -438,19 +536,19 @@ impl TakePlan {
 	fn apply_insert_diff(
 		&self,
 		state: &mut TakeState,
+		rows: &mut TakeRows,
 		post: RecordBatch,
 		shapes: &mut Option<(SchemaRef, RowShape)>,
-		output_diffs: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<Option<Output>> {
 		let row_count = post.num_rows();
 		if row_count == 0 {
-			return Ok(());
+			return Ok(None);
 		}
 		let schema = row_shape_for(shapes, &post)?;
 		let row_numbers = require_row_numbers(&post)?;
 		let created = created_at(&post)?;
 		let encoded = encode_take_rows(&schema, &post)?;
-		let mut output = Output::new(&post, &post);
+		let mut output = Output::new(schema, post.clone(), post.clone());
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
 				slot.1 += 1;
@@ -464,13 +562,14 @@ impl TakePlan {
 
 			self.admit_new_row(
 				state,
+				rows,
 				row_number,
 				created.get(row_idx).copied(),
 				(row_idx, encoded[row_idx].clone()),
 				&mut output,
 			)?;
 		}
-		output.finish(&schema, output_diffs)
+		Ok(Some(output))
 	}
 
 	#[inline]
@@ -478,36 +577,39 @@ impl TakePlan {
 	fn apply_update_diff(
 		&self,
 		state: &mut TakeState,
+		rows: &mut TakeRows,
 		pre: RecordBatch,
 		post: RecordBatch,
 		shapes: &mut Option<(SchemaRef, RowShape)>,
-		output_diffs: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<Option<Output>> {
 		let row_count = post.num_rows();
 		if row_count == 0 {
-			return Ok(());
+			return Ok(None);
 		}
 		let schema = row_shape_for(shapes, &post)?;
 		let row_numbers = require_row_numbers(&post)?;
 		let created = created_at(&post)?;
 		let encoded = encode_take_rows(&schema, &post)?;
-		let mut output = Output::new(&pre, &post);
+		let mut output = Output::new(schema, pre, post.clone());
 		let mut updated: Vec<(RowNumber, usize)> = Vec::new();
 
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
-			if state.by_row.contains_key(&row_number) {
+			if let Some(slot) = state.by_row.get_mut(&row_number) {
+				slot.2 = is_timed(&encoded[row_idx])?;
 				updated.push((row_number, row_idx));
-				state.row_data.insert(row_number, encoded[row_idx].clone());
+				rows.fresh.insert(row_number, encoded[row_idx].clone());
 				continue;
 			}
 
-			if state.candidates_by_row.contains_key(&row_number) {
-				state.row_data.insert(row_number, encoded[row_idx].clone());
+			if let Some(slot) = state.candidates_by_row.get_mut(&row_number) {
+				slot.2 = is_timed(&encoded[row_idx])?;
+				rows.fresh.insert(row_number, encoded[row_idx].clone());
 				continue;
 			}
 
 			self.admit_new_row(
 				state,
+				rows,
 				row_number,
 				created.get(row_idx).copied(),
 				(row_idx, encoded[row_idx].clone()),
@@ -518,7 +620,7 @@ impl TakePlan {
 		for (row_number, row_idx) in updated {
 			output.input(Kind::Update, row_number, row_idx);
 		}
-		output.finish(&schema, output_diffs)
+		Ok(Some(output))
 	}
 
 	#[inline]
@@ -526,17 +628,17 @@ impl TakePlan {
 	fn apply_remove_diff(
 		&self,
 		state: &mut TakeState,
+		rows: &mut TakeRows,
 		pre: RecordBatch,
 		shapes: &mut Option<(SchemaRef, RowShape)>,
-		output_diffs: &mut Vec<Diff>,
-	) -> Result<()> {
+	) -> Result<Option<Output>> {
 		let row_count = pre.num_rows();
 		if row_count == 0 {
-			return Ok(());
+			return Ok(None);
 		}
 		let schema = row_shape_for(shapes, &pre)?;
 		let row_numbers = require_row_numbers(&pre)?;
-		let mut output = Output::new(&pre, &pre);
+		let mut output = Output::new(schema, pre.clone(), pre.clone());
 		for (row_idx, &row_number) in row_numbers.iter().enumerate().take(row_count) {
 			if let Some(slot) = state.by_row.get_mut(&row_number) {
 				if slot.1 > 1 {
@@ -546,11 +648,11 @@ impl TakePlan {
 				let age = slot.0;
 				state.by_row.remove(&row_number);
 				state.by_age.remove(&age);
-				state.row_data.remove(&row_number);
+				rows.fresh.remove(&row_number);
 				output.input(Kind::Remove, row_number, row_idx);
 
 				if state.by_age.len() < self.limit && !state.candidates_by_age.is_empty() {
-					self.promote_one_candidate(state, &mut output)?;
+					self.promote_one_candidate(state, rows, &mut output);
 				}
 				continue;
 			}
@@ -562,11 +664,11 @@ impl TakePlan {
 					let age = slot.0;
 					state.candidates_by_row.remove(&row_number);
 					state.candidates_by_age.remove(&age);
-					state.row_data.remove(&row_number);
+					rows.fresh.remove(&row_number);
 				}
 			}
 		}
-		output.finish(&schema, output_diffs)
+		Ok(Some(output))
 	}
 }
 
@@ -582,41 +684,38 @@ impl HostOperator for TakeOperator {
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
 		let change = decode_change(host, change)?;
 		let mut state = self.plan.load_take_state(host)?;
+		let mut rows = TakeRows::of(&state);
 
-		let mut output_diffs = Vec::new();
+		let mut outputs = Vec::new();
 		let version = change.version;
 
 		for diff in change.diffs {
-			match diff {
+			let output = match diff {
 				Diff::Insert {
 					post,
 					..
-				} => self.plan.apply_insert_diff(
-					&mut state,
-					post,
-					&mut self.shape,
-					&mut output_diffs,
-				)?,
+				} => self.plan.apply_insert_diff(&mut state, &mut rows, post, &mut self.shape)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.plan.apply_update_diff(
-					&mut state,
-					pre,
-					post,
-					&mut self.shape,
-					&mut output_diffs,
-				)?,
+				} => self.plan.apply_update_diff(&mut state, &mut rows, pre, post, &mut self.shape)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.plan.apply_remove_diff(&mut state, pre, &mut self.shape, &mut output_diffs)?,
-			}
+				} => self.plan.apply_remove_diff(&mut state, &mut rows, pre, &mut self.shape)?,
+			};
+			outputs.extend(output);
 		}
 
 		self.plan.assert_candidates_stay_older_than_live(&state);
+		let loaded = self.plan.load_rows(host, &outputs)?;
+		let mut output_diffs = Vec::new();
+		for output in outputs {
+			output.finish(&loaded, &mut output_diffs)?;
+		}
 		self.plan.store_take_state(host, &state)?;
+		self.plan.store_rows(host, &state, rows)?;
 
 		Ok(Change::from_flow(self.plan.operator, version, output_diffs, change.changed_at))
 	}

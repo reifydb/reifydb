@@ -36,7 +36,7 @@ use crate::{
 				},
 				root::{
 					CustomManaged, CustomUnmanaged, GateVisibility, GroupRowMapping,
-					GuestRowMapping, NodeCounter, SealLedger, SourceWatermark,
+					GuestRowMapping, NodeCounter, SealLedger, SourceWatermark, TakeRow,
 				},
 				timer::{TimerIndex, TimerWheel},
 				window::{
@@ -213,6 +213,7 @@ catalogue!(
 	LookupRead,
 	LookupReadByVersion,
 	RollingPane,
+	TakeRow,
 );
 
 #[derive(Clone, Debug)]
@@ -262,6 +263,7 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::SEAL_LEDGER
 		| KeyspaceId::NODE_COUNTER
 		| KeyspaceId::GATE_VISIBILITY
+		| KeyspaceId::TAKE_ROW
 		| KeyspaceId::GROUP_ROW_MAPPING
 		| KeyspaceId::GUEST_ROW_MAPPING
 		| KeyspaceId::CUSTOM_UNMANAGED
@@ -497,7 +499,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 53, "the catalogue is forty nine keyspaces");
+		assert_eq!(seen.len(), 54, "the catalogue is forty nine keyspaces");
 	}
 
 	#[test]
@@ -521,7 +523,7 @@ mod tests {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			53,
+			54,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(
