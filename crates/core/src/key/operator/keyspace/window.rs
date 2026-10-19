@@ -29,6 +29,12 @@ pub struct BufferKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
+pub struct RollingPaneKey {
+	pub group: Desc<GroupId>,
+	pub pane: Asc<u64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct RunningKey {
 	pub group: Desc<GroupId>,
 }
@@ -152,6 +158,29 @@ impl Keyspace for Buffer {
 	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
 		BufferKey {
 			group: Desc(group),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RollingPane;
+
+impl Keyspace for RollingPane {
+	const ID: KeyspaceId = KeyspaceId::ROLLING_PANE;
+	const NAME: &'static str = "ROLLING_PANE";
+	const RANGE_CACHED: bool = true;
+
+	type GroupedKey = RollingPaneKey;
+	type Suffix = Asc<u64>;
+
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
+		(key.group.0, key.pane)
+	}
+
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		RollingPaneKey {
+			group: Desc(group),
+			pane: suffix,
 		}
 	}
 }
