@@ -22,7 +22,7 @@ use reifydb_core::{
 use reifydb_flow_async::operator::apply::ApplyOperator;
 use reifydb_flow_async::{
 	operator::{HostOperator, host::TxnHostContext, sink::DurableSink},
-	timer::{Timer, wheel::TimerWheel},
+	timer::{Timer, timer_runs, wheel::TimerWheel},
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
@@ -282,13 +282,23 @@ impl<O: HostOperator> Harness<O> {
 				"timer settling did not reach quiescence within {MAX_ROUNDS} rounds; the operator \
 				 keeps arming timers that are already due"
 			);
-			for timer in due {
-				txn.set_change_coordinate(ChangeCoordinate {
-					at: Some(timer.due),
-				});
-				let mut host = TxnHostContext::new(&mut txn, operator);
-				if let Some(change) = self.operator.on_timer(&mut host, timer)? {
-					emitted.push(change);
+			for run in timer_runs(due) {
+				if self.operator.batches_timers() && run[0].kind == TimerKind::Seal {
+					txn.set_change_coordinate(ChangeCoordinate {
+						at: run.iter().map(|timer| timer.due).max(),
+					});
+					let mut host = TxnHostContext::new(&mut txn, operator);
+					emitted.extend(self.operator.on_timers(&mut host, run)?.into_iter().flatten());
+					continue;
+				}
+				for timer in run {
+					txn.set_change_coordinate(ChangeCoordinate {
+						at: Some(timer.due),
+					});
+					let mut host = TxnHostContext::new(&mut txn, operator);
+					if let Some(change) = self.operator.on_timer(&mut host, timer)? {
+						emitted.push(change);
+					}
 				}
 			}
 			self.end(txn);

@@ -363,8 +363,16 @@ where
 	}
 
 	pub fn expire(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<Vec<ExpiredWindow<G, S>>> {
-		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> =
-			self.expiry.due(store, threshold, self.expire_batch)?;
+		self.expire_within(store, threshold, self.expire_batch)
+	}
+
+	pub fn expire_within(
+		&mut self,
+		store: &mut dyn StateStore,
+		threshold: u64,
+		budget: usize,
+	) -> Result<Vec<ExpiredWindow<G, S>>> {
+		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> = self.expiry.due(store, threshold, budget)?;
 
 		let mut out: Vec<ExpiredWindow<G, S>> = Vec::with_capacity(due.len());
 		let mut index_keys: Vec<GroupStateKey> = Vec::with_capacity(due.len());
