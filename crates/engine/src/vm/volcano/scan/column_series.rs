@@ -32,7 +32,7 @@ use crate::{
 		scan::{
 			column_block_sequence::BlockSequenceReader, column_decode::BlockDecoder,
 			column_predicate::series_scan_predicate, column_prune::prune_series_blocks, empty_scan,
-			scan_headers, source_system_columns,
+			scan_headers, series::empty_series_columns, source_system_columns,
 		},
 	},
 };
@@ -43,6 +43,7 @@ enum ScanState {
 		reader: Box<BlockSequenceReader>,
 		emitted: bool,
 	},
+	Empty,
 	Done,
 }
 
@@ -54,6 +55,7 @@ pub struct ColumnSeriesScanNode {
 	partition: Option<Partition>,
 	context: Arc<QueryContext>,
 	headers: ColumnHeaders,
+	system_columns: Vec<SystemColumn>,
 	state: ScanState,
 }
 
@@ -85,6 +87,7 @@ impl ColumnSeriesScanNode {
 			partition,
 			context,
 			headers,
+			system_columns,
 			state: ScanState::Unopened,
 		}
 	}
@@ -137,11 +140,11 @@ impl ColumnSeriesScanNode {
 		let mut pruned =
 			prune_series_blocks(blocks, self.key_range_start, self.key_range_end, predicate.as_ref());
 		if blocks_were_empty && self.series_reads_as_empty(rx, def)? {
-			return Ok(ScanState::Done);
+			return Ok(ScanState::Empty);
 		}
 
 		if pruned.is_empty() && !blocks_were_empty {
-			return Ok(ScanState::Done);
+			return Ok(ScanState::Empty);
 		}
 
 		if pruned.is_empty() {
@@ -206,6 +209,10 @@ impl QueryNode for ColumnSeriesScanNode {
 	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		if matches!(self.state, ScanState::Unopened) {
 			self.state = self.open(rx)?;
+		}
+		if matches!(self.state, ScanState::Empty) {
+			self.state = ScanState::Done;
+			return Ok(Some(empty_scan(empty_series_columns(self.series.def()), &self.system_columns)?));
 		}
 		let ScanState::Reading {
 			reader,

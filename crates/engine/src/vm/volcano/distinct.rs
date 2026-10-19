@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::resolved::ResolvedColumn,
 	internal_error,
 	value::{
-		batch::{concat, heap_size, take_rows},
+		batch::{concat, data_size, take_rows},
 		column::headers::ColumnHeaders,
 	},
 };
@@ -65,7 +65,7 @@ impl DistinctNode {
 		let mut total = 0usize;
 
 		while let Some(cols) = self.input.next(rx, ctx)? {
-			total += heap_size(&cols)?;
+			total += data_size(&cols)?;
 			charge_query_memory_bytes(&ctx.memory, &mut charged, total)?;
 			batches.push(cols);
 		}

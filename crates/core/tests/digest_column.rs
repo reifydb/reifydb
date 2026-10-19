@@ -5,7 +5,7 @@ use arrow_array::{ArrayRef, BooleanArray, RecordBatch};
 use arrow_schema::FieldRef;
 use arrow_select::filter::filter_record_batch;
 use reifydb_core::value::{
-	batch::{batch, group_by, heap_size, take_rows},
+	batch::{batch, data_size, group_by, take_rows},
 	column::{builder::ColumnBuilder, factory, view::group_by::GroupKeyDict},
 };
 use reifydb_value::value::{
@@ -166,7 +166,7 @@ fn from_many_repeats_one_digest_for_every_row() {
 }
 
 #[test]
-fn heap_size_grows_with_occupied_buckets_not_only_with_rows() {
+fn data_size_grows_with_occupied_buckets_not_only_with_rows() {
 	// Query memory limits count this, so a digest holding many buckets must cost more than one holding few.
 	let few =
 		batch(vec![column_of(digest_type(ValueType::Float8, ACCURACY), &[Some(float_digest([1.0]))])]).unwrap();
@@ -175,11 +175,11 @@ fn heap_size_grows_with_occupied_buckets_not_only_with_rows() {
 	let many =
 		batch(vec![column_of(digest_type(ValueType::Float8, ACCURACY), &[Some(many_digest.clone())])]).unwrap();
 
-	let few_size = heap_size(&few).unwrap();
-	let many_size = heap_size(&many).unwrap();
+	let few_size = data_size(&few).unwrap();
+	let many_size = data_size(&many).unwrap();
 	assert!(
 		many_size >= few_size + (many_digest.bucket_count() - 1) * 12,
-		"heap size {} of a {}-bucket digest is not above {} of a one-bucket digest by the bucket storage",
+		"data size {} of a {}-bucket digest is not above {} of a one-bucket digest by the bucket storage",
 		many_size,
 		many_digest.bucket_count(),
 		few_size

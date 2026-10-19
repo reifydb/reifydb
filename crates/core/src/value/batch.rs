@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, result::Result as StdResult, sync::Arc};
+use std::{collections::HashMap, mem, result::Result as StdResult, sync::Arc};
 
-use arrow_array::{Array, ArrayRef, RecordBatch, RecordBatchOptions, UInt64Array, new_null_array};
+use arrow_array::{
+	Array, ArrayRef, ArrowPrimitiveType, GenericByteArray, PrimitiveArray, RecordBatch, RecordBatchOptions,
+	UInt64Array, new_null_array, types::ByteArrayType,
+};
 use arrow_buffer::BooleanBuffer;
 use arrow_schema::{ArrowError, FieldRef, Schema, SchemaRef};
 use arrow_select::{
@@ -23,14 +26,16 @@ use reifydb_value::{
 		column_view::{ColumnView, ViewData},
 		constraint::Constraint,
 		container::{
+			decimal_array::DecimalView,
 			dictionary_array,
-			digest_array::push_digest,
+			digest_array::{self, push_digest},
 			temporal_array::{
 				date_to_native, datetime_array, datetime_to_native, duration_to_native, time_to_native,
 			},
 		},
 		date::Date,
 		datetime::DateTime,
+		digest::Digest,
 		duration::Duration,
 		identity::IdentityId,
 		ordered_f32::OrderedF32,
@@ -484,10 +489,76 @@ pub fn reattach_dictionary_ids(batch: RecordBatch, from: &RecordBatch) -> Result
 	assemble(columns, schema.metadata().clone(), batch.num_rows())
 }
 
-pub fn heap_size(batch: &RecordBatch) -> Result<usize> {
-	let data: usize = views(batch)?.iter().map(|view| view.heap_size()).sum();
-	let names: usize = batch.schema_ref().fields().iter().map(|field| field.name().len()).sum();
-	Ok(data + names)
+pub fn data_size(batch: &RecordBatch) -> Result<usize> {
+	Ok(views(batch)?.iter().map(view_data_size).sum())
+}
+
+fn view_data_size(view: &ColumnView<'_>) -> usize {
+	let nulls = view.logical_nulls().map_or(0, |nulls| nulls.len());
+	nulls + match &view.data {
+		ViewData::Digest {
+			container,
+			..
+		} => {
+			varlen_size(*container)
+				+ digest_array::iter(container)
+					.flatten()
+					.map(|digest| mem::size_of::<Digest>() + digest.heap_size())
+					.sum::<usize>()
+		}
+		ViewData::Bool(a) => a.len(),
+		ViewData::Decimal(DecimalView::Decimal128(d)) => primitive_size(*d),
+		ViewData::Decimal(DecimalView::Decimal256(d)) => primitive_size(*d),
+		ViewData::None {
+			..
+		} => 0,
+		ViewData::Float4(a) => primitive_size(*a),
+		ViewData::Float8(a) => primitive_size(*a),
+		ViewData::Int1(a) => primitive_size(*a),
+		ViewData::Int2(a) => primitive_size(*a),
+		ViewData::Int4(a) => primitive_size(*a),
+		ViewData::Int8(a) => primitive_size(*a),
+		ViewData::Uint1(a) => primitive_size(*a),
+		ViewData::Uint2(a) => primitive_size(*a),
+		ViewData::Uint4(a) => primitive_size(*a),
+		ViewData::Uint8(a) => primitive_size(*a),
+		ViewData::Date(t) => primitive_size(*t),
+		ViewData::DateTime(t) => primitive_size(*t),
+		ViewData::Time(t) => primitive_size(*t),
+		ViewData::Duration(t) => primitive_size(*t),
+		ViewData::IdentityId(u)
+		| ViewData::Uuid4(u)
+		| ViewData::Uuid7(u)
+		| ViewData::Int16(u)
+		| ViewData::Uint16(u)
+		| ViewData::DictionaryId {
+			container: u,
+			..
+		} => u.len() * u.value_length() as usize,
+		ViewData::Utf8 {
+			container: v,
+			..
+		} => varlen_size(*v),
+		ViewData::Blob {
+			container: v,
+			..
+		}
+		| ViewData::Any {
+			container: v,
+			..
+		} => varlen_size(*v),
+	}
+}
+
+fn primitive_size<A: ArrowPrimitiveType>(array: &PrimitiveArray<A>) -> usize {
+	array.len() * mem::size_of::<A::Native>()
+}
+
+fn varlen_size<T: ByteArrayType<Offset = i64>>(array: &GenericByteArray<T>) -> usize {
+	let offsets = array.value_offsets();
+	let payload = offsets[offsets.len() - 1] - offsets[0];
+	usize::try_from(payload).unwrap_or_else(|_| panic!("negative payload length {payload} in a byte array"))
+		+ array.len() * mem::size_of::<i64>()
 }
 
 pub fn views(batch: &RecordBatch) -> Result<Vec<ColumnView<'_>>> {
@@ -854,7 +925,7 @@ pub mod tests {
 	};
 	use uuid::{Timestamp, Uuid};
 
-	use super::{append, batch, gather, heap_size, single_row, take_rows};
+	use super::{append, batch, data_size, gather, single_row, take_rows};
 	use crate::value::column::{builder::ColumnBuilder, factory};
 
 	fn one_row_append_chain(sources: &[&RecordBatch], picks: &[(usize, usize)]) -> RecordBatch {
@@ -1195,19 +1266,19 @@ pub mod tests {
 	}
 
 	#[test]
-	fn heap_size_grows_with_row_count() {
-		let small = heap_size(&batch(vec![factory::int4("c", [1i32, 2, 3, 4])]).unwrap()).unwrap();
-		let large = heap_size(&batch(vec![factory::int4("c", 0..4000i32)]).unwrap()).unwrap();
+	fn data_size_grows_with_row_count() {
+		let small = data_size(&batch(vec![factory::int4("c", [1i32, 2, 3, 4])]).unwrap()).unwrap();
+		let large = data_size(&batch(vec![factory::int4("c", 0..4000i32)]).unwrap()).unwrap();
 		assert!(
 			large > small + 4000,
-			"heap_size must scale with the number of buffered rows (small={}, large={})",
+			"data_size must scale with the number of buffered rows (small={}, large={})",
 			small,
 			large
 		);
 	}
 
 	#[test]
-	fn heap_size_counts_utf8_payload_not_just_row_count() {
+	fn data_size_counts_utf8_payload_not_just_row_count() {
 		// Same row count with bigger strings must report more, otherwise wide strings blow past the cap.
 		let short = batch(vec![factory::utf8("c", ["a", "b", "c"])]).unwrap();
 		let long_value = "x".repeat(4096);
@@ -1215,10 +1286,10 @@ pub mod tests {
 			batch(vec![factory::utf8("c", [long_value.clone(), long_value.clone(), long_value.clone()])])
 				.unwrap();
 		assert_eq!(short.num_rows(), long.num_rows(), "same row count is the point of the test");
-		let (short, long) = (heap_size(&short).unwrap(), heap_size(&long).unwrap());
+		let (short, long) = (data_size(&short).unwrap(), data_size(&long).unwrap());
 		assert!(
 			long >= short + 3 * 4096,
-			"heap_size must account for utf8 payload bytes (short={}, long={})",
+			"data_size must account for utf8 payload bytes (short={}, long={})",
 			short,
 			long
 		);

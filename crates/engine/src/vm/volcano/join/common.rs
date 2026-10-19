@@ -8,7 +8,7 @@ use arrow_schema::FieldRef;
 use reifydb_core::{
 	error::diagnostic::operation,
 	value::{
-		batch::{batch, concat, heap_size, take_rows, take_rows_or_none},
+		batch::{batch, concat, data_size, take_rows, take_rows_or_none},
 		column::{
 			factory::{datetime, from_one, rename, typed_none},
 			view::group_by::common_key_type,
@@ -46,7 +46,7 @@ pub(crate) fn load_and_merge_all<'a>(
 	let mut total = 0usize;
 
 	while let Some(columns) = node.next(rx, ctx)? {
-		total += heap_size(&columns)?;
+		total += data_size(&columns)?;
 		charge_query_memory_bytes(&ctx.memory, &mut charged, total)?;
 		batches.push(columns);
 	}

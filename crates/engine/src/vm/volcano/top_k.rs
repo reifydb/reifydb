@@ -6,7 +6,7 @@ use reifydb_core::{
 	error::diagnostic::query,
 	sort::{SortDirection, SortKey},
 	value::{
-		batch::{concat, head, heap_size, take_rows},
+		batch::{concat, data_size, head, take_rows},
 		column::headers::ColumnHeaders,
 	},
 };
@@ -116,7 +116,7 @@ impl TopKNode {
 		let mut total = 0usize;
 
 		while let Some(batch) = self.input.next(rx, ctx)? {
-			total += heap_size(&batch)?;
+			total += data_size(&batch)?;
 			charge_query_memory_bytes(&ctx.memory, &mut charged, total)?;
 			batches.push(batch);
 		}

@@ -7,7 +7,7 @@ use arrow_array::RecordBatch;
 use reifydb_core::{
 	interface::catalog::config::{ConfigKey, GetConfig},
 	value::{
-		batch::{batch, concat, heap_size},
+		batch::{batch, concat, data_size},
 		column::{builder::ColumnBuilder, factory, headers::ColumnHeaders},
 	},
 };
@@ -76,7 +76,7 @@ pub(crate) fn run_query_plan(
 	let mut mutable_context = (*context).clone();
 
 	while let Some(next) = query_node.next(txn, &mut mutable_context)? {
-		total += heap_size(&next)?;
+		total += data_size(&next)?;
 		batches.push(next);
 		charge_query_memory_bytes(&context.memory, &mut charged, total)?;
 	}

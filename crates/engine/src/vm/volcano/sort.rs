@@ -6,7 +6,7 @@ use reifydb_core::{
 	error::diagnostic::query,
 	sort::SortKey,
 	value::{
-		batch::{concat, heap_size, take_rows},
+		batch::{concat, data_size, take_rows},
 		column::headers::ColumnHeaders,
 	},
 };
@@ -57,7 +57,7 @@ impl SortNode {
 		let mut total = 0usize;
 
 		while let Some(batch) = self.input.next(rx, ctx)? {
-			total += heap_size(&batch)?;
+			total += data_size(&batch)?;
 			charge_query_memory_bytes(&ctx.memory, &mut charged, total)?;
 			batches.push(batch);
 		}

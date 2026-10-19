@@ -132,7 +132,7 @@ mod tests {
 	use reifydb_core::{
 		util::budget::MemoryBudget,
 		value::{
-			batch::{batch, heap_size},
+			batch::{batch, data_size},
 			column::factory::int4,
 		},
 	};
@@ -158,7 +158,7 @@ mod tests {
 		let mut charged = 0usize;
 
 		let small = batch(vec![int4("c", [1i32, 2, 3, 4])]).expect("one int4 column");
-		let small_size = heap_size(&small).expect("an int4 batch has a heap size");
+		let small_size = data_size(&small).expect("an int4 batch has a data size");
 		charge_query_memory_bytes(&budget, &mut charged, small_size).expect("small buffer fits under 1 KiB");
 		let after_first = budget.used().as_bytes();
 		assert!(after_first > 0, "charging a non-empty buffer must consume budget");
@@ -174,7 +174,7 @@ mod tests {
 
 		let big = batch(vec![int4("c", 0..4000i32)]).expect("one int4 column");
 		let mut big_charged = 0usize;
-		let big_size = heap_size(&big).expect("an int4 batch has a heap size");
+		let big_size = data_size(&big).expect("an int4 batch has a data size");
 		let err = charge_query_memory_bytes(&budget, &mut big_charged, big_size).unwrap_err();
 		assert_eq!(err.0.code, "QUERY_006", "an over-budget charge must raise the memory-limit diagnostic");
 	}

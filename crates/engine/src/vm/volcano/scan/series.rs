@@ -8,7 +8,11 @@ use arrow_schema::{FieldRef, SchemaRef};
 use reifydb_codec::row::{bytes::EncodedBytes, series::EncodedSeriesRow, shape::RowShape};
 use reifydb_core::{
 	common::TimeSource,
-	interface::{catalog::storage::StorageId, resolved::ResolvedSeries, store::MultiVersionRow},
+	interface::{
+		catalog::{series::Series, storage::StorageId},
+		resolved::ResolvedSeries,
+		store::MultiVersionRow,
+	},
 	key::{
 		any::TaggedKey,
 		bound::TaggedKeyBoundRange,
@@ -189,27 +193,6 @@ impl SeriesScanNode {
 		Ok(batch)
 	}
 
-	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::empty_columns")]
-	fn empty_columns(&self, has_tag: bool) -> Vec<(FieldRef, ArrayRef)> {
-		let series = self.series.def();
-		let key_type = series
-			.columns
-			.iter()
-			.find(|c| c.name == series.key.column())
-			.map(|c| c.constraint.get_type())
-			.unwrap_or(ValueType::Int8);
-
-		let mut result_columns = Vec::new();
-		result_columns.push(none_typed(series.key.column(), key_type, 0));
-		if has_tag {
-			result_columns.push(none_typed("tag", ValueType::Uint1, 0));
-		}
-		for col_def in series.data_columns() {
-			result_columns.push(none_typed(&col_def.name, col_def.constraint.get_type(), 0));
-		}
-		result_columns
-	}
-
 	#[instrument(level = "trace", skip_all, name = "volcano::scan::series::assemble")]
 	fn assemble<'a>(
 		&mut self,
@@ -306,6 +289,25 @@ struct SeriesBatch {
 	last_key: Option<TaggedKey>,
 }
 
+pub(crate) fn empty_series_columns(series: &Series) -> Vec<(FieldRef, ArrayRef)> {
+	let key_type = series
+		.columns
+		.iter()
+		.find(|c| c.name == series.key.column())
+		.map(|c| c.constraint.get_type())
+		.unwrap_or(ValueType::Int8);
+
+	let mut result_columns = Vec::new();
+	result_columns.push(none_typed(series.key.column(), key_type, 0));
+	if series.tag.is_some() {
+		result_columns.push(none_typed("tag", ValueType::Uint1, 0));
+	}
+	for col_def in series.data_columns() {
+		result_columns.push(none_typed(&col_def.name, col_def.constraint.get_type(), 0));
+	}
+	result_columns
+}
+
 impl QueryNode for SeriesScanNode {
 	#[instrument(name = "volcano::scan::series::initialize", level = "trace", skip_all)]
 	fn initialize<'a>(&mut self, _rx: &mut Transaction<'a>, _ctx: &QueryContext) -> Result<()> {
@@ -390,7 +392,10 @@ impl QueryNode for SeriesScanNode {
 		if batch.key_values.is_empty() {
 			self.exhausted = true;
 			if self.last_key.is_none() {
-				return Ok(Some(empty_scan(self.empty_columns(has_tag), &self.system_columns)?));
+				return Ok(Some(empty_scan(
+					empty_series_columns(self.series.def()),
+					&self.system_columns,
+				)?));
 			}
 			return Ok(None);
 		}
