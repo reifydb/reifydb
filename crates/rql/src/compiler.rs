@@ -414,6 +414,13 @@ fn materialize_query_plan_with(
 		PhysicalPlan::RowPointLookup(node) => QueryPlan::RowPointLookup(node),
 		PhysicalPlan::RowListLookup(node) => QueryPlan::RowListLookup(node),
 		PhysicalPlan::RowRangeScan(node) => QueryPlan::RowRangeScan(node),
+		PhysicalPlan::RowParameterLookup(node) => {
+			QueryPlan::RowParameterLookup(nodes::RowParameterLookupNode {
+				source: node.source,
+				predicate: node.predicate,
+				fallback: Box::new(materialize_query_plan(BumpBox::into_inner(node.fallback))?),
+			})
+		}
 		PhysicalPlan::InlineData(node) => QueryPlan::InlineData(node),
 		PhysicalPlan::RemoteScan(node) => QueryPlan::RemoteScan(node),
 		PhysicalPlan::Generator(node) => QueryPlan::Generator(node),
@@ -1602,6 +1609,12 @@ impl InstructionCompiler {
 				self.emit(Instruction::Query(QueryPlan::RowRangeScan(node)));
 				self.emit(Instruction::Emit);
 			}
+			PhysicalPlan::RowParameterLookup(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(
+					PhysicalPlan::RowParameterLookup(node),
+				)?));
+				self.emit(Instruction::Emit);
+			}
 			PhysicalPlan::Aggregate(node) => {
 				self.emit(Instruction::Query(materialize_query_plan(PhysicalPlan::Aggregate(node))?));
 				self.emit(Instruction::Emit);
@@ -1943,6 +1956,11 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::RowRangeScan(node) => {
 				self.emit(Instruction::Query(QueryPlan::RowRangeScan(node)));
+			}
+			PhysicalPlan::RowParameterLookup(node) => {
+				self.emit(Instruction::Query(materialize_query_plan(
+					PhysicalPlan::RowParameterLookup(node),
+				)?));
 			}
 			PhysicalPlan::InlineData(node) => {
 				self.emit(Instruction::Query(QueryPlan::InlineData(node)));

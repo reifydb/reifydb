@@ -194,6 +194,8 @@ mod read_only;
 mod returning;
 #[path = "ringbuffer.rs"]
 mod ringbuffer;
+#[path = "row_parameter_lookup.rs"]
+mod row_parameter_lookup;
 #[path = "run_tests_error_quotes_body.rs"]
 mod run_tests_error_quotes_body;
 #[path = "series_delete_metadata.rs"]

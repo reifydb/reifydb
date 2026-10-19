@@ -163,6 +163,7 @@ fn visit(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Found> {
 		PhysicalPlan::RowPointLookup(node) => Ok(lookup(&node.source, &scope)),
 		PhysicalPlan::RowListLookup(node) => Ok(lookup(&node.source, &scope)),
 		PhysicalPlan::RowRangeScan(node) => Ok(lookup(&node.source, &scope)),
+		PhysicalPlan::RowParameterLookup(node) => Ok(lookup(&node.source, &scope)),
 		PhysicalPlan::CallFunction(_)
 		| PhysicalPlan::Variable(_)
 		| PhysicalPlan::RemoteScan(_)

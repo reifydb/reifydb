@@ -13,9 +13,10 @@ use reifydb_rql::{
 	nodes::{
 		AggregateNode as RqlAggregateNode, AssertNode as RqlAssertNode, GeneratorNode as RqlGeneratorNode,
 		InlineDataNode as RqlInlineDataNode, RowListLookupNode as RqlRowListLookupNode,
-		RowPointLookupNode as RqlRowPointLookupNode, RowRangeScanNode as RqlRowRangeScanNode,
-		SortNode as RqlSortNode, TakeLimit, TakeNode as RqlTakeNode,
+		RowParameterLookupNode as RqlRowParameterLookupNode, RowPointLookupNode as RqlRowPointLookupNode,
+		RowRangeScanNode as RqlRowRangeScanNode, SortNode as RqlSortNode, TakeLimit, TakeNode as RqlTakeNode,
 	},
+	plan::logical::row_predicate::RowPredicate,
 	query::QueryPlan as RqlQueryPlan,
 };
 use reifydb_transaction::transaction::{ScanLayout, Transaction};
@@ -45,7 +46,7 @@ use crate::vm::volcano::{
 	inline::InlineDataNode,
 	lookup::UnsupportedLookupNode,
 	query::{QueryContext, QueryNode},
-	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
+	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode, choose_row_lookup},
 	scan::{
 		dictionary::DictionaryScanNode, index::IndexScanNode, queue::QueueScan, remote::RemoteFetchNode,
 		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
@@ -280,6 +281,29 @@ pub(crate) fn compile<'a>(
 					.expect("Failed to create RowRangeScanNode"),
 			)
 		}
+
+		RqlQueryPlan::RowParameterLookup(RqlRowParameterLookupNode {
+			source,
+			predicate,
+			fallback,
+		}) => match choose_row_lookup(&predicate, rx.layout(), &context.symbols) {
+			Some(RowPredicate::Point(row_number)) => Box::new(
+				RowPointLookupNode::new(source, row_number, context)
+					.expect("Failed to create RowPointLookupNode"),
+			),
+			Some(RowPredicate::List(row_numbers)) => Box::new(
+				RowListLookupNode::new(source, row_numbers, context)
+					.expect("Failed to create RowListLookupNode"),
+			),
+			Some(RowPredicate::Range {
+				start,
+				end,
+			}) => Box::new(
+				RowRangeScanNode::new(source, start, end, context)
+					.expect("Failed to create RowRangeScanNode"),
+			),
+			None => compile(*fallback, rx, context),
+		},
 
 		RqlQueryPlan::InlineData(RqlInlineDataNode {
 			rows,

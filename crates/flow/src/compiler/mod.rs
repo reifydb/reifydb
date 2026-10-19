@@ -287,6 +287,9 @@ impl FlowCompiler {
 			QueryPlan::Environment(_) => {
 				panic!("Environment operations are not supported in flow graphs");
 			}
+			QueryPlan::RowParameterLookup(_) => {
+				unimplemented!("RowParameterLookup compilation not yet implemented for flow")
+			}
 			QueryPlan::RowPointLookup(_) => {
 				// TODO: Implement optimized row point lookup for flow graphs
 				unimplemented!("RowPointLookup compilation not yet implemented for flow")
@@ -388,6 +391,7 @@ fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
 		| QueryPlan::RowPointLookup(_)
 		| QueryPlan::RowListLookup(_)
 		| QueryPlan::RowRangeScan(_)
+		| QueryPlan::RowParameterLookup(_)
 		| QueryPlan::InlineData(_)
 		| QueryPlan::Generator(_)
 		| QueryPlan::Variable(_)

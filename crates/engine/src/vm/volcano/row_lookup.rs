@@ -15,16 +15,28 @@ use reifydb_core::{
 		resolved::ResolvedObject,
 	},
 	internal_err, internal_error,
-	key::row::RowKey,
+	key::{
+		any::TaggedKey,
+		row::{RowKey, RowKeyRange},
+	},
 	value::{
-		batch::{append_rows, batch, empty_batch, empty_for},
+		batch::{append_rows, batch, empty_batch, empty_for, is_scalar, scalar_value},
 		column::{builder::ColumnBuilder, headers::ColumnHeaders},
 	},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_evaluate::stack::{SymbolTable, Variable};
+use reifydb_rql::{
+	nodes::{RowKey as RqlRowKey, RowKeyPredicate},
+	plan::logical::row_predicate::RowPredicate,
+};
+use reifydb_transaction::{
+	multi::RangeScope,
+	transaction::{ScanLayout, Transaction},
+};
 use reifydb_value::{
 	reifydb_assertions,
 	value::{
+		Value,
 		row_number::RowNumber,
 		system_columns::{SystemColumn, with_system_column},
 		value_type::ValueType,
@@ -388,36 +400,37 @@ impl QueryNode for RowRangeScanNode {
 	fn initialize<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &QueryContext) -> Result<()> {
 		guard_source_read(&self.source, rx, ctx)?;
 		self.dictionaries = lookup_dictionaries(&self.source, rx, ctx)?;
+		match last_row_number(rx, get_object_id(&self.source)?)? {
+			Some(last) => self.end = self.end.min(last),
+			None => self.exhausted = true,
+		}
 		Ok(())
 	}
 
 	#[instrument(name = "volcano::scan::range::next", level = "trace", skip_all)]
-	#[allow(clippy::only_used_in_recursion)]
-	fn next<'a>(&mut self, rx: &mut Transaction<'a>, ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
+	fn next<'a>(&mut self, rx: &mut Transaction<'a>, _ctx: &mut QueryContext) -> Result<Option<RecordBatch>> {
 		let stored_ctx = self.context.as_ref().unwrap();
 		let batch_size = stored_ctx.batch_size as usize;
 
-		if self.exhausted || self.current_row > self.end {
-			return self.finish();
-		}
-
-		let object_id = get_object_id(&self.source)?;
-		let batch_end = (self.current_row + batch_size as u64 - 1).min(self.end);
-
-		let (batch, found_row_numbers, commit_versions) =
-			self.fetch_batch(rx, object_id, self.current_row, batch_end)?;
-
-		self.current_row = batch_end + 1;
-		if self.current_row > self.end {
-			self.exhausted = true;
-		}
-
-		if batch.is_empty() {
-			if !self.exhausted {
-				return self.next(rx, ctx);
+		let (batch, found_row_numbers, commit_versions) = loop {
+			if self.exhausted || self.current_row > self.end {
+				return self.finish();
 			}
-			return self.finish();
-		}
+
+			let object_id = get_object_id(&self.source)?;
+
+			let batch_end = self.current_row.saturating_add(batch_size as u64 - 1).min(self.end);
+			let fetched = self.fetch_batch(rx, object_id, self.current_row, batch_end)?;
+
+			match batch_end.checked_add(1) {
+				Some(next_row) if next_row <= self.end => self.current_row = next_row,
+				_ => self.exhausted = true,
+			}
+
+			if !fetched.0.is_empty() {
+				break fetched;
+			}
+		};
 
 		let columns = storage_columns(&self.source, &self.dictionaries)?;
 		let columns = self.append_batch(rx, columns, batch, found_row_numbers)?;
@@ -450,6 +463,17 @@ fn build_headers_and_storage_types(
 	let headers = scan_headers(columns.iter().map(|col| col.name.as_str()), system_columns);
 
 	Ok((headers, storage_types))
+}
+
+fn last_row_number(rx: &mut Transaction<'_>, storage: StorageId) -> Result<Option<u64>> {
+	let mut rows = rx.range(RowKeyRange::storage_scan(storage), RangeScope::All, 1)?;
+	match rows.next().transpose()? {
+		None => Ok(None),
+		Some(row) => match row.key {
+			TaggedKey::Row(key) => Ok(Some(key.row.0)),
+			other => internal_err!("row range scan met a non row key {:?}", other),
+		},
+	}
 }
 
 fn get_object_id(source: &ResolvedObject) -> Result<StorageId> {
@@ -532,4 +556,154 @@ fn with_commit_versions(
 		return Ok(columns);
 	}
 	with_system_column(columns, SystemColumn::CommitVersion, Arc::new(UInt64Array::from(commit_versions)))
+}
+
+pub(crate) fn choose_row_lookup(
+	predicate: &RowKeyPredicate,
+	layout: ScanLayout,
+	symbols: &SymbolTable,
+) -> Option<RowPredicate> {
+	match layout {
+		ScanLayout::Row => resolve_row_keys(predicate, symbols),
+		ScanLayout::Column => None,
+	}
+}
+
+fn resolve_row_keys(predicate: &RowKeyPredicate, symbols: &SymbolTable) -> Option<RowPredicate> {
+	match predicate {
+		RowKeyPredicate::Point(key) => resolve_row_key(key, symbols).map(RowPredicate::Point),
+		RowKeyPredicate::List(keys) => keys
+			.iter()
+			.map(|key| resolve_row_key(key, symbols))
+			.collect::<Option<Vec<_>>>()
+			.map(RowPredicate::List),
+		RowKeyPredicate::Range {
+			start,
+			end,
+		} => {
+			let start = resolve_row_key(start, symbols)?;
+			let end = resolve_row_key(end, symbols)?;
+			(start <= end).then_some(RowPredicate::Range {
+				start,
+				end,
+			})
+		}
+	}
+}
+
+fn resolve_row_key(key: &RqlRowKey, symbols: &SymbolTable) -> Option<u64> {
+	let variable = match key {
+		RqlRowKey::Constant(row_number) => return Some(*row_number),
+		RqlRowKey::Variable(variable) => variable,
+	};
+	let Some(Variable::Columns {
+		batch,
+	}) = symbols.get(variable.name())
+	else {
+		return None;
+	};
+	if !is_scalar(batch) {
+		return None;
+	}
+	match scalar_value(batch).ok()? {
+		Value::Uint1(v) => Some(u64::from(v)),
+		Value::Uint2(v) => Some(u64::from(v)),
+		Value::Uint4(v) => Some(u64::from(v)),
+		Value::Uint8(v) => Some(v),
+		Value::Uint16(v) => u64::try_from(v).ok(),
+		Value::Int1(v) => u64::try_from(v).ok(),
+		Value::Int2(v) => u64::try_from(v).ok(),
+		Value::Int4(v) => u64::try_from(v).ok(),
+		Value::Int8(v) => u64::try_from(v).ok(),
+		Value::Int16(v) => u64::try_from(v).ok(),
+		_ => None,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::expression::VariableExpression;
+	use reifydb_value::fragment::Fragment;
+
+	use super::*;
+
+	fn key(text: &str) -> RqlRowKey {
+		RqlRowKey::Variable(VariableExpression {
+			fragment: Fragment::internal(text),
+		})
+	}
+
+	fn symbols(values: Vec<(&str, Value)>) -> SymbolTable {
+		let mut symbols = SymbolTable::new();
+		for (name, value) in values {
+			symbols.set(name.to_string(), Variable::scalar(value), false).expect("a fresh name");
+		}
+		symbols
+	}
+
+	#[test]
+	fn an_integer_variable_resolves_to_a_row_lookup() {
+		// Without this the parameter node always falls back to a full scan.
+		let point = RowKeyPredicate::Point(key("$1"));
+		let list = RowKeyPredicate::List(vec![key("$1"), RqlRowKey::Constant(7)]);
+		let range = RowKeyPredicate::Range {
+			start: key("$1"),
+			end: key("$2"),
+		};
+
+		assert_eq!(
+			resolve_row_keys(&point, &symbols(vec![("1", Value::Int4(2))])),
+			Some(RowPredicate::Point(2))
+		);
+		assert_eq!(
+			resolve_row_keys(&list, &symbols(vec![("1", Value::Uint8(3))])),
+			Some(RowPredicate::List(vec![3, 7]))
+		);
+		assert_eq!(
+			resolve_row_keys(&range, &symbols(vec![("1", Value::Int8(2)), ("2", Value::Uint1(4))])),
+			Some(RowPredicate::Range {
+				start: 2,
+				end: 4
+			})
+		);
+	}
+
+	#[test]
+	fn a_key_resolves_by_its_own_name() {
+		// A key must read its own symbol, never another one.
+		let point = RowKeyPredicate::Point(key("$id"));
+
+		assert_eq!(
+			resolve_row_keys(&point, &symbols(vec![("id", Value::Uint2(9))])),
+			Some(RowPredicate::Point(9))
+		);
+		assert_eq!(resolve_row_keys(&point, &symbols(vec![("1", Value::Uint2(9))])), None);
+	}
+
+	#[test]
+	fn a_value_that_is_not_a_row_number_falls_back() {
+		// Each of these must take the scan and filter, otherwise its answer or error differs from today.
+		let point = RowKeyPredicate::Point(key("$1"));
+		let range = RowKeyPredicate::Range {
+			start: key("$1"),
+			end: RqlRowKey::Constant(2),
+		};
+
+		assert_eq!(resolve_row_keys(&point, &symbols(vec![("1", Value::Int4(-1))])), None);
+		assert_eq!(resolve_row_keys(&point, &symbols(vec![("1", Value::Utf8("abc".to_string()))])), None);
+		assert_eq!(resolve_row_keys(&point, &symbols(vec![("1", Value::none())])), None);
+		assert_eq!(resolve_row_keys(&point, &symbols(vec![("1", Value::float8(5.0))])), None);
+		assert_eq!(resolve_row_keys(&point, &symbols(vec![])), None);
+		assert_eq!(resolve_row_keys(&range, &symbols(vec![("1", Value::Uint8(5))])), None);
+	}
+
+	#[test]
+	fn a_row_layout_takes_the_lookup_and_a_column_layout_never_does() {
+		// A column layout refuses row-store reads, so the lookup there must always fall back to the scan.
+		let point = RowKeyPredicate::Point(key("$1"));
+		let values = symbols(vec![("1", Value::Int4(2))]);
+
+		assert_eq!(choose_row_lookup(&point, ScanLayout::Row, &values), Some(RowPredicate::Point(2)));
+		assert_eq!(choose_row_lookup(&point, ScanLayout::Column, &values), None);
+	}
 }

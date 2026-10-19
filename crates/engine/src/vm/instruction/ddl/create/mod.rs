@@ -156,6 +156,7 @@ fn plan_expressions_and_inputs(plan: &mut QueryPlan) -> (Vec<&mut Expression>, V
 		| QueryPlan::RowPointLookup(_)
 		| QueryPlan::RowListLookup(_)
 		| QueryPlan::RowRangeScan(_)
+		| QueryPlan::RowParameterLookup(_)
 		| QueryPlan::Variable(_)
 		| QueryPlan::Environment(_)
 		| QueryPlan::RunTests(_) => (Vec::new(), Vec::new()),

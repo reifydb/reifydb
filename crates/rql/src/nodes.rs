@@ -763,6 +763,29 @@ pub struct RowRangeScanNode {
 	pub end: u64,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum RowKey {
+	Constant(u64),
+	Variable(VariableExpression),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum RowKeyPredicate {
+	Point(RowKey),
+	List(Vec<RowKey>),
+	Range {
+		start: RowKey,
+		end: RowKey,
+	},
+}
+
+#[derive(Debug, Clone)]
+pub struct RowParameterLookupNode {
+	pub source: ResolvedObject,
+	pub predicate: RowKeyPredicate,
+	pub fallback: Box<QueryPlan>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CallFunctionNode {
 	pub name: Fragment,

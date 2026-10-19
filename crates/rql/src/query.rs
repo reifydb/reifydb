@@ -11,8 +11,9 @@ use crate::nodes::{
 	AggregateNode, AppendQueryNode, ApplyNode, AssertNode, CallFunctionNode, DictionaryScanNode, DistinctNode,
 	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
 	JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PatchNode, QueueScanNode, RemoteScanNode,
-	RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode, RunTestsNode, SeriesScanNode,
-	SortNode, TableScanNode, TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
+	RingBufferScanNode, RowListLookupNode, RowParameterLookupNode, RowPointLookupNode, RowRangeScanNode,
+	RunTestsNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode, VariableNode,
+	ViewScanNode, WindowNode,
 };
 
 #[derive(Debug, Clone)]
@@ -32,6 +33,8 @@ pub enum QueryPlan {
 	RowListLookup(RowListLookupNode),
 
 	RowRangeScan(RowRangeScanNode),
+
+	RowParameterLookup(RowParameterLookupNode),
 
 	Aggregate(AggregateNode),
 	Assert(AssertNode),
@@ -76,6 +79,7 @@ impl QueryPlan {
 			QueryPlan::RowPointLookup(_) => "row_point_lookup",
 			QueryPlan::RowListLookup(_) => "row_list_lookup",
 			QueryPlan::RowRangeScan(_) => "row_range_scan",
+			QueryPlan::RowParameterLookup(_) => "row_parameter_lookup",
 			QueryPlan::Aggregate(_) => "aggregate",
 			QueryPlan::Assert(_) => "assert",
 			QueryPlan::Distinct(_) => "distinct",

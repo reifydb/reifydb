@@ -3,9 +3,11 @@
 
 use reifydb_core::expression::{
 	BetweenExpression, ColumnExpression, ConstantExpression, EqExpression, Expression, InExpression,
-	TupleExpression,
+	ParameterExpression, TupleExpression, VariableExpression,
 };
 use reifydb_value::value::{number::parse::parse_primitive_uint, row_number::ROW_NUMBER_COLUMN_NAME};
+
+use crate::nodes::{RowKey, RowKeyPredicate};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum RowPredicate {
@@ -48,7 +50,7 @@ fn try_extract_rownum_eq(maybe_rownum: &Expression, maybe_value: &Expression) ->
 }
 
 fn extract_from_in(in_expr: &InExpression) -> Option<RowPredicate> {
-	if !is_rownum_column(&in_expr.value) {
+	if in_expr.negated || !is_rownum_column(&in_expr.value) {
 		return None;
 	}
 
@@ -109,6 +111,80 @@ fn extract_constant_u64(expr: &Expression) -> Option<u64> {
 			fragment,
 		}) => parse_primitive_uint::<u64>(fragment.clone()).ok(),
 		_ => None,
+	}
+}
+
+pub fn extract_row_key_predicate(expr: &Expression) -> Option<RowKeyPredicate> {
+	let predicate = match expr {
+		Expression::Equal(eq) => key_from_equal(eq).map(RowKeyPredicate::Point),
+		Expression::In(in_expr) => keys_from_in(in_expr),
+		Expression::Between(between) => keys_from_between(between),
+		_ => None,
+	}?;
+	has_parameter(&predicate).then_some(predicate)
+}
+
+fn key_from_equal(eq: &EqExpression) -> Option<RowKey> {
+	if is_rownum_column(&eq.left) {
+		return extract_row_key(&eq.right);
+	}
+	if is_rownum_column(&eq.right) {
+		return extract_row_key(&eq.left);
+	}
+	None
+}
+
+fn keys_from_in(in_expr: &InExpression) -> Option<RowKeyPredicate> {
+	if in_expr.negated || !is_rownum_column(&in_expr.value) {
+		return None;
+	}
+	let expressions = match in_expr.list.as_ref() {
+		Expression::Tuple(tuple) => &tuple.expressions,
+		Expression::List(list) => &list.expressions,
+		_ => return None,
+	};
+	if expressions.is_empty() {
+		return None;
+	}
+	let keys = expressions.iter().map(extract_row_key).collect::<Option<Vec<_>>>()?;
+	Some(RowKeyPredicate::List(keys))
+}
+
+fn keys_from_between(between: &BetweenExpression) -> Option<RowKeyPredicate> {
+	if !is_rownum_column(&between.value) {
+		return None;
+	}
+	Some(RowKeyPredicate::Range {
+		start: extract_row_key(&between.lower)?,
+		end: extract_row_key(&between.upper)?,
+	})
+}
+
+fn extract_row_key(expr: &Expression) -> Option<RowKey> {
+	match expr {
+		Expression::Variable(variable) => Some(RowKey::Variable(variable.clone())),
+		Expression::Parameter(
+			ParameterExpression::Positional {
+				fragment,
+			}
+			| ParameterExpression::Named {
+				fragment,
+			},
+		) => Some(RowKey::Variable(VariableExpression {
+			fragment: fragment.clone(),
+		})),
+		_ => extract_constant_u64(expr).map(RowKey::Constant),
+	}
+}
+
+fn has_parameter(predicate: &RowKeyPredicate) -> bool {
+	match predicate {
+		RowKeyPredicate::Point(key) => matches!(key, RowKey::Variable(_)),
+		RowKeyPredicate::List(keys) => keys.iter().any(|key| matches!(key, RowKey::Variable(_))),
+		RowKeyPredicate::Range {
+			start,
+			end,
+		} => matches!(start, RowKey::Variable(_)) || matches!(end, RowKey::Variable(_)),
 	}
 }
 
@@ -252,5 +328,87 @@ pub mod tests {
 
 		let predicate = extract_row_predicate(&expr);
 		assert_eq!(predicate, None);
+	}
+
+	fn make_variable(text: &str) -> Expression {
+		Expression::Variable(make_key(text))
+	}
+
+	fn make_key(text: &str) -> VariableExpression {
+		VariableExpression {
+			fragment: Fragment::internal(text),
+		}
+	}
+
+	fn make_in(list: Vec<Expression>, negated: bool) -> Expression {
+		Expression::In(InExpression {
+			value: Box::new(make_rownum_column()),
+			list: Box::new(Expression::List(ListExpression {
+				expressions: list,
+				fragment: Fragment::internal("[]"),
+			})),
+			negated,
+			fragment: Fragment::internal("in"),
+		})
+	}
+
+	#[test]
+	fn a_negated_in_is_never_a_row_lookup() {
+		// A lookup of the listed rows would return exactly the rows `not in` must exclude.
+		let constants = make_in(vec![make_constant(1), make_constant(2)], true);
+		let parameters = make_in(vec![make_variable("$1"), make_constant(2)], true);
+
+		assert_eq!(extract_row_predicate(&constants), None);
+		assert_eq!(extract_row_key_predicate(&parameters), None);
+	}
+
+	#[test]
+	fn a_parameter_key_becomes_a_row_key_predicate() {
+		// The plan is cached by text, so a variable or parameter key must stay unresolved in the predicate.
+		let eq = Expression::Equal(EqExpression {
+			left: Box::new(make_variable("$1")),
+			right: Box::new(make_rownum_column()),
+			fragment: Fragment::internal("=="),
+		});
+		let list = make_in(vec![make_variable("$1"), make_constant(5)], false);
+		let range = Expression::Between(BetweenExpression {
+			value: Box::new(make_rownum_column()),
+			lower: Box::new(make_constant(100)),
+			upper: Box::new(Expression::Parameter(ParameterExpression::Positional {
+				fragment: Fragment::internal("$2"),
+			})),
+			fragment: Fragment::internal("between"),
+		});
+
+		assert_eq!(
+			extract_row_key_predicate(&eq),
+			Some(RowKeyPredicate::Point(RowKey::Variable(make_key("$1"))))
+		);
+		assert_eq!(
+			extract_row_key_predicate(&list),
+			Some(RowKeyPredicate::List(vec![RowKey::Variable(make_key("$1")), RowKey::Constant(5)]))
+		);
+		assert_eq!(
+			extract_row_key_predicate(&range),
+			Some(RowKeyPredicate::Range {
+				start: RowKey::Constant(100),
+				end: RowKey::Variable(make_key("$2")),
+			})
+		);
+	}
+
+	#[test]
+	fn constant_keys_are_not_a_row_key_predicate() {
+		// Constant-only filters must keep the constant lookup nodes or today's scan, never the parameter node.
+		let list = make_in(vec![make_constant(1), make_constant(2)], false);
+		let inverted = Expression::Between(BetweenExpression {
+			value: Box::new(make_rownum_column()),
+			lower: Box::new(make_constant(100)),
+			upper: Box::new(make_constant(10)),
+			fragment: Fragment::internal("between"),
+		});
+
+		assert_eq!(extract_row_key_predicate(&list), None);
+		assert_eq!(extract_row_key_predicate(&inverted), None);
 	}
 }

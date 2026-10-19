@@ -1,0 +1,24 @@
+# Copyright (c) reifydb.com 2026
+# This file is licensed under the Apache-2.0, see license.md file
+
+# A rownum parameter must plan the run-time row lookup with today's filter kept as its fallback child.
+
+admin 'create table test::t28 { id: int4, a: int4 }'
+---
+> +---------+-------------+---------+-----------+
+> |   id    |  namespace  |  table  |  created  |
+> +---------+-------------+---------+-----------+
+> |  16388  |    test     |   t28   |   true    |
+> +---------+-------------+---------+-----------+
+>
+
+query 'CALL rql::explain("from test::t28 filter {rownum == $1}")'
+---
+> +-------+---------+----------+----------------------+---------------------+
+> |  idx  |  depth  |  parent  |         kind         |       detail        |
+> +-------+---------+----------+----------------------+---------------------+
+> |   0   |    0    |   none   |  RowParameterLookup  |  source=t28 key=$1  |
+> |   1   |    1    |    0     |        Filter        |   (rownum == $1)    |
+> |   2   |    2    |    1     |      TableScan       |      test::t28      |
+> +-------+---------+----------+----------------------+---------------------+
+>

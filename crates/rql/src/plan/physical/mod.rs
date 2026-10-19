@@ -60,8 +60,8 @@ use crate::{
 		AlterSequenceNode, CreateDictionaryNode, CreateNamespaceNode, CreateQueueNode, CreateRingBufferNode,
 		CreateSumTypeNode, CreateTableNode, DictionaryScanNode, EnvironmentNode, GeneratorNode, IndexScanNode,
 		InlineDataNode, QUEUE_DEDUPLICATION_KEY_FIELD, QUEUE_NOT_BEFORE_FIELD, QueueScanNode,
-		RingBufferScanNode, RowListLookupNode, RowPointLookupNode, RowRangeScanNode, SeriesScanNode,
-		TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
+		RingBufferScanNode, RowKeyPredicate, RowListLookupNode, RowPointLookupNode, RowRangeScanNode,
+		SeriesScanNode, TableScanNode, TableVirtualScanNode, VariableNode, ViewScanNode,
 	},
 	optimize::rules::optimize_tree,
 	plan::{
@@ -69,7 +69,7 @@ use crate::{
 		logical::{
 			LogicalPlan,
 			partition_predicate::extract_partition,
-			row_predicate::{RowPredicate, extract_row_predicate},
+			row_predicate::{RowPredicate, extract_row_key_predicate, extract_row_predicate},
 			series_predicate::extract_series_predicate,
 			tree::{QueryTree, fold},
 		},
@@ -168,6 +168,7 @@ pub enum PhysicalPlan<'bump> {
 	RowPointLookup(RowPointLookupNode),
 	RowListLookup(RowListLookupNode),
 	RowRangeScan(RowRangeScanNode),
+	RowParameterLookup(RowParameterLookupNode<'bump>),
 	JoinInner(JoinInnerNode<'bump>),
 	JoinLeft(JoinLeftNode<'bump>),
 	JoinNatural(JoinNaturalNode<'bump>),
@@ -506,6 +507,13 @@ pub struct FilterNode<'bump> {
 }
 
 #[derive(Debug)]
+pub struct RowParameterLookupNode<'bump> {
+	pub source: ResolvedObject,
+	pub predicate: RowKeyPredicate,
+	pub fallback: BumpBox<'bump, PhysicalPlan<'bump>>,
+}
+
+#[derive(Debug)]
 pub struct GateNode<'bump> {
 	pub input: BumpBox<'bump, PhysicalPlan<'bump>>,
 	pub conditions: Vec<Expression>,
@@ -703,7 +711,12 @@ impl<'bump> Compiler<'bump> {
 					return Ok(pushed);
 				}
 
-				if let Some(predicate) = extract_row_predicate(&filter.condition) {
+				let row_predicate = extract_row_predicate(&filter.condition);
+				let row_key_predicate = match row_predicate {
+					Some(_) => None,
+					None => extract_row_key_predicate(&filter.condition),
+				};
+				if row_predicate.is_some() || row_key_predicate.is_some() {
 					let source = match &input {
 						PhysicalPlan::TableScan(scan)
 							if scan.source.def().partition_by.is_empty() =>
@@ -729,34 +742,50 @@ impl<'bump> Compiler<'bump> {
 					};
 
 					if let Some(source) = source {
-						match predicate {
-							RowPredicate::Point(row_number) => {
-								return Ok(PhysicalPlan::RowPointLookup(
-									RowPointLookupNode {
-										source,
-										row_number,
-									},
-								));
-							}
-							RowPredicate::List(row_numbers) => {
-								return Ok(PhysicalPlan::RowListLookup(
-									RowListLookupNode {
-										source,
-										row_numbers,
-									},
-								));
-							}
-							RowPredicate::Range {
-								start,
-								end,
-							} => {
-								return Ok(PhysicalPlan::RowRangeScan(
-									RowRangeScanNode {
-										source,
-										start,
-										end,
-									},
-								));
+						if let Some(predicate) = row_key_predicate {
+							let fallback = PhysicalPlan::Filter(FilterNode {
+								conditions: vec![filter.condition],
+								input: self.bump_box(input),
+							});
+							return Ok(PhysicalPlan::RowParameterLookup(
+								RowParameterLookupNode {
+									source,
+									predicate,
+									fallback: self.bump_box(fallback),
+								},
+							));
+						}
+
+						if let Some(predicate) = row_predicate {
+							match predicate {
+								RowPredicate::Point(row_number) => {
+									return Ok(PhysicalPlan::RowPointLookup(
+										RowPointLookupNode {
+											source,
+											row_number,
+										},
+									));
+								}
+								RowPredicate::List(row_numbers) => {
+									return Ok(PhysicalPlan::RowListLookup(
+										RowListLookupNode {
+											source,
+											row_numbers,
+										},
+									));
+								}
+								RowPredicate::Range {
+									start,
+									end,
+								} => {
+									return Ok(PhysicalPlan::RowRangeScan(
+										RowRangeScanNode {
+											source,
+											start,
+											end,
+										},
+									));
+								}
 							}
 						}
 					}

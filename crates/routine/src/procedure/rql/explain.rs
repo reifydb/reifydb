@@ -14,14 +14,14 @@ use reifydb_core::{
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::{
 	ast::parse_str,
-	nodes::AlterSequenceNode,
+	nodes::{AlterSequenceNode, RowKey, RowKeyPredicate},
 	optimize::optimize_physical,
 	plan::{
 		logical::compile_logical,
 		physical::{
 			AggregateNode, AppendPhysicalNode, ApplyNode, AssertNode, DistinctNode, ExtendNode, FilterNode,
 			GateNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PatchNode,
-			PhysicalPlan, SortNode, TakeNode, compile_physical,
+			PhysicalPlan, RowParameterLookupNode, SortNode, TakeNode, compile_physical,
 		},
 		system_columns::check_system_columns,
 	},
@@ -129,6 +129,10 @@ impl PhysicalWalker {
 				input,
 				..
 			}) => self.walk(input, depth, parent),
+			PhysicalPlan::RowParameterLookup(RowParameterLookupNode {
+				fallback,
+				..
+			}) => self.walk(fallback, depth, parent),
 			PhysicalPlan::Gate(GateNode {
 				input,
 				..
@@ -501,6 +505,21 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 			let source_name = source_name_of(&scan.source);
 			("RowRangeScan", format!("source={} range={}..={}", source_name, scan.start, scan.end))
 		}
+		PhysicalPlan::RowParameterLookup(lookup) => {
+			let source_name = source_name_of(&lookup.source);
+			let keys = match &lookup.predicate {
+				RowKeyPredicate::Point(key) => format!("key={}", row_key_text(key)),
+				RowKeyPredicate::List(keys) => {
+					let keys = keys.iter().map(row_key_text).collect::<Vec<_>>().join(", ");
+					format!("keys=[{}]", keys)
+				}
+				RowKeyPredicate::Range {
+					start,
+					end,
+				} => format!("range={}..={}", row_key_text(start), row_key_text(end)),
+			};
+			("RowParameterLookup", format!("source={} {}", source_name, keys))
+		}
 		PhysicalPlan::DefineFunction(def) => {
 			let params: Vec<String> = def
 				.parameters
@@ -551,6 +570,13 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 				.collect();
 			("DefineClosure", format!("[{}]", params.join(", ")))
 		}
+	}
+}
+
+fn row_key_text(key: &RowKey) -> String {
+	match key {
+		RowKey::Constant(row_number) => row_number.to_string(),
+		RowKey::Variable(variable) => variable.fragment.text().to_string(),
 	}
 }
 
