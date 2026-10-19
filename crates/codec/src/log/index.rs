@@ -133,14 +133,18 @@ pub fn encode_entry(header: &Header, entry: Entry) -> [u8; ENTRY_BYTES] {
 	out
 }
 
-pub fn decode_entry(header: &Header, buf: &[u8; ENTRY_BYTES]) -> Entry {
-	Entry {
+pub fn decode_entry(header: &Header, buf: &[u8; ENTRY_BYTES]) -> Option<Entry> {
+	Some(Entry {
 		version: LogVersion::new(
-			header.base_version.as_u64() + u32::from_le_bytes(buf[0..4].try_into().unwrap()) as u64,
+			header.base_version
+				.as_u64()
+				.checked_add(u32::from_le_bytes(buf[0..4].try_into().unwrap()) as u64)?,
 		),
 		index: LogIndex::new(
-			header.base_index.as_u64() + u32::from_le_bytes(buf[4..8].try_into().unwrap()) as u64,
+			header.base_index
+				.as_u64()
+				.checked_add(u32::from_le_bytes(buf[4..8].try_into().unwrap()) as u64)?,
 		),
 		position: Position::new(u32::from_le_bytes(buf[8..12].try_into().unwrap()) as u64),
-	}
+	})
 }

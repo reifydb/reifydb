@@ -133,7 +133,7 @@ where
 		act(&mut state.partition)?;
 		let head = state.partition.head();
 		state.written = head;
-		state.durable = head;
+		state.durable = state.durable.min(head);
 		state.active = active_of(&state.partition);
 		Ok(())
 	}

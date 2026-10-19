@@ -241,7 +241,9 @@ fn load<H: Pread>(file: &H, path: &Path, len: u64) -> Result<(Header, Vec<Entry>
 		if !read_exact(file, at, &mut raw)? {
 			break;
 		}
-		entries.push(decode_entry(&header, &raw));
+		if let Some(entry) = decode_entry(&header, &raw) {
+			entries.push(entry);
+		}
 	}
 	Ok((header, entries))
 }

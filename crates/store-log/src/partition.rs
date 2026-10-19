@@ -110,7 +110,10 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 			let Some(base) = bases.last().copied() else {
 				return Err(LogError::NotFound(dir.to_path_buf()));
 			};
-			let (segment, scan) = Segment::recover(&fs, &dir.join(log_name(base)))?;
+			let (mut segment, scan) = Segment::recover(&fs, &dir.join(log_name(base)))?;
+			if scan.records.is_empty() && segment.capacity() < config.segment_bytes {
+				segment.reset(config.segment_bytes)?;
+			}
 			let index = match Index::recover(&fs, &dir.join(index_name(base)), config.index_interval, &scan)
 			{
 				Ok((index, _)) => index,
@@ -144,7 +147,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 				last,
 				opened_at,
 			};
-			if partition.behind_snapshot() {
+			if partition.behind_snapshot()? {
 				let scan = partition.empty_to(after(partition.vote.state().snapshot_index))?;
 				return Ok((partition, scan));
 			}
@@ -430,9 +433,15 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 		})
 	}
 
-	fn behind_snapshot(&self) -> bool {
+	fn behind_snapshot(&self) -> Result<bool> {
+		let state = self.vote.state();
 		let held = self.last.map(|(index, _)| index).unwrap_or(before(self.base_indexes[0]));
-		held < self.vote.state().snapshot_index
+		if held < state.snapshot_index {
+			return Ok(true);
+		}
+		Ok(state.snapshot_index != LogIndex::ZERO
+			&& self.record_at(state.snapshot_index)?
+				.is_some_and(|record| record.term != state.snapshot_term))
 	}
 
 	fn empty_to(&mut self, base_index: LogIndex) -> Result<Scan> {

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use reifydb_codec::log::{
 	LogVersion, Position,
-	record::{HEADER_BYTES, Header, Record},
+	record::{HEADER_BYTES, Header, RESERVED, Record},
 };
 use reifydb_runtime::io::fs::{
 	Create, Filesystem, FsError, Len, Open, OpenMut, Pread, Pwrite, Rename, SyncData, SyncDir, Truncate, Unlink,
@@ -215,6 +215,13 @@ fn walk<H: Pread>(
 			first_corrupt.get_or_insert(position);
 			position = position.advance(total);
 			continue;
+		}
+		if header.reserved != RESERVED {
+			return Err(LogError::SegmentFormat {
+				path: path.to_path_buf(),
+				position,
+				reserved: header.reserved,
+			});
 		}
 		let record = header.into_record(payload);
 		if previous.is_some_and(|earlier| record.version <= earlier) {

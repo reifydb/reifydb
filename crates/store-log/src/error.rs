@@ -49,6 +49,11 @@ pub enum LogError {
 		path: PathBuf,
 		position: Position,
 	},
+	SegmentFormat {
+		path: PathBuf,
+		position: Position,
+		reserved: u32,
+	},
 	SegmentOutOfOrder {
 		path: PathBuf,
 		previous: LogVersion,
@@ -173,6 +178,10 @@ impl LogError {
 				path,
 				..
 			} => path,
+			LogError::SegmentFormat {
+				path,
+				..
+			} => path,
 			LogError::SegmentOutOfOrder {
 				path,
 				..
@@ -291,6 +300,17 @@ impl Display for LogError {
 				"log segment {} is corrupt at {}, but valid records follow it",
 				path.display(),
 				position
+			),
+			LogError::SegmentFormat {
+				path,
+				position,
+				reserved,
+			} => write!(
+				f,
+				"log segment {} has a record at {} with reserved word {}, so it was written by another format and cannot be replayed",
+				path.display(),
+				position,
+				reserved
 			),
 			LogError::VoteCorrupt {
 				path,
