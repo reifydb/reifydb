@@ -1315,6 +1315,29 @@ impl MultiWriteTransaction {
 		Box::new(MergePendingIterator::new(pending, storage_iter, true))
 	}
 
+	pub fn range_rev_untracked(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		#[cfg(feature = "testing")]
+		self.op_counts.range_call();
+		let multi_scope = scope.into_multi(self.version());
+		let encoded = range.encode();
+		let (_, pw) = self.marker_with_pending_writes();
+
+		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
+			.range((range.start.as_ref(), range.end.as_ref()))
+			.rev()
+			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
+			.collect();
+
+		let storage_iter = self.engine.store.range_rev(encoded, multi_scope, batch_size);
+
+		Box::new(MergePendingIterator::new(pending, storage_iter, true))
+	}
+
 	pub fn range_rev_persistence(
 		&mut self,
 		range: TaggedKeyBoundRange,

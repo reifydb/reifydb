@@ -57,7 +57,7 @@ impl VictimProbe {
 		if !self.stored.contains_key(&Some(partition)) {
 			let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
 			let mut rows = Vec::with_capacity(want);
-			for entry in txn.range_rev(range, RangeScope::All, want)?.take(want) {
+			for entry in txn.range_rev_untracked(range, RangeScope::All, want)?.take(want) {
 				if let TaggedKey::PartitionedRow(pk) = &entry?.key {
 					rows.push(pk.row);
 				}
@@ -126,7 +126,7 @@ pub(super) fn select_oldest_for_partition(
 		let mut oldest = rows.iter().copied().find(|row| !chosen.contains(row));
 		if oldest.is_none() && rows.len() == remaining {
 			let range = PartitionedRowKey::partition_scan_range(ringbuffer.id, partition, None);
-			for entry in txn.range_rev(range, RangeScope::All, chosen.len() + 1)? {
+			for entry in txn.range_rev_untracked(range, RangeScope::All, chosen.len() + 1)? {
 				if let TaggedKey::PartitionedRow(pk) = &entry?.key
 					&& !chosen.contains(&pk.row)
 				{

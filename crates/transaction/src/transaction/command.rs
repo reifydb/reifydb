@@ -584,6 +584,17 @@ impl CommandTransaction {
 	}
 
 	#[inline]
+	pub fn range_rev_untracked(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+		self.check_active()?;
+		Ok(self.cmd.as_mut().unwrap().range_rev_untracked(range, scope, batch_size))
+	}
+
+	#[inline]
 	pub fn range_rev_persistence(
 		&mut self,
 		range: TaggedKeyBoundRange,

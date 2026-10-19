@@ -463,6 +463,20 @@ impl<'a> Transaction<'a> {
 			Transaction::Test(t) => t.inner.range_rev(range, scope, batch_size),
 		}
 	}
+
+	pub fn range_rev_untracked(
+		&mut self,
+		range: TaggedKeyBoundRange,
+		scope: RangeScope,
+		batch_size: usize,
+	) -> Result<Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>> {
+		match self {
+			Transaction::Command(txn) => txn.range_rev_untracked(range, scope, batch_size),
+			Transaction::Admin(txn) => txn.range_rev_untracked(range, scope, batch_size),
+			Transaction::Query(txn) => Ok(txn.range_rev(range, scope, batch_size)),
+			Transaction::Test(t) => t.inner.range_rev_untracked(range, scope, batch_size),
+		}
+	}
 }
 
 impl<'a> From<&'a mut CommandTransaction> for Transaction<'a> {
