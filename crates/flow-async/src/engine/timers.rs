@@ -171,7 +171,7 @@ impl FlowEngineInner {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
+	use std::sync::{Arc, Mutex};
 
 	#[cfg(reifydb_assertions)]
 	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
@@ -219,6 +219,7 @@ mod tests {
 
 	const FLOW: FlowId = FlowId(1);
 	const OPERATOR: OperatorId = OperatorId(1);
+	const OTHER: OperatorId = OperatorId(2);
 	const DUE_MS: i64 = 5_000;
 	const WATERMARK_MS: i64 = 10_000;
 
@@ -378,6 +379,133 @@ mod tests {
 		for count in [64usize, 256, 1_024, 4_096, 8_192] {
 			dispatch_burst(count, TimerKind::Maintenance);
 		}
+	}
+
+	type Fired = Arc<Mutex<Vec<(OperatorId, i64, TimerKind, Vec<u8>)>>>;
+
+	struct RecordingProbe {
+		id: OperatorId,
+		fired: Fired,
+	}
+
+	impl HostOperator for RecordingProbe {
+		fn id(&self) -> OperatorId {
+			self.id
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+			Ok(change)
+		}
+
+		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+			self.fired.lock().unwrap().push((
+				self.id,
+				timer.due.to_millis(),
+				timer.kind,
+				timer.key.to_vec(),
+			));
+			Ok(None)
+		}
+	}
+
+	fn dispatch_recorded(timers: &[(OperatorId, Timer)]) -> Vec<(OperatorId, i64, TimerKind, Vec<u8>)> {
+		let engine = TestEngine::new();
+		let mut inner = engine_inner(&engine);
+		let mut builder = FlowDag::builder(FLOW);
+		for (id, view) in [(OPERATOR, 1), (OTHER, 2)] {
+			builder.add_node(FlowNode::new(
+				id,
+				OperatorDef::SourceView {
+					view: ViewId(view),
+				},
+			));
+		}
+		let flow = builder.build();
+		inner.register_flow_dag(flow.clone());
+
+		let mut seed = engine.flow_txn().deferred();
+		for id in [OPERATOR, OTHER] {
+			SourceWatermarks::advance(id, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		}
+		for (id, timer) in timers {
+			TimerWheel::arm(*id, &mut seed, timer).unwrap();
+		}
+		let seeded = seed.take_pending();
+		let store = engine.inner().operator_state();
+		apply_operator_state(&store, &seeded);
+		let armed: Vec<TimerDue> =
+			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
+		inner.timers.rebuild(FLOW, armed);
+
+		let fired: Fired = Arc::default();
+		for id in [OPERATOR, OTHER] {
+			inner.insert_operator(
+				FLOW,
+				id,
+				Box::new(RecordingProbe {
+					id,
+					fired: fired.clone(),
+				}),
+			);
+		}
+		let mut txn = engine.flow_txn().deferred();
+		inner.dispatch_due_timers(
+			&mut txn,
+			&flow,
+			ChangeVersion::from(CommitVersion(1)),
+			flow.topological_order(),
+		)
+		.unwrap();
+		let recorded = fired.lock().unwrap().clone();
+		recorded
+	}
+
+	fn timer_at(millis: i64, kind: TimerKind, key: &str) -> Timer {
+		Timer {
+			due: at_millis(millis),
+			kind,
+			key: EncodedKey::new(key.as_bytes()),
+		}
+	}
+
+	#[test]
+	fn interleaved_operators_keep_their_timer_order_within_a_dispatch() {
+		// Grouping one operator's timers across another's reorders their outputs into shared children.
+		let fired = dispatch_recorded(&[
+			(OPERATOR, timer_at(5_000, TimerKind::Seal, "a")),
+			(OTHER, timer_at(5_000, TimerKind::Seal, "b")),
+			(OPERATOR, timer_at(6_000, TimerKind::Seal, "c")),
+		]);
+
+		assert_eq!(
+			fired.iter().map(|(id, due, _, key)| (*id, *due, key.clone())).collect::<Vec<_>>(),
+			vec![
+				(OPERATOR, 5_000, b"a".to_vec()),
+				(OTHER, 5_000, b"b".to_vec()),
+				(OPERATOR, 6_000, b"c".to_vec())
+			],
+			"timers must fire in (due, operator) order across operators"
+		);
+	}
+
+	#[test]
+	fn a_maintenance_timer_between_seals_keeps_its_place_in_the_dispatch() {
+		// A seal batched past a maintenance timer reaps groups before their grace runs out.
+		let fired = dispatch_recorded(&[
+			(OPERATOR, timer_at(5_000, TimerKind::Seal, "a")),
+			(OPERATOR, timer_at(5_500, TimerKind::Maintenance, "")),
+			(OPERATOR, timer_at(6_000, TimerKind::Seal, "b")),
+		]);
+
+		assert_eq!(
+			fired.iter().map(|(_, due, kind, _)| (*due, *kind)).collect::<Vec<_>>(),
+			vec![(5_000, TimerKind::Seal), (5_500, TimerKind::Maintenance), (6_000, TimerKind::Seal)],
+			"the maintenance timer must fire between the two seals"
+		);
 	}
 
 	#[test]
