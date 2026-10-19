@@ -2,8 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::HashMap,
+	collections::BTreeMap,
 	fs,
+	io::ErrorKind,
 	path::{Path, PathBuf},
 	sync::Arc,
 	thread::sleep,
@@ -21,9 +22,13 @@ use reifydb::{
 		block::BlockData, compress::CompressionProfile, convert::to_arrow, device::BlockFileKey,
 		persist::serialize_block, store::ColumnStore,
 	},
-	core::value::batch::batch,
+	core::{
+		interface::catalog::column_block::{ColumnBlock, ColumnBlockSource},
+		value::batch::batch,
+	},
 	embedded,
 	sub_store::subsystem::StorageConfig,
+	transaction::transaction::Transaction,
 	value::{params::Params, value::duration::Duration},
 };
 
@@ -46,6 +51,7 @@ pub struct Run {
 	pub tick_ms: u64,
 	pub txn_rows: usize,
 	pub encoded: bool,
+	pub merge_buckets: u64,
 }
 
 const INSERT_CHUNK: usize = 50_000;
@@ -89,92 +95,76 @@ fn to_rows(columns: &[Vec<i128>]) -> Vec<Box<[i128]>> {
 	rows
 }
 
-fn block_files(dir: &Path) -> Result<Vec<(BlockFileKey, PathBuf, u64)>, String> {
-	let mut out = Vec::new();
-	for series_dir in fs::read_dir(dir).map_err(|e| e.to_string())? {
-		let series_dir = series_dir.map_err(|e| e.to_string())?;
-		let Some(series) = series_dir.file_name().to_str().and_then(|n| n.parse::<u64>().ok()) else {
-			continue;
-		};
-		for file in fs::read_dir(series_dir.path()).map_err(|e| e.to_string())? {
-			let file = file.map_err(|e| e.to_string())?;
-			let path = file.path();
-			let Some(name) = path
-				.extension()
-				.filter(|e| *e == "borg")
-				.and(path.file_stem())
-				.and_then(|s| s.to_str())
-				.and_then(|s| s.parse::<u64>().ok())
-			else {
-				continue;
-			};
-			let size = file.metadata().map_err(|e| e.to_string())?.len();
-			out.push((
-				BlockFileKey {
-					dir: series,
-					name,
-				},
-				path,
-				size,
-			));
-		}
-	}
-	out.sort_by(|a, b| a.1.cmp(&b.1));
-	Ok(out)
+fn series_blocks(db: &Database, run: &Run) -> Result<Vec<ColumnBlock>, String> {
+	let (namespace, name) = run.series.split_once("::").ok_or("series name has no namespace")?;
+	let engine = db.engine();
+	let catalog = engine.catalog();
+	let mut txn = engine.begin_query(IdentityId::system()).map_err(err)?;
+	let mut tx = Transaction::Query(&mut txn);
+	let namespace = catalog.find_namespace_by_name(&mut tx, namespace).map_err(err)?.ok_or("no namespace")?;
+	let series = catalog.find_series_by_name(&mut tx, namespace.id(), name).map_err(err)?.ok_or("no series")?;
+	catalog.list_column_blocks_for_series(&mut tx, series.id).map_err(err)
 }
 
-fn await_blocks(store: &ColumnStore, dir: &Path, key: &str, expected: usize, tick_ms: u64) -> Result<usize, String> {
+fn settled(blocks: &[ColumnBlock], window: u64) -> bool {
+	let mut per_window: BTreeMap<(Option<u128>, u64), usize> = BTreeMap::new();
+	for block in blocks {
+		if let ColumnBlockSource::Series {
+			partition,
+			start,
+			..
+		} = block.source
+		{
+			*per_window.entry((partition.map(|p| p.0), start - start % window)).or_default() += 1;
+		}
+	}
+	per_window.values().all(|count| *count == 1)
+}
+
+fn await_settled(db: &Database, run: &Run, expected: usize) -> Result<(usize, Vec<ColumnBlock>), String> {
 	let poll = Duration::from_milliseconds(250).map_err(|e| e.to_string())?.to_std();
 	let no_progress_limit =
-		Duration::from_milliseconds(tick_ms as i64 + 60_000).map_err(|e| e.to_string())?.to_std();
+		Duration::from_milliseconds(run.tick_ms as i64 + 60_000).map_err(|e| e.to_string())?.to_std();
+	let window = run.width.saturating_mul(run.merge_buckets.max(1));
 	let clock = Clock::Real;
-	let mut counted: HashMap<PathBuf, (u64, usize)> = HashMap::new();
-	let mut last_total = 0;
+	let mut last = (0, 0);
 	let mut since_progress = clock.instant();
 	loop {
-		let mut total = 0;
-		for (block_key, path, size) in block_files(dir)? {
-			let rows = match counted.get(&path) {
-				Some(&(seen, rows)) if seen == size => rows,
-				_ => {
-					let Some(handle) = store.open(&block_key).map_err(err)? else {
-						continue;
-					};
-					let Ok(data) = handle.read(Some(&[key])) else {
-						continue;
-					};
-					counted.insert(path, (size, data.len()));
-					data.len()
-				}
-			};
-			total += rows;
+		let blocks = series_blocks(db, run)?;
+		let total = blocks.iter().map(|block| block.row_count as usize).sum::<usize>();
+		if total >= expected && (run.merge_buckets == 0 || settled(&blocks, window)) {
+			return Ok((total, blocks));
 		}
-		if total >= expected {
-			return Ok(total);
-		}
-		if total != last_total {
-			last_total = total;
+		if (total, blocks.len()) != last {
+			last = (total, blocks.len());
 			since_progress = clock.instant();
 		}
 		if since_progress.elapsed() > no_progress_limit {
-			return Ok(total);
+			return Err(format!(
+				"{} stopped settling at {total}/{expected} rows in {} blocks",
+				run.name,
+				blocks.len()
+			));
 		}
 		sleep(poll);
 	}
 }
 
-fn check_aggregate(db: &Database, run: &Run, expected: &[Column]) -> Result<(), String> {
-	let close = expected.iter().find(|c| c.0.name() == "close").ok_or("no close column")?;
-	let close = as_i128(&close.1)?;
-	let (n, sum) = (close.len(), close.iter().sum::<i128>());
-	let rql = format!("FROM {} AGGREGATE {{ n: math::count(close), s: math::sum(close) }}", run.series);
-	let frames = db.query_as_root(&rql, Params::None).map_err(err)?;
-	let row = frames.first().and_then(|f| f.to_rows().into_iter().next()).ok_or("aggregate returned no row")?;
-	let value = |name: &str| row.iter().find(|(n, _)| n == name).map(|(_, v)| v.to_string()).unwrap_or_default();
-	if value("n") != n.to_string() || value("s") != sum.to_string() {
-		return Err(format!("aggregate n={} s={} expected n={n} s={sum}", value("n"), value("s")));
-	}
-	Ok(())
+fn block_file(column_dir: &Path, key: &BlockFileKey) -> PathBuf {
+	column_dir.join(key.dir.to_string()).join(format!("{:020}.borg", key.name))
+}
+
+fn file_bytes(path: &Path) -> Result<u64, String> {
+	fs::metadata(path).map(|meta| meta.len()).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn row_store_bytes(dir: &Path) -> Result<u64, String> {
+	let wal = match fs::metadata(dir.join("multi.db-wal")) {
+		Ok(meta) => meta.len(),
+		Err(e) if e.kind() == ErrorKind::NotFound => 0,
+		Err(e) => return Err(e.to_string()),
+	};
+	Ok(file_bytes(&dir.join("multi.db"))? + wal)
 }
 
 fn column_read(db: &Database, run: &Run, expected: &[Column]) -> Result<Option<Vec<Vec<i128>>>, String> {
@@ -252,6 +242,7 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 			series_grace: Duration::from_seconds(1).map_err(|e| e.to_string())?,
 			series_tick_interval: Duration::from_milliseconds(run.tick_ms as i64)
 				.map_err(|e| e.to_string())?,
+			series_merge_buckets: run.merge_buckets,
 			compression: profile,
 			..StorageConfig::default()
 		})
@@ -292,16 +283,14 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 
 	let expected = columns(ds, &order, run.variant, run.with_pool);
 	let names: Vec<String> = expected.iter().map(|c| c.0.name().to_string()).collect();
-	let mut verified = check_aggregate(&db, run, &expected);
+	let start = clock.instant();
+	let (materialized, live) = await_settled(&db, run, order.len())?;
+	let seal_secs = start.elapsed().as_secs_f64();
+	let mut verified = check_column_read(&db, run, &expected);
+	db.stop().map_err(|e| format!("stop: {e}"))?;
+	let row_store_bytes = row_store_bytes(&dir.join("bench"))?;
 
 	let store = ColumnStore::host(column_dir.clone()).map_err(err)?;
-	let start = clock.instant();
-	let materialized = await_blocks(&store, &column_dir, &names[0], order.len(), run.tick_ms)?;
-	let seal_secs = start.elapsed().as_secs_f64();
-	if verified.is_ok() {
-		verified = check_column_read(&db, run, &expected);
-	}
-	db.stop().map_err(|e| format!("stop: {e}"))?;
 
 	let session = store.session().clone();
 	let mut tally = ColumnTally::default();
@@ -311,7 +300,9 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 	let mut empty_blocks = 0;
 	let mut stored: Vec<Vec<i128>> = vec![Vec::new(); names.len()];
 	let mut all_names: Vec<String> = Vec::new();
-	for (key, _, size) in block_files(&column_dir)? {
+	for block in &live {
+		let key = BlockFileKey::of(block);
+		let size = file_bytes(&block_file(&column_dir, &key))?;
 		let data = store.open(&key).map_err(err)?.ok_or("block vanished")?.read(None).map_err(err)?;
 		if data.column_by_name(&names[0]).is_none() {
 			continue;
@@ -348,10 +339,11 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 	}
 
 	println!(
-		"phase2 {} {}: insert {insert_secs:.1}s ({conflicts} TXN_001 retries), materialize {seal_secs:.1}s, {materialized}/{} rows, {blocks} blocks ({empty_blocks} empty)",
+		"phase2 {} {}: insert {insert_secs:.1}s ({conflicts} TXN_001 retries), materialize {seal_secs:.1}s, {materialized}/{} rows, {blocks} blocks ({empty_blocks} empty), merge window {} buckets, row store {row_store_bytes} bytes",
 		run.name,
 		profile_name(profile),
-		order.len()
+		order.len(),
+		run.merge_buckets
 	);
 
 	let restored = if run.encoded {

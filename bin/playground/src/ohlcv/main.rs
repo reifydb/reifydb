@@ -49,9 +49,10 @@ enum Selection {
 struct Args {
 	phase: Phase,
 	dataset: Selection,
+	runs: Vec<String>,
 }
 
-const USAGE: &str = "usage: ohlcv_bench <phase1|phase2|all> [--dataset equity|solana|solana1s|all]";
+const USAGE: &str = "usage: ohlcv_bench <phase1|phase2|all> [--dataset equity|solana|solana1s|all] [--run <name>]...";
 
 fn parse(mut input: impl Iterator<Item = String>) -> Result<Args, String> {
 	let phase = match input.next().as_deref() {
@@ -62,6 +63,7 @@ fn parse(mut input: impl Iterator<Item = String>) -> Result<Args, String> {
 		None => return Err("missing phase".to_string()),
 	};
 	let mut dataset = Selection::All;
+	let mut runs = Vec::new();
 	while let Some(flag) = input.next() {
 		match flag.as_str() {
 			"--dataset" => {
@@ -74,12 +76,17 @@ fn parse(mut input: impl Iterator<Item = String>) -> Result<Args, String> {
 					None => return Err("missing value for --dataset".to_string()),
 				}
 			}
+			"--run" => match input.next() {
+				Some(name) => runs.push(name),
+				None => return Err("missing value for --run".to_string()),
+			},
 			other => return Err(format!("unknown argument `{other}`")),
 		}
 	}
 	Ok(Args {
 		phase,
 		dataset,
+		runs,
 	})
 }
 
@@ -126,6 +133,7 @@ fn equity_runs() -> Vec<Run> {
 		tick_ms: 250,
 		txn_rows: TXN_ROWS,
 		encoded: false,
+		merge_buckets: 1,
 	};
 	vec![
 		run("E1", "bench::eq_raw", EQ_RAW, Variant::Raw, EQUITY_ONE_BUCKET, "1 bucket"),
@@ -151,6 +159,7 @@ fn solana_runs() -> Vec<Run> {
 		tick_ms: SOLANA_TICK_MS,
 		txn_rows: TXN_ROWS,
 		encoded: false,
+		merge_buckets: 1,
 	};
 	vec![
 		run("S1", "bench::sol_part", SOL_PART, "daily, by pool"),
@@ -162,6 +171,21 @@ fn solana_runs() -> Vec<Run> {
 		Run {
 			encoded: true,
 			..run("S4", "bench::sol_flat_enc", SOL_FLAT_ENC, "daily, flat, ohlcv")
+		},
+		Run {
+			encoded: true,
+			merge_buckets: 3,
+			..run("S3-m3", "bench::sol_part_enc", SOL_PART_ENC, "3-day merge, by pool, ohlcv")
+		},
+		Run {
+			encoded: true,
+			merge_buckets: 7,
+			..run("S3-m7", "bench::sol_part_enc", SOL_PART_ENC, "7-day merge, by pool, ohlcv")
+		},
+		Run {
+			encoded: true,
+			merge_buckets: 7,
+			..run("S4-m7", "bench::sol_flat_enc", SOL_FLAT_ENC, "7-day merge, flat, ohlcv")
 		},
 	]
 }
@@ -198,8 +222,8 @@ fn phase1_solana(ds: &Dataset, cfg: &SolanaConfig, rows: &mut Vec<Row>) {
 	}
 }
 
-fn phase2(ds: &Dataset, runs: Vec<Run>, rows: &mut Vec<Row>) {
-	for run in runs {
+fn phase2(ds: &Dataset, runs: Vec<Run>, only: &[String], rows: &mut Vec<Row>) {
+	for run in runs.into_iter().filter(|run| only.is_empty() || only.iter().any(|name| name == run.name)) {
 		for profile in profiles() {
 			push(rows, run.name, phase2::measure(ds, &run, profile));
 		}
@@ -224,7 +248,7 @@ fn run(args: Args) -> Result<(), String> {
 			phase1_equity(&ds, &mut phase1_rows);
 		}
 		if two {
-			phase2(&ds, equity_runs(), &mut phase2_rows);
+			phase2(&ds, equity_runs(), &args.runs, &mut phase2_rows);
 		}
 	}
 	if matches!(args.dataset, Selection::Solana | Selection::All) {
@@ -236,7 +260,7 @@ fn run(args: Args) -> Result<(), String> {
 			phase1_solana(&ds, &cfg, &mut phase1_rows);
 		}
 		if two {
-			phase2(&ds, solana_runs(), &mut phase2_rows);
+			phase2(&ds, solana_runs(), &args.runs, &mut phase2_rows);
 		}
 	}
 	if one {
