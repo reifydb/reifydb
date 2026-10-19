@@ -55,13 +55,6 @@ impl Env {
 		}
 	}
 
-	pub fn with_params(params: Params) -> Self {
-		Self {
-			params,
-			..Self::new()
-		}
-	}
-
 	pub fn with_routines(routines: Routines, runtime_context: RuntimeContext) -> Self {
 		Self {
 			params: Params::None,

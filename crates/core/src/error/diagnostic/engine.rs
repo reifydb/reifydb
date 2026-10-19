@@ -70,38 +70,6 @@ pub fn invalid_row_number_values() -> Diagnostic {
 	}
 }
 
-pub fn invalid_parameter_reference(fragment: Fragment) -> Diagnostic {
-	let value = fragment.text();
-	Diagnostic {
-		code: "ENG_005".to_string(),
-		rql: None,
-		message: format!("Invalid parameter reference: {}", value),
-		column: None,
-		fragment,
-		label: Some("invalid parameter syntax".to_string()),
-		help: Some("Use $1, $2 for positional parameters or $name for named parameters".to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn parameter_not_found(fragment: Fragment) -> Diagnostic {
-	let value = fragment.text();
-	Diagnostic {
-		code: "ENG_006".to_string(),
-		rql: None,
-		message: format!("Parameter not found: {}", value),
-		column: None,
-		fragment,
-		label: Some("parameter not provided".to_string()),
-		help: Some("Ensure all referenced parameters are provided in the query call".to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
 pub fn read_only_rejection(fragment: Fragment) -> Diagnostic {
 	Diagnostic {
 		code: "ENG_007".to_string(),
