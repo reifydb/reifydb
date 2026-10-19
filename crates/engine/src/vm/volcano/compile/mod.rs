@@ -15,6 +15,7 @@ use reifydb_rql::{
 		InlineDataNode as RqlInlineDataNode, PartitionParameterScanNode as RqlPartitionParameterScanNode,
 		RowListLookupNode as RqlRowListLookupNode, RowParameterLookupNode as RqlRowParameterLookupNode,
 		RowPointLookupNode as RqlRowPointLookupNode, RowRangeScanNode as RqlRowRangeScanNode,
+		SeriesParameterScanNode as RqlSeriesParameterScanNode, SeriesScanNode as RqlSeriesScanNode,
 		SortNode as RqlSortNode, TableScanNode as RqlTableScanNode, TakeLimit, TakeNode as RqlTakeNode,
 		ViewScanNode as RqlViewScanNode,
 	},
@@ -55,6 +56,7 @@ use crate::vm::volcano::{
 		ringbuffer::RingBufferScan, series::SeriesScanNode as VolcanoSeriesScanNode, table::TableScanNode,
 		view::ViewScanNode,
 	},
+	series_parameter::choose_series_range,
 	sort::SortNode,
 	take::TakeNode,
 	top_k::TopKNode,
@@ -303,6 +305,36 @@ pub(crate) fn compile<'a>(
 					})
 				}
 				(scan, _) => scan,
+			};
+			compile(scan, rx, context)
+		}
+		RqlQueryPlan::SeriesParameterScan(RqlSeriesParameterScanNode {
+			starts,
+			ends,
+			partition_keys,
+			scan,
+		}) => {
+			let scan = match *scan {
+				RqlQueryPlan::SeriesScan(node) => match choose_series_range(
+					&starts,
+					&ends,
+					partition_keys.as_deref(),
+					&node.source.def().key,
+					rx.layout(),
+					&context.symbols,
+				) {
+					Some(range) => RqlQueryPlan::SeriesScan(RqlSeriesScanNode {
+						key_range_start: node.key_range_start.max(range.start),
+						key_range_end: match (node.key_range_end, range.end) {
+							(Some(planned), Some(end)) => Some(planned.min(end)),
+							(planned, end) => planned.or(end),
+						},
+						partition: range.partition.or(node.partition),
+						..node
+					}),
+					None => RqlQueryPlan::SeriesScan(node),
+				},
+				other => other,
 			};
 			compile(scan, rx, context)
 		}

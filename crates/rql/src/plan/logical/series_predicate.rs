@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::expression::{ColumnExpression, ConstantExpression, Expression};
+use reifydb_core::expression::{
+	ColumnExpression, ConstantExpression, Expression, ParameterExpression, VariableExpression,
+};
 use reifydb_value::value::number::parse::parse_primitive_uint;
+
+use crate::nodes::SeriesBound;
 
 #[derive(Debug, Clone, Default)]
 pub struct SeriesPredicate {
@@ -38,6 +42,75 @@ pub fn extract_series_predicate(condition: &Expression, key_column_name: &str) -
 	}
 }
 
+pub fn extract_series_bounds(condition: &Expression, key_column_name: &str) -> (Vec<SeriesBound>, Vec<SeriesBound>) {
+	let mut conjuncts = Vec::new();
+	flatten_and(condition, &mut conjuncts);
+
+	let mut starts = Vec::new();
+	let mut ends = Vec::new();
+	for expr in conjuncts {
+		match expr {
+			Expression::GreaterThan(e) => {
+				push_bound(&e.left, &e.right, key_column_name, &mut starts, &mut ends)
+			}
+			Expression::GreaterThanEqual(e) => {
+				push_bound(&e.left, &e.right, key_column_name, &mut starts, &mut ends)
+			}
+			Expression::LessThan(e) => {
+				push_bound(&e.left, &e.right, key_column_name, &mut ends, &mut starts)
+			}
+			Expression::LessThanEqual(e) => {
+				push_bound(&e.left, &e.right, key_column_name, &mut ends, &mut starts)
+			}
+			Expression::Between(between) if is_key_column(&between.value, key_column_name) => {
+				if let Some(lower) = series_bound(&between.lower) {
+					starts.push(lower);
+				}
+				if let Some(upper) = series_bound(&between.upper) {
+					ends.push(upper);
+				}
+			}
+			_ => {}
+		}
+	}
+	(starts, ends)
+}
+
+fn push_bound(
+	left: &Expression,
+	right: &Expression,
+	key_column_name: &str,
+	key_on_left: &mut Vec<SeriesBound>,
+	key_on_right: &mut Vec<SeriesBound>,
+) {
+	if is_key_column(left, key_column_name)
+		&& let Some(bound) = series_bound(right)
+	{
+		key_on_left.push(bound);
+	} else if is_key_column(right, key_column_name)
+		&& let Some(bound) = series_bound(left)
+	{
+		key_on_right.push(bound);
+	}
+}
+
+fn series_bound(expr: &Expression) -> Option<SeriesBound> {
+	match expr {
+		Expression::Variable(variable) => Some(SeriesBound::Variable(variable.clone())),
+		Expression::Parameter(
+			ParameterExpression::Positional {
+				fragment,
+			}
+			| ParameterExpression::Named {
+				fragment,
+			},
+		) => Some(SeriesBound::Variable(VariableExpression {
+			fragment: fragment.clone(),
+		})),
+		_ => extract_constant_u64(expr).map(SeriesBound::Constant),
+	}
+}
+
 fn flatten_and<'a>(expr: &'a Expression, out: &mut Vec<&'a Expression>) {
 	match expr {
 		Expression::And(and) => {
@@ -64,8 +137,10 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_n
 		}
 
 		Expression::GreaterThan(gt) => {
-			if let Some(val) = try_key_const(&gt.left, &gt.right, key_column_name) {
-				result.key_start = Some(merge_max(result.key_start, val.saturating_add(1)));
+			if let Some(val) = try_key_const(&gt.left, &gt.right, key_column_name)
+				&& let Some(start) = val.checked_add(1)
+			{
+				result.key_start = Some(merge_max(result.key_start, start));
 				return true;
 			}
 
@@ -77,8 +152,10 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_n
 		}
 
 		Expression::LessThanEqual(lte) => {
-			if let Some(val) = try_key_const(&lte.left, &lte.right, key_column_name) {
-				result.key_end = Some(merge_min(result.key_end, val.saturating_add(1)));
+			if let Some(val) = try_key_const(&lte.left, &lte.right, key_column_name)
+				&& let Some(end) = val.checked_add(1)
+			{
+				result.key_end = Some(merge_min(result.key_end, end));
 				return true;
 			}
 
@@ -95,8 +172,10 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_n
 				return true;
 			}
 
-			if let Some(val) = try_key_const(&lt.right, &lt.left, key_column_name) {
-				result.key_start = Some(merge_max(result.key_start, val.saturating_add(1)));
+			if let Some(val) = try_key_const(&lt.right, &lt.left, key_column_name)
+				&& let Some(start) = val.checked_add(1)
+			{
+				result.key_start = Some(merge_max(result.key_start, start));
 				return true;
 			}
 			false
@@ -106,9 +185,10 @@ fn try_extract_one(expr: &Expression, result: &mut SeriesPredicate, key_column_n
 			if is_key_column(&between.value, key_column_name)
 				&& let (Some(lower), Some(upper)) =
 					(extract_constant_u64(&between.lower), extract_constant_u64(&between.upper))
+				&& let Some(end) = upper.checked_add(1)
 			{
 				result.key_start = Some(merge_max(result.key_start, lower));
-				result.key_end = Some(merge_min(result.key_end, upper.saturating_add(1)));
+				result.key_end = Some(merge_min(result.key_end, end));
 				return true;
 			}
 			false

@@ -327,6 +327,13 @@ impl QueryNode for SeriesScanNode {
 		let series = self.series.def();
 		let has_tag = series.tag.is_some();
 
+		if let (Some(start), Some(end)) = (self.key_range_start, self.key_range_end)
+			&& start >= end
+		{
+			self.exhausted = true;
+			return Ok(Some(empty_scan(self.empty_columns(has_tag), &self.system_columns)?));
+		}
+
 		let partitioned = !series.partition_by.is_empty();
 		let storage = StorageId::series(series.id);
 		let after = if self.oldest_first {

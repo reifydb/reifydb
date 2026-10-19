@@ -289,6 +289,7 @@ impl FlowCompiler {
 			}
 			QueryPlan::RowParameterLookup(node) => self.compile_plan(txn, *node.fallback),
 			QueryPlan::PartitionParameterScan(node) => self.compile_plan(txn, *node.scan),
+			QueryPlan::SeriesParameterScan(node) => self.compile_plan(txn, *node.scan),
 			QueryPlan::RowPointLookup(_) => {
 				// TODO: Implement optimized row point lookup for flow graphs
 				unimplemented!("RowPointLookup compilation not yet implemented for flow")
@@ -323,6 +324,7 @@ fn validate_subscription_plan(plan: &QueryPlan) -> Result<()> {
 		QueryPlan::Filter(n) => validate_subscription_plan(&n.input),
 		QueryPlan::RowParameterLookup(n) => validate_subscription_plan(&n.fallback),
 		QueryPlan::PartitionParameterScan(n) => validate_subscription_plan(&n.scan),
+		QueryPlan::SeriesParameterScan(n) => validate_subscription_plan(&n.scan),
 		QueryPlan::Gate(n) => validate_subscription_plan(&n.input),
 		QueryPlan::Take(n) => validate_subscription_plan(&n.input),
 		QueryPlan::Distinct(n) => validate_subscription_plan(&n.input),
@@ -366,6 +368,7 @@ fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
 		QueryPlan::Filter(n) => vec![&n.input],
 		QueryPlan::RowParameterLookup(n) => vec![&n.fallback],
 		QueryPlan::PartitionParameterScan(n) => vec![&n.scan],
+		QueryPlan::SeriesParameterScan(n) => vec![&n.scan],
 		QueryPlan::Gate(n) => vec![&n.input],
 		QueryPlan::Aggregate(n) => vec![&n.input],
 		QueryPlan::Distinct(n) => vec![&n.input],

@@ -667,6 +667,20 @@ pub struct PartitionParameterScanNode {
 	pub scan: Box<QueryPlan>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum SeriesBound {
+	Constant(u64),
+	Variable(VariableExpression),
+}
+
+#[derive(Debug, Clone)]
+pub struct SeriesParameterScanNode {
+	pub starts: Vec<SeriesBound>,
+	pub ends: Vec<SeriesBound>,
+	pub partition_keys: Option<Vec<PartitionKey>>,
+	pub scan: Box<QueryPlan>,
+}
+
 #[derive(Debug, Clone)]
 pub struct RingBufferScanNode {
 	pub source: ResolvedRingBuffer,

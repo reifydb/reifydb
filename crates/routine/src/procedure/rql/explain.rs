@@ -14,15 +14,15 @@ use reifydb_core::{
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_rql::{
 	ast::parse_str,
-	nodes::{AlterSequenceNode, PartitionKey, RowKey, RowKeyPredicate},
+	nodes::{AlterSequenceNode, PartitionKey, RowKey, RowKeyPredicate, SeriesBound},
 	optimize::optimize_physical,
 	plan::{
 		logical::compile_logical,
 		physical::{
 			AggregateNode, AppendPhysicalNode, ApplyNode, AssertNode, DistinctNode, ExtendNode, FilterNode,
 			GateNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LookupNode, MapNode,
-			PartitionParameterScanNode, PatchNode, PhysicalPlan, RowParameterLookupNode, SortNode,
-			TakeNode, compile_physical,
+			PartitionParameterScanNode, PatchNode, PhysicalPlan, RowParameterLookupNode,
+			SeriesParameterScanNode, SortNode, TakeNode, compile_physical,
 		},
 		system_columns::check_system_columns,
 	},
@@ -135,6 +135,10 @@ impl PhysicalWalker {
 				..
 			}) => self.walk(fallback, depth, parent),
 			PhysicalPlan::PartitionParameterScan(PartitionParameterScanNode {
+				scan,
+				..
+			}) => self.walk(scan, depth, parent),
+			PhysicalPlan::SeriesParameterScan(SeriesParameterScanNode {
 				scan,
 				..
 			}) => self.walk(scan, depth, parent),
@@ -543,6 +547,33 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 				.join(", ");
 			("PartitionParameterScan", format!("source={} keys=[{}]", source_name, keys))
 		}
+		PhysicalPlan::SeriesParameterScan(node) => {
+			let (source_name, columns) = match &*node.scan {
+				PhysicalPlan::SeriesScan(scan) => {
+					(scan.source.name().to_string(), scan.source.def().partition_by.clone())
+				}
+				_ => (String::new(), Vec::new()),
+			};
+			let mut parts = vec![format!("source={}", source_name)];
+			if !node.starts.is_empty() {
+				let starts = node.starts.iter().map(series_bound_text).collect::<Vec<_>>().join(", ");
+				parts.push(format!("start=[{}]", starts));
+			}
+			if !node.ends.is_empty() {
+				let ends = node.ends.iter().map(series_bound_text).collect::<Vec<_>>().join(", ");
+				parts.push(format!("end=[{}]", ends));
+			}
+			if let Some(keys) = &node.partition_keys {
+				let keys = columns
+					.iter()
+					.zip(keys)
+					.map(|(column, key)| format!("{}={}", column, partition_key_text(key)))
+					.collect::<Vec<_>>()
+					.join(", ");
+				parts.push(format!("partition=[{}]", keys));
+			}
+			("SeriesParameterScan", parts.join(" "))
+		}
 		PhysicalPlan::DefineFunction(def) => {
 			let params: Vec<String> = def
 				.parameters
@@ -593,6 +624,13 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 				.collect();
 			("DefineClosure", format!("[{}]", params.join(", ")))
 		}
+	}
+}
+
+fn series_bound_text(bound: &SeriesBound) -> String {
+	match bound {
+		SeriesBound::Constant(value) => value.to_string(),
+		SeriesBound::Variable(variable) => variable.fragment.text().to_string(),
 	}
 }
 

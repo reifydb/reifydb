@@ -122,6 +122,7 @@ pub(crate) mod rank;
 pub mod row_lookup;
 pub mod run_tests;
 pub mod scan;
+pub(crate) mod series_parameter;
 pub mod sort;
 pub mod take;
 pub mod top_k;

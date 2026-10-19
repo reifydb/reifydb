@@ -12,8 +12,8 @@ use crate::nodes::{
 	EnvironmentNode, ExtendNode, FilterNode, GateNode, GeneratorNode, IndexScanNode, InlineDataNode, JoinInnerNode,
 	JoinLeftNode, JoinNaturalNode, LookupNode, MapNode, PartitionParameterScanNode, PatchNode, QueueScanNode,
 	RemoteScanNode, RingBufferScanNode, RowListLookupNode, RowParameterLookupNode, RowPointLookupNode,
-	RowRangeScanNode, RunTestsNode, SeriesScanNode, SortNode, TableScanNode, TableVirtualScanNode, TakeNode,
-	VariableNode, ViewScanNode, WindowNode,
+	RowRangeScanNode, RunTestsNode, SeriesParameterScanNode, SeriesScanNode, SortNode, TableScanNode,
+	TableVirtualScanNode, TakeNode, VariableNode, ViewScanNode, WindowNode,
 };
 
 #[derive(Debug, Clone)]
@@ -37,6 +37,8 @@ pub enum QueryPlan {
 	RowParameterLookup(RowParameterLookupNode),
 
 	PartitionParameterScan(PartitionParameterScanNode),
+
+	SeriesParameterScan(SeriesParameterScanNode),
 
 	Aggregate(AggregateNode),
 	Assert(AssertNode),
@@ -83,6 +85,7 @@ impl QueryPlan {
 			QueryPlan::RowRangeScan(_) => "row_range_scan",
 			QueryPlan::RowParameterLookup(_) => "row_parameter_lookup",
 			QueryPlan::PartitionParameterScan(_) => "partition_parameter_scan",
+			QueryPlan::SeriesParameterScan(_) => "series_parameter_scan",
 			QueryPlan::Aggregate(_) => "aggregate",
 			QueryPlan::Assert(_) => "assert",
 			QueryPlan::Distinct(_) => "distinct",

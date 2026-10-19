@@ -204,6 +204,8 @@ mod run_tests_error_quotes_body;
 mod series_delete_metadata;
 #[path = "series_key_write.rs"]
 mod series_key_write;
+#[path = "series_parameter_scan.rs"]
+mod series_parameter_scan;
 #[path = "series_scan_column_types.rs"]
 mod series_scan_column_types;
 #[path = "series_tag_constructor_field.rs"]
