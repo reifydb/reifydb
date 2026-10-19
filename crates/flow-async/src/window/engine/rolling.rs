@@ -34,7 +34,7 @@ use crate::{
 		state::{
 			expiry::{ExpiryIndex, expiry_drop, rolling_expiry_key},
 			seal::coord::{Coord, IsZero},
-			store::sweep_all,
+			sweep::sweep_all,
 		},
 		state_access::{get, get_classified, put, remove},
 	},

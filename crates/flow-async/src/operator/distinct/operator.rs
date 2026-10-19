@@ -40,7 +40,7 @@ use crate::{
 		distinct::state::{DistinctEntry, DistinctLayout, DistinctState, SerializedRow},
 		drops::SealedDrops,
 		host::HostContext,
-		state::store::sweep_all,
+		state::sweep::sweep_all,
 	},
 };
 
