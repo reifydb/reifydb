@@ -260,6 +260,15 @@ impl<'a> KeyDeserializer<'a> {
 				message: format!("invalid IdentityId at position {}: {}", self.position, e),
 			})
 		})?;
+		let version = uuid.get_version_num();
+		if version != 7 && version != 0 {
+			return Err(Error::from(TypeError::SerdeKeycode {
+				message: format!(
+					"invalid IdentityId version {} at position {}",
+					version, self.position
+				),
+			}));
+		}
 		Ok(IdentityId::from(Uuid7::from(uuid)))
 	}
 
@@ -270,6 +279,12 @@ impl<'a> KeyDeserializer<'a> {
 				message: format!("invalid Uuid4 at position {}: {}", self.position, e),
 			})
 		})?;
+		let version = uuid.get_version_num();
+		if version != 4 && version != 0 {
+			return Err(Error::from(TypeError::SerdeKeycode {
+				message: format!("invalid Uuid4 version {} at position {}", version, self.position),
+			}));
+		}
 		Ok(Uuid4::from(uuid))
 	}
 
@@ -280,6 +295,12 @@ impl<'a> KeyDeserializer<'a> {
 				message: format!("invalid Uuid7 at position {}: {}", self.position, e),
 			})
 		})?;
+		let version = uuid.get_version_num();
+		if version != 7 && version != 0 {
+			return Err(Error::from(TypeError::SerdeKeycode {
+				message: format!("invalid Uuid7 version {} at position {}", version, self.position),
+			}));
+		}
 		Ok(Uuid7::from(uuid))
 	}
 
