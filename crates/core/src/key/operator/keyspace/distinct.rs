@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_value::value::row_number::RowNumber;
+
 use crate::{
 	key::{
 		operator::{
@@ -9,7 +11,7 @@ use crate::{
 		},
 		typed::{
 			BoundedKey, DenseKey, KeyLayout,
-			direction::{Desc, Direction, KeyField},
+			direction::{Asc, Desc, Direction, KeyField},
 			layout::{KeyColumn, KeyColumnType, KeyLayout, KeyValue, KeyValues},
 		},
 	},
@@ -19,6 +21,7 @@ use crate::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct DistinctEntryKey {
 	pub group: Desc<GroupId>,
+	pub row: Asc<RowNumber>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
@@ -33,15 +36,16 @@ impl Keyspace for DistinctEntry {
 	const RANGE_CACHED: bool = true;
 
 	type GroupedKey = DistinctEntryKey;
-	type Suffix = ();
+	type Suffix = Asc<RowNumber>;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
-		(key.group.0, ())
+		(key.group.0, key.row)
 	}
 
-	fn join(group: GroupId, _suffix: Self::Suffix) -> Self::GroupedKey {
+	fn join(group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
 		DistinctEntryKey {
 			group: Desc(group),
+			row: suffix,
 		}
 	}
 }

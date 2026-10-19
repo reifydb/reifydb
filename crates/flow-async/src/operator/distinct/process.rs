@@ -287,6 +287,7 @@ impl DistinctPlan {
 					None
 				};
 				entry.rows.insert(row_number, new_serialized);
+				state.dirty.insert((hash, row_number));
 				if let Some(prev) = displaced {
 					swap_pairs.push((prev, row_idx, hash));
 				}
@@ -299,10 +300,10 @@ impl DistinctPlan {
 						rows,
 					},
 				);
+				state.dirty.insert((hash, row_number));
 				new_entries.push((row_idx, hash));
 			}
 		}
-		state.dirty.extend(hashes.iter().copied());
 
 		new_entries.sort_by_key(|&(i, _)| row_numbers[i]);
 		swap_pairs.sort_by_key(|&(_, i, _)| row_numbers[i]);
@@ -369,7 +370,7 @@ impl DistinctPlan {
 				let visible = if let Some(entry) = state.entries.get_mut(&pre_hash) {
 					let visible_rn = entry.rows.keys().next_back().copied();
 					entry.rows.insert(row_number, new_serialized);
-					state.dirty.insert(pre_hash);
+					state.dirty.insert((pre_hash, row_number));
 					visible_rn == Some(row_number)
 				} else {
 					dropped += 1;
@@ -391,7 +392,7 @@ impl DistinctPlan {
 					let prev_rn = entry.rows.keys().next_back().copied().unwrap();
 					let removed = entry.rows.remove(&row_number).is_some();
 					if removed {
-						state.dirty.insert(pre_hash);
+						state.dirty.insert((pre_hash, row_number));
 						if entry.rows.is_empty() {
 							Some((true, None))
 						} else {
@@ -439,7 +440,7 @@ impl DistinctPlan {
 					);
 					(true, None)
 				};
-			state.dirty.insert(post_hash);
+			state.dirty.insert((post_hash, row_number));
 
 			if let Some((pre_is_empty, pre_new_visible_opt)) = pre_mutation {
 				let (stable_rn, _) = Self::stable_row_numbers(host, state, &[groups[&pre_hash]])?
@@ -506,7 +507,7 @@ impl DistinctPlan {
 			if !removed {
 				continue;
 			}
-			state.dirty.insert(hash);
+			state.dirty.insert((hash, row_number));
 
 			if entry.rows.is_empty() {
 				empty_hashes.push(hash);

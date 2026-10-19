@@ -293,15 +293,13 @@ pub trait StateExtension: FlowTransaction {
 			})
 			.collect();
 		let version = self.version();
-		let batch = self.operator_store().group_page(
+		let (page, truncated) = self.fetch_group_page(
 			id,
 			&ordered,
 			limit.saturating_add(pending.len()).saturating_add(1) as u64,
 			keyspaces,
 		)?;
-		let truncated = batch.has_more;
-		let stored: Vec<Result<MultiVersionRow<TaggedKey>>> = batch
-			.items
+		let stored: Vec<Result<MultiVersionRow<TaggedKey>>> = page
 			.into_iter()
 			.map(|(inner, row)| {
 				let (group, keyspace, suffix) = OperatorStateKey::decode_inner(inner.as_slice())

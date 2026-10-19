@@ -717,6 +717,7 @@ mod tests {
 				OPERATOR,
 				&DistinctEntryKey {
 					group: Desc(*group),
+					row: Asc(RowNumber(1)),
 				},
 				b"distinct",
 			);

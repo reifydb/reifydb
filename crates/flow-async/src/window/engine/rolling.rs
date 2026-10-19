@@ -34,6 +34,7 @@ use crate::{
 		state::{
 			expiry::{ExpiryIndex, expiry_drop, rolling_expiry_key},
 			seal::coord::{Coord, IsZero},
+			store::sweep_all,
 		},
 		state_access::{get, get_classified, put, remove},
 	},
@@ -778,15 +779,9 @@ where
 			return Ok(panes);
 		}
 		let groups: Vec<GroupId> = slots.iter().map(|(group, _)| *group).collect();
-		let sweep = store.group_sweep_many(
-			&groups,
-			usize::MAX,
-			KeyspaceMask::of([KeyspaceId::ROLLING_PANE, KeyspaceId::BUFFER]),
-		)?;
-		if !sweep.complete {
-			return internal_err!("a rolling pane sweep stopped before the end of its groups");
-		}
-		for (key, row) in sweep.rows {
+		for (key, row) in
+			sweep_all(store, &groups, KeyspaceMask::of([KeyspaceId::ROLLING_PANE, KeyspaceId::BUFFER]))?
+		{
 			if OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
 				.is_some_and(|(_, keyspace, _)| keyspace == KeyspaceId::BUFFER)
 			{

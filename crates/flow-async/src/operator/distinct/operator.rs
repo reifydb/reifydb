@@ -2,16 +2,19 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	collections::{HashMap, HashSet},
+	collections::{BTreeMap, HashMap, HashSet},
 	mem::take,
 	sync::Arc,
 };
 
 use arrow_schema::SchemaRef;
 use indexmap::{IndexMap, IndexSet};
-use reifydb_codec::row::{
-	operator::state::{OperatorState, decode},
-	pod::EncodedPodRow,
+use reifydb_codec::{
+	key::{decode_u64_asc, encode_u64_asc},
+	row::{
+		operator::state::{OperatorState, decode},
+		pod::EncodedPodRow,
+	},
 };
 use reifydb_core::{
 	expression::Expression,
@@ -20,22 +23,24 @@ use reifydb_core::{
 		change::{Change, Diff},
 		flow::OperatorCapability,
 	},
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
+	internal_err,
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey},
 };
 use reifydb_evaluate::lower::{LoweredExpr, compile_check};
 use reifydb_flow::{context::FlowContext, operator::source::decode_change};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
-use reifydb_value::{Result, error::Error, util::hash::Hash128};
+use reifydb_value::{Result, error::Error, util::hash::Hash128, value::row_number::RowNumber};
 use tracing::instrument;
 
 use crate::{
 	error::FlowStateError,
 	operator::{
 		HostOperator,
-		distinct::state::{DistinctEntry, DistinctLayout, DistinctState},
+		distinct::state::{DistinctEntry, DistinctLayout, DistinctState, SerializedRow},
 		drops::SealedDrops,
 		host::HostContext,
+		state::store::sweep_all,
 	},
 };
 
@@ -44,12 +49,6 @@ const DROP_REASON: &str = "removes whose distinct entry was reclaimed";
 const CAPABILITIES: &[OperatorCapability] = OperatorCapability::STANDARD;
 
 type DiffHashes = (Vec<Hash128>, Vec<Hash128>);
-
-enum LoadedEntry {
-	Absent,
-	Empty,
-	Present(DistinctEntry),
-}
 
 pub struct DistinctPlan {
 	parent_schema: Option<SchemaRef>,
@@ -99,30 +98,51 @@ impl DistinctOperator {
 }
 
 impl DistinctPlan {
-	pub(super) fn entry_key(group: GroupId) -> GroupStateKey {
-		OperatorStateKey::inner_encoded(group, KeyspaceId::DISTINCT_ENTRY, vec![])
+	pub(super) fn row_key(group: GroupId, row: RowNumber) -> GroupStateKey {
+		OperatorStateKey::inner_encoded(group, KeyspaceId::DISTINCT_ENTRY, encode_u64_asc(row.0).to_vec())
 	}
 
 	pub(super) fn layout_storage_key() -> GroupStateKey {
 		GroupStateKey::root(KeyspaceId::DISTINCT_LAYOUT, vec![])
 	}
 
-	fn decode_entry(row: Option<EncodedPodRow>) -> Result<LoadedEntry> {
-		match row {
-			Some(row) => {
-				if row.is_empty() {
-					return Ok(LoadedEntry::Empty);
-				}
-				let entry: DistinctEntry = decode(&row).map_err(|e| {
-					Error::from(FlowStateError::Decode {
-						state: "DistinctEntry",
-						cause: e.to_string(),
-					})
-				})?;
-				Ok(LoadedEntry::Present(entry))
-			}
-			None => Ok(LoadedEntry::Absent),
+	fn load_entries(
+		host: &mut dyn HostContext,
+		state: &mut DistinctState,
+		groups: &HashMap<Hash128, GroupId>,
+		ordered: &[Hash128],
+	) -> Result<()> {
+		if ordered.is_empty() {
+			return Ok(());
 		}
+		let hashes: HashMap<GroupId, Hash128> = groups.iter().map(|(hash, group)| (*group, *hash)).collect();
+		let group_ids: Vec<GroupId> = ordered.iter().map(|hash| groups[hash]).collect();
+		for (key, row) in sweep_all(host, &group_ids, KeyspaceMask::of([KeyspaceId::DISTINCT_ENTRY]))? {
+			let Some((group, _, suffix)) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
+			else {
+				return internal_err!("a distinct row carries no group");
+			};
+			let (Some(hash), Ok(order)) = (hashes.get(&group), <[u8; 8]>::try_from(suffix)) else {
+				return internal_err!("a distinct row carries no row number");
+			};
+			let number = RowNumber(decode_u64_asc(order));
+			let serialized: SerializedRow = decode(&row).map_err(|e| {
+				Error::from(FlowStateError::Decode {
+					state: "SerializedRow",
+					cause: e.to_string(),
+				})
+			})?;
+			host.state_classify(&key, Some(row.byte_size()));
+			state.loaded.insert((*hash, number));
+			state.entries
+				.entry(*hash)
+				.or_insert_with(|| DistinctEntry {
+					rows: BTreeMap::new(),
+				})
+				.rows
+				.insert(number, serialized);
+		}
+		Ok(())
 	}
 
 	fn decode_layout(row: Option<EncodedPodRow>) -> Result<DistinctLayout> {
@@ -148,22 +168,27 @@ impl DistinctPlan {
 		state: &mut DistinctState,
 		groups: &HashMap<Hash128, GroupId>,
 	) -> Result<()> {
-		let dirty: Vec<Hash128> = state.dirty.drain().collect();
+		let dirty: Vec<(Hash128, RowNumber)> = state.dirty.drain().collect();
 		let mut sets = Vec::new();
 		let mut removes = Vec::new();
-		for hash in dirty {
-			let key = Self::entry_key(groups[&hash]);
-			match state.entries.get(&hash) {
-				Some(entry) => {
-					let row = entry.encode_state().map_err(|e| {
+		for (hash, number) in dirty {
+			let key = Self::row_key(groups[&hash], number);
+			let loaded = state.loaded.contains(&(hash, number));
+			match state.entries.get(&hash).and_then(|entry| entry.rows.get(&number)) {
+				Some(serialized) => {
+					let row = serialized.encode_state().map_err(|e| {
 						Error::from(FlowStateError::Encode {
-							state: "DistinctEntry",
+							state: "SerializedRow",
 							cause: e.to_string(),
 						})
 					})?;
+					if !loaded {
+						host.state_classify(&key, None);
+					}
 					sets.push((key, row));
 				}
-				None => removes.push(key),
+				None if loaded => removes.push(key),
+				None => {}
 			}
 		}
 		if take(&mut state.layout_changed) {
@@ -232,35 +257,21 @@ impl HostOperator for DistinctOperator {
 		let operator_id = plan.operator;
 		let (ordered, diff_hashes) = plan.batch_hashes(&change.diffs)?;
 
-		let mut groups: HashMap<Hash128, GroupId> = HashMap::with_capacity(ordered.len());
-		let mut keys = Vec::with_capacity(ordered.len() + 1);
-		keys.push(DistinctPlan::layout_storage_key());
-		for hash in ordered.iter() {
-			let group = GroupId::hashed(*hash);
-			groups.insert(*hash, group);
-			keys.push(DistinctPlan::entry_key(group));
-		}
-		let mut rows = host.state_get_many(&keys)?.into_iter();
+		let groups: HashMap<Hash128, GroupId> =
+			ordered.iter().map(|hash| (*hash, GroupId::hashed(*hash))).collect();
+		let layout_key = DistinctPlan::layout_storage_key();
+		let layout = host.state_get(&layout_key)?;
+		host.state_classify(&layout_key, layout.as_ref().map(EncodedPodRow::byte_size));
 
 		let mut state = DistinctState {
 			entries: IndexMap::new(),
-			layout: DistinctPlan::decode_layout(rows.next().flatten())?,
+			layout: DistinctPlan::decode_layout(layout)?,
 			dirty: HashSet::new(),
+			loaded: HashSet::new(),
 			layout_changed: false,
 			withdrawn: IndexSet::new(),
 		};
-
-		for (hash, row) in ordered.iter().zip(rows) {
-			match DistinctPlan::decode_entry(row)? {
-				LoadedEntry::Present(entry) => {
-					state.entries.insert(*hash, entry);
-				}
-				LoadedEntry::Empty => {
-					state.dirty.insert(*hash);
-				}
-				LoadedEntry::Absent => {}
-			}
-		}
+		DistinctPlan::load_entries(host, &mut state, &groups, &ordered)?;
 
 		let mut result = Vec::new();
 		for (diff, (pre_hashes, post_hashes)) in change.diffs.into_iter().zip(diff_hashes) {

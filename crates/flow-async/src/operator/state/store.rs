@@ -5,7 +5,11 @@ use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
 };
-use reifydb_core::key::operator::state::GroupStateKey;
+use reifydb_core::{
+	internal_err,
+	key::operator::state::{GroupId, GroupStateKey, KeyspaceMask},
+	state::timer::StateStore,
+};
 use reifydb_value::Result;
 
 use super::iter::StateIterator;
@@ -25,6 +29,18 @@ pub fn state_remove(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<(
 
 pub fn state_range<'a>(host: &'a mut dyn HostContext, range: EncodedKeyRange) -> StateIterator<'a> {
 	host.state_range_iter(range)
+}
+
+pub fn sweep_all<S: StateStore + ?Sized>(
+	store: &mut S,
+	groups: &[GroupId],
+	keyspaces: KeyspaceMask,
+) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	let sweep = store.group_sweep_many(groups, usize::MAX, keyspaces)?;
+	if !sweep.complete {
+		return internal_err!("a group sweep stopped before the end of its groups");
+	}
+	Ok(sweep.rows)
 }
 
 pub fn empty_key() -> EncodedKey {
