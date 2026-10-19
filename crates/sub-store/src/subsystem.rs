@@ -37,6 +37,8 @@ pub struct StorageConfig {
 
 	pub series_merge_file_delay: Duration,
 
+	pub materialize: bool,
+
 	#[cfg(feature = "column")]
 	pub compression: CompressionProfile,
 }
@@ -52,34 +54,35 @@ impl Default for StorageConfig {
 			series_merge_buckets: 1,
 			series_merge_file_delay: Duration::from_seconds(60).unwrap(),
 
+			materialize: true,
+
 			#[cfg(feature = "column")]
 			compression: CompressionProfile::Default,
 		}
 	}
 }
 
+#[cfg(feature = "column")]
+pub struct MaterializationActors {
+	pub table: ActorRef<TableMessage>,
+	pub series: ActorRef<SeriesMessage>,
+}
+
 pub struct StorageSubsystem {
 	#[cfg(feature = "column")]
 	block_store: ColumnStore,
 	#[cfg(feature = "column")]
-	table_ref: ActorRef<TableMessage>,
-	#[cfg(feature = "column")]
-	series_ref: ActorRef<SeriesMessage>,
+	actors: Option<MaterializationActors>,
 	running: Arc<AtomicBool>,
 }
 
 impl StorageSubsystem {
 	#[cfg(feature = "column")]
-	pub fn new(
-		block_store: ColumnStore,
-		table_ref: ActorRef<TableMessage>,
-		series_ref: ActorRef<SeriesMessage>,
-	) -> Self {
+	pub fn new(block_store: ColumnStore, actors: Option<MaterializationActors>) -> Self {
 		info!("Storage (columnar materialization) subsystem started");
 		Self {
 			block_store,
-			table_ref,
-			series_ref,
+			actors,
 			running: Arc::new(AtomicBool::new(true)),
 		}
 	}
@@ -122,9 +125,9 @@ impl Shutdown for StorageSubsystem {
 		}
 
 		#[cfg(feature = "column")]
-		{
-			let _ = self.table_ref.send(TableMessage::Shutdown);
-			let _ = self.series_ref.send(SeriesMessage::Shutdown);
+		if let Some(actors) = &self.actors {
+			let _ = actors.table.send(TableMessage::Shutdown);
+			let _ = actors.series.send(SeriesMessage::Shutdown);
 		}
 		debug!("Storage subsystem shutdown signalled");
 		Ok(())

@@ -25,6 +25,8 @@ use crate::column::actor::{
 	series::SeriesMaterializationActor,
 	table::{TableChanges, TableMaterializationActor},
 };
+#[cfg(feature = "column")]
+use crate::subsystem::MaterializationActors;
 use crate::subsystem::{StorageConfig, StorageSubsystem};
 
 pub struct StorageSubsystemFactory {
@@ -87,6 +89,10 @@ impl SubsystemFactory for StorageSubsystemFactory {
 
 		ioc.register_service::<Arc<ColumnStore>>(Arc::new(block_store.clone()));
 
+		if !self.config.materialize {
+			return Ok(Box::new(StorageSubsystem::new(block_store, None)));
+		}
+
 		let compressor = || Compressor::with_profile(block_store.session().clone(), self.config.compression);
 
 		let table_changes = TableChanges::new();
@@ -116,7 +122,13 @@ impl SubsystemFactory for StorageSubsystemFactory {
 		let series_handle = spawner.spawn_coordination("storage-materialize-series", series_actor);
 		let series_ref = series_handle.actor_ref().clone();
 
-		Ok(Box::new(StorageSubsystem::new(block_store, table_ref, series_ref)))
+		Ok(Box::new(StorageSubsystem::new(
+			block_store,
+			Some(MaterializationActors {
+				table: table_ref,
+				series: series_ref,
+			}),
+		)))
 	}
 
 	#[cfg(not(feature = "column"))]
