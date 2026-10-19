@@ -4,7 +4,12 @@
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::reifydb_assertions;
 
-use crate::{device::Mark, error::Result, lsn::Lsn, wal::Wal};
+use crate::{
+	device::Mark,
+	error::{Result, WalError},
+	lsn::Lsn,
+	wal::Wal,
+};
 
 pub struct Floor<T, L> {
 	wal: Wal<T, L>,
@@ -44,6 +49,14 @@ impl<T, L: Mark> Floor<T, L> {
 		}
 		if position.is_some_and(|held| lsn <= held) {
 			return Ok(());
+		}
+		let durable = self.wal.durable_mark();
+		if durable.is_none_or(|durable| lsn > durable) {
+			return Err(WalError::FloorAhead {
+				floor: self.name.clone(),
+				requested: lsn,
+				durable,
+			});
 		}
 		self.wal.device().record(&self.name, lsn.into())?;
 		*position = Some(lsn);

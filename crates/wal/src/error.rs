@@ -21,6 +21,11 @@ pub enum WalError {
 		reason: String,
 	},
 	FloorHeld(String),
+	FloorAhead {
+		floor: String,
+		requested: Lsn,
+		durable: Option<Lsn>,
+	},
 	Partitions {
 		found: u32,
 	},
@@ -48,6 +53,16 @@ impl Display for WalError {
 				reason,
 			} => write!(f, "record {} of kind {kind} failed to decode: {reason}", lsn.as_u64()),
 			Self::FloorHeld(name) => write!(f, "the floor {name} is already held"),
+			Self::FloorAhead {
+				floor,
+				requested,
+				durable,
+			} => write!(
+				f,
+				"the floor {floor} cannot move to {}, past the durable lsn {:?}",
+				requested.as_u64(),
+				durable.map(Lsn::as_u64)
+			),
 			Self::Partitions {
 				found,
 			} => write!(f, "the wal needs exactly one partition scan, found {found}"),

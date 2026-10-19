@@ -107,6 +107,10 @@ impl<T, L> Wal<T, L> {
 	pub(crate) fn release(&self, name: &str) {
 		self.0.held.lock().remove(name);
 	}
+
+	pub(crate) fn durable_mark(&self) -> Option<Lsn> {
+		self.0.progress.lock().durable
+	}
 }
 
 impl<T, L: Mark> Wal<T, L> {
