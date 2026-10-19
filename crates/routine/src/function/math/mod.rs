@@ -4,6 +4,7 @@
 pub mod abs;
 pub mod acos;
 pub mod add;
+pub mod approx_float8;
 pub mod arith;
 pub mod asin;
 pub mod atan;

@@ -63,6 +63,7 @@ pub fn default_in_process_functions(builder: RoutinesConfigurator) -> RoutinesCo
 		.register_builtin_function(Arc::new(math::sign::Sign::new()))
 		.register_builtin_function(Arc::new(math::sin::Sin::new()))
 		.register_builtin_function(Arc::new(math::sqrt::Sqrt::new()))
+		.register_builtin_function(Arc::new(math::approx_float8::ApproxFloat8::new()))
 		.register_builtin_function(Arc::new(math::sub::basic::Sub::new()))
 		.register_builtin_function(Arc::new(math::sub::saturate::SubSaturate::new()))
 		.register_builtin_function(Arc::new(math::sub::zero::SubZero::new()))
