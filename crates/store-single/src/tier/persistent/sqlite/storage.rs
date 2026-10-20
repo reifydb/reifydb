@@ -12,7 +12,7 @@ use std::{
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::internal_error;
 use reifydb_runtime::{
-	shutdown::Shutdown,
+	shutdown::{Shutdown, ShutdownErrors},
 	sync::mutex::{Mutex, MutexGuard},
 };
 use reifydb_sqlite::{
@@ -28,7 +28,7 @@ use rusqlite::{
 	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, ToSql, Transaction as SqliteTransaction,
 	TransactionBehavior, params,
 };
-use tracing::{instrument, warn};
+use tracing::instrument;
 
 use super::query::build_range_query;
 use crate::tier::{RangeBatch, RangeCursor, RawEntry, TierBackend, TierStorage, persistent::SinglePageCacheMetrics};
@@ -532,14 +532,16 @@ impl SqlitePersistentStorage {
 impl TierBackend for SqlitePersistentStorage {}
 
 impl Shutdown for SqlitePersistentStorage {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
+		let mut errors = ShutdownErrors::new("single store");
 		self.inner.readers.shutdown();
 		if let Some(conn) = self.inner.conn.lock().take() {
 			if let Err(e) = pragma::shutdown(&conn) {
-				warn!(error = %e, "single persistent close: pragma shutdown failed");
+				errors.fail("sqlite close", e);
 			}
 			drop(conn);
 		}
+		errors.finish()
 	}
 }
 

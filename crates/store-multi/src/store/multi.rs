@@ -2487,7 +2487,7 @@ mod probe_tests {
 			let mut batch: TierBatch = HashMap::new();
 			batch.insert(classify_key(&seeded), vec![(seeded, value("preexisting"))]);
 			storage.set_collecting_accepted(CommitVersion(1), batch).unwrap();
-			storage.shutdown();
+			storage.shutdown().unwrap();
 		}
 
 		let clock = Clock::testing();

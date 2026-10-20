@@ -8,8 +8,10 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	thread,
 };
 
+use reifydb_runtime::shutdown::ShutdownErrors;
 use reifydb_sub_api::subsystem::Subsystem;
 use tracing::info;
 
@@ -50,7 +52,7 @@ impl Subsystems {
 		self.subsystems.len()
 	}
 
-	pub fn shutdown_all(&self) {
+	pub fn shutdown_all(&self, errors: &mut ShutdownErrors) {
 		if self.running.compare_exchange(true, false, Ordering::Relaxed, Ordering::Relaxed).is_err() {
 			return;
 		}
@@ -60,8 +62,10 @@ impl Subsystems {
 		for subsystem in self.subsystems.iter().rev() {
 			let name = subsystem.name();
 			info!("Shutting down subsystem: {}", name);
-			subsystem.shutdown();
-			info!("Successfully shut down: {}", name);
+			match subsystem.shutdown() {
+				Ok(()) => info!("Successfully shut down: {}", name),
+				result => errors.step(name, result),
+			}
 		}
 
 		info!("All subsystems shut down");
@@ -80,6 +84,14 @@ impl Subsystems {
 
 impl Drop for Subsystems {
 	fn drop(&mut self) {
-		self.shutdown_all();
+		let mut errors = ShutdownErrors::new("subsystems");
+		self.shutdown_all(&mut errors);
+		if let Err(err) = errors.finish() {
+			if thread::panicking() {
+				eprintln!("subsystems shutdown failed during unwind: {err}");
+			} else {
+				panic!("subsystems shutdown failed: {err}");
+			}
+		}
 	}
 }

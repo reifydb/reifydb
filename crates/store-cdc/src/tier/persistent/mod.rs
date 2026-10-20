@@ -148,7 +148,7 @@ impl CdcPersistentTier {
 		}
 	}
 
-	pub fn shutdown(&self) {
+	pub fn shutdown(&self) -> Result<()> {
 		match self {
 			Self::Memory(storage) => storage.shutdown(),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]

@@ -178,7 +178,7 @@ fn a_stream_is_dropped_after_ws_shutdown() {
 	let db = database(10);
 	let ws = db.sub_server_ws().expect("ws subsystem");
 	let acceptor = ws.acceptor();
-	ws.shutdown();
+	ws.shutdown().unwrap();
 	let runtime = Runtime::new().expect("test runtime");
 	runtime.block_on(async {
 		assert!(refused_upgrade(&acceptor).await);

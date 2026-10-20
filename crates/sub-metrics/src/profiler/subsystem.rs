@@ -13,6 +13,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 use reifydb_profiler::{category::CategorySet, intern::DimInterner, layer::ProfilerLayer, sink::ProfilerSink};
 use reifydb_runtime::{actor::mailbox::ActorRef, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_value::Result;
 use tracing::{info, instrument};
 
 use super::{
@@ -79,11 +80,12 @@ impl ProfilerSubsystem {
 
 impl Shutdown for ProfilerSubsystem {
 	#[instrument(name = "profiler::subsystem::shutdown", level = "info", skip(self))]
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
-			return;
+			return Ok(());
 		}
 		info!("Profiler subsystem shutting down");
+		Ok(())
 	}
 }
 

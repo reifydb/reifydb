@@ -6,8 +6,9 @@ use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::identity::IdentityId;
 
-pub fn create_test_transaction() -> (AdminTransaction, OperatorStore) {
+pub fn create_test_transaction() -> (TestEngine, AdminTransaction, OperatorStore) {
 	let t = TestEngine::new();
 	let operators = t.inner().operator_state();
-	(t.begin_admin(IdentityId::system()).unwrap(), operators)
+	let parent = t.begin_admin(IdentityId::system()).unwrap();
+	(t, parent, operators)
 }

@@ -23,7 +23,7 @@ use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::metrics::PageCacheMetrics;
-use reifydb_value::byte_size::ByteSize;
+use reifydb_value::{Result as ValueResult, byte_size::ByteSize};
 
 use crate::{
 	error::Result,
@@ -91,11 +91,11 @@ impl PersistentTier {
 		keyspace: KeyspaceId,
 		after: Option<&EncodedKey>,
 		limit: u64,
-	) -> Vec<EncodedKey> {
+	) -> Result<Vec<EncodedKey>> {
 		match self {
-			Self::Absent => Vec::new(),
-			Self::Memory(storage) => storage.state_keys_after(operator, keyspace, after, limit),
-			Self::Testing(storage) => storage.state_keys_after(operator, keyspace, after, limit),
+			Self::Absent => Ok(Vec::new()),
+			Self::Memory(storage) => Ok(storage.state_keys_after(operator, keyspace, after, limit)),
+			Self::Testing(storage) => Ok(storage.state_keys_after(operator, keyspace, after, limit)),
 			Self::Sqlite(storage) => storage.state_keys_after(operator, keyspace, after, limit),
 		}
 	}
@@ -112,11 +112,11 @@ impl PersistentTier {
 }
 
 impl Shutdown for PersistentTier {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> ValueResult<()> {
 		match self {
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(storage) => storage.shutdown(),
-			_ => {}
+			_ => Ok(()),
 		}
 	}
 }
@@ -226,7 +226,7 @@ impl Fetch for PersistentTier {
 			Self::Memory(memory) => Fetch::get(memory, operator, key),
 			Self::Testing(testing) => Fetch::get(testing, operator, key),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.get(operator, key.as_encoded())),
+			Self::Sqlite(storage) => storage.get(operator, key.as_encoded()),
 		}
 	}
 
@@ -242,7 +242,7 @@ impl Fetch for PersistentTier {
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(storage) => {
 				let refs: Vec<&EncodedKey> = keys.iter().map(|key| key.borrow().as_encoded()).collect();
-				Ok(storage.get_many(operator, &refs))
+				storage.get_many(operator, &refs)
 			}
 		}
 	}
@@ -253,7 +253,7 @@ impl Fetch for PersistentTier {
 			Self::Memory(memory) => Fetch::contains(memory, operator, key),
 			Self::Testing(testing) => Fetch::contains(testing, operator, key),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.contains(operator, key.as_encoded())),
+			Self::Sqlite(storage) => storage.contains(operator, key.as_encoded()),
 		}
 	}
 }
@@ -271,7 +271,7 @@ impl Page for PersistentTier {
 			Self::Memory(memory) => Page::range_batch(memory, operator, range, batch, occupied),
 			Self::Testing(testing) => Page::range_batch(testing, operator, range, batch, occupied),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.range_batch(operator, range, batch)),
+			Self::Sqlite(storage) => storage.range_batch(operator, range, batch),
 		}
 	}
 
@@ -287,7 +287,7 @@ impl Page for PersistentTier {
 			Self::Memory(memory) => Page::last_batch(memory, operator, range, batch, occupied),
 			Self::Testing(testing) => Page::last_batch(testing, operator, range, batch, occupied),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.last_batch(operator, range, batch)),
+			Self::Sqlite(storage) => storage.last_batch(operator, range, batch),
 		}
 	}
 
@@ -303,7 +303,7 @@ impl Page for PersistentTier {
 			Self::Memory(memory) => Page::group_page(memory, operator, groups, batch, mask),
 			Self::Testing(testing) => Page::group_page(testing, operator, groups, batch, mask),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.group_page(operator, groups, batch, mask)),
+			Self::Sqlite(storage) => storage.group_page(operator, groups, batch, mask),
 		}
 	}
 }
@@ -321,7 +321,7 @@ impl Measure for PersistentTier {
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(storage) => {
 				let refs: Vec<&EncodedKey> = keys.iter().map(|key| key.borrow().as_encoded()).collect();
-				Ok(storage.state_sizes(operator, &refs))
+				storage.state_sizes(operator, &refs)
 			}
 		}
 	}
@@ -332,7 +332,7 @@ impl Measure for PersistentTier {
 			Self::Memory(memory) => Measure::bytes(memory, operator),
 			Self::Testing(testing) => Measure::bytes(testing, operator),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.bytes(operator)),
+			Self::Sqlite(storage) => storage.bytes(operator),
 		}
 	}
 }
@@ -344,7 +344,7 @@ impl Enumerate for PersistentTier {
 			Self::Memory(memory) => Enumerate::census(memory),
 			Self::Testing(testing) => Enumerate::census(testing),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.census()),
+			Self::Sqlite(storage) => storage.census(),
 		}
 	}
 
@@ -354,7 +354,7 @@ impl Enumerate for PersistentTier {
 			Self::Memory(memory) => Enumerate::operators(memory),
 			Self::Testing(testing) => Enumerate::operators(testing),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.occupied_operators()),
+			Self::Sqlite(storage) => storage.occupied_operators(),
 		}
 	}
 
@@ -364,7 +364,7 @@ impl Enumerate for PersistentTier {
 			Self::Memory(memory) => Enumerate::keyspaces(memory, operator),
 			Self::Testing(testing) => Enumerate::keyspaces(testing, operator),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => Ok(storage.occupied_keyspaces(operator)),
+			Self::Sqlite(storage) => storage.occupied_keyspaces(operator),
 		}
 	}
 }

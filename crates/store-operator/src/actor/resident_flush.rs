@@ -71,7 +71,7 @@ pub fn flush_now(buffer: &Resident) {
 	buffer.flush_all();
 }
 
-pub fn flush_pending(actor_ref: &ActorRef<FlushMessage>) -> bool {
+pub fn begin_flush_pending(actor_ref: &ActorRef<FlushMessage>) -> PendingFlush {
 	let waiter = Arc::new(WaiterHandle::new());
 	if actor_ref
 		.send_blocking(FlushMessage::FlushPending {
@@ -79,9 +79,23 @@ pub fn flush_pending(actor_ref: &ActorRef<FlushMessage>) -> bool {
 		})
 		.is_err()
 	{
-		return false;
+		return PendingFlush::Decided(false);
 	}
-	waiter.wait_timeout(FLUSH_PENDING_TIMEOUT)
+	PendingFlush::Sent(waiter)
+}
+
+pub enum PendingFlush {
+	Decided(bool),
+	Sent(Arc<WaiterHandle>),
+}
+
+impl PendingFlush {
+	pub fn wait(self) -> bool {
+		match self {
+			PendingFlush::Decided(answer) => answer,
+			PendingFlush::Sent(waiter) => waiter.wait_timeout(FLUSH_PENDING_TIMEOUT),
+		}
+	}
 }
 
 impl Actor for ResidentFlushActor {

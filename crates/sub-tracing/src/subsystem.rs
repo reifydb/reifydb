@@ -10,6 +10,7 @@ use std::{
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_value::Result;
 use tracing::{info, instrument};
 
 pub struct TracingSubsystem {
@@ -34,15 +35,16 @@ impl Default for TracingSubsystem {
 
 impl Shutdown for TracingSubsystem {
 	#[instrument(name = "tracing::subsystem::shutdown", level = "info", skip(self))]
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
-			return;
+			return Ok(());
 		}
 
 		info!("Tracing subsystem shutting down");
 
 		let _ = stdout().flush();
 		let _ = stderr().flush();
+		Ok(())
 	}
 }
 

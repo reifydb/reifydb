@@ -63,7 +63,7 @@ pub(super) fn remove_one<K: Keyspace>(store: &SqlitePersistent, operator: Operat
 }
 
 pub(super) fn get<K: Keyspace>(store: &SqlitePersistent, operator: OperatorId, key: &K::GroupedKey) -> Option<Vec<u8>> {
-	store.get(operator, encode::<K>(key).as_encoded()).map(|row| row.as_slice().to_vec())
+	store.get(operator, encode::<K>(key).as_encoded()).unwrap().map(|row| row.as_slice().to_vec())
 }
 
 fn rows<K: Keyspace>(batch: OperatorBatch) -> Vec<(K::GroupedKey, Vec<u8>)> {
@@ -84,7 +84,7 @@ fn encoded<K: Keyspace>(range: &KeyRange<K::GroupedKey>) -> EncodedKeyRange {
 }
 
 pub(super) fn scan<K: Keyspace>(store: &SqlitePersistent, operator: OperatorId) -> Vec<(K::GroupedKey, Vec<u8>)> {
-	rows::<K>(store.range_batch(operator, EncodedKeyRange::all(), SCAN_LIMIT))
+	rows::<K>(store.range_batch(operator, EncodedKeyRange::all(), SCAN_LIMIT).unwrap())
 }
 
 pub(super) fn range<K: Keyspace>(
@@ -93,7 +93,7 @@ pub(super) fn range<K: Keyspace>(
 	range: &KeyRange<K::GroupedKey>,
 	limit: u64,
 ) -> Vec<(K::GroupedKey, Vec<u8>)> {
-	rows::<K>(store.range_batch(operator, encoded::<K>(range), limit))
+	rows::<K>(store.range_batch(operator, encoded::<K>(range), limit).unwrap())
 }
 
 pub(super) fn last<K: Keyspace>(
@@ -102,7 +102,7 @@ pub(super) fn last<K: Keyspace>(
 	range: &KeyRange<K::GroupedKey>,
 	limit: u64,
 ) -> Vec<(K::GroupedKey, Vec<u8>)> {
-	rows::<K>(store.last_batch(operator, encoded::<K>(range), limit))
+	rows::<K>(store.last_batch(operator, encoded::<K>(range), limit).unwrap())
 }
 
 pub(super) fn keys_after<K: Keyspace>(
@@ -112,11 +112,12 @@ pub(super) fn keys_after<K: Keyspace>(
 	limit: u64,
 ) -> Vec<K::GroupedKey> {
 	let cursor = after.map(|key| encode::<K>(key).into_encoded());
-	store.state_keys_after(operator, K::ID, cursor.as_ref(), limit).iter().map(decode::<K>).collect()
+	store.state_keys_after(operator, K::ID, cursor.as_ref(), limit).unwrap().iter().map(decode::<K>).collect()
 }
 
 pub(super) fn census<K: Keyspace>(store: &SqlitePersistent) -> Vec<(OperatorId, u64, u64)> {
 	store.census()
+		.unwrap()
 		.into_iter()
 		.filter(|entry| entry.keyspace == K::ID)
 		.map(|entry| (entry.operator, entry.keys, entry.value_bytes.as_bytes()))

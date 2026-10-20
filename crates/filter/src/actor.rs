@@ -97,7 +97,9 @@ impl Actor for FilterActor {
 				let Some(driver) = state.drivers.get_mut(index) else {
 					return Directive::Continue;
 				};
-				let progress = driver.step();
+				let progress = driver
+					.step()
+					.unwrap_or_else(|err| panic!("filter {} rebuild failed: {err}", driver.name()));
 				match progress {
 					DriverProgress::Started | DriverProgress::Scanning => {
 						ctx.schedule_once(self.catchup, move || FilterMessage::Tick(index));

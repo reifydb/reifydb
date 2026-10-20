@@ -859,7 +859,7 @@ mod tests {
 	fn a_checkpoint_that_cannot_be_read_at_bootstrap_stops_instead_of_being_taken_as_absent() {
 		// an unreadable checkpoint taken as absent silently wipes the view and backfills it again
 		let (store, _guard) = OperatorStore::testing_memory_with_persistent_sqlite();
-		store.shutdown();
+		store.shutdown().unwrap();
 
 		stored_checkpoint(&store, FlowId(1));
 	}
@@ -869,7 +869,7 @@ mod tests {
 		// a list read as empty reaps nothing, so every orphan keeps pinning cdc retention forever
 		let (store, _guard) = OperatorStore::testing_memory_with_persistent_sqlite();
 		store.checkpoint_set(FlowId(2), CommitVersion(20)).unwrap();
-		store.shutdown();
+		store.shutdown().unwrap();
 
 		assert!(
 			reap_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)])).is_err(),

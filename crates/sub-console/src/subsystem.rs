@@ -10,9 +10,13 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_runtime::{
+	shutdown::{Shutdown, ShutdownErrors},
+	sync::mutex::Mutex,
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_sub_server_ws::acceptor::WsStreamAcceptor;
+use reifydb_value::Result;
 use tokio::{
 	runtime::Handle,
 	sync::{oneshot, watch},
@@ -68,16 +72,20 @@ impl HasVersion for ConsoleSubsystem {
 }
 
 impl Shutdown for ConsoleSubsystem {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
+		let mut errors = ShutdownErrors::new("console");
 		if let Some(tx) = self.shutdown_tx.lock().take() {
 			let _ = tx.send(true);
 		}
 
 		let complete_rx = self.shutdown_complete_rx.lock().take();
-		if let Some(rx) = complete_rx {
-			let _ = self.runtime.block_on(rx);
+		if let Some(rx) = complete_rx
+			&& let Err(err) = self.runtime.block_on(rx)
+		{
+			errors.fail("server", err);
 		}
 		self.running.store(false, Ordering::SeqCst);
+		errors.finish()
 	}
 }
 

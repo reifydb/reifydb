@@ -8,6 +8,7 @@ mod storage;
 use std::{ops::Deref, sync::Arc};
 
 use reifydb_runtime::actor::mailbox::ActorRef;
+use reifydb_value::Result;
 use tracing::instrument;
 
 use crate::{
@@ -68,8 +69,8 @@ impl CdcStore {
 	}
 
 	#[instrument(name = "store::cdc::shutdown", level = "debug", skip(self))]
-	pub fn shutdown(&self) {
+	pub fn shutdown(&self) -> Result<()> {
 		flush_now(&self.commit, &self.persistent, self.read.as_ref());
-		self.persistent.shutdown();
+		self.persistent.shutdown()
 	}
 }

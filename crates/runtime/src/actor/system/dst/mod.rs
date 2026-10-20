@@ -230,6 +230,8 @@ impl ActorSystem {
 			child.shutdown();
 		}
 
+		self.run_until_idle_or_panic();
+
 		let actors = self.inner.actors.borrow();
 		for slot in actors.iter() {
 			if let Some(cell) = slot {

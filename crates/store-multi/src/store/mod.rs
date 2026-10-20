@@ -316,12 +316,13 @@ impl Deref for StandardMultiStore {
 }
 
 impl Shutdown for StandardMultiStore {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		if let Some(filter) = self.filter.as_ref() {
 			let _ = filter.send(FilterMessage::Shutdown);
 		}
-		if let Some(persistent) = self.persistent.as_ref() {
-			persistent.shutdown();
+		match self.persistent.as_ref() {
+			Some(persistent) => persistent.shutdown(),
+			None => Ok(()),
 		}
 	}
 }

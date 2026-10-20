@@ -3,6 +3,8 @@
 
 use std::fmt::Debug;
 
+use reifydb_value::Result;
+
 #[derive(Debug)]
 pub struct FilterSlice {
 	pub hashes: Vec<u64>,
@@ -16,5 +18,5 @@ pub trait KeyFilterSource: Send + Debug {
 
 	fn restart(&mut self);
 
-	fn next_slice(&mut self, budget: usize) -> FilterSlice;
+	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice>;
 }

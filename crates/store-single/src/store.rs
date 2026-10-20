@@ -144,9 +144,9 @@ impl StandardSingleStore {
 		reporters
 	}
 
-	pub fn flush_pending_blocking(&self) -> bool {
+	pub fn begin_flush_pending(&self) -> PendingFlush {
 		let Some(actor_ref) = self.flush_actor.as_ref() else {
-			return self.persistent.is_none();
+			return PendingFlush::Decided(self.persistent.is_none());
 		};
 
 		let waiter = Arc::new(WaiterHandle::new());
@@ -158,13 +158,37 @@ impl StandardSingleStore {
 			})
 			.is_err()
 		{
-			return false;
+			return PendingFlush::Decided(false);
 		}
+		PendingFlush::Sent {
+			waiter,
+			flushed,
+		}
+	}
+}
 
-		if !waiter.wait_timeout(Duration::from_seconds(5).unwrap()) {
-			return false;
+pub enum PendingFlush {
+	Decided(bool),
+	Sent {
+		waiter: Arc<WaiterHandle>,
+		flushed: Arc<AtomicBool>,
+	},
+}
+
+impl PendingFlush {
+	pub fn wait(self) -> bool {
+		match self {
+			PendingFlush::Decided(answer) => answer,
+			PendingFlush::Sent {
+				waiter,
+				flushed,
+			} => {
+				if !waiter.wait_timeout(Duration::from_seconds(5).unwrap()) {
+					return false;
+				}
+				flushed.load(Ordering::Acquire)
+			}
 		}
-		flushed.load(Ordering::Acquire)
 	}
 }
 
@@ -177,9 +201,10 @@ impl Deref for StandardSingleStore {
 }
 
 impl Shutdown for StandardSingleStore {
-	fn shutdown(&self) {
-		if let Some(persistent) = self.persistent.as_ref() {
-			persistent.shutdown();
+	fn shutdown(&self) -> Result<()> {
+		match self.persistent.as_ref() {
+			Some(persistent) => persistent.shutdown(),
+			None => Ok(()),
 		}
 	}
 }
@@ -603,9 +628,9 @@ mod tests {
 		.unwrap();
 		assert!(store.dirty.lock().contains_key(&k.encode()), "the write is pending a flush");
 
-		store.persistent().expect("persistent tier configured").shutdown();
+		store.persistent().expect("persistent tier configured").shutdown().unwrap();
 
-		store.flush_pending_blocking();
+		store.begin_flush_pending().wait();
 
 		assert!(
 			store.dirty.lock().contains_key(&k.encode()),
@@ -632,7 +657,7 @@ mod tests {
 			}]),
 		)
 		.unwrap();
-		assert!(store.flush_pending_blocking(), "a healthy persistent tier must report a completed flush");
+		assert!(store.begin_flush_pending().wait(), "a healthy persistent tier must report a completed flush");
 		assert!(store.dirty.lock().is_empty(), "the reported success must mean the batch left the dirty map");
 
 		SingleVersionCommit::commit(
@@ -644,9 +669,9 @@ mod tests {
 			}]),
 		)
 		.unwrap();
-		store.persistent().expect("persistent tier configured").shutdown();
+		store.persistent().expect("persistent tier configured").shutdown().unwrap();
 		assert!(
-			!store.flush_pending_blocking(),
+			!store.begin_flush_pending().wait(),
 			"a flush that cannot persist must report failure so the snapshot barrier aborts"
 		);
 	}

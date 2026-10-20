@@ -741,7 +741,7 @@ mod tests {
 	}
 
 	fn sweep(store: &SqlitePersistent, groups: &[GroupId]) -> Vec<EncodedKey> {
-		keys(store.group_page(OPERATOR, groups, LIMIT, KeyspaceMask::all()))
+		keys(store.group_page(OPERATOR, groups, LIMIT, KeyspaceMask::all()).unwrap())
 	}
 
 	#[test]
@@ -753,7 +753,7 @@ mod tests {
 
 		let mut expected: Vec<EncodedKey> = Vec::new();
 		for group in encoded_order(&groups) {
-			expected.extend(keys(store.range_batch(OPERATOR, group_inner_range(group), LIMIT)));
+			expected.extend(keys(store.range_batch(OPERATOR, group_inner_range(group), LIMIT).unwrap()));
 		}
 
 		assert_eq!(sweep(&store, &encoded_order(&groups)), expected);
@@ -817,7 +817,7 @@ mod tests {
 		let groups = [group(11), group(22)];
 		seed(&store, &groups);
 
-		let expected = keys(store.range_batch(OPERATOR, group_inner_range(group(11)), LIMIT));
+		let expected = keys(store.range_batch(OPERATOR, group_inner_range(group(11)), LIMIT).unwrap());
 
 		assert_eq!(sweep(&store, &[group(11)]), expected);
 		assert_eq!(expected.len(), 4);

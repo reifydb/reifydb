@@ -131,7 +131,7 @@ fn assert_sealed_blocks_survive_restart(tier: &Tier) {
 	let min = before.min_version().unwrap();
 	let max = before.max_version().unwrap();
 	let floor = before.truncated_before().unwrap();
-	before.shutdown();
+	before.shutdown().unwrap();
 
 	let after = tier.store();
 	assert_eq!(all_versions(&after), expected);
@@ -155,7 +155,7 @@ fn assert_sealed_version_rejected_after_restart(tier: &Tier) {
 	let before = tier.store();
 	write_all(&before, 1..=5);
 	assert!(before.flush_pending());
-	before.shutdown();
+	before.shutdown().unwrap();
 
 	let after = tier.store();
 	for sealed in [1u64, 3, 5] {
@@ -185,7 +185,7 @@ fn assert_truncation_floor_survives_restart(tier: &Tier) {
 	seal_each(&before, 1..=6);
 	before.drop_before(Cutoff::Version(CommitVersion(4)), usize::MAX).unwrap();
 	assert_eq!(before.truncated_before().unwrap(), CommitVersion(4));
-	before.shutdown();
+	before.shutdown().unwrap();
 
 	let after = tier.store();
 	assert_eq!(after.truncated_before().unwrap(), CommitVersion(4));
@@ -204,7 +204,7 @@ fn assert_retention_after_restart(tier: &Tier) {
 	// retention on a reopened store must drop exactly the same blocks and report exactly the same eviction totals
 	let before = tier.store();
 	seal_each(&before, 1..=6);
-	before.shutdown();
+	before.shutdown().unwrap();
 
 	let after = tier.store();
 	let first = after.drop_before(Cutoff::Version(CommitVersion(5)), 2).unwrap();
@@ -237,7 +237,7 @@ fn assert_shutdown_flushes_partial_block(tier: &Tier) {
 	write_all(&before, 1..=3);
 	assert!(before.flush_pending());
 	write_all(&before, 4..=5);
-	before.shutdown();
+	before.shutdown().unwrap();
 
 	let after = tier.store();
 	assert_eq!(all_versions(&after), (1..=5).collect::<Vec<_>>());
@@ -277,7 +277,7 @@ fn assert_empty_tier_reopens_clean(tier: &Tier) {
 	let before = tier.store();
 	assert!(before.min_version().unwrap().is_none());
 	assert!(before.max_version().unwrap().is_none());
-	before.shutdown();
+	before.shutdown().unwrap();
 
 	let after = tier.store();
 	assert!(after.min_version().unwrap().is_none());
@@ -295,7 +295,7 @@ fn assert_log_contiguous_across_restart(tier: &Tier) {
 	let before = tier.store();
 	write_all(&before, 1..=5);
 	assert!(before.flush_pending());
-	before.shutdown();
+	before.shutdown().unwrap();
 
 	let after = tier.store();
 	write_all(&after, 6..=8);

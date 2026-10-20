@@ -801,7 +801,7 @@ mod tests {
 			conn.execute(r#"UPDATE "operator_join_left_1" SET "bytes" = 12345"#, []).unwrap()
 		});
 
-		store.state_sizes(OperatorId(1), &[encode::<JoinLeft>(&key).as_encoded()]);
+		store.state_sizes(OperatorId(1), &[encode::<JoinLeft>(&key).as_encoded()]).unwrap();
 	}
 
 	#[test]
@@ -1128,7 +1128,7 @@ mod tests {
 		set_one::<RingbufferTtlArm>(&store, OperatorId(2), &key, b"other");
 		assert_eq!(scan::<RingbufferTtlArm>(&store, OperatorId(1)), vec![(key, b"second".to_vec())]);
 		assert_eq!(
-			store.get_many(OperatorId(1), &[&encode::<RingbufferTtlArm>(&key).into_encoded()]),
+			store.get_many(OperatorId(1), &[&encode::<RingbufferTtlArm>(&key).into_encoded()]).unwrap(),
 			vec![Some(EncodedPodRow::new(b"second"))]
 		);
 		remove_one::<RingbufferTtlArm>(&store, OperatorId(1), &key);

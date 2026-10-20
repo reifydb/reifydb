@@ -106,7 +106,7 @@ fn rebuild(storage: &SqlitePersistentStorage, config: FilterConfig) {
 		config,
 	);
 	for _ in 0..10_000 {
-		if driver.step() == DriverProgress::Committed {
+		if driver.step().unwrap() == DriverProgress::Committed {
 			return;
 		}
 	}
@@ -235,7 +235,7 @@ fn a_store_opened_on_populated_tables_starts_disabled_and_serves_back_every_exis
 		let storage = SqlitePersistentStorage::new(config.clone());
 		let entries = (0..32u64).map(|n| (key(n), Some(body(n)))).collect();
 		storage.set_collecting_accepted(CommitVersion(1), batch(table, entries)).expect("setup write failed");
-		storage.shutdown();
+		storage.shutdown().unwrap();
 	}
 
 	let store = store_at(config);
@@ -298,7 +298,7 @@ fn the_rebuild_source_hashes_a_key_exactly_as_the_read_path_does() {
 		.expect("setup write failed");
 
 	let mut source = MultiCurrentKeySource::new(storage.clone());
-	let slice = source.next_slice(64);
+	let slice = source.next_slice(64).unwrap();
 
 	assert_eq!(slice.hashes.len(), 1, "the source must yield the one key that was written");
 	assert!(slice.exhausted, "a slice short of its budget on the last table must report the scan finished");
@@ -389,7 +389,7 @@ fn an_armed_filter_is_left_alone_until_it_fills_and_is_then_resized_from_the_liv
 	);
 
 	assert_eq!(
-		driver.step(),
+		driver.step().unwrap(),
 		DriverProgress::Idle,
 		"an armed filter is enabled, so the driver must not treat it as needing an initial build"
 	);
@@ -402,7 +402,7 @@ fn an_armed_filter_is_left_alone_until_it_fills_and_is_then_resized_from_the_liv
 
 	let mut committed = false;
 	for _ in 0..10_000 {
-		if driver.step() == DriverProgress::Committed {
+		if driver.step().unwrap() == DriverProgress::Committed {
 			committed = true;
 			break;
 		}
@@ -468,7 +468,7 @@ fn the_keyset_scan_covers_every_table_exactly_once_on_an_exact_budget_multiple()
 	let mut seen = Vec::new();
 	let mut slices = 0;
 	loop {
-		let slice = source.next_slice(4);
+		let slice = source.next_slice(4).unwrap();
 		seen.extend(slice.hashes.iter().copied());
 		slices += 1;
 		if slice.exhausted {
@@ -489,7 +489,7 @@ fn the_keyset_scan_covers_every_table_exactly_once_on_an_exact_budget_multiple()
 	source.restart();
 	let mut again = Vec::new();
 	loop {
-		let slice = source.next_slice(5);
+		let slice = source.next_slice(5).unwrap();
 		again.extend(slice.hashes.iter().copied());
 		if slice.exhausted {
 			break;

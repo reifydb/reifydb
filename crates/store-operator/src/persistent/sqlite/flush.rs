@@ -233,7 +233,7 @@ mod tests {
 		batch.drops.push(DropMarker::OperatorState(OP));
 		store.flush_batch(&batch);
 		assert!(scan::<JoinLeft>(&store, OP).is_empty());
-		assert!(store.occupied_keyspaces(OP).is_empty());
+		assert!(store.occupied_keyspaces(OP).unwrap().is_empty());
 		assert_eq!(get::<JoinLeft>(&store, neighbour, &key).as_deref(), Some(b"neighbour".as_slice()));
 		set_one::<JoinLeft>(&store, OP, &key, b"after");
 		assert_eq!(get::<JoinLeft>(&store, OP, &key).as_deref(), Some(b"after".as_slice()));

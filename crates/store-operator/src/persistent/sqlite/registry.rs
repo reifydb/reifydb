@@ -98,6 +98,8 @@ fn parse(rest: &str) -> Option<(OperatorId, KeyspaceId)> {
 
 #[cfg(test)]
 mod tests {
+	use std::mem::forget;
+
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
 		interface::catalog::flow::OperatorId,
@@ -140,9 +142,16 @@ mod tests {
 		assert_eq!(get::<JoinLeft>(&store, STRANGER, &key()), None);
 		assert!(scan::<JoinLeft>(&store, STRANGER).is_empty());
 		assert!(keys_after::<JoinLeft>(&store, STRANGER, None, 10).is_empty());
-		assert_eq!(store.get_many(STRANGER, &[&encode::<JoinLeft>(&key()).into_encoded()]), vec![None]);
-		assert!(store.group_page(STRANGER, &[key().group.0], 10, KeyspaceMask::all()).items.is_empty());
-		assert!(store.range_batch(STRANGER, EncodedKeyRange::all(), 10).items.is_empty());
+		assert_eq!(
+			store.get_many(STRANGER, &[&encode::<JoinLeft>(&key()).into_encoded()]).unwrap(),
+			vec![None]
+		);
+		assert!(store
+			.group_page(STRANGER, &[key().group.0], 10, KeyspaceMask::all())
+			.unwrap()
+			.items
+			.is_empty());
+		assert!(store.range_batch(STRANGER, EncodedKeyRange::all(), 10).unwrap().items.is_empty());
 	}
 
 	#[test]
@@ -160,7 +169,7 @@ mod tests {
 			},
 			b"expiry",
 		);
-		let occupied = store.occupied_keyspaces(OWNER);
+		let occupied = store.occupied_keyspaces(OWNER).unwrap();
 		assert!(occupied.contains(&JoinLeft::ID) && occupied.contains(&Expiry::ID), "{occupied:?}");
 	}
 
@@ -170,7 +179,7 @@ mod tests {
 		let store = open();
 		set_one::<JoinLeft>(&store, OWNER, &key(), b"left");
 		remove_one::<JoinLeft>(&store, OWNER, &key());
-		assert!(store.occupied_keyspaces(OWNER).is_empty());
+		assert!(store.occupied_keyspaces(OWNER).unwrap().is_empty());
 	}
 
 	#[test]
@@ -180,11 +189,11 @@ mod tests {
 		let store = open();
 		set_one::<JoinLeft>(&store, STRANGER, &key(), b"left");
 		set_one::<JoinLeft>(&store, OWNER, &key(), b"left");
-		let mut listed = store.occupied_operators();
+		let mut listed = store.occupied_operators().unwrap();
 		listed.sort_unstable();
 		assert_eq!(listed, vec![OWNER, STRANGER]);
 		remove_one::<JoinLeft>(&store, OWNER, &key());
-		assert_eq!(store.occupied_operators(), vec![STRANGER]);
+		assert_eq!(store.occupied_operators().unwrap(), vec![STRANGER]);
 	}
 
 	#[test]
@@ -193,7 +202,7 @@ mod tests {
 		// empty table
 		let store = open();
 		remove_one::<JoinLeft>(&store, OWNER, &key());
-		assert!(store.occupied_keyspaces(OWNER).is_empty());
+		assert!(store.occupied_keyspaces(OWNER).unwrap().is_empty());
 		let tables: i64 = with_conn(&store, |conn| {
 			conn.query_row(
 				r#"SELECT COUNT(*) FROM "sqlite_master" WHERE "name" = 'operator_join_left_1'"#,
@@ -212,9 +221,9 @@ mod tests {
 		let (config, _guard) = SqliteConfig::in_memory();
 		let first = SqlitePersistent::new(config.clone());
 		set_one::<JoinLeft>(&first, OWNER, &key(), b"kept");
-		first.shutdown();
+		first.shutdown().unwrap();
 		let second = SqlitePersistent::new(config);
-		assert_eq!(second.occupied_keyspaces(OWNER), vec![JoinLeft::ID]);
+		assert_eq!(second.occupied_keyspaces(OWNER).unwrap(), vec![JoinLeft::ID]);
 	}
 
 	#[test]
@@ -223,7 +232,7 @@ mod tests {
 		let (config, _guard) = SqliteConfig::in_memory();
 		let first = SqlitePersistent::new(config.clone());
 		set_one::<JoinLeft>(&first, OWNER, &key(), b"kept");
-		first.shutdown();
+		first.shutdown().unwrap();
 		let second = SqlitePersistent::new(config);
 		assert_eq!(get::<JoinLeft>(&second, OWNER, &key()).as_deref(), Some(b"kept".as_slice()));
 	}
@@ -238,7 +247,15 @@ mod tests {
 		with_conn(&first, |conn| {
 			conn.execute_batch(r#"CREATE TABLE "operator_join_left" ("x" INTEGER)"#).unwrap()
 		});
-		first.shutdown();
+		first.shutdown().unwrap();
 		SqlitePersistent::new(config);
+	}
+
+	#[test]
+	fn a_failed_sqlite_close_fails_the_operator_store_shutdown() {
+		// A close that only logs lets a connection that never closed look cleanly shut down.
+		let store = open();
+		with_conn(&store, |conn| forget(conn.prepare("SELECT 1").unwrap()));
+		assert!(store.shutdown().is_err(), "a busy connection must fail the shutdown");
 	}
 }

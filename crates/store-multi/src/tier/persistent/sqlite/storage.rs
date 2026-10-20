@@ -30,7 +30,7 @@ use reifydb_core::{
 	metrics::scan::record_page,
 };
 use reifydb_runtime::{
-	shutdown::Shutdown,
+	shutdown::{Shutdown, ShutdownErrors},
 	sync::{
 		map::Map,
 		mutex::{Mutex, MutexGuard},
@@ -2325,14 +2325,16 @@ impl TierStorage for SqlitePersistentStorage {
 }
 
 impl Shutdown for SqlitePersistentStorage {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
+		let mut errors = ShutdownErrors::new("multi store");
 		if let Some(conn) = self.inner.conn.lock().take() {
 			if let Err(e) = pragma::shutdown(&conn) {
-				warn!(error = %e, "persistent close: pragma shutdown failed");
+				errors.fail("sqlite close", e);
 			}
 			drop(conn);
 		}
 		self.inner.readers.shutdown();
+		errors.finish()
 	}
 }
 
@@ -2662,7 +2664,7 @@ mod tests {
 		// The sweep hands over the only copy of a row: the commit buffer drops it on the strength of this
 		// call returning Ok. A shut-down storage that reported success would lose the row silently.
 		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.shutdown();
+		s.shutdown().unwrap();
 
 		let batches = vec![(CommitVersion(1), HashMap::from([(table(), vec![(key(1), Some(row(b"v")))])]))];
 

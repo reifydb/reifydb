@@ -24,11 +24,14 @@ use reifydb_core::{
 	error::CoreError,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
-use reifydb_runtime::{shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_runtime::{
+	shutdown::{Shutdown, ShutdownErrors},
+	sync::mutex::Mutex,
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::Result;
 use tokio::runtime::Handle;
-use tracing::{error, info};
+use tracing::info;
 
 use crate::config::OtelConfig;
 
@@ -151,18 +154,20 @@ impl HasVersion for OtelSubsystem {
 }
 
 impl Shutdown for OtelSubsystem {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-			return;
+			return Ok(());
 		}
 
+		let mut errors = ShutdownErrors::new("otel");
 		if let Some(provider) = self.tracer_provider.lock().take() {
 			if let Err(e) = provider.shutdown() {
-				error!("Error shutting down tracer provider: {:?}", e);
+				errors.fail("tracer provider", e);
 			} else {
 				info!("Tracer provider shutdown complete");
 			}
 		}
+		errors.finish()
 	}
 }
 

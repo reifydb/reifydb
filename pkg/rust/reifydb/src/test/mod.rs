@@ -3,7 +3,11 @@
 
 use std::{fs::read_to_string, path::Path};
 
-use reifydb_value::{params::Params, value::Value};
+use reifydb_value::{
+	Result as ValueResult,
+	params::Params,
+	value::{Value, frame::frame::Frame},
+};
 
 #[cfg(feature = "sub_flow")]
 use crate::WithSubsystem;
@@ -25,8 +29,12 @@ pub fn run_test_str(content: &str) -> Result<(), String> {
 
 	let result = db.admin_as_root(content, Params::None);
 
-	let _ = db.stop();
+	let stopped = db.stop().map_err(|e| format!("stop failed: {}", e));
+	script_outcome(result)?;
+	stopped
+}
 
+fn script_outcome(result: ValueResult<Vec<Frame>>) -> Result<(), String> {
 	match result {
 		Ok(frames) => {
 			if let Some(frame) = frames.last() {

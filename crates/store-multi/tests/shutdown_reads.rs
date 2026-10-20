@@ -131,7 +131,7 @@ fn a_range_chunk_on_a_drained_reader_pool_fails_instead_of_reporting_the_range_o
 	// An already exhausted cursor short-circuits, so without this the refusal below would be vacuous.
 	assert!(!cursor.is_exhausted(), "a full page must leave rows behind it");
 
-	tier.shutdown();
+	tier.shutdown().unwrap();
 
 	let error = tier_chunk(&tier, &mut cursor).expect_err(
 		"a chunk that opened no connection reported the range over; every row past the resume point is \
@@ -166,7 +166,7 @@ fn a_store_scan_resumed_across_a_shutdown_fails_instead_of_returning_a_short_res
 	// Five chunks must remain, or the shutdown lands on an already finished scan and proves nothing.
 	assert!(first.has_more, "rows must remain behind the resume point");
 
-	Shutdown::shutdown(&store);
+	Shutdown::shutdown(&store).unwrap();
 
 	let mut seen: Vec<(u64, String)> = first.items.iter().map(row_and_value).collect();
 	loop {
@@ -202,7 +202,7 @@ fn an_iteration_that_straddles_a_shutdown_yields_an_error_rather_than_ending() {
 		rows.next().expect("the first chunk must yield rows").expect("a live scan must not fail");
 	}
 
-	Shutdown::shutdown(&store);
+	Shutdown::shutdown(&store).unwrap();
 
 	let mut served = CHUNK;
 	loop {
@@ -231,7 +231,7 @@ fn an_iteration_that_straddles_a_shutdown_yields_an_error_rather_than_ending() {
 fn the_install_floor_of_a_drained_reader_pool_fails_instead_of_answering_the_max_version() {
 	// The u64::MAX fallback is memoized, so a first probe after the drain pins the floor forever.
 	let (tier, _g) = tier_with_rows(CHUNK);
-	tier.shutdown();
+	tier.shutdown().unwrap();
 
 	let error = tier.install_floor().expect_err("a floor probed against no connection answered a version");
 	names_the_shutdown(&error);
@@ -265,7 +265,7 @@ fn a_scan_that_keeps_reading_past_a_shutdown_errors_before_it_reports_the_range_
 	assert_eq!(first.items.len() as u64, CHUNK, "the first chunk must fill");
 	assert!(first.has_more, "rows must remain behind the resume point");
 
-	Shutdown::shutdown(&store);
+	Shutdown::shutdown(&store).unwrap();
 
 	let mut seen = first.items.len() as u64;
 	let mut calls = 1;

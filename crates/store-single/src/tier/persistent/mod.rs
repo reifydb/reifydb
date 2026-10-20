@@ -34,12 +34,12 @@ pub enum SinglePersistentTier {
 }
 
 impl Shutdown for SinglePersistentTier {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		match self {
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(s) => s.shutdown(),
 			#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
-			_ => {}
+			_ => Ok(()),
 		}
 	}
 }

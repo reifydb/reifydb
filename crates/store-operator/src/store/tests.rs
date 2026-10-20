@@ -539,7 +539,7 @@ fn a_key_filter_restart_still_scans_a_keyspace_whose_last_key_is_deleted_but_not
 	let mut source = OperatorStateKeySource::new(store.persistent.clone(), store.census.clone());
 
 	source.restart();
-	let slice = source.next_slice(16);
+	let slice = source.next_slice(16).unwrap();
 
 	assert_eq!(slice.hashes.len(), 1, "the durable key must be fed to the rebuilt filter");
 }

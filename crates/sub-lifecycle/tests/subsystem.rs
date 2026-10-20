@@ -48,7 +48,7 @@ fn stops_reporting_healthy_once_shut_down() {
 	// reclamation has silently ceased and the database grows without bound.
 	let (_engine, subsystem) = boot();
 
-	subsystem.shutdown();
+	subsystem.shutdown().unwrap();
 
 	assert!(!subsystem.is_running(), "shutdown must clear the running flag");
 	assert!(
@@ -63,8 +63,8 @@ fn shutdown_is_idempotent() {
 	// re-send Stop to an already-dead lane or panic during teardown.
 	let (_engine, subsystem) = boot();
 
-	subsystem.shutdown();
-	subsystem.shutdown();
+	subsystem.shutdown().unwrap();
+	subsystem.shutdown().unwrap();
 
 	assert!(!subsystem.is_running(), "repeated shutdown must remain stopped");
 }

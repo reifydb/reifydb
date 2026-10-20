@@ -16,7 +16,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_runtime::{
-	shutdown::Shutdown,
+	shutdown::{Shutdown, ShutdownErrors},
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
@@ -161,10 +161,12 @@ impl AdminSubsystem {
 	}
 
 	#[inline]
-	fn await_completion(&self) {
+	fn await_completion(&self, errors: &mut ShutdownErrors) {
 		let rx = self.shutdown_complete_rx.lock().take();
-		if let Some(rx) = rx {
-			let _ = self.handle.block_on(rx);
+		if let Some(rx) = rx
+			&& let Err(err) = self.handle.block_on(rx)
+		{
+			errors.fail("server", err);
 		}
 	}
 
@@ -196,9 +198,11 @@ impl HasVersion for AdminSubsystem {
 }
 
 impl Shutdown for AdminSubsystem {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
+		let mut errors = ShutdownErrors::new("admin");
 		self.signal_shutdown();
-		self.await_completion();
+		self.await_completion(&mut errors);
+		errors.finish()
 	}
 }
 

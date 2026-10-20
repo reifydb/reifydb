@@ -36,7 +36,7 @@ use reifydb_value::Result;
 use crate::{
 	actor::{
 		Waker,
-		resident_flush::{FlushMessage, flush_now, flush_pending},
+		resident_flush::{FlushMessage, PendingFlush, begin_flush_pending, flush_now},
 	},
 	config::OperatorStoreConfig,
 	persistent::{Persistent, PersistentTier},
@@ -212,10 +212,10 @@ impl StandardOperatorStore {
 		&self.persistent
 	}
 
-	pub fn flush_pending_blocking(&self) -> bool {
+	pub fn begin_flush_pending(&self) -> PendingFlush {
 		match &self.flush {
-			Some(actor) => flush_pending(actor),
-			None => true,
+			Some(actor) => begin_flush_pending(actor),
+			None => PendingFlush::Decided(true),
 		}
 	}
 
@@ -245,12 +245,12 @@ impl StandardOperatorStore {
 }
 
 impl Shutdown for StandardOperatorStore {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		if self.persistent.is_absent() {
-			return;
+			return Ok(());
 		}
 		flush_now(&self.resident);
-		self.persistent.shutdown();
+		self.persistent.shutdown()
 	}
 }
 
@@ -299,9 +299,9 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn flush_pending_blocking(&self) -> bool {
+	pub fn begin_flush_pending(&self) -> PendingFlush {
 		match self {
-			Self::Standard(store) => store.flush_pending_blocking(),
+			Self::Standard(store) => store.begin_flush_pending(),
 		}
 	}
 
@@ -337,7 +337,7 @@ impl CheckpointFloor for OperatorStore {
 }
 
 impl Shutdown for OperatorStore {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		match self {
 			Self::Standard(store) => store.shutdown(),
 		}

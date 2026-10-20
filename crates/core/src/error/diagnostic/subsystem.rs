@@ -50,21 +50,6 @@ pub fn bind_failed(addr: impl fmt::Display, reason: impl fmt::Display) -> Diagno
 	}
 }
 
-pub fn shutdown_failed(subsystem: impl fmt::Display, reason: impl fmt::Display) -> Diagnostic {
-	Diagnostic {
-		code: "SUB_004".to_string(),
-		rql: None,
-		message: format!("{} subsystem shutdown failed: {}", subsystem, reason),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: None,
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
 pub fn address_unavailable(reason: impl fmt::Display) -> Diagnostic {
 	Diagnostic {
 		code: "SUB_005".to_string(),

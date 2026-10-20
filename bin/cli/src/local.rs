@@ -24,8 +24,9 @@ fn export(args: LocalExportArgs) -> Result<(), String> {
 	let options = build_options(&args)?;
 	let mut db = open(&args.db)?;
 	let result = db.export(&options).map_err(|e| format!("export failed: {}", e));
-	let _ = db.stop();
+	let stopped = db.stop().map_err(|e| format!("stop failed: {}", e));
 	let script = result?;
+	stopped?;
 
 	match &args.out {
 		Some(path) => fs::write(path, &script).map_err(|e| format!("failed to write '{}': {}", path, e))?,
@@ -37,8 +38,9 @@ fn export(args: LocalExportArgs) -> Result<(), String> {
 fn import(args: LocalImportArgs) -> Result<(), String> {
 	let mut db = open(&args.db)?;
 	let result = db.import_from_file(&args.file).map_err(|e| format!("import failed: {}", e));
-	let _ = db.stop();
+	let stopped = db.stop().map_err(|e| format!("stop failed: {}", e));
 	result?;
+	stopped?;
 	eprintln!("imported '{}' into '{}'", args.file, args.db);
 	Ok(())
 }

@@ -16,7 +16,7 @@ use reifydb_runtime::shutdown::Shutdown;
 #[cfg(feature = "column")]
 use reifydb_store_column::{compress::CompressionProfile, store::ColumnStore};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{Result, value::duration::Duration};
 use tracing::debug;
 #[cfg(feature = "column")]
 use tracing::info;
@@ -110,9 +110,9 @@ impl HasVersion for StorageSubsystem {
 }
 
 impl Shutdown for StorageSubsystem {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		if !self.running.swap(false, Ordering::SeqCst) {
-			return;
+			return Ok(());
 		}
 
 		#[cfg(feature = "column")]
@@ -121,6 +121,7 @@ impl Shutdown for StorageSubsystem {
 			let _ = self.series_ref.send(SeriesMessage::Shutdown);
 		}
 		debug!("Storage subsystem shutdown signalled");
+		Ok(())
 	}
 }
 

@@ -61,15 +61,15 @@ pub fn drive(seed: u64, p: Params) {
 		durable.reopen();
 		let crashed = boot(&spawner, dir, "booted", durable);
 		verify(&crashed, &p, steps);
-		crashed.store.shutdown();
+		crashed.store.shutdown().unwrap();
 
 		flush(&mut live);
 		let sealed = live.oracle.clone();
-		live.store.shutdown();
+		live.store.shutdown().unwrap();
 
 		let clean = boot(&spawner, dir, "booted_after_tail_flush", sealed);
 		verify(&clean, &p, steps);
-		clean.store.shutdown();
+		clean.store.shutdown().unwrap();
 		Ok(())
 	})
 	.unwrap();

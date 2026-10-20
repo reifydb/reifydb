@@ -10,6 +10,7 @@ use reifydb_filter::{
 	source::{FilterSlice, KeyFilterSource},
 };
 use reifydb_runtime::sync::mutex::Mutex;
+use reifydb_value::Result;
 
 #[derive(Default, Debug)]
 struct SourceState {
@@ -66,17 +67,17 @@ impl KeyFilterSource for FakeSource {
 		state.restarts += 1;
 	}
 
-	fn next_slice(&mut self, budget: usize) -> FilterSlice {
+	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice> {
 		let mut state = self.state.lock();
 		state.slices += 1;
 		let end = (state.pos + budget).min(state.hashes.len());
 		let hashes = state.hashes[state.pos..end].to_vec();
 		state.pos = end;
 		let exhausted = state.pos >= state.hashes.len();
-		FilterSlice {
+		Ok(FilterSlice {
 			hashes,
 			exhausted,
-		}
+		})
 	}
 }
 
@@ -103,7 +104,7 @@ fn run_to_commit(driver: &mut RebuildDriver) -> Vec<DriverProgress> {
 	// sequence; the cap turns a driver that never commits into a failure instead of a hang.
 	let mut seen = Vec::new();
 	for _ in 0..10_000 {
-		let progress = driver.step();
+		let progress = driver.step().unwrap();
 		seen.push(progress);
 		if progress == DriverProgress::Committed {
 			return seen;
@@ -123,7 +124,7 @@ fn disabled_filter_starts_a_rebuild_on_the_first_step() {
 	let mut driver = RebuildDriver::new(filter.clone(), Box::new(source), never_triggering());
 
 	assert!(!filter.is_enabled());
-	assert_eq!(driver.step(), DriverProgress::Started);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Started);
 }
 
 #[test]
@@ -175,8 +176,8 @@ fn a_committed_cycle_is_followed_by_idle_when_no_trigger_fires() {
 	let slices_after_build = source.slices();
 	let restarts_after_build = source.restarts();
 
-	assert_eq!(driver.step(), DriverProgress::Idle);
-	assert_eq!(driver.step(), DriverProgress::Idle);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Idle);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Idle);
 
 	assert_eq!(source.slices(), slices_after_build, "an idle step fetched a slice");
 	assert_eq!(source.restarts(), restarts_after_build, "an idle step restarted the source");
@@ -199,7 +200,7 @@ fn dual_write_is_live_before_the_first_slice_is_ever_fetched() {
 
 	let mut driver = RebuildDriver::new(filter.clone(), Box::new(source.clone()), config);
 
-	assert_eq!(driver.step(), DriverProgress::Started);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Started);
 	assert!(filter.metrics().rebuilding, "dual-write was not live when Started was returned");
 	assert_eq!(source.slices(), 0, "a slice was fetched in the step that started the rebuild");
 	assert_eq!(source.restarts(), 1, "the source was not rewound before the scan");
@@ -232,7 +233,7 @@ fn a_rebuild_reclaims_the_space_held_by_deleted_keys() {
 
 	source.set_keys(live.clone());
 	assert!(filter.metrics().fill_ratio > FilterConfig::default().fill_trigger, "setup failed to arm the trigger");
-	assert_eq!(driver.step(), DriverProgress::Started);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Started);
 	run_to_commit(&mut driver);
 
 	for hash in &live {
@@ -276,9 +277,9 @@ fn a_key_written_mid_rebuild_survives_the_swap() {
 		},
 	);
 
-	assert_eq!(driver.step(), DriverProgress::Started);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Started);
 	filter.add_many(&[written]);
-	assert_eq!(driver.step(), DriverProgress::Scanning);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Scanning);
 	filter.add_many(&[written]);
 	run_to_commit(&mut driver);
 
@@ -308,7 +309,7 @@ fn drift_trigger_fires_when_the_filter_holds_far_more_keys_than_the_source() {
 	let metrics = filter.metrics();
 	assert!(metrics.fill_ratio <= config.fill_trigger, "fill would have fired; this no longer tests drift");
 	assert!((metrics.estimated_keys as f64) > 100.0 * config.drift_trigger);
-	assert_eq!(driver.step(), DriverProgress::Started);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Started);
 }
 
 #[test]
@@ -335,7 +336,7 @@ fn fill_trigger_fires_on_a_saturated_filter_when_drift_is_not_extreme() {
 		(metrics.estimated_keys as f64) <= 4000.0 * config.drift_trigger,
 		"drift would have fired; this no longer tests fill"
 	);
-	assert_eq!(driver.step(), DriverProgress::Started);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Started);
 }
 
 #[test]
@@ -355,7 +356,7 @@ fn a_healthy_filter_stays_idle_without_touching_the_source() {
 	let slices = source.slices();
 	let restarts = source.restarts();
 	for _ in 0..5 {
-		assert_eq!(driver.step(), DriverProgress::Idle);
+		assert_eq!(driver.step().unwrap(), DriverProgress::Idle);
 	}
 	assert_eq!(source.slices(), slices, "an idle decision fetched a slice");
 	assert_eq!(source.restarts(), restarts, "an idle decision restarted the source");
@@ -421,13 +422,13 @@ fn sizing_ignores_a_saturated_estimated_key_count() {
 	};
 
 	let mut driver = RebuildDriver::new(filter.clone(), Box::new(source.clone()), config);
-	assert_eq!(driver.step(), DriverProgress::Started);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Started);
 	source.set_keys(keys(0..4000));
 	run_to_commit(&mut driver);
 
 	assert_eq!(filter.metrics().estimated_keys, u64::MAX, "setup failed to saturate the active filter");
 
-	assert_eq!(driver.step(), DriverProgress::Started);
+	assert_eq!(driver.step().unwrap(), DriverProgress::Started);
 	run_to_commit(&mut driver);
 
 	// 4000 live keys * 2.0 headroom = 8000 keys at ten bits each, not 1.8e19 keys.

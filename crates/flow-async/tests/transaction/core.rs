@@ -47,7 +47,7 @@ fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedByt
 
 #[test]
 fn test_get_from_pending() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -97,7 +97,7 @@ fn test_get_from_committed() {
 
 #[test]
 fn test_get_pending_shadows_committed() {
-	let (mut parent, operators) = create_test_transaction();
+	let (_engine, mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
 	parent.set(&make_typed_key("key1"), make_value("old")).unwrap();
@@ -121,7 +121,7 @@ fn test_get_pending_shadows_committed() {
 
 #[test]
 fn test_get_removed_returns_none() {
-	let (mut parent, operators) = create_test_transaction();
+	let (_engine, mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
 	parent.set(&make_typed_key("key1"), make_value("value1")).unwrap();
@@ -144,7 +144,7 @@ fn test_get_removed_returns_none() {
 
 #[test]
 fn test_get_nonexistent_key() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -160,7 +160,7 @@ fn test_get_nonexistent_key() {
 
 #[test]
 fn test_contains_key_pending() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -204,7 +204,7 @@ fn test_contains_key_committed() {
 
 #[test]
 fn test_contains_key_removed_returns_false() {
-	let (mut parent, operators) = create_test_transaction();
+	let (_engine, mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
 	parent.set(&make_typed_key("key1"), make_value("value1")).unwrap();
@@ -225,7 +225,7 @@ fn test_contains_key_removed_returns_false() {
 
 #[test]
 fn test_contains_key_nonexistent() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -240,7 +240,7 @@ fn test_contains_key_nonexistent() {
 
 #[test]
 fn test_scan_empty() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -256,7 +256,7 @@ fn test_scan_empty() {
 
 #[test]
 fn test_scan_only_pending() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -281,7 +281,7 @@ fn test_scan_only_pending() {
 
 #[test]
 fn test_scan_filters_removes() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -305,7 +305,7 @@ fn test_scan_filters_removes() {
 
 #[test]
 fn test_range_empty() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -322,7 +322,7 @@ fn test_range_empty() {
 
 #[test]
 fn test_range_only_pending() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -347,7 +347,7 @@ fn test_range_only_pending() {
 
 #[test]
 fn test_prefix_empty() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -364,7 +364,7 @@ fn test_prefix_empty() {
 
 #[test]
 fn test_prefix_only_pending() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -389,7 +389,7 @@ fn test_prefix_only_pending() {
 
 #[test]
 fn test_writes_not_visible_to_parent() {
-	let (mut parent, operators) = create_test_transaction();
+	let (_engine, mut parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -409,7 +409,7 @@ fn test_writes_not_visible_to_parent() {
 
 #[test]
 fn test_removes_not_visible_to_parent() {
-	let (mut parent, operators) = create_test_transaction();
+	let (_engine, mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
 	let value = make_value("value1");

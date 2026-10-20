@@ -17,7 +17,7 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_runtime::{
-	shutdown::Shutdown,
+	shutdown::{Shutdown, ShutdownErrors},
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
@@ -212,26 +212,30 @@ impl HttpSubsystem {
 	}
 
 	#[inline]
-	fn stop_admin_server(&self) {
+	fn stop_admin_server(&self, errors: &mut ShutdownErrors) {
 		let admin_tx = self.admin_shutdown_tx.lock().take();
 		if let Some(tx) = admin_tx {
 			let _ = tx.send(());
 		}
 		let admin_rx = self.admin_shutdown_complete_rx.lock().take();
-		if let Some(rx) = admin_rx {
-			let _ = self.handle.block_on(rx);
+		if let Some(rx) = admin_rx
+			&& let Err(err) = self.handle.block_on(rx)
+		{
+			errors.fail("admin server", err);
 		}
 	}
 
 	#[inline]
-	fn stop_main_server(&self) {
+	fn stop_main_server(&self, errors: &mut ShutdownErrors) {
 		let main_tx = self.shutdown_tx.lock().take();
 		if let Some(tx) = main_tx {
 			let _ = tx.send(());
 		}
 		let main_rx = self.shutdown_complete_rx.lock().take();
-		if let Some(rx) = main_rx {
-			let _ = self.handle.block_on(rx);
+		if let Some(rx) = main_rx
+			&& let Err(err) = self.handle.block_on(rx)
+		{
+			errors.fail("main server", err);
 		}
 	}
 
@@ -262,10 +266,12 @@ impl HasVersion for HttpSubsystem {
 }
 
 impl Shutdown for HttpSubsystem {
-	fn shutdown(&self) {
-		self.stop_admin_server();
-		self.stop_main_server();
+	fn shutdown(&self) -> Result<()> {
+		let mut errors = ShutdownErrors::new("http");
+		self.stop_admin_server(&mut errors);
+		self.stop_main_server(&mut errors);
 		self.running.store(false, Ordering::SeqCst);
+		errors.finish()
 	}
 }
 

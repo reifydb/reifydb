@@ -720,7 +720,7 @@ impl StandardEngine {
 }
 
 impl Shutdown for StandardEngine {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		self.interceptors.clear_late();
 		self.executor.ioc.clear();
 		self.executor.virtual_table_registry.clear();
@@ -729,6 +729,7 @@ impl Shutdown for StandardEngine {
 		if let Some(registry) = self.executor.remote_registry.as_ref() {
 			registry.shutdown();
 		}
+		Ok(())
 	}
 }
 

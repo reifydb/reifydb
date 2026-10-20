@@ -15,8 +15,10 @@ pub fn with_open<T>(dir: &str, f: impl FnOnce(&Database) -> Result<T, String>) -
 	let mut db =
 		embedded::sqlite(SqliteConfig::new(dir)).build().map_err(|e| format!("failed to open '{dir}': {e}"))?;
 	let result = f(&db);
-	let _ = db.stop();
-	result
+	let stopped = db.stop().map_err(|e| format!("failed to stop '{dir}': {e}"));
+	let value = result?;
+	stopped?;
+	Ok(value)
 }
 
 pub fn load(db: &Database) -> Result<Catalog, String> {

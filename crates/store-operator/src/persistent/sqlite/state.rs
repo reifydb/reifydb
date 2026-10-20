@@ -14,71 +14,87 @@ use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 use tracing::instrument;
 
 use crate::{
+	error::{OperatorError, Result},
 	persistent::sqlite::{SqlitePersistent, route},
 	types::OperatorBatch,
 };
 
 impl SqlitePersistent {
 	#[instrument(name = "store::operator::persistent::sqlite::state_sizes", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn state_sizes(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Vec<Option<ByteSize>> {
+	pub fn state_sizes(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Result<Vec<Option<ByteSize>>> {
 		if keys.is_empty() || !self.state_written() {
-			return vec![None; keys.len()];
+			return Ok(vec![None; keys.len()]);
 		}
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return vec![None; keys.len()];
+			return Err(OperatorError::Closed);
 		};
-		route::sizes_many(conn, operator, tables, keys)
+		Ok(route::sizes_many(conn, operator, tables, keys)
 			.into_iter()
 			.map(|size| size.map(ByteSize::from_bytes))
-			.collect()
+			.collect())
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::get_many", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn get_many(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Vec<Option<EncodedPodRow>> {
+	pub fn get_many(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		if keys.is_empty() || !self.state_written() {
-			return vec![None; keys.len()];
+			return Ok(vec![None; keys.len()]);
 		}
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return vec![None; keys.len()];
+			return Err(OperatorError::Closed);
 		};
-		route::get_many(conn, operator, tables, keys).into_iter().map(|bytes| bytes.map(decode_row)).collect()
+		Ok(route::get_many(conn, operator, tables, keys)
+			.into_iter()
+			.map(|bytes| bytes.map(decode_row))
+			.collect())
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
-	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Option<EncodedPodRow> {
+	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Result<Option<EncodedPodRow>> {
 		if !self.state_written() {
-			return None;
-		}
-		let tables = self.inner.tables.mask(operator);
-		let guard = self.read_conn();
-		let conn = guard.as_ref()?;
-		route::get(conn, operator, tables, key).map(decode_row)
-	}
-
-	#[instrument(name = "store::operator::persistent::sqlite::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
-	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> bool {
-		if !self.state_written() {
-			return false;
+			return Ok(None);
 		}
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return false;
+			return Err(OperatorError::Closed);
 		};
-		route::get(conn, operator, tables, key).is_some()
+		Ok(route::get(conn, operator, tables, key).map(decode_row))
+	}
+
+	#[instrument(name = "store::operator::persistent::sqlite::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
+	pub fn contains(&self, operator: OperatorId, key: &EncodedKey) -> Result<bool> {
+		if !self.state_written() {
+			return Ok(false);
+		}
+		let tables = self.inner.tables.mask(operator);
+		let guard = self.read_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Err(OperatorError::Closed);
+		};
+		Ok(route::get(conn, operator, tables, key).is_some())
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
-	pub fn range_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
+	pub fn range_batch(
+		&self,
+		operator: OperatorId,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<OperatorBatch> {
 		self.page(operator, range, batch_size, false)
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::last_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
-	pub fn last_batch(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64) -> OperatorBatch {
+	pub fn last_batch(
+		&self,
+		operator: OperatorId,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<OperatorBatch> {
 		self.page(operator, range, batch_size, true)
 	}
 
@@ -89,14 +105,14 @@ impl SqlitePersistent {
 		groups: &[GroupId],
 		batch_size: u64,
 		mask: KeyspaceMask,
-	) -> OperatorBatch {
+	) -> Result<OperatorBatch> {
 		if groups.is_empty() || !self.state_written() {
-			return OperatorBatch::empty();
+			return Ok(OperatorBatch::empty());
 		}
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return OperatorBatch::empty();
+			return Err(OperatorError::Closed);
 		};
 		let rows = route::bounded_in(
 			conn,
@@ -112,17 +128,23 @@ impl SqlitePersistent {
 			.into_iter()
 			.map(|(key, bytes)| (GroupStateKey::bound_unchecked(key), decode_row(bytes)))
 			.collect();
-		into_batch(items, batch_size)
+		Ok(into_batch(items, batch_size))
 	}
 
-	fn page(&self, operator: OperatorId, range: EncodedKeyRange, batch_size: u64, reverse: bool) -> OperatorBatch {
+	fn page(
+		&self,
+		operator: OperatorId,
+		range: EncodedKeyRange,
+		batch_size: u64,
+		reverse: bool,
+	) -> Result<OperatorBatch> {
 		if !self.state_written() {
-			return OperatorBatch::empty();
+			return Ok(OperatorBatch::empty());
 		}
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return OperatorBatch::empty();
+			return Err(OperatorError::Closed);
 		};
 		let rows = route::bounded(conn, operator, tables, &range, batch_size.saturating_add(1), reverse);
 		record_page(rows.len() as u64, 0);
@@ -130,7 +152,7 @@ impl SqlitePersistent {
 			.into_iter()
 			.map(|(key, bytes)| (GroupStateKey::bound_unchecked(key), decode_row(bytes)))
 			.collect();
-		into_batch(items, batch_size)
+		Ok(into_batch(items, batch_size))
 	}
 
 	pub fn state_keys_after(
@@ -139,16 +161,16 @@ impl SqlitePersistent {
 		keyspace: KeyspaceId,
 		after: Option<&EncodedKey>,
 		limit: u64,
-	) -> Vec<EncodedKey> {
+	) -> Result<Vec<EncodedKey>> {
 		if !self.state_written() {
-			return Vec::new();
+			return Ok(Vec::new());
 		}
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Vec::new();
+			return Err(OperatorError::Closed);
 		};
-		route::keys_after(conn, operator, tables, keyspace, after, limit)
+		Ok(route::keys_after(conn, operator, tables, keyspace, after, limit))
 	}
 }
 

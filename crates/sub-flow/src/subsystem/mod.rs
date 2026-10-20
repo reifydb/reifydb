@@ -18,6 +18,7 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	thread,
 };
 
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -46,7 +47,12 @@ use reifydb_flow_async::{
 	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry},
 	transaction::substrate::FlowSubstrate,
 };
-use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_runtime::{
+	actor::system::ActorSpawner,
+	context::clock::Clock,
+	shutdown::{Shutdown, ShutdownErrors},
+	sync::mutex::Mutex,
+};
 use reifydb_store_cdc::store::CdcStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::commit::{CommitBegin, CommitHandle};
@@ -298,26 +304,34 @@ impl FlowSubsystem {
 }
 
 impl Shutdown for FlowSubsystem {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
-			return;
+			return Ok(());
 		}
 
+		let mut errors = ShutdownErrors::new("flow");
 		self.flow_scope.shutdown();
 
-		if let Some(handle) = self.supervisor_handle.lock().take() {
-			let _ = handle.join();
+		if let Some(handle) = self.supervisor_handle.lock().take()
+			&& let Err(err) = handle.join()
+		{
+			errors.fail("supervisor", err);
 		}
 
-		if let Some(handle) = self.loader_handle.lock().take() {
-			let _ = handle.join();
+		if let Some(handle) = self.loader_handle.lock().take()
+			&& let Err(err) = handle.join()
+		{
+			errors.fail("loader", err);
 		}
 
 		for handle in take(&mut *self.committer_handles.lock()) {
-			let _ = handle.join();
+			if let Err(err) = handle.join() {
+				errors.fail("committer", err);
+			}
 		}
 
 		self.view_lineage.publish(Default::default());
+		errors.finish()
 	}
 }
 
@@ -379,6 +393,12 @@ impl HasVersion for FlowSubsystem {
 
 impl Drop for FlowSubsystem {
 	fn drop(&mut self) {
-		self.shutdown();
+		if let Err(err) = self.shutdown() {
+			if thread::panicking() {
+				eprintln!("flow shutdown failed during unwind: {err}");
+			} else {
+				panic!("flow shutdown failed: {err}");
+			}
+		}
 	}
 }

@@ -94,7 +94,7 @@ mod cases {
 			"a partial block must not be sealed before shutdown"
 		);
 
-		fixture.store.shutdown();
+		fixture.store.shutdown().unwrap();
 
 		assert_eq!(
 			fixture.persistent.metrics().appends,
@@ -116,7 +116,7 @@ mod cases {
 		// an empty block has no version range and append_block rejects it, so an idle shutdown must not attempt
 		// one
 		let store = fixture.store.clone();
-		within_deadline("shutdown with nothing pending", move || store.shutdown());
+		within_deadline("shutdown with nothing pending", move || store.shutdown()).unwrap();
 
 		let metrics = fixture.persistent.metrics();
 		assert_eq!(metrics.appends, 0, "shutdown with nothing pending must not append a block");
@@ -134,12 +134,12 @@ mod cases {
 		// a second shutdown must be a no-op; re-sealing would duplicate a block that is written once and never
 		// rewritten
 		write_all(&fixture.store, 1..=3);
-		fixture.store.shutdown();
+		fixture.store.shutdown().unwrap();
 		let after_first = fixture.persistent.metrics();
 		assert_eq!(after_first.appends, 1, "the first shutdown must seal the pending records");
 
 		let store = fixture.store.clone();
-		within_deadline("a second shutdown", move || store.shutdown());
+		within_deadline("a second shutdown", move || store.shutdown()).unwrap();
 
 		let after_second = fixture.persistent.metrics();
 		assert_eq!(
@@ -152,7 +152,7 @@ mod cases {
 	pub fn flush_pending_after_shutdown(fixture: Fixture) {
 		// shutdown never stops the flush actor, so a later flush_pending still has a mailbox that can answer it
 		write_all(&fixture.store, 1..=3);
-		fixture.store.shutdown();
+		fixture.store.shutdown().unwrap();
 
 		let store = fixture.store.clone();
 		let drained = within_deadline("flush_pending after shutdown", move || store.flush_pending());
@@ -169,7 +169,7 @@ mod cases {
 		// a closed tier must fail loudly; silently answering "no such record" loses what shutdown just
 		// persisted
 		write_all(&fixture.store, 1..=3);
-		fixture.store.shutdown();
+		fixture.store.shutdown().unwrap();
 
 		match fixture.store.read(CommitVersion(2)) {
 			Ok(Some(cdc)) => {
@@ -203,7 +203,7 @@ mod cases {
 		// the commit buffer never learns the tier below closed, so whatever it still accepts must stay
 		// drainable
 		write_all(&fixture.store, 1..=3);
-		fixture.store.shutdown();
+		fixture.store.shutdown().unwrap();
 
 		assert!(
 			fixture.store.write(&cdc_minimal(4)).is_ok(),
@@ -238,7 +238,7 @@ mod cases {
 
 		let racer = fixture.store.clone();
 		let handle = thread::spawn(move || racer.flush_pending());
-		fixture.store.shutdown();
+		fixture.store.shutdown().unwrap();
 		let raced = handle.join().expect("the racing flush must not panic");
 
 		assert!(raced, "the racing flush must answer rather than time out");
@@ -297,7 +297,7 @@ fn shutdown_seals_partial_block_after_the_flusher_is_gone(persistent: CdcPersist
 	system.join().expect("the flush actor must stop once its system is shut down");
 
 	let closing = store.clone();
-	within_deadline("shutdown after the flusher is gone", move || closing.shutdown());
+	within_deadline("shutdown after the flusher is gone", move || closing.shutdown()).unwrap();
 
 	let summaries = persistent.summaries_from(CommitVersion(0), SUMMARY_LIMIT).unwrap();
 	assert_eq!(

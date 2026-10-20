@@ -46,7 +46,7 @@ use reifydb_runtime::{
 		system::{ActorHandle, ActorSpawner},
 	},
 	context::{RuntimeContext, clock::Clock},
-	shutdown::Shutdown,
+	shutdown::{Shutdown, ShutdownErrors},
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
 use reifydb_store_cdc::store::CdcStore;
@@ -210,11 +210,13 @@ impl SubscriptionSubsystem {
 }
 
 impl Shutdown for SubscriptionSubsystem {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
-			return;
+			return Ok(());
 		}
-		let _ = self.consumer.lock().stop();
+		let mut errors = ShutdownErrors::new("subscription");
+		errors.step("consumer", self.consumer.lock().stop());
+		errors.finish()
 	}
 }
 
