@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_value::{
 	error::Diagnostic,
 	fragment::Fragment,
 	value::{duration::Duration, value_type::ValueType},
 };
+
+use crate::interface::catalog::flow::OperatorId;
 
 pub fn flow_error(message: String) -> Diagnostic {
 	Diagnostic {
@@ -304,6 +307,21 @@ pub fn flow_append_lane_mismatch(column: &str, expected: &str, found: &str) -> D
 		"Every lane of an append must carry a column with the same type and dictionary, otherwise rows of one lane \
 		 would land in a column typed by the other.",
 	)
+}
+
+pub fn flow_state_key_unframed(operator: OperatorId, key: &EncodedKey) -> Diagnostic {
+	let mut diagnostic = flow_diagnostic(
+		"FLOW_090",
+		format!("operator {} holds a state key with no valid frame", operator.0),
+		"Every stored operator state key must carry a group, a known keyspace and its suffix, otherwise a range \
+		 read would skip the row and the reaper would never free it.",
+	);
+	diagnostic.notes = vec![format!("key: {}", hex(key))];
+	diagnostic
+}
+
+fn hex(key: &EncodedKey) -> String {
+	key.as_slice().iter().map(|byte| format!("{:02x}", byte)).collect()
 }
 
 pub fn flow_parent_operator_not_found(input: String) -> Diagnostic {

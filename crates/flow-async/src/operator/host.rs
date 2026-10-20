@@ -55,6 +55,7 @@ use reifydb_value::{
 };
 
 use crate::{
+	error::FlowStateError,
 	operator::state::{
 		expiry::{expiry_drop, expiry_get, expiry_set, managed_due_key, managed_latest_key},
 		iter::StateIterator,
@@ -323,11 +324,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		)?;
 		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
-			if let TaggedKey::OperatorState(decoded) = &r.key
-				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
-			{
-				out.push((inner, EncodedPodRow::from(r.bytes)));
-			}
+			out.push((framed_state_key(self.operator, &r.key)?, EncodedPodRow::from(r.bytes)));
 		}
 		Ok(out)
 	}
@@ -350,11 +347,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let batch = self.txn.state_group_range(self.operator, groups, limit, keyspaces)?;
 		let mut rows = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
-			if let TaggedKey::OperatorState(decoded) = &r.key
-				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
-			{
-				rows.push((inner, EncodedPodRow::from(r.bytes)));
-			}
+			rows.push((framed_state_key(self.operator, &r.key)?, EncodedPodRow::from(r.bytes)));
 		}
 		Ok(GroupSweep {
 			rows,
@@ -366,12 +359,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let Some(r) = self.txn.state_last(self.operator, range)? else {
 			return Ok(None);
 		};
-		if let TaggedKey::OperatorState(decoded) = &r.key
-			&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
-		{
-			return Ok(Some((inner, EncodedPodRow::from(r.bytes))));
-		}
-		Ok(None)
+		Ok(Some((framed_state_key(self.operator, &r.key)?, EncodedPodRow::from(r.bytes))))
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
@@ -539,10 +527,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		query.limit = limit;
 		let batch = self.txn.state_range(self.operator, query)?;
 		for r in batch.items {
-			let Some(key) = unscope(&r.key) else {
-				continue;
-			};
-			visit(key, EncodedPodRow::from(r.bytes))?;
+			visit(framed_state_key(self.operator, &r.key)?, EncodedPodRow::from(r.bytes))?;
 		}
 		Ok(())
 	}
@@ -650,11 +635,17 @@ impl Find for HostFind<'_> {
 	}
 }
 
-fn unscope(key: &TaggedKey) -> Option<GroupStateKey> {
-	let TaggedKey::OperatorState(key) = key else {
-		return None;
-	};
-	GroupStateKey::from_framed(key.inner())
+fn framed_state_key(operator: OperatorId, key: &TaggedKey) -> Result<GroupStateKey> {
+	if let TaggedKey::OperatorState(decoded) = key
+		&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
+	{
+		return Ok(inner);
+	}
+	Err(FlowStateError::StateKeyUnframed {
+		operator,
+		key: key.encode(),
+	}
+	.into())
 }
 
 fn range_site(range: &EncodedKeyRange) -> &'static str {
