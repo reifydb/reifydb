@@ -141,10 +141,10 @@ where
 			self.backlog.publish(version.commit, None);
 			return Ok(());
 		}
-		let cdc = Arc::new(Cdc::new(version, changed_at, cdc_changes.clone()));
+		let cdc = Arc::new(Cdc::new(version, changed_at, cdc_changes));
 		self.storage.write(&cdc)?;
 		debug!(version = version.commit.0, "CDC written successfully");
-		self.emit_written_event(version.commit, &cdc_changes);
+		self.emit_written_event(version.commit, &cdc.changes);
 		let relevant = is_relevant_cdc(&cdc).then_some(cdc);
 		self.backlog.publish(version.commit, relevant);
 		Ok(())

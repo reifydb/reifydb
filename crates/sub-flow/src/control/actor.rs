@@ -2304,7 +2304,7 @@ mod pull_protocol {
 				h.cdc_records()
 					.into_iter()
 					.filter(|cdc| cdc.version.commit > pre_tick)
-					.flat_map(|cdc| cdc.changes)
+					.flat_map(|cdc| cdc.changes.clone())
 					.find_map(|sc| match sc {
 						CdcChange::Delete {
 							key,
@@ -2320,7 +2320,7 @@ mod pull_protocol {
 			.cdc_records()
 			.into_iter()
 			.filter(|cdc| cdc.version.commit <= pre_tick)
-			.flat_map(|cdc| cdc.changes)
+			.flat_map(|cdc| cdc.changes.clone())
 			.find_map(|sc| match sc {
 				CdcChange::Insert {
 					key,
@@ -2396,7 +2396,7 @@ mod pull_protocol {
 					.cdc_records()
 					.into_iter()
 					.filter(|cdc| cdc.version.commit > stable)
-					.flat_map(|cdc| cdc.changes)
+					.flat_map(|cdc| cdc.changes.clone())
 					.filter_map(|sc| match sc {
 						CdcChange::Delete {
 							key,
@@ -2502,7 +2502,7 @@ mod pull_protocol {
 		let cdc_state_keys = h
 			.cdc_records()
 			.into_iter()
-			.flat_map(|cdc| cdc.changes)
+			.flat_map(|cdc| cdc.changes.clone())
 			.filter(|change| matches!(KeyTag::of(change.key()), Some(KeyTag::OperatorState)))
 			.count();
 		assert_eq!(cdc_state_keys, 0, "no CDC record may carry an OperatorState key either");
