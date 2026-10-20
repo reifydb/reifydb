@@ -58,11 +58,11 @@ fn a_lookup_on_an_unsorted_partitioned_view_is_accepted() {
 }
 
 #[test]
-fn a_ringbuffer_right_side_is_lookup_001() {
-	// A ringbuffer has no partition layout the lookup can read.
+fn an_unpartitioned_ringbuffer_right_side_is_lookup_002() {
+	// The ring buffer is not partitioned by the lookup key, so no partition read can answer it.
 	let engine = engine();
 	engine.admin("CREATE RINGBUFFER lk::rb { mint: utf8, usd: float8 } WITH { capacity: 10 }");
-	assert_code(&engine.admin_err(&view("v", "{ FROM lk::rb }", "(mint, p.mint)", RETENTION)), "LOOKUP_001");
+	assert_code(&engine.admin_err(&view("v", "{ FROM lk::rb }", "(mint, p.mint)", RETENTION)), "LOOKUP_002");
 }
 
 #[test]

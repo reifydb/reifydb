@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	interface::catalog::{
 		flow::{FlowEdge, FlowId, OperatorId},
-		id::{TableId, ViewId},
+		id::{RingBufferId, TableId, ViewId},
 	},
 	operator_with::{AggregateWith, LookupWith},
 };
@@ -184,6 +184,18 @@ fn view_id(engine: &TestEngine, txn: &mut CommandTransaction, name: &str) -> Vie
 		.id()
 }
 
+fn ringbuffer_id(engine: &TestEngine, txn: &mut CommandTransaction, name: &str) -> RingBufferId {
+	let catalog = engine.catalog();
+	let namespace = catalog
+		.find_namespace_by_name(&mut Transaction::Command(txn), "s")
+		.expect("the namespace lookup must succeed")
+		.expect("the namespace must exist");
+	catalog.find_ringbuffer_by_name(&mut Transaction::Command(txn), namespace.id(), name)
+		.expect("the ring buffer lookup must succeed")
+		.expect("the ring buffer must exist")
+		.id
+}
+
 fn lookup_flow(left: TableId, right: LookupObject, key: &str) -> FlowDag {
 	let mut builder = FlowDag::builder(FLOW);
 	builder.add_node(FlowNode::new(
@@ -263,6 +275,43 @@ fn a_lookup_whose_text_left_key_meets_a_dictionary_partition_column_registers() 
 	lookup_engine_inner(&engine)
 		.register(&mut txn, lookup_flow(left, LookupObject::Table(right), "mint"))
 		.expect("a text key against a dictionary text partition column must register");
+}
+
+#[test]
+fn a_lookup_whose_text_left_key_meets_a_dictionary_ringbuffer_partition_column_registers() {
+	let engine = TestEngine::new();
+	engine.admin("CREATE NAMESPACE s");
+	engine.admin("CREATE DICTIONARY s::keys FOR utf8 AS uint4");
+	engine.admin("CREATE TABLE s::l { pool: utf8, a: int4 }");
+	engine.admin(
+		"CREATE RINGBUFFER s::info { pool: utf8 with { dictionary: s::keys }, b: int4 } WITH { capacity: 1, partition: { by: { pool } } }",
+	);
+
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
+	let left = table_id(&engine, &mut txn, "l");
+	let right = ringbuffer_id(&engine, &mut txn, "info");
+
+	lookup_engine_inner(&engine)
+		.register(&mut txn, lookup_flow(left, LookupObject::RingBuffer(right), "pool"))
+		.expect("a text key against a dictionary text ring buffer partition column must register");
+}
+
+#[test]
+fn a_lookup_whose_text_left_key_meets_an_int4_ringbuffer_partition_column_fails_registration_with_lookup_003() {
+	let engine = TestEngine::new();
+	engine.admin("CREATE NAMESPACE s");
+	engine.admin("CREATE TABLE s::l { k: utf8, a: int4 }");
+	engine.admin("CREATE RINGBUFFER s::r { k: int4, b: int4 } WITH { capacity: 1, partition: { by: { k } } }");
+
+	let mut txn = engine.begin_command(IdentityId::system()).expect("a command transaction must open");
+	let left = table_id(&engine, &mut txn, "l");
+	let right = ringbuffer_id(&engine, &mut txn, "r");
+
+	let diagnostic = lookup_engine_inner(&engine)
+		.register(&mut txn, lookup_flow(left, LookupObject::RingBuffer(right), "k"))
+		.expect_err("a text key against an int4 ring buffer partition column must fail registration")
+		.diagnostic();
+	assert_eq!(diagnostic.code, "LOOKUP_003", "got: {diagnostic:?}");
 }
 
 #[test]

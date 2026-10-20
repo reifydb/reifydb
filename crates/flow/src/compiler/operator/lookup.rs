@@ -67,10 +67,12 @@ fn lookup_right(plan: &QueryPlan, fallback: &Fragment) -> Result<LookupRight> {
 				&node.source.fully_qualified_name()
 			))),
 		},
-		QueryPlan::RingBufferScan(node) => Err(error!(lookup_right_unsupported(
-			node.source.identifier().clone(),
-			&node.source.fully_qualified_name()
-		))),
+		QueryPlan::RingBufferScan(node) => Ok(LookupRight {
+			object: LookupObject::RingBuffer(node.source.def().id),
+			name: node.source.def().name.clone(),
+			fragment: node.source.identifier().clone(),
+			partition_by: node.source.def().partition_by.clone(),
+		}),
 		QueryPlan::SeriesScan(node) => Err(error!(lookup_right_unsupported(
 			node.source.identifier().clone(),
 			&node.source.fully_qualified_name()

@@ -315,14 +315,25 @@ impl FlowEngineInner {
 			.unwrap_or_else(|| Arc::new(Schema::empty()));
 		let left_schema = decoded_schema(&left_schema, |id| self.catalog.find_dictionary(txn, id))?;
 
-		let (storage, deferred, columns, partition_by) = match right {
+		let (storage, family, deferred, columns, partition_by) = match right {
 			LookupObject::Table(table) => {
 				let table = self.catalog.get_table(&mut txn.reborrow(), table)?;
-				(StorageId::Table(table.id), false, table.columns, table.partition_by)
+				(StorageId::Table(table.id), RowFamily::Table, false, table.columns, table.partition_by)
+			}
+			LookupObject::RingBuffer(ringbuffer) => {
+				let ringbuffer = self.catalog.get_ringbuffer(&mut txn.reborrow(), ringbuffer)?;
+				(
+					StorageId::RingBuffer(ringbuffer.id),
+					RowFamily::RingBuffer,
+					false,
+					ringbuffer.columns,
+					ringbuffer.partition_by,
+				)
 			}
 			LookupObject::View(view) => match self.catalog.get_view(&mut txn.reborrow(), view)? {
 				View::Table(view) if view.sort.is_empty() => (
 					StorageId::View(view.id),
+					RowFamily::Table,
 					view.kind == ViewKind::Deferred,
 					view.columns,
 					view.partition_by,
@@ -335,7 +346,7 @@ impl FlowEngineInner {
 
 		ensure_lookup_key_types(&left, &left_schema, &columns, &partition_by)?;
 
-		let shape = row_shape_from_columns(RowFamily::Table, &columns);
+		let shape = row_shape_from_columns(family, &columns);
 		let right_schema =
 			decoded_schema(&catalog_schema(&columns), |id| self.catalog.find_dictionary(txn, id))?;
 		let left_retention = with.retention.as_ref().map(|retention| retention.duration);

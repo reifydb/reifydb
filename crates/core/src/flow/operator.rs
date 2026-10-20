@@ -108,6 +108,7 @@ pub enum OperatorDef {
 pub enum LookupObject {
 	Table(TableId),
 	View(ViewId),
+	RingBuffer(RingBufferId),
 }
 
 impl OperatorDef {

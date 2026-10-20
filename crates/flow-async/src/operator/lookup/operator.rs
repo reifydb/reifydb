@@ -264,7 +264,7 @@ impl LookupOperator {
 	) -> CommitVersion {
 		*reads.version.get_or_insert_with(|| match self.config.right {
 			LookupObject::View(view) if self.config.deferred => host.lookup_view_version(view, source),
-			LookupObject::Table(_) | LookupObject::View(_) => {
+			LookupObject::Table(_) | LookupObject::RingBuffer(_) | LookupObject::View(_) => {
 				let at = CommitVersion(source.0).min(host.version());
 				host.lookup_floor().map_or(at, |floor| at.max(floor))
 			}
@@ -761,6 +761,7 @@ mod tests {
 			column::ColumnIndex,
 			dictionary::Dictionary,
 			id::{ColumnId, ViewId},
+			ringbuffer::RingBuffer,
 			table::Table,
 			view::{TableView, View, ViewKind},
 		},
@@ -865,6 +866,29 @@ mod tests {
 			right_schema: catalog_schema(&table.columns),
 			alias: Some("r".to_string()),
 			left_retention: retention,
+			routines: Routines::empty(),
+			runtime_context: RuntimeContext::testing(0, 1),
+			ctx: Arc::new(FlowContext::default()),
+		})
+		.expect("the lookup operator must build")
+	}
+
+	fn ringbuffer_lookup(ringbuffer: &RingBuffer) -> LookupOperator {
+		LookupOperator::new(LookupConfig {
+			operator: OperatorId(OP),
+			left_node: OperatorId(LEFT),
+			join_type: JoinType::Left,
+			right: LookupObject::RingBuffer(ringbuffer.id),
+			deferred: false,
+			storage: StorageId::RingBuffer(ringbuffer.id),
+			columns: ringbuffer.columns.clone(),
+			partition_by: ringbuffer.partition_by.clone(),
+			shape: row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns),
+			left: parse_expression("lk").expect("the left key parses"),
+			left_schema: left_schema(),
+			right_schema: catalog_schema(&ringbuffer.columns),
+			alias: Some("r".to_string()),
+			left_retention: None,
 			routines: Routines::empty(),
 			runtime_context: RuntimeContext::testing(0, 1),
 			ctx: Arc::new(FlowContext::default()),
@@ -1556,5 +1580,102 @@ mod tests {
 		});
 		let host = TxnHostContext::new(&mut txn, OperatorId(OP));
 		host.lookup_view_version(ViewId(1), SourceVersion(31));
+	}
+
+	#[test]
+	fn a_ringbuffer_lookup_reads_the_newest_row_of_its_partition_at_the_source_version() {
+		// An evicted ring buffer row must stay visible to reads at its version and hidden from later ones.
+		let engine = TestEngine::new();
+		engine.admin("CREATE NAMESPACE t");
+		engine.admin("CREATE DICTIONARY t::d FOR utf8 AS uint4");
+		engine.admin(
+			"CREATE RINGBUFFER t::rb { k: utf8 with { dictionary: t::d }, v: int4 } WITH { capacity: 1, partition: { by: { k } } }",
+		);
+		let catalog = engine.inner().catalog();
+		let namespace = catalog.cache().find_namespace_by_name("t").expect("namespace t");
+		let ringbuffer =
+			catalog.cache().find_ringbuffer_by_name(namespace.id(), "rb").expect("ring buffer t::rb");
+		let put = |key: &str, value: i32| {
+			engine.command(&format!("INSERT t::rb [{{ k: '{key}', v: {value} }}]"));
+			engine.inner().current_version().expect("current version")
+		};
+		let first = put("a", 1);
+		put("b", 5);
+		let second = put("a", 2);
+
+		let storage = StorageId::RingBuffer(ringbuffer.id);
+		let stored = stored_partitions(&engine, storage);
+		assert_eq!(stored.len(), 2, "capacity 1 per partition keeps one row for a and one for b");
+		assert!(
+			stored.iter().all(|(_, row)| read_fingerprint(row)
+				== row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns).fingerprint()),
+			"a ring buffer row must carry the ring buffer family shape the lookup decodes with"
+		);
+
+		let mut op = ringbuffer_lookup(&ringbuffer);
+		let mut txn = txn_at(&engine, second);
+
+		let early = only_insert(&run(
+			&mut op,
+			&mut txn,
+			first,
+			Diff::insert(rows(&[Some("a")], &[7], at_millis(5))),
+		));
+		assert_eq!(
+			cell(&early, "r_k", 0),
+			Value::Utf8("a".to_string()),
+			"the dictionary key decodes to its text"
+		);
+		assert_eq!(
+			cell(&early, "r_v", 0),
+			Value::Int4(1),
+			"a source before the overwrite reads the evicted row"
+		);
+
+		let late = only_insert(&run(
+			&mut op,
+			&mut txn,
+			second,
+			Diff::insert(rows(&[Some("a")], &[8], at_millis(6))),
+		));
+		assert_eq!(cell(&late, "r_v", 0), Value::Int4(2), "a source after the overwrite reads the newest row");
+
+		let missing = only_insert(&run(
+			&mut op,
+			&mut txn,
+			second,
+			Diff::insert(rows(&[Some("zz")], &[9], at_millis(6))),
+		));
+		assert!(
+			matches!(cell(&missing, "r_v", 0), Value::None { .. }),
+			"a missing partition gives none columns"
+		);
+
+		engine.admin(
+			"CREATE RINGBUFFER t::wide { k: utf8, v: int4 } WITH { capacity: 2, partition: { by: { k } } }",
+		);
+		let wide =
+			catalog.cache().find_ringbuffer_by_name(namespace.id(), "wide").expect("ring buffer t::wide");
+		engine.command("INSERT t::wide [{ k: 'a', v: 10 }]");
+		engine.command("INSERT t::wide [{ k: 'a', v: 20 }]");
+		let both = engine.inner().current_version().expect("current version");
+		assert_eq!(
+			stored_partitions(&engine, StorageId::RingBuffer(wide.id)).len(),
+			2,
+			"capacity 2 keeps both rows of partition a"
+		);
+		let mut op = ringbuffer_lookup(&wide);
+		let mut txn = txn_at(&engine, both);
+		let newest = only_insert(&run(
+			&mut op,
+			&mut txn,
+			both,
+			Diff::insert(rows(&[Some("a")], &[10], at_millis(7))),
+		));
+		assert_eq!(
+			cell(&newest, "r_v", 0),
+			Value::Int4(20),
+			"a partition holding two rows answers with the newer one"
+		);
 	}
 }
