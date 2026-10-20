@@ -11,7 +11,7 @@ use reifydb_value::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
-		dictionary::DictionaryEntryId,
+		dictionary::{DictionaryEntryId, DictionaryId},
 		diff_type::DiffType,
 		duration::Duration,
 		row_number::RowNumber,
@@ -489,6 +489,10 @@ impl<'a> ColumnsView for ExternCColumnsView<'a> {
 		Ok(self.names.column(name)?.map(|(col, _)| PassSource::ExternC(col.wire())))
 	}
 
+	fn dictionary_of(&self, name: &str) -> SdkResult<Option<DictionaryId>> {
+		Ok(self.names.column(name)?.and_then(|(col, _)| col.dictionary()))
+	}
+
 	fn row_numbers(&self) -> &[RowNumber] {
 		self.names.columns.row_numbers()
 	}
@@ -517,6 +521,10 @@ impl<'a> ColumnsView for BorrowedColumns<'a> {
 
 	fn pass_source(&self, name: &str) -> SdkResult<Option<PassSource<'_>>> {
 		Ok(BorrowedColumns::column(self, name)?.map(|col| PassSource::ExternC(col.wire())))
+	}
+
+	fn dictionary_of(&self, name: &str) -> SdkResult<Option<DictionaryId>> {
+		Ok(BorrowedColumns::column(self, name)?.and_then(|col| col.dictionary()))
 	}
 
 	fn row_numbers(&self) -> &[RowNumber] {

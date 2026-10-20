@@ -18,7 +18,7 @@ use reifydb_value::{
 		date::Date,
 		datetime::DateTime,
 		decimal::Decimal,
-		dictionary::DictionaryEntryId,
+		dictionary::{DictionaryEntryId, DictionaryId},
 		diff_type::DiffType,
 		duration::Duration,
 		row_number::RowNumber,
@@ -405,6 +405,16 @@ impl<'a> ColumnsView for InProcessColumnsView<'a> {
 
 	fn pass_source(&self, name: &str) -> Result<Option<PassSource<'_>>, SdkError> {
 		Ok(self.columns.view(name)?.map(PassSource::InProcess))
+	}
+
+	fn dictionary_of(&self, name: &str) -> Result<Option<DictionaryId>, SdkError> {
+		Ok(self.columns.view(name)?.and_then(|view| match view.data {
+			ViewData::DictionaryId {
+				dictionary_id,
+				..
+			} => dictionary_id,
+			_ => None,
+		}))
 	}
 
 	fn row_numbers(&self) -> &[RowNumber] {
