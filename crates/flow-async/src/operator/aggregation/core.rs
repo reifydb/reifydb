@@ -4,7 +4,7 @@
 use std::{borrow::Cow, collections::HashMap, iter::repeat_n, sync::Arc};
 
 use arrow_array::{Array, ArrayRef, RecordBatch, UInt64Array};
-use arrow_schema::{FieldRef, Schema, SchemaRef};
+use arrow_schema::{Field, FieldRef, Schema, SchemaRef};
 use reifydb_core::{
 	error::diagnostic::{
 		flow::{
@@ -28,7 +28,7 @@ use reifydb_flow::{
 	},
 	compiler::operator::aggregate_validation::aggregate_call_diagnostic,
 	context::FlowContext,
-	operator::map::schema_column,
+	operator::{map::schema_column, schema_context},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
@@ -55,7 +55,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	operator::aggregation::accumulator::RowAccumulator,
+	operator::aggregation::accumulator::{RowAccumulator, avg_type, sum_type},
 	window::{engine::tumbling::TumblingEngine, span::WindowSpan},
 };
 
@@ -188,28 +188,49 @@ impl SlotViews {
 	}
 }
 
-fn declared_slot_type(kind: SlotKind, input: &SlotInput, parent_schema: Option<&SchemaRef>) -> Option<ValueType> {
+fn declared_slot_type(
+	kind: SlotKind,
+	input: &SlotInput,
+	parent_schema: Option<&SchemaRef>,
+	lowered_args: &[LoweredExpr],
+	schema_ctx: &EvalContext,
+) -> Option<ValueType> {
 	match kind {
 		SlotKind::Count {
 			..
 		} => Some(ValueType::Int8),
 		SlotKind::WindowStart | SlotKind::WindowEnd | SlotKind::WindowLast => Some(ValueType::DateTime),
 		SlotKind::WindowDuration => Some(ValueType::Duration),
-		SlotKind::Min | SlotKind::Max | SlotKind::First | SlotKind::Last => match input {
-			SlotInput::Column(name) => {
-				let field = parent_schema?.field_with_name(name).ok()?;
-				match from_field(field).ok()?.value_type?.inner_type() {
-					ValueType::Any => None,
-					inner => Some(inner.clone()),
-				}
-			}
-			_ => None,
-		},
-		SlotKind::Sum
-		| SlotKind::Avg
-		| SlotKind::Digest {
+		SlotKind::Min | SlotKind::Max | SlotKind::First | SlotKind::Last => {
+			slot_input_type(input, parent_schema, lowered_args, schema_ctx)
+		}
+		SlotKind::Sum => sum_type(&slot_input_type(input, parent_schema, lowered_args, schema_ctx)?),
+		SlotKind::Avg => avg_type(&slot_input_type(input, parent_schema, lowered_args, schema_ctx)?),
+		SlotKind::Digest {
 			..
 		} => None,
+	}
+}
+
+fn slot_input_type(
+	input: &SlotInput,
+	parent_schema: Option<&SchemaRef>,
+	lowered_args: &[LoweredExpr],
+	schema_ctx: &EvalContext,
+) -> Option<ValueType> {
+	match input {
+		SlotInput::Column(name) => known_inner_type(parent_schema?.field_with_name(name).ok()?),
+		SlotInput::Expr(index) => {
+			known_inner_type(lowered_args.get(*index)?.output_field(schema_ctx)?.as_ref())
+		}
+		_ => None,
+	}
+}
+
+fn known_inner_type(field: &Field) -> Option<ValueType> {
+	match from_field(field).ok()?.value_type?.inner_type() {
+		ValueType::Any => None,
+		inner => Some(inner.clone()),
 	}
 }
 
@@ -404,28 +425,36 @@ impl Aggregation {
 			(None, Vec::new(), Vec::new(), Vec::new(), None)
 		};
 		let group_names: Vec<String> = group_by.iter().map(|e| display_label(e).text().to_string()).collect();
+		let schema_ctx = schema_context(parent_schema.as_ref(), &routines, &runtime_context, &ctx);
 		let slot_types: Vec<Option<ValueType>> = match &slot_kinds {
 			Some(kinds) => kinds
 				.iter()
 				.zip(&slot_inputs)
-				.map(|(kind, input)| declared_slot_type(*kind, input, parent_schema.as_ref()))
+				.map(|(kind, input)| {
+					declared_slot_type(
+						*kind,
+						input,
+						parent_schema.as_ref(),
+						&lowered_slot_args,
+						&schema_ctx,
+					)
+				})
 				.collect(),
 			None => Vec::new(),
 		};
-		let aggregate_fields = aggregations.iter().enumerate().map(|(index, expression)| {
+		let aggregate_fields = aggregate_output_names.iter().enumerate().map(|(index, name)| {
 			let declared =
 				bare_outputs.as_ref().and_then(|bare| slot_types.get(bare[index]).cloned().flatten());
-			match declared {
-				Some(declared) => Arc::new(to_field(
-					&aggregate_output_names[index],
-					&FieldType::from(ValueType::Option(Box::new(declared))),
-				)),
-				None => schema_column(parent_schema.as_ref(), expression),
-			}
+			let value_type = match declared {
+				Some(declared) => ValueType::Option(Box::new(declared)),
+				None => ValueType::Any,
+			};
+			Arc::new(to_field(name, &FieldType::from(value_type)))
 		});
 		let output_schema = Arc::new(Schema::new(
 			group_by.iter()
-				.map(|e| schema_column(parent_schema.as_ref(), e))
+				.zip(&lowered_group_by)
+				.map(|(e, lowered)| schema_column(parent_schema.as_ref(), e, lowered, &schema_ctx))
 				.chain(aggregate_fields)
 				.collect::<Vec<FieldRef>>(),
 		));

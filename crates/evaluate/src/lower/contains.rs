@@ -35,6 +35,7 @@ pub(super) fn lower_contains<'e>(
 		let (field, array) = factory::bool(name, [true]);
 		return Ok(literal::row_zero(operator, &field, &array)?);
 	}
+	let optional = value.field.is_nullable();
 	let mut args = vec![value.expr];
 	for item in items {
 		args.push(lower_node(ctx, operator, item)?.expr);
@@ -47,7 +48,7 @@ pub(super) fn lower_contains<'e>(
 			},
 			args,
 		),
-		field: bool_field(name, false),
+		field: bool_field(name, optional),
 	})
 }
 

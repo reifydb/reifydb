@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -16,7 +17,15 @@ use reifydb_flow::{context::FlowContext, operator::map::MapOperator};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
-use reifydb_value::value::{column_view::ColumnView, datetime::DateTime};
+use reifydb_test_harness::engine::TestEngine;
+use reifydb_value::value::{
+	column_view::ColumnView,
+	datetime::DateTime,
+	value_type::{
+		ValueType,
+		field::{FieldType, from_field, to_field},
+	},
+};
 
 fn map(expressions: &[&str]) -> MapOperator {
 	MapOperator::new(
@@ -90,4 +99,87 @@ fn a_later_batch_with_moved_columns_reads_the_right_column() {
 
 	assert_eq!(inserted(&operator.apply(insert(first)).unwrap(), "b"), vec!["3"]);
 	assert_eq!(inserted(&operator.apply(insert(moved)).unwrap(), "b"), vec!["6"]);
+}
+
+fn parent() -> SchemaRef {
+	Arc::new(Schema::new(vec![
+		to_field("a", &FieldType::from(ValueType::Utf8)),
+		to_field("b", &FieldType::from(ValueType::Utf8)),
+		to_field("flag", &FieldType::from(ValueType::Boolean)),
+		to_field("oflag", &FieldType::from(ValueType::Option(Box::new(ValueType::Boolean)))),
+		to_field("n", &FieldType::from(ValueType::Int4)),
+	]))
+}
+
+fn typed_map(engine: &TestEngine, expressions: &[&str]) -> MapOperator {
+	MapOperator::new(
+		Some(parent()),
+		OperatorId(1),
+		expressions.iter().flat_map(|expression| parse_expression(expression).unwrap()).collect(),
+		engine.executor().routines.clone(),
+		engine.executor().runtime_context.clone(),
+		Arc::new(FlowContext::default()),
+	)
+	.unwrap()
+}
+
+fn output_type(operator: &MapOperator, name: &str) -> Option<ValueType> {
+	let schema = operator.output_schema().expect("a map always has an output schema");
+	from_field(schema.field_with_name(name).expect("the output names the column")).unwrap().value_type
+}
+
+fn optional(value_type: ValueType) -> ValueType {
+	ValueType::Option(Box::new(value_type))
+}
+
+#[test]
+fn a_plain_column_keeps_its_exact_parent_field() {
+	// Existing views and sinks read a bare column's field as is, so its name, type and metadata must never change.
+	let engine = TestEngine::new();
+	let operator = typed_map(&engine, &["a", "oflag"]);
+	let schema = operator.output_schema().unwrap();
+
+	assert_eq!(schema.field_with_name("a").unwrap(), parent().field_with_name("a").unwrap());
+	assert_eq!(schema.field_with_name("oflag").unwrap(), parent().field_with_name("oflag").unwrap());
+}
+
+#[test]
+fn a_computed_column_reports_the_type_its_expression_produces() {
+	// A computed column reported as Any fails every downstream key type check, a lookup on it never registers.
+	let engine = TestEngine::new();
+	let cases = [
+		("k: cast(n, utf8)", ValueType::Utf8),
+		("k: if flag { a } else { b }", ValueType::Utf8),
+		("k: n + 1", ValueType::Int8),
+		("k: n > 1", ValueType::Boolean),
+		("k: text::lower(a)", ValueType::Utf8),
+	];
+	let mut failures = Vec::new();
+	for (expression, want) in cases {
+		let got = output_type(&typed_map(&engine, &[expression]), "k");
+		if got.as_ref() != Some(&want) {
+			failures.push(format!("{expression}: got {got:?}, want {want:?}"));
+		}
+	}
+	assert!(failures.is_empty(), "computed columns with the wrong type:\n{}", failures.join("\n"));
+}
+
+#[test]
+fn an_if_with_a_none_branch_is_optional_and_an_optional_condition_is_not() {
+	// A none branch must make the result optional, an optional condition never does since none takes else.
+	let engine = TestEngine::new();
+
+	assert_eq!(
+		output_type(&typed_map(&engine, &["k: if flag { a } else { none }"]), "k"),
+		Some(optional(ValueType::Utf8))
+	);
+	assert_eq!(output_type(&typed_map(&engine, &["k: if oflag { a } else { b }"]), "k"), Some(ValueType::Utf8));
+}
+
+#[test]
+fn an_untypable_expression_stays_any() {
+	// Guessing a type where none can be known would let a lookup register on a wrong type and match the wrong rows.
+	let engine = TestEngine::new();
+
+	assert_eq!(output_type(&typed_map(&engine, &["k: (a, b)"]), "k"), Some(ValueType::Any));
 }

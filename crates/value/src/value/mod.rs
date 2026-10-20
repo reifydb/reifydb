@@ -43,6 +43,7 @@ pub mod value_type;
 
 use std::{fmt, hash, mem};
 
+use arrow_buffer::i256;
 use blob::Blob;
 use constraint::{precision::Precision, scale::Scale};
 use date::Date;
@@ -130,6 +131,28 @@ impl Value {
 		Value::None {
 			inner: ValueType::Any,
 		}
+	}
+
+	pub fn zero_of(value_type: &ValueType) -> Option<Self> {
+		Some(match value_type {
+			ValueType::Int1 => Value::Int1(0),
+			ValueType::Int2 => Value::Int2(0),
+			ValueType::Int4 => Value::Int4(0),
+			ValueType::Int8 => Value::Int8(0),
+			ValueType::Int16 => Value::Int16(0),
+			ValueType::Uint1 => Value::Uint1(0),
+			ValueType::Uint2 => Value::Uint2(0),
+			ValueType::Uint4 => Value::Uint4(0),
+			ValueType::Uint8 => Value::Uint8(0),
+			ValueType::Uint16 => Value::Uint16(0),
+			ValueType::Float4 => Value::Float4(OrderedF32::zero()),
+			ValueType::Float8 => Value::Float8(OrderedF64::zero()),
+			ValueType::Decimal {
+				scale,
+				..
+			} => Value::Decimal(Decimal::from_parts(i256::ZERO, scale.value())?),
+			_ => return None,
+		})
 	}
 
 	pub fn none_of(ty: ValueType) -> Self {

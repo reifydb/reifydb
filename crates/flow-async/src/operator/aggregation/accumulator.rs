@@ -14,6 +14,7 @@ use reifydb_value::{
 		digest::Digest,
 		duration::Duration,
 		number::safe::{add::SafeAdd, div::SafeDiv, sub::SafeSub},
+		value_type::ValueType,
 	},
 };
 
@@ -812,6 +813,14 @@ fn parts(event: &AccumulatorEvent<Contribution>) -> (bool, WindowSlotKey, &SlotR
 
 fn present(input: Option<&Value>) -> Option<&Value> {
 	input.filter(|v| !matches!(v, Value::None { .. }))
+}
+
+pub(crate) fn sum_type(input: &ValueType) -> Option<ValueType> {
+	Some(widen(&Value::zero_of(input)?).get_type())
+}
+
+pub(crate) fn avg_type(input: &ValueType) -> Option<ValueType> {
+	Some(widen(&Value::zero_of(input)?).checked_div(&Value::Int8(1))?.get_type())
 }
 
 fn widen(v: &Value) -> Value {

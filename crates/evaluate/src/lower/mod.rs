@@ -160,6 +160,16 @@ impl LoweredExpr {
 		}
 	}
 
+	pub fn output_field(&self, ctx: &EvalContext) -> Option<FieldRef> {
+		match &self.ready(ctx).plan {
+			Plan::Lowered {
+				field,
+				..
+			} => Some(field.clone()),
+			Plan::Direct(_) | Plan::Spliced(_) | Plan::Failed(_) => None,
+		}
+	}
+
 	fn ready(&self, ctx: &EvalContext) -> Arc<Ready> {
 		let schema = ctx.batch.schema();
 		let mut state = self.state.lock();

@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
+use arrow_schema::{Schema, SchemaRef};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -16,9 +17,17 @@ use reifydb_flow::{context::FlowContext, operator::extend::ExtendOperator};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
+use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	Result,
-	value::{column_view::ColumnView, datetime::DateTime},
+	value::{
+		column_view::ColumnView,
+		datetime::DateTime,
+		value_type::{
+			ValueType,
+			field::{FieldType, from_field, to_field},
+		},
+	},
 };
 
 fn extend(expressions: &[&str]) -> Result<ExtendOperator> {
@@ -100,4 +109,44 @@ fn a_broken_expression_fails_when_the_extend_is_built() {
 	let built = extend(&["b: a IS test::Status::Active"]);
 
 	assert!(built.is_err(), "an unresolved variant must fail ExtendOperator::new");
+}
+
+fn parent() -> SchemaRef {
+	Arc::new(Schema::new(vec![
+		to_field("a", &FieldType::from(ValueType::Utf8)),
+		to_field("b", &FieldType::from(ValueType::Utf8)),
+		to_field("flag", &FieldType::from(ValueType::Boolean)),
+	]))
+}
+
+fn typed_extend(engine: &TestEngine, expressions: &[&str]) -> ExtendOperator {
+	ExtendOperator::new(
+		Some(parent()),
+		OperatorId(1),
+		expressions.iter().flat_map(|expression| parse_expression(expression).unwrap()).collect(),
+		engine.executor().routines.clone(),
+		engine.executor().runtime_context.clone(),
+		Arc::new(FlowContext::default()),
+	)
+	.unwrap()
+}
+
+#[test]
+fn an_extend_keeps_the_parent_fields_and_types_each_computed_column() {
+	// Extend shares the map typing path, a computed column left as Any fails a lookup keyed on it after an extend.
+	let engine = TestEngine::new();
+	let operator = typed_extend(&engine, &["c: cast(a, utf8)", "i: if flag { a } else { b }", "t: (a, b)"]);
+	let schema = operator.output_schema().expect("an extend always has an output schema");
+	let value_type = |name: &str| from_field(schema.field_with_name(name).unwrap()).unwrap().value_type;
+
+	for name in ["a", "b", "flag"] {
+		assert_eq!(
+			schema.field_with_name(name).unwrap(),
+			parent().field_with_name(name).unwrap(),
+			"{name} changed"
+		);
+	}
+	assert_eq!(value_type("c"), Some(ValueType::Utf8));
+	assert_eq!(value_type("i"), Some(ValueType::Utf8));
+	assert_eq!(value_type("t"), Some(ValueType::Any), "an untypable column must stay Any");
 }

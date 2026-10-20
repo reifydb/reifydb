@@ -30,7 +30,7 @@ use tracing::instrument;
 
 use crate::{
 	context::FlowContext,
-	operator::{forward_system_columns, with_system_columns_of},
+	operator::{forward_system_columns, schema_context, with_system_columns_of},
 };
 
 pub struct MapOperator {
@@ -73,10 +73,13 @@ impl MapOperator {
 	}
 
 	pub fn output_schema(&self) -> Option<SchemaRef> {
+		let parent = self.parent_schema.as_ref();
+		let ctx = schema_context(parent, &self.routines, &self.runtime_context, &self.ctx);
 		Some(Arc::new(Schema::new(
 			self.expressions
 				.iter()
-				.map(|expr| schema_column(self.parent_schema.as_ref(), expr))
+				.zip(&self.lowered_expressions)
+				.map(|(expr, lowered)| schema_column(parent, expr, lowered, &ctx))
 				.collect::<Vec<FieldRef>>(),
 		)))
 	}
@@ -112,7 +115,12 @@ impl MapOperator {
 	}
 }
 
-pub fn schema_column(parent: Option<&SchemaRef>, expression: &Expression) -> FieldRef {
+pub fn schema_column(
+	parent: Option<&SchemaRef>,
+	expression: &Expression,
+	lowered: &LoweredExpr,
+	ctx: &EvalContext,
+) -> FieldRef {
 	let source = match expression {
 		Expression::Alias(alias) => alias.expression.as_ref(),
 		other => other,
@@ -122,8 +130,8 @@ pub fn schema_column(parent: Option<&SchemaRef>, expression: &Expression) -> Fie
 		(Some(parent), Expression::Column(column)) => parent.field_with_name(column.0.name.text()).ok(),
 		_ => None,
 	};
-	match parent_field {
-		Some(field) => Arc::new(field.clone().with_name(label.text())),
+	match parent_field.cloned().or_else(|| lowered.output_field(ctx).map(|field| field.as_ref().clone())) {
+		Some(field) => Arc::new(field.with_name(label.text())),
 		None => Arc::new(to_field(label.text(), &FieldType::from(ValueType::Any))),
 	}
 }

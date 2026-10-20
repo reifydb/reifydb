@@ -2,15 +2,21 @@
 // Copyright (c) 2026 ReifyDB
 
 use arrow_array::{ArrayRef, RecordBatch};
-use arrow_schema::FieldRef;
-use reifydb_core::{interface::catalog::flow::OperatorId, value::batch::batch};
+use arrow_schema::{FieldRef, SchemaRef};
+use reifydb_core::{
+	interface::catalog::flow::OperatorId,
+	value::batch::{batch, empty_batch},
+};
+use reifydb_evaluate::expression::context::EvalContext;
+use reifydb_routine_abi::registry::Routines;
+use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	Result,
 	error::Error,
 	value::system_columns::{SystemColumn, is_system_field, keep_system_columns},
 };
 
-use crate::error::FlowGraphError;
+use crate::{context::FlowContext, error::FlowGraphError};
 
 pub mod append;
 pub mod extend;
@@ -22,6 +28,25 @@ pub mod source;
 
 const FORWARDED_SYSTEM_COLUMNS: [SystemColumn; 4] =
 	[SystemColumn::RowNumbers, SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time];
+
+pub fn schema_context<'a>(
+	parent: Option<&SchemaRef>,
+	routines: &'a Routines,
+	runtime_context: &'a RuntimeContext,
+	ctx: &'a FlowContext,
+) -> EvalContext<'a> {
+	EvalContext {
+		params: &ctx.params,
+		symbols: &ctx.symbols,
+		routines,
+		runtime_context,
+		identity: ctx.identity,
+		batch: parent.map(|parent| RecordBatch::new_empty(parent.clone())).unwrap_or_else(empty_batch),
+		row_count: 1,
+		target: None,
+		take: None,
+	}
+}
 
 pub(crate) fn forward_system_columns(batch: &RecordBatch) -> Result<RecordBatch> {
 	keep_system_columns(batch, &FORWARDED_SYSTEM_COLUMNS)

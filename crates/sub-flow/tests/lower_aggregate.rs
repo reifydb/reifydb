@@ -4,6 +4,7 @@
 use std::{str::FromStr, sync::Arc};
 
 use arrow_array::{RecordBatch, cast::AsArray};
+use arrow_schema::{Schema, SchemaRef};
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -13,7 +14,16 @@ use reifydb_flow::{aggregate::AggregateContext, context::FlowContext};
 use reifydb_flow_async::operator::aggregation::core::Aggregation;
 use reifydb_rql::expression::parse_expression;
 use reifydb_test_harness::{assert::column_values, engine::TestEngine};
-use reifydb_value::value::{Value, decimal::Decimal, duration::Duration, value_type::ValueType};
+use reifydb_value::value::{
+	Value,
+	constraint::{precision::Precision, scale::Scale},
+	decimal::Decimal,
+	duration::Duration,
+	value_type::{
+		ValueType,
+		field::{FieldType, from_field, to_field},
+	},
+};
 
 fn grouped(engine: &TestEngine, by: &str, aggregation: &str) -> Aggregation {
 	Aggregation::new(
@@ -141,4 +151,54 @@ fn a_flow_output_keeps_its_type_and_value() {
 	let frames = db.query("FROM app::v");
 	let values: Vec<String> = column_values(&frames[0], "v").iter().map(|v| v.to_string()).collect();
 	assert_eq!(values, ["26"]);
+}
+
+fn typed_parent() -> SchemaRef {
+	Arc::new(Schema::new(vec![
+		to_field("a", &FieldType::from(ValueType::Utf8)),
+		to_field("n", &FieldType::from(ValueType::Int4)),
+	]))
+}
+
+fn typed_grouped(engine: &TestEngine, by: &str, aggregation: &str) -> Aggregation {
+	Aggregation::new(
+		OperatorId(1),
+		Some(typed_parent()),
+		parse_expression(by).expect("by parses"),
+		parse_expression(aggregation).expect("aggregation parses"),
+		engine.executor().routines.clone(),
+		engine.executor().runtime_context.clone(),
+		AggregateContext::Grouped,
+		Arc::new(FlowContext::default()),
+	)
+	.expect("the aggregation core must build")
+}
+
+#[test]
+fn a_computed_group_key_and_a_min_over_a_computed_value_report_their_types() {
+	// A computed group key or min reported as Any fails a lookup on it; RQL cannot name an inline by key.
+	let engine = TestEngine::new();
+	let aggregation = typed_grouped(&engine, "cast(a, utf8)", "m: math::min(cast(a, utf8))");
+	let value_type = |index: usize| from_field(aggregation.output_schema.field(index)).unwrap().value_type;
+
+	assert_eq!(value_type(0), Some(ValueType::Utf8), "the computed group key");
+	assert_eq!(value_type(1), Some(ValueType::Option(Box::new(ValueType::Utf8))), "the min over a computed value");
+}
+
+#[test]
+fn a_flow_sum_and_avg_report_the_types_the_flow_slots_emit() {
+	// The flow sum widens each value, so the batch routine type Int4 would describe values that never arrive.
+	let engine = TestEngine::new();
+	let output_type = |aggregation: &str| {
+		let aggregation = typed_grouped(&engine, "a", aggregation);
+		from_field(aggregation.output_schema.field(1)).unwrap().value_type
+	};
+	let optional = |value_type: ValueType| Some(ValueType::Option(Box::new(value_type)));
+
+	assert_eq!(output_type("s: math::sum(n)"), optional(ValueType::Int16), "a sum over int4 is widened to int16");
+	assert_eq!(
+		output_type("v: math::avg(n)"),
+		optional(ValueType::decimal(Precision::MAX, Scale::new(6))),
+		"an avg over int4 is a decimal at scale 6"
+	);
 }

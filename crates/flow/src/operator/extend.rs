@@ -24,7 +24,7 @@ use tracing::instrument;
 
 use crate::{
 	context::FlowContext,
-	operator::{forward_system_columns, map::schema_column, with_system_columns_of},
+	operator::{forward_system_columns, map::schema_column, schema_context, with_system_columns_of},
 };
 
 pub struct ExtendOperator {
@@ -69,7 +69,12 @@ impl ExtendOperator {
 	pub fn output_schema(&self) -> Option<SchemaRef> {
 		let parent = self.parent_schema.as_ref()?;
 		let mut fields: Vec<FieldRef> = parent.fields().iter().cloned().collect();
-		fields.extend(self.expressions.iter().map(|expr| schema_column(Some(parent), expr)));
+		let ctx = schema_context(Some(parent), &self.routines, &self.runtime_context, &self.ctx);
+		fields.extend(self
+			.expressions
+			.iter()
+			.zip(&self.lowered_expressions)
+			.map(|(expr, lowered)| schema_column(Some(parent), expr, lowered, &ctx)));
 		Some(Arc::new(Schema::new(fields)))
 	}
 
