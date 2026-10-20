@@ -6,7 +6,7 @@ use std::{
 	ops::{Bound, Deref},
 	sync::{
 		Arc,
-		atomic::{AtomicBool, AtomicU64, Ordering},
+		atomic::{AtomicU64, Ordering},
 	},
 };
 
@@ -22,19 +22,18 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 	shutdown::Shutdown,
-	sync::{mutex::Mutex, waiter::WaiterHandle},
+	sync::mutex::Mutex,
 };
 use reifydb_value::{
 	count::Count,
 	reifydb_assertions,
 	util::cowvec::CowVec,
-	value::duration::Duration,
 };
 use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use crate::flush::actor::FlushActor;
+use crate::flush::actor::{FlushActor, Flusher};
 use crate::{
 	Result, SingleVersionBatch, SingleVersionCommit, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
 	SingleVersionStore,
@@ -63,6 +62,8 @@ pub struct StandardSingleStoreInner {
 	pub(crate) persistent: Option<SinglePersistentTier>,
 	#[allow(dead_code)]
 	pub(crate) flush_actor: Option<ActorRef<FlushMessage>>,
+	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+	pub(crate) flusher: Option<Arc<Flusher>>,
 	pub(crate) dirty: Arc<Mutex<DirtyMap>>,
 	pub(crate) through: Arc<Mutex<Option<Lsn>>>,
 	pub(crate) persistent_probes: AtomicU64,
@@ -82,21 +83,25 @@ impl StandardSingleStore {
 		let through: Arc<Mutex<Option<Lsn>>> = Arc::new(Mutex::new(None));
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-		let (persistent, flush_actor) = {
+		let (persistent, flush_actor, flusher) = {
 			let persistent_cfg = config.persistent.clone();
 			let persistent = persistent_cfg.as_ref().map(|c| c.storage.clone());
-			let flush_actor = match (persistent.as_ref(), persistent_cfg.as_ref()) {
-				(Some(p), Some(cfg)) => Some(FlushActor::spawn(
-					&spawner,
-					Arc::clone(&dirty),
-					Arc::clone(&through),
-					p.clone(),
+			let flusher = match (persistent.as_ref(), persistent_cfg.as_ref()) {
+				(Some(p), Some(cfg)) => Some((
+					Arc::new(Flusher::new(
+						Arc::clone(&dirty),
+						Arc::clone(&through),
+						p.clone(),
+						Arc::clone(&cfg.checkpoint),
+					)),
 					cfg.flush_interval,
-					Arc::clone(&cfg.checkpoint),
 				)),
 				_ => None,
 			};
-			(persistent, flush_actor)
+			let flush_actor = flusher
+				.as_ref()
+				.map(|(flusher, interval)| FlushActor::spawn(&spawner, Arc::clone(flusher), *interval));
+			(persistent, flush_actor, flusher.map(|(flusher, _)| flusher))
 		};
 
 		#[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -109,6 +114,8 @@ impl StandardSingleStore {
 			commit,
 			persistent,
 			flush_actor,
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			flusher,
 			dirty,
 			through,
 			persistent_probes: AtomicU64::new(0),
@@ -160,51 +167,13 @@ impl StandardSingleStore {
 		reporters
 	}
 
-	pub fn begin_flush_pending(&self) -> PendingFlush {
-		let Some(actor_ref) = self.flush_actor.as_ref() else {
-			return PendingFlush::Decided(self.persistent.is_none());
-		};
-
-		let waiter = Arc::new(WaiterHandle::new());
-		let flushed = Arc::new(AtomicBool::new(false));
-		if actor_ref
-			.send_blocking(FlushMessage::FlushPending {
-				waiter: Arc::clone(&waiter),
-				flushed: Arc::clone(&flushed),
-			})
-			.is_err()
-		{
-			return PendingFlush::Decided(false);
+	pub fn flush_pending_blocking(&self) -> bool {
+		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+		if let Some(flusher) = self.flusher.as_ref() {
+			flusher.drain();
+			return true;
 		}
-		PendingFlush::Sent {
-			waiter,
-			flushed,
-		}
-	}
-}
-
-pub enum PendingFlush {
-	Decided(bool),
-	Sent {
-		waiter: Arc<WaiterHandle>,
-		flushed: Arc<AtomicBool>,
-	},
-}
-
-impl PendingFlush {
-	pub fn wait(self) -> bool {
-		match self {
-			PendingFlush::Decided(answer) => answer,
-			PendingFlush::Sent {
-				waiter,
-				flushed,
-			} => {
-				if !waiter.wait_timeout(Duration::from_seconds(5).unwrap()) {
-					return false;
-				}
-				flushed.load(Ordering::Acquire)
-			}
-		}
+		self.persistent.is_none()
 	}
 }
 
@@ -602,7 +571,8 @@ mod tests {
 
 	#[test]
 	fn a_flush_that_cannot_persist_stops_with_a_named_panic() {
-		// The flush panics on the actor thread, so only a process-wide hook can see its message.
+		// A failed persist must stop the caller loudly, otherwise the rows live only in memory and vanish on
+		// restart.
 		let (mut store, _guard) = memory_with_persistent_sqlite(Arc::new(NoWal));
 
 		let k = key("counter");
@@ -619,27 +589,62 @@ mod tests {
 
 		store.persistent().expect("persistent tier configured").shutdown().unwrap();
 
-		let seen = Arc::new(Mutex::new(Vec::<String>::new()));
-		let previous = panic::take_hook();
-		let sink = Arc::clone(&seen);
-		panic::set_hook(Box::new(move |info| {
-			let payload = info.payload();
-			let message = payload
-				.downcast_ref::<String>()
-				.cloned()
-				.or_else(|| payload.downcast_ref::<&str>().map(|text| text.to_string()))
-				.unwrap_or_default();
-			sink.lock().push(message);
-		}));
-		let flushed = store.begin_flush_pending().wait();
-		panic::set_hook(previous);
-
-		assert!(!flushed, "a flush that panicked must never report the batch durable");
-		let seen = seen.lock();
+		let payload = panic::catch_unwind(panic::AssertUnwindSafe(|| store.flush_pending_blocking()))
+			.expect_err("a flush that cannot persist must never report the batch durable");
+		let message = payload
+			.downcast_ref::<String>()
+			.cloned()
+			.or_else(|| payload.downcast_ref::<&str>().map(|text| text.to_string()))
+			.unwrap_or_default();
 		assert!(
-			seen.iter().any(|message| message.starts_with("single flush could not persist 1 rows")),
+			message.starts_with("single flush could not persist 1 rows"),
 			"a failed persist must stop the flush with a named panic, otherwise the rows live only in memory \
-			 and the counters behind them are gone after a restart; panics seen: {seen:?}"
+			 and the counters behind them are gone after a restart; panic was: {message:?}"
+		);
+	}
+
+	struct RecordingWal {
+		calls: Mutex<Vec<(&'static str, u64)>>,
+	}
+
+	impl SingleWalCheckpoint for RecordingWal {
+		fn make_durable(&self, through: Lsn) -> Result<()> {
+			self.calls.lock().push(("make_durable", through.as_u64()));
+			Ok(())
+		}
+
+		fn saved_through(&self, through: Lsn) -> Result<()> {
+			self.calls.lock().push(("saved_through", through.as_u64()));
+			Ok(())
+		}
+	}
+
+	#[test]
+	fn a_flush_that_cannot_persist_never_moves_the_commit_log_floor() {
+		// A floor moved before sqlite holds the rows lets gc drop the only durable copy, so a crash loses them.
+		let wal = Arc::new(RecordingWal {
+			calls: Mutex::new(Vec::new()),
+		});
+		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn SingleWalCheckpoint>);
+
+		store.commit_logged(
+			CowVec::new(vec![Delta::Set {
+				key: key("counter"),
+				bytes: EncodedBytes(CowVec::new(b"7".to_vec())),
+				pre: SetPre::Unknown,
+			}]),
+			Lsn::new(4),
+		)
+		.unwrap();
+
+		store.persistent().expect("persistent tier configured").shutdown().unwrap();
+
+		panic::catch_unwind(panic::AssertUnwindSafe(|| store.flush_pending_blocking()))
+			.expect_err("a flush that cannot persist must stop");
+		assert_eq!(
+			*wal.calls.lock(),
+			vec![("make_durable", 4)],
+			"the log must be made durable but its floor must stay put while sqlite has not saved lsn 4"
 		);
 	}
 
@@ -657,7 +662,7 @@ mod tests {
 			}]),
 		)
 		.unwrap();
-		assert!(store.begin_flush_pending().wait(), "a healthy persistent tier must report a completed flush");
+		assert!(store.flush_pending_blocking(), "a healthy persistent tier must report a completed flush");
 		assert!(store.dirty.lock().is_empty(), "the reported success must mean the batch left the dirty map");
 	}
 

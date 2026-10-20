@@ -41,6 +41,7 @@ struct ActorSystemInner {
 	keepalive: Mutex<Vec<Box<dyn Any + Send + Sync>>>,
 	done_rxs: Mutex<Vec<Receiver<Result<(), String>>>>,
 	children: Mutex<Vec<ActorSystem>>,
+	parent: Weak<ActorSystemInner>,
 }
 
 #[derive(Clone)]
@@ -62,6 +63,7 @@ impl ActorSystem {
 				keepalive: Mutex::new(Vec::new()),
 				done_rxs: Mutex::new(Vec::new()),
 				children: Mutex::new(Vec::new()),
+				parent: Weak::new(),
 			}),
 		}
 	}
@@ -75,16 +77,18 @@ impl ActorSystem {
 	}
 
 	fn scope_with(&self, clock: Clock) -> Self {
+		let cancel = self.inner.cancel.child_token();
 		let child = Self {
 			inner: Arc::new(ActorSystemInner {
-				cancel: self.inner.cancel.child_token(),
-				scheduler: self.inner.scheduler.shared(),
+				scheduler: self.inner.scheduler.shared(cancel.clone()),
+				cancel,
 				clock,
 				pools: self.inner.pools.clone(),
 				wakers: Mutex::new(Vec::new()),
 				keepalive: Mutex::new(Vec::new()),
 				done_rxs: Mutex::new(Vec::new()),
 				children: Mutex::new(Vec::new()),
+				parent: Arc::downgrade(&self.inner),
 			}),
 		};
 		self.inner.children.lock().push(child.clone());
@@ -113,13 +117,11 @@ impl ActorSystem {
 	pub fn shutdown(&self) {
 		self.inner.cancel.cancel();
 
-		{
-			let mut children = self.inner.children.lock();
-			for child in children.iter() {
-				child.shutdown();
-			}
-			children.clear();
+		let children = mem::take(&mut *self.inner.children.lock());
+		for child in &children {
+			child.shutdown();
 		}
+		drop(children);
 
 		let wakers = mem::take(&mut *self.inner.wakers.lock());
 		for waker in &wakers {
@@ -130,6 +132,10 @@ impl ActorSystem {
 		self.inner.scheduler.shutdown();
 
 		self.inner.keepalive.lock().clear();
+
+		if let Some(parent) = self.inner.parent.upgrade() {
+			parent.children.lock().retain(|child| !Arc::ptr_eq(&child.inner, &self.inner));
+		}
 	}
 
 	pub(crate) fn register_waker(&self, f: Arc<dyn Fn() + Send + Sync>) {
@@ -408,6 +414,25 @@ mod tests {
 		});
 
 		assert!(rx.recv_timeout(Duration::from_millis(200)).is_err());
+	}
+
+	#[test]
+	fn a_scope_that_shuts_down_leaves_its_parent_but_a_live_scope_still_stops_with_it() {
+		// A parent that keeps every stopped scope grows by one system per open and close, forever.
+		let root = test_system();
+		let stopped = root.scope();
+		let live = root.scope();
+		assert_eq!(root.inner.children.lock().len(), 2, "precondition: both scopes are registered");
+
+		stopped.shutdown();
+		let children = root.inner.children.lock().clone();
+		assert_eq!(children.len(), 1, "a stopped scope must leave its parent's list");
+		assert!(Arc::ptr_eq(&children[0].inner, &live.inner), "only the stopped scope may leave");
+		drop(children);
+
+		root.shutdown();
+		assert!(live.is_cancelled(), "a parent shutdown must still stop every live scope");
+		assert!(root.inner.children.lock().is_empty(), "the parent must hold no scope after its shutdown");
 	}
 	struct TurnActor {
 		log: Arc<sync::Mutex<Vec<&'static str>>>,

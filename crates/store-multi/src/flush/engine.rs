@@ -223,9 +223,7 @@ impl FlushEngine {
 			}
 		};
 		let cutoff = cutoff.min(synced);
-		if state.resume_keys.is_empty() {
-			state.pass_cutoff = Some(cutoff);
-		}
+		state.pass_cutoff = Some(state.pass_cutoff.map_or(cutoff, |pass| pass.min(cutoff)));
 
 		let mut entry_kinds = self.list_evictable_kinds();
 		if let Some(resume) = state.resume_from
@@ -442,6 +440,7 @@ mod tests {
 		hash::{Hash, Hasher},
 		panic::{AssertUnwindSafe, catch_unwind},
 		slice::from_ref,
+		sync::atomic::{AtomicU64, Ordering},
 	};
 
 	use reifydb_core::{
@@ -1189,6 +1188,62 @@ mod tests {
 			persistent.persist_sweep(batches, None).is_err(),
 			"a shut-down persistent tier must refuse the sweep loudly so the buffer is not dropped"
 		);
+	}
+
+	struct MovingWatermark(AtomicU64);
+
+	impl EvictionWatermark for MovingWatermark {
+		fn watermark(&self) -> CommitVersion {
+			CommitVersion(self.0.load(Ordering::SeqCst))
+		}
+	}
+
+	#[test]
+	fn a_pass_whose_cutoff_falls_mid_way_never_marks_rows_it_did_not_write_as_saved() {
+		// The marker must be the lowest cutoff of the pass, otherwise replay skips rows sqlite never got.
+		let (persistent, _guard) = MultiPersistentTier::sqlite_in_memory();
+		let moving = Arc::new(MovingWatermark(AtomicU64::new(5)));
+		let persistence_lock: Arc<OnceLock<Arc<dyn ObjectPersistence>>> = Arc::new(OnceLock::new());
+		let _ = persistence_lock.set(Arc::new(AllPersistent));
+		let watermark: Arc<dyn EvictionWatermark> = moving.clone();
+		let engine = FlushEngine::new(
+			CommitStore::new(),
+			persistent,
+			persistence_lock,
+			no_wal_checkpoint(),
+			Arc::new(RwLock::new(Some(watermark))),
+			Clock::Real,
+			testing_event_bus(),
+		);
+		let row_kind = EntryKind::Source(StorageId::Table(TableId(33)), EntryLayout::Row);
+		let dict_kind = EntryKind::Multi;
+		let rows = [(row_kind, "row-a"), (row_kind, "row-b"), (dict_kind, "dict-a"), (dict_kind, "dict-b")];
+		for (kind, key) in rows {
+			write(&engine.commit, kind, &ek(key), 3, key);
+		}
+
+		engine.sweep_slice(ByteSize::from_bytes(1));
+		assert_eq!(
+			engine.persistent.saved_through().unwrap(),
+			CommitVersion(0),
+			"a one byte slice stops inside the first kind, so the pass must still be open"
+		);
+
+		moving.0.store(1, Ordering::SeqCst);
+		engine.sweep_slice(ByteSize::from_bytes(u64::MAX));
+
+		let saved = engine.persistent.saved_through().unwrap();
+		for (kind, key) in rows {
+			let written = matches!(
+				engine.persistent.get(kind, from_ref(&ek(key).as_ref()), CommitVersion(3)).unwrap().remove(0),
+				VersionedGetResult::Value { .. }
+			);
+			assert!(
+				written || saved < CommitVersion(3),
+				"the pass marked saved through {saved:?} while {key} at version 3 never reached sqlite, so a \
+				 crash loses it"
+			);
+		}
 	}
 
 	#[test]

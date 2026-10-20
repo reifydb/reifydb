@@ -119,6 +119,7 @@ impl SingleTransaction {
 		);
 
 		keys_vec.sort();
+		keys_vec.dedup();
 
 		let mut locks = Vec::new();
 		for key in &keys_vec {
@@ -155,6 +156,7 @@ impl SingleTransaction {
 		);
 
 		keys_vec.sort();
+		keys_vec.dedup();
 
 		let mut locks = Vec::new();
 		for key in &keys_vec {
@@ -178,7 +180,7 @@ pub mod tests {
 		iter,
 		ops::Bound,
 		slice::from_ref,
-		sync::{Arc, Barrier},
+		sync::{Arc, Barrier, mpsc},
 		thread,
 	};
 
@@ -354,6 +356,31 @@ pub mod tests {
 			assert_eq!(result1.unwrap().bytes, value1);
 			assert_eq!(result2.unwrap().bytes, value2);
 		}
+	}
+
+	#[test]
+	fn a_key_declared_twice_neither_deadlocks_a_command_nor_a_query() {
+		// A repeated key must lock once, otherwise the second lock waits on the first forever.
+		let svl = Arc::new(create_test_svl());
+		let key = make_key("twice");
+		let (done, finished) = mpsc::channel();
+		let worker = Arc::clone(&svl);
+		let declared = key.clone();
+		thread::spawn(move || {
+			let encoded = declared.encode();
+			{
+				let mut tx = worker.begin_command(vec![&encoded, &encoded]).unwrap();
+				tx.set(vec![(declared.clone(), make_value("once"))]).unwrap();
+				tx.commit().unwrap();
+			}
+			let mut tx = worker.begin_query(vec![&encoded, &encoded]).unwrap();
+			done.send(tx.get(from_ref(&encoded)).unwrap().pop().flatten().map(|row| row.bytes)).unwrap();
+		});
+
+		let read = finished
+			.recv_timeout(Duration::from_seconds(5).unwrap().to_std())
+			.expect("a command or query that declares one key twice never finished");
+		assert_eq!(read, Some(make_value("once")), "the commit behind the repeated key must land exactly once");
 	}
 
 	#[test]

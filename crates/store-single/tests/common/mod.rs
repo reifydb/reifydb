@@ -49,7 +49,7 @@ use reifydb_value::{cow_vec, util::cowvec::CowVec};
 use testscript::command::Command;
 
 /// Shared testscript runner for every per-backend integration test. With `auto_flush` each committing
-/// command is followed by `begin_flush_pending().wait()`; without it (the default) the explicit `flush`
+/// command is followed by `flush_pending_blocking()`; without it (the default) the explicit `flush`
 /// command is the only way to move data into persistent, which is what lets a script control timing.
 pub struct Runner {
 	pub store: StandardSingleStore,
@@ -108,7 +108,7 @@ impl Runner {
 	#[inline]
 	fn maybe_flush(&self) {
 		if self.auto_flush {
-			self.store.begin_flush_pending().wait();
+			self.store.flush_pending_blocking();
 		}
 	}
 }
@@ -213,7 +213,7 @@ impl testscript::runner::Runner for Runner {
 			}
 
 			"flush" => {
-				self.store.begin_flush_pending().wait();
+				self.store.flush_pending_blocking();
 				writeln!(output, "ok")?;
 			}
 

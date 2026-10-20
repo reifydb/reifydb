@@ -31,7 +31,7 @@ use reifydb_core::{
 use reifydb_runtime::shutdown::Shutdown;
 use reifydb_value::util::cowvec::CowVec;
 use reifydb_wal::lsn::Lsn;
-use store::{PendingFlush, SinglePersistentProbeMetrics, StandardSingleStore};
+use store::{SinglePersistentProbeMetrics, StandardSingleStore};
 use tier::{commit::buffer::SingleCommitMetrics, persistent::SinglePageCacheMetrics};
 
 pub struct SingleStoreVersion;
@@ -103,9 +103,9 @@ impl SingleStore {
 		}
 	}
 
-	pub fn begin_flush_pending(&self) -> PendingFlush {
+	pub fn flush_pending_blocking(&self) -> bool {
 		match self {
-			SingleStore::Standard(store) => store.begin_flush_pending(),
+			SingleStore::Standard(store) => store.flush_pending_blocking(),
 		}
 	}
 

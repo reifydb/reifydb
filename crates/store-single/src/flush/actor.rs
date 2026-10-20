@@ -3,9 +3,7 @@
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use std::mem;
-#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, atomic::AtomicBool};
+use std::sync::Arc;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
@@ -17,13 +15,10 @@ use reifydb_runtime::actor::{
 	system::{ActorConfig, ActorSpawner},
 	traits::{Actor, Directive},
 };
-use reifydb_runtime::{
-	actor::timers::TimerHandle,
-	sync::{mutex::Mutex, waiter::WaiterHandle},
-};
-use reifydb_value::value::{datetime::DateTime, duration::Duration};
+use reifydb_runtime::{actor::timers::TimerHandle, sync::mutex::Mutex};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_value::{reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::util::cowvec::CowVec;
+use reifydb_value::value::{datetime::DateTime, duration::Duration};
 use reifydb_wal::lsn::Lsn;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use tracing::debug;
@@ -34,89 +29,52 @@ use crate::{store::DirtyMap, tier::persistent::SinglePersistentTier};
 pub enum FlushMessage {
 	Tick(DateTime),
 	Shutdown,
-	FlushPending {
-		waiter: Arc<WaiterHandle>,
-		flushed: Arc<AtomicBool>,
-	},
 }
 
 #[allow(dead_code)]
 pub struct FlushActorState {
 	_timer_handle: Option<TimerHandle>,
-	flushing: bool,
+}
+
+#[allow(dead_code)]
+pub struct Flusher {
+	dirty: Arc<Mutex<DirtyMap>>,
+	through: Arc<Mutex<Option<Lsn>>>,
+	persistent: SinglePersistentTier,
+	checkpoint: Arc<dyn SingleWalCheckpoint>,
+	draining: Mutex<()>,
 }
 
 #[allow(dead_code)]
 pub struct FlushActor {
-	dirty: Arc<Mutex<DirtyMap>>,
-	through: Arc<Mutex<Option<Lsn>>>,
-	persistent: SinglePersistentTier,
+	flusher: Arc<Flusher>,
 	flush_interval: Duration,
-	checkpoint: Arc<dyn SingleWalCheckpoint>,
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-impl FlushActor {
+impl Flusher {
 	pub fn new(
 		dirty: Arc<Mutex<DirtyMap>>,
 		through: Arc<Mutex<Option<Lsn>>>,
 		persistent: SinglePersistentTier,
-		flush_interval: Duration,
 		checkpoint: Arc<dyn SingleWalCheckpoint>,
 	) -> Self {
 		Self {
 			dirty,
 			through,
 			persistent,
-			flush_interval,
 			checkpoint,
+			draining: Mutex::new(()),
 		}
 	}
 
-	pub fn spawn(
-		spawner: &ActorSpawner,
-		dirty: Arc<Mutex<DirtyMap>>,
-		through: Arc<Mutex<Option<Lsn>>>,
-		persistent: SinglePersistentTier,
-		flush_interval: Duration,
-		checkpoint: Arc<dyn SingleWalCheckpoint>,
-	) -> ActorRef<FlushMessage> {
-		let actor = Self::new(dirty, through, persistent, flush_interval, checkpoint);
-		spawner.spawn_coordination("single-persistent-flush", actor).actor_ref().clone()
-	}
-
-	fn drain(&self, state: &mut FlushActorState) -> bool {
-		if !self.begin_flush(state) {
-			return false;
-		}
-
+	pub fn drain(&self) {
+		let _draining = self.draining.lock();
 		let (drained, through) = self.take_dirty();
 		if drained.is_empty() {
-			state.flushing = false;
-			return true;
+			return;
 		}
-
-		reifydb_assertions! {
-			let proceeding = state.flushing;
-			assert!(
-				proceeding,
-				"flush_to_persistent reached with the reentrancy flag cleared, so a concurrent drain could \
-				 take the dirty map and double-write the same rows to the persistent tier (flushing={proceeding})"
-			);
-		}
-
 		self.flush_to_persistent(drained, through);
-		state.flushing = false;
-		true
-	}
-
-	#[inline]
-	fn begin_flush(&self, state: &mut FlushActorState) -> bool {
-		if state.flushing {
-			return false;
-		}
-		state.flushing = true;
-		true
 	}
 
 	#[inline]
@@ -155,6 +113,25 @@ impl FlushActor {
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+impl FlushActor {
+	pub fn new(flusher: Arc<Flusher>, flush_interval: Duration) -> Self {
+		Self {
+			flusher,
+			flush_interval,
+		}
+	}
+
+	pub fn spawn(
+		spawner: &ActorSpawner,
+		flusher: Arc<Flusher>,
+		flush_interval: Duration,
+	) -> ActorRef<FlushMessage> {
+		let actor = Self::new(flusher, flush_interval);
+		spawner.spawn_coordination("single-persistent-flush", actor).actor_ref().clone()
+	}
+}
+
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl Actor for FlushActor {
 	type State = FlushActorState;
 	type Message = FlushMessage;
@@ -166,30 +143,22 @@ impl Actor for FlushActor {
 		});
 		FlushActorState {
 			_timer_handle: Some(timer_handle),
-			flushing: false,
 		}
 	}
 
-	fn handle(&self, state: &mut FlushActorState, msg: FlushMessage, ctx: &Context<FlushMessage>) -> Directive {
+	fn handle(&self, _state: &mut FlushActorState, msg: FlushMessage, ctx: &Context<FlushMessage>) -> Directive {
 		if ctx.is_cancelled() {
-			let _ = self.drain(state);
+			self.flusher.drain();
 			return Directive::Stop;
 		}
 		match msg {
 			FlushMessage::Tick(_) => {
-				let _ = self.drain(state);
+				self.flusher.drain();
 			}
 			FlushMessage::Shutdown => {
 				debug!("Single persistent flush actor shutting down");
-				let _ = self.drain(state);
+				self.flusher.drain();
 				return Directive::Stop;
-			}
-			FlushMessage::FlushPending {
-				waiter,
-				flushed,
-			} => {
-				flushed.store(self.drain(state), Ordering::Release);
-				waiter.notify();
 			}
 		}
 		Directive::Continue

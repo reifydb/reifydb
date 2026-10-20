@@ -20,7 +20,7 @@ use crossbeam_channel::{Receiver, RecvTimeoutError, Sender, unbounded};
 use reifydb_value::reifydb_assertions;
 
 use super::{Repeat, TimerHandle, next_timer_id};
-use crate::sync::mutex::Mutex;
+use crate::{actor::context::CancellationToken, sync::mutex::Mutex};
 
 struct TimerEntry {
 	id: u64,
@@ -30,6 +30,8 @@ struct TimerEntry {
 	kind: TimerKind,
 
 	cancelled: Arc<AtomicBool>,
+
+	scope: CancellationToken,
 }
 
 enum TimerKind {
@@ -69,6 +71,7 @@ enum SchedulerCommand {
 		deadline: Instant,
 		callback: Box<dyn FnOnce() + Send>,
 		cancelled: Arc<AtomicBool>,
+		scope: CancellationToken,
 	},
 
 	ScheduleRepeat {
@@ -77,7 +80,10 @@ enum SchedulerCommand {
 		interval: Duration,
 		callback: Arc<dyn Fn() -> Repeat + Send + Sync>,
 		cancelled: Arc<AtomicBool>,
+		scope: CancellationToken,
 	},
+
+	Purge,
 
 	Shutdown,
 }
@@ -85,6 +91,7 @@ enum SchedulerCommand {
 pub struct SchedulerHandle {
 	command_tx: Sender<SchedulerCommand>,
 	join_handle: Mutex<Option<JoinHandle<()>>>,
+	scope: CancellationToken,
 }
 
 impl SchedulerHandle {
@@ -101,6 +108,7 @@ impl SchedulerHandle {
 		Self {
 			command_tx,
 			join_handle: Mutex::new(Some(join_handle)),
+			scope: CancellationToken::new(),
 		}
 	}
 
@@ -117,6 +125,7 @@ impl SchedulerHandle {
 			deadline: Instant::now() + delay,
 			callback: Box::new(callback),
 			cancelled,
+			scope: self.scope.clone(),
 		});
 
 		handle
@@ -136,20 +145,23 @@ impl SchedulerHandle {
 			interval,
 			callback: Arc::new(callback),
 			cancelled,
+			scope: self.scope.clone(),
 		});
 
 		handle
 	}
 
-	pub fn shared(&self) -> Self {
+	pub fn shared(&self, scope: CancellationToken) -> Self {
 		Self {
 			command_tx: self.command_tx.clone(),
 			join_handle: Mutex::new(None),
+			scope,
 		}
 	}
 
 	pub fn shutdown(&self) {
 		let Some(handle) = self.join_handle.lock().take() else {
+			let _ = self.command_tx.send(SchedulerCommand::Purge);
 			return;
 		};
 
@@ -231,6 +243,7 @@ fn apply_command(cmd: SchedulerCommand, heap: &mut BinaryHeap<TimerEntry>) -> Co
 			deadline,
 			callback,
 			cancelled,
+			scope,
 		} => {
 			heap.push(TimerEntry {
 				id,
@@ -239,6 +252,7 @@ fn apply_command(cmd: SchedulerCommand, heap: &mut BinaryHeap<TimerEntry>) -> Co
 					callback,
 				},
 				cancelled,
+				scope,
 			});
 			ControlFlow::Continue(())
 		}
@@ -248,6 +262,7 @@ fn apply_command(cmd: SchedulerCommand, heap: &mut BinaryHeap<TimerEntry>) -> Co
 			interval,
 			callback,
 			cancelled,
+			scope,
 		} => {
 			heap.push(TimerEntry {
 				id,
@@ -257,7 +272,12 @@ fn apply_command(cmd: SchedulerCommand, heap: &mut BinaryHeap<TimerEntry>) -> Co
 					interval,
 				},
 				cancelled,
+				scope,
 			});
+			ControlFlow::Continue(())
+		}
+		SchedulerCommand::Purge => {
+			heap.retain(|entry| !entry.scope.is_cancelled());
 			ControlFlow::Continue(())
 		}
 		SchedulerCommand::Shutdown => ControlFlow::Break(()),
@@ -309,6 +329,7 @@ fn drain_due_timers(heap: &mut BinaryHeap<TimerEntry>) {
 							interval,
 						},
 						cancelled: entry.cancelled,
+						scope: entry.scope,
 					});
 				}
 			}
@@ -466,9 +487,41 @@ mod tests {
 	}
 
 	#[test]
+	fn a_scope_shutdown_drops_its_timers_at_once_not_at_their_deadline() {
+		// A stopped scope's hour-long tick otherwise pins its callback and actor channel for that hour.
+		let scheduler = SchedulerHandle::new();
+		let scope = CancellationToken::new();
+		let scoped = scheduler.shared(scope.clone());
+
+		let stopped = Arc::new(());
+		let in_stopped = Arc::clone(&stopped);
+		scoped.schedule_repeat(Duration::from_secs(3600), move || {
+			let _ = &in_stopped;
+			Repeat::Keep
+		});
+		let live = Arc::new(());
+		let in_live = Arc::clone(&live);
+		scheduler.schedule_repeat(Duration::from_secs(3600), move || {
+			let _ = &in_live;
+			Repeat::Keep
+		});
+
+		scope.cancel();
+		scoped.shutdown();
+
+		let deadline = Instant::now() + Duration::from_secs(1);
+		while Arc::strong_count(&stopped) > 1 && Instant::now() < deadline {
+			thread::sleep(Duration::from_millis(1));
+		}
+		assert_eq!(Arc::strong_count(&stopped), 1, "a cancelled scope's timer must leave the heap on shutdown");
+		assert_eq!(Arc::strong_count(&live), 2, "a timer outside the cancelled scope must stay armed");
+		scheduler.shutdown();
+	}
+
+	#[test]
 	fn test_reentrant_schedule_from_callback() {
 		let scheduler = SchedulerHandle::new();
-		let shared = scheduler.shared();
+		let shared = scheduler.shared(CancellationToken::new());
 
 		let (tx, rx) = mpsc::channel();
 		scheduler.schedule_once(Duration::from_millis(5), move || {

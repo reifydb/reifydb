@@ -261,18 +261,17 @@ impl Database {
 			multi_store.flush_all_blocking();
 		}
 
-		let single = self.engine.ioc().try_resolve::<SingleStore>().map(|store| store.begin_flush_pending());
+		if let Some(single) = self.engine.ioc().try_resolve::<SingleStore>()
+			&& !single.flush_pending_blocking()
+		{
+			errors.fail("single store", "final flush did not complete");
+		}
+
 		let operator =
 			self.engine.ioc().try_resolve::<OperatorStore>().map(|store| store.begin_flush_pending());
 
 		#[cfg(reifydb_dst)]
 		self.spawner().system().run_until_idle_or_panic();
-
-		if let Some(pending) = single
-			&& !pending.wait()
-		{
-			errors.fail("single store", "final flush did not complete");
-		}
 
 		if let Some(pending) = operator
 			&& !pending.wait()
