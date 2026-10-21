@@ -11,6 +11,7 @@ use reifydb_codec::row::{
 };
 use reifydb_core::{
 	interface::change::Diff,
+	internal_err,
 	key::{
 		operator::{
 			keyspace::join::{JoinPin, JoinPinSuffix, JoinPublished},
@@ -397,19 +398,14 @@ impl SnapshotLedger {
 		version: ContentVersion,
 	) -> Result<Option<EncodedBytes>> {
 		let key = self.pin_key(group, right, version);
-		let existing = cached(host, &self.pins, &key, decode_pin)?;
-		reifydb_assertions! {
-			assert!(
-				existing.as_ref().is_some_and(|pin| pin.refs > 0),
+		let Some(mut pin) = cached(host, &self.pins, &key, decode_pin)?.filter(|pin| pin.refs > 0) else {
+			return internal_err!(
 				"an unpin of right row {} found no live reference; every published pair holds one, so the \
 				 count has drifted and the retired bytes a later withdraw needs are gone",
 				right.0
 			);
-		}
-		let Some(mut pin) = existing else {
-			return Ok(None);
 		};
-		pin.refs = pin.refs.saturating_sub(1);
+		pin.refs -= 1;
 		let content = pin.retired.clone().map(|bytes| EncodedBytes(CowVec::new(bytes)));
 		match pin.refs {
 			0 => self.hold(&self.pins, key, None),
@@ -568,17 +564,13 @@ pub(crate) fn withdraw_joined(
 			Some(retired) => Some(retired),
 			None => ctx.right_store.get_row_in(host, group, right_number)?,
 		};
-		reifydb_assertions! {
-			assert!(
-				content.is_some(),
+		let Some(content) = content else {
+			return internal_err!(
 				"left row {} published right row {} but neither its retired bytes nor the stored row \
 				 exist, so the published row can never be withdrawn",
 				left_number.0,
 				right_number.0
 			);
-		}
-		let Some(content) = content else {
-			continue;
 		};
 		withdrawals.push((entry.row_number, Some(block.len())));
 		block.push((right_number, content));
@@ -697,17 +689,13 @@ pub(crate) fn withdraw_slot(
 				_ => None,
 			},
 		};
-		reifydb_assertions! {
-			assert!(
-				content.is_some(),
+		let Some(content) = content else {
+			return internal_err!(
 				"left row {} published right row {} but neither its retired bytes nor the winning slot \
 				 hold it, so the published row can never be withdrawn",
 				left_number.0,
 				right_number.0
 			);
-		}
-		let Some(content) = content else {
-			continue;
 		};
 		ctx.ledger.flush(host)?;
 		let slot = columns_from_block(host, ctx.right_store, vec![(right_number, content)])?;
@@ -970,6 +958,20 @@ mod tests {
 				.collect::<Vec<_>>(),
 			vec![PublishedRight::Row(rn(9))]
 		);
+	}
+
+	#[test]
+	fn a_release_whose_pin_is_gone_fails_instead_of_answering_no_retired_bytes() {
+		// a drifted count read as "not retired" sends the withdraw to a right row that may hold other content.
+		let engine = TestEngine::new();
+		let mut txn = engine.flow_txn().deferred();
+		let ledger = ledger();
+		let content = encoded_bytes(b"v1");
+
+		ledger.publish(&mut b(&mut txn), group(), rn(1), rn(7), &content).unwrap();
+		ledger.hold(&ledger.pins, ledger.pin_key(group(), rn(7), ContentVersion::of(&content)), None);
+
+		assert!(ledger.release(&mut b(&mut txn), group(), rn(1), rn(7)).is_err());
 	}
 
 	#[test]
