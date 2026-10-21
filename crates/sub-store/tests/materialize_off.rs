@@ -62,7 +62,7 @@ fn materialize_off_keeps_series_rows_and_writes_no_block() {
 }
 
 #[test]
-fn materialize_defaults_on() {
-	// Defaulting to off would silently stop every existing deployment from materializing.
-	assert!(StorageConfig::default().materialize);
+fn materialize_defaults_off() {
+	// Defaulting to on would spawn the table and series actors in deployments that never asked for them.
+	assert!(!StorageConfig::default().materialize);
 }
