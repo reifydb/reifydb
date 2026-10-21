@@ -54,7 +54,7 @@ impl Default for StorageConfig {
 			series_merge_buckets: 1,
 			series_merge_file_delay: Duration::from_seconds(60).unwrap(),
 
-			materialize: true,
+			materialize: false,
 
 			#[cfg(feature = "column")]
 			compression: CompressionProfile::Default,
