@@ -494,8 +494,7 @@ pub fn data_size(batch: &RecordBatch) -> Result<usize> {
 }
 
 fn view_data_size(view: &ColumnView<'_>) -> usize {
-	let nulls = view.logical_nulls().map_or(0, |nulls| nulls.len());
-	nulls + match &view.data {
+	match &view.data {
 		ViewData::Digest {
 			container,
 			..
