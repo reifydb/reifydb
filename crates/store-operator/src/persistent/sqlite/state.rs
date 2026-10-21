@@ -30,7 +30,7 @@ impl SqlitePersistent {
 		let Some(conn) = guard.as_ref() else {
 			return Err(OperatorError::Closed);
 		};
-		Ok(route::sizes_many(conn, operator, tables, keys)
+		Ok(route::sizes_many(conn, operator, tables, keys)?
 			.into_iter()
 			.map(|size| size.map(ByteSize::from_bytes))
 			.collect())
@@ -46,7 +46,7 @@ impl SqlitePersistent {
 		let Some(conn) = guard.as_ref() else {
 			return Err(OperatorError::Closed);
 		};
-		Ok(route::get_many(conn, operator, tables, keys)
+		Ok(route::get_many(conn, operator, tables, keys)?
 			.into_iter()
 			.map(|bytes| bytes.map(decode_row))
 			.collect())
@@ -62,7 +62,7 @@ impl SqlitePersistent {
 		let Some(conn) = guard.as_ref() else {
 			return Err(OperatorError::Closed);
 		};
-		Ok(route::get(conn, operator, tables, key).map(decode_row))
+		Ok(route::get(conn, operator, tables, key)?.map(decode_row))
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
@@ -75,7 +75,7 @@ impl SqlitePersistent {
 		let Some(conn) = guard.as_ref() else {
 			return Err(OperatorError::Closed);
 		};
-		Ok(route::get(conn, operator, tables, key).is_some())
+		Ok(route::get(conn, operator, tables, key)?.is_some())
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
