@@ -29,11 +29,10 @@ use reifydb_core::{
 	},
 };
 use reifydb_store_operator::store::OperatorStore;
-
-const TIMER_WHEEL_SCAN: &str = "timer wheel scan must not fail";
 use reifydb_value::{Result, reifydb_assertions, value::datetime::DateTime};
 
 use crate::{
+	error::FlowStateError,
 	timer::{Timer, TimerDue, TimerMove},
 	transaction::{
 		FlowTransaction,
@@ -172,18 +171,27 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn next_due_stored(operator: OperatorId, store: &OperatorStore) -> Option<TimerDue> {
+	pub fn next_due_stored(operator: OperatorId, store: &OperatorStore) -> Result<Option<TimerDue>> {
 		let mut wheel = keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL);
 		loop {
-			let batch = store.range_batch(operator, wheel.clone(), 1).expect(TIMER_WHEEL_SCAN);
+			let batch = store.range_batch(operator, wheel.clone(), 1)?;
 			if let Some((key, _)) = batch.items.first() {
-				let (_, _, suffix) = OperatorStateKey::decode_inner(key.as_slice())?;
-				return Some(TimerDue {
+				let unframed = || FlowStateError::StateKeyUnframed {
+					operator,
+					key: key.as_encoded().clone(),
+				};
+				let (_, _, suffix) =
+					OperatorStateKey::decode_inner(key.as_slice()).ok_or_else(unframed)?;
+				let due = TimerWheelKey::from_suffix_bytes(suffix).ok_or_else(unframed)?.due.0;
+				return Ok(Some(TimerDue {
 					operator_id: operator,
-					due: TimerWheelKey::from_suffix_bytes(suffix)?.due.0,
-				});
+					due,
+				}));
 			}
-			wheel = EncodedKeyRange::new(Bound::Excluded(batch.resume?.into_encoded()), wheel.end);
+			let Some(resume) = batch.resume else {
+				return Ok(None);
+			};
+			wheel = EncodedKeyRange::new(Bound::Excluded(resume.into_encoded()), wheel.end);
 		}
 	}
 

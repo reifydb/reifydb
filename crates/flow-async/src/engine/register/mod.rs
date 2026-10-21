@@ -70,6 +70,14 @@ impl FlowEngineInner {
 			);
 		}
 
+		let store = self.substrate.operators.as_ref().expect("flow engine was built without an operator store");
+		let mut armed: Vec<TimerDue> = Vec::new();
+		for operator_id in flow.get_operator_ids() {
+			if let Some(due) = TimerWheel::next_due_stored(operator_id, store)? {
+				armed.push(due);
+			}
+		}
+
 		let mut added: Vec<OperatorId> = Vec::new();
 		let ctx = Arc::new(FlowContext::default());
 		for operator_id in flow.topological_order() {
@@ -97,11 +105,6 @@ impl FlowEngineInner {
 			added.push(*operator_id);
 		}
 
-		let store = self.substrate.operators.as_ref().expect("flow engine was built without an operator store");
-		let armed: Vec<TimerDue> = flow
-			.get_operator_ids()
-			.filter_map(|operator_id| TimerWheel::next_due_stored(operator_id, store))
-			.collect();
 		self.timers.rebuild(flow.id, armed);
 
 		self.analyzer.add(flow.clone());

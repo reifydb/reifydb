@@ -482,11 +482,11 @@ fn next_due_stored_ignores_an_arm_that_has_not_been_committed() {
 	let mut txn = deferred(&engine);
 
 	TimerWheel::arm(NODE, &mut txn, &timer(5_000, TimerKind::Seal, "b")).unwrap();
-	assert_eq!(TimerWheel::next_due_stored(NODE, &engine.inner().operator_state()), None);
+	assert_eq!(TimerWheel::next_due_stored(NODE, &engine.inner().operator_state()).unwrap(), None);
 
 	commit_pending(&engine, &mut txn);
 
-	assert_eq!(TimerWheel::next_due_stored(NODE, &engine.inner().operator_state()), Some(due(5_000)));
+	assert_eq!(TimerWheel::next_due_stored(NODE, &engine.inner().operator_state()).unwrap(), Some(due(5_000)));
 }
 
 #[test]
@@ -501,7 +501,7 @@ fn next_due_stored_reports_the_earliest_committed_instant() {
 	TimerWheel::arm(NODE, &mut txn, &timer(7_000, TimerKind::Seal, "b")).unwrap();
 	commit_pending(&engine, &mut txn);
 
-	assert_eq!(TimerWheel::next_due_stored(NODE, &engine.inner().operator_state()), Some(due(5_000)));
+	assert_eq!(TimerWheel::next_due_stored(NODE, &engine.inner().operator_state()).unwrap(), Some(due(5_000)));
 }
 
 #[test]

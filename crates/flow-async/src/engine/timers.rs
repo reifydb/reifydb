@@ -395,8 +395,10 @@ mod tests {
 		let store = engine.inner().operator_state();
 		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
 
-		let armed: Vec<TimerDue> =
-			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
+		let armed: Vec<TimerDue> = flow
+			.get_operator_ids()
+			.filter_map(|id| TimerWheel::next_due_stored(id, &store).unwrap())
+			.collect();
 		inner.timers.rebuild(FLOW, armed);
 		probe(&mut inner, false);
 
@@ -501,8 +503,10 @@ mod tests {
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
 		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
-		let armed: Vec<TimerDue> =
-			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
+		let armed: Vec<TimerDue> = flow
+			.get_operator_ids()
+			.filter_map(|id| TimerWheel::next_due_stored(id, &store).unwrap())
+			.collect();
 		inner.timers.rebuild(FLOW, armed);
 
 		for id in [OPERATOR, OTHER] {
@@ -652,8 +656,10 @@ mod tests {
 		let store = engine.inner().operator_state();
 		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
 
-		let armed: Vec<TimerDue> =
-			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
+		let armed: Vec<TimerDue> = flow
+			.get_operator_ids()
+			.filter_map(|id| TimerWheel::next_due_stored(id, &store).unwrap())
+			.collect();
 		assert_eq!(
 			armed,
 			vec![TimerDue {
@@ -718,8 +724,10 @@ mod tests {
 		let store = engine.inner().operator_state();
 		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
 
-		let armed: Vec<TimerDue> =
-			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
+		let armed: Vec<TimerDue> = flow
+			.get_operator_ids()
+			.filter_map(|id| TimerWheel::next_due_stored(id, &store).unwrap())
+			.collect();
 		inner.timers.rebuild(FLOW, armed);
 		inner.insert_operator(FLOW, OPERATOR, Box::new(NegativeZeroTimer(Diff::insert)));
 
@@ -749,8 +757,10 @@ mod tests {
 		let store = engine.inner().operator_state();
 		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
 
-		let armed: Vec<TimerDue> =
-			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
+		let armed: Vec<TimerDue> = flow
+			.get_operator_ids()
+			.filter_map(|id| TimerWheel::next_due_stored(id, &store).unwrap())
+			.collect();
 		inner.timers.rebuild(FLOW, armed);
 		inner.insert_operator(FLOW, OPERATOR, Box::new(NegativeZeroTimer(Diff::remove)));
 
