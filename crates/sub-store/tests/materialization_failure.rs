@@ -44,6 +44,7 @@ fn db_whose_column_store_cannot_persist(table_tick: Duration, series_tick: Durat
 		series_tick_interval: series_tick,
 		series_bucket_width: 5,
 		series_grace: Duration::from_milliseconds(0).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	};
 	let store =

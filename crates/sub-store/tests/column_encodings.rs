@@ -74,6 +74,7 @@ fn constant_and_all_none_columns_keep_their_encoding_across_a_restart() {
 		let storage_config = StorageConfig {
 			table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 			series_tick_interval: Duration::from_milliseconds(50).unwrap(),
+			materialize: true,
 			..StorageConfig::default()
 		};
 		let store = ColumnStore::host(column_dir.path().to_path_buf()).expect("open column dir");

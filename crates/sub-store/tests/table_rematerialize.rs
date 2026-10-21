@@ -55,6 +55,7 @@ fn an_unchanged_table_is_not_rematerialized_again_on_every_tick() {
 	let config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	};
 	let mut db = TestDb::from(db_embedded::memory().with_storage_config(config).build().expect("build"));
@@ -93,6 +94,7 @@ fn a_new_table_block_drops_the_previous_row_and_its_file() {
 	let config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	};
 	let memory = MemoryFs::new();

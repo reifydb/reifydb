@@ -30,6 +30,7 @@ fn materializing_db() -> TestDb {
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	};
 	let db = TestDb::from(db_embedded::memory().with_storage_config(fast_config).build().expect("build"));
@@ -271,6 +272,7 @@ fn series_db() -> TestDb {
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: SERIES_BUCKET_WIDTH,
 		series_grace: Duration::from_milliseconds(SERIES_GRACE_MS).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	};
 	let db = TestDb::from(

@@ -36,6 +36,7 @@ fn ticking() -> StorageConfig {
 	StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	}
 }
@@ -44,6 +45,7 @@ fn idle() -> StorageConfig {
 	StorageConfig {
 		table_tick_interval: Duration::from_seconds(3600).unwrap(),
 		series_tick_interval: Duration::from_seconds(3600).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	}
 }

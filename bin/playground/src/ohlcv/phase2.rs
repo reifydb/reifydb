@@ -244,6 +244,7 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 				.map_err(|e| e.to_string())?,
 			series_merge_buckets: run.merge_buckets,
 			compression: profile,
+			materialize: true,
 			..StorageConfig::default()
 		})
 		.with_block_encodings(|c| c.register(OHLCV, || OhlcvEncoding))

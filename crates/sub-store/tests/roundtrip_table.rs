@@ -41,6 +41,7 @@ fn table_materialization_populates_block_store() {
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	};
 

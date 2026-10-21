@@ -74,6 +74,7 @@ fn series_block_records_sealed_at_commit_version() {
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: 5,
 		series_grace: Duration::from_milliseconds(0).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	};
 
@@ -130,6 +131,7 @@ fn series_block_system_columns_match_row_metadata() {
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_bucket_width: 5,
 		series_grace: Duration::from_milliseconds(0).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	};
 
@@ -185,6 +187,7 @@ fn table_block_system_columns_match_row_metadata() {
 	let fast_config = StorageConfig {
 		table_tick_interval: Duration::from_milliseconds(50).unwrap(),
 		series_tick_interval: Duration::from_milliseconds(50).unwrap(),
+		materialize: true,
 		..StorageConfig::default()
 	};
 
