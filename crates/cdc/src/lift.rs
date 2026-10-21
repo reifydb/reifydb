@@ -35,9 +35,9 @@ pub struct RowTarget {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum LiftedKind {
-	Insert,
-	Update,
 	Remove,
+	Update,
+	Insert,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
