@@ -106,7 +106,7 @@ pub(crate) struct GroupPager<'a> {
 	mask: KeyspaceMask,
 	exhausted: bool,
 	ceiling: Option<EncodedKey>,
-	served: usize,
+	served: Option<EncodedKey>,
 	fetch: u64,
 }
 
@@ -125,7 +125,7 @@ impl<'a> GroupPager<'a> {
 			mask,
 			exhausted: dropped || persistent.is_absent() || groups.is_empty(),
 			ceiling: None,
-			served: 0,
+			served: None,
 			fetch: 0,
 		}
 	}
@@ -153,15 +153,16 @@ impl PageSource for GroupPager<'_> {
 				self.ceiling = None;
 			}
 		}
-		let mut items = decoded(batch);
-		let taken = self.served.min(items.len());
-		let fresh = items.split_off(taken);
-		if fresh.is_empty() {
+		let mut fresh = decoded(batch);
+		if let Some(served) = &self.served {
+			fresh.retain(|(key, _)| key > served);
+		}
+		let Some((last, _)) = fresh.last() else {
 			self.exhausted = true;
 			self.ceiling = None;
 			return Ok(Vec::new());
-		}
-		self.served += fresh.len();
+		};
+		self.served = Some(last.clone());
 		Ok(fresh)
 	}
 

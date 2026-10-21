@@ -6,7 +6,7 @@ mod pin;
 use std::{
 	cmp::Reverse,
 	sync::{
-		Arc,
+		Arc, OnceLock,
 		atomic::{AtomicBool, AtomicU64, Ordering},
 	},
 };
@@ -34,7 +34,10 @@ use crate::{
 	config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
 	error::{OperatorError, Result},
 	persistent::{
-		PersistentTier, filter::OperatorStateKeySource, sqlite::SqlitePersistent, testing::PersistentHooks,
+		PersistentTier,
+		filter::OperatorStateKeySource,
+		sqlite::SqlitePersistent,
+		testing::{PersistentHooks, ReadOutcome},
 	},
 	range::OperatorRangeConfig,
 	resident::{Resident, ResidentLimits},
@@ -260,6 +263,72 @@ fn a_group_page_reports_more_work_when_the_budget_cuts_the_set_short() {
 	assert!(batch.has_more);
 	let full = group_page(&store, &groups);
 	assert_eq!(batch.items.into_iter().map(|(key, value)| (key, body(&value))).collect::<Vec<_>>(), full[..3]);
+}
+
+struct FlushAfterFirstPage {
+	resident: OnceLock<Resident>,
+	fired: AtomicBool,
+}
+
+impl PersistentHooks for FlushAfterFirstPage {
+	fn on_page(&self, _operator: OperatorId, _len: usize) -> ReadOutcome {
+		if let Some(resident) = self.resident.get()
+			&& !self.fired.swap(true, Ordering::SeqCst)
+		{
+			flush_now(resident);
+			while resident.evict_to_capacity().0 > 0 {}
+		}
+		ReadOutcome::Clean
+	}
+}
+
+#[test]
+fn a_group_page_keeps_every_row_when_a_flush_lands_between_its_persistent_pages() {
+	// A refetch that resumes by row count skips live rows once a flushed delete shifts the durable rows left.
+	let hook = Arc::new(FlushAfterFirstPage {
+		resident: OnceLock::new(),
+		fired: AtomicBool::new(false),
+	});
+	let clock = Clock::testing();
+	let actor_system = ActorSystem::testing(clock);
+	let store = StandardOperatorStore::new(OperatorStoreConfig {
+		resident: ResidentConfig {
+			storage: Resident::with_limits(ResidentLimits {
+				budget: ByteSize::from_bytes(1),
+				..ResidentLimits::default()
+			}),
+			..ResidentConfig::default()
+		},
+		persistent: Some(OperatorPersistentConfig::opened(PersistentTier::testing(hook.clone()))),
+		range: Some(OperatorRangeConfig::testing()),
+		spawner: actor_system.spawner(),
+	});
+	let groups = [sweep_group(11), sweep_group(22), sweep_group(33), sweep_group(44)];
+	seed_groups(&store, &groups);
+	flush(&store);
+	while store.resident.evict_to_capacity().0 > 0 {}
+	let doomed: Vec<OperatorWrite> = per_group_pages(&store, &groups)
+		.into_iter()
+		.take(2)
+		.map(|(key, _)| {
+			let stored = store.state_get(OP, &key).unwrap().expect("the seeded row must be durable");
+			OperatorWrite::Remove {
+				operator: OP,
+				key,
+				pre: LayeredPre::Present(ByteSize::from_bytes(stored.bytes().len() as u64)),
+			}
+		})
+		.collect();
+	store.apply_batch(&doomed);
+	let expected = per_group_pages(&store, &groups);
+	assert_eq!(expected.len(), 14, "four groups of four rows less the two buffered deletes");
+	let _ = hook.resident.set(store.resident.clone());
+
+	let batch = store.group_page(OP, &groups, 4, KeyspaceMask::all()).unwrap();
+
+	assert!(hook.fired.load(Ordering::SeqCst), "the flush must land inside the read, otherwise nothing is raced");
+	assert!(batch.has_more, "four of fourteen rows must leave more work");
+	assert_eq!(batch.items.into_iter().map(|(key, value)| (key, body(&value))).collect::<Vec<_>>(), expected[..4]);
 }
 
 #[test]
