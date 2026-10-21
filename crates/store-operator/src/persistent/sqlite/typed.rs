@@ -102,7 +102,7 @@ impl Template {
 				)
 			}
 			Statement::Census => (
-				"SELECT COUNT(*), COALESCE(SUM(LENGTH(\"bytes\")), 0) FROM \"".to_string(),
+				"SELECT COUNT(*), COALESCE(SUM(LENGTH(\"bytes\")), 0), COUNT(CASE typeof(\"bytes\") WHEN 'blob' THEN NULL ELSE 1 END) FROM \"".to_string(),
 				"\"".to_string(),
 			),
 			Statement::Clear => ("DELETE FROM \"".to_string(), "\"".to_string()),
@@ -646,8 +646,10 @@ pub fn range_in<K: Keyspace>(
 pub fn census<K: Keyspace>(conn: &Connection, operator: OperatorId) -> (u64, u64) {
 	let sql = sql::<K>(Statement::Census, operator, None);
 	let mut stmt = conn.prepare_cached(&sql).expect("operator state census could not be prepared");
-	let (keys, bytes): (i64, i64) =
-		stmt.query_row([], |row| Ok((row.get(0)?, row.get(1)?))).expect("operator state census failed");
+	let (keys, bytes, foreign): (i64, i64, i64) = stmt
+		.query_row([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+		.expect("operator state census failed");
+	assert_eq!(foreign, 0, "operator state payload is not a blob");
 	(keys as u64, bytes as u64)
 }
 
@@ -802,6 +804,20 @@ mod tests {
 		});
 
 		store.state_sizes(OperatorId(1), &[encode::<JoinLeft>(&key).as_encoded()]).unwrap();
+	}
+
+	#[test]
+	#[should_panic(expected = "operator state payload is not a blob")]
+	fn a_payload_that_is_not_a_blob_stops_the_census_instead_of_counting_its_text() {
+		// length() of a non-blob payload is its text length, so the census must fail rather than report it.
+		let store = open();
+		let key = left(7, 1);
+		set_one::<JoinLeft>(&store, OperatorId(1), &key, b"payload");
+		with_conn(&store, |conn| {
+			conn.execute(r#"UPDATE "operator_join_left_1" SET "bytes" = 12345"#, []).unwrap()
+		});
+
+		store.census().unwrap();
 	}
 
 	#[test]

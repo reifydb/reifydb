@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
@@ -37,7 +37,7 @@ impl TableMask {
 }
 
 pub(super) struct TableRegistry {
-	masks: RwLock<HashMap<OperatorId, TableMask>>,
+	masks: RwLock<BTreeMap<OperatorId, TableMask>>,
 }
 
 impl TableRegistry {
@@ -48,7 +48,7 @@ impl TableRegistry {
 			.expect("operator state tables could not be listed")
 			.collect::<Result<_, _>>()
 			.expect("operator state table name could not be read");
-		let mut masks: HashMap<OperatorId, TableMask> = HashMap::new();
+		let mut masks: BTreeMap<OperatorId, TableMask> = BTreeMap::new();
 		for name in names {
 			let Some(rest) = name.strip_prefix("operator_") else {
 				continue;
@@ -67,7 +67,7 @@ impl TableRegistry {
 		self.masks.read().get(&operator).copied().unwrap_or_default()
 	}
 
-	pub(super) fn snapshot(&self) -> HashMap<OperatorId, TableMask> {
+	pub(super) fn snapshot(&self) -> BTreeMap<OperatorId, TableMask> {
 		self.masks.read().clone()
 	}
 

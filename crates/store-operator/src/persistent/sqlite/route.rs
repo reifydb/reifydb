@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Reverse, collections::HashMap, marker::PhantomData, ops::Bound};
+use std::{cmp::Reverse, collections::BTreeMap, marker::PhantomData, ops::Bound};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
@@ -653,7 +653,7 @@ pub(super) fn keys_after(
 	.expect("an operator state keyspace must appear in the catalogue")
 }
 
-pub(super) fn census(conn: &Connection, tables: &HashMap<OperatorId, TableMask>) -> Vec<OperatorStateCensus> {
+pub(super) fn census(conn: &Connection, tables: &BTreeMap<OperatorId, TableMask>) -> Vec<OperatorStateCensus> {
 	let mut out = Vec::new();
 	for (operator, mask) in tables {
 		for keyspace in mask.held() {
