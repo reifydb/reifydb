@@ -1288,7 +1288,7 @@ pub mod tests {
 		assert_eq!(short.num_rows(), long.num_rows(), "same row count is the point of the test");
 		let (short, long) = (data_size(&short).unwrap(), data_size(&long).unwrap());
 		assert!(
-			long >= short + 3 * 4096,
+			long - short >= 3 * (4096 - 1),
 			"data_size must account for utf8 payload bytes (short={}, long={})",
 			short,
 			long
