@@ -27,7 +27,7 @@ use reifydb_flow_async::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
 		state::StateExtension,
-		substrate::{FlowSubstrate, apply_operator_state},
+		substrate::{FlowSubstrate, apply_operator_state, classify_pending},
 	},
 };
 use reifydb_runtime::context::{
@@ -115,10 +115,10 @@ impl<O> Harness<O> {
 
 	fn end(&mut self, mut txn: DeferredTransaction) {
 		let pending = txn.take_pending();
-		apply_operator_state(
-			self.substrate.operators.as_ref().expect("the flow harness is built with an operator store"),
-			&pending,
-		);
+		let store =
+			self.substrate.operators.as_ref().expect("the flow harness is built with an operator store");
+		let deferred = classify_pending(store, &pending).expect("the flow harness sizes its operator state");
+		apply_operator_state(store, &pending, &deferred);
 		let mut rest = Pending::new();
 		for (key, write) in pending.rows_ordered() {
 			match write {

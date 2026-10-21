@@ -106,15 +106,19 @@ fn entry(group: GroupId, side: u8, row_number: u64, millis: u64) -> JoinDueEntry
 
 fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
 	let pending = txn.take_pending();
-	apply_operator_state(&engine.inner().operator_state(), &pending);
+	apply_operator_state(
+		&engine.inner().operator_state(),
+		&pending,
+		&classify_pending(&engine.inner().operator_state(), &pending).unwrap(),
+	);
 }
 
 fn commit_writes(engine: &TestEngine, txn: &mut DeferredTransaction) -> Vec<OperatorWrite> {
 	let pending = txn.take_pending();
 	let store = engine.inner().operator_state();
-	let deferred = classify_pending(&store, &pending);
+	let deferred = classify_pending(&store, &pending).unwrap();
 	let writes = operator_writes(&pending, &deferred);
-	apply_operator_state(&store, &pending);
+	apply_operator_state(&store, &pending, &classify_pending(&store, &pending).unwrap());
 	writes
 }
 

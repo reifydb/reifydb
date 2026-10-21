@@ -1234,7 +1234,10 @@ mod tests {
 
 	use super::*;
 	use crate::transaction::{
-		deferred::StorageCounts, mock::FlowTxn, scope::scoped_key, substrate::apply_operator_state,
+		deferred::StorageCounts,
+		mock::FlowTxn,
+		scope::scoped_key,
+		substrate::{apply_operator_state, classify_pending},
 	};
 
 	const RB: StorageId = StorageId::View(ViewId(1));
@@ -1335,7 +1338,11 @@ mod tests {
 			};
 		}
 		cmd.commit().unwrap();
-		apply_operator_state(&engine.inner().operator_state(), &pending);
+		apply_operator_state(
+			&engine.inner().operator_state(),
+			&pending,
+			&classify_pending(&engine.inner().operator_state(), &pending).unwrap(),
+		);
 	}
 
 	fn columns_at(partitioned: bool, rows: &[(&str, i32)], first_source_rn: u64, time: i64) -> RecordBatch {

@@ -800,8 +800,10 @@ mod tests {
 		},
 		timer::extension::TimerExtension,
 		transaction::{
-			FlowTransaction, LookupContext, LookupVersions, deferred::DeferredTransaction, mock::FlowTxn,
-			substrate::apply_operator_state,
+			FlowTransaction, LookupContext, LookupVersions,
+			deferred::DeferredTransaction,
+			mock::FlowTxn,
+			substrate::{apply_operator_state, classify_pending},
 		},
 	};
 
@@ -925,7 +927,12 @@ mod tests {
 
 	fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
 		// Operator state only reaches the store through the batch, so a later txn needs a commit first.
-		apply_operator_state(&engine.inner().operator_state(), &txn.take_pending());
+		let taken = txn.take_pending();
+		apply_operator_state(
+			&engine.inner().operator_state(),
+			&taken,
+			&classify_pending(&engine.inner().operator_state(), &taken).unwrap(),
+		);
 	}
 
 	fn stored_read(txn: &mut DeferredTransaction, row: u64) -> Option<(CommitVersion, RowNumber)> {

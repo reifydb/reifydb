@@ -17,8 +17,6 @@ use reifydb_value::{Result, byte_size::ByteSize};
 use rustc_hash::FxHashMap;
 use tracing::instrument;
 
-const DEFERRED_SIZING: &str = "deferred write sizing must not fail";
-
 use crate::transaction::{
 	frontier::OutputFrontiers,
 	scope::{OperatorScope, operator_state_coordinates},
@@ -48,9 +46,8 @@ impl FlowSubstrate {
 	}
 }
 
-pub fn apply_operator_state(store: &OperatorStore, pending: &Pending) {
-	let deferred = classify_pending(store, pending);
-	store.apply_batch(&operator_writes(pending, &deferred));
+pub fn apply_operator_state(store: &OperatorStore, pending: &Pending, deferred: &DeferredClassification) {
+	store.apply_batch(&operator_writes(pending, deferred));
 }
 
 #[instrument(name = "flow::substrate::apply_operator_state", level = "trace", skip_all, fields(
@@ -60,18 +57,18 @@ pub fn apply_operator_state(store: &OperatorStore, pending: &Pending) {
 pub fn apply_operator_state_with_checkpoints(
 	store: &OperatorStore,
 	pending: &Pending,
+	deferred: &DeferredClassification,
 	checkpoints: &[(FlowId, CommitVersion)],
 	checkpoint_deletes: &[FlowId],
 ) -> Result<()> {
-	let deferred = classify_pending(store, pending);
-	store.apply_batch_with_checkpoints(&operator_writes(pending, &deferred), checkpoints, checkpoint_deletes)?;
+	store.apply_batch_with_checkpoints(&operator_writes(pending, deferred), checkpoints, checkpoint_deletes)?;
 	Ok(())
 }
 
 pub type DeferredClassification = FxHashMap<EncodedKey, Option<ByteSize>>;
 
 #[instrument(name = "flow::substrate::classify_pending", level = "trace", skip_all, fields(pending_count = pending.len()))]
-pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> DeferredClassification {
+pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> Result<DeferredClassification> {
 	let mut keys = Vec::new();
 	let mut probes = Vec::new();
 	for (key, _) in pending.state_sorted() {
@@ -89,10 +86,10 @@ pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> DeferredCla
 		probes.push((operator, GroupStateKey::bound_unchecked(inner)));
 	}
 	if probes.is_empty() {
-		return DeferredClassification::default();
+		return Ok(DeferredClassification::default());
 	}
-	let sizes = store.state_sizes(&probes).expect(DEFERRED_SIZING);
-	keys.into_iter().zip(sizes).collect()
+	let sizes = store.state_sizes(&probes)?;
+	Ok(keys.into_iter().zip(sizes).collect())
 }
 
 #[instrument(name = "flow::substrate::operator_writes", level = "trace", skip_all, fields(pending_count = pending.len()))]

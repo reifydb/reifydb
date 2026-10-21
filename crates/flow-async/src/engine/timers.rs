@@ -264,7 +264,7 @@ mod tests {
 		transaction::{
 			FlowTransaction,
 			mock::FlowTxn,
-			substrate::{FlowSubstrate, apply_operator_state},
+			substrate::{FlowSubstrate, apply_operator_state, classify_pending},
 			watermark::SourceWatermarks,
 		},
 	};
@@ -393,7 +393,7 @@ mod tests {
 		}
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded);
+		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
 
 		let armed: Vec<TimerDue> =
 			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
@@ -500,7 +500,7 @@ mod tests {
 		}
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded);
+		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
 		let armed: Vec<TimerDue> =
 			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
 		inner.timers.rebuild(FLOW, armed);
@@ -650,7 +650,7 @@ mod tests {
 		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded);
+		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
 
 		let armed: Vec<TimerDue> =
 			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
@@ -716,7 +716,7 @@ mod tests {
 		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded);
+		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
 
 		let armed: Vec<TimerDue> =
 			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
@@ -747,7 +747,7 @@ mod tests {
 		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded);
+		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
 
 		let armed: Vec<TimerDue> =
 			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();

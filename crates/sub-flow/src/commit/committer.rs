@@ -18,7 +18,9 @@ use reifydb_core::{
 };
 #[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow_async::transaction::substrate::{apply_operator_state, apply_operator_state_with_checkpoints};
+use reifydb_flow_async::transaction::substrate::{
+	DeferredClassification, apply_operator_state, apply_operator_state_with_checkpoints, classify_pending,
+};
 use reifydb_runtime::actor::{
 	context::Context,
 	system::{ActorConfig, ActorHandle},
@@ -129,6 +131,10 @@ impl CommitterActor {
 
 	#[instrument(name = "flow::committer::submit_tick", level = "debug", skip_all, fields(committer = self.name))]
 	fn submit_tick(&self, flow_id: FlowId, source: SourceVersion, pending: Pending, reply: TickCommitReply) {
+		let deferred = match classify_pending(&self.committer.operators, &pending) {
+			Ok(deferred) => deferred,
+			Err(e) => return (reply)(Err(e)),
+		};
 		let pending = Arc::new(pending);
 
 		let apply_committer = self.committer.clone();
@@ -139,7 +145,7 @@ impl CommitterActor {
 		let completion_committer = self.committer.clone();
 		let completion: CommitCompletion = Box::new(move |result| match result {
 			Ok(version) => {
-				apply_operator_state(&completion_committer.operators, &pending);
+				apply_operator_state(&completion_committer.operators, &pending, &deferred);
 				completion_committer.materialization.record_output(version);
 				completion_committer.flow_tracker.record_commit(flow_id, version);
 				(reply)(Ok(()));
@@ -291,7 +297,17 @@ impl Committer {
 		slices: Arc<Vec<FlowSlice>>,
 		members: Vec<(usize, SliceCommitReply)>,
 	) {
-		let indices: Vec<usize> = members.iter().map(|(index, _)| *index).collect();
+		let mut sized = Vec::with_capacity(members.len());
+		for (index, reply) in members {
+			match classify_pending(&self.operators, &slices[index].combined) {
+				Ok(deferred) => sized.push((index, reply, deferred)),
+				Err(e) => (reply)(Err(e)),
+			}
+		}
+		if sized.is_empty() {
+			return;
+		}
+		let indices: Vec<usize> = sized.iter().map(|(index, _, _)| *index).collect();
 
 		let apply_committer = self.clone();
 		let apply_slices = Arc::clone(&slices);
@@ -306,20 +322,20 @@ impl Committer {
 		let retry_commit = commit.clone();
 		let completion: CommitCompletion = Box::new(move |result| match result {
 			Ok(version) => {
-				for (index, reply) in members {
-					(reply)(completion_committer.finish_slice(&slices[index], version));
+				for (index, reply, deferred) in sized {
+					(reply)(completion_committer.finish_slice(&slices[index], &deferred, version));
 				}
 				release_slices(slices);
 			}
-			Err(e) => match <[(usize, SliceCommitReply); 1]>::try_from(members) {
-				Ok([(_, reply)]) => (reply)(Err(e)),
-				Err(members) => {
-					for member in members {
+			Err(e) => match <[(usize, SliceCommitReply, DeferredClassification); 1]>::try_from(sized) {
+				Ok([(_, reply, _)]) => (reply)(Err(e)),
+				Err(sized) => {
+					for (index, reply, _) in sized {
 						completion_committer.retry_slice(
 							name,
 							&retry_commit,
 							Arc::clone(&slices),
-							member,
+							(index, reply),
 						);
 					}
 				}
@@ -350,10 +366,16 @@ impl Committer {
 		write_count = slice.combined.len(),
 		checkpoint_count = slice.checkpoints.len()
 	))]
-	fn finish_slice(&self, slice: &FlowSlice, version: CommitVersion) -> Result<CommitVersion> {
+	fn finish_slice(
+		&self,
+		slice: &FlowSlice,
+		deferred: &DeferredClassification,
+		version: CommitVersion,
+	) -> Result<CommitVersion> {
 		apply_operator_state_with_checkpoints(
 			&self.operators,
 			&slice.combined,
+			deferred,
 			&slice.checkpoints,
 			&slice.checkpoint_deletes,
 		)?;
@@ -498,6 +520,14 @@ mod commit_integration {
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
 	use reifydb_store_cdc::storage::CdcStorage;
+	use reifydb_store_operator::{
+		actor::resident_flush::flush_now,
+		config::{OperatorPersistentConfig, OperatorStoreConfig, ResidentConfig},
+		error::{OperatorError, Result as OperatorResult},
+		persistent::{PersistentTier, testing::PersistentHooks},
+		resident::{Resident, ResidentLimits},
+		types::OperatorWrite,
+	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
 		commit::CommitBegin, counting::OpCounts, multi::RangeScope, transaction::Transaction,
@@ -1175,5 +1205,120 @@ mod commit_integration {
 				},
 			]
 		);
+	}
+
+	struct FailingSizing(OperatorId);
+
+	impl PersistentHooks for FailingSizing {
+		fn on_measure(&self, operator: OperatorId) -> OperatorResult<()> {
+			if operator != self.0 {
+				return Ok(());
+			}
+			Err(OperatorError::Backend {
+				message: "the disk went away".to_string(),
+			})
+		}
+	}
+
+	fn blind_slice(operator: OperatorId, inner: &GroupStateKey, index: u64) -> FlowSlice {
+		// No classify call: the committer must size this write against the store.
+		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(inner.as_slice())
+			.expect("test fixture group-state key must decode");
+		let mut combined = Pending::new();
+		combined.insert(
+			OperatorStateKey::encoded(operator, group, keyspace, suffix),
+			EncodedPodRow::new(&[index as u8; 4]).into_bytes(),
+		);
+		combined.insert(synthetic_key(index), EncodedBytes(CowVec::new(vec![index as u8; 4])));
+		let mut slice = FlowSlice::empty();
+		slice.combined = combined;
+		slice.source = Some(SourceVersion(7));
+		slice.checkpoints = vec![(FlowId(index), CommitVersion(100 + index))];
+		slice
+	}
+
+	#[test]
+	fn a_slice_whose_state_sizing_fails_fails_alone_and_the_rest_of_its_group_commits() {
+		// A sizing error must fail only its own member before the commit, never panic after the rows are
+		// durable.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let failing = OperatorId(9);
+		let healthy = OperatorId(10);
+		let store = OperatorStore::standard(OperatorStoreConfig {
+			resident: ResidentConfig {
+				storage: Resident::with_limits(ResidentLimits {
+					budget: ByteSize::from_bytes(1),
+					..ResidentLimits::default()
+				}),
+				..ResidentConfig::default()
+			},
+			persistent: Some(OperatorPersistentConfig::opened(PersistentTier::testing(Arc::new(
+				FailingSizing(failing),
+			)))),
+			..OperatorStoreConfig::memory(engine.spawner())
+		});
+		let inner = state_inner(b"k");
+		let before = EncodedPodRow::new(&[0; 4]);
+		store.apply_batch(&[
+			OperatorWrite::Insert {
+				operator: failing,
+				key: inner.clone(),
+				post: before.clone(),
+			},
+			OperatorWrite::Insert {
+				operator: healthy,
+				key: inner.clone(),
+				post: before.clone(),
+			},
+		]);
+		flush_now(store.resident());
+		store.resident().evict_to_capacity();
+		assert_eq!(
+			store.resident().resident_entries(),
+			0,
+			"precondition: a buffered row is sized from the buffer and never reaches the faulting tier"
+		);
+
+		let committer = Committer::new(
+			FlowPositionTracker::new(),
+			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			store.clone(),
+		);
+		let begin_engine = engine.clone();
+		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system()));
+		let replies = SliceReplies::new(2);
+		committer.commit_slices(
+			"commit-test",
+			&CommitHandle::new(begin),
+			Arc::new(vec![blind_slice(failing, &inner, 1), blind_slice(healthy, &inner, 2)]),
+			vec![(0, replies.reply(0)), (1, replies.reply(1))],
+		);
+		replies.wait();
+
+		let mut results: Vec<(usize, bool)> =
+			replies.results.lock().iter().map(|(index, result)| (*index, result.is_ok())).collect();
+		results.sort();
+		assert_eq!(results, vec![(0, false), (1, true)], "only the member whose sizing failed may fail");
+		assert_eq!(
+			store.state_get(failing, &inner).unwrap(),
+			Some(before),
+			"the failed member must leave its operator state as it was"
+		);
+		assert_eq!(
+			store.state_get(healthy, &inner).unwrap(),
+			Some(EncodedPodRow::new(&[2; 4])),
+			"the committed member must apply its operator state"
+		);
+		assert_eq!(store.checkpoint_get(FlowId(1)).unwrap(), None, "the failed member must not checkpoint");
+		assert_eq!(store.checkpoint_get(FlowId(2)).unwrap(), Some(CommitVersion(102)));
+
+		let mut query = engine.begin_query(IdentityId::system()).expect("begin query");
+		let row = |index: u64, query: &mut _| {
+			let key = TaggedKey::decode(&synthetic_key(index)).expect("the fixture key must decode");
+			Transaction::Query(query).get(&key).expect("read slice write").is_some()
+		};
+		assert!(!row(1, &mut query), "the failed member's rows must not be durable");
+		assert!(row(2, &mut query), "the other member's rows must commit");
 	}
 }

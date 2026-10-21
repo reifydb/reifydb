@@ -18,7 +18,7 @@ use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	row_number::*,
-	substrate::{FlowSubstrate, apply_operator_state},
+	substrate::{FlowSubstrate, apply_operator_state, classify_pending},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
@@ -70,7 +70,11 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 fn commit_pending(engine: &TestEngine, txn: &mut DeferredTransaction) {
 	// Persists pending writes so a later transaction resolves them the way a committed flow would.
 	let pending = txn.take_pending();
-	apply_operator_state(&engine.inner().operator_state(), &pending);
+	apply_operator_state(
+		&engine.inner().operator_state(),
+		&pending,
+		&classify_pending(&engine.inner().operator_state(), &pending).unwrap(),
+	);
 }
 
 #[test]

@@ -84,12 +84,19 @@ impl StorageFactory {
 		operator_wal_autocheckpoint: u32,
 		operator_resident: ResidentLimits,
 		operator_flush_interval: Duration,
+		operator_persistent: Option<PersistentTier>,
 		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 		match self {
-			StorageFactory::Memory => {
-				create_memory_store_with(multi_commit_store, cdc_commit, cdc_read, spawner)
-			}
+			StorageFactory::Memory => create_memory_store_with(
+				multi_commit_store,
+				cdc_commit,
+				cdc_read,
+				operator_resident,
+				operator_flush_interval,
+				operator_persistent,
+				spawner,
+			),
 			StorageFactory::Sqlite(config) => create_sqlite_store_with(
 				multi_commit_store,
 				multi_persistent.expect("sqlite storage must supply an opened persistent tier"),
@@ -103,6 +110,7 @@ impl StorageFactory {
 				operator_wal_autocheckpoint,
 				operator_resident,
 				operator_flush_interval,
+				operator_persistent,
 				config.clone(),
 				spawner,
 			),
@@ -166,6 +174,9 @@ fn create_memory_store_with(
 	multi_commit_store: CommitStore,
 	cdc_commit: CdcCommitConfig,
 	cdc_read: Option<CdcReadConfig>,
+	operator_resident: ResidentLimits,
+	operator_flush_interval: Duration,
+	operator_persistent: Option<PersistentTier>,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
 	let eventbus = EventBus::new(spawner);
@@ -193,7 +204,17 @@ fn create_memory_store_with(
 		clock: Clock::Real,
 	});
 
-	let operator_store = OperatorStore::standard(OperatorStoreConfig::memory(spawner.clone()));
+	let operator_store = match operator_persistent {
+		None => OperatorStore::standard(OperatorStoreConfig::memory(spawner.clone())),
+		Some(persistent) => OperatorStore::standard(OperatorStoreConfig {
+			resident: ResidentConfig {
+				storage: Resident::with_limits(operator_resident),
+				flush_interval: operator_flush_interval,
+			},
+			persistent: Some(OperatorPersistentConfig::opened(persistent)),
+			..OperatorStoreConfig::memory(spawner.clone())
+		}),
+	};
 
 	let cdc_store = CdcStore::new(CdcStoreConfig {
 		commit: cdc_commit,
@@ -221,6 +242,7 @@ fn create_sqlite_store_with(
 	operator_wal_autocheckpoint: u32,
 	operator_resident: ResidentLimits,
 	operator_flush_interval: Duration,
+	operator_persistent: Option<PersistentTier>,
 	config: SqliteConfig,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
@@ -255,12 +277,15 @@ fn create_sqlite_store_with(
 		DbPath::Memory(p) => DbPath::Memory(p.with_extension("").join("operator.db")),
 		DbPath::Tmpfs(p) => DbPath::Tmpfs(p.with_extension("").join("operator.db")),
 	};
-	let operator_persistent = PersistentTier::sqlite(SqliteConfig {
-		path: operator_path,
-		wal_autocheckpoint: None,
-		..config.clone()
+	let operator_persistent = operator_persistent.unwrap_or_else(|| {
+		let sqlite = PersistentTier::sqlite(SqliteConfig {
+			path: operator_path,
+			wal_autocheckpoint: None,
+			..config.clone()
+		});
+		sqlite.set_checkpoint_threshold(operator_wal_autocheckpoint);
+		sqlite
 	});
-	operator_persistent.set_checkpoint_threshold(operator_wal_autocheckpoint);
 	let operator_store = OperatorStore::standard(OperatorStoreConfig {
 		range: operator_range,
 		resident: ResidentConfig {

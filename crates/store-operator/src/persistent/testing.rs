@@ -79,6 +79,10 @@ pub trait PersistentHooks: Send + Sync {
 		Ok(())
 	}
 
+	fn on_measure(&self, _operator: OperatorId) -> Result<()> {
+		Ok(())
+	}
+
 	fn on_call(&self, _call: u64) -> Continue {
 		Continue::Yes
 	}
@@ -228,6 +232,7 @@ impl Measure for TestingPersistent {
 		keys: &[Q],
 	) -> Result<Vec<Option<ByteSize>>> {
 		self.call();
+		self.0.hooks.on_measure(operator)?;
 		self.0.durable.state_sizes(operator, keys)
 	}
 

@@ -498,7 +498,7 @@ fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	txn.state_set(operator, &fresh, make_value("new")).unwrap();
 
 	let pending = txn.take_pending();
-	let deferred = classify_pending(&store, &pending);
+	let deferred = classify_pending(&store, &pending).unwrap();
 	let writes = operator_writes(&pending, &deferred);
 
 	let replace = writes

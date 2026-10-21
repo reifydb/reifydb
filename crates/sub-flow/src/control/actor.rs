@@ -1216,8 +1216,10 @@ mod pull_protocol {
 	use reifydb_flow_async::{
 		operator::provider::EmptyOperatorProvider,
 		transaction::{
-			DeferredParams, FlowTransaction, deferred::DeferredTransaction,
-			substrate::apply_operator_state, watermark::SourceWatermarks,
+			DeferredParams, FlowTransaction,
+			deferred::DeferredTransaction,
+			substrate::{apply_operator_state, classify_pending},
+			watermark::SourceWatermarks,
 		},
 	};
 	use reifydb_runtime::sync::waiter::WaiterHandle;
@@ -1590,10 +1592,8 @@ mod pull_protocol {
 			}
 
 			let advanced = txn.take_pending();
-			apply_operator_state(
-				substrate.operators.as_ref().expect("the test substrate carries an operator store"),
-				&advanced,
-			);
+			let store = substrate.operators.as_ref().expect("the test substrate carries an operator store");
+			apply_operator_state(store, &advanced, &classify_pending(store, &advanced).unwrap());
 		}
 
 		fn cdc_records(&self) -> Vec<Cdc> {
@@ -2691,8 +2691,10 @@ mod tick_failures {
 		operator::{BoxedHostOperator, HostOperator, host::HostContext},
 		timer::{Timer, wheel::TimerWheel},
 		transaction::{
-			DeferredParams, FlowTransaction, deferred::DeferredTransaction,
-			substrate::apply_operator_state, watermark::SourceWatermarks,
+			DeferredParams, FlowTransaction,
+			deferred::DeferredTransaction,
+			substrate::{apply_operator_state, classify_pending},
+			watermark::SourceWatermarks,
 		},
 	};
 	use reifydb_runtime::{
@@ -2940,7 +2942,11 @@ mod tick_failures {
 		)
 		.expect("arm timer");
 		let pending = txn.take_pending();
-		apply_operator_state(&engine.operator_state(), &pending);
+		apply_operator_state(
+			&engine.operator_state(),
+			&pending,
+			&classify_pending(&engine.operator_state(), &pending).unwrap(),
+		);
 	}
 
 	fn ticking_actor() -> (TestEngine, FlowHealthRegistry, FlowActor) {

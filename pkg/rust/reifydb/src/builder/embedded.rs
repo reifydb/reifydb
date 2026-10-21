@@ -15,7 +15,7 @@ use reifydb_runtime::{
 use reifydb_store_cdc::{config::CdcCommitConfig, tier::read::CdcReadConfig};
 use reifydb_store_commit::store::CommitStore;
 use reifydb_store_multi::tier::{persistent::MultiPersistentTier, point::MultiPointConfig, range::MultiRangeConfig};
-use reifydb_store_operator::{range::OperatorRangeConfig, resident::ResidentLimits};
+use reifydb_store_operator::{persistent::PersistentTier, range::OperatorRangeConfig, resident::ResidentLimits};
 use reifydb_sub_api::subsystem::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::builder::FlowConfigurator;
@@ -106,6 +106,7 @@ pub struct EmbeddedBuilder {
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	fast_shutdown: bool,
 	cdc_memory: bool,
+	operator_persistent: Option<PersistentTier>,
 }
 
 impl EmbeddedBuilder {
@@ -132,6 +133,7 @@ impl EmbeddedBuilder {
 			bootstrap_configs: Vec::new(),
 			fast_shutdown: false,
 			cdc_memory: false,
+			operator_persistent: None,
 		}
 	}
 
@@ -142,6 +144,11 @@ impl EmbeddedBuilder {
 
 	pub fn with_cdc_memory(mut self) -> Self {
 		self.cdc_memory = true;
+		self
+	}
+
+	pub fn with_operator_persistent(mut self, persistent: PersistentTier) -> Self {
+		self.operator_persistent = Some(persistent);
 		self
 	}
 
@@ -284,6 +291,7 @@ impl EmbeddedBuilder {
 				operator_wal_autocheckpoint,
 				operator_resident,
 				operator_flush_interval,
+				self.operator_persistent,
 				&spawner,
 			);
 		let catalog_cache = CatalogCache::new();

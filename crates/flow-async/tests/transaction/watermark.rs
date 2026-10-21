@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
-	substrate::{FlowSubstrate, apply_operator_state},
+	substrate::{FlowSubstrate, apply_operator_state, classify_pending},
 	watermark::*,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -43,7 +43,11 @@ fn deferred(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
 fn commit_pending(engine: &TestEngine, txn: &mut impl FlowTransaction) {
 	// Persists the pending writes so a cold instance resolves them as a restarted process would.
 	let pending = txn.take_pending();
-	apply_operator_state(&engine.inner().operator_state(), &pending);
+	apply_operator_state(
+		&engine.inner().operator_state(),
+		&pending,
+		&classify_pending(&engine.inner().operator_state(), &pending).unwrap(),
+	);
 }
 
 #[test]

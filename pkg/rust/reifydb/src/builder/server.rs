@@ -393,6 +393,7 @@ impl ServerBuilder {
 				operator_wal_autocheckpoint,
 				operator_resident,
 				operator_flush_interval,
+				None,
 				&spawner,
 			);
 		let catalog_cache = CatalogCache::new();
