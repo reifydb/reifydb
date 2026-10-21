@@ -441,6 +441,7 @@ impl RangeTiers {
 			total.materializes_raced += counters.materializes_raced;
 			total.evictions += counters.evictions;
 			total.point_hits += counters.point_hits;
+			total.point_absences += counters.point_absences;
 			total.point_misses += counters.point_misses;
 			total
 		})
@@ -450,20 +451,10 @@ impl RangeTiers {
 impl MetricsCollector for RangeTiers {
 	fn collect(&self, out: &mut Vec<MetricsSample>) {
 		const SCOPE: &str = "operator_range";
-		let mut counters = RangeMetrics::default();
+		let counters = self.metrics();
 		let mut used = 0u64;
 		let mut limit = 0u64;
 		for tier in self.tiers.values() {
-			let source = tier.metrics();
-			counters.hits += source.hits;
-			counters.misses += source.misses;
-			counters.exempt += source.exempt;
-			counters.materializes += source.materializes;
-			counters.materializes_refused += source.materializes_refused;
-			counters.materializes_raced += source.materializes_raced;
-			counters.evictions += source.evictions;
-			counters.point_hits += source.point_hits;
-			counters.point_misses += source.point_misses;
 			used += tier.resident_bytes().as_bytes();
 			limit += tier.limit_bytes().as_bytes();
 		}
@@ -484,6 +475,7 @@ impl MetricsCollector for RangeTiers {
 		out.push(MetricsSample::counter(SCOPE, "materializes_raced", counters.materializes_raced));
 		out.push(MetricsSample::counter(SCOPE, "evictions", counters.evictions));
 		out.push(MetricsSample::counter(SCOPE, "point_hits", counters.point_hits));
+		out.push(MetricsSample::counter(SCOPE, "point_absences", counters.point_absences));
 		out.push(MetricsSample::counter(SCOPE, "point_misses", counters.point_misses));
 		out.push(MetricsSample::bytes(SCOPE, "tier_limit_bytes", ByteSize::from_bytes(limit)));
 
