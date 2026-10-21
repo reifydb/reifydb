@@ -1,69 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{
-	interface::store::SingleVersionRange,
-	key::{
-		any::TaggedKey,
-		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
-		namespace::NamespaceDictionaryKey,
-	},
-	return_internal_error,
-};
-use reifydb_transaction::{
-	single::SingleTransaction,
-	transaction::{Transaction, admin::AdminTransaction},
-};
+use reifydb_core::key::{catalog::DictionaryKey, namespace::NamespaceDictionaryKey};
+use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
 use reifydb_value::value::dictionary::DictionaryId;
 
 use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_dictionary(txn: &mut AdminTransaction, dictionary: DictionaryId) -> Result<()> {
-		if let Some(registry) = txn.dictionary_allocators() {
-			registry.begin_drop(dictionary);
-		}
-
 		if let Some(dictionary_def) = Self::find_dictionary(&mut Transaction::Admin(&mut *txn), dictionary)? {
 			txn.remove(&NamespaceDictionaryKey::new(dictionary_def.namespace, dictionary))?;
 		}
 
-		remove_dictionary_entries(&txn.single, dictionary)?;
-
 		txn.remove(&DictionaryKey::new(dictionary))?;
-
-		if let Some(registry) = txn.dictionary_allocators() {
-			registry.evict(dictionary);
-		}
 
 		Ok(())
 	}
-}
-
-fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryId) -> Result<()> {
-	let lock_key = DictionaryKey::encoded(dictionary);
-	let full_scans = [
-		DictionaryEntryKey::full_scan(dictionary).encode(),
-		DictionaryEntryIndexKey::full_scan(dictionary).encode(),
-	];
-	for full_scan in &full_scans {
-		loop {
-			let store = single.read_store();
-			let batch = SingleVersionRange::range_batch(&store, full_scan.clone(), 1024)?;
-			if batch.items.is_empty() {
-				break;
-			}
-			let mut tx = single.begin_command_ranged([&lock_key], full_scans.to_vec())?;
-			for item in &batch.items {
-				let Some(key) = TaggedKey::decode(&item.key) else {
-					return_internal_error!("scan yielded a key no typed key decodes");
-				};
-				tx.remove(&key)?;
-			}
-			tx.commit()?;
-		}
-	}
-	Ok(())
 }
 
 #[cfg(test)]
@@ -116,7 +69,7 @@ pub mod tests {
 	}
 
 	#[test]
-	fn test_drop_dictionary_cleans_up_entries() {
+	fn test_drop_dictionary_keeps_entries_until_commit() {
 		let mut txn = create_test_admin_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
@@ -156,10 +109,11 @@ pub mod tests {
 
 		CatalogStore::drop_dictionary(&mut txn, dict_def.id).unwrap();
 
+		// Entries removed before the commit are lost for good if the drop rolls back.
 		let found = txn.single.with_query([&entry_key], |tx| tx.get(&entry_key)).unwrap();
-		assert!(found.is_none());
+		assert!(found.is_some());
 		let found = txn.single.with_query([&index_key], |tx| tx.get(&index_key)).unwrap();
-		assert!(found.is_none());
+		assert!(found.is_some());
 
 		let found = CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), dict_def.id).unwrap();
 		assert!(found.is_none());

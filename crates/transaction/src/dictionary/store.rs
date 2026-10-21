@@ -12,7 +12,11 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	interface::store::{SingleVersionGet, SingleVersionRange},
-	key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
+	key::{
+		any::TaggedKey,
+		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
+	},
+	return_internal_error,
 };
 use reifydb_store_single::{
 	SingleStore,
@@ -59,6 +63,32 @@ pub fn durable_max_index_id(store: &SingleStore, dictionary: DictionaryId) -> Re
 				.and_then(|row| DictionaryEntryIndexKey::decode(&row.key).map(|key| key.id)))
 		}
 	}
+}
+
+pub fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryId) -> Result<()> {
+	let lock_key = DictionaryKey::encoded(dictionary);
+	let full_scans = [
+		DictionaryEntryKey::full_scan(dictionary).encode(),
+		DictionaryEntryIndexKey::full_scan(dictionary).encode(),
+	];
+	for full_scan in &full_scans {
+		loop {
+			let store = single.read_store();
+			let batch = SingleVersionRange::range_batch(&store, full_scan.clone(), 1024)?;
+			if batch.items.is_empty() {
+				break;
+			}
+			let mut tx = single.begin_command_ranged([&lock_key], full_scans.to_vec())?;
+			for item in &batch.items {
+				let Some(key) = TaggedKey::decode(&item.key) else {
+					return_internal_error!("scan yielded a key no typed key decodes");
+				};
+				tx.remove(&key)?;
+			}
+			tx.commit()?;
+		}
+	}
+	Ok(())
 }
 
 fn bound_as_slice(bound: &Bound<EncodedKey>) -> Bound<&[u8]> {

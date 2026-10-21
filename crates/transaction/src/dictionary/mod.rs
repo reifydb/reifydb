@@ -283,6 +283,7 @@ impl DictionaryAllocatorRegistry {
 	}
 
 	fn find_one(&self, dictionary: &Dictionary, value_bytes: &[u8]) -> Result<Option<DictionaryEntryId>> {
+		self.refuse_dropped(dictionary)?;
 		let hash = xxh3_128(value_bytes).0.to_be_bytes();
 
 		if let Some(slot) = self.inner.slots.get(&dictionary.id)
@@ -311,6 +312,7 @@ impl DictionaryAllocatorRegistry {
 	}
 
 	fn get_one(&self, dictionary: &Dictionary, id: u128) -> Result<Option<Arc<[u8]>>> {
+		self.refuse_dropped(dictionary)?;
 		if let Some(value) = self.resolve_value(dictionary.id, id) {
 			return Ok(Some(value));
 		}
@@ -364,7 +366,16 @@ impl DictionaryAllocatorRegistry {
 
 	pub fn evict(&self, dictionary: DictionaryId) {
 		self.inner.slots.remove(&dictionary);
-		self.inner.dropped.remove(&dictionary);
+	}
+
+	fn refuse_dropped(&self, dictionary: &Dictionary) -> Result<()> {
+		if self.inner.dropped.contains(&dictionary.id) {
+			return Err(DictionaryError::Dropped {
+				dictionary: dictionary.id,
+			}
+			.into());
+		}
+		Ok(())
 	}
 
 	pub fn cached_entries(&self) -> (usize, u64) {

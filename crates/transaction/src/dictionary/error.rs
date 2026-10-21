@@ -22,7 +22,7 @@ pub enum DictionaryError {
 		hash: [u8; 16],
 	},
 
-	#[error("dictionary {dictionary} is being dropped; interning is not allowed")]
+	#[error("dictionary {dictionary} is dropped; it serves no reads and takes no new entries")]
 	Dropped {
 		dictionary: DictionaryId,
 	},
@@ -86,11 +86,11 @@ impl IntoDiagnostic for DictionaryError {
 			} => Diagnostic {
 				code: "TXN_017".to_string(),
 				rql: None,
-				message: format!("dictionary {} is being dropped; interning is not allowed", dictionary),
+				message: format!("dictionary {} is dropped; it serves no reads and takes no new entries", dictionary),
 				column: None,
 				fragment: Fragment::None,
-				label: Some("dictionary is being dropped".to_string()),
-				help: Some("The dictionary is being dropped and no longer accepts new entries.".to_string()),
+				label: Some("dictionary is dropped".to_string()),
+				help: Some("The dictionary is dropped; it no longer serves reads or accepts new entries.".to_string()),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

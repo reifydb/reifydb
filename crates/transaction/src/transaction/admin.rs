@@ -30,7 +30,7 @@ use crate::{
 	TransactionId,
 	accumulator::ChangeAccumulator,
 	change::{RowChange, TransactionalCatalogChanges, TransactionalChanges},
-	dictionary::DictionaryAllocatorRegistry,
+	dictionary::{DictionaryAllocatorRegistry, store::remove_dictionary_entries},
 	error::TransactionError,
 	interceptor::{
 		WithInterceptors,
@@ -266,8 +266,25 @@ impl AdminTransaction {
 			}
 		})?;
 		let _self_lease = multi.take_self_lease();
+		self.remove_dropped_dictionaries(&changes)?;
 		self.interceptors.post_commit.execute(PostCommitContext::new(id, version, changes, row_changes))?;
 		Ok(version)
+	}
+
+	fn remove_dropped_dictionaries(&self, changes: &TransactionalCatalogChanges) -> Result<()> {
+		for change in &changes.dictionary {
+			let (Some(dictionary), None) = (&change.pre, &change.post) else {
+				continue;
+			};
+			if let Some(registry) = &self.dictionary_allocators {
+				registry.begin_drop(dictionary.id);
+			}
+			remove_dictionary_entries(&self.single, dictionary.id)?;
+			if let Some(registry) = &self.dictionary_allocators {
+				registry.evict(dictionary.id);
+			}
+		}
+		Ok(())
 	}
 
 	#[instrument(name = "transaction::admin::rollback", level = "debug", skip(self))]
