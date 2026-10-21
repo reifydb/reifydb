@@ -4,7 +4,8 @@
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	error::diagnostic::flow::{
-		flow_guest_key_too_wide, flow_state_decode_failed, flow_state_encode_failed, flow_state_key_unframed,
+		flow_guest_key_too_wide, flow_pending_state_key_undecodable, flow_state_decode_failed,
+		flow_state_encode_failed, flow_state_key_unframed,
 	},
 	interface::catalog::flow::OperatorId,
 };
@@ -34,6 +35,10 @@ pub enum FlowStateError {
 		operator: OperatorId,
 		key: EncodedKey,
 	},
+	#[error("a pending operator state write carries a key with no operator")]
+	PendingStateKeyUndecodable {
+		key: EncodedKey,
+	},
 }
 
 impl IntoDiagnostic for FlowStateError {
@@ -54,6 +59,9 @@ impl IntoDiagnostic for FlowStateError {
 				operator,
 				key,
 			} => flow_state_key_unframed(operator, &key),
+			FlowStateError::PendingStateKeyUndecodable {
+				key,
+			} => flow_pending_state_key_undecodable(&key),
 		}
 	}
 }

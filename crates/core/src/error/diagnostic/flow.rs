@@ -320,6 +320,17 @@ pub fn flow_state_key_unframed(operator: OperatorId, key: &EncodedKey) -> Diagno
 	diagnostic
 }
 
+pub fn flow_pending_state_key_undecodable(key: &EncodedKey) -> Diagnostic {
+	let mut diagnostic = flow_diagnostic(
+		"FLOW_091",
+		"a pending operator state write carries a key with no operator".to_string(),
+		"Every operator state write must name its operator, otherwise the commit routes it to neither the operator \
+		 store nor the row store and the write is lost.",
+	);
+	diagnostic.notes = vec![format!("key: {}", hex(key))];
+	diagnostic
+}
+
 fn hex(key: &EncodedKey) -> String {
 	key.as_slice().iter().map(|byte| format!("{:02x}", byte)).collect()
 }

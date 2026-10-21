@@ -17,9 +17,12 @@ use reifydb_value::{Result, byte_size::ByteSize};
 use rustc_hash::FxHashMap;
 use tracing::instrument;
 
-use crate::transaction::{
-	frontier::OutputFrontiers,
-	scope::{OperatorScope, operator_state_coordinates},
+use crate::{
+	error::FlowStateError,
+	transaction::{
+		frontier::OutputFrontiers,
+		scope::{OperatorScope, operator_state_coordinates},
+	},
 };
 
 #[derive(Clone)]
@@ -72,16 +75,19 @@ pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> Result<Defe
 	let mut keys = Vec::new();
 	let mut probes = Vec::new();
 	for (key, _) in pending.state_sorted() {
-		if pending.is_classified(key) {
-			continue;
-		}
 		let Some(OperatorScope {
 			operator,
 			inner,
 		}) = operator_state_coordinates(key)
 		else {
-			continue;
+			return Err(FlowStateError::PendingStateKeyUndecodable {
+				key: key.clone(),
+			}
+			.into());
 		};
+		if pending.is_classified(key) {
+			continue;
+		}
 		keys.push(key.clone());
 		probes.push((operator, GroupStateKey::bound_unchecked(inner)));
 	}
@@ -101,7 +107,7 @@ pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> 
 			inner,
 		}) = operator_state_coordinates(key)
 		else {
-			continue;
+			panic!("operator state write with no operator reached the apply after classification");
 		};
 		writes.push(match write {
 			PendingWrite::Set(row) => {
