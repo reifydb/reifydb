@@ -115,6 +115,15 @@ impl FlowEngineInner {
 		freeze_arrival_frontier(txn, &sources, &arrivals)
 	}
 
+	pub fn published_frontiers(&self, flow_id: FlowId, version: CommitVersion) -> Vec<Frontier> {
+		self.sources
+			.iter()
+			.chain(self.lookup_sources.iter())
+			.filter(|(_, registrations)| registrations.iter().any(|(registered, _)| *registered == flow_id))
+			.map(|(object, _)| self.substrate.frontiers.resolve(*object, version))
+			.collect()
+	}
+
 	#[inline]
 	fn process_version<T: FlowTransaction + Intern>(
 		&mut self,

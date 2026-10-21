@@ -18,7 +18,9 @@ use reifydb_core::{
 use reifydb_engine::engine::StandardEngine;
 use reifydb_flow_async::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
-	transaction::{DeferredParams, FlowTransaction, LookupContext, deferred::DeferredTransaction},
+	transaction::{
+		DeferredParams, FlowTransaction, LookupContext, deferred::DeferredTransaction, frontier::Frontier,
+	},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{Result, value::identity::IdentityId};
@@ -28,6 +30,11 @@ use crate::commit::committer::{FlowSlice, produced_output};
 
 pub struct SliceConfig {
 	pub checkpoint_lag: u64,
+}
+
+pub struct HoldCache {
+	pub(crate) frontiers: Vec<Frontier>,
+	pub(crate) holds: WatermarkHolds,
 }
 
 pub struct SliceCursor<'a> {
@@ -84,6 +91,7 @@ impl SliceComputer {
 		advance_to: CommitVersion,
 		more: bool,
 		config: &SliceConfig,
+		hold_cache: &mut Option<HoldCache>,
 	) -> Result<SliceStep> {
 		let start = items.partition_point(|c| c.version.commit <= cursor.cursor);
 		let (mut advance_to, mut more) = (advance_to, more);
@@ -111,15 +119,40 @@ impl SliceComputer {
 			cursor.completeness_objects,
 		)?;
 		if changes.is_empty() {
-			return self.skip_or_checkpoint(
+			let frontiers = flow_engine.published_frontiers(cursor.flow_id, advance_to);
+			if !checkpoint_due(advance_to, cursor.durable_cursor, config)
+				&& let Some(cache) = hold_cache.as_ref()
+				&& cache.frontiers == frontiers
+			{
+				return Ok(SliceStep::Skip {
+					advance_to,
+					more,
+					holds: cache.holds.clone(),
+				});
+			}
+			let step = self.skip_or_checkpoint(
 				flow_engine,
 				cursor.flow_id,
 				advance_to,
 				cursor.durable_cursor,
 				more,
 				config,
-			);
+			)?;
+			*hold_cache = match &step {
+				SliceStep::Skip {
+					holds,
+					..
+				} => Some(HoldCache {
+					frontiers,
+					holds: holds.clone(),
+				}),
+				SliceStep::Commit {
+					..
+				} => None,
+			};
+			return Ok(step);
 		}
+		*hold_cache = None;
 
 		let (combined, emitted, holds) = self.compute(flow_engine, cursor.flow_id, advance_to, changes)?;
 		if !produced_output(&combined, emitted) && !checkpoint_due(advance_to, cursor.durable_cursor, config) {
@@ -638,7 +671,7 @@ mod integration {
 			safe
 		};
 		Some(computer
-			.compute_pulled(flow_engine, &items, cursor, advance_to, more, config)
+			.compute_pulled(flow_engine, &items, cursor, advance_to, more, config, &mut None)
 			.expect("compute_pulled"))
 	}
 
@@ -1636,5 +1669,190 @@ mod integration {
 		assert!(!a.is_empty(), "precondition: t's change carries columns");
 		assert_eq!(a.len(), b.len());
 		assert!(a.iter().zip(b.iter()).all(|(a, b)| Arc::ptr_eq(a, b)), "the second flow decoded t again");
+	}
+
+	const PRODUCER: ObjectId = ObjectId::View(ViewId(9));
+
+	fn producer_fed_flow(engine: &StandardEngine) -> (FlowId, FlowEngineInner) {
+		// One source fed by a producer view's published frontier, so an empty pull still has a hold to check.
+		let mut flow_engine = build_flow_engine(engine);
+		let flow = FlowId(1);
+		let mut builder = FlowDag::builder(flow);
+		builder.add_node(FlowNode::new(
+			OperatorId(1),
+			OperatorDef::SourceView {
+				view: ViewId(9),
+			},
+		));
+		builder.add_node(FlowNode::new(
+			OperatorId(3),
+			OperatorDef::SinkTableView {
+				view: ViewId(3),
+			},
+		));
+		builder.add_edge(FlowEdge::new(1, builder.id(), OperatorId(1), OperatorId(3))).unwrap();
+		flow_engine.register_flow_dag(builder.build());
+		flow_engine.add_source(flow, OperatorId(1), PRODUCER);
+		flow_engine.add_sink(flow, OperatorId(3), ObjectId::View(ViewId(3)));
+		(flow, flow_engine)
+	}
+
+	fn empty_pull(
+		computer: &SliceComputer,
+		flow_engine: &mut FlowEngineInner,
+		flow: FlowId,
+		from: CommitVersion,
+		advance_to: CommitVersion,
+		config: &SliceConfig,
+		hold_cache: &mut Option<HoldCache>,
+	) -> SliceStep {
+		let sources = BTreeSet::new();
+		computer.compute_pulled(
+			flow_engine,
+			&[],
+			SliceCursor {
+				flow_id: flow,
+				source_objects: &sources,
+				completeness_objects: None,
+				cursor: from,
+				durable_cursor: CommitVersion(4),
+				has_readers: false,
+			},
+			advance_to,
+			false,
+			config,
+			hold_cache,
+		)
+		.expect("empty pull")
+	}
+
+	#[test]
+	fn a_frontier_that_turns_visible_only_because_the_pull_passed_it_still_reaches_the_fold() {
+		// A cache keyed on publishes alone would freeze a quiet flow's watermark until some unrelated publish.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let (flow, mut flow_engine) = producer_fed_flow(&engine);
+		let computer = SliceComputer::new(engine.clone());
+		let config = SliceConfig {
+			checkpoint_lag: 10_000,
+		};
+		let mut hold_cache = None;
+		flow_engine.substrate().frontiers.publish(PRODUCER, at_millis(40_000), CommitVersion(6));
+
+		let first = empty_pull(
+			&computer,
+			&mut flow_engine,
+			flow,
+			CommitVersion(4),
+			CommitVersion(6),
+			&config,
+			&mut hold_cache,
+		);
+		assert!(matches!(first, SliceStep::Skip { .. }), "precondition: a withheld frontier folds nothing");
+		assert!(hold_cache.is_some(), "precondition: the skipped hold check must be cached");
+
+		let second = empty_pull(
+			&computer,
+			&mut flow_engine,
+			flow,
+			CommitVersion(6),
+			CommitVersion(7),
+			&config,
+			&mut hold_cache,
+		);
+		match second {
+			SliceStep::Commit {
+				slice,
+				..
+			} => assert!(
+				slice.combined.iter_sorted().next().is_some(),
+				"the now visible producer frontier must advance the source watermark"
+			),
+			SliceStep::Skip {
+				..
+			} => panic!("the cached hold check hid a frontier that became visible at this version"),
+		}
+		assert!(hold_cache.is_none(), "a pull that commits must not leave a hold check cached");
+	}
+
+	#[test]
+	fn a_cached_hold_check_never_hides_a_due_checkpoint() {
+		// Without the checkpoint check ahead of the cache an idle flow never moves its durable cursor.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let (flow, mut flow_engine) = producer_fed_flow(&engine);
+		let computer = SliceComputer::new(engine.clone());
+		let config = SliceConfig {
+			checkpoint_lag: 10,
+		};
+		let mut hold_cache = None;
+
+		let first = empty_pull(
+			&computer,
+			&mut flow_engine,
+			flow,
+			CommitVersion(4),
+			CommitVersion(6),
+			&config,
+			&mut hold_cache,
+		);
+		assert!(matches!(first, SliceStep::Skip { .. }), "precondition: within the lag nothing commits");
+		assert!(hold_cache.is_some(), "precondition: the skipped hold check must be cached");
+
+		match empty_pull(
+			&computer,
+			&mut flow_engine,
+			flow,
+			CommitVersion(6),
+			CommitVersion(20),
+			&config,
+			&mut hold_cache,
+		) {
+			SliceStep::Commit {
+				slice,
+				..
+			} => assert_eq!(slice.checkpoints, vec![(flow, CommitVersion(20))]),
+			SliceStep::Skip {
+				..
+			} => panic!("the cached hold check skipped a checkpoint past the lag"),
+		}
+	}
+
+	#[test]
+	fn an_empty_pull_with_unchanged_frontiers_reuses_the_cached_holds() {
+		// A sentinel hold proves the cached result was returned instead of rebuilding the hold check.
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+		let (flow, mut flow_engine) = producer_fed_flow(&engine);
+		let computer = SliceComputer::new(engine.clone());
+		let config = SliceConfig {
+			checkpoint_lag: 10_000,
+		};
+		let sentinel = WatermarkHold {
+			object: ObjectId::View(ViewId(3)),
+			frontier: at_millis(12_345),
+		};
+		let mut hold_cache = Some(HoldCache {
+			frontiers: flow_engine.published_frontiers(flow, CommitVersion(7)),
+			holds: vec![sentinel],
+		});
+
+		match empty_pull(
+			&computer,
+			&mut flow_engine,
+			flow,
+			CommitVersion(6),
+			CommitVersion(7),
+			&config,
+			&mut hold_cache,
+		) {
+			SliceStep::Skip {
+				holds,
+				..
+			} => assert_eq!(holds, vec![sentinel], "unchanged frontiers must reuse the cached holds"),
+			SliceStep::Commit {
+				..
+			} => panic!("an empty pull with unchanged frontiers and no checkpoint due must not commit"),
+		}
 	}
 }

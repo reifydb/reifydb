@@ -60,7 +60,7 @@ use crate::{
 		backfill::{Snapshot, UpstreamCut, backfill_reads, compute_backfill, upstream_write_after},
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply, produced_output},
 		merge::{HeldReads, ReadCache, ReadStream, StepCut, StreamRead, UpstreamRead, UpstreamReads, merge},
-		slice::{SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
+		slice::{HoldCache, SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
 	},
 	control::health::FlowHealthRegistry,
 	discovery::loader::{LoaderMessage, LoaderReply},
@@ -154,6 +154,7 @@ pub struct FlowActorState {
 	backfilling: bool,
 	snapshot: Option<Snapshot>,
 	lookup_lease: Option<VersionLeaseGuard>,
+	hold_cache: Option<HoldCache>,
 }
 
 impl FlowActor {
@@ -291,6 +292,7 @@ impl FlowActor {
 			return;
 		}
 		state.flow_engine = flow_engine;
+		state.hold_cache = None;
 		let backoff = match self.retry_backoff.try_mul(1i64 << state.retry_count.min(16)) {
 			Ok(backoff) => backoff,
 			Err(e) => {
@@ -415,6 +417,7 @@ impl FlowActor {
 			return;
 		}
 		state.flow_engine = flow_engine;
+		state.hold_cache = None;
 		let reads = backfill_reads(&self.flow, &state.flow_engine, &snapshot, &upstreams);
 
 		let computed = catch_unwind(AssertUnwindSafe(|| {
@@ -666,6 +669,7 @@ impl FlowActor {
 				advance_to,
 				more,
 				&self.config,
+				&mut state.hold_cache,
 			)
 		}))
 		.unwrap_or_else(|payload| Err(Error(Box::new(flow_step_panicked(describe_payload(&payload))))))
@@ -799,6 +803,7 @@ impl FlowActor {
 				);
 			}
 		}
+		state.hold_cache = None;
 		state.committing = true;
 		state.pending_holds = holds;
 		let self_ref = ctx.self_ref().clone();
@@ -967,6 +972,7 @@ impl FlowActor {
 				);
 			}
 		}
+		state.hold_cache = None;
 		state.committing = true;
 		state.drain_after_commit = true;
 		let self_ref = ctx.self_ref().clone();
@@ -1073,6 +1079,7 @@ impl Actor for FlowActor {
 			backfilling: self.backfill,
 			snapshot: None,
 			lookup_lease,
+			hold_cache: None,
 		};
 
 		if !state.poisoned {
@@ -3140,6 +3147,25 @@ mod tick_failures {
 			"a reader level with this flow skips view rows at or below cursor 7, so a tick stamped at the cursor \
 			 is never read"
 		);
+	}
+
+	#[test]
+	fn a_tick_that_dispatches_a_commit_drops_the_cached_hold_check() {
+		// The tick commit writes flow state, so a hold check cached before it would report stale holds.
+		let (sent, sources) = mpsc::channel();
+		let (_te, _health, actor) = actor_with(true, "silent", |engine| recorder(engine, sent));
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: registration must succeed");
+		harness.state_mut().hold_cache = Some(HoldCache {
+			frontiers: Vec::new(),
+			holds: WatermarkHolds::new(),
+		});
+
+		tick(&mut harness);
+
+		sources.recv_timeout(Duration::from_seconds(5).unwrap().to_std())
+			.expect("precondition: a fired timer must send a tick commit");
+		assert!(harness.state().hold_cache.is_none(), "a tick commit left a stale hold check cached");
 	}
 
 	#[test]
