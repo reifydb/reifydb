@@ -241,19 +241,14 @@ impl FlowActor {
 		match self.engine.acquire_version_lease(self.initial_cursor) {
 			Ok(lease) => Ok(Some(lease)),
 			Err(e) if e.0.code == TransactionError::SNAPSHOT_EVICTED => {
-				let multi = self.engine.multi();
-				let cutoff = multi
-					.leases()
-					.min_active()
-					.unwrap_or(CommitVersion(u64::MAX))
-					.min(multi.query_done_until());
+				let lease = self.engine.multi().acquire_cutoff_lease()?;
 				warn!(
 					flow_id = self.flow_id.0,
 					cursor = self.initial_cursor.0,
-					cutoff = cutoff.0,
+					cutoff = lease.version().0,
 					"lookup lease below the gc cutoff, holding from the cutoff"
 				);
-				self.engine.acquire_version_lease(cutoff).map(Some)
+				Ok(Some(lease))
 			}
 			Err(e) => Err(e),
 		}

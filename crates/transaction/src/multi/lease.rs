@@ -34,6 +34,13 @@ impl VersionLeases {
 		self.try_acquire_with(|| Ok((version, watermark.done_until(), ()))).map(|(guard, ())| guard)
 	}
 
+	pub fn try_acquire_at_cutoff(self: &Arc<Self>, watermark: &WaterMark) -> Result<VersionLeaseGuard> {
+		let mut leases = self.inner.lock();
+		let qdu = watermark.done_until();
+		let cutoff = leases.keys().next().copied().unwrap_or(CommitVersion(u64::MAX)).min(qdu);
+		Self::insert_locked(self, &mut leases, cutoff, qdu)
+	}
+
 	pub fn try_acquire_with<F, T>(self: &Arc<Self>, f: F) -> Result<(VersionLeaseGuard, T)>
 	where
 		F: FnOnce() -> Result<(CommitVersion, CommitVersion, T)>,

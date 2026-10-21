@@ -194,6 +194,10 @@ where
 		self.inner.leases.try_acquire_at(version, &self.inner.query)
 	}
 
+	pub fn acquire_cutoff_lease(&self) -> Result<VersionLeaseGuard> {
+		self.inner.leases.try_acquire_at_cutoff(&self.inner.query)
+	}
+
 	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
 		let oracle = self.inner.clone();
 		let (guard, version) = oracle.leases.try_acquire_with(|| {
@@ -371,6 +375,10 @@ impl MultiTransaction {
 
 	pub fn acquire_version_lease(&self, version: CommitVersion) -> Result<VersionLeaseGuard> {
 		self.0.tm.acquire_version_lease(version)
+	}
+
+	pub fn acquire_cutoff_lease(&self) -> Result<VersionLeaseGuard> {
+		self.0.tm.acquire_cutoff_lease()
 	}
 
 	pub fn acquire_current_snapshot_lease(&self) -> Result<(CommitVersion, VersionLeaseGuard)> {
