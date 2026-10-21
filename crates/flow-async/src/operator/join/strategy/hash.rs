@@ -178,13 +178,24 @@ enum Stamps<'a> {
 impl<'a> Stamps<'a> {
 	fn of(columns: &'a RecordBatch, side: JoinSide) -> Result<Self> {
 		Ok(match side {
-			JoinSide::Left => Stamps::Left {
-				created_at: column_view(columns, SystemColumn::CreatedAt.name())?,
-				updated_at: column_view(columns, SystemColumn::UpdatedAt.name())?,
-				time: column_view(columns, SystemColumn::Time.name())?,
-				commit_version: column_view(columns, SystemColumn::CommitVersion.name())?,
-				partition: column_view(columns, SystemColumn::Partitions.name())?,
-			},
+			JoinSide::Left => {
+				for column in [
+					SystemColumn::CreatedAt,
+					SystemColumn::UpdatedAt,
+					SystemColumn::Time,
+					SystemColumn::CommitVersion,
+					SystemColumn::Partitions,
+				] {
+					refuse_partial_stamps(columns, column)?;
+				}
+				Stamps::Left {
+					created_at: column_view(columns, SystemColumn::CreatedAt.name())?,
+					updated_at: column_view(columns, SystemColumn::UpdatedAt.name())?,
+					time: column_view(columns, SystemColumn::Time.name())?,
+					commit_version: column_view(columns, SystemColumn::CommitVersion.name())?,
+					partition: column_view(columns, SystemColumn::Partitions.name())?,
+				}
+			}
 			JoinSide::Right => Stamps::Right {
 				time: column_view(columns, SystemColumn::Time.name())?,
 			},
@@ -404,6 +415,22 @@ where
 		builder.push(stamp);
 	}
 	Some(builder.finish(column.name()).1)
+}
+
+fn refuse_partial_stamps(columns: &RecordBatch, column: SystemColumn) -> Result<()> {
+	let Some(array) = columns.column_by_name(column.name()) else {
+		return Ok(());
+	};
+	let nones = array.logical_null_count();
+	if nones == 0 || nones == array.len() {
+		return Ok(());
+	}
+	Err(Error(Box::new(internal!(
+		"{} of {} left rows have no {} stamp; a join side must stamp all of its rows or none",
+		nones,
+		array.len(),
+		column.name()
+	))))
 }
 
 fn assert_all_or_none(column: SystemColumn, stamps: usize, rows: usize) {
