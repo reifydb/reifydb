@@ -48,7 +48,7 @@ use reifydb_value::{
 use tracing::debug;
 
 use crate::{
-	error::Result,
+	error::{Result, SdkError},
 	flow::operator::{
 		MountedOperator, OperatorMetadata,
 		column::{operator::OperatorColumn, row::Row},
@@ -116,6 +116,12 @@ enum SessionRow<A: Emit> {
 		before: Option<(A::GroupKey, Contribution<A>)>,
 		after: Option<(A::GroupKey, Contribution<A>)>,
 	},
+}
+
+enum Holder {
+	Held(u64, GroupId),
+	Sealed,
+	Absent,
 }
 
 struct SessionBatch<A: Emit> {
@@ -744,16 +750,16 @@ where
 		group: &A::GroupKey,
 		row: RowNumber,
 		horizon: A::Coord,
-	) -> Result<Option<(u64, GroupId)>> {
+	) -> Result<Holder> {
 		let mut id = Self::tracker_now(batch, group).session_id;
 		while let (_, Some(session)) = Self::batch_session(engine, batch, ctx, group, id)? {
 			if engine.holds_row(&mut GuestAsHost(ctx), session.group, row)? {
 				let anchor = session.before.map_or(session.last, |(_, last)| last);
 				if is_sealed(anchor, horizon) {
 					batch.dropped += 1;
-					return Ok(None);
+					return Ok(Holder::Sealed);
 				}
-				return Ok(Some((id, session.group)));
+				return Ok(Holder::Held(id, session.group));
 			}
 			let Some(lower) = id.checked_sub(1) else {
 				break;
@@ -761,7 +767,7 @@ where
 			id = lower;
 		}
 		batch.dropped += 1;
-		Ok(None)
+		Ok(Holder::Absent)
 	}
 
 	fn retract_session_row<C: GuestContext>(
@@ -773,7 +779,8 @@ where
 		contribution: Contribution<A>,
 		horizon: A::Coord,
 	) -> Result<()> {
-		let Some((id, session_group)) = Self::holding_session(engine, batch, ctx, &group, row, horizon)? else {
+		let Holder::Held(id, session_group) = Self::holding_session(engine, batch, ctx, &group, row, horizon)?
+		else {
 			return Ok(());
 		};
 		engine.unindex_row(&mut GuestAsHost(ctx), session_group, row)?;
@@ -839,10 +846,20 @@ where
 				}
 				DiffType::Update => {
 					let (Some(pre), Some(post)) = (diff.pre(), diff.post()) else {
-						continue;
+						return Err(SdkError::OperatorError(format!(
+							"{} received an update diff without both pre and post columns",
+							A::NAME
+						)));
 					};
+					let paired = pre.row_count();
+					if post.row_count() != paired {
+						return Err(SdkError::OperatorError(format!(
+							"{} received an update diff pairing {paired} pre rows with {} post rows",
+							A::NAME,
+							post.row_count()
+						)));
+					}
 					let numbers = pre.row_numbers();
-					let paired = pre.row_count().min(post.row_count());
 					let numbered: Vec<usize> = (0..paired.min(numbers.len())).collect();
 					*refused += 2 * (paired - numbered.len()) as u64;
 					let rows_len = numbered.len();
@@ -1022,7 +1039,7 @@ where
 						match Self::holding_session(
 							engine, &mut batch, ctx, pre_group, number, horizon,
 						)? {
-							Some((id, _)) => {
+							Holder::Held(id, _) => {
 								let events = batch
 									.buckets
 									.entry((
@@ -1035,7 +1052,8 @@ where
 								));
 								events.push(AccumulatorEvent::Add(post_value.clone()));
 							}
-							None => Self::admit_session_row(
+							Holder::Sealed => {}
+							Holder::Absent => Self::admit_session_row(
 								engine,
 								&mut batch,
 								ctx,
