@@ -284,7 +284,6 @@ impl PersistentHooks for FlushAfterFirstPage {
 
 #[test]
 fn a_group_page_keeps_every_row_when_a_flush_lands_between_its_persistent_pages() {
-	// A refetch that resumes by row count skips live rows once a flushed delete shifts the durable rows left.
 	let hook = Arc::new(FlushAfterFirstPage {
 		resident: OnceLock::new(),
 		fired: AtomicBool::new(false),

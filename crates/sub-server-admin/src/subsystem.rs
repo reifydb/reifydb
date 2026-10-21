@@ -3,6 +3,7 @@
 
 use std::{
 	any::Any,
+	io,
 	net::SocketAddr,
 	sync::{
 		Arc,
@@ -22,11 +23,11 @@ use reifydb_runtime::{
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::{Result, error::Error, reifydb_assertions};
 use tokio::{net::TcpListener, runtime::Handle, sync::oneshot};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use crate::{routes::router, state::AdminState};
 
-type ShutdownHandles = (oneshot::Sender<()>, oneshot::Receiver<()>);
+type ShutdownHandles = (oneshot::Sender<()>, oneshot::Receiver<io::Result<()>>);
 
 pub struct AdminSubsystem {
 	bind_addr: String,
@@ -39,7 +40,7 @@ pub struct AdminSubsystem {
 
 	shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 
-	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
+	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<io::Result<()>>>>,
 
 	handle: Handle,
 }
@@ -134,12 +135,10 @@ impl AdminSubsystem {
 				info!("Admin server received shutdown signal");
 			});
 
-			if let Err(e) = server.await {
-				error!("Admin server error: {}", e);
-			}
+			let served = server.await;
 
 			running.store(false, Ordering::SeqCst);
-			let _ = complete_tx.send(());
+			let _ = complete_tx.send(served);
 			info!("Admin server stopped");
 		});
 
@@ -147,7 +146,11 @@ impl AdminSubsystem {
 	}
 
 	#[inline]
-	fn store_shutdown_handles(&self, shutdown_tx: oneshot::Sender<()>, complete_rx: oneshot::Receiver<()>) {
+	fn store_shutdown_handles(
+		&self,
+		shutdown_tx: oneshot::Sender<()>,
+		complete_rx: oneshot::Receiver<io::Result<()>>,
+	) {
 		*self.shutdown_tx.lock() = Some(shutdown_tx);
 		*self.shutdown_complete_rx.lock() = Some(complete_rx);
 	}
@@ -163,10 +166,12 @@ impl AdminSubsystem {
 	#[inline]
 	fn await_completion(&self, errors: &mut ShutdownErrors) {
 		let rx = self.shutdown_complete_rx.lock().take();
-		if let Some(rx) = rx
-			&& let Err(err) = self.handle.block_on(rx)
-		{
-			errors.fail("server", err);
+		if let Some(rx) = rx {
+			match self.handle.block_on(rx) {
+				Ok(Ok(())) => {}
+				Ok(Err(err)) => errors.fail("server", err),
+				Err(err) => errors.fail("server", err),
+			}
 		}
 	}
 

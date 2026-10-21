@@ -31,7 +31,7 @@ use tokio::{
 	runtime::Handle,
 	sync::{Semaphore, oneshot},
 };
-use tracing::{error, info};
+use tracing::info;
 
 use crate::{routes::router, state::HttpServerState};
 
@@ -50,18 +50,18 @@ pub struct HttpSubsystem {
 
 	shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 
-	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
+	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<io::Result<()>>>>,
 
 	admin_shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
 
-	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
+	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<io::Result<()>>>>,
 
 	connection_semaphore: Arc<Semaphore>,
 
 	handle: Handle,
 }
 
-type ShutdownHandles = (oneshot::Sender<()>, oneshot::Receiver<()>);
+type ShutdownHandles = (oneshot::Sender<()>, oneshot::Receiver<io::Result<()>>);
 
 impl HttpSubsystem {
 	pub fn new(
@@ -141,19 +141,20 @@ impl HttpSubsystem {
 		let running = self.running.clone();
 		self.handle.spawn(async move {
 			running.store(true, Ordering::SeqCst);
-			let result = serve_http(listener, server_state, semaphore, shutdown_rx, "HTTP server").await;
-			if let Err(e) = result {
-				error!("HTTP server error: {}", e);
-			}
+			let served = serve_http(listener, server_state, semaphore, shutdown_rx, "HTTP server").await;
 			running.store(false, Ordering::SeqCst);
-			let _ = complete_tx.send(());
+			let _ = complete_tx.send(served);
 			info!("HTTP server stopped");
 		});
 		(shutdown_tx, complete_rx)
 	}
 
 	#[inline]
-	fn store_main_shutdown_handles(&self, shutdown_tx: oneshot::Sender<()>, complete_rx: oneshot::Receiver<()>) {
+	fn store_main_shutdown_handles(
+		&self,
+		shutdown_tx: oneshot::Sender<()>,
+		complete_rx: oneshot::Receiver<io::Result<()>>,
+	) {
 		*self.shutdown_tx.lock() = Some(shutdown_tx);
 		*self.shutdown_complete_rx.lock() = Some(complete_rx);
 	}
@@ -188,7 +189,7 @@ impl HttpSubsystem {
 		let admin_server_state = HttpServerState::new(admin_app_state);
 		let semaphore = self.connection_semaphore.clone();
 		self.handle.spawn(async move {
-			let result = serve_http(
+			let served = serve_http(
 				listener,
 				admin_server_state,
 				semaphore,
@@ -196,17 +197,18 @@ impl HttpSubsystem {
 				"HTTP admin server",
 			)
 			.await;
-			if let Err(e) = result {
-				error!("HTTP admin server error: {}", e);
-			}
-			let _ = admin_complete_tx.send(());
+			let _ = admin_complete_tx.send(served);
 			info!("HTTP admin server stopped");
 		});
 		(admin_shutdown_tx, admin_complete_rx)
 	}
 
 	#[inline]
-	fn store_admin_shutdown_handles(&self, shutdown_tx: oneshot::Sender<()>, complete_rx: oneshot::Receiver<()>) {
+	fn store_admin_shutdown_handles(
+		&self,
+		shutdown_tx: oneshot::Sender<()>,
+		complete_rx: oneshot::Receiver<io::Result<()>>,
+	) {
 		*self.admin_shutdown_tx.lock() = Some(shutdown_tx);
 		*self.admin_shutdown_complete_rx.lock() = Some(complete_rx);
 	}
@@ -218,10 +220,12 @@ impl HttpSubsystem {
 			let _ = tx.send(());
 		}
 		let admin_rx = self.admin_shutdown_complete_rx.lock().take();
-		if let Some(rx) = admin_rx
-			&& let Err(err) = self.handle.block_on(rx)
-		{
-			errors.fail("admin server", err);
+		if let Some(rx) = admin_rx {
+			match self.handle.block_on(rx) {
+				Ok(Ok(())) => {}
+				Ok(Err(err)) => errors.fail("admin server", err),
+				Err(err) => errors.fail("admin server", err),
+			}
 		}
 	}
 
@@ -232,10 +236,12 @@ impl HttpSubsystem {
 			let _ = tx.send(());
 		}
 		let main_rx = self.shutdown_complete_rx.lock().take();
-		if let Some(rx) = main_rx
-			&& let Err(err) = self.handle.block_on(rx)
-		{
-			errors.fail("main server", err);
+		if let Some(rx) = main_rx {
+			match self.handle.block_on(rx) {
+				Ok(Ok(())) => {}
+				Ok(Err(err)) => errors.fail("main server", err),
+				Err(err) => errors.fail("main server", err),
+			}
 		}
 	}
 

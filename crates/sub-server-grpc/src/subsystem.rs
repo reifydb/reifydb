@@ -34,7 +34,7 @@ use tokio::{
 	sync::{OwnedSemaphorePermit, Semaphore, oneshot, watch},
 };
 use tonic::transport::{Error as TonicError, Server, server::Connected};
-use tracing::{error, info};
+use tracing::info;
 
 use crate::{
 	generated::reify_db_server::ReifyDbServer, server_state::GrpcServerState, service::ReifyDbService,
@@ -49,9 +49,9 @@ pub struct GrpcSubsystem {
 	state: AppState,
 	running: Arc<AtomicBool>,
 	shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
-	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
+	shutdown_complete_rx: Mutex<Option<oneshot::Receiver<StdResult<(), TonicError>>>>,
 	admin_shutdown_tx: Mutex<Option<oneshot::Sender<()>>>,
-	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<()>>>,
+	admin_shutdown_complete_rx: Mutex<Option<oneshot::Receiver<StdResult<(), TonicError>>>>,
 	connection_semaphore: Arc<Semaphore>,
 	handle: Handle,
 	poll_batch_size: usize,
@@ -174,13 +174,10 @@ impl GrpcSubsystem {
 			running.store(true, Ordering::SeqCst);
 			let server_state = GrpcServerState::new(state);
 			let service = ReifyDbService::new(server_state, false, registry, sub_shutdown_rx);
-			let result = serve_grpc(listener, service, semaphore, shutdown_rx, "gRPC server").await;
+			let served = serve_grpc(listener, service, semaphore, shutdown_rx, "gRPC server").await;
 			let _ = poller_stop_tx.send(true);
-			if let Err(e) = result {
-				error!("gRPC server error: {}", e);
-			}
 			running.store(false, Ordering::SeqCst);
-			let _ = complete_tx.send(());
+			let _ = complete_tx.send(served);
 			info!("gRPC server stopped");
 		});
 		*self.shutdown_tx.lock() = Some(shutdown_tx);
@@ -206,13 +203,10 @@ impl GrpcSubsystem {
 		self.handle.spawn(async move {
 			let admin_service =
 				ReifyDbService::new(admin_server_state, true, admin_registry, admin_sub_shutdown_rx);
-			let result =
+			let served =
 				serve_grpc(listener, admin_service, semaphore, admin_shutdown_rx, "gRPC admin server")
 					.await;
-			if let Err(e) = result {
-				error!("gRPC admin server error: {}", e);
-			}
-			let _ = admin_complete_tx.send(());
+			let _ = admin_complete_tx.send(served);
 			info!("gRPC admin server stopped");
 		});
 		*self.admin_shutdown_tx.lock() = Some(admin_shutdown_tx);
@@ -283,10 +277,12 @@ impl GrpcSubsystem {
 			let _ = tx.send(());
 		}
 		let admin_rx = self.admin_shutdown_complete_rx.lock().take();
-		if let Some(rx) = admin_rx
-			&& let Err(err) = self.handle.block_on(rx)
-		{
-			errors.fail("admin server", err);
+		if let Some(rx) = admin_rx {
+			match self.handle.block_on(rx) {
+				Ok(Ok(())) => {}
+				Ok(Err(err)) => errors.fail("admin server", err),
+				Err(err) => errors.fail("admin server", err),
+			}
 		}
 	}
 
@@ -297,10 +293,12 @@ impl GrpcSubsystem {
 			let _ = tx.send(());
 		}
 		let main_rx = self.shutdown_complete_rx.lock().take();
-		if let Some(rx) = main_rx
-			&& let Err(err) = self.handle.block_on(rx)
-		{
-			errors.fail("main server", err);
+		if let Some(rx) = main_rx {
+			match self.handle.block_on(rx) {
+				Ok(Ok(())) => {}
+				Ok(Err(err)) => errors.fail("main server", err),
+				Err(err) => errors.fail("main server", err),
+			}
 		}
 	}
 }
