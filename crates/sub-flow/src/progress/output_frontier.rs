@@ -49,13 +49,18 @@ pub fn persist(single: &SingleTransaction, entries: &FrontierEntries) -> Result<
 }
 
 pub fn sweep(single: &SingleTransaction, frontiers: &OutputFrontiers) {
-	let Some((generation, entries)) = frontiers.unpersisted() else {
-		return;
-	};
-	match persist(single, &entries) {
-		Ok(()) => frontiers.mark_persisted(generation),
-		Err(e) => warn!(error = %e, "failed to persist output frontiers; the next sweep writes them again"),
+	if let Err(e) = try_sweep(single, frontiers) {
+		warn!(error = %e, "failed to persist output frontiers; the next sweep writes them again");
 	}
+}
+
+pub fn try_sweep(single: &SingleTransaction, frontiers: &OutputFrontiers) -> Result<()> {
+	let Some((generation, entries)) = frontiers.unpersisted() else {
+		return Ok(());
+	};
+	persist(single, &entries)?;
+	frontiers.mark_persisted(generation);
+	Ok(())
 }
 
 pub fn hydrate(store: &SingleStore) -> Result<FrontierEntries> {

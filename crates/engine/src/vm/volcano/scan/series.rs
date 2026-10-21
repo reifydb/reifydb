@@ -333,7 +333,7 @@ impl QueryNode for SeriesScanNode {
 			&& start >= end
 		{
 			self.exhausted = true;
-			return Ok(Some(empty_scan(self.empty_columns(has_tag), &self.system_columns)?));
+			return Ok(Some(empty_scan(empty_series_columns(series), &self.system_columns)?));
 		}
 
 		let partitioned = !series.partition_by.is_empty();

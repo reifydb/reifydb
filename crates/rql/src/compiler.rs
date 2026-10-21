@@ -14,7 +14,10 @@ use reifydb_core::{
 		AliasExpression, Expression, IdentExpression, ParameterExpression, PrefixOperator, name::display_label,
 	},
 	fingerprint::{CompilationFingerprint, StatementFingerprint},
-	interface::catalog::series::{SeriesKey, TimestampPrecision},
+	interface::catalog::{
+		namespace::Namespace,
+		series::{SeriesKey, TimestampPrecision},
+	},
 };
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::cache::sync::SyncLru;
@@ -40,7 +43,7 @@ use crate::{
 	nodes::CompiledViewStorageKind,
 	optimize::optimize_physical,
 	plan::{
-		logical::LogicalPlan,
+		logical::{LogicalPlan, find_remote_target},
 		physical,
 		physical::PhysicalPlan,
 		plan, plan_with_policy,
@@ -333,6 +336,16 @@ impl Compiler {
 		} else {
 			self.compile_next_with_policy(tx, state, policy)
 		}
+	}
+
+	pub fn remote_target(&self, tx: &mut Transaction<'_>, query: &str) -> Result<Option<Namespace>> {
+		let bump = Bump::new();
+		for statement in parse_str(&bump, query)? {
+			if let Some(namespace) = find_remote_target(&bump, &self.0.catalog, tx, statement)? {
+				return Ok(Some(namespace));
+			}
+		}
+		Ok(None)
 	}
 
 	pub fn clear(&self) {

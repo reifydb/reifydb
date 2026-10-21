@@ -78,14 +78,14 @@ impl<'bump> Compiler<'bump> {
 
 		let namespace_id = if let Some(ns) = self.catalog.find_namespace_by_segments(tx, &ns_segments)? {
 			if let Some(address) = ns.address() {
-				return Err(IdentifierError::RemoteNamespace {
+				let refusal = IdentifierError::RemoteNamespace {
 					namespace: ns_segments.join("::"),
 					name: target_name.to_string(),
 					address: address.to_string(),
-					token: ns.token().map(|s| s.to_string()),
 					fragment: name.to_owned(),
-				}
-				.into());
+				};
+				self.remote_target.set(Some(ns));
+				return Err(refusal.into());
 			}
 			ns.id()
 		} else {

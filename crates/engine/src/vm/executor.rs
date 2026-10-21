@@ -54,6 +54,7 @@ use crate::{
 	subscription::{SubscriptionContext, SubscriptionServiceRef},
 	vm::{
 		Admin, Command, Query, Test,
+		exec::ddl::ddl_requires_admin_txn,
 		services::{EngineConfig, Services},
 		vm::Vm,
 	},
@@ -99,13 +100,19 @@ impl Executor {
 	}
 
 	#[cfg(not(reifydb_single_threaded))]
-	fn try_forward_remote_query(&self, err: &Error, rql: &str, params: Params) -> Result<Option<Vec<Frame>>> {
+	fn try_forward_remote_query(
+		&self,
+		tx: &mut Transaction<'_>,
+		err: &Error,
+		rql: &str,
+		params: Params,
+	) -> Result<Option<Vec<Frame>>> {
 		if let Some(ref registry) = self.0.remote_registry
 			&& remote::is_remote_query(err)
-			&& let Some(address) = remote::extract_remote_address(err)
+			&& let Some(namespace) = self.compiler.remote_target(tx, rql)?
+			&& let Some(address) = namespace.address()
 		{
-			let token = remote::extract_remote_token(err);
-			return registry.forward_query(&address, rql, params, token.as_deref()).map(Some);
+			return registry.forward_query(address, rql, params, namespace.token()).map(Some);
 		}
 		Ok(None)
 	}
@@ -386,10 +393,20 @@ impl Executor {
 		let start_compile = self.0.runtime_context.clock.instant();
 		let compiled_list = match self.compile_query(tx, rql) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
-			Ok(CompilationResult::Incremental(_)) => {
-				unreachable!("incremental compilation not supported in rql()")
+			Ok(CompilationResult::Incremental(state)) => {
+				return match tx {
+					Transaction::Admin(txn) => {
+						self.execute_admin_incremental(txn, state, &params, symbols)
+					}
+					Transaction::Test(txn) => {
+						self.execute_test_incremental(txn, state, &params, symbols)
+					}
+					Transaction::Command(_) | Transaction::Query(_) => {
+						error_result(ddl_requires_admin_txn(), ExecutionMetrics::default())
+					}
+				};
 			}
-			Err(err) => return self.handle_rql_compile_error(err, rql, params),
+			Err(err) => return self.handle_rql_compile_error(tx, err, rql, params),
 		};
 		let compile_duration = Duration::from_std(start_compile.elapsed());
 
@@ -403,9 +420,15 @@ impl Executor {
 
 	#[inline]
 	#[cfg_attr(reifydb_single_threaded, allow(unused_variables))]
-	fn handle_rql_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
+	fn handle_rql_compile_error(
+		&self,
+		tx: &mut Transaction<'_>,
+		err: Error,
+		rql: &str,
+		params: Params,
+	) -> ExecutionResult {
 		#[cfg(not(reifydb_single_threaded))]
-		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
+		if let Ok(Some(frames)) = self.try_forward_remote_query(tx, &err, rql, params) {
 			return Emitted::forwarded(frames).into_result(ExecutionMetrics::default());
 		}
 		error_result(err, ExecutionMetrics::default())
@@ -422,7 +445,7 @@ impl Executor {
 		}
 		let start_compile = self.0.runtime_context.clock.instant();
 		match self.compile_query(&mut Transaction::Admin(txn), cmd.rql) {
-			Err(err) => self.handle_admin_compile_error(err, cmd.rql, cmd.params),
+			Err(err) => self.handle_admin_compile_error(txn, err, cmd.rql, cmd.params),
 			Ok(CompilationResult::Ready(compiled)) => {
 				self.execute_admin_ready(txn, compiled, &cmd.params, symbols, start_compile)
 			}
@@ -443,9 +466,16 @@ impl Executor {
 
 	#[inline]
 	#[cfg_attr(reifydb_single_threaded, allow(unused_variables))]
-	fn handle_admin_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
+	fn handle_admin_compile_error(
+		&self,
+		txn: &mut AdminTransaction,
+		err: Error,
+		rql: &str,
+		params: Params,
+	) -> ExecutionResult {
 		#[cfg(not(reifydb_single_threaded))]
-		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
+		if let Ok(Some(frames)) = self.try_forward_remote_query(&mut Transaction::Admin(txn), &err, rql, params)
+		{
 			return Emitted::forwarded(frames).into_result(ExecutionMetrics::default());
 		}
 		error_result(err, ExecutionMetrics::default())
@@ -564,7 +594,7 @@ impl Executor {
 			cmd.rql,
 			inject_from_policies,
 		) {
-			Err(err) => self.handle_test_compile_error(err, cmd.rql, cmd.params),
+			Err(err) => self.handle_test_compile_error(txn, err, cmd.rql, cmd.params),
 			Ok(CompilationResult::Ready(compiled)) => {
 				self.execute_test_ready(txn, compiled, &cmd.params, symbols, start_compile)
 			}
@@ -587,9 +617,20 @@ impl Executor {
 
 	#[inline]
 	#[cfg_attr(reifydb_single_threaded, allow(unused_variables))]
-	fn handle_test_compile_error(&self, err: Error, rql: &str, params: Params) -> ExecutionResult {
+	fn handle_test_compile_error(
+		&self,
+		txn: &mut TestTransaction<'_>,
+		err: Error,
+		rql: &str,
+		params: Params,
+	) -> ExecutionResult {
 		#[cfg(not(reifydb_single_threaded))]
-		if let Ok(Some(frames)) = self.try_forward_remote_query(&err, rql, params) {
+		if let Ok(Some(frames)) = self.try_forward_remote_query(
+			&mut Transaction::Test(Box::new(txn.reborrow())),
+			&err,
+			rql,
+			params,
+		) {
 			return Emitted::forwarded(frames).into_result(ExecutionMetrics::default());
 		}
 		error_result(err, ExecutionMetrics::default())
@@ -803,7 +844,7 @@ impl Executor {
 		let compiled = match self.compile_query(&mut Transaction::Command(txn), cmd.rql) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
-				unreachable!("DDL statements require admin transactions, not command transactions")
+				return error_result(ddl_requires_admin_txn(), ExecutionMetrics::default());
 			}
 			Err(err) => {
 				#[cfg(not(reifydb_single_threaded))]
@@ -883,11 +924,16 @@ impl Executor {
 		let compiled = match self.compile_query(&mut Transaction::Query(txn), qry.rql) {
 			Ok(CompilationResult::Ready(compiled)) => compiled,
 			Ok(CompilationResult::Incremental(_)) => {
-				unreachable!("DDL statements require admin transactions, not query transactions")
+				return error_result(ddl_requires_admin_txn(), ExecutionMetrics::default());
 			}
 			Err(err) => {
 				#[cfg(not(reifydb_single_threaded))]
-				if let Ok(Some(frames)) = self.try_forward_remote_query(&err, qry.rql, qry.params) {
+				if let Ok(Some(frames)) = self.try_forward_remote_query(
+					&mut Transaction::Query(txn),
+					&err,
+					qry.rql,
+					qry.params,
+				) {
 					return Emitted::forwarded(frames).into_result(ExecutionMetrics::default());
 				}
 				return ExecutionResult {

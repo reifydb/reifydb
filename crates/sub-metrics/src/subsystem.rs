@@ -9,27 +9,49 @@ use std::{
 	},
 };
 
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-use reifydb_runtime::shutdown::Shutdown;
+use reifydb_core::{
+	actors::metrics::MetricsMessage,
+	interface::version::{ComponentType, HasVersion, SystemVersion},
+};
+use reifydb_runtime::{
+	actor::system::{ActorHandle, ActorSpawner},
+	shutdown::{Shutdown, ShutdownErrors},
+	sync::mutex::Mutex,
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::Result;
 use tracing::info;
 
-use crate::domains::{runtime::SampleReader, store::StoreReader};
+use crate::{
+	domains::{runtime::SampleReader, store::StoreReader},
+	sampler::SamplerMessage,
+};
 
 pub struct MetricsSubsystem {
 	running: Arc<AtomicBool>,
 	sample_reader: SampleReader,
 	store_reader: StoreReader,
+	scope: ActorSpawner,
+	sampler: Mutex<Option<ActorHandle<SamplerMessage>>>,
+	flush: Mutex<Option<ActorHandle<MetricsMessage>>>,
 }
 
 impl MetricsSubsystem {
-	pub fn new(sample_reader: SampleReader, store_reader: StoreReader) -> Self {
+	pub fn new(
+		sample_reader: SampleReader,
+		store_reader: StoreReader,
+		scope: ActorSpawner,
+		sampler: ActorHandle<SamplerMessage>,
+		flush: ActorHandle<MetricsMessage>,
+	) -> Self {
 		info!("Metric subsystem started");
 		Self {
 			running: Arc::new(AtomicBool::new(true)),
 			sample_reader,
 			store_reader,
+			scope,
+			sampler: Mutex::new(Some(sampler)),
+			flush: Mutex::new(Some(flush)),
 		}
 	}
 
@@ -58,8 +80,22 @@ impl HasVersion for MetricsSubsystem {
 
 impl Shutdown for MetricsSubsystem {
 	fn shutdown(&self) -> Result<()> {
-		self.running.store(false, Ordering::SeqCst);
-		Ok(())
+		if !self.running.swap(false, Ordering::SeqCst) {
+			return Ok(());
+		}
+		let mut errors = ShutdownErrors::new("metrics");
+		self.scope.shutdown();
+		if let Some(handle) = self.sampler.lock().take()
+			&& let Err(err) = handle.join()
+		{
+			errors.fail("sampler", err);
+		}
+		if let Some(handle) = self.flush.lock().take()
+			&& let Err(err) = handle.join()
+		{
+			errors.fail("flush", err);
+		}
+		errors.finish()
 	}
 }
 

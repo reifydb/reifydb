@@ -173,7 +173,7 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 				coverage.cover(*class, task.name());
 			}
 		}
-		let actor_refs = tasks
+		let handles = tasks
 			.into_iter()
 			.map(|task| {
 				let name = format!("lifecycle-{}", task.name());
@@ -181,6 +181,6 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 			})
 			.collect();
 
-		Ok(Box::new(LifecycleSubsystem::new(actor_refs, task_names, coverage, plane)))
+		Ok(Box::new(LifecycleSubsystem::new(handles, task_names, coverage, plane)))
 	}
 }

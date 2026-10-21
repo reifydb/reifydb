@@ -20,6 +20,8 @@ impl FlowShutdownState {
 	}
 
 	pub fn persist_frontiers(&self) {
-		output_frontier::sweep(self.engine.single(), &self.substrate.frontiers);
+		if let Err(e) = output_frontier::try_sweep(self.engine.single(), &self.substrate.frontiers) {
+			panic!("flow shutdown could not persist its output frontiers: {e}");
+		}
 	}
 }

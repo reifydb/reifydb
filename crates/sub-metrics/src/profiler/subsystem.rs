@@ -11,15 +11,58 @@ use std::{
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_profiler::{category::CategorySet, intern::DimInterner, layer::ProfilerLayer, sink::ProfilerSink};
-use reifydb_runtime::{actor::mailbox::ActorRef, context::clock::Clock, shutdown::Shutdown, sync::rwlock::RwLock};
+use reifydb_runtime::{
+	actor::{
+		mailbox::ActorRef,
+		system::{ActorHandle, ActorSpawner},
+	},
+	context::clock::Clock,
+	shutdown::{Shutdown, ShutdownErrors},
+	sync::{mutex::Mutex, rwlock::RwLock},
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::Result;
 use tracing::{info, instrument};
 
 use super::{
-	accumulator::ProfilerAccumulator, actor::ProfilerMessage, instruments::ProfilerInstruments,
+	accumulator::ProfilerAccumulator,
+	actor::{ProfilerCollectorActor, ProfilerMessage},
+	instruments::ProfilerInstruments,
 	reader::ProfilerReader,
 };
+
+pub struct ProfilerCollector {
+	scope: ActorSpawner,
+	actor_ref: ActorRef<ProfilerMessage>,
+	handle: Mutex<Option<ActorHandle<ProfilerMessage>>>,
+}
+
+impl ProfilerCollector {
+	pub fn spawn(spawner: &ActorSpawner, actor: ProfilerCollectorActor) -> Self {
+		let scope = spawner.scope();
+		let handle = scope.spawn_coordination("profile-collector", actor);
+		Self {
+			scope,
+			actor_ref: handle.actor_ref().clone(),
+			handle: Mutex::new(Some(handle)),
+		}
+	}
+
+	pub fn actor_ref(&self) -> &ActorRef<ProfilerMessage> {
+		&self.actor_ref
+	}
+
+	fn stop(&self) -> Result<()> {
+		let mut errors = ShutdownErrors::new("profiler");
+		self.scope.shutdown();
+		if let Some(handle) = self.handle.lock().take()
+			&& let Err(err) = handle.join()
+		{
+			errors.fail("collector", err);
+		}
+		errors.finish()
+	}
+}
 
 pub struct ProfilerSubsystem {
 	running: AtomicBool,
@@ -29,7 +72,7 @@ pub struct ProfilerSubsystem {
 	instruments: Arc<ProfilerInstruments>,
 	sink: Arc<dyn ProfilerSink>,
 	clock: Clock,
-	collector: Option<ActorRef<ProfilerMessage>>,
+	collector: Option<ProfilerCollector>,
 }
 
 impl ProfilerSubsystem {
@@ -41,7 +84,7 @@ impl ProfilerSubsystem {
 		instruments: Arc<ProfilerInstruments>,
 		sink: Arc<dyn ProfilerSink>,
 		clock: Clock,
-		collector: Option<ActorRef<ProfilerMessage>>,
+		collector: Option<ProfilerCollector>,
 	) -> Self {
 		info!("Profiler subsystem started (categories={:?})", categories);
 		Self {
@@ -57,7 +100,7 @@ impl ProfilerSubsystem {
 	}
 
 	pub fn collector(&self) -> Option<&ActorRef<ProfilerMessage>> {
-		self.collector.as_ref()
+		self.collector.as_ref().map(ProfilerCollector::actor_ref)
 	}
 
 	pub fn instruments(&self) -> &Arc<ProfilerInstruments> {
@@ -85,7 +128,10 @@ impl Shutdown for ProfilerSubsystem {
 			return Ok(());
 		}
 		info!("Profiler subsystem shutting down");
-		Ok(())
+		match &self.collector {
+			Some(collector) => collector.stop(),
+			None => Ok(()),
+		}
 	}
 }
 

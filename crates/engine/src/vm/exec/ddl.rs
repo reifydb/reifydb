@@ -7,6 +7,7 @@ use arrow_array::RecordBatch;
 use reifydb_core::internal_error;
 use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
+use reifydb_value::error::Error;
 
 use crate::{
 	Result,
@@ -17,8 +18,12 @@ pub(crate) fn require_admin_txn<'a>(tx: &'a mut Transaction<'_>) -> Result<&'a m
 	match tx {
 		Transaction::Admin(txn) => Ok(txn),
 		Transaction::Test(t) => Ok(&mut *t.inner),
-		_ => Err(internal_error!("DDL operations require an admin transaction")),
+		_ => Err(ddl_requires_admin_txn()),
 	}
+}
+
+pub(crate) fn ddl_requires_admin_txn() -> Error {
+	internal_error!("DDL operations require an admin transaction")
 }
 
 impl<'a> Vm<'a> {

@@ -10,9 +10,9 @@ use std::{
 };
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-#[cfg(feature = "column")]
-use reifydb_runtime::actor::mailbox::ActorRef;
 use reifydb_runtime::shutdown::Shutdown;
+#[cfg(feature = "column")]
+use reifydb_runtime::{actor::system::ActorHandle, shutdown::ShutdownErrors, sync::mutex::Mutex};
 #[cfg(feature = "column")]
 use reifydb_store_column::{compress::CompressionProfile, store::ColumnStore};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
@@ -64,15 +64,15 @@ impl Default for StorageConfig {
 
 #[cfg(feature = "column")]
 pub struct MaterializationActors {
-	pub table: ActorRef<TableMessage>,
-	pub series: ActorRef<SeriesMessage>,
+	pub table: ActorHandle<TableMessage>,
+	pub series: ActorHandle<SeriesMessage>,
 }
 
 pub struct StorageSubsystem {
 	#[cfg(feature = "column")]
 	block_store: ColumnStore,
 	#[cfg(feature = "column")]
-	actors: Option<MaterializationActors>,
+	actors: Mutex<Option<MaterializationActors>>,
 	running: Arc<AtomicBool>,
 }
 
@@ -82,7 +82,7 @@ impl StorageSubsystem {
 		info!("Storage (columnar materialization) subsystem started");
 		Self {
 			block_store,
-			actors,
+			actors: Mutex::new(actors),
 			running: Arc::new(AtomicBool::new(true)),
 		}
 	}
@@ -125,11 +125,19 @@ impl Shutdown for StorageSubsystem {
 		}
 
 		#[cfg(feature = "column")]
-		if let Some(actors) = &self.actors {
-			let _ = actors.table.send(TableMessage::Shutdown);
-			let _ = actors.series.send(SeriesMessage::Shutdown);
+		if let Some(actors) = self.actors.lock().take() {
+			let _ = actors.table.actor_ref().send_blocking(TableMessage::Shutdown);
+			let _ = actors.series.actor_ref().send_blocking(SeriesMessage::Shutdown);
+			let mut errors = ShutdownErrors::new("storage");
+			if let Err(err) = actors.table.join() {
+				errors.fail("table", err);
+			}
+			if let Err(err) = actors.series.join() {
+				errors.fail("series", err);
+			}
+			errors.finish()?;
 		}
-		debug!("Storage subsystem shutdown signalled");
+		debug!("Storage subsystem stopped");
 		Ok(())
 	}
 }

@@ -20,7 +20,10 @@ use reifydb_core::{
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
-	actor::{mailbox::ActorRef, system::ActorSpawner},
+	actor::{
+		mailbox::ActorRef,
+		system::{ActorHandle, ActorSpawner},
+	},
 	context::clock::Clock,
 };
 use reifydb_store_cdc::store::CdcStore;
@@ -82,9 +85,10 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 
 		let epoch_gauge = Arc::new(EpochGauge::default());
 
+		let scope = spawner.scope();
 		let sampler = Self::wire_sampler(
 			&engine,
-			&spawner,
+			&scope,
 			&clock,
 			&collectors,
 			&multi_store,
@@ -94,12 +98,12 @@ impl SubsystemFactory for MetricsSubsystemFactory {
 			&retention_metrics,
 			epoch_gauge.clone(),
 		)?;
-		ioc.register_service(sampler.clone());
-		Self::wire_accounting(ioc, &engine, &spawner, epoch_gauge, sampler)?;
+		ioc.register_service(sampler.actor_ref().clone());
+		let flush = Self::wire_accounting(ioc, &engine, &scope, epoch_gauge, sampler.actor_ref().clone())?;
 
 		let store_reader = StoreReader::new(multi_store, single_store, operator_store, cdc_store);
 
-		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors), store_reader)))
+		Ok(Box::new(MetricsSubsystem::new(SampleReader::new(collectors), store_reader, scope, sampler, flush)))
 	}
 }
 
@@ -117,7 +121,7 @@ impl MetricsSubsystemFactory {
 		cdc_store: &CdcStore,
 		retention_metrics: &RetentionMetrics,
 		epoch_gauge: Arc<EpochGauge>,
-	) -> Result<ActorRef<SamplerMessage>> {
+	) -> Result<ActorHandle<SamplerMessage>> {
 		let surfaces = Arc::new(MetricsSurfaces::build(MetricsDomain::ALL.map(MetricsDomain::spec)));
 		surfaces.register_all(engine)?;
 		let interval = engine.catalog().get_config_duration(ConfigKey::MetricsSampleInterval);
@@ -144,8 +148,7 @@ impl MetricsSubsystemFactory {
 			interval,
 			snapshot_interval,
 		);
-		let handle = spawner.spawn_coordination("metrics-sampler", actor);
-		Ok(handle.actor_ref().clone())
+		Ok(spawner.spawn_coordination("metrics-sampler", actor))
 	}
 
 	#[inline]
@@ -155,7 +158,7 @@ impl MetricsSubsystemFactory {
 		spawner: &ActorSpawner,
 		epoch_gauge: Arc<EpochGauge>,
 		sampler: ActorRef<SamplerMessage>,
-	) -> Result<()> {
+	) -> Result<ActorHandle<MetricsMessage>> {
 		let accumulator = ioc
 			.try_resolve::<Arc<StatementMetricsAccumulator>>()
 			.unwrap_or_else(|| Arc::new(StatementMetricsAccumulator::new()));
@@ -175,7 +178,7 @@ impl MetricsSubsystemFactory {
 		ioc.register_service(handle.actor_ref().clone());
 		Self::register_listeners(&event_bus, handle.actor_ref().clone());
 
-		Ok(())
+		Ok(handle)
 	}
 
 	#[inline]

@@ -235,12 +235,6 @@ impl FlowSubsystem {
 		})
 	}
 
-	pub fn persist_frontiers(&self) {
-		if self.is_running() {
-			self.shutdown_state.persist_frontiers();
-		}
-	}
-
 	#[inline]
 	fn publish_custom_operators(custom_operators: &CustomOperators, engine: &StandardEngine) {
 		let event_bus = engine.event_bus();
@@ -330,6 +324,7 @@ impl Shutdown for FlowSubsystem {
 			}
 		}
 
+		self.shutdown_state.persist_frontiers();
 		self.view_lineage.publish(Default::default());
 		errors.finish()
 	}

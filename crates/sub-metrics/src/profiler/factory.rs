@@ -29,7 +29,7 @@ use super::{
 	instruments::ProfilerInstruments,
 	listener::{ProfilerScopeBatchListener, ProfilerScopeClosedListener},
 	sink::EventBusSink,
-	subsystem::ProfilerSubsystem,
+	subsystem::{ProfilerCollector, ProfilerSubsystem},
 };
 use crate::framework::{
 	current::{CurrentCache, CurrentVTable},
@@ -95,16 +95,15 @@ impl ProfilerSubsystemFactory {
 				cfg.min_calls_for_retention,
 				clock.clone(),
 			);
-			let handle = spawner.spawn_coordination("profile-collector", actor);
-			let actor_ref = handle.actor_ref().clone();
+			let collector = ProfilerCollector::spawn(&spawner, actor);
 
 			event_bus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
-				actor_ref.clone(),
+				collector.actor_ref().clone(),
 			));
 			event_bus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
-				actor_ref.clone(),
+				collector.actor_ref().clone(),
 			));
-			Some(actor_ref)
+			Some(collector)
 		};
 
 		let sink: Arc<dyn ProfilerSink> = Arc::new(EventBusSink::new(event_bus, Arc::clone(&instruments)));

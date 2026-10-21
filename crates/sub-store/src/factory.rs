@@ -105,8 +105,7 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			self.config.table_tick_interval,
 			table_changes,
 		);
-		let table_handle = spawner.spawn_coordination("storage-materialize-table", table_actor);
-		let table_ref = table_handle.actor_ref().clone();
+		let table = spawner.spawn_coordination("storage-materialize-table", table_actor);
 
 		let series_actor = SeriesMaterializationActor::new(
 			engine,
@@ -119,14 +118,13 @@ impl SubsystemFactory for StorageSubsystemFactory {
 			self.config.series_merge_buckets,
 			self.config.series_merge_file_delay,
 		);
-		let series_handle = spawner.spawn_coordination("storage-materialize-series", series_actor);
-		let series_ref = series_handle.actor_ref().clone();
+		let series = spawner.spawn_coordination("storage-materialize-series", series_actor);
 
 		Ok(Box::new(StorageSubsystem::new(
 			block_store,
 			Some(MaterializationActors {
-				table: table_ref,
-				series: series_ref,
+				table,
+				series,
 			}),
 		)))
 	}

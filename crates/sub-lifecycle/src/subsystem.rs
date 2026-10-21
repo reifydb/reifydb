@@ -4,6 +4,7 @@
 use std::{
 	any::Any,
 	collections::HashSet,
+	mem::take,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -14,7 +15,11 @@ use reifydb_core::{
 	interface::version::{ComponentType, HasVersion, SystemVersion},
 	lifecycle::{class::RetentionClass, coverage::RetentionCoverage},
 };
-use reifydb_runtime::{actor::mailbox::ActorRef, shutdown::Shutdown};
+use reifydb_runtime::{
+	actor::{mailbox::ActorRef, system::ActorHandle},
+	shutdown::{Shutdown, ShutdownErrors},
+	sync::mutex::Mutex,
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_value::Result;
 use tracing::{debug, error, info};
@@ -23,6 +28,7 @@ use crate::{actor::LifecycleMessage, plane::RetentionPlane};
 
 pub struct LifecycleSubsystem {
 	actor_refs: Vec<ActorRef<LifecycleMessage>>,
+	handles: Mutex<Vec<ActorHandle<LifecycleMessage>>>,
 	task_names: Vec<&'static str>,
 	covered: HashSet<RetentionClass>,
 	plane: RetentionPlane,
@@ -52,7 +58,7 @@ fn report_retention_classes(task_names: &[&'static str], coverage: &RetentionCov
 
 impl LifecycleSubsystem {
 	pub fn new(
-		actor_refs: Vec<ActorRef<LifecycleMessage>>,
+		handles: Vec<ActorHandle<LifecycleMessage>>,
 		task_names: Vec<&'static str>,
 		coverage: RetentionCoverage,
 		plane: RetentionPlane,
@@ -60,7 +66,8 @@ impl LifecycleSubsystem {
 		report_retention_classes(&task_names, &coverage);
 		let covered = RetentionClass::all().iter().filter(|c| coverage.is_covered(**c)).copied().collect();
 		Self {
-			actor_refs,
+			actor_refs: handles.iter().map(|handle| handle.actor_ref().clone()).collect(),
+			handles: Mutex::new(handles),
 			task_names,
 			covered,
 			plane,
@@ -102,10 +109,16 @@ impl Shutdown for LifecycleSubsystem {
 			return Ok(());
 		}
 		for actor_ref in &self.actor_refs {
-			let _ = actor_ref.send(LifecycleMessage::Shutdown);
+			let _ = actor_ref.send_blocking(LifecycleMessage::Shutdown);
 		}
-		debug!("Lifecycle subsystem shutdown signalled");
-		Ok(())
+		let mut errors = ShutdownErrors::new("lifecycle");
+		for handle in take(&mut *self.handles.lock()) {
+			if let Err(err) = handle.join() {
+				errors.fail("actor", err);
+			}
+		}
+		debug!("Lifecycle subsystem stopped");
+		errors.finish()
 	}
 }
 

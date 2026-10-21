@@ -339,6 +339,10 @@ impl MultiTransaction {
 		self.0.tm.advance_version_to(version);
 	}
 
+	pub fn freeze_commits(&self) -> Result<CommitVersion> {
+		self.0.tm.oracle().freeze_commits()
+	}
+
 	pub fn bootstrapping_completed(&self) {
 		self.0.bootstrapping_completed();
 	}

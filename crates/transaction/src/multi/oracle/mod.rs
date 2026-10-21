@@ -36,9 +36,12 @@ use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 use smallvec::SmallVec;
 use tracing::{Span, field, instrument};
 
-use crate::multi::{
-	conflict::ConflictManager, lease::VersionLeases, transaction::version::VersionProvider,
-	watermark::watermark::WaterMark,
+use crate::{
+	error::TransactionError,
+	multi::{
+		conflict::ConflictManager, lease::VersionLeases, transaction::version::VersionProvider,
+		watermark::watermark::WaterMark,
+	},
 };
 
 pub mod cleanup;
@@ -146,6 +149,8 @@ pub(crate) struct OracleState {
 	pub time_windows: BTreeMap<CommitVersion, CommittedWindow>,
 
 	pub evicted_up_through: CommitVersion,
+
+	frozen: bool,
 }
 
 #[derive(Debug)]
@@ -223,6 +228,7 @@ where
 			inner: OracleLock::new(OracleState {
 				time_windows: BTreeMap::new(),
 				evicted_up_through: CommitVersion(0),
+				frozen: false,
 			}),
 			query: WaterMark::with_advancer("txn-mark-query".into(), &spawner),
 			command: WaterMark::with_advancer("txn-mark-cmd".into(), &spawner),
@@ -317,6 +323,12 @@ where
 		self.clock.current()
 	}
 
+	pub(crate) fn freeze_commits(&self) -> Result<CommitVersion> {
+		let mut state = self.inner.write();
+		state.frozen = true;
+		self.clock.current()
+	}
+
 	pub fn stop(&mut self) {
 		{
 			let mut shutdown = self.shutdown_signal.write();
@@ -357,7 +369,7 @@ where
 		if let Some(rebase) = rebase {
 			rebase(&mut deltas, self.clock.current()?)?;
 		}
-		let commit_version = self.allocate_commit_version(SpanTiming::current(), deltas.clone())?;
+		let commit_version = self.allocate_commit_version(&inner, SpanTiming::current(), deltas.clone())?;
 		drop(inner);
 
 		Ok((CreateCommitResult::Success(commit_version), deltas))
@@ -390,7 +402,7 @@ where
 			rebase(deltas, self.clock.current()?)?;
 		}
 
-		let commit_version = self.allocate_commit_version(timing, deltas.clone())?;
+		let commit_version = self.allocate_commit_version(state, timing, deltas.clone())?;
 
 		let add_start = timing.mark(&self.metrics_clock);
 		state.add_committed_transaction(commit_version, conflicts, window_size);
@@ -472,7 +484,15 @@ where
 	}
 
 	#[inline]
-	fn allocate_commit_version(&self, timing: SpanTiming, deltas: CowVec<Delta>) -> Result<CommitVersion> {
+	fn allocate_commit_version(
+		&self,
+		state: &OracleState,
+		timing: SpanTiming,
+		deltas: CowVec<Delta>,
+	) -> Result<CommitVersion> {
+		if state.frozen {
+			return Err(TransactionError::ShuttingDown.into());
+		}
 		let clock_start = timing.mark(&self.metrics_clock);
 		let commit_version = self.clock.reserve()?;
 		self.query.register_in_flight(commit_version);

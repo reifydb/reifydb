@@ -14,6 +14,7 @@ use std::{
 use libc::{SIGHUP, SIGINT, SIGQUIT, SIGTERM, c_int, sighandler_t, signal};
 use reifydb_auth::service::AuthService;
 use reifydb_catalog::catalog::Catalog;
+use reifydb_core::common::CommitVersion;
 #[cfg(feature = "sub_flow")]
 use reifydb_core::{
 	error::diagnostic::{subscription::hydration_row_cap_exceeded, subsystem::feature_disabled},
@@ -31,7 +32,7 @@ use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::clock::Clock,
 	pool::Pools,
-	shutdown::{Shutdown, ShutdownErrors},
+	shutdown::{Shutdown, ShutdownErrors, shutdown_failed},
 };
 use reifydb_store_cdc::store::CdcStore;
 use reifydb_store_multi::MultiStore;
@@ -52,10 +53,9 @@ use reifydb_sub_server_ws::subsystem::WsSubsystem;
 use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::SubscriptionSubsystem};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
-#[cfg(feature = "sub_flow")]
-use reifydb_value::error::Error;
 use reifydb_value::{
 	Result,
+	error::Error,
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
@@ -234,10 +234,13 @@ impl Database {
 
 		let mut errors = ShutdownErrors::new("database");
 		if drain {
-			self.drain_and_flush_stores(&mut errors);
+			self.drain_cdc_consumers(Duration::from_seconds(10).unwrap());
 		}
 
 		self.subsystems.shutdown_all(&mut errors);
+		if drain {
+			self.flush_stores(&mut errors);
+		}
 		if let Some(runtime) = self.owned_runtime.take() {
 			errors.step("runtime", runtime.shutdown());
 		}
@@ -247,10 +250,12 @@ impl Database {
 		errors.finish()
 	}
 
-	#[inline]
-	fn drain_and_flush_stores(&self, errors: &mut ShutdownErrors) {
-		self.drain_cdc_consumers(Duration::from_seconds(10).unwrap());
-		self.persist_flow_frontiers();
+	fn flush_stores(&self, errors: &mut ShutdownErrors) {
+		self.settle_stopped_actors();
+		match self.engine.multi().freeze_commits() {
+			Ok(last) => errors.step("cdc", self.await_cdc_producer(last)),
+			Err(e) => errors.step("commits", Err(e)),
+		}
 
 		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
 			multi_store.flush_all_blocking();
@@ -275,6 +280,49 @@ impl Database {
 			errors.fail("operator store", "final flush did not complete");
 		}
 	}
+
+	#[cfg(not(reifydb_single_threaded))]
+	fn await_cdc_producer(&self, last: CommitVersion) -> Result<()> {
+		let deadline = Clock::Real.instant() + Duration::from_seconds_const(10).to_std();
+		while self.engine.cdc_producer_watermark() < last {
+			if Clock::Real.instant() >= deadline {
+				return Err(cdc_producer_behind(self.engine.cdc_producer_watermark(), last));
+			}
+			sleep(Duration::from_milliseconds_const(2).to_std());
+		}
+		Ok(())
+	}
+
+	#[cfg(reifydb_dst)]
+	fn await_cdc_producer(&self, last: CommitVersion) -> Result<()> {
+		let system = self.spawner.system();
+		let mut passes = 0u32;
+		while self.engine.cdc_producer_watermark() < last {
+			if passes == 64 {
+				return Err(cdc_producer_behind(self.engine.cdc_producer_watermark(), last));
+			}
+			system.run_until_idle();
+			passes += 1;
+		}
+		Ok(())
+	}
+
+	#[cfg(all(reifydb_single_threaded, not(reifydb_dst)))]
+	fn await_cdc_producer(&self, last: CommitVersion) -> Result<()> {
+		let reached = self.engine.cdc_producer_watermark();
+		if reached < last {
+			return Err(cdc_producer_behind(reached, last));
+		}
+		Ok(())
+	}
+
+	#[cfg(reifydb_dst)]
+	fn settle_stopped_actors(&self) {
+		self.spawner.system().run_until_idle();
+	}
+
+	#[cfg(not(reifydb_dst))]
+	fn settle_stopped_actors(&self) {}
 
 	#[inline]
 	fn shutdown_stores(&self, errors: &mut ShutdownErrors) {
@@ -365,16 +413,6 @@ impl Database {
 	/// worker thread and no steppable actor system, so there is nothing to drain.
 	#[cfg(any(not(feature = "sub_flow"), all(reifydb_single_threaded, not(reifydb_dst))))]
 	fn drain_cdc_consumers(&self, _timeout: Duration) {}
-
-	#[cfg(feature = "sub_flow")]
-	fn persist_flow_frontiers(&self) {
-		if let Some(sub_flow) = self.sub_flow() {
-			sub_flow.persist_frontiers();
-		}
-	}
-
-	#[cfg(not(feature = "sub_flow"))]
-	fn persist_flow_frontiers(&self) {}
 
 	pub fn health_status(&self) -> HealthStatus {
 		self.health_monitor.get_system_health()
@@ -630,6 +668,13 @@ impl Drop for Database {
 			}
 		}
 	}
+}
+
+fn cdc_producer_behind(reached: CommitVersion, last: CommitVersion) -> Error {
+	Error(Box::new(shutdown_failed(
+		"cdc",
+		format!("the producer reached version {} but the last commit is version {}", reached.0, last.0),
+	)))
 }
 
 impl Database {

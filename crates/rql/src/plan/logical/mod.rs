@@ -20,6 +20,7 @@ pub mod tree;
 pub mod variable;
 
 use std::{
+	cell::Cell,
 	fmt,
 	fmt::{Display, Formatter},
 };
@@ -35,6 +36,7 @@ use reifydb_core::{
 	expression::{AliasExpression, Expression, IdentExpression},
 	interface::{
 		catalog::{
+			namespace::Namespace,
 			property::ColumnPropertyKind,
 			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 			series::SeriesKey,
@@ -80,6 +82,7 @@ use crate::{
 pub(crate) struct Compiler<'bump> {
 	pub catalog: Catalog,
 	pub bump: &'bump Bump,
+	pub remote_target: Cell<Option<Namespace>>,
 }
 
 #[instrument(name = "rql::compile::logical", level = "trace", skip(bump, catalog, tx, ast))]
@@ -92,8 +95,28 @@ pub fn compile_logical<'b>(
 	Compiler {
 		catalog: catalog.clone(),
 		bump,
+		remote_target: Cell::new(None),
 	}
 	.compile(ast, tx)
+}
+
+#[instrument(name = "rql::compile::remote_target", level = "trace", skip(bump, catalog, tx, ast))]
+pub(crate) fn find_remote_target<'b>(
+	bump: &'b Bump,
+	catalog: &Catalog,
+	tx: &mut Transaction<'_>,
+	ast: AstStatement<'b>,
+) -> Result<Option<Namespace>> {
+	let compiler = Compiler {
+		catalog: catalog.clone(),
+		bump,
+		remote_target: Cell::new(None),
+	};
+	let compiled = compiler.compile(ast, tx);
+	match compiler.remote_target.take() {
+		Some(namespace) => Ok(Some(namespace)),
+		None => compiled.map(|_| None),
+	}
 }
 
 #[instrument(name = "rql::compile::logical_query", level = "trace", skip(bump, catalog, tx, ast))]

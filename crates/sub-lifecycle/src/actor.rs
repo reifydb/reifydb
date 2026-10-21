@@ -7,8 +7,7 @@ use reifydb_core::lifecycle::{progress::Progress, task::LifecycleTask};
 use reifydb_runtime::{
 	actor::{
 		context::Context,
-		mailbox::ActorRef,
-		system::{ActorConfig, ActorSpawner},
+		system::{ActorConfig, ActorHandle, ActorSpawner},
 		timers::TimerHandle,
 		traits::{Actor, Directive},
 	},
@@ -62,9 +61,12 @@ impl LifecycleActor {
 		}
 	}
 
-	pub fn spawn(spawner: &ActorSpawner, name: &str, task: Box<dyn LifecycleTask>) -> ActorRef<LifecycleMessage> {
-		let actor = Self::new(task);
-		spawner.spawn_maintenance(name, actor).actor_ref().clone()
+	pub fn spawn(
+		spawner: &ActorSpawner,
+		name: &str,
+		task: Box<dyn LifecycleTask>,
+	) -> ActorHandle<LifecycleMessage> {
+		spawner.spawn_maintenance(name, Self::new(task))
 	}
 }
 

@@ -1124,7 +1124,6 @@ pub enum IdentifierError {
 		namespace: String,
 		name: String,
 		address: String,
-		token: Option<String>,
 		fragment: Fragment,
 	},
 }
@@ -1192,16 +1191,12 @@ impl From<IdentifierError> for Error {
 				namespace,
 				name,
 				address,
-				token,
 				fragment,
 			} => {
-				let mut notes = vec![
+				let notes = vec![
 					format!("Namespace '{}' is configured as a remote namespace", namespace),
 					format!("Remote gRPC address: {}", address),
 				];
-				if let Some(ref t) = token {
-					notes.push(format!("Remote token: {}", t));
-				}
 				Error(Box::new(Diagnostic {
 					code: "REMOTE_001".to_string(),
 					rql: None,

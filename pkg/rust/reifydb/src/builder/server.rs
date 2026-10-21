@@ -48,7 +48,7 @@ use reifydb_sub_metrics::profiler::{
 	instruments::ProfilerInstruments,
 	listener::{ProfilerScopeBatchListener, ProfilerScopeClosedListener},
 	sink::EventBusSink,
-	subsystem::ProfilerSubsystem,
+	subsystem::{ProfilerCollector, ProfilerSubsystem},
 };
 #[cfg(all(feature = "sub_server", not(reifydb_single_threaded)))]
 use reifydb_sub_server::interceptor::{RequestInterceptor, RequestInterceptorChain};
@@ -472,15 +472,14 @@ impl ServerBuilder {
 				cfg.min_calls_for_retention,
 				clock.clone(),
 			);
-			let handle = spawner.spawn_coordination("profile-collector", actor);
-			let actor_ref = handle.actor_ref().clone();
+			let collector = ProfilerCollector::spawn(&spawner, actor);
 			eventbus.register::<ProfilerScopeClosedEvent, _>(ProfilerScopeClosedListener::new(
-				actor_ref.clone(),
+				collector.actor_ref().clone(),
 			));
 			eventbus.register::<ProfilerScopeBatchEvent, _>(ProfilerScopeBatchListener::new(
-				actor_ref.clone(),
+				collector.actor_ref().clone(),
 			));
-			let collector = Some(actor_ref);
+			let collector = Some(collector);
 			let sink: Arc<dyn ProfilerSink> =
 				Arc::new(EventBusSink::new(eventbus.clone(), Arc::clone(&instruments)));
 			let subsystem = ProfilerSubsystem::new(
