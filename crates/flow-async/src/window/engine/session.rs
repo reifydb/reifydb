@@ -210,28 +210,6 @@ where
 	pub fn unindex_row(&self, store: &mut dyn StateStore, session: GroupId, row: RowNumber) -> Result<()> {
 		remove(store, &row_index_key(session, row))
 	}
-
-	#[allow(clippy::too_many_arguments)]
-	pub fn reindex_session(
-		&mut self,
-		store: &mut dyn StateStore,
-		group: &G,
-		id: u64,
-		session: GroupId,
-		slot_key: &EncodedKey,
-		prior_last: Option<S>,
-		last: S,
-	) -> Result<()> {
-		self.tumbling.reindex_window(
-			store,
-			group,
-			S::from_order(id),
-			session,
-			slot_key,
-			prior_last.map(Coord::to_order),
-			Some(last.to_order()),
-		)
-	}
 }
 
 #[cfg(test)]
@@ -240,14 +218,15 @@ mod tests {
 	use reifydb_core::key::operator::state::GroupId;
 	use reifydb_value::{
 		factory::time::at_millis,
-		value::{duration::Duration, row_number::RowNumber},
+		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
 	};
 
 	use super::{GuestSession, SessionEngine};
 	use crate::{
 		operator::state::mock::MockStore,
 		window::{
-			accumulator::mock::SumAccumulator, engine::config::WindowEngineConfig,
+			accumulator::mock::SumAccumulator,
+			engine::{WindowReindex, config::WindowEngineConfig},
 			kind::session::SessionAssignment,
 		},
 	};
@@ -368,11 +347,21 @@ mod tests {
 		let mut store = MockStore::default();
 		let (session, slot) = (group_id("s0"), EncodedKey::new(Vec::new()));
 
-		engine.reindex_session(&mut store, &1u32, 0, session, &slot, None, at_millis(100)).unwrap();
-		engine.reindex_session(&mut store, &1u32, 0, session, &slot, Some(at_millis(100)), at_millis(105))
-			.unwrap();
-		engine.reindex_session(&mut store, &1u32, 0, session, &slot, Some(at_millis(105)), at_millis(107))
-			.unwrap();
+		for (prior, last) in [(None, 100), (Some(100), 105), (Some(105), 107)] {
+			engine.tumbling_mut()
+				.reindex_windows(
+					&mut store,
+					&[WindowReindex {
+						group: &1u32,
+						window_start: DateTime::from_order(0),
+						id: session,
+						slot_key: &slot,
+						prior: prior.map(|ms| at_millis(ms).to_order()),
+						new: Some(at_millis(last).to_order()),
+					}],
+				)
+				.unwrap();
+		}
 
 		assert!(
 			engine.tumbling_mut().expire(&mut store, at_millis(106).to_order()).unwrap().is_empty(),

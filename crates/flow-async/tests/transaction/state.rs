@@ -118,7 +118,7 @@ fn stamped_row(payload: &[u8]) -> EncodedPodRow {
 
 #[test]
 fn test_state_get_set() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -140,7 +140,7 @@ fn test_state_get_set() {
 
 #[test]
 fn test_state_get_nonexistent() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -159,7 +159,7 @@ fn test_state_get_nonexistent() {
 
 #[test]
 fn test_state_remove() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -182,7 +182,7 @@ fn test_state_remove() {
 
 #[test]
 fn test_state_isolation_between_nodes() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -205,7 +205,7 @@ fn test_state_isolation_between_nodes() {
 
 #[test]
 fn test_state_scan_all() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -229,7 +229,7 @@ fn test_state_scan_all() {
 
 #[test]
 fn test_state_scan_only_own_node() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -255,7 +255,7 @@ fn test_state_scan_only_own_node() {
 
 #[test]
 fn test_state_scan_empty() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -273,7 +273,7 @@ fn test_state_scan_empty() {
 
 #[test]
 fn test_state_range_all() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -302,7 +302,7 @@ fn test_state_range_all() {
 
 #[test]
 fn test_state_multiple_nodes() {
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -566,7 +566,7 @@ fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
 	// This read replaces one state_range per group with one call for the whole set. If the two disagree
 	// on rows or on order the reaper spends its budget on a different set than it used to, and a group
 	// it believes it finished can still hold state.
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,
@@ -606,7 +606,7 @@ fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
 fn a_group_range_honours_a_pending_write_that_storage_has_never_seen() {
 	// The batched read merges pending over one storage page instead of per group. A pending remove that
 	// the merge drops would resurrect a reaped row, and a pending insert it misses would be orphaned.
-	let (parent, operators) = create_test_transaction();
+	let (_engine, parent, operators) = create_test_transaction();
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
 		&parent,
 		operators,

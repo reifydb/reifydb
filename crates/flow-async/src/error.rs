@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::error::diagnostic::flow::{
-	flow_guest_key_too_wide, flow_state_decode_failed, flow_state_encode_failed,
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_core::{
+	error::diagnostic::flow::{
+		flow_guest_key_too_wide, flow_state_decode_failed, flow_state_encode_failed, flow_state_key_unframed,
+	},
+	interface::catalog::flow::OperatorId,
 };
 use reifydb_value::error::{Diagnostic, Error, IntoDiagnostic};
 
@@ -24,6 +28,12 @@ pub enum FlowStateError {
 	GuestKeyTooWide {
 		len: usize,
 	},
+
+	#[error("operator {operator:?} holds a state key with no valid frame")]
+	StateKeyUnframed {
+		operator: OperatorId,
+		key: EncodedKey,
+	},
 }
 
 impl IntoDiagnostic for FlowStateError {
@@ -40,6 +50,10 @@ impl IntoDiagnostic for FlowStateError {
 			FlowStateError::GuestKeyTooWide {
 				len,
 			} => flow_guest_key_too_wide(len),
+			FlowStateError::StateKeyUnframed {
+				operator,
+				key,
+			} => flow_state_key_unframed(operator, &key),
 		}
 	}
 }

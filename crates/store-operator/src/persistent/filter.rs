@@ -9,6 +9,7 @@ use std::{
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::KeyspaceId};
 use reifydb_filter::source::{FilterSlice, KeyFilterSource};
+use reifydb_value::Result;
 
 use crate::{
 	bound::parts,
@@ -73,13 +74,13 @@ impl KeyFilterSource for OperatorStateKeySource {
 		self.started = true;
 	}
 
-	fn next_slice(&mut self, budget: usize) -> FilterSlice {
+	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice> {
 		if !self.started {
 			self.restart();
 		}
 		let limit = budget.max(1) as u64;
 		while let Some((operator, keyspace)) = self.pending.last().copied() {
-			let keys = self.persistent.state_keys_after(operator, keyspace, self.cursor.as_ref(), limit);
+			let keys = self.persistent.state_keys_after(operator, keyspace, self.cursor.as_ref(), limit)?;
 			if keys.is_empty() {
 				self.pending.pop();
 				self.cursor = None;
@@ -98,15 +99,15 @@ impl KeyFilterSource for OperatorStateKeySource {
 				self.pending.pop();
 				self.cursor = None;
 			}
-			return FilterSlice {
+			return Ok(FilterSlice {
 				hashes,
 				exhausted: exhausted && self.pending.is_empty(),
-			};
+			});
 		}
 		self.started = false;
-		FilterSlice {
+		Ok(FilterSlice {
 			hashes: Vec::new(),
 			exhausted: true,
-		}
+		})
 	}
 }

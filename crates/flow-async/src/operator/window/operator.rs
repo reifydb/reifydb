@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
@@ -9,6 +9,7 @@ use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, WindowKind, WindowSize},
 	expression::Expression,
 	interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability},
+	internal_err,
 	metrics::heap::OperatorSample,
 	state::timer::TimerKind,
 };
@@ -29,7 +30,7 @@ use reifydb_value::{
 use super::{
 	apply::{
 		apply_session_engine, apply_sliding_engine, apply_tumbling_engine, reap_sealed_groups,
-		seal_engine_windows, seal_session_engine,
+		seal_engine_windows, seal_session_engines,
 	},
 	rolling::{apply_rolling_engine, seal_rolling_engine},
 };
@@ -232,7 +233,7 @@ impl HostOperator for WindowOperator {
 			} => seal_rolling_engine(self, host, fired)?,
 			WindowKind::Session {
 				..
-			} => seal_session_engine(self, host, fired, &timer.key)?,
+			} => seal_session_engines(self, host, slice::from_ref(&timer))?,
 			_ => vec![],
 		};
 
@@ -246,6 +247,30 @@ impl HostOperator for WindowOperator {
 				timer.due,
 			)))
 		}
+	}
+
+	fn batches_timers(&self) -> bool {
+		matches!(self.kind, WindowKind::Session { .. })
+	}
+
+	fn on_timers(&mut self, host: &mut dyn HostContext, timers: Vec<Timer>) -> Result<Vec<Option<Change>>> {
+		if !self.batches_timers() || timers.iter().any(|timer| timer.kind != TimerKind::Seal) {
+			return internal_err!("operator {} batches only session seal timers", self.core.operator.0);
+		}
+		let diffs = seal_session_engines(self, host, &timers)?;
+		let mut outputs: Vec<Option<Change>> = timers.iter().map(|_| None).collect();
+		if !diffs.is_empty()
+			&& let (Some(slot), Some(latest)) =
+				(outputs.last_mut(), timers.iter().map(|timer| timer.due).max())
+		{
+			*slot = Some(Change::from_flow(
+				self.core.operator,
+				ChangeVersion::from(CommitVersion(0)),
+				diffs,
+				latest,
+			));
+		}
+		Ok(outputs)
 	}
 
 	fn seal_span(&self) -> Option<Duration> {

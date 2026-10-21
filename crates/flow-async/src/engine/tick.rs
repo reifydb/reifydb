@@ -5,6 +5,7 @@ use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::catalog::flow::FlowId,
 };
+use reifydb_flow::txn::Intern;
 use reifydb_value::Result;
 use tracing::instrument;
 
@@ -15,7 +16,7 @@ impl FlowEngineInner {
 		flow_id = ?flow_id,
 		checkpoint = checkpoint.0
 	))]
-	pub fn process_tick<T: FlowTransaction>(
+	pub fn process_tick<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		flow_id: FlowId,

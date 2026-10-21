@@ -32,7 +32,6 @@ use reifydb_core::{
 	value::batch::batch,
 };
 use reifydb_evaluate::stack::SymbolTable;
-use reifydb_runtime::context::clock::Clock;
 #[cfg(feature = "testing")]
 use reifydb_transaction::counting::OpCounts;
 use reifydb_transaction::{
@@ -48,9 +47,11 @@ use reifydb_value::{
 	},
 };
 
+#[cfg(feature = "testing")]
+use super::coerce::CoerceCounts;
 use super::{
 	BulkInsertResult, RingBufferInsertResult, SeriesInsertResult, TableInsertResult,
-	coerce::with_row_note,
+	coerce::{RowCoercer, with_row_note},
 	validation::{CoercedTags, coerce_columns},
 };
 use crate::{
@@ -200,15 +201,16 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	}
 
 	pub fn execute(self) -> Result<BulkInsertResult> {
-		self.run(|_| ()).map(|(result, ())| result)
+		self.run(|_, _| ()).map(|(result, ())| result)
 	}
 
 	#[cfg(feature = "testing")]
-	pub fn execute_counted(self) -> Result<(BulkInsertResult, OpCounts)> {
-		self.run(CommandTransaction::op_counts)
+	pub fn execute_counted(self) -> Result<(BulkInsertResult, OpCounts, CoerceCounts)> {
+		self.run(|txn, coercer| (txn.op_counts(), coercer.counts()))
+			.map(|(result, (ops, casts))| (result, ops, casts))
 	}
 
-	fn run<T>(self, observe: impl FnOnce(&CommandTransaction) -> T) -> Result<(BulkInsertResult, T)> {
+	fn run<T>(self, observe: impl FnOnce(&CommandTransaction, &RowCoercer) -> T) -> Result<(BulkInsertResult, T)> {
 		self.engine.reject_if_read_only()?;
 		let mut txn = self.engine.begin_command(self.identity)?;
 		let catalog = self.engine.catalog();
@@ -218,6 +220,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 		let pending_tables = self.pending_tables;
 		let pending_ringbuffers = self.pending_ringbuffers;
 		let pending_series = self.pending_series;
+		let identity = self.identity;
 		let checked_commit =
 			!pending_ringbuffers.is_empty() || has_keyed_table(&catalog, &mut txn, &pending_tables)?;
 
@@ -225,7 +228,8 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 			let writer = Writer {
 				catalog: &catalog,
 				services: &services,
-				clock,
+				now: clock.now(),
+				coercer: RowCoercer::new(identity),
 			};
 			load_flow_diff_need(writer.catalog, &mut Transaction::Command(txn))?;
 			let result = run_all_pending::<V>(
@@ -236,7 +240,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 				pending_series,
 			)?;
 			sync_transactional_views(writer.services, Transaction::Command(txn))?;
-			Ok((result, observe(txn)))
+			Ok((result, observe(txn, &writer.coercer)))
 		};
 		if checked_commit {
 			run_checked(&mut txn, total_rows, body)
@@ -256,7 +260,8 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 struct Writer<'a> {
 	catalog: &'a Catalog,
 	services: &'a Arc<Services>,
-	clock: &'a Clock,
+	now: DateTime,
+	coercer: RowCoercer,
 }
 
 #[inline]
@@ -443,7 +448,7 @@ fn execute_table_insert<V: ValidationMode>(
 	let (namespace, table) = resolve_table(catalog, txn, pending)?;
 	let shape = get_or_create_table_shape(catalog, &table, &mut Transaction::Command(txn))?;
 	let (columns, _) =
-		coerce_columns(&pending.rows, &pending.batches, &table.columns, None, &table.name, txn.identity)?;
+		coerce_columns(&pending.rows, &pending.batches, &table.columns, None, &table.name, &writer.coercer)?;
 	let rows = pending.row_count();
 	if rows == 0 {
 		return Ok(empty_table_result(pending));
@@ -472,7 +477,7 @@ fn execute_table_insert<V: ValidationMode>(
 		..EncodedTableRows::default()
 	};
 	cast[0].write(&shape, &mut encoded.rows)?;
-	let now = writer.clock.now();
+	let now = writer.now;
 	let times = RowTime::new(
 		&table.name,
 		&table.time,
@@ -580,7 +585,7 @@ fn execute_ringbuffer_insert<V: ValidationMode>(
 		&ringbuffer.columns,
 		None,
 		&ringbuffer.name,
-		txn.identity,
+		&writer.coercer,
 	)?;
 	let rows = pending.row_count();
 	let inserted = if rows == 0 {
@@ -653,7 +658,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 		&batch.distinct,
 		&mut verified,
 	)?;
-	let now = writer.clock.now();
+	let now = writer.now;
 	let times = RowTime::new(
 		&ringbuffer.name,
 		&ringbuffer.time,
@@ -699,7 +704,7 @@ fn execute_series_insert<V: ValidationMode>(
 		&series.columns,
 		sumtype.as_ref(),
 		&series.name,
-		txn.identity,
+		&writer.coercer,
 	)?;
 	let rows = pending.row_count();
 	let inserted = if rows == 0 {
@@ -729,7 +734,7 @@ fn execute_series_insert<V: ValidationMode>(
 			&mut inserted_keys,
 		)?
 	};
-	let now = writer.clock.now();
+	let now = writer.now;
 	for (partition, metadata) in metadata_by_partition {
 		let keys = inserted_keys.remove(&partition).unwrap_or_default();
 		write_inserted_series_metadata(
@@ -810,7 +815,7 @@ fn insert_series_rows(
 		}
 	}
 	shape.write_columns(&mut built, &views)?;
-	let now = writer.clock.now();
+	let now = writer.now;
 	let times = RowTime::new(
 		&series.name,
 		&series.time,

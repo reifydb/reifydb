@@ -5,7 +5,12 @@ use core::ptr;
 
 use reifydb_codec::tag::ValueKind;
 use reifydb_value::value::{
-	date::Date, datetime::DateTime, decimal::Decimal, dictionary::DictionaryEntryId, duration::Duration, time::Time,
+	date::Date,
+	datetime::DateTime,
+	decimal::Decimal,
+	dictionary::{DictionaryEntryId, DictionaryId},
+	duration::Duration,
+	time::Time,
 };
 
 use crate::{
@@ -22,8 +27,8 @@ use crate::{
 			row::Row,
 			sink::{
 				ColumnWriter, NoneOnNan, RowSink, column_mismatch, column_type, decodes_on_pass,
-				foreign_source, pass_after_push, pass_decoded, pass_kind, pass_source, passed_column,
-				unsupported_column,
+				foreign_source, pass_after_bind, pass_after_push, pass_decoded, pass_kind, pass_source,
+				passed_column, unbindable_column, unsupported_column,
 			},
 			writer::{
 				BlobWriter, BoolWriter, DateTimeWriter, DateWriter, DecimalWriter, DictionaryIdWriter,
@@ -40,6 +45,7 @@ use crate::{
 pub struct ExternCRowSink<'a> {
 	ctx: *mut ExternCContextRaw,
 	writers: Vec<AnyWriter<'a>>,
+	dictionaries: Vec<Option<DictionaryId>>,
 	columns: &'static [(&'static str, ValueKind)],
 	row_capacity: usize,
 }
@@ -184,6 +190,7 @@ impl<'a> ExternCRowSink<'a> {
 		}
 		Ok(Self {
 			ctx,
+			dictionaries: vec![None; writers.len()],
 			writers,
 			columns: R::COLUMNS,
 			row_capacity,
@@ -201,8 +208,25 @@ impl<'a> ExternCRowSink<'a> {
 
 	pub(crate) fn finish_all(self) -> Result<Vec<CommittedColumn>, SdkError> {
 		let mut out = Vec::with_capacity(self.writers.len());
-		for w in self.writers {
-			out.push(w.finish()?);
+		for (w, dictionary) in self.writers.into_iter().zip(self.dictionaries) {
+			let committed = w.finish()?;
+			if let Some(dictionary) = dictionary {
+				// SAFETY: the host keeps the ExternCContextRaw behind `self.ctx` valid for the whole
+				// guest call, and `committed` holds the live handle the host committed for this
+				// column.
+				let code = unsafe {
+					((*self.ctx).callbacks.builder_bind_dictionary)(
+						committed.handle(),
+						dictionary.0,
+					)
+				};
+				if code != EXTERN_C_OK {
+					return Err(SdkError::Other(format!(
+						"host_builder_bind_dictionary failed with code {code}"
+					)));
+				}
+			}
+			out.push(committed);
 		}
 		Ok(out)
 	}
@@ -409,6 +433,16 @@ impl RowSink for ExternCRowSink<'_> {
 	}
 
 	#[inline]
+	fn bind_dictionary(&mut self, col: usize, dictionary: DictionaryId) -> Result<(), SdkError> {
+		self.open(col)?;
+		let declared = self.columns[col].1;
+		if declared != ValueKind::DictionaryId {
+			return Err(unbindable_column(col, declared));
+		}
+		self.dictionaries[col] = Some(dictionary);
+		Ok(())
+	}
+
 	fn dictionary_id_column(&mut self, col: usize) -> Result<impl ColumnWriter<DictionaryEntryId> + '_, SdkError> {
 		self.open(col)?;
 		match &mut self.writers[col] {
@@ -456,6 +490,9 @@ impl RowSink for ExternCRowSink<'_> {
 		self.open(col)?;
 		if self.writers[col].len() != 0 {
 			return Err(pass_after_push(col));
+		}
+		if self.dictionaries[col].is_some() {
+			return Err(pass_after_bind(col));
 		}
 		let PassSource::ExternC(wire) = pass_source(input, name, mask)? else {
 			return Err(foreign_source(col));

@@ -6,6 +6,7 @@ use reifydb_filter::{
 	bloom::BloomFilter,
 	source::{FilterSlice, KeyFilterSource},
 };
+use reifydb_value::Result;
 
 #[derive(Debug)]
 struct VecSource {
@@ -35,14 +36,14 @@ impl KeyFilterSource for VecSource {
 		self.pos = 0;
 	}
 
-	fn next_slice(&mut self, budget: usize) -> FilterSlice {
+	fn next_slice(&mut self, budget: usize) -> Result<FilterSlice> {
 		let end = (self.pos + budget).min(self.hashes.len());
 		let hashes = self.hashes[self.pos..end].to_vec();
 		self.pos = end;
-		FilterSlice {
+		Ok(FilterSlice {
 			hashes,
 			exhausted: self.pos >= self.hashes.len(),
-		}
+		})
 	}
 }
 
@@ -52,7 +53,7 @@ fn drain(source: &mut dyn KeyFilterSource, budget: usize) -> (Vec<u64>, Vec<bool
 	let mut seen = Vec::new();
 	let mut flags = Vec::new();
 	loop {
-		let slice = source.next_slice(budget);
+		let slice = source.next_slice(budget).unwrap();
 		seen.extend(slice.hashes.iter().copied());
 		flags.push(slice.exhausted);
 		if slice.exhausted {
@@ -82,7 +83,7 @@ fn slice_never_exceeds_budget() {
 	let mut source = VecSource::new((0..10).collect());
 
 	for _ in 0..3 {
-		let slice = source.next_slice(4);
+		let slice = source.next_slice(4).unwrap();
 		assert!(slice.hashes.len() <= 4, "slice of {} exceeded budget 4", slice.hashes.len());
 	}
 }
@@ -93,11 +94,11 @@ fn budget_larger_than_remainder_returns_the_remainder_and_exhausts() {
 	// not report more work pending when there is none.
 	let mut source = VecSource::new(vec![1, 2, 3, 4, 5]);
 
-	let first = source.next_slice(2);
+	let first = source.next_slice(2).unwrap();
 	assert_eq!(first.hashes, vec![1, 2]);
 	assert!(!first.exhausted);
 
-	let rest = source.next_slice(1000);
+	let rest = source.next_slice(1000).unwrap();
 	assert_eq!(rest.hashes, vec![3, 4, 5]);
 	assert!(rest.exhausted);
 }
@@ -109,7 +110,7 @@ fn restart_after_partial_scan_replays_from_the_beginning() {
 	let keys: Vec<u64> = vec![7, 8, 9, 10];
 	let mut source = VecSource::new(keys.clone());
 
-	let partial = source.next_slice(2);
+	let partial = source.next_slice(2).unwrap();
 	assert_eq!(partial.hashes, vec![7, 8]);
 	assert!(!partial.exhausted);
 
@@ -143,7 +144,7 @@ fn empty_source_exhausts_on_the_very_first_slice() {
 	// the first call spins the rebuild loop on a source that will never produce a key.
 	let mut source = VecSource::new(Vec::new());
 
-	let slice = source.next_slice(16);
+	let slice = source.next_slice(16).unwrap();
 	assert!(slice.hashes.is_empty());
 	assert!(slice.exhausted, "empty source must exhaust on the first call, not a later one");
 }
@@ -155,7 +156,7 @@ fn source_reports_its_own_key_count_and_label() {
 	let mut source = VecSource::new(vec![1, 2, 3, 4]);
 	assert_eq!(source.estimated_len(), 4);
 
-	source.next_slice(2);
+	source.next_slice(2).unwrap();
 	assert_eq!(source.estimated_len(), 4);
 
 	assert_eq!(source.name(), "vec");
@@ -168,7 +169,7 @@ fn source_is_object_safe() {
 	let mut sources: Vec<Box<dyn KeyFilterSource>> =
 		vec![Box::new(VecSource::new(vec![1])), Box::new(VecSource::new(vec![2, 3]))];
 
-	let total: usize = sources.iter_mut().map(|s| s.next_slice(8).hashes.len()).sum();
+	let total: usize = sources.iter_mut().map(|s| s.next_slice(8).unwrap().hashes.len()).sum();
 	assert_eq!(total, 3);
 }
 

@@ -1030,6 +1030,7 @@ mod join_row_expiry_guard_tests {
 			host::HostContext,
 			state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 		},
+		timer::TimerMove,
 		transaction::join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
 	};
 	use reifydb_value::{
@@ -1212,26 +1213,23 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
-		fn join_expiry_arm(
-			&mut self,
-			_group: GroupId,
-			_side: u8,
-			_row_number: RowNumber,
-			_at: DateTime,
-		) -> Result<()> {
+		fn rearm_timers(&mut self, _kind: TimerKind, _moves: &[TimerMove]) -> Result<()> {
 			Ok(())
 		}
 
-		fn join_expiry_clear(
-			&mut self,
-			_group: GroupId,
-			_side: u8,
-			_row_number: RowNumber,
-		) -> Result<Option<DateTime>> {
-			Ok(None)
+		fn join_expiry_arm_many(&mut self, _side: u8, _rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+			Ok(())
 		}
 
-		fn join_expiry_free(&mut self, _entry: &JoinDueEntry) -> Result<()> {
+		fn join_expiry_clear_many(
+			&mut self,
+			_side: u8,
+			rows: &[(GroupId, RowNumber)],
+		) -> Result<Vec<Option<DateTime>>> {
+			Ok(vec![None; rows.len()])
+		}
+
+		fn join_expiry_free_many(&mut self, _entries: &[JoinDueEntry]) -> Result<()> {
 			Ok(())
 		}
 
@@ -1323,6 +1321,14 @@ mod join_row_expiry_guard_tests {
 			ids: &[DictionaryEntryId],
 		) -> Result<Vec<Option<Value>>> {
 			Ok(vec![None; ids.len()])
+		}
+
+		fn dictionary_intern_many(
+			&mut self,
+			_dictionary: &Dictionary,
+			_values: &[Value],
+		) -> Result<Vec<DictionaryEntryId>> {
+			panic!("the recording host never interns a dictionary value")
 		}
 
 		fn lookup_read_many(

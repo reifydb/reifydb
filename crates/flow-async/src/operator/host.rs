@@ -38,7 +38,7 @@ use reifydb_core::{
 		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 	},
 };
-use reifydb_flow::txn::Resolve;
+use reifydb_flow::txn::{Find, Intern, Resolve};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	Result,
@@ -55,6 +55,7 @@ use reifydb_value::{
 };
 
 use crate::{
+	error::FlowStateError,
 	operator::state::{
 		expiry::{expiry_drop, expiry_get, expiry_set, managed_due_key, managed_latest_key},
 		iter::StateIterator,
@@ -62,7 +63,7 @@ use crate::{
 		reclaim::ReclaimOutcome,
 		seal::rule::SEAL_GATE_STEP,
 	},
-	timer::{Timer, extension::TimerExtension},
+	timer::{Timer, TimerMove, extension::TimerExtension},
 	transaction::{
 		FlowTransaction,
 		dictionary::DictionaryExtension,
@@ -78,11 +79,13 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 
 	fn disarm_timer_by_key(&mut self, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 
-	fn join_expiry_arm(&mut self, group: GroupId, side: u8, row_number: RowNumber, at: DateTime) -> Result<()>;
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()>;
 
-	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>>;
+	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()>;
 
-	fn join_expiry_free(&mut self, entry: &JoinDueEntry) -> Result<()>;
+	fn join_expiry_clear_many(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>>;
+
+	fn join_expiry_free_many(&mut self, entries: &[JoinDueEntry]) -> Result<()>;
 
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>>;
 
@@ -141,6 +144,12 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 		dictionary: DictionaryId,
 		ids: &[DictionaryEntryId],
 	) -> Result<Vec<Option<Value>>>;
+
+	fn dictionary_intern_many(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>>;
 
 	fn lookup_read_many(
 		&mut self,
@@ -315,11 +324,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		)?;
 		let mut out = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
-			if let TaggedKey::OperatorState(decoded) = &r.key
-				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
-			{
-				out.push((inner, EncodedPodRow::from(r.bytes)));
-			}
+			out.push((framed_state_key(self.operator, &r.key)?, EncodedPodRow::from(r.bytes)));
 		}
 		Ok(out)
 	}
@@ -342,11 +347,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let batch = self.txn.state_group_range(self.operator, groups, limit, keyspaces)?;
 		let mut rows = Vec::with_capacity(batch.items.len());
 		for r in batch.items {
-			if let TaggedKey::OperatorState(decoded) = &r.key
-				&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
-			{
-				rows.push((inner, EncodedPodRow::from(r.bytes)));
-			}
+			rows.push((framed_state_key(self.operator, &r.key)?, EncodedPodRow::from(r.bytes)));
 		}
 		Ok(GroupSweep {
 			rows,
@@ -358,12 +359,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		let Some(r) = self.txn.state_last(self.operator, range)? else {
 			return Ok(None);
 		};
-		if let TaggedKey::OperatorState(decoded) = &r.key
-			&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
-		{
-			return Ok(Some((inner, EncodedPodRow::from(r.bytes))));
-		}
-		Ok(None)
+		Ok(Some((framed_state_key(self.operator, &r.key)?, EncodedPodRow::from(r.bytes))))
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
@@ -405,7 +401,7 @@ impl<T: FlowTransaction> IdentityReclaim for TxnHostContext<'_, T> {
 	}
 }
 
-impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
+impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 	fn version(&self) -> CommitVersion {
 		self.txn.version()
 	}
@@ -475,16 +471,20 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		self.txn.disarm_timer_by_key(self.operator, kind, key)
 	}
 
-	fn join_expiry_arm(&mut self, group: GroupId, side: u8, row_number: RowNumber, at: DateTime) -> Result<()> {
-		self.txn.join_expiry_arm(self.operator, group, side, row_number, at)
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+		self.txn.rearm_timers(self.operator, kind, moves)
 	}
 
-	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>> {
-		self.txn.join_expiry_clear(self.operator, group, side, row_number)
+	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+		self.txn.join_expiry_arm_many(self.operator, side, rows)
 	}
 
-	fn join_expiry_free(&mut self, entry: &JoinDueEntry) -> Result<()> {
-		self.txn.join_expiry_free(self.operator, entry)
+	fn join_expiry_clear_many(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>> {
+		self.txn.join_expiry_clear_many(self.operator, side, rows)
+	}
+
+	fn join_expiry_free_many(&mut self, entries: &[JoinDueEntry]) -> Result<()> {
+		self.txn.join_expiry_free_many(self.operator, entries)
 	}
 
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>> {
@@ -527,10 +527,7 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 		query.limit = limit;
 		let batch = self.txn.state_range(self.operator, query)?;
 		for r in batch.items {
-			let Some(key) = unscope(&r.key) else {
-				continue;
-			};
-			visit(key, EncodedPodRow::from(r.bytes))?;
+			visit(framed_state_key(self.operator, &r.key)?, EncodedPodRow::from(r.bytes))?;
 		}
 		Ok(())
 	}
@@ -596,6 +593,14 @@ impl<T: FlowTransaction> HostContext for TxnHostContext<'_, T> {
 			None => Ok(vec![None; ids.len()]),
 		}
 	}
+
+	fn dictionary_intern_many(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>> {
+		self.txn.intern(dictionary, values)
+	}
 }
 
 impl<T: FlowTransaction> Resolve for TxnHostContext<'_, T> {
@@ -612,11 +617,35 @@ impl<T: FlowTransaction> Resolve for TxnHostContext<'_, T> {
 	}
 }
 
-fn unscope(key: &TaggedKey) -> Option<GroupStateKey> {
-	let TaggedKey::OperatorState(key) = key else {
-		return None;
-	};
-	GroupStateKey::from_framed(key.inner())
+pub(crate) struct HostFind<'a>(pub(crate) &'a mut dyn HostContext);
+
+impl Resolve for HostFind<'_> {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+		self.0.dictionary(id)
+	}
+
+	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+		self.0.resolve(dictionary, ids)
+	}
+}
+
+impl Find for HostFind<'_> {
+	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		self.0.dictionary_find_many(dictionary.id, values)
+	}
+}
+
+fn framed_state_key(operator: OperatorId, key: &TaggedKey) -> Result<GroupStateKey> {
+	if let TaggedKey::OperatorState(decoded) = key
+		&& let Some(inner) = GroupStateKey::from_framed(decoded.inner())
+	{
+		return Ok(inner);
+	}
+	Err(FlowStateError::StateKeyUnframed {
+		operator,
+		key: key.encode(),
+	}
+	.into())
 }
 
 fn range_site(range: &EncodedKeyRange) -> &'static str {

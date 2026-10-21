@@ -1,8 +1,9 @@
-error[E0046]: not all trait items implemented, missing: `dictionary_find_many`, `dictionary_get_many`
+error[E0046]: not all trait items implemented, missing: `dictionary_find_many`, `dictionary_get_many`, `dictionary_intern_many`
    --> tests/batch_compile_fail/a_host_context_without_its_dictionary_batches_does_not_compile.rs:172:1
     |
 172 | impl HostContext for SingleEntryHost {
-    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `dictionary_find_many`, `dictionary_get_many` in implementation
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `dictionary_find_many`, `dictionary_get_many`, `dictionary_intern_many` in implementation
     |
     = help: implement the missing item: `fn dictionary_find_many(&mut self, _: reifydb_value::value::dictionary::DictionaryId, _: &[Value]) -> Result<Vec<std::option::Option<DictionaryEntryId>>, reifydb_value::error::Error> { todo!() }`
     = help: implement the missing item: `fn dictionary_get_many(&mut self, _: reifydb_value::value::dictionary::DictionaryId, _: &[DictionaryEntryId]) -> Result<Vec<std::option::Option<Value>>, reifydb_value::error::Error> { todo!() }`
+    = help: implement the missing item: `fn dictionary_intern_many(&mut self, _: &reifydb_core::interface::catalog::dictionary::Dictionary, _: &[Value]) -> Result<Vec<DictionaryEntryId>, reifydb_value::error::Error> { todo!() }`

@@ -227,7 +227,9 @@ impl MemoryCdcPersistent {
 		}
 	}
 
-	pub fn shutdown(&self) {}
+	pub fn shutdown(&self) -> Result<()> {
+		Ok(())
+	}
 }
 
 impl Default for MemoryCdcPersistent {

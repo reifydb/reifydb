@@ -314,10 +314,14 @@ impl JoinedColumnsBuilder {
 }
 
 fn none_column(field: &Field, name: &str, count: usize) -> Result<(FieldRef, ArrayRef)> {
-	let Some(value_type) = from_field(field)?.value_type else {
+	let field_type = from_field(field)?;
+	let Some(value_type) = field_type.value_type else {
 		return Ok(none(name, count));
 	};
 	let mut builder = ColumnBuilder::with_capacity(value_type, count.min(1));
+	if let Some(dictionary) = field_type.dictionary_id {
+		builder.set_dictionary_id(dictionary);
+	}
 	if count > 0 {
 		builder.push_value(Value::none());
 	}

@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		operator::{
-			keyspace::{KEYSPACES, KeyspaceVisitor, dispatch},
+			keyspace::{KEYSPACES, KeyspaceVisitor, dispatch, suffix_width_of},
 			state::{GroupId, KeyspaceId, KeyspaceMask, OperatorStateKey},
 			traits::{Keyspace, group_scoped},
 		},
@@ -20,6 +20,7 @@ use rusqlite::{Connection, Transaction};
 
 use crate::{
 	bound::{KeyspaceIds, parts, span, split_bound},
+	error::{OperatorError, Result},
 	persistent::sqlite::{census::Census, registry::TableMask, typed},
 	types::OperatorStateCensus,
 };
@@ -179,7 +180,7 @@ pub(super) fn get_many(
 	operator: OperatorId,
 	tables: TableMask,
 	keys: &[&EncodedKey],
-) -> Vec<Option<Vec<u8>>> {
+) -> Result<Vec<Option<Vec<u8>>>> {
 	read_many::<Payloads>(conn, operator, tables, keys)
 }
 
@@ -188,7 +189,7 @@ pub(super) fn sizes_many(
 	operator: OperatorId,
 	tables: TableMask,
 	keys: &[&EncodedKey],
-) -> Vec<Option<u64>> {
+) -> Result<Vec<Option<u64>>> {
 	read_many::<Sizes>(conn, operator, tables, keys)
 }
 
@@ -197,15 +198,25 @@ fn read_many<R: BatchRead>(
 	operator: OperatorId,
 	tables: TableMask,
 	keys: &[&EncodedKey],
-) -> Vec<Option<R::Out>> {
+) -> Result<Vec<Option<R::Out>>> {
 	let mut items: Vec<GetManyItem> = keys
 		.iter()
 		.enumerate()
 		.map(|(position, key)| {
 			let (group, keyspace, suffix) = parts(key);
-			(keyspace, position, group, suffix)
+			if let Some(expected) = suffix_width_of(keyspace)
+				&& expected != suffix.len()
+			{
+				return Err(OperatorError::SuffixWidth {
+					operator,
+					keyspace,
+					expected,
+					found: suffix.len(),
+				});
+			}
+			Ok((keyspace, position, group, suffix))
 		})
-		.collect();
+		.collect::<Result<_>>()?;
 	items.sort_unstable_by_key(|(keyspace, position, _, _)| (*keyspace, *position));
 	let mut answers = vec![None; keys.len()];
 	for run in items.chunk_by(|left, right| left.0 == right.0) {
@@ -224,12 +235,27 @@ fn read_many<R: BatchRead>(
 			answers[position] = Some(answer);
 		}
 	}
-	answers
+	Ok(answers)
 }
 
-pub(super) fn get(conn: &Connection, operator: OperatorId, tables: TableMask, key: &EncodedKey) -> Option<Vec<u8>> {
+pub(super) fn get(
+	conn: &Connection,
+	operator: OperatorId,
+	tables: TableMask,
+	key: &EncodedKey,
+) -> Result<Option<Vec<u8>>> {
 	let (group, keyspace, suffix) = parts(key);
-	dispatch(
+	if let Some(expected) = suffix_width_of(keyspace)
+		&& expected != suffix.len()
+	{
+		return Err(OperatorError::SuffixWidth {
+			operator,
+			keyspace,
+			expected,
+			found: suffix.len(),
+		});
+	}
+	Ok(dispatch(
 		keyspace,
 		Get {
 			conn,
@@ -239,7 +265,7 @@ pub(super) fn get(conn: &Connection, operator: OperatorId, tables: TableMask, ke
 			suffix,
 		},
 	)
-	.expect("an operator state key must name a keyspace in the catalogue")
+	.expect("an operator state key must name a keyspace in the catalogue"))
 }
 
 struct Bounded<'a> {
@@ -717,6 +743,7 @@ mod tests {
 				OPERATOR,
 				&DistinctEntryKey {
 					group: Desc(*group),
+					row: Asc(RowNumber(1)),
 				},
 				b"distinct",
 			);
@@ -740,7 +767,7 @@ mod tests {
 	}
 
 	fn sweep(store: &SqlitePersistent, groups: &[GroupId]) -> Vec<EncodedKey> {
-		keys(store.group_page(OPERATOR, groups, LIMIT, KeyspaceMask::all()))
+		keys(store.group_page(OPERATOR, groups, LIMIT, KeyspaceMask::all()).unwrap())
 	}
 
 	#[test]
@@ -752,7 +779,7 @@ mod tests {
 
 		let mut expected: Vec<EncodedKey> = Vec::new();
 		for group in encoded_order(&groups) {
-			expected.extend(keys(store.range_batch(OPERATOR, group_inner_range(group), LIMIT)));
+			expected.extend(keys(store.range_batch(OPERATOR, group_inner_range(group), LIMIT).unwrap()));
 		}
 
 		assert_eq!(sweep(&store, &encoded_order(&groups)), expected);
@@ -816,7 +843,7 @@ mod tests {
 		let groups = [group(11), group(22)];
 		seed(&store, &groups);
 
-		let expected = keys(store.range_batch(OPERATOR, group_inner_range(group(11)), LIMIT));
+		let expected = keys(store.range_batch(OPERATOR, group_inner_range(group(11)), LIMIT).unwrap());
 
 		assert_eq!(sweep(&store, &[group(11)]), expected);
 		assert_eq!(expected.len(), 4);

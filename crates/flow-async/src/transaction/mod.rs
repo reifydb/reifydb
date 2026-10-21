@@ -10,7 +10,7 @@ use std::{
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, shape::RowShape},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
@@ -21,7 +21,10 @@ use reifydb_core::{
 		store::{MultiVersionBatch, MultiVersionRow},
 	},
 	internal_err,
-	key::{any::TaggedKey, operator::state::GroupStateKey},
+	key::{
+		any::TaggedKey,
+		operator::state::{GroupId, GroupStateKey, KeyspaceMask},
+	},
 };
 use reifydb_flow::txn::{Batch, Get};
 use reifydb_runtime::context::clock::Clock;
@@ -288,6 +291,17 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 
 	fn operator_store(&self) -> OperatorStore {
 		self.substrate().operators.clone().expect("flow transaction was built without an operator store")
+	}
+
+	fn fetch_group_page(
+		&self,
+		id: OperatorId,
+		groups: &[GroupId],
+		batch: u64,
+		keyspaces: KeyspaceMask,
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+		let page = self.operator_store().group_page(id, groups, batch, keyspaces)?;
+		Ok((page.items, page.has_more))
 	}
 
 	fn written_at(&self) -> DateTime {

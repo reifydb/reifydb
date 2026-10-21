@@ -23,7 +23,7 @@ use reifydb_core::{
 	internal_err,
 	key::any::TaggedKey,
 };
-use reifydb_flow::txn::{Batch, Emit, Get, Intern, Resolve};
+use reifydb_flow::txn::{Batch, Emit, Find, Get, Intern, Resolve};
 #[cfg(feature = "testing")]
 use reifydb_flow_sync::testing::{InstalledHooks, TestingTxn};
 use reifydb_flow_sync::{
@@ -221,11 +221,13 @@ impl Resolve for FlowTransaction<'_> {
 	}
 }
 
-impl Intern for FlowTransaction<'_> {
+impl Find for FlowTransaction<'_> {
 	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
 		self.tx.find_many_in_dictionary(dictionary, values)
 	}
+}
 
+impl Intern for FlowTransaction<'_> {
 	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
 		self.tx.intern_values(dictionary, values.to_vec())
 	}

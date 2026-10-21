@@ -32,7 +32,7 @@ use reifydb_runtime::shutdown::Shutdown;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_value::util::cowvec::CowVec;
-use store::{SinglePersistentProbeMetrics, StandardSingleStore};
+use store::{PendingFlush, SinglePersistentProbeMetrics, StandardSingleStore};
 use tier::{commit::buffer::SingleCommitMetrics, persistent::SinglePageCacheMetrics};
 
 pub struct SingleStoreVersion;
@@ -104,9 +104,9 @@ impl SingleStore {
 		}
 	}
 
-	pub fn flush_pending_blocking(&self) -> bool {
+	pub fn begin_flush_pending(&self) -> PendingFlush {
 		match self {
-			SingleStore::Standard(store) => store.flush_pending_blocking(),
+			SingleStore::Standard(store) => store.begin_flush_pending(),
 		}
 	}
 
@@ -118,7 +118,7 @@ impl SingleStore {
 }
 
 impl Shutdown for SingleStore {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		match self {
 			SingleStore::Standard(store) => store.shutdown(),
 		}

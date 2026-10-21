@@ -6,7 +6,11 @@ use std::{
 	fmt::{Display, Formatter, Result as FmtResult},
 };
 
-use reifydb_core::{error::diagnostic::internal::internal, interface::catalog::flow::FlowId};
+use reifydb_core::{
+	error::diagnostic::internal::internal,
+	interface::catalog::flow::{FlowId, OperatorId},
+	key::operator::state::KeyspaceId,
+};
 use reifydb_value::error::Error;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use rusqlite::Error as RusqliteError;
@@ -22,6 +26,12 @@ pub enum OperatorError {
 		flow: FlowId,
 	},
 	Closed,
+	SuffixWidth {
+		operator: OperatorId,
+		keyspace: KeyspaceId,
+		expected: usize,
+		found: usize,
+	},
 }
 
 impl Display for OperatorError {
@@ -34,6 +44,16 @@ impl Display for OperatorError {
 				flow,
 			} => write!(f, "flow {} moved its checkpoint backwards", flow.0),
 			OperatorError::Closed => write!(f, "operator state backend is closed"),
+			OperatorError::SuffixWidth {
+				operator,
+				keyspace,
+				expected,
+				found,
+			} => write!(
+				f,
+				"operator {} read keyspace {} with a {found} byte suffix, the keyspace is {expected} bytes",
+				operator.0, keyspace.0
+			),
 		}
 	}
 }

@@ -7,6 +7,7 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
+	thread,
 	thread::sleep,
 };
 
@@ -30,7 +31,7 @@ use reifydb_runtime::{
 	actor::{mailbox::ActorRef, system::ActorSpawner},
 	context::clock::Clock,
 	pool::Pools,
-	shutdown::Shutdown,
+	shutdown::{Shutdown, ShutdownErrors},
 };
 use reifydb_store_cdc::store::CdcStore;
 use reifydb_store_multi::MultiStore;
@@ -231,22 +232,23 @@ impl Database {
 
 		self.engine.set_shutting_down();
 
+		let mut errors = ShutdownErrors::new("database");
 		if drain {
-			self.drain_and_flush_stores();
+			self.drain_and_flush_stores(&mut errors);
 		}
 
-		self.subsystems.shutdown_all();
+		self.subsystems.shutdown_all(&mut errors);
 		if let Some(runtime) = self.owned_runtime.take() {
-			runtime.shutdown();
+			errors.step("runtime", runtime.shutdown());
 		}
-		self.shutdown_stores();
-		self.engine.shutdown();
+		self.shutdown_stores(&mut errors);
+		errors.step("engine", self.engine.shutdown());
 		self.mark_stopped();
-		Ok(())
+		errors.finish()
 	}
 
 	#[inline]
-	fn drain_and_flush_stores(&self) {
+	fn drain_and_flush_stores(&self, errors: &mut ShutdownErrors) {
 		self.drain_cdc_consumers(Duration::from_seconds(10).unwrap());
 		self.persist_flow_frontiers();
 
@@ -254,32 +256,39 @@ impl Database {
 			multi_store.flush_all_blocking();
 		}
 
-		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>()
-			&& !single_store.flush_pending_blocking()
+		let single = self.engine.ioc().try_resolve::<SingleStore>().map(|store| store.begin_flush_pending());
+		let operator =
+			self.engine.ioc().try_resolve::<OperatorStore>().map(|store| store.begin_flush_pending());
+
+		#[cfg(reifydb_dst)]
+		self.spawner().system().run_until_idle_or_panic();
+
+		if let Some(pending) = single
+			&& !pending.wait()
 		{
-			warn!("single store flush did not complete during shutdown");
+			errors.fail("single store", "final flush did not complete");
 		}
 
-		if let Some(operator_store) = self.engine.ioc().try_resolve::<OperatorStore>()
-			&& !operator_store.flush_pending_blocking()
+		if let Some(pending) = operator
+			&& !pending.wait()
 		{
-			warn!("operator store flush did not complete during shutdown");
+			errors.fail("operator store", "final flush did not complete");
 		}
 	}
 
 	#[inline]
-	fn shutdown_stores(&self) {
+	fn shutdown_stores(&self, errors: &mut ShutdownErrors) {
 		if let Some(multi_store) = self.engine.ioc().try_resolve::<MultiStore>() {
-			multi_store.shutdown();
+			errors.step("multi store", multi_store.shutdown());
 		}
 		if let Some(single_store) = self.engine.ioc().try_resolve::<SingleStore>() {
-			single_store.shutdown();
+			errors.step("single store", single_store.shutdown());
 		}
 		if let Some(operator_store) = self.engine.ioc().try_resolve::<OperatorStore>() {
-			operator_store.shutdown();
+			errors.step("operator store", operator_store.shutdown());
 		}
 		if let Some(cdc_store) = self.engine.ioc().try_resolve::<CdcStore>() {
-			cdc_store.shutdown();
+			errors.step("cdc store", cdc_store.shutdown());
 		}
 	}
 
@@ -607,11 +616,19 @@ impl Database {
 
 impl Drop for Database {
 	fn drop(&mut self) {
-		if self.running {
+		let stopped = if self.running {
 			warn!("System being dropped while running, attempting graceful shutdown");
-			let _ = self.shutdown_internal(!self.fast_shutdown);
+			self.shutdown_internal(!self.fast_shutdown)
+		} else {
+			Ok(())
+		};
+		if let Err(err) = stopped.and(self.engine.shutdown()) {
+			if thread::panicking() {
+				eprintln!("database shutdown failed during unwind: {err}");
+			} else {
+				panic!("database shutdown failed: {err}");
+			}
 		}
-		self.engine.shutdown();
 	}
 }
 

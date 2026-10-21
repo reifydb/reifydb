@@ -31,7 +31,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr};
-use reifydb_flow::{context::FlowContext, error::FlowGraphError, operator::source::decode_change};
+use reifydb_flow::{context::FlowContext, error::FlowGraphError, operator::source::decode_dictionary_columns_except};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -43,6 +43,7 @@ use reifydb_value::{
 	value::{
 		column_view::ColumnView,
 		datetime::DateTime,
+		dictionary::DictionaryId,
 		duration::Duration,
 		row_number::RowNumber,
 		system_columns::{require_row_numbers, resolve_column},
@@ -53,6 +54,7 @@ use tracing::instrument;
 
 use super::{
 	column::{JoinedColumnsBuilder, JoinedColumnsCache},
+	kept::dictionary_columns,
 	snapshot::SnapshotLedger,
 	state::{JoinSide, JoinState},
 	strategy::{JoinContext, JoinStrategy, UpdateKeys, hash::JoinRows},
@@ -167,6 +169,8 @@ pub struct JoinOperator {
 	alias: Option<String>,
 	left_schema: SchemaRef,
 	right_schema: SchemaRef,
+	left_kept: Vec<(String, DictionaryId)>,
+	right_kept: Vec<(String, DictionaryId)>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	pub(crate) snapshot: bool,
@@ -204,6 +208,8 @@ impl JoinOperator {
 		let left_schema = left.schema;
 		let right_schema = right.schema;
 		let strategy = JoinStrategy::from(join_type, pick.is_some());
+		let left_kept = dictionary_columns(&left_schema)?.into_iter().collect();
+		let right_kept = dictionary_columns(&right_schema)?.into_iter().collect();
 
 		let lowered_left_exprs: Vec<LoweredExpr> =
 			left_exprs.iter().map(|e| LoweredExpr::new(e.clone(), "join_key")).collect();
@@ -222,6 +228,8 @@ impl JoinOperator {
 			alias,
 			left_schema,
 			right_schema,
+			left_kept,
+			right_kept,
 			routines,
 			runtime_context,
 			snapshot,
@@ -320,17 +328,19 @@ impl JoinOperator {
 		}
 		let rule = SealRule::of(retention);
 
-		for &(group, row_number) in cleared {
-			if let Some(at) = host.join_expiry_clear(group, side.tag(), row_number)? {
-				self.expiry.cleared(at);
-			}
+		for at in host.join_expiry_clear_many(side.tag(), cleared)?.into_iter().flatten() {
+			self.expiry.cleared(at);
 		}
 
+		let mut sealed = Vec::with_capacity(armed.len());
 		for &(group, row_number, at) in armed {
-			let sealed = rule.seal_instant(at).at();
+			let at = rule.seal_instant(at).at();
 			host.state_remove(&queue_key(group))?;
-			host.join_expiry_arm(group, side.tag(), row_number, sealed)?;
-			self.expiry.armed(sealed);
+			sealed.push((group, row_number, at));
+		}
+		host.join_expiry_arm_many(side.tag(), &sealed)?;
+		for &(.., at) in &sealed {
+			self.expiry.armed(at);
 		}
 
 		self.resync_timer(host, None)
@@ -419,8 +429,7 @@ impl JoinOperator {
 			ledger.flush(host)?;
 		}
 		self.cleanup_left_row_joins(host, row_number.0)?;
-		state.left.remove_row_in(host, group, row_number)?;
-		host.join_expiry_free(entry)
+		state.left.remove_row_in(host, group, row_number)
 	}
 
 	fn free_expired_right_row(
@@ -447,8 +456,7 @@ impl JoinOperator {
 				.collect(),
 		};
 		host.remove_join_row_numbers(&composites)?;
-		state.right.remove_row_in(host, group, row_number)?;
-		host.join_expiry_free(entry)
+		state.right.remove_row_in(host, group, row_number)
 	}
 
 	fn free_due_join_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {
@@ -506,6 +514,7 @@ impl JoinOperator {
 					emptied.push(*group);
 				}
 			}
+			host.join_expiry_free_many(&page.due)?;
 			if !page.more {
 				break page.next;
 			}
@@ -851,6 +860,15 @@ impl JoinOperator {
 		Self::split(built, &fresh, &existing)
 	}
 
+	fn entry(&self, host: &mut dyn HostContext, side: JoinSide, mut columns: RecordBatch) -> Result<RecordBatch> {
+		let kept = match side {
+			JoinSide::Left => &self.left_kept,
+			JoinSide::Right => &self.right_kept,
+		};
+		decode_dictionary_columns_except(&mut columns, host, kept)?;
+		Ok(columns)
+	}
+
 	fn determine_side_from_origin(&self, origin: &ChangeOrigin) -> Option<JoinSide> {
 		match origin {
 			ChangeOrigin::Flow(from_node) => {
@@ -891,7 +909,6 @@ impl HostOperator for JoinOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		let change = decode_change(host, change)?;
 		if let ChangeOrigin::Flow(from_node) = &change.origin
 			&& *from_node == self.operator
 		{
@@ -923,16 +940,25 @@ impl HostOperator for JoinOperator {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_join_insert(host, &post, side, &mut state, &mut result)?,
+				} => {
+					let post = self.entry(host, side, post)?;
+					self.apply_join_insert(host, &post, side, &mut state, &mut result)?
+				}
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_join_remove(host, &pre, side, &mut state, &mut result)?,
+				} => {
+					let pre = self.entry(host, side, pre)?;
+					self.apply_join_remove(host, &pre, side, &mut state, &mut result)?
+				}
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_join_update(host, &pre, &post, side, &mut state, &mut result)?,
+				} => {
+					let (pre, post) = (self.entry(host, side, pre)?, self.entry(host, side, post)?);
+					self.apply_join_update(host, &pre, &post, side, &mut state, &mut result)?
+				}
 			}
 		}
 
@@ -1155,7 +1181,7 @@ mod seal_tests {
 	use reifydb_core::{
 		actors::pending::Pending,
 		common::CommitVersion,
-		interface::store::MultiVersionRow,
+		interface::{catalog::dictionary::Dictionary, store::MultiVersionRow},
 		key::{
 			any::TaggedKey,
 			operator::{
@@ -1166,7 +1192,7 @@ mod seal_tests {
 		},
 		value::{batch::batch, column::factory::int4},
 	};
-	use reifydb_flow::txn::{Batch, Get};
+	use reifydb_flow::txn::{Batch, Find, Get, Intern, Resolve};
 	use reifydb_rql::expression::parse_expression;
 	use reifydb_runtime::context::clock::Clock;
 	use reifydb_test_harness::engine::TestEngine;
@@ -1174,7 +1200,9 @@ mod seal_tests {
 	use reifydb_value::{
 		factory::time::at_millis,
 		value::{
+			Value,
 			container::temporal_array::datetime_array,
+			dictionary::DictionaryEntryId,
 			system_columns::{SystemColumn, with_system_column},
 		},
 	};
@@ -1447,6 +1475,36 @@ mod seal_tests {
 		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 			self.pending_mut().remove_batch(keys);
 			Ok(())
+		}
+	}
+
+	impl Resolve for CountingTxn {
+		fn dictionary(&mut self, _id: DictionaryId) -> Result<Option<Dictionary>> {
+			panic!("a join over plain columns never resolves a dictionary")
+		}
+
+		fn resolve(
+			&mut self,
+			_dictionary: &Dictionary,
+			_ids: &[DictionaryEntryId],
+		) -> Result<Vec<Option<Value>>> {
+			panic!("a join over plain columns never resolves a dictionary")
+		}
+	}
+
+	impl Find for CountingTxn {
+		fn find(
+			&mut self,
+			_dictionary: &Dictionary,
+			_values: &[Value],
+		) -> Result<Vec<Option<DictionaryEntryId>>> {
+			panic!("a join over plain columns never finds a dictionary value")
+		}
+	}
+
+	impl Intern for CountingTxn {
+		fn intern(&mut self, _dictionary: &Dictionary, _values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+			panic!("a join over plain columns never interns a dictionary value")
 		}
 	}
 

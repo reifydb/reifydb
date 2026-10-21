@@ -3,10 +3,13 @@
 
 use arrow_schema::SchemaRef;
 use reifydb_core::interface::{catalog::flow::OperatorId, change::Change, flow::OperatorCapability};
-use reifydb_flow::operator::{map::MapOperator, source::decode_change};
+use reifydb_flow::operator::map::MapOperator;
 use reifydb_value::Result;
 
-use crate::operator::{HostOperator, host::HostContext};
+use crate::operator::{
+	HostOperator,
+	host::{HostContext, HostFind},
+};
 
 impl HostOperator for MapOperator {
 	fn id(&self) -> OperatorId {
@@ -18,7 +21,7 @@ impl HostOperator for MapOperator {
 	}
 
 	fn apply(&mut self, host: &mut dyn HostContext, change: Change) -> Result<Change> {
-		self.apply(decode_change(host, change)?)
+		self.apply(&mut HostFind(host), change)
 	}
 
 	fn output_schema(&self) -> Option<SchemaRef> {

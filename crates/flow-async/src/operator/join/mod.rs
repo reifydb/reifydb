@@ -3,6 +3,7 @@
 
 pub mod column;
 pub(crate) mod expiry;
+pub(crate) mod kept;
 pub mod operator;
 pub(crate) mod snapshot;
 pub mod state;

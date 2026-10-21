@@ -217,16 +217,16 @@ impl FlowEngineInner {
 			}
 			Filter {
 				conditions,
-			} => self.add_filter(txn, flow_id, operator_id, &inputs, conditions, ctx)?,
+			} => self.add_filter(flow_id, operator_id, &inputs, conditions, ctx)?,
 			Gate {
 				conditions,
 			} => self.add_gate(txn, flow_id, operator_id, &inputs, conditions, ctx)?,
 			Map {
 				expressions,
-			} => self.add_map(txn, flow_id, operator_id, &inputs, expressions, ctx)?,
+			} => self.add_map(flow_id, operator_id, &inputs, expressions, ctx)?,
 			Extend {
 				expressions,
-			} => self.add_extend(txn, flow_id, operator_id, &inputs, expressions, ctx)?,
+			} => self.add_extend(flow_id, operator_id, &inputs, expressions, ctx)?,
 			Sort {
 				by: _,
 			} => self.add_sort(flow_id, operator_id, &inputs)?,

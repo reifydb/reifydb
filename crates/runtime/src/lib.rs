@@ -28,12 +28,15 @@ pub mod testing;
 
 #[cfg(not(reifydb_dst))]
 use std::future::Future;
+use std::thread;
+
+use reifydb_value::Result as ValueResult;
 
 use crate::{
 	actor::system::ActorSystem,
 	context::clock::{Clock, MockClock},
 	pool::{PoolConfig, Pools},
-	shutdown::Shutdown,
+	shutdown::{Shutdown, ShutdownErrors},
 };
 
 #[derive(Clone)]
@@ -218,16 +221,26 @@ impl Runtime {
 }
 
 impl Shutdown for Runtime {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> ValueResult<()> {
+		let mut errors = ShutdownErrors::new("runtime");
 		self.system.shutdown();
-		let _ = self.system.join();
+		if let Err(err) = self.system.join() {
+			errors.fail("actor system", err);
+		}
 		self.pools.shutdown();
+		errors.finish()
 	}
 }
 
 impl Drop for Runtime {
 	fn drop(&mut self) {
-		self.shutdown();
+		if let Err(err) = self.shutdown() {
+			if thread::panicking() {
+				eprintln!("runtime shutdown failed during unwind: {err}");
+			} else {
+				panic!("runtime shutdown failed: {err}");
+			}
+		}
 	}
 }
 

@@ -35,10 +35,17 @@ use crate::{
 		host::HostContext,
 		state::{
 			reaper::{drain, enqueue},
-			seal::{coord::Coord, gate::rearm_seal, ledger::FiredAt, rule::SealRule, sweep::SealSweep},
+			seal::{
+				coord::Coord,
+				gate::{rearm_seal, seal_move},
+				ledger::FiredAt,
+				rule::SealRule,
+				sweep::SealSweep,
+			},
 		},
 		state_access::get_classified,
 	},
+	timer::Timer,
 	window::{
 		coord::{EventCoord, RowSpan},
 		engine::{AccumulatorEvent, ExpiryAnchor, tumbling::TumblingEngine},
@@ -1084,14 +1091,21 @@ pub fn apply_session_engine(
 	if !sealed.is_empty() {
 		withdraw_sealed_admissions(operator, host, &index_events, &sealed)?;
 	}
+	let mut moves = Vec::with_capacity(trackers.len());
 	for (hash, batch) in &trackers {
 		let Some(tracker) = batch.admitted(*hash, &sealed) else {
 			continue;
 		};
 		let before = (!batch.loaded.is_unopened()).then(|| batch.loaded.last.saturating_add(gap).to_order());
 		operator.save_session_tracker(host, *hash, &tracker)?;
-		rearm_seal(host, rule, &tracker_key(*hash), before, Some(tracker.last.saturating_add(gap).to_order()))?;
+		moves.push(seal_move(
+			rule,
+			tracker_key(*hash),
+			before,
+			Some(tracker.last.saturating_add(gap).to_order()),
+		));
 	}
+	host.rearm_timers(TimerKind::Seal, &moves)?;
 
 	let groups = intern_batch(&arrival);
 
@@ -1228,18 +1242,20 @@ fn seal_due_windows(
 	host: &mut dyn HostContext,
 	fired: FiredAt,
 	rule: SealRule,
+	runs: usize,
 ) -> Result<Vec<Diff>> {
 	operator.advance_seal_ledger(host, fired)?;
 	let Some(threshold) = SealSweep::new(rule).horizon(fired) else {
 		return Ok(Vec::new());
 	};
 	let config = operator.engine_config();
+	let budget = config.expire_batch().saturating_mul(runs);
 	let expired = {
 		let mut engine =
 			operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
 			});
-		let res = engine.expire(host, threshold.to_order())?;
+		let res = engine.expire_within(host, threshold.to_order(), budget)?;
 		for window in &res {
 			enqueue(host, window.group_id)?;
 		}
@@ -1285,17 +1301,17 @@ pub fn reap_sealed_groups(operator: &mut WindowOperator, host: &mut dyn HostCont
 	Ok(drained.freed)
 }
 
-pub fn seal_session_engine(
+pub fn seal_session_engines(
 	operator: &mut WindowOperator,
 	host: &mut dyn HostContext,
-	fired: FiredAt,
-	key: &EncodedKey,
+	timers: &[Timer],
 ) -> Result<Vec<Diff>> {
+	let Some(latest) = timers.iter().max_by_key(|timer| timer.due) else {
+		return Ok(Vec::new());
+	};
 	let rule = operator.session_rule();
-	let diffs = seal_due_windows(operator, host, fired, rule)?;
-	if !key.as_slice().is_empty() {
-		retire_session_tracker(operator, host, fired, key)?;
-	}
+	let diffs = seal_due_windows(operator, host, FiredAt::of(latest), rule, timers.len())?;
+	retire_session_trackers(operator, host, timers)?;
 	Ok(diffs)
 }
 
@@ -1303,24 +1319,37 @@ fn tracker_key(hash: Hash128) -> EncodedKey {
 	EncodedKey::new(hash.0.to_be_bytes())
 }
 
-fn retire_session_tracker(
-	operator: &mut WindowOperator,
-	host: &mut dyn HostContext,
-	fired: FiredAt,
-	key: &EncodedKey,
-) -> Result<()> {
-	let hash = Hash128(u128::from_be_bytes(
-		key.as_slice().try_into().expect("a session tracker timer is keyed by its group hash"),
-	));
+fn retire_session_trackers(operator: &mut WindowOperator, host: &mut dyn HostContext, timers: &[Timer]) -> Result<()> {
+	let fired: Vec<(Hash128, FiredAt)> = timers
+		.iter()
+		.filter(|timer| !timer.key.as_slice().is_empty())
+		.map(|timer| {
+			let hash = Hash128(u128::from_be_bytes(
+				timer.key
+					.as_slice()
+					.try_into()
+					.expect("a session tracker timer is keyed by its group hash"),
+			));
+			(hash, FiredAt::of(timer))
+		})
+		.collect();
+	if fired.is_empty() {
+		return Ok(());
+	}
 	let rule = operator.session_rule();
 	let gap = operator.session_gap();
-	let Some(tracker) = operator.stored_session_tracker(host, hash)? else {
-		return Ok(());
-	};
-	if rule.seal_instant(tracker.last.saturating_add(gap)).at() <= fired.at() {
-		operator.drop_session_tracker(host, hash)?;
+	let hashes: Vec<Hash128> = fired.iter().map(|(hash, _)| *hash).collect();
+	let trackers = operator.stored_session_trackers(host, &hashes)?;
+	let mut retired = HashSet::new();
+	let mut sealed = Vec::new();
+	for ((hash, at), tracker) in fired.iter().zip(trackers) {
+		if tracker.is_some_and(|tracker| rule.seal_instant(tracker.last.saturating_add(gap)).at() <= at.at())
+			&& retired.insert(*hash)
+		{
+			sealed.push(*hash);
+		}
 	}
-	Ok(())
+	operator.drop_session_trackers(host, &sealed)
 }
 
 pub fn seal_engine_windows(
@@ -1332,7 +1361,7 @@ pub fn seal_engine_windows(
 		return Ok(Vec::new());
 	};
 	let rule = SealRule::tumbling(window_size, operator.lateness().unwrap_or_else(Duration::zero));
-	seal_due_windows(operator, host, fired, rule)
+	seal_due_windows(operator, host, fired, rule, 1)
 }
 
 #[cfg(test)]
@@ -1538,6 +1567,7 @@ mod seal_arm_tests {
 			mock::FlowTxn,
 			state::{StateExtension, StateRange},
 		},
+		window::engine::WindowReindex,
 	};
 
 	const SIZE_MS: u64 = 10_000;
@@ -1599,21 +1629,29 @@ mod seal_arm_tests {
 			operator.core.tumbling_engine_slot().take().unwrap_or_else(|| {
 				Box::new(TumblingEngine::<Hash128, DateTime, RowAccumulator>::new(config))
 			});
-		for (n, start_ms) in starts.iter().enumerate() {
-			let start = at_millis(
-				i64::try_from(*start_ms).expect("test window start fits in i64 milliseconds"),
-			);
-			engine.reindex_window(
-				host,
-				&Hash128::from(n as u128),
-				start,
-				GroupId::window(Hash128::from(n as u128), start.to_order()),
-				&EncodedKey::new(Vec::new()),
-				None,
-				Some(start.to_order()),
-			)
-			.unwrap();
-		}
+		let slot_key = EncodedKey::new(Vec::new());
+		let windows: Vec<(Hash128, DateTime)> = starts
+			.iter()
+			.enumerate()
+			.map(|(n, start_ms)| {
+				let start = at_millis(
+					i64::try_from(*start_ms).expect("test window start fits in i64 milliseconds"),
+				);
+				(Hash128::from(n as u128), start)
+			})
+			.collect();
+		let entries: Vec<WindowReindex<'_, Hash128, DateTime>> = windows
+			.iter()
+			.map(|(group, start)| WindowReindex {
+				group,
+				window_start: *start,
+				id: GroupId::window(*group, start.to_order()),
+				slot_key: &slot_key,
+				prior: None,
+				new: Some(start.to_order()),
+			})
+			.collect();
+		engine.reindex_windows(host, &entries).unwrap();
 		*operator.core.tumbling_engine_slot() = Some(engine);
 	}
 
@@ -1629,6 +1667,96 @@ mod seal_arm_tests {
 		.timers;
 		assert_eq!(timers.len(), 1, "exactly one timer may stand for the whole operator");
 		timers.remove(0)
+	}
+
+	fn session_window() -> WindowOperator {
+		WindowOperator::new(WindowConfig {
+			parent_schema: None,
+			operator: OperatorId(1),
+			kind: WindowKind::Session {
+				gap: Duration::from_milliseconds(1_000).unwrap(),
+			},
+			group_by: Vec::new(),
+			aggregations: Vec::new(),
+			runtime_context: RuntimeContext::testing(0, 1),
+			routines: Routines::empty(),
+			lateness: None,
+			immutable: None,
+			ctx: Arc::new(FlowContext::default()),
+		})
+		.expect("the session operator must build")
+	}
+
+	fn tracker_timer(hash: Hash128, due_ms: i64) -> Timer {
+		Timer {
+			due: at_millis(due_ms),
+			kind: TimerKind::Seal,
+			key: tracker_key(hash),
+		}
+	}
+
+	#[test]
+	fn each_tracker_in_a_seal_run_retires_against_its_own_due_not_the_latest() {
+		// Judging a stale timer by the run's latest due retires a session that was extended past it.
+		let engine = TestEngine::new();
+		let mut operator = session_window();
+		let id = operator.core.operator;
+		let mut txn = txn_at(&engine, 100);
+		let (extended, closing) = (Hash128::from(1u128), Hash128::from(2u128));
+		let mut host = TxnHostContext::new(&mut txn, id);
+		operator.save_session_tracker(
+			&mut host,
+			extended,
+			&SessionTracker::resumed(1, at_millis(1_050), at_millis(1_000)),
+		)
+		.unwrap();
+		operator.save_session_tracker(
+			&mut host,
+			closing,
+			&SessionTracker::resumed(2, at_millis(1_100), at_millis(1_100)),
+		)
+		.unwrap();
+
+		seal_session_engines(
+			&mut operator,
+			&mut host,
+			&[tracker_timer(extended, 3_001), tracker_timer(closing, 3_101)],
+		)
+		.unwrap();
+
+		let left = operator.stored_session_trackers(&mut host, &[extended, closing]).unwrap();
+		assert!(left[0].is_some(), "a tracker extended past its stale timer must survive the run");
+		assert!(left[1].is_none(), "a tracker whose own due reached its seal instant must retire");
+	}
+
+	#[test]
+	fn a_seal_run_closes_one_expire_budget_of_windows_per_timer_it_carries() {
+		// A run capped at one budget closes fewer windows than its timers would alone, leaving late rows
+		// admitted.
+		let engine = TestEngine::new();
+		let mut operator = session_window();
+		let id = operator.core.operator;
+		let mut txn = txn_at(&engine, 100);
+		let due = operator.engine_config().expire_batch() + 44;
+		let starts: Vec<u64> = (0..due as u64).collect();
+		let mut host = TxnHostContext::new(&mut txn, id);
+		index_windows(&mut operator, &mut host, &starts);
+
+		seal_session_engines(
+			&mut operator,
+			&mut host,
+			&[
+				tracker_timer(Hash128::from(1u128), 1_000_000),
+				tracker_timer(Hash128::from(2u128), 1_000_000),
+			],
+		)
+		.unwrap();
+
+		drop(host);
+		assert!(
+			seal_timers(&mut txn, id).is_empty(),
+			"a run of two timers must close two budgets of due windows in its one pass"
+		);
 	}
 
 	#[test]

@@ -63,6 +63,8 @@ pub(crate) struct MockStore {
 	timers: Option<Vec<RecordedTimer>>,
 	flow_watermark: Option<DateTime>,
 	rows_visited: usize,
+	calls: HashMap<&'static str, usize>,
+	incomplete_sweeps: bool,
 }
 
 impl MockStore {
@@ -120,6 +122,23 @@ impl MockStore {
 				decode::<BTreeMap<u64, A>>(bytes).expect("persisted window buffer must decode").len()
 			})
 			.sum()
+	}
+
+	pub(crate) fn with_incomplete_sweeps(mut self) -> Self {
+		self.incomplete_sweeps = true;
+		self
+	}
+
+	pub(crate) fn calls(&self, name: &str) -> usize {
+		self.calls.get(name).copied().unwrap_or(0)
+	}
+
+	fn count_call(&mut self, name: &'static str) {
+		*self.calls.entry(name).or_default() += 1;
+	}
+
+	pub(crate) fn pane_count(&mut self) -> usize {
+		self.keyspace_count(KeyspaceId::ROLLING_PANE)
 	}
 
 	pub(crate) fn running_entry_count(&mut self) -> usize {
@@ -237,6 +256,7 @@ impl MockStore {
 
 impl StateStore for MockStore {
 	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
+		self.count_call("state_get");
 		Ok(self.data.get(key.as_slice()).cloned())
 	}
 	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
@@ -306,6 +326,7 @@ impl StateStore for MockStore {
 	}
 
 	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		self.count_call("state_remove_many");
 		per_key::remove_many(self, keys)
 	}
 
@@ -318,6 +339,7 @@ impl StateStore for MockStore {
 	}
 
 	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		self.count_call("state_set_many");
 		per_key::set_many(self, rows)
 	}
 
@@ -336,7 +358,10 @@ impl StateStore for MockStore {
 		limit: usize,
 		keyspaces: KeyspaceMask,
 	) -> Result<GroupSweep> {
-		per_key::group_sweep_many(self, groups, limit, keyspaces)
+		self.count_call("group_sweep_many");
+		let mut sweep = per_key::group_sweep_many(self, groups, limit, keyspaces)?;
+		sweep.complete &= !self.incomplete_sweeps;
+		Ok(sweep)
 	}
 
 	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {

@@ -138,7 +138,7 @@ fn a_scan_stopped_by_a_drained_reader_pool_materializes_no_claim() {
 	let materialized = materializes(&store);
 	assert!(materialized > 0, "the first chunk must materialize its own span, or the delta below proves nothing");
 
-	Shutdown::shutdown(&store);
+	Shutdown::shutdown(&store).unwrap();
 
 	let mut calls = 1;
 	loop {
@@ -227,7 +227,7 @@ fn a_chunk_stopped_by_a_drained_reader_pool_is_not_a_scan_to_the_range_end() {
 	assert_eq!(tier_chunk(&tier, &mut cursor, 30) as u64, CHUNK, "the first chunk must fill");
 	assert!(cursor.last_key().is_some(), "the cursor must have resumed on a row key");
 
-	tier.shutdown();
+	tier.shutdown().unwrap();
 
 	let refused = tier.range_next(
 		EntryKind::Source(STORAGE, EntryLayout::Row),

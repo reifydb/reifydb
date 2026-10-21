@@ -105,6 +105,14 @@ pub trait HostOperator: Send {
 		Ok(None)
 	}
 
+	fn batches_timers(&self) -> bool {
+		false
+	}
+
+	fn on_timers(&mut self, _host: &mut dyn HostContext, _timers: Vec<Timer>) -> Result<Vec<Option<Change>>> {
+		internal_err!("operator {} does not batch timers", self.id().0)
+	}
+
 	fn seal_span(&self) -> Option<Duration> {
 		None
 	}

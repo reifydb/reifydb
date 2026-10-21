@@ -32,7 +32,7 @@ use crate::{
 	window::{
 		engine::{
 			AccumulatorEvent, BatchMeta, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep, RetainedEntryKey,
-			WindowStateKey,
+			WindowReindex, WindowStateKey,
 			config::WindowEngineConfig,
 			group_hash, meta_key_for, note_when_expiry_capped,
 			tumbling::{ExpiredWindow, TumblingBuckets, TumblingIndexEntry},
@@ -140,32 +140,36 @@ where
 		}
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	pub fn reindex_window(
+	pub fn reindex_windows(
 		&mut self,
 		store: &mut dyn StateStore,
-		group: &G,
-		window_start: S,
-		id: GroupId,
-		slot_key: &EncodedKey,
-		prior: Option<u64>,
-		new: Option<u64>,
+		entries: &[WindowReindex<'_, G, S>],
 	) -> Result<()> {
-		if prior == new {
-			return Ok(());
+		let mut drops = Vec::new();
+		let mut sets = Vec::new();
+		for entry in entries.iter().filter(|entry| entry.prior != entry.new) {
+			let owner = group_hash(entry.group)?;
+			let order = entry.window_start.order_key().to_order();
+			if let Some(old) = entry.prior {
+				drops.push(tumbling_expiry_key(old, owner, order));
+			}
+			if let Some(new) = entry.new {
+				sets.push((
+					tumbling_expiry_key(new, owner, order),
+					TumblingIndexEntry {
+						group: entry.group.clone(),
+						window_start: entry.window_start,
+						group_id: entry.id,
+						slot_key: entry.slot_key.as_bytes().to_vec(),
+					},
+				));
+			}
 		}
-		let order = window_start.order_key().to_order();
-		if let Some(old) = prior {
-			expiry_drop(store, &tumbling_expiry_key(old, group_hash(group)?, order))?;
+		if !drops.is_empty() {
+			store.state_remove_many(&drops)?;
 		}
-		if let Some(new) = new {
-			let entry = TumblingIndexEntry {
-				group: group.clone(),
-				window_start,
-				group_id: id,
-				slot_key: slot_key.as_bytes().to_vec(),
-			};
-			self.expiry.set(store, tumbling_expiry_key(new, group_hash(group)?, order), entry)?;
+		if !sets.is_empty() {
+			self.expiry.set_many(store, sets)?;
 		}
 		Ok(())
 	}
@@ -600,7 +604,7 @@ mod tests {
 			accumulator::invertible::retained_map::RetainedAccumulator,
 			engine::{
 				AccumulatorEvent::{self, Add, Remove},
-				EmitKind, KeyspaceFamily, WindowResult, WindowStateKey,
+				EmitKind, KeyspaceFamily, WindowReindex, WindowResult, WindowStateKey,
 				config::WindowEngineConfig,
 				tumbling::{TumblingBuckets, TumblingEngine},
 			},
@@ -756,7 +760,18 @@ mod tests {
 			2,
 			"precondition: entries exist"
 		);
-		engine.reindex_window(&mut store, &1, at_millis(0), group, &slot, None, Some(10)).unwrap();
+		engine.reindex_windows(
+			&mut store,
+			&[WindowReindex {
+				group: &1,
+				window_start: at_millis(0),
+				id: group,
+				slot_key: &slot,
+				prior: None,
+				new: Some(10),
+			}],
+		)
+		.unwrap();
 
 		let expired = engine.expire(&mut store, 10).unwrap();
 		assert_eq!(expired.len(), 1);

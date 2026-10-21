@@ -20,6 +20,7 @@ reifydb-build = { workspace = true }
 
 [dependencies]
 arrow-array = { workspace = true }
+arrow-schema = { workspace = true }
 reifydb-cdc = { workspace = true }
 reifydb-codec = { workspace = true }
 reifydb-core = { workspace = true }

@@ -57,15 +57,15 @@ impl LookupExpiry {
 			return Ok(());
 		}
 		let rule = SealRule::of(retention);
-		for row in cleared {
-			if let Some(at) = host.join_expiry_clear(GroupId::ROOT, LEFT_SIDE, *row)? {
-				self.index.cleared(at);
-			}
+		let cleared: Vec<(GroupId, RowNumber)> = cleared.iter().map(|row| (GroupId::ROOT, *row)).collect();
+		for at in host.join_expiry_clear_many(LEFT_SIDE, &cleared)?.into_iter().flatten() {
+			self.index.cleared(at);
 		}
-		for (row, at) in armed {
-			let sealed = rule.seal_instant(*at).at();
-			host.join_expiry_arm(GroupId::ROOT, LEFT_SIDE, *row, sealed)?;
-			self.index.armed(sealed);
+		let sealed: Vec<(GroupId, RowNumber, DateTime)> =
+			armed.iter().map(|(row, at)| (GroupId::ROOT, *row, rule.seal_instant(*at).at())).collect();
+		host.join_expiry_arm_many(LEFT_SIDE, &sealed)?;
+		for &(.., at) in &sealed {
+			self.index.armed(at);
 		}
 		self.resync_timer(host)
 	}
@@ -88,9 +88,7 @@ impl LookupExpiry {
 				ledger.take(entry.row_number)?;
 			}
 			ledger.commit(host)?;
-			for entry in &page.due {
-				host.join_expiry_free(entry)?;
-			}
+			host.join_expiry_free_many(&page.due)?;
 			if !page.more {
 				break page.next;
 			}

@@ -7,14 +7,17 @@ use reifydb_core::{
 	common::ChangeVersion,
 	flow::dag::FlowDag,
 	interface::{catalog::flow::OperatorId, change::Change},
+	internal_err,
 	key::operator::keyspace::timer::TimerWheelKey,
+	state::timer::TimerKind,
 };
+use reifydb_flow::txn::Intern;
 use reifydb_value::{Result, reifydb_assertions};
 
 use crate::{
 	engine::{FlowEngineInner, dispatch::Node},
 	operator::host::TxnHostContext,
-	timer::{Timer, TimerDue, registry::TimerStage, wheel::TimerWheel},
+	timer::{Timer, TimerDue, registry::TimerStage, timer_runs, wheel::TimerWheel},
 	transaction::{ChangeCoordinate, FlowTransaction, watermark::SourceWatermarks},
 };
 
@@ -22,7 +25,7 @@ const MAX_TIMER_ROUNDS: u32 = 4_096;
 const MAX_TIMERS_PER_DISPATCH: usize = 8_192;
 
 impl FlowEngineInner {
-	pub(super) fn dispatch_due_timers<T: FlowTransaction>(
+	pub(super) fn dispatch_due_timers<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,
@@ -40,7 +43,7 @@ impl FlowEngineInner {
 		Ok(fired)
 	}
 
-	fn dispatch_staged_timers<T: FlowTransaction>(
+	fn dispatch_staged_timers<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		flow: &FlowDag,
@@ -119,48 +122,98 @@ impl FlowEngineInner {
 			});
 
 			let mut pending: HashMap<OperatorId, Vec<Change>> = HashMap::new();
-			for (operator_id, timer) in due {
-				fired_total += 1;
+			let mut queue = due.into_iter().peekable();
+			while let Some((operator_id, first)) = queue.next() {
+				let mut chunk = vec![first];
+				while let Some((_, timer)) = queue.next_if(|(next, _)| *next == operator_id) {
+					chunk.push(timer);
+				}
+				fired_total += chunk.len() as u32;
 				let Some(graph_node) = flow.get_operator(&operator_id) else {
 					continue;
 				};
-				let node = match self.operators.get_mut(&(flow.id, operator_id)) {
-					Some(operator) => Node::Operator(operator),
-					None => match self.durable_sinks.get_mut(&(flow.id, operator_id)) {
-						Some(sink) => Node::DurableSink(sink),
-						None => continue,
-					},
-				};
-				txn.set_change_coordinate(ChangeCoordinate {
-					at: Some(timer.due),
-				});
-				let fired = match node {
-					Node::Operator(operator) => {
-						let mut host = TxnHostContext::with_retention(
-							txn,
-							operator.id(),
-							operator.retention(),
+				for run in timer_runs(chunk) {
+					let node = match self.operators.get_mut(&(flow.id, operator_id)) {
+						Some(operator) => Node::Operator(operator),
+						None => match self.durable_sinks.get_mut(&(flow.id, operator_id)) {
+							Some(sink) => Node::DurableSink(sink),
+							None => continue,
+						},
+					};
+					let outputs = match node {
+						Node::Operator(operator)
+							if operator.batches_timers()
+								&& run[0].kind == TimerKind::Seal =>
+						{
+							let count = run.len();
+							txn.set_change_coordinate(ChangeCoordinate {
+								at: run.iter().map(|timer| timer.due).max(),
+							});
+							let mut host = TxnHostContext::with_retention(
+								txn,
+								operator.id(),
+								operator.retention(),
+							);
+							let outputs = operator.on_timers(&mut host, run)?;
+							if outputs.len() != count {
+								return internal_err!(
+									"operator {} answered {} timer outputs for {} timers",
+									operator_id.0,
+									outputs.len(),
+									count
+								);
+							}
+							outputs
+						}
+						Node::Operator(operator) => {
+							let mut outputs = Vec::with_capacity(run.len());
+							for timer in run {
+								txn.set_change_coordinate(ChangeCoordinate {
+									at: Some(timer.due),
+								});
+								let mut host = TxnHostContext::with_retention(
+									txn,
+									operator.id(),
+									operator.retention(),
+								);
+								outputs.push(operator.on_timer(&mut host, timer)?);
+							}
+							outputs
+						}
+						Node::DurableSink(sink) => {
+							let mut outputs = Vec::with_capacity(run.len());
+							for timer in run {
+								txn.set_change_coordinate(ChangeCoordinate {
+									at: Some(timer.due),
+								});
+								outputs.push(
+									txn.run_durable_sink_timer(&mut **sink, timer)?
+								);
+							}
+							outputs
+						}
+					};
+					for result in outputs.into_iter().flatten() {
+						reifydb_assertions! {
+							for diff in &result.diffs {
+								for batch in diff.pre().into_iter().chain(diff.post()) {
+									reifydb_value::value::canonical::assert_canonical_floats(batch, "flow timer");
+								}
+							}
+						}
+						if result.diffs.is_empty() {
+							continue;
+						}
+						let combined = Change::from_flow(
+							operator_id,
+							version,
+							result.diffs,
+							result.changed_at,
 						);
-						operator.on_timer(&mut host, timer)?
-					}
-					Node::DurableSink(sink) => txn.run_durable_sink_timer(&mut **sink, timer)?,
-				};
-				let Some(result) = fired else {
-					continue;
-				};
-				reifydb_assertions! {
-					for diff in &result.diffs {
-						for batch in diff.pre().into_iter().chain(diff.post()) {
-							reifydb_value::value::canonical::assert_canonical_floats(batch, "flow timer");
+						for child_id in &graph_node.outputs {
+							pending.entry(*child_id).or_default().push(combined.clone());
 						}
 					}
-				}
-				if result.diffs.is_empty() {
-					continue;
-				}
-				let combined = Change::from_flow(operator_id, version, result.diffs, result.changed_at);
-				for child_id in &graph_node.outputs {
-					pending.entry(*child_id).or_default().push(combined.clone());
 				}
 			}
 			self.run_topology(txn, flow, pending, topo)?;
@@ -170,7 +223,7 @@ impl FlowEngineInner {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
+	use std::sync::{Arc, Mutex};
 
 	#[cfg(reifydb_assertions)]
 	use arrow_array::{ArrayRef, Float64Array, RecordBatch};
@@ -218,6 +271,7 @@ mod tests {
 
 	const FLOW: FlowId = FlowId(1);
 	const OPERATOR: OperatorId = OperatorId(1);
+	const OTHER: OperatorId = OperatorId(2);
 	const DUE_MS: i64 = 5_000;
 	const WATERMARK_MS: i64 = 10_000;
 
@@ -377,6 +431,209 @@ mod tests {
 		for count in [64usize, 256, 1_024, 4_096, 8_192] {
 			dispatch_burst(count, TimerKind::Maintenance);
 		}
+	}
+
+	type Fired = Arc<Mutex<Vec<(OperatorId, i64, TimerKind, Vec<u8>)>>>;
+
+	struct RecordingProbe {
+		id: OperatorId,
+		fired: Fired,
+	}
+
+	impl HostOperator for RecordingProbe {
+		fn id(&self) -> OperatorId {
+			self.id
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+			Ok(change)
+		}
+
+		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+			self.fired.lock().unwrap().push((
+				self.id,
+				timer.due.to_millis(),
+				timer.kind,
+				timer.key.to_vec(),
+			));
+			Ok(None)
+		}
+	}
+
+	fn dispatch_recorded(timers: &[(OperatorId, Timer)]) -> Vec<(OperatorId, i64, TimerKind, Vec<u8>)> {
+		let fired: Fired = Arc::default();
+		dispatch_with(timers, |id| {
+			Box::new(RecordingProbe {
+				id,
+				fired: fired.clone(),
+			})
+		});
+		let recorded = fired.lock().unwrap().clone();
+		recorded
+	}
+
+	fn dispatch_with(timers: &[(OperatorId, Timer)], probe: impl Fn(OperatorId) -> Box<dyn HostOperator>) {
+		let engine = TestEngine::new();
+		let mut inner = engine_inner(&engine);
+		let mut builder = FlowDag::builder(FLOW);
+		for (id, view) in [(OPERATOR, 1), (OTHER, 2)] {
+			builder.add_node(FlowNode::new(
+				id,
+				OperatorDef::SourceView {
+					view: ViewId(view),
+				},
+			));
+		}
+		let flow = builder.build();
+		inner.register_flow_dag(flow.clone());
+
+		let mut seed = engine.flow_txn().deferred();
+		for id in [OPERATOR, OTHER] {
+			SourceWatermarks::advance(id, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		}
+		for (id, timer) in timers {
+			TimerWheel::arm(*id, &mut seed, timer).unwrap();
+		}
+		let seeded = seed.take_pending();
+		let store = engine.inner().operator_state();
+		apply_operator_state(&store, &seeded);
+		let armed: Vec<TimerDue> =
+			flow.get_operator_ids().filter_map(|id| TimerWheel::next_due_stored(id, &store)).collect();
+		inner.timers.rebuild(FLOW, armed);
+
+		for id in [OPERATOR, OTHER] {
+			inner.insert_operator(FLOW, id, probe(id));
+		}
+		let mut txn = engine.flow_txn().deferred();
+		inner.dispatch_due_timers(
+			&mut txn,
+			&flow,
+			ChangeVersion::from(CommitVersion(1)),
+			flow.topological_order(),
+		)
+		.unwrap();
+	}
+
+	type Runs = Arc<Mutex<Vec<(bool, Vec<(OperatorId, i64, TimerKind)>)>>>;
+
+	struct BatchingProbe {
+		id: OperatorId,
+		runs: Runs,
+	}
+
+	impl HostOperator for BatchingProbe {
+		fn id(&self) -> OperatorId {
+			self.id
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> Result<Change> {
+			Ok(change)
+		}
+
+		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> Result<Option<Change>> {
+			self.runs.lock().unwrap().push((false, vec![(self.id, timer.due.to_millis(), timer.kind)]));
+			Ok(None)
+		}
+
+		fn batches_timers(&self) -> bool {
+			true
+		}
+
+		fn on_timers(
+			&mut self,
+			_host: &mut dyn HostContext,
+			timers: Vec<Timer>,
+		) -> Result<Vec<Option<Change>>> {
+			let run = timers.iter().map(|timer| (self.id, timer.due.to_millis(), timer.kind)).collect();
+			self.runs.lock().unwrap().push((true, run));
+			Ok(timers.iter().map(|_| None).collect())
+		}
+	}
+
+	fn timer_at(millis: i64, kind: TimerKind, key: &str) -> Timer {
+		Timer {
+			due: at_millis(millis),
+			kind,
+			key: EncodedKey::new(key.as_bytes()),
+		}
+	}
+
+	#[test]
+	fn interleaved_operators_keep_their_timer_order_within_a_dispatch() {
+		// Grouping one operator's timers across another's reorders their outputs into shared children.
+		let fired = dispatch_recorded(&[
+			(OPERATOR, timer_at(5_000, TimerKind::Seal, "a")),
+			(OTHER, timer_at(5_000, TimerKind::Seal, "b")),
+			(OPERATOR, timer_at(6_000, TimerKind::Seal, "c")),
+		]);
+
+		assert_eq!(
+			fired.iter().map(|(id, due, _, key)| (*id, *due, key.clone())).collect::<Vec<_>>(),
+			vec![
+				(OPERATOR, 5_000, b"a".to_vec()),
+				(OTHER, 5_000, b"b".to_vec()),
+				(OPERATOR, 6_000, b"c".to_vec())
+			],
+			"timers must fire in (due, operator) order across operators"
+		);
+	}
+
+	#[test]
+	fn a_maintenance_timer_between_seals_keeps_its_place_in_the_dispatch() {
+		// A seal batched past a maintenance timer reaps groups before their grace runs out.
+		let fired = dispatch_recorded(&[
+			(OPERATOR, timer_at(5_000, TimerKind::Seal, "a")),
+			(OPERATOR, timer_at(5_500, TimerKind::Maintenance, "")),
+			(OPERATOR, timer_at(6_000, TimerKind::Seal, "b")),
+		]);
+
+		assert_eq!(
+			fired.iter().map(|(_, due, kind, _)| (*due, *kind)).collect::<Vec<_>>(),
+			vec![(5_000, TimerKind::Seal), (5_500, TimerKind::Maintenance), (6_000, TimerKind::Seal)],
+			"the maintenance timer must fire between the two seals"
+		);
+	}
+
+	#[test]
+	fn a_batching_operator_gets_each_run_of_its_own_seals_and_nothing_else_in_one_call() {
+		// A run spanning another operator or a maintenance timer reorders outputs or reaps before grace.
+		let runs: Runs = Arc::default();
+		dispatch_with(
+			&[
+				(OPERATOR, timer_at(5_000, TimerKind::Seal, "a")),
+				(OPERATOR, timer_at(5_100, TimerKind::Seal, "b")),
+				(OPERATOR, timer_at(5_500, TimerKind::Maintenance, "")),
+				(OPERATOR, timer_at(6_000, TimerKind::Seal, "c")),
+				(OTHER, timer_at(6_000, TimerKind::Seal, "d")),
+				(OPERATOR, timer_at(7_000, TimerKind::Seal, "e")),
+			],
+			|id| {
+				Box::new(BatchingProbe {
+					id,
+					runs: runs.clone(),
+				})
+			},
+		);
+
+		assert_eq!(
+			runs.lock().unwrap().clone(),
+			vec![
+				(true, vec![(OPERATOR, 5_000, TimerKind::Seal), (OPERATOR, 5_100, TimerKind::Seal)]),
+				(false, vec![(OPERATOR, 5_500, TimerKind::Maintenance)]),
+				(true, vec![(OPERATOR, 6_000, TimerKind::Seal)]),
+				(true, vec![(OTHER, 6_000, TimerKind::Seal)]),
+				(true, vec![(OPERATOR, 7_000, TimerKind::Seal)]),
+			],
+			"only consecutive seals of one operator may share a batch, and maintenance must fire alone"
+		);
 	}
 
 	#[test]

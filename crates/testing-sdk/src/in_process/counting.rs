@@ -19,12 +19,13 @@ use reifydb_core::{
 		timer::{GroupSweep, StateStore, TimerKind, TimerStore},
 	},
 };
-use reifydb_flow::txn::Resolve;
+use reifydb_flow::txn::{Intern, Resolve};
 use reifydb_flow_async::{
 	operator::{
 		host::{HostContext, TxnHostContext},
 		state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 	},
+	timer::TimerMove,
 	transaction::{
 		FlowTransaction,
 		join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
@@ -233,7 +234,7 @@ impl<T: FlowTransaction> Resolve for CountingHost<'_, T> {
 	}
 }
 
-impl<T: FlowTransaction> HostContext for CountingHost<'_, T> {
+impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 	fn version(&self) -> CommitVersion {
 		self.inner.version()
 	}
@@ -243,19 +244,24 @@ impl<T: FlowTransaction> HostContext for CountingHost<'_, T> {
 		self.inner.disarm_timer_by_key(kind, key)
 	}
 
-	fn join_expiry_arm(&mut self, group: GroupId, side: u8, row_number: RowNumber, at: DateTime) -> Result<()> {
-		self.record("join_expiry_arm", 1);
-		self.inner.join_expiry_arm(group, side, row_number, at)
+	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
+		self.record("rearm_timers", moves.len());
+		self.inner.rearm_timers(kind, moves)
 	}
 
-	fn join_expiry_clear(&mut self, group: GroupId, side: u8, row_number: RowNumber) -> Result<Option<DateTime>> {
-		self.record("join_expiry_clear", 1);
-		self.inner.join_expiry_clear(group, side, row_number)
+	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+		self.record("join_expiry_arm_many", rows.len());
+		self.inner.join_expiry_arm_many(side, rows)
 	}
 
-	fn join_expiry_free(&mut self, entry: &JoinDueEntry) -> Result<()> {
-		self.record("join_expiry_free", 1);
-		self.inner.join_expiry_free(entry)
+	fn join_expiry_clear_many(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>> {
+		self.record("join_expiry_clear_many", rows.len());
+		self.inner.join_expiry_clear_many(side, rows)
+	}
+
+	fn join_expiry_free_many(&mut self, entries: &[JoinDueEntry]) -> Result<()> {
+		self.record("join_expiry_free_many", entries.len());
+		self.inner.join_expiry_free_many(entries)
 	}
 
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>> {
@@ -361,6 +367,15 @@ impl<T: FlowTransaction> HostContext for CountingHost<'_, T> {
 	) -> Result<Vec<Option<Value>>> {
 		self.record("dictionary_get_many", ids.len());
 		self.inner.dictionary_get_many(dictionary, ids)
+	}
+
+	fn dictionary_intern_many(
+		&mut self,
+		dictionary: &Dictionary,
+		values: &[Value],
+	) -> Result<Vec<DictionaryEntryId>> {
+		self.record("dictionary_intern_many", values.len());
+		self.inner.dictionary_intern_many(dictionary, values)
 	}
 
 	fn lookup_read_many(

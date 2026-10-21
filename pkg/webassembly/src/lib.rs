@@ -9,6 +9,7 @@ use std::{
 	collections::HashMap,
 	fmt::Write,
 	sync::Arc,
+	thread,
 };
 
 use reifydb_auth::{
@@ -544,7 +545,13 @@ impl WasmDB {
 
 impl Drop for WasmDB {
 	fn drop(&mut self) {
-		self.flow_subsystem.shutdown();
+		if let Err(err) = self.flow_subsystem.shutdown() {
+			if thread::panicking() {
+				eprintln!("wasm database shutdown failed during unwind: {err}");
+			} else {
+				panic!("wasm database shutdown failed: {err}");
+			}
+		}
 	}
 }
 

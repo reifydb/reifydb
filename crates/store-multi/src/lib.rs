@@ -178,7 +178,7 @@ impl MultiStore {
 }
 
 impl Shutdown for MultiStore {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		match self {
 			MultiStore::Standard(store) => store.shutdown(),
 		}

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+mod common;
+
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
@@ -29,6 +31,8 @@ use reifydb_value::{
 		},
 	},
 };
+
+use crate::common::NoDictionaries;
 
 fn extend(expressions: &[&str]) -> Result<ExtendOperator> {
 	ExtendOperator::new(
@@ -73,7 +77,7 @@ fn the_flow_extend_keeps_the_input_and_answers_between_per_row() {
 	// The input must pass through, and between must answer per row over a nullable column.
 	let rows = batch(vec![factory::int4_optional("a", [Some(1), None, Some(5)])]).unwrap();
 
-	let out = extend(&["b: a between 2 and 10"]).unwrap().apply(insert(rows)).unwrap();
+	let out = extend(&["b: a between 2 and 10"]).unwrap().apply(&mut NoDictionaries, insert(rows)).unwrap();
 
 	assert_eq!(inserted(&out, "a"), vec!["1", "none", "5"]);
 	assert_eq!(inserted(&out, "b"), vec!["false", "none", "true"]);
@@ -85,8 +89,8 @@ fn a_type_mismatch_builds_the_extend_and_fails_every_apply() {
 	let mut operator = extend(&["b: a > 'x'"]).unwrap();
 	let rows = batch(vec![factory::int4("a", [1, 2])]).unwrap();
 
-	let first = operator.apply(insert(rows.clone())).unwrap_err();
-	let second = operator.apply(insert(rows)).unwrap_err();
+	let first = operator.apply(&mut NoDictionaries, insert(rows.clone())).unwrap_err();
+	let second = operator.apply(&mut NoDictionaries, insert(rows)).unwrap_err();
 
 	assert_eq!(first, second);
 	assert!(first.code.starts_with("OPERATOR_02"), "{}", first.code);
@@ -99,8 +103,8 @@ fn a_later_batch_with_moved_columns_reads_the_right_column() {
 	let first = batch(vec![factory::int4("a", [2]), factory::int4("b", [0])]).unwrap();
 	let moved = batch(vec![factory::int4("b", [0]), factory::int4("a", [5])]).unwrap();
 
-	assert_eq!(inserted(&operator.apply(insert(first)).unwrap(), "c"), vec!["3"]);
-	assert_eq!(inserted(&operator.apply(insert(moved)).unwrap(), "c"), vec!["6"]);
+	assert_eq!(inserted(&operator.apply(&mut NoDictionaries, insert(first)).unwrap(), "c"), vec!["3"]);
+	assert_eq!(inserted(&operator.apply(&mut NoDictionaries, insert(moved)).unwrap(), "c"), vec!["6"]);
 }
 
 #[test]

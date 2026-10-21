@@ -3,6 +3,7 @@
 
 use std::collections::HashSet;
 
+use arrow_schema::Schema;
 use reifydb_core::{
 	common::TimeDomain,
 	flow::{
@@ -14,9 +15,13 @@ use reifydb_core::{
 		id::TableId,
 	},
 	operator_with::DistinctWith,
-	value::{batch::batch, column::factory::uint8},
+	value::{
+		batch::batch,
+		column::{builder::ColumnBuilder, factory::uint8},
+	},
 };
 use reifydb_value::value::{
+	dictionary::DictionaryId,
 	row_number::RowNumber,
 	system_columns::{SystemColumn, row_numbers, with_system_column},
 };
@@ -401,4 +406,40 @@ fn a_chain_wider_than_the_lane_ceiling_is_rejected() {
 	let dag = dag.build();
 
 	assert!(assign_lanes(&dag, left).is_err());
+}
+
+fn lane(columns: &[(&str, ValueType, Option<DictionaryId>)]) -> SchemaRef {
+	Arc::new(Schema::new(
+		columns.iter()
+			.map(|(name, value_type, dictionary)| {
+				let mut builder = ColumnBuilder::with_capacity(value_type.clone(), 0);
+				if let Some(dictionary) = dictionary {
+					builder.set_dictionary_id(*dictionary);
+				}
+				builder.finish(name).0
+			})
+			.collect::<Vec<_>>(),
+	))
+}
+
+#[test]
+fn append_lanes_must_agree_on_the_dictionary_of_every_shared_id_column() {
+	let (syms, other) = (Some(DictionaryId(1)), Some(DictionaryId(2)));
+	let ids = ValueType::DictionaryId;
+	let optional_ids = ValueType::Option(Box::new(ValueType::DictionaryId));
+
+	assert!(check_lanes(&lane(&[("m", ids.clone(), syms)]), &lane(&[("m", ids.clone(), syms)])).is_ok());
+	assert!(check_lanes(&lane(&[("m", ids.clone(), syms)]), &lane(&[("m", optional_ids, syms)])).is_ok());
+	assert!(check_lanes(&lane(&[("m", ids.clone(), syms)]), &lane(&[("m", ValueType::Any, None)])).is_ok());
+	assert!(check_lanes(&lane(&[("m", ids.clone(), syms)]), &lane(&[("x", ValueType::Utf8, None)])).is_ok());
+
+	for (second, found) in [
+		(lane(&[("m", ids.clone(), other)]), "DictionaryId of dictionary 2"),
+		(lane(&[("m", ValueType::Utf8, None)]), "Utf8"),
+	] {
+		let err = check_lanes(&lane(&[("m", ids.clone(), syms)]), &second).unwrap_err();
+		assert_eq!(err.0.code, "FLOW_089");
+		assert!(err.0.message.contains(found), "{}", err.0.message);
+		assert!(err.0.message.contains("'m'"), "{}", err.0.message);
+	}
 }

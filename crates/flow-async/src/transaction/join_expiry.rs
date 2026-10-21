@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{
+	collections::{HashMap, HashSet},
+	ops::Bound,
+};
 
 use reifydb_codec::{
 	key::encoded::EncodedKeyRange,
@@ -87,70 +90,91 @@ pub fn join_due_range() -> EncodedKeyRange {
 }
 
 pub trait JoinRowExpiryExtension: FlowTransaction {
-	fn join_expiry_at(
+	fn join_expiry_clear_many(
 		&mut self,
 		id: OperatorId,
-		group: GroupId,
 		side: u8,
-		row_number: RowNumber,
-	) -> Result<Option<DateTime>> {
-		match self.state_get(id, &join_expiry_key(group, side, row_number))? {
-			Some(row) => Ok(Some(JoinRowExpiryState::decode_state(&row).map_err(ValueError::from)?.at)),
-			None => Ok(None),
+		rows: &[(GroupId, RowNumber)],
+	) -> Result<Vec<Option<DateTime>>> {
+		let keys: Vec<GroupStateKey> =
+			rows.iter().map(|&(group, row_number)| join_expiry_key(group, side, row_number)).collect();
+		let stored = self.state_get_many(id, &keys)?;
+		let mut seen = HashSet::with_capacity(keys.len());
+		let mut doomed = Vec::with_capacity(keys.len() * 2);
+		let mut cleared = Vec::with_capacity(keys.len());
+		for ((&(group, row_number), key), row) in rows.iter().zip(&keys).zip(&stored) {
+			let at = match row {
+				Some(row) if seen.insert(key.clone()) => {
+					JoinRowExpiryState::decode_state(row).map_err(ValueError::from)?.at
+				}
+				_ => {
+					cleared.push(None);
+					continue;
+				}
+			};
+			doomed.push(key.clone());
+			doomed.push(join_expiry_due_key(at, group, side, row_number));
+			cleared.push(Some(at));
 		}
+		self.state_remove_many(id, &doomed)?;
+		Ok(cleared)
 	}
 
-	fn join_expiry_arm(
+	fn join_expiry_arm_many(
 		&mut self,
 		id: OperatorId,
-		group: GroupId,
 		side: u8,
-		row_number: RowNumber,
-		at: DateTime,
+		rows: &[(GroupId, RowNumber, DateTime)],
 	) -> Result<()> {
-		if let Some(previous) = self.join_expiry_at(id, group, side, row_number)? {
-			if previous == at {
-				return Ok(());
+		let mut latest: Vec<(GroupId, RowNumber, DateTime)> = Vec::with_capacity(rows.len());
+		let mut slot: HashMap<(GroupId, RowNumber), usize> = HashMap::with_capacity(rows.len());
+		for &(group, row_number, at) in rows {
+			match slot.get(&(group, row_number)) {
+				Some(&index) => latest[index].2 = at,
+				None => {
+					slot.insert((group, row_number), latest.len());
+					latest.push((group, row_number, at));
+				}
 			}
-			self.state_remove(id, &join_expiry_due_key(previous, group, side, row_number))?;
 		}
-		self.state_set(
-			id,
-			&join_expiry_key(group, side, row_number),
-			JoinRowExpiryState {
-				at,
+		let keys: Vec<GroupStateKey> =
+			latest.iter().map(|&(group, row_number, _)| join_expiry_key(group, side, row_number)).collect();
+		let stored = self.state_get_many(id, &keys)?;
+		let mut stale = Vec::new();
+		let mut armed = Vec::with_capacity(latest.len() * 2);
+		for ((&(group, row_number, at), key), row) in latest.iter().zip(keys).zip(&stored) {
+			if let Some(row) = row {
+				let previous = JoinRowExpiryState::decode_state(row).map_err(ValueError::from)?.at;
+				if previous == at {
+					continue;
+				}
+				stale.push(join_expiry_due_key(previous, group, side, row_number));
 			}
-			.encode_state()
-			.map_err(ValueError::from)?,
-		)?;
-		self.state_set(id, &join_expiry_due_key(at, group, side, row_number), EncodedPodRow::new(&[]))
+			armed.push((
+				key,
+				JoinRowExpiryState {
+					at,
+				}
+				.encode_state()
+				.map_err(ValueError::from)?,
+			));
+			armed.push((join_expiry_due_key(at, group, side, row_number), EncodedPodRow::new(&[])));
+		}
+		self.state_remove_many(id, &stale)?;
+		self.state_set_many(id, armed)
 	}
 
-	fn join_expiry_clear(
-		&mut self,
-		id: OperatorId,
-		group: GroupId,
-		side: u8,
-		row_number: RowNumber,
-	) -> Result<Option<DateTime>> {
-		let Some(at) = self.join_expiry_at(id, group, side, row_number)? else {
-			return Ok(None);
-		};
-		self.join_expiry_free(
-			id,
-			&JoinDueEntry {
-				at,
-				group,
-				side,
-				row_number,
-			},
-		)?;
-		Ok(Some(at))
-	}
-
-	fn join_expiry_free(&mut self, id: OperatorId, entry: &JoinDueEntry) -> Result<()> {
-		self.state_remove(id, &join_expiry_key(entry.group, entry.side, entry.row_number))?;
-		self.state_remove(id, &join_expiry_due_key(entry.at, entry.group, entry.side, entry.row_number))
+	fn join_expiry_free_many(&mut self, id: OperatorId, entries: &[JoinDueEntry]) -> Result<()> {
+		let doomed: Vec<GroupStateKey> = entries
+			.iter()
+			.flat_map(|entry| {
+				[
+					join_expiry_key(entry.group, entry.side, entry.row_number),
+					join_expiry_due_key(entry.at, entry.group, entry.side, entry.row_number),
+				]
+			})
+			.collect();
+		self.state_remove_many(id, &doomed)
 	}
 
 	fn join_expiry_min(&mut self, id: OperatorId) -> Result<Option<DateTime>> {

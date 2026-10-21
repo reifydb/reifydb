@@ -31,7 +31,7 @@ use reifydb_flow_async::{
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_sdk::{
-	error::Result,
+	error::{Result, SdkError},
 	flow::operator::{MountedOperator, OperatorMetadata, mount::mount, state::decode_payload},
 };
 use reifydb_testing_chaos::operator::{event::Row, subject::Subject};
@@ -39,7 +39,12 @@ use reifydb_value::{
 	Result as ValueResult,
 	config::ExtensionParams,
 	count::Count,
-	value::{Value, datetime::DateTime},
+	value::{
+		Value,
+		datetime::DateTime,
+		system_columns::user_columns,
+		value_type::{ValueType, field::from_field},
+	},
 };
 
 use crate::{
@@ -49,6 +54,46 @@ use crate::{
 		transaction::TestFlowTransaction,
 	},
 };
+
+fn bare(value_type: ValueType) -> ValueType {
+	match value_type {
+		ValueType::Option(inner) => *inner,
+		other => other,
+	}
+}
+
+fn check_output<C: OperatorMetadata>(change: &Change) -> Result<()> {
+	for batch in change.diffs.iter().flat_map(|diff| [diff.pre(), diff.post()]).flatten() {
+		let emitted: Vec<_> = user_columns(batch).map(|(field, _)| field).collect();
+		let declared = <C as OperatorMetadata>::OUTPUT_COLUMNS;
+		if declared.is_empty() {
+			return Ok(());
+		}
+		if emitted.len() != declared.len() {
+			return Err(SdkError::OperatorError(format!(
+				"{} emits {} columns but declares {} output columns",
+				C::NAME,
+				emitted.len(),
+				declared.len()
+			)));
+		}
+		for (field, column) in emitted.into_iter().zip(declared) {
+			let emitted_type = from_field(field)?.value_type.map(bare);
+			let declared_type = bare(column.type_constraint.get_type());
+			if field.name() != column.name || emitted_type.as_ref() != Some(&declared_type) {
+				return Err(SdkError::OperatorError(format!(
+					"{} emits {} of {:?} but declares {} of {:?}",
+					C::NAME,
+					field.name(),
+					emitted_type,
+					column.name,
+					declared_type
+				)));
+			}
+		}
+	}
+	Ok(())
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ReclaimedGroups {
@@ -96,6 +141,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 			Some(calls) => self.operator.apply(&mut CountingHost::new(host, calls), input)?,
 			None => self.operator.apply(&mut { host }, input)?,
 		};
+		check_output::<C>(&output)?;
 		self.history.push(output.clone());
 		Ok(output)
 	}
@@ -118,6 +164,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 			None => self.operator.on_timer(&mut { host }, timer)?,
 		};
 		if let Some(change) = &output {
+			check_output::<C>(change)?;
 			self.history.push(change.clone());
 		}
 		Ok(output)

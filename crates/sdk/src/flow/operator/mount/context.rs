@@ -339,6 +339,20 @@ impl GuestEmitContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).dictionary_find_many(dictionary, values) }.map_err(to_sdk_err)
 	}
+	fn dictionary_intern_many(
+		&mut self,
+		dictionary: DictionaryId,
+		values: &[Value],
+	) -> SdkResult<Vec<DictionaryEntryId>> {
+		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
+		// that borrow live for 'a and &mut self makes the deref unique.
+		let host = unsafe { &mut *self.host };
+		let resolved = host
+			.dictionary(dictionary)
+			.map_err(to_sdk_err)?
+			.ok_or_else(|| SdkError::Other(format!("dictionary {} not found", dictionary.0)))?;
+		host.dictionary_intern_many(&resolved, values).map_err(to_sdk_err)
+	}
 	fn get_or_create_row_numbers(
 		&mut self,
 		group: GroupId,

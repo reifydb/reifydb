@@ -17,6 +17,7 @@ use rusqlite::Connection;
 use tracing::instrument;
 
 use crate::{
+	error::{OperatorError, Result},
 	persistent::sqlite::{SqlitePersistent, route, typed},
 	types::OperatorStateCensus,
 };
@@ -44,50 +45,51 @@ impl KeyspaceVisitor for Census<'_> {
 
 impl SqlitePersistent {
 	#[instrument(name = "store::operator::persistent::sqlite::bytes", level = "trace", skip(self), fields(operator = operator.0), ret)]
-	pub fn bytes(&self, operator: OperatorId) -> ByteSize {
+	pub fn bytes(&self, operator: OperatorId) -> Result<ByteSize> {
 		let tables = self.inner.tables.snapshot();
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return ByteSize::ZERO;
+			return Err(OperatorError::Closed);
 		};
 		let state: u64 = route::census(conn, &tables)
 			.iter()
 			.filter(|entry| entry.operator == operator)
 			.map(|entry| entry.key_bytes.as_bytes() + entry.value_bytes.as_bytes())
 			.sum();
-		ByteSize::from_bytes(state)
+		Ok(ByteSize::from_bytes(state))
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::occupied_keyspaces", level = "debug", skip(self), fields(operator = operator.0))]
-	pub fn occupied_keyspaces(&self, operator: OperatorId) -> Vec<KeyspaceId> {
+	pub fn occupied_keyspaces(&self, operator: OperatorId) -> Result<Vec<KeyspaceId>> {
 		let tables = self.inner.tables.mask(operator);
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Vec::new();
+			return Err(OperatorError::Closed);
 		};
-		route::occupied_keyspaces(conn, operator, tables)
+		Ok(route::occupied_keyspaces(conn, operator, tables))
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::occupied_operators", level = "debug", skip(self))]
-	pub fn occupied_operators(&self) -> Vec<OperatorId> {
+	pub fn occupied_operators(&self) -> Result<Vec<OperatorId>> {
 		let tables = self.inner.tables.snapshot();
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Vec::new();
+			return Err(OperatorError::Closed);
 		};
-		tables.into_iter()
+		Ok(tables
+			.into_iter()
 			.filter(|(operator, mask)| !route::occupied_keyspaces(conn, *operator, *mask).is_empty())
 			.map(|(operator, _)| operator)
-			.collect()
+			.collect())
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::census", level = "debug", skip(self))]
-	pub fn census(&self) -> Vec<OperatorStateCensus> {
+	pub fn census(&self) -> Result<Vec<OperatorStateCensus>> {
 		let tables = self.inner.tables.snapshot();
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
-			return Vec::new();
+			return Err(OperatorError::Closed);
 		};
-		route::census(conn, &tables)
+		Ok(route::census(conn, &tables))
 	}
 }

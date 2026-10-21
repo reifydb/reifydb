@@ -14,23 +14,32 @@ use std::{
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::{bytes::EncodedBytes, shape::RowShape},
+	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
-	interface::{catalog::flow::OperatorId, change::Change, store::MultiVersionRow},
-	key::{any::TaggedKey, operator::state::GroupStateKey},
+	interface::{
+		catalog::{dictionary::Dictionary, flow::OperatorId},
+		change::Change,
+		store::MultiVersionRow,
+	},
+	key::{
+		any::TaggedKey,
+		operator::state::{GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey, node_prefix},
+	},
 };
 use reifydb_flow::{
 	error::FlowGraphError,
-	txn::{Batch, Get},
+	txn::{Batch, Find, Get, Intern, Resolve},
 };
 use reifydb_flow_async::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
 	transaction::{
-		ChangeCoordinate, FlowTransaction, pending_get, pending_get_many,
+		ChangeCoordinate, FlowTransaction,
+		dictionary::DictionaryExtension,
+		pending_get, pending_get_many,
 		read::{ReadFrom, read_from},
 		scope::scoped_key,
 		substrate::FlowSubstrate,
@@ -38,7 +47,15 @@ use reifydb_flow_async::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_transaction::multi::{RangeScope, transaction::read::MultiReadTransaction};
-use reifydb_value::{Result, error::Error, value::datetime::DateTime};
+use reifydb_value::{
+	Result,
+	error::Error,
+	value::{
+		Value,
+		datetime::DateTime,
+		dictionary::{DictionaryEntryId, DictionaryId},
+	},
+};
 
 pub struct EphemeralTransaction {
 	pub version: CommitVersion,
@@ -188,6 +205,27 @@ fn ephemeral_fetch_state(
 	keys.iter().map(|key| state.get(&scoped_key(id, key)).cloned()).collect()
 }
 
+fn ephemeral_group_page(
+	state: &HashMap<EncodedKey, EncodedBytes>,
+	id: OperatorId,
+	groups: &[GroupId],
+	keyspaces: KeyspaceMask,
+) -> (Vec<(GroupStateKey, EncodedPodRow)>, bool) {
+	let prefix = node_prefix(id);
+	let mut page: Vec<(GroupStateKey, EncodedPodRow)> = state
+		.iter()
+		.filter_map(|(key, bytes)| {
+			let (group, keyspace, suffix) =
+				OperatorStateKey::decode_inner(key.as_slice().strip_prefix(prefix.as_slice())?)?;
+			(groups.contains(&group) && keyspaces.holds(keyspace)).then(|| {
+				(GroupStateKey::new(group, keyspace, suffix), EncodedPodRow::from(bytes.clone()))
+			})
+		})
+		.collect();
+	page.sort_by(|a, b| a.0.as_slice().cmp(b.0.as_slice()));
+	(page, false)
+}
+
 impl Get for EphemeralTransaction {
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		pending_get(self, key)
@@ -207,6 +245,30 @@ impl Batch for EphemeralTransaction {
 	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 		self.pending_mut().remove_batch(keys);
 		Ok(())
+	}
+}
+
+impl Resolve for EphemeralTransaction {
+	fn dictionary(&mut self, id: DictionaryId) -> Result<Option<Dictionary>> {
+		Ok(self.find_dictionary(id))
+	}
+
+	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
+		self.get_many_from_dictionary(dictionary, ids)
+	}
+}
+
+impl Find for EphemeralTransaction {
+	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+		self.find_many_in_dictionary(dictionary, values)
+	}
+}
+
+impl Intern for EphemeralTransaction {
+	fn intern(&mut self, _dictionary: &Dictionary, _values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+		Err(Error::from(FlowGraphError::UnsupportedNode {
+			kind: "DictionaryIntern",
+		}))
 	}
 }
 
@@ -298,5 +360,15 @@ impl FlowTransaction for EphemeralTransaction {
 
 	fn fetch_state(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		Ok(ephemeral_fetch_state(&self.state, id, keys))
+	}
+
+	fn fetch_group_page(
+		&self,
+		id: OperatorId,
+		groups: &[GroupId],
+		_batch: u64,
+		keyspaces: KeyspaceMask,
+	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
+		Ok(ephemeral_group_page(&self.state, id, groups, keyspaces))
 	}
 }

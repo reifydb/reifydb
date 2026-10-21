@@ -30,7 +30,7 @@ use crate::{
 			coord::Coord,
 			ledger::{SealLedgerState, seal_ledger_key},
 		},
-		state_access::{get_classified, get_or_default, put, remove},
+		state_access::{get_classified, get_many, get_or_default, put, remove},
 	},
 	window::kind::session::SessionTracker,
 };
@@ -345,17 +345,28 @@ impl WindowMeta {
 	}
 
 	pub fn stored_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<Option<SessionTracker>> {
-		Ok(get_classified::<_, SessionState>(store, &SessionKey(group))?.map(|state| {
-			SessionTracker::resumed(
-				state.session_id,
-				<DateTime as Coord>::from_order(state.last_event_time),
-				<DateTime as Coord>::from_order(state.session_start),
-			)
-		}))
+		Ok(get_classified::<_, SessionState>(store, &SessionKey(group))?.map(resumed_session))
 	}
 
-	pub fn drop_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<()> {
-		remove(store, &SessionKey(group))
+	pub fn stored_sessions(
+		&mut self,
+		store: &mut dyn StateStore,
+		groups: &[GroupId],
+	) -> Result<Vec<Option<SessionTracker>>> {
+		let keys: Vec<SessionKey> = groups.iter().map(|group| SessionKey(*group)).collect();
+		Ok(get_many::<_, SessionState>(store, &keys)?
+			.into_iter()
+			.map(|state| state.map(resumed_session))
+			.collect())
+	}
+
+	pub fn drop_sessions(&mut self, store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
+		if groups.is_empty() {
+			return Ok(());
+		}
+		let keys: Vec<GroupStateKey> =
+			groups.iter().map(|group| (&SessionKey(*group)).into_group_state_key()).collect();
+		store.state_remove_many(&keys)
 	}
 
 	pub fn save_session(
@@ -391,6 +402,14 @@ impl WindowMeta {
 	pub fn drop_rolling_meta(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<()> {
 		remove(store, &RollingMetaKey(group))
 	}
+}
+
+fn resumed_session(state: SessionState) -> SessionTracker {
+	SessionTracker::resumed(
+		state.session_id,
+		<DateTime as Coord>::from_order(state.last_event_time),
+		<DateTime as Coord>::from_order(state.session_start),
+	)
 }
 
 #[cfg(test)]

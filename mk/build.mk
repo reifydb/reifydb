@@ -5,7 +5,7 @@
 # Build Targets - Build all packages
 # =============================================================================
 
-.PHONY: build build-workspace build-pkg-typescript build-wasm check check-value-no-features
+.PHONY: build build-workspace build-pkg-typescript build-wasm check check-value-no-features check-flow-async-no-features
 
 # Main build target - builds everything
 build: build-workspace build-wasm build-pkg-typescript
@@ -36,6 +36,10 @@ check:
 check-value-no-features:
 	@echo "Checking reifydb-value tests compile without features..."
 	@MAKEFLAGS= cargo check --release -p reifydb-value --tests $(CARGO_OFFLINE)
+
+check-flow-async-no-features:
+	@echo "Checking reifydb-flow-async compiles without features..."
+	@MAKEFLAGS= cargo check --release -p reifydb-flow-async $(CARGO_OFFLINE)
 
 # Build pkg/typescript packages
 build-pkg-typescript:

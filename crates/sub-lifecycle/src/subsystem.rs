@@ -16,6 +16,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::{actor::mailbox::ActorRef, shutdown::Shutdown};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_value::Result;
 use tracing::{debug, error, info};
 
 use crate::{actor::LifecycleMessage, plane::RetentionPlane};
@@ -96,14 +97,15 @@ impl HasVersion for LifecycleSubsystem {
 }
 
 impl Shutdown for LifecycleSubsystem {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		if !self.running.swap(false, Ordering::SeqCst) {
-			return;
+			return Ok(());
 		}
 		for actor_ref in &self.actor_refs {
 			let _ = actor_ref.send(LifecycleMessage::Shutdown);
 		}
 		debug!("Lifecycle subsystem shutdown signalled");
+		Ok(())
 	}
 }
 

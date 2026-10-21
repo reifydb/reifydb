@@ -14,10 +14,7 @@ use reifydb_core::{
 	internal_err,
 	value::batch::{empty_batch, take_rows},
 };
-use reifydb_evaluate::{
-	expression::context::EvalContext,
-	lower::{LoweredExpr, compile_check},
-};
+use reifydb_evaluate::{expression::context::EvalContext, lower::compile_check};
 use reifydb_routine_abi::registry::Routines;
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
@@ -26,12 +23,19 @@ use reifydb_value::{
 };
 use tracing::instrument;
 
-use crate::{context::FlowContext, operator::forward_system_columns};
+use crate::{
+	context::FlowContext,
+	operator::{
+		dictionary::{BoundExpressions, BoundLiterals},
+		forward_system_columns,
+	},
+	txn::Find,
+};
 
 pub struct FilterOperator {
 	parent_schema: Option<SchemaRef>,
 	operator: OperatorId,
-	lowered_conditions: Vec<LoweredExpr>,
+	conditions: BoundExpressions,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ctx: Arc<FlowContext>,
@@ -49,13 +53,11 @@ impl FilterOperator {
 		for condition in &conditions {
 			compile_check(condition)?;
 		}
-		let lowered_conditions: Vec<LoweredExpr> =
-			conditions.into_iter().map(|condition| LoweredExpr::new(condition, "filter")).collect();
 
 		Ok(Self {
 			parent_schema,
 			operator,
-			lowered_conditions,
+			conditions: BoundExpressions::new(conditions, false, "filter"),
 			routines,
 			runtime_context,
 			ctx,
@@ -63,11 +65,17 @@ impl FilterOperator {
 	}
 
 	#[instrument(name = "flow::operator::filter::evaluate", level = "trace", skip_all, fields(rows = columns.num_rows()))]
-	fn evaluate(&self, columns: &RecordBatch) -> Result<Vec<bool>> {
+	fn evaluate<T: Find + ?Sized>(
+		&mut self,
+		txn: &mut T,
+		literals: &mut Option<BoundLiterals>,
+		columns: &RecordBatch,
+	) -> Result<Vec<bool>> {
 		let row_count = columns.num_rows();
 		if row_count == 0 {
 			return Ok(Vec::new());
 		}
+		let (columns, lowered_conditions) = self.conditions.bind(txn, literals, columns)?;
 
 		let session = EvalContext {
 			params: &self.ctx.params,
@@ -80,11 +88,11 @@ impl FilterOperator {
 			target: None,
 			take: None,
 		};
-		let exec_ctx = session.with_eval(columns.clone(), row_count);
+		let exec_ctx = session.with_eval(columns, row_count);
 
 		let mut mask = vec![true; row_count];
 
-		for lowered_condition in &self.lowered_conditions {
+		for lowered_condition in lowered_conditions {
 			let result = lowered_condition.evaluate(&exec_ctx)?;
 			let result_col = ColumnView::try_from(&result)?;
 
@@ -128,24 +136,25 @@ impl FilterOperator {
 		self.operator
 	}
 
-	pub fn apply(&mut self, change: Change) -> Result<Change> {
+	pub fn apply<T: Find + ?Sized>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		let mut result = Vec::new();
+		let mut literals = None;
 
 		for diff in change.diffs {
 			match diff {
 				Diff::Insert {
 					post,
 					..
-				} => self.apply_filter_insert(&post, &mut result)?,
+				} => self.apply_filter_insert(txn, &mut literals, &post, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
 					..
-				} => self.apply_filter_update(&pre, &post, &mut result)?,
+				} => self.apply_filter_update(txn, &mut literals, &pre, &post, &mut result)?,
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_filter_remove(&pre, &mut result)?,
+				} => self.apply_filter_remove(txn, &mut literals, &pre, &mut result)?,
 			}
 		}
 
@@ -160,8 +169,14 @@ impl FilterOperator {
 	}
 
 	#[instrument(name = "flow::operator::filter::insert", level = "trace", skip_all, fields(rows = post.num_rows()))]
-	fn apply_filter_insert(&self, post: &RecordBatch, result: &mut Vec<Diff>) -> Result<()> {
-		let mask = self.evaluate(post)?;
+	fn apply_filter_insert<T: Find + ?Sized>(
+		&mut self,
+		txn: &mut T,
+		literals: &mut Option<BoundLiterals>,
+		post: &RecordBatch,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		let mask = self.evaluate(txn, literals, post)?;
 		let passing = self.filter_passing(post, &mask)?;
 		if passing.num_columns() > 0 {
 			result.push(Diff::insert(passing));
@@ -171,8 +186,14 @@ impl FilterOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::filter::remove", level = "trace", skip_all, fields(rows = pre.num_rows()))]
-	fn apply_filter_remove(&self, pre: &RecordBatch, result: &mut Vec<Diff>) -> Result<()> {
-		let mask = self.evaluate(pre)?;
+	fn apply_filter_remove<T: Find + ?Sized>(
+		&mut self,
+		txn: &mut T,
+		literals: &mut Option<BoundLiterals>,
+		pre: &RecordBatch,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		let mask = self.evaluate(txn, literals, pre)?;
 		let passing = self.filter_passing(pre, &mask)?;
 		if passing.num_columns() > 0 {
 			result.push(Diff::remove(passing));
@@ -182,9 +203,16 @@ impl FilterOperator {
 
 	#[inline]
 	#[instrument(name = "flow::operator::filter::update", level = "trace", skip_all, fields(rows = post.num_rows()))]
-	fn apply_filter_update(&self, pre: &RecordBatch, post: &RecordBatch, result: &mut Vec<Diff>) -> Result<()> {
-		let pre_mask = self.evaluate(pre)?;
-		let post_mask = self.evaluate(post)?;
+	fn apply_filter_update<T: Find + ?Sized>(
+		&mut self,
+		txn: &mut T,
+		literals: &mut Option<BoundLiterals>,
+		pre: &RecordBatch,
+		post: &RecordBatch,
+		result: &mut Vec<Diff>,
+	) -> Result<()> {
+		let pre_mask = self.evaluate(txn, literals, pre)?;
+		let post_mask = self.evaluate(txn, literals, post)?;
 
 		let mut updated_idx = Vec::new();
 		let mut inserted_idx = Vec::new();

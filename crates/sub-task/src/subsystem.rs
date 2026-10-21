@@ -17,9 +17,14 @@ use reifydb_core::{
 	util::ioc::IocContainer,
 };
 use reifydb_engine::engine::StandardEngine;
-use reifydb_runtime::{context::clock::Clock, shutdown::Shutdown, sync::mutex::Mutex};
+use reifydb_runtime::{
+	context::clock::Clock,
+	fatal::describe_payload,
+	shutdown::{Shutdown, ShutdownErrors},
+	sync::mutex::Mutex,
+};
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
-use reifydb_value::reifydb_assertions;
+use reifydb_value::{Result, reifydb_assertions};
 use tokio::{runtime::Handle, sync::mpsc, task::JoinHandle};
 use tracing::{info, instrument};
 
@@ -126,18 +131,21 @@ impl TaskSubsystem {
 	}
 
 	#[inline]
-	fn join_coordinator_worker(&self, drained: DrainedCoordinator) {
+	fn join_coordinator_worker(&self, drained: DrainedCoordinator, errors: &mut ShutdownErrors) {
 		let (coordinator_tx, coordinator_handle) = drained;
 		let handle_tokio = self.handle_tokio.clone();
 		let worker = thread::spawn(move || {
 			if let Some(coordinator_tx) = coordinator_tx {
 				let _ = coordinator_tx.blocking_send(TaskCoordinatorMessage::Shutdown);
 			}
-			if let Some(join_handle) = coordinator_handle {
-				let _ = handle_tokio.block_on(join_handle);
-			}
+			coordinator_handle.map(|join_handle| handle_tokio.block_on(join_handle))
 		});
-		let _ = worker.join();
+		match worker.join() {
+			Ok(Some(Err(err))) => errors.fail("coordinator", err),
+			Ok(_) => {}
+			Err(payload) => errors
+				.fail("shutdown worker", format!("thread panicked: {}", describe_payload(&payload))),
+		}
 	}
 
 	#[inline]
@@ -150,18 +158,20 @@ type DrainedCoordinator = (Option<Sender<TaskCoordinatorMessage>>, Option<JoinHa
 
 impl Shutdown for TaskSubsystem {
 	#[instrument(name = "task::subsystem::shutdown", level = "info", skip(self))]
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		if !self.claim_shutdown() {
-			return;
+			return Ok(());
 		}
 
 		info!("Shutting down task subsystem");
 
+		let mut errors = ShutdownErrors::new("task");
 		let drained = self.drain_coordinator_handles();
-		self.join_coordinator_worker(drained);
+		self.join_coordinator_worker(drained, &mut errors);
 		self.clear_handle();
 
 		info!("Task subsystem shut down");
+		errors.finish()
 	}
 }
 

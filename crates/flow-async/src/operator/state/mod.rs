@@ -6,6 +6,7 @@ pub mod reaper;
 pub mod reclaim;
 pub mod seal;
 pub mod sealing;
+pub mod sweep;
 
 #[cfg(feature = "runtime")]
 pub mod iter;

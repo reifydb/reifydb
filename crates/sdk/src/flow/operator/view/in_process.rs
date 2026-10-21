@@ -25,6 +25,7 @@ use reifydb_value::{
 		system_columns::{RowTimes, is_system_field, row_numbers, row_times},
 		time::Time,
 		try_from::{FromValueError, TryFromValue},
+		value_type::field::from_field,
 	},
 };
 
@@ -408,13 +409,10 @@ impl<'a> ColumnsView for InProcessColumnsView<'a> {
 	}
 
 	fn dictionary_of(&self, name: &str) -> Result<Option<DictionaryId>, SdkError> {
-		Ok(self.columns.view(name)?.and_then(|view| match view.data {
-			ViewData::DictionaryId {
-				dictionary_id,
-				..
-			} => dictionary_id,
-			_ => None,
-		}))
+		let Some(view) = self.columns.view(name)? else {
+			return Ok(None);
+		};
+		Ok(from_field(view.field).map_err(|err| SdkError::InvalidInput(err.0.message))?.dictionary_id)
 	}
 
 	fn row_numbers(&self) -> &[RowNumber] {

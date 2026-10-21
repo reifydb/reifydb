@@ -12,13 +12,16 @@ use std::{
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
-	row::operator::state::{OperatorState, StateCodec},
+	row::{
+		operator::state::{OperatorState, StateCodec, decode},
+		pod::EncodedPodRow,
+	},
 };
 use reifydb_core::{
 	internal_err,
 	key::operator::{
 		keyspace::expiry::Expiry,
-		state::{GroupId, GroupStateKey, IntoGroupStateKey},
+		state::{GroupId, GroupStateKey, IntoGroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey},
 	},
 	metrics::heap::HeapSize,
 	state::timer::StateStore,
@@ -31,6 +34,7 @@ use crate::{
 		state::{
 			expiry::{ExpiryIndex, expiry_drop, rolling_expiry_key},
 			seal::coord::{Coord, IsZero},
+			sweep::sweep_all,
 		},
 		state_access::{get, get_classified, put, remove},
 	},
@@ -38,7 +42,7 @@ use crate::{
 		accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
 		engine::{
 			AccumulatorEvent, BatchMeta, BufferKey, EmitKind, GroupMeta, KeyspaceFamily, MetaSweep,
-			RunningKey, config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for,
+			PaneKey, RunningKey, config::WindowEngineConfig, group_hash, load_batch_meta, meta_key_for,
 			note_when_expiry_capped, persist_batch_meta,
 		},
 		span::{Slot, SlotSpan},
@@ -147,6 +151,8 @@ where
 	group_id: GroupId,
 	key: EncodedKey,
 	buffer: RollingBuffer<S, Accumulator>,
+	loaded: BTreeSet<S>,
+	dirty: BTreeSet<S>,
 	running: Accumulator,
 	buffer_changed: bool,
 	prior_min: Option<u64>,
@@ -216,6 +222,12 @@ where
 	}
 
 	pub fn new_runnable(config: WindowEngineConfig) -> Self {
+		reifydb_assertions! {
+			assert!(
+				matches!(config.family(), KeyspaceFamily::Host),
+				"a running rolling engine keeps its panes in host keyspaces only"
+			);
+		}
 		let mut engine = Self::new(config);
 		engine.runnable = true;
 		engine
@@ -753,6 +765,90 @@ where
 	RollingIndexEntry<G>: OperatorState,
 	RollingBuffer<S, Accumulator>: OperatorState,
 {
+	fn load_panes(
+		&self,
+		store: &mut dyn StateStore,
+		slots: &[(GroupId, EncodedKey)],
+	) -> Result<HashMap<(GroupId, EncodedKey), RollingBuffer<S, Accumulator>>> {
+		let mut panes: HashMap<(GroupId, EncodedKey), RollingBuffer<S, Accumulator>> =
+			slots.iter().map(|slot| (slot.clone(), RollingBuffer::new())).collect();
+		reifydb_assertions! {
+			assert_eq!(panes.len(), slots.len(), "a pane load names each group slot once");
+		}
+		if slots.is_empty() {
+			return Ok(panes);
+		}
+		let groups: Vec<GroupId> = slots.iter().map(|(group, _)| *group).collect();
+		for (key, row) in
+			sweep_all(store, &groups, KeyspaceMask::of([KeyspaceId::ROLLING_PANE, KeyspaceId::BUFFER]))?
+		{
+			if OperatorStateKey::decode_inner(key.as_encoded().as_bytes())
+				.is_some_and(|(_, keyspace, _)| keyspace == KeyspaceId::BUFFER)
+			{
+				return internal_err!(
+					"a running rolling group still holds a one-row buffer from before its panes"
+				);
+			}
+			let Some((group, slot, pane)) = PaneKey::decode(&key) else {
+				return internal_err!("a rolling pane row carries no pane order");
+			};
+			let Some(buffer) = panes.get_mut(&(group, EncodedKey::new(slot))) else {
+				continue;
+			};
+			buffer.insert(
+				S::from_order_key(<S::Coord as Coord>::from_order(pane)),
+				decode::<Accumulator>(&row)?,
+			);
+			store.state_classify(&key, Some(row.byte_size()));
+		}
+		Ok(panes)
+	}
+
+	#[allow(clippy::too_many_arguments)]
+	fn pane_writes(
+		store: &mut dyn StateStore,
+		group_id: GroupId,
+		key: &EncodedKey,
+		buffer: &RollingBuffer<S, Accumulator>,
+		loaded: &BTreeSet<S>,
+		dirty: &BTreeSet<S>,
+		sets: &mut Vec<(GroupStateKey, EncodedPodRow)>,
+		removes: &mut Vec<GroupStateKey>,
+	) -> Result<()> {
+		let pane_key = |slot: &S| {
+			(&PaneKey::new(group_id, key.clone(), slot.order_key().to_order())).into_group_state_key()
+		};
+		for slot in dirty {
+			if let Some(accumulator) = buffer.get(slot) {
+				let pane = pane_key(slot);
+				if !loaded.contains(slot) {
+					store.state_classify(&pane, None);
+				}
+				sets.push((pane, accumulator.encode_state()?));
+			}
+		}
+		for slot in loaded {
+			if !buffer.contains_key(slot) {
+				removes.push(pane_key(slot));
+			}
+		}
+		Ok(())
+	}
+
+	fn write_panes(
+		store: &mut dyn StateStore,
+		sets: Vec<(GroupStateKey, EncodedPodRow)>,
+		removes: Vec<GroupStateKey>,
+	) -> Result<()> {
+		if !sets.is_empty() {
+			store.state_set_many(sets)?;
+		}
+		if !removes.is_empty() {
+			store.state_remove_many(&removes)?;
+		}
+		Ok(())
+	}
+
 	fn load_running(
 		&mut self,
 		store: &mut dyn StateStore,
@@ -800,6 +896,13 @@ where
 		};
 		let mut meta_loaded = self.load_meta(store, &buckets)?;
 		let buffer_rows = self.resolve_buffer_rows(&buckets, &meta_loaded, &row_key)?;
+		let mut touched: Vec<G> = buckets.keys().map(|(group, _)| group.clone()).collect();
+		touched.dedup();
+		let slots: Vec<(GroupId, EncodedKey)> = touched
+			.iter()
+			.map(|group| buffer_rows.get(group).cloned().unwrap_or_else(|| row_key(group)))
+			.collect();
+		let mut panes = self.load_panes(store, &slots)?;
 
 		let mut group_slots: BTreeMap<G, RunnableGroupSlot<S, Accumulator>> = BTreeMap::new();
 		for ((group, slot), events) in buckets {
@@ -812,11 +915,8 @@ where
 						Some(resolved) => resolved.clone(),
 						None => row_key(&group),
 					};
-					let buffer: RollingBuffer<S, Accumulator> = get_classified(
-						store,
-						&BufferKey::new(self.family, group_id, key.clone()),
-					)?
-					.unwrap_or_default();
+					let buffer = panes.remove(&(group_id, key.clone())).unwrap_or_default();
+					let loaded: BTreeSet<S> = buffer.keys().copied().collect();
 					let old_frontier = frontier_for(self.lag, &meta.high_water());
 					let prior_min = coord_min_key(&buffer);
 					let merged_before = prior_min.is_some_and(|m| {
@@ -838,6 +938,8 @@ where
 							group_id,
 							key,
 							buffer,
+							loaded,
+							dirty: BTreeSet::new(),
 							running,
 							buffer_changed: false,
 							prior_min,
@@ -869,6 +971,7 @@ where
 			if !accumulator.is_empty() {
 				group_slot.buffer.insert(slot, accumulator);
 			}
+			group_slot.dirty.insert(slot);
 			if let Some(capacity) = capacity {
 				while group_slot.buffer.len() > capacity {
 					let Some((evicted_slot, evicted)) = group_slot.buffer.pop_first() else {
@@ -886,6 +989,8 @@ where
 
 		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
 		let mut pending: Vec<(G, Accumulator::Output, bool)> = Vec::new();
+		let mut pane_sets = Vec::new();
+		let mut pane_removes = Vec::new();
 		for (group, mut group_slot) in group_slots {
 			if !group_slot.buffer_changed {
 				continue;
@@ -947,18 +1052,16 @@ where
 			}) {
 				self.stranded.push((group_hash(&group)?, high_water.order_key().to_order()));
 			}
-			if group_slot.buffer.is_empty() {
-				remove(
-					store,
-					&BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
-				)?;
-			} else {
-				put(
-					store,
-					&BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
-					group_slot.buffer,
-				)?;
-			}
+			Self::pane_writes(
+				store,
+				group_slot.group_id,
+				&group_slot.key,
+				&group_slot.buffer,
+				&group_slot.loaded,
+				&group_slot.dirty,
+				&mut pane_sets,
+				&mut pane_removes,
+			)?;
 			if merged_any {
 				put(
 					store,
@@ -980,6 +1083,8 @@ where
 				pending.push((group, prior, true));
 			}
 		}
+
+		Self::write_panes(store, pane_sets, pane_removes)?;
 
 		let mut results: Vec<RollingResult<G, Accumulator::Output>> = Vec::with_capacity(pending.len());
 		let mut withdrawn_groups = Vec::new();
@@ -1034,6 +1139,13 @@ where
 		let due: Vec<(GroupStateKey, RollingIndexEntry<G>)> =
 			self.expiry.due(store, cutoff.order_key().to_order(), self.expire_batch)?;
 
+		let slots: Vec<(GroupId, EncodedKey)> =
+			due.iter().map(|(_, entry)| (entry.group_id, EncodedKey::new(&entry.slot_key))).collect();
+		let mut panes = self.load_panes(store, &slots)?;
+		let mut pane_sets = Vec::new();
+		let mut pane_removes = Vec::new();
+		let kept = BTreeSet::new();
+
 		let mut pairs: Vec<(GroupId, EncodedKey)> = Vec::new();
 		let mut pending: Vec<(G, Option<Accumulator::Output>)> = Vec::new();
 		for (index_key, entry) in due {
@@ -1047,9 +1159,8 @@ where
 				get::<_, GroupMeta<S>>(store, &meta_key_for(group_hash(&entry.group)?))?
 					.and_then(|meta| frontier_for::<S>(lag, &meta.high_water))
 			};
-			let mut buffer: RollingBuffer<S, Accumulator> =
-				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?
-					.unwrap_or_default();
+			let mut buffer = panes.remove(&(group_id, slot_key.clone())).unwrap_or_default();
+			let loaded: BTreeSet<S> = buffer.keys().copied().collect();
 			let expired: Vec<S> = buffer.range(..=cutoff).map(|(slot, _)| *slot).collect();
 			if expired.is_empty() {
 				if let Some(new) = coord_min_key(&buffer) {
@@ -1095,7 +1206,16 @@ where
 							group_id: entry.group_id,
 						},
 					)?;
-					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
+					Self::pane_writes(
+						store,
+						group_id,
+						&slot_key,
+						&buffer,
+						&loaded,
+						&kept,
+						&mut pane_sets,
+						&mut pane_removes,
+					)?;
 					put(store, &RunningKey::new(self.family, group_id, slot_key.clone()), running)?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, Some(value)));
@@ -1110,7 +1230,16 @@ where
 							group_id: entry.group_id,
 						},
 					)?;
-					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
+					Self::pane_writes(
+						store,
+						group_id,
+						&slot_key,
+						&buffer,
+						&loaded,
+						&kept,
+						&mut pane_sets,
+						&mut pane_removes,
+					)?;
 					remove(store, &RunningKey::new(self.family, group_id, slot_key.clone()))?;
 					if unmerged_any {
 						pairs.push((group_id, slot_key));
@@ -1118,13 +1247,23 @@ where
 					}
 				}
 				_ => {
-					remove(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?;
+					Self::pane_writes(
+						store,
+						group_id,
+						&slot_key,
+						&RollingBuffer::new(),
+						&loaded,
+						&kept,
+						&mut pane_sets,
+						&mut pane_removes,
+					)?;
 					remove(store, &RunningKey::new(self.family, group_id, slot_key.clone()))?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, None));
 				}
 			}
 		}
+		Self::write_panes(store, pane_sets, pane_removes)?;
 
 		self.expiry.settle(store)?;
 
@@ -1656,10 +1795,72 @@ mod tests {
 	}
 
 	#[test]
-	fn runnable_engine_bootstraps_running_from_recombine_coords() {
-		// The two paths share per-slot storage, so slots written by apply_evicting must fold into
-		// the running accumulator the first time the runnable path touches the group, on both the
-		// apply and the expiry path.
+	fn running_expiry_over_many_groups_reads_and_drops_their_panes_in_one_call_each() {
+		// A per-group pane read or a rewrite of each kept pane brings back the whole-buffer cost per expiry
+		// tick.
+		let mut store = MockStore::default();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		for group in 1..=3u32 {
+			buckets.insert((group, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
+			buckets.insert((group, at_millis(40)), vec![AccumulatorEvent::Add(7)]);
+		}
+		engine.apply_running(
+			&mut store,
+			buckets,
+			RollingEviction::Before(at_millis(0)),
+			row_key,
+			SumAccumulator::default,
+		)
+		.unwrap();
+		assert_eq!(store.pane_count(), 6, "precondition: each group holds two panes");
+		let before = |store: &MockStore| {
+			["group_sweep_many", "state_remove_many", "state_set_many"].map(|name| store.calls(name))
+		};
+		let [sweeps, removes, sets] = before(&store);
+
+		let expired = engine.expire_before_running(&mut store, at_millis(20)).unwrap();
+
+		let mut described = describe_expiries(&expired);
+		described.sort();
+		assert_eq!(
+			described,
+			vec![(1u32, Some(7i64)), (2, Some(7)), (3, Some(7))],
+			"precondition: all three groups were due"
+		);
+		assert_eq!(store.calls("group_sweep_many") - sweeps, 1, "one pane read for all due groups");
+		assert_eq!(store.calls("state_remove_many") - removes, 1, "every expired pane goes in one call");
+		assert_eq!(store.calls("state_set_many") - sets, 0, "a kept pane is never rewritten");
+		assert_eq!(store.pane_count(), 3, "each group keeps its pane at 40");
+	}
+
+	#[test]
+	fn a_pane_sweep_that_stops_before_the_end_of_its_groups_fails_the_apply() {
+		// Panes cut off by a short sweep read as absent and the group publishes totals without them.
+		let mut store = MockStore::default().with_incomplete_sweeps();
+		let mut engine = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config());
+		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
+		buckets.insert((1u32, at_millis(10)), vec![AccumulatorEvent::Add(5)]);
+		let applied = engine.apply_running(
+			&mut store,
+			buckets,
+			RollingEviction::Before(at_millis(0)),
+			row_key,
+			SumAccumulator::default,
+		);
+		let Err(err) = applied else {
+			panic!("apply must refuse a pane sweep that stopped early");
+		};
+		assert!(
+			err.to_string().contains("stopped before the end"),
+			"apply refused for the wrong reason: {err}"
+		);
+	}
+
+	#[test]
+	fn a_running_engine_refuses_a_group_that_still_holds_a_one_row_buffer() {
+		// A running engine that reads past a leftover blob restarts the group from empty panes and publishes
+		// wrong totals.
 		let mut store = MockStore::default();
 		let mut recombine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
@@ -1675,48 +1876,34 @@ mod tests {
 				sum_combine,
 			)
 			.unwrap();
+		assert_eq!(store.buffer_entry_count(), 1, "precondition: the group holds a one-row buffer");
 
 		let mut runnable = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((1u32, at_millis(30)), vec![AccumulatorEvent::Add(100)]);
-		let out = runnable
-			.apply_running(
-				&mut store,
-				buckets,
-				RollingEviction::Before(at_millis(0)),
-				row_key,
-				SumAccumulator::default,
-			)
-			.unwrap();
-		assert_eq!(
-			describe(&out),
-			vec![(1u32, EmitKind::Update, 112i64)],
-			"bootstrap must fold the pre-existing buffer into the running sum"
+		let applied = runnable.apply_running(
+			&mut store,
+			buckets,
+			RollingEviction::Before(at_millis(0)),
+			row_key,
+			SumAccumulator::default,
 		);
+		let Err(err) = applied else {
+			panic!("apply must refuse a group that still holds a one-row buffer");
+		};
+		assert!(err.to_string().contains("one-row buffer"), "apply refused for the wrong reason: {err}");
 
-		let expired = runnable.expire_before_running(&mut store, at_millis(20)).unwrap();
-		assert_eq!(
-			describe_expiries(&expired),
-			vec![(1u32, Some(100i64))],
-			"expiring the pre-fix coords must subtract exactly their contributions"
-		);
-
-		// A fresh runnable engine over the flushed state reads the persisted running entry back
-		// without bootstrapping, and drains to a terminal remove.
-		let mut reopened = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config());
-		let drained = reopened.expire_before_running(&mut store, past_every_coord()).unwrap();
-		assert_eq!(
-			describe_expiries(&drained),
-			vec![(1u32, None)],
-			"the last coord expiring must terminally remove"
-		);
+		let expired = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config())
+			.expire_before_running(&mut store, past_every_coord());
+		let Err(err) = expired else {
+			panic!("expiry must refuse a group that still holds a one-row buffer");
+		};
+		assert!(err.to_string().contains("one-row buffer"), "expiry refused for the wrong reason: {err}");
 	}
 
 	#[test]
 	fn per_coord_storage_leaves_nothing_behind_after_terminal_drain() {
-		// After every group expires no slot, running or expiry-index entry may remain. The two
-		// apply paths share per-slot storage, so a leak on either is the unbounded state growth
-		// this engine exists to prevent.
+		// a slot, running or expiry entry left on either apply path is unbounded state growth
 		let mut store = MockStore::default();
 		let mut recombine = RollingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
@@ -1738,28 +1925,32 @@ mod tests {
 			"the recombine path persists both coords in the group's buffer"
 		);
 
+		let mut runnable_store = MockStore::default();
 		let mut runnable = RollingEngine::<u32, DateTime, SumAccumulator>::new_runnable(test_config());
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();
 		buckets.insert((2u32, at_millis(30)), vec![AccumulatorEvent::Add(1)]);
-		buckets.insert((1u32, at_millis(30)), vec![AccumulatorEvent::Add(100)]);
+		buckets.insert((3u32, at_millis(30)), vec![AccumulatorEvent::Add(100)]);
 		runnable.apply_running(
-			&mut store,
+			&mut runnable_store,
 			buckets,
 			RollingEviction::Before(at_millis(0)),
 			row_key,
 			SumAccumulator::default,
 		)
 		.unwrap();
-		assert_eq!(store.buffer_coord_count::<SumAccumulator>(), 4, "every live coord is persisted");
-		assert_eq!(store.buffer_entry_count(), 2, "each live group persists one buffer entry");
-		assert_eq!(store.running_entry_count(), 2, "each live group persists one running entry");
+		assert_eq!(runnable_store.pane_count(), 2, "every live coord is persisted");
+		assert_eq!(runnable_store.running_entry_count(), 2, "each live group persists one running entry");
 
-		let drained = runnable.expire_before_running(&mut store, past_every_coord()).unwrap();
+		let drained = runnable.expire_before_running(&mut runnable_store, past_every_coord()).unwrap();
 		assert_eq!(drained.len(), 2, "both groups drain");
 		assert!(drained.iter().all(|e| matches!(e, RollingExpiry::Remove { .. })));
-		assert_eq!(store.buffer_entry_count(), 0, "terminal removal must delete the group's buffer entry");
-		assert_eq!(store.running_entry_count(), 0, "terminal removal must delete the running entry");
-		assert_eq!(store.index_entry_count(), 0, "terminal removal must delete the expiry index entry");
+		assert_eq!(runnable_store.pane_count(), 0, "terminal removal must delete every pane row of the group");
+		assert_eq!(runnable_store.running_entry_count(), 0, "terminal removal must delete the running entry");
+		assert_eq!(
+			runnable_store.index_entry_count(),
+			0,
+			"terminal removal must delete the expiry index entry"
+		);
 	}
 
 	#[test]
@@ -1944,7 +2135,7 @@ mod tests {
 			}
 		}
 		assert!(engine_visible.is_empty(), "the terminal drain must withdraw every visible row");
-		assert_eq!(store.buffer_entry_count(), 0, "the terminal drain must delete every buffer entry");
+		assert_eq!(store.pane_count(), 0, "the terminal drain must delete every pane row");
 		assert_eq!(store.running_entry_count(), 0, "the terminal drain must delete every running entry");
 		assert_eq!(store.index_entry_count(), 0, "the terminal drain must delete every index entry");
 	}
@@ -2011,11 +2202,7 @@ mod tests {
 			vec![(1u32, EmitKind::Remove, 12i64)],
 			"evicting every merged coord while coord 200 is still pending withdraws the row"
 		);
-		assert_eq!(
-			store.buffer_coord_count::<SumAccumulator>(),
-			1,
-			"the pending coord survives the withdrawal"
-		);
+		assert_eq!(store.pane_count(), 1, "the pending coord survives the withdrawal");
 		assert_eq!(store.running_entry_count(), 0, "a group with no merged coord persists no running entry");
 	}
 
@@ -2048,11 +2235,7 @@ mod tests {
 			vec![(1u32, None)],
 			"expiring the only merged coord withdraws the row"
 		);
-		assert_eq!(
-			store.buffer_coord_count::<SumAccumulator>(),
-			1,
-			"the pending coord 115 must survive the expiry"
-		);
+		assert_eq!(store.pane_count(), 1, "the pending coord 115 must survive the expiry");
 		assert_eq!(store.index_entry_count(), 1, "the group stays indexed at its pending coord");
 
 		let mut buckets: RollingBuckets<u32, DateTime, i64> = BTreeMap::new();

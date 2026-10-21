@@ -3,12 +3,13 @@
 
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	sync::OnceLock,
+	ops::Deref,
+	sync::{Arc, OnceLock},
 };
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
 	common::{ChangeVersion, CommitVersion},
@@ -146,8 +147,11 @@ impl CdcChange {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Cdc {
+#[derive(Debug, Clone)]
+pub struct Cdc(Arc<CdcRecord>);
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CdcRecord {
 	pub version: ChangeVersion,
 	pub timestamp: DateTime,
 
@@ -174,21 +178,41 @@ pub struct ObjectLift {
 
 impl Cdc {
 	pub fn new(version: ChangeVersion, timestamp: DateTime, changes: Vec<CdcChange>) -> Self {
-		Self {
+		Self(Arc::new(CdcRecord {
 			version,
 			timestamp,
 			changes,
 			changed_objects: OnceLock::new(),
 			lift: OnceLock::new(),
-		}
+		}))
 	}
 
 	pub fn changed_objects_with(&self, compute: impl FnOnce(&Cdc) -> BTreeSet<ObjectId>) -> &BTreeSet<ObjectId> {
-		self.changed_objects.get_or_init(|| compute(self))
+		self.0.changed_objects.get_or_init(|| compute(self))
 	}
 
 	pub fn lift_with(&self, build: impl FnOnce(&Cdc) -> CdcLift) -> &CdcLift {
-		self.lift.get_or_init(|| build(self))
+		self.0.lift.get_or_init(|| build(self))
+	}
+}
+
+impl Deref for Cdc {
+	type Target = CdcRecord;
+
+	fn deref(&self) -> &CdcRecord {
+		&self.0
+	}
+}
+
+impl Serialize for Cdc {
+	fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+		self.0.serialize(serializer)
+	}
+}
+
+impl<'de> Deserialize<'de> for Cdc {
+	fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		CdcRecord::deserialize(deserializer).map(|record| Self(Arc::new(record)))
 	}
 }
 

@@ -150,6 +150,69 @@ pub(super) extern "C" fn host_dictionary_find_many(
 	}
 }
 
+#[cfg_attr(not(test), unsafe(no_mangle))]
+pub(super) extern "C" fn host_dictionary_intern_many(
+	ctx: *mut ExternCContextRaw,
+	dictionary_id: u64,
+	values: *const ExternCBuffer,
+	n: usize,
+	ids_out: *mut u128,
+	id_width_out: *mut u8,
+) -> i32 {
+	if ctx.is_null() || id_width_out.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if n > 0 && (values.is_null() || ids_out.is_null()) {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+
+	// SAFETY: every pointer is null-checked above; the guest must pass back the ExternCContextRaw the host
+	// handed it for this call (discharging get_host_mut), `values` valid for `n` reads each naming `len`
+	// readable bytes, `ids_out` valid and aligned for `n` writes and `id_width_out` for one.
+	unsafe {
+		let (values, ids_out): (&[ExternCBuffer], &mut [u128]) = if n == 0 {
+			(&[], &mut [])
+		} else {
+			(from_raw_parts(values, n), from_raw_parts_mut(ids_out, n))
+		};
+		ids_out.fill(0);
+
+		let host = get_host_mut(&mut *ctx);
+		let Ok(dictionary) = host.dictionary(DictionaryId(dictionary_id)) else {
+			return EXTERN_C_ERROR_INTERNAL;
+		};
+		let Some(dictionary) = dictionary else {
+			return EXTERN_C_NOT_FOUND;
+		};
+		let Some(width) = id_width(&dictionary.id_type) else {
+			return EXTERN_C_ERROR_INTERNAL;
+		};
+		let Ok(decoded) = values
+			.iter()
+			.map(|buffer| {
+				if buffer.ptr.is_null() {
+					return decode_value(&[]);
+				}
+				decode_value(from_raw_parts(buffer.ptr, buffer.len))
+			})
+			.collect::<Result<Vec<_>, _>>()
+		else {
+			return EXTERN_C_ERROR_INTERNAL;
+		};
+		let Ok(interned) = host.dictionary_intern_many(&dictionary, &decoded) else {
+			return EXTERN_C_ERROR_INTERNAL;
+		};
+		if interned.len() != n {
+			return EXTERN_C_ERROR_INTERNAL;
+		}
+		for (slot, id) in interned.into_iter().enumerate() {
+			ids_out[slot] = id.to_u128();
+		}
+		*id_width_out = width;
+		EXTERN_C_OK
+	}
+}
+
 fn id_width(id_type: &ValueType) -> Option<u8> {
 	match id_type {
 		ValueType::Uint1 => Some(1),

@@ -1034,7 +1034,7 @@ mod commit_integration {
 		te.await_cdc();
 		let cdc =
 			engine.cdc_store().read(version).expect("read cdc").expect("the commit must write a cdc entry");
-		(counts, cdc.changes)
+		(counts, cdc.changes.clone())
 	}
 
 	fn delete(key: EncodedKey, tag: u8, visible: bool) -> CdcChange {

@@ -286,7 +286,7 @@ fn duplicate_write(
 			let got = config.store.read(CommitVersion(version)).unwrap();
 			let got = got.expect("a refused duplicate must leave the original readable");
 			assert_eq!(
-				(got.changes, got.timestamp.to_nanos()),
+				(got.changes.clone(), got.timestamp.to_nanos()),
 				(expected.changes, expected.timestamp),
 				"DUPLICATE overwrote the record it collided with: config={} step={step} version={version}",
 				config.name

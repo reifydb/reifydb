@@ -10,6 +10,7 @@ use std::{
 	io,
 	io::{BufRead, Write},
 	sync::Arc,
+	thread,
 };
 
 use reifydb_auth::{AuthVersion, registry::AuthenticationRegistry};
@@ -232,7 +233,13 @@ impl Bridge {
 
 impl Drop for Bridge {
 	fn drop(&mut self) {
-		self.flow_subsystem.shutdown();
+		if let Err(err) = self.flow_subsystem.shutdown() {
+			if thread::panicking() {
+				eprintln!("bridge shutdown failed during unwind: {err}");
+			} else {
+				panic!("bridge shutdown failed: {err}");
+			}
+		}
 	}
 }
 

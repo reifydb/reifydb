@@ -207,7 +207,9 @@ pub(super) struct DistinctState {
 
 	pub(super) layout: DistinctLayout,
 
-	pub(super) dirty: HashSet<Hash128>,
+	pub(super) dirty: HashSet<(Hash128, RowNumber)>,
+
+	pub(super) loaded: HashSet<(Hash128, RowNumber)>,
 
 	pub(super) layout_changed: bool,
 
@@ -220,6 +222,7 @@ impl Default for DistinctState {
 			entries: IndexMap::new(),
 			layout: DistinctLayout::new(),
 			dirty: HashSet::new(),
+			loaded: HashSet::new(),
 			layout_changed: false,
 			withdrawn: IndexSet::new(),
 		}
@@ -232,6 +235,7 @@ impl HeapSize for DistinctState {
 			+ self.entries.values().map(HeapSize::heap_size).sum::<usize>()
 			+ self.layout.heap_size()
 			+ self.dirty.heap_size()
+			+ self.loaded.heap_size()
 			+ self.withdrawn.capacity() * size_of::<GroupId>()
 	}
 }

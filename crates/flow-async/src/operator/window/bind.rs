@@ -97,18 +97,22 @@ impl WindowOperator {
 		self.meta_slot().load_session(store, group)
 	}
 
-	pub(super) fn stored_session_tracker(
+	pub(super) fn stored_session_trackers(
 		&mut self,
 		host: &mut dyn HostContext,
-		group_hash: Hash128,
-	) -> Result<Option<SessionTracker>> {
-		let group = self.partition_group(group_hash);
-		self.meta_slot().stored_session(host, group)
+		group_hashes: &[Hash128],
+	) -> Result<Vec<Option<SessionTracker>>> {
+		let groups: Vec<GroupId> = group_hashes.iter().map(|hash| self.partition_group(*hash)).collect();
+		self.meta_slot().stored_sessions(host, &groups)
 	}
 
-	pub(super) fn drop_session_tracker(&mut self, host: &mut dyn HostContext, group_hash: Hash128) -> Result<()> {
-		let group = self.partition_group(group_hash);
-		self.meta_slot().drop_session(host, group)
+	pub(super) fn drop_session_trackers(
+		&mut self,
+		host: &mut dyn HostContext,
+		group_hashes: &[Hash128],
+	) -> Result<()> {
+		let groups: Vec<GroupId> = group_hashes.iter().map(|hash| self.partition_group(*hash)).collect();
+		self.meta_slot().drop_sessions(host, &groups)
 	}
 
 	pub(super) fn save_session_tracker(

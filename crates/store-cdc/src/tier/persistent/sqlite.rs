@@ -11,7 +11,10 @@ use reifydb_codec::cdc;
 use reifydb_core::{
 	common::CommitVersion, error::diagnostic::internal::internal, event::metric::CdcEviction, interface::cdc::Cdc,
 };
-use reifydb_runtime::sync::mutex::{Mutex, MutexGuard};
+use reifydb_runtime::{
+	shutdown::ShutdownErrors,
+	sync::mutex::{Mutex, MutexGuard},
+};
 use reifydb_sqlite::{
 	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
@@ -331,11 +334,15 @@ impl SqliteCdcPersistent {
 	}
 
 	#[instrument(name = "store::cdc::persistent::shutdown", level = "debug", skip(self))]
-	pub fn shutdown(&self) {
+	pub fn shutdown(&self) -> Result<()> {
+		let mut errors = ShutdownErrors::new("cdc store");
 		let guard = self.inner.conn.lock();
-		if let Some(conn) = guard.as_ref() {
-			let _ = pragma::shutdown(conn);
+		if let Some(conn) = guard.as_ref()
+			&& let Err(err) = pragma::shutdown(conn)
+		{
+			errors.fail("sqlite close", err);
 		}
+		errors.finish()
 	}
 
 	fn load_one(&self, sql: &str, version: CommitVersion) -> Result<Option<Arc<Block>>> {
@@ -674,5 +681,14 @@ mod tests {
 			0,
 			"every block scan must reuse its prepared statement on the next call"
 		);
+	}
+
+	#[test]
+	fn a_failed_cdc_sqlite_close_fails_the_cdc_shutdown() {
+		// A close that drops the checkpoint error reports a clean shutdown with the WAL still holding writes.
+		let (tier, _guard) = SqliteCdcPersistent::in_memory();
+		tier.append_block(&block(1)).unwrap();
+		tier.inner.conn.lock().as_ref().expect("writer is open").execute_batch("BEGIN IMMEDIATE").unwrap();
+		assert!(tier.shutdown().is_err(), "an open write transaction must fail the checkpoint");
 	}
 }

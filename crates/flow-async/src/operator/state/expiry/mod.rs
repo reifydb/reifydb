@@ -282,6 +282,21 @@ where
 		expiry_set(store, key, entry)
 	}
 
+	pub(crate) fn set_many<E: OperatorState>(
+		&mut self,
+		store: &mut dyn StateStore,
+		rows: Vec<(GroupStateKey, E)>,
+	) -> Result<()> {
+		let mut encoded = Vec::with_capacity(rows.len());
+		for (key, entry) in rows {
+			let expiry = expiry_of::<K>(&key);
+			self.inserted = Some(self.inserted.map_or(expiry, |seen| seen.min(expiry)));
+			self.earliest = self.earliest.map(|earliest| earliest.min(expiry));
+			encoded.push((key, entry.encode_state()?));
+		}
+		store.state_set_many(encoded)
+	}
+
 	pub(crate) fn due<E: OperatorState>(
 		&mut self,
 		store: &mut dyn StateStore,

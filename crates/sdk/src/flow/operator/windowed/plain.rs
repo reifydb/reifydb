@@ -27,7 +27,7 @@ use reifydb_flow_async::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, KeyspaceFamily, PublishKey, WindowStateKey,
+			AccumulatorEvent, EmitKind, KeyspaceFamily, PublishKey, WindowReindex, WindowStateKey,
 			publish::PublishState,
 			rolling::{RollingBuckets, RollingBuffer, RollingEngine, RollingEviction},
 			session::{GuestSession, SessionEngine},
@@ -582,21 +582,23 @@ where
 		};
 
 		if seal_span.is_some() {
-			let mut store = GuestAsHost(ctx);
-			for r in &results {
-				if r.kind == EmitKind::Insert {
-					let (group, key) = group_of(&groups, &r.group, r.span.start);
-					engine.reindex_window(
-						&mut store,
-						&r.group,
-						r.span.start,
-						group,
-						&key,
-						None,
-						Some(r.span.start.to_order()),
-					)?;
-				}
-			}
+			let inserted: Vec<_> = results
+				.iter()
+				.filter(|r| r.kind == EmitKind::Insert)
+				.map(|r| (r, group_of(&groups, &r.group, r.span.start)))
+				.collect();
+			let entries: Vec<_> = inserted
+				.iter()
+				.map(|(r, (group, key))| WindowReindex {
+					group: &r.group,
+					window_start: r.span.start,
+					id: *group,
+					slot_key: key,
+					prior: None,
+					new: Some(r.span.start.to_order()),
+				})
+				.collect();
+			engine.reindex_windows(&mut GuestAsHost(ctx), &entries)?;
 		}
 
 		if results.is_empty() {
@@ -1145,22 +1147,35 @@ where
 		)?;
 
 		let mut records = Vec::new();
+		let mut moved = Vec::new();
 		for ((group, id), session) in &sessions {
 			if session.before == Some((session.start, session.last)) {
 				continue;
 			}
-			let (session_group, key) = group_of(&groups, group, <A::Coord as Coord>::from_order(*id));
+			let window_start = <A::Coord as Coord>::from_order(*id);
+			let (session_group, key) = group_of(&groups, group, window_start);
 			records.push((session_group, session.start, session.last));
-			mode.engine.reindex_session(
-				&mut store,
+			moved.push((
 				group,
-				*id,
+				window_start,
 				session_group,
-				&key,
+				key,
 				session.before.map(|(_, last)| last),
 				session.last,
-			)?;
+			));
 		}
+		let entries: Vec<_> = moved
+			.iter()
+			.map(|(group, window_start, session_group, key, prior, last)| WindowReindex {
+				group: *group,
+				window_start: *window_start,
+				id: *session_group,
+				slot_key: key,
+				prior: prior.map(Coord::to_order),
+				new: Some(last.to_order()),
+			})
+			.collect();
+		mode.engine.tumbling_mut().reindex_windows(&mut store, &entries)?;
 		let changed: Vec<(GroupId, GuestSession<A::Coord>)> = trackers
 			.values()
 			.filter(|(_, before, now)| before != now)

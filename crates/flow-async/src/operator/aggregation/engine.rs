@@ -30,7 +30,7 @@ use crate::{
 	},
 	window::{
 		engine::{
-			AccumulatorEvent, EmitKind, ExpiryAnchor,
+			AccumulatorEvent, EmitKind, ExpiryAnchor, WindowReindex,
 			config::WindowEngineConfig,
 			tumbling::{TumblingBuckets, TumblingEngine},
 		},
@@ -257,6 +257,8 @@ pub(crate) fn finish_tumbling_engine(
 			.collect(),
 	};
 	let mut store = Prefetched::read(host, keys)?;
+	let empty_key = store::empty_key();
+	let mut reindexed = Vec::with_capacity(arrival.len());
 	let mut spans = Vec::with_capacity(results.len());
 	for r in &results {
 		let group = group_of(groups, r.group, r.span.start.to_order());
@@ -271,30 +273,19 @@ pub(crate) fn finish_tumbling_engine(
 		};
 		let first = prior_first.into_iter().chain(batch_first).min();
 		match r.kind {
-			EmitKind::Remove => {
-				engine.reindex_window(
-					&mut store,
-					&r.group,
-					r.span.start,
-					group,
-					&store::empty_key(),
-					prior_index,
-					prior_index,
-				)?;
-			}
+			EmitKind::Remove => {}
 			EmitKind::Insert | EmitKind::Update => {
 				let batch_max = window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order());
 				let last_event_time = prior_last.max(batch_max);
 				let new_index = anchor.of(window_start, last_event_time);
-				engine.reindex_window(
-					&mut store,
-					&r.group,
-					r.span.start,
-					group,
-					&store::empty_key(),
-					prior_index,
-					new_index,
-				)?;
+				reindexed.push(WindowReindex {
+					group: &r.group,
+					window_start: r.span.start,
+					id: group,
+					slot_key: &empty_key,
+					prior: prior_index,
+					new: new_index,
+				});
 				let meta = EngineMeta {
 					last_event_time: last_event_time.unwrap_or_default(),
 					first_event_time: first.unwrap_or_default(),
@@ -378,21 +369,21 @@ pub(crate) fn finish_tumbling_engine(
 		let batch_max = window_max_ts.get(&(*hash, *span)).map(|ts| ts.to_order());
 		let last_event_time = prior_last.max(batch_max);
 		let new_index = anchor.of(window_start, last_event_time);
-		engine.reindex_window(
-			&mut store,
-			hash,
-			span.start,
-			group,
-			&store::empty_key(),
-			prior_index,
-			new_index,
-		)?;
+		reindexed.push(WindowReindex {
+			group: hash,
+			window_start: span.start,
+			id: group,
+			slot_key: &empty_key,
+			prior: prior_index,
+			new: new_index,
+		});
 		let meta = EngineMeta {
 			last_event_time: last_event_time.unwrap_or_default(),
 			first_event_time: first.unwrap_or_default(),
 		};
 		put(&mut store, &EngineMetaKey(group), meta)?;
 	}
+	engine.reindex_windows(&mut store, &reindexed)?;
 	store.write()?;
 	*core.tumbling_engine_slot() = Some(engine);
 

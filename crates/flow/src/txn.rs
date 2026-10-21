@@ -36,8 +36,10 @@ pub trait Resolve {
 	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>>;
 }
 
-pub trait Intern: Resolve {
+pub trait Find: Resolve {
 	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>>;
+}
 
+pub trait Intern: Find {
 	fn intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>>;
 }

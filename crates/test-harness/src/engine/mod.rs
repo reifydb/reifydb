@@ -6,7 +6,7 @@ use std::thread::sleep;
 #[cfg(not(reifydb_dst))]
 #[allow(clippy::disallowed_types)]
 use std::time::Duration as StdDuration;
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc, thread};
 
 use reifydb_auth::registry::AuthenticationRegistry;
 use reifydb_catalog::{
@@ -80,7 +80,13 @@ pub struct TestEngine {
 
 impl Drop for TestEngine {
 	fn drop(&mut self) {
-		self.engine.operator_state().shutdown();
+		if let Err(err) = self.engine.operator_state().shutdown() {
+			if thread::panicking() {
+				eprintln!("test engine shutdown failed during unwind: {err}");
+			} else {
+				panic!("test engine shutdown failed: {err}");
+			}
+		}
 	}
 }
 

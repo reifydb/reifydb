@@ -14,7 +14,7 @@ pub mod tumbling_retained;
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
-	key::{encode_u64_asc, encoded::EncodedKey},
+	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKey},
 	row::{
 		operator::state::{OperatorState, StateCodec, decode, encode},
 		pod::EncodedPodRow,
@@ -49,6 +49,15 @@ use crate::{
 	},
 	window::span::{Slot, WindowSpan},
 };
+
+pub struct WindowReindex<'a, G, S> {
+	pub group: &'a G,
+	pub window_start: S,
+	pub id: GroupId,
+	pub slot_key: &'a EncodedKey,
+	pub prior: Option<u64>,
+	pub new: Option<u64>,
+}
 
 pub enum AccumulatorEvent<Contribution> {
 	Add(Contribution),
@@ -317,6 +326,46 @@ impl IntoGroupStateKey for &RunningKey {
 			self.family.keyspace(KeyspaceId::RUNNING, KeyspaceId::GUEST_RUNNING),
 			self.family.suffix(&self.slot),
 		)
+	}
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct PaneKey {
+	pub group: GroupId,
+	pub slot: EncodedKey,
+	pub pane: u64,
+}
+
+impl PaneKey {
+	pub fn new(group: GroupId, slot: EncodedKey, pane: u64) -> Self {
+		Self {
+			group,
+			slot,
+			pane,
+		}
+	}
+
+	pub fn decode(key: &GroupStateKey) -> Option<(GroupId, &[u8], u64)> {
+		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_encoded().as_bytes())?;
+		if keyspace != KeyspaceId::ROLLING_PANE {
+			return None;
+		}
+		let (slot, pane) = suffix.split_at(suffix.len().checked_sub(8)?);
+		Some((group, slot, decode_u64_asc(pane.try_into().ok()?)))
+	}
+}
+
+impl HeapSize for PaneKey {
+	fn heap_size(&self) -> usize {
+		self.slot.heap_size()
+	}
+}
+
+impl IntoGroupStateKey for &PaneKey {
+	fn into_group_state_key(self) -> GroupStateKey {
+		let mut suffix = self.slot.as_bytes().to_vec();
+		suffix.extend_from_slice(&encode_u64_asc(self.pane));
+		OperatorStateKey::inner_encoded(self.group, KeyspaceId::ROLLING_PANE, suffix)
 	}
 }
 

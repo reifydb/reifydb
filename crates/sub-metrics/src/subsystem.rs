@@ -12,6 +12,7 @@ use std::{
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
+use reifydb_value::Result;
 use tracing::info;
 
 use crate::domains::{runtime::SampleReader, store::StoreReader};
@@ -56,8 +57,9 @@ impl HasVersion for MetricsSubsystem {
 }
 
 impl Shutdown for MetricsSubsystem {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
 		self.running.store(false, Ordering::SeqCst);
+		Ok(())
 	}
 }
 

@@ -21,14 +21,15 @@ use std::sync::{
 
 use reifydb_core::metrics::collect::MetricsCollector;
 use reifydb_runtime::{
-	shutdown::Shutdown,
+	shutdown::{Shutdown, ShutdownErrors},
 	sync::mutex::{Mutex, MutexGuard},
 };
 #[cfg(not(target_arch = "wasm32"))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::sqlite::{OpenMessages, open, pool::ReadPool};
+use reifydb_value::Result;
 use rusqlite::Connection;
-use tracing::{error, instrument};
+use tracing::instrument;
 
 use crate::persistent::sqlite::{registry::TableRegistry, schema::ensure_schema};
 
@@ -117,12 +118,14 @@ impl SqlitePersistent {
 }
 
 impl Shutdown for SqlitePersistent {
-	fn shutdown(&self) {
+	fn shutdown(&self) -> Result<()> {
+		let mut errors = ShutdownErrors::new("operator store");
 		self.inner.readers.shutdown();
 		if let Some(conn) = self.inner.conn.lock().take()
 			&& let Err((_, err)) = conn.close()
 		{
-			error!(error = %err, "operator state connection could not be closed");
+			errors.fail("sqlite close", err);
 		}
+		errors.finish()
 	}
 }

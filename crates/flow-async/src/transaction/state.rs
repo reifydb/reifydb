@@ -36,7 +36,10 @@ use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{Result, byte_size::ByteSize};
 use tracing::{Span, field, instrument};
 
-use crate::transaction::{FlowTransaction, read::flow_merge_pending_iterator, scope::scoped_key};
+use crate::{
+	error::FlowStateError,
+	transaction::{FlowTransaction, read::flow_merge_pending_iterator, scope::scoped_key},
+};
 
 const PENDING_LAST_PAGE: usize = 64;
 
@@ -283,21 +286,32 @@ pub trait StateExtension: FlowTransaction {
 			let range = group_inner_range(*group).with_prefix(prefix.clone());
 			self.pending().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 		}
-		let pending: Vec<(EncodedKey, PendingWrite)> = merged
-			.into_iter()
-			.filter(|(key, _)| {
-				key.as_slice()
-					.strip_prefix(prefix.as_slice())
-					.and_then(OperatorStateKey::decode_inner)
-					.is_some_and(|(_, keyspace, _)| keyspaces.holds(keyspace))
-			})
-			.collect();
+		let mut pending: Vec<(EncodedKey, PendingWrite)> = Vec::with_capacity(merged.len());
+		for (key, write) in merged {
+			let Some((_, keyspace, _)) = key
+				.as_slice()
+				.strip_prefix(prefix.as_slice())
+				.and_then(OperatorStateKey::decode_inner)
+				.filter(|(_, keyspace, _)| keyspace.is_known())
+			else {
+				return Err(FlowStateError::StateKeyUnframed {
+					operator: id,
+					key,
+				}
+				.into());
+			};
+			if keyspaces.holds(keyspace) {
+				pending.push((key, write));
+			}
+		}
 		let version = self.version();
-		let batch =
-			self.operator_store().group_page(id, &ordered, limit.saturating_add(1) as u64, keyspaces)?;
-		let truncated = batch.has_more;
-		let stored: Vec<Result<MultiVersionRow<TaggedKey>>> = batch
-			.items
+		let (page, truncated) = self.fetch_group_page(
+			id,
+			&ordered,
+			limit.saturating_add(pending.len()).saturating_add(1) as u64,
+			keyspaces,
+		)?;
+		let stored: Vec<Result<MultiVersionRow<TaggedKey>>> = page
 			.into_iter()
 			.map(|(inner, row)| {
 				let (group, keyspace, suffix) = OperatorStateKey::decode_inner(inner.as_slice())

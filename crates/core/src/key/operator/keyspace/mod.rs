@@ -36,13 +36,13 @@ use crate::{
 				},
 				root::{
 					CustomManaged, CustomUnmanaged, GateVisibility, GroupRowMapping,
-					GuestRowMapping, NodeCounter, SealLedger, SourceWatermark,
+					GuestRowMapping, NodeCounter, SealLedger, SourceWatermark, TakeRow,
 				},
 				timer::{TimerIndex, TimerWheel},
 				window::{
 					Accumulator, Buffer, Count, Emit, EngineMeta, GuestAccumulator, GuestBuffer,
-					GuestRetainedEntry, GuestRunning, GuestWindowPublish, RollingMeta, RowIndex,
-					Running, Session, SessionMember, WindowMeta,
+					GuestRetainedEntry, GuestRunning, GuestWindowPublish, RollingMeta, RollingPane,
+					RowIndex, Running, Session, SessionMember, WindowMeta,
 				},
 			},
 			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
@@ -212,6 +212,8 @@ catalogue!(
 	CustomManagedLatest,
 	LookupRead,
 	LookupReadByVersion,
+	RollingPane,
+	TakeRow,
 );
 
 #[derive(Clone, Debug)]
@@ -228,6 +230,7 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 
 		KeyspaceId::ACCUMULATOR
 		| KeyspaceId::BUFFER
+		| KeyspaceId::ROLLING_PANE
 		| KeyspaceId::RUNNING
 		| KeyspaceId::COUNT
 		| KeyspaceId::SESSION
@@ -260,6 +263,7 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::SEAL_LEDGER
 		| KeyspaceId::NODE_COUNTER
 		| KeyspaceId::GATE_VISIBILITY
+		| KeyspaceId::TAKE_ROW
 		| KeyspaceId::GROUP_ROW_MAPPING
 		| KeyspaceId::GUEST_ROW_MAPPING
 		| KeyspaceId::CUSTOM_UNMANAGED
@@ -495,7 +499,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 52, "the catalogue is forty nine keyspaces");
+		assert_eq!(seen.len(), 54, "a keyspace was added or removed without updating the catalogue size");
 	}
 
 	#[test]
@@ -515,16 +519,16 @@ mod tests {
 	}
 
 	#[test]
-	fn exactly_twenty_seven_of_the_forty_nine_keyspaces_are_group_scoped() {
+	fn the_group_scoped_keyspace_count_is_pinned() {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			52,
+			54,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(
 			group_scoped_keyspaces(),
-			28,
+			29,
 			"a keyspace changed group scope; confirm its key layout meant to"
 		);
 	}

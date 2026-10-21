@@ -26,7 +26,7 @@ use reifydb_value::{Result, reifydb_assertions};
 use crate::{
 	operator::{
 		state::{
-			expiry::{ExpiryIndex, expiry_drop, tumbling_expiry_key},
+			expiry::{ExpiryIndex, tumbling_expiry_key},
 			reaper::Reaper,
 		},
 		state_access::batch,
@@ -34,7 +34,7 @@ use crate::{
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, KeyspaceFamily, WindowResult, WindowStateKey,
+			AccumulatorEvent, EmitKind, KeyspaceFamily, WindowReindex, WindowResult, WindowStateKey,
 			config::WindowEngineConfig, group_hash, note_when_expiry_capped,
 		},
 		span::{WindowAnchor, WindowSpan},
@@ -117,37 +117,42 @@ where
 		self.dropped_retractions
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	pub fn reindex_window(
+	pub fn reindex_windows(
 		&mut self,
 		store: &mut dyn StateStore,
-		group: &G,
-		window_start: S,
-		id: GroupId,
-		slot_key: &EncodedKey,
-		prior: Option<u64>,
-		new: Option<u64>,
+		entries: &[WindowReindex<'_, G, S>],
 	) -> Result<()> {
-		if prior == new {
-			return Ok(());
-		}
-		let order = window_start.order_key().to_order();
-		if let Some(old) = prior {
-			expiry_drop(store, &tumbling_expiry_key(old, group_hash(group)?, order))?;
-			if self.earliest.is_some_and(|known| known.is_none_or(|earliest| old <= earliest)) {
-				self.earliest = None;
+		let mut drops = Vec::new();
+		let mut sets = Vec::new();
+		for entry in entries.iter().filter(|entry| entry.prior != entry.new) {
+			let owner = group_hash(entry.group)?;
+			let order = entry.window_start.order_key().to_order();
+			if let Some(old) = entry.prior {
+				drops.push(tumbling_expiry_key(old, owner, order));
+				if self.earliest.is_some_and(|known| known.is_none_or(|earliest| old <= earliest)) {
+					self.earliest = None;
+				}
+			}
+			if let Some(new) = entry.new {
+				sets.push((
+					tumbling_expiry_key(new, owner, order),
+					TumblingIndexEntry {
+						group: entry.group.clone(),
+						window_start: entry.window_start,
+						group_id: entry.id,
+						slot_key: entry.slot_key.as_bytes().to_vec(),
+					},
+				));
+				self.earliest = self
+					.earliest
+					.map(|known| Some(known.map_or(new, |earliest| earliest.min(new))));
 			}
 		}
-		if let Some(new) = new {
-			let entry = TumblingIndexEntry {
-				group: group.clone(),
-				window_start,
-				group_id: id,
-				slot_key: slot_key.as_bytes().to_vec(),
-			};
-			self.expiry.set(store, tumbling_expiry_key(new, group_hash(group)?, order), entry)?;
-			self.earliest =
-				self.earliest.map(|known| Some(known.map_or(new, |earliest| earliest.min(new))));
+		if !drops.is_empty() {
+			store.state_remove_many(&drops)?;
+		}
+		if !sets.is_empty() {
+			self.expiry.set_many(store, sets)?;
 		}
 		Ok(())
 	}
@@ -358,8 +363,16 @@ where
 	}
 
 	pub fn expire(&mut self, store: &mut dyn StateStore, threshold: u64) -> Result<Vec<ExpiredWindow<G, S>>> {
-		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> =
-			self.expiry.due(store, threshold, self.expire_batch)?;
+		self.expire_within(store, threshold, self.expire_batch)
+	}
+
+	pub fn expire_within(
+		&mut self,
+		store: &mut dyn StateStore,
+		threshold: u64,
+		budget: usize,
+	) -> Result<Vec<ExpiredWindow<G, S>>> {
+		let due: Vec<(GroupStateKey, TumblingIndexEntry<G, S>)> = self.expiry.due(store, threshold, budget)?;
 
 		let mut out: Vec<ExpiredWindow<G, S>> = Vec::with_capacity(due.len());
 		let mut index_keys: Vec<GroupStateKey> = Vec::with_capacity(due.len());
@@ -431,7 +444,7 @@ mod tests {
 		window::{
 			accumulator::{WindowAccumulator, mock::SumAccumulator},
 			engine::{
-				AccumulatorEvent, EmitKind, WindowResult,
+				AccumulatorEvent, EmitKind, WindowReindex, WindowResult,
 				config::WindowEngineConfig,
 				tumbling::{TumblingBuckets, TumblingEngine},
 			},
@@ -485,14 +498,16 @@ mod tests {
 		new: Option<u64>,
 	) -> Result<()> {
 		let mut engine = TumblingEngine::<u32, DateTime, SumAccumulator>::new(test_config());
-		engine.reindex_window(
+		engine.reindex_windows(
 			store,
-			group,
-			window_start,
-			slot_key(group, window_start).0,
-			&row_key(group, window_start),
-			prior,
-			new,
+			&[WindowReindex {
+				group,
+				window_start,
+				id: slot_key(group, window_start).0,
+				slot_key: &row_key(group, window_start),
+				prior,
+				new,
+			}],
 		)
 	}
 
@@ -585,14 +600,16 @@ mod tests {
 		let published = &results[0];
 		let (group, _) = group_slot(&published.group, published.span.start);
 		let (_, slot_key) = group_slot(&published.group, published.span.start);
-		engine.reindex_window(
+		engine.reindex_windows(
 			&mut store,
-			&published.group,
-			published.span.start,
-			group,
-			&slot_key,
-			None,
-			Some(10),
+			&[WindowReindex {
+				group: &published.group,
+				window_start: published.span.start,
+				id: group,
+				slot_key: &slot_key,
+				prior: None,
+				new: Some(10),
+			}],
 		)
 		.unwrap();
 

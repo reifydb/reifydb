@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+mod common;
+
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
@@ -17,6 +19,8 @@ use reifydb_routine_abi::registry::Routines;
 use reifydb_rql::expression::parse_expression;
 use reifydb_runtime::context::{RuntimeContext, clock::Clock};
 use reifydb_value::value::{column_view::ColumnView, datetime::DateTime, value_type::ValueType};
+
+use crate::common::NoDictionaries;
 
 fn filter(condition: &str) -> FilterOperator {
 	FilterOperator::new(
@@ -62,10 +66,10 @@ fn the_filter_drops_none_and_false_and_rejects_a_non_boolean() {
 	// None and false must drop a row, and between must answer per row over a nullable column.
 	let rows = batch(vec![factory::int4_optional("a", [Some(1), None, Some(5)])]).unwrap();
 
-	let out = filter("a between 2 and 10").apply(insert(rows.clone())).unwrap();
+	let out = filter("a between 2 and 10").apply(&mut NoDictionaries, insert(rows.clone())).unwrap();
 	assert_eq!(inserted(&out, "a"), vec!["5"]);
 
-	let error = filter("a").apply(insert(rows)).unwrap_err();
+	let error = filter("a").apply(&mut NoDictionaries, insert(rows)).unwrap_err();
 	assert_eq!(error.code, "INTERNAL_ERROR");
 }
 
@@ -75,8 +79,8 @@ fn a_type_mismatch_builds_the_filter_and_fails_every_apply_even_on_all_none() {
 	let mut operator = filter("a > 'x'");
 	let rows = batch(vec![factory::none_typed("a", ValueType::Int4, 2)]).unwrap();
 
-	let first = operator.apply(insert(rows.clone())).unwrap_err();
-	let second = operator.apply(insert(rows)).unwrap_err();
+	let first = operator.apply(&mut NoDictionaries, insert(rows.clone())).unwrap_err();
+	let second = operator.apply(&mut NoDictionaries, insert(rows)).unwrap_err();
 
 	assert_eq!(first, second);
 	assert!(first.code.starts_with("OPERATOR_02"), "{}", first.code);
@@ -88,7 +92,7 @@ fn an_empty_change_passes_a_broken_filter_without_an_error() {
 	let mut operator = filter("a > 'x'");
 	let rows = batch(vec![factory::int4("a", Vec::<i32>::new())]).unwrap();
 
-	let out = operator.apply(insert(rows)).unwrap();
+	let out = operator.apply(&mut NoDictionaries, insert(rows)).unwrap();
 
 	assert!(out.diffs.is_empty());
 }
@@ -100,6 +104,6 @@ fn a_later_batch_with_moved_columns_reads_the_right_column() {
 	let first = batch(vec![factory::int4("a", [2]), factory::int4("b", [0])]).unwrap();
 	let moved = batch(vec![factory::int4("b", [0, 5]), factory::int4("a", [5, 0])]).unwrap();
 
-	assert_eq!(inserted(&operator.apply(insert(first)).unwrap(), "a"), vec!["2"]);
-	assert_eq!(inserted(&operator.apply(insert(moved)).unwrap(), "a"), vec!["5"]);
+	assert_eq!(inserted(&operator.apply(&mut NoDictionaries, insert(first)).unwrap(), "a"), vec!["2"]);
+	assert_eq!(inserted(&operator.apply(&mut NoDictionaries, insert(moved)).unwrap(), "a"), vec!["5"]);
 }

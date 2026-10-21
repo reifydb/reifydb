@@ -65,7 +65,7 @@ mod tests {
 			 below a real inversion rather than a no-op"
 		);
 
-		t.inner().operator_state().shutdown();
+		t.inner().operator_state().shutdown().unwrap();
 
 		assert_eq!(
 			t.inner().consumer_watermark(),

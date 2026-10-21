@@ -55,9 +55,9 @@ impl Node {
 	pub fn apply<T: Get + Batch + Emit + Intern>(&mut self, txn: &mut T, change: Change) -> Result<Change> {
 		match self {
 			Node::Source(source) => Ok(source.apply(change)),
-			Node::Filter(filter) => filter.apply(decode_change(txn, change)?),
-			Node::Map(map) => map.apply(decode_change(txn, change)?),
-			Node::Extend(extend) => extend.apply(decode_change(txn, change)?),
+			Node::Filter(filter) => filter.apply(txn, change),
+			Node::Map(map) => map.apply(txn, change),
+			Node::Extend(extend) => extend.apply(txn, change),
 			Node::Append(append) => append.apply(change),
 			Node::Sort(sort) => Ok(sort.apply(change)),
 			Node::Sink(sink) => {

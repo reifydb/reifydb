@@ -1022,7 +1022,7 @@ mod tests {
 		write(&actor.commit, row_kind, &row_key, 1, "id=7");
 		write(&actor.commit, dict_kind, &dict_key, 1, "entry-7");
 
-		actor.persistent.shutdown();
+		actor.persistent.shutdown().unwrap();
 		actor.sweep(CommitVersion(2));
 
 		assert_eq!(
@@ -1063,7 +1063,7 @@ mod tests {
 	#[test]
 	fn persist_sweep_errors_when_storage_is_shut_down() {
 		let (persistent, _guard) = MultiPersistentTier::sqlite_in_memory();
-		persistent.shutdown();
+		persistent.shutdown().unwrap();
 
 		let kind = EntryKind::Source(StorageId::Table(TableId(32)), EntryLayout::Row);
 		let batches = vec![(CommitVersion(1), HashMap::from([(kind, vec![(ek("k"), Some(val("v")))])]))];
