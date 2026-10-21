@@ -3,16 +3,13 @@
 
 use std::collections::HashSet;
 
-use postcard::to_stdvec;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::{dictionary::Dictionary, object::ObjectId},
 		change::{Change, ChangeOrigin, Diff},
-		store::SingleVersionGet,
 	},
 	internal_error,
-	key::catalog::DictionaryEntryKey,
 	value::batch::single_row,
 };
 use reifydb_transaction::{
@@ -20,10 +17,7 @@ use reifydb_transaction::{
 	interceptor::{WithInterceptors, dictionary_row::DictionaryRowInterceptor},
 	transaction::{Transaction, admin::AdminTransaction, command::CommandTransaction},
 };
-use reifydb_value::{
-	util::hash::xxh3_128,
-	value::{Value, datetime::DateTime, dictionary::DictionaryEntryId},
-};
+use reifydb_value::value::{Value, datetime::DateTime, dictionary::DictionaryEntryId};
 use smallvec::smallvec;
 
 use crate::Result;
@@ -172,37 +166,12 @@ impl DictionaryOperations for Transaction<'_> {
 
 	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
 		match self {
-			Transaction::Command(cmd) => return cmd.find_in_dictionary(dictionary, value),
-			Transaction::Admin(admin) => return admin.find_in_dictionary(dictionary, value),
-			Transaction::Test(t) => return t.inner.find_in_dictionary(dictionary, value),
-			Transaction::Query(_) => {}
-		}
-
-		let value_bytes = to_stdvec(value).map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
-		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
-
-		let single = self
-			.single()
-			.ok_or_else(|| internal_error!("single-version store is not available for dictionary reads"))?;
-		let store = single.read_store();
-		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
-		match SingleVersionGet::get(&store, &entry_key)? {
-			Some(v) => {
-				if v.bytes.len() < 16 {
-					return Err(internal_error!(
-						"dictionary entry row is truncated: {} bytes",
-						v.bytes.len()
-					));
-				}
-				let mut id_bytes = [0u8; 16];
-				id_bytes.copy_from_slice(&v.bytes[..16]);
-				let entry_id = DictionaryEntryId::from_u128(
-					u128::from_be_bytes(id_bytes),
-					dictionary.id_type.clone(),
-				)?;
-				Ok(Some(entry_id))
+			Transaction::Command(cmd) => cmd.find_in_dictionary(dictionary, value),
+			Transaction::Admin(admin) => admin.find_in_dictionary(dictionary, value),
+			Transaction::Test(t) => t.inner.find_in_dictionary(dictionary, value),
+			Transaction::Query(_) => {
+				Err(internal_error!("Cannot find in a dictionary during a query transaction"))
 			}
-			None => Ok(None),
 		}
 	}
 
@@ -212,13 +181,13 @@ impl DictionaryOperations for Transaction<'_> {
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
 		match self {
-			Transaction::Command(cmd) => return cmd.find_many_in_dictionary(dictionary, values),
-			Transaction::Admin(admin) => return admin.find_many_in_dictionary(dictionary, values),
-			Transaction::Test(t) => return t.inner.find_many_in_dictionary(dictionary, values),
-			Transaction::Query(_) => {}
+			Transaction::Command(cmd) => cmd.find_many_in_dictionary(dictionary, values),
+			Transaction::Admin(admin) => admin.find_many_in_dictionary(dictionary, values),
+			Transaction::Test(t) => t.inner.find_many_in_dictionary(dictionary, values),
+			Transaction::Query(_) => {
+				Err(internal_error!("Cannot find in a dictionary during a query transaction"))
+			}
 		}
-
-		values.iter().map(|value| self.find_in_dictionary(dictionary, value)).collect()
 	}
 }
 
@@ -379,6 +348,23 @@ pub mod tests {
 		let id = txn.intern_values(&dict, vec![Value::Utf8("test".to_string())]).unwrap()[0];
 		assert_eq!(id, DictionaryEntryId::U4(1));
 		assert_eq!(id.id_type(), ValueType::Uint4);
+	}
+
+	#[test]
+	fn a_find_in_a_query_transaction_fails_instead_of_answering_an_unchecked_id() {
+		// The query read trusted the hash alone, so a collision would answer another value's id.
+		let mut txn = create_test_admin_transaction();
+		let dict = test_dictionary();
+		let value = Value::Utf8("a".to_string());
+		txn.intern_values(&dict, vec![value.clone()]).unwrap();
+		let mut query = QueryTransaction::new(
+			txn.multi.begin_query().unwrap(),
+			txn.single.clone(),
+			IdentityId::system(),
+		);
+
+		assert!(Transaction::Query(&mut query).find_in_dictionary(&dict, &value).is_err());
+		assert!(Transaction::Query(&mut query).find_many_in_dictionary(&dict, &[value]).is_err());
 	}
 
 	#[test]
