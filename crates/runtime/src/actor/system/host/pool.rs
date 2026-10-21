@@ -7,6 +7,7 @@ use std::{
 		Arc,
 		atomic::{AtomicU8, Ordering, fence},
 	},
+	thread,
 };
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError as CcTryRecvError, bounded};
@@ -43,7 +44,7 @@ struct ActorCell<A: Actor> {
 	cancel: CancellationToken,
 	schedule_state: AtomicU8,
 	completion_tx: Sender<()>,
-	done_tx: Sender<()>,
+	done_tx: Sender<Result<(), String>>,
 	schedule: Schedule,
 	batch_size: usize,
 }
@@ -79,6 +80,10 @@ where
 		);
 	}
 
+	let _crash = CrashSignal {
+		done_tx: &cell.done_tx,
+		name: &cell.name,
+	};
 	let mut guard = match lock_state_or_bail(&cell) {
 		Some(guard) => guard,
 		None => return,
@@ -93,6 +98,19 @@ where
 	let flow = process_message_batch(&cell, state, rx);
 
 	dispatch_directive(&cell, guard, flow);
+}
+
+struct CrashSignal<'a> {
+	done_tx: &'a Sender<Result<(), String>>,
+	name: &'a str,
+}
+
+impl Drop for CrashSignal<'_> {
+	fn drop(&mut self) {
+		if thread::panicking() {
+			let _ = self.done_tx.try_send(Err(self.name.to_string()));
+		}
+	}
 }
 
 #[inline]
@@ -175,7 +193,7 @@ fn dispatch_directive<A: Actor>(
 			*guard = CellState::Stopped;
 			cell.schedule_state.store(IDLE, Ordering::Release);
 			let _ = cell.completion_tx.send(());
-			let _ = cell.done_tx.send(());
+			let _ = cell.done_tx.send(Ok(()));
 		}
 		Directive::Park => {
 			cell.schedule_state.store(IDLE, Ordering::Release);

@@ -39,7 +39,7 @@ struct ActorSystemInner {
 	pools: Pools,
 	wakers: Mutex<Vec<Arc<dyn Fn() + Send + Sync>>>,
 	keepalive: Mutex<Vec<Box<dyn Any + Send + Sync>>>,
-	done_rxs: Mutex<Vec<Receiver<()>>>,
+	done_rxs: Mutex<Vec<Receiver<Result<(), String>>>>,
 	children: Mutex<Vec<ActorSystem>>,
 }
 
@@ -140,7 +140,7 @@ impl ActorSystem {
 		self.inner.keepalive.lock().push(cell);
 	}
 
-	pub(crate) fn register_done_rx(&self, rx: Receiver<()>) {
+	pub(crate) fn register_done_rx(&self, rx: Receiver<Result<(), String>>) {
 		self.inner.done_rxs.lock().push(rx);
 	}
 
@@ -155,7 +155,10 @@ impl ActorSystem {
 		for rx in rxs {
 			let remaining = deadline.saturating_duration_since(time::Instant::now());
 			match rx.recv_timeout(remaining) {
-				Ok(()) => {}
+				Ok(Ok(())) => {}
+				Ok(Err(name)) => {
+					return Err(JoinError::new(format!("actor {name} panicked")));
+				}
 				Err(CcRecvTimeoutError::Disconnected) => {}
 				Err(CcRecvTimeoutError::Timeout) => {
 					return Err(JoinError::new("timed out waiting for actors to stop"));
@@ -519,5 +522,54 @@ mod tests {
 			Some(7),
 			"without its own batch size the actor must yield after the flow pool default of 8: {pooled:?}"
 		);
+	}
+
+	struct PanicActor;
+
+	impl Actor for PanicActor {
+		type State = ();
+		type Message = sync::mpsc::Sender<()>;
+
+		fn init(&self, _ctx: &Context<Self::Message>) -> Self::State {}
+
+		fn handle(
+			&self,
+			_state: &mut Self::State,
+			reached: Self::Message,
+			_ctx: &Context<Self::Message>,
+		) -> Directive {
+			let _ = reached.send(());
+			panic!("a pool actor crashed while handling a message");
+		}
+	}
+
+	#[test]
+	fn a_pool_actor_that_panics_fails_the_join_instead_of_passing_shutdown_as_clean() {
+		// A join that reads a dropped done signal as a clean stop hides a crashed actor behind a clean
+		// shutdown.
+		let system = test_system();
+		let crashed = system.spawn_flow("crashed", PanicActor);
+		let (reached_tx, reached_rx) = sync::mpsc::channel();
+		crashed.actor_ref().send(reached_tx).unwrap();
+		reached_rx.recv().unwrap();
+
+		system.shutdown();
+
+		assert!(system.join().is_err(), "a crashed pool actor must fail the join");
+	}
+
+	#[test]
+	fn a_pool_actor_that_panics_fails_its_handle_join_after_shutdown() {
+		// Subsystems join each actor handle on shutdown; a crashed actor read as joined would report a clean
+		// stop.
+		let system = test_system();
+		let crashed = system.spawn_flow("crashed", PanicActor);
+		let (reached_tx, reached_rx) = sync::mpsc::channel();
+		crashed.actor_ref().send(reached_tx).unwrap();
+		reached_rx.recv().unwrap();
+
+		system.shutdown();
+
+		assert!(crashed.join().is_err(), "a crashed pool actor must fail its handle join");
 	}
 }
