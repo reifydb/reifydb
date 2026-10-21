@@ -4,19 +4,17 @@
 use std::collections::BTreeMap;
 
 use reifydb_core::{
-	common::CommitVersion,
 	flow::dag::FlowDag,
 	interface::catalog::{
 		flow::{FlowId, OperatorId},
 		object::ObjectId,
 	},
 };
-use reifydb_flow::txn::Intern;
 use reifydb_value::{Result, value::datetime::DateTime};
 
 use crate::{
 	engine::FlowEngineInner,
-	operator::{BoxedHostOperator, host::TxnHostContext, state::seal::rule::seal_horizon},
+	operator::{BoxedHostOperator, state::seal::rule::seal_horizon},
 	transaction::{FlowTransaction, watermark::SourceWatermarks},
 };
 
@@ -66,29 +64,6 @@ impl FlowEngineInner {
 			});
 		}
 		Ok(held)
-	}
-
-	pub fn oldest_read_version<T: FlowTransaction + Intern>(
-		&self,
-		txn: &mut T,
-		flow_id: FlowId,
-	) -> Result<Option<CommitVersion>> {
-		let Some(flow) = self.flows.get(&flow_id) else {
-			return Ok(None);
-		};
-
-		let mut oldest: Option<CommitVersion> = None;
-		for operator_id in flow.topological_order() {
-			let Some(operator) = self.operators.get(&(flow_id, *operator_id)) else {
-				continue;
-			};
-			let mut host = TxnHostContext::new(txn, *operator_id);
-			let Some(version) = operator.oldest_read_version(&mut host)? else {
-				continue;
-			};
-			oldest = Some(oldest.map_or(version, |current| current.min(version)));
-		}
-		Ok(oldest)
 	}
 }
 

@@ -318,8 +318,6 @@ impl KeyspaceId {
 
 	pub const SESSION_MEMBER: Self = Self(0x2B);
 
-	pub const LOOKUP_READ_BY_VERSION: Self = Self(0x2C);
-
 	pub const ROLLING_PANE: Self = Self(0x2D);
 
 	pub const TAKE_ROW: Self = Self(0x2E);
@@ -379,7 +377,6 @@ impl KeyspaceId {
 			Self::GUEST_RETAINED_ENTRY => "GUEST_RETAINED_ENTRY",
 			Self::LOOKUP_READ => "LOOKUP_READ",
 			Self::SESSION_MEMBER => "SESSION_MEMBER",
-			Self::LOOKUP_READ_BY_VERSION => "LOOKUP_READ_BY_VERSION",
 			Self::ROLLING_PANE => "ROLLING_PANE",
 			Self::TAKE_ROW => "TAKE_ROW",
 			Self::RINGBUFFER_NEXT_ROW => "RINGBUFFER_NEXT_ROW",
@@ -1020,7 +1017,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 55] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 54] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -1072,7 +1069,6 @@ mod tests {
 		("GUEST_RETAINED_ENTRY", KeyspaceId::GUEST_RETAINED_ENTRY, Phase::Data, true),
 		("LOOKUP_READ", KeyspaceId::LOOKUP_READ, Phase::Data, true),
 		("SESSION_MEMBER", KeyspaceId::SESSION_MEMBER, Phase::Data, true),
-		("LOOKUP_READ_BY_VERSION", KeyspaceId::LOOKUP_READ_BY_VERSION, Phase::Data, true),
 		("ROLLING_PANE", KeyspaceId::ROLLING_PANE, Phase::Data, true),
 		("TAKE_ROW", KeyspaceId::TAKE_ROW, Phase::Data, true),
 		("RINGBUFFER_NEXT_ROW", KeyspaceId::RINGBUFFER_NEXT_ROW, Phase::Data, true),

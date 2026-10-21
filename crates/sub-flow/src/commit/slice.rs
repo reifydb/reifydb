@@ -74,26 +74,6 @@ impl SliceComputer {
 		}
 	}
 
-	pub fn oldest_read(
-		&self,
-		flow_engine: &mut FlowEngineInner,
-		flow_id: FlowId,
-		state_version: CommitVersion,
-	) -> Result<Option<CommitVersion>> {
-		let mut txn = DeferredTransaction::new(DeferredParams {
-			version: state_version,
-			pending: Pending::new(),
-			query: None,
-			state_query: None,
-			catalog: self.engine.catalog(),
-			interceptors: self.engine.create_interceptors(),
-			clock: self.engine.clock().clone(),
-			substrate: flow_engine.substrate().clone(),
-			lookup: self.lookup.clone(),
-		});
-		flow_engine.oldest_read_version(&mut txn, flow_id)
-	}
-
 	#[allow(clippy::too_many_arguments)]
 	#[instrument(name = "flow::slice::compute_pulled", level = "trace", skip_all, fields(item_count = items.len()))]
 	pub fn compute_pulled(

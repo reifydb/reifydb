@@ -1,33 +1,48 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::{HashMap, HashSet},
-	ops::Bound,
-};
+use std::collections::{HashMap, HashSet};
 
 use reifydb_codec::row::{
-	operator::state::{OperatorState, decode},
+	bytes::EncodedBytes,
+	operator::state::{decode, encode},
 	pod::EncodedPodRow,
 };
 use reifydb_core::{
-	common::CommitVersion,
 	internal_err,
 	key::{
 		operator::{
-			keyspace::lookup::{LookupRead, LookupReadByVersion, LookupReadByVersionKey, LookupReadKey},
-			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, OperatorStateKey},
+			keyspace::lookup::{LookupRead, LookupReadKey},
+			state::{GroupId, GroupStateKey},
 		},
 		typed::direction::Asc,
 	},
-	state::{
-		batch::StateBatch,
-		typed::{SuffixBytes, typed_key},
-	},
+	state::{batch::StateBatch, typed::typed_key},
 };
-use reifydb_value::{Result, value::row_number::RowNumber};
+use reifydb_macro::operator_state;
+use reifydb_value::{Result, util::cowvec::CowVec, value::row_number::RowNumber};
 
-use crate::operator::host::HostContext;
+use crate::{error::FlowStateError, operator::host::HostContext};
+
+#[operator_state]
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct StoredRead {
+	pub(crate) output: RowNumber,
+	pub(crate) right: Option<(RowNumber, Vec<u8>)>,
+}
+
+impl StoredRead {
+	pub(crate) fn new(output: RowNumber, right: Option<&(RowNumber, EncodedBytes)>) -> Self {
+		Self {
+			output,
+			right: right.map(|(number, bytes)| (*number, bytes.as_ref().to_vec())),
+		}
+	}
+
+	pub(crate) fn right(&self) -> Option<(RowNumber, EncodedBytes)> {
+		self.right.as_ref().map(|(number, bytes)| (*number, EncodedBytes(CowVec::new(bytes.clone()))))
+	}
+}
 
 pub(crate) fn read_key(row: RowNumber) -> GroupStateKey {
 	typed_key::<LookupRead>(
@@ -38,20 +53,10 @@ pub(crate) fn read_key(row: RowNumber) -> GroupStateKey {
 	)
 }
 
-pub(crate) fn read_by_version_key(version: CommitVersion, row: RowNumber) -> GroupStateKey {
-	typed_key::<LookupReadByVersion>(
-		GroupId::ROOT,
-		&LookupReadByVersionKey {
-			version: Asc(version.0),
-			row: Asc(row),
-		},
-	)
-}
-
 pub(crate) struct ReadLedger {
 	rows: Vec<RowNumber>,
-	initial: HashMap<RowNumber, Option<(CommitVersion, RowNumber)>>,
-	current: HashMap<RowNumber, Option<(CommitVersion, RowNumber)>>,
+	initial: HashMap<RowNumber, Option<StoredRead>>,
+	current: HashMap<RowNumber, Option<StoredRead>>,
 }
 
 impl ReadLedger {
@@ -72,20 +77,16 @@ impl ReadLedger {
 		})
 	}
 
-	pub(crate) fn held(&self, row: RowNumber) -> Option<CommitVersion> {
-		self.initial.get(&row).copied().flatten().map(|(version, _)| version)
-	}
-
-	pub(crate) fn take(&mut self, row: RowNumber) -> Result<Option<(CommitVersion, RowNumber)>> {
+	pub(crate) fn take(&mut self, row: RowNumber) -> Result<Option<StoredRead>> {
 		Ok(self.slot(row)?.take())
 	}
 
-	pub(crate) fn store(&mut self, row: RowNumber, version: CommitVersion, output: RowNumber) -> Result<()> {
-		*self.slot(row)? = Some((version, output));
+	pub(crate) fn store(&mut self, row: RowNumber, read: StoredRead) -> Result<()> {
+		*self.slot(row)? = Some(read);
 		Ok(())
 	}
 
-	fn slot(&mut self, row: RowNumber) -> Result<&mut Option<(CommitVersion, RowNumber)>> {
+	fn slot(&mut self, row: RowNumber) -> Result<&mut Option<StoredRead>> {
 		match self.current.get_mut(&row) {
 			Some(slot) => Ok(slot),
 			None => internal_err!("lookup row {} changed its read without reading it first", row.value()),
@@ -96,29 +97,16 @@ impl ReadLedger {
 		if self.rows.is_empty() {
 			return Ok(());
 		}
-		let mut writes: Vec<(GroupStateKey, Option<EncodedPodRow>, Option<EncodedPodRow>)> = Vec::new();
+		let mut keys = Vec::with_capacity(self.rows.len());
+		let mut befores = Vec::with_capacity(self.rows.len());
+		let mut afters = Vec::with_capacity(self.rows.len());
 		for row in &self.rows {
-			let before = self.initial[row];
-			let after = self.current[row];
-			writes.push((
-				read_key(*row),
-				before.map(encode_read).transpose()?,
-				after.map(encode_read).transpose()?,
-			));
-			let held = before.map(|(version, _)| version);
-			let kept = after.map(|(version, _)| version);
-			if let Some(version) = held {
-				let stays = (kept == Some(version)).then(marker);
-				writes.push((read_by_version_key(version, *row), Some(marker()), stays));
-			}
-			if let Some(version) = kept.filter(|version| held != Some(*version)) {
-				writes.push((read_by_version_key(version, *row), None, Some(marker())));
-			}
+			keys.push(read_key(*row));
+			befores.push(self.initial[row].as_ref().map(encode_read).transpose()?);
+			afters.push(self.current[row].as_ref().map(encode_read).transpose()?);
 		}
-		let (keys, values): (Vec<_>, Vec<_>) =
-			writes.iter().map(|(key, before, _)| (key.clone(), before.clone())).unzip();
-		let mut batch = StateBatch::from_parts(keys, values, vec![None; writes.len()])?;
-		for (slot, (_, _, after)) in writes.into_iter().enumerate() {
+		let mut batch = StateBatch::from_parts(keys, befores, vec![None; self.rows.len()])?;
+		for (slot, after) in afters.into_iter().enumerate() {
 			match after {
 				Some(row) => batch.set(slot, row),
 				None => batch.remove(slot),
@@ -128,36 +116,22 @@ impl ReadLedger {
 	}
 }
 
-fn marker() -> EncodedPodRow {
-	EncodedPodRow::new(&[])
+fn encode_read(read: &StoredRead) -> Result<EncodedPodRow> {
+	encode(read).map_err(|e| {
+		FlowStateError::Encode {
+			state: "LookupRead",
+			cause: e.to_string(),
+		}
+		.into()
+	})
 }
 
-fn encode_read((version, output): (CommitVersion, RowNumber)) -> Result<EncodedPodRow> {
-	Ok((version.0, output.0).encode_state()?)
-}
-
-pub(crate) fn decode_read(stored: &EncodedPodRow) -> Result<(CommitVersion, RowNumber)> {
-	let (version, output) = decode::<(u64, u64)>(stored)?;
-	Ok((CommitVersion(version), RowNumber(output)))
-}
-
-pub(crate) fn oldest_read(host: &mut dyn HostContext) -> Result<Option<CommitVersion>> {
-	let first = host.state_range_limited(
-		GroupStateRange::Keyspace {
-			group: GroupId::ROOT,
-			keyspace: KeyspaceId::LOOKUP_READ_BY_VERSION,
-			start: Bound::Unbounded,
-			end: Bound::Unbounded,
-		},
-		Some(1),
-	)?;
-	let Some((key, _)) = first.into_iter().next() else {
-		return Ok(None);
-	};
-	let Some(suffix) = OperatorStateKey::decode_inner(key.as_slice())
-		.and_then(|(_, _, suffix)| LookupReadByVersionKey::from_suffix_bytes(suffix))
-	else {
-		return internal_err!("lookup read-by-version key {:?} does not decode", key.as_slice());
-	};
-	Ok(Some(CommitVersion(suffix.version.0)))
+pub(crate) fn decode_read(stored: &EncodedPodRow) -> Result<StoredRead> {
+	decode(stored).map_err(|e| {
+		FlowStateError::Decode {
+			state: "LookupRead",
+			cause: e.to_string(),
+		}
+		.into()
+	})
 }

@@ -364,6 +364,39 @@ fn a_dictionary_partitioned_table_matches_on_both_keys_and_a_miss_does_not_grow_
 }
 
 #[test]
+fn a_lookup_keyed_on_an_extend_computed_over_dictionary_columns_registers_and_matches() {
+	// Without the computed key typed as its decoded value, registration rejects the lookup and the view stays
+	// empty.
+	let db = memory_db();
+	db.admin("CREATE NAMESPACE app");
+	db.admin("CREATE DICTIONARY app::tokens FOR utf8 AS uint4");
+	db.admin(
+		"CREATE TABLE app::price { k: utf8 with { dictionary: app::tokens }, v: int8 } WITH { partition: { by: { k } } }",
+	);
+	db.admin(
+		"CREATE TABLE app::level { id: int4, a: utf8 with { dictionary: app::tokens }, b: Option(utf8) with { dictionary: app::tokens }, at: datetime } \
+		 WITH { time: event(at) }",
+	);
+	db.admin("CREATE DEFERRED VIEW app::cost { id: int4, usd: Option(int8) } AS { \
+		 FROM app::level \
+		 EXTEND { k: if is::none(b) { a } else { b } } \
+		 LEFT LOOKUP { FROM app::price } AS p USING (k, p.k) \
+		 MAP { id, usd: p_v } }");
+	db.command("INSERT app::price [{ k: 'x', v: 5 }, { k: 'y', v: 7 }]");
+
+	db.command(&format!(r#"INSERT app::level [{{ id: 1, a: 'x', b: none, at: "{T0}" }}]"#));
+	db.command(&format!(r#"INSERT app::level [{{ id: 2, a: 'x', b: 'y', at: "{T0}" }}]"#));
+	db.command(&format!(r#"INSERT app::level [{{ id: 3, a: 'x', b: 'nope', at: "{T0}" }}]"#));
+	settle(&db);
+
+	assert_eq!(
+		cost_rows(&db),
+		vec![(1, Some(5)), (2, Some(7)), (3, None)],
+		"the computed key must pick b when present, else a, and match by value across the dictionary"
+	);
+}
+
+#[test]
 fn a_lagging_producer_holds_the_lookup_then_the_price_its_commit_made_comes_out() {
 	// S5 and LT3 view form: reading at S finds nothing and at latest finds 20, so only the MD25 read gives 10.
 	let db = memory_db();
@@ -488,7 +521,7 @@ fn force_gc_and_flush(db: &TestDb) -> CommitVersion {
 
 #[test]
 fn a_retraction_after_gc_and_flush_equals_the_published_row() {
-	// LT9 (MD29): without the lease holding the read version through GC and flush the retraction must drift.
+	// LT9 (MD29): even after GC and flush past the published read, the retraction must carry the published price.
 	let (config, _guard) = SqliteConfig::in_memory();
 	let db = TestDb::from(
 		embedded::sqlite(config)
@@ -516,10 +549,7 @@ fn a_retraction_after_gc_and_flush_equals_the_published_row() {
 	assert_eq!(total(&db), Some(25), "row 2 reads the newest price, 15");
 
 	let cutoff = force_gc_and_flush(&db);
-	assert!(
-		cutoff <= published,
-		"the gc cutoff {cutoff:?} must be held at or below the read of row 1 ({published:?})"
-	);
+	assert!(cutoff > published, "precondition: gc ran past the read of row 1, got {cutoff:?} vs {published:?}");
 
 	db.command("DELETE app::level FILTER { id == 1 }");
 	settle(&db);

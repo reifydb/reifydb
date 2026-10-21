@@ -53,7 +53,7 @@ use reifydb_value::{
 use super::{
 	expiry::LookupExpiry,
 	partition::{DictionaryMemo, PartitionLookup, RowKey},
-	store::{ReadLedger, oldest_read},
+	store::{ReadLedger, StoredRead},
 };
 use crate::{
 	operator::{
@@ -104,7 +104,6 @@ struct ChangeReads {
 }
 
 struct Resolved {
-	version: CommitVersion,
 	right: Option<(RowNumber, EncodedBytes)>,
 }
 
@@ -325,30 +324,15 @@ impl LookupOperator {
 		&self,
 		host: &dyn HostContext,
 		reads: &mut ChangeReads,
-		ledger: &ReadLedger,
-		pre: (&[RowNumber], &[RowKey]),
-		post: Option<(&[RowNumber], &[RowKey], SourceVersion)>,
-		count: usize,
+		keys: &[RowKey],
+		source: SourceVersion,
 	) -> Vec<(Partition, CommitVersion)> {
-		let mut touched = HashSet::new();
-		let mut wanted = Vec::new();
-		for left_idx in 0..count {
-			if let Some(&row) = pre.0.get(left_idx)
-				&& touched.insert(row) && let (Some(version), Some(RowKey::Found(partition))) =
-				(ledger.held(row), pre.1.get(left_idx))
-			{
-				wanted.push((*partition, version));
-			}
-			if let Some((rows, keys, source)) = post {
-				if let Some(RowKey::Found(partition)) = keys.get(left_idx) {
-					wanted.push((*partition, self.read_version(host, source, reads)));
-				}
-				if let Some(&row) = rows.get(left_idx) {
-					touched.insert(row);
-				}
-			}
-		}
-		wanted
+		keys.iter()
+			.filter_map(|key| match key {
+				RowKey::Found(partition) => Some((*partition, self.read_version(host, source, reads))),
+				_ => None,
+			})
+			.collect()
 	}
 
 	fn resolve(
@@ -368,7 +352,6 @@ impl LookupOperator {
 			return Ok(None);
 		}
 		Ok(Some(Resolved {
-			version,
 			right,
 		}))
 	}
@@ -384,40 +367,27 @@ impl LookupOperator {
 		resolved: Resolved,
 		output: &mut Output,
 	) -> Result<Published> {
+		ledger.store(row_number, StoredRead::new(output_id, resolved.right.as_ref()))?;
 		let published = output.published(left_idx, output_id, resolved.right);
-		ledger.store(row_number, resolved.version, output_id)?;
 		if let Some(at) = times.get(left_idx).copied().flatten() {
 			output.armed.push((row_number, at));
 		}
 		Ok(published)
 	}
 
-	#[allow(clippy::too_many_arguments)]
 	fn undo(
 		&self,
-		host: &mut dyn HostContext,
-		partitions: &PartitionLookup,
-		reads: &mut ChangeReads,
 		ledger: &mut ReadLedger,
 		pre: &RecordBatch,
 		left_idx: usize,
-		key: &RowKey,
 		output: &mut Output,
 	) -> Result<Option<(Published, RowNumber)>> {
 		let row_number = require_row_numbers(pre)?[left_idx];
-		let Some((version, output_id)) = ledger.take(row_number)? else {
+		let Some(read) = ledger.take(row_number)? else {
 			return Ok(None);
 		};
 		output.cleared.push(row_number);
-		let right = self.read_right(host, partitions, reads, key, version)?;
-		if right.is_none() && self.config.join_type == JoinType::Inner {
-			return internal_err!(
-				"inner lookup published left row {} at version {} but the right row is gone at that version",
-				row_number.value(),
-				version.0
-			);
-		}
-		Ok(Some((output.published(left_idx, output_id, right), output_id)))
+		Ok(Some((output.published(left_idx, read.output, read.right()), read.output)))
 	}
 
 	fn apply_insert(
@@ -473,20 +443,13 @@ impl LookupOperator {
 		&mut self,
 		host: &mut dyn HostContext,
 		pre: &RecordBatch,
-		reads: &mut ChangeReads,
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
-		let partitions = PartitionLookup::new(&self.config.columns, &self.config.partition_by);
-		let keys = self.key_values(host, &partitions, reads, pre)?;
 		let builder = self.builder(pre.schema_ref());
 		let mut ledger = ReadLedger::read(host, row_numbers(pre)?.iter().copied())?;
-		let wanted = self.wanted(host, reads, &ledger, (row_numbers(pre)?, &keys), None, keys.len());
-		self.prefetch(host, reads, wanted)?;
 		let mut output = Output::default();
-		for (left_idx, key) in keys.iter().enumerate() {
-			if let Some((published, _)) =
-				self.undo(host, &partitions, reads, &mut ledger, pre, left_idx, key, &mut output)?
-			{
+		for left_idx in 0..pre.num_rows() {
+			if let Some((published, _)) = self.undo(&mut ledger, pre, left_idx, &mut output)? {
 				output.remove(published);
 			}
 		}
@@ -504,34 +467,17 @@ impl LookupOperator {
 		result: &mut Vec<Diff>,
 	) -> Result<()> {
 		let partitions = PartitionLookup::new(&self.config.columns, &self.config.partition_by);
-		let pre_keys = self.key_values(host, &partitions, reads, pre)?;
 		let post_keys = self.key_values(host, &partitions, reads, post)?;
 		let pre_builder = self.builder(pre.schema_ref());
 		let post_builder = self.builder(post.schema_ref());
 		let times = row_times(post)?;
 		let mut reserve = RowNumberReserve::default();
 		let mut ledger = ReadLedger::read(host, row_numbers(pre)?.iter().chain(row_numbers(post)?).copied())?;
-		let wanted = self.wanted(
-			host,
-			reads,
-			&ledger,
-			(row_numbers(pre)?, &pre_keys),
-			Some((row_numbers(post)?, &post_keys, source)),
-			post.num_rows(),
-		);
+		let wanted = self.wanted(host, reads, &post_keys, source);
 		self.prefetch(host, reads, wanted)?;
 		let mut output = Output::default();
 		for left_idx in 0..post.num_rows() {
-			let undone = self.undo(
-				host,
-				&partitions,
-				reads,
-				&mut ledger,
-				pre,
-				left_idx,
-				pre_keys.get(left_idx).unwrap_or(&RowKey::Missing),
-				&mut output,
-			)?;
+			let undone = self.undo(&mut ledger, pre, left_idx, &mut output)?;
 			let published = match self.resolve(
 				host,
 				&partitions,
@@ -714,7 +660,7 @@ impl HostOperator for LookupOperator {
 				Diff::Remove {
 					pre,
 					..
-				} => self.apply_remove(host, &pre, &mut reads, &mut result)?,
+				} => self.apply_remove(host, &pre, &mut result)?,
 				Diff::Update {
 					pre,
 					post,
@@ -739,10 +685,6 @@ impl HostOperator for LookupOperator {
 
 	fn output_schema(&self) -> Option<SchemaRef> {
 		Some(self.builder(&self.config.left_schema).schema(&self.config.left_schema, &self.config.right_schema))
-	}
-
-	fn oldest_read_version(&self, host: &mut dyn HostContext) -> Result<Option<CommitVersion>> {
-		oldest_read(host)
 	}
 }
 
@@ -793,7 +735,7 @@ mod tests {
 	use crate::{
 		operator::{
 			host::TxnHostContext,
-			lookup::store::{decode_read, read_key},
+			lookup::store::{StoredRead, decode_read, read_key},
 			sink::DurableSink,
 		},
 		timer::extension::TimerExtension,
@@ -933,7 +875,7 @@ mod tests {
 		);
 	}
 
-	fn stored_read(txn: &mut DeferredTransaction, row: u64) -> Option<(CommitVersion, RowNumber)> {
+	fn stored_read(txn: &mut DeferredTransaction, row: u64) -> Option<StoredRead> {
 		let stored = TxnHostContext::new(txn, OperatorId(OP))
 			.state_get(from_ref(&read_key(RowNumber(row))))
 			.unwrap()
@@ -942,16 +884,12 @@ mod tests {
 		stored.map(|stored| decode_read(&stored).unwrap())
 	}
 
-	fn stored(txn: &mut DeferredTransaction, row: u64) -> Option<CommitVersion> {
-		stored_read(txn, row).map(|(version, _)| version)
-	}
-
 	fn stored_output(txn: &mut DeferredTransaction, row: u64) -> RowNumber {
-		stored_read(txn, row).unwrap_or_else(|| panic!("row {row} has no stored read")).1
+		stored_read(txn, row).unwrap_or_else(|| panic!("row {row} has no stored read")).output
 	}
 
-	fn oldest(op: &LookupOperator, txn: &mut DeferredTransaction) -> Option<CommitVersion> {
-		op.oldest_read_version(&mut TxnHostContext::new(txn, OperatorId(OP))).unwrap()
+	fn stores_a_right_row(txn: &mut DeferredTransaction, row: u64) -> bool {
+		stored_read(txn, row).is_some_and(|read| read.right.is_some())
 	}
 
 	fn cell(columns: &RecordBatch, name: &str, row: usize) -> Value {
@@ -1144,7 +1082,7 @@ mod tests {
 			&[RowNumber(7)],
 			"the output id is minted, not the input's"
 		);
-		assert_eq!(stored(&mut txn, 7), Some(version), "MD28: the read version is stored per published row");
+		assert!(stores_a_right_row(&mut txn, 7), "MD28: the published right row is stored per published row");
 	}
 
 	#[test]
@@ -1160,9 +1098,8 @@ mod tests {
 			run(&mut op, &mut txn, version, Diff::insert(rows(&[Some("zz"), None], &[7, 8], at_millis(5))));
 
 		assert!(out.is_empty(), "no output for an unmatched or none key, got {out:?}");
-		assert_eq!(stored(&mut txn, 7), None);
-		assert_eq!(stored(&mut txn, 8), None);
-		assert_eq!(oldest(&op, &mut txn), None, "nothing stored, so nothing holds GC");
+		assert_eq!(stored_read(&mut txn, 7), None);
+		assert_eq!(stored_read(&mut txn, 8), None);
 	}
 
 	#[test]
@@ -1185,8 +1122,14 @@ mod tests {
 		assert_eq!(cell(&published, "lk", 0), Value::Utf8("zz".to_string()));
 		assert!(matches!(cell(&published, "r_v", 0), Value::None { .. }), "right columns are none");
 		assert!(matches!(cell(&published, "r_k", 1), Value::None { .. }));
-		assert_eq!(stored(&mut txn, 7), Some(version));
-		assert_eq!(stored(&mut txn, 8), Some(version));
+		assert!(
+			stored_read(&mut txn, 7).is_some_and(|read| read.right.is_none()),
+			"no right row to keep for 7"
+		);
+		assert!(
+			stored_read(&mut txn, 8).is_some_and(|read| read.right.is_none()),
+			"no right row to keep for 8"
+		);
 
 		let retracted = only_remove(&run(
 			&mut op,
@@ -1195,12 +1138,12 @@ mod tests {
 			Diff::remove(rows(&[Some("zz"), None], &[7, 8], at_millis(5))),
 		));
 		assert_eq!(retracted, published, "the retraction is exactly the published rows");
-		assert_eq!(stored(&mut txn, 7), None, "the undo deletes the stored version");
+		assert_eq!(stored_read(&mut txn, 7), None, "the undo deletes the stored read");
 	}
 
 	#[test]
 	fn a_retraction_after_the_right_row_changed_returns_the_published_row() {
-		// The undo must re-read at the stored version, otherwise it retracts a row never sent.
+		// The undo must retract the stored published row, otherwise it retracts a row never sent.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
 		let first = put_right(&engine, "a", 10);
@@ -1233,8 +1176,8 @@ mod tests {
 		));
 
 		assert_eq!(retracted, published, "the retraction must equal the published row, not the newest");
-		assert_eq!(stored(&mut txn, 7), None);
-		assert_eq!(oldest(&op, &mut txn), Some(second), "only row 8's read remains");
+		assert_eq!(stored_read(&mut txn, 7), None);
+		assert!(stores_a_right_row(&mut txn, 8), "only row 8's read remains");
 	}
 
 	#[test]
@@ -1275,7 +1218,7 @@ mod tests {
 		);
 		let removed = only_remove(&out);
 		assert_eq!(cell(&removed, "r_v", 0), Value::Int4(30), "an inner update to no match is a remove");
-		assert_eq!(stored(&mut txn, 7), None);
+		assert_eq!(stored_read(&mut txn, 7), None);
 	}
 
 	#[test]
@@ -1404,28 +1347,8 @@ mod tests {
 	}
 
 	#[test]
-	fn oldest_read_version_is_the_lowest_live_read() {
-		// MD30 input: the lease must sit at the oldest read any live left row can still need.
-		let engine = TestEngine::new();
-		let table = right_table(&engine, false);
-		let first = put_right(&engine, "a", 10);
-		let mut op = lookup(&table, JoinType::Inner, None);
-		let mut txn = txn_at(&engine, first);
-		run(&mut op, &mut txn, first, Diff::insert(rows(&[Some("a")], &[7], at_millis(5))));
-		commit(&engine, &mut txn);
-		let second = put_right(&engine, "a", 11);
-		let mut txn2 = txn_at(&engine, second);
-		run(&mut op, &mut txn2, second, Diff::insert(rows(&[Some("a")], &[8], at_millis(6))));
-
-		assert_eq!(oldest(&op, &mut txn2), Some(first));
-		run(&mut op, &mut txn2, second, Diff::remove(rows(&[Some("a")], &[7], at_millis(5))));
-		assert_eq!(oldest(&op, &mut txn2), Some(second), "the floor moves up once the oldest row is undone");
-	}
-
-	#[test]
-	#[should_panic(expected = "below the held lease floor")]
-	fn an_undo_below_the_held_lease_panics() {
-		// LT10 (MD31, IP1): a read version below the lease may be collected, so reading it must not be silent.
+	fn an_undo_below_the_held_lease_retracts_the_stored_row() {
+		// An undo needs no stored version, so a lease past the published read must still retract it exactly.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
 		let first = put_right(&engine, "a", 10);
@@ -1440,12 +1363,22 @@ mod tests {
 			versions: Arc::new(NoProducer),
 			floor: second,
 		});
-		run(&mut op, &mut txn, second, Diff::remove(rows(&[Some("a")], &[7], at_millis(5))));
+		let retracted = only_remove(&run(
+			&mut op,
+			&mut txn,
+			second,
+			Diff::remove(rows(&[Some("a")], &[7], at_millis(5))),
+		));
+		assert_eq!(
+			cell(&retracted, "r_v", 0),
+			Value::Int4(10),
+			"the retraction is the published row, not the newest"
+		);
 	}
 
 	#[test]
 	fn an_expired_left_row_frees_its_read_version() {
-		// LT11 at operator level: without the expiry the stored version pins the lease forever (MR9).
+		// LT11 at operator level: without the expiry the stored read of a transient row is kept forever.
 		let engine = TestEngine::new();
 		let table = right_table(&engine, false);
 		let version = put_right(&engine, "a", 10);
@@ -1453,7 +1386,6 @@ mod tests {
 		let mut txn = txn_at(&engine, version);
 		run(&mut op, &mut txn, version, Diff::insert(rows(&[Some("a")], &[7], at_millis(5_000))));
 		run(&mut op, &mut txn, version, Diff::insert(rows(&[Some("a")], &[8], at_millis(30_000))));
-		assert_eq!(oldest(&op, &mut txn), Some(version));
 
 		let timer = Timer {
 			due: at_millis(20_000),
@@ -1464,8 +1396,8 @@ mod tests {
 		let emitted = op.on_timer(&mut TxnHostContext::new(&mut txn, OperatorId(OP)), timer).unwrap();
 
 		assert!(emitted.is_none(), "an expiry emits nothing");
-		assert_eq!(stored(&mut txn, 7), None, "row 7 is past event time + retention and is freed");
-		assert_eq!(stored(&mut txn, 8), Some(version), "row 8 outlives the fire");
+		assert_eq!(stored_read(&mut txn, 7), None, "row 7 is past event time + retention and is freed");
+		assert!(stores_a_right_row(&mut txn, 8), "row 8 outlives the fire");
 		let out = run(&mut op, &mut txn, version, Diff::remove(rows(&[Some("a")], &[7], at_millis(5_000))));
 		assert!(out.is_empty(), "an expired row has nothing left to retract");
 	}
@@ -1488,7 +1420,7 @@ mod tests {
 		));
 
 		assert_eq!(cell(&out, "r_v", 0), Value::Int4(10), "reading at the step version would give 11");
-		assert_eq!(stored(&mut txn, 7), Some(first), "the undo must re-read at the source it published at");
+		assert!(stores_a_right_row(&mut txn, 7), "the source version's right row is kept for the undo");
 	}
 
 	#[test]
@@ -1513,7 +1445,7 @@ mod tests {
 		));
 
 		assert_eq!(cell(&out, "r_v", 0), Value::Int4(11));
-		assert_eq!(stored(&mut txn, 7), Some(second));
+		assert!(stores_a_right_row(&mut txn, 7));
 	}
 
 	#[test]

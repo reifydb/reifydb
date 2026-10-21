@@ -7,13 +7,12 @@ use arrow_arith::aggregate::max;
 use arrow_array::{Array, ArrayRef, RecordBatch, TimestampNanosecondArray, types::TimestampNanosecondType};
 #[cfg(feature = "runtime")]
 use arrow_schema::SchemaRef;
+use reifydb_core::{interface::change::Change, internal_err};
 #[cfg(feature = "runtime")]
 use reifydb_core::{
-	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::OperatorSample,
 };
-use reifydb_core::{interface::change::Change, internal_err};
 #[cfg(feature = "runtime")]
 use reifydb_value::value::{container::temporal_array::datetimes, duration::Duration};
 use reifydb_value::{
@@ -127,10 +126,6 @@ pub trait HostOperator: Send {
 
 	fn output_schema(&self) -> Option<SchemaRef> {
 		None
-	}
-
-	fn oldest_read_version(&self, _host: &mut dyn HostContext) -> Result<Option<CommitVersion>> {
-		Ok(None)
 	}
 }
 

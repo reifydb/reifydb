@@ -116,23 +116,29 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_map(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		let input = first_input(inputs)?;
+		let parent_schema = self.parent_schema(flow_id, input)?;
+		let decoded_schema = self.decoded_parent_schema(txn, flow_id, input)?;
 		self.operators.insert(
 			(flow_id, operator_id),
-			Box::new(MapOperator::new(
-				parent_schema,
-				operator_id,
-				expressions,
-				self.routines.clone(),
-				self.runtime_context.clone(),
-				Arc::clone(ctx),
-			)?),
+			Box::new(
+				MapOperator::new(
+					parent_schema,
+					operator_id,
+					expressions,
+					self.routines.clone(),
+					self.runtime_context.clone(),
+					Arc::clone(ctx),
+				)?
+				.with_decoded_schema(decoded_schema),
+			),
 		);
 		Ok(())
 	}
@@ -140,23 +146,29 @@ impl FlowEngineInner {
 	#[inline]
 	pub(super) fn add_extend(
 		&mut self,
+		txn: &mut Transaction<'_>,
 		flow_id: FlowId,
 		operator_id: OperatorId,
 		inputs: &[OperatorId],
 		expressions: Vec<Expression>,
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
-		let parent_schema = self.parent_schema(flow_id, first_input(inputs)?)?;
+		let input = first_input(inputs)?;
+		let parent_schema = self.parent_schema(flow_id, input)?;
+		let decoded_schema = self.decoded_parent_schema(txn, flow_id, input)?;
 		self.operators.insert(
 			(flow_id, operator_id),
-			Box::new(ExtendOperator::new(
-				parent_schema,
-				operator_id,
-				expressions,
-				self.routines.clone(),
-				self.runtime_context.clone(),
-				Arc::clone(ctx),
-			)?),
+			Box::new(
+				ExtendOperator::new(
+					parent_schema,
+					operator_id,
+					expressions,
+					self.routines.clone(),
+					self.runtime_context.clone(),
+					Arc::clone(ctx),
+				)?
+				.with_decoded_schema(decoded_schema),
+			),
 		);
 		Ok(())
 	}

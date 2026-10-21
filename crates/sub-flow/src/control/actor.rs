@@ -261,22 +261,11 @@ impl FlowActor {
 		}))
 	}
 
-	fn move_lookup_lease(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
+	fn move_lookup_lease(&self, state: &mut FlowActorState) {
 		let Some(held) = state.lookup_lease.as_ref().map(VersionLeaseGuard::version) else {
 			return;
 		};
-		let oldest = match self.lookup_computer(state).oldest_read(
-			&mut state.flow_engine,
-			self.flow_id,
-			state.cursor,
-		) {
-			Ok(oldest) => oldest,
-			Err(e) => {
-				self.retry_or_poison(state, ctx, format!("lookup oldest read version failed: {e}"));
-				return;
-			}
-		};
-		let target = oldest.map_or(state.cursor, |oldest| oldest.min(state.cursor));
+		let target = state.cursor;
 		if target <= held {
 			return;
 		}
@@ -703,7 +692,7 @@ impl FlowActor {
 				for hold in holds {
 					self.substrate.frontiers.publish(hold.object, hold.frontier, advance_to);
 				}
-				self.move_lookup_lease(state, ctx);
+				self.move_lookup_lease(state);
 				self.publish_position(advance_to);
 				if more {
 					let _ = ctx.self_ref().send(FlowActorMessage::Drain);
@@ -874,7 +863,7 @@ impl FlowActor {
 				state.cursor = advance_to;
 				state.durable_cursor = advance_to;
 				state.last_checkpoint_at = self.clock.now();
-				self.move_lookup_lease(state, ctx);
+				self.move_lookup_lease(state);
 				self.publish_position(advance_to);
 				self.resume_after_commit(state, ctx, more);
 			}
@@ -890,7 +879,7 @@ impl FlowActor {
 		match result {
 			Ok(()) => {
 				state.retry_count = 0;
-				self.move_lookup_lease(state, ctx);
+				self.move_lookup_lease(state);
 				self.resume_after_commit(state, ctx, false);
 			}
 			Err(e) => {

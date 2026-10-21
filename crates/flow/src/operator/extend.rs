@@ -35,6 +35,7 @@ use crate::{
 
 pub struct ExtendOperator {
 	parent_schema: Option<SchemaRef>,
+	decoded_schema: Option<SchemaRef>,
 	operator: OperatorId,
 	expressions: BoundExpressions,
 	labels: Vec<String>,
@@ -59,6 +60,7 @@ impl ExtendOperator {
 
 		Ok(Self {
 			parent_schema,
+			decoded_schema: None,
 			operator,
 			expressions: BoundExpressions::new(expressions, true, "extend"),
 			labels,
@@ -68,10 +70,16 @@ impl ExtendOperator {
 		})
 	}
 
+	pub fn with_decoded_schema(mut self, decoded_schema: Option<SchemaRef>) -> Self {
+		self.decoded_schema = decoded_schema;
+		self
+	}
+
 	pub fn output_schema(&self) -> Option<SchemaRef> {
 		let parent = self.parent_schema.as_ref()?;
 		let mut fields: Vec<FieldRef> = parent.fields().iter().cloned().collect();
-		let ctx = schema_context(Some(parent), &self.routines, &self.runtime_context, &self.ctx);
+		let typing = self.decoded_schema.as_ref().unwrap_or(parent);
+		let ctx = schema_context(Some(typing), &self.routines, &self.runtime_context, &self.ctx);
 		fields.extend(self.expressions.expressions().iter().map(|expr| {
 			schema_column(Some(parent), expr, &LoweredExpr::new(expr.clone(), "extend"), &ctx)
 		}));

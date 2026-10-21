@@ -28,7 +28,7 @@ use crate::{
 					JoinRowExpiryState, JoinRowExpirySuffix, JoinRowMapping, JoinSchema,
 					join_expiry_due_key,
 				},
-				lookup::{LookupRead, LookupReadByVersion},
+				lookup::LookupRead,
 				ringbuffer::{
 					PartitionedRingbufferEntry, PartitionedRingbufferExpiry,
 					PartitionedRingbufferMeta, PartitionedRingbufferTtlArm, RingbufferEntry,
@@ -213,7 +213,6 @@ catalogue!(
 	CustomManagedDue,
 	CustomManagedLatest,
 	LookupRead,
-	LookupReadByVersion,
 	RollingPane,
 	TakeRow,
 );
@@ -254,7 +253,6 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::JOIN_SCHEMA
 		| KeyspaceId::JOIN_EXPIRY_DUE
 		| KeyspaceId::LOOKUP_READ
-		| KeyspaceId::LOOKUP_READ_BY_VERSION
 		| KeyspaceId::JOIN_ROW_MAPPING
 		| KeyspaceId::DISTINCT_ENTRY
 		| KeyspaceId::DISTINCT_LAYOUT
@@ -502,7 +500,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 55, "a keyspace was added or removed without updating the catalogue size");
+		assert_eq!(seen.len(), 54, "a keyspace was added or removed without updating the catalogue size");
 	}
 
 	#[test]
@@ -526,7 +524,7 @@ mod tests {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			55,
+			54,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(

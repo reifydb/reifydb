@@ -39,6 +39,7 @@ use crate::{
 
 pub struct MapOperator {
 	parent_schema: Option<SchemaRef>,
+	decoded_schema: Option<SchemaRef>,
 	operator: OperatorId,
 	expressions: BoundExpressions,
 	labels: Vec<String>,
@@ -63,6 +64,7 @@ impl MapOperator {
 
 		Ok(Self {
 			parent_schema,
+			decoded_schema: None,
 			operator,
 			expressions: BoundExpressions::new(expressions, true, "map"),
 			labels,
@@ -72,9 +74,15 @@ impl MapOperator {
 		})
 	}
 
+	pub fn with_decoded_schema(mut self, decoded_schema: Option<SchemaRef>) -> Self {
+		self.decoded_schema = decoded_schema;
+		self
+	}
+
 	pub fn output_schema(&self) -> Option<SchemaRef> {
 		let parent = self.parent_schema.as_ref();
-		let ctx = schema_context(parent, &self.routines, &self.runtime_context, &self.ctx);
+		let typing = self.decoded_schema.as_ref().or(parent);
+		let ctx = schema_context(typing, &self.routines, &self.runtime_context, &self.ctx);
 		Some(Arc::new(Schema::new(
 			self.expressions
 				.expressions()
