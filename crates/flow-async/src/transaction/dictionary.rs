@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use postcard::from_bytes;
-use reifydb_core::interface::catalog::dictionary::Dictionary;
+use reifydb_core::{interface::catalog::dictionary::Dictionary, internal_error};
 use reifydb_value::{
 	Result,
 	value::{
@@ -44,19 +44,22 @@ pub trait DictionaryExtension: FlowTransaction {
 		let raw: Vec<u128> = ids.iter().map(|id| id.to_u128()).collect();
 		let answers = self.dictionary_allocators().get_batch(dictionary, &raw)?;
 		let mut decoded: HashMap<u128, Value> = HashMap::new();
-		Ok(raw.into_iter()
+		raw.into_iter()
 			.zip(answers)
 			.map(|(id, bytes)| {
-				bytes.map(|bytes| {
-					decoded.entry(id)
-						.or_insert_with(|| {
-							from_bytes(&bytes)
-								.expect("failed to deserialize dictionary value")
-						})
-						.clone()
-				})
+				let Some(bytes) = bytes else {
+					return Ok(None);
+				};
+				if let Some(value) = decoded.get(&id) {
+					return Ok(Some(value.clone()));
+				}
+				let value: Value = from_bytes(&bytes).map_err(|e| {
+					internal_error!("Failed to deserialize dictionary value: {}", e)
+				})?;
+				decoded.insert(id, value.clone());
+				Ok(Some(value))
 			})
-			.collect())
+			.collect()
 	}
 }
 
