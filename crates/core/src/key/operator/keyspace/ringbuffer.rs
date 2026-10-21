@@ -41,6 +41,9 @@ pub struct RingbufferTtlArmKey {}
 pub struct RingbufferMetaKey {}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
+pub struct RingbufferNextRowKey {}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, KeyLayout, HeapSize)]
 pub struct PartitionedRingbufferEntryKey {
 	pub partition: Asc<Partition>,
 	pub row: Asc<RowNumber>,
@@ -133,6 +136,26 @@ impl Keyspace for RingbufferTtlArm {
 
 	type GroupedKey = RingbufferTtlArmKey;
 	type Suffix = RingbufferTtlArmKey;
+
+	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
+		(GroupId::ROOT, *key)
+	}
+
+	fn join(_group: GroupId, suffix: Self::Suffix) -> Self::GroupedKey {
+		suffix
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RingbufferNextRow;
+
+impl Keyspace for RingbufferNextRow {
+	const ID: KeyspaceId = KeyspaceId::RINGBUFFER_NEXT_ROW;
+	const NAME: &'static str = "RINGBUFFER_NEXT_ROW";
+	const RANGE_CACHED: bool = true;
+
+	type GroupedKey = RingbufferNextRowKey;
+	type Suffix = RingbufferNextRowKey;
 
 	fn split(key: &Self::GroupedKey) -> (GroupId, Self::Suffix) {
 		(GroupId::ROOT, *key)

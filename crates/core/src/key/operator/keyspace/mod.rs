@@ -32,7 +32,8 @@ use crate::{
 				ringbuffer::{
 					PartitionedRingbufferEntry, PartitionedRingbufferExpiry,
 					PartitionedRingbufferMeta, PartitionedRingbufferTtlArm, RingbufferEntry,
-					RingbufferExpiry, RingbufferForward, RingbufferMeta, RingbufferTtlArm,
+					RingbufferExpiry, RingbufferForward, RingbufferMeta, RingbufferNextRow,
+					RingbufferTtlArm,
 				},
 				root::{
 					CustomManaged, CustomUnmanaged, GateVisibility, GroupRowMapping,
@@ -189,6 +190,7 @@ catalogue!(
 	RingbufferExpiry,
 	RingbufferTtlArm,
 	RingbufferMeta,
+	RingbufferNextRow,
 	PartitionedRingbufferEntry,
 	PartitionedRingbufferExpiry,
 	PartitionedRingbufferTtlArm,
@@ -275,6 +277,7 @@ pub fn root_sibling(group: GroupId, keyspace: KeyspaceId, suffix: &[u8], row: &E
 		| KeyspaceId::RINGBUFFER_EXPIRY
 		| KeyspaceId::RINGBUFFER_TTL_ARM
 		| KeyspaceId::RINGBUFFER_META
+		| KeyspaceId::RINGBUFFER_NEXT_ROW
 		| KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY
 		| KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY
 		| KeyspaceId::PARTITIONED_RINGBUFFER_TTL_ARM
@@ -499,7 +502,7 @@ mod tests {
 		for (name, id, _) in catalogue() {
 			assert!(seen.insert(id), "{name} reuses an id another keyspace already claims");
 		}
-		assert_eq!(seen.len(), 54, "a keyspace was added or removed without updating the catalogue size");
+		assert_eq!(seen.len(), 55, "a keyspace was added or removed without updating the catalogue size");
 	}
 
 	#[test]
@@ -523,7 +526,7 @@ mod tests {
 		// a dropped group column silently reclassifies a keyspace and the sweep follows it
 		assert_eq!(
 			KEYSPACES.len(),
-			54,
+			55,
 			"a keyspace was added or removed without revisiting the group scope split"
 		);
 		assert_eq!(

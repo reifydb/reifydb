@@ -39,8 +39,8 @@ use reifydb_core::{
 				PartitionedRingbufferExpiryKey, PartitionedRingbufferMeta,
 				PartitionedRingbufferMetaKey, PartitionedRingbufferTtlArm,
 				PartitionedRingbufferTtlArmKey, RingbufferEntry, RingbufferEntryKey, RingbufferExpiry,
-				RingbufferExpiryKey, RingbufferMeta, RingbufferMetaKey, RingbufferTtlArm,
-				RingbufferTtlArmKey,
+				RingbufferExpiryKey, RingbufferMeta, RingbufferMetaKey, RingbufferNextRow,
+				RingbufferNextRowKey, RingbufferTtlArm, RingbufferTtlArmKey,
 			},
 			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, OperatorStateKey},
 		},
@@ -350,6 +350,44 @@ impl SinkRingBufferViewOperator {
 		self.assert_mirrors_mvcc(txn, partition, &key)
 	}
 
+	fn next_row_key(&self) -> GroupStateKey {
+		typed_key::<RingbufferNextRow>(GroupId::ROOT, &RingbufferNextRowKey {})
+	}
+
+	fn read_next_row(&self, txn: &mut DeferredTransaction) -> Result<u64> {
+		match self.state_get(txn, &self.next_row_key())? {
+			Some(row) => decode_u64(&row, "RingBufferNextRow"),
+			None => Ok(1),
+		}
+	}
+
+	fn write_next_row(&self, txn: &mut DeferredTransaction, next_row: u64) -> Result<()> {
+		self.state_set(txn, &self.next_row_key(), encode_u64(next_row, "RingBufferNextRow")?)
+	}
+
+	fn storage_rows_from(
+		&self,
+		txn: &mut DeferredTransaction,
+		partition: Option<Partition>,
+		from: u64,
+		limit: u64,
+	) -> Result<Vec<u64>> {
+		let range = EncodedKeyRange::prefix(&row_entry_prefix(partition));
+		let mut rows = Vec::new();
+		for result in self.state_range(txn, range) {
+			let (key, _row) = result?;
+			let rn = decode_row_entry_key(partition, &key)?;
+			if rn < from {
+				continue;
+			}
+			rows.push(rn);
+			if rows.len() as u64 >= limit {
+				break;
+			}
+		}
+		Ok(rows)
+	}
+
 	fn forward_key(&self, source_rn: RowNumber) -> GroupStateKey {
 		OperatorStateKey::inner_encoded(
 			GroupId::ROOT,
@@ -580,6 +618,12 @@ impl DurableSink for SinkRingBufferViewOperator {
 			Some(self.read_metadata(txn)?)
 		};
 		let mut metadata = loaded.clone();
+		let loaded_next_row = if self.is_partitioned() {
+			Some(self.read_next_row(txn)?)
+		} else {
+			None
+		};
+		let mut next_row = loaded_next_row;
 		let mut partition_metadata: PartitionMetadata = HashMap::new();
 		let mut touched: IndexSet<Vec<Value>> = IndexSet::new();
 
@@ -594,6 +638,7 @@ impl DurableSink for SinkRingBufferViewOperator {
 					&shape,
 					object_id,
 					&mut metadata,
+					&mut next_row,
 					&mut partition_metadata,
 					post,
 					&mut touched,
@@ -628,6 +673,9 @@ impl DurableSink for SinkRingBufferViewOperator {
 
 		if let Some(metadata) = metadata.as_ref().filter(|_| metadata != loaded) {
 			self.write_metadata(txn, metadata)?;
+		}
+		if let Some(next_row) = next_row.filter(|_| next_row != loaded_next_row) {
+			self.write_next_row(txn, next_row)?;
 		}
 		for (partition_values, (before, partition_meta)) in partition_metadata.iter() {
 			if partition_meta == before {
@@ -841,6 +889,7 @@ impl SinkRingBufferViewOperator {
 		shape: &RowShape,
 		object_id: StorageId,
 		metadata: &mut Option<RingBufferMetadata>,
+		next_row: &mut Option<u64>,
 		partition_metadata: &mut PartitionMetadata,
 		post: &RecordBatch,
 		touched: &mut IndexSet<Vec<Value>>,
@@ -880,6 +929,7 @@ impl SinkRingBufferViewOperator {
 					txn,
 					object_id,
 					meta,
+					next_row.as_mut(),
 					Some(partition),
 					&encoded,
 					row_numbers,
@@ -899,6 +949,7 @@ impl SinkRingBufferViewOperator {
 				txn,
 				object_id,
 				meta,
+				None,
 				None,
 				&encoded,
 				row_numbers,
@@ -933,6 +984,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut DeferredTransaction,
 		object_id: StorageId,
 		meta: &mut RingBufferMetadata,
+		mut next_row: Option<&mut u64>,
 		partition: Option<Partition>,
 		encoded: &[EncodedBytes],
 		row_numbers: &[RowNumber],
@@ -945,17 +997,33 @@ impl SinkRingBufferViewOperator {
 		let mut evict_needed = (meta.count + incoming).saturating_sub(self.capacity);
 		let mut removes: Vec<GroupStateKey> = Vec::new();
 
+		let shared_numbers = next_row.is_some();
+		let mut cursor = meta.head;
+		let mut evicted = false;
 		while evict_needed > 0 && meta.head < meta.tail {
-			let window: Vec<(Option<Partition>, RowNumber)> = (meta.head
-				..meta.tail.min(meta.head + evict_needed))
-				.map(|rn| (partition, RowNumber(rn)))
-				.collect();
+			let window: Vec<(Option<Partition>, RowNumber)> = if shared_numbers {
+				self.storage_rows_from(txn, partition, cursor, evict_needed)?
+					.into_iter()
+					.map(|rn| (partition, RowNumber(rn)))
+					.collect()
+			} else {
+				(meta.head..meta.tail.min(meta.head + evict_needed))
+					.map(|rn| (partition, RowNumber(rn)))
+					.collect()
+			};
+			let Some(&(_, last)) = window.last() else {
+				break;
+			};
+			cursor = last.0 + 1;
+			evicted = true;
 			let entries = self.row_entries(txn, &window)?;
 			let keys: Vec<EncodedKey> =
 				window.iter().map(|&(_, rn)| self.rb_key(object_id, rn, partition)).collect();
 			let stored = txn.get(&keys)?;
 			for (((&(_, rn), entry), key), row) in window.iter().zip(entries).zip(keys).zip(stored) {
-				meta.head += 1;
+				if !shared_numbers {
+					meta.head += 1;
+				}
 				if let Some((time, source_rn)) = entry {
 					removes.push(self.forward_key(source_rn));
 					self.push_row_entry_removes(&mut removes, partition, rn, time);
@@ -969,14 +1037,26 @@ impl SinkRingBufferViewOperator {
 			}
 		}
 		self.state_remove(txn, &removes)?;
+		if shared_numbers && evicted {
+			meta.head = self.lowest_storage_row(txn, partition)?.unwrap_or(meta.tail);
+		}
 
 		let skip = evict_needed.min(incoming) as usize;
-		meta.tail += skip as u64;
+		if !shared_numbers {
+			meta.tail += skip as u64;
+		}
 
 		let mut sets: Vec<(GroupStateKey, EncodedPodRow)> = Vec::with_capacity((rows.len() - skip) * 3);
 		for &row_idx in &rows[skip..] {
 			let source_rn = row_numbers[row_idx];
-			let assigned_rn = RowNumber(meta.tail);
+			let assigned_rn = match next_row.as_deref_mut() {
+				Some(next) => {
+					let assigned = RowNumber(*next);
+					*next += 1;
+					assigned
+				}
+				None => RowNumber(meta.tail),
+			};
 			self.push_row_entry_sets(
 				&mut sets,
 				partition,

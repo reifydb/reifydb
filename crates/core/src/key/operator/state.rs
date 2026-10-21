@@ -214,7 +214,7 @@ pub fn group_data_of_inner(inner: &[u8]) -> Option<GroupId> {
 pub struct KeyspaceId(pub u8);
 
 impl KeyspaceId {
-	pub const HIGHEST_DATA: u8 = 0x2E;
+	pub const HIGHEST_DATA: u8 = 0x2F;
 
 	pub const NODE_COUNTER: Self = Self(0xFF);
 
@@ -324,6 +324,8 @@ impl KeyspaceId {
 
 	pub const TAKE_ROW: Self = Self(0x2E);
 
+	pub const RINGBUFFER_NEXT_ROW: Self = Self(0x2F);
+
 	pub fn name(&self) -> Cow<'static, str> {
 		match *self {
 			Self::NODE_COUNTER => "NODE_COUNTER",
@@ -380,6 +382,7 @@ impl KeyspaceId {
 			Self::LOOKUP_READ_BY_VERSION => "LOOKUP_READ_BY_VERSION",
 			Self::ROLLING_PANE => "ROLLING_PANE",
 			Self::TAKE_ROW => "TAKE_ROW",
+			Self::RINGBUFFER_NEXT_ROW => "RINGBUFFER_NEXT_ROW",
 			_ => return Cow::Owned(format!("{:#04x}", self.0)),
 		}
 		.into()
@@ -1017,7 +1020,7 @@ mod tests {
 	/// Every keyspace the substrate declares, with the phase allowed to erase it and the tiers it may
 	/// be cached in. Both are written down rather than read back from `is_data` and the `KEYSPACES` table, or
 	/// a keyspace changing sides would pass unremarked.
-	const CENSUS: [(&str, KeyspaceId, Phase, bool); 54] = [
+	const CENSUS: [(&str, KeyspaceId, Phase, bool); 55] = [
 		("NODE_COUNTER", KeyspaceId::NODE_COUNTER, Phase::Identity, true),
 		("SOURCE_WATERMARK", KeyspaceId::SOURCE_WATERMARK, Phase::Identity, true),
 		("TIMER_WHEEL", KeyspaceId::TIMER_WHEEL, Phase::Identity, true),
@@ -1072,6 +1075,7 @@ mod tests {
 		("LOOKUP_READ_BY_VERSION", KeyspaceId::LOOKUP_READ_BY_VERSION, Phase::Data, true),
 		("ROLLING_PANE", KeyspaceId::ROLLING_PANE, Phase::Data, true),
 		("TAKE_ROW", KeyspaceId::TAKE_ROW, Phase::Data, true),
+		("RINGBUFFER_NEXT_ROW", KeyspaceId::RINGBUFFER_NEXT_ROW, Phase::Data, true),
 	];
 
 	/// Counts `KeyspaceId` constants from the source text. There is no reflection over associated
