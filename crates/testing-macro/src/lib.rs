@@ -23,6 +23,16 @@ fn expand(input: TokenStream) -> Result<TokenStream, String> {
 	let tokens: Vec<TokenTree> = input.into_iter().collect();
 	let mut pos = 0;
 
+	let mut attributes = String::new();
+	while let (Some(TokenTree::Punct(hash)), Some(TokenTree::Group(group))) = (tokens.get(pos), tokens.get(pos + 1))
+	{
+		if hash.as_char() != '#' || group.delimiter() != Delimiter::Bracket {
+			break;
+		}
+		attributes.push_str(&format!("#{group} "));
+		pos += 2;
+	}
+
 	let name = match tokens.get(pos) {
 		Some(TokenTree::Ident(id)) => id.to_string(),
 		_ => return Err("chaos_test! expects a test name identifier as the first argument".to_string()),
@@ -60,15 +70,15 @@ fn expand(input: TokenStream) -> Result<TokenStream, String> {
 
 	let mut out = format!("fn __chaos_body_{name}({seed}: u64) {body}\n");
 	for index in 0..count {
-		out.push_str(&generate_case(&name, index));
+		out.push_str(&generate_case(&attributes, &name, index));
 	}
 	out.push_str("const _: ::core::option::Option<&'static str> = ::core::option_env!(\"ITERATIONS\");\n");
 
 	TokenStream::from_str(&out).map_err(|e| format!("chaos_test! produced invalid tokens: {e:?}"))
 }
 
-fn generate_case(name: &str, index: u64) -> String {
-	format!("#[test] fn {name}_{index}() {{ \
+fn generate_case(attributes: &str, name: &str, index: u64) -> String {
+	format!("#[test] {attributes}fn {name}_{index}() {{ \
 		 ::reifydb_testing_chaos::seed::run_iteration({name:?}, {index}, __chaos_body_{name}); }}\n")
 }
 
