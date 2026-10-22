@@ -3,9 +3,10 @@
 
 use std::{iter::once, sync::Arc};
 
-use arrow_array::{ArrayRef, RecordBatch};
+use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::{FieldRef, Schema, SchemaRef};
 use reifydb_core::{
+	common::CommitVersion,
 	interface::{
 		catalog::{column::Column, dictionary::Dictionary, flow::OperatorId, series::Series},
 		change::{Change, Diff},
@@ -21,6 +22,7 @@ use reifydb_value::{
 	value::{
 		column_view::{ColumnView, ViewData},
 		dictionary::DictionaryId,
+		system_columns::{SystemColumn, with_system_column},
 		value_type::{ValueType, field::from_field},
 	},
 };
@@ -57,9 +59,47 @@ impl SourceOperator {
 		Some(self.schema.clone())
 	}
 
-	pub fn apply(&self, change: Change) -> Change {
-		Change::from_flow(self.operator, change.version, change.diffs, change.changed_at)
+	pub fn apply(&self, change: Change) -> Result<Change> {
+		let commit = change.version.commit;
+		let diffs = change
+			.diffs
+			.into_iter()
+			.map(|diff| stamp_commit_version(diff, commit))
+			.collect::<Result<Vec<_>>>()?;
+		Ok(Change::from_flow(self.operator, change.version, diffs, change.changed_at))
 	}
+}
+
+fn stamp_commit_version(diff: Diff, commit: CommitVersion) -> Result<Diff> {
+	let stamp = |batch: RecordBatch| {
+		let versions: ArrayRef = Arc::new(UInt64Array::from(vec![commit.0; batch.num_rows()]));
+		with_system_column(batch, SystemColumn::CommitVersion, versions)
+	};
+	Ok(match diff {
+		Diff::Insert {
+			post,
+			origin,
+		} => Diff::Insert {
+			post: stamp(post)?,
+			origin,
+		},
+		Diff::Update {
+			pre,
+			post,
+			origin,
+		} => Diff::Update {
+			pre: stamp(pre)?,
+			post: stamp(post)?,
+			origin,
+		},
+		Diff::Remove {
+			pre,
+			origin,
+		} => Diff::Remove {
+			pre: stamp(pre)?,
+			origin,
+		},
+	})
 }
 
 pub fn decode_change<T: Resolve + ?Sized>(txn: &mut T, change: Change) -> Result<Change> {

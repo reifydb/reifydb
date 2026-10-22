@@ -26,15 +26,15 @@ use crate::{
 };
 
 pub fn named_system_columns(plan: &PhysicalPlan<'_>) -> Result<Vec<SystemColumn>> {
-	statement(plan, Scope::new(false))
+	statement(plan, Scope::new(Mode::Query))
 }
 
 pub fn check_system_columns(plan: &PhysicalPlan<'_>) -> Result<()> {
-	statement(plan, Scope::new(false)).map(drop)
+	statement(plan, Scope::new(Mode::Query)).map(drop)
 }
 
 pub fn check_flow_system_columns(plan: &PhysicalPlan<'_>) -> Result<()> {
-	statement(plan, Scope::new(true)).map(drop)
+	statement(plan, Scope::new(Mode::Subscription)).map(drop)
 }
 
 #[derive(Debug, Clone)]
@@ -76,26 +76,33 @@ impl Found {
 	}
 }
 
+#[derive(Clone, Copy)]
+enum Mode {
+	Query,
+	Subscription,
+	View,
+}
+
 #[derive(Clone)]
 struct Scope {
 	references: Vec<Reference>,
-	flow: bool,
+	mode: Mode,
 }
 
 impl Scope {
-	fn new(flow: bool) -> Self {
+	fn new(mode: Mode) -> Self {
 		Self {
 			references: Vec::new(),
-			flow,
+			mode,
 		}
 	}
 
 	fn fresh(&self) -> Self {
-		Self::new(self.flow)
+		Self::new(self.mode)
 	}
 
-	fn in_flow(&self) -> Self {
-		Self::new(true)
+	fn in_view(&self) -> Self {
+		Self::new(Mode::View)
 	}
 
 	fn with(mut self, references: Vec<Reference>) -> Self {
@@ -299,11 +306,11 @@ fn visit(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Found> {
 		PhysicalPlan::DefineFunction(node) => statements(&node.body, &scope),
 		PhysicalPlan::DefineClosure(node) => statements(&node.body, &scope),
 		PhysicalPlan::CreateDeferredView(node) => {
-			statement(&node.as_clause, scope.in_flow())?;
+			statement(&node.as_clause, scope.in_view())?;
 			Ok(Found::default())
 		}
 		PhysicalPlan::CreateTransactionalView(node) => {
-			statement(&node.as_clause, scope.in_flow())?;
+			statement(&node.as_clause, scope.in_view())?;
 			Ok(Found::default())
 		}
 		_ => Ok(Found::default()),
@@ -374,8 +381,13 @@ impl Source<'_> {
 		}
 	}
 
-	fn lacks(&self, column: SystemColumn, flow: bool) -> Option<String> {
-		if flow && matches!(column, SystemColumn::Partitions | SystemColumn::CommitVersion) {
+	fn lacks(&self, column: SystemColumn, mode: Mode) -> Option<String> {
+		let flow_lacks = match mode {
+			Mode::Query => false,
+			Mode::Subscription => column == SystemColumn::Partitions,
+			Mode::View => matches!(column, SystemColumn::Partitions | SystemColumn::CommitVersion),
+		};
+		if flow_lacks {
 			return Some(format!("flow inputs have no {column}"));
 		}
 		match self {
@@ -461,7 +473,7 @@ fn resolve(source: Source<'_>, scope: &Scope) -> Found {
 		if source.has_user_column(&reference.column.name()[1..]) {
 			continue;
 		}
-		match source.lacks(reference.column, scope.flow) {
+		match source.lacks(reference.column, scope.mode) {
 			Some(note) => found.unmet.push(Unmet {
 				reference: reference.clone(),
 				note,
