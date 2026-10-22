@@ -33,11 +33,6 @@ pub enum AstError {
 		fragment: Fragment,
 	},
 
-	#[error("multiple expressions require curly braces")]
-	MultipleExpressionsWithoutBraces {
-		fragment: Fragment,
-	},
-
 	#[error("cannot find type")]
 	UnrecognizedType {
 		fragment: Fragment,
@@ -207,26 +202,6 @@ impl IntoDiagnostic for AstError {
 					fragment,
 					label,
 					help: Some("This token is not supported in this context".to_string()),
-					notes: vec![],
-					cause: None,
-					operator_chain: None,
-				}
-			}
-			AstError::MultipleExpressionsWithoutBraces {
-				fragment,
-			} => {
-				let keyword = fragment.text().to_string();
-				Diagnostic {
-					code: "AST_007".to_string(),
-					rql: None,
-					message: format!("multiple expressions in `{}` require curly braces", &keyword),
-					fragment,
-					label: Some("missing `{ … }` around expressions".to_string()),
-					help: Some(format!(
-						"wrap the expressions in curly braces:\n    {} {{ expr1, expr2, … }}",
-						keyword
-					)),
-					column: None,
 					notes: vec![],
 					cause: None,
 					operator_chain: None,

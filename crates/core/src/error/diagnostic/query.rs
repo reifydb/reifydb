@@ -95,7 +95,7 @@ pub fn system_column_read_only(fragment: Fragment) -> Diagnostic {
 pub fn system_column_reserved(fragment: Fragment) -> Diagnostic {
 	let name = fragment.text();
 	Diagnostic {
-		code: "QUERY_004".to_string(),
+		code: "QUERY_016".to_string(),
 		rql: None,
 		message: format!("column name '{}' is reserved for system columns", name),
 		fragment,
@@ -169,24 +169,6 @@ pub fn not_a_query_input(fragment: Fragment, kind: &str) -> Diagnostic {
 		)),
 		column: None,
 		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn join_column_alias_error(fragment: Fragment, message: &str) -> Diagnostic {
-	Diagnostic {
-		code: "QUERY_003".to_string(),
-		rql: None,
-		message: format!("Join column alias error: {}", message),
-		fragment,
-		label: Some("invalid column qualification in using clause".to_string()),
-		help: Some("In each pair, exactly one expression should reference the join alias".to_string()),
-		column: None,
-		notes: vec![
-			"Example: using (id, orders.user_id) where 'orders' is the join alias".to_string(),
-			"Unqualified columns refer to the current dataframe".to_string(),
-		],
 		cause: None,
 		operator_chain: None,
 	}

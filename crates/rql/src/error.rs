@@ -18,12 +18,9 @@ use reifydb_value::{
 pub enum OperationKind {
 	Sort,
 	Map,
-	Filter,
 	Extend,
 	Patch,
-	Distinct,
 	Apply,
-	Take,
 	Aggregate,
 	AggregateBy,
 	Returning,
@@ -34,12 +31,9 @@ impl Display for OperationKind {
 		match self {
 			OperationKind::Sort => f.write_str("SORT"),
 			OperationKind::Map => f.write_str("MAP"),
-			OperationKind::Filter => f.write_str("FILTER"),
 			OperationKind::Extend => f.write_str("EXTEND"),
 			OperationKind::Patch => f.write_str("PATCH"),
-			OperationKind::Distinct => f.write_str("DISTINCT"),
 			OperationKind::Apply => f.write_str("APPLY"),
-			OperationKind::Take => f.write_str("TAKE"),
 			OperationKind::Aggregate => f.write_str("AGGREGATE"),
 			OperationKind::AggregateBy => f.write_str("AGGREGATE BY"),
 			OperationKind::Returning => f.write_str("RETURNING"),
@@ -51,17 +45,6 @@ impl Display for OperationKind {
 pub enum RqlError {
 	#[error("TAKE operator requires non-negative value")]
 	TakeNegativeValue {
-		fragment: Fragment,
-	},
-
-	#[error("AGGREGATE operator requires at least one aggregation expression")]
-	MissingAggregateMapBlock {
-		fragment: Fragment,
-	},
-
-	#[error("Multiple {kind} expressions require curly braces")]
-	OperatorMultipleWithoutBraces {
-		kind: OperationKind,
 		fragment: Fragment,
 	},
 
@@ -188,28 +171,6 @@ pub enum RqlError {
 		column_names: Vec<String>,
 	},
 
-	#[error("column not found")]
-	ColumnNotFound {
-		fragment: Fragment,
-	},
-
-	#[error("Cannot extend with duplicate column name '{column_name}'")]
-	ExtendDuplicateColumn {
-		column_name: String,
-	},
-
-	#[error("Source qualification '{name}' is not supported in RQL expressions")]
-	UnsupportedSourceQualification {
-		fragment: Fragment,
-		name: String,
-	},
-
-	#[error("Join column alias error: {message}")]
-	JoinColumnAliasError {
-		fragment: Fragment,
-		message: String,
-	},
-
 	#[error("BREAK can only be used inside a loop")]
 	BreakOutsideLoop,
 
@@ -284,113 +245,7 @@ impl IntoDiagnostic for RqlError {
 				}
 			}
 
-			RqlError::MissingAggregateMapBlock { fragment } => Diagnostic {
-				code: "AGGREGATE_001".to_string(),
-				rql: None,
-				message: "AGGREGATE operator requires at least one aggregation expression".to_string(),
-				column: None,
-				fragment,
-				label: Some("missing aggregation expressions".to_string()),
-				help: Some("Specify aggregation functions before the BY clause, e.g., 'AGGREGATE count(id) BY category' or 'AGGREGATE { sum(amount), avg(price) } BY category'".to_string()),
-				notes: vec![
-					"The AGGREGATE operator requires aggregation functions like count(), sum(), avg(), min(), or max()".to_string(),
-					"Use curly braces for multiple aggregations: AGGREGATE { expr1, expr2 } BY ...".to_string(),
-					"For global aggregations without grouping, use: AGGREGATE count(*) BY {}".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
 
-			RqlError::OperatorMultipleWithoutBraces { kind, fragment } => {
-				let (code, message, label, help, notes) = match kind {
-					OperationKind::Aggregate => (
-						"AGGREGATE_002",
-						"Multiple aggregation expressions require curly braces",
-						"missing curly braces around expressions",
-						"Wrap multiple aggregation expressions in curly braces, e.g., 'AGGREGATE { count(id), sum(amount), avg(price) } BY category'",
-						vec![
-							"When specifying multiple aggregation functions, use curly braces: AGGREGATE { expr1, expr2, ... } BY ...".to_string(),
-							"Single aggregation expressions can be written without braces: AGGREGATE count(id) BY category".to_string(),
-							"Curly braces make the query more readable and unambiguous".to_string(),
-						],
-					),
-					OperationKind::AggregateBy => (
-						"AGGREGATE_003",
-						"Multiple grouping columns require curly braces",
-						"missing curly braces around columns",
-						"Wrap multiple grouping columns in curly braces, e.g., 'AGGREGATE count(id) BY { category, region, year }'",
-						vec![
-							"When grouping by multiple columns, use curly braces: AGGREGATE ... BY { col1, col2, ... }".to_string(),
-							"Single grouping columns can be written without braces: AGGREGATE ... BY category".to_string(),
-							"For global aggregations without grouping, use empty braces: AGGREGATE ... BY {}".to_string(),
-						],
-					),
-					OperationKind::Distinct => (
-						"DISTINCT_001",
-						"Multiple DISTINCT columns require curly braces",
-						"missing curly braces around columns",
-						"Wrap multiple DISTINCT columns in curly braces, e.g., 'DISTINCT { category, value } FROM events'",
-						vec![
-							"When using DISTINCT with multiple columns, use curly braces: DISTINCT { col1, col2, ... }".to_string(),
-							"Single columns can be written without braces: DISTINCT category FROM events".to_string(),
-							"No arguments means distinct on all columns: DISTINCT FROM events".to_string(),
-							"Curly braces make the query more readable and unambiguous".to_string(),
-						],
-					),
-					OperationKind::Map => (
-						"MAP_001",
-						"Multiple MAP expressions require curly braces",
-						"missing curly braces around expressions",
-						"Wrap multiple MAP expressions in curly braces, e.g., 'MAP { name, age, email } FROM users'",
-						vec![
-							"When mapping multiple columns or expressions, use curly braces: MAP { expr1, expr2, ... }".to_string(),
-							"Single expressions can be written without braces: MAP name FROM users".to_string(),
-							"Curly braces make the query more readable and unambiguous".to_string(),
-						],
-					),
-					OperationKind::Extend => (
-						"EXTEND_001",
-						"Multiple EXTEND expressions require curly braces",
-						"missing curly braces around expressions",
-						"Wrap multiple EXTEND expressions in curly braces, e.g., 'EXTEND { total: price * quantity, tax: price * 0.1 }'",
-						vec![
-							"When extending with multiple columns or expressions, use curly braces: EXTEND { expr1, expr2, ... }".to_string(),
-							"Single expressions can be written without braces: EXTEND total: price * quantity".to_string(),
-							"Curly braces make the query more readable and unambiguous".to_string(),
-						],
-					),
-					OperationKind::Apply => (
-						"APPLY_001",
-						"Multiple APPLY arguments require curly braces",
-						"missing curly braces around arguments",
-						"Wrap multiple APPLY arguments in curly braces, e.g., 'APPLY operator { arg1, arg2 }'",
-						vec![
-							"When applying operators with multiple arguments, use curly braces: APPLY operator { arg1, arg2, ... }".to_string(),
-							"Single arguments can be written without braces: APPLY running_sum amount".to_string(),
-							"No arguments should use empty braces: APPLY counter {}".to_string(),
-						],
-					),
-					_ => (
-						"OP_001",
-						"Multiple expressions require curly braces",
-						"missing curly braces",
-						"Wrap expressions in curly braces",
-						vec![],
-					),
-				};
-				Diagnostic {
-					code: code.to_string(),
-					rql: None,
-					message: message.to_string(),
-					column: None,
-					fragment,
-					label: Some(label.to_string()),
-					help: Some(help.to_string()),
-					notes,
-					cause: None,
-					operator_chain: None,
-				}
-			}
 
 			RqlError::OperatorMissingBraces { kind, fragment } => {
 				let (code, message, help, notes) = match kind {
@@ -412,17 +267,8 @@ impl IntoDiagnostic for RqlError {
 							"Multiple expressions: MAP {expr1, expr2}".to_string(),
 						],
 					),
-					OperationKind::Filter => (
-						"FILTER_001",
-						"FILTER requires curly braces around the condition",
-						"Wrap FILTER condition in curly braces, e.g., 'FILTER {price > 100}'",
-						vec![
-							"FILTER always requires curly braces: FILTER {condition}".to_string(),
-							"Example: FILTER {active == true AND price > 100}".to_string(),
-						],
-					),
 					OperationKind::Extend => (
-						"EXTEND_002",
+						"EXTEND_003",
 						"EXTEND requires curly braces around expressions",
 						"Wrap EXTEND expressions in curly braces, e.g., 'EXTEND {total: price * qty}'",
 						vec![
@@ -439,16 +285,6 @@ impl IntoDiagnostic for RqlError {
 							"Multiple expressions: PATCH {expr1, expr2}".to_string(),
 						],
 					),
-					OperationKind::Distinct => (
-						"DISTINCT_002",
-						"DISTINCT requires curly braces around columns",
-						"Wrap DISTINCT columns in curly braces, e.g., 'DISTINCT {}' or 'DISTINCT {name}'",
-						vec![
-							"DISTINCT always requires curly braces: DISTINCT {columns}".to_string(),
-							"For all columns distinct: DISTINCT {}".to_string(),
-							"Multiple columns: DISTINCT {col1, col2}".to_string(),
-						],
-					),
 					OperationKind::Apply => (
 						"APPLY_002",
 						"APPLY requires curly braces around arguments",
@@ -457,16 +293,6 @@ impl IntoDiagnostic for RqlError {
 							"APPLY always requires curly braces: APPLY operator {arguments}".to_string(),
 							"No arguments: APPLY counter {}".to_string(),
 							"Multiple arguments: APPLY op {arg1, arg2}".to_string(),
-						],
-					),
-					OperationKind::Take => (
-						"TAKE_002",
-						"TAKE requires curly braces around the limit",
-						"Wrap TAKE limit in curly braces, e.g., 'TAKE {10}' or 'TAKE {}'",
-						vec![
-							"TAKE always requires curly braces: TAKE {limit}".to_string(),
-							"Unlimited: TAKE {}".to_string(),
-							"Limited: TAKE {100}".to_string(),
 						],
 					),
 					OperationKind::Aggregate => (
@@ -890,76 +716,9 @@ impl IntoDiagnostic for RqlError {
 				operator_chain: None,
 			},
 
-			RqlError::ColumnNotFound { fragment } => Diagnostic {
-				code: "QUERY_001".to_string(),
-				rql: None,
-				message: "column not found".to_string(),
-				fragment,
-				label: Some("this column does not exist in the current context".to_string()),
-				help: Some("check for typos or ensure the column is defined in the input".to_string()),
-				column: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
 
-			RqlError::ExtendDuplicateColumn { column_name } => Diagnostic {
-				code: "EXTEND_002".to_string(),
-				rql: None,
-				message: format!("Cannot extend with duplicate column name '{}'", column_name),
-				fragment: Fragment::None,
-				label: Some("column already exists in the current frame".to_string()),
-				help: Some("Use a different column name or remove the existing column first".to_string()),
-				column: None,
-				notes: vec![
-					"EXTEND operation cannot add columns that already exist in the frame".to_string(),
-					"Each column name must be unique within the result frame".to_string(),
-					"Consider using MAP if you want to replace existing columns".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
 
-			RqlError::UnsupportedSourceQualification { fragment, name } => Diagnostic {
-				code: "QUERY_002".to_string(),
-				rql: None,
-				message: format!("Source qualification '{}' is not supported in RQL expressions", name),
-				fragment,
-				label: Some(
-					"source qualification is only allowed for join aliases in ON clauses".to_string(),
-				),
-				help: Some(
-					"Remove the qualification or use it only with a join alias in the ON clause".to_string(),
-				),
-				column: None,
-				notes: vec![
-					"RQL uses a dataframe-centered approach where each operation produces a new dataframe"
-						.to_string(),
-					"Source qualifications are not needed as columns are unambiguous in the dataframe".to_string(),
-					"Only join aliases can be used for qualification within ON clauses to disambiguate columns"
-						.to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
 
-			RqlError::JoinColumnAliasError { fragment, message } => Diagnostic {
-				code: "QUERY_003".to_string(),
-				rql: None,
-				message: format!("Join column alias error: {}", message),
-				fragment,
-				label: Some("invalid column qualification in using clause".to_string()),
-				help: Some(
-					"In each pair, exactly one expression should reference the join alias".to_string(),
-				),
-				column: None,
-				notes: vec![
-					"Example: using (id, orders.user_id) where 'orders' is the join alias".to_string(),
-					"Unqualified columns refer to the current dataframe".to_string(),
-				],
-				cause: None,
-				operator_chain: None,
-			},
 			RqlError::BreakOutsideLoop => Diagnostic {
 				code: "RUNTIME_004".to_string(),
 				rql: None,

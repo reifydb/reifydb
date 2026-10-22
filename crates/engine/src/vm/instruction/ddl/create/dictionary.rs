@@ -115,7 +115,7 @@ pub mod tests {
 			},
 		);
 		assert!(r.is_err());
-		assert_eq!(r.error.unwrap().diagnostic().code, "CA_006");
+		assert_eq!(r.error.unwrap().diagnostic().code, "CA_108");
 	}
 
 	#[test]

@@ -42,7 +42,7 @@ impl RemoteRegistry {
 	fn handle(&self) -> Result<Handle, Error> {
 		self.handle.lock().clone().ok_or_else(|| {
 			Error(Box::new(Diagnostic {
-				code: "REMOTE_002".to_string(),
+				code: "REMOTE_003".to_string(),
 				message: "remote runtime has been shut down".to_string(),
 				..Default::default()
 			}))
@@ -85,7 +85,7 @@ impl RemoteRegistry {
 
 		rx.recv().map_err(|_| {
 			Error(Box::new(Diagnostic {
-				code: "REMOTE_002".to_string(),
+				code: "REMOTE_003".to_string(),
 				message: "remote query channel closed".to_string(),
 				..Default::default()
 			}))
@@ -122,7 +122,7 @@ impl RemoteRegistry {
 
 		let mut client = rx.recv().map_err(|_| {
 			Error(Box::new(Diagnostic {
-				code: "REMOTE_002".to_string(),
+				code: "REMOTE_003".to_string(),
 				message: "remote connect channel closed".to_string(),
 				..Default::default()
 			}))
@@ -267,7 +267,7 @@ mod tests {
 
 		// 127.0.0.1:1 is reserved; connect must fail fast.
 		let err = registry.forward_query("http://127.0.0.1:1", "FROM x", Params::None, None).unwrap_err();
-		assert!(err.0.code == "TRANSPORT" || err.0.code == "REMOTE_002");
+		assert!(err.0.code == "TRANSPORT" || err.0.code == "REMOTE_003");
 		assert_eq!(registry.cache_len(), 0);
 	}
 

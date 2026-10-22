@@ -9,13 +9,6 @@ use reifydb_value::{
 
 #[derive(Debug, thiserror::Error)]
 pub enum CastError {
-	#[error("unsupported cast from {from_type} to {to_type}")]
-	UnsupportedCast {
-		fragment: Fragment,
-		from_type: ValueType,
-		to_type: ValueType,
-	},
-
 	#[error("failed to cast to {target}")]
 	InvalidNumber {
 		fragment: Fragment,
@@ -53,22 +46,6 @@ pub enum CastError {
 impl IntoDiagnostic for CastError {
 	fn into_diagnostic(self) -> Diagnostic {
 		match self {
-			CastError::UnsupportedCast { fragment, from_type, to_type } => {
-				let label = Some(format!("cannot cast {} of type {} to {}", fragment.text(), from_type, to_type));
-				Diagnostic {
-					code: "CAST_001".to_string(),
-					rql: None,
-					message: format!("unsupported cast from {} to {}", from_type, to_type),
-					fragment,
-					label,
-					help: Some("ensure the source and target types are compatible for casting".to_string()),
-					notes: vec!["supported casts include: numeric to numeric, string to temporal, boolean to numeric"
-						.to_string()],
-					column: None,
-					cause: None,
-					operator_chain: None,
-				}
-			}
 			CastError::InvalidNumber { fragment, target, cause } => Diagnostic {
 				code: "CAST_002".to_string(),
 				rql: None,

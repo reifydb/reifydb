@@ -1,26 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_value::{
-	error::{Diagnostic, util::value_max},
-	fragment::Fragment,
-	value::value_type::ValueType,
-};
-
-pub fn sequence_exhausted(value: ValueType) -> Diagnostic {
-	Diagnostic {
-		code: "SEQUENCE_001".to_string(),
-		rql: None,
-		message: format!("sequence generator of type `{}` is exhausted", value),
-		fragment: Fragment::None,
-		label: Some("no more values can be generated".to_string()),
-		help: Some(format!("maximum value for `{}` is `{}`", value, value_max(value.clone()))),
-		column: None,
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
+use reifydb_value::{error::Diagnostic, fragment::Fragment};
 
 pub fn can_not_alter_not_auto_increment(fragment: Fragment) -> Diagnostic {
 	Diagnostic {

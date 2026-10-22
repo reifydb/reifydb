@@ -12,4 +12,3 @@ pub mod query;
 pub mod sequence;
 pub mod subscription;
 pub mod subsystem;
-pub mod transaction;

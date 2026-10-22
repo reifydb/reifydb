@@ -268,7 +268,7 @@ pub mod tests {
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert_eq!(err.0.code, "TEMPORAL_005");
+		assert_eq!(err.0.code, "TEMPORAL_029");
 	}
 
 	#[test]
@@ -277,7 +277,7 @@ pub mod tests {
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert_eq!(err.0.code, "TEMPORAL_005");
+		assert_eq!(err.0.code, "TEMPORAL_029");
 	}
 
 	#[test]
@@ -286,7 +286,7 @@ pub mod tests {
 		let result = parse_time(fragment);
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert_eq!(err.0.code, "TEMPORAL_005");
+		assert_eq!(err.0.code, "TEMPORAL_029");
 	}
 
 	#[test]

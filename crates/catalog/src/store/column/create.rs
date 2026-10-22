@@ -342,7 +342,7 @@ pub mod test {
 		.unwrap_err();
 
 		let diagnostic = err.diagnostic();
-		assert_eq!(diagnostic.code, "CA_006");
+		assert_eq!(diagnostic.code, "CA_109");
 		assert!(diagnostic.message.contains("auto increment is not supported for type"));
 
 		let err = CatalogStore::create_column(
@@ -362,7 +362,7 @@ pub mod test {
 		)
 		.unwrap_err();
 
-		assert_eq!(err.diagnostic().code, "CA_006");
+		assert_eq!(err.diagnostic().code, "CA_109");
 
 		let err = CatalogStore::create_column(
 			&mut txn,
@@ -381,7 +381,7 @@ pub mod test {
 		)
 		.unwrap_err();
 
-		assert_eq!(err.diagnostic().code, "CA_006");
+		assert_eq!(err.diagnostic().code, "CA_109");
 	}
 
 	#[test]
@@ -424,7 +424,7 @@ pub mod test {
 		.unwrap_err();
 
 		let diagnostic = err.diagnostic();
-		assert_eq!(diagnostic.code, "CA_005");
+		assert_eq!(diagnostic.code, "CA_107");
 	}
 
 	fn stored_type_and_constraint(txn: &mut AdminTransaction, id: ColumnId) -> (u8, Vec<u8>) {

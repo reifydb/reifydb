@@ -305,20 +305,11 @@ pub enum AstErrorKind {
 	TokenizeError {
 		message: String,
 	},
-	UnexpectedEof,
-	ExpectedIdentifier,
 	InvalidColumnProperty,
 	InvalidPolicy,
 	UnexpectedToken {
 		expected: String,
 	},
-	UnsupportedToken,
-	MultipleExpressionsWithoutBraces,
-	UnrecognizedType,
-	UnsupportedAstNode {
-		node_type: String,
-	},
-	EmptyPipeline,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -346,13 +337,8 @@ pub enum RuntimeErrorKind {
 	VariableIsImmutable {
 		name: String,
 	},
-	BreakOutsideLoop,
-	ContinueOutsideLoop,
 	MaxIterationsExceeded {
 		limit: usize,
-	},
-	UndefinedFunction {
-		name: String,
 	},
 	FieldNotFound {
 		variable: String,
@@ -384,36 +370,7 @@ pub enum RuntimeErrorKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum NetworkErrorKind {
-	Connection {
-		message: String,
-	},
-	Engine {
-		message: String,
-	},
-	Transport {
-		message: String,
-	},
-	Status {
-		message: String,
-	},
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AuthErrorKind {
-	AuthenticationFailed {
-		reason: String,
-	},
-	AuthorizationDenied {
-		resource: String,
-	},
-	TokenExpired,
-	InvalidToken,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum FunctionErrorKind {
-	UnknownFunction,
 	ArityMismatch {
 		expected: usize,
 		actual: usize,
@@ -422,22 +379,6 @@ pub enum FunctionErrorKind {
 		max_args: usize,
 		actual: usize,
 	},
-	InvalidArgumentType {
-		index: usize,
-		expected: Vec<ValueType>,
-		actual: ValueType,
-	},
-	UndefinedArgument {
-		index: usize,
-	},
-	MissingInput,
-	ExecutionFailed {
-		reason: String,
-	},
-	InternalError {
-		details: String,
-	},
-	GeneratorNotFound,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -462,39 +403,6 @@ pub enum TypeError {
 		from: ValueType,
 		to: ValueType,
 		fragment: Fragment,
-	},
-
-	#[error("failed to cast to {target}")]
-	CastToNumberFailed {
-		target: ValueType,
-		fragment: Fragment,
-		cause: Box<TypeError>,
-	},
-
-	#[error("failed to cast to {target}")]
-	CastToTemporalFailed {
-		target: ValueType,
-		fragment: Fragment,
-		cause: Box<TypeError>,
-	},
-
-	#[error("failed to cast to bool")]
-	CastToBooleanFailed {
-		fragment: Fragment,
-		cause: Box<TypeError>,
-	},
-
-	#[error("failed to cast to {target}")]
-	CastToUuidFailed {
-		target: ValueType,
-		fragment: Fragment,
-		cause: Box<TypeError>,
-	},
-
-	#[error("failed to cast BLOB to UTF8")]
-	CastBlobToUtf8Failed {
-		fragment: Fragment,
-		cause: Box<TypeError>,
 	},
 
 	#[error("{message}")]
@@ -621,30 +529,11 @@ pub enum TypeError {
 		reason: ColumnReadReason,
 	},
 
-	#[error("{message}")]
-	Network {
-		kind: NetworkErrorKind,
-		message: String,
-	},
-
-	#[error("{message}")]
-	Auth {
-		kind: AuthErrorKind,
-		message: String,
-	},
-
 	#[error("dictionary entry ID {value} exceeds maximum {max_value} for type {id_type}")]
 	DictionaryCapacityExceeded {
 		id_type: ValueType,
 		value: u128,
 		max_value: u128,
-	},
-
-	#[error("{message}")]
-	AssertionFailed {
-		fragment: Fragment,
-		message: String,
-		expression: Option<String>,
 	},
 
 	#[error("{message}")]

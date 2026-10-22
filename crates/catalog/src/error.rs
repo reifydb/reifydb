@@ -192,30 +192,6 @@ pub enum CatalogError {
 		id: u64,
 	},
 
-	#[error("{kind} `{namespace}` already has pending changes in this transaction")]
-	AlreadyPendingInTransaction {
-		kind: CatalogObjectKind,
-		namespace: String,
-		name: Option<String>,
-		fragment: Fragment,
-	},
-
-	#[error("cannot update {kind} as it is marked for deletion")]
-	CannotUpdateDeleted {
-		kind: CatalogObjectKind,
-		namespace: String,
-		name: Option<String>,
-		fragment: Fragment,
-	},
-
-	#[error("{kind} is already marked for deletion")]
-	CannotDeleteAlreadyDeleted {
-		kind: CatalogObjectKind,
-		namespace: String,
-		name: Option<String>,
-		fragment: Fragment,
-	},
-
 	#[error("primary key must contain at least one column")]
 	PrimaryKeyEmpty {
 		fragment: Fragment,
@@ -371,12 +347,12 @@ impl IntoDiagnostic for CatalogError {
 						"choose a different name, drop the existing ring buffer or create ring buffer in a different namespace",
 					),
 					CatalogObjectKind::Queue => (
-						"CA_095",
+						"CA_116",
 						"queue",
 						"choose a different name, drop the existing queue or create queue in a different namespace",
 					),
 					CatalogObjectKind::Dictionary => (
-						"CA_006",
+						"CA_108",
 						"dictionary",
 						"choose a different name, drop the existing dictionary or create dictionary in a different namespace",
 					),
@@ -391,7 +367,7 @@ impl IntoDiagnostic for CatalogError {
 						"choose a different name or drop the existing event first",
 					),
 					CatalogObjectKind::VirtualTable => (
-						"CA_022",
+						"CA_111",
 						"virtual table",
 						"choose a different name or unregister the existing virtual table first",
 					),
@@ -462,7 +438,7 @@ impl IntoDiagnostic for CatalogError {
 						"choose a different protocol key or drop the existing binding first",
 					),
 					CatalogObjectKind::Relationship => (
-						"CA_023",
+						"CA_112",
 						"relationship",
 						"choose a different name or drop the existing relationship first",
 					),
@@ -791,7 +767,7 @@ impl IntoDiagnostic for CatalogError {
 					_ => "object",
 				};
 				Diagnostic {
-					code: "CA_005".to_string(),
+					code: "CA_107".to_string(),
 					rql: None,
 					message: format!(
 						"column `{}` already exists in {} `{}::{}`",
@@ -829,26 +805,6 @@ impl IntoDiagnostic for CatalogError {
 				)),
 				column: None,
 				notes: vec![],
-			CatalogError::DictionaryColumnUnsupported {
-				column,
-				ty,
-				fragment,
-			} => Diagnostic {
-				code: "CA_106".to_string(),
-				rql: None,
-				message: format!("column `{}` of type `{}` cannot use a dictionary", column, ty),
-				fragment,
-				label: Some("unsupported dictionary column type".to_string()),
-				help: Some(
-					"A decimal column stores its precision and scale where a dictionary column stores its dictionary, so it cannot carry both; keep decimals in a plain column"
-						.to_string(),
-				),
-				column: None,
-				notes: vec![],
-				cause: None,
-				operator_chain: None,
-			},
-
 				cause: None,
 				operator_chain: None,
 			},
@@ -873,12 +829,32 @@ impl IntoDiagnostic for CatalogError {
 				operator_chain: None,
 			},
 
+			CatalogError::DictionaryColumnUnsupported {
+				column,
+				ty,
+				fragment,
+			} => Diagnostic {
+				code: "CA_106".to_string(),
+				rql: None,
+				message: format!("column `{}` of type `{}` cannot use a dictionary", column, ty),
+				fragment,
+				label: Some("unsupported dictionary column type".to_string()),
+				help: Some(
+					"A decimal column stores its precision and scale where a dictionary column stores its dictionary, so it cannot carry both; keep decimals in a plain column"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
 			CatalogError::AutoIncrementInvalidType {
 				column,
 				ty,
 				fragment,
 			} => Diagnostic {
-				code: "CA_006".to_string(),
+				code: "CA_109".to_string(),
 				rql: None,
 				message: format!("auto increment is not supported for type `{}`", ty),
 				fragment,
@@ -897,7 +873,7 @@ impl IntoDiagnostic for CatalogError {
 				policy,
 				column,
 			} => Diagnostic {
-				code: "CA_008".to_string(),
+				code: "CA_110".to_string(),
 				rql: None,
 				message: format!("policy `{:?}` already exists for column `{}`", policy, column),
 				fragment: Fragment::None,
@@ -929,184 +905,8 @@ impl IntoDiagnostic for CatalogError {
 				operator_chain: None,
 			},
 
-			CatalogError::AlreadyPendingInTransaction {
-				kind,
-				namespace,
-				name,
-				fragment,
-			} => {
-				let (code, message, label_str) = match kind {
-					CatalogObjectKind::Namespace => (
-						"CA_011",
-						format!(
-							"namespace `{}` already has pending changes in this transaction",
-							namespace
-						),
-						"duplicate namespace modification in transaction",
-					),
-					CatalogObjectKind::Table => (
-						"CA_012",
-						format!(
-							"table `{}::{}` already has pending changes in this transaction",
-							namespace,
-							name.as_deref().unwrap_or("")
-						),
-						"duplicate table modification in transaction",
-					),
-					CatalogObjectKind::View => (
-						"CA_013",
-						format!(
-							"view `{}::{}` already has pending changes in this transaction",
-							namespace,
-							name.as_deref().unwrap_or("")
-						),
-						"duplicate view modification in transaction",
-					),
-					_ => (
-						"CA_011",
-						format!("{} already has pending changes in this transaction", kind),
-						"duplicate modification in transaction",
-					),
-				};
-				let kind_str = match kind {
-					CatalogObjectKind::Namespace => "namespace",
-					CatalogObjectKind::Table => "table",
-					CatalogObjectKind::View => "view",
-					_ => "object",
-				};
-				Diagnostic {
-					code: code.to_string(),
-					rql: None,
-					message,
-					fragment,
-					label: Some(label_str.to_string()),
-					help: Some(format!(
-						"a {} can only be created, updated, or deleted once per transaction",
-						kind_str
-					)),
-					column: None,
-					notes: vec![
-						"This usually indicates a programming error in transaction management"
-							.to_string(),
-						"Consider reviewing the transaction logic for duplicate operations"
-							.to_string(),
-					],
-					cause: None,
-					operator_chain: None,
-				}
-			}
 
-			CatalogError::CannotUpdateDeleted {
-				kind,
-				namespace,
-				name,
-				fragment,
-			} => {
-				let (code, message, kind_str) = match kind {
-					CatalogObjectKind::Namespace => (
-						"CA_014",
-						format!(
-							"cannot update namespace `{}` as it is marked for deletion in this transaction",
-							namespace
-						),
-						"namespace",
-					),
-					CatalogObjectKind::Table => (
-						"CA_015",
-						format!(
-							"cannot update table `{}::{}` as it is marked for deletion in this transaction",
-							namespace,
-							name.as_deref().unwrap_or("")
-						),
-						"table",
-					),
-					CatalogObjectKind::View => (
-						"CA_016",
-						format!(
-							"cannot update view `{}::{}` as it is marked for deletion in this transaction",
-							namespace,
-							name.as_deref().unwrap_or("")
-						),
-						"view",
-					),
-					_ => (
-						"CA_014",
-						format!(
-							"cannot update {} as it is marked for deletion in this transaction",
-							kind
-						),
-						"object",
-					),
-				};
-				Diagnostic {
-					code: code.to_string(),
-					rql: None,
-					message,
-					fragment,
-					label: Some(format!("attempted update on deleted {}", kind_str)),
-					help: Some("remove the delete operation or skip the update".to_string()),
-					column: None,
-					notes: vec![format!(
-						"A {} marked for deletion cannot be updated in the same transaction",
-						kind_str
-					)],
-					cause: None,
-					operator_chain: None,
-				}
-			}
 
-			CatalogError::CannotDeleteAlreadyDeleted {
-				kind,
-				namespace,
-				name,
-				fragment,
-			} => {
-				let (code, message, kind_str) = match kind {
-					CatalogObjectKind::Namespace => (
-						"CA_017",
-						format!(
-							"namespace `{}` is already marked for deletion in this transaction",
-							namespace
-						),
-						"namespace",
-					),
-					CatalogObjectKind::Table => (
-						"CA_018",
-						format!(
-							"table `{}::{}` is already marked for deletion in this transaction",
-							namespace,
-							name.as_deref().unwrap_or("")
-						),
-						"table",
-					),
-					CatalogObjectKind::View => (
-						"CA_019",
-						format!(
-							"view `{}::{}` is already marked for deletion in this transaction",
-							namespace,
-							name.as_deref().unwrap_or("")
-						),
-						"view",
-					),
-					_ => (
-						"CA_017",
-						format!("{} is already marked for deletion in this transaction", kind),
-						"object",
-					),
-				};
-				Diagnostic {
-					code: code.to_string(),
-					rql: None,
-					message,
-					fragment,
-					label: Some(format!("duplicate {} deletion", kind_str)),
-					help: Some("remove the duplicate delete operation".to_string()),
-					column: None,
-					notes: vec![format!("A {} can only be deleted once per transaction", kind_str)],
-					cause: None,
-					operator_chain: None,
-				}
-			}
 
 			CatalogError::PrimaryKeyEmpty {
 				fragment,
@@ -1359,7 +1159,7 @@ impl IntoDiagnostic for CatalogError {
 				name,
 				fragment,
 			} => Diagnostic {
-				code: "CA_084".to_string(),
+				code: "CA_113".to_string(),
 				rql: None,
 				message: format!(
 					"cannot drop {} procedure `{}`: in-process/extern-C/extern-wasm procedures are managed by the runtime registry, not DDL",
@@ -1380,7 +1180,7 @@ impl IntoDiagnostic for CatalogError {
 			CatalogError::CannotRegisterPersistentAsEphemeral {
 				kind,
 			} => Diagnostic {
-				code: "CA_085".to_string(),
+				code: "CA_114".to_string(),
 				rql: None,
 				message: format!(
 					"cannot register {} procedure as ephemeral: only InProcess/ExternC/ExternWasm variants are accepted",
@@ -1456,7 +1256,7 @@ impl IntoDiagnostic for CatalogError {
 				reason,
 				fragment,
 			} => Diagnostic {
-				code: "CA_090".to_string(),
+				code: "CA_115".to_string(),
 				rql: None,
 				message: format!("invalid relationship: {}", reason),
 				fragment,

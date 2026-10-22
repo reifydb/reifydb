@@ -124,7 +124,7 @@ fn test_create_queue_duplicate_name_rejected() {
 
 	let err = t.admin_err("CREATE QUEUE test::jobs { id: int4 } WITH { fifo: {} }");
 
-	assert!(err.contains("CA_095"), "duplicate queue should use the queue-specific code, got: {err}");
+	assert!(err.contains("CA_116"), "duplicate queue should use the queue-specific code, got: {err}");
 }
 
 #[test]

@@ -116,6 +116,6 @@ pub mod tests {
 
 		let err = CatalogStore::create_column_property(&mut txn, ColumnId(16385), policy.clone()).unwrap_err();
 		let diagnostic = err.diagnostic();
-		assert_eq!(diagnostic.code, "CA_008");
+		assert_eq!(diagnostic.code, "CA_110");
 	}
 }

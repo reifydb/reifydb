@@ -49,33 +49,3 @@ pub fn bind_failed(addr: impl fmt::Display, reason: impl fmt::Display) -> Diagno
 		operator_chain: None,
 	}
 }
-
-pub fn address_unavailable(reason: impl fmt::Display) -> Diagnostic {
-	Diagnostic {
-		code: "SUB_005".to_string(),
-		rql: None,
-		message: format!("Failed to get local address: {}", reason),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: None,
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn socket_config_failed(reason: impl fmt::Display) -> Diagnostic {
-	Diagnostic {
-		code: "SUB_006".to_string(),
-		rql: None,
-		message: format!("Socket configuration failed: {}", reason),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("Check socket options and system limits".to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}

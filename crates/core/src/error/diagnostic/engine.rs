@@ -18,28 +18,6 @@ pub fn frame_error(message: String) -> Diagnostic {
 	}
 }
 
-pub fn saturation_error(diagnostic: Diagnostic) -> Diagnostic {
-	let rql = diagnostic.rql.clone();
-	let message = diagnostic.message.clone();
-	let column = diagnostic.column.clone();
-	let fragment = diagnostic.fragment.clone();
-	let label = diagnostic.label.clone();
-	let notes = diagnostic.notes.clone();
-
-	Diagnostic {
-		code: "ENG_002".to_string(),
-		rql,
-		message: format!("Column policy saturation: {}", message),
-		column,
-		fragment,
-		label,
-		help: Some("Adjust column policy constraints".to_string()),
-		notes,
-		cause: Some(Box::new(diagnostic)),
-		operator_chain: None,
-	}
-}
-
 pub fn missing_row_number_column() -> Diagnostic {
 	Diagnostic {
 		code: "ENG_003".to_string(),
@@ -50,21 +28,6 @@ pub fn missing_row_number_column() -> Diagnostic {
 		label: Some("missing required column".to_string()),
 		help: Some("Ensure the query includes the encoded ID in the result set".to_string()),
 		notes: vec!["UPDATE operations require encoded identifiers to locate existing rows".to_string()],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn invalid_row_number_values() -> Diagnostic {
-	Diagnostic {
-		code: "ENG_004".to_string(),
-		rql: None,
-		message: "All RowNumber values must be defined for UPDATE operations".to_string(),
-		column: None,
-		fragment: Fragment::None,
-		label: Some("invalid encoded identifiers".to_string()),
-		help: Some("Check that the input data contains valid encoded IDs".to_string()),
-		notes: vec!["RowNumber column must contain valid identifiers, not none values".to_string()],
 		cause: None,
 		operator_chain: None,
 	}

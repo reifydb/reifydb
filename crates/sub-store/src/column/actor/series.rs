@@ -837,12 +837,10 @@ fn arrow_error(e: ArrowError) -> Error {
 mod tests {
 	use std::{cell::Cell, thread::scope};
 
-	use reifydb_core::{
-		error::diagnostic::transaction::{transaction_conflict, transaction_rolled_back},
-		interface::catalog::series::SeriesPartitionMetadata,
-	};
+	use reifydb_core::interface::catalog::series::SeriesPartitionMetadata;
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_value::{error::Error, params};
+	use reifydb_transaction::error::TransactionError;
+	use reifydb_value::params;
 
 	use super::*;
 
@@ -941,13 +939,13 @@ mod tests {
 	fn a_conflicting_seal_is_skipped_until_the_next_tick() {
 		// A conflict with a user write must not panic the actor; the dirty mark survives and the next tick
 		// redoes it.
-		assert!(skip_on_conflict(Err(Error(Box::new(transaction_conflict())))).is_ok());
+		assert!(skip_on_conflict(Err(TransactionError::Conflict.into())).is_ok());
 	}
 
 	#[test]
 	fn any_other_seal_error_still_reaches_the_panic() {
 		// Only the conflict is expected; swallowing any other error would keep the actor running on wrong data.
-		let err = skip_on_conflict(Err(Error(Box::new(transaction_rolled_back())))).unwrap_err();
+		let err = skip_on_conflict(Err(TransactionError::RolledBack.into())).unwrap_err();
 		assert_eq!(err.code, "TXN_002");
 	}
 

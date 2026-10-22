@@ -33,30 +33,6 @@ pub enum CoreError {
 		column: String,
 	},
 
-	#[error("Flow processing error: {message}")]
-	FlowError {
-		message: String,
-	},
-
-	#[error("FlowTransaction keyspace overlap: key {key} was already written")]
-	FlowTransactionKeyspaceOverlap {
-		key: String,
-	},
-
-	#[error("Flow {flow_id} is already registered")]
-	FlowAlreadyRegistered {
-		flow_id: u64,
-	},
-
-	#[error("Flow {flow_id} version data is corrupted")]
-	FlowVersionCorrupted {
-		flow_id: u64,
-		byte_count: usize,
-	},
-
-	#[error("Flow dispatcher is unavailable")]
-	FlowDispatcherUnavailable,
-
 	#[error("operator setting '{key}' is a count ({count}), but this operator seals by time")]
 	OperatorWithCountSpan {
 		key: &'static str,
@@ -146,14 +122,6 @@ pub enum CoreError {
 		kind: &'static str,
 	},
 
-	#[error("Unique index violation in index '{index_name}' on table '{table_name}'")]
-	UniqueIndexViolation {
-		fragment: Fragment,
-		table_name: String,
-		index_name: String,
-		key_columns: Vec<String>,
-	},
-
 	#[error("cannot use column `{column}` in a primary key: a {ty} value cannot be a key")]
 	PrimaryKeyDigestColumn {
 		fragment: Fragment,
@@ -168,29 +136,9 @@ pub enum CoreError {
 		actual: ValueType,
 	},
 
-	#[error("Internal error: {message}")]
-	Internal {
-		message: String,
-		file: String,
-		line: u32,
-		column: u32,
-		function: String,
-		module_path: String,
-	},
-
-	#[error("{component} is shutting down")]
-	Shutdown {
-		component: String,
-	},
-
 	#[error("sequence generator of type `{value_type}` is exhausted")]
 	SequenceExhausted {
 		value_type: ValueType,
-	},
-
-	#[error("cannot alter sequence for non-AUTO INCREMENT column")]
-	CanNotAlterNotAutoIncrement {
-		fragment: Fragment,
 	},
 
 	#[error("{subsystem} subsystem initialization failed: {reason}")]
@@ -210,19 +158,8 @@ pub enum CoreError {
 		reason: String,
 	},
 
-	#[error("{subsystem} subsystem shutdown failed: {reason}")]
-	SubsystemShutdownFailed {
-		subsystem: String,
-		reason: String,
-	},
-
 	#[error("Failed to get local address: {reason}")]
 	SubsystemAddressUnavailable {
-		reason: String,
-	},
-
-	#[error("Socket configuration failed: {reason}")]
-	SubsystemSocketConfigFailed {
 		reason: String,
 	},
 }

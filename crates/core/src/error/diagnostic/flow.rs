@@ -25,60 +25,6 @@ pub fn flow_error(message: String) -> Diagnostic {
 	}
 }
 
-pub fn flow_already_registered(flow_id: u64) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_003".to_string(),
-		rql: None,
-		message: format!("Flow {} is already registered", flow_id),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("Each flow can only be registered once. Check if the flow is already active.".to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_version_corrupted(flow_id: u64, byte_count: usize) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_004".to_string(),
-		rql: None,
-		message: format!(
-			"Flow {} version data is corrupted: expected 8 bytes, found {} bytes",
-			flow_id, byte_count
-		),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("The flow version stored in the catalog is corrupted. \
-			This may indicate data corruption or a shape migration issue. \
-			Try dropping and recreating the flow."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_dispatcher_unavailable() -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_006".to_string(),
-		rql: None,
-		message: "Flow dispatcher is unavailable (channel closed)".to_string(),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("The flow dispatcher task has stopped or crashed. \
-			This may occur during shutdown or if the dispatcher encountered a fatal error. \
-			Check dispatcher logs for details."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
 pub fn flow_remote_source_unsupported() -> Diagnostic {
 	Diagnostic {
 		code: "FLOW_007".to_string(),
@@ -88,42 +34,6 @@ pub fn flow_remote_source_unsupported() -> Diagnostic {
 		fragment: Fragment::None,
 		label: None,
 		help: Some("Remote tables do not support local flow graphs. Use remote subscription proxying instead."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_window_timestamp_column_not_found(column: &str) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_009".to_string(),
-		rql: None,
-		message: format!("Window timestamp column '{}' not found in input data", column),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some(format!(
-			"The window operator is configured with ts: \"{}\" but no column with that name exists in the source table. \
-			Check the column name in the window WITH clause.",
-			column
-		)),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_window_timestamp_column_type_mismatch(column: &str, found: ValueType) -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_010".to_string(),
-		rql: None,
-		message: format!("Window timestamp column '{}' has type {:?}, expected DateTime", column, found),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("The timestamp column must be of type DateTime. \
-			If you have epoch milliseconds, convert with datetime::from_epoch_millis(column)."
 			.to_string()),
 		notes: vec![],
 		cause: None,
@@ -223,23 +133,6 @@ pub fn flow_window_span_unavailable(output: &str, kind: &str) -> Diagnostic {
 		help: Some("window::start, window::end and window::duration are available on tumbling, sliding \
 			and session windows sized by a duration. A rolling window and a window sized by a row \
 			count have no boundary; window::last works on every window kind."
-			.to_string()),
-		notes: vec![],
-		cause: None,
-		operator_chain: None,
-	}
-}
-
-pub fn flow_supervisor_stopped() -> Diagnostic {
-	Diagnostic {
-		code: "FLOW_020".to_string(),
-		rql: None,
-		message: "flow supervisor actor has stopped".to_string(),
-		column: None,
-		fragment: Fragment::None,
-		label: None,
-		help: Some("The flow supervisor actor is no longer reachable and cannot consume CDC. \
-			This typically occurs during shutdown or after a supervisor panic."
 			.to_string()),
 		notes: vec![],
 		cause: None,

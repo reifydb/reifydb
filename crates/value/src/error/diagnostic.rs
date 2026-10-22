@@ -4,8 +4,8 @@
 use super::{Diagnostic, IntoDiagnostic, util::value_range};
 use crate::{
 	error::{
-		AstErrorKind, AuthErrorKind, BinaryOp, BlobEncodingKind, ConstraintKind, FunctionErrorKind, LogicalOp,
-		NetworkErrorKind, OperandCategory, ProcedureErrorKind, RuntimeErrorKind, TemporalKind, TypeError,
+		AstErrorKind, BinaryOp, BlobEncodingKind, ConstraintKind, FunctionErrorKind, LogicalOp,
+		OperandCategory, ProcedureErrorKind, RuntimeErrorKind, TemporalKind, TypeError,
 	},
 	fragment::Fragment,
 	value::value_type::ValueType,
@@ -255,100 +255,10 @@ impl IntoDiagnostic for TypeError {
 				}
 			}
 
-			TypeError::CastToNumberFailed {
-				target,
-				fragment,
-				cause,
-			} => {
-				let label = Some(format!("failed to cast to {}", target));
-				Diagnostic {
-					code: "CAST_002".to_string(),
-					rql: None,
-					message: format!("failed to cast to {}", target),
-					fragment,
-					label,
-					help: None,
-					notes: vec![],
-					column: None,
-					cause: Some(Box::new((*cause).into_diagnostic())),
-					operator_chain: None,
-				}
-			}
 
-			TypeError::CastToTemporalFailed {
-				target,
-				fragment,
-				cause,
-			} => {
-				let label = Some(format!("failed to cast to {}", target));
-				Diagnostic {
-					code: "CAST_003".to_string(),
-					rql: None,
-					message: format!("failed to cast to {}", target),
-					fragment,
-					label,
-					help: None,
-					notes: vec![],
-					column: None,
-					cause: Some(Box::new((*cause).into_diagnostic())),
-					operator_chain: None,
-				}
-			}
 
-			TypeError::CastToBooleanFailed { fragment, cause } => {
-				let label = Some("failed to cast to bool".to_string());
-				Diagnostic {
-					code: "CAST_004".to_string(),
-					rql: None,
-					message: "failed to cast to bool".to_string(),
-					fragment,
-					label,
-					help: None,
-					notes: vec![],
-					column: None,
-					cause: Some(Box::new((*cause).into_diagnostic())),
-					operator_chain: None,
-				}
-			}
 
-			TypeError::CastToUuidFailed {
-				target,
-				fragment,
-				cause,
-			} => {
-				let label = Some(format!("failed to cast to {}", target));
-				Diagnostic {
-					code: "CAST_005".to_string(),
-					rql: None,
-					message: format!("failed to cast to {}", target),
-					fragment,
-					label,
-					help: None,
-					notes: vec![],
-					column: None,
-					cause: Some(Box::new((*cause).into_diagnostic())),
-					operator_chain: None,
-				}
-			}
 
-			TypeError::CastBlobToUtf8Failed { fragment, cause } => {
-				let label = Some("failed to cast BLOB to UTF8".to_string());
-				Diagnostic {
-					code: "CAST_006".to_string(),
-					rql: None,
-					message: "failed to cast BLOB to UTF8".to_string(),
-					fragment,
-					label,
-					help: Some(
-						"BLOB contains invalid UTF-8 bytes. Consider using to_utf8_lossy() function instead"
-							.to_string(),
-					),
-					notes: vec![],
-					column: None,
-					cause: Some(Box::new((*cause).into_diagnostic())),
-					operator_chain: None,
-				}
-			}
 
 			TypeError::ConstraintViolation {
 				kind,
@@ -716,7 +626,7 @@ impl IntoDiagnostic for TypeError {
 						vec!["valid examples: 2024, 1999, 2000".to_string()],
 					),
 					TemporalKind::InvalidTimeComponentFormat { component } => (
-						"TEMPORAL_005",
+						"TEMPORAL_029",
 						Some(format!("{} '{}' must be exactly 2 digits", component, fragment.text())),
 						Some(format!("ensure the {} is exactly 2 digits (e.g., 09, 14, 23)", component)),
 						vec![format!("{} must be exactly 2 digits in HH:MM:SS format", component)],
@@ -1102,63 +1012,7 @@ impl IntoDiagnostic for TypeError {
 				operator_chain: None,
 			},
 
-			TypeError::Network { kind, message } => {
-				let (code, help) = match &kind {
-					NetworkErrorKind::Connection { .. } => {
-						("NET_001", Some("Check network connectivity and server status".to_string()))
-					}
-					NetworkErrorKind::Engine { .. } => ("NET_002", None),
-					NetworkErrorKind::Transport { .. } => {
-						("NET_003", Some("Check network connectivity".to_string()))
-					}
-					NetworkErrorKind::Status { .. } => {
-						("NET_004", Some("Check gRPC service status".to_string()))
-					}
-				};
 
-				Diagnostic {
-					code: code.to_string(),
-					rql: None,
-					message,
-					column: None,
-					fragment: Fragment::None,
-					label: None,
-					help,
-					notes: vec![],
-					cause: None,
-					operator_chain: None,
-				}
-			}
-
-			TypeError::Auth { kind, message } => {
-				let (code, help) = match &kind {
-					AuthErrorKind::AuthenticationFailed { .. } => {
-						("ASVTH_001", Some("Check your credentials and try again".to_string()))
-					}
-					AuthErrorKind::AuthorizationDenied { .. } => {
-						("ASVTH_002", Some("Check your permissions for this resource".to_string()))
-					}
-					AuthErrorKind::TokenExpired => {
-						("ASVTH_003", Some("Refresh your authentication token".to_string()))
-					}
-					AuthErrorKind::InvalidToken => {
-						("ASVTH_004", Some("Provide a valid authentication token".to_string()))
-					}
-				};
-
-				Diagnostic {
-					code: code.to_string(),
-					rql: None,
-					message,
-					column: None,
-					fragment: Fragment::None,
-					label: None,
-					help,
-					notes: vec![],
-					cause: None,
-					operator_chain: None,
-				}
-			}
 
 			TypeError::DictionaryCapacityExceeded {
 				id_type,
@@ -1179,29 +1033,6 @@ impl IntoDiagnostic for TypeError {
 				operator_chain: None,
 			},
 
-			TypeError::AssertionFailed {
-				fragment,
-				message,
-				expression,
-			} => {
-				let label = expression
-					.as_ref()
-					.map(|expr| format!("this expression is false: {}", expr))
-					.or_else(|| Some("assertion failed".to_string()));
-
-				Diagnostic {
-					code: "ASSERT".to_string(),
-					rql: None,
-					message,
-					fragment,
-					label,
-					help: None,
-					notes: vec![],
-					column: None,
-					cause: None,
-					operator_chain: None,
-				}
-			}
 
 			TypeError::Function {
 				kind,
@@ -1209,11 +1040,6 @@ impl IntoDiagnostic for TypeError {
 				fragment,
 			} => {
 				let (code, label, help) = match &kind {
-					FunctionErrorKind::UnknownFunction => (
-						"FUNCTION_001",
-						Some("unknown function".to_string()),
-						Some("Check the function name and available functions".to_string()),
-					),
 					FunctionErrorKind::ArityMismatch { expected, .. } => (
 						"FUNCTION_002",
 						Some("wrong number of arguments".to_string()),
@@ -1223,40 +1049,6 @@ impl IntoDiagnostic for TypeError {
 						"FUNCTION_003",
 						Some("too many arguments".to_string()),
 						Some(format!("Provide at most {} arguments to function {}", max_args, fragment.text())),
-					),
-					FunctionErrorKind::InvalidArgumentType { expected, .. } => {
-						let expected_types =
-							expected.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
-						(
-							"FUNCTION_004",
-							Some("invalid argument type".to_string()),
-							Some(format!("Provide an argument of type: {}", expected_types)),
-						)
-					}
-					FunctionErrorKind::UndefinedArgument { .. } => (
-						"FUNCTION_005",
-						Some("none argument".to_string()),
-						Some("Provide a defined value for this argument".to_string()),
-					),
-					FunctionErrorKind::MissingInput => (
-						"FUNCTION_006",
-						Some("missing input".to_string()),
-						Some("Provide input data to the function".to_string()),
-					),
-					FunctionErrorKind::ExecutionFailed { .. } => (
-						"FUNCTION_007",
-						Some("execution failed".to_string()),
-						Some("Check function arguments and data".to_string()),
-					),
-					FunctionErrorKind::InternalError { .. } => (
-						"FUNCTION_008",
-						Some("internal error".to_string()),
-						Some("This is an internal error - please report this issue".to_string()),
-					),
-					FunctionErrorKind::GeneratorNotFound => (
-						"FUNCTION_009",
-						Some("unknown generator function".to_string()),
-						Some("Check the generator function name and ensure it is registered".to_string()),
 					),
 				};
 
@@ -1285,16 +1077,6 @@ impl IntoDiagnostic for TypeError {
 						None,
 						Some("Check syntax and token format".to_string()),
 					),
-					AstErrorKind::UnexpectedEof => (
-						"AST_002",
-						None,
-						Some("Complete the statement".to_string()),
-					),
-					AstErrorKind::ExpectedIdentifier => (
-						"AST_003",
-						Some(format!("found `{}`", fragment.text())),
-						Some("expected token of type `identifier`".to_string()),
-					),
 					AstErrorKind::InvalidColumnProperty => (
 						"AST_011",
 						Some(format!("found `{}`", fragment.text())),
@@ -1309,34 +1091,6 @@ impl IntoDiagnostic for TypeError {
 						"AST_005",
 						Some(format!("found `{}`", fragment.text())),
 						Some(format!("Use {} instead", expected)),
-					),
-					AstErrorKind::UnsupportedToken => (
-						"AST_006",
-						Some(format!("found `{}`", fragment.text())),
-						Some("This token is not supported in this context".to_string()),
-					),
-					AstErrorKind::MultipleExpressionsWithoutBraces => {
-						let keyword = fragment.text().to_string();
-						(
-							"AST_007",
-							Some("missing `{ … }` around expressions".to_string()),
-							Some(format!("wrap the expressions in curly braces:\n    {} {{ expr1, expr2, … }}", keyword)),
-						)
-					}
-					AstErrorKind::UnrecognizedType => (
-						"AST_008",
-						Some("type not found".to_string()),
-						None,
-					),
-					AstErrorKind::UnsupportedAstNode { .. } => (
-						"AST_009",
-						Some("not supported in this context".to_string()),
-						Some("This syntax is not yet supported or may be invalid in this context".to_string()),
-					),
-					AstErrorKind::EmptyPipeline => (
-						"AST_010",
-						None,
-						Some("A query pipeline must contain at least one operation".to_string()),
 					),
 				};
 
@@ -1381,21 +1135,9 @@ impl IntoDiagnostic for TypeError {
 						"RUNTIME_003",
 						Some("Use 'let mut $name := value' to declare a mutable variable".to_string()),
 					),
-					RuntimeErrorKind::BreakOutsideLoop => (
-						"RUNTIME_004",
-						Some("Use BREAK inside a LOOP, WHILE, or FOR block".to_string()),
-					),
-					RuntimeErrorKind::ContinueOutsideLoop => (
-						"RUNTIME_005",
-						Some("Use CONTINUE inside a LOOP, WHILE, or FOR block".to_string()),
-					),
 					RuntimeErrorKind::MaxIterationsExceeded { .. } => (
 						"RUNTIME_006",
 						Some("Add a BREAK condition or use WHILE with a terminating condition".to_string()),
-					),
-					RuntimeErrorKind::UndefinedFunction { .. } => (
-						"RUNTIME_007",
-						Some("Define the function using 'DEF name [] { ... }' before calling it".to_string()),
 					),
 					RuntimeErrorKind::FieldNotFound {
 						variable, available, ..
@@ -1460,7 +1202,6 @@ impl IntoDiagnostic for TypeError {
 				let fragment = match &kind {
 					RuntimeErrorKind::VariableNotFound { fragment } => fragment.clone(),
 					RuntimeErrorKind::VariableIsClosure { fragment } => fragment.clone(),
-					RuntimeErrorKind::UndefinedFunction { name } => Fragment::internal(name.clone()),
 					RuntimeErrorKind::AppendColumnMismatch { fragment, .. } => fragment.clone(),
 					RuntimeErrorKind::ConditionalBranchMismatch { fragment, .. } => fragment.clone(),
 					RuntimeErrorKind::ColumnLengthMismatch { fragment, .. } => fragment.clone(),
@@ -1484,12 +1225,12 @@ impl IntoDiagnostic for TypeError {
 			TypeError::Procedure { kind, message, fragment } => {
 				let (code, help, label) = match &kind {
 					ProcedureErrorKind::UndefinedProcedure { .. } => (
-						"PROCEDURE_001",
+						"PROCEDURE_004",
 						"Check the procedure name and available procedures",
 						"unknown procedure",
 					),
 					ProcedureErrorKind::NoRegisteredImplementation { .. } => (
-						"PROCEDURE_002",
+						"PROCEDURE_005",
 						"the catalog references an extern binding that is not loaded in this binary - rebuild with the registration or drop/replace the catalog entry",
 						"extern binding not loaded",
 					),

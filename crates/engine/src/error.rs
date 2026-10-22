@@ -257,7 +257,7 @@ impl IntoDiagnostic for EngineError {
 				name,
 				fragment,
 			} => Diagnostic {
-				code: "FUNCTION_009".to_string(),
+				code: "FUNCTION_010".to_string(),
 				rql: None,
 				message: format!("Generator function '{}' not found", name),
 				column: None,

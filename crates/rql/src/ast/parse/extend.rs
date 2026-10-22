@@ -99,6 +99,6 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 
 		let result = parser.parse().unwrap_err();
-		assert_eq!(result.code, "EXTEND_002");
+		assert_eq!(result.code, "EXTEND_003");
 	}
 }

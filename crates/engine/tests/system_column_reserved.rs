@@ -5,7 +5,7 @@ use reifydb_core::execution::ExecutionResult;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{error::Diagnostic, params::Params, value::identity::IdentityId};
 
-const RESERVED: &str = "QUERY_004";
+const RESERVED: &str = "QUERY_016";
 
 fn seeded() -> TestEngine {
 	let t = TestEngine::new();
@@ -23,7 +23,7 @@ fn diagnostic(result: ExecutionResult, rql: &str) -> Diagnostic {
 
 #[track_caller]
 fn assert_reserved(result: ExecutionResult, rql: &str, name: &str) {
-	// Without the exact message a different QUERY_004 (the read-only inline key) would pass here.
+	// Without the exact message another error sharing this code would pass here.
 	let diagnostic = diagnostic(result, rql);
 	assert_eq!(diagnostic.code, RESERVED, "`{rql}` must fail with the reserved-name code, got {diagnostic:?}");
 	assert_eq!(
@@ -175,7 +175,7 @@ fn inline_from_rejects_a_hash_key_as_read_only() {
 	let t = seeded();
 	let rql = "FROM [{ `#x`: 1 }]";
 	let diagnostic = diagnostic(t.inner().query_as(IdentityId::system(), rql, Params::None), rql);
-	assert_eq!(diagnostic.code, RESERVED, "`{rql}` must fail with QUERY_004, got {diagnostic:?}");
+	assert_eq!(diagnostic.code, "QUERY_004", "`{rql}` must fail with QUERY_004, got {diagnostic:?}");
 	assert_eq!(diagnostic.message, "system column '#x' is read-only", "got {diagnostic:?}");
 }
 

@@ -143,7 +143,7 @@ pub mod tests {
 		assert_eq!(result.name, "test_dict");
 
 		let err = CatalogStore::create_dictionary(&mut txn, to_create).unwrap_err();
-		assert_eq!(err.diagnostic().code, "CA_006");
+		assert_eq!(err.diagnostic().code, "CA_108");
 	}
 
 	#[test]

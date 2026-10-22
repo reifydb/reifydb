@@ -48,7 +48,7 @@ impl IntoDiagnostic for DictionaryError {
 				hash,
 				len,
 			} => Diagnostic {
-				code: "TXN_015".to_string(),
+				code: "TXN_020".to_string(),
 				rql: None,
 				message: format!(
 					"dictionary {} entry record for hash {:02x?} is truncated ({} bytes)",
@@ -70,7 +70,7 @@ impl IntoDiagnostic for DictionaryError {
 				dictionary,
 				hash,
 			} => Diagnostic {
-				code: "TXN_016".to_string(),
+				code: "TXN_021".to_string(),
 				rql: None,
 				message: format!(
 					"dictionary {} hash collision on {:02x?}: two distinct values share one 128-bit hash",
