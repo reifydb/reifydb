@@ -553,15 +553,15 @@ pub struct AssignNode<'bump> {
 #[derive(Debug)]
 pub struct ConditionalNode<'bump> {
 	pub condition: Expression,
-	pub then_branch: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub then_branch: Vec<BumpVec<'bump, LogicalPlan<'bump>>>,
 	pub else_ifs: Vec<ElseIfBranch<'bump>>,
-	pub else_branch: Option<BumpBox<'bump, LogicalPlan<'bump>>>,
+	pub else_branch: Option<Vec<BumpVec<'bump, LogicalPlan<'bump>>>>,
 }
 
 #[derive(Debug)]
 pub struct ElseIfBranch<'bump> {
 	pub condition: Expression,
-	pub then_branch: BumpBox<'bump, LogicalPlan<'bump>>,
+	pub then_branch: Vec<BumpVec<'bump, LogicalPlan<'bump>>>,
 }
 
 #[derive(Debug)]

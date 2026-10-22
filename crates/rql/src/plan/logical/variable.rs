@@ -117,13 +117,12 @@ impl<'bump> Compiler<'bump> {
 	pub(crate) fn compile_if(&self, ast: AstIf<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
 		let condition = ExpressionCompiler::compile(BumpBox::into_inner(ast.condition))?;
 
-		let then_branch = BumpBox::new_in(self.compile_block_single(ast.then_block, tx)?, self.bump);
+		let then_branch = self.compile_branch(ast.then_block, tx)?;
 
 		let mut else_ifs = Vec::new();
 		for else_if in ast.else_ifs {
 			let condition = ExpressionCompiler::compile(BumpBox::into_inner(else_if.condition))?;
-			let then_branch =
-				BumpBox::new_in(self.compile_block_single(else_if.then_block, tx)?, self.bump);
+			let then_branch = self.compile_branch(else_if.then_block, tx)?;
 
 			else_ifs.push(ElseIfBranch {
 				condition,
@@ -132,9 +131,7 @@ impl<'bump> Compiler<'bump> {
 		}
 
 		let else_branch = match ast.else_block {
-			Some(else_block) => {
-				Some(BumpBox::new_in(self.compile_block_single(else_block, tx)?, self.bump))
-			}
+			Some(else_block) => Some(self.compile_branch(else_block, tx)?),
 			None => None,
 		};
 
@@ -418,27 +415,36 @@ impl<'bump> Compiler<'bump> {
 			.into_iter()
 			.map(|(cond, plan)| ElseIfBranch {
 				condition: cond,
-				then_branch: BumpBox::new_in(plan, self.bump),
+				then_branch: self.single_statement(plan),
 			})
 			.collect();
 
-		let else_branch = else_plan.map(|plan| BumpBox::new_in(plan, self.bump));
+		let else_branch = else_plan.map(|plan| self.single_statement(plan));
 
 		Ok(LogicalPlan::Conditional(ConditionalNode {
 			condition: first_cond,
-			then_branch: BumpBox::new_in(first_then, self.bump),
+			then_branch: self.single_statement(first_then),
 			else_ifs,
 			else_branch,
 		}))
 	}
 
-	fn compile_block_single(&self, block: AstBlock<'bump>, tx: &mut Transaction<'_>) -> Result<LogicalPlan<'bump>> {
-		if let Some(first_stmt) = block.statements.into_iter().next() {
-			let plans = self.compile(first_stmt, tx)?;
-			return self.fold_plans_into_single(plans);
+	fn compile_branch(
+		&self,
+		block: AstBlock<'bump>,
+		tx: &mut Transaction<'_>,
+	) -> Result<Vec<BumpVec<'bump, LogicalPlan<'bump>>>> {
+		let statements = self.compile_block(block, tx)?;
+		if statements.is_empty() {
+			return Ok(self.single_statement(self.none_as_map()?));
 		}
+		Ok(statements)
+	}
 
-		self.none_as_map()
+	fn single_statement(&self, plan: LogicalPlan<'bump>) -> Vec<BumpVec<'bump, LogicalPlan<'bump>>> {
+		let mut statement = BumpVec::new_in(self.bump);
+		statement.push(plan);
+		vec![statement]
 	}
 
 	fn fold_plans_into_single(&self, mut plans: BumpVec<'bump, LogicalPlan<'bump>>) -> Result<LogicalPlan<'bump>> {

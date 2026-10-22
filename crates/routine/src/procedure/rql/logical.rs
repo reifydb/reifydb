@@ -172,12 +172,16 @@ impl LogicalWalker {
 				}
 			}
 			LogicalPlan::Conditional(node) => {
-				self.walk(&node.then_branch, depth, parent);
-				for else_if in node.else_ifs.iter() {
-					self.walk(&else_if.then_branch, depth, parent);
-				}
-				if let Some(else_branch) = &node.else_branch {
-					self.walk(else_branch, depth, parent);
+				let branches = [&node.then_branch]
+					.into_iter()
+					.chain(node.else_ifs.iter().map(|else_if| &else_if.then_branch))
+					.chain(node.else_branch.iter());
+				for branch in branches {
+					for stmt in branch.iter() {
+						for child in stmt.iter() {
+							self.walk(child, depth, parent);
+						}
+					}
 				}
 			}
 			LogicalPlan::DefineFunction(def) => {

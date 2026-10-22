@@ -291,12 +291,12 @@ fn visit(plan: &PhysicalPlan<'_>, scope: Scope) -> Result<Found> {
 			_ => Ok(Found::default()),
 		},
 		PhysicalPlan::Conditional(node) => {
-			let mut found = nested(&node.then_branch, &scope)?;
+			let mut found = statements(&node.then_branch, &scope)?;
 			for branch in &node.else_ifs {
-				found = found.merge(nested(&branch.then_branch, &scope)?);
+				found = found.merge(statements(&branch.then_branch, &scope)?);
 			}
 			if let Some(branch) = &node.else_branch {
-				found = found.merge(nested(branch, &scope)?);
+				found = found.merge(statements(branch, &scope)?);
 			}
 			Ok(found)
 		}

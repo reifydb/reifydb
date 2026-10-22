@@ -226,12 +226,16 @@ impl PhysicalWalker {
 				}
 			}
 			PhysicalPlan::Conditional(node) => {
-				self.walk(&node.then_branch, depth, parent);
-				for else_if in node.else_ifs.iter() {
-					self.walk(&else_if.then_branch, depth, parent);
+				for child in node.then_branch.iter() {
+					self.walk(child, depth, parent);
 				}
-				if let Some(else_branch) = &node.else_branch {
-					self.walk(else_branch, depth, parent);
+				for else_if in node.else_ifs.iter() {
+					for child in else_if.then_branch.iter() {
+						self.walk(child, depth, parent);
+					}
+				}
+				for child in node.else_branch.iter().flatten() {
+					self.walk(child, depth, parent);
 				}
 			}
 			PhysicalPlan::DefineFunction(def) => {

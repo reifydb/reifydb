@@ -109,13 +109,17 @@ pub fn walk_expressions_mut(
 		}
 		PhysicalPlan::Conditional(n) => {
 			internal(&mut n.condition);
-			walk_expressions_mut(&mut n.then_branch, internal, projection);
+			for child in &mut n.then_branch {
+				walk_expressions_mut(child, internal, projection);
+			}
 			for elif in &mut n.else_ifs {
 				internal(&mut elif.condition);
-				walk_expressions_mut(&mut elif.then_branch, internal, projection);
+				for child in &mut elif.then_branch {
+					walk_expressions_mut(child, internal, projection);
+				}
 			}
-			if let Some(else_branch) = n.else_branch.as_mut() {
-				walk_expressions_mut(else_branch, internal, projection);
+			for child in n.else_branch.iter_mut().flatten() {
+				walk_expressions_mut(child, internal, projection);
 			}
 		}
 		PhysicalPlan::Loop(n) => {

@@ -118,19 +118,19 @@ fn inject_plan<'a>(
 			with: inject_plans(with, bump, catalog, tx)?,
 		})),
 		LogicalPlan::Conditional(mut node) => {
-			node.then_branch = inject_boxed(node.then_branch, bump, catalog, tx)?;
+			node.then_branch = inject_bodies(node.then_branch, bump, catalog, tx)?;
 			node.else_ifs = node
 				.else_ifs
 				.into_iter()
 				.map(|branch| {
 					Ok(ElseIfBranch {
 						condition: branch.condition,
-						then_branch: inject_boxed(branch.then_branch, bump, catalog, tx)?,
+						then_branch: inject_bodies(branch.then_branch, bump, catalog, tx)?,
 					})
 				})
 				.collect::<Result<_>>()?;
 			node.else_branch =
-				node.else_branch.map(|branch| inject_boxed(branch, bump, catalog, tx)).transpose()?;
+				node.else_branch.map(|branch| inject_bodies(branch, bump, catalog, tx)).transpose()?;
 			Ok(LogicalPlan::Conditional(node))
 		}
 		LogicalPlan::Loop(mut node) => {

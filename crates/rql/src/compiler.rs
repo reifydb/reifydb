@@ -1759,7 +1759,7 @@ impl InstructionCompiler {
 		let false_jump = self.emit_conditional_jump(node.condition)?;
 		self.emit(Instruction::EnterScope(ScopeType::Conditional));
 		self.scope_depth += 1;
-		self.compile_plan(BumpBox::into_inner(node.then_branch))?;
+		self.compile_branch(node.then_branch)?;
 		self.scope_depth -= 1;
 		self.emit(Instruction::ExitScope);
 		let end_jump = self.emit(Instruction::Jump(0));
@@ -1772,7 +1772,7 @@ impl InstructionCompiler {
 			let false_jump = self.emit_conditional_jump(else_if.condition)?;
 			self.emit(Instruction::EnterScope(ScopeType::Conditional));
 			self.scope_depth += 1;
-			self.compile_plan(BumpBox::into_inner(else_if.then_branch))?;
+			self.compile_branch(else_if.then_branch)?;
 			self.scope_depth -= 1;
 			self.emit(Instruction::ExitScope);
 			let end_jump = self.emit(Instruction::Jump(0));
@@ -1785,7 +1785,7 @@ impl InstructionCompiler {
 		if let Some(else_branch) = node.else_branch {
 			self.emit(Instruction::EnterScope(ScopeType::Conditional));
 			self.scope_depth += 1;
-			self.compile_plan(BumpBox::into_inner(else_branch))?;
+			self.compile_branch(else_branch)?;
 			self.scope_depth -= 1;
 			self.emit(Instruction::ExitScope);
 		}
@@ -1797,6 +1797,22 @@ impl InstructionCompiler {
 
 		self.emit(Instruction::Nop);
 		Ok(())
+	}
+
+	fn compile_branch(&mut self, branch: Vec<PhysicalPlan<'_>>) -> Result<()> {
+		for plan in branch {
+			self.compile_plan(plan)?;
+		}
+		Ok(())
+	}
+
+	fn compile_value_branch(&mut self, mut branch: Vec<PhysicalPlan<'_>>) -> Result<()> {
+		let Some(value) = branch.pop() else {
+			self.emit(Instruction::PushNone);
+			return Ok(());
+		};
+		self.compile_branch(branch)?;
+		self.compile_value_plan(value)
 	}
 
 	fn compile_value_plan(&mut self, plan: PhysicalPlan<'_>) -> Result<()> {
@@ -1816,7 +1832,7 @@ impl InstructionCompiler {
 		let false_jump = self.emit_conditional_jump(node.condition)?;
 		self.emit(Instruction::EnterScope(ScopeType::Conditional));
 		self.scope_depth += 1;
-		self.compile_value_plan(BumpBox::into_inner(node.then_branch))?;
+		self.compile_value_branch(node.then_branch)?;
 		self.scope_depth -= 1;
 		self.emit(Instruction::ExitScope);
 		let end_jump = self.emit(Instruction::Jump(0));
@@ -1829,7 +1845,7 @@ impl InstructionCompiler {
 			let false_jump = self.emit_conditional_jump(else_if.condition)?;
 			self.emit(Instruction::EnterScope(ScopeType::Conditional));
 			self.scope_depth += 1;
-			self.compile_value_plan(BumpBox::into_inner(else_if.then_branch))?;
+			self.compile_value_branch(else_if.then_branch)?;
 			self.scope_depth -= 1;
 			self.emit(Instruction::ExitScope);
 			let end_jump = self.emit(Instruction::Jump(0));
@@ -1842,7 +1858,7 @@ impl InstructionCompiler {
 		if let Some(else_branch) = node.else_branch {
 			self.emit(Instruction::EnterScope(ScopeType::Conditional));
 			self.scope_depth += 1;
-			self.compile_value_plan(BumpBox::into_inner(else_branch))?;
+			self.compile_value_branch(else_branch)?;
 			self.scope_depth -= 1;
 			self.emit(Instruction::ExitScope);
 		} else {

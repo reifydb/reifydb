@@ -51,7 +51,7 @@ use tracing::instrument;
 use crate::{
 	Result,
 	ast::ast::{AstAlterPolicyAction, AstPolicyScope, AstViewStorageKind},
-	bump::{BumpBox, FragmentInterner},
+	bump::{BumpBox, BumpVec, FragmentInterner},
 	convert_data_type_with_constraints,
 	error::RqlError,
 	expression::ExpressionCompiler,
@@ -403,15 +403,15 @@ pub enum AppendPhysicalSource<'bump> {
 #[derive(Debug)]
 pub struct ConditionalNode<'bump> {
 	pub condition: Expression,
-	pub then_branch: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub then_branch: Vec<PhysicalPlan<'bump>>,
 	pub else_ifs: Vec<ElseIfBranch<'bump>>,
-	pub else_branch: Option<BumpBox<'bump, PhysicalPlan<'bump>>>,
+	pub else_branch: Option<Vec<PhysicalPlan<'bump>>>,
 }
 
 #[derive(Debug)]
 pub struct ElseIfBranch<'bump> {
 	pub condition: Expression,
-	pub then_branch: BumpBox<'bump, PhysicalPlan<'bump>>,
+	pub then_branch: Vec<PhysicalPlan<'bump>>,
 }
 
 #[derive(Debug)]
@@ -661,6 +661,20 @@ impl<'bump> Compiler<'bump> {
 			}
 			None => Ok(None),
 		}
+	}
+
+	fn compile_branch(
+		&mut self,
+		rx: &mut Transaction<'_>,
+		statements: Vec<BumpVec<'bump, LogicalPlan<'bump>>>,
+	) -> Result<Vec<PhysicalPlan<'bump>>> {
+		let mut branch = Vec::with_capacity(statements.len());
+		for statement in statements {
+			if let Some(plan) = self.compile(rx, statement)? {
+				branch.push(plan);
+			}
+		}
+		Ok(branch)
 	}
 
 	fn compile_tree(&mut self, rx: &mut Transaction<'_>, tree: QueryTree<'bump>) -> Result<PhysicalPlan<'bump>> {
@@ -2579,55 +2593,19 @@ impl<'bump> Compiler<'bump> {
 			}
 
 			LogicalPlan::Conditional(conditional_node) => {
-				let then_branch = if let Some(then_plan) =
-					self.compile(rx, once(BumpBox::into_inner(conditional_node.then_branch)))?
-				{
-					self.bump_box(then_plan)
-				} else {
-					return Err(RqlError::InternalFunctionError {
-						name: "compile_physical".to_string(),
-						fragment: Fragment::internal("compile_physical"),
-						details: "Failed to compile conditional then branch".to_string(),
-					}
-					.into());
-				};
+				let then_branch = self.compile_branch(rx, conditional_node.then_branch)?;
 
 				let mut else_ifs = Vec::new();
 				for else_if in conditional_node.else_ifs {
-					let condition = else_if.condition;
-					let then_branch = if let Some(plan) =
-						self.compile(rx, once(BumpBox::into_inner(else_if.then_branch)))?
-					{
-						self.bump_box(plan)
-					} else {
-						return Err(RqlError::InternalFunctionError {
-							name: "compile_physical".to_string(),
-							fragment: Fragment::internal("compile_physical"),
-							details: "Failed to compile conditional else if branch"
-								.to_string(),
-						}
-						.into());
-					};
 					else_ifs.push(ElseIfBranch {
-						condition,
-						then_branch,
+						condition: else_if.condition,
+						then_branch: self.compile_branch(rx, else_if.then_branch)?,
 					});
 				}
 
-				let else_branch = if let Some(else_logical) = conditional_node.else_branch {
-					if let Some(plan) = self.compile(rx, once(BumpBox::into_inner(else_logical)))? {
-						Some(self.bump_box(plan))
-					} else {
-						return Err(RqlError::InternalFunctionError {
-							name: "compile_physical".to_string(),
-							fragment: Fragment::internal("compile_physical"),
-							details: "Failed to compile conditional else branch"
-								.to_string(),
-						}
-						.into());
-					}
-				} else {
-					None
+				let else_branch = match conditional_node.else_branch {
+					Some(statements) => Some(self.compile_branch(rx, statements)?),
+					None => None,
 				};
 
 				return Ok(PhysicalPlan::Conditional(ConditionalNode {
