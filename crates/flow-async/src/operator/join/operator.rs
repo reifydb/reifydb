@@ -1092,7 +1092,9 @@ impl JoinOperator {
 			};
 			let in_place: Vec<(GroupId, RowNumber)> = (0..row_count)
 				.filter_map(|idx| match (pre_keys[idx], post_keys[idx]) {
-					(Some(pre_key), Some(post_key)) if pre_key == post_key => {
+					(Some(pre_key), Some(post_key))
+						if pre_key == post_key && pre_numbers[idx] == post_numbers[idx] =>
+					{
 						Some((store.group_of(&pre_key), pre_numbers[idx]))
 					}
 					_ => None,
@@ -1112,42 +1114,45 @@ impl JoinOperator {
 				operator: self,
 				rows: &mut rows,
 			};
+			let renumbered = pre_numbers[row_idx] != post_numbers[row_idx];
 			let diffs = match (pre_keys[row_idx], post_keys[row_idx]) {
-				(Some(pre_key), Some(post_key)) => {
+				(Some(pre_key), Some(post_key)) if !renumbered => {
 					let keys = UpdateKeys {
 						pre: &pre_key,
 						post: &post_key,
 					};
 					self.strategy.handle_update(host, pre, post, &[row_idx], keys, &mut ctx)?
 				}
-				(Some(pre_key), None) => {
-					let mut diffs = self.strategy.handle_remove(
-						host,
-						pre,
-						&[row_idx],
-						&pre_key,
-						&mut ctx,
-					)?;
-					diffs.extend(self
-						.strategy
-						.handle_insert_undefined(host, post, row_idx, &mut ctx)?);
-					diffs
-				}
-				(None, Some(post_key)) => {
-					let mut diffs =
-						self.strategy.handle_remove_undefined(host, pre, row_idx, &mut ctx)?;
-					diffs.extend(self.strategy.handle_insert(
-						host,
-						post,
-						&[row_idx],
-						&post_key,
-						&mut ctx,
-					)?);
-					diffs
-				}
-				(None, None) => self
+				(None, None) if !renumbered => self
 					.strategy
 					.handle_update_both_undefined(host, pre, post, row_idx, &mut ctx)?,
+				(pre_key, post_key) => {
+					let mut diffs = match pre_key {
+						Some(pre_key) => self.strategy.handle_remove(
+							host,
+							pre,
+							&[row_idx],
+							&pre_key,
+							&mut ctx,
+						)?,
+						None => self
+							.strategy
+							.handle_remove_undefined(host, pre, row_idx, &mut ctx)?,
+					};
+					diffs.extend(match post_key {
+						Some(post_key) => self.strategy.handle_insert(
+							host,
+							post,
+							&[row_idx],
+							&post_key,
+							&mut ctx,
+						)?,
+						None => self
+							.strategy
+							.handle_insert_undefined(host, post, row_idx, &mut ctx)?,
+					});
+					diffs
+				}
 			};
 			result.extend(diffs);
 			self.row_join_expiry(
