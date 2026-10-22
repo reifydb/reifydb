@@ -243,7 +243,7 @@ fn taken_entries_stay_readable_across_the_flush() {
 		"the checkpoint is only durable once its transaction commits"
 	);
 
-	buffer.complete_flush();
+	buffer.settle_flush(batch);
 
 	let BufferedState::Row(found) = buffer.lookup_state(OP_A, &key("k")) else {
 		panic!("a settled row must stay readable from memory")
@@ -459,15 +459,15 @@ fn a_buffer_holding_only_a_drop_is_still_worth_flushing() {
 }
 
 #[test]
-fn take_for_flush_sets_flushing_and_complete_flush_clears_it() {
+fn take_for_flush_sets_flushing_and_settle_flush_clears_it() {
 	let buffer = Resident::new();
 	set(&buffer, OP_A, key("k"), row("v"));
-	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	let taken = buffer.take_for_flush().expect("the seeded batch must be takeable");
 
 	assert!(flushing(&buffer), "a taken batch must mark the buffer flushing while it is on the device");
 	assert!(any_in_flight(&buffer), "the taken batch stays readable while the flush runs");
 
-	buffer.complete_flush();
+	buffer.settle_flush(taken);
 
 	assert!(!flushing(&buffer), "a completed flush must clear the flushing mark");
 	assert!(!any_in_flight(&buffer), "the settled batch is durable, so nothing may still be staged for flush");
@@ -583,7 +583,7 @@ fn a_flow_whose_operators_still_hold_live_state_does_not_get_its_checkpoint_writ
 		!first.checkpoints.contains_key(&FLOW_B),
 		"the flow the budget stopped before still holds live state, so its checkpoint must wait"
 	);
-	buffer.complete_flush();
+	buffer.settle_flush(first);
 
 	let second = buffer.take_for_flush().expect("the second flow makes a second slice");
 	assert_eq!(
@@ -667,7 +667,7 @@ fn a_buffer_far_past_the_budget_drains_whole_flows_and_loses_nothing() {
 			);
 			seen.push(taken.as_slice().to_vec());
 		}
-		buffer.complete_flush();
+		buffer.settle_flush(batch);
 	}
 
 	assert_eq!(slices, 2, "two flows drain as two whole slices, one each");
@@ -705,7 +705,7 @@ fn a_key_rewritten_during_its_flush_flushes_as_the_later_value() {
 		"the in-flight slice still holds the earlier value, so a read that prefers it serves state the \
 		 operator has already replaced"
 	);
-	buffer.complete_flush();
+	buffer.settle_flush(first);
 
 	let second = buffer.take_for_flush().expect("the rewrite recorded during the flush makes a second slice");
 	assert_eq!(
@@ -714,7 +714,7 @@ fn a_key_rewritten_during_its_flush_flushes_as_the_later_value() {
 		"the later slice must carry the later value; carrying the earlier one would overwrite the rewrite \
 		 in sqlite and silently roll the key back"
 	);
-	buffer.complete_flush();
+	buffer.settle_flush(second);
 	assert!(buffer.take_for_flush().is_none(), "the drain must terminate once everything has been handed out");
 }
 
@@ -738,7 +738,7 @@ fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
 		"a write recorded before the drop must have been cleared, not carried into a slice"
 	);
 	assert!(written(&first, OP_A, &key("k2")).is_some(), "the post-drop write rides out with its own flow");
-	buffer.complete_flush();
+	buffer.settle_flush(first);
 
 	let second = buffer.take_for_flush().expect("the second flow makes a second slice");
 	assert!(
@@ -749,7 +749,7 @@ fn a_split_slice_carries_every_drop_marker_ahead_of_the_writes_left_behind() {
 		written(&second, OP_B, &key("k3")).is_some(),
 		"the flow the budget stopped before must be the one left for the second slice"
 	);
-	buffer.complete_flush();
+	buffer.settle_flush(second);
 	assert!(buffer.take_for_flush().is_none(), "both flows must have been handed out");
 }
 
@@ -921,7 +921,7 @@ fn a_selected_slice_stays_resident_across_the_settle() {
 		"the in-flight slice is still held in memory, so the buffer must keep counting it"
 	);
 
-	buffer.complete_flush();
+	buffer.settle_flush(batch);
 
 	assert_eq!(
 		resident_bytes(&buffer),
@@ -946,13 +946,13 @@ fn a_full_mutation_sequence_leaves_only_the_untouched_operator_in_the_census() {
 
 	set(&buffer, OP_A, first.clone(), row("v1-longer"));
 
-	buffer.take_for_flush().expect("the seeded batch must be takeable");
+	let taken = buffer.take_for_flush().expect("the seeded batch must be takeable");
 
 	set(&buffer, OP_A, first.clone(), row("v1-live"));
 
 	remove(&buffer, OP_A, second.clone());
 
-	buffer.complete_flush();
+	buffer.settle_flush(taken);
 
 	set(&buffer, OP_B, neighbour.clone(), row("v5"));
 
@@ -1206,8 +1206,8 @@ fn fill(buffer: &Resident, rows: Range<u32>) {
 }
 
 fn drain(buffer: &Resident) {
-	while buffer.take_for_flush().is_some() {
-		buffer.complete_flush();
+	while let Some(taken) = buffer.take_for_flush() {
+		buffer.settle_flush(taken);
 	}
 }
 
@@ -1310,8 +1310,8 @@ fn a_miss_after_a_drop_has_settled_never_waits_on_the_global_lock() {
 	set(&buffer, OP_A, key("before"), row("v"));
 	buffer.record_drop(DropMarker::OperatorState(OP_A));
 	set(&buffer, OP_B, key("neighbour"), row("v"));
-	buffer.take_for_flush().expect("the drop and the neighbour's write make a batch");
-	buffer.complete_flush();
+	let taken = buffer.take_for_flush().expect("the drop and the neighbour's write make a batch");
+	buffer.settle_flush(taken);
 
 	let held = buffer.shared().global.lock();
 	let (sent, received) = mpsc::channel();

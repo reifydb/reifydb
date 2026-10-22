@@ -197,7 +197,7 @@ fn a_buffered_write_becomes_durable_and_the_buffer_stops_shadowing_it() {
 	assert_eq!(
 		body(&served),
 		"written",
-		"once complete_flush drops the in-flight layer the read has to fall through to sqlite; if the \
+		"once the settle drops the in-flight layer the read has to fall through to sqlite; if the \
 		 flusher had not written it first the row would vanish under a live reader"
 	);
 }
@@ -601,7 +601,7 @@ fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
 	storage.flush_batch(&first);
-	buffer.complete_flush();
+	buffer.settle_flush(first);
 	assert_eq!(storage.get(OP_A, &key(1)).unwrap().map(|row| body(&row)), Some("early".to_string()));
 
 	set(&buffer, OP_A, key(1), row("late"));

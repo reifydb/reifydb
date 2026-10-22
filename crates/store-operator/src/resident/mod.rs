@@ -45,10 +45,7 @@ use crate::{
 	error::Result,
 	persistent::{Apply, Enumerate, Persistent, PersistentTier},
 	range::{OperatorRangeTier, RangeSink},
-	resident::{
-		bucket::write::Staged,
-		slot::{Slot, SlotInner},
-	},
+	resident::slot::{Slot, SlotInner},
 	types::{Applied, DropMarker, FlushBatch, OperatorWrite, StagedWrite},
 };
 
@@ -447,7 +444,7 @@ impl Resident {
 			};
 			let inner = slot.inner.lock();
 			inner.buckets.for_each_entry(operator, |_, _, _, entry| {
-				if matches!(entry.staged, Staged::Flushing) {
+				if matches!(entry.staged, bucket::write::Staged::Flushing) {
 					total += 1;
 				}
 			});
@@ -713,22 +710,14 @@ impl Resident {
 		self.shared.drain.lock()
 	}
 
+	#[cfg(any(test, feature = "testing"))]
 	pub fn take_for_flush(&self) -> Option<Arc<FlushBatch>> {
 		self.take_drain_slice(self.shared.slice)
 	}
 
-	pub fn complete_flush(&self) {
-		let batch = {
-			let global = self.shared.global.lock();
-			if global.in_flight_operators.is_empty()
-				&& global.in_flight_checkpoints.is_empty()
-				&& global.in_flight_drops.is_empty()
-			{
-				return;
-			}
-			self.rebuild_in_flight(&global)
-		};
-		self.settle(Arc::new(batch));
+	#[cfg(any(test, feature = "testing"))]
+	pub fn settle_flush(&self, batch: Arc<FlushBatch>) {
+		self.settle(batch);
 	}
 
 	#[instrument(name = "store::operator::resident::pending", level = "trace", skip(self))]
@@ -780,30 +769,6 @@ impl Resident {
 		let _staging = self.flush_guard();
 		self.settle(batch);
 		applied
-	}
-
-	#[instrument(name = "store::operator::resident::rebuild_in_flight", level = "trace", skip(self, global))]
-	fn rebuild_in_flight(&self, global: &GlobalInner) -> FlushBatch {
-		let mut batch = FlushBatch::default();
-		for operator in &global.in_flight_operators {
-			let Some(slot) = self.shared.slot(*operator) else {
-				continue;
-			};
-			let inner = slot.inner.lock();
-			inner.buckets.for_each_entry(*operator, |keyspace, group, suffix, entry| {
-				if !matches!(entry.staged, Staged::Flushing) {
-					return;
-				}
-				batch.writes.push((
-					*operator,
-					GroupStateKey::new(group, keyspace, suffix),
-					staged_write(entry.post.clone()),
-				));
-			});
-		}
-		batch.checkpoints = global.in_flight_checkpoints.clone();
-		batch.drops = global.in_flight_drops.clone();
-		batch
 	}
 
 	#[instrument(name = "store::operator::resident::pending_groups", level = "trace", skip(self))]
