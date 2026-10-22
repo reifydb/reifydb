@@ -65,8 +65,8 @@ impl RebuildDriver {
 
 	fn begin(&mut self, source_len: u64) -> DriverProgress {
 		let size = (((source_len as f64) * self.config.size_headroom) as u64).max(self.config.min_size_keys);
-		self.source.restart();
 		self.rebuild = Some(self.filter.begin_rebuild(size));
+		self.source.restart();
 		DriverProgress::Started
 	}
 

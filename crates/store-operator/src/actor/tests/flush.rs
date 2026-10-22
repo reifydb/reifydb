@@ -23,6 +23,10 @@ use reifydb_core::{
 	},
 	state::typed::typed_key,
 };
+use reifydb_filter::{
+	config::FilterConfig,
+	driver::{DriverProgress, RebuildDriver},
+};
 use reifydb_runtime::{
 	actor::{
 		context::{CancellationToken, Context},
@@ -44,10 +48,10 @@ use reifydb_value::{
 use crate::{
 	actor::{Waker, resident_evict::ResidentEvictActor, resident_flush::*},
 	config::{OperatorPersistentConfig, OperatorStoreConfig},
-	persistent::{PersistentTier, sqlite::SqlitePersistent},
+	persistent::{PersistentTier, filter::OperatorStateKeySource, sqlite::SqlitePersistent},
 	range::{OperatorRangeConfig, OperatorRangeTier},
 	resident::{FILTER_KEYS, FLUSH_BUDGET_BYTES, FLUSH_INTERVAL, Resident, ResidentLimits},
-	store::OperatorStore,
+	store::{OperatorStore, census::OperatorCensus},
 	types::{BufferedState, FlushBatch, LayeredPre, OperatorWrite, StagedWrite},
 };
 
@@ -1038,5 +1042,33 @@ fn a_key_flushed_while_the_filter_is_rebuilding_is_in_the_filter_that_rebuild_co
 		!buffer.never_persisted(OP_A, &key(2)),
 		"the key was flushed to sqlite while the rebuild was in flight and the committed filter denies it; \
 		 every read of that row now stops at the filter and reports absent while the row sits in sqlite"
+	);
+}
+
+#[test]
+fn a_key_staged_before_a_rebuild_and_persisted_after_its_commit_is_in_the_committed_filter() {
+	// The rebuild scans before the key is durable and drops the filter that held it, so the add must follow the
+	// write.
+	let (buffer, storage, _guard) = rebuilding_fixture();
+	let filter = buffer.filter();
+	{
+		let filter = filter.clone();
+		let storage = storage.clone();
+		buffer.set_persist_interlock(Box::new(move || {
+			let source = OperatorStateKeySource::new(
+				tier(&storage),
+				Arc::new(OperatorCensus::seeded(&tier(&storage)).unwrap()),
+			);
+			let mut driver = RebuildDriver::new(filter.clone(), Box::new(source), FilterConfig::default());
+			while driver.step().unwrap() != DriverProgress::Committed {}
+		}));
+	}
+
+	set(&buffer, OP_A, key(2), row("staged-before-the-rebuild"));
+	buffer.flush_all();
+
+	assert!(
+		!buffer.never_persisted(OP_A, &key(2)),
+		"the key is in sqlite but the committed filter denies it, so reads answer none and removes drop their tombstone"
 	);
 }

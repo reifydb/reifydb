@@ -997,6 +997,9 @@ impl Resident {
 			.get()
 			.expect("the operator resident state flushed before its sinks were attached");
 		let applied = Apply::apply(&sinks.persistent, batch)?;
+		self.shared.filter.add_many(
+			&batch.writes.iter().map(|(operator, key, _)| staged_hash(*operator, key)).collect::<Vec<_>>(),
+		);
 		invalidate_flushed(&sinks.range, batch);
 		Ok(applied)
 	}
@@ -1184,6 +1187,12 @@ impl Resident {
 			);
 		}
 	}
+}
+
+fn staged_hash(operator: OperatorId, key: &GroupStateKey) -> u64 {
+	let (group, keyspace, suffix) = OperatorStateKey::decode_inner(key.as_slice())
+		.expect("a staged operator state key decodes into group, keyspace and suffix");
+	state_hash(operator, keyspace, group, suffix)
 }
 
 pub(crate) fn state_hash(operator: OperatorId, keyspace: KeyspaceId, group: GroupId, suffix: &[u8]) -> u64 {
