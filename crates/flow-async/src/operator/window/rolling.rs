@@ -31,7 +31,7 @@ use crate::{
 		aggregation::{
 			accumulator::{RowAccumulator, WindowSlotKey},
 			core::{EmitRow, SlotRow},
-			engine::{WindowGroups, group_of, intern_window_groups},
+			engine::{WindowGroups, distinct_row_runs, group_of, intern_window_groups},
 		},
 		host::HostContext,
 		state::{
@@ -363,24 +363,26 @@ fn apply_rolling<S: RollingDomain>(
 				post,
 				..
 			} => {
-				route_rolling_columns::<S>(
-					operator,
-					pre,
-					false,
-					&mut buckets,
-					&mut group_values,
-					&mut touched,
-					&mut touched_set,
-				)?;
-				route_rolling_columns::<S>(
-					operator,
-					post,
-					true,
-					&mut buckets,
-					&mut group_values,
-					&mut touched,
-					&mut touched_set,
-				)?;
+				for (pre, post) in distinct_row_runs(pre, post)? {
+					route_rolling_columns::<S>(
+						operator,
+						&pre,
+						false,
+						&mut buckets,
+						&mut group_values,
+						&mut touched,
+						&mut touched_set,
+					)?;
+					route_rolling_columns::<S>(
+						operator,
+						&post,
+						true,
+						&mut buckets,
+						&mut group_values,
+						&mut touched,
+						&mut touched_set,
+					)?;
+				}
 			}
 		}
 	}

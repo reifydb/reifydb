@@ -20,7 +20,10 @@ use reifydb_value::{Result, util::hash::Hash128, value::datetime::DateTime};
 
 use super::{
 	core::Aggregation,
-	engine::{Routed, Routing, Stamp, finish_tumbling_engine, intern_partition_groups, route_into_buckets},
+	engine::{
+		Routed, Routing, Stamp, distinct_row_runs, finish_tumbling_engine, intern_partition_groups,
+		route_into_buckets,
+	},
 };
 use crate::{
 	operator::{HostOperator, host::HostContext, state::seal::coord::Coord},
@@ -112,8 +115,10 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 				post,
 				..
 			} => {
-				route_into_buckets(core, pre, false, degenerate_span, &mut routing)?;
-				route_into_buckets(core, post, true, degenerate_span, &mut routing)?;
+				for (pre, post) in distinct_row_runs(pre, post)? {
+					route_into_buckets(core, &pre, false, degenerate_span, &mut routing)?;
+					route_into_buckets(core, &post, true, degenerate_span, &mut routing)?;
+				}
 			}
 		}
 	}

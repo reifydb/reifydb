@@ -29,7 +29,8 @@ use crate::{
 			core::{BatchGroups, SlotRow},
 			engine::{
 				EngineBuckets, GatedMeta, Routed, Routing, SessionBounds, Stamp, WindowGroups,
-				finish_tumbling_engine, intern_window_groups, route_into_buckets, slot_coord,
+				distinct_row_runs, finish_tumbling_engine, intern_window_groups, route_into_buckets,
+				slot_coord,
 			},
 		},
 		host::HostContext,
@@ -333,8 +334,10 @@ pub fn apply_tumbling_engine(
 					post,
 					..
 				} => {
-					route_engine_columns(operator, pre, false, window_size, &mut routing)?;
-					route_engine_columns(operator, post, true, window_size, &mut routing)?;
+					for (pre, post) in distinct_row_runs(pre, post)? {
+						route_engine_columns(operator, &pre, false, window_size, &mut routing)?;
+						route_engine_columns(operator, &post, true, window_size, &mut routing)?;
+					}
 				}
 			}
 		}
@@ -640,8 +643,10 @@ pub fn apply_sliding_engine(
 					post,
 					..
 				} => {
-					route_time_sliding(operator, &bound, pre, false, &mut routing)?;
-					route_time_sliding(operator, &bound, post, true, &mut routing)?;
+					for (pre, post) in distinct_row_runs(pre, post)? {
+						route_time_sliding(operator, &bound, &pre, false, &mut routing)?;
+						route_time_sliding(operator, &bound, &post, true, &mut routing)?;
+					}
 				}
 			}
 		}

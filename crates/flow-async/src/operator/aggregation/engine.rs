@@ -169,6 +169,25 @@ pub(crate) fn slot_coord(is_count: bool, event_ts: DateTime, row_number: u64) ->
 	WindowSlotKey::new(timestamp, row_number)
 }
 
+pub(crate) fn distinct_row_runs(pre: &RecordBatch, post: &RecordBatch) -> Result<Vec<(RecordBatch, RecordBatch)>> {
+	let pre_numbers = require_row_numbers(pre)?;
+	let post_numbers = require_row_numbers(post)?;
+	let mut runs = Vec::new();
+	let mut seen = HashSet::new();
+	let mut start = 0;
+	for (at, (before, after)) in pre_numbers.iter().zip(post_numbers).enumerate() {
+		if seen.contains(before) || seen.contains(after) {
+			runs.push((pre.slice(start, at - start), post.slice(start, at - start)));
+			seen.clear();
+			start = at;
+		}
+		seen.insert(*before);
+		seen.insert(*after);
+	}
+	runs.push((pre.slice(start, pre.num_rows() - start), post.slice(start, post.num_rows() - start)));
+	Ok(runs)
+}
+
 #[instrument(name = "flow::operator::aggregation::route", level = "trace", skip_all, fields(rows = columns.num_rows()))]
 pub(crate) fn route_into_buckets<F>(
 	core: &Aggregation,
