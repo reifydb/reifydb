@@ -165,6 +165,13 @@ pub enum CatalogError {
 		fragment: Fragment,
 	},
 
+	#[error("column `{column}` of type `{ty}` cannot use a dictionary")]
+	DictionaryColumnUnsupported {
+		column: String,
+		ty: ValueType,
+		fragment: Fragment,
+	},
+
 	#[error("auto increment is not supported for type `{ty}`")]
 	AutoIncrementInvalidType {
 		column: String,
@@ -822,6 +829,26 @@ impl IntoDiagnostic for CatalogError {
 				)),
 				column: None,
 				notes: vec![],
+			CatalogError::DictionaryColumnUnsupported {
+				column,
+				ty,
+				fragment,
+			} => Diagnostic {
+				code: "CA_106".to_string(),
+				rql: None,
+				message: format!("column `{}` of type `{}` cannot use a dictionary", column, ty),
+				fragment,
+				label: Some("unsupported dictionary column type".to_string()),
+				help: Some(
+					"A decimal column stores its precision and scale where a dictionary column stores its dictionary, so it cannot carry both; keep decimals in a plain column"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
 				cause: None,
 				operator_chain: None,
 			},

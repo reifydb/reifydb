@@ -19,7 +19,10 @@ use crate::{
 	convert_data_type_with_constraints,
 	plan::logical::{
 		Compiler, CreateSeriesNode, LogicalPlan,
-		create::{column_saturation_property, reject_column_default, reject_digest_partition_columns},
+		create::{
+			column_saturation_property, reject_column_default, reject_dictionary_on_decimal,
+			reject_digest_partition_columns,
+		},
 		reserved::reject_reserved_column_name,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
@@ -96,6 +99,12 @@ impl<'bump> Compiler<'bump> {
 							}
 							.into());
 						};
+
+						reject_dictionary_on_decimal(
+							col.name.text(),
+							&column_type,
+							col.name.to_owned(),
+						)?;
 
 						if column_type.inner_type() != &dictionary.value_type {
 							return Err(CatalogError::DictionaryTypeMismatch {

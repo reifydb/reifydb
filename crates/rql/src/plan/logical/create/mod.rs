@@ -25,6 +25,7 @@ pub mod test;
 pub mod transactional;
 pub mod ttl;
 
+use reifydb_catalog::error::CatalogError;
 use reifydb_core::{
 	interface::catalog::property::{ColumnPropertyKind, ColumnSaturationStrategy},
 	partition::PartitionError,
@@ -113,6 +114,18 @@ pub(crate) fn column_saturation_property(value: &Ast<'_>) -> Result<ColumnProper
 		return Ok(ColumnPropertyKind::Saturation(ColumnSaturationStrategy::Error));
 	}
 	Err(invalid_column_property(value, format!("Unknown saturation strategy: {}", value.token().fragment.text())))
+}
+
+pub(crate) fn reject_dictionary_on_decimal(column: &str, ty: &ValueType, fragment: Fragment) -> Result<()> {
+	if matches!(ty.inner_type(), ValueType::Decimal { .. }) {
+		return Err(CatalogError::DictionaryColumnUnsupported {
+			column: column.to_string(),
+			ty: ty.clone(),
+			fragment,
+		}
+		.into());
+	}
+	Ok(())
 }
 
 pub(crate) fn reject_column_default(value: &Ast<'_>) -> Error {

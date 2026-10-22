@@ -25,7 +25,7 @@ use crate::{
 	duration::{DurationBound, FOREVER, compile_duration, invalid_option},
 	plan::logical::{
 		Compiler, CreateQueueNode, LogicalPlan,
-		create::{column_saturation_property, reject_column_default},
+		create::{column_saturation_property, reject_column_default, reject_dictionary_on_decimal},
 		reserved::reject_reserved_column_name,
 		time_domain::{TimeDeclaration, resolve_declared_source_time},
 	},
@@ -92,6 +92,24 @@ impl<'bump> Compiler<'bump> {
 							}
 							.into());
 						};
+
+						reject_dictionary_on_decimal(
+							col.name.text(),
+							&constraint.get_type(),
+							col.name.to_owned(),
+						)?;
+
+						let column_type = constraint.get_type();
+						if column_type.inner_type() != &dictionary.value_type {
+							return Err(CatalogError::DictionaryTypeMismatch {
+								column: col.name.text().to_string(),
+								column_type,
+								dictionary: dict_name.to_string(),
+								dictionary_value_type: dictionary.value_type,
+								fragment: col.name.to_owned(),
+							}
+							.into());
+						}
 
 						dictionary_id = Some(dictionary.id);
 

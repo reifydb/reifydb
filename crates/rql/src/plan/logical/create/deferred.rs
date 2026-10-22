@@ -17,7 +17,8 @@ use crate::{
 	bump::BumpVec,
 	convert_data_type_with_constraints,
 	plan::logical::{
-		Compiler, CreateDeferredViewNode, LogicalPlan, create::reject_digest_partition_columns,
+		Compiler, CreateDeferredViewNode, LogicalPlan,
+		create::{reject_dictionary_on_decimal, reject_digest_partition_columns},
 		reserved::reject_reserved_column_name,
 	},
 };
@@ -76,6 +77,8 @@ impl<'bump> Compiler<'bump> {
 						}
 						.into());
 					};
+
+					reject_dictionary_on_decimal(&column_name, &column_type, col.name.to_owned())?;
 
 					if column_type.inner_type() != &dictionary.value_type {
 						return Err(CatalogError::DictionaryTypeMismatch {
