@@ -110,7 +110,7 @@ impl TimerRegistry {
 		self.flows.clear();
 	}
 
-	fn fold(&mut self, flow: FlowId, armed: Vec<TimerDue>) {
+	pub(crate) fn fold(&mut self, flow: FlowId, armed: Vec<TimerDue>) {
 		if armed.is_empty() {
 			return;
 		}

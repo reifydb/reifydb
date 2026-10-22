@@ -6,7 +6,10 @@ use std::collections::HashMap;
 use reifydb_core::{
 	common::ChangeVersion,
 	flow::dag::FlowDag,
-	interface::{catalog::flow::OperatorId, change::Change},
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		change::Change,
+	},
 	internal_err,
 	key::operator::keyspace::timer::TimerWheelKey,
 	state::timer::TimerKind,
@@ -34,6 +37,8 @@ impl FlowEngineInner {
 	) -> Result<u32> {
 		let sources = self.watermark_sources(flow);
 		if sources.is_empty() {
+			let armed = self.file_foreign_arms(flow.id, txn.take_armed());
+			self.timers.fold(flow.id, armed);
 			return Ok(0);
 		}
 
@@ -41,6 +46,25 @@ impl FlowEngineInner {
 		let fired = self.dispatch_staged_timers(txn, flow, version, topo, &sources, &mut stage)?;
 		self.timers.apply(stage);
 		Ok(fired)
+	}
+
+	fn file_foreign_arms(&mut self, flow: FlowId, armed: Vec<TimerDue>) -> Vec<TimerDue> {
+		let mut own = Vec::with_capacity(armed.len());
+		for entry in armed {
+			match self.operator_owner(entry.operator_id) {
+				Some(owner) if owner != flow => self.timers.fold(owner, vec![entry]),
+				_ => own.push(entry),
+			}
+		}
+		own
+	}
+
+	fn operator_owner(&self, operator: OperatorId) -> Option<FlowId> {
+		self.operators
+			.keys()
+			.chain(self.durable_sinks.keys())
+			.find(|(_, id)| *id == operator)
+			.map(|(flow, _)| *flow)
 	}
 
 	fn dispatch_staged_timers<T: FlowTransaction + Intern>(
@@ -59,7 +83,7 @@ impl FlowEngineInner {
 		loop {
 			let watermark = SourceWatermarks::flow_watermark(sources, txn)?;
 			txn.set_flow_watermark(watermark);
-			let armed = txn.take_armed();
+			let armed = self.file_foreign_arms(flow.id, txn.take_armed());
 			for entry in &armed {
 				if cursors.get(&entry.operator_id).is_some_and(|cursor| entry.due <= cursor.due.0) {
 					cursors.remove(&entry.operator_id);
@@ -771,5 +795,48 @@ mod tests {
 			ChangeVersion::from(CommitVersion(1)),
 			flow.topological_order(),
 		);
+	}
+
+	#[test]
+	fn a_timer_armed_in_one_member_fires_in_its_own_flow() {
+		// Two flows sharing one transaction must not swap arms, or a parent's seal is filed under its child and never fires.
+		let engine = TestEngine::new();
+		let mut inner = engine_inner(&engine);
+		let other_flow = FlowId(2);
+		let mut builder = FlowDag::builder(FLOW);
+		builder.add_node(FlowNode::new(
+			OPERATOR,
+			OperatorDef::SourceView {
+				view: ViewId(1),
+			},
+		));
+		let flow = builder.build();
+		inner.register_flow_dag(flow.clone());
+		inner.insert_operator(FLOW, OPERATOR, Box::new(TimerProbe {
+			fails: false,
+		}));
+		inner.insert_operator(other_flow, OTHER, Box::new(TimerProbe {
+			fails: false,
+		}));
+
+		let mut seed = engine.flow_txn().deferred();
+		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
+		let seeded = seed.take_pending();
+		let store = engine.inner().operator_state();
+		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
+
+		let mut txn = engine.flow_txn().deferred();
+		txn.push_armed(TimerDue {
+			operator_id: OTHER,
+			due: at_millis(DUE_MS),
+		});
+		inner.dispatch_due_timers(&mut txn, &flow, ChangeVersion::from(CommitVersion(1)), flow.topological_order())
+			.unwrap();
+
+		let mine = inner.timers.due_before(Vec::new(), FLOW, at_millis(WATERMARK_MS));
+		let theirs = inner.timers.due_before(Vec::new(), other_flow, at_millis(WATERMARK_MS));
+		assert!(mine.iter().all(|due| due.operator_id != OTHER), "the dispatching flow kept an arm it does not own");
+		assert_eq!(theirs.len(), 1, "the owning flow never learned of its arm");
+		assert_eq!(theirs[0].operator_id, OTHER);
 	}
 }

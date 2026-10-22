@@ -115,6 +115,7 @@ pub struct DeferredTransaction {
 	pub catalog: Catalog,
 	pub interceptors: Interceptors,
 	pub emitted: bool,
+	pub captured: Option<Vec<(ViewId, Diff)>>,
 	pub armed: Vec<TimerDue>,
 	pub clock: Clock,
 
@@ -159,6 +160,7 @@ impl DeferredTransaction {
 			catalog: params.catalog,
 			interceptors: params.interceptors,
 			emitted: false,
+			captured: None,
 			armed: Vec::new(),
 			clock: params.clock,
 			change_coordinate: None,
@@ -170,6 +172,19 @@ impl DeferredTransaction {
 			#[cfg(test)]
 			storage_counts: StorageCounts::default(),
 		}
+	}
+
+	pub fn capture_emits(&mut self) {
+		self.captured.get_or_insert_with(Vec::new);
+	}
+
+	pub fn take_emits(&mut self, view: ViewId) -> Vec<Diff> {
+		let Some(captured) = &mut self.captured else {
+			return Vec::new();
+		};
+		let (taken, kept): (Vec<_>, Vec<_>) = captured.drain(..).partition(|(emitted, _)| *emitted == view);
+		*captured = kept;
+		taken.into_iter().map(|(_, diff)| diff).collect()
 	}
 }
 
@@ -451,8 +466,11 @@ impl Batch for DeferredTransaction {
 }
 
 impl Emit for DeferredTransaction {
-	fn emit(&mut self, _view: ViewId, diff: Diff) -> Result<()> {
+	fn emit(&mut self, view: ViewId, diff: Diff) -> Result<()> {
 		self.emitted |= diff.row_count() > 0;
+		if let Some(captured) = &mut self.captured {
+			captured.push((view, diff));
+		}
 		Ok(())
 	}
 }
