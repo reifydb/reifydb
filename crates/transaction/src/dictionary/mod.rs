@@ -160,10 +160,7 @@ impl DictionaryAllocatorRegistry {
 	}
 
 	pub fn intern_batch(&self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<InternOutcome>> {
-		let serialized: Vec<Vec<u8>> = values
-			.iter()
-			.map(|value| to_stdvec(value).expect("failed to serialize dictionary value"))
-			.collect();
+		let serialized = serialize_values(dictionary, values)?;
 		let hashes: Vec<[u8; 16]> = serialized.iter().map(|bytes| xxh3_128(bytes).0.to_be_bytes()).collect();
 
 		let mut resolved: Vec<Option<u128>> = vec![None; values.len()];
@@ -257,10 +254,7 @@ impl DictionaryAllocatorRegistry {
 	}
 
 	pub fn find_batch(&self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
-		let serialized: Vec<Vec<u8>> = values
-			.iter()
-			.map(|value| to_stdvec(value).expect("failed to serialize dictionary value"))
-			.collect();
+		let serialized = serialize_values(dictionary, values)?;
 		let (firsts, slot_of) = distinct_positions(serialized.iter().map(Vec::as_slice));
 		let mut answers: Vec<Option<DictionaryEntryId>> = Vec::with_capacity(firsts.len());
 		for index in firsts {
@@ -403,6 +397,26 @@ fn outcomes(
 				id: DictionaryEntryId::from_u128(id, dictionary.id_type.clone())?,
 				created: created_ids.contains(&id),
 			})
+		})
+		.collect()
+}
+
+fn serialize_values(dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Vec<u8>>> {
+	values.iter()
+		.map(|value| {
+			let canonical = match (value, dictionary.value_type.scale()) {
+				(Value::Decimal(decimal), Some(scale)) => {
+					Value::Decimal(decimal.rescale(scale.value()).ok_or_else(|| {
+						DictionaryError::ScaleLoss {
+							dictionary: dictionary.id,
+							value: decimal.to_string(),
+							scale: scale.value(),
+						}
+					})?)
+				}
+				_ => value.clone(),
+			};
+			Ok(to_stdvec(&canonical).expect("failed to serialize dictionary value"))
 		})
 		.collect()
 }

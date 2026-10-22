@@ -31,6 +31,13 @@ pub enum DictionaryError {
 	Exhausted {
 		dictionary: DictionaryId,
 	},
+
+	#[error("dictionary {dictionary} decimal {value} does not fit scale {scale}")]
+	ScaleLoss {
+		dictionary: DictionaryId,
+		value: String,
+		scale: u8,
+	},
 }
 
 impl IntoDiagnostic for DictionaryError {
@@ -107,6 +114,26 @@ impl IntoDiagnostic for DictionaryError {
 				label: Some("dictionary id space exhausted".to_string()),
 				help: Some(
 					"The dictionary's id counter reached its maximum; no further entries can be allocated."
+						.to_string(),
+				),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			DictionaryError::ScaleLoss {
+				dictionary,
+				value,
+				scale,
+			} => Diagnostic {
+				code: "TXN_019".to_string(),
+				rql: None,
+				message: format!("dictionary {} decimal {} does not fit scale {}", dictionary, value, scale),
+				column: None,
+				fragment: Fragment::None,
+				label: Some("decimal does not fit the dictionary scale".to_string()),
+				help: Some(
+					"The dictionary stores decimals at its declared scale; a value with more fraction digits would be rounded, so it is refused."
 						.to_string(),
 				),
 				notes: vec![],
