@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import { MAX_PENDING, inCanvas } from './geometry'
+import { PALETTE } from './palette'
 import type { Pixel } from './pack'
 
 export class Pending {
@@ -27,6 +28,7 @@ export class Pending {
 
   add(pixel: Pixel): boolean {
     if (!inCanvas(pixel.x, pixel.y)) return false
+    if (!Number.isInteger(pixel.color) || pixel.color < 0 || pixel.color >= PALETTE.length) return false
     const key = `${pixel.x},${pixel.y}`
     if (!this.pixels.has(key) && this.pixels.size >= MAX_PENDING) return false
     this.pixels.set(key, { ...pixel })

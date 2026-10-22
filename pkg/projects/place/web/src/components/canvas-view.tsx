@@ -2,10 +2,10 @@
 // Copyright (c) 2026 ReifyDB
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
-import { CANVAS_SIZE } from '@/geometry'
+import { CANVAS_SIZE, TILE_SIZE, type TileKey, parseTileKey, tilesInRect } from '@/geometry'
 import { PALETTE, cssColor } from '@/palette'
 import type { Pending } from '@/pending'
-import type { PixelBuffer } from '@/pixels'
+import type { PixelBuffer, Tile } from '@/pixels'
 
 export const MIN_ZOOM = 1
 export const MAX_ZOOM = 32
@@ -35,9 +35,8 @@ const DRAG_THRESHOLD = 4
 
 export function CanvasView({ buffer, pending, onPaint, onViewport, onHover }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const baseRef = useRef<HTMLCanvasElement>(null)
-  const overlayRef = useRef<HTMLCanvasElement>(null)
-  const imageRef = useRef<ImageData | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement>())
   const dragRef = useRef<{ startX: number; startY: number; view: View; moved: boolean } | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [view, setView] = useState<View>({ zoom: MIN_ZOOM, x: 0, y: 0 })
@@ -68,54 +67,55 @@ export function CanvasView({ buffer, pending, onPaint, onViewport, onHover }: Ca
   }, [view, size, onViewport])
 
   useEffect(() => {
-    const canvas = baseRef.current
+    const canvas = canvasRef.current
     const context = canvas?.getContext('2d')
     if (!canvas || !context) return
-    imageRef.current = context.createImageData(CANVAS_SIZE, CANVAS_SIZE)
     let frame = 0
     const flush = () => {
       frame = 0
-      const dirty = buffer.takeDirty()
-      const image = imageRef.current
-      if (!dirty || !image) return
-      for (let y = dirty.top; y < dirty.bottom; y++) {
-        for (let x = dirty.left; x < dirty.right; x++) {
-          const color = buffer.color(x, y)
-          if (color === undefined) continue
-          const rgb = PALETTE[color]
-          const i = (y * CANVAS_SIZE + x) * 4
-          image.data[i] = (rgb >> 16) & 0xff
-          image.data[i + 1] = (rgb >> 8) & 0xff
-          image.data[i + 2] = rgb & 0xff
-          image.data[i + 3] = 0xff
-        }
+      const bitmaps = bitmapsRef.current
+      for (const key of buffer.takeDirty()) {
+        const tile = buffer.tile(key)
+        if (tile) bitmaps.set(key, tileBitmap(tile))
+        else bitmaps.delete(key)
       }
-      context.putImageData(image, 0, 0, dirty.left, dirty.top, dirty.right - dirty.left, dirty.bottom - dirty.top)
+      if (canvas.width !== size.width || canvas.height !== size.height) {
+        canvas.width = size.width
+        canvas.height = size.height
+      }
+      context.clearRect(0, 0, canvas.width, canvas.height)
+      context.imageSmoothingEnabled = false
+      const span = TILE_SIZE * view.zoom
+      const visible = tilesInRect(
+        -view.x / view.zoom,
+        -view.y / view.zoom,
+        (size.width - view.x) / view.zoom,
+        (size.height - view.y) / view.zoom,
+      )
+      for (const key of visible) {
+        const bitmap = bitmaps.get(key)
+        if (!bitmap) continue
+        const [tx, ty] = parseTileKey(key)
+        context.drawImage(bitmap, view.x + tx * span, view.y + ty * span, span, span)
+      }
+      const cell = Math.ceil(view.zoom)
+      for (const pixel of pending.entries()) {
+        context.fillStyle = cssColor(pixel.color)
+        context.fillRect(Math.floor(view.x + pixel.x * view.zoom), Math.floor(view.y + pixel.y * view.zoom), cell, cell)
+      }
     }
     const schedule = () => {
       if (frame === 0) frame = requestAnimationFrame(flush)
     }
     schedule()
-    const unsubscribe = buffer.subscribe(schedule)
+    const unsubscribeBuffer = buffer.subscribe(schedule)
+    const unsubscribePending = pending.subscribe(schedule)
     return () => {
-      unsubscribe()
+      unsubscribeBuffer()
+      unsubscribePending()
       if (frame !== 0) cancelAnimationFrame(frame)
     }
-  }, [buffer])
-
-  useEffect(() => {
-    const context = overlayRef.current?.getContext('2d')
-    if (!context) return
-    const draw = () => {
-      context.clearRect(0, 0, CANVAS_SIZE, CANVAS_SIZE)
-      for (const pixel of pending.entries()) {
-        context.fillStyle = cssColor(pixel.color)
-        context.fillRect(pixel.x, pixel.y, 1, 1)
-      }
-    }
-    draw()
-    return pending.subscribe(draw)
-  }, [pending])
+  }, [buffer, pending, view, size])
 
   const pixelAt = useCallback(
     (clientX: number, clientY: number) => {
@@ -173,15 +173,27 @@ export function CanvasView({ buffer, pending, onPaint, onViewport, onHover }: Ca
       onPointerLeave={() => onHover(null)}
       onWheel={onWheel}
     >
-      <div
-        className="absolute left-0 top-0 origin-top-left"
-        style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`, width: CANVAS_SIZE, height: CANVAS_SIZE }}
-      >
-        <canvas ref={baseRef} width={CANVAS_SIZE} height={CANVAS_SIZE} className="absolute inset-0 [image-rendering:pixelated]" />
-        <canvas ref={overlayRef} width={CANVAS_SIZE} height={CANVAS_SIZE} className="absolute inset-0 [image-rendering:pixelated]" />
-      </div>
+      <canvas ref={canvasRef} className="absolute inset-0 [image-rendering:pixelated]" />
     </div>
   )
+}
+
+function tileBitmap(tile: Tile): HTMLCanvasElement {
+  const bitmap = document.createElement('canvas')
+  bitmap.width = TILE_SIZE
+  bitmap.height = TILE_SIZE
+  const context = bitmap.getContext('2d')
+  if (!context) throw new Error('2d canvas context unavailable')
+  const image = context.createImageData(TILE_SIZE, TILE_SIZE)
+  for (let i = 0; i < tile.bytes.length; i++) {
+    const rgb = PALETTE[tile.bytes[i]]
+    image.data[i * 4] = (rgb >> 16) & 0xff
+    image.data[i * 4 + 1] = (rgb >> 8) & 0xff
+    image.data[i * 4 + 2] = rgb & 0xff
+    image.data[i * 4 + 3] = 0xff
+  }
+  context.putImageData(image, 0, 0)
+  return bitmap
 }
 
 function clampView(view: View, size: { width: number; height: number }): View {

@@ -212,12 +212,12 @@ fn parse_duration(option: &str, value: ParamValue) -> Result<Duration> {
 impl ReifydbNode {
 	pub fn new(migrations: impl Into<MigrationSource>) -> ReifyResult<Self> {
 		let db = embedded::memory().with_flow(|flow| flow).with_migrations(migrations).build()?;
-		Self::wrap(db)
+		Self::from_database(db)
 	}
 
 	/// Binds a built database to a subscription transport. Every entry point goes through here so
 	/// none of them can hand back a node whose subscriptions were never wired up.
-	fn wrap(db: Database) -> ReifyResult<Self> {
+	pub fn from_database(db: Database) -> ReifyResult<Self> {
 		let subscriptions = Subscriptions::new(&db)?;
 		Ok(Self {
 			db: Arc::new(db),
@@ -257,7 +257,7 @@ pub fn open_with_migrations(entries: Vec<MigrationEntry>) -> Result<ReifydbNode>
 		builder = builder.with_migrations(MigrationSource::Multiple(sources));
 	}
 	let db = builder.build().map_err(|e| NapiError::from_reason(format!("{e:?}")))?;
-	ReifydbNode::wrap(db).map_err(|e| NapiError::from_reason(format!("{e:?}")))
+	ReifydbNode::from_database(db).map_err(|e| NapiError::from_reason(format!("{e:?}")))
 }
 
 #[napi]

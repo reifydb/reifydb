@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import { Badge } from '@reifydb/ui'
+import { CANVAS_SIZE } from '@/geometry'
 
 const STATUS = {
   connecting: { label: 'Connecting', variant: 'warning' },
@@ -17,7 +18,7 @@ export function Header({ status }: { status: keyof typeof STATUS }) {
         <div className="flex items-baseline gap-3">
           <span className="font-mono text-lg font-bold tracking-tight text-text-primary">Place</span>
           <span className="hidden font-mono text-xs uppercase tracking-[1.4px] text-text-secondary sm:inline">
-            2048 x 2048 shared canvas
+            {CANVAS_SIZE} x {CANVAS_SIZE} shared canvas
           </span>
         </div>
         <Badge variant={variant}>{label}</Badge>

@@ -32,7 +32,10 @@ beforeEach(async () => {
   await markReady(db)
   client = anonymousClient(db)
   buffer = new PixelBuffer()
-  stream = new TileStream(client, (x, y, color) => buffer.set(x, y, color))
+  stream = new TileStream(client, {
+    put: (tx, ty, bytes, version) => void buffer.put(tx, ty, bytes, version),
+    drop: (tx, ty) => buffer.drop(tx, ty),
+  })
 })
 
 async function paint(x: number, y: number, color: number) {
@@ -56,9 +59,9 @@ describe('tile stream', () => {
     expect(buffer.color(63, 63)).toBe(0)
     expect(buffer.color(64, 0)).toBeUndefined()
 
-    await paint(3, 4, 99)
+    await paint(3, 4, 19)
 
-    expect(buffer.color(3, 4)).toBe(99)
+    await vi.waitFor(() => expect(buffer.color(3, 4)).toBe(19))
   })
 
   it('stops streaming a tile once it leaves the screen', async () => {
@@ -69,8 +72,9 @@ describe('tile stream', () => {
 
     expect(unsubscribe).toHaveBeenCalledTimes(1)
     expect(stream.subscribed()).toEqual([tileKey(2, 0)])
-    await paint(5, 5, 40)
-    expect(buffer.color(5, 5)).toBe(0)
+    expect(buffer.color(5, 5)).toBeUndefined()
+    await paint(5, 5, 20)
+    expect(buffer.color(5, 5)).toBeUndefined()
   })
 
   it('subscribes and loads only the tiles that became visible', async () => {
@@ -89,18 +93,18 @@ describe('tile stream', () => {
     expect(stream.subscribed().sort()).toEqual([tileKey(0, 0), tileKey(1, 0), tileKey(2, 0)].sort())
   })
 
-  it('replays a change that arrives after the snapshot was read', async () => {
-    // A commit landing between snapshot and draw must win, or the tile shows a stale color until the next change.
+  it('never lets an older snapshot overwrite a newer change', async () => {
+    // A whole-tile snapshot read before a commit but drawn after it would roll the tile back until the next change.
     const original = client.query.bind(client)
     vi.spyOn(client, 'query').mockImplementationOnce(async (rql, params, shapes) => {
       const snapshot = await original(rql, params, shapes)
-      await paint(7, 7, 55)
+      await paint(7, 7, 25)
       return snapshot
     })
 
     await stream.show(new Set([tileKey(0, 0)]))
 
-    expect(buffer.color(7, 7)).toBe(55)
+    await vi.waitFor(() => expect(buffer.color(7, 7)).toBe(25))
   })
 
   it('handles changes delivered through onInsert as well as onUpdate', async () => {
@@ -112,6 +116,21 @@ describe('tile stream', () => {
     expect(typeof callbacks.onUpdate).toBe('function')
 
     await paint(1, 2, 3)
-    expect(buffer.color(1, 2)).toBe(3)
+    await vi.waitFor(() => expect(buffer.color(1, 2)).toBe(3))
+  })
+})
+
+describe('tile versions', () => {
+  it('applies a tile only when its commit version is newer than the one held', () => {
+    // Tile events replace the whole tile, so an out-of-order older one must be dropped, not drawn.
+    const tiles = new PixelBuffer()
+    const painted = (color: number) => new Uint8Array(64 * 64).fill(color)
+
+    expect(tiles.put(0, 0, painted(5), 5n)).toBe(true)
+    expect(tiles.put(0, 0, painted(4), 4n)).toBe(false)
+    expect(tiles.put(0, 0, painted(9), 5n)).toBe(false)
+    expect(tiles.color(0, 0)).toBe(5)
+    expect(tiles.put(0, 0, painted(6), 6n)).toBe(true)
+    expect(tiles.color(63, 63)).toBe(6)
   })
 })

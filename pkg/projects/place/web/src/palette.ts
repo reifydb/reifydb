@@ -1,31 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-const SYSTEM = [
-  0x000000, 0xcd0000, 0x00cd00, 0xcdcd00, 0x0000ee, 0xcd00cd, 0x00cdcd, 0xe5e5e5,
-  0x7f7f7f, 0xff0000, 0x00ff00, 0xffff00, 0x5c5cff, 0xff00ff, 0x00ffff, 0xffffff,
+export const PALETTE: readonly number[] = [
+  0xffffff, 0x6d001a, 0xbe0039, 0xff4500, 0xffa800, 0xffd635, 0xfff8b8, 0x00a368,
+  0x00cc78, 0x7eed56, 0x00756f, 0x009eaa, 0x00ccc0, 0x2450a4, 0x3690ea, 0x51e9f4,
+  0x493ac1, 0x6a5cff, 0x94b3ff, 0x811e9f, 0xb44ac0, 0xe4abff, 0xde107f, 0xff3881,
+  0xff99aa, 0x6d482f, 0x9c6926, 0xffb470, 0x000000, 0x515252, 0x898d90, 0xd4d7d9,
 ]
-
-const CUBE_LEVELS = [0, 95, 135, 175, 215, 255]
-
-function xterm256(): number[] {
-  const colors = [...SYSTEM]
-  for (let r = 0; r < 6; r++) {
-    for (let g = 0; g < 6; g++) {
-      for (let b = 0; b < 6; b++) {
-        colors.push((CUBE_LEVELS[r] << 16) | (CUBE_LEVELS[g] << 8) | CUBE_LEVELS[b])
-      }
-    }
-  }
-  for (let i = 0; i < 24; i++) {
-    const level = 8 + 10 * i
-    colors.push((level << 16) | (level << 8) | level)
-  }
-  ;[colors[0], colors[15]] = [colors[15], colors[0]]
-  return colors
-}
-
-export const PALETTE: readonly number[] = xterm256()
 
 export function cssColor(index: number): string {
   return `#${PALETTE[index].toString(16).padStart(6, '0')}`

@@ -5,7 +5,7 @@ mod cli;
 
 use clap::Parser;
 use reifydb::{WithSubsystem, allocator, server, system};
-use reifydb_place::{migration_path, seed};
+use reifydb_place::{configs, migration_path, routines, seed};
 
 use crate::cli::RunArgs;
 
@@ -19,6 +19,8 @@ fn main() {
 	let mut db = server::memory()
 		.with_ws(move |ws| ws.bind_addr(ws_bind))
 		.with_flow(|flow| flow)
+		.with_routines(routines)
+		.with_configs(configs())
 		.with_migrations(migration_path())
 		.build()
 		.expect("failed to build reifydb database");

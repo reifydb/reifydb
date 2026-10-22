@@ -3,32 +3,33 @@
 
 import { Uint1Value } from '@reifydb/core'
 import type { PlaceClient } from './client'
-import { numeric } from './client'
+import { bytes, version } from './client'
 import { type TileKey, parseTileKey } from './geometry'
+import { decodeTile } from './pixels'
 
-export const TILE_RQL = 'from place::live filter { tile_x == $tx and tile_y == $ty }'
+export const TILE_RQL =
+  'from place::tile filter { tile_x == $tx and tile_y == $ty } map { tile_x, tile_y, pixels, #commit_version }'
 
 type Row = Record<string, unknown>
-type PixelSink = (x: number, y: number, color: number) => void
 
-interface TileState {
-  batchId: string | null
-  buffer: Row[] | null
+export interface TileSink {
+  put(tx: number, ty: number, bytes: Uint8Array, version: bigint): void
+  drop(tx: number, ty: number): void
 }
 
 export class TileStream {
-  private readonly tiles = new Map<TileKey, TileState>()
+  private readonly tiles = new Set<TileKey>()
   private readonly batches = new Map<string, Set<TileKey>>()
   private visible = new Set<TileKey>()
   private queue: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly client: PlaceClient,
-    private readonly sink: PixelSink,
+    private readonly sink: TileSink,
   ) {}
 
   subscribed(): TileKey[] {
-    return [...this.tiles.keys()]
+    return [...this.tiles]
   }
 
   show(visible: Set<TileKey>): Promise<void> {
@@ -46,7 +47,7 @@ export class TileStream {
     await this.dropHidden()
     const fresh = [...visible].filter((key) => !this.tiles.has(key))
     if (fresh.length === 0) return
-    for (const key of fresh) this.tiles.set(key, { batchId: null, buffer: [] })
+    for (const key of fresh) this.tiles.add(key)
     const batch = await this.client.batchSubscribe(
       fresh.map((key) => {
         const [tx, ty] = parseTileKey(key)
@@ -55,18 +56,14 @@ export class TileStream {
           params: params(tx, ty),
           config: { hydration: { enabled: false } },
           callbacks: {
-            onInsert: (rows: Row[]) => this.receive(key, rows),
-            onUpdate: (rows: Row[]) => this.receive(key, rows),
-            onResubscribe: () => void this.reload(key),
+            onInsert: (rows: Row[]) => void this.receive(key, rows),
+            onUpdate: (rows: Row[]) => void this.receive(key, rows),
+            onResubscribe: () => void this.load(key),
           },
         }
       }),
     )
     this.batches.set(batch.batchId, new Set(fresh))
-    for (const key of fresh) {
-      const state = this.tiles.get(key)
-      if (state) state.batchId = batch.batchId
-    }
     await Promise.all(fresh.map((key) => this.load(key)))
   }
 
@@ -74,7 +71,11 @@ export class TileStream {
     for (const [batchId, keys] of this.batches) {
       if ([...keys].some((key) => this.visible.has(key))) continue
       this.batches.delete(batchId)
-      for (const key of keys) this.tiles.delete(key)
+      for (const key of keys) {
+        this.tiles.delete(key)
+        const [tx, ty] = parseTileKey(key)
+        this.sink.drop(tx, ty)
+      }
       await this.client.batchUnsubscribe(batchId)
     }
   }
@@ -82,30 +83,16 @@ export class TileStream {
   private async load(key: TileKey): Promise<void> {
     const [tx, ty] = parseTileKey(key)
     const result = await this.client.query(TILE_RQL, params(tx, ty), [])
-    const state = this.tiles.get(key)
-    if (!state) return
-    for (const row of (result?.[0] ?? []) as Row[]) this.draw(row)
-    const buffered = state.buffer ?? []
-    state.buffer = null
-    for (const row of buffered) this.draw(row)
+    await this.receive(key, (result?.[0] ?? []) as Row[])
   }
 
-  private async reload(key: TileKey): Promise<void> {
-    const state = this.tiles.get(key)
-    if (!state) return
-    state.buffer = []
-    await this.load(key)
-  }
-
-  private receive(key: TileKey, rows: Row[]): void {
-    const state = this.tiles.get(key)
-    if (!state) return
-    if (state.buffer) state.buffer.push(...rows)
-    else for (const row of rows) this.draw(row)
-  }
-
-  private draw(row: Row): void {
-    this.sink(numeric(row.x), numeric(row.y), numeric(row.color))
+  private async receive(key: TileKey, rows: Row[]): Promise<void> {
+    const [tx, ty] = parseTileKey(key)
+    for (const row of rows) {
+      const at = version(row['#commit_version'])
+      const pixels = await decodeTile(bytes(row.pixels))
+      if (this.tiles.has(key)) this.sink.put(tx, ty, pixels, at)
+    }
   }
 }
 

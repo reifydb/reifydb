@@ -18,7 +18,14 @@ const VIEWPORT_DEBOUNCE_MS = 150
 export function Place({ client }: { client: PlaceClient }) {
   const buffer = useMemo(() => new PixelBuffer(), [])
   const pending = useMemo(() => new Pending(), [])
-  const stream = useMemo(() => new TileStream(client, (x, y, color) => buffer.set(x, y, color)), [client, buffer])
+  const stream = useMemo(
+    () =>
+      new TileStream(client, {
+        put: (tx, ty, bytes, version) => void buffer.put(tx, ty, bytes, version),
+        drop: (tx, ty) => buffer.drop(tx, ty),
+      }),
+    [client, buffer],
+  )
   const pendingVersion = useSyncExternalStore(
     (listener) => pending.subscribe(listener),
     () => pending.snapshot(),

@@ -17,6 +17,7 @@ doctest = false
 
 [dependencies]
 reifydb-node = { version = "0.9.0", path = "../../../rust/reifydb-node" }
+reifydb = { workspace = true, features = ["sub_flow"] }
 reifydb-place-backend = { path = "../backend" }
 napi = { workspace = true }
 napi-derive = { workspace = true }

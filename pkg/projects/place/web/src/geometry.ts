@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-export const CANVAS_SIZE = 2048
+export const CANVAS_SIZE = 8192
 export const TILE_SIZE = 64
 export const TILES_PER_SIDE = CANVAS_SIZE / TILE_SIZE
 export const MAX_PENDING = 1024

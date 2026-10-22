@@ -1,30 +1,35 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+import { BlobValue, Uint1Value } from '@reifydb/core'
 import type { TestDb } from '@reifydb/reifydb'
+import { bytes } from '@/client'
+import { TILE_BYTES, decodeTile, transform } from '@/pixels'
+
+function encodeTile(pixels: Uint8Array): Promise<Uint8Array> {
+  return transform(pixels, new CompressionStream('deflate-raw'))
+}
 
 export async function seedTile(db: TestDb, tx: number, ty: number): Promise<void> {
-  const rows: string[] = []
-  for (let dy = 0; dy < 64; dy++) {
-    for (let dx = 0; dx < 64; dx++) {
-      rows.push(`{ tile_x: ${tx}, tile_y: ${ty}, x: ${tx * 64 + dx}, y: ${ty * 64 + dy}, color: 0 }`)
-    }
-  }
-  await db.commandRoot(`insert place::live [${rows.join(', ')}]`, {}, [])
+  const blank = await encodeTile(new Uint8Array(TILE_BYTES))
+  await db.commandRoot(
+    'insert place::tile [{ tile_x: $tx, tile_y: $ty, pixels: $pixels }]',
+    { tx: new Uint1Value(tx), ty: new Uint1Value(ty), pixels: new BlobValue(blank) },
+    [],
+  )
 }
 
 export async function colorAt(db: TestDb, x: number, y: number): Promise<number | undefined> {
   const tx = Math.floor(x / 64)
   const ty = Math.floor(y / 64)
   const frames = (await db.queryRoot(
-    `from place::live filter { tile_x == ${tx} and tile_y == ${ty} and x == ${x} and y == ${y} } map { color }`,
+    `from place::tile filter { tile_x == ${tx} and tile_y == ${ty} } map { tile_x, pixels }`,
     {},
     [],
-  )) as unknown as Array<Array<{ color: unknown }>>
+  )) as unknown as Array<Array<{ pixels: unknown }>>
   const row = frames[0]?.[0]
   if (row === undefined) return undefined
-  const color = row.color as { value?: unknown }
-  return Number(typeof color === 'object' && color !== null && 'value' in color ? color.value : color)
+  return (await decodeTile(bytes(row.pixels)))[(y % 64) * 64 + (x % 64)]
 }
 
 export async function markReady(db: TestDb): Promise<void> {

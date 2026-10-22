@@ -1,38 +1,81 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { CANVAS_SIZE, inCanvas } from './geometry'
+import { TILE_SIZE, type TileKey, inCanvas, tileKey, tileOf } from './geometry'
 
-export interface DirtyRect {
-  left: number
-  top: number
-  right: number
-  bottom: number
+export const TILE_BYTES = TILE_SIZE * TILE_SIZE
+
+export interface ByteTransform {
+  readonly writable: WritableStream<BufferSource>
+  readonly readable: ReadableStream<Uint8Array>
+}
+
+export async function transform(input: Uint8Array, through: ByteTransform): Promise<Uint8Array> {
+  const source = new ReadableStream<BufferSource>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(input))
+      controller.close()
+    },
+  })
+  const reader = source.pipeThrough(through).getReader()
+  const chunks: Uint8Array[] = []
+  for (let read = await reader.read(); !read.done; read = await reader.read()) chunks.push(read.value)
+  const output = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0))
+  let offset = 0
+  for (const chunk of chunks) {
+    output.set(chunk, offset)
+    offset += chunk.length
+  }
+  return output
+}
+
+export async function decodeTile(blob: Uint8Array): Promise<Uint8Array> {
+  const pixels = await transform(blob, new DecompressionStream('deflate-raw'))
+  if (pixels.length !== TILE_BYTES) throw new Error(`tile decodes to ${pixels.length} bytes, expected ${TILE_BYTES}`)
+  return pixels
+}
+
+export interface Tile {
+  readonly tx: number
+  readonly ty: number
+  readonly bytes: Uint8Array
+  readonly version: bigint
 }
 
 export class PixelBuffer {
-  readonly colors = new Uint8Array(CANVAS_SIZE * CANVAS_SIZE)
-  private readonly loaded = new Uint8Array(CANVAS_SIZE * CANVAS_SIZE)
-  private dirty: DirtyRect | null = null
+  private readonly tiles = new Map<TileKey, Tile>()
+  private readonly dirty = new Set<TileKey>()
   private readonly listeners = new Set<() => void>()
 
-  set(x: number, y: number, color: number): void {
-    if (!inCanvas(x, y)) return
-    const i = y * CANVAS_SIZE + x
-    this.colors[i] = color
-    this.loaded[i] = 1
-    this.mark(x, y)
+  put(tx: number, ty: number, bytes: Uint8Array, version: bigint): boolean {
+    if (bytes.length !== TILE_BYTES) throw new Error(`tile (${tx},${ty}) has ${bytes.length} bytes, expected ${TILE_BYTES}`)
+    const key = tileKey(tx, ty)
+    const held = this.tiles.get(key)
+    if (held && held.version >= version) return false
+    this.tiles.set(key, { tx, ty, bytes, version })
+    this.mark(key)
+    return true
+  }
+
+  drop(tx: number, ty: number): void {
+    const key = tileKey(tx, ty)
+    if (this.tiles.delete(key)) this.mark(key)
+  }
+
+  tile(key: TileKey): Tile | undefined {
+    return this.tiles.get(key)
   }
 
   color(x: number, y: number): number | undefined {
     if (!inCanvas(x, y)) return undefined
-    const i = y * CANVAS_SIZE + x
-    return this.loaded[i] === 1 ? this.colors[i] : undefined
+    const [tx, ty] = tileOf(x, y)
+    const tile = this.tiles.get(tileKey(tx, ty))
+    return tile?.bytes[(y % TILE_SIZE) * TILE_SIZE + (x % TILE_SIZE)]
   }
 
-  takeDirty(): DirtyRect | null {
-    const dirty = this.dirty
-    this.dirty = null
+  takeDirty(): TileKey[] {
+    const dirty = [...this.dirty]
+    this.dirty.clear()
     return dirty
   }
 
@@ -41,16 +84,9 @@ export class PixelBuffer {
     return () => this.listeners.delete(listener)
   }
 
-  private mark(x: number, y: number): void {
-    const wasClean = this.dirty === null
-    if (this.dirty === null) {
-      this.dirty = { left: x, top: y, right: x + 1, bottom: y + 1 }
-    } else {
-      this.dirty.left = Math.min(this.dirty.left, x)
-      this.dirty.top = Math.min(this.dirty.top, y)
-      this.dirty.right = Math.max(this.dirty.right, x + 1)
-      this.dirty.bottom = Math.max(this.dirty.bottom, y + 1)
-    }
+  private mark(key: TileKey): void {
+    const wasClean = this.dirty.size === 0
+    this.dirty.add(key)
     if (wasClean) for (const listener of this.listeners) listener()
   }
 }
