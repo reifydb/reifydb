@@ -13,7 +13,7 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		view::RowView,
+		view::{ColumnsView, RowView},
 		windowed::operator::{AllKinds, Emit, WindowedOperator},
 	},
 	row,
@@ -81,12 +81,12 @@ impl WindowedOperator for Unmergeable {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter().map(|&i| cols.row(i).as_ref().map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) }).transpose().map(Option::flatten)).collect()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, _row: &impl RowView) -> Result<Option<(String, f64)>> {
-		Ok(None)
+	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<(String, f64)>>> {
+		rows.iter().map(|&i| cols.row(i).as_ref().map(|_| -> Result<Option<(String, f64)>> { Ok(None) }).transpose().map(Option::flatten)).collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> NoMerge {

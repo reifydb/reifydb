@@ -23,7 +23,7 @@ impl CatalogStore {
 		}
 		namespace::set_local_name(&mut row, existing.local_name());
 
-		txn.set(&NamespaceKey::new(namespace_id), row.freeze())?;
+		txn.set(vec![(NamespaceKey::new(namespace_id).into(), row.freeze().into())])?;
 		Ok(())
 	}
 }

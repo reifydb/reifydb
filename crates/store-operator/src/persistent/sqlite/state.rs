@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice;
+
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::{bytes::EncodedBytes, pod::EncodedPodRow},
@@ -37,7 +39,7 @@ impl SqlitePersistent {
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::get_many", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn get_many(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	pub fn get(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		if keys.is_empty() || !self.state_written() {
 			return Ok(vec![None; keys.len()]);
 		}
@@ -46,23 +48,7 @@ impl SqlitePersistent {
 		let Some(conn) = guard.as_ref() else {
 			return Err(OperatorError::Closed);
 		};
-		Ok(route::get_many(conn, operator, tables, keys)?
-			.into_iter()
-			.map(|bytes| bytes.map(decode_row))
-			.collect())
-	}
-
-	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()))]
-	pub fn get(&self, operator: OperatorId, key: &EncodedKey) -> Result<Option<EncodedPodRow>> {
-		if !self.state_written() {
-			return Ok(None);
-		}
-		let tables = self.inner.tables.mask(operator);
-		let guard = self.read_conn();
-		let Some(conn) = guard.as_ref() else {
-			return Err(OperatorError::Closed);
-		};
-		Ok(route::get(conn, operator, tables, key)?.map(decode_row))
+		Ok(route::get(conn, operator, tables, keys)?.into_iter().map(|bytes| bytes.map(decode_row)).collect())
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.len()), ret)]
@@ -75,7 +61,7 @@ impl SqlitePersistent {
 		let Some(conn) = guard.as_ref() else {
 			return Err(OperatorError::Closed);
 		};
-		Ok(route::get(conn, operator, tables, key)?.is_some())
+		Ok(route::get(conn, operator, tables, slice::from_ref(&key))?.pop().flatten().is_some())
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]

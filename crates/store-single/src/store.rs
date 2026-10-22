@@ -245,37 +245,8 @@ impl StandardSingleStore {
 }
 
 impl SingleVersionGet for StandardSingleStore {
-	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())))]
-	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
-		if let Some(buffer) = &self.commit {
-			match buffer.get_with_tombstone(key.as_ref())? {
-				Some(Some(value)) => {
-					return Ok(Some(SingleVersionRow {
-						key: key.clone(),
-						bytes: EncodedBytes(value),
-					}));
-				}
-				Some(None) => return Ok(None),
-				None => {}
-			}
-		}
-
-		if let Some(persistent) = &self.persistent {
-			self.persistent_probes.fetch_add(1, Ordering::Relaxed);
-			if let Some(value) = persistent.get(key.as_ref())? {
-				return Ok(Some(SingleVersionRow {
-					key: key.clone(),
-					bytes: EncodedBytes(value),
-				}));
-			}
-			self.persistent_absent.fetch_add(1, Ordering::Relaxed);
-		}
-
-		Ok(None)
-	}
-
 	#[instrument(name = "store::single::get_many", level = "trace", skip(self, keys), fields(keys = keys.len()))]
-	fn get_many(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
+	fn get(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
 		let mut rows = Vec::with_capacity(keys.len());
 		let mut misses = Vec::new();
 		for (index, key) in keys.iter().enumerate() {
@@ -707,9 +678,9 @@ mod tests {
 			.unwrap();
 
 		let before = probes(&store);
-		assert!(SingleVersionGet::get(&store, &present.encode()).unwrap().is_some());
+		assert!(SingleVersionGet::get(&store, &[present.encode()]).unwrap().pop().flatten().is_some());
 		assert!(SingleVersionContains::contains(&store, &present.encode()).unwrap());
-		assert!(SingleVersionGet::get(&store, &removed.encode()).unwrap().is_none());
+		assert!(SingleVersionGet::get(&store, &[removed.encode()]).unwrap().pop().flatten().is_none());
 		assert!(!SingleVersionContains::contains(&store, &removed.encode()).unwrap());
 
 		assert_eq!(
@@ -727,7 +698,7 @@ mod tests {
 		seed_persistent(&store, &k, "9");
 
 		let before = probes(&store);
-		assert!(SingleVersionGet::get(&store, &k.encode()).unwrap().is_some());
+		assert!(SingleVersionGet::get(&store, &[k.encode()]).unwrap().pop().flatten().is_some());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1),
@@ -750,7 +721,7 @@ mod tests {
 		let k = key("never-written");
 
 		let before = probes(&store);
-		assert!(SingleVersionGet::get(&store, &k.encode()).unwrap().is_none());
+		assert!(SingleVersionGet::get(&store, &[k.encode()]).unwrap().pop().flatten().is_none());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1 + 1),
@@ -769,7 +740,7 @@ mod tests {
 	#[test]
 	fn a_store_without_a_persistent_tier_reports_no_probe_metrics() {
 		let store = StandardSingleStore::testing_memory();
-		assert!(SingleVersionGet::get(&store, &key("anything").encode()).unwrap().is_none());
+		assert!(SingleVersionGet::get(&store, &[key("anything").encode()]).unwrap().pop().flatten().is_none());
 		assert!(store.persistent_probe_metrics().is_none());
 	}
 }

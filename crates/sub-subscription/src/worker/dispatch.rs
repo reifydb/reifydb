@@ -157,7 +157,7 @@ impl SubscriptionWorkerActor {
 
 		let flow_change =
 			Change::from_flow(operator_id, change.version, change.diffs.clone(), change.changed_at);
-		match flow_engine.process(&mut txn, flow_change, flow_id) {
+		match flow_engine.process(&mut txn, vec![flow_change], flow_id) {
 			Ok(()) => txn.merge_state(),
 			Err(e) => {
 				warn!(flow_id = flow_id.0, error = %e, "subscription flow change processing failed; change dropped");

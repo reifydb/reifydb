@@ -1137,8 +1137,9 @@ impl Resident {
 				.get()
 				.and_then(|sinks| {
 					sinks.persistent
-						.get(operator, &GroupStateKey::bound_unchecked(key.clone()))
+						.get(operator, &[GroupStateKey::bound_unchecked(key.clone())])
 						.ok()
+						.and_then(|mut rows| rows.pop())
 						.flatten()
 				})
 				.is_some();

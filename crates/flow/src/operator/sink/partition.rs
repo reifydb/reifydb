@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, slice};
 
 use arrow_array::RecordBatch;
 use reifydb_core::{
@@ -76,7 +76,7 @@ pub fn resolve_partitions_flow<T: Get + Batch + ?Sized>(
 			continue;
 		}
 		let key = PartitionKey::encoded(object, *partition);
-		match txn.get(&key)? {
+		match txn.get(slice::from_ref(&key))?.pop().flatten() {
 			Some(row) => {
 				if !registry_matches(&row, values) {
 					return collision(*partition);

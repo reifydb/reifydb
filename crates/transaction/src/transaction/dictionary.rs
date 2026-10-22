@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{HashMap, hash_map::Entry};
+use std::{
+	collections::{HashMap, hash_map::Entry},
+	slice,
+};
 
 use postcard::from_bytes;
 use reifydb_core::{
@@ -44,7 +47,7 @@ impl Transaction<'_> {
 			.ok_or_else(|| internal_error!("single-version store is not available for dictionary reads"))?;
 		let store = single.read_store();
 		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128());
-		match SingleVersionGet::get(&store, &index_key)? {
+		match SingleVersionGet::get(&store, slice::from_ref(&index_key))?.pop().flatten() {
 			Some(v) => {
 				let value: Value = from_bytes(&v.bytes)
 					.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;

@@ -25,7 +25,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_series(rx: &mut Transaction<'_>, series_id: SeriesId) -> Result<Option<Series>> {
-		let Some(multi) = rx.get(&SeriesStorageKey::new(series_id))? else {
+		let Some(multi) = rx.get(&[SeriesStorageKey::new(series_id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
 
@@ -68,7 +68,9 @@ impl CatalogStore {
 		series_id: SeriesId,
 		partition: Partition,
 	) -> Result<Option<SeriesPartitionMetadata>> {
-		let Some(multi) = rx.get(&SeriesPartitionMetadataKey::new(series_id, partition))? else {
+		let Some(multi) =
+			rx.get(&[SeriesPartitionMetadataKey::new(series_id, partition).into()])?.pop().flatten()
+		else {
 			return Ok(None);
 		};
 

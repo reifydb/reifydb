@@ -13,7 +13,7 @@ impl CatalogStore {
 		identity: IdentityId,
 		attribute: IdentityAttributeId,
 	) -> Result<()> {
-		txn.remove(&IdentityAttributeValueKey::new(identity, attribute))?;
+		txn.remove(vec![(IdentityAttributeValueKey::new(identity, attribute).into(), None)])?;
 		Ok(())
 	}
 }

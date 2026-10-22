@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, collections::BTreeMap, ops::Bound};
+use std::{cmp::Ordering, collections::BTreeMap, ops::Bound, slice};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -93,7 +93,7 @@ pub trait StateExtension: FlowTransaction {
 	))]
 	fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
 		let scoped = scoped_key(id, key);
-		Ok(self.get(&scoped)?.map(EncodedPodRow::from))
+		Ok(self.get(slice::from_ref(&scoped))?.pop().flatten().map(EncodedPodRow::from))
 	}
 
 	#[instrument(name = "flow::state::get_many", level = "debug", skip(self, keys), fields(
@@ -153,7 +153,7 @@ pub trait StateExtension: FlowTransaction {
 		let writes: Vec<_> =
 			batch.into_writes().into_iter().map(|(key, write)| (scoped_key(id, &key), write)).collect();
 		Span::current().record("write_count", writes.len());
-		self.pending_mut().put_many(writes);
+		self.pending_mut().put(writes);
 		Ok(())
 	}
 
@@ -179,7 +179,7 @@ pub trait StateExtension: FlowTransaction {
 			.into_iter()
 			.map(|(key, row)| (scoped_key(id, &key), PendingWrite::Set(row.into_bytes())))
 			.collect();
-		self.pending_mut().put_many(writes);
+		self.pending_mut().put(writes);
 		Ok(())
 	}
 
@@ -209,7 +209,7 @@ pub trait StateExtension: FlowTransaction {
 				)
 			})
 			.collect();
-		self.pending_mut().put_many(writes);
+		self.pending_mut().put(writes);
 		Ok(())
 	}
 

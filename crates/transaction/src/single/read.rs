@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice;
+
 use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionRow};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockReadGuard};
 use reifydb_value::{Result, util::hex::encode};
@@ -42,7 +44,7 @@ impl<'a> SingleReadTransaction<'a> {
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
 		self.check_key_allowed(key)?;
 		let store = self.inner.store.read().clone();
-		SingleVersionGet::get(&store, key)
+		Ok(SingleVersionGet::get(&store, slice::from_ref(key))?.pop().flatten())
 	}
 
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {

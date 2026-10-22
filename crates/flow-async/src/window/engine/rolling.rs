@@ -507,12 +507,14 @@ where
 					if let Some(new) = new_index_key {
 						self.expiry.set(
 							store,
-							rolling_expiry_key(new, group_hash(&group)?),
-							RollingIndexEntry {
-								group: group.clone(),
-								slot_key: group_slot.key.as_bytes().to_vec(),
-								group_id: group_slot.group_id,
-							},
+							vec![(
+								rolling_expiry_key(new, group_hash(&group)?),
+								RollingIndexEntry {
+									group: group.clone(),
+									slot_key: group_slot.key.as_bytes().to_vec(),
+									group_id: group_slot.group_id,
+								},
+							)],
 						)?;
 					}
 				}
@@ -623,12 +625,14 @@ where
 				if let Some(new) = coord_min_key(&buffer) {
 					self.expiry.set(
 						store,
-						rolling_expiry_key(new, group_hash(&entry.group)?),
-						RollingIndexEntry {
-							group: entry.group.clone(),
-							slot_key: entry.slot_key.clone(),
-							group_id: entry.group_id,
-						},
+						vec![(
+							rolling_expiry_key(new, group_hash(&entry.group)?),
+							RollingIndexEntry {
+								group: entry.group.clone(),
+								slot_key: entry.slot_key.clone(),
+								group_id: entry.group_id,
+							},
+						)],
 					)?;
 				}
 				continue;
@@ -638,12 +642,14 @@ where
 					if let Some(new) = coord_min_key(&buffer) {
 						self.expiry.set(
 							store,
-							rolling_expiry_key(new, group_hash(&entry.group)?),
-							RollingIndexEntry {
-								group: entry.group.clone(),
-								slot_key: entry.slot_key.clone(),
-								group_id: entry.group_id,
-							},
+							vec![(
+								rolling_expiry_key(new, group_hash(&entry.group)?),
+								RollingIndexEntry {
+									group: entry.group.clone(),
+									slot_key: entry.slot_key.clone(),
+									group_id: entry.group_id,
+								},
+							)],
 						)?;
 					}
 					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
@@ -1031,12 +1037,14 @@ where
 				if let Some(new) = new_min {
 					self.expiry.set(
 						store,
-						rolling_expiry_key(new, group_hash(&group)?),
-						RollingIndexEntry {
-							group: group.clone(),
-							slot_key: group_slot.key.as_bytes().to_vec(),
-							group_id: group_slot.group_id,
-						},
+						vec![(
+							rolling_expiry_key(new, group_hash(&group)?),
+							RollingIndexEntry {
+								group: group.clone(),
+								slot_key: group_slot.key.as_bytes().to_vec(),
+								group_id: group_slot.group_id,
+							},
+						)],
 					)?;
 				}
 			}
@@ -1166,12 +1174,14 @@ where
 				if let Some(new) = coord_min_key(&buffer) {
 					self.expiry.set(
 						store,
-						rolling_expiry_key(new, group_hash(&entry.group)?),
-						RollingIndexEntry {
-							group: entry.group.clone(),
-							slot_key: entry.slot_key.clone(),
-							group_id: entry.group_id,
-						},
+						vec![(
+							rolling_expiry_key(new, group_hash(&entry.group)?),
+							RollingIndexEntry {
+								group: entry.group.clone(),
+								slot_key: entry.slot_key.clone(),
+								group_id: entry.group_id,
+							},
+						)],
 					)?;
 				}
 				continue;
@@ -1199,12 +1209,14 @@ where
 				(Some(new), true, Some(value)) => {
 					self.expiry.set(
 						store,
-						rolling_expiry_key(new, group_hash(&entry.group)?),
-						RollingIndexEntry {
-							group: entry.group.clone(),
-							slot_key: entry.slot_key.clone(),
-							group_id: entry.group_id,
-						},
+						vec![(
+							rolling_expiry_key(new, group_hash(&entry.group)?),
+							RollingIndexEntry {
+								group: entry.group.clone(),
+								slot_key: entry.slot_key.clone(),
+								group_id: entry.group_id,
+							},
+						)],
 					)?;
 					Self::pane_writes(
 						store,
@@ -1223,12 +1235,14 @@ where
 				(Some(new), false, _) => {
 					self.expiry.set(
 						store,
-						rolling_expiry_key(new, group_hash(&entry.group)?),
-						RollingIndexEntry {
-							group: entry.group.clone(),
-							slot_key: entry.slot_key.clone(),
-							group_id: entry.group_id,
-						},
+						vec![(
+							rolling_expiry_key(new, group_hash(&entry.group)?),
+							RollingIndexEntry {
+								group: entry.group.clone(),
+								slot_key: entry.slot_key.clone(),
+								group_id: entry.group_id,
+							},
+						)],
 					)?;
 					Self::pane_writes(
 						store,

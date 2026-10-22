@@ -1302,14 +1302,6 @@ mod join_row_expiry_guard_tests {
 		fn dictionary_find(
 			&mut self,
 			_dictionary: DictionaryId,
-			_value: &Value,
-		) -> Result<Option<DictionaryEntryId>> {
-			Ok(None)
-		}
-
-		fn dictionary_find_many(
-			&mut self,
-			_dictionary: DictionaryId,
 			values: &[Value],
 		) -> Result<Vec<Option<DictionaryEntryId>>> {
 			Ok(vec![None; values.len()])

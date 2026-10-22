@@ -78,8 +78,10 @@ fn state_of(t: &TestEngine, queue: QueueId) -> QueueItemState {
 
 fn counters(t: &TestEngine, queue: QueueId) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
-	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue, 0))
+	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, 0)])
 		.unwrap()
+		.pop()
+		.flatten()
 		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 		.unwrap_or_default()
 }
@@ -124,7 +126,11 @@ fn claimable(t: &TestEngine) -> usize {
 
 fn plant_attempt(t: &TestEngine, queue: QueueId, row: u64, attempt: u32, record: QueueAttemptRecord) {
 	let mut txn = t.inner().begin_command(IdentityId::system()).unwrap();
-	txn.set(&QueueAttemptKey::new(queue, RowNumber(row), attempt), encode_queue_attempt(&record)).unwrap();
+	txn.set(vec![(
+		QueueAttemptKey::new(queue, RowNumber(row), attempt).into(),
+		encode_queue_attempt(&record).into(),
+	)])
+	.unwrap();
 	txn.commit().unwrap();
 }
 

@@ -41,7 +41,7 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		view::RowView,
+		view::{ColumnsView, RowView},
 		windowed::operator::{AllKinds, CarryEmit, Emit, NoRolling, WindowedOperator},
 	},
 	row,
@@ -191,15 +191,39 @@ impl WindowedOperator for VolumeTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Result<Option<(String, f64)>> {
-		let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?) else {
-			return Ok(None);
-		};
-		Ok(Some((group.to_string(), size)))
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, f64)>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<(String, f64)>> {
+						let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?)
+						else {
+							return Ok(None);
+						};
+						Ok(Some((group.to_string(), size)))
+					})
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> VolumeAccumulator {
@@ -281,22 +305,42 @@ impl WindowedOperator for MinTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn extract(
 		&self,
 		_ctx: &mut impl GuestContext<Windowed>,
-		row: &impl RowView,
-	) -> Result<Option<(String, OrdF64)>> {
-		let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?) else {
-			return Ok(None);
-		};
-		let Some(size) = OrdF64::new(size) else {
-			return Ok(None);
-		};
-		Ok(Some((group.to_string(), size)))
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, OrdF64)>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<(String, OrdF64)>> {
+						let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?)
+						else {
+							return Ok(None);
+						};
+						let Some(size) = OrdF64::new(size) else {
+							return Ok(None);
+						};
+						Ok(Some((group.to_string(), size)))
+					})
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> MinAccumulator {
@@ -418,23 +462,43 @@ impl WindowedOperator for OhlcvSealingTumbling {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn extract(
 		&self,
 		_ctx: &mut impl GuestContext<Windowed>,
-		row: &impl RowView,
-	) -> Result<Option<(String, (DateTime, OrdF64))>> {
-		let (Some(group), Some(slot), Some(price)) = (row.utf8("group")?, row.u64("slot")?, row.f64("price")?)
-		else {
-			return Ok(None);
-		};
-		let Some(price) = OrdF64::new(price) else {
-			return Ok(None);
-		};
-		Ok(Some((group.to_string(), (at_millis(slot as i64), price))))
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, (DateTime, OrdF64))>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<(String, (DateTime, OrdF64))>> {
+						let (Some(group), Some(slot), Some(price)) =
+							(row.utf8("group")?, row.u64("slot")?, row.f64("price")?)
+						else {
+							return Ok(None);
+						};
+						let Some(price) = OrdF64::new(price) else {
+							return Ok(None);
+						};
+						Ok(Some((group.to_string(), (at_millis(slot as i64), price))))
+					})
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> OhlcvAcc {
@@ -538,15 +602,40 @@ impl WindowedOperator for RollingSum {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Result<Option<(String, f64)>> {
-		let (Some(group), Some(value)) = (row.utf8("group")?, row.f64("value")?) else {
-			return Ok(None);
-		};
-		Ok(Some((group.to_string(), value)))
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, f64)>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<(String, f64)>> {
+						let (Some(group), Some(value)) =
+							(row.utf8("group")?, row.f64("value")?)
+						else {
+							return Ok(None);
+						};
+						Ok(Some((group.to_string(), value)))
+					})
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> WindowSum {
@@ -603,21 +692,40 @@ impl WindowedOperator for TopVolumeRollingTopK {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn extract(
 		&self,
 		_ctx: &mut impl GuestContext<Windowed>,
-		row: &impl RowView,
-	) -> Result<Option<(String, (u64, f64))>> {
-		let (Some(group), Some(trader), Some(volume)) =
-			(row.utf8("group")?, row.u64("trader")?, row.f64("volume")?)
-		else {
-			return Ok(None);
-		};
-		Ok(Some((group.to_string(), (trader, volume))))
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, (u64, f64))>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<(String, (u64, f64))>> {
+						let (Some(group), Some(trader), Some(volume)) =
+							(row.utf8("group")?, row.u64("trader")?, row.f64("volume")?)
+						else {
+							return Ok(None);
+						};
+						Ok(Some((group.to_string(), (trader, volume))))
+					})
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> KeyedInvertibleAccumulator<u64, Moments> {
@@ -695,20 +803,40 @@ impl WindowedOperator for TwapCarry {
 		Ok(TwapCarry)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn extract(
 		&self,
 		_ctx: &mut impl GuestContext<Windowed>,
-		row: &impl RowView,
-	) -> Result<Option<(String, (u64, f64))>> {
-		let (Some(group), Some(ts), Some(price)) = (row.utf8("group")?, row.u64("ts")?, row.f64("price")?)
-		else {
-			return Ok(None);
-		};
-		Ok(Some((group.to_string(), (ts, price))))
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, (u64, f64))>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<(String, (u64, f64))>> {
+						let (Some(group), Some(ts), Some(price)) =
+							(row.utf8("group")?, row.u64("ts")?, row.f64("price")?)
+						else {
+							return Ok(None);
+						};
+						Ok(Some((group.to_string(), (ts, price))))
+					})
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {

@@ -20,7 +20,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_view(rx: &mut Transaction<'_>, id: ViewId) -> Result<Option<View>> {
-		let Some(multi) = rx.get(&ViewKey::new(id))? else {
+		let Some(multi) = rx.get(&[ViewKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
 

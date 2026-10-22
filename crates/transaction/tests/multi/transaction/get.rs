@@ -18,11 +18,11 @@ fn test_read_after_write() {
 				let v = as_values!(i);
 
 				let mut txn = db.begin_command().unwrap();
-				txn.set(&k, v.clone()).unwrap();
+				txn.set(vec![(k.clone(), v.clone())]).unwrap();
 				txn.commit().unwrap();
 
 				let txn = db.begin_query().unwrap();
-				let sv = txn.get(&k).unwrap().unwrap();
+				let sv = txn.get(&[k.clone()]).unwrap().pop().flatten().unwrap();
 				assert_eq!(*sv.bytes(), v);
 			})
 		})

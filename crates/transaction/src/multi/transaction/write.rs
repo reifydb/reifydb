@@ -21,7 +21,7 @@ use reifydb_core::{
 	event::transaction::PostCommitEvent,
 	interface::{
 		catalog::{object::ObjectId, storage::StorageId},
-		store::{MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRow},
+		store::{MultiVersionBatch, MultiVersionGet, MultiVersionRow},
 	},
 	key::{
 		any::TaggedKey,
@@ -272,10 +272,6 @@ impl MultiWriteTransaction {
 		})
 	}
 
-	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
-		self.set_any(key.clone().into(), bytes.into())
-	}
-
 	pub fn rewrite_on(&mut self, key: &TaggedKey, rewrite: Rewrite) {
 		self.rewrites.entry(key.clone()).or_insert(rewrite);
 	}
@@ -301,7 +297,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		entries = entries.len()
 	))]
-	pub fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
 		self.set_many_with_pre(entries.into_iter().map(|(key, bytes)| (key, bytes, SetPre::Unknown)).collect())
 	}
 
@@ -318,9 +314,9 @@ impl MultiWriteTransaction {
 		}
 		#[cfg(feature = "testing")]
 		{
-			self.op_counts.set_many_call();
+			self.op_counts.set_call();
 			for (key, _, _) in &entries {
-				self.op_counts.key(key.kind()).batched += 1;
+				self.op_counts.key(key.kind()).sets += 1;
 			}
 		}
 		let version = self.base_version();
@@ -380,42 +376,11 @@ impl MultiWriteTransaction {
 		self.remove_with_pre_any(key.clone().into(), pre)
 	}
 
-	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(
-		txn_id = %self.id,
-		key = ?key
-	))]
-	fn remove_any(&mut self, key: TaggedKey) -> Result<()> {
-		if self.lifecycle == Lifecycle::Discarded {
-			return Err(TransactionError::RolledBack.into());
-		}
-		#[cfg(feature = "testing")]
-		{
-			self.op_counts.key(key.kind()).removes += 1;
-		}
-		let announce = match self.get(&key)? {
-			Some(found) => RemoveAnnounce::Announced {
-				pre: found.bytes().clone(),
-			},
-			None => RemoveAnnounce::Silent,
-		};
-		self.modify(DeltaEntry {
-			delta: Delta::Remove {
-				key,
-				announce,
-			},
-			version: self.base_version(),
-		})
-	}
-
-	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
-		self.remove_any(key.clone().into())
-	}
-
 	#[instrument(name = "transaction::command::remove_many", level = "trace", skip(self, entries), fields(
 		txn_id = %self.id,
 		keys = entries.len()
 	))]
-	pub fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -424,9 +389,9 @@ impl MultiWriteTransaction {
 		}
 		#[cfg(feature = "testing")]
 		{
-			self.op_counts.remove_many_call();
+			self.op_counts.remove_call();
 			for (key, _) in &entries {
-				self.op_counts.key(key.kind()).batched_removes += 1;
+				self.op_counts.key(key.kind()).removes += 1;
 			}
 		}
 		let version = self.base_version();
@@ -438,7 +403,7 @@ impl MultiWriteTransaction {
 			.filter(|((_, pre), first)| **first && pre.is_none())
 			.map(|((key, _), _)| key.clone())
 			.collect();
-		let mut read = self.get_many(&unread)?.into_iter();
+		let mut read = self.get(&unread)?.into_iter();
 		let mut pending: Vec<DeltaEntry> = Vec::with_capacity(entries.len());
 		for ((key, pre), first) in entries.into_iter().zip(first) {
 			let announce = match pre {
@@ -495,7 +460,7 @@ impl MultiWriteTransaction {
 		{
 			self.op_counts.key(key.kind()).removes += 1;
 		}
-		let announce = match self.get(&key)? {
+		let announce = match self.get(&[key.clone()])?.pop().flatten() {
 			Some(found) => RemoveAnnounce::Unobserved {
 				pre: found.bytes().clone(),
 			},
@@ -576,93 +541,21 @@ impl MultiWriteTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self, key), fields(
-		txn_id = %self.id
-	))]
-	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
-		if self.lifecycle == Lifecycle::Discarded {
-			return Err(TransactionError::RolledBack.into());
-		}
-
-		let key = key.clone().into();
-		#[cfg(feature = "testing")]
-		{
-			self.op_counts.key(key.kind()).contains += 1;
-		}
-		let version = self.version();
-		match self.pending_writes.get(&key) {
-			Some(pending) => {
-				if pending.was_removed() {
-					return Ok(false);
-				}
-				Ok(true)
-			}
-			None => {
-				self.conflicts.mark_read(&key);
-				MultiVersionContains::contains(&self.engine.store, &key, version)
-			}
-		}
-	}
-
-	#[instrument(name = "transaction::command::get", level = "trace", skip(self, key), fields(
-		txn_id = %self.id
-	))]
-	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
-		if self.lifecycle == Lifecycle::Discarded {
-			return Err(TransactionError::RolledBack.into());
-		}
-
-		let key = key.clone().into();
-		#[cfg(feature = "testing")]
-		{
-			self.op_counts.key(key.kind()).gets += 1;
-		}
-		let version = self.version();
-		if let Some(v) = self.pending_writes.get(&key) {
-			if let Some(bytes) = v.bytes() {
-				return Ok(Some(DeltaEntry {
-					delta: Delta::Set {
-						key: v.key().clone(),
-						bytes: bytes.clone(),
-						pre: SetPre::Unknown,
-					},
-					version: v.version,
-				}
-				.into()));
-			}
-			return Ok(None);
-		}
-		self.conflicts.mark_read(&key);
-		Ok(MultiVersionGet::get(&self.engine.store, &key, version)?.map(Into::into))
-	}
-
-	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self, key), fields(
-		txn_id = %self.id
-	))]
-	pub fn get_committed<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<TransactionValue>> {
-		if self.lifecycle == Lifecycle::Discarded {
-			return Err(TransactionError::RolledBack.into());
-		}
-		let key = key.clone().into();
-		#[cfg(feature = "testing")]
-		{
-			self.op_counts.key(key.kind()).committed_gets += 1;
-		}
-		let version = self.version();
-		self.conflicts.mark_read(&key);
-		Ok(MultiVersionGet::get(&self.engine.store, &key, version)?.map(Into::into))
-	}
-
 	#[instrument(name = "transaction::command::get_committed_many", level = "trace", skip(self, keys), fields(
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
-	pub fn get_committed_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+	pub fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
 		#[cfg(feature = "testing")]
-		self.op_counts.get_committed_many_call();
+		{
+			self.op_counts.get_committed_call();
+			for key in keys {
+				self.op_counts.key(key.kind()).committed_gets += 1;
+			}
+		}
 		let version = self.version();
 		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
 		for key in keys {
@@ -690,7 +583,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
-	pub fn get_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -699,9 +592,9 @@ impl MultiWriteTransaction {
 		}
 		#[cfg(feature = "testing")]
 		{
-			self.op_counts.get_many_call();
+			self.op_counts.get_call();
 			for key in keys {
-				self.op_counts.key(key.kind()).batched_gets += 1;
+				self.op_counts.key(key.kind()).gets += 1;
 			}
 		}
 		self.read_many(keys)
@@ -711,7 +604,7 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
-	pub fn contains_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -720,9 +613,9 @@ impl MultiWriteTransaction {
 		}
 		#[cfg(feature = "testing")]
 		{
-			self.op_counts.contains_many_call();
+			self.op_counts.contains_call();
 			for key in keys {
-				self.op_counts.key(key.kind()).batched_contains += 1;
+				self.op_counts.key(key.kind()).contains += 1;
 			}
 		}
 		Ok(self.read_many(keys)?.iter().map(Option::is_some).collect())
@@ -756,7 +649,7 @@ impl MultiWriteTransaction {
 			return Ok(found);
 		}
 		let snapshot: Vec<TaggedKey> = unread.iter().map(|&slot| keys[slot].clone()).collect();
-		for (slot, committed) in unread.into_iter().zip(self.engine.get_many(&snapshot, version)?) {
+		for (slot, committed) in unread.into_iter().zip(self.engine.get(&snapshot, version)?) {
 			found[slot] = committed.map(Into::into);
 		}
 		Ok(found)
@@ -921,7 +814,7 @@ impl MultiWriteTransaction {
 		if keys.is_empty() {
 			return Ok(());
 		}
-		let found = self.get_committed_many(&keys)?;
+		let found = self.get_committed(&keys)?;
 		self.committed_pres = keys
 			.into_iter()
 			.zip(found)
@@ -1541,7 +1434,7 @@ mod tests {
 		// a commit version whose own post-commit hooks have not run.
 		let engine = MultiTransaction::testing();
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("race-key"), test_bytes("race-value")).unwrap();
+		txn.set(vec![(test_key("race-key").into(), test_bytes("race-value"))]).unwrap();
 
 		// Allocate commit_version exactly as commit() would, without finalizing it yet.
 		let deltas = txn.build_deltas();
@@ -1661,14 +1554,14 @@ mod tests {
 	fn committed_with(engine: &MultiTransaction, writes: &[(&str, &str)]) {
 		let mut txn = engine.begin_command().unwrap();
 		for (key, bytes) in writes {
-			txn.set(&test_key(key), test_bytes(bytes)).unwrap();
+			txn.set(vec![(test_key(key).into(), test_bytes(bytes))]).unwrap();
 		}
 		txn.commit().unwrap();
 	}
 
 	fn stored(engine: &MultiTransaction, key: &str) -> Option<EncodedBytes> {
 		let mut txn = engine.begin_command().unwrap();
-		txn.get(&test_key(key)).unwrap().map(|found| found.bytes().clone())
+		txn.get(&[test_key(key).into()]).unwrap().pop().flatten().map(|found| found.bytes().clone())
 	}
 
 	fn resolved_deltas(txn: &mut MultiWriteTransaction) -> Vec<Delta> {
@@ -1684,10 +1577,10 @@ mod tests {
 		committed_with(&engine, &[("committed", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("committed"), test_bytes("v2")).unwrap();
-		txn.remove(&test_key("committed")).unwrap();
-		txn.set(&test_key("fresh"), test_bytes("f1")).unwrap();
-		txn.remove(&test_key("fresh")).unwrap();
+		txn.set(vec![(test_key("committed").into(), test_bytes("v2"))]).unwrap();
+		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
+		txn.set(vec![(test_key("fresh").into(), test_bytes("f1"))]).unwrap();
+		txn.remove(vec![(test_key("fresh").into(), None)]).unwrap();
 		txn.commit().unwrap();
 
 		assert_eq!((stored(&engine, "committed"), stored(&engine, "fresh")), (None, None));
@@ -1701,8 +1594,8 @@ mod tests {
 		committed_with(&engine, &[("committed", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("committed"), test_bytes("v2")).unwrap();
-		txn.remove(&test_key("committed")).unwrap();
+		txn.set(vec![(test_key("committed").into(), test_bytes("v2"))]).unwrap();
+		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
 		txn.commit_unchecked().unwrap();
 
 		assert_eq!(stored(&engine, "committed"), None);
@@ -1716,13 +1609,13 @@ mod tests {
 		committed_with(&engine, &[("committed", "v1"), ("again", "a1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("committed"), test_bytes("v2")).unwrap();
-		txn.remove(&test_key("committed")).unwrap();
-		txn.set(&test_key("fresh"), test_bytes("f1")).unwrap();
-		txn.remove(&test_key("fresh")).unwrap();
-		txn.remove(&test_key("again")).unwrap();
-		txn.set(&test_key("again"), test_bytes("a2")).unwrap();
-		txn.remove(&test_key("again")).unwrap();
+		txn.set(vec![(test_key("committed").into(), test_bytes("v2"))]).unwrap();
+		txn.remove(vec![(test_key("committed").into(), None)]).unwrap();
+		txn.set(vec![(test_key("fresh").into(), test_bytes("f1"))]).unwrap();
+		txn.remove(vec![(test_key("fresh").into(), None)]).unwrap();
+		txn.remove(vec![(test_key("again").into(), None)]).unwrap();
+		txn.set(vec![(test_key("again").into(), test_bytes("a2"))]).unwrap();
+		txn.remove(vec![(test_key("again").into(), None)]).unwrap();
 
 		assert_eq!(
 			resolved_deltas(&mut txn),
@@ -1747,14 +1640,14 @@ mod tests {
 			SetPre::Present(test_bytes("v1")),
 		)])
 		.unwrap();
-		txn.remove(&test_key("known")).unwrap();
+		txn.remove(vec![(test_key("known").into(), None)]).unwrap();
 
 		assert_eq!(
 			resolved_deltas(&mut txn),
 			vec![Delta::remove_announced(test_key("known").into(), test_bytes("v1"))]
 		);
 		#[cfg(feature = "testing")]
-		assert_eq!(txn.op_counts.get_committed_many_calls(), 0);
+		assert_eq!(txn.op_counts.get_committed_calls(), 0);
 	}
 
 	#[cfg(feature = "testing")]
@@ -1772,10 +1665,10 @@ mod tests {
 			SetPre::Present(test_bytes("v1")),
 		)])
 		.unwrap();
-		txn.remove(&test_key("tagged")).unwrap();
+		txn.remove(vec![(test_key("tagged").into(), None)]).unwrap();
 		txn.commit_unchecked().unwrap();
 
-		assert_eq!(txn.op_counts.get_committed_many_calls(), 1);
+		assert_eq!(txn.op_counts.get_committed_calls(), 1);
 	}
 
 	#[cfg(feature = "testing")]
@@ -1788,19 +1681,19 @@ mod tests {
 
 		let mut txn = engine.begin_command().unwrap();
 		for key in ["a", "b", "c"] {
-			txn.set(&test_key(key), test_bytes("new")).unwrap();
-			txn.remove(&test_key(key)).unwrap();
+			txn.set(vec![(test_key(key).into(), test_bytes("new"))]).unwrap();
+			txn.remove(vec![(test_key(key).into(), None)]).unwrap();
 		}
-		txn.set(&test_key("a"), test_bytes("again")).unwrap();
-		txn.remove(&test_key("a")).unwrap();
+		txn.set(vec![(test_key("a").into(), test_bytes("again"))]).unwrap();
+		txn.remove(vec![(test_key("a").into(), None)]).unwrap();
 		resolved_deltas(&mut txn);
-		assert_eq!(txn.op_counts.get_committed_many_calls(), 1);
+		assert_eq!(txn.op_counts.get_committed_calls(), 1);
 
 		let mut plain = engine.begin_command().unwrap();
-		plain.set(&test_key("d"), test_bytes("d1")).unwrap();
-		plain.remove(&test_key("a")).unwrap();
+		plain.set(vec![(test_key("d").into(), test_bytes("d1"))]).unwrap();
+		plain.remove(vec![(test_key("a").into(), None)]).unwrap();
 		resolved_deltas(&mut plain);
-		assert_eq!(plain.op_counts.get_committed_many_calls(), 0);
+		assert_eq!(plain.op_counts.get_committed_calls(), 0);
 	}
 
 	#[test]
@@ -1811,9 +1704,9 @@ mod tests {
 		committed_with(&engine, &[("kept", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("kept"), test_bytes("v2")).unwrap();
+		txn.set(vec![(test_key("kept").into(), test_bytes("v2"))]).unwrap();
 		let savepoint = txn.savepoint();
-		txn.remove(&test_key("kept")).unwrap();
+		txn.remove(vec![(test_key("kept").into(), None)]).unwrap();
 		txn.restore_savepoint(savepoint);
 		txn.commit().unwrap();
 
@@ -1828,8 +1721,8 @@ mod tests {
 		committed_with(&engine, &[("contested", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("contested"), test_bytes("v2")).unwrap();
-		txn.remove(&test_key("contested")).unwrap();
+		txn.set(vec![(test_key("contested").into(), test_bytes("v2"))]).unwrap();
+		txn.remove(vec![(test_key("contested").into(), None)]).unwrap();
 		txn.resolve_removed_after_set().unwrap();
 		committed_with(&engine, &[("contested", "v3")]);
 		let deltas = txn.build_deltas();
@@ -1846,22 +1739,22 @@ mod tests {
 
 		let mut txn = engine.begin_command().unwrap();
 		let savepoint = txn.savepoint();
-		txn.set(&test_key("rolled_back"), test_bytes("v2")).unwrap();
-		txn.remove(&test_key("rolled_back")).unwrap();
+		txn.set(vec![(test_key("rolled_back").into(), test_bytes("v2"))]).unwrap();
+		txn.remove(vec![(test_key("rolled_back").into(), None)]).unwrap();
 		txn.restore_savepoint(savepoint);
-		txn.set(&test_key("other"), test_bytes("o1")).unwrap();
+		txn.set(vec![(test_key("other").into(), test_bytes("o1"))]).unwrap();
 		committed_with(&engine, &[("rolled_back", "v3")]);
 
 		assert!(txn.commit().is_ok(), "the rolled-back key must not take part in conflict detection");
 		#[cfg(feature = "testing")]
-		assert_eq!(txn.op_counts.get_committed_many_calls(), 0);
+		assert_eq!(txn.op_counts.get_committed_calls(), 0);
 		assert_eq!(stored(&engine, "rolled_back"), Some(test_bytes("v3")));
 	}
 
 	fn unchecked_with(engine: &MultiTransaction, writes: &[(&str, &str)]) {
 		let mut txn = engine.begin_command().unwrap();
 		for (key, bytes) in writes {
-			txn.set(&test_key(key), test_bytes(bytes)).unwrap();
+			txn.set(vec![(test_key(key).into(), test_bytes(bytes))]).unwrap();
 		}
 		txn.commit_unchecked().unwrap();
 	}
@@ -1938,7 +1831,7 @@ mod tests {
 
 		let mut txn = engine.begin_command().unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
-		txn.set(&test_key("meta"), test_bytes("plain")).unwrap();
+		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
 
@@ -1953,7 +1846,7 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("meta"), test_bytes("plain")).unwrap();
+		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		let written = appended(&test_bytes("plain"), "+d");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
@@ -1971,7 +1864,7 @@ mod tests {
 
 		let mut txn = engine.begin_command().unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+a"), appending("+a")).unwrap();
-		txn.set(&test_key("meta"), test_bytes("plain")).unwrap();
+		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		let written = appended(&test_bytes("plain"), "+b");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+b")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
@@ -1990,10 +1883,10 @@ mod tests {
 		let mut txn = engine.begin_command().unwrap();
 		let first = appended(&test_bytes("v1"), "+a");
 		txn.set_rebased(&test_key("meta").into(), first.clone(), appending("+a")).unwrap();
-		txn.set(&test_key("meta"), test_bytes("plain")).unwrap();
+		txn.set(vec![(test_key("meta").into(), test_bytes("plain"))]).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("plain"), "+b"), appending("+b"))
 			.unwrap();
-		txn.set(&test_key("meta"), first.clone()).unwrap();
+		txn.set(vec![(test_key("meta").into(), first.clone())]).unwrap();
 		let written = appended(&first, "+c");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+c")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
@@ -2111,7 +2004,7 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&test_key("other"), test_bytes("o1")).unwrap();
+		txn.set(vec![(test_key("other").into(), test_bytes("o1"))]).unwrap();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
 		txn.commit().unwrap();
@@ -2127,7 +2020,7 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.get(&test_key("meta")).unwrap();
+		txn.get(&[test_key("meta").into()]).unwrap().pop().flatten();
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		committed_with(&engine, &[("meta", "v2")]);
 
@@ -2143,7 +2036,7 @@ mod tests {
 		committed_with(&engine, &[("meta", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.get(&test_key("meta")).unwrap();
+		txn.get(&[test_key("meta").into()]).unwrap().pop().flatten();
 		let failing: Rebase = Arc::new(|_: &EncodedBytes| Err(TransactionError::RolledBack.into()));
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), failing).unwrap();
 		committed_with(&engine, &[("meta", "v2")]);

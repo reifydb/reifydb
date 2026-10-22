@@ -3,6 +3,7 @@
 
 use std::{
 	ops::Bound,
+	slice,
 	sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -121,7 +122,7 @@ impl DictionaryStore for SingleDictionaryStore {
 	fn read_committed(&self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
 		self.reads.fetch_add(1, Ordering::Relaxed);
 		let store = self.single.read_store();
-		Ok(SingleVersionGet::get(&store, key)?.map(|bytes| bytes.bytes))
+		Ok(SingleVersionGet::get(&store, slice::from_ref(key))?.pop().flatten().map(|bytes| bytes.bytes))
 	}
 
 	fn max_index_id(&self, dictionary: DictionaryId) -> Result<Option<u128>> {

@@ -178,7 +178,7 @@ impl CatalogStore {
 		let dict_id_value = column_to_create.dictionary_id.map(u64::from).unwrap_or(0);
 		column::set_dictionary_id(&mut row, dict_id_value);
 
-		txn.set(&ColumnsKey::new(id), row.freeze())
+		txn.set(vec![(ColumnsKey::new(id).into(), row.freeze().into())])
 	}
 
 	fn store_object_column_row(
@@ -191,7 +191,7 @@ impl CatalogStore {
 		object_column::set_id(&mut row, u64::from(id));
 		object_column::set_name(&mut row, &column_to_create.column);
 		object_column::set_index(&mut row, u8::from(column_to_create.index));
-		txn.set(&ColumnKey::new(object, id), row.freeze())
+		txn.set(vec![(ColumnKey::new(object, id).into(), row.freeze().into())])
 	}
 
 	fn create_properties_and_build(
@@ -428,7 +428,12 @@ pub mod test {
 	}
 
 	fn stored_type_and_constraint(txn: &mut AdminTransaction, id: ColumnId) -> (u8, Vec<u8>) {
-		let multi = Transaction::Admin(&mut *txn).get(&ColumnsKey::new(id)).unwrap().unwrap();
+		let multi = Transaction::Admin(&mut *txn)
+			.get(&[ColumnsKey::new(id).into()])
+			.unwrap()
+			.pop()
+			.flatten()
+			.unwrap();
 		let row = EncodedCatalogRow::try_from(multi.bytes).unwrap();
 		(column::get_value(&row), column::get_constraint(&row).as_bytes().to_vec())
 	}

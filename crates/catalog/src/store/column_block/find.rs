@@ -31,7 +31,7 @@ fn decode_block_link(row: &EncodedPodRow) -> Result<u64> {
 
 impl CatalogStore {
 	pub(crate) fn find_column_block(rx: &mut Transaction<'_>, id: ColumnBlockId) -> Result<Option<ColumnBlock>> {
-		let Some(multi) = rx.get(&ColumnBlockKey::new(id))? else {
+		let Some(multi) = rx.get(&[ColumnBlockKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
 		Ok(Some(decode_column_block(EncodedCatalogRow::view(&multi.bytes))))

@@ -214,7 +214,7 @@ pub(crate) fn update_series(
 			}
 		}
 		shape.write_columns(&mut builders, &views)?;
-		let old_rows = txn.get_many(&storage_keys)?;
+		let old_rows = txn.get(&storage_keys)?;
 		enforce_old_row_policies(services, symbols, txn, &target_data, &old_rows, row_numbers, &shape)?;
 		let now = services.runtime_context.clock.now();
 		let times = RowTime::new(
@@ -261,7 +261,7 @@ pub(crate) fn update_series(
 		}
 		if !posts.is_empty() {
 			let written_keys: Vec<TaggedKey> = found.iter().map(|&row| storage_keys[row].clone()).collect();
-			txn.set_many(written_keys.into_iter().zip(posts.iter().cloned()).collect())?;
+			txn.set(written_keys.into_iter().zip(posts.iter().cloned()).collect())?;
 		}
 		if !posts.is_empty() && !txn.series_row_post_update_interceptors().is_empty() {
 			SeriesRowInterceptor::post_update(txn, &series, &posts, &pres)?;

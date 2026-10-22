@@ -317,60 +317,30 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<TaggedKey>>> {
+	pub fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
 		match self {
-			Self::Command(txn) => txn.get(key),
-			Self::Admin(txn) => txn.get(key),
-			Self::Query(txn) => txn.get(key),
-			Self::Test(t) => t.inner.get(key),
+			Self::Command(txn) => txn.get_committed(keys),
+			Self::Admin(txn) => txn.get_committed(keys),
+			Self::Query(txn) => txn.get(keys),
+			Self::Test(t) => t.inner.get_committed(keys),
 		}
 	}
 
-	pub fn get_committed<K: Into<TaggedKey> + Clone>(
-		&mut self,
-		key: &K,
-	) -> Result<Option<MultiVersionRow<TaggedKey>>> {
+	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
 		match self {
-			Self::Command(txn) => txn.get_committed(key),
-			Self::Admin(txn) => txn.get_committed(key),
-			Self::Query(txn) => txn.get(key),
-			Self::Test(t) => t.inner.get_committed(key),
+			Self::Command(txn) => txn.get(keys),
+			Self::Admin(txn) => txn.get(keys),
+			Self::Query(txn) => txn.get(keys),
+			Self::Test(t) => t.inner.get(keys),
 		}
 	}
 
-	pub fn get_committed_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
 		match self {
-			Self::Command(txn) => txn.get_committed_many(keys),
-			Self::Admin(txn) => txn.get_committed_many(keys),
-			Self::Query(txn) => txn.get_many(keys),
-			Self::Test(t) => t.inner.get_committed_many(keys),
-		}
-	}
-
-	pub fn get_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
-		match self {
-			Self::Command(txn) => txn.get_many(keys),
-			Self::Admin(txn) => txn.get_many(keys),
-			Self::Query(txn) => txn.get_many(keys),
-			Self::Test(t) => t.inner.get_many(keys),
-		}
-	}
-
-	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
-		match self {
-			Self::Command(txn) => txn.contains(key),
-			Self::Admin(txn) => txn.contains(key),
-			Self::Query(txn) => txn.contains(key),
-			Self::Test(t) => t.inner.contains(key),
-		}
-	}
-
-	pub fn contains_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
-		match self {
-			Self::Command(txn) => txn.contains_many(keys),
-			Self::Admin(txn) => txn.contains_many(keys),
-			Self::Query(txn) => txn.contains_many(keys),
-			Self::Test(t) => t.inner.contains_many(keys),
+			Self::Command(txn) => txn.contains(keys),
+			Self::Admin(txn) => txn.contains(keys),
+			Self::Query(txn) => txn.contains(keys),
+			Self::Test(t) => t.inner.contains(keys),
 		}
 	}
 
@@ -644,10 +614,6 @@ impl<'a> Transaction<'a> {
 		}
 	}
 
-	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
-		Write::set(self.write_ops(), &key.clone().into(), bytes.into())
-	}
-
 	pub fn set_rebased<K: Into<TaggedKey> + Clone>(
 		&mut self,
 		key: &K,
@@ -657,8 +623,8 @@ impl<'a> Transaction<'a> {
 		Write::set_rebased(self.write_ops(), &key.clone().into(), bytes.into(), rebase)
 	}
 
-	pub fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
-		Write::set_many(self.write_ops(), entries)
+	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		Write::set(self.write_ops(), entries)
 	}
 
 	pub fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
@@ -669,12 +635,8 @@ impl<'a> Transaction<'a> {
 		Write::remove_with_pre(self.write_ops(), &key.clone().into(), pre)
 	}
 
-	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
-		Write::remove(self.write_ops(), &key.clone().into())
-	}
-
-	pub fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
-		Write::remove_many(self.write_ops(), entries)
+	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+		Write::remove(self.write_ops(), entries)
 	}
 
 	pub fn track_row_change(&mut self, changes: &[RowChange]) {

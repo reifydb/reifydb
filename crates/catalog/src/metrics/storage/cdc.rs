@@ -4,6 +4,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	ops::AddAssign,
+	slice,
 };
 
 use reifydb_codec::row::bytes::EncodedBytes;
@@ -130,7 +131,11 @@ impl<S: SingleVersionStore> CdcMetricsReader<S> {
 
 	pub fn get(&self, id: MetricsId) -> Result<Option<CdcMetrics>> {
 		let key = encode_cdc_stats_key(id);
-		Ok(self.storage.get(&key)?.and_then(|v| decode_cdc_stats(v.bytes.as_slice())))
+		Ok(self.storage
+			.get(slice::from_ref(&key))?
+			.pop()
+			.flatten()
+			.and_then(|v| decode_cdc_stats(v.bytes.as_slice())))
 	}
 
 	pub fn scan_all(&self) -> Result<Vec<(MetricsId, CdcMetrics)>> {

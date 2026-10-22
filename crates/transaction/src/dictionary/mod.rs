@@ -7,7 +7,6 @@ pub mod store;
 use std::{
 	collections::{HashMap, HashSet},
 	hash::Hash,
-	slice,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -259,7 +258,7 @@ impl DictionaryAllocatorRegistry {
 		outcomes(dictionary, resolved, &created_ids)
 	}
 
-	pub fn find_batch(&self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
+	pub fn find(&self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
 		let serialized = serialize_values(dictionary, values)?;
 		let (firsts, slot_of) = distinct_positions(serialized.iter().map(Vec::as_slice));
 		let mut answers: Vec<Option<DictionaryEntryId>> = Vec::with_capacity(firsts.len());
@@ -276,10 +275,6 @@ impl DictionaryAllocatorRegistry {
 			answers.push(self.get_one(dictionary, ids[index])?);
 		}
 		Ok(slot_of.into_iter().map(|distinct| answers[distinct].clone()).collect())
-	}
-
-	pub fn find(&self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		Ok(self.find_batch(dictionary, slice::from_ref(value))?.remove(0))
 	}
 
 	fn find_one(&self, dictionary: &Dictionary, value_bytes: &[u8]) -> Result<Option<DictionaryEntryId>> {

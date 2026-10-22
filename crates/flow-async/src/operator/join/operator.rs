@@ -531,7 +531,7 @@ impl JoinOperator {
 			{
 				continue;
 			}
-			enqueue(host, group)?;
+			enqueue(host, &[group])?;
 			let drained = drain_group(host, group, &mut StoreReaper, SEAL_BATCH)?;
 			stalled |= drained.still_queued;
 		}
@@ -621,7 +621,7 @@ impl JoinOperator {
 		}
 
 		let builder = self.columns.builder(left.schema_ref(), &self.right_schema);
-		let built = builder.unmatched_left(row_numbers[0], left, left_idx, &self.right_schema)?;
+		let built = builder.unmatched_left(&row_numbers[..1], left, &[left_idx], &self.right_schema)?;
 		Self::split(built, &fresh, &existing)
 	}
 
@@ -687,7 +687,7 @@ impl JoinOperator {
 		let (row_numbers, fresh, existing) = self.identities(host, &composite_keys, identity)?;
 
 		let builder = self.columns.builder(left.schema_ref(), &self.right_schema);
-		let built = builder.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema)?;
+		let built = builder.unmatched_left(&row_numbers, left, left_indices, &self.right_schema)?;
 		Self::split(built, &fresh, &existing)
 	}
 
@@ -828,7 +828,7 @@ impl JoinOperator {
 		row_numbers: &[RowNumber],
 	) -> Result<RecordBatch> {
 		let builder = self.columns.builder(left.schema_ref(), &self.right_schema);
-		builder.unmatched_left_batch(row_numbers, left, left_indices, &self.right_schema)
+		builder.unmatched_left(row_numbers, left, left_indices, &self.right_schema)
 	}
 
 	pub(crate) fn latest_columns(
@@ -852,10 +852,12 @@ impl JoinOperator {
 					.columns
 					.builder(left.schema_ref(), slot.schema_ref())
 					.join_cartesian(&row_numbers, left, left_indices, slot, &[0])?,
-				None => self
-					.columns
-					.builder(left.schema_ref(), &self.right_schema)
-					.unmatched_left_batch(&row_numbers, left, left_indices, &self.right_schema)?,
+				None => self.columns.builder(left.schema_ref(), &self.right_schema).unmatched_left(
+					&row_numbers,
+					left,
+					left_indices,
+					&self.right_schema,
+				)?,
 			};
 		Self::split(built, &fresh, &existing)
 	}
@@ -1221,7 +1223,7 @@ mod seal_tests {
 			deferred::DeferredTransaction,
 			join_expiry::{join_due_range, join_expiry_key},
 			mock::FlowTxn,
-			pending_get, pending_get_many,
+			pending_get_many,
 			row_number::RowNumberExtension,
 			state::{StateExtension, StateRange},
 			substrate::{FlowSubstrate, apply_operator_state, classify_pending},
@@ -1467,23 +1469,19 @@ mod seal_tests {
 	}
 
 	impl Get for CountingTxn {
-		fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-			pending_get(self, key)
-		}
-
-		fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 			pending_get_many(self, keys)
 		}
 	}
 
 	impl Batch for CountingTxn {
 		fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
-			self.pending_mut().insert_batch(keys, rows);
+			self.pending_mut().insert(keys, rows);
 			Ok(())
 		}
 
 		fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-			self.pending_mut().remove_batch(keys);
+			self.pending_mut().remove(keys);
 			Ok(())
 		}
 	}

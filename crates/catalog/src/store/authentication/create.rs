@@ -47,7 +47,7 @@ impl CatalogStore {
 		authentication::set_method(&mut row, method);
 		authentication::set_properties(&mut row, &properties_json);
 
-		txn.set(&AuthenticationKey::new(id), row.freeze())?;
+		txn.set(vec![(AuthenticationKey::new(id).into(), row.freeze().into())])?;
 
 		Ok(Authentication {
 			id,

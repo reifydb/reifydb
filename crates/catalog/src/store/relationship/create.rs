@@ -80,7 +80,7 @@ impl CatalogStore {
 		relationship_shape::set_junction_target_column_id(&mut row, junction_target_col);
 		relationship_shape::set_cardinality(&mut row, to_create.cardinality.as_code());
 
-		txn.set(&RelationshipKey::new(id), row.freeze())?;
+		txn.set(vec![(RelationshipKey::new(id).into(), row.freeze().into())])?;
 
 		Ok(Relationship {
 			id,

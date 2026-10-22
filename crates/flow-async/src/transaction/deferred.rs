@@ -4,6 +4,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	ops::Bound::{Excluded, Included, Unbounded},
+	slice,
 };
 
 use reifydb_catalog::catalog::Catalog;
@@ -100,7 +101,7 @@ use crate::{
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction, LookupContext,
 		dictionary::DictionaryExtension,
-		pending_get, pending_get_many,
+		pending_get_many,
 		read::{OperatorStateRangeIter, ReadFrom, read_from},
 		scope::{OperatorRangeScope, OperatorScope, operator_state_coordinates, operator_state_scope},
 		substrate::FlowSubstrate,
@@ -181,32 +182,6 @@ pub(crate) fn deferred_storage_get(
 	operators: Option<&OperatorStore>,
 	query: Option<&MultiReadTransaction>,
 	state_query: Option<&MultiReadTransaction>,
-	key: &EncodedKey,
-) -> Result<Option<EncodedBytes>> {
-	let route = read_from(key);
-	if matches!(route, ReadFrom::OperatorState) {
-		let OperatorScope {
-			operator,
-			inner,
-		} = operator_state_coordinates(key).expect("an OperatorState-routed key must carry an operator id");
-		return Ok(operators
-			.expect(NO_OPERATOR_STORE)
-			.state_get(operator, &GroupStateKey::bound_unchecked(inner))?
-			.map(EncodedPodRow::into_bytes));
-	}
-	let query = match route {
-		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
-		ReadFrom::Query => query,
-		ReadFrom::OperatorState => unreachable!(),
-	};
-	let key = TaggedKey::decode(key).expect(UNDECODABLE_KEY);
-	Ok(query.expect(NO_READ_TRANSACTION).get(&key)?.map(|value| value.into_multi_version_row().bytes))
-}
-
-pub(crate) fn deferred_storage_get_many(
-	operators: Option<&OperatorStore>,
-	query: Option<&MultiReadTransaction>,
-	state_query: Option<&MultiReadTransaction>,
 	keys: &[EncodedKey],
 ) -> Result<Vec<Option<EncodedBytes>>> {
 	let mut rows = vec![None; keys.len()];
@@ -215,7 +190,17 @@ pub(crate) fn deferred_storage_get_many(
 	for (slot, key) in keys.iter().enumerate() {
 		match read_from(key) {
 			ReadFrom::OperatorState => {
-				rows[slot] = deferred_storage_get(operators, query, state_query, key)?
+				let OperatorScope {
+					operator,
+					inner,
+				} = operator_state_coordinates(key)
+					.expect("an OperatorState-routed key must carry an operator id");
+				rows[slot] = operators
+					.expect(NO_OPERATOR_STORE)
+					.state_get(operator, &[GroupStateKey::bound_unchecked(inner)])?
+					.pop()
+					.flatten()
+					.map(EncodedPodRow::into_bytes)
 			}
 			ReadFrom::StateQuery | ReadFrom::OwnedRow => {
 				state_slots.push(slot);
@@ -231,7 +216,7 @@ pub(crate) fn deferred_storage_get_many(
 		if tagged.is_empty() {
 			continue;
 		}
-		for (slot, value) in slots.into_iter().zip(read.expect(NO_READ_TRANSACTION).get_many(&tagged)?) {
+		for (slot, value) in slots.into_iter().zip(read.expect(NO_READ_TRANSACTION).get(&tagged)?) {
 			rows[slot] = value.map(|value| value.into_multi_version_row().bytes);
 		}
 	}
@@ -259,7 +244,9 @@ pub(crate) fn deferred_storage_contains(
 		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
 		ReadFrom::Query => query,
 	};
-	query.expect(NO_READ_TRANSACTION).contains(&TaggedKey::decode(key).expect(UNDECODABLE_KEY))
+	query.expect(NO_READ_TRANSACTION)
+		.contains(&[TaggedKey::decode(key).expect(UNDECODABLE_KEY)])
+		.map(|found| found[0])
 }
 
 pub(crate) fn deferred_storage_range<'a>(
@@ -316,7 +303,7 @@ pub(crate) fn deferred_fetch_state(
 	}
 	Ok(operators
 		.expect(NO_OPERATOR_STORE)
-		.state_get_many(id, keys)?
+		.state_get(id, keys)?
 		.into_iter()
 		.map(|row| row.map(EncodedPodRow::into_bytes))
 		.collect())
@@ -404,12 +391,14 @@ impl FlowTransaction for DeferredTransaction {
 		{
 			self.storage_counts.gets += 1;
 		}
-		deferred_storage_get(
+		Ok(deferred_storage_get(
 			self.substrate.operators.as_ref(),
 			self.query.as_ref(),
 			self.state_query.as_ref(),
-			key,
-		)
+			slice::from_ref(key),
+		)?
+		.pop()
+		.flatten())
 	}
 
 	fn storage_get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
@@ -417,7 +406,7 @@ impl FlowTransaction for DeferredTransaction {
 		{
 			self.storage_counts.get_many_calls += 1;
 		}
-		deferred_storage_get_many(
+		deferred_storage_get(
 			self.substrate.operators.as_ref(),
 			self.query.as_ref(),
 			self.state_query.as_ref(),
@@ -465,23 +454,19 @@ impl FlowTransaction for DeferredTransaction {
 }
 
 impl Get for DeferredTransaction {
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		pending_get(self, key)
-	}
-
-	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		pending_get_many(self, keys)
 	}
 }
 
 impl Batch for DeferredTransaction {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
-		self.pending_mut().insert_batch(keys, rows);
+		self.pending_mut().insert(keys, rows);
 		Ok(())
 	}
 
 	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-		self.pending_mut().remove_batch(keys);
+		self.pending_mut().remove(keys);
 		Ok(())
 	}
 }

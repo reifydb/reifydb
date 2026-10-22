@@ -15,7 +15,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer_id: RingBufferId,
 	) -> Result<Option<PrimaryKeyId>> {
-		let multi = match rx.get(&RingBufferKey::new(ringbuffer_id))? {
+		let multi = match rx.get(&[RingBufferKey::new(ringbuffer_id).into()])?.pop().flatten() {
 			Some(v) => v,
 			None => return Ok(None),
 		};

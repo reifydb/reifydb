@@ -16,7 +16,7 @@ use crate::{CatalogStore, Result, store::operator::shape::operator};
 
 impl CatalogStore {
 	pub(crate) fn find_operator(rx: &mut Transaction<'_>, operator_id: OperatorId) -> Result<Option<FlowNode>> {
-		let Some(multi) = rx.get(&OperatorKey::new(operator_id))? else {
+		let Some(multi) = rx.get(&[OperatorKey::new(operator_id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
 

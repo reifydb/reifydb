@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, slice};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{queue::EncodedQueueRow, shape::RowShape};
@@ -92,7 +92,8 @@ fn hydrate_queue(
 			for (row_number, encoded) in &batch {
 				let placement = placement_of(queue, &shape, encoded, ordered_by, *row_number);
 				let state_key = QueueItemStateKey::encoded(queue.id, placement.partition, *row_number);
-				if SingleVersionGet::get(&store, &state_key)?.is_some() {
+				if SingleVersionGet::get(&store, slice::from_ref(&state_key))?.pop().flatten().is_some()
+				{
 					continue;
 				}
 

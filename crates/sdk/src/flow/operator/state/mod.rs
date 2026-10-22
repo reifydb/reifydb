@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice;
+
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
@@ -55,11 +57,19 @@ impl<'a> State<'a> {
 	}
 
 	pub fn contains(&self, key: &GroupStateKey) -> Result<bool> {
-		Ok(extern_c::get(self.ctx, key.as_encoded())?.is_some())
+		Ok(extern_c::get(self.ctx, slice::from_ref(key.as_encoded()))?
+			.into_iter()
+			.find(|(k, _)| k == key.as_encoded())
+			.map(|(_, row)| row)
+			.is_some())
 	}
 
 	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		match extern_c::get(self.ctx, key.as_encoded())? {
+		match extern_c::get(self.ctx, slice::from_ref(key.as_encoded()))?
+			.into_iter()
+			.find(|(k, _)| k == key.as_encoded())
+			.map(|(_, row)| row)
+		{
 			Some(row) => Ok(Some(EncodedPodRow::from(row))),
 			None => Ok(None),
 		}
@@ -86,7 +96,7 @@ impl<'a> State<'a> {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
-		for (k, row) in extern_c::get_many(self.ctx, &raw)? {
+		for (k, row) in extern_c::get(self.ctx, &raw)? {
 			visit(framed(k)?, EncodedPodRow::from(row))?;
 		}
 		Ok(())

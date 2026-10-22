@@ -134,23 +134,13 @@ impl QueryTransaction {
 	}
 
 	#[inline]
-	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<TaggedKey>>> {
-		Ok(self.multi.get(key)?.map(|v| v.into_multi_version_row()))
+	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		Ok(self.multi.get(keys)?.into_iter().map(|v| v.map(|v| v.into_multi_version_row())).collect())
 	}
 
 	#[inline]
-	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
-		self.multi.contains(key)
-	}
-
-	#[inline]
-	pub fn get_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
-		Ok(self.multi.get_many(keys)?.into_iter().map(|v| v.map(|v| v.into_multi_version_row())).collect())
-	}
-
-	#[inline]
-	pub fn contains_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
-		self.multi.contains_many(keys)
+	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+		self.multi.contains(keys)
 	}
 
 	#[inline]

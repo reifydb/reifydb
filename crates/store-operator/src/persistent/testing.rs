@@ -3,6 +3,7 @@
 
 use std::{
 	borrow::Borrow,
+	slice,
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -161,26 +162,28 @@ impl Persistent for TestingPersistent {
 }
 
 impl Fetch for TestingPersistent {
-	fn get(&self, operator: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		self.call();
-		match self.0.hooks.on_get(operator, key) {
-			ReadOutcome::Clean => self.0.durable.get(operator, key),
-			ReadOutcome::Absent | ReadOutcome::Short(_) => Ok(None),
-			ReadOutcome::Err(error) => Err(error),
-		}
-	}
-
-	fn get_many<Q: Borrow<GroupStateKey>>(
+	fn get<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,
 		keys: &[Q],
 	) -> Result<Vec<Option<EncodedPodRow>>> {
 		self.call();
-		keys.iter().map(|key| self.get(operator, key.borrow())).collect()
+		keys.iter()
+			.map(|key| {
+				self.call();
+				match self.0.hooks.on_get(operator, key.borrow()) {
+					ReadOutcome::Clean => {
+						Ok(self.0.durable.get(operator, slice::from_ref(key))?.pop().flatten())
+					}
+					ReadOutcome::Absent | ReadOutcome::Short(_) => Ok(None),
+					ReadOutcome::Err(error) => Err(error),
+				}
+			})
+			.collect()
 	}
 
 	fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool> {
-		Ok(self.get(operator, key)?.is_some())
+		Ok(self.get(operator, slice::from_ref(key))?.pop().flatten().is_some())
 	}
 }
 

@@ -22,7 +22,7 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		view::RowView,
+		view::{ColumnsView, RowView},
 		windowed::{
 			carry::CarryDriver,
 			operator::{CarryEmit, WindowedOperator},
@@ -86,20 +86,40 @@ impl WindowedOperator for TestCarry {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn extract(
 		&self,
 		_ctx: &mut impl GuestContext<Windowed>,
-		row: &impl RowView,
-	) -> Result<Option<(String, (u64, f64))>> {
-		let (Some(group), Some(ts), Some(price)) = (row.utf8("group")?, row.u64("ts")?, row.f64("price")?)
-		else {
-			return Ok(None);
-		};
-		Ok(Some((group.to_string(), (ts, price))))
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, (u64, f64))>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<(String, (u64, f64))>> {
+						let (Some(group), Some(ts), Some(price)) =
+							(row.utf8("group")?, row.u64("ts")?, row.f64("price")?)
+						else {
+							return Ok(None);
+						};
+						Ok(Some((group.to_string(), (ts, price))))
+					})
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {
@@ -316,16 +336,25 @@ impl WindowedOperator for SealedCarry {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn extract(
 		&self,
 		ctx: &mut impl GuestContext<Windowed>,
-		row: &impl RowView,
-	) -> Result<Option<(String, (u64, f64))>> {
-		TestCarry.extract(ctx, row)
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, (u64, f64))>>> {
+		TestCarry.extract(ctx, cols, rows)
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {

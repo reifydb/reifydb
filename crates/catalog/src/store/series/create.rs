@@ -141,7 +141,7 @@ impl CatalogStore {
 
 		write_time_source(&series::SHAPE, &mut row, series::TIME_DOMAIN, series::TS, &to_create.time);
 
-		txn.set(&SeriesStorageKey::new(series_id), row.freeze())?;
+		txn.set(vec![(SeriesStorageKey::new(series_id).into(), row.freeze().into())])?;
 
 		Ok(())
 	}
@@ -156,7 +156,7 @@ impl CatalogStore {
 		series_namespace::set_id(&mut row, u64::from(series_id));
 		series_namespace::set_name(&mut row, name);
 
-		txn.set(&NamespaceSeriesKey::new(namespace, series_id), row.freeze())?;
+		txn.set(vec![(NamespaceSeriesKey::new(namespace, series_id).into(), row.freeze().into())])?;
 
 		Ok(())
 	}
@@ -189,7 +189,10 @@ impl CatalogStore {
 
 	fn initialize_series_metadata(txn: &mut AdminTransaction, series_id: SeriesId) -> Result<()> {
 		let row = encode_series_partition_metadata(&SeriesPartitionMetadata::new());
-		txn.set(&SeriesPartitionMetadataKey::new(series_id, Partition::default()), row.into_bytes())?;
+		txn.set(vec![(
+			SeriesPartitionMetadataKey::new(series_id, Partition::default()).into(),
+			row.into_bytes(),
+		)])?;
 		Ok(())
 	}
 

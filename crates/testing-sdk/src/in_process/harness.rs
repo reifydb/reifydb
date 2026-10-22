@@ -334,7 +334,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> InProcessOperatorHarness<C
 		let pending = self.txn.pending_mut();
 		*pending = Pending::new();
 		for (key, value) in snapshot {
-			pending.insert(key, value);
+			pending.insert(vec![key], vec![value]);
 		}
 	}
 

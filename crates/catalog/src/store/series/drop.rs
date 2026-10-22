@@ -19,7 +19,7 @@ use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 impl CatalogStore {
 	pub(crate) fn drop_series(txn: &mut AdminTransaction, series: SeriesId) -> Result<()> {
 		let pk_id = if let Some(series_def) = Self::find_series(&mut Transaction::Admin(&mut *txn), series)? {
-			txn.remove(&NamespaceSeriesKey::new(series_def.namespace, series))?;
+			txn.remove(vec![(NamespaceSeriesKey::new(series_def.namespace, series).into(), None)])?;
 			series_def.primary_key.as_ref().map(|pk| pk.id)
 		} else {
 			None
@@ -29,7 +29,7 @@ impl CatalogStore {
 
 		Self::drop_series_partition_metadata(txn, series)?;
 
-		txn.remove(&SeriesKey::new(series))?;
+		txn.remove(vec![(SeriesKey::new(series).into(), None)])?;
 
 		Ok(())
 	}
@@ -46,7 +46,7 @@ impl CatalogStore {
 			}
 		}
 		for key in keys {
-			txn.remove(&key)?;
+			txn.remove(vec![(key.clone().into(), None)])?;
 		}
 		Ok(())
 	}

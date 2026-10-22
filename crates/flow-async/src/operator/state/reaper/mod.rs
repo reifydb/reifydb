@@ -49,20 +49,7 @@ pub fn queue_key(group: GroupId) -> GroupStateKey {
 	)
 }
 
-pub fn enqueue(store: &mut dyn StateStore, group: GroupId) -> Result<()> {
-	reifydb_assertions! {
-		assert!(
-			!group.is_root(),
-			"group id 0 is the root group; reaping it would delete the reap queue, the expiry indexes and the seal ledger"
-		);
-	}
-	if group.is_root() {
-		return Ok(());
-	}
-	store.state_set(&queue_key(group), EncodedPodRow::new(&[]))
-}
-
-pub fn enqueue_many(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
+pub fn enqueue(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
 	reifydb_assertions! {
 		for group in groups {
 			assert!(

@@ -20,7 +20,7 @@ impl CatalogStore {
 		granted_role::set_identity(&mut row, identity);
 		granted_role::set_role_id(&mut row, role);
 
-		txn.set(&GrantedRoleKey::new(identity, role), row.freeze())?;
+		txn.set(vec![(GrantedRoleKey::new(identity, role).into(), row.freeze().into())])?;
 
 		Ok(GrantedRole {
 			identity,

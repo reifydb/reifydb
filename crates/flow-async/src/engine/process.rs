@@ -48,23 +48,6 @@ fn latest_input_time(changes: &[Change]) -> Result<Option<DateTime>> {
 }
 
 impl FlowEngineInner {
-	#[instrument(name = "flow::engine::process", level = "debug", skip(self, txn, change), fields(
-		flow_id = ?flow_id,
-		origin = ?change.origin,
-		version = change.version.source.0,
-		diff_count = change.diffs.len(),
-		row_count = change.row_count(),
-		nodes_processed = field::Empty
-	))]
-	pub fn process<T: FlowTransaction + Intern>(
-		&mut self,
-		txn: &mut T,
-		change: Change,
-		flow_id: FlowId,
-	) -> Result<()> {
-		self.process_batch(txn, vec![change], flow_id)
-	}
-
 	#[instrument(name = "flow::engine::process_batch", level = "debug", skip(self, txn, changes), fields(
 		flow_id = ?flow_id,
 		batch_change_count = changes.len(),
@@ -72,7 +55,7 @@ impl FlowEngineInner {
 		version_count = field::Empty,
 		nodes_processed = field::Empty
 	))]
-	pub fn process_batch<T: FlowTransaction + Intern>(
+	pub fn process<T: FlowTransaction + Intern>(
 		&mut self,
 		txn: &mut T,
 		changes: Vec<Change>,

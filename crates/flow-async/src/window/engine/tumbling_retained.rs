@@ -169,7 +169,7 @@ where
 			store.state_remove_many(&drops)?;
 		}
 		if !sets.is_empty() {
-			self.expiry.set_many(store, sets)?;
+			self.expiry.set(store, sets)?;
 		}
 		Ok(())
 	}
@@ -775,7 +775,7 @@ mod tests {
 
 		let expired = engine.expire(&mut store, 10).unwrap();
 		assert_eq!(expired.len(), 1);
-		enqueue(&mut store, expired[0].group_id).unwrap();
+		enqueue(&mut store, &[expired[0].group_id]).unwrap();
 		reap_group(&mut store, expired[0].group_id, &mut StoreReaper, 256).unwrap();
 
 		assert_eq!(

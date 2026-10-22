@@ -139,7 +139,7 @@ impl SubscriptionWorkerActor {
 			flow_engine.clock().clone(),
 			flow_engine.substrate().clone(),
 		);
-		flow_engine.process(&mut txn, change, flow_id)?;
+		flow_engine.process(&mut txn, vec![change], flow_id)?;
 		txn.merge_state();
 		flow_state.keyed_state = txn.take_state();
 		Ok(())

@@ -10,7 +10,7 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub fn find_row_settings(rx: &mut Transaction<'_>, storage: StorageId) -> Result<Option<RowSettings>> {
-		let value = rx.get(&RowSettingsKey::new(storage))?;
+		let value = rx.get(&[RowSettingsKey::new(storage).into()])?.pop().flatten();
 		Ok(value.and_then(|v| decode_row_settings(EncodedCatalogRow::view(&v.bytes))))
 	}
 }

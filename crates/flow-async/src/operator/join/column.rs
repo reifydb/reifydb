@@ -231,16 +231,6 @@ impl JoinedColumnsBuilder {
 
 	pub(crate) fn unmatched_left(
 		&self,
-		row_number: RowNumber,
-		left: &RecordBatch,
-		left_idx: usize,
-		right_shape: &Schema,
-	) -> Result<RecordBatch> {
-		Self::assemble(&[row_number], left, &[left_idx], self.unmatched_right(right_shape, 1)?, Vec::new())
-	}
-
-	pub(crate) fn unmatched_left_batch(
-		&self,
 		row_numbers: &[RowNumber],
 		left: &RecordBatch,
 		left_indices: &[usize],

@@ -55,7 +55,7 @@ pub fn oracle_performance_benchmark() {
 			let key = as_key!(format!("key_{}", i));
 			let value = as_values!(format!("value_{}", i));
 
-			tx.set(&key, value).unwrap();
+			tx.set(vec![(key.clone().into(), value)]).unwrap();
 			tx.commit().unwrap();
 		}
 
@@ -95,7 +95,7 @@ pub fn concurrent_oracle_benchmark() {
 					let key = as_key!(base_key + i);
 					let value = as_values!(i);
 
-					tx.set(&key, value).unwrap();
+					tx.set(vec![(key.clone().into(), value)]).unwrap();
 					tx.commit().unwrap();
 				}
 			});
@@ -124,7 +124,7 @@ pub fn conflict_detection_benchmark() {
 		let mut tx = engine.begin_command().unwrap();
 		let key = as_key!(format!("shared_key_{}", i % 100));
 		let value = as_values!(i);
-		tx.set(&key, value).unwrap();
+		tx.set(vec![(key.clone().into(), value)]).unwrap();
 		tx.commit().unwrap();
 	}
 
@@ -140,7 +140,7 @@ pub fn conflict_detection_benchmark() {
 		let key = as_key!(format!("shared_key_{}", i % 100));
 		let value = as_values!(i + 1000);
 
-		tx.set(&key, value).unwrap();
+		tx.set(vec![(key.clone().into(), value)]).unwrap();
 
 		match tx.commit() {
 			Ok(_) => {}

@@ -114,7 +114,9 @@ impl QueueRetentionTask {
 	fn classify(&self, queue: QueueId, row: RowNumber, attempt: u32, cutoff: DateTime) -> Result<Option<Doomed>> {
 		let mut query_txn = self.engine.begin_query(IdentityId::system())?;
 		let record = query_txn
-			.get(&QueueAttemptKey::new(queue, row, attempt))?
+			.get(&[QueueAttemptKey::new(queue, row, attempt).into()])?
+			.pop()
+			.flatten()
 			.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes)));
 
 		if let Some(record) = record {
@@ -127,7 +129,7 @@ impl QueueRetentionTask {
 			}));
 		}
 
-		if query_txn.get(&RowKey::new(queue, row))?.is_some() {
+		if query_txn.get(&[RowKey::new(queue, row).into()])?.pop().flatten().is_some() {
 			warn!(
 				queue = queue.0,
 				item = row.0,
@@ -165,10 +167,10 @@ impl QueueRetentionTask {
 		}
 
 		for key in &attempt_keys {
-			txn.remove(key)?;
+			txn.remove(vec![(key.clone().into(), None)])?;
 		}
 		for item in &purge {
-			txn.remove(&RowKey::new(queue, item.row))?;
+			txn.remove(vec![(RowKey::new(queue, item.row).into(), None)])?;
 		}
 		txn.commit()?;
 
@@ -193,7 +195,7 @@ impl QueueRetentionTask {
 
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		for key in &expired.keys {
-			txn.remove(key)?;
+			txn.remove(vec![(key.clone().into(), None)])?;
 		}
 		txn.commit()?;
 

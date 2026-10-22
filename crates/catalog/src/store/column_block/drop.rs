@@ -17,23 +17,23 @@ impl CatalogStore {
 					table_id,
 					..
 				} => {
-					txn.remove(&TableColumnBlockKey::new(table_id, id))?;
+					txn.remove(vec![(TableColumnBlockKey::new(table_id, id).into(), None)])?;
 				}
 				ColumnBlockSource::Series {
 					series_id,
 					partition,
 					..
 				} => {
-					txn.remove(&SeriesColumnBlockKey::new(
-						series_id,
-						partition.unwrap_or_default(),
-						id,
-					))?;
+					txn.remove(vec![(
+						SeriesColumnBlockKey::new(series_id, partition.unwrap_or_default(), id)
+							.into(),
+						None,
+					)])?;
 				}
 			}
 		}
 
-		txn.remove(&ColumnBlockKey::new(id))?;
+		txn.remove(vec![(ColumnBlockKey::new(id).into(), None)])?;
 		Ok(())
 	}
 }
@@ -72,7 +72,8 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let link_pre = txn.get(&TableColumnBlockKey::new(TableId(101), created.id)).unwrap();
+		let link_pre =
+			txn.get(&[TableColumnBlockKey::new(TableId(101), created.id).into()]).unwrap().pop().flatten();
 		assert!(link_pre.is_some(), "table link row should exist before drop");
 
 		CatalogStore::drop_column_block(&mut txn, created.id).unwrap();
@@ -80,7 +81,8 @@ pub mod tests {
 		let found = CatalogStore::find_column_block(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none(), "primary row should be removed");
 
-		let link_post = txn.get(&TableColumnBlockKey::new(TableId(101), created.id)).unwrap();
+		let link_post =
+			txn.get(&[TableColumnBlockKey::new(TableId(101), created.id).into()]).unwrap().pop().flatten();
 		assert!(link_post.is_none(), "table link row should be removed");
 	}
 
@@ -104,8 +106,11 @@ pub mod tests {
 		)
 		.unwrap();
 
-		let link_pre =
-			txn.get(&SeriesColumnBlockKey::new(SeriesId(202), Partition::default(), created.id)).unwrap();
+		let link_pre = txn
+			.get(&[SeriesColumnBlockKey::new(SeriesId(202), Partition::default(), created.id).into()])
+			.unwrap()
+			.pop()
+			.flatten();
 		assert!(link_pre.is_some());
 
 		CatalogStore::drop_column_block(&mut txn, created.id).unwrap();
@@ -113,8 +118,11 @@ pub mod tests {
 		let found = CatalogStore::find_column_block(&mut Transaction::Admin(&mut txn), created.id).unwrap();
 		assert!(found.is_none());
 
-		let link_post =
-			txn.get(&SeriesColumnBlockKey::new(SeriesId(202), Partition::default(), created.id)).unwrap();
+		let link_post = txn
+			.get(&[SeriesColumnBlockKey::new(SeriesId(202), Partition::default(), created.id).into()])
+			.unwrap()
+			.pop()
+			.flatten();
 		assert!(link_post.is_none(), "series link row should be removed");
 	}
 

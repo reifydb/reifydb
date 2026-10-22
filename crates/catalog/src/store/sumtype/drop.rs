@@ -10,10 +10,10 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn drop_sumtype(txn: &mut AdminTransaction, sumtype: SumTypeId) -> Result<()> {
 		if let Some(sumtype_def) = Self::find_sumtype(&mut Transaction::Admin(&mut *txn), sumtype)? {
-			txn.remove(&NamespaceSumTypeKey::new(sumtype_def.namespace, sumtype))?;
+			txn.remove(vec![(NamespaceSumTypeKey::new(sumtype_def.namespace, sumtype).into(), None)])?;
 		}
 
-		txn.remove(&SumTypeKey::new(sumtype))?;
+		txn.remove(vec![(SumTypeKey::new(sumtype).into(), None)])?;
 
 		Ok(())
 	}

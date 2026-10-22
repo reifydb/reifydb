@@ -145,12 +145,8 @@ impl<T: Changes> Changes for TestingTxn<T> {
 }
 
 impl<T: Get> Get for TestingTxn<T> {
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		self.txn.get(key)
-	}
-
-	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
-		self.txn.get_many(keys)
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+		self.txn.get(keys)
 	}
 }
 
@@ -322,11 +318,7 @@ impl Changes for TestingTx {
 
 #[cfg(any(test, feature = "testing"))]
 impl Get for TestingTx {
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		Ok(self.rows.get(key).cloned())
-	}
-
-	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		Ok(keys.iter().map(|key| self.rows.get(key).cloned()).collect())
 	}
 }
@@ -684,7 +676,7 @@ mod tests {
 		});
 		let mut txn = TestingTxn::over(catalog(), hooks.clone());
 
-		txn.get(&key(1)).unwrap();
+		txn.get(&[key(1)]).unwrap();
 		txn.set(vec![key(1)], vec![row(1)]).unwrap();
 		txn.remove(vec![key(1)]).unwrap();
 		txn.emit(VIEW, Diff::insert(empty_batch())).unwrap();
@@ -727,7 +719,7 @@ mod tests {
 		let mut txn = TestingTxn::over(catalog(), Arc::new(NoFaults));
 		let diff = Diff::insert(batch(vec![int8("qty", vec![10])]).unwrap());
 
-		assert_eq!(txn.get(&key(1)), bare.get(&key(1)));
+		assert_eq!(txn.get(&[key(1)]), bare.get(&[key(1)]));
 		assert_eq!(txn.set(vec![key(1)], vec![row(1)]), bare.set(vec![key(1)], vec![row(1)]));
 		assert_eq!(txn.remove(vec![key(1)]), bare.remove(vec![key(1)]));
 		assert_eq!(txn.emit(VIEW, diff.clone()), bare.emit(VIEW, diff));

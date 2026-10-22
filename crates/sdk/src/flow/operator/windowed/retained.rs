@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::{
 		state::{
-			reaper::{drain, drain_groups, enqueue_many},
+			reaper::{drain, drain_groups, enqueue},
 			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 		},
 		state_access::batch,
@@ -177,7 +177,7 @@ where
 		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
 		Self::publish_dirty_closes(aggregator, engine, settings, store, &closing, frontier, emitted)?;
 		let expired: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
-		enqueue_many(store, &expired)?;
+		enqueue(store, &expired)?;
 		if !expired.is_empty() {
 			*reap_queue_empty = false;
 		}
@@ -614,17 +614,37 @@ mod tests {
 
 				fn coord(
 					&self,
-					_: &impl crate::flow::operator::view::RowView,
-				) -> Result<Option<$coord>> {
-					Ok(None)
+					cols: &impl crate::flow::operator::view::ColumnsView,
+					rows: &[usize],
+				) -> Result<Vec<Option<$coord>>> {
+					rows.iter()
+						.map(|&i| {
+							cols.row(i)
+								.as_ref()
+								.map(|_| -> Result<Option<$coord>> { Ok(None) })
+								.transpose()
+								.map(Option::flatten)
+						})
+						.collect()
 				}
 
 				fn extract(
 					&self,
 					_: &mut impl GuestContext<Windowed>,
-					_: &impl crate::flow::operator::view::RowView,
-				) -> Result<Option<(u64, (u64, i64))>> {
-					Ok(None)
+					cols: &impl crate::flow::operator::view::ColumnsView,
+					rows: &[usize],
+				) -> Result<Vec<Option<(u64, (u64, i64))>>> {
+					rows.iter()
+						.map(|&i| {
+							cols.row(i)
+								.as_ref()
+								.map(|_| -> Result<Option<(u64, (u64, i64))>> {
+									Ok(None)
+								})
+								.transpose()
+								.map(Option::flatten)
+						})
+						.collect()
 				}
 
 				fn new_accumulator(&self, _: &WindowSettings<$coord>) -> RetainedAccumulator<u64, i64> {

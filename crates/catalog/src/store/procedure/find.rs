@@ -26,7 +26,7 @@ use crate::{
 
 impl CatalogStore {
 	pub(crate) fn find_procedure(rx: &mut Transaction<'_>, id: ProcedureId) -> Result<Option<Procedure>> {
-		let Some(multi) = rx.get(&ProcedureKey::new(id))? else {
+		let Some(multi) = rx.get(&[ProcedureKey::new(id).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
 		let params = load_params(rx, id)?;

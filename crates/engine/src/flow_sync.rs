@@ -154,30 +154,25 @@ impl Changes for FlowTransaction<'_> {
 }
 
 impl Get for FlowTransaction<'_> {
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		Ok(self.tx.get(&tagged(key))?.map(|row| row.bytes))
-	}
-
-	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		let keys: Vec<TaggedKey> = keys.iter().map(tagged).collect();
-		Ok(self.tx.get_many(&keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect())
+		Ok(self.tx.get(&keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect())
 	}
 }
 
 impl Batch for FlowTransaction<'_> {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
-		self.tx.set_many(keys.iter().map(tagged).zip(rows).collect())
+		self.tx.set(keys.iter().map(tagged).zip(rows).collect())
 	}
 
 	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
 		let keys: Vec<TaggedKey> = keys.iter().map(tagged).collect();
-		let committed = self.tx.get_committed_many(&keys)?;
-		self.tx.remove_many(
-			keys.into_iter()
-				.zip(committed)
-				.map(|(key, committed)| (key, committed.map(|row| row.bytes)))
-				.collect(),
-		)
+		let committed = self.tx.get_committed(&keys)?;
+		self.tx.remove(keys
+			.into_iter()
+			.zip(committed)
+			.map(|(key, committed)| (key, committed.map(|row| row.bytes)))
+			.collect())
 	}
 }
 

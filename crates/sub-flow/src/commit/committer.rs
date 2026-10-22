@@ -449,7 +449,7 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 		})
 		.map(|(key, _)| key.clone())
 		.collect();
-	let mut pres = transaction.get_many(&observed)?.into_iter();
+	let mut pres = transaction.get(&observed)?.into_iter();
 	let mut sets: Vec<(TaggedKey, EncodedBytes)> = Vec::new();
 	for (key, pw) in writes {
 		match pw {
@@ -458,7 +458,7 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 				announce,
 			} => {
 				if !sets.is_empty() {
-					transaction.set_many(take(&mut sets))?;
+					transaction.set(take(&mut sets))?;
 				}
 				let pre = match announce {
 					RemoveVisibility::Silent => None,
@@ -479,16 +479,19 @@ fn apply_pending_writes(transaction: &mut CommandTransaction, combined: &Pending
 		}
 	}
 	if !sets.is_empty() {
-		transaction.set_many(sets)?;
+		transaction.set(sets)?;
 	}
 	Ok(())
 }
 
 #[cfg(test)]
 mod commit_integration {
-	use std::sync::{
-		atomic::{AtomicUsize, Ordering},
-		mpsc,
+	use std::{
+		slice::from_ref,
+		sync::{
+			atomic::{AtomicUsize, Ordering},
+			mpsc,
+		},
 	};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
@@ -591,7 +594,7 @@ mod commit_integration {
 
 	fn synthetic_slice(index: u64) -> FlowSlice {
 		let mut combined = Pending::new();
-		combined.insert(synthetic_key(index), EncodedBytes(CowVec::new(vec![index as u8; 4])));
+		combined.insert(vec![synthetic_key(index)], vec![EncodedBytes(CowVec::new(vec![index as u8; 4]))]);
 		let mut slice = FlowSlice::empty();
 		slice.combined = combined;
 		slice.checkpoints = vec![(FlowId(index), CommitVersion(100 + index))];
@@ -704,7 +707,7 @@ mod commit_integration {
 				.expect("test fixture group-state key must decode");
 			let key = OperatorStateKey::encoded(*operator, group, keyspace, suffix);
 			combined.classify(key.clone(), None);
-			combined.insert(key, EncodedPodRow::new(&[*tag; 4]).into_bytes());
+			combined.insert(vec![key], vec![EncodedPodRow::new(&[*tag; 4]).into_bytes()]);
 		}
 		let mut slice = FlowSlice::empty();
 		slice.combined = combined;
@@ -740,8 +743,10 @@ mod commit_integration {
 			assert!(results[0].1.is_err(), "a commit that cannot begin must fail the slice commit");
 		}
 		assert_eq!(
-			store.state_get(operator, &GroupStateKey::bound_unchecked(EncodedKey::new(inner.as_slice())))
-				.unwrap(),
+			store.state_get(operator, &[GroupStateKey::bound_unchecked(EncodedKey::new(inner.as_slice()))])
+				.unwrap()
+				.pop()
+				.flatten(),
 			None,
 			"a failed commit must not leak its operator-state writes into the store"
 		);
@@ -793,14 +798,18 @@ mod commit_integration {
 		);
 
 		assert_eq!(
-			store.state_get(op_a, &GroupStateKey::bound_unchecked(EncodedKey::new(inner_a.as_slice())))
-				.unwrap(),
+			store.state_get(op_a, &[GroupStateKey::bound_unchecked(EncodedKey::new(inner_a.as_slice()))])
+				.unwrap()
+				.pop()
+				.flatten(),
 			Some(EncodedPodRow::new(&[1; 4])),
 			"the committed slice's state must be readable from the store"
 		);
 		assert_eq!(
-			store.state_get(op_b, &GroupStateKey::bound_unchecked(EncodedKey::new(inner_b.as_slice())))
-				.unwrap(),
+			store.state_get(op_b, &[GroupStateKey::bound_unchecked(EncodedKey::new(inner_b.as_slice()))])
+				.unwrap()
+				.pop()
+				.flatten(),
 			Some(EncodedPodRow::new(&[2; 4]))
 		);
 	}
@@ -870,7 +879,11 @@ mod commit_integration {
 		for i in 1..=3u64 {
 			let key = TaggedKey::decode(&synthetic_key(i)).expect("the fixture key must decode");
 			assert!(
-				Transaction::Query(&mut query).get(&key).expect("read grouped write").is_some(),
+				Transaction::Query(&mut query)
+					.get(&[key.clone()])
+					.map(|mut found| found.pop().flatten())
+					.expect("read grouped write")
+					.is_some(),
 				"every slice in the group must land its writes, not only the first"
 			);
 		}
@@ -955,7 +968,7 @@ mod commit_integration {
 		let (handle, committer, release) = gated_committer_actor(&engine);
 
 		let mut bad = sourced_slice(2, 7);
-		bad.combined.insert(EncodedKey::new([]), EncodedBytes(CowVec::new(vec![1u8; 4])));
+		bad.combined.insert(vec![EncodedKey::new([])], vec![EncodedBytes(CowVec::new(vec![1u8; 4]))]);
 
 		let replies = SliceReplies::new(4);
 		send_slice(&handle, synthetic_slice(9), replies.reply(0));
@@ -1050,7 +1063,7 @@ mod commit_integration {
 	fn seed(engine: &StandardEngine, rows: &[(EncodedKey, u8)]) {
 		let mut txn = engine.begin_command(IdentityId::system()).expect("begin seed");
 		for (key, tag) in rows {
-			txn.set(&tagged(key), payload(*tag)).expect("seed row");
+			txn.set(vec![(tagged(key), payload(*tag))]).expect("seed row");
 		}
 		txn.commit().expect("commit seed");
 	}
@@ -1095,14 +1108,14 @@ mod commit_integration {
 		);
 
 		let mut pending = Pending::new();
-		pending.insert(row(5), payload(15));
-		pending.insert(index_entry(104), payload(44));
+		pending.insert(vec![row(5)], vec![payload(15)]);
+		pending.insert(vec![index_entry(104)], vec![payload(44)]);
 		pending.remove_silent(row(4));
-		pending.remove(row(1));
-		pending.remove(series_row(1));
-		pending.remove(index_entry(101));
-		pending.remove(row(6));
-		pending.remove(series_row(3));
+		pending.remove(vec![row(1)]);
+		pending.remove(vec![series_row(1)]);
+		pending.remove(vec![index_entry(101)]);
+		pending.remove(vec![row(6)]);
+		pending.remove(vec![series_row(3)]);
 		pending.remove_unobserved(row(3));
 		pending.remove_unobserved(series_row(2));
 		pending.remove_unobserved(index_entry(102));
@@ -1135,36 +1148,34 @@ mod commit_integration {
 		let mut query = te.inner().begin_query(IdentityId::system()).expect("begin query");
 		for key in [row(1), row(3), row(4), row(6), row(7), series_row(1), series_row(2), index_entry(101)] {
 			assert!(
-				Transaction::Query(&mut query).get(&tagged(&key)).expect("read removed row").is_none(),
+				Transaction::Query(&mut query)
+					.get(&[tagged(&key)])
+					.map(|mut found| found.pop().flatten())
+					.expect("read removed row")
+					.is_none(),
 				"every remove must land, the silent one included"
 			);
 		}
 
-		assert_eq!(counts.get_many_calls(), 1);
-		assert_eq!(counts.get_committed_many_calls(), 0);
-		assert_eq!(counts.set_many_calls(), 1);
-		assert_eq!(counts.remove_many_calls(), 0);
+		assert_eq!(counts.get_calls(), 1);
+		assert_eq!(counts.get_committed_calls(), 0);
+		assert_eq!(counts.set_calls(), 1);
+		assert_eq!(counts.remove_calls(), 0);
 		let row_counts = counts.of(KeyTag::Row);
 		let series_counts = counts.of(KeyTag::SeriesRow);
 		let index_counts = counts.of(KeyTag::IndexEntry);
-		for (kind, kind_counts, batched_gets, batched, removes) in [
+		for (kind, kind_counts, gets, sets, removes) in [
 			("row", row_counts, 4, 1, 5),
 			("series row", series_counts, 3, 0, 3),
 			("index entry", index_counts, 3, 1, 3),
 		] {
-			assert_eq!(
-				(kind_counts.gets, kind_counts.committed_gets, kind_counts.batched_gets),
-				(0, 0, batched_gets),
+			assert_eq!((kind_counts.gets, kind_counts.committed_gets), (gets, 0),
 				"{kind}: no point read, every announced or unobserved remove in the one batch"
 			);
-			assert_eq!(
-				(kind_counts.sets, kind_counts.batched),
-				(0, batched),
+			assert_eq!(kind_counts.sets, sets,
 				"{kind}: sets go in the batch"
 			);
-			assert_eq!(
-				(kind_counts.removes, kind_counts.batched_removes),
-				(removes, 0),
+			assert_eq!(kind_counts.removes, removes,
 				"{kind}: removes stay single calls"
 			);
 		}
@@ -1178,11 +1189,11 @@ mod commit_integration {
 		seed(te.inner(), &[(row(2), 12), (series_row(1), 21)]);
 
 		let mut pending = Pending::new();
-		pending.insert(row(1), payload(1));
-		pending.remove(row(2));
-		pending.insert(row(3), payload(3));
+		pending.insert(vec![row(1)], vec![payload(1)]);
+		pending.remove(vec![row(2)]);
+		pending.insert(vec![row(3)], vec![payload(3)]);
 		pending.remove_unobserved(series_row(1));
-		pending.insert(index_entry(1), payload(5));
+		pending.insert(vec![index_entry(1)], vec![payload(5)]);
 
 		let (_, changes) = commit_pending(&te, &pending);
 
@@ -1226,10 +1237,10 @@ mod commit_integration {
 			.expect("test fixture group-state key must decode");
 		let mut combined = Pending::new();
 		combined.insert(
-			OperatorStateKey::encoded(operator, group, keyspace, suffix),
-			EncodedPodRow::new(&[index as u8; 4]).into_bytes(),
+			vec![OperatorStateKey::encoded(operator, group, keyspace, suffix)],
+			vec![EncodedPodRow::new(&[index as u8; 4]).into_bytes()],
 		);
-		combined.insert(synthetic_key(index), EncodedBytes(CowVec::new(vec![index as u8; 4])));
+		combined.insert(vec![synthetic_key(index)], vec![EncodedBytes(CowVec::new(vec![index as u8; 4]))]);
 		let mut slice = FlowSlice::empty();
 		slice.combined = combined;
 		slice.source = Some(SourceVersion(7));
@@ -1301,12 +1312,12 @@ mod commit_integration {
 		results.sort();
 		assert_eq!(results, vec![(0, false), (1, true)], "only the member whose sizing failed may fail");
 		assert_eq!(
-			store.state_get(failing, &inner).unwrap(),
+			store.state_get(failing, from_ref(&inner)).unwrap().pop().flatten(),
 			Some(before),
 			"the failed member must leave its operator state as it was"
 		);
 		assert_eq!(
-			store.state_get(healthy, &inner).unwrap(),
+			store.state_get(healthy, from_ref(&inner)).unwrap().pop().flatten(),
 			Some(EncodedPodRow::new(&[2; 4])),
 			"the committed member must apply its operator state"
 		);
@@ -1316,7 +1327,11 @@ mod commit_integration {
 		let mut query = engine.begin_query(IdentityId::system()).expect("begin query");
 		let row = |index: u64, query: &mut _| {
 			let key = TaggedKey::decode(&synthetic_key(index)).expect("the fixture key must decode");
-			Transaction::Query(query).get(&key).expect("read slice write").is_some()
+			Transaction::Query(query)
+				.get(&[key.clone()])
+				.map(|mut found| found.pop().flatten())
+				.expect("read slice write")
+				.is_some()
 		};
 		assert!(!row(1, &mut query), "the failed member's rows must not be durable");
 		assert!(row(2, &mut query), "the other member's rows must commit");

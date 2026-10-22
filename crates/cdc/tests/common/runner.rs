@@ -133,7 +133,7 @@ impl TsRunner for Runner {
 				let row = encoded_bytes(&kv.value);
 				args.reject_rest()?;
 				let txn = self.ensure_txn()?;
-				txn.set(&key, row)?;
+				txn.set(vec![(key.clone().into(), row)])?;
 			}
 			// delete VERSION KEY
 			"delete" => {
@@ -145,9 +145,9 @@ impl TsRunner for Runner {
 				let key = encoded_key(&key_arg.value);
 				args.reject_rest()?;
 				let txn = self.ensure_txn()?;
-				match txn.get(&key)? {
+				match txn.get(&[key.clone().into()])?.pop().flatten() {
 					Some(prev) => txn.remove_with_pre(&key, prev.bytes)?,
-					None => txn.remove(&key)?,
+					None => txn.remove(vec![(key.clone().into(), None)])?,
 				}
 			}
 			"commit" => {
@@ -187,7 +187,7 @@ impl TsRunner for Runner {
 					for i in 0..count {
 						let key = encoded_key(&format!("bulk_{}", i));
 						let row = encoded_bytes(&format!("{}", i));
-						txn.set(&key, row)?;
+						txn.set(vec![(key.clone().into(), row)])?;
 					}
 				}
 				let txn = self.active_txn.take().ok_or("no active transaction")?;

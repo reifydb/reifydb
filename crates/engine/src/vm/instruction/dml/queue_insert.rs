@@ -198,7 +198,7 @@ pub(crate) fn insert_queue(
 		}
 	}
 
-	txn.set_many(records)?;
+	txn.set(records)?;
 	txn.insert_queue(&queue, &rows)?;
 
 	if let Some(returning_exprs) = &returning {
@@ -257,7 +257,7 @@ fn resolve_duplicates(
 	}
 
 	let mut live = Vec::with_capacity(record_keys.len());
-	for stored in txn.get_many(&record_keys)? {
+	for stored in txn.get(&record_keys)? {
 		let Some(stored) = stored else {
 			live.push(None);
 			continue;
@@ -283,7 +283,7 @@ fn resolve_duplicates(
 	} else {
 		duplicate_rows
 			.iter()
-			.zip(txn.get_many(&row_keys)?)
+			.zip(txn.get(&row_keys)?)
 			.filter_map(|(row, stored)| stored.map(|stored| (*row, stored.bytes)))
 			.collect()
 	};

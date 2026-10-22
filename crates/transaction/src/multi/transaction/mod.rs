@@ -15,10 +15,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
-	interface::{
-		catalog::config::GetConfig,
-		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet},
-	},
+	interface::{catalog::config::GetConfig, store::MultiVersionCommit},
 	key::any::TaggedKey,
 	testing::ProfileConfig,
 };
@@ -403,18 +400,8 @@ pub enum TransactionType {
 }
 
 impl MultiTransaction {
-	#[instrument(name = "transaction::get", level = "trace", skip(self, key), fields(version = version.0))]
-	pub fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<Committed>> {
-		Ok(MultiVersionGet::get(&self.store, key, version)?.map(|sv| sv.into()))
-	}
-
-	#[instrument(name = "transaction::contains_key", level = "trace", skip(self, key), fields(version = version.0))]
-	pub fn contains_key(&self, key: &TaggedKey, version: CommitVersion) -> Result<bool> {
-		MultiVersionContains::contains(&self.store, key, version)
-	}
-
 	#[instrument(name = "transaction::get_many", level = "trace", skip(self, keys), fields(keys = keys.len(), version = version.0))]
-	pub fn get_many(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<Committed>>> {
+	pub fn get(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<Committed>>> {
 		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
 		let found = self.store.get_many_versioned(&encoded, version)?;
 		Ok(keys.iter()

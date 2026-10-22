@@ -227,12 +227,12 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 	}
 
 	fn set_one(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {
-		self.pending_mut().insert(key.clone(), value.into());
+		self.pending_mut().insert(vec![key.clone()], vec![value.into()]);
 		Ok(())
 	}
 
 	fn remove_one(&mut self, key: &EncodedKey) -> Result<()> {
-		self.pending_mut().remove(key.clone());
+		self.pending_mut().remove(vec![key.clone()]);
 		Ok(())
 	}
 
@@ -263,9 +263,9 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 		let pending = self.pending_mut();
 		for ((pre_key, post_key), row) in pre_keys.into_iter().zip(post_keys).zip(rows) {
 			if pre_key != post_key {
-				pending.remove(pre_key);
+				pending.remove(vec![pre_key]);
 			}
-			pending.insert(post_key, row);
+			pending.insert(vec![post_key], vec![row]);
 		}
 		Ok(())
 	}
@@ -309,13 +309,6 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 			Some(at) => at,
 			None => self.clock().now(),
 		}
-	}
-}
-
-pub fn pending_get<T: FlowTransaction>(txn: &mut T, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-	match txn.lookup_overlays(key) {
-		Some(overlay) => Ok(overlay),
-		None => txn.storage_get(key),
 	}
 }
 

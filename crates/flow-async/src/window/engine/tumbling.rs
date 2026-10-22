@@ -152,7 +152,7 @@ where
 			store.state_remove_many(&drops)?;
 		}
 		if !sets.is_empty() {
-			self.expiry.set_many(store, sets)?;
+			self.expiry.set(store, sets)?;
 		}
 		Ok(())
 	}
@@ -679,7 +679,7 @@ mod tests {
 			"expire must clear the row before it hands the group back for the caller to enqueue"
 		);
 
-		enqueue(&mut store, expired[0].group_id).unwrap();
+		enqueue(&mut store, &[expired[0].group_id]).unwrap();
 		reap_group(&mut store, expired[0].group_id, &mut StoreReaper, 256).unwrap();
 
 		assert_eq!(

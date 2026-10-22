@@ -29,14 +29,14 @@ impl CatalogStore {
 		}
 		drop(policy_stream);
 		for pk in policy_keys {
-			txn.remove(&pk)?;
+			txn.remove(vec![(pk.clone().into(), None)])?;
 		}
 
-		txn.remove(&ColumnSequenceKey::new(object, column_id))?;
+		txn.remove(vec![(ColumnSequenceKey::new(object, column_id).into(), None)])?;
 
-		txn.remove(&ColumnsKey::new(column_id))?;
+		txn.remove(vec![(ColumnsKey::new(column_id).into(), None)])?;
 
-		txn.remove(&ColumnKey::new(object, column_id))?;
+		txn.remove(vec![(ColumnKey::new(object, column_id).into(), None)])?;
 
 		Ok(())
 	}

@@ -81,7 +81,7 @@ impl Catalog {
 		}
 
 		let header_key = RowShapeKey::new(fingerprint);
-		let header_entry = match txn.get(&header_key)? {
+		let header_entry = match txn.get(&[header_key.clone().into()])?.pop().flatten() {
 			Some(entry) => entry,
 			None => {
 				Span::current().record("cache_hit", false);
@@ -96,7 +96,7 @@ impl Catalog {
 		let mut fields = Vec::with_capacity(field_count);
 		for i in 0..field_count {
 			let field_key = RowShapeFieldKey::new(fingerprint, i as u16);
-			let field_entry = txn.get(&field_key)?.ok_or_else(|| {
+			let field_entry = txn.get(&[field_key.clone().into()])?.pop().flatten().ok_or_else(|| {
 				Error(Box::new(internal(format!(
 					"RowShape field {} missing for fingerprint {:?}",
 					i, fingerprint

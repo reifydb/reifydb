@@ -5,6 +5,7 @@ mod pin;
 
 use std::{
 	cmp::Reverse,
+	slice::from_ref,
 	sync::{
 		Arc, OnceLock,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -113,8 +114,10 @@ fn insert(suffix: u8, value: &str) -> OperatorWrite {
 
 fn remove(store: &StandardOperatorStore, suffix: u8) -> OperatorWrite {
 	let pre = store
-		.state_get(OP, &GroupStateKey::bound_unchecked(key(suffix)))
+		.state_get(OP, &[GroupStateKey::bound_unchecked(key(suffix))])
 		.unwrap()
+		.pop()
+		.flatten()
 		.map_or(LayeredPre::Absent, |row| LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
 	OperatorWrite::Remove {
 		operator: OP,
@@ -220,8 +223,10 @@ fn a_group_page_hides_a_buffered_tombstone_over_a_durable_row() {
 
 	let doomed = sweep_key(groups[0], KeyspaceId::JOIN_LEFT, 1);
 	let pre = store
-		.state_get(OP, &GroupStateKey::bound_unchecked(doomed.clone()))
+		.state_get(OP, &[GroupStateKey::bound_unchecked(doomed.clone())])
 		.unwrap()
+		.pop()
+		.flatten()
 		.map_or(LayeredPre::Absent, |row| LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
 	store.apply_batch(&[OperatorWrite::Remove {
 		operator: OP,
@@ -310,7 +315,12 @@ fn a_group_page_keeps_every_row_when_a_flush_lands_between_its_persistent_pages(
 		.into_iter()
 		.take(2)
 		.map(|(key, _)| {
-			let stored = store.state_get(OP, &key).unwrap().expect("the seeded row must be durable");
+			let stored = store
+				.state_get(OP, from_ref(&key))
+				.unwrap()
+				.pop()
+				.flatten()
+				.expect("the seeded row must be durable");
 			OperatorWrite::Remove {
 				operator: OP,
 				key,
@@ -449,10 +459,10 @@ fn expiry_range() -> EncodedKeyRange {
 
 fn expiry_remove(store: &StandardOperatorStore, suffix: u64) -> OperatorWrite {
 	let key = GroupStateKey::bound_unchecked(sweep_key(expiry_group(), EXPIRY_KEYSPACE, suffix));
-	let pre = store
-		.state_get(OP, &key)
-		.unwrap()
-		.map_or(LayeredPre::Absent, |row| LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
+	let pre =
+		store.state_get(OP, from_ref(&key)).unwrap().pop().flatten().map_or(LayeredPre::Absent, |row| {
+			LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64))
+		});
 	OperatorWrite::Remove {
 		operator: OP,
 		key,

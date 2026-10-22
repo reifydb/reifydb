@@ -234,7 +234,7 @@ pub(crate) fn compute_backfill(
 				|_, mut change| {
 					change.version = ChangeVersion::from(version);
 					for piece in time_runs(change)? {
-						flow_engine.process_batch(&mut txn, vec![piece], flow.id)?;
+						flow_engine.process(&mut txn, vec![piece], flow.id)?;
 					}
 					Ok(())
 				},

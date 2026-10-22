@@ -21,7 +21,7 @@ use crate::{
 	common::extern_c::wire::{
 		buffer::ExternCBuffer,
 		key_ref::ExternCKeyRef,
-		status::{EXTERN_C_END_OF_ITERATION, EXTERN_C_NOT_FOUND, EXTERN_C_OK},
+		status::{EXTERN_C_END_OF_ITERATION, EXTERN_C_OK},
 	},
 	error::{Result, SdkError},
 	flow::operator::{
@@ -47,44 +47,6 @@ const _: () = assert!(
 fn wire_group(group: GroupId) -> ExternCGroupId {
 	ExternCGroupId {
 		bytes: *group.as_bytes(),
-	}
-}
-
-#[instrument(name = "flow::operator::state::extern_c:get", level = "trace", skip(ctx), fields(
-	operator_id = ctx.operator_id().0,
-	key_len = key.as_bytes().len(),
-	found
-))]
-pub(crate) fn get(ctx: &ExternCContext, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-	let key_bytes = key.as_bytes();
-	let mut output = ExternCBuffer {
-		ptr: null_mut(),
-		len: 0,
-		cap: 0,
-	};
-
-	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; key_bytes outlives the callback, which only reads it. On EXTERN_C_OK the host
-	// writes a buffer of output.len initialised bytes, copied out before memory.free releases it with the length
-	// it was allocated at.
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.get)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			key_bytes.as_ptr(),
-			key_bytes.len(),
-			&mut output,
-		);
-
-		if result == EXTERN_C_OK {
-			Span::current().record("found", true);
-			Ok(Some(take_buffer(ctx, output)))
-		} else if result == EXTERN_C_NOT_FOUND {
-			Span::current().record("found", false);
-			Ok(None)
-		} else {
-			Err(SdkError::Other(format!("host_state_get failed with code {}", result)))
-		}
 	}
 }
 
@@ -273,7 +235,7 @@ pub(crate) fn remove_many(ctx: &mut ExternCContext, keys: &[EncodedKey]) -> Resu
 	key_count = keys.len(),
 	result_count
 ))]
-pub(crate) fn get_many(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
+pub(crate) fn get(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 	if keys.is_empty() {
 		Span::current().record("result_count", 0);
 		return Ok(Vec::new());

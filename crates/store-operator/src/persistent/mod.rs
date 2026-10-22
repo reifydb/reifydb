@@ -130,13 +130,8 @@ pub trait Persistent: Clone + Send + Sync + 'static {
 }
 
 pub trait Fetch: Persistent {
-	fn get(&self, operator: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
-
-	fn get_many<Q: Borrow<GroupStateKey>>(
-		&self,
-		operator: OperatorId,
-		keys: &[Q],
-	) -> Result<Vec<Option<EncodedPodRow>>>;
+	fn get<Q: Borrow<GroupStateKey>>(&self, operator: OperatorId, keys: &[Q])
+	-> Result<Vec<Option<EncodedPodRow>>>;
 
 	fn contains(&self, operator: OperatorId, key: &GroupStateKey) -> Result<bool>;
 }
@@ -220,29 +215,19 @@ impl Persistent for PersistentTier {
 }
 
 impl Fetch for PersistentTier {
-	fn get(&self, operator: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		match self {
-			Self::Absent => Ok(None),
-			Self::Memory(memory) => Fetch::get(memory, operator, key),
-			Self::Testing(testing) => Fetch::get(testing, operator, key),
-			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-			Self::Sqlite(storage) => storage.get(operator, key.as_encoded()),
-		}
-	}
-
-	fn get_many<Q: Borrow<GroupStateKey>>(
+	fn get<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,
 		keys: &[Q],
 	) -> Result<Vec<Option<EncodedPodRow>>> {
 		match self {
 			Self::Absent => Ok(vec![None; keys.len()]),
-			Self::Memory(memory) => Fetch::get_many(memory, operator, keys),
-			Self::Testing(testing) => Fetch::get_many(testing, operator, keys),
+			Self::Memory(memory) => Fetch::get(memory, operator, keys),
+			Self::Testing(testing) => Fetch::get(testing, operator, keys),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(storage) => {
 				let refs: Vec<&EncodedKey> = keys.iter().map(|key| key.borrow().as_encoded()).collect();
-				storage.get_many(operator, &refs)
+				storage.get(operator, &refs)
 			}
 		}
 	}

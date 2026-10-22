@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::Bound;
+use std::{collections::Bound, slice};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
@@ -50,7 +50,12 @@ fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey
 	// Stands in for a prior slice's success-side operator state apply.
 	let store = engine.inner().operator_state();
 	let encoded = EncodedKey::new(key.as_slice());
-	let write = match store.state_get(operator, &GroupStateKey::bound_unchecked(encoded.clone())).unwrap() {
+	let write = match store
+		.state_get(operator, &[GroupStateKey::bound_unchecked(encoded.clone())])
+		.unwrap()
+		.pop()
+		.flatten()
+	{
 		Some(pre) => OperatorWrite::Replace {
 			operator,
 			key: key.clone(),
@@ -359,16 +364,16 @@ fn deferred_reads_owned_rows_at_state_version() {
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set(
-		&QueueDeduplicationKey::new(QueueId(1), b"warmup".iter().map(|b| !b).collect::<Vec<u8>>()),
+	cmd.set(vec![(
+		QueueDeduplicationKey::new(QueueId(1), b"warmup".iter().map(|b| !b).collect::<Vec<u8>>()).into(),
 		make_value("w").into_bytes(),
-	)
+	)])
 	.unwrap();
 	let low_version = cmd.commit_unchecked().unwrap();
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set(&row_key, row_value.clone()).unwrap();
+	cmd.set(vec![(row_key.clone().into(), row_value.clone())]).unwrap();
 	let committed_at = cmd.commit_unchecked().unwrap();
 	assert!(low_version < committed_at);
 
@@ -384,7 +389,7 @@ fn deferred_reads_owned_rows_at_state_version() {
 		lookup: None,
 	});
 	assert_eq!(
-		txn.get(&row_key_encoded).unwrap(),
+		txn.get(slice::from_ref(&row_key_encoded)).unwrap().pop().flatten(),
 		Some(row_value.clone()),
 		"a deferred txn pinned below the flow's own commit must read its rows at the state version"
 	);
@@ -486,8 +491,10 @@ fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	let seeded_inner = EncodedKey::new(seeded.as_slice());
 	let fresh_inner = EncodedKey::new(fresh.as_slice());
 	let expected_pre = ByteSize::from_bytes(
-		store.state_get(operator, &GroupStateKey::bound_unchecked(seeded_inner.clone()))
+		store.state_get(operator, &[GroupStateKey::bound_unchecked(seeded_inner.clone())])
 			.unwrap()
+			.pop()
+			.flatten()
 			.expect("seeded row must be durable before the write")
 			.bytes()
 			.len() as u64,

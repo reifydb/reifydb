@@ -20,13 +20,13 @@ impl CatalogStore {
 		flow_edge::set_source(&mut row, u64::from(edge_def.source));
 		flow_edge::set_target(&mut row, u64::from(edge_def.target));
 
-		txn.set(&FlowEdgeKey::new(edge_def.id), row.freeze())?;
+		txn.set(vec![(FlowEdgeKey::new(edge_def.id).into(), row.freeze().into())])?;
 
 		let mut index_row = flow_edge_by_flow::allocate();
 		flow_edge_by_flow::set_flow(&mut index_row, u64::from(edge_def.flow));
 		flow_edge_by_flow::set_id(&mut index_row, u64::from(edge_def.id));
 
-		txn.set(&FlowEdgeByFlowKey::new(edge_def.flow, edge_def.id), index_row.freeze())?;
+		txn.set(vec![(FlowEdgeByFlowKey::new(edge_def.flow, edge_def.id).into(), index_row.freeze().into())])?;
 
 		Ok(())
 	}

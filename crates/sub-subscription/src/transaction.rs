@@ -39,7 +39,7 @@ use reifydb_flow_async::{
 	transaction::{
 		ChangeCoordinate, FlowTransaction,
 		dictionary::DictionaryExtension,
-		pending_get, pending_get_many,
+		pending_get_many,
 		read::{ReadFrom, read_from},
 		scope::scoped_key,
 		substrate::FlowSubstrate,
@@ -160,7 +160,7 @@ fn ephemeral_storage_get(
 ) -> Result<Option<EncodedBytes>> {
 	match read_from(key) {
 		ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.get(key).cloned()),
-		ReadFrom::Query | ReadFrom::OwnedRow => match query.get(&decoded(key))? {
+		ReadFrom::Query | ReadFrom::OwnedRow => match query.get(&[decoded(key)])?.pop().flatten() {
 			Some(multi) => Ok(Some(multi.bytes().clone())),
 			None => Ok(None),
 		},
@@ -174,7 +174,7 @@ fn ephemeral_storage_contains(
 ) -> Result<bool> {
 	match read_from(key) {
 		ReadFrom::OperatorState | ReadFrom::StateQuery => Ok(state.contains_key(key)),
-		ReadFrom::Query | ReadFrom::OwnedRow => query.contains(&decoded(key)),
+		ReadFrom::Query | ReadFrom::OwnedRow => query.contains(&[decoded(key)]).map(|found| found[0]),
 	}
 }
 
@@ -227,23 +227,19 @@ fn ephemeral_group_page(
 }
 
 impl Get for EphemeralTransaction {
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		pending_get(self, key)
-	}
-
-	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		pending_get_many(self, keys)
 	}
 }
 
 impl Batch for EphemeralTransaction {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
-		self.pending_mut().insert_batch(keys, rows);
+		self.pending_mut().insert(keys, rows);
 		Ok(())
 	}
 
 	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-		self.pending_mut().remove_batch(keys);
+		self.pending_mut().remove(keys);
 		Ok(())
 	}
 }

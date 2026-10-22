@@ -10,10 +10,13 @@ use crate::{CatalogStore, Result};
 impl CatalogStore {
 	pub(crate) fn drop_dictionary(txn: &mut AdminTransaction, dictionary: DictionaryId) -> Result<()> {
 		if let Some(dictionary_def) = Self::find_dictionary(&mut Transaction::Admin(&mut *txn), dictionary)? {
-			txn.remove(&NamespaceDictionaryKey::new(dictionary_def.namespace, dictionary))?;
+			txn.remove(vec![(
+				NamespaceDictionaryKey::new(dictionary_def.namespace, dictionary).into(),
+				None,
+			)])?;
 		}
 
-		txn.remove(&DictionaryKey::new(dictionary))?;
+		txn.remove(vec![(DictionaryKey::new(dictionary).into(), None)])?;
 
 		Ok(())
 	}

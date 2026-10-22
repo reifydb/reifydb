@@ -19,9 +19,9 @@ use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
 fn test_iter() {
 	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(1), as_values!(1)).unwrap();
-	txn.set(&as_key!(2), as_values!(2)).unwrap();
-	txn.set(&as_key!(3), as_values!(3)).unwrap();
+	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
+	txn.set(vec![(as_key!(2), as_values!(2))]).unwrap();
+	txn.set(vec![(as_key!(3), as_values!(3))]).unwrap();
 	txn.commit().unwrap();
 
 	let txn = engine.begin_query().unwrap();
@@ -47,9 +47,9 @@ fn test_iter() {
 fn test_iter2() {
 	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(1), as_values!(1)).unwrap();
-	txn.set(&as_key!(2), as_values!(2)).unwrap();
-	txn.set(&as_key!(3), as_values!(3)).unwrap();
+	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
+	txn.set(vec![(as_key!(2), as_values!(2))]).unwrap();
+	txn.set(vec![(as_key!(3), as_values!(3))]).unwrap();
 
 	let items: Vec<_> =
 		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -71,9 +71,9 @@ fn test_iter2() {
 	txn.commit().unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(4), as_values!(4)).unwrap();
-	txn.set(&as_key!(5), as_values!(5)).unwrap();
-	txn.set(&as_key!(6), as_values!(6)).unwrap();
+	txn.set(vec![(as_key!(4), as_values!(4))]).unwrap();
+	txn.set(vec![(as_key!(5), as_values!(5))]).unwrap();
+	txn.set(vec![(as_key!(6), as_values!(6))]).unwrap();
 
 	let items: Vec<_> =
 		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -98,9 +98,9 @@ fn test_iter2() {
 fn test_iter3() {
 	let engine = test_multi();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(4), as_values!(4)).unwrap();
-	txn.set(&as_key!(5), as_values!(5)).unwrap();
-	txn.set(&as_key!(6), as_values!(6)).unwrap();
+	txn.set(vec![(as_key!(4), as_values!(4))]).unwrap();
+	txn.set(vec![(as_key!(5), as_values!(5))]).unwrap();
+	txn.set(vec![(as_key!(6), as_values!(6))]).unwrap();
 
 	let items: Vec<_> =
 		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -123,9 +123,9 @@ fn test_iter3() {
 	txn.commit().unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(1), as_values!(1)).unwrap();
-	txn.set(&as_key!(2), as_values!(2)).unwrap();
-	txn.set(&as_key!(3), as_values!(3)).unwrap();
+	txn.set(vec![(as_key!(1), as_values!(1))]).unwrap();
+	txn.set(vec![(as_key!(2), as_values!(2))]).unwrap();
+	txn.set(vec![(as_key!(3), as_values!(3))]).unwrap();
 
 	let items: Vec<_> =
 		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap();
@@ -154,7 +154,7 @@ fn test_iter_edge_case() {
 	// c1
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
+		txn.set(vec![(as_key!(3), as_values!(31u64))]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
@@ -162,8 +162,8 @@ fn test_iter_edge_case() {
 	// a2, c2
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
-		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
+		txn.set(vec![(as_key!(1), as_values!(12u64))]).unwrap();
+		txn.set(vec![(as_key!(3), as_values!(32u64))]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
@@ -171,22 +171,22 @@ fn test_iter_edge_case() {
 	// b3
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
-		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
+		txn.set(vec![(as_key!(1), as_values!(13u64))]).unwrap();
+		txn.set(vec![(as_key!(2), as_values!(23u64))]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
 
 	// b4, c4(remove) (uncommitted)
 	let mut txn4 = engine.begin_command().unwrap();
-	txn4.set(&as_key!(2), as_values!(24u64)).unwrap();
-	txn4.remove(&as_key!(3)).unwrap();
+	txn4.set(vec![(as_key!(2), as_values!(24u64))]).unwrap();
+	txn4.remove(vec![(as_key!(3), None)]).unwrap();
 	assert_eq!(4, engine.version().unwrap());
 
 	// b4 (remove)
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.remove(&as_key!(2)).unwrap();
+		txn.remove(vec![(as_key!(2), None)]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(5, engine.version().unwrap());
 	}
@@ -271,7 +271,7 @@ fn test_iter_edge_case2() {
 	// c1
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
+		txn.set(vec![(as_key!(3), as_values!(31u64))]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
@@ -279,8 +279,8 @@ fn test_iter_edge_case2() {
 	// a2, c2
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
-		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
+		txn.set(vec![(as_key!(1), as_values!(12u64))]).unwrap();
+		txn.set(vec![(as_key!(3), as_values!(32u64))]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
@@ -288,8 +288,8 @@ fn test_iter_edge_case2() {
 	// b3
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
-		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
+		txn.set(vec![(as_key!(1), as_values!(13u64))]).unwrap();
+		txn.set(vec![(as_key!(2), as_values!(23u64))]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
@@ -297,7 +297,7 @@ fn test_iter_edge_case2() {
 	// b4 (remove)
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.remove(&as_key!(2)).unwrap();
+		txn.remove(vec![(as_key!(2), None)]).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(5, engine.version().unwrap());
 	}

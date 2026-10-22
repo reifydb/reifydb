@@ -53,10 +53,10 @@ fn check_or_register(
 	values: &[Value],
 ) -> Result<()> {
 	let key = PartitionKey::new(object, partition);
-	match txn.get(&key)? {
+	match txn.get(&[key.clone().into()])?.pop().flatten() {
 		Some(multi) if !registry_matches(&multi.bytes, values) => Err(collision(object, partition)),
 		Some(_) => Ok(()),
-		None => txn.set(&key, registry_row(values)),
+		None => txn.set(vec![(key.clone().into(), registry_row(values))]),
 	}
 }
 

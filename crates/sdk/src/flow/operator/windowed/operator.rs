@@ -22,7 +22,7 @@ use crate::{
 		OperatorMetadata,
 		column::row::{OutputRows, Row},
 		context::{GuestContext, Windowed},
-		view::{ColumnsView, RowView},
+		view::ColumnsView,
 		windowed::{carry::CarryDriver, plain::PlainDriver, retained::RetainedDriver, top_k::TopKDriver},
 	},
 };
@@ -39,30 +39,24 @@ pub trait WindowedOperator: OperatorMetadata + Send + Sync + Sized {
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
 
-	fn coord(&self, _row: &impl RowView) -> Result<Option<Self::Coord>> {
-		Err(batch_only::<Self>("coord"))
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<Self::Coord>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i).map(|_| Err(batch_only::<Self>("coord"))).transpose().map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn extract(
 		&self,
 		_ctx: &mut impl GuestContext<Windowed>,
-		_row: &impl RowView,
-	) -> Result<Option<(Self::GroupKey, Contribution<Self>)>> {
-		Err(batch_only::<Self>("extract"))
-	}
-
-	fn coord_batch(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<Self::Coord>>> {
-		rows.iter().map(|&i| cols.row(i).map(|row| self.coord(&row)).transpose().map(Option::flatten)).collect()
-	}
-
-	fn extract_batch(
-		&self,
-		ctx: &mut impl GuestContext<Windowed>,
 		cols: &impl ColumnsView,
 		rows: &[usize],
 	) -> Result<Vec<Option<(Self::GroupKey, Contribution<Self>)>>> {
 		rows.iter()
-			.map(|&i| cols.row(i).map(|row| self.extract(ctx, &row)).transpose().map(Option::flatten))
+			.map(|&i| {
+				cols.row(i).map(|_| Err(batch_only::<Self>("extract"))).transpose().map(Option::flatten)
+			})
 			.collect()
 	}
 
@@ -78,12 +72,11 @@ pub(crate) fn extract_rows<T: WindowedOperator>(
 	cols: &impl ColumnsView,
 	rows: &[usize],
 ) -> Result<Vec<Extracted<T>>> {
-	let coords = batch_len::<T, _>(aggregator.coord_batch(cols, rows)?, rows.len(), "coord_batch")?;
+	let coords = batch_len::<T, _>(aggregator.coord(cols, rows)?, rows.len(), "coord_batch")?;
 	let kept: Vec<(usize, T::Coord)> =
 		rows.iter().copied().zip(coords).filter_map(|(i, coord)| Some((i, coord?))).collect();
 	let indices: Vec<usize> = kept.iter().map(|(i, _)| *i).collect();
-	let extracted =
-		batch_len::<T, _>(aggregator.extract_batch(ctx, cols, &indices)?, indices.len(), "extract_batch")?;
+	let extracted = batch_len::<T, _>(aggregator.extract(ctx, cols, &indices)?, indices.len(), "extract_batch")?;
 	Ok(kept.into_iter()
 		.zip(extracted)
 		.filter_map(|((i, coord), extracted)| {

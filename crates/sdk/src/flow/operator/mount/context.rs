@@ -337,7 +337,7 @@ impl GuestEmitContext for InProcessContext<'_> {
 	) -> SdkResult<Vec<Option<DictionaryEntryId>>> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).dictionary_find_many(dictionary, values) }.map_err(to_sdk_err)
+		unsafe { (*self.host).dictionary_find(dictionary, values) }.map_err(to_sdk_err)
 	}
 	fn dictionary_intern_many(
 		&mut self,

@@ -77,44 +77,24 @@ impl MultiReadTransaction {
 		self.op_counts.lock().unwrap().clone()
 	}
 
-	pub fn get<K: Into<TaggedKey> + Clone>(&self, key: &K) -> Result<Option<TransactionValue>> {
-		let version = self.tm.version();
-		let key = key.clone().into();
-		#[cfg(feature = "testing")]
-		{
-			self.op_counts.lock().unwrap().key(key.kind()).gets += 1;
-		}
-		Ok(self.engine.get(&key, version)?.map(Into::into))
-	}
-
-	pub fn contains<K: Into<TaggedKey> + Clone>(&self, key: &K) -> Result<bool> {
-		let version = self.tm.version();
-		let key = key.clone().into();
-		#[cfg(feature = "testing")]
-		{
-			self.op_counts.lock().unwrap().key(key.kind()).contains += 1;
-		}
-		self.engine.contains_key(&key, version)
-	}
-
-	pub fn get_many(&self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
+	pub fn get(&self, keys: &[TaggedKey]) -> Result<Vec<Option<TransactionValue>>> {
 		if keys.is_empty() {
 			return Ok(Vec::new());
 		}
 		#[cfg(feature = "testing")]
 		{
 			let mut counts = self.op_counts.lock().unwrap();
-			counts.get_many_call();
+			counts.get_call();
 			for key in keys {
-				counts.key(key.kind()).batched_gets += 1;
+				counts.key(key.kind()).gets += 1;
 			}
 		}
 		let version = self.tm.version();
-		Ok(self.engine.get_many(keys, version)?.into_iter().map(|found| found.map(Into::into)).collect())
+		Ok(self.engine.get(keys, version)?.into_iter().map(|found| found.map(Into::into)).collect())
 	}
 
-	pub fn contains_many(&self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
-		Ok(self.get_many(keys)?.iter().map(Option::is_some).collect())
+	pub fn contains(&self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+		Ok(self.get(keys)?.iter().map(Option::is_some).collect())
 	}
 
 	pub fn scan(&self) -> Result<MultiVersionBatch<TaggedKey>> {

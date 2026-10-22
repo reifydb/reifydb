@@ -17,7 +17,7 @@ pub fn create_operator_retention(
 	retention: &OperatorRetention,
 ) -> Result<()> {
 	let value = encode_operator_retention(retention);
-	txn.set(&OperatorRetentionKey::new(operator), value)?;
+	txn.set(vec![(OperatorRetentionKey::new(operator).into(), value.into())])?;
 	txn.track_operator_retention_created(operator, retention.clone())?;
 	Ok(())
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::LazyLock;
+use std::{slice, sync::LazyLock};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -175,7 +175,7 @@ fn live_state(ctx: &ProcedureContext<'_, '_>, token: &ClaimToken) -> Result<Opti
 	let store = single.read_store();
 	let key = QueueItemStateKey::encoded(token.queue, token.partition, token.row);
 
-	let Some(stored) = SingleVersionGet::get(&store, &key)? else {
+	let Some(stored) = SingleVersionGet::get(&store, slice::from_ref(&key))?.pop().flatten() else {
 		return Ok(None);
 	};
 	let Some(state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
@@ -194,7 +194,11 @@ fn existing_attempt(
 	token: &ClaimToken,
 ) -> Result<Option<QueueAttemptRecord>, RoutineError> {
 	let key = QueueAttemptKey::new(token.queue, token.row, token.attempt);
-	Ok(ctx.tx.get(&key)?.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes))))
+	Ok(ctx.tx
+		.get(&[key.clone().into()])?
+		.pop()
+		.flatten()
+		.and_then(|stored| decode_queue_attempt(EncodedQueueAttemptRow::view(&stored.bytes))))
 }
 
 fn write_attempt(
@@ -203,7 +207,7 @@ fn write_attempt(
 	record: QueueAttemptRecord,
 ) -> Result<(), RoutineError> {
 	let key = QueueAttemptKey::new(token.queue, token.row, token.attempt);
-	ctx.tx.set(&key, encode_queue_attempt(&record))?;
+	ctx.tx.set(vec![(key.clone().into(), encode_queue_attempt(&record).into())])?;
 	Ok(())
 }
 

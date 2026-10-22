@@ -131,9 +131,7 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 
 	fn dictionary_id_type(&mut self, dictionary: DictionaryId) -> Option<ValueType>;
 
-	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>>;
-
-	fn dictionary_find_many(
+	fn dictionary_find(
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
@@ -565,14 +563,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		self.txn.find_dictionary(dictionary).map(|d| d.id_type)
 	}
 
-	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		match self.txn.find_dictionary(dictionary) {
-			Some(dict) => self.txn.find_in_dictionary(&dict, value),
-			None => Ok(None),
-		}
-	}
-
-	fn dictionary_find_many(
+	fn dictionary_find(
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
@@ -631,7 +622,7 @@ impl Resolve for HostFind<'_> {
 
 impl Find for HostFind<'_> {
 	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
-		self.0.dictionary_find_many(dictionary.id, values)
+		self.0.dictionary_find(dictionary.id, values)
 	}
 }
 

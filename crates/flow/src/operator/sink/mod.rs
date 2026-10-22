@@ -165,7 +165,7 @@ pub fn stored_created_at_many<T: Get + ?Sized>(
 			reads.push(pre.clone());
 		}
 	}
-	let mut stored = txn.get_many(&reads)?.into_iter().map(|row| {
+	let mut stored = txn.get(&reads)?.into_iter().map(|row| {
 		row.filter(|row| row.len() >= SHAPE_HEADER_SIZE)
 			.map(|row| read_created_at(&row))
 			.filter(|c| !c.is_epoch())

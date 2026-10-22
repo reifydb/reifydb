@@ -284,7 +284,7 @@ fn collect_partition_rows(
 			row_nums.iter().map(|&row_num| RowKey::new(ringbuffer.id, row_num).into()).collect();
 		return Ok(row_nums
 			.into_iter()
-			.zip(txn.get_many(&keys)?)
+			.zip(txn.get(&keys)?)
 			.filter_map(|(row_num, row)| row.map(|row| (row_num, row.bytes)))
 			.collect());
 	};

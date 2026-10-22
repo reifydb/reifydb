@@ -52,22 +52,18 @@ impl Pending {
 		self.pre.get(key).copied()
 	}
 
-	fn put(&mut self, key: EncodedKey, write: PendingWrite) {
-		if is_state_key(&key) {
-			self.state.insert(key, write);
-			return;
-		}
-		if let Some(&slot) = self.index.get(&key) {
-			self.entries[slot].1 = write;
-			return;
-		}
-		self.index.insert(key.clone(), self.entries.len());
-		self.entries.push((key, write));
-	}
-
-	pub fn put_many(&mut self, writes: Vec<(EncodedKey, PendingWrite)>) {
+	pub fn put(&mut self, writes: Vec<(EncodedKey, PendingWrite)>) {
 		for (key, write) in writes {
-			self.put(key, write);
+			if is_state_key(&key) {
+				self.state.insert(key, write);
+				continue;
+			}
+			if let Some(&slot) = self.index.get(&key) {
+				self.entries[slot].1 = write;
+				continue;
+			}
+			self.index.insert(key.clone(), self.entries.len());
+			self.entries.push((key, write));
 		}
 	}
 
@@ -79,53 +75,41 @@ impl Pending {
 		}
 	}
 
-	pub fn insert(&mut self, key: EncodedKey, value: EncodedBytes) {
-		self.put(key, PendingWrite::Set(value));
+	pub fn insert(&mut self, keys: Vec<EncodedKey>, values: Vec<EncodedBytes>) {
+		assert_eq!(keys.len(), values.len(), "Pending::insert keys/values length mismatch");
+		self.put(keys.into_iter().zip(values).map(|(k, v)| (k, PendingWrite::Set(v))).collect());
 	}
 
-	pub fn remove(&mut self, key: EncodedKey) {
-		self.put(
-			key,
-			PendingWrite::Remove {
-				announce: RemoveVisibility::Announced,
-			},
-		);
-	}
-
-	pub fn insert_batch(&mut self, keys: Vec<EncodedKey>, values: Vec<EncodedBytes>) {
-		assert_eq!(keys.len(), values.len(), "Pending::insert_batch keys/values length mismatch");
-		for (k, v) in keys.into_iter().zip(values) {
-			self.put(k, PendingWrite::Set(v));
-		}
-	}
-
-	pub fn remove_batch(&mut self, keys: Vec<EncodedKey>) {
-		for k in keys {
-			self.put(
-				k,
-				PendingWrite::Remove {
-					announce: RemoveVisibility::Announced,
-				},
-			);
-		}
+	pub fn remove(&mut self, keys: Vec<EncodedKey>) {
+		self.put(keys
+			.into_iter()
+			.map(|k| {
+				(
+					k,
+					PendingWrite::Remove {
+						announce: RemoveVisibility::Announced,
+					},
+				)
+			})
+			.collect());
 	}
 
 	pub fn remove_silent(&mut self, key: EncodedKey) {
-		self.put(
+		self.put(vec![(
 			key,
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Silent,
 			},
-		);
+		)]);
 	}
 
 	pub fn remove_unobserved(&mut self, key: EncodedKey) {
-		self.put(
+		self.put(vec![(
 			key,
 			PendingWrite::Remove {
 				announce: RemoveVisibility::Unobserved,
 			},
-		);
+		)]);
 	}
 
 	pub fn contains_key(&self, key: &EncodedKey) -> bool {
@@ -268,7 +252,7 @@ pub mod tests {
 		// low end hands it keys it has already passed, so it reports a last row that is not the last.
 		let mut pending = Pending::new();
 		for n in 1..=5 {
-			pending.insert(make_key(&format!("k{n:02}")), make_value("v"));
+			pending.insert(vec![make_key(&format!("k{n:02}"))], vec![make_value("v")]);
 		}
 
 		let keys: Vec<EncodedKey> = back_page(&pending, 2).into_iter().map(|(key, _)| key).collect();
@@ -282,7 +266,7 @@ pub mod tests {
 		// reached ends the walk early and reports no last row at all.
 		let mut pending = Pending::new();
 		for n in 1..=3 {
-			pending.insert(make_key(&format!("k{n:02}")), make_value("v"));
+			pending.insert(vec![make_key(&format!("k{n:02}"))], vec![make_value("v")]);
 		}
 
 		let keys: Vec<EncodedKey> = back_page(&pending, 99).into_iter().map(|(key, _)| key).collect();
@@ -296,7 +280,7 @@ pub mod tests {
 		let key = make_key("key1");
 		let value = make_value("value1");
 
-		pending.insert(key.clone(), value.clone());
+		pending.insert(vec![key.clone()], vec![value.clone()]);
 
 		assert_eq!(set_value(&pending, &key), Some(&value));
 		assert!(!removed(&pending, &key));
@@ -307,9 +291,9 @@ pub mod tests {
 	fn test_insert_multiple_writes() {
 		let mut pending = Pending::new();
 
-		pending.insert(make_key("key1"), make_value("value1"));
-		pending.insert(make_key("key2"), make_value("value2"));
-		pending.insert(make_key("key3"), make_value("value3"));
+		pending.insert(vec![make_key("key1")], vec![make_value("value1")]);
+		pending.insert(vec![make_key("key2")], vec![make_value("value2")]);
+		pending.insert(vec![make_key("key3")], vec![make_value("value3")]);
 
 		assert_eq!(set_value(&pending, &make_key("key1")), Some(&make_value("value1")));
 		assert_eq!(set_value(&pending, &make_key("key2")), Some(&make_value("value2")));
@@ -321,8 +305,8 @@ pub mod tests {
 		let mut pending = Pending::new();
 		let key = make_key("key1");
 
-		pending.insert(key.clone(), make_value("value1"));
-		pending.insert(key.clone(), make_value("value2"));
+		pending.insert(vec![key.clone()], vec![make_value("value1")]);
+		pending.insert(vec![key.clone()], vec![make_value("value2")]);
 
 		assert_eq!(set_value(&pending, &key), Some(&make_value("value2")));
 	}
@@ -332,7 +316,7 @@ pub mod tests {
 		let mut pending = Pending::new();
 		let key = make_key("key1");
 
-		pending.remove(key.clone());
+		pending.remove(vec![key.clone()]);
 
 		assert!(removed(&pending, &key));
 		assert!(pending.contains_key(&key));
@@ -344,10 +328,10 @@ pub mod tests {
 		let mut pending = Pending::new();
 		let key = make_key("key1");
 
-		pending.insert(key.clone(), make_value("value1"));
+		pending.insert(vec![key.clone()], vec![make_value("value1")]);
 		assert_eq!(set_value(&pending, &key), Some(&make_value("value1")));
 
-		pending.remove(key.clone());
+		pending.remove(vec![key.clone()]);
 		assert!(removed(&pending, &key));
 		assert_eq!(set_value(&pending, &key), None);
 	}
@@ -357,10 +341,10 @@ pub mod tests {
 		let mut pending = Pending::new();
 		let key = make_key("key1");
 
-		pending.remove(key.clone());
+		pending.remove(vec![key.clone()]);
 		assert!(removed(&pending, &key));
 
-		pending.insert(key.clone(), make_value("value1"));
+		pending.insert(vec![key.clone()], vec![make_value("value1")]);
 		assert!(!removed(&pending, &key));
 		assert_eq!(set_value(&pending, &key), Some(&make_value("value1")));
 	}
@@ -369,9 +353,9 @@ pub mod tests {
 	fn test_iter_sorted_order() {
 		let mut pending = Pending::new();
 
-		pending.insert(make_key("zebra"), make_value("z"));
-		pending.insert(make_key("apple"), make_value("a"));
-		pending.insert(make_key("mango"), make_value("m"));
+		pending.insert(vec![make_key("zebra")], vec![make_value("z")]);
+		pending.insert(vec![make_key("apple")], vec![make_value("a")]);
+		pending.insert(vec![make_key("mango")], vec![make_value("m")]);
 
 		let keys: Vec<_> = pending.iter_sorted().map(|(k, _)| k.clone()).collect();
 
@@ -382,10 +366,10 @@ pub mod tests {
 	fn test_range_query() {
 		let mut pending = Pending::new();
 
-		pending.insert(make_key("a"), make_value("1"));
-		pending.insert(make_key("b"), make_value("2"));
-		pending.insert(make_key("c"), make_value("3"));
-		pending.insert(make_key("d"), make_value("4"));
+		pending.insert(vec![make_key("a")], vec![make_value("1")]);
+		pending.insert(vec![make_key("b")], vec![make_value("2")]);
+		pending.insert(vec![make_key("c")], vec![make_value("3")]);
+		pending.insert(vec![make_key("d")], vec![make_value("4")]);
 
 		let range_keys: Vec<_> = pending.range(make_key("b")..make_key("d")).map(|(k, _)| k.clone()).collect();
 
@@ -396,9 +380,9 @@ pub mod tests {
 	fn test_range_query_inclusive() {
 		let mut pending = Pending::new();
 
-		pending.insert(make_key("a"), make_value("1"));
-		pending.insert(make_key("b"), make_value("2"));
-		pending.insert(make_key("c"), make_value("3"));
+		pending.insert(vec![make_key("a")], vec![make_value("1")]);
+		pending.insert(vec![make_key("b")], vec![make_value("2")]);
+		pending.insert(vec![make_key("c")], vec![make_value("3")]);
 
 		let range_keys: Vec<_> = pending.range(make_key("a")..=make_key("c")).map(|(k, _)| k.clone()).collect();
 
@@ -409,8 +393,8 @@ pub mod tests {
 	fn test_range_query_empty() {
 		let mut pending = Pending::new();
 
-		pending.insert(make_key("a"), make_value("1"));
-		pending.insert(make_key("z"), make_value("2"));
+		pending.insert(vec![make_key("a")], vec![make_value("1")]);
+		pending.insert(vec![make_key("z")], vec![make_value("2")]);
 
 		let range_keys: Vec<_> = pending.range(make_key("m")..make_key("n")).map(|(k, _)| k.clone()).collect();
 
@@ -421,8 +405,8 @@ pub mod tests {
 	fn test_contains_key() {
 		let mut pending = Pending::new();
 
-		pending.insert(make_key("key1"), make_value("value1"));
-		pending.remove(make_key("key2"));
+		pending.insert(vec![make_key("key1")], vec![make_value("value1")]);
+		pending.remove(vec![make_key("key2")]);
 
 		assert!(pending.contains_key(&make_key("key1")));
 		assert!(pending.contains_key(&make_key("key2"))); // Remove is also "contained"
@@ -433,10 +417,10 @@ pub mod tests {
 	fn test_mixed_writes_and_removes() {
 		let mut pending = Pending::new();
 
-		pending.insert(make_key("write1"), make_value("v1"));
-		pending.remove(make_key("remove1"));
-		pending.insert(make_key("write2"), make_value("v2"));
-		pending.remove(make_key("remove2"));
+		pending.insert(vec![make_key("write1")], vec![make_value("v1")]);
+		pending.remove(vec![make_key("remove1")]);
+		pending.insert(vec![make_key("write2")], vec![make_value("v2")]);
+		pending.remove(vec![make_key("remove2")]);
 
 		assert_eq!(set_value(&pending, &make_key("write1")), Some(&make_value("v1")));
 		assert_eq!(set_value(&pending, &make_key("write2")), Some(&make_value("v2")));
@@ -451,11 +435,11 @@ pub mod tests {
 		let mut pending = Pending::new();
 		assert!(pending.is_empty());
 
-		pending.insert(make_key("key1"), make_value("value1"));
+		pending.insert(vec![make_key("key1")], vec![make_value("value1")]);
 		assert!(!pending.is_empty());
 
 		let mut tombstones = Pending::new();
-		tombstones.remove(make_key("key1"));
+		tombstones.remove(vec![make_key("key1")]);
 		assert!(!tombstones.is_empty());
 	}
 
@@ -463,9 +447,9 @@ pub mod tests {
 	fn test_iter_sorted_includes_removes() {
 		let mut pending = Pending::new();
 
-		pending.insert(make_key("b"), make_value("2"));
-		pending.remove(make_key("a"));
-		pending.insert(make_key("c"), make_value("3"));
+		pending.insert(vec![make_key("b")], vec![make_value("2")]);
+		pending.remove(vec![make_key("a")]);
+		pending.insert(vec![make_key("c")], vec![make_value("3")]);
 
 		let items: Vec<_> = pending.iter_sorted().collect();
 		assert_eq!(items.len(), 3);

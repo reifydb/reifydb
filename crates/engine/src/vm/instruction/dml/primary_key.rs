@@ -227,7 +227,7 @@ pub(crate) fn checked_primary_keys(
 		.iter()
 		.map(|key| IndexEntryKey::new(table.id, IndexId::primary(pk.id), key.clone()).into())
 		.collect();
-	let taken = txn.contains_many(&entries)?.into_iter().position(|taken| taken).or(duplicate);
+	let taken = txn.contains(&entries)?.into_iter().position(|taken| taken).or(duplicate);
 	if let Some(index) = taken {
 		let key_columns = pk.columns.iter().map(|c| c.name.clone()).collect();
 		let fragment = match violation {
@@ -309,6 +309,6 @@ impl<'a> PrimaryKeyIndex<'a> {
 	}
 
 	pub(crate) fn write(self, txn: &mut Transaction<'_>) -> Result<()> {
-		txn.remove_many(self.removes)
+		txn.remove(self.removes)
 	}
 }

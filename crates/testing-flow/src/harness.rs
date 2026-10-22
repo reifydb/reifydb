@@ -122,10 +122,10 @@ impl<O> Harness<O> {
 		let mut rest = Pending::new();
 		for (key, write) in pending.rows_ordered() {
 			match write {
-				PendingWrite::Set(row) => rest.insert(key.clone(), row.clone()),
+				PendingWrite::Set(row) => rest.insert(vec![key.clone()], vec![row.clone()]),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Announced,
-				} => rest.remove(key.clone()),
+				} => rest.remove(vec![key.clone()]),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Unobserved,
 				} => rest.remove_unobserved(key.clone()),

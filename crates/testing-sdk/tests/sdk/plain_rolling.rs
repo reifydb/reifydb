@@ -22,7 +22,7 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		view::RowView,
+		view::{ColumnsView, RowView},
 		windowed::{
 			operator::{AllKinds, Emit, NoRolling, WindowedOperator},
 			plain::PlainDriver,
@@ -119,19 +119,40 @@ macro_rules! sum_operator {
 				Ok(Self)
 			}
 
-			fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-				Ok(row.row_time())
+			fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+				rows.iter()
+					.map(|&i| {
+						cols.row(i)
+							.as_ref()
+							.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+							.transpose()
+							.map(Option::flatten)
+					})
+					.collect()
 			}
 
 			fn extract(
 				&self,
 				_: &mut impl GuestContext<Windowed>,
-				row: &impl RowView,
-			) -> Result<Option<(String, f64)>> {
-				let (Some(group), Some(value)) = (row.utf8("group")?, row.f64("value")?) else {
-					return Ok(None);
-				};
-				Ok(Some((group.to_string(), value)))
+				cols: &impl ColumnsView,
+				rows: &[usize],
+			) -> Result<Vec<Option<(String, f64)>>> {
+				rows.iter()
+					.map(|&i| {
+						cols.row(i)
+							.as_ref()
+							.map(|row| -> Result<Option<(String, f64)>> {
+								let (Some(group), Some(value)) =
+									(row.utf8("group")?, row.f64("value")?)
+								else {
+									return Ok(None);
+								};
+								Ok(Some((group.to_string(), value)))
+							})
+							.transpose()
+							.map(Option::flatten)
+					})
+					.collect()
 			}
 
 			fn new_accumulator(&self, _: &WindowSettings<DateTime>) -> PaneSum {

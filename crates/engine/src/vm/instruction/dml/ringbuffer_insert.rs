@@ -287,7 +287,7 @@ pub(crate) fn insert_ringbuffer_chunks(
 				})
 				.collect();
 			let displayed =
-				txn.get_many(&victim_keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect();
+				txn.get(&victim_keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect();
 			txn.remove_from_ringbuffer(ringbuffer, &victim_partitions, &victims, displayed)?;
 		}
 		let stored = txn.insert_ringbuffer(ringbuffer, shape, chunk_partitions, &ids, &rows[start..end])?;

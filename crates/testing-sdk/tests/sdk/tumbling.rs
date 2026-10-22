@@ -30,7 +30,7 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
 		extern_c::binding::exports::create_descriptor,
-		view::RowView,
+		view::{ColumnsView, RowView},
 		windowed::{
 			operator::{Emit, NoRolling, WindowedOperator},
 			plain::PlainDriver,
@@ -146,15 +146,39 @@ impl WindowedOperator for TestVolume {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Result<Option<(String, f64)>> {
-		let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?) else {
-			return Ok(None);
-		};
-		Ok(Some((group.to_string(), size)))
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, f64)>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<(String, f64)>> {
+						let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?)
+						else {
+							return Ok(None);
+						};
+						Ok(Some((group.to_string(), size)))
+					})
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> VolumeAccumulator {
@@ -199,12 +223,25 @@ impl WindowedOperator for SealedVolume {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
-	fn extract(&self, ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> Result<Option<(String, f64)>> {
-		TestVolume.extract(ctx, row)
+	fn extract(
+		&self,
+		ctx: &mut impl GuestContext<Windowed>,
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, f64)>>> {
+		TestVolume.extract(ctx, cols, rows)
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> VolumeAccumulator {
@@ -289,22 +326,42 @@ impl WindowedOperator for TestMin {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn extract(
 		&self,
 		_ctx: &mut impl GuestContext<Windowed>,
-		row: &impl RowView,
-	) -> Result<Option<(String, OrdF64)>> {
-		let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?) else {
-			return Ok(None);
-		};
-		let Some(size) = OrdF64::new(size) else {
-			return Ok(None);
-		};
-		Ok(Some((group.to_string(), size)))
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, OrdF64)>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<(String, OrdF64)>> {
+						let (Some(group), Some(size)) = (row.utf8("group")?, row.f64("size")?)
+						else {
+							return Ok(None);
+						};
+						let Some(size) = OrdF64::new(size) else {
+							return Ok(None);
+						};
+						Ok(Some((group.to_string(), size)))
+					})
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> MinAccumulator {

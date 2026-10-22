@@ -360,54 +360,33 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<MultiVersionRow<TaggedKey>>> {
-		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().get(key)?.map(|v| v.into_multi_version_row()))
-	}
-
-	#[inline]
-	pub fn get_committed<K: Into<TaggedKey> + Clone>(
-		&mut self,
-		key: &K,
-	) -> Result<Option<MultiVersionRow<TaggedKey>>> {
-		self.check_active()?;
-		Ok(self.cmd.as_mut().unwrap().get_committed(key)?.map(|v| v.into_multi_version_row()))
-	}
-
-	#[inline]
-	pub fn get_committed_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	pub fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
 		self.check_active()?;
 		Ok(self.cmd
 			.as_mut()
 			.unwrap()
-			.get_committed_many(keys)?
+			.get_committed(keys)?
 			.into_iter()
 			.map(|v| v.map(|v| v.into_multi_version_row()))
 			.collect())
 	}
 
 	#[inline]
-	pub fn contains<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().contains(key)
-	}
-
-	#[inline]
-	pub fn get_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+	pub fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
 		self.check_active()?;
 		Ok(self.cmd
 			.as_mut()
 			.unwrap()
-			.get_many(keys)?
+			.get(keys)?
 			.into_iter()
 			.map(|v| v.map(|v| v.into_multi_version_row()))
 			.collect())
 	}
 
 	#[inline]
-	pub fn contains_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
+	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().contains_many(keys)
+		self.cmd.as_mut().unwrap().contains(keys)
 	}
 
 	#[inline]
@@ -436,12 +415,6 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().set(key, bytes.into())
-	}
-
-	#[inline]
 	pub fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set_rebased(key, bytes, rebase)
@@ -455,9 +428,9 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().set_many(entries)
+		self.cmd.as_mut().unwrap().set(entries)
 	}
 
 	#[inline]
@@ -492,15 +465,9 @@ impl CommandTransaction {
 	}
 
 	#[inline]
-	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
+	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().remove(key)
-	}
-
-	#[inline]
-	pub fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().remove_many(entries)
+		self.cmd.as_mut().unwrap().remove(entries)
 	}
 
 	#[inline]
@@ -614,27 +581,23 @@ impl WithEventBus for CommandTransaction {
 
 impl Read for CommandTransaction {
 	#[inline]
-	fn get(&mut self, key: &TaggedKey) -> Result<Option<MultiVersionRow<TaggedKey>>> {
-		CommandTransaction::get(self, key)
+	fn get(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		CommandTransaction::get(self, keys)
 	}
 	#[inline]
-	fn get_committed_many(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
-		CommandTransaction::get_committed_many(self, keys)
+	fn get_committed(&mut self, keys: &[TaggedKey]) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		CommandTransaction::get_committed(self, keys)
 	}
 }
 
 impl Write for CommandTransaction {
 	#[inline]
-	fn set(&mut self, key: &TaggedKey, bytes: EncodedBytes) -> Result<()> {
-		CommandTransaction::set(self, key, bytes)
-	}
-	#[inline]
 	fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()> {
 		CommandTransaction::set_rebased(self, key, bytes, rebase)
 	}
 	#[inline]
-	fn set_many(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
-		CommandTransaction::set_many(self, entries)
+	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
+		CommandTransaction::set(self, entries)
 	}
 	#[inline]
 	fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
@@ -645,12 +608,8 @@ impl Write for CommandTransaction {
 		CommandTransaction::remove_with_pre(self, key, pre)
 	}
 	#[inline]
-	fn remove(&mut self, key: &TaggedKey) -> Result<()> {
-		CommandTransaction::remove(self, key)
-	}
-	#[inline]
-	fn remove_many(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
-		CommandTransaction::remove_many(self, entries)
+	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
+		CommandTransaction::remove(self, entries)
 	}
 	#[inline]
 	fn track_row_change(&mut self, changes: &[RowChange]) {

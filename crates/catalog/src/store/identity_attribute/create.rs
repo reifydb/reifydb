@@ -35,7 +35,7 @@ impl CatalogStore {
 		identity_attribute::set_name(&mut row, name);
 		identity_attribute::set_value_type(&mut row, type_tag_byte(&value_type));
 
-		txn.set(&IdentityAttributeKey::new(attribute_id), row.freeze())?;
+		txn.set(vec![(IdentityAttributeKey::new(attribute_id).into(), row.freeze().into())])?;
 
 		Ok(IdentityAttribute {
 			id: attribute_id,

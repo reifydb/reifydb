@@ -282,7 +282,7 @@ fn drive_series_delete_input(
 		let candidate_keys: Vec<TaggedKey> = candidates.iter().map(|(_, key, ..)| key.clone()).collect();
 		let found: Vec<_> = candidates
 			.into_iter()
-			.zip(txn.get_many(&candidate_keys)?)
+			.zip(txn.get(&candidate_keys)?)
 			.filter_map(|((row_idx, key, partition, key_value, row_number), pre_entry)| {
 				pre_entry.map(|pre_entry| {
 					(row_idx, key, pre_entry.bytes, partition, key_value, row_number)
@@ -293,7 +293,7 @@ fn drive_series_delete_input(
 			Vec::new()
 		} else {
 			let found_keys: Vec<TaggedKey> = found.iter().map(|(_, key, ..)| key.clone()).collect();
-			txn.get_committed_many(&found_keys)?
+			txn.get_committed(&found_keys)?
 		};
 		for ((row_idx, key, encoded_bytes, partition, key_value, row_number), committed) in
 			found.into_iter().zip(committed_rows)

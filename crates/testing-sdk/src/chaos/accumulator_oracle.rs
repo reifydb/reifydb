@@ -169,11 +169,11 @@ where
 		.unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
 	let coord = aggregate
-		.coord_batch(&view, &[0])
+		.coord(&view, &[0])
 		.unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))
 		.pop()
 		.flatten()?;
-	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract_batch(ctx, &view, &[0]))
+	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract(ctx, &view, &[0]))
 		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))
 		.pop()
 		.flatten()?;
@@ -445,11 +445,11 @@ where
 		.unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
 	let coord = aggregate
-		.coord_batch(&view, &[0])
+		.coord(&view, &[0])
 		.unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))
 		.pop()
 		.flatten()?;
-	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract_batch(ctx, &view, &[0]))
+	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract(ctx, &view, &[0]))
 		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))
 		.pop()
 		.flatten()?;
@@ -694,11 +694,11 @@ where
 		.unwrap_or_else(|err| panic!("oracle row batch failed: {err}"));
 	let view = InProcessColumnsView::new(&columns);
 	let coord = aggregate
-		.coord_batch(&view, &[0])
+		.coord(&view, &[0])
 		.unwrap_or_else(|err| panic!("oracle coord read failed: {err}"))
 		.pop()
 		.flatten()?;
-	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract_batch(ctx, &view, &[0]))
+	let (group, contribution) = with_oracle_ctx(chaos, |ctx| aggregate.extract(ctx, &view, &[0]))
 		.unwrap_or_else(|err| panic!("oracle extract read failed: {err}"))
 		.pop()
 		.flatten()?;

@@ -26,10 +26,10 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 			shape.field_count()
 		);
 	}
-	txn.set(
-		&RowShapeKey::new(fingerprint),
+	txn.set(vec![(
+		RowShapeKey::new(fingerprint).into(),
 		shape_header::encode(shape.family(), shape.field_count() as u16).into_bytes(),
-	)?;
+	)])?;
 
 	for (idx, field) in shape.fields().iter().enumerate() {
 		let extern_c = encode_type_constraint(&field.constraint).expect("constraint exceeds tag capacity");
@@ -43,7 +43,7 @@ pub(crate) fn create_row_shape(txn: &mut Transaction<'_>, shape: &RowShape) -> R
 		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::OFFSET, field.offset);
 		shape_field::SHAPE.set::<u32>(&mut field_row, shape_field::SIZE, field.size);
 
-		txn.set(&RowShapeFieldKey::new(fingerprint, idx as u16), field_row.freeze())?;
+		txn.set(vec![(RowShapeFieldKey::new(fingerprint, idx as u16).into(), field_row.freeze().into())])?;
 	}
 
 	Ok(())

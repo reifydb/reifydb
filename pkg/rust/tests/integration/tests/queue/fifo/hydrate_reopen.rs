@@ -39,8 +39,10 @@ fn keys(db: &TestDb, range: EncodedKeyRange) -> Vec<TaggedKey> {
 
 fn depth(db: &TestDb, queue: QueueId, partition: u16) -> u64 {
 	let store = db.engine().single().read_store();
-	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue, partition))
+	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, partition)])
 		.unwrap()
+		.pop()
+		.flatten()
 		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)).depth)
 		.unwrap_or_default()
 }

@@ -12,7 +12,7 @@ use crate::{CatalogStore, Result, store::view::shape::view};
 
 impl CatalogStore {
 	pub(crate) fn get_view_pk_id(rx: &mut Transaction<'_>, view_id: ViewId) -> Result<Option<PrimaryKeyId>> {
-		let multi = match rx.get(&ViewKey::new(view_id))? {
+		let multi = match rx.get(&[ViewKey::new(view_id).into()])?.pop().flatten() {
 			Some(v) => v,
 			None => return Ok(None),
 		};

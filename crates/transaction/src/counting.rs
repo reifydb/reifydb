@@ -8,24 +8,20 @@ use reifydb_core::key::tag::KeyTag;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct KeyCounts {
 	pub gets: u64,
-	pub batched_gets: u64,
 	pub committed_gets: u64,
 	pub contains: u64,
-	pub batched_contains: u64,
 	pub sets: u64,
-	pub batched: u64,
 	pub removes: u64,
-	pub batched_removes: u64,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct OpCounts {
 	keys: HashMap<KeyTag, KeyCounts>,
-	set_many_calls: u64,
-	get_many_calls: u64,
-	get_committed_many_calls: u64,
-	contains_many_calls: u64,
-	remove_many_calls: u64,
+	set_calls: u64,
+	get_calls: u64,
+	get_committed_calls: u64,
+	contains_calls: u64,
+	remove_calls: u64,
 	ranges: u64,
 }
 
@@ -34,24 +30,24 @@ impl OpCounts {
 		self.keys.get(&tag).copied().unwrap_or_default()
 	}
 
-	pub fn set_many_calls(&self) -> u64 {
-		self.set_many_calls
+	pub fn set_calls(&self) -> u64 {
+		self.set_calls
 	}
 
-	pub fn get_many_calls(&self) -> u64 {
-		self.get_many_calls
+	pub fn get_calls(&self) -> u64 {
+		self.get_calls
 	}
 
-	pub fn get_committed_many_calls(&self) -> u64 {
-		self.get_committed_many_calls
+	pub fn get_committed_calls(&self) -> u64 {
+		self.get_committed_calls
 	}
 
-	pub fn contains_many_calls(&self) -> u64 {
-		self.contains_many_calls
+	pub fn contains_calls(&self) -> u64 {
+		self.contains_calls
 	}
 
-	pub fn remove_many_calls(&self) -> u64 {
-		self.remove_many_calls
+	pub fn remove_calls(&self) -> u64 {
+		self.remove_calls
 	}
 
 	pub fn ranges(&self) -> u64 {
@@ -62,24 +58,24 @@ impl OpCounts {
 		self.keys.entry(tag).or_default()
 	}
 
-	pub(crate) fn set_many_call(&mut self) {
-		self.set_many_calls += 1;
+	pub(crate) fn set_call(&mut self) {
+		self.set_calls += 1;
 	}
 
-	pub(crate) fn get_many_call(&mut self) {
-		self.get_many_calls += 1;
+	pub(crate) fn get_call(&mut self) {
+		self.get_calls += 1;
 	}
 
-	pub(crate) fn get_committed_many_call(&mut self) {
-		self.get_committed_many_calls += 1;
+	pub(crate) fn get_committed_call(&mut self) {
+		self.get_committed_calls += 1;
 	}
 
-	pub(crate) fn contains_many_call(&mut self) {
-		self.contains_many_calls += 1;
+	pub(crate) fn contains_call(&mut self) {
+		self.contains_calls += 1;
 	}
 
-	pub(crate) fn remove_many_call(&mut self) {
-		self.remove_many_calls += 1;
+	pub(crate) fn remove_call(&mut self) {
+		self.remove_calls += 1;
 	}
 
 	pub(crate) fn range_call(&mut self) {

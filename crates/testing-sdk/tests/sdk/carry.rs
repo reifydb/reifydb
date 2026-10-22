@@ -22,7 +22,7 @@ use reifydb_sdk::{
 		MountedOperator, OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		view::RowView,
+		view::{ColumnsView, RowView},
 		windowed::{
 			carry::CarryDriver,
 			operator::{CarryEmit, WindowedOperator},
@@ -105,16 +105,33 @@ impl WindowedOperator for Probe {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn extract(
 		&self,
 		_ctx: &mut impl GuestContext<Windowed>,
-		row: &impl RowView,
-	) -> Result<Option<(String, (u64, f64))>> {
-		Probe::contribution(row)
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> Result<Vec<Option<(String, (u64, f64))>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> Result<Option<(String, (u64, f64))>> { Probe::contribution(row) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> RetainedAccumulator<u64, f64> {

@@ -12,7 +12,7 @@ use crate::{CatalogStore, Result, store::operator::shape::operator};
 
 impl CatalogStore {
 	pub(crate) fn drop_operator(txn: &mut AdminTransaction, operator_id: OperatorId) -> Result<()> {
-		let Some(multi) = txn.get(&OperatorKey::new(operator_id))? else {
+		let Some(multi) = txn.get(&[OperatorKey::new(operator_id).into()])?.pop().flatten() else {
 			return Ok(());
 		};
 		let flow = FlowId(operator::get_flow(&EncodedCatalogRow::try_from(multi.bytes)?));
@@ -22,8 +22,8 @@ impl CatalogStore {
 
 	#[inline]
 	fn unlink_node(txn: &mut AdminTransaction, operator_id: OperatorId, flow: FlowId) -> Result<()> {
-		txn.remove(&OperatorKey::new(operator_id))?;
-		txn.remove(&OperatorByFlowKey::new(flow, operator_id))?;
+		txn.remove(vec![(OperatorKey::new(operator_id).into(), None)])?;
+		txn.remove(vec![(OperatorByFlowKey::new(flow, operator_id).into(), None)])?;
 		Ok(())
 	}
 }

@@ -198,7 +198,7 @@ impl CatalogStore {
 			}
 		}
 
-		txn.set(&ViewKey::new(view), row.freeze())?;
+		txn.set(vec![(ViewKey::new(view).into(), row.freeze().into())])?;
 
 		Ok(())
 	}
@@ -218,7 +218,10 @@ impl CatalogStore {
 			} => {
 				if partition_by.is_empty() {
 					let row = encode_ringbuffer_metadata(&RingBufferMetadata::new());
-					txn.set(&RingBufferMetadataKey::new(StorageId::View(view)), row.into_bytes())?;
+					txn.set(vec![(
+						RingBufferMetadataKey::new(StorageId::View(view)).into(),
+						row.into_bytes(),
+					)])?;
 				}
 				Ok(())
 			}
@@ -237,7 +240,7 @@ impl CatalogStore {
 		let mut row = view_namespace::allocate();
 		view_namespace::set_id(&mut row, u64::from(view));
 		view_namespace::set_name(&mut row, name);
-		txn.set(&NamespaceViewKey::new(namespace, view), row.freeze())?;
+		txn.set(vec![(NamespaceViewKey::new(namespace, view).into(), row.freeze().into())])?;
 		Ok(())
 	}
 

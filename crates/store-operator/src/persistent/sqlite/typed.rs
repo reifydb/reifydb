@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::rwlock::RwLock;
 use reifydb_sqlite::batch::values_placeholders;
-use rusqlite::{Connection, Error as SqliteError, Row, Transaction, params_from_iter, types::Value};
+use rusqlite::{Connection, Row, Transaction, params_from_iter, types::Value};
 use tracing::instrument;
 
 pub fn table_of(name: &str, operator: OperatorId) -> String {
@@ -27,7 +27,6 @@ pub fn table_of(name: &str, operator: OperatorId) -> String {
 enum Statement {
 	Set(usize),
 	Remove(usize),
-	Get,
 	GetBatch(usize),
 	Sizes(usize),
 	Bounded(Bound<()>, Bound<()>, &'static str),
@@ -56,9 +55,6 @@ impl Template {
 				),
 			),
 			Statement::Remove(rows) => ("DELETE FROM \"".to_string(), format!("\"{}", K::key_in(rows))),
-			Statement::Get => {
-				("SELECT \"bytes\" FROM \"".to_string(), format!("\" WHERE 1{}", K::key_predicate(1)))
-			}
 			Statement::GetBatch(rows) => (
 				format!("SELECT {}\"bytes\" FROM \"", K::key_columns()),
 				format!("\"{}", K::key_in(rows)),
@@ -224,8 +220,6 @@ pub trait SqlKey: Keyspace {
 
 	fn placeholders(from: usize) -> String;
 
-	fn key_predicate(from: usize) -> String;
-
 	fn key_columns() -> String;
 
 	fn key_values(from: usize) -> String;
@@ -266,15 +260,6 @@ impl<K: Keyspace> SqlKey for K {
 
 	fn placeholders(from: usize) -> String {
 		(0..Self::columns().len()).map(|at| format!("?{}", from + at)).collect::<Vec<_>>().join(", ")
-	}
-
-	fn key_predicate(from: usize) -> String {
-		Self::columns()
-			.iter()
-			.enumerate()
-			.map(|(at, column)| format!(" AND \"{}\" = ?{}", column.name, from + at))
-			.collect::<Vec<_>>()
-			.join("")
 	}
 
 	fn key_columns() -> String {
@@ -390,20 +375,9 @@ pub fn remove_chunked<K: Keyspace>(txn: &Transaction, operator: OperatorId, keys
 		.expect("operator state delete failed");
 }
 
-pub fn get<K: Keyspace>(conn: &Connection, operator: OperatorId, key: &K::GroupedKey) -> Option<Vec<u8>> {
-	let sql = sql::<K>(Statement::Get, operator, None);
-	let params = K::bind_key(key);
-	let mut stmt = conn.prepare_cached(&sql).expect("operator state get could not be prepared");
-	match stmt.query_row(params_from_iter(params), |row| row.get::<_, Vec<u8>>(0)) {
-		Ok(bytes) => Some(bytes),
-		Err(SqliteError::QueryReturnedNoRows) => None,
-		Err(err) => panic!("operator state read failed: {err}"),
-	}
-}
-
 pub const READ_CHUNK: usize = 100;
 
-pub fn get_batch<K: Keyspace>(
+pub fn get<K: Keyspace>(
 	conn: &Connection,
 	operator: OperatorId,
 	keys: &[K::GroupedKey],
@@ -1144,7 +1118,7 @@ mod tests {
 		set_one::<RingbufferTtlArm>(&store, OperatorId(2), &key, b"other");
 		assert_eq!(scan::<RingbufferTtlArm>(&store, OperatorId(1)), vec![(key, b"second".to_vec())]);
 		assert_eq!(
-			store.get_many(OperatorId(1), &[&encode::<RingbufferTtlArm>(&key).into_encoded()]).unwrap(),
+			store.get(OperatorId(1), &[&encode::<RingbufferTtlArm>(&key).into_encoded()]).unwrap(),
 			vec![Some(EncodedPodRow::new(b"second"))]
 		);
 		remove_one::<RingbufferTtlArm>(&store, OperatorId(1), &key);

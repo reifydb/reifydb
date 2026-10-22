@@ -135,7 +135,7 @@ pub(crate) fn update_ringbuffer(
 			})
 			.collect();
 		let old_rows: Vec<EncodedBytes> = txn
-			.get_many(&old_row_keys)?
+			.get(&old_row_keys)?
 			.into_iter()
 			.map(|row| row.expect("bytes must exist for update").bytes)
 			.collect();

@@ -311,7 +311,7 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 		.map(|(idx, &row_number)| row_key_from_partition(table.id, partitions.get(idx).copied(), row_number))
 		.collect();
 	let known: Vec<SetPre> = txn
-		.get_committed_many(&keys)?
+		.get_committed(&keys)?
 		.into_iter()
 		.map(|committed| committed.map_or(SetPre::Unknown, |row| SetPre::Present(row.bytes)))
 		.collect();
@@ -356,7 +356,7 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 		.map(|(idx, &row_number)| row_key_from_partition(table.id, partitions.get(idx).copied(), row_number))
 		.collect();
 	let committed: Vec<Option<EncodedBytes>> =
-		txn.get_committed_many(&keys)?.into_iter().map(|row| row.map(|v| v.bytes)).collect();
+		txn.get_committed(&keys)?.into_iter().map(|row| row.map(|v| v.bytes)).collect();
 	let pre_for_cdc_bytes_vec: Vec<EncodedBytes> = committed
 		.iter()
 		.zip(displayed)
@@ -365,7 +365,7 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 
 	TableRowInterceptor::pre_delete(txn, table, ids)?;
 
-	txn.remove_many(keys.into_iter().zip(pre_for_cdc_bytes_vec.iter().cloned().map(Some)).collect())?;
+	txn.remove(keys.into_iter().zip(pre_for_cdc_bytes_vec.iter().cloned().map(Some)).collect())?;
 
 	TableRowInterceptor::post_delete(txn, table, ids, &pre_for_cdc_bytes_vec)?;
 

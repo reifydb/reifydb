@@ -63,7 +63,11 @@ pub(super) fn remove_one<K: Keyspace>(store: &SqlitePersistent, operator: Operat
 }
 
 pub(super) fn get<K: Keyspace>(store: &SqlitePersistent, operator: OperatorId, key: &K::GroupedKey) -> Option<Vec<u8>> {
-	store.get(operator, encode::<K>(key).as_encoded()).unwrap().map(|row| row.as_slice().to_vec())
+	store.get(operator, &[encode::<K>(key).as_encoded()])
+		.unwrap()
+		.pop()
+		.flatten()
+		.map(|row| row.as_slice().to_vec())
 }
 
 fn rows<K: Keyspace>(batch: OperatorBatch) -> Vec<(K::GroupedKey, Vec<u8>)> {

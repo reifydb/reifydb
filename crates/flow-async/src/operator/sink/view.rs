@@ -28,7 +28,7 @@ impl DurableSink for TableSink {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
+	use std::{slice, sync::Arc};
 
 	use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 	use postcard::from_bytes;
@@ -117,10 +117,10 @@ mod tests {
 		for (key, pw) in pending.iter_sorted() {
 			let key = TaggedKey::decode(key).unwrap();
 			match pw {
-				PendingWrite::Set(v) => cmd.set(&key, v.clone()).unwrap(),
+				PendingWrite::Set(v) => cmd.set(vec![(key.clone(), v.clone())]).unwrap(),
 				PendingWrite::Remove {
 					..
-				} => cmd.remove(&key).unwrap(),
+				} => cmd.remove(vec![(key.clone(), None)]).unwrap(),
 			};
 		}
 		cmd.commit().unwrap();
@@ -129,7 +129,15 @@ mod tests {
 	fn stored_view_bytes(engine: &TestEngine, rn: u64) -> EncodedTableRow {
 		let key = RowKey::new(test_view_def().storage_id(), RowNumber(rn));
 		let query = engine.inner().multi().begin_query().unwrap();
-		EncodedTableRow::from(query.get(&key).unwrap().expect("the view row must exist").bytes().clone())
+		EncodedTableRow::from(
+			query.get(&[key.clone().into()])
+				.unwrap()
+				.pop()
+				.flatten()
+				.expect("the view row must exist")
+				.bytes()
+				.clone(),
+		)
 	}
 
 	#[test]
@@ -234,7 +242,11 @@ mod tests {
 		let decode = |id: u128| -> String {
 			let key = DictionaryEntryIndexKey::encoded(dictionary.id, id);
 			let store = engine.single().read_store();
-			let row = SingleVersionGet::get(&store, &key).unwrap().expect("index entry present");
+			let row = SingleVersionGet::get(&store, slice::from_ref(&key))
+				.unwrap()
+				.pop()
+				.flatten()
+				.expect("index entry present");
 			match from_bytes::<Value>(&row.bytes).unwrap() {
 				Value::Utf8(s) => s,
 				other => panic!("expected Utf8, got {:?}", other),

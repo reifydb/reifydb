@@ -169,7 +169,7 @@ pub(crate) fn execute_alter_table(
 			}
 			if remove_registry {
 				if let Some(partition) = partition {
-					txn.remove(&PartitionKey::new(object, partition))?;
+					txn.remove(vec![(PartitionKey::new(object, partition).into(), None)])?;
 				}
 				("DROP PARTITION", Value::Uint8(dropped))
 			} else {

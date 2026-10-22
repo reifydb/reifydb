@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound::{Excluded, Included};
+use std::{
+	ops::Bound::{Excluded, Included},
+	slice,
+};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
@@ -42,7 +45,11 @@ fn make_value(s: &str) -> EncodedBytes {
 }
 
 fn get_row(parent: &mut AdminTransaction, key: &EncodedKey) -> Option<EncodedBytes> {
-	parent.get(&TaggedKey::decode(key).expect("the test key must decode")).unwrap().map(|m| m.bytes.clone())
+	parent.get(&[TaggedKey::decode(key).expect("the test key must decode")])
+		.unwrap()
+		.pop()
+		.flatten()
+		.map(|m| m.bytes.clone())
 }
 
 #[test]
@@ -62,7 +69,7 @@ fn test_get_from_pending() {
 
 	txn.set_one(&key, value.clone()).unwrap();
 
-	let result = txn.get(&key).unwrap();
+	let result = txn.get(slice::from_ref(&key)).unwrap().pop().flatten();
 	assert_eq!(result, Some(value));
 }
 
@@ -75,7 +82,7 @@ fn test_get_from_committed() {
 
 	{
 		let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
-		cmd_txn.set(&make_typed_key("key1"), value.clone()).unwrap();
+		cmd_txn.set(vec![(make_typed_key("key1").into(), value.clone())]).unwrap();
 		cmd_txn.commit().unwrap();
 	}
 
@@ -91,7 +98,7 @@ fn test_get_from_committed() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	let result = txn.get(&key).unwrap();
+	let result = txn.get(slice::from_ref(&key)).unwrap().pop().flatten();
 	assert_eq!(result, Some(value));
 }
 
@@ -100,7 +107,7 @@ fn test_get_pending_shadows_committed() {
 	let (_engine, mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
-	parent.set(&make_typed_key("key1"), make_value("old")).unwrap();
+	parent.set(vec![(make_typed_key("key1").into(), make_value("old"))]).unwrap();
 	let version = parent.version();
 
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
@@ -115,7 +122,7 @@ fn test_get_pending_shadows_committed() {
 	let new_value = make_value("new");
 	txn.set_one(&key, new_value.clone()).unwrap();
 
-	let result = txn.get(&key).unwrap();
+	let result = txn.get(slice::from_ref(&key)).unwrap().pop().flatten();
 	assert_eq!(result, Some(new_value));
 }
 
@@ -124,7 +131,7 @@ fn test_get_removed_returns_none() {
 	let (_engine, mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
-	parent.set(&make_typed_key("key1"), make_value("value1")).unwrap();
+	parent.set(vec![(make_typed_key("key1").into(), make_value("value1"))]).unwrap();
 	let version = parent.version();
 
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
@@ -138,7 +145,7 @@ fn test_get_removed_returns_none() {
 
 	txn.remove_one(&key).unwrap();
 
-	let result = txn.get(&key).unwrap();
+	let result = txn.get(slice::from_ref(&key)).unwrap().pop().flatten();
 	assert_eq!(result, None);
 }
 
@@ -154,7 +161,7 @@ fn test_get_nonexistent_key() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	let result = txn.get(&make_key("missing")).unwrap();
+	let result = txn.get(&[make_key("missing")]).unwrap().pop().flatten();
 	assert_eq!(result, None);
 }
 
@@ -184,7 +191,7 @@ fn test_contains_key_committed() {
 
 	{
 		let mut cmd_txn = t.begin_admin(IdentityId::system()).unwrap();
-		cmd_txn.set(&make_typed_key("key1"), make_value("value1")).unwrap();
+		cmd_txn.set(vec![(make_typed_key("key1").into(), make_value("value1"))]).unwrap();
 		cmd_txn.commit().unwrap();
 	}
 
@@ -207,7 +214,7 @@ fn test_contains_key_removed_returns_false() {
 	let (_engine, mut parent, operators) = create_test_transaction();
 
 	let key = make_key("key1");
-	parent.set(&make_typed_key("key1"), make_value("value1")).unwrap();
+	parent.set(vec![(make_typed_key("key1").into(), make_value("value1"))]).unwrap();
 	let version = parent.version();
 
 	let mut txn = DeferredTransaction::new(DeferredParams::from_parent(
@@ -413,7 +420,7 @@ fn test_removes_not_visible_to_parent() {
 
 	let key = make_key("key1");
 	let value = make_value("value1");
-	parent.set(&make_typed_key("key1"), value.clone()).unwrap();
+	parent.set(vec![(make_typed_key("key1").into(), value.clone())]).unwrap();
 	assert_eq!(get_row(&mut parent, &key), Some(value.clone()));
 
 	let parent_version = parent.version();

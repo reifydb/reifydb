@@ -1262,7 +1262,7 @@ fn seal_due_windows(
 			});
 		let res = engine.expire_within(host, threshold.to_order(), budget)?;
 		for window in &res {
-			enqueue(host, window.group_id)?;
+			enqueue(host, &[window.group_id])?;
 		}
 		if !res.is_empty() {
 			let due = fired.at().saturating_add(rule.admissible().duration());
@@ -1510,7 +1510,7 @@ mod reap_tests {
 		{
 			let mut host = TxnHostContext::new(&mut txn, id);
 			for n in 0..groups {
-				enqueue(&mut host, GroupId::hashed(Hash128(n + 1))).unwrap();
+				enqueue(&mut host, &[GroupId::hashed(Hash128(n + 1))]).unwrap();
 			}
 			reap_sealed_groups(&mut operator, &mut host, fired()).unwrap();
 		}

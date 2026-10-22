@@ -191,7 +191,7 @@ fn reclaim(host: &mut dyn HostContext, fired: DateTime) -> Result<()> {
 	retry |= due.len() == RECLAIM_BATCH;
 	for (key, _) in due {
 		let group = managed_due_group(&key)?;
-		enqueue(host, group)?;
+		enqueue(host, &[group])?;
 		retry |= drain_group(host, group, &mut StoreReaper, RECLAIM_BATCH)?.still_queued;
 		expiry_drop(host, &key)?;
 		expiry_drop(host, &managed_latest_key(group))?;

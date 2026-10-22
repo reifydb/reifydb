@@ -346,18 +346,13 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.dictionary_id_type(dictionary)
 	}
 
-	fn dictionary_find(&mut self, dictionary: DictionaryId, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		self.record("dictionary_find", 1);
-		self.inner.dictionary_find(dictionary, value)
-	}
-
-	fn dictionary_find_many(
+	fn dictionary_find(
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
 		self.record("dictionary_find_many", values.len());
-		self.inner.dictionary_find_many(dictionary, values)
+		self.inner.dictionary_find(dictionary, values)
 	}
 
 	fn dictionary_get_many(

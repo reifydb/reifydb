@@ -119,7 +119,7 @@ impl CatalogStore {
 			&to_create.time,
 		);
 
-		txn.set(&RingBufferKey::new(ringbuffer), row.freeze())?;
+		txn.set(vec![(RingBufferKey::new(ringbuffer).into(), row.freeze().into())])?;
 
 		Ok(())
 	}
@@ -134,7 +134,7 @@ impl CatalogStore {
 		ringbuffer_namespace::set_id(&mut row, u64::from(ringbuffer));
 		ringbuffer_namespace::set_name(&mut row, name);
 
-		txn.set(&NamespaceRingBufferKey::new(namespace, ringbuffer), row.freeze())?;
+		txn.set(vec![(NamespaceRingBufferKey::new(namespace, ringbuffer).into(), row.freeze().into())])?;
 
 		Ok(())
 	}
@@ -167,7 +167,7 @@ impl CatalogStore {
 
 	fn initialize_ringbuffer_metadata(txn: &mut AdminTransaction, ringbuffer_id: RingBufferId) -> Result<()> {
 		let row = encode_ringbuffer_metadata(&RingBufferMetadata::new());
-		txn.set(&RingBufferMetadataKey::new(ringbuffer_id), row.into_bytes())?;
+		txn.set(vec![(RingBufferMetadataKey::new(ringbuffer_id).into(), row.into_bytes())])?;
 		Ok(())
 	}
 

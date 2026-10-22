@@ -26,11 +26,11 @@ impl CatalogStore {
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&PolicyOpKey::new(key.policy, key.op_index))?;
+				txn.remove(vec![(PolicyOpKey::new(key.policy, key.op_index).into(), None)])?;
 			}
 		}
 
-		txn.remove(&PolicyKey::new(policy))?;
+		txn.remove(vec![(PolicyKey::new(policy).into(), None)])?;
 		Ok(())
 	}
 }

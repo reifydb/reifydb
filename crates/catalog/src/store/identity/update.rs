@@ -14,7 +14,7 @@ impl CatalogStore {
 		identity::set_enabled(&mut row, entity.enabled);
 		identity::set_kind(&mut row, entity.kind);
 
-		txn.set(&IdentityKey::new(entity.id), row.freeze())?;
+		txn.set(vec![(IdentityKey::new(entity.id).into(), row.freeze().into())])?;
 		Ok(())
 	}
 }

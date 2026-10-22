@@ -208,14 +208,14 @@ impl Db {
 			let fields = shape_field_columns(batch, &shape);
 			let encoded = SourceRowEncoder::new(batch, &shape, &fields).unwrap().encode_all().unwrap();
 			for (&number, bytes) in require_row_numbers(batch).unwrap().iter().zip(encoded) {
-				txn.set(&RowKey::new(storage, number), bytes).unwrap();
+				txn.set(vec![(RowKey::new(storage, number).into(), bytes)]).unwrap();
 				kept.insert(number);
 			}
 		}
 		for batch in &stale {
 			for &number in require_row_numbers(batch).unwrap() {
 				if !kept.contains(&number) {
-					txn.remove(&RowKey::new(storage, number)).unwrap();
+					txn.remove(vec![(RowKey::new(storage, number).into(), None)]).unwrap();
 				}
 			}
 		}

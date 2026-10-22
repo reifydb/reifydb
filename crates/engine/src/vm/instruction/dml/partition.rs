@@ -106,7 +106,7 @@ impl VictimProbe {
 		if row_number.0 < self.read_to {
 			return Ok(self.stored[&None].binary_search(&row_number).is_ok());
 		}
-		Ok(txn.get(&RowKey::new(ringbuffer.id, row_number))?.is_some())
+		Ok(txn.get(&[RowKey::new(ringbuffer.id, row_number).into()])?.pop().flatten().is_some())
 	}
 }
 

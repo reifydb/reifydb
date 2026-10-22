@@ -448,12 +448,14 @@ where
 				if let Some(new) = new_index_key {
 					self.expiry.set(
 						store,
-						rolling_expiry_key(new, group_hash(&group)?),
-						RollingTopKIndexEntry {
-							group: group.clone(),
-							group_id: group_slot.group_id,
-							state_row_number: group_slot.state_row_number,
-						},
+						vec![(
+							rolling_expiry_key(new, group_hash(&group)?),
+							RollingTopKIndexEntry {
+								group: group.clone(),
+								group_id: group_slot.group_id,
+								state_row_number: group_slot.state_row_number,
+							},
+						)],
 					)?;
 				}
 			}

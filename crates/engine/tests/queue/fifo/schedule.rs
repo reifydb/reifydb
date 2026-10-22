@@ -63,8 +63,10 @@ fn dues(t: &TestEngine, queue: QueueId) -> Vec<QueueDueKey> {
 
 fn counters(t: &TestEngine, queue: QueueId, partition: u16) -> QueuePartitionCounters {
 	let store = t.inner().single().read_store();
-	SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue, partition))
+	SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue, partition)])
 		.unwrap()
+		.pop()
+		.flatten()
 		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 		.unwrap_or_default()
 }

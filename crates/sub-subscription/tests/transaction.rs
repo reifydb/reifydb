@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, slice};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::pod::EncodedPodRow;
@@ -70,16 +70,16 @@ fn row_reads_stay_pinned_to_requested_version() {
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set(
-		&QueueDeduplicationKey::new(QueueId(1), b"warmup".iter().map(|b| !b).collect::<Vec<u8>>()),
+	cmd.set(vec![(
+		QueueDeduplicationKey::new(QueueId(1), b"warmup".iter().map(|b| !b).collect::<Vec<u8>>()).into(),
 		make_value("w").into_bytes(),
-	)
+	)])
 	.unwrap();
 	let low_version = cmd.commit_unchecked().unwrap();
 
 	let mut cmd = engine.begin_command(IdentityId::system()).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
-	cmd.set(&row, row_value).unwrap();
+	cmd.set(vec![(row.clone().into(), row_value)]).unwrap();
 	let committed_at = cmd.commit_unchecked().unwrap();
 	assert!(low_version < committed_at);
 
@@ -92,7 +92,7 @@ fn row_reads_stay_pinned_to_requested_version() {
 		FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state()),
 	);
 	assert_eq!(
-		txn.get(&row_key).unwrap(),
+		txn.get(slice::from_ref(&row_key)).unwrap().pop().flatten(),
 		None,
 		"ephemeral (subscription) row reads must stay pinned to the requested version"
 	);

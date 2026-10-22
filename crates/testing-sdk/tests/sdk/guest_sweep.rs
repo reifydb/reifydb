@@ -45,7 +45,8 @@ fn seeded_transaction(state: HashMap<EncodedKey, EncodedBytes>) -> TestFlowTrans
 	for (inner, value) in state {
 		let (group, keyspace, suffix) =
 			OperatorStateKey::decode_inner(inner.as_slice()).expect("a seeded key decodes");
-		txn.pending_mut().insert(OperatorStateKey::encoded(OPERATOR, group, keyspace, suffix), value);
+		txn.pending_mut()
+			.insert(vec![OperatorStateKey::encoded(OPERATOR, group, keyspace, suffix)], vec![value]);
 	}
 	txn
 }

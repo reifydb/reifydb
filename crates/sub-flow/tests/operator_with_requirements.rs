@@ -21,7 +21,7 @@ use reifydb_sdk::{
 		UnmanagedMount, UnmanagedOperator,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Managed, Nostate, Unmanaged, Windowed},
-		view::{ChangeView, RowView},
+		view::{ChangeView, ColumnsView},
 		windowed::operator::{AllKinds, Emit, NoRolling, PlainMarker, TopKMarker, WindowedOperator},
 	},
 	row,
@@ -376,16 +376,33 @@ macro_rules! window_probe {
 				Ok(Self)
 			}
 
-			fn coord(&self, _: &impl RowView) -> SdkResult<Option<$coord>> {
-				Ok(None)
+			fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<$coord>>> {
+				rows.iter()
+					.map(|&i| {
+						cols.row(i)
+							.as_ref()
+							.map(|_| -> SdkResult<Option<$coord>> { Ok(None) })
+							.transpose()
+							.map(Option::flatten)
+					})
+					.collect()
 			}
 
 			fn extract(
 				&self,
 				_: &mut impl GuestContext<Windowed>,
-				_: &impl RowView,
-			) -> SdkResult<Option<(u32, i64)>> {
-				Ok(None)
+				cols: &impl ColumnsView,
+				rows: &[usize],
+			) -> SdkResult<Vec<Option<(u32, i64)>>> {
+				rows.iter()
+					.map(|&i| {
+						cols.row(i)
+							.as_ref()
+							.map(|_| -> SdkResult<Option<(u32, i64)>> { Ok(None) })
+							.transpose()
+							.map(Option::flatten)
+					})
+					.collect()
 			}
 
 			fn new_accumulator(&self, _: &WindowSettings<$coord>) -> LastValue<i64> {

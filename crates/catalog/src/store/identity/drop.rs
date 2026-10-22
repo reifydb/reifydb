@@ -24,7 +24,7 @@ impl CatalogStore {
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&GrantedRoleKey::new(key.identity, key.role))?;
+				txn.remove(vec![(GrantedRoleKey::new(key.identity, key.role).into(), None)])?;
 			}
 		}
 
@@ -40,11 +40,14 @@ impl CatalogStore {
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&IdentityAttributeValueKey::new(key.identity, key.attribute))?;
+				txn.remove(vec![(
+					IdentityAttributeValueKey::new(key.identity, key.attribute).into(),
+					None,
+				)])?;
 			}
 		}
 
-		txn.remove(&IdentityKey::new(identity))?;
+		txn.remove(vec![(IdentityKey::new(identity).into(), None)])?;
 		Ok(())
 	}
 }

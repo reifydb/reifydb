@@ -249,7 +249,7 @@ impl SliceComputer {
 			lookup: self.lookup.clone(),
 		});
 
-		flow_engine.process_batch(&mut txn, changes, flow_id)?;
+		flow_engine.process(&mut txn, changes, flow_id)?;
 		let holds = flow_engine.holds(&mut txn, flow_id)?;
 
 		let emitted = txn.emitted;
@@ -549,7 +549,7 @@ mod tests {
 
 #[cfg(test)]
 mod integration {
-	use std::{collections::HashSet, ops::Bound, sync::mpsc, thread::sleep};
+	use std::{collections::HashSet, ops::Bound, slice::from_ref, sync::mpsc, thread::sleep};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_core::{
@@ -1000,7 +1000,11 @@ mod integration {
 					});
 					for key in &row_keys {
 						assert!(
-							pinned.get(key).unwrap().is_some(),
+							pinned.get(from_ref(key))
+								.unwrap()
+								.pop()
+								.flatten()
+								.is_some(),
 							"a txn pinned below the flow's commit version must read the flow's own rows from the store"
 						);
 					}
@@ -1116,7 +1120,11 @@ mod integration {
 					});
 					for key in &live_keys {
 						assert!(
-							pinned.get(key).unwrap().is_some(),
+							pinned.get(from_ref(key))
+								.unwrap()
+								.pop()
+								.flatten()
+								.is_some(),
 							"{:?} must resolve from the store with no pending writes",
 							KeyTag::of(key)
 						);

@@ -183,7 +183,7 @@ impl Runner for MvccRunner {
 							unreachable!("can not call remove on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.remove(&key).unwrap();
+							tx.remove(vec![(key.clone().into(), None)]).unwrap();
 						}
 					}
 				}
@@ -231,12 +231,14 @@ impl Runner for MvccRunner {
 					let stored = script_key(key.as_slice().to_vec());
 
 					let value = match &mut t {
-						TransactionHandle::Read(rx) => {
-							rx.get(&stored).map(|r| r.map(|tv| tv.bytes().to_vec()))
-						}
-						TransactionHandle::Write(tx) => {
-							tx.get(&stored).map(|r| r.map(|tv| tv.bytes().to_vec()))
-						}
+						TransactionHandle::Read(rx) => rx
+							.get(&[stored.clone().into()])
+							.map(|mut found| found.pop().flatten())
+							.map(|r| r.map(|tv| tv.bytes().to_vec())),
+						TransactionHandle::Write(tx) => tx
+							.get(&[stored.clone().into()])
+							.map(|mut found| found.pop().flatten())
+							.map(|r| r.map(|tv| tv.bytes().to_vec())),
 					}
 					.unwrap();
 
@@ -258,9 +260,9 @@ impl Runner for MvccRunner {
 					let key = script_key(decode_binary(kv.key.as_ref().unwrap()));
 					let row = EncodedBytes(CowVec::new(decode_binary(&kv.value)));
 					if row.is_empty() {
-						tx.remove(&key).unwrap();
+						tx.remove(vec![(key.clone().into(), None)]).unwrap();
 					} else {
-						tx.set(&key, row).unwrap();
+						tx.set(vec![(key.clone().into(), row)]).unwrap();
 					}
 				}
 				args.reject_rest()?;
@@ -414,7 +416,7 @@ impl Runner for MvccRunner {
 							unreachable!("can not call set on rx")
 						}
 						TransactionHandle::Write(tx) => {
-							tx.set(&key, row).unwrap();
+							tx.set(vec![(key.clone().into(), row)]).unwrap();
 						}
 					}
 				}

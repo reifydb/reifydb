@@ -24,7 +24,7 @@ impl CatalogStore {
 		metadata: SeriesPartitionMetadata,
 	) -> Result<()> {
 		let row = encode_series_partition_metadata(&metadata);
-		txn.set(&SeriesPartitionMetadataKey::new(series_id, partition), row.into_bytes())?;
+		txn.set(vec![(SeriesPartitionMetadataKey::new(series_id, partition).into(), row.into_bytes())])?;
 		Ok(())
 	}
 

@@ -10,7 +10,7 @@ use crate::{CatalogStore, Result, store::token::shape::token};
 
 impl CatalogStore {
 	pub(crate) fn drop_token(txn: &mut AdminTransaction, id: TokenId) -> Result<()> {
-		txn.remove(&TokenKey::new(id))?;
+		txn.remove(vec![(TokenKey::new(id).into(), None)])?;
 		Ok(())
 	}
 
@@ -29,7 +29,7 @@ impl CatalogStore {
 		}
 
 		for id in to_remove {
-			txn.remove(&TokenKey::new(id))?;
+			txn.remove(vec![(TokenKey::new(id).into(), None)])?;
 		}
 
 		Ok(())
@@ -52,7 +52,7 @@ impl CatalogStore {
 		}
 
 		for id in to_remove {
-			txn.remove(&TokenKey::new(id))?;
+			txn.remove(vec![(TokenKey::new(id).into(), None)])?;
 		}
 
 		Ok(())

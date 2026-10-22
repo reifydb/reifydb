@@ -364,9 +364,7 @@ pub trait SingleVersionCommit: Send + Sync {
 }
 
 pub trait SingleVersionGet: Send + Sync {
-	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>>;
-
-	fn get_many(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>>;
+	fn get(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>>;
 }
 
 pub trait SingleVersionContains: Send + Sync {

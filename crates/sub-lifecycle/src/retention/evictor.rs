@@ -864,7 +864,7 @@ mod tests {
 
 	fn put_row(engine: &StandardEngine, storage: StorageId, row_number: RowNumber, bytes: EncodedBytes) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		txn.set(&RowKey::new(storage, row_number), bytes).unwrap();
+		txn.set(vec![(RowKey::new(storage, row_number).into(), bytes)]).unwrap();
 		txn.commit().unwrap();
 	}
 
@@ -873,10 +873,10 @@ mod tests {
 		let mut metadata = RingBufferMetadata::new();
 		metadata.count = 1;
 		metadata.tail = 2;
-		txn.set(
-			&RingBufferMetadataKey::partition(storage, values),
+		txn.set(vec![(
+			RingBufferMetadataKey::partition(storage, values).into(),
 			encode_ringbuffer_metadata(&metadata).into_bytes(),
-		)
+		)])
 		.unwrap();
 		txn.commit().unwrap();
 	}
@@ -920,7 +920,11 @@ mod tests {
 		bytes: EncodedBytes,
 	) {
 		let mut txn = engine.begin_command(IdentityId::system()).unwrap();
-		txn.set(&PartitionedRowKey::new(storage, Partition::of(partition_values), row_number), bytes).unwrap();
+		txn.set(vec![(
+			PartitionedRowKey::new(storage, Partition::of(partition_values), row_number).into(),
+			bytes,
+		)])
+		.unwrap();
 		txn.commit().unwrap();
 	}
 

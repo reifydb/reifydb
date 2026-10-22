@@ -8,7 +8,7 @@ use crate::{CatalogStore, Result};
 
 impl CatalogStore {
 	pub(crate) fn drop_authentication(txn: &mut AdminTransaction, id: AuthenticationId) -> Result<()> {
-		txn.remove(&AuthenticationKey::new(id))?;
+		txn.remove(vec![(AuthenticationKey::new(id).into(), None)])?;
 		Ok(())
 	}
 }

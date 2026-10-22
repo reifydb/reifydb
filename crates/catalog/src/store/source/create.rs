@@ -77,7 +77,7 @@ impl CatalogStore {
 		source::set_status(&mut row, FlowStatus::Active.to_u8());
 
 		let key = SourceKey::new(source);
-		txn.set(&key, row.freeze())?;
+		txn.set(vec![(key.clone().into(), row.freeze().into())])?;
 
 		Ok(())
 	}
@@ -92,7 +92,7 @@ impl CatalogStore {
 		source_namespace::set_id(&mut row, u64::from(source));
 		source_namespace::set_name(&mut row, name);
 		let key = NamespaceSourceKey::new(namespace, source);
-		txn.set(&key, row.freeze())?;
+		txn.set(vec![(key.clone().into(), row.freeze().into())])?;
 		Ok(())
 	}
 }

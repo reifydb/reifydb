@@ -71,28 +71,6 @@ fn outside_root_only<K: Keyspace>(start: Option<GroupId>, end: Option<GroupId>) 
 	}
 }
 
-struct Get<'a> {
-	conn: &'a Connection,
-	operator: OperatorId,
-	tables: TableMask,
-	group: GroupId,
-	suffix: &'a [u8],
-}
-
-impl KeyspaceVisitor for Get<'_> {
-	type Output = Option<Vec<u8>>;
-
-	fn visit<K: Keyspace>(self) -> Self::Output {
-		if !self.tables.holds(K::ID) {
-			return None;
-		}
-		if !const { group_scoped::<K>() } && !self.group.is_root() {
-			return None;
-		}
-		typed::get::<K>(self.conn, self.operator, &typed_key::<K>(self.group, self.suffix, lowest::<K>()))
-	}
-}
-
 type GetManyItem<'a> = (KeyspaceId, usize, GroupId, &'a [u8]);
 
 trait BatchRead {
@@ -115,7 +93,7 @@ impl BatchRead for Payloads {
 		operator: OperatorId,
 		probes: &[K::GroupedKey],
 	) -> Vec<(K::GroupedKey, Vec<u8>)> {
-		typed::get_batch::<K>(conn, operator, probes)
+		typed::get::<K>(conn, operator, probes)
 	}
 }
 
@@ -175,7 +153,7 @@ impl<R: BatchRead> KeyspaceVisitor for GetMany<'_, R> {
 	}
 }
 
-pub(super) fn get_many(
+pub(super) fn get(
 	conn: &Connection,
 	operator: OperatorId,
 	tables: TableMask,
@@ -236,36 +214,6 @@ fn read_many<R: BatchRead>(
 		}
 	}
 	Ok(answers)
-}
-
-pub(super) fn get(
-	conn: &Connection,
-	operator: OperatorId,
-	tables: TableMask,
-	key: &EncodedKey,
-) -> Result<Option<Vec<u8>>> {
-	let (group, keyspace, suffix) = parts(key);
-	if let Some(expected) = suffix_width_of(keyspace)
-		&& expected != suffix.len()
-	{
-		return Err(OperatorError::SuffixWidth {
-			operator,
-			keyspace,
-			expected,
-			found: suffix.len(),
-		});
-	}
-	Ok(dispatch(
-		keyspace,
-		Get {
-			conn,
-			operator,
-			tables,
-			group,
-			suffix,
-		},
-	)
-	.expect("an operator state key must name a keyspace in the catalogue"))
 }
 
 struct Bounded<'a> {

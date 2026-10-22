@@ -133,7 +133,7 @@ pub(super) extern "C" fn host_dictionary_find_many(
 		else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
-		let Ok(found) = host.dictionary_find_many(dictionary, &decoded) else {
+		let Ok(found) = host.dictionary_find(dictionary, &decoded) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 		if found.len() != n {

@@ -127,16 +127,9 @@ impl Shutdown for SingleStore {
 
 impl SingleVersionGet for SingleStore {
 	#[inline]
-	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
+	fn get(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
 		match self {
-			SingleStore::Standard(store) => SingleVersionGet::get(store, key),
-		}
-	}
-
-	#[inline]
-	fn get_many(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
-		match self {
-			SingleStore::Standard(store) => SingleVersionGet::get_many(store, keys),
+			SingleStore::Standard(store) => SingleVersionGet::get(store, keys),
 		}
 	}
 }

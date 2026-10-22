@@ -237,7 +237,7 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 		posts
 	};
 
-	txn.set_many(keys.into_iter().zip(posts.iter().cloned()).collect())?;
+	txn.set(keys.into_iter().zip(posts.iter().cloned()).collect())?;
 
 	if !txn.ringbuffer_row_post_update_interceptors().is_empty() {
 		RingBufferRowInterceptor::post_update(txn, ringbuffer, ids, &posts, pres)?;
@@ -281,7 +281,7 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 	}
 
 	let committed: Vec<Option<EncodedBytes>> =
-		txn.get_committed_many(&matched_keys)?.into_iter().map(|row| row.map(|v| v.bytes)).collect();
+		txn.get_committed(&matched_keys)?.into_iter().map(|row| row.map(|v| v.bytes)).collect();
 	let removed: Vec<EncodedBytes> = committed
 		.iter()
 		.zip(&matched_displayed)
@@ -292,7 +292,7 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 		RingBufferRowInterceptor::pre_delete(txn, ringbuffer, &removed_ids)?;
 	}
 
-	txn.remove_many(matched_keys.into_iter().zip(removed.iter().cloned().map(Some)).collect())?;
+	txn.remove(matched_keys.into_iter().zip(removed.iter().cloned().map(Some)).collect())?;
 
 	if !txn.ringbuffer_row_post_delete_interceptors().is_empty() {
 		RingBufferRowInterceptor::post_delete(txn, ringbuffer, &removed_ids, &removed)?;

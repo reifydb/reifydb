@@ -15,8 +15,9 @@ fn test_write() {
 		let mut tx = engine.begin_command().unwrap();
 		assert_eq!(tx.version(), 1);
 
-		tx.set(&key, as_values!("foo1".to_string())).unwrap();
-		let value: String = from_bytes!(String, *tx.get(&key).unwrap().unwrap().bytes());
+		tx.set(vec![(key.clone(), as_values!("foo1".to_string()))]).unwrap();
+		let value: String =
+			from_bytes!(String, *tx.get(&[key.clone()]).unwrap().pop().flatten().unwrap().bytes());
 		assert_eq!(value.as_str(), "foo1");
 		tx.commit().unwrap();
 	}
@@ -24,7 +25,8 @@ fn test_write() {
 	{
 		let rx = engine.begin_query().unwrap();
 		assert_eq!(rx.version(), 2);
-		let value: String = from_bytes!(String, rx.get(&key).unwrap().unwrap().bytes());
+		let value: String =
+			from_bytes!(String, rx.get(&[key.clone()]).unwrap().pop().flatten().unwrap().bytes());
 		assert_eq!(value.as_str(), "foo1");
 	}
 }
@@ -36,18 +38,18 @@ fn test_multiple_write() {
 	{
 		let mut txn = engine.begin_command().unwrap();
 		for i in 0..10 {
-			if let Err(e) = txn.set(&as_key!(i), as_values!(i)) {
+			if let Err(e) = txn.set(vec![(as_key!(i), as_values!(i))]) {
 				panic!("{e}");
 			}
 		}
 
 		let key = as_key!(8);
-		let sv = txn.get(&key).unwrap().unwrap();
+		let sv = txn.get(&[key.clone()]).unwrap().pop().flatten().unwrap();
 		assert!(!sv.is_committed());
 		assert_eq!(from_bytes!(i32, *sv.bytes()), 8);
 		drop(sv);
 
-		assert!(txn.contains(&as_key!(8)).unwrap());
+		assert!(txn.contains(&[as_key!(8)]).unwrap()[0]);
 
 		txn.commit().unwrap();
 	}
@@ -55,8 +57,8 @@ fn test_multiple_write() {
 	let k = 8;
 	let v = 8;
 	let txn = engine.begin_query().unwrap();
-	assert!(txn.contains(&as_key!(k)).unwrap());
-	let sv = txn.get(&as_key!(k)).unwrap().unwrap();
+	assert!(txn.contains(&[as_key!(k)]).unwrap()[0]);
+	let sv = txn.get(&[as_key!(k)]).unwrap().pop().flatten().unwrap();
 	assert_eq!(from_bytes!(i32, *sv.bytes()), v);
 }
 
@@ -67,7 +69,7 @@ fn commit_self_lease_keeps_own_version_leasable_after_cutoff_advances() {
 	let engine = test_multi();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!("k"), as_values!("v".to_string())).unwrap();
+	txn.set(vec![(as_key!("k"), as_values!("v".to_string()))]).unwrap();
 	let version = txn.commit().unwrap();
 
 	// The GC cutoff advances past our own commit version while its post-commit phase is still open.

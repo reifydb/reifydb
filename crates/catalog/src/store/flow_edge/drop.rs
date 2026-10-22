@@ -14,9 +14,9 @@ impl CatalogStore {
 		let edge = CatalogStore::find_flow_edge(&mut Transaction::Admin(&mut *txn), edge_id)?;
 
 		if let Some(edge_def) = edge {
-			txn.remove(&FlowEdgeKey::new(edge_id))?;
+			txn.remove(vec![(FlowEdgeKey::new(edge_id).into(), None)])?;
 
-			txn.remove(&FlowEdgeByFlowKey::new(edge_def.flow, edge_id))?;
+			txn.remove(vec![(FlowEdgeByFlowKey::new(edge_def.flow, edge_id).into(), None)])?;
 		}
 
 		Ok(())

@@ -78,7 +78,7 @@ pub(crate) fn write_series_rows(
 	}
 
 	let written: Vec<EncodedBytes> = rows.into_iter().map(|row| row.freeze_bytes()).collect();
-	txn.set_many(keys.into_iter().zip(written.iter().cloned()).collect())?;
+	txn.set(keys.into_iter().zip(written.iter().cloned()).collect())?;
 	if !txn.series_row_post_insert_interceptors().is_empty() {
 		SeriesRowInterceptor::post_insert(txn, series, &written)?;
 	}
@@ -140,7 +140,7 @@ pub(crate) fn remove_series_rows(
 	if !txn.series_row_pre_delete_interceptors().is_empty() {
 		SeriesRowInterceptor::pre_delete(txn, series, ids)?;
 	}
-	txn.remove_many(removals.iter().map(|(key, pre_for_cdc)| (key.clone(), Some(pre_for_cdc.clone()))).collect())?;
+	txn.remove(removals.iter().map(|(key, pre_for_cdc)| (key.clone(), Some(pre_for_cdc.clone()))).collect())?;
 	if !txn.series_row_post_delete_interceptors().is_empty() {
 		let pre_rows: Vec<EncodedBytes> = removals.iter().map(|(_, pre_for_cdc)| pre_for_cdc.clone()).collect();
 		SeriesRowInterceptor::post_delete(txn, series, &pre_rows)?;

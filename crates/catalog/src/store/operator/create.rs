@@ -27,13 +27,13 @@ impl CatalogStore {
 		operator::set_type(&mut row, node.ty.discriminator());
 		operator::set_data(&mut row, &Blob::from(data));
 
-		txn.set(&OperatorKey::new(node.id), row.freeze())?;
+		txn.set(vec![(OperatorKey::new(node.id).into(), row.freeze().into())])?;
 
 		let mut index_row = operator_by_flow::allocate();
 		operator_by_flow::set_flow(&mut index_row, u64::from(flow));
 		operator_by_flow::set_id(&mut index_row, u64::from(node.id));
 
-		txn.set(&OperatorByFlowKey::new(flow, node.id), index_row.freeze())?;
+		txn.set(vec![(OperatorByFlowKey::new(flow, node.id).into(), index_row.freeze().into())])?;
 
 		Ok(())
 	}

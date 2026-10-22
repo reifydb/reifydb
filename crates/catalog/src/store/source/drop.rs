@@ -14,9 +14,9 @@ impl CatalogStore {
 		let source = CatalogStore::find_source(&mut Transaction::Admin(&mut *txn), object_id)?;
 
 		if let Some(source) = source {
-			txn.remove(&NamespaceSourceKey::new(source.namespace, object_id))?;
+			txn.remove(vec![(NamespaceSourceKey::new(source.namespace, object_id).into(), None)])?;
 
-			txn.remove(&SourceKey::new(object_id))?;
+			txn.remove(vec![(SourceKey::new(object_id).into(), None)])?;
 		}
 
 		Ok(())

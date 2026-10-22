@@ -55,14 +55,14 @@ pub(crate) fn drop_object_metadata(
 		}
 		drop(policy_stream);
 		for pk in policy_keys {
-			txn.remove(&pk)?;
+			txn.remove(vec![(pk.clone().into(), None)])?;
 		}
 
-		txn.remove(&ColumnSequenceKey::new(storage, *col_id))?;
+		txn.remove(vec![(ColumnSequenceKey::new(storage, *col_id).into(), None)])?;
 
-		txn.remove(&ColumnsKey::new(*col_id))?;
+		txn.remove(vec![(ColumnsKey::new(*col_id).into(), None)])?;
 
-		txn.remove(col_key)?;
+		txn.remove(vec![(col_key.clone().into(), None)])?;
 	}
 
 	let mut partition_stream =
@@ -76,7 +76,7 @@ pub(crate) fn drop_object_metadata(
 	}
 	drop(partition_stream);
 	for key in partition_keys {
-		txn.remove(&key)?;
+		txn.remove(vec![(key.clone().into(), None)])?;
 	}
 
 	if let Some(pk_id) = pk_id {
@@ -87,10 +87,10 @@ pub(crate) fn drop_object_metadata(
 				columns: Vec::new(),
 			},
 		)?;
-		txn.remove(&PrimaryKeyKey::new(pk_id))?;
+		txn.remove(vec![(PrimaryKeyKey::new(pk_id).into(), None)])?;
 	}
 
-	txn.remove(&RowSequenceKey::new(storage))?;
+	txn.remove(vec![(RowSequenceKey::new(storage).into(), None)])?;
 
 	Ok(())
 }

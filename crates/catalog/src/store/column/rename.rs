@@ -20,7 +20,7 @@ impl CatalogStore {
 		column_id: ColumnId,
 		new_name: &str,
 	) -> Result<()> {
-		if let Some(multi) = txn.get(&ColumnsKey::new(column_id))? {
+		if let Some(multi) = txn.get(&[ColumnsKey::new(column_id).into()])?.pop().flatten() {
 			let old = EncodedCatalogRow::try_from(multi.bytes)?;
 			let mut row = column::allocate();
 			column::set_id(&mut row, column::get_id(&old));
@@ -31,16 +31,16 @@ impl CatalogStore {
 			column::set_auto_increment(&mut row, column::get_auto_increment(&old));
 			column::set_constraint(&mut row, &column::get_constraint(&old));
 			column::set_dictionary_id(&mut row, column::get_dictionary_id(&old));
-			txn.set(&ColumnsKey::new(column_id), row.freeze())?;
+			txn.set(vec![(ColumnsKey::new(column_id).into(), row.freeze().into())])?;
 		}
 
-		if let Some(multi) = txn.get(&ColumnKey::new(object, column_id))? {
+		if let Some(multi) = txn.get(&[ColumnKey::new(object, column_id).into()])?.pop().flatten() {
 			let old = EncodedCatalogRow::try_from(multi.bytes)?;
 			let mut row = object_column::allocate();
 			object_column::set_id(&mut row, object_column::get_id(&old));
 			object_column::set_name(&mut row, new_name);
 			object_column::set_index(&mut row, object_column::get_index(&old));
-			txn.set(&ColumnKey::new(object, column_id), row.freeze())?;
+			txn.set(vec![(ColumnKey::new(object, column_id).into(), row.freeze().into())])?;
 		}
 
 		Ok(())

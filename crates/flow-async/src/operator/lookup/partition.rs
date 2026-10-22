@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::collections::{HashMap, HashSet};
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
@@ -43,21 +43,6 @@ impl DictionaryMemo {
 		&mut self,
 		host: &mut dyn HostContext,
 		dictionary: DictionaryId,
-		value: Value,
-	) -> Result<Option<DictionaryEntryId>> {
-		match self.found.entry((dictionary, value)) {
-			Entry::Occupied(found) => Ok(*found.get()),
-			Entry::Vacant(missing) => {
-				let id = host.dictionary_find(dictionary, &missing.key().1)?;
-				Ok(*missing.insert(id))
-			}
-		}
-	}
-
-	fn find_many(
-		&mut self,
-		host: &mut dyn HostContext,
-		dictionary: DictionaryId,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
 		let mut seen = HashSet::new();
@@ -70,7 +55,7 @@ impl DictionaryMemo {
 			.cloned()
 			.collect();
 		if !missing.is_empty() {
-			let ids = host.dictionary_find_many(dictionary, &missing)?;
+			let ids = host.dictionary_find(dictionary, &missing)?;
 			if ids.len() != missing.len() {
 				return internal_err!(
 					"dictionary find answered {} ids for {} values",
@@ -142,7 +127,7 @@ impl<'a> PartitionLookup<'a> {
 			};
 			let value = cast_value(value.clone(), &slot.target)?;
 			match slot.dictionary {
-				Some(dictionary) => match memo.find(host, dictionary, value)? {
+				Some(dictionary) => match memo.find(host, dictionary, &[value])?[0] {
 					Some(id) => hashed.push(id.to_value()),
 					None => return Ok(None),
 				},
@@ -209,7 +194,7 @@ impl<'a> PartitionLookup<'a> {
 			let values: Vec<Value> = full.iter().map(|&row| cast.get_value(row)).collect();
 			match slot.dictionary {
 				Some(dictionary) => {
-					let ids = memo.find_many(host, dictionary, &values)?;
+					let ids = memo.find(host, dictionary, &values)?;
 					for ((key, hit), id) in hashed.iter_mut().zip(matched.iter_mut()).zip(ids) {
 						match id {
 							Some(id) => key.push(id.to_value()),

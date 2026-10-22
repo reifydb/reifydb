@@ -31,7 +31,7 @@ impl CatalogStore {
 		}
 		token::set_created_at(&mut row, created_at);
 
-		txn.set(&TokenKey::new(id), row.freeze())?;
+		txn.set(vec![(TokenKey::new(id).into(), row.freeze().into())])?;
 
 		Ok(Token {
 			id,

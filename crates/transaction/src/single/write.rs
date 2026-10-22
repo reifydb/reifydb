@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem::take, ops::RangeBounds};
+use std::{collections::HashMap, mem::take, ops::RangeBounds, slice};
 
 use indexmap::IndexMap;
 use reifydb_core::{
@@ -101,7 +101,7 @@ impl<'a> SingleWriteTransaction<'a> {
 			self.inner.op_counts.lock().unwrap().key(key.clone().into().kind()).gets += 1;
 		}
 		let store = self.inner.store.read().clone();
-		SingleVersionGet::get(&store, &encoded)
+		Ok(SingleVersionGet::get(&store, slice::from_ref(&encoded))?.pop().flatten())
 	}
 
 	pub fn prefetch<K: Into<TaggedKey> + Clone>(&mut self, keys: &[K]) -> Result<()> {
@@ -126,13 +126,13 @@ impl<'a> SingleWriteTransaction<'a> {
 		#[cfg(feature = "testing")]
 		{
 			let mut counts = self.inner.op_counts.lock().unwrap();
-			counts.get_many_call();
+			counts.get_call();
 			for kind in kinds {
-				counts.key(kind).batched_gets += 1;
+				counts.key(kind).gets += 1;
 			}
 		}
 		let store = self.inner.store.read().clone();
-		for (key, row) in missing.iter().zip(SingleVersionGet::get_many(&store, &missing)?) {
+		for (key, row) in missing.iter().zip(SingleVersionGet::get(&store, &missing)?) {
 			self.fetched.insert(key.clone(), row.map(|row| row.bytes));
 		}
 		Ok(())

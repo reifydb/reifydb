@@ -664,7 +664,7 @@ impl LookupOperator {
 					..
 				},
 				_,
-			) => builder.unmatched_left_batch(&output_ids, left, &left_indices, &self.config.right_schema),
+			) => builder.unmatched_left(&output_ids, left, &left_indices, &self.config.right_schema),
 		}
 	}
 }
@@ -996,10 +996,10 @@ mod tests {
 		for (key, write) in pending.iter_sorted() {
 			let key = TaggedKey::decode(key).unwrap();
 			match write {
-				PendingWrite::Set(value) => cmd.set(&key, value.clone()).unwrap(),
+				PendingWrite::Set(value) => cmd.set(vec![(key.clone(), value.clone())]).unwrap(),
 				PendingWrite::Remove {
 					..
-				} => cmd.remove(&key).unwrap(),
+				} => cmd.remove(vec![(key.clone(), None)]).unwrap(),
 			};
 		}
 		cmd.commit().unwrap();
@@ -1340,7 +1340,10 @@ mod tests {
 		assert!(out.is_empty(), "a value missing from the dictionary matches nothing");
 		let mut host = TxnHostContext::new(&mut txn, OperatorId(OP));
 		assert_eq!(
-			host.dictionary_find(dictionary.id, &Value::Utf8("nope".to_string())).unwrap(),
+			host.dictionary_find(dictionary.id, &[Value::Utf8("nope".to_string())])
+				.unwrap()
+				.pop()
+				.flatten(),
 			None,
 			"the miss must not have interned the value"
 		);

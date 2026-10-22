@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::{
 		state::{
-			reaper::{drain, drain_groups, enqueue_many},
+			reaper::{drain, drain_groups, enqueue},
 			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 		},
 		state_access::{batch, get_many},
@@ -276,7 +276,7 @@ where
 		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
 		Self::publish_dirty_closes(aggregator, settings, store, &closing, frontier, emitted)?;
 		let expired: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
-		enqueue_many(store, &expired)?;
+		enqueue(store, &expired)?;
 		if !expired.is_empty() {
 			*reap_queue_empty = false;
 		}
@@ -829,7 +829,7 @@ where
 					let numbered: Vec<usize> = (0..cols.row_count().min(numbers.len())).collect();
 					*refused += (cols.row_count() - numbered.len()) as u64;
 					let extracted = batch_len::<A, _>(
-						aggregator.extract_batch(ctx, &cols, &numbered)?,
+						aggregator.extract(ctx, &cols, &numbered)?,
 						numbered.len(),
 						"extract_batch",
 					)?;
@@ -864,22 +864,22 @@ where
 					*refused += 2 * (paired - numbered.len()) as u64;
 					let rows_len = numbered.len();
 					let pre_coords = batch_len::<A, _>(
-						aggregator.coord_batch(&pre, &numbered)?,
+						aggregator.coord(&pre, &numbered)?,
 						rows_len,
 						"coord_batch",
 					)?;
 					let post_coords = batch_len::<A, _>(
-						aggregator.coord_batch(&post, &numbered)?,
+						aggregator.coord(&post, &numbered)?,
 						rows_len,
 						"coord_batch",
 					)?;
 					let before = batch_len::<A, _>(
-						aggregator.extract_batch(ctx, &pre, &numbered)?,
+						aggregator.extract(ctx, &pre, &numbered)?,
 						rows_len,
 						"extract_batch",
 					)?;
 					let after = batch_len::<A, _>(
-						aggregator.extract_batch(ctx, &post, &numbered)?,
+						aggregator.extract(ctx, &post, &numbered)?,
 						rows_len,
 						"extract_batch",
 					)?;
@@ -1529,17 +1529,35 @@ mod tests {
 
 				fn coord(
 					&self,
-					_: &impl crate::flow::operator::view::RowView,
-				) -> Result<Option<$coord>> {
-					Ok(None)
+					cols: &impl crate::flow::operator::view::ColumnsView,
+					rows: &[usize],
+				) -> Result<Vec<Option<$coord>>> {
+					rows.iter()
+						.map(|&i| {
+							cols.row(i)
+								.as_ref()
+								.map(|_| -> Result<Option<$coord>> { Ok(None) })
+								.transpose()
+								.map(Option::flatten)
+						})
+						.collect()
 				}
 
 				fn extract(
 					&self,
 					_: &mut impl GuestContext<Windowed>,
-					_: &impl crate::flow::operator::view::RowView,
-				) -> Result<Option<($group, i64)>> {
-					Ok(None)
+					cols: &impl crate::flow::operator::view::ColumnsView,
+					rows: &[usize],
+				) -> Result<Vec<Option<($group, i64)>>> {
+					rows.iter()
+						.map(|&i| {
+							cols.row(i)
+								.as_ref()
+								.map(|_| -> Result<Option<($group, i64)>> { Ok(None) })
+								.transpose()
+								.map(Option::flatten)
+						})
+						.collect()
 				}
 
 				fn new_accumulator(&self, settings: &WindowSettings<$coord>) -> LastValue<i64> {

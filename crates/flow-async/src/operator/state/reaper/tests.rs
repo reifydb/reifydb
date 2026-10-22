@@ -76,8 +76,8 @@ fn spares_the_root_group_so_the_expiry_index_drains_on_its_own() {
 #[test]
 fn a_queued_group_round_trips_through_its_key() {
 	let mut store = MockStore::default();
-	enqueue(&mut store, doomed_group()).unwrap();
-	enqueue(&mut store, bystander_group()).unwrap();
+	enqueue(&mut store, &[doomed_group()]).unwrap();
+	enqueue(&mut store, &[bystander_group()]).unwrap();
 
 	let mut got = queued(&mut store, 256).unwrap().groups;
 	got.sort();
@@ -94,7 +94,7 @@ fn draining_frees_a_queued_group_and_clears_its_queue_entry() {
 	let mut store = MockStore::default();
 	let accumulator = key(doomed_group(), KeyspaceId::ACCUMULATOR, 1);
 	seed(&mut store, &accumulator);
-	enqueue(&mut store, doomed_group()).unwrap();
+	enqueue(&mut store, &[doomed_group()]).unwrap();
 
 	let freed = drain(&mut store, &mut StoreReaper, 256).unwrap().freed;
 
@@ -110,8 +110,8 @@ fn draining_named_groups_never_consults_the_queue() {
 	let unnamed = key(bystander_group(), KeyspaceId::ACCUMULATOR, 1);
 	seed(&mut store, &named);
 	seed(&mut store, &unnamed);
-	enqueue(&mut store, doomed_group()).unwrap();
-	enqueue(&mut store, bystander_group()).unwrap();
+	enqueue(&mut store, &[doomed_group()]).unwrap();
+	enqueue(&mut store, &[bystander_group()]).unwrap();
 
 	let drained = drain_groups(&mut store, &[doomed_group()], &mut StoreReaper, 256).unwrap();
 
@@ -132,7 +132,7 @@ fn a_group_that_hits_the_budget_stays_queued_for_the_next_tick() {
 	for i in 0..5 {
 		seed(&mut store, &key(doomed_group(), KeyspaceId::ACCUMULATOR, i));
 	}
-	enqueue(&mut store, doomed_group()).unwrap();
+	enqueue(&mut store, &[doomed_group()]).unwrap();
 
 	let freed = drain(&mut store, &mut StoreReaper, 2).unwrap().freed;
 
@@ -156,7 +156,7 @@ fn draining_frees_the_identity_phase_once_the_data_phase_is_gone() {
 	let mapping = key(doomed_group(), KeyspaceId::GUEST_ROW_MAPPING, 1);
 	seed(&mut store, &accumulator);
 	seed(&mut store, &mapping);
-	enqueue(&mut store, doomed_group()).unwrap();
+	enqueue(&mut store, &[doomed_group()]).unwrap();
 
 	let freed = drain(&mut store, &mut StoreReaper, 256).unwrap().freed;
 
@@ -174,7 +174,7 @@ fn a_budget_spent_on_the_data_phase_defers_identity_to_the_next_tick() {
 		seed(&mut store, &key(doomed_group(), KeyspaceId::ACCUMULATOR, i));
 	}
 	seed(&mut store, &mapping);
-	enqueue(&mut store, doomed_group()).unwrap();
+	enqueue(&mut store, &[doomed_group()]).unwrap();
 
 	let freed = drain(&mut store, &mut StoreReaper, 2).unwrap().freed;
 
@@ -230,7 +230,7 @@ fn a_group_larger_than_the_budget_still_drains_the_queue_to_empty() {
 		seed(&mut store, k);
 	}
 	seed(&mut store, &key(doomed_group(), KeyspaceId::GUEST_ROW_MAPPING, 1));
-	enqueue(&mut store, doomed_group()).unwrap();
+	enqueue(&mut store, &[doomed_group()]).unwrap();
 
 	let mut rounds = 0;
 	loop {
@@ -432,7 +432,7 @@ fn the_batched_sweep_visits_groups_in_the_same_order_the_queue_hands_them_over()
 	let mut store = MockStore::default();
 	for group in [doomed_group(), bystander_group(), third_group()] {
 		seed(&mut store, &key(group, KeyspaceId::ACCUMULATOR, 1));
-		enqueue(&mut store, group).unwrap();
+		enqueue(&mut store, &[group]).unwrap();
 	}
 
 	let queue = queued(&mut store, 256).unwrap().groups;
@@ -445,7 +445,7 @@ fn a_batch_that_drains_every_queued_group_empties_the_queue_in_one_tick() {
 	let mut store = MockStore::default();
 	for group in [doomed_group(), bystander_group(), third_group()] {
 		seed(&mut store, &key(group, KeyspaceId::ACCUMULATOR, 1));
-		enqueue(&mut store, group).unwrap();
+		enqueue(&mut store, &[group]).unwrap();
 	}
 
 	let outcome = drain(&mut store, &mut StoreReaper, 256).unwrap();
@@ -464,8 +464,8 @@ fn a_batch_cut_by_the_budget_leaves_the_cut_group_wholly_unreaped_and_still_queu
 	for k in &survivors {
 		seed(&mut store, k);
 	}
-	enqueue(&mut store, third_group()).unwrap();
-	enqueue(&mut store, bystander_group()).unwrap();
+	enqueue(&mut store, &[third_group()]).unwrap();
+	enqueue(&mut store, &[bystander_group()]).unwrap();
 
 	let outcome = drain(&mut store, &mut StoreReaper, 2).unwrap();
 
@@ -478,8 +478,8 @@ fn a_batch_cut_by_the_budget_leaves_the_cut_group_wholly_unreaped_and_still_queu
 fn a_queued_group_holding_no_rows_still_leaves_the_queue_in_a_batched_drain() {
 	let mut store = MockStore::default();
 	seed(&mut store, &key(third_group(), KeyspaceId::ACCUMULATOR, 1));
-	enqueue(&mut store, third_group()).unwrap();
-	enqueue(&mut store, doomed_group()).unwrap();
+	enqueue(&mut store, &[third_group()]).unwrap();
+	enqueue(&mut store, &[doomed_group()]).unwrap();
 
 	drain(&mut store, &mut StoreReaper, 256).unwrap();
 
@@ -491,7 +491,7 @@ fn a_queued_group_holding_no_rows_still_leaves_the_queue_in_a_batched_drain() {
 #[should_panic(expected = "group id 0 is the root group")]
 fn enqueueing_the_root_group_panics() {
 	let mut store = MockStore::default();
-	enqueue(&mut store, GroupId::ROOT).unwrap();
+	enqueue(&mut store, &[GroupId::ROOT]).unwrap();
 }
 
 #[test]

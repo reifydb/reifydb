@@ -15,7 +15,7 @@ use reifydb::{
 			OperatorMetadata,
 			column::operator::OperatorColumn,
 			context::{GuestContext, Windowed},
-			view::RowView,
+			view::{ColumnsView, RowView},
 			windowed::operator::{CarryEmit, WindowedOperator},
 		},
 		row,
@@ -56,15 +56,38 @@ impl WindowedOperator for GuestCarry {
 		Ok(Self)
 	}
 
-	fn coord(&self, row: &impl RowView) -> SdkResult<Option<DateTime>> {
-		Ok(row.row_time())
+	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<DateTime>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> SdkResult<Option<DateTime>> { Ok(row.row_time()) })
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
-	fn extract(&self, _ctx: &mut impl GuestContext<Windowed>, row: &impl RowView) -> SdkResult<Option<(i32, f64)>> {
-		let (Some(g), Some(v)) = (row.i32("g")?, row.i32("v")?) else {
-			return Ok(None);
-		};
-		Ok(Some((g, v as f64)))
+	fn extract(
+		&self,
+		_ctx: &mut impl GuestContext<Windowed>,
+		cols: &impl ColumnsView,
+		rows: &[usize],
+	) -> SdkResult<Vec<Option<(i32, f64)>>> {
+		rows.iter()
+			.map(|&i| {
+				cols.row(i)
+					.as_ref()
+					.map(|row| -> SdkResult<Option<(i32, f64)>> {
+						let (Some(g), Some(v)) = (row.i32("g")?, row.i32("v")?) else {
+							return Ok(None);
+						};
+						Ok(Some((g, v as f64)))
+					})
+					.transpose()
+					.map(Option::flatten)
+			})
+			.collect()
 	}
 
 	fn new_accumulator(&self, _settings: &WindowSettings<DateTime>) -> Moments {

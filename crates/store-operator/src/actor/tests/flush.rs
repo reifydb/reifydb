@@ -141,7 +141,12 @@ fn body(row: &EncodedPodRow) -> String {
 }
 
 fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-	let write = match store.state_get(operator, &GroupStateKey::bound_unchecked(key.clone())).unwrap() {
+	let write = match store
+		.state_get(operator, &[GroupStateKey::bound_unchecked(key.clone())])
+		.unwrap()
+		.pop()
+		.flatten()
+	{
 		Some(pre) => OperatorWrite::Replace {
 			operator,
 			key: GroupStateKey::bound_unchecked(key),
@@ -158,7 +163,12 @@ fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: Encode
 }
 
 fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
-	let pre = match store.state_get(operator, &GroupStateKey::bound_unchecked(key.clone())).unwrap() {
+	let pre = match store
+		.state_get(operator, &[GroupStateKey::bound_unchecked(key.clone())])
+		.unwrap()
+		.pop()
+		.flatten()
+	{
 		Some(row) => LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)),
 		None => LayeredPre::Absent,
 	};
@@ -175,14 +185,19 @@ fn a_buffered_write_becomes_durable_and_the_buffer_stops_shadowing_it() {
 	put(&store, OP_A, key(1), row("written"));
 
 	assert!(
-		storage.get(OP_A, &key(1)).unwrap().is_none(),
+		storage.get(OP_A, &[&key(1)]).unwrap().pop().flatten().is_none(),
 		"the write must still be memory only before the flush; a synchronous sqlite write is exactly \
 		 what the resident state exists to remove from the flow commit path"
 	);
 
 	assert!(store.begin_flush_pending().wait(), "a healthy sqlite tier must report the flush as completed");
 
-	let durable = storage.get(OP_A, &key(1)).unwrap().expect("the flush must have made the write durable");
+	let durable = storage
+		.get(OP_A, &[&key(1)])
+		.unwrap()
+		.pop()
+		.flatten()
+		.expect("the flush must have made the write durable");
 	assert_eq!(
 		body(&durable),
 		"written",
@@ -191,8 +206,10 @@ fn a_buffered_write_becomes_durable_and_the_buffer_stops_shadowing_it() {
 	);
 
 	let served = store
-		.state_get(OP_A, &GroupStateKey::bound_unchecked(key(1)))
+		.state_get(OP_A, &[GroupStateKey::bound_unchecked(key(1))])
 		.unwrap()
+		.pop()
+		.flatten()
 		.expect("the key must still read back after the flush");
 	assert_eq!(
 		body(&served),
@@ -215,11 +232,11 @@ fn a_buffered_tombstone_flushes_as_a_delete_so_the_row_cannot_resurrect() {
 	assert!(store.begin_flush_pending().wait(), "the tombstone must reach the flusher");
 
 	assert!(
-		storage.get(OP_A, &key(1)).unwrap().is_none(),
+		storage.get(OP_A, &[&key(1)]).unwrap().pop().flatten().is_none(),
 		"the tombstone must be executed as a DELETE, not skipped as an absent write"
 	);
 	assert!(
-		store.state_get(OP_A, &GroupStateKey::bound_unchecked(key(1))).unwrap().is_none(),
+		store.state_get(OP_A, &[GroupStateKey::bound_unchecked(key(1))]).unwrap().pop().flatten().is_none(),
 		"with the buffer drained the read reaches sqlite; a skipped delete resurrects the row the \
 		 operator already removed"
 	);
@@ -246,8 +263,10 @@ fn a_drop_flushes_before_the_writes_recorded_after_it() {
 	assert!(store.begin_flush_pending().wait(), "the marker and the later write travel in one batch");
 
 	let survivor = storage
-		.get(OP_A, &key(3))
+		.get(OP_A, &[&key(3)])
 		.unwrap()
+		.pop()
+		.flatten()
 		.expect("the write recorded after the drop must survive the drop's DELETE");
 	assert_eq!(
 		body(&survivor),
@@ -256,15 +275,15 @@ fn a_drop_flushes_before_the_writes_recorded_after_it() {
 		 operator silently starts from empty state"
 	);
 	assert!(
-		storage.get(OP_A, &key(1)).unwrap().is_none(),
+		storage.get(OP_A, &[&key(1)]).unwrap().pop().flatten().is_none(),
 		"the marker must erase the flushed rows the drop only masked in memory"
 	);
 	assert!(
-		storage.get(OP_A, &key(2)).unwrap().is_none(),
+		storage.get(OP_A, &[&key(2)]).unwrap().pop().flatten().is_none(),
 		"a pre-drop buffered write must never be replayed into sqlite behind the drop"
 	);
 	assert!(
-		storage.get(OP_B, &key(1)).unwrap().is_some(),
+		storage.get(OP_B, &[&key(1)]).unwrap().pop().flatten().is_some(),
 		"the drop is scoped to one operator, otherwise one seal wipes the whole store"
 	);
 }
@@ -311,7 +330,12 @@ fn an_empty_flush_is_a_no_op_that_leaves_the_flusher_able_to_flush_again() {
 	put(&store, OP_A, key(1), row("after-the-empty-flushes"));
 	assert!(store.begin_flush_pending().wait(), "the flusher must still be usable after an empty drain");
 
-	let durable = storage.get(OP_A, &key(1)).unwrap().expect("the write after two empty flushes must be durable");
+	let durable = storage
+		.get(OP_A, &[&key(1)])
+		.unwrap()
+		.pop()
+		.flatten()
+		.expect("the write after two empty flushes must be durable");
 	assert_eq!(
 		body(&durable),
 		"after-the-empty-flushes",
@@ -377,12 +401,12 @@ fn a_flush_waits_for_the_running_one_instead_of_taking_a_batch_beside_it() {
 	second.join().expect("the waiting flush must finish");
 
 	assert_eq!(
-		storage.get(OP_A, &key(1)).unwrap().map(|row| body(&row)),
+		storage.get(OP_A, &[&key(1)]).unwrap().pop().flatten().map(|row| body(&row)),
 		Some("first".to_string()),
 		"the first batch reached sqlite"
 	);
 	assert_eq!(
-		storage.get(OP_A, &key(2)).unwrap().map(|row| body(&row)),
+		storage.get(OP_A, &[&key(2)]).unwrap().pop().flatten().map(|row| body(&row)),
 		Some("second".to_string()),
 		"the waiting flush wrote what arrived while it waited; returning early instead would report \
 		 a durable store to a shutdown that then closes the connection under the running flusher"
@@ -488,7 +512,7 @@ fn a_cancelled_flusher_answers_the_pending_flush_instead_of_eating_it() {
 		 timeout and then aborts the process on a flush that actually succeeded"
 	);
 	assert_eq!(
-		storage.get(OP_A, &key(1)).unwrap().map(|row| body(&row)),
+		storage.get(OP_A, &[&key(1)]).unwrap().pop().flatten().map(|row| body(&row)),
 		Some("pending-at-cancel".to_string()),
 		"the cancelled path must still drain, otherwise the reply is a lie in the other direction"
 	);
@@ -529,10 +553,10 @@ fn a_batch_spanning_more_than_one_chunk_writes_and_removes_every_row() {
 		"a set batch spanning a full 100-row chunk plus a 50-row remainder must still flush in one call"
 	);
 	for &suffix in &suffixes {
-		let durable = storage
-			.get(OP_A, &key(suffix))
-			.unwrap()
-			.unwrap_or_else(|| panic!("key {suffix} must be durable once the chunked insert commits"));
+		let durable =
+			storage.get(OP_A, &[&key(suffix)]).unwrap().pop().flatten().unwrap_or_else(|| {
+				panic!("key {suffix} must be durable once the chunked insert commits")
+			});
 		assert_eq!(
 			body(&durable),
 			"chunked",
@@ -550,7 +574,7 @@ fn a_batch_spanning_more_than_one_chunk_writes_and_removes_every_row() {
 	);
 	for &suffix in &suffixes {
 		assert!(
-			storage.get(OP_A, &key(suffix)).unwrap().is_none(),
+			storage.get(OP_A, &[&key(suffix)]).unwrap().pop().flatten().is_none(),
 			"every row must be deleted regardless of which chunk it was batched into"
 		);
 	}
@@ -579,10 +603,10 @@ fn a_buffer_far_past_the_budget_is_still_drained_completely_by_one_flush() {
 	flush_now(&buffer);
 
 	for index in 0..67 {
-		let durable = storage
-			.get(OP_A, &key(index))
-			.unwrap()
-			.unwrap_or_else(|| panic!("key {index} must be durable once the bounded flush returns"));
+		let durable =
+			storage.get(OP_A, &[&key(index)]).unwrap().pop().flatten().unwrap_or_else(|| {
+				panic!("key {index} must be durable once the bounded flush returns")
+			});
 		assert_eq!(body(&durable), format!("v{index}"), "every slice must carry its own values to sqlite");
 	}
 	assert!(buffer.take_for_flush().is_none(), "a completed flush must leave nothing behind for the next tick");
@@ -602,18 +626,24 @@ fn a_key_rewritten_between_two_slices_ends_durable_as_the_later_value() {
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a first slice");
 	storage.flush_batch(&first);
 	buffer.settle_flush(first);
-	assert_eq!(storage.get(OP_A, &key(1)).unwrap().map(|row| body(&row)), Some("early".to_string()));
+	assert_eq!(
+		storage.get(OP_A, &[&key(1)]).unwrap().pop().flatten().map(|row| body(&row)),
+		Some("early".to_string())
+	);
 
 	set(&buffer, OP_A, key(1), row("late"));
 	flush_now(&buffer);
 
 	assert_eq!(
-		storage.get(OP_A, &key(1)).unwrap().map(|row| body(&row)),
+		storage.get(OP_A, &[&key(1)]).unwrap().pop().flatten().map(|row| body(&row)),
 		Some("late".to_string()),
 		"the rewrite must win; a split that replays the earlier value rolls the key back under a reader \
 		 that already saw the newer one"
 	);
-	assert_eq!(storage.get(OP_A, &key(3)).unwrap().map(|row| body(&row)), Some("tail".to_string()));
+	assert_eq!(
+		storage.get(OP_A, &[&key(3)]).unwrap().pop().flatten().map(|row| body(&row)),
+		Some("tail".to_string())
+	);
 }
 
 #[test]
@@ -638,7 +668,7 @@ fn a_shutdown_drains_a_buffer_far_past_the_budget_instead_of_one_slice_of_it() {
 	assert!(matches!(directive, Directive::Stop), "the shutdown message must still stop the actor");
 	for index in 0..41 {
 		assert_eq!(
-			storage.get(OP_A, &key(index)).unwrap().map(|row| body(&row)),
+			storage.get(OP_A, &[&key(index)]).unwrap().pop().flatten().map(|row| body(&row)),
 			Some("at-shutdown".to_string()),
 			"key {index} was committed and acknowledged, so a shutdown that leaves it in memory loses it"
 		);
@@ -676,7 +706,7 @@ fn a_cancelled_flusher_also_drains_a_buffer_far_past_the_budget() {
 
 	for index in 0..37 {
 		assert_eq!(
-			storage.get(OP_A, &key(index)).unwrap().map(|row| body(&row)),
+			storage.get(OP_A, &[&key(index)]).unwrap().pop().flatten().map(|row| body(&row)),
 			Some("at-cancel".to_string()),
 			"key {index} must be durable before the cancelled flusher answers its waiter"
 		);
@@ -703,7 +733,7 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 	}
 	thread::sleep(Duration::from_milliseconds_const(100).to_std());
 	assert!(
-		storage.get(OP_A, &key(0)).unwrap().is_none(),
+		storage.get(OP_A, &[&key(0)]).unwrap().pop().flatten().is_none(),
 		"a buffer resting exactly on the byte budget must not be flushed early; the budget is the window, \
 		 and a trigger that fires on it stops the buffer batching at all"
 	);
@@ -712,12 +742,13 @@ fn a_buffer_that_reaches_the_budget_is_flushed_without_waiting_for_the_interval(
 
 	let deadline = Instant::now() + Duration::from_seconds_const(5).to_std();
 	while Instant::now() < deadline
-		&& (storage.get(OP_A, &key(0)).unwrap().is_none() || buffer.metrics().backlog > buffer.budget())
+		&& (storage.get(OP_A, &[&key(0)]).unwrap().pop().flatten().is_none()
+			|| buffer.metrics().backlog > buffer.budget())
 	{
 		thread::sleep(Duration::from_milliseconds_const(5).to_std());
 	}
 	assert_eq!(
-		storage.get(OP_A, &key(0)).unwrap().map(|row| body(&row)),
+		storage.get(OP_A, &[&key(0)]).unwrap().pop().flatten().map(|row| body(&row)),
 		Some("under-the-budget".to_string()),
 		"crossing the byte budget must make the coldest key durable on its own; the flush interval here \
 		 is an hour, so anything less means only the timer can ever drain the buffer"

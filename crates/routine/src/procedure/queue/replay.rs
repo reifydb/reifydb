@@ -166,7 +166,9 @@ fn locate(
 	let store = single.read_store();
 	for partition in 0..queue.partitions() {
 		let Some(stored) =
-			SingleVersionGet::get(&store, &QueueItemStateKey::encoded(queue.id, partition, row))?
+			SingleVersionGet::get(&store, &[QueueItemStateKey::encoded(queue.id, partition, row)])?
+				.pop()
+				.flatten()
 		else {
 			continue;
 		};

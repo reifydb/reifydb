@@ -23,7 +23,7 @@ use reifydb_flow_async::{
 	operator::sink::DurableSink,
 	timer::{Timer, TimerDue},
 	transaction::{
-		ChangeCoordinate, FlowTransaction, dictionary::DictionaryExtension, pending_get, pending_get_many,
+		ChangeCoordinate, FlowTransaction, dictionary::DictionaryExtension, pending_get_many,
 		substrate::FlowSubstrate,
 	},
 };
@@ -168,23 +168,19 @@ impl FlowTransaction for TestFlowTransaction {
 }
 
 impl Get for TestFlowTransaction {
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<EncodedBytes>> {
-		pending_get(self, key)
-	}
-
-	fn get_many(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 		pending_get_many(self, keys)
 	}
 }
 
 impl Batch for TestFlowTransaction {
 	fn set(&mut self, keys: Vec<EncodedKey>, rows: Vec<EncodedBytes>) -> Result<()> {
-		self.pending_mut().insert_batch(keys, rows);
+		self.pending_mut().insert(keys, rows);
 		Ok(())
 	}
 
 	fn remove(&mut self, keys: Vec<EncodedKey>) -> Result<()> {
-		self.pending_mut().remove_batch(keys);
+		self.pending_mut().remove(keys);
 		Ok(())
 	}
 }

@@ -29,7 +29,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
 	) -> Result<Option<RingBuffer>> {
-		let Some(multi) = rx.get(&RingBufferKey::new(ringbuffer))? else {
+		let Some(multi) = rx.get(&[RingBufferKey::new(ringbuffer).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
 
@@ -61,7 +61,7 @@ impl CatalogStore {
 		rx: &mut Transaction<'_>,
 		ringbuffer: RingBufferId,
 	) -> Result<Option<RingBufferMetadata>> {
-		let Some(multi) = rx.get(&RingBufferMetadataKey::new(ringbuffer))? else {
+		let Some(multi) = rx.get(&[RingBufferMetadataKey::new(ringbuffer).into()])?.pop().flatten() else {
 			return Ok(None);
 		};
 
@@ -74,7 +74,7 @@ impl CatalogStore {
 		partition_values: &[Value],
 	) -> Result<Option<RingBufferMetadata>> {
 		let key = RingBufferMetadataKey::partition(ringbuffer, partition_values.to_vec());
-		let Some(multi) = rx.get(&key)? else {
+		let Some(multi) = rx.get(&[key.clone().into()])?.pop().flatten() else {
 			return Ok(None);
 		};
 

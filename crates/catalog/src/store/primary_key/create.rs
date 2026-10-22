@@ -86,7 +86,7 @@ impl CatalogStore {
 		primary_key::set_source(&mut row, to_create.object.as_u64());
 		primary_key::set_column_ids(&mut row, &serialize_column_ids(&to_create.column_ids));
 
-		txn.set(&PrimaryKeyKey::new(id), row.freeze())?;
+		txn.set(vec![(PrimaryKeyKey::new(id).into(), row.freeze().into())])?;
 		Ok(id)
 	}
 

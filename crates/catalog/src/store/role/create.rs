@@ -29,7 +29,7 @@ impl CatalogStore {
 		role::set_id(&mut row, role_id);
 		role::set_name(&mut row, name);
 
-		txn.set(&RoleKey::new(role_id), row.freeze())?;
+		txn.set(vec![(RoleKey::new(role_id).into(), row.freeze().into())])?;
 
 		Ok(Role {
 			id: role_id,

@@ -138,6 +138,7 @@ impl ExpirySuffix for CustomManagedDueKey {
 	}
 }
 
+#[cfg(feature = "runtime")]
 pub(crate) fn expiry_set<E: OperatorState>(store: &mut dyn StateStore, key: GroupStateKey, entry: E) -> Result<()> {
 	store.state_set(&key, entry.encode_state()?)
 }
@@ -271,18 +272,6 @@ where
 	K::Suffix: ExpirySuffix,
 {
 	pub(crate) fn set<E: OperatorState>(
-		&mut self,
-		store: &mut dyn StateStore,
-		key: GroupStateKey,
-		entry: E,
-	) -> Result<()> {
-		let expiry = expiry_of::<K>(&key);
-		self.inserted = Some(self.inserted.map_or(expiry, |seen| seen.min(expiry)));
-		self.earliest = self.earliest.map(|earliest| earliest.min(expiry));
-		expiry_set(store, key, entry)
-	}
-
-	pub(crate) fn set_many<E: OperatorState>(
 		&mut self,
 		store: &mut dyn StateStore,
 		rows: Vec<(GroupStateKey, E)>,
@@ -534,10 +523,12 @@ mod tests {
 
 		index.set(
 			&mut store,
-			key(50, 1),
-			Entry {
-				row: 1,
-			},
+			vec![(
+				key(50, 1),
+				Entry {
+					row: 1,
+				},
+			)],
 		)
 		.unwrap();
 
@@ -556,10 +547,12 @@ mod tests {
 		assert!(index.due::<Entry>(&mut store, 100, 16).unwrap().is_empty());
 		index.set(
 			&mut store,
-			key(50, 1),
-			Entry {
-				row: 1,
-			},
+			vec![(
+				key(50, 1),
+				Entry {
+					row: 1,
+				},
+			)],
 		)
 		.unwrap();
 		index.settle(&mut store).unwrap();
@@ -591,10 +584,12 @@ mod tests {
 
 		index.set(
 			&mut store,
-			key(21, 2),
-			Entry {
-				row: 2,
-			},
+			vec![(
+				key(21, 2),
+				Entry {
+					row: 2,
+				},
+			)],
 		)
 		.unwrap();
 

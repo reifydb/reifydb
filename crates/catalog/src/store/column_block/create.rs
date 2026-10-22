@@ -88,7 +88,7 @@ impl CatalogStore {
 		column_block::set_partition_values(&mut row, &serialize_partition_values(&to_create.partition_values));
 		column_block::set_stats(&mut row, &serialize_stats(&to_create.stats));
 
-		txn.set(&ColumnBlockKey::new(id), row.freeze())?;
+		txn.set(vec![(ColumnBlockKey::new(id).into(), row.freeze().into())])?;
 		Ok(())
 	}
 
@@ -104,17 +104,17 @@ impl CatalogStore {
 				table_id,
 				..
 			} => {
-				txn.set(&TableColumnBlockKey::new(*table_id, id), row.into_bytes())?;
+				txn.set(vec![(TableColumnBlockKey::new(*table_id, id).into(), row.into_bytes())])?;
 			}
 			ColumnBlockSource::Series {
 				series_id,
 				partition,
 				..
 			} => {
-				txn.set(
-					&SeriesColumnBlockKey::new(*series_id, partition.unwrap_or_default(), id),
+				txn.set(vec![(
+					SeriesColumnBlockKey::new(*series_id, partition.unwrap_or_default(), id).into(),
 					row.into_bytes(),
-				)?;
+				)])?;
 			}
 		}
 

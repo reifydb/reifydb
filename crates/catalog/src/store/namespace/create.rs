@@ -52,7 +52,7 @@ impl CatalogStore {
 		}
 		namespace::set_local_name(&mut row, &to_create.local_name);
 
-		txn.set(&NamespaceKey::new(namespace_id), row.freeze())?;
+		txn.set(vec![(NamespaceKey::new(namespace_id).into(), row.freeze().into())])?;
 
 		Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)
 	}
@@ -74,7 +74,7 @@ impl CatalogStore {
 		}
 		namespace::set_local_name(&mut row, &to_create.local_name);
 
-		txn.set(&NamespaceKey::new(namespace_id), row.freeze())?;
+		txn.set(vec![(NamespaceKey::new(namespace_id).into(), row.freeze().into())])?;
 
 		Self::get_namespace(&mut Transaction::Admin(&mut *txn), namespace_id)
 	}

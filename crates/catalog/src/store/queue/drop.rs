@@ -21,13 +21,13 @@ use crate::{CatalogStore, Result, store::object::drop::drop_object_metadata};
 impl CatalogStore {
 	pub(crate) fn drop_queue(txn: &mut AdminTransaction, queue: QueueId) -> Result<()> {
 		if let Some(queue_def) = Self::find_queue(&mut Transaction::Admin(&mut *txn), queue)? {
-			txn.remove(&NamespaceQueueKey::new(queue_def.namespace, queue))?;
+			txn.remove(vec![(NamespaceQueueKey::new(queue_def.namespace, queue).into(), None)])?;
 			remove_queue_scheduling_state(&txn.single, queue, queue_def.partitions())?;
 		}
 
 		drop_object_metadata(txn, queue.into(), None)?;
 
-		txn.remove(&QueueKey::new(queue))?;
+		txn.remove(vec![(QueueKey::new(queue).into(), None)])?;
 
 		Ok(())
 	}

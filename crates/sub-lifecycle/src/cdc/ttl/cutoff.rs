@@ -139,7 +139,7 @@ mod tests {
 		let mut cmd = host.begin_command().unwrap();
 		CdcCheckpoint::persist(&mut cmd, &CdcConsumerId::new("ddl"), CommitVersion(40), ConsumerClass::Pinning)
 			.unwrap();
-		cmd.set(&CdcConsumerId::new("torn").to_consumer_key(), make_bytes("bad")).unwrap();
+		cmd.set(vec![(CdcConsumerId::new("torn").to_consumer_key().into(), make_bytes("bad"))]).unwrap();
 		cmd.commit().unwrap();
 
 		assert!(

@@ -29,7 +29,9 @@ pub(crate) fn partition_stats(txn: &mut Transaction<'_>, queue: &Queue) -> Resul
 	let mut stats = Vec::with_capacity(usize::from(queue.partitions()));
 
 	for partition in 0..queue.partitions() {
-		let counters = SingleVersionGet::get(&store, &QueuePartitionKey::encoded(queue.id, partition))?
+		let counters = SingleVersionGet::get(&store, &[QueuePartitionKey::encoded(queue.id, partition)])?
+			.pop()
+			.flatten()
 			.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 			.unwrap_or_default();
 

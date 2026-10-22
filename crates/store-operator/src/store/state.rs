@@ -235,22 +235,8 @@ impl StandardOperatorStore {
 		SizeProbe::Persistent
 	}
 
-	#[instrument(name = "store::operator::state_get", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.as_slice().len()))]
-	pub fn state_get(&self, operator: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		let key = key.as_encoded();
-		match self.resident.lookup_state(operator, key) {
-			BufferedState::Row(row) => Ok(Some(row)),
-			BufferedState::Tombstone | BufferedState::Dropped => Ok(None),
-			BufferedState::Absent => self.persistent_get(operator, key),
-		}
-	}
-
 	#[instrument(name = "store::operator::state_get_many", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
-	pub fn state_get_many(
-		&self,
-		operator: OperatorId,
-		keys: &[GroupStateKey],
-	) -> Result<Vec<Option<EncodedPodRow>>> {
+	pub fn state_get(&self, operator: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		if keys.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -291,7 +277,7 @@ impl StandardOperatorStore {
 			}
 			if !fetch.is_empty() {
 				for (index, row) in
-					fetch_index.into_iter().zip(self.persistent.get_many(operator, &fetch)?)
+					fetch_index.into_iter().zip(self.persistent.get(operator, &fetch)?)
 				{
 					found[index] = row;
 				}
@@ -310,21 +296,8 @@ impl StandardOperatorStore {
 		Ok(answers)
 	}
 
-	fn persistent_get(&self, operator: OperatorId, key: &EncodedKey) -> Result<Option<EncodedPodRow>> {
-		if self.persistent.is_absent() {
-			return Ok(None);
-		}
-		if let Some(authoritative) = self.range.lookup(operator, key) {
-			return Ok(authoritative);
-		}
-		if self.resident.never_persisted(operator, key) {
-			return Ok(None);
-		}
-		self.durable_get(operator, key)
-	}
-
 	fn durable_get(&self, operator: OperatorId, key: &EncodedKey) -> Result<Option<EncodedPodRow>> {
-		self.persistent.get(operator, &GroupStateKey::bound_unchecked(key.clone()))
+		Ok(self.persistent.get(operator, &[GroupStateKey::bound_unchecked(key.clone())])?.pop().flatten())
 	}
 
 	#[instrument(name = "store::operator::contains", level = "trace", skip(self, key), fields(operator = operator.0, key_len = key.as_slice().len()), ret)]
@@ -729,12 +702,6 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn state_get(&self, operator: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		match self {
-			Self::Standard(store) => store.state_get(operator, key),
-		}
-	}
-
 	pub fn state_sizes(&self, probes: &[(OperatorId, GroupStateKey)]) -> Result<Vec<Option<ByteSize>>> {
 		match self {
 			Self::Standard(store) => store.state_sizes(probes),
@@ -753,13 +720,9 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn state_get_many(
-		&self,
-		operator: OperatorId,
-		keys: &[GroupStateKey],
-	) -> Result<Vec<Option<EncodedPodRow>>> {
+	pub fn state_get(&self, operator: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		match self {
-			Self::Standard(store) => store.state_get_many(operator, keys),
+			Self::Standard(store) => store.state_get(operator, keys),
 		}
 	}
 

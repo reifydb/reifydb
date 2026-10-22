@@ -251,7 +251,7 @@ fn run_table_update(
 			})
 			.collect();
 		let old_rows: Vec<EncodedBytes> = txn
-			.get_many(&row_keys)?
+			.get(&row_keys)?
 			.into_iter()
 			.map(|row| row.expect("bytes must exist for update").bytes)
 			.collect();
@@ -423,7 +423,7 @@ impl KeyRotation {
 			} else if self.removed.contains(&post_encoded) {
 				false
 			} else {
-				txn.contains(&post_key)?
+				txn.contains(&[post_key.clone()])?[0]
 			};
 			if taken {
 				let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
@@ -441,8 +441,8 @@ impl KeyRotation {
 	}
 
 	fn write(self, txn: &mut Transaction<'_>) -> Result<()> {
-		txn.remove_many(self.removes)?;
-		txn.set_many(self.sets)
+		txn.remove(self.removes)?;
+		txn.set(self.sets)
 	}
 }
 

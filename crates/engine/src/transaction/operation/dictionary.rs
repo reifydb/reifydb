@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashSet;
+use std::{collections::HashSet, slice};
 
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -84,7 +84,7 @@ fn find_through(
 	value: &Value,
 ) -> Result<Option<DictionaryEntryId>> {
 	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-	registry.find(dictionary, value)
+	Ok(registry.find(dictionary, slice::from_ref(value))?.remove(0))
 }
 
 fn find_many_through(
@@ -93,7 +93,7 @@ fn find_many_through(
 	values: &[Value],
 ) -> Result<Vec<Option<DictionaryEntryId>>> {
 	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-	registry.find_batch(dictionary, values)
+	registry.find(dictionary, values)
 }
 
 impl DictionaryOperations for CommandTransaction {

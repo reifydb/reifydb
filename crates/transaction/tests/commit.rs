@@ -130,14 +130,18 @@ fn write_submission(
 	v: EncodedBytes,
 ) -> CommitSubmission {
 	CommitSubmission {
-		apply: Box::new(move |txn| txn.set(&k, v)),
+		apply: Box::new(move |txn| txn.set(vec![(k.clone().into(), v)])),
 		completion: recorder.completion(index),
 	}
 }
 
 fn read_back(begin: &CommitBegin, k: &QueueDeduplicationKey) -> Option<Vec<u8>> {
 	let mut txn = begin().expect("begin read-back transaction");
-	let result = txn.get(k).expect("get").map(|bytes| bytes.bytes.to_vec());
+	let result = txn
+		.get(&[k.clone().into()])
+		.map(|mut found| found.pop().flatten())
+		.expect("get")
+		.map(|bytes| bytes.bytes.to_vec());
 	txn.rollback().expect("rollback read-back transaction");
 	result
 }
@@ -180,7 +184,7 @@ fn a_failing_apply_rolls_back_its_own_writes_and_the_handle_keeps_committing() {
 	let recorder_0 = Arc::clone(&recorder);
 	handle.submit(CommitSubmission {
 		apply: Box::new(move |txn| {
-			txn.set(&k0_apply, encoded_bytes("should-roll-back"))?;
+			txn.set(vec![(k0_apply.clone().into(), encoded_bytes("should-roll-back"))])?;
 			internal_err!("boom")
 		}),
 		completion: Box::new(move |result: Result<CommitVersion>| {

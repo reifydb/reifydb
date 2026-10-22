@@ -4,6 +4,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	ops::Bound,
+	slice,
 };
 
 use arrow_array::RecordBatch;
@@ -286,7 +287,7 @@ impl SinkRingBufferViewOperator {
 	) -> Result<()> {
 		reifydb_assertions! {
 			let mirrored = self.read_meta_mirror(txn, partition)?;
-			let stored = txn.get(mvcc)?.map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(&row))).transpose()?;
+			let stored = txn.get(slice::from_ref(mvcc))?.pop().flatten().map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(&row))).transpose()?;
 			assert_eq!(
 				mirrored, stored,
 				"the ringbuffer metadata mirror and its mvcc row disagree right after a write; the \
@@ -302,7 +303,7 @@ impl SinkRingBufferViewOperator {
 			return Ok(metadata);
 		}
 		let key = RingBufferMetadataKey::encoded(self.storage);
-		let metadata = match txn.get(&key)? {
+		let metadata = match txn.get(slice::from_ref(&key))?.pop().flatten() {
 			Some(row) => decode_ringbuffer_metadata(EncodedPodRow::view(&row))?,
 			None => RingBufferMetadata::new(),
 		};
@@ -328,7 +329,7 @@ impl SinkRingBufferViewOperator {
 			return Ok(metadata);
 		}
 		let key = RingBufferMetadataKey::encoded_partition(self.storage, partition_values.to_vec());
-		let metadata = match txn.get(&key)? {
+		let metadata = match txn.get(slice::from_ref(&key))?.pop().flatten() {
 			Some(row) => decode_ringbuffer_metadata(EncodedPodRow::view(&row))?,
 			None => RingBufferMetadata::new(),
 		};
@@ -975,7 +976,7 @@ impl SinkRingBufferViewOperator {
 			let entries = self.row_entries(txn, &window)?;
 			let keys: Vec<EncodedKey> =
 				window.iter().map(|&(_, rn)| self.rb_key(object_id, rn, partition)).collect();
-			let stored = txn.get_many(&keys)?;
+			let stored = txn.get(&keys)?;
 			for (((&(_, rn), entry), key), row) in window.iter().zip(entries).zip(keys).zip(stored) {
 				meta.head += 1;
 				if let Some((time, source_rn)) = entry {
@@ -1325,10 +1326,10 @@ mod tests {
 		for (key, pw) in pending.rows_ordered() {
 			let key = TaggedKey::decode(key).unwrap();
 			match pw {
-				PendingWrite::Set(v) => cmd.set(&key, v.clone()).unwrap(),
+				PendingWrite::Set(v) => cmd.set(vec![(key.clone(), v.clone())]).unwrap(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Announced,
-				} => cmd.remove(&key).unwrap(),
+				} => cmd.remove(vec![(key.clone(), None)]).unwrap(),
 				PendingWrite::Remove {
 					announce: RemoveVisibility::Unobserved,
 				} => cmd.remove_unobserved(&key).unwrap(),
@@ -1477,7 +1478,11 @@ mod tests {
 		} else {
 			RingBufferMetadataKey::encoded_partition(RB, values.to_vec())
 		};
-		txn.get(&key).unwrap().map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(&row)).unwrap())
+		txn.get(&[key])
+			.unwrap()
+			.pop()
+			.flatten()
+			.map(|row| decode_ringbuffer_metadata(EncodedPodRow::view(&row)).unwrap())
 	}
 
 	fn base(value: &str) -> Vec<Value> {

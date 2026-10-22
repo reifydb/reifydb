@@ -28,7 +28,7 @@ use reifydb_sdk::{
 		OperatorMetadata,
 		column::operator::OperatorColumn,
 		context::{GuestContext, Windowed},
-		view::RowView,
+		view::{ColumnsView, RowView},
 		windowed::{
 			operator::{AllKinds, Emit, PlainMarker, TopKMarker, WindowDriver, WindowedOperator},
 			top_k::TopKDriver,
@@ -155,21 +155,42 @@ macro_rules! volume_operator {
 				Ok(Self)
 			}
 
-			fn coord(&self, row: &impl RowView) -> Result<Option<DateTime>> {
-				Ok(row.row_time())
+			fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<DateTime>>> {
+				rows.iter()
+					.map(|&i| {
+						cols.row(i)
+							.as_ref()
+							.map(|row| -> Result<Option<DateTime>> { Ok(row.row_time()) })
+							.transpose()
+							.map(Option::flatten)
+					})
+					.collect()
 			}
 
 			fn extract(
 				&self,
 				_: &mut impl GuestContext<Windowed>,
-				row: &impl RowView,
-			) -> Result<Option<(String, (u64, f64))>> {
-				let (Some(group), Some(trader), Some(volume)) =
-					(row.utf8("group")?, row.u64("trader")?, row.f64("volume")?)
-				else {
-					return Ok(None);
-				};
-				Ok(Some((group.to_string(), (trader, volume))))
+				cols: &impl ColumnsView,
+				rows: &[usize],
+			) -> Result<Vec<Option<(String, (u64, f64))>>> {
+				rows.iter()
+					.map(|&i| {
+						cols.row(i)
+							.as_ref()
+							.map(|row| -> Result<Option<(String, (u64, f64))>> {
+								let (Some(group), Some(trader), Some(volume)) = (
+									row.utf8("group")?,
+									row.u64("trader")?,
+									row.f64("volume")?,
+								) else {
+									return Ok(None);
+								};
+								Ok(Some((group.to_string(), (trader, volume))))
+							})
+							.transpose()
+							.map(Option::flatten)
+					})
+					.collect()
 			}
 
 			fn new_accumulator(&self, _: &WindowSettings<DateTime>) -> TraderVolumes {

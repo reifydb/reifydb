@@ -31,11 +31,14 @@ impl CatalogStore {
 			}
 			drop(stream);
 			for key in keys_to_remove {
-				txn.remove(&IdentityAttributeValueKey::new(key.identity, key.attribute))?;
+				txn.remove(vec![(
+					IdentityAttributeValueKey::new(key.identity, key.attribute).into(),
+					None,
+				)])?;
 			}
 		}
 
-		txn.remove(&IdentityAttributeKey::new(attribute))?;
+		txn.remove(vec![(IdentityAttributeKey::new(attribute).into(), None)])?;
 		Ok(())
 	}
 }

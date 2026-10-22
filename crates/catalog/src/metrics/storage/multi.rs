@@ -4,6 +4,7 @@
 use std::{
 	collections::{HashMap, HashSet},
 	ops::AddAssign,
+	slice,
 };
 
 use reifydb_codec::row::bytes::EncodedBytes;
@@ -176,7 +177,11 @@ impl<S: SingleVersionStore> StorageMetricsReader<S> {
 
 	pub fn get(&self, tier: Tier, id: MetricsId) -> Result<Option<MultiStorageMetrics>> {
 		let key = encode_storage_stats_key(tier, id);
-		Ok(self.storage.get(&key)?.and_then(|v| decode_storage_stats(v.bytes.as_slice())))
+		Ok(self.storage
+			.get(slice::from_ref(&key))?
+			.pop()
+			.flatten()
+			.and_then(|v| decode_storage_stats(v.bytes.as_slice())))
 	}
 
 	pub fn scan_all(&self) -> Result<Vec<((Tier, MetricsId), MultiStorageMetrics)>> {

@@ -143,7 +143,7 @@ impl QueryNode for RowPointLookupNode {
 		let object_id = get_object_id(&self.source)?;
 		let encoded_key = RowKey::new(object_id, RowNumber(self.row_number));
 
-		if let Some(multi_values) = rx.get(&encoded_key)? {
+		if let Some(multi_values) = rx.get(&[encoded_key.clone().into()])?.pop().flatten() {
 			let columns = storage_columns(&self.source, &self.dictionaries)?;
 			let columns = self.append_batch(rx, columns, multi_values.bytes)?;
 			let columns = decode_dictionary_columns(columns, &self.dictionaries, rx)?;
@@ -230,7 +230,7 @@ impl RowListLookupNode {
 		for &row_num in &self.row_numbers[start..end] {
 			let encoded_key = RowKey::new(object_id, RowNumber(row_num));
 
-			if let Some(multi_values) = rx.get(&encoded_key)? {
+			if let Some(multi_values) = rx.get(&[encoded_key.clone().into()])?.pop().flatten() {
 				batch.push(multi_values.bytes);
 				found_row_numbers.push(RowNumber(row_num));
 				commit_versions.push(multi_values.version.0);
@@ -372,7 +372,7 @@ impl RowRangeScanNode {
 		for row_num in start..=end {
 			let encoded_key = RowKey::new(object_id, RowNumber(row_num));
 
-			if let Some(multi_values) = rx.get(&encoded_key)? {
+			if let Some(multi_values) = rx.get(&[encoded_key.clone().into()])?.pop().flatten() {
 				batch.push(multi_values.bytes);
 				found_row_numbers.push(RowNumber(row_num));
 				commit_versions.push(multi_values.version.0);

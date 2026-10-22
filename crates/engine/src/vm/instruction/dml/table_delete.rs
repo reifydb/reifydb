@@ -186,7 +186,7 @@ fn run_table_delete_with_input(
 			row_key_from_partition(target.table.id, partitions_to_delete.get(idx).copied(), row_number)
 		})
 		.collect();
-	let old_rows = txn.get_many(&row_keys)?;
+	let old_rows = txn.get(&row_keys)?;
 
 	let mut filtered_ids: Vec<RowNumber> = Vec::with_capacity(row_numbers_to_delete.len());
 	let mut filtered_partitions: Vec<Partition> = Vec::with_capacity(partitions_to_delete.len());
