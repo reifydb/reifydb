@@ -255,7 +255,6 @@ mod tests {
 			kinds: &["sliding"],
 			domain: WindowSizeDomain::Slots,
 			needs_pane: true,
-			throttles: false,
 		};
 		let descriptor = ExternRustOperatorDescriptor {
 			abi_tag: EXTERN_RUST_ABI_TAG,

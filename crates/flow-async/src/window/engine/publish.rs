@@ -7,22 +7,18 @@ use reifydb_macro::operator_state;
 #[operator_state]
 #[derive(Debug, Clone, PartialEq)]
 pub struct PublishState<O> {
-	pub last_publish: Option<u64>,
-	pub dirty: bool,
 	pub row: Option<O>,
 }
 
 impl<O: HeapSize> HeapSize for PublishState<O> {
 	fn heap_size(&self) -> usize {
-		self.last_publish.heap_size() + self.dirty.heap_size() + self.row.heap_size()
+		self.row.heap_size()
 	}
 }
 
 impl<O> Default for PublishState<O> {
 	fn default() -> Self {
 		Self {
-			last_publish: None,
-			dirty: false,
 			row: None,
 		}
 	}
@@ -58,8 +54,6 @@ mod tests {
 	fn publish_state_round_trips_every_field() {
 		// A field lost in storage would publish a stale pre row or re-publish a window that was never dirty.
 		let state = PublishState {
-			last_publish: Some(1_700_000_000_000),
-			dirty: true,
 			row: Some(Published {
 				group: "BTC".into(),
 				count: 7,

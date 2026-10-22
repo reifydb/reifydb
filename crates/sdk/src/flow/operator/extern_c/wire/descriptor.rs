@@ -14,8 +14,6 @@ pub struct ExternCWindowRequirements {
 	pub domain: u8,
 
 	pub needs_pane: u8,
-
-	pub throttles: u8,
 }
 
 #[repr(C)]

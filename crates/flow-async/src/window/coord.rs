@@ -176,13 +176,6 @@ impl SealDomain for OrdinalCoord {
 		Ok(Some(RowSpan::of(count.saturating_add(lateness))))
 	}
 
-	fn throttle_of(with: &ApplyWith) -> Result<Option<RowSpan>> {
-		match with.throttle {
-			Some(_) => Err(CoreError::OperatorWithThrottleWindow.into()),
-			None => Ok(None),
-		}
-	}
-
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>> {
 		let Some(kind) = &with.window else {
 			return Err(CoreError::OperatorWithWindowMissing.into());
@@ -331,26 +324,9 @@ mod tests {
 			lateness: Some(WithSpan::Count(6)),
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		assert_eq!(OrdinalCoord::seal_span_of(&with).unwrap(), Some(RowSpan::of(70)));
-	}
-
-	#[test]
-	fn the_slot_domain_refuses_a_throttle() {
-		// a row window has no time span to throttle by, so accepting one would silently never throttle
-		let with = ApplyWith {
-			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(64),
-			}),
-			lateness: None,
-			immutable: None,
-			retention: None,
-			throttle: Some(secs(5)),
-		};
-
-		assert!(OrdinalCoord::throttle_of(&with).is_err());
 	}
 
 	#[test]
@@ -363,7 +339,6 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		assert_eq!(OrdinalCoord::seal_span_of(&with).unwrap(), None);
@@ -379,7 +354,6 @@ mod tests {
 			lateness: Some(WithSpan::Duration(secs(30))),
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		assert!(OrdinalCoord::seal_span_of(&with).is_err());
@@ -424,7 +398,6 @@ mod tests {
 			lateness: Some(WithSpan::Count(4)),
 			immutable: Some(WithSpan::Count(2)),
 			retention: None,
-			throttle: None,
 		};
 		let omitted = ApplyWith {
 			window: Some(WindowKind::Tumbling {
@@ -433,7 +406,6 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		let declared = OrdinalCoord::window_settings_of(&declared).unwrap();
@@ -457,7 +429,6 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		assert!(OrdinalCoord::window_settings_of(&ApplyWith::default()).is_err());
@@ -475,7 +446,6 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		let settings = OrdinalCoord::window_settings_of(&sliding).unwrap();

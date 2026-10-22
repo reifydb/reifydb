@@ -14,7 +14,6 @@ use reifydb_core::{
 	key::operator::state::GroupId,
 	metrics::heap::{HeapSize, OperatorSample},
 	operator_with::ApplyWith,
-	state::timer::StateStore,
 };
 use reifydb_flow_async::{
 	operator::{
@@ -22,17 +21,17 @@ use reifydb_flow_async::{
 			reaper::{drain, drain_groups, enqueue},
 			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 		},
-		state_access::{batch, get_classified},
+		state_access::batch,
 	},
 	window::{
 		accumulator::WindowAccumulator,
 		engine::{
-			AccumulatorEvent, EmitKind, KeyspaceFamily, PublishKey, WindowReindex, WindowStateKey,
+			AccumulatorEvent, EmitKind, PublishKey, WindowReindex,
 			publish::PublishState,
 			rolling::{RollingBuckets, RollingBuffer, RollingEngine, RollingEviction},
 			session::{GuestSession, SessionEngine},
 			sliding::SlidingEngine,
-			tumbling::{ExpiredWindow, TumblingBuckets, TumblingEngine},
+			tumbling::{TumblingBuckets, TumblingEngine},
 		},
 		kind::session::SessionAssignment,
 		settings::WindowSettings,
@@ -146,7 +145,6 @@ where
 	session: Option<SessionMode<A>>,
 	reap_queue_empty: bool,
 	seal_span: Option<SealSpan<A>>,
-	throttle: Option<<A::Coord as Coord>::Span>,
 	settings: WindowSettings<A::Coord>,
 }
 
@@ -259,14 +257,11 @@ where
 {
 	#[allow(clippy::too_many_arguments)]
 	fn expire_through<C: GuestContext>(
-		aggregator: &A,
 		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
 		reap_queue_empty: &mut bool,
-		settings: &WindowSettings<A::Coord>,
 		store: &mut GuestAsHost<'_, C>,
 		frontier: A::Coord,
 		seal_span: SealSpan<A>,
-		emitted: &mut Emitted<A>,
 	) -> Result<()> {
 		let horizon = <A::Coord as SealDomain>::horizon(frontier, seal_span);
 		if horizon <= <A::Coord as Coord>::from_order(0) {
@@ -274,7 +269,6 @@ where
 		}
 		let store_queue_empty = *reap_queue_empty;
 		let closing = engine.expire(store, horizon.to_order().saturating_sub(1))?;
-		Self::publish_dirty_closes(aggregator, settings, store, &closing, frontier, emitted)?;
 		let expired: Vec<GroupId> = closing.iter().map(|window| window.group_id).collect();
 		enqueue(store, &expired)?;
 		if !expired.is_empty() {
@@ -302,93 +296,6 @@ where
 		}
 		Ok(())
 	}
-
-	fn publish_dirty_closes<C: GuestContext>(
-		aggregator: &A,
-		settings: &WindowSettings<A::Coord>,
-		store: &mut GuestAsHost<'_, C>,
-		windows: &[ExpiredWindow<A::GroupKey, A::Coord>],
-		frontier: A::Coord,
-		emitted: &mut Emitted<A>,
-	) -> Result<()> {
-		if windows.is_empty() {
-			return Ok(());
-		}
-		let slots: Vec<EncodedKey> =
-			windows.iter().map(|window| Self::row_key(&window.group, window.window_start)).collect();
-		let keys: Vec<PublishKey> = windows
-			.iter()
-			.zip(&slots)
-			.map(|(window, slot)| PublishKey::new(window.group_id, slot.clone()))
-			.collect();
-		let mut session = batch::<_, PublishState<A::Output>>(store, &keys)?;
-		let mut dirty: Vec<(usize, PublishState<A::Output>)> = Vec::new();
-		for slot in 0..windows.len() {
-			if let Some(state) = session.value(slot)?
-				&& state.dirty
-			{
-				dirty.push((slot, state));
-			}
-		}
-		if dirty.is_empty() {
-			return Ok(());
-		}
-		let accumulator_keys: Vec<WindowStateKey> = dirty
-			.iter()
-			.map(|(slot, _)| {
-				WindowStateKey::new(
-					KeyspaceFamily::Guest,
-					windows[*slot].group_id,
-					slots[*slot].clone(),
-				)
-			})
-			.collect();
-		let accumulators = get_classified::<_, A::Accumulator>(store, &accumulator_keys)?;
-		let groups: Vec<GroupId> = dirty.iter().map(|(slot, _)| windows[*slot].group_id).collect();
-		let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
-		reifydb_assertions! {
-			let requested = groups.len();
-			let returned = rows.len();
-			assert!(
-				returned == requested,
-				"the identity batch must return one row per dirty closing window; a short batch drops the \
-				 tail, so those windows never publish their closing row (requested={requested}, \
-				 returned={returned})"
-			);
-		}
-		for (((slot, mut state), accumulator), row) in dirty.into_iter().zip(accumulators).zip(rows) {
-			let window = &windows[slot];
-			#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
-			let (row_number, is_new) = row;
-			reifydb_assertions! {
-				let group_id = window.group_id;
-				assert!(
-					accumulator.is_some(),
-					"a dirty window closed with no accumulator; emptying a window must store a clean \
-					 publish state, otherwise the close retracts a row downstream already dropped \
-					 (group={group_id:?})"
-				);
-				assert!(
-					!is_new,
-					"a dirty window already published a row, so it must still own its mapping; minting \
-					 one here publishes the closing row under a number no sink has seen \
-					 (group={group_id:?})"
-				);
-			}
-			let out = accumulator.and_then(|accumulator| accumulator.finalize()).and_then(|value| {
-				aggregator.build_output(
-					&window.group,
-					WindowSpan::for_coord(window.window_start, settings.fixed_size()),
-					&value,
-				)
-			});
-			publish_row::<A>(row_number, out, &mut state, Some(frontier), emitted)?;
-			session.set(slot, &state)?;
-		}
-		session.commit(store)?;
-		Ok(())
-	}
-
 	fn expire_rolling<C: GuestContext>(
 		aggregator: &A,
 		mode: &mut RollingMode<A>,
@@ -527,13 +434,11 @@ where
 		engine: &mut TumblingEngine<A::GroupKey, A::Coord, A::Accumulator>,
 		reap_queue_empty: &mut bool,
 		seal_span: Option<SealSpan<A>>,
-		throttle: Option<<A::Coord as Coord>::Span>,
 		settings: &WindowSettings<A::Coord>,
 		ctx: &mut C,
 		mut buckets: Buckets<A>,
 	) -> Result<Emitted<A>> {
 		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
-		let mut frontier: Option<A::Coord> = None;
 		if let Some(seal_span) = seal_span {
 			let mut store = GuestAsHost(ctx);
 			let newest = buckets.keys().map(|(_, span)| span.start).max();
@@ -541,7 +446,6 @@ where
 				observe_batch(&mut store, newest, seal_span)?;
 			}
 			let watermark = seal_frontier::<A::Coord>(&mut store)?;
-			frontier = Some(watermark);
 			let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
 			let mut dropped = 0u64;
 			buckets.retain(|(_, span), events| {
@@ -555,16 +459,7 @@ where
 			if dropped > 0 {
 				debug!(operator = A::NAME, dropped, "mutations targeting sealed windows were dropped");
 			}
-			Self::expire_through(
-				aggregator,
-				engine,
-				reap_queue_empty,
-				settings,
-				&mut store,
-				watermark,
-				seal_span,
-				&mut emitted,
-			)?;
+			Self::expire_through(engine, reap_queue_empty, &mut store, watermark, seal_span)?;
 			if buckets.is_empty() {
 				return Ok(emitted);
 			}
@@ -622,23 +517,12 @@ where
 		for (slot, r) in results.into_iter().enumerate() {
 			let mut state = session.value(slot)?.unwrap_or_default();
 			if r.kind == EmitKind::Remove {
-				publish_row::<A>(r.row_number, None, &mut state, frontier, &mut emitted)?;
-				session.set(slot, &state)?;
-				continue;
-			}
-			let due = match (throttle, state.last_publish, frontier) {
-				(Some(throttle), Some(last), Some(frontier)) => {
-					<A::Coord as Coord>::from_order(last).add_span(throttle) <= frontier
-				}
-				_ => true,
-			};
-			if state.row.is_some() && !due {
-				state.dirty = true;
+				publish_row::<A>(r.row_number, None, &mut state, &mut emitted)?;
 				session.set(slot, &state)?;
 				continue;
 			}
 			let out = aggregator.build_output(&r.group, r.span, &r.value);
-			publish_row::<A>(r.row_number, out, &mut state, frontier, &mut emitted)?;
+			publish_row::<A>(r.row_number, out, &mut state, &mut emitted)?;
 			session.set(slot, &state)?;
 		}
 		session.commit(&mut store)?;
@@ -1131,17 +1015,8 @@ where
 		if let Some(newest) = buckets.keys().map(|(group, span)| session_of(group, span).last).max() {
 			observe_batch(&mut store, newest, seal_span)?;
 		}
-		let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
-		Self::expire_through(
-			aggregator,
-			mode.engine.tumbling_mut(),
-			reap_queue_empty,
-			settings,
-			&mut store,
-			watermark,
-			seal_span,
-			&mut emitted,
-		)?;
+		let emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
+		Self::expire_through(mode.engine.tumbling_mut(), reap_queue_empty, &mut store, watermark, seal_span)?;
 		if buckets.is_empty() {
 			return Ok(emitted);
 		}
@@ -1282,7 +1157,6 @@ where
 		},
 		domain: <A::Coord as SealDomain>::SIZE_DOMAIN,
 		needs_pane: <A::Kinds as KindSet<A>>::ROLLING,
-		throttles: true,
 	};
 
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;
@@ -1293,7 +1167,6 @@ where
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
 		with.reject_retention()?;
-		with.check_throttle(true)?;
 		let rolls = <A::Kinds as KindSet<A>>::ROLLING
 			&& with.window.as_ref().is_some_and(|kind| kind.name() == "rolling");
 		let slides = with.window.as_ref().is_some_and(|kind| kind.name() == "sliding");
@@ -1302,7 +1175,6 @@ where
 			with.require_window("tumbling")?;
 		}
 		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
-		let throttle = <A::Coord as SealDomain>::throttle_of(with)?;
 		let settings = <A::Coord as SealDomain>::window_settings_of(with)?;
 		with.check_session_window()?;
 		let aggregator = A::create(operator_id, params, with)?;
@@ -1345,7 +1217,6 @@ where
 			session,
 			reap_queue_empty: false,
 			seal_span,
-			throttle,
 			settings,
 		})
 	}
@@ -1394,18 +1265,8 @@ where
 					(None, Some(mode)) => mode.engine.tumbling_mut(),
 					(None, None) => engine,
 				};
-				let mut emitted: Emitted<A> = (Vec::new(), Vec::new(), Vec::new());
-				Self::expire_through(
-					aggregator,
-					tumbling,
-					reap_queue_empty,
-					settings,
-					&mut store,
-					frontier,
-					seal_span,
-					&mut emitted,
-				)?;
-				emitted
+				Self::expire_through(tumbling, reap_queue_empty, &mut store, frontier, seal_span)?;
+				(Vec::new(), Vec::new(), Vec::new())
 			}
 		};
 		self.emit_batches(ctx, &inserts, &updates, &removes)
@@ -1437,7 +1298,6 @@ where
 				sliding,
 				reap_queue_empty,
 				seal_span,
-				throttle,
 				settings,
 				..
 			} = &mut *self;
@@ -1455,7 +1315,6 @@ where
 						tumbling,
 						reap_queue_empty,
 						*seal_span,
-						*throttle,
 						settings,
 						ctx,
 						buckets,
@@ -1598,7 +1457,6 @@ mod tests {
 			lateness: lateness.map(|n| WithSpan::Duration(secs(n))),
 			immutable: immutable.map(|n| WithSpan::Duration(secs(n))),
 			retention: None,
-			throttle: None,
 		}
 	}
 
@@ -1678,7 +1536,6 @@ mod tests {
 			lateness: Some(WithSpan::Count(4)),
 			immutable: Some(WithSpan::Count(2)),
 			retention: None,
-			throttle: None,
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
@@ -1703,7 +1560,6 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		let driver = PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).unwrap();
@@ -1737,46 +1593,10 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &rolling).is_err());
 		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &ApplyWith::default()).is_err());
-	}
-
-	#[test]
-	fn create_refuses_throttle_on_sliding() {
-		// Throttle is defined for tumbling only; a sliding driver that accepted it would silently ignore it.
-		let mut with = ApplyWith {
-			window: Some(WindowKind::Sliding {
-				size: WindowSize::Duration(secs(60)),
-				slide: WindowSize::Duration(secs(10)),
-			}),
-			lateness: None,
-			immutable: None,
-			retention: None,
-			throttle: None,
-		};
-		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &with).is_ok(), "precondition");
-		with.throttle = Some(secs(5));
-		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &with).is_err());
-	}
-
-	#[test]
-	fn create_refuses_throttle_without_a_closing_rule() {
-		// A window that never closes would hold its last throttled change unpublished forever.
-		let mut with = ApplyWith {
-			window: Some(WindowKind::Tumbling {
-				size: WindowSize::Count(10),
-			}),
-			lateness: None,
-			immutable: None,
-			retention: None,
-			throttle: None,
-		};
-		assert!(PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).is_ok(), "precondition");
-		with.throttle = Some(secs(5));
-		assert!(PlainDriver::<SlotProbe>::create(OperatorId(1), &params(), &with).is_err());
 	}
 
 	#[test]
@@ -1790,7 +1610,6 @@ mod tests {
 				kinds: &["tumbling", "sliding", "session"],
 				domain: WindowSizeDomain::Time,
 				needs_pane: false,
-				throttles: true,
 			}
 		);
 	}

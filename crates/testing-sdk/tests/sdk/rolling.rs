@@ -206,7 +206,6 @@ fn window_with() -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
 		retention: None,
-		throttle: None,
 	}
 }
 
@@ -220,7 +219,6 @@ fn sealed_with() -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(117))),
 		immutable: None,
 		retention: None,
-		throttle: None,
 	}
 }
 
@@ -477,7 +475,6 @@ fn a_plain_operator_with_all_kinds_publishes_tumbling_sliding_session_and_rollin
 			kinds: &["tumbling", "sliding", "session", "rolling"],
 			domain: WindowSizeDomain::Time,
 			needs_pane: true,
-			throttles: true,
 		}
 	);
 }

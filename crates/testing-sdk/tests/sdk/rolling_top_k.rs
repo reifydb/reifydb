@@ -188,7 +188,6 @@ fn window_with() -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: None,
 		retention: None,
-		throttle: None,
 	}
 }
 
@@ -202,7 +201,6 @@ fn sealed_with() -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(117))),
 		immutable: None,
 		retention: None,
-		throttle: None,
 	}
 }
 
@@ -216,7 +214,6 @@ fn dead_with() -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(10))),
 		immutable: None,
 		retention: None,
-		throttle: None,
 	}
 }
 
@@ -494,7 +491,6 @@ fn create_with_the_wrong_window_kind_reports_flow_066() {
 		lateness: None,
 		immutable: None,
 		retention: None,
-		throttle: None,
 	};
 	let Err(err) = InProcessOperatorHarnessBuilder::<TopKDriver<TestTopVolume>>::new().with(with).build() else {
 		panic!("create must refuse an unsupported window kind");
@@ -512,7 +508,6 @@ fn a_top_k_operator_publishes_rolling_only_and_needs_pane() {
 			kinds: &["rolling"],
 			domain: WindowSizeDomain::Time,
 			needs_pane: true,
-			throttles: false,
 		}
 	);
 }

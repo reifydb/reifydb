@@ -29,7 +29,6 @@ const NO_WINDOW: WindowRequirements = WindowRequirements {
 	kinds: &[],
 	domain: WindowSizeDomain::Time,
 	needs_pane: false,
-	throttles: false,
 };
 
 struct Bar {

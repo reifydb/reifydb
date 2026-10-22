@@ -69,7 +69,6 @@ impl SubsystemFactory for FlowWithAPanickingOperator {
 				kinds: &[],
 				domain: WindowSizeDomain::Time,
 				needs_pane: false,
-				throttles: false,
 			},
 			unmanaged_because: None,
 		};

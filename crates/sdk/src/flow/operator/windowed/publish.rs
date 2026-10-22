@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_flow_async::{operator::state::seal::coord::Coord, window::engine::publish::PublishState};
+use reifydb_flow_async::window::engine::publish::PublishState;
 use reifydb_value::value::row_number::RowNumber;
 
 use crate::{
@@ -18,7 +18,6 @@ pub(super) fn publish_row<A>(
 	row_number: RowNumber,
 	out: Option<A::Output>,
 	state: &mut PublishState<A::Output>,
-	watermark: Option<A::Coord>,
 	emitted: &mut Emitted<A>,
 ) -> Result<()>
 where
@@ -38,7 +37,5 @@ where
 		(None, Some(pre)) => emitted.2.push((row_number, pre)),
 		(None, None) => {}
 	}
-	state.last_publish = watermark.map(|watermark| watermark.to_order());
-	state.dirty = false;
 	Ok(())
 }

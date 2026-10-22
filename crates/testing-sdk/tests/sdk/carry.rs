@@ -181,7 +181,6 @@ fn window_with(immutable: Option<i64>) -> ApplyWith {
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
 		immutable: immutable.map(|n| WithSpan::Duration(millis(n as u64))),
 		retention: None,
-		throttle: None,
 	}
 }
 
@@ -244,7 +243,6 @@ fn the_carry_driver_refuses_a_window_that_is_not_tumbling() {
 		lateness: None,
 		immutable: None,
 		retention: None,
-		throttle: None,
 	};
 
 	let Err(err) = InProcessOperatorHarnessBuilder::<CarryDriver<Probe>>::new().with(with).build() else {
@@ -280,7 +278,6 @@ fn a_carry_operator_publishes_tumbling_only() {
 			kinds: &["tumbling"],
 			domain: WindowSizeDomain::Time,
 			needs_pane: false,
-			throttles: false,
 		}
 	);
 }

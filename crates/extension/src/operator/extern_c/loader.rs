@@ -234,7 +234,6 @@ pub fn decode_window(window: &ExternCWindowRequirements) -> ExternCResult<Window
 		kinds,
 		domain,
 		needs_pane: window.needs_pane != 0,
-		throttles: window.throttles != 0,
 	})
 }
 
@@ -308,7 +307,6 @@ mod tests {
 			kinds,
 			domain,
 			needs_pane: 1,
-			throttles: 1,
 		}
 	}
 
@@ -330,17 +328,6 @@ mod tests {
 		assert!(decoded.needs_pane);
 		assert!(decode_window(&window(0b1_0000, 1)).is_err());
 		assert!(decode_window(&window(0b1, 0)).is_err());
-	}
-
-	#[test]
-	fn a_window_decodes_its_throttle_byte() {
-		// A throttle byte read as false makes the host refuse every throttled view of an extern-C driver.
-		assert!(decode_window(&window(0b1, 1)).unwrap().throttles);
-		let silent = ExternCWindowRequirements {
-			throttles: 0,
-			..window(0b1, 1)
-		};
-		assert!(!decode_window(&silent).unwrap().throttles);
 	}
 
 	#[test]

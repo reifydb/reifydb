@@ -14,7 +14,6 @@ use crate::error::{
 		flow_operator_with_not_accepted, flow_operator_with_pane_missing,
 		flow_operator_with_retention_below_lateness, flow_operator_with_retention_not_supported,
 		flow_operator_with_session_lateness, flow_operator_with_session_zero_gap,
-		flow_operator_with_throttle_not_supported, flow_operator_with_throttle_window,
 		flow_operator_with_window_kind_unsupported, flow_operator_with_window_missing,
 		flow_operator_with_window_not_supported, flow_operator_with_window_size_count,
 		flow_operator_with_window_size_duration, flow_operator_with_window_slide_count,
@@ -152,10 +151,6 @@ impl IntoDiagnostic for CoreError {
 			CoreError::OperatorRetentionRequired => flow_operator_retention_required(),
 
 			CoreError::OperatorWithRetentionNotSupported => flow_operator_with_retention_not_supported(),
-
-			CoreError::OperatorWithThrottleNotSupported => flow_operator_with_throttle_not_supported(),
-
-			CoreError::OperatorWithThrottleWindow => flow_operator_with_throttle_window(),
 
 			CoreError::OperatorWithRetentionBelowLateness {
 				retention,

@@ -118,7 +118,6 @@ impl UnmanagedOperator for GatedPassThrough {
 		kinds: &[],
 		domain: WindowSizeDomain::Time,
 		needs_pane: false,
-		throttles: false,
 	};
 
 	fn create(_operator_id: OperatorId, params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {

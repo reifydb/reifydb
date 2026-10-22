@@ -604,6 +604,7 @@ impl FlowSupervisor {
 			retry_limit: FLOW_RETRY_LIMIT,
 			retry_backoff: Duration::from_milliseconds(FLOW_RETRY_BACKOFF_MS as i64).unwrap(),
 			wake_coalesce: self.engine.catalog().get_config_duration(ConfigKey::FlowWakeCoalesce),
+			linger: self.engine.catalog().get_config_duration(ConfigKey::FlowLinger),
 			batch_size: self.engine.catalog().get_config_uint2(ConfigKey::FlowActorBatchSize) as usize,
 		};
 		let actor = match start {

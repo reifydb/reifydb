@@ -34,8 +34,6 @@ pub trait SealDomain: Coord {
 
 	fn seal_span_of(with: &ApplyWith) -> Result<Option<Self::SealSpan>>;
 
-	fn throttle_of(with: &ApplyWith) -> Result<Option<Self::Span>>;
-
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>>;
 
 	fn observe(store: &mut (impl StateStore + TimerStore), newest: Self, seal_span: Self::SealSpan) -> Result<()>;
@@ -76,10 +74,6 @@ impl SealDomain for DateTime {
 		}
 		let lateness = with.lateness_duration()?.unwrap_or_else(Duration::zero);
 		Ok(SealRule::for_window(kind, lateness).map(|rule| rule.admissible().duration()))
-	}
-
-	fn throttle_of(with: &ApplyWith) -> Result<Option<Duration>> {
-		Ok(with.throttle)
 	}
 
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>> {
@@ -227,7 +221,6 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		assert!(DateTime::seal_span_of(&with).is_err());
@@ -246,7 +239,6 @@ mod tests {
 			lateness: Some(WithSpan::Duration(Duration::from_seconds(20).unwrap())),
 			immutable: Some(WithSpan::Duration(Duration::from_seconds(15).unwrap())),
 			retention: None,
-			throttle: None,
 		};
 		let tumbling = ApplyWith {
 			window: Some(WindowKind::Tumbling {
@@ -255,7 +247,6 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		let rolling = DateTime::window_settings_of(&rolling).unwrap();
@@ -280,7 +271,6 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		assert!(DateTime::window_settings_of(&ApplyWith::default()).is_err());
@@ -298,7 +288,6 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		let settings = DateTime::window_settings_of(&sliding).unwrap();
@@ -317,7 +306,6 @@ mod tests {
 			lateness: None,
 			immutable: None,
 			retention: None,
-			throttle: None,
 		};
 
 		let settings = DateTime::window_settings_of(&session).unwrap();

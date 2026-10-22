@@ -26,6 +26,8 @@ pub enum FlowActorMessage {
 
 	Tick,
 
+	LingerDue,
+
 	Sample,
 
 	PublishRestoredFrontiers,

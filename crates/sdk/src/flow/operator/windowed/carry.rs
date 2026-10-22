@@ -267,7 +267,6 @@ where
 		kinds: &["tumbling"],
 		domain: <A::Coord as SealDomain>::SIZE_DOMAIN,
 		needs_pane: false,
-		throttles: false,
 	};
 
 	const UNMANAGED_BECAUSE: Option<&'static str> = None;

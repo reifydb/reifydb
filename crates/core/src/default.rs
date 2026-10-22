@@ -137,6 +137,8 @@ pub mod flow {
 
 	pub const WAKE_COALESCE: Duration = Duration::from_milliseconds_const(20);
 	pub const WAKE_COALESCE_TESTING: Duration = Duration::from_milliseconds_const(20);
+	pub const LINGER: Duration = Duration::from_milliseconds_const(0);
+	pub const LINGER_TESTING: Duration = Duration::from_milliseconds_const(0);
 
 	pub const ACTOR_BATCH_SIZE: u16 = 8;
 	pub const ACTOR_BATCH_SIZE_TESTING: u16 = 8;
