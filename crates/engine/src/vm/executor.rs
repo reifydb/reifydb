@@ -57,6 +57,7 @@ use crate::{
 		exec::ddl::ddl_requires_admin_txn,
 		services::{EngineConfig, Services},
 		vm::Vm,
+		volcano::partition_parameter::scan_partitions,
 	},
 };
 
@@ -790,6 +791,7 @@ impl Executor {
 			plan => plan,
 		};
 
+		let partitions = scan_partitions(&plan, tx.layout(), &symbols);
 		let sub_service = self.ioc.resolve::<SubscriptionServiceRef>()?;
 		let id = sub_service.next_id();
 		let flow_dag = compile_subscription_flow_ephemeral(
@@ -806,6 +808,7 @@ impl Executor {
 			symbols,
 			params,
 			named_system_columns,
+			partitions,
 		};
 		sub_service.register_subscription(flow_dag, options.hydration.enabled, ctx, &mut tx)?;
 		Ok(SubscribeOutcome::Local {

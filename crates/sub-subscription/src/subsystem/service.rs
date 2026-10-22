@@ -241,6 +241,7 @@ impl SubscriptionService for SubscriptionServiceImpl {
 #[cfg(test)]
 mod tests {
 	use std::{
+		collections::BTreeMap,
 		fmt::Debug,
 		panic::{AssertUnwindSafe, catch_unwind},
 		thread,
@@ -346,6 +347,7 @@ mod tests {
 			symbols: Default::default(),
 			params: Params::None,
 			named_system_columns: vec![],
+			partitions: BTreeMap::new(),
 		}
 	}
 
@@ -408,6 +410,7 @@ mod tests {
 			symbols: Default::default(),
 			params: Params::None,
 			named_system_columns: vec![],
+			partitions: BTreeMap::new(),
 		};
 
 		let message = panic_message(|| {

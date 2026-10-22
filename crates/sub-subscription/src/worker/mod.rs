@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, result::Result as StdResult, sync::Arc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	result::Result as StdResult,
+	sync::Arc,
+};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -9,7 +13,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	flow::dag::FlowDag,
 	interface::{
-		catalog::{flow::FlowId, id::SubscriptionId},
+		catalog::{flow::FlowId, id::SubscriptionId, object::ObjectId},
 		change::Change,
 	},
 };
@@ -27,7 +31,10 @@ use reifydb_runtime::{
 	sync::mutex::Mutex,
 };
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{
+	Result,
+	value::{identity::IdentityId, partition::Partition},
+};
 use tracing::error;
 
 use crate::{
@@ -83,15 +90,22 @@ struct SubscriptionFlowState {
 	gate: CommitVersion,
 	identity: IdentityId,
 	held: Option<Vec<Change>>,
+	partitions: BTreeMap<ObjectId, Option<Partition>>,
 }
 
 impl SubscriptionFlowState {
-	fn new(gate: CommitVersion, identity: IdentityId, hydration_enabled: bool) -> Self {
+	fn new(
+		gate: CommitVersion,
+		identity: IdentityId,
+		hydration_enabled: bool,
+		partitions: BTreeMap<ObjectId, Option<Partition>>,
+	) -> Self {
 		Self {
 			keyed_state: HashMap::new(),
 			gate,
 			identity,
 			held: hydration_enabled.then(Vec::new),
+			partitions,
 		}
 	}
 }
@@ -237,7 +251,12 @@ impl SubscriptionWorkerActor {
 				};
 				state.flows.insert(
 					flow_id,
-					SubscriptionFlowState::new(gate, ctx.identity, hydration_enabled),
+					SubscriptionFlowState::new(
+						gate,
+						ctx.identity,
+						hydration_enabled,
+						ctx.partitions.clone(),
+					),
 				);
 				reply(Ok(()));
 			}

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{result::Result as StdResult, sync::Arc};
+use std::{collections::BTreeMap, result::Result as StdResult, sync::Arc};
 
 use reifydb_core::{
 	common::CommitVersion,
 	flow::dag::FlowDag,
-	interface::{catalog::id::SubscriptionId, change::StagedBatch},
+	interface::{
+		catalog::{id::SubscriptionId, object::ObjectId},
+		change::StagedBatch,
+	},
 };
 use reifydb_evaluate::stack::SymbolTable;
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
@@ -14,7 +17,7 @@ use reifydb_value::{
 	Result,
 	error::Error as TypeError,
 	params::Params,
-	value::{duration::Duration, identity::IdentityId, system_columns::SystemColumn},
+	value::{duration::Duration, identity::IdentityId, partition::Partition, system_columns::SystemColumn},
 };
 
 use crate::engine::StandardEngine;
@@ -26,6 +29,7 @@ pub struct SubscriptionContext {
 	pub symbols: SymbolTable,
 	pub params: Params,
 	pub named_system_columns: Vec<SystemColumn>,
+	pub partitions: BTreeMap<ObjectId, Option<Partition>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

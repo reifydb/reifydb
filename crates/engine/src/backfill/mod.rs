@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, num::NonZeroU64, sync::Arc};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	num::NonZeroU64,
+	sync::Arc,
+};
 
 use arrow_array::RecordBatch;
 use reifydb_core::{
@@ -12,9 +16,9 @@ use reifydb_core::{
 use reifydb_evaluate::stack::SymbolTable;
 #[cfg(feature = "testing")]
 use reifydb_flow::backfill::testing::{InstalledScanHooks, TestingScan};
-use reifydb_flow::backfill::{Scan, backfill};
+use reifydb_flow::backfill::{Scan, backfill_partitioned};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, params::Params};
+use reifydb_value::{fragment::Fragment, params::Params, value::partition::Partition};
 
 use crate::{
 	Result,
@@ -38,6 +42,17 @@ pub fn run<'a>(
 	tx: Transaction<'a>,
 	sources: &BTreeSet<ObjectId>,
 	batch_size: NonZeroU64,
+	consume: impl FnMut(&mut TransactionScan<'a>, Change) -> Result<()>,
+) -> Result<()> {
+	let sources = sources.iter().map(|&source| (source, None)).collect();
+	run_partitioned(services, tx, &sources, batch_size, consume)
+}
+
+pub fn run_partitioned<'a>(
+	services: &Arc<Services>,
+	tx: Transaction<'a>,
+	sources: &BTreeMap<ObjectId, Option<Partition>>,
+	batch_size: NonZeroU64,
 	mut consume: impl FnMut(&mut TransactionScan<'a>, Change) -> Result<()>,
 ) -> Result<()> {
 	let mut scan = TransactionScan {
@@ -47,11 +62,14 @@ pub fn run<'a>(
 	};
 	#[cfg(feature = "testing")]
 	if let Some(InstalledScanHooks(hooks)) = services.ioc.try_resolve::<InstalledScanHooks>() {
-		return backfill(&mut TestingScan::over(scan, hooks), sources, batch_size, |testing, change| {
-			consume(testing.scan_mut(), change)
-		});
+		return backfill_partitioned(
+			&mut TestingScan::over(scan, hooks),
+			sources,
+			batch_size,
+			|testing, change| consume(testing.scan_mut(), change),
+		);
 	}
-	backfill(&mut scan, sources, batch_size, &mut consume)
+	backfill_partitioned(&mut scan, sources, batch_size, &mut consume)
 }
 
 pub struct TransactionScan<'a> {
@@ -71,20 +89,25 @@ impl<'a> TransactionScan<'a> {
 		&mut self.tx
 	}
 
-	fn node(&mut self, source: ObjectId, context: &Arc<QueryContext>) -> Result<(Box<dyn QueryNode>, bool)> {
+	fn node(
+		&mut self,
+		source: ObjectId,
+		partition: Option<Partition>,
+		context: &Arc<QueryContext>,
+	) -> Result<(Box<dyn QueryNode>, bool)> {
 		let catalog = &self.services.catalog;
 		let tx = &mut self.tx;
 		match source {
 			ObjectId::Table(id) => {
 				let table = catalog.resolve_table(tx, id)?;
-				let node = TableScanNode::new(table, None, Arc::clone(context), tx)?
+				let node = TableScanNode::new(table, partition, Arc::clone(context), tx)?
 					.oldest_first()
 					.keep_dictionary_ids();
 				Ok((Box::new(node), false))
 			}
 			ObjectId::View(id) => {
 				let view = catalog.resolve_view(tx, id)?;
-				let node = ViewScanNode::new(view, None, Arc::clone(context), tx)?
+				let node = ViewScanNode::new(view, partition, Arc::clone(context), tx)?
 					.oldest_first()
 					.keep_dictionary_ids();
 				Ok((Box::new(node), false))
@@ -120,6 +143,15 @@ impl Scan for TransactionScan<'_> {
 	}
 
 	fn open(&mut self, source: ObjectId, batch_size: NonZeroU64) -> Result<()> {
+		self.open_partition(source, None, batch_size)
+	}
+
+	fn open_partition(
+		&mut self,
+		source: ObjectId,
+		partition: Option<Partition>,
+		batch_size: NonZeroU64,
+	) -> Result<()> {
 		let context = Arc::new(QueryContext {
 			services: Arc::clone(&self.services),
 			source: None,
@@ -129,7 +161,7 @@ impl Scan for TransactionScan<'_> {
 			identity: self.tx.identity(),
 			memory: query_budget(&self.services),
 		});
-		let (mut node, tagged_series) = self.node(source, &context)?;
+		let (mut node, tagged_series) = self.node(source, partition, &context)?;
 		node.initialize(&mut self.tx, &context)?;
 		self.opened = Some(Opened {
 			node,

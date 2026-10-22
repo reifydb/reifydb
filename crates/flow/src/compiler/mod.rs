@@ -363,7 +363,7 @@ fn contains_sort(plan: &QueryPlan) -> bool {
 	matches!(plan, QueryPlan::Sort(_)) || child_plans(plan).iter().any(|child| contains_sort(child))
 }
 
-fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
+pub fn child_plans(plan: &QueryPlan) -> Vec<&QueryPlan> {
 	match plan {
 		QueryPlan::Filter(n) => vec![&n.input],
 		QueryPlan::RowParameterLookup(n) => vec![&n.fallback],

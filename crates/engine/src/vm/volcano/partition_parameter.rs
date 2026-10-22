@@ -1,11 +1,66 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::value::batch::{is_scalar, scalar_value};
+use std::collections::BTreeMap;
+
+use reifydb_core::{
+	interface::catalog::object::ObjectId,
+	value::batch::{is_scalar, scalar_value},
+};
 use reifydb_evaluate::stack::{SymbolTable, Variable};
-use reifydb_rql::nodes::PartitionKey;
+use reifydb_flow::compiler::child_plans;
+use reifydb_rql::{nodes::PartitionKey, query::QueryPlan};
 use reifydb_transaction::transaction::ScanLayout;
 use reifydb_value::value::{Value, partition::Partition, value_type::ValueType};
+
+pub(crate) fn scan_partitions(
+	plan: &QueryPlan,
+	layout: ScanLayout,
+	symbols: &SymbolTable,
+) -> BTreeMap<ObjectId, Option<Partition>> {
+	let mut partitions = BTreeMap::new();
+	collect_partitions(plan, None, layout, symbols, &mut partitions);
+	partitions
+}
+
+fn collect_partitions(
+	plan: &QueryPlan,
+	parameter: Option<Partition>,
+	layout: ScanLayout,
+	symbols: &SymbolTable,
+	partitions: &mut BTreeMap<ObjectId, Option<Partition>>,
+) {
+	let mut record = |source: ObjectId, partition: Option<Partition>| {
+		partitions
+			.entry(source)
+			.and_modify(|held: &mut Option<Partition>| {
+				if *held != partition {
+					*held = None;
+				}
+			})
+			.or_insert(partition);
+	};
+	match plan {
+		QueryPlan::TableScan(node) => {
+			record(ObjectId::Table(node.source.def().id), parameter.or(node.partition))
+		}
+		QueryPlan::ViewScan(node) => {
+			record(ObjectId::View(node.source.def().id()), parameter.or(node.partition))
+		}
+		QueryPlan::PartitionParameterScan(node) => collect_partitions(
+			&node.scan,
+			choose_partition(&node.keys, layout, symbols),
+			layout,
+			symbols,
+			partitions,
+		),
+		other => {
+			for child in child_plans(other) {
+				collect_partitions(child, None, layout, symbols, partitions);
+			}
+		}
+	}
+}
 
 pub(crate) fn choose_partition(keys: &[PartitionKey], layout: ScanLayout, symbols: &SymbolTable) -> Option<Partition> {
 	match layout {

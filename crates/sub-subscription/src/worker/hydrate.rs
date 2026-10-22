@@ -67,6 +67,10 @@ impl SubscriptionWorkerActor {
 
 		let flow = state.flow_engine.flow_by_id(flow_id).ok_or(HydrateError::SubscriptionNotFound)?;
 		let sources = backfill_sources(&flow)?;
+		let partitioned = sources
+			.iter()
+			.map(|&source| (source, flow_state.partitions.get(&source).copied().flatten()))
+			.collect();
 		let batch_size = row_batch_size(&self.catalog)?;
 		let version = lease.version();
 		let base_query = self.engine.multi().begin_query_at_version(&lease)?;
@@ -84,10 +88,10 @@ impl SubscriptionWorkerActor {
 				..
 			} = &mut *state;
 			let flow_state = flows.get_mut(&flow_id).expect("hydrated flow registered");
-			backfill::run(
+			backfill::run_partitioned(
 				&self.engine.services(),
 				Transaction::Query(&mut scan),
-				&sources,
+				&partitioned,
 				batch_size,
 				|_, change| {
 					self.apply_chunk(flow_engine, flow_state, &base_query, change, flow_id)?;
