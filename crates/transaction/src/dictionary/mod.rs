@@ -164,38 +164,44 @@ impl DictionaryAllocatorRegistry {
 		let hashes: Vec<[u8; 16]> = serialized.iter().map(|bytes| xxh3_128(bytes).0.to_be_bytes()).collect();
 
 		let mut resolved: Vec<Option<u128>> = vec![None; values.len()];
-
-		if let Some(slot) = self.inner.slots.get(&dictionary.id) {
-			for (index, hash) in hashes.iter().enumerate() {
-				if let Some(entry) = slot.cache.get(hash) {
-					if entry.value.as_ref() != serialized[index].as_slice() {
-						return Err(DictionaryError::HashCollision {
-							dictionary: dictionary.id,
-							hash: *hash,
-						}
-						.into());
-					}
-					resolved[index] = Some(entry.id);
-				}
-			}
-		}
-
-		if resolved.iter().all(Option::is_some) {
-			return outcomes(dictionary, resolved, &HashSet::new());
-		}
-
+		let mut pending: HashMap<[u8; 16], usize> = HashMap::new();
 		let slot = self.slot(dictionary);
-		let _guard = slot.alloc.lock();
+		let mut guard = None;
 
 		for index in 0..values.len() {
-			if resolved[index].is_some() {
+			let hash = hashes[index];
+			if let Some(entry) = slot.cache.get(&hash) {
+				if entry.value.as_ref() != serialized[index].as_slice() {
+					return Err(DictionaryError::HashCollision {
+						dictionary: dictionary.id,
+						hash,
+					}
+					.into());
+				}
+				resolved[index] = Some(entry.id);
 				continue;
 			}
-			let entry_key = DictionaryEntryKey::encoded(dictionary.id, hashes[index]);
-			if let Some(existing) = self.inner.store.read_committed(&entry_key)? {
-				let id = decode_entry_id(dictionary, &serialized[index], hashes[index], &existing)?;
-				cache_into_slot(&slot, hashes[index], id, Arc::from(serialized[index].as_slice()));
-				resolved[index] = Some(id);
+			if let Some(&first) = pending.get(&hash) {
+				if serialized[first] != serialized[index] {
+					return Err(DictionaryError::HashCollision {
+						dictionary: dictionary.id,
+						hash,
+					}
+					.into());
+				}
+				continue;
+			}
+			guard.get_or_insert_with(|| slot.alloc.lock());
+			let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
+			match self.inner.store.read_committed(&entry_key)? {
+				Some(existing) => {
+					let id = decode_entry_id(dictionary, &serialized[index], hash, &existing)?;
+					cache_into_slot(&slot, hash, id, Arc::from(serialized[index].as_slice()));
+					resolved[index] = Some(id);
+				}
+				None => {
+					pending.insert(hash, index);
+				}
 			}
 		}
 
