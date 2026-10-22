@@ -1,0 +1,42 @@
+{
+  "name": "reifydb-place-webapp",
+  "version": "0.8.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:local": "VITE_LOCAL_SDK=1 vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.types.json",
+    "test": "pnpm typecheck && vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fontsource-variable/ibm-plex-sans": "^5.2.8",
+    "@fontsource-variable/jetbrains-mono": "^5.2.8",
+    "@fontsource/archivo-black": "^5.2.8",
+    "@reifydb/client": "link:../../../typescript/client",
+    "@reifydb/core": "link:../../../typescript/core",
+    "@reifydb/reifydb": "link:../../../typescript/reifydb",
+    "@reifydb/ui": "link:../../../typescript/ui",
+    "lucide-react": "^0.562.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.0",
+    "@types/node": "^24.13.6",
+    "@types/react": "^19.2.9",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "jsdom": "^26.1.0",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^2.1.8"
+  }
+}

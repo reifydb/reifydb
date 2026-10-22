@@ -94,6 +94,8 @@ members = [
     # Self-hostable projects
     "pkg/projects/uptime/backend",
     "pkg/projects/uptime/bridge",
+    "pkg/projects/place/backend",
+    "pkg/projects/place/bridge",
 ]
 
 default-members = [
@@ -175,6 +177,7 @@ default-members = [
     "pkg/rust/tests/integration",
     # Self-hostable projects
     "pkg/projects/uptime/backend",
+    "pkg/projects/place/backend",
 ]
 
 [workspace.package]

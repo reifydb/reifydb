@@ -1,0 +1,7 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Copyright (c) 2026 ReifyDB */
+
+@import "@reifydb/ui/styles.css";
+
+@source "../node_modules/@reifydb/ui/dist";
+@source "../../../../typescript/ui/src/components";

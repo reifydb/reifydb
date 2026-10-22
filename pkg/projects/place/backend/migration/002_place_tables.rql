@@ -1,0 +1,4 @@
+CREATE MIGRATION 'place_tables' {
+    create table place::live { tile_x: uint1, tile_y: uint1, x: uint2, y: uint2, color: uint1 }
+        with { partition: { by: { tile_x, tile_y } } }
+};
