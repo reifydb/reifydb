@@ -20,7 +20,7 @@ use tracing::instrument;
 
 use crate::{
 	entry::{Value, entry_bytes, entry_bytes_with, value_bytes_of},
-	rows::{ActiveRows, ClosedRows, MergedRows, Removed, RowMap, VersionMap, lookup},
+	rows::{ActiveRows, ClosedRows, MergedRows, Removed, RowMap, Versions, lookup},
 	storage::{Read, Remove, RowStats, Rows, Write},
 	store::EvictedVersion,
 };
@@ -96,7 +96,7 @@ impl Read for MemoryRows {
 		let mut versions: Vec<CommitVersion> = iter::once(active.rows())
 			.chain(closed.iter().map(|map| map.rows()))
 			.filter_map(|rows| rows.versions_for(key))
-			.flat_map(|found| found.keys().map(|Reverse(version)| *version))
+			.flat_map(|found| found.iter().map(|(version, _)| version))
 			.collect();
 		versions.sort_unstable();
 		versions.dedup();
@@ -135,7 +135,7 @@ impl Write for MemoryRows {
 			let replaced = active
 				.rows()
 				.versions_for(&key)
-				.and_then(|found| found.get(&Reverse(version)))
+				.and_then(|found| found.exact(version))
 				.map_or(0, |held| entry_bytes_with(key_heap, held));
 			active.insert(key, version, value);
 			match newest {
@@ -282,15 +282,12 @@ fn visit_merged<'a, I>(
 	mut merged: MergedRows<'a, I>,
 	mut visit: impl FnMut(&EncodedKey, &[(CommitVersion, &Value)]) -> ControlFlow<()>,
 ) where
-	I: Iterator<Item = (&'a EncodedKey, &'a VersionMap)>,
+	I: Iterator<Item = (&'a EncodedKey, &'a Versions)>,
 {
 	let mut versions: Vec<(CommitVersion, &'a Value)> = Vec::new();
 	while let Some((key, group)) = merged.next_group() {
 		versions.clear();
-		versions.extend(group
-			.iter()
-			.copied()
-			.flat_map(|found| found.iter().map(|(Reverse(version), value)| (*version, value))));
+		versions.extend(group.iter().copied().flat_map(Versions::iter));
 		versions.sort_by_key(|(version, _)| Reverse(*version));
 		if visit(key, &versions).is_break() {
 			return;

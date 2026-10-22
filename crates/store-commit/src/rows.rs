@@ -4,6 +4,7 @@
 use std::{
 	cmp::{Ordering, Reverse},
 	collections::{BTreeMap, BinaryHeap, HashMap, HashSet, btree_map},
+	mem,
 	ops::RangeBounds,
 };
 
@@ -13,11 +14,81 @@ use reifydb_value::reifydb_assertions;
 
 use crate::entry::{Value, entry_bytes_with};
 
-pub(super) type VersionMap = BTreeMap<Reverse<CommitVersion>, Value>;
+#[derive(Clone)]
+pub(super) enum Versions {
+	One(CommitVersion, Value),
+	Many(BTreeMap<Reverse<CommitVersion>, Value>),
+}
+
+impl Versions {
+	fn insert(&mut self, version: CommitVersion, value: Value) -> Option<Value> {
+		match self {
+			Versions::One(held, current) if *held == version => Some(mem::replace(current, value)),
+			Versions::One(held, current) => {
+				let current = current.take();
+				*self = Versions::Many(BTreeMap::from([
+					(Reverse(*held), current),
+					(Reverse(version), value),
+				]));
+				None
+			}
+			Versions::Many(versions) => versions.insert(Reverse(version), value),
+		}
+	}
+
+	fn remove(&mut self, version: CommitVersion) -> Option<Value> {
+		let removed = match self {
+			Versions::One(held, value) if *held == version => {
+				let value = value.take();
+				*self = Versions::Many(BTreeMap::new());
+				return Some(value);
+			}
+			Versions::One(..) => return None,
+			Versions::Many(versions) => versions.remove(&Reverse(version)),
+		};
+		if let Versions::Many(versions) = self
+			&& versions.len() == 1
+		{
+			let (Reverse(held), value) = versions.pop_first().expect("one version is left");
+			*self = Versions::One(held, value);
+		}
+		removed
+	}
+
+	fn is_empty(&self) -> bool {
+		matches!(self, Versions::Many(versions) if versions.is_empty())
+	}
+
+	fn visible(&self, version: CommitVersion) -> Option<(CommitVersion, &Value)> {
+		match self {
+			Versions::One(held, value) => (*held <= version).then_some((*held, value)),
+			Versions::Many(versions) => {
+				versions.range(Reverse(version)..).next().map(|(Reverse(found), value)| (*found, value))
+			}
+		}
+	}
+
+	pub fn exact(&self, version: CommitVersion) -> Option<&Value> {
+		match self {
+			Versions::One(held, value) => (*held == version).then_some(value),
+			Versions::Many(versions) => versions.get(&Reverse(version)),
+		}
+	}
+
+	pub fn iter(&self) -> impl Iterator<Item = (CommitVersion, &Value)> {
+		let (one, many) = match self {
+			Versions::One(held, value) => (Some((*held, value)), None),
+			Versions::Many(versions) => {
+				(None, Some(versions.iter().map(|(Reverse(version), value)| (*version, value))))
+			}
+		};
+		one.into_iter().chain(many.into_iter().flatten())
+	}
+}
 
 #[derive(Clone, Default)]
 pub(super) struct RowMap {
-	entries: BTreeMap<EncodedKey, VersionMap>,
+	entries: BTreeMap<EncodedKey, Versions>,
 	bytes: u64,
 	versions: BTreeMap<CommitVersion, u32>,
 }
@@ -27,7 +98,14 @@ impl RowMap {
 		let key_heap = key.heap_size();
 		let bytes = entry_bytes_with(key_heap, &value);
 
-		match self.entries.entry(key).or_default().insert(Reverse(version), value) {
+		let replaced = match self.entries.entry(key) {
+			btree_map::Entry::Vacant(slot) => {
+				slot.insert(Versions::One(version, value));
+				None
+			}
+			btree_map::Entry::Occupied(mut slot) => slot.get_mut().insert(version, value),
+		};
+		match replaced {
 			Some(replaced) => self.bytes = self.bytes.saturating_sub(entry_bytes_with(key_heap, &replaced)),
 			None => *self.versions.entry(version).or_insert(0) += 1,
 		}
@@ -42,7 +120,7 @@ impl RowMap {
 			};
 			let key_heap = key.heap_size();
 			for version in versions {
-				let Some(value) = held.remove(&Reverse(*version)) else {
+				let Some(value) = held.remove(*version) else {
 					continue;
 				};
 				self.bytes = self.bytes.saturating_sub(entry_bytes_with(key_heap, &value));
@@ -69,17 +147,14 @@ impl RowMap {
 	}
 
 	pub fn get(&self, key: &[u8], version: CommitVersion) -> Option<(CommitVersion, &Value)> {
-		self.entries
-			.get(key)
-			.and_then(|versions| versions.range(Reverse(version)..).next())
-			.map(|(Reverse(found), value)| (*found, value))
+		self.entries.get(key).and_then(|versions| versions.visible(version))
 	}
 
-	pub fn versions_for(&self, key: &[u8]) -> Option<&VersionMap> {
+	pub fn versions_for(&self, key: &[u8]) -> Option<&Versions> {
 		self.entries.get(key)
 	}
 
-	pub fn range<R>(&self, bounds: R) -> btree_map::Range<'_, EncodedKey, VersionMap>
+	pub fn range<R>(&self, bounds: R) -> btree_map::Range<'_, EncodedKey, Versions>
 	where
 		R: RangeBounds<[u8]>,
 	{
@@ -100,6 +175,14 @@ impl RowMap {
 
 	pub fn max_version(&self) -> Option<CommitVersion> {
 		self.versions.keys().next_back().copied()
+	}
+
+	fn packed(self) -> Self {
+		Self {
+			entries: self.entries.into_iter().collect(),
+			bytes: self.bytes,
+			versions: self.versions,
+		}
 	}
 }
 
@@ -135,7 +218,7 @@ pub(super) fn lookup<'a>(
 
 struct Head<'a> {
 	key: &'a EncodedKey,
-	versions: &'a VersionMap,
+	versions: &'a Versions,
 	source: usize,
 	reverse: bool,
 }
@@ -167,17 +250,17 @@ impl Ord for Head<'_> {
 
 pub(super) struct MergedRows<'a, I>
 where
-	I: Iterator<Item = (&'a EncodedKey, &'a VersionMap)>,
+	I: Iterator<Item = (&'a EncodedKey, &'a Versions)>,
 {
 	iters: Vec<I>,
 	heads: BinaryHeap<Head<'a>>,
 	reverse: bool,
-	group: Vec<&'a VersionMap>,
+	group: Vec<&'a Versions>,
 }
 
 impl<'a, I> MergedRows<'a, I>
 where
-	I: Iterator<Item = (&'a EncodedKey, &'a VersionMap)>,
+	I: Iterator<Item = (&'a EncodedKey, &'a Versions)>,
 {
 	pub fn new(mut iters: Vec<I>, reverse: bool) -> Self {
 		let mut heads = BinaryHeap::with_capacity(iters.len());
@@ -210,7 +293,7 @@ where
 		}
 	}
 
-	pub fn next_group(&mut self) -> Option<(&'a EncodedKey, &[&'a VersionMap])> {
+	pub fn next_group(&mut self) -> Option<(&'a EncodedKey, &[&'a Versions])> {
 		let first = self.heads.pop()?;
 		let target = first.key;
 		self.group.clear();
@@ -264,7 +347,7 @@ impl ActiveRows {
 			);
 		}
 		ClosedRows {
-			rows: self.rows,
+			rows: self.rows.packed(),
 		}
 	}
 }
