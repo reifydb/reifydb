@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::ops::Bound;
+
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_value::Result;
 
 use crate::{
 	actors::pending::PendingWrite,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceMask, keyspace_inner_range},
+	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceMask},
 	state::{
 		batch::StateBatch,
 		timer::{GroupSweep, StateStore, sweep_order},
@@ -55,7 +57,15 @@ pub fn group_sweep<S: StateStore + ?Sized>(
 				break;
 			}
 			let remaining = probe - rows.len();
-			rows.extend(store.state_page_inner(keyspace_inner_range(group, keyspace), Some(remaining))?);
+			rows.extend(store.state_page_inner(
+				GroupStateRange::Keyspace {
+					group,
+					keyspace,
+					start: Bound::Unbounded,
+					end: Bound::Unbounded,
+				},
+				Some(remaining),
+			)?);
 		}
 	}
 	let complete = rows.len() <= limit;

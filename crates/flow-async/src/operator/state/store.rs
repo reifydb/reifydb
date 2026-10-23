@@ -10,16 +10,15 @@ pub fn empty_key() -> EncodedKey {
 #[cfg(test)]
 pub mod tests {
 	use std::{
-		ops::Bound::{Excluded, Included, Unbounded},
+		ops::Bound::{self, Excluded, Included, Unbounded},
 		slice::from_ref,
 	};
 
-	use reifydb_codec::{
-		key::encoded::EncodedKeyRange,
-		row::{bytes::EncodedBytes, pod::EncodedPodRow},
-	};
+	use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
 	use reifydb_core::{
-		interface::catalog::flow::OperatorId, key::operator::state::node_prefix, state::timer::StateStore,
+		interface::catalog::flow::OperatorId,
+		key::operator::state::{GroupStateRange, OperatorStateKey},
+		state::timer::StateStore,
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
@@ -29,7 +28,7 @@ pub mod tests {
 	use crate::{
 		operator::{
 			host::{HostContext, TxnHostContext},
-			state::test_utils::test::*,
+			state::{iter::StateIterator, test_utils::test::*},
 		},
 		transaction::{FlowTransaction, deferred::DeferredTransaction, mock::FlowTxn},
 	};
@@ -38,9 +37,23 @@ pub mod tests {
 		TxnHostContext::new(txn, operator)
 	}
 
+	fn test_key_range(start: Bound<&str>, end: Bound<&str>) -> GroupStateRange {
+		// Fixture keys share one group and keyspace, so a keyspace range spans exactly the old byte range.
+		let (group, keyspace, _) = OperatorStateKey::decode_inner(test_key("any").as_slice()).unwrap();
+		let suffix = |name: &str| OperatorStateKey::decode_inner(test_key(name).as_slice()).unwrap().2.to_vec();
+		GroupStateRange::Keyspace {
+			group,
+			keyspace,
+			start: start.map(suffix),
+			end: end.map(suffix),
+		}
+	}
+
 	fn scan_all(txn: &mut DeferredTransaction, operator: OperatorId) -> Vec<(EncodedKey, EncodedBytes)> {
 		// production reads are all keyspace-scoped; an unscoped sweep must exist only in tests
-		host(txn, operator).state_range_iter(EncodedKeyRange::all()).collect::<Result<Vec<_>>>().unwrap()
+		StateIterator::new(txn.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024))
+			.collect::<Result<Vec<_>>>()
+			.unwrap()
 	}
 
 	#[test]
@@ -112,12 +125,8 @@ pub mod tests {
 			host(&mut txn, operator_id).state_set(vec![(key.clone(), test_row())]).unwrap();
 		}
 
-		let range = EncodedKeyRange::new(
-			Included(test_key("b").into_encoded()),
-			Excluded(test_key("d").into_encoded()),
-		);
-		let entries: Vec<_> =
-			host(&mut txn, operator_id).state_range_iter(range).collect::<Result<Vec<_>>>().unwrap();
+		let range = test_key_range(Included("b"), Excluded("d"));
+		let entries = host(&mut txn, operator_id).state_range_limited(range, None).unwrap();
 
 		// b and c, but not the excluded end d.
 		assert_eq!(entries.len(), 2);
@@ -135,9 +144,8 @@ pub mod tests {
 		}
 
 		let entries = {
-			let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3").into_encoded()));
-			let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(operator_id)));
-			let stream = txn.range(prefixed_range, RangeScope::All, 1024);
+			let range = test_key_range(Unbounded, Excluded("range_3"));
+			let stream = txn.range(range.for_operator(operator_id), RangeScope::All, 1024);
 			let mut entries = Vec::new();
 			for result in stream {
 				entries.push(result.unwrap());
@@ -147,9 +155,8 @@ pub mod tests {
 		assert_eq!(entries.len(), 3); // range_0, range_1, range_2
 
 		let entries = {
-			let range = EncodedKeyRange::new(Included(test_key("range_3").into_encoded()), Unbounded);
-			let prefixed_range = range.with_prefix(EncodedKey::new(node_prefix(operator_id)));
-			let stream = txn.range(prefixed_range, RangeScope::All, 1024);
+			let range = test_key_range(Included("range_3"), Unbounded);
+			let stream = txn.range(range.for_operator(operator_id), RangeScope::All, 1024);
 			let mut entries = Vec::new();
 			for result in stream {
 				entries.push(result.unwrap());
@@ -243,12 +250,8 @@ pub mod tests {
 				.unwrap();
 		}
 
-		let range = EncodedKeyRange::new(
-			Included(test_key("02").into_encoded()),
-			Excluded(test_key("05").into_encoded()),
-		);
-		let range_result: Vec<_> =
-			host(&mut txn, operator_id).state_range_iter(range).collect::<Result<Vec<_>>>().unwrap();
+		let range = test_key_range(Included("02"), Excluded("05"));
+		let range_result = host(&mut txn, operator_id).state_range_limited(range, None).unwrap();
 
 		// 02, 03, 04 - the end bound is exclusive.
 		assert_eq!(range_result.len(), 3);
@@ -294,12 +297,8 @@ pub mod tests {
 		}
 
 		// A range that sorts entirely after the stored keys.
-		let range = EncodedKeyRange::new(
-			Included(test_key("z_aaa").into_encoded()),
-			Excluded(test_key("z_zzz").into_encoded()),
-		);
-		let range_result: Vec<_> =
-			host(&mut txn, operator_id).state_range_iter(range).collect::<Result<Vec<_>>>().unwrap();
+		let range = test_key_range(Included("z_aaa"), Excluded("z_zzz"));
+		let range_result = host(&mut txn, operator_id).state_range_limited(range, None).unwrap();
 
 		assert_eq!(range_result.len(), 0);
 	}

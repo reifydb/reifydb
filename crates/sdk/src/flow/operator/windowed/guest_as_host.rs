@@ -3,12 +3,9 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, keyspace_inner_range_split},
+	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask},
 	state::{
 		batch::StateBatch,
 		timer::{GroupSweep, StateStore, TimerKind, TimerStore, sweep_order},
@@ -25,12 +22,19 @@ use crate::flow::operator::context::{GuestBound, GuestContext, GuestState};
 
 pub struct GuestAsHost<'a, C: GuestContext>(pub &'a mut C);
 
-fn confine(range: &EncodedKeyRange) -> (GroupId, KeyspaceId, Bound<Vec<u8>>, Bound<Vec<u8>>) {
-	keyspace_inner_range_split(range).expect(
-		"a guest state scan must stay inside one group and keyspace; the window engine builds only \
-		 keyspace ranges, so a range that does not split is one a caller invented and the guest \
-		 boundary cannot admit",
-	)
+fn confine(range: GroupStateRange) -> (GroupId, KeyspaceId, Bound<Vec<u8>>, Bound<Vec<u8>>) {
+	match range {
+		GroupStateRange::Keyspace {
+			group,
+			keyspace,
+			start,
+			end,
+		} => (group, keyspace, start, end),
+		other => panic!(
+			"a guest state scan must stay inside one group and keyspace; the window engine builds only \
+			 keyspace ranges, so {other:?} is one a caller invented and the guest boundary cannot admit"
+		),
+	}
 }
 
 fn mapping_key(key: &EncodedKey) -> EncodedKey {
@@ -96,10 +100,10 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 
 	fn state_page_inner(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		let (group, keyspace, start, end) = confine(&range);
+		let (group, keyspace, start, end) = confine(range);
 		let mut out = Vec::new();
 		self.0.window_state().range_bytes_visit(
 			group,
@@ -124,8 +128,8 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		})
 	}
 
-	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
-		let (group, keyspace, start, end) = confine(&range);
+	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+		let (group, keyspace, start, end) = confine(range);
 		Ok(self.0.window_state().last_bytes(group, keyspace, GuestBound::of(&start), GuestBound::of(&end))?)
 	}
 

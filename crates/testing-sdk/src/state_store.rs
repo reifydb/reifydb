@@ -3,12 +3,10 @@
 
 use std::{collections::HashMap, ops::Bound};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceMask},
+	interface::catalog::flow::OperatorId,
+	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceMask, inner_range},
 	state::{
 		batch::StateBatch,
 		per_key,
@@ -89,9 +87,11 @@ impl StateStore for MemoryStateStore {
 
 	fn state_page_inner(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		let (_, range) = inner_range(&range.for_operator(OperatorId(0)))
+			.expect("a group state range addresses operator state");
 		let after_start = |k: &[u8]| match &range.start {
 			Bound::Included(s) => k >= s.as_bytes(),
 			Bound::Excluded(s) => k > s.as_bytes(),

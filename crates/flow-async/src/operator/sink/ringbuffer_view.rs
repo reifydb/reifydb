@@ -10,10 +10,7 @@ use std::{
 use arrow_array::RecordBatch;
 use indexmap::IndexSet;
 use reifydb_codec::{
-	key::{
-		encode_i64_asc, encode_u64_asc, encode_u128_asc,
-		encoded::{EncodedKey, EncodedKeyRange},
-	},
+	key::{encode_i64_asc, encode_u64_asc, encode_u128_asc, encoded::EncodedKey},
 	row::{
 		bytes::EncodedBytes,
 		operator::state::{decode, encode},
@@ -45,7 +42,7 @@ use reifydb_core::{
 				RingbufferExpiryKey, RingbufferMeta, RingbufferMetaKey, RingbufferTtlArm,
 				RingbufferTtlArmKey,
 			},
-			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, node_prefix},
+			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, OperatorStateKey},
 		},
 		ringbuffer::RingBufferMetadataKey,
 		row::{PartitionedRowKey, RowKey},
@@ -98,42 +95,36 @@ use crate::{
 	transaction::{FlowTransaction, deferred::DeferredTransaction, state::StateExtension},
 };
 
-fn row_entry_prefix(partition: Option<Partition>) -> Vec<u8> {
+fn partition_suffix(partition: Option<Partition>) -> Vec<u8> {
+	partition.map(|partition| encode_u128_asc(partition.0).to_vec()).unwrap_or_default()
+}
+
+fn ringbuffer_range(partition: Option<Partition>, plain: KeyspaceId, partitioned: KeyspaceId) -> GroupStateRange {
 	match partition {
-		Some(partition) => {
-			let mut prefix = OperatorStateKey::inner_encoded(
-				GroupId::ROOT,
-				KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY,
-				[],
-			)
-			.as_slice()
-			.to_vec();
-			prefix.extend_from_slice(&encode_u128_asc(partition.0));
-			prefix
-		}
-		None => OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::RINGBUFFER_ENTRY, [])
-			.as_slice()
-			.to_vec(),
+		None => GroupStateRange::Keyspace {
+			group: GroupId::ROOT,
+			keyspace: plain,
+			start: Bound::Unbounded,
+			end: Bound::Unbounded,
+		},
+		Some(partition) => GroupStateRange::Keyspace {
+			group: GroupId::ROOT,
+			keyspace: partitioned,
+			start: Bound::Included(partition_suffix(Some(partition))),
+			end: match partition.0.checked_add(1) {
+				Some(next) => Bound::Excluded(encode_u128_asc(next).to_vec()),
+				None => Bound::Unbounded,
+			},
+		},
 	}
 }
 
-fn expiry_scan_prefix(partition: Option<Partition>) -> Vec<u8> {
-	match partition {
-		Some(partition) => {
-			let mut prefix = OperatorStateKey::inner_encoded(
-				GroupId::ROOT,
-				KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY,
-				[],
-			)
-			.as_slice()
-			.to_vec();
-			prefix.extend_from_slice(&encode_u128_asc(partition.0));
-			prefix
-		}
-		None => OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::RINGBUFFER_EXPIRY, [])
-			.as_slice()
-			.to_vec(),
-	}
+fn row_entry_range(partition: Option<Partition>) -> GroupStateRange {
+	ringbuffer_range(partition, KeyspaceId::RINGBUFFER_ENTRY, KeyspaceId::PARTITIONED_RINGBUFFER_ENTRY)
+}
+
+fn expiry_range(partition: Option<Partition>) -> GroupStateRange {
+	ringbuffer_range(partition, KeyspaceId::RINGBUFFER_EXPIRY, KeyspaceId::PARTITIONED_RINGBUFFER_EXPIRY)
 }
 
 fn note_touched(touched: &mut IndexSet<Vec<Value>>, partition_values: &[Value]) {
@@ -563,9 +554,8 @@ impl SinkRingBufferViewOperator {
 		txn.state_remove(self.operator, keys)
 	}
 
-	fn state_range<'a>(&self, txn: &'a mut DeferredTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
-		let prefixed = range.with_prefix(EncodedKey::new(node_prefix(self.operator)));
-		StateIterator::new(txn.range(prefixed, RangeScope::All, 1024))
+	fn state_range<'a>(&self, txn: &'a mut DeferredTransaction, range: GroupStateRange) -> StateIterator<'a> {
+		StateIterator::new(txn.range(range.for_operator(self.operator), RangeScope::All, 1024))
 	}
 }
 
@@ -682,13 +672,16 @@ impl SinkRingBufferViewOperator {
 		partition: Option<Partition>,
 		at: i64,
 	) -> Result<Vec<u64>> {
-		let prefix = expiry_scan_prefix(partition);
-		let mut end = prefix.clone();
+		let mut end = partition_suffix(partition);
 		end.extend_from_slice(&encode_i64_asc(at.saturating_add(1)));
-		let range = EncodedKeyRange::new(
-			Bound::Included(EncodedKey::new(prefix)),
-			Bound::Excluded(EncodedKey::new(end)),
-		);
+		let mut range = expiry_range(partition);
+		if let GroupStateRange::Keyspace {
+			end: range_end,
+			..
+		} = &mut range
+		{
+			*range_end = Bound::Excluded(end);
+		}
 		self.state_range(txn, range)
 			.map(|result| {
 				let (key, _row) = result?;
@@ -702,7 +695,7 @@ impl SinkRingBufferViewOperator {
 		txn: &mut DeferredTransaction,
 		partition: Option<Partition>,
 	) -> Result<Option<u64>> {
-		let range = EncodedKeyRange::prefix(&row_entry_prefix(partition));
+		let range = row_entry_range(partition);
 		match self.state_range(txn, range).next() {
 			Some(result) => {
 				let (key, _row) = result?;
@@ -713,7 +706,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn earliest_expiry(&self, txn: &mut DeferredTransaction, partition: Option<Partition>) -> Result<Option<i64>> {
-		let range = EncodedKeyRange::prefix(&expiry_scan_prefix(partition));
+		let range = expiry_range(partition);
 		match self.state_range(txn, range).next() {
 			Some(result) => {
 				let (key, _row) = result?;
@@ -1409,8 +1402,8 @@ mod tests {
 		out
 	}
 
-	fn partition_prefix(values: &[Value]) -> Vec<u8> {
-		row_entry_prefix((!values.is_empty()).then(|| Partition::of(values)))
+	fn partition_range(values: &[Value]) -> GroupStateRange {
+		row_entry_range((!values.is_empty()).then(|| Partition::of(values)))
 	}
 
 	#[test]
@@ -1442,17 +1435,18 @@ mod tests {
 
 	fn row_entry_count(engine: &TestEngine, op: &SinkRingBufferViewOperator, values: &[Value]) -> usize {
 		let mut txn = deferred_txn(engine);
-		let prefix = partition_prefix(values);
-		op.state_range(&mut txn, EncodedKeyRange::prefix(&prefix)).collect::<Result<Vec<_>>>().unwrap().len()
+		op.state_range(&mut txn, partition_range(values)).collect::<Result<Vec<_>>>().unwrap().len()
 	}
 
 	fn forward_count(engine: &TestEngine, op: &SinkRingBufferViewOperator) -> usize {
 		let mut txn = deferred_txn(engine);
-		let prefix = OperatorStateKey::inner_encoded(GroupId::ROOT, KeyspaceId::RINGBUFFER_FORWARD, vec![]);
-		op.state_range(&mut txn, EncodedKeyRange::prefix(prefix.as_ref()))
-			.collect::<Result<Vec<_>>>()
-			.unwrap()
-			.len()
+		let range = GroupStateRange::Keyspace {
+			group: GroupId::ROOT,
+			keyspace: KeyspaceId::RINGBUFFER_FORWARD,
+			start: Bound::Unbounded,
+			end: Bound::Unbounded,
+		};
+		op.state_range(&mut txn, range).collect::<Result<Vec<_>>>().unwrap().len()
 	}
 
 	fn metadata(engine: &TestEngine, values: &[Value]) -> Option<RingBufferMetadata> {

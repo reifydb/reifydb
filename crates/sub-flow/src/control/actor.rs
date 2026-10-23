@@ -1193,7 +1193,7 @@ mod pull_protocol {
 		produce::watermark::CdcProducerWatermark,
 	};
 	use reifydb_codec::{
-		key::encoded::{EncodedKey, EncodedKeyRange},
+		key::encoded::EncodedKey,
 		row::{bytes::EncodedBytes, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
@@ -2633,11 +2633,7 @@ mod pull_protocol {
 					.operators
 					.as_ref()
 					.expect("the harness substrate carries an operator store")
-					.range_batch(
-						operator,
-						EncodedKeyRange::new(Bound::Unbounded, Bound::Unbounded),
-						u64::MAX,
-					)
+					.range_batch(OperatorStateKey::node_range(operator), u64::MAX)
 					.unwrap()
 					.items
 					.into_iter()

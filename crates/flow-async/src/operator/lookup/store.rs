@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{HashMap, HashSet};
+use std::{
+	collections::{HashMap, HashSet},
+	ops::Bound,
+};
 
 use reifydb_codec::row::{
 	operator::state::{OperatorState, decode},
@@ -13,7 +16,7 @@ use reifydb_core::{
 	key::{
 		operator::{
 			keyspace::lookup::{LookupRead, LookupReadByVersion, LookupReadByVersionKey, LookupReadKey},
-			state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range},
+			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, OperatorStateKey},
 		},
 		typed::direction::Asc,
 	},
@@ -140,7 +143,12 @@ pub(crate) fn decode_read(stored: &EncodedPodRow) -> Result<(CommitVersion, RowN
 
 pub(crate) fn oldest_read(host: &mut dyn HostContext) -> Result<Option<CommitVersion>> {
 	let first = host.state_range_limited(
-		keyspace_inner_range(GroupId::ROOT, KeyspaceId::LOOKUP_READ_BY_VERSION),
+		GroupStateRange::Keyspace {
+			group: GroupId::ROOT,
+			keyspace: KeyspaceId::LOOKUP_READ_BY_VERSION,
+			start: Bound::Unbounded,
+			end: Bound::Unbounded,
+		},
 		Some(1),
 	)?;
 	let Some((key, _)) = first.into_iter().next() else {

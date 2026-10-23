@@ -792,32 +792,6 @@ fn suffix_at_edge(keyspace: KeyspaceId, suffix: &[u8], edge: SuffixEdge) -> Vec<
 	.unwrap_or_else(|| suffix.to_vec())
 }
 
-pub fn keyspace_inner_range_in(
-	group: GroupId,
-	keyspace: KeyspaceId,
-	start: Bound<&[u8]>,
-	end: Bound<&[u8]>,
-) -> EncodedKeyRange {
-	let prefix = keyspace_inner_prefix(group, keyspace);
-	let whole = EncodedKeyRange::prefix(&prefix);
-	let at = |suffix: &[u8], edge: SuffixEdge| {
-		let mut key = prefix.clone();
-		key.extend_from_slice(&suffix_at_edge(keyspace, suffix, edge));
-		EncodedKey::new(key)
-	};
-	let lower = match start {
-		Bound::Unbounded => whole.start.clone(),
-		Bound::Included(suffix) => Bound::Included(at(suffix, SuffixEdge::Low)),
-		Bound::Excluded(suffix) => Bound::Excluded(at(suffix, SuffixEdge::High)),
-	};
-	let upper = match end {
-		Bound::Unbounded => whole.end.clone(),
-		Bound::Included(suffix) => Bound::Included(at(suffix, SuffixEdge::High)),
-		Bound::Excluded(suffix) => Bound::Excluded(at(suffix, SuffixEdge::Low)),
-	};
-	EncodedKeyRange::new(lower, upper)
-}
-
 pub type KeyspaceInnerRangeSplit = (GroupId, KeyspaceId, Bound<Vec<u8>>, Bound<Vec<u8>>);
 
 pub fn keyspace_inner_range_split(range: &EncodedKeyRange) -> Option<KeyspaceInnerRangeSplit> {
@@ -923,6 +897,26 @@ pub fn node_prefix(operator: OperatorId) -> Vec<u8> {
 	serializer.finish().as_ref().to_vec()
 }
 
+pub fn inner_range(range: &TaggedKeyBoundRange) -> Option<(OperatorId, EncodedKeyRange)> {
+	let encoded = range.encode();
+	let start_key = match encoded.start.as_ref() {
+		Bound::Included(key) | Bound::Excluded(key) => key,
+		Bound::Unbounded => return None,
+	};
+	let (operator, _) = OperatorStateKey::decode_operator(start_key)?;
+	let prefix = node_prefix(operator);
+	let strip = |bound: Bound<&EncodedKey>| match bound {
+		Bound::Included(key) if key.as_slice().starts_with(&prefix) => {
+			Bound::Included(EncodedKey::new(&key.as_slice()[prefix.len()..]))
+		}
+		Bound::Excluded(key) if key.as_slice().starts_with(&prefix) => {
+			Bound::Excluded(EncodedKey::new(&key.as_slice()[prefix.len()..]))
+		}
+		_ => Bound::Unbounded,
+	};
+	Some((operator, EncodedKeyRange::new(strip(encoded.start.as_ref()), strip(encoded.end.as_ref()))))
+}
+
 pub fn node_range(operator: OperatorId) -> TaggedKeyBoundRange {
 	TaggedKeyBoundRange::prefix(KeyTag::OperatorState, [Field::UDesc(Width::U64, operator.0 as u128)])
 }
@@ -995,8 +989,8 @@ mod tests {
 	use reifydb_value::util::hash::Hash128;
 
 	use super::{
-		EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, KeySerializer, KeyspaceId,
-		OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
+		EncodedKey, EncodedKeyRange, GroupId, GroupSet, GroupStateKey, GroupStateRange, KeySerializer,
+		KeyspaceId, OperatorStateKey, group_data_inner_range, group_data_of_inner, group_data_range,
 		group_identity_inner_range, group_identity_range, group_inner_prefix, group_inner_range, group_range,
 		guest_may_address, is_class_framed_inner, is_framed_inner, keyspace_range, managed_key_in, node_prefix,
 		node_range, suffix_width_of, unmanaged_key_in,
@@ -1521,7 +1515,7 @@ mod tests {
 	#[test]
 	fn the_root_group_range_stays_inside_its_node() {
 		// group 0's inner range has no byte-wise successor, so it must stay bounded by the operator prefix
-		let range = group_inner_range(GroupId::ROOT).with_prefix(EncodedKey::new(node_prefix(OperatorId(17))));
+		let range = GroupStateRange::Group(GroupId::ROOT).for_operator(OperatorId(17)).encode();
 
 		let own = OperatorStateKey::root(OperatorId(17), KeyspaceId::NODE_COUNTER, vec![1]).encode();
 		assert!(contains(&range, own.as_slice()), "the operator's own counter must be in range");
@@ -1547,11 +1541,10 @@ mod tests {
 		// inner data/identity ranges must partition a group like their full-key counterparts, since reclamation
 		// uses them
 		let operator = OperatorId(17);
-		let prefix = EncodedKey::new(node_prefix(operator));
 		for group in GROUPS {
 			let group = GroupId::hashed(Hash128(group));
-			let data = group_data_inner_range(group).with_prefix(prefix.clone());
-			let identity = group_identity_inner_range(group).with_prefix(prefix.clone());
+			let data = GroupStateRange::GroupData(group).for_operator(operator).encode();
+			let identity = GroupStateRange::GroupIdentity(group).for_operator(operator).encode();
 
 			for keyspace in DATA_KEYSPACES {
 				let key = OperatorStateKey::new(operator, group, keyspace, vec![7]).encode();

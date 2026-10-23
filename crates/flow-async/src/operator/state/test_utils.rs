@@ -2,11 +2,43 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod test {
-	use reifydb_codec::row::pod::EncodedPodRow;
-	use reifydb_core::key::operator::state::{GroupStateKey, unmanaged_key};
+	use std::ops::Bound;
+
+	use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
+	use reifydb_core::{
+		interface::{catalog::flow::OperatorId, store::MultiVersionRow},
+		key::{
+			any::TaggedKey,
+			operator::state::{
+				GroupId, GroupStateKey, GroupStateRange, KeyspaceId, OperatorStateKey, inner_range,
+				unmanaged_key,
+			},
+		},
+	};
 	use reifydb_test_harness::engine::TestEngine;
-	use reifydb_transaction::transaction::admin::AdminTransaction;
-	use reifydb_value::value::identity::IdentityId;
+	use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
+	use reifydb_value::{Result, value::identity::IdentityId};
+
+	use crate::transaction::FlowTransaction;
+
+	pub fn whole_keyspace(group: GroupId, keyspace: KeyspaceId) -> GroupStateRange {
+		GroupStateRange::Keyspace {
+			group,
+			keyspace,
+			start: Bound::Unbounded,
+			end: Bound::Unbounded,
+		}
+	}
+
+	pub fn inner_bytes(range: GroupStateRange) -> EncodedKeyRange {
+		inner_range(&range.for_operator(OperatorId(0))).expect("a group state range addresses operator state").1
+	}
+
+	pub fn scan_operator(txn: &mut impl FlowTransaction, operator: OperatorId) -> Vec<MultiVersionRow<TaggedKey>> {
+		txn.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>>>()
+			.unwrap()
+	}
 
 	pub fn test_row() -> EncodedPodRow {
 		EncodedPodRow::new(&[1, 2, 3, 4, 5])

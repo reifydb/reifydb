@@ -8,7 +8,7 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
@@ -26,10 +26,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		operator::{
 			keyspace::join::JoinRowMappingKey,
-			state::{
-				GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey,
-				group_inner_range_split, node_prefix,
-			},
+			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask},
 		},
 		row::StoragePartitionedRowKey,
 	},
@@ -58,7 +55,6 @@ use crate::{
 	error::FlowStateError,
 	operator::state::{
 		expiry::{expiry_drop, expiry_get, expiry_set, managed_due_key, managed_latest_key},
-		iter::StateIterator,
 		reaper::IdentityReclaim,
 		reclaim::ReclaimOutcome,
 		seal::rule::SEAL_GATE_STEP,
@@ -95,17 +91,17 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 
 	fn row_shape_cache(&mut self) -> &mut HashMap<EncodedKey, RowShape>;
 
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
+	fn state_range(&mut self, range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
 	fn state_range_limited(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
 	fn state_range_limited_visit(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
@@ -114,8 +110,6 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 		}
 		Ok(())
 	}
-
-	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_>;
 
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome>;
 
@@ -288,7 +282,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 
 	fn state_page_inner(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let batch = self.txn.state_range(
@@ -319,7 +313,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		})
 	}
 
-	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		let Some(r) = self.txn.state_last(self.operator, range)? else {
 			return Ok(None);
 		};
@@ -455,13 +449,13 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		self.txn.catalog().get_config_uint8(key)
 	}
 
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	fn state_range(&mut self, range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		self.state_range_limited(range, None)
 	}
 
 	fn state_range_limited(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		let mut out = Vec::new();
@@ -474,7 +468,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 
 	fn state_range_limited_visit(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
@@ -486,11 +480,6 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 			visit(framed_state_key(self.operator, &r.key)?, EncodedPodRow::from(r.bytes))?;
 		}
 		Ok(())
-	}
-
-	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_> {
-		let prefixed = range.with_prefix(EncodedKey::new(node_prefix(self.operator)));
-		StateIterator::new(self.txn.range(prefixed, RangeScope::All, 1024))
 	}
 
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
@@ -593,16 +582,17 @@ fn framed_state_key(operator: OperatorId, key: &TaggedKey) -> Result<GroupStateK
 	.into())
 }
 
-fn range_site(range: &EncodedKeyRange) -> &'static str {
-	if group_inner_range_split(range).is_some() {
-		return "operator::host_sweep";
-	}
-	let key = match &range.start {
-		Bound::Included(key) | Bound::Excluded(key) => key,
-		Bound::Unbounded => return "operator::host_range",
-	};
-	match OperatorStateKey::decode_inner(key.as_slice()).map(|(_, keyspace, _)| keyspace.name()) {
-		Some(Cow::Borrowed(name)) => name,
-		_ => "operator::host_range",
+fn range_site(range: &GroupStateRange) -> &'static str {
+	match range {
+		GroupStateRange::Keyspace {
+			keyspace,
+			..
+		} => match keyspace.name() {
+			Cow::Borrowed(name) => name,
+			Cow::Owned(_) => "operator::host_range",
+		},
+		GroupStateRange::Group(_) | GroupStateRange::GroupData(_) | GroupStateRange::GroupIdentity(_) => {
+			"operator::host_sweep"
+		}
 	}
 }

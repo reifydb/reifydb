@@ -12,15 +12,13 @@ use std::{
 	},
 };
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_inner_range, keyspace_inner_range,
+	key::{
+		bound::TaggedKeyBoundRange,
+		operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_range, keyspace_range},
 	},
 	metrics::scan::PageRequests,
 };
@@ -100,8 +98,8 @@ fn body(row: &EncodedPodRow) -> String {
 	String::from_utf8(row.body().to_vec()).expect("test bodies are utf8")
 }
 
-fn all() -> EncodedKeyRange {
-	keyspace_inner_range(group(), KEYSPACE)
+fn all() -> TaggedKeyBoundRange {
+	keyspace_range(OP, group(), KEYSPACE)
 }
 
 fn insert(suffix: u8, value: &str) -> OperatorWrite {
@@ -127,7 +125,7 @@ fn remove(store: &StandardOperatorStore, suffix: u8) -> OperatorWrite {
 }
 
 fn last(store: &StandardOperatorStore) -> Option<(u8, String)> {
-	store.state_last_iter(OP, all())
+	store.state_last_iter(all())
 		.next()
 		.map(|entry| entry.unwrap())
 		.map(|(key, row)| (key.as_slice()[key.len() - 1], body(&row)))
@@ -173,7 +171,7 @@ fn per_group_pages(store: &StandardOperatorStore, groups: &[GroupId]) -> Vec<(Gr
 	let mut out = Vec::new();
 	for group in encoded_order(groups) {
 		out.extend(store
-			.range_batch(OP, group_inner_range(group), SWEEP_BUDGET)
+			.range_batch(group_range(OP, group), SWEEP_BUDGET)
 			.unwrap()
 			.items
 			.into_iter()
@@ -453,8 +451,8 @@ fn expiry_group() -> GroupId {
 	GroupId::hashed(Hash128(91))
 }
 
-fn expiry_range() -> EncodedKeyRange {
-	keyspace_inner_range(expiry_group(), EXPIRY_KEYSPACE)
+fn expiry_range() -> TaggedKeyBoundRange {
+	keyspace_range(OP, expiry_group(), EXPIRY_KEYSPACE)
 }
 
 fn expiry_remove(store: &StandardOperatorStore, suffix: u64) -> OperatorWrite {
@@ -482,7 +480,7 @@ fn tombstone_wall(store: &StandardOperatorStore, dead: u64) {
 
 fn probe(store: &StandardOperatorStore, batch_size: u64) -> (u64, usize) {
 	let before = PageRequests::sample();
-	let batch = store.range_batch(OP, expiry_range(), batch_size).unwrap();
+	let batch = store.range_batch(expiry_range(), batch_size).unwrap();
 	(before.since(), batch.items.len())
 }
 
@@ -591,7 +589,7 @@ fn a_failed_keyspace_enumeration_fails_a_group_range_batch() {
 	let store = faulted_store(fault.clone());
 	fault.armed.store(true, Ordering::SeqCst);
 
-	let batch = store.range_batch(OP, group_inner_range(group()), 16);
+	let batch = store.range_batch(group_range(OP, group()), 16);
 
 	assert!(batch.is_err(), "a group range over a failed enumeration must fail, got {batch:?}");
 }

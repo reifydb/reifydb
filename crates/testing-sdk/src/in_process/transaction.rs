@@ -5,7 +5,7 @@ use std::{collections::HashMap, iter, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{bytes::EncodedBytes, shape::RowShape},
 };
 use reifydb_core::{
@@ -16,7 +16,7 @@ use reifydb_core::{
 		change::Change,
 		store::MultiVersionRow,
 	},
-	key::{any::TaggedKey, operator::state::GroupStateKey},
+	key::{any::TaggedKey, bound::TaggedKeyBoundRange, operator::state::GroupStateKey},
 };
 use reifydb_flow::txn::{Batch, Find, Get, Intern, Resolve};
 use reifydb_flow_async::{
@@ -155,7 +155,7 @@ impl FlowTransaction for TestFlowTransaction {
 
 	fn storage_range(
 		&mut self,
-		_range: EncodedKeyRange,
+		_range: TaggedKeyBoundRange,
 		_scope: RangeScope,
 		_batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {

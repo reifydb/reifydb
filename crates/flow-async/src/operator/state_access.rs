@@ -170,12 +170,9 @@ where
 mod tests {
 	use std::{collections::HashMap, ops::Bound};
 
-	use reifydb_codec::{
-		key::encoded::{EncodedKey, EncodedKeyRange},
-		row::pod::EncodedPodRow,
-	};
+	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
-		key::operator::state::{GroupId, GroupStateKey, KeyspaceMask, unmanaged_key},
+		key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceMask, unmanaged_key},
 		state::{
 			batch::StateBatch,
 			per_key,
@@ -189,6 +186,7 @@ mod tests {
 	};
 
 	use super::*;
+	use crate::operator::state::test_utils::test::inner_bytes;
 
 	/// A bare `String` would read as some other group's prefix; this frames the tests' string keys
 	/// the way an operator does.
@@ -270,9 +268,10 @@ mod tests {
 
 		fn state_page_inner(
 			&mut self,
-			range: EncodedKeyRange,
+			range: GroupStateRange,
 			limit: Option<usize>,
 		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+			let range = inner_bytes(range);
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
 				Bound::Excluded(s) => k > s.as_bytes(),

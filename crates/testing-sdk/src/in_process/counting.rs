@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
@@ -12,7 +12,7 @@ use reifydb_core::{
 	interface::catalog::{config::ConfigKey, dictionary::Dictionary, id::ViewId, storage::StorageId},
 	key::operator::{
 		keyspace::join::JoinRowMappingKey,
-		state::{GroupId, GroupStateKey, KeyspaceMask},
+		state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceMask},
 	},
 	state::{
 		batch::StateBatch,
@@ -23,7 +23,7 @@ use reifydb_flow::txn::{Intern, Resolve};
 use reifydb_flow_async::{
 	operator::{
 		host::{HostContext, TxnHostContext},
-		state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+		state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 	},
 	timer::TimerMove,
 	transaction::{
@@ -113,7 +113,7 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 
 	fn state_page(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		self.record("state_page", 1);
@@ -122,7 +122,7 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 
 	fn state_page_inner(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		self.record("state_page_inner", 1);
@@ -140,7 +140,7 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 		self.inner.remove_root_siblings(swept)
 	}
 
-	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		self.record("state_last", 1);
 		self.inner.state_last(range)
 	}
@@ -242,14 +242,14 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.row_shape_cache()
 	}
 
-	fn state_range(&mut self, range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	fn state_range(&mut self, range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		self.record("state_range", 1);
 		self.inner.state_range(range)
 	}
 
 	fn state_range_limited(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		self.record("state_range_limited", 1);
@@ -258,17 +258,12 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 
 	fn state_range_limited_visit(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()> {
 		self.record("state_range_limited_visit", 1);
 		self.inner.state_range_limited_visit(range, limit, visit)
-	}
-
-	fn state_range_iter(&mut self, range: EncodedKeyRange) -> StateIterator<'_> {
-		self.record("state_range_iter", 1);
-		self.inner.state_range_iter(range)
 	}
 
 	fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {

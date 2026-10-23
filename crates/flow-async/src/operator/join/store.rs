@@ -295,8 +295,8 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::host::TxnHostContext,
-		transaction::{FlowTransaction, deferred::DeferredTransaction, mock::FlowTxn, state::StateExtension},
+		operator::{host::TxnHostContext, state::test_utils::test::scan_operator},
+		transaction::{FlowTransaction, deferred::DeferredTransaction, mock::FlowTxn},
 	};
 
 	fn h(v: u128) -> Hash128 {
@@ -384,7 +384,7 @@ mod tests {
 		let store = Store::new(JoinSide::Left);
 
 		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(1), &row(0x10)).unwrap();
-		let before = txn.state_scan_all(operator).unwrap();
+		let before = scan_operator(&mut txn, operator);
 
 		assert!(get_row(&store, operator, &mut txn, &h(0xCCC), rn(1)).unwrap().is_none());
 		assert!(store.rows_for_key(&mut b(&mut txn, operator), &h(0xCCC), None, 8).unwrap().is_empty());
@@ -394,8 +394,8 @@ mod tests {
 			vec![false]
 		);
 
-		let after = txn.state_scan_all(operator).unwrap();
-		assert_eq!(after.items.len(), before.items.len(), "no probe may leave a row behind");
+		let after = scan_operator(&mut txn, operator);
+		assert_eq!(after.len(), before.len(), "no probe may leave a row behind");
 	}
 
 	#[test]

@@ -10,7 +10,7 @@ use reifydb_core::{
 	common::CommitVersion,
 	delta::RemoveVisibility,
 	interface::change::Change,
-	key::any::TaggedKey,
+	key::{any::TaggedKey, operator::state::OperatorStateKey},
 	state::timer::TimerKind,
 };
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
@@ -26,7 +26,6 @@ use reifydb_flow_async::{
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
-		state::StateExtension,
 		substrate::{FlowSubstrate, apply_operator_state, classify_pending},
 	},
 };
@@ -43,6 +42,7 @@ use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject}
 use reifydb_transaction::{
 	dictionary::{DictionaryAllocatorRegistry, store::SingleDictionaryStore},
 	interceptor::interceptors::Interceptors,
+	multi::RangeScope,
 };
 use reifydb_value::{
 	Result,
@@ -214,9 +214,11 @@ impl<O: HostOperator> Harness<O> {
 	pub fn footprint(&mut self) -> Result<StateFootprint> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
-		let batch = txn.state_scan_all(operator)?;
+		let items = txn
+			.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
+			.collect::<Result<Vec<_>>>()?;
 		let mut footprint = StateFootprint::default();
-		for item in &batch.items {
+		for item in &items {
 			match &item.key {
 				TaggedKey::OperatorState(state) if state.keyspace.is_identity() => {
 					footprint.identity_rows += 1
@@ -234,8 +236,10 @@ impl<O: HostOperator> Harness<O> {
 	pub fn state_items(&mut self) -> Result<Vec<(EncodedKey, EncodedBytes)>> {
 		let operator = self.operator.id();
 		let mut txn = self.begin(DateTime::default());
-		let batch = txn.state_scan_all(operator)?;
-		let items = batch.items.into_iter().map(|item| (item.key.encode(), item.bytes)).collect();
+		let items = txn
+			.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024)
+			.map(|item| item.map(|item| (item.key.encode(), item.bytes)))
+			.collect::<Result<Vec<_>>>()?;
 		self.end(txn);
 		Ok(items)
 	}

@@ -7,17 +7,18 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::{
 		id::{IndexId, TableId},
 		object::ObjectId,
 	},
-	key::{any::TaggedKey, catalog::IndexEntryKey},
+	key::{
+		any::TaggedKey,
+		bound::{TaggedKeyBound, TaggedKeyBoundRange},
+		catalog::IndexEntryKey,
+	},
 	value::index::encoded::EncodedIndexKey,
 };
 use reifydb_flow::txn::Get;
@@ -38,6 +39,27 @@ fn make_key(s: &str) -> EncodedKey {
 fn make_typed_key(s: &str) -> IndexEntryKey {
 	// extend_raw appends the tail verbatim, so make_key("test_") really prefixes make_key("test_a").
 	IndexEntryKey::new(ObjectId::Table(TableId(1)), IndexId::primary(1u64), EncodedIndexKey::new(s.as_bytes()))
+}
+
+fn key_bound(s: &str) -> TaggedKeyBound {
+	TaggedKeyBound::Key(make_typed_key(s).into())
+}
+
+fn prefix_range(prefix: &str) -> TaggedKeyBoundRange {
+	// The raw tail sorts bytewise, so the prefix ends just before its last byte plus one.
+	let mut end = prefix.as_bytes().to_vec();
+	*end.last_mut().unwrap() += 1;
+	TaggedKeyBoundRange {
+		start: Included(key_bound(prefix)),
+		end: Excluded(TaggedKeyBound::Key(
+			IndexEntryKey::new(
+				ObjectId::Table(TableId(1)),
+				IndexId::primary(1u64),
+				EncodedIndexKey::new(&end),
+			)
+			.into(),
+		)),
+	}
 }
 
 fn make_value(s: &str) -> EncodedBytes {
@@ -257,7 +279,7 @@ fn test_scan_empty() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	let mut iter = txn.range(EncodedKeyRange::all(), RangeScope::All, 1024);
+	let mut iter = txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024);
 	assert!(iter.next().is_none());
 }
 
@@ -278,7 +300,7 @@ fn test_scan_only_pending() {
 	txn.set_one(&make_key("c"), make_value("3")).unwrap();
 
 	let items: Vec<_> =
-		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
+		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 	assert_eq!(items.len(), 3);
 	assert_eq!(items[0].key, make_typed_key("a").into());
@@ -303,7 +325,7 @@ fn test_scan_filters_removes() {
 	txn.set_one(&make_key("c"), make_value("3")).unwrap();
 
 	let items: Vec<_> =
-		txn.range(EncodedKeyRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
+		txn.range(TaggedKeyBoundRange::all(), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 	assert_eq!(items.len(), 2);
 	assert_eq!(items[0].key, make_typed_key("a").into());
@@ -322,7 +344,10 @@ fn test_range_empty() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	let range = EncodedKeyRange::start_end(Some(make_key("a")), Some(make_key("z")));
+	let range = TaggedKeyBoundRange {
+		start: Included(key_bound("a")),
+		end: Included(key_bound("z")),
+	};
 	let mut iter = txn.range(range, RangeScope::All, 1024);
 	assert!(iter.next().is_none());
 }
@@ -344,7 +369,10 @@ fn test_range_only_pending() {
 	txn.set_one(&make_key("c"), make_value("3")).unwrap();
 	txn.set_one(&make_key("d"), make_value("4")).unwrap();
 
-	let range = EncodedKeyRange::new(Included(make_key("b")), Excluded(make_key("d")));
+	let range = TaggedKeyBoundRange {
+		start: Included(key_bound("b")),
+		end: Excluded(key_bound("d")),
+	};
 	let items: Vec<_> = txn.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 	assert_eq!(items.len(), 2);
@@ -364,8 +392,7 @@ fn test_prefix_empty() {
 		Clock::Mock(MockClock::from_millis(1000)),
 	));
 
-	let prefix = make_key("test_");
-	let mut items = txn.range(EncodedKeyRange::prefix(&prefix), RangeScope::All, 1024);
+	let mut items = txn.range(prefix_range("test_"), RangeScope::All, 1024);
 	assert!(items.next().is_none());
 }
 
@@ -385,9 +412,8 @@ fn test_prefix_only_pending() {
 	txn.set_one(&make_key("test_b"), make_value("2")).unwrap();
 	txn.set_one(&make_key("other_c"), make_value("3")).unwrap();
 
-	let prefix = make_key("test_");
 	let items: Vec<_> =
-		txn.range(EncodedKeyRange::prefix(&prefix), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
+		txn.range(prefix_range("test_"), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 	assert_eq!(items.len(), 2);
 	assert_eq!(items[0].key, make_typed_key("test_a").into());

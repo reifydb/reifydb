@@ -4,7 +4,7 @@
 use std::{cmp::Ordering, collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{
 		bytes::EncodedBytes,
 		operator::state::{OperatorState, decode},
@@ -21,8 +21,7 @@ use reifydb_core::{
 	key::{
 		any::TaggedKey,
 		operator::state::{
-			GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey, group_inner_range,
-			group_inner_range_split, keyspace_inner_range_split, node_prefix,
+			GroupId, GroupStateKey, GroupStateRange, KeyspaceMask, OperatorStateKey, node_prefix,
 		},
 	},
 	metrics::scan::ScanCounters,
@@ -55,14 +54,14 @@ const MAX_STATE_PAGE: usize = 1024;
 
 #[derive(Debug, Clone)]
 pub struct StateRange {
-	pub range: EncodedKeyRange,
+	pub range: GroupStateRange,
 	pub limit: Option<usize>,
 	pub page: Option<usize>,
 	pub site: &'static str,
 }
 
 impl StateRange {
-	pub fn forward(range: EncodedKeyRange, site: &'static str) -> Self {
+	pub fn forward(range: GroupStateRange, site: &'static str) -> Self {
 		Self {
 			range,
 			limit: None,
@@ -185,22 +184,6 @@ pub trait StateExtension: FlowTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
-		operator_id = id.0
-	))]
-	fn state_scan_all(&mut self, id: OperatorId) -> Result<MultiVersionBatch<TaggedKey>> {
-		let range = OperatorStateKey::node_range(id).encode();
-		let iter = self.range(range, RangeScope::All, 1024);
-		let mut items = Vec::new();
-		for result in iter {
-			items.push(result?);
-		}
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
 	#[instrument(name = "flow::state::range", level = "debug", skip(self, query), fields(
 		operator_id = id.0,
 		site = query.site,
@@ -208,19 +191,13 @@ pub trait StateExtension: FlowTransaction {
 		rows_tombstoned = field::Empty
 	))]
 	fn state_range(&mut self, id: OperatorId, query: StateRange) -> Result<MultiVersionBatch<TaggedKey>> {
-		debug_assert!(
-			keyspace_inner_range_split(&query.range).is_some()
-				|| group_inner_range_split(&query.range).is_some(),
-			"a state range must stay inside one group; {} passed a range spanning more than one",
-			query.site
-		);
 		let before = ScanCounters::sample();
-		let prefixed_range = query.range.with_prefix(EncodedKey::new(node_prefix(id)));
+		let operator_range = query.range.for_operator(id);
 		let batch_size = match query.page {
 			Some(page) => page.clamp(1, MAX_STATE_PAGE),
 			None => query.limit.map_or(MAX_STATE_PAGE, |limit| limit.saturating_add(1).min(MAX_STATE_PAGE)),
 		};
-		let iter = self.range(prefixed_range, RangeScope::All, batch_size);
+		let iter = self.range(operator_range, RangeScope::All, batch_size);
 		let mut items = Vec::new();
 		let mut has_more = false;
 		for result in iter {
@@ -255,7 +232,7 @@ pub trait StateExtension: FlowTransaction {
 		let prefix = EncodedKey::new(node_prefix(id));
 		let mut merged = BTreeMap::new();
 		for group in &ordered {
-			let range = group_inner_range(*group).with_prefix(prefix.clone());
+			let range = GroupStateRange::Group(*group).for_operator(id).encode();
 			self.pending().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
 		}
 		let mut pending: Vec<(EncodedKey, PendingWrite)> = Vec::with_capacity(merged.len());
@@ -314,13 +291,14 @@ pub trait StateExtension: FlowTransaction {
 	#[instrument(name = "flow::state::last", level = "debug", skip(self, range), fields(
 		operator_id = id.0
 	))]
-	fn state_last(&mut self, id: OperatorId, range: EncodedKeyRange) -> Result<Option<MultiVersionRow<TaggedKey>>> {
+	fn state_last(&mut self, id: OperatorId, range: GroupStateRange) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		let prefix = node_prefix(id);
-		let prefixed_range = range.with_prefix(EncodedKey::new(&prefix));
+		let operator_range = range.for_operator(id);
+		let prefixed_range = operator_range.encode();
 
 		let version = self.version();
 		let store = self.operator_store();
-		let mut scan = store.state_last_iter(id, range);
+		let mut scan = store.state_last_iter(operator_range);
 		let mut stored = next_stored(&mut scan, &prefix)?;
 
 		let mut pending: Vec<(EncodedKey, PendingWrite)> = Vec::new();

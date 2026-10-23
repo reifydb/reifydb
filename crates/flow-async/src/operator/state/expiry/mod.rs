@@ -3,10 +3,7 @@
 
 use std::{marker::PhantomData, ops::Bound, slice::from_ref};
 
-use reifydb_codec::{
-	key::encoded::EncodedKeyRange,
-	row::operator::state::{OperatorState, decode},
-};
+use reifydb_codec::row::operator::state::{OperatorState, decode};
 #[cfg(feature = "runtime")]
 use reifydb_core::{
 	internal_err,
@@ -18,9 +15,7 @@ use reifydb_core::{
 			keyspace::expiry::{
 				CustomManagedDueKey, Expiry, ExpiryKey, TumblingExpiry, TumblingExpirySuffix,
 			},
-			state::{
-				GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range, keyspace_inner_range_in,
-			},
+			state::{GroupId, GroupStateKey, GroupStateRange, OperatorStateKey},
 			traits::Keyspace,
 		},
 		typed::{BoundedKey, direction::Desc},
@@ -35,8 +30,13 @@ use reifydb_value::value::datetime::DateTime;
 use reifydb_value::{Result, reifydb_assertions, util::hash::Hash128};
 use tracing::instrument;
 
-pub(crate) fn expiry_range<K: Keyspace>() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, K::ID)
+pub(crate) fn expiry_range<K: Keyspace>() -> GroupStateRange {
+	GroupStateRange::Keyspace {
+		group: GroupId::ROOT,
+		keyspace: K::ID,
+		start: Bound::Unbounded,
+		end: Bound::Unbounded,
+	}
 }
 
 pub(crate) fn rolling_expiry_key(threshold: u64, owner: Hash128) -> GroupStateKey {
@@ -183,15 +183,15 @@ where
 {
 	let from = K::Suffix::at_threshold(threshold).to_suffix_bytes();
 	let until = floor.filter(|floor| *floor > 0).map(|floor| K::Suffix::at_threshold(floor - 1).to_suffix_bytes());
-	let range = keyspace_inner_range_in(
-		GroupId::ROOT,
-		K::ID,
-		Bound::Included(from.as_slice()),
-		match &until {
-			Some(until) => Bound::Excluded(until.as_slice()),
+	let range = GroupStateRange::Keyspace {
+		group: GroupId::ROOT,
+		keyspace: K::ID,
+		start: Bound::Included(from),
+		end: match until {
+			Some(until) => Bound::Excluded(until),
 			None => Bound::Unbounded,
 		},
-	);
+	};
 	let mut out = Vec::with_capacity(limit.min(64));
 	for (key, payload) in store.state_page(range, Some(limit))? {
 		out.push((key, decode::<E>(&payload)?));
@@ -206,7 +206,12 @@ where
 	K::Suffix: ExpirySuffix,
 {
 	let above = K::Suffix::at_threshold(threshold).to_suffix_bytes();
-	let range = keyspace_inner_range_in(GroupId::ROOT, K::ID, Bound::Unbounded, Bound::Excluded(above.as_slice()));
+	let range = GroupStateRange::Keyspace {
+		group: GroupId::ROOT,
+		keyspace: K::ID,
+		start: Bound::Unbounded,
+		end: Bound::Excluded(above),
+	};
 	let Some((key, _)) = store.state_last(range)? else {
 		return Ok(None);
 	};

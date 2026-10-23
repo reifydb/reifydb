@@ -7,11 +7,11 @@ use std::{
 };
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{operator::state::decode, pod::EncodedPodRow},
 };
 use reifydb_core::{
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey},
+	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask, OperatorStateKey},
 	state::{
 		batch::StateBatch,
 		per_key,
@@ -25,7 +25,7 @@ use reifydb_value::{
 };
 
 use crate::{
-	operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+	operator::state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome, test_utils::test::inner_bytes},
 	timer::Timer,
 	window::accumulator::WindowAccumulator,
 };
@@ -264,9 +264,10 @@ impl StateStore for MockStore {
 	}
 	fn state_page_inner(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		let range = inner_bytes(range);
 		let after_start = |k: &[u8]| match &range.start {
 			Bound::Included(s) => k >= s.as_bytes(),
 			Bound::Excluded(s) => k > s.as_bytes(),

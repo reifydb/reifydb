@@ -487,12 +487,9 @@ where
 mod tests {
 	use std::{collections::HashMap, ops::Bound};
 
-	use reifydb_codec::{
-		key::encoded::EncodedKeyRange,
-		row::{operator::state::decode, pod::EncodedPodRow},
-	};
+	use reifydb_codec::row::{operator::state::decode, pod::EncodedPodRow};
 	use reifydb_core::{
-		key::operator::state::{GroupStateKey, KeyspaceId, KeyspaceMask, OperatorStateKey},
+		key::operator::state::{GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask, OperatorStateKey},
 		state::{
 			batch::StateBatch,
 			per_key,
@@ -506,7 +503,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		operator::state::seal::coord::Coord,
+		operator::state::{seal::coord::Coord, test_utils::test::inner_bytes},
 		window::{
 			accumulator::invertible::retained_map::RetainedAccumulator,
 			engine::{AccumulatorEvent, config::WindowEngineConfig},
@@ -599,9 +596,10 @@ mod tests {
 		}
 		fn state_page_inner(
 			&mut self,
-			range: EncodedKeyRange,
+			range: GroupStateRange,
 			limit: Option<usize>,
 		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+			let range = inner_bytes(range);
 			let after_start = |k: &[u8]| match &range.start {
 				Bound::Included(s) => k >= s.as_bytes(),
 				Bound::Excluded(s) => k > s.as_bytes(),

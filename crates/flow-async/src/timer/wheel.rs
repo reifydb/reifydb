@@ -3,10 +3,7 @@
 
 use std::{ops::Bound, slice::from_ref};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
@@ -16,10 +13,7 @@ use reifydb_core::{
 				TimerIndex as TimerIndexSpace, TimerIndexKey, TimerWheel as TimerWheelSpace,
 				TimerWheelKey, timer_id,
 			},
-			state::{
-				GroupId, GroupStateKey, KeyspaceId, OperatorStateKey, keyspace_inner_range,
-				keyspace_inner_range_in,
-			},
+			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, OperatorStateKey},
 		},
 		typed::direction::Asc,
 	},
@@ -173,9 +167,15 @@ impl TimerWheel {
 	}
 
 	pub fn next_due_stored(operator: OperatorId, store: &OperatorStore) -> Result<Option<TimerDue>> {
-		let mut wheel = keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL);
+		let mut start = Bound::Unbounded;
 		loop {
-			let batch = store.range_batch(operator, wheel.clone(), 1)?;
+			let wheel = GroupStateRange::Keyspace {
+				group: GroupId::ROOT,
+				keyspace: KeyspaceId::TIMER_WHEEL,
+				start,
+				end: Bound::Unbounded,
+			};
+			let batch = store.range_batch(wheel.for_operator(operator), 1)?;
 			if let Some((key, _)) = batch.items.first() {
 				let unframed = || FlowStateError::StateKeyUnframed {
 					operator,
@@ -192,7 +192,13 @@ impl TimerWheel {
 			let Some(resume) = batch.resume else {
 				return Ok(None);
 			};
-			wheel = EncodedKeyRange::new(Bound::Excluded(resume.into_encoded()), wheel.end);
+			let (_, _, suffix) = OperatorStateKey::decode_inner(resume.as_slice()).ok_or_else(|| {
+				FlowStateError::StateKeyUnframed {
+					operator,
+					key: resume.as_encoded().clone(),
+				}
+			})?;
+			start = Bound::Excluded(suffix.to_vec());
 		}
 	}
 
@@ -211,14 +217,14 @@ impl TimerWheel {
 			});
 		}
 		let take = limit.min(MAX_TIMERS_PER_SCAN);
-		let wheel = match from.map(|key| key.to_suffix_bytes()) {
-			Some(suffix) => keyspace_inner_range_in(
-				GroupId::ROOT,
-				KeyspaceId::TIMER_WHEEL,
-				Bound::Excluded(&suffix),
-				Bound::Unbounded,
-			),
-			None => keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL),
+		let wheel = GroupStateRange::Keyspace {
+			group: GroupId::ROOT,
+			keyspace: KeyspaceId::TIMER_WHEEL,
+			start: match from.map(|key| key.to_suffix_bytes()) {
+				Some(suffix) => Bound::Excluded(suffix),
+				None => Bound::Unbounded,
+			},
+			end: Bound::Unbounded,
 		};
 		let batch = txn.state_range(
 			operator,

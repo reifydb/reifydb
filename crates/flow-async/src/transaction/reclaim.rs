@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		any::TaggedKey,
-		operator::state::{GroupId, GroupStateKey, group_identity_inner_range},
+		operator::state::{GroupId, GroupStateKey, GroupStateRange},
 	},
 };
 use reifydb_value::{Result, count::Count, reifydb_assertions};
@@ -45,7 +45,8 @@ pub trait ReclaimExtension: StateExtension {
 		if limit == 0 {
 			return Ok(ReclaimOutcome::NOTHING);
 		}
-		let query = StateRange::forward(group_identity_inner_range(group), "reclaim::keyspace").limit(limit);
+		let query =
+			StateRange::forward(GroupStateRange::GroupIdentity(group), "reclaim::keyspace").limit(limit);
 		let batch = self.state_range(operator, query)?;
 		let keys: Vec<GroupStateKey> = batch
 			.items

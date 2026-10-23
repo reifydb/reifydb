@@ -19,18 +19,21 @@ use reifydb_core::key::operator::{keyspace::group_scoped_id, state::OperatorStat
 use reifydb_core::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
-	key::operator::{
-		keyspace::dispatch,
-		state::{
-			GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_inner_range, group_inner_range_split,
-			keyspace_inner_range_split,
+	key::{
+		bound::TaggedKeyBoundRange,
+		operator::{
+			keyspace::dispatch,
+			state::{
+				GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_inner_range,
+				group_inner_range_split, inner_range, keyspace_inner_range_split,
+			},
 		},
 	},
 	metrics::scan::{record_page, record_page_request},
 };
 use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
-use tracing::{instrument, warn};
+use tracing::{Span, field::Empty, instrument, warn};
 
 #[cfg(reifydb_assertions)]
 use crate::types::LayeredPre;
@@ -324,13 +327,11 @@ impl StandardOperatorStore {
 		self.persistent.contains(operator, &GroupStateKey::bound_unchecked(key.clone()))
 	}
 
-	#[instrument(name = "store::operator::range_batch", level = "trace", skip(self, range), fields(operator = operator.0, batch_size = batch_size))]
-	pub fn range_batch(
-		&self,
-		operator: OperatorId,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> Result<OperatorBatch> {
+	#[instrument(name = "store::operator::range_batch", level = "trace", skip(self, range), fields(operator = Empty, batch_size = batch_size))]
+	pub fn range_batch(&self, range: TaggedKeyBoundRange, batch_size: u64) -> Result<OperatorBatch> {
+		let (operator, range) =
+			inner_range(&range).expect("an operator store range must address operator state");
+		Span::current().record("operator", operator.0);
 		let limit = batch_size.max(1);
 		let target = (limit as usize).saturating_add(1);
 		let mut buffer_lower = range.start.clone();
@@ -613,14 +614,13 @@ impl StandardOperatorStore {
 		.unwrap_or_else(|| Box::new(PersistentPager::new(operator, persistent, range))))
 	}
 
-	#[instrument(name = "store::operator::state_page", level = "trace", skip(self, range), fields(operator = operator.0))]
+	#[instrument(name = "store::operator::state_page", level = "trace", skip(self, range))]
 	pub fn state_page(
 		&self,
-		operator: OperatorId,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		Ok(self.range_batch(operator, range, limit.unwrap_or(usize::MAX) as u64)?.items)
+		Ok(self.range_batch(range, limit.unwrap_or(usize::MAX) as u64)?.items)
 	}
 
 	#[instrument(name = "store::operator::state_range", level = "trace", skip(self), fields(operator = operator.0, limit = limit))]
@@ -639,8 +639,11 @@ impl StandardOperatorStore {
 		})
 	}
 
-	#[instrument(name = "store::operator::state_last_iter", level = "trace", skip(self, range), fields(operator = operator.0))]
-	pub fn state_last_iter(&self, operator: OperatorId, range: EncodedKeyRange) -> StateLastIter<'_> {
+	#[instrument(name = "store::operator::state_last_iter", level = "trace", skip(self, range), fields(operator = Empty))]
+	pub fn state_last_iter(&self, range: TaggedKeyBoundRange) -> StateLastIter<'_> {
+		let (operator, range) =
+			inner_range(&range).expect("an operator store range must address operator state");
+		Span::current().record("operator", operator.0);
 		let first = self.resident.state_last_page_shadowed(
 			operator,
 			range.start.as_ref(),
@@ -727,14 +730,9 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn range_batch(
-		&self,
-		operator: OperatorId,
-		range: EncodedKeyRange,
-		batch_size: u64,
-	) -> Result<OperatorBatch> {
+	pub fn range_batch(&self, range: TaggedKeyBoundRange, batch_size: u64) -> Result<OperatorBatch> {
 		match self {
-			Self::Standard(store) => store.range_batch(operator, range, batch_size),
+			Self::Standard(store) => store.range_batch(range, batch_size),
 		}
 	}
 
@@ -752,12 +750,11 @@ impl OperatorStore {
 
 	pub fn state_page(
 		&self,
-		operator: OperatorId,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		match self {
-			Self::Standard(store) => store.state_page(operator, range, limit),
+			Self::Standard(store) => store.state_page(range, limit),
 		}
 	}
 
@@ -773,9 +770,9 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn state_last_iter(&self, operator: OperatorId, range: EncodedKeyRange) -> StateLastIter<'_> {
+	pub fn state_last_iter(&self, range: TaggedKeyBoundRange) -> StateLastIter<'_> {
 		match self {
-			Self::Standard(store) => store.state_last_iter(operator, range),
+			Self::Standard(store) => store.state_last_iter(range),
 		}
 	}
 }

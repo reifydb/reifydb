@@ -4,22 +4,22 @@
 use std::{collections::Bound, slice};
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	actors::pending::Pending,
 	common::CommitVersion,
-	interface::catalog::{
-		flow::OperatorId,
-		id::{QueueId, TableId},
-		storage::StorageId,
+	interface::{
+		catalog::{
+			flow::OperatorId,
+			id::{QueueId, TableId},
+			storage::StorageId,
+		},
+		store::MultiVersionRow,
 	},
 	key::{
 		any::TaggedKey,
 		operator::state::{
-			GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey, group_inner_range, unmanaged_key,
+			GroupId, GroupStateKey, GroupStateRange, KeyspaceMask, OperatorStateKey, unmanaged_key,
 			unmanaged_key_in,
 		},
 		queue::QueueDeduplicationKey,
@@ -37,7 +37,7 @@ use reifydb_flow_async::transaction::{
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_store_operator::types::{LayeredPre, OperatorWrite};
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_transaction::interceptor::interceptors::Interceptors;
+use reifydb_transaction::{interceptor::interceptors::Interceptors, multi::RangeScope};
 use reifydb_value::{
 	byte_size::ByteSize,
 	util::hash::Hash128,
@@ -99,6 +99,22 @@ fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
 		),
 		lookup: None,
 	})
+}
+
+fn key_range(start: Bound<&str>, end: Bound<&str>) -> GroupStateRange {
+	// Fixture keys share one group and keyspace, so a keyspace range spans exactly the old byte range.
+	let (group, keyspace, _) = OperatorStateKey::decode_inner(make_key("any").as_slice()).unwrap();
+	let suffix = |name: &str| OperatorStateKey::decode_inner(make_key(name).as_slice()).unwrap().2.to_vec();
+	GroupStateRange::Keyspace {
+		group,
+		keyspace,
+		start: start.map(suffix),
+		end: end.map(suffix),
+	}
+}
+
+fn scan_operator(txn: &mut DeferredTransaction, operator: OperatorId) -> Vec<MultiVersionRow<TaggedKey>> {
+	txn.range(OperatorStateKey::node_range(operator), RangeScope::All, 1024).collect::<Result<Vec<_>, _>>().unwrap()
 }
 
 fn make_key(s: &str) -> GroupStateKey {
@@ -232,8 +248,7 @@ fn test_state_scan_all() {
 	txn.state_set(operator_id, vec![(make_key("key2"), make_value("value2"))]).unwrap();
 	txn.state_set(operator_id, vec![(make_key("key3"), make_value("value3"))]).unwrap();
 
-	let iter = txn.state_scan_all(operator_id).unwrap();
-	let items: Vec<_> = iter.items.into_iter().collect();
+	let items = scan_operator(&mut txn, operator_id);
 
 	assert_eq!(items.len(), 3);
 }
@@ -257,10 +272,10 @@ fn test_state_scan_only_own_node() {
 	txn.state_set(node1, vec![(make_key("key2"), make_value("value2"))]).unwrap();
 	txn.state_set(node2, vec![(make_key("key3"), make_value("value3"))]).unwrap();
 
-	let items: Vec<_> = txn.state_scan_all(node1).unwrap().items.into_iter().collect();
+	let items = scan_operator(&mut txn, node1);
 	assert_eq!(items.len(), 2);
 
-	let items: Vec<_> = txn.state_scan_all(node2).unwrap().items.into_iter().collect();
+	let items = scan_operator(&mut txn, node2);
 	assert_eq!(items.len(), 1);
 }
 
@@ -278,8 +293,7 @@ fn test_state_scan_empty() {
 
 	let operator_id = OperatorId(1);
 
-	let iter = txn.state_scan_all(operator_id).unwrap();
-	assert!(iter.items.into_iter().next().is_none());
+	assert!(scan_operator(&mut txn, operator_id).is_empty());
 }
 
 #[test]
@@ -301,10 +315,7 @@ fn test_state_range_all() {
 	txn.state_set(operator_id, vec![(make_key("c"), make_value("3"))]).unwrap();
 	txn.state_set(operator_id, vec![(make_key("d"), make_value("4"))]).unwrap();
 
-	let range = EncodedKeyRange::new(
-		Bound::Included(make_key("b").into_encoded()),
-		Bound::Excluded(make_key("d").into_encoded()),
-	);
+	let range = key_range(Bound::Included("b"), Bound::Excluded("d"));
 	let iter = txn.state_range(operator_id, StateRange::forward(range, "test")).unwrap();
 	let items: Vec<_> = iter.items.into_iter().collect();
 
@@ -412,12 +423,7 @@ fn a_pending_remove_hides_the_stored_row_it_deleted_from_the_last_read() {
 	let operator = OperatorId(1);
 	seed_state_row(&engine, operator, &make_key("a"), make_value("low"));
 	seed_state_row(&engine, operator, &make_key("b"), make_value("high"));
-	let range = || {
-		EncodedKeyRange::new(
-			Bound::Included(make_key("a").into_encoded()),
-			Bound::Included(make_key("z").into_encoded()),
-		)
-	};
+	let range = || key_range(Bound::Included("a"), Bound::Included("z"));
 
 	let mut txn = deferred_shared(&engine);
 	assert_eq!(
@@ -454,12 +460,7 @@ fn a_last_read_walks_past_more_pending_removes_than_one_page_holds() {
 	for name in &names {
 		seed_state_row(&engine, operator, &make_key(name), make_value("row"));
 	}
-	let range = || {
-		EncodedKeyRange::new(
-			Bound::Included(make_key("k000").into_encoded()),
-			Bound::Included(make_key("k999").into_encoded()),
-		)
-	};
+	let range = || key_range(Bound::Included("k000"), Bound::Included("k999"));
 
 	let mut txn = deferred_shared(&engine);
 	assert_eq!(
@@ -557,10 +558,7 @@ fn a_state_range_whose_head_is_all_tombstones_still_reaches_the_row_behind_them(
 	seed_state_row(&engine, operator, &make_key("zzzz"), make_value("behind"));
 
 	let mut txn = deferred_shared(&engine);
-	let range = EncodedKeyRange::new(
-		Bound::Included(make_key("a000").into_encoded()),
-		Bound::Included(make_key("zzzz").into_encoded()),
-	);
+	let range = key_range(Bound::Included("a000"), Bound::Included("zzzz"));
 	let batch = txn.state_range(operator, StateRange::forward(range, "test").limit(1)).unwrap();
 
 	assert_eq!(
@@ -606,7 +604,7 @@ fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
 
 	let mut expected: Vec<TaggedKey> = Vec::new();
 	for group in sweep_order(&groups) {
-		let range = group_inner_range(group);
+		let range = GroupStateRange::Group(group);
 		let batch = txn.state_range(operator, StateRange::forward(range, "test")).unwrap();
 		expected.extend(batch.items.into_iter().map(|row| row.key));
 	}

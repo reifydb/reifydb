@@ -4,10 +4,7 @@
 use std::{
 	borrow::Borrow,
 	cmp::Ordering,
-	collections::{
-		Bound,
-		Bound::{Excluded, Included, Unbounded},
-	},
+	collections::Bound,
 	fmt,
 	hash::{Hash, Hasher},
 	iter, mem,
@@ -609,49 +606,6 @@ impl EncodedKeyRange {
 			start,
 			end,
 		}
-	}
-
-	pub fn with_prefix(&self, prefix: EncodedKey) -> Self {
-		let start = match self.start_bound() {
-			Included(key) => {
-				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
-				prefixed.extend_from_slice(prefix.as_ref());
-				prefixed.extend_from_slice(key.as_ref());
-				Included(EncodedKey::new(prefixed))
-			}
-			Excluded(key) => {
-				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
-				prefixed.extend_from_slice(prefix.as_ref());
-				prefixed.extend_from_slice(key.as_ref());
-				Excluded(EncodedKey::new(prefixed))
-			}
-			Unbounded => Included(prefix.clone()),
-		};
-
-		let end = match self.end_bound() {
-			Included(key) => {
-				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
-				prefixed.extend_from_slice(prefix.as_ref());
-				prefixed.extend_from_slice(key.as_ref());
-				Included(EncodedKey::new(prefixed))
-			}
-			Excluded(key) => {
-				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
-				prefixed.extend_from_slice(prefix.as_ref());
-				prefixed.extend_from_slice(key.as_ref());
-				Excluded(EncodedKey::new(prefixed))
-			}
-			Unbounded => match prefix.as_ref().iter().rposition(|&b| b != 0xff) {
-				Some(i) => {
-					let mut next_prefix = prefix.as_ref()[..=i].to_vec();
-					next_prefix[i] += 1;
-					Excluded(EncodedKey::new(next_prefix))
-				}
-				None => Unbounded,
-			},
-		};
-
-		EncodedKeyRange::new(start, end)
 	}
 
 	pub fn start_end(start: Option<EncodedKey>, end: Option<EncodedKey>) -> Self {

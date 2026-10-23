@@ -4,15 +4,17 @@
 use std::{cmp::Ordering, iter, ops::Bound, vec};
 
 use iter::Peekable;
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::CommitVersion,
 	interface::{catalog::flow::OperatorId, store::MultiVersionRow},
-	key::{any::TaggedKey, operator::state::OperatorStateKey, tag::KeyTag},
+	key::{
+		any::TaggedKey,
+		bound::{TaggedKeyBound, TaggedKeyBoundRange},
+		operator::state::{OperatorStateKey, inner_range},
+		tag::KeyTag,
+	},
 };
 use reifydb_store_operator::store::OperatorStore;
 use reifydb_value::Result;
@@ -126,13 +128,20 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 	}
 }
 
+pub fn range_read_from(range: &TaggedKeyBoundRange) -> ReadFrom {
+	match range.start.as_ref() {
+		Bound::Included(start) | Bound::Excluded(start) => read_from(&start.encode()),
+		Bound::Unbounded => ReadFrom::Query,
+	}
+}
+
 const UNDECODABLE_PENDING_KEY: &str = "a pending flow write must carry a decodable key";
 
 pub(crate) struct OperatorStateRangeIter {
 	store: OperatorStore,
 	operator: OperatorId,
-	end: Bound<EncodedKey>,
-	cursor: Bound<EncodedKey>,
+	range: TaggedKeyBoundRange,
+	cursor: Option<EncodedKey>,
 	batch_size: u64,
 	buffered: IntoIter<(EncodedKey, EncodedBytes)>,
 	exhausted: bool,
@@ -142,21 +151,27 @@ pub(crate) struct OperatorStateRangeIter {
 impl OperatorStateRangeIter {
 	pub(crate) fn new(
 		store: OperatorStore,
-		operator: OperatorId,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		batch_size: usize,
 		version: CommitVersion,
 	) -> Self {
+		let (operator, _) = inner_range(&range).expect("an operator-state range must carry an operator id");
 		Self {
 			store,
 			operator,
-			cursor: range.start,
-			end: range.end,
+			range,
+			cursor: None,
 			batch_size: batch_size.max(1) as u64,
 			buffered: Vec::new().into_iter(),
 			exhausted: false,
 			version,
 		}
+	}
+
+	fn state_key(&self, inner_key: &EncodedKey) -> OperatorStateKey {
+		let (group, keyspace, suffix) = OperatorStateKey::decode_inner(inner_key.as_slice())
+			.expect("inner keys must carry a structured encoding");
+		OperatorStateKey::new(self.operator, group, keyspace, suffix)
 	}
 }
 
@@ -166,14 +181,10 @@ impl Iterator for OperatorStateRangeIter {
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			if let Some((inner_key, bytes)) = self.buffered.next() {
-				self.cursor = Bound::Excluded(inner_key.clone());
+				let key = self.state_key(&inner_key).into();
+				self.cursor = Some(inner_key);
 				return Some(Ok(MultiVersionRow {
-					key: {
-						let (group, keyspace, suffix) =
-							OperatorStateKey::decode_inner(inner_key.as_slice())
-								.expect("inner keys must carry a structured encoding");
-						OperatorStateKey::new(self.operator, group, keyspace, suffix).into()
-					},
+					key,
 					bytes,
 					version: self.version,
 				}));
@@ -181,8 +192,10 @@ impl Iterator for OperatorStateRangeIter {
 			if self.exhausted {
 				return None;
 			}
-			let range = EncodedKeyRange::new(self.cursor.clone(), self.end.clone());
-			let batch = match self.store.range_batch(self.operator, range, self.batch_size) {
+			if let Some(cursor) = self.cursor.take() {
+				self.range.start = Bound::Excluded(TaggedKeyBound::Key(self.state_key(&cursor).into()));
+			}
+			let batch = match self.store.range_batch(self.range.clone(), self.batch_size) {
 				Ok(batch) => batch,
 				Err(e) => {
 					self.exhausted = true;
@@ -192,7 +205,7 @@ impl Iterator for OperatorStateRangeIter {
 			self.exhausted = !batch.has_more;
 			let resumed = match batch.resume {
 				Some(key) => {
-					self.cursor = Bound::Excluded(key.into_encoded());
+					self.cursor = Some(key.into_encoded());
 					true
 				}
 				None => false,

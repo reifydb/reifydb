@@ -10,7 +10,7 @@ use crate::{
 	key::{
 		operator::{
 			keyspace::columns_width,
-			state::{GroupId, GroupStateKey, OperatorStateKey, keyspace_inner_range},
+			state::{GroupId, GroupStateKey, GroupStateRange, OperatorStateKey},
 			traits::Keyspace,
 		},
 		typed::{
@@ -199,11 +199,15 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 	where
 		K: Keyspace,
 	{
-		let mut range = keyspace_inner_range(group, K::ID);
-		range.start = match from {
-			Bound::Unbounded => range.start,
-			Bound::Included(suffix) => Bound::Included(typed_key::<K>(group, suffix).into_encoded()),
-			Bound::Excluded(suffix) => Bound::Excluded(typed_key::<K>(group, suffix).into_encoded()),
+		let range = GroupStateRange::Keyspace {
+			group,
+			keyspace: K::ID,
+			start: match from {
+				Bound::Unbounded => Bound::Unbounded,
+				Bound::Included(suffix) => Bound::Included(suffix.to_suffix_bytes()),
+				Bound::Excluded(suffix) => Bound::Excluded(suffix.to_suffix_bytes()),
+			},
+			end: Bound::Unbounded,
 		};
 		let mut out = Vec::new();
 		for (key, row) in self.state_page(range, limit)? {

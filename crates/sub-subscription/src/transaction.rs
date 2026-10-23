@@ -1,19 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	cmp::Ordering,
-	collections::HashMap,
-	mem,
-	ops::{
-		Bound::{Excluded, Included, Unbounded},
-		RangeBounds,
-	},
-};
+use std::{cmp::Ordering, collections::HashMap, mem, ops::RangeBounds};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
@@ -26,6 +18,7 @@ use reifydb_core::{
 	},
 	key::{
 		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
 		operator::state::{GroupId, GroupStateKey, KeyspaceMask, OperatorStateKey, node_prefix},
 	},
 };
@@ -40,7 +33,7 @@ use reifydb_flow_async::{
 		ChangeCoordinate, FlowTransaction,
 		dictionary::DictionaryExtension,
 		pending_get_many,
-		read::{ReadFrom, read_from},
+		read::{ReadFrom, range_read_from, read_from},
 		scope::scoped_key,
 		substrate::FlowSubstrate,
 	},
@@ -123,22 +116,18 @@ impl EphemeralTransaction {
 	}
 }
 
-fn is_state_range(range: &EncodedKeyRange) -> bool {
-	match range.start.as_ref() {
-		Included(start) | Excluded(start) => {
-			matches!(read_from(start), ReadFrom::OperatorState | ReadFrom::StateQuery)
-		}
-		Unbounded => false,
-	}
+fn is_state_range(range: &TaggedKeyBoundRange) -> bool {
+	matches!(range_read_from(range), ReadFrom::OperatorState | ReadFrom::StateQuery)
 }
 
 fn state_items(
 	state: &HashMap<EncodedKey, EncodedBytes>,
-	range: &EncodedKeyRange,
+	range: &TaggedKeyBoundRange,
 	version: CommitVersion,
 ) -> Vec<Result<MultiVersionRow<TaggedKey>>> {
+	let range = range.encode();
 	state.iter()
-		.filter(|(key, _)| range.contains(key))
+		.filter(|(key, _)| range.contains(*key))
 		.map(|(key, bytes)| {
 			Ok(MultiVersionRow {
 				key: decoded(key),
@@ -182,7 +171,7 @@ fn ephemeral_storage_range<'a>(
 	state: &HashMap<EncodedKey, EncodedBytes>,
 	query: &'a MultiReadTransaction,
 	version: CommitVersion,
-	range: EncodedKeyRange,
+	range: TaggedKeyBoundRange,
 	scope: RangeScope,
 	batch_size: usize,
 ) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'a> {
@@ -194,7 +183,7 @@ fn ephemeral_storage_range<'a>(
 		});
 		return Box::new(items.into_iter());
 	}
-	Box::new(query.range_encoded(range, scope, batch_size))
+	Box::new(query.range(range, scope, batch_size))
 }
 
 fn ephemeral_fetch_state(
@@ -347,7 +336,7 @@ impl FlowTransaction for EphemeralTransaction {
 
 	fn storage_range(
 		&mut self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {

@@ -11,7 +11,7 @@ use reifydb_core::{
 	common::OperatorClass,
 	error::CoreError,
 	interface::{catalog::flow::OperatorId, change::Diff},
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, keyspace_inner_range_in},
+	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask},
 	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_flow_async::operator::{host::HostContext, state::reclaim::ReclaimOutcome};
@@ -247,7 +247,12 @@ impl GuestState for InProcessState<'_> {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
 	) -> SdkResult<()> {
 		class_keyspace(self.class, keyspace)?;
-		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
+		let range = GroupStateRange::Keyspace {
+			group,
+			keyspace,
+			start: start.to_bound().map(<[u8]>::to_vec),
+			end: end.to_bound().map(<[u8]>::to_vec),
+		};
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively; the visitor
 		// cannot reach the context, so it cannot re-enter the host while this borrow is live.
@@ -276,7 +281,12 @@ impl GuestState for InProcessState<'_> {
 		end: GuestBound<'_>,
 	) -> SdkResult<Option<(GroupStateKey, EncodedPodRow)>> {
 		class_keyspace(self.class, keyspace)?;
-		let range = keyspace_inner_range_in(group, keyspace, start.to_bound(), end.to_bound());
+		let range = GroupStateRange::Keyspace {
+			group,
+			keyspace,
+			start: start.to_bound().map(<[u8]>::to_vec),
+			end: end.to_bound().map(<[u8]>::to_vec),
+		};
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_last(range) }.map_err(to_sdk_err)

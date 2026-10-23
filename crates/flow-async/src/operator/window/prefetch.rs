@@ -3,13 +3,10 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	actors::pending::PendingWrite,
-	key::operator::state::{GroupId, GroupStateKey, KeyspaceMask},
+	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceMask},
 	state::{
 		batch::StateBatch,
 		timer::{GroupSweep, StateStore},
@@ -137,7 +134,7 @@ impl StateStore for Prefetched<'_> {
 
 	fn state_page_inner(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		self.store.state_page_inner(range, limit)

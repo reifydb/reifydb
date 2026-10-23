@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
@@ -12,7 +12,7 @@ use reifydb_core::{
 	interface::catalog::{config::ConfigKey, dictionary::Dictionary, id::ViewId, storage::StorageId},
 	key::operator::{
 		keyspace::join::JoinRowMappingKey,
-		state::{GroupId, GroupStateKey, KeyspaceMask},
+		state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceMask},
 	},
 	state::{
 		batch::StateBatch,
@@ -23,7 +23,7 @@ use reifydb_flow::txn::Resolve;
 use reifydb_flow_async::{
 	operator::{
 		host::HostContext,
-		state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+		state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 	},
 	transaction::join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
 };
@@ -79,7 +79,7 @@ impl StateStore for SingleEntryHost {
 
 	fn state_page_inner(
 		&mut self,
-		_range: EncodedKeyRange,
+		_range: GroupStateRange,
 		_limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		unimplemented!()
@@ -180,19 +180,15 @@ impl HostContext for SingleEntryHost {
 		unimplemented!()
 	}
 
-	fn state_range(&mut self, _range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+	fn state_range(&mut self, _range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		unimplemented!()
 	}
 
 	fn state_range_limited(
 		&mut self,
-		_range: EncodedKeyRange,
+		_range: GroupStateRange,
 		_limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		unimplemented!()
-	}
-
-	fn state_range_iter(&mut self, _range: EncodedKeyRange) -> StateIterator<'_> {
 		unimplemented!()
 	}
 

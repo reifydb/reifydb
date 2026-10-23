@@ -1182,19 +1182,17 @@ mod seal_tests {
 	use arrow_array::UInt64Array;
 	use arrow_schema::Schema;
 	use reifydb_catalog::catalog::Catalog;
-	use reifydb_codec::{
-		key::encoded::EncodedKeyRange,
-		row::{bytes::EncodedBytes, operator::state::decode, shape::RowShape},
-	};
+	use reifydb_codec::row::{bytes::EncodedBytes, operator::state::decode, shape::RowShape};
 	use reifydb_core::{
 		actors::pending::Pending,
 		common::CommitVersion,
 		interface::{catalog::dictionary::Dictionary, store::MultiVersionRow},
 		key::{
 			any::TaggedKey,
+			bound::TaggedKeyBoundRange,
 			operator::{
 				keyspace::join::{JoinLeft, JoinRight, JoinRowExpiryState as JoinRowExpiry},
-				state::{GroupStateKey, KeyspaceId, keyspace_inner_range, node_prefix},
+				state::{GroupStateKey, KeyspaceId},
 				traits::Keyspace,
 			},
 		},
@@ -1217,7 +1215,11 @@ mod seal_tests {
 
 	use super::*;
 	use crate::{
-		operator::{host::TxnHostContext, sink::DurableSink},
+		operator::{
+			host::TxnHostContext,
+			sink::DurableSink,
+			state::test_utils::test::{scan_operator, whole_keyspace},
+		},
 		timer::{TimerDue, extension::TimerExtension},
 		transaction::{
 			ChangeCoordinate, FlowTransaction,
@@ -1374,7 +1376,7 @@ mod seal_tests {
 	fn armed_timers(op: &JoinOperator, txn: &mut DeferredTransaction) -> usize {
 		txn.state_range(
 			op.operator,
-			StateRange::forward(keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
+			StateRange::forward(whole_keyspace(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
 		)
 		.unwrap()
 		.items
@@ -1402,9 +1404,7 @@ mod seal_tests {
 
 	fn group_rows(op: &JoinOperator, txn: &mut DeferredTransaction, group: GroupId) -> usize {
 		// no single range spans a group's keyspaces, so the group filter has to happen after the scan
-		txn.state_scan_all(op.operator)
-			.unwrap()
-			.items
+		scan_operator(txn, op.operator)
 			.iter()
 			.filter(|item| matches!(&item.key, TaggedKey::OperatorState(key) if key.group == group))
 			.count()
@@ -1416,7 +1416,7 @@ mod seal_tests {
 			JoinSide::Left => JoinLeft::ID,
 			JoinSide::Right => JoinRight::ID,
 		};
-		txn.state_range(op.operator, StateRange::forward(keyspace_inner_range(group, keyspace), "test"))
+		txn.state_range(op.operator, StateRange::forward(whole_keyspace(group, keyspace), "test"))
 			.unwrap()
 			.items
 			.len()
@@ -1428,7 +1428,7 @@ mod seal_tests {
 		group: GroupId,
 		keyspace: KeyspaceId,
 	) -> usize {
-		txn.state_range(op.operator, StateRange::forward(keyspace_inner_range(group, keyspace), "test"))
+		txn.state_range(op.operator, StateRange::forward(whole_keyspace(group, keyspace), "test"))
 			.unwrap()
 			.items
 			.len()
@@ -1600,13 +1600,13 @@ mod seal_tests {
 
 		fn storage_range(
 			&mut self,
-			range: EncodedKeyRange,
+			range: TaggedKeyBoundRange,
 			scope: RangeScope,
 			batch_size: usize,
 		) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
 			// a repeated enumeration of one keyspace must show up here as a repeated start bound
-			match &range.start {
-				Bound::Included(start) | Bound::Excluded(start) => self.scan_starts.push(start.clone()),
+			match range.encode().start {
+				Bound::Included(start) | Bound::Excluded(start) => self.scan_starts.push(start),
 				Bound::Unbounded => {}
 			}
 			self.inner.storage_range(range, scope, batch_size)
@@ -1619,8 +1619,7 @@ mod seal_tests {
 
 	fn left_scan_start(operator: OperatorId, group: GroupId) -> EncodedKey {
 		// unprefixed this start matches no range the operator actually issues, so the count would read zero
-		let range =
-			keyspace_inner_range(group, JoinLeft::ID).with_prefix(EncodedKey::new(node_prefix(operator)));
+		let range = whole_keyspace(group, JoinLeft::ID).for_operator(operator).encode();
 		match range.start {
 			Bound::Included(key) | Bound::Excluded(key) => key,
 			Bound::Unbounded => panic!("a keyspace range must be bounded below"),

@@ -9,7 +9,7 @@ use std::{
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
@@ -23,6 +23,7 @@ use reifydb_core::{
 	internal_err,
 	key::{
 		any::TaggedKey,
+		bound::TaggedKeyBoundRange,
 		operator::state::{GroupId, GroupStateKey, KeyspaceMask},
 	},
 };
@@ -158,7 +159,7 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 
 	fn storage_range(
 		&mut self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_>;
@@ -205,12 +206,13 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 
 	fn range(
 		&mut self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
+		let encoded = range.encode();
 		let mut merged = BTreeMap::new();
-		self.pending().collect_range((range.start.as_ref(), range.end.as_ref()), &mut merged);
+		self.pending().collect_range((encoded.start.as_ref(), encoded.end.as_ref()), &mut merged);
 		let pending_vec: Vec<(EncodedKey, PendingWrite)> = merged.into_iter().collect();
 		let version = self.version();
 		let storage_iter = self.storage_range(range, scope, batch_size);

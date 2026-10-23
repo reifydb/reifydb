@@ -664,14 +664,11 @@ mod tests {
 		sync::Arc,
 	};
 
-	use reifydb_codec::{
-		key::encoded::{EncodedKey, EncodedKeyRange},
-		row::pod::EncodedPodRow,
-	};
+	use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 	use reifydb_core::{
 		common::{WindowKind, WindowSize},
 		interface::catalog::flow::OperatorId,
-		key::operator::state::{GroupId, GroupStateKey, KeyspaceMask},
+		key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceMask},
 		state::{
 			batch::StateBatch,
 			per_key,
@@ -690,7 +687,10 @@ mod tests {
 	use crate::{
 		operator::{
 			aggregation::core::slot_rows::slot_row,
-			state::seal::{coord::Coord, rule::EvictionRule},
+			state::{
+				seal::{coord::Coord, rule::EvictionRule},
+				test_utils::test::inner_bytes,
+			},
 			window::operator::{WindowConfig, WindowOperator},
 		},
 		window::engine::config::WindowEngineConfig,
@@ -809,9 +809,10 @@ mod tests {
 		}
 		fn state_page_inner(
 			&mut self,
-			range: EncodedKeyRange,
+			range: GroupStateRange,
 			limit: Option<usize>,
 		) -> ValueResult<Vec<(GroupStateKey, EncodedPodRow)>> {
+			let range = inner_bytes(range);
 			// The backing map is a HashMap, so without this sort the page order is arbitrary and the real
 			// store's key order is not reproduced.
 			let mut entries: Vec<(Vec<u8>, EncodedPodRow)> = self

@@ -1439,7 +1439,7 @@ mod reap_tests {
 	use reifydb_core::{
 		common::{CommitVersion, WindowSize},
 		interface::catalog::flow::OperatorId,
-		key::operator::state::{KeyspaceId, keyspace_inner_range},
+		key::operator::state::KeyspaceId,
 	};
 	use reifydb_flow::context::FlowContext;
 	use reifydb_routine_abi::registry::Routines;
@@ -1451,6 +1451,7 @@ mod reap_tests {
 	use crate::{
 		operator::{
 			host::TxnHostContext,
+			state::test_utils::test::whole_keyspace,
 			window::operator::{WindowConfig, WindowOperator},
 		},
 		timer::Timer,
@@ -1493,7 +1494,7 @@ mod reap_tests {
 	fn armed_timers(txn: &mut DeferredTransaction, operator: OperatorId) -> usize {
 		txn.state_range(
 			operator,
-			StateRange::forward(keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
+			StateRange::forward(whole_keyspace(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
 		)
 		.unwrap()
 		.items
@@ -1551,10 +1552,7 @@ mod seal_arm_tests {
 		interface::catalog::flow::OperatorId,
 		key::{
 			any::TaggedKey,
-			operator::{
-				keyspace::timer::TimerWheelKey,
-				state::{KeyspaceId, keyspace_inner_range},
-			},
+			operator::{keyspace::timer::TimerWheelKey, state::KeyspaceId},
 		},
 		state::typed::SuffixBytes,
 	};
@@ -1569,6 +1567,7 @@ mod seal_arm_tests {
 		operator::{
 			aggregation::core::slot_rows::slot_row,
 			host::TxnHostContext,
+			state::test_utils::test::whole_keyspace,
 			window::operator::{WindowConfig, WindowOperator},
 		},
 		timer::{Timer, wheel::TimerWheel},
@@ -1618,7 +1617,7 @@ mod seal_arm_tests {
 	fn seal_timers(txn: &mut DeferredTransaction, operator: OperatorId) -> Vec<DateTime> {
 		txn.state_range(
 			operator,
-			StateRange::forward(keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
+			StateRange::forward(whole_keyspace(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
 		)
 		.unwrap()
 		.items
@@ -1842,13 +1841,10 @@ mod seal_arm_tests {
 	}
 
 	fn accumulators(txn: &mut DeferredTransaction, operator: OperatorId, group: GroupId) -> usize {
-		txn.state_range(
-			operator,
-			StateRange::forward(keyspace_inner_range(group, KeyspaceId::ACCUMULATOR), "test"),
-		)
-		.unwrap()
-		.items
-		.len()
+		txn.state_range(operator, StateRange::forward(whole_keyspace(group, KeyspaceId::ACCUMULATOR), "test"))
+			.unwrap()
+			.items
+			.len()
 	}
 
 	#[test]

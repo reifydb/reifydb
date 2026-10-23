@@ -11,9 +11,7 @@ use reifydb_core::{
 	actors::pending::PendingWrite,
 	common::OperatorClass,
 	delta::RemoveVisibility,
-	key::operator::state::{
-		GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, guest_may_address, keyspace_inner_range_in,
-	},
+	key::operator::state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId, KeyspaceMask, guest_may_address},
 	state::{batch::StateBatch, timer::TimerKind},
 };
 use reifydb_sdk::{
@@ -410,14 +408,6 @@ unsafe fn suffix_bound(ptr: *const u8, len: usize, bound_type: u8) -> Option<Bou
 	}
 }
 
-fn bound_as_slice(bound: &Bound<Vec<u8>>) -> Bound<&[u8]> {
-	match bound {
-		Bound::Unbounded => Bound::Unbounded,
-		Bound::Included(suffix) => Bound::Included(suffix),
-		Bound::Excluded(suffix) => Bound::Excluded(suffix),
-	}
-}
-
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_range(
 	_operator_id: u64,
@@ -456,12 +446,12 @@ pub(super) extern "C" fn host_state_range(
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 
-		let range = keyspace_inner_range_in(
-			host_group(group),
+		let range = GroupStateRange::Keyspace {
+			group: host_group(group),
 			keyspace,
-			bound_as_slice(&start_bound),
-			bound_as_slice(&end_bound),
-		);
+			start: start_bound,
+			end: end_bound,
+		};
 		let result = host.state_range_limited(range, (limit != usize::MAX).then_some(limit));
 
 		match result {
@@ -917,28 +907,20 @@ mod join_row_expiry_guard_tests {
 	use std::{
 		cell::{Cell, RefCell},
 		collections::HashMap,
-		iter::empty,
 		rc::Rc,
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::shape::RowShape};
 	use reifydb_core::{
 		common::{CommitVersion, OperatorClass, SourceVersion},
-		interface::{
-			catalog::{
-				config::ConfigKey, dictionary::Dictionary, flow::OperatorId, id::ViewId,
-				storage::StorageId,
-			},
-			store::MultiVersionRow,
+		interface::catalog::{
+			config::ConfigKey, dictionary::Dictionary, flow::OperatorId, id::ViewId, storage::StorageId,
 		},
-		key::{
-			any::TaggedKey,
-			operator::{
-				keyspace::{join::JoinRowMappingKey, suffix_width_of},
-				state::{
-					GroupId, KeyspaceId, KeyspaceMask, OperatorStateKey, keyspace_inner_range,
-					keyspace_inner_range_split,
-				},
+		key::operator::{
+			keyspace::{join::JoinRowMappingKey, suffix_width_of},
+			state::{
+				GroupId, GroupStateRange, KeyspaceId, KeyspaceMask, OperatorStateKey, inner_range,
+				keyspace_inner_range, keyspace_inner_range_split,
 			},
 		},
 		state::{
@@ -951,7 +933,7 @@ mod join_row_expiry_guard_tests {
 	use reifydb_flow_async::{
 		operator::{
 			host::HostContext,
-			state::{iter::StateIterator, reaper::IdentityReclaim, reclaim::ReclaimOutcome},
+			state::{reaper::IdentityReclaim, reclaim::ReclaimOutcome},
 		},
 		timer::TimerMove,
 		transaction::join_expiry::{DueStart, JoinDueEntry, JoinDuePage},
@@ -977,7 +959,7 @@ mod join_row_expiry_guard_tests {
 	/// Records whether a write reached the host at all; the guard has to reject before that, not after.
 	struct RecordingHost {
 		reached: Rc<Cell<bool>>,
-		range: Rc<RefCell<Option<EncodedKeyRange>>>,
+		range: Rc<RefCell<Option<GroupStateRange>>>,
 		row_shape_cache: HashMap<EncodedKey, RowShape>,
 	}
 
@@ -1005,13 +987,13 @@ mod join_row_expiry_guard_tests {
 
 		fn state_page_inner(
 			&mut self,
-			_range: EncodedKeyRange,
+			_range: GroupStateRange,
 			_limit: Option<usize>,
 		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 			Ok(Vec::new())
 		}
 
-		fn state_last(&mut self, _range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+		fn state_last(&mut self, _range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 			Ok(None)
 		}
 
@@ -1145,22 +1127,18 @@ mod join_row_expiry_guard_tests {
 			0
 		}
 
-		fn state_range(&mut self, _range: EncodedKeyRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
+		fn state_range(&mut self, _range: GroupStateRange) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 			Ok(Vec::new())
 		}
 
 		fn state_range_limited(
 			&mut self,
-			range: EncodedKeyRange,
+			range: GroupStateRange,
 			_limit: Option<usize>,
 		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 			self.reached.set(true);
 			*self.range.borrow_mut() = Some(range);
 			Ok(Vec::new())
-		}
-
-		fn state_range_iter(&mut self, _range: EncodedKeyRange) -> StateIterator<'_> {
-			StateIterator::new(Box::new(empty::<Result<MultiVersionRow<TaggedKey>>>()))
 		}
 
 		fn reclaim_group_identity(&mut self, _group: GroupId, _limit: usize) -> Result<ReclaimOutcome> {
@@ -1259,7 +1237,13 @@ mod join_row_expiry_guard_tests {
 		let mut host = ExternCHostContext::new(&mut recording, OperatorClass::Unmanaged);
 		let mut ctx = new_extern_c_context(&mut host, OperatorId(1), create_host_callbacks());
 		let status = call(&mut ctx as *mut ExternCContextRaw);
-		let seen = range.borrow().clone();
+		// Guards are asserted on the padded inner bytes the store sees, so the recorded range is converted the
+		// same way.
+		let seen = range.borrow().clone().map(|recorded| {
+			inner_range(&recorded.for_operator(OperatorId(1)))
+				.expect("a recorded range addresses operator state")
+				.1
+		});
 		(status, reached.get(), seen)
 	}
 

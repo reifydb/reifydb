@@ -6,20 +6,17 @@ use std::{
 	ops::Bound,
 };
 
-use reifydb_codec::{
-	key::encoded::EncodedKeyRange,
-	row::{operator::state::OperatorState, pod::EncodedPodRow},
-};
+use reifydb_codec::row::{operator::state::OperatorState, pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::{
 		any::TaggedKey,
 		operator::{
 			keyspace::join::{
-				JoinExpiryDue, JoinExpiryDueKey, JoinRowExpiry as JoinRowExpirySpace,
-				JoinRowExpiryState, JoinRowExpirySuffix, join_expiry_due_key,
+				JoinExpiryDueKey, JoinRowExpiry as JoinRowExpirySpace, JoinRowExpiryState,
+				JoinRowExpirySuffix, join_expiry_due_key,
 			},
-			state::{GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range},
+			state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceId},
 		},
 		typed::{BoundedKey, direction::Asc},
 	},
@@ -69,24 +66,31 @@ pub fn join_expiry_key(group: GroupId, side: u8, row_number: RowNumber) -> Group
 	)
 }
 
-pub fn join_expiry_range(group: GroupId) -> EncodedKeyRange {
-	keyspace_inner_range(group, KeyspaceId::JOIN_ROW_EXPIRY)
+pub fn join_expiry_range(group: GroupId) -> GroupStateRange {
+	GroupStateRange::Keyspace {
+		group,
+		keyspace: KeyspaceId::JOIN_ROW_EXPIRY,
+		start: Bound::Unbounded,
+		end: Bound::Unbounded,
+	}
 }
 
-pub fn join_due_floor_key(at: DateTime) -> GroupStateKey {
-	typed_key::<JoinExpiryDue>(
-		GroupId::ROOT,
-		&JoinExpiryDueKey {
-			at: Asc(at),
-			group: BoundedKey::low(),
-			side: BoundedKey::low(),
-			row: BoundedKey::low(),
-		},
-	)
+pub fn join_due_floor(at: DateTime) -> JoinExpiryDueKey {
+	JoinExpiryDueKey {
+		at: Asc(at),
+		group: BoundedKey::low(),
+		side: BoundedKey::low(),
+		row: BoundedKey::low(),
+	}
 }
 
-pub fn join_due_range() -> EncodedKeyRange {
-	keyspace_inner_range(GroupId::ROOT, KeyspaceId::JOIN_EXPIRY_DUE)
+pub fn join_due_range() -> GroupStateRange {
+	GroupStateRange::Keyspace {
+		group: GroupId::ROOT,
+		keyspace: KeyspaceId::JOIN_EXPIRY_DUE,
+		start: Bound::Unbounded,
+		end: Bound::Unbounded,
+	}
 }
 
 pub trait JoinRowExpiryExtension: FlowTransaction {
@@ -203,19 +207,18 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 				next: None,
 			});
 		}
-		let mut range = join_due_range();
-		let site = match start {
-			DueStart::After(cursor) => {
-				range.start = Bound::Excluded(
-					typed_key::<JoinExpiryDue>(GroupId::ROOT, cursor).into_encoded(),
-				);
-				"join::due_page:resume"
-			}
+		let (from, site) = match start {
+			DueStart::After(cursor) => (Bound::Excluded(cursor.to_suffix_bytes()), "join::due_page:resume"),
 			DueStart::Floor(floor) => {
-				range.start = Bound::Included(join_due_floor_key(*floor).into_encoded());
-				"join::due_page:floor"
+				(Bound::Included(join_due_floor(*floor).to_suffix_bytes()), "join::due_page:floor")
 			}
-			DueStart::Bottom => "join::due_page:restart",
+			DueStart::Bottom => (Bound::Unbounded, "join::due_page:restart"),
+		};
+		let range = GroupStateRange::Keyspace {
+			group: GroupId::ROOT,
+			keyspace: KeyspaceId::JOIN_EXPIRY_DUE,
+			start: from,
+			end: Bound::Unbounded,
 		};
 		let batch = self.state_range(id, StateRange::forward(range, site).limit(budget.saturating_add(1)))?;
 

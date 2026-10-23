@@ -4,7 +4,7 @@
 use std::{collections::HashMap, ops::Bound};
 
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::operator::state::{OperatorState, decode},
 };
 use reifydb_core::{
@@ -16,11 +16,12 @@ use reifydb_core::{
 				join::{JoinRowMapping, JoinRowMappingKey},
 				root::{GroupRowMapping, GuestRowMapping, GuestRowMappingSuffix},
 			},
-			state::{GroupId, GroupStateKey, OperatorStateKey, row_number_counter_key},
+			state::{GroupId, GroupStateKey, GroupStateRange, OperatorStateKey, row_number_counter_key},
+			traits::Keyspace,
 		},
 		typed::direction::{Asc, Desc},
 	},
-	state::typed::typed_key,
+	state::typed::{SuffixBytes, typed_key},
 };
 use reifydb_value::{
 	Result,
@@ -237,27 +238,26 @@ pub trait RowNumberExtension: FlowTransaction {
 	}
 
 	fn remove_join_row_numbers_for_left(&mut self, operator: OperatorId, tag: u8, left: u64) -> Result<()> {
-		let base = EncodedKeyRange::new(
-			Bound::Included(
-				join_mapping_key(&JoinRowMappingKey {
-					tag: Asc(tag),
-					left: Desc(left),
-					right: Desc(u64::MAX),
-				})
-				.into_encoded(),
-			),
-			Bound::Included(
-				join_mapping_key(&JoinRowMappingKey {
-					tag: Asc(tag),
-					left: Desc(left),
-					right: Desc(u64::MIN),
-				})
-				.into_encoded(),
-			),
-		);
-		let mut lower = base.start.clone();
+		let high = JoinRowMappingKey {
+			tag: Asc(tag),
+			left: Desc(left),
+			right: Desc(u64::MAX),
+		}
+		.to_suffix_bytes();
+		let low = JoinRowMappingKey {
+			tag: Asc(tag),
+			left: Desc(left),
+			right: Desc(u64::MIN),
+		}
+		.to_suffix_bytes();
+		let mut lower = Bound::Included(high);
 		loop {
-			let range = EncodedKeyRange::new(lower.clone(), base.end.clone());
+			let range = GroupStateRange::Keyspace {
+				group: GroupId::ROOT,
+				keyspace: JoinRowMapping::ID,
+				start: lower.clone(),
+				end: Bound::Included(low.clone()),
+			};
 			let page = self.state_range(
 				operator,
 				StateRange::forward(range, "rownum::remove_by_prefix").limit(MAPPING_SWEEP_PAGE),
@@ -273,7 +273,7 @@ pub trait RowNumberExtension: FlowTransaction {
 					decoded.keyspace,
 					&decoded.suffix,
 				);
-				lower = Bound::Excluded(inner.as_encoded().clone());
+				lower = Bound::Excluded(decoded.suffix.clone());
 				doomed.push(inner);
 			}
 			self.state_remove(operator, &doomed)?;

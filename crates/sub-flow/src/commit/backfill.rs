@@ -335,7 +335,7 @@ fn clear_views(
 			RingBufferMetadataKey::full_scan_for_storage(storage),
 		];
 		for range in ranges {
-			for row in txn.range(range.encode(), RangeScope::All, batch_size.get() as usize) {
+			for row in txn.range(range, RangeScope::All, batch_size.get() as usize) {
 				keys.push(row?.key.encode());
 			}
 		}

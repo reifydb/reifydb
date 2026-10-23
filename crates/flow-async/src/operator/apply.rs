@@ -379,10 +379,7 @@ mod reclaim_tests {
 			any::TaggedKey,
 			operator::{
 				keyspace::timer::TimerWheelKey,
-				state::{
-					GroupId, GroupStateKey, KeyspaceId, keyspace_inner_range, managed_key_in,
-					unmanaged_key_in,
-				},
+				state::{GroupId, GroupStateKey, KeyspaceId, managed_key_in, unmanaged_key_in},
 			},
 		},
 		state::{timer::StateStore, typed::SuffixBytes},
@@ -392,7 +389,7 @@ mod reclaim_tests {
 
 	use super::*;
 	use crate::{
-		operator::host::TxnHostContext,
+		operator::{host::TxnHostContext, state::test_utils::test::whole_keyspace},
 		transaction::{
 			ChangeCoordinate, FlowTransaction,
 			deferred::DeferredTransaction,
@@ -464,10 +461,7 @@ mod reclaim_tests {
 	}
 
 	fn keys(txn: &mut DeferredTransaction, group: GroupId, keyspace: KeyspaceId) -> usize {
-		txn.state_range(OP, StateRange::forward(keyspace_inner_range(group, keyspace), "test"))
-			.unwrap()
-			.items
-			.len()
+		txn.state_range(OP, StateRange::forward(whole_keyspace(group, keyspace), "test")).unwrap().items.len()
 	}
 
 	fn due_entries(txn: &mut DeferredTransaction) -> usize {
@@ -482,10 +476,7 @@ mod reclaim_tests {
 		let mut dues: Vec<i64> = txn
 			.state_range(
 				OP,
-				StateRange::forward(
-					keyspace_inner_range(GroupId::ROOT, KeyspaceId::TIMER_WHEEL),
-					"test",
-				),
+				StateRange::forward(whole_keyspace(GroupId::ROOT, KeyspaceId::TIMER_WHEEL), "test"),
 			)
 			.unwrap()
 			.items

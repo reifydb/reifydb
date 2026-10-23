@@ -3,10 +3,7 @@
 
 use std::cmp::Reverse;
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_value::{
 	Result,
 	byte_size::ByteSize,
@@ -16,7 +13,7 @@ use reifydb_value::{
 use crate::{
 	key::operator::{
 		keyspace::{RootSibling, root_sibling_of},
-		state::{GroupId, GroupStateKey, KeyspaceMask, keyspace_inner_range_split},
+		state::{GroupId, GroupStateKey, GroupStateRange, KeyspaceMask},
 	},
 	state::batch::StateBatch,
 };
@@ -75,11 +72,11 @@ pub trait StateStore {
 
 	fn state_page(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
 		debug_assert!(
-			keyspace_inner_range_split(&range).is_some(),
+			matches!(range, GroupStateRange::Keyspace { .. }),
 			"a state page must stay inside one group and one keyspace; {range:?} spans more than one"
 		);
 		self.state_page_inner(range, limit)
@@ -87,7 +84,7 @@ pub trait StateStore {
 
 	fn state_page_inner(
 		&mut self,
-		range: EncodedKeyRange,
+		range: GroupStateRange,
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
@@ -103,7 +100,7 @@ pub trait StateStore {
 		self.state_remove(&siblings)
 	}
 
-	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
+	fn state_last(&mut self, range: GroupStateRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
 		Ok(self.state_page(range, None)?.pop())
 	}
 

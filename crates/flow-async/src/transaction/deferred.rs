@@ -3,13 +3,12 @@
 
 use std::{
 	collections::{HashMap, HashSet},
-	ops::Bound::{Excluded, Included, Unbounded},
 	slice,
 };
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
+	key::encoded::EncodedKey,
 	row::{bytes::EncodedBytes, pod::EncodedPodRow, shape::RowShape},
 };
 use reifydb_core::{
@@ -20,7 +19,7 @@ use reifydb_core::{
 		change::{Change, Diff},
 		store::MultiVersionRow,
 	},
-	key::{any::TaggedKey, operator::state::GroupStateKey},
+	key::{any::TaggedKey, bound::TaggedKeyBoundRange, operator::state::GroupStateKey},
 };
 use reifydb_flow::txn::{Batch, Emit, Find, Get, Intern, Resolve};
 use reifydb_runtime::context::clock::Clock;
@@ -102,8 +101,8 @@ use crate::{
 		ChangeCoordinate, DeferredParams, FlowTransaction, LookupContext,
 		dictionary::DictionaryExtension,
 		pending_get_many,
-		read::{OperatorStateRangeIter, ReadFrom, read_from},
-		scope::{OperatorRangeScope, OperatorScope, operator_state_coordinates, operator_state_scope},
+		read::{OperatorStateRangeIter, ReadFrom, range_read_from, read_from},
+		scope::{OperatorScope, operator_state_coordinates},
 		substrate::FlowSubstrate,
 	},
 };
@@ -254,43 +253,23 @@ pub(crate) fn deferred_storage_range<'a>(
 	query: Option<&'a MultiReadTransaction>,
 	state_query: Option<&'a MultiReadTransaction>,
 	version: CommitVersion,
-	range: EncodedKeyRange,
+	range: TaggedKeyBoundRange,
 	scope: RangeScope,
 	batch_size: usize,
 ) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + 'a> {
-	if let Some(OperatorRangeScope {
-		operator,
-		inner,
-	}) = operator_state_scope(&range)
-	{
-		return Box::new(OperatorStateRangeIter::new(
-			operators.expect(NO_OPERATOR_STORE).clone(),
-			operator,
-			inner,
-			batch_size,
-			version,
-		));
-	}
-	let query = deferred_range_target(query, state_query, &range);
-	Box::new(query.range_encoded(range, scope, batch_size))
-}
-
-fn deferred_range_target<'a>(
-	query: Option<&'a MultiReadTransaction>,
-	state_query: Option<&'a MultiReadTransaction>,
-	range: &EncodedKeyRange,
-) -> &'a MultiReadTransaction {
-	match range.start.as_ref() {
-		Included(start) | Excluded(start) => match read_from(start) {
-			ReadFrom::OperatorState => {
-				unreachable!("operator-state ranges take the operator-state path")
-			}
-			ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
-			ReadFrom::Query => query,
-		},
-		Unbounded => query,
-	}
-	.expect(NO_READ_TRANSACTION)
+	let target = match range_read_from(&range) {
+		ReadFrom::OperatorState => {
+			return Box::new(OperatorStateRangeIter::new(
+				operators.expect(NO_OPERATOR_STORE).clone(),
+				range,
+				batch_size,
+				version,
+			));
+		}
+		ReadFrom::StateQuery | ReadFrom::OwnedRow => state_query,
+		ReadFrom::Query => query,
+	};
+	Box::new(target.expect(NO_READ_TRANSACTION).range(range, scope, batch_size))
 }
 
 pub(crate) fn deferred_fetch_state(
@@ -425,7 +404,7 @@ impl FlowTransaction for DeferredTransaction {
 
 	fn storage_range(
 		&mut self,
-		range: EncodedKeyRange,
+		range: TaggedKeyBoundRange,
 		scope: RangeScope,
 		batch_size: usize,
 	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {

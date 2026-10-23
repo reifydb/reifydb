@@ -23,7 +23,7 @@ use reifydb_flow_async::transaction::{
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_transaction::interceptor::interceptors::Interceptors;
+use reifydb_transaction::{interceptor::interceptors::Interceptors, multi::RangeScope};
 use reifydb_value::{
 	count::Count,
 	util::hash::Hash128,
@@ -76,9 +76,9 @@ fn write(txn: &mut DeferredTransaction, group: GroupId, keyspace: KeyspaceId, su
 
 fn count(txn: &mut DeferredTransaction, group: GroupId) -> usize {
 	// no single range spans a group's keyspaces, so the group filter has to happen after the scan
-	txn.state_scan_all(NODE)
+	txn.range(OperatorStateKey::node_range(NODE), RangeScope::All, 1024)
+		.collect::<Result<Vec<_>, _>>()
 		.unwrap()
-		.items
 		.iter()
 		.filter(|item| matches!(&item.key, TaggedKey::OperatorState(key) if key.group == group))
 		.count()
