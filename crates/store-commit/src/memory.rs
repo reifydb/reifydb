@@ -5,7 +5,7 @@ use std::{
 	cmp::Reverse,
 	collections::{HashMap, HashSet, VecDeque},
 	iter, mem,
-	ops::{Bound, ControlFlow},
+	ops::{Bound, ControlFlow, Range},
 	sync::Arc,
 };
 
@@ -20,7 +20,7 @@ use tracing::instrument;
 
 use crate::{
 	entry::{Value, entry_bytes, entry_bytes_with, value_bytes_of},
-	rows::{ActiveRows, ClosedRows, MergedRows, Removed, RowMap, Versions, lookup},
+	rows::{ActiveRows, ClosedRows, MergedRows, Removed, RowMap, Versions, lookup, tier},
 	storage::{Read, Remove, RowStats, Rows, Write},
 	store::EvictedVersion,
 };
@@ -30,6 +30,7 @@ pub struct MemoryRows {
 	active: RwLock<ActiveRows>,
 	closed: RwLock<VecDeque<Arc<ClosedRows>>>,
 	counts: Mutex<Counts>,
+	merging: Mutex<()>,
 }
 
 #[derive(Default)]
@@ -114,6 +115,7 @@ impl Read for MemoryRows {
 			keys: counts.keys,
 			oldest: maps().filter_map(RowMap::min_version).min(),
 			active_oldest: active.min_version(),
+			closed_maps: closed.len() as u64,
 		}
 	}
 }
@@ -168,6 +170,42 @@ impl Write for MemoryRows {
 		let closing = mem::take(&mut *active);
 		self.closed.write().push_back(Arc::new(closing.close()));
 	}
+
+	fn merge(&self, fan_in: usize, cap: ByteSize) {
+		let _merging = self.merging.lock();
+		loop {
+			let snapshot: Vec<Arc<ClosedRows>> = self.closed.read().iter().cloned().collect();
+			let Some(run) = mergeable_run(&snapshot, fan_in, cap.as_bytes()) else {
+				return;
+			};
+			let inputs = &snapshot[run];
+			let merged = Arc::new(ClosedRows::merged(inputs));
+			let mut closed = self.closed.write();
+			let start = closed
+				.iter()
+				.position(|map| Arc::ptr_eq(map, &inputs[0]))
+				.expect("only remove drops closed maps, and it waits on the merge lock");
+			reifydb_assertions! {
+				assert!(
+					inputs.iter().enumerate().all(|(offset, input)| closed
+						.get(start + offset)
+						.is_some_and(|held| Arc::ptr_eq(held, input))),
+					"the merge inputs must still be neighbours in the closed maps when the merged map replaces them"
+				);
+			}
+			closed.drain(start..start + inputs.len());
+			closed.insert(start, merged);
+		}
+	}
+}
+
+fn mergeable_run(maps: &[Arc<ClosedRows>], fan_in: usize, cap: u64) -> Option<Range<usize>> {
+	(fan_in..=maps.len()).rev().map(|end| end - fan_in..end).find(|run| {
+		let window = &maps[run.clone()];
+		let first = tier(window[0].rows().bytes(), fan_in);
+		window.iter().all(|map| tier(map.rows().bytes(), fan_in) == first)
+			&& tier(window.iter().map(|map| map.rows().bytes()).sum(), fan_in) <= tier(cap, fan_in)
+	})
 }
 
 impl Remove for MemoryRows {
@@ -179,6 +217,7 @@ impl Remove for MemoryRows {
 			dropped.entry(key).or_default().insert(version);
 		}
 
+		let _merging = self.merging.lock();
 		let mut active = self.active_write();
 		let mut closed = self.closed.write();
 		let newest: HashMap<&EncodedKey, (CommitVersion, u64)> = dropped

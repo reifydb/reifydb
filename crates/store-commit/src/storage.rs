@@ -41,6 +41,8 @@ pub trait Write: Rows {
 	fn insert(&self, version: CommitVersion, rows: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> ByteSize;
 
 	fn close(&self);
+
+	fn merge(&self, fan_in: usize, cap: ByteSize);
 }
 
 pub trait Remove: Rows {
@@ -54,4 +56,5 @@ pub struct RowStats {
 	pub keys: u64,
 	pub oldest: Option<CommitVersion>,
 	pub active_oldest: Option<CommitVersion>,
+	pub closed_maps: u64,
 }

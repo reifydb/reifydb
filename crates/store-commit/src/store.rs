@@ -67,6 +67,11 @@ impl<R> CommitStore<R> {
 
 impl<R: Rows> CommitStore<R> {
 	pub fn open(rows: R, config: Config) -> Self {
+		assert!(
+			config.merge_fan_in >= 2,
+			"commit store merge_fan_in must be at least 2 to merge closed maps, got {}",
+			config.merge_fan_in
+		);
 		Self(Arc::new(Inner {
 			rows,
 			entries: Map::new(),
@@ -299,6 +304,7 @@ impl<R: Write> CommitStore<R> {
 		entry.pending.lock().extend(keys);
 		if bytes >= self.0.config.close_threshold {
 			entry.rows.close();
+			entry.rows.merge(self.0.config.merge_fan_in, self.0.config.merge_cap);
 		}
 	}
 }
@@ -340,6 +346,7 @@ impl<R: Read + Write> CommitStore<R> {
 		};
 		if entry.rows.stats().active_oldest.is_some_and(|oldest| oldest <= cutoff) {
 			entry.rows.close();
+			entry.rows.merge(self.0.config.merge_fan_in, self.0.config.merge_cap);
 		}
 
 		let budget = budget.as_bytes();

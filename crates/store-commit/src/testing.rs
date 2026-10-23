@@ -34,6 +34,8 @@ pub enum HookPoint<'a> {
 		key: &'a [u8],
 	},
 	BeforeRemove,
+	BeforeMerge,
+	AfterMerge,
 }
 
 pub struct TestingRows<R> {
@@ -115,6 +117,12 @@ impl<R: Write> Write for TestingRows<R> {
 		self.hooks.on(HookPoint::BeforeClose);
 		self.rows.close();
 		self.hooks.on(HookPoint::AfterClose);
+	}
+
+	fn merge(&self, fan_in: usize, cap: ByteSize) {
+		self.hooks.on(HookPoint::BeforeMerge);
+		self.rows.merge(fan_in, cap);
+		self.hooks.on(HookPoint::AfterMerge);
 	}
 }
 

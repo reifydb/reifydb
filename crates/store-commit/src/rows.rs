@@ -6,6 +6,7 @@ use std::{
 	collections::{BTreeMap, BinaryHeap, HashMap, HashSet, btree_map},
 	mem,
 	ops::RangeBounds,
+	sync::Arc,
 };
 
 use reifydb_codec::key::encoded::EncodedKey;
@@ -175,6 +176,34 @@ impl RowMap {
 
 	pub fn max_version(&self) -> Option<CommitVersion> {
 		self.versions.keys().next_back().copied()
+	}
+
+	pub fn merged(maps: &[&RowMap]) -> Self {
+		let mut groups = MergedRows::new(maps.iter().map(|rows| rows.entries.iter()).collect(), false);
+		let mut entries: Vec<(EncodedKey, Versions)> = Vec::new();
+		while let Some((key, group)) = groups.next_group() {
+			let mut joined: Option<Versions> = None;
+			for (version, value) in group.iter().copied().flat_map(Versions::iter) {
+				match &mut joined {
+					None => joined = Some(Versions::One(version, value.clone())),
+					Some(held) => {
+						held.insert(version, value.clone());
+					}
+				}
+			}
+			entries.push((key.clone(), joined.expect("a merged key holds at least one version")));
+		}
+		let mut versions: BTreeMap<CommitVersion, u32> = BTreeMap::new();
+		for rows in maps {
+			for (version, count) in &rows.versions {
+				*versions.entry(*version).or_insert(0) += count;
+			}
+		}
+		Self {
+			entries: entries.into_iter().collect(),
+			bytes: maps.iter().map(|rows| rows.bytes).sum(),
+			versions,
+		}
 	}
 
 	fn packed(self) -> Self {
@@ -369,4 +398,15 @@ impl ClosedRows {
 	pub fn compact(&mut self, dropped: &HashMap<EncodedKey, HashSet<CommitVersion>>) -> Vec<Removed> {
 		self.rows.remove(dropped)
 	}
+
+	pub fn merged(inputs: &[Arc<ClosedRows>]) -> Self {
+		let maps: Vec<&RowMap> = inputs.iter().map(|map| map.rows()).collect();
+		Self {
+			rows: RowMap::merged(&maps),
+		}
+	}
+}
+
+pub(super) fn tier(bytes: u64, fan_in: usize) -> u32 {
+	bytes.max(1).ilog(fan_in as u64)
 }
