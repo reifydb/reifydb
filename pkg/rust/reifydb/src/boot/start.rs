@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{slice::from_ref, sync::Arc};
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
@@ -28,9 +28,9 @@ pub(crate) fn ensure_storage_version(single: &SingleTransaction) -> Result<()> {
 
 	let mut tx = single.begin_command([&key.encode()])?;
 
-	match tx.get(&key)? {
+	match tx.get(from_ref(&key))?.remove(0) {
 		None => {
-			tx.set(&key, EncodedPodRow::new(&[CURRENT_STORAGE_VERSION]).into_bytes())?;
+			tx.set(vec![(key.clone(), EncodedPodRow::new(&[CURRENT_STORAGE_VERSION]).into_bytes())])?;
 		}
 		Some(single) => {
 			let version = EncodedPodRow::view(&single.bytes).body();

@@ -58,19 +58,24 @@ fn seen(row: Option<MultiVersionRow<TaggedKey>>) -> Seen {
 }
 
 fn batched(store: &StandardMultiStore, keys: &[TaggedKey], before: u64) -> Vec<Seen> {
-	store.get_previous_many(keys, CommitVersion(before)).unwrap().into_iter().map(seen).collect()
+	store.get_previous(keys, CommitVersion(before)).unwrap().into_iter().map(seen).collect()
 }
 
-fn pointwise(store: &StandardMultiStore, keys: &[TaggedKey], before: u64) -> Vec<Seen> {
-	keys.iter().map(|key| seen(store.get_previous_version(key, CommitVersion(before)).unwrap())).collect()
+fn hit(key: &TaggedKey, bytes: &str, version: u64) -> Seen {
+	Some((key.encode().to_vec(), bytes.as_bytes().to_vec(), version))
 }
 
-fn assert_batched_matches_pointwise(store: &StandardMultiStore, keys: &[TaggedKey], tier: &str) {
+fn assert_batched_matches_expected(
+	store: &StandardMultiStore,
+	keys: &[TaggedKey],
+	tier: &str,
+	expected: impl Fn(u64) -> Vec<Seen>,
+) {
 	for before in 0..=6 {
 		assert_eq!(
 			batched(store, keys, before),
-			pointwise(store, keys, before),
-			"{tier}: the batched previous read disagrees with the point read before version {before}"
+			expected(before),
+			"{tier}: the batched previous read disagrees with the expected answer before version {before}"
 		);
 	}
 }
@@ -110,12 +115,53 @@ fn a_batched_previous_read_answers_every_key_exactly_as_the_point_read_does_in_e
 
 	let keys =
 		vec![a.clone(), b.clone(), c.clone(), s.clone(), cold.clone(), ghost.clone(), ghost_state, a.clone()];
-	assert_batched_matches_pointwise(&store, &keys, "commit tier");
+	let at_v1 = vec![
+		hit(&a, "a1", 1),
+		hit(&b, "b1", 1),
+		None,
+		hit(&s, "s1", 1),
+		hit(&cold, "cold1", 1),
+		None,
+		None,
+		hit(&a, "a1", 1),
+	];
+	let at_v2 = vec![
+		hit(&a, "a2", 2),
+		None,
+		None,
+		hit(&s, "s2", 2),
+		hit(&cold, "cold1", 1),
+		None,
+		None,
+		hit(&a, "a2", 2),
+	];
+	let at_v3 = vec![
+		hit(&a, "a3", 3),
+		None,
+		hit(&c, "c3", 3),
+		hit(&s, "s2", 2),
+		hit(&cold, "cold1", 1),
+		None,
+		None,
+		hit(&a, "a3", 3),
+	];
+	let before_flush = |before: u64| match before {
+		0 | 1 => vec![None; 8],
+		2 => at_v1.clone(),
+		_ => at_v2.clone(),
+	};
+	let after_v3 = |before: u64| match before {
+		0 | 1 => vec![None; 8],
+		2 => at_v1.clone(),
+		3 => at_v2.clone(),
+		_ => at_v3.clone(),
+	};
+	assert_batched_matches_expected(&store, &keys, "commit tier", before_flush);
 
 	store.flush_pending_blocking();
 	MultiVersionCommit::commit(&store, CowVec::new(vec![set(&c, "c3"), set(&a, "a3")]), CommitVersion(3)).unwrap();
-	assert_batched_matches_pointwise(&store, &keys, "persistent tier, cold point tier");
-	assert_batched_matches_pointwise(&store, &keys, "persistent tier, warm point tier");
+	assert_batched_matches_expected(&store, &keys, "persistent tier, cold point tier", after_v3);
+	assert_batched_matches_expected(&store, &keys, "persistent tier, warm point tier", after_v3);
 
 	let found = batched(&store, &keys, 3);
 	assert_eq!(

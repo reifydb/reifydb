@@ -5,7 +5,10 @@
 //! once. An operation scoped to one object must leave the others byte-for-byte intact, which is what
 //! guards the object scoping of delete, buffer drops and range bounds. Reads are at the current version.
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+	collections::{BTreeMap, HashMap},
+	slice::from_ref,
+};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -142,7 +145,11 @@ fn check_get_ms(configs: &[(&str, StandardMultiStore)], oracle: &MsOracle, s: us
 	let key = TaggedKey::from(RowKey::new(storage(s), row));
 	let expected = oracle.get(s, row);
 	for (name, store) in configs {
-		let got = store.get(&key, CommitVersion(read)).unwrap().map(|r| (r.bytes.to_vec(), r.version.0));
+		let got = store
+			.get(from_ref(&key), CommitVersion(read))
+			.unwrap()
+			.remove(0)
+			.map(|r| (r.bytes.to_vec(), r.version.0));
 		assert_eq!(
 			got, expected,
 			"MS GET mismatch: config={name} step={step} object={s} row={row} read={read} store={got:?} oracle={expected:?}"

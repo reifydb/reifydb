@@ -5,7 +5,7 @@
 //! it answers from the displaced version must be counted apart, and one below every cached version must
 //! read as a miss rather than as a hit the cache could not honour.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, slice::from_ref};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -40,8 +40,9 @@ fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64,
 }
 
 fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(&TaggedKey::decode(k).expect("the test key must decode"), CommitVersion(version))
+	store.get(from_ref(&TaggedKey::decode(k).expect("the test key must decode")), CommitVersion(version))
 		.unwrap()
+		.remove(0)
 		.map(|r| r.bytes.to_vec())
 }
 

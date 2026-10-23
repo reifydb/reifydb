@@ -187,9 +187,9 @@ impl Shutdown for MultiStore {
 
 impl MultiVersionGet for MultiStore {
 	#[inline]
-	fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<MultiVersionRow<TaggedKey>>> {
+	fn get(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
 		match self {
-			MultiStore::Standard(store) => MultiVersionGet::get(store, key, version),
+			MultiStore::Standard(store) => MultiVersionGet::get(store, keys, version),
 		}
 	}
 }
@@ -205,24 +205,13 @@ impl MultiVersionCommit for MultiStore {
 
 impl MultiVersionGetPrevious for MultiStore {
 	#[inline]
-	fn get_previous_version(
-		&self,
-		key: &TaggedKey,
-		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionRow<TaggedKey>>> {
-		match self {
-			MultiStore::Standard(store) => store.get_previous_version(key, before_version),
-		}
-	}
-
-	#[inline]
-	fn get_previous_many(
+	fn get_previous(
 		&self,
 		keys: &[TaggedKey],
 		before_version: CommitVersion,
 	) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
 		match self {
-			MultiStore::Standard(store) => store.get_previous_many(keys, before_version),
+			MultiStore::Standard(store) => store.get_previous(keys, before_version),
 		}
 	}
 }

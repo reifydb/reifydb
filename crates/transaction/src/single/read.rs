@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::slice;
-
 use reifydb_core::interface::store::{SingleVersionGet, SingleVersionRow};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockReadGuard};
 use reifydb_value::{Result, util::hex::encode};
@@ -41,9 +39,14 @@ impl<'a> SingleReadTransaction<'a> {
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
-		self.check_key_allowed(key)?;
+	pub fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
+		for key in keys {
+			self.check_key_allowed(key)?;
+		}
+		if keys.is_empty() {
+			return Ok(Vec::new());
+		}
 		let store = self.inner.store.read().clone();
-		Ok(SingleVersionGet::get(&store, slice::from_ref(key))?.pop().flatten())
+		SingleVersionGet::get(&store, keys)
 	}
 }

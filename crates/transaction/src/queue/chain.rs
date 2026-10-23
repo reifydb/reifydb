@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeSet, HashMap};
+use std::{
+	collections::{BTreeSet, HashMap},
+	slice::from_ref,
+};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -78,7 +81,7 @@ pub fn chain_add(
 	key_hash: u64,
 	row: RowNumber,
 ) -> Result<()> {
-	tx.set(&QueueKeyActiveKey::new(queue, partition, key_hash, row), EncodedBytes(CowVec::new(vec![])))?;
+	tx.set(vec![(QueueKeyActiveKey::new(queue, partition, key_hash, row), EncodedBytes(CowVec::new(vec![])))])?;
 	overlay.removed.remove(&(key_hash, row));
 	overlay.added.insert((key_hash, row));
 
@@ -93,7 +96,7 @@ pub fn chain_remove(
 	key_hash: u64,
 	row: RowNumber,
 ) -> Result<()> {
-	tx.remove(&QueueKeyActiveKey::new(queue, partition, key_hash, row))?;
+	tx.remove(from_ref(&QueueKeyActiveKey::new(queue, partition, key_hash, row)))?;
 	overlay.added.remove(&(key_hash, row));
 	overlay.removed.insert((key_hash, row));
 

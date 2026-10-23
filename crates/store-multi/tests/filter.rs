@@ -7,7 +7,7 @@
 //! RebuildDriver rather than by waiting on the maintenance actor, because the driver is synchronous and the
 //! actor is not.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, slice::from_ref};
 
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -210,8 +210,9 @@ fn a_store_opened_on_empty_tables_starts_armed_and_rules_out_a_key_nothing_ever_
 
 	let before = persistent.filter().metrics();
 	assert!(
-		MultiVersionGet::get(&store, &any_key(404), CommitVersion(u64::MAX))
+		MultiVersionGet::get(&store, from_ref(&any_key(404)), CommitVersion(u64::MAX))
 			.expect("the read failed")
+			.remove(0)
 			.is_none(),
 		"a key nothing ever wrote must read as absent"
 	);
@@ -247,8 +248,9 @@ fn a_store_opened_on_populated_tables_starts_disabled_and_serves_back_every_exis
 	);
 
 	for n in 0..32u64 {
-		let found = MultiVersionGet::get(&store, &any_key(n), CommitVersion(u64::MAX))
+		let found = MultiVersionGet::get(&store, from_ref(&any_key(n)), CommitVersion(u64::MAX))
 			.expect("the read failed")
+			.remove(0)
 			.unwrap_or_else(|| {
 				panic!("row {n} exists in sqlite but the reopened store reported it absent")
 			});

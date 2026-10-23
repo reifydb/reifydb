@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::{
-	Arc,
-	atomic::{AtomicU64, Ordering},
+use std::{
+	slice::from_ref,
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 };
 
 use reifydb_codec::row::shape::{RowFamily, RowShape, RowShapeField};
@@ -75,7 +78,7 @@ impl StandardVersionProvider {
 		let locked = key.encode();
 
 		let mut tx = single.begin_query([&locked])?;
-		match tx.get(&locked)? {
+		match tx.get(from_ref(&locked))?.remove(0) {
 			None => Ok(0),
 			Some(single) => Ok(shape.get::<u64>(&single.bytes, 0)),
 		}
@@ -88,7 +91,7 @@ impl StandardVersionProvider {
 		shape.set::<u64>(&mut row, 0, version);
 
 		let mut tx = single.begin_command([&encoded])?;
-		tx.set(&key, row.freeze())?;
+		tx.set(vec![(key, row.freeze())])?;
 		tx.commit()
 	}
 }
@@ -329,7 +332,7 @@ pub mod tests {
 
 		{
 			let mut tx = single.begin_command([&locked]).unwrap();
-			tx.set(&key, row.freeze()).unwrap();
+			tx.set(vec![(key, row.freeze())]).unwrap();
 			tx.commit().unwrap();
 		} // dropped here, releasing the key lock the provider needs
 

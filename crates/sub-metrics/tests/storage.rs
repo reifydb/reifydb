@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{error::Error as StdError, fmt::Write, path::Path, sync::Arc};
+use std::{error::Error as StdError, fmt::Write, path::Path, slice::from_ref, sync::Arc};
 
 use reifydb_catalog::metrics::storage::{
 	cdc::{CdcMetrics, CdcMetricsReader},
@@ -192,7 +192,8 @@ impl TestRunner for Runner {
 
 				let value = self
 					.multi_store
-					.get(&TaggedKey::from(script_key(&key)), version)?
+					.get(from_ref(&TaggedKey::from(script_key(&key))), version)?
+					.remove(0)
 					.map(|sv: MultiVersionRow<TaggedKey>| sv.bytes.to_vec());
 
 				writeln!(output, "{}", format::raw::Raw::key_maybe_value(&key, value))?;
@@ -272,7 +273,8 @@ impl TestRunner for Runner {
 				let prev_version = CommitVersion(version.0.saturating_sub(1));
 				let current_values = self
 					.multi_store
-					.get(&TaggedKey::from(script_key(&key)), prev_version)?
+					.get(from_ref(&TaggedKey::from(script_key(&key))), prev_version)?
+					.remove(0)
 					.map(|mv| mv.bytes)
 					.unwrap_or_else(|| EncodedBytes(cow_vec![]));
 

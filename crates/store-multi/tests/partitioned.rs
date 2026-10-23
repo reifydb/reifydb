@@ -6,7 +6,7 @@
 
 #![allow(clippy::disallowed_methods)]
 
-use std::sync::Arc;
+use std::{slice::from_ref, sync::Arc};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -131,11 +131,11 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 	assert_eq!(us_rows.len(), 2, "us partition range must return only us rows across tiers");
 
 	assert!(
-		store.get(&k_us1, CommitVersion(2)).unwrap().is_some(),
+		store.get(from_ref(&k_us1), CommitVersion(2)).unwrap().remove(0).is_some(),
 		"flushed partitioned row readable via point get"
 	);
 	assert!(
-		store.get(&k_us3, CommitVersion(2)).unwrap().is_some(),
+		store.get(from_ref(&k_us3), CommitVersion(2)).unwrap().remove(0).is_some(),
 		"buffered partitioned row readable via point get"
 	);
 

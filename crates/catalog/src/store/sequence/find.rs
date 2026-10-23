@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	interface::catalog::id::{NamespaceId, SequenceId},
@@ -28,10 +30,12 @@ impl CatalogStore {
 		let sequence_key = SystemSequenceKey::encoded(sequence_id);
 
 		let value = match rx.single() {
-			Some(single) => match single.begin_query([&sequence_key])?.get(&sequence_key)? {
-				Some(row) => decode(EncodedPodRow::view(&row.bytes))?,
-				None => 0,
-			},
+			Some(single) => {
+				match single.begin_query([&sequence_key])?.get(from_ref(&sequence_key))?.remove(0) {
+					Some(row) => decode(EncodedPodRow::view(&row.bytes))?,
+					None => 0,
+				}
+			}
 			None => 0,
 		};
 

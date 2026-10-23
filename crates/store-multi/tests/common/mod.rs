@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{collections::HashMap, error::Error as StdError, fmt::Write, ops::Bound, sync::Arc};
+use std::{collections::HashMap, error::Error as StdError, fmt::Write, ops::Bound, slice::from_ref, sync::Arc};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -125,7 +125,8 @@ impl testscript::runner::Runner for Runner {
 
 				let value = self
 					.store
-					.get(&TaggedKey::from(script_key(&key)), version)?
+					.get(from_ref(&TaggedKey::from(script_key(&key))), version)?
+					.remove(0)
 					.map(|sv: MultiVersionRow<TaggedKey>| sv.bytes.to_vec());
 
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;

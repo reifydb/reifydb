@@ -24,6 +24,8 @@ impl CatalogStore {
 
 #[cfg(test)]
 pub mod tests {
+	use std::slice::from_ref;
+
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::key::catalog::{DictionaryEntryIndexKey, DictionaryEntryKey};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
@@ -100,22 +102,22 @@ pub mod tests {
 		let index_key = index.encode();
 		txn.single
 			.with_command([&entry_key, &index_key], |tx| {
-				tx.set(&entry, EncodedBytes(CowVec::new(entry_value.clone())))?;
-				tx.set(&index, EncodedBytes(CowVec::new(dummy_value.clone())))
+				tx.set(vec![(entry.clone(), EncodedBytes(CowVec::new(entry_value.clone())))])?;
+				tx.set(vec![(index.clone(), EncodedBytes(CowVec::new(dummy_value.clone())))])
 			})
 			.unwrap();
 
-		let found = txn.single.with_query([&entry_key], |tx| tx.get(&entry_key)).unwrap();
+		let found = txn.single.with_query([&entry_key], |tx| tx.get(from_ref(&entry_key))).unwrap().remove(0);
 		assert!(found.is_some());
-		let found = txn.single.with_query([&index_key], |tx| tx.get(&index_key)).unwrap();
+		let found = txn.single.with_query([&index_key], |tx| tx.get(from_ref(&index_key))).unwrap().remove(0);
 		assert!(found.is_some());
 
 		CatalogStore::drop_dictionary(&mut txn, dict_def.id).unwrap();
 
 		// Entries removed before the commit are lost for good if the drop rolls back.
-		let found = txn.single.with_query([&entry_key], |tx| tx.get(&entry_key)).unwrap();
+		let found = txn.single.with_query([&entry_key], |tx| tx.get(from_ref(&entry_key))).unwrap().remove(0);
 		assert!(found.is_some());
-		let found = txn.single.with_query([&index_key], |tx| tx.get(&index_key)).unwrap();
+		let found = txn.single.with_query([&index_key], |tx| tx.get(from_ref(&index_key))).unwrap().remove(0);
 		assert!(found.is_some());
 
 		let found = CatalogStore::find_dictionary(&mut Transaction::Admin(&mut txn), dict_def.id).unwrap();

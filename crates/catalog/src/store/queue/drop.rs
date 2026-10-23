@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	interface::{catalog::id::QueueId, store::SingleVersionRange},
@@ -55,7 +57,7 @@ fn remove_queue_scheduling_state(single: &SingleTransaction, queue: QueueId, par
 				let Some(key) = TaggedKey::decode(&item.key) else {
 					return_internal_error!("scan yielded a key no typed key decodes");
 				};
-				tx.remove(&key)?;
+				tx.remove(from_ref(&key))?;
 			}
 			tx.commit()?;
 		}

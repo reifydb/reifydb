@@ -305,7 +305,7 @@ fn lease_candidates(
 	let mut leases = Vec::new();
 	for row in candidates {
 		let state_key = QueueItemStateKey::new(queue.id, partition, *row);
-		let Some(stored) = tx.get(&state_key)? else {
+		let Some(stored) = tx.get(slice::from_ref(&state_key))?.remove(0) else {
 			continue;
 		};
 		let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
@@ -322,8 +322,8 @@ fn lease_candidates(
 		state.attempt += 1;
 		state.lease_deadline = Some(deadline);
 
-		tx.set(&state_key, encode_queue_item_state(&state))?;
-		tx.remove(&QueueDueKey::new(queue.id, partition, due, *row))?;
+		tx.set(vec![(state_key.clone(), encode_queue_item_state(&state))])?;
+		tx.remove(slice::from_ref(&QueueDueKey::new(queue.id, partition, due, *row)))?;
 
 		leases.push(Lease {
 			partition,
@@ -335,12 +335,13 @@ fn lease_candidates(
 
 	if !leases.is_empty() {
 		let mut counters = tx
-			.get(&lock_key)?
+			.get(slice::from_ref(&lock_key))?
+			.remove(0)
 			.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 			.unwrap_or_default();
 		counters.depth = counters.depth.saturating_sub(leases.len() as u64);
 		counters.in_flight += leases.len() as u64;
-		tx.set(&lock_key, encode_queue_partition_counters(&counters))?;
+		tx.set(vec![(lock_key.clone(), encode_queue_partition_counters(&counters))])?;
 	}
 
 	tx.commit()?;

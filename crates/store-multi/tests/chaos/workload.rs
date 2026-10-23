@@ -3,7 +3,7 @@
 
 //! Seeded operation generator + the per-read differential checks against the oracle.
 
-use std::{collections::HashMap, ops::Bound};
+use std::{collections::HashMap, ops::Bound, slice::from_ref};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
 use reifydb_codec::{
@@ -61,7 +61,11 @@ pub fn check_get(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u
 		},
 	);
 	for (name, store) in configs {
-		let got = store.get(&key, CommitVersion(read)).unwrap().map(|r| (r.bytes.to_vec(), r.version.0));
+		let got = store
+			.get(from_ref(&key), CommitVersion(read))
+			.unwrap()
+			.remove(0)
+			.map(|r| (r.bytes.to_vec(), r.version.0));
 		assert_eq!(
 			got, expected,
 			"GET mismatch: config={name} step={step} row={row} read={read} store={got:?} oracle={expected:?}"
@@ -240,8 +244,9 @@ pub fn check_prev(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: 
 	let expected = oracle.prev(row, before);
 	for (name, store) in configs {
 		let got = store
-			.get_previous_version(&key, CommitVersion(before))
+			.get_previous(from_ref(&key), CommitVersion(before))
 			.unwrap()
+			.remove(0)
 			.map(|r| (r.bytes.to_vec(), r.version.0));
 		assert_eq!(
 			got, expected,

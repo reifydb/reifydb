@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, slice::from_ref};
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -115,9 +115,9 @@ fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 
 		with_partition(t, queue, partition, |tx| {
 			for key in state_keys.iter().chain(due_keys.iter()).chain(chain_keys.iter()) {
-				tx.remove(key).unwrap();
+				tx.remove(from_ref(key)).unwrap();
 			}
-			tx.remove(&QueuePartitionKey::new(queue.id, partition)).unwrap();
+			tx.remove(from_ref(&QueuePartitionKey::new(queue.id, partition))).unwrap();
 		});
 	}
 }
@@ -129,9 +129,9 @@ fn forget_item(t: &TestEngine, queue: &Queue, row: RowNumber) {
 	counters.depth -= 1;
 
 	with_partition(t, queue, partition, |tx| {
-		tx.remove(&QueueItemStateKey::new(queue.id, partition, row)).unwrap();
-		tx.remove(&due).unwrap();
-		tx.set(&QueuePartitionKey::new(queue.id, partition), encode_queue_partition_counters(&counters))
+		tx.remove(from_ref(&QueueItemStateKey::new(queue.id, partition, row))).unwrap();
+		tx.remove(from_ref(&due)).unwrap();
+		tx.set(vec![(QueuePartitionKey::new(queue.id, partition), encode_queue_partition_counters(&counters))])
 			.unwrap();
 	});
 }
@@ -238,9 +238,10 @@ fn test_hydration_does_not_re_admit_an_item_that_reached_a_terminal_status() {
 	with_partition(&t, &queue, 0, |tx| {
 		let mut state = QueueItemState::ready(None);
 		state.status = QueueItemStatus::Done;
-		tx.set(&QueueItemStateKey::new(queue.id, 0, done), encode_queue_item_state(&state)).unwrap();
-		tx.remove(&due).unwrap();
-		tx.set(&QueuePartitionKey::new(queue.id, 0), encode_queue_partition_counters(&counters)).unwrap();
+		tx.set(vec![(QueueItemStateKey::new(queue.id, 0, done), encode_queue_item_state(&state))]).unwrap();
+		tx.remove(from_ref(&due)).unwrap();
+		tx.set(vec![(QueuePartitionKey::new(queue.id, 0), encode_queue_partition_counters(&counters))])
+			.unwrap();
 	});
 
 	assert_eq!(hydrate_queues(t.inner()).unwrap(), 0, "a terminal item must not be re-admitted");

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{num::NonZeroU64, ops::RangeInclusive};
+use std::{num::NonZeroU64, ops::RangeInclusive, slice::from_ref};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{error::CoreError, key::any::TaggedKey, return_internal_error};
@@ -101,7 +101,7 @@ macro_rules! impl_generator {
 				) -> Result<RangeInclusive<$prim>> {
 					let encoded = key.clone().into().encode();
 					let mut tx = txn.begin_single_command([&encoded])?;
-					let first = match tx.get(key)? {
+					let first = match tx.get(from_ref(key))?.remove(0) {
 						Some(row) => decode(EncodedPodRow::view(&row.bytes))?.checked_add(1),
 						None => Some($start),
 					};
@@ -114,7 +114,7 @@ macro_rules! impl_generator {
 						}
 						.into());
 					};
-					tx.set(key, encode(last).into_bytes())?;
+					tx.set(vec![(key.clone(), encode(last).into_bytes())])?;
 					tx.commit()?;
 					Ok(first..=last)
 				}
@@ -126,7 +126,7 @@ macro_rules! impl_generator {
 				) -> Result<()> {
 					let encoded = key.clone().into().encode();
 					let mut tx = txn.begin_single_command([&encoded])?;
-					tx.set(key, encode(value).into_bytes())?;
+					tx.set(vec![(key.clone(), encode(value).into_bytes())])?;
 					tx.commit()?;
 					Ok(())
 				}
@@ -134,7 +134,7 @@ macro_rules! impl_generator {
 
 			#[cfg(test)]
 			mod tests {
-				use std::num::NonZeroU64;
+				use std::{num::NonZeroU64, slice::from_ref};
 
 				use reifydb_codec::row::pod::EncodedPodRow;
 				use reifydb_core::{
@@ -191,7 +191,7 @@ macro_rules! impl_generator {
 					let key = seq_key("sequence");
 					let encoded = key.encode();
 					let mut tx = txn.begin_single_query([&encoded]).unwrap();
-					let single = tx.get(&encoded).unwrap().unwrap();
+					let single = tx.get(from_ref(&encoded)).unwrap().remove(0).unwrap();
 					let final_val = ($start as u128)
 						.saturating_add((iterations.saturating_sub(1)) as u128)
 						as $prim;
@@ -204,7 +204,7 @@ macro_rules! impl_generator {
 
 					let key = seq_key("sequence");
 					txn.with_single_command([&key.encode()], |tx| {
-						tx.set(&key, encode($max).into_bytes())
+						tx.set(vec![(key.clone(), encode($max).into_bytes())])
 					})
 					.unwrap();
 
@@ -267,7 +267,7 @@ macro_rules! impl_generator {
 					let key = seq_key("sequence_by_5000");
 					let encoded = key.encode();
 					let mut tx = txn.begin_single_query([&encoded]).unwrap();
-					let single = tx.get(&encoded).unwrap().unwrap();
+					let single = tx.get(from_ref(&encoded)).unwrap().remove(0).unwrap();
 					let final_val = ($start as u128)
 						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
 						.saturating_sub(1) as $prim;
@@ -308,7 +308,7 @@ macro_rules! impl_generator {
 
 					let key = seq_key("sequence");
 					txn.with_single_command([&key.encode()], |tx| {
-						tx.set(&key, encode(initial_val).into_bytes())
+						tx.set(vec![(key.clone(), encode(initial_val).into_bytes())])
 					})
 					.unwrap();
 
@@ -346,7 +346,7 @@ macro_rules! impl_generator {
 					let mut txn = create_test_admin_transaction();
 					let key = seq_key("tail");
 					txn.with_single_command([&key.encode()], |tx| {
-						tx.set(&key, encode($max - 2).into_bytes())
+						tx.set(vec![(key.clone(), encode($max - 2).into_bytes())])
 					})
 					.unwrap();
 
@@ -477,7 +477,7 @@ impl u64::GeneratorU64 {
 	) -> Result<u64> {
 		let encoded = key.clone().into().encode();
 		let mut tx = txn.begin_single_command([&encoded])?;
-		let result = match tx.get(key)? {
+		let result = match tx.get(from_ref(key))?.remove(0) {
 			Some(row) => {
 				let current_value = u64::decode(EncodedPodRow::view(&row.bytes))?;
 				let Some(next_value) =
@@ -489,12 +489,12 @@ impl u64::GeneratorU64 {
 					.into());
 				};
 
-				tx.set(key, u64::encode(next_value).into_bytes())?;
+				tx.set(vec![(key.clone(), u64::encode(next_value).into_bytes())])?;
 				next_value
 			}
 			None => match default {
 				Some(value) => {
-					tx.set(key, u64::encode(value).into_bytes())?;
+					tx.set(vec![(key.clone(), u64::encode(value).into_bytes())])?;
 					value
 				}
 				None => {
@@ -508,7 +508,7 @@ impl u64::GeneratorU64 {
 						.into());
 					}
 
-					tx.set(key, u64::encode(last).into_bytes())?;
+					tx.set(vec![(key.clone(), u64::encode(last).into_bytes())])?;
 					last
 				}
 			},
@@ -520,6 +520,8 @@ impl u64::GeneratorU64 {
 
 #[cfg(test)]
 mod u64_next_tests {
+	use std::slice::from_ref;
+
 	use reifydb_codec::row::pod::EncodedPodRow;
 	use reifydb_core::{error::CoreError, interface::catalog::id::QueueId, key::queue::QueueDeduplicationKey};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
@@ -544,7 +546,7 @@ mod u64_next_tests {
 		let key = seq_key("sequence");
 		let encoded = key.encode();
 		let mut tx = txn.begin_single_query([&encoded]).unwrap();
-		let single = tx.get(&encoded).unwrap().unwrap();
+		let single = tx.get(from_ref(&encoded)).unwrap().remove(0).unwrap();
 		let final_val = (1u64 as u128).saturating_add((iterations.saturating_sub(1)) as u128) as u64;
 		assert_eq!(decode(EncodedPodRow::view(&single.bytes)).unwrap(), final_val);
 	}
@@ -554,7 +556,10 @@ mod u64_next_tests {
 		let mut txn = create_test_admin_transaction();
 
 		let key = seq_key("sequence");
-		txn.with_single_command([&key.encode()], |tx| tx.set(&key, encode(u64::MAX).into_bytes())).unwrap();
+		txn.with_single_command([&key.encode()], |tx| {
+			tx.set(vec![(key.clone(), encode(u64::MAX).into_bytes())])
+		})
+		.unwrap();
 
 		let err = GeneratorU64::next(&mut txn, &seq_key("sequence"), None).unwrap_err();
 		assert_eq!(
@@ -614,7 +619,7 @@ mod u64_next_tests {
 		let key = seq_key("sequence_by_5000");
 		let encoded = key.encode();
 		let mut tx = txn.begin_single_query([&encoded]).unwrap();
-		let single = tx.get(&encoded).unwrap().unwrap();
+		let single = tx.get(from_ref(&encoded)).unwrap().remove(0).unwrap();
 		let final_val = (1u64 as u128)
 			.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
 			.saturating_sub(1) as u64;
@@ -640,7 +645,10 @@ mod u64_next_tests {
 		let initial_val = ((u64::MAX as u128).saturating_sub((batch_size_val * 2) as u128)) as u64;
 
 		let key = seq_key("sequence");
-		txn.with_single_command([&key.encode()], |tx| tx.set(&key, encode(initial_val).into_bytes())).unwrap();
+		txn.with_single_command([&key.encode()], |tx| {
+			tx.set(vec![(key.clone(), encode(initial_val).into_bytes())])
+		})
+		.unwrap();
 
 		let result = GeneratorU64::next_batched(&mut txn, &seq_key("sequence"), None, batch_size).unwrap();
 		// Narrow types may not reach MAX in one batch, so only monotonicity holds here.
@@ -673,7 +681,10 @@ mod u64_next_tests {
 		// re-issue numbers that are already in use, so it must fail and keep the tail.
 		let mut txn = create_test_admin_transaction();
 		let key = seq_key("tail");
-		txn.with_single_command([&key.encode()], |tx| tx.set(&key, encode(u64::MAX - 2).into_bytes())).unwrap();
+		txn.with_single_command([&key.encode()], |tx| {
+			tx.set(vec![(key.clone(), encode(u64::MAX - 2).into_bytes())])
+		})
+		.unwrap();
 
 		let err = GeneratorU64::next_batched(&mut txn, &key, None, 5).unwrap_err();
 		assert_eq!(

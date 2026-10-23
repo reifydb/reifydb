@@ -313,17 +313,11 @@ pub trait MultiVersionCommit: Send + Sync {
 }
 
 pub trait MultiVersionGet: Send + Sync {
-	fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<MultiVersionRow<TaggedKey>>>;
+	fn get(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>>;
 }
 
 pub trait MultiVersionGetPrevious: Send + Sync {
-	fn get_previous_version(
-		&self,
-		key: &TaggedKey,
-		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionRow<TaggedKey>>>;
-
-	fn get_previous_many(
+	fn get_previous(
 		&self,
 		keys: &[TaggedKey],
 		before_version: CommitVersion,

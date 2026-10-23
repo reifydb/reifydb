@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
 	interface::catalog::{
@@ -62,14 +64,14 @@ pub fn admit_ready_items(
 	let mut keys: Vec<_> =
 		items.iter().map(|item| QueueItemStateKey::new(queue, partition, item.row).into()).collect();
 	keys.push(lock_key.clone().into());
-	tx.prefetch::<TaggedKey>(&keys)?;
+	tx.get::<TaggedKey>(&keys)?;
 
 	let mut overlay = ChainOverlay::default();
 	let mut admitted = 0u64;
 	let mut blocked_delta = 0i64;
 	for item in items {
 		let state_key = QueueItemStateKey::new(queue, partition, item.row);
-		if tx.get(&state_key)?.is_some() {
+		if tx.get(from_ref(&state_key))?.remove(0).is_some() {
 			continue;
 		}
 
@@ -88,7 +90,7 @@ pub fn admit_ready_items(
 			chain_add(&mut tx, &mut overlay, queue, partition, key_hash, item.row)?;
 		}
 
-		tx.set(&state_key, encode_queue_item_state(&state))?;
+		tx.set(vec![(state_key.clone(), encode_queue_item_state(&state))])?;
 		if state.status == QueueItemStatus::Ready {
 			expose_due(&mut tx, queue, partition, item.row, &state)?;
 		}
@@ -99,7 +101,7 @@ pub fn admit_ready_items(
 		let mut counters = read_counters(&mut tx, &lock_key)?;
 		counters.depth += admitted;
 		counters.blocked_keys = counters.blocked_keys.saturating_add_signed(blocked_delta);
-		tx.set(&lock_key, encode_queue_partition_counters(&counters))?;
+		tx.set(vec![(lock_key.clone(), encode_queue_partition_counters(&counters))])?;
 	}
 
 	tx.commit()?;
@@ -123,7 +125,7 @@ pub fn apply_ack_transitions(
 	let mut keys: Vec<_> =
 		acks.iter().map(|ack| QueueItemStateKey::new(queue, partition, ack.row_number).into()).collect();
 	keys.push(lock_key.clone().into());
-	tx.prefetch::<TaggedKey>(&keys)?;
+	tx.get::<TaggedKey>(&keys)?;
 
 	let mut overlay = ChainOverlay::default();
 	let mut applied = 0u64;
@@ -131,7 +133,7 @@ pub fn apply_ack_transitions(
 	let mut blocked_delta = 0i64;
 	for ack in acks {
 		let state_key = QueueItemStateKey::new(queue, partition, ack.row_number);
-		let Some(stored) = tx.get(&state_key)? else {
+		let Some(stored) = tx.get(from_ref(&state_key))?.remove(0) else {
 			debug!(queue = queue.0, partition, item = ack.row_number.0, "ack has no item state");
 			continue;
 		};
@@ -198,13 +200,13 @@ pub fn apply_reap_transitions(
 	let mut keys: Vec<_> =
 		reaps.iter().map(|(lease, _)| QueueItemStateKey::new(queue, partition, lease.row).into()).collect();
 	keys.push(lock_key.clone().into());
-	tx.prefetch::<TaggedKey>(&keys)?;
+	tx.get::<TaggedKey>(&keys)?;
 
 	let mut overlay = ChainOverlay::default();
 	let mut applied = Vec::with_capacity(reaps.len());
 	for (lease, transition) in reaps {
 		let state_key = QueueItemStateKey::new(queue, partition, lease.row);
-		let Some(stored) = tx.get(&state_key)? else {
+		let Some(stored) = tx.get(from_ref(&state_key))?.remove(0) else {
 			applied.push(false);
 			continue;
 		};
@@ -264,7 +266,7 @@ pub fn apply_replay_transition(
 	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let state_key = QueueItemStateKey::new(queue, partition, row);
-	let Some(stored) = tx.get(&state_key)? else {
+	let Some(stored) = tx.get(from_ref(&state_key))?.remove(0) else {
 		return Ok(ReplayOutcome::Unknown);
 	};
 	let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
@@ -294,7 +296,7 @@ pub fn apply_replay_transition(
 		chain_add(&mut tx, &mut overlay, queue, partition, key_hash, row)?;
 	}
 
-	tx.set(&state_key, encode_queue_item_state(&state))?;
+	tx.set(vec![(state_key.clone(), encode_queue_item_state(&state))])?;
 	if state.status == QueueItemStatus::Ready {
 		expose_due(&mut tx, queue, partition, row, &state)?;
 	}
@@ -302,7 +304,7 @@ pub fn apply_replay_transition(
 	let mut counters = read_counters(&mut tx, &lock_key)?;
 	counters.depth += 1;
 	counters.blocked_keys = counters.blocked_keys.saturating_add_signed(blocked_delta);
-	tx.set(&lock_key, encode_queue_partition_counters(&counters))?;
+	tx.set(vec![(lock_key.clone(), encode_queue_partition_counters(&counters))])?;
 
 	tx.commit()?;
 
@@ -327,16 +329,16 @@ pub fn remove_item_states(
 	let mut tx = single.begin_command_ranged([&lock_key.encode()], partition_ranges(queue, partition))?;
 
 	let keys: Vec<_> = rows.iter().map(|row| QueueItemStateKey::new(queue, partition, *row)).collect();
-	tx.prefetch(&keys)?;
+	tx.get(&keys)?;
 
 	let mut removed = 0u64;
 	for row in rows {
 		let state_key = QueueItemStateKey::new(queue, partition, *row);
-		let Some(stored) = tx.get(&state_key)? else {
+		let Some(stored) = tx.get(from_ref(&state_key))?.remove(0) else {
 			continue;
 		};
 		let Some(state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
-			tx.remove(&state_key)?;
+			tx.remove(from_ref(&state_key))?;
 			removed += 1;
 			continue;
 		};
@@ -351,7 +353,7 @@ pub fn remove_item_states(
 			continue;
 		}
 
-		tx.remove(&state_key)?;
+		tx.remove(from_ref(&state_key))?;
 		removed += 1;
 	}
 
@@ -423,7 +425,7 @@ fn apply_state_transition(
 		}
 	};
 
-	tx.set(&QueueItemStateKey::new(queue, partition, row), encode_queue_item_state(state))?;
+	tx.set(vec![(QueueItemStateKey::new(queue, partition, row), encode_queue_item_state(state))])?;
 
 	let blocked_delta = match (terminal, key_hash) {
 		(true, Some(key_hash)) => {
@@ -454,7 +456,7 @@ fn promote_next(
 	};
 
 	let state_key = QueueItemStateKey::new(queue, partition, successor);
-	let Some(stored) = tx.get(&state_key)? else {
+	let Some(stored) = tx.get(from_ref(&state_key))?.remove(0) else {
 		debug!(queue = queue.0, partition, item = successor.0, "the successor of a key has no item state");
 		return Ok(blocked_delta);
 	};
@@ -473,7 +475,7 @@ fn promote_next(
 	}
 
 	state.status = QueueItemStatus::Ready;
-	tx.set(&state_key, encode_queue_item_state(&state))?;
+	tx.set(vec![(state_key.clone(), encode_queue_item_state(&state))])?;
 	expose_due(tx, queue, partition, successor, &state)?;
 
 	Ok(blocked_delta)
@@ -486,11 +488,12 @@ fn expose_due(
 	row: RowNumber,
 	state: &QueueItemState,
 ) -> Result<()> {
-	tx.set(&QueueDueKey::new(queue, partition, state.due(), row), EncodedPodRow::new(&[]).into_bytes())
+	tx.set(vec![(QueueDueKey::new(queue, partition, state.due(), row), EncodedPodRow::new(&[]).into_bytes())])
 }
 
 fn read_counters(tx: &mut SingleWriteTransaction<'_>, lock_key: &QueuePartitionKey) -> Result<QueuePartitionCounters> {
-	Ok(tx.get(lock_key)?
+	Ok(tx.get(from_ref(lock_key))?
+		.remove(0)
 		.map(|stored| decode_queue_partition_counters(EncodedPodRow::view(&stored.bytes)))
 		.unwrap_or_default())
 }
@@ -506,7 +509,7 @@ fn adjust_counters(
 	counters.in_flight = counters.in_flight.saturating_sub(applied);
 	counters.depth += requeued;
 	counters.blocked_keys = counters.blocked_keys.saturating_add_signed(blocked_delta);
-	tx.set(lock_key, encode_queue_partition_counters(&counters))?;
+	tx.set(vec![(lock_key.clone(), encode_queue_partition_counters(&counters))])?;
 
 	Ok(())
 }

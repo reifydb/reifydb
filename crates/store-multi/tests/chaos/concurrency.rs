@@ -8,6 +8,7 @@
 
 use std::{
 	collections::BTreeMap,
+	slice::from_ref,
 	sync::atomic::{AtomicU64, Ordering},
 	thread,
 	time::Instant,
@@ -268,8 +269,9 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 							let row =
 								rng.random_range(1..=cfg.writers * cfg.rows_per_writer);
 							if let Some(r) = store
-								.get(&conc_op_key(row), CommitVersion(read))
+								.get(from_ref(&conc_op_key(row)), CommitVersion(read))
 								.unwrap()
+								.remove(0)
 							{
 								check_structural(
 									&[(row, r.bytes.to_vec())],

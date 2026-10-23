@@ -5,7 +5,7 @@
 //! persists the latest-<=W value of persistent objects and drops all <=W versions from the commit tier,
 //! so snapshots older than W are deliberately not preserved.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, slice::from_ref, sync::Arc};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -99,7 +99,7 @@ fn stored_versions(
 }
 
 fn get(store: &StandardMultiStore, k: &TaggedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
+	store.get(from_ref(k), CommitVersion(version)).unwrap().remove(0).map(|r| r.bytes.to_vec())
 }
 
 fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)> {
@@ -156,8 +156,11 @@ fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persis
 
 		if persistent_object {
 			for (key, version, _) in &to_persist {
-				store.get(&TaggedKey::decode(key).expect("an evictable key must decode"), *version)
-					.unwrap();
+				store.get(
+					from_ref(&TaggedKey::decode(key).expect("an evictable key must decode")),
+					*version,
+				)
+				.unwrap();
 			}
 		}
 	}

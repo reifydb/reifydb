@@ -84,7 +84,7 @@ pub fn remove_dictionary_entries(single: &SingleTransaction, dictionary: Diction
 				let Some(key) = TaggedKey::decode(&item.key) else {
 					return_internal_error!("scan yielded a key no typed key decodes");
 				};
-				tx.remove(&key)?;
+				tx.remove(slice::from_ref(&key))?;
 			}
 			tx.commit()?;
 		}
@@ -148,8 +148,8 @@ impl DictionaryStore for SingleDictionaryStore {
 		];
 		let mut txn = self.single.begin_command_ranged([&lock_key], ranges)?;
 		for write in writes {
-			txn.set(&write.index_key, write.index_value.clone())?;
-			txn.set(&write.entry_key, write.entry_value.clone())?;
+			txn.set(vec![(write.index_key.clone(), write.index_value.clone())])?;
+			txn.set(vec![(write.entry_key.clone(), write.entry_value.clone())])?;
 		}
 		txn.commit()?;
 		Ok(())

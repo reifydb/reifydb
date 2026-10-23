@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
+	slice::from_ref,
 	sync::{Arc, Barrier},
 	thread,
 };
@@ -49,13 +50,13 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 					let shape = u64_shape();
 					barrier.wait();
 					txn.with_command([&locked], |tx| {
-						let current = match tx.get(&key)? {
+						let current = match tx.get(from_ref(&key))?.remove(0) {
 							Some(existing) => shape.get::<u64>(&existing.bytes, 0),
 							None => 0,
 						};
 						let mut row = shape.allocate_pod();
 						shape.set::<u64>(&mut row, 0, current + 1);
-						tx.set(&key, row.freeze())
+						tx.set(vec![(key.clone(), row.freeze())])
 					})
 					.unwrap();
 				});
@@ -66,7 +67,10 @@ fn concurrent_read_modify_write_on_a_fresh_key_is_serialized() {
 		let total = txn
 			.with_command([&locked], |tx| {
 				Ok(shape.get::<u64>(
-					&tx.get(&key)?.expect("counter key must exist after the round").bytes,
+					&tx.get(from_ref(&key))?
+						.remove(0)
+						.expect("counter key must exist after the round")
+						.bytes,
 					0,
 				))
 			})

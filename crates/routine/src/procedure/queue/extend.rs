@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::LazyLock;
+use std::{slice::from_ref, sync::LazyLock};
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
@@ -95,7 +95,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 		)?;
 
 		let state_key = QueueItemStateKey::new(token.queue, token.partition, token.row);
-		let Some(stored) = tx.get(&state_key)? else {
+		let Some(stored) = tx.get(from_ref(&state_key))?.remove(0) else {
 			return Err(stale("the item has no scheduling state"));
 		};
 		let Some(mut state) = decode_queue_item_state(EncodedPodRow::view(&stored.bytes)) else {
@@ -116,7 +116,7 @@ impl<'a, 'tx> Routine<ProcedureContext<'a, 'tx>> for QueueExtend {
 		};
 		state.lease_deadline = Some(deadline);
 
-		tx.set(&state_key, encode_queue_item_state(&state))?;
+		tx.set(vec![(state_key.clone(), encode_queue_item_state(&state))])?;
 		tx.commit()?;
 
 		Ok(single_row([

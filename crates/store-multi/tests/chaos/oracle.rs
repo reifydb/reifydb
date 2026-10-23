@@ -104,7 +104,7 @@ impl Oracle {
 		value.clone().map(|bytes| (bytes, *version))
 	}
 
-	/// `get_previous_version(key, before)`: the highest version strictly below `before` (i.e. <= before-1),
+	/// `get_previous(key, before)`: the highest version strictly below `before` (i.e. <= before-1),
 	/// or None if `before == 0`, no such version exists, or that version is a tombstone (a found deletion is
 	/// returned as None, not skipped to an older value - matching the store).
 	pub fn prev(&self, row: u64, before: u64) -> Option<(Vec<u8>, u64)> {

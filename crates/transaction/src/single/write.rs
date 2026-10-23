@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, mem::take, ops::RangeBounds, slice};
+use std::{collections::HashMap, mem::take, ops::RangeBounds};
 
 use indexmap::IndexMap;
 use reifydb_core::{
@@ -70,41 +70,8 @@ impl<'a> SingleWriteTransaction<'a> {
 		}
 	}
 
-	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<Option<SingleVersionRow>> {
-		let encoded = key.clone().into().encode();
-		self.check_key_allowed(&encoded)?;
-
-		if let Some(delta) = self.pending.get(&encoded) {
-			return match delta {
-				Delta::Set {
-					bytes,
-					..
-				} => Ok(Some(SingleVersionRow {
-					key: encoded,
-					bytes: bytes.clone(),
-				})),
-				Delta::Remove {
-					..
-				} => Ok(None),
-			};
-		}
-
-		if let Some(fetched) = self.fetched.get(&encoded) {
-			return Ok(fetched.clone().map(|bytes| SingleVersionRow {
-				key: encoded,
-				bytes,
-			}));
-		}
-
-		#[cfg(feature = "testing")]
-		{
-			self.inner.op_counts.lock().unwrap().key(key.clone().into().kind()).gets += 1;
-		}
-		let store = self.inner.store.read().clone();
-		Ok(SingleVersionGet::get(&store, slice::from_ref(&encoded))?.pop().flatten())
-	}
-
-	pub fn prefetch<K: Into<TaggedKey> + Clone>(&mut self, keys: &[K]) -> Result<()> {
+	pub fn get<K: Into<TaggedKey> + Clone>(&mut self, keys: &[K]) -> Result<Vec<Option<SingleVersionRow>>> {
+		let mut encoded_keys = Vec::with_capacity(keys.len());
 		let mut missing = Vec::new();
 		#[cfg(feature = "testing")]
 		let mut kinds = Vec::new();
@@ -114,57 +81,90 @@ impl<'a> SingleWriteTransaction<'a> {
 			self.check_key_allowed(&encoded)?;
 			if !self.pending.contains_key(&encoded) && !self.fetched.contains_key(&encoded) {
 				self.fetched.insert(encoded.clone(), None);
-				missing.push(encoded);
+				missing.push(encoded.clone());
 				#[cfg(feature = "testing")]
 				kinds.push(key.kind());
 			}
-		}
-		if missing.is_empty() {
-			return Ok(());
+			encoded_keys.push(encoded);
 		}
 
-		#[cfg(feature = "testing")]
-		{
-			let mut counts = self.inner.op_counts.lock().unwrap();
-			counts.get_call(kinds);
+		if !missing.is_empty() {
+			#[cfg(feature = "testing")]
+			{
+				let mut counts = self.inner.op_counts.lock().unwrap();
+				counts.get_call(kinds);
+			}
+			let store = self.inner.store.read().clone();
+			for (key, row) in missing.iter().zip(SingleVersionGet::get(&store, &missing)?) {
+				self.fetched.insert(key.clone(), row.map(|row| row.bytes));
+			}
 		}
-		let store = self.inner.store.read().clone();
-		for (key, row) in missing.iter().zip(SingleVersionGet::get(&store, &missing)?) {
-			self.fetched.insert(key.clone(), row.map(|row| row.bytes));
+
+		Ok(encoded_keys.into_iter().map(|encoded| self.lookup(encoded)).collect())
+	}
+
+	fn lookup(&self, encoded: EncodedKey) -> Option<SingleVersionRow> {
+		if let Some(delta) = self.pending.get(&encoded) {
+			return match delta {
+				Delta::Set {
+					bytes,
+					..
+				} => Some(SingleVersionRow {
+					key: encoded,
+					bytes: bytes.clone(),
+				}),
+				Delta::Remove {
+					..
+				} => None,
+			};
+		}
+		self.fetched.get(&encoded).cloned().flatten().map(|bytes| SingleVersionRow {
+			key: encoded,
+			bytes,
+		})
+	}
+
+	pub fn set<K: Into<TaggedKey> + Clone, B: Into<EncodedBytes>>(&mut self, entries: Vec<(K, B)>) -> Result<()> {
+		let entries = self.scoped(entries)?;
+		for (key, encoded, bytes) in entries {
+			let delta = Delta::Set {
+				key,
+				bytes: bytes.into(),
+				pre: SetPre::Unknown,
+			};
+			self.pending.insert(encoded, delta);
 		}
 		Ok(())
 	}
 
-	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {
-		let key: TaggedKey = key.clone().into();
-		let encoded = key.encode();
-		self.check_key_allowed(&encoded)?;
-
-		let delta = Delta::Set {
-			key,
-			bytes: bytes.into(),
-			pre: SetPre::Unknown,
-		};
-		self.pending.insert(encoded, delta);
+	pub fn remove_with_pre<K: Into<TaggedKey> + Clone, B: Into<EncodedBytes>>(
+		&mut self,
+		entries: Vec<(K, B)>,
+	) -> Result<()> {
+		let entries = self.scoped(entries)?;
+		for (key, encoded, pre) in entries {
+			self.pending.insert(encoded, Delta::remove_announced(key, pre.into()));
+		}
 		Ok(())
 	}
 
-	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
-		let key: TaggedKey = key.clone().into();
-		let encoded = key.encode();
-		self.check_key_allowed(&encoded)?;
-
-		self.pending.insert(encoded, Delta::remove_announced(key, pre));
+	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, keys: &[K]) -> Result<()> {
+		let entries = self.scoped(keys.iter().map(|key| (key.clone(), ())).collect())?;
+		for (key, encoded, ()) in entries {
+			self.pending.insert(encoded, Delta::remove_silent(key));
+		}
 		Ok(())
 	}
 
-	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
-		let key: TaggedKey = key.clone().into();
-		let encoded = key.encode();
-		self.check_key_allowed(&encoded)?;
-
-		self.pending.insert(encoded, Delta::remove_silent(key));
-		Ok(())
+	fn scoped<K: Into<TaggedKey>, V>(&self, entries: Vec<(K, V)>) -> Result<Vec<(TaggedKey, EncodedKey, V)>> {
+		let mut scoped = Vec::with_capacity(entries.len());
+		for (key, value) in entries {
+			let key: TaggedKey = key.into();
+			let encoded = key.encode();
+			self.check_key_allowed(&encoded)?;
+			scoped.push((key, encoded, value));
+		}
+		Ok(scoped)
 	}
 
 	pub fn commit(&mut self) -> Result<()> {

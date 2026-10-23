@@ -6,7 +6,6 @@ use std::cell::RefCell;
 use std::{
 	collections::{BTreeMap, HashMap, btree_map::Entry},
 	ops::{Bound, RangeBounds},
-	slice::from_ref,
 	sync::atomic::Ordering,
 	vec,
 };
@@ -25,7 +24,6 @@ use reifydb_core::{
 		store::{
 			EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious,
 			MultiVersionRow, MultiVersionStore, StorageKey, classify_key_of, classify_range, storage_key,
-			storage_key_of,
 		},
 	},
 	key::{
@@ -39,7 +37,7 @@ use reifydb_store_commit::{
 	store::CommitStore,
 };
 use reifydb_value::{
-	error, reifydb_assertions,
+	error,
 	util::{cowvec::CowVec, hex::display},
 };
 use tracing::instrument;
@@ -95,146 +93,26 @@ struct ClassifiedKey<'a> {
 }
 
 impl MultiVersionGet for StandardMultiStore {
-	fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<MultiVersionRow<TaggedKey>>> {
-		let (table, storage_key) = storage_key_of(key);
-		let encoded = key.encode();
-		let row = match table {
-			EntryKind::Source(_, _) => self.get_source(table, storage_key, &encoded, version)?,
-			_ => self.get_multi(table, storage_key, &encoded, version)?,
-		};
-		Ok(row.map(|row| MultiVersionRow {
-			key: key.clone(),
-			bytes: row.bytes,
-			version: row.version,
-		}))
-	}
-}
-
-impl StandardMultiStore {
-	#[instrument(name = "store::multi::get::source", level = "trace", skip(self, key), fields(version = version.0))]
-	fn get_source(
-		&self,
-		table: EntryKind,
-		storage_key: Option<StorageKey>,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<Option<MultiVersionRow>> {
-		self.get_impl(table, storage_key, key, version)
-	}
-
-	#[instrument(name = "store::multi::get::multi", level = "trace", skip(self, key), fields(version = version.0))]
-	fn get_multi(
-		&self,
-		table: EntryKind,
-		storage_key: Option<StorageKey>,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<Option<MultiVersionRow>> {
-		self.get_impl(table, storage_key, key, version)
-	}
-
-	#[inline]
-	fn get_impl(
-		&self,
-		table: EntryKind,
-		storage_key: Option<StorageKey>,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<Option<MultiVersionRow>> {
-		if let Some(found) = self.get_probe_commit(table, key, version)? {
-			return Ok(found);
+	fn get(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
+		if keys.is_empty() {
+			return Ok(Vec::new());
 		}
-		if let Some(found) = self.get_probe_read(table, storage_key, key, version) {
-			return Ok(found);
-		}
-		if let Some(found) = self.get_probe_persistent(table, storage_key, key, version)? {
-			return Ok(found);
-		}
-
-		Ok(None)
-	}
-}
-
-impl StandardMultiStore {
-	#[inline]
-	fn get_probe_commit(
-		&self,
-		table: EntryKind,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<Option<Option<MultiVersionRow>>> {
-		Ok(match self.commit.get(table, key.as_ref(), version) {
-			VersionedGetResult::Value {
-				value,
-				version: v,
-			} => Some(Some(MultiVersionRow {
-				key: key.clone(),
-				bytes: EncodedBytes(value),
-				version: v,
-			})),
-			VersionedGetResult::Tombstone => Some(None),
-			VersionedGetResult::NotFound => None,
-		})
-	}
-
-	#[inline]
-	fn get_probe_read(
-		&self,
-		table: EntryKind,
-		storage_key: Option<StorageKey>,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Option<Option<MultiVersionRow>> {
-		let point = self.point.as_ref()?;
-		match point.get(table, storage_key, key, version) {
-			VersionedGetResult::Value {
-				value,
-				version: v,
-			} => Some(Some(MultiVersionRow {
-				key: key.clone(),
-				bytes: EncodedBytes(value),
-				version: v,
-			})),
-			VersionedGetResult::Tombstone => Some(None),
-			VersionedGetResult::NotFound => None,
-		}
-	}
-
-	#[inline]
-	fn get_probe_persistent(
-		&self,
-		table: EntryKind,
-		storage_key: Option<StorageKey>,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<Option<Option<MultiVersionRow>>> {
-		let Some(persistent) = &self.persistent else {
-			return Ok(None);
-		};
-		if !persistent.filter().may_contain((table, key)) {
-			return Ok(None);
-		}
-		self.persistent_probes.fetch_add(1, Ordering::Relaxed);
-		Ok(match persistent.get(table, from_ref(&key.as_ref()), version)?.remove(0) {
-			VersionedGetResult::Value {
-				value,
-				version: v,
-			} => {
-				if let Some(point) = &self.point {
-					point.insert(table, storage_key, key.clone(), v, Some(value.clone()));
-				}
-				Some(Some(MultiVersionRow {
+		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
+		let found = self.get_many_versioned(&encoded, version)?;
+		Ok(keys.iter()
+			.zip(&encoded)
+			.map(|(key, encoded)| match found.get(encoded) {
+				Some(VersionedGetResult::Value {
+					value,
+					version,
+				}) => Some(MultiVersionRow {
 					key: key.clone(),
-					bytes: EncodedBytes(value),
-					version: v,
-				}))
-			}
-			VersionedGetResult::Tombstone => Some(None),
-			VersionedGetResult::NotFound => {
-				self.persistent_absent.fetch_add(1, Ordering::Relaxed);
-				None
-			}
-		})
+					bytes: EncodedBytes(value.clone()),
+					version: *version,
+				}),
+				_ => None,
+			})
+			.collect())
 	}
 }
 
@@ -1117,44 +995,7 @@ fn rewind_over_advanced_reverse(cursor: &mut MultiVersionRangeCursor, horizon: &
 }
 
 impl MultiVersionGetPrevious for StandardMultiStore {
-	fn get_previous_version(
-		&self,
-		key: &TaggedKey,
-		before_version: CommitVersion,
-	) -> Result<Option<MultiVersionRow<TaggedKey>>> {
-		if before_version.0 == 0 {
-			return Ok(None);
-		}
-
-		let (table, storage_key) = storage_key_of(key);
-		let encoded = key.encode();
-		reifydb_assertions! {
-			assert!(
-				before_version.0 >= 1,
-				"the before_version==0 guard must precede this subtraction, otherwise before_version.0 - 1 \
-				 wraps to u64::MAX and the probe reads the latest version instead of the previous one \
-				 (before_version={})",
-				before_version.0
-			);
-		}
-		let prev_version = CommitVersion(before_version.0 - 1);
-
-		let found = if let Some(found) = self.previous_probe_commit(table, &encoded, prev_version)? {
-			found
-		} else if let Some(found) = self.previous_probe_read(table, storage_key, &encoded, prev_version) {
-			found
-		} else {
-			self.previous_probe_persistent(table, storage_key, &encoded, prev_version)?.flatten()
-		};
-
-		Ok(found.map(|row| MultiVersionRow {
-			key: key.clone(),
-			bytes: row.bytes,
-			version: row.version,
-		}))
-	}
-
-	fn get_previous_many(
+	fn get_previous(
 		&self,
 		keys: &[TaggedKey],
 		before_version: CommitVersion,
@@ -1178,89 +1019,6 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 				_ => None,
 			})
 			.collect())
-	}
-}
-
-impl StandardMultiStore {
-	#[inline]
-	fn previous_probe_commit(
-		&self,
-		table: EntryKind,
-		key: &EncodedKey,
-		prev_version: CommitVersion,
-	) -> Result<Option<Option<MultiVersionRow>>> {
-		Ok(match self.commit.get(table, key.as_ref(), prev_version) {
-			VersionedGetResult::Value {
-				value,
-				version,
-			} => Some(Some(MultiVersionRow {
-				key: key.clone(),
-				bytes: EncodedBytes(CowVec::new(value.to_vec())),
-				version,
-			})),
-			VersionedGetResult::Tombstone => Some(None),
-			VersionedGetResult::NotFound => None,
-		})
-	}
-
-	#[inline]
-	fn previous_probe_read(
-		&self,
-		table: EntryKind,
-		storage_key: Option<StorageKey>,
-		key: &EncodedKey,
-		prev_version: CommitVersion,
-	) -> Option<Option<MultiVersionRow>> {
-		let point = self.point.as_ref()?;
-		match point.get(table, storage_key, key, prev_version) {
-			VersionedGetResult::Value {
-				value,
-				version,
-			} => Some(Some(MultiVersionRow {
-				key: key.clone(),
-				bytes: EncodedBytes(CowVec::new(value.to_vec())),
-				version,
-			})),
-			VersionedGetResult::Tombstone => Some(None),
-			VersionedGetResult::NotFound => None,
-		}
-	}
-
-	#[inline]
-	fn previous_probe_persistent(
-		&self,
-		table: EntryKind,
-		storage_key: Option<StorageKey>,
-		key: &EncodedKey,
-		prev_version: CommitVersion,
-	) -> Result<Option<Option<MultiVersionRow>>> {
-		let Some(persistent) = &self.persistent else {
-			return Ok(None);
-		};
-		if !persistent.filter().may_contain((table, key)) {
-			return Ok(None);
-		}
-		self.persistent_probes.fetch_add(1, Ordering::Relaxed);
-		Ok(match persistent.get(table, from_ref(&key.as_ref()), prev_version)?.remove(0) {
-			VersionedGetResult::Value {
-				value,
-				version,
-			} => {
-				if let Some(point) = &self.point {
-					point.insert(table, storage_key, key.clone(), version, Some(value.clone()));
-				}
-				Some(Some(MultiVersionRow {
-					key: key.clone(),
-					bytes: EncodedBytes(CowVec::new(value.to_vec())),
-					version,
-				}))
-			}
-			VersionedGetResult::Tombstone => Some(None),
-			VersionedGetResult::NotFound => {
-				self.persistent_absent.fetch_add(1, Ordering::Relaxed);
-				None
-			}
-		})
 	}
 }
 
@@ -1466,6 +1224,7 @@ mod cache_tests {
 		collections::HashMap,
 		ops::{Bound, RangeInclusive},
 		rc::Rc,
+		slice::from_ref,
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
@@ -1734,8 +1493,9 @@ mod cache_tests {
 			"no operator row may become resident on commit"
 		);
 
-		let row = MultiVersionGet::get(&store, &TaggedKey::from(opkey.clone()), CommitVersion(10))
+		let row = MultiVersionGet::get(&store, from_ref(&TaggedKey::from(opkey.clone())), CommitVersion(10))
 			.unwrap()
+			.remove(0)
 			.expect("the committed operator state must still be readable through the store");
 		assert_eq!(row.bytes.as_slice(), b"state-v10");
 		assert_eq!(row.version, CommitVersion(10));
@@ -2417,7 +2177,7 @@ mod cache_tests {
 
 #[cfg(all(test, feature = "sqlite", not(target_arch = "wasm32")))]
 mod probe_tests {
-	use std::collections::HashMap;
+	use std::{collections::HashMap, slice::from_ref};
 
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{
@@ -2531,8 +2291,8 @@ mod probe_tests {
 			.unwrap();
 
 		let before = probes(&store);
-		assert!(store.get(&present, CommitVersion(9)).unwrap().is_some());
-		assert!(store.get(&removed, CommitVersion(9)).unwrap().is_none());
+		assert!(store.get(from_ref(&present), CommitVersion(9)).unwrap().remove(0).is_some());
+		assert!(store.get(from_ref(&removed), CommitVersion(9)).unwrap().remove(0).is_none());
 
 		assert_eq!(
 			probes(&store),
@@ -2551,7 +2311,7 @@ mod probe_tests {
 		seed_persistent(&store, vec![(k.encode(), value("resident"))]);
 
 		let before = probes(&store);
-		assert!(store.get(&k, CommitVersion(9)).unwrap().is_some());
+		assert!(store.get(from_ref(&k), CommitVersion(9)).unwrap().remove(0).is_some());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1),
@@ -2567,7 +2327,7 @@ mod probe_tests {
 		let k = TaggedKey::from(RowKey::new(STORAGE, 77));
 
 		let before = probes(&store);
-		assert!(store.get(&k, CommitVersion(9)).unwrap().is_none());
+		assert!(store.get(from_ref(&k), CommitVersion(9)).unwrap().remove(0).is_none());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1 + 1),
@@ -2585,7 +2345,10 @@ mod probe_tests {
 		seed_persistent(&store, vec![(k.encode(), None)]);
 
 		let before = probes(&store);
-		assert!(store.get(&k, CommitVersion(9)).unwrap().is_none(), "a deleted key reads as no row");
+		assert!(
+			store.get(from_ref(&k), CommitVersion(9)).unwrap().remove(0).is_none(),
+			"a deleted key reads as no row"
+		);
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1 + 1),
@@ -2653,7 +2416,7 @@ mod probe_tests {
 		let k = TaggedKey::from(RowKey::new(STORAGE, 42));
 
 		let before = probes(&store);
-		assert!(store.get_previous_version(&k, CommitVersion(9)).unwrap().is_none());
+		assert!(store.get_previous(from_ref(&k), CommitVersion(9)).unwrap().remove(0).is_none());
 		assert_eq!(
 			probes(&store),
 			(before.0 + 1, before.1 + 1),
@@ -2664,7 +2427,11 @@ mod probe_tests {
 	#[test]
 	fn a_store_without_a_persistent_tier_reports_no_probe_metrics() {
 		let store = StandardMultiStore::testing_memory();
-		assert!(store.get(&TaggedKey::from(RowKey::new(STORAGE, 1)), CommitVersion(9)).unwrap().is_none());
+		assert!(store
+			.get(from_ref(&TaggedKey::from(RowKey::new(STORAGE, 1))), CommitVersion(9))
+			.unwrap()
+			.remove(0)
+			.is_none());
 		assert!(store.persistent_probe_metrics().is_none());
 	}
 

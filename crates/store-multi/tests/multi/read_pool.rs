@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::thread;
+use std::{slice::from_ref, thread};
 
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -48,7 +48,7 @@ fn concurrent_reads_during_writes_no_deadlock() {
 			thread::spawn(move || {
 				for _ in 0..500 {
 					// v0 was committed before any reader started, so None is never correct here.
-					let got = store.get(&key, CommitVersion(u64::MAX)).unwrap();
+					let got = store.get(from_ref(&key), CommitVersion(u64::MAX)).unwrap().remove(0);
 					assert!(got.is_some());
 				}
 			})
@@ -72,6 +72,6 @@ fn concurrent_reads_during_writes_no_deadlock() {
 		reader.join().expect("reader thread panicked (deadlock or read error)");
 	}
 
-	let final_value = store.get(&key, CommitVersion(u64::MAX)).unwrap().unwrap();
+	let final_value = store.get(from_ref(&key), CommitVersion(u64::MAX)).unwrap().remove(0).unwrap();
 	assert_eq!(final_value.bytes.as_slice(), format!("v{last}").as_bytes());
 }

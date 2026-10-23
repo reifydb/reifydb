@@ -5,7 +5,7 @@
 //! `(version, value)` plus the one version it superseded, so a hit must never serve a value the requested
 //! snapshot cannot see, and a newer commit must invalidate the entry rather than shadow it.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, slice::from_ref};
 
 use reifydb_codec::{
 	key::encoded::EncodedKeyRange,
@@ -59,7 +59,7 @@ fn persistent_only_set(store: &StandardMultiStore, k: &TaggedKey, version: u64, 
 }
 
 fn get(store: &StandardMultiStore, k: &TaggedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
+	store.get(from_ref(k), CommitVersion(version)).unwrap().remove(0).map(|r| r.bytes.to_vec())
 }
 
 #[test]

@@ -7,6 +7,7 @@ use std::{
 	collections::{BTreeMap, BTreeSet},
 	iter,
 	ops::{Bound, RangeBounds},
+	slice::from_ref,
 	sync::Arc,
 	vec,
 };
@@ -826,12 +827,17 @@ impl MultiWriteTransaction {
 		let base = self.base_version();
 		Some(Box::new(move |deltas: &mut CowVec<Delta>, latest: CommitVersion| {
 			for (key, rewrite) in rewrites {
-				let at_base = MultiVersionGet::get(&store, &key, base)?.map(|row| row.bytes);
-				let at_latest = MultiVersionGet::get(&store, &key, latest)?.map(|row| row.bytes);
+				let at_base = MultiVersionGet::get(&store, from_ref(&key), base)?
+					.remove(0)
+					.map(|row| row.bytes);
+				let at_latest = MultiVersionGet::get(&store, from_ref(&key), latest)?
+					.remove(0)
+					.map(|row| row.bytes);
 				rewrite(deltas, at_base.as_ref(), at_latest.as_ref())?;
 			}
 			for (key, written, steps) in rebases {
-				let Some(found) = MultiVersionGet::get(&store, &key, latest)? else {
+				let Some(found) = MultiVersionGet::get(&store, from_ref(&key), latest)?.remove(0)
+				else {
 					continue;
 				};
 				let mut rebased = found.bytes;

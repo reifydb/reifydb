@@ -84,7 +84,7 @@ where
 				_ => None,
 			})
 			.collect();
-		let mut previous = self.transaction_store.get_previous_many(&unknown, version.commit)?.into_iter();
+		let mut previous = self.transaction_store.get_previous(&unknown, version.commit)?.into_iter();
 
 		reifydb_assertions! {
 			self.assert_known_pres(&deltas, version.commit);
@@ -103,6 +103,8 @@ where
 
 	#[cfg(reifydb_assertions)]
 	fn assert_known_pres(&self, deltas: &[Delta], version: CommitVersion) {
+		let mut keys = Vec::new();
+		let mut expected = Vec::new();
 		for delta in deltas {
 			let Delta::Set {
 				key,
@@ -112,17 +114,25 @@ where
 			else {
 				continue;
 			};
-			let expected = match pre {
+			let known = match pre {
 				SetPre::Unknown => continue,
 				SetPre::Absent => None,
 				SetPre::Present(bytes) => Some(bytes),
 			};
-			let stored = self.transaction_store.get_previous_version(key, version).expect(
-				"the previous version of a set with a known pre-image must be readable to check it",
-			);
+			keys.push(key.clone());
+			expected.push(known);
+		}
+		if keys.is_empty() {
+			return;
+		}
+		let stored = self
+			.transaction_store
+			.get_previous(&keys, version)
+			.expect("the previous version of a set with a known pre-image must be readable to check it");
+		for ((key, known), stored) in keys.iter().zip(expected).zip(stored) {
 			assert_eq!(
 				stored.as_ref().map(|row| &row.bytes),
-				expected,
+				known,
 				"a set's known pre-image disagrees with the store before version {}: {:?}",
 				version.0,
 				key
@@ -391,15 +401,7 @@ pub mod tests {
 	struct FailingStore;
 
 	impl MultiVersionGetPrevious for FailingStore {
-		fn get_previous_version(
-			&self,
-			_key: &TaggedKey,
-			_before_version: CommitVersion,
-		) -> Result<Option<MultiVersionRow<TaggedKey>>> {
-			Err(CdcError::Internal("the previous version cannot be read".to_string()).into())
-		}
-
-		fn get_previous_many(
+		fn get_previous(
 			&self,
 			_keys: &[TaggedKey],
 			_before_version: CommitVersion,
@@ -410,7 +412,6 @@ pub mod tests {
 
 	#[derive(Clone, Default)]
 	struct Reads {
-		point: Arc<AtomicUsize>,
 		batches: Arc<AtomicUsize>,
 		batched_keys: Arc<AtomicUsize>,
 	}
@@ -421,23 +422,14 @@ pub mod tests {
 	}
 
 	impl MultiVersionGetPrevious for CountingStore {
-		fn get_previous_version(
-			&self,
-			key: &TaggedKey,
-			before_version: CommitVersion,
-		) -> Result<Option<MultiVersionRow<TaggedKey>>> {
-			self.reads.point.fetch_add(1, Ordering::SeqCst);
-			self.inner.get_previous_version(key, before_version)
-		}
-
-		fn get_previous_many(
+		fn get_previous(
 			&self,
 			keys: &[TaggedKey],
 			before_version: CommitVersion,
 		) -> Result<Vec<Option<MultiVersionRow<TaggedKey>>>> {
 			self.reads.batches.fetch_add(1, Ordering::SeqCst);
 			self.reads.batched_keys.fetch_add(keys.len(), Ordering::SeqCst);
-			self.inner.get_previous_many(keys, before_version)
+			self.inner.get_previous(keys, before_version)
 		}
 	}
 
@@ -529,14 +521,21 @@ pub mod tests {
 				format!("insert {:?} {:?}", make_key("d").encode(), b"new_d"),
 			]
 		);
-		assert_eq!(reads.batches.load(Ordering::SeqCst), 1, "one read for the whole commit");
-		assert_eq!(reads.batched_keys.load(Ordering::SeqCst), 2, "only the unknown sets of included kinds");
-		let checks = if cfg!(reifydb_assertions) {
-			2
+		let (check_batches, check_keys) = if cfg!(reifydb_assertions) {
+			(1, 2)
 		} else {
-			0
+			(0, 0)
 		};
-		assert_eq!(reads.point.load(Ordering::SeqCst), checks, "point reads only check known pre-images");
+		assert_eq!(
+			reads.batches.load(Ordering::SeqCst),
+			1 + check_batches,
+			"one read for the whole commit, plus one check of the known pre-images"
+		);
+		assert_eq!(
+			reads.batched_keys.load(Ordering::SeqCst),
+			2 + check_keys,
+			"only the unknown sets of included kinds, plus the known pre-images being checked"
+		);
 	}
 
 	#[cfg(reifydb_assertions)]

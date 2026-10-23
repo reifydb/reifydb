@@ -7,7 +7,7 @@
 
 #![allow(clippy::disallowed_methods)]
 
-use std::collections::HashMap;
+use std::{collections::HashMap, slice::from_ref};
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -66,7 +66,7 @@ fn persistent_row(store: &StandardMultiStore, k: &TaggedKey) -> Option<(u64, Vec
 }
 
 fn get(store: &StandardMultiStore, k: &TaggedKey, version: u64) -> Option<Vec<u8>> {
-	store.get(k, CommitVersion(version)).unwrap().map(|r| r.bytes.to_vec())
+	store.get(from_ref(k), CommitVersion(version)).unwrap().remove(0).map(|r| r.bytes.to_vec())
 }
 
 fn range_keys(store: &StandardMultiStore, range: EncodedKeyRange, read: u64) -> Vec<TaggedKey> {

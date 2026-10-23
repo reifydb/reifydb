@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb::{
 	core::{
 		interface::{
@@ -64,9 +66,9 @@ fn wipe_scheduling(db: &TestDb, queue: QueueId) {
 		)
 		.unwrap();
 	for key in state_keys.iter().chain(due_keys.iter()) {
-		tx.remove(key).unwrap();
+		tx.remove(from_ref(key)).unwrap();
 	}
-	tx.remove(&lock).unwrap();
+	tx.remove(from_ref(&lock)).unwrap();
 	tx.commit().unwrap();
 }
 

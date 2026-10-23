@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, slice::from_ref};
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
@@ -128,9 +128,9 @@ fn crash_before_handoff(t: &TestEngine, queue: &Queue) {
 
 		with_partition(t, queue, partition, |tx| {
 			for key in &keys {
-				tx.remove(key).unwrap();
+				tx.remove(from_ref(key)).unwrap();
 			}
-			tx.remove(&QueuePartitionKey::new(queue.id, partition)).unwrap();
+			tx.remove(from_ref(&QueuePartitionKey::new(queue.id, partition))).unwrap();
 		});
 	}
 }
@@ -153,9 +153,10 @@ fn forget_items(t: &TestEngine, queue: &Queue, rows: &[u64], blocked_delta: u64)
 
 	with_partition(t, queue, 0, |tx| {
 		for key in &doomed {
-			tx.remove(key).unwrap();
+			tx.remove(from_ref(key)).unwrap();
 		}
-		tx.set(&QueuePartitionKey::new(queue.id, 0), encode_queue_partition_counters(&counters)).unwrap();
+		tx.set(vec![(QueuePartitionKey::new(queue.id, 0), encode_queue_partition_counters(&counters))])
+			.unwrap();
 	});
 }
 

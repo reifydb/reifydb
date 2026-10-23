@@ -5,6 +5,8 @@
 //! next commit onward, with no reclamation in between: window engines delete range-scanned bookkeeping
 //! and re-read it on the next apply, and a resurrected entry double-unmerges a running accumulator.
 
+use std::slice::from_ref;
+
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
@@ -112,7 +114,7 @@ fn committed_drop_is_invisible_to_next_transaction_get_and_range() {
 	MultiVersionCommit::commit(&store, cow_vec![(Delta::remove_silent(key_a.clone()))], CommitVersion(3)).unwrap();
 
 	assert!(
-		store.get(&key_a, CommitVersion(4)).unwrap().is_none(),
+		store.get(from_ref(&key_a), CommitVersion(4)).unwrap().remove(0).is_none(),
 		"a committed drop must be invisible to a later get without waiting for the drop worker"
 	);
 	assert_eq!(
