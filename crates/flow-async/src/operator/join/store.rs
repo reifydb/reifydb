@@ -501,8 +501,8 @@ mod tests {
 		store.write_row(&mut b(&mut txn, operator), store.group_of(&h(0xAAA)), rn(3), &row(0x30)).unwrap();
 		let group = store.group_of(&h(0xAAA));
 
-		store.remove_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap();
-		store.remove_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap();
+		store.remove_row_in(&mut b(&mut txn, operator), group, from_ref(&rn(2))).unwrap();
+		store.remove_row_in(&mut b(&mut txn, operator), group, from_ref(&rn(2))).unwrap();
 
 		assert!(store.get_row_in(&mut b(&mut txn, operator), group, rn(2)).unwrap().is_none());
 		assert!(
@@ -516,7 +516,7 @@ mod tests {
 			"a tombstone for a row that was never stored must not surface in the key's scan"
 		);
 
-		store.remove_row_in(&mut b(&mut txn, operator), group, rn(1)).unwrap();
+		store.remove_row_in(&mut b(&mut txn, operator), group, from_ref(&rn(1))).unwrap();
 		let rows = store.rows_for_key(&mut b(&mut txn, operator), &h(0xAAA), None, 64).unwrap();
 		assert_eq!(
 			rows.iter().map(|(rn, _)| *rn).collect::<Vec<_>>(),
