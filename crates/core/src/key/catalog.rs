@@ -1099,7 +1099,8 @@ pub mod index_entry_key_tests_2 {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = SumType)]
 pub struct SumTypeKey {
 	pub sumtype: SumTypeId,
 }
@@ -1111,37 +1112,8 @@ impl SumTypeKey {
 		}
 	}
 
-	pub fn encoded(sumtype: impl Into<SumTypeId>) -> EncodedKey {
-		Self::new(sumtype.into()).encode()
-	}
-
 	pub fn full_scan() -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange::kind(Self::TAG)
-	}
-}
-
-impl SumTypeKey {
-	pub const TAG: KeyTag = KeyTag::SumType;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(SumTypeKey::TAG as u8).extend_u64(self.sumtype);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != SumTypeKey::TAG {
-			return None;
-		}
-
-		let sumtype = de.read_u64().ok()?;
-
-		Some(Self {
-			sumtype: SumTypeId(sumtype),
-		})
 	}
 }
 
@@ -1162,34 +1134,10 @@ mod sum_type_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = View)]
 pub struct ViewKey {
 	pub view: ViewId,
-}
-
-impl ViewKey {
-	pub const TAG: KeyTag = KeyTag::View;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(ViewKey::TAG as u8).extend_u64(self.view);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != ViewKey::TAG {
-			return None;
-		}
-
-		let view = de.read_u64().ok()?;
-
-		Some(Self {
-			view: ViewId(view),
-		})
-	}
 }
 
 impl ViewKey {
@@ -1197,10 +1145,6 @@ impl ViewKey {
 		Self {
 			view: view.into(),
 		}
-	}
-
-	pub fn encoded(view: impl Into<ViewId>) -> EncodedKey {
-		Self::new(view).encode()
 	}
 
 	pub fn full_scan() -> TaggedKeyBoundRange {
@@ -1283,34 +1227,10 @@ pub mod table_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Source)]
 pub struct SourceKey {
 	pub source: SourceId,
-}
-
-impl SourceKey {
-	pub const TAG: KeyTag = KeyTag::Source;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(SourceKey::TAG as u8).extend_u64(self.source);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != SourceKey::TAG {
-			return None;
-		}
-
-		let source = de.read_u64().ok()?;
-
-		Some(Self {
-			source: SourceId(source),
-		})
-	}
 }
 
 impl SourceKey {
@@ -1318,10 +1238,6 @@ impl SourceKey {
 		Self {
 			source: source.into(),
 		}
-	}
-
-	pub fn encoded(source: impl Into<SourceId>) -> EncodedKey {
-		Self::new(source).encode()
 	}
 
 	pub fn full_scan() -> TaggedKeyBoundRange {
@@ -1346,34 +1262,10 @@ pub mod source_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Sink)]
 pub struct SinkKey {
 	pub sink: SinkId,
-}
-
-impl SinkKey {
-	pub const TAG: KeyTag = KeyTag::Sink;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(SinkKey::TAG as u8).extend_u64(self.sink);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != SinkKey::TAG {
-			return None;
-		}
-
-		let sink = de.read_u64().ok()?;
-
-		Some(Self {
-			sink: SinkId(sink),
-		})
-	}
 }
 
 impl SinkKey {
@@ -1381,10 +1273,6 @@ impl SinkKey {
 		Self {
 			sink: sink.into(),
 		}
-	}
-
-	pub fn encoded(sink: impl Into<SinkId>) -> EncodedKey {
-		Self::new(sink).encode()
 	}
 
 	pub fn full_scan() -> TaggedKeyBoundRange {
@@ -1787,34 +1675,10 @@ mod verify_byte_identical_variant_handler_key {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Binding)]
 pub struct BindingKey {
 	pub binding: BindingId,
-}
-
-impl BindingKey {
-	pub const TAG: KeyTag = KeyTag::Binding;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(BindingKey::TAG as u8).extend_u64(self.binding);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != BindingKey::TAG {
-			return None;
-		}
-
-		let binding = de.read_u64().ok()?;
-
-		Some(Self {
-			binding: BindingId(binding),
-		})
-	}
 }
 
 impl BindingKey {
@@ -1822,10 +1686,6 @@ impl BindingKey {
 		Self {
 			binding: binding.into(),
 		}
-	}
-
-	pub fn encoded(binding: impl Into<BindingId>) -> EncodedKey {
-		Self::new(binding).encode()
 	}
 
 	pub fn full_scan() -> TaggedKeyBoundRange {
@@ -1902,35 +1762,5 @@ impl KeyFields for IndexEntryKey {
 			Field::UDesc(Width::U64, self.index.as_u64() as u128),
 			Field::RawAsc(RawEncoding::Verbatim, Cow::Borrowed(self.key.as_slice())),
 		]
-	}
-}
-
-impl KeyFields for BindingKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::UDesc(Width::U64, self.binding.0 as u128)]
-	}
-}
-
-impl KeyFields for SinkKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::UDesc(Width::U64, self.sink.0 as u128)]
-	}
-}
-
-impl KeyFields for SourceKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::UDesc(Width::U64, self.source.0 as u128)]
-	}
-}
-
-impl KeyFields for ViewKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::UDesc(Width::U64, self.view.0 as u128)]
-	}
-}
-
-impl KeyFields for SumTypeKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::UDesc(Width::U64, self.sumtype.0 as u128)]
 	}
 }

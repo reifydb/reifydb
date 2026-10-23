@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
-use smallvec::{SmallVec, smallvec};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_macro::KeyCodec;
 
 use super::KeyTag;
 use crate::{
@@ -13,34 +13,10 @@ use crate::{
 	},
 };
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = Procedure)]
 pub struct ProcedureKey {
 	pub procedure: ProcedureId,
-}
-
-impl ProcedureKey {
-	pub const TAG: KeyTag = KeyTag::Procedure;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9);
-		serializer.extend_u8(Self::TAG as u8).extend_u64(self.procedure);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::TAG {
-			return None;
-		}
-
-		let procedure = de.read_u64().ok()?;
-
-		Some(Self {
-			procedure: ProcedureId::from_raw(procedure),
-		})
-	}
 }
 
 impl ProcedureKey {
@@ -48,10 +24,6 @@ impl ProcedureKey {
 		Self {
 			procedure: procedure.into(),
 		}
-	}
-
-	pub fn encoded(procedure: impl Into<ProcedureId>) -> EncodedKey {
-		Self::new(procedure).encode()
 	}
 
 	pub fn full_scan() -> TaggedKeyBoundRange {
@@ -75,37 +47,11 @@ pub mod procedure_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = ProcedureParam)]
 pub struct ProcedureParamKey {
 	pub procedure: ProcedureId,
 	pub param_index: u16,
-}
-
-impl ProcedureParamKey {
-	pub const TAG: KeyTag = KeyTag::ProcedureParam;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(11);
-		serializer.extend_u8(Self::TAG as u8).extend_u64(self.procedure).extend_u16(self.param_index);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::TAG {
-			return None;
-		}
-
-		let procedure = de.read_u64().ok()?;
-		let param_index = de.read_u16().ok()?;
-
-		Some(Self {
-			procedure: ProcedureId::from_raw(procedure),
-			param_index,
-		})
-	}
 }
 
 impl ProcedureParamKey {
@@ -114,10 +60,6 @@ impl ProcedureParamKey {
 			procedure: procedure.into(),
 			param_index,
 		}
-	}
-
-	pub fn encoded(procedure: impl Into<ProcedureId>, param_index: u16) -> EncodedKey {
-		Self::new(procedure, param_index).encode()
 	}
 
 	pub fn full_scan(procedure: ProcedureId) -> TaggedKeyBoundRange {
@@ -140,20 +82,5 @@ pub mod procedure_param_key_tests {
 		let key = ProcedureParamKey::decode(&encoded).unwrap();
 		assert_eq!(key.procedure, 0xCAFE);
 		assert_eq!(key.param_index, 7);
-	}
-}
-
-impl KeyFields for ProcedureKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::UDesc(Width::U64, *self.procedure as u128)]
-	}
-}
-
-impl KeyFields for ProcedureParamKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![
-			Field::UDesc(Width::U64, *self.procedure as u128),
-			Field::UDesc(Width::U16, self.param_index as u128)
-		]
 	}
 }
