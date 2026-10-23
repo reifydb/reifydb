@@ -983,20 +983,34 @@ impl InstructionCompiler {
 				}
 			}
 
-			Expression::List(l) => {
-				let mut values = Vec::with_capacity(l.expressions.len());
-				let mut all_constant = true;
-				for expression in &l.expressions {
-					match expression {
-						Expression::Constant(c) if all_constant => values.push(c.to_value()?),
-						_ => all_constant = false,
-					}
+			Expression::List(_) | Expression::Record(_) => match constant_value(expr)? {
+				Some(value) => {
+					self.emit(Instruction::PushConst(value));
 				}
-				match all_constant {
-					true => self.emit(Instruction::PushConst(Value::List(values))),
-					false => self.emit(Instruction::PushNone),
-				};
-			}
+				None => match expr {
+					Expression::List(l) => {
+						for expression in &l.expressions {
+							self.compile_expression(expression)?;
+						}
+						self.emit(Instruction::MakeList {
+							count: l.expressions.len(),
+						});
+					}
+					Expression::Record(r) => {
+						for (_, expression) in &r.fields {
+							self.compile_expression(expression)?;
+						}
+						self.emit(Instruction::MakeRecord {
+							fields: r
+								.fields
+								.iter()
+								.map(|(name, _)| name.text().to_string())
+								.collect(),
+						});
+					}
+					_ => unreachable!("only list and record expressions reach this arm"),
+				},
+			},
 			Expression::Map(m) => {
 				if m.expressions.len() == 1 {
 					match &m.expressions[0] {
@@ -2214,4 +2228,31 @@ fn hidden_queue_column(name: &str, expression: Expression) -> Expression {
 		expression: Box::new(expression),
 		fragment: Fragment::internal(name),
 	})
+}
+
+fn constant_value(expr: &Expression) -> Result<Option<Value>> {
+	match expr {
+		Expression::Constant(c) => Ok(Some(c.to_value()?)),
+		Expression::List(l) => {
+			let mut values = Vec::with_capacity(l.expressions.len());
+			for expression in &l.expressions {
+				match constant_value(expression)? {
+					Some(value) => values.push(value),
+					None => return Ok(None),
+				}
+			}
+			Ok(Some(Value::List(values)))
+		}
+		Expression::Record(r) => {
+			let mut fields = Vec::with_capacity(r.fields.len());
+			for (name, expression) in &r.fields {
+				match constant_value(expression)? {
+					Some(value) => fields.push((name.text().to_string(), value)),
+					None => return Ok(None),
+				}
+			}
+			Ok(Some(Value::Record(fields)))
+		}
+		_ => Ok(None),
+	}
 }

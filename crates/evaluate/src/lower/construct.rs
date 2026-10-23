@@ -21,17 +21,19 @@ use crate::{
 
 type DfResult<T> = std::result::Result<T, DataFusionError>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) enum Shape {
 	Tuple,
 	List,
+	Record(Vec<String>),
 }
 
 impl Shape {
-	fn value(self, items: Vec<Value>) -> Value {
+	fn value(&self, items: Vec<Value>) -> Value {
 		match self {
 			Shape::Tuple => Value::Tuple(items),
 			Shape::List => Value::List(items),
+			Shape::Record(names) => Value::Record(names.iter().cloned().zip(items).collect()),
 		}
 	}
 }
@@ -40,11 +42,11 @@ pub(super) fn lower_construct<'e>(
 	ctx: &EvalContext,
 	operator: &'static str,
 	shape: Shape,
-	items: &'e [Expression],
+	items: Vec<&'e Expression>,
 	fragment: &Fragment,
 ) -> Lowered<Node> {
 	if shape == Shape::Tuple && items.len() == 1 {
-		return lower_node(ctx, operator, &items[0]);
+		return lower_node(ctx, operator, items[0]);
 	}
 	let name = fragment.text();
 	if items.is_empty() {

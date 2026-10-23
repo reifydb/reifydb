@@ -261,6 +261,12 @@ impl<'a> Vm<'a> {
 				Instruction::Nop => {}
 
 				Instruction::PushConst(v) => self.exec_push_const(v)?,
+				Instruction::MakeList {
+					count,
+				} => self.exec_make_list(*count)?,
+				Instruction::MakeRecord {
+					fields,
+				} => self.exec_make_record(fields)?,
 				Instruction::PushNone => self.exec_push_none()?,
 				Instruction::Pop => self.exec_pop()?,
 				Instruction::Dup => self.exec_dup()?,

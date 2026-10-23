@@ -62,6 +62,7 @@ pub(super) fn children(expression: &Expression) -> Vec<&Expression> {
 		Expression::Call(e) => e.args.iter().collect(),
 		Expression::Tuple(e) => e.expressions.iter().collect(),
 		Expression::List(e) => e.expressions.iter().collect(),
+		Expression::Record(e) => e.fields.iter().map(|(_, expression)| expression).collect(),
 		Expression::Map(e) => e.expressions.iter().collect(),
 		Expression::Extend(e) => e.expressions.iter().collect(),
 		Expression::FieldAccess(e) => vec![&e.object],

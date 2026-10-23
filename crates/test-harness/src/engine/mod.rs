@@ -34,7 +34,7 @@ use reifydb_core::{
 use reifydb_engine::{engine::StandardEngine, vm::services::EngineConfig};
 use reifydb_extension::{block_encoding::registry::BlockEncodings, transform::registry::Transforms};
 use reifydb_routine::{function::default_in_process_functions, procedure::default_in_process_procedures};
-use reifydb_routine_abi::registry::Routines;
+use reifydb_routine_abi::registry::{Routines, RoutinesConfigurator};
 use reifydb_runtime::{
 	Runtime, RuntimeConfig,
 	actor::system::{ActorSpawner, ActorSystem},
@@ -252,11 +252,20 @@ impl AsEngine for TestEngine {
 #[derive(Default)]
 pub struct TestEngineBuilder {
 	cdc: bool,
+	routines: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator>>,
 	#[cfg(not(target_arch = "wasm32"))]
 	sqlite_cdc: Option<SqliteConfig>,
 }
 
 impl TestEngineBuilder {
+	pub fn with_routines<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + 'static,
+	{
+		self.routines = Some(Box::new(configurator));
+		self
+	}
+
 	pub fn with_cdc(mut self) -> Self {
 		self.cdc = true;
 		self
@@ -343,6 +352,10 @@ impl TestEngineBuilder {
 					let b = Routines::builder();
 					let b = default_in_process_functions(b);
 					let b = default_in_process_procedures(b);
+					let b = match self.routines {
+						Some(configurator) => configurator(b),
+						None => b,
+					};
 					b.configure()
 				},
 				transforms: Transforms::empty(),

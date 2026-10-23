@@ -38,14 +38,16 @@ use std::sync::Arc;
 
 use ast::ast::{AstMatchArm, LetValue};
 use reifydb_core::{
+	error::diagnostic::query::duplicate_field,
 	expression::{
 		AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
 		ColumnExpression, ConstantExpression, ContainsExpression, DivExpression, ElseIfExpression,
 		EqExpression, Expression, ExtendExpression, FieldAccessExpression, GreaterThanEqExpression,
 		GreaterThanExpression, IdentExpression, IfExpression, InExpression, IsVariantExpression,
 		LessThanEqExpression, LessThanExpression, ListExpression, MapExpression, MulExpression,
-		NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression,
-		SumTypeConstructorExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
+		NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, RecordExpression, RemExpression,
+		SubExpression, SumTypeConstructorExpression, TupleExpression, TypeExpression, VariableExpression,
+		XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 };
@@ -275,6 +277,24 @@ impl ExpressionCompiler {
 				Ok(Expression::List(ListExpression {
 					expressions,
 					fragment: list.token.fragment.to_owned(),
+				}))
+			}
+			Ast::Inline(inline) => {
+				let fragment = inline.token.fragment.to_owned();
+				let mut fields: Vec<(Fragment, Expression)> =
+					Vec::with_capacity(inline.keyed_values.len());
+				for kv in inline.keyed_values {
+					let name = kv.key.token.fragment.to_owned();
+					if fields.iter().any(|(earlier, _)| earlier.text() == name.text()) {
+						let text = name.text().to_string();
+						return err!(duplicate_field(name, &text));
+					}
+					let expr = Self::compile(BumpBox::into_inner(kv.value))?;
+					fields.push((name, expr));
+				}
+				Ok(Expression::Record(RecordExpression {
+					fields,
+					fragment,
 				}))
 			}
 			Ast::SumTypeConstructor(ctor) => {
@@ -674,6 +694,11 @@ impl ExpressionCompiler {
 			}
 			Expression::List(e) => {
 				for expr in &mut e.expressions {
+					Self::rewrite_field_refs(expr, bindings);
+				}
+			}
+			Expression::Record(e) => {
+				for (_, expr) in &mut e.fields {
 					Self::rewrite_field_refs(expr, bindings);
 				}
 			}

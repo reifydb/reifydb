@@ -89,6 +89,12 @@ pub enum Instruction {
 		count: u16,
 		negated: bool,
 	},
+	MakeList {
+		count: usize,
+	},
+	MakeRecord {
+		fields: Vec<String>,
+	},
 	Cast(ValueType),
 
 	Jump(Addr),

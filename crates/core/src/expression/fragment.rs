@@ -95,6 +95,7 @@ impl Expression {
 			Expression::Extend(extend_expr) => extend_expr.fragment.clone(),
 			Expression::In(in_expr) => in_expr.fragment.clone(),
 			Expression::Contains(contains_expr) => contains_expr.fragment.clone(),
+			Expression::Record(record) => record.fragment.clone(),
 			Expression::SumTypeConstructor(ctor) => ctor.fragment.clone(),
 			Expression::IsVariant(e) => e.fragment.clone(),
 			Expression::FieldAccess(expr) => expr.full_fragment_owned(),

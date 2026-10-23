@@ -7,8 +7,8 @@ use reifydb_core::{
 		ColumnExpression, ContainsExpression, DivExpression, ElseIfExpression, EqExpression, Expression,
 		ExtendExpression, FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression, IfExpression,
 		InExpression, LessThanEqExpression, LessThanExpression, ListExpression, MapExpression, MulExpression,
-		NotEqExpression, OrExpression, PrefixExpression, RemExpression, SubExpression, TupleExpression,
-		XorExpression,
+		NotEqExpression, OrExpression, PrefixExpression, RecordExpression, RemExpression, SubExpression,
+		TupleExpression, XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 };
@@ -216,6 +216,16 @@ fn rewrite_expr(
 		}),
 		Expression::Extend(e) => Expression::Extend(ExtendExpression {
 			expressions: rw_vec(&e.expressions, symbols, counter, extracted),
+			fragment: e.fragment.clone(),
+		}),
+		Expression::Record(e) => Expression::Record(RecordExpression {
+			fields: e
+				.fields
+				.iter()
+				.map(|(name, expression)| {
+					(name.clone(), rewrite_expr(expression, symbols, counter, extracted))
+				})
+				.collect(),
 			fragment: e.fragment.clone(),
 		}),
 

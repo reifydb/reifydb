@@ -154,6 +154,16 @@ fn canonical_text(expr: &Expression) -> String {
 			format!("extend({})", items)
 		}
 
+		Expression::Record(record) => {
+			let fields = record
+				.fields
+				.iter()
+				.map(|(name, value)| format!("{}: {}", name.text(), canonical_text(value)))
+				.collect::<Vec<_>>()
+				.join(", ");
+			format!("{{{}}}", fields)
+		}
+
 		Expression::SumTypeConstructor(ctor) => {
 			let fields = ctor
 				.columns

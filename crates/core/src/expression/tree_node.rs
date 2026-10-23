@@ -11,8 +11,8 @@ use crate::expression::{
 	ContainsExpression, DivExpression, ElseIfExpression, EqExpression, Expression, ExtendExpression,
 	FieldAccessExpression, GreaterThanEqExpression, GreaterThanExpression, IfExpression, InExpression,
 	IsVariantExpression, LessThanEqExpression, LessThanExpression, ListExpression, MapExpression, MulExpression,
-	NotEqExpression, OrExpression, PrefixExpression, RemExpression, SubExpression, SumTypeConstructorExpression,
-	TupleExpression, XorExpression,
+	NotEqExpression, OrExpression, PrefixExpression, RecordExpression, RemExpression, SubExpression,
+	SumTypeConstructorExpression, TupleExpression, XorExpression,
 };
 
 impl TreeNode for Expression {
@@ -199,6 +199,16 @@ impl TreeNode for Expression {
 				expressions: m.all(e.expressions)?,
 				fragment: e.fragment,
 			}),
+			Expression::Record(RecordExpression {
+				fields,
+				fragment,
+			}) => Expression::Record(RecordExpression {
+				fields: fields
+					.into_iter()
+					.map(|(name, expr)| Ok((name, m.map(expr)?)))
+					.collect::<Result<_>>()?,
+				fragment,
+			}),
 			Expression::SumTypeConstructor(SumTypeConstructorExpression {
 				namespace,
 				sumtype_name,
@@ -303,6 +313,7 @@ fn children(expr: &Expression) -> Vec<&Expression> {
 		Expression::List(e) => e.expressions.iter().collect(),
 		Expression::Map(e) => e.expressions.iter().collect(),
 		Expression::Extend(e) => e.expressions.iter().collect(),
+		Expression::Record(e) => e.fields.iter().map(|(_, expr)| expr).collect(),
 		Expression::SumTypeConstructor(e) => e.columns.iter().map(|(_, expr)| expr).collect(),
 		Expression::If(e) => {
 			let mut out: Vec<&Expression> = vec![&e.condition, &e.then_expr];

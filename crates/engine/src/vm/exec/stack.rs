@@ -18,6 +18,35 @@ use reifydb_value::{
 use crate::{Result, vm::vm::Vm};
 
 impl<'a> Vm<'a> {
+	pub(crate) fn exec_make_list(&mut self, count: usize) -> Result<()> {
+		let items = self.pop_scalars(count)?;
+		self.exec_push_const(&Value::List(items))
+	}
+
+	pub(crate) fn exec_make_record(&mut self, fields: &[String]) -> Result<()> {
+		let values = self.pop_scalars(fields.len())?;
+		self.exec_push_const(&Value::Record(fields.iter().cloned().zip(values).collect()))
+	}
+
+	fn pop_scalars(&mut self, count: usize) -> Result<Vec<Value>> {
+		if self.batch_size != 1 {
+			return Err(internal_error!(
+				"list and record construction requires a scalar context, got a batch of {}",
+				self.batch_size
+			));
+		}
+		let mut values = Vec::with_capacity(count);
+		for _ in 0..count {
+			let mut value = self.pop_value()?;
+			while let Value::Any(inner) = value {
+				value = *inner;
+			}
+			values.push(value);
+		}
+		values.reverse();
+		Ok(values)
+	}
+
 	pub(crate) fn exec_push_const(&mut self, value: &Value) -> Result<()> {
 		if self.batch_size != 1 {
 			let mut data = ColumnBuilder::with_capacity(value.get_type(), self.batch_size);

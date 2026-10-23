@@ -458,5 +458,6 @@ fn mentions(expression: &Expression, name: &str) -> bool {
 		Expression::List(e) => e.expressions.iter().any(|item| mentions(item, name)),
 		Expression::Map(e) => e.expressions.iter().any(|item| mentions(item, name)),
 		Expression::Extend(e) => e.expressions.iter().any(|item| mentions(item, name)),
+		Expression::Record(e) => e.fields.iter().any(|(_, item)| mentions(item, name)),
 	}
 }

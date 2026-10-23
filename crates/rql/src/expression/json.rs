@@ -10,8 +10,8 @@ use reifydb_core::{
 		DivExpression, ElseIfExpression, EqExpression, Expression, ExtendExpression, FieldAccessExpression,
 		GreaterThanEqExpression, GreaterThanExpression, IdentExpression, IfExpression, InExpression,
 		LessThanEqExpression, LessThanExpression, ListExpression, MapExpression, MulExpression,
-		NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, RemExpression,
-		SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
+		NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, RecordExpression,
+		RemExpression, SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
 	},
 	interface::identifier::{ColumnIdentifier, ColumnObject},
 	internal,
@@ -146,6 +146,9 @@ pub enum JsonExpression {
 	},
 	List {
 		expressions: Vec<JsonExpression>,
+	},
+	Record {
+		fields: Vec<(String, JsonExpression)>,
 	},
 	Prefix {
 		operator: String,
@@ -353,6 +356,9 @@ impl From<&Expression> for JsonExpression {
 			},
 			Expression::List(e) => JsonExpression::List {
 				expressions: e.expressions.iter().map(|a| a.into()).collect(),
+			},
+			Expression::Record(e) => JsonExpression::Record {
+				fields: e.fields.iter().map(|(name, a)| (name.text().to_string(), a.into())).collect(),
 			},
 			Expression::Prefix(e) => {
 				let operator = match &e.operator {
@@ -650,6 +656,15 @@ impl TryFrom<JsonExpression> for Expression {
 				expressions: expressions
 					.into_iter()
 					.map(|a| a.try_into())
+					.collect::<Result<Vec<_>>>()?,
+				fragment: Fragment::None,
+			}),
+			JsonExpression::Record {
+				fields,
+			} => Expression::Record(RecordExpression {
+				fields: fields
+					.into_iter()
+					.map(|(name, a)| Ok((internal_fragment(&name), a.try_into()?)))
 					.collect::<Result<Vec<_>>>()?,
 				fragment: Fragment::None,
 			}),

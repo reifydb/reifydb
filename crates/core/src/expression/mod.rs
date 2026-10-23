@@ -60,6 +60,8 @@ pub enum Expression {
 
 	List(ListExpression),
 
+	Record(RecordExpression),
+
 	Prefix(PrefixExpression),
 
 	GreaterThan(GreaterThanExpression),
@@ -565,6 +567,7 @@ impl Display for Expression {
 			}
 			Expression::Tuple(tuple) => write!(f, "({})", tuple),
 			Expression::List(list) => write!(f, "{}", list),
+			Expression::Record(record) => write!(f, "{}", record),
 			Expression::Prefix(prefix) => write!(f, "{}", prefix),
 			Expression::GreaterThan(GreaterThanExpression {
 				left,
@@ -915,6 +918,24 @@ impl Display for ListExpression {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecordExpression {
+	pub fields: Vec<(Fragment, Expression)>,
+	pub fragment: Fragment,
+}
+
+impl Display for RecordExpression {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let items = self
+			.fields
+			.iter()
+			.map(|(name, e)| format!("{}: {}", name.text(), e))
+			.collect::<Vec<_>>()
+			.join(", ");
+		write!(f, "{{{}}}", items)
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MapExpression {
 	pub expressions: Vec<Expression>,
 	pub fragment: Fragment,
@@ -1083,6 +1104,11 @@ fn collect_variable_names(expr: &Expression, names: &mut Vec<String>) {
 		}
 		Expression::Extend(e) => {
 			for expr in &e.expressions {
+				collect_variable_names(expr, names);
+			}
+		}
+		Expression::Record(e) => {
+			for (_, expr) in &e.fields {
 				collect_variable_names(expr, names);
 			}
 		}

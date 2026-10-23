@@ -372,12 +372,27 @@ fn lower_node<'e>(ctx: &EvalContext, operator: &'static str, expression: &'e Exp
 		Expression::In(e) => in_list::lower_in(ctx, operator, expression, e),
 		Expression::If(e) => conditional::lower_if(ctx, operator, expression, e),
 		Expression::Xor(e) => xor::lower_xor(ctx, operator, expression, e),
-		Expression::Tuple(e) => {
-			construct::lower_construct(ctx, operator, construct::Shape::Tuple, &e.expressions, &e.fragment)
-		}
-		Expression::List(e) => {
-			construct::lower_construct(ctx, operator, construct::Shape::List, &e.expressions, &e.fragment)
-		}
+		Expression::Tuple(e) => construct::lower_construct(
+			ctx,
+			operator,
+			construct::Shape::Tuple,
+			e.expressions.iter().collect(),
+			&e.fragment,
+		),
+		Expression::List(e) => construct::lower_construct(
+			ctx,
+			operator,
+			construct::Shape::List,
+			e.expressions.iter().collect(),
+			&e.fragment,
+		),
+		Expression::Record(e) => construct::lower_construct(
+			ctx,
+			operator,
+			construct::Shape::Record(e.fields.iter().map(|(name, _)| name.text().to_string()).collect()),
+			e.fields.iter().map(|(_, expression)| expression).collect(),
+			&e.fragment,
+		),
 		Expression::Map(e) => construct::lower_projection(ctx, operator, &e.expressions, &e.fragment),
 		Expression::Extend(e) => construct::lower_projection(ctx, operator, &e.expressions, &e.fragment),
 		Expression::Contains(e) => contains::lower_contains(ctx, operator, expression, e),

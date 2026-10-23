@@ -150,6 +150,11 @@ fn fold_children(expr: &mut Expression) {
 		}
 		Expression::FieldAccess(e) => fold(&mut e.object),
 		Expression::IsVariant(e) => fold(&mut e.expression),
+		Expression::Record(e) => {
+			for (_, value) in &mut e.fields {
+				fold(value);
+			}
+		}
 		Expression::SumTypeConstructor(e) => {
 			for (_, value) in &mut e.columns {
 				fold(value);

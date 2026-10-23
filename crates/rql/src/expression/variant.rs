@@ -185,6 +185,11 @@ pub fn for_each_is_variant(
 				for_each_is_variant(expression, f)?;
 			}
 		}
+		Expression::Record(e) => {
+			for (_, expression) in &mut e.fields {
+				for_each_is_variant(expression, f)?;
+			}
+		}
 		Expression::SumTypeConstructor(e) => {
 			for (_, expression) in &mut e.columns {
 				for_each_is_variant(expression, f)?;
