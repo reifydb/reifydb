@@ -270,7 +270,7 @@ impl KeyColumn {
 
 	fn decode_expr(self, field_type: &str) -> String {
 		match self {
-			KeyColumn::Str => format!("{field_type}::new(de.read_str().ok()?)"),
+			KeyColumn::Str => format!("{field_type}(de.read_str().ok()?)"),
 			KeyColumn::DisplayStr => {
 				format!("<{field_type} as ::core::str::FromStr>::from_str(&de.read_str().ok()?).ok()?")
 			}
