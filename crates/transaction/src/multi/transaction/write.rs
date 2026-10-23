@@ -1103,13 +1103,12 @@ impl MultiWriteTransaction {
 		marker.mark_range(range.clone());
 
 		let pending: Vec<(StorageRowKey, DeltaEntry)> = pw
-			.iter()
+			.range((range.start.as_ref(), range.end.as_ref()))
 			.filter_map(|(k, v)| {
 				let TaggedKeyBound::Key(TaggedKey::Row(decoded)) = k else {
 					return None;
 				};
-				(decoded.storage == storage && range.contains(k))
-					.then(|| (StorageRowKey::new(decoded.row), v.clone()))
+				(decoded.storage == storage).then(|| (StorageRowKey::new(decoded.row), v.clone()))
 			})
 			.collect();
 
@@ -1135,12 +1134,12 @@ impl MultiWriteTransaction {
 		marker.mark_range(range.clone());
 
 		let pending: Vec<(StoragePartitionedRowKey, DeltaEntry)> = pw
-			.iter()
+			.range((range.start.as_ref(), range.end.as_ref()))
 			.filter_map(|(k, v)| {
 				let TaggedKeyBound::Key(TaggedKey::PartitionedRow(decoded)) = k else {
 					return None;
 				};
-				(decoded.storage == storage && range.contains(k)).then(|| {
+				(decoded.storage == storage).then(|| {
 					(StoragePartitionedRowKey::new(decoded.partition, decoded.row), v.clone())
 				})
 			})
