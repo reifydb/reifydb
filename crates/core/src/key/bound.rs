@@ -105,6 +105,9 @@ impl Ord for TaggedKeyBound {
 		if self.sorts_after_its_extensions() || other.sorts_after_its_extensions() {
 			return self.encode().as_slice().cmp(other.encode().as_slice());
 		}
+		if let (Self::Key(left), Self::Key(right)) = (self, other) {
+			return left.cmp(right);
+		}
 		other.kind_byte().cmp(&self.kind_byte()).then_with(|| self.compare_fields(other))
 	}
 }
