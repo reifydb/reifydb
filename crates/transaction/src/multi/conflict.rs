@@ -5,7 +5,7 @@ use core::{
 	cmp::Ordering,
 	ops::{Bound, RangeBounds},
 };
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::OnceLock};
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_value::value::partition::Partition;
 use tracing::instrument;
 
-const MAX_RANGES_BEFORE_ESCALATION: usize = 64;
+const MAX_RANGES_BEFORE_ESCALATION: usize = 1024;
 
 fn compare_start_bounds<T: Ord>(a: &Bound<T>, b: &Bound<T>) -> Ordering {
 	match (a, b) {
@@ -70,23 +70,6 @@ fn end_reaches_start<T: Ord>(end: &Bound<T>, start: &Bound<T>) -> bool {
 
 fn ranges_overlap_or_adjacent<T: Ord>(start1: &Bound<T>, end1: &Bound<T>, start2: &Bound<T>, end2: &Bound<T>) -> bool {
 	end_reaches_start(end1, start2) && end_reaches_start(end2, start1)
-}
-
-#[inline]
-fn key_in_range<T: Ord>(key: &T, start: &Bound<T>, end: &Bound<T>) -> bool {
-	let start_ok = match start {
-		Bound::Included(s) => key >= s,
-		Bound::Excluded(s) => key > s,
-		Bound::Unbounded => true,
-	};
-
-	let end_ok = match end {
-		Bound::Included(e) => key <= e,
-		Bound::Excluded(e) => key < e,
-		Bound::Unbounded => true,
-	};
-
-	start_ok && end_ok
 }
 
 #[derive(Debug, Clone)]
@@ -164,60 +147,19 @@ impl<T: Ord + Clone> RangeSet<T> {
 		}
 	}
 
-	fn any_contains(&self, keys: &[&T]) -> bool {
-		if keys.is_empty() || self.ranges.is_empty() {
-			return false;
-		}
-
-		let use_sweep_line = keys.len() >= 32 && self.ranges.len() >= 2;
-
-		if use_sweep_line {
-			let mut sorted: Vec<&T> = keys.to_vec();
-			sorted.sort();
-			self.sweep_line_check(&sorted)
-		} else {
-			self.ranges.iter().any(|(start, end)| keys.iter().any(|key| key_in_range(*key, start, end)))
-		}
-	}
-
-	fn sweep_line_check(&self, sorted_keys: &[&T]) -> bool {
-		if sorted_keys.is_empty() {
-			return false;
-		}
-
-		let mut key_idx = 0;
-
-		for (start, end) in &self.ranges {
-			let search_start = match start {
-				Bound::Included(s) => {
-					sorted_keys[key_idx..].binary_search(&s).unwrap_or_else(|pos| pos)
-				}
-				Bound::Excluded(s) => match sorted_keys[key_idx..].binary_search(&s) {
-					Ok(pos) => pos + 1,
-					Err(pos) => pos,
-				},
+	fn any_in_sorted(&self, sorted: &[T]) -> bool {
+		self.ranges.iter().any(|(start, end)| {
+			let first = match start {
+				Bound::Included(s) => sorted.partition_point(|key| key < s),
+				Bound::Excluded(s) => sorted.partition_point(|key| key <= s),
 				Bound::Unbounded => 0,
 			};
-
-			key_idx += search_start;
-
-			if key_idx >= sorted_keys.len() {
-				return false;
-			}
-
-			let candidate = sorted_keys[key_idx];
-			let in_range = match end {
+			sorted.get(first).is_some_and(|candidate| match end {
 				Bound::Included(e) => candidate <= e,
 				Bound::Excluded(e) => candidate < e,
 				Bound::Unbounded => true,
-			};
-
-			if in_range {
-				return true;
-			}
-		}
-
-		false
+			})
+		})
 	}
 }
 
@@ -240,6 +182,13 @@ pub struct ConflictManager {
 	write_keys: HashSet<TaggedKey>,
 	member_reads: HashSet<PartitionMember>,
 	member_writes: HashSet<PartitionMember>,
+	sorted_writes: OnceLock<SortedWrites>,
+}
+
+#[derive(Debug, Clone)]
+struct SortedWrites {
+	typed: Vec<TaggedKeyBound>,
+	encoded: Vec<EncodedKey>,
 }
 
 pub type PartitionMember = (StorageId, Partition);
@@ -369,7 +318,7 @@ impl ConflictManager {
 			return true;
 		}
 
-		if self.has_any_range_conflict(&other.write_keys) {
+		if self.has_any_range_conflict(other) {
 			return true;
 		}
 
@@ -377,28 +326,26 @@ impl ConflictManager {
 	}
 
 	#[inline]
-	fn has_any_range_conflict(&self, write_keys: &HashSet<TaggedKey>) -> bool {
-		if write_keys.is_empty() {
+	fn has_any_range_conflict(&self, other: &Self) -> bool {
+		if other.write_keys.is_empty() || (self.read_ranges.is_empty() && self.read_ranges_encoded.is_empty()) {
 			return false;
 		}
+		let sorted = other.sorted_writes();
+		self.read_ranges.any_in_sorted(&sorted.typed) || self.read_ranges_encoded.any_in_sorted(&sorted.encoded)
+	}
 
-		if !self.read_ranges.is_empty() {
-			let bounds: Vec<TaggedKeyBound> = write_keys.iter().cloned().map(TaggedKeyBound::Key).collect();
-			let borrowed: Vec<&TaggedKeyBound> = bounds.iter().collect();
-			if self.read_ranges.any_contains(&borrowed) {
-				return true;
+	fn sorted_writes(&self) -> &SortedWrites {
+		self.sorted_writes.get_or_init(|| {
+			let mut typed: Vec<TaggedKeyBound> =
+				self.write_keys.iter().cloned().map(TaggedKeyBound::Key).collect();
+			typed.sort_unstable();
+			let mut encoded: Vec<EncodedKey> = self.write_keys.iter().map(TaggedKey::encode).collect();
+			encoded.sort_unstable();
+			SortedWrites {
+				typed,
+				encoded,
 			}
-		}
-
-		if !self.read_ranges_encoded.is_empty() {
-			let encoded: Vec<EncodedKey> = write_keys.iter().map(TaggedKey::encode).collect();
-			let borrowed: Vec<&EncodedKey> = encoded.iter().collect();
-			if self.read_ranges_encoded.any_contains(&borrowed) {
-				return true;
-			}
-		}
-
-		false
+		})
 	}
 
 	#[instrument(name = "transaction::conflict::rollback", level = "trace", skip(self))]
@@ -410,6 +357,7 @@ impl ConflictManager {
 		self.write_keys.clear();
 		self.member_reads.clear();
 		self.member_writes.clear();
+		self.sorted_writes = OnceLock::new();
 
 		self.mode = ConflictMode::Tracking;
 	}
@@ -664,9 +612,8 @@ mod tests {
 	}
 
 	#[test]
-	fn the_sweep_line_path_agrees_with_the_linear_path() {
-		// has_any_range_conflict switches strategy at 32 write keys and 2 ranges. Both branches
-		// must answer identically or a conflict becomes a function of batch size.
+	fn one_write_inside_a_range_among_many_outside_still_conflicts() {
+		// The sorted search must find the single hit and must not invent one among misses.
 		let mut cm = ConflictManager::new();
 		cm.mark_range(create_range("0100", Bound::Excluded("0200")));
 		cm.mark_range(create_range("0300", Bound::Excluded("0400")));
@@ -676,12 +623,12 @@ mod tests {
 			hits.mark_write(&create_key(&format!("{:04}", 9000 + i)));
 		}
 		hits.mark_write(&create_key("0150"));
-		assert!(cm.has_conflict(&hits), "sweep line must find the one key inside a range");
+		assert!(cm.has_conflict(&hits), "the one write inside a range must conflict");
 
 		let mut misses = ConflictManager::new();
 		for i in 0..40 {
 			misses.mark_write(&create_key(&format!("{:04}", 9000 + i)));
 		}
-		assert!(!cm.has_conflict(&misses), "sweep line must not invent a conflict");
+		assert!(!cm.has_conflict(&misses), "writes outside every range must not conflict");
 	}
 }
