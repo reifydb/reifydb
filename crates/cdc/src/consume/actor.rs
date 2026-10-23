@@ -123,6 +123,8 @@ pub struct PollState {
 	cached_checkpoint: Option<CommitVersion>,
 
 	waiting_since: Option<Instant>,
+
+	replied: Arc<AtomicBool>,
 }
 
 impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C> {
@@ -142,6 +144,7 @@ impl<H: CdcHost, C: CdcConsume + Send + Sync + 'static> Actor for PollActor<H, C
 			phase: Phase::Ready,
 			cached_checkpoint: None,
 			waiting_since: None,
+			replied: Arc::new(AtomicBool::new(false)),
 		}
 	}
 
@@ -265,6 +268,9 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			Phase::WaitingForResync => "resync".to_string(),
 			Phase::Ready | Phase::WaitingForWatermark => return,
 		};
+		if state.replied.load(Ordering::Acquire) {
+			return;
+		}
 		let Some(since) = &state.waiting_since else {
 			state.waiting_since = Some(self.clock.instant());
 			return;
@@ -333,7 +339,8 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 			count,
 		};
 		state.waiting_since = None;
-		self.dispatch_to_consumer(relevant_cdcs, ctx);
+		state.replied = Arc::new(AtomicBool::new(false));
+		self.dispatch_to_consumer(relevant_cdcs, state.replied.clone(), ctx);
 	}
 
 	#[inline]
@@ -416,9 +423,10 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 	}
 
 	#[inline]
-	fn dispatch_to_consumer(&self, cdcs: Vec<Cdc>, ctx: &Context<CdcPollMessage>) {
+	fn dispatch_to_consumer(&self, cdcs: Vec<Cdc>, replied: Arc<AtomicBool>, ctx: &Context<CdcPollMessage>) {
 		let self_ref = ctx.self_ref().clone();
 		let reply: Box<dyn FnOnce(Result<()>) + Send> = Box::new(move |result| {
+			replied.store(true, Ordering::Release);
 			let _ = self_ref.send(CdcPollMessage::ConsumeResponse {
 				result,
 			});
@@ -466,8 +474,11 @@ impl<H: CdcHost, C: CdcConsume> PollActor<H, C> {
 		self.invalidate_durable_checkpoint();
 		state.phase = Phase::WaitingForResync;
 		state.waiting_since = None;
+		state.replied = Arc::new(AtomicBool::new(false));
+		let replied = state.replied.clone();
 		let self_ref = ctx.self_ref().clone();
 		let reply: Box<dyn FnOnce(Result<CommitVersion>) + Send> = Box::new(move |result| {
+			replied.store(true, Ordering::Release);
 			let _ = self_ref.send(CdcPollMessage::ResyncResponse {
 				result,
 			});
