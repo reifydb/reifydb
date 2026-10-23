@@ -478,6 +478,39 @@ fn a_view_created_at_runtime_joins_its_parents_unit() {
 }
 
 #[test]
+fn a_view_created_at_runtime_on_a_middle_member_reads_it_and_the_unit_splits_at_the_next_restart() {
+	// A middle member read by a new flow must still publish its view, or the new reader sees nothing.
+	let path = fresh_chain("fused_chain_middle_reader");
+	{
+		let mut db = open(&path, true);
+		settle(&db);
+		assert_eq!(units(&db), under(&db, "a", &["a", "b", "c"]), "the chain must start fused");
+		db.admin(
+			"CREATE DEFERRED VIEW fu::side { g: int4, n: int8, total: int4 } AS { FROM fu::b | filter { n > 0 } }",
+		);
+		settle(&db);
+		await_groups(&db, "fu::side", &[(1, 1, 20), (2, 1, 30)], "after its backfill");
+		db.command("INSERT fu::src [{ id: 4, g: 2, v: 40 }]");
+		settle(&db);
+		await_groups(&db, "fu::side", &[(1, 1, 20), (2, 2, 70)], "after a write through the running unit");
+		await_groups(&db, "fu::c", &[(1, 1, 20), (2, 2, 70)], "after a write through the running unit");
+		db.stop();
+	}
+	let mut db = open(&path, true);
+	assert_eq!(
+		units(&db),
+		under(&db, "a", &["a", "b"]),
+		"b now has two readers, so only a and b may fuse at the next start"
+	);
+	settle(&db);
+	db.command("INSERT fu::src [{ id: 5, g: 1, v: 30 }]");
+	settle(&db);
+	await_groups(&db, "fu::side", &[(1, 2, 50), (2, 2, 70)], "after the restart and a write");
+	await_groups(&db, "fu::c", &[(1, 2, 50), (2, 2, 70)], "after the restart and a write");
+	db.stop();
+}
+
+#[test]
 fn a_deferred_chain_follows_the_source_when_fused() {
 	// A fused child that is also routed its parent's change stream counts every source row twice.
 	let path = fresh_chain("fused_chain_follows");

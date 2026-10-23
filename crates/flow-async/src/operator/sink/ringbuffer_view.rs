@@ -355,14 +355,14 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn read_next_row(&self, txn: &mut DeferredTransaction) -> Result<u64> {
-		match self.state_get(txn, &self.next_row_key())? {
+		match self.state_get(txn, &[self.next_row_key()])?.pop().flatten() {
 			Some(row) => decode_u64(&row, "RingBufferNextRow"),
 			None => Ok(1),
 		}
 	}
 
 	fn write_next_row(&self, txn: &mut DeferredTransaction, next_row: u64) -> Result<()> {
-		self.state_set(txn, &self.next_row_key(), encode_u64(next_row, "RingBufferNextRow")?)
+		self.state_set(txn, vec![(self.next_row_key(), encode_u64(next_row, "RingBufferNextRow")?)])
 	}
 
 	fn storage_rows_from(
@@ -372,7 +372,7 @@ impl SinkRingBufferViewOperator {
 		from: u64,
 		limit: u64,
 	) -> Result<Vec<u64>> {
-		let range = EncodedKeyRange::prefix(&row_entry_prefix(partition));
+		let range = row_entry_range(partition);
 		let mut rows = Vec::new();
 		for result in self.state_range(txn, range) {
 			let (key, _row) = result?;
