@@ -328,7 +328,10 @@ impl WindowMeta {
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<()> {
-		store.state_set(&(&SessionMemberKey(group, row_number)).into_group_state_key(), EncodedPodRow::new(&[]))
+		store.state_set(vec![(
+			((&SessionMemberKey(group, row_number)).into_group_state_key()).clone(),
+			EncodedPodRow::new(&[]),
+		)])
 	}
 
 	pub fn drop_session_member(
@@ -366,7 +369,7 @@ impl WindowMeta {
 		}
 		let keys: Vec<GroupStateKey> =
 			groups.iter().map(|group| (&SessionKey(*group)).into_group_state_key()).collect();
-		store.state_remove_many(&keys)
+		store.state_remove(&keys)
 	}
 
 	pub fn save_session(

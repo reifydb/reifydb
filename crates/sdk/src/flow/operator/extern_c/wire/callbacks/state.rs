@@ -13,26 +13,14 @@ use crate::{
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct StateCallbacks {
-	pub get: extern "C" fn(
-		operator_id: u64,
-		ctx: *mut ExternCContextRaw,
-		key: *const u8,
-		key_len: usize,
-		output: *mut ExternCBuffer,
-	) -> i32,
-
 	pub set: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
-		key: *const u8,
-		key_len: usize,
-		value: *const u8,
-		value_len: usize,
+		rows: *const ExternCStateEntry,
+		rows_len: usize,
 	) -> i32,
 
-	pub remove: extern "C" fn(operator_id: u64, ctx: *mut ExternCContextRaw, key: *const u8, key_len: usize) -> i32,
-
-	pub remove_many: extern "C" fn(
+	pub remove: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
 		keys: *const ExternCKeyRef,
@@ -74,7 +62,7 @@ pub struct StateCallbacks {
 
 	pub iterator_free: extern "C" fn(iterator: *mut ExternCStateIterator),
 
-	pub get_many: extern "C" fn(
+	pub get: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
 		keys: *const ExternCKeyRef,
@@ -131,19 +119,11 @@ pub struct StateCallbacks {
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
 		group: ExternCGroupId,
-		key: *const u8,
-		key_len: usize,
-	) -> i32,
-
-	pub remove_row_numbers: extern "C" fn(
-		operator_id: u64,
-		ctx: *mut ExternCContextRaw,
-		group: ExternCGroupId,
 		keys: *const ExternCKeyRef,
 		keys_len: usize,
 	) -> i32,
 
-	pub remove_row_numbers_for_groups: extern "C" fn(
+	pub remove_row_number_for_group: extern "C" fn(
 		operator_id: u64,
 		ctx: *mut ExternCContextRaw,
 		groups: *const ExternCGroupId,

@@ -126,10 +126,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		#[cfg(feature = "testing")]
 		{
 			let mut counts = self.inner.op_counts.lock().unwrap();
-			counts.get_call();
-			for kind in kinds {
-				counts.key(kind).gets += 1;
-			}
+			counts.get_call(kinds);
 		}
 		let store = self.inner.store.read().clone();
 		for (key, row) in missing.iter().zip(SingleVersionGet::get(&store, &missing)?) {

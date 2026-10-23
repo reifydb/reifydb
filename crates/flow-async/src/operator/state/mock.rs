@@ -63,7 +63,7 @@ pub(crate) struct MockStore {
 	timers: Option<Vec<RecordedTimer>>,
 	flow_watermark: Option<DateTime>,
 	rows_visited: usize,
-	calls: HashMap<&'static str, usize>,
+	calls: HashMap<&'static str, Vec<usize>>,
 	incomplete_sweeps: bool,
 }
 
@@ -130,11 +130,15 @@ impl MockStore {
 	}
 
 	pub(crate) fn calls(&self, name: &str) -> usize {
-		self.calls.get(name).copied().unwrap_or(0)
+		self.sizes(name).len()
 	}
 
-	fn count_call(&mut self, name: &'static str) {
-		*self.calls.entry(name).or_default() += 1;
+	pub(crate) fn sizes(&self, name: &str) -> Vec<usize> {
+		self.calls.get(name).cloned().unwrap_or_default()
+	}
+
+	fn count_call(&mut self, name: &'static str, size: usize) {
+		self.calls.entry(name).or_default().push(size);
 	}
 
 	pub(crate) fn pane_count(&mut self) -> usize {
@@ -255,20 +259,8 @@ impl MockStore {
 }
 
 impl StateStore for MockStore {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		self.count_call("state_get");
-		Ok(self.data.get(key.as_slice()).cloned())
-	}
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		Ok(keys.iter().map(|key| self.data.get(key.as_slice()).cloned()).collect())
-	}
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		self.data.insert(key.as_slice().to_vec(), payload);
-		Ok(())
-	}
-	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		self.data.remove(key.as_slice());
-		Ok(())
 	}
 	fn state_page_inner(
 		&mut self,
@@ -316,18 +308,13 @@ impl StateStore for MockStore {
 			.map(|key| self.rows.get(&(group, key.as_bytes().to_vec())).map(|rn| RowNumber(*rn)))
 			.collect())
 	}
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		self.rows.remove(&(group, key.as_bytes().to_vec()));
-		Ok(())
-	}
-	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
-		self.rows.remove(&(group, Vec::new()));
-		Ok(())
-	}
 
-	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-		self.count_call("state_remove_many");
-		per_key::remove_many(self, keys)
+	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		self.count_call("state_remove", keys.len());
+		for key in keys {
+			self.data.remove(key.as_slice());
+		}
+		Ok(())
 	}
 
 	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
@@ -338,9 +325,18 @@ impl StateStore for MockStore {
 		per_key::write_batch(self, batch)
 	}
 
-	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
-		self.count_call("state_set_many");
-		per_key::set_many(self, rows)
+	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		self.count_call("state_set", rows.len());
+		if rows.iter().any(|(key, _)| {
+			OperatorStateKey::decode_inner(key.as_slice())
+				.is_some_and(|(_, found, _)| found == KeyspaceId::ROLLING_PANE)
+		}) {
+			self.count_call("pane_set", rows.len());
+		}
+		for (key, payload) in rows {
+			self.data.insert(key.as_slice().to_vec(), payload);
+		}
+		Ok(())
 	}
 
 	fn group_sweep(
@@ -358,18 +354,24 @@ impl StateStore for MockStore {
 		limit: usize,
 		keyspaces: KeyspaceMask,
 	) -> Result<GroupSweep> {
-		self.count_call("group_sweep_many");
+		self.count_call("group_sweep_many", groups.len());
 		let mut sweep = per_key::group_sweep_many(self, groups, limit, keyspaces)?;
 		sweep.complete &= !self.incomplete_sweeps;
 		Ok(sweep)
 	}
 
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		per_key::remove_row_numbers(self, group, keys)
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		for key in keys {
+			self.rows.remove(&(group, key.as_bytes().to_vec()));
+		}
+		Ok(())
 	}
 
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
-		per_key::remove_row_numbers_for_groups(self, groups)
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
+		for group in groups {
+			self.rows.remove(&(*group, Vec::new()));
+		}
+		Ok(())
 	}
 
 	fn written_at(&self) -> DateTime {

@@ -298,30 +298,25 @@ impl MultiWriteTransaction {
 		entries = entries.len()
 	))]
 	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
-		self.set_many_with_pre(entries.into_iter().map(|(key, bytes)| (key, bytes, SetPre::Unknown)).collect())
+		self.set_many_with_pre(entries.into_iter().map(|(key, bytes)| (key, bytes, SetPre::Unknown)))
 	}
 
 	#[instrument(name = "transaction::command::set_many_with_pre", level = "trace", skip_all, fields(
-		txn_id = %self.id,
-		entries = entries.len()
+		txn_id = %self.id
 	))]
-	pub fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+	pub fn set_many_with_pre(
+		&mut self,
+		entries: impl IntoIterator<Item = (TaggedKey, EncodedBytes, SetPre), IntoIter: ExactSizeIterator>,
+	) -> Result<()> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
-		if entries.is_empty() {
+		let entries = entries.into_iter();
+		if entries.len() == 0 {
 			return Ok(());
-		}
-		#[cfg(feature = "testing")]
-		{
-			self.op_counts.set_call();
-			for (key, _, _) in &entries {
-				self.op_counts.key(key.kind()).sets += 1;
-			}
 		}
 		let version = self.base_version();
 		let pending: Vec<DeltaEntry> = entries
-			.into_iter()
 			.map(|(key, bytes, pre)| DeltaEntry {
 				delta: Delta::Set {
 					key,
@@ -331,6 +326,10 @@ impl MultiWriteTransaction {
 				version,
 			})
 			.collect();
+		#[cfg(feature = "testing")]
+		{
+			self.op_counts.set_call(pending.iter().map(|entry| entry.key().kind()));
+		}
 		reifydb_assertions! {
 			for entry in &pending {
 				assert!(
@@ -389,10 +388,7 @@ impl MultiWriteTransaction {
 		}
 		#[cfg(feature = "testing")]
 		{
-			self.op_counts.remove_call();
-			for (key, _) in &entries {
-				self.op_counts.key(key.kind()).removes += 1;
-			}
+			self.op_counts.remove_call(entries.iter().map(|(key, _)| key.kind()));
 		}
 		let version = self.base_version();
 		let mut removed: BTreeSet<&TaggedKey> = BTreeSet::new();
@@ -551,10 +547,7 @@ impl MultiWriteTransaction {
 		}
 		#[cfg(feature = "testing")]
 		{
-			self.op_counts.get_committed_call();
-			for key in keys {
-				self.op_counts.key(key.kind()).committed_gets += 1;
-			}
+			self.op_counts.get_committed_call(keys.iter().map(TaggedKey::kind));
 		}
 		let version = self.version();
 		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
@@ -592,10 +585,7 @@ impl MultiWriteTransaction {
 		}
 		#[cfg(feature = "testing")]
 		{
-			self.op_counts.get_call();
-			for key in keys {
-				self.op_counts.key(key.kind()).gets += 1;
-			}
+			self.op_counts.get_call(keys.iter().map(TaggedKey::kind));
 		}
 		self.read_many(keys)
 	}
@@ -613,10 +603,7 @@ impl MultiWriteTransaction {
 		}
 		#[cfg(feature = "testing")]
 		{
-			self.op_counts.contains_call();
-			for key in keys {
-				self.op_counts.key(key.kind()).contains += 1;
-			}
+			self.op_counts.contains_call(keys.iter().map(TaggedKey::kind));
 		}
 		Ok(self.read_many(keys)?.iter().map(Option::is_some).collect())
 	}

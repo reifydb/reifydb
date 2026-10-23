@@ -149,66 +149,49 @@ fn slice(bytes: &[u8]) -> ExternCStateSlice {
 	}
 }
 
-#[instrument(name = "flow::operator::state::extern_c:set", level = "trace", skip(ctx, value), fields(
+#[instrument(name = "flow::operator::state::extern_c:set", level = "debug", skip(ctx, rows), fields(
 	operator_id = ctx.operator_id().0,
-	key_len = key.as_bytes().len(),
-	value_len = value.len()
+	row_count = rows.len()
 ))]
-pub(crate) fn set(ctx: &mut ExternCContext, key: &EncodedKey, value: &EncodedBytes) -> Result<()> {
-	let key_bytes = key.as_bytes();
-	let value_bytes: &[u8] = value.as_ref();
+pub(crate) fn set(ctx: &mut ExternCContext, rows: &[(EncodedKey, EncodedBytes)]) -> Result<()> {
+	if rows.is_empty() {
+		return Ok(());
+	}
+	let entries: Vec<ExternCStateEntry> = rows
+		.iter()
+		.map(|(key, value)| ExternCStateEntry {
+			key: ExternCStateSlice {
+				ptr: key.as_bytes().as_ptr(),
+				len: key.as_bytes().len(),
+			},
+			value: ExternCStateSlice {
+				ptr: value.as_ref().as_ptr(),
+				len: value.len(),
+			},
+		})
+		.collect();
 
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; key_bytes and value_bytes borrow guest allocations that outlive the callback,
-	// which only reads them.
+	// for the whole guest call; entries borrows rows that outlive the callback, which only reads them.
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.set)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
-			key_bytes.as_ptr(),
-			key_bytes.len(),
-			value_bytes.as_ptr(),
-			value_bytes.len(),
+			entries.as_ptr(),
+			entries.len(),
 		);
-
-		if result == EXTERN_C_OK {
-			Ok(())
-		} else {
-			Err(SdkError::Other(format!("host_state_set failed with code {}", result)))
+		if result != EXTERN_C_OK {
+			return Err(SdkError::Other(format!("host_state_set failed with code {}", result)));
 		}
 	}
+	Ok(())
 }
 
-#[instrument(name = "flow::operator::extern_c::binding::state::remove", level = "trace", skip(ctx), fields(
-	operator_id = ctx.operator_id().0,
-	key_len = key.as_bytes().len()
-))]
-pub(crate) fn remove(ctx: &mut ExternCContext, key: &EncodedKey) -> Result<()> {
-	let key_bytes = key.as_bytes();
-
-	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; key_bytes outlives the callback, which only reads it.
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.remove)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			key_bytes.as_ptr(),
-			key_bytes.len(),
-		);
-
-		if result == EXTERN_C_OK {
-			Ok(())
-		} else {
-			Err(SdkError::Other(format!("host_state_remove failed with code {}", result)))
-		}
-	}
-}
-
-#[instrument(name = "flow::operator::state::extern_c:remove_many", level = "debug", skip(ctx, keys), fields(
+#[instrument(name = "flow::operator::state::extern_c:remove", level = "debug", skip(ctx, keys), fields(
 	operator_id = ctx.operator_id().0,
 	key_count = keys.len()
 ))]
-pub(crate) fn remove_many(ctx: &mut ExternCContext, keys: &[EncodedKey]) -> Result<()> {
+pub(crate) fn remove(ctx: &mut ExternCContext, keys: &[EncodedKey]) -> Result<()> {
 	if keys.is_empty() {
 		return Ok(());
 	}
@@ -217,20 +200,20 @@ pub(crate) fn remove_many(ctx: &mut ExternCContext, keys: &[EncodedKey]) -> Resu
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; key_refs borrows keys that outlive the callback, which only reads them.
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.remove_many)(
+		let result = ((*ctx.ctx).callbacks.state.remove)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
 			key_refs.as_ptr(),
 			key_refs.len(),
 		);
 		if result != EXTERN_C_OK {
-			return Err(SdkError::Other(format!("host_state_remove_many failed with code {}", result)));
+			return Err(SdkError::Other(format!("host_state_remove failed with code {}", result)));
 		}
 	}
 	Ok(())
 }
 
-#[instrument(name = "flow::operator::state::extern_c:get_many", level = "debug", skip(ctx, keys), fields(
+#[instrument(name = "flow::operator::state::extern_c:get", level = "debug", skip(ctx, keys), fields(
 	operator_id = ctx.operator_id().0,
 	key_count = keys.len(),
 	result_count
@@ -259,7 +242,7 @@ pub(crate) fn get(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<(Enco
 	// passed once to collect_iterator_results, discharging its precondition that the handle is fresh and freed
 	// exactly there.
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.get_many)(
+		let result = ((*ctx.ctx).callbacks.state.get)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
 			key_refs.as_ptr(),
@@ -268,7 +251,7 @@ pub(crate) fn get(ctx: &ExternCContext, keys: &[EncodedKey]) -> Result<Vec<(Enco
 		);
 
 		if result != EXTERN_C_OK {
-			return Err(SdkError::Other(format!("host_state_get_many failed with code {}", result)));
+			return Err(SdkError::Other(format!("host_state_get failed with code {}", result)));
 		}
 
 		collect_iterator_results(ctx, iterator)
@@ -653,27 +636,7 @@ pub(crate) fn get_row_numbers(
 	Ok(row_numbers.into_iter().zip(present).map(|(rn, present)| (present != 0).then_some(RowNumber(rn))).collect())
 }
 
-pub(crate) fn remove_row_number(ctx: &mut ExternCContext, group: GroupId, key: &EncodedKey) -> Result<()> {
-	let key_bytes = key.as_bytes();
-	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
-	// for the whole guest call; key_bytes outlives the callback, which only reads it.
-	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.remove_row_number)(
-			(*ctx.ctx).operator_id,
-			ctx.ctx,
-			wire_group(group),
-			key_bytes.as_ptr(),
-			key_bytes.len(),
-		);
-		if result == EXTERN_C_OK {
-			Ok(())
-		} else {
-			Err(SdkError::Other(format!("host_remove_row_number failed with code {}", result)))
-		}
-	}
-}
-
-pub(crate) fn remove_row_numbers(ctx: &mut ExternCContext, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+pub(crate) fn remove_row_number(ctx: &mut ExternCContext, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
 	check_row_number_keys(keys)?;
 	if keys.is_empty() {
 		return Ok(());
@@ -683,7 +646,7 @@ pub(crate) fn remove_row_numbers(ctx: &mut ExternCContext, group: GroupId, keys:
 	// SAFETY: ExternCContext::new asserts ctx.ctx is non-null and the host keeps the ExternCContextRaw valid
 	// for the whole guest call; key_refs borrows keys for the duration of the call, which only reads them.
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.remove_row_numbers)(
+		let result = ((*ctx.ctx).callbacks.state.remove_row_number)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
 			wire_group(group),
@@ -693,12 +656,12 @@ pub(crate) fn remove_row_numbers(ctx: &mut ExternCContext, group: GroupId, keys:
 		if result == EXTERN_C_OK {
 			Ok(())
 		} else {
-			Err(SdkError::Other(format!("host_remove_row_numbers failed with code {}", result)))
+			Err(SdkError::Other(format!("host_remove_row_number failed with code {}", result)))
 		}
 	}
 }
 
-pub(crate) fn remove_row_numbers_for_groups(ctx: &mut ExternCContext, groups: &[GroupId]) -> Result<()> {
+pub(crate) fn remove_row_number_for_group(ctx: &mut ExternCContext, groups: &[GroupId]) -> Result<()> {
 	if groups.is_empty() {
 		return Ok(());
 	}
@@ -708,7 +671,7 @@ pub(crate) fn remove_row_numbers_for_groups(ctx: &mut ExternCContext, groups: &[
 	// for the whole guest call; group_ids is a live array of exactly groups.len() wire group ids the callback
 	// only reads.
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.remove_row_numbers_for_groups)(
+		let result = ((*ctx.ctx).callbacks.state.remove_row_number_for_group)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
 			group_ids.as_ptr(),
@@ -717,7 +680,7 @@ pub(crate) fn remove_row_numbers_for_groups(ctx: &mut ExternCContext, groups: &[
 		if result == EXTERN_C_OK {
 			Ok(())
 		} else {
-			Err(SdkError::Other(format!("host_remove_row_numbers_for_groups failed with code {}", result)))
+			Err(SdkError::Other(format!("host_remove_row_number_for_group failed with code {}", result)))
 		}
 	}
 }

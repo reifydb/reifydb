@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::slice;
-
 use reifydb_codec::{
 	key::encoded::EncodedKey,
 	row::{
@@ -35,48 +33,52 @@ impl<'a> State<'a> {
 		}
 	}
 
-	pub fn get<T: OperatorState>(&self, key: &GroupStateKey) -> Result<Option<T>> {
-		match self.get_bytes(key)? {
-			Some(row) => decode_payload(&row).map(Some),
-			None => Ok(None),
+	pub fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<T>>> {
+		self.fetch(keys)?.iter().map(|row| row.as_ref().map(decode_payload).transpose()).collect()
+	}
+
+	pub fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> Result<()> {
+		let mut encoded = Vec::with_capacity(rows.len());
+		for (key, value) in rows {
+			encoded.push((key.clone(), encode_payload(value)?));
 		}
+		self.set_bytes(encoded)
 	}
 
-	pub fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()> {
-		let row = encode_payload(value)?;
-		extern_c::set(self.ctx, key.as_encoded(), &row.into_bytes())
-	}
-
-	pub fn remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		extern_c::remove(self.ctx, key.as_encoded())
-	}
-
-	pub fn remove_many_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+	pub fn remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
 		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
-		extern_c::remove_many(self.ctx, &raw)
+		extern_c::remove(self.ctx, &raw)
 	}
 
-	pub fn contains(&self, key: &GroupStateKey) -> Result<bool> {
-		Ok(extern_c::get(self.ctx, slice::from_ref(key.as_encoded()))?
-			.into_iter()
-			.find(|(k, _)| k == key.as_encoded())
-			.map(|(_, row)| row)
-			.is_some())
+	pub fn contains(&self, keys: &[GroupStateKey]) -> Result<Vec<bool>> {
+		Ok(self.fetch(keys)?.iter().map(Option::is_some).collect())
 	}
 
-	pub fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		match extern_c::get(self.ctx, slice::from_ref(key.as_encoded()))?
-			.into_iter()
-			.find(|(k, _)| k == key.as_encoded())
-			.map(|(_, row)| row)
-		{
-			Some(row) => Ok(Some(EncodedPodRow::from(row))),
-			None => Ok(None),
+	pub fn get_bytes(
+		&self,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
+		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
+		for (k, row) in extern_c::get(self.ctx, &raw)? {
+			visit(framed(k)?, EncodedPodRow::from(row))?;
 		}
+		Ok(())
 	}
 
-	pub fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		extern_c::set(self.ctx, key.as_encoded(), &payload.into_bytes())
+	pub fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		let raw: Vec<_> = rows.into_iter().map(|(k, row)| (k.as_encoded().clone(), row.into_bytes())).collect();
+		extern_c::set(self.ctx, &raw)
+	}
+
+	fn fetch(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
+		let found = extern_c::get(self.ctx, &raw)?;
+		Ok(raw.iter()
+			.map(|key| {
+				found.iter().find(|(k, _)| k == key).map(|(_, row)| EncodedPodRow::from(row.clone()))
+			})
+			.collect())
 	}
 
 	pub fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
@@ -88,18 +90,6 @@ impl<'a> State<'a> {
 
 	pub fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()> {
 		extern_c::batch_write(self.ctx, &batch)
-	}
-
-	pub fn get_many_bytes_visit(
-		&self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
-		let raw: Vec<EncodedKey> = keys.iter().map(|k| k.as_encoded().clone()).collect();
-		for (k, row) in extern_c::get(self.ctx, &raw)? {
-			visit(framed(k)?, EncodedPodRow::from(row))?;
-		}
-		Ok(())
 	}
 
 	pub fn range_bytes_visit(

@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{HashMap, HashSet},
+	slice::from_ref,
 	sync::Arc,
 };
 
@@ -335,7 +336,7 @@ impl JoinOperator {
 		let mut sealed = Vec::with_capacity(armed.len());
 		for &(group, row_number, at) in armed {
 			let at = rule.seal_instant(at).at();
-			host.state_remove(&queue_key(group))?;
+			host.state_remove(from_ref(&queue_key(group)))?;
 			sealed.push((group, row_number, at));
 		}
 		host.join_expiry_arm_many(side.tag(), &sealed)?;

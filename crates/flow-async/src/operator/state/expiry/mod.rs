@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{marker::PhantomData, ops::Bound};
+use std::{marker::PhantomData, ops::Bound, slice::from_ref};
 
 use reifydb_codec::{
 	key::encoded::EncodedKeyRange,
@@ -140,16 +140,16 @@ impl ExpirySuffix for CustomManagedDueKey {
 
 #[cfg(feature = "runtime")]
 pub(crate) fn expiry_set<E: OperatorState>(store: &mut dyn StateStore, key: GroupStateKey, entry: E) -> Result<()> {
-	store.state_set(&key, entry.encode_state()?)
+	store.state_set(vec![(key, entry.encode_state()?)])
 }
 
 pub(crate) fn expiry_drop(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<()> {
-	store.state_remove(key)
+	store.state_remove(from_ref(key))
 }
 
 #[cfg(feature = "runtime")]
 pub(crate) fn expiry_get<E: OperatorState>(store: &mut dyn StateStore, key: &GroupStateKey) -> Result<Option<E>> {
-	match store.state_get(key)? {
+	match store.state_get(from_ref(key))?.pop().flatten() {
 		Some(payload) => Ok(Some(decode::<E>(&payload)?)),
 		None => Ok(None),
 	}
@@ -283,7 +283,7 @@ where
 			self.earliest = self.earliest.map(|earliest| earliest.min(expiry));
 			encoded.push((key, entry.encode_state()?));
 		}
-		store.state_set_many(encoded)
+		store.state_set(encoded)
 	}
 
 	pub(crate) fn due<E: OperatorState>(

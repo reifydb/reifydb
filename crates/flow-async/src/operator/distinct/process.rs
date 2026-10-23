@@ -211,7 +211,7 @@ impl DistinctPlan {
 	) -> Result<Vec<(RowNumber, bool)>> {
 		if groups.iter().any(|group| state.withdrawn.contains(group)) {
 			let withdrawn: Vec<GroupId> = state.withdrawn.drain(..).collect();
-			host.remove_row_numbers_for_groups(&withdrawn)?;
+			host.remove_row_number_for_group(&withdrawn)?;
 		}
 		host.get_or_create_row_numbers_for_groups(groups)
 	}

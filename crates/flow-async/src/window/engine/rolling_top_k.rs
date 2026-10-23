@@ -166,7 +166,7 @@ where
 					};
 					out.push((row_number, value));
 				}
-				store.remove_row_numbers(entry.group_id, &keys)?;
+				store.remove_row_number(entry.group_id, &keys)?;
 			}
 			remove(store, &buffer_key)?;
 			remove(store, &emit_key)?;
@@ -174,7 +174,7 @@ where
 			expiry_drop(store, &index_key)?;
 		}
 
-		store.remove_row_numbers_for_groups(&withdrawn_groups)?;
+		store.remove_row_number_for_group(&withdrawn_groups)?;
 		self.expiry.settle(store)?;
 		Ok(out)
 	}
@@ -504,7 +504,7 @@ where
 					value: (*prior_out).clone(),
 				});
 			}
-			store.remove_row_numbers(group_slot.group_id, &removed_keys)?;
+			store.remove_row_number(group_slot.group_id, &removed_keys)?;
 
 			if group_slot.buffer.is_empty() {
 				remove(
@@ -533,7 +533,7 @@ where
 				put(store, &EmitKey::new(group_slot.group_id, group_slot.state_row_number), new_emit)?;
 			}
 		}
-		store.remove_row_numbers_for_groups(&withdrawn_groups)?;
+		store.remove_row_number_for_group(&withdrawn_groups)?;
 
 		Ok(emits)
 	}

@@ -64,7 +64,7 @@ pub(crate) fn guest_sweep_mask(keyspaces: KeyspaceMask) -> KeyspaceMask {
 pub(crate) fn check_row_number_keys(keys: &[EncodedKey]) -> Result<()> {
 	match keys.iter().position(|key| key.is_empty()) {
 		Some(slot) => Err(SdkError::Other(format!(
-			"a guest row-number batch key at slot {slot} is empty; an empty key names the group row, remove group rows with remove_row_numbers_for_groups"
+			"a guest row-number batch key at slot {slot} is empty; an empty key names the group row, remove group rows with remove_row_number_for_group"
 		))),
 		None => Ok(()),
 	}
@@ -116,27 +116,23 @@ pub trait GuestUpdateEmit {
 }
 
 pub trait GuestState {
-	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> Result<Option<T>>;
-	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()>;
-	fn remove(&mut self, key: &GroupStateKey) -> Result<()>;
-	fn contains(&self, key: &GroupStateKey) -> Result<bool>;
-	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
-
-	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
-
-	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()>;
-
-	fn remove_many_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()>;
-
-	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch>;
-
-	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()>;
-
-	fn get_many_bytes_visit(
+	fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<T>>>;
+	fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> Result<()>;
+	fn remove(&mut self, keys: &[GroupStateKey]) -> Result<()>;
+	fn contains(&self, keys: &[GroupStateKey]) -> Result<Vec<bool>>;
+	fn get_bytes(
 		&self,
 		keys: &[GroupStateKey],
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
+
+	fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()>;
+
+	fn remove_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()>;
+
+	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch>;
+
+	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()>;
 
 	fn range_bytes_visit(
 		&self,
@@ -257,31 +253,38 @@ impl<C: CustomClass, T: OperatorState> ClassBatch<C, T> {
 	}
 }
 
+fn class_keys<C: CustomClass>(keys: &[C::Key]) -> Vec<GroupStateKey> {
+	keys.iter().map(|key| key.as_ref().clone()).collect()
+}
+
 pub trait ClassState<C: CustomClass> {
-	fn get<T: OperatorState>(&self, key: &C::Key) -> Result<Option<T>>;
-	fn set<T: OperatorState>(&mut self, key: &C::Key, value: &T) -> Result<()>;
-	fn remove(&mut self, key: &C::Key) -> Result<()>;
-	fn contains(&self, key: &C::Key) -> Result<bool>;
+	fn get<T: OperatorState>(&self, keys: &[C::Key]) -> Result<Vec<Option<T>>>;
+	fn set<T: OperatorState>(&mut self, rows: &[(C::Key, T)]) -> Result<()>;
+	fn remove(&mut self, keys: &[C::Key]) -> Result<()>;
+	fn contains(&self, keys: &[C::Key]) -> Result<Vec<bool>>;
 	fn batch<T: OperatorState>(&mut self, keys: &[C::Key]) -> Result<ClassBatch<C, T>>;
 	fn write_batch<T: OperatorState>(&mut self, batch: ClassBatch<C, T>) -> Result<()>;
 }
 
 impl<C: CustomClass, S: GuestState> ClassState<C> for S {
-	fn get<T: OperatorState>(&self, key: &C::Key) -> Result<Option<T>> {
-		GuestState::get(self, key.as_ref())
+	fn get<T: OperatorState>(&self, keys: &[C::Key]) -> Result<Vec<Option<T>>> {
+		GuestState::get(self, &class_keys::<C>(keys))
 	}
-	fn set<T: OperatorState>(&mut self, key: &C::Key, value: &T) -> Result<()> {
-		GuestState::set(self, key.as_ref(), value)
+	fn set<T: OperatorState>(&mut self, rows: &[(C::Key, T)]) -> Result<()> {
+		let mut encoded = Vec::with_capacity(rows.len());
+		for (key, value) in rows {
+			encoded.push((key.as_ref().clone(), encode_payload(value)?));
+		}
+		self.set_bytes(encoded)
 	}
-	fn remove(&mut self, key: &C::Key) -> Result<()> {
-		GuestState::remove(self, key.as_ref())
+	fn remove(&mut self, keys: &[C::Key]) -> Result<()> {
+		GuestState::remove(self, &class_keys::<C>(keys))
 	}
-	fn contains(&self, key: &C::Key) -> Result<bool> {
-		GuestState::contains(self, key.as_ref())
+	fn contains(&self, keys: &[C::Key]) -> Result<Vec<bool>> {
+		GuestState::contains(self, &class_keys::<C>(keys))
 	}
 	fn batch<T: OperatorState>(&mut self, keys: &[C::Key]) -> Result<ClassBatch<C, T>> {
-		let keys = keys.iter().map(|key| key.as_ref().clone()).collect();
-		Ok(ClassBatch::new(self.batch_bytes(keys)?))
+		Ok(ClassBatch::new(self.batch_bytes(class_keys::<C>(keys))?))
 	}
 	fn write_batch<T: OperatorState>(&mut self, batch: ClassBatch<C, T>) -> Result<()> {
 		check_class_batch(C::CLASS, &batch.batch)?;
@@ -305,9 +308,8 @@ pub trait GuestEmitContext {
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>>;
 	fn get_or_create_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<Vec<(RowNumber, bool)>>;
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()>;
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()>;
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()>;
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()>;
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;

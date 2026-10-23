@@ -1169,15 +1169,13 @@ mod commit_integration {
 			("series row", series_counts, 3, 0, 3),
 			("index entry", index_counts, 3, 1, 3),
 		] {
-			assert_eq!((kind_counts.gets, kind_counts.committed_gets), (gets, 0),
+			assert_eq!(
+				(kind_counts.gets, kind_counts.committed_gets),
+				(gets, 0),
 				"{kind}: no point read, every announced or unobserved remove in the one batch"
 			);
-			assert_eq!(kind_counts.sets, sets,
-				"{kind}: sets go in the batch"
-			);
-			assert_eq!(kind_counts.removes, removes,
-				"{kind}: removes stay single calls"
-			);
+			assert_eq!(kind_counts.sets, sets, "{kind}: sets go in the batch");
+			assert_eq!(kind_counts.removes, removes, "{kind}: removes stay single calls");
 		}
 	}
 

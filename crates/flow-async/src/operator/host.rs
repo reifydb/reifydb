@@ -256,11 +256,7 @@ impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
 }
 
 impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		self.txn.state_get(self.operator, key)
-	}
-
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		self.txn.state_get_many(self.operator, keys)
 	}
 
@@ -268,16 +264,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_classify(self.operator, key, pre);
 	}
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		self.txn.state_set(self.operator, key, payload)?;
-		managed_group(key).map_or(Ok(()), |group| self.arm_reclaim(group))
-	}
-
-	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		self.txn.state_remove(self.operator, key)
-	}
-
-	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
 		self.txn.state_remove_many(self.operator, keys)
 	}
 
@@ -285,7 +272,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.state_batch(self.operator, keys)
 	}
 
-	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
 		let groups: BTreeSet<GroupId> = rows.iter().filter_map(|(key, _)| managed_group(key)).collect();
 		self.txn.state_set_many(self.operator, rows)?;
 		for group in groups {
@@ -372,19 +359,11 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		self.txn.get_row_numbers(self.operator, group, keys)
 	}
 
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		self.txn.remove_row_number(self.operator, group, key)
-	}
-
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
 		self.txn.remove_row_numbers(self.operator, group, keys)
 	}
 
-	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
-		self.txn.remove_row_number_for_group(self.operator, group)
-	}
-
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
 		self.txn.remove_row_numbers_for_groups(self.operator, groups)
 	}
 

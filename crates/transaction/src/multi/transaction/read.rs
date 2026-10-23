@@ -84,10 +84,7 @@ impl MultiReadTransaction {
 		#[cfg(feature = "testing")]
 		{
 			let mut counts = self.op_counts.lock().unwrap();
-			counts.get_call();
-			for key in keys {
-				counts.key(key.kind()).gets += 1;
-			}
+			counts.get_call(keys.iter().map(TaggedKey::kind));
 		}
 		let version = self.tm.version();
 		Ok(self.engine.get(keys, version)?.into_iter().map(|found| found.map(Into::into)).collect())

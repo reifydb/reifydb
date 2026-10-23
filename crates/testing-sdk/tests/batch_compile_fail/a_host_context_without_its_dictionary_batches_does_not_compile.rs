@@ -39,8 +39,7 @@ use reifydb_value::{
 	},
 };
 
-// A host that only resolves dictionary entries one at a time must not compile, or every batch of values pays one
-// dictionary read per value.
+// A host without its dictionary batches must not compile, or every batch of values pays one read per value.
 struct SingleEntryHost;
 
 impl TimerStore for SingleEntryHost {
@@ -58,23 +57,15 @@ impl TimerStore for SingleEntryHost {
 }
 
 impl StateStore for SingleEntryHost {
-	fn state_get(&mut self, _key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
+	fn state_get(&mut self, _keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		unimplemented!()
 	}
 
-	fn state_get_many(&mut self, _keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn state_set(&mut self, _rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
 		unimplemented!()
 	}
 
-	fn state_set(&mut self, _key: &GroupStateKey, _payload: EncodedPodRow) -> Result<()> {
-		unimplemented!()
-	}
-
-	fn state_remove(&mut self, _key: &GroupStateKey) -> Result<()> {
-		unimplemented!()
-	}
-
-	fn state_remove_many(&mut self, _keys: &[GroupStateKey]) -> Result<()> {
+	fn state_remove(&mut self, _keys: &[GroupStateKey]) -> Result<()> {
 		unimplemented!()
 	}
 
@@ -83,10 +74,6 @@ impl StateStore for SingleEntryHost {
 	}
 
 	fn state_write_batch(&mut self, _batch: StateBatch) -> Result<()> {
-		unimplemented!()
-	}
-
-	fn state_set_many(&mut self, _rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
 		unimplemented!()
 	}
 
@@ -132,19 +119,11 @@ impl StateStore for SingleEntryHost {
 		unimplemented!()
 	}
 
-	fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
+	fn remove_row_number(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<()> {
 		unimplemented!()
 	}
 
-	fn remove_row_number_for_group(&mut self, _group: GroupId) -> Result<()> {
-		unimplemented!()
-	}
-
-	fn remove_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<()> {
-		unimplemented!()
-	}
-
-	fn remove_row_numbers_for_groups(&mut self, _groups: &[GroupId]) -> Result<()> {
+	fn remove_row_number_for_group(&mut self, _groups: &[GroupId]) -> Result<()> {
 		unimplemented!()
 	}
 
@@ -251,10 +230,6 @@ impl HostContext for SingleEntryHost {
 	}
 
 	fn dictionary_id_type(&mut self, _dictionary: DictionaryId) -> Option<ValueType> {
-		unimplemented!()
-	}
-
-	fn dictionary_find(&mut self, _dictionary: DictionaryId, _value: &Value) -> Result<Option<DictionaryEntryId>> {
 		unimplemented!()
 	}
 

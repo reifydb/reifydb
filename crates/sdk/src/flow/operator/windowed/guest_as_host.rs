@@ -60,48 +60,28 @@ impl<C: GuestContext> IdentityReclaim for GuestAsHost<'_, C> {
 }
 
 impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		Ok(self.0.window_state().get_bytes(key)?)
-	}
-
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		let mut found: HashMap<GroupStateKey, EncodedPodRow> = HashMap::new();
-		self.0.window_state().get_many_bytes_visit(keys, &mut |key, row| {
+		self.0.window_state().get_bytes(keys, &mut |key, row| {
 			found.insert(key, row);
 			Ok(())
 		})?;
 		Ok(keys.iter().map(|key| found.get(key).cloned()).collect())
 	}
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		self.0.window_state().set_bytes(key, payload)?;
-		Ok(())
-	}
-
-	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		self.0.window_state().remove_bytes(key)?;
-		Ok(())
-	}
-
-	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
 		if keys.is_empty() {
 			return Ok(());
 		}
-		self.0.window_state().remove_many_bytes(keys)?;
+		self.0.window_state().remove_bytes(keys)?;
 		Ok(())
 	}
 
-	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
 		if rows.is_empty() {
 			return Ok(());
 		}
-		let (keys, payloads): (Vec<GroupStateKey>, Vec<EncodedPodRow>) = rows.into_iter().unzip();
-		let slots = keys.len();
-		let mut batch = StateBatch::from_parts(keys, vec![None; slots], vec![None; slots])?;
-		for (slot, payload) in payloads.into_iter().enumerate() {
-			batch.set(slot, payload);
-		}
-		self.0.window_state().write_batch_bytes(batch)?;
+		self.0.window_state().set_bytes(rows)?;
 		Ok(())
 	}
 
@@ -179,21 +159,13 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(self.0.get_row_numbers(group, &keys)?)
 	}
 
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		Ok(self.0.remove_row_number(group, &mapping_key(key))?)
-	}
-
-	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
-		Ok(self.0.remove_row_number(group, &EncodedKey::new(Vec::new()))?)
-	}
-
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
 		let keys: Vec<EncodedKey> = keys.iter().map(mapping_key).collect();
-		Ok(self.0.remove_row_numbers(group, &keys)?)
+		Ok(self.0.remove_row_number(group, &keys)?)
 	}
 
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
-		Ok(self.0.remove_row_numbers_for_groups(groups)?)
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
+		Ok(self.0.remove_row_number_for_group(groups)?)
 	}
 
 	fn written_at(&self) -> DateTime {

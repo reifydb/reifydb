@@ -3,32 +3,14 @@
 
 use std::{ptr, slice::from_raw_parts};
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
-use reifydb_core::{common::OperatorClass, key::operator::state::GroupStateKey};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_sdk::common::extern_c::wire::{
 	buffer::ExternCBuffer,
 	key_ref::ExternCKeyRef,
 	status::{EXTERN_C_ERROR_ALLOC, EXTERN_C_OK},
 };
-use reifydb_value::util::cowvec::CowVec;
 
 use crate::procedure::callbacks::extern_c::memory::host_alloc;
-
-// SAFETY: `ptr` must be valid for reads of `len` bytes.
-pub(super) unsafe fn encoded_key(ptr: *const u8, len: usize) -> EncodedKey {
-	EncodedKey::new(unsafe { from_raw_parts(ptr, len) })
-}
-
-/// The FFI trust boundary for operator state keys. A dylib operator that hands over unframed bytes,
-/// or bytes naming a keyspace it does not own, gets an error code rather than a key that would
-/// address - and be reclaimed with - another group or a host keyspace.
-///
-/// # Safety
-/// Same contract as [`encoded_key`]: `ptr` must be valid for reads of `len` bytes.
-pub(super) unsafe fn state_key(class: OperatorClass, ptr: *const u8, len: usize) -> Option<GroupStateKey> {
-	// SAFETY: forwards this function's own contract to encoded_key unchanged.
-	GroupStateKey::from_class_framed(class, unsafe { encoded_key(ptr, len) })
-}
 
 // SAFETY: `keys` must be valid for reads of `len` ExternCKeyRef entries, and every entry with a
 // non-null `ptr` and non-zero `len` must be valid for reads of that many bytes. A null `ptr` on a
@@ -54,11 +36,6 @@ pub(super) unsafe fn encoded_keys(keys: *const ExternCKeyRef, len: usize) -> Opt
 		encoded.push(EncodedKey::new(unsafe { from_raw_parts(key.ptr, key.len) }));
 	}
 	Some(encoded)
-}
-
-// SAFETY: `ptr` must be valid for reads of `len` bytes.
-pub(super) unsafe fn encoded_bytes(ptr: *const u8, len: usize) -> EncodedBytes {
-	EncodedBytes(CowVec::new(unsafe { from_raw_parts(ptr, len) }.to_vec()))
 }
 
 // SAFETY: `output` must be valid for writes of a ExternCBuffer and properly aligned. Ownership of the

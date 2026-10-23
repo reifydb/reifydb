@@ -2328,7 +2328,8 @@ impl ManagedOperator for Tally {
 
 	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> SdkResult<()> {
 		// A ROOT key no group owns must survive every sweep, so the census floor is exactly one key.
-		ctx.state().set(&managed_key_in(GroupId::ROOT, &[]).expect("an empty id fits the keyspace"), &1i64)?;
+		ctx.state()
+			.set(&[(managed_key_in(GroupId::ROOT, &[]).expect("an empty id fits the keyspace"), 1i64)])?;
 		for i in 0..change.diff_count() {
 			let Some(diff) = change.diff(i) else {
 				continue;
@@ -2344,10 +2345,10 @@ impl ManagedOperator for Tally {
 					.expect("the g column reads")
 					.expect("a g");
 				let group = GroupId::of(&EncodedKey::new(g.to_be_bytes()));
-				ctx.state().set(
-					&managed_key_in(group, &[]).expect("an empty id fits the keyspace"),
-					&1i64,
-				)?;
+				ctx.state().set(&[(
+					managed_key_in(group, &[]).expect("an empty id fits the keyspace"),
+					1i64,
+				)])?;
 			}
 		}
 		Ok(())

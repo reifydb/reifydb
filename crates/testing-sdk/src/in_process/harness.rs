@@ -542,7 +542,7 @@ mod tests {
 					else {
 						continue;
 					};
-					ctx.state().set(&probe_row_key(row_number), &value)?;
+					ctx.state().set(&[(probe_row_key(row_number), value)])?;
 				}
 			}
 			Ok(())

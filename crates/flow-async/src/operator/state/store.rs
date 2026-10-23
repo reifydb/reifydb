@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
 	row::pod::EncodedPodRow,
@@ -12,15 +14,15 @@ use super::iter::StateIterator;
 use crate::operator::host::HostContext;
 
 pub fn state_get(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-	host.state_get(key)
+	Ok(host.state_get(from_ref(key))?.pop().flatten())
 }
 
 pub fn state_set(host: &mut dyn HostContext, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
-	host.state_set(key, row)
+	host.state_set(vec![(key.clone(), row)])
 }
 
 pub fn state_remove(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<()> {
-	host.state_remove(key)
+	host.state_remove(from_ref(key))
 }
 
 pub fn state_range<'a>(host: &'a mut dyn HostContext, range: EncodedKeyRange) -> StateIterator<'a> {

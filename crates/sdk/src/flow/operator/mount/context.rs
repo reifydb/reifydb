@@ -151,55 +151,65 @@ pub struct InProcessState<'a> {
 }
 
 impl GuestState for InProcessState<'_> {
-	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> SdkResult<Option<T>> {
-		class_framed(self.class, key)?;
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		match unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)? {
-			Some(row) => Ok(Some(decode(&row)?)),
-			None => Ok(None),
+	fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> SdkResult<Vec<Option<T>>> {
+		for key in keys {
+			class_framed(self.class, key)?;
 		}
-	}
-	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> SdkResult<()> {
-		class_framed(self.class, key)?;
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).state_set(key, encode(value)?) }.map_err(to_sdk_err)
+		let rows = unsafe { (*self.host).state_get(keys) }.map_err(to_sdk_err)?;
+		rows.iter().map(|row| row.as_ref().map(decode).transpose()).collect()
 	}
-	fn remove(&mut self, key: &GroupStateKey) -> SdkResult<()> {
-		class_framed(self.class, key)?;
+	fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> SdkResult<()> {
+		let mut encoded = Vec::with_capacity(rows.len());
+		for (key, value) in rows {
+			encoded.push((key.clone(), encode(value)?));
+		}
+		self.set_bytes(encoded)
+	}
+	fn remove(&mut self, keys: &[GroupStateKey]) -> SdkResult<()> {
+		self.remove_bytes(keys)
+	}
+	fn contains(&self, keys: &[GroupStateKey]) -> SdkResult<Vec<bool>> {
+		for key in keys {
+			class_framed(self.class, key)?;
+		}
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
+		Ok(unsafe { (*self.host).state_get(keys) }.map_err(to_sdk_err)?.iter().map(Option::is_some).collect())
 	}
-	fn contains(&self, key: &GroupStateKey) -> SdkResult<bool> {
-		class_framed(self.class, key)?;
+	fn get_bytes(
+		&self,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
+	) -> SdkResult<()> {
+		for key in keys {
+			class_framed(self.class, key)?;
+		}
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		Ok(unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)?.is_some())
-	}
-	fn get_bytes(&self, key: &GroupStateKey) -> SdkResult<Option<EncodedPodRow>> {
-		class_framed(self.class, key)?;
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).state_get(key) }.map_err(to_sdk_err)
+		let answers = unsafe { (*self.host).state_get(keys) }.map_err(to_sdk_err)?;
+		for (key, row) in keys.iter().zip(answers) {
+			if let Some(row) = row {
+				visit(key.clone(), row)?;
+			}
+		}
+		Ok(())
 	}
 
-	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> SdkResult<()> {
-		class_framed(self.class, key)?;
+	fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> SdkResult<()> {
+		for (key, _) in &rows {
+			class_framed(self.class, key)?;
+		}
+		if rows.is_empty() {
+			return Ok(());
+		}
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).state_set(key, payload) }.map_err(to_sdk_err)
+		unsafe { (*self.host).state_set(rows) }.map_err(to_sdk_err)
 	}
 
-	fn remove_bytes(&mut self, key: &GroupStateKey) -> SdkResult<()> {
-		class_framed(self.class, key)?;
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).state_remove(key) }.map_err(to_sdk_err)
-	}
-
-	fn remove_many_bytes(&mut self, keys: &[GroupStateKey]) -> SdkResult<()> {
+	fn remove_bytes(&mut self, keys: &[GroupStateKey]) -> SdkResult<()> {
 		for key in keys {
 			class_framed(self.class, key)?;
 		}
@@ -208,7 +218,7 @@ impl GuestState for InProcessState<'_> {
 		}
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		unsafe { (*self.host).state_remove_many(keys) }.map_err(to_sdk_err)
+		unsafe { (*self.host).state_remove(keys) }.map_err(to_sdk_err)
 	}
 
 	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> SdkResult<StateBatch> {
@@ -225,25 +235,6 @@ impl GuestState for InProcessState<'_> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
 		unsafe { (*self.host).state_write_batch(batch) }.map_err(to_sdk_err)
-	}
-
-	fn get_many_bytes_visit(
-		&self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> SdkResult<()>,
-	) -> SdkResult<()> {
-		for key in keys {
-			class_framed(self.class, key)?;
-		}
-		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
-		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let answers = unsafe { (*self.host).state_get_many(keys) }.map_err(to_sdk_err)?;
-		for (key, row) in keys.iter().zip(answers) {
-			if let Some(row) = row {
-				visit(key.clone(), row)?;
-			}
-		}
-		Ok(())
 	}
 
 	fn range_bytes_visit(
@@ -372,29 +363,16 @@ impl GuestEmitContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).get_row_numbers(group, keys) }.map_err(to_sdk_err)
 	}
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> SdkResult<()> {
-		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
-		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe {
-			let host = &mut *self.host;
-			if key.is_empty() {
-				host.remove_row_number_for_group(group)
-			} else {
-				host.remove_row_number(group, key)
-			}
-		}
-		.map_err(to_sdk_err)
-	}
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> SdkResult<()> {
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> SdkResult<()> {
 		check_row_number_keys(keys)?;
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).remove_row_numbers(group, keys) }.map_err(to_sdk_err)
+		unsafe { (*self.host).remove_row_number(group, keys) }.map_err(to_sdk_err)
 	}
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> SdkResult<()> {
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> SdkResult<()> {
 		// SAFETY: host is the &'a mut dyn HostContext this context was built from; PhantomData keeps
 		// that borrow live for 'a and &mut self makes the deref unique.
-		unsafe { (*self.host).remove_row_numbers_for_groups(groups) }.map_err(to_sdk_err)
+		unsafe { (*self.host).remove_row_number_for_group(groups) }.map_err(to_sdk_err)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> SdkResult<InProcessInsertEmit<'_>> {
 		let now = self.now;
@@ -456,6 +434,8 @@ impl<C> GuestContext<C> for InProcessContext<'_> {
 
 #[cfg(test)]
 mod tests {
+	use std::slice::from_ref;
+
 	use reifydb_core::common::CommitVersion;
 	use reifydb_flow_async::operator::host::TxnHostContext;
 	use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -475,12 +455,18 @@ mod tests {
 
 		let unframed = GroupStateKey::bound_unchecked(EncodedKey::new(vec![0xFF, 0xFF, 0xFF]));
 
-		let err = state.set_bytes(&unframed, EncodedPodRow::new(&[1])).unwrap_err();
+		let err = state.set_bytes(vec![(unframed.clone(), EncodedPodRow::new(&[1]))]).unwrap_err();
 		assert!(
 			err.to_string().contains("a keyspace its class owns"),
 			"set_bytes must refuse an unframed key, got {err}"
 		);
-		assert!(state.get_bytes(&unframed).is_err(), "get_bytes must refuse an unframed key too");
-		assert!(state.remove_bytes(&unframed).is_err(), "remove_bytes must refuse an unframed key too");
+		assert!(
+			state.get_bytes(from_ref(&unframed), &mut |_, _| Ok(())).is_err(),
+			"get_bytes must refuse an unframed key too"
+		);
+		assert!(
+			state.remove_bytes(from_ref(&unframed)).is_err(),
+			"remove_bytes must refuse an unframed key too"
+		);
 	}
 }

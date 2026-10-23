@@ -127,7 +127,7 @@ impl UnmanagedOperator for Alarm {
 		// Per-group state, so the group has something for the retention pass to erase once it ages
 		// past its horizon. Without it a group is nothing but an identity and reclaim has no work.
 		let fired_at = timer.due.to_millis();
-		ctx.state().set(&unmanaged_key_in(group, &[]).expect("an empty id fits the keyspace"), &fired_at)?;
+		ctx.state().set(&[(unmanaged_key_in(group, &[]).expect("an empty id fits the keyspace"), fired_at)])?;
 
 		let (row_number, _is_new) = ctx.get_or_create_row_numbers(group, &[key])?.remove(0);
 		ctx.emit_insert(
@@ -330,7 +330,7 @@ impl UnmanagedOperator for Snooze {
 				let group = GroupId::of(&key);
 				let armed_key = unmanaged_key_in(group, &[]).expect("an empty id fits the keyspace");
 
-				let prior = ctx.state().get::<i64>(&armed_key)?;
+				let prior = ctx.state().get::<i64>(std::slice::from_ref(&armed_key))?.pop().flatten();
 				if let Some(prior) = prior {
 					// Zero in the honest case; non-zero aims the disarm past what
 					// was armed, which is how the control test proves the wheel
@@ -341,7 +341,7 @@ impl UnmanagedOperator for Snooze {
 
 				let wake = at.to_millis() + DELAY_MS;
 				ctx.arm_timer(DateTime::from_millis(wake), TimerKind::Seal, &key)?;
-				ctx.state().set(&armed_key, &wake)?;
+				ctx.state().set(&[(armed_key.clone(), wake)])?;
 			}
 		}
 		Ok(())

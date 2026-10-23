@@ -394,7 +394,7 @@ pub fn get<K: Keyspace>(
 		while let Some(row) = rows.next().expect("operator state batch get row failed") {
 			let key = K::read_key(row, 0)
 				.expect("an operator state row does not decode as its own key layout");
-			let bytes: Vec<u8> = row.get(K::columns().len()).expect("operator state row has no payload");
+			let bytes: Vec<u8> = row.get(K::columns().len()).expect("operator state read failed");
 			out.push((key, bytes));
 		}
 	}
@@ -522,7 +522,7 @@ fn bounded<K: Keyspace>(
 	let mut out = Vec::new();
 	while let Some(row) = rows.next().expect("operator state range row failed") {
 		let key = K::read_key(row, 0).expect("an operator state row does not decode as its own key layout");
-		let bytes: Vec<u8> = row.get(width).expect("operator state row has no payload");
+		let bytes: Vec<u8> = row.get(width).expect("operator state read failed");
 		out.push((key, bytes));
 	}
 	out
@@ -611,7 +611,7 @@ pub fn range_in<K: Keyspace>(
 	let mut out = Vec::new();
 	while let Some(row) = rows.next().expect("operator state group range row failed") {
 		let key = K::read_key(row, 0).expect("an operator state row does not decode as its own key layout");
-		let bytes: Vec<u8> = row.get(width).expect("operator state row has no payload");
+		let bytes: Vec<u8> = row.get(width).expect("operator state read failed");
 		out.push((key, bytes));
 	}
 	out

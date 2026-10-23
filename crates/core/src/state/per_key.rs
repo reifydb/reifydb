@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_value::Result;
 
 use crate::{
@@ -13,15 +13,8 @@ use crate::{
 	},
 };
 
-pub fn remove_many<S: StateStore + ?Sized>(store: &mut S, keys: &[GroupStateKey]) -> Result<()> {
-	for key in keys {
-		store.state_remove(key)?;
-	}
-	Ok(())
-}
-
 pub fn read_batch<S: StateStore + ?Sized>(store: &mut S, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
-	let batch = StateBatch::read(keys, |keys| store.state_get_many(keys))?;
+	let batch = StateBatch::read(keys, |keys| store.state_get(keys))?;
 	for slot in 0..batch.len() {
 		store.state_classify(batch.key(slot), batch.value(slot).map(EncodedPodRow::byte_size));
 	}
@@ -29,20 +22,21 @@ pub fn read_batch<S: StateStore + ?Sized>(store: &mut S, keys: Vec<GroupStateKey
 }
 
 pub fn write_batch<S: StateStore + ?Sized>(store: &mut S, batch: StateBatch) -> Result<()> {
+	let mut sets = Vec::new();
+	let mut removes = Vec::new();
 	for (key, write) in batch.into_writes() {
 		match write {
-			PendingWrite::Set(bytes) => store.state_set(&key, EncodedPodRow::from(bytes))?,
+			PendingWrite::Set(bytes) => sets.push((key, EncodedPodRow::from(bytes))),
 			PendingWrite::Remove {
 				..
-			} => store.state_remove(&key)?,
+			} => removes.push(key),
 		}
 	}
-	Ok(())
-}
-
-pub fn set_many<S: StateStore + ?Sized>(store: &mut S, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
-	for (key, row) in rows {
-		store.state_set(&key, row)?;
+	if !sets.is_empty() {
+		store.state_set(sets)?;
+	}
+	if !removes.is_empty() {
+		store.state_remove(&removes)?;
 	}
 	Ok(())
 }
@@ -85,18 +79,4 @@ pub fn group_sweep_many<S: StateStore + ?Sized>(
 		rows,
 		complete,
 	})
-}
-
-pub fn remove_row_numbers<S: StateStore + ?Sized>(store: &mut S, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-	for key in keys {
-		store.remove_row_number(group, key)?;
-	}
-	Ok(())
-}
-
-pub fn remove_row_numbers_for_groups<S: StateStore + ?Sized>(store: &mut S, groups: &[GroupId]) -> Result<()> {
-	for group in groups {
-		store.remove_row_number_for_group(*group)?;
-	}
-	Ok(())
 }

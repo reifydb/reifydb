@@ -61,26 +61,15 @@ impl TimerStore for MemoryStateStore {
 }
 
 impl StateStore for MemoryStateStore {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		Ok(self.data.get(key.as_slice()).cloned())
-	}
-
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		Ok(keys.iter().map(|key| self.data.get(key.as_slice()).cloned()).collect())
 	}
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		self.data.insert(key.as_slice().to_vec(), payload);
+	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		for key in keys {
+			self.data.remove(key.as_slice());
+		}
 		Ok(())
-	}
-
-	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		self.data.remove(key.as_slice());
-		Ok(())
-	}
-
-	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-		per_key::remove_many(self, keys)
 	}
 
 	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
@@ -91,8 +80,11 @@ impl StateStore for MemoryStateStore {
 		per_key::write_batch(self, batch)
 	}
 
-	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
-		per_key::set_many(self, rows)
+	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		for (key, payload) in rows {
+			self.data.insert(key.as_slice().to_vec(), payload);
+		}
+		Ok(())
 	}
 
 	fn state_page_inner(
@@ -162,22 +154,18 @@ impl StateStore for MemoryStateStore {
 			.collect())
 	}
 
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		self.rows.remove(&(group, key.as_bytes().to_vec()));
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		for key in keys {
+			self.rows.remove(&(group, key.as_bytes().to_vec()));
+		}
 		Ok(())
 	}
 
-	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
-		self.rows.remove(&(group, Vec::new()));
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
+		for group in groups {
+			self.rows.remove(&(*group, Vec::new()));
+		}
 		Ok(())
-	}
-
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		per_key::remove_row_numbers(self, group, keys)
-	}
-
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
-		per_key::remove_row_numbers_for_groups(self, groups)
 	}
 
 	fn written_at(&self) -> DateTime {

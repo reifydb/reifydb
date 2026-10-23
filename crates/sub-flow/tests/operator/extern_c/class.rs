@@ -59,7 +59,7 @@ impl UnmanagedOperator for WriteProbe {
 	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, _change: impl ChangeView) -> SdkResult<()> {
 		// A guest error aborts the process at the boundary, so the outcome must travel out of band.
 		let key = unmanaged_key(&0u64.to_be_bytes()).expect("an eight byte suffix fits the keyspace");
-		let accepted = ctx.state().set(&key, &1i64).is_ok();
+		let accepted = ctx.state().set(&[(key.clone(), 1i64)]).is_ok();
 		WRITE_ACCEPTED.with(|cell| cell.set(Some(accepted)));
 		Ok(())
 	}

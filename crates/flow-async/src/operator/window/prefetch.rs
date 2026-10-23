@@ -58,34 +58,43 @@ impl<'a> Prefetched<'a> {
 			}
 		}
 		if !sets.is_empty() {
-			self.store.state_set_many(sets)?;
+			self.store.state_set(sets)?;
 		}
 		if !removes.is_empty() {
-			self.store.state_remove_many(&removes)?;
+			self.store.state_remove(&removes)?;
 		}
 		Ok(())
 	}
 }
 
 impl StateStore for Prefetched<'_> {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		let Some(&slot) = self.slots.get(key) else {
-			return match self.blind.get(key) {
-				Some(row) => Ok(row.clone()),
-				None => self.store.state_get(key),
+	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		let mut answers = Vec::with_capacity(keys.len());
+		let mut missed = Vec::new();
+		let mut misses = Vec::new();
+		for (index, key) in keys.iter().enumerate() {
+			let answer = match self.slots.get(key) {
+				Some(&slot) => Some(match self.batch.op(slot) {
+					Some(PendingWrite::Set(row)) => Some(EncodedPodRow::from(row.clone())),
+					Some(PendingWrite::Remove {
+						..
+					}) => None,
+					None => self.batch.value(slot).cloned(),
+				}),
+				None => self.blind.get(key).cloned(),
 			};
-		};
-		Ok(match self.batch.op(slot) {
-			Some(PendingWrite::Set(row)) => Some(EncodedPodRow::from(row.clone())),
-			Some(PendingWrite::Remove {
-				..
-			}) => None,
-			None => self.batch.value(slot).cloned(),
-		})
-	}
-
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
-		self.store.state_get_many(keys)
+			if answer.is_none() {
+				missed.push(index);
+				misses.push(key.clone());
+			}
+			answers.push(answer.flatten());
+		}
+		if !misses.is_empty() {
+			for (index, row) in missed.into_iter().zip(self.store.state_get(&misses)?) {
+				answers[index] = row;
+			}
+		}
+		Ok(answers)
 	}
 
 	fn state_classify(&mut self, key: &GroupStateKey, pre: Option<ByteSize>) {
@@ -94,34 +103,16 @@ impl StateStore for Prefetched<'_> {
 		}
 	}
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		match self.slots.get(key) {
-			Some(&slot) => {
-				self.batch.set(slot, payload);
-				Ok(())
-			}
-			None => {
-				self.blind.insert(key.clone(), Some(payload));
-				Ok(())
+	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		for key in keys {
+			match self.slots.get(key) {
+				Some(&slot) => self.batch.remove(slot),
+				None => {
+					self.blind.insert(key.clone(), None);
+				}
 			}
 		}
-	}
-
-	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		match self.slots.get(key) {
-			Some(&slot) => {
-				self.batch.remove(slot);
-				Ok(())
-			}
-			None => {
-				self.blind.insert(key.clone(), None);
-				Ok(())
-			}
-		}
-	}
-
-	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-		self.store.state_remove_many(keys)
+		Ok(())
 	}
 
 	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
@@ -132,8 +123,16 @@ impl StateStore for Prefetched<'_> {
 		self.store.state_write_batch(batch)
 	}
 
-	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
-		self.store.state_set_many(rows)
+	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		for (key, payload) in rows {
+			match self.slots.get(&key) {
+				Some(&slot) => self.batch.set(slot, payload),
+				None => {
+					self.blind.insert(key, Some(payload));
+				}
+			}
+		}
+		Ok(())
 	}
 
 	fn state_page_inner(
@@ -174,20 +173,12 @@ impl StateStore for Prefetched<'_> {
 		self.store.get_row_numbers(group, keys)
 	}
 
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		self.store.remove_row_number(group, key)
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		self.store.remove_row_number(group, keys)
 	}
 
-	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
-		self.store.remove_row_number_for_group(group)
-	}
-
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		self.store.remove_row_numbers(group, keys)
-	}
-
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
-		self.store.remove_row_numbers_for_groups(groups)
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
+		self.store.remove_row_number_for_group(groups)
 	}
 
 	fn written_at(&self) -> DateTime {

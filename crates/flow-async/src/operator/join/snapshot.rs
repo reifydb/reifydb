@@ -148,10 +148,10 @@ impl SnapshotLedger {
 			}
 		}
 		if !rows.is_empty() {
-			host.state_set_many(rows)?;
+			host.state_set(rows)?;
 		}
 		if !removes.is_empty() {
-			host.state_remove_many(&removes)?;
+			host.state_remove(&removes)?;
 		}
 		Ok(())
 	}

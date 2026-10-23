@@ -61,23 +61,17 @@ pub fn sweep_order(groups: &[GroupId]) -> Vec<GroupId> {
 }
 
 pub trait StateStore {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>>;
-
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>>;
+	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>>;
 
 	fn state_classify(&mut self, _key: &GroupStateKey, _pre: Option<ByteSize>) {}
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()>;
+	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()>;
 
-	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()>;
-
-	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()>;
+	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()>;
 
 	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch>;
 
 	fn state_write_batch(&mut self, batch: StateBatch) -> Result<()>;
-
-	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()>;
 
 	fn state_page(
 		&mut self,
@@ -114,7 +108,7 @@ pub trait StateStore {
 				siblings.push(sibling);
 			}
 		}
-		self.state_remove_many(&siblings)
+		self.state_remove(&siblings)
 	}
 
 	fn state_last(&mut self, range: EncodedKeyRange) -> Result<Option<(GroupStateKey, EncodedPodRow)>> {
@@ -127,13 +121,9 @@ pub trait StateStore {
 
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>>;
 
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()>;
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()>;
 
-	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()>;
-
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()>;
-
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()>;
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()>;
 
 	fn written_at(&self) -> DateTime;
 }

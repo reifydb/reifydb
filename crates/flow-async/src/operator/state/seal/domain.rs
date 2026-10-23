@@ -143,6 +143,8 @@ impl SealDomain for DateTime {
 
 #[cfg(test)]
 mod tests {
+	use std::slice::from_ref;
+
 	use reifydb_core::{common::WindowSize, operator_with::WithSpan};
 	use reifydb_value::factory::time::at_millis;
 
@@ -199,7 +201,7 @@ mod tests {
 		let mut store = MockStore::default();
 
 		assert_eq!(DateTime::frontier(&mut store).unwrap(), DateTime::MIN);
-		assert!(store.state_get(&seal_ledger_key()).unwrap().is_none());
+		assert!(store.state_get(from_ref(&seal_ledger_key())).unwrap().pop().flatten().is_none());
 	}
 
 	#[test]

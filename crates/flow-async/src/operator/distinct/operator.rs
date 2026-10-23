@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeMap, HashMap, HashSet},
 	mem::take,
+	slice::from_ref,
 	sync::Arc,
 };
 
@@ -200,10 +201,10 @@ impl DistinctPlan {
 			})?;
 			sets.push((Self::layout_storage_key(), layout_row));
 		}
-		host.state_set_many(sets)?;
-		host.state_remove_many(&removes)?;
+		host.state_set(sets)?;
+		host.state_remove(&removes)?;
 		let withdrawn: Vec<GroupId> = state.withdrawn.drain(..).collect();
-		host.remove_row_numbers_for_groups(&withdrawn)
+		host.remove_row_number_for_group(&withdrawn)
 	}
 
 	#[instrument(name = "flow::operator::distinct::batch_hashes", level = "trace", skip_all, fields(diffs = diffs.len()))]
@@ -260,7 +261,7 @@ impl HostOperator for DistinctOperator {
 		let groups: HashMap<Hash128, GroupId> =
 			ordered.iter().map(|hash| (*hash, GroupId::hashed(*hash))).collect();
 		let layout_key = DistinctPlan::layout_storage_key();
-		let layout = host.state_get(&layout_key)?;
+		let layout = host.state_get(from_ref(&layout_key))?.pop().flatten();
 		host.state_classify(&layout_key, layout.as_ref().map(EncodedPodRow::byte_size));
 
 		let mut state = DistinctState {

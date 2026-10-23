@@ -81,7 +81,7 @@ where
 	Accumulator: WindowAccumulator,
 {
 	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
-		store.state_remove_many(keys)
+		store.state_remove(keys)
 	}
 }
 
@@ -149,7 +149,7 @@ where
 			}
 		}
 		if !drops.is_empty() {
-			store.state_remove_many(&drops)?;
+			store.state_remove(&drops)?;
 		}
 		if !sets.is_empty() {
 			self.expiry.set(store, sets)?;
@@ -357,7 +357,7 @@ where
 			});
 		}
 		if !withdrawn.is_empty() {
-			store.remove_row_numbers_for_groups(&withdrawn)?;
+			store.remove_row_number_for_group(&withdrawn)?;
 		}
 		Ok(results)
 	}
@@ -385,7 +385,7 @@ where
 			});
 		}
 		if !index_keys.is_empty() {
-			store.state_remove_many(&index_keys)?;
+			store.state_remove(&index_keys)?;
 		}
 		self.expiry.settle(store)?;
 		if !out.is_empty() {

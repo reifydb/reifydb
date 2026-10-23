@@ -284,7 +284,8 @@ mod tests {
 
 		fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, _change: impl ChangeView) -> SdkResult<()> {
 			let group = GroupId::of(&EncodedKey::new("group".as_bytes()));
-			ctx.state().set(&managed_key_in(group, &[]).expect("an empty id fits the keyspace"), &1i64)?;
+			ctx.state()
+				.set(&[(managed_key_in(group, &[]).expect("an empty id fits the keyspace"), 1i64)])?;
 			Ok(())
 		}
 	}

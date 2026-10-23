@@ -22,7 +22,7 @@ use reifydb_sdk::{
 		key_ref::ExternCKeyRef,
 		status::{
 			EXTERN_C_END_OF_ITERATION, EXTERN_C_ERROR_ALLOC, EXTERN_C_ERROR_INTERNAL,
-			EXTERN_C_ERROR_NULL_PTR, EXTERN_C_NOT_FOUND, EXTERN_C_OK,
+			EXTERN_C_ERROR_NULL_PTR, EXTERN_C_OK,
 		},
 	},
 	flow::operator::extern_c::wire::{
@@ -38,7 +38,7 @@ use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 use super::{
 	context::{get_host_mut, guest_class},
-	marshal::{encoded_bytes, encoded_key, encoded_keys, state_key, write_buffer},
+	marshal::{encoded_keys, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
 use crate::procedure::callbacks::extern_c::memory::{host_alloc, host_free};
@@ -53,65 +53,46 @@ fn iterator_entries(entries: Vec<(GroupStateKey, EncodedPodRow)>) -> Vec<(GroupS
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_state_get(
-	_operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	key_ptr: *const u8,
-	key_len: usize,
-	output: *mut ExternCBuffer,
-) -> i32 {
-	if ctx.is_null() || key_ptr.is_null() || output.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: `ctx`, `key_ptr` and `output` are null-checked above; the guest must pass back the
-	// ExternCContextRaw the host handed it for this call (discharging get_host_mut and state_key), and
-	// an `output` valid and aligned for one ExternCBuffer write that it then frees via memory.free.
-	unsafe {
-		let ctx_handle = &mut *ctx;
-		let class = guest_class(ctx_handle);
-		let host = get_host_mut(ctx_handle);
-
-		let Some(key) = state_key(class, key_ptr, key_len) else {
-			return EXTERN_C_ERROR_INTERNAL;
-		};
-
-		let result = host.state_get(&key);
-
-		match result {
-			Ok(Some(row)) => write_buffer(output, row.bytes().as_slice()),
-			Ok(None) => EXTERN_C_NOT_FOUND,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
-		}
-	}
-}
-
-#[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_set(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
-	key_ptr: *const u8,
-	key_len: usize,
-	value_ptr: *const u8,
-	value_len: usize,
+	rows: *const ExternCStateEntry,
+	rows_len: usize,
 ) -> i32 {
-	if ctx.is_null() || key_ptr.is_null() || value_ptr.is_null() {
+	if ctx.is_null() {
+		return EXTERN_C_ERROR_NULL_PTR;
+	}
+	if rows_len > 0 && rows.is_null() {
 		return EXTERN_C_ERROR_NULL_PTR;
 	}
 
-	// SAFETY: `ctx`, `key_ptr` and `value_ptr` are null-checked above; the guest must pass back the
-	// ExternCContextRaw the host handed it for this call, a `key_ptr` valid for `key_len` reads (discharging
-	// state_key) and a `value_ptr` valid for `value_len` reads (discharging encoded_bytes).
+	// SAFETY: `ctx` and (for a non-zero `rows_len`) `rows` are null-checked above; the guest must pass back
+	// the ExternCContextRaw the host handed it for this call and `rows` valid for reads of `rows_len`
+	// ExternCStateEntry whose slices are null with length 0 or valid for their own `len` (discharging
+	// slice_bytes). Every row is decoded and class-checked before anything reaches the host.
 	unsafe {
 		let ctx_handle = &mut *ctx;
 		let class = guest_class(ctx_handle);
 		let host = get_host_mut(ctx_handle);
 
-		let Some(key) = state_key(class, key_ptr, key_len) else {
-			return EXTERN_C_ERROR_INTERNAL;
+		let rows = if rows_len == 0 {
+			&[]
+		} else {
+			from_raw_parts(rows, rows_len)
 		};
 
-		match host.state_set(&key, EncodedPodRow::from(encoded_bytes(value_ptr, value_len))) {
+		let mut decoded = Vec::with_capacity(rows.len());
+		for row in rows {
+			let (Some(key), Some(value)) = (slice_bytes(row.key), slice_bytes(row.value)) else {
+				return EXTERN_C_ERROR_NULL_PTR;
+			};
+			let Some(key) = GroupStateKey::from_class_framed(class, EncodedKey::new(key)) else {
+				return EXTERN_C_ERROR_INTERNAL;
+			};
+			decoded.push((key, EncodedPodRow::from(slice_row(value))));
+		}
+
+		match host.state_set(decoded) {
 			Ok(_) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -120,36 +101,6 @@ pub(super) extern "C" fn host_state_set(
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_state_remove(
-	_operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	key_ptr: *const u8,
-	key_len: usize,
-) -> i32 {
-	if ctx.is_null() || key_ptr.is_null() {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: `ctx` and `key_ptr` are null-checked above; the guest must pass back the ExternCContextRaw the
-	// host handed it for this call (discharging get_host_mut) and a `key_ptr` valid for reads
-	// of `key_len` bytes (discharging state_key).
-	unsafe {
-		let ctx_handle = &mut *ctx;
-		let class = guest_class(ctx_handle);
-		let host = get_host_mut(ctx_handle);
-
-		let Some(key) = state_key(class, key_ptr, key_len) else {
-			return EXTERN_C_ERROR_INTERNAL;
-		};
-
-		match host.state_remove(&key) {
-			Ok(_) => EXTERN_C_OK,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
-		}
-	}
-}
-
-#[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_state_remove_many(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
 	keys: *const ExternCKeyRef,
@@ -181,7 +132,7 @@ pub(super) extern "C" fn host_state_remove_many(
 			Err(code) => return code,
 		};
 
-		match host.state_remove_many(&encoded_keys) {
+		match host.state_remove(&encoded_keys) {
 			Ok(_) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -366,7 +317,7 @@ const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_state_get_many(
+pub(super) extern "C" fn host_state_get(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
 	keys: *const ExternCKeyRef,
@@ -400,7 +351,7 @@ pub(super) extern "C" fn host_state_get_many(
 			Err(code) => return code,
 		};
 
-		match host.state_get_many(&encoded_keys) {
+		match host.state_get(&encoded_keys) {
 			Ok(answers) => {
 				let entries = encoded_keys
 					.into_iter()
@@ -743,35 +694,6 @@ pub(super) extern "C" fn host_remove_row_number(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
 	group: ExternCGroupId,
-	key_ptr: *const u8,
-	key_len: usize,
-) -> i32 {
-	if ctx.is_null() || (key_len > 0 && key_ptr.is_null()) {
-		return EXTERN_C_ERROR_NULL_PTR;
-	}
-
-	// SAFETY: `ctx` is null-checked above, as is `key_ptr` whenever `key_len` is non-zero; the guest must
-	// pass back the ExternCContextRaw the host handed it for this call (discharging get_host_mut) and a
-	// `key_ptr` valid for reads of `key_len` bytes (discharging encoded_key).
-	unsafe {
-		let host = get_host_mut(&mut *ctx);
-		let key = encoded_key(key_ptr, key_len);
-		let removed = if key.is_empty() {
-			host.remove_row_number_for_group(host_group(group))
-		} else {
-			host.remove_row_number(host_group(group), &key)
-		};
-		match removed {
-			Ok(_) => EXTERN_C_OK,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
-		}
-	}
-}
-
-pub(super) extern "C" fn host_remove_row_numbers(
-	_operator_id: u64,
-	ctx: *mut ExternCContextRaw,
-	group: ExternCGroupId,
 	keys: *const ExternCKeyRef,
 	keys_len: usize,
 ) -> i32 {
@@ -793,14 +715,14 @@ pub(super) extern "C" fn host_remove_row_numbers(
 		if encoded_keys.iter().any(|key| key.is_empty()) {
 			return EXTERN_C_ERROR_INTERNAL;
 		}
-		match host.remove_row_numbers(host_group(group), &encoded_keys) {
+		match host.remove_row_number(host_group(group), &encoded_keys) {
 			Ok(()) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
 	}
 }
 
-pub(super) extern "C" fn host_remove_row_numbers_for_groups(
+pub(super) extern "C" fn host_remove_row_number_for_group(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
 	groups: *const ExternCGroupId,
@@ -819,7 +741,7 @@ pub(super) extern "C" fn host_remove_row_numbers_for_groups(
 	unsafe {
 		let host = get_host_mut(&mut *ctx);
 		let group_ids: Vec<GroupId> = (0..groups_len).map(|index| host_group(*groups.add(index))).collect();
-		match host.remove_row_numbers_for_groups(&group_ids) {
+		match host.remove_row_number_for_group(&group_ids) {
 			Ok(()) => EXTERN_C_OK,
 			Err(_) => EXTERN_C_ERROR_INTERNAL,
 		}
@@ -1075,22 +997,9 @@ mod join_row_expiry_guard_tests {
 	}
 
 	impl StateStore for RecordingHost {
-		fn state_get(&mut self, _key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-			Ok(None)
-		}
-
-		fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+			self.reached.set(true);
 			Ok(vec![None; keys.len()])
-		}
-
-		fn state_set(&mut self, _key: &GroupStateKey, _payload: EncodedPodRow) -> Result<()> {
-			self.reached.set(true);
-			Ok(())
-		}
-
-		fn state_remove(&mut self, _key: &GroupStateKey) -> Result<()> {
-			self.reached.set(true);
-			Ok(())
 		}
 
 		fn state_page_inner(
@@ -1124,21 +1033,14 @@ mod join_row_expiry_guard_tests {
 			Ok(Vec::new())
 		}
 
-		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
-			Ok(())
-		}
-
-		fn remove_row_number_for_group(&mut self, _group: GroupId) -> Result<()> {
-			Ok(())
-		}
-
-		fn remove_row_numbers(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<()> {
+		fn remove_row_number(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<()> {
 			self.reached.set(true);
 			Ok(())
 		}
 
-		fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-			per_key::remove_many(self, keys)
+		fn state_remove(&mut self, _keys: &[GroupStateKey]) -> Result<()> {
+			self.reached.set(true);
+			Ok(())
 		}
 
 		fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
@@ -1149,8 +1051,9 @@ mod join_row_expiry_guard_tests {
 			per_key::write_batch(self, batch)
 		}
 
-		fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
-			per_key::set_many(self, rows)
+		fn state_set(&mut self, _rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+			self.reached.set(true);
+			Ok(())
 		}
 
 		fn group_sweep(
@@ -1171,8 +1074,8 @@ mod join_row_expiry_guard_tests {
 			per_key::group_sweep_many(self, groups, limit, keyspaces)
 		}
 
-		fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
-			per_key::remove_row_numbers_for_groups(self, groups)
+		fn remove_row_number_for_group(&mut self, _groups: &[GroupId]) -> Result<()> {
+			Ok(())
 		}
 
 		fn written_at(&self) -> DateTime {
@@ -1512,10 +1415,23 @@ mod join_row_expiry_guard_tests {
 		let key = framed(KeyspaceId::JOIN_ROW_EXPIRY);
 		let value = EncodedPodRow::new(&[0u8; 4]);
 
-		let (set, set_reached) = with_context(|ctx| {
-			host_state_set(1, ctx, key.as_ptr(), key.len(), value.bytes().as_ptr(), value.bytes().len())
-		});
-		let (removed, remove_reached) = with_context(|ctx| host_state_remove(1, ctx, key.as_ptr(), key.len()));
+		let row = [ExternCStateEntry {
+			key: ExternCStateSlice {
+				ptr: key.as_ptr(),
+				len: key.len(),
+			},
+			value: ExternCStateSlice {
+				ptr: value.bytes().as_ptr(),
+				len: value.bytes().len(),
+			},
+		}];
+		let key_ref = [ExternCKeyRef {
+			ptr: key.as_ptr(),
+			len: key.len(),
+		}];
+		let (set, set_reached) = with_context(|ctx| host_state_set(1, ctx, row.as_ptr(), row.len()));
+		let (removed, remove_reached) =
+			with_context(|ctx| host_state_remove(1, ctx, key_ref.as_ptr(), key_ref.len()));
 
 		assert_eq!(set, EXTERN_C_ERROR_INTERNAL, "a guest must not be able to write a join row expiry");
 		assert_eq!(removed, EXTERN_C_ERROR_INTERNAL, "nor remove one");
@@ -1529,10 +1445,23 @@ mod join_row_expiry_guard_tests {
 		let key = framed(KeyspaceId::CUSTOM_UNMANAGED);
 		let value = EncodedPodRow::new(&[0u8; 4]);
 
-		let (set, set_reached) = with_context(|ctx| {
-			host_state_set(1, ctx, key.as_ptr(), key.len(), value.bytes().as_ptr(), value.bytes().len())
-		});
-		let (removed, remove_reached) = with_context(|ctx| host_state_remove(1, ctx, key.as_ptr(), key.len()));
+		let row = [ExternCStateEntry {
+			key: ExternCStateSlice {
+				ptr: key.as_ptr(),
+				len: key.len(),
+			},
+			value: ExternCStateSlice {
+				ptr: value.bytes().as_ptr(),
+				len: value.bytes().len(),
+			},
+		}];
+		let key_ref = [ExternCKeyRef {
+			ptr: key.as_ptr(),
+			len: key.len(),
+		}];
+		let (set, set_reached) = with_context(|ctx| host_state_set(1, ctx, row.as_ptr(), row.len()));
+		let (removed, remove_reached) =
+			with_context(|ctx| host_state_remove(1, ctx, key_ref.as_ptr(), key_ref.len()));
 
 		assert_eq!(set, EXTERN_C_OK);
 		assert_eq!(removed, EXTERN_C_OK);
@@ -1613,18 +1542,25 @@ mod join_row_expiry_guard_tests {
 					}
 				};
 				let key = framed(keyspace);
+				let row = [ExternCStateEntry {
+					key: ExternCStateSlice {
+						ptr: key.as_ptr(),
+						len: key.len(),
+					},
+					value: ExternCStateSlice {
+						ptr: value.bytes().as_ptr(),
+						len: value.bytes().len(),
+					},
+				}];
+				let key_ref = [ExternCKeyRef {
+					ptr: key.as_ptr(),
+					len: key.len(),
+				}];
 				let (set, set_reached) = with_class_context(class, |ctx| {
-					host_state_set(
-						1,
-						ctx,
-						key.as_ptr(),
-						key.len(),
-						value.bytes().as_ptr(),
-						value.bytes().len(),
-					)
+					host_state_set(1, ctx, row.as_ptr(), row.len())
 				});
 				let (removed, remove_reached) = with_class_context(class, |ctx| {
-					host_state_remove(1, ctx, key.as_ptr(), key.len())
+					host_state_remove(1, ctx, key_ref.as_ptr(), key_ref.len())
 				});
 				let expected = if owns {
 					EXTERN_C_OK
@@ -1644,17 +1580,24 @@ mod join_row_expiry_guard_tests {
 	#[test]
 	fn a_windowed_guest_reads_its_window_and_identity_keyspaces_and_nothing_else() {
 		// The sweep reads the identity keyspace; a wall that also admitted a host keyspace leaks its rows.
-		let mut out = ExternCBuffer::empty();
 		let meta = framed(KeyspaceId::WINDOW_META);
 		let custom = framed(KeyspaceId::CUSTOM_UNMANAGED);
-		let get = |key: &[u8], out: &mut ExternCBuffer| {
-			with_class_context(OperatorClass::Windowed, |ctx| {
-				host_state_get(1, ctx, key.as_ptr(), key.len(), out)
-			})
-			.0
+		let get = |key: &[u8]| {
+			let keys = [ExternCKeyRef {
+				ptr: key.as_ptr(),
+				len: key.len(),
+			}];
+			let mut iterator: *mut ExternCStateIterator = ptr::null_mut();
+			let outcome = with_class_context(OperatorClass::Windowed, |ctx| {
+				host_state_get(1, ctx, keys.as_ptr(), keys.len(), &mut iterator)
+			});
+			if !iterator.is_null() {
+				host_state_iterator_free(iterator);
+			}
+			outcome
 		};
-		assert_eq!(get(&meta, &mut out), EXTERN_C_NOT_FOUND, "an owned key must reach the host");
-		assert_eq!(get(&custom, &mut out), EXTERN_C_ERROR_INTERNAL, "a custom key must be refused");
+		assert_eq!(get(&meta), (EXTERN_C_OK, true), "an owned key must reach the host");
+		assert_eq!(get(&custom), (EXTERN_C_ERROR_INTERNAL, false), "a custom key must be refused");
 
 		let range = |keyspace| {
 			with_class_context(OperatorClass::Windowed, |ctx| guest_range(ctx, keyspace, None, None)).0
@@ -1682,12 +1625,12 @@ mod join_row_expiry_guard_tests {
 		];
 		let mut iterator: *mut ExternCStateIterator = ptr::null_mut();
 		let (status, _) = with_class_context(OperatorClass::Managed, |ctx| {
-			host_state_get_many(1, ctx, keys.as_ptr(), 1, &mut iterator)
+			host_state_get(1, ctx, keys.as_ptr(), 1, &mut iterator)
 		});
 		assert_eq!(status, EXTERN_C_OK, "the owned key alone must be served");
 		host_state_iterator_free(iterator);
 		let (status, _) = with_class_context(OperatorClass::Managed, |ctx| {
-			host_state_get_many(1, ctx, keys.as_ptr(), keys.len(), &mut iterator)
+			host_state_get(1, ctx, keys.as_ptr(), keys.len(), &mut iterator)
 		});
 		assert_eq!(status, EXTERN_C_ERROR_INTERNAL);
 	}
@@ -1709,7 +1652,7 @@ mod join_row_expiry_guard_tests {
 			},
 		];
 		let (status, reached) = with_class_context(OperatorClass::Windowed, |ctx| {
-			host_state_remove_many(1, ctx, keys.as_ptr(), keys.len())
+			host_state_remove(1, ctx, keys.as_ptr(), keys.len())
 		});
 		assert_eq!(
 			(status, reached),
@@ -1721,9 +1664,8 @@ mod join_row_expiry_guard_tests {
 	#[test]
 	fn a_remove_many_with_a_null_key_list_is_refused() {
 		// A null list with a length makes the host read guest memory it was never given.
-		let (status, reached) = with_class_context(OperatorClass::Windowed, |ctx| {
-			host_state_remove_many(1, ctx, ptr::null(), 2)
-		});
+		let (status, reached) =
+			with_class_context(OperatorClass::Windowed, |ctx| host_state_remove(1, ctx, ptr::null(), 2));
 		assert_eq!((status, reached), (EXTERN_C_ERROR_NULL_PTR, false));
 	}
 
@@ -1808,14 +1750,14 @@ mod join_row_expiry_guard_tests {
 		let group = ExternCGroupId {
 			bytes: *GroupId::hashed(Hash128(5)).as_bytes(),
 		};
-		let (status, reached) = with_context(|ctx| host_remove_row_numbers(1, ctx, group, keys.as_ptr(), 1));
+		let (status, reached) = with_context(|ctx| host_remove_row_number(1, ctx, group, keys.as_ptr(), 1));
 		assert_eq!(
 			(status, reached),
 			(EXTERN_C_OK, true),
 			"precondition: the non-empty key alone reaches the host"
 		);
 		let (status, reached) =
-			with_context(|ctx| host_remove_row_numbers(1, ctx, group, keys.as_ptr(), keys.len()));
+			with_context(|ctx| host_remove_row_number(1, ctx, group, keys.as_ptr(), keys.len()));
 		assert_eq!(status, EXTERN_C_ERROR_INTERNAL, "an empty key must refuse the whole keyed batch");
 		assert!(!reached, "a refused keyed batch must remove nothing");
 	}

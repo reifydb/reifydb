@@ -378,7 +378,7 @@ impl TakePlan {
 			return Ok(HashMap::new());
 		}
 		let keys: Vec<GroupStateKey> = wanted.iter().map(|row| Self::row_key(*row)).collect();
-		let found = host.state_get_many(&keys)?;
+		let found = host.state_get(&keys)?;
 		let mut loaded = HashMap::with_capacity(keys.len());
 		for ((row, key), found) in wanted.into_iter().zip(&keys).zip(found) {
 			let Some(found) = found else {
@@ -404,8 +404,8 @@ impl TakePlan {
 		}
 		let removes: Vec<GroupStateKey> =
 			rows.stored.iter().filter(|row| !state.holds(row)).map(|row| Self::row_key(*row)).collect();
-		host.state_set_many(sets)?;
-		host.state_remove_many(&removes)
+		host.state_set(sets)?;
+		host.state_remove(&removes)
 	}
 
 	fn load_take_state(&self, host: &mut dyn HostContext) -> Result<TakeState> {

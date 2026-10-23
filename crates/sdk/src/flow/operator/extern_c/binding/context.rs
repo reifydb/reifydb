@@ -37,7 +37,7 @@ use crate::{
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
 					get_or_create_row_numbers_for_groups, get_row_numbers, reclaim_group_identity,
-					remove_row_number, remove_row_numbers, remove_row_numbers_for_groups,
+					remove_row_number, remove_row_number_for_group,
 				},
 			},
 			wire::context::ExternCContextRaw,
@@ -165,16 +165,12 @@ impl ExternCContext {
 		get_row_numbers(self, group, keys)
 	}
 
-	pub fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		remove_row_number(self, group, key)
+	pub fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		remove_row_number(self, group, keys)
 	}
 
-	pub fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		remove_row_numbers(self, group, keys)
-	}
-
-	pub fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
-		remove_row_numbers_for_groups(self, groups)
+	pub fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
+		remove_row_number_for_group(self, groups)
 	}
 
 	pub fn reclaim_group_identity(&mut self, group: GroupId, limit: usize) -> Result<ReclaimOutcome> {
@@ -189,32 +185,32 @@ impl ExternCContext {
 }
 
 impl GuestState for State<'_> {
-	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> Result<Option<T>> {
-		State::get(self, key)
+	fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<T>>> {
+		State::get(self, keys)
 	}
-	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()> {
-		State::set(self, key, value)
+	fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> Result<()> {
+		State::set(self, rows)
 	}
-	fn remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		State::remove(self, key)
+	fn remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		State::remove(self, keys)
 	}
-	fn contains(&self, key: &GroupStateKey) -> Result<bool> {
-		State::contains(self, key)
+	fn contains(&self, keys: &[GroupStateKey]) -> Result<Vec<bool>> {
+		State::contains(self, keys)
 	}
-	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		State::get_bytes(self, key)
-	}
-
-	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		State::set_bytes(self, key, payload)
-	}
-
-	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()> {
-		State::remove(self, key)
+	fn get_bytes(
+		&self,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
+		State::get_bytes(self, keys, visit)
 	}
 
-	fn remove_many_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-		State::remove_many_bytes(self, keys)
+	fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		State::set_bytes(self, rows)
+	}
+
+	fn remove_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		State::remove(self, keys)
 	}
 
 	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
@@ -223,14 +219,6 @@ impl GuestState for State<'_> {
 
 	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()> {
 		State::write_batch_bytes(self, batch)
-	}
-
-	fn get_many_bytes_visit(
-		&self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
-		State::get_many_bytes_visit(self, keys, visit)
 	}
 
 	fn range_bytes_visit(
@@ -261,42 +249,53 @@ pub struct ClassFramedState<'a> {
 }
 
 impl GuestState for ClassFramedState<'_> {
-	fn get<T: OperatorState>(&self, key: &GroupStateKey) -> Result<Option<T>> {
-		class_framed(self.class, key)?;
-		State::get(&self.state, key)
-	}
-	fn set<T: OperatorState>(&mut self, key: &GroupStateKey, value: &T) -> Result<()> {
-		class_framed(self.class, key)?;
-		State::set(&mut self.state, key, value)
-	}
-	fn remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		class_framed(self.class, key)?;
-		State::remove(&mut self.state, key)
-	}
-	fn contains(&self, key: &GroupStateKey) -> Result<bool> {
-		class_framed(self.class, key)?;
-		State::contains(&self.state, key)
-	}
-	fn get_bytes(&self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		class_framed(self.class, key)?;
-		State::get_bytes(&self.state, key)
-	}
-
-	fn set_bytes(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		class_framed(self.class, key)?;
-		State::set_bytes(&mut self.state, key, payload)
-	}
-
-	fn remove_bytes(&mut self, key: &GroupStateKey) -> Result<()> {
-		class_framed(self.class, key)?;
-		State::remove(&mut self.state, key)
-	}
-
-	fn remove_many_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+	fn get<T: OperatorState>(&self, keys: &[GroupStateKey]) -> Result<Vec<Option<T>>> {
 		for key in keys {
 			class_framed(self.class, key)?;
 		}
-		State::remove_many_bytes(&mut self.state, keys)
+		State::get(&self.state, keys)
+	}
+	fn set<T: OperatorState>(&mut self, rows: &[(GroupStateKey, T)]) -> Result<()> {
+		for (key, _) in rows {
+			class_framed(self.class, key)?;
+		}
+		State::set(&mut self.state, rows)
+	}
+	fn remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		for key in keys {
+			class_framed(self.class, key)?;
+		}
+		State::remove(&mut self.state, keys)
+	}
+	fn contains(&self, keys: &[GroupStateKey]) -> Result<Vec<bool>> {
+		for key in keys {
+			class_framed(self.class, key)?;
+		}
+		State::contains(&self.state, keys)
+	}
+	fn get_bytes(
+		&self,
+		keys: &[GroupStateKey],
+		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
+		for key in keys {
+			class_framed(self.class, key)?;
+		}
+		State::get_bytes(&self.state, keys, visit)
+	}
+
+	fn set_bytes(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		for (key, _) in &rows {
+			class_framed(self.class, key)?;
+		}
+		State::set_bytes(&mut self.state, rows)
+	}
+
+	fn remove_bytes(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		for key in keys {
+			class_framed(self.class, key)?;
+		}
+		State::remove(&mut self.state, keys)
 	}
 
 	fn batch_bytes(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
@@ -309,17 +308,6 @@ impl GuestState for ClassFramedState<'_> {
 	fn write_batch_bytes(&mut self, batch: StateBatch) -> Result<()> {
 		check_class_batch(self.class, &batch)?;
 		State::write_batch_bytes(&mut self.state, batch)
-	}
-
-	fn get_many_bytes_visit(
-		&self,
-		keys: &[GroupStateKey],
-		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
-		for key in keys {
-			class_framed(self.class, key)?;
-		}
-		State::get_many_bytes_visit(&self.state, keys, visit)
 	}
 
 	fn range_bytes_visit(
@@ -391,14 +379,11 @@ impl GuestEmitContext for ExternCContext {
 	fn get_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<Option<RowNumber>>> {
 		ExternCContext::get_row_numbers(self, group, keys)
 	}
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		ExternCContext::remove_row_number(self, group, key)
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		ExternCContext::remove_row_number(self, group, keys)
 	}
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		ExternCContext::remove_row_numbers(self, group, keys)
-	}
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
-		ExternCContext::remove_row_numbers_for_groups(self, groups)
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
+		ExternCContext::remove_row_number_for_group(self, groups)
 	}
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<ExternCInsertEmit<'_>> {
 		let ctx = self.ctx;

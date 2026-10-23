@@ -459,7 +459,8 @@ mod reclaim_tests {
 		txn.set_change_coordinate(ChangeCoordinate {
 			at: Some(DateTime::from_millis(millis)),
 		});
-		TxnHostContext::with_retention(txn, OP, retention).state_set(key, EncodedPodRow::new(&[1]))
+		TxnHostContext::with_retention(txn, OP, retention)
+			.state_set(vec![(key.clone(), EncodedPodRow::new(&[1]))])
 	}
 
 	fn keys(txn: &mut DeferredTransaction, group: GroupId, keyspace: KeyspaceId) -> usize {

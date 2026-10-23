@@ -108,7 +108,7 @@ where
 	S: WindowAnchor + Hash,
 {
 	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
-		store.state_remove_many(keys)
+		store.state_remove(keys)
 	}
 }
 
@@ -166,7 +166,7 @@ where
 			}
 		}
 		if !drops.is_empty() {
-			store.state_remove_many(&drops)?;
+			store.state_remove(&drops)?;
 		}
 		if !sets.is_empty() {
 			self.expiry.set(store, sets)?;
@@ -287,7 +287,7 @@ where
 			})
 			.collect();
 		let mut counts = Vec::with_capacity(keys.len());
-		for row in store.state_get_many(&keys)? {
+		for row in store.state_get(&keys)? {
 			let count = match row {
 				Some(row) => decode::<RetainedHeader>(&row)?.count,
 				None => 0,
@@ -541,7 +541,7 @@ where
 			});
 		}
 		if !withdrawn.is_empty() {
-			store.remove_row_numbers_for_groups(&withdrawn)?;
+			store.remove_row_number_for_group(&withdrawn)?;
 		}
 		Ok(results)
 	}

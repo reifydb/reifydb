@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_core::{
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
@@ -60,7 +62,7 @@ impl SealLedger {
 		let state = SealLedgerState {
 			sealed_through: fired_order,
 		};
-		store.state_set(&seal_ledger_key(), state.encode_state()?)?;
+		store.state_set(vec![(seal_ledger_key(), state.encode_state()?)])?;
 		Ok(SealedThrough::from_order(fired_order))
 	}
 
@@ -72,12 +74,12 @@ impl SealLedger {
 		let state = SealLedgerState {
 			sealed_through: order,
 		};
-		store.state_set(&seal_ledger_key(), state.encode_state()?)?;
+		store.state_set(vec![(seal_ledger_key(), state.encode_state()?)])?;
 		Ok(order)
 	}
 
 	pub fn read_order(store: &mut dyn StateStore) -> Result<Option<u64>> {
-		let Some(bytes) = store.state_get(&seal_ledger_key())? else {
+		let Some(bytes) = store.state_get(from_ref(&seal_ledger_key()))?.pop().flatten() else {
 			return Ok(None);
 		};
 		let state: SealLedgerState = decode(&bytes)?;

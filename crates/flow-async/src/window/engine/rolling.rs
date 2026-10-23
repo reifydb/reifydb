@@ -583,7 +583,7 @@ where
 				});
 			}
 		}
-		store.remove_row_numbers_for_groups(&withdrawn_groups)?;
+		store.remove_row_number_for_group(&withdrawn_groups)?;
 		Ok(results)
 	}
 
@@ -682,7 +682,7 @@ where
 						value,
 					}),
 					None => {
-						store.remove_row_number_for_group(group_id)?;
+						store.remove_row_number_for_group(&[group_id])?;
 						out.push(RollingExpiry::Remove {
 							row_number,
 							group,
@@ -746,7 +746,7 @@ where
 					kind: EmitKind::Remove,
 				});
 			}
-			store.remove_row_numbers_for_groups(&groups)?;
+			store.remove_row_number_for_group(&groups)?;
 		}
 		Ok(out)
 	}
@@ -847,10 +847,10 @@ where
 		removes: Vec<GroupStateKey>,
 	) -> Result<()> {
 		if !sets.is_empty() {
-			store.state_set_many(sets)?;
+			store.state_set(sets)?;
 		}
 		if !removes.is_empty() {
-			store.state_remove_many(&removes)?;
+			store.state_remove(&removes)?;
 		}
 		Ok(())
 	}
@@ -1128,7 +1128,7 @@ where
 				}
 			}
 		}
-		store.remove_row_numbers_for_groups(&withdrawn_groups)?;
+		store.remove_row_number_for_group(&withdrawn_groups)?;
 		self.persist_meta(store, meta_loaded)?;
 		Ok(results)
 	}
@@ -1297,7 +1297,7 @@ where
 						value,
 					}),
 					None => {
-						store.remove_row_number_for_group(group_id)?;
+						store.remove_row_number_for_group(&[group_id])?;
 						out.push(RollingExpiry::Remove {
 							row_number,
 							group,
@@ -1828,10 +1828,11 @@ mod tests {
 		)
 		.unwrap();
 		assert_eq!(store.pane_count(), 6, "precondition: each group holds two panes");
-		let before = |store: &MockStore| {
-			["group_sweep_many", "state_remove_many", "state_set_many"].map(|name| store.calls(name))
-		};
-		let [sweeps, removes, sets] = before(&store);
+		let batched_removes =
+			|store: &MockStore| store.sizes("state_remove").into_iter().filter(|size| *size > 1).count();
+		let before = |store: &MockStore| ["group_sweep_many", "pane_set"].map(|name| store.calls(name));
+		let [sweeps, pane_sets] = before(&store);
+		let removes = batched_removes(&store);
 
 		let expired = engine.expire_before_running(&mut store, at_millis(20)).unwrap();
 
@@ -1843,8 +1844,8 @@ mod tests {
 			"precondition: all three groups were due"
 		);
 		assert_eq!(store.calls("group_sweep_many") - sweeps, 1, "one pane read for all due groups");
-		assert_eq!(store.calls("state_remove_many") - removes, 1, "every expired pane goes in one call");
-		assert_eq!(store.calls("state_set_many") - sets, 0, "a kept pane is never rewritten");
+		assert_eq!(batched_removes(&store) - removes, 1, "every expired pane goes in one call");
+		assert_eq!(store.calls("pane_set") - pane_sets, 0, "a kept pane is never rewritten");
 		assert_eq!(store.pane_count(), 3, "each group keeps its pane at 40");
 	}
 

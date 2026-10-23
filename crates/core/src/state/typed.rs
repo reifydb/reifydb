@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{ops::Bound, slice::from_ref};
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_value::{Result, reifydb_assertions};
@@ -172,7 +172,7 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 	where
 		K: Keyspace,
 	{
-		self.state_get(&typed_key::<K>(group, suffix))
+		Ok(self.state_get(from_ref(&typed_key::<K>(group, suffix)))?.pop().flatten())
 	}
 
 	fn state_batch_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<StateBatch>
@@ -186,23 +186,21 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 	where
 		K: Keyspace,
 	{
-		self.state_set(&typed_key::<K>(group, suffix), row)
+		self.state_set(vec![(typed_key::<K>(group, suffix), row)])
 	}
 
 	fn state_set_many_in<K>(&mut self, group: GroupId, rows: Vec<(K::Suffix, EncodedPodRow)>) -> Result<()>
 	where
 		K: Keyspace,
 	{
-		self.state_set_many(
-			rows.into_iter().map(|(suffix, row)| (typed_key::<K>(group, &suffix), row)).collect(),
-		)
+		self.state_set(rows.into_iter().map(|(suffix, row)| (typed_key::<K>(group, &suffix), row)).collect())
 	}
 
 	fn state_remove_in<K>(&mut self, group: GroupId, suffix: &K::Suffix) -> Result<()>
 	where
 		K: Keyspace,
 	{
-		self.state_remove(&typed_key::<K>(group, suffix))
+		self.state_remove(from_ref(&typed_key::<K>(group, suffix)))
 	}
 
 	fn state_remove_many_in<K>(&mut self, group: GroupId, suffixes: &[K::Suffix]) -> Result<()>
@@ -210,7 +208,7 @@ impl<T: StateStore + ?Sized> TypedStateStore for T {
 		K: Keyspace,
 	{
 		let keys: Vec<GroupStateKey> = suffixes.iter().map(|suffix| typed_key::<K>(group, suffix)).collect();
-		self.state_remove_many(&keys)
+		self.state_remove(&keys)
 	}
 
 	fn state_scan_in<K>(

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{hash::Hash, marker::PhantomData};
+use std::{hash::Hash, marker::PhantomData, slice::from_ref};
 
 use reifydb_codec::row::operator::state::{OperatorState, decode};
 use reifydb_core::{
@@ -17,7 +17,7 @@ where
 	S: StateStore + ?Sized,
 {
 	let seed = row_number_seed(store)?;
-	store.state_set(&row_number_counter_key(), (seed + count).encode_state()?)?;
+	store.state_set(vec![(row_number_counter_key(), (seed + count).encode_state()?)])?;
 	Ok(RowNumber(seed))
 }
 
@@ -44,7 +44,7 @@ impl RowNumberReserve {
 		S: StateStore + ?Sized,
 	{
 		match self.next {
-			Some(next) => store.state_set(&row_number_counter_key(), next.encode_state()?),
+			Some(next) => store.state_set(vec![(row_number_counter_key(), next.encode_state()?)]),
 			None => Ok(()),
 		}
 	}
@@ -54,7 +54,7 @@ fn row_number_seed<S>(store: &mut S) -> Result<u64>
 where
 	S: StateStore + ?Sized,
 {
-	match store.state_get(&row_number_counter_key())? {
+	match store.state_get(from_ref(&row_number_counter_key()))?.pop().flatten() {
 		Some(row) => Ok(decode::<u64>(&row)?),
 		None => Ok(1),
 	}
@@ -67,7 +67,7 @@ where
 	V: Clone + OperatorState + HeapSize,
 {
 	let encoded_key = key.into_group_state_key();
-	match store.state_get(&encoded_key)? {
+	match store.state_get(from_ref(&encoded_key))?.pop().flatten() {
 		Some(bytes) => Ok(Some(decode::<V>(&bytes)?)),
 		None => Ok(None),
 	}
@@ -80,7 +80,7 @@ where
 	V: Clone + OperatorState + HeapSize,
 {
 	let encoded_key = key.into_group_state_key();
-	let (value, pre) = match store.state_get(&encoded_key)? {
+	let (value, pre) = match store.state_get(from_ref(&encoded_key))?.pop().flatten() {
 		Some(bytes) => (Some(decode::<V>(&bytes)?), Some(bytes.byte_size())),
 		None => (None, None),
 	};
@@ -95,7 +95,7 @@ where
 	V: Clone + OperatorState + HeapSize,
 {
 	let encoded: Vec<GroupStateKey> = keys.iter().map(|key| key.into_group_state_key()).collect();
-	let rows = store.state_get_many(&encoded)?;
+	let rows = store.state_get(&encoded)?;
 	if rows.len() != encoded.len() {
 		return internal_err!("a batch read answered {} slots for {} keys", rows.len(), encoded.len());
 	}
@@ -159,7 +159,7 @@ where
 {
 	let encoded_key = key.into_group_state_key();
 	let payload = value.encode_state()?;
-	store.state_set(&encoded_key, payload)
+	store.state_set(vec![(encoded_key.clone(), payload)])
 }
 
 pub fn put<K, V>(store: &mut dyn StateStore, key: &K, value: V) -> Result<()>
@@ -177,7 +177,7 @@ where
 	for<'a> &'a K: IntoGroupStateKey,
 {
 	let encoded_key = key.into_group_state_key();
-	store.state_remove(&encoded_key)
+	store.state_remove(from_ref(&encoded_key))
 }
 
 pub fn get_or_default<K, V>(store: &mut dyn StateStore, key: &K) -> Result<V>
@@ -265,7 +265,6 @@ mod tests {
 		removes: usize,
 		sets: usize,
 		gets: usize,
-		batch_reads: usize,
 		classifications: Vec<(Vec<u8>, Option<ByteSize>)>,
 		// Settable clock so the persisted timestamp is observable; defaults to epoch.
 		now: DateTime,
@@ -286,30 +285,13 @@ mod tests {
 	}
 
 	impl StateStore for MockStore {
-		fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
+		fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 			self.gets += 1;
-			Ok(self.data.get(key.as_slice()).cloned())
-		}
-
-		fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
-			self.batch_reads += 1;
 			Ok(keys.iter().map(|key| self.data.get(key.as_slice()).cloned()).collect())
 		}
 
 		fn state_classify(&mut self, key: &GroupStateKey, pre: Option<ByteSize>) {
 			self.classifications.push((key.as_slice().to_vec(), pre));
-		}
-
-		fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-			self.sets += 1;
-			self.data.insert(key.as_slice().to_vec(), payload);
-			Ok(())
-		}
-
-		fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-			self.removes += 1;
-			self.data.remove(key.as_slice());
-			Ok(())
 		}
 
 		fn state_page_inner(
@@ -366,16 +348,12 @@ mod tests {
 			Ok(keys.iter().enumerate().map(|(i, _)| Some(RowNumber(i as u64 + 1))).collect())
 		}
 
-		fn remove_row_number(&mut self, _group: GroupId, _key: &EncodedKey) -> Result<()> {
+		fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+			self.removes += 1;
+			for key in keys {
+				self.data.remove(key.as_slice());
+			}
 			Ok(())
-		}
-
-		fn remove_row_number_for_group(&mut self, _group: GroupId) -> Result<()> {
-			Ok(())
-		}
-
-		fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-			per_key::remove_many(self, keys)
 		}
 
 		fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
@@ -386,8 +364,12 @@ mod tests {
 			per_key::write_batch(self, batch)
 		}
 
-		fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
-			per_key::set_many(self, rows)
+		fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+			self.sets += 1;
+			for (key, payload) in rows {
+				self.data.insert(key.as_slice().to_vec(), payload);
+			}
+			Ok(())
 		}
 
 		fn group_sweep(
@@ -408,12 +390,12 @@ mod tests {
 			per_key::group_sweep_many(self, groups, limit, keyspaces)
 		}
 
-		fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-			per_key::remove_row_numbers(self, group, keys)
+		fn remove_row_number(&mut self, _group: GroupId, _keys: &[EncodedKey]) -> Result<()> {
+			Ok(())
 		}
 
-		fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
-			per_key::remove_row_numbers_for_groups(self, groups)
+		fn remove_row_number_for_group(&mut self, _groups: &[GroupId]) -> Result<()> {
+			Ok(())
 		}
 
 		fn written_at(&self) -> DateTime {
@@ -514,8 +496,7 @@ mod tests {
 		session.set(0, &cell(1)).unwrap();
 		session.commit(&mut store).unwrap();
 
-		assert_eq!(store.gets, 0, "the session must classify from its own read, never pay a single one");
-		assert_eq!(store.batch_reads, 1, "the session must read its keys in exactly one batch read");
+		assert_eq!(store.gets, 1, "the session must read its keys in exactly one batch read");
 		assert_eq!(
 			store.classifications.len(),
 			1,
@@ -559,8 +540,7 @@ mod tests {
 		let values = get_many::<_, Cell>(&mut store, &[Key::new("a")]).unwrap();
 
 		assert_eq!(values, vec![Some(cell(123_456_789))], "classifying must not disturb the value it returns");
-		assert_eq!(store.gets, 0, "the multi-get must classify from its own read, never pay a single one");
-		assert_eq!(store.batch_reads, 1, "the multi-get must read its keys in exactly one batch read");
+		assert_eq!(store.gets, 1, "the multi-get must read its keys in exactly one batch read");
 		assert_eq!(
 			store.classifications[0].1,
 			Some(ByteSize::from_bytes(durable as u64)),

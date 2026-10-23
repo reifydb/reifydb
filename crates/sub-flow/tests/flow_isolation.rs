@@ -83,8 +83,8 @@ impl UnmanagedOperator for SlowCounter {
 		}
 
 		let key = unmanaged_key(&[]).expect("an empty id fits the keyspace");
-		let total = ctx.state().get::<i64>(&key)?.unwrap_or(0) + seen;
-		ctx.state().set(&key, &total)?;
+		let total = ctx.state().get::<i64>(std::slice::from_ref(&key))?.pop().flatten().unwrap_or(0) + seen;
+		ctx.state().set(&[(key.clone(), total)])?;
 		ctx.emit_insert(
 			&[CountRow {
 				seen: total,

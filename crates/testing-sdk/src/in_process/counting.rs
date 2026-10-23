@@ -82,33 +82,18 @@ impl<T: FlowTransaction> TimerStore for CountingHost<'_, T> {
 }
 
 impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
-	fn state_get(&mut self, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		self.record("state_get", 1);
-		self.inner.state_get(key)
-	}
-
-	fn state_get_many(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
-		self.record("state_get_many", keys.len());
-		self.inner.state_get_many(keys)
+	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+		self.record("state_get", keys.len());
+		self.inner.state_get(keys)
 	}
 
 	fn state_classify(&mut self, key: &GroupStateKey, pre: Option<ByteSize>) {
 		self.inner.state_classify(key, pre)
 	}
 
-	fn state_set(&mut self, key: &GroupStateKey, payload: EncodedPodRow) -> Result<()> {
-		self.record("state_set", 1);
-		self.inner.state_set(key, payload)
-	}
-
-	fn state_remove(&mut self, key: &GroupStateKey) -> Result<()> {
-		self.record("state_remove", 1);
-		self.inner.state_remove(key)
-	}
-
-	fn state_remove_many(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-		self.record("state_remove_many", keys.len());
-		self.inner.state_remove_many(keys)
+	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
+		self.record("state_remove", keys.len());
+		self.inner.state_remove(keys)
 	}
 
 	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
@@ -121,9 +106,9 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 		self.inner.state_write_batch(batch)
 	}
 
-	fn state_set_many(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
-		self.record("state_set_many", rows.len());
-		self.inner.state_set_many(rows)
+	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+		self.record("state_set", rows.len());
+		self.inner.state_set(rows)
 	}
 
 	fn state_page(
@@ -190,24 +175,14 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 		self.inner.get_row_numbers(group, keys)
 	}
 
-	fn remove_row_number(&mut self, group: GroupId, key: &EncodedKey) -> Result<()> {
-		self.record("remove_row_number", 1);
-		self.inner.remove_row_number(group, key)
+	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+		self.record("remove_row_number", keys.len());
+		self.inner.remove_row_number(group, keys)
 	}
 
-	fn remove_row_number_for_group(&mut self, group: GroupId) -> Result<()> {
-		self.record("remove_row_number_for_group", 1);
-		self.inner.remove_row_number_for_group(group)
-	}
-
-	fn remove_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		self.record("remove_row_numbers", keys.len());
-		self.inner.remove_row_numbers(group, keys)
-	}
-
-	fn remove_row_numbers_for_groups(&mut self, groups: &[GroupId]) -> Result<()> {
-		self.record("remove_row_numbers_for_groups", groups.len());
-		self.inner.remove_row_numbers_for_groups(groups)
+	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
+		self.record("remove_row_number_for_group", groups.len());
+		self.inner.remove_row_number_for_group(groups)
 	}
 
 	fn written_at(&self) -> DateTime {

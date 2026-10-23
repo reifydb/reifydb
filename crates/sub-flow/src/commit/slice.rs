@@ -1000,11 +1000,7 @@ mod integration {
 					});
 					for key in &row_keys {
 						assert!(
-							pinned.get(from_ref(key))
-								.unwrap()
-								.pop()
-								.flatten()
-								.is_some(),
+							pinned.get(from_ref(key)).unwrap().pop().flatten().is_some(),
 							"a txn pinned below the flow's commit version must read the flow's own rows from the store"
 						);
 					}
@@ -1120,11 +1116,7 @@ mod integration {
 					});
 					for key in &live_keys {
 						assert!(
-							pinned.get(from_ref(key))
-								.unwrap()
-								.pop()
-								.flatten()
-								.is_some(),
+							pinned.get(from_ref(key)).unwrap().pop().flatten().is_some(),
 							"{:?} must resolve from the store with no pending writes",
 							KeyTag::of(key)
 						);

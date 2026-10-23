@@ -76,7 +76,8 @@ impl ManagedOperator for Tally {
 
 	fn apply(&mut self, ctx: &mut impl GuestContext<Managed>, change: impl ChangeView) -> SdkResult<()> {
 		for group in groups(&change) {
-			ctx.state().set(&managed_key_in(group, &[]).expect("an empty id fits the keyspace"), &1i64)?;
+			ctx.state()
+				.set(&[(managed_key_in(group, &[]).expect("an empty id fits the keyspace"), 1i64)])?;
 		}
 		Ok(())
 	}
@@ -110,7 +111,7 @@ impl UnmanagedOperator for Keeper {
 	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
 		for group in groups(&change) {
 			ctx.state()
-				.set(&unmanaged_key_in(group, &[]).expect("an empty id fits the keyspace"), &1i64)?;
+				.set(&[(unmanaged_key_in(group, &[]).expect("an empty id fits the keyspace"), 1i64)])?;
 		}
 		Ok(())
 	}

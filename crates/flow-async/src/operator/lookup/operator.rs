@@ -750,7 +750,7 @@ impl HostOperator for LookupOperator {
 
 #[cfg(test)]
 mod tests {
-	use std::{ops::Bound, sync::Arc};
+	use std::{ops::Bound, slice::from_ref, sync::Arc};
 
 	use arrow_array::UInt64Array;
 	use reifydb_codec::row::{bytes::read_fingerprint, shape::RowFamily};
@@ -936,7 +936,11 @@ mod tests {
 	}
 
 	fn stored_read(txn: &mut DeferredTransaction, row: u64) -> Option<(CommitVersion, RowNumber)> {
-		let stored = TxnHostContext::new(txn, OperatorId(OP)).state_get(&read_key(RowNumber(row))).unwrap();
+		let stored = TxnHostContext::new(txn, OperatorId(OP))
+			.state_get(from_ref(&read_key(RowNumber(row))))
+			.unwrap()
+			.pop()
+			.flatten();
 		stored.map(|stored| decode_read(&stored).unwrap())
 	}
 

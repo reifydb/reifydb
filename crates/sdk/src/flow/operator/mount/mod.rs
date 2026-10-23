@@ -237,7 +237,7 @@ mod tests {
 		let group = GroupId::of(&key("absent"));
 		let absent = OperatorStateKey::inner_encoded(group, KeyspaceId::ACCUMULATOR, []);
 
-		assert!(host.state_get(&absent).unwrap().is_none());
+		assert!(host.state_get(from_ref(&absent)).unwrap().pop().flatten().is_none());
 
 		assert!(
 			host.group_sweep(group, KeyspaceMask::all(), None).unwrap().is_empty(),
@@ -264,12 +264,12 @@ mod tests {
 		let mut host = TxnHostContext::new(&mut txn, NODE);
 
 		let written = stored_key("entry");
-		host.state_set(&written, EncodedPodRow::new(&[7])).unwrap();
+		host.state_set(vec![(written.clone(), EncodedPodRow::new(&[7]))]).unwrap();
 
 		assert_eq!(
-			host.state_get_many(from_ref(&written)).unwrap(),
+			host.state_get(from_ref(&written)).unwrap(),
 			vec![Some(EncodedPodRow::new(&[7]))],
-			"state_get_many must answer the key that was written"
+			"state_get must answer the key that was written"
 		);
 
 		let from_range: Vec<GroupStateKey> = host
@@ -283,7 +283,7 @@ mod tests {
 		let mut visited = Vec::new();
 		let mut guest = InProcessContext::new(&mut host, NODE);
 		GuestContext::<Windowed>::window_state(&mut guest)
-			.get_many_bytes_visit(from_ref(&written), &mut |key, _| {
+			.get_bytes(from_ref(&written), &mut |key, _| {
 				visited.push(key);
 				Ok(())
 			})

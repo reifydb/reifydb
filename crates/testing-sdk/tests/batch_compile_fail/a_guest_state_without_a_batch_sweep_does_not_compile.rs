@@ -15,35 +15,35 @@ use reifydb_sdk::{
 struct PerGroupState;
 
 impl GuestState for PerGroupState {
-	fn get<T: OperatorState>(&self, _key: &GroupStateKey) -> Result<Option<T>> {
-		Ok(None)
+	fn get<T: OperatorState>(&self, _keys: &[GroupStateKey]) -> Result<Vec<Option<T>>> {
+		Ok(Vec::new())
 	}
 
-	fn set<T: OperatorState>(&mut self, _key: &GroupStateKey, _value: &T) -> Result<()> {
+	fn set<T: OperatorState>(&mut self, _rows: &[(GroupStateKey, T)]) -> Result<()> {
 		Ok(())
 	}
 
-	fn remove(&mut self, _key: &GroupStateKey) -> Result<()> {
+	fn remove(&mut self, _keys: &[GroupStateKey]) -> Result<()> {
 		Ok(())
 	}
 
-	fn contains(&self, _key: &GroupStateKey) -> Result<bool> {
-		Ok(false)
+	fn contains(&self, _keys: &[GroupStateKey]) -> Result<Vec<bool>> {
+		Ok(Vec::new())
 	}
 
-	fn get_bytes(&self, _key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		Ok(None)
-	}
-
-	fn set_bytes(&mut self, _key: &GroupStateKey, _payload: EncodedPodRow) -> Result<()> {
+	fn get_bytes(
+		&self,
+		_keys: &[GroupStateKey],
+		_visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
+	) -> Result<()> {
 		Ok(())
 	}
 
-	fn remove_bytes(&mut self, _key: &GroupStateKey) -> Result<()> {
+	fn set_bytes(&mut self, _rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
 		Ok(())
 	}
 
-	fn remove_many_bytes(&mut self, _keys: &[GroupStateKey]) -> Result<()> {
+	fn remove_bytes(&mut self, _keys: &[GroupStateKey]) -> Result<()> {
 		Ok(())
 	}
 
@@ -52,14 +52,6 @@ impl GuestState for PerGroupState {
 	}
 
 	fn write_batch_bytes(&mut self, _batch: StateBatch) -> Result<()> {
-		Ok(())
-	}
-
-	fn get_many_bytes_visit(
-		&self,
-		_keys: &[GroupStateKey],
-		_visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
-	) -> Result<()> {
 		Ok(())
 	}
 

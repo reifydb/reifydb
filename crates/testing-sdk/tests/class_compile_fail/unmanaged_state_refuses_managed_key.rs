@@ -7,8 +7,8 @@ use reifydb_sdk::{
 	flow::operator::context::{ClassState, GuestContext, Unmanaged},
 };
 
-fn read(ctx: &mut impl GuestContext<Unmanaged>, key: &ManagedKey) -> Result<Option<i64>> {
-	ctx.state().get::<i64>(key)
+fn read(ctx: &mut impl GuestContext<Unmanaged>, key: &ManagedKey) -> Result<Vec<Option<i64>>> {
+	ctx.state().get::<i64>(std::slice::from_ref(key))
 }
 
 fn main() {}

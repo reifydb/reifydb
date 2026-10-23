@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, ops::Bound};
+use std::{collections::HashMap, ops::Bound, slice::from_ref};
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
@@ -36,7 +36,7 @@ pub struct StoreReaper;
 
 impl Reaper for StoreReaper {
 	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
-		store.state_remove_many(keys)
+		store.state_remove(keys)
 	}
 }
 
@@ -66,7 +66,7 @@ pub fn enqueue(store: &mut dyn StateStore, groups: &[GroupId]) -> Result<()> {
 	if rows.is_empty() {
 		return Ok(());
 	}
-	store.state_set_many(rows)
+	store.state_set(rows)
 }
 
 pub struct Queued {
@@ -161,7 +161,7 @@ where
 		);
 	}
 	if group.is_root() {
-		store.state_remove(&queue_key(group))?;
+		store.state_remove(from_ref(&queue_key(group)))?;
 		return Ok(GroupDrain {
 			freed: 0,
 			still_queued: false,
@@ -194,7 +194,7 @@ where
 			still_queued: true,
 		});
 	}
-	store.state_remove(&queue_key(group))?;
+	store.state_remove(from_ref(&queue_key(group)))?;
 	Ok(GroupDrain {
 		freed,
 		still_queued: false,
@@ -225,7 +225,7 @@ where
 			still_queued: true,
 		});
 	}
-	store.state_remove(&queue_key(group))?;
+	store.state_remove(from_ref(&queue_key(group)))?;
 	Ok(GroupDrain {
 		freed,
 		still_queued: false,
@@ -293,7 +293,7 @@ where
 	let mut still_queued: Vec<GroupId> = Vec::new();
 	for (group, freed) in planned {
 		if group.is_root() {
-			store.state_remove(&queue_key(group))?;
+			store.state_remove(from_ref(&queue_key(group)))?;
 			continue;
 		}
 		reifydb_assertions! {
@@ -317,7 +317,7 @@ where
 			still_queued.push(group);
 			continue;
 		}
-		store.state_remove(&queue_key(group))?;
+		store.state_remove(from_ref(&queue_key(group)))?;
 	}
 
 	if let Some(group) = cut_group {

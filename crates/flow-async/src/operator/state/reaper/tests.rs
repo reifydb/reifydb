@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::key::operator::state::KeyspaceId;
 use reifydb_value::util::hash::Hash128;
@@ -23,11 +25,11 @@ fn key(group: GroupId, keyspace: KeyspaceId, suffix: u8) -> GroupStateKey {
 }
 
 fn seed(store: &mut MockStore, key: &GroupStateKey) {
-	store.state_set(key, EncodedPodRow::new(&[0u8])).unwrap();
+	store.state_set(vec![(key.clone(), EncodedPodRow::new(&[0u8]))]).unwrap();
 }
 
 fn present(store: &mut MockStore, key: &GroupStateKey) -> bool {
-	store.state_get(key).unwrap().is_some()
+	store.state_get(from_ref(key)).unwrap().pop().flatten().is_some()
 }
 
 #[test]
@@ -387,7 +389,7 @@ struct RecordingReaper {
 impl Reaper for RecordingReaper {
 	fn reap(&mut self, store: &mut dyn StateStore, keys: &[GroupStateKey]) -> Result<()> {
 		self.seen.extend_from_slice(keys);
-		store.state_remove_many(keys)
+		store.state_remove(keys)
 	}
 }
 
