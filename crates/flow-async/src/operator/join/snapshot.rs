@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cell::RefCell, collections::HashMap, mem::take};
+use std::{cell::RefCell, collections::HashMap, mem::take, slice::from_ref};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::row::{
@@ -44,7 +44,6 @@ use crate::{
 				latest::winning_right_row,
 			},
 		},
-		state::store::state_get,
 		state_access::mint_row_numbers,
 	},
 };
@@ -109,7 +108,7 @@ fn cached<T: Clone>(
 	if let Some((value, _)) = cache.borrow().get(key) {
 		return Ok(value.clone());
 	}
-	let value = state_get(host, key)?.map(|row| decode(&row)).transpose()?;
+	let value = host.state_get(from_ref(key))?.pop().flatten().map(|row| decode(&row)).transpose()?;
 	cache.borrow_mut().insert(key.clone(), (value.clone(), false));
 	Ok(value)
 }
@@ -756,7 +755,7 @@ pub(crate) fn retire_right(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::catalog::flow::OperatorId;
+	use reifydb_core::{interface::catalog::flow::OperatorId, state::timer::StateStore};
 	use reifydb_test_harness::engine::TestEngine;
 
 	use super::*;
@@ -868,14 +867,14 @@ mod tests {
 		ledger.flush(&mut b(&mut txn)).unwrap();
 		let key = ledger.pin_key(group(), rn(7), version);
 		assert!(
-			state_get(&mut b(&mut txn), &key).unwrap().is_some(),
+			b(&mut txn).state_get(from_ref(&key)).unwrap().pop().flatten().is_some(),
 			"a version another left row still references must stay"
 		);
 
 		ledger.release(&mut b(&mut txn), group(), rn(2), rn(7)).unwrap();
 		ledger.flush(&mut b(&mut txn)).unwrap();
 		assert!(
-			state_get(&mut b(&mut txn), &key).unwrap().is_none(),
+			b(&mut txn).state_get(from_ref(&key)).unwrap().pop().flatten().is_none(),
 			"the last release must take the record with it"
 		);
 	}
@@ -916,7 +915,7 @@ mod tests {
 		ledger.flush(&mut b(&mut txn)).unwrap();
 
 		assert!(
-			state_get(&mut b(&mut txn), &stale).unwrap().is_none(),
+			b(&mut txn).state_get(from_ref(&stale)).unwrap().pop().flatten().is_none(),
 			"the version the left row no longer holds must be released"
 		);
 		assert_eq!(
@@ -999,6 +998,6 @@ mod tests {
 		ledger.flush(&mut b(&mut txn)).unwrap();
 
 		let key = ledger.pin_key(group(), rn(7), ContentVersion::of(&content));
-		assert!(state_get(&mut b(&mut txn), &key).unwrap().is_none());
+		assert!(b(&mut txn).state_get(from_ref(&key)).unwrap().pop().flatten().is_none());
 	}
 }

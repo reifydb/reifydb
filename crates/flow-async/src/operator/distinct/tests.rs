@@ -14,6 +14,7 @@ use reifydb_core::{
 		any::TaggedKey,
 		operator::state::{GroupId, GroupStateKey, KeyspaceId},
 	},
+	state::timer::StateStore,
 	value::{batch::batch, column::factory::int8},
 };
 use reifydb_flow::context::FlowContext;
@@ -30,7 +31,6 @@ use crate::{
 		HostOperator,
 		distinct::operator::{DistinctOperator, DistinctPlan},
 		host::TxnHostContext,
-		state::store,
 	},
 	transaction::{
 		deferred::DeferredTransaction, mock::FlowTxn, row_number::RowNumberExtension, state::StateExtension,
@@ -93,8 +93,11 @@ fn persisted_rows(op: &DistinctOperator, txn: &mut DeferredTransaction) -> BTree
 }
 
 fn layout_row(op: &DistinctOperator, txn: &mut DeferredTransaction) -> Option<Vec<u8>> {
-	store::state_get(&mut host(txn, op.plan.operator), &DistinctPlan::layout_storage_key())
+	host(txn, op.plan.operator)
+		.state_get(from_ref(&DistinctPlan::layout_storage_key()))
 		.unwrap()
+		.pop()
+		.flatten()
 		.map(|row| row.body().to_vec())
 }
 

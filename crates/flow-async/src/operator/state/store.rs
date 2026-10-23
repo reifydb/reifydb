@@ -1,33 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::slice::from_ref;
-
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::pod::EncodedPodRow,
-};
-use reifydb_core::key::operator::state::GroupStateKey;
-use reifydb_value::Result;
-
-use super::iter::StateIterator;
-use crate::operator::host::HostContext;
-
-pub fn state_get(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-	Ok(host.state_get(from_ref(key))?.pop().flatten())
-}
-
-pub fn state_set(host: &mut dyn HostContext, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
-	host.state_set(vec![(key.clone(), row)])
-}
-
-pub fn state_remove(host: &mut dyn HostContext, key: &GroupStateKey) -> Result<()> {
-	host.state_remove(from_ref(key))
-}
-
-pub fn state_range<'a>(host: &'a mut dyn HostContext, range: EncodedKeyRange) -> StateIterator<'a> {
-	host.state_range_iter(range)
-}
+use reifydb_codec::key::encoded::EncodedKey;
 
 pub fn empty_key() -> EncodedKey {
 	EncodedKey::new(Vec::new())
@@ -35,16 +9,23 @@ pub fn empty_key() -> EncodedKey {
 
 #[cfg(test)]
 pub mod tests {
-	use std::ops::Bound::{Excluded, Included, Unbounded};
+	use std::{
+		ops::Bound::{Excluded, Included, Unbounded},
+		slice::from_ref,
+	};
 
-	use reifydb_codec::row::bytes::EncodedBytes;
-	use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::node_prefix};
+	use reifydb_codec::{key::encoded::EncodedKeyRange, row::{bytes::EncodedBytes, pod::EncodedPodRow}};
+	use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::node_prefix, state::timer::StateStore};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
+	use reifydb_value::Result;
 
 	use super::*;
 	use crate::{
-		operator::{host::TxnHostContext, state::test_utils::test::*},
+		operator::{
+			host::{HostContext, TxnHostContext},
+			state::test_utils::test::*,
+		},
 		transaction::{FlowTransaction, deferred::DeferredTransaction, mock::FlowTxn},
 	};
 
@@ -54,7 +35,7 @@ pub mod tests {
 
 	fn scan_all(txn: &mut DeferredTransaction, operator: OperatorId) -> Vec<(EncodedKey, EncodedBytes)> {
 		// production reads are all keyspace-scoped; an unscoped sweep must exist only in tests
-		state_range(&mut host(txn, operator), EncodedKeyRange::all()).collect::<Result<Vec<_>>>().unwrap()
+		host(txn, operator).state_range_iter(EncodedKeyRange::all()).collect::<Result<Vec<_>>>().unwrap()
 	}
 
 	#[test]
@@ -65,9 +46,9 @@ pub mod tests {
 		let key = test_key("get");
 		let row = test_row();
 
-		state_set(&mut host(&mut txn, operator_id), &key, row.clone()).unwrap();
+		host(&mut txn, operator_id).state_set(vec![(key.clone(), row.clone())]).unwrap();
 
-		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap();
+		let result = host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &row);
 	}
@@ -79,7 +60,7 @@ pub mod tests {
 		let operator_id = OperatorId(1);
 		let key = test_key("nonexistent");
 
-		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap();
+		let result = host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten();
 		assert!(result.is_none());
 	}
 
@@ -92,12 +73,12 @@ pub mod tests {
 		let row1 = EncodedPodRow::new(&[1, 2, 3]);
 		let row2 = EncodedPodRow::new(&[4, 5, 6]);
 
-		state_set(&mut host(&mut txn, operator_id), &key, row1.clone()).unwrap();
-		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
+		host(&mut txn, operator_id).state_set(vec![(key.clone(), row1.clone())]).unwrap();
+		let result = host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten().unwrap();
 		assert_row_eq(&result, &row1);
 
-		state_set(&mut host(&mut txn, operator_id), &key, row2.clone()).unwrap();
-		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
+		host(&mut txn, operator_id).state_set(vec![(key.clone(), row2.clone())]).unwrap();
+		let result = host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten().unwrap();
 		assert_row_eq(&result, &row2);
 	}
 
@@ -107,11 +88,11 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("remove");
-		state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
-		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_some());
+		host(&mut txn, operator_id).state_set(vec![(key.clone(), test_row())]).unwrap();
+		assert!(host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten().is_some());
 
-		state_remove(&mut host(&mut txn, operator_id), &key).unwrap();
-		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_none());
+		host(&mut txn, operator_id).state_remove(from_ref(&key)).unwrap();
+		assert!(host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten().is_none());
 	}
 
 	#[test]
@@ -123,7 +104,7 @@ pub mod tests {
 		let keys = vec!["a", "b", "c", "d", "e"];
 		for key_suffix in &keys {
 			let key = test_key(key_suffix);
-			state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
+			host(&mut txn, operator_id).state_set(vec![(key.clone(), test_row())]).unwrap();
 		}
 
 		let range = EncodedKeyRange::new(
@@ -131,7 +112,7 @@ pub mod tests {
 			Excluded(test_key("d").into_encoded()),
 		);
 		let entries: Vec<_> =
-			state_range(&mut host(&mut txn, operator_id), range).collect::<Result<Vec<_>>>().unwrap();
+			host(&mut txn, operator_id).state_range_iter(range).collect::<Result<Vec<_>>>().unwrap();
 
 		// b and c, but not the excluded end d.
 		assert_eq!(entries.len(), 2);
@@ -145,7 +126,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("range_{}", i));
-			state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
+			host(&mut txn, operator_id).state_set(vec![(key.clone(), test_row())]).unwrap();
 		}
 
 		let entries = {
@@ -190,11 +171,11 @@ pub mod tests {
 		let row1 = EncodedPodRow::new(&[1]);
 		let row2 = EncodedPodRow::new(&[2]);
 
-		state_set(&mut host(&mut txn, node1), &key, row1.clone()).unwrap();
-		state_set(&mut host(&mut txn, node2), &key, row2.clone()).unwrap();
+		host(&mut txn, node1).state_set(vec![(key.clone(), row1.clone())]).unwrap();
+		host(&mut txn, node2).state_set(vec![(key.clone(), row2.clone())]).unwrap();
 
-		let result1 = state_get(&mut host(&mut txn, node1), &key).unwrap().unwrap();
-		let result2 = state_get(&mut host(&mut txn, node2), &key).unwrap().unwrap();
+		let result1 = host(&mut txn, node1).state_get(from_ref(&key)).unwrap().pop().flatten().unwrap();
+		let result2 = host(&mut txn, node2).state_get(from_ref(&key)).unwrap().pop().flatten().unwrap();
 
 		assert_row_eq(&result1, &row1);
 		assert_row_eq(&result2, &row2);
@@ -209,8 +190,8 @@ pub mod tests {
 
 		let large_row = EncodedPodRow::new(&[0xAB; 10240]);
 
-		state_set(&mut host(&mut txn, operator_id), &key, large_row.clone()).unwrap();
-		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
+		host(&mut txn, operator_id).state_set(vec![(key.clone(), large_row.clone())]).unwrap();
+		let result = host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten().unwrap();
 
 		assert_row_eq(&result, &large_row);
 	}
@@ -223,10 +204,10 @@ pub mod tests {
 		let key = test_key("simple_test");
 		let row = test_row();
 
-		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_none());
+		assert!(host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten().is_none());
 
-		state_set(&mut host(&mut txn, operator_id), &key, row.clone()).unwrap();
-		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap();
+		host(&mut txn, operator_id).state_set(vec![(key.clone(), row.clone())]).unwrap();
+		let result = host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten();
 		assert!(result.is_some());
 		assert_row_eq(&result.unwrap(), &row);
 	}
@@ -237,11 +218,11 @@ pub mod tests {
 		let mut txn = engine.flow_txn().deferred();
 		let operator_id = OperatorId(1);
 		let key = test_key("remove_test");
-		state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
-		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_some());
+		host(&mut txn, operator_id).state_set(vec![(key.clone(), test_row())]).unwrap();
+		assert!(host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten().is_some());
 
-		state_remove(&mut host(&mut txn, operator_id), &key).unwrap();
-		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_none());
+		host(&mut txn, operator_id).state_remove(from_ref(&key)).unwrap();
+		assert!(host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten().is_none());
 	}
 
 	#[test]
@@ -252,7 +233,7 @@ pub mod tests {
 
 		for i in 0..10 {
 			let key = test_key(&format!("{:02}", i)); // padded so the keys sort numerically
-			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[i as u8])).unwrap();
+			host(&mut txn, operator_id).state_set(vec![(key.clone(), EncodedPodRow::new(&[i as u8]))]).unwrap();
 		}
 
 		let range = EncodedKeyRange::new(
@@ -260,7 +241,7 @@ pub mod tests {
 			Excluded(test_key("05").into_encoded()),
 		);
 		let range_result: Vec<_> =
-			state_range(&mut host(&mut txn, operator_id), range).collect::<Result<Vec<_>>>().unwrap();
+			host(&mut txn, operator_id).state_range_iter(range).collect::<Result<Vec<_>>>().unwrap();
 
 		// 02, 03, 04 - the end bound is exclusive.
 		assert_eq!(range_result.len(), 3);
@@ -282,11 +263,11 @@ pub mod tests {
 		let row1 = EncodedPodRow::new(&[1]);
 		let row2 = EncodedPodRow::new(&[2]);
 
-		state_set(&mut host(&mut txn, operator1), &shared_key, row1.clone()).unwrap();
-		state_set(&mut host(&mut txn, operator2), &shared_key, row2.clone()).unwrap();
+		host(&mut txn, operator1).state_set(vec![(shared_key.clone(), row1.clone())]).unwrap();
+		host(&mut txn, operator2).state_set(vec![(shared_key.clone(), row2.clone())]).unwrap();
 
-		let result1 = state_get(&mut host(&mut txn, operator1), &shared_key).unwrap().unwrap();
-		let result2 = state_get(&mut host(&mut txn, operator2), &shared_key).unwrap().unwrap();
+		let result1 = host(&mut txn, operator1).state_get(from_ref(&shared_key)).unwrap().pop().flatten().unwrap();
+		let result2 = host(&mut txn, operator2).state_get(from_ref(&shared_key)).unwrap().pop().flatten().unwrap();
 
 		assert_row_eq(&result1, &row1);
 		assert_row_eq(&result2, &row2);
@@ -300,7 +281,7 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("item_{}", i));
-			state_set(&mut host(&mut txn, operator_id), &key, test_row()).unwrap();
+			host(&mut txn, operator_id).state_set(vec![(key.clone(), test_row())]).unwrap();
 		}
 
 		// A range that sorts entirely after the stored keys.
@@ -309,7 +290,7 @@ pub mod tests {
 			Excluded(test_key("z_zzz").into_encoded()),
 		);
 		let range_result: Vec<_> =
-			state_range(&mut host(&mut txn, operator_id), range).collect::<Result<Vec<_>>>().unwrap();
+			host(&mut txn, operator_id).state_range_iter(range).collect::<Result<Vec<_>>>().unwrap();
 
 		assert_eq!(range_result.len(), 0);
 	}
@@ -323,10 +304,10 @@ pub mod tests {
 
 		let row2 = EncodedPodRow::new(&[2, 2, 2]);
 
-		state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[1, 1, 1])).unwrap();
-		state_set(&mut host(&mut txn, operator_id), &key, row2.clone()).unwrap();
+		host(&mut txn, operator_id).state_set(vec![(key.clone(), EncodedPodRow::new(&[1, 1, 1]))]).unwrap();
+		host(&mut txn, operator_id).state_set(vec![(key.clone(), row2.clone())]).unwrap();
 
-		let result = state_get(&mut host(&mut txn, operator_id), &key).unwrap().unwrap();
+		let result = host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten().unwrap();
 		assert_row_eq(&result, &row2);
 	}
 
@@ -337,9 +318,9 @@ pub mod tests {
 		let operator_id = OperatorId(6);
 		let key = test_key("absent");
 
-		state_remove(&mut host(&mut txn, operator_id), &key).unwrap();
+		host(&mut txn, operator_id).state_remove(from_ref(&key)).unwrap();
 
-		assert!(state_get(&mut host(&mut txn, operator_id), &key).unwrap().is_none());
+		assert!(host(&mut txn, operator_id).state_get(from_ref(&key)).unwrap().pop().flatten().is_none());
 	}
 
 	#[test]
@@ -350,11 +331,11 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("partial_{}", i));
-			state_set(&mut host(&mut txn, operator_id), &key, EncodedPodRow::new(&[i as u8])).unwrap();
+			host(&mut txn, operator_id).state_set(vec![(key.clone(), EncodedPodRow::new(&[i as u8]))]).unwrap();
 		}
 
-		state_remove(&mut host(&mut txn, operator_id), &test_key("partial_1")).unwrap();
-		state_remove(&mut host(&mut txn, operator_id), &test_key("partial_3")).unwrap();
+		host(&mut txn, operator_id).state_remove(from_ref(&test_key("partial_1"))).unwrap();
+		host(&mut txn, operator_id).state_remove(from_ref(&test_key("partial_3"))).unwrap();
 
 		// 0, 2 and 4 survive.
 		let remaining = scan_all(&mut txn, operator_id);

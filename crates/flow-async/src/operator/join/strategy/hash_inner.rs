@@ -182,10 +182,10 @@ impl InnerHashJoin {
 				for number in &numbers {
 					ctx.operator.cleanup_left_row_joins(host, number.0)?;
 				}
-				ctx.state.left.remove_rows_in(host, group, &numbers)?;
+				ctx.state.left.remove_row_in(host, group, &numbers)?;
 			}
 			JoinSide::Right => {
-				ctx.state.right.remove_rows_in(host, group, &numbers)?;
+				ctx.state.right.remove_row_in(host, group, &numbers)?;
 			}
 		}
 

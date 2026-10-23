@@ -37,7 +37,6 @@ use crate::{
 	error::FlowStateError,
 	operator::{
 		host::HostContext,
-		state::store::{state_get, state_set},
 	},
 };
 
@@ -116,14 +115,6 @@ impl Store {
 		}
 	}
 
-	fn erase_row(&self, host: &mut dyn HostContext, group: GroupId, row_number: RowNumber) -> Result<()> {
-		let suffix = Asc(row_number);
-		match self.side {
-			JoinSide::Left => host.state_remove_in::<JoinLeft>(group, &[suffix]),
-			JoinSide::Right => host.state_remove_in::<JoinRight>(group, &[suffix]),
-		}
-	}
-
 	pub(crate) fn write_row(
 		&self,
 		host: &mut dyn HostContext,
@@ -189,20 +180,11 @@ impl Store {
 			}
 			removed.push(held);
 		}
-		self.remove_rows_in(host, group, &stored)?;
+		self.remove_row_in(host, group, &stored)?;
 		Ok(removed)
 	}
 
 	pub(crate) fn remove_row_in(
-		&self,
-		host: &mut dyn HostContext,
-		group: GroupId,
-		row_number: RowNumber,
-	) -> Result<()> {
-		self.erase_row(host, group, row_number)
-	}
-
-	pub(crate) fn remove_rows_in(
 		&self,
 		host: &mut dyn HostContext,
 		group: GroupId,
@@ -268,7 +250,7 @@ impl Store {
 		if let Some(cached) = host.row_shape_cache().get(key.as_encoded()).cloned() {
 			return Ok(Some(cached));
 		}
-		match state_get(host, &key)? {
+		match host.state_get(from_ref(&key))?.pop().flatten() {
 			Some(row) => {
 				if row.is_empty() {
 					return Ok(None);
@@ -293,7 +275,7 @@ impl Store {
 		if host.row_shape_cache().contains_key(key.as_encoded()) {
 			return Ok(());
 		}
-		if state_get(host, &key)?.is_some() {
+		if host.state_get(from_ref(&key))?.pop().flatten().is_some() {
 			host.row_shape_cache().insert(key.as_encoded().clone(), shape.clone());
 			return Ok(());
 		}
@@ -303,7 +285,7 @@ impl Store {
 				cause: e.to_string(),
 			})
 		})?;
-		state_set(host, &key, row)?;
+		host.state_set(vec![(key.clone(), row)])?;
 		host.row_shape_cache().insert(key.as_encoded().clone(), shape.clone());
 		Ok(())
 	}
@@ -312,6 +294,7 @@ impl Store {
 #[cfg(test)]
 mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
+	use reifydb_core::state::timer::StateStore;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_value::value::value_type::ValueType;
 
@@ -620,7 +603,7 @@ mod tests {
 
 		let key = store.schema_key(shape.fingerprint());
 		assert!(
-			state_get(&mut b(&mut txn, second), &key).unwrap().is_some(),
+			b(&mut txn, second).state_get(from_ref(&key)).unwrap().pop().flatten().is_some(),
 			"the second operator was told its shape was already stored because the first operator had \
 			 written an identical one, so nothing was written under it; the shape survives only as long \
 			 as the transaction that cached it, and the next run decodes rows against a shape that is \

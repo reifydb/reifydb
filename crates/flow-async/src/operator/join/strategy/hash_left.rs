@@ -247,7 +247,7 @@ impl LeftHashJoin {
 		for number in &numbers {
 			ctx.operator.cleanup_left_row_joins(host, number.0)?;
 		}
-		ctx.state.left.remove_rows_in(host, left_group, &numbers)?;
+		ctx.state.left.remove_row_in(host, left_group, &numbers)?;
 		Ok(result)
 	}
 

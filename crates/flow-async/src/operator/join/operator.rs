@@ -430,7 +430,7 @@ impl JoinOperator {
 			ledger.flush(host)?;
 		}
 		self.cleanup_left_row_joins(host, row_number.0)?;
-		state.left.remove_row_in(host, group, row_number)
+		state.left.remove_row_in(host, group, from_ref(&row_number))
 	}
 
 	fn free_expired_right_row(
@@ -457,7 +457,7 @@ impl JoinOperator {
 				.collect(),
 		};
 		host.remove_join_row_numbers(&composites)?;
-		state.right.remove_row_in(host, group, row_number)
+		state.right.remove_row_in(host, group, from_ref(&row_number))
 	}
 
 	fn free_due_join_rows(&mut self, host: &mut dyn HostContext, fired: FiredAt) -> Result<()> {

@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+	slice::from_ref,
 	sync::Arc,
 };
 
@@ -54,7 +55,7 @@ use tracing::instrument;
 
 use crate::{
 	error::FlowStateError,
-	operator::{HostOperator, host::HostContext, row_times, state::store},
+	operator::{HostOperator, host::HostContext, row_times},
 };
 
 #[operator_state]
@@ -410,7 +411,7 @@ impl TakePlan {
 
 	fn load_take_state(&self, host: &mut dyn HostContext) -> Result<TakeState> {
 		let key = Self::state_key();
-		let Some(row) = store::state_get(host, &key)? else {
+		let Some(row) = host.state_get(from_ref(&key))?.pop().flatten() else {
 			return Ok(TakeState::default());
 		};
 		if row.is_empty() {
@@ -431,7 +432,7 @@ impl TakePlan {
 				cause: e.to_string(),
 			})
 		})?;
-		store::state_set(host, &Self::state_key(), row)
+		host.state_set(vec![(Self::state_key(), row)])
 	}
 
 	#[inline]

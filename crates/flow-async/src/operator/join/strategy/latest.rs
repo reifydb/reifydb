@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::cmp::Ordering;
+use std::{cmp::Ordering, slice::from_ref};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::row::{bytes::EncodedBytes, pod::EncodedPodRow};
@@ -195,7 +195,7 @@ pub(crate) fn write_right_rows(
 	if let Some((previous, _)) = &held
 		&& *previous != number
 	{
-		right.remove_row_in(host, group, *previous)?;
+		right.remove_row_in(host, group, from_ref(previous))?;
 	}
 	right.write_row(host, group, number, &EncodedPodRow::from(content.clone()))?;
 	Ok(SlotChange {
@@ -235,7 +235,7 @@ pub(crate) fn remove_right_rows(
 		return Ok(());
 	};
 	if numbers.contains(&held) {
-		right.remove_row_in(host, group, held)?;
+		right.remove_row_in(host, group, from_ref(&held))?;
 	}
 	Ok(())
 }

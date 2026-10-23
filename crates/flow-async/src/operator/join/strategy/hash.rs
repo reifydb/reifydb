@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, fmt::Debug, iter::repeat_n, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, iter::repeat_n, slice::from_ref, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::FieldRef;
@@ -306,7 +306,7 @@ pub(crate) fn update_row_in_entry(
 		return Ok(false);
 	}
 	if pre_row_number != post_row_number {
-		store.remove_row_in(host, prepared.group, pre_row_number)?;
+		store.remove_row_in(host, prepared.group, from_ref(&pre_row_number))?;
 	}
 	store.write_row(host, prepared.group, post_row_number, &row)?;
 	Ok(true)
