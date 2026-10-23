@@ -204,8 +204,14 @@ fn test_state_isolation_between_nodes() {
 	txn.state_set(node1, vec![(key.clone(), make_value("node1_value"))]).unwrap();
 	txn.state_set(node2, vec![(key.clone(), make_value("node2_value"))]).unwrap();
 
-	assert_eq!(txn.state_get(node1, slice::from_ref(&key)).unwrap().pop().flatten(), Some(make_value("node1_value")));
-	assert_eq!(txn.state_get(node2, slice::from_ref(&key)).unwrap().pop().flatten(), Some(make_value("node2_value")));
+	assert_eq!(
+		txn.state_get(node1, slice::from_ref(&key)).unwrap().pop().flatten(),
+		Some(make_value("node1_value"))
+	);
+	assert_eq!(
+		txn.state_get(node2, slice::from_ref(&key)).unwrap().pop().flatten(),
+		Some(make_value("node2_value"))
+	);
 }
 
 #[test]

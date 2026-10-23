@@ -1359,7 +1359,11 @@ mod seal_tests {
 		row_number: u64,
 	) -> Option<DateTime> {
 		let key = join_expiry_key(group, side.tag(), RowNumber(row_number));
-		txn.state_get(op.operator, from_ref(&key)).unwrap().pop().flatten().map(|row| decode::<JoinRowExpiry>(&row).unwrap().at)
+		txn.state_get(op.operator, from_ref(&key))
+			.unwrap()
+			.pop()
+			.flatten()
+			.map(|row| decode::<JoinRowExpiry>(&row).unwrap().at)
 	}
 
 	fn due_index_rows(op: &JoinOperator, txn: &mut DeferredTransaction) -> usize {

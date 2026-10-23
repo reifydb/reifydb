@@ -549,11 +549,7 @@ impl SinkRingBufferViewOperator {
 		txn.state_get(self.operator, keys)
 	}
 
-	fn state_set(
-		&self,
-		txn: &mut DeferredTransaction,
-		rows: Vec<(GroupStateKey, EncodedPodRow)>,
-	) -> Result<()> {
+	fn state_set(&self, txn: &mut DeferredTransaction, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
 		if rows.is_empty() {
 			return Ok(());
 		}

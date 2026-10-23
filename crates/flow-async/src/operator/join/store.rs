@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, ops::Bound};
+use std::{collections::HashSet, ops::Bound, slice::from_ref};
 
 use reifydb_codec::row::{
 	bytes::EncodedBytes,
@@ -82,8 +82,10 @@ impl Store {
 	) -> Result<Option<EncodedPodRow>> {
 		let suffix = Asc(row_number);
 		match self.side {
-			JoinSide::Left => host.state_get_in::<JoinLeft>(group, &suffix),
-			JoinSide::Right => host.state_get_in::<JoinRight>(group, &suffix),
+			JoinSide::Left => Ok(host.state_get_in::<JoinLeft>(group, from_ref(&suffix))?.pop().flatten()),
+			JoinSide::Right => {
+				Ok(host.state_get_in::<JoinRight>(group, from_ref(&suffix))?.pop().flatten())
+			}
 		}
 	}
 
@@ -96,8 +98,8 @@ impl Store {
 	) -> Result<()> {
 		let suffix = Asc(row_number);
 		match self.side {
-			JoinSide::Left => host.state_set_in::<JoinLeft>(group, &suffix, row),
-			JoinSide::Right => host.state_set_in::<JoinRight>(group, &suffix, row),
+			JoinSide::Left => host.state_set_in::<JoinLeft>(group, vec![(suffix, row)]),
+			JoinSide::Right => host.state_set_in::<JoinRight>(group, vec![(suffix, row)]),
 		}
 	}
 
@@ -117,8 +119,8 @@ impl Store {
 	fn erase_row(&self, host: &mut dyn HostContext, group: GroupId, row_number: RowNumber) -> Result<()> {
 		let suffix = Asc(row_number);
 		match self.side {
-			JoinSide::Left => host.state_remove_in::<JoinLeft>(group, &suffix),
-			JoinSide::Right => host.state_remove_in::<JoinRight>(group, &suffix),
+			JoinSide::Left => host.state_remove_in::<JoinLeft>(group, &[suffix]),
+			JoinSide::Right => host.state_remove_in::<JoinRight>(group, &[suffix]),
 		}
 	}
 
@@ -140,8 +142,8 @@ impl Store {
 	) -> Result<()> {
 		let rows = rows.into_iter().map(|(row_number, row)| (Asc(row_number), row)).collect();
 		match self.side {
-			JoinSide::Left => host.state_set_many_in::<JoinLeft>(group, rows),
-			JoinSide::Right => host.state_set_many_in::<JoinRight>(group, rows),
+			JoinSide::Left => host.state_set_in::<JoinLeft>(group, rows),
+			JoinSide::Right => host.state_set_in::<JoinRight>(group, rows),
 		}
 	}
 
@@ -208,8 +210,8 @@ impl Store {
 	) -> Result<()> {
 		let suffixes: Vec<Asc<RowNumber>> = row_numbers.iter().copied().map(Asc).collect();
 		match self.side {
-			JoinSide::Left => host.state_remove_many_in::<JoinLeft>(group, &suffixes),
-			JoinSide::Right => host.state_remove_many_in::<JoinRight>(group, &suffixes),
+			JoinSide::Left => host.state_remove_in::<JoinLeft>(group, &suffixes),
+			JoinSide::Right => host.state_remove_in::<JoinRight>(group, &suffixes),
 		}
 	}
 

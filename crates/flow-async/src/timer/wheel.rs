@@ -55,7 +55,10 @@ impl TimerWheel {
 		if !timer.kind.is_maintenance() {
 			txn.state_set(
 				operator,
-				vec![(timer_key(timer.due, timer.kind, &timer.key), encode_payload(&timer.key.to_vec())?)],
+				vec![(
+					timer_key(timer.due, timer.kind, &timer.key),
+					encode_payload(&timer.key.to_vec())?,
+				)],
 			)?;
 			return Ok(());
 		}
