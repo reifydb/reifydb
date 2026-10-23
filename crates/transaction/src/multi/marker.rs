@@ -2,7 +2,11 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::key::encoded::EncodedKeyRange;
-use reifydb_core::key::{any::TaggedKey, bound::TaggedKeyBoundRange};
+use reifydb_core::{
+	interface::catalog::storage::StorageId,
+	key::{any::TaggedKey, bound::TaggedKeyBoundRange},
+};
+use reifydb_value::value::partition::Partition;
 
 use crate::multi::conflict::ConflictManager;
 
@@ -23,6 +27,10 @@ impl<'a> Marker<'a> {
 
 	pub fn mark_range(&mut self, range: TaggedKeyBoundRange) {
 		self.marker.mark_range(range);
+	}
+
+	pub fn mark_member(&mut self, storage: StorageId, partition: Partition) {
+		self.marker.mark_member_read(storage, partition);
 	}
 
 	pub fn mark_range_encoded(&mut self, range: EncodedKeyRange) {

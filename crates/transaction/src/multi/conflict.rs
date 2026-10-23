@@ -8,10 +8,14 @@ use core::{
 use std::collections::HashSet;
 
 use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
-use reifydb_core::key::{
-	any::TaggedKey,
-	bound::{TaggedKeyBound, TaggedKeyBoundRange},
+use reifydb_core::{
+	interface::catalog::storage::StorageId,
+	key::{
+		any::TaggedKey,
+		bound::{TaggedKeyBound, TaggedKeyBoundRange},
+	},
 };
+use reifydb_value::value::partition::Partition;
 use tracing::instrument;
 
 const MAX_RANGES_BEFORE_ESCALATION: usize = 64;
@@ -234,7 +238,11 @@ pub struct ConflictManager {
 	read_ranges_encoded: RangeSet<EncodedKey>,
 	read_all: bool,
 	write_keys: HashSet<TaggedKey>,
+	member_reads: HashSet<PartitionMember>,
+	member_writes: HashSet<PartitionMember>,
 }
+
+pub type PartitionMember = (StorageId, Partition);
 
 impl ConflictManager {
 	pub fn new() -> Self {
@@ -265,7 +273,17 @@ impl ConflictManager {
 		if self.mode == ConflictMode::Disabled {
 			return;
 		}
+		if let TaggedKey::PartitionedRow(row) = key {
+			self.member_writes.insert((row.storage, row.partition));
+		}
 		self.write_keys.insert(key.clone());
+	}
+
+	pub fn mark_member_read(&mut self, storage: StorageId, partition: Partition) {
+		if self.mode == ConflictMode::Disabled {
+			return;
+		}
+		self.member_reads.insert((storage, partition));
 	}
 
 	pub fn reserve_writes(&mut self, additional: usize) {
@@ -335,11 +353,15 @@ impl ConflictManager {
 			return true;
 		}
 
-		if self.read_keys.is_empty() && !self.has_range_operations() {
+		if self.read_keys.is_empty() && self.member_reads.is_empty() && !self.has_range_operations() {
 			return false;
 		}
 
 		if !self.read_keys.is_disjoint(&other.write_keys) {
+			return true;
+		}
+
+		if !self.member_reads.is_disjoint(&other.member_writes) {
 			return true;
 		}
 
@@ -386,6 +408,8 @@ impl ConflictManager {
 		self.read_ranges_encoded.clear();
 		self.read_all = false;
 		self.write_keys.clear();
+		self.member_reads.clear();
+		self.member_writes.clear();
 
 		self.mode = ConflictMode::Tracking;
 	}
@@ -396,6 +420,14 @@ impl ConflictManager {
 
 	pub fn get_write_keys(&self) -> &HashSet<TaggedKey> {
 		&self.write_keys
+	}
+
+	pub fn get_member_reads(&self) -> &HashSet<PartitionMember> {
+		&self.member_reads
+	}
+
+	pub fn get_member_writes(&self) -> &HashSet<PartitionMember> {
+		&self.member_writes
 	}
 
 	pub fn has_range_operations(&self) -> bool {

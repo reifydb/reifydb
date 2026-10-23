@@ -39,7 +39,9 @@ use tracing::{Span, field, instrument};
 use crate::{
 	error::TransactionError,
 	multi::{
-		conflict::ConflictManager, lease::VersionLeases, transaction::version::VersionProvider,
+		conflict::{ConflictManager, PartitionMember},
+		lease::VersionLeases,
+		transaction::version::VersionProvider,
 		watermark::watermark::WaterMark,
 	},
 };
@@ -93,6 +95,10 @@ impl ModifiedKeyIndex {
 		self.hashes.insert(hash_item(key));
 	}
 
+	fn insert_member(&mut self, member: &PartitionMember) {
+		self.hashes.insert(hash_item(member));
+	}
+
 	#[inline]
 	fn might_contain_hash(&self, hash: u64) -> bool {
 		self.hashes.contains(&hash)
@@ -130,6 +136,9 @@ impl CommittedWindow {
 		if let Some(ref conflicts) = txn.conflict_manager {
 			for key in conflicts.get_write_keys() {
 				self.modified_keys.insert(key);
+			}
+			for member in conflicts.get_member_writes() {
+				self.modified_keys.insert_member(member);
 			}
 		}
 
@@ -431,7 +440,8 @@ where
 			Span::current().record("read_keys", read_keys.len());
 			Span::current().record("write_keys", write_keys.len());
 		}
-		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
+		let member_reads = conflicts.get_member_reads();
+		let has_keys = !read_keys.is_empty() || !write_keys.is_empty() || !member_reads.is_empty();
 		let has_ranges = conflicts.has_range_operations();
 		if !has_keys && !has_ranges {
 			return false;
@@ -441,6 +451,9 @@ where
 		if !has_ranges {
 			for key in read_keys.iter().chain(write_keys.iter()) {
 				key_hashes.push(hash_item(key));
+			}
+			for member in member_reads {
+				key_hashes.push(hash_item(member));
 			}
 		}
 

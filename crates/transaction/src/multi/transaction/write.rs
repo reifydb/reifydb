@@ -34,7 +34,9 @@ use reifydb_core::{
 use reifydb_store_commit::VersionedGetResult;
 #[cfg(reifydb_assertions)]
 use reifydb_value::util::hex::display as hex_display;
-use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{
+	Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec, value::partition::Partition,
+};
 use tracing::{instrument, warn};
 
 use super::{MultiTransaction, version::StandardVersionProvider};
@@ -1129,9 +1131,13 @@ impl MultiWriteTransaction {
 		self.op_counts.range_call();
 		let multi_scope = scope.into_multi(self.version());
 		let range = partitioned_row_bounds_to_typed(storage, &start, &end);
+		let whole_partition = whole_partition(&start, &end);
 		let (mut marker, pw) = self.marker_with_pending_writes();
 
-		marker.mark_range(range.clone());
+		match whole_partition {
+			Some(partition) => marker.mark_member(storage, partition),
+			None => marker.mark_range(range.clone()),
+		}
 
 		let pending: Vec<(StoragePartitionedRowKey, DeltaEntry)> = pw
 			.range((range.start.as_ref(), range.end.as_ref()))
@@ -1359,6 +1365,17 @@ fn row_bounds_to_typed(
 		start: lower,
 		end: upper,
 	}
+}
+
+fn whole_partition(
+	start: &Bound<StoragePartitionedRowKey>,
+	end: &Bound<StoragePartitionedRowKey>,
+) -> Option<Partition> {
+	let (Bound::Included(first) | Bound::Excluded(first), Bound::Included(last)) = (start, end) else {
+		return None;
+	};
+	let from_the_top = matches!(start, Bound::Excluded(_)) || first.row().0 == u64::MAX;
+	(first.partition() == last.partition() && last.row().0 == u64::MIN && from_the_top).then(|| last.partition())
 }
 
 fn partitioned_row_bounds_to_typed(
