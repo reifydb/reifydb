@@ -731,7 +731,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn timer_partition_values(&self, key: &EncodedKey) -> Result<Vec<Value>> {
-		RingBufferMetadataKey::decode(key).map(|decoded| decoded.partition_values).ok_or_else(|| {
+		RingBufferMetadataKey::decode(key).and_then(|decoded| decoded.partition_values()).ok_or_else(|| {
 			Error::from(FlowStateError::Decode {
 				state: "RingBufferMetadataKey",
 				cause: "a RowTtl timer key must decode as ring buffer metadata".to_string(),

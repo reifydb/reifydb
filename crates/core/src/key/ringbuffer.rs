@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::borrow::Cow;
-
-use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
+use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey};
 use reifydb_macro::KeyCodec;
 use reifydb_value::value::Value;
-use smallvec::{SmallVec, smallvec};
 
 use super::KeyTag;
 use crate::{
@@ -40,17 +37,18 @@ impl RingBufferKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = RingBufferMetadata)]
 pub struct RingBufferMetadataKey {
 	pub storage: StorageId,
-	pub partition_values: Vec<Value>,
+	pub encoded_partition: Vec<u8>,
 }
 
 impl RingBufferMetadataKey {
 	pub fn new(storage: impl Into<StorageId>) -> Self {
 		Self {
 			storage: storage.into(),
-			partition_values: vec![],
+			encoded_partition: Vec::new(),
 		}
 	}
 
@@ -61,7 +59,7 @@ impl RingBufferMetadataKey {
 	pub fn partition(storage: impl Into<StorageId>, partition_values: Vec<Value>) -> Self {
 		Self {
 			storage: storage.into(),
-			partition_values,
+			encoded_partition: encode_values(&partition_values).as_slice().to_vec(),
 		}
 	}
 
@@ -69,61 +67,25 @@ impl RingBufferMetadataKey {
 		Self::partition(storage, partition_values).encode()
 	}
 
-	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
-		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
-	}
-}
-
-impl RingBufferMetadataKey {
-	pub const TAG: KeyTag = KeyTag::RingBufferMetadata;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(32);
-		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.storage);
-		for value in &self.partition_values {
-			serializer.extend_value(value);
-		}
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::TAG {
-			return None;
-		}
-
-		let storage = StorageId::from_object(de.read_object_id().ok()?)?;
-
+	pub fn partition_values(&self) -> Option<Vec<Value>> {
+		let mut de = KeyDeserializer::from_bytes(&self.encoded_partition);
 		let mut partition_values = Vec::new();
 		while !de.is_empty() {
 			partition_values.push(de.read_value().ok()?);
 		}
-
-		Some(Self {
-			storage,
-			partition_values,
-		})
+		Some(partition_values)
 	}
-}
 
-impl KeyFields for RingBufferMetadataKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![
-			Field::UAsc(Width::U8, ObjectId::from(self.storage).type_tag() as u128),
-			Field::UDesc(Width::U64, ObjectId::from(self.storage).as_u64() as u128),
-			Field::RawAsc(
-				RawEncoding::Verbatim,
-				Cow::Owned(encode_values(&self.partition_values).as_slice().to_vec())
-			),
-		]
+	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use std::ops::RangeBounds;
+
+	use reifydb_codec::key::serializer::KeySerializer;
 
 	use super::*;
 	use crate::interface::catalog::id::ViewId;
@@ -155,20 +117,20 @@ mod tests {
 	#[test]
 	fn test_metadata_key_roundtrip_ringbuffer() {
 		// The tag byte is what keeps a ring buffer's metadata out of a view's; a bare id would collide.
-		let key = RingBufferMetadataKey {
-			storage: StorageId::RingBuffer(RingBufferId(42)),
-			partition_values: vec![Value::Utf8("east".to_string())],
-		};
+		let key = RingBufferMetadataKey::partition(
+			StorageId::RingBuffer(RingBufferId(42)),
+			vec![Value::Utf8("east".to_string())],
+		);
 		assert_eq!(RingBufferMetadataKey::decode(&key.encode()).unwrap(), key);
 	}
 
 	#[test]
 	fn test_metadata_key_roundtrip_view() {
 		// A ring-buffer-backed view keeps its own metadata under its own id, not a backing object's.
-		let key = RingBufferMetadataKey {
-			storage: StorageId::View(ViewId(42)),
-			partition_values: vec![Value::Utf8("east".to_string())],
-		};
+		let key = RingBufferMetadataKey::partition(
+			StorageId::View(ViewId(42)),
+			vec![Value::Utf8("east".to_string())],
+		);
 		assert_eq!(RingBufferMetadataKey::decode(&key.encode()).unwrap(), key);
 	}
 

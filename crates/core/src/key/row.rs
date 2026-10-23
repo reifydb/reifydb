@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{borrow::Cow, cmp::Ordering, collections::Bound};
+use std::{cmp::Ordering, collections::Bound};
 
 use reifydb_codec::{
 	key::{
@@ -15,7 +15,6 @@ use reifydb_codec::{
 use reifydb_macro::KeyCodec;
 use reifydb_value::value::{partition::Partition, row_number::RowNumber};
 use serde::{Deserialize, Serialize};
-use smallvec::{SmallVec, smallvec};
 
 use super::{KeyRangeCodec, KeyTag};
 use crate::{
@@ -140,42 +139,12 @@ impl RowKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Eq, Hash)]
+#[key(tag = SortedViewRow)]
 pub struct SortedViewRowKey {
 	pub storage: StorageId,
 	pub run: SortRun,
 	pub row: Asc<RowNumber>,
-}
-
-impl SortedViewRowKey {
-	pub const TAG: KeyTag = KeyTag::SortedViewRow;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(20 + self.run.len());
-		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.storage);
-		extend_sort_run(&mut serializer, &self.run);
-		serializer.extend_raw(&self.row.0.0.to_be_bytes());
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::TAG {
-			return None;
-		}
-		let storage = StorageId::from_object(de.read_object_id().ok()?)?;
-		let run = read_sort_run(&mut de)?;
-		let row = read_row_tail(&mut de)?;
-		if !de.is_empty() {
-			return None;
-		}
-		Some(Self {
-			storage,
-			run,
-			row,
-		})
-	}
 }
 
 impl Ord for SortedViewRowKey {
@@ -301,45 +270,13 @@ fn bound_storage_of(bound: &Bound<EncodedKey>, kind: KeyTag) -> Option<StorageId
 	StorageId::from_object(de.read_object_id().ok()?)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Eq, Hash)]
+#[key(tag = PartitionedSortedViewRow)]
 pub struct PartitionedSortedViewRowKey {
 	pub storage: StorageId,
 	pub partition: Partition,
 	pub run: SortRun,
 	pub row: Asc<RowNumber>,
-}
-
-impl PartitionedSortedViewRowKey {
-	pub const TAG: KeyTag = KeyTag::PartitionedSortedViewRow;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(36 + self.run.len());
-		serializer.extend_u8(Self::TAG as u8).extend_object_id(self.storage).extend_u128(self.partition.0);
-		extend_sort_run(&mut serializer, &self.run);
-		serializer.extend_raw(&self.row.0.0.to_be_bytes());
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::TAG {
-			return None;
-		}
-		let storage = StorageId::from_object(de.read_object_id().ok()?)?;
-		let partition = Partition(de.read_u128().ok()?);
-		let run = read_sort_run(&mut de)?;
-		let row = read_row_tail(&mut de)?;
-		if !de.is_empty() {
-			return None;
-		}
-		Some(Self {
-			storage,
-			partition,
-			run,
-			row,
-		})
-	}
 }
 
 impl Ord for PartitionedSortedViewRowKey {
@@ -1412,28 +1349,5 @@ mod sorted_view_run_tests {
 		assert_eq!(PartitionedSortedViewRowKey::storage_of(&partitioned), Some(storage));
 		assert_eq!(PartitionedSortedViewRowKey::row_of(&partitioned), Some(RowNumber(9)));
 		assert_eq!(SortedViewRowKey::row_of(&partitioned), None);
-	}
-}
-
-impl KeyFields for SortedViewRowKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![
-			Field::UAsc(Width::U8, ObjectId::from(self.storage).type_tag() as u128),
-			Field::UDesc(Width::U64, ObjectId::from(self.storage).as_u64() as u128),
-			Field::RawAsc(RawEncoding::SortRun, Cow::Borrowed(self.run.as_slice())),
-			Field::UAsc(Width::U64, self.row.0.0 as u128),
-		]
-	}
-}
-
-impl KeyFields for PartitionedSortedViewRowKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![
-			Field::UAsc(Width::U8, ObjectId::from(self.storage).type_tag() as u128),
-			Field::UDesc(Width::U64, ObjectId::from(self.storage).as_u64() as u128),
-			Field::UDesc(Width::U128, self.partition.0),
-			Field::RawAsc(RawEncoding::SortRun, Cow::Borrowed(self.run.as_slice())),
-			Field::UAsc(Width::U64, self.row.0.0 as u128),
-		]
 	}
 }

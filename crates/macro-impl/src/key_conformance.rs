@@ -67,6 +67,35 @@ impl KeyColumn {
 				IndexId::primary(u64::MAX - 1), IndexId::primary(u64::MAX)]"
 				.to_string(),
 			KeyColumn::OptionU8 => "vec![None, Some(0u8), Some(1u8), Some(254u8), Some(255u8)]".to_string(),
+			KeyColumn::Str => format!(
+				"vec![{ty}::new(\"\"), {ty}::new(\"a\"), {ty}::new(\"a\\u{{0}}b\"), {ty}::new(\"b\")]"
+			),
+			KeyColumn::DisplayStr => format!("{ty}::all().to_vec()"),
+			KeyColumn::EscapedBytes | KeyColumn::SortRun => format!(
+				"vec![{ty}::new([0u8; 0]), {ty}::new([0u8]), {ty}::new([0u8, 255u8]), {ty}::new([97u8]), {ty}::new([255u8])]"
+			),
+			KeyColumn::KeyspaceId => {
+				"vec![KeyspaceId(0), KeyspaceId(1), KeyspaceId(254), KeyspaceId(255)]".to_string()
+			}
+			KeyColumn::RawTail if ty == "Vec<u8>" => {
+				"vec![Vec::new(), vec![0u8], vec![0u8, 1u8], vec![255u8]]".to_string()
+			}
+			KeyColumn::RawTail => {
+				format!(
+					"vec![{ty}::new([0u8; 0]), {ty}::new([0u8]), {ty}::new([0u8, 1u8]), {ty}::new([255u8])]"
+				)
+			}
+			KeyColumn::TaggedIndexId => "vec![IndexId::primary(0u64), IndexId::primary(1u64), \
+				IndexId::primary(u64::MAX - 1), IndexId::primary(u64::MAX)]"
+				.to_string(),
+			KeyColumn::VarintU128 => {
+				"vec![0u128, 1u128, 127u128, 128u128, u64::MAX as u128, u128::MAX]".to_string()
+			}
+			KeyColumn::AscRowNumber => {
+				"vec![Asc(RowNumber(0)), Asc(RowNumber(1)), Asc(RowNumber(u64::MAX - 1)), \
+				Asc(RowNumber(u64::MAX))]"
+					.to_string()
+			}
 			KeyColumn::TableId
 			| KeyColumn::ColumnId
 			| KeyColumn::FlowId
@@ -115,6 +144,14 @@ impl KeyColumn {
 				vec![asc("$.type_tag()"), desc("$.as_u64()")]
 			}
 			KeyColumn::OptionU8 => vec![desc("$.is_some()"), desc("$.unwrap_or(0u8)")],
+			KeyColumn::Str => vec![desc("$.as_ref().as_bytes()")],
+			KeyColumn::DisplayStr => vec![desc("$.to_string().into_bytes()")],
+			KeyColumn::EscapedBytes => vec![desc("$.as_slice()")],
+			KeyColumn::KeyspaceId => vec![desc("$.0")],
+			KeyColumn::RawTail | KeyColumn::SortRun => vec![asc("$.as_slice()")],
+			KeyColumn::TaggedIndexId => vec![asc("index_tag(&$)"), desc("$.as_u64()")],
+			KeyColumn::VarintU128 => vec![desc("$")],
+			KeyColumn::AscRowNumber => vec![asc("$.0.0")],
 			KeyColumn::ProcedureId => vec![desc("(*$)")],
 			KeyColumn::EpochSeconds => vec![desc("$.seconds()")],
 			KeyColumn::DateTime => vec![desc("$.to_nanos()")],

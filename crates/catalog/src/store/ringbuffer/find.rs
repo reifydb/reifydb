@@ -12,6 +12,7 @@ use reifydb_core::{
 		namespace::NamespaceRingBufferKey,
 		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
 	},
+	return_internal_error,
 };
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use reifydb_value::value::Value;
@@ -95,9 +96,15 @@ impl CatalogStore {
 			let TaggedKey::RingBufferMetadata(key) = multi.key else {
 				continue;
 			};
+			let Some(partition_values) = key.partition_values() else {
+				return_internal_error!(
+					"Ring buffer metadata key for {:?} carries partition bytes that do not decode as values. This indicates a corrupt metadata key.",
+					key.storage
+				)
+			};
 			results.push(PartitionedMetadata {
 				metadata,
-				partition_values: key.partition_values,
+				partition_values,
 			});
 		}
 

@@ -887,7 +887,9 @@ mod tests {
 			.range(RingBufferMetadataKey::full_scan_for_storage(storage), RangeScope::All, 1024)
 			.unwrap()
 			.map(|row| match row.unwrap().key {
-				TaggedKey::RingBufferMetadata(key) => key.partition_values,
+				TaggedKey::RingBufferMetadata(key) => key
+					.partition_values()
+					.expect("a metadata key written by the sink decodes its partition values"),
 				other => panic!("metadata scan yielded {other:?}"),
 			})
 			.collect();

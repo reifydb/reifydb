@@ -55,12 +55,29 @@ pub enum KeyColumn {
 	IndexId,
 	OptionU8,
 	ReprU8,
+	Str,
+	DisplayStr,
+	EscapedBytes,
+	KeyspaceId,
+	RawTail,
+	TaggedIndexId,
+	VarintU128,
+	SortRun,
+	AscRowNumber,
 }
 
 impl KeyColumn {
 	fn width(self) -> usize {
 		match self {
-			KeyColumn::U8 | KeyColumn::ReprU8 => 1,
+			KeyColumn::U8 | KeyColumn::ReprU8 | KeyColumn::KeyspaceId => 1,
+			KeyColumn::Str
+			| KeyColumn::DisplayStr
+			| KeyColumn::EscapedBytes
+			| KeyColumn::RawTail
+			| KeyColumn::SortRun => 16,
+			KeyColumn::TaggedIndexId => 9,
+			KeyColumn::VarintU128 => 17,
+			KeyColumn::AscRowNumber => 8,
 			KeyColumn::U16 => 2,
 			KeyColumn::U32 => 4,
 			KeyColumn::U64
@@ -102,7 +119,38 @@ impl KeyColumn {
 
 	fn field_exprs(self, field: &str) -> Vec<String> {
 		let u = |width: &str, expr: String| vec![format!("Field::UDesc(Width::{width}, {expr} as u128)")];
+		let cow = |expr: String| format!("::std::borrow::Cow::Borrowed({expr})");
 		match self {
+			KeyColumn::Str => vec![format!(
+				"Field::BytesDesc(ByteEncoding::Escaped, {})",
+				cow(format!("self.{field}.as_ref().as_bytes()"))
+			)],
+			KeyColumn::DisplayStr => vec![format!(
+				"Field::BytesDesc(ByteEncoding::Escaped, ::std::borrow::Cow::Owned(self.{field}.to_string().into_bytes()))"
+			)],
+			KeyColumn::EscapedBytes => vec![format!(
+				"Field::BytesDesc(ByteEncoding::Escaped, {})",
+				cow(format!("self.{field}.as_slice()"))
+			)],
+			KeyColumn::KeyspaceId => u("U8", format!("self.{field}.0")),
+			KeyColumn::RawTail => {
+				vec![format!(
+					"Field::RawAsc(RawEncoding::Verbatim, {})",
+					cow(format!("self.{field}.as_slice()"))
+				)]
+			}
+			KeyColumn::TaggedIndexId => vec![
+				format!("Field::UAsc(Width::U8, index_tag(&self.{field}) as u128)"),
+				format!("Field::UDesc(Width::U64, self.{field}.as_u64() as u128)"),
+			],
+			KeyColumn::VarintU128 => u("Varint", format!("self.{field}")),
+			KeyColumn::SortRun => {
+				vec![format!(
+					"Field::RawAsc(RawEncoding::SortRun, {})",
+					cow(format!("self.{field}.as_slice()"))
+				)]
+			}
+			KeyColumn::AscRowNumber => vec![format!("Field::UAsc(Width::U64, self.{field}.0.0 as u128)")],
 			KeyColumn::U8 => u("U8", format!("self.{field}")),
 			KeyColumn::U16 => u("U16", format!("self.{field}")),
 			KeyColumn::U32 => u("U32", format!("self.{field}")),
@@ -162,6 +210,15 @@ impl KeyColumn {
 
 	fn encode_stmt(self, field: &str) -> String {
 		match self {
+			KeyColumn::Str => format!("serializer.extend_str(&self.{field});"),
+			KeyColumn::DisplayStr => format!("serializer.extend_str(self.{field}.to_string());"),
+			KeyColumn::EscapedBytes => format!("serializer.extend_bytes(&self.{field});"),
+			KeyColumn::KeyspaceId => format!("serializer.extend_u8(self.{field}.0);"),
+			KeyColumn::RawTail => format!("serializer.extend_raw(self.{field}.as_slice());"),
+			KeyColumn::TaggedIndexId => format!("serializer.extend_index_id(self.{field});"),
+			KeyColumn::VarintU128 => format!("serializer.extend_u128_varint(self.{field});"),
+			KeyColumn::SortRun => format!("extend_sort_run(&mut serializer, &self.{field});"),
+			KeyColumn::AscRowNumber => format!("serializer.extend_raw(&self.{field}.0.0.to_be_bytes());"),
 			KeyColumn::U8 => format!("serializer.extend_u8(self.{field});"),
 			KeyColumn::ReprU8 => format!("serializer.extend_u8(self.{field} as u8);"),
 			KeyColumn::U16 => format!("serializer.extend_u16(self.{field});"),
@@ -213,6 +270,20 @@ impl KeyColumn {
 
 	fn decode_expr(self, field_type: &str) -> String {
 		match self {
+			KeyColumn::Str => format!("{field_type}::new(de.read_str().ok()?)"),
+			KeyColumn::DisplayStr => {
+				format!("<{field_type} as ::core::str::FromStr>::from_str(&de.read_str().ok()?).ok()?")
+			}
+			KeyColumn::EscapedBytes => format!("{field_type}::new(de.read_bytes().ok()?)"),
+			KeyColumn::KeyspaceId => "KeyspaceId(de.read_u8().ok()?)".to_string(),
+			KeyColumn::RawTail if field_type == "Vec<u8>" => {
+				"de.read_raw(de.remaining()).ok()?.to_vec()".to_string()
+			}
+			KeyColumn::RawTail => format!("{field_type}::new(de.read_raw(de.remaining()).ok()?)"),
+			KeyColumn::TaggedIndexId => "de.read_index_id().ok()?".to_string(),
+			KeyColumn::VarintU128 => "de.read_u128_varint().ok()?".to_string(),
+			KeyColumn::SortRun => "read_sort_run(&mut de)?".to_string(),
+			KeyColumn::AscRowNumber => "read_row_tail(&mut de)?".to_string(),
 			KeyColumn::U8 => "de.read_u8().ok()?".to_string(),
 			KeyColumn::ReprU8 => format!("{field_type}::try_from(de.read_u8().ok()?).ok()?"),
 			KeyColumn::U16 => "de.read_u16().ok()?".to_string(),
@@ -359,13 +430,15 @@ fn parse_fields(body: &Group) -> Result<Vec<KeyField>, TokenStream> {
 	let mut fields = Vec::new();
 
 	while iter.peek().is_some() {
-		let mut repr_u8 = false;
+		let mut attribute: Option<FieldAttribute> = None;
 		while let Some(TokenTree::Punct(p)) = iter.peek() {
 			if p.as_char() == '#' {
 				iter.next();
 				if let Some(TokenTree::Group(g)) = iter.peek() {
-					if g.delimiter() == Delimiter::Bracket && is_repr_u8_attribute(g) {
-						repr_u8 = true;
+					if g.delimiter() == Delimiter::Bracket
+						&& let Some(found) = field_attribute(g)
+					{
+						attribute = Some(found);
 					}
 					iter.next();
 				}
@@ -418,10 +491,18 @@ fn parse_fields(body: &Group) -> Result<Vec<KeyField>, TokenStream> {
 		}
 
 		let ty = render(&ty_tokens);
-		let column = if repr_u8 {
-			KeyColumn::ReprU8
-		} else {
-			match column_type(&ty_tokens) {
+		let column = match attribute {
+			Some(FieldAttribute::ReprU8) => KeyColumn::ReprU8,
+			Some(FieldAttribute::Display) => KeyColumn::DisplayStr,
+			Some(FieldAttribute::Tagged) if ty.ends_with("IndexId") => KeyColumn::TaggedIndexId,
+			Some(FieldAttribute::Varint) if ty.ends_with("u128") => KeyColumn::VarintU128,
+			Some(FieldAttribute::Tagged) | Some(FieldAttribute::Varint) => {
+				return Err(compile_error(&format!(
+					"field '{}' has type '{}', which its key attribute does not apply to",
+					field_name, ty
+				)));
+			}
+			None => match column_type(&ty_tokens) {
 				Some(column) => column,
 				None => {
 					return Err(compile_error(&format!(
@@ -429,8 +510,15 @@ fn parse_fields(body: &Group) -> Result<Vec<KeyField>, TokenStream> {
 						field_name, ty
 					)));
 				}
-			}
+			},
 		};
+
+		if fields.last().is_some_and(|last: &KeyField| matches!(last.column, KeyColumn::RawTail)) {
+			return Err(compile_error(&format!(
+				"field '{}' follows a raw tail, which must be the last field because it takes the rest of the key",
+				field_name
+			)));
+		}
 
 		fields.push(KeyField {
 			name: field_name,
@@ -442,26 +530,40 @@ fn parse_fields(body: &Group) -> Result<Vec<KeyField>, TokenStream> {
 	Ok(fields)
 }
 
-fn is_repr_u8_attribute(group: &Group) -> bool {
+#[derive(Clone, Copy)]
+enum FieldAttribute {
+	ReprU8,
+	Display,
+	Tagged,
+	Varint,
+}
+
+fn field_attribute(group: &Group) -> Option<FieldAttribute> {
 	let tokens: Vec<TokenTree> = group.stream().into_iter().collect();
 	let mut iter = tokens.iter();
 
 	match iter.next() {
 		Some(TokenTree::Ident(i)) if *i == "key" => {}
-		_ => return false,
+		_ => return None,
 	}
 
 	let inner = match iter.next() {
 		Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis => g.clone(),
-		_ => return false,
+		_ => return None,
 	};
 
 	let inner_tokens: Vec<TokenTree> = inner.stream().into_iter().collect();
-	matches!(
-		inner_tokens.as_slice(),
+	match inner_tokens.as_slice() {
 		[TokenTree::Ident(repr), TokenTree::Punct(eq), TokenTree::Ident(width)]
-			if *repr == "repr" && eq.as_char() == '=' && *width == "u8"
-	)
+			if *repr == "repr" && eq.as_char() == '=' && *width == "u8" =>
+		{
+			Some(FieldAttribute::ReprU8)
+		}
+		[TokenTree::Ident(word)] if *word == "display" => Some(FieldAttribute::Display),
+		[TokenTree::Ident(word)] if *word == "tagged" => Some(FieldAttribute::Tagged),
+		[TokenTree::Ident(word)] if *word == "varint" => Some(FieldAttribute::Varint),
+		_ => None,
+	}
 }
 
 fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
@@ -472,6 +574,14 @@ fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
 
 	if is_option_u8(tokens) {
 		return Some(KeyColumn::OptionU8);
+	}
+
+	if is_generic_of(tokens, "Vec", "u8") {
+		return Some(KeyColumn::RawTail);
+	}
+
+	if is_generic_of(strip_path(tokens), "Asc", "RowNumber") {
+		return Some(KeyColumn::AscRowNumber);
 	}
 
 	let unqualified = strip_path(tokens);
@@ -525,8 +635,21 @@ fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
 		"MigrationEventId" => Some(KeyColumn::MigrationEventId),
 		"PrimaryKeyId" => Some(KeyColumn::PrimaryKeyId),
 		"ColumnBlockId" => Some(KeyColumn::ColumnBlockId),
+		"CdcConsumerId" => Some(KeyColumn::Str),
+		"EncodedKey" => Some(KeyColumn::EscapedBytes),
+		"KeyspaceId" => Some(KeyColumn::KeyspaceId),
+		"EncodedIndexKey" => Some(KeyColumn::RawTail),
+		"SortRun" => Some(KeyColumn::SortRun),
 		_ => None,
 	}
+}
+
+fn is_generic_of(tokens: &[TokenTree], outer: &str, inner: &str) -> bool {
+	matches!(
+		tokens,
+		[TokenTree::Ident(o), TokenTree::Punct(lt), TokenTree::Ident(u), TokenTree::Punct(gt)]
+			if *o == outer && lt.as_char() == '<' && *u == inner && gt.as_char() == '>'
+	)
 }
 
 fn is_option_u8(tokens: &[TokenTree]) -> bool {

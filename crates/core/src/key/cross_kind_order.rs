@@ -180,11 +180,9 @@ fn representative(kind: KeyTag) -> EncodedKey {
 			ringbuffer: RingBufferId(1),
 		}
 		.encode(),
-		KeyTag::RingBufferMetadata => RingBufferMetadataKey {
-			storage: StorageId::ringbuffer(RingBufferId(1)),
-			partition_values: vec![],
+		KeyTag::RingBufferMetadata => {
+			RingBufferMetadataKey::partition(StorageId::ringbuffer(RingBufferId(1)), vec![]).encode()
 		}
-		.encode(),
 		KeyTag::Flow => FlowKey {
 			flow: FlowId(1),
 		}

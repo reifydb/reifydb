@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::borrow::Cow;
-
-use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
-use smallvec::{SmallVec, smallvec};
+use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_macro::KeyCodec;
 
 use super::KeyTag;
 use crate::{
@@ -39,7 +37,8 @@ impl ToConsumerKey for FlowId {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Eq, PartialOrd, Ord, Hash)]
+#[key(tag = CdcConsumer)]
 pub struct CdcConsumerKey {
 	pub consumer: CdcConsumerId,
 }
@@ -51,43 +50,8 @@ impl CdcConsumerKey {
 		}
 	}
 
-	pub fn encoded(consumer: impl Into<CdcConsumerId>) -> EncodedKey {
-		Self {
-			consumer: consumer.into(),
-		}
-		.encode()
-	}
-
 	pub fn full_scan() -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange::kind(Self::TAG)
-	}
-}
-
-impl CdcConsumerKey {
-	pub const TAG: KeyTag = KeyTag::CdcConsumer;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(Self::TAG as u8).extend_str(&self.consumer);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self>
-	where
-		Self: Sized,
-	{
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::TAG {
-			return None;
-		}
-
-		let consumer_id = de.read_str().ok()?;
-
-		Some(Self {
-			consumer: CdcConsumerId(consumer_id),
-		})
 	}
 }
 
@@ -630,11 +594,5 @@ pub mod primary_key_tests {
 	#[test]
 	fn test_exclude_version_epoch() {
 		assert!(should_exclude_from_cdc(KeyTag::VersionEpoch));
-	}
-}
-
-impl KeyFields for CdcConsumerKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::BytesDesc(ByteEncoding::Escaped, Cow::Borrowed(self.consumer.as_ref().as_bytes()))]
 	}
 }

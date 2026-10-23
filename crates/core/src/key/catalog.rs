@@ -15,7 +15,6 @@ use reifydb_value::{
 	Result,
 	value::{dictionary::DictionaryId, sumtype::SumTypeId},
 };
-use smallvec::{SmallVec, smallvec};
 
 use super::{KeyRangeCodec, KeyTag};
 use crate::{
@@ -451,9 +450,11 @@ impl DictionaryEntryKey {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = DictionaryEntryIndex)]
 pub struct DictionaryEntryIndexKey {
 	pub dictionary: DictionaryId,
+	#[key(varint)]
 	pub id: u128,
 }
 
@@ -471,33 +472,6 @@ impl DictionaryEntryIndexKey {
 
 	pub fn full_scan(dictionary: DictionaryId) -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, dictionary.0 as u128)])
-	}
-}
-
-impl DictionaryEntryIndexKey {
-	pub const TAG: KeyTag = KeyTag::DictionaryEntryIndex;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(25);
-		serializer.extend_u8(Self::TAG as u8).extend_u64(self.dictionary).extend_u128_varint(self.id);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::TAG {
-			return None;
-		}
-
-		let dictionary = de.read_u64().ok()?;
-		let id = de.read_u128_varint().ok()?;
-
-		Some(Self {
-			dictionary: DictionaryId(dictionary),
-			id,
-		})
 	}
 }
 
@@ -774,9 +748,11 @@ pub mod index_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = IndexEntry)]
 pub struct IndexEntryKey {
 	pub object: ObjectId,
+	#[key(tagged)]
 	pub index: IndexId,
 	pub key: EncodedIndexKey,
 }
@@ -788,10 +764,6 @@ impl IndexEntryKey {
 			index,
 			key,
 		}
-	}
-
-	pub fn encoded(object: impl Into<ObjectId>, index: IndexId, key: EncodedIndexKey) -> EncodedKey {
-		Self::new(object, index, key).encode()
 	}
 }
 
@@ -850,40 +822,6 @@ impl KeyRangeCodec for IndexEntryKeyRange {
 		};
 
 		(start_key, end_key)
-	}
-}
-
-impl IndexEntryKey {
-	pub const TAG: KeyTag = KeyTag::IndexEntry;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(20 + self.key.len());
-		serializer
-			.extend_u8(Self::TAG as u8)
-			.extend_object_id(self.object)
-			.extend_index_id(self.index)
-			.extend_raw(self.key.as_slice());
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::TAG {
-			return None;
-		}
-
-		let object = de.read_object_id().ok()?;
-		let index = de.read_index_id().ok()?;
-
-		let remaining = de.remaining();
-		let remaining_bytes = de.read_raw(remaining).ok()?;
-		Some(Self {
-			object,
-			index,
-			key: EncodedIndexKey::new(remaining_bytes),
-		})
 	}
 }
 
@@ -1744,23 +1682,5 @@ mod primary_key_key_tests {
 		let encoded = key.encode();
 		let decoded = PrimaryKeyKey::decode(&encoded).unwrap();
 		assert_eq!(decoded.primary_key, PrimaryKeyId(0xABCD));
-	}
-}
-
-impl KeyFields for DictionaryEntryIndexKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![Field::UDesc(Width::U64, self.dictionary.0 as u128), Field::UDesc(Width::Varint, self.id)]
-	}
-}
-
-impl KeyFields for IndexEntryKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![
-			Field::UAsc(Width::U8, self.object.type_tag() as u128),
-			Field::UDesc(Width::U64, self.object.as_u64() as u128),
-			Field::UAsc(Width::U8, index_tag(&self.index) as u128),
-			Field::UDesc(Width::U64, self.index.as_u64() as u128),
-			Field::RawAsc(RawEncoding::Verbatim, Cow::Borrowed(self.key.as_slice())),
-		]
 	}
 }

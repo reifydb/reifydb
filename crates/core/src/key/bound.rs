@@ -9,7 +9,7 @@ use smallvec::SmallVec;
 use crate::{
 	interface::catalog::object::ObjectId,
 	key::{
-		any::{Field, KeyFields, TaggedKey, Width},
+		any::{Field, KeyFields, RawEncoding, TaggedKey, Width},
 		tag::KeyTag,
 	},
 };
@@ -79,42 +79,32 @@ impl TaggedKeyBound {
 	}
 
 	fn compare_fields(&self, other: &Self) -> Ordering {
-		let left = self.bound_fields();
-		let right = other.bound_fields();
-		for (index, (left_field, right_field)) in left.iter().zip(right.iter()).enumerate() {
+		let left_fields = self.bound_fields();
+		let right_fields = other.bound_fields();
+		let left = without_empty_raw_tail(&left_fields);
+		let right = without_empty_raw_tail(&right_fields);
+		for (left_field, right_field) in left.iter().zip(right.iter()) {
 			let ordering = left_field.cmp(right_field);
-			if ordering == Ordering::Equal {
-				continue;
+			if ordering != Ordering::Equal {
+				return ordering;
 			}
+		}
+		left.len().cmp(&right.len())
+	}
+}
 
-			if index + 1 == left.len()
-				&& self.sorts_after_its_extensions()
-				&& left_field.is_truncation_of(right_field)
-			{
-				return Ordering::Greater;
-			}
-			if index + 1 == right.len()
-				&& other.sorts_after_its_extensions()
-				&& right_field.is_truncation_of(left_field)
-			{
-				return Ordering::Less;
-			}
-			return ordering;
-		}
-		match (
-			left.len().cmp(&right.len()),
-			self.sorts_after_its_extensions(),
-			other.sorts_after_its_extensions(),
-		) {
-			(Ordering::Less, true, _) | (Ordering::Equal, true, false) => Ordering::Greater,
-			(Ordering::Greater, _, true) | (Ordering::Equal, false, true) => Ordering::Less,
-			(ordering, _, _) => ordering,
-		}
+fn without_empty_raw_tail<'a, 'f>(fields: &'a [Field<'f>]) -> &'a [Field<'f>] {
+	match fields.split_last() {
+		Some((Field::RawAsc(RawEncoding::Verbatim, tail), rest)) if tail.is_empty() => rest,
+		_ => fields,
 	}
 }
 
 impl Ord for TaggedKeyBound {
 	fn cmp(&self, other: &Self) -> Ordering {
+		if self.sorts_after_its_extensions() || other.sorts_after_its_extensions() {
+			return self.encode().as_slice().cmp(other.encode().as_slice());
+		}
 		other.kind_byte().cmp(&self.kind_byte()).then_with(|| self.compare_fields(other))
 	}
 }

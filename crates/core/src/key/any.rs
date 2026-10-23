@@ -1106,15 +1106,6 @@ impl Field<'_> {
 		}
 	}
 
-	pub fn is_truncation_of(&self, other: &Self) -> bool {
-		match (self, other) {
-			(Self::RawAsc(RawEncoding::Verbatim, left), Self::RawAsc(RawEncoding::Verbatim, right)) => {
-				left.len() < right.len() && right.starts_with(left)
-			}
-			_ => false,
-		}
-	}
-
 	pub fn encode(&self, out: &mut Vec<u8>) {
 		match self {
 			Self::UAsc(width, value) => {
@@ -1647,14 +1638,14 @@ mod tests {
 			probe_encodable(QueueDeduplicationKey::new(QueueId(1), [0x01u8])),
 			probe_encodable(QueueDeduplicationKey::new(QueueId(1), [0x01u8, 0x02])),
 			probe_encodable(RingBufferMetadataKey::new(StorageId::ringbuffer(1))),
-			probe_encodable(RingBufferMetadataKey {
-				storage: StorageId::ringbuffer(1),
-				partition_values: vec![Value::Uint8(1)],
-			}),
-			probe_encodable(RingBufferMetadataKey {
-				storage: StorageId::ringbuffer(1),
-				partition_values: vec![Value::Uint8(2)],
-			}),
+			probe_encodable(RingBufferMetadataKey::partition(
+				StorageId::ringbuffer(1),
+				vec![Value::Uint8(1)],
+			)),
+			probe_encodable(RingBufferMetadataKey::partition(
+				StorageId::ringbuffer(1),
+				vec![Value::Uint8(2)],
+			)),
 			probe(SortedViewRowKey::new(StorageId::view(1), SortRun::new([0x10u8]), RowNumber(1))),
 			probe(SortedViewRowKey::new(StorageId::view(1), SortRun::new([0x10u8]), RowNumber(2))),
 			probe(SortedViewRowKey::new(StorageId::view(1), SortRun::new([0x20u8]), RowNumber(1))),
@@ -1925,18 +1916,18 @@ mod tests {
 		);
 		assert_projection_matches_bytes(
 			vec![
-				probe_encodable(RingBufferMetadataKey {
-					storage: StorageId::ringbuffer(1),
-					partition_values: vec![Value::Uint8(1)],
-				}),
-				probe_encodable(RingBufferMetadataKey {
-					storage: StorageId::ringbuffer(1),
-					partition_values: vec![Value::Uint8(2)],
-				}),
-				probe_encodable(RingBufferMetadataKey {
-					storage: StorageId::ringbuffer(2),
-					partition_values: vec![Value::Uint8(1)],
-				}),
+				probe_encodable(RingBufferMetadataKey::partition(
+					StorageId::ringbuffer(1),
+					vec![Value::Uint8(1)],
+				)),
+				probe_encodable(RingBufferMetadataKey::partition(
+					StorageId::ringbuffer(1),
+					vec![Value::Uint8(2)],
+				)),
+				probe_encodable(RingBufferMetadataKey::partition(
+					StorageId::ringbuffer(2),
+					vec![Value::Uint8(1)],
+				)),
 			],
 			"RingBufferMetadataKey",
 		);
@@ -2080,10 +2071,10 @@ mod tests {
 				namespace: NamespaceId(26),
 				ringbuffer: RingBufferId(27),
 			}),
-			probe_encodable(RingBufferMetadataKey {
-				storage: StorageId::ringbuffer(28),
-				partition_values: vec![Value::Utf8("east".to_string()), Value::Uint8(3)],
-			}),
+			probe_encodable(RingBufferMetadataKey::partition(
+				StorageId::ringbuffer(28),
+				vec![Value::Utf8("east".to_string()), Value::Uint8(3)],
+			)),
 			probe(FlowKey {
 				flow: FlowId(29),
 			}),

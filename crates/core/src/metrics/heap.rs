@@ -171,10 +171,7 @@ impl HeapSize for TaggedKey {
 		match self {
 			TaggedKey::SortedViewRow(key) => key.run.len(),
 			TaggedKey::PartitionedSortedViewRow(key) => key.run.len(),
-			TaggedKey::RingBufferMetadata(key) => {
-				key.partition_values.capacity() * mem::size_of::<Value>()
-					+ key.partition_values.iter().map(HeapSize::heap_size).sum::<usize>()
-			}
+			TaggedKey::RingBufferMetadata(key) => key.encoded_partition.capacity(),
 			TaggedKey::QueueDeduplication(key) => key.tail.heap_size(),
 			TaggedKey::IndexEntry(key) => key.key.heap_size(),
 			TaggedKey::OperatorState(key) => key.suffix.capacity(),

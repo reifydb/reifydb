@@ -13,9 +13,9 @@ use reifydb_codec::key::{
 	encoded::{EncodedKey, EncodedKeyRange},
 	serializer::KeySerializer,
 };
+use reifydb_macro::KeyCodec;
 use reifydb_value::util::hash::{Hash128, xxh3_128};
 use serde::{Deserialize, Serialize};
-use smallvec::{SmallVec, smallvec};
 
 use super::super::KeyTag;
 use crate::{
@@ -497,7 +497,8 @@ pub fn is_class_framed_inner(class: OperatorClass, inner: &[u8]) -> bool {
 	})
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Eq, Hash)]
+#[key(tag = OperatorState)]
 pub struct OperatorStateKey {
 	pub operator: OperatorId,
 	pub group: GroupId,
@@ -576,42 +577,6 @@ impl OperatorStateKey {
 		let operator = de.read_u64().ok()?;
 		let inner = de.read_raw(de.remaining()).ok()?;
 		Some((OperatorId(operator), EncodedKey::new(inner)))
-	}
-}
-
-impl OperatorStateKey {
-	pub const TAG: KeyTag = KeyTag::OperatorState;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(NODE_GROUP_PREFIX_LEN + 1 + self.suffix.len());
-		serializer
-			.extend_u8(KeyTag::OperatorState as u8)
-			.extend_u64(self.operator.0)
-			.extend_fixed(*self.group.as_bytes())
-			.extend_u8(self.keyspace.0)
-			.extend_raw(&self.suffix);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != KeyTag::OperatorState {
-			return None;
-		}
-
-		let operator = de.read_u64().ok()?;
-		let group = de.read_fixed().ok()?;
-		let keyspace = de.read_u8().ok()?;
-		let suffix = de.read_raw(de.remaining()).ok()?.to_vec();
-
-		Some(Self {
-			operator: OperatorId(operator),
-			group: GroupId::from_bytes(group),
-			keyspace: KeyspaceId(keyspace),
-			suffix,
-		})
 	}
 }
 
@@ -973,17 +938,6 @@ pub fn group_identity_range(operator: OperatorId, group: GroupId) -> TaggedKeyBo
 				Field::UDesc(Width::U8, KeyspaceId::HIGHEST_DATA as u128),
 			],
 		)),
-	}
-}
-
-impl KeyFields for OperatorStateKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![
-			Field::UDesc(Width::U64, self.operator.0 as u128),
-			Field::BytesDesc(ByteEncoding::Fixed, Cow::Borrowed(self.group.as_bytes())),
-			Field::UDesc(Width::U8, self.keyspace.0 as u128),
-			Field::RawAsc(RawEncoding::Verbatim, Cow::Borrowed(&self.suffix)),
-		]
 	}
 }
 

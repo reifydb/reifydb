@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::borrow::Cow;
-
-use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_macro::KeyCodec;
 use reifydb_value::value::{datetime::DateTime, row_number::RowNumber};
-use smallvec::{SmallVec, smallvec};
 
 use super::KeyTag;
 use crate::{
@@ -42,6 +39,8 @@ impl QueueKey {
 #[cfg(test)]
 mod queue_key_tests {
 	use std::ops::Bound;
+
+	use reifydb_codec::key::serializer::KeySerializer;
 
 	use super::*;
 
@@ -258,7 +257,8 @@ mod queue_item_state_key_tests {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = QueueDeduplication)]
 pub struct QueueDeduplicationKey {
 	pub queue: QueueId,
 	pub tail: EncodedKey,
@@ -278,33 +278,6 @@ impl QueueDeduplicationKey {
 
 	pub fn full_scan(queue: QueueId) -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, queue.0 as u128)])
-	}
-}
-
-impl QueueDeduplicationKey {
-	pub const TAG: KeyTag = KeyTag::QueueDeduplication;
-
-	pub fn encode(&self) -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(9 + self.tail.len() + 1);
-		serializer.extend_u8(Self::TAG as u8).extend_u64(self.queue).extend_bytes(&self.tail);
-		serializer.to_encoded_key()
-	}
-
-	pub fn decode(key: &EncodedKey) -> Option<Self> {
-		let mut de = KeyDeserializer::from_bytes(key.as_slice());
-
-		let kind: KeyTag = de.read_u8().ok()?.try_into().ok()?;
-		if kind != Self::TAG {
-			return None;
-		}
-
-		let queue = de.read_u64().ok()?;
-		let tail = de.read_bytes().ok()?;
-
-		Some(Self {
-			queue: QueueId(queue),
-			tail: EncodedKey::new(tail),
-		})
 	}
 }
 
@@ -578,7 +551,7 @@ impl QueueKeyActiveKey {
 mod queue_partition_key_tests {
 	use std::ops::Bound;
 
-	use reifydb_codec::key::encoded::EncodedKeyRange;
+	use reifydb_codec::key::{encoded::EncodedKeyRange, serializer::KeySerializer};
 
 	use super::*;
 
@@ -819,14 +792,5 @@ mod queue_partition_key_tests {
 			legacy.to_encoded_key().as_slice(),
 			QueueDueKey::encoded(queue, partition, due, row).as_slice()
 		);
-	}
-}
-
-impl KeyFields for QueueDeduplicationKey {
-	fn fields(&self) -> SmallVec<[Field<'_>; 6]> {
-		smallvec![
-			Field::UDesc(Width::U64, self.queue.0 as u128),
-			Field::BytesDesc(ByteEncoding::Escaped, Cow::Borrowed(self.tail.as_slice())),
-		]
 	}
 }
