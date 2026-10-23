@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, slice};
+use std::collections::HashMap;
 
 use postcard::from_bytes;
 use reifydb_core::{interface::catalog::dictionary::Dictionary, internal_error};
@@ -21,13 +21,8 @@ pub trait DictionaryExtension: FlowTransaction {
 		self.catalog().cache().find_dictionary(id)
 	}
 
-	#[instrument(name = "flow::dictionary::find", level = "trace", skip(self, dictionary, value), fields(dictionary_id = dictionary.id.0))]
-	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		Ok(self.dictionary_allocators().find(dictionary, slice::from_ref(value))?.remove(0))
-	}
-
-	#[instrument(name = "flow::dictionary::find_many", level = "trace", skip(self, dictionary, values), fields(dictionary_id = dictionary.id.0, values = values.len()))]
-	fn find_many_in_dictionary(
+	#[instrument(name = "flow::dictionary::find", level = "trace", skip(self, dictionary, values), fields(dictionary_id = dictionary.id.0, values = values.len()))]
+	fn find_in_dictionary(
 		&mut self,
 		dictionary: &Dictionary,
 		values: &[Value],
@@ -35,8 +30,8 @@ pub trait DictionaryExtension: FlowTransaction {
 		self.dictionary_allocators().find(dictionary, values)
 	}
 
-	#[instrument(name = "flow::dictionary::resolve_many", level = "trace", skip(self, dictionary, ids), fields(dictionary_id = dictionary.id.0, ids = ids.len()))]
-	fn get_many_from_dictionary(
+	#[instrument(name = "flow::dictionary::get", level = "trace", skip(self, dictionary, ids), fields(dictionary_id = dictionary.id.0, ids = ids.len()))]
+	fn get_from_dictionary(
 		&mut self,
 		dictionary: &Dictionary,
 		ids: &[DictionaryEntryId],

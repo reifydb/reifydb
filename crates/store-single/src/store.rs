@@ -245,7 +245,7 @@ impl StandardSingleStore {
 }
 
 impl SingleVersionGet for StandardSingleStore {
-	#[instrument(name = "store::single::get_many", level = "trace", skip(self, keys), fields(keys = keys.len()))]
+	#[instrument(name = "store::single::get", level = "trace", skip(self, keys), fields(keys = keys.len()))]
 	fn get(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
 		let mut rows = Vec::with_capacity(keys.len());
 		let mut misses = Vec::new();

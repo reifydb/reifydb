@@ -406,7 +406,7 @@ fn claimed_columns(
 		columns.push(match dictionary {
 			Some(dictionary) => {
 				decode_dictionary_ids(&field, &array, column.constraint.get_type(), |ids| {
-					ctx.tx.get_many_from_dictionary(dictionary, ids)
+					ctx.tx.get_from_dictionary(dictionary, ids)
 				})?
 			}
 			None => (field, array),

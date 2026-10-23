@@ -38,7 +38,7 @@ impl SqlitePersistent {
 			.collect())
 	}
 
-	#[instrument(name = "store::operator::persistent::sqlite::get_many", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
+	#[instrument(name = "store::operator::persistent::sqlite::get", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
 	pub fn get(&self, operator: OperatorId, keys: &[&EncodedKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		if keys.is_empty() || !self.state_written() {
 			return Ok(vec![None; keys.len()]);

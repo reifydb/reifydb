@@ -191,13 +191,13 @@ impl Resolve for TestFlowTransaction {
 	}
 
 	fn resolve(&mut self, dictionary: &Dictionary, ids: &[DictionaryEntryId]) -> Result<Vec<Option<Value>>> {
-		self.get_many_from_dictionary(dictionary, ids)
+		self.get_from_dictionary(dictionary, ids)
 	}
 }
 
 impl Find for TestFlowTransaction {
 	fn find(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<Option<DictionaryEntryId>>> {
-		self.find_many_in_dictionary(dictionary, values)
+		self.find_in_dictionary(dictionary, values)
 	}
 }
 

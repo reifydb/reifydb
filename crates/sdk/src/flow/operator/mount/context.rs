@@ -321,7 +321,7 @@ impl GuestEmitContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).flow_watermark() }.map_err(to_sdk_err)
 	}
-	fn dictionary_find_many(
+	fn dictionary_find(
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
@@ -330,7 +330,7 @@ impl GuestEmitContext for InProcessContext<'_> {
 		// that borrow live for 'a and &mut self makes the deref unique.
 		unsafe { (*self.host).dictionary_find(dictionary, values) }.map_err(to_sdk_err)
 	}
-	fn dictionary_intern_many(
+	fn dictionary_intern(
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
@@ -342,7 +342,7 @@ impl GuestEmitContext for InProcessContext<'_> {
 			.dictionary(dictionary)
 			.map_err(to_sdk_err)?
 			.ok_or_else(|| SdkError::Other(format!("dictionary {} not found", dictionary.0)))?;
-		host.dictionary_intern_many(&resolved, values).map_err(to_sdk_err)
+		host.dictionary_intern(&resolved, values).map_err(to_sdk_err)
 	}
 	fn get_or_create_row_numbers(
 		&mut self,

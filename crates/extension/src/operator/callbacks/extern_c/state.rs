@@ -1201,7 +1201,7 @@ mod join_row_expiry_guard_tests {
 			Ok(vec![None; values.len()])
 		}
 
-		fn dictionary_get_many(
+		fn dictionary_get(
 			&mut self,
 			_dictionary: DictionaryId,
 			ids: &[DictionaryEntryId],
@@ -1209,7 +1209,7 @@ mod join_row_expiry_guard_tests {
 			Ok(vec![None; ids.len()])
 		}
 
-		fn dictionary_intern_many(
+		fn dictionary_intern(
 			&mut self,
 			_dictionary: &Dictionary,
 			_values: &[Value],

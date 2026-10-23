@@ -44,7 +44,7 @@ fn insert_rows<T: Write>(txn: &mut T, queue: &Queue, rows: &[QueueInsertRow]) ->
 		return Ok(());
 	}
 
-	txn.set_many_with_pre(
+	txn.set_with_pre(
 		rows.iter()
 			.map(|row| (RowKey::new(queue.id, row.row_number).into(), row.encoded.clone(), SetPre::Absent))
 			.collect(),

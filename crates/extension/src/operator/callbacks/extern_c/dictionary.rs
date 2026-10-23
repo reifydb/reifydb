@@ -19,7 +19,7 @@ use reifydb_value::value::{
 use super::{context::get_host_mut, marshal::write_buffer, state::free_rows};
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_dictionary_get_many(
+pub(super) extern "C" fn host_dictionary_get(
 	ctx: *mut ExternCContextRaw,
 	dictionary_id: u64,
 	ids: *const u128,
@@ -59,7 +59,7 @@ pub(super) extern "C" fn host_dictionary_get_many(
 		else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
-		let Ok(values) = host.dictionary_get_many(dictionary, &entry_ids) else {
+		let Ok(values) = host.dictionary_get(dictionary, &entry_ids) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 		if values.len() != ids.len() {
@@ -85,7 +85,7 @@ pub(super) extern "C" fn host_dictionary_get_many(
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_dictionary_find_many(
+pub(super) extern "C" fn host_dictionary_find(
 	ctx: *mut ExternCContextRaw,
 	dictionary_id: u64,
 	values: *const ExternCBuffer,
@@ -151,7 +151,7 @@ pub(super) extern "C" fn host_dictionary_find_many(
 }
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
-pub(super) extern "C" fn host_dictionary_intern_many(
+pub(super) extern "C" fn host_dictionary_intern(
 	ctx: *mut ExternCContextRaw,
 	dictionary_id: u64,
 	values: *const ExternCBuffer,
@@ -199,7 +199,7 @@ pub(super) extern "C" fn host_dictionary_intern_many(
 		else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
-		let Ok(interned) = host.dictionary_intern_many(&dictionary, &decoded) else {
+		let Ok(interned) = host.dictionary_intern(&dictionary, &decoded) else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
 		if interned.len() != n {

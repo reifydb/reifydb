@@ -356,18 +356,14 @@ impl GuestEmitContext for ExternCContext {
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>> {
 		ExternCContext::flow_watermark(self)
 	}
-	fn dictionary_find_many(
+	fn dictionary_find(
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
 		raw_find_many(self, dictionary, values)
 	}
-	fn dictionary_intern_many(
-		&mut self,
-		dictionary: DictionaryId,
-		values: &[Value],
-	) -> Result<Vec<DictionaryEntryId>> {
+	fn dictionary_intern(&mut self, dictionary: DictionaryId, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
 		raw_intern_many(self, dictionary, values)
 	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {

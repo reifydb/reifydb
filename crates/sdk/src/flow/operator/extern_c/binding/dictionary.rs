@@ -32,7 +32,7 @@ pub(crate) fn raw_get_many(
 	// for the whole guest call; raw_ids, values and present each hold ids.len() live slots. On EXTERN_C_OK
 	// every present slot owns a host buffer of its len, copied out before memory.free releases it.
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.dictionary_get_many)(
+		let result = ((*ctx.ctx).callbacks.dictionary_get)(
 			ctx.ctx,
 			dictionary.0,
 			raw_ids.as_ptr(),
@@ -44,7 +44,7 @@ pub(crate) fn raw_get_many(
 			return Ok(vec![None; ids.len()]);
 		}
 		if result != EXTERN_C_OK {
-			return Err(SdkError::Other(format!("host_dictionary_get_many failed with code {}", result)));
+			return Err(SdkError::Other(format!("host_dictionary_get failed with code {}", result)));
 		}
 		let copied: Vec<Option<Vec<u8>>> = values
 			.iter()
@@ -97,7 +97,7 @@ pub(crate) fn raw_find_many(
 	// for the whole guest call; buffers borrow `encoded`, which outlives the call, ids / present each hold
 	// values.len() live slots and id_width one, all only written by the host.
 	let result = unsafe {
-		((*ctx.ctx).callbacks.dictionary_find_many)(
+		((*ctx.ctx).callbacks.dictionary_find)(
 			ctx.ctx,
 			dictionary.0,
 			buffers.as_ptr(),
@@ -111,7 +111,7 @@ pub(crate) fn raw_find_many(
 		return Ok(vec![None; values.len()]);
 	}
 	if result != EXTERN_C_OK {
-		return Err(SdkError::Other(format!("host_dictionary_find_many failed with code {}", result)));
+		return Err(SdkError::Other(format!("host_dictionary_find failed with code {}", result)));
 	}
 	let id_type = match id_width {
 		1 => ValueType::Uint1,
@@ -160,7 +160,7 @@ pub(crate) fn raw_intern_many(
 	// for the whole guest call; buffers borrow `encoded`, which outlives the call, ids holds values.len()
 	// live slots and id_width one, all only written by the host.
 	let result = unsafe {
-		((*ctx.ctx).callbacks.dictionary_intern_many)(
+		((*ctx.ctx).callbacks.dictionary_intern)(
 			ctx.ctx,
 			dictionary.0,
 			buffers.as_ptr(),
@@ -173,7 +173,7 @@ pub(crate) fn raw_intern_many(
 		return Err(SdkError::Other(format!("dictionary {} not found", dictionary.0)));
 	}
 	if result != EXTERN_C_OK {
-		return Err(SdkError::Other(format!("host_dictionary_intern_many failed with code {}", result)));
+		return Err(SdkError::Other(format!("host_dictionary_intern failed with code {}", result)));
 	}
 	let id_type = match id_width {
 		1 => ValueType::Uint1,

@@ -137,17 +137,10 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>>;
 
-	fn dictionary_get_many(
-		&mut self,
-		dictionary: DictionaryId,
-		ids: &[DictionaryEntryId],
-	) -> Result<Vec<Option<Value>>>;
+	fn dictionary_get(&mut self, dictionary: DictionaryId, ids: &[DictionaryEntryId])
+	-> Result<Vec<Option<Value>>>;
 
-	fn dictionary_intern_many(
-		&mut self,
-		dictionary: &Dictionary,
-		values: &[Value],
-	) -> Result<Vec<DictionaryEntryId>>;
+	fn dictionary_intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>>;
 
 	fn lookup_read_many(
 		&mut self,
@@ -534,27 +527,23 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
 		match self.txn.find_dictionary(dictionary) {
-			Some(dict) => self.txn.find_many_in_dictionary(&dict, values),
+			Some(dict) => self.txn.find_in_dictionary(&dict, values),
 			None => Ok(vec![None; values.len()]),
 		}
 	}
 
-	fn dictionary_get_many(
+	fn dictionary_get(
 		&mut self,
 		dictionary: DictionaryId,
 		ids: &[DictionaryEntryId],
 	) -> Result<Vec<Option<Value>>> {
 		match self.txn.find_dictionary(dictionary) {
-			Some(dict) => self.txn.get_many_from_dictionary(&dict, ids),
+			Some(dict) => self.txn.get_from_dictionary(&dict, ids),
 			None => Ok(vec![None; ids.len()]),
 		}
 	}
 
-	fn dictionary_intern_many(
-		&mut self,
-		dictionary: &Dictionary,
-		values: &[Value],
-	) -> Result<Vec<DictionaryEntryId>> {
+	fn dictionary_intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
 		self.txn.intern(dictionary, values)
 	}
 }
@@ -569,7 +558,7 @@ impl<T: FlowTransaction> Resolve for TxnHostContext<'_, T> {
 		{
 			self.dictionary_resolves += 1;
 		}
-		self.txn.get_many_from_dictionary(dictionary, ids)
+		self.txn.get_from_dictionary(dictionary, ids)
 	}
 }
 

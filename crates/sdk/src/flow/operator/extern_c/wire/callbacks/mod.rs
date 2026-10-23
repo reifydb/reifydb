@@ -25,7 +25,7 @@ pub struct OperatorCallbacks {
 
 	pub builder: BuilderCallbacks,
 
-	pub dictionary_get_many: extern "C" fn(
+	pub dictionary_get: extern "C" fn(
 		ctx: *mut ExternCContextRaw,
 		dictionary: u64,
 		ids: *const u128,
@@ -42,7 +42,7 @@ pub struct OperatorCallbacks {
 		handle_out: *mut *mut ColumnBufferHandle,
 	) -> i32,
 
-	pub dictionary_find_many: extern "C" fn(
+	pub dictionary_find: extern "C" fn(
 		ctx: *mut ExternCContextRaw,
 		dictionary: u64,
 		values: *const ExternCBuffer,
@@ -52,7 +52,7 @@ pub struct OperatorCallbacks {
 		id_width_out: *mut u8,
 	) -> i32,
 
-	pub dictionary_intern_many: extern "C" fn(
+	pub dictionary_intern: extern "C" fn(
 		ctx: *mut ExternCContextRaw,
 		dictionary: u64,
 		values: *const ExternCBuffer,

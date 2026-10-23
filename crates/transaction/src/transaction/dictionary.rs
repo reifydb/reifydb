@@ -20,7 +20,7 @@ use reifydb_value::{
 use crate::{dictionary::DictionaryAllocatorRegistry, transaction::Transaction};
 
 impl Transaction<'_> {
-	pub fn get_many_from_dictionary(
+	pub fn get_from_dictionary(
 		&mut self,
 		dictionary: &Dictionary,
 		ids: &[DictionaryEntryId],

@@ -41,10 +41,10 @@ pub fn create_host_callbacks() -> OperatorCallbacks {
 			flow_watermark: state::host_flow_watermark,
 			reclaim_group_identity: state::host_reclaim_group_identity,
 		},
-		dictionary_get_many: dictionary::host_dictionary_get_many,
+		dictionary_get: dictionary::host_dictionary_get,
 		pass_through: pass_through::host_pass_through,
-		dictionary_find_many: dictionary::host_dictionary_find_many,
-		dictionary_intern_many: dictionary::host_dictionary_intern_many,
+		dictionary_find: dictionary::host_dictionary_find,
+		dictionary_intern: dictionary::host_dictionary_intern,
 		builder_bind_dictionary: builder::host_builder_bind_dictionary,
 		builder: BuilderCallbacks {
 			acquire: builder::host_builder_acquire,

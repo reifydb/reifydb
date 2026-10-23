@@ -54,7 +54,7 @@ pub(crate) fn decode_dictionary_column(
 	target: ValueType,
 	rx: &mut Transaction,
 ) -> Result<(FieldRef, ArrayRef)> {
-	decode_dictionary_ids(field, array, target, |ids| rx.get_many_from_dictionary(dictionary, ids))
+	decode_dictionary_ids(field, array, target, |ids| rx.get_from_dictionary(dictionary, ids))
 }
 
 pub(crate) fn user_pairs(batch: &RecordBatch) -> Vec<(FieldRef, ArrayRef)> {

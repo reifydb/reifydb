@@ -183,7 +183,7 @@ fn insert_rows<T: WithInterceptors + Write + Read>(
 		written
 	};
 
-	txn.set_many_with_pre(
+	txn.set_with_pre(
 		keys.into_iter()
 			.zip(written.iter().cloned())
 			.map(|(key, bytes)| (key, bytes, SetPre::Absent))

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{slice, sync::Arc};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::{
@@ -70,12 +70,14 @@ fn resolves_a_mint_a_concurrent_flow_interned_after_this_flows_snapshot() {
 	let mut txn = flow_txn(&engine, registry_on(&parent.single));
 
 	assert_eq!(
-		txn.find_in_dictionary(&dictionary, &Value::Utf8("never-interned".to_string())).unwrap(),
+		txn.find_in_dictionary(&dictionary, slice::from_ref(&Value::Utf8("never-interned".to_string())))
+			.unwrap()
+			.remove(0),
 		None,
 		"a mint that was never interned must resolve to None"
 	);
 	assert_eq!(
-		txn.find_in_dictionary(&dictionary, &mint()).unwrap().map(|id| id.to_u128()),
+		txn.find_in_dictionary(&dictionary, slice::from_ref(&mint())).unwrap().remove(0).map(|id| id.to_u128()),
 		Some(interned),
 		"a downstream flow must resolve a mint a concurrent flow interned after its snapshot began"
 	);
@@ -94,12 +96,12 @@ fn an_interned_mint_is_durable_so_a_restart_still_resolves_it() {
 	let mut txn = flow_txn(&engine, registry_on(&parent.single));
 
 	assert_eq!(
-		txn.find_in_dictionary(&dictionary, &mint()).unwrap(),
+		txn.find_in_dictionary(&dictionary, slice::from_ref(&mint())).unwrap().remove(0),
 		Some(interned),
 		"after a restart the mint must resolve through its durable entry"
 	);
 	assert_eq!(
-		txn.get_many_from_dictionary(&dictionary, &[interned]).unwrap(),
+		txn.get_from_dictionary(&dictionary, &[interned]).unwrap(),
 		vec![Some(mint())],
 		"the id must decode back to its value after a restart"
 	);
@@ -130,14 +132,20 @@ fn a_rolled_back_slice_leaves_its_mint_durable_and_the_retry_reuses_that_id() {
 
 	let mut retry = flow_txn(&engine, registry);
 	assert_eq!(
-		retry.find_in_dictionary(&dictionary, &mint()).unwrap().map(|id| id.to_u128()),
+		retry.find_in_dictionary(&dictionary, slice::from_ref(&mint()))
+			.unwrap()
+			.remove(0)
+			.map(|id| id.to_u128()),
 		Some(interned),
 		"the retry must resolve the same id the rolled-back slice allocated"
 	);
 
 	let mut cold = flow_txn(&engine, registry_on(&parent.single));
 	assert_eq!(
-		cold.find_in_dictionary(&dictionary, &mint()).unwrap().map(|id| id.to_u128()),
+		cold.find_in_dictionary(&dictionary, slice::from_ref(&mint()))
+			.unwrap()
+			.remove(0)
+			.map(|id| id.to_u128()),
 		Some(interned),
 		"the entry survives the rollback in the store, not merely in the registry cache"
 	);

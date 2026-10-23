@@ -14,7 +14,7 @@ use crate::{change::RowChange, multi::transaction::write::Rebase};
 pub trait Write {
 	fn set_rebased(&mut self, key: &TaggedKey, bytes: EncodedBytes, rebase: Rebase) -> Result<()>;
 	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()>;
-	fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()>;
+	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()>;
 	fn remove_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()>;
 	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()>;
 

@@ -94,7 +94,7 @@ fn dictionary_values(
 			.collect();
 		ids.sort_unstable();
 		ids.dedup();
-		let found = host.dictionary_get_many(dictionary, &ids)?;
+		let found = host.dictionary_get(dictionary, &ids)?;
 		let entries = ids
 			.into_iter()
 			.zip(found)

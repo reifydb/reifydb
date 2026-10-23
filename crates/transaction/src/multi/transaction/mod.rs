@@ -400,7 +400,7 @@ pub enum TransactionType {
 }
 
 impl MultiTransaction {
-	#[instrument(name = "transaction::get_many", level = "trace", skip(self, keys), fields(keys = keys.len(), version = version.0))]
+	#[instrument(name = "transaction::get", level = "trace", skip(self, keys), fields(keys = keys.len(), version = version.0))]
 	pub fn get(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<Committed>>> {
 		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
 		let found = self.store.get_many_versioned(&encoded, version)?;

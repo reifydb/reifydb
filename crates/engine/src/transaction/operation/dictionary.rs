@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashSet, slice};
+use std::collections::HashSet;
 
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion},
@@ -25,9 +25,7 @@ use crate::Result;
 pub(crate) trait DictionaryOperations {
 	fn intern_values(&mut self, dictionary: &Dictionary, values: Vec<Value>) -> Result<Vec<DictionaryEntryId>>;
 
-	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>>;
-
-	fn find_many_in_dictionary(
+	fn find_in_dictionary(
 		&mut self,
 		dictionary: &Dictionary,
 		values: &[Value],
@@ -81,15 +79,6 @@ fn intern_through_chains<T: WithInterceptors>(
 fn find_through(
 	registry: Option<DictionaryAllocatorRegistry>,
 	dictionary: &Dictionary,
-	value: &Value,
-) -> Result<Option<DictionaryEntryId>> {
-	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
-	Ok(registry.find(dictionary, slice::from_ref(value))?.remove(0))
-}
-
-fn find_many_through(
-	registry: Option<DictionaryAllocatorRegistry>,
-	dictionary: &Dictionary,
 	values: &[Value],
 ) -> Result<Vec<Option<DictionaryEntryId>>> {
 	let registry = registry.ok_or_else(|| internal_error!("dictionary allocator registry is not configured"))?;
@@ -101,16 +90,12 @@ impl DictionaryOperations for CommandTransaction {
 		Ok(intern_through_chains(self, CommandTransaction::dictionary_allocators, dictionary, values)?.ids)
 	}
 
-	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		find_through(self.dictionary_allocators(), dictionary, value)
-	}
-
-	fn find_many_in_dictionary(
+	fn find_in_dictionary(
 		&mut self,
 		dictionary: &Dictionary,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
-		find_many_through(self.dictionary_allocators(), dictionary, values)
+		find_through(self.dictionary_allocators(), dictionary, values)
 	}
 }
 
@@ -128,16 +113,12 @@ impl DictionaryOperations for AdminTransaction {
 		Ok(intern_through_chains(self, AdminTransaction::dictionary_allocators, dictionary, values)?.ids)
 	}
 
-	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		find_through(self.dictionary_allocators(), dictionary, value)
-	}
-
-	fn find_many_in_dictionary(
+	fn find_in_dictionary(
 		&mut self,
 		dictionary: &Dictionary,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
-		find_many_through(self.dictionary_allocators(), dictionary, values)
+		find_through(self.dictionary_allocators(), dictionary, values)
 	}
 }
 
@@ -164,26 +145,15 @@ impl DictionaryOperations for Transaction<'_> {
 		}
 	}
 
-	fn find_in_dictionary(&mut self, dictionary: &Dictionary, value: &Value) -> Result<Option<DictionaryEntryId>> {
-		match self {
-			Transaction::Command(cmd) => cmd.find_in_dictionary(dictionary, value),
-			Transaction::Admin(admin) => admin.find_in_dictionary(dictionary, value),
-			Transaction::Test(t) => t.inner.find_in_dictionary(dictionary, value),
-			Transaction::Query(_) => {
-				Err(internal_error!("Cannot find in a dictionary during a query transaction"))
-			}
-		}
-	}
-
-	fn find_many_in_dictionary(
+	fn find_in_dictionary(
 		&mut self,
 		dictionary: &Dictionary,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
 		match self {
-			Transaction::Command(cmd) => cmd.find_many_in_dictionary(dictionary, values),
-			Transaction::Admin(admin) => admin.find_many_in_dictionary(dictionary, values),
-			Transaction::Test(t) => t.inner.find_many_in_dictionary(dictionary, values),
+			Transaction::Command(cmd) => cmd.find_in_dictionary(dictionary, values),
+			Transaction::Admin(admin) => admin.find_in_dictionary(dictionary, values),
+			Transaction::Test(t) => t.inner.find_in_dictionary(dictionary, values),
 			Transaction::Query(_) => {
 				Err(internal_error!("Cannot find in a dictionary during a query transaction"))
 			}
@@ -193,6 +163,8 @@ impl DictionaryOperations for Transaction<'_> {
 
 #[cfg(test)]
 pub mod tests {
+	use std::slice;
+
 	use reifydb_core::interface::catalog::{dictionary::Dictionary, id::NamespaceId};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
@@ -261,7 +233,7 @@ pub mod tests {
 		let value = Value::Utf8("hello".to_string());
 
 		let id = txn.intern_values(&dict, vec![value.clone()]).unwrap()[0];
-		let retrieved = Transaction::Admin(&mut txn).get_many_from_dictionary(&dict, &[id]).unwrap();
+		let retrieved = Transaction::Admin(&mut txn).get_from_dictionary(&dict, &[id]).unwrap();
 
 		assert_eq!(retrieved, vec![Some(value)]);
 	}
@@ -272,9 +244,8 @@ pub mod tests {
 		let dict = test_dictionary();
 
 		// An unknown id must be none, not an error or a garbage entry.
-		let retrieved = Transaction::Admin(&mut txn)
-			.get_many_from_dictionary(&dict, &[DictionaryEntryId::U8(999)])
-			.unwrap();
+		let retrieved =
+			Transaction::Admin(&mut txn).get_from_dictionary(&dict, &[DictionaryEntryId::U8(999)]).unwrap();
 		assert_eq!(retrieved, vec![None]);
 	}
 
@@ -287,7 +258,7 @@ pub mod tests {
 		let id = txn.intern_values(&dict, vec![value.clone()]).unwrap()[0];
 
 		// The reverse index must see an uncommitted insert from the same transaction.
-		let found = txn.find_in_dictionary(&dict, &value).unwrap();
+		let found = txn.find_in_dictionary(&dict, slice::from_ref(&value)).unwrap().remove(0);
 		assert_eq!(found, Some(id));
 	}
 
@@ -298,7 +269,7 @@ pub mod tests {
 		let value = Value::Utf8("not_inserted".to_string());
 
 		// A lookup miss must not intern the value as a side effect.
-		let found = txn.find_in_dictionary(&dict, &value).unwrap();
+		let found = txn.find_in_dictionary(&dict, slice::from_ref(&value)).unwrap().remove(0);
 		assert_eq!(found, None);
 	}
 
@@ -363,12 +334,12 @@ pub mod tests {
 			IdentityId::system(),
 		);
 
-		assert!(Transaction::Query(&mut query).find_in_dictionary(&dict, &value).is_err());
-		assert!(Transaction::Query(&mut query).find_many_in_dictionary(&dict, &[value]).is_err());
+		assert!(Transaction::Query(&mut query).find_in_dictionary(&dict, slice::from_ref(&value)).is_err());
+		assert!(Transaction::Query(&mut query).find_in_dictionary(&dict, &[value]).is_err());
 	}
 
 	#[test]
-	fn test_get_many_from_dictionary_on_a_query_reads_what_an_admin_reads() {
+	fn test_get_from_dictionary_on_a_query_reads_what_an_admin_reads() {
 		// A read transaction resolves dictionary ids through its own store path; it must answer each id,
 		// repeats and misses included, with the value a writer would see.
 		let mut txn = create_test_admin_transaction();
@@ -377,14 +348,14 @@ pub mod tests {
 			.intern_values(&dict, vec![Value::Utf8("a".to_string()), Value::Utf8("b".to_string())])
 			.unwrap();
 		let probe = [ids[1], ids[0], ids[1], DictionaryEntryId::U8(99)];
-		let expected = Transaction::Admin(&mut txn).get_many_from_dictionary(&dict, &probe).unwrap();
+		let expected = Transaction::Admin(&mut txn).get_from_dictionary(&dict, &probe).unwrap();
 		let mut query = QueryTransaction::new(
 			txn.multi.begin_query().unwrap(),
 			txn.single.clone(),
 			IdentityId::system(),
 		);
 
-		let answered = Transaction::Query(&mut query).get_many_from_dictionary(&dict, &probe).unwrap();
+		let answered = Transaction::Query(&mut query).get_from_dictionary(&dict, &probe).unwrap();
 
 		assert_eq!(answered, expected);
 		assert_eq!(

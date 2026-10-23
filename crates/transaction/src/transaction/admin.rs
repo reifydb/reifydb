@@ -423,9 +423,9 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+	pub fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().set_many_with_pre(entries)
+		self.cmd.as_mut().unwrap().set_with_pre(entries)
 	}
 
 	#[cfg(feature = "testing")]
@@ -537,8 +537,8 @@ impl Write for AdminTransaction {
 		AdminTransaction::set(self, entries)
 	}
 	#[inline]
-	fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
-		AdminTransaction::set_many_with_pre(self, entries)
+	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+		AdminTransaction::set_with_pre(self, entries)
 	}
 	#[inline]
 	fn remove_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()> {

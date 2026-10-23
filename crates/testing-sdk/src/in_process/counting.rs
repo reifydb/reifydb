@@ -311,26 +311,22 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		dictionary: DictionaryId,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
-		self.record("dictionary_find_many", values.len());
+		self.record("dictionary_find", values.len());
 		self.inner.dictionary_find(dictionary, values)
 	}
 
-	fn dictionary_get_many(
+	fn dictionary_get(
 		&mut self,
 		dictionary: DictionaryId,
 		ids: &[DictionaryEntryId],
 	) -> Result<Vec<Option<Value>>> {
-		self.record("dictionary_get_many", ids.len());
-		self.inner.dictionary_get_many(dictionary, ids)
+		self.record("dictionary_get", ids.len());
+		self.inner.dictionary_get(dictionary, ids)
 	}
 
-	fn dictionary_intern_many(
-		&mut self,
-		dictionary: &Dictionary,
-		values: &[Value],
-	) -> Result<Vec<DictionaryEntryId>> {
-		self.record("dictionary_intern_many", values.len());
-		self.inner.dictionary_intern_many(dictionary, values)
+	fn dictionary_intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
+		self.record("dictionary_intern", values.len());
+		self.inner.dictionary_intern(dictionary, values)
 	}
 
 	fn lookup_read_many(

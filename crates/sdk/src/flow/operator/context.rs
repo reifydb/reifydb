@@ -313,16 +313,12 @@ pub trait GuestEmitContext {
 	fn arm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn disarm_timer(&mut self, due: DateTime, kind: TimerKind, key: &EncodedKey) -> Result<()>;
 	fn flow_watermark(&mut self) -> Result<Option<DateTime>>;
-	fn dictionary_find_many(
+	fn dictionary_find(
 		&mut self,
 		dictionary: DictionaryId,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>>;
-	fn dictionary_intern_many(
-		&mut self,
-		dictionary: DictionaryId,
-		values: &[Value],
-	) -> Result<Vec<DictionaryEntryId>>;
+	fn dictionary_intern(&mut self, dictionary: DictionaryId, values: &[Value]) -> Result<Vec<DictionaryEntryId>>;
 
 	fn insert_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::InsertEmit<'_>>;
 	fn update_emit<R: Row>(&mut self, row_capacity: usize) -> Result<Self::UpdateEmit<'_>>;

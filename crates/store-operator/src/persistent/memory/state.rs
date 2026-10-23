@@ -84,7 +84,7 @@ fn into_batch(mut items: Vec<(GroupStateKey, EncodedPodRow)>, batch: u64) -> Ope
 }
 
 impl Fetch for MemoryPersistent {
-	#[instrument(name = "store::operator::persistent::memory::get_many", level = "trace", skip_all)]
+	#[instrument(name = "store::operator::persistent::memory::get", level = "trace", skip_all)]
 	fn get<Q: Borrow<GroupStateKey>>(
 		&self,
 		operator: OperatorId,

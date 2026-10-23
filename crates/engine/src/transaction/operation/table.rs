@@ -188,7 +188,7 @@ fn insert_rows<T: WithInterceptors + Write>(
 		));
 	}
 	entries.extend(index.into_iter().map(|(key, bytes)| (key, bytes, SetPre::Unknown)));
-	txn.set_many_with_pre(entries)?;
+	txn.set_with_pre(entries)?;
 
 	TableRowInterceptor::post_insert(txn, table, ids, &frozen)?;
 
@@ -315,7 +315,7 @@ fn update_rows<T: WithInterceptors + Write + Read>(
 		.into_iter()
 		.map(|committed| committed.map_or(SetPre::Unknown, |row| SetPre::Present(row.bytes)))
 		.collect();
-	txn.set_many_with_pre(
+	txn.set_with_pre(
 		keys.into_iter()
 			.zip(posts.iter().cloned())
 			.zip(known)

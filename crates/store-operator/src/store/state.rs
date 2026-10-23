@@ -235,7 +235,7 @@ impl StandardOperatorStore {
 		SizeProbe::Persistent
 	}
 
-	#[instrument(name = "store::operator::state_get_many", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
+	#[instrument(name = "store::operator::state_get", level = "trace", skip(self, keys), fields(operator = operator.0, key_count = keys.len()))]
 	pub fn state_get(&self, operator: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		if keys.is_empty() {
 			return Ok(Vec::new());

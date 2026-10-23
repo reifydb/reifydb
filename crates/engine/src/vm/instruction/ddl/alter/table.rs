@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice;
+
 use arrow_array::RecordBatch;
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
@@ -108,7 +110,10 @@ pub(crate) fn execute_alter_table(
 									col_name
 								)
 							})?;
-						match txn.find_in_dictionary(&dictionary, &value)? {
+						match txn
+							.find_in_dictionary(&dictionary, slice::from_ref(&value))?
+							.remove(0)
+						{
 							Some(entry_id) => part_values.push(entry_id.to_value()),
 							None => interned = false,
 						}

@@ -627,8 +627,8 @@ impl<'a> Transaction<'a> {
 		Write::set(self.write_ops(), entries)
 	}
 
-	pub fn set_many_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
-		Write::set_many_with_pre(self.write_ops(), entries)
+	pub fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
+		Write::set_with_pre(self.write_ops(), entries)
 	}
 
 	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {

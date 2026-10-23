@@ -293,18 +293,18 @@ impl MultiWriteTransaction {
 		self.set_any(key.clone(), bytes)
 	}
 
-	#[instrument(name = "transaction::command::set_many", level = "trace", skip_all, fields(
+	#[instrument(name = "transaction::command::set", level = "trace", skip_all, fields(
 		txn_id = %self.id,
 		entries = entries.len()
 	))]
 	pub fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()> {
-		self.set_many_with_pre(entries.into_iter().map(|(key, bytes)| (key, bytes, SetPre::Unknown)))
+		self.set_with_pre(entries.into_iter().map(|(key, bytes)| (key, bytes, SetPre::Unknown)))
 	}
 
-	#[instrument(name = "transaction::command::set_many_with_pre", level = "trace", skip_all, fields(
+	#[instrument(name = "transaction::command::set_with_pre", level = "trace", skip_all, fields(
 		txn_id = %self.id
 	))]
-	pub fn set_many_with_pre(
+	pub fn set_with_pre(
 		&mut self,
 		entries: impl IntoIterator<Item = (TaggedKey, EncodedBytes, SetPre), IntoIter: ExactSizeIterator>,
 	) -> Result<()> {
@@ -375,7 +375,7 @@ impl MultiWriteTransaction {
 		self.remove_with_pre_any(key.clone().into(), pre)
 	}
 
-	#[instrument(name = "transaction::command::remove_many", level = "trace", skip(self, entries), fields(
+	#[instrument(name = "transaction::command::remove", level = "trace", skip(self, entries), fields(
 		txn_id = %self.id,
 		keys = entries.len()
 	))]
@@ -537,7 +537,7 @@ impl MultiWriteTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "transaction::command::get_committed_many", level = "trace", skip(self, keys), fields(
+	#[instrument(name = "transaction::command::get_committed", level = "trace", skip(self, keys), fields(
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
@@ -572,7 +572,7 @@ impl MultiWriteTransaction {
 			.collect())
 	}
 
-	#[instrument(name = "transaction::command::get_many", level = "trace", skip(self, keys), fields(
+	#[instrument(name = "transaction::command::get", level = "trace", skip(self, keys), fields(
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
@@ -590,7 +590,7 @@ impl MultiWriteTransaction {
 		self.read_many(keys)
 	}
 
-	#[instrument(name = "transaction::command::contains_many", level = "trace", skip(self, keys), fields(
+	#[instrument(name = "transaction::command::contains", level = "trace", skip(self, keys), fields(
 		txn_id = %self.id,
 		keys = keys.len()
 	))]
@@ -1621,12 +1621,8 @@ mod tests {
 		committed_with(&engine, &[("known", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.set_many_with_pre(vec![(
-			test_key("known").into(),
-			test_bytes("v2"),
-			SetPre::Present(test_bytes("v1")),
-		)])
-		.unwrap();
+		txn.set_with_pre(vec![(test_key("known").into(), test_bytes("v2"), SetPre::Present(test_bytes("v1")))])
+			.unwrap();
 		txn.remove(vec![(test_key("known").into(), None)]).unwrap();
 
 		assert_eq!(
@@ -1646,7 +1642,7 @@ mod tests {
 		committed_with(&engine, &[("tagged", "v1")]);
 
 		let mut txn = engine.begin_command().unwrap();
-		txn.set_many_with_pre(vec![(
+		txn.set_with_pre(vec![(
 			test_key("tagged").into(),
 			test_bytes("v2"),
 			SetPre::Present(test_bytes("v1")),
