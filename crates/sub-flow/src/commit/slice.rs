@@ -3,20 +3,23 @@
 
 use std::{collections::BTreeSet, iter::once, sync::Arc};
 
-use arrow_array::{Array, UInt64Array};
+use arrow_array::{Array, RecordBatch, UInt64Array};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::lift::{changed_objects, lift_selected_changes};
 use reifydb_core::{
 	actors::pending::Pending,
 	common::{ChangeVersion, CommitVersion},
 	interface::{
-		catalog::{flow::FlowId, id::ViewId, object::ObjectId},
+		catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::View},
 		cdc::Cdc,
-		change::{Change, ChangeOrigin},
+		change::{Change, ChangeOrigin, Diff},
 		consolidate::consolidate_diffs,
 	},
+	internal_err,
+	value::batch::batch,
 };
 use reifydb_engine::engine::StandardEngine;
+use reifydb_flow::operator::sink::table::dictionary_lookup_view_columns;
 use reifydb_flow_async::{
 	engine::{COMPLETENESS_OBJECT, FlowEngineInner, frontier::WatermarkHolds},
 	transaction::{
@@ -26,7 +29,14 @@ use reifydb_flow_async::{
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	Result,
-	value::{datetime::DateTime, identity::IdentityId},
+	value::{
+		datetime::DateTime,
+		identity::IdentityId,
+		value_type::{
+			ValueType,
+			field::{from_field, to_field},
+		},
+	},
 };
 use tracing::instrument;
 
@@ -391,8 +401,64 @@ fn feed_member(
 	if diffs.iter().all(|diff| diff.row_count() == 0) {
 		return Ok(());
 	}
+	let Some(view) = txn.catalog.cache().find_view(parent_view) else {
+		return internal_err!("fused parent view {parent_view:?} is not in the catalog");
+	};
+	let diffs = diffs.into_iter().map(|diff| as_dictionary_ids(txn, &view, diff)).collect::<Result<Vec<_>>>()?;
 	let change = Change::from_object(ObjectId::View(parent_view), version, diffs, changed_at);
 	flow_engine.process(txn, vec![change], member)
+}
+
+fn as_dictionary_ids(txn: &mut DeferredTransaction, view: &View, diff: Diff) -> Result<Diff> {
+	let mut encode = |batch: RecordBatch| -> Result<RecordBatch> {
+		let batch = dictionary_lookup_view_columns(txn, view, &batch)?.unwrap_or(batch);
+		tag_dictionaries(view, &batch)
+	};
+	Ok(match diff {
+		Diff::Insert {
+			post,
+			origin,
+		} => Diff::Insert {
+			post: encode(post)?,
+			origin,
+		},
+		Diff::Update {
+			pre,
+			post,
+			origin,
+		} => Diff::Update {
+			pre: encode(pre)?,
+			post: encode(post)?,
+			origin,
+		},
+		Diff::Remove {
+			pre,
+			origin,
+		} => Diff::Remove {
+			pre: encode(pre)?,
+			origin,
+		},
+	})
+}
+
+fn tag_dictionaries(view: &View, columns: &RecordBatch) -> Result<RecordBatch> {
+	let mut tagged = Vec::with_capacity(columns.num_columns());
+	for (field, array) in columns.schema_ref().fields().iter().zip(columns.columns()) {
+		let dictionary =
+			view.columns().iter().find(|column| column.name == *field.name()).and_then(|c| c.dictionary_id);
+		let mut field_type = from_field(field)?;
+		let untagged_id = field_type.dictionary_id.is_none()
+			&& field_type.value_type.as_ref().is_some_and(|t| *t.inner_type() == ValueType::DictionaryId);
+		let field = match dictionary {
+			Some(dictionary) if untagged_id => {
+				field_type.dictionary_id = Some(dictionary);
+				Arc::new(to_field(field.name(), &field_type))
+			}
+			_ => field.clone(),
+		};
+		tagged.push((field, array.clone()));
+	}
+	batch(tagged)
 }
 
 fn checkpoint_due(advance_to: CommitVersion, durable_cursor: CommitVersion, config: &SliceConfig) -> bool {
