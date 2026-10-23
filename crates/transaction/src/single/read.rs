@@ -3,7 +3,7 @@
 
 use std::slice;
 
-use reifydb_core::interface::store::{SingleVersionContains, SingleVersionGet, SingleVersionRow};
+use reifydb_core::interface::store::{SingleVersionGet, SingleVersionRow};
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockReadGuard};
 use reifydb_value::{Result, util::hex::encode};
 
@@ -45,11 +45,5 @@ impl<'a> SingleReadTransaction<'a> {
 		self.check_key_allowed(key)?;
 		let store = self.inner.store.read().clone();
 		Ok(SingleVersionGet::get(&store, slice::from_ref(key))?.pop().flatten())
-	}
-
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool> {
-		self.check_key_allowed(key)?;
-		let store = self.inner.store.read().clone();
-		SingleVersionContains::contains(&store, key)
 	}
 }

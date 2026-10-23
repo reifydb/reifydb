@@ -23,8 +23,8 @@ use reifydb_core::{
 			object::ObjectId,
 		},
 		store::{
-			SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-			SingleVersionRangeRev, SingleVersionRow,
+			SingleVersionCommit, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
+			SingleVersionRow,
 		},
 	},
 	key::catalog::IndexEntryKey,
@@ -139,14 +139,6 @@ impl testscript::runner::Runner for Runner {
 				let value = value.map(|sv| sv.bytes.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
-			"contains" => {
-				let mut args = command.consume_args();
-				let key =
-					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				args.reject_rest()?;
-				let contains = self.store.contains(&script_key(&key).encode())?;
-				writeln!(output, "{} => {}", Raw::key(&key), contains)?;
-			}
 
 			"scan" => {
 				let mut args = command.consume_args();
@@ -242,7 +234,9 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let buffer = self.store.commit().ok_or("buffer tier not configured")?;
-				let value = buffer.get_with_tombstone(script_key(&key).encode().as_ref())?;
+				let value = buffer
+					.get_with_tombstone(std::slice::from_ref(&script_key(&key).encode().as_ref()))?
+					.remove(0);
 				let value = match value {
 					Some(Some(v)) => Some(v.to_vec()),
 					Some(None) => None,
@@ -258,7 +252,10 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
-				let value = persistent.get(script_key(&key).encode().as_ref())?.map(|v| v.to_vec());
+				let value = persistent
+					.get(std::slice::from_ref(&script_key(&key).encode().as_ref()))?
+					.remove(0)
+					.map(|v| v.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 

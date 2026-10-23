@@ -185,7 +185,10 @@ fn eviction_persists_latest_below_w_and_drops_them_from_commit_tier() {
 	let persistent = store.persistent().unwrap();
 	assert!(
 		matches!(
-			persistent.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
+			persistent
+				.get(kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
+				.unwrap()
+				.remove(0),
 			VersionedGetResult::Value { .. }
 		),
 		"v2 must be persisted"
@@ -239,7 +242,10 @@ fn persistent_false_object_is_dropped_without_persisting() {
 	let persistent = store.persistent().unwrap();
 	assert!(
 		matches!(
-			persistent.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap(),
+			persistent
+				.get(kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
+				.unwrap()
+				.remove(0),
 			VersionedGetResult::NotFound
 		),
 		"a persistent:false object must NOT be written to the persistent tier"
@@ -307,7 +313,10 @@ fn versions_above_w_are_left_entirely_resident() {
 	let persistent = store.persistent().unwrap();
 	assert!(
 		matches!(
-			persistent.get(kind, k.encode().as_ref(), CommitVersion(5)).unwrap(),
+			persistent
+				.get(kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(5))
+				.unwrap()
+				.remove(0),
 			VersionedGetResult::NotFound
 		),
 		"nothing below W => nothing persisted"
@@ -373,7 +382,12 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 
 	let persistent = store.persistent().unwrap();
 	assert_eq!(
-		persistent.get(kind, k.encode().as_ref(), CommitVersion(2)).unwrap().value().as_deref(),
+		persistent
+			.get(kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
+			.unwrap()
+			.remove(0)
+			.value()
+			.as_deref(),
 		Some(b"v2".as_slice()),
 		"the latest-<=W value (v2) is durable in the persistent tier"
 	);

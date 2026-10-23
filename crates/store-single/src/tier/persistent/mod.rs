@@ -60,12 +60,6 @@ impl SinglePersistentTier {
 			Self::Sqlite(storage) => storage.page_cache_metrics(),
 		}
 	}
-
-	pub fn get_many(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
-		match self {
-			Self::Sqlite(storage) => storage.get_many(keys),
-		}
-	}
 }
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
@@ -73,32 +67,21 @@ impl SinglePersistentTier {
 	pub fn page_cache_metrics(&self) -> SinglePageCacheMetrics {
 		match *self {}
 	}
-
-	pub fn get_many(&self, _keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
-		match *self {}
-	}
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl TierStorage for SinglePersistentTier {
 	#[inline]
-	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
+	fn get(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		match self {
-			Self::Sqlite(s) => s.get(key),
+			Self::Sqlite(s) => s.get(keys),
 		}
 	}
 
 	#[inline]
-	fn contains(&self, key: &[u8]) -> Result<bool> {
+	fn get_with_tombstone(&self, keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
 		match self {
-			Self::Sqlite(s) => s.contains(key),
-		}
-	}
-
-	#[inline]
-	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
-		match self {
-			Self::Sqlite(s) => s.get_with_tombstone(key),
+			Self::Sqlite(s) => s.get_with_tombstone(keys),
 		}
 	}
 
@@ -152,11 +135,11 @@ impl TierStorage for SinglePersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl TierStorage for SinglePersistentTier {
-	fn get(&self, _key: &[u8]) -> Result<Option<CowVec<u8>>> {
+	fn get(&self, _keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		match *self {}
 	}
 
-	fn get_with_tombstone(&self, _key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
+	fn get_with_tombstone(&self, _keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
 		match *self {}
 	}
 

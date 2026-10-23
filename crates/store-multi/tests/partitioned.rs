@@ -144,16 +144,22 @@ fn partitioned_rows_route_to_partsource_across_tiers() {
 		persistent
 			.get(
 				EntryKind::PartitionedSource(storage, EntryLayout::Row),
-				k_us1.encode().as_ref(),
+				std::slice::from_ref(&k_us1.encode().as_ref()),
 				CommitVersion(2)
 			)
 			.unwrap()
+			.remove(0)
 			.value()
 			.is_some(),
 		"flushed partitioned row must live in the partsource_<storage> table"
 	);
 	assert!(
-		persistent.get(EntryKind::Multi, k_us1.encode().as_ref(), CommitVersion(2)).unwrap().value().is_none(),
+		persistent
+			.get(EntryKind::Multi, std::slice::from_ref(&k_us1.encode().as_ref()), CommitVersion(2))
+			.unwrap()
+			.remove(0)
+			.value()
+			.is_none(),
 		"partitioned row must NOT be in the multi table"
 	);
 }

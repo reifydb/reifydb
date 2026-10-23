@@ -28,7 +28,7 @@ use reifydb_core::{
 			metrics::{parser::parse_id, storage::MultiStorageMetrics},
 			object::ObjectId,
 		},
-		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, Tier},
+		store::{MultiVersionCommit, MultiVersionGet, MultiVersionRow, Tier},
 	},
 	key::{any::TaggedKey, catalog::IndexEntryKey},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -196,17 +196,6 @@ impl TestRunner for Runner {
 					.map(|sv: MultiVersionRow<TaggedKey>| sv.bytes.to_vec());
 
 				writeln!(output, "{}", format::raw::Raw::key_maybe_value(&key, value))?;
-			}
-
-			"contains" => {
-				let mut args = command.consume_args();
-				let key =
-					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
-				args.reject_rest()?;
-				let contains =
-					self.multi_store.contains(&TaggedKey::from(script_key(&key)), version)?;
-				writeln!(output, "{} => {}", format::raw::Raw::key(&key), contains)?;
 			}
 
 			"scan" => {

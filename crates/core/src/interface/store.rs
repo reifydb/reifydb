@@ -316,10 +316,6 @@ pub trait MultiVersionGet: Send + Sync {
 	fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<MultiVersionRow<TaggedKey>>>;
 }
 
-pub trait MultiVersionContains: Send + Sync {
-	fn contains(&self, key: &TaggedKey, version: CommitVersion) -> Result<bool>;
-}
-
 pub trait MultiVersionGetPrevious: Send + Sync {
 	fn get_previous_version(
 		&self,
@@ -335,7 +331,7 @@ pub trait MultiVersionGetPrevious: Send + Sync {
 }
 
 pub trait MultiVersionStore:
-	Send + Sync + Clone + MultiVersionCommit + MultiVersionGet + MultiVersionGetPrevious + MultiVersionContains + 'static
+	Send + Sync + Clone + MultiVersionCommit + MultiVersionGet + MultiVersionGetPrevious + 'static
 {
 }
 
@@ -367,10 +363,6 @@ pub trait SingleVersionGet: Send + Sync {
 	fn get(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>>;
 }
 
-pub trait SingleVersionContains: Send + Sync {
-	fn contains(&self, key: &EncodedKey) -> Result<bool>;
-}
-
 pub trait SingleVersionRange: Send + Sync {
 	fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> Result<SingleVersionBatch>;
 
@@ -396,15 +388,7 @@ pub trait SingleVersionRangeRev: Send + Sync {
 }
 
 pub trait SingleVersionStore:
-	Send
-	+ Sync
-	+ Clone
-	+ SingleVersionCommit
-	+ SingleVersionGet
-	+ SingleVersionContains
-	+ SingleVersionRange
-	+ SingleVersionRangeRev
-	+ 'static
+	Send + Sync + Clone + SingleVersionCommit + SingleVersionGet + SingleVersionRange + SingleVersionRangeRev + 'static
 {
 }
 

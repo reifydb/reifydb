@@ -24,7 +24,7 @@ use reifydb_core::{
 			id::{IndexId, TableId},
 			object::ObjectId,
 		},
-		store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRow, classify_key},
+		store::{MultiVersionCommit, MultiVersionGet, MultiVersionRow, classify_key},
 	},
 	key::{any::TaggedKey, catalog::IndexEntryKey},
 	lifecycle::watermark::EvictionWatermark,
@@ -151,15 +151,6 @@ impl testscript::runner::Runner for Runner {
 						.map(|bytes| bytes.to_vec());
 					writeln!(output, "{}", Raw::key_maybe_value(key, value))?;
 				}
-			}
-			"contains" => {
-				let mut args = command.consume_args();
-				let key =
-					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
-				args.reject_rest()?;
-				let contains = self.store.contains(&TaggedKey::from(script_key(&key)), version)?;
-				writeln!(output, "{} => {}", Raw::key(&key), contains)?;
 			}
 
 			"scan" => {
@@ -382,8 +373,11 @@ impl testscript::runner::Runner for Runner {
 				let stored = script_key(&key).encode();
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let table = classify_key(&stored);
-				let value =
-					persistent.get(table, stored.as_ref(), version)?.value().map(|v| v.to_vec());
+				let value = persistent
+					.get(table, std::slice::from_ref(&stored.as_ref()), version)?
+					.remove(0)
+					.value()
+					.map(|v| v.to_vec());
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 
@@ -423,7 +417,10 @@ impl testscript::runner::Runner for Runner {
 				let stored = script_key(&key).encode();
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let table = classify_key(&stored);
-				let line = match persistent.get(table, stored.as_ref(), version)? {
+				let line = match persistent
+					.get(table, std::slice::from_ref(&stored.as_ref()), version)?
+					.remove(0)
+				{
 					VersionedGetResult::Value {
 						value,
 						version: found,

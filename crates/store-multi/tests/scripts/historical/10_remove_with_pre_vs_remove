@@ -57,20 +57,3 @@ scan version=1
 ---
 "a" => "1"
 "b" => "2"
-
-# Test contains at different versions
-contains a version=1
----
-"a" => true
-
-contains a version=2
----
-"a" => false
-
-contains b version=1
----
-"b" => true
-
-contains b version=2
----
-"b" => false

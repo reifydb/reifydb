@@ -69,7 +69,7 @@ pub fn admit_ready_items(
 	let mut blocked_delta = 0i64;
 	for item in items {
 		let state_key = QueueItemStateKey::new(queue, partition, item.row);
-		if tx.contains_key(&state_key)? {
+		if tx.get(&state_key)?.is_some() {
 			continue;
 		}
 

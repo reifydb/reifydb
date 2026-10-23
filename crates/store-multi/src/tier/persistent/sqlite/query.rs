@@ -43,10 +43,6 @@ pub(super) fn build_expired_keys_sql(table_name: &str, has_cursor: bool, limit: 
 	sql
 }
 
-pub(super) fn build_get_current_sql(table_name: &str) -> String {
-	format!("SELECT version, value FROM \"{}\" WHERE key = ?1", table_name)
-}
-
 pub(super) fn build_current_keys_sql(table_name: &str, has_cursor: bool, limit: i64) -> String {
 	if has_cursor {
 		format!("SELECT key FROM \"{}\" WHERE key > ?1 ORDER BY key LIMIT {}", table_name, limit)
@@ -63,7 +59,7 @@ pub(super) fn build_max_version_sql(table_name: &str) -> String {
 	format!("SELECT MAX(version) FROM \"{}\"", table_name)
 }
 
-pub(super) fn build_get_many_current_sql(table_name: &str, key_count: usize) -> String {
+pub(super) fn build_get_current_sql(table_name: &str, key_count: usize) -> String {
 	let placeholders = build_placeholders(key_count);
 	format!("SELECT key, version, value FROM \"{}\" WHERE key IN ({})", table_name, placeholders)
 }
@@ -145,17 +141,6 @@ pub(super) fn build_create_current_sql_partitioned(table_name: &str) -> String {
 		) WITHOUT ROWID;\
 		CREATE INDEX IF NOT EXISTS \"{0}__expiry\" ON \"{0}\" (updated_at) \
 			WHERE value IS NOT NULL AND updated_at IS NOT NULL;",
-		table_name
-	)
-}
-
-pub(super) fn build_get_current_sql_row(table_name: &str) -> String {
-	format!("SELECT version, value FROM \"{}\" WHERE key = ?1", table_name)
-}
-
-pub(super) fn build_get_current_sql_partitioned(table_name: &str) -> String {
-	format!(
-		"SELECT version, value FROM \"{}\" WHERE partition_hi = ?1 AND partition_lo = ?2 AND row = ?3",
 		table_name
 	)
 }
@@ -279,12 +264,12 @@ pub(super) fn build_current_keys_sql_partitioned(table_name: &str, has_cursor: b
 	}
 }
 
-pub(super) fn build_get_many_current_sql_row(table_name: &str, key_count: usize) -> String {
+pub(super) fn build_get_current_sql_row(table_name: &str, key_count: usize) -> String {
 	let placeholders = build_placeholders(key_count);
 	format!("SELECT key, version, value FROM \"{}\" WHERE key IN ({})", table_name, placeholders)
 }
 
-pub(super) fn build_get_many_current_sql_partitioned(table_name: &str, key_count: usize) -> String {
+pub(super) fn build_get_current_sql_partitioned(table_name: &str, key_count: usize) -> String {
 	let clause = build_triple_placeholders(key_count);
 	format!("SELECT partition_hi, partition_lo, row, version, value FROM \"{}\" WHERE {}", table_name, clause)
 }
@@ -572,10 +557,6 @@ fn build_keyed_predicate(columns: &[&str], key_count: usize) -> String {
 	out
 }
 
-pub(super) fn build_get_current_sql_keyed(table_name: &str, columns: &[&str]) -> String {
-	format!("SELECT version, value FROM \"{}\" WHERE {}", table_name, build_keyed_predicate(columns, 1))
-}
-
 pub(super) fn build_upsert_current_sql_keyed(table_name: &str, columns: &[&str]) -> String {
 	format!(
 		"INSERT INTO \"{0}\" ({1}, version, value, updated_at) VALUES {2} \
@@ -645,7 +626,7 @@ pub(super) fn build_current_keys_sql_keyed(table_name: &str, columns: &[&str], h
 	}
 }
 
-pub(super) fn build_get_many_current_sql_keyed(table_name: &str, columns: &[&str], key_count: usize) -> String {
+pub(super) fn build_get_current_sql_keyed(table_name: &str, columns: &[&str], key_count: usize) -> String {
 	format!(
 		"SELECT {1}, version, value FROM \"{0}\" WHERE {2}",
 		table_name,

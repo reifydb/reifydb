@@ -56,23 +56,16 @@ impl MetricsCollector for SingleCommitBufferTier {
 
 impl TierStorage for SingleCommitBufferTier {
 	#[inline]
-	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
+	fn get(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		match self {
-			Self::Memory(s) => s.get(key),
+			Self::Memory(s) => s.get(keys),
 		}
 	}
 
 	#[inline]
-	fn contains(&self, key: &[u8]) -> Result<bool> {
+	fn get_with_tombstone(&self, keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
 		match self {
-			Self::Memory(s) => s.contains(key),
-		}
-	}
-
-	#[inline]
-	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
-		match self {
-			Self::Memory(s) => s.get_with_tombstone(key),
+			Self::Memory(s) => s.get_with_tombstone(keys),
 		}
 	}
 
@@ -128,6 +121,8 @@ impl TierBackend for SingleCommitBufferTier {}
 
 #[cfg(test)]
 pub mod tests {
+	use std::slice::from_ref;
+
 	use super::*;
 
 	#[test]
@@ -135,7 +130,10 @@ pub mod tests {
 		let storage = SingleCommitBufferTier::memory();
 
 		storage.set(vec![(EncodedKey::new(b"key"), Some(CowVec::new(b"value".to_vec())))]).unwrap();
-		assert_eq!(storage.get(b"key").unwrap().as_deref(), Some(b"value".as_slice()));
+		assert_eq!(
+			storage.get(from_ref(&b"key".as_slice())).unwrap().remove(0).as_deref(),
+			Some(b"value".as_slice())
+		);
 	}
 
 	#[test]

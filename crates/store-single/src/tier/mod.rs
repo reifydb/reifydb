@@ -38,13 +38,9 @@ impl RangeBatch {
 pub type RangeCursor = reifydb_store::coverage::cursor::RangeCursor;
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
-	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>>;
+	fn get(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>>;
 
-	fn contains(&self, key: &[u8]) -> Result<bool> {
-		Ok(self.get(key)?.is_some())
-	}
-
-	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>>;
+	fn get_with_tombstone(&self, keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>>;
 
 	fn set(&self, entries: Vec<(EncodedKey, Option<CowVec<u8>>)>) -> Result<()>;
 

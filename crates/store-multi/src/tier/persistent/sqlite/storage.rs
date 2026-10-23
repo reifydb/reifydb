@@ -51,10 +51,7 @@ use reifydb_value::{
 	util::cowvec::CowVec,
 	value::{datetime::DateTime, row_number::RowNumber},
 };
-use rusqlite::{
-	Connection, Error::QueryReturnedNoRows, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior,
-	params_from_iter,
-};
+use rusqlite::{Connection, Result as SqliteResult, Row, ToSql, Transaction, TransactionBehavior, params_from_iter};
 use tracing::{instrument, warn};
 
 use super::schema::row_from_sql;
@@ -85,8 +82,6 @@ use crate::{
 					build_expired_keys_sql_partitioned, build_expired_keys_sql_row,
 					build_get_current_sql, build_get_current_sql_keyed,
 					build_get_current_sql_partitioned, build_get_current_sql_row,
-					build_get_many_current_sql, build_get_many_current_sql_keyed,
-					build_get_many_current_sql_partitioned, build_get_many_current_sql_row,
 					build_max_version_sql, build_range_current_sql,
 					build_range_current_sql_partitioned, build_range_current_sql_partitioned_exact,
 					build_range_current_sql_partitioned_series, build_range_current_sql_row,
@@ -107,19 +102,19 @@ use crate::{
 	},
 };
 
-const GET_MANY_CHUNK: usize = 900;
+const GET_CHUNK: usize = 900;
 
 const UPSERT_CHUNK: usize = 100;
 
-const GET_MANY_BUCKETS: [usize; 5] = [1, 8, 64, 512, GET_MANY_CHUNK];
+const GET_BUCKETS: [usize; 5] = [1, 8, 64, 512, GET_CHUNK];
 
 fn bucket_key_count(len: usize) -> usize {
-	for &bucket in GET_MANY_BUCKETS.iter() {
+	for &bucket in GET_BUCKETS.iter() {
 		if len <= bucket {
 			return bucket;
 		}
 	}
-	GET_MANY_CHUNK
+	GET_CHUNK
 }
 
 #[derive(Clone)]
@@ -142,7 +137,6 @@ struct SqlitePersistentStorageInner {
 struct TableSql {
 	table_name: String,
 	schema: SqliteSchema,
-	get_sql: String,
 	upsert_sql: String,
 	chunked_upsert_sql: String,
 	delete_sql: String,
@@ -153,10 +147,8 @@ struct TableSql {
 impl TableSql {
 	fn build(table: EntryKind, schema: SqliteSchema) -> Self {
 		let table_name = current_table_name(table);
-		let (get_sql, upsert_sql, chunked_upsert_sql, delete_sql, chunked_delete_sql, create_sql) = match schema
-		{
+		let (upsert_sql, chunked_upsert_sql, delete_sql, chunked_delete_sql, create_sql) = match schema {
 			SqliteSchema::Blob => (
-				build_get_current_sql(&table_name),
 				build_upsert_current_sql(&table_name),
 				build_chunked_upsert_sql(&table_name, UPSERT_CHUNK),
 				build_delete_current_sql(&table_name, 1, false),
@@ -164,7 +156,6 @@ impl TableSql {
 				build_create_current_sql(&table_name),
 			),
 			SqliteSchema::Row => (
-				build_get_current_sql_row(&table_name),
 				build_upsert_current_sql_row(&table_name),
 				build_chunked_upsert_sql_row(&table_name, UPSERT_CHUNK),
 				build_delete_current_sql_row(&table_name, 1, false),
@@ -172,7 +163,6 @@ impl TableSql {
 				build_create_current_sql_row(&table_name),
 			),
 			SqliteSchema::Partitioned => (
-				build_get_current_sql_partitioned(&table_name),
 				build_upsert_current_sql_partitioned(&table_name),
 				build_chunked_upsert_sql_partitioned(&table_name, UPSERT_CHUNK),
 				build_delete_current_sql_partitioned(&table_name, 1, false),
@@ -187,7 +177,6 @@ impl TableSql {
 					build_create_current_sql_partitioned_series(&table_name)
 				};
 				(
-					build_get_current_sql_keyed(&table_name, columns),
 					build_upsert_current_sql_keyed(&table_name, columns),
 					build_chunked_upsert_sql_keyed(&table_name, columns, UPSERT_CHUNK),
 					build_delete_current_sql_keyed(&table_name, columns, 1, false),
@@ -199,7 +188,6 @@ impl TableSql {
 		Self {
 			table_name,
 			schema,
-			get_sql,
 			upsert_sql,
 			chunked_upsert_sql,
 			delete_sql,
@@ -416,7 +404,7 @@ impl SqlitePersistentStorage {
 		};
 		let table_sql = self.table_sql(conn, table)?;
 		let mut total = 0u64;
-		for chunk in keys.chunks(GET_MANY_CHUNK) {
+		for chunk in keys.chunks(GET_CHUNK) {
 			let sql = match table_sql.schema {
 				SqliteSchema::Blob => build_delete_keys_sql(&table_sql.table_name, chunk.len()),
 				SqliteSchema::Row => build_delete_keys_sql_row(&table_sql.table_name, chunk.len()),
@@ -1994,75 +1982,27 @@ struct RangeChunkRequest<'a> {
 }
 
 impl SqlitePersistentStorage {
-	#[instrument(name = "store::multi::persistent::sqlite::get::source", level = "trace", skip(self), fields(key_len = key.len(), version = version.0))]
-	fn get_source(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
-		self.get_impl(table, key, version)
-	}
-
-	#[instrument(name = "store::multi::persistent::sqlite::get::multi", level = "trace", skip(self), fields(key_len = key.len(), version = version.0))]
-	fn get_multi(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
-		self.get_impl(table, key, version)
-	}
-
-	fn get_impl(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
-		let guard = self.inner.readers.acquire();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(VersionedGetResult::NotFound);
-		};
-		let table_sql = self.table_sql(conn, table)?;
-
-		let mut boxed: Vec<Box<dyn ToSql>> = Vec::with_capacity(table_sql.schema.key_column_count());
-		if push_key_params(table_sql.schema, key, &mut boxed).is_err() {
-			return Ok(VersionedGetResult::NotFound);
-		}
-		let flat: Vec<&dyn ToSql> = boxed.iter().map(|p| p.as_ref()).collect();
-
-		let result = match conn.prepare_cached(&table_sql.get_sql) {
-			Ok(mut stmt) => stmt.query_row(params_from_iter(flat), |row| {
-				let version_bytes: Vec<u8> = row.get(0)?;
-				let value: Option<Vec<u8>> = row.get(1)?;
-				Ok((version_from_bytes(&version_bytes), value))
-			}),
-			Err(e) if e.to_string().contains("no such table") => Err(QueryReturnedNoRows),
-			Err(e) => return Err(error!(internal(format!("Failed to prepare persistent get: {}", e)))),
-		};
-
-		match result {
-			Ok((stored_version, value)) if stored_version <= version => Ok(match value {
-				Some(v) => VersionedGetResult::Value {
-					value: CowVec::new(v),
-					version: stored_version,
-				},
-				None => VersionedGetResult::Tombstone,
-			}),
-			Ok(_) => Ok(VersionedGetResult::NotFound),
-			Err(QueryReturnedNoRows) => Ok(VersionedGetResult::NotFound),
-			Err(e) if e.to_string().contains("no such table") => Ok(VersionedGetResult::NotFound),
-			Err(e) => Err(error!(internal(format!("Failed to read persistent: {}", e)))),
-		}
-	}
-
-	#[instrument(name = "store::multi::persistent::sqlite::get_many::source", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
-	fn get_many_source(
+	#[instrument(name = "store::multi::persistent::sqlite::get::source", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
+	fn get_source(
 		&self,
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
 	) -> Result<Vec<VersionedGetResult>> {
-		self.get_many_impl(table, keys, version)
+		self.get_impl(table, keys, version)
 	}
 
-	#[instrument(name = "store::multi::persistent::sqlite::get_many::multi", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
-	fn get_many_multi(
+	#[instrument(name = "store::multi::persistent::sqlite::get::multi", level = "trace", skip(self, keys), fields(key_count = keys.len(), version = version.0))]
+	fn get_multi(
 		&self,
 		table: EntryKind,
 		keys: &[&[u8]],
 		version: CommitVersion,
 	) -> Result<Vec<VersionedGetResult>> {
-		self.get_many_impl(table, keys, version)
+		self.get_impl(table, keys, version)
 	}
 
-	fn get_many_impl(
+	fn get_impl(
 		&self,
 		table: EntryKind,
 		keys: &[&[u8]],
@@ -2080,7 +2020,7 @@ impl SqlitePersistentStorage {
 		let table_sql = self.table_sql(conn, table)?;
 		if table_sql.schema == SqliteSchema::Blob {
 			drop(guard);
-			return self.get_many_blob(&table_sql, keys, version, &mut out).map(|()| out);
+			return self.get_blob(&table_sql, keys, version, &mut out).map(|()| out);
 		}
 
 		let key_columns = table_sql.schema.key_column_count();
@@ -2089,8 +2029,7 @@ impl SqlitePersistentStorage {
 		for (i, &k) in keys.iter().enumerate() {
 			let params = key_ints(table_sql.schema, k).ok_or_else(|| {
 				error!(internal(
-					"a get_many key does not decode under its own table's narrow schema"
-						.to_string()
+					"a get key does not decode under its own table's narrow schema".to_string()
 				))
 			})?;
 			debug_assert_eq!(params.len(), key_columns);
@@ -2098,28 +2037,26 @@ impl SqlitePersistentStorage {
 			per_key_params.push(params);
 		}
 
-		for chunk in per_key_params.chunks(GET_MANY_CHUNK) {
+		for chunk in per_key_params.chunks(GET_CHUNK) {
 			let bucket = bucket_key_count(chunk.len());
 			let sql = match table_sql.schema {
-				SqliteSchema::Row => build_get_many_current_sql_row(&table_sql.table_name, bucket),
+				SqliteSchema::Row => build_get_current_sql_row(&table_sql.table_name, bucket),
 				SqliteSchema::Partitioned => {
-					build_get_many_current_sql_partitioned(&table_sql.table_name, bucket)
+					build_get_current_sql_partitioned(&table_sql.table_name, bucket)
 				}
-				SqliteSchema::Series | SqliteSchema::PartitionedSeries => {
-					build_get_many_current_sql_keyed(
-						&table_sql.table_name,
-						series_columns(table_sql.schema),
-						bucket,
-					)
-				}
-				SqliteSchema::Blob => unreachable!("blob schema handled by get_many_blob"),
+				SqliteSchema::Series | SqliteSchema::PartitionedSeries => build_get_current_sql_keyed(
+					&table_sql.table_name,
+					series_columns(table_sql.schema),
+					bucket,
+				),
+				SqliteSchema::Blob => unreachable!("blob schema handled by get_blob"),
 			};
 			let mut stmt = match conn.prepare_cached(&sql) {
 				Ok(stmt) => stmt,
 				Err(e) if e.to_string().contains("no such table") => return Ok(out),
 				Err(e) => {
 					return Err(error!(internal(format!(
-						"Failed to prepare persistent get_many: {}",
+						"Failed to prepare persistent get: {}",
 						e
 					))));
 				}
@@ -2135,16 +2072,17 @@ impl SqlitePersistentStorage {
 			}
 			let mut rows = stmt
 				.query(params_from_iter(padded))
-				.map_err(|e| error!(internal(format!("Failed to query persistent get_many: {}", e))))?;
+				.map_err(|e| error!(internal(format!("Failed to query persistent get: {}", e))))?;
 
-			while let Some(row) = rows.next().map_err(|e| {
-				error!(internal(format!("Failed to read persistent get_many row: {}", e)))
-			})? {
+			while let Some(row) = rows
+				.next()
+				.map_err(|e| error!(internal(format!("Failed to read persistent get row: {}", e))))?
+			{
 				let key_params: Vec<i64> = (0..key_columns)
 					.map(|c| {
 						row.get::<_, i64>(c).map_err(|e| {
 							error!(internal(format!(
-								"Failed to read persistent get_many key: {}",
+								"Failed to read persistent get key: {}",
 								e
 							)))
 						})
@@ -2154,14 +2092,14 @@ impl SqlitePersistentStorage {
 					continue;
 				};
 				let version_bytes: Vec<u8> = row.get(key_columns).map_err(|e| {
-					error!(internal(format!("Failed to read persistent get_many version: {}", e)))
+					error!(internal(format!("Failed to read persistent get version: {}", e)))
 				})?;
 				let stored_version = version_from_bytes(&version_bytes);
 				if stored_version > version {
 					continue;
 				}
 				let value: Option<Vec<u8>> = row.get(key_columns + 1).map_err(|e| {
-					error!(internal(format!("Failed to read persistent get_many value: {}", e)))
+					error!(internal(format!("Failed to read persistent get value: {}", e)))
 				})?;
 				out[i] = match value {
 					Some(v) => VersionedGetResult::Value {
@@ -2176,7 +2114,7 @@ impl SqlitePersistentStorage {
 		Ok(out)
 	}
 
-	fn get_many_blob(
+	fn get_blob(
 		&self,
 		table_sql: &TableSql,
 		keys: &[&[u8]],
@@ -2189,15 +2127,15 @@ impl SqlitePersistentStorage {
 			return Ok(());
 		};
 
-		for chunk in keys.chunks(GET_MANY_CHUNK) {
+		for chunk in keys.chunks(GET_CHUNK) {
 			let bucket = bucket_key_count(chunk.len());
-			let sql = build_get_many_current_sql(&table_sql.table_name, bucket);
+			let sql = build_get_current_sql(&table_sql.table_name, bucket);
 			let mut stmt = match conn.prepare_cached(&sql) {
 				Ok(stmt) => stmt,
 				Err(e) if e.to_string().contains("no such table") => return Ok(()),
 				Err(e) => {
 					return Err(error!(internal(format!(
-						"Failed to prepare persistent get_many: {}",
+						"Failed to prepare persistent get: {}",
 						e
 					))));
 				}
@@ -2207,32 +2145,33 @@ impl SqlitePersistentStorage {
 			let padded = chunk.iter().copied().chain(repeat_n(pad_key, bucket - chunk.len()));
 			let mut rows = stmt
 				.query(params_from_iter(padded))
-				.map_err(|e| error!(internal(format!("Failed to query persistent get_many: {}", e))))?;
+				.map_err(|e| error!(internal(format!("Failed to query persistent get: {}", e))))?;
 
-			while let Some(row) = rows.next().map_err(|e| {
-				error!(internal(format!("Failed to read persistent get_many row: {}", e)))
-			})? {
+			while let Some(row) = rows
+				.next()
+				.map_err(|e| error!(internal(format!("Failed to read persistent get row: {}", e))))?
+			{
 				let key_ref = row.get_ref(0).map_err(|e| {
-					error!(internal(format!("Failed to read persistent get_many key: {}", e)))
+					error!(internal(format!("Failed to read persistent get key: {}", e)))
 				})?;
 				let key = key_ref.as_blob().map_err(|e| {
-					error!(internal(format!("Failed to decode persistent get_many key: {}", e)))
+					error!(internal(format!("Failed to decode persistent get key: {}", e)))
 				})?;
 				let Some(&i) = index.get(key) else {
 					continue;
 				};
 				let version_ref = row.get_ref(1).map_err(|e| {
-					error!(internal(format!("Failed to read persistent get_many version: {}", e)))
+					error!(internal(format!("Failed to read persistent get version: {}", e)))
 				})?;
 				let version_bytes = version_ref.as_blob().map_err(|e| {
-					error!(internal(format!("Failed to decode persistent get_many version: {}", e)))
+					error!(internal(format!("Failed to decode persistent get version: {}", e)))
 				})?;
 				let stored_version = version_from_bytes(version_bytes);
 				if stored_version > version {
 					continue;
 				}
 				let value: Option<Vec<u8>> = row.get(2).map_err(|e| {
-					error!(internal(format!("Failed to read persistent get_many value: {}", e)))
+					error!(internal(format!("Failed to read persistent get value: {}", e)))
 				})?;
 				out[i] = match value {
 					Some(v) => VersionedGetResult::Value {
@@ -2249,22 +2188,10 @@ impl SqlitePersistentStorage {
 }
 
 impl TierStorage for SqlitePersistentStorage {
-	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
+	fn get(&self, table: EntryKind, keys: &[&[u8]], version: CommitVersion) -> Result<Vec<VersionedGetResult>> {
 		match table {
-			EntryKind::Source(_, _) => self.get_source(table, key, version),
-			_ => self.get_multi(table, key, version),
-		}
-	}
-
-	fn get_many(
-		&self,
-		table: EntryKind,
-		keys: &[&[u8]],
-		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
-		match table {
-			EntryKind::Source(_, _) => self.get_many_source(table, keys, version),
-			_ => self.get_many_multi(table, keys, version),
+			EntryKind::Source(_, _) => self.get_source(table, keys, version),
+			_ => self.get_multi(table, keys, version),
 		}
 	}
 
@@ -2346,7 +2273,7 @@ impl Shutdown for SqlitePersistentStorage {
 
 #[cfg(test)]
 mod tests {
-	use std::{collections::HashMap, ptr::null_mut};
+	use std::{collections::HashMap, ptr::null_mut, slice::from_ref};
 
 	use reifydb_codec::key::encoded::EncodedKeyRange;
 	use reifydb_core::{
@@ -2435,7 +2362,7 @@ mod tests {
 	}
 
 	fn visible(s: &SqlitePersistentStorage, k: &EncodedKey) -> bool {
-		s.get(table(), k.as_slice(), CommitVersion(u64::MAX)).unwrap().value().is_some()
+		s.get(table(), from_ref(&k.as_slice()), CommitVersion(u64::MAX)).unwrap().remove(0).value().is_some()
 	}
 
 	#[test]
@@ -2638,7 +2565,11 @@ mod tests {
 		);
 
 		for i in (0..170u64).step_by(2) {
-			let value = s.get(table(), key(i).as_slice(), CommitVersion(u64::MAX)).unwrap().value();
+			let value = s
+				.get(table(), from_ref(&key(i).as_slice()), CommitVersion(u64::MAX))
+				.unwrap()
+				.remove(0)
+				.value();
 			assert_eq!(
 				value.as_ref().map(|v| v.as_slice()),
 				Some(&b"seed-even"[..]),
@@ -2646,7 +2577,11 @@ mod tests {
 			);
 		}
 		for i in (1..170u64).step_by(2) {
-			let value = s.get(table(), key(i).as_slice(), CommitVersion(u64::MAX)).unwrap().value();
+			let value = s
+				.get(table(), from_ref(&key(i).as_slice()), CommitVersion(u64::MAX))
+				.unwrap()
+				.remove(0)
+				.value();
 			assert_eq!(
 				value.as_ref().map(|v| v.as_slice()),
 				Some(&b"attempt"[..]),
@@ -2901,12 +2836,15 @@ mod tests {
 		assert_eq!(resolved_schema(&s, t), SqliteSchema::Series);
 		assert_eq!(s.count_current(t).unwrap(), 3);
 
-		let got = s.get(t, series_key(Some(3), 20, 0).as_slice(), CommitVersion(10)).unwrap();
+		let got = s
+			.get(t, from_ref(&series_key(Some(3), 20, 0).as_slice()), CommitVersion(10))
+			.unwrap()
+			.remove(0);
 		assert!(matches!(got, VersionedGetResult::Value { .. }), "a narrow series row must be readable by key");
 
 		let keys = [series_key(Some(3), 10, 1), series_key(None, 10, 0), series_key(Some(9), 1, 1)];
 		let refs: Vec<&[u8]> = keys.iter().map(|k| k.as_slice()).collect();
-		let many = s.get_many(t, &refs, CommitVersion(10)).unwrap();
+		let many = s.get(t, &refs, CommitVersion(10)).unwrap();
 		assert!(matches!(many[0], VersionedGetResult::Value { .. }));
 		assert!(matches!(many[1], VersionedGetResult::Value { .. }));
 		assert!(
@@ -2939,7 +2877,9 @@ mod tests {
 		s.set(CommitVersion(2), HashMap::from([(t, vec![(series_key(None, 10, 0), None)])])).unwrap();
 		assert!(
 			matches!(
-				s.get(t, series_key(None, 10, 0).as_slice(), CommitVersion(10)).unwrap(),
+				s.get(t, from_ref(&series_key(None, 10, 0).as_slice()), CommitVersion(10))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::NotFound
 			),
 			"a removal must delete the row the narrow delete names"
@@ -3125,7 +3065,9 @@ mod tests {
 
 		assert!(
 			matches!(
-				s.get(t, partitioned_series_key(2, 10, 0).as_slice(), CommitVersion(10)).unwrap(),
+				s.get(t, from_ref(&partitioned_series_key(2, 10, 0).as_slice()), CommitVersion(10))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::Value { .. }
 			),
 			"a partitioned narrow get must find the row under its own partition"
@@ -3246,7 +3188,9 @@ mod tests {
 		assert_eq!(s.count_current(t).unwrap(), 2, "the write must land in the pre-existing blob table");
 		assert!(
 			matches!(
-				s.get(t, series_key(Some(3), 20, 0).as_slice(), CommitVersion(10)).unwrap(),
+				s.get(t, from_ref(&series_key(Some(3), 20, 0).as_slice()), CommitVersion(10))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::Value { .. }
 			),
 			"a blob series row must still be readable, not silently answered as absent"
@@ -3434,7 +3378,8 @@ mod tests {
 		s.set(CommitVersion(1), HashMap::from([(partitioned_table(), vec![(k.clone(), Some(row(b"v")))])]))
 			.unwrap();
 
-		let got = s.get(partitioned_table(), k.as_slice(), CommitVersion(u64::MAX)).unwrap();
+		let got =
+			s.get(partitioned_table(), from_ref(&k.as_slice()), CommitVersion(u64::MAX)).unwrap().remove(0);
 		assert_eq!(got.value().as_ref().map(|v| v.as_slice()), Some(&b"v"[..]));
 	}
 

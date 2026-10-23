@@ -140,9 +140,11 @@ impl SqlitePersistentStorage {
 			connections_total: Count::new(1),
 		}
 	}
+}
 
-	#[instrument(name = "store::single::persistent::get_many", level = "trace", skip(self, keys), fields(keys = keys.len()))]
-	pub fn get_many(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
+impl TierStorage for SqlitePersistentStorage {
+	#[instrument(name = "store::single::persistent::get", level = "trace", skip(self, keys), fields(keys = keys.len()))]
+	fn get(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
 			return Ok(vec![None; keys.len()]);
@@ -152,75 +154,37 @@ impl SqlitePersistentStorage {
 			match conn.prepare_cached(&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME)) {
 				Ok(stmt) => stmt,
 				Err(e) if e.to_string().contains("no such table") => return Ok(vec![None; keys.len()]),
-				Err(e) => return Err(internal_error!("Failed to get_many: {}", e)),
+				Err(e) => return Err(internal_error!("Failed to get: {}", e)),
 			};
 		keys.iter()
 			.map(|key| match stmt.query_row(params![key], |row| row.get::<_, Option<Vec<u8>>>(0)) {
 				Ok(value) => Ok(value.map(CowVec::new)),
 				Err(QueryReturnedNoRows) => Ok(None),
-				Err(e) => Err(internal_error!("Failed to get_many: {}", e)),
+				Err(e) => Err(internal_error!("Failed to get: {}", e)),
 			})
 			.collect()
 	}
-}
 
-impl TierStorage for SqlitePersistentStorage {
-	#[instrument(name = "store::single::persistent::get", level = "trace", skip(self, key), fields(key_len = key.len()))]
-	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
+	#[instrument(name = "store::single::persistent::get_with_tombstone", level = "trace", skip(self, keys), fields(keys = keys.len()))]
+	fn get_with_tombstone(&self, keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
 		let guard = self.inner.readers.acquire();
 		let Some(conn) = guard.as_ref() else {
-			return Ok(None);
+			return Ok(vec![None; keys.len()]);
 		};
 
-		let result = conn
-			.prepare_cached(&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME))
-			.and_then(|mut stmt| stmt.query_row(params![key], |row| row.get::<_, Option<Vec<u8>>>(0)));
-
-		match result {
-			Ok(Some(value)) => Ok(Some(CowVec::new(value))),
-			Ok(None) => Ok(None),
-			Err(QueryReturnedNoRows) => Ok(None),
-			Err(e) if e.to_string().contains("no such table") => Ok(None),
-			Err(e) => Err(internal_error!("Failed to get: {}", e)),
-		}
-	}
-
-	#[instrument(name = "store::single::persistent::get_with_tombstone", level = "trace", skip(self, key), fields(key_len = key.len()))]
-	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
-		let guard = self.inner.readers.acquire();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(None);
-		};
-
-		let result = conn
-			.prepare_cached(&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME))
-			.and_then(|mut stmt| stmt.query_row(params![key], |row| row.get::<_, Option<Vec<u8>>>(0)));
-
-		match result {
-			Ok(value) => Ok(Some(value.map(CowVec::new))),
-			Err(QueryReturnedNoRows) => Ok(None),
-			Err(e) if e.to_string().contains("no such table") => Ok(None),
-			Err(e) => Err(internal_error!("Failed to get_with_tombstone: {}", e)),
-		}
-	}
-
-	#[instrument(name = "store::single::persistent::contains", level = "trace", skip(self, key), fields(key_len = key.len()), ret)]
-	fn contains(&self, key: &[u8]) -> Result<bool> {
-		let guard = self.inner.readers.acquire();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(false);
-		};
-
-		let result = conn
-			.prepare_cached(&format!("SELECT value IS NOT NULL FROM \"{}\" WHERE key = ?1", TABLE_NAME))
-			.and_then(|mut stmt| stmt.query_row(params![key], |row| row.get::<_, bool>(0)));
-
-		match result {
-			Ok(has_value) => Ok(has_value),
-			Err(QueryReturnedNoRows) => Ok(false),
-			Err(e) if e.to_string().contains("no such table") => Ok(false),
-			Err(e) => Err(internal_error!("Failed to check contains: {}", e)),
-		}
+		let mut stmt =
+			match conn.prepare_cached(&format!("SELECT value FROM \"{}\" WHERE key = ?1", TABLE_NAME)) {
+				Ok(stmt) => stmt,
+				Err(e) if e.to_string().contains("no such table") => return Ok(vec![None; keys.len()]),
+				Err(e) => return Err(internal_error!("Failed to get_with_tombstone: {}", e)),
+			};
+		keys.iter()
+			.map(|key| match stmt.query_row(params![key], |row| row.get::<_, Option<Vec<u8>>>(0)) {
+				Ok(value) => Ok(Some(value.map(CowVec::new))),
+				Err(QueryReturnedNoRows) => Ok(None),
+				Err(e) => Err(internal_error!("Failed to get_with_tombstone: {}", e)),
+			})
+			.collect()
 	}
 
 	#[instrument(name = "store::single::persistent::set", level = "debug", skip(self, entries), fields(entry_count = entries.len()))]

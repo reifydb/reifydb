@@ -4,6 +4,7 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	ops::{Bound, Deref},
+	slice,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -26,17 +27,12 @@ use reifydb_runtime::{
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
-use reifydb_value::{
-	count::Count,
-	reifydb_assertions,
-	util::{cowvec::CowVec, hex},
-	value::duration::Duration,
-};
+use reifydb_value::{count::Count, reifydb_assertions, util::cowvec::CowVec, value::duration::Duration};
 use tracing::instrument;
 
 use crate::{
-	Result, SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-	SingleVersionRangeRev, SingleVersionStore,
+	Result, SingleVersionBatch, SingleVersionCommit, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
+	SingleVersionStore,
 	config::{CommitBufferConfig, SingleStoreConfig},
 	flush::actor::FlushMessage,
 	tier::{
@@ -251,7 +247,7 @@ impl SingleVersionGet for StandardSingleStore {
 		let mut misses = Vec::new();
 		for (index, key) in keys.iter().enumerate() {
 			let buffered = match &self.commit {
-				Some(buffer) => buffer.get_with_tombstone(key.as_ref())?,
+				Some(buffer) => buffer.get_with_tombstone(slice::from_ref(&key.as_ref()))?.remove(0),
 				None => None,
 			};
 			rows.push(match buffered {
@@ -271,7 +267,7 @@ impl SingleVersionGet for StandardSingleStore {
 		{
 			let probed: Vec<&[u8]> = misses.iter().map(|&index| keys[index].as_ref()).collect();
 			self.persistent_probes.fetch_add(misses.len() as u64, Ordering::Relaxed);
-			for (index, value) in misses.into_iter().zip(persistent.get_many(&probed)?) {
+			for (index, value) in misses.into_iter().zip(persistent.get(&probed)?) {
 				match value {
 					Some(value) => {
 						rows[index] = Some(SingleVersionRow {
@@ -287,29 +283,6 @@ impl SingleVersionGet for StandardSingleStore {
 		}
 
 		Ok(rows)
-	}
-}
-
-impl SingleVersionContains for StandardSingleStore {
-	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::display(key.as_ref())), ret)]
-	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		if let Some(buffer) = &self.commit {
-			match buffer.get_with_tombstone(key.as_ref())? {
-				Some(Some(_)) => return Ok(true),
-				Some(None) => return Ok(false),
-				None => {}
-			}
-		}
-
-		if let Some(persistent) = &self.persistent {
-			self.persistent_probes.fetch_add(1, Ordering::Relaxed);
-			if persistent.contains(key.as_ref())? {
-				return Ok(true);
-			}
-			self.persistent_absent.fetch_add(1, Ordering::Relaxed);
-		}
-
-		Ok(false)
 	}
 }
 
@@ -679,9 +652,7 @@ mod tests {
 
 		let before = probes(&store);
 		assert!(SingleVersionGet::get(&store, &[present.encode()]).unwrap().pop().flatten().is_some());
-		assert!(SingleVersionContains::contains(&store, &present.encode()).unwrap());
 		assert!(SingleVersionGet::get(&store, &[removed.encode()]).unwrap().pop().flatten().is_none());
-		assert!(!SingleVersionContains::contains(&store, &removed.encode()).unwrap());
 
 		assert_eq!(
 			probes(&store),
@@ -704,14 +675,6 @@ mod tests {
 			(before.0 + 1, before.1),
 			"a hit must raise the probe count and leave the absent count alone, otherwise the ratio 			 claims a filter could skip reads that genuinely returned data"
 		);
-
-		let before = probes(&store);
-		assert!(SingleVersionContains::contains(&store, &k.encode()).unwrap());
-		assert_eq!(
-			probes(&store),
-			(before.0 + 1, before.1),
-			"contains reaches the same tier as get and must account for it the same way"
-		);
 	}
 
 	#[test]
@@ -726,14 +689,6 @@ mod tests {
 			probes(&store),
 			(before.0 + 1, before.1 + 1),
 			"an absent point read must raise both counts, otherwise the ceiling on what a filter 			 could save measures as zero and the decision is made on a number that cannot move"
-		);
-
-		let before = probes(&store);
-		assert!(!SingleVersionContains::contains(&store, &k.encode()).unwrap());
-		assert_eq!(
-			probes(&store),
-			(before.0 + 1, before.1 + 1),
-			"an absent contains is exactly the lookup a filter turns into a skipped sqlite read"
 		);
 	}
 

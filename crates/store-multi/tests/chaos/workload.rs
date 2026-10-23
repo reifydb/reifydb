@@ -13,7 +13,7 @@ use reifydb_codec::{
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, SetPre},
-	interface::store::{MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious},
+	interface::store::{MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious},
 	key::{any::TaggedKey, row::RowKey},
 };
 use reifydb_store_commit::VersionedGetResult;
@@ -235,25 +235,6 @@ fn check_range_inner(
 	}
 }
 
-pub fn check_contains(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u64, read: u64, step: u32) {
-	let key = TaggedKey::from(RowKey::new(STORAGE, row));
-	let expected = oracle
-		.resolve(
-			row,
-			Scope::AsOf {
-				read,
-			},
-		)
-		.is_some();
-	for (name, store) in configs {
-		let got = store.contains(&key, CommitVersion(read)).unwrap();
-		assert_eq!(
-			got, expected,
-			"CONTAINS mismatch: config={name} step={step} row={row} read={read} store={got} oracle={expected}"
-		);
-	}
-}
-
 pub fn check_prev(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u64, before: u64, step: u32) {
 	let key = TaggedKey::from(RowKey::new(STORAGE, row));
 	let expected = oracle.prev(row, before);
@@ -344,7 +325,7 @@ pub fn drive(seed: u64, p: Params) {
 				}
 				2 => {
 					let row = rng.random_range(1..=p.keyspace);
-					check_contains(&configs, &oracle, row, read, step);
+					check_get(&configs, &oracle, row, read, step);
 				}
 				3 => {
 					// before-1 must stay >= watermark for the oracle's prev() to be sound; allow

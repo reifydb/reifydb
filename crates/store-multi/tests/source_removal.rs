@@ -52,7 +52,11 @@ fn persistent_only_set(store: &StandardMultiStore, k: &TaggedKey, version: u64, 
 fn persistent_row(store: &StandardMultiStore, k: &TaggedKey) -> Option<(u64, Vec<u8>)> {
 	let persistent = store.persistent().expect("persistent tier configured");
 	let encoded = k.encode();
-	match persistent.get(classify_key(&encoded), encoded.as_ref(), CommitVersion(u64::MAX)).unwrap() {
+	match persistent
+		.get(classify_key(&encoded), std::slice::from_ref(&encoded.as_ref()), CommitVersion(u64::MAX))
+		.unwrap()
+		.remove(0)
+	{
 		reifydb_store_commit::VersionedGetResult::Value {
 			value,
 			version,

@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::{
 	collections::{BTreeMap, HashMap, btree_map::Entry},
 	ops::{Bound, RangeBounds},
+	slice::from_ref,
 	sync::atomic::Ordering,
 	vec,
 };
@@ -22,9 +23,9 @@ use reifydb_core::{
 	interface::{
 		catalog::storage::StorageId,
 		store::{
-			EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionContains, MultiVersionGet,
-			MultiVersionGetPrevious, MultiVersionRow, MultiVersionStore, StorageKey, classify_key_of,
-			classify_range, storage_key, storage_key_of,
+			EntryKind, MultiVersionBatch, MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious,
+			MultiVersionRow, MultiVersionStore, StorageKey, classify_key_of, classify_range, storage_key,
+			storage_key_of,
 		},
 	},
 	key::{
@@ -214,7 +215,7 @@ impl StandardMultiStore {
 			return Ok(None);
 		}
 		self.persistent_probes.fetch_add(1, Ordering::Relaxed);
-		Ok(match persistent.get(table, key.as_ref(), version)? {
+		Ok(match persistent.get(table, from_ref(&key.as_ref()), version)?.remove(0) {
 			VersionedGetResult::Value {
 				value,
 				version: v,
@@ -234,13 +235,6 @@ impl StandardMultiStore {
 				None
 			}
 		})
-	}
-}
-
-impl MultiVersionContains for StandardMultiStore {
-	#[instrument(name = "store::multi::contains", level = "trace", skip(self, key), fields(version = version.0), ret)]
-	fn contains(&self, key: &TaggedKey, version: CommitVersion) -> Result<bool> {
-		Ok(MultiVersionGet::get(self, key, version)?.is_some())
 	}
 }
 
@@ -366,7 +360,7 @@ impl StandardMultiStore {
 		key_slices: &[&[u8]],
 		version: CommitVersion,
 	) -> Result<Vec<VersionedGetResult>> {
-		self.commit.get_many(table, key_slices, version)
+		TierStorage::get(&self.commit, table, key_slices, version)
 	}
 
 	#[inline]
@@ -423,7 +417,7 @@ impl StandardMultiStore {
 			&& let Some(persistent) = &self.persistent
 		{
 			self.persistent_probes.fetch_add(persistent_slices.len() as u64, Ordering::Relaxed);
-			let persistent_results = persistent.get_many(table, &persistent_slices, version)?;
+			let persistent_results = persistent.get(table, &persistent_slices, version)?;
 			for (slot, result) in persistent_idx.into_iter().zip(persistent_results) {
 				if matches!(result, VersionedGetResult::NotFound) {
 					self.persistent_absent.fetch_add(1, Ordering::Relaxed);
@@ -1247,7 +1241,7 @@ impl StandardMultiStore {
 			return Ok(None);
 		}
 		self.persistent_probes.fetch_add(1, Ordering::Relaxed);
-		Ok(match persistent.get(table, key.as_ref(), prev_version)? {
+		Ok(match persistent.get(table, from_ref(&key.as_ref()), prev_version)?.remove(0) {
 			VersionedGetResult::Value {
 				value,
 				version,

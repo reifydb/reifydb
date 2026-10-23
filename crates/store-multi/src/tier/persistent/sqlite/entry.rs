@@ -342,7 +342,7 @@ mod tests {
 
 	#[test]
 	fn every_narrow_schema_reports_as_many_columns_as_it_names() {
-		// push_key_params, read_returned_key and the get_many row offsets all index by this count, so a
+		// push_key_params, read_returned_key and the get row offsets all index by this count, so a
 		// count that disagrees with the column list reads the version out of a key column.
 		assert_eq!(SqliteSchema::Series.key_column_count(), SERIES_KEY_COLUMNS.len());
 		assert_eq!(SqliteSchema::PartitionedSeries.key_column_count(), PARTITIONED_SERIES_KEY_COLUMNS.len());

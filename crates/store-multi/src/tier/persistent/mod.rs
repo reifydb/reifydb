@@ -312,20 +312,9 @@ impl MultiPersistentTier {
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 impl TierStorage for MultiPersistentTier {
-	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
+	fn get(&self, table: EntryKind, keys: &[&[u8]], version: CommitVersion) -> Result<Vec<VersionedGetResult>> {
 		match self {
-			Self::Sqlite(s) => s.get(table, key, version),
-		}
-	}
-
-	fn get_many(
-		&self,
-		table: EntryKind,
-		keys: &[&[u8]],
-		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
-		match self {
-			Self::Sqlite(s) => s.get_many(table, keys, version),
+			Self::Sqlite(s) => s.get(table, keys, version),
 		}
 	}
 
@@ -372,7 +361,7 @@ impl TierStorage for MultiPersistentTier {
 
 #[cfg(not(all(feature = "sqlite", not(target_arch = "wasm32"))))]
 impl TierStorage for MultiPersistentTier {
-	fn get(&self, _table: EntryKind, _key: &[u8], _version: CommitVersion) -> Result<VersionedGetResult> {
+	fn get(&self, _table: EntryKind, _keys: &[&[u8]], _version: CommitVersion) -> Result<Vec<VersionedGetResult>> {
 		match *self {}
 	}
 

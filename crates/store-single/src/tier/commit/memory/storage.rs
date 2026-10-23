@@ -50,22 +50,16 @@ impl MemoryRowStorage {
 }
 
 impl TierStorage for MemoryRowStorage {
-	#[instrument(name = "store::single::memory::get", level = "trace", skip(self, key), fields(key_len = key.len()))]
-	fn get(&self, key: &[u8]) -> Result<Option<CowVec<u8>>> {
+	#[instrument(name = "store::single::memory::get", level = "trace", skip(self, keys), fields(keys = keys.len()))]
+	fn get(&self, keys: &[&[u8]]) -> Result<Vec<Option<CowVec<u8>>>> {
 		let map = self.inner.data.read();
-		Ok(map.get(key).cloned().flatten())
+		Ok(keys.iter().map(|key| map.get(*key).cloned().flatten()).collect())
 	}
 
-	#[instrument(name = "store::single::memory::contains", level = "trace", skip(self, key), fields(key_len = key.len()), ret)]
-	fn contains(&self, key: &[u8]) -> Result<bool> {
+	#[instrument(name = "store::single::memory::get_with_tombstone", level = "trace", skip(self, keys), fields(keys = keys.len()))]
+	fn get_with_tombstone(&self, keys: &[&[u8]]) -> Result<Vec<Option<Option<CowVec<u8>>>>> {
 		let map = self.inner.data.read();
-		Ok(matches!(map.get(key), Some(Some(_))))
-	}
-
-	#[instrument(name = "store::single::memory::get_with_tombstone", level = "trace", skip(self, key), fields(key_len = key.len()))]
-	fn get_with_tombstone(&self, key: &[u8]) -> Result<Option<Option<CowVec<u8>>>> {
-		let map = self.inner.data.read();
-		Ok(map.get(key).cloned())
+		Ok(keys.iter().map(|key| map.get(*key).cloned()).collect())
 	}
 
 	#[instrument(name = "store::single::memory::set", level = "debug", skip(self, entries), fields(entry_count = entries.len()))]

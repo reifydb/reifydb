@@ -6,7 +6,7 @@ use std::{collections::HashMap, mem::take, ops::RangeBounds, slice};
 use indexmap::IndexMap;
 use reifydb_core::{
 	delta::SetPre,
-	interface::store::{SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRow},
+	interface::store::{SingleVersionCommit, SingleVersionGet, SingleVersionRow},
 	key::any::TaggedKey,
 };
 use reifydb_runtime::sync::rwlock::{ArcRwLock, OwnedRwLockWriteGuard};
@@ -133,34 +133,6 @@ impl<'a> SingleWriteTransaction<'a> {
 			self.fetched.insert(key.clone(), row.map(|row| row.bytes));
 		}
 		Ok(())
-	}
-
-	pub fn contains_key<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<bool> {
-		let tagged: TaggedKey = key.clone().into();
-		let key = &tagged.encode();
-		self.check_key_allowed(key)?;
-
-		if let Some(delta) = self.pending.get(key) {
-			return match delta {
-				Delta::Set {
-					..
-				} => Ok(true),
-				Delta::Remove {
-					..
-				} => Ok(false),
-			};
-		}
-
-		if let Some(fetched) = self.fetched.get(key) {
-			return Ok(fetched.is_some());
-		}
-
-		#[cfg(feature = "testing")]
-		{
-			self.inner.op_counts.lock().unwrap().key(tagged.kind()).contains += 1;
-		}
-		let store = self.inner.store.read().clone();
-		SingleVersionContains::contains(&store, key)
 	}
 
 	pub fn set<K: Into<TaggedKey> + Clone>(&mut self, key: &K, bytes: impl Into<EncodedBytes>) -> Result<()> {

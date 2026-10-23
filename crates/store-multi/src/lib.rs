@@ -29,8 +29,8 @@ use reifydb_core::{
 	interface::{
 		catalog::storage::StorageId,
 		store::{
-			MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionGetPrevious,
-			MultiVersionRow, MultiVersionStore,
+			MultiVersionCommit, MultiVersionGet, MultiVersionGetPrevious, MultiVersionRow,
+			MultiVersionStore,
 		},
 	},
 	key::{
@@ -190,15 +190,6 @@ impl MultiVersionGet for MultiStore {
 	fn get(&self, key: &TaggedKey, version: CommitVersion) -> Result<Option<MultiVersionRow<TaggedKey>>> {
 		match self {
 			MultiStore::Standard(store) => MultiVersionGet::get(store, key, version),
-		}
-	}
-}
-
-impl MultiVersionContains for MultiStore {
-	#[inline]
-	fn contains(&self, key: &TaggedKey, version: CommitVersion) -> Result<bool> {
-		match self {
-			MultiStore::Standard(store) => MultiVersionContains::contains(store, key, version),
 		}
 	}
 }

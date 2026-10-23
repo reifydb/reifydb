@@ -278,7 +278,12 @@ fn a_removed_key_is_reported_absent_after_a_rebuild() {
 	assert!(storage.filter().may_contain((EntryKind::Multi, &key(2))), "the rebuild dropped a live key");
 	assert!(
 		matches!(
-			storage.get(EntryKind::Multi, key(1).as_slice(), CommitVersion(u64::MAX)),
+			storage.get(
+				EntryKind::Multi,
+				std::slice::from_ref(&key(1).as_slice()),
+				CommitVersion(u64::MAX)
+			)
+			.map(|mut results| results.remove(0)),
 			Ok(reifydb_store_commit::VersionedGetResult::NotFound)
 		),
 		"the removed key must read as absent through the tier after the swap"
@@ -347,15 +352,21 @@ fn identical_key_bytes_in_two_entry_kinds_stay_separately_reachable_across_a_reb
 		);
 		assert!(storage.filter().may_contain((OTHER, &key(n))), "source key {n} was lost by the rebuild");
 		assert!(
-			storage.get(EntryKind::Multi, key(n).as_slice(), CommitVersion(u64::MAX))
-				.expect("the read failed")
-				.value()
-				.is_some(),
+			storage.get(
+				EntryKind::Multi,
+				std::slice::from_ref(&key(n).as_slice()),
+				CommitVersion(u64::MAX)
+			)
+			.expect("the read failed")
+			.remove(0)
+			.value()
+			.is_some(),
 			"multi row {n} became unreadable"
 		);
 		assert!(
-			storage.get(OTHER, key(n).as_slice(), CommitVersion(u64::MAX))
+			storage.get(OTHER, std::slice::from_ref(&key(n).as_slice()), CommitVersion(u64::MAX))
 				.expect("the read failed")
+				.remove(0)
 				.value()
 				.is_some(),
 			"source row {n} became unreadable"

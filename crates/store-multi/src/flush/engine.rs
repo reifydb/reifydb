@@ -392,6 +392,7 @@ mod tests {
 		collections::hash_map::DefaultHasher,
 		hash::{Hash, Hasher},
 		panic::{AssertUnwindSafe, catch_unwind},
+		slice::from_ref,
 	};
 
 	use reifydb_core::{
@@ -684,7 +685,10 @@ mod tests {
 		);
 		assert!(
 			matches!(
-				actor.persistent.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
+				actor.persistent
+					.get(kind, from_ref(&key.as_ref()), CommitVersion(2))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::Value { .. }
 			),
 			"v2 must survive in the persistent tier"
@@ -714,7 +718,10 @@ mod tests {
 		);
 		assert!(
 			matches!(
-				actor.persistent.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
+				actor.persistent
+					.get(kind, from_ref(&key.as_ref()), CommitVersion(2))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::NotFound
 			),
 			"non-persistent object must NOT be written to the persistent tier"
@@ -742,7 +749,10 @@ mod tests {
 		);
 		assert!(
 			matches!(
-				actor.persistent.get(kind, key.as_ref(), CommitVersion(5)).unwrap(),
+				actor.persistent
+					.get(kind, from_ref(&key.as_ref()), CommitVersion(5))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::NotFound
 			),
 			"nothing below the watermark => nothing persisted"
@@ -883,7 +893,10 @@ mod tests {
 		);
 		assert!(
 			matches!(
-				actor.persistent.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
+				actor.persistent
+					.get(kind, from_ref(&key.as_ref()), CommitVersion(2))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::NotFound
 			),
 			"an ephemeral object must not be persisted"
@@ -939,7 +952,10 @@ mod tests {
 		);
 		assert!(
 			matches!(
-				actor.persistent.get(kind, key.as_ref(), CommitVersion(2)).unwrap(),
+				actor.persistent
+					.get(kind, from_ref(&key.as_ref()), CommitVersion(2))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::NotFound
 			),
 			"the persisted row must be gone - leaving it behind resurrects v1 once the buffer drops it"
@@ -963,7 +979,10 @@ mod tests {
 		);
 		assert!(
 			matches!(
-				actor.persistent.get(kind, cold.as_ref(), CommitVersion(2)).unwrap(),
+				actor.persistent
+					.get(kind, from_ref(&cold.as_ref()), CommitVersion(2))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::Value { .. }
 			),
 			"cold must survive in persistent"
@@ -975,7 +994,10 @@ mod tests {
 		);
 		assert!(
 			matches!(
-				actor.persistent.get(kind, hot.as_ref(), CommitVersion(4)).unwrap(),
+				actor.persistent
+					.get(kind, from_ref(&hot.as_ref()), CommitVersion(4))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::NotFound
 			),
 			"hot must not be persisted - it is above the watermark"
@@ -994,12 +1016,22 @@ mod tests {
 		actor.sweep(CommitVersion(u64::MAX));
 
 		assert_eq!(
-			actor.persistent.get(kind, cold.as_ref(), CommitVersion(u64::MAX)).unwrap().value().as_deref(),
+			actor.persistent
+				.get(kind, from_ref(&cold.as_ref()), CommitVersion(u64::MAX))
+				.unwrap()
+				.remove(0)
+				.value()
+				.as_deref(),
 			Some(b"cold2".as_slice()),
 			"a key committed above the watermark must be persisted by a full flush"
 		);
 		assert_eq!(
-			actor.persistent.get(kind, hot.as_ref(), CommitVersion(u64::MAX)).unwrap().value().as_deref(),
+			actor.persistent
+				.get(kind, from_ref(&hot.as_ref()), CommitVersion(u64::MAX))
+				.unwrap()
+				.remove(0)
+				.value()
+				.as_deref(),
 			Some(b"hot50".as_slice()),
 			"the latest committed value of every key must survive a full flush"
 		);
@@ -1086,14 +1118,20 @@ mod tests {
 		actor.sweep(CommitVersion(3));
 
 		assert_eq!(
-			actor.persistent.get(row_kind, row_key.as_ref(), CommitVersion(3)).unwrap().value().as_deref(),
+			actor.persistent
+				.get(row_kind, from_ref(&row_key.as_ref()), CommitVersion(3))
+				.unwrap()
+				.remove(0)
+				.value()
+				.as_deref(),
 			Some(b"id=9".as_slice()),
 			"the row write must be durable after the sweep"
 		);
 		assert_eq!(
 			actor.persistent
-				.get(dict_kind, dict_key.as_ref(), CommitVersion(3))
+				.get(dict_kind, from_ref(&dict_key.as_ref()), CommitVersion(3))
 				.unwrap()
+				.remove(0)
 				.value()
 				.as_deref(),
 			Some(b"entry-9".as_slice()),
@@ -1130,7 +1168,10 @@ mod tests {
 
 		assert!(
 			matches!(
-				actor.persistent.get(kind, key.as_ref(), CommitVersion(u64::MAX)).unwrap(),
+				actor.persistent
+					.get(kind, from_ref(&key.as_ref()), CommitVersion(u64::MAX))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::NotFound
 			),
 			"a delete committed above the watermark must remove the persisted row, not resurrect v5"
@@ -1148,7 +1189,10 @@ mod tests {
 
 		assert!(
 			matches!(
-				actor.persistent.get(kind, key.as_ref(), CommitVersion(10)).unwrap(),
+				actor.persistent
+					.get(kind, from_ref(&key.as_ref()), CommitVersion(10))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::Value { .. }
 			),
 			"a Multi entry committed below the watermark must reach the persistent tier; \

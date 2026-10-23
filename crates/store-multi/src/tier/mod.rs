@@ -14,24 +14,7 @@ use reifydb_store_commit::{
 use reifydb_value::Result;
 
 pub trait TierStorage: Send + Sync + Clone + 'static {
-	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult>;
-
-	fn get_many(
-		&self,
-		table: EntryKind,
-		keys: &[&[u8]],
-		version: CommitVersion,
-	) -> Result<Vec<VersionedGetResult>> {
-		let mut out = Vec::with_capacity(keys.len());
-		for &key in keys {
-			out.push(self.get(table, key, version)?);
-		}
-		Ok(out)
-	}
-
-	fn contains(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<bool> {
-		Ok(matches!(self.get(table, key, version)?, VersionedGetResult::Value { .. }))
-	}
+	fn get(&self, table: EntryKind, keys: &[&[u8]], version: CommitVersion) -> Result<Vec<VersionedGetResult>>;
 
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()>;
 
@@ -59,12 +42,8 @@ pub trait TierStorage: Send + Sync + Clone + 'static {
 }
 
 impl TierStorage for CommitStore {
-	fn get(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<VersionedGetResult> {
-		Ok(CommitStore::get(self, table, key, version))
-	}
-
-	fn contains(&self, table: EntryKind, key: &[u8], version: CommitVersion) -> Result<bool> {
-		Ok(CommitStore::contains(self, table, key, version))
+	fn get(&self, table: EntryKind, keys: &[&[u8]], version: CommitVersion) -> Result<Vec<VersionedGetResult>> {
+		Ok(keys.iter().map(|&key| CommitStore::get(self, table, key, version)).collect())
 	}
 
 	fn set(&self, version: CommitVersion, batches: TierBatch) -> Result<()> {

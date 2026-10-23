@@ -24,8 +24,8 @@ use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	delta::Delta,
 	interface::store::{
-		SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
-		SingleVersionRangeRev, SingleVersionRow, SingleVersionStore,
+		SingleVersionBatch, SingleVersionCommit, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
+		SingleVersionRow, SingleVersionStore,
 	},
 };
 use reifydb_runtime::shutdown::Shutdown;
@@ -130,15 +130,6 @@ impl SingleVersionGet for SingleStore {
 	fn get(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
 		match self {
 			SingleStore::Standard(store) => SingleVersionGet::get(store, keys),
-		}
-	}
-}
-
-impl SingleVersionContains for SingleStore {
-	#[inline]
-	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		match self {
-			SingleStore::Standard(store) => SingleVersionContains::contains(store, key),
 		}
 	}
 }
