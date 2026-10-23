@@ -12,7 +12,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{object::ObjectId, policy::SessionOp, storage::StorageId},
 		change::{Change, ChangeOrigin, Diff},
-		store::{MultiVersionBatch, MultiVersionRow},
+		store::MultiVersionRow,
 	},
 	key::{
 		any::TaggedKey,
@@ -341,24 +341,6 @@ impl<'a> Transaction<'a> {
 			Self::Admin(txn) => txn.contains(keys),
 			Self::Query(txn) => txn.contains(keys),
 			Self::Test(t) => t.inner.contains(keys),
-		}
-	}
-
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		match self {
-			Self::Command(txn) => txn.prefix(prefix),
-			Self::Admin(txn) => txn.prefix(prefix),
-			Self::Query(txn) => txn.prefix(prefix),
-			Self::Test(t) => t.inner.prefix(prefix),
-		}
-	}
-
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		match self {
-			Self::Command(txn) => txn.prefix_rev(prefix),
-			Self::Admin(txn) => txn.prefix_rev(prefix),
-			Self::Query(txn) => txn.prefix_rev(prefix),
-			Self::Test(t) => t.inner.prefix_rev(prefix),
 		}
 	}
 

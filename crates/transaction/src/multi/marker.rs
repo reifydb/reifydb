@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
 	interface::catalog::storage::StorageId,
 	key::{any::TaggedKey, bound::TaggedKeyBoundRange},
@@ -31,9 +30,5 @@ impl<'a> Marker<'a> {
 
 	pub fn mark_member(&mut self, storage: StorageId, partition: Partition) {
 		self.marker.mark_member_read(storage, partition);
-	}
-
-	pub fn mark_range_encoded(&mut self, range: EncodedKeyRange) {
-		self.marker.mark_range_encoded(range);
 	}
 }

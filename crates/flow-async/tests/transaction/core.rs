@@ -365,8 +365,8 @@ fn test_prefix_empty() {
 	));
 
 	let prefix = make_key("test_");
-	let iter = txn.prefix(&prefix).unwrap();
-	assert!(iter.items.into_iter().next().is_none());
+	let mut items = txn.range(EncodedKeyRange::prefix(&prefix), RangeScope::All, 1024);
+	assert!(items.next().is_none());
 }
 
 #[test]
@@ -386,8 +386,8 @@ fn test_prefix_only_pending() {
 	txn.set_one(&make_key("other_c"), make_value("3")).unwrap();
 
 	let prefix = make_key("test_");
-	let iter = txn.prefix(&prefix).unwrap();
-	let items: Vec<_> = iter.items.into_iter().collect();
+	let items: Vec<_> =
+		txn.range(EncodedKeyRange::prefix(&prefix), RangeScope::All, 1024).collect::<Result<Vec<_>>>().unwrap();
 
 	assert_eq!(items.len(), 2);
 	assert_eq!(items[0].key, make_typed_key("test_a").into());

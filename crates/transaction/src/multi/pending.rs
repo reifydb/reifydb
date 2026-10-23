@@ -84,10 +84,6 @@ impl PendingWrites {
 		None
 	}
 
-	pub fn iter(&self) -> impl DoubleEndedIterator<Item = (&TaggedKeyBound, &DeltaEntry)> + '_ {
-		self.index.iter().filter_map(|(key, slot)| self.entry_at(*slot).map(|entry| (key, entry)))
-	}
-
 	pub fn rollback(&mut self) {
 		self.entries.clear();
 		self.index.clear();
@@ -200,11 +196,10 @@ pub mod tests {
 			pw.insert(pending);
 		}
 
-		let iter = pw.iter();
-		let items: Vec<_> = iter.collect();
+		let items: Vec<_> = pw.range(..).collect();
 		assert_eq!(items.len(), 5);
 
-		// iter() must yield key order, not insertion order; the merge with storage relies on it.
+		// A full range must yield key order, not insertion order; the merge with storage relies on it.
 		let keys: Vec<_> = items.iter().map(|(k, _)| k).collect();
 		let mut expected_keys = keys.clone();
 		expected_keys.sort();

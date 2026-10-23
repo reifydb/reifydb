@@ -9,7 +9,9 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, ops::Bound, path::Path, sync::Arc};
+use std::{
+	borrow::Cow, collections::HashMap, error::Error as StdError, fmt::Write as _, ops::Bound, path::Path, sync::Arc,
+};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -26,9 +28,10 @@ use reifydb_core::{
 		store::MultiVersionRow,
 	},
 	key::{
-		any::TaggedKey,
+		any::{Field, KeyFields, TaggedKey},
 		bound::{TaggedKeyBound, TaggedKeyBoundRange},
 		catalog::IndexEntryKey,
+		tag::KeyTag,
 	},
 	testing::ProfileConfig,
 	util::encoding::{
@@ -377,30 +380,26 @@ impl Runner for MvccRunner {
 
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let prefix =
+				let range =
 					script_prefix(&decode_binary(&args.next_pos().ok_or("prefixnot given")?.value));
 				args.reject_rest()?;
 
-				match &mut t {
-					TransactionHandle::Read(rx) => {
-						if !reverse {
-							let batch = rx.prefix(&prefix).unwrap();
-							print_rx(&mut output, batch.items.into_iter())
-						} else {
-							let batch = rx.prefix_rev(&prefix).unwrap();
-							print_rx(&mut output, batch.items.into_iter())
-						}
+				let items: Vec<MultiVersionRow<TaggedKey>> = match (&mut t, reverse) {
+					(TransactionHandle::Read(rx), false) => {
+						rx.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>, _>>()
 					}
-					TransactionHandle::Write(tx) => {
-						if !reverse {
-							let batch = tx.prefix(&prefix).unwrap();
-							print_rx(&mut output, batch.items.into_iter())
-						} else {
-							let batch = tx.prefix_rev(&prefix).unwrap();
-							print_rx(&mut output, batch.items.into_iter())
-						}
+					(TransactionHandle::Read(rx), true) => rx
+						.range_rev(range, RangeScope::All, 1024)
+						.collect::<Result<Vec<_>, _>>(),
+					(TransactionHandle::Write(tx), false) => {
+						tx.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>, _>>()
 					}
+					(TransactionHandle::Write(tx), true) => tx
+						.range_rev(range, RangeScope::All, 1024)
+						.collect::<Result<Vec<_>, _>>(),
 				}
+				.unwrap();
+				print_rx(&mut output, items.into_iter());
 				self.transactions.insert(name.to_string(), t);
 			}
 
@@ -494,8 +493,19 @@ fn script_raw(key: &TaggedKey) -> EncodedKey {
 	EncodedKey::new(entry.key.as_ref())
 }
 
-fn script_prefix(raw: &[u8]) -> EncodedKey {
-	script_key(raw.to_vec()).encode()
+fn script_prefix(raw: &[u8]) -> TaggedKeyBoundRange {
+	let key = script_key(raw.to_vec());
+	let fields: Vec<Field<'static>> = key
+		.fields()
+		.into_iter()
+		.map(|field| match field {
+			Field::RawAsc(encoding, bytes) => Field::RawAsc(encoding, Cow::Owned(bytes.into_owned())),
+			Field::BytesDesc(encoding, bytes) => Field::BytesDesc(encoding, Cow::Owned(bytes.into_owned())),
+			Field::UAsc(width, value) => Field::UAsc(width, value),
+			Field::UDesc(width, value) => Field::UDesc(width, value),
+		})
+		.collect();
+	TaggedKeyBoundRange::prefix(KeyTag::IndexEntry, fields)
 }
 
 fn script_bound(bound: Bound<EncodedKey>) -> Bound<TaggedKeyBound> {

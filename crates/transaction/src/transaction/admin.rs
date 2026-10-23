@@ -13,7 +13,7 @@ use reifydb_core::{
 		WithEventBus,
 		catalog::{object::ObjectId, storage::StorageId},
 		change::{Change, ChangeOrigin},
-		store::{MultiVersionBatch, MultiVersionRow},
+		store::MultiVersionRow,
 	},
 	key::{
 		any::TaggedKey,
@@ -389,18 +389,6 @@ impl AdminTransaction {
 	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().contains(keys)
-	}
-
-	#[inline]
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().prefix(prefix)
-	}
-
-	#[inline]
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().prefix_rev(prefix)
 	}
 
 	#[inline]

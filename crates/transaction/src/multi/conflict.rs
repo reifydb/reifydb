@@ -1,13 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use core::{
-	cmp::Ordering,
-	ops::{Bound, RangeBounds},
-};
+use core::{cmp::Ordering, ops::Bound};
 use std::{collections::HashSet, sync::OnceLock};
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
 use reifydb_core::{
 	interface::catalog::storage::StorageId,
 	key::{
@@ -177,18 +173,11 @@ pub struct ConflictManager {
 	read_keys: HashSet<TaggedKey>,
 
 	read_ranges: RangeSet<TaggedKeyBound>,
-	read_ranges_encoded: RangeSet<EncodedKey>,
 	read_all: bool,
 	write_keys: HashSet<TaggedKey>,
 	member_reads: HashSet<PartitionMember>,
 	member_writes: HashSet<PartitionMember>,
-	sorted_writes: OnceLock<SortedWrites>,
-}
-
-#[derive(Debug, Clone)]
-struct SortedWrites {
-	typed: Vec<TaggedKeyBound>,
-	encoded: Vec<EncodedKey>,
+	sorted_writes: OnceLock<Vec<TaggedKeyBound>>,
 }
 
 pub type PartitionMember = (StorageId, Partition);
@@ -257,21 +246,6 @@ impl ConflictManager {
 		self.escalate_if_saturated();
 	}
 
-	#[instrument(name = "transaction::conflict::mark_range_encoded", level = "trace", skip(self), fields(range_start = ?range.start_bound(), range_end = ?range.end_bound()))]
-	pub fn mark_range_encoded(&mut self, range: EncodedKeyRange) {
-		if !self.accepts_range() {
-			return;
-		}
-
-		if matches!(range.start, Bound::Unbounded) && matches!(range.end, Bound::Unbounded) {
-			self.escalate_to_read_all();
-			return;
-		}
-
-		self.read_ranges_encoded.insert_and_merge(range.start, range.end);
-		self.escalate_if_saturated();
-	}
-
 	fn accepts_range(&self) -> bool {
 		self.mode != ConflictMode::Disabled && !self.read_all
 	}
@@ -279,11 +253,10 @@ impl ConflictManager {
 	fn escalate_to_read_all(&mut self) {
 		self.read_all = true;
 		self.read_ranges.clear();
-		self.read_ranges_encoded.clear();
 	}
 
 	fn escalate_if_saturated(&mut self) {
-		if self.read_ranges.len() + self.read_ranges_encoded.len() > MAX_RANGES_BEFORE_ESCALATION {
+		if self.read_ranges.len() > MAX_RANGES_BEFORE_ESCALATION {
 			self.escalate_to_read_all();
 		}
 	}
@@ -327,24 +300,18 @@ impl ConflictManager {
 
 	#[inline]
 	fn has_any_range_conflict(&self, other: &Self) -> bool {
-		if other.write_keys.is_empty() || (self.read_ranges.is_empty() && self.read_ranges_encoded.is_empty()) {
+		if other.write_keys.is_empty() || self.read_ranges.is_empty() {
 			return false;
 		}
-		let sorted = other.sorted_writes();
-		self.read_ranges.any_in_sorted(&sorted.typed) || self.read_ranges_encoded.any_in_sorted(&sorted.encoded)
+		self.read_ranges.any_in_sorted(other.sorted_writes())
 	}
 
-	fn sorted_writes(&self) -> &SortedWrites {
+	fn sorted_writes(&self) -> &[TaggedKeyBound] {
 		self.sorted_writes.get_or_init(|| {
-			let mut typed: Vec<TaggedKeyBound> =
+			let mut sorted: Vec<TaggedKeyBound> =
 				self.write_keys.iter().cloned().map(TaggedKeyBound::Key).collect();
-			typed.sort_unstable();
-			let mut encoded: Vec<EncodedKey> = self.write_keys.iter().map(TaggedKey::encode).collect();
-			encoded.sort_unstable();
-			SortedWrites {
-				typed,
-				encoded,
-			}
+			sorted.sort_unstable();
+			sorted
 		})
 	}
 
@@ -352,7 +319,6 @@ impl ConflictManager {
 	pub fn rollback(&mut self) {
 		self.read_keys.clear();
 		self.read_ranges.clear();
-		self.read_ranges_encoded.clear();
 		self.read_all = false;
 		self.write_keys.clear();
 		self.member_reads.clear();
@@ -379,7 +345,7 @@ impl ConflictManager {
 	}
 
 	pub fn has_range_operations(&self) -> bool {
-		!self.read_ranges.is_empty() || !self.read_ranges_encoded.is_empty() || self.read_all
+		!self.read_ranges.is_empty() || self.read_all
 	}
 }
 
@@ -420,15 +386,6 @@ mod tests {
 			start: Bound::Included(create_bound(start)),
 			end,
 		}
-	}
-
-	fn create_encoded_range(start: &str, end: Bound<&str>) -> EncodedKeyRange {
-		let end = match end {
-			Bound::Included(e) => Bound::Included(create_key(e).encode()),
-			Bound::Excluded(e) => Bound::Excluded(create_key(e).encode()),
-			Bound::Unbounded => Bound::Unbounded,
-		};
-		EncodedKeyRange::new(Bound::Included(create_key(start).encode()), end)
 	}
 
 	#[test]
@@ -525,90 +482,16 @@ mod tests {
 	}
 
 	#[test]
-	fn a_typed_range_and_its_encoded_twin_detect_the_same_conflicts() {
-		// The typed set orders by kind and field projection, the encoded set by raw bytes. The
-		// whole design rests on those two agreeing, so a range expressed either way must reach
-		// the same verdict for every key.
-		for probe in ["a", "b", "c", "d", "m", "z"] {
-			let mut typed = ConflictManager::new();
-			typed.mark_range(create_range("b", Bound::Excluded("d")));
-
-			let mut encoded = ConflictManager::new();
-			encoded.mark_range_encoded(create_encoded_range("b", Bound::Excluded("d")));
-
-			let mut writer = ConflictManager::new();
-			writer.mark_write(&create_key(probe));
-
-			assert_eq!(
-				typed.has_conflict(&writer),
-				encoded.has_conflict(&writer),
-				"typed and encoded tracking disagree on {probe}"
-			);
-		}
-	}
-
-	#[test]
-	fn encoded_ranges_are_tracked_and_conflict_independently_of_typed_ranges() {
-		let mut cm = ConflictManager::new();
-		cm.mark_range_encoded(create_encoded_range("a", Bound::Excluded("c")));
-
-		assert!(cm.read_ranges.is_empty(), "an encoded range must not land in the typed set");
-		assert_eq!(cm.read_ranges_encoded.len(), 1);
-		assert!(cm.has_range_operations());
-
-		let mut inside = ConflictManager::new();
-		inside.mark_write(&create_key("b"));
-		assert!(cm.has_conflict(&inside));
-
-		let mut outside = ConflictManager::new();
-		outside.mark_write(&create_key("z"));
-		assert!(!cm.has_conflict(&outside));
-	}
-
-	#[test]
-	fn typed_and_encoded_ranges_escalate_on_their_combined_count() {
-		// Both sets feed one budget, so a transaction cannot dodge escalation by splitting its
-		// reads across the two representations.
-		let mut cm = ConflictManager::new();
-
-		for i in 0..=MAX_RANGES_BEFORE_ESCALATION {
-			let start = format!("{:04}", i * 2);
-			let end = format!("{:04}", i * 2 + 1);
-			if i % 2 == 0 {
-				cm.mark_range(create_range(&start, Bound::Excluded(&end)));
-			} else {
-				cm.mark_range_encoded(create_encoded_range(&start, Bound::Excluded(&end)));
-			}
-		}
-
-		assert!(cm.read_all);
-		assert!(cm.read_ranges.is_empty());
-		assert!(cm.read_ranges_encoded.is_empty());
-	}
-
-	#[test]
-	fn an_unbounded_encoded_range_escalates_to_read_all() {
+	fn rollback_clears_the_range_set() {
+		// A rolled-back transaction must not carry its old ranges into the next conflict check.
 		let mut cm = ConflictManager::new();
 		cm.mark_range(create_range("a", Bound::Excluded("c")));
-		cm.mark_range_encoded(EncodedKeyRange::all());
-
-		assert!(cm.read_all);
-		assert!(cm.read_ranges.is_empty());
-		assert!(cm.read_ranges_encoded.is_empty());
-	}
-
-	#[test]
-	fn rollback_clears_both_range_sets() {
-		let mut cm = ConflictManager::new();
-		cm.mark_range(create_range("a", Bound::Excluded("c")));
-		cm.mark_range_encoded(create_encoded_range("m", Bound::Excluded("n")));
 		assert!(cm.has_range_operations());
 
 		cm.rollback();
 
 		assert!(!cm.has_range_operations());
 		assert!(cm.read_ranges.is_empty());
-		assert!(cm.read_ranges_encoded.is_empty());
 	}
 
 	#[test]

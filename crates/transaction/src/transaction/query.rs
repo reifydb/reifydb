@@ -39,7 +39,7 @@ use reifydb_core::{
 			test::Test,
 			view::View,
 		},
-		store::{MultiVersionBatch, MultiVersionRow},
+		store::MultiVersionRow,
 	},
 	key::{
 		any::TaggedKey,
@@ -141,16 +141,6 @@ impl QueryTransaction {
 	#[inline]
 	pub fn contains(&mut self, keys: &[TaggedKey]) -> Result<Vec<bool>> {
 		self.multi.contains(keys)
-	}
-
-	#[inline]
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		self.multi.prefix(prefix)
-	}
-
-	#[inline]
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		self.multi.prefix_rev(prefix)
 	}
 
 	#[inline]

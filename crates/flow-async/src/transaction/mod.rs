@@ -18,7 +18,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{flow::OperatorId, id::ViewId},
 		change::Change,
-		store::{MultiVersionBatch, MultiVersionRow},
+		store::MultiVersionRow,
 	},
 	internal_err,
 	key::{
@@ -215,15 +215,6 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 		let version = self.version();
 		let storage_iter = self.storage_range(range, scope, batch_size);
 		Box::new(flow_merge_pending_iterator(pending_vec, storage_iter, version))
-	}
-
-	fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		let range = EncodedKeyRange::prefix(prefix);
-		let items = self.range(range, RangeScope::All, 1024).collect::<Result<Vec<_>>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
 	}
 
 	fn set_one(&mut self, key: &EncodedKey, value: impl Into<EncodedBytes>) -> Result<()> {

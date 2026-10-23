@@ -5,7 +5,7 @@ use std::ops::Bound;
 #[cfg(feature = "testing")]
 use std::sync::Mutex;
 
-use reifydb_codec::key::encoded::{EncodedKey, EncodedKeyRange};
+use reifydb_codec::key::encoded::EncodedKeyRange;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::{
@@ -104,26 +104,6 @@ impl MultiReadTransaction {
 		})
 	}
 
-	pub fn prefix(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		let items: Vec<_> = self
-			.range_encoded(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
-			.collect::<Result<Vec<_>>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	pub fn prefix_rev(&self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		let items: Vec<_> = self
-			.range_rev_encoded(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
-			.collect::<Result<Vec<_>>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
 	pub fn range_encoded(
 		&self,
 		range: EncodedKeyRange,
@@ -134,18 +114,6 @@ impl MultiReadTransaction {
 		self.op_counts.lock().unwrap().range_call();
 		let multi_scope = scope.into_multi(self.tm.version());
 		Box::new(self.engine.store.range(range, multi_scope, batch_size))
-	}
-
-	pub fn range_rev_encoded(
-		&self,
-		range: EncodedKeyRange,
-		scope: RangeScope,
-		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
-		#[cfg(feature = "testing")]
-		self.op_counts.lock().unwrap().range_call();
-		let multi_scope = scope.into_multi(self.tm.version());
-		Box::new(self.engine.store.range_rev(range, multi_scope, batch_size))
 	}
 
 	pub fn range(

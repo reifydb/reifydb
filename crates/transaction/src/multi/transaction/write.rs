@@ -6,23 +6,20 @@ use std::{
 	cmp::Ordering,
 	collections::{BTreeMap, BTreeSet},
 	iter,
-	ops::{Bound, RangeBounds},
+	ops::Bound,
 	slice::from_ref,
 	sync::Arc,
 	vec,
 };
 
-use reifydb_codec::{
-	key::encoded::{EncodedKey, EncodedKeyRange},
-	row::bytes::EncodedBytes,
-};
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, SourceVersion},
 	delta::{Delta, RemoveAnnounce, SetPre},
 	event::transaction::PostCommitEvent,
 	interface::{
 		catalog::{object::ObjectId, storage::StorageId},
-		store::{MultiVersionBatch, MultiVersionGet, MultiVersionRow},
+		store::{MultiVersionGet, MultiVersionRow},
 	},
 	key::{
 		any::TaggedKey,
@@ -999,71 +996,6 @@ impl MultiWriteTransaction {
 }
 
 impl MultiWriteTransaction {
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		let items: Vec<_> = self
-			.range_encoded(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
-			.collect::<Result<Vec<_>>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	pub fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<MultiVersionBatch<TaggedKey>> {
-		let items: Vec<_> = self
-			.range_encoded_rev(EncodedKeyRange::prefix(prefix), RangeScope::All, 1024)
-			.collect::<Result<Vec<_>>>()?;
-		Ok(MultiVersionBatch {
-			items,
-			has_more: false,
-		})
-	}
-
-	fn range_encoded(
-		&mut self,
-		range: EncodedKeyRange,
-		scope: RangeScope,
-		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
-		let multi_scope = scope.into_multi(self.version());
-		let (mut marker, pw) = self.marker_with_pending_writes();
-
-		marker.mark_range_encoded(range.clone());
-
-		let pending: Vec<(TaggedKey, DeltaEntry)> = pw
-			.iter()
-			.filter(|(k, _)| range.contains(&k.encode()))
-			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
-			.collect();
-
-		let storage_iter = self.engine.store.range(range, multi_scope, batch_size);
-
-		Box::new(MergePendingIterator::new(pending, storage_iter, false))
-	}
-
-	fn range_encoded_rev(
-		&mut self,
-		range: EncodedKeyRange,
-		scope: RangeScope,
-		batch_size: usize,
-	) -> Box<dyn Iterator<Item = Result<MultiVersionRow<TaggedKey>>> + Send + '_> {
-		let multi_scope = scope.into_multi(self.version());
-		let (mut marker, pw) = self.marker_with_pending_writes();
-
-		marker.mark_range_encoded(range.clone());
-
-		let mut pending: Vec<(TaggedKey, DeltaEntry)> = pw
-			.iter()
-			.filter(|(k, _)| range.contains(&k.encode()))
-			.map(|(_, v)| (v.delta.key().clone(), v.clone()))
-			.collect();
-		pending.reverse();
-
-		let storage_iter = self.engine.store.range_rev(range, multi_scope, batch_size);
-
-		Box::new(MergePendingIterator::new(pending, storage_iter, true))
-	}
-
 	pub fn range(
 		&mut self,
 		range: TaggedKeyBoundRange,
@@ -1412,7 +1344,9 @@ fn storage_span_end(kind: KeyTag, storage: StorageId) -> TaggedKeyBound {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_codec::key::serializer::KeySerializer;
+	use std::ops::RangeBounds;
+
+	use reifydb_codec::key::{encoded::EncodedKeyRange, serializer::KeySerializer};
 	use reifydb_core::{
 		common::CommitVersion, event::EventListener, interface::catalog::id::QueueId,
 		key::queue::QueueDeduplicationKey,
