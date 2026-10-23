@@ -91,7 +91,7 @@ impl IntoDiagnostic for DictionaryError {
 			DictionaryError::Dropped {
 				dictionary,
 			} => Diagnostic {
-				code: "TXN_017".to_string(),
+				code: "TXN_022".to_string(),
 				rql: None,
 				message: format!("dictionary {} is dropped; it serves no reads and takes no new entries", dictionary),
 				column: None,
