@@ -16,9 +16,9 @@ use reifydb_codec::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	delta::Delta,
+	delta::{Delta, SetPre},
 	error::diagnostic::internal::internal,
-	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite},
+	event::metric::{MultiCommittedEvent, MultiDelete, MultiWrite, PriorSize},
 	interface::{
 		catalog::storage::StorageId,
 		store::{
@@ -150,19 +150,30 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 		match delta {
 			Delta::Set {
 				bytes,
+				pre,
 				..
 			} => {
 				writes.push(MultiWrite {
 					key: encoded.clone(),
 					value_bytes: bytes.len() as u64,
+					pre: match pre {
+						SetPre::Absent => PriorSize::Known(None),
+						SetPre::Present(prior) => PriorSize::Known(Some(prior.len() as u64)),
+						SetPre::Unknown => PriorSize::Unknown,
+					},
 				});
 				batches.entry(table).or_default().push((encoded, Some(bytes.0.clone())));
 			}
 			Delta::Remove {
+				announce,
 				..
 			} => {
 				deletes.push(MultiDelete {
 					key: encoded.clone(),
+					pre: match announce.pre() {
+						Some(prior) => PriorSize::Known(Some(prior.len() as u64)),
+						None => PriorSize::Unknown,
+					},
 				});
 				batches.entry(table).or_default().push((encoded, None));
 			}

@@ -24,15 +24,23 @@ define_event! {
 	}
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PriorSize {
+	Known(Option<u64>),
+	Unknown,
+}
+
 #[derive(Clone, Debug)]
 pub struct MultiWrite {
 	pub key: EncodedKey,
 	pub value_bytes: u64,
+	pub pre: PriorSize,
 }
 
 #[derive(Clone, Debug)]
 pub struct MultiDelete {
 	pub key: EncodedKey,
+	pub pre: PriorSize,
 }
 
 define_event! {

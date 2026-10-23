@@ -20,7 +20,7 @@ use reifydb_core::{
 		EventBus,
 		metric::{
 			CdcEvictedEvent, CdcWrittenEvent, MultiCommittedEvent, MultiDelete, MultiEviction,
-			MultiPersist, MultiSweptEvent, MultiWrite, Request, RequestExecutedEvent,
+			MultiPersist, MultiSweptEvent, MultiWrite, PriorSize, Request, RequestExecutedEvent,
 		},
 		store::MetricsProcessedEvent,
 	},
@@ -180,7 +180,11 @@ impl MetricsFlushActor {
 		writes: &[MultiWrite],
 		version: CommitVersion,
 	) -> Result<()> {
-		let keys: Vec<EncodedKey> = writes.iter().map(|write| write.key.clone()).collect();
+		let keys: Vec<EncodedKey> = writes
+			.iter()
+			.filter(|write| write.pre == PriorSize::Unknown)
+			.map(|write| write.key.clone())
+			.collect();
 		let pre_sizes = self.read_prior_sizes(&keys, version)?;
 		record_each_write(state, writes, &pre_sizes);
 		Ok(())
@@ -193,13 +197,17 @@ impl MetricsFlushActor {
 		deletes: &[MultiDelete],
 		version: CommitVersion,
 	) -> Result<()> {
-		let keys: Vec<EncodedKey> = deletes.iter().map(|delete| delete.key.clone()).collect();
+		let keys: Vec<EncodedKey> = deletes
+			.iter()
+			.filter(|delete| delete.pre == PriorSize::Unknown)
+			.map(|delete| delete.key.clone())
+			.collect();
 		let pre_sizes = self.read_prior_sizes(&keys, version)?;
 		for delete in deletes {
 			state.storage_writer.record_delete(
 				Tier::Buffer,
 				delete.key.as_ref(),
-				pre_sizes.get(&delete.key).copied(),
+				prior_size(delete.pre, &delete.key, &pre_sizes),
 			);
 		}
 		Ok(())
@@ -250,8 +258,16 @@ impl MetricsFlushActor {
 
 fn record_each_write(state: &mut MetricsFlushActorState, writes: &[MultiWrite], pre_sizes: &HashMap<EncodedKey, u64>) {
 	for write in writes {
-		let pre_value_bytes = pre_sizes.get(&write.key).copied();
+		let pre_value_bytes = prior_size(write.pre, &write.key, pre_sizes);
 		state.storage_writer.record_write(Tier::Buffer, write.key.as_ref(), write.value_bytes, pre_value_bytes);
+	}
+}
+
+#[inline]
+fn prior_size(pre: PriorSize, key: &EncodedKey, pre_sizes: &HashMap<EncodedKey, u64>) -> Option<u64> {
+	match pre {
+		PriorSize::Known(size) => size,
+		PriorSize::Unknown => pre_sizes.get(key).copied(),
 	}
 }
 
