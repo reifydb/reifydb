@@ -61,6 +61,9 @@ impl MetricStorageKey {
 
 		let tier = byte_to_tier(de.read_u8().ok()?)?;
 		let id = read_metrics_id(&mut de)?;
+		if !de.is_empty() {
+			return None;
+		}
 
 		Some(Self {
 			tier,
@@ -105,6 +108,9 @@ impl MetricCdcKey {
 		read_subkey(&mut de, Self::TAG, SUBKEY_CDC)?;
 
 		let id = read_metrics_id(&mut de)?;
+		if !de.is_empty() {
+			return None;
+		}
 
 		Some(Self {
 			id,
@@ -198,7 +204,10 @@ mod tests {
 	use reifydb_codec::key::decode_u8;
 
 	use super::*;
-	use crate::interface::catalog::{id::TableId, object::ObjectId};
+	use crate::{
+		interface::catalog::{id::TableId, object::ObjectId},
+		key::any::MetricKey,
+	};
 
 	#[test]
 	fn test_storage_key_is_classified_as_metric() {
@@ -265,5 +274,33 @@ mod tests {
 		let buffer = MetricStorageKey::encoded(Tier::Buffer, MetricsId::System);
 		let persistent = MetricStorageKey::encoded(Tier::Persistent, MetricsId::System);
 		assert!(persistent.as_slice() < buffer.as_slice());
+	}
+
+	#[test]
+	fn metric_key_order_agrees_with_its_field_list() {
+		// The direct metric comparison stands in for the field list on the fast path, so the two must never
+		// disagree.
+		let ids = [
+			MetricsId::System,
+			MetricsId::Object(ObjectId::Table(TableId(0))),
+			MetricsId::Object(ObjectId::Table(TableId(1))),
+			MetricsId::Object(ObjectId::Table(TableId(u64::MAX))),
+		];
+		let mut keys: Vec<MetricKey> = Vec::new();
+		for id in ids {
+			keys.push(MetricKey::Cdc(MetricCdcKey::new(id)));
+			for tier in [Tier::Buffer, Tier::Persistent] {
+				keys.push(MetricKey::Storage(MetricStorageKey::new(tier, id)));
+			}
+		}
+		for left in &keys {
+			for right in &keys {
+				assert_eq!(
+					left.cmp(right),
+					left.fields().cmp(&right.fields()),
+					"{left:?} vs {right:?}"
+				);
+			}
+		}
 	}
 }
