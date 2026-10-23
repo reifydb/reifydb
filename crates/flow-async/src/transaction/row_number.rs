@@ -162,7 +162,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		groups: &[GroupId],
 	) -> Result<Vec<Option<RowNumber>>> {
 		let map_keys: Vec<GroupStateKey> = groups.iter().map(|group| group_mapping_key(*group)).collect();
-		let answers = self.state_get_many(operator, &map_keys)?;
+		let answers = self.state_get(operator, &map_keys)?;
 
 		let mut results: Vec<Option<RowNumber>> = vec![None; groups.len()];
 		for (slot, answer) in answers.iter().enumerate() {
@@ -196,7 +196,7 @@ pub trait RowNumberExtension: FlowTransaction {
 		operator: OperatorId,
 		map_keys: Vec<GroupStateKey>,
 	) -> Result<Vec<Option<RowNumber>>> {
-		let answers = self.state_get_many(operator, &map_keys)?;
+		let answers = self.state_get(operator, &map_keys)?;
 
 		let mut results: Vec<Option<RowNumber>> = vec![None; map_keys.len()];
 		for (slot, answer) in answers.iter().enumerate() {
@@ -207,29 +207,20 @@ pub trait RowNumberExtension: FlowTransaction {
 		Ok(results)
 	}
 
-	fn remove_row_number(&mut self, operator: OperatorId, group: GroupId, key: &EncodedKey) -> Result<()> {
-		let map_key = guest_mapping_key(group, key)?;
-		self.state_remove(operator, &map_key)
-	}
-
-	fn remove_row_numbers(&mut self, operator: OperatorId, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
+	fn remove_row_number(&mut self, operator: OperatorId, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
 		if keys.is_empty() {
 			return Ok(());
 		}
 		let map_keys = keys.iter().map(|key| guest_mapping_key(group, key)).collect::<Result<Vec<_>>>()?;
-		self.state_remove_many(operator, &map_keys)
+		self.state_remove(operator, &map_keys)
 	}
 
-	fn remove_row_number_for_group(&mut self, operator: OperatorId, group: GroupId) -> Result<()> {
-		self.state_remove(operator, &group_mapping_key(group))
-	}
-
-	fn remove_row_numbers_for_groups(&mut self, operator: OperatorId, groups: &[GroupId]) -> Result<()> {
+	fn remove_row_number_for_group(&mut self, operator: OperatorId, groups: &[GroupId]) -> Result<()> {
 		if groups.is_empty() {
 			return Ok(());
 		}
 		let keys: Vec<GroupStateKey> = groups.iter().copied().map(group_mapping_key).collect();
-		self.state_remove_many(operator, &keys)
+		self.state_remove(operator, &keys)
 	}
 
 	fn remove_join_row_numbers(&mut self, operator: OperatorId, keys: &[JoinRowMappingKey]) -> Result<()> {
@@ -285,7 +276,7 @@ pub trait RowNumberExtension: FlowTransaction {
 				lower = Bound::Excluded(inner.as_encoded().clone());
 				doomed.push(inner);
 			}
-			self.state_remove_many(operator, &doomed)?;
+			self.state_remove(operator, &doomed)?;
 			if !more {
 				return Ok(());
 			}

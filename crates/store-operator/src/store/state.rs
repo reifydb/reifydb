@@ -296,6 +296,7 @@ impl StandardOperatorStore {
 		Ok(answers)
 	}
 
+	#[cfg(reifydb_assertions)]
 	fn durable_get(&self, operator: OperatorId, key: &EncodedKey) -> Result<Option<EncodedPodRow>> {
 		Ok(self.persistent.get(operator, &[GroupStateKey::bound_unchecked(key.clone())])?.pop().flatten())
 	}

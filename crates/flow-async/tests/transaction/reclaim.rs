@@ -71,7 +71,7 @@ fn write(txn: &mut DeferredTransaction, group: GroupId, keyspace: KeyspaceId, su
 	let mut bytes = vec![0u8; width];
 	bytes[width - 1] = suffix;
 	let key = OperatorStateKey::inner_encoded(group, keyspace, bytes);
-	txn.state_set(NODE, &key, payload()).unwrap();
+	txn.state_set(NODE, vec![(key.clone(), payload())]).unwrap();
 }
 
 fn count(txn: &mut DeferredTransaction, group: GroupId) -> usize {

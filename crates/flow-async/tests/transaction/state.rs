@@ -137,9 +137,9 @@ fn test_state_get_set() {
 	let key = make_key("state_key");
 	let value = make_value("state_value");
 
-	txn.state_set(operator_id, &key, value.clone()).unwrap();
+	txn.state_set(operator_id, vec![(key.clone(), value.clone())]).unwrap();
 
-	let result = txn.state_get(operator_id, &key).unwrap();
+	let result = txn.state_get(operator_id, slice::from_ref(&key)).unwrap().pop().flatten();
 	assert_eq!(result, Some(value));
 }
 
@@ -158,7 +158,7 @@ fn test_state_get_nonexistent() {
 	let operator_id = OperatorId(1);
 	let key = make_key("missing");
 
-	let result = txn.state_get(operator_id, &key).unwrap();
+	let result = txn.state_get(operator_id, slice::from_ref(&key)).unwrap().pop().flatten();
 	assert_eq!(result, None);
 }
 
@@ -178,11 +178,11 @@ fn test_state_remove() {
 	let key = make_key("state_key");
 	let value = make_value("state_value");
 
-	txn.state_set(operator_id, &key, value.clone()).unwrap();
-	assert_eq!(txn.state_get(operator_id, &key).unwrap(), Some(value));
+	txn.state_set(operator_id, vec![(key.clone(), value.clone())]).unwrap();
+	assert_eq!(txn.state_get(operator_id, slice::from_ref(&key)).unwrap().pop().flatten(), Some(value));
 
-	txn.state_remove(operator_id, &key).unwrap();
-	assert_eq!(txn.state_get(operator_id, &key).unwrap(), None);
+	txn.state_remove(operator_id, slice::from_ref(&key)).unwrap();
+	assert_eq!(txn.state_get(operator_id, slice::from_ref(&key)).unwrap().pop().flatten(), None);
 }
 
 #[test]
@@ -201,11 +201,11 @@ fn test_state_isolation_between_nodes() {
 	let node2 = OperatorId(2);
 	let key = make_key("same_key");
 
-	txn.state_set(node1, &key, make_value("node1_value")).unwrap();
-	txn.state_set(node2, &key, make_value("node2_value")).unwrap();
+	txn.state_set(node1, vec![(key.clone(), make_value("node1_value"))]).unwrap();
+	txn.state_set(node2, vec![(key.clone(), make_value("node2_value"))]).unwrap();
 
-	assert_eq!(txn.state_get(node1, &key).unwrap(), Some(make_value("node1_value")));
-	assert_eq!(txn.state_get(node2, &key).unwrap(), Some(make_value("node2_value")));
+	assert_eq!(txn.state_get(node1, slice::from_ref(&key)).unwrap().pop().flatten(), Some(make_value("node1_value")));
+	assert_eq!(txn.state_get(node2, slice::from_ref(&key)).unwrap().pop().flatten(), Some(make_value("node2_value")));
 }
 
 #[test]
@@ -222,9 +222,9 @@ fn test_state_scan_all() {
 
 	let operator_id = OperatorId(1);
 
-	txn.state_set(operator_id, &make_key("key1"), make_value("value1")).unwrap();
-	txn.state_set(operator_id, &make_key("key2"), make_value("value2")).unwrap();
-	txn.state_set(operator_id, &make_key("key3"), make_value("value3")).unwrap();
+	txn.state_set(operator_id, vec![(make_key("key1"), make_value("value1"))]).unwrap();
+	txn.state_set(operator_id, vec![(make_key("key2"), make_value("value2"))]).unwrap();
+	txn.state_set(operator_id, vec![(make_key("key3"), make_value("value3"))]).unwrap();
 
 	let iter = txn.state_scan_all(operator_id).unwrap();
 	let items: Vec<_> = iter.items.into_iter().collect();
@@ -247,9 +247,9 @@ fn test_state_scan_only_own_node() {
 	let node1 = OperatorId(1);
 	let node2 = OperatorId(2);
 
-	txn.state_set(node1, &make_key("key1"), make_value("value1")).unwrap();
-	txn.state_set(node1, &make_key("key2"), make_value("value2")).unwrap();
-	txn.state_set(node2, &make_key("key3"), make_value("value3")).unwrap();
+	txn.state_set(node1, vec![(make_key("key1"), make_value("value1"))]).unwrap();
+	txn.state_set(node1, vec![(make_key("key2"), make_value("value2"))]).unwrap();
+	txn.state_set(node2, vec![(make_key("key3"), make_value("value3"))]).unwrap();
 
 	let items: Vec<_> = txn.state_scan_all(node1).unwrap().items.into_iter().collect();
 	assert_eq!(items.len(), 2);
@@ -290,10 +290,10 @@ fn test_state_range_all() {
 
 	let operator_id = OperatorId(1);
 
-	txn.state_set(operator_id, &make_key("a"), make_value("1")).unwrap();
-	txn.state_set(operator_id, &make_key("b"), make_value("2")).unwrap();
-	txn.state_set(operator_id, &make_key("c"), make_value("3")).unwrap();
-	txn.state_set(operator_id, &make_key("d"), make_value("4")).unwrap();
+	txn.state_set(operator_id, vec![(make_key("a"), make_value("1"))]).unwrap();
+	txn.state_set(operator_id, vec![(make_key("b"), make_value("2"))]).unwrap();
+	txn.state_set(operator_id, vec![(make_key("c"), make_value("3"))]).unwrap();
+	txn.state_set(operator_id, vec![(make_key("d"), make_value("4"))]).unwrap();
 
 	let range = EncodedKeyRange::new(
 		Bound::Included(make_key("b").into_encoded()),
@@ -321,18 +321,18 @@ fn test_state_multiple_nodes() {
 	let node2 = OperatorId(2);
 	let node3 = OperatorId(3);
 
-	txn.state_set(node1, &make_key("a"), make_value("n1_a")).unwrap();
-	txn.state_set(node1, &make_key("b"), make_value("n1_b")).unwrap();
-	txn.state_set(node2, &make_key("a"), make_value("n2_a")).unwrap();
-	txn.state_set(node3, &make_key("c"), make_value("n3_c")).unwrap();
+	txn.state_set(node1, vec![(make_key("a"), make_value("n1_a"))]).unwrap();
+	txn.state_set(node1, vec![(make_key("b"), make_value("n1_b"))]).unwrap();
+	txn.state_set(node2, vec![(make_key("a"), make_value("n2_a"))]).unwrap();
+	txn.state_set(node3, vec![(make_key("c"), make_value("n3_c"))]).unwrap();
 
-	assert_eq!(txn.state_get(node1, &make_key("a")).unwrap(), Some(make_value("n1_a")));
-	assert_eq!(txn.state_get(node1, &make_key("b")).unwrap(), Some(make_value("n1_b")));
-	assert_eq!(txn.state_get(node2, &make_key("a")).unwrap(), Some(make_value("n2_a")));
-	assert_eq!(txn.state_get(node3, &make_key("c")).unwrap(), Some(make_value("n3_c")));
+	assert_eq!(txn.state_get(node1, &[make_key("a")]).unwrap().pop().flatten(), Some(make_value("n1_a")));
+	assert_eq!(txn.state_get(node1, &[make_key("b")]).unwrap().pop().flatten(), Some(make_value("n1_b")));
+	assert_eq!(txn.state_get(node2, &[make_key("a")]).unwrap().pop().flatten(), Some(make_value("n2_a")));
+	assert_eq!(txn.state_get(node3, &[make_key("c")]).unwrap().pop().flatten(), Some(make_value("n3_c")));
 
-	assert_eq!(txn.state_get(node2, &make_key("b")).unwrap(), None);
-	assert_eq!(txn.state_get(node3, &make_key("a")).unwrap(), None);
+	assert_eq!(txn.state_get(node2, &[make_key("b")]).unwrap().pop().flatten(), None);
+	assert_eq!(txn.state_get(node3, &[make_key("a")]).unwrap().pop().flatten(), None);
 }
 
 #[test]
@@ -346,10 +346,10 @@ fn a_state_write_replaces_the_seeded_row_wholesale() {
 
 	let mut txn = deferred_shared(&engine);
 
-	assert!(txn.state_get(operator_id, &key).unwrap().is_some());
-	txn.state_set(operator_id, &key, stamped_row(b"v1")).unwrap();
+	assert!(txn.state_get(operator_id, slice::from_ref(&key)).unwrap().pop().flatten().is_some());
+	txn.state_set(operator_id, vec![(key.clone(), stamped_row(b"v1"))]).unwrap();
 
-	let stored = txn.state_get(operator_id, &key).unwrap().unwrap();
+	let stored = txn.state_get(operator_id, slice::from_ref(&key)).unwrap().pop().flatten().unwrap();
 	assert_eq!(stored.body(), b"v1");
 }
 
@@ -420,7 +420,7 @@ fn a_pending_remove_hides_the_stored_row_it_deleted_from_the_last_read() {
 		"both rows must start out visible"
 	);
 
-	txn.state_remove(operator, &make_key("b")).unwrap();
+	txn.state_remove(operator, &[make_key("b")]).unwrap();
 
 	assert_eq!(
 		txn.state_last(operator, range()).unwrap().map(|r| r.key),
@@ -428,7 +428,7 @@ fn a_pending_remove_hides_the_stored_row_it_deleted_from_the_last_read() {
 		"the pending remove on the greatest key must fall through to the next stored row below it"
 	);
 
-	txn.state_remove(operator, &make_key("a")).unwrap();
+	txn.state_remove(operator, &[make_key("a")]).unwrap();
 
 	assert_eq!(
 		txn.state_last(operator, range()).unwrap().map(|r| r.key),
@@ -463,7 +463,7 @@ fn a_last_read_walks_past_more_pending_removes_than_one_page_holds() {
 	);
 
 	for name in &names[1..] {
-		txn.state_remove(operator, &make_key(name)).unwrap();
+		txn.state_remove(operator, &[make_key(name)]).unwrap();
 	}
 
 	assert_eq!(
@@ -501,8 +501,8 @@ fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	);
 
 	let mut txn = deferred_shared(&engine);
-	txn.state_set(operator, &seeded, make_value("replacement")).unwrap();
-	txn.state_set(operator, &fresh, make_value("new")).unwrap();
+	txn.state_set(operator, vec![(seeded.clone(), make_value("replacement"))]).unwrap();
+	txn.state_set(operator, vec![(fresh.clone(), make_value("new"))]).unwrap();
 
 	let pending = txn.take_pending();
 	let deferred = classify_pending(&store, &pending).unwrap();
@@ -586,7 +586,7 @@ fn a_group_range_answers_exactly_what_the_per_group_ranges_answer() {
 	let groups: Vec<GroupId> = (1..=3u128).map(|i| GroupId::hashed(Hash128(i))).collect();
 	for group in &groups {
 		for suffix in ["a", "b"] {
-			txn.state_set(operator, &grouped_key(*group, suffix), make_value(suffix)).unwrap();
+			txn.state_set(operator, vec![(grouped_key(*group, suffix), make_value(suffix))]).unwrap();
 		}
 	}
 
@@ -626,10 +626,10 @@ fn a_group_range_honours_a_pending_write_that_storage_has_never_seen() {
 	let groups: Vec<GroupId> = (1..=2u128).map(|i| GroupId::hashed(Hash128(i))).collect();
 	let doomed = grouped_key(groups[0], "a");
 	let added = grouped_key(groups[1], "b");
-	txn.state_set(operator, &doomed, make_value("1")).unwrap();
-	txn.state_set(operator, &grouped_key(groups[1], "a"), make_value("2")).unwrap();
-	txn.state_remove(operator, &doomed).unwrap();
-	txn.state_set(operator, &added, make_value("3")).unwrap();
+	txn.state_set(operator, vec![(doomed.clone(), make_value("1"))]).unwrap();
+	txn.state_set(operator, vec![(grouped_key(groups[1], "a"), make_value("2"))]).unwrap();
+	txn.state_remove(operator, slice::from_ref(&doomed)).unwrap();
+	txn.state_set(operator, vec![(added.clone(), make_value("3"))]).unwrap();
 
 	let keys: Vec<TaggedKey> = txn
 		.state_group_range(operator, &groups, 64, KeyspaceMask::all())

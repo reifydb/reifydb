@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_core::{
 	interface::catalog::flow::OperatorId,
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
@@ -39,7 +41,7 @@ impl SourceWatermarks {
 				 every open window at once"
 			);
 		}
-		txn.state_set(source, &source_watermark_key(), encode_payload(&coordinate)?)?;
+		txn.state_set(source, vec![(source_watermark_key(), encode_payload(&coordinate)?)])?;
 		txn.source_watermark_cache().insert(source, coordinate);
 		Ok(())
 	}
@@ -90,7 +92,7 @@ fn raw(source: OperatorId, txn: &mut impl FlowTransaction) -> Result<i64> {
 		return Ok(cached);
 	}
 	let key = source_watermark_key();
-	let (value, pre) = match txn.state_get(source, &key)? {
+	let (value, pre) = match txn.state_get(source, from_ref(&key))?.pop().flatten() {
 		Some(row) => (decode_payload::<i64>(&row)?, Some(row.byte_size())),
 		None => (0, None),
 	};

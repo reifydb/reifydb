@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_flow_async::transaction::{FlowTransaction, state::StateExtension};
 use reifydb_test_harness::operator::transaction::{FlowTxn, OPERATOR_ID, engine, key, make_row};
 
@@ -9,10 +11,10 @@ fn assert_update_replaces_the_row_wholesale<T: FlowTransaction>(txn: &mut T) {
 	// readable.
 	let k = key("update-key");
 
-	txn.state_set(OPERATOR_ID, &k, make_row("v1")).unwrap();
-	txn.state_set(OPERATOR_ID, &k, make_row("v2")).unwrap();
+	txn.state_set(OPERATOR_ID, vec![(k.clone(), make_row("v1"))]).unwrap();
+	txn.state_set(OPERATOR_ID, vec![(k.clone(), make_row("v2"))]).unwrap();
 
-	let stored = txn.state_get(OPERATOR_ID, &k).unwrap().unwrap();
+	let stored = txn.state_get(OPERATOR_ID, from_ref(&k)).unwrap().pop().flatten().unwrap();
 	assert_eq!(stored.body(), b"v2");
 }
 

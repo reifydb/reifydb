@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::ops::Bound;
+use std::{ops::Bound, slice::from_ref};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -55,8 +55,7 @@ impl TimerWheel {
 		if !timer.kind.is_maintenance() {
 			txn.state_set(
 				operator,
-				&timer_key(timer.due, timer.kind, &timer.key),
-				encode_payload(&timer.key.to_vec())?,
+				vec![(timer_key(timer.due, timer.kind, &timer.key), encode_payload(&timer.key.to_vec())?)],
 			)?;
 			return Ok(());
 		}
@@ -69,7 +68,7 @@ impl TimerWheel {
 			let stale = timer_key(previous, timer.kind, &timer.key);
 			reifydb_assertions! {
 				assert!(
-					txn.state_get(operator, &stale)?.is_some(),
+					txn.state_get(operator, from_ref(&stale))?.pop().flatten().is_some(),
 					"the timer index names an instant the wheel does not hold, so the two have \
 					 diverged and the stale wheel row can never be cancelled again; every arm would \
 					 then leave a permanent entry and the due probe degrades with it \
@@ -79,14 +78,13 @@ impl TimerWheel {
 					timer.due
 				);
 			}
-			txn.state_remove(operator, &stale)?;
+			txn.state_remove(operator, from_ref(&stale))?;
 		}
 		txn.state_set(
 			operator,
-			&timer_key(timer.due, timer.kind, &timer.key),
-			encode_payload(&timer.key.to_vec())?,
+			vec![(timer_key(timer.due, timer.kind, &timer.key), encode_payload(&timer.key.to_vec())?)],
 		)?;
-		txn.state_set(operator, &index, encode_payload(&timer.due)?)?;
+		txn.state_set(operator, vec![(index, encode_payload(&timer.due)?)])?;
 		Ok(())
 	}
 
@@ -94,10 +92,10 @@ impl TimerWheel {
 		if timer.kind.is_maintenance() {
 			let index = index_key(timer.kind, &timer.key);
 			if armed_at(operator, txn, &index)? == Some(timer.due) {
-				txn.state_remove(operator, &index)?;
+				txn.state_remove(operator, from_ref(&index))?;
 			}
 		}
-		txn.state_remove(operator, &timer_key(timer.due, timer.kind, &timer.key))?;
+		txn.state_remove(operator, &[timer_key(timer.due, timer.kind, &timer.key)])?;
 		Ok(())
 	}
 
@@ -138,10 +136,10 @@ impl TimerWheel {
 			}
 		}
 		if !removes.is_empty() {
-			txn.state_remove_many(operator, &removes)?;
+			txn.state_remove(operator, &removes)?;
 		}
 		if !sets.is_empty() {
-			txn.state_set_many(operator, sets)?;
+			txn.state_set(operator, sets)?;
 		}
 		Ok(())
 	}
@@ -166,8 +164,8 @@ impl TimerWheel {
 		let Some(due) = armed_at(operator, txn, &index)? else {
 			return Ok(());
 		};
-		txn.state_remove(operator, &timer_key(due, kind, key))?;
-		txn.state_remove(operator, &index)?;
+		txn.state_remove(operator, &[timer_key(due, kind, key)])?;
+		txn.state_remove(operator, from_ref(&index))?;
 		Ok(())
 	}
 
@@ -251,7 +249,7 @@ impl TimerWheel {
 		let armed: Vec<Option<DateTime>> = if maintenance_indices.is_empty() {
 			Vec::new()
 		} else {
-			txn.state_get_many(operator, &maintenance_indices)?
+			txn.state_get(operator, &maintenance_indices)?
 				.iter()
 				.map(|row| row.as_ref().map(decode_payload::<DateTime>).transpose())
 				.collect::<Result<_>>()?
@@ -268,7 +266,7 @@ impl TimerWheel {
 				}
 			}
 		}
-		txn.state_remove_many(operator, &doomed)?;
+		txn.state_remove(operator, &doomed)?;
 
 		Ok(DueTimers {
 			resume: due.last().map(|timer| wheel_suffix(timer.due, timer.kind, &timer.key)),
@@ -305,7 +303,7 @@ fn armed_key(row: &EncodedPodRow) -> Result<EncodedKey> {
 }
 
 fn armed_at(operator: OperatorId, txn: &mut impl FlowTransaction, index: &GroupStateKey) -> Result<Option<DateTime>> {
-	match txn.state_get(operator, index)? {
+	match txn.state_get(operator, from_ref(index))?.pop().flatten() {
 		Some(row) => Ok(Some(decode_payload::<DateTime>(&row)?)),
 		None => Ok(None),
 	}

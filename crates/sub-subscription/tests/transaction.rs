@@ -53,10 +53,10 @@ fn update_replaces_the_row_wholesale() {
 	let mut txn = ephemeral(&e);
 	let k = key("update-key");
 
-	txn.state_set(OPERATOR_ID, &k, make_row("v1")).unwrap();
-	txn.state_set(OPERATOR_ID, &k, make_row("v2")).unwrap();
+	txn.state_set(OPERATOR_ID, vec![(k.clone(), make_row("v1"))]).unwrap();
+	txn.state_set(OPERATOR_ID, vec![(k.clone(), make_row("v2"))]).unwrap();
 
-	let stored = txn.state_get(OPERATOR_ID, &k).unwrap().unwrap();
+	let stored = txn.state_get(OPERATOR_ID, slice::from_ref(&k)).unwrap().pop().flatten().unwrap();
 	assert_eq!(stored.body(), b"v2");
 }
 

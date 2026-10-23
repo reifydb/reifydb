@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, collections::BTreeMap, ops::Bound, slice};
+use std::{cmp::Ordering, collections::BTreeMap, ops::Bound};
 
 use reifydb_codec::{
 	key::encoded::{EncodedKey, EncodedKeyRange},
@@ -87,20 +87,11 @@ impl StateRange {
 }
 
 pub trait StateExtension: FlowTransaction {
-	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
-		operator_id = id.0,
-		key_len = key.as_slice().len()
-	))]
-	fn state_get(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		let scoped = scoped_key(id, key);
-		Ok(self.get(slice::from_ref(&scoped))?.pop().flatten().map(EncodedPodRow::from))
-	}
-
-	#[instrument(name = "flow::state::get_many", level = "debug", skip(self, keys), fields(
+	#[instrument(name = "flow::state::get", level = "debug", skip(self, keys), fields(
 		operator_id = id.0,
 		key_count = keys.len()
 	))]
-	fn state_get_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
+	fn state_get(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
 		let mut answers: Vec<Option<EncodedPodRow>> = Vec::with_capacity(keys.len());
 		let mut missed: Vec<usize> = Vec::new();
 		for (slot, key) in keys.iter().enumerate() {
@@ -138,7 +129,7 @@ pub trait StateExtension: FlowTransaction {
 		key_count = keys.len()
 	))]
 	fn state_batch(&mut self, id: OperatorId, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
-		let batch = StateBatch::read(keys, |keys| self.state_get_many(id, keys))?;
+		let batch = StateBatch::read(keys, |keys| self.state_get(id, keys))?;
 		for slot in 0..batch.len() {
 			self.state_classify(id, batch.key(slot), batch.value(slot).map(EncodedPodRow::byte_size));
 		}
@@ -157,21 +148,11 @@ pub trait StateExtension: FlowTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "flow::state::set", level = "trace", skip(self, row), fields(
-		operator_id = id.0,
-		key_len = key.as_slice().len(),
-		value_len = row.len()
-	))]
-	fn state_set(&mut self, id: OperatorId, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
-		let scoped = scoped_key(id, key);
-		self.set_one(&scoped, row.into_bytes())
-	}
-
-	#[instrument(name = "flow::state::set_many", level = "debug", skip(self, rows), fields(
+	#[instrument(name = "flow::state::set", level = "debug", skip(self, rows), fields(
 		operator_id = id.0,
 		key_count = rows.len()
 	))]
-	fn state_set_many(&mut self, id: OperatorId, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
+	fn state_set(&mut self, id: OperatorId, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
 		for (key, _) in &rows {
 			check_batch_key(key)?;
 		}
@@ -183,20 +164,11 @@ pub trait StateExtension: FlowTransaction {
 		Ok(())
 	}
 
-	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
-		operator_id = id.0,
-		key_len = key.as_slice().len()
-	))]
-	fn state_remove(&mut self, id: OperatorId, key: &GroupStateKey) -> Result<()> {
-		let scoped = scoped_key(id, key);
-		self.remove_silent(&scoped)
-	}
-
-	#[instrument(name = "flow::state::remove_many", level = "debug", skip(self, keys), fields(
+	#[instrument(name = "flow::state::remove", level = "debug", skip(self, keys), fields(
 		operator_id = id.0,
 		key_count = keys.len()
 	))]
-	fn state_remove_many(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<()> {
+	fn state_remove(&mut self, id: OperatorId, keys: &[GroupStateKey]) -> Result<()> {
 		check_batch_keys(keys)?;
 		let writes = keys
 			.iter()

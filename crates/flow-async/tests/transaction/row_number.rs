@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::slice::from_ref;
+
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
@@ -247,7 +249,7 @@ fn dropping_a_mapping_removes_it_and_a_re_lookup_mints_a_fresh_number() {
 
 	let mut first = deferred(&engine);
 	let (minted, _) = first.get_or_create_row_numbers(NODE, group(), &[key("victim")]).unwrap().remove(0);
-	first.remove_row_number(NODE, group(), &key("victim")).unwrap();
+	first.remove_row_number(NODE, group(), &[key("victim")]).unwrap();
 	assert_eq!(
 		first.get_row_numbers(NODE, group(), &[key("victim")]).unwrap().remove(0),
 		None,
@@ -265,7 +267,7 @@ fn dropping_a_mapping_removes_it_and_a_re_lookup_mints_a_fresh_number() {
 fn dropping_an_absent_mapping_is_idempotent() {
 	let engine = TestEngine::new();
 	let mut txn = deferred(&engine);
-	txn.remove_row_number(NODE, group(), &key("nope")).unwrap();
+	txn.remove_row_number(NODE, group(), &[key("nope")]).unwrap();
 	assert_eq!(
 		txn.get_row_numbers(NODE, group(), &[key("nope")]).unwrap().remove(0),
 		None,
@@ -281,7 +283,7 @@ fn dropping_a_batch_removes_the_present_keys_and_leaves_the_absent_ones_alone() 
 	txn.get_or_create_row_numbers(NODE, group(), &[key("doomed")]).unwrap();
 
 	for doomed in [key("doomed"), key("never_mapped")] {
-		txn.remove_row_number(NODE, group(), &doomed).unwrap();
+		txn.remove_row_number(NODE, group(), from_ref(&doomed)).unwrap();
 	}
 
 	assert_eq!(

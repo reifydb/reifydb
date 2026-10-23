@@ -90,8 +90,8 @@ fn clear(txn: &mut DeferredTransaction, side: u8, row_number: u64) {
 }
 
 fn expiry_at(txn: &mut DeferredTransaction, row_number: u64) -> Option<DateTime> {
-	txn.state_get(NODE, &join_expiry_key(group(), LEFT, RowNumber(row_number)))
-		.unwrap()
+	txn.state_get(NODE, &[join_expiry_key(group(), LEFT, RowNumber(row_number))])
+		.unwrap().pop().flatten()
 		.map(|row| JoinRowExpiry::decode_state(&row).unwrap().at)
 }
 

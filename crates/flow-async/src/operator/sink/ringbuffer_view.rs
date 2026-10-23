@@ -261,7 +261,7 @@ impl SinkRingBufferViewOperator {
 		partition: Option<Partition>,
 	) -> Result<Option<RingBufferMetadata>> {
 		let key = self.meta_key(partition);
-		let Some(row) = self.state_get(txn, &key)? else {
+		let Some(row) = self.state_get(txn, slice::from_ref(&key))?.pop().flatten() else {
 			return Ok(None);
 		};
 		Ok(Some(decode_ringbuffer_metadata(&EncodedPodRow::new(row.body()))?))
@@ -275,7 +275,7 @@ impl SinkRingBufferViewOperator {
 	) -> Result<()> {
 		let key = self.meta_key(partition);
 		let row = EncodedPodRow::new(encode_ringbuffer_metadata(metadata).as_slice());
-		self.state_set(txn, &key, row)
+		self.state_set(txn, vec![(key, row)])
 	}
 
 	#[cfg_attr(not(reifydb_assertions), allow(unused_variables))]
@@ -355,7 +355,7 @@ impl SinkRingBufferViewOperator {
 		let key = RingBufferMetadataKey::encoded_partition(self.storage, partition_values.to_vec());
 		txn.remove_one(&key)?;
 		let partition = partition_of_values(partition_values);
-		self.state_remove(txn, &self.meta_key(partition))?;
+		self.state_remove(txn, &[self.meta_key(partition)])?;
 		self.assert_mirrors_mvcc(txn, partition, &key)
 	}
 
@@ -369,7 +369,7 @@ impl SinkRingBufferViewOperator {
 
 	fn forwards(&self, txn: &mut DeferredTransaction, source_rns: &[RowNumber]) -> Result<Vec<Option<RowNumber>>> {
 		let keys: Vec<GroupStateKey> = source_rns.iter().map(|rn| self.forward_key(*rn)).collect();
-		self.state_get_many(txn, &keys)?
+		self.state_get(txn, &keys)?
 			.into_iter()
 			.map(|row| row.map(|row| decode_u64(&row, "RingBufferForward").map(RowNumber)).transpose())
 			.collect()
@@ -439,7 +439,7 @@ impl SinkRingBufferViewOperator {
 	) -> Result<Vec<Option<(Option<DateTime>, RowNumber)>>> {
 		let keys: Vec<GroupStateKey> =
 			slots.iter().map(|(partition, rn)| self.row_entry_key(*partition, *rn)).collect();
-		self.state_get_many(txn, &keys)?
+		self.state_get(txn, &keys)?
 			.into_iter()
 			.map(|row| row.map(|row| self.decode_row_entry(&row)).transpose())
 			.collect()
@@ -538,11 +538,7 @@ fn decode_i64(row: &EncodedPodRow, state: &'static str) -> Result<i64> {
 }
 
 impl SinkRingBufferViewOperator {
-	fn state_get(&self, txn: &mut DeferredTransaction, key: &GroupStateKey) -> Result<Option<EncodedPodRow>> {
-		txn.state_get(self.operator, key)
-	}
-
-	fn state_get_many(
+	fn state_get(
 		&self,
 		txn: &mut DeferredTransaction,
 		keys: &[GroupStateKey],
@@ -550,14 +546,10 @@ impl SinkRingBufferViewOperator {
 		if keys.is_empty() {
 			return Ok(Vec::new());
 		}
-		txn.state_get_many(self.operator, keys)
+		txn.state_get(self.operator, keys)
 	}
 
-	fn state_set(&self, txn: &mut DeferredTransaction, key: &GroupStateKey, row: EncodedPodRow) -> Result<()> {
-		txn.state_set(self.operator, key, row)
-	}
-
-	fn state_set_many(
+	fn state_set(
 		&self,
 		txn: &mut DeferredTransaction,
 		rows: Vec<(GroupStateKey, EncodedPodRow)>,
@@ -565,18 +557,14 @@ impl SinkRingBufferViewOperator {
 		if rows.is_empty() {
 			return Ok(());
 		}
-		txn.state_set_many(self.operator, rows)
+		txn.state_set(self.operator, rows)
 	}
 
-	fn state_remove_many(&self, txn: &mut DeferredTransaction, keys: &[GroupStateKey]) -> Result<()> {
+	fn state_remove(&self, txn: &mut DeferredTransaction, keys: &[GroupStateKey]) -> Result<()> {
 		if keys.is_empty() {
 			return Ok(());
 		}
-		txn.state_remove_many(self.operator, keys)
-	}
-
-	fn state_remove(&self, txn: &mut DeferredTransaction, key: &GroupStateKey) -> Result<()> {
-		txn.state_remove(self.operator, key)
+		txn.state_remove(self.operator, keys)
 	}
 
 	fn state_range<'a>(&self, txn: &'a mut DeferredTransaction, range: EncodedKeyRange) -> StateIterator<'a> {
@@ -756,7 +744,7 @@ impl SinkRingBufferViewOperator {
 	}
 
 	fn read_armed(&self, txn: &mut DeferredTransaction, partition: Option<Partition>) -> Result<Option<i64>> {
-		match self.state_get(txn, &self.arm_key(partition))? {
+		match self.state_get(txn, &[self.arm_key(partition)])?.pop().flatten() {
 			Some(row) => Ok(Some(decode_i64(&row, "RingBufferTtlArm")?)),
 			None => Ok(None),
 		}
@@ -794,9 +782,9 @@ impl SinkRingBufferViewOperator {
 						key,
 					},
 				)?;
-				self.state_set(txn, &arm_key, encode_i64(at, "RingBufferTtlArm")?)
+				self.state_set(txn, vec![(arm_key, encode_i64(at, "RingBufferTtlArm")?)])
 			}
-			None => self.state_remove(txn, &arm_key),
+			None => self.state_remove(txn, &[arm_key]),
 		}
 	}
 
@@ -826,7 +814,7 @@ impl SinkRingBufferViewOperator {
 			}
 			txn.remove_unobserved(&self.rb_key(object_id, rn, partition))?;
 		}
-		self.state_remove_many(txn, &removes)?;
+		self.state_remove(txn, &removes)?;
 
 		let new_head = self.lowest_storage_row(txn, partition)?;
 
@@ -991,7 +979,7 @@ impl SinkRingBufferViewOperator {
 				evict_needed -= 1;
 			}
 		}
-		self.state_remove_many(txn, &removes)?;
+		self.state_remove(txn, &removes)?;
 
 		let skip = evict_needed.min(incoming) as usize;
 		meta.tail += skip as u64;
@@ -1015,7 +1003,7 @@ impl SinkRingBufferViewOperator {
 			meta.count += 1;
 			meta.tail = assigned_rn.0 + 1;
 		}
-		self.state_set_many(txn, sets)
+		self.state_set(txn, sets)
 	}
 
 	#[inline]
@@ -1186,7 +1174,7 @@ impl SinkRingBufferViewOperator {
 			meta.count = meta.count.saturating_sub(1);
 			applied.push(row_idx);
 		}
-		self.state_remove_many(txn, &removes)?;
+		self.state_remove(txn, &removes)?;
 		if !applied.is_empty() {
 			txn.emit(view.id(), Diff::remove(JoinedColumnsBuilder::retain_rows(&coerced, &applied)?))?;
 		}

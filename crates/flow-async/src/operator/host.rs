@@ -257,7 +257,7 @@ impl<T: FlowTransaction> TimerStore for TxnHostContext<'_, T> {
 
 impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	fn state_get(&mut self, keys: &[GroupStateKey]) -> Result<Vec<Option<EncodedPodRow>>> {
-		self.txn.state_get_many(self.operator, keys)
+		self.txn.state_get(self.operator, keys)
 	}
 
 	fn state_classify(&mut self, key: &GroupStateKey, pre: Option<ByteSize>) {
@@ -265,7 +265,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	}
 
 	fn state_remove(&mut self, keys: &[GroupStateKey]) -> Result<()> {
-		self.txn.state_remove_many(self.operator, keys)
+		self.txn.state_remove(self.operator, keys)
 	}
 
 	fn state_batch(&mut self, keys: Vec<GroupStateKey>) -> Result<StateBatch> {
@@ -274,7 +274,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 
 	fn state_set(&mut self, rows: Vec<(GroupStateKey, EncodedPodRow)>) -> Result<()> {
 		let groups: BTreeSet<GroupId> = rows.iter().filter_map(|(key, _)| managed_group(key)).collect();
-		self.txn.state_set_many(self.operator, rows)?;
+		self.txn.state_set(self.operator, rows)?;
 		for group in groups {
 			self.arm_reclaim(group)?;
 		}
@@ -360,11 +360,11 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 	}
 
 	fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
-		self.txn.remove_row_numbers(self.operator, group, keys)
+		self.txn.remove_row_number(self.operator, group, keys)
 	}
 
 	fn remove_row_number_for_group(&mut self, groups: &[GroupId]) -> Result<()> {
-		self.txn.remove_row_numbers_for_groups(self.operator, groups)
+		self.txn.remove_row_number_for_group(self.operator, groups)
 	}
 
 	fn written_at(&self) -> DateTime {

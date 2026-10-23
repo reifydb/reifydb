@@ -98,7 +98,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 	) -> Result<Vec<Option<DateTime>>> {
 		let keys: Vec<GroupStateKey> =
 			rows.iter().map(|&(group, row_number)| join_expiry_key(group, side, row_number)).collect();
-		let stored = self.state_get_many(id, &keys)?;
+		let stored = self.state_get(id, &keys)?;
 		let mut seen = HashSet::with_capacity(keys.len());
 		let mut doomed = Vec::with_capacity(keys.len() * 2);
 		let mut cleared = Vec::with_capacity(keys.len());
@@ -116,7 +116,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 			doomed.push(join_expiry_due_key(at, group, side, row_number));
 			cleared.push(Some(at));
 		}
-		self.state_remove_many(id, &doomed)?;
+		self.state_remove(id, &doomed)?;
 		Ok(cleared)
 	}
 
@@ -139,7 +139,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		}
 		let keys: Vec<GroupStateKey> =
 			latest.iter().map(|&(group, row_number, _)| join_expiry_key(group, side, row_number)).collect();
-		let stored = self.state_get_many(id, &keys)?;
+		let stored = self.state_get(id, &keys)?;
 		let mut stale = Vec::new();
 		let mut armed = Vec::with_capacity(latest.len() * 2);
 		for ((&(group, row_number, at), key), row) in latest.iter().zip(keys).zip(&stored) {
@@ -160,8 +160,8 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 			));
 			armed.push((join_expiry_due_key(at, group, side, row_number), EncodedPodRow::new(&[])));
 		}
-		self.state_remove_many(id, &stale)?;
-		self.state_set_many(id, armed)
+		self.state_remove(id, &stale)?;
+		self.state_set(id, armed)
 	}
 
 	fn join_expiry_free_many(&mut self, id: OperatorId, entries: &[JoinDueEntry]) -> Result<()> {
@@ -174,7 +174,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 				]
 			})
 			.collect();
-		self.state_remove_many(id, &doomed)
+		self.state_remove(id, &doomed)
 	}
 
 	fn join_expiry_min(&mut self, id: OperatorId) -> Result<Option<DateTime>> {

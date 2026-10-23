@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, slice::from_ref, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use reifydb_core::{
@@ -122,7 +122,7 @@ fn erase_group_data(op: &DistinctOperator, txn: &mut DeferredTransaction, group:
 		if decoded.group == group && decoded.keyspace.is_data() {
 			let key = GroupStateKey::from_framed(decoded.inner())
 				.expect("distinct state rows carry a framed inner key");
-			txn.state_remove(op.plan.operator, &key).unwrap();
+			txn.state_remove(op.plan.operator, from_ref(&key)).unwrap();
 			erased += 1;
 		}
 	}
