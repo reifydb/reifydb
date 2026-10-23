@@ -3,7 +3,10 @@
 
 // A view that carries no rows must still lift its readers' watermark through the frontier it publishes.
 
-use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
+use reifydb::{
+	SqliteConfig, WithSubsystem, embedded,
+	testing::db::{TempDbPath, TestDb, poll_until},
+};
 use reifydb_value::value::duration::Duration;
 
 const TIMEOUT: Duration = Duration::from_seconds_const(5);
@@ -188,4 +191,61 @@ fn a_frontier_converges_down_a_two_hop_chain() {
 		 bucket 0 against the 1000; view now: {:?}",
 		db.query("FROM deep::w")
 	);
+}
+
+fn open(path: &TempDbPath, flow: bool) -> TestDb {
+	let mut builder = embedded::sqlite(SqliteConfig::new(path));
+	if flow {
+		builder = builder.with_flow(|f| f);
+	}
+	TestDb::from(builder.build().expect("open the sqlite db"))
+}
+
+/// The two-view chain created while no flow runs, so the next life bootstraps deep::q1 and deep::q2 as one
+/// fused unit instead of two flows a commit apart.
+fn fused_two_view_chain(path: &TempDbPath) -> TestDb {
+	let mut db = open(path, false);
+	window_behind_a_two_view_chain(&db);
+	let head = db.engine().current_version().expect("the current version after the last create");
+	poll_until(|| (db.engine().cdc_producer_watermark() >= head).then_some(()), TIMEOUT)
+		.expect("the cdc of the last create was never written before the stop");
+	db.stop();
+	open(path, true)
+}
+
+#[test]
+fn a_frontier_converges_down_a_fused_two_hop_chain() {
+	// A fused tail must publish the frontier its own step resolved, or the window behind it never seals.
+	let path = TempDbPath::new("frontier_fused_two_hop");
+	let mut db = fused_two_view_chain(&path);
+
+	db.command(r#"INSERT deep::busy [{ id: 1, g: 1, v: 5, ts: "2026-01-01T00:00:00Z" }]"#);
+	db.await_row_count("FROM deep::w FILTER { total == 5 }", 1, TIMEOUT);
+
+	db.command(r#"INSERT deep::busy [{ id: 2, g: 1, v: 7, ts: "2026-01-01T00:00:10Z" }]"#);
+	db.await_row_count("FROM deep::w FILTER { total == 7 }", 1, TIMEOUT);
+
+	db.command(r#"INSERT deep::busy [{ id: 3, g: 1, v: 100, ts: "2026-01-01T00:00:00.500Z" }]"#);
+	assert_eq!(
+		db.await_exact_row_count("FROM deep::w FILTER { total == 105 }", 1, TIMEOUT),
+		1,
+		"bucket 0 refused a row while deep::q2 had never reported; view now: {:?}",
+		db.query("FROM deep::w")
+	);
+
+	db.admin("call storage::advance(deep::quiet, cast('2026-01-01T00:00:10Z', datetime))");
+	// Two view hops between the silent table and the window, so two rounds before the late row.
+	settle_round(&db, "deep::busy", 5, 2);
+	settle_round(&db, "deep::busy", 6, 3);
+	db.command(r#"INSERT deep::busy [{ id: 4, g: 1, v: 1000, ts: "2026-01-01T00:00:00.500Z" }]"#);
+	db.await_all_flows(TIMEOUT);
+
+	assert_eq!(
+		db.await_exact_row_count("FROM deep::w FILTER { total == 105 }", 1, TIMEOUT),
+		1,
+		"deep::quiet is complete through 10s, so the frontier must converge down both hops and seal \
+		 bucket 0 against the 1000; view now: {:?}",
+		db.query("FROM deep::w")
+	);
+	db.stop();
 }

@@ -5,7 +5,10 @@
 //! operator never reads a clock and is never handed a timestamp on apply: it arms off the row's own
 //! #time, and the due timer fires inside the flow transaction that carried the watermark past it.
 
-use reifydb::{ConfigKey, Value, WithSubsystem, embedded, testing::db::TestDb};
+use reifydb::{
+	ConfigKey, SqliteConfig, Value, WithSubsystem, embedded,
+	testing::db::{TempDbPath, TestDb},
+};
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::{WindowRequirements, WindowSizeDomain},
@@ -431,4 +434,46 @@ fn a_guest_disarm_must_match_the_exact_instant_it_armed() {
 		"a disarm aimed one millisecond off must leave the armed timer alone"
 	);
 	assert_eq!(db.row_count("FROM app::v filter { fired_at == 1500 }"), 1, "the re-armed timer fires regardless");
+}
+
+fn open_with_alarm(path: &TempDbPath) -> TestDb {
+	TestDb::from(
+		embedded::sqlite(SqliteConfig::new(path))
+			.with_flow(|f| f.register_unmanaged_operator::<Alarm>())
+			.build()
+			.expect("open the sqlite db"),
+	)
+}
+
+#[test]
+fn a_parent_timer_emission_reaches_its_fused_child() {
+	// A fused child sees its parent only through what the parent emitted in the unit's txn, timer callbacks
+	// included.
+	let path = TempDbPath::new("custom_operator_timer_fused_child");
+	{
+		let mut db = open_with_alarm(&path);
+		declare(&db);
+		db.admin(
+			"CREATE DEFERRED VIEW app::c { g: int4, fired_at: int8 } AS { FROM app::v | filter { g != 9 } }",
+		);
+		assert!(db.await_all_flows(TIMEOUT), "the creates must settle before the stop");
+		db.stop();
+	}
+	let mut db = open_with_alarm(&path);
+	assert!(db.await_all_flows(TIMEOUT), "the bootstrap must settle before the first write");
+
+	db.command(r#"INSERT app::t [{ id: 1, g: 1, ts: "1970-01-01T00:00:00Z" }]"#);
+	db.command(r#"INSERT app::t [{ id: 2, g: 2, ts: "1970-01-01T00:01:00Z" }]"#);
+	db.await_row_count("FROM app::v", 1, TIMEOUT);
+	assert_eq!(db.await_exact_row_count("FROM app::c", 1, TIMEOUT), 1, "a timer fired by a step must reach app::c");
+
+	db.admin("call storage::advance(app::t, cast('1970-01-01T01:00:00Z', datetime))");
+	db.await_row_count("FROM app::v", 2, TIMEOUT);
+	assert_eq!(
+		db.await_exact_row_count("FROM app::c", 2, TIMEOUT),
+		2,
+		"a timer fired with no data behind it must reach app::c too; app::v now: {:?}",
+		db.query("FROM app::v")
+	);
+	db.stop();
 }

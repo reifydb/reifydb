@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{BTreeMap, BTreeSet, HashMap},
+	iter::once,
 	num::NonZeroU64,
 };
 
@@ -20,6 +21,7 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			flow::{FlowId, OperatorId},
+			id::ViewId,
 			object::ObjectId,
 		},
 		change::{Change, Diff},
@@ -53,7 +55,7 @@ use rustc_hash::FxHashSet;
 use smallvec::smallvec;
 
 use crate::{
-	commit::{committer::FlowSlice, merge::StreamRead},
+	commit::{committer::FlowSlice, merge::StreamRead, slice::process_unit},
 	progress::tracker::FlowUpstreams,
 };
 
@@ -193,15 +195,16 @@ pub(crate) fn upstream_write_after(
 		.find(|cdc| changed_objects(cdc).iter().any(|object| views.contains(object)))
 		.map(|cdc| CommitVersion(cdc.version.commit.0 - 1))
 }
-
-pub(crate) fn compute_backfill(
+pub(crate) fn compute_unit_backfill(
 	engine: &StandardEngine,
 	flow_engine: &mut FlowEngineInner,
 	flow: &FlowDag,
+	members: &[(FlowDag, ViewId)],
 	snapshot: &Snapshot,
 	reads: &[(CommitVersion, Vec<ObjectId>)],
 ) -> Result<(FlowSlice, WatermarkHolds)> {
 	let version = snapshot.version;
+	let fed: Vec<(FlowId, ViewId)> = members.iter().map(|(member, view)| (member.id, *view)).collect();
 	let batch_size = query_batch_size(engine)?;
 	let services = engine.services();
 	let mut txn = DeferredTransaction::new(DeferredParams {
@@ -217,6 +220,9 @@ pub(crate) fn compute_backfill(
 	});
 
 	clear_views(engine, &mut txn, flow, &snapshot.lease, batch_size)?;
+	for (member, _) in members {
+		clear_views(engine, &mut txn, member, &snapshot.lease, batch_size)?;
+	}
 
 	for (at, sources) in reads {
 		let lease = if *at == version {
@@ -234,7 +240,7 @@ pub(crate) fn compute_backfill(
 				|_, mut change| {
 					change.version = ChangeVersion::from(version);
 					for piece in time_runs(change)? {
-						flow_engine.process(&mut txn, vec![piece], flow.id)?;
+						process_unit(flow_engine, &mut txn, flow.id, &fed, vec![piece])?;
 					}
 					Ok(())
 				},
@@ -242,12 +248,18 @@ pub(crate) fn compute_backfill(
 		}
 	}
 
-	let holds = flow_engine.holds(&mut txn, flow.id)?;
+	let mut holds = flow_engine.holds(&mut txn, flow.id)?;
+	for (member, _) in &fed {
+		holds.extend(flow_engine.holds(&mut txn, *member)?);
+	}
 	let emitted = txn.emitted;
 
 	let slice = FlowSlice {
 		combined: txn.take_pending(),
-		checkpoints: vec![(flow.id, version)],
+		checkpoints: once(flow.id)
+			.chain(fed.iter().map(|(member, _)| *member))
+			.map(|id| (id, version))
+			.collect(),
 		checkpoint_deletes: Vec::new(),
 		emitted,
 		control_cursor: None,
@@ -407,7 +419,7 @@ mod tests {
 			cuts: HashMap::new(),
 		};
 		let reads = backfill_reads(&flow, &flow_engine, &snapshot, &FlowUpstreams::default());
-		let (slice, _) = compute_backfill(&engine, &mut flow_engine, &flow, &snapshot, &reads)
+		let (slice, _) = compute_unit_backfill(&engine, &mut flow_engine, &flow, &[], &snapshot, &reads)
 			.expect("compute backfill");
 		drop(snapshot);
 

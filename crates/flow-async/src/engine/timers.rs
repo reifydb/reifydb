@@ -799,7 +799,8 @@ mod tests {
 
 	#[test]
 	fn a_timer_armed_in_one_member_fires_in_its_own_flow() {
-		// Two flows sharing one transaction must not swap arms, or a parent's seal is filed under its child and never fires.
+		// Two flows sharing one transaction must not swap arms, or a parent's seal is filed under its child and
+		// never fires.
 		let engine = TestEngine::new();
 		let mut inner = engine_inner(&engine);
 		let other_flow = FlowId(2);
@@ -812,12 +813,20 @@ mod tests {
 		));
 		let flow = builder.build();
 		inner.register_flow_dag(flow.clone());
-		inner.insert_operator(FLOW, OPERATOR, Box::new(TimerProbe {
-			fails: false,
-		}));
-		inner.insert_operator(other_flow, OTHER, Box::new(TimerProbe {
-			fails: false,
-		}));
+		inner.insert_operator(
+			FLOW,
+			OPERATOR,
+			Box::new(TimerProbe {
+				fails: false,
+			}),
+		);
+		inner.insert_operator(
+			other_flow,
+			OTHER,
+			Box::new(TimerProbe {
+				fails: false,
+			}),
+		);
 
 		let mut seed = engine.flow_txn().deferred();
 		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
@@ -830,12 +839,20 @@ mod tests {
 			operator_id: OTHER,
 			due: at_millis(DUE_MS),
 		});
-		inner.dispatch_due_timers(&mut txn, &flow, ChangeVersion::from(CommitVersion(1)), flow.topological_order())
-			.unwrap();
+		inner.dispatch_due_timers(
+			&mut txn,
+			&flow,
+			ChangeVersion::from(CommitVersion(1)),
+			flow.topological_order(),
+		)
+		.unwrap();
 
 		let mine = inner.timers.due_before(Vec::new(), FLOW, at_millis(WATERMARK_MS));
 		let theirs = inner.timers.due_before(Vec::new(), other_flow, at_millis(WATERMARK_MS));
-		assert!(mine.iter().all(|due| due.operator_id != OTHER), "the dispatching flow kept an arm it does not own");
+		assert!(
+			mine.iter().all(|due| due.operator_id != OTHER),
+			"the dispatching flow kept an arm it does not own"
+		);
 		assert_eq!(theirs.len(), 1, "the owning flow never learned of its arm");
 		assert_eq!(theirs[0].operator_id, OTHER);
 	}

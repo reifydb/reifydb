@@ -41,6 +41,8 @@ mod flow_watermark;
 mod frontier_propagation;
 #[path = "frontier_shutdown.rs"]
 mod frontier_shutdown;
+#[path = "fused_chain.rs"]
+mod fused_chain;
 #[path = "lifecycle_coverage.rs"]
 mod lifecycle_coverage;
 #[path = "lower_aggregate.rs"]

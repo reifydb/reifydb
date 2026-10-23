@@ -16,7 +16,7 @@ use reifydb_cdc::{
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage},
 	common::{CommitVersion, SourceVersion},
-	flow::dag::FlowDag,
+	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -157,6 +157,7 @@ pub struct SupervisorState {
 	wake_sets: BTreeMap<ObjectId, BTreeSet<FlowId>>,
 	full_wake_armed: bool,
 	stall_watches: BTreeMap<FlowId, StallWatch>,
+	units: BTreeMap<FlowId, routing::FusedUnit>,
 }
 
 enum FlowStart {
@@ -253,6 +254,7 @@ impl FlowSupervisor {
 		self.backlog.set_anchor(scan_cursor);
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
+		let units = self.form_units(state, &to_spawn);
 		let closure = state.analyzer.get_dependency_graph().upstream_closure();
 		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
 		for (flow, checkpoint) in to_spawn {
@@ -272,13 +274,45 @@ impl FlowSupervisor {
 			};
 			prepared.push((flow, start, source_objects, completeness_objects));
 		}
+		let member_of: BTreeMap<FlowId, FlowId> = units
+			.iter()
+			.flat_map(|unit| unit.members.iter().map(move |(member, _)| (*member, unit.head)))
+			.collect();
+		let mut member_flows: BTreeMap<FlowId, FlowDag> = BTreeMap::new();
+		let mut heads: Vec<PreparedFlow> = Vec::new();
 		for (flow, start, source_objects, completeness_objects) in prepared {
+			if member_of.contains_key(&flow.id) {
+				member_flows.insert(flow.id, flow);
+			} else {
+				heads.push((flow, start, source_objects, completeness_objects));
+			}
+		}
+		for unit in &units {
+			state.units.insert(unit.head, unit.clone());
+			for (member, _) in &unit.members {
+				state.sources.insert(*member, Arc::new(BTreeSet::new()));
+			}
+			self.publish_routing(state, unit.head);
+		}
+		for (flow, start, source_objects, completeness_objects) in heads {
 			let flow_id = flow.id;
 			let checkpoint = match &start {
 				FlowStart::Resume(checkpoint) => Some(*checkpoint),
 				FlowStart::Backfill(..) => None,
 			};
-			let handle = self.spawn_flow(flow, source_objects, completeness_objects, start);
+			let members: Vec<(FlowDag, ViewId)> = state
+				.units
+				.get(&flow_id)
+				.map(|unit| {
+					unit.members
+						.iter()
+						.filter_map(|(member, view)| {
+							member_flows.remove(member).map(|dag| (dag, *view))
+						})
+						.collect()
+				})
+				.unwrap_or_default();
+			let handle = self.spawn_flow(flow, members, source_objects, completeness_objects, start);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, checkpoint = ?checkpoint, "spawned deferred flow actor");
 		}
@@ -475,7 +509,7 @@ impl FlowSupervisor {
 		}
 		for (flow, start, source_objects, completeness_objects) in prepared {
 			let flow_id = flow.id;
-			let handle = self.spawn_flow(flow, source_objects, completeness_objects, start);
+			let handle = self.spawn_flow(flow, Vec::new(), source_objects, completeness_objects, start);
 			state.flows.insert(flow_id, handle);
 			debug!(flow_id = flow_id.0, "spawned new deferred flow actor");
 		}
@@ -488,7 +522,7 @@ impl FlowSupervisor {
 				let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 				state.sources.insert(flow_id, source_objects.clone());
 				self.flow_tracker.set_source_count(flow_id, source_objects.len());
-				self.publish_upstreams(state, flow_id);
+				self.publish_routing(state, flow_id);
 				if let Some(handle) = state.flows.get(&flow_id) {
 					let _ = handle.actor_ref().send(FlowActorMessage::UpdateSources {
 						source_objects,
@@ -564,9 +598,59 @@ impl FlowSupervisor {
 		Arc::new(routing::flow_source_objects(graph, flow_id, &is_registered, &view_kind))
 	}
 
+	fn form_units(
+		&self,
+		state: &SupervisorState,
+		to_spawn: &[(FlowDag, Option<CommitVersion>)],
+	) -> Vec<routing::FusedUnit> {
+		let graph = state.analyzer.get_dependency_graph();
+		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
+		let starts: BTreeMap<FlowId, Option<CommitVersion>> =
+			to_spawn.iter().map(|(flow, checkpoint)| (flow.id, *checkpoint)).collect();
+		let ringbuffer: BTreeSet<FlowId> = to_spawn
+			.iter()
+			.filter(|(flow, _)| {
+				flow.get_operator_ids().any(|id| {
+					flow.get_operator(&id).is_some_and(|node| {
+						matches!(node.ty, OperatorDef::SinkRingBufferView { .. })
+					})
+				})
+			})
+			.map(|(flow, _)| flow.id)
+			.collect();
+		let candidates: BTreeSet<FlowId> = starts.keys().copied().collect();
+		routing::fused_units(graph, &candidates, &view_kind, &|flow| ringbuffer.contains(&flow))
+			.into_iter()
+			.filter(|unit| {
+				let head = starts.get(&unit.head).copied().flatten();
+				unit.members.iter().all(|(member, _)| {
+					let start = starts.get(member).copied().flatten();
+					start == head
+						|| matches!((head, start), (Some(head), Some(start)) if start >= head)
+				})
+			})
+			.collect()
+	}
+
+	fn publish_routing(&self, state: &SupervisorState, flow_id: FlowId) {
+		let Some(unit) = state.units.get(&flow_id) else {
+			self.publish_upstreams(state, flow_id);
+			return;
+		};
+		let graph = state.analyzer.get_dependency_graph();
+		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
+		self.flow_tracker.set_upstreams(unit.head, routing::unit_upstreams(graph, unit, &view_kind));
+		self.flow_tracker.set_lookup_producers(unit.head, routing::unit_lookup_producers(graph, unit));
+		for (member, _) in &unit.members {
+			self.flow_tracker.set_upstreams(*member, Default::default());
+			self.flow_tracker.set_lookup_producers(*member, BTreeMap::new());
+		}
+	}
+
 	fn spawn_flow(
 		&self,
 		flow: FlowDag,
+		members: Vec<(FlowDag, ViewId)>,
 		source_objects: Arc<BTreeSet<ObjectId>>,
 		completeness_objects: Option<Arc<BTreeSet<u64>>>,
 		start: FlowStart,
@@ -578,6 +662,19 @@ impl FlowSupervisor {
 		};
 
 		self.flow_tracker.update_committed(flow_id, cursor, self.engine.done_until(), SourceVersion(cursor.0));
+		for (member, _) in &members {
+			self.flow_tracker.update_committed(
+				member.id,
+				cursor,
+				self.engine.done_until(),
+				SourceVersion(cursor.0),
+			);
+		}
+		let member_ids: Vec<FlowId> = members.iter().map(|(member, _)| member.id).collect();
+		let name = match members.is_empty() {
+			true => format!("flow-{}", flow_id.0),
+			false => format!("unit-{}", flow_id.0),
+		};
 		let params = FlowActorParams {
 			engine: self.engine.clone(),
 			committer: self.committers[flow_id.0 as usize % self.committers.len()].clone(),
@@ -594,6 +691,7 @@ impl FlowSupervisor {
 			health: self.health.clone(),
 			flow_tracker: self.flow_tracker.clone(),
 			flow,
+			members,
 			source_objects,
 			completeness_objects,
 			cursor,
@@ -614,12 +712,13 @@ impl FlowSupervisor {
 			}
 		};
 		let pending = actor.wake_pending();
-		let handle = self.spawner.spawn_flow(&format!("flow-{}", flow_id.0), actor);
-		self.flow_tracker.set_waker(
-			flow_id,
-			FlowWaker::new(handle.actor_ref().clone(), pending, self.clock.clone())
-				.with_coalesce(self.engine.catalog().get_config_duration(ConfigKey::FlowWakeCoalesce)),
-		);
+		let handle = self.spawner.spawn_flow(&name, actor);
+		let waker = FlowWaker::new(handle.actor_ref().clone(), pending, self.clock.clone())
+			.with_coalesce(self.engine.catalog().get_config_duration(ConfigKey::FlowWakeCoalesce));
+		for member in member_ids {
+			self.flow_tracker.set_waker(member, waker.clone());
+		}
+		self.flow_tracker.set_waker(flow_id, waker);
 		handle
 	}
 
@@ -736,6 +835,7 @@ impl Actor for FlowSupervisor {
 			wake_sets: BTreeMap::new(),
 			full_wake_armed: false,
 			stall_watches: BTreeMap::new(),
+			units: BTreeMap::new(),
 		}
 	}
 

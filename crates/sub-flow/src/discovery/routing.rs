@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+	collections::{BTreeMap, BTreeSet},
+	iter::once,
+};
 
 use reifydb_core::interface::catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::ViewKind};
 use reifydb_flow::analyzer::FlowDependencyGraph;
@@ -130,6 +133,117 @@ pub fn flow_source_objects(
 	objects
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FusedUnit {
+	pub head: FlowId,
+	pub members: Vec<(FlowId, ViewId)>,
+}
+
+impl FusedUnit {
+	pub fn flow_ids(&self) -> Vec<FlowId> {
+		once(self.head).chain(self.members.iter().map(|(flow, _)| *flow)).collect()
+	}
+}
+
+pub fn fused_units(
+	graph: &FlowDependencyGraph,
+	candidates: &BTreeSet<FlowId>,
+	view_kind: &dyn Fn(ViewId) -> Option<ViewKind>,
+	ringbuffer_sink: &dyn Fn(FlowId) -> bool,
+) -> Vec<FusedUnit> {
+	let mut parent_of: BTreeMap<FlowId, (FlowId, ViewId)> = BTreeMap::new();
+	for child in candidates {
+		let Some(view) = sole_view_source(graph, *child) else {
+			continue;
+		};
+		if view_kind(view) != Some(ViewKind::Deferred) {
+			continue;
+		}
+		let Some(parent) = graph.sink_views.get(&view).copied() else {
+			continue;
+		};
+		if parent == *child || !candidates.contains(&parent) || ringbuffer_sink(parent) {
+			continue;
+		}
+		if graph.source_views.get(&view).is_none_or(|consumers| consumers.as_slice() != [*child]) {
+			continue;
+		}
+		parent_of.insert(*child, (parent, view));
+	}
+	let child_of: BTreeMap<FlowId, (FlowId, ViewId)> =
+		parent_of.iter().map(|(child, (parent, view))| (*parent, (*child, *view))).collect();
+
+	let mut units = Vec::new();
+	for head in candidates {
+		if parent_of.contains_key(head) || !child_of.contains_key(head) {
+			continue;
+		}
+		let mut unit = FusedUnit {
+			head: *head,
+			members: Vec::new(),
+		};
+		let mut produced: BTreeSet<ViewId> = produced_by(graph, *head);
+		let mut tail = *head;
+		while let Some((child, view)) = child_of.get(&tail).copied() {
+			let looks_up_inside = graph.lookup_views.iter().any(|(looked_up, consumers)| {
+				consumers.contains(&child) && produced.contains(looked_up)
+			});
+			if looks_up_inside {
+				break;
+			}
+			unit.members.push((child, view));
+			produced.extend(produced_by(graph, child));
+			tail = child;
+		}
+		if !unit.members.is_empty() {
+			units.push(unit);
+		}
+	}
+	units
+}
+
+pub fn unit_upstreams(
+	graph: &FlowDependencyGraph,
+	unit: &FusedUnit,
+	view_kind: &dyn Fn(ViewId) -> Option<ViewKind>,
+) -> FxHashMap<FlowId, FxHashSet<ObjectId>> {
+	let inside: BTreeSet<FlowId> = unit.flow_ids().into_iter().collect();
+	let mut upstreams: FxHashMap<FlowId, FxHashSet<ObjectId>> = FxHashMap::default();
+	for member in &inside {
+		for (producer, objects) in flow_upstreams(graph, *member, view_kind) {
+			if inside.contains(&producer) {
+				continue;
+			}
+			upstreams.entry(producer).or_default().extend(objects);
+		}
+	}
+	upstreams
+}
+
+pub fn unit_lookup_producers(graph: &FlowDependencyGraph, unit: &FusedUnit) -> BTreeMap<ViewId, FlowId> {
+	let mut producers = BTreeMap::new();
+	for member in unit.flow_ids() {
+		producers.extend(lookup_producers(graph, member));
+	}
+	producers
+}
+
+fn produced_by(graph: &FlowDependencyGraph, flow: FlowId) -> BTreeSet<ViewId> {
+	graph.sink_views.iter().filter(|(_, producer)| **producer == flow).map(|(view, _)| *view).collect()
+}
+
+fn sole_view_source(graph: &FlowDependencyGraph, flow: FlowId) -> Option<ViewId> {
+	let tables = graph.source_tables.values().filter(|flows| flows.contains(&flow)).count();
+	let ringbuffers = graph.source_ringbuffers.values().filter(|flows| flows.contains(&flow)).count();
+	let series = graph.source_series.values().filter(|flows| flows.contains(&flow)).count();
+	let views: Vec<ViewId> =
+		graph.source_views.iter().filter(|(_, flows)| flows.contains(&flow)).map(|(view, _)| *view).collect();
+	match (tables + ringbuffers + series, views.as_slice()) {
+		(0, [view]) => Some(*view),
+		_ => None,
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::collections::BTreeMap;
@@ -137,6 +251,7 @@ mod tests {
 	use reifydb_core::interface::catalog::id::{RingBufferId, SeriesId, TableId};
 
 	use super::*;
+	use crate::progress::tracker::FlowPositionTracker;
 
 	fn empty_graph() -> FlowDependencyGraph {
 		FlowDependencyGraph {
@@ -351,6 +466,147 @@ mod tests {
 		let closure = BTreeMap::from([(ViewId(5), BTreeSet::from([ObjectId::Series(SeriesId(9))]))]);
 
 		assert_eq!(flow_completeness_objects(&graph, FlowId(10), &closure), Some(BTreeSet::from([9])));
+	}
+
+	fn chain() -> FlowDependencyGraph {
+		let mut graph = empty_graph();
+		graph.source_tables.insert(TableId(1), vec![FlowId(10)]);
+		graph.sink_views.insert(ViewId(5), FlowId(10));
+		graph.source_views.insert(ViewId(5), vec![FlowId(20)]);
+		graph.sink_views.insert(ViewId(6), FlowId(20));
+		graph.source_views.insert(ViewId(6), vec![FlowId(30)]);
+		graph.sink_views.insert(ViewId(7), FlowId(30));
+		graph
+	}
+
+	fn all_deferred(_view_id: ViewId) -> Option<ViewKind> {
+		Some(ViewKind::Deferred)
+	}
+
+	fn no_ringbuffer(_flow_id: FlowId) -> bool {
+		false
+	}
+
+	fn all_of(graph: &FlowDependencyGraph) -> BTreeSet<FlowId> {
+		graph.sink_views.values().copied().collect()
+	}
+
+	#[test]
+	fn a_single_parent_chain_of_deferred_views_forms_one_unit_writer_first() {
+		// A unit out of writer order would feed a child before its parent produced the rows it reads.
+		let graph = chain();
+		let units = fused_units(&graph, &all_of(&graph), &all_deferred, &no_ringbuffer);
+		assert_eq!(
+			units,
+			vec![FusedUnit {
+				head: FlowId(10),
+				members: vec![(FlowId(20), ViewId(5)), (FlowId(30), ViewId(6))],
+			}]
+		);
+	}
+
+	#[test]
+	fn a_fused_child_is_not_routed_its_parents_change_stream() {
+		// A fused child still routed to its parent's view would apply every parent row twice.
+		let mut graph = chain();
+		graph.source_tables.insert(TableId(9), vec![FlowId(40)]);
+		graph.sink_views.insert(ViewId(8), FlowId(40));
+		graph.lookup_views.insert(ViewId(8), vec![FlowId(30)]);
+		let unit = fused_units(&graph, &all_of(&graph), &all_deferred, &no_ringbuffer).remove(0);
+		let upstreams = unit_upstreams(&graph, &unit, &all_deferred);
+		assert!(!upstreams.contains_key(&FlowId(10)), "an in-unit parent stays an upstream");
+		assert!(!upstreams.contains_key(&FlowId(20)), "an in-unit parent stays an upstream");
+		assert!(upstreams.contains_key(&FlowId(40)), "an outside lookup producer must still gate the unit");
+		assert_eq!(unit_lookup_producers(&graph, &unit), BTreeMap::from([(ViewId(8), FlowId(40))]));
+	}
+
+	#[test]
+	fn a_unit_has_readers_only_through_a_flow_outside_it() {
+		// A member counted as its parent's reader makes the unit commit once per source version for nobody.
+		let mut graph = chain();
+		graph.source_views.insert(ViewId(7), vec![FlowId(40)]);
+		graph.source_tables.insert(TableId(9), vec![FlowId(40)]);
+		graph.sink_views.insert(ViewId(8), FlowId(40));
+		let units = fused_units(&graph, &all_of(&graph), &all_deferred, &no_ringbuffer);
+		assert_eq!(units.len(), 1, "the two-source reader must stay outside the unit: {units:?}");
+		let unit = &units[0];
+		let tracker = FlowPositionTracker::new();
+		tracker.set_upstreams(unit.head, unit_upstreams(&graph, unit, &all_deferred));
+		for (member, _) in &unit.members {
+			tracker.set_upstreams(*member, Default::default());
+		}
+		tracker.set_upstreams(FlowId(40), flow_upstreams(&graph, FlowId(40), &all_deferred));
+		assert!(!tracker.has_readers(FlowId(10)), "the head is read only by its own member");
+		assert!(!tracker.has_readers(FlowId(20)), "the middle member is read only by its own member");
+		assert!(tracker.has_readers(FlowId(30)), "the tail is read by the flow outside the unit");
+	}
+
+	#[test]
+	fn unit_formation_refuses_a_lookup_of_an_in_unit_producer() {
+		// A lookup reads committed state only, so a member looking up its own unit would read the previous
+		// step.
+		let mut graph = chain();
+		graph.lookup_views.insert(ViewId(5), vec![FlowId(30)]);
+		let units = fused_units(&graph, &all_of(&graph), &all_deferred, &no_ringbuffer);
+		assert_eq!(
+			units,
+			vec![FusedUnit {
+				head: FlowId(10),
+				members: vec![(FlowId(20), ViewId(5))],
+			}]
+		);
+	}
+
+	#[test]
+	fn unit_formation_refuses_a_ring_buffer_parent() {
+		// A ring buffer parent evicts without emitting, so a fused child would keep rows the parent dropped.
+		let graph = chain();
+		let ring = |flow: FlowId| flow == FlowId(10);
+		let units = fused_units(&graph, &all_of(&graph), &all_deferred, &ring);
+		assert_eq!(
+			units,
+			vec![FusedUnit {
+				head: FlowId(20),
+				members: vec![(FlowId(30), ViewId(6))],
+			}]
+		);
+	}
+
+	#[test]
+	fn unit_formation_refuses_a_second_child() {
+		// A parent with two children has a reader outside any chain, so neither edge may fuse.
+		let mut graph = chain();
+		graph.source_views.insert(ViewId(5), vec![FlowId(20), FlowId(50)]);
+		graph.sink_views.insert(ViewId(9), FlowId(50));
+		let units = fused_units(&graph, &all_of(&graph), &all_deferred, &no_ringbuffer);
+		assert_eq!(
+			units,
+			vec![FusedUnit {
+				head: FlowId(20),
+				members: vec![(FlowId(30), ViewId(6))],
+			}]
+		);
+	}
+
+	#[test]
+	fn unit_formation_refuses_a_transactional_view_edge() {
+		// A transactional view is fused by flow-sync already, so a deferred unit must not claim it.
+		let graph = chain();
+		let kind = |view: ViewId| {
+			Some(if view == ViewId(5) {
+				ViewKind::Transactional
+			} else {
+				ViewKind::Deferred
+			})
+		};
+		let units = fused_units(&graph, &all_of(&graph), &kind, &no_ringbuffer);
+		assert_eq!(
+			units,
+			vec![FusedUnit {
+				head: FlowId(20),
+				members: vec![(FlowId(30), ViewId(6))],
+			}]
+		);
 	}
 }
 

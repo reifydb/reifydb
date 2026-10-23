@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet, iter::once, sync::Arc};
 
 use arrow_array::{Array, UInt64Array};
 use reifydb_catalog::catalog::Catalog;
 use reifydb_cdc::lift::{changed_objects, lift_selected_changes};
 use reifydb_core::{
 	actors::pending::Pending,
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
-		catalog::{flow::FlowId, object::ObjectId},
+		catalog::{flow::FlowId, id::ViewId, object::ObjectId},
 		cdc::Cdc,
 		change::{Change, ChangeOrigin},
+		consolidate::consolidate_diffs,
 	},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -23,7 +24,10 @@ use reifydb_flow_async::{
 	},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, value::identity::IdentityId};
+use reifydb_value::{
+	Result,
+	value::{datetime::DateTime, identity::IdentityId},
+};
 use tracing::instrument;
 
 use crate::commit::committer::{FlowSlice, produced_output};
@@ -61,9 +65,12 @@ pub enum SliceStep {
 	},
 }
 
+pub type UnitMembers = Arc<[(FlowId, ViewId)]>;
+
 pub struct SliceComputer {
 	engine: StandardEngine,
 	lookup: Option<LookupContext>,
+	members: UnitMembers,
 }
 
 impl SliceComputer {
@@ -71,6 +78,7 @@ impl SliceComputer {
 		Self {
 			engine,
 			lookup: None,
+			members: Arc::from([]),
 		}
 	}
 
@@ -78,7 +86,40 @@ impl SliceComputer {
 		Self {
 			engine: self.engine.clone(),
 			lookup,
+			members: Arc::clone(&self.members),
 		}
+	}
+
+	pub fn with_members(&self, members: UnitMembers) -> Self {
+		Self {
+			engine: self.engine.clone(),
+			lookup: self.lookup.clone(),
+			members,
+		}
+	}
+
+	fn unit_ids(&self, head: FlowId) -> Vec<FlowId> {
+		once(head).chain(self.members.iter().map(|(flow, _)| *flow)).collect()
+	}
+
+	fn unit_frontiers(&self, flow_engine: &FlowEngineInner, head: FlowId, version: CommitVersion) -> Vec<Frontier> {
+		self.unit_ids(head)
+			.into_iter()
+			.flat_map(|flow| flow_engine.published_frontiers(flow, version))
+			.collect()
+	}
+
+	fn unit_holds(
+		&self,
+		flow_engine: &FlowEngineInner,
+		txn: &mut DeferredTransaction,
+		head: FlowId,
+	) -> Result<WatermarkHolds> {
+		let mut holds = WatermarkHolds::new();
+		for flow in self.unit_ids(head) {
+			holds.extend(flow_engine.holds(txn, flow)?);
+		}
+		Ok(holds)
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -119,7 +160,7 @@ impl SliceComputer {
 			cursor.completeness_objects,
 		)?;
 		if changes.is_empty() {
-			let frontiers = flow_engine.published_frontiers(cursor.flow_id, advance_to);
+			let frontiers = self.unit_frontiers(flow_engine, cursor.flow_id, advance_to);
 			if !checkpoint_due(advance_to, cursor.durable_cursor, config)
 				&& let Some(cache) = hold_cache.as_ref()
 				&& cache.frontiers == frontiers
@@ -166,7 +207,11 @@ impl SliceComputer {
 		Ok(SliceStep::Commit {
 			slice: FlowSlice {
 				combined,
-				checkpoints: vec![(cursor.flow_id, advance_to)],
+				checkpoints: self
+					.unit_ids(cursor.flow_id)
+					.into_iter()
+					.map(|flow| (flow, advance_to))
+					.collect(),
 				checkpoint_deletes: Vec::new(),
 				emitted,
 				control_cursor: None,
@@ -197,7 +242,7 @@ impl SliceComputer {
 		}
 		let mut slice = FlowSlice::empty();
 		slice.combined = folded;
-		slice.checkpoints.push((flow_id, advance_to));
+		slice.checkpoints.extend(self.unit_ids(flow_id).into_iter().map(|flow| (flow, advance_to)));
 		Ok(SliceStep::Commit {
 			slice,
 			advance_to,
@@ -227,8 +272,10 @@ impl SliceComputer {
 			lookup: None,
 		});
 
-		flow_engine.fold_published_arrivals(&mut txn, flow_id, state_version)?;
-		let holds = flow_engine.holds(&mut txn, flow_id)?;
+		for flow in self.unit_ids(flow_id) {
+			flow_engine.fold_published_arrivals(&mut txn, flow, state_version)?;
+		}
+		let holds = self.unit_holds(flow_engine, &mut txn, flow_id)?;
 		Ok((holds, txn.take_pending()))
 	}
 
@@ -262,8 +309,8 @@ impl SliceComputer {
 			lookup: self.lookup.clone(),
 		});
 
-		flow_engine.process(&mut txn, changes, flow_id)?;
-		let holds = flow_engine.holds(&mut txn, flow_id)?;
+		process_unit(flow_engine, &mut txn, flow_id, &self.members, changes)?;
+		let holds = self.unit_holds(flow_engine, &mut txn, flow_id)?;
 
 		let emitted = txn.emitted;
 		let pending = txn.take_pending();
@@ -292,11 +339,60 @@ impl SliceComputer {
 			lookup: self.lookup.clone(),
 		});
 
+		if !self.members.is_empty() {
+			txn.capture_emits();
+		}
 		flow_engine.process_tick(&mut txn, flow_id, checkpoint)?;
+		let version = ChangeVersion::from(checkpoint);
+		let changed_at = self.engine.clock().now();
+		for (member, parent_view) in self.members.iter() {
+			feed_member(flow_engine, &mut txn, *member, *parent_view, version, changed_at)?;
+			flow_engine.process_tick(&mut txn, *member, checkpoint)?;
+		}
 
 		let emitted = txn.emitted;
 		Ok((txn.take_pending(), emitted))
 	}
+}
+
+pub(crate) fn process_unit(
+	flow_engine: &mut FlowEngineInner,
+	txn: &mut DeferredTransaction,
+	head: FlowId,
+	members: &[(FlowId, ViewId)],
+	changes: Vec<Change>,
+) -> Result<()> {
+	let latest = changes
+		.iter()
+		.map(|change| (change.version, change.changed_at))
+		.max_by_key(|(version, _)| (version.commit, version.source));
+	if !members.is_empty() {
+		txn.capture_emits();
+	}
+	flow_engine.process(txn, changes, head)?;
+	let Some((version, changed_at)) = latest else {
+		return Ok(());
+	};
+	for (member, parent_view) in members {
+		feed_member(flow_engine, txn, *member, *parent_view, version, changed_at)?;
+	}
+	Ok(())
+}
+
+fn feed_member(
+	flow_engine: &mut FlowEngineInner,
+	txn: &mut DeferredTransaction,
+	member: FlowId,
+	parent_view: ViewId,
+	version: ChangeVersion,
+	changed_at: DateTime,
+) -> Result<()> {
+	let diffs = consolidate_diffs(txn.take_emits(parent_view))?;
+	if diffs.iter().all(|diff| diff.row_count() == 0) {
+		return Ok(());
+	}
+	let change = Change::from_object(ObjectId::View(parent_view), version, diffs, changed_at);
+	flow_engine.process(txn, vec![change], member)
 }
 
 fn checkpoint_due(advance_to: CommitVersion, durable_cursor: CommitVersion, config: &SliceConfig) -> bool {

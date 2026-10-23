@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{BTreeSet, HashMap},
+	iter::once,
 	mem::take,
 	panic::{AssertUnwindSafe, catch_unwind},
 	sync::{
@@ -21,6 +22,7 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			flow::FlowId,
+			id::ViewId,
 			object::ObjectId,
 		},
 		cdc::Cdc,
@@ -57,7 +59,7 @@ use tracing::{error, warn};
 use crate::{
 	builder::CustomOperators,
 	commit::{
-		backfill::{Snapshot, UpstreamCut, backfill_reads, compute_backfill, upstream_write_after},
+		backfill::{Snapshot, UpstreamCut, backfill_reads, compute_unit_backfill, upstream_write_after},
 		committer::{CommitterMessage, FlowSlice, SliceCommitReply, TickCommitReply, produced_output},
 		merge::{HeldReads, ReadCache, ReadStream, StepCut, StreamRead, UpstreamRead, UpstreamReads, merge},
 		slice::{HoldCache, SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
@@ -85,6 +87,7 @@ pub struct FlowActorParams {
 	pub health: FlowHealthRegistry,
 	pub flow_tracker: FlowPositionTracker,
 	pub flow: FlowDag,
+	pub members: Vec<(FlowDag, ViewId)>,
 	pub source_objects: Arc<BTreeSet<ObjectId>>,
 	pub completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	pub cursor: CommitVersion,
@@ -114,6 +117,7 @@ pub struct FlowActor {
 	flow_tracker: FlowPositionTracker,
 	flow: FlowDag,
 	flow_id: FlowId,
+	members: Vec<(FlowDag, ViewId)>,
 	ticks_enabled: bool,
 	has_lookup: bool,
 	computer: SliceComputer,
@@ -165,12 +169,17 @@ pub struct FlowActorState {
 impl FlowActor {
 	pub fn new(params: FlowActorParams) -> Self {
 		let flow_id = params.flow.id;
-		let ticks_enabled = params.flow.ticks();
-		let has_lookup = params.flow.get_operator_ids().any(|id| {
-			params.flow.get_operator(&id).is_some_and(|node| matches!(node.ty, OperatorDef::Lookup { .. }))
+		let unit: Vec<&FlowDag> = once(&params.flow).chain(params.members.iter().map(|(m, _)| m)).collect();
+		let ticks_enabled = unit.iter().any(|flow| flow.ticks());
+		let has_lookup = unit.iter().any(|flow| {
+			flow.get_operator_ids().any(|id| {
+				flow.get_operator(&id).is_some_and(|node| matches!(node.ty, OperatorDef::Lookup { .. }))
+			})
 		});
+		let fed: Vec<(FlowId, ViewId)> =
+			params.members.iter().map(|(member, view)| (member.id, *view)).collect();
 		Self {
-			computer: SliceComputer::new(params.engine.clone()),
+			computer: SliceComputer::new(params.engine.clone()).with_members(Arc::from(fed)),
 			config: SliceConfig {
 				checkpoint_lag: params.checkpoint_lag,
 			},
@@ -190,6 +199,7 @@ impl FlowActor {
 			flow_tracker: params.flow_tracker,
 			flow: params.flow,
 			flow_id,
+			members: params.members,
 			ticks_enabled,
 			has_lookup,
 			retry_limit: params.retry_limit,
@@ -232,13 +242,25 @@ impl FlowActor {
 
 	fn poison(&self, state: &mut FlowActorState, reason: String) {
 		error!(flow_id = self.flow_id.0, reason = %reason, "poisoning flow");
-		self.health.mark_poisoned(self.flow_id, reason);
+		for flow_id in self.unit_ids() {
+			self.health.mark_poisoned(flow_id, reason.clone());
+		}
 		state.poisoned = true;
 		*self.create_snapshot.lock() = None;
 	}
 
 	fn publish_position(&self, cursor: CommitVersion) {
-		self.flow_tracker.update(self.flow_id, cursor);
+		for flow_id in self.unit_ids() {
+			self.flow_tracker.update(flow_id, cursor);
+		}
+	}
+
+	fn unit_ids(&self) -> Vec<FlowId> {
+		once(self.flow_id).chain(self.members.iter().map(|(member, _)| member.id)).collect()
+	}
+
+	fn unit_has_readers(&self) -> bool {
+		self.unit_ids().into_iter().any(|flow_id| self.flow_tracker.has_readers(flow_id))
 	}
 
 	fn restore_lookup_lease(&self) -> Result<Option<VersionLeaseGuard>> {
@@ -316,7 +338,7 @@ impl FlowActor {
 	}
 
 	fn commit_target(&self) -> &ActorRef<CommitterMessage> {
-		if self.flow_tracker.has_readers(self.flow_id) {
+		if self.unit_has_readers() {
 			&self.committer
 		} else {
 			&self.terminal_committer
@@ -337,6 +359,9 @@ impl FlowActor {
 	fn register_flow(&self, flow_engine: &mut FlowEngineInner) -> Result<()> {
 		let mut txn = self.engine.begin_command(IdentityId::system())?;
 		flow_engine.register(&mut txn, self.flow.clone())?;
+		for (member, _) in &self.members {
+			flow_engine.register(&mut txn, member.clone())?;
+		}
 		txn.rollback()?;
 		Ok(())
 	}
@@ -399,7 +424,7 @@ impl FlowActor {
 		if self.linger.is_zero() || state.backlog || take(&mut state.linger_ready) {
 			return false;
 		}
-		if cuts_per_source(self.flow_tracker.has_readers(self.flow_id), &state.source_objects) {
+		if cuts_per_source(self.unit_has_readers(), &state.source_objects) {
 			return false;
 		}
 		if !state.lingering {
@@ -445,7 +470,14 @@ impl FlowActor {
 		let reads = backfill_reads(&self.flow, &state.flow_engine, &snapshot, &upstreams);
 
 		let computed = catch_unwind(AssertUnwindSafe(|| {
-			compute_backfill(&self.engine, &mut state.flow_engine, &self.flow, &snapshot, &reads)
+			compute_unit_backfill(
+				&self.engine,
+				&mut state.flow_engine,
+				&self.flow,
+				&self.members,
+				&snapshot,
+				&reads,
+			)
 		}))
 		.unwrap_or_else(|payload| Err(Error(Box::new(flow_step_panicked(describe_payload(&payload))))));
 		let version = snapshot.version;
@@ -563,7 +595,7 @@ impl FlowActor {
 		state.held_reads.clear();
 		let cut = StepCut {
 			source_objects: &state.source_objects,
-			per_source: cuts_per_source(self.flow_tracker.has_readers(self.flow_id), &state.source_objects),
+			per_source: cuts_per_source(self.unit_has_readers(), &state.source_objects),
 		};
 		let merged = merge(cursor, &tables, &upstream_reads.reads, &cut);
 		if merged.target <= cursor {
@@ -690,7 +722,7 @@ impl FlowActor {
 					completeness_objects: state.completeness_objects.as_deref(),
 					cursor: state.cursor,
 					durable_cursor: state.durable_cursor,
-					has_readers: self.flow_tracker.has_readers(self.flow_id),
+					has_readers: self.unit_has_readers(),
 				},
 				advance_to,
 				more,
@@ -1011,6 +1043,7 @@ impl FlowActor {
 		if self.commit_target()
 			.send(CommitterMessage::Tick {
 				flow_id: self.flow_id,
+				members: self.members.iter().map(|(member, _)| member.id).collect(),
 				source: SourceVersion(state.cursor.0 + 1),
 				pending,
 				reply,
@@ -1025,7 +1058,7 @@ impl FlowActor {
 	fn on_stop(&self, delete_checkpoint: bool) {
 		if delete_checkpoint {
 			let mut slice = FlowSlice::empty();
-			slice.checkpoint_deletes.push(self.flow_id);
+			slice.checkpoint_deletes.extend(self.unit_ids());
 			let reply: SliceCommitReply = Box::new(|_| {});
 			let _ = self.committer.send(CommitterMessage::Slice {
 				slice,
@@ -1060,7 +1093,9 @@ impl Actor for FlowActor {
 			Ok(()) => false,
 			Err(e) => {
 				error!(flow_id = self.flow_id.0, error = %e, "failed to register flow, poisoning");
-				self.health.mark_poisoned(self.flow_id, format!("registration failed: {e}"));
+				for flow_id in self.unit_ids() {
+					self.health.mark_poisoned(flow_id, format!("registration failed: {e}"));
+				}
 				true
 			}
 		};
@@ -1068,7 +1103,9 @@ impl Actor for FlowActor {
 			Ok(lease) => lease,
 			Err(e) => {
 				error!(flow_id = self.flow_id.0, error = %e, "failed to take the lookup lease, poisoning");
-				self.health.mark_poisoned(self.flow_id, format!("lookup lease failed: {e}"));
+				for flow_id in self.unit_ids() {
+					self.health.mark_poisoned(flow_id, format!("lookup lease failed: {e}"));
+				}
 				poisoned = true;
 				None
 			}
@@ -1429,6 +1466,7 @@ mod pull_protocol {
 					health: self.health.clone(),
 					flow_tracker: self.tracker.clone(),
 					flow,
+					members: Vec::new(),
 					source_objects,
 					completeness_objects: None,
 					cursor: CommitVersion(cursor.0 - 1),
@@ -1478,6 +1516,7 @@ mod pull_protocol {
 				health: self.health.clone(),
 				flow_tracker: self.tracker.clone(),
 				flow,
+				members: Vec::new(),
 				source_objects,
 				completeness_objects: None,
 				cursor: CommitVersion(cursor.0 - 1),
@@ -2609,6 +2648,7 @@ mod pull_protocol {
 				health: health2.clone(),
 				flow_tracker: h.tracker.clone(),
 				flow: h.flow.clone(),
+				members: Vec::new(),
 				source_objects: h.source_objects.clone(),
 				completeness_objects: None,
 				cursor: target,
@@ -3068,6 +3108,7 @@ mod tick_failures {
 			health: health.clone(),
 			flow_tracker: FlowPositionTracker::new(),
 			flow,
+			members: Vec::new(),
 			source_objects: Arc::new(BTreeSet::new()),
 			completeness_objects: None,
 			cursor: CommitVersion(0),

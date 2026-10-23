@@ -53,6 +53,7 @@ pub enum CommitterMessage {
 
 	Tick {
 		flow_id: FlowId,
+		members: Vec<FlowId>,
 		source: SourceVersion,
 		pending: Pending,
 		reply: TickCommitReply,
@@ -130,7 +131,14 @@ impl CommitterActor {
 	}
 
 	#[instrument(name = "flow::committer::submit_tick", level = "debug", skip_all, fields(committer = self.name))]
-	fn submit_tick(&self, flow_id: FlowId, source: SourceVersion, pending: Pending, reply: TickCommitReply) {
+	fn submit_tick(
+		&self,
+		flow_id: FlowId,
+		members: Vec<FlowId>,
+		source: SourceVersion,
+		pending: Pending,
+		reply: TickCommitReply,
+	) {
 		let deferred = match classify_pending(&self.committer.operators, &pending) {
 			Ok(deferred) => deferred,
 			Err(e) => return (reply)(Err(e)),
@@ -148,6 +156,9 @@ impl CommitterActor {
 				apply_operator_state(&completion_committer.operators, &pending, &deferred);
 				completion_committer.materialization.record_output(version);
 				completion_committer.flow_tracker.record_commit(flow_id, version);
+				for member in &members {
+					completion_committer.flow_tracker.record_commit(*member, version);
+				}
 				(reply)(Ok(()));
 			}
 			Err(e) => (reply)(Err(e)),
@@ -190,12 +201,13 @@ impl Actor for CommitterActor {
 			},
 			CommitterMessage::Tick {
 				flow_id,
+				members,
 				source,
 				pending,
 				reply,
 			} => {
 				self.flush(state);
-				self.submit_tick(flow_id, source, pending, reply)
+				self.submit_tick(flow_id, members, source, pending, reply)
 			}
 			CommitterMessage::Flush => {
 				state.flush_queued = false;

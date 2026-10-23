@@ -111,6 +111,28 @@ fn partitioned_eviction_retracts_only_that_partitions_contribution() {
 }
 
 #[test]
+fn a_full_ring_buffer_frees_the_room_of_a_removed_row_before_an_insert_of_the_same_commit() {
+	// An insert applied before the commit's remove evicts a live row the remove then never gives back.
+	let db = setup();
+	create_events_table(&db);
+	db.admin("CREATE DEFERRED RINGBUFFER VIEW test::rb { region: utf8, n: int4 } \
+		 WITH { capacity: 2 } AS { FROM test::events }");
+	create_agg_over_rb(&db);
+
+	db.command("INSERT test::events [{ region: \"us\", n: 1 }]");
+	db.command("INSERT test::events [{ region: \"us\", n: 2 }]");
+	assert_eq!(await_agg_group(&db, "us", Some((2, 3))), Some((2, 3)), "precondition: the buffer is full");
+
+	db.command("INSERT test::events [{ region: \"us\", n: 3 }]; DELETE test::events FILTER { n == 2 }");
+
+	assert_eq!(
+		await_agg_group(&db, "us", Some((2, 4))),
+		Some((2, 4)),
+		"the delete frees n=2's slot, so n=3 fits and n=1 stays; insert-first leaves only n=3"
+	);
+}
+
+#[test]
 fn global_within_batch_overflow_nets_to_capacity() {
 	// A batch larger than capacity evicts rows assigned earlier in the same batch and never
 	// stored, so the remove has to net them out of the insert diff. No TTL is configured, which
