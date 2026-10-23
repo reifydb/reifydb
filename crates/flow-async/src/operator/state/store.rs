@@ -14,8 +14,13 @@ pub mod tests {
 		slice::from_ref,
 	};
 
-	use reifydb_codec::{key::encoded::EncodedKeyRange, row::{bytes::EncodedBytes, pod::EncodedPodRow}};
-	use reifydb_core::{interface::catalog::flow::OperatorId, key::operator::state::node_prefix, state::timer::StateStore};
+	use reifydb_codec::{
+		key::encoded::EncodedKeyRange,
+		row::{bytes::EncodedBytes, pod::EncodedPodRow},
+	};
+	use reifydb_core::{
+		interface::catalog::flow::OperatorId, key::operator::state::node_prefix, state::timer::StateStore,
+	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::multi::RangeScope;
 	use reifydb_value::Result;
@@ -233,7 +238,9 @@ pub mod tests {
 
 		for i in 0..10 {
 			let key = test_key(&format!("{:02}", i)); // padded so the keys sort numerically
-			host(&mut txn, operator_id).state_set(vec![(key.clone(), EncodedPodRow::new(&[i as u8]))]).unwrap();
+			host(&mut txn, operator_id)
+				.state_set(vec![(key.clone(), EncodedPodRow::new(&[i as u8]))])
+				.unwrap();
 		}
 
 		let range = EncodedKeyRange::new(
@@ -266,8 +273,10 @@ pub mod tests {
 		host(&mut txn, operator1).state_set(vec![(shared_key.clone(), row1.clone())]).unwrap();
 		host(&mut txn, operator2).state_set(vec![(shared_key.clone(), row2.clone())]).unwrap();
 
-		let result1 = host(&mut txn, operator1).state_get(from_ref(&shared_key)).unwrap().pop().flatten().unwrap();
-		let result2 = host(&mut txn, operator2).state_get(from_ref(&shared_key)).unwrap().pop().flatten().unwrap();
+		let result1 =
+			host(&mut txn, operator1).state_get(from_ref(&shared_key)).unwrap().pop().flatten().unwrap();
+		let result2 =
+			host(&mut txn, operator2).state_get(from_ref(&shared_key)).unwrap().pop().flatten().unwrap();
 
 		assert_row_eq(&result1, &row1);
 		assert_row_eq(&result2, &row2);
@@ -331,7 +340,9 @@ pub mod tests {
 
 		for i in 0..5 {
 			let key = test_key(&format!("partial_{}", i));
-			host(&mut txn, operator_id).state_set(vec![(key.clone(), EncodedPodRow::new(&[i as u8]))]).unwrap();
+			host(&mut txn, operator_id)
+				.state_set(vec![(key.clone(), EncodedPodRow::new(&[i as u8]))])
+				.unwrap();
 		}
 
 		host(&mut txn, operator_id).state_remove(from_ref(&test_key("partial_1"))).unwrap();

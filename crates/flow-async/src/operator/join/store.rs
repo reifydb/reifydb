@@ -33,12 +33,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::state::JoinSide;
-use crate::{
-	error::FlowStateError,
-	operator::{
-		host::HostContext,
-	},
-};
+use crate::{error::FlowStateError, operator::host::HostContext};
 
 pub(crate) fn body_bytes(row: &EncodedPodRow) -> EncodedBytes {
 	EncodedBytes(CowVec::new(row.body().to_vec()))
