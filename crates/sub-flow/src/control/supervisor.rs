@@ -641,7 +641,9 @@ impl FlowSupervisor {
 		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
 		self.flow_tracker.set_upstreams(unit.head, routing::unit_upstreams(graph, unit, &view_kind));
 		self.flow_tracker.set_lookup_producers(unit.head, routing::unit_lookup_producers(graph, unit));
+		self.flow_tracker.set_unit(unit.head, unit.head);
 		for (member, _) in &unit.members {
+			self.flow_tracker.set_unit(*member, unit.head);
 			self.flow_tracker.set_upstreams(*member, Default::default());
 			self.flow_tracker.set_lookup_producers(*member, BTreeMap::new());
 		}

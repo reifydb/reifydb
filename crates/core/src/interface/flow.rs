@@ -73,6 +73,33 @@ impl FlowWatermarkSampler {
 	}
 }
 
+#[derive(Debug, Clone)]
+pub struct FlowUnitRow {
+	pub flow_id: FlowId,
+
+	pub unit: FlowId,
+}
+
+#[derive(Clone)]
+pub struct FlowUnitSampler {
+	fetch: Arc<dyn Fn() -> Vec<FlowUnitRow> + Send + Sync>,
+}
+
+impl FlowUnitSampler {
+	pub fn new<F>(fetch: F) -> Self
+	where
+		F: Fn() -> Vec<FlowUnitRow> + Send + Sync + 'static,
+	{
+		Self {
+			fetch: Arc::new(fetch),
+		}
+	}
+
+	pub fn all(&self) -> Vec<FlowUnitRow> {
+		(self.fetch)()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::{OperatorCapability, from_bitmask, to_bitmask};

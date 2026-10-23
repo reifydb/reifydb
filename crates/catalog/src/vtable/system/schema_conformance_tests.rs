@@ -19,6 +19,7 @@ use super::{
 	event_variants::SystemEventVariants,
 	events::SystemEvents,
 	flow_edges::SystemFlowEdges,
+	flow_units::SystemFlowUnits,
 	flow_watermarks::SystemFlowWatermarks,
 	flows::SystemFlows,
 	granted_roles::SystemGrantedRoles,
@@ -76,6 +77,7 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		Box::new(SystemViews::new()),
 		Box::new(SystemFlows::new()),
 		Box::new(SystemFlowWatermarks::new(ioc.clone())),
+		Box::new(SystemFlowUnits::new(ioc.clone())),
 		Box::new(SystemSubscriptionWatermarks::new(ioc.clone())),
 		Box::new(SystemOperators::new()),
 		Box::new(SystemFlowEdges::new()),
@@ -187,7 +189,7 @@ fn every_system_vtable_emits_the_columns_its_schema_declares() {
 
 	assert!(failures.is_empty(), "system vtable schema drift:\n  {}", failures.join("\n  "));
 
-	assert_eq!(checked, 53, "expected every system vtable handler to be exercised");
+	assert_eq!(checked, 54, "expected every system vtable handler to be exercised");
 }
 
 #[test]

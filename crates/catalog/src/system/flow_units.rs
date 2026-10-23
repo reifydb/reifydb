@@ -1,0 +1,46 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use std::sync::{Arc, OnceLock};
+
+use reifydb_core::interface::catalog::{
+	column::{Column, ColumnIndex},
+	id::NamespaceId,
+	vtable::VTable,
+};
+use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
+
+use super::ids::{columns::flow_units::*, vtable::FLOW_UNITS};
+
+pub fn flow_units() -> Arc<VTable> {
+	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
+
+	INSTANCE.get_or_init(|| {
+		Arc::new(VTable {
+			id: FLOW_UNITS,
+			namespace: NamespaceId::SYSTEM_FLOW,
+			name: "units".to_string(),
+			columns: vec![
+				Column {
+					id: FLOW_ID,
+					name: "flow_id".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					properties: vec![],
+					index: ColumnIndex(0),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+				Column {
+					id: UNIT,
+					name: "unit".to_string(),
+					constraint: TypeConstraint::unconstrained(ValueType::Uint8),
+					properties: vec![],
+					index: ColumnIndex(1),
+					auto_increment: false,
+					dictionary_id: None,
+				},
+			],
+		})
+	})
+	.clone()
+}

@@ -13,6 +13,7 @@ pub mod enums;
 pub mod event_variants;
 pub mod events;
 pub mod flow_edges;
+pub mod flow_units;
 pub mod flow_watermarks;
 pub mod flows;
 pub mod granted_roles;

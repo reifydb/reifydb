@@ -35,7 +35,7 @@ use reifydb_core::{
 		WithEventBus,
 		catalog::config::{ConfigKey, GetConfig},
 		cdc::CdcConsumerId,
-		flow::FlowWatermarkSampler,
+		flow::{FlowUnitRow, FlowUnitSampler, FlowWatermarkSampler},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	lifecycle::watermark::ConsumerPositions,
@@ -195,6 +195,7 @@ impl FlowSubsystem {
 		);
 
 		Self::register_watermark_sampler(ioc, &engine, &object_tracker, &flow_tracker, &materialization);
+		Self::register_unit_sampler(ioc, &flow_tracker);
 
 		let poisoned_health = health.clone();
 		let stalled_health = health.clone();
@@ -280,6 +281,21 @@ impl FlowSubsystem {
 		{
 			let _ = (config, engine);
 		}
+	}
+
+	#[inline]
+	fn register_unit_sampler(ioc: &IocContainer, flow_tracker: &FlowPositionTracker) {
+		let flow_tracker = flow_tracker.clone();
+		ioc.register_service::<FlowUnitSampler>(FlowUnitSampler::new(move || {
+			flow_tracker
+				.units()
+				.into_iter()
+				.map(|(flow_id, unit)| FlowUnitRow {
+					flow_id,
+					unit,
+				})
+				.collect()
+		}));
 	}
 
 	#[inline]

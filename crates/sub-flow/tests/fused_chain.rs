@@ -8,16 +8,38 @@ use reifydb::{
 	testing::db::{TempDbPath, TestDb, await_value, poll_until},
 };
 use reifydb_cdc::lift::changed_objects;
+use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::{
-		flow::FlowId,
-		id::{TableId, ViewId},
-		object::ObjectId,
+	common::{CommitVersion, WindowRequirements, WindowSizeDomain},
+	interface::{
+		catalog::{
+			flow::{FlowId, OperatorId},
+			id::{TableId, ViewId},
+			object::ObjectId,
+		},
+		flow::OperatorCapability,
 	},
+	key::operator::state::GroupId,
+	operator_with::ApplyWith,
+};
+use reifydb_sdk::{
+	error::Result as SdkResult,
+	flow::operator::{
+		OperatorMetadata, UnmanagedOperator,
+		column::operator::OperatorColumn,
+		context::{GuestContext, Unmanaged},
+		view::{ChangeView, ColumnsView, DiffView, RowView},
+	},
+	row,
 };
 use reifydb_store_cdc::storage::CdcStorage;
-use reifydb_value::value::{duration::Duration, frame::frame::Frame};
+use reifydb_value::{
+	config::ExtensionParams,
+	value::{
+		constraint::TypeConstraint, diff_type::DiffType, duration::Duration, frame::frame::Frame,
+		value_type::ValueType,
+	},
+};
 
 const TIMEOUT: Duration = Duration::from_seconds_const(10);
 
@@ -155,6 +177,189 @@ fn a_fresh_database_backfills_a_unit_as_one() {
 		backfills.iter().all(|commits| commits == &backfills[0]),
 		"every member must backfill in the head's commit: {backfills:?}"
 	);
+	db.stop();
+}
+
+fn units(db: &TestDb) -> Vec<(u64, u64)> {
+	let mut units: Vec<(u64, u64)> = db
+		.query("FROM system::flow::units")
+		.iter()
+		.flat_map(|frame| frame.rows())
+		.map(|row| {
+			let flow = row.get::<u64>("flow_id").expect("the flow_id column reads").expect("a flow id");
+			let unit = row.get::<u64>("unit").expect("the unit column reads").expect("a unit");
+			(flow, unit)
+		})
+		.collect();
+	units.sort_unstable();
+	units
+}
+
+#[test]
+fn the_flow_units_table_lists_every_member_under_its_head_and_no_unfused_flow() {
+	// A table that misses a member or lists a lone flow reports fusion that did not run.
+	let path = TempDbPath::new("fused_chain_units_table");
+	{
+		let mut db = open(&path, false);
+		db.admin("CREATE NAMESPACE fu");
+		db.admin("CREATE TABLE fu::src { id: int4, g: int4, v: int4 }");
+		for create in CHAIN {
+			db.admin(create);
+		}
+		db.admin(
+			"CREATE DEFERRED VIEW fu::side { id: int4, g: int4, v: int4 } AS { FROM fu::src | filter { v > 100 } }",
+		);
+		stop_without_flow(&mut db);
+	}
+	let mut db = open(&path, true);
+	settle(&db);
+	let head = catalog_id(&db, "flows", "a");
+	let mut want: Vec<(u64, u64)> =
+		["a", "b", "c"].iter().map(|flow| (catalog_id(&db, "flows", flow), head)).collect();
+	want.sort_unstable();
+	assert_eq!(units(&db), want, "the unit table must list a, b and c under a, and never side");
+	db.stop();
+}
+
+struct SymIdRow {
+	id: i32,
+	sym: i64,
+}
+
+row!(SymIdRow {
+	id: i32,
+	sym: i64
+});
+
+struct SymIds;
+
+impl OperatorMetadata for SymIds {
+	const NAME: &'static str = "sym_ids";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "test-only operator that reads sym as a dictionary id";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = &[
+		OperatorColumn {
+			name: "id",
+			type_constraint: TypeConstraint::unconstrained(ValueType::Int4),
+			description: "row id",
+		},
+		OperatorColumn {
+			name: "sym",
+			type_constraint: TypeConstraint::unconstrained(ValueType::DictionaryId),
+			description: "the symbol as its dictionary entry id",
+		},
+	];
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = &[
+		OperatorColumn {
+			name: "id",
+			type_constraint: TypeConstraint::unconstrained(ValueType::Int4),
+			description: "row id",
+		},
+		OperatorColumn {
+			name: "sym",
+			type_constraint: TypeConstraint::unconstrained(ValueType::Int8),
+			description: "the dictionary entry id read from the input",
+		},
+	];
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl UnmanagedOperator for SymIds {
+	const UNMANAGED_BECAUSE: &'static str = "test operator";
+	const WINDOW: WindowRequirements = WindowRequirements {
+		takes_window: false,
+		kinds: &[],
+		domain: WindowSizeDomain::Time,
+		needs_pane: false,
+	};
+
+	fn create(_operator_id: OperatorId, _params: &ExtensionParams, _with: &ApplyWith) -> SdkResult<Self> {
+		Ok(SymIds)
+	}
+
+	fn apply(&mut self, ctx: &mut impl GuestContext<Unmanaged>, change: impl ChangeView) -> SdkResult<()> {
+		// Reading the id is the read that fails when the input carries the symbol text instead of its entry id.
+		for i in 0..change.diff_count() {
+			let Some(diff) = change.diff(i) else {
+				continue;
+			};
+			if !matches!(diff.kind(), DiffType::Insert) {
+				continue;
+			}
+			let Some(post) = diff.post() else {
+				continue;
+			};
+			for r in 0..post.row_count() {
+				let row = post.row(r).expect("row");
+				let id = row.i32("id")?.expect("id");
+				let sym = row.dictionary_id("sym")?.expect("a sym entry id").to_u128() as i64;
+				let key = EncodedKey::new(id.to_be_bytes());
+				let (row_number, _) =
+					ctx.get_or_create_row_numbers(GroupId::of(&key), &[key])?.remove(0);
+				ctx.emit_insert(
+					&[SymIdRow {
+						id,
+						sym,
+					}],
+					&[row_number],
+				)?;
+			}
+		}
+		Ok(())
+	}
+}
+
+fn open_with_sym_ids(path: &TempDbPath) -> TestDb {
+	TestDb::from(
+		embedded::sqlite(SqliteConfig::new(path))
+			.with_flow(|f| f.register_unmanaged_operator::<SymIds>())
+			.build()
+			.expect("open the sqlite db"),
+	)
+}
+
+fn sym_ids(db: &TestDb) -> Vec<(i32, i64)> {
+	let mut rows: Vec<(i32, i64)> = db
+		.query("FROM fu::b")
+		.iter()
+		.flat_map(|frame| frame.rows())
+		.map(|row| (row.get::<i32>("id").unwrap().unwrap(), row.get::<i64>("sym").unwrap().unwrap()))
+		.collect();
+	rows.sort();
+	rows
+}
+
+#[test]
+fn a_fused_child_reads_a_dictionary_column_its_parent_got_as_text_as_entry_ids() {
+	// A fused child fed the parent's text where a cdc child gets entry ids fails every id read of that column.
+	let path = TempDbPath::new("fused_chain_dictionary_ids");
+	{
+		let mut db = open_with_sym_ids(&path);
+		db.admin("CREATE NAMESPACE fu");
+		db.admin("CREATE DICTIONARY fu::syms FOR utf8 AS uint4");
+		db.admin("CREATE TABLE fu::src { id: int4, sym: utf8 }");
+		db.admin(
+			"CREATE DEFERRED VIEW fu::a { id: int4, sym: utf8 with { dictionary: fu::syms } } AS { FROM fu::src }",
+		);
+		db.admin("CREATE DEFERRED VIEW fu::b { id: int4, sym: int8 } AS { FROM fu::a | APPLY sym_ids{} }");
+		db.command("INSERT fu::src [{ id: 1, sym: 'red' }, { id: 2, sym: 'green' }]");
+		settle(&db);
+		db.stop();
+	}
+	let mut db = open_with_sym_ids(&path);
+	let head = catalog_id(&db, "flows", "a");
+	assert!(
+		units(&db).contains(&(catalog_id(&db, "flows", "b"), head)),
+		"b must run fused under a for this test to mean anything: {:?}",
+		units(&db)
+	);
+	settle(&db);
+	db.command("INSERT fu::src [{ id: 3, sym: 'red' }]");
+	settle(&db);
+	let rows = sym_ids(&db);
+	assert_eq!(rows.iter().map(|(id, _)| *id).collect::<Vec<_>>(), vec![1, 2, 3], "every row reaches b: {rows:?}");
+	assert_eq!(rows[0].1, rows[2].1, "both red rows must carry one entry id: {rows:?}");
+	assert_ne!(rows[0].1, rows[1].1, "red and green must carry different entry ids: {rows:?}");
 	db.stop();
 }
 

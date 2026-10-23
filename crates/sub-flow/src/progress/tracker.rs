@@ -146,6 +146,7 @@ struct FlowProgress {
 	source_counts: HashMap<FlowId, usize>,
 	sources: HashMap<FlowId, SourceVersion>,
 	lookup_producers: HashMap<FlowId, BTreeMap<ViewId, FlowId>>,
+	units: HashMap<FlowId, FlowId>,
 }
 
 impl FlowProgress {
@@ -360,6 +361,14 @@ impl FlowPositionTracker {
 		self.inner.read().upstreams.get(&flow_id).cloned().unwrap_or_default()
 	}
 
+	pub fn set_unit(&self, flow_id: FlowId, head: FlowId) {
+		self.inner.write().units.insert(flow_id, head);
+	}
+
+	pub fn units(&self) -> Vec<(FlowId, FlowId)> {
+		self.inner.read().units.iter().map(|(flow, head)| (*flow, *head)).collect()
+	}
+
 	pub fn has_readers(&self, flow_id: FlowId) -> bool {
 		self.inner.read().readers.contains_key(&flow_id)
 	}
@@ -406,6 +415,7 @@ impl FlowPositionTracker {
 		progress.source_counts.remove(&flow_id);
 		progress.sources.remove(&flow_id);
 		progress.lookup_producers.remove(&flow_id);
+		progress.units.remove(&flow_id);
 	}
 
 	pub fn all(&self) -> HashMap<FlowId, CommitVersion> {

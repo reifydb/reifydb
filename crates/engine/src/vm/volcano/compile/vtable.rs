@@ -19,6 +19,7 @@ use reifydb_catalog::vtable::{
 		event_variants::SystemEventVariants,
 		events::SystemEvents,
 		flow_edges::SystemFlowEdges,
+		flow_units::SystemFlowUnits,
 		flow_watermarks::SystemFlowWatermarks,
 		flows::SystemFlows,
 		granted_roles::SystemGrantedRoles,
@@ -181,6 +182,7 @@ fn compile_flow_vtable(name: &str, context: &QueryContext) -> Option<VTables> {
 	Some(match name {
 		"operators" => VTables::Operators(SystemOperators::new()),
 		"edges" => VTables::FlowEdges(SystemFlowEdges::new()),
+		"units" => VTables::FlowUnits(SystemFlowUnits::new(context.services.ioc.clone())),
 		"watermarks" => VTables::FlowWatermarks(SystemFlowWatermarks::new(context.services.ioc.clone())),
 		_ => return None,
 	})

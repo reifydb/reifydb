@@ -17,6 +17,7 @@ pub mod enums;
 pub mod event_variants;
 pub mod events;
 pub mod flow_edges;
+pub mod flow_units;
 pub mod flow_watermarks;
 pub mod flows;
 pub mod granted_roles;
@@ -68,6 +69,7 @@ use enums::enums;
 use event_variants::event_variants;
 use events::events;
 use flow_edges::flow_edges;
+use flow_units::flow_units;
 use flow_watermarks::flow_watermarks;
 use flows::flows;
 use granted_roles::granted_roles;
@@ -657,6 +659,15 @@ pub mod ids {
 			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, KIND];
 		}
 
+		pub mod flow_units {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const FLOW_ID: ColumnId = ColumnId(1);
+			pub const UNIT: ColumnId = ColumnId(2);
+
+			pub const ALL: [ColumnId; 2] = [FLOW_ID, UNIT];
+		}
+
 		pub mod flow_watermarks {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
@@ -936,6 +947,7 @@ pub mod ids {
 		pub const BINDINGS_WS: VTableId = VTableId(58);
 
 		pub const RELATIONSHIPS: VTableId = VTableId(64);
+		pub const FLOW_UNITS: VTableId = VTableId(65);
 
 		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
 		pub const METRICS_STORAGE_VIEW: VTableId = VTableId(1025);
@@ -957,7 +969,7 @@ pub mod ids {
 		pub const METRICS_CDC_OPERATOR: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 74] = [
+		pub const ALL: [VTableId; 75] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -983,6 +995,7 @@ pub mod ids {
 			QUEUES,
 			QUEUE_PARTITIONS,
 			FLOW_WATERMARKS,
+			FLOW_UNITS,
 			SHAPES,
 			SHAPE_FIELDS,
 			ENUMS,
@@ -1077,6 +1090,10 @@ impl SystemCatalog {
 
 	pub fn get_system_flow_watermarks_table() -> Arc<VTable> {
 		flow_watermarks()
+	}
+
+	pub fn get_system_flow_units_table() -> Arc<VTable> {
+		flow_units()
 	}
 
 	pub fn get_system_subscription_watermarks_table() -> Arc<VTable> {
