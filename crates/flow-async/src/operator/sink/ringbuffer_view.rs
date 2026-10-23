@@ -909,6 +909,7 @@ impl SinkRingBufferViewOperator {
 		let mut row_keys: Vec<EncodedKey> = Vec::with_capacity(row_count);
 		let mut values_bytes_vec: Vec<EncodedBytes> = Vec::with_capacity(row_count);
 
+		let mut sets: Vec<(GroupStateKey, EncodedPodRow)> = Vec::with_capacity(row_count * 3);
 		if self.is_partitioned() {
 			let parts = partition_batch(view, &self.partition_indices, source)?;
 			resolve_partitions_flow(txn, object_id.into(), &parts.distinct, &mut self.verified_partitions)?;
@@ -922,43 +923,62 @@ impl SinkRingBufferViewOperator {
 			for (row_idx, partition) in parts.rows.iter().enumerate() {
 				group_rows[group_index[partition]].push(row_idx);
 			}
-			for ((partition, values), rows) in parts.distinct.into_iter().zip(group_rows) {
-				note_touched(touched, &values);
-				let meta = self.partition_meta(txn, partition_metadata, &values)?;
-				self.insert_group(
+			let mut kept: Vec<(usize, usize)> = Vec::with_capacity(row_count);
+			for (group, ((partition, values), rows)) in parts.distinct.iter().zip(&group_rows).enumerate() {
+				note_touched(touched, values);
+				let meta = self.partition_meta(txn, partition_metadata, values)?;
+				let skip = self.evict_for_insert(
 					txn,
 					object_id,
 					meta,
-					next_row.as_mut(),
-					Some(partition),
-					&encoded,
-					row_numbers,
-					&times,
-					&rows,
-					&mut row_keys,
-					&mut values_bytes_vec,
+					true,
+					Some(*partition),
+					rows.len(),
 				)?;
+				kept.extend(rows[skip..].iter().map(|&row_idx| (row_idx, group)));
+			}
+			kept.sort_unstable();
+			let next =
+				next_row.as_mut().expect("partitioned ring buffer sink must have loaded its next row");
+			for (row_idx, group) in kept {
+				let (partition, values) = &parts.distinct[group];
+				let meta = self.partition_meta(txn, partition_metadata, values)?;
+				let assigned_rn = RowNumber(*next);
+				*next += 1;
+				self.place_row(
+					&mut sets,
+					object_id,
+					meta,
+					Some(*partition),
+					assigned_rn,
+					row_numbers[row_idx],
+					times.get(row_idx).copied().flatten(),
+					&mut row_keys,
+				)?;
+				values_bytes_vec.push(encoded[row_idx].clone());
 			}
 		} else {
 			note_touched(touched, &[]);
 			let meta = metadata
 				.as_mut()
 				.expect("non-partitioned ring buffer sink must have loaded global metadata");
-			let rows: Vec<usize> = (0..row_count).collect();
-			self.insert_group(
-				txn,
-				object_id,
-				meta,
-				None,
-				None,
-				&encoded,
-				row_numbers,
-				&times,
-				&rows,
-				&mut row_keys,
-				&mut values_bytes_vec,
-			)?;
+			let skip = self.evict_for_insert(txn, object_id, meta, false, None, row_count)?;
+			for row_idx in skip..row_count {
+				let assigned_rn = RowNumber(meta.tail);
+				self.place_row(
+					&mut sets,
+					object_id,
+					meta,
+					None,
+					assigned_rn,
+					row_numbers[row_idx],
+					times.get(row_idx).copied().flatten(),
+					&mut row_keys,
+				)?;
+				values_bytes_vec.push(encoded[row_idx].clone());
+			}
 		}
+		self.state_set(txn, sets)?;
 
 		txn.set(row_keys, values_bytes_vec)?;
 		txn.emit(view.id(), Diff::insert(coerced))?;
@@ -978,26 +998,18 @@ impl SinkRingBufferViewOperator {
 		Ok(&mut partition_metadata.get_mut(values).expect("partition metadata was just loaded").1)
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	fn insert_group(
+	fn evict_for_insert(
 		&self,
 		txn: &mut DeferredTransaction,
 		object_id: StorageId,
 		meta: &mut RingBufferMetadata,
-		mut next_row: Option<&mut u64>,
+		shared_numbers: bool,
 		partition: Option<Partition>,
-		encoded: &[EncodedBytes],
-		row_numbers: &[RowNumber],
-		times: &[Option<DateTime>],
-		rows: &[usize],
-		row_keys: &mut Vec<EncodedKey>,
-		values: &mut Vec<EncodedBytes>,
-	) -> Result<()> {
-		let incoming = rows.len() as u64;
-		let mut evict_needed = (meta.count + incoming).saturating_sub(self.capacity);
+		incoming: usize,
+	) -> Result<usize> {
+		let mut evict_needed = (meta.count + incoming as u64).saturating_sub(self.capacity);
 		let mut removes: Vec<GroupStateKey> = Vec::new();
 
-		let shared_numbers = next_row.is_some();
 		let mut cursor = meta.head;
 		let mut evicted = false;
 		while evict_needed > 0 && meta.head < meta.tail {
@@ -1041,38 +1053,33 @@ impl SinkRingBufferViewOperator {
 			meta.head = self.lowest_storage_row(txn, partition)?.unwrap_or(meta.tail);
 		}
 
-		let skip = evict_needed.min(incoming) as usize;
+		let skip = evict_needed.min(incoming as u64) as usize;
 		if !shared_numbers {
 			meta.tail += skip as u64;
 		}
+		Ok(skip)
+	}
 
-		let mut sets: Vec<(GroupStateKey, EncodedPodRow)> = Vec::with_capacity((rows.len() - skip) * 3);
-		for &row_idx in &rows[skip..] {
-			let source_rn = row_numbers[row_idx];
-			let assigned_rn = match next_row.as_deref_mut() {
-				Some(next) => {
-					let assigned = RowNumber(*next);
-					*next += 1;
-					assigned
-				}
-				None => RowNumber(meta.tail),
-			};
-			self.push_row_entry_sets(
-				&mut sets,
-				partition,
-				assigned_rn,
-				source_rn,
-				times.get(row_idx).copied().flatten(),
-			)?;
-			row_keys.push(self.rb_key(object_id, assigned_rn, partition));
-			values.push(encoded[row_idx].clone());
-			if meta.is_empty() {
-				meta.head = assigned_rn.0;
-			}
-			meta.count += 1;
-			meta.tail = assigned_rn.0 + 1;
+	#[allow(clippy::too_many_arguments)]
+	fn place_row(
+		&self,
+		sets: &mut Vec<(GroupStateKey, EncodedPodRow)>,
+		object_id: StorageId,
+		meta: &mut RingBufferMetadata,
+		partition: Option<Partition>,
+		assigned_rn: RowNumber,
+		source_rn: RowNumber,
+		time: Option<DateTime>,
+		row_keys: &mut Vec<EncodedKey>,
+	) -> Result<()> {
+		self.push_row_entry_sets(sets, partition, assigned_rn, source_rn, time)?;
+		row_keys.push(self.rb_key(object_id, assigned_rn, partition));
+		if meta.is_empty() {
+			meta.head = assigned_rn.0;
 		}
-		self.state_set(txn, sets)
+		meta.count += 1;
+		meta.tail = assigned_rn.0 + 1;
+		Ok(())
 	}
 
 	#[inline]
