@@ -140,6 +140,7 @@ pub struct FlowActor {
 
 pub struct FlowActorState {
 	flow_engine: FlowEngineInner,
+	pending_stop: Option<(bool, Box<dyn FnOnce() + Send>)>,
 	source_objects: Arc<BTreeSet<ObjectId>>,
 	completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	cursor: CommitVersion,
@@ -1055,6 +1056,20 @@ impl FlowActor {
 		}
 	}
 
+	fn stop_if_pending(&self, state: &mut FlowActorState) -> Directive {
+		if state.committing {
+			return Directive::Continue;
+		}
+		let Some((delete_checkpoint, reply)) = state.pending_stop.take() else {
+			return Directive::Continue;
+		};
+		state.flow_engine.forget_operator_samples();
+		self.on_stop(delete_checkpoint);
+		self.health.clear(self.flow_id);
+		(reply)();
+		Directive::Stop
+	}
+
 	fn on_stop(&self, delete_checkpoint: bool) {
 		if delete_checkpoint {
 			let mut slice = FlowSlice::empty();
@@ -1123,6 +1138,7 @@ impl Actor for FlowActor {
 
 		let state = FlowActorState {
 			flow_engine,
+			pending_stop: None,
 			source_objects: self.initial_source_objects.clone(),
 			completeness_objects: self.initial_completeness_objects.clone(),
 			cursor: self.initial_cursor,
@@ -1226,23 +1242,20 @@ impl Actor for FlowActor {
 				committed,
 			} => {
 				self.on_slice_committed(state, ctx, advance_to, more, result, committed);
-				Directive::Continue
+				self.stop_if_pending(state)
 			}
 			FlowActorMessage::TickCommitted {
 				result,
 			} => {
 				self.on_tick_committed(state, ctx, result);
-				Directive::Continue
+				self.stop_if_pending(state)
 			}
 			FlowActorMessage::Stop {
 				delete_checkpoint,
 				reply,
 			} => {
-				state.flow_engine.forget_operator_samples();
-				self.on_stop(delete_checkpoint);
-				self.health.clear(self.flow_id);
-				(reply)();
-				Directive::Stop
+				state.pending_stop = Some((delete_checkpoint, reply));
+				self.stop_if_pending(state)
 			}
 		}
 	}

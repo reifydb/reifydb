@@ -3,7 +3,11 @@
 
 use std::{
 	collections::{BTreeMap, BTreeSet},
-	sync::Arc,
+	iter::once,
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering},
+	},
 };
 
 use reifydb_cdc::{
@@ -95,6 +99,16 @@ pub enum FlowSupervisorMessage {
 	PersistFrontiers,
 
 	CheckStalls,
+
+	Reform {
+		head: FlowId,
+		dropped: Vec<FlowId>,
+	},
+
+	Join {
+		head: FlowId,
+		joiners: Vec<(FlowId, ViewId)>,
+	},
 }
 
 pub struct FlowSupervisorParams {
@@ -158,6 +172,7 @@ pub struct SupervisorState {
 	full_wake_armed: bool,
 	stall_watches: BTreeMap<FlowId, StallWatch>,
 	units: BTreeMap<FlowId, routing::FusedUnit>,
+	joining: bool,
 }
 
 enum FlowStart {
@@ -372,7 +387,7 @@ impl FlowSupervisor {
 		};
 
 		let changed = self.update_tracker(&items);
-		self.process_ddl(state, &items);
+		self.process_ddl(state, &items, ctx);
 
 		let scan_lease = self.engine.acquire_version_lease(bound).unwrap_or_else(|e| {
 			panic!(
@@ -415,6 +430,7 @@ impl FlowSupervisor {
 		ctx.schedule_once(Duration::from_milliseconds(FLOW_STALL_CHECK_INTERVAL_MS).unwrap(), || {
 			FlowSupervisorMessage::CheckStalls
 		});
+		self.try_join(state, ctx);
 		let timeout = Duration::from_milliseconds(FLOW_STALL_TIMEOUT_MS).unwrap();
 		let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until()).min(self.control.get());
 		let positions = self.flow_tracker.all();
@@ -442,12 +458,63 @@ impl FlowSupervisor {
 		self.flow_tracker.wake_flows_now(state.flows.keys().copied());
 	}
 
-	fn process_ddl(&self, state: &mut SupervisorState, items: &[Arc<Cdc>]) {
+	fn process_ddl(&self, state: &mut SupervisorState, items: &[Arc<Cdc>], ctx: &Context<FlowSupervisorMessage>) {
 		let deleted = extract_deleted_flow_ids(items);
 		let operators = self.engine.operator_state();
 		let mut changed = false;
 		let mut lineage_dirty = false;
+		let mut reforms: BTreeMap<FlowId, Vec<FlowId>> = BTreeMap::new();
+		for unit in state.units.values_mut() {
+			if deleted.contains(&unit.head) {
+				continue;
+			}
+			let dropped: Vec<FlowId> = unit
+				.members
+				.iter()
+				.map(|(member, _)| *member)
+				.filter(|member| deleted.contains(member))
+				.collect();
+			if dropped.is_empty() {
+				continue;
+			}
+			unit.members.retain(|(member, _)| !dropped.contains(member));
+			reforms.insert(unit.head, dropped);
+		}
+		state.units.retain(|head, _| !deleted.contains(head));
+		for (head, dropped) in &reforms {
+			let Some(handle) = state.flows.remove(head) else {
+				continue;
+			};
+			let self_ref = ctx.self_ref().clone();
+			let (head, dropped) = (*head, dropped.clone());
+			let reply = Box::new(move || {
+				let _ = self_ref.send(FlowSupervisorMessage::Reform {
+					head,
+					dropped,
+				});
+			});
+			if handle
+				.actor_ref()
+				.send(FlowActorMessage::Stop {
+					delete_checkpoint: false,
+					reply,
+				})
+				.is_err()
+			{
+				panic!("unit {} stopped before it could be re-formed", head.0);
+			}
+			changed = true;
+		}
+		let reformed: BTreeSet<FlowId> = reforms.values().flatten().copied().collect();
 		for flow_id in &deleted {
+			if reformed.contains(flow_id) {
+				state.sources.remove(flow_id);
+				state.stall_watches.remove(flow_id);
+				self.health.clear(*flow_id);
+				state.analyzer.remove(*flow_id);
+				lineage_dirty = true;
+				continue;
+			}
 			let retired = match retire_flow(&operators, &mut state.flows, *flow_id) {
 				Ok(retired) => retired,
 				Err(e) => panic!("flow {} checkpoint removal failed: {e}", flow_id.0),
@@ -535,6 +602,191 @@ impl FlowSupervisor {
 		if lineage_dirty || changed {
 			state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
 		}
+	}
+
+	fn handle_reform(&self, state: &mut SupervisorState, head: FlowId, dropped: Vec<FlowId>) {
+		let mut slice = FlowSlice::empty();
+		slice.checkpoint_deletes.extend(dropped);
+		let reply: SliceCommitReply = Box::new(|_| {});
+		let _ = self.committers[head.0 as usize % self.committers.len()].send(CommitterMessage::Slice {
+			slice,
+			reply,
+		});
+		if state.units.get(&head).is_some_and(|unit| unit.members.is_empty()) {
+			state.units.remove(&head);
+			self.flow_tracker.clear_unit(head);
+		}
+		self.respawn(state, head);
+		state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
+		debug!(flow_id = head.0, "re-formed a fused unit after a member was dropped");
+	}
+
+	fn try_join(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
+		if state.joining {
+			return;
+		}
+		let graph = state.analyzer.get_dependency_graph();
+		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
+		let ringbuffer: BTreeSet<FlowId> = state
+			.analyzer
+			.flows()
+			.iter()
+			.filter(|flow| {
+				flow.get_operator_ids().any(|id| {
+					flow.get_operator(&id).is_some_and(|node| {
+						matches!(node.ty, OperatorDef::SinkRingBufferView { .. })
+					})
+				})
+			})
+			.map(|flow| flow.id)
+			.collect();
+		let mut candidates: BTreeSet<FlowId> = state.flows.keys().copied().collect();
+		for unit in state.units.values() {
+			candidates.extend(unit.members.iter().map(|(member, _)| *member));
+		}
+		let operators = self.engine.operator_state();
+		for unit in routing::fused_units(graph, &candidates, &view_kind, &|flow| ringbuffer.contains(&flow)) {
+			if !state.flows.contains_key(&unit.head) {
+				continue;
+			}
+			let current = state.units.get(&unit.head).map_or(0, |current| current.members.len());
+			let fused = state
+				.units
+				.get(&unit.head)
+				.map(|current| current.members.as_slice())
+				.unwrap_or_default();
+			if unit.members.len() <= current || unit.members[..current] != *fused {
+				continue;
+			}
+			let joiners = unit.members[current..].to_vec();
+			if !joiners.iter().all(|(member, _)| {
+				state.flows.contains_key(member) && !state.units.contains_key(member)
+			}) {
+				continue;
+			}
+			let Some(head_at) = stored_checkpoint(&operators, unit.head) else {
+				continue;
+			};
+			if !joiners.iter().all(|(member, _)| {
+				stored_checkpoint(&operators, *member).is_some_and(|at| at >= head_at)
+			}) {
+				continue;
+			}
+			self.stop_for_join(state, ctx, unit.head, joiners);
+			return;
+		}
+	}
+
+	fn stop_for_join(
+		&self,
+		state: &mut SupervisorState,
+		ctx: &Context<FlowSupervisorMessage>,
+		head: FlowId,
+		joiners: Vec<(FlowId, ViewId)>,
+	) {
+		state.joining = true;
+		let flows: Vec<FlowId> = once(head).chain(joiners.iter().map(|(member, _)| *member)).collect();
+		let left = Arc::new(AtomicUsize::new(flows.len()));
+		for flow_id in flows {
+			let handle = state.flows.remove(&flow_id).expect("a flow about to join is running");
+			let left = left.clone();
+			let self_ref = ctx.self_ref().clone();
+			let joiners = joiners.clone();
+			let reply = Box::new(move || {
+				if left.fetch_sub(1, Ordering::AcqRel) == 1 {
+					let _ = self_ref.send(FlowSupervisorMessage::Join {
+						head,
+						joiners,
+					});
+				}
+			});
+			if handle
+				.actor_ref()
+				.send(FlowActorMessage::Stop {
+					delete_checkpoint: false,
+					reply,
+				})
+				.is_err()
+			{
+				panic!("flow {} stopped before it could join unit {}", flow_id.0, head.0);
+			}
+		}
+	}
+
+	fn handle_join(&self, state: &mut SupervisorState, head: FlowId, joiners: Vec<(FlowId, ViewId)>) {
+		state.joining = false;
+		let operators = self.engine.operator_state();
+		let known = |flow_id: FlowId| state.analyzer.flows().iter().any(|flow| flow.id == flow_id);
+		let fused = known(head)
+			&& stored_checkpoint(&operators, head).is_some_and(|head_at| {
+				joiners.iter().all(|(member, _)| {
+					known(*member)
+						&& stored_checkpoint(&operators, *member)
+							.is_some_and(|at| at >= head_at)
+				})
+			});
+		if fused {
+			for (member, _) in &joiners {
+				state.sources.insert(*member, Arc::new(BTreeSet::new()));
+			}
+			state.units
+				.entry(head)
+				.or_insert_with(|| routing::FusedUnit {
+					head,
+					members: Vec::new(),
+				})
+				.members
+				.extend(joiners.iter().copied());
+		}
+		self.respawn(state, head);
+		if !fused {
+			for (member, _) in &joiners {
+				self.respawn(state, *member);
+			}
+		}
+		state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
+		debug!(flow_id = head.0, fused, "a join attempt finished");
+	}
+
+	fn respawn(&self, state: &mut SupervisorState, flow_id: FlowId) {
+		let Some(flow) = state.analyzer.flows().iter().find(|flow| flow.id == flow_id).cloned() else {
+			return;
+		};
+		let members: Vec<(FlowDag, ViewId)> = state
+			.units
+			.get(&flow_id)
+			.map(|unit| {
+				unit.members
+					.iter()
+					.filter_map(|(member, view)| {
+						state.analyzer
+							.flows()
+							.iter()
+							.find(|flow| flow.id == *member)
+							.cloned()
+							.map(|dag| (dag, *view))
+					})
+					.collect()
+			})
+			.unwrap_or_default();
+		let start = match stored_checkpoint(&self.engine.operator_state(), flow_id) {
+			Some(checkpoint) => FlowStart::Resume(checkpoint),
+			None => {
+				let version = self.engine.done_until();
+				let (_, lease) = self.load_flow_at(flow_id, version);
+				FlowStart::Backfill(
+					version,
+					lease,
+					self.engine.operator_state().checkpoint_pin(version),
+				)
+			}
+		};
+		let closure = state.analyzer.get_dependency_graph().upstream_closure();
+		let source_objects = state.sources.get(&flow_id).cloned().unwrap_or_default();
+		let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
+		self.publish_routing(state, flow_id);
+		let handle = self.spawn_flow(flow, members, source_objects, completeness_objects, start);
+		state.flows.insert(flow_id, handle);
 	}
 
 	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> (FlowDag, VersionLeaseGuard) {
@@ -838,6 +1090,7 @@ impl Actor for FlowSupervisor {
 			full_wake_armed: false,
 			stall_watches: BTreeMap::new(),
 			units: BTreeMap::new(),
+			joining: false,
 		}
 	}
 
@@ -851,6 +1104,14 @@ impl Actor for FlowSupervisor {
 			FlowSupervisorMessage::WakeAll => self.handle_wake_all(state),
 			FlowSupervisorMessage::PersistFrontiers => self.handle_persist_frontiers(ctx),
 			FlowSupervisorMessage::CheckStalls => self.handle_check_stalls(state, ctx),
+			FlowSupervisorMessage::Reform {
+				head,
+				dropped,
+			} => self.handle_reform(state, head, dropped),
+			FlowSupervisorMessage::Join {
+				head,
+				joiners,
+			} => self.handle_join(state, head, joiners),
 		}
 		Directive::Continue
 	}

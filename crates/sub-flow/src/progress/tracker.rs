@@ -365,6 +365,10 @@ impl FlowPositionTracker {
 		self.inner.write().units.insert(flow_id, head);
 	}
 
+	pub fn clear_unit(&self, flow_id: FlowId) {
+		self.inner.write().units.remove(&flow_id);
+	}
+
 	pub fn units(&self) -> Vec<(FlowId, FlowId)> {
 		self.inner.read().units.iter().map(|(flow, head)| (*flow, *head)).collect()
 	}

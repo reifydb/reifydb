@@ -363,6 +363,86 @@ fn a_fused_child_reads_a_dictionary_column_its_parent_got_as_text_as_entry_ids()
 	db.stop();
 }
 
+fn ids(db: &TestDb, flows: &[&str]) -> Vec<u64> {
+	flows.iter().map(|flow| catalog_id(db, "flows", flow)).collect()
+}
+
+fn under(db: &TestDb, head: &str, flows: &[&str]) -> Vec<(u64, u64)> {
+	let head = catalog_id(db, "flows", head);
+	let mut want: Vec<(u64, u64)> = ids(db, flows).into_iter().map(|flow| (flow, head)).collect();
+	want.sort_unstable();
+	want
+}
+
+#[test]
+fn dropping_a_fused_member_leaves_its_siblings_running() {
+	// A unit that keeps running a dropped member writes into a view that no longer exists and stalls its siblings.
+	let path = fresh_chain("fused_chain_drop_member");
+	let mut db = open(&path, true);
+	settle(&db);
+	assert_eq!(units(&db), under(&db, "a", &["a", "b", "c"]), "the chain must start fused");
+	let (a, b) = (ids(&db, &["a"])[0], ids(&db, &["b"])[0]);
+
+	db.admin("DROP VIEW fu::c");
+	let mut want = vec![(a, a), (b, a)];
+	want.sort_unstable();
+	let got = await_value(want.clone(), TIMEOUT, || units(&db));
+	assert_eq!(got, want, "the re-formed unit must list a and b under a, and no longer c");
+
+	db.command("INSERT fu::src [{ id: 4, g: 2, v: 40 }]");
+	settle(&db);
+	await_groups(&db, "fu::b", &[(1, 1, 20), (2, 2, 70)], "after a write that follows the drop");
+	db.stop();
+}
+
+#[test]
+fn dropping_every_member_of_a_unit_leaves_its_head_running_alone() {
+	// A head left with no members must run as a plain flow, or the unit table keeps reporting fusion that is gone.
+	let path = fresh_chain("fused_chain_drop_all_members");
+	let mut db = open(&path, true);
+	settle(&db);
+	assert_eq!(units(&db), under(&db, "a", &["a", "b", "c"]), "the chain must start fused");
+
+	db.admin("DROP VIEW fu::c");
+	let a = ids(&db, &["a"])[0];
+	let b = ids(&db, &["b"])[0];
+	await_value(vec![(a, a), (b, a)], TIMEOUT, || units(&db));
+	db.admin("DROP VIEW fu::b");
+	let got = await_value(Vec::new(), TIMEOUT, || units(&db));
+	assert_eq!(got, Vec::new(), "a lone head is no unit, so the table must list nothing");
+
+	db.command("INSERT fu::src [{ id: 4, g: 2, v: 40 }]");
+	settle(&db);
+	db.await_row_count("FROM fu::a", 3, TIMEOUT);
+	db.stop();
+}
+
+#[test]
+fn a_view_created_at_runtime_joins_its_parents_unit() {
+	// A view created at runtime that never joins keeps a commit per hop until the next restart.
+	let path = fresh_chain("fused_chain_runtime_join");
+	let mut db = open(&path, true);
+	settle(&db);
+	db.admin("CREATE DEFERRED VIEW fu::d { g: int4, n: int8, total: int4 } AS { FROM fu::c | filter { n > 0 } }");
+	settle(&db);
+	await_groups(&db, "fu::d", &[(1, 1, 20), (2, 1, 30)], "after its backfill");
+	let want = under(&db, "a", &["a", "b", "c", "d"]);
+	let got = await_value(want.clone(), TIMEOUT, || units(&db));
+	assert_eq!(got, want, "d must join a's unit without a restart");
+
+	db.command("INSERT fu::src [{ id: 4, g: 2, v: 40 }]");
+	settle(&db);
+	await_groups(&db, "fu::d", &[(1, 1, 20), (2, 2, 70)], "after a write that follows the join");
+	let head = commits(&db, view_object(&db, "a"));
+	let joined = commits(&db, view_object(&db, "d"));
+	assert_eq!(
+		head.last(),
+		joined.last(),
+		"the joined member must land in the head's commit: a {head:?}, d {joined:?}"
+	);
+	db.stop();
+}
+
 #[test]
 fn a_deferred_chain_follows_the_source_when_fused() {
 	// A fused child that is also routed its parent's change stream counts every source row twice.
