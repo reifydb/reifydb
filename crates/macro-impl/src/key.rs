@@ -613,6 +613,17 @@ fn expand(name: &str, tag: &str, fields: &[KeyField]) -> TokenStream {
 		}
 	}
 	out.push_str("\t\t]\n\t}\n}\n\n");
+	out.push_str(&format!("#[automatically_derived]\nimpl {name} {{\n"));
+	out.push_str("\tpub fn cmp_fields(&self, other: &Self) -> ::core::cmp::Ordering {\n");
+	for field in fields {
+		for expr in field.column.field_exprs(&field.name) {
+			let theirs = expr.replace("self.", "other.");
+			out.push_str(&format!(
+				"\t\tmatch Ord::cmp(&{expr}, &{theirs}) {{\n\t\t\t::core::cmp::Ordering::Equal => {{}}\n\t\t\tordering => return ordering,\n\t\t}}\n"
+			));
+		}
+	}
+	out.push_str("\t\t::core::cmp::Ordering::Equal\n\t}\n}\n\n");
 	out.push_str(&expand_tests(name, fields));
 
 	out.parse().expect("derived key impl must be valid Rust")

@@ -164,6 +164,8 @@ pub fn expand_tests(name: &str, fields: &[KeyField]) -> String {
 	out.push_str(&order_test(name));
 	out.push('\n');
 	out.push_str(&byte_replay_test(name));
+	out.push('\n');
+	out.push_str(&cmp_fields_test(name));
 
 	out.push_str("}\n");
 	out
@@ -237,6 +239,21 @@ fn expected_order_fn(name: &str, fields: &[KeyField]) -> String {
 	}
 
 	out.push_str("\t\t(Ordering::Equal, \"<no column>\")\n\t}\n");
+	out
+}
+
+fn cmp_fields_test(name: &str) -> String {
+	let mut out = String::new();
+	out.push_str(
+		"\t// the direct comparison must agree with the field list it shortcuts, or typed sorts drift from it.\n",
+	);
+	out.push_str("\t#[test]\n\tfn direct_field_comparison_agrees_with_the_field_list() {\n");
+	out.push_str("\t\tlet __samples = __samples();\n");
+	out.push_str("\t\tfor __a in __samples.iter() {\n\t\t\tfor __b in __samples.iter() {\n");
+	out.push_str(&format!("\t\t\t\tassert_eq!(\n\t\t\t\t\t{name}::cmp_fields(__a, __b),\n\t\t\t\t\t\
+		 KeyFields::fields(__a).cmp(&KeyFields::fields(__b)),\n\t\t\t\t\t\"{name} compares {{:?}} and \
+		 {{:?}} differently from its field list\",\n\t\t\t\t\t__a,\n\t\t\t\t\t__b\n\t\t\t\t);\n"));
+	out.push_str("\t\t\t}\n\t\t}\n\t}\n");
 	out
 }
 
