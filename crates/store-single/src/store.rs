@@ -4,7 +4,6 @@
 use std::{
 	collections::{BTreeMap, HashMap},
 	ops::{Bound, Deref},
-	slice,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -245,12 +244,15 @@ impl SingleVersionGet for StandardSingleStore {
 	fn get(&self, keys: &[EncodedKey]) -> Result<Vec<Option<SingleVersionRow>>> {
 		let mut rows = Vec::with_capacity(keys.len());
 		let mut misses = Vec::new();
+		let mut buffered = match &self.commit {
+			Some(buffer) => {
+				let key_slices: Vec<&[u8]> = keys.iter().map(|key| key.as_ref()).collect();
+				buffer.get_with_tombstone(&key_slices)?
+			}
+			None => vec![None; keys.len()],
+		};
 		for (index, key) in keys.iter().enumerate() {
-			let buffered = match &self.commit {
-				Some(buffer) => buffer.get_with_tombstone(slice::from_ref(&key.as_ref()))?.remove(0),
-				None => None,
-			};
-			rows.push(match buffered {
+			rows.push(match buffered[index].take() {
 				Some(value) => value.map(|value| SingleVersionRow {
 					key: key.clone(),
 					bytes: EncodedBytes(value),
