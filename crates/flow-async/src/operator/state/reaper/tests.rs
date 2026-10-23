@@ -283,8 +283,8 @@ fn the_reap_scan_stops_fetching_at_the_budget() {
 	assert_eq!(freed, 3, "the reap stops at the budget");
 	assert_eq!(
 		store.rows_visited() - before,
-		3,
-		"and the scan behind it stops there too, rather than fetching all twelve"
+		4,
+		"the scan reads one row past the budget to know the group is not done, never all twelve"
 	);
 }
 

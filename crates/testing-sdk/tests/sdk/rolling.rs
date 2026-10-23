@@ -469,13 +469,14 @@ fn create_without_a_window_reports_flow_065() {
 #[test]
 fn a_plain_operator_with_all_kinds_publishes_tumbling_sliding_session_and_rolling() {
 	// an AllKinds operator that hid sliding or rolling would have those views refused at create
+	// a rolling kind must declare its pane, otherwise create builds a view the constructor then refuses
 	assert_eq!(
 		<PlainDriver<TestRollingSum> as MountedOperator>::WINDOW,
 		WindowRequirements {
 			takes_window: true,
 			kinds: &["tumbling", "sliding", "session", "rolling"],
 			domain: WindowSizeDomain::Time,
-			needs_pane: false,
+			needs_pane: true,
 			throttles: true,
 		}
 	);
