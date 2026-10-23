@@ -22,7 +22,7 @@ use crate::{
 	common::OperatorClass,
 	interface::catalog::flow::OperatorId,
 	key::{
-		any::{ByteEncoding, Field, KeyFields, RawEncoding, Width},
+		any::{ByteEncoding, Field, KeyFields, RawEncoding, TaggedKey, Width},
 		bound::{TaggedKeyBound, TaggedKeyBoundRange},
 		operator::{
 			keyspace::{
@@ -631,6 +631,59 @@ impl GroupStateKey {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupStateRange {
+	Keyspace {
+		group: GroupId,
+		keyspace: KeyspaceId,
+		start: Bound<Vec<u8>>,
+		end: Bound<Vec<u8>>,
+	},
+	Group(GroupId),
+	GroupData(GroupId),
+	GroupIdentity(GroupId),
+}
+
+impl GroupStateRange {
+	pub fn for_operator(self, operator: OperatorId) -> TaggedKeyBoundRange {
+		match self {
+			Self::Keyspace {
+				group,
+				keyspace,
+				start,
+				end,
+			} => {
+				let whole = keyspace_range(operator, group, keyspace);
+				let at = |suffix: &[u8], edge: SuffixEdge| {
+					TaggedKeyBound::Key(TaggedKey::OperatorState(OperatorStateKey::new(
+						operator,
+						group,
+						keyspace,
+						suffix_at_edge(keyspace, suffix, edge),
+					)))
+				};
+				let start = match start {
+					Bound::Unbounded => whole.start,
+					Bound::Included(suffix) => Bound::Included(at(&suffix, SuffixEdge::Low)),
+					Bound::Excluded(suffix) => Bound::Excluded(at(&suffix, SuffixEdge::High)),
+				};
+				let end = match end {
+					Bound::Unbounded => whole.end,
+					Bound::Included(suffix) => Bound::Included(at(&suffix, SuffixEdge::High)),
+					Bound::Excluded(suffix) => Bound::Excluded(at(&suffix, SuffixEdge::Low)),
+				};
+				TaggedKeyBoundRange {
+					start,
+					end,
+				}
+			}
+			Self::Group(group) => group_range(operator, group),
+			Self::GroupData(group) => group_data_range(operator, group),
+			Self::GroupIdentity(group) => group_identity_range(operator, group),
+		}
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ManagedKey(GroupStateKey);
 
@@ -838,12 +891,6 @@ pub fn node_counter_key(kind: NodeCounterKind) -> GroupStateKey {
 
 pub fn row_number_counter_key() -> GroupStateKey {
 	node_counter_key(NodeCounterKind::RowNumber)
-}
-
-pub fn keyspace_inner_range_upto(group: GroupId, keyspace: KeyspaceId, suffix: &[u8]) -> EncodedKeyRange {
-	let mut bound = keyspace_inner_prefix(group, keyspace);
-	bound.extend_from_slice(suffix);
-	EncodedKeyRange::new(keyspace_inner_range(group, keyspace).start, EncodedKeyRange::prefix(&bound).end)
 }
 
 pub fn group_data_inner_range(group: GroupId) -> EncodedKeyRange {
