@@ -120,12 +120,12 @@ fn bucket(rows: Vec<(GroupStateKey, EncodedPodRow)>) -> (HashMap<GroupId, GroupS
 }
 
 fn scan_group(store: &mut dyn StateStore, group: GroupId, budget: usize) -> Result<Option<GroupScan>> {
-	let swept = store.group_sweep(group, KeyspaceMask::data(), Some(budget.saturating_add(1)))?;
-	if swept.len() > budget {
+	let swept = store.group_sweep(&[group], budget, KeyspaceMask::data())?;
+	if !swept.complete {
 		return Ok(None);
 	}
 	Ok(Some(GroupScan {
-		data: swept,
+		data: swept.rows,
 	}))
 }
 
@@ -171,7 +171,7 @@ where
 	let keys: Vec<GroupStateKey> = scan.data.iter().map(|(key, _)| key.clone()).collect();
 	reaper.reap(store, &keys)?;
 	reifydb_assertions! {
-		let leftover = store.group_sweep(group, KeyspaceMask::data(), None)?.len();
+		let leftover = store.group_sweep(&[group], usize::MAX, KeyspaceMask::data())?.rows.len();
 		assert!(
 			leftover == 0,
 			"group {} still holds {leftover} data rows in its own partition; forgetting its dictionary \
@@ -252,7 +252,7 @@ where
 	R: Reaper,
 {
 	let ordered = sweep_order(groups);
-	let sweep = store.group_sweep_many(&ordered, budget, KeyspaceMask::data())?;
+	let sweep = store.group_sweep(&ordered, budget, KeyspaceMask::data())?;
 	let (mut buckets, last) = bucket(sweep.rows);
 	let cut = match sweep.complete {
 		true => None,
@@ -297,7 +297,7 @@ where
 			continue;
 		}
 		reifydb_assertions! {
-			let leftover = store.group_sweep(group, KeyspaceMask::data(), None)?.len();
+			let leftover = store.group_sweep(&[group], usize::MAX, KeyspaceMask::data())?.rows.len();
 			assert!(
 				leftover == 0,
 				"group {} still holds {leftover} data rows in its own partition; forgetting its dictionary \
@@ -353,7 +353,7 @@ where
 	if group.is_root() {
 		return Ok(0);
 	}
-	let doomed = store.group_sweep(group, KeyspaceMask::data(), Some(budget))?;
+	let doomed = store.group_sweep(&[group], budget, KeyspaceMask::data())?.rows;
 	store.remove_root_siblings(&doomed)?;
 	let keys: Vec<GroupStateKey> = doomed.iter().map(|(key, _)| key.clone()).collect();
 	reaper.reap(store, &keys)?;

@@ -143,22 +143,8 @@ impl StateStore for Prefetched<'_> {
 		self.store.state_page_inner(range, limit)
 	}
 
-	fn group_sweep(
-		&mut self,
-		group: GroupId,
-		keyspaces: KeyspaceMask,
-		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		self.store.group_sweep(group, keyspaces, limit)
-	}
-
-	fn group_sweep_many(
-		&mut self,
-		groups: &[GroupId],
-		limit: usize,
-		keyspaces: KeyspaceMask,
-	) -> Result<GroupSweep> {
-		self.store.group_sweep_many(groups, limit, keyspaces)
+	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep> {
+		self.store.group_sweep(groups, limit, keyspaces)
 	}
 
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {

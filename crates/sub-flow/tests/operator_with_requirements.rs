@@ -548,13 +548,15 @@ fn a_rolling_window_without_a_pane_fails_the_create_on_a_top_k_operator() {
 }
 
 #[test]
-fn a_rolling_window_without_a_pane_creates_on_an_operator_that_needs_none() {
-	// The pane check must key on the operator's need, or every paneless rolling view would be refused.
+fn a_rolling_window_without_a_pane_fails_the_create_on_a_plain_operator() {
+	// A plain rolling operator buckets by pane at construction, so without one its flow never starts.
 	let db = windowed_memory();
 	event_time_source(&db);
 
-	let statement = view("v", "rolling_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }");
-	assert!(db.try_admin(&statement).is_ok(), "a plain rolling operator needs no pane: {statement}");
+	assert_eq!(
+		refused_code(&db, "rolling_probe{} WITH { window: rolling, duration: 1h, lateness: 2s }"),
+		"FLOW_075"
+	);
 }
 
 #[test]

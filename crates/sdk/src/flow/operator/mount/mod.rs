@@ -240,7 +240,7 @@ mod tests {
 		assert!(host.state_get(from_ref(&absent)).unwrap().pop().flatten().is_none());
 
 		assert!(
-			host.group_sweep(group, KeyspaceMask::all(), None).unwrap().is_empty(),
+			host.group_sweep(&[group], usize::MAX, KeyspaceMask::all()).unwrap().rows.is_empty(),
 			"the probe must leave no row"
 		);
 	}
@@ -273,8 +273,9 @@ mod tests {
 		);
 
 		let from_range: Vec<GroupStateKey> = host
-			.group_sweep(GroupId::ROOT, KeyspaceMask::all(), None)
+			.group_sweep(&[GroupId::ROOT], usize::MAX, KeyspaceMask::all())
 			.unwrap()
+			.rows
 			.into_iter()
 			.map(|(key, _)| key)
 			.collect();

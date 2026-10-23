@@ -244,8 +244,7 @@ where
 			return internal_err!("retained window counts overflow the entry read (total={})", total);
 		};
 		let ids: Vec<GroupId> = windows.iter().map(|(group, _)| *group).collect();
-		let sweep =
-			store.group_sweep_many(&ids, limit, KeyspaceMask::of([KeyspaceId::GUEST_RETAINED_ENTRY]))?;
+		let sweep = store.group_sweep(&ids, limit, KeyspaceMask::of([KeyspaceId::GUEST_RETAINED_ENTRY]))?;
 		if !sweep.complete {
 			return internal_err!(
 				"retained windows hold more entries than their headers count (limit={})",

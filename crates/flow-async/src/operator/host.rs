@@ -314,21 +314,7 @@ impl<T: FlowTransaction> StateStore for TxnHostContext<'_, T> {
 		Ok(out)
 	}
 
-	fn group_sweep(
-		&mut self,
-		group: GroupId,
-		keyspaces: KeyspaceMask,
-		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		Ok(self.group_sweep_many(&[group], limit.unwrap_or(usize::MAX), keyspaces)?.rows)
-	}
-
-	fn group_sweep_many(
-		&mut self,
-		groups: &[GroupId],
-		limit: usize,
-		keyspaces: KeyspaceMask,
-	) -> Result<GroupSweep> {
+	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep> {
 		let batch = self.txn.state_group_range(self.operator, groups, limit, keyspaces)?;
 		let mut rows = Vec::with_capacity(batch.items.len());
 		for r in batch.items {

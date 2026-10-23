@@ -43,35 +43,20 @@ pub fn write_batch<S: StateStore + ?Sized>(store: &mut S, batch: StateBatch) -> 
 
 pub fn group_sweep<S: StateStore + ?Sized>(
 	store: &mut S,
-	group: GroupId,
-	keyspaces: KeyspaceMask,
-	limit: Option<usize>,
-) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-	let mut rows = Vec::new();
-	for keyspace in keyspaces.held().into_iter().rev() {
-		let remaining = match limit {
-			Some(limit) if rows.len() >= limit => break,
-			Some(limit) => Some(limit - rows.len()),
-			None => None,
-		};
-		rows.extend(store.state_page_inner(keyspace_inner_range(group, keyspace), remaining)?);
-	}
-	Ok(rows)
-}
-
-pub fn group_sweep_many<S: StateStore + ?Sized>(
-	store: &mut S,
 	groups: &[GroupId],
 	limit: usize,
 	keyspaces: KeyspaceMask,
 ) -> Result<GroupSweep> {
+	let probe = limit.saturating_add(1);
 	let mut rows = Vec::new();
 	for group in sweep_order(groups) {
-		if rows.len() > limit {
-			break;
+		for keyspace in keyspaces.held().into_iter().rev() {
+			if rows.len() >= probe {
+				break;
+			}
+			let remaining = probe - rows.len();
+			rows.extend(store.state_page_inner(keyspace_inner_range(group, keyspace), Some(remaining))?);
 		}
-		let remaining = limit.saturating_add(1).saturating_sub(rows.len());
-		rows.extend(store.group_sweep(group, keyspaces, Some(remaining))?);
 	}
 	let complete = rows.len() <= limit;
 	rows.truncate(limit);

@@ -129,25 +129,10 @@ impl<T: FlowTransaction> StateStore for CountingHost<'_, T> {
 		self.inner.state_page_inner(range, limit)
 	}
 
-	fn group_sweep(
-		&mut self,
-		group: GroupId,
-		keyspaces: KeyspaceMask,
-		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		self.record("group_sweep", 1);
-		self.inner.group_sweep(group, keyspaces, limit)
-	}
-
-	fn group_sweep_many(
-		&mut self,
-		groups: &[GroupId],
-		limit: usize,
-		keyspaces: KeyspaceMask,
-	) -> Result<GroupSweep> {
-		self.record("group_sweep_many", groups.len());
-		self.record("group_sweep_many_limit", limit);
-		self.inner.group_sweep_many(groups, limit, keyspaces)
+	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep> {
+		self.record("group_sweep", groups.len());
+		self.record("group_sweep_limit", limit);
+		self.inner.group_sweep(groups, limit, keyspaces)
 	}
 
 	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {

@@ -339,23 +339,9 @@ impl StateStore for MockStore {
 		Ok(())
 	}
 
-	fn group_sweep(
-		&mut self,
-		group: GroupId,
-		keyspaces: KeyspaceMask,
-		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		per_key::group_sweep(self, group, keyspaces, limit)
-	}
-
-	fn group_sweep_many(
-		&mut self,
-		groups: &[GroupId],
-		limit: usize,
-		keyspaces: KeyspaceMask,
-	) -> Result<GroupSweep> {
-		self.count_call("group_sweep_many", groups.len());
-		let mut sweep = per_key::group_sweep_many(self, groups, limit, keyspaces)?;
+	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep> {
+		self.count_call("group_sweep", groups.len());
+		let mut sweep = per_key::group_sweep(self, groups, limit, keyspaces)?;
 		sweep.complete &= !self.incomplete_sweeps;
 		Ok(sweep)
 	}

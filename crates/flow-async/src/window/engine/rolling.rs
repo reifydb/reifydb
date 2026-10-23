@@ -1830,7 +1830,7 @@ mod tests {
 		assert_eq!(store.pane_count(), 6, "precondition: each group holds two panes");
 		let batched_removes =
 			|store: &MockStore| store.sizes("state_remove").into_iter().filter(|size| *size > 1).count();
-		let before = |store: &MockStore| ["group_sweep_many", "pane_set"].map(|name| store.calls(name));
+		let before = |store: &MockStore| ["group_sweep", "pane_set"].map(|name| store.calls(name));
 		let [sweeps, pane_sets] = before(&store);
 		let removes = batched_removes(&store);
 
@@ -1843,7 +1843,7 @@ mod tests {
 			vec![(1u32, Some(7i64)), (2, Some(7)), (3, Some(7))],
 			"precondition: all three groups were due"
 		);
-		assert_eq!(store.calls("group_sweep_many") - sweeps, 1, "one pane read for all due groups");
+		assert_eq!(store.calls("group_sweep") - sweeps, 1, "one pane read for all due groups");
 		assert_eq!(batched_removes(&store) - removes, 1, "every expired pane goes in one call");
 		assert_eq!(store.calls("pane_set") - pane_sets, 0, "a kept pane is never rewritten");
 		assert_eq!(store.pane_count(), 3, "each group keeps its pane at 40");

@@ -1281,7 +1281,7 @@ where
 			(false, false) => &["tumbling", "sliding"],
 		},
 		domain: <A::Coord as SealDomain>::SIZE_DOMAIN,
-		needs_pane: false,
+		needs_pane: <A::Kinds as KindSet<A>>::ROLLING,
 		throttles: true,
 	};
 

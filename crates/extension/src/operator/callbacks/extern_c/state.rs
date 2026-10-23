@@ -524,7 +524,7 @@ pub(super) extern "C" fn host_state_sweep_many(
 		let host = get_host_mut(ctx_handle);
 		let group_ids: Vec<GroupId> = (0..groups_len).map(|index| host_group(*groups.add(index))).collect();
 
-		match host.group_sweep_many(&group_ids, limit, mask) {
+		match host.group_sweep(&group_ids, limit, mask) {
 			Ok(sweep) => {
 				let handle = state_iterator::create_iterator(iterator_entries(sweep.rows));
 
@@ -1058,20 +1058,11 @@ mod join_row_expiry_guard_tests {
 
 		fn group_sweep(
 			&mut self,
-			group: GroupId,
-			keyspaces: KeyspaceMask,
-			limit: Option<usize>,
-		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-			per_key::group_sweep(self, group, keyspaces, limit)
-		}
-
-		fn group_sweep_many(
-			&mut self,
 			groups: &[GroupId],
 			limit: usize,
 			keyspaces: KeyspaceMask,
 		) -> Result<GroupSweep> {
-			per_key::group_sweep_many(self, groups, limit, keyspaces)
+			per_key::group_sweep(self, groups, limit, keyspaces)
 		}
 
 		fn remove_row_number_for_group(&mut self, _groups: &[GroupId]) -> Result<()> {

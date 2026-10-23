@@ -91,15 +91,7 @@ pub trait StateStore {
 		limit: Option<usize>,
 	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
 
-	fn group_sweep(
-		&mut self,
-		group: GroupId,
-		keyspaces: KeyspaceMask,
-		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>>;
-
-	fn group_sweep_many(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask)
-	-> Result<GroupSweep>;
+	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep>;
 
 	fn remove_root_siblings(&mut self, swept: &[(GroupStateKey, EncodedPodRow)]) -> Result<()> {
 		let mut siblings = Vec::new();

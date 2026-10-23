@@ -14,7 +14,7 @@ pub fn sweep_all<S: StateStore + ?Sized>(
 	groups: &[GroupId],
 	keyspaces: KeyspaceMask,
 ) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-	let sweep = store.group_sweep_many(groups, usize::MAX, keyspaces)?;
+	let sweep = store.group_sweep(groups, usize::MAX, keyspaces)?;
 	if !sweep.complete {
 		return internal_err!("a group sweep stopped before the end of its groups");
 	}

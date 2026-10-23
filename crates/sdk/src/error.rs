@@ -38,6 +38,8 @@ pub enum SdkError {
 	NotImplemented(String),
 
 	Other(String),
+
+	Engine(Error),
 }
 
 impl fmt::Display for SdkError {
@@ -63,6 +65,7 @@ impl fmt::Display for SdkError {
 			SdkError::Timeout => write!(f, "Operation timeout"),
 			SdkError::NotImplemented(msg) => write!(f, "Not implemented: {}", msg),
 			SdkError::Other(msg) => write!(f, "{}", msg),
+			SdkError::Engine(err) => write!(f, "{}", err),
 		}
 	}
 }
@@ -71,13 +74,16 @@ impl error::Error for SdkError {}
 
 impl From<SdkError> for Error {
 	fn from(err: SdkError) -> Self {
-		Error(Box::new(internal!(format!("{}", err))))
+		match err {
+			SdkError::Engine(err) => err,
+			other => Error(Box::new(internal!(format!("{}", other)))),
+		}
 	}
 }
 
 impl From<Error> for SdkError {
 	fn from(err: Error) -> Self {
-		SdkError::Other(err.to_string())
+		SdkError::Engine(err)
 	}
 }
 

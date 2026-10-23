@@ -115,23 +115,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 		Ok(out)
 	}
 
-	fn group_sweep(
-		&mut self,
-		group: GroupId,
-		keyspaces: KeyspaceMask,
-		limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		let (rows, _) =
-			self.0.window_state().sweep_many_bytes(&[group], limit.unwrap_or(usize::MAX), keyspaces)?;
-		Ok(rows)
-	}
-
-	fn group_sweep_many(
-		&mut self,
-		groups: &[GroupId],
-		limit: usize,
-		keyspaces: KeyspaceMask,
-	) -> Result<GroupSweep> {
+	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep> {
 		let (rows, complete) =
 			self.0.window_state().sweep_many_bytes(&sweep_order(groups), limit, keyspaces)?;
 		Ok(GroupSweep {

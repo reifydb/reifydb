@@ -87,15 +87,6 @@ impl StateStore for SingleEntryHost {
 
 	fn group_sweep(
 		&mut self,
-		_group: GroupId,
-		_keyspaces: KeyspaceMask,
-		_limit: Option<usize>,
-	) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-		unimplemented!()
-	}
-
-	fn group_sweep_many(
-		&mut self,
 		_groups: &[GroupId],
 		_limit: usize,
 		_keyspaces: KeyspaceMask,

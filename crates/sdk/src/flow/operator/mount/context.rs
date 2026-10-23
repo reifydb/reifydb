@@ -263,7 +263,7 @@ impl GuestState for InProcessState<'_> {
 	) -> SdkResult<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
 		// SAFETY: host is the &'a mut dyn HostContext InProcessContext::new was built from;
 		// PhantomData keeps that borrow live for 'a and this handle holds it exclusively.
-		let sweep = unsafe { (*self.host).group_sweep_many(groups, limit, guest_sweep_mask(keyspaces)) }
+		let sweep = unsafe { (*self.host).group_sweep(groups, limit, guest_sweep_mask(keyspaces)) }
 			.map_err(to_sdk_err)?;
 		Ok((sweep.rows, sweep.complete))
 	}

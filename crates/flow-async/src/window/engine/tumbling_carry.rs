@@ -676,20 +676,11 @@ mod tests {
 
 		fn group_sweep(
 			&mut self,
-			group: GroupId,
-			keyspaces: KeyspaceMask,
-			limit: Option<usize>,
-		) -> Result<Vec<(GroupStateKey, EncodedPodRow)>> {
-			per_key::group_sweep(self, group, keyspaces, limit)
-		}
-
-		fn group_sweep_many(
-			&mut self,
 			groups: &[GroupId],
 			limit: usize,
 			keyspaces: KeyspaceMask,
 		) -> Result<GroupSweep> {
-			per_key::group_sweep_many(self, groups, limit, keyspaces)
+			per_key::group_sweep(self, groups, limit, keyspaces)
 		}
 
 		fn remove_row_number(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<()> {
