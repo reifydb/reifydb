@@ -11,7 +11,14 @@ use reifydb_core::expression::{Expression, IfExpression};
 use reifydb_value::{
 	error::{Diagnostic, Error},
 	fragment::Fragment,
-	value::{column_view::ColumnView, value_type::ValueType},
+	value::{
+		column_view::ColumnView,
+		dictionary::DictionaryId,
+		value_type::{
+			ValueType,
+			field::{FieldType, from_field, to_field},
+		},
+	},
 };
 
 use crate::{
@@ -59,6 +66,7 @@ pub(super) fn lower_if<'e>(
 	}
 	let nullable = otherwise.is_none() || all.iter().any(|node| node.field.is_nullable());
 	let first = all[0].field.clone();
+	let dictionary = shared_dictionary(&all)?;
 
 	let Some(target) = target else {
 		return Ok(Node {
@@ -89,10 +97,43 @@ pub(super) fn lower_if<'e>(
 		Some(node) => Some(Box::new(shaped(node)?)),
 		None => None,
 	};
+	let field = match dictionary {
+		Some(dictionary) if target == ValueType::DictionaryId => dictionary_field(&name, dictionary, nullable),
+		_ => typed_field(&name, target, nullable),
+	};
 	Ok(Node {
 		expr: Expr::Case(Case::new(None, when_then, otherwise)),
-		field: typed_field(&name, target, nullable),
+		field,
 	})
+}
+
+fn shared_dictionary(nodes: &[&Node]) -> Result<Option<DictionaryId>> {
+	let mut shared = None;
+	for node in nodes {
+		let Some(dictionary) = from_field(&node.field)?.dictionary_id else {
+			return Ok(None);
+		};
+		if shared.is_some_and(|seen| seen != dictionary) {
+			return Ok(None);
+		}
+		shared = Some(dictionary);
+	}
+	Ok(shared)
+}
+
+fn dictionary_field(name: &str, dictionary: DictionaryId, nullable: bool) -> FieldRef {
+	let value_type = match nullable {
+		true => ValueType::Option(Box::new(ValueType::DictionaryId)),
+		false => ValueType::DictionaryId,
+	};
+	Arc::new(to_field(
+		name,
+		&FieldType {
+			value_type: Some(value_type),
+			dictionary_id: Some(dictionary),
+			..FieldType::default()
+		},
+	))
 }
 
 fn branch_columns<'e>(

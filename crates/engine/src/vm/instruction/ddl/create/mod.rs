@@ -28,6 +28,7 @@ use reifydb_core::{
 	},
 	operator_with::ApplyWith,
 	sort::SortKey,
+	util::ioc::IocContainer,
 };
 use reifydb_evaluate::{expression::udf_extract::extract_udf_calls, lower::compile_check, stack::SymbolTable};
 use reifydb_flow::{
@@ -41,6 +42,7 @@ use reifydb_value::{error, fragment::Fragment};
 
 use crate::{
 	Result,
+	flow_check::FlowRegistrationCheckRef,
 	vm::volcano::{
 		filter::resolve_variant_equality,
 		inline::{resolve_is_variants, resolve_sumtype_ctor},
@@ -344,6 +346,7 @@ pub(crate) fn create_deferred_view_flow(
 	symbols: &SymbolTable,
 	view: &View,
 	mut plan: QueryPlan,
+	ioc: &IocContainer,
 ) -> Result<()> {
 	ensure_no_script_routine_call(&mut plan, symbols)?;
 	ensure_apply_operators_registered(&mut plan, operators)?;
@@ -355,6 +358,9 @@ pub(crate) fn create_deferred_view_flow(
 	check_join_retention_requirements(catalog, &mut Transaction::Admin(txn), &dag)?;
 	check_managed_time_requirements(catalog, &mut Transaction::Admin(txn), &dag, operators)?;
 	check_operator_with_requirements(&dag, operators)?;
+	if let Some(registration) = ioc.try_resolve::<FlowRegistrationCheckRef>() {
+		registration.check(txn, &dag)?;
+	}
 	catalog.create_flow(
 		txn,
 		FlowToCreate {

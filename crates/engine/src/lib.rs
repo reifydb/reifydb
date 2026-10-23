@@ -14,6 +14,7 @@ pub mod bulk_insert;
 pub mod engine;
 pub mod environment;
 pub mod error;
+pub mod flow_check;
 pub mod flow_sync;
 pub mod partition;
 pub mod policy;

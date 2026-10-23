@@ -42,7 +42,7 @@ use reifydb_core::{
 	metrics::registry::MetricsRegistry,
 	util::ioc::IocContainer,
 };
-use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
+use reifydb_engine::{engine::StandardEngine, flow_check::FlowRegistrationCheckRef, vm::flow_lineage::ViewLineage};
 use reifydb_flow_async::{
 	operator::metrics::{OperatorSampleCollector, OperatorSampleRegistry},
 	transaction::substrate::FlowSubstrate,
@@ -64,6 +64,7 @@ use reifydb_value::{
 
 use crate::{
 	builder::{CustomOperators, FlowConfig},
+	check::FlowRegistrationProbe,
 	commit::{
 		committer::{Committer, CommitterActor, CommitterHandle},
 		quiescence::FlowMaterialization,
@@ -204,6 +205,12 @@ impl FlowSubsystem {
 		));
 
 		ioc.register_service::<Arc<dyn ConsumerPositions>>(Arc::new(flow_tracker.clone()));
+		ioc.register_service::<FlowRegistrationCheckRef>(Arc::new(FlowRegistrationProbe {
+			engine: engine.clone(),
+			clock: clock.clone(),
+			custom_operators: custom_operators.clone(),
+			substrate: substrate.clone(),
+		}));
 
 		let (scan_from, scan_lease) = engine.acquire_current_snapshot_lease()?;
 		if supervisor_handle

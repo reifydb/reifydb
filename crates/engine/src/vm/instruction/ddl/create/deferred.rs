@@ -99,6 +99,7 @@ pub(crate) fn create_deferred_view(
 		symbols,
 		&result,
 		*plan.as_clause,
+		&services.ioc,
 	)?;
 
 	single_row([
