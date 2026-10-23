@@ -363,6 +363,40 @@ fn a_fused_child_reads_a_dictionary_column_its_parent_got_as_text_as_entry_ids()
 	db.stop();
 }
 
+#[test]
+fn a_fused_child_of_a_series_view_reads_its_dictionary_column_as_entry_ids() {
+	// A series sink emits its own coerced batch, so a child fed it without the id lookup fails every id read.
+	let path = TempDbPath::new("fused_chain_series_dictionary_ids");
+	{
+		let mut db = open_with_sym_ids(&path);
+		db.admin("CREATE NAMESPACE fu");
+		db.admin("CREATE DICTIONARY fu::syms FOR utf8 AS uint4");
+		db.admin("CREATE TABLE fu::src { id: int4, sym: utf8 }");
+		db.admin(
+			"CREATE DEFERRED SERIES VIEW fu::a { id: int4, sym: utf8 with { dictionary: fu::syms } } WITH { key: id } AS { FROM fu::src }",
+		);
+		db.admin("CREATE DEFERRED VIEW fu::b { id: int4, sym: int8 } AS { FROM fu::a | APPLY sym_ids{} }");
+		db.command("INSERT fu::src [{ id: 1, sym: 'red' }, { id: 2, sym: 'green' }]");
+		settle(&db);
+		db.stop();
+	}
+	let mut db = open_with_sym_ids(&path);
+	let head = catalog_id(&db, "flows", "a");
+	assert!(
+		units(&db).contains(&(catalog_id(&db, "flows", "b"), head)),
+		"b must run fused under the series view a for this test to mean anything: {:?}",
+		units(&db)
+	);
+	settle(&db);
+	db.command("INSERT fu::src [{ id: 3, sym: 'red' }]");
+	settle(&db);
+	let rows = sym_ids(&db);
+	assert_eq!(rows.iter().map(|(id, _)| *id).collect::<Vec<_>>(), vec![1, 2, 3], "every row reaches b: {rows:?}");
+	assert_eq!(rows[0].1, rows[2].1, "both red rows must carry one entry id: {rows:?}");
+	assert_ne!(rows[0].1, rows[1].1, "red and green must carry different entry ids: {rows:?}");
+	db.stop();
+}
+
 fn ids(db: &TestDb, flows: &[&str]) -> Vec<u64> {
 	flows.iter().map(|flow| catalog_id(db, "flows", flow)).collect()
 }
@@ -578,5 +612,44 @@ fn a_chain_built_unfused_fuses_on_the_next_restart() {
 		fresh.iter().all(|commits| commits == &fresh[0]),
 		"every member must land in the head's commit: {fresh:?}"
 	);
+	db.stop();
+}
+
+#[test]
+fn a_member_behind_its_head_restarts_unfused_and_catches_up() {
+	// A member fused while behind its head is fed only what the head emits from then on and never gets the gap.
+	let path = TempDbPath::new("fused_chain_member_behind");
+	{
+		let mut db = open(&path, true);
+		db.admin("CREATE NAMESPACE fu");
+		db.admin("CREATE TABLE fu::src { id: int4, g: int4, v: int4 }");
+		db.admin(CHAIN[0]);
+		db.command("INSERT fu::src [{ id: 1, g: 1, v: 5 }, { id: 2, g: 1, v: 20 }, { id: 3, g: 2, v: 30 }]");
+		settle(&db);
+		assert!(checkpoint(&db, "a").is_some(), "precondition: the head must hold a checkpoint");
+		db.stop();
+	}
+	{
+		let mut db = open(&path, false);
+		db.admin(CHAIN[1]);
+		assert_eq!(
+			checkpoint(&db, "b"),
+			None,
+			"precondition: b created with no flow running holds no checkpoint"
+		);
+		stop_without_flow(&mut db);
+	}
+	let mut db = open(&path, true);
+	let b = catalog_id(&db, "flows", "b");
+	assert!(
+		!units(&db).iter().any(|(flow, _)| *flow == b),
+		"b starts behind a, so it must not be fused at bootstrap: {:?}",
+		units(&db)
+	);
+	settle(&db);
+	await_groups(&db, "fu::b", &[(1, 1, 20), (2, 1, 30)], "after b caught up on its own");
+	db.command("INSERT fu::src [{ id: 4, g: 2, v: 40 }]");
+	settle(&db);
+	await_groups(&db, "fu::b", &[(1, 1, 20), (2, 2, 70)], "after a write that follows the catch-up");
 	db.stop();
 }

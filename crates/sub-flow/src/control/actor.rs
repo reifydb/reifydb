@@ -2777,24 +2777,30 @@ mod pull_protocol {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tick_failures {
-	use std::{collections::HashMap, marker::PhantomData, sync::mpsc};
+	use std::{
+		collections::HashMap,
+		marker::PhantomData,
+		sync::{atomic::AtomicUsize, mpsc},
+	};
 
+	use arrow_array::{ArrayRef, UInt64Array};
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::{
 		actors::pending::Pending,
-		common::{OperatorClass, WindowRequirements, WindowSizeDomain},
+		common::{ChangeVersion, OperatorClass, WindowRequirements, WindowSizeDomain},
 		flow::operator::{FlowNode, OperatorDef},
 		interface::{
 			catalog::{
 				flow::{FlowEdge, OperatorId},
 				id::ViewId,
 			},
-			change::Change,
+			change::{Change, Diff, Diffs},
 			flow::OperatorCapability,
 		},
 		internal_error,
 		operator_with::ApplyWith,
 		state::timer::TimerKind,
+		value::{batch::batch, column::factory::int4},
 	};
 	use reifydb_engine::engine::StandardEngine;
 	use reifydb_flow_async::{
@@ -2822,6 +2828,10 @@ mod tick_failures {
 		Result as ValueResult,
 		error::{Diagnostic, Error},
 		factory::time::at_millis,
+		value::{
+			container::temporal_array::datetime_array,
+			system_columns::{SystemColumn, with_system_column},
+		},
 	};
 
 	use super::*;
@@ -2836,6 +2846,10 @@ mod tick_failures {
 	const DUE_MS: i64 = 5_000;
 	const WATERMARK_MS: i64 = 10_000;
 	const RETRY_LIMIT: u32 = 3;
+	const SINK: OperatorId = OperatorId(9_003);
+	const MEMBER: FlowId = FlowId(9_100);
+	const MEMBER_SOURCE: OperatorId = OperatorId(9_101);
+	const MEMBER_SEEN: OperatorId = OperatorId(9_102);
 
 	struct Boom {
 		id: OperatorId,
@@ -2877,6 +2891,64 @@ mod tick_failures {
 		}
 
 		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> ValueResult<Change> {
+			Ok(change)
+		}
+
+		fn on_timer(&mut self, _host: &mut dyn HostContext, _timer: Timer) -> ValueResult<Option<Change>> {
+			Ok(None)
+		}
+	}
+
+	struct Ring {
+		id: OperatorId,
+	}
+
+	impl HostOperator for Ring {
+		fn id(&self) -> OperatorId {
+			self.id
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> ValueResult<Change> {
+			Ok(change)
+		}
+
+		fn on_timer(&mut self, _host: &mut dyn HostContext, timer: Timer) -> ValueResult<Option<Change>> {
+			let user = batch(vec![int4("id", [1])]).unwrap();
+			let system: [(SystemColumn, ArrayRef); 4] = [
+				(SystemColumn::RowNumbers, Arc::new(UInt64Array::from(vec![1u64]))),
+				(SystemColumn::CreatedAt, Arc::new(datetime_array([timer.due]))),
+				(SystemColumn::UpdatedAt, Arc::new(datetime_array([timer.due]))),
+				(SystemColumn::Time, Arc::new(datetime_array([timer.due]))),
+			];
+			let row = system.into_iter().fold(user, |columns, (column, array)| {
+				with_system_column(columns, column, array).unwrap()
+			});
+			let mut diffs = Diffs::new();
+			diffs.push(Diff::insert(row));
+			Ok(Some(Change::from_flow(self.id, ChangeVersion::from(CommitVersion(1)), diffs, timer.due)))
+		}
+	}
+
+	struct Seen {
+		id: OperatorId,
+		rows: Arc<AtomicUsize>,
+	}
+
+	impl HostOperator for Seen {
+		fn id(&self) -> OperatorId {
+			self.id
+		}
+
+		fn capabilities(&self) -> &[OperatorCapability] {
+			OperatorCapability::STANDARD
+		}
+
+		fn apply(&mut self, _host: &mut dyn HostContext, change: Change) -> ValueResult<Change> {
+			self.rows.fetch_add(change.row_count(), Ordering::SeqCst);
 			Ok(change)
 		}
 
@@ -3006,6 +3078,150 @@ mod tick_failures {
 			},
 		);
 		CustomOperators::new(map)
+	}
+
+	fn test_entry(factory: Arc<dyn Fn(OperatorId) -> BoxedHostOperator + Send + Sync>) -> CustomOperatorEntry {
+		CustomOperatorEntry {
+			factory: Arc::new(move |id, _params, _with| Ok(factory(id))),
+			abi: None,
+			version: "0.0.1".to_string(),
+			description: "test-only operator for a fused unit".to_string(),
+			capabilities: 0,
+			input: Vec::new(),
+			output: Vec::new(),
+			class: OperatorClass::Unmanaged,
+			window: WindowRequirements {
+				takes_window: false,
+				kinds: &[],
+				domain: WindowSizeDomain::Time,
+				needs_pane: false,
+			},
+			unmanaged_because: None,
+		}
+	}
+
+	fn unit_operators(rows: Arc<AtomicUsize>) -> CustomOperators {
+		let mut map = HashMap::new();
+		map.insert(
+			"ring".to_string(),
+			test_entry(Arc::new(|id| {
+				Box::new(Ring {
+					id,
+				}) as BoxedHostOperator
+			})),
+		);
+		map.insert(
+			"seen".to_string(),
+			test_entry(Arc::new(move |id| {
+				Box::new(Seen {
+					id,
+					rows: rows.clone(),
+				}) as BoxedHostOperator
+			})),
+		);
+		CustomOperators::new(map)
+	}
+
+	fn view_named(engine: &StandardEngine, name: &str) -> ViewId {
+		let mut query = engine.begin_query(IdentityId::system()).expect("query");
+		let mut txn = Transaction::Query(&mut query);
+		let namespace = engine
+			.catalog()
+			.find_namespace_by_name(&mut txn, "app")
+			.expect("namespace")
+			.expect("the test declares namespace app");
+		engine.catalog()
+			.find_view_by_name(&mut txn, namespace.id(), name)
+			.expect("view lookup")
+			.expect("the test declares the view")
+			.id()
+	}
+
+	fn apply_node(id: OperatorId, operator: &str) -> FlowNode {
+		FlowNode::new(
+			id,
+			OperatorDef::Apply {
+				operator: operator.to_string(),
+				params: Vec::new(),
+				with: ApplyWith::default(),
+			},
+		)
+	}
+
+	fn unit_actor(rows: Arc<AtomicUsize>) -> (TestEngine, FlowActor) {
+		let te = TestEngine::builder().with_cdc().build();
+		let engine = te.inner().clone();
+
+		te.admin("CREATE NAMESPACE app");
+		te.admin("CREATE TABLE app::t { id: int4 }");
+		te.admin("CREATE DEFERRED VIEW app::v { id: int4 } AS { FROM app::t MAP { id } }");
+		te.admin("CREATE DEFERRED VIEW app::w { id: int4 } AS { FROM app::v MAP { id } }");
+		let v = view_named(&engine, "v");
+		let w = view_named(&engine, "w");
+
+		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
+		arm_due_timer(&engine, &substrate);
+
+		let mut head = FlowDag::builder(FLOW);
+		head.add_node(FlowNode::new(
+			SOURCE,
+			OperatorDef::SourceView {
+				view: v,
+			},
+		));
+		head.add_node(apply_node(TIMED, "ring"));
+		head.add_node(FlowNode::new(
+			SINK,
+			OperatorDef::SinkTableView {
+				view: w,
+			},
+		));
+		head.add_edge(FlowEdge::new(1, head.id(), SOURCE, TIMED)).expect("edge");
+		head.add_edge(FlowEdge::new(2, head.id(), TIMED, SINK)).expect("edge");
+		let head = head.build();
+
+		let mut member = FlowDag::builder(MEMBER);
+		member.add_node(FlowNode::new(
+			MEMBER_SOURCE,
+			OperatorDef::SourceView {
+				view: w,
+			},
+		));
+		member.add_node(apply_node(MEMBER_SEEN, "seen"));
+		member.add_edge(FlowEdge::new(3, member.id(), MEMBER_SOURCE, MEMBER_SEEN)).expect("edge");
+		let member = member.build();
+
+		let committer = idle(&engine, "unit-tick-committer");
+		let actor = FlowActor::new(FlowActorParams {
+			engine: engine.clone(),
+			committer: committer.clone(),
+			terminal_committer: committer,
+			backlog: FlowBacklog::new(ByteSize::from_mib(8)),
+			loader: idle(&engine, "unit-tick-loader"),
+			control: ControlFrontier::new(),
+			custom_operators: unit_operators(rows),
+			substrate,
+			operator_samples: OperatorSampleRegistry::new(),
+			clock: engine.clock().clone(),
+			health: FlowHealthRegistry::new(),
+			flow_tracker: FlowPositionTracker::new(),
+			flow: head,
+			members: vec![(member, w)],
+			source_objects: Arc::new(BTreeSet::new()),
+			completeness_objects: None,
+			cursor: CommitVersion(0),
+			pull_batch_bytes: ByteSize::from_mib(8),
+			load_batch_bytes: ByteSize::from_mib(8),
+			checkpoint_lag: 10_000,
+			checkpoint_max_age: Duration::from_milliseconds(5_000).unwrap(),
+			retry_limit: RETRY_LIMIT,
+			retry_backoff: Duration::from_milliseconds(50).unwrap(),
+			wake_coalesce: Duration::from_nanoseconds_const(FLOW_WAKE_COALESCE_NANOS),
+			linger: Duration::from_nanoseconds_const(0),
+			batch_size: 8,
+		});
+
+		(te, actor)
 	}
 
 	fn source_view(engine: &StandardEngine) -> ViewId {
@@ -3229,6 +3445,54 @@ mod tick_failures {
 
 		assert_eq!(harness.state().retry_count, 0, "a landed commit is progress");
 		assert!(!harness.state().poisoned, "a flow that just committed must not be one strike from poison");
+	}
+
+	#[test]
+	fn a_timer_fired_on_a_tick_reaches_the_fused_member() {
+		// Without the member feed on the tick path, a fused child never sees rows its head emits from a timer.
+		let rows = Arc::new(AtomicUsize::new(0));
+		let (_te, actor) = unit_actor(rows.clone());
+		let mut harness = TestHarness::new(actor);
+		assert!(!harness.state().poisoned, "precondition: both members must register");
+
+		tick(&mut harness);
+
+		assert!(!harness.state().poisoned, "the unit tick must not fail");
+		assert_eq!(
+			rows.load(Ordering::SeqCst),
+			1,
+			"the member must see exactly the one row the head's timer emitted"
+		);
+	}
+
+	#[test]
+	fn a_stop_during_a_commit_waits_for_the_commit_to_land() {
+		// Without the wait, a respawn starts while the old commit is in flight and applies its version twice.
+		let (_te, _health, actor) = quiet_actor();
+		let mut harness = TestHarness::new(actor);
+		harness.state_mut().committing = true;
+		let replied = Arc::new(AtomicBool::new(false));
+		let flag = replied.clone();
+
+		harness.send(FlowActorMessage::Stop {
+			delete_checkpoint: false,
+			reply: Box::new(move || flag.store(true, Ordering::SeqCst)),
+		});
+		assert_eq!(harness.process_one(), Some(Directive::Continue), "a stop mid-commit must be held");
+		assert!(!replied.load(Ordering::SeqCst), "the reply must not fire before the in-flight commit lands");
+
+		harness.send(FlowActorMessage::TickCommitted {
+			result: Ok(()),
+		});
+		assert_eq!(
+			harness.process_one(),
+			Some(Directive::Stop),
+			"the held stop must run once the commit lands"
+		);
+		assert!(
+			replied.load(Ordering::SeqCst),
+			"the supervisor waits on this reply and never respawns without it"
+		);
 	}
 
 	#[test]
