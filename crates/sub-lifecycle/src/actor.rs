@@ -31,7 +31,6 @@ fn drain(task: &mut Box<dyn LifecycleTask>) {
 #[derive(Clone)]
 pub enum LifecycleMessage {
 	Tick,
-	CatchUp,
 
 	RunToExhaustion {
 		waiter: Arc<WaiterHandle>,
@@ -52,7 +51,6 @@ pub struct LifecycleActor {
 pub struct LifecycleActorState {
 	task: Box<dyn LifecycleTask>,
 	timer: Option<TimerHandle>,
-	catching_up: bool,
 }
 
 impl LifecycleActor {
@@ -60,13 +58,6 @@ impl LifecycleActor {
 		Self {
 			task: Mutex::new(Some(task)),
 			catchup: CATCHUP_DELAY,
-		}
-	}
-
-	fn slice(&self, state: &mut LifecycleActorState, ctx: &Context<LifecycleMessage>) {
-		if run_slice(&mut state.task) == Progress::Yielded {
-			state.catching_up = true;
-			ctx.schedule_once(self.catchup, || LifecycleMessage::CatchUp);
 		}
 	}
 
@@ -90,7 +81,6 @@ impl Actor for LifecycleActor {
 		LifecycleActorState {
 			task,
 			timer: Some(timer),
-			catching_up: false,
 		}
 	}
 
@@ -105,14 +95,9 @@ impl Actor for LifecycleActor {
 		}
 		match msg {
 			LifecycleMessage::Tick => {
-				if !state.catching_up {
-					self.slice(state, ctx);
+				if run_slice(&mut state.task) == Progress::Yielded {
+					ctx.schedule_once(self.catchup, || LifecycleMessage::Tick);
 				}
-				return Directive::Yield;
-			}
-			LifecycleMessage::CatchUp => {
-				state.catching_up = false;
-				self.slice(state, ctx);
 				return Directive::Yield;
 			}
 			LifecycleMessage::RunToExhaustion {

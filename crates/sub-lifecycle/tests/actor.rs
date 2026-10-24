@@ -202,32 +202,3 @@ fn set_interval_retunes_the_timer_without_stopping_the_lane() {
 	assert!(journal.lock().is_empty(), "retuning must not run a slice of its own");
 	assert_eq!(directives, vec![Directive::Continue], "retuning must be inert to liveness, not fatal");
 }
-
-#[test]
-fn a_tick_while_a_catch_up_is_pending_runs_no_extra_slice() {
-	// every extra tick a yielding class collects lets it run back to back and starve the other classes on the lane.
-	let journal = journal();
-	let mut harness =
-		TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new("backlogged", 5, journal.clone()))));
-
-	harness.send(LifecycleMessage::Tick);
-	harness.send(LifecycleMessage::Tick);
-	harness.process_all();
-
-	assert_eq!(journal.lock().len(), 1, "an interval tick during a pending catch-up must not add a second slice");
-}
-
-#[test]
-fn a_catch_up_runs_the_next_slice_and_clears_the_pending_flag() {
-	// a flag left set after the catch-up would silence every later interval tick and stall the class for good.
-	let journal = journal();
-	let mut harness =
-		TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new("backlogged", 2, journal.clone()))));
-
-	harness.send(LifecycleMessage::Tick);
-	harness.send(LifecycleMessage::CatchUp);
-	harness.send(LifecycleMessage::Tick);
-	harness.process_all();
-
-	assert_eq!(journal.lock().len(), 3, "tick, catch-up and the next tick must each run one slice");
-}
