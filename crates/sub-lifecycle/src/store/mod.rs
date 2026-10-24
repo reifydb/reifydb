@@ -2,3 +2,4 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod flush;
+pub mod merge;

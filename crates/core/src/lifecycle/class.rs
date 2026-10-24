@@ -135,6 +135,8 @@ pub enum RetentionClass {
 	CdcTruncate,
 
 	EpochLog,
+
+	CommitMerge,
 }
 
 impl RetentionClass {
@@ -147,6 +149,7 @@ impl RetentionClass {
 			Self::QueueRetention,
 			Self::CdcTruncate,
 			Self::EpochLog,
+			Self::CommitMerge,
 		]
 	}
 
@@ -159,6 +162,7 @@ impl RetentionClass {
 			Self::QueueRetention => "queue-retention",
 			Self::CdcTruncate => "cdc-truncate",
 			Self::EpochLog => "epoch-log",
+			Self::CommitMerge => "commit-merge",
 		}
 	}
 
@@ -170,7 +174,7 @@ impl RetentionClass {
 			| Self::CdcTruncate
 			| Self::EpochLog
 			| Self::QueueRetention => true,
-			Self::QueueLeaseReap => false,
+			Self::QueueLeaseReap | Self::CommitMerge => false,
 		}
 	}
 
@@ -181,7 +185,7 @@ impl RetentionClass {
 			Self::PersistentFlush => {
 				&[FloorTerm::QueryDoneUntil, FloorTerm::LeaseMin, FloorTerm::ConsumerPosition]
 			}
-			Self::QueueLeaseReap => &[],
+			Self::QueueLeaseReap | Self::CommitMerge => &[],
 			Self::QueueRetention => &[FloorTerm::RowExpiry],
 			Self::CdcTruncate => &[FloorTerm::ConsumerCheckpoint],
 			Self::EpochLog => &[FloorTerm::RetentionHorizon],

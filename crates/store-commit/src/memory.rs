@@ -176,7 +176,13 @@ impl Write for MemoryRows {
 		self.closed.write().push_back(Arc::new(closing.close()));
 	}
 
-	fn merge(&self, fan_in: usize, cap: ByteSize) {
+	fn merge(&self, fan_in: usize, cap: ByteSize, backlog: usize) {
+		let cap_tier = tier(cap.as_bytes(), fan_in);
+		let mergeable =
+			self.closed.read().iter().filter(|map| tier(map.rows().bytes(), fan_in) < cap_tier).count();
+		if mergeable <= backlog {
+			return;
+		}
 		let _merging = self.merging.lock();
 		loop {
 			let snapshot: Vec<Arc<ClosedRows>> = self.closed.read().iter().cloned().collect();

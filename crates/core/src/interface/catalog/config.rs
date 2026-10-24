@@ -104,6 +104,7 @@ pub enum ConfigKey {
 	QueueLeaseReapBatchSize,
 	QueueRetentionInterval,
 	QueueRetentionBatchSize,
+	CommitMergeInterval,
 }
 
 impl ConfigKey {
@@ -165,6 +166,7 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize,
 			Self::QueueRetentionInterval,
 			Self::QueueRetentionBatchSize,
+			Self::CommitMergeInterval,
 		]
 	}
 
@@ -252,6 +254,7 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE),
 			Self::QueueRetentionInterval => Value::Duration(default::queue::RETENTION_INTERVAL),
 			Self::QueueRetentionBatchSize => Value::Uint8(default::queue::RETENTION_BATCH_SIZE),
+			Self::CommitMergeInterval => Value::Duration(default::store::COMMIT_MERGE_INTERVAL),
 		}
 	}
 
@@ -343,6 +346,7 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => Value::Uint8(default::queue::LEASE_REAP_BATCH_SIZE_TESTING),
 			Self::QueueRetentionInterval => Value::Duration(default::queue::RETENTION_INTERVAL_TESTING),
 			Self::QueueRetentionBatchSize => Value::Uint8(default::queue::RETENTION_BATCH_SIZE_TESTING),
+			Self::CommitMergeInterval => Value::Duration(default::store::COMMIT_MERGE_INTERVAL_TESTING),
 		}
 	}
 
@@ -610,6 +614,9 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => {
 				"Max queue item-state records one reap slice may scan. Bounds the slice on a deep backlog; the scan resumes from its cursor on the next slice."
 			}
+			Self::CommitMergeInterval => {
+				"How often the commit-merge task merges closed commit-buffer maps off the commit path. Commits merge inline only when the mergeable backlog outgrows the commit store's merge backlog."
+			}
 			Self::QueueRetentionInterval => {
 				"How often the queue retention sweeper deletes finished items whose terminal attempt is older than the queue's declared retention.done, and deduplication records past their own ttl."
 			}
@@ -677,6 +684,7 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
 			Self::QueueRetentionBatchSize => false,
+			Self::CommitMergeInterval => false,
 		}
 	}
 
@@ -738,6 +746,7 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => &[ValueType::Uint8],
 			Self::QueueRetentionInterval => &[ValueType::Duration],
 			Self::QueueRetentionBatchSize => &[ValueType::Uint8],
+			Self::CommitMergeInterval => &[ValueType::Duration],
 		}
 	}
 
@@ -799,6 +808,7 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
 			Self::QueueRetentionBatchSize => false,
+			Self::CommitMergeInterval => false,
 		}
 	}
 
@@ -910,6 +920,11 @@ impl ConfigKey {
 			Self::MultiFlushInterval => match value {
 				Value::Duration(d) if d.is_positive() => Ok(()),
 				Value::Duration(_) => Err("MULTI_FLUSH_INTERVAL must be greater than zero".to_string()),
+				_ => Ok(()),
+			},
+			Self::CommitMergeInterval => match value {
+				Value::Duration(d) if d.is_positive() => Ok(()),
+				Value::Duration(_) => Err("COMMIT_MERGE_INTERVAL must be greater than zero".to_string()),
 				_ => Ok(()),
 			},
 			Self::MultiFlushBudgetBytes => match value {
@@ -1173,6 +1188,7 @@ impl fmt::Display for ConfigKey {
 			Self::QueueLeaseReapBatchSize => write!(f, "QUEUE_LEASE_REAP_BATCH_SIZE"),
 			Self::QueueRetentionInterval => write!(f, "QUEUE_RETENTION_INTERVAL"),
 			Self::QueueRetentionBatchSize => write!(f, "QUEUE_RETENTION_BATCH_SIZE"),
+			Self::CommitMergeInterval => write!(f, "COMMIT_MERGE_INTERVAL"),
 		}
 	}
 }
@@ -1238,6 +1254,7 @@ impl FromStr for ConfigKey {
 			"QUEUE_LEASE_REAP_BATCH_SIZE" => Ok(Self::QueueLeaseReapBatchSize),
 			"QUEUE_RETENTION_INTERVAL" => Ok(Self::QueueRetentionInterval),
 			"QUEUE_RETENTION_BATCH_SIZE" => Ok(Self::QueueRetentionBatchSize),
+			"COMMIT_MERGE_INTERVAL" => Ok(Self::CommitMergeInterval),
 			_ => Err(format!("Unknown system configuration key: {}", s)),
 		}
 	}
@@ -1455,6 +1472,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::QueueLeaseReapBatchSize));
 		assert!(all.contains(&ConfigKey::QueueRetentionInterval));
 		assert!(all.contains(&ConfigKey::QueueRetentionBatchSize));
+		assert!(all.contains(&ConfigKey::CommitMergeInterval));
 	}
 
 	#[test]

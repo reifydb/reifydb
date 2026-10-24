@@ -36,7 +36,7 @@ use crate::{
 	plane::{RetentionPlane, horizon::max_retention_horizon, measured::Measured},
 	queue::{reap::QueueLeaseReapTask, retention::QueueRetentionTask},
 	retention::evictor::RetentionEvictTask,
-	store::flush::PersistentFlushTask,
+	store::{flush::PersistentFlushTask, merge::CommitMergeTask},
 	subsystem::LifecycleSubsystem,
 };
 
@@ -139,6 +139,11 @@ impl SubsystemFactory for LifecycleSubsystemFactory {
 				),
 				gate.clone(),
 			),
+			plane.clone(),
+		)));
+
+		registry.register(Box::new(Measured::new(
+			CommitMergeTask::new(store.clone(), config.clone()),
 			plane.clone(),
 		)));
 
