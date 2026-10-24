@@ -9,7 +9,7 @@ use crate::tier::point::{
 };
 
 impl<D: PointDomain> PointTier<D> {
-	pub fn get(&self, dimension: D::Dimension, key: &D::Key) -> Option<Option<D::Row>> {
+	pub fn get(&self, dimension: D::Dimension, key: &D::Key) -> Option<D::Row> {
 		let bucket = D::metric_bucket(key)?;
 		let hash = bucket_hash(&dimension, key);
 		let mut shard = self.shard_at(dimension, key).lock();
@@ -30,72 +30,6 @@ impl<D: PointDomain> PointTier<D> {
 		Some(row)
 	}
 
-	pub fn contains(&self, dimension: D::Dimension, key: &D::Key) -> Option<bool> {
-		let bucket = D::metric_bucket(key)?;
-		let hash = bucket_hash(&dimension, key);
-		let mut shard = self.shard_at(dimension, key).lock();
-		let next = shard.next_tick;
-		let Some(position) = find_position(&shard, hash, dimension, key) else {
-			shard.metrics.misses += 1;
-			shard.bucket_metrics[bucket].misses += 1;
-			return None;
-		};
-		let present = {
-			let entry = &mut shard.entries[position as usize];
-			entry.tick = next;
-			entry.row.is_some()
-		};
-		shard.next_tick = next + 1;
-		shard.metrics.hits += 1;
-		shard.bucket_metrics[bucket].hits += 1;
-		Some(present)
-	}
-
-	pub fn begin_fill(&self, dimension: D::Dimension, key: &D::Key) -> bool {
-		let Some(bucket) = D::metric_bucket(key) else {
-			return false;
-		};
-		let mut shard = self.shard_at(dimension, key).lock();
-		let id = PointKey {
-			dimension,
-			key: key.clone(),
-		};
-		if shard.filling.contains_key(&id) {
-			shard.metrics.fills_duplicate += 1;
-			shard.bucket_metrics[bucket].fills_duplicate += 1;
-			return false;
-		}
-		shard.filling.insert(id, false);
-		shard.metrics.fills_started += 1;
-		shard.bucket_metrics[bucket].fills_started += 1;
-		true
-	}
-
-	pub fn finish_fill(&self, dimension: D::Dimension, key: D::Key, row: Option<D::Row>) -> bool {
-		let Some(bucket) = D::metric_bucket(&key) else {
-			return false;
-		};
-		let mut shard = self.shard_at(dimension, &key).lock();
-		let id = PointKey {
-			dimension,
-			key,
-		};
-		match shard.filling.remove(&id) {
-			Some(false) => {}
-			Some(true) | None => {
-				shard.metrics.fills_dirty_aborted += 1;
-				shard.bucket_metrics[bucket].fills_dirty_aborted += 1;
-				return false;
-			}
-		}
-		#[cfg(test)]
-		if let Some(interlock) = self.inner.interlock.as_ref() {
-			interlock(self, &id);
-		}
-		insert_entry(&mut shard, bucket, id, row);
-		true
-	}
-
 	pub fn overwrite(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
 		let Some(bucket) = D::metric_bucket(&key) else {
 			return;
@@ -105,10 +39,7 @@ impl<D: PointDomain> PointTier<D> {
 			dimension,
 			key,
 		};
-		if let Some(dirty) = shard.filling.get_mut(&id) {
-			*dirty = true;
-		}
-		insert_entry(&mut shard, bucket, id, Some(row));
+		insert_entry(&mut shard, bucket, id, row);
 	}
 
 	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
@@ -117,15 +48,6 @@ impl<D: PointDomain> PointTier<D> {
 		}
 		let hash = bucket_hash(&dimension, key);
 		let mut shard = self.shard_at(dimension, key).lock();
-		if !shard.filling.is_empty() {
-			let id = PointKey {
-				dimension,
-				key: key.clone(),
-			};
-			if let Some(dirty) = shard.filling.get_mut(&id) {
-				*dirty = true;
-			}
-		}
 		let Some(position) = find_position(&shard, hash, dimension, key) else {
 			return;
 		};
@@ -135,11 +57,6 @@ impl<D: PointDomain> PointTier<D> {
 	pub fn invalidate_dimensions_where(&self, victim: impl Fn(&D::Dimension) -> bool) {
 		for shard in self.all_shards() {
 			let mut shard = shard.lock();
-			for (key, dirty) in shard.filling.iter_mut() {
-				if victim(&key.dimension) {
-					*dirty = true;
-				}
-			}
 			let mut released = 0usize;
 			{
 				let Shard {
@@ -165,40 +82,17 @@ impl<D: PointDomain> PointTier<D> {
 			shard.budget.release(ByteSize::from_bytes(released as u64));
 		}
 	}
-
-	pub fn clear(&self) {
-		for shard in self.all_shards() {
-			let mut shard = shard.lock();
-			let released: usize =
-				shard.entries.iter().map(|entry| entry_footprint::<D>(&entry.key, &entry.row)).sum();
-			shard.index.clear();
-			shard.entries.clear();
-			shard.filling.clear();
-			shard.next_tick = 0;
-			shard.budget.release(ByteSize::from_bytes(released as u64));
-		}
-	}
 }
 
-fn insert_entry<D: PointDomain>(
-	shard: &mut Shard<D>,
-	bucket: usize,
-	id: PointKey<D::Dimension, D::Key>,
-	row: Option<D::Row>,
-) {
+fn insert_entry<D: PointDomain>(shard: &mut Shard<D>, bucket: usize, id: PointKey<D::Dimension, D::Key>, row: D::Row) {
 	let next = shard.next_tick;
 	let hash = bucket_hash(&id.dimension, &id.key);
 	match find_position(shard, hash, id.dimension, &id.key) {
 		Some(position) => {
 			let entry = &mut shard.entries[position as usize];
 			let old = entry_footprint::<D>(&entry.key, &entry.row);
-			match (entry.row.as_mut(), row) {
-				(Some(resident), Some(incoming)) => {
-					if !D::supersede(resident, incoming) {
-						return;
-					}
-				}
-				(_, incoming) => entry.row = incoming,
+			if !D::supersede(&mut entry.row, row) {
+				return;
 			}
 			entry.tick = next;
 			let new = entry_footprint::<D>(&entry.key, &entry.row);

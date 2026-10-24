@@ -1,23 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Multi-object isolation chaos: commit / flush / row-TTL / physical-delete across several tables at
-//! once. An operation scoped to one object must leave the others byte-for-byte intact, which is what
-//! guards the object scoping of delete, buffer drops and range bounds. Reads are at the current version.
+//! Multi-object isolation chaos: commit / flush across several tables at once. An operation on one object
+//! must leave the others byte-for-byte intact, which is what guards the object scoping of range bounds.
+//! Reads are at the current version.
 
-use std::{
-	collections::{BTreeMap, HashMap},
-	slice::from_ref,
-};
+use std::{collections::BTreeMap, slice::from_ref};
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, SetPre},
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet},
+		store::{MultiVersionCommit, MultiVersionGet},
 	},
 	key::{any::TaggedKey, row::RowKey},
 };
@@ -38,8 +35,7 @@ fn storage(idx: usize) -> StorageId {
 	STORAGES[idx]
 }
 
-/// Per-(object, row) current value + commit version. The version decides TTL eligibility (a row is
-/// expired once its current version is at or below the sweep's cutoff version).
+/// Per-(object, row) current value + commit version.
 #[derive(Default)]
 struct MsOracle {
 	current: BTreeMap<(usize, u64), (Vec<u8>, u64)>,
@@ -72,72 +68,6 @@ impl MsOracle {
 			rows.reverse();
 		}
 		rows
-	}
-}
-
-/// Object-scoped version-anchored TTL sweep: buffer drop first, then persistent delete and a read-cache
-/// clear on a hit. Scoping it to a single object is what lets the test assert isolation.
-fn ttl_sweep_storage(
-	store: &StandardMultiStore,
-	written: &BTreeMap<(usize, u64), Vec<u64>>,
-	s: usize,
-	rows: &[u64],
-	cutoff_version: CommitVersion,
-) {
-	let storage_id = storage(s);
-	let kind = EntryKind::Source(storage_id, EntryLayout::Row);
-	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(storage_id, r)).collect();
-	{
-		let buffer = store.commit();
-		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
-		for (row, key) in rows.iter().zip(&keys) {
-			for v in written.get(&(s, *row)).into_iter().flatten() {
-				if CommitVersion(*v) <= cutoff_version {
-					batch.push((key.clone(), CommitVersion(*v)));
-				}
-			}
-		}
-		if !batch.is_empty() {
-			buffer.compact(HashMap::from([(kind, batch)]));
-		}
-	}
-	for key in &keys {
-		store.invalidate_read_key(kind, key);
-	}
-	if let Some(persistent) = store.persistent() {
-		let deleted = persistent.delete_keys(kind, &keys).unwrap();
-		if deleted > 0 {
-			store.clear_read();
-		}
-	}
-}
-
-fn physical_delete_storage(
-	store: &StandardMultiStore,
-	written: &BTreeMap<(usize, u64), Vec<u64>>,
-	s: usize,
-	rows: &[u64],
-) {
-	let storage_id = storage(s);
-	let kind = EntryKind::Source(storage_id, EntryLayout::Row);
-	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(storage_id, r)).collect();
-	if let Some(persistent) = store.persistent() {
-		persistent.delete_keys(kind, &keys).unwrap();
-	}
-	{
-		let buffer = store.commit();
-		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
-		for (row, key) in rows.iter().zip(&keys) {
-			for v in written.get(&(s, *row)).into_iter().flatten() {
-				batch.push((key.clone(), CommitVersion(*v)));
-			}
-		}
-		if !batch.is_empty() {
-			buffer.compact(HashMap::from([(kind, batch)]));
-		}
-	}
-	for key in &keys {
-		store.invalidate_read_key(kind, key);
 	}
 }
 
@@ -221,8 +151,6 @@ pub struct Params {
 	pub max_steps: u32,
 	pub commit_pct: u32,
 	pub flush_pct: u32,
-	pub ttl_pct: u32,
-	pub delete_pct: u32,
 	pub remove_pct: u32,
 	pub max_deltas: u64,
 	pub max_batch: u64,
@@ -231,7 +159,6 @@ pub struct Params {
 pub fn drive(seed: u64, p: Params) {
 	let mut rng = StdRng::seed_from_u64(seed);
 	let mut oracle = MsOracle::default();
-	let mut written: BTreeMap<(usize, u64), Vec<u64>> = BTreeMap::new();
 
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
@@ -246,8 +173,6 @@ pub fn drive(seed: u64, p: Params) {
 	for step in 0..steps {
 		let roll = rng.random_range(0u32..100);
 		let flush_hi = p.commit_pct + p.flush_pct;
-		let ttl_hi = flush_hi + p.ttl_pct;
-		let delete_hi = ttl_hi + p.delete_pct;
 		let s = rng.random_range(0u32..STORAGES.len() as u32) as usize;
 
 		if version == 0 || roll < p.commit_pct {
@@ -256,7 +181,6 @@ pub fn drive(seed: u64, p: Params) {
 			let rows = distinct_rows(&mut rng, count, p.keyspace);
 			let mut values: Vec<(u64, Option<Vec<u8>>)> = Vec::new();
 			for row in rows {
-				written.entry((s, row)).or_default().push(version);
 				if rng.random_range(0u32..100) < p.remove_pct {
 					oracle.remove(s, row);
 					values.push((row, None));
@@ -287,31 +211,6 @@ pub fn drive(seed: u64, p: Params) {
 				if store.persistent().is_some() {
 					flush(store, CommitVersion(cutoff));
 				}
-			}
-		} else if roll < ttl_hi {
-			// The sweep is scoped to object `s`, so rows of every other object must come through
-			// untouched.
-			let cutoff_version = rng.random_range(1..=version);
-			let expired: Vec<u64> = oracle
-				.current
-				.iter()
-				.filter(|((storage_idx, _), (_, v))| *storage_idx == s && *v <= cutoff_version)
-				.map(|((_, row), _)| *row)
-				.collect();
-			for (_, store) in &configs {
-				ttl_sweep_storage(store, &written, s, &expired, CommitVersion(cutoff_version));
-			}
-			for row in expired {
-				oracle.remove(s, row);
-			}
-		} else if roll < delete_hi {
-			let count = rng.random_range(1u64..=4);
-			let rows = distinct_rows(&mut rng, count, p.keyspace);
-			for (_, store) in &configs {
-				physical_delete_storage(store, &written, s, &rows);
-			}
-			for row in rows {
-				oracle.remove(s, row);
 			}
 		} else if rng.random_range(0u32..2) == 0 {
 			let row = rng.random_range(1..=p.keyspace);

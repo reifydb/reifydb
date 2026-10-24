@@ -462,12 +462,20 @@ impl testscript::runner::Runner for Runner {
 				let mut args = command.consume_args();
 				let key =
 					EncodedKey::new(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let version = if let Some(v) = args.lookup_parse("version")? {
+					CommitVersion(v)
+				} else {
+					self.version.0 += 1;
+					self.version
+				};
 				args.reject_rest()?;
 
 				let stored = script_key(&key).encode();
 				let persistent = self.store.persistent().ok_or("persistent tier not configured")?;
 				let table = classify_key(&stored);
-				persistent.delete_keys(table, &[stored])?;
+				let mut batches: TierBatch = HashMap::new();
+				batches.entry(table).or_default().push((stored, None));
+				persistent.set(version, batches)?;
 			}
 
 			name => {

@@ -14,7 +14,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet, classify_key},
+		store::{EntryKind, EntryLayout, MultiVersionCommit, MultiVersionGet},
 	},
 	key::{any::TaggedKey, row::RowKey},
 	lifecycle::watermark::EvictionWatermark,
@@ -24,14 +24,14 @@ use reifydb_runtime::{
 	context::clock::Clock,
 	pool::{PoolConfig, Pools},
 };
-use reifydb_store_commit::{MultiVersionScope, TierBatch, VersionedGetResult, store::CommitStore};
+use reifydb_store_commit::{MultiVersionScope, VersionedGetResult, store::CommitStore};
 use reifydb_store_multi::{
 	config::{CommitStoreConfig, MultiStoreConfig, PersistentConfig},
 	flush::ObjectPersistence,
 	store::StandardMultiStore,
 	tier::{TierStorage, point::MultiPointConfig, range::MultiRangeConfig},
 };
-use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::duration::Duration};
+use reifydb_value::{cow_vec, util::cowvec::CowVec, value::duration::Duration};
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
@@ -117,53 +117,19 @@ fn scan_keys(store: &StandardMultiStore, version: u64) -> Vec<(Vec<u8>, Vec<u8>)
 	.collect()
 }
 
-fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persistent_object: bool) {
-	// Deterministic stand-in for the flush sweep. It reproduces the sweep's read-tier effect (ephemeral
-	// keys invalidated, persistent keys left resident) so store-level read-through can be asserted
-	// without racing the actor.
-	let commit = store.commit();
-	let kinds = commit.list_all_entry_kinds();
-	for kind in kinds {
-		let (to_persist, to_compact, _, _) =
-			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX), None);
-		if to_compact.is_empty() {
-			continue;
-		}
-
-		if persistent_object && !to_persist.is_empty() {
-			let persistent = store.persistent().expect("persistent tier configured");
-			let mut by_version: HashMap<CommitVersion, TierBatch> = HashMap::new();
-			for (key, version, value) in &to_persist {
-				by_version
-					.entry(*version)
-					.or_default()
-					.entry(kind)
-					.or_default()
-					.push((key.clone(), value.clone()));
-			}
-			for (version, batch) in by_version {
-				persistent.set(version, batch).unwrap();
-			}
-		}
-
-		if !persistent_object {
-			for (key, _) in &to_compact {
-				store.invalidate_read_key(kind, key);
-			}
-		}
-
-		commit.compact(HashMap::from([(kind, to_compact)]));
-
-		if persistent_object {
-			for (key, version, _) in &to_persist {
-				store.get(
-					from_ref(&TaggedKey::decode(key).expect("an evictable key must decode")),
-					*version,
-				)
-				.unwrap();
-			}
-		}
+struct NonePersistent;
+impl ObjectPersistence for NonePersistent {
+	fn is_persistent(&self, _storage: StorageId) -> bool {
+		false
 	}
+}
+
+fn sweep_through_store(store: &StandardMultiStore, cutoff: CommitVersion, persistent_object: bool) {
+	if !persistent_object {
+		store.set_row_settings_provider(Arc::new(NonePersistent));
+	}
+	store.set_eviction_watermark(Arc::new(StaticWatermark(cutoff)));
+	store.flush_pending_blocking();
 }
 
 #[test]
@@ -404,7 +370,7 @@ fn real_flush_actor_sweep_bounds_ram_end_to_end() {
 
 #[test]
 fn real_flush_actor_seeds_read_tier_on_eviction() {
-	// Deleting the persistent row after eviction isolates the read tier as the only possible source, so a
+	// Removing the persistent row after eviction isolates the read tier as the only possible source, so a
 	// successful read proves the sweep seeded rather than invalidated.
 	let (store, _guard) = store_with_fast_flush();
 	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
@@ -434,8 +400,17 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 	}
 
 	let persistent = store.persistent().unwrap();
-	let deleted = persistent.delete_keys(kind, std::slice::from_ref(&k.encode())).unwrap();
-	assert_eq!(deleted, 1, "the evicted key must have been durable in the persistent tier before the delete");
+	assert_eq!(
+		persistent
+			.get(kind, std::slice::from_ref(&k.encode().as_ref()), CommitVersion(2))
+			.unwrap()
+			.remove(0)
+			.value()
+			.as_deref(),
+		Some(b"v2".as_slice()),
+		"the evicted key must have been durable in the persistent tier before the removal"
+	);
+	persistent.set(CommitVersion(3), HashMap::from([(kind, vec![(k.encode(), None)])])).unwrap();
 
 	assert_eq!(
 		get(&store, &k, 2).as_deref(),
@@ -448,7 +423,7 @@ fn real_flush_actor_seeds_read_tier_on_eviction() {
 #[test]
 fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	// A seeded (older) read-tier entry must never shadow a newer version still resident in the commit tier;
-	// deleting the persistent row isolates the seed as the only source of v2.
+	// removing the persistent row isolates the seed as the only source of v2.
 	let (store, _guard) = store_with_fast_flush();
 	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
 	let k = row_key(1);
@@ -478,7 +453,7 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 	}
 
 	let persistent = store.persistent().unwrap();
-	persistent.delete_keys(kind, std::slice::from_ref(&k.encode())).unwrap();
+	persistent.set(CommitVersion(3), HashMap::from([(kind, vec![(k.encode(), None)])])).unwrap();
 
 	assert_eq!(get(&store, &k, 5).as_deref(), Some(b"v5".as_slice()), "a reader at v5 must see the resident v5");
 	assert_eq!(
@@ -487,48 +462,4 @@ fn seeded_read_tier_entry_loses_to_a_newer_resident_commit_version() {
 		"an older snapshot must be served the seeded v2 from the read tier"
 	);
 	assert_eq!(get(&store, &k, 4).as_deref(), Some(b"v2".as_slice()), "v4 resolves to the latest <= 4 (seeded v2)");
-}
-
-fn versioned_row(payload: &[u8]) -> CowVec<u8> {
-	// TTL eviction keys off the per-key commit version, not a header timestamp, so no header is needed.
-	CowVec::new(payload.to_vec())
-}
-
-#[test]
-fn row_ttl_deletes_from_persistent_and_invalidated_read_tier_does_not_serve_it() {
-	// Read-tier invalidation after a persistent TTL delete is load-bearing for correctness, not a
-	// cache-freshness nicety: without it a stale entry resurrects the deleted row.
-	let (store, _guard) = store_with_persistent();
-	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
-	let k = row_key(1);
-
-	let persistent = store.persistent().unwrap();
-	let encoded = k.encode();
-	let table = classify_key(&encoded);
-	persistent
-		.set(CommitVersion(1), HashMap::from([(table, vec![(encoded.clone(), Some(versioned_row(b"old")))])]))
-		.unwrap();
-
-	// This read warms the read tier with the soon-to-be-stale value.
-	let expected = versioned_row(b"old").to_vec();
-	assert_eq!(
-		get(&store, &k, 1),
-		Some(expected),
-		"the persistent row is readable before TTL deletion (and now cached)"
-	);
-
-	let deleted = persistent.delete_keys(kind, std::slice::from_ref(&encoded)).unwrap();
-	assert_eq!(deleted, 1, "the expired row must be physically deleted from the persistent tier");
-
-	// The staleness itself is deliberately not asserted; only the post-invalidation read is pinned.
-	store.invalidate_read_key(kind, &encoded);
-
-	assert_eq!(
-		get(&store, &k, 1),
-		None,
-		"after TTL deletion + read-tier invalidation, the expired row must read as NotFound"
-	);
-
-	store.clear_read();
-	assert_eq!(get(&store, &k, 1), None, "clear_read must not resurrect the deleted row either");
 }

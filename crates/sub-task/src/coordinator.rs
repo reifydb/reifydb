@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, io, sync::Arc};
+use std::{cmp::Ordering, collections::BinaryHeap, error::Error, future, sync::Arc};
 
 use reifydb_core::interface::catalog::task::TaskId;
 use reifydb_engine::engine::StandardEngine;
@@ -259,15 +259,6 @@ fn spawn_task(
 					.map_err(|e| Box::new(e) as Box<dyn Error + Send>)
 					.and_then(|r| r)
 			}
-			(TaskWork::Async(f), TaskExecutor::Tokio) => f(ctx).await,
-			(TaskWork::Sync(_), TaskExecutor::Tokio) => Err(Box::new(io::Error::new(
-				io::ErrorKind::InvalidInput,
-				"Sync work cannot be executed on Tokio executor",
-			)) as Box<dyn Error + Send>),
-			(TaskWork::Async(_), TaskExecutor::ComputePool) => Err(Box::new(io::Error::new(
-				io::ErrorKind::InvalidInput,
-				"Async work cannot be executed on ComputePool executor",
-			)) as Box<dyn Error + Send>),
 		};
 
 		let duration = start.elapsed();

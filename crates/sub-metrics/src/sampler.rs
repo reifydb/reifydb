@@ -389,9 +389,6 @@ fn multi_point_row(metrics: &MultiPointShardMetrics) -> MetricsRow {
 			counter_count("misses", metrics.reads.misses),
 			counter_count("insertions", metrics.counters.insertions),
 			counter_count("evictions", metrics.counters.evictions),
-			counter_count("fills_started", metrics.counters.fills_started),
-			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
-			counter_count("fills_duplicate", metrics.counters.fills_duplicate),
 		],
 	}
 }

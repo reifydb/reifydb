@@ -1232,10 +1232,10 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 mod cache_tests {
 	use std::{
 		cell::Cell,
-		collections::HashMap,
 		ops::{Bound, RangeInclusive},
 		rc::Rc,
 		slice::from_ref,
+		sync::Arc,
 	};
 
 	use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
@@ -1253,10 +1253,9 @@ mod cache_tests {
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			row::{RowKey, RowKeyRange, StorageRowKey},
 		},
+		lifecycle::watermark::EvictionWatermark,
 	};
-	use reifydb_store_commit::{
-		MultiVersionScope, RangeCursor, RangeStop, RawEntry, TierBatch, VersionedGetResult,
-	};
+	use reifydb_store_commit::{MultiVersionScope, RangeCursor, RangeStop, RawEntry, VersionedGetResult};
 	use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
 
 	use super::{
@@ -1398,34 +1397,17 @@ mod cache_tests {
 		.unwrap();
 	}
 
-	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-		let commit = store.commit();
-		for kind in commit.list_all_entry_kinds() {
-			let (to_persist, to_compact, _consumed, _next) =
-				commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX), None);
-			if to_compact.is_empty() {
-				continue;
-			}
-			if !to_persist.is_empty() {
-				let persistent = store.persistent().expect("persistent tier");
-				let mut by_version: HashMap<CommitVersion, TierBatch> = HashMap::new();
-				for (key, version, value) in to_persist {
-					by_version
-						.entry(version)
-						.or_default()
-						.entry(kind)
-						.or_default()
-						.push((key, value));
-				}
-				for (version, batch) in by_version {
-					persistent.set(version, batch).unwrap();
-				}
-			}
-			for (key, _) in &to_compact {
-				store.invalidate_read_key(kind, key);
-			}
-			commit.compact(HashMap::from([(kind, to_compact)]));
+	struct FixedWatermark(CommitVersion);
+
+	impl EvictionWatermark for FixedWatermark {
+		fn watermark(&self) -> CommitVersion {
+			self.0
 		}
+	}
+
+	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
+		store.set_eviction_watermark(Arc::new(FixedWatermark(cutoff)));
+		store.flush_pending_blocking();
 	}
 
 	#[test]
@@ -2002,7 +1984,6 @@ mod cache_tests {
 					),
 					"the flush must move the row out of the buffer, or the rescan reads it from there"
 				);
-				store.clear_read();
 				fired.set(true);
 			});
 		}
@@ -2061,7 +2042,6 @@ mod cache_tests {
 			commit_row(&store, n, 1);
 		}
 		store.flush_all_blocking();
-		store.clear_read();
 
 		commit_row(&store, FILL, 2);
 		store.flush_all_blocking();
@@ -2156,7 +2136,6 @@ mod cache_tests {
 			commit_row(&store, n, 1);
 		}
 		store.flush_all_blocking();
-		store.clear_read();
 
 		assert_eq!(
 			rows_between(&store, FILLERS),

@@ -281,9 +281,6 @@ fn run_equivalence_on(pair: Pair, seed_value: u64) -> Served {
 				flush(&pair.hot, version);
 				flush(&pair.cold, version);
 			}
-			8 => {
-				pair.hot.clear_read();
-			}
 			_ => {}
 		}
 

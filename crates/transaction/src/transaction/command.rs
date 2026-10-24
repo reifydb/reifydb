@@ -592,10 +592,6 @@ impl Write for CommandTransaction {
 		CommandTransaction::set_with_pre(self, entries)
 	}
 	#[inline]
-	fn remove_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()> {
-		CommandTransaction::remove_with_pre(self, key, pre)
-	}
-	#[inline]
 	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		CommandTransaction::remove(self, entries)
 	}

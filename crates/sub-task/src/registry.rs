@@ -17,20 +17,3 @@ pub struct TaskEntry {
 }
 
 pub type TaskRegistry = Arc<DashMap<TaskId, TaskEntry>>;
-
-#[derive(Debug, Clone)]
-pub struct TaskInfo {
-	pub id: TaskId,
-	pub name: String,
-	pub next_execution: Instant,
-}
-
-impl TaskInfo {
-	pub fn from_entry(id: TaskId, entry: &TaskEntry) -> Self {
-		Self {
-			id,
-			name: entry.task.name.clone(),
-			next_execution: entry.next_execution.clone(),
-		}
-	}
-}

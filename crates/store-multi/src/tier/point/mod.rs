@@ -270,9 +270,6 @@ fn accumulate_point_metrics(parts: [PointMetrics; 5]) -> PointMetrics {
 		total.misses += part.misses;
 		total.insertions += part.insertions;
 		total.evictions += part.evictions;
-		total.fills_started += part.fills_started;
-		total.fills_dirty_aborted += part.fills_dirty_aborted;
-		total.fills_duplicate += part.fills_duplicate;
 	}
 	total
 }
@@ -346,14 +343,9 @@ impl MultiPointTier {
 		self.resolve(shard, found, version)
 	}
 
-	fn resolve(
-		&self,
-		shard: usize,
-		found: Option<Option<MultiPointRow>>,
-		version: CommitVersion,
-	) -> VersionedGetResult {
+	fn resolve(&self, shard: usize, found: Option<MultiPointRow>, version: CommitVersion) -> VersionedGetResult {
 		let counters = &self.reads[shard];
-		let Some(Some(row)) = found else {
+		let Some(row) = found else {
 			counters.misses.fetch_add(1, Ordering::Relaxed);
 			return VersionedGetResult::NotFound;
 		};
@@ -442,14 +434,6 @@ impl MultiPointTier {
 				self.blob.invalidate(table, &blob)
 			}
 		}
-	}
-
-	pub fn clear(&self) {
-		self.blob.clear();
-		self.row.clear();
-		self.partitioned.clear();
-		self.series.clear();
-		self.partitioned_series.clear();
 	}
 
 	pub fn read_metrics(&self) -> Vec<MultiReadMetrics> {

@@ -46,10 +46,6 @@ pub enum HealthStatus {
 }
 
 impl HealthStatus {
-	pub fn is_healthy(&self) -> bool {
-		matches!(self, HealthStatus::Healthy)
-	}
-
 	pub fn is_failed(&self) -> bool {
 		matches!(self, HealthStatus::Failed { .. })
 	}

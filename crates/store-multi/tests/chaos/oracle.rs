@@ -78,16 +78,6 @@ impl Oracle {
 		}
 	}
 
-	/// Physically remove a key (TTL eviction or explicit drop): the whole history is gone, so it reads
-	/// absent at every version until re-committed. Used by the lifecycle scenario, not the base workload.
-	pub fn remove_key(&mut self, row: u64) {
-		self.history.remove(&row);
-	}
-
-	pub fn versions(&self, row: u64) -> Vec<u64> {
-		self.history.get(&row).into_iter().flat_map(|versions| versions.keys().copied()).collect()
-	}
-
 	/// The (value, version) a store must return for `row` under `scope`, or None if the visible version is
 	/// a tombstone or no version qualifies.
 	pub fn resolve(&self, row: u64, scope: Scope) -> Option<(Vec<u8>, u64)> {

@@ -909,7 +909,10 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{
-			aggregation::core::{SlotColumn, SlotColumns, slot_rows::slot_row},
+			aggregation::core::{
+				SlotColumn, SlotColumns,
+				slot_rows::{slot_column, slot_row},
+			},
 			state::seal::coord::Coord,
 		},
 		window::{
@@ -1893,7 +1896,7 @@ mod tests {
 				let width = 1 + (rng.next() % 6) as usize;
 				let columns: Vec<SlotColumn> = (0..kinds.len())
 					.map(|_| {
-						SlotColumn::Values(
+						slot_column(
 							(0..width)
 								.map(|_| match rng.next() % 5 {
 									0 => Value::none(),

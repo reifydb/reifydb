@@ -13,12 +13,8 @@ use reifydb_core::{
 };
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::FxHasher;
 
-#[cfg(test)]
-use crate::tier::point::FillInterlock;
-#[cfg(test)]
-use crate::tier::point::PointKey;
 use crate::tier::point::{
 	EVICTION_SAMPLE, Entry, PointBucketMetrics, PointConfig, PointDomain, PointMetrics, PointShardMetrics,
 	PointTier, PoolInner, Shard, entry_footprint, entry_hash,
@@ -37,19 +33,6 @@ impl<D: PointDomain> PointTier<D> {
 		Some(Self {
 			inner: Arc::new(PoolInner {
 				shards: build_shards::<D>(config, budgets),
-				#[cfg(test)]
-				interlock: None,
-			}),
-		})
-	}
-
-	#[cfg(test)]
-	pub(crate) fn with_interlock(config: PointConfig, interlock: FillInterlock<D>) -> Option<Self> {
-		let budgets = shard_budgets(config)?;
-		Some(Self {
-			inner: Arc::new(PoolInner {
-				shards: build_shards::<D>(config, &budgets),
-				interlock: Some(interlock),
 			}),
 		})
 	}
@@ -63,11 +46,6 @@ impl<D: PointDomain> PointTier<D> {
 
 	pub(super) fn shard_at(&self, dimension: D::Dimension, key: &D::Key) -> &Mutex<Shard<D>> {
 		&self.inner.shards[self.shard_index(dimension, key)]
-	}
-
-	#[cfg(test)]
-	pub(super) fn shard_for(&self, key: &PointKey<D::Dimension, D::Key>) -> &Mutex<Shard<D>> {
-		self.shard_at(key.dimension, &key.key)
 	}
 
 	pub(super) fn all_shards(&self) -> impl Iterator<Item = &Mutex<Shard<D>>> {
@@ -202,9 +180,6 @@ impl<D: PointDomain> MetricsCollector for PointTier<D> {
 		out.push(MetricsSample::counter(D::SCOPE, "misses", counters.misses));
 		out.push(MetricsSample::counter(D::SCOPE, "insertions", counters.insertions));
 		out.push(MetricsSample::counter(D::SCOPE, "evictions", counters.evictions));
-		out.push(MetricsSample::counter(D::SCOPE, "fills_started", counters.fills_started));
-		out.push(MetricsSample::counter(D::SCOPE, "fills_dirty_aborted", counters.fills_dirty_aborted));
-		out.push(MetricsSample::counter(D::SCOPE, "fills_duplicate", counters.fills_duplicate));
 		out.push(MetricsSample::bytes(D::SCOPE, "shard_limit_bytes", self.shard_limit_bytes()));
 		for (index, shard) in self.inner.shards.iter().enumerate() {
 			out.push(MetricsSample::bytes(
@@ -229,9 +204,6 @@ fn accumulate(target: &mut PointMetrics, source: &PointMetrics) {
 	target.misses += source.misses;
 	target.insertions += source.insertions;
 	target.evictions += source.evictions;
-	target.fills_started += source.fills_started;
-	target.fills_dirty_aborted += source.fills_dirty_aborted;
-	target.fills_duplicate += source.fills_duplicate;
 }
 
 fn entry_bucket<D: PointDomain>(entry: &Entry<D>) -> usize {
@@ -251,7 +223,6 @@ fn build_shards<D: PointDomain>(config: PointConfig, budgets: &[Arc<MemoryBudget
 			Mutex::new(Shard {
 				index: HashTable::new(),
 				entries: Vec::new(),
-				filling: FxHashMap::default(),
 				budget: budgets[index].clone(),
 				next_tick: 0,
 				rng: 0x9E37_79B9_7F4A_7C15 ^ (index as u64 + 1),

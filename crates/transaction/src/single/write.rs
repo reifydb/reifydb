@@ -137,17 +137,6 @@ impl<'a> SingleWriteTransaction<'a> {
 		Ok(())
 	}
 
-	pub fn remove_with_pre<K: Into<TaggedKey> + Clone, B: Into<EncodedBytes>>(
-		&mut self,
-		entries: Vec<(K, B)>,
-	) -> Result<()> {
-		let entries = self.scoped(entries)?;
-		for (key, encoded, pre) in entries {
-			self.pending.insert(encoded, Delta::remove_announced(key, pre.into()));
-		}
-		Ok(())
-	}
-
 	pub fn remove<K: Into<TaggedKey> + Clone>(&mut self, keys: &[K]) -> Result<()> {
 		let entries = self.scoped(keys.iter().map(|key| (key.clone(), ())).collect())?;
 		for (key, encoded, ()) in entries {

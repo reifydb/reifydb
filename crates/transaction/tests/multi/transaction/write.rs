@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::common::CommitVersion;
+use reifydb_transaction::multi::types::TransactionValue;
 
 use super::test_multi;
 use crate::{as_key, as_values, from_bytes, multi::transaction::FromRow};
@@ -45,7 +46,10 @@ fn test_multiple_write() {
 
 		let key = as_key!(8);
 		let sv = txn.get(&[key.clone()]).unwrap().pop().flatten().unwrap();
-		assert!(!sv.is_committed());
+		assert!(
+			matches!(sv, TransactionValue::Pending(_)),
+			"a read inside the open transaction must come from its own pending write"
+		);
 		assert_eq!(from_bytes!(i32, *sv.bytes()), 8);
 		drop(sv);
 

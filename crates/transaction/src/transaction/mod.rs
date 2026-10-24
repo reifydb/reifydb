@@ -613,10 +613,6 @@ impl<'a> Transaction<'a> {
 		Write::set_with_pre(self.write_ops(), entries)
 	}
 
-	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
-		Write::remove_with_pre(self.write_ops(), &key.clone().into(), pre)
-	}
-
 	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		Write::remove(self.write_ops(), entries)
 	}

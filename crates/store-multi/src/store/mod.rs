@@ -9,16 +9,9 @@ use std::{
 	},
 };
 
-use reifydb_codec::key::encoded::EncodedKey;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::metrics::sample::MetricsSample;
-use reifydb_core::{
-	common::CommitVersion,
-	event::EventBus,
-	interface::store::{EntryKind, storage_key},
-	lifecycle::watermark::EvictionWatermark,
-	metrics::collect::MetricsCollector,
-};
+use reifydb_core::{event::EventBus, lifecycle::watermark::EvictionWatermark, metrics::collect::MetricsCollector};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_filter::{actor::FilterActor, config::FilterConfig};
 use reifydb_filter::{actor::FilterMessage, adaptive::FilterMetrics};
@@ -32,7 +25,7 @@ use reifydb_runtime::{
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_store_commit::store::{CommitStore, MultiCommitMetrics};
-use reifydb_value::{count::Count, util::cowvec::CowVec};
+use reifydb_value::count::Count;
 use tracing::instrument;
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -185,40 +178,6 @@ impl StandardMultiStore {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 	pub fn flush_engine(&self) -> Option<Arc<FlushEngine>> {
 		self.flush_engine.clone()
-	}
-
-	pub fn insert_read_key(
-		&self,
-		table: EntryKind,
-		key: EncodedKey,
-		version: CommitVersion,
-		value: Option<CowVec<u8>>,
-	) {
-		if let Some(range) = &self.range {
-			range.insert(table, key.clone(), version, value.clone());
-		}
-		if let Some(point) = &self.point {
-			let storage_key = storage_key(&key).1;
-			point.insert(table, storage_key, key, version, value);
-		}
-	}
-
-	pub fn invalidate_read_key(&self, table: EntryKind, key: &EncodedKey) {
-		if let Some(range) = &self.range {
-			range.invalidate(table, key);
-		}
-		if let Some(point) = &self.point {
-			point.invalidate(table, storage_key(key).1, key);
-		}
-	}
-
-	pub fn clear_read(&self) {
-		if let Some(range) = &self.range {
-			range.clear();
-		}
-		if let Some(point) = &self.point {
-			point.clear();
-		}
 	}
 
 	pub fn set_row_settings_provider(&self, provider: Arc<dyn ObjectPersistence>) {

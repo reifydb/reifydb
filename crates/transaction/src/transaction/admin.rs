@@ -422,12 +422,6 @@ impl AdminTransaction {
 	}
 
 	#[inline]
-	pub fn remove_with_pre<K: Into<TaggedKey> + Clone>(&mut self, key: &K, pre: EncodedBytes) -> Result<()> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().remove_with_pre(key, pre)
-	}
-
-	#[inline]
 	pub fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove(entries)
@@ -527,10 +521,6 @@ impl Write for AdminTransaction {
 	#[inline]
 	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()> {
 		AdminTransaction::set_with_pre(self, entries)
-	}
-	#[inline]
-	fn remove_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()> {
-		AdminTransaction::remove_with_pre(self, key, pre)
 	}
 	#[inline]
 	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {

@@ -71,7 +71,7 @@ impl TaskSubsystem {
 			);
 		}
 
-		let handle = TaskHandle::new(registry.clone(), coordinator_tx.clone());
+		let handle = TaskHandle::new(coordinator_tx.clone());
 
 		let coordinator_handle = {
 			let registry = registry.clone();
