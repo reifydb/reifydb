@@ -634,11 +634,11 @@ impl ConfigKey {
 			Self::RetentionEvictInterval => true,
 			Self::RetentionEvictBatchSize => false,
 			Self::RetentionEvictMaxBatchesPerTick => false,
-			Self::EpochBucketInterval => false,
+			Self::EpochBucketInterval => true,
 			Self::RetentionStartupGrace => false,
 			Self::MaxRetentionHorizonFloor => false,
 			Self::HistoricalGcBatchSize => false,
-			Self::HistoricalGcInterval => false,
+			Self::HistoricalGcInterval => true,
 			Self::CdcTtlDuration => false,
 			Self::CdcTtlScanInterval => true,
 			Self::CdcTtlScanBatchSize => false,
@@ -684,7 +684,7 @@ impl ConfigKey {
 			Self::QueueLeaseReapBatchSize => false,
 			Self::QueueRetentionInterval => false,
 			Self::QueueRetentionBatchSize => false,
-			Self::CommitMergeInterval => false,
+			Self::CommitMergeInterval => true,
 		}
 	}
 

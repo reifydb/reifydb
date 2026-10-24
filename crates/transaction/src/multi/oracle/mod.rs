@@ -79,6 +79,8 @@ pub(crate) type OracleLock = RwLock<OracleState>;
 
 const WINDOW_KEY_CAPACITY: usize = 500;
 
+const WINDOW_KEY_CAPACITY_MAX: usize = 1 << 22;
+
 pub(crate) struct ModifiedKeyIndex {
 	hashes: HashSet<u64>,
 }
@@ -86,7 +88,7 @@ pub(crate) struct ModifiedKeyIndex {
 impl ModifiedKeyIndex {
 	fn with_capacity(capacity: usize) -> Self {
 		Self {
-			hashes: HashSet::with_capacity(capacity.max(WINDOW_KEY_CAPACITY)),
+			hashes: HashSet::with_capacity(capacity.clamp(WINDOW_KEY_CAPACITY, WINDOW_KEY_CAPACITY_MAX)),
 		}
 	}
 
@@ -118,6 +120,11 @@ impl ModifiedKeyIndex {
 		self.hashes.capacity()
 	}
 }
+
+const _: fn() = || {
+	fn sendable<T: Send>() {}
+	sendable::<CommittedWindow>();
+};
 
 pub(crate) struct CommittedWindow {
 	transactions: Vec<CommittedTxn>,
@@ -1235,6 +1242,18 @@ mod tests {
 			evicted_up_through,
 			CommitVersion(9),
 			"eviction must still raise the too-old bound inside the hold"
+		);
+	}
+
+	#[test]
+	fn a_presized_key_index_never_reserves_past_its_ceiling() {
+		// one bulk window must not make the next window reserve an index sized for an unbounded number of keys.
+		let index = ModifiedKeyIndex::with_capacity(4 * WINDOW_KEY_CAPACITY_MAX);
+
+		assert!(
+			index.capacity() <= 2 * WINDOW_KEY_CAPACITY_MAX,
+			"a presize of four ceilings reserved {} slots, past the ceiling",
+			index.capacity()
 		);
 	}
 }

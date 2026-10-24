@@ -307,6 +307,7 @@ impl<R: Write> CommitStore<R> {
 			entry.rows.merge(
 				self.0.config.merge_fan_in,
 				self.0.config.merge_cap,
+				self.0.config.close_threshold,
 				self.0.config.merge_backlog,
 			);
 		}
@@ -315,7 +316,12 @@ impl<R: Write> CommitStore<R> {
 	pub fn merge_closed(&self) {
 		for kind in self.0.entries.keys() {
 			if let Some(entry) = self.0.entries.get(&kind) {
-				entry.rows.merge(self.0.config.merge_fan_in, self.0.config.merge_cap, 0);
+				entry.rows.merge(
+					self.0.config.merge_fan_in,
+					self.0.config.merge_cap,
+					self.0.config.close_threshold,
+					0,
+				);
 			}
 		}
 	}
@@ -358,7 +364,12 @@ impl<R: Read + Write> CommitStore<R> {
 		};
 		if entry.rows.stats().active_oldest.is_some_and(|oldest| oldest <= cutoff) {
 			entry.rows.close();
-			entry.rows.merge(self.0.config.merge_fan_in, self.0.config.merge_cap, 0);
+			entry.rows.merge(
+				self.0.config.merge_fan_in,
+				self.0.config.merge_cap,
+				self.0.config.close_threshold,
+				0,
+			);
 		}
 
 		let budget = budget.as_bytes();
