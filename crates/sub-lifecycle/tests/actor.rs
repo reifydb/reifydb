@@ -84,7 +84,11 @@ fn a_tick_runs_exactly_one_slice_of_exactly_its_own_class_and_never_a_neighbour(
 		vec!["second"],
 		"a tick must run only the class whose actor received it - driving a neighbour double-drives its cursor"
 	);
-	assert_eq!(directives, vec![Directive::Continue], "a completed slice must keep the lane alive");
+	assert_eq!(
+		directives,
+		vec![Directive::Yield],
+		"a completed slice must hand the lane to the next actor, not keep it"
+	);
 }
 
 #[test]
@@ -104,7 +108,11 @@ fn a_tick_yields_the_lane_after_one_slice_even_when_the_class_still_has_work() {
 		"one tick must perform exactly one slice; draining {} slices inline would monopolise the lane",
 		journal.lock().len()
 	);
-	assert_eq!(directives, vec![Directive::Continue], "yielding with work left must not stop the lane");
+	assert_eq!(
+		directives,
+		vec![Directive::Yield],
+		"a slice with work left must hand the lane on, not drain or stop"
+	);
 }
 
 #[test]
@@ -193,4 +201,33 @@ fn set_interval_retunes_the_timer_without_stopping_the_lane() {
 
 	assert!(journal.lock().is_empty(), "retuning must not run a slice of its own");
 	assert_eq!(directives, vec![Directive::Continue], "retuning must be inert to liveness, not fatal");
+}
+
+#[test]
+fn a_tick_while_a_catch_up_is_pending_runs_no_extra_slice() {
+	// every extra tick a yielding class collects lets it run back to back and starve the other classes on the lane.
+	let journal = journal();
+	let mut harness =
+		TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new("backlogged", 5, journal.clone()))));
+
+	harness.send(LifecycleMessage::Tick);
+	harness.send(LifecycleMessage::Tick);
+	harness.process_all();
+
+	assert_eq!(journal.lock().len(), 1, "an interval tick during a pending catch-up must not add a second slice");
+}
+
+#[test]
+fn a_catch_up_runs_the_next_slice_and_clears_the_pending_flag() {
+	// a flag left set after the catch-up would silence every later interval tick and stall the class for good.
+	let journal = journal();
+	let mut harness =
+		TestHarness::new(LifecycleActor::new(Box::new(ScriptedTask::new("backlogged", 2, journal.clone()))));
+
+	harness.send(LifecycleMessage::Tick);
+	harness.send(LifecycleMessage::CatchUp);
+	harness.send(LifecycleMessage::Tick);
+	harness.process_all();
+
+	assert_eq!(journal.lock().len(), 3, "tick, catch-up and the next tick must each run one slice");
 }
