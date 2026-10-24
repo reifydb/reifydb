@@ -84,11 +84,32 @@ impl CdcStore {
 		Ok(false)
 	}
 
+	pub fn read_range_within(
+		&self,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
+		batch_size: u64,
+		budget: u64,
+		size: impl Fn(&Cdc) -> u64,
+	) -> CdcStorageResult<CdcBatch> {
+		self.walk_range(
+			start,
+			end,
+			batch_size,
+			Some(Allowance {
+				budget,
+				size: &size,
+				taken: 0,
+			}),
+		)
+	}
+
 	pub(crate) fn walk_range(
 		&self,
 		start: Bound<CommitVersion>,
 		end: Bound<CommitVersion>,
 		batch_size: u64,
+		mut allowance: Option<Allowance<'_>>,
 	) -> CdcStorageResult<CdcBatch> {
 		let want = batch_size as usize;
 		let Some((lo, hi)) = normalize_range_inclusive(start, end) else {
@@ -108,12 +129,13 @@ impl CdcStore {
 		let mut items: Vec<Cdc> = Vec::new();
 		let mut cursor = lo;
 		let mut exhausted = false;
+		let mut full = false;
 
-		while !exhausted && items.len() < want && cursor <= hi {
+		while !exhausted && !full && items.len() < want && cursor <= hi {
 			let pending = self.commit.range(cursor, hi, want - items.len());
 			let boundary = pending.first().map(|cdc| cdc.version.commit);
 
-			while items.len() < want && cursor <= hi && boundary.is_none_or(|edge| cursor < edge) {
+			while !full && items.len() < want && cursor <= hi && boundary.is_none_or(|edge| cursor < edge) {
 				let block = match self.block_for(cursor)? {
 					Some(block) => block,
 					None => match self.bridge(cursor, items.len(), boundary)? {
@@ -137,7 +159,17 @@ impl CdcStore {
 					if boundary.is_some_and(|edge| cdc.version.commit >= edge) {
 						break;
 					}
+					if allowance
+						.as_mut()
+						.is_some_and(|allowance| !allowance.admits(cdc, items.is_empty()))
+					{
+						full = true;
+						break;
+					}
 					items.push((**cdc).clone());
+				}
+				if full {
+					break;
 				}
 				let Some(next) = block.max_version().0.checked_add(1) else {
 					exhausted = true;
@@ -146,7 +178,7 @@ impl CdcStore {
 				cursor = CommitVersion(next);
 			}
 
-			if exhausted || items.len() >= want {
+			if exhausted || full || items.len() >= want {
 				break;
 			}
 			let Some(boundary) = boundary else {
@@ -165,6 +197,11 @@ impl CdcStore {
 					continue;
 				}
 				if cdc.version.commit > cursor && !items.is_empty() {
+					break;
+				}
+				if allowance.as_mut().is_some_and(|allowance| !allowance.admits(&cdc, items.is_empty()))
+				{
+					full = true;
 					break;
 				}
 				items.push((*cdc).clone());
@@ -189,5 +226,22 @@ impl CdcStore {
 			items,
 			has_more,
 		})
+	}
+}
+
+pub(crate) struct Allowance<'a> {
+	budget: u64,
+	size: &'a dyn Fn(&Cdc) -> u64,
+	taken: u64,
+}
+
+impl Allowance<'_> {
+	fn admits(&mut self, cdc: &Cdc, first: bool) -> bool {
+		let bytes = (self.size)(cdc);
+		if !first && self.taken.saturating_add(bytes) > self.budget {
+			return false;
+		}
+		self.taken = self.taken.saturating_add(bytes);
+		true
 	}
 }

@@ -24,7 +24,7 @@ use reifydb_runtime::actor::{
 	system::{ActorConfig, ActorHandle},
 	traits::{Actor, Directive},
 };
-use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
+use reifydb_store_cdc::store::CdcStore;
 use reifydb_value::byte_size::ByteSize;
 
 use crate::error::FlowLoadError;
@@ -141,7 +141,13 @@ impl LoaderActor {
 		loop {
 			let batch = self
 				.store
-				.read_range(Bound::Excluded(cursor), Bound::Included(up_to), READ_CHUNK)
+				.read_range_within(
+					Bound::Excluded(cursor),
+					Bound::Included(up_to),
+					READ_CHUNK,
+					budget.saturating_sub(taken),
+					cdc_bytes,
+				)
 				.map_err(|cause| FlowLoadError::Read {
 					from: from.0,
 					up_to: up_to.0,
@@ -206,7 +212,10 @@ mod tests {
 	use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 	use reifydb_core::{common::ChangeVersion, interface::cdc::CdcChange};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools, sync::mutex::Mutex};
-	use reifydb_store_cdc::{config::CdcStoreConfig, storage::Cutoff};
+	use reifydb_store_cdc::{
+		config::CdcStoreConfig,
+		storage::{CdcStorage, Cutoff},
+	};
 	use reifydb_value::{
 		util::cowvec::CowVec,
 		value::{datetime::DateTime, duration::Duration},
