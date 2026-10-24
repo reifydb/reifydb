@@ -20,7 +20,6 @@ pub struct FilterMetrics {
 	pub queries: u64,
 	pub rejected: u64,
 	pub rebuilds: u64,
-	pub aborts: u64,
 }
 
 #[derive(Debug)]
@@ -48,7 +47,6 @@ pub struct AdaptiveKeyFilter {
 	queries: AtomicU64,
 	rejected: AtomicU64,
 	rebuilds: AtomicU64,
-	aborts: AtomicU64,
 }
 
 impl Default for AdaptiveKeyFilter {
@@ -67,7 +65,6 @@ impl AdaptiveKeyFilter {
 			queries: AtomicU64::new(0),
 			rejected: AtomicU64::new(0),
 			rebuilds: AtomicU64::new(0),
-			aborts: AtomicU64::new(0),
 		}
 	}
 
@@ -80,7 +77,6 @@ impl AdaptiveKeyFilter {
 			queries: AtomicU64::new(0),
 			rejected: AtomicU64::new(0),
 			rebuilds: AtomicU64::new(0),
-			aborts: AtomicU64::new(0),
 		}
 	}
 
@@ -136,13 +132,6 @@ impl AdaptiveKeyFilter {
 		self.rebuilds.fetch_add(1, Ordering::Relaxed);
 	}
 
-	pub fn abort_rebuild(&self, handle: RebuildHandle) {
-		let mut state = self.state.write();
-		state.building = None;
-		drop(handle);
-		self.aborts.fetch_add(1, Ordering::Relaxed);
-	}
-
 	pub fn metrics(&self) -> FilterMetrics {
 		let state = self.state.read();
 		let (enabled, fill_ratio, estimated_keys, size_bits) = match &state.active {
@@ -160,7 +149,6 @@ impl AdaptiveKeyFilter {
 			queries: self.queries.load(Ordering::Relaxed),
 			rejected: self.rejected.load(Ordering::Relaxed),
 			rebuilds: self.rebuilds.load(Ordering::Relaxed),
-			aborts: self.aborts.load(Ordering::Relaxed),
 		}
 	}
 }

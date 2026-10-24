@@ -618,8 +618,8 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::key::operator::state::KeyspaceId;
+	use reifydb_store::tier::range::RangeMetrics;
 	use reifydb_store_cdc::tier::read::CdcReadMetrics;
-	use reifydb_store_operator::range::OperatorRangeMetrics;
 
 	use super::*;
 
@@ -631,7 +631,7 @@ mod tests {
 			partitions: 115,
 			intervals: 203,
 			entries: 419,
-			counters: OperatorRangeMetrics {
+			counters: RangeMetrics {
 				hits: 1_207,
 				misses: 89,
 				exempt: 17,

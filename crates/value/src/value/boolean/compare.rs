@@ -31,26 +31,6 @@ pub fn is_less_than_equal(l: bool, r: bool) -> bool {
 	l <= r
 }
 
-#[inline]
-pub fn logical_and(l: bool, r: bool) -> bool {
-	l && r
-}
-
-#[inline]
-pub fn logical_or(l: bool, r: bool) -> bool {
-	l || r
-}
-
-#[inline]
-pub fn logical_not(b: bool) -> bool {
-	!b
-}
-
-#[inline]
-pub fn logical_xor(l: bool, r: bool) -> bool {
-	l ^ r
-}
-
 #[cfg(test)]
 pub mod tests {
 	use super::*;
@@ -101,35 +81,5 @@ pub mod tests {
 		assert!(is_less_than_equal(false, true));
 		assert!(is_less_than_equal(true, true));
 		assert!(is_less_than_equal(false, false));
-	}
-
-	#[test]
-	fn test_logical_and() {
-		assert!(logical_and(true, true));
-		assert!(!logical_and(true, false));
-		assert!(!logical_and(false, true));
-		assert!(!logical_and(false, false));
-	}
-
-	#[test]
-	fn test_logical_or() {
-		assert!(logical_or(true, true));
-		assert!(logical_or(true, false));
-		assert!(logical_or(false, true));
-		assert!(!logical_or(false, false));
-	}
-
-	#[test]
-	fn test_logical_not() {
-		assert!(!logical_not(true));
-		assert!(logical_not(false));
-	}
-
-	#[test]
-	fn test_logical_xor() {
-		assert!(!logical_xor(true, true));
-		assert!(logical_xor(true, false));
-		assert!(logical_xor(false, true));
-		assert!(!logical_xor(false, false));
 	}
 }

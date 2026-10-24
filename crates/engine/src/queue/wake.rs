@@ -75,13 +75,6 @@ impl QueueWakeRegistry {
 		}
 	}
 
-	pub fn nudge_all(&self, queue: QueueId) {
-		let woken = self.0.queues.lock().remove(&queue).unwrap_or_default();
-		for waiter in woken {
-			waiter.notify();
-		}
-	}
-
 	pub fn parked(&self, queue: QueueId) -> usize {
 		self.0.queues.lock().get(&queue).map_or(0, VecDeque::len)
 	}
@@ -193,15 +186,5 @@ mod tests {
 		assert!(mine.wait_timeout(zero()));
 		assert!(!theirs.wait_timeout(zero()), "a nudge must not cross queue boundaries");
 		assert_eq!(registry.parked(QueueId(2)), 1);
-	}
-
-	#[test]
-	fn test_nudging_an_unknown_queue_does_nothing() {
-		let registry = QueueWakeRegistry::new();
-
-		registry.nudge(QueueId(42), 3);
-		registry.nudge_all(QueueId(42));
-
-		assert_eq!(registry.parked(QueueId(42)), 0);
 	}
 }

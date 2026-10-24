@@ -4,7 +4,7 @@
 use std::{f32::consts::PI, f64::consts::E};
 
 use reifydb_codec::key::{deserializer::KeyDeserializer, encoded::EncodedKey, serializer::KeySerializer};
-use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, row_number::RowNumber, time::Time};
+use reifydb_value::value::{date::Date, datetime::DateTime, duration::Duration, time::Time};
 
 #[test]
 fn test_read_bool() {
@@ -186,18 +186,6 @@ fn test_keycode_duration_ordering_preserved() {
 			durations[i + 1]
 		);
 	}
-}
-
-#[test]
-fn test_read_row_number() {
-	let mut ser = KeySerializer::new();
-	let row = RowNumber(42);
-	ser.extend_row_number(&row);
-	let bytes = ser.finish();
-
-	let mut de = KeyDeserializer::from_bytes(&bytes);
-	assert_eq!(de.read_row_number().unwrap(), row);
-	assert!(de.is_empty());
 }
 
 #[test]

@@ -66,14 +66,3 @@ fn raw_registration_shadows_builtin() {
 	let resolved = r.get_procedure("clock::set").unwrap();
 	assert!(Arc::ptr_eq(&resolved, &user_proc));
 }
-
-#[test]
-fn name_listings_strip_canonical_prefix() {
-	let r = registry();
-	let function_names = r.function_names();
-	assert!(function_names.iter().any(|n| n == "math::abs"));
-	assert!(!function_names.iter().any(|n| n.starts_with("system::builtin::functions::")));
-	let procedure_names = r.procedure_names();
-	assert!(procedure_names.iter().any(|n| n == "clock::set"));
-	assert!(!procedure_names.iter().any(|n| n.starts_with("system::builtin::procedures::")));
-}

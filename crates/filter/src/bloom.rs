@@ -41,10 +41,6 @@ impl BloomFilter {
 		}
 	}
 
-	pub fn might_contain<T: Hash>(&self, item: &T) -> bool {
-		self.might_contain_hash(hash_item(item))
-	}
-
 	pub fn might_contain_hash(&self, hash: u64) -> bool {
 		for i in 0..self.hash_count {
 			let bit_pos = self.get_bit_pos(hash, i);
@@ -135,16 +131,16 @@ pub mod tests {
 		bloom.add(&"world");
 		bloom.add(&42);
 
-		assert!(bloom.might_contain(&"hello"));
-		assert!(bloom.might_contain(&"world"));
-		assert!(bloom.might_contain(&42));
+		assert!(bloom.might_contain_hash(hash_item(&"hello")));
+		assert!(bloom.might_contain_hash(hash_item(&"world")));
+		assert!(bloom.might_contain_hash(hash_item(&42)));
 
 		// An absent key may collide, so only one of the two is required to answer absent.
-		assert!(!bloom.might_contain(&"foo") || !bloom.might_contain(&"bar"));
+		assert!(!bloom.might_contain_hash(hash_item(&"foo")) || !bloom.might_contain_hash(hash_item(&"bar")));
 
 		bloom.clear();
 		assert!(bloom.is_empty());
-		assert!(!bloom.might_contain(&"hello"));
+		assert!(!bloom.might_contain_hash(hash_item(&"hello")));
 	}
 
 	#[test]
@@ -158,12 +154,12 @@ pub mod tests {
 		}
 
 		for i in 0..1000 {
-			assert!(bloom.might_contain(&i));
+			assert!(bloom.might_contain_hash(hash_item(&i)));
 		}
 
 		let mut false_positives = 0;
 		for i in 1000..11000 {
-			if bloom.might_contain(&i) {
+			if bloom.might_contain_hash(hash_item(&i)) {
 				false_positives += 1;
 			}
 		}

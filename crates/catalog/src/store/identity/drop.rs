@@ -47,6 +47,7 @@ impl CatalogStore {
 			}
 		}
 
+		Self::drop_tokens_by_identity(txn, identity)?;
 		txn.remove(vec![(IdentityKey::new(identity).into(), None)])?;
 		Ok(())
 	}
@@ -60,7 +61,7 @@ mod tests {
 	};
 	use reifydb_test_harness::engine::create_test_admin_transaction;
 	use reifydb_transaction::transaction::Transaction;
-	use reifydb_value::value::identity::IdentityKind;
+	use reifydb_value::value::{datetime::DateTime, identity::IdentityKind};
 
 	use crate::CatalogStore;
 
@@ -80,5 +81,26 @@ mod tests {
 		CatalogStore::drop_identity(&mut txn, identity.id).unwrap();
 		let found = CatalogStore::find_identity_by_name(&mut Transaction::Admin(&mut txn), "alice").unwrap();
 		assert!(found.is_none());
+	}
+
+	#[test]
+	fn test_drop_identity_revokes_only_its_tokens() {
+		// A token left behind by a dropped identity is an orphan session; bob's token proves the sweep is
+		// scoped.
+		let mut txn = create_test_admin_transaction();
+		let (_, clock, rng) = test_clock_and_rng();
+		let alice = CatalogStore::create_identity(&mut txn, "alice", IdentityKind::User, &clock, &rng).unwrap();
+		let bob = CatalogStore::create_identity(&mut txn, "bob", IdentityKind::User, &clock, &rng).unwrap();
+		let created_at = DateTime::from_millis(1000);
+		CatalogStore::create_token(&mut txn, "alice-token", alice.id, None, created_at).unwrap();
+		CatalogStore::create_token(&mut txn, "bob-token", bob.id, None, created_at).unwrap();
+
+		CatalogStore::drop_identity(&mut txn, alice.id).unwrap();
+
+		let mut rx = Transaction::Admin(&mut txn);
+		assert!(CatalogStore::find_token_by_value(&mut rx, "alice-token").unwrap().is_none());
+		let survivor =
+			CatalogStore::find_token_by_value(&mut rx, "bob-token").unwrap().expect("bob keeps the token");
+		assert_eq!(survivor.identity, bob.id);
 	}
 }

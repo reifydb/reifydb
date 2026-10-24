@@ -98,14 +98,6 @@ impl RoutinesInner {
 		self.get_function(name).filter(|f| f.kinds().contains(&FunctionKind::Generator))
 	}
 
-	pub fn function_names(&self) -> Vec<String> {
-		self.functions.keys().map(|k| user_facing_name(k, BUILTIN_FUNCTION_PREFIX)).collect()
-	}
-
-	pub fn procedure_names(&self) -> Vec<String> {
-		self.procedures.keys().map(|k| user_facing_name(k, BUILTIN_PROCEDURE_PREFIX)).collect()
-	}
-
 	pub fn get_handlers(
 		&self,
 		catalog: &Catalog,
@@ -191,10 +183,6 @@ impl RoutinesConfigurator {
 			}),
 		}))
 	}
-}
-
-fn user_facing_name(key: &str, prefix: &str) -> String {
-	key.strip_prefix(prefix).unwrap_or(key).to_string()
 }
 
 fn collect_builtin_namespaces<'a, I: Iterator<Item = &'a String>>(keys: I, prefix: &str) -> HashSet<String> {

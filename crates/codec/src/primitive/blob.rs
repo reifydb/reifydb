@@ -50,12 +50,4 @@ impl RowShape {
 		let blob_start = dynamic_start + offset;
 		&row[blob_start..blob_start + length]
 	}
-
-	pub fn try_get_blob(&self, row: &[u8], index: usize) -> Option<Blob> {
-		if self.is_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Blob {
-			Some(self.get_blob(row, index))
-		} else {
-			None
-		}
-	}
 }

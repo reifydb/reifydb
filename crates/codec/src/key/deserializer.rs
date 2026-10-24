@@ -17,7 +17,6 @@ use reifydb_value::{
 		identity::IdentityId,
 		ordered_f32::OrderedF32,
 		ordered_f64::OrderedF64,
-		row_number::RowNumber,
 		time::Time,
 		uuid::{Uuid4, Uuid7},
 	},
@@ -246,11 +245,6 @@ impl<'a> KeyDeserializer<'a> {
 		let days = self.read_i32()?;
 		let nanos = self.read_i64()?;
 		Ok(Duration::new(months, days, nanos)?)
-	}
-
-	pub fn read_row_number(&mut self) -> Result<RowNumber> {
-		let value = self.read_u64()?;
-		Ok(RowNumber(value))
 	}
 
 	pub fn read_identity_id(&mut self) -> Result<IdentityId> {

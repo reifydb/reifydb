@@ -197,10 +197,10 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	}
 
 	pub fn execute(self) -> Result<BulkInsertResult> {
-		self.run(|_, _| ()).map(|(result, ())| result)
+		self.run()
 	}
 
-	fn run<T>(self, observe: impl FnOnce(&CommandTransaction, &RowCoercer) -> T) -> Result<(BulkInsertResult, T)> {
+	fn run(self) -> Result<BulkInsertResult> {
 		self.engine.reject_if_read_only()?;
 		let mut txn = self.engine.begin_command(self.identity)?;
 		let catalog = self.engine.catalog();
@@ -230,7 +230,7 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 				pending_series,
 			)?;
 			sync_transactional_views(writer.services, Transaction::Command(txn))?;
-			Ok((result, observe(txn, &writer.coercer)))
+			Ok(result)
 		};
 		if checked_commit {
 			run_checked(&mut txn, total_rows, body)

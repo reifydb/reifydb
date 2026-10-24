@@ -176,7 +176,11 @@ pub struct ChaosSchema {
 impl ChaosSchema {
 	pub(crate) fn validate(&self) -> Result<(), String> {
 		for col in &self.output_key_columns {
-			if self.output_shape.find_field(col).is_none() {
+			if self.output_shape
+				.find_field_index(col)
+				.and_then(|i| self.output_shape.get_field(i))
+				.is_none()
+			{
 				return Err(col.clone());
 			}
 		}

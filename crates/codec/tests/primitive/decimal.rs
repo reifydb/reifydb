@@ -172,21 +172,6 @@ fn test_scientific_notation() {
 }
 
 #[test]
-fn test_try_get() {
-	let shape = RowShape::testing(RowFamily::Pod, &[decimal(38, 2)]);
-	let mut row = shape.allocate_pod();
-
-	assert_eq!(shape.try_get_decimal(&row, 0), None);
-
-	let value = Decimal::from_str("42.42").unwrap();
-	shape.set_decimal(&mut row, 0, &value);
-
-	let retrieved = shape.try_get_decimal(&row, 0);
-	assert!(retrieved.is_some());
-	assert_eq!(retrieved.unwrap().to_string(), "42.42");
-}
-
-#[test]
 fn test_clone_on_write() {
 	let shape = RowShape::testing(RowFamily::Pod, &[decimal(38, 5)]);
 	let row1 = shape.allocate_pod();
@@ -252,16 +237,6 @@ fn test_negative_values() {
 		shape3.get_decimal(&row3, 0).to_string(),
 		"-99999999999999999999999999999999999999999999999999.999999999"
 	);
-}
-
-#[test]
-fn test_try_get_decimal_wrong_type() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
-	let mut row = shape.allocate_pod();
-
-	shape.set::<bool>(&mut row, 0, true);
-
-	assert_eq!(shape.try_get_decimal(&row, 0), None);
 }
 
 #[test]

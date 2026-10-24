@@ -38,23 +38,6 @@ impl EncodedIndexKeyRange {
 		}
 	}
 
-	pub fn start_end_inclusive(start: Option<EncodedIndexKey>, end: Option<EncodedIndexKey>) -> Self {
-		let start = match start {
-			Some(s) => Bound::Included(s),
-			None => Bound::Unbounded,
-		};
-
-		let end = match end {
-			Some(e) => Bound::Included(e),
-			None => Bound::Unbounded,
-		};
-
-		Self {
-			start,
-			end,
-		}
-	}
-
 	pub fn prefix(prefix: &[u8]) -> Self {
 		let start = Bound::Included(EncodedIndexKey::from_bytes(prefix));
 		let end = match prefix.iter().rposition(|&b| b != 0xff) {
@@ -130,33 +113,6 @@ pub mod tests {
 				assert_eq!(k.as_slice(), key2.as_slice())
 			}
 			_ => panic!("Expected Excluded end bound"),
-		}
-	}
-
-	#[test]
-	fn test_start_end_inclusive() {
-		let layout = IndexShape::new(&[ValueType::Uint8], &[SortDirection::Asc]).unwrap();
-
-		let mut key1 = layout.allocate_key();
-		layout.set_u64(&mut key1, 0, 100u64);
-
-		let mut key2 = layout.allocate_key();
-		layout.set_u64(&mut key2, 0, 200u64);
-
-		let range = EncodedIndexKeyRange::start_end_inclusive(Some(key1.clone()), Some(key2.clone()));
-
-		match &range.start {
-			Bound::Included(k) => {
-				assert_eq!(k.as_slice(), key1.as_slice())
-			}
-			_ => panic!("Expected Included start bound"),
-		}
-
-		match &range.end {
-			Bound::Included(k) => {
-				assert_eq!(k.as_slice(), key2.as_slice())
-			}
-			_ => panic!("Expected Included end bound"),
 		}
 	}
 

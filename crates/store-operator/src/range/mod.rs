@@ -14,7 +14,7 @@ use reifydb_core::{
 };
 use reifydb_store::{
 	coverage::plan::DEFAULT_GAP_GUARD,
-	tier::range::{DEFAULT_COVERAGE_INTERVALS, RangeConfig, RangeMetrics},
+	tier::range::{DEFAULT_COVERAGE_INTERVALS, RangeConfig},
 };
 use reifydb_value::byte_size::ByteSize;
 
@@ -46,8 +46,6 @@ impl From<OperatorRangeConfig> for RangeConfig {
 		}
 	}
 }
-
-pub type OperatorRangeMetrics = RangeMetrics;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TypedPartition {

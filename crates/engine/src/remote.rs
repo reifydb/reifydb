@@ -148,14 +148,6 @@ pub fn is_remote_query(err: &Error) -> bool {
 	err.0.code == "REMOTE_001"
 }
 
-pub fn extract_remote_address(err: &Error) -> Option<String> {
-	err.0.notes.iter().find_map(|n| n.strip_prefix("Remote gRPC address: ")).map(|s| s.to_string())
-}
-
-pub fn extract_remote_token(err: &Error) -> Option<String> {
-	err.0.notes.iter().find_map(|n| n.strip_prefix("Remote token: ")).map(|s| s.to_string())
-}
-
 #[cfg(test)]
 mod tests {
 	use reifydb_runtime::{Runtime, RuntimeConfig, pool::PoolConfig};
@@ -194,46 +186,6 @@ mod tests {
 			..Default::default()
 		}));
 		assert!(!is_remote_query(&err));
-	}
-
-	#[test]
-	fn test_extract_remote_address() {
-		let err = make_remote_error("http://localhost:50051");
-		assert_eq!(extract_remote_address(&err), Some("http://localhost:50051".to_string()));
-	}
-
-	#[test]
-	fn test_extract_remote_address_missing() {
-		let err = Error(Box::new(Diagnostic {
-			code: "REMOTE_001".to_string(),
-			message: "Some error".to_string(),
-			notes: vec![],
-			fragment: Fragment::None,
-			..Default::default()
-		}));
-		assert_eq!(extract_remote_address(&err), None);
-	}
-
-	#[test]
-	fn test_extract_remote_token() {
-		let err = Error(Box::new(Diagnostic {
-			code: "REMOTE_001".to_string(),
-			message: "Remote namespace".to_string(),
-			notes: vec![
-				"Namespace 'test' is configured as a remote namespace".to_string(),
-				"Remote gRPC address: http://localhost:50051".to_string(),
-				"Remote token: my-secret".to_string(),
-			],
-			fragment: Fragment::None,
-			..Default::default()
-		}));
-		assert_eq!(extract_remote_token(&err), Some("my-secret".to_string()));
-	}
-
-	#[test]
-	fn test_extract_remote_token_missing() {
-		let err = make_remote_error("http://localhost:50051");
-		assert_eq!(extract_remote_token(&err), None);
 	}
 
 	#[test]

@@ -25,12 +25,12 @@ use reifydb_store::{
 		interval::Interval,
 		plan::{DEFAULT_GAP_GUARD, Segment},
 	},
-	tier::range::{Materialize, RangeScan},
+	tier::range::{Materialize, RangeMetrics, RangeScan},
 };
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128, value::row_number::RowNumber};
 
 use crate::range::{
-	OperatorRangeConfig, OperatorRangeMetrics, TypedPartition,
+	OperatorRangeConfig, TypedPartition,
 	tiers::{RangeKeyspaceMetrics, RangeTiers},
 	typed::{StandardRangeTier, TypedDomain},
 };
@@ -459,7 +459,7 @@ fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 		"a purge drops resident state but not the counters, so a keyspace with history stays reported"
 	);
 	assert_eq!(tiers.keyspace_metrics()[0].partitions, 0);
-	assert_ne!(tiers.keyspace_metrics()[0].counters, OperatorRangeMetrics::default());
+	assert_ne!(tiers.keyspace_metrics()[0].counters, RangeMetrics::default());
 }
 
 const OP_B: OperatorId = OperatorId(2);
