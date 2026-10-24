@@ -132,7 +132,7 @@ impl testscript::runner::Runner for Runner {
 				writeln!(output, "{}", Raw::key_maybe_value(&key, value))?;
 			}
 
-			"get_many" => {
+			"get_versioned" => {
 				let mut args = command.consume_args();
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				let keys: Vec<EncodedKey> = args

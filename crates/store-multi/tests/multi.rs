@@ -7,5 +7,5 @@ mod get;
 #[path = "multi/read_pool.rs"]
 mod read_pool;
 
-#[path = "multi/previous_many.rs"]
-mod previous_many;
+#[path = "multi/previous.rs"]
+mod previous;

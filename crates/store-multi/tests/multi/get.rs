@@ -88,7 +88,7 @@ fn check_get_across_tables(store: &StandardMultiStore, flush: bool) {
 }
 
 fn check_get_bucket_boundaries(store: &StandardMultiStore) {
-	// Persistent get_many rounds a chunk up to a placeholder bucket {1,8,64,512,900} and pads the
+	// A persistent multi-key get rounds a chunk up to a placeholder bucket {1,8,64,512,900} and pads the
 	// spare slots with a repeat of the first key, so the counts here sit just below, on, and just
 	// above the bucket edges where a pad could drop a key or invent a phantom result.
 	let mut deltas = Vec::new();
@@ -142,7 +142,7 @@ fn get_across_tables_memory_only() {
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[test]
-fn get_many_bucket_boundaries_sqlite() {
+fn get_bucket_boundaries_sqlite() {
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
 	check_get_bucket_boundaries(&store);
 }

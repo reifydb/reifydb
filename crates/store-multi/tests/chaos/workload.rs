@@ -75,7 +75,7 @@ pub fn check_get(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, row: u
 
 pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, rows: &[u64], read: u64, step: u32) {
 	let keys: Vec<EncodedKey> = rows.iter().map(|&row| RowKey::encoded(STORAGE, row)).collect();
-	// The exact set get_many must return, whatever duplicates the input carried.
+	// The exact set a multi-key get must return, whatever duplicates the input carried.
 	let mut distinct_present: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
 	for &row in rows {
 		if oracle
@@ -321,7 +321,7 @@ pub fn drive(seed: u64, p: Params) {
 				1 => {
 					let count = rng.random_range(1u64..=8);
 					let mut rows = distinct_rows(&mut rng, count, p.keyspace);
-					// Sometimes inject duplicate keys to exercise get_many's dedup.
+					// Sometimes inject duplicate keys to exercise the multi-key get's dedup.
 					if !rows.is_empty() && rng.random_range(0u32..2) == 0 {
 						let dup = rows[rng.random_range(0..rows.len() as u32) as usize];
 						rows.push(dup);

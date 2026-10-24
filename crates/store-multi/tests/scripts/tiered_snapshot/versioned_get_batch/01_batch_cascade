@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2026
 # This file is licensed under the Apache-2.0, see license.md file
 
-# get_many resolves every key from the correct tier in a single batched call:
+# get_versioned resolves every key from the correct tier in a single batched call:
 # a -> persistent (flushed), b -> buffer (not flushed), c -> absent.
 
 set a=apple version=1
@@ -13,7 +13,7 @@ set b=berry version=2
 ---
 ok
 
-get_many a b c version=2
+get_versioned a b c version=2
 ---
 "a" => "apple"
 "b" => "berry"

@@ -1612,7 +1612,7 @@ mod join_row_expiry_guard_tests {
 	}
 
 	#[test]
-	fn one_foreign_key_refuses_the_whole_remove_many() {
+	fn one_foreign_key_refuses_the_whole_remove() {
 		// The guest is untrusted; a wall checked key by key lets a refused batch remove what came before the
 		// foreign key.
 		let owned = framed(KeyspaceId::GUEST_ACCUMULATOR);
@@ -1638,7 +1638,7 @@ mod join_row_expiry_guard_tests {
 	}
 
 	#[test]
-	fn a_remove_many_with_a_null_key_list_is_refused() {
+	fn a_remove_with_a_null_key_list_is_refused() {
 		// A null list with a length makes the host read guest memory it was never given.
 		let (status, reached) =
 			with_class_context(OperatorClass::Windowed, |ctx| host_state_remove(1, ctx, ptr::null(), 2));

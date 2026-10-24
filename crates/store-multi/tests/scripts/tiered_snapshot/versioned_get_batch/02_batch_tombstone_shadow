@@ -28,7 +28,7 @@ ok
 
 # At v5: k is shadowed to None (buffer tombstone wins over the persistent ghost),
 # m is present, x is absent - all resolved in one batched call.
-get_many k m x version=5
+get_versioned k m x version=5
 ---
 "k" => None
 "m" => "mango"
