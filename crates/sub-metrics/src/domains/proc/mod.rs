@@ -18,9 +18,9 @@ use reifydb_value::{byte_size::ByteSize, count::Count, value::duration::Duration
 
 #[cfg(target_os = "linux")]
 use crate::domains::proc::read::{
-	parse_cgroup_cpu, parse_cgroup_io, parse_cgroup_memory, parse_cgroup_relative_path, parse_max_open_files,
-	parse_pressure, parse_process_io, parse_process_stat, parse_process_status, parse_schedstat_run_queue_nanos,
-	parse_smaps_rollup,
+	SmapsRollup, parse_cgroup_cpu, parse_cgroup_io, parse_cgroup_memory, parse_cgroup_relative_path,
+	parse_max_open_files, parse_pressure, parse_process_io, parse_process_stat, parse_process_status,
+	parse_schedstat_run_queue_nanos, parse_smaps_rollup,
 };
 use crate::{
 	domains::proc::read::ProcessStatus,
@@ -58,11 +58,15 @@ pub fn process_io_rows() -> Vec<MetricsRow> {
 }
 
 #[cfg(target_os = "linux")]
-pub fn process_memory_rows() -> Vec<MetricsRow> {
+pub fn process_memory_rows(read_smaps: bool) -> Vec<MetricsRow> {
 	let Some(status) = process_status() else {
 		return Vec::new();
 	};
-	let rollup = parse_smaps_rollup(&read_to_string("/proc/self/smaps_rollup").unwrap_or_default());
+	let rollup = if read_smaps {
+		parse_smaps_rollup(&read_to_string("/proc/self/smaps_rollup").unwrap_or_default())
+	} else {
+		SmapsRollup::default()
+	};
 	let mut measures = vec![
 		level_bytes("rss_total", status.rss_total),
 		level_bytes("rss_anon", status.rss_anon),
@@ -285,7 +289,7 @@ pub fn process_io_rows() -> Vec<MetricsRow> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn process_memory_rows() -> Vec<MetricsRow> {
+pub fn process_memory_rows(_read_smaps: bool) -> Vec<MetricsRow> {
 	Vec::new()
 }
 

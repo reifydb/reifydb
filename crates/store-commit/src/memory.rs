@@ -21,7 +21,7 @@ use tracing::instrument;
 use crate::{
 	entry::{Value, entry_bytes, entry_bytes_with, value_bytes_of},
 	rows::{ActiveRows, ClosedRows, MergedRows, Removed, RowMap, Versions, lookup, tier},
-	storage::{Read, Remove, RowStats, Rows, Write},
+	storage::{Read, Remove, RowStats, RowTallies, Rows, Write},
 	store::EvictedVersion,
 };
 
@@ -107,15 +107,20 @@ impl Read for MemoryRows {
 	fn stats(&self) -> RowStats {
 		let active = self.active.read();
 		let closed = self.closed.read();
-		let counts = self.counts.lock();
 		let maps = || iter::once(active.rows()).chain(closed.iter().map(|map| map.rows()));
 		RowStats {
-			current_bytes: ByteSize::from_bytes(counts.current_bytes),
-			historical_bytes: ByteSize::from_bytes(counts.historical_bytes),
-			keys: counts.keys,
 			oldest: maps().filter_map(RowMap::min_version).min(),
 			active_oldest: active.min_version(),
 			closed_maps: closed.len() as u64,
+		}
+	}
+
+	fn tallies(&self) -> RowTallies {
+		let counts = self.counts.lock();
+		RowTallies {
+			current_bytes: ByteSize::from_bytes(counts.current_bytes),
+			historical_bytes: ByteSize::from_bytes(counts.historical_bytes),
+			keys: counts.keys,
 		}
 	}
 }

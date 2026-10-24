@@ -25,7 +25,11 @@ pub fn collect_memory(c: &Collectors) -> Vec<MetricsSample> {
 
 	let proc_mem = process_status();
 	let jemalloc = jemalloc_stats();
-	let alloc = collect_allocator();
+	let alloc = if jemalloc.is_some() {
+		None
+	} else {
+		collect_allocator()
+	};
 
 	push_allocator_samples(&mut out, &jemalloc, &alloc);
 	push_subsystem_samples(c, &mut out);

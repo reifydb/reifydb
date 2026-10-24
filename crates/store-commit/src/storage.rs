@@ -35,6 +35,8 @@ pub trait Read: Rows {
 	fn versions(&self, key: &[u8]) -> Vec<CommitVersion>;
 
 	fn stats(&self) -> RowStats;
+
+	fn tallies(&self) -> RowTallies;
 }
 
 pub trait Write: Rows {
@@ -51,10 +53,14 @@ pub trait Remove: Rows {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RowStats {
-	pub current_bytes: ByteSize,
-	pub historical_bytes: ByteSize,
-	pub keys: u64,
 	pub oldest: Option<CommitVersion>,
 	pub active_oldest: Option<CommitVersion>,
 	pub closed_maps: u64,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RowTallies {
+	pub current_bytes: ByteSize,
+	pub historical_bytes: ByteSize,
+	pub keys: u64,
 }

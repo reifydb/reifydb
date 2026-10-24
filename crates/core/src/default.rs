@@ -191,6 +191,9 @@ pub mod metrics {
 
 	pub const SNAPSHOT_INTERVAL: Option<Duration> = None;
 	pub const SNAPSHOT_INTERVAL_TESTING: Option<Duration> = None;
+
+	pub const SMAPS_INTERVAL: Duration = Duration::from_seconds_const(60);
+	pub const SMAPS_INTERVAL_TESTING: Duration = Duration::from_seconds_const(60);
 }
 
 pub mod queue {

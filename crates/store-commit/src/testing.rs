@@ -11,7 +11,7 @@ use reifydb_core::common::CommitVersion;
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
 use crate::{
-	storage::{Read, Remove, RowStats, Rows, Write},
+	storage::{Read, Remove, RowStats, RowTallies, Rows, Write},
 	store::EvictedVersion,
 };
 
@@ -105,6 +105,10 @@ impl<R: Read> Read for TestingRows<R> {
 
 	fn stats(&self) -> RowStats {
 		self.rows.stats()
+	}
+
+	fn tallies(&self) -> RowTallies {
+		self.rows.tallies()
 	}
 }
 

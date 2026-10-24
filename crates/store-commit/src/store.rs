@@ -11,7 +11,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	interface::store::EntryKind,
-	metrics::{collect::MetricsCollector, heap::HeapSize, sample::MetricsSample},
+	metrics::{collect::MetricsCollector, sample::MetricsSample},
 };
 use reifydb_runtime::sync::{Arc, map::Map};
 use reifydb_value::{byte_size::ByteSize, count::Count, reifydb_assertions, util::cowvec::CowVec};
@@ -239,7 +239,7 @@ impl<R: Read> CommitStore<R> {
 	}
 
 	pub fn estimated_current_count(&self, table: EntryKind) -> u64 {
-		self.0.entries.get(&table).map_or(0, |entry| entry.rows.stats().keys)
+		self.0.entries.get(&table).map_or(0, |entry| entry.rows.tallies().keys)
 	}
 
 	pub fn list_entry_kinds_by_oldest_pending(&self) -> Vec<EntryKind> {
@@ -263,12 +263,12 @@ impl<R: Read> CommitStore<R> {
 			let Some(entry) = self.0.entries.get(&kind) else {
 				continue;
 			};
-			let stats = entry.rows.stats();
-			metrics.current_bytes = metrics.current_bytes.saturating_add(stats.current_bytes);
-			metrics.historical_bytes = metrics.historical_bytes.saturating_add(stats.historical_bytes);
-			metrics.current_entries = metrics.current_entries.saturating_add(Count::new(stats.keys));
-			let pending = entry.pending.lock().heap_size();
-			let retained = entry.retained.lock().heap_size();
+			let tallies = entry.rows.tallies();
+			metrics.current_bytes = metrics.current_bytes.saturating_add(tallies.current_bytes);
+			metrics.historical_bytes = metrics.historical_bytes.saturating_add(tallies.historical_bytes);
+			metrics.current_entries = metrics.current_entries.saturating_add(Count::new(tallies.keys));
+			let pending = entry.pending.lock().bytes();
+			let retained = entry.retained.lock().bytes();
 			metrics.queued_bytes =
 				metrics.queued_bytes.saturating_add(ByteSize::from_bytes((pending + retained) as u64));
 		}
@@ -396,8 +396,8 @@ impl<R: Read + Remove> CommitStore<R> {
 		let mut retained = entry.retained.lock();
 		let taken: Vec<EncodedKey> = match &cursor {
 			Some(cursor) => retained
-				.range::<EncodedKey, _>((Bound::Excluded(cursor), Bound::Unbounded))
-				.chain(retained.range::<EncodedKey, _>(..=cursor))
+				.range((Bound::Excluded(cursor), Bound::Unbounded))
+				.chain(retained.range(..=cursor))
 				.take(retained_room)
 				.cloned()
 				.collect(),

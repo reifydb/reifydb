@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{
+	default,
 	lifecycle::metrics::RetentionMetrics,
 	metrics::sample::{MetricKind, MetricsSample, Reading},
 };
@@ -77,6 +78,23 @@ pub struct MetricsSamplerActor {
 pub struct SamplerState {
 	accumulator: MetricsAccumulator,
 	last_snapshot: Option<DateTime>,
+	last_smaps: Option<DateTime>,
+}
+
+const SMAPS_INTERVAL: Duration = if default::TESTING {
+	default::metrics::SMAPS_INTERVAL_TESTING
+} else {
+	default::metrics::SMAPS_INTERVAL
+};
+
+fn smaps_due(last: Option<DateTime>, now: DateTime) -> bool {
+	match last {
+		None => true,
+		Some(last) => {
+			now.to_nanos().saturating_sub(last.to_nanos())
+				>= i64::try_from(SMAPS_INTERVAL.to_std().as_nanos()).unwrap_or(i64::MAX)
+		}
+	}
 }
 
 impl MetricsSamplerActor {
@@ -139,6 +157,11 @@ impl MetricsSamplerActor {
 	}
 
 	fn sample_and_publish(&self, state: &mut SamplerState) -> Result<()> {
+		let started = self.clock.now();
+		let read_smaps = smaps_due(state.last_smaps, started);
+		if read_smaps {
+			state.last_smaps = Some(started);
+		}
 		let accumulator = &mut state.accumulator;
 		accumulator.push(
 			MetricsDomain::RuntimeMemory,
@@ -156,7 +179,7 @@ impl MetricsSamplerActor {
 			long_rows(collect_operators(&self.collectors)),
 		);
 		accumulator.push(MetricsDomain::ProcProcessIo, Surface::Current, process_io_rows());
-		accumulator.push(MetricsDomain::ProcProcessMemory, Surface::Current, process_memory_rows());
+		accumulator.push(MetricsDomain::ProcProcessMemory, Surface::Current, process_memory_rows(read_smaps));
 		accumulator.push(MetricsDomain::ProcProcessSched, Surface::Current, process_sched_rows());
 		accumulator.push(MetricsDomain::ProcCgroupIo, Surface::Current, cgroup_io_rows());
 		accumulator.push(MetricsDomain::ProcCgroupMemory, Surface::Current, cgroup_memory_rows());
@@ -245,6 +268,7 @@ impl Actor for MetricsSamplerActor {
 		SamplerState {
 			accumulator: MetricsAccumulator::new(MetricsDomain::ALL.map(MetricsDomain::spec)),
 			last_snapshot: None,
+			last_smaps: None,
 		}
 	}
 
@@ -814,5 +838,20 @@ mod tests {
 			operator_range_keyspace_rows(&store).is_empty(),
 			"an absent range tier must publish no rows, never one row of zeros claiming a perfect cache"
 		);
+	}
+
+	#[test]
+	fn smaps_is_read_on_the_first_tick_then_only_once_its_interval_has_passed() {
+		// A missed first read hides pss until a full interval; a due that never resets walks every mapping each
+		// tick.
+		let start = DateTime::from_nanos(1_000_000_000_000);
+		let at = |seconds: i64| DateTime::from_nanos(start.to_nanos() + seconds * 1_000_000_000);
+		let interval = SMAPS_INTERVAL.to_std().as_secs() as i64;
+
+		assert!(smaps_due(None, start));
+		assert!(!smaps_due(Some(start), at(10)));
+		assert!(!smaps_due(Some(start), at(interval - 1)));
+		assert!(smaps_due(Some(start), at(interval)));
+		assert!(smaps_due(Some(start), at(interval + 10)));
 	}
 }

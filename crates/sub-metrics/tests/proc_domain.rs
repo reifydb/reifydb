@@ -9,6 +9,8 @@
 //! of timing.
 
 use reifydb::{ConfigKey, Value, embedded as db_embedded, testing::db::TestDb};
+#[cfg(target_os = "linux")]
+use reifydb_sub_metrics::{domains::proc::process_memory_rows, framework::accumulator::MetricsRow};
 use reifydb_value::value::duration::Duration;
 
 const TIMEOUT: Duration = Duration::from_seconds_const(5);
@@ -126,4 +128,24 @@ fn the_allocator_readings_stay_in_the_runtime_memory_domain() {
 		) > 0,
 		"allocator readings are not sourced from /proc and must stay under runtime"
 	);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn process_memory_carries_the_smaps_readings_only_on_ticks_that_read_smaps() {
+	// Skipped ticks must leave pss and uss as none, never a stale or zero reading; the status readings never skip.
+	let metrics = |rows: Vec<MetricsRow>| -> Vec<&'static str> {
+		assert_eq!(rows.len(), 1, "process memory publishes exactly one row");
+		rows[0].measures.iter().map(|measure| measure.metric).collect()
+	};
+	let read = metrics(process_memory_rows(true));
+	let skipped = metrics(process_memory_rows(false));
+
+	for smaps in ["pss", "private_dirty", "private_clean", "uss"] {
+		assert!(read.contains(&smaps), "{smaps} must be published when smaps is read");
+		assert!(!skipped.contains(&smaps), "{smaps} must be absent when smaps is skipped");
+	}
+	for status in ["rss_total", "rss_anon", "vm_size", "threads"] {
+		assert!(skipped.contains(&status), "{status} comes from /proc/self/status and must be read every tick");
+	}
 }
