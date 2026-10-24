@@ -410,7 +410,8 @@ where
 		if let Some(rebase) = rebase {
 			rebase(&mut deltas, self.versions.current()?)?;
 		}
-		let (version, lsn) = self.allocate_commit_version(&inner, SpanTiming::current(), &mut deltas, None, false)?;
+		let (version, lsn) =
+			self.allocate_commit_version(&inner, SpanTiming::current(), &mut deltas, None, false)?;
 		inner.note_lsn(version, lsn);
 		inner.last_unchecked = version;
 		drop(inner);

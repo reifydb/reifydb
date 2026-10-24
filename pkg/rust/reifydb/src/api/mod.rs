@@ -10,7 +10,7 @@ use reifydb_runtime::{
 	io::fs::{Fs, host::HostFs},
 	version_epoch::VersionEpoch,
 };
-use reifydb_sqlite::{DbPath, JournalMode, SqliteConfig, SynchronousMode};
+use reifydb_sqlite::{DbPath, SqliteConfig, SynchronousMode};
 use reifydb_store_cdc::{
 	config::{CdcCommitConfig, CdcPersistentConfig, CdcStoreConfig},
 	storage::CdcStorage,
@@ -143,8 +143,6 @@ pub(crate) fn multi_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
 	}
 }
 
-/// One connection behind a mutex never contends with itself, so an inherited write-ahead log buys nothing
-/// and leaves a `-wal` companion no checkpointer here ever truncates.
 pub(crate) fn single_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
 	let path = match &config.path {
 		DbPath::File(p) => DbPath::File(p.with_extension("").join("single.db")),
@@ -153,7 +151,6 @@ pub(crate) fn single_sqlite_config(config: &SqliteConfig) -> SqliteConfig {
 	};
 	SqliteConfig {
 		path,
-		journal_mode: Some(JournalMode::Persist),
 		synchronous_mode: Some(SynchronousMode::Full),
 		wal_autocheckpoint: None,
 		..config.clone()

@@ -213,8 +213,7 @@ impl SqlitePersistentStorage {
 	#[instrument(name = "store::multi::persistent::sqlite::new", level = "debug", skip(config), fields(
 		db_path = ?config.path,
 		page_size = config.page_size.as_ref().map(|size| size.as_bytes()),
-		read_pool_size = config.read_pool_size,
-		journal_mode = config.journal_mode.as_ref().map(|mode| mode.as_str())
+		read_pool_size = config.read_pool_size
 	))]
 	pub fn new(config: SqliteConfig) -> Self {
 		let (conn, readers) = open(&config, "persistent.db", &OPEN_MESSAGES);

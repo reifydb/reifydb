@@ -1313,7 +1313,8 @@ mod commit_integration {
 			store.clone(),
 		);
 		let begin_engine = engine.clone();
-		let begin: CommitBegin = Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
+		let begin: CommitBegin =
+			Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async));
 		let replies = SliceReplies::new(2);
 		committer.commit_slices(
 			"commit-test",

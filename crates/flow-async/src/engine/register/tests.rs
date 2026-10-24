@@ -293,7 +293,8 @@ fn a_lookup_whose_text_left_key_meets_a_dictionary_ringbuffer_partition_column_r
 		"CREATE RINGBUFFER s::info { pool: utf8 with { dictionary: s::keys }, b: int4 } WITH { capacity: 1, partition: { by: { pool } } }",
 	);
 
-	let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn =
+		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
 	let left = table_id(&engine, &mut txn, "l");
 	let right = ringbuffer_id(&engine, &mut txn, "info");
 
@@ -309,7 +310,8 @@ fn a_lookup_whose_text_left_key_meets_an_int4_ringbuffer_partition_column_fails_
 	engine.admin("CREATE TABLE s::l { k: utf8, a: int4 }");
 	engine.admin("CREATE RINGBUFFER s::r { k: int4, b: int4 } WITH { capacity: 1, partition: { by: { k } } }");
 
-	let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
+	let mut txn =
+		engine.begin_command(IdentityId::system(), Durability::Async).expect("a command transaction must open");
 	let left = table_id(&engine, &mut txn, "l");
 	let right = ringbuffer_id(&engine, &mut txn, "r");
 

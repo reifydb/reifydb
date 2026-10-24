@@ -31,6 +31,12 @@ pub enum SqliteError {
 		source: SqlError,
 	},
 
+	#[error("failed to run WAL checkpoint: {source}")]
+	Checkpoint {
+		#[source]
+		source: SqlError,
+	},
+
 	#[error("failed to execute statement {statement}: {source}")]
 	Execute {
 		statement: String,

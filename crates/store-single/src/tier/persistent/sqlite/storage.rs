@@ -16,7 +16,7 @@ use reifydb_runtime::{
 	sync::mutex::{Mutex, MutexGuard},
 };
 use reifydb_sqlite::{
-	JournalMode, SqliteConfig, SqliteTempPathGuard,
+	SqliteConfig, SqliteTempPathGuard,
 	connection::{connect, convert_flags, resolve_db_path},
 	memory::sweep_connection_cache,
 	pragma,
@@ -61,8 +61,6 @@ impl ReadPool {
 	}
 }
 
-const JOURNAL_MODE: JournalMode = JournalMode::Wal;
-
 const BUSY_TIMEOUT: Duration = Duration::from_milliseconds_const(200);
 
 #[derive(Clone)]
@@ -80,14 +78,9 @@ struct SqlitePersistentStorageInner {
 impl SqlitePersistentStorage {
 	#[instrument(name = "store::single::persistent::new", level = "debug", skip(config), fields(
 		db_path = ?config.path,
-		page_size = config.page_size.as_ref().map(|size| size.as_bytes()),
-		journal_mode = JOURNAL_MODE.as_str()
+		page_size = config.page_size.as_ref().map(|size| size.as_bytes())
 	))]
 	pub fn new(config: SqliteConfig) -> Self {
-		let config = SqliteConfig {
-			journal_mode: Some(JOURNAL_MODE),
-			..config
-		};
 		let db_path = resolve_db_path(config.path.clone(), "persistent.db");
 		let flags = convert_flags(&config.flags);
 
@@ -613,17 +606,15 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn every_connection_reports_wal_regardless_of_what_the_caller_asked_for() {
+	fn every_connection_reports_wal() {
 		// Readers share the file with the writer, so a non-WAL mode makes them block each other outright.
 		temp_dir(|dir| {
-			let storage = SqlitePersistentStorage::new(
-				SqliteConfig::new(dir.join("single.db")).journal_mode(JournalMode::Persist),
-			);
+			let storage = SqlitePersistentStorage::new(SqliteConfig::new(dir.join("single.db")));
 
 			let guard = storage.inner.conn.lock();
 			let conn = guard.as_ref().expect("write connection is present");
 			let mode: String = conn.pragma_query_value(None, "journal_mode", |r| r.get(0)).unwrap();
-			assert_eq!(mode, "wal", "an inherited journal_mode must be overridden, not applied");
+			assert_eq!(mode, "wal", "the writer must run in wal");
 			drop(guard);
 
 			let reader = storage.inner.readers.acquire();

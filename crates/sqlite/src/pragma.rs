@@ -13,9 +13,7 @@ pub fn apply(conn: &Connection, config: &SqliteConfig) -> SqliteResult<()> {
 		set(conn, "page_size", page_size.as_bytes() as u32)?;
 	}
 	set(conn, "secure_delete", "FAST")?;
-	if let Some(journal_mode) = config.journal_mode {
-		set(conn, "journal_mode", journal_mode.as_str())?;
-	}
+	set(conn, "journal_mode", "WAL")?;
 	if let Some(synchronous_mode) = config.synchronous_mode {
 		set(conn, "synchronous", synchronous_mode.as_str())?;
 	}
@@ -109,23 +107,17 @@ mod tests {
 	}
 
 	#[test]
-	fn journal_mode_none_leaves_a_fresh_database_on_a_rollback_journal() {
-		// WAL lives in the database header, so an unset journal_mode looks harmless against every
-		// already-created database and only detonates on a clean install. Outside WAL, store-multi's
-		// concurrent reader pool takes locks that block its writer.
-		let (unset_conn, unset_path) = scratch("journal_none");
-		apply(&unset_conn, &SqliteConfig::new(&unset_path).journal_mode(None)).unwrap();
-		let unset: String = unset_conn.pragma_query_value(None, "journal_mode", |r| r.get(0)).unwrap();
+	fn apply_always_leaves_a_fresh_database_in_wal() {
+		// Outside WAL the reader pools block their writer and the checkpoint hook never fires.
+		let (conn, path) = scratch("journal_wal");
+		let fresh: String = conn.pragma_query_value(None, "journal_mode", |r| r.get(0)).unwrap();
+		assert_eq!(fresh, "delete", "a fresh database must start on a rollback journal for this test to bite");
 
-		let (default_conn, default_path) = scratch("journal_default");
-		apply(&default_conn, &SqliteConfig::new(&default_path)).unwrap();
-		let default: String = default_conn.pragma_query_value(None, "journal_mode", |r| r.get(0)).unwrap();
+		apply(&conn, &SqliteConfig::new(&path)).unwrap();
+		let mode: String = conn.pragma_query_value(None, "journal_mode", |r| r.get(0)).unwrap();
+		assert_eq!(mode, "wal", "apply must always switch the database to wal");
 
-		assert_eq!(unset, "delete", "an unset journal_mode drops a fresh database to a rollback journal");
-		assert_eq!(default, "wal", "the constructors must keep shipping WAL");
-
-		cleanup(unset_conn, unset_path);
-		cleanup(default_conn, default_path);
+		cleanup(conn, path);
 	}
 
 	#[test]

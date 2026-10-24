@@ -20,6 +20,8 @@ pub mod error;
 pub mod memory;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod pragma;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod wal;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum DbPath {
@@ -84,7 +86,6 @@ fn memory_dir() -> PathBuf {
 pub struct SqliteConfig {
 	pub path: DbPath,
 	pub flags: OpenFlags,
-	pub journal_mode: Option<JournalMode>,
 	pub synchronous_mode: Option<SynchronousMode>,
 	pub temp_store: Option<TempStore>,
 	pub cache_size: Option<ByteSize>,
@@ -100,7 +101,6 @@ impl SqliteConfig {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
-			journal_mode: Some(JournalMode::Wal),
 			synchronous_mode: Some(SynchronousMode::Normal),
 			temp_store: Some(TempStore::Memory),
 			cache_size: Some(ByteSize::from_kib(2000)),
@@ -116,7 +116,6 @@ impl SqliteConfig {
 		Self {
 			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
-			journal_mode: Some(JournalMode::Wal),
 			synchronous_mode: Some(SynchronousMode::Full),
 			temp_store: Some(TempStore::File),
 			cache_size: Some(ByteSize::from_kib(2000)),
@@ -131,7 +130,6 @@ impl SqliteConfig {
 		Self {
 			path: DbPath::Tmpfs(PathBuf::from(format!("/tmp/reifydb_{}.db", Uuid::new_v4()))),
 			flags: OpenFlags::default(),
-			journal_mode: Some(JournalMode::Wal),
 			synchronous_mode: Some(SynchronousMode::Off),
 			temp_store: Some(TempStore::Memory),
 			cache_size: Some(ByteSize::from_kib(2000)),
@@ -150,7 +148,6 @@ impl SqliteConfig {
 			Self {
 				path,
 				flags: OpenFlags::default(),
-				journal_mode: Some(JournalMode::Wal),
 				synchronous_mode: Some(SynchronousMode::Off),
 				temp_store: Some(TempStore::Memory),
 				cache_size: Some(ByteSize::from_kib(2000)),
@@ -171,7 +168,6 @@ impl SqliteConfig {
 			Self {
 				path,
 				flags: OpenFlags::default(),
-				journal_mode: Some(JournalMode::Wal),
 				synchronous_mode: Some(SynchronousMode::Off),
 				temp_store: Some(TempStore::Memory),
 				cache_size: Some(ByteSize::from_kib(1000)),
@@ -192,11 +188,6 @@ impl SqliteConfig {
 
 	pub fn flags(mut self, flags: OpenFlags) -> Self {
 		self.flags = flags;
-		self
-	}
-
-	pub fn journal_mode(mut self, mode: impl Into<Option<JournalMode>>) -> Self {
-		self.journal_mode = mode.into();
 		self
 	}
 
@@ -313,29 +304,6 @@ impl Default for OpenFlags {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JournalMode {
-	Delete,
-	Truncate,
-	Persist,
-	Memory,
-	Wal,
-	Off,
-}
-
-impl JournalMode {
-	pub fn as_str(&self) -> &'static str {
-		match self {
-			JournalMode::Delete => "DELETE",
-			JournalMode::Truncate => "TRUNCATE",
-			JournalMode::Persist => "PERSIST",
-			JournalMode::Memory => "MEMORY",
-			JournalMode::Wal => "WAL",
-			JournalMode::Off => "OFF",
-		}
-	}
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SynchronousMode {
 	Off,
 	Normal,
@@ -380,14 +348,12 @@ mod tests {
 	#[test]
 	fn test_config_fluent_api() {
 		let config = SqliteConfig::new("/tmp/test.reifydb")
-			.journal_mode(JournalMode::Wal)
 			.synchronous_mode(SynchronousMode::Normal)
 			.temp_store(TempStore::Memory)
 			.cache_size(ByteSize::from_kib(30000))
 			.flags(OpenFlags::new().read_write(true).create(true).full_mutex(true));
 
 		assert_eq!(config.path, DbPath::File(PathBuf::from("/tmp/test.reifydb")));
-		assert_eq!(config.journal_mode, Some(JournalMode::Wal));
 		assert_eq!(config.synchronous_mode, Some(SynchronousMode::Normal));
 		assert_eq!(config.temp_store, Some(TempStore::Memory));
 		assert_eq!(config.cache_size, Some(ByteSize::from_kib(30000)));
@@ -398,19 +364,8 @@ mod tests {
 
 	#[test]
 	fn test_enum_string_conversion() {
-		assert_eq!(JournalMode::Wal.as_str(), "WAL");
 		assert_eq!(SynchronousMode::Normal.as_str(), "NORMAL");
 		assert_eq!(TempStore::Memory.as_str(), "MEMORY");
-	}
-
-	#[test]
-	fn test_all_journal_modes() {
-		assert_eq!(JournalMode::Delete.as_str(), "DELETE");
-		assert_eq!(JournalMode::Truncate.as_str(), "TRUNCATE");
-		assert_eq!(JournalMode::Persist.as_str(), "PERSIST");
-		assert_eq!(JournalMode::Memory.as_str(), "MEMORY");
-		assert_eq!(JournalMode::Wal.as_str(), "WAL");
-		assert_eq!(JournalMode::Off.as_str(), "OFF");
 	}
 
 	#[test]
@@ -444,7 +399,6 @@ mod tests {
 		];
 
 		for (name, config) in profiles {
-			assert!(config.journal_mode.is_some(), "{name} must ship a journal_mode");
 			assert!(config.synchronous_mode.is_some(), "{name} must ship a synchronous_mode");
 			assert!(config.temp_store.is_some(), "{name} must ship a temp_store");
 			assert!(config.cache_size.is_some(), "{name} must ship a cache_size");
@@ -458,7 +412,6 @@ mod tests {
 	fn test_default_config() {
 		let config = SqliteConfig::default();
 		assert_eq!(config.path, DbPath::File(PathBuf::from("reifydb.db")));
-		assert_eq!(config.journal_mode, Some(JournalMode::Wal));
 		assert_eq!(config.synchronous_mode, Some(SynchronousMode::Normal));
 		assert_eq!(config.temp_store, Some(TempStore::Memory));
 	}
@@ -470,7 +423,6 @@ mod tests {
 			let config = SqliteConfig::safe(&db_file);
 
 			assert_eq!(config.path, DbPath::File(db_file));
-			assert_eq!(config.journal_mode, Some(JournalMode::Wal));
 			assert_eq!(config.synchronous_mode, Some(SynchronousMode::Full));
 			assert_eq!(config.temp_store, Some(TempStore::File));
 			Ok(())
@@ -490,7 +442,6 @@ mod tests {
 			_ => panic!("Expected DbPath::Tmpfs variant"),
 		}
 
-		assert_eq!(config.journal_mode, Some(JournalMode::Wal));
 		assert_eq!(config.synchronous_mode, Some(SynchronousMode::Off));
 		assert_eq!(config.temp_store, Some(TempStore::Memory));
 		assert_eq!(config.cache_size, Some(ByteSize::from_kib(2000)));
@@ -503,12 +454,10 @@ mod tests {
 			let db_file = db_path.join("chain.reifydb");
 
 			let config = SqliteConfig::new(&db_file)
-				.journal_mode(JournalMode::Delete)
 				.synchronous_mode(SynchronousMode::Extra)
 				.temp_store(TempStore::File)
 				.flags(OpenFlags::new().read_write(false).create(false).shared_cache(true));
 
-			assert_eq!(config.journal_mode, Some(JournalMode::Delete));
 			assert_eq!(config.synchronous_mode, Some(SynchronousMode::Extra));
 			assert_eq!(config.temp_store, Some(TempStore::File));
 			assert!(!config.flags.read_write);
