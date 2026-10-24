@@ -60,35 +60,28 @@ where
 	}
 }
 
-pub fn get<K, V>(store: &mut dyn StateStore, key: &K) -> Result<Option<V>>
+pub fn get<K, V>(store: &mut dyn StateStore, keys: &[K]) -> Result<Vec<Option<V>>>
 where
 	K: Hash + Eq + Clone + HeapSize,
 	for<'a> &'a K: IntoGroupStateKey,
 	V: Clone + OperatorState + HeapSize,
 {
-	let encoded_key = key.into_group_state_key();
-	match store.state_get(from_ref(&encoded_key))?.pop().flatten() {
-		Some(bytes) => Ok(Some(decode::<V>(&bytes)?)),
-		None => Ok(None),
+	let encoded: Vec<GroupStateKey> = keys.iter().map(|key| key.into_group_state_key()).collect();
+	let rows = store.state_get(&encoded)?;
+	if rows.len() != encoded.len() {
+		return internal_err!("a batch read answered {} slots for {} keys", rows.len(), encoded.len());
 	}
+	let mut values = Vec::with_capacity(rows.len());
+	for row in rows {
+		values.push(match row {
+			Some(row) => Some(decode::<V>(&row)?),
+			None => None,
+		});
+	}
+	Ok(values)
 }
 
-pub fn get_classified<K, V>(store: &mut dyn StateStore, key: &K) -> Result<Option<V>>
-where
-	K: Hash + Eq + Clone + HeapSize,
-	for<'a> &'a K: IntoGroupStateKey,
-	V: Clone + OperatorState + HeapSize,
-{
-	let encoded_key = key.into_group_state_key();
-	let (value, pre) = match store.state_get(from_ref(&encoded_key))?.pop().flatten() {
-		Some(bytes) => (Some(decode::<V>(&bytes)?), Some(bytes.byte_size())),
-		None => (None, None),
-	};
-	store.state_classify(&encoded_key, pre);
-	Ok(value)
-}
-
-pub fn get_many<K, V>(store: &mut dyn StateStore, keys: &[K]) -> Result<Vec<Option<V>>>
+pub fn get_classified<K, V>(store: &mut dyn StateStore, keys: &[K]) -> Result<Vec<Option<V>>>
 where
 	K: Hash + Eq + Clone + HeapSize,
 	for<'a> &'a K: IntoGroupStateKey,
@@ -151,45 +144,26 @@ impl<V: OperatorState> TypedBatch<V> {
 	}
 }
 
-pub fn set<K, V>(store: &mut dyn StateStore, key: &K, value: &V) -> Result<()>
+pub fn set<K, V>(store: &mut dyn StateStore, entries: Vec<(K, V)>) -> Result<()>
 where
 	K: Hash + Eq + Clone + HeapSize,
 	for<'a> &'a K: IntoGroupStateKey,
 	V: Clone + OperatorState + HeapSize,
 {
-	let encoded_key = key.into_group_state_key();
-	let payload = value.encode_state()?;
-	store.state_set(vec![(encoded_key.clone(), payload)])
-}
-
-pub fn put<K, V>(store: &mut dyn StateStore, key: &K, value: V) -> Result<()>
-where
-	K: Hash + Eq + Clone + HeapSize,
-	for<'a> &'a K: IntoGroupStateKey,
-	V: Clone + OperatorState + HeapSize,
-{
-	set(store, key, &value)
-}
-
-pub fn remove<K>(store: &mut dyn StateStore, key: &K) -> Result<()>
-where
-	K: Hash + Eq + Clone + HeapSize,
-	for<'a> &'a K: IntoGroupStateKey,
-{
-	let encoded_key = key.into_group_state_key();
-	store.state_remove(from_ref(&encoded_key))
-}
-
-pub fn get_or_default<K, V>(store: &mut dyn StateStore, key: &K) -> Result<V>
-where
-	K: Hash + Eq + Clone + HeapSize,
-	for<'a> &'a K: IntoGroupStateKey,
-	V: Clone + Default + OperatorState + HeapSize,
-{
-	match get(store, key)? {
-		Some(value) => Ok(value),
-		None => Ok(V::default()),
+	let mut rows = Vec::with_capacity(entries.len());
+	for (key, value) in entries {
+		rows.push((key.into_group_state_key(), value.encode_state()?));
 	}
+	store.state_set(rows)
+}
+
+pub fn remove<K>(store: &mut dyn StateStore, keys: &[K]) -> Result<()>
+where
+	K: Hash + Eq + Clone + HeapSize,
+	for<'a> &'a K: IntoGroupStateKey,
+{
+	let encoded: Vec<GroupStateKey> = keys.iter().map(|key| key.into_group_state_key()).collect();
+	store.state_remove(&encoded)
 }
 
 #[cfg(test)]
@@ -399,21 +373,21 @@ mod tests {
 		// Nothing buffers a pending write, so the value must be durable the moment set returns.
 		let mut store = MockStore::default();
 
-		set(&mut store, &Key::new("a"), &cell(7)).unwrap();
+		set(&mut store, vec![(Key::new("a"), cell(7))]).unwrap();
 
 		assert_eq!(store.sets, 1, "set must issue exactly one state_set");
 		assert!(!store.data.is_empty(), "the value must be in the store before any flush");
-		assert_eq!(get::<_, Cell>(&mut store, &Key::new("a")).unwrap(), Some(cell(7)));
+		assert_eq!(get::<_, Cell>(&mut store, from_ref(&Key::new("a"))).unwrap().remove(0), Some(cell(7)));
 	}
 
 	#[test]
 	fn get_reads_through_to_the_store_every_time() {
 		// A cached second read would let another writer's value go unseen.
 		let mut store = MockStore::default();
-		set(&mut store, &Key::new("a"), &cell(1)).unwrap();
+		set(&mut store, vec![(Key::new("a"), cell(1))]).unwrap();
 
-		get::<_, Cell>(&mut store, &Key::new("a")).unwrap();
-		get::<_, Cell>(&mut store, &Key::new("a")).unwrap();
+		get::<_, Cell>(&mut store, from_ref(&Key::new("a"))).unwrap().remove(0);
+		get::<_, Cell>(&mut store, from_ref(&Key::new("a"))).unwrap().remove(0);
 
 		assert_eq!(store.gets, 2, "each get must be served by the store, never from residency");
 	}
@@ -423,7 +397,7 @@ mod tests {
 		// Absence is no longer answerable from a filter; every miss must be a real store read.
 		let mut store = MockStore::default();
 
-		assert_eq!(get::<_, Cell>(&mut store, &Key::new("absent")).unwrap(), None);
+		assert_eq!(get::<_, Cell>(&mut store, from_ref(&Key::new("absent"))).unwrap().remove(0), None);
 		assert_eq!(store.gets, 1, "the miss must have consulted the store");
 	}
 
@@ -431,51 +405,42 @@ mod tests {
 	fn a_read_leaves_the_row_in_the_store_for_the_next_reader() {
 		// The read half of load-mutate-persist must not consume the row, or the base value is lost.
 		let mut store = MockStore::default();
-		set(&mut store, &Key::new("a"), &cell(3)).unwrap();
+		set(&mut store, vec![(Key::new("a"), cell(3))]).unwrap();
 
-		assert_eq!(get::<_, Cell>(&mut store, &Key::new("a")).unwrap(), Some(cell(3)));
+		assert_eq!(get::<_, Cell>(&mut store, from_ref(&Key::new("a"))).unwrap().remove(0), Some(cell(3)));
 		assert_eq!(store.removes, 0, "a read must not issue a state_remove");
-		assert_eq!(get::<_, Cell>(&mut store, &Key::new("a")).unwrap(), Some(cell(3)));
+		assert_eq!(get::<_, Cell>(&mut store, from_ref(&Key::new("a"))).unwrap().remove(0), Some(cell(3)));
 	}
 
 	#[test]
 	fn read_then_persist_round_trips_a_mutation() {
 		// Without an in-place overwrite on the persist half the mutation is silently dropped.
 		let mut store = MockStore::default();
-		set(&mut store, &Key::new("a"), &cell(1)).unwrap();
+		set(&mut store, vec![(Key::new("a"), cell(1))]).unwrap();
 
-		let mut value = get::<_, Cell>(&mut store, &Key::new("a")).unwrap().unwrap();
+		let mut value = get::<_, Cell>(&mut store, from_ref(&Key::new("a"))).unwrap().remove(0).unwrap();
 		value.value += 41;
-		set(&mut store, &Key::new("a"), &value).unwrap();
+		set(&mut store, vec![(Key::new("a"), value)]).unwrap();
 
-		assert_eq!(get::<_, Cell>(&mut store, &Key::new("a")).unwrap(), Some(cell(42)));
+		assert_eq!(get::<_, Cell>(&mut store, from_ref(&Key::new("a"))).unwrap().remove(0), Some(cell(42)));
 	}
 
 	#[test]
 	fn remove_issues_a_state_remove_and_the_key_reads_back_absent() {
 		let mut store = MockStore::default();
-		set(&mut store, &Key::new("a"), &cell(5)).unwrap();
+		set(&mut store, vec![(Key::new("a"), cell(5))]).unwrap();
 
-		remove(&mut store, &Key::new("a")).unwrap();
+		remove(&mut store, from_ref(&Key::new("a"))).unwrap();
 
 		assert_eq!(store.removes, 1);
-		assert_eq!(get::<_, Cell>(&mut store, &Key::new("a")).unwrap(), None);
-	}
-
-	#[test]
-	fn get_or_default_returns_the_default_only_for_an_absent_key() {
-		let mut store = MockStore::default();
-		set(&mut store, &Key::new("present"), &cell(8)).unwrap();
-
-		assert_eq!(get_or_default::<_, Cell>(&mut store, &Key::new("present")).unwrap(), cell(8));
-		assert_eq!(get_or_default::<_, Cell>(&mut store, &Key::new("absent")).unwrap(), Cell::default());
+		assert_eq!(get::<_, Cell>(&mut store, from_ref(&Key::new("a"))).unwrap().remove(0), None);
 	}
 
 	#[test]
 	fn a_typed_session_hands_the_write_the_size_it_already_read() {
 		// A session must hand each write the durable size from its own batch read, never read the key again.
 		let mut store = MockStore::default();
-		set(&mut store, &Key::new("a"), &cell(123_456_789)).unwrap();
+		set(&mut store, vec![(Key::new("a"), cell(123_456_789))]).unwrap();
 		let durable = store.data.values().next().expect("the seed write is in the store").bytes().len();
 		assert!(
 			durable > 1,
@@ -520,7 +485,7 @@ mod tests {
 	fn a_typed_multi_get_hands_the_write_the_size_it_already_read() {
 		// A multi-get must hand each write the durable size from its own batch read, never read the key again.
 		let mut store = MockStore::default();
-		set(&mut store, &Key::new("a"), &cell(123_456_789)).unwrap();
+		set(&mut store, vec![(Key::new("a"), cell(123_456_789))]).unwrap();
 		let durable = store.data.values().next().expect("the seed write is in the store").bytes().len();
 		assert!(
 			durable > 1,
@@ -528,7 +493,7 @@ mod tests {
 		);
 		store.classifications.clear();
 
-		let values = get_many::<_, Cell>(&mut store, &[Key::new("a")]).unwrap();
+		let values = get_classified::<_, Cell>(&mut store, &[Key::new("a")]).unwrap();
 
 		assert_eq!(values, vec![Some(cell(123_456_789))], "classifying must not disturb the value it returns");
 		assert_eq!(store.gets, 1, "the multi-get must read its keys in exactly one batch read");
@@ -544,49 +509,8 @@ mod tests {
 		// An absent key must come back as an absence, never as a default that reads like a stored zero.
 		let mut store = MockStore::default();
 
-		get_many::<_, Cell>(&mut store, &[Key::new("missing")]).unwrap();
+		get_classified::<_, Cell>(&mut store, &[Key::new("missing")]).unwrap();
 
-		assert_eq!(
-			store.classifications,
-			vec![(Key::new("missing").into_group_state_key().as_slice().to_vec(), None)],
-			"a key the read did not find must be handed down as absent, not left for the write to discover"
-		);
-	}
-
-	#[test]
-	fn get_classified_hands_the_write_the_size_it_already_read() {
-		// Every caller of this reads a key it is about to write back, so the read must carry the pre-image
-		// forward; otherwise the write re-reads the same key and the helper costs two lookups, not one.
-		let mut store = MockStore::default();
-		set(&mut store, &Key::new("a"), &cell(123_456_789)).unwrap();
-		let durable = store.data.values().next().expect("the seed write is in the store").bytes().len();
-		assert!(
-			durable > 1,
-			"the seed must encode to more than one byte or the size assertion cannot discriminate"
-		);
-		store.classifications.clear();
-		store.gets = 0;
-
-		let value: Option<Cell> = get_classified(&mut store, &Key::new("a")).unwrap();
-
-		assert_eq!(value, Some(cell(123_456_789)), "classifying must not disturb the value it returns");
-		assert_eq!(store.gets, 1, "the classification must ride the read it already paid for");
-		assert_eq!(
-			store.classifications[0].1,
-			Some(ByteSize::from_bytes(durable as u64)),
-			"the size handed down must be what a durable read of the row would measure"
-		);
-	}
-
-	#[test]
-	fn get_classified_of_a_key_that_is_not_there_hands_down_an_absence() {
-		// A first write billed as a replace debits a row the census never held, so absence must be claimed
-		// as loudly as presence.
-		let mut store = MockStore::default();
-
-		let value: Option<Cell> = get_classified(&mut store, &Key::new("missing")).unwrap();
-
-		assert_eq!(value, None, "a missing key still reads as missing");
 		assert_eq!(
 			store.classifications,
 			vec![(Key::new("missing").into_group_state_key().as_slice().to_vec(), None)],

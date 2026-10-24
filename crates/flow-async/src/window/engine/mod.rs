@@ -11,7 +11,7 @@ pub mod tumbling;
 pub mod tumbling_carry;
 pub mod tumbling_retained;
 
-use std::{collections::HashMap, ops::Bound};
+use std::{collections::HashMap, ops::Bound, slice::from_ref};
 
 use reifydb_codec::{
 	key::{decode_u64_asc, encode_u64_asc, encoded::EncodedKey},
@@ -148,7 +148,8 @@ pub(crate) fn load_batch_meta<S>(store: &mut dyn StateStore, key: &MetaKey) -> R
 where
 	S: Slot,
 {
-	let initial = get_classified::<_, GroupMeta<S>>(store, key)?.and_then(|meta| meta.high_water);
+	let initial =
+		get_classified::<_, GroupMeta<S>>(store, from_ref(key))?.remove(0).and_then(|meta| meta.high_water);
 	Ok(BatchMeta {
 		initial,
 		bumped: None,
@@ -166,10 +167,12 @@ where
 		};
 		set(
 			store,
-			&meta_key_for(group_hash(&group)?),
-			&GroupMeta {
-				high_water: Some(bumped),
-			},
+			vec![(
+				meta_key_for(group_hash(&group)?),
+				GroupMeta {
+					high_water: Some(bumped),
+				},
+			)],
 		)?;
 	}
 	Ok(())
@@ -255,7 +258,7 @@ impl MetaSweep {
 		}
 		let count = stale.len();
 		for key in &stale {
-			remove(store, key)?;
+			remove(store, from_ref(key))?;
 		}
 		Ok(count)
 	}
@@ -625,10 +628,12 @@ mod meta_sweep_tests {
 		for index in 0..count {
 			set(
 				store,
-				&meta_key(index),
-				&GroupMeta {
-					high_water: Some(high_water(index)),
-				},
+				vec![(
+					meta_key(index),
+					GroupMeta {
+						high_water: Some(high_water(index)),
+					},
+				)],
 			)
 			.expect("seeding a group meta must succeed");
 		}

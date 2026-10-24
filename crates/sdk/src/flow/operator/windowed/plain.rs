@@ -22,7 +22,7 @@ use reifydb_flow_async::{
 			reaper::{drain, drain_groups, enqueue},
 			seal::{coord::Coord, domain::SealDomain, rule::is_sealed},
 		},
-		state_access::{batch, get_many},
+		state_access::{batch, get_classified},
 	},
 	window::{
 		accumulator::WindowAccumulator,
@@ -343,7 +343,7 @@ where
 				)
 			})
 			.collect();
-		let accumulators = get_many::<_, A::Accumulator>(store, &accumulator_keys)?;
+		let accumulators = get_classified::<_, A::Accumulator>(store, &accumulator_keys)?;
 		let groups: Vec<GroupId> = dirty.iter().map(|(slot, _)| windows[*slot].group_id).collect();
 		let rows = store.get_or_create_row_numbers_for_groups(&groups)?;
 		reifydb_assertions! {

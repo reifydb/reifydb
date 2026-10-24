@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::{slice::from_ref, sync::Arc};
 
 use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
@@ -34,7 +34,7 @@ use tracing::instrument;
 use crate::operator::{
 	HostOperator,
 	host::HostContext,
-	state_access::{get, put, remove},
+	state_access::{get, remove, set},
 };
 
 #[operator_state]
@@ -142,21 +142,23 @@ impl GateOperator {
 	}
 
 	fn is_visible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<bool> {
-		Ok(get::<_, VisibilityMarker>(host, &VisibilityKey(rn))?.is_some())
+		Ok(get::<_, VisibilityMarker>(host, from_ref(&VisibilityKey(rn)))?.remove(0).is_some())
 	}
 
 	fn mark_visible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<()> {
-		put(
+		set(
 			host,
-			&VisibilityKey(rn),
-			VisibilityMarker {
-				visible: true,
-			},
+			vec![(
+				VisibilityKey(rn),
+				VisibilityMarker {
+					visible: true,
+				},
+			)],
 		)
 	}
 
 	fn mark_invisible(&mut self, host: &mut dyn HostContext, rn: RowNumber) -> Result<()> {
-		remove(host, &VisibilityKey(rn))
+		remove(host, from_ref(&VisibilityKey(rn)))
 	}
 }
 

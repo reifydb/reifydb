@@ -37,7 +37,7 @@ use reifydb_sdk::{
 use reifydb_value::{util::cowvec::CowVec, value::datetime::DateTime};
 
 use super::{
-	context::{get_host_mut, guest_class},
+	context::{get_host_mut, guest_class, stash_failure},
 	marshal::{encoded_keys, write_buffer},
 	state_iterator::{self, StateIteratorHandle},
 };
@@ -94,7 +94,7 @@ pub(super) extern "C" fn host_state_set(
 
 		match host.state_set(decoded) {
 			Ok(_) => EXTERN_C_OK,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -134,7 +134,7 @@ pub(super) extern "C" fn host_state_remove(
 
 		match host.state_remove(&encoded_keys) {
 			Ok(_) => EXTERN_C_OK,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -213,8 +213,9 @@ pub(super) extern "C" fn host_state_batch_read(
 			framed.push(key);
 		}
 
-		let Ok(batch) = host.state_batch(framed) else {
-			return EXTERN_C_ERROR_INTERNAL;
+		let batch = match host.state_batch(framed) {
+			Ok(batch) => batch,
+			Err(err) => return stash_failure(&*ctx, err),
 		};
 		for slot in 0..batch.len() {
 			let row_out = rows_out.add(slot);
@@ -307,7 +308,7 @@ pub(super) extern "C" fn host_state_batch_write(
 		};
 		match host.state_write_batch(batch) {
 			Ok(()) => EXTERN_C_OK,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -377,7 +378,7 @@ pub(super) extern "C" fn host_state_get(
 				*iterator_out = iter_ptr as *mut ExternCStateIterator;
 				EXTERN_C_OK
 			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -484,7 +485,7 @@ pub(super) extern "C" fn host_state_range(
 				*iterator_out = iter_ptr as *mut ExternCStateIterator;
 				EXTERN_C_OK
 			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -546,7 +547,7 @@ pub(super) extern "C" fn host_state_sweep_many(
 				*iterator_out = iter_ptr as *mut ExternCStateIterator;
 				EXTERN_C_OK
 			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -647,7 +648,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers(
 				}
 				EXTERN_C_OK
 			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -685,7 +686,7 @@ pub(super) extern "C" fn host_get_row_numbers(
 				}
 				EXTERN_C_OK
 			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -717,7 +718,7 @@ pub(super) extern "C" fn host_remove_row_number(
 		}
 		match host.remove_row_number(host_group(group), &encoded_keys) {
 			Ok(()) => EXTERN_C_OK,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -743,7 +744,7 @@ pub(super) extern "C" fn host_remove_row_number_for_group(
 		let group_ids: Vec<GroupId> = (0..groups_len).map(|index| host_group(*groups.add(index))).collect();
 		match host.remove_row_number_for_group(&group_ids) {
 			Ok(()) => EXTERN_C_OK,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -778,7 +779,7 @@ pub(super) extern "C" fn host_arm_timer(
 		};
 		match host.arm_timer(DateTime::from_order(due_bits), kind, &key) {
 			Ok(()) => EXTERN_C_OK,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -805,7 +806,7 @@ pub(super) extern "C" fn host_reclaim_group_identity(
 				*more_out = outcome.more as u8;
 				EXTERN_C_OK
 			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -835,7 +836,7 @@ pub(super) extern "C" fn host_flow_watermark(
 				*present_out = 0;
 				EXTERN_C_OK
 			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -870,7 +871,7 @@ pub(super) extern "C" fn host_disarm_timer(
 		};
 		match host.disarm_timer(DateTime::from_order(due_bits), kind, &key) {
 			Ok(()) => EXTERN_C_OK,
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }
@@ -906,7 +907,7 @@ pub(super) extern "C" fn host_get_or_create_row_numbers_for_groups(
 				}
 				EXTERN_C_OK
 			}
-			Err(_) => EXTERN_C_ERROR_INTERNAL,
+			Err(err) => stash_failure(&*ctx, err),
 		}
 	}
 }

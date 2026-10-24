@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{collections::HashMap, slice::from_ref};
 
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -17,7 +17,7 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::{
 		host::TxnHostContext,
-		state_access::{get, get_or_default, set},
+		state_access::{get, set},
 	},
 	transaction::FlowTransaction,
 };
@@ -139,14 +139,14 @@ fn test_set_and_get() {
 
 	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
 	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-	set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
+	set(&mut GuestAsHost(&mut ctx), vec![(key.clone(), value.clone())]).expect("Set failed");
 
 	// Nothing buffers the write, so the value must be in host storage the moment set returns.
 	assert_eq!(host.snapshot_state().len(), 1);
 
 	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
 	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-	let retrieved = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
+	let retrieved = get(&mut GuestAsHost(&mut ctx), from_ref(&key)).expect("Get failed").remove(0);
 	assert_eq!(retrieved, Some(value));
 }
 
@@ -162,7 +162,7 @@ fn test_set_persists_to_host_storage_on_the_set_itself() {
 	// Set is the sole point at which state reaches host storage; a guest that never sets writes nothing.
 	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
 	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-	set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
+	set(&mut GuestAsHost(&mut ctx), vec![(key.clone(), value.clone())]).expect("Set failed");
 	let persisted = host.snapshot_state();
 	assert_eq!(persisted.len(), 1, "Set must write through to host storage");
 
@@ -170,49 +170,11 @@ fn test_set_persists_to_host_storage_on_the_set_itself() {
 	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
 	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 	assert_eq!(
-		get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed"),
+		get(&mut GuestAsHost(&mut ctx), from_ref(&key)).expect("Get failed").remove(0),
 		Some(value),
 		"the persisted row must read back across a fresh context"
 	);
 	assert_eq!(host.snapshot_state(), persisted, "a read must leave host storage byte-identical");
-}
-
-#[test]
-fn test_get_or_default_creates_default() {
-	let mut host = Host::new();
-
-	let key = TestKey::new("new_key");
-
-	let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-	let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-	let result: CounterState = get_or_default(&mut GuestAsHost(&mut ctx), &key).expect("get_or_default failed");
-
-	assert_eq!(result.count, 0);
-}
-
-#[test]
-fn test_get_or_default_returns_existing() {
-	let mut host = Host::new();
-
-	let key = TestKey::new("existing_key");
-	let value = CounterState {
-		count: 50,
-	};
-
-	{
-		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
-	}
-
-	{
-		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
-		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let result: CounterState =
-			get_or_default(&mut GuestAsHost(&mut ctx), &key).expect("get_or_default failed");
-
-		assert_eq!(result.count, 50, "Should return existing value, not default");
-	}
 }
 
 #[test]
@@ -227,7 +189,7 @@ fn test_multiple_keys() {
 			let value = SumState {
 				total: i * 10,
 			};
-			set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
+			set(&mut GuestAsHost(&mut ctx), vec![(key, value)]).expect("Set failed");
 		}
 	}
 
@@ -239,7 +201,8 @@ fn test_multiple_keys() {
 		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
 		for i in 0..5 {
 			let key = TestKey::new(&format!("sum_{}", i));
-			let result: Option<SumState> = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
+			let result: Option<SumState> =
+				get(&mut GuestAsHost(&mut ctx), from_ref(&key)).expect("Get failed").remove(0);
 			assert_eq!(
 				result,
 				Some(SumState {
@@ -266,8 +229,8 @@ fn test_tuple_keys() {
 	{
 		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
 		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		set(&mut GuestAsHost(&mut ctx), &key1, &value1).expect("Set failed");
-		set(&mut GuestAsHost(&mut ctx), &key2, &value2).expect("Set failed");
+		set(&mut GuestAsHost(&mut ctx), vec![(key1.clone(), value1.clone())]).expect("Set failed");
+		set(&mut GuestAsHost(&mut ctx), vec![(key2.clone(), value2.clone())]).expect("Set failed");
 	}
 
 	// Two composite keys must never frame onto one row, otherwise the second set eats the first.
@@ -276,8 +239,8 @@ fn test_tuple_keys() {
 	{
 		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
 		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let result1 = get(&mut GuestAsHost(&mut ctx), &key1).expect("Get failed");
-		let result2 = get(&mut GuestAsHost(&mut ctx), &key2).expect("Get failed");
+		let result1 = get(&mut GuestAsHost(&mut ctx), from_ref(&key1)).expect("Get failed").remove(0);
+		let result2 = get(&mut GuestAsHost(&mut ctx), from_ref(&key2)).expect("Get failed").remove(0);
 		assert_eq!(result1, Some(value1));
 		assert_eq!(result2, Some(value2));
 	}
@@ -295,14 +258,14 @@ fn test_get_reloads_from_host_storage() {
 	{
 		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
 		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		set(&mut GuestAsHost(&mut ctx), &key, &value).expect("Set failed");
+		set(&mut GuestAsHost(&mut ctx), vec![(key.clone(), value.clone())]).expect("Set failed");
 	}
 
 	// A reader that never saw the write can only answer from host storage, never from an in-process copy.
 	{
 		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
 		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let result = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
+		let result = get(&mut GuestAsHost(&mut ctx), from_ref(&key)).expect("Get failed").remove(0);
 		assert_eq!(result, Some(value.clone()));
 	}
 
@@ -310,7 +273,7 @@ fn test_get_reloads_from_host_storage() {
 	{
 		let mut txn_host = TxnHostContext::new(&mut host.txn, OPERATOR);
 		let mut ctx = InProcessContext::new(&mut txn_host, OPERATOR);
-		let result = get(&mut GuestAsHost(&mut ctx), &key).expect("Get failed");
+		let result = get(&mut GuestAsHost(&mut ctx), from_ref(&key)).expect("Get failed").remove(0);
 		assert_eq!(result, Some(value));
 	}
 }

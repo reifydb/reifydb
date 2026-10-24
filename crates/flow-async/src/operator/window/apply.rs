@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::{
+	collections::{HashMap, HashSet, hash_map::Entry},
+	slice::from_ref,
+};
 
 use arrow_array::RecordBatch;
 use reifydb_codec::key::encoded::EncodedKey;
@@ -1162,7 +1165,10 @@ fn drop_sealed_events(
 		let mut store = Prefetched::read(host, keys)?;
 		for key in buckets.keys() {
 			let group = GroupId::window(key.0, key.1.start.to_order());
-			gated.insert(*key, get_classified::<_, EngineMeta>(&mut store, &EngineMetaKey(group))?);
+			gated.insert(
+				*key,
+				get_classified::<_, EngineMeta>(&mut store, from_ref(&EngineMetaKey(group)))?.remove(0),
+			);
 		}
 	}
 	let mut sealed: Vec<(Hash128, WindowSpan<DateTime>)> = Vec::new();

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::{HashMap, HashSet, hash_map::Entry};
+use std::{
+	collections::{HashMap, HashSet, hash_map::Entry},
+	slice::from_ref,
+};
 
 use arrow_array::RecordBatch;
 use reifydb_core::{
@@ -25,7 +28,7 @@ use crate::{
 	operator::{
 		host::HostContext,
 		state::{seal::coord::Coord, store},
-		state_access::{get_classified, put, remove},
+		state_access::{get_classified, remove, set},
 		window::prefetch::Prefetched,
 	},
 	window::{
@@ -143,7 +146,9 @@ fn prior_engine_meta(
 			.get(window)
 			.cloned()
 			.expect("the seal gate reads the engine meta of every session window it admits")),
-		Stamp::SpanStart | Stamp::Earliest(_) => get_classified::<_, EngineMeta>(store, &EngineMetaKey(group)),
+		Stamp::SpanStart | Stamp::Earliest(_) => {
+			Ok(get_classified::<_, EngineMeta>(store, from_ref(&EngineMetaKey(group)))?.remove(0))
+		}
 	}
 }
 
@@ -309,7 +314,7 @@ pub(crate) fn finish_tumbling_engine(
 					last_event_time: last_event_time.unwrap_or_default(),
 					first_event_time: first.unwrap_or_default(),
 				};
-				put(&mut store, &EngineMetaKey(group), meta)?;
+				set(&mut store, vec![(EngineMetaKey(group), meta)])?;
 			}
 		}
 		spans.push(match stamp {
@@ -334,14 +339,15 @@ pub(crate) fn finish_tumbling_engine(
 				(span(pre), span(now))
 			}
 			Stamp::Session(gap, bounds, _) => {
-				let before = get_classified::<_, SessionState>(&mut store, &SessionKey(group))?.map(
-					|state| {
-						(
-							<DateTime as Coord>::from_order(state.session_start),
-							<DateTime as Coord>::from_order(state.last_event_time),
-						)
-					},
-				);
+				let before =
+					get_classified::<_, SessionState>(&mut store, from_ref(&SessionKey(group)))?
+						.remove(0)
+						.map(|state| {
+							(
+								<DateTime as Coord>::from_order(state.session_start),
+								<DateTime as Coord>::from_order(state.last_event_time),
+							)
+						});
 				let now = bounds.get(&(r.group, window_start)).copied().or(before);
 				let pre = match r.kind {
 					EmitKind::Insert => now,
@@ -353,15 +359,17 @@ pub(crate) fn finish_tumbling_engine(
 					);
 				};
 				match r.kind {
-					EmitKind::Remove => remove(&mut store, &SessionKey(group))?,
-					EmitKind::Insert | EmitKind::Update => put(
+					EmitKind::Remove => remove(&mut store, from_ref(&SessionKey(group)))?,
+					EmitKind::Insert | EmitKind::Update => set(
 						&mut store,
-						&SessionKey(group),
-						SessionState {
-							session_id: window_start,
-							last_event_time: now.1.to_order(),
-							session_start: now.0.to_order(),
-						},
+						vec![(
+							SessionKey(group),
+							SessionState {
+								session_id: window_start,
+								last_event_time: now.1.to_order(),
+								session_start: now.0.to_order(),
+							},
+						)],
 					)?,
 				}
 				let span = |(start, last): (DateTime, DateTime)| WindowSpan {
@@ -400,7 +408,7 @@ pub(crate) fn finish_tumbling_engine(
 			last_event_time: last_event_time.unwrap_or_default(),
 			first_event_time: first.unwrap_or_default(),
 		};
-		put(&mut store, &EngineMetaKey(group), meta)?;
+		set(&mut store, vec![(EngineMetaKey(group), meta)])?;
 	}
 	engine.reindex_windows(&mut store, &reindexed)?;
 	store.write()?;

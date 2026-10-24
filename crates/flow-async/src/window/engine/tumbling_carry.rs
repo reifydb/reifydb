@@ -26,7 +26,7 @@ use reifydb_value::{Result, reifydb_assertions};
 use crate::{
 	operator::{
 		state::seal::rule::is_sealed,
-		state_access::{batch, put},
+		state_access::{batch, set},
 	},
 	window::{
 		accumulator::WindowAccumulator,
@@ -166,7 +166,7 @@ where
 			}
 			let earliest = meta.windows.keys().next().map_or(hw, |first| first.to_order());
 			if folded {
-				put(store, &key, meta)?;
+				set(store, vec![(key, meta)])?;
 			}
 			Ok(MetaFate::Survives(earliest))
 		})?;

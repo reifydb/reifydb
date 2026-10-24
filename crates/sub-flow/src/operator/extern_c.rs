@@ -182,6 +182,11 @@ impl HostOperator for ExternCOperatorHandle {
 			call_vtable(&self.vtable, self.instance, extern_c_ctx_ptr, &extern_c_input, self.operator_id)
 		});
 
+		if let Some(failure) = host_ctx.take_failure() {
+			let _ = self.builder_registry.drain();
+			return Err(failure);
+		}
+
 		if result_code != 0 {
 			let _ = self.builder_registry.drain();
 			return Err(SdkError::Other(format!(
@@ -229,6 +234,11 @@ impl HostOperator for ExternCOperatorHandle {
 				key.len(),
 			)
 		});
+
+		if let Some(failure) = host_ctx.take_failure() {
+			let _ = self.builder_registry.drain();
+			return Err(failure);
+		}
 
 		if result_code < 0 {
 			let _ = self.builder_registry.drain();

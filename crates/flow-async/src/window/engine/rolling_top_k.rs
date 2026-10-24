@@ -6,6 +6,7 @@ use std::{
 	fmt::Debug,
 	hash::Hash,
 	marker::PhantomData,
+	slice::from_ref,
 };
 
 use reifydb_codec::{
@@ -30,7 +31,7 @@ use crate::{
 			expiry::{ExpiryIndex, expiry_drop, rolling_expiry_key},
 			seal::coord::Coord,
 		},
-		state_access::{get_classified, put, remove},
+		state_access::{get_classified, remove, set},
 	},
 	window::{
 		accumulator::WindowAccumulator,
@@ -145,7 +146,8 @@ where
 			let buffer: RollingTopKBuffer<S, Accumulator> = match get_classified::<
 				_,
 				RollingTopKBuffer<S, Accumulator>,
-			>(store, &buffer_key)?
+			>(store, from_ref(&buffer_key))?
+			.remove(0)
 			{
 				Some(buffer) if !buffer.is_empty() => buffer,
 				_ => return internal_err!("a rolling top-k expiry row names a group with no buffer"),
@@ -154,7 +156,9 @@ where
 				return internal_err!("a rolling top-k expiry row lags its group's newest pane");
 			}
 			let emit_key = EmitKey::new(entry.group_id, entry.state_row_number);
-			if let Some(snapshot) = get_classified::<_, RollingTopKEmit<SK, Output>>(store, &emit_key)? {
+			if let Some(snapshot) =
+				get_classified::<_, RollingTopKEmit<SK, Output>>(store, from_ref(&emit_key))?.remove(0)
+			{
 				let keys: Vec<EncodedKey> =
 					snapshot.keys().map(|sk| row_key(&entry.group, sk)).collect();
 				let rows = store.get_row_numbers(entry.group_id, &keys)?;
@@ -168,8 +172,8 @@ where
 				}
 				store.remove_row_number(entry.group_id, &keys)?;
 			}
-			remove(store, &buffer_key)?;
-			remove(store, &emit_key)?;
+			remove(store, from_ref(&buffer_key))?;
+			remove(store, from_ref(&emit_key))?;
 			withdrawn_groups.push(entry.group_id);
 			expiry_drop(store, &index_key)?;
 		}
@@ -349,12 +353,16 @@ where
 					};
 					let buffer: RollingTopKBuffer<S, Accumulator> = get_classified(
 						store,
-						&BufferKey::of_row(self.family, group_id, state_row_number),
+						from_ref(&BufferKey::of_row(self.family, group_id, state_row_number)),
 					)?
+					.remove(0)
 					.unwrap_or_default();
-					let prior_emit: RollingTopKEmit<SK, Output> =
-						get_classified(store, &EmitKey::new(group_id, state_row_number))?
-							.unwrap_or_default();
+					let prior_emit: RollingTopKEmit<SK, Output> = get_classified(
+						store,
+						from_ref(&EmitKey::new(group_id, state_row_number)),
+					)?
+					.remove(0)
+					.unwrap_or_default();
 					let prior_index_key = coord_max_key(&buffer);
 					group_slots.insert(
 						group.clone(),
@@ -509,28 +517,39 @@ where
 			if group_slot.buffer.is_empty() {
 				remove(
 					store,
-					&BufferKey::of_row(
+					from_ref(&BufferKey::of_row(
 						self.family,
 						group_slot.group_id,
 						group_slot.state_row_number,
-					),
+					)),
 				)?;
 				withdrawn_groups.push(group_slot.group_id);
 			} else {
-				put(
+				set(
 					store,
-					&BufferKey::of_row(
-						self.family,
-						group_slot.group_id,
-						group_slot.state_row_number,
-					),
-					group_slot.buffer,
+					vec![(
+						BufferKey::of_row(
+							self.family,
+							group_slot.group_id,
+							group_slot.state_row_number,
+						),
+						group_slot.buffer,
+					)],
 				)?;
 			}
 			if new_emit.is_empty() {
-				remove(store, &EmitKey::new(group_slot.group_id, group_slot.state_row_number))?;
+				remove(
+					store,
+					from_ref(&EmitKey::new(group_slot.group_id, group_slot.state_row_number)),
+				)?;
 			} else {
-				put(store, &EmitKey::new(group_slot.group_id, group_slot.state_row_number), new_emit)?;
+				set(
+					store,
+					vec![(
+						EmitKey::new(group_slot.group_id, group_slot.state_row_number),
+						new_emit,
+					)],
+				)?;
 			}
 		}
 		store.remove_row_number_for_group(&withdrawn_groups)?;

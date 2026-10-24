@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::mem::size_of;
+use std::{mem::size_of, slice::from_ref};
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
@@ -30,7 +30,7 @@ use crate::{
 			coord::Coord,
 			ledger::{SealLedgerState, seal_ledger_key},
 		},
-		state_access::{get_classified, get_many, get_or_default, put, remove},
+		state_access::{get, get_classified, remove, set},
 	},
 	window::kind::session::SessionTracker,
 };
@@ -217,17 +217,22 @@ impl WindowMeta {
 	}
 
 	pub fn seal_ledger(&mut self, store: &mut dyn StateStore) -> Result<u64> {
-		Ok(get_or_default::<_, SealLedgerState>(store, &SealLedgerKey)?.sealed_through)
+		Ok(get::<_, SealLedgerState>(store, from_ref(&SealLedgerKey))?
+			.remove(0)
+			.unwrap_or_default()
+			.sealed_through)
 	}
 
 	pub fn advance_seal_ledger(&mut self, store: &mut dyn StateStore, coord: u64) -> Result<()> {
 		if coord > self.seal_ledger(store)? {
-			put(
+			set(
 				store,
-				&SealLedgerKey,
-				SealLedgerState {
-					sealed_through: coord,
-				},
+				vec![(
+					SealLedgerKey,
+					SealLedgerState {
+						sealed_through: coord,
+					},
+				)],
 			)?;
 		}
 		Ok(())
@@ -235,13 +240,15 @@ impl WindowMeta {
 
 	pub fn get_and_increment_count(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<u64> {
 		let key = CountKey(group);
-		let current = get_or_default::<_, CountState>(store, &key)?.value;
-		put(
+		let current = get::<_, CountState>(store, from_ref(&key))?.remove(0).unwrap_or_default().value;
+		set(
 			store,
-			&key,
-			CountState {
-				value: current + 1,
-			},
+			vec![(
+				key,
+				CountState {
+					value: current + 1,
+				},
+			)],
 		)?;
 		Ok(current)
 	}
@@ -252,7 +259,10 @@ impl WindowMeta {
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<Vec<u64>> {
-		Ok(get_or_default::<_, RowIndexState>(store, &RowIndexKey(group, row_number))?.window_ids)
+		Ok(get::<_, RowIndexState>(store, from_ref(&RowIndexKey(group, row_number)))?
+			.remove(0)
+			.unwrap_or_default()
+			.window_ids)
 	}
 
 	pub fn store_row_index(
@@ -263,11 +273,11 @@ impl WindowMeta {
 		window_id: u64,
 	) -> Result<()> {
 		let key = RowIndexKey(group, row_number);
-		let mut state: RowIndexState = get_or_default(store, &key)?;
+		let mut state: RowIndexState = get(store, from_ref(&key))?.remove(0).unwrap_or_default();
 		if !state.window_ids.contains(&window_id) {
 			state.window_ids.push(window_id);
 		}
-		put(store, &key, state)
+		set(store, vec![(key, state)])
 	}
 
 	pub fn store_row_indexes(
@@ -281,13 +291,13 @@ impl WindowMeta {
 			return Ok(());
 		}
 		let key = RowIndexKey(group, row_number);
-		let mut state: RowIndexState = get_or_default(store, &key)?;
+		let mut state: RowIndexState = get(store, from_ref(&key))?.remove(0).unwrap_or_default();
 		for window_id in window_ids {
 			if !state.window_ids.contains(window_id) {
 				state.window_ids.push(*window_id);
 			}
 		}
-		put(store, &key, state)
+		set(store, vec![(key, state)])
 	}
 
 	pub fn withdraw_row_index(
@@ -298,7 +308,7 @@ impl WindowMeta {
 		window_id: u64,
 	) -> Result<()> {
 		let key = RowIndexKey(group, row_number);
-		let Some(mut state) = get_classified::<_, RowIndexState>(store, &key)? else {
+		let Some(mut state) = get_classified::<_, RowIndexState>(store, from_ref(&key))?.remove(0) else {
 			return Ok(());
 		};
 		let held = state.window_ids.len();
@@ -307,9 +317,9 @@ impl WindowMeta {
 			return Ok(());
 		}
 		if state.window_ids.is_empty() {
-			remove(store, &key)
+			remove(store, from_ref(&key))
 		} else {
-			put(store, &key, state)
+			set(store, vec![(key, state)])
 		}
 	}
 
@@ -319,7 +329,7 @@ impl WindowMeta {
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<()> {
-		remove(store, &RowIndexKey(group, row_number))
+		remove(store, from_ref(&RowIndexKey(group, row_number)))
 	}
 
 	pub fn store_session_member(
@@ -340,7 +350,7 @@ impl WindowMeta {
 		group: GroupId,
 		row_number: RowNumber,
 	) -> Result<()> {
-		remove(store, &SessionMemberKey(group, row_number))
+		remove(store, from_ref(&SessionMemberKey(group, row_number)))
 	}
 
 	pub fn load_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<SessionTracker> {
@@ -348,7 +358,9 @@ impl WindowMeta {
 	}
 
 	pub fn stored_session(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<Option<SessionTracker>> {
-		Ok(get_classified::<_, SessionState>(store, &SessionKey(group))?.map(resumed_session))
+		Ok(get_classified::<_, SessionState>(store, from_ref(&SessionKey(group)))?
+			.remove(0)
+			.map(resumed_session))
 	}
 
 	pub fn stored_sessions(
@@ -357,7 +369,7 @@ impl WindowMeta {
 		groups: &[GroupId],
 	) -> Result<Vec<Option<SessionTracker>>> {
 		let keys: Vec<SessionKey> = groups.iter().map(|group| SessionKey(*group)).collect();
-		Ok(get_many::<_, SessionState>(store, &keys)?
+		Ok(get_classified::<_, SessionState>(store, &keys)?
 			.into_iter()
 			.map(|state| state.map(resumed_session))
 			.collect())
@@ -378,19 +390,21 @@ impl WindowMeta {
 		group: GroupId,
 		tracker: &SessionTracker,
 	) -> Result<()> {
-		put(
+		set(
 			store,
-			&SessionKey(group),
-			SessionState {
-				session_id: tracker.session_id,
-				last_event_time: tracker.last.to_order(),
-				session_start: tracker.start.to_order(),
-			},
+			vec![(
+				SessionKey(group),
+				SessionState {
+					session_id: tracker.session_id,
+					last_event_time: tracker.last.to_order(),
+					session_start: tracker.start.to_order(),
+				},
+			)],
 		)
 	}
 
 	pub fn rolling_meta(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<Option<RollingMeta>> {
-		get_classified(store, &RollingMetaKey(group))
+		Ok(get_classified(store, from_ref(&RollingMetaKey(group)))?.remove(0))
 	}
 
 	pub fn put_rolling_meta(
@@ -399,11 +413,11 @@ impl WindowMeta {
 		group: GroupId,
 		meta: RollingMeta,
 	) -> Result<()> {
-		put(store, &RollingMetaKey(group), meta)
+		set(store, vec![(RollingMetaKey(group), meta)])
 	}
 
 	pub fn drop_rolling_meta(&mut self, store: &mut dyn StateStore, group: GroupId) -> Result<()> {
-		remove(store, &RollingMetaKey(group))
+		remove(store, from_ref(&RollingMetaKey(group)))
 	}
 }
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{fmt::Debug, hash::Hash, mem::take};
+use std::{fmt::Debug, hash::Hash, mem::take, slice::from_ref};
 
 use reifydb_codec::{
 	key::encoded::EncodedKey,
@@ -13,7 +13,7 @@ use reifydb_value::{Result, value::row_number::RowNumber};
 use crate::{
 	operator::{
 		state::seal::coord::Coord,
-		state_access::{batch, get_classified, get_many, put, remove},
+		state_access::{batch, get_classified, remove, set},
 	},
 	window::{
 		accumulator::WindowAccumulator,
@@ -149,16 +149,21 @@ where
 		partitions: &[GroupId],
 	) -> Result<Vec<GuestSession<S>>> {
 		let keys: Vec<RunningKey> = partitions.iter().map(|partition| session_state_key(*partition)).collect();
-		Ok(get_many::<_, SessionState>(store, &keys)?.into_iter().map(tracker_of).collect())
+		Ok(get_classified::<_, SessionState>(store, &keys)?.into_iter().map(tracker_of).collect())
 	}
 
 	pub fn load_record(&self, store: &mut dyn StateStore, session: GroupId) -> Result<Option<(S, S)>> {
-		Ok(get_classified::<_, SessionState>(store, &session_state_key(session))?.map(record_of))
+		Ok(get_classified::<_, SessionState>(store, from_ref(&session_state_key(session)))?
+			.remove(0)
+			.map(record_of))
 	}
 
 	pub fn load_records(&self, store: &mut dyn StateStore, sessions: &[GroupId]) -> Result<Vec<Option<(S, S)>>> {
 		let keys: Vec<RunningKey> = sessions.iter().map(|session| session_state_key(*session)).collect();
-		Ok(get_many::<_, SessionState>(store, &keys)?.into_iter().map(|state| state.map(record_of)).collect())
+		Ok(get_classified::<_, SessionState>(store, &keys)?
+			.into_iter()
+			.map(|state| state.map(record_of))
+			.collect())
 	}
 
 	pub fn save_sessions(
@@ -200,15 +205,15 @@ where
 	}
 
 	pub fn index_row(&self, store: &mut dyn StateStore, id: u64, session: GroupId, row: RowNumber) -> Result<()> {
-		put(store, &row_index_key(session, row), id)
+		set(store, vec![(row_index_key(session, row), id)])
 	}
 
 	pub fn holds_row(&self, store: &mut dyn StateStore, session: GroupId, row: RowNumber) -> Result<bool> {
-		Ok(get_classified::<_, u64>(store, &row_index_key(session, row))?.is_some())
+		Ok(get_classified::<_, u64>(store, from_ref(&row_index_key(session, row)))?.remove(0).is_some())
 	}
 
 	pub fn unindex_row(&self, store: &mut dyn StateStore, session: GroupId, row: RowNumber) -> Result<()> {
-		remove(store, &row_index_key(session, row))
+		remove(store, from_ref(&row_index_key(session, row)))
 	}
 }
 

@@ -8,6 +8,7 @@ use std::{
 	marker::PhantomData,
 	mem,
 	ops::Bound,
+	slice::from_ref,
 };
 
 use reifydb_codec::{
@@ -36,7 +37,7 @@ use crate::{
 			seal::coord::{Coord, IsZero},
 			sweep::sweep_all,
 		},
-		state_access::{get, get_classified, put, remove},
+		state_access::{get, get_classified, remove, set},
 	},
 	window::{
 		accumulator::{MergeAccumulator, UnmergeAccumulator, WindowAccumulator},
@@ -408,8 +409,9 @@ where
 					};
 					let buffer: RollingBuffer<S, Accumulator> = get_classified(
 						store,
-						&BufferKey::new(self.family, group_id, key.clone()),
+						from_ref(&BufferKey::new(self.family, group_id, key.clone())),
 					)?
+					.remove(0)
 					.unwrap_or_default();
 					let was_empty_before = buffer.is_empty();
 					let prior_output = if was_empty_before {
@@ -529,13 +531,23 @@ where
 			if group_slot.buffer.is_empty() {
 				remove(
 					store,
-					&BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
+					from_ref(&BufferKey::new(
+						self.family,
+						group_slot.group_id,
+						group_slot.key.clone(),
+					)),
 				)?;
 			} else {
-				put(
+				set(
 					store,
-					&BufferKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
-					group_slot.buffer,
+					vec![(
+						BufferKey::new(
+							self.family,
+							group_slot.group_id,
+							group_slot.key.clone(),
+						),
+						group_slot.buffer,
+					)],
 				)?;
 			}
 
@@ -613,9 +625,12 @@ where
 			let slot_key = EncodedKey::new(&entry.slot_key);
 			let group_id = entry.group_id;
 			expiry_drop(store, &index_key)?;
-			let mut buffer: RollingBuffer<S, Accumulator> =
-				get_classified(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?
-					.unwrap_or_default();
+			let mut buffer: RollingBuffer<S, Accumulator> = get_classified(
+				store,
+				from_ref(&BufferKey::new(self.family, group_id, slot_key.clone())),
+			)?
+			.remove(0)
+			.unwrap_or_default();
 			if buffer.is_empty() {
 				continue;
 			}
@@ -652,12 +667,18 @@ where
 							)],
 						)?;
 					}
-					put(store, &BufferKey::new(self.family, group_id, slot_key.clone()), buffer)?;
+					set(
+						store,
+						vec![(BufferKey::new(self.family, group_id, slot_key.clone()), buffer)],
+					)?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, Some(value)));
 				}
 				_ => {
-					remove(store, &BufferKey::new(self.family, group_id, slot_key.clone()))?;
+					remove(
+						store,
+						from_ref(&BufferKey::new(self.family, group_id, slot_key.clone())),
+					)?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, None));
 				}
@@ -715,7 +736,9 @@ where
 			let slot_key = EncodedKey::new(&entry.slot_key);
 			let buffer_key = BufferKey::new(self.family, entry.group_id, slot_key.clone());
 			let buffer: RollingBuffer<S, Accumulator> =
-				match get_classified::<_, RollingBuffer<S, Accumulator>>(store, &buffer_key)? {
+				match get_classified::<_, RollingBuffer<S, Accumulator>>(store, from_ref(&buffer_key))?
+					.remove(0)
+				{
 					Some(buffer) if !buffer.is_empty() => buffer,
 					_ => return internal_err!("a rolling expiry row names a group with no buffer"),
 				};
@@ -724,7 +747,7 @@ where
 			}
 			let value = combine(&entry.group, &buffer);
 			expiry_drop(store, &index_key)?;
-			remove(store, &buffer_key)?;
+			remove(store, from_ref(&buffer_key))?;
 			if let Some(value) = value {
 				pairs.push((entry.group_id, slot_key));
 				pending.push((entry.group, value));
@@ -863,7 +886,9 @@ where
 		slot_key: &EncodedKey,
 		frontier: Option<S::Coord>,
 	) -> Result<Accumulator> {
-		if let Some(running) = get_classified(store, &RunningKey::new(self.family, group_id, slot_key.clone()))?
+		if let Some(running) =
+			get_classified(store, from_ref(&RunningKey::new(self.family, group_id, slot_key.clone())))?
+				.remove(0)
 		{
 			return Ok(running);
 		}
@@ -1071,15 +1096,25 @@ where
 				&mut pane_removes,
 			)?;
 			if merged_any {
-				put(
+				set(
 					store,
-					&RunningKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
-					group_slot.running,
+					vec![(
+						RunningKey::new(
+							self.family,
+							group_slot.group_id,
+							group_slot.key.clone(),
+						),
+						group_slot.running,
+					)],
 				)?;
 			} else {
 				remove(
 					store,
-					&RunningKey::new(self.family, group_slot.group_id, group_slot.key.clone()),
+					from_ref(&RunningKey::new(
+						self.family,
+						group_slot.group_id,
+						group_slot.key.clone(),
+					)),
 				)?;
 			}
 
@@ -1164,7 +1199,8 @@ where
 				Some(<S::Coord as Coord>::MAX)
 			} else {
 				let lag = self.lag;
-				get::<_, GroupMeta<S>>(store, &meta_key_for(group_hash(&entry.group)?))?
+				get::<_, GroupMeta<S>>(store, from_ref(&meta_key_for(group_hash(&entry.group)?)))?
+					.remove(0)
 					.and_then(|meta| frontier_for::<S>(lag, &meta.high_water))
 			};
 			let mut buffer = panes.remove(&(group_id, slot_key.clone())).unwrap_or_default();
@@ -1228,7 +1264,13 @@ where
 						&mut pane_sets,
 						&mut pane_removes,
 					)?;
-					put(store, &RunningKey::new(self.family, group_id, slot_key.clone()), running)?;
+					set(
+						store,
+						vec![(
+							RunningKey::new(self.family, group_id, slot_key.clone()),
+							running,
+						)],
+					)?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, Some(value)));
 				}
@@ -1254,7 +1296,10 @@ where
 						&mut pane_sets,
 						&mut pane_removes,
 					)?;
-					remove(store, &RunningKey::new(self.family, group_id, slot_key.clone()))?;
+					remove(
+						store,
+						from_ref(&RunningKey::new(self.family, group_id, slot_key.clone())),
+					)?;
 					if unmerged_any {
 						pairs.push((group_id, slot_key));
 						pending.push((entry.group, None));
@@ -1271,7 +1316,10 @@ where
 						&mut pane_sets,
 						&mut pane_removes,
 					)?;
-					remove(store, &RunningKey::new(self.family, group_id, slot_key.clone()))?;
+					remove(
+						store,
+						from_ref(&RunningKey::new(self.family, group_id, slot_key.clone())),
+					)?;
 					pairs.push((group_id, slot_key));
 					pending.push((entry.group, None));
 				}

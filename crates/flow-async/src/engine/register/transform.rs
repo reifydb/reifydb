@@ -7,7 +7,7 @@ use arrow_schema::Schema;
 use reifydb_codec::row::shape::RowFamily;
 use reifydb_core::{
 	common::JoinType,
-	error::diagnostic::operation::{lookup_key_type_mismatch, lookup_right_unsupported},
+	error::diagnostic::operation::{join_key_type_mismatch, lookup_key_type_mismatch, lookup_right_unsupported},
 	expression::{ColumnExpression, Expression},
 	flow::{dag::FlowDag, operator::LookupObject},
 	interface::{
@@ -246,6 +246,7 @@ impl FlowEngineInner {
 		} else {
 			(left, right)
 		};
+		ensure_join_key_types(&left_exprs, &right_exprs, &left_decoded, &right_decoded)?;
 		let (left_kept, right_kept) = kept_dictionary_columns(
 			&left_schema,
 			&right_schema,
@@ -532,7 +533,7 @@ fn ensure_lookup_key_types(
 		let Some(right_column) = columns.iter().find(|column| &column.name == name) else {
 			continue;
 		};
-		let Some(left_type) = left_key_type(key, left_schema)? else {
+		let Some(left_type) = key_type(key, left_schema)? else {
 			continue;
 		};
 		let right_type = right_column.constraint.get_type();
@@ -547,7 +548,30 @@ fn ensure_lookup_key_types(
 	Ok(())
 }
 
-fn left_key_type(key: &Expression, left_schema: &Schema) -> Result<Option<ValueType>> {
+fn ensure_join_key_types(
+	left: &[Expression],
+	right: &[Expression],
+	left_schema: &Schema,
+	right_schema: &Schema,
+) -> Result<()> {
+	for (left_key, right_key) in left.iter().zip(right) {
+		let (Some(left_type), Some(right_type)) =
+			(key_type(left_key, left_schema)?, key_type(right_key, right_schema)?)
+		else {
+			continue;
+		};
+		if left_type.inner_type() != right_type.inner_type() {
+			return Err(error!(join_key_type_mismatch(
+				left_key.full_fragment_owned(),
+				left_type.inner_type().clone(),
+				right_type.inner_type().clone()
+			)));
+		}
+	}
+	Ok(())
+}
+
+fn key_type(key: &Expression, left_schema: &Schema) -> Result<Option<ValueType>> {
 	let name = match key {
 		Expression::Column(ColumnExpression(column)) => column.name.text(),
 		Expression::AccessSource(access) => access.column.name.text(),

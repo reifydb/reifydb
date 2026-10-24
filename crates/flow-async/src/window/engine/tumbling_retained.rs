@@ -584,7 +584,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use std::collections::BTreeMap;
+	use std::{collections::BTreeMap, slice::from_ref};
 
 	use reifydb_codec::key::encoded::EncodedKey;
 	use reifydb_core::key::operator::state::GroupId;
@@ -783,7 +783,9 @@ mod tests {
 			"every entry is reaped"
 		);
 		let header: Option<RetainedHeader> =
-			get(&mut store, &WindowStateKey::new(KeyspaceFamily::Guest, group, slot)).unwrap();
+			get(&mut store, from_ref(&WindowStateKey::new(KeyspaceFamily::Guest, group, slot)))
+				.unwrap()
+				.remove(0);
 		assert!(header.is_none(), "the header is reaped");
 	}
 }

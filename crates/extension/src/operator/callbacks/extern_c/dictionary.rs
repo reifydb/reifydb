@@ -16,7 +16,11 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
-use super::{context::get_host_mut, marshal::write_buffer, state::free_rows};
+use super::{
+	context::{get_host_mut, stash_failure},
+	marshal::write_buffer,
+	state::free_rows,
+};
 
 #[cfg_attr(not(test), unsafe(no_mangle))]
 pub(super) extern "C" fn host_dictionary_get(
@@ -59,8 +63,9 @@ pub(super) extern "C" fn host_dictionary_get(
 		else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
-		let Ok(values) = host.dictionary_get(dictionary, &entry_ids) else {
-			return EXTERN_C_ERROR_INTERNAL;
+		let values = match host.dictionary_get(dictionary, &entry_ids) {
+			Ok(values) => values,
+			Err(err) => return stash_failure(&*ctx, err),
 		};
 		if values.len() != ids.len() {
 			return EXTERN_C_ERROR_INTERNAL;
@@ -133,8 +138,9 @@ pub(super) extern "C" fn host_dictionary_find(
 		else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
-		let Ok(found) = host.dictionary_find(dictionary, &decoded) else {
-			return EXTERN_C_ERROR_INTERNAL;
+		let found = match host.dictionary_find(dictionary, &decoded) {
+			Ok(found) => found,
+			Err(err) => return stash_failure(&*ctx, err),
 		};
 		if found.len() != n {
 			return EXTERN_C_ERROR_INTERNAL;
@@ -178,8 +184,9 @@ pub(super) extern "C" fn host_dictionary_intern(
 		ids_out.fill(0);
 
 		let host = get_host_mut(&mut *ctx);
-		let Ok(dictionary) = host.dictionary(DictionaryId(dictionary_id)) else {
-			return EXTERN_C_ERROR_INTERNAL;
+		let dictionary = match host.dictionary(DictionaryId(dictionary_id)) {
+			Ok(dictionary) => dictionary,
+			Err(err) => return stash_failure(&*ctx, err),
 		};
 		let Some(dictionary) = dictionary else {
 			return EXTERN_C_NOT_FOUND;
@@ -199,8 +206,9 @@ pub(super) extern "C" fn host_dictionary_intern(
 		else {
 			return EXTERN_C_ERROR_INTERNAL;
 		};
-		let Ok(interned) = host.dictionary_intern(&dictionary, &decoded) else {
-			return EXTERN_C_ERROR_INTERNAL;
+		let interned = match host.dictionary_intern(&dictionary, &decoded) {
+			Ok(interned) => interned,
+			Err(err) => return stash_failure(&*ctx, err),
 		};
 		if interned.len() != n {
 			return EXTERN_C_ERROR_INTERNAL;
