@@ -241,6 +241,9 @@ impl ActorSystem {
 				}
 			}
 		}
+		drop(actors);
+		let released: Vec<_> = self.inner.actors.borrow_mut().iter_mut().map(Option::take).collect();
+		drop(released);
 		self.inner.alive_count.set(0);
 	}
 
