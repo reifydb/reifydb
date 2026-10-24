@@ -144,7 +144,7 @@ pub trait GuestState {
 		visit: &mut dyn FnMut(GroupStateKey, EncodedPodRow) -> Result<()>,
 	) -> Result<()>;
 
-	fn sweep_many_bytes(
+	fn sweep_bytes(
 		&self,
 		groups: &[GroupId],
 		limit: usize,

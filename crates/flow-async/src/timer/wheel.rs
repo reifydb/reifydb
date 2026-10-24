@@ -96,7 +96,7 @@ impl TimerWheel {
 		Ok(())
 	}
 
-	pub fn rearm_many(
+	pub fn rearm(
 		operator: OperatorId,
 		txn: &mut impl FlowTransaction,
 		kind: TimerKind,

@@ -94,7 +94,7 @@ pub fn join_due_range() -> GroupStateRange {
 }
 
 pub trait JoinRowExpiryExtension: FlowTransaction {
-	fn join_expiry_clear_many(
+	fn join_expiry_clear(
 		&mut self,
 		id: OperatorId,
 		side: u8,
@@ -124,12 +124,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		Ok(cleared)
 	}
 
-	fn join_expiry_arm_many(
-		&mut self,
-		id: OperatorId,
-		side: u8,
-		rows: &[(GroupId, RowNumber, DateTime)],
-	) -> Result<()> {
+	fn join_expiry_arm(&mut self, id: OperatorId, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
 		let mut latest: Vec<(GroupId, RowNumber, DateTime)> = Vec::with_capacity(rows.len());
 		let mut slot: HashMap<(GroupId, RowNumber), usize> = HashMap::with_capacity(rows.len());
 		for &(group, row_number, at) in rows {
@@ -168,7 +163,7 @@ pub trait JoinRowExpiryExtension: FlowTransaction {
 		self.state_set(id, armed)
 	}
 
-	fn join_expiry_free_many(&mut self, id: OperatorId, entries: &[JoinDueEntry]) -> Result<()> {
+	fn join_expiry_free(&mut self, id: OperatorId, entries: &[JoinDueEntry]) -> Result<()> {
 		let doomed: Vec<GroupStateKey> = entries
 			.iter()
 			.flat_map(|entry| {

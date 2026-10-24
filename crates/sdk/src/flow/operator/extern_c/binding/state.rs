@@ -314,7 +314,7 @@ pub(crate) fn range(
 	}
 }
 
-pub(crate) fn sweep_many(
+pub(crate) fn sweep(
 	ctx: &ExternCContext,
 	groups: &[GroupId],
 	limit: usize,
@@ -328,7 +328,7 @@ pub(crate) fn sweep_many(
 	// for the whole guest call; the group slice and the complete slot outlive the callback. The handle the host
 	// opens is passed once to collect_iterator_results, which owns and frees it.
 	unsafe {
-		let result = ((*ctx.ctx).callbacks.state.sweep_many)(
+		let result = ((*ctx.ctx).callbacks.state.sweep)(
 			(*ctx.ctx).operator_id,
 			ctx.ctx,
 			wire.as_ptr(),
@@ -340,7 +340,7 @@ pub(crate) fn sweep_many(
 		);
 
 		if result != EXTERN_C_OK {
-			return Err(SdkError::Other(format!("host_state_sweep_many failed with code {}", result)));
+			return Err(SdkError::Other(format!("host_state_sweep failed with code {}", result)));
 		}
 
 		Ok((collect_iterator_results(ctx, iterator)?, complete != 0))

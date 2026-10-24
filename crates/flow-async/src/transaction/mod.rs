@@ -305,7 +305,7 @@ pub trait FlowTransaction: Get + Batch + Sized + Send + 'static {
 	}
 }
 
-pub fn pending_get_many<T: FlowTransaction>(txn: &mut T, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
+pub fn pending_get<T: FlowTransaction>(txn: &mut T, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
 	let mut rows = Vec::with_capacity(keys.len());
 	let mut misses = Vec::new();
 	let mut miss_keys = Vec::new();

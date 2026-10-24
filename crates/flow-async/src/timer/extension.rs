@@ -25,7 +25,7 @@ pub trait TimerExtension: FlowTransaction {
 	}
 
 	fn rearm_timers(&mut self, operator: OperatorId, kind: TimerKind, moves: &[TimerMove]) -> Result<()> {
-		TimerWheel::rearm_many(operator, self, kind, moves)?;
+		TimerWheel::rearm(operator, self, kind, moves)?;
 		for due in moves.iter().filter(|timer| timer.before != timer.after).filter_map(|timer| timer.after) {
 			self.push_armed(TimerDue {
 				operator_id: operator,

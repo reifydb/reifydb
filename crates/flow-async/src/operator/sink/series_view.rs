@@ -28,7 +28,7 @@ use reifydb_flow::{
 		sink::{
 			SourceRowEncoder, coerce_columns,
 			partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
-			shape_field_columns, stored_created_at_many,
+			shape_field_columns, stored_created_at,
 			table::{
 				dictionary_encode_view_columns, dictionary_lookup_partition_columns,
 				dictionary_lookup_view_columns,
@@ -347,7 +347,7 @@ impl SinkSeriesViewOperator {
 			.map(|(pre_key, post_key)| (post_key.clone(), (pre_key != post_key).then(|| pre_key.clone())))
 			.collect();
 		let mut created = created_at(source_post)?.to_vec();
-		for (slot, stored) in created.iter_mut().zip(stored_created_at_many(txn, &reads)?) {
+		for (slot, stored) in created.iter_mut().zip(stored_created_at(txn, &reads)?) {
 			if let Some(stamp) = stored {
 				*slot = stamp;
 			}

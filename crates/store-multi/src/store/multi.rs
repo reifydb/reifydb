@@ -98,7 +98,7 @@ impl MultiVersionGet for StandardMultiStore {
 			return Ok(Vec::new());
 		}
 		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
-		let found = self.get_many_versioned(&encoded, version)?;
+		let found = self.get_versioned(&encoded, version)?;
 		Ok(keys.iter()
 			.zip(&encoded)
 			.map(|(key, encoded)| match found.get(encoded) {
@@ -188,7 +188,7 @@ fn classify_deltas(deltas: &CowVec<Delta>) -> ClassifiedDeltas {
 }
 
 impl StandardMultiStore {
-	pub fn get_many_versioned(
+	pub fn get_versioned(
 		&self,
 		keys: &[EncodedKey],
 		version: CommitVersion,
@@ -1015,7 +1015,7 @@ impl MultiVersionGetPrevious for StandardMultiStore {
 			return Ok(keys.iter().map(|_| None).collect());
 		}
 		let encoded: Vec<EncodedKey> = keys.iter().map(TaggedKey::encode).collect();
-		let found = self.get_many_versioned(&encoded, CommitVersion(before_version.0 - 1))?;
+		let found = self.get_versioned(&encoded, CommitVersion(before_version.0 - 1))?;
 		Ok(keys.iter()
 			.zip(&encoded)
 			.map(|(key, encoded)| match found.get(encoded) {
@@ -2395,7 +2395,7 @@ mod probe_tests {
 
 		let before = probes(&store);
 		let found = store
-			.get_many_versioned(
+			.get_versioned(
 				&[
 					resident.encode(),
 					deleted.encode(),

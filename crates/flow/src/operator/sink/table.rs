@@ -57,7 +57,7 @@ use crate::{
 	operator::sink::{
 		SourceRowEncoder, coerce_columns,
 		partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
-		shape_field_columns, stored_created_at_many,
+		shape_field_columns, stored_created_at,
 		view::{partitioned_key, sort_runs, sorted_view_key},
 	},
 	txn::{Batch, Emit, Get, Intern},
@@ -258,7 +258,7 @@ impl TableSink {
 			let pre = (pre_key.as_slice() != post_key.as_slice()).then(|| pre_key.clone());
 			reads.push((post_key.clone(), pre));
 		}
-		let stored = stored_created_at_many(txn, &reads)?;
+		let stored = stored_created_at(txn, &reads)?;
 
 		let incoming = created_at(source_post)?;
 		let mut created: Vec<DateTime> = Vec::with_capacity(row_count);
@@ -343,7 +343,7 @@ impl TableSink {
 			cached.push(hit);
 			keys.push(key);
 		}
-		let mut stored = stored_created_at_many(txn, &reads)?.into_iter();
+		let mut stored = stored_created_at(txn, &reads)?.into_iter();
 
 		let incoming = created_at(source)?;
 		let mut created: Vec<DateTime> = Vec::with_capacity(row_count);

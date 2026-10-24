@@ -100,7 +100,7 @@ use crate::{
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction, LookupContext,
 		dictionary::DictionaryExtension,
-		pending_get_many,
+		pending_get,
 		read::{OperatorStateRangeIter, ReadFrom, range_read_from, read_from},
 		scope::{OperatorScope, operator_state_coordinates},
 		substrate::FlowSubstrate,
@@ -434,7 +434,7 @@ impl FlowTransaction for DeferredTransaction {
 
 impl Get for DeferredTransaction {
 	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
-		pending_get_many(self, keys)
+		pending_get(self, keys)
 	}
 }
 

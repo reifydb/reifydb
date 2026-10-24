@@ -297,13 +297,13 @@ impl MultiStore {
 		}
 	}
 
-	pub fn get_many_versioned(
+	pub fn get_versioned(
 		&self,
 		keys: &[EncodedKey],
 		version: CommitVersion,
 	) -> Result<HashMap<EncodedKey, VersionedGetResult>> {
 		match self {
-			MultiStore::Standard(store) => store.get_many_versioned(keys, version),
+			MultiStore::Standard(store) => store.get_versioned(keys, version),
 		}
 	}
 }

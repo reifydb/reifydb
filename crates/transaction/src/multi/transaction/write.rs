@@ -554,7 +554,7 @@ impl MultiWriteTransaction {
 		for key in keys {
 			self.conflicts.mark_read(key);
 		}
-		let found = self.engine.store.get_many_versioned(&encoded, version)?;
+		let found = self.engine.store.get_versioned(&encoded, version)?;
 		Ok(keys.iter()
 			.zip(&encoded)
 			.map(|(key, encoded)| match found.get(encoded) {

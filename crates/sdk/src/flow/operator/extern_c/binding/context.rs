@@ -32,7 +32,7 @@ use crate::{
 		},
 		extern_c::{
 			binding::{
-				dictionary::{raw_find_many, raw_intern_many},
+				dictionary::{raw_find, raw_intern},
 				sink::ExternCRowSink,
 				state::{
 					arm_timer, disarm_timer, flow_watermark, get_or_create_row_numbers,
@@ -233,13 +233,13 @@ impl GuestState for State<'_> {
 		State::range_bytes_visit(self, group, keyspace, start, end, limit, visit)
 	}
 
-	fn sweep_many_bytes(
+	fn sweep_bytes(
 		&self,
 		groups: &[GroupId],
 		limit: usize,
 		keyspaces: KeyspaceMask,
 	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
-		State::sweep_many_bytes(self, groups, limit, keyspaces)
+		State::sweep_bytes(self, groups, limit, keyspaces)
 	}
 }
 
@@ -323,13 +323,13 @@ impl GuestState for ClassFramedState<'_> {
 		State::range_bytes_visit(&self.state, group, keyspace, start, end, limit, visit)
 	}
 
-	fn sweep_many_bytes(
+	fn sweep_bytes(
 		&self,
 		groups: &[GroupId],
 		limit: usize,
 		keyspaces: KeyspaceMask,
 	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
-		State::sweep_many_bytes(&self.state, groups, limit, keyspaces)
+		State::sweep_bytes(&self.state, groups, limit, keyspaces)
 	}
 }
 
@@ -361,10 +361,10 @@ impl GuestEmitContext for ExternCContext {
 		dictionary: DictionaryId,
 		values: &[Value],
 	) -> Result<Vec<Option<DictionaryEntryId>>> {
-		raw_find_many(self, dictionary, values)
+		raw_find(self, dictionary, values)
 	}
 	fn dictionary_intern(&mut self, dictionary: DictionaryId, values: &[Value]) -> Result<Vec<DictionaryEntryId>> {
-		raw_intern_many(self, dictionary, values)
+		raw_intern(self, dictionary, values)
 	}
 	fn get_or_create_row_numbers(&mut self, group: GroupId, keys: &[EncodedKey]) -> Result<Vec<(RowNumber, bool)>> {
 		ExternCContext::get_or_create_row_numbers(self, group, keys)

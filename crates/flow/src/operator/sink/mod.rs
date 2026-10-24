@@ -151,7 +151,7 @@ pub fn shape_field_columns(columns: &RecordBatch, shape: &RowShape) -> Vec<usize
 		.collect()
 }
 
-pub fn stored_created_at_many<T: Get + ?Sized>(
+pub fn stored_created_at<T: Get + ?Sized>(
 	txn: &mut T,
 	rows: &[(EncodedKey, Option<EncodedKey>)],
 ) -> Result<Vec<Option<DateTime>>> {

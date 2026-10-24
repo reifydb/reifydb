@@ -19,7 +19,7 @@ use crate::{
 	flow::operator::extern_c::binding::context::ExternCContext,
 };
 
-pub(crate) fn raw_get_many(
+pub(crate) fn raw_get(
 	ctx: &ExternCContext,
 	dictionary: DictionaryId,
 	ids: &[DictionaryEntryId],
@@ -70,7 +70,7 @@ pub(crate) fn raw_get_many(
 	}
 }
 
-pub(crate) fn raw_find_many(
+pub(crate) fn raw_find(
 	ctx: &ExternCContext,
 	dictionary: DictionaryId,
 	values: &[Value],
@@ -134,7 +134,7 @@ pub(crate) fn raw_find_many(
 		.collect()
 }
 
-pub(crate) fn raw_intern_many(
+pub(crate) fn raw_intern(
 	ctx: &ExternCContext,
 	dictionary: DictionaryId,
 	values: &[Value],

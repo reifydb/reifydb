@@ -329,7 +329,7 @@ impl JoinOperator {
 		}
 		let rule = SealRule::of(retention);
 
-		for at in host.join_expiry_clear_many(side.tag(), cleared)?.into_iter().flatten() {
+		for at in host.join_expiry_clear(side.tag(), cleared)?.into_iter().flatten() {
 			self.expiry.cleared(at);
 		}
 
@@ -339,7 +339,7 @@ impl JoinOperator {
 			host.state_remove(from_ref(&queue_key(group)))?;
 			sealed.push((group, row_number, at));
 		}
-		host.join_expiry_arm_many(side.tag(), &sealed)?;
+		host.join_expiry_arm(side.tag(), &sealed)?;
 		for &(.., at) in &sealed {
 			self.expiry.armed(at);
 		}
@@ -515,7 +515,7 @@ impl JoinOperator {
 					emptied.push(*group);
 				}
 			}
-			host.join_expiry_free_many(&page.due)?;
+			host.join_expiry_free(&page.due)?;
 			if !page.more {
 				break page.next;
 			}
@@ -1226,7 +1226,7 @@ mod seal_tests {
 			deferred::DeferredTransaction,
 			join_expiry::{join_due_range, join_expiry_key},
 			mock::FlowTxn,
-			pending_get_many,
+			pending_get,
 			row_number::RowNumberExtension,
 			state::{StateExtension, StateRange},
 			substrate::{FlowSubstrate, apply_operator_state, classify_pending},
@@ -1475,7 +1475,7 @@ mod seal_tests {
 
 	impl Get for CountingTxn {
 		fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
-			pending_get_many(self, keys)
+			pending_get(self, keys)
 		}
 	}
 

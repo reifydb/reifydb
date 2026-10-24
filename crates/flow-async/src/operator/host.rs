@@ -77,11 +77,11 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 
 	fn rearm_timers(&mut self, kind: TimerKind, moves: &[TimerMove]) -> Result<()>;
 
-	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()>;
+	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()>;
 
-	fn join_expiry_clear_many(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>>;
+	fn join_expiry_clear(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>>;
 
-	fn join_expiry_free_many(&mut self, entries: &[JoinDueEntry]) -> Result<()>;
+	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<()>;
 
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>>;
 
@@ -136,7 +136,7 @@ pub trait HostContext: StateStore + TimerStore + IdentityReclaim + Resolve {
 
 	fn dictionary_intern(&mut self, dictionary: &Dictionary, values: &[Value]) -> Result<Vec<DictionaryEntryId>>;
 
-	fn lookup_read_many(
+	fn lookup_read(
 		&mut self,
 		storage: StorageId,
 		version: CommitVersion,
@@ -356,7 +356,7 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		self.txn.version()
 	}
 
-	fn lookup_read_many(
+	fn lookup_read(
 		&mut self,
 		storage: StorageId,
 		version: CommitVersion,
@@ -425,16 +425,16 @@ impl<T: FlowTransaction + Intern> HostContext for TxnHostContext<'_, T> {
 		self.txn.rearm_timers(self.operator, kind, moves)
 	}
 
-	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
-		self.txn.join_expiry_arm_many(self.operator, side, rows)
+	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+		self.txn.join_expiry_arm(self.operator, side, rows)
 	}
 
-	fn join_expiry_clear_many(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>> {
-		self.txn.join_expiry_clear_many(self.operator, side, rows)
+	fn join_expiry_clear(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>> {
+		self.txn.join_expiry_clear(self.operator, side, rows)
 	}
 
-	fn join_expiry_free_many(&mut self, entries: &[JoinDueEntry]) -> Result<()> {
-		self.txn.join_expiry_free_many(self.operator, entries)
+	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<()> {
+		self.txn.join_expiry_free(self.operator, entries)
 	}
 
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>> {

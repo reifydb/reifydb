@@ -26,15 +26,9 @@ impl Transaction<'_> {
 		ids: &[DictionaryEntryId],
 	) -> Result<Vec<Option<Value>>> {
 		match self {
-			Transaction::Command(cmd) => {
-				get_many_from_registry(cmd.dictionary_allocators(), dictionary, ids)
-			}
-			Transaction::Admin(admin) => {
-				get_many_from_registry(admin.dictionary_allocators(), dictionary, ids)
-			}
-			Transaction::Test(t) => {
-				get_many_from_registry(t.inner.dictionary_allocators(), dictionary, ids)
-			}
+			Transaction::Command(cmd) => get_from_registry(cmd.dictionary_allocators(), dictionary, ids),
+			Transaction::Admin(admin) => get_from_registry(admin.dictionary_allocators(), dictionary, ids),
+			Transaction::Test(t) => get_from_registry(t.inner.dictionary_allocators(), dictionary, ids),
 			Transaction::Query(_) => {
 				ids.iter().map(|id| self.get_from_single_store(dictionary, *id)).collect()
 			}
@@ -58,7 +52,7 @@ impl Transaction<'_> {
 	}
 }
 
-fn get_many_from_registry(
+fn get_from_registry(
 	registry: Option<DictionaryAllocatorRegistry>,
 	dictionary: &Dictionary,
 	ids: &[DictionaryEntryId],

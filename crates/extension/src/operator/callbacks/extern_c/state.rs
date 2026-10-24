@@ -481,7 +481,7 @@ pub(super) extern "C" fn host_state_range(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) extern "C" fn host_state_sweep_many(
+pub(super) extern "C" fn host_state_sweep(
 	_operator_id: u64,
 	ctx: *mut ExternCContextRaw,
 	groups: *const ExternCGroupId,
@@ -1094,11 +1094,11 @@ mod join_row_expiry_guard_tests {
 			Ok(())
 		}
 
-		fn join_expiry_arm_many(&mut self, _side: u8, _rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+		fn join_expiry_arm(&mut self, _side: u8, _rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
 			Ok(())
 		}
 
-		fn join_expiry_clear_many(
+		fn join_expiry_clear(
 			&mut self,
 			_side: u8,
 			rows: &[(GroupId, RowNumber)],
@@ -1106,7 +1106,7 @@ mod join_row_expiry_guard_tests {
 			Ok(vec![None; rows.len()])
 		}
 
-		fn join_expiry_free_many(&mut self, _entries: &[JoinDueEntry]) -> Result<()> {
+		fn join_expiry_free(&mut self, _entries: &[JoinDueEntry]) -> Result<()> {
 			Ok(())
 		}
 
@@ -1196,7 +1196,7 @@ mod join_row_expiry_guard_tests {
 			panic!("the recording host never interns a dictionary value")
 		}
 
-		fn lookup_read_many(
+		fn lookup_read(
 			&mut self,
 			_storage: StorageId,
 			_version: CommitVersion,
@@ -1657,7 +1657,7 @@ mod join_row_expiry_guard_tests {
 		let mut complete = 0u8;
 		let mut iterator: *mut ExternCStateIterator = ptr::null_mut();
 		let (status, _) = with_class_context(OperatorClass::Windowed, |ctx| {
-			host_state_sweep_many(
+			host_state_sweep(
 				1,
 				ctx,
 				groups.as_ptr(),

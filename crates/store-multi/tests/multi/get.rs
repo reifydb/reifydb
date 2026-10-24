@@ -32,7 +32,7 @@ fn encoded_bytes(bytes: &[u8]) -> EncodedBytes {
 	EncodedBytes(CowVec::new(bytes.to_vec()))
 }
 
-fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
+fn check_get_across_tables(store: &StandardMultiStore, flush: bool) {
 	// k1 and k2 carry the same payload under different operator nodes, so a table-scoping bug shows
 	// up as one bleeding into the other. Testscript snapshots cannot reach this fan-out: their raw
 	// keys all classify to the single Multi table.
@@ -70,7 +70,7 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 	}
 
 	let found: HashMap<EncodedKey, Vec<u8>> = store
-		.get_many_versioned(
+		.get_versioned(
 			&[k1.encode(), k2.encode(), p.encode(), absent_op.encode(), absent_multi.encode()],
 			CommitVersion(1),
 		)
@@ -87,7 +87,7 @@ fn check_get_many_across_tables(store: &StandardMultiStore, flush: bool) {
 	assert!(!found.contains_key(&absent_multi.encode()));
 }
 
-fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
+fn check_get_bucket_boundaries(store: &StandardMultiStore) {
 	// Persistent get_many rounds a chunk up to a placeholder bucket {1,8,64,512,900} and pads the
 	// spare slots with a repeat of the first key, so the counts here sit just below, on, and just
 	// above the bucket edges where a pad could drop a key or invent a phantom result.
@@ -111,7 +111,7 @@ fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
 		lookup.push(absent.encode());
 
 		let found: HashMap<EncodedKey, Vec<u8>> = store
-			.get_many_versioned(&lookup, CommitVersion(1))
+			.get_versioned(&lookup, CommitVersion(1))
 			.unwrap()
 			.into_iter()
 			.filter_map(|(key, result)| Some((key, result.value()?.to_vec())))
@@ -136,34 +136,34 @@ fn check_get_many_bucket_boundaries(store: &StandardMultiStore) {
 }
 
 #[test]
-fn get_many_across_tables_memory_only() {
-	check_get_many_across_tables(&StandardMultiStore::testing_memory(), false);
+fn get_across_tables_memory_only() {
+	check_get_across_tables(&StandardMultiStore::testing_memory(), false);
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[test]
 fn get_many_bucket_boundaries_sqlite() {
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	check_get_many_bucket_boundaries(&store);
+	check_get_bucket_boundaries(&store);
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[test]
-fn get_many_across_tables_sqlite_only() {
+fn get_across_tables_sqlite_only() {
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	check_get_many_across_tables(&store, false);
+	check_get_across_tables(&store, false);
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[test]
-fn get_many_across_tables_memory_with_sqlite_flush() {
+fn get_across_tables_memory_with_sqlite_flush() {
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	check_get_many_across_tables(&store, true);
+	check_get_across_tables(&store, true);
 }
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 #[test]
-fn get_many_across_tables_memory_with_sqlite_no_flush() {
+fn get_across_tables_memory_with_sqlite_no_flush() {
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
-	check_get_many_across_tables(&store, false);
+	check_get_across_tables(&store, false);
 }

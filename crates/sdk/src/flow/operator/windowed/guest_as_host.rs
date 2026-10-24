@@ -120,8 +120,7 @@ impl<C: GuestContext> StateStore for GuestAsHost<'_, C> {
 	}
 
 	fn group_sweep(&mut self, groups: &[GroupId], limit: usize, keyspaces: KeyspaceMask) -> Result<GroupSweep> {
-		let (rows, complete) =
-			self.0.window_state().sweep_many_bytes(&sweep_order(groups), limit, keyspaces)?;
+		let (rows, complete) = self.0.window_state().sweep_bytes(&sweep_order(groups), limit, keyspaces)?;
 		Ok(GroupSweep {
 			rows,
 			complete,

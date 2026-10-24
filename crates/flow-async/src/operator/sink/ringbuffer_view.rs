@@ -60,7 +60,7 @@ use reifydb_flow::{
 		sink::{
 			SourceRowEncoder, coerce_columns,
 			partition::{ensure_partition_unchanged, partition_batch, resolve_partitions_flow},
-			shape_field_columns, stored_created_at_many,
+			shape_field_columns, stored_created_at,
 			table::{
 				dictionary_encode_view_columns, dictionary_lookup_partition_columns,
 				dictionary_lookup_view_columns,
@@ -1069,7 +1069,7 @@ impl SinkRingBufferViewOperator {
 			applied.push(row_idx);
 		}
 		let mut created = created_at(source_post)?.to_vec();
-		for (&row_idx, stored) in applied.iter().zip(stored_created_at_many(txn, &targets)?) {
+		for (&row_idx, stored) in applied.iter().zip(stored_created_at(txn, &targets)?) {
 			if let (Some(stamp), Some(slot)) = (stored, created.get_mut(row_idx)) {
 				*slot = stamp;
 			}

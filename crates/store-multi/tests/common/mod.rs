@@ -143,7 +143,7 @@ impl testscript::runner::Runner for Runner {
 				args.reject_rest()?;
 
 				let stored: Vec<EncodedKey> = keys.iter().map(|key| script_key(key).encode()).collect();
-				let found = self.store.get_many_versioned(&stored, version)?;
+				let found = self.store.get_versioned(&stored, version)?;
 				for (key, stored) in keys.iter().zip(&stored) {
 					let value = found
 						.get(stored)

@@ -16,7 +16,7 @@ use crate::{
 		MountedOperator, OperatorMetadata,
 		change::{BorrowedChange, BorrowedColumns},
 		column::operator::{OperatorColumn, reads_entry_ids},
-		extern_c::binding::{context::ExternCContext, dictionary::raw_get_many, view::ExternCChangeView},
+		extern_c::binding::{context::ExternCContext, dictionary::raw_get, view::ExternCChangeView},
 		timer::Timer,
 		view::in_process::DictionaryValues,
 	},
@@ -46,7 +46,7 @@ fn dictionary_values(
 		}
 		ids.sort_unstable();
 		ids.dedup();
-		let found = raw_get_many(ctx, dictionary, &ids)?;
+		let found = raw_get(ctx, dictionary, &ids)?;
 		let entries = ids
 			.into_iter()
 			.zip(found)

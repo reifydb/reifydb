@@ -92,7 +92,7 @@ pub fn check_get_many(configs: &[(&str, StandardMultiStore)], oracle: &Oracle, r
 	}
 	for (name, store) in configs {
 		let found: HashMap<EncodedKey, (Vec<u8>, u64)> = store
-			.get_many_versioned(&keys, CommitVersion(read))
+			.get_versioned(&keys, CommitVersion(read))
 			.unwrap()
 			.into_iter()
 			.filter_map(|(key, result)| match result {

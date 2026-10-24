@@ -1,8 +1,8 @@
 //  SPDX-License-Identifier: Apache-2.0
 //  Copyright (c) 2026 ReifyDB
 
-#[path = "multi/get_many.rs"]
-mod get_many;
+#[path = "multi/get.rs"]
+mod get;
 
 #[path = "multi/read_pool.rs"]
 mod read_pool;

@@ -217,7 +217,7 @@ impl MetricsFlushActor {
 	fn read_prior_sizes(&self, keys: &[EncodedKey], version: CommitVersion) -> Result<HashMap<EncodedKey, u64>> {
 		let mut pre_sizes: HashMap<EncodedKey, u64> = HashMap::new();
 		if version.0 > 0 && !keys.is_empty() {
-			for (key, result) in self.resolver.get_many_versioned(keys, CommitVersion(version.0 - 1))? {
+			for (key, result) in self.resolver.get_versioned(keys, CommitVersion(version.0 - 1))? {
 				match result {
 					VersionedGetResult::Value {
 						value,

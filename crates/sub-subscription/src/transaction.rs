@@ -32,7 +32,7 @@ use reifydb_flow_async::{
 	transaction::{
 		ChangeCoordinate, FlowTransaction,
 		dictionary::DictionaryExtension,
-		pending_get_many,
+		pending_get,
 		read::{ReadFrom, range_read_from, read_from},
 		scope::scoped_key,
 		substrate::FlowSubstrate,
@@ -217,7 +217,7 @@ fn ephemeral_group_page(
 
 impl Get for EphemeralTransaction {
 	fn get(&mut self, keys: &[EncodedKey]) -> Result<Vec<Option<EncodedBytes>>> {
-		pending_get_many(self, keys)
+		pending_get(self, keys)
 	}
 }
 

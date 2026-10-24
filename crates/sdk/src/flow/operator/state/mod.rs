@@ -114,13 +114,13 @@ impl<'a> State<'a> {
 		Ok(())
 	}
 
-	pub fn sweep_many_bytes(
+	pub fn sweep_bytes(
 		&self,
 		groups: &[GroupId],
 		limit: usize,
 		keyspaces: KeyspaceMask,
 	) -> Result<(Vec<(GroupStateKey, EncodedPodRow)>, bool)> {
-		let (rows, complete) = extern_c::sweep_many(self.ctx, groups, limit, guest_sweep_mask(keyspaces))?;
+		let (rows, complete) = extern_c::sweep(self.ctx, groups, limit, guest_sweep_mask(keyspaces))?;
 		let mut framed_rows = Vec::with_capacity(rows.len());
 		for (k, row) in rows {
 			framed_rows.push((framed(k)?, EncodedPodRow::from(row)));

@@ -260,7 +260,7 @@ impl GuestState for InProcessState<'_> {
 			.map_err(to_sdk_err)
 	}
 
-	fn sweep_many_bytes(
+	fn sweep_bytes(
 		&self,
 		groups: &[GroupId],
 		limit: usize,

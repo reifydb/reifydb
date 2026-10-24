@@ -290,10 +290,8 @@ impl LookupOperator {
 		match reads.rows.entry((partition, version)) {
 			Entry::Occupied(read) => Ok(read.get().clone()),
 			Entry::Vacant(slot) => {
-				let read = host
-					.lookup_read_many(self.config.storage, version, &[partition])?
-					.pop()
-					.flatten();
+				let read =
+					host.lookup_read(self.config.storage, version, &[partition])?.pop().flatten();
 				Ok(slot.insert(read).clone())
 			}
 		}
@@ -317,7 +315,7 @@ impl LookupOperator {
 			}
 		}
 		for (version, partitions) in groups {
-			let rows = host.lookup_read_many(self.config.storage, version, &partitions)?;
+			let rows = host.lookup_read(self.config.storage, version, &partitions)?;
 			reads.rows.extend(partitions.into_iter().map(|partition| (partition, version)).zip(rows));
 		}
 		Ok(())

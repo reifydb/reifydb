@@ -209,19 +209,19 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.rearm_timers(kind, moves)
 	}
 
-	fn join_expiry_arm_many(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
-		self.record("join_expiry_arm_many", rows.len());
-		self.inner.join_expiry_arm_many(side, rows)
+	fn join_expiry_arm(&mut self, side: u8, rows: &[(GroupId, RowNumber, DateTime)]) -> Result<()> {
+		self.record("join_expiry_arm", rows.len());
+		self.inner.join_expiry_arm(side, rows)
 	}
 
-	fn join_expiry_clear_many(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>> {
-		self.record("join_expiry_clear_many", rows.len());
-		self.inner.join_expiry_clear_many(side, rows)
+	fn join_expiry_clear(&mut self, side: u8, rows: &[(GroupId, RowNumber)]) -> Result<Vec<Option<DateTime>>> {
+		self.record("join_expiry_clear", rows.len());
+		self.inner.join_expiry_clear(side, rows)
 	}
 
-	fn join_expiry_free_many(&mut self, entries: &[JoinDueEntry]) -> Result<()> {
-		self.record("join_expiry_free_many", entries.len());
-		self.inner.join_expiry_free_many(entries)
+	fn join_expiry_free(&mut self, entries: &[JoinDueEntry]) -> Result<()> {
+		self.record("join_expiry_free", entries.len());
+		self.inner.join_expiry_free(entries)
 	}
 
 	fn join_expiry_min(&mut self) -> Result<Option<DateTime>> {
@@ -324,14 +324,14 @@ impl<T: FlowTransaction + Intern> HostContext for CountingHost<'_, T> {
 		self.inner.dictionary_intern(dictionary, values)
 	}
 
-	fn lookup_read_many(
+	fn lookup_read(
 		&mut self,
 		storage: StorageId,
 		version: CommitVersion,
 		partitions: &[Partition],
 	) -> Result<Vec<Option<(RowNumber, EncodedBytes)>>> {
-		self.record("lookup_read_many", partitions.len());
-		self.inner.lookup_read_many(storage, version, partitions)
+		self.record("lookup_read", partitions.len());
+		self.inner.lookup_read(storage, version, partitions)
 	}
 
 	fn lookup_view_version(&self, view: ViewId, source: SourceVersion) -> CommitVersion {

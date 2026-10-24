@@ -69,7 +69,7 @@ fn deferred(engine: &TestEngine) -> DeferredTransaction {
 }
 
 fn arm_in(txn: &mut DeferredTransaction, group: GroupId, side: u8, row_number: u64, millis: u64) {
-	txn.join_expiry_arm_many(
+	txn.join_expiry_arm(
 		NODE,
 		side,
 		&[(
@@ -86,7 +86,7 @@ fn arm(txn: &mut DeferredTransaction, side: u8, row_number: u64, millis: u64) {
 }
 
 fn clear(txn: &mut DeferredTransaction, side: u8, row_number: u64) {
-	txn.join_expiry_clear_many(NODE, side, &[(group(), RowNumber(row_number))]).unwrap();
+	txn.join_expiry_clear(NODE, side, &[(group(), RowNumber(row_number))]).unwrap();
 }
 
 fn expiry_at(txn: &mut DeferredTransaction, row_number: u64) -> Option<DateTime> {
@@ -662,12 +662,12 @@ fn clearing_a_join_expiry_answers_with_the_instant_it_freed() {
 	commit(&engine, &mut txn);
 
 	assert_eq!(
-		txn.join_expiry_clear_many(NODE, LEFT, &[(group(), RowNumber(42))]).unwrap()[0],
+		txn.join_expiry_clear(NODE, LEFT, &[(group(), RowNumber(42))]).unwrap()[0],
 		Some(at_millis(5_000)),
 		"a clear must name the instant it removed"
 	);
 	assert_eq!(
-		txn.join_expiry_clear_many(NODE, LEFT, &[(group(), RowNumber(42))]).unwrap()[0],
+		txn.join_expiry_clear(NODE, LEFT, &[(group(), RowNumber(42))]).unwrap()[0],
 		None,
 		"and answer with nothing when the row held no expiry"
 	);
@@ -695,7 +695,7 @@ fn a_due_page_reports_the_first_instant_past_the_fire() {
 		"the page must name the first instant it refused, and that instant is the next minimum"
 	);
 
-	txn.join_expiry_free_many(NODE, &page.due).unwrap();
+	txn.join_expiry_free(NODE, &page.due).unwrap();
 
 	assert_eq!(
 		txn.join_expiry_min(NODE).unwrap(),
