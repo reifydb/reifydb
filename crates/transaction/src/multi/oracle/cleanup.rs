@@ -8,21 +8,23 @@ use tracing::{debug, instrument};
 
 use super::CommittedWindow;
 
-#[instrument(name = "transaction::oracle::cleanup", level = "debug", skip(time_windows, evicted_up_through), fields(window_count = time_windows.len(), safe_evict_below = %safe_evict_below))]
+#[instrument(name = "transaction::oracle::cleanup", level = "debug", skip(time_windows, evicted_up_through, evicted), fields(window_count = time_windows.len(), safe_evict_below = %safe_evict_below))]
 pub(super) fn cleanup_old_windows(
 	time_windows: &mut BTreeMap<CommitVersion, CommittedWindow>,
 	evicted_up_through: &mut CommitVersion,
 	safe_evict_below: CommitVersion,
+	evicted: &mut Vec<CommittedWindow>,
 ) {
 	let mut removed = 0usize;
 	while let Some((&start, window)) = time_windows.iter().next() {
 		if window.max_version() > safe_evict_below {
 			break;
 		}
-		let Some(evicted) = time_windows.remove(&start) else {
+		let Some(window) = time_windows.remove(&start) else {
 			break;
 		};
-		*evicted_up_through = (*evicted_up_through).max(evicted.max_version());
+		*evicted_up_through = (*evicted_up_through).max(window.max_version());
+		evicted.push(window);
 		removed += 1;
 	}
 

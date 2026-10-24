@@ -84,10 +84,14 @@ pub(crate) struct ModifiedKeyIndex {
 }
 
 impl ModifiedKeyIndex {
-	fn new() -> Self {
+	fn with_capacity(capacity: usize) -> Self {
 		Self {
-			hashes: HashSet::with_capacity(WINDOW_KEY_CAPACITY),
+			hashes: HashSet::with_capacity(capacity.max(WINDOW_KEY_CAPACITY)),
 		}
+	}
+
+	fn len(&self) -> usize {
+		self.hashes.len()
 	}
 
 	#[inline]
@@ -110,8 +114,8 @@ impl ModifiedKeyIndex {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn len(&self) -> usize {
-		self.hashes.len()
+	pub(crate) fn capacity(&self) -> usize {
+		self.hashes.capacity()
 	}
 }
 
@@ -122,10 +126,10 @@ pub(crate) struct CommittedWindow {
 }
 
 impl CommittedWindow {
-	fn new(min_version: CommitVersion) -> Self {
+	fn new(min_version: CommitVersion, key_capacity: usize) -> Self {
 		Self {
 			transactions: Vec::with_capacity(200),
-			modified_keys: ModifiedKeyIndex::new(),
+			modified_keys: ModifiedKeyIndex::with_capacity(key_capacity),
 			max_version: min_version,
 		}
 	}
@@ -398,6 +402,7 @@ where
 		rebase: Option<CommitRebase>,
 		window_size: u64,
 		timing: SpanTiming,
+		evicted: &mut Vec<CommittedWindow>,
 	) -> Result<CreateCommitResult> {
 		if version < state.evicted_up_through {
 			return Ok(CreateCommitResult::TooOld);
@@ -420,7 +425,12 @@ where
 		if state.time_windows.len() > 1 {
 			let cleanup_start = timing.mark(&self.metrics_clock);
 			let safe_evict_below = self.query.done_until();
-			cleanup_old_windows(&mut state.time_windows, &mut state.evicted_up_through, safe_evict_below);
+			cleanup_old_windows(
+				&mut state.time_windows,
+				&mut state.evicted_up_through,
+				safe_evict_below,
+				evicted,
+			);
 			timing.record_micros(cleanup_start, "cleanup_us");
 		}
 
@@ -545,8 +555,12 @@ impl OracleState {
 	fn add_committed_transaction(&mut self, version: CommitVersion, conflicts: ConflictManager, window_size: u64) {
 		let window_start = CommitVersion((version.0 / window_size) * window_size);
 
-		let window =
-			self.time_windows.entry(window_start).or_insert_with(|| CommittedWindow::new(window_start));
+		let key_capacity =
+			self.time_windows.last_key_value().map_or(0, |(_, window)| window.modified_keys.len());
+		let window = self
+			.time_windows
+			.entry(window_start)
+			.or_insert_with(|| CommittedWindow::new(window_start, key_capacity));
 
 		let txn = CommittedTxn {
 			version,
@@ -1178,6 +1192,49 @@ mod tests {
 			"T2's read+write of `shared` (read_version=1) must conflict with T1's \
 			 write at v={}",
 			v1.0
+		);
+	}
+
+	#[test]
+	fn a_new_window_starts_its_key_index_at_the_previous_windows_key_count() {
+		// a window that grows its key index from scratch rehashes millions of keys inside the commit hold.
+		let oracle = create_test_oracle(0);
+		let mut state = oracle.inner.write();
+		for version in 1..10u64 {
+			let mut conflicts = ConflictManager::new();
+			for index in 0..1000 {
+				conflicts.mark_write(&create_test_key(&format!("v{version}-k{index}")));
+			}
+			state.add_committed_transaction(CommitVersion(version), conflicts, 10);
+		}
+		let previous = state.time_windows[&CommitVersion(0)].modified_keys.len();
+		state.add_committed_transaction(CommitVersion(10), ConflictManager::new(), 10);
+
+		let opened = state.time_windows[&CommitVersion(10)].modified_keys.capacity();
+		assert!(
+			opened >= previous,
+			"the new window holds room for {opened} keys, the last one needed {previous}"
+		);
+	}
+
+	#[test]
+	fn an_evicted_window_is_handed_back_instead_of_freed_inside_the_hold() {
+		// freeing a full window under the oracle write lock stalls every commit for tens of milliseconds.
+		let mut windows = BTreeMap::new();
+		windows.insert(CommitVersion(0), CommittedWindow::new(CommitVersion(9), 0));
+		windows.insert(CommitVersion(10), CommittedWindow::new(CommitVersion(19), 0));
+		let mut evicted_up_through = CommitVersion(0);
+		let mut evicted = Vec::new();
+
+		cleanup_old_windows(&mut windows, &mut evicted_up_through, CommitVersion(9), &mut evicted);
+
+		assert_eq!(evicted.len(), 1, "the window below the bound must come back to the caller");
+		assert_eq!(evicted[0].max_version(), CommitVersion(9));
+		assert_eq!(windows.len(), 1);
+		assert_eq!(
+			evicted_up_through,
+			CommitVersion(9),
+			"eviction must still raise the too-old bound inside the hold"
 		);
 	}
 }
