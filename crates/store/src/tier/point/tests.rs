@@ -54,12 +54,12 @@ fn body(entry: &EncodedPodRow) -> String {
 	String::from_utf8(entry.body().to_vec()).expect("test bodies are utf8")
 }
 
-fn fill(tier: &PointTier<D>, operator: OperatorId, key: EncodedKey, row: Option<EncodedPodRow>) {
-	tier.overwrite(operator, key, row.expect("the fixture only stages present rows"));
+fn fill(tier: &PointTier<D>, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
+	tier.overwrite(operator, key, row);
 }
 
-fn footprint(key: &EncodedKey, row: &Option<EncodedPodRow>) -> usize {
-	ENTRY_OVERHEAD + key.heap_size() + row.as_ref().map_or(0, EncodedPodRow::len)
+fn footprint(key: &EncodedKey, row: &EncodedPodRow) -> usize {
+	ENTRY_OVERHEAD + key.heap_size() + row.len()
 }
 
 fn keyspace_row(tier: &PointTier<D>, keyspace: KeyspaceId) -> PointBucketMetrics<D> {
@@ -121,7 +121,7 @@ fn invalidate_operator_spares_other_operators() {
 #[test]
 fn filling_past_the_budget_evicts_entries_and_releases_their_bytes() {
 	let sample_key = key(group_a(), CACHED, b"a");
-	let sample_row = Some(row("v"));
+	let sample_row = row("v");
 	let per_entry = footprint(&sample_key, &sample_row) as u64;
 	let tier = tier(per_entry * 2);
 
@@ -159,7 +159,7 @@ fn filling_past_the_budget_evicts_entries_and_releases_their_bytes() {
 #[test]
 fn charge_and_release_balance_across_the_entry_lifecycle() {
 	let sample_key = key(group_a(), CACHED, b"a");
-	let sample_row = Some(row("v"));
+	let sample_row = row("v");
 	let per_entry = footprint(&sample_key, &sample_row) as u64;
 	let tier = tier(per_entry * 2);
 	let balanced = |stage: &str| {
@@ -181,7 +181,7 @@ fn charge_and_release_balance_across_the_entry_lifecycle() {
 	fill(&tier, OP_A, sample_key.clone(), sample_row.clone());
 	balanced("re-insert");
 
-	fill(&tier, OP_A, sample_key.clone(), Some(row("a much longer row body")));
+	fill(&tier, OP_A, sample_key.clone(), row("a much longer row body"));
 	balanced("overwrite with a larger row");
 	fill(&tier, OP_A, sample_key.clone(), sample_row.clone());
 	assert_eq!(tier.resident_bytes().as_bytes(), per_entry, "shrinking an entry must release the difference");
@@ -226,7 +226,7 @@ fn repeated_reads_of_one_remembered_key_cost_one_miss() {
 	let k = key(group_a(), CACHED, b"a");
 
 	assert_eq!(tier.get(OP_A, &k), None);
-	fill(&tier, OP_A, k.clone(), Some(row("v")));
+	fill(&tier, OP_A, k.clone(), row("v"));
 	for _ in 0..16 {
 		assert!(tier.get(OP_A, &k).is_some(), "every read after the first must be served from the tier");
 	}
@@ -265,13 +265,13 @@ fn a_key_too_short_to_carry_a_keyspace_is_declined_not_cached() {
 #[test]
 fn a_published_fill_evicts_to_capacity() {
 	let sample_key = key(group_a(), CACHED, b"a");
-	let sample_row = Some(row("v"));
+	let sample_row = row("v");
 	let per_entry = footprint(&sample_key, &sample_row) as u64;
 	let tier = tier(per_entry * 2);
 
 	for group in [group_a(), group_b(), GroupId::hashed(Hash128(12))] {
 		let k = key(group, CACHED, b"a");
-		tier.overwrite(OP_A, k, sample_row.clone().expect("the sample row is present"));
+		tier.overwrite(OP_A, k, sample_row.clone());
 	}
 
 	assert_eq!(tier.evictions(), 1, "the third published fill must push exactly one victim out");
@@ -325,7 +325,7 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 	let buffer = key(group_a(), KeyspaceId::BUFFER, b"a");
 
 	assert!(tier.get(OP_A, &accumulator).is_none());
-	fill(&tier, OP_A, accumulator.clone(), Some(row("v")));
+	fill(&tier, OP_A, accumulator.clone(), row("v"));
 	assert!(tier.get(OP_A, &accumulator).is_some());
 	assert!(tier.get(OP_A, &buffer).is_none());
 
@@ -350,7 +350,7 @@ fn keyspace_counters_are_charged_to_the_keyspace_that_was_read() {
 fn resident_state_is_grouped_by_keyspace_and_sums_to_the_tier_total() {
 	let tier = roomy();
 	let sample_key = key(group_a(), CACHED, b"a");
-	let sample_row = Some(row("v"));
+	let sample_row = row("v");
 	let per_entry = footprint(&sample_key, &sample_row) as u64;
 
 	for group in [group_a(), group_b()] {
@@ -404,7 +404,7 @@ fn keyspace_counters_are_summed_across_every_shard() {
 #[test]
 fn an_eviction_is_charged_to_the_evicted_entry_keyspace() {
 	let sample_key = key(group_a(), CACHED, b"a");
-	let sample_row = Some(row("v"));
+	let sample_row = row("v");
 	let per_entry = footprint(&sample_key, &sample_row) as u64;
 	let tier = tier(per_entry);
 
@@ -428,7 +428,7 @@ fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 	assert!(tier.bucket_metrics().is_empty(), "an untouched tier must not surface its 256 empty buckets");
 
 	let resident = key(group_a(), KeyspaceId::JOIN_LEFT, b"a");
-	let charged = footprint(&resident, &Some(row("v"))) as u64;
+	let charged = footprint(&resident, &row("v")) as u64;
 	tier.overwrite(OP_A, resident.clone(), row("v"));
 	assert_eq!(tier.bucket_metrics().len(), 1, "the keyspace that was written must be the only one reported");
 	assert_eq!(tier.bucket_metrics()[0].bucket, KeyspaceId::JOIN_LEFT);
@@ -482,7 +482,7 @@ fn one_keyspaces_entries_spread_across_shards() {
 #[test]
 fn eviction_removes_one_entry_not_every_key_sharing_a_group() {
 	let sample_key = key(group_a(), CACHED, b"k0");
-	let sample_row = Some(row("v"));
+	let sample_row = row("v");
 	let per_entry = footprint(&sample_key, &sample_row) as u64;
 	let tier = tier(per_entry * 3);
 
@@ -504,7 +504,7 @@ fn eviction_removes_one_entry_not_every_key_sharing_a_group() {
 #[test]
 fn the_index_stays_consistent_with_the_slab() {
 	let sample_key = key(group_a(), CACHED, b"k0");
-	let sample_row = Some(row("v"));
+	let sample_row = row("v");
 	let per_entry = footprint(&sample_key, &sample_row) as u64;
 	let tier = tier(per_entry * 4);
 
@@ -578,7 +578,7 @@ fn an_accepted_supersede_recharges_from_the_merged_row() {
 #[test]
 fn a_key_read_every_round_survives_eviction_past_the_sample_threshold() {
 	let sample_key = key(group_a(), CACHED, b"k0");
-	let sample_row = Some(row("v"));
+	let sample_row = row("v");
 	let per_entry = footprint(&sample_key, &sample_row) as u64;
 	let resident = 40;
 	let tier = tier(per_entry * resident);
