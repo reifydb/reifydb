@@ -50,7 +50,7 @@ const CHAIN: [&str; 3] = [
 ];
 
 fn open(path: &TempDbPath, flow: bool) -> TestDb {
-	let mut builder = embedded::sqlite(SqliteConfig::new(path));
+	let mut builder = embedded::sqlite(SqliteConfig::new(path)).with_wal(|wal| wal.enabled(true));
 	if flow {
 		builder = builder.with_flow(|f| f);
 	}
@@ -195,6 +195,17 @@ fn units(db: &TestDb) -> Vec<(u64, u64)> {
 	units
 }
 
+fn await_units(db: &TestDb, member: u64, head: u64) -> Vec<(u64, u64)> {
+	poll_until(
+		|| {
+			let units = units(db);
+			units.contains(&(member, head)).then_some(units)
+		},
+		TIMEOUT,
+	)
+	.unwrap_or_else(|| units(db))
+}
+
 #[test]
 fn the_flow_units_table_lists_every_member_under_its_head_and_no_unfused_flow() {
 	// A table that misses a member or lists a lone flow reports fusion that did not run.
@@ -312,6 +323,7 @@ impl UnmanagedOperator for SymIds {
 fn open_with_sym_ids(path: &TempDbPath) -> TestDb {
 	TestDb::from(
 		embedded::sqlite(SqliteConfig::new(path))
+			.with_wal(|wal| wal.enabled(true))
 			.with_flow(|f| f.register_unmanaged_operator::<SymIds>())
 			.build()
 			.expect("open the sqlite db"),
@@ -348,11 +360,9 @@ fn a_fused_child_reads_a_dictionary_column_its_parent_got_as_text_as_entry_ids()
 	}
 	let mut db = open_with_sym_ids(&path);
 	let head = catalog_id(&db, "flows", "a");
-	assert!(
-		units(&db).contains(&(catalog_id(&db, "flows", "b"), head)),
-		"b must run fused under a for this test to mean anything: {:?}",
-		units(&db)
-	);
+	let b = catalog_id(&db, "flows", "b");
+	let units = await_units(&db, b, head);
+	assert!(units.contains(&(b, head)), "b must run fused under a for this test to mean anything: {units:?}");
 	settle(&db);
 	db.command("INSERT fu::src [{ id: 3, sym: 'red' }]");
 	settle(&db);
@@ -382,10 +392,11 @@ fn a_fused_child_of_a_series_view_reads_its_dictionary_column_as_entry_ids() {
 	}
 	let mut db = open_with_sym_ids(&path);
 	let head = catalog_id(&db, "flows", "a");
+	let b = catalog_id(&db, "flows", "b");
+	let units = await_units(&db, b, head);
 	assert!(
-		units(&db).contains(&(catalog_id(&db, "flows", "b"), head)),
-		"b must run fused under the series view a for this test to mean anything: {:?}",
-		units(&db)
+		units.contains(&(b, head)),
+		"b must run fused under the series view a for this test to mean anything: {units:?}"
 	);
 	settle(&db);
 	db.command("INSERT fu::src [{ id: 3, sym: 'red' }]");

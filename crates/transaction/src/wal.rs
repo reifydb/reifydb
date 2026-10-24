@@ -7,7 +7,10 @@ use std::{
 	sync::{Arc, Weak},
 };
 
-use reifydb_codec::log::record::HEADER_BYTES;
+use reifydb_codec::log::{
+	LogIndex, LogVersion, Position,
+	record::{HEADER_BYTES, Record},
+};
 use reifydb_core::{
 	common::CommitVersion,
 	interface::store::{SingleWalCheckpoint, WalCheckpoint},
@@ -18,14 +21,22 @@ use reifydb_runtime::{
 	io::fs::{Fs, ReadDir, memory::MemoryFs},
 };
 use reifydb_store_commit::store::CommitStore;
-use reifydb_store_log::{error::LogError, log::Log, partition::Config};
+use reifydb_store_log::{
+	cursor::Cursor,
+	error::LogError,
+	log::Log,
+	partition::Config,
+	segment::{Scan, Stop},
+};
 use reifydb_store_multi::store::multi::classify_deltas;
 use reifydb_store_single::SingleStore;
 use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
 use reifydb_wal::{
+	device::{Append, Device, Flush, Mark, ReadFrom, Reclaim, RecordCursor},
 	error::{Result as WalResult, WalError},
 	floor::Floor,
 	lsn::Lsn,
+	nop::{NopCursor, NopDevice},
 	wal::Wal,
 };
 
@@ -37,7 +48,127 @@ use crate::{
 	},
 };
 
-pub type CommitWal = Wal<WalRecord, Log<Fs, Clock>>;
+pub type CommitWal = Wal<WalRecord, CommitDevice>;
+
+pub enum CommitDevice {
+	Log(Log<Fs, Clock>),
+	Nop(NopDevice),
+}
+
+pub enum CommitCursor<'a> {
+	Log(Cursor<'a, Fs>),
+	Nop(NopCursor),
+}
+
+impl RecordCursor for CommitCursor<'_> {
+	fn next_batch(&mut self, max: usize) -> WalResult<Vec<Record>> {
+		match self {
+			Self::Log(cursor) => RecordCursor::next_batch(cursor, max),
+			Self::Nop(cursor) => cursor.next_batch(max),
+		}
+	}
+}
+
+impl Device for CommitDevice {}
+
+impl Append for CommitDevice {
+	fn append(&self, record: &Record) -> WalResult<Position> {
+		match self {
+			Self::Log(log) => Append::append(log, record),
+			Self::Nop(nop) => nop.append(record),
+		}
+	}
+
+	fn head(&self) -> WalResult<Option<LogVersion>> {
+		match self {
+			Self::Log(log) => Append::head(log),
+			Self::Nop(nop) => nop.head(),
+		}
+	}
+}
+
+impl Flush for CommitDevice {
+	fn flush(&self) -> WalResult<()> {
+		match self {
+			Self::Log(log) => Flush::flush(log),
+			Self::Nop(nop) => nop.flush(),
+		}
+	}
+
+	fn durable(&self) -> WalResult<Option<LogVersion>> {
+		match self {
+			Self::Log(log) => Flush::durable(log),
+			Self::Nop(nop) => nop.durable(),
+		}
+	}
+}
+
+impl ReadFrom for CommitDevice {
+	type Cursor<'a>
+		= CommitCursor<'a>
+	where
+		Self: 'a;
+
+	fn read_from(&self, from: LogVersion) -> WalResult<CommitCursor<'_>> {
+		match self {
+			Self::Log(log) => ReadFrom::read_from(log, from).map(CommitCursor::Log),
+			Self::Nop(nop) => nop.read_from(from).map(CommitCursor::Nop),
+		}
+	}
+}
+
+impl Reclaim for CommitDevice {
+	fn start(&self) -> WalResult<Option<LogVersion>> {
+		match self {
+			Self::Log(log) => Reclaim::start(log),
+			Self::Nop(nop) => nop.start(),
+		}
+	}
+
+	fn committed(&self) -> WalResult<LogIndex> {
+		match self {
+			Self::Log(log) => Reclaim::committed(log),
+			Self::Nop(nop) => nop.committed(),
+		}
+	}
+
+	fn drop_below(&self, index: LogIndex) -> WalResult<()> {
+		match self {
+			Self::Log(log) => Reclaim::drop_below(log, index),
+			Self::Nop(nop) => nop.drop_below(index),
+		}
+	}
+
+	fn bytes(&self) -> WalResult<ByteSize> {
+		match self {
+			Self::Log(log) => Reclaim::bytes(log),
+			Self::Nop(nop) => nop.bytes(),
+		}
+	}
+}
+
+impl Mark for CommitDevice {
+	fn register(&self, id: &str) -> WalResult<()> {
+		match self {
+			Self::Log(log) => Mark::register(log, id),
+			Self::Nop(nop) => nop.register(id),
+		}
+	}
+
+	fn record(&self, id: &str, version: LogVersion) -> WalResult<()> {
+		match self {
+			Self::Log(log) => Mark::record(log, id, version),
+			Self::Nop(nop) => nop.record(id, version),
+		}
+	}
+
+	fn readers(&self) -> WalResult<Vec<(String, LogVersion)>> {
+		match self {
+			Self::Log(log) => Mark::readers(log),
+			Self::Nop(nop) => nop.readers(),
+		}
+	}
+}
 
 pub(crate) const SEGMENT_BYTES: ByteSize = ByteSize::from_mib(64);
 
@@ -51,12 +182,42 @@ pub fn open_wal(fs: Fs, clock: Clock, dir: &Path) -> WalResult<CommitWal> {
 		drop(Log::create_detached(fs.clone(), clock.clone(), dir, config, 1)?);
 	}
 	let (log, scans) = Log::open_detached(fs, clock, dir)?;
-	let (wal, _) = Wal::open(log, scans)?;
+	let (wal, _) = Wal::open(CommitDevice::Log(log), scans)?;
 	Ok(wal)
 }
 
 pub fn memory_wal(clock: Clock) -> WalResult<CommitWal> {
 	open_wal(Fs::Memory(MemoryFs::new()), clock, Path::new("/wal"))
+}
+
+pub fn nop_wal() -> WalResult<CommitWal> {
+	let scan = Scan {
+		records: Vec::new(),
+		end: Position::ZERO,
+		stop: Stop::Unwritten,
+	};
+	let (wal, _) = Wal::open(CommitDevice::Nop(NopDevice::new()), vec![scan])?;
+	Ok(wal)
+}
+
+#[derive(Default)]
+pub struct WalConfigurator {
+	enabled: bool,
+}
+
+impl WalConfigurator {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	pub fn enabled(mut self, enabled: bool) -> Self {
+		self.enabled = enabled;
+		self
+	}
+
+	pub fn configure(self) -> bool {
+		self.enabled
+	}
 }
 
 pub(crate) fn check_record_size(encoded: &[u8]) -> Result<()> {
@@ -89,13 +250,13 @@ impl CheckpointedStore {
 
 pub(crate) struct StoreCheckpoint {
 	shared: Weak<CommitShared<StandardVersionProvider>>,
-	floor: Floor<WalRecord, Log<Fs, Clock>>,
+	floor: Floor<WalRecord, CommitDevice>,
 }
 
 impl StoreCheckpoint {
 	pub(crate) fn new(
 		shared: Weak<CommitShared<StandardVersionProvider>>,
-		floor: Floor<WalRecord, Log<Fs, Clock>>,
+		floor: Floor<WalRecord, CommitDevice>,
 	) -> Self {
 		Self {
 			shared,
@@ -204,8 +365,19 @@ pub fn replay(
 	}
 }
 
-pub fn replay_single(wal: &CommitWal, store: &SingleStore, saved_lsn: Option<Lsn>) {
+pub fn replay_single(wal: &CommitWal, store: &SingleStore, saved_lsn: Option<Lsn>, enabled: bool) {
 	let cursors = wal.cursors().unwrap_or_else(|err| panic!("commit log cursors could not be read at boot: {err}"));
+	if enabled
+		&& let Some(saved) = saved_lsn
+		&& cursors.appended.is_none_or(|head| saved > head)
+	{
+		panic!(
+			"single.db is saved through lsn {} but the commit log head is {:?}: replay would skip single \
+			 records the commit log holds",
+			saved.as_u64(),
+			cursors.appended.map(Lsn::as_u64)
+		);
+	}
 	let from = saved_lsn.map_or(cursors.start.unwrap_or(Lsn::FIRST), |lsn| Lsn::new(lsn.as_u64() + 1));
 	let records = wal.replay(from).unwrap_or_else(|err| match err {
 		WalError::Purged {
@@ -246,7 +418,7 @@ pub fn single_checkpoint(wal: &CommitWal) -> Arc<dyn SingleWalCheckpoint> {
 
 struct SingleStoreCheckpoint {
 	wal: CommitWal,
-	floor: Floor<WalRecord, Log<Fs, Clock>>,
+	floor: Floor<WalRecord, CommitDevice>,
 }
 
 impl SingleWalCheckpoint for SingleStoreCheckpoint {

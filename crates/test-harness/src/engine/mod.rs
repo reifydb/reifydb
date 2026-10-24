@@ -64,7 +64,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
-	wal::{CheckpointedStore, memory_wal, replay},
+	wal::{CheckpointedStore, WalConfigurator, memory_wal, nop_wal, replay},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -255,6 +255,7 @@ impl AsEngine for TestEngine {
 pub struct TestEngineBuilder {
 	cdc: bool,
 	routines: Option<Box<dyn FnOnce(RoutinesConfigurator) -> RoutinesConfigurator>>,
+	wal: Option<Box<dyn FnOnce(WalConfigurator) -> WalConfigurator>>,
 	#[cfg(not(target_arch = "wasm32"))]
 	sqlite_cdc: Option<SqliteConfig>,
 }
@@ -265,6 +266,14 @@ impl TestEngineBuilder {
 		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + 'static,
 	{
 		self.routines = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_wal<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(WalConfigurator) -> WalConfigurator + 'static,
+	{
+		self.wal = Some(Box::new(configurator));
 		self
 	}
 
@@ -291,7 +300,15 @@ impl TestEngineBuilder {
 		let multi_store = MultiStore::testing_memory_with_eventbus(eventbus.clone());
 		let single_store = SingleStore::testing_memory();
 		let (operator_store, operator_guard) = OperatorStore::testing_memory_with_persistent_sqlite();
-		let wal = memory_wal(clock.clone()).unwrap();
+		let wal_enabled =
+			self.wal.map_or_else(WalConfigurator::new, |configurator| configurator(WalConfigurator::new()))
+				.configure();
+		let wal = if wal_enabled {
+			memory_wal(clock.clone())
+		} else {
+			nop_wal()
+		}
+		.unwrap();
 		let single = SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 		let catalog_cache = CatalogCache::new();
 		let version_epoch = VersionEpoch::new();
@@ -439,7 +456,7 @@ pub fn create_test_admin_transaction() -> AdminTransaction {
 	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
 	let event_bus = EventBus::new(&spawner);
-	let wal = memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap();
+	let wal = nop_wal().unwrap();
 	let single = SingleTransaction::new(
 		single_store,
 		event_bus.clone(),
@@ -483,7 +500,7 @@ pub fn create_test_admin_transaction_with_internal_shape() -> AdminTransaction {
 	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
 	let event_bus = EventBus::new(&spawner);
-	let wal = memory_wal(Clock::Mock(MockClock::from_millis(1000))).unwrap();
+	let wal = nop_wal().unwrap();
 	let single = SingleTransaction::new(
 		single_store,
 		event_bus.clone(),

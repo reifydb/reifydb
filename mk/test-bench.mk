@@ -71,6 +71,7 @@ bench-txn-help:
 	@printf "  %-16s %s\n" "LAYOUTS" "shared_table,table_per_thread (default: both, or"
 	@printf "  %-16s %s\n" ""        "shared_table alone once THREADS or MATRIX narrows the run)"
 	@printf "  %-16s %s\n" "THREADS" "concurrent writers (default: 1,2,4,8,12,16,24,32)"
+	@printf "  %-16s %s\n" "WAL"     "log,nop commit log (default: log)"
 	@echo ""
 	@echo "  Tuning knobs"
 	@echo "  ───────────────────────────────────────────────────────────────"

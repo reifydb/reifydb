@@ -24,11 +24,7 @@ use reifydb_runtime::{
 	shutdown::Shutdown,
 	sync::mutex::Mutex,
 };
-use reifydb_value::{
-	count::Count,
-	reifydb_assertions,
-	util::cowvec::CowVec,
-};
+use reifydb_value::{count::Count, reifydb_assertions, util::cowvec::CowVec};
 use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 

@@ -68,7 +68,7 @@ use reifydb_sub_server_ws::factory::{WsConfigurator, WsSubsystemFactory};
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::{
 	interceptor::builder::InterceptorBuilder,
-	wal::{CommitWal, Recovery, replay},
+	wal::{CommitWal, Recovery, WalConfigurator, replay},
 };
 use reifydb_value::value::{Value, duration::Duration};
 #[cfg(all(feature = "sub_metric_profiler", feature = "sub_tracing"))]
@@ -98,6 +98,7 @@ fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
 	cdc_memory: bool,
+	wal_enabled: bool,
 	clock: &Clock,
 ) -> Result<PoolConfigSources> {
 	let multi_commit_store = factory.open_multi_commit_store();
@@ -106,7 +107,7 @@ fn pool_config_from_sources(
 		Some(persistent) => (persistent.saved_through()?, persistent.install_floor()?),
 		None => (CommitVersion(0), CommitVersion(0)),
 	};
-	let wal = commit_wal(factory, clock);
+	let wal = commit_wal(factory, clock, wal_enabled);
 	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
 	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides, cdc_memory)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
@@ -169,6 +170,7 @@ pub struct ServerBuilder {
 	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel", not(reifydb_single_threaded)))]
 	otel_tracing_config: Option<OtelTracingConfig>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
+	wal_configurator: Option<Box<dyn FnOnce(WalConfigurator) -> WalConfigurator + Send + 'static>>,
 	auth_providers: Vec<Box<dyn AuthenticationProvider>>,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	fast_shutdown: bool,
@@ -206,6 +208,7 @@ impl ServerBuilder {
 			))]
 			otel_tracing_config: None,
 			auth_configurator: None,
+			wal_configurator: None,
 			auth_providers: Vec::new(),
 			bootstrap_configs: Vec::new(),
 			fast_shutdown: false,
@@ -233,6 +236,14 @@ impl ServerBuilder {
 		F: FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static,
 	{
 		self.auth_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	pub fn with_wal<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(WalConfigurator) -> WalConfigurator + Send + 'static,
+	{
+		self.wal_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -374,6 +385,11 @@ impl ServerBuilder {
 		// does not exhaust it (`accept error: Too many open files`).
 		raise_fd_limit();
 		let boot_clock = self.runtime_config.as_ref().map_or(Clock::Real, |config| config.clock.clone());
+		let wal_enabled = self
+			.wal_configurator
+			.take()
+			.map_or_else(WalConfigurator::new, |configurator| configurator(WalConfigurator::new()))
+			.configure();
 
 		let (
 			multi_commit_store,
@@ -395,6 +411,7 @@ impl ServerBuilder {
 			&self.storage_factory,
 			&self.bootstrap_configs,
 			self.cdc_memory,
+			wal_enabled,
 			&boot_clock,
 		)?;
 
@@ -422,6 +439,7 @@ impl ServerBuilder {
 				operator_flush_interval,
 				None,
 				&wal,
+				wal_enabled,
 				&clock,
 				&spawner,
 			);
@@ -442,6 +460,7 @@ impl ServerBuilder {
 		let mut database_builder =
 			DatabaseBuilder::new(catalog_cache, multi, single, eventbus.clone(), version_epoch)
 				.with_sync_interval(sync_interval)
+				.with_wal_enabled(wal_enabled)
 				.with_interceptor_builder(self.interceptors)
 				.with_stores(multi_store, single_store, operator_store, cdc_store);
 

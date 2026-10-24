@@ -13,6 +13,7 @@ pub mod error;
 pub mod floor;
 pub mod log;
 pub mod lsn;
+pub mod nop;
 pub mod recovered;
 pub mod replay;
 pub mod sync;

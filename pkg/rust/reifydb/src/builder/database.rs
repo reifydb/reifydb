@@ -101,6 +101,7 @@ use crate::{
 pub struct DatabaseBuilder {
 	version_epoch: VersionEpoch,
 	sync_interval: Option<Duration>,
+	wal_enabled: bool,
 	interceptors: InterceptorBuilder,
 	factories: Vec<Box<dyn SubsystemFactory>>,
 	ioc: IocContainer,
@@ -159,6 +160,7 @@ impl DatabaseBuilder {
 		Self {
 			version_epoch,
 			sync_interval: None,
+			wal_enabled: false,
 			interceptors: InterceptorBuilder::new(),
 			factories: Vec::new(),
 			ioc,
@@ -220,6 +222,11 @@ impl DatabaseBuilder {
 
 	pub fn with_sync_interval(mut self, interval: Duration) -> Self {
 		self.sync_interval = Some(interval);
+		self
+	}
+
+	pub fn with_wal_enabled(mut self, enabled: bool) -> Self {
+		self.wal_enabled = enabled;
 		self
 	}
 
@@ -416,12 +423,14 @@ impl DatabaseBuilder {
 		let clock = runtime.clock().clone();
 		let rng = runtime.rng().clone();
 		let runtime_handle = runtime.handle();
-		multi.wal().spawn_sync(
-			&spawner,
+		let sync_mode = if self.wal_enabled {
 			SyncMode::GroupCommit {
 				window: self.sync_interval.expect("Sync interval must be set via with_sync_interval()"),
-			},
-		);
+			}
+		} else {
+			SyncMode::Never
+		};
+		multi.wal().spawn_sync(&spawner, sync_mode);
 		#[cfg(not(reifydb_single_threaded))]
 		let tokio_handle = runtime.tokio();
 

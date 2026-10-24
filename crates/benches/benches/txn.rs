@@ -37,7 +37,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
-	wal::{memory_wal, replay},
+	wal::{memory_wal, nop_wal, replay},
 };
 use reifydb_value::{
 	util::cowvec::CowVec,
@@ -73,12 +73,17 @@ impl TableLayout {
 	}
 }
 
-fn build_stack() -> (ActorSystem, MultiTransaction) {
+fn build_stack(wal_enabled: bool) -> (ActorSystem, MultiTransaction) {
 	let actor_system = ActorSystem::testing(Clock::Real);
 	let spawner = actor_system.spawner();
 	let event_bus = EventBus::new(&spawner);
 	let multi_store = MultiStore::testing_memory();
-	let wal = memory_wal(Clock::Real).expect("benchmark commit log must build");
+	let wal = if wal_enabled {
+		memory_wal(Clock::Real)
+	} else {
+		nop_wal()
+	}
+	.expect("benchmark commit log must build");
 	let recovery = replay(&wal, multi_store.commit(), CommitVersion(0), CommitVersion(0));
 	let multi = MultiTransaction::new(
 		multi_store,
@@ -169,8 +174,15 @@ fn spawn_readers(
 		.collect()
 }
 
-fn run_once(threads: usize, layout: TableLayout, iterations: u64, readers: usize, stall_keys: u64) -> Sample {
-	let (_actor_system, multi) = build_stack();
+fn run_once(
+	threads: usize,
+	layout: TableLayout,
+	wal_enabled: bool,
+	iterations: u64,
+	readers: usize,
+	stall_keys: u64,
+) -> Sample {
+	let (_actor_system, multi) = build_stack(wal_enabled);
 	let total = iterations * threads as u64;
 
 	let running = Arc::new(AtomicBool::new(true));
@@ -222,20 +234,31 @@ fn run_once(threads: usize, layout: TableLayout, iterations: u64, readers: usize
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_txns(
 	report: &mut BenchReport,
 	threads: usize,
 	layout: TableLayout,
+	wal_enabled: bool,
 	iterations: u64,
 	repeats: usize,
 	readers: usize,
 	stall_keys: u64,
 ) {
 	let samples: Vec<Sample> =
-		(0..repeats).map(|_| run_once(threads, layout, iterations, readers, stall_keys)).collect();
+		(0..repeats).map(|_| run_once(threads, layout, wal_enabled, iterations, readers, stall_keys)).collect();
 	let median = median_by_throughput(&samples, |s| (s.ops, s.elapsed.to_std()));
 
-	let label = layout.label();
+	let label = if wal_enabled {
+		layout.label().to_string()
+	} else {
+		format!("{} wal=nop", layout.label())
+	};
+	let wal = if wal_enabled {
+		"log"
+	} else {
+		"nop"
+	};
 	report.record(
 		&format!("txn_begin/{label} threads={threads}"),
 		median.ops,
@@ -256,7 +279,10 @@ fn write_txns(
 			&median.query_begin,
 		);
 	}
-	println!("repro= make bench-txn LAYOUTS={label} THREADS={threads} READERS={readers} STALL_KEYS={stall_keys}");
+	println!(
+		"repro= make bench-txn LAYOUTS={} WAL={wal} THREADS={threads} READERS={readers} STALL_KEYS={stall_keys}",
+		layout.label()
+	);
 }
 
 fn verify_key_classification() {
@@ -316,6 +342,9 @@ fn main() {
 	);
 	assert!(!layouts.is_empty(), "LAYOUTS matched no known table layout");
 
+	let wals = env_select("WAL", &[("log", true), ("nop", false)], &[true]);
+	assert!(!wals.is_empty(), "WAL matched no known commit log mode");
+
 	let default_threads: &[usize] = if matrix {
 		&[16, 24, 32]
 	} else {
@@ -335,17 +364,29 @@ fn main() {
 
 	let mut report = BenchReport::new("txn");
 	println!(
-		"matrix cells={} layouts={} threads={} iterations={} repeats={}",
-		layouts.len() * swept.len(),
+		"matrix cells={} layouts={} wals={} threads={} iterations={} repeats={}",
+		layouts.len() * wals.len() * swept.len(),
 		layouts.len(),
+		wals.len(),
 		swept.len(),
 		iterations,
 		repeats
 	);
 
 	for layout in &layouts {
-		for threads in &swept {
-			write_txns(&mut report, *threads, *layout, iterations, repeats, readers, stall_keys);
+		for wal_enabled in &wals {
+			for threads in &swept {
+				write_txns(
+					&mut report,
+					*threads,
+					*layout,
+					*wal_enabled,
+					iterations,
+					repeats,
+					readers,
+					stall_keys,
+				);
+			}
 		}
 	}
 	report.save();

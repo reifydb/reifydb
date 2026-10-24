@@ -7,7 +7,7 @@ use reifydb_core::{common::CommitVersion, event::EventBus, interface::catalog::c
 use reifydb_runtime::{
 	actor::system::ActorSpawner,
 	context::{clock::Clock, rng::Rng},
-	io::fs::{Fs, host::HostFs},
+	io::fs::{Fs, ReadDir, host::HostFs},
 	version_epoch::VersionEpoch,
 };
 use reifydb_sqlite::{DbPath, SqliteConfig, SynchronousMode};
@@ -44,7 +44,9 @@ use reifydb_store_single::{
 use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{CheckpointedStore, CommitWal, Recovery, memory_wal, open_wal, replay_single, single_checkpoint},
+	wal::{
+		CheckpointedStore, CommitWal, Recovery, memory_wal, nop_wal, open_wal, replay_single, single_checkpoint,
+	},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -90,6 +92,7 @@ impl StorageFactory {
 		operator_flush_interval: Duration,
 		operator_persistent: Option<PersistentTier>,
 		wal: &CommitWal,
+		wal_enabled: bool,
 		clock: &Clock,
 		spawner: &ActorSpawner,
 	) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
@@ -102,6 +105,7 @@ impl StorageFactory {
 				operator_flush_interval,
 				operator_persistent,
 				wal,
+				wal_enabled,
 				clock,
 				spawner,
 			),
@@ -121,6 +125,7 @@ impl StorageFactory {
 				operator_persistent,
 				config.clone(),
 				wal,
+				wal_enabled,
 				clock,
 				spawner,
 			),
@@ -185,7 +190,25 @@ pub(crate) fn wal_dir(config: &SqliteConfig) -> PathBuf {
 	}
 }
 
-pub(crate) fn commit_wal(factory: &StorageFactory, clock: &Clock) -> CommitWal {
+pub(crate) fn commit_wal(factory: &StorageFactory, clock: &Clock, enabled: bool) -> CommitWal {
+	if !enabled {
+		if let StorageFactory::Sqlite(config) = factory {
+			let dir = wal_dir(config);
+			let parent =
+				dir.parent().unwrap_or_else(|| panic!("commit log at {} has no parent", dir.display()));
+			let entries = Fs::Host(HostFs::new()).read_dir(parent).unwrap_or_else(|err| {
+				panic!("{} could not be listed at boot: {err}", parent.display())
+			});
+			if entries.iter().any(|entry| entry == &dir) {
+				panic!(
+					"commit log at {} exists but the wal is disabled: delete it, or boot once with \
+					 the wal enabled to replay it",
+					dir.display()
+				);
+			}
+		}
+		return nop_wal().unwrap_or_else(|err| panic!("no-op commit log failed to open: {err}"));
+	}
 	match factory {
 		StorageFactory::Memory => memory_wal(clock.clone())
 			.unwrap_or_else(|err| panic!("in-memory commit log failed to open: {err}")),
@@ -205,6 +228,7 @@ fn create_memory_store_with(
 	operator_flush_interval: Duration,
 	operator_persistent: Option<PersistentTier>,
 	wal: &CommitWal,
+	wal_enabled: bool,
 	clock: &Clock,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
@@ -256,7 +280,7 @@ fn create_memory_store_with(
 	let saved_lsn = single_store
 		.saved_lsn()
 		.unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
-	replay_single(wal, &single_store, saved_lsn);
+	replay_single(wal, &single_store, saved_lsn, wal_enabled);
 	let transaction_single =
 		SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)
@@ -279,6 +303,7 @@ fn create_sqlite_store_with(
 	operator_persistent: Option<PersistentTier>,
 	config: SqliteConfig,
 	wal: &CommitWal,
+	wal_enabled: bool,
 	clock: &Clock,
 	spawner: &ActorSpawner,
 ) -> (MultiStore, SingleStore, OperatorStore, CdcStore, SingleTransaction, EventBus) {
@@ -347,7 +372,7 @@ fn create_sqlite_store_with(
 	let saved_lsn = single_store
 		.saved_lsn()
 		.unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
-	replay_single(wal, &single_store, saved_lsn);
+	replay_single(wal, &single_store, saved_lsn, wal_enabled);
 	let transaction_single =
 		SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)

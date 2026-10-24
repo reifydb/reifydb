@@ -15,10 +15,7 @@ use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
 	event::EventBus,
-	interface::{
-		catalog::config::GetConfig,
-		store::WalCheckpoint,
-	},
+	interface::{catalog::config::GetConfig, store::WalCheckpoint},
 	key::any::TaggedKey,
 	testing::ProfileConfig,
 };

@@ -1235,7 +1235,10 @@ mod tests {
 		let saved = engine.persistent.saved_through().unwrap();
 		for (kind, key) in rows {
 			let written = matches!(
-				engine.persistent.get(kind, from_ref(&ek(key).as_ref()), CommitVersion(3)).unwrap().remove(0),
+				engine.persistent
+					.get(kind, from_ref(&ek(key).as_ref()), CommitVersion(3))
+					.unwrap()
+					.remove(0),
 				VersionedGetResult::Value { .. }
 			);
 			assert!(

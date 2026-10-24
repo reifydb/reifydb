@@ -29,7 +29,7 @@ use reifydb_sub_metrics::profiler::{builder::ProfilerConfigurator, factory::Prof
 use reifydb_sub_tracing::builder::TracingConfigurator;
 use reifydb_transaction::{
 	interceptor::builder::InterceptorBuilder,
-	wal::{CommitWal, Recovery, replay},
+	wal::{CommitWal, Recovery, WalConfigurator, replay},
 };
 use reifydb_value::value::{Value, duration::Duration};
 
@@ -55,6 +55,7 @@ fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
 	cdc_memory: bool,
+	wal_enabled: bool,
 	clock: &Clock,
 ) -> Result<PoolConfigSources> {
 	let multi_commit_store = factory.open_multi_commit_store();
@@ -63,7 +64,7 @@ fn pool_config_from_sources(
 		Some(persistent) => (persistent.saved_through()?, persistent.install_floor()?),
 		None => (CommitVersion(0), CommitVersion(0)),
 	};
-	let wal = commit_wal(factory, clock);
+	let wal = commit_wal(factory, clock, wal_enabled);
 	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
 	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides, cdc_memory)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
@@ -121,6 +122,7 @@ pub struct EmbeddedBuilder {
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowConfigurator) -> FlowConfigurator + Send + 'static>>,
 	auth_configurator: Option<Box<dyn FnOnce(AuthConfigurator) -> AuthConfigurator + Send + 'static>>,
+	wal_configurator: Option<Box<dyn FnOnce(WalConfigurator) -> WalConfigurator + Send + 'static>>,
 	auth_providers: Vec<Box<dyn AuthenticationProvider>>,
 	migrations: Option<MigrationSource>,
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
@@ -148,6 +150,7 @@ impl EmbeddedBuilder {
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
 			auth_configurator: None,
+			wal_configurator: None,
 			auth_providers: Vec::new(),
 			migrations: None,
 			bootstrap_configs: Vec::new(),
@@ -246,6 +249,14 @@ impl EmbeddedBuilder {
 		self
 	}
 
+	pub fn with_wal<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(WalConfigurator) -> WalConfigurator + Send + 'static,
+	{
+		self.wal_configurator = Some(Box::new(configurator));
+		self
+	}
+
 	pub fn with_auth_provider(mut self, provider: impl AuthenticationProvider + 'static) -> Self {
 		self.auth_providers.push(Box::new(provider));
 		self
@@ -271,6 +282,10 @@ impl EmbeddedBuilder {
 
 	pub fn build(self) -> Result<Database> {
 		let boot_clock = self.runtime_config.as_ref().map_or(Clock::Real, |config| config.clock.clone());
+		let wal_enabled = self
+			.wal_configurator
+			.map_or_else(WalConfigurator::new, |configurator| configurator(WalConfigurator::new()))
+			.configure();
 		let (
 			multi_commit_store,
 			multi_persistent,
@@ -291,6 +306,7 @@ impl EmbeddedBuilder {
 			&self.storage_factory,
 			&self.bootstrap_configs,
 			self.cdc_memory,
+			wal_enabled,
 			&boot_clock,
 		)?;
 		#[cfg(all(feature = "column", reifydb_target = "host"))]
@@ -322,6 +338,7 @@ impl EmbeddedBuilder {
 				operator_flush_interval,
 				self.operator_persistent,
 				&wal,
+				wal_enabled,
 				&clock,
 				&spawner,
 			);
@@ -341,6 +358,7 @@ impl EmbeddedBuilder {
 
 		let mut builder = DatabaseBuilder::new(catalog_cache, multi, single, eventbus, version_epoch)
 			.with_sync_interval(sync_interval)
+			.with_wal_enabled(wal_enabled)
 			.with_interceptor_builder(self.interceptors)
 			.with_runtime(runtime)
 			.with_stores(multi_store, single_store, operator_store, cdc_store);

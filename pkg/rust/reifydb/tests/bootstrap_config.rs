@@ -80,7 +80,10 @@ fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
 }
 
 fn range_shards(path: &Path) -> usize {
-	let db = embedded::sqlite(SqliteConfig::new(path.join("db"))).build().expect("sqlite database must reopen");
+	let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
+		.with_wal(|wal| wal.enabled(true))
+		.build()
+		.expect("sqlite database must reopen");
 	let store = db.engine().ioc().try_resolve::<MultiStore>().expect("MultiStore must be registered");
 	store.range_shard_metrics().len()
 }
@@ -91,6 +94,7 @@ fn a_startup_config_set_before_a_crash_shapes_the_next_boot() {
 	temp_dir(|path| {
 		{
 			let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
+				.with_wal(|wal| wal.enabled(true))
 				.with_fast_shutdown()
 				.build()
 				.expect("fresh sqlite database must build");
@@ -116,6 +120,7 @@ fn a_boot_that_lost_its_log_never_reissues_a_version_cdc_already_holds() {
 	temp_dir(|path| {
 		{
 			let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
+				.with_wal(|wal| wal.enabled(true))
 				.with_fast_shutdown()
 				.build()
 				.expect("fresh sqlite database must build");
@@ -125,6 +130,7 @@ fn a_boot_that_lost_its_log_never_reissues_a_version_cdc_already_holds() {
 		fs::remove_dir_all(path.join("db").join("wal"))?;
 
 		let db = embedded::sqlite(SqliteConfig::new(path.join("db")))
+			.with_wal(|wal| wal.enabled(true))
 			.build()
 			.expect("sqlite database must reopen");
 		let cdc_store = db.engine().ioc().try_resolve::<CdcStore>().expect("CdcStore must be registered");
