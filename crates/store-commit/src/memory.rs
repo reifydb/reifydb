@@ -211,7 +211,7 @@ impl Write for MemoryRows {
 }
 
 fn mergeable_run(maps: &[Arc<ClosedRows>], fan_in: usize, cap: u64) -> Option<Range<usize>> {
-	(fan_in..=maps.len()).rev().map(|end| end - fan_in..end).find(|run| {
+	(fan_in..=maps.len()).map(|end| end - fan_in..end).find(|run| {
 		let window = &maps[run.clone()];
 		let first = tier(window[0].rows().bytes(), fan_in);
 		window.iter().all(|map| tier(map.rows().bytes(), fan_in) == first)
