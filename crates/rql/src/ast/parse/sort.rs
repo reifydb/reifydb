@@ -105,7 +105,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 1);
@@ -124,7 +124,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 1);
@@ -143,7 +143,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 1);
@@ -162,7 +162,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 1);
@@ -181,7 +181,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 2);
@@ -203,7 +203,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 2);
@@ -225,7 +225,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 0);
@@ -265,7 +265,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 1);
@@ -284,7 +284,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 1);
@@ -303,7 +303,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 2);
@@ -325,7 +325,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Sort(sort) = result.first_unchecked() else {
+		let Some(Ast::Sort(sort)) = result.nodes.first() else {
 			panic!("not sort")
 		};
 		assert_eq!(sort.columns.len(), 2);

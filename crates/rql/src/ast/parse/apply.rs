@@ -76,7 +76,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Apply(apply) = result.first_unchecked() else {
+		let Some(Ast::Apply(apply)) = result.nodes.first() else {
 			panic!("not apply")
 		};
 		assert_eq!(apply.operator.token.value(), "counter");
@@ -93,7 +93,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Apply(apply) = result.first_unchecked() else {
+		let Some(Ast::Apply(apply)) = result.nodes.first() else {
 			panic!("not apply")
 		};
 		assert_eq!(apply.operator.text(), "running_sum");
@@ -111,7 +111,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Apply(apply) = result.first_unchecked() else {
+		let Some(Ast::Apply(apply)) = result.nodes.first() else {
 			panic!("not apply")
 		};
 		assert_eq!(apply.operator.token.value(), "counter");

@@ -33,10 +33,6 @@ pub struct AstStatement<'bump> {
 }
 
 impl<'bump> AstStatement<'bump> {
-	pub fn first_unchecked(&self) -> &Ast<'bump> {
-		self.nodes.first().unwrap()
-	}
-
 	pub fn is_empty(&self) -> bool {
 		self.nodes.is_empty()
 	}
@@ -260,21 +256,6 @@ macro_rules! ast_accessor {
 	};
 }
 
-macro_rules! ast_literal_accessor {
-	($lit_variant:ident, $type:ty, $fn_is:ident, $fn_as:ident, $label:expr) => {
-		pub fn $fn_is(&self) -> bool {
-			matches!(self, Ast::Literal(AstLiteral::$lit_variant(_)))
-		}
-		pub fn $fn_as(&self) -> &$type {
-			if let Ast::Literal(AstLiteral::$lit_variant(result)) = self {
-				result
-			} else {
-				panic!(concat!("not literal ", $label))
-			}
-		}
-	};
-}
-
 impl<'bump> Ast<'bump> {
 	pub fn is_ddl(&self) -> bool {
 		matches!(
@@ -287,36 +268,7 @@ impl<'bump> Ast<'bump> {
 		)
 	}
 
-	pub fn as_create(&self) -> &AstCreate<'bump> {
-		if let Ast::Create(result) = self {
-			result
-		} else {
-			panic!("not create")
-		}
-	}
 	ast_accessor!(Identifier, UnqualifiedIdentifier<'bump>, is_identifier, as_identifier, "identifier");
-	ast_accessor!(Infix, AstInfix<'bump>, is_infix, as_infix, "infix");
-	ast_accessor!(Literal, AstLiteral<'bump>, is_literal, as_literal, "literal");
-	ast_accessor!(Tuple, AstTuple<'bump>, is_tuple, as_tuple, "tuple");
-
-	ast_literal_accessor!(Boolean, AstLiteralBoolean<'bump>, is_literal_boolean, as_literal_boolean, "boolean");
-	ast_literal_accessor!(Number, AstLiteralNumber<'bump>, is_literal_number, as_literal_number, "number");
-	ast_literal_accessor!(
-		Temporal,
-		AstLiteralTemporal<'bump>,
-		is_literal_temporal,
-		as_literal_temporal,
-		"temporal"
-	);
-	ast_literal_accessor!(
-		Duration,
-		AstLiteralDuration<'bump>,
-		is_literal_duration,
-		as_literal_duration,
-		"duration"
-	);
-	ast_literal_accessor!(Text, AstLiteralText<'bump>, is_literal_text, as_literal_text, "text");
-	ast_literal_accessor!(None, AstLiteralNone<'bump>, is_literal_none, as_literal_none, "none");
 }
 
 #[derive(Debug)]

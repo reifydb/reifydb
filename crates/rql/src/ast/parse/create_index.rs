@@ -119,7 +119,7 @@ pub mod tests {
 	use reifydb_core::{common::IndexType, sort::SortDirection};
 
 	use crate::ast::{
-		ast::{AstCreate, AstCreateIndex},
+		ast::{Ast, AstCreate, AstCreateIndex},
 		parse::Parser,
 		tokenize,
 	};
@@ -134,7 +134,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Index(AstCreateIndex {
@@ -167,7 +170,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Index(AstCreateIndex {
@@ -199,7 +205,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Index(AstCreateIndex {
@@ -226,7 +235,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Index(AstCreateIndex {
@@ -255,7 +267,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Index(AstCreateIndex {
@@ -266,7 +281,7 @@ pub mod tests {
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].column.name.text(), "email");
 				assert_eq!(filters.len(), 1);
-				assert!(filters[0].is_infix());
+				assert!(matches!(*filters[0], Ast::Infix(_)));
 			}
 			_ => unreachable!(),
 		}
@@ -282,7 +297,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Index(AstCreateIndex {
@@ -293,9 +311,9 @@ pub mod tests {
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].column.name.text(), "email");
 				assert_eq!(filters.len(), 3);
-				assert!(filters[0].is_infix());
-				assert!(filters[1].is_infix());
-				assert!(filters[2].is_infix());
+				assert!(matches!(*filters[0], Ast::Infix(_)));
+				assert!(matches!(*filters[1], Ast::Infix(_)));
+				assert!(matches!(*filters[2], Ast::Infix(_)));
 			}
 			_ => unreachable!(),
 		}
@@ -311,7 +329,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Index(AstCreateIndex {
@@ -323,8 +344,8 @@ pub mod tests {
 				assert_eq!(columns.len(), 1);
 				assert_eq!(columns[0].column.name.text(), "email");
 				assert_eq!(filters.len(), 2);
-				assert!(filters[0].is_infix());
-				assert!(filters[1].is_infix());
+				assert!(matches!(*filters[0], Ast::Infix(_)));
+				assert!(matches!(*filters[1], Ast::Infix(_)));
 				assert!(map.is_some());
 			}
 			_ => unreachable!(),

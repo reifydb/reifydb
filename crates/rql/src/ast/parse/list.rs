@@ -50,7 +50,10 @@ pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{
-		ast::{ast::Ast, parse::Parser},
+		ast::{
+			ast::{Ast, AstLiteral},
+			parse::Parser,
+		},
 		token::tokenize,
 	};
 
@@ -64,7 +67,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::List(list) = result.first_unchecked() else {
+		let Some(Ast::List(list)) = result.nodes.first() else {
 			panic!("not list")
 		};
 		assert_eq!(list.len(), 0);
@@ -80,12 +83,14 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::List(list) = result.first_unchecked() else {
+		let Some(Ast::List(list)) = result.nodes.first() else {
 			panic!("not list")
 		};
 		assert_eq!(list.len(), 1);
 
-		let literal = list[0].as_literal_text();
+		let Ast::Literal(AstLiteral::Text(literal)) = &list[0] else {
+			panic!("not text")
+		};
 		assert_eq!(literal.value(), "ReifyDB");
 	}
 
@@ -99,18 +104,24 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::List(list) = result.first_unchecked() else {
+		let Some(Ast::List(list)) = result.nodes.first() else {
 			panic!("not list")
 		};
 		assert_eq!(list.len(), 3);
 
-		let first = list[0].as_literal_number();
+		let Ast::Literal(AstLiteral::Number(first)) = &list[0] else {
+			panic!("not number")
+		};
 		assert_eq!(first.value(), "1");
 
-		let second = list[1].as_literal_number();
+		let Ast::Literal(AstLiteral::Number(second)) = &list[1] else {
+			panic!("not number")
+		};
 		assert_eq!(second.value(), "2.2");
 
-		let third = list[2].as_literal_number();
+		let Ast::Literal(AstLiteral::Number(third)) = &list[2] else {
+			panic!("not number")
+		};
 		assert_eq!(third.value(), "2.34142");
 	}
 
@@ -124,7 +135,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::List(list) = result.first_unchecked() else {
+		let Some(Ast::List(list)) = result.nodes.first() else {
 			panic!("not list")
 		};
 		assert_eq!(list.len(), 1);
@@ -135,6 +146,9 @@ pub mod tests {
 		assert_eq!(row.keyed_values.len(), 1);
 
 		assert_eq!(row.keyed_values[0].key.text(), "field");
-		assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
+		let Ast::Literal(AstLiteral::Text(value_text)) = &*row.keyed_values[0].value else {
+			panic!("not text")
+		};
+		assert_eq!(value_text.value(), "value");
 	}
 }

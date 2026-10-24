@@ -124,7 +124,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Assert(assert_node) = result[0].first_unchecked() else {
+		let Some(Ast::Assert(assert_node)) = result[0].nodes.first() else {
 			panic!("not assert")
 		};
 		assert_eq!(assert_node.token.kind, TokenKind::Keyword(Keyword::Assert));
@@ -142,7 +142,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Assert(assert_node) = result[0].first_unchecked() else {
+		let Some(Ast::Assert(assert_node)) = result[0].nodes.first() else {
 			panic!("not assert")
 		};
 		assert!(assert_node.node.is_some());
@@ -172,7 +172,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Assert(assert_node) = result[0].first_unchecked() else {
+		let Some(Ast::Assert(assert_node)) = result[0].nodes.first() else {
 			panic!("not assert")
 		};
 		assert!(assert_node.node.is_none());
@@ -191,7 +191,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Assert(assert_node) = result[0].first_unchecked() else {
+		let Some(Ast::Assert(assert_node)) = result[0].nodes.first() else {
 			panic!("not assert")
 		};
 		assert!(assert_node.node.is_none());
@@ -207,7 +207,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Assert(assert_node) = result[0].first_unchecked() else {
+		let Some(Ast::Assert(assert_node)) = result[0].nodes.first() else {
 			panic!("not assert")
 		};
 		assert!(assert_node.expect_error);

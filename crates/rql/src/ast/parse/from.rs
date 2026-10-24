@@ -197,7 +197,7 @@ pub mod tests {
 
 	use crate::{
 		ast::{
-			ast::{Ast, AstFrom, InfixOperator, InfixOperator::As},
+			ast::{Ast, AstFrom, AstLiteral, InfixOperator, InfixOperator::As},
 			parse::Parser,
 		},
 		token::tokenize,
@@ -213,7 +213,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -241,7 +241,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -269,7 +269,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -295,7 +295,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -312,7 +312,10 @@ pub mod tests {
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(row.keyed_values[0].key.text(), "field");
-				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
+				let Ast::Literal(AstLiteral::Text(value_text)) = &*row.keyed_values[0].value else {
+					panic!("not text")
+				};
+				assert_eq!(value_text.value(), "value");
 			}
 			_ => unreachable!(),
 		}
@@ -330,7 +333,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -347,7 +350,10 @@ pub mod tests {
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(row.keyed_values[0].key.text(), "field");
-				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
+				let Ast::Literal(AstLiteral::Text(value_text)) = &*row.keyed_values[0].value else {
+					panic!("not text")
+				};
+				assert_eq!(value_text.value(), "value");
 
 				let Ast::Inline(row) = &list[1] else {
 					panic!("not inline")
@@ -355,7 +361,10 @@ pub mod tests {
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(row.keyed_values[0].key.text(), "field");
-				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value2");
+				let Ast::Literal(AstLiteral::Text(value_text)) = &*row.keyed_values[0].value else {
+					panic!("not text")
+				};
+				assert_eq!(value_text.value(), "value2");
 			}
 			_ => unreachable!(),
 		}
@@ -371,7 +380,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -399,7 +408,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -427,7 +436,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -456,7 +465,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -485,7 +494,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -502,7 +511,10 @@ pub mod tests {
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(row.keyed_values[0].key.text(), "field");
-				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
+				let Ast::Literal(AstLiteral::Text(value_text)) = &*row.keyed_values[0].value else {
+					panic!("not text")
+				};
+				assert_eq!(value_text.value(), "value");
 			}
 			_ => unreachable!(),
 		}
@@ -518,7 +530,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -529,10 +541,14 @@ pub mod tests {
 			} => {
 				assert_eq!(list.len(), 2);
 
-				let tuple0 = list[0].as_tuple();
+				let Ast::Tuple(tuple0) = &list[0] else {
+					panic!("not tuple")
+				};
 				assert_eq!(tuple0.len(), 2);
 
-				let tuple1 = list[1].as_tuple();
+				let Ast::Tuple(tuple1) = &list[1] else {
+					panic!("not tuple")
+				};
 				assert_eq!(tuple1.len(), 2);
 			}
 			_ => unreachable!(),
@@ -549,7 +565,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -558,14 +574,24 @@ pub mod tests {
 				assert_eq!(generator.name.text(), "series::generate");
 				assert_eq!(generator.nodes.len(), 2);
 
-				let first_param = generator.nodes[0].as_infix();
+				let Ast::Infix(first_param) = &generator.nodes[0] else {
+					panic!("not infix")
+				};
 				assert!(matches!(first_param.operator, As(_)));
-				assert_eq!(first_param.left.as_literal_number().value(), "1");
+				let Ast::Literal(AstLiteral::Number(left_number)) = &*first_param.left else {
+					panic!("not number")
+				};
+				assert_eq!(left_number.value(), "1");
 				assert_eq!(first_param.right.as_identifier().text(), "start");
 
-				let second_param = generator.nodes[1].as_infix();
+				let Ast::Infix(second_param) = &generator.nodes[1] else {
+					panic!("not infix")
+				};
 				assert!(matches!(second_param.operator, As(_)));
-				assert_eq!(second_param.left.as_literal_number().value(), "100");
+				let Ast::Literal(AstLiteral::Number(left_number)) = &*second_param.left else {
+					panic!("not number")
+				};
+				assert_eq!(left_number.value(), "100");
 				assert_eq!(second_param.right.as_identifier().text(), "end");
 			}
 			_ => unreachable!("Expected Generator"),
@@ -582,7 +608,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::From(from) = result.first_unchecked() else {
+		let Some(Ast::From(from)) = result.nodes.first() else {
 			panic!("not from")
 		};
 
@@ -591,18 +617,33 @@ pub mod tests {
 				assert_eq!(generator.name.text(), "data_loader");
 				assert_eq!(generator.nodes.len(), 2);
 
-				let first_param = generator.nodes[0].as_infix();
+				let Ast::Infix(first_param) = &generator.nodes[0] else {
+					panic!("not infix")
+				};
 				assert!(matches!(first_param.operator, InfixOperator::As(_)));
-				assert_eq!(first_param.left.as_literal_text().value(), "/api/v1");
+				let Ast::Literal(AstLiteral::Text(left_text)) = &*first_param.left else {
+					panic!("not text")
+				};
+				assert_eq!(left_text.value(), "/api/v1");
 				assert_eq!(first_param.right.as_identifier().text(), "endpoint");
 
-				let second_param = generator.nodes[1].as_infix();
+				let Ast::Infix(second_param) = &generator.nodes[1] else {
+					panic!("not infix")
+				};
 				assert!(matches!(second_param.operator, InfixOperator::As(_)));
 
-				let timeout_expr = second_param.left.as_infix();
+				let Ast::Infix(timeout_expr) = &*second_param.left else {
+					panic!("not infix")
+				};
 				assert!(matches!(timeout_expr.operator, InfixOperator::Multiply(_)));
-				assert_eq!(timeout_expr.left.as_literal_number().value(), "30");
-				assert_eq!(timeout_expr.right.as_literal_number().value(), "1000");
+				let Ast::Literal(AstLiteral::Number(left_number)) = &*timeout_expr.left else {
+					panic!("not number")
+				};
+				assert_eq!(left_number.value(), "30");
+				let Ast::Literal(AstLiteral::Number(right_number)) = &*timeout_expr.right else {
+					panic!("not number")
+				};
+				assert_eq!(right_number.value(), "1000");
 
 				assert_eq!(second_param.right.as_identifier().text(), "timeout");
 			}

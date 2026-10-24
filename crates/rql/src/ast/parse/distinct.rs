@@ -76,7 +76,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let Ast::Distinct(distinct) = result.first_unchecked() {
+		if let Some(Ast::Distinct(distinct)) = result.nodes.first() {
 			assert_eq!(distinct.columns.len(), 0);
 		} else {
 			panic!("Expected Distinct operator");
@@ -92,7 +92,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let Ast::Distinct(distinct) = result.first_unchecked() {
+		if let Some(Ast::Distinct(distinct)) = result.nodes.first() {
 			assert_eq!(distinct.columns.len(), 1);
 			assert_eq!(distinct.columns[0].name.text(), "name");
 		} else {
@@ -109,7 +109,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let Ast::Distinct(distinct) = result.first_unchecked() {
+		if let Some(Ast::Distinct(distinct)) = result.nodes.first() {
 			assert_eq!(distinct.columns.len(), 2);
 			assert_eq!(distinct.columns[0].name.text(), "name");
 			assert_eq!(distinct.columns[1].name.text(), "age");
@@ -127,7 +127,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let Ast::Distinct(distinct) = result.first_unchecked() {
+		if let Some(Ast::Distinct(distinct)) = result.nodes.first() {
 			assert_eq!(distinct.columns.len(), 0);
 		} else {
 			panic!("Expected Distinct operator");
@@ -161,7 +161,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Distinct(distinct) = result.first_unchecked() else {
+		let Some(Ast::Distinct(distinct)) = result.nodes.first() else {
 			panic!("Expected Distinct operator");
 		};
 		assert!(distinct.with.is_none());
@@ -176,7 +176,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Distinct(distinct) = result.first_unchecked() else {
+		let Some(Ast::Distinct(distinct)) = result.nodes.first() else {
 			panic!("Expected Distinct operator");
 		};
 		assert!(
@@ -194,7 +194,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Distinct(distinct) = result.first_unchecked() else {
+		let Some(Ast::Distinct(distinct)) = result.nodes.first() else {
 			panic!("Expected Distinct operator");
 		};
 		assert!(
@@ -212,7 +212,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Distinct(distinct) = result.first_unchecked() else {
+		let Some(Ast::Distinct(distinct)) = result.nodes.first() else {
 			panic!("Expected Distinct operator");
 		};
 		assert!(

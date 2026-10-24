@@ -377,7 +377,7 @@ mod tests {
 	fn apply_with(source: &str) -> Result<ApplyWith> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source)?;
-		let Ast::Apply(apply) = statements[0].first_unchecked() else {
+		let Some(Ast::Apply(apply)) = statements[0].nodes.first() else {
 			panic!("not apply")
 		};
 		Compiler::compile_apply_with(apply.with.as_ref())

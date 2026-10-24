@@ -433,7 +433,7 @@ mod tests {
 	fn parse_window_config(source: &str) -> Result<ParsedConfig> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source).unwrap();
-		let Ast::Window(window) = statements[0].first_unchecked() else {
+		let Some(Ast::Window(window)) = statements[0].nodes.first() else {
 			panic!("not window")
 		};
 		Compiler::parse_config(window.with.as_ref(), window.token.fragment.to_owned())

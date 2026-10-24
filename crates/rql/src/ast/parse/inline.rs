@@ -93,6 +93,7 @@ pub mod tests {
 			ast::{
 				Ast,
 				Ast::{Identifier, Literal},
+				AstLiteral,
 				AstLiteral::{Number, Text},
 			},
 			parse::parse,
@@ -108,7 +109,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Inline(inline) = result[0].first_unchecked() else {
+		let Some(Ast::Inline(inline)) = result[0].nodes.first() else {
 			panic!("not inline")
 		};
 		assert_eq!(inline.len(), 0);
@@ -122,7 +123,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Inline(inline) = result[0].first_unchecked() else {
+		let Some(Ast::Inline(inline)) = result[0].nodes.first() else {
 			panic!("not inline")
 		};
 		assert_eq!(inline.len(), 1);
@@ -143,7 +144,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Inline(inline) = result[0].first_unchecked() else {
+		let Some(Ast::Inline(inline)) = result[0].nodes.first() else {
 			panic!("not inline")
 		};
 		assert_eq!(inline.len(), 1);
@@ -164,7 +165,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Inline(inline) = result[0].first_unchecked() else {
+		let Some(Ast::Inline(inline)) = result[0].nodes.first() else {
 			panic!("not inline")
 		};
 		assert_eq!(inline.len(), 1);
@@ -185,7 +186,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Inline(inline) = result[0].first_unchecked() else {
+		let Some(Ast::Inline(inline)) = result[0].nodes.first() else {
 			panic!("not inline")
 		};
 		assert_eq!(inline.len(), 2);
@@ -213,7 +214,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Inline(inline) = result[0].first_unchecked() else {
+		let Some(Ast::Inline(inline)) = result[0].nodes.first() else {
 			panic!("not inline")
 		};
 		assert_eq!(inline.len(), 1);
@@ -238,7 +239,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Inline(inline) = result[0].first_unchecked() else {
+		let Some(Ast::Inline(inline)) = result[0].nodes.first() else {
 			panic!("not inline")
 		};
 		assert_eq!(inline.len(), 3);
@@ -259,7 +260,7 @@ pub mod tests {
 
 		let active_keyed_value = &inline[2];
 		assert_eq!(active_keyed_value.key.text(), "active");
-		assert!(active_keyed_value.value.is_literal_boolean());
+		assert!(matches!(*active_keyed_value.value, Literal(AstLiteral::Boolean(_))));
 	}
 
 	#[test]
@@ -270,7 +271,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Inline(inline) = result[0].first_unchecked() else {
+		let Some(Ast::Inline(inline)) = result[0].nodes.first() else {
 			panic!("not inline")
 		};
 		assert_eq!(inline.len(), 2);
@@ -290,14 +291,14 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Inline(inline) = result[0].first_unchecked() else {
+		let Some(Ast::Inline(inline)) = result[0].nodes.first() else {
 			panic!("not inline")
 		};
 		assert_eq!(inline.len(), 2);
 
 		let result_keyed_value = &inline[0];
 		assert_eq!(result_keyed_value.key.text(), "result");
-		assert!(result_keyed_value.value.is_tuple());
+		assert!(matches!(*result_keyed_value.value, Ast::Tuple(_)));
 
 		let enabled_keyed_value = &inline[1];
 		assert_eq!(enabled_keyed_value.key.text(), "enabled");
@@ -312,7 +313,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Inline(inline) = result[0].first_unchecked() else {
+		let Some(Ast::Inline(inline)) = result[0].nodes.first() else {
 			panic!("not inline")
 		};
 		assert_eq!(inline.len(), 1);

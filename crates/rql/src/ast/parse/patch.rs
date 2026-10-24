@@ -39,12 +39,14 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Patch(patch) = result.first_unchecked() else {
+		let Some(Ast::Patch(patch)) = result.nodes.first() else {
 			panic!("not patch")
 		};
 		assert_eq!(patch.assignments.len(), 1);
 
-		let infix = patch.assignments[0].as_infix();
+		let Ast::Infix(infix) = &patch.assignments[0] else {
+			panic!("not infix")
+		};
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
 		assert_eq!(infix.right.as_identifier().text(), "status");
 	}
@@ -58,16 +60,20 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Patch(patch) = result.first_unchecked() else {
+		let Some(Ast::Patch(patch)) = result.nodes.first() else {
 			panic!("not patch")
 		};
 		assert_eq!(patch.assignments.len(), 2);
 
-		let first_infix = patch.assignments[0].as_infix();
+		let Ast::Infix(first_infix) = &patch.assignments[0] else {
+			panic!("not infix")
+		};
 		assert!(matches!(first_infix.operator, InfixOperator::As(_)));
 		assert_eq!(first_infix.right.as_identifier().text(), "status");
 
-		let second_infix = patch.assignments[1].as_infix();
+		let Ast::Infix(second_infix) = &patch.assignments[1] else {
+			panic!("not infix")
+		};
 		assert!(matches!(second_infix.operator, InfixOperator::As(_)));
 		assert_eq!(second_infix.right.as_identifier().text(), "score");
 	}

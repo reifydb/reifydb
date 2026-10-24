@@ -238,7 +238,7 @@ pub mod tests {
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
-		let Ast::Call(call) = result[0].first_unchecked() else {
+		let Some(Ast::Call(call)) = result[0].nodes.first() else {
 			panic!("expected Call")
 		};
 		assert_eq!(call.function.name.text(), "greet");
@@ -253,7 +253,7 @@ pub mod tests {
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
-		let Ast::Call(call) = result[0].first_unchecked() else {
+		let Some(Ast::Call(call)) = result[0].nodes.first() else {
 			panic!("expected Call")
 		};
 		assert_eq!(call.function.name.text(), "greet");
@@ -268,7 +268,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::CallFunction(call) = result[0].first_unchecked() else {
+		let Some(Ast::CallFunction(call)) = result[0].nodes.first() else {
 			panic!("not call function")
 		};
 		assert_eq!(call.function.name.text(), "func");
@@ -284,7 +284,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::CallFunction(call) = result[0].first_unchecked() else {
+		let Some(Ast::CallFunction(call)) = result[0].nodes.first() else {
 			panic!("not call function")
 		};
 		assert_eq!(call.function.name.text(), "func");
@@ -300,7 +300,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::CallFunction(call) = result[0].first_unchecked() else {
+		let Some(Ast::CallFunction(call)) = result[0].nodes.first() else {
 			panic!("not call function")
 		};
 		assert_eq!(call.function.name.text(), "hex");
@@ -317,7 +317,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::CallFunction(call) = result[0].first_unchecked() else {
+		let Some(Ast::CallFunction(call)) = result[0].nodes.first() else {
 			panic!("not call function")
 		};
 		assert_eq!(call.function.name.text(), "sha256");
@@ -336,7 +336,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		assert!(result[0].first_unchecked().as_identifier().text() == "identifier");
+		assert!(result[0].nodes.first().unwrap().as_identifier().text() == "identifier");
 	}
 
 	#[test]
@@ -347,7 +347,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::CallFunction(call) = result[0].first_unchecked() else {
+		let Some(Ast::CallFunction(call)) = result[0].nodes.first() else {
 			panic!("not call function")
 		};
 		assert_eq!(call.function.name.text(), "set");
@@ -363,7 +363,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let infix = result[0].first_unchecked().as_infix();
+		let Some(Ast::Infix(infix)) = result[0].nodes.first() else {
+			panic!("not infix")
+		};
 		assert_eq!(infix.left.as_identifier().text(), "namespace");
 		assert_eq!(infix.right.as_identifier().text(), "identifier");
 	}

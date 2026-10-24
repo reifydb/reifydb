@@ -74,7 +74,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert_eq!(aggregate.map.len(), 1);
@@ -103,7 +103,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert_eq!(aggregate.map.len(), 1);
@@ -132,12 +132,14 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert_eq!(aggregate.map.len(), 1);
 
-		let projection = &aggregate.map[0].as_infix();
+		let Ast::Infix(projection) = &aggregate.map[0] else {
+			panic!("not infix")
+		};
 
 		// Colon syntax lowers to the AS operator, so the projection is an infix with the call on the left.
 		let Ast::CallFunction(min_call) = &*projection.left else {
@@ -168,7 +170,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert_eq!(aggregate.map.len(), 0);
@@ -187,7 +189,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert_eq!(aggregate.map.len(), 0);
@@ -209,7 +211,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert_eq!(aggregate.map.len(), 2);
@@ -251,7 +253,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert_eq!(aggregate.map.len(), 1);
@@ -279,7 +281,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert_eq!(aggregate.map.len(), 0);
@@ -297,7 +299,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert!(
@@ -317,7 +319,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		assert!(matches!(result.first_unchecked(), Ast::Aggregate(aggregate) if aggregate.with.is_none()));
+		assert!(matches!(result.nodes.first(), Some(Ast::Aggregate(aggregate)) if aggregate.with.is_none()));
 	}
 
 	#[test]
@@ -349,7 +351,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert_eq!(aggregate.map.len(), 1);
@@ -376,7 +378,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Aggregate(aggregate) = result.first_unchecked() else {
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
 			panic!("not aggregate")
 		};
 		assert_eq!(aggregate.map.len(), 1);

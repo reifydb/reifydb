@@ -184,7 +184,7 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let Ast::Window(window) = result[0].first_unchecked() else {
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
 			panic!("not window")
 		};
 
@@ -203,7 +203,7 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let Ast::Window(window) = result[0].first_unchecked() else {
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
 			panic!("not window")
 		};
 
@@ -222,7 +222,7 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let Ast::Window(window) = result[0].first_unchecked() else {
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
 			panic!("not window")
 		};
 
@@ -240,7 +240,7 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let Ast::Window(window) = result[0].first_unchecked() else {
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
 			panic!("not window")
 		};
 
@@ -259,7 +259,7 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let Ast::Window(window) = result[0].first_unchecked() else {
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
 			panic!("not window")
 		};
 
@@ -278,7 +278,7 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let Ast::Window(window) = result[0].first_unchecked() else {
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
 			panic!("not window")
 		};
 
@@ -297,7 +297,7 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let Ast::Window(window) = result[0].first_unchecked() else {
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
 			panic!("not window")
 		};
 
@@ -317,7 +317,7 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let Ast::Window(window) = result[0].first_unchecked() else {
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
 			panic!("not window")
 		};
 
@@ -336,7 +336,7 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let Ast::Window(window) = result[0].first_unchecked() else {
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
 			panic!("not window")
 		};
 

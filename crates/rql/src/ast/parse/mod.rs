@@ -872,7 +872,7 @@ pub mod tests {
 
 	use crate::{
 		ast::{
-			ast::{Ast, AstFrom},
+			ast::{Ast, AstFrom, AstLiteral},
 			parse::{Parser, Precedence, Precedence::Term, parse},
 		},
 		diagnostic::AstError,
@@ -1134,12 +1134,18 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Between(between) = result[0].first_unchecked() else {
+		let Some(Ast::Between(between)) = result[0].nodes.first() else {
 			panic!("not between")
 		};
 		assert_eq!(between.value.as_identifier().text(), "x");
-		assert_eq!(between.lower.as_literal_number().value(), "1");
-		assert_eq!(between.upper.as_literal_number().value(), "10");
+		let Ast::Literal(AstLiteral::Number(lower_number)) = &*between.lower else {
+			panic!("not number")
+		};
+		assert_eq!(lower_number.value(), "1");
+		let Ast::Literal(AstLiteral::Number(upper_number)) = &*between.upper else {
+			panic!("not number")
+		};
+		assert_eq!(upper_number.value(), "10");
 	}
 
 	#[test]

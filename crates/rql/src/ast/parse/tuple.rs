@@ -49,8 +49,9 @@ pub mod tests {
 	use crate::{
 		ast::{
 			ast::{
+				Ast,
 				Ast::{Identifier, Infix, Literal},
-				AstInfix,
+				AstInfix, AstLiteral,
 				AstLiteral::Number,
 				InfixOperator,
 			},
@@ -67,7 +68,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 		assert!(node.nodes.is_empty());
 	}
 
@@ -79,7 +82,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 		let Some(node) = node.nodes.first() else {
 			panic!()
 		};
@@ -97,7 +102,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 		let Some(node) = node.nodes.first() else {
 			panic!()
 		};
@@ -115,15 +122,20 @@ pub mod tests {
 		};
 		assert_eq!(left.value(), "1");
 
-		let node = right.as_tuple();
+		let Ast::Tuple(node) = &**right else {
+			panic!("not tuple")
+		};
 		let Some(node) = node.nodes.first() else {
 			panic!()
 		};
-		let AstInfix {
+		let Ast::Infix(AstInfix {
 			left,
 			right,
 			..
-		} = &node.as_infix();
+		}) = node
+		else {
+			panic!("not infix")
+		};
 
 		let Literal(Number(left)) = &left.as_ref() else {
 			panic!()
@@ -144,7 +156,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = &result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 		let Some(node) = node.nodes.first() else {
 			panic!()
 		};
@@ -162,7 +176,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 		let Some(node) = node.nodes.first() else {
 			panic!()
 		};
@@ -190,7 +206,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 
 		let Some(Identifier(u_node)) = &node.nodes.first() else {
 			panic!()
@@ -211,7 +229,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 
 		let Some(u_node) = node.nodes.first() else {
 			panic!()
@@ -262,7 +282,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 
 		let Some(u_node) = node.nodes.first() else {
 			panic!()
@@ -317,7 +339,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 
 		for entry in &node.nodes {
 			assert!(matches!(entry, Infix(AstInfix { left, operator, .. })
@@ -337,7 +361,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 
 		let Some(u_node) = node.nodes.first() else {
 			panic!()
@@ -388,17 +414,25 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let node = result[0].first_unchecked().as_tuple();
+		let Some(Ast::Tuple(node)) = result[0].nodes.first() else {
+			panic!("not tuple")
+		};
 		assert_eq!(node.nodes.len(), 1);
 
-		let infix = node.nodes[0].as_infix();
+		let Ast::Infix(infix) = &node.nodes[0] else {
+			panic!("not infix")
+		};
 
-		let left_number = infix.left.as_literal_number();
+		let Ast::Literal(AstLiteral::Number(left_number)) = &*infix.left else {
+			panic!("not number")
+		};
 		assert_eq!(left_number.value(), "-1");
 
 		assert!(matches!(infix.operator, InfixOperator::Subtract(_)));
 
-		let right_number = infix.right.as_literal_number();
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*infix.right else {
+			panic!("not number")
+		};
 		assert_eq!(right_number.value(), "2");
 	}
 }

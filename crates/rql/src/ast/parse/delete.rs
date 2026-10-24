@@ -97,7 +97,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Delete(delete) = result.first_unchecked() else {
+		let Some(Ast::Delete(delete)) = result.nodes.first() else {
 			panic!("not delete")
 		};
 
@@ -119,7 +119,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Delete(delete) = result.first_unchecked() else {
+		let Some(Ast::Delete(delete)) = result.nodes.first() else {
 			panic!("not delete")
 		};
 
@@ -139,14 +139,16 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Delete(delete) = result.first_unchecked() else {
+		let Some(Ast::Delete(delete)) = result.nodes.first() else {
 			panic!("not delete")
 		};
 
 		let Ast::Filter(filter) = &*delete.filter else {
 			panic!("not filter")
 		};
-		let condition = filter.node.as_infix();
+		let Ast::Infix(condition) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert!(matches!(condition.operator, InfixOperator::And(_)));
 	}
 
@@ -162,7 +164,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Delete(delete) = result.first_unchecked() else {
+		let Some(Ast::Delete(delete)) = result.nodes.first() else {
 			panic!("not delete")
 		};
 
@@ -184,7 +186,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Delete(delete) = result.first_unchecked() else {
+		let Some(Ast::Delete(delete)) = result.nodes.first() else {
 			panic!("not delete")
 		};
 
@@ -207,7 +209,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Delete(delete) = result.first_unchecked() else {
+		let Some(Ast::Delete(delete)) = result.nodes.first() else {
 			panic!("not delete")
 		};
 

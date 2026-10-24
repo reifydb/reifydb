@@ -39,7 +39,7 @@ use reifydb_value::{
 
 use crate::{
 	Result,
-	ast::ast::{Ast, AstCreate},
+	ast::ast::{Ast, AstCreate, AstLiteral},
 	plan::logical::{
 		Compiler, CreateAuthenticationNode, CreateIdentityAttributeNode, CreateIdentityNode, CreatePolicyNode,
 		CreateRoleNode, LogicalPlan,
@@ -107,7 +107,7 @@ impl<'bump> Compiler<'bump> {
 }
 
 pub(crate) fn column_saturation_property(value: &Ast<'_>) -> Result<ColumnPropertyKind> {
-	if value.is_literal_none() {
+	if matches!(value, Ast::Literal(AstLiteral::None(_))) {
 		return Ok(ColumnPropertyKind::Saturation(ColumnSaturationStrategy::None));
 	}
 	if value.is_identifier() && value.as_identifier().text() == "error" {

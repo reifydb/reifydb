@@ -327,7 +327,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Alter(alter) = result.first_unchecked() else {
+		let Some(Ast::Alter(alter)) = result.nodes.first() else {
 			panic!("not alter")
 		};
 		let alter = &**alter;
@@ -364,7 +364,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let Ast::Alter(alter) = result.first_unchecked() else {
+		let Some(Ast::Alter(alter)) = result.nodes.first() else {
 			panic!("not alter")
 		};
 		let alter = &**alter;

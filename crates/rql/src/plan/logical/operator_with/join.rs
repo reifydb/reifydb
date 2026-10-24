@@ -204,7 +204,7 @@ mod tests {
 	fn join_with(source: &str) -> Result<JoinWith> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source)?;
-		let Ast::Join(join) = statements[0].first_unchecked() else {
+		let Some(Ast::Join(join)) = statements[0].nodes.first() else {
 			panic!("not join")
 		};
 		let (AstJoin::InnerJoin {

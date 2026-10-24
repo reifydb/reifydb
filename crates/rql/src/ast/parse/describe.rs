@@ -30,7 +30,7 @@ pub mod tests {
 
 	use crate::{
 		ast::{
-			ast::{Ast, AstCast, AstDescribe, AstType},
+			ast::{Ast, AstCast, AstDescribe, AstLiteral, AstType},
 			parse::parse,
 		},
 		token::tokenize,
@@ -44,7 +44,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Describe(describe) = result.first().unwrap().first_unchecked() else {
+		let Some(Ast::Describe(describe)) = result.first().unwrap().nodes.first() else {
 			panic!("not describe")
 		};
 		match describe {
@@ -65,7 +65,10 @@ pub mod tests {
 				else {
 					panic!("not cast")
 				};
-				assert_eq!(expression.as_literal_number().value(), "9924");
+				let Ast::Literal(AstLiteral::Number(expression_number)) = &**expression else {
+					panic!("not number")
+				};
+				assert_eq!(expression_number.value(), "9924");
 				assert!(matches!(ty, AstType::Unconstrained(name) if name.text() == "int8"));
 			}
 		};

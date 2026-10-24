@@ -24,7 +24,7 @@ pub mod tests {
 
 	use crate::{
 		ast::{
-			ast::{Ast, InfixOperator},
+			ast::{Ast, AstLiteral, InfixOperator},
 			parse::Parser,
 		},
 		token::{keyword::Keyword, token::TokenKind, tokenize},
@@ -40,10 +40,15 @@ pub mod tests {
 
 		assert_eq!(filter.token.kind, TokenKind::Keyword(Keyword::Filter));
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert_eq!(node.left.as_identifier().text(), "price");
 		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
-		assert_eq!(node.right.as_literal_number().value(), "100");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*node.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "100");
 	}
 
 	#[test]
@@ -54,11 +59,21 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
-		assert_eq!(node.right.as_literal_number().value(), "100");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*node.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "100");
 
-		let nested = node.left.as_tuple().nodes[0].as_infix();
+		let Ast::Tuple(left_tuple) = &*node.left else {
+			panic!("not tuple")
+		};
+		let Ast::Infix(nested) = &left_tuple.nodes[0] else {
+			panic!("not infix")
+		};
 		assert_eq!(nested.left.as_identifier().text(), "price");
 		assert!(matches!(nested.operator, InfixOperator::Add(_)));
 		assert_eq!(nested.right.as_identifier().text(), "fee");
@@ -72,10 +87,15 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert_eq!(node.left.as_identifier().text(), "price");
 		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
-		assert_eq!(node.right.as_literal_number().value(), "100");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*node.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "100");
 	}
 
 	#[test]
@@ -86,10 +106,15 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert_eq!(node.left.as_identifier().text(), "value");
 		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
-		assert_eq!(node.right.as_literal_number().value(), "100");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*node.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "100");
 	}
 
 	#[test]
@@ -100,18 +125,30 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert!(matches!(node.operator, InfixOperator::And(_)));
 
-		let left = node.left.as_infix();
+		let Ast::Infix(left) = &*node.left else {
+			panic!("not infix")
+		};
 		assert_eq!(left.left.as_identifier().text(), "price");
 		assert!(matches!(left.operator, InfixOperator::GreaterThan(_)));
-		assert_eq!(left.right.as_literal_number().value(), "100");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*left.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "100");
 
-		let right = node.right.as_infix();
+		let Ast::Infix(right) = &*node.right else {
+			panic!("not infix")
+		};
 		assert_eq!(right.left.as_identifier().text(), "qty");
 		assert!(matches!(right.operator, InfixOperator::LessThan(_)));
-		assert_eq!(right.right.as_literal_number().value(), "50");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*right.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "50");
 	}
 
 	#[test]
@@ -122,14 +159,20 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert!(matches!(node.operator, InfixOperator::Or(_)));
 
-		let left = node.left.as_infix();
+		let Ast::Infix(left) = &*node.left else {
+			panic!("not infix")
+		};
 		assert_eq!(left.left.as_identifier().text(), "active");
 		assert!(matches!(left.operator, InfixOperator::Equal(_)));
 
-		let right = node.right.as_infix();
+		let Ast::Infix(right) = &*node.right else {
+			panic!("not infix")
+		};
 		assert_eq!(right.left.as_identifier().text(), "premium");
 		assert!(matches!(right.operator, InfixOperator::Equal(_)));
 	}
@@ -142,14 +185,20 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert!(matches!(node.operator, InfixOperator::Xor(_)));
 
-		let left = node.left.as_infix();
+		let Ast::Infix(left) = &*node.left else {
+			panic!("not infix")
+		};
 		assert_eq!(left.left.as_identifier().text(), "active");
 		assert!(matches!(left.operator, InfixOperator::Equal(_)));
 
-		let right = node.right.as_infix();
+		let Ast::Infix(right) = &*node.right else {
+			panic!("not infix")
+		};
 		assert_eq!(right.left.as_identifier().text(), "guest");
 		assert!(matches!(right.operator, InfixOperator::Equal(_)));
 	}
@@ -162,13 +211,19 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert!(matches!(node.operator, InfixOperator::Or(_)));
 
-		let left_and = node.left.as_infix();
+		let Ast::Infix(left_and) = &*node.left else {
+			panic!("not infix")
+		};
 		assert!(matches!(left_and.operator, InfixOperator::And(_)));
 
-		let right_or = node.right.as_infix();
+		let Ast::Infix(right_or) = &*node.right else {
+			panic!("not infix")
+		};
 		assert_eq!(right_or.left.as_identifier().text(), "premium");
 		assert!(matches!(right_or.operator, InfixOperator::Equal(_)));
 	}
@@ -183,10 +238,15 @@ pub mod tests {
 
 		assert_eq!(filter.token.kind, TokenKind::Keyword(Keyword::Filter));
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert_eq!(node.left.as_identifier().text(), "price");
 		assert!(matches!(node.operator, InfixOperator::GreaterThan(_)));
-		assert_eq!(node.right.as_literal_number().value(), "100");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*node.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "100");
 	}
 
 	#[test]
@@ -197,19 +257,33 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert!(matches!(node.operator, InfixOperator::And(_)));
 
-		let left = node.left.as_infix();
+		let Ast::Infix(left) = &*node.left else {
+			panic!("not infix")
+		};
 		assert!(matches!(left.operator, InfixOperator::GreaterThan(_)));
-		assert_eq!(left.right.as_literal_number().value(), "100");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*left.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "100");
 
-		let nested = left.left.as_tuple().nodes[0].as_infix();
+		let Ast::Tuple(left_tuple) = &*left.left else {
+			panic!("not tuple")
+		};
+		let Ast::Infix(nested) = &left_tuple.nodes[0] else {
+			panic!("not infix")
+		};
 		assert_eq!(nested.left.as_identifier().text(), "price");
 		assert!(matches!(nested.operator, InfixOperator::Add(_)));
 		assert_eq!(nested.right.as_identifier().text(), "fee");
 
-		let right = node.right.as_infix();
+		let Ast::Infix(right) = &*node.right else {
+			panic!("not infix")
+		};
 		assert_eq!(right.left.as_identifier().text(), "active");
 		assert!(matches!(right.operator, InfixOperator::Equal(_)));
 	}
@@ -222,13 +296,19 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert!(matches!(node.operator, InfixOperator::And(_)));
 
-		let left = node.left.as_infix();
+		let Ast::Infix(left) = &*node.left else {
+			panic!("not infix")
+		};
 		assert_eq!(left.left.as_identifier().text(), "active");
 
-		let right = node.right.as_infix();
+		let Ast::Infix(right) = &*node.right else {
+			panic!("not infix")
+		};
 		assert_eq!(right.left.as_identifier().text(), "price");
 	}
 
@@ -240,14 +320,20 @@ pub mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		let node = filter.node.as_infix();
+		let Ast::Infix(node) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert!(matches!(node.operator, InfixOperator::Or(_)));
 
-		let left = node.left.as_infix();
+		let Ast::Infix(left) = &*node.left else {
+			panic!("not infix")
+		};
 		assert_eq!(left.left.as_identifier().text(), "active");
 		assert!(matches!(left.operator, InfixOperator::Equal(_)));
 
-		let right = node.right.as_infix();
+		let Ast::Infix(right) = &*node.right else {
+			panic!("not infix")
+		};
 		assert_eq!(right.left.as_identifier().text(), "premium");
 		assert!(matches!(right.operator, InfixOperator::Equal(_)));
 	}

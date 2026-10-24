@@ -26,7 +26,7 @@ pub mod tests {
 
 	use super::*;
 	use crate::{
-		ast::ast::{Ast, InfixOperator},
+		ast::ast::{Ast, AstLiteral, InfixOperator},
 		token::tokenize,
 	};
 
@@ -40,14 +40,16 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let statement = result.pop().unwrap();
-		let ast_node = statement.first_unchecked();
+		let ast_node = statement.nodes.first().unwrap();
 
 		let Ast::Extend(extend) = ast_node else {
 			panic!("not extend")
 		};
 		assert_eq!(extend.nodes.len(), 1);
 
-		let number = extend.nodes[0].as_literal_number();
+		let Ast::Literal(AstLiteral::Number(number)) = &extend.nodes[0] else {
+			panic!("not number")
+		};
 		assert_eq!(number.value(), "1");
 	}
 
@@ -60,15 +62,19 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Extend(extend) = result.first_unchecked() else {
+		let Some(Ast::Extend(extend)) = result.nodes.first() else {
 			panic!("not extend")
 		};
 		assert_eq!(extend.nodes.len(), 1);
 
-		let infix = extend.nodes[0].as_infix();
+		let Ast::Infix(infix) = &extend.nodes[0] else {
+			panic!("not infix")
+		};
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
 
-		let left_infix = infix.left.as_infix();
+		let Ast::Infix(left_infix) = &*infix.left else {
+			panic!("not infix")
+		};
 		assert!(matches!(left_infix.operator, InfixOperator::Multiply(_)));
 		assert_eq!(left_infix.left.as_identifier().text(), "price");
 		assert_eq!(left_infix.right.as_identifier().text(), "quantity");
@@ -86,16 +92,20 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let Ast::Extend(extend) = result.first_unchecked() else {
+		let Some(Ast::Extend(extend)) = result.nodes.first() else {
 			panic!("not extend")
 		};
 		assert_eq!(extend.nodes.len(), 2);
 
-		let first_infix = extend.nodes[0].as_infix();
+		let Ast::Infix(first_infix) = &extend.nodes[0] else {
+			panic!("not infix")
+		};
 		assert!(matches!(first_infix.operator, InfixOperator::As(_)));
 		assert_eq!(first_infix.right.as_identifier().text(), "total");
 
-		let second_infix = extend.nodes[1].as_infix();
+		let Ast::Infix(second_infix) = &extend.nodes[1] else {
+			panic!("not infix")
+		};
 		assert!(matches!(second_infix.operator, InfixOperator::As(_)));
 		assert_eq!(second_infix.right.as_identifier().text(), "tax");
 	}

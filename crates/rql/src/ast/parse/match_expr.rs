@@ -247,7 +247,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Match(m) = result[0].first_unchecked() else {
+		let Some(Ast::Match(m)) = result[0].nodes.first() else {
 			panic!("not match")
 		};
 		assert!(m.subject.is_some());
@@ -265,7 +265,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Match(m) = result[0].first_unchecked() else {
+		let Some(Ast::Match(m)) = result[0].nodes.first() else {
 			panic!("not match")
 		};
 		assert_eq!(m.arms.len(), 2);
@@ -294,7 +294,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Match(m) = result[0].first_unchecked() else {
+		let Some(Ast::Match(m)) = result[0].nodes.first() else {
 			panic!("not match")
 		};
 		assert_eq!(m.arms.len(), 2);
@@ -310,7 +310,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Match(m) = result[0].first_unchecked() else {
+		let Some(Ast::Match(m)) = result[0].nodes.first() else {
 			panic!("not match")
 		};
 		assert_eq!(m.arms.len(), 3);
@@ -329,7 +329,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Match(m) = result[0].first_unchecked() else {
+		let Some(Ast::Match(m)) = result[0].nodes.first() else {
 			panic!("not match")
 		};
 		assert_eq!(m.arms.len(), 2);

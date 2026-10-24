@@ -133,7 +133,7 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let node = result.first_unchecked();
+		let node = result.nodes.first().unwrap();
 		if let Ast::Append(AstAppend::Query {
 			with,
 			..
@@ -216,7 +216,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let node = result.first_unchecked();
+		let node = result.nodes.first().unwrap();
 		let Ast::Append(AstAppend::Query {
 			..
 		}) = node

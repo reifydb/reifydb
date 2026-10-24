@@ -94,7 +94,7 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Number(AstLiteralNumber(token))) = &result[0].first_unchecked() else {
+		let Some(Literal(AstLiteral::Number(AstLiteralNumber(token)))) = result[0].nodes.first() else {
 			panic!()
 		};
 		assert_eq!(token.fragment.text(), "-2");
@@ -108,10 +108,10 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Prefix(AstPrefix {
+		let Some(Ast::Prefix(AstPrefix {
 			operator,
 			node,
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -134,10 +134,10 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Prefix(AstPrefix {
+		let Some(Ast::Prefix(AstPrefix {
 			operator,
 			node,
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -160,10 +160,10 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Prefix(AstPrefix {
+		let Some(Ast::Prefix(AstPrefix {
 			operator,
 			node,
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -186,10 +186,10 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Prefix(AstPrefix {
+		let Some(Ast::Prefix(AstPrefix {
 			operator,
 			node,
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -209,10 +209,10 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Prefix(AstPrefix {
+		let Some(Ast::Prefix(AstPrefix {
 			operator,
 			node,
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -233,12 +233,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Ast::Prefix(AstPrefix {
+		let Some(Ast::Prefix(AstPrefix {
 			operator,
 			node,
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
-			panic!("Expected prefix expression, got {:?}", result[0].first_unchecked())
+			panic!("Expected prefix expression, got {:?}", result[0].nodes.first())
 		};
 		assert!(matches!(*operator, AstPrefixOperator::Not(_)));
 
