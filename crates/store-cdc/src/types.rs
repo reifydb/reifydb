@@ -24,9 +24,20 @@ pub struct BlockSummary {
 pub struct Block {
 	pub summary: BlockSummary,
 	pub entries: Vec<Arc<Cdc>>,
+	resident: ByteSize,
 }
 
 impl Block {
+	pub fn new(summary: BlockSummary, entries: Vec<Arc<Cdc>>) -> Self {
+		let resident =
+			entries.iter().fold(ByteSize::ZERO, |acc, cdc| acc.saturating_add(cdc_resident_bytes(cdc)));
+		Self {
+			summary,
+			entries,
+			resident,
+		}
+	}
+
 	pub fn id(&self) -> BlockId {
 		self.summary.id
 	}
@@ -44,7 +55,7 @@ impl Block {
 	}
 
 	pub fn resident_bytes(&self) -> ByteSize {
-		self.entries.iter().fold(ByteSize::ZERO, |acc, cdc| acc.saturating_add(cdc_resident_bytes(cdc)))
+		self.resident
 	}
 }
 
