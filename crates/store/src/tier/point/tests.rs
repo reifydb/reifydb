@@ -55,7 +55,7 @@ fn body(entry: &EncodedPodRow) -> String {
 }
 
 fn fill(tier: &PointTier<D>, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-	tier.overwrite(operator, key, row);
+	tier.overwrite(operator, vec![(key, row)]);
 }
 
 fn footprint(key: &EncodedKey, row: &EncodedPodRow) -> usize {
@@ -76,7 +76,7 @@ fn a_remembered_row_is_served_back() {
 
 	assert!(tier.get(OP_A, &k).is_none(), "a key nothing remembered must report unknown so the read falls through");
 
-	tier.overwrite(OP_A, k.clone(), row("v"));
+	tier.overwrite(OP_A, vec![(k.clone(), row("v"))]);
 
 	let served = tier.get(OP_A, &k).expect("the tier knows the key it was just told about");
 	assert_eq!(body(&served), "v", "the tier must hand back the row it was given, not a stale or empty one");
@@ -87,11 +87,11 @@ fn invalidate_drops_only_the_named_key() {
 	let tier = roomy();
 	let dropped = key(group_a(), CACHED, b"x");
 	let sibling = key(group_a(), CACHED, b"y");
-	tier.overwrite(OP_A, dropped.clone(), row("x"));
-	tier.overwrite(OP_A, sibling.clone(), row("y"));
+	tier.overwrite(OP_A, vec![(dropped.clone(), row("x"))]);
+	tier.overwrite(OP_A, vec![(sibling.clone(), row("y"))]);
 	assert_eq!(tier.entries(), 2, "both keys must be resident, or sibling survival is not under test");
 
-	tier.invalidate(OP_A, &dropped);
+	tier.invalidate(OP_A, &[dropped.clone()]);
 
 	assert_eq!(tier.get(OP_A, &dropped), None, "an invalidated key must go unknown, never stay as a stale row");
 	let served = tier.get(OP_A, &sibling).expect("the sibling sharing the group and keyspace must survive");
@@ -104,8 +104,8 @@ fn invalidate_drops_only_the_named_key() {
 fn invalidate_operator_spares_other_operators() {
 	let tier = roomy();
 	let k = key(group_a(), CACHED, b"k");
-	tier.overwrite(OP_A, k.clone(), row("a"));
-	tier.overwrite(OP_B, k.clone(), row("b"));
+	tier.overwrite(OP_A, vec![(k.clone(), row("a"))]);
+	tier.overwrite(OP_B, vec![(k.clone(), row("b"))]);
 	assert_eq!(tier.entries(), 2, "the same inner key under two operators must occupy two entries");
 
 	tier.invalidate_dimensions_where(|candidate| *candidate == OP_A);
@@ -174,7 +174,7 @@ fn charge_and_release_balance_across_the_entry_lifecycle() {
 	assert_eq!(tier.resident_bytes().as_bytes(), per_entry);
 	balanced("insert");
 
-	tier.invalidate(OP_A, &sample_key);
+	tier.invalidate(OP_A, &[sample_key.clone()]);
 	assert_eq!(tier.resident_bytes(), ByteSize::ZERO, "invalidating the last entry must release its bytes");
 	balanced("invalidate");
 
@@ -202,17 +202,17 @@ fn a_long_key_charges_its_heap_bytes() {
 	assert_eq!(short.heap_size(), 0, "the short fixture must stay inline, or the comparison below is meaningless");
 	assert!(long.heap_size() > 0, "the long fixture must spill to the heap, or nothing tests heap accounting");
 
-	tier.overwrite(OP_A, short.clone(), row("v"));
+	tier.overwrite(OP_A, vec![(short.clone(), row("v"))]);
 	let after_short = tier.resident_bytes().as_bytes();
-	tier.overwrite(OP_A, long.clone(), row("v"));
+	tier.overwrite(OP_A, vec![(long.clone(), row("v"))]);
 
 	assert_eq!(
 		tier.resident_bytes().as_bytes() - after_short,
 		(ENTRY_OVERHEAD + long.heap_size() + 1) as u64,
 		"a heap allocated key must be charged for its allocation"
 	);
-	tier.invalidate(OP_A, &short);
-	tier.invalidate(OP_A, &long);
+	tier.invalidate(OP_A, &[short.clone()]);
+	tier.invalidate(OP_A, &[long.clone()]);
 	assert_eq!(
 		tier.resident_bytes(),
 		ByteSize::ZERO,
@@ -243,9 +243,9 @@ fn a_key_too_short_to_carry_a_keyspace_is_declined_not_cached() {
 		let short = EncodedKey::new(&bytes);
 		assert_eq!(keyspace_of(&short), None, "a {} byte key cannot carry a keyspace", bytes.len());
 
-		tier.overwrite(OP_A, short.clone(), row("v"));
+		tier.overwrite(OP_A, vec![(short.clone(), row("v"))]);
 		assert_eq!(tier.get(OP_A, &short), None, "a declined key must never be served back");
-		tier.invalidate(OP_A, &short);
+		tier.invalidate(OP_A, &[short.clone()]);
 	}
 
 	assert_eq!(tier.entries(), 0, "declining must mean not caching, not caching under a wrong keyspace");
@@ -271,7 +271,7 @@ fn a_published_fill_evicts_to_capacity() {
 
 	for group in [group_a(), group_b(), GroupId::hashed(Hash128(12))] {
 		let k = key(group, CACHED, b"a");
-		tier.overwrite(OP_A, k, sample_row.clone());
+		tier.overwrite(OP_A, vec![(k, sample_row.clone())]);
 	}
 
 	assert_eq!(tier.evictions(), 1, "the third published fill must push exactly one victim out");
@@ -308,7 +308,7 @@ fn every_shard_is_reachable_and_carries_the_configured_per_shard_budget() {
 	}
 
 	for group in 1..=64u128 {
-		tier.overwrite(OP_A, key(GroupId::hashed(Hash128(group)), CACHED, b"a"), row("v"));
+		tier.overwrite(OP_A, vec![(key(GroupId::hashed(Hash128(group)), CACHED, b"a"), row("v"))]);
 	}
 	assert_eq!(tier.entries(), 64);
 	assert!(
@@ -379,8 +379,7 @@ fn keyspace_counters_are_summed_across_every_shard() {
 	for group in 1..=64u128 {
 		tier.overwrite(
 			OP_A,
-			key(GroupId::hashed(Hash128(group)), KeyspaceId::SOURCE_WATERMARK, b"a"),
-			row("v"),
+			vec![(key(GroupId::hashed(Hash128(group)), KeyspaceId::SOURCE_WATERMARK, b"a"), row("v"))],
 		);
 	}
 	for group in 1..=64u128 {
@@ -429,7 +428,7 @@ fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 
 	let resident = key(group_a(), KeyspaceId::JOIN_LEFT, b"a");
 	let charged = footprint(&resident, &row("v")) as u64;
-	tier.overwrite(OP_A, resident.clone(), row("v"));
+	tier.overwrite(OP_A, vec![(resident.clone(), row("v"))]);
 	assert_eq!(tier.bucket_metrics().len(), 1, "the keyspace that was written must be the only one reported");
 	assert_eq!(tier.bucket_metrics()[0].bucket, KeyspaceId::JOIN_LEFT);
 	assert_eq!(
@@ -442,7 +441,7 @@ fn a_tier_that_was_never_read_reports_no_keyspace_rows() {
 	assert_eq!(tier.bucket_metrics()[0].counters.misses, 0);
 
 	assert!(tier.get(OP_A, &resident).is_some());
-	tier.invalidate(OP_A, &resident);
+	tier.invalidate(OP_A, &[resident.clone()]);
 	assert_eq!(tier.bucket_metrics().len(), 1, "invalidating drops resident state but not the counters");
 	assert_eq!(tier.bucket_metrics()[0].entries, 0, "and the residency it reports must go with the state");
 	assert_eq!(tier.bucket_metrics()[0].counters.hits, 1, "the hit taken before the invalidate must survive it");
@@ -453,10 +452,10 @@ fn an_overwrite_publishes_the_row_instead_of_dropping_the_entry() {
 	let tier = roomy();
 	let k = key(group_a(), KeyspaceId::NODE_COUNTER, b"a");
 
-	tier.overwrite(OP_A, k.clone(), row("v1"));
+	tier.overwrite(OP_A, vec![(k.clone(), row("v1"))]);
 	assert_eq!(body(&tier.get(OP_A, &k).expect("an overwritten key must be known")), "v1");
 
-	tier.overwrite(OP_A, k.clone(), row("v2"));
+	tier.overwrite(OP_A, vec![(k.clone(), row("v2"))]);
 	assert_eq!(body(&tier.get(OP_A, &k).expect("the key stays known across overwrites")), "v2");
 	assert_eq!(tier.metrics().misses, 0, "every read here was answerable from the tier");
 	assert_eq!(tier.entries(), 1, "an overwrite must reuse the entry, not add a second one for the same key");
@@ -467,7 +466,7 @@ fn one_keyspaces_entries_spread_across_shards() {
 	let tier = sharded(ByteSize::from_mib(1).as_bytes(), 16);
 	for index in 0..512 {
 		let k = key(GroupId::ROOT, CACHED, format!("g{index}").as_bytes());
-		tier.overwrite(OP_A, k, row("v"));
+		tier.overwrite(OP_A, vec![(k, row("v"))]);
 	}
 
 	assert_eq!(tier.entries(), 512, "the fixture must fit without eviction, or the spread is not what is measured");
@@ -513,10 +512,10 @@ fn the_index_stays_consistent_with_the_slab() {
 	}
 	assert!(tier.index_is_consistent(), "insert must leave every index position addressing its own slot");
 
-	tier.overwrite(OP_A, key(group_a(), CACHED, b"k1"), row("replaced"));
+	tier.overwrite(OP_A, vec![(key(group_a(), CACHED, b"k1"), row("replaced"))]);
 	assert!(tier.index_is_consistent(), "an overwrite must reuse the position, not orphan it");
 
-	tier.invalidate(OP_A, &key(group_a(), CACHED, b"k0"));
+	tier.invalidate(OP_A, &[key(group_a(), CACHED, b"k0").clone()]);
 	assert!(tier.index_is_consistent(), "a removal must repair the position of the slot swapped into the hole");
 	assert_eq!(
 		body(&tier.get(OP_A, &key(group_a(), CACHED, b"k1")).expect("k1 must survive")),
@@ -530,7 +529,7 @@ fn the_index_stays_consistent_with_the_slab() {
 	assert!(tier.evictions() > 0, "the fixture must actually evict, or the check below repeats the insert case");
 	assert!(tier.index_is_consistent(), "eviction must repair the index the same way an invalidate does");
 
-	tier.overwrite(OP_B, key(group_a(), CACHED, b"other"), row("b"));
+	tier.overwrite(OP_B, vec![(key(group_a(), CACHED, b"other"), row("b"))]);
 	tier.invalidate_dimensions_where(|candidate| *candidate == OP_A);
 	assert!(tier.index_is_consistent(), "the index rebuilt after an operator drop must address the survivors");
 	assert_eq!(tier.entries(), 1, "only the other operator's entry may remain");
@@ -545,11 +544,11 @@ fn a_refused_supersede_leaves_the_row_and_its_accounting_alone() {
 	.expect("a tier with a byte budget must be constructed");
 	let k = key(group_a(), CACHED, b"a");
 
-	tier.overwrite(OP_A, k.clone(), row("resident"));
+	tier.overwrite(OP_A, vec![(k.clone(), row("resident"))]);
 	let charged = tier.resident_bytes();
 	let entries = tier.entries();
 
-	tier.overwrite(OP_A, k.clone(), row("no"));
+	tier.overwrite(OP_A, vec![(k.clone(), row("no"))]);
 
 	let served = tier.get(OP_A, &k).expect("a refusal must not evict the key it declined to replace");
 	assert_eq!(body(&served), "resident", "the refused row replaced the resident one, so a downgrade won");
@@ -567,8 +566,8 @@ fn an_accepted_supersede_recharges_from_the_merged_row() {
 	.expect("a tier with a byte budget must be constructed");
 	let k = key(group_a(), CACHED, b"a");
 
-	tier.overwrite(OP_A, k.clone(), row("ab"));
-	tier.overwrite(OP_A, k.clone(), row("abcdefgh"));
+	tier.overwrite(OP_A, vec![(k.clone(), row("ab"))]);
+	tier.overwrite(OP_A, vec![(k.clone(), row("abcdefgh"))]);
 
 	let served = tier.get(OP_A, &k).expect("an accepted supersede must leave the key resident");
 	assert_eq!(body(&served), "abcdefghab", "the merge dropped what the domain chose to keep");
@@ -606,4 +605,51 @@ fn a_key_read_every_round_survives_eviction_past_the_sample_threshold() {
 	);
 	assert_eq!(tier.entries(), resident as usize, "the budget must hold the resident count flat across the run");
 	assert_eq!(tier.resident_bytes(), tier.tallied_bytes(), "the budget drifted from the bytes the tier holds");
+}
+
+#[test]
+fn a_batched_overwrite_places_every_row_across_every_shard() {
+	let tier = sharded(ByteSize::from_mib(1).as_bytes(), 8);
+	let rows: Vec<(EncodedKey, EncodedPodRow)> = (0..200u32)
+		.map(|index| (key(group_a(), CACHED, &index.to_be_bytes()), row(&index.to_string())))
+		.collect();
+
+	tier.overwrite(OP_A, rows.clone());
+
+	assert_eq!(tier.entries(), 200, "every row of the batch must be resident");
+	for (key, row) in &rows {
+		let served = tier.get(OP_A, key).expect("every batched row must be served back");
+		assert_eq!(body(&served), body(row));
+	}
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
+}
+
+#[test]
+fn a_batched_invalidate_drops_exactly_the_named_keys_across_every_shard() {
+	let tier = sharded(ByteSize::from_mib(1).as_bytes(), 8);
+	let keys: Vec<EncodedKey> = (0..200u32).map(|index| key(group_a(), CACHED, &index.to_be_bytes())).collect();
+	tier.overwrite(OP_A, keys.iter().map(|key| (key.clone(), row("v"))).collect());
+	let dropped: Vec<EncodedKey> = keys.iter().step_by(2).cloned().collect();
+	let kept: Vec<EncodedKey> = keys.iter().skip(1).step_by(2).cloned().collect();
+
+	tier.invalidate(OP_A, &dropped);
+
+	assert!(dropped.iter().all(|key| tier.get(OP_A, key).is_none()), "every named key must go unknown");
+	assert!(kept.iter().all(|key| tier.get(OP_A, key).is_some()), "no unnamed key may be dropped");
+	assert_eq!(tier.entries(), kept.len());
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
+}
+
+#[test]
+fn a_batched_overwrite_longer_than_one_hold_places_every_row_of_a_shard() {
+	let tier = sharded(ByteSize::from_mib(4).as_bytes(), 1);
+	let rows: Vec<(EncodedKey, EncodedPodRow)> = (0..1000u32)
+		.map(|index| (key(group_a(), CACHED, &index.to_be_bytes()), row(&index.to_string())))
+		.collect();
+
+	tier.overwrite(OP_A, rows.clone());
+
+	assert_eq!(tier.entries(), 1000, "every row of a batch spanning several holds must be resident");
+	assert!(rows.iter().all(|(key, row)| tier.get(OP_A, key).is_some_and(|served| body(&served) == body(row))));
+	assert_eq!(tier.resident_bytes(), tier.tallied_bytes());
 }

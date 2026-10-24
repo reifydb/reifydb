@@ -302,6 +302,7 @@ impl StandardMultiStore {
 		}
 
 		let mut persistent_aligned = vec![VersionedGetResult::NotFound; key_slices.len()];
+		let mut filled = Vec::new();
 		if !persistent_slices.is_empty()
 			&& let Some(persistent) = &self.persistent
 		{
@@ -314,18 +315,17 @@ impl StandardMultiStore {
 				if let VersionedGetResult::Value {
 					value,
 					version: v,
-				} = &result && let Some(point) = &self.point
+				} = &result && self.point.is_some()
 				{
-					point.insert(
-						table,
-						table_keys[slot].storage_key,
-						table_keys[slot].key.clone(),
-						*v,
-						Some(value.clone()),
-					);
+					filled.push((table_keys[slot].key.clone(), *v, Some(value.clone())));
 				}
 				persistent_aligned[slot] = result;
 			}
+		}
+		if let Some(point) = &self.point
+			&& !filled.is_empty()
+		{
+			point.insert(table, filled);
 		}
 
 		Ok((read_aligned, persistent_aligned))
@@ -337,13 +337,14 @@ impl StandardMultiStore {
 			return;
 		}
 		for (table, entries) in batches.iter() {
-			for (key, _) in entries {
-				if let Some(range) = &self.range {
+			if let Some(range) = &self.range {
+				for (key, _) in entries {
 					range.invalidate(*table, key);
 				}
-				if let Some(point) = &self.point {
-					point.invalidate(*table, storage_key(key).1, key);
-				}
+			}
+			if let Some(point) = &self.point {
+				let keys: Vec<EncodedKey> = entries.iter().map(|(key, _)| key.clone()).collect();
+				point.invalidate(*table, &keys);
 			}
 		}
 	}

@@ -12,11 +12,7 @@ use reifydb_core::event::metric::{MultiEviction, MultiPersist, MultiSweptEvent};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_core::lifecycle::progress::Progress;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-use reifydb_core::{
-	common::CommitVersion,
-	default,
-	interface::store::{EntryKind, storage_key},
-};
+use reifydb_core::{common::CommitVersion, default, interface::store::EntryKind};
 use reifydb_core::{event::EventBus, lifecycle::watermark::EvictionWatermark};
 use reifydb_runtime::{
 	context::clock::Clock,
@@ -334,28 +330,20 @@ impl FlushEngine {
 		if self.point.is_none() && self.range.is_none() {
 			return;
 		}
+		let mut filled = Vec::new();
+		let mut withdrawn = Vec::new();
 		if persistent_object {
 			for (key, version, value) in to_persist {
 				if accepted.contains(key.as_slice()) {
 					if let Some(range) = &self.range {
 						range.insert(table, key.clone(), *version, value.clone());
 					}
-					if let Some(point) = &self.point {
-						point.insert(
-							table,
-							storage_key(key).1,
-							key.clone(),
-							*version,
-							value.clone(),
-						);
-					}
+					filled.push((key.clone(), *version, value.clone()));
 				} else {
 					if let Some(range) = &self.range {
 						range.invalidate(table, key);
 					}
-					if let Some(point) = &self.point {
-						point.invalidate(table, storage_key(key).1, key);
-					}
+					withdrawn.push(key.clone());
 				}
 			}
 		} else {
@@ -363,10 +351,12 @@ impl FlushEngine {
 				if let Some(range) = &self.range {
 					range.invalidate(table, key);
 				}
-				if let Some(point) = &self.point {
-					point.invalidate(table, storage_key(key).1, key);
-				}
+				withdrawn.push(key.clone());
 			}
+		}
+		if let Some(point) = &self.point {
+			point.insert(table, filled);
+			point.invalidate(table, &withdrawn);
 		}
 	}
 
@@ -399,7 +389,7 @@ mod tests {
 		event::EventListener,
 		interface::{
 			catalog::{id::TableId, storage::StorageId},
-			store::EntryLayout,
+			store::{EntryLayout, storage_key},
 		},
 		key::row::RowKey,
 	};
@@ -768,7 +758,7 @@ mod tests {
 		write(&actor.commit, kind, &key, 1, "v1");
 		write(&actor.commit, kind, &key, 2, "v2");
 
-		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(kind, vec![(key.clone(), CommitVersion(2), Some(val("stale")))]);
 
 		actor.sweep(CommitVersion(2));
 
@@ -794,7 +784,7 @@ mod tests {
 		actor.persistent
 			.set(CommitVersion(1), HashMap::from([(kind, vec![(key.clone(), Some(val("v1")))])]))
 			.unwrap();
-		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(1), Some(val("v1")));
+		point.insert(kind, vec![(key.clone(), CommitVersion(1), Some(val("v1")))]);
 		write(&actor.commit, kind, &key, 1, "v1");
 		actor.commit.set(CommitVersion(2), HashMap::from([(kind, vec![(key.clone(), None)])]));
 
@@ -822,7 +812,7 @@ mod tests {
 			.set(CommitVersion(3), HashMap::from([(kind, vec![(rejected.clone(), Some(val("high")))])]))
 			.unwrap();
 
-		point.insert(kind, storage_key(&rejected).1, rejected.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(kind, vec![(rejected.clone(), CommitVersion(2), Some(val("stale")))]);
 
 		write(&actor.commit, kind, &rejected, 2, "low");
 		write(&actor.commit, kind, &accepted, 2, "b");
@@ -853,7 +843,7 @@ mod tests {
 		let kind = EntryKind::Source(StorageId::Table(TableId(23)), EntryLayout::Row);
 		let key = ek("k");
 
-		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(5), Some(val("newer")));
+		point.insert(kind, vec![(key.clone(), CommitVersion(5), Some(val("newer")))]);
 
 		write(&actor.commit, kind, &key, 2, "older");
 		actor.sweep(CommitVersion(2));
@@ -879,7 +869,7 @@ mod tests {
 		let kind = EntryKind::Source(StorageId::Table(TableId(24)), EntryLayout::Row);
 		let key = ek("k");
 
-		point.insert(kind, storage_key(&key).1, key.clone(), CommitVersion(2), Some(val("stale")));
+		point.insert(kind, vec![(key.clone(), CommitVersion(2), Some(val("stale")))]);
 		write(&actor.commit, kind, &key, 2, "v2");
 
 		actor.sweep(CommitVersion(2));

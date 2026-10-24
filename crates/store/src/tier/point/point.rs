@@ -8,6 +8,8 @@ use crate::tier::point::{
 	find_position,
 };
 
+const OVERWRITE_HOLD_KEYS: usize = 256;
+
 impl<D: PointDomain> PointTier<D> {
 	pub fn get(&self, dimension: D::Dimension, key: &D::Key) -> Option<D::Row> {
 		let bucket = D::metric_bucket(key)?;
@@ -30,28 +32,63 @@ impl<D: PointDomain> PointTier<D> {
 		Some(row)
 	}
 
-	pub fn overwrite(&self, dimension: D::Dimension, key: D::Key, row: D::Row) {
-		let Some(bucket) = D::metric_bucket(&key) else {
-			return;
-		};
-		let mut shard = self.shard_at(dimension, &key).lock();
-		let id = PointKey {
-			dimension,
-			key,
-		};
-		insert_entry(&mut shard, bucket, id, row);
+	pub fn overwrite(&self, dimension: D::Dimension, rows: Vec<(D::Key, D::Row)>) {
+		let mut placed: Vec<(usize, usize, D::Key, D::Row)> = rows
+			.into_iter()
+			.filter_map(|(key, row)| {
+				let bucket = D::metric_bucket(&key)?;
+				Some((self.shard_index(dimension, &key), bucket, key, row))
+			})
+			.collect();
+		placed.sort_by_key(|(index, ..)| *index);
+		let mut placed = placed.into_iter().peekable();
+		while let Some((index, bucket, key, row)) = placed.next() {
+			let mut shard = self.shard(index).lock();
+			insert_entry(
+				&mut shard,
+				bucket,
+				PointKey {
+					dimension,
+					key,
+				},
+				row,
+			);
+			let mut held = 1;
+			while let Some((_, bucket, key, row)) = placed.next_if(|(next, ..)| *next == index) {
+				if held == OVERWRITE_HOLD_KEYS {
+					drop(shard);
+					shard = self.shard(index).lock();
+					held = 0;
+				}
+				held += 1;
+				insert_entry(
+					&mut shard,
+					bucket,
+					PointKey {
+						dimension,
+						key,
+					},
+					row,
+				);
+			}
+		}
 	}
 
-	pub fn invalidate(&self, dimension: D::Dimension, key: &D::Key) {
-		if D::metric_bucket(key).is_none() {
-			return;
+	pub fn invalidate(&self, dimension: D::Dimension, keys: &[D::Key]) {
+		let mut placed: Vec<(usize, &D::Key)> = keys
+			.iter()
+			.filter(|key| D::metric_bucket(key).is_some())
+			.map(|key| (self.shard_index(dimension, key), key))
+			.collect();
+		placed.sort_by_key(|(index, _)| *index);
+		let mut placed = placed.into_iter().peekable();
+		while let Some((index, key)) = placed.next() {
+			let mut shard = self.shard(index).lock();
+			remove_key(&mut shard, dimension, key);
+			while let Some((_, key)) = placed.next_if(|(next, _)| *next == index) {
+				remove_key(&mut shard, dimension, key);
+			}
 		}
-		let hash = bucket_hash(&dimension, key);
-		let mut shard = self.shard_at(dimension, key).lock();
-		let Some(position) = find_position(&shard, hash, dimension, key) else {
-			return;
-		};
-		shard.remove_at(position as usize);
 	}
 
 	pub fn invalidate_dimensions_where(&self, victim: impl Fn(&D::Dimension) -> bool) {
@@ -81,6 +118,13 @@ impl<D: PointDomain> PointTier<D> {
 			}
 			shard.budget.release(ByteSize::from_bytes(released as u64));
 		}
+	}
+}
+
+fn remove_key<D: PointDomain>(shard: &mut Shard<D>, dimension: D::Dimension, key: &D::Key) {
+	let hash = bucket_hash(&dimension, key);
+	if let Some(position) = find_position(shard, hash, dimension, key) {
+		shard.remove_at(position as usize);
 	}
 }
 

@@ -44,6 +44,10 @@ impl<D: PointDomain> PointTier<D> {
 		(hasher.finish() % self.inner.shards.len() as u64) as usize
 	}
 
+	pub(super) fn shard(&self, index: usize) -> &Mutex<Shard<D>> {
+		&self.inner.shards[index]
+	}
+
 	pub(super) fn shard_at(&self, dimension: D::Dimension, key: &D::Key) -> &Mutex<Shard<D>> {
 		&self.inner.shards[self.shard_index(dimension, key)]
 	}

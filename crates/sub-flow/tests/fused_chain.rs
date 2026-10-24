@@ -195,6 +195,18 @@ fn units(db: &TestDb) -> Vec<(u64, u64)> {
 	units
 }
 
+fn started_units(db: &TestDb) -> Vec<(u64, u64)> {
+	// a reopened engine registers its fused units after build returns, so an immediate read can see none yet.
+	poll_until(
+		|| {
+			let units = units(db);
+			(!units.is_empty()).then_some(units)
+		},
+		TIMEOUT,
+	)
+	.expect("the reopened engine never registered its flow units")
+}
+
 #[test]
 fn the_flow_units_table_lists_every_member_under_its_head_and_no_unfused_flow() {
 	// A table that misses a member or lists a lone flow reports fusion that did not run.
@@ -382,10 +394,10 @@ fn a_fused_child_of_a_series_view_reads_its_dictionary_column_as_entry_ids() {
 	}
 	let mut db = open_with_sym_ids(&path);
 	let head = catalog_id(&db, "flows", "a");
+	let started = started_units(&db);
 	assert!(
-		units(&db).contains(&(catalog_id(&db, "flows", "b"), head)),
-		"b must run fused under the series view a for this test to mean anything: {:?}",
-		units(&db)
+		started.contains(&(catalog_id(&db, "flows", "b"), head)),
+		"b must run fused under the series view a for this test to mean anything: {started:?}"
 	);
 	settle(&db);
 	db.command("INSERT fu::src [{ id: 3, sym: 'red' }]");
@@ -498,7 +510,7 @@ fn a_view_created_at_runtime_on_a_middle_member_reads_it_and_the_unit_splits_at_
 	}
 	let mut db = open(&path, true);
 	assert_eq!(
-		units(&db),
+		started_units(&db),
 		under(&db, "a", &["a", "b"]),
 		"b now has two readers, so only a and b may fuse at the next start"
 	);
