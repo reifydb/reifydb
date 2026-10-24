@@ -197,7 +197,7 @@ pub mod tests {
 
 	use crate::{
 		ast::{
-			ast::{AstFrom, InfixOperator, InfixOperator::As},
+			ast::{Ast, AstFrom, InfixOperator, InfixOperator::As},
 			parse::Parser,
 		},
 		token::tokenize,
@@ -213,7 +213,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Source {
@@ -239,7 +241,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Source {
@@ -265,7 +269,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Inline {
@@ -289,7 +295,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Inline {
@@ -298,7 +306,9 @@ pub mod tests {
 			} => {
 				assert_eq!(list.len(), 1);
 
-				let row = list[0].as_inline();
+				let Ast::Inline(row) = &list[0] else {
+					panic!("not inline")
+				};
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(row.keyed_values[0].key.text(), "field");
@@ -320,7 +330,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Inline {
@@ -329,13 +341,17 @@ pub mod tests {
 			} => {
 				assert_eq!(list.len(), 2);
 
-				let row = list[0].as_inline();
+				let Ast::Inline(row) = &list[0] else {
+					panic!("not inline")
+				};
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(row.keyed_values[0].key.text(), "field");
 				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 
-				let row = list[1].as_inline();
+				let Ast::Inline(row) = &list[1] else {
+					panic!("not inline")
+				};
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(row.keyed_values[0].key.text(), "field");
@@ -355,7 +371,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Source {
@@ -381,7 +399,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Source {
@@ -407,7 +427,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Source {
@@ -434,7 +456,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Source {
@@ -461,7 +485,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Inline {
@@ -470,7 +496,9 @@ pub mod tests {
 			} => {
 				assert_eq!(list.len(), 1);
 
-				let row = list[0].as_inline();
+				let Ast::Inline(row) = &list[0] else {
+					panic!("not inline")
+				};
 				assert_eq!(row.keyed_values.len(), 1);
 
 				assert_eq!(row.keyed_values[0].key.text(), "field");
@@ -490,7 +518,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Inline {
@@ -519,7 +549,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Generator(generator) => {
@@ -550,7 +582,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let from = result.first_unchecked().as_from();
+		let Ast::From(from) = result.first_unchecked() else {
+			panic!("not from")
+		};
 
 		match from {
 			AstFrom::Generator(generator) => {

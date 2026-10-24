@@ -268,7 +268,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let call = result[0].first_unchecked().as_call_function();
+		let Ast::CallFunction(call) = result[0].first_unchecked() else {
+			panic!("not call function")
+		};
 		assert_eq!(call.function.name.text(), "func");
 		assert!(call.function.namespaces.is_empty());
 		assert_eq!(call.arguments.len(), 0);
@@ -282,7 +284,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let call = result[0].first_unchecked().as_call_function();
+		let Ast::CallFunction(call) = result[0].first_unchecked() else {
+			panic!("not call function")
+		};
 		assert_eq!(call.function.name.text(), "func");
 		assert!(call.function.namespaces.is_empty());
 		assert_eq!(call.arguments.len(), 1);
@@ -296,7 +300,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let call = result[0].first_unchecked().as_call_function();
+		let Ast::CallFunction(call) = result[0].first_unchecked() else {
+			panic!("not call function")
+		};
 		assert_eq!(call.function.name.text(), "hex");
 		assert_eq!(call.function.namespaces.len(), 1);
 		assert_eq!(call.function.namespaces[0].text(), "blob");
@@ -311,7 +317,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let call = result[0].first_unchecked().as_call_function();
+		let Ast::CallFunction(call) = result[0].first_unchecked() else {
+			panic!("not call function")
+		};
 		assert_eq!(call.function.name.text(), "sha256");
 		assert_eq!(call.function.namespaces.len(), 3);
 		assert_eq!(call.function.namespaces[0].text(), "ext");
@@ -339,7 +347,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let call = result[0].first_unchecked().as_call_function();
+		let Ast::CallFunction(call) = result[0].first_unchecked() else {
+			panic!("not call function")
+		};
 		assert_eq!(call.function.name.text(), "set");
 		assert_eq!(call.function.namespaces.len(), 1);
 		assert_eq!(call.function.namespaces[0].text(), "clock");

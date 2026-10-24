@@ -367,12 +367,20 @@ mod tests {
 	};
 	use reifydb_value::value::duration::Duration;
 
-	use crate::{Result, ast::parse_str, bump::Bump, plan::logical::Compiler};
+	use crate::{
+		Result,
+		ast::{ast::Ast, parse_str},
+		bump::Bump,
+		plan::logical::Compiler,
+	};
 
 	fn apply_with(source: &str) -> Result<ApplyWith> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source)?;
-		Compiler::compile_apply_with(statements[0].first_unchecked().as_apply().with.as_ref())
+		let Ast::Apply(apply) = statements[0].first_unchecked() else {
+			panic!("not apply")
+		};
+		Compiler::compile_apply_with(apply.with.as_ref())
 	}
 
 	fn seconds(n: i64) -> Option<WithSpan> {

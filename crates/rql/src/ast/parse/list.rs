@@ -49,7 +49,10 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use bumpalo::Bump;
 
-	use crate::{ast::parse::Parser, token::tokenize};
+	use crate::{
+		ast::{ast::Ast, parse::Parser},
+		token::tokenize,
+	};
 
 	#[test]
 	fn test_empty() {
@@ -61,7 +64,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let list = result.first_unchecked().as_list();
+		let Ast::List(list) = result.first_unchecked() else {
+			panic!("not list")
+		};
 		assert_eq!(list.len(), 0);
 	}
 
@@ -75,7 +80,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let list = result.first_unchecked().as_list();
+		let Ast::List(list) = result.first_unchecked() else {
+			panic!("not list")
+		};
 		assert_eq!(list.len(), 1);
 
 		let literal = list[0].as_literal_text();
@@ -92,7 +99,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let list = result.first_unchecked().as_list();
+		let Ast::List(list) = result.first_unchecked() else {
+			panic!("not list")
+		};
 		assert_eq!(list.len(), 3);
 
 		let first = list[0].as_literal_number();
@@ -115,10 +124,14 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let list = result.first_unchecked().as_list();
+		let Ast::List(list) = result.first_unchecked() else {
+			panic!("not list")
+		};
 		assert_eq!(list.len(), 1);
 
-		let row = list[0].as_inline();
+		let Ast::Inline(row) = &list[0] else {
+			panic!("not inline")
+		};
 		assert_eq!(row.keyed_values.len(), 1);
 
 		assert_eq!(row.keyed_values[0].key.text(), "field");

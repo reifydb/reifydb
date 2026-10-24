@@ -202,7 +202,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Ast::Join(join) = result.first_unchecked() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		let AstJoin::LeftJoin {
 			subquery,
@@ -248,7 +251,10 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
-		let result = result[0].first_unchecked().as_join();
+		let Ast::Join(result) = result[0].first_unchecked() else {
+			panic!("not join")
+		};
+		let result = &**result;
 
 		let AstJoin::LeftJoin {
 			subquery,
@@ -296,7 +302,9 @@ pub mod tests {
 		let statement = &result[0];
 		assert_eq!(statement.nodes.len(), 2);
 
-		let from = statement.nodes[0].as_from();
+		let Ast::From(from) = &statement.nodes[0] else {
+			panic!("not from")
+		};
 		match from {
 			AstFrom::Source {
 				source,
@@ -308,7 +316,10 @@ pub mod tests {
 			_ => panic!("Expected Source"),
 		}
 
-		let join = statement.nodes[1].as_join();
+		let Ast::Join(join) = &statement.nodes[1] else {
+			panic!("not join")
+		};
+		let join = &**join;
 		let AstJoin::LeftJoin {
 			subquery,
 			using_clause,
@@ -353,7 +364,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Ast::Join(join) = result.first_unchecked() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		let AstJoin::LeftJoin {
 			subquery,
@@ -405,7 +419,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Ast::Join(join) = result.first_unchecked() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		let AstJoin::LeftJoin {
 			using_clause,
@@ -427,7 +444,10 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
-		let result = result[0].first_unchecked().as_join();
+		let Ast::Join(result) = result[0].first_unchecked() else {
+			panic!("not join")
+		};
+		let result = &**result;
 
 		let AstJoin::LeftJoin {
 			using_clause,
@@ -461,7 +481,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Ast::Join(join) = result.first_unchecked() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		match &join {
 			AstJoin::NaturalJoin {
@@ -497,7 +520,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Ast::Join(join) = result.first_unchecked() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		match &join {
 			AstJoin::NaturalJoin {
@@ -520,7 +546,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Ast::Join(join) = result.first_unchecked() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		match &join {
 			AstJoin::NaturalJoin {
@@ -545,7 +574,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Ast::Join(join) = result.first_unchecked() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		match &join {
 			AstJoin::NaturalJoin {
@@ -570,7 +602,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Ast::Join(join) = result.first_unchecked() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		let AstJoin::InnerJoin {
 			subquery,
@@ -608,7 +643,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Ast::Join(join) = result.first_unchecked() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		let AstJoin::InnerJoin {
 			using_clause,

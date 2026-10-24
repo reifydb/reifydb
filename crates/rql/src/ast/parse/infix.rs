@@ -78,6 +78,7 @@ pub mod tests {
 	use crate::{
 		ast::{
 			ast::{
+				Ast,
 				Ast::{Infix, Literal},
 				AstInfix, AstLiteral, InfixOperator,
 			},
@@ -161,8 +162,8 @@ pub mod tests {
 		} = result[0].first_unchecked().as_infix();
 		assert!(matches!(operator, InfixOperator::LessThan(_)));
 
-		left.as_cast();
-		right.as_cast();
+		assert!(matches!(**left, Ast::Cast(_)));
+		assert!(matches!(**right, Ast::Cast(_)));
 	}
 
 	#[test]

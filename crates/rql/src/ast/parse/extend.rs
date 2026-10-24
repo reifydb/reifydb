@@ -25,7 +25,10 @@ pub mod tests {
 	use bumpalo::Bump;
 
 	use super::*;
-	use crate::{ast::ast::InfixOperator, token::tokenize};
+	use crate::{
+		ast::ast::{Ast, InfixOperator},
+		token::tokenize,
+	};
 
 	#[test]
 	fn test_extend_constant_number() {
@@ -39,7 +42,9 @@ pub mod tests {
 		let statement = result.pop().unwrap();
 		let ast_node = statement.first_unchecked();
 
-		let extend = ast_node.as_extend();
+		let Ast::Extend(extend) = ast_node else {
+			panic!("not extend")
+		};
 		assert_eq!(extend.nodes.len(), 1);
 
 		let number = extend.nodes[0].as_literal_number();
@@ -55,7 +60,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let extend = result.first_unchecked().as_extend();
+		let Ast::Extend(extend) = result.first_unchecked() else {
+			panic!("not extend")
+		};
 		assert_eq!(extend.nodes.len(), 1);
 
 		let infix = extend.nodes[0].as_infix();
@@ -79,7 +86,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let extend = result.first_unchecked().as_extend();
+		let Ast::Extend(extend) = result.first_unchecked() else {
+			panic!("not extend")
+		};
 		assert_eq!(extend.nodes.len(), 2);
 
 		let first_infix = extend.nodes[0].as_infix();

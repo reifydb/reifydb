@@ -97,7 +97,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let delete = result.first_unchecked().as_delete();
+		let Ast::Delete(delete) = result.first_unchecked() else {
+			panic!("not delete")
+		};
 
 		assert!(delete.target.namespace.is_empty());
 		assert_eq!(delete.target.name.text(), "users");
@@ -117,7 +119,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let delete = result.first_unchecked().as_delete();
+		let Ast::Delete(delete) = result.first_unchecked() else {
+			panic!("not delete")
+		};
 
 		assert_eq!(delete.target.namespace[0].text(), "test");
 		assert_eq!(delete.target.name.text(), "users");
@@ -135,9 +139,13 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let delete = result.first_unchecked().as_delete();
+		let Ast::Delete(delete) = result.first_unchecked() else {
+			panic!("not delete")
+		};
 
-		let filter = delete.filter.as_filter();
+		let Ast::Filter(filter) = &*delete.filter else {
+			panic!("not filter")
+		};
 		let condition = filter.node.as_infix();
 		assert!(matches!(condition.operator, InfixOperator::And(_)));
 	}
@@ -154,9 +162,13 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let delete = result.first_unchecked().as_delete();
+		let Ast::Delete(delete) = result.first_unchecked() else {
+			panic!("not delete")
+		};
 
-		let take = delete.take.as_ref().unwrap().as_take();
+		let Some(Ast::Take(take)) = delete.take.as_deref() else {
+			panic!("not take")
+		};
 		assert_eq!(take.take, AstTakeValue::Literal(5));
 	}
 
@@ -172,9 +184,13 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let delete = result.first_unchecked().as_delete();
+		let Ast::Delete(delete) = result.first_unchecked() else {
+			panic!("not delete")
+		};
 
-		let take = delete.take.as_ref().unwrap().as_take();
+		let Some(Ast::Take(take)) = delete.take.as_deref() else {
+			panic!("not take")
+		};
 		assert_eq!(take.take, AstTakeValue::Literal(5));
 		assert!(delete.returning.is_some());
 	}
@@ -191,7 +207,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let delete = result.first_unchecked().as_delete();
+		let Ast::Delete(delete) = result.first_unchecked() else {
+			panic!("not delete")
+		};
 
 		assert!(delete.take.is_none());
 	}

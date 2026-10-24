@@ -124,7 +124,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let assert_node = result[0].first_unchecked().as_assert();
+		let Ast::Assert(assert_node) = result[0].first_unchecked() else {
+			panic!("not assert")
+		};
 		assert_eq!(assert_node.token.kind, TokenKind::Keyword(Keyword::Assert));
 		assert!(assert_node.node.is_some());
 		assert!(assert_node.body.is_none());
@@ -140,7 +142,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let assert_node = result[0].first_unchecked().as_assert();
+		let Ast::Assert(assert_node) = result[0].first_unchecked() else {
+			panic!("not assert")
+		};
 		assert!(assert_node.node.is_some());
 		assert!(assert_node.message.is_some());
 	}
@@ -168,7 +172,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let assert_node = result[0].first_unchecked().as_assert();
+		let Ast::Assert(assert_node) = result[0].first_unchecked() else {
+			panic!("not assert")
+		};
 		assert!(assert_node.node.is_none());
 		assert!(assert_node.body.is_some());
 		assert!(!assert_node.expect_error);
@@ -185,7 +191,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let assert_node = result[0].first_unchecked().as_assert();
+		let Ast::Assert(assert_node) = result[0].first_unchecked() else {
+			panic!("not assert")
+		};
 		assert!(assert_node.node.is_none());
 		assert!(assert_node.body.is_some());
 		assert!(assert_node.expect_error);
@@ -199,7 +207,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let assert_node = result[0].first_unchecked().as_assert();
+		let Ast::Assert(assert_node) = result[0].first_unchecked() else {
+			panic!("not assert")
+		};
 		assert!(assert_node.expect_error);
 		assert!(assert_node.message.is_some());
 	}

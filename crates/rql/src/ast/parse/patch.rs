@@ -25,7 +25,10 @@ pub mod tests {
 	use bumpalo::Bump;
 
 	use super::*;
-	use crate::{ast::ast::InfixOperator, token::tokenize};
+	use crate::{
+		ast::ast::{Ast, InfixOperator},
+		token::tokenize,
+	};
 
 	#[test]
 	fn test_patch_colon_syntax() {
@@ -36,7 +39,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let patch = result.first_unchecked().as_patch();
+		let Ast::Patch(patch) = result.first_unchecked() else {
+			panic!("not patch")
+		};
 		assert_eq!(patch.assignments.len(), 1);
 
 		let infix = patch.assignments[0].as_infix();
@@ -53,7 +58,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let patch = result.first_unchecked().as_patch();
+		let Ast::Patch(patch) = result.first_unchecked() else {
+			panic!("not patch")
+		};
 		assert_eq!(patch.assignments.len(), 2);
 
 		let first_infix = patch.assignments[0].as_infix();

@@ -264,7 +264,10 @@ mod tests {
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
-		let AstAlter::Identity(identity) = node.as_alter() else {
+		let Ast::Alter(alter) = node else {
+			panic!("not alter")
+		};
+		let AstAlter::Identity(identity) = &**alter else {
 			panic!("expected AlterIdentity")
 		};
 		assert_eq!(identity.name.text(), "alice");
@@ -281,7 +284,10 @@ mod tests {
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
 		let node = stmts[0].first_unchecked();
-		let AstAlter::Identity(identity) = node.as_alter() else {
+		let Ast::Alter(alter) = node else {
+			panic!("not alter")
+		};
+		let AstAlter::Identity(identity) = &**alter else {
 			panic!("expected AlterIdentity")
 		};
 		assert_eq!(identity.entries.len(), 2);

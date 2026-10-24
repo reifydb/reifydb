@@ -91,6 +91,7 @@ pub mod tests {
 	use crate::{
 		ast::{
 			ast::{
+				Ast,
 				Ast::{Identifier, Literal},
 				AstLiteral::{Number, Text},
 			},
@@ -107,7 +108,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let inline = result[0].first_unchecked().as_block();
+		let Ast::Inline(inline) = result[0].first_unchecked() else {
+			panic!("not inline")
+		};
 		assert_eq!(inline.len(), 0);
 	}
 
@@ -119,7 +122,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let inline = result[0].first_unchecked().as_block();
+		let Ast::Inline(inline) = result[0].first_unchecked() else {
+			panic!("not inline")
+		};
 		assert_eq!(inline.len(), 1);
 
 		let keyed_value = &inline[0];
@@ -138,7 +143,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let inline = result[0].first_unchecked().as_block();
+		let Ast::Inline(inline) = result[0].first_unchecked() else {
+			panic!("not inline")
+		};
 		assert_eq!(inline.len(), 1);
 
 		let keyed_value = &inline[0];
@@ -157,7 +164,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let inline = result[0].first_unchecked().as_block();
+		let Ast::Inline(inline) = result[0].first_unchecked() else {
+			panic!("not inline")
+		};
 		assert_eq!(inline.len(), 1);
 
 		let keyed_value = &inline[0];
@@ -176,7 +185,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let inline = result[0].first_unchecked().as_block();
+		let Ast::Inline(inline) = result[0].first_unchecked() else {
+			panic!("not inline")
+		};
 		assert_eq!(inline.len(), 2);
 
 		let id_keyed_value = &inline[0];
@@ -202,7 +213,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let inline = result[0].first_unchecked().as_block();
+		let Ast::Inline(inline) = result[0].first_unchecked() else {
+			panic!("not inline")
+		};
 		assert_eq!(inline.len(), 1);
 
 		let keyed_value = &inline[0];
@@ -225,7 +238,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let inline = result[0].first_unchecked().as_block();
+		let Ast::Inline(inline) = result[0].first_unchecked() else {
+			panic!("not inline")
+		};
 		assert_eq!(inline.len(), 3);
 
 		let id_keyed_value = &inline[0];
@@ -255,7 +270,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let inline = result[0].first_unchecked().as_block();
+		let Ast::Inline(inline) = result[0].first_unchecked() else {
+			panic!("not inline")
+		};
 		assert_eq!(inline.len(), 2);
 
 		let id_keyed_value = &inline[0];
@@ -273,7 +290,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let inline = result[0].first_unchecked().as_block();
+		let Ast::Inline(inline) = result[0].first_unchecked() else {
+			panic!("not inline")
+		};
 		assert_eq!(inline.len(), 2);
 
 		let result_keyed_value = &inline[0];
@@ -282,7 +301,7 @@ pub mod tests {
 
 		let enabled_keyed_value = &inline[1];
 		assert_eq!(enabled_keyed_value.key.text(), "enabled");
-		assert!(enabled_keyed_value.value.is_prefix());
+		assert!(matches!(*enabled_keyed_value.value, Ast::Prefix(_)));
 	}
 
 	#[test]
@@ -293,14 +312,16 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let inline = result[0].first_unchecked().as_block();
+		let Ast::Inline(inline) = result[0].first_unchecked() else {
+			panic!("not inline")
+		};
 		assert_eq!(inline.len(), 1);
 
 		let user_keyed_value = &inline[0];
 		assert_eq!(user_keyed_value.key.text(), "user");
-		assert!(user_keyed_value.value.is_block());
-
-		let nested_inline = user_keyed_value.value.as_block();
+		let Ast::Inline(nested_inline) = &*user_keyed_value.value else {
+			panic!("not inline")
+		};
 		assert_eq!(nested_inline.len(), 2);
 		assert_eq!(nested_inline[0].key.text(), "id");
 		assert_eq!(nested_inline[1].key.text(), "name");

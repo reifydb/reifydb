@@ -1134,7 +1134,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let between = result[0].first_unchecked().as_between();
+		let Ast::Between(between) = result[0].first_unchecked() else {
+			panic!("not between")
+		};
 		assert_eq!(between.value.as_identifier().text(), "x");
 		assert_eq!(between.lower.as_literal_number().value(), "1");
 		assert_eq!(between.upper.as_literal_number().value(), "10");

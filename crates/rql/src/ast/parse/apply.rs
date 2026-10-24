@@ -64,7 +64,7 @@ pub mod tests {
 	use bumpalo::Bump;
 
 	use super::*;
-	use crate::token::tokenize;
+	use crate::{ast::ast::Ast, token::tokenize};
 
 	#[test]
 	fn test_apply_counter_no_args() {
@@ -76,7 +76,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let apply = result.first_unchecked().as_apply();
+		let Ast::Apply(apply) = result.first_unchecked() else {
+			panic!("not apply")
+		};
 		assert_eq!(apply.operator.token.value(), "counter");
 		assert_eq!(apply.params.len(), 0);
 	}
@@ -91,7 +93,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let apply = result.first_unchecked().as_apply();
+		let Ast::Apply(apply) = result.first_unchecked() else {
+			panic!("not apply")
+		};
 		assert_eq!(apply.operator.text(), "running_sum");
 		assert_eq!(apply.params.len(), 1);
 		assert_eq!(apply.params[0].as_identifier().text(), "value");
@@ -107,7 +111,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let apply = result.first_unchecked().as_apply();
+		let Ast::Apply(apply) = result.first_unchecked() else {
+			panic!("not apply")
+		};
 		assert_eq!(apply.operator.token.value(), "counter");
 		assert_eq!(apply.params.len(), 2);
 	}

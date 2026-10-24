@@ -167,7 +167,7 @@ pub mod tests {
 		let statement = &result[0];
 		assert_eq!(statement.nodes.len(), 2);
 
-		assert!(statement.nodes[0].is_from());
+		assert!(matches!(statement.nodes[0], Ast::From(_)));
 
 		if let Ast::Append(AstAppend::Query {
 			with,
@@ -202,7 +202,7 @@ pub mod tests {
 		let statement = &result[0];
 		assert_eq!(statement.nodes.len(), 3);
 
-		assert!(statement.nodes[0].is_from());
+		assert!(matches!(statement.nodes[0], Ast::From(_)));
 		assert!(matches!(statement.nodes[1], Ast::Append(AstAppend::Query { .. })));
 		assert!(matches!(statement.nodes[2], Ast::Append(AstAppend::Query { .. })));
 	}

@@ -44,7 +44,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 
 		let number = map.nodes[0].as_literal_number();
@@ -61,7 +63,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 2);
 
 		let first = map.nodes[0].as_infix();
@@ -85,7 +89,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Wildcard(_)));
 	}
@@ -99,7 +105,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
 		assert_eq!(map.nodes[0].as_identifier().text(), "value");
@@ -114,7 +122,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
 		assert_eq!(map.nodes[0].as_identifier().text(), "name");
@@ -129,7 +139,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 2);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
 		assert_eq!(map.nodes[0].as_identifier().text(), "name");
@@ -147,7 +159,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 
 		let AstInfix {
@@ -176,7 +190,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 
 		let number = map.nodes[0].as_literal_number();
@@ -202,7 +218,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
 		assert_eq!(map.nodes[0].as_identifier().text(), "name");
@@ -218,7 +236,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 
 		let infix = map.nodes[0].as_infix();
@@ -242,7 +262,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 2);
 
 		let first_infix = map.nodes[0].as_infix();
@@ -265,7 +287,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 
 		let infix = map.nodes[0].as_infix();
@@ -289,7 +313,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Ast::Map(map) = result.first_unchecked() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 3);
 
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
