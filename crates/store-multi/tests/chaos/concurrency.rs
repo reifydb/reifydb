@@ -253,10 +253,13 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 								rng.random_range(1..=cfg.writers * cfg.rows_per_writer);
 							if let Some(r) = store
 								.get(
-									&RowKey::new(STORAGE, row).into(),
+									from_ref(&TaggedKey::from(RowKey::new(
+										STORAGE, row,
+									))),
 									CommitVersion(read),
 								)
 								.unwrap()
+								.remove(0)
 							{
 								check_structural(
 									&[(row, r.bytes.to_vec())],

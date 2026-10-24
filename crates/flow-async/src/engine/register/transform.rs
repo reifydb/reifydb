@@ -571,13 +571,13 @@ fn ensure_join_key_types(
 	Ok(())
 }
 
-fn key_type(key: &Expression, left_schema: &Schema) -> Result<Option<ValueType>> {
+fn key_type(key: &Expression, schema: &Schema) -> Result<Option<ValueType>> {
 	let name = match key {
 		Expression::Column(ColumnExpression(column)) => column.name.text(),
 		Expression::AccessSource(access) => access.column.name.text(),
 		_ => return Ok(None),
 	};
-	let Some(field) = left_schema.fields().iter().find(|field| field.name() == name) else {
+	let Some(field) = schema.fields().iter().find(|field| field.name() == name) else {
 		return Ok(None);
 	};
 	Ok(from_field(field)?.value_type)

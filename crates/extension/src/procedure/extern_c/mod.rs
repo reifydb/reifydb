@@ -190,6 +190,11 @@ impl ExternCProcedure {
 
 	#[inline]
 	fn collect_or_drain(&self, result_code: i32) -> Result<RecordBatch, RoutineError> {
+		if let Some(failure) = self.builder_registry.take_failure() {
+			let _ = self.builder_registry.drain();
+			return Err(RoutineError::Wrapped(Box::new(failure)));
+		}
+
 		if result_code != 0 {
 			let _ = self.builder_registry.drain();
 			return Err(RoutineError::Wrapped(Box::new(

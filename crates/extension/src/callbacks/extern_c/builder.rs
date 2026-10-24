@@ -10,14 +10,17 @@ use reifydb_codec::{
 	extern_c::cells::{decode_any_cell, decode_dictionary_id_cell},
 	tag::ValueKind,
 };
-use reifydb_core::value::{
-	batch::batch,
-	column::{
-		factory::{
-			date, datetime, dictionary_id, duration, float4, float8, identity_id, int1, int2, int4, int8,
-			int16, rename, time, uint1, uint2, uint4, uint8, uint16, uuid4, uuid7,
+use reifydb_core::{
+	error::CoreError,
+	value::{
+		batch::batch,
+		column::{
+			factory::{
+				date, datetime, dictionary_id, duration, float4, float8, identity_id, int1, int2, int4,
+				int8, int16, rename, time, uint1, uint2, uint4, uint8, uint16, uuid4, uuid7,
+			},
+			nulls::with_nulls,
 		},
-		nulls::with_nulls,
 	},
 };
 use reifydb_runtime::sync::mutex::Mutex;
@@ -34,6 +37,7 @@ use reifydb_sdk::common::{
 	family::{cell_width, decode_family_column, family_params, is_family},
 };
 use reifydb_value::{
+	error::Error,
 	reifydb_assertions,
 	util::kernel::shared_predicate,
 	value::{
@@ -65,6 +69,8 @@ struct RegistryInner {
 	accumulator: Vec<EmittedDiff>,
 
 	next_id: u64,
+
+	failure: Option<Error>,
 }
 
 enum BuilderSlot {
@@ -109,6 +115,7 @@ impl BuilderRegistry {
 				slots: HashMap::new(),
 				accumulator: Vec::new(),
 				next_id: 1,
+				failure: None,
 			}),
 		}
 	}
@@ -116,7 +123,12 @@ impl BuilderRegistry {
 	pub fn drain(&self) -> Vec<EmittedDiff> {
 		let mut inner = self.inner.lock();
 		inner.slots.clear();
+		inner.failure = None;
 		mem::take(&mut inner.accumulator)
+	}
+
+	pub fn take_failure(&self) -> Option<Error> {
+		self.inner.lock().failure.take()
 	}
 }
 
@@ -198,17 +210,29 @@ pub(crate) unsafe fn commit_passed(input: &ExternCColumnData, mask: &[u8]) -> Re
 		false => (data.to_vec(), None),
 	};
 	let bitvec = (!bitvec.is_empty()).then(|| bitvec.to_vec());
-	let (field, array) = finalize_buffer(input.type_code, family, data, offsets, bitvec, rows)?;
+	let (field, array) = match finalize_buffer(input.type_code, family, data, offsets, bitvec, rows) {
+		Ok(column) => column,
+		Err(BuilderFailure::Code(code)) => return Err(code),
+		Err(BuilderFailure::Engine(err)) => return Err(registry.inner.lock().stash_failure(err)),
+	};
 	let field = match (input.type_code, input.dictionary_id) {
 		(ValueKind::DictionaryId, dictionary) if dictionary != 0 => {
-			let mut field_type = from_field(&field).map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+			let mut field_type =
+				from_field(&field).map_err(|err| registry.inner.lock().stash_failure(err))?;
 			field_type.dictionary_id = Some(DictionaryId(dictionary));
 			Arc::new(to_field(field.name(), &field_type))
 		}
 		_ => field,
 	};
 	let keep = BooleanBuffer::from_iter(mask.iter().map(|&keep| keep != 0));
-	let selected = shared_predicate(&keep, rows).filter(array.as_ref()).map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+	let selected = shared_predicate(&keep, rows).filter(array.as_ref()).map_err(|err| {
+		registry.inner.lock().stash_failure(
+			CoreError::FrameError {
+				message: err.to_string(),
+			}
+			.into(),
+		)
+	})?;
 	let row_count = selected.len();
 	let mut inner = registry.inner.lock();
 	let id = inner.next_id;
@@ -428,6 +452,13 @@ pub unsafe extern "C" fn host_builder_commit(handle: *mut ColumnBufferHandle, wr
 }
 
 impl RegistryInner {
+	fn stash_failure(&mut self, err: Error) -> i32 {
+		if self.failure.is_none() {
+			self.failure = Some(err);
+		}
+		EXTERN_C_ERROR_INTERNAL
+	}
+
 	#[inline]
 	fn take_active(&mut self, h: Handle) -> Result<ActiveBuilder, i32> {
 		let slot = match self.slots.remove(&h.id) {
@@ -454,7 +485,8 @@ impl RegistryInner {
 			written_count,
 		) {
 			Ok(b) => b,
-			Err(code) => return code,
+			Err(BuilderFailure::Code(code)) => return code,
+			Err(BuilderFailure::Engine(err)) => return self.stash_failure(err),
 		};
 		self.slots.insert(
 			h.id,
@@ -700,7 +732,7 @@ fn assemble_columns(
 		cols.push(rename(committed.buffer, name_bytes));
 	}
 
-	let out = batch(cols).map_err(|_| EXTERN_C_ERROR_INTERNAL)?;
+	let out = batch(cols).map_err(|err| inner.stash_failure(err))?;
 	let mut stamps: Vec<(SystemColumn, ArrayRef)> = Vec::new();
 	if row_count > 0 {
 		// SAFETY: row_count > 0 passed the null check and row_numbers_len was verified equal to it.
@@ -710,7 +742,7 @@ fn assemble_columns(
 	for column in [SystemColumn::CreatedAt, SystemColumn::UpdatedAt, SystemColumn::Time] {
 		stamps.push((column, Arc::new(datetime_array(vec![now; row_count]))));
 	}
-	stamp_system_columns(out, stamps).map_err(|_| EXTERN_C_ERROR_INTERNAL)
+	stamp_system_columns(out, stamps).map_err(|err| inner.stash_failure(err))
 }
 
 fn elem_size_for(type_code: ValueKind) -> usize {
@@ -740,6 +772,12 @@ fn is_var_len(type_code: ValueKind) -> bool {
 	matches!(type_code, ValueKind::Utf8 | ValueKind::Blob | ValueKind::Any | ValueKind::DictionaryId)
 }
 
+#[derive(Debug, PartialEq)]
+enum BuilderFailure {
+	Code(i32),
+	Engine(Error),
+}
+
 fn finalize_buffer(
 	type_code: ValueKind,
 	family: Option<(Precision, Scale)>,
@@ -747,7 +785,7 @@ fn finalize_buffer(
 	offsets: Option<Vec<u64>>,
 	bitvec: Option<Vec<u8>>,
 	written_count: usize,
-) -> Result<(FieldRef, ArrayRef), i32> {
+) -> Result<(FieldRef, ArrayRef), BuilderFailure> {
 	let inner = match type_code {
 		ValueKind::Boolean => {
 			data.truncate(written_count.div_ceil(8));
@@ -756,71 +794,99 @@ fn finalize_buffer(
 				BooleanArray::from(BooleanBuffer::new(Buffer::from_vec(data), 0, written_count)),
 			)
 		}
-		ValueKind::Float4 => {
-			float4("", numeric_bytes_to_vec::<f32>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Float8 => {
-			float8("", numeric_bytes_to_vec::<f64>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Int1 => {
-			int1("", numeric_bytes_to_vec::<i8>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Int2 => {
-			int2("", numeric_bytes_to_vec::<i16>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Int4 => {
-			int4("", numeric_bytes_to_vec::<i32>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Int8 => {
-			int8("", numeric_bytes_to_vec::<i64>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Int16 => {
-			int16("", numeric_bytes_to_vec::<i128>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Uint1 => {
-			uint1("", numeric_bytes_to_vec::<u8>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Uint2 => {
-			uint2("", numeric_bytes_to_vec::<u16>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Uint4 => {
-			uint4("", numeric_bytes_to_vec::<u32>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Uint8 => {
-			uint8("", numeric_bytes_to_vec::<u64>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
-		ValueKind::Uint16 => {
-			uint16("", numeric_bytes_to_vec::<u128>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?)
-		}
+		ValueKind::Float4 => float4(
+			"",
+			numeric_bytes_to_vec::<f32>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Float8 => float8(
+			"",
+			numeric_bytes_to_vec::<f64>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Int1 => int1(
+			"",
+			numeric_bytes_to_vec::<i8>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Int2 => int2(
+			"",
+			numeric_bytes_to_vec::<i16>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Int4 => int4(
+			"",
+			numeric_bytes_to_vec::<i32>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Int8 => int8(
+			"",
+			numeric_bytes_to_vec::<i64>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Int16 => int16(
+			"",
+			numeric_bytes_to_vec::<i128>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Uint1 => uint1(
+			"",
+			numeric_bytes_to_vec::<u8>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Uint2 => uint2(
+			"",
+			numeric_bytes_to_vec::<u16>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Uint4 => uint4(
+			"",
+			numeric_bytes_to_vec::<u32>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Uint8 => uint8(
+			"",
+			numeric_bytes_to_vec::<u64>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
+		ValueKind::Uint16 => uint16(
+			"",
+			numeric_bytes_to_vec::<u128>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?,
+		),
 		ValueKind::Date => {
-			let v = numeric_bytes_to_vec::<Date>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			let v = numeric_bytes_to_vec::<Date>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?;
 			date("", v)
 		}
 		ValueKind::DateTime => {
 			let v = numeric_bytes_to_vec::<DateTime>(&data, written_count)
-				.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?;
 			datetime("", v)
 		}
 		ValueKind::Time => {
-			let v = numeric_bytes_to_vec::<Time>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			let v = numeric_bytes_to_vec::<Time>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?;
 			time("", v)
 		}
 		ValueKind::Duration => {
 			let v = numeric_bytes_to_vec::<Duration>(&data, written_count)
-				.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?;
 			duration("", v)
 		}
 		ValueKind::IdentityId => {
 			let v = numeric_bytes_to_vec::<IdentityId>(&data, written_count)
-				.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?;
 			identity_id("", v)
 		}
 		ValueKind::Uuid4 => {
-			let v = numeric_bytes_to_vec::<Uuid4>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			let v = numeric_bytes_to_vec::<Uuid4>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?;
 			uuid4("", v)
 		}
 		ValueKind::Uuid7 => {
-			let v = numeric_bytes_to_vec::<Uuid7>(&data, written_count).ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			let v = numeric_bytes_to_vec::<Uuid7>(&data, written_count)
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?;
 			uuid7("", v)
 		}
 		ValueKind::Utf8 => {
@@ -828,33 +894,34 @@ fn finalize_buffer(
 
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
-			let (offsets, values) = checked_varlen_parts(data, offsets)?;
+			let (offsets, values) = checked_varlen_parts(data, offsets).map_err(BuilderFailure::Code)?;
 			typed(
 				ValueType::Utf8,
 				LargeStringArray::try_new(offsets, values, None)
-					.map_err(|_| EXTERN_C_ERROR_INVALID_UTF8)?,
+					.map_err(|_| BuilderFailure::Code(EXTERN_C_ERROR_INVALID_UTF8))?,
 			)
 		}
 		ValueKind::Blob => {
 			let offsets = offsets.unwrap_or_else(|| vec![0u64]);
 			let payload_len = *offsets.last().unwrap_or(&0) as usize;
 			data.truncate(payload_len);
-			let (offsets, values) = checked_varlen_parts(data, offsets)?;
+			let (offsets, values) = checked_varlen_parts(data, offsets).map_err(BuilderFailure::Code)?;
 			typed(
 				ValueType::Blob,
-				LargeBinaryArray::try_new(offsets, values, None).map_err(|_| EXTERN_C_ERROR_MARSHAL)?,
+				LargeBinaryArray::try_new(offsets, values, None)
+					.map_err(|_| BuilderFailure::Code(EXTERN_C_ERROR_MARSHAL))?,
 			)
 		}
 		ValueKind::Decimal => {
-			let (precision, scale) = family.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			let (precision, scale) = family.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?;
 			decode_family_column("", type_code, precision, scale, &data, written_count)
-				.map_err(|_| EXTERN_C_ERROR_MARSHAL)?
+				.map_err(|_| BuilderFailure::Code(EXTERN_C_ERROR_MARSHAL))?
 		}
 		ValueKind::Any => {
 			let values: Vec<Value> = decode_per_element::<Value>(&data, &offsets, written_count, |bytes| {
 				decode_any_cell(bytes).ok()
 			})
-			.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+			.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?;
 			let values = values
 				.into_iter()
 				.enumerate()
@@ -867,7 +934,8 @@ fn finalize_buffer(
 					} => Ok(None),
 					value => Ok(Some(value)),
 				})
-				.collect::<Result<Vec<Option<Value>>, i32>>()?;
+				.collect::<Result<Vec<Option<Value>>, i32>>()
+				.map_err(BuilderFailure::Code)?;
 			typed(ValueType::Any, any_array_optional(values))
 		}
 		ValueKind::DictionaryId => {
@@ -875,16 +943,16 @@ fn finalize_buffer(
 				decode_per_element::<DictionaryEntryId>(&data, &offsets, written_count, |bytes| {
 					decode_dictionary_id_cell(bytes).ok()
 				})
-				.ok_or(EXTERN_C_ERROR_INTERNAL)?;
+				.ok_or(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL))?;
 			dictionary_id("", entries)
 		}
-		_ => return Err(EXTERN_C_ERROR_INTERNAL),
+		_ => return Err(BuilderFailure::Code(EXTERN_C_ERROR_INTERNAL)),
 	};
 	match bitvec {
 		Some(mut bytes) => {
 			bytes.truncate(written_count.div_ceil(8));
 			let nulls = NullBuffer::new(BooleanBuffer::new(Buffer::from_vec(bytes), 0, written_count));
-			with_nulls(inner, nulls).map_err(|_| EXTERN_C_ERROR_INTERNAL)
+			with_nulls(inner, nulls).map_err(BuilderFailure::Engine)
 		}
 		None => Ok(inner),
 	}
@@ -980,9 +1048,9 @@ mod tests {
 	};
 
 	use super::{
-		BuilderRegistry, BuilderSlot, Handle, finalize_buffer, host_builder_acquire, host_builder_bitvec_ptr,
-		host_builder_commit, host_builder_data_ptr, host_builder_emit_diff, host_builder_grow,
-		host_builder_offsets_ptr, numeric_bytes_to_vec, with_registry,
+		BuilderFailure, BuilderRegistry, BuilderSlot, Handle, finalize_buffer, host_builder_acquire,
+		host_builder_bitvec_ptr, host_builder_commit, host_builder_data_ptr, host_builder_emit_diff,
+		host_builder_grow, host_builder_offsets_ptr, numeric_bytes_to_vec, with_registry,
 	};
 
 	fn decimals(texts: &[&str]) -> Vec<Decimal> {
@@ -1254,21 +1322,21 @@ mod tests {
 	fn utf8_last_offset_past_the_data_is_a_marshal_error() {
 		// A last offset past the data would read bytes the guest never wrote.
 		let result = finalize_buffer(ValueKind::Utf8, None, b"ab".to_vec(), Some(vec![0, 1, 5]), None, 2);
-		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
+		assert_eq!(result.err(), Some(BuilderFailure::Code(EXTERN_C_ERROR_MARSHAL)));
 	}
 
 	#[test]
 	fn blob_last_offset_past_the_data_is_a_marshal_error() {
 		// A last offset past the data would read bytes the guest never wrote.
 		let result = finalize_buffer(ValueKind::Blob, None, vec![1, 2], Some(vec![0, 1, 5]), None, 2);
-		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
+		assert_eq!(result.err(), Some(BuilderFailure::Code(EXTERN_C_ERROR_MARSHAL)));
 	}
 
 	#[test]
 	fn utf8_offset_beyond_i64_is_a_marshal_error() {
 		// Arrow offsets are i64, so a larger u64 offset cannot be represented and must not wrap negative.
 		let result = finalize_buffer(ValueKind::Utf8, None, b"ab".to_vec(), Some(vec![0, u64::MAX]), None, 1);
-		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL));
+		assert_eq!(result.err(), Some(BuilderFailure::Code(EXTERN_C_ERROR_MARSHAL)));
 	}
 
 	#[test]
@@ -1339,6 +1407,10 @@ mod tests {
 		cells.extend_from_slice(&7i128.to_le_bytes());
 		let kind = ValueKind::Decimal;
 		let result = finalize_buffer(kind, Some((precision, Scale::MIN)), cells.clone(), None, None, 2);
-		assert_eq!(result.err(), Some(EXTERN_C_ERROR_MARSHAL), "{kind:?} must reject a 6 digit cell");
+		assert_eq!(
+			result.err(),
+			Some(BuilderFailure::Code(EXTERN_C_ERROR_MARSHAL)),
+			"{kind:?} must reject a 6 digit cell"
+		);
 	}
 }

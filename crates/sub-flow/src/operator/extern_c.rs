@@ -182,7 +182,9 @@ impl HostOperator for ExternCOperatorHandle {
 			call_vtable(&self.vtable, self.instance, extern_c_ctx_ptr, &extern_c_input, self.operator_id)
 		});
 
-		if let Some(failure) = host_ctx.take_failure() {
+		let ctx_failure = host_ctx.take_failure();
+		let builder_failure = self.builder_registry.take_failure();
+		if let Some(failure) = ctx_failure.or(builder_failure) {
 			let _ = self.builder_registry.drain();
 			return Err(failure);
 		}
@@ -235,7 +237,9 @@ impl HostOperator for ExternCOperatorHandle {
 			)
 		});
 
-		if let Some(failure) = host_ctx.take_failure() {
+		let ctx_failure = host_ctx.take_failure();
+		let builder_failure = self.builder_registry.take_failure();
+		if let Some(failure) = ctx_failure.or(builder_failure) {
 			let _ = self.builder_registry.drain();
 			return Err(failure);
 		}

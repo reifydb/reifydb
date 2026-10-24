@@ -111,6 +111,11 @@ impl Transform for ExternCTransform {
 			})
 		});
 
+		if let Some(failure) = self.builder_registry.take_failure() {
+			let _ = self.builder_registry.drain();
+			return Err(failure);
+		}
+
 		if result_code != 0 {
 			let _ = self.builder_registry.drain();
 			return Err(SdkError::Other(format!(
