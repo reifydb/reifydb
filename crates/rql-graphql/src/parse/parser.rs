@@ -16,8 +16,6 @@ pub enum ParserError {
 	UnexpectedToken(TokenKind, TokenKind, u32, u32),
 	#[error("Unexpected EOF, expected {0:?} at line {1}, column {2}")]
 	UnexpectedEOF(TokenKind, u32, u32),
-	#[error("Expected Name at line {0}, column {1}")]
-	ExpectedName(u32, u32),
 }
 
 pub struct Parser<'bump> {

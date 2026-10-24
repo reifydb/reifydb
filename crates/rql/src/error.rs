@@ -999,16 +999,6 @@ impl fmt::Display for ObjectNotFoundError {
 	}
 }
 
-impl ObjectNotFoundError {
-	pub fn with_expected_type(namespace: String, name: String, _expected: &str, fragment: Fragment) -> Self {
-		Self {
-			namespace,
-			name,
-			fragment,
-		}
-	}
-}
-
 #[derive(Debug, Clone)]
 pub struct AmbiguousColumnError {
 	pub column: String,
@@ -1047,10 +1037,6 @@ impl fmt::Display for FunctionNotFoundError {
 			write!(f, "Function '{}' does not exist", qualified)
 		}
 	}
-}
-
-pub fn is_default_namespace(fragment: &Fragment) -> bool {
-	matches!(fragment, Fragment::Internal { .. })
 }
 
 #[cfg(test)]

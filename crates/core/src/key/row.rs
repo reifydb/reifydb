@@ -814,10 +814,6 @@ impl RowShapeFieldKey {
 	pub fn encoded(shape_fingerprint: RowShapeFingerprint, field_index: u16) -> EncodedKey {
 		Self::new(shape_fingerprint, field_index).encode()
 	}
-
-	pub fn scan_for_shape(fingerprint: RowShapeFingerprint) -> TaggedKeyBoundRange {
-		TaggedKeyBoundRange::prefix(Self::TAG, [Field::UDesc(Width::U64, fingerprint.as_u64() as u128)])
-	}
 }
 
 #[cfg(test)]

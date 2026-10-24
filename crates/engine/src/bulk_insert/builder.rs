@@ -32,8 +32,6 @@ use reifydb_core::{
 	value::batch::batch,
 };
 use reifydb_evaluate::stack::SymbolTable;
-#[cfg(feature = "testing")]
-use reifydb_transaction::counting::OpCounts;
 use reifydb_transaction::{
 	multi::transaction::write::Rewrite,
 	transaction::{Transaction, command::CommandTransaction},
@@ -47,8 +45,6 @@ use reifydb_value::{
 	},
 };
 
-#[cfg(feature = "testing")]
-use super::coerce::CoerceCounts;
 use super::{
 	BulkInsertResult, RingBufferInsertResult, SeriesInsertResult, TableInsertResult,
 	coerce::{RowCoercer, with_row_note},
@@ -202,12 +198,6 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 
 	pub fn execute(self) -> Result<BulkInsertResult> {
 		self.run(|_, _| ()).map(|(result, ())| result)
-	}
-
-	#[cfg(feature = "testing")]
-	pub fn execute_counted(self) -> Result<(BulkInsertResult, OpCounts, CoerceCounts)> {
-		self.run(|txn, coercer| (txn.op_counts(), coercer.counts()))
-			.map(|(result, (ops, casts))| (result, ops, casts))
 	}
 
 	fn run<T>(self, observe: impl FnOnce(&CommandTransaction, &RowCoercer) -> T) -> Result<(BulkInsertResult, T)> {

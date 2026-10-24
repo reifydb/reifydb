@@ -86,10 +86,6 @@ impl RoutinesInner {
 		self.get_function(name).is_some()
 	}
 
-	pub fn has_procedure(&self, name: &str) -> bool {
-		self.get_procedure(name).is_some()
-	}
-
 	pub fn get_scalar_function(&self, name: &str) -> Option<Arc<dyn Function>> {
 		self.get_function(name).filter(|f| f.kinds().contains(&FunctionKind::Scalar))
 	}
@@ -108,30 +104,6 @@ impl RoutinesInner {
 
 	pub fn procedure_names(&self) -> Vec<String> {
 		self.procedures.keys().map(|k| user_facing_name(k, BUILTIN_PROCEDURE_PREFIX)).collect()
-	}
-
-	pub fn scalar_function_names(&self) -> Vec<String> {
-		self.functions
-			.iter()
-			.filter(|(_, f)| f.kinds().contains(&FunctionKind::Scalar))
-			.map(|(k, _)| user_facing_name(k, BUILTIN_FUNCTION_PREFIX))
-			.collect()
-	}
-
-	pub fn aggregate_function_names(&self) -> Vec<String> {
-		self.functions
-			.iter()
-			.filter(|(_, f)| f.kinds().contains(&FunctionKind::Aggregate))
-			.map(|(k, _)| user_facing_name(k, BUILTIN_FUNCTION_PREFIX))
-			.collect()
-	}
-
-	pub fn generator_function_names(&self) -> Vec<String> {
-		self.functions
-			.iter()
-			.filter(|(_, f)| f.kinds().contains(&FunctionKind::Generator))
-			.map(|(k, _)| user_facing_name(k, BUILTIN_FUNCTION_PREFIX))
-			.collect()
 	}
 
 	pub fn get_handlers(
@@ -172,10 +144,6 @@ impl RoutinesConfigurator {
 		self.functions.contains_key(name)
 	}
 
-	pub fn has_procedure(&self, name: &str) -> bool {
-		self.procedures.contains_key(name)
-	}
-
 	pub fn register_function(mut self, routine: Arc<dyn Function>) -> Self {
 		self.functions.insert(routine.info().name.clone(), routine);
 		self
@@ -198,39 +166,11 @@ impl RoutinesConfigurator {
 		self
 	}
 
-	pub fn register_handler(mut self, event_path: &str, routine: Arc<dyn Procedure>) -> Self {
-		self.deferred_handlers.push((event_path.to_string(), routine));
-		self
-	}
-
-	pub fn register_function_alias(mut self, alias: &str, canonical: &str) -> Self {
-		if let Some(routine) = self.functions.get(canonical).cloned() {
-			self.functions.insert(alias.to_string(), routine);
-		}
-		self
-	}
-
-	pub fn register_procedure_alias(mut self, alias: &str, canonical: &str) -> Self {
-		if let Some(routine) = self.procedures.get(canonical).cloned() {
-			self.procedures.insert(alias.to_string(), routine);
-		}
-		self
-	}
-
 	pub fn register_builtin_function_alias(mut self, alias: &str, canonical: &str) -> Self {
 		let canonical_key = format!("{BUILTIN_FUNCTION_PREFIX}{canonical}");
 		let alias_key = format!("{BUILTIN_FUNCTION_PREFIX}{alias}");
 		if let Some(routine) = self.functions.get(&canonical_key).cloned() {
 			self.functions.insert(alias_key, routine);
-		}
-		self
-	}
-
-	pub fn register_builtin_procedure_alias(mut self, alias: &str, canonical: &str) -> Self {
-		let canonical_key = format!("{BUILTIN_PROCEDURE_PREFIX}{canonical}");
-		let alias_key = format!("{BUILTIN_PROCEDURE_PREFIX}{alias}");
-		if let Some(routine) = self.procedures.get(&canonical_key).cloned() {
-			self.procedures.insert(alias_key, routine);
 		}
 		self
 	}

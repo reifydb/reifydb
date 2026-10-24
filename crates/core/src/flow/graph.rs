@@ -3,11 +3,8 @@
 
 use std::{
 	cmp::Reverse,
-	collections::{BTreeMap, BinaryHeap, HashSet, VecDeque},
-	ops,
+	collections::{BTreeMap, BinaryHeap, HashSet},
 };
-
-use ops::Range;
 
 use crate::interface::catalog::flow::{FlowEdge, FlowEdgeId, OperatorId};
 
@@ -149,29 +146,6 @@ impl<NodeData> DirectedGraph<NodeData> {
 		result
 	}
 
-	pub fn bfs_from(&self, start: &OperatorId) -> Vec<OperatorId> {
-		let mut visited = HashSet::new();
-		let mut result = Vec::new();
-		let mut queue = VecDeque::new();
-
-		queue.push_back(*start);
-		visited.insert(*start);
-
-		while let Some(node_id) = queue.pop_front() {
-			result.push(node_id);
-
-			if let Some(neighbors) = self.outgoing.get(&node_id) {
-				for neighbor in neighbors {
-					if visited.insert(*neighbor) {
-						queue.push_back(*neighbor);
-					}
-				}
-			}
-		}
-
-		result
-	}
-
 	fn creates_cycle(&self, source: &OperatorId, target: &OperatorId) -> bool {
 		let reachable = self.dfs_from(target);
 		reachable.contains(source)
@@ -185,26 +159,6 @@ impl<NodeData> DirectedGraph<NodeData> {
 		self.edges.iter()
 	}
 
-	pub fn remove_node(&mut self, node_id: &OperatorId) -> Option<NodeData> {
-		if let Some(data) = self.nodes.remove(node_id) {
-			self.edges.retain(|edge| edge.source != *node_id && edge.target != *node_id);
-
-			self.outgoing.remove(node_id);
-			self.incoming.remove(node_id);
-
-			for (_, outgoing_list) in self.outgoing.iter_mut() {
-				outgoing_list.retain(|id| id != node_id);
-			}
-			for (_, incoming_list) in self.incoming.iter_mut() {
-				incoming_list.retain(|id| id != node_id);
-			}
-
-			Some(data)
-		} else {
-			None
-		}
-	}
-
 	pub fn is_empty(&self) -> bool {
 		self.nodes.is_empty()
 	}
@@ -215,27 +169,6 @@ impl<NodeData> DirectedGraph<NodeData> {
 		self.outgoing.clear();
 		self.incoming.clear();
 	}
-
-	pub fn edges_directed(&self, node_id: &OperatorId, direction: EdgeDirection) -> Vec<&FlowEdge> {
-		match direction {
-			EdgeDirection::Incoming => self.edges.iter().filter(|edge| edge.target == *node_id).collect(),
-			EdgeDirection::Outgoing => self.edges.iter().filter(|edge| edge.source == *node_id).collect(),
-		}
-	}
-
-	pub fn edge_indices(&self) -> Range<usize> {
-		0..self.edges.len()
-	}
-
-	pub fn edge_endpoints(&self, edge_index: usize) -> Option<(&OperatorId, &OperatorId)> {
-		self.edges.get(edge_index).map(|edge| (&edge.source, &edge.target))
-	}
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum EdgeDirection {
-	Incoming,
-	Outgoing,
 }
 
 impl<NodeData> Default for DirectedGraph<NodeData> {

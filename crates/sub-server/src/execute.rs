@@ -45,5 +45,3 @@ impl fmt::Display for ExecuteError {
 }
 
 impl error::Error for ExecuteError {}
-
-pub type ExecuteResult<T> = Result<T, ExecuteError>;

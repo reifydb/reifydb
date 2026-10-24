@@ -394,11 +394,6 @@ impl MultiTransaction {
 	}
 }
 
-pub enum TransactionType {
-	Query(MultiReadTransaction),
-	Command(Box<MultiWriteTransaction>),
-}
-
 impl MultiTransaction {
 	#[instrument(name = "transaction::get", level = "trace", skip(self, keys), fields(keys = keys.len(), version = version.0))]
 	pub fn get(&self, keys: &[TaggedKey], version: CommitVersion) -> Result<Vec<Option<Committed>>> {

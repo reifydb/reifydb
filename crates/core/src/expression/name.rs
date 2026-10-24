@@ -33,11 +33,6 @@ pub fn display_label(expr: &Expression) -> Fragment {
 	}
 }
 
-#[deprecated(note = "use display_label for header naming or canonical_name for identity")]
-pub fn column_name_from_expression(expr: &Expression) -> Fragment {
-	display_label(expr)
-}
-
 fn canonical_text(expr: &Expression) -> String {
 	match expr {
 		Expression::Alias(alias_expr) => canonical_text(&alias_expr.expression),

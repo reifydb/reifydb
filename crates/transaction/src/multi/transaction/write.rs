@@ -986,10 +986,6 @@ impl MultiWriteTransaction {
 		self.transition_to(Lifecycle::Discarded);
 	}
 
-	pub fn is_discard(&self) -> bool {
-		self.lifecycle == Lifecycle::Discarded
-	}
-
 	pub(crate) fn take_self_lease(&mut self) -> Option<VersionLeaseGuard> {
 		self.self_lease.take()
 	}

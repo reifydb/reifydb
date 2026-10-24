@@ -170,10 +170,6 @@ impl DeltaEntry {
 		self.version
 	}
 
-	pub fn into_components(self) -> (CommitVersion, Delta) {
-		(self.version, self.delta)
-	}
-
 	pub fn key(&self) -> &TaggedKey {
 		self.delta.key()
 	}

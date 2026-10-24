@@ -293,9 +293,6 @@ impl<'bump> Ast<'bump> {
 	ast_accessor!(Between, AstBetween<'bump>, is_between, as_between, "between");
 	ast_accessor!(CallFunction, AstCallFunction<'bump>, is_call_function, as_call_function, "call function");
 	ast_accessor!(Cast, AstCast<'bump>, is_cast, as_cast, "cast");
-	pub fn is_create(&self) -> bool {
-		matches!(self, Ast::Create(_))
-	}
 	pub fn as_create(&self) -> &AstCreate<'bump> {
 		if let Ast::Create(result) = self {
 			result

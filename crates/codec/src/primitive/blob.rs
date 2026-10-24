@@ -51,36 +51,6 @@ impl RowShape {
 		&row[blob_start..blob_start + length]
 	}
 
-	pub fn get_blob_slice_builder<'a>(&self, row: &'a impl RowBuilder, index: usize) -> &'a [u8] {
-		let field = &self.fields()[index];
-		let buffer = row.as_slice();
-		let ref_slice = &buffer[field.offset as usize..field.offset as usize + 8];
-		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
-		let length = u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]]) as usize;
-		let blob_start = self.dynamic_section_start() + offset;
-		&buffer[blob_start..blob_start + length]
-	}
-
-	pub fn get_blob_slice_mut<'a>(&self, row: &'a mut [u8], index: usize) -> &'a mut [u8] {
-		let field = &self.fields()[index];
-		reifydb_assertions! {
-			assert!(
-				row.len() >= self.total_static_size(),
-				"row/shape size mismatch: row.len()={} < total_static_size()={}",
-				row.len(),
-				self.total_static_size()
-			);
-			assert_eq!(*field.constraint.get_type().inner_type(), ValueType::Blob);
-		}
-
-		let ref_slice = &row[field.offset as usize..field.offset as usize + 8];
-		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
-		let length = u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]]) as usize;
-
-		let blob_start = self.dynamic_section_start() + offset;
-		&mut row[blob_start..blob_start + length]
-	}
-
 	pub fn try_get_blob(&self, row: &[u8], index: usize) -> Option<Blob> {
 		if self.is_defined(row, index) && self.fields()[index].constraint.get_type() == ValueType::Blob {
 			Some(self.get_blob(row, index))

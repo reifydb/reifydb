@@ -91,10 +91,6 @@ impl EncodedIndexKeyRange {
 
 		EncodedKeyRange::new(start, end)
 	}
-
-	pub fn from_prefix(key: &EncodedIndexKey) -> Self {
-		Self::prefix(key.as_slice())
-	}
 }
 
 impl From<EncodedIndexKeyRange> for EncodedKeyRange {

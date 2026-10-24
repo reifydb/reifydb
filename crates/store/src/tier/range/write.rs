@@ -250,10 +250,6 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.invalidate_within(dimension, None, key)
 	}
 
-	pub fn invalidate_in(&self, dimension: D::Dimension, partition: D::Partition, key: &D::Key) {
-		self.invalidate_within(dimension, Some(partition), key)
-	}
-
 	fn invalidate_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: &D::Key) {
 		let Some(partition) = self.cacheable(dimension, confined, key) else {
 			return;

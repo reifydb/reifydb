@@ -47,13 +47,6 @@ impl<T: Debug + Clone + Send + Sync + 'static> MultiVersionContainer<T> {
 		inner.versions.range(..=version).next_back().and_then(|entry| entry.value().clone())
 	}
 
-	pub fn get_or_tombstone(&self, version: impl Into<CommitVersion>) -> Option<Option<T>> {
-		let version = version.into();
-		let inner = self.inner.read();
-
-		inner.versions.range(..=version).next_back().map(|entry| entry.value().clone())
-	}
-
 	pub fn get_latest(&self) -> Option<T> {
 		let inner = self.inner.read();
 		inner.versions.back().and_then(|entry| entry.value().clone())
