@@ -1847,6 +1847,9 @@ mod pull_protocol {
 			h.wake(&actor);
 		}
 		assert_eq!(h.view_rows(), 0, "a lingering flow must not pull before its linger ends");
+		let target = h.engine.current_version().expect("current version");
+		h.await_safe_watermark(target);
+		h.wake(&actor);
 
 		let rows = h.await_view_rows(total, seconds(15));
 		assert_eq!(rows, total, "the linger must deliver every version of the burst");
