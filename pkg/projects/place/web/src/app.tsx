@@ -43,7 +43,7 @@ function App() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg-primary">
-      <Header status={connection.status} />
+      <Header />
       <main className="relative flex min-h-0 flex-1 flex-col">
         {connection.status === 'connecting' && <Loading />}
         {connection.status === 'failed' && (
