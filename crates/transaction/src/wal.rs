@@ -330,6 +330,7 @@ pub fn replay(
 		.and_then(|(_, lsn)| lsn)
 		.map_or(Lsn::FIRST, |lsn| Lsn::new(lsn.as_u64() + 1));
 	let mut last = saved_through.max(persisted_high);
+	#[cfg(reifydb_assertions)]
 	let mut previous: Option<CommitVersion> = None;
 	let mut lsns = VecDeque::new();
 	let records = wal
@@ -352,7 +353,10 @@ pub fn replay(
 				replayed.lsn.as_u64()
 			);
 		}
-		previous = Some(version);
+		#[cfg(reifydb_assertions)]
+		{
+			previous = Some(version);
+		}
 		last = last.max(version);
 		if version > saved_through {
 			store.set(version, classify_deltas(&CowVec::new(record.deltas)).batches);
