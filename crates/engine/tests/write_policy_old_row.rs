@@ -109,3 +109,36 @@ fn a_user_cannot_take_over_another_owners_series_row() {
 	assert!(!take_over_accepted(&t, alice), "alice's takeover of bob's series row was accepted");
 	assert_eq!(data_of(&t, 2), "b", "bob's series row changed");
 }
+
+fn anonymous_only_table() -> (TestEngine, IdentityId) {
+	let t = TestEngine::new();
+	t.admin("CREATE NAMESPACE test");
+	t.admin("CREATE TABLE test::t { k: int8, owner: identity_id, data: utf8 }");
+	t.admin("CREATE TABLE POLICY anon ON test::t { from: { filter { true } }, \
+		 update: { filter { $identity.kind == 'anonymous' } } }");
+	let alice = user(&t, "alice");
+	t.command(&format!("INSERT test::t [{{ k: 1, owner: cast('{alice}', identity_id), data: 'a' }}]"));
+	(t, alice)
+}
+
+#[test]
+fn an_identity_only_update_policy_still_denies_the_wrong_identity() {
+	// skipping the old-row check for identity-only policies must never skip the new-row check as well.
+	let (t, alice) = anonymous_only_table();
+	let r = t.inner().command_as(alice, "UPDATE test::t { data: 'edited' } FILTER { k == 1 }", Params::None);
+	assert!(r.error.is_some(), "alice passed a policy that admits only anonymous");
+	assert_eq!(data_of(&t, 1), "a", "a denied update must leave the row as it was");
+}
+
+#[test]
+fn an_identity_only_update_policy_admits_the_right_identity() {
+	// the skipped old-row check must not turn into a denial for the identity the policy admits.
+	let (t, _) = anonymous_only_table();
+	let r = t.inner().command_as(
+		IdentityId::anonymous(),
+		"UPDATE test::t { data: 'edited' } FILTER { k == 1 }",
+		Params::None,
+	);
+	assert!(r.error.is_none(), "anonymous was denied by a policy that admits it: {:?}", r.error);
+	assert_eq!(data_of(&t, 1), "edited", "the admitted update must apply");
+}

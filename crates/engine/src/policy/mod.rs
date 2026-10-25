@@ -11,7 +11,10 @@ use reifydb_core::{
 };
 use reifydb_evaluate::{expression::context::EvalContext, lower::LoweredExpr, stack::SymbolTable};
 use reifydb_policy::{
-	enforce::{PolicyTarget, enforce_identity_policy, enforce_session_policy, enforce_write_policies},
+	enforce::{
+		CompiledWritePolicies, PolicyTarget, compile_write_policies, enforce_identity_policy,
+		enforce_session_policy, enforce_write_policies,
+	},
 	evaluate::PolicyEvaluator as PolicyEvaluatorTrait,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -55,6 +58,41 @@ impl<'a> PolicyEvaluator<'a> {
 			target_type,
 		};
 		enforce_write_policies(&self.services.catalog, tx, &target, row_columns, self)
+	}
+
+	pub fn compile_write_policies(
+		&self,
+		tx: &mut Transaction<'_>,
+		target_namespace: &str,
+		target_object: &str,
+		operation: DataOp,
+		target_type: PolicyTargetType,
+	) -> Result<Option<CompiledWritePolicies>> {
+		let target = PolicyTarget {
+			namespace: target_namespace,
+			object: target_object,
+			operation: operation.as_str(),
+			target_type,
+		};
+		compile_write_policies(&self.services.catalog, tx, &target)
+	}
+
+	pub fn enforce_compiled(
+		&self,
+		compiled: &CompiledWritePolicies,
+		identity: IdentityId,
+		row_columns: &RecordBatch,
+	) -> Result<()> {
+		compiled.enforce(row_columns, identity, self)
+	}
+
+	pub fn enforce_compiled_row_dependent(
+		&self,
+		compiled: &CompiledWritePolicies,
+		identity: IdentityId,
+		row_columns: &RecordBatch,
+	) -> Result<()> {
+		compiled.enforce_row_dependent(row_columns, identity, self)
 	}
 
 	pub fn enforce_session_policy(

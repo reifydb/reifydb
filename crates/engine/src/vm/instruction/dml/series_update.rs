@@ -41,6 +41,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_evaluate::stack::SymbolTable;
+use reifydb_policy::enforce::CompiledWritePolicies;
 use reifydb_rql::{nodes::UpdateSeriesNode, query::QueryPlan};
 use reifydb_transaction::{
 	interceptor::{WithInterceptors, series_row::SeriesRowInterceptor},
@@ -130,6 +131,8 @@ pub(crate) fn update_series(
 	let object = ObjectId::series(series.id);
 	let wants_diff = txn.wants_flow_diff(object);
 
+	let evaluator = PolicyEvaluator::new(services, symbols);
+	let mut policies: Option<Option<CompiledWritePolicies>> = None;
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		let row_count = columns.num_rows();
@@ -137,14 +140,19 @@ pub(crate) fn update_series(
 			continue;
 		}
 
-		PolicyEvaluator::new(services, symbols).enforce_write_policies(
-			txn,
-			namespace.name(),
-			&series.name,
-			DataOp::Update,
-			&columns,
-			PolicyTargetType::Series,
-		)?;
+		if policies.is_none() {
+			policies = Some(evaluator.compile_write_policies(
+				txn,
+				namespace.name(),
+				&series.name,
+				DataOp::Update,
+				PolicyTargetType::Series,
+			)?);
+		}
+		let compiled = policies.as_ref().and_then(Option::as_ref);
+		if let Some(compiled) = compiled {
+			evaluator.enforce_compiled(compiled, txn.identity(), &columns)?;
+		}
 		if let Some((unknown, _)) = user_columns(&columns).find(|(field, _)| {
 			!(series.columns.iter().any(|c| &c.name == field.name()) || (has_tag && field.name() == "tag"))
 		}) {
@@ -215,7 +223,16 @@ pub(crate) fn update_series(
 		}
 		shape.write_columns(&mut builders, &views)?;
 		let old_rows = txn.get(&storage_keys)?;
-		enforce_old_row_policies(services, symbols, txn, &target_data, &old_rows, row_numbers, &shape)?;
+		enforce_old_row_policies(
+			services,
+			symbols,
+			txn,
+			&target_data,
+			&old_rows,
+			row_numbers,
+			&shape,
+			compiled,
+		)?;
 		let now = services.runtime_context.clock.now();
 		let times = RowTime::new(
 			&series.name,
@@ -388,10 +405,11 @@ fn enforce_old_row_policies(
 	rows: &[Option<MultiVersionRow<TaggedKey>>],
 	row_numbers: &[RowNumber],
 	shape: &RowShape,
+	compiled: Option<&CompiledWritePolicies>,
 ) -> Result<()> {
-	if txn.identity().is_privileged() {
+	let Some(compiled) = compiled.filter(|compiled| compiled.reads_row()) else {
 		return Ok(());
-	}
+	};
 	let series = target.series;
 	let old_rows: Vec<(RowNumber, EncodedBytes)> = rows
 		.iter()
@@ -400,14 +418,7 @@ fn enforce_old_row_policies(
 		.collect();
 	let old_columns = decode_rows_to_columns(shape, &old_rows)?;
 	let old_columns = decode_returning_dictionaries(services, txn, &series.columns, old_columns)?;
-	PolicyEvaluator::new(services, symbols).enforce_write_policies(
-		txn,
-		target.namespace.name(),
-		&series.name,
-		DataOp::Update,
-		&old_columns,
-		PolicyTargetType::Series,
-	)
+	PolicyEvaluator::new(services, symbols).enforce_compiled_row_dependent(compiled, txn.identity(), &old_columns)
 }
 
 fn series_update_keys(series: &Series, columns: &RecordBatch) -> Result<(Vec<Option<u64>>, Option<Failure>)> {

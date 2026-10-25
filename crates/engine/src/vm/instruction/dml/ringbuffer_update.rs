@@ -30,6 +30,7 @@ use reifydb_core::{
 	value::batch::single_row,
 };
 use reifydb_evaluate::stack::SymbolTable;
+use reifydb_policy::enforce::CompiledWritePolicies;
 use reifydb_rql::nodes::UpdateRingBufferNode;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -104,19 +105,26 @@ pub(crate) fn update_ringbuffer(
 	};
 	let populator = populator_index(&ringbuffer.time, &shape);
 
+	let evaluator = PolicyEvaluator::new(services, symbols);
+	let mut policies: Option<Option<CompiledWritePolicies>> = None;
 	let mut mutable_context = context.clone();
 	while let Some(columns) = input_node.next(txn, &mut mutable_context)? {
 		if columns.num_rows() == 0 {
 			continue;
 		}
-		PolicyEvaluator::new(services, symbols).enforce_write_policies(
-			txn,
-			namespace.name(),
-			&ringbuffer.name,
-			DataOp::Update,
-			&columns,
-			PolicyTargetType::RingBuffer,
-		)?;
+		if policies.is_none() {
+			policies = Some(evaluator.compile_write_policies(
+				txn,
+				namespace.name(),
+				&ringbuffer.name,
+				DataOp::Update,
+				PolicyTargetType::RingBuffer,
+			)?);
+		}
+		let compiled = policies.as_ref().and_then(Option::as_ref);
+		if let Some(compiled) = compiled {
+			evaluator.enforce_compiled(compiled, txn.identity(), &columns)?;
+		}
 		if let Some((unknown, _)) = user_columns(&columns)
 			.find(|(field, _)| !ringbuffer.columns.iter().any(|c| &c.name == field.name()))
 		{
@@ -139,7 +147,16 @@ pub(crate) fn update_ringbuffer(
 			.into_iter()
 			.map(|row| row.expect("bytes must exist for update").bytes)
 			.collect();
-		enforce_old_row_policies(services, symbols, txn, &target_data, &shape, row_numbers, &old_rows)?;
+		enforce_old_row_policies(
+			services,
+			symbols,
+			txn,
+			&target_data,
+			&shape,
+			row_numbers,
+			&old_rows,
+			compiled,
+		)?;
 		let inputs = input_views(&columns, &ringbuffer.columns)?;
 		let mut batches = [pipeline.cast_target_columns(&inputs, columns.num_rows(), None)?];
 		intern_dictionary_columns(&services.catalog, txn, pipeline.columns, pipeline.series_key, &mut batches)?;
@@ -264,22 +281,16 @@ fn enforce_old_row_policies(
 	shape: &RowShape,
 	row_numbers: &[RowNumber],
 	rows: &[EncodedBytes],
+	compiled: Option<&CompiledWritePolicies>,
 ) -> Result<()> {
-	if txn.identity().is_privileged() {
+	let Some(compiled) = compiled.filter(|compiled| compiled.reads_row()) else {
 		return Ok(());
-	}
+	};
 	let ringbuffer = target.ringbuffer;
 	let old_rows: Vec<(RowNumber, EncodedBytes)> = row_numbers.iter().copied().zip(rows.iter().cloned()).collect();
 	let old_columns = decode_rows_to_columns(shape, &old_rows)?;
 	let old_columns = decode_returning_dictionaries(services, txn, &ringbuffer.columns, old_columns)?;
-	PolicyEvaluator::new(services, symbols).enforce_write_policies(
-		txn,
-		target.namespace.name(),
-		&ringbuffer.name,
-		DataOp::Update,
-		&old_columns,
-		PolicyTargetType::RingBuffer,
-	)
+	PolicyEvaluator::new(services, symbols).enforce_compiled_row_dependent(compiled, txn.identity(), &old_columns)
 }
 
 #[inline]

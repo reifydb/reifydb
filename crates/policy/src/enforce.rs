@@ -27,6 +27,96 @@ pub struct PolicyTarget<'a> {
 	pub target_type: PolicyTargetType,
 }
 
+pub struct CompiledWritePolicies {
+	conditions: Vec<CompiledCondition>,
+	operation: String,
+	target_name: String,
+}
+
+struct CompiledCondition {
+	policy_name: String,
+	expr: Expression,
+	reads_row: bool,
+}
+
+impl CompiledWritePolicies {
+	pub fn reads_row(&self) -> bool {
+		self.conditions.iter().any(|condition| condition.reads_row)
+	}
+
+	pub fn enforce(
+		&self,
+		row_columns: &RecordBatch,
+		identity: IdentityId,
+		evaluator: &impl PolicyEvaluator,
+	) -> Result<()> {
+		self.enforce_matching(row_columns, identity, evaluator, |_| true)
+	}
+
+	pub fn enforce_row_dependent(
+		&self,
+		row_columns: &RecordBatch,
+		identity: IdentityId,
+		evaluator: &impl PolicyEvaluator,
+	) -> Result<()> {
+		self.enforce_matching(row_columns, identity, evaluator, |condition| condition.reads_row)
+	}
+
+	fn enforce_matching(
+		&self,
+		row_columns: &RecordBatch,
+		identity: IdentityId,
+		evaluator: &impl PolicyEvaluator,
+		include: impl Fn(&CompiledCondition) -> bool,
+	) -> Result<()> {
+		let row_count = row_columns.num_rows();
+		if row_count == 0 {
+			return Ok(());
+		}
+		for condition in self.conditions.iter().filter(|condition| include(condition)) {
+			if !evaluator.evaluate_condition(&condition.expr, row_columns, row_count, identity)? {
+				return Err(PolicyError::PolicyDenied {
+					policy_name: condition.policy_name.clone(),
+					operation: self.operation.clone(),
+					target: self.target_name.clone(),
+				}
+				.into());
+			}
+		}
+		Ok(())
+	}
+}
+
+#[instrument(name = "policy::compile_write", level = "debug", skip_all)]
+pub fn compile_write_policies(
+	catalog: &Catalog,
+	tx: &mut Transaction<'_>,
+	target: &PolicyTarget<'_>,
+) -> Result<Option<CompiledWritePolicies>> {
+	if tx.identity().is_privileged() {
+		return Ok(None);
+	}
+	let policies = resolve_target_policies(catalog, tx, target)?;
+	if policies.is_empty() {
+		return Err(no_policy_error(target));
+	}
+	let bump = Bump::new();
+	let mut conditions = Vec::new();
+	for_each_policy_condition(&policies, &bump, |policy, condition_expr| {
+		conditions.push(CompiledCondition {
+			policy_name: policy.name.as_deref().unwrap_or("<unnamed>").to_string(),
+			reads_row: reads_row(condition_expr),
+			expr: condition_expr.clone(),
+		});
+		Ok(())
+	})?;
+	Ok(Some(CompiledWritePolicies {
+		conditions,
+		operation: target.operation.to_string(),
+		target_name: format!("{}::{}", target.namespace, target.object),
+	}))
+}
+
 #[instrument(name = "policy::enforce", level = "debug", skip_all)]
 pub fn enforce_write_policies(
 	catalog: &Catalog,
@@ -35,52 +125,57 @@ pub fn enforce_write_policies(
 	row_columns: &RecordBatch,
 	evaluator: &impl PolicyEvaluator,
 ) -> Result<()> {
-	if tx.identity().is_privileged() {
+	let Some(compiled) = compile_write_policies(catalog, tx, target)? else {
 		return Ok(());
-	}
-	let policies = resolve_target_policies(catalog, tx, target)?;
-	if policies.is_empty() {
-		return Err(no_policy_error(target));
-	}
-	let identity = tx.identity();
-	evaluate_row_policies(&policies, target, row_columns, identity, evaluator)
+	};
+	compiled.enforce(row_columns, tx.identity(), evaluator)
 }
 
-#[inline]
-fn evaluate_row_policies(
-	policies: &[(Policy, PolicyOperation)],
-	target: &PolicyTarget<'_>,
-	row_columns: &RecordBatch,
-	identity: IdentityId,
-	evaluator: &impl PolicyEvaluator,
-) -> Result<()> {
-	reifydb_assertions! {
-		let count = policies.len();
-		assert!(
-			count > 0,
-			"enforce_write_policies reached per-condition evaluation with no resolved policies; \
-			 for_each_policy_condition over an empty slice returns Ok and would silently allow an \
-			 unprotected write past policy enforcement (policies={count})"
-		);
+fn reads_row(expr: &Expression) -> bool {
+	match expr {
+		Expression::Column(_)
+		| Expression::AccessSource(_)
+		| Expression::Call(_)
+		| Expression::Map(_)
+		| Expression::Extend(_) => true,
+		Expression::Constant(_) | Expression::Type(_) | Expression::Parameter(_) | Expression::Variable(_) => {
+			false
+		}
+		Expression::Alias(e) => reads_row(&e.expression),
+		Expression::Cast(e) => reads_row(&e.expression),
+		Expression::Prefix(e) => reads_row(&e.expression),
+		Expression::IsVariant(e) => reads_row(&e.expression),
+		Expression::FieldAccess(e) => reads_row(&e.object),
+		Expression::Add(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::Div(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::Rem(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::Mul(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::Sub(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::GreaterThan(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::GreaterThanEqual(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::LessThan(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::LessThanEqual(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::Equal(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::NotEqual(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::And(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::Or(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::Xor(e) => reads_row(&e.left) || reads_row(&e.right),
+		Expression::Between(e) => reads_row(&e.value) || reads_row(&e.lower) || reads_row(&e.upper),
+		Expression::In(e) => reads_row(&e.value) || reads_row(&e.list),
+		Expression::Contains(e) => reads_row(&e.value) || reads_row(&e.list),
+		Expression::Tuple(e) => e.expressions.iter().any(reads_row),
+		Expression::List(e) => e.expressions.iter().any(reads_row),
+		Expression::Record(e) => e.fields.iter().any(|(_, field)| reads_row(field)),
+		Expression::SumTypeConstructor(e) => e.columns.iter().any(|(_, column)| reads_row(column)),
+		Expression::If(e) => {
+			reads_row(&e.condition)
+				|| reads_row(&e.then_expr) || e
+				.else_ifs
+				.iter()
+				.any(|branch| reads_row(&branch.condition) || reads_row(&branch.then_expr))
+				|| e.else_expr.as_deref().is_some_and(reads_row)
+		}
 	}
-	let bump = Bump::new();
-	let target_name = format!("{}::{}", target.namespace, target.object);
-	for_each_policy_condition(policies, &bump, |policy, condition_expr| {
-		let row_count = row_columns.num_rows();
-		if row_count == 0 {
-			return Ok(());
-		}
-		let passed = evaluator.evaluate_condition(condition_expr, row_columns, row_count, identity)?;
-		if passed {
-			return Ok(());
-		}
-		Err(PolicyError::PolicyDenied {
-			policy_name: policy.name.as_deref().unwrap_or("<unnamed>").to_string(),
-			operation: target.operation.to_string(),
-			target: target_name.clone(),
-		}
-		.into())
-	})
 }
 
 pub fn enforce_session_policy(
@@ -239,4 +334,50 @@ fn compile_policy_condition(node: Ast<'_>) -> Result<Option<Expression>> {
 		_ => return Ok(None),
 	};
 	Ok(Some(expr))
+}
+
+#[cfg(test)]
+mod tests {
+	use bumpalo::Bump;
+	use reifydb_rql::ast::parse_str;
+
+	use super::{compile_policy_condition, reads_row};
+
+	fn condition_reads_row(body: &str) -> bool {
+		let bump = Bump::new();
+		let source = bump.alloc_str(body);
+		let statements = parse_str(&bump, source).expect("policy body parses");
+		let node = statements.into_iter().flat_map(|stmt| stmt.nodes).next().expect("one condition node");
+		let expr = compile_policy_condition(node).expect("condition compiles").expect("node is a condition");
+		reads_row(&expr)
+	}
+
+	#[test]
+	fn a_condition_on_identity_only_does_not_read_the_row() {
+		// the old-row check is skipped exactly for these, so a false here must mean the row is never read.
+		assert!(!condition_reads_row("filter { $identity.kind == 'anonymous' }"));
+		assert!(!condition_reads_row("filter { true }"));
+		assert!(!condition_reads_row("require { $identity.kind != 'service' and true }"));
+	}
+
+	#[test]
+	fn a_condition_naming_a_column_reads_the_row() {
+		// a missed column would skip the old-row check and let a writer take over rows it does not own.
+		assert!(condition_reads_row("filter { owner == $identity.id }"));
+		assert!(condition_reads_row("require { status != 'archived' }"));
+	}
+
+	#[test]
+	fn a_column_nested_under_identity_logic_still_reads_the_row() {
+		// the walk must reach every child, otherwise one identity term hides the column next to it.
+		assert!(condition_reads_row("filter { $identity.kind == 'anonymous' and owner == $identity.id }"));
+		assert!(condition_reads_row("filter { $identity.kind == 'anonymous' or status == 'open' }"));
+		assert!(condition_reads_row("filter { not (owner == $identity.id) }"));
+	}
+
+	#[test]
+	fn a_function_call_is_treated_as_reading_the_row() {
+		// a call may be non-deterministic or read context, so skipping the old-row check must never apply.
+		assert!(condition_reads_row("filter { math::abs(1) == 1 }"));
+	}
 }
