@@ -12,10 +12,10 @@ interface ZoomControlProps {
 }
 
 export function ZoomControl({ zoom, onZoomIn, onZoomOut, onReset, onFit }: ZoomControlProps) {
-  const button = 'flex h-9 items-center justify-center bg-bg-primary text-text-primary outline-none hover:bg-bg-tertiary'
+  const button = 'flex h-9 items-center justify-center text-[#2a2f8f] outline-none hover:bg-[#eef0ff]'
   return (
     <div
-      className="absolute bottom-3 right-3 z-10 flex gap-px border-2 border-border-default bg-border-default"
+      className="panel absolute bottom-4 right-4 z-10 flex gap-1 p-1"
       onPointerDown={(event) => event.stopPropagation()}
       onWheel={(event) => event.stopPropagation()}
     >

@@ -260,7 +260,7 @@ export function CanvasView({ buffer, pending, tool, color, onStroke, onShape, on
   return (
     <div
       ref={containerRef}
-      className={`relative h-full min-h-[480px] w-full ${cursor} touch-none select-none overflow-hidden border-2 border-border-default bg-bg-tertiary`}
+      className={`dot-grid absolute inset-0 ${cursor} touch-none select-none overflow-hidden bg-bg-tertiary`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

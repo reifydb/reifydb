@@ -5,3 +5,58 @@
 
 @source "../node_modules/@reifydb/ui/dist";
 @source "../../../../typescript/ui/src/components";
+
+.panel {
+  border: 2px solid #4b52d6;
+  background: #ffffff;
+  box-shadow: 0 4px var(--color-primary-dark);
+}
+
+.dot-grid {
+  background-image: radial-gradient(var(--color-border-subtle) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.game-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 9px 13px;
+  border-radius: 0;
+  color: #10123a;
+  background: linear-gradient(#a3a9ff, var(--color-primary) 55%, #6a71e6);
+  border: 1px solid #4b52d6;
+  box-shadow: inset 0 1px #ffffff8c, inset 0 -2px #2e39df4d, 0 2px var(--color-primary-dark), 0 6px 14px -6px #2e39df8c;
+  transition: transform 0.12s, box-shadow 0.12s, filter 0.15s;
+  cursor: pointer;
+}
+
+.game-button:hover {
+  filter: brightness(1.05);
+}
+
+.game-button:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px #ffffff8c, inset 0 -1px #2e39df4d, 0 1px var(--color-primary-dark), 0 6px 14px -8px #2e39dfb3;
+}
+
+.game-button--secondary {
+  color: #2a2f8f;
+  background: linear-gradient(#ffffff, #eef0ff);
+  box-shadow: inset 0 1px #ffffff, inset 0 -2px #4b52d61a, 0 2px #4b52d6, 0 6px 14px -8px #2e39df59;
+}
+
+.game-button--secondary:active {
+  box-shadow: inset 0 1px #ffffff, inset 0 -1px #4b52d61a, 0 1px #4b52d6, 0 6px 14px -8px #2e39df59;
+}
+
+.game-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  filter: none;
+}

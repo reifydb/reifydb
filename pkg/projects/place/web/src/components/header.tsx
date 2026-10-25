@@ -13,8 +13,8 @@ const STATUS = {
 export function Header({ status }: { status: keyof typeof STATUS }) {
   const { label, variant } = STATUS[status]
   return (
-    <header className="sticky top-0 z-40 w-full border-b-2 border-border-default bg-bg-primary">
-      <div className="mx-auto flex h-[60px] max-w-[1600px] items-center justify-between px-4 sm:px-6">
+    <header className="z-40 w-full shrink-0 border-b-2 border-[#4b52d6] bg-bg-primary">
+      <div className="flex h-[60px] w-full items-center justify-between px-4 sm:px-6 md:px-8">
         <div className="flex items-baseline gap-3">
           <span className="font-mono text-lg font-bold tracking-tight text-text-primary">Place</span>
           <span className="hidden font-mono text-xs uppercase tracking-[1.4px] text-text-secondary sm:inline">

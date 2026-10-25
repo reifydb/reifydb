@@ -35,6 +35,7 @@ export function Place({ client }: { client: PlaceClient }) {
   const [hover, setHover] = useState<Point | null>(null)
   const [committing, setCommitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previousToolRef = useRef<Tool>('pencil')
 
@@ -67,14 +68,11 @@ export function Place({ client }: { client: PlaceClient }) {
 
   const onStroke = useCallback(
     (points: Point[]) => {
-      setMessage(null)
+      setNotice(null)
       for (const point of points) {
         if (!inCanvas(point.x, point.y)) continue
         if (tool === 'eraser') pending.remove(point.x, point.y)
-        else if (!pending.add({ ...point, color })) {
-          setMessage(`A commit holds at most ${MAX_PENDING} pixels. Commit or clear first.`)
-          return
-        }
+        else if (!pending.add({ ...point, color })) return
       }
     },
     [pending, tool, color],
@@ -82,9 +80,10 @@ export function Place({ client }: { client: PlaceClient }) {
 
   const onShape = useCallback(
     (points: Point[]) => {
-      setMessage(null)
+      setNotice(null)
+      const pixels = points.filter((point) => inCanvas(point.x, point.y) && !pending.get(point.x, point.y))
       if (!pending.addAll(points.map((point) => ({ ...point, color }))))
-        setMessage(`Shape does not fit, ${MAX_PENDING - pending.size} of ${MAX_PENDING} pixels free.`)
+        setNotice(`Needs ${pixels.length} px, ${MAX_PENDING - pending.size} left.`)
     },
     [pending, color],
   )
@@ -101,6 +100,7 @@ export function Place({ client }: { client: PlaceClient }) {
   const onCommit = async () => {
     setCommitting(true)
     setMessage(null)
+    setNotice(null)
     const result = await commitPending(client, pending)
     setCommitting(false)
     if (!result.ok) setMessage(`Commit failed, your pixels are kept: ${result.message}`)
@@ -110,21 +110,19 @@ export function Place({ client }: { client: PlaceClient }) {
   void pendingVersion
 
   return (
-    <div className="flex flex-1 flex-col">
-      <div className="relative flex min-h-[480px] flex-1">
-        <CanvasView
-          buffer={buffer}
-          pending={pending}
-          tool={tool}
-          color={color}
-          onStroke={onStroke}
-          onShape={onShape}
-          onPick={onPick}
-          onViewport={onViewport}
-          onHover={setHover}
-        />
-        <Toolbar tool={tool} onSelect={onSelectTool} />
-      </div>
+    <div className="relative min-h-0 flex-1">
+      <CanvasView
+        buffer={buffer}
+        pending={pending}
+        tool={tool}
+        color={color}
+        onStroke={onStroke}
+        onShape={onShape}
+        onPick={onPick}
+        onViewport={onViewport}
+        onHover={setHover}
+      />
+      <Toolbar tool={tool} onSelect={onSelectTool} />
       <BottomBar
         color={color}
         onColor={setColor}
@@ -132,7 +130,11 @@ export function Place({ client }: { client: PlaceClient }) {
         count={count}
         committing={committing}
         onCommit={onCommit}
-        onClear={() => pending.clear()}
+        onClear={() => {
+          setNotice(null)
+          pending.clear()
+        }}
+        notice={notice}
         message={message}
       />
     </div>

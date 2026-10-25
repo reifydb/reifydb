@@ -28,7 +28,7 @@ export function Toolbar({ tool, onSelect }: { tool: Tool; onSelect: (tool: Tool)
 
   return (
     <div
-      className="absolute left-3 top-3 z-10 flex flex-col gap-px border-2 border-border-default bg-border-default"
+      className="panel absolute left-4 top-1/2 z-10 flex -translate-y-1/2 flex-col gap-1 p-1"
       role="toolbar"
       aria-label="Tools"
       aria-orientation="vertical"
@@ -42,7 +42,7 @@ export function Toolbar({ tool, onSelect }: { tool: Tool; onSelect: (tool: Tool)
           title={`${label} (${key.toUpperCase()})`}
           onClick={() => onSelect(entry)}
           className={`flex h-10 w-10 items-center justify-center outline-none ${
-            entry === tool ? 'bg-primary-dark text-bg-primary' : 'bg-bg-primary text-text-primary hover:bg-bg-tertiary'
+            entry === tool ? 'bg-primary text-[#10123a] shadow-[inset_0_-2px_#2e39df4d]' : 'text-[#2a2f8f] hover:bg-[#eef0ff]'
           }`}
         >
           <Icon size={18} />

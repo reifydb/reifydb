@@ -42,9 +42,9 @@ function App() {
   }, [])
 
   return (
-    <div className="flex min-h-screen flex-col bg-bg-primary">
+    <div className="flex h-screen flex-col overflow-hidden bg-bg-primary">
       <Header status={connection.status} />
-      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col px-4 py-6 sm:px-6">
+      <main className="relative flex min-h-0 flex-1 flex-col">
         {connection.status === 'connecting' && <Loading />}
         {connection.status === 'failed' && (
           <p className="font-mono text-sm text-status-error">Could not connect to ReifyDB: {connection.message}</p>
