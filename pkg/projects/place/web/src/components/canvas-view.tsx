@@ -2,13 +2,18 @@
 // Copyright (c) 2026 ReifyDB
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
-import { CANVAS_SIZE, TILE_SIZE, type TileKey, parseTileKey, tilesInRect } from '@/geometry'
+import { CANVAS_SIZE, TILE_SIZE, type TileKey, inCanvas, parseTileKey, tilesInRect } from '@/geometry'
 import { PALETTE, cssColor } from '@/palette'
 import type { Pending } from '@/pending'
 import type { PixelBuffer, Tile } from '@/pixels'
+import { SHAPES, type Point, type ShapeTool, type Tool, isShape, linePixels } from '@/tools'
+import { isTyping } from './toolbar'
+import { ZoomControl } from './zoom-control'
 
 export const MIN_ZOOM = 1
 export const MAX_ZOOM = 32
+
+const ZOOM_STEP = 1.25
 
 export interface Viewport {
   left: number
@@ -26,20 +31,30 @@ interface View {
 interface CanvasViewProps {
   buffer: PixelBuffer
   pending: Pending
-  onPaint: (x: number, y: number) => void
+  tool: Tool
+  color: number
+  onStroke: (points: Point[]) => void
+  onShape: (points: Point[]) => void
+  onPick: (point: Point) => void
   onViewport: (viewport: Viewport) => void
-  onHover: (pixel: { x: number; y: number } | null) => void
+  onHover: (pixel: Point | null) => void
 }
 
-const DRAG_THRESHOLD = 4
+type Gesture =
+  | { kind: 'pan'; startX: number; startY: number; view: View }
+  | { kind: 'stroke'; last: Point }
+  | { kind: 'shape'; shape: ShapeTool; start: Point }
 
-export function CanvasView({ buffer, pending, onPaint, onViewport, onHover }: CanvasViewProps) {
+export function CanvasView({ buffer, pending, tool, color, onStroke, onShape, onPick, onViewport, onHover }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement>())
-  const dragRef = useRef<{ startX: number; startY: number; view: View; moved: boolean } | null>(null)
+  const gestureRef = useRef<Gesture | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [view, setView] = useState<View>({ zoom: MIN_ZOOM, x: 0, y: 0 })
+  const [space, setSpace] = useState(false)
+  const [panning, setPanning] = useState(false)
+  const [preview, setPreview] = useState<Point[] | null>(null)
 
   useEffect(() => {
     const container = containerRef.current
@@ -103,6 +118,13 @@ export function CanvasView({ buffer, pending, onPaint, onViewport, onHover }: Ca
         context.fillStyle = cssColor(pixel.color)
         context.fillRect(Math.floor(view.x + pixel.x * view.zoom), Math.floor(view.y + pixel.y * view.zoom), cell, cell)
       }
+      if (preview) {
+        context.fillStyle = cssColor(color)
+        for (const point of preview) {
+          if (!inCanvas(point.x, point.y)) continue
+          context.fillRect(Math.floor(view.x + point.x * view.zoom), Math.floor(view.y + point.y * view.zoom), cell, cell)
+        }
+      }
     }
     const schedule = () => {
       if (frame === 0) frame = requestAnimationFrame(flush)
@@ -115,65 +137,139 @@ export function CanvasView({ buffer, pending, onPaint, onViewport, onHover }: Ca
       unsubscribePending()
       if (frame !== 0) cancelAnimationFrame(frame)
     }
-  }, [buffer, pending, view, size])
+  }, [buffer, pending, view, size, preview, color])
 
-  const pixelAt = useCallback(
-    (clientX: number, clientY: number) => {
+  const zoomAt = useCallback(
+    (zoom: number, cx: number, cy: number) => {
+      setView((current) => {
+        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
+        const scale = next / current.zoom
+        return clampView({ zoom: next, x: cx - (cx - current.x) * scale, y: cy - (cy - current.y) * scale }, size)
+      })
+    },
+    [size],
+  )
+
+  const zoomIn = useCallback(() => zoomAt(view.zoom * ZOOM_STEP, size.width / 2, size.height / 2), [zoomAt, view.zoom, size])
+  const zoomOut = useCallback(() => zoomAt(view.zoom / ZOOM_STEP, size.width / 2, size.height / 2), [zoomAt, view.zoom, size])
+  const reset = useCallback(() => zoomAt(MIN_ZOOM, size.width / 2, size.height / 2), [zoomAt, size])
+  const fit = useCallback(() => {
+    const span = CANVAS_SIZE * MIN_ZOOM
+    setView(clampView({ zoom: MIN_ZOOM, x: (size.width - span) / 2, y: (size.height - span) / 2 }, size))
+  }, [size])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) return
+      if (event.key === ' ') {
+        event.preventDefault()
+        setSpace(true)
+      } else if (event.key === '+' || event.key === '=') zoomIn()
+      else if (event.key === '-') zoomOut()
+      else if (event.key === '0') reset()
+      else if (event.key === '1') fit()
+    }
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === ' ') setSpace(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [zoomIn, zoomOut, reset, fit])
+
+  const pointAt = useCallback(
+    (clientX: number, clientY: number): Point | null => {
       const rect = containerRef.current?.getBoundingClientRect()
       if (!rect) return null
-      const x = Math.floor((clientX - rect.left - view.x) / view.zoom)
-      const y = Math.floor((clientY - rect.top - view.y) / view.zoom)
-      if (x < 0 || y < 0 || x >= CANVAS_SIZE || y >= CANVAS_SIZE) return null
-      return { x, y }
+      return {
+        x: Math.floor((clientX - rect.left - view.x) / view.zoom),
+        y: Math.floor((clientY - rect.top - view.y) / view.zoom),
+      }
     },
     [view],
   )
 
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.button === 1 || ((space || tool === 'pan') && event.button === 0)) {
+      event.preventDefault()
+      event.currentTarget.setPointerCapture(event.pointerId)
+      gestureRef.current = { kind: 'pan', startX: event.clientX, startY: event.clientY, view }
+      setPanning(true)
+      return
+    }
+    if (event.button !== 0) return
+    const point = pointAt(event.clientX, event.clientY)
+    if (!point) return
     event.currentTarget.setPointerCapture(event.pointerId)
-    dragRef.current = { startX: event.clientX, startY: event.clientY, view, moved: false }
+    if (tool === 'pencil' || tool === 'eraser') {
+      gestureRef.current = { kind: 'stroke', last: point }
+      onStroke([point])
+    } else if (isShape(tool)) {
+      gestureRef.current = { kind: 'shape', shape: tool, start: point }
+      setPreview(SHAPES[tool](point, point))
+    } else if (tool === 'eyedropper' && inCanvas(point.x, point.y)) {
+      onPick(point)
+    }
   }
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    onHover(pixelAt(event.clientX, event.clientY))
-    const drag = dragRef.current
-    if (!drag) return
-    const dx = event.clientX - drag.startX
-    const dy = event.clientY - drag.startY
-    if (!drag.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return
-    drag.moved = true
-    setView(clampView({ zoom: drag.view.zoom, x: drag.view.x + dx, y: drag.view.y + dy }, size))
+    const point = pointAt(event.clientX, event.clientY)
+    onHover(point && inCanvas(point.x, point.y) ? point : null)
+    const gesture = gestureRef.current
+    if (!gesture || !point) return
+    if (gesture.kind === 'pan') {
+      const dx = event.clientX - gesture.startX
+      const dy = event.clientY - gesture.startY
+      setView(clampView({ zoom: gesture.view.zoom, x: gesture.view.x + dx, y: gesture.view.y + dy }, size))
+    } else if (gesture.kind === 'stroke') {
+      if (point.x === gesture.last.x && point.y === gesture.last.y) return
+      onStroke(linePixels(gesture.last, point).slice(1))
+      gesture.last = point
+    } else {
+      setPreview(SHAPES[gesture.shape](gesture.start, point))
+    }
   }
 
   const onPointerUp = (event: PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current
-    dragRef.current = null
-    if (!drag || drag.moved) return
-    const pixel = pixelAt(event.clientX, event.clientY)
-    if (pixel) onPaint(pixel.x, pixel.y)
+    const gesture = gestureRef.current
+    gestureRef.current = null
+    setPanning(false)
+    if (gesture?.kind !== 'shape') return
+    setPreview(null)
+    const point = pointAt(event.clientX, event.clientY) ?? gesture.start
+    onShape(SHAPES[gesture.shape](gesture.start, point))
+  }
+
+  const onPointerCancel = () => {
+    gestureRef.current = null
+    setPanning(false)
+    setPreview(null)
   }
 
   const onWheel = (event: WheelEvent<HTMLDivElement>) => {
     const rect = containerRef.current?.getBoundingClientRect()
     if (!rect) return
-    const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, view.zoom * (event.deltaY < 0 ? 1.25 : 0.8)))
-    const cx = event.clientX - rect.left
-    const cy = event.clientY - rect.top
-    const scale = zoom / view.zoom
-    setView(clampView({ zoom, x: cx - (cx - view.x) * scale, y: cy - (cy - view.y) * scale }, size))
+    zoomAt(view.zoom * (event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP), event.clientX - rect.left, event.clientY - rect.top)
   }
+
+  const cursor = panning ? 'cursor-grabbing' : space || tool === 'pan' ? 'cursor-grab' : 'cursor-crosshair'
 
   return (
     <div
       ref={containerRef}
-      className="relative h-full min-h-[480px] w-full cursor-crosshair touch-none select-none overflow-hidden border-2 border-border-default bg-bg-tertiary"
+      className={`relative h-full min-h-[480px] w-full ${cursor} touch-none select-none overflow-hidden border-2 border-border-default bg-bg-tertiary`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
       onPointerLeave={() => onHover(null)}
       onWheel={onWheel}
     >
       <canvas ref={canvasRef} className="absolute inset-0 [image-rendering:pixelated]" />
+      <ZoomControl zoom={view.zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={reset} onFit={fit} />
     </div>
   )
 }

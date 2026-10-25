@@ -28,10 +28,26 @@ export class Pending {
 
   add(pixel: Pixel): boolean {
     if (!inCanvas(pixel.x, pixel.y)) return false
-    if (!Number.isInteger(pixel.color) || pixel.color < 0 || pixel.color >= PALETTE.length) return false
+    if (!isColor(pixel.color)) return false
     const key = `${pixel.x},${pixel.y}`
     if (!this.pixels.has(key) && this.pixels.size >= MAX_PENDING) return false
     this.pixels.set(key, { ...pixel })
+    this.changed()
+    return true
+  }
+
+  addAll(pixels: readonly Pixel[]): boolean {
+    const inside = pixels.filter((pixel) => inCanvas(pixel.x, pixel.y))
+    if (!inside.every((pixel) => isColor(pixel.color))) return false
+    const fresh = new Set(inside.map((pixel) => `${pixel.x},${pixel.y}`).filter((key) => !this.pixels.has(key)))
+    if (this.pixels.size + fresh.size > MAX_PENDING) return false
+    for (const pixel of inside) this.pixels.set(`${pixel.x},${pixel.y}`, { ...pixel })
+    this.changed()
+    return true
+  }
+
+  remove(x: number, y: number): boolean {
+    if (!this.pixels.delete(`${x},${y}`)) return false
     this.changed()
     return true
   }
@@ -58,4 +74,8 @@ export class Pending {
     this.version++
     for (const listener of this.listeners) listener()
   }
+}
+
+function isColor(color: number): boolean {
+  return Number.isInteger(color) && color >= 0 && color < PALETTE.length
 }
