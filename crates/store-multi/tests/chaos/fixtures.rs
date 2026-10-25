@@ -47,7 +47,7 @@ pub fn sync_persistent_store_with_tiers(
 	(store, guard)
 }
 
-struct NoWalCheckpoint;
+pub struct NoWalCheckpoint;
 
 impl WalCheckpoint for NoWalCheckpoint {
 	fn make_durable(&self) -> ValueResult<CommitVersion> {

@@ -9,7 +9,10 @@
 use std::{
 	collections::BTreeMap,
 	slice::from_ref,
-	sync::atomic::{AtomicU64, Ordering},
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
 	thread,
 	time::Instant,
 };
@@ -32,6 +35,8 @@ use reifydb_core::{
 use reifydb_store_commit::MultiVersionScope;
 use reifydb_store_multi::store::StandardMultiStore;
 use reifydb_value::{util::cowvec::CowVec, value::duration::Duration};
+
+use crate::fixtures::NoWalCheckpoint;
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
@@ -154,6 +159,7 @@ impl Default for Config {
 /// violation, panic propagation from a worker, or if the run exceeds the timeout.
 pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 	let version = AtomicU64::new(1);
 	let stop = AtomicU64::new(0);
 	let start = Instant::now();
