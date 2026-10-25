@@ -67,7 +67,7 @@ use crate::{
 	ast::{
 		ast::{
 			Ast, AstBetween, AstInfix, AstInline, AstIsVariant, AstStatement, AstSumTypeConstructor,
-			InfixOperator,
+			AstVariable, InfixOperator,
 		},
 		parse::Precedence::{Assignment, Call, Comparison, Factor, LogicAnd, LogicOr, Primary, Term},
 	},
@@ -653,7 +653,13 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::Not)?;
 		}
 		let in_token = self.consume_keyword(Keyword::In)?;
-		let right = Ast::List(self.parse_list()?);
+		let right = if self.current()?.kind == TokenKind::Variable {
+			Ast::Variable(AstVariable {
+				token: self.advance()?,
+			})
+		} else {
+			Ast::List(self.parse_list()?)
+		};
 
 		let operator = if negated {
 			InfixOperator::NotIn(in_token)

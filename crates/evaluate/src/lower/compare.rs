@@ -97,7 +97,7 @@ fn check_between(value: &Node, bound: &Node, fragment: &Fragment) -> Result<()> 
 	}
 }
 
-fn cast_side(node: Node, value_type: &ValueType, target: &ValueType, fragment: &Fragment) -> Expr {
+pub(super) fn cast_side(node: Node, value_type: &ValueType, target: &ValueType, fragment: &Fragment) -> Expr {
 	if value_type == target {
 		return node.expr;
 	}
@@ -111,7 +111,7 @@ fn cast_side(node: Node, value_type: &ValueType, target: &ValueType, fragment: &
 	)
 }
 
-fn not_applicable(operator: BinaryOp, left: ValueType, right: ValueType, fragment: Fragment) -> Error {
+pub(super) fn not_applicable(operator: BinaryOp, left: ValueType, right: ValueType, fragment: Fragment) -> Error {
 	TypeError::BinaryOperatorNotApplicable {
 		operator,
 		left,
