@@ -6,7 +6,10 @@
 use std::sync::Arc;
 
 use reifydb_codec::row::bytes::{EncodedBytes, SHAPE_HEADER_SIZE};
-use reifydb_core::{common::CommitVersion, event::EventBus, lifecycle::watermark::EvictionWatermark};
+use reifydb_core::{
+	common::CommitVersion, event::EventBus, interface::store::WalCheckpoint,
+	lifecycle::watermark::EvictionWatermark,
+};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
@@ -17,7 +20,7 @@ use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{point::MultiPointConfig, range::MultiRangeConfig},
 };
-use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
+use reifydb_value::{Result as ValueResult, byte_size::ByteSize, util::cowvec::CowVec};
 
 /// Commit buffer + SQLite persistent + read tiers on sync_only pools, so the timer-driven flush and
 /// compaction actors never fire on their own and the run stays a pure function of the seed.
@@ -40,7 +43,21 @@ pub fn sync_persistent_store_with_tiers(
 	config.point = Some(point);
 	config.range = Some(range);
 	let store = StandardMultiStore::new(config).unwrap();
+	store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 	(store, guard)
+}
+
+struct NoWalCheckpoint;
+
+impl WalCheckpoint for NoWalCheckpoint {
+	fn make_durable(&self) -> ValueResult<CommitVersion> {
+		// Must never cap a real cutoff and must fit sqlite INTEGER, otherwise flush_all panics.
+		Ok(CommitVersion(i64::MAX as u64))
+	}
+
+	fn saved_through(&self, _version: CommitVersion) -> ValueResult<()> {
+		Ok(())
+	}
 }
 
 /// One shard, so the budget is not split and a few kib really does evict; a roomy cache would make the
