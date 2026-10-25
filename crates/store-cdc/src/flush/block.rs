@@ -21,8 +21,8 @@ fn seal(batch: &FlushBatch) -> Option<Block> {
 	let last = batch.entries.last()?;
 	let min_timestamp = batch.entries.iter().map(|cdc| cdc.timestamp).min()?;
 	let max_timestamp = batch.entries.iter().map(|cdc| cdc.timestamp).max()?;
-	Some(Block {
-		summary: BlockSummary {
+	Some(Block::new(
+		BlockSummary {
 			id: BlockId(last.version.commit),
 			min_version: first.version.commit,
 			max_version: last.version.commit,
@@ -31,8 +31,8 @@ fn seal(batch: &FlushBatch) -> Option<Block> {
 			count: Count::new(batch.entries.len() as u64),
 			stored_bytes: ByteSize::ZERO,
 		},
-		entries: batch.entries.clone(),
-	})
+		batch.entries.clone(),
+	))
 }
 
 #[instrument(name = "store::cdc::flush::flush_now", level = "debug", skip_all)]

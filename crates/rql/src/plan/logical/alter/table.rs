@@ -8,7 +8,7 @@ use reifydb_value::fragment::Fragment;
 use crate::{
 	Result,
 	ast::{
-		ast::{AstAlterTable, AstAlterTableAction, AstColumnProperty},
+		ast::{Ast, AstAlterTable, AstAlterTableAction, AstColumnProperty, AstLiteral},
 		identifier::MaybeQualifiedTableIdentifier,
 	},
 	bump::BumpFragment,
@@ -97,15 +97,14 @@ impl<'bump> Compiler<'bump> {
 			} => {
 				let mut values = Vec::with_capacity(spec.keyed_values.len());
 				for kv in &spec.keyed_values {
-					if !kv.value.is_literal_text() {
+					let Ast::Literal(AstLiteral::Text(text)) = &*kv.value else {
 						return Err(AstError::UnsupportedAstNode {
 							node_type: "DROP PARTITION value (expected a string literal)"
 								.to_string(),
 							fragment: Fragment::internal(kv.key.text()),
 						}
 						.into());
-					}
-					let text = kv.value.as_literal_text();
+					};
 					values.push((kv.key.text().to_string(), text.value().to_string()));
 				}
 				AlterTableAction::DropPartition {

@@ -198,10 +198,6 @@ impl Interceptors {
 	}
 }
 
-pub trait RegisterInterceptor: Send + Sync {
-	fn register(self, interceptors: &mut Interceptors);
-}
-
 impl Clone for Interceptors {
 	fn clone(&self) -> Self {
 		Self {

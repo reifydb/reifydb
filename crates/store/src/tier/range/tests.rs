@@ -765,7 +765,7 @@ impl Lcg {
 
 const SWEEP_GROUPS: u128 = 24;
 
-const MIX: [u8; 18] = [0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4];
+const MIX: [u8; 17] = [0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3];
 const SWEEP_KEYS: u64 = 8;
 
 fn sweep_key(group: u128, n: u64) -> EncodedKey {
@@ -830,8 +830,7 @@ fn sweep_step<X: Sweep>(tier: &RangeTier<X>, rng: &mut Lcg, domain: &[EncodedKey
 		0 => tier.insert(OP_A, at, row("i")),
 		1 => sweep_materialize(tier, rng.next() as u128 % SWEEP_GROUPS + 1),
 		2 => tier.invalidate(OP_A, &at),
-		3 => tier.evict_to_capacity(0),
-		_ => tier.clear(),
+		_ => tier.evict_to_capacity(0),
 	}
 }
 
@@ -847,21 +846,21 @@ fn sweep<X: Sweep>() -> RangeMetrics {
 	let mut total = RangeMetrics::default();
 
 	for seed in SEEDS {
-		let tier = Arc::new(sweep_tier::<X>(budget));
+		let tiers: Arc<Vec<RangeTier<X>>> = Arc::new((0..ROUNDS).map(|_| sweep_tier::<X>(budget)).collect());
 		let barrier = Arc::new(Barrier::new(THREADS));
 		let overstated = Arc::new(AtomicUsize::new(usize::MAX));
 		let mut handles = Vec::with_capacity(THREADS);
 
 		for id in 0..THREADS {
-			let tier = tier.clone();
+			let tiers = tiers.clone();
 			let barrier = barrier.clone();
 			let overstated = overstated.clone();
 			let domain = domain.clone();
 			handles.push(thread::spawn(move || {
 				let mut rng = Lcg(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).wrapping_add(id as u64));
-				for _ in 0..ROUNDS {
+				for (round, tier) in tiers.iter().enumerate() {
 					for _ in 0..STEPS {
-						sweep_step(&tier, &mut rng, &domain);
+						sweep_step(tier, &mut rng, &domain);
 					}
 					barrier.wait();
 					if id == 0 {
@@ -871,7 +870,7 @@ fn sweep<X: Sweep>() -> RangeMetrics {
 						if let Some(at) = found {
 							let _ = overstated.compare_exchange(
 								usize::MAX,
-								at,
+								round * domain.len() + at,
 								Ordering::SeqCst,
 								Ordering::SeqCst,
 							);
@@ -885,19 +884,22 @@ fn sweep<X: Sweep>() -> RangeMetrics {
 			handle.join().expect("a sweep thread must not panic");
 		}
 
-		let metrics = tier.metrics();
-		total.materializes += metrics.materializes;
-		total.materializes_refused += metrics.materializes_refused;
-		total.materializes_raced += metrics.materializes_raced;
-		total.evictions += metrics.evictions;
+		for tier in tiers.iter() {
+			let metrics = tier.metrics();
+			total.materializes += metrics.materializes;
+			total.materializes_refused += metrics.materializes_refused;
+			total.materializes_raced += metrics.materializes_raced;
+			total.evictions += metrics.evictions;
+		}
 
-		let at = overstated.load(Ordering::SeqCst);
-		assert_eq!(
-			at,
-			usize::MAX,
-			"seed {seed}: coverage proved a key absent that holds a value: {}",
-			sweep_explain(&tier, &domain[at], at)
-		);
+		let found = overstated.load(Ordering::SeqCst);
+		if found != usize::MAX {
+			let (round, at) = (found / domain.len(), found % domain.len());
+			panic!(
+				"seed {seed} round {round}: coverage proved a key absent that holds a value: {}",
+				sweep_explain(&tiers[round], &domain[at], at)
+			);
+		}
 	}
 
 	total

@@ -30,7 +30,7 @@ pub mod tests {
 
 	use super::*;
 	use crate::{
-		ast::ast::{Ast, AstInfix, InfixOperator},
+		ast::ast::{Ast, AstInfix, AstLiteral, InfixOperator},
 		token::tokenize,
 	};
 
@@ -44,10 +44,14 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 
-		let number = map.nodes[0].as_literal_number();
+		let Ast::Literal(AstLiteral::Number(number)) = &map.nodes[0] else {
+			panic!("not number")
+		};
 		assert_eq!(number.value(), "1");
 	}
 
@@ -61,18 +65,36 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 2);
 
-		let first = map.nodes[0].as_infix();
-		assert_eq!(first.left.as_literal_number().value(), "1");
+		let Ast::Infix(first) = &map.nodes[0] else {
+			panic!("not infix")
+		};
+		let Ast::Literal(AstLiteral::Number(left_number)) = &*first.left else {
+			panic!("not number")
+		};
+		assert_eq!(left_number.value(), "1");
 		assert!(matches!(first.operator, InfixOperator::Add(_)));
-		assert_eq!(first.right.as_literal_number().value(), "2");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*first.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "2");
 
-		let second = map.nodes[1].as_infix();
-		assert_eq!(second.left.as_literal_number().value(), "4");
+		let Ast::Infix(second) = &map.nodes[1] else {
+			panic!("not infix")
+		};
+		let Ast::Literal(AstLiteral::Number(left_number)) = &*second.left else {
+			panic!("not number")
+		};
+		assert_eq!(left_number.value(), "4");
 		assert!(matches!(second.operator, InfixOperator::Multiply(_)));
-		assert_eq!(second.right.as_literal_number().value(), "3");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*second.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "3");
 	}
 
 	#[test]
@@ -85,7 +107,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Wildcard(_)));
 	}
@@ -99,7 +123,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
 		assert_eq!(map.nodes[0].as_identifier().text(), "value");
@@ -114,7 +140,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
 		assert_eq!(map.nodes[0].as_identifier().text(), "name");
@@ -129,7 +157,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 2);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
 		assert_eq!(map.nodes[0].as_identifier().text(), "name");
@@ -147,17 +177,24 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 
-		let AstInfix {
+		let Ast::Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		} = map.nodes[0].as_infix();
+		}) = &map.nodes[0]
+		else {
+			panic!("not infix")
+		};
 		// Colon syntax lowers to the AS operator, so the projection is an infix.
-		let left = left.as_literal_number();
+		let Ast::Literal(AstLiteral::Number(left)) = &**left else {
+			panic!("not number")
+		};
 		assert_eq!(left.value(), "1");
 
 		assert!(matches!(operator, InfixOperator::As(_)));
@@ -176,10 +213,14 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 
-		let number = map.nodes[0].as_literal_number();
+		let Ast::Literal(AstLiteral::Number(number)) = &map.nodes[0] else {
+			panic!("not number")
+		};
 		assert_eq!(number.value(), "1");
 	}
 
@@ -202,7 +243,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
 		assert_eq!(map.nodes[0].as_identifier().text(), "name");
@@ -218,16 +261,28 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 
-		let infix = map.nodes[0].as_infix();
+		let Ast::Infix(infix) = &map.nodes[0] else {
+			panic!("not infix")
+		};
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
 
-		let left_infix = infix.left.as_infix();
+		let Ast::Infix(left_infix) = &*infix.left else {
+			panic!("not infix")
+		};
 		assert!(matches!(left_infix.operator, InfixOperator::Add(_)));
-		assert_eq!(left_infix.left.as_literal_number().value(), "1");
-		assert_eq!(left_infix.right.as_literal_number().value(), "2");
+		let Ast::Literal(AstLiteral::Number(left_number)) = &*left_infix.left else {
+			panic!("not number")
+		};
+		assert_eq!(left_number.value(), "1");
+		let Ast::Literal(AstLiteral::Number(right_number)) = &*left_infix.right else {
+			panic!("not number")
+		};
+		assert_eq!(right_number.value(), "2");
 
 		let right = infix.right.as_identifier();
 		assert_eq!(right.text(), "col");
@@ -242,15 +297,21 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 2);
 
-		let first_infix = map.nodes[0].as_infix();
+		let Ast::Infix(first_infix) = &map.nodes[0] else {
+			panic!("not infix")
+		};
 		assert!(matches!(first_infix.operator, InfixOperator::As(_)));
 		assert_eq!(first_infix.left.as_identifier().text(), "id");
 		assert_eq!(first_infix.right.as_identifier().text(), "name");
 
-		let second_infix = map.nodes[1].as_infix();
+		let Ast::Infix(second_infix) = &map.nodes[1] else {
+			panic!("not infix")
+		};
 		assert!(matches!(second_infix.operator, InfixOperator::As(_)));
 		assert_eq!(second_infix.left.as_identifier().text(), "years");
 		assert_eq!(second_infix.right.as_identifier().text(), "age");
@@ -265,13 +326,19 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 1);
 
-		let infix = map.nodes[0].as_infix();
+		let Ast::Infix(infix) = &map.nodes[0] else {
+			panic!("not infix")
+		};
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
 
-		let left_infix = infix.left.as_infix();
+		let Ast::Infix(left_infix) = &*infix.left else {
+			panic!("not infix")
+		};
 		assert!(matches!(left_infix.operator, InfixOperator::Multiply(_)));
 		assert_eq!(left_infix.left.as_identifier().text(), "price");
 		assert_eq!(left_infix.right.as_identifier().text(), "quantity");
@@ -289,13 +356,17 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let map = result.first_unchecked().as_map();
+		let Some(Ast::Map(map)) = result.nodes.first() else {
+			panic!("not map")
+		};
 		assert_eq!(map.nodes.len(), 3);
 
 		assert!(matches!(map.nodes[0], Ast::Identifier(_)));
 		assert_eq!(map.nodes[0].as_identifier().text(), "name");
 
-		let middle_infix = map.nodes[1].as_infix();
+		let Ast::Infix(middle_infix) = &map.nodes[1] else {
+			panic!("not infix")
+		};
 		assert!(matches!(middle_infix.operator, InfixOperator::As(_)));
 		assert_eq!(middle_infix.right.as_identifier().text(), "total");
 

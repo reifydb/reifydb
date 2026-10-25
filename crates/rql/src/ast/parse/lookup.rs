@@ -92,7 +92,9 @@ pub mod tests {
 		assert_eq!(lookup.using_clause.pairs[0].connector, Some(JoinConnector::And));
 		assert_eq!(lookup.using_clause.pairs[1].connector, None);
 		assert_eq!(lookup.using_clause.pairs[0].first.as_identifier().text(), "pool");
-		let second = lookup.using_clause.pairs[1].second.as_infix();
+		let Ast::Infix(second) = &*lookup.using_clause.pairs[1].second else {
+			panic!("not infix")
+		};
 		assert_eq!(second.left.as_identifier().text(), "info");
 		assert!(matches!(second.operator, InfixOperator::AccessTable(_)));
 		assert_eq!(second.right.as_identifier().text(), "pair");

@@ -205,14 +205,6 @@ impl RowMap {
 			versions,
 		}
 	}
-
-	fn packed(self) -> Self {
-		Self {
-			entries: self.entries.into_iter().collect(),
-			bytes: self.bytes,
-			versions: self.versions,
-		}
-	}
 }
 
 pub(super) struct Removed {
@@ -376,7 +368,7 @@ impl ActiveRows {
 			);
 		}
 		ClosedRows {
-			rows: self.rows.packed(),
+			rows: self.rows,
 		}
 	}
 }

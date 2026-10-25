@@ -26,10 +26,6 @@ impl<'bump> UnresolvedObjectIdentifier<'bump> {
 		self.alias = Some(alias);
 		self
 	}
-
-	pub fn effective_name(&self) -> &str {
-		self.alias.as_ref().map(|a| a.text()).unwrap_or_else(|| self.name.text())
-	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

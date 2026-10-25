@@ -433,8 +433,8 @@ pub mod tests {
 			.build_named();
 
 		assert_eq!(named.field_count(), 2);
-		assert_eq!(named.get_field_name(0).unwrap(), "count");
-		assert_eq!(named.get_field_name(1).unwrap(), "name");
+		assert_eq!(named.get_field(0).unwrap().name, "count");
+		assert_eq!(named.get_field(1).unwrap().name, "name");
 	}
 
 	#[test]

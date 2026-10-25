@@ -48,10 +48,6 @@ pub fn slice_nulls(nulls: Option<&NullBuffer>, start: usize, end: usize) -> Opti
 	nulls.map(|nulls| NullBuffer::new(slice(nulls.inner(), start, end)))
 }
 
-pub fn filter_nulls(nulls: Option<&NullBuffer>, mask: &BooleanBuffer) -> Option<NullBuffer> {
-	nulls.map(|nulls| NullBuffer::new(filter(nulls.inner(), mask)))
-}
-
 pub fn reorder_nulls(nulls: Option<&NullBuffer>, indices: &[usize]) -> Option<NullBuffer> {
 	nulls.map(|nulls| NullBuffer::new(reorder(nulls.inner(), indices)))
 }

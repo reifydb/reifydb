@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-//! Delete / physical-removal / row-TTL lifecycle chaos across the three configs, checked against an exact
-//! oracle. Reads are taken at the CURRENT version only: row TTL removes by commit version and can drop a
-//! historical version a lower read would need, so only the current version is exactly modelled.
-
-use std::collections::HashMap;
+//! Tombstone, flush and historical-GC lifecycle chaos across the three configs, checked against an exact
+//! oracle. Reads are taken at the CURRENT version only: historical GC drops superseded versions a lower
+//! read would need, so only the current version is exactly modelled.
 
 use rand::{RngExt, SeedableRng, rngs::StdRng};
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	common::CommitVersion,
 	delta::{Delta, SetPre},
@@ -32,66 +30,10 @@ pub struct Params {
 	pub max_steps: u32,
 	pub commit_pct: u32,
 	pub flush_pct: u32,
-	pub ttl_pct: u32,
-	pub delete_pct: u32,
 	pub histgc_pct: u32,
 	pub remove_pct: u32,
 	pub max_deltas: u64,
 	pub max_batch: u64,
-}
-
-fn ttl_sweep(store: &StandardMultiStore, oracle: &Oracle, rows: &[u64], cutoff_version: CommitVersion) {
-	// Deterministic stand-in for version-anchored TTL eviction, in the same buffer-then-persistent,
-	// mutate-then-invalidate order the actor uses.
-	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
-	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(STORAGE, r)).collect();
-	{
-		let buffer = store.commit();
-		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
-		for (row, key) in rows.iter().zip(&keys) {
-			for v in oracle.versions(*row) {
-				if CommitVersion(v) <= cutoff_version {
-					batch.push((key.clone(), CommitVersion(v)));
-				}
-			}
-		}
-		if !batch.is_empty() {
-			buffer.compact(HashMap::from([(kind, batch)]));
-		}
-	}
-	for key in &keys {
-		store.invalidate_read_key(kind, key);
-	}
-	if let Some(persistent) = store.persistent() {
-		let deleted = persistent.delete_keys(kind, &keys).unwrap();
-		if deleted > 0 {
-			store.clear_read();
-		}
-	}
-}
-
-fn physical_delete(store: &StandardMultiStore, oracle: &Oracle, rows: &[u64]) {
-	// Delete-then-invalidate is the order that stops a stale complete page from resurrecting the row.
-	let kind = EntryKind::Source(STORAGE, EntryLayout::Row);
-	let keys: Vec<EncodedKey> = rows.iter().map(|&r| RowKey::encoded(STORAGE, r)).collect();
-	if let Some(persistent) = store.persistent() {
-		persistent.delete_keys(kind, &keys).unwrap();
-	}
-	{
-		let buffer = store.commit();
-		let mut batch: Vec<(EncodedKey, CommitVersion)> = Vec::new();
-		for (row, key) in rows.iter().zip(&keys) {
-			for v in oracle.versions(*row) {
-				batch.push((key.clone(), CommitVersion(v)));
-			}
-		}
-		if !batch.is_empty() {
-			buffer.compact(HashMap::from([(kind, batch)]));
-		}
-	}
-	for key in &keys {
-		store.invalidate_read_key(kind, key);
-	}
 }
 
 fn historical_gc(store: &StandardMultiStore, cutoff: CommitVersion) {
@@ -109,9 +51,6 @@ fn historical_gc(store: &StandardMultiStore, cutoff: CommitVersion) {
 pub fn drive(seed: u64, p: Params) {
 	let mut rng = StdRng::seed_from_u64(seed);
 	let mut oracle = Oracle::default();
-	// last-write commit version of each present (live-current) key - mirrors what the version-anchored TTL
-	// scanner reads from the store, so we can predict eviction exactly.
-	let mut row_version: std::collections::BTreeMap<u64, u64> = std::collections::BTreeMap::new();
 
 	let memory = StandardMultiStore::testing_memory();
 	let (persistent, _g1) = sync_persistent_store();
@@ -127,9 +66,7 @@ pub fn drive(seed: u64, p: Params) {
 	for step in 0..steps {
 		let roll = rng.random_range(0u32..100);
 		let flush_hi = p.commit_pct + p.flush_pct;
-		let ttl_hi = flush_hi + p.ttl_pct;
-		let delete_hi = ttl_hi + p.delete_pct;
-		let histgc_hi = delete_hi + p.histgc_pct;
+		let histgc_hi = flush_hi + p.histgc_pct;
 
 		if version == 0 || roll < p.commit_pct {
 			version += 1;
@@ -138,10 +75,8 @@ pub fn drive(seed: u64, p: Params) {
 			let mut deltas: Vec<(u64, Option<Vec<u8>>)> = Vec::new();
 			for row in rows {
 				if rng.random_range(0u32..100) < p.remove_pct {
-					row_version.remove(&row);
 					deltas.push((row, None));
 				} else {
-					row_version.insert(row, version);
 					let payload = format!("r{row}@v{version}").into_bytes();
 					deltas.push((row, Some(build_bytes(&payload).0.to_vec())));
 				}
@@ -168,32 +103,6 @@ pub fn drive(seed: u64, p: Params) {
 				if store.persistent().is_some() {
 					flush(store, CommitVersion(cutoff));
 				}
-			}
-		} else if roll < ttl_hi {
-			// Evict every key whose last-write version is at or below the cutoff; drawing the cutoff
-			// at random fuzzes the full range of eviction depths.
-			let cutoff_version = rng.random_range(1..=version);
-			let expired: Vec<u64> = row_version
-				.iter()
-				.filter(|&(_, &v)| v <= cutoff_version)
-				.map(|(&row, _)| row)
-				.collect();
-			for (_, store) in &configs {
-				ttl_sweep(store, &oracle, &expired, CommitVersion(cutoff_version));
-			}
-			for row in expired {
-				oracle.remove_key(row);
-				row_version.remove(&row);
-			}
-		} else if roll < delete_hi {
-			let count = rng.random_range(1u64..=4);
-			let rows = distinct_rows(&mut rng, count, p.keyspace);
-			for (_, store) in &configs {
-				physical_delete(store, &oracle, &rows);
-			}
-			for row in rows {
-				oracle.remove_key(row);
-				row_version.remove(&row);
 			}
 		} else if roll < histgc_hi {
 			let cutoff = rng.random_range(1..=version);

@@ -836,10 +836,6 @@ impl IndexEntryKey {
 		)
 	}
 
-	pub fn object_range(object: impl Into<ObjectId>) -> TaggedKeyBoundRange {
-		TaggedKeyBoundRange::prefix(KeyTag::IndexEntry, object_fields(object.into()))
-	}
-
 	pub fn key_prefix_range(object: impl Into<ObjectId>, index: IndexId, key_prefix: &[u8]) -> TaggedKeyBoundRange {
 		let object = object.into();
 		TaggedKeyBoundRange::prefix(

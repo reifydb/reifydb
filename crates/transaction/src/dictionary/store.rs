@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	ops::Bound,
 	slice,
 	sync::atomic::{AtomicU64, Ordering},
 };
@@ -18,10 +17,6 @@ use reifydb_core::{
 		catalog::{DictionaryEntryIndexKey, DictionaryEntryKey, DictionaryKey},
 	},
 	return_internal_error,
-};
-use reifydb_store_single::{
-	SingleStore,
-	tier::{RangeCursor, TierStorage},
 };
 use reifydb_value::{Result, value::dictionary::DictionaryId};
 
@@ -40,30 +35,6 @@ pub struct DictEntryWrite {
 	pub entry_value: EncodedPodRow,
 	pub index_key: DictionaryEntryIndexKey,
 	pub index_value: EncodedPodRow,
-}
-
-pub fn durable_max_index_id(store: &SingleStore, dictionary: DictionaryId) -> Result<Option<u128>> {
-	let range = DictionaryEntryIndexKey::full_scan(dictionary).encode();
-	match store.persistent() {
-		Some(tier) => {
-			let mut cursor = RangeCursor::new();
-			let batch = tier.range_next(
-				&mut cursor,
-				bound_as_slice(&range.start),
-				bound_as_slice(&range.end),
-				1,
-			)?;
-			Ok(batch.entries
-				.first()
-				.and_then(|entry| DictionaryEntryIndexKey::decode(&entry.key).map(|key| key.id)))
-		}
-		None => {
-			let batch = SingleVersionRange::range_batch(store, range, 1)?;
-			Ok(batch.items
-				.first()
-				.and_then(|row| DictionaryEntryIndexKey::decode(&row.key).map(|key| key.id)))
-		}
-	}
 }
 
 pub fn remove_dictionary_entries(single: &SingleTransaction, dictionary: DictionaryId) -> Result<()> {
@@ -90,14 +61,6 @@ pub fn remove_dictionary_entries(single: &SingleTransaction, dictionary: Diction
 		}
 	}
 	Ok(())
-}
-
-fn bound_as_slice(bound: &Bound<EncodedKey>) -> Bound<&[u8]> {
-	match bound {
-		Bound::Included(key) => Bound::Included(key.as_slice()),
-		Bound::Excluded(key) => Bound::Excluded(key.as_slice()),
-		Bound::Unbounded => Bound::Unbounded,
-	}
 }
 
 pub struct SingleDictionaryStore {

@@ -177,7 +177,8 @@ pub fn encode_row(schema: &ChaosSchema, content: &RowContent, row_number: RowNum
 fn row_time(schema: &ChaosSchema, content: &RowContent, column: &str) -> DateTime {
 	let field = schema
 		.input_shape
-		.find_field(column)
+		.find_field_index(column)
+		.and_then(|i| schema.input_shape.get_field(i))
 		.unwrap_or_else(|| panic!("time column `{column}` is absent from the scenario's input shape"));
 	match content.get(&field.name) {
 		Some(Value::Uint8(millis)) => DateTime::from_millis(
@@ -411,7 +412,8 @@ mod tests {
 		assert!((content.f64("quote_volume").unwrap() - 6.0).abs() < 1e-12);
 
 		// The constraint must reach the encoded row too, not only the content map.
-		let quote_volume_field = row.shape.find_field("quote_volume").expect("field");
+		let quote_volume_field =
+			row.shape.find_field_index("quote_volume").and_then(|i| row.shape.get_field(i)).expect("field");
 		let buf = &row.encoded.as_slice()[quote_volume_field.offset as usize
 			..(quote_volume_field.offset as usize + quote_volume_field.size as usize)];
 		let mut bytes = [0u8; 8];

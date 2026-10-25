@@ -89,12 +89,4 @@ impl NameResolver {
 	pub fn sumtype(&self, id: u64) -> Option<&ResolvedSumType> {
 		self.sumtypes.get(&id)
 	}
-
-	pub fn sumtype_variant(&self, id: u64, tag: u8) -> Option<&ResolvedVariant> {
-		self.sumtypes.get(&id).and_then(|st| st.variants.iter().find(|v| v.tag == tag))
-	}
-
-	pub fn sumtype_variant_name(&self, id: u64, tag: u8) -> Option<&str> {
-		self.sumtype_variant(id, tag).map(|v| v.name.as_str())
-	}
 }

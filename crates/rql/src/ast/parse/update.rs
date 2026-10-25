@@ -113,13 +113,17 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let update = result.first_unchecked().as_update();
+		let Some(Ast::Update(update)) = result.nodes.first() else {
+			panic!("not update")
+		};
 
 		assert!(update.target.namespace.is_empty());
 		assert_eq!(update.target.name.text(), "users");
 
 		assert_eq!(update.assignments.len(), 1);
-		let assignment = update.assignments[0].as_infix();
+		let Ast::Infix(assignment) = &update.assignments[0] else {
+			panic!("not infix")
+		};
 		assert!(matches!(assignment.operator, InfixOperator::As(_)));
 
 		assert!(matches!(*update.filter, Ast::Filter(_)));
@@ -137,7 +141,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let update = result.first_unchecked().as_update();
+		let Some(Ast::Update(update)) = result.nodes.first() else {
+			panic!("not update")
+		};
 
 		assert_eq!(update.target.namespace[0].text(), "test");
 		assert_eq!(update.target.name.text(), "users");
@@ -155,7 +161,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let update = result.first_unchecked().as_update();
+		let Some(Ast::Update(update)) = result.nodes.first() else {
+			panic!("not update")
+		};
 
 		assert_eq!(update.assignments.len(), 3);
 	}
@@ -172,10 +180,16 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let update = result.first_unchecked().as_update();
+		let Some(Ast::Update(update)) = result.nodes.first() else {
+			panic!("not update")
+		};
 
-		let filter = update.filter.as_filter();
-		let condition = filter.node.as_infix();
+		let Ast::Filter(filter) = &*update.filter else {
+			panic!("not filter")
+		};
+		let Ast::Infix(condition) = &*filter.node else {
+			panic!("not infix")
+		};
 		assert!(matches!(condition.operator, InfixOperator::And(_)));
 	}
 
@@ -191,9 +205,13 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let update = result.first_unchecked().as_update();
+		let Some(Ast::Update(update)) = result.nodes.first() else {
+			panic!("not update")
+		};
 
-		let take = update.take.as_ref().unwrap().as_take();
+		let Some(Ast::Take(take)) = update.take.as_deref() else {
+			panic!("not take")
+		};
 		assert_eq!(take.take, AstTakeValue::Literal(10));
 	}
 
@@ -209,9 +227,13 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let update = result.first_unchecked().as_update();
+		let Some(Ast::Update(update)) = result.nodes.first() else {
+			panic!("not update")
+		};
 
-		let take = update.take.as_ref().unwrap().as_take();
+		let Some(Ast::Take(take)) = update.take.as_deref() else {
+			panic!("not take")
+		};
 		assert!(matches!(take.take, AstTakeValue::Variable(_)));
 	}
 
@@ -227,7 +249,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let update = result.first_unchecked().as_update();
+		let Some(Ast::Update(update)) = result.nodes.first() else {
+			panic!("not update")
+		};
 
 		assert!(update.take.is_none());
 	}

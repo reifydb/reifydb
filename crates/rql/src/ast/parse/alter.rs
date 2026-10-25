@@ -310,7 +310,7 @@ impl<'bump> Parser<'bump> {
 pub mod tests {
 	use crate::{
 		ast::{
-			ast::{AstAlter, AstAlterSequence, AstLiteral},
+			ast::{Ast, AstAlter, AstAlterSequence, AstLiteral},
 			parse::Parser,
 		},
 		bump::Bump,
@@ -327,7 +327,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
+		let Some(Ast::Alter(alter)) = result.nodes.first() else {
+			panic!("not alter")
+		};
+		let alter = &**alter;
 
 		match alter {
 			AstAlter::Sequence(AstAlterSequence {
@@ -361,7 +364,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let alter = result.first_unchecked().as_alter();
+		let Some(Ast::Alter(alter)) = result.nodes.first() else {
+			panic!("not alter")
+		};
+		let alter = &**alter;
 
 		match alter {
 			AstAlter::Sequence(AstAlterSequence {

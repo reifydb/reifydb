@@ -4,22 +4,16 @@
 use reifydb_core::interface::catalog::task::TaskId;
 use tokio::sync::mpsc;
 
-use crate::{
-	coordinator::TaskCoordinatorMessage,
-	registry::{TaskInfo, TaskRegistry},
-	task::ScheduledTask,
-};
+use crate::{coordinator::TaskCoordinatorMessage, task::ScheduledTask};
 
 #[derive(Clone)]
 pub struct TaskHandle {
-	registry: TaskRegistry,
 	coordinator_tx: mpsc::Sender<TaskCoordinatorMessage>,
 }
 
 impl TaskHandle {
-	pub(crate) fn new(registry: TaskRegistry, coordinator_tx: mpsc::Sender<TaskCoordinatorMessage>) -> Self {
+	pub(crate) fn new(coordinator_tx: mpsc::Sender<TaskCoordinatorMessage>) -> Self {
 		Self {
-			registry,
 			coordinator_tx,
 		}
 	}
@@ -42,13 +36,5 @@ impl TaskHandle {
 			.map_err(|e| format!("Failed to unregister task: {}", e))?;
 
 		Ok(())
-	}
-
-	pub fn list_tasks(&self) -> Vec<TaskInfo> {
-		self.registry.iter().map(|entry| TaskInfo::from_entry(*entry.key(), entry.value())).collect()
-	}
-
-	pub fn get_task_info(&self, task_id: TaskId) -> Option<TaskInfo> {
-		self.registry.get(&task_id).map(|entry| TaskInfo::from_entry(task_id, entry.value()))
 	}
 }

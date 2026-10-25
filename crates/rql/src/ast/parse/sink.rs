@@ -54,7 +54,10 @@ mod tests {
 	use bumpalo::Bump;
 
 	use crate::{
-		ast::{ast::AstCreate, parse::Parser},
+		ast::{
+			ast::{Ast, AstCreate},
+			parse::Parser,
+		},
 		token::tokenize,
 	};
 
@@ -74,7 +77,10 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 		let AstCreate::Sink(sink) = create else {
 			panic!("expected Sink");
 		};
@@ -105,7 +111,10 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 		let AstCreate::Sink(sink) = create else {
 			panic!("expected Sink");
 		};

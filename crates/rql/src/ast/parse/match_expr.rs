@@ -232,7 +232,10 @@ pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{
-		ast::{ast::AstMatchArm, parse::parse},
+		ast::{
+			ast::{Ast, AstMatchArm},
+			parse::parse,
+		},
 		token::tokenize,
 	};
 
@@ -244,7 +247,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let m = result[0].first_unchecked().as_match();
+		let Some(Ast::Match(m)) = result[0].nodes.first() else {
+			panic!("not match")
+		};
 		assert!(m.subject.is_some());
 		assert_eq!(m.arms.len(), 2);
 		assert!(matches!(&m.arms[0], AstMatchArm::Variant { variant_name, destructure, guard, .. }
@@ -260,7 +265,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let m = result[0].first_unchecked().as_match();
+		let Some(Ast::Match(m)) = result[0].nodes.first() else {
+			panic!("not match")
+		};
 		assert_eq!(m.arms.len(), 2);
 		match &m.arms[0] {
 			AstMatchArm::Variant {
@@ -287,7 +294,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let m = result[0].first_unchecked().as_match();
+		let Some(Ast::Match(m)) = result[0].nodes.first() else {
+			panic!("not match")
+		};
 		assert_eq!(m.arms.len(), 2);
 		assert!(matches!(&m.arms[0], AstMatchArm::Variant { variant_name, guard, .. }
 			if variant_name.text() == "Active" && guard.is_some()));
@@ -301,7 +310,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let m = result[0].first_unchecked().as_match();
+		let Some(Ast::Match(m)) = result[0].nodes.first() else {
+			panic!("not match")
+		};
 		assert_eq!(m.arms.len(), 3);
 		assert!(matches!(&m.arms[0], AstMatchArm::Value { .. }));
 		assert!(
@@ -318,7 +329,9 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let m = result[0].first_unchecked().as_match();
+		let Some(Ast::Match(m)) = result[0].nodes.first() else {
+			panic!("not match")
+		};
 		assert_eq!(m.arms.len(), 2);
 		match &m.arms[0] {
 			AstMatchArm::Variant {

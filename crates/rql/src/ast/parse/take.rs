@@ -70,7 +70,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let take = result.first_unchecked().as_take();
+		let Some(Ast::Take(take)) = result.nodes.first() else {
+			panic!("not take")
+		};
 		assert_eq!(take.take, AstTakeValue::Literal(10));
 	}
 
@@ -84,7 +86,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let take = result.first_unchecked().as_take();
+		let Some(Ast::Take(take)) = result.nodes.first() else {
+			panic!("not take")
+		};
 		assert_eq!(take.take, AstTakeValue::Literal(10));
 	}
 
@@ -98,7 +102,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let take = result.first_unchecked().as_take();
+		let Some(Ast::Take(take)) = result.nodes.first() else {
+			panic!("not take")
+		};
 		assert_eq!(take.take, AstTakeValue::Literal(0));
 	}
 

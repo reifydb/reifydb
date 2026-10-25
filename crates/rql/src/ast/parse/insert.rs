@@ -164,7 +164,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let insert = result.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = result.nodes.first() else {
+			panic!("not insert")
+		};
 
 		assert!(insert.target.namespace.is_empty());
 		assert_eq!(insert.target.name.text(), "users");
@@ -184,7 +186,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let insert = result.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = result.nodes.first() else {
+			panic!("not insert")
+		};
 
 		assert_eq!(insert.target.namespace[0].text(), "test");
 		assert_eq!(insert.target.name.text(), "users");
@@ -202,7 +206,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let insert = result.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = result.nodes.first() else {
+			panic!("not insert")
+		};
 
 		assert!(insert.target.namespace.is_empty());
 		assert_eq!(insert.target.name.text(), "target_table");
@@ -230,7 +236,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let insert = result.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = result.nodes.first() else {
+			panic!("not insert")
+		};
 
 		assert!(insert.target.namespace.is_empty());
 		assert_eq!(insert.target.name.text(), "users");
@@ -278,7 +286,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let insert = result.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = result.nodes.first() else {
+			panic!("not insert")
+		};
 
 		if let Ast::From(AstFrom::Inline {
 			list,
@@ -301,7 +311,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let insert = result.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = result.nodes.first() else {
+			panic!("not insert")
+		};
 
 		assert!(insert.target.namespace.is_empty());
 		assert_eq!(insert.target.name.text(), "users");
@@ -312,7 +324,9 @@ pub mod tests {
 		}) = &*insert.source
 		{
 			assert_eq!(list.len(), 1);
-			let tuple = list[0].as_tuple();
+			let Ast::Tuple(tuple) = &list[0] else {
+				panic!("not tuple")
+			};
 			assert_eq!(tuple.len(), 2);
 		} else {
 			panic!("Expected FROM with inline data");
@@ -334,7 +348,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let insert = result.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = result.nodes.first() else {
+			panic!("not insert")
+		};
 
 		if let Ast::From(AstFrom::Inline {
 			list,
@@ -342,8 +358,14 @@ pub mod tests {
 		}) = &*insert.source
 		{
 			assert_eq!(list.len(), 2);
-			assert_eq!(list[0].as_tuple().len(), 4);
-			assert_eq!(list[1].as_tuple().len(), 4);
+			let Ast::Tuple(tuple0) = &list[0] else {
+				panic!("not tuple")
+			};
+			assert_eq!(tuple0.len(), 4);
+			let Ast::Tuple(tuple1) = &list[1] else {
+				panic!("not tuple")
+			};
+			assert_eq!(tuple1.len(), 4);
 		} else {
 			panic!("Expected FROM with inline data");
 		}
@@ -359,7 +381,9 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let insert = result.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = result.nodes.first() else {
+			panic!("not insert")
+		};
 
 		assert_eq!(insert.target.namespace[0].text(), "test");
 		assert_eq!(insert.target.name.text(), "users");
@@ -398,7 +422,9 @@ pub mod tests {
 			&bump,
 			r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k", not_before: n }"#,
 		);
-		let insert = statement.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = statement.nodes.first() else {
+			panic!("not insert")
+		};
 
 		let with_options = insert.with_options.as_ref().expect("WITH must be parsed");
 		assert!(with_options.deduplication_key.is_some());
@@ -411,7 +437,9 @@ pub mod tests {
 		let bump = Bump::new();
 		let statement =
 			parse_one_statement(&bump, r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k" }"#);
-		let insert = statement.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = statement.nodes.first() else {
+			panic!("not insert")
+		};
 
 		let with_options = insert.with_options.as_ref().expect("WITH must be parsed");
 		assert!(with_options.deduplication_key.is_some());
@@ -424,7 +452,9 @@ pub mod tests {
 		// asked for.
 		let bump = Bump::new();
 		let statement = parse_one_statement(&bump, "INSERT test::jobs [{ id: 1 }]");
-		let insert = statement.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = statement.nodes.first() else {
+			panic!("not insert")
+		};
 
 		assert!(insert.with_options.is_none());
 	}
@@ -438,7 +468,9 @@ pub mod tests {
 			&bump,
 			r#"INSERT test::jobs [{ id: 1 }] WITH { deduplication_key: "k" } RETURNING { id }"#,
 		);
-		let insert = statement.first_unchecked().as_insert();
+		let Some(Ast::Insert(insert)) = statement.nodes.first() else {
+			panic!("not insert")
+		};
 
 		assert!(insert.with_options.is_some(), "WITH must survive a following RETURNING");
 		assert!(insert.returning.is_some(), "RETURNING must survive a preceding WITH");

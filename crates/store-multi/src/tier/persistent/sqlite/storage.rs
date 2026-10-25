@@ -79,8 +79,6 @@ use crate::{
 					build_current_keys_sql_partitioned, build_current_keys_sql_row,
 					build_delete_current_sql, build_delete_current_sql_keyed,
 					build_delete_current_sql_partitioned, build_delete_current_sql_row,
-					build_delete_keys_sql, build_delete_keys_sql_keyed,
-					build_delete_keys_sql_partitioned, build_delete_keys_sql_row,
 					build_expired_keys_sql, build_expired_keys_sql_keyed,
 					build_expired_keys_sql_partitioned, build_expired_keys_sql_row,
 					build_get_current_sql, build_get_current_sql_keyed,
@@ -415,48 +413,6 @@ impl SqlitePersistentStorage {
 			Err(e) if e.to_string().contains("no such table") => Ok(0),
 			Err(e) => Err(error!(internal(format!("Failed to count persistent current: {}", e)))),
 		}
-	}
-	pub fn delete_keys(&self, table: EntryKind, keys: &[EncodedKey]) -> Result<u64> {
-		if keys.is_empty() {
-			return Ok(0);
-		}
-		let guard = self.lock_conn();
-		let Some(conn) = guard.as_ref() else {
-			return Ok(0);
-		};
-		let table_sql = self.table_sql(conn, table)?;
-		let mut total = 0u64;
-		for chunk in keys.chunks(GET_CHUNK) {
-			let sql = match table_sql.schema {
-				SqliteSchema::Blob => build_delete_keys_sql(&table_sql.table_name, chunk.len()),
-				SqliteSchema::Row => build_delete_keys_sql_row(&table_sql.table_name, chunk.len()),
-				SqliteSchema::Partitioned => {
-					build_delete_keys_sql_partitioned(&table_sql.table_name, chunk.len())
-				}
-				SqliteSchema::Series | SqliteSchema::PartitionedSeries => build_delete_keys_sql_keyed(
-					&table_sql.table_name,
-					series_columns(table_sql.schema),
-					chunk.len(),
-				),
-			};
-			let mut boxed: Vec<Box<dyn ToSql>> =
-				Vec::with_capacity(chunk.len() * table_sql.schema.key_column_count());
-			for key in chunk {
-				push_key_params(table_sql.schema, key.as_slice(), &mut boxed)?;
-			}
-			let flat: Vec<&dyn ToSql> = boxed.iter().map(|p| p.as_ref()).collect();
-			match conn.execute(&sql, params_from_iter(flat)) {
-				Ok(n) => total += n as u64,
-				Err(e) if e.to_string().contains("no such table") => return Ok(total),
-				Err(e) => {
-					return Err(error!(internal(format!(
-						"Failed to delete keys from {}: {}",
-						table_sql.table_name, e
-					))));
-				}
-			}
-		}
-		Ok(total)
 	}
 
 	pub fn list_current_entries(&self) -> Result<Vec<EntryKind>> {
@@ -2338,7 +2294,6 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::tier::persistent::sqlite::schema::row_from_sql;
 
 	// `table()` backs the narrow row schema, so every key built against it must decode as a RowKey.
 	fn table() -> EntryKind {
@@ -2382,26 +2337,6 @@ mod tests {
 			.into_iter()
 			.map(|(key, _)| PartitionedRowKey::decode(&key).unwrap().row.0)
 			.collect()
-	}
-
-	fn reap(s: &SqlitePersistentStorage, keys: &[u64]) -> u64 {
-		let keys: Vec<EncodedKey> = keys.iter().map(|n| key(*n)).collect();
-		s.delete_keys(table(), &keys).unwrap()
-	}
-
-	fn stored_keys(s: &SqlitePersistentStorage) -> Vec<u64> {
-		// The narrow row schema stores the row number descending in `key`, never an encoded RowKey,
-		// so reading the column raw would report the inverted integer rather than the row.
-		let guard = s.inner.conn.lock();
-		let conn = guard.as_ref().expect("write connection is present");
-		let table_name = s.table_sql(conn, table()).unwrap().table_name.clone();
-		let mut stmt = conn.prepare(&format!("SELECT key FROM \"{}\" ORDER BY key", table_name)).unwrap();
-		let keys: Vec<u64> = stmt
-			.query_map([], |row| row.get::<_, i64>(0))
-			.unwrap()
-			.map(|key| row_from_sql(key.unwrap()))
-			.collect();
-		keys
 	}
 
 	fn visible(s: &SqlitePersistentStorage, k: &EncodedKey) -> bool {
@@ -2769,32 +2704,6 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn delete_keys_removes_the_row_outright_leaving_no_tombstone() {
-		// A reaped row must vanish, not become a tombstone the reaper would then have to clear again.
-		let (s, _guard) = SqlitePersistentStorage::in_memory();
-		s.set(
-			CommitVersion(1),
-			HashMap::from([(
-				table(),
-				vec![
-					(key(1), Some(stamped(100))),
-					(key(2), Some(stamped(200))),
-					(key(3), Some(stamped(500))),
-				],
-			)]),
-		)
-		.unwrap();
-
-		assert_eq!(reap(&s, &[1, 2]), 2, "every named key must be removed");
-		assert_eq!(stored_keys(&s), vec![3], "a reaped key must leave no row behind, not even a tombstone");
-		assert_eq!(
-			expired_at(&s, table(), 1_000),
-			vec![3],
-			"a reaped key must not resurface as an expiry candidate"
-		);
-	}
-
 	fn series_storage() -> StorageId {
 		StorageId::series(1)
 	}
@@ -2914,10 +2823,10 @@ mod tests {
 			"expiry discovery must return the stamped narrow rows oldest first, decoded back to keys"
 		);
 
-		assert_eq!(s.delete_keys(t, &[series_key(Some(3), 10, 1)]).unwrap(), 1);
-		assert_eq!(s.count_current(t).unwrap(), 2, "a reaped narrow row must actually leave the table");
+		s.set(CommitVersion(2), HashMap::from([(t, vec![(series_key(Some(3), 10, 1), None)])])).unwrap();
+		assert_eq!(s.count_current(t).unwrap(), 2, "a removed narrow row must actually leave the table");
 
-		s.set(CommitVersion(2), HashMap::from([(t, vec![(series_key(None, 10, 0), None)])])).unwrap();
+		s.set(CommitVersion(3), HashMap::from([(t, vec![(series_key(None, 10, 0), None)])])).unwrap();
 		assert!(
 			matches!(
 				s.get(t, from_ref(&series_key(None, 10, 0).as_slice()), CommitVersion(10))
@@ -3248,7 +3157,12 @@ mod tests {
 			1,
 			"expiry discovery must keep working against the blob table"
 		);
-		assert_eq!(s.delete_keys(t, &[series_key(None, 10, 0)]).unwrap(), 1);
+		s.set(CommitVersion(2), HashMap::from([(t, vec![(series_key(None, 10, 0), None)])])).unwrap();
+		assert_eq!(
+			s.count_current(t).unwrap(),
+			1,
+			"a removal must delete the row from the pre-existing blob table"
+		);
 
 		let columns = {
 			let conn_guard = s.inner.conn.lock();

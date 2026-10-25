@@ -3,7 +3,7 @@
 
 use std::{
 	cmp::Reverse,
-	collections::{HashMap, HashSet, VecDeque},
+	collections::{BTreeMap, HashMap, HashSet, VecDeque},
 	iter, mem,
 	ops::{Bound, ControlFlow, Range},
 	sync::Arc,
@@ -44,6 +44,31 @@ impl MemoryRows {
 	#[instrument(name = "store::commit::active_write", level = "debug", skip_all)]
 	fn active_write(&self) -> RwLockWriteGuard<'_, ActiveRows> {
 		self.active.write()
+	}
+
+	fn merge_run(&self, fan_in: usize, cap: ByteSize, floor: ByteSize) -> bool {
+		let snapshot: Vec<Arc<ClosedRows>> = self.closed.read().iter().cloned().collect();
+		let Some(run) = mergeable_run(&snapshot, fan_in, cap.as_bytes(), floor.as_bytes()) else {
+			return false;
+		};
+		let inputs = &snapshot[run];
+		let merged = Arc::new(ClosedRows::merged(inputs));
+		let mut closed = self.closed.write();
+		let start = closed
+			.iter()
+			.position(|map| Arc::ptr_eq(map, &inputs[0]))
+			.expect("only remove drops closed maps, and it waits on the merge lock");
+		reifydb_assertions! {
+			assert!(
+				inputs.iter().enumerate().all(|(offset, input)| closed
+					.get(start + offset)
+					.is_some_and(|held| Arc::ptr_eq(held, input))),
+				"the merge inputs must still be neighbours in the closed maps when the merged map replaces them"
+			);
+		}
+		closed.drain(start..start + inputs.len());
+		closed.insert(start, merged);
+		true
 	}
 }
 
@@ -176,45 +201,81 @@ impl Write for MemoryRows {
 		self.closed.write().push_back(Arc::new(closing.close()));
 	}
 
-	fn merge(&self, fan_in: usize, cap: ByteSize) {
-		let _merging = self.merging.lock();
-		loop {
-			let snapshot: Vec<Arc<ClosedRows>> = self.closed.read().iter().cloned().collect();
-			let Some(run) = mergeable_run(&snapshot, fan_in, cap.as_bytes()) else {
-				return;
-			};
-			let inputs = &snapshot[run];
-			let merged = Arc::new(ClosedRows::merged(inputs));
-			let mut closed = self.closed.write();
-			let start = closed
-				.iter()
-				.position(|map| Arc::ptr_eq(map, &inputs[0]))
-				.expect("only remove drops closed maps, and it waits on the merge lock");
-			reifydb_assertions! {
-				assert!(
-					inputs.iter().enumerate().all(|(offset, input)| closed
-						.get(start + offset)
-						.is_some_and(|held| Arc::ptr_eq(held, input))),
-					"the merge inputs must still be neighbours in the closed maps when the merged map replaces them"
-				);
-			}
-			closed.drain(start..start + inputs.len());
-			closed.insert(start, merged);
+	fn merge(&self, fan_in: usize, cap: ByteSize, floor: ByteSize, backlog: usize) {
+		if backlog == 0 {
+			let _merging = self.merging.lock();
+			while self.merge_run(fan_in, cap, floor) {}
+			return;
 		}
+		let cap_tier = tier(cap.as_bytes(), fan_in);
+		let mergeable =
+			self.closed.read().iter().filter(|map| tier(map.rows().bytes(), fan_in) < cap_tier).count();
+		if mergeable <= backlog {
+			return;
+		}
+		let Some(_merging) = self.merging.try_lock() else {
+			return;
+		};
+		self.merge_run(fan_in, cap, floor);
 	}
 }
 
-fn mergeable_run(maps: &[Arc<ClosedRows>], fan_in: usize, cap: u64) -> Option<Range<usize>> {
-	(fan_in..=maps.len()).rev().map(|end| end - fan_in..end).find(|run| {
-		let window = &maps[run.clone()];
-		let first = tier(window[0].rows().bytes(), fan_in);
-		window.iter().all(|map| tier(map.rows().bytes(), fan_in) == first)
-			&& tier(window.iter().map(|map| map.rows().bytes()).sum(), fan_in) <= tier(cap, fan_in)
+const REMOVE_CHUNK: usize = 4096;
+
+fn chunks_by_key(pairs: Vec<(EncodedKey, CommitVersion)>, limit: usize) -> Vec<Vec<(EncodedKey, CommitVersion)>> {
+	let mut by_key: BTreeMap<EncodedKey, Vec<CommitVersion>> = BTreeMap::new();
+	for (key, version) in pairs {
+		by_key.entry(key).or_default().push(version);
+	}
+	let mut chunks = Vec::new();
+	let mut chunk = Vec::new();
+	for (key, versions) in by_key {
+		if !chunk.is_empty() && chunk.len() + versions.len() > limit {
+			chunks.push(mem::take(&mut chunk));
+		}
+		chunk.extend(versions.into_iter().map(|version| (key.clone(), version)));
+	}
+	if !chunk.is_empty() {
+		chunks.push(chunk);
+	}
+	chunks
+}
+
+fn mergeable_run(maps: &[Arc<ClosedRows>], fan_in: usize, cap: u64, floor: u64) -> Option<Range<usize>> {
+	let cap_tier = tier(cap, fan_in);
+	let floor_tier = tier(floor, fan_in);
+	let tiers: Vec<u32> = maps.iter().map(|map| tier(map.rows().bytes(), fan_in)).collect();
+	let bytes = |run: &Range<usize>| -> u64 { maps[run.clone()].iter().map(|map| map.rows().bytes()).sum() };
+	let runs = || (fan_in..=maps.len()).map(|end| end - fan_in..end);
+	runs().find(|run| {
+		tiers[run.clone()].iter().all(|tier| *tier == tiers[run.start]) && tier(bytes(run), fan_in) <= cap_tier
+	})
+	.or_else(|| {
+		runs().filter(|run| {
+			let window = &tiers[run.clone()];
+			window.iter().all(|tier| *tier <= floor_tier)
+				&& window.iter().any(|tier| *tier < floor_tier)
+				&& tier(bytes(run), fan_in) <= cap_tier
+		})
+		.min_by_key(|run| bytes(run))
 	})
 }
 
 impl Remove for MemoryRows {
 	fn remove(&self, pairs: Vec<(EncodedKey, CommitVersion)>) -> (Vec<EvictedVersion>, Vec<EncodedKey>) {
+		let mut evicted = Vec::new();
+		let mut emptied = Vec::new();
+		for chunk in chunks_by_key(pairs, REMOVE_CHUNK) {
+			let (chunk_evicted, chunk_emptied) = self.remove_chunk(chunk);
+			evicted.extend(chunk_evicted);
+			emptied.extend(chunk_emptied);
+		}
+		(evicted, emptied)
+	}
+}
+
+impl MemoryRows {
+	fn remove_chunk(&self, pairs: Vec<(EncodedKey, CommitVersion)>) -> (Vec<EvictedVersion>, Vec<EncodedKey>) {
 		let mut dropped: HashMap<EncodedKey, HashSet<CommitVersion>> = HashMap::new();
 		let mut below = CommitVersion(0);
 		for (key, version) in pairs {
@@ -336,5 +397,180 @@ fn visit_merged<'a, I>(
 		if visit(key, &versions).is_break() {
 			return;
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{
+		sync::{Arc, mpsc},
+		thread,
+		time::Duration,
+	};
+
+	use reifydb_codec::key::encoded::EncodedKey;
+	use reifydb_core::common::CommitVersion;
+	use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
+
+	use super::{MemoryRows, chunks_by_key};
+	use crate::storage::{Read, Remove, Write};
+
+	fn key(index: u64) -> EncodedKey {
+		EncodedKey::new(index.to_be_bytes().to_vec())
+	}
+
+	fn value(version: u64, len: usize) -> Option<CowVec<u8>> {
+		let mut bytes = version.to_be_bytes().to_vec();
+		bytes.resize(len.max(8), 0xAB);
+		Some(CowVec::new(bytes))
+	}
+
+	fn closed_maps_of_one_tier(rows: &MemoryRows, maps: u64) {
+		for version in 1..=maps {
+			rows.insert(CommitVersion(version), vec![(key(version), value(version, 40))]);
+			rows.close();
+		}
+	}
+
+	#[test]
+	fn a_commit_path_merge_never_waits_for_a_merge_already_running() {
+		// a commit that waits for the merge task or a flush merge holds the oracle lock for that whole merge.
+		let rows = Arc::new(MemoryRows::default());
+		closed_maps_of_one_tier(&rows, 20);
+		let held = rows.merging.lock();
+		let (done_tx, done_rx) = mpsc::channel();
+		let committer = {
+			let rows = Arc::clone(&rows);
+			thread::spawn(move || {
+				rows.merge(4, ByteSize::from_mib(256), ByteSize::ZERO, 16);
+				done_tx.send(()).unwrap();
+			})
+		};
+
+		let returned = done_rx.recv_timeout(Duration::from_millis(500)).is_ok();
+		drop(held);
+		committer.join().unwrap();
+
+		assert!(
+			returned,
+			"a commit-path merge must leave a running merge to finish the work instead of waiting for it"
+		);
+	}
+
+	#[test]
+	fn a_commit_path_merge_folds_one_run_at_most() {
+		// folding every run inside one commit trades many small stalls for one long oracle hold.
+		let rows = MemoryRows::default();
+		closed_maps_of_one_tier(&rows, 20);
+
+		rows.merge(4, ByteSize::from_mib(256), ByteSize::ZERO, 16);
+
+		assert_eq!(
+			rows.stats().closed_maps,
+			17,
+			"one run of four maps folds into one, the rest waits for the task"
+		);
+	}
+
+	fn closed_maps_alternating(rows: &MemoryRows, maps: u64, small: usize, large: usize) {
+		for version in 1..=maps {
+			let len = if version % 2 == 0 {
+				large
+			} else {
+				small
+			};
+			rows.insert(CommitVersion(version), vec![(key(version), value(version, len))]);
+			rows.close();
+		}
+	}
+
+	#[test]
+	fn small_closed_maps_of_mixed_tiers_merge_down_below_the_close_size() {
+		// flush leftovers of alternating sizes never form four equal tiers, so without a fallback they pile up
+		// forever.
+		let rows = MemoryRows::default();
+		closed_maps_alternating(&rows, 20, 40, 3000);
+
+		rows.merge(4, ByteSize::from_mib(256), ByteSize::from_kib(64), 0);
+
+		let closed = rows.stats().closed_maps;
+		assert!(
+			closed < 4,
+			"small maps must keep merging until fewer than a fan-in of them remain, got {closed}"
+		);
+	}
+
+	#[test]
+	fn closed_maps_above_the_close_size_never_join_a_small_map_merge() {
+		// pulling full-size maps into the fallback recopies them on every merge and inflates merge work on the
+		// memory path.
+		let rows = MemoryRows::default();
+		closed_maps_alternating(&rows, 20, 8 * 1024, 64 * 1024);
+
+		rows.merge(4, ByteSize::from_mib(256), ByteSize::from_kib(4), 0);
+
+		assert_eq!(rows.stats().closed_maps, 20, "maps above the close size merge only by the equal-tier rule");
+	}
+
+	#[test]
+	fn a_remove_chunk_never_splits_a_key_and_keeps_every_pair() {
+		// a key split across chunks would compute its newest version from a half-removed state and skew the
+		// tallies.
+		let pairs: Vec<(EncodedKey, CommitVersion)> = (0..300u64)
+			.flat_map(|index| {
+				(1..=(index % 7 + 1)).map(move |version| (key(index), CommitVersion(version)))
+			})
+			.collect();
+
+		let chunks = chunks_by_key(pairs.clone(), 64);
+
+		let mut seen: Vec<(EncodedKey, CommitVersion)> = chunks.iter().flatten().cloned().collect();
+		let mut expected = pairs;
+		seen.sort();
+		expected.sort();
+		assert_eq!(seen, expected, "chunking must keep every pair exactly once");
+		for (index, chunk) in chunks.iter().enumerate() {
+			assert!(chunk.len() <= 64, "chunk {index} holds {} pairs, over the limit", chunk.len());
+			for later in &chunks[index + 1..] {
+				assert!(
+					later.iter().all(|(key, _)| chunk.iter().all(|(held, _)| held != key)),
+					"a key must sit in exactly one chunk"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn a_chunked_remove_leaves_the_same_rows_and_tallies_as_one_pass() {
+		// chunking only bounds lock holds, so any difference from a single pass is a lost or double-counted
+		// removal.
+		let chunked = MemoryRows::default();
+		let single = MemoryRows::default();
+		for rows in [&chunked, &single] {
+			for version in 1..=2u64 {
+				let batch = (0..10_000u64).map(|index| (key(index), value(version, 24))).collect();
+				rows.insert(CommitVersion(version), batch);
+				rows.close();
+			}
+		}
+		let pairs: Vec<(EncodedKey, CommitVersion)> =
+			(0..10_000u64).map(|index| (key(index), CommitVersion(1))).collect();
+
+		let (mut chunked_evicted, chunked_emptied) = chunked.remove(pairs.clone());
+		let (mut single_evicted, single_emptied) = single.remove_chunk(pairs);
+
+		chunked_evicted.sort_by(|left, right| left.key.cmp(&right.key));
+		single_evicted.sort_by(|left, right| left.key.cmp(&right.key));
+		assert_eq!(chunked_evicted.len(), single_evicted.len());
+		assert!(chunked_evicted.iter().zip(&single_evicted).all(|(left, right)| left.key == right.key
+			&& left.version == right.version
+			&& left.current == right.current));
+		assert_eq!(chunked_emptied, single_emptied);
+		assert_eq!(
+			chunked.tallies(),
+			single.tallies(),
+			"chunked removal must leave the same byte and key tallies"
+		);
+		assert_eq!(chunked.get(&key(42), CommitVersion(9)), single.get(&key(42), CommitVersion(9)));
 	}
 }

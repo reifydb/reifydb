@@ -225,20 +225,12 @@ impl RowShape {
 		self.fields.len()
 	}
 
-	pub fn find_field(&self, name: &str) -> Option<&RowShapeField> {
-		self.fields.iter().find(|f| f.name == name)
-	}
-
 	pub fn find_field_index(&self, name: &str) -> Option<usize> {
 		self.fields.iter().position(|f| f.name == name)
 	}
 
 	pub fn get_field(&self, index: usize) -> Option<&RowShapeField> {
 		self.fields.get(index)
-	}
-
-	pub fn get_field_name(&self, index: usize) -> Option<&str> {
-		self.fields.get(index).map(|f| f.name.as_str())
 	}
 
 	pub fn field_names(&self) -> impl Iterator<Item = &str> {

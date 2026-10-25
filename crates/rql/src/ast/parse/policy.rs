@@ -191,8 +191,11 @@ mod tests {
 		let mut parser = Parser::new(&bump, src, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
-		let node = stmts[0].first_unchecked();
-		let AstCreate::Policy(policy) = node.as_create() else {
+		let node = stmts[0].nodes.first().unwrap();
+		let Ast::Create(create) = node else {
+			panic!("not create")
+		};
+		let AstCreate::Policy(policy) = &**create else {
 			panic!("expected Policy")
 		};
 		assert_eq!(policy.target_type, AstPolicyTargetType::Table);
@@ -211,8 +214,11 @@ mod tests {
 		let tokens = tokenize(&bump, src).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, src, tokens);
 		let stmts = parser.parse().unwrap();
-		let node = stmts[0].first_unchecked();
-		let AstCreate::Policy(policy) = node.as_create() else {
+		let node = stmts[0].nodes.first().unwrap();
+		let Ast::Create(create) = node else {
+			panic!("not create")
+		};
+		let AstCreate::Policy(policy) = &**create else {
 			panic!("expected Policy")
 		};
 		assert_eq!(policy.target_type, AstPolicyTargetType::Namespace);
@@ -228,8 +234,11 @@ mod tests {
 		let tokens = tokenize(&bump, src).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, src, tokens);
 		let stmts = parser.parse().unwrap();
-		let node = stmts[0].first_unchecked();
-		let AstCreate::Policy(policy) = node.as_create() else {
+		let node = stmts[0].nodes.first().unwrap();
+		let Ast::Create(create) = node else {
+			panic!("not create")
+		};
+		let AstCreate::Policy(policy) = &**create else {
 			panic!("expected Policy")
 		};
 		assert_eq!(policy.target_type, AstPolicyTargetType::Session);
@@ -244,8 +253,11 @@ mod tests {
 		let tokens = tokenize(&bump, src).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, src, tokens);
 		let stmts = parser.parse().unwrap();
-		let node = stmts[0].first_unchecked();
-		let AstCreate::Policy(policy) = node.as_create() else {
+		let node = stmts[0].nodes.first().unwrap();
+		let Ast::Create(create) = node else {
+			panic!("not create")
+		};
+		let AstCreate::Policy(policy) = &**create else {
 			panic!("expected Policy")
 		};
 		assert_eq!(policy.target_type, AstPolicyTargetType::Procedure);
@@ -259,7 +271,7 @@ mod tests {
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
-		let node = stmts[0].first_unchecked();
+		let node = stmts[0].nodes.first().unwrap();
 		let drop = match node {
 			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
@@ -279,7 +291,7 @@ mod tests {
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
-		let node = stmts[0].first_unchecked();
+		let node = stmts[0].nodes.first().unwrap();
 		let drop = match node {
 			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),

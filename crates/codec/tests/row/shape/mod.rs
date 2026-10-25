@@ -53,17 +53,3 @@ fn test_shape_fingerprint_different_for_different_shapes() {
 
 	assert_ne!(shape1.fingerprint(), shape2.fingerprint());
 }
-
-#[test]
-fn test_find_field() {
-	let fields = vec![
-		RowShapeField::unconstrained("id", ValueType::Int8),
-		RowShapeField::unconstrained("name", ValueType::Utf8),
-	];
-
-	let shape = RowShape::new(RowFamily::Table, fields);
-
-	assert!(shape.find_field("id").is_some());
-	assert!(shape.find_field("name").is_some());
-	assert!(shape.find_field("missing").is_none());
-}

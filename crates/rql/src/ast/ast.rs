@@ -33,10 +33,6 @@ pub struct AstStatement<'bump> {
 }
 
 impl<'bump> AstStatement<'bump> {
-	pub fn first_unchecked(&self) -> &Ast<'bump> {
-		self.nodes.first().unwrap()
-	}
-
 	pub fn is_empty(&self) -> bool {
 		self.nodes.is_empty()
 	}
@@ -260,21 +256,6 @@ macro_rules! ast_accessor {
 	};
 }
 
-macro_rules! ast_literal_accessor {
-	($lit_variant:ident, $type:ty, $fn_is:ident, $fn_as:ident, $label:expr) => {
-		pub fn $fn_is(&self) -> bool {
-			matches!(self, Ast::Literal(AstLiteral::$lit_variant(_)))
-		}
-		pub fn $fn_as(&self) -> &$type {
-			if let Ast::Literal(AstLiteral::$lit_variant(result)) = self {
-				result
-			} else {
-				panic!(concat!("not literal ", $label))
-			}
-		}
-	};
-}
-
 impl<'bump> Ast<'bump> {
 	pub fn is_ddl(&self) -> bool {
 		matches!(
@@ -287,103 +268,7 @@ impl<'bump> Ast<'bump> {
 		)
 	}
 
-	ast_accessor!(Dispatch, AstDispatch<'bump>, is_dispatch, as_dispatch, "dispatch");
-	ast_accessor!(Assert, AstAssert<'bump>, is_assert, as_assert, "assert");
-	ast_accessor!(Aggregate, AstAggregate<'bump>, is_aggregate, as_aggregate, "aggregate");
-	ast_accessor!(Between, AstBetween<'bump>, is_between, as_between, "between");
-	ast_accessor!(CallFunction, AstCallFunction<'bump>, is_call_function, as_call_function, "call function");
-	ast_accessor!(Cast, AstCast<'bump>, is_cast, as_cast, "cast");
-	pub fn is_create(&self) -> bool {
-		matches!(self, Ast::Create(_))
-	}
-	pub fn as_create(&self) -> &AstCreate<'bump> {
-		if let Ast::Create(result) = self {
-			result
-		} else {
-			panic!("not create")
-		}
-	}
-	ast_accessor!(Alter, AstAlter<'bump>, is_alter, as_alter, "alter");
-	ast_accessor!(Describe, AstDescribe<'bump>, is_describe, as_describe, "describe");
-	ast_accessor!(Filter, AstFilter<'bump>, is_filter, as_filter, "filter");
-	ast_accessor!(From, AstFrom<'bump>, is_from, as_from, "from");
 	ast_accessor!(Identifier, UnqualifiedIdentifier<'bump>, is_identifier, as_identifier, "identifier");
-	ast_accessor!(If, AstIf<'bump>, is_if, as_if, "if");
-	ast_accessor!(Infix, AstInfix<'bump>, is_infix, as_infix, "infix");
-	ast_accessor!(Let, AstLet<'bump>, is_let, as_let, "let");
-	ast_accessor!(Assign, AstAssign<'bump>, is_assign, as_assign, "assign");
-	ast_accessor!(Variable, AstVariable<'bump>, is_variable, as_variable, "variable");
-	ast_accessor!(Delete, AstDelete<'bump>, is_delete, as_delete, "delete");
-	ast_accessor!(Insert, AstInsert<'bump>, is_insert, as_insert, "insert");
-	ast_accessor!(Update, AstUpdate<'bump>, is_update, as_update, "update");
-	ast_accessor!(Join, AstJoin<'bump>, is_join, as_join, "join");
-	ast_accessor!(Take, AstTake<'bump>, is_take, as_take, "take");
-	ast_accessor!(Skip, AstSkip<'bump>, is_skip, as_skip, "skip");
-	ast_accessor!(List, AstList<'bump>, is_list, as_list, "list");
-	ast_accessor!(Literal, AstLiteral<'bump>, is_literal, as_literal, "literal");
-	ast_accessor!(Sort, AstSort<'bump>, is_sort, as_sort, "sort");
-	ast_accessor!(Inline, AstInline<'bump>, is_inline, as_inline, "inline");
-	ast_accessor!(Prefix, AstPrefix<'bump>, is_prefix, as_prefix, "prefix");
-	ast_accessor!(Map, AstMap<'bump>, is_map, as_map, "map");
-	ast_accessor!(Generator, AstGenerator<'bump>, is_generator, as_generator, "generator");
-	ast_accessor!(Patch, AstPatch<'bump>, is_patch, as_patch, "patch");
-	ast_accessor!(Tuple, AstTuple<'bump>, is_tuple, as_tuple, "tuple");
-	ast_accessor!(Window, AstWindow<'bump>, is_window, as_window, "window");
-	ast_accessor!(
-		StatementExpression,
-		AstStatementExpression<'bump>,
-		is_statement_expression,
-		as_statement_expression,
-		"statement expression"
-	);
-	ast_accessor!(Rownum, AstRownum<'bump>, is_rownum, as_rownum, "rownum");
-	ast_accessor!(Match, AstMatch<'bump>, is_match, as_match, "match");
-
-	pub fn is_block(&self) -> bool {
-		matches!(self, Ast::Inline(_))
-	}
-	pub fn as_block(&self) -> &AstInline<'bump> {
-		if let Ast::Inline(result) = self {
-			result
-		} else {
-			panic!("not block")
-		}
-	}
-
-	pub fn as_apply(&self) -> &AstApply<'bump> {
-		if let Ast::Apply(result) = self {
-			result
-		} else {
-			panic!("not apply")
-		}
-	}
-
-	pub fn as_extend(&self) -> &AstExtend<'bump> {
-		if let Ast::Extend(result) = self {
-			result
-		} else {
-			panic!("not extend")
-		}
-	}
-
-	ast_literal_accessor!(Boolean, AstLiteralBoolean<'bump>, is_literal_boolean, as_literal_boolean, "boolean");
-	ast_literal_accessor!(Number, AstLiteralNumber<'bump>, is_literal_number, as_literal_number, "number");
-	ast_literal_accessor!(
-		Temporal,
-		AstLiteralTemporal<'bump>,
-		is_literal_temporal,
-		as_literal_temporal,
-		"temporal"
-	);
-	ast_literal_accessor!(
-		Duration,
-		AstLiteralDuration<'bump>,
-		is_literal_duration,
-		as_literal_duration,
-		"duration"
-	);
-	ast_literal_accessor!(Text, AstLiteralText<'bump>, is_literal_text, as_literal_text, "text");
-	ast_literal_accessor!(None, AstLiteralNone<'bump>, is_literal_none, as_literal_none, "none");
 }
 
 #[derive(Debug)]

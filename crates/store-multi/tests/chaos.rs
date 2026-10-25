@@ -65,8 +65,8 @@ chaos_test!(multi_store_flush_heavy_chaos, |seed| {
 });
 
 chaos_test!(multi_store_lifecycle_chaos, |seed| {
-	// Tombstones, flushes, TTL sweeps, physical deletes and historical GC interleaved: no ghost, no
-	// premature loss, and cross-config agreement at the current version.
+	// Tombstones, flushes and historical GC interleaved must leave no ghost, no premature loss, and agreeing
+	// configs.
 	lifecycle::drive(
 		seed,
 		lifecycle::Params {
@@ -75,8 +75,6 @@ chaos_test!(multi_store_lifecycle_chaos, |seed| {
 			max_steps: 240,
 			commit_pct: 40,
 			flush_pct: 16,
-			ttl_pct: 12,
-			delete_pct: 9,
 			histgc_pct: 8,
 			remove_pct: 22,
 			max_deltas: 14,
@@ -86,8 +84,7 @@ chaos_test!(multi_store_lifecycle_chaos, |seed| {
 });
 
 chaos_test!(multi_object_isolation_chaos, |seed| {
-	// A sweep or delete scoped to one object must leave the others byte-for-byte intact; catches
-	// cross-table bleed in object-scoped scan, delete and TTL bounds.
+	// Commits and flushes across several objects must never bleed rows from one object into another.
 	multiobject::drive(
 		seed,
 		multiobject::Params {
@@ -96,8 +93,6 @@ chaos_test!(multi_object_isolation_chaos, |seed| {
 			max_steps: 240,
 			commit_pct: 40,
 			flush_pct: 16,
-			ttl_pct: 14,
-			delete_pct: 10,
 			remove_pct: 22,
 			max_deltas: 12,
 			max_batch: 32,

@@ -168,7 +168,10 @@ pub mod tests {
 	use bumpalo::Bump;
 
 	use crate::{
-		ast::{ast::AstWindowKind, parse::Parser},
+		ast::{
+			ast::{Ast, AstWindowKind},
+			parse::Parser,
+		},
 		token::tokenize,
 	};
 
@@ -181,7 +184,9 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let window = result[0].first_unchecked().as_window();
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
+			panic!("not window")
+		};
 
 		assert_eq!(window.kind, AstWindowKind::Tumbling);
 		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
@@ -198,7 +203,9 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let window = result[0].first_unchecked().as_window();
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
+			panic!("not window")
+		};
 
 		assert_eq!(window.kind, AstWindowKind::Tumbling);
 		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
@@ -215,7 +222,9 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let window = result[0].first_unchecked().as_window();
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
+			panic!("not window")
+		};
 
 		assert_eq!(window.kind, AstWindowKind::Sliding);
 		assert_eq!(window.with.as_ref().unwrap().entries.len(), 2);
@@ -231,7 +240,9 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let window = result[0].first_unchecked().as_window();
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
+			panic!("not window")
+		};
 
 		assert_eq!(window.kind, AstWindowKind::Tumbling);
 		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
@@ -248,7 +259,9 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let window = result[0].first_unchecked().as_window();
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
+			panic!("not window")
+		};
 
 		assert_eq!(window.kind, AstWindowKind::Tumbling);
 		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
@@ -265,7 +278,9 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let window = result[0].first_unchecked().as_window();
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
+			panic!("not window")
+		};
 
 		assert_eq!(window.kind, AstWindowKind::Sliding);
 		assert_eq!(window.with.as_ref().unwrap().entries.len(), 2);
@@ -282,7 +297,9 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let window = result[0].first_unchecked().as_window();
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
+			panic!("not window")
+		};
 
 		assert_eq!(window.kind, AstWindowKind::Rolling);
 		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
@@ -300,7 +317,9 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let window = result[0].first_unchecked().as_window();
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
+			panic!("not window")
+		};
 
 		assert_eq!(window.kind, AstWindowKind::Rolling);
 		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);
@@ -317,7 +336,9 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 
 		assert_eq!(result.len(), 1);
-		let window = result[0].first_unchecked().as_window();
+		let Some(Ast::Window(window)) = result[0].nodes.first() else {
+			panic!("not window")
+		};
 
 		assert_eq!(window.kind, AstWindowKind::Session);
 		assert_eq!(window.with.as_ref().unwrap().entries.len(), 1);

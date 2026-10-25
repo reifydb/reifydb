@@ -13,7 +13,7 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::CommitVersion,
 	default,
-	interface::store::{EntryKind, StorageKey},
+	interface::store::{EntryKind, StorageKey, storage_key},
 	key::{
 		any::TaggedKey,
 		row::{StoragePartitionedRowKey, StorageRowKey},
@@ -270,9 +270,6 @@ fn accumulate_point_metrics(parts: [PointMetrics; 5]) -> PointMetrics {
 		total.misses += part.misses;
 		total.insertions += part.insertions;
 		total.evictions += part.evictions;
-		total.fills_started += part.fills_started;
-		total.fills_dirty_aborted += part.fills_dirty_aborted;
-		total.fills_duplicate += part.fills_duplicate;
 	}
 	total
 }
@@ -346,14 +343,9 @@ impl MultiPointTier {
 		self.resolve(shard, found, version)
 	}
 
-	fn resolve(
-		&self,
-		shard: usize,
-		found: Option<Option<MultiPointRow>>,
-		version: CommitVersion,
-	) -> VersionedGetResult {
+	fn resolve(&self, shard: usize, found: Option<MultiPointRow>, version: CommitVersion) -> VersionedGetResult {
 		let counters = &self.reads[shard];
-		let Some(Some(row)) = found else {
+		let Some(row) = found else {
 			counters.misses.fetch_add(1, Ordering::Relaxed);
 			return VersionedGetResult::NotFound;
 		};
@@ -378,78 +370,82 @@ impl MultiPointTier {
 	}
 
 	#[instrument(name = "store::multi::point::insert", level = "trace", skip_all)]
-	pub fn insert(
-		&self,
-		table: EntryKind,
-		storage_key: Option<StorageKey>,
-		key: EncodedKey,
-		version: CommitVersion,
-		value: Option<CowVec<u8>>,
-	) {
-		let entry = MultiPointRow::new(version, value);
-		match storage_key {
-			Some(
-				StorageKey::Table(row)
-				| StorageKey::RingBuffer(row)
-				| StorageKey::Queue(row)
-				| StorageKey::View(row),
-			) => self.row.overwrite(table, row, entry),
-			Some(
-				StorageKey::PartitionedTable(row)
-				| StorageKey::PartitionedRingBuffer(row)
-				| StorageKey::PartitionedQueue(row)
-				| StorageKey::PartitionedView(row),
-			) => self.partitioned.overwrite(table, row, entry),
-			Some(StorageKey::Series(row) | StorageKey::SeriesView(row)) => {
-				self.series.overwrite(table, row, entry)
-			}
-			Some(StorageKey::PartitionedSeries(row) | StorageKey::PartitionedSeriesView(row)) => {
-				self.partitioned_series.overwrite(table, row, entry)
-			}
-			None => {
-				let blob = TaggedKey::decode(&key).expect(
-					"every key reaching the point tier came from encode and must decode back",
-				);
-				self.blob.overwrite(table, blob, entry)
-			}
-		}
-	}
-
-	pub fn invalidate(&self, table: EntryKind, storage_key: Option<StorageKey>, key: &EncodedKey) {
-		match storage_key {
-			Some(
-				StorageKey::Table(row)
-				| StorageKey::RingBuffer(row)
-				| StorageKey::Queue(row)
-				| StorageKey::View(row),
-			) => self.row.invalidate(table, &row),
-			Some(
-				StorageKey::PartitionedTable(row)
-				| StorageKey::PartitionedRingBuffer(row)
-				| StorageKey::PartitionedQueue(row)
-				| StorageKey::PartitionedView(row),
-			) => self.partitioned.invalidate(table, &row),
-			Some(StorageKey::Series(row) | StorageKey::SeriesView(row)) => {
-				self.series.invalidate(table, &row)
-			}
-			Some(StorageKey::PartitionedSeries(row) | StorageKey::PartitionedSeriesView(row)) => {
-				self.partitioned_series.invalidate(table, &row)
-			}
-			None => {
-				let blob = TaggedKey::decode(key).expect(
-					"every key reaching the point tier came from encode and must decode back",
-				);
-				self.blob.invalidate(table, &blob)
+	pub fn insert(&self, table: EntryKind, rows: Vec<(EncodedKey, CommitVersion, Option<CowVec<u8>>)>) {
+		let mut rowed = Vec::new();
+		let mut partitioned = Vec::new();
+		let mut series = Vec::new();
+		let mut partitioned_series = Vec::new();
+		let mut blobs = Vec::new();
+		for (key, version, value) in rows {
+			let entry = MultiPointRow::new(version, value);
+			match storage_key(&key).1 {
+				Some(
+					StorageKey::Table(row)
+					| StorageKey::RingBuffer(row)
+					| StorageKey::Queue(row)
+					| StorageKey::View(row),
+				) => rowed.push((row, entry)),
+				Some(
+					StorageKey::PartitionedTable(row)
+					| StorageKey::PartitionedRingBuffer(row)
+					| StorageKey::PartitionedQueue(row)
+					| StorageKey::PartitionedView(row),
+				) => partitioned.push((row, entry)),
+				Some(StorageKey::Series(row) | StorageKey::SeriesView(row)) => {
+					series.push((row, entry))
+				}
+				Some(StorageKey::PartitionedSeries(row) | StorageKey::PartitionedSeriesView(row)) => {
+					partitioned_series.push((row, entry))
+				}
+				None => blobs.push((
+					TaggedKey::decode(&key).expect(
+						"every key reaching the point tier came from encode and must decode back",
+					),
+					entry,
+				)),
 			}
 		}
+		self.row.overwrite(table, rowed);
+		self.partitioned.overwrite(table, partitioned);
+		self.series.overwrite(table, series);
+		self.partitioned_series.overwrite(table, partitioned_series);
+		self.blob.overwrite(table, blobs);
 	}
 
-	pub fn clear(&self) {
-		self.blob.clear();
-		self.row.clear();
-		self.partitioned.clear();
-		self.series.clear();
-		self.partitioned_series.clear();
+	pub fn invalidate(&self, table: EntryKind, keys: &[EncodedKey]) {
+		let mut rowed = Vec::new();
+		let mut partitioned = Vec::new();
+		let mut series = Vec::new();
+		let mut partitioned_series = Vec::new();
+		let mut blobs = Vec::new();
+		for key in keys {
+			match storage_key(key).1 {
+				Some(
+					StorageKey::Table(row)
+					| StorageKey::RingBuffer(row)
+					| StorageKey::Queue(row)
+					| StorageKey::View(row),
+				) => rowed.push(row),
+				Some(
+					StorageKey::PartitionedTable(row)
+					| StorageKey::PartitionedRingBuffer(row)
+					| StorageKey::PartitionedQueue(row)
+					| StorageKey::PartitionedView(row),
+				) => partitioned.push(row),
+				Some(StorageKey::Series(row) | StorageKey::SeriesView(row)) => series.push(row),
+				Some(StorageKey::PartitionedSeries(row) | StorageKey::PartitionedSeriesView(row)) => {
+					partitioned_series.push(row)
+				}
+				None => blobs.push(TaggedKey::decode(key).expect(
+					"every key reaching the point tier came from encode and must decode back",
+				)),
+			}
+		}
+		self.row.invalidate(table, &rowed);
+		self.partitioned.invalidate(table, &partitioned);
+		self.series.invalidate(table, &series);
+		self.partitioned_series.invalidate(table, &partitioned_series);
+		self.blob.invalidate(table, &blobs);
 	}
 
 	pub fn read_metrics(&self) -> Vec<MultiReadMetrics> {
@@ -727,7 +723,7 @@ mod tests {
 	fn a_read_at_the_current_version_is_a_hit() {
 		let tier = tier();
 		let key = row_key(1);
-		tier.insert(TABLE, storage_key(&key).1, key.clone(), CommitVersion(5), value("five"));
+		tier.insert(TABLE, vec![(key.clone(), CommitVersion(5), value("five"))]);
 
 		match tier.get(TABLE, storage_key(&key).1, &key, CommitVersion(7)) {
 			VersionedGetResult::Value {
@@ -753,8 +749,8 @@ mod tests {
 	fn a_read_below_the_newest_version_is_served_from_previous_and_counted_apart() {
 		let tier = tier();
 		let key = row_key(2);
-		tier.insert(TABLE, storage_key(&key).1, key.clone(), CommitVersion(5), value("five"));
-		tier.insert(TABLE, storage_key(&key).1, key.clone(), CommitVersion(9), value("nine"));
+		tier.insert(TABLE, vec![(key.clone(), CommitVersion(5), value("five"))]);
+		tier.insert(TABLE, vec![(key.clone(), CommitVersion(9), value("nine"))]);
 
 		match tier.get(TABLE, storage_key(&key).1, &key, CommitVersion(6)) {
 			VersionedGetResult::Value {
@@ -781,8 +777,8 @@ mod tests {
 	fn a_read_below_every_cached_version_is_a_miss_not_a_hit() {
 		let tier = tier();
 		let key = row_key(3);
-		tier.insert(TABLE, storage_key(&key).1, key.clone(), CommitVersion(5), value("five"));
-		tier.insert(TABLE, storage_key(&key).1, key.clone(), CommitVersion(9), value("nine"));
+		tier.insert(TABLE, vec![(key.clone(), CommitVersion(5), value("five"))]);
+		tier.insert(TABLE, vec![(key.clone(), CommitVersion(9), value("nine"))]);
 
 		assert!(matches!(
 			tier.get(TABLE, storage_key(&key).1, &key, CommitVersion(2)),
@@ -803,7 +799,7 @@ mod tests {
 	fn a_cached_tombstone_reads_back_as_a_tombstone() {
 		let tier = tier();
 		let key = row_key(4);
-		tier.insert(TABLE, storage_key(&key).1, key.clone(), CommitVersion(5), None);
+		tier.insert(TABLE, vec![(key.clone(), CommitVersion(5), None)]);
 
 		assert!(matches!(
 			tier.get(TABLE, storage_key(&key).1, &key, CommitVersion(7)),
@@ -823,8 +819,8 @@ mod tests {
 	fn an_invalidated_key_reads_as_a_miss() {
 		let tier = tier();
 		let key = row_key(5);
-		tier.insert(TABLE, storage_key(&key).1, key.clone(), CommitVersion(5), value("five"));
-		tier.invalidate(TABLE, storage_key(&key).1, &key);
+		tier.insert(TABLE, vec![(key.clone(), CommitVersion(5), value("five"))]);
+		tier.invalidate(TABLE, &[key.clone()]);
 
 		assert!(matches!(
 			tier.get(TABLE, storage_key(&key).1, &key, CommitVersion(7)),
@@ -845,17 +841,11 @@ mod tests {
 		// the row tier keys by an eight byte identity while the blob tier carries the whole encoded key
 		// inline, so the same value under a row key must charge less than under a key with no narrow shape
 		let narrow = tier();
-		narrow.insert(TABLE, storage_key(&row_key(1)).1, row_key(1), CommitVersion(1), value("v"));
+		narrow.insert(TABLE, vec![(row_key(1), CommitVersion(1), value("v"))]);
 
 		let opaque_key = RowSequenceKey::encoded(StorageId::Table(TableId(1)));
 		let opaque = tier();
-		opaque.insert(
-			EntryKind::Multi,
-			storage_key(&opaque_key).1,
-			opaque_key.clone(),
-			CommitVersion(1),
-			value("v"),
-		);
+		opaque.insert(EntryKind::Multi, vec![(opaque_key.clone(), CommitVersion(1), value("v"))]);
 
 		assert_eq!(storage_key(&opaque_key).1, None, "the control key must have no narrow shape");
 		assert!(
@@ -879,15 +869,15 @@ mod tests {
 			sequence: 5,
 		}
 		.encode();
-		let (row_entry, row_ident) = storage_key(&row);
-		let (series_entry, series_ident) = storage_key(&series);
+		let (row_entry, _) = storage_key(&row);
+		let (series_entry, _) = storage_key(&series);
 
 		assert_eq!(row_entry, EntryKind::Source(StorageId::View(ViewId(3)), EntryLayout::Row));
 		assert_eq!(series_entry, EntryKind::Source(StorageId::View(ViewId(3)), EntryLayout::Series));
 		assert_ne!(row_entry, series_entry, "one view entry must not hold two layouts");
 
-		tier.insert(row_entry, row_ident, row.clone(), CommitVersion(1), value("plain"));
-		tier.insert(series_entry, series_ident, series.clone(), CommitVersion(1), value("point"));
+		tier.insert(row_entry, vec![(row.clone(), CommitVersion(1), value("plain"))]);
+		tier.insert(series_entry, vec![(series.clone(), CommitVersion(1), value("point"))]);
 
 		assert_eq!(read(&tier, row_entry, &row), Some("plain".to_string()));
 		assert_eq!(read(&tier, series_entry, &series), Some("point".to_string()));
@@ -906,17 +896,11 @@ mod tests {
 		}
 		.encode();
 		assert!(storage_key(&series).1.is_some(), "a series row must carry an identity");
-		narrow.insert(
-			storage_key(&series).0,
-			storage_key(&series).1,
-			series.clone(),
-			CommitVersion(1),
-			value("v"),
-		);
+		narrow.insert(storage_key(&series).0, vec![(series.clone(), CommitVersion(1), value("v"))]);
 
 		let opaque_key = RowSequenceKey::encoded(StorageId::Table(TableId(1)));
 		let opaque = tier();
-		opaque.insert(EntryKind::Multi, storage_key(&opaque_key).1, opaque_key, CommitVersion(1), value("v"));
+		opaque.insert(EntryKind::Multi, vec![(opaque_key, CommitVersion(1), value("v"))]);
 
 		assert!(
 			used(&narrow) < used(&opaque),
@@ -937,8 +921,8 @@ mod tests {
 		let two = PartitionedSeriesRowKey::encoded(StorageId::series(3), Partition(2), None, 5, 5);
 		assert_eq!(storage_key(&one).0, PART, "the router must place a partitioned series row here");
 
-		tier.insert(PART, storage_key(&one).1, one.clone(), CommitVersion(1), value("one"));
-		tier.insert(PART, storage_key(&two).1, two.clone(), CommitVersion(1), value("two"));
+		tier.insert(PART, vec![(one.clone(), CommitVersion(1), value("one"))]);
+		tier.insert(PART, vec![(two.clone(), CommitVersion(1), value("two"))]);
 
 		assert_eq!(read(&tier, PART, &one), Some("one".to_string()));
 		assert_eq!(read(&tier, PART, &two), Some("two".to_string()));
@@ -952,8 +936,8 @@ mod tests {
 		let tier = tier();
 		let partitioned = PartitionedRowKey::encoded(StorageId::Table(TableId(1)), Partition(7), RowNumber(1));
 
-		tier.insert(TABLE, storage_key(&row_key(1)).1, row_key(1), CommitVersion(1), value("plain"));
-		tier.insert(PART, storage_key(&partitioned).1, partitioned.clone(), CommitVersion(1), value("part"));
+		tier.insert(TABLE, vec![(row_key(1), CommitVersion(1), value("plain"))]);
+		tier.insert(PART, vec![(partitioned.clone(), CommitVersion(1), value("part"))]);
 
 		match tier.get(TABLE, storage_key(&row_key(1)).1, &row_key(1), CommitVersion(1)) {
 			VersionedGetResult::Value {
@@ -977,7 +961,7 @@ mod tests {
 		// serve stale rows and tally its own reads, and neither shows up as a compile error.
 		let original = tier();
 		let clone = original.clone();
-		original.insert(TABLE, storage_key(&row_key(9)).1, row_key(9), CommitVersion(5), value("five"));
+		original.insert(TABLE, vec![(row_key(9), CommitVersion(5), value("five"))]);
 
 		assert!(
 			matches!(
@@ -995,17 +979,17 @@ mod tests {
 		// against a tier holding only the survivor pins the exact figure without restating the per-entry
 		// overhead, which would rot the moment the entry layout changes.
 		let churned = tier();
-		churned.insert(TABLE, storage_key(&row_key(1)).1, row_key(1), CommitVersion(5), value("aaa"));
-		churned.insert(TABLE, storage_key(&row_key(1)).1, row_key(1), CommitVersion(9), value("bbbbb"));
-		churned.insert(TABLE, storage_key(&row_key(1)).1, row_key(1), CommitVersion(9), value("bbbbb"));
-		churned.insert(TABLE, storage_key(&row_key(2)).1, row_key(2), CommitVersion(5), value("cc"));
-		churned.insert(TABLE, storage_key(&row_key(2)).1, row_key(2), CommitVersion(9), value("d"));
-		churned.invalidate(TABLE, storage_key(&row_key(2)).1, &row_key(2));
-		churned.insert(TABLE, storage_key(&row_key(3)).1, row_key(3), CommitVersion(5), value("x"));
-		churned.invalidate(TABLE, storage_key(&row_key(3)).1, &row_key(3));
+		churned.insert(TABLE, vec![(row_key(1), CommitVersion(5), value("aaa"))]);
+		churned.insert(TABLE, vec![(row_key(1), CommitVersion(9), value("bbbbb"))]);
+		churned.insert(TABLE, vec![(row_key(1), CommitVersion(9), value("bbbbb"))]);
+		churned.insert(TABLE, vec![(row_key(2), CommitVersion(5), value("cc"))]);
+		churned.insert(TABLE, vec![(row_key(2), CommitVersion(9), value("d"))]);
+		churned.invalidate(TABLE, &[row_key(2).clone()]);
+		churned.insert(TABLE, vec![(row_key(3), CommitVersion(5), value("x"))]);
+		churned.invalidate(TABLE, &[row_key(3).clone()]);
 
 		let survivor = tier();
-		survivor.insert(TABLE, storage_key(&row_key(1)).1, row_key(1), CommitVersion(9), value("bbbbb"));
+		survivor.insert(TABLE, vec![(row_key(1), CommitVersion(9), value("bbbbb"))]);
 
 		assert_eq!(
 			used(&churned),
@@ -1024,8 +1008,8 @@ mod tests {
 		let table_a = EntryKind::Source(StorageId::Table(TableId(1)), EntryLayout::Row);
 		let table_b = EntryKind::Source(StorageId::Table(TableId(2)), EntryLayout::Row);
 
-		tier.insert(table_a, storage_key(&shared_bytes).1, shared_bytes.clone(), CommitVersion(5), value("a"));
-		tier.insert(table_b, storage_key(&shared_bytes).1, shared_bytes.clone(), CommitVersion(5), value("b"));
+		tier.insert(table_a, vec![(shared_bytes.clone(), CommitVersion(5), value("a"))]);
+		tier.insert(table_b, vec![(shared_bytes.clone(), CommitVersion(5), value("b"))]);
 
 		match tier.get(table_a, storage_key(&shared_bytes).1, &shared_bytes, CommitVersion(7)) {
 			VersionedGetResult::Value {
@@ -1042,7 +1026,7 @@ mod tests {
 			other => panic!("expected table b's value, got {other:?}"),
 		}
 
-		tier.invalidate(table_a, storage_key(&shared_bytes).1, &shared_bytes);
+		tier.invalidate(table_a, &[shared_bytes.clone()]);
 		assert!(
 			matches!(
 				tier.get(table_a, storage_key(&shared_bytes).1, &shared_bytes, CommitVersion(7)),

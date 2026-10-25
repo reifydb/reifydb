@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{error::Error, fmt, future::Future, pin::Pin, sync::Arc};
+use std::{error::Error, fmt, sync::Arc};
 
 use reifydb_core::interface::catalog::task::TaskId;
 
@@ -9,22 +9,15 @@ use crate::{context::TaskContext, schedule::Schedule};
 
 type SyncTaskFn = Arc<dyn Fn(TaskContext) -> Result<(), Box<dyn Error + Send>> + Send + Sync>;
 
-type AsyncTaskFn = Arc<
-	dyn Fn(TaskContext) -> Pin<Box<dyn Future<Output = Result<(), Box<dyn Error + Send>>> + Send>> + Send + Sync,
->;
-
 #[derive(Clone)]
 pub enum TaskWork {
 	Sync(SyncTaskFn),
-
-	Async(AsyncTaskFn),
 }
 
 impl fmt::Debug for TaskWork {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			TaskWork::Sync(_) => write!(f, "TaskWork::Sync"),
-			TaskWork::Async(_) => write!(f, "TaskWork::Async"),
 		}
 	}
 }
@@ -32,8 +25,6 @@ impl fmt::Debug for TaskWork {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskExecutor {
 	ComputePool,
-
-	Tokio,
 }
 
 pub struct ScheduledTask {
@@ -93,15 +84,6 @@ impl ScheduledTaskBuilder {
 		F: Fn(TaskContext) -> Result<(), Box<dyn Error + Send>> + Send + Sync + 'static,
 	{
 		self.work = Some(TaskWork::Sync(Arc::new(f)));
-		self
-	}
-
-	pub fn work_async<F, Fut>(mut self, f: F) -> Self
-	where
-		F: Fn(TaskContext) -> Fut + Send + Sync + 'static,
-		Fut: Future<Output = Result<(), Box<dyn Error + Send>>> + Send + 'static,
-	{
-		self.work = Some(TaskWork::Async(Arc::new(move |ctx| Box::pin(f(ctx)))));
 		self
 	}
 

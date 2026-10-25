@@ -361,10 +361,6 @@ impl FlowGraphAnalyzer {
 		&self.flows
 	}
 
-	pub fn flow_count(&self) -> usize {
-		self.flows.len()
-	}
-
 	pub fn clear(&mut self) {
 		self.flows.clear();
 		self.dependency_graph = FlowDependencyGraph {
@@ -438,7 +434,7 @@ pub mod tests {
 		assert_eq!(summary.sources, vec![ObjectReference::Table(TableId(100))]);
 		assert_eq!(summary.sinks, vec![SinkReference::View(ViewId(200))]);
 		assert_eq!(summary.node_count, 2);
-		assert_eq!(analyzer.flow_count(), 1);
+		assert_eq!(analyzer.flows().len(), 1);
 	}
 
 	#[test]
@@ -466,7 +462,7 @@ pub mod tests {
 		assert_eq!(summary.sources, vec![ObjectReference::View(ViewId(300))]);
 		assert_eq!(summary.sinks, vec![SinkReference::View(ViewId(400))]);
 		assert_eq!(summary.node_count, 3);
-		assert_eq!(analyzer.flow_count(), 1);
+		assert_eq!(analyzer.flows().len(), 1);
 	}
 
 	#[test]

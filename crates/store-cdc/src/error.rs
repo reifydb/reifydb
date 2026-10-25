@@ -72,8 +72,6 @@ impl From<CdcError> for Error {
 	}
 }
 
-pub type CdcResult<T> = Result<T, CdcError>;
-
 pub mod diagnostic {
 
 	use reifydb_value::{error::Diagnostic, fragment::Fragment};

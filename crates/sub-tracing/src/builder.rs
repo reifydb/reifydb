@@ -54,11 +54,6 @@ impl TracingConfigurator {
 		self
 	}
 
-	pub fn without_console(mut self) -> Self {
-		self.console_config = None;
-		self
-	}
-
 	pub fn with_filter(mut self, filter: &str) -> Self {
 		self.filter = Some(filter.to_string());
 		self

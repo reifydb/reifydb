@@ -84,16 +84,21 @@ pub(crate) type OracleLock = RwLock<OracleState>;
 const WINDOW_KEY_CAPACITY: usize = 500;
 
 const LSN_STEP: u64 = 4096;
+const WINDOW_KEY_CAPACITY_MAX: usize = 1 << 22;
 
 pub(crate) struct ModifiedKeyIndex {
 	hashes: HashSet<u64>,
 }
 
 impl ModifiedKeyIndex {
-	fn new() -> Self {
+	fn with_capacity(capacity: usize) -> Self {
 		Self {
-			hashes: HashSet::with_capacity(WINDOW_KEY_CAPACITY),
+			hashes: HashSet::with_capacity(capacity.clamp(WINDOW_KEY_CAPACITY, WINDOW_KEY_CAPACITY_MAX)),
 		}
+	}
+
+	fn len(&self) -> usize {
+		self.hashes.len()
 	}
 
 	#[inline]
@@ -116,10 +121,15 @@ impl ModifiedKeyIndex {
 	}
 
 	#[cfg(test)]
-	pub(crate) fn len(&self) -> usize {
-		self.hashes.len()
+	pub(crate) fn capacity(&self) -> usize {
+		self.hashes.capacity()
 	}
 }
+
+const _: fn() = || {
+	fn sendable<T: Send>() {}
+	sendable::<CommittedWindow>();
+};
 
 pub(crate) struct CommittedWindow {
 	transactions: Vec<CommittedTxn>,
@@ -128,10 +138,10 @@ pub(crate) struct CommittedWindow {
 }
 
 impl CommittedWindow {
-	fn new(min_version: CommitVersion) -> Self {
+	fn new(min_version: CommitVersion, key_capacity: usize) -> Self {
 		Self {
 			transactions: Vec::with_capacity(200),
-			modified_keys: ModifiedKeyIndex::new(),
+			modified_keys: ModifiedKeyIndex::with_capacity(key_capacity),
 			max_version: min_version,
 		}
 	}
@@ -440,6 +450,7 @@ where
 		prepared: Option<Prepared>,
 		window_size: u64,
 		timing: SpanTiming,
+		evicted: &mut Vec<CommittedWindow>,
 	) -> Result<CreateCommitResult> {
 		if version < state.evicted_up_through {
 			return Ok(CreateCommitResult::TooOld);
@@ -464,7 +475,12 @@ where
 		if state.time_windows.len() > 1 {
 			let cleanup_start = timing.mark(&self.clock);
 			let safe_evict_below = self.query.done_until();
-			cleanup_old_windows(&mut state.time_windows, &mut state.evicted_up_through, safe_evict_below);
+			cleanup_old_windows(
+				&mut state.time_windows,
+				&mut state.evicted_up_through,
+				safe_evict_below,
+				evicted,
+			);
 			timing.record_micros(cleanup_start, "cleanup_us");
 		}
 
@@ -698,8 +714,12 @@ impl OracleState {
 	fn add_committed_transaction(&mut self, version: CommitVersion, conflicts: ConflictManager, window_size: u64) {
 		let window_start = CommitVersion((version.0 / window_size) * window_size);
 
-		let window =
-			self.time_windows.entry(window_start).or_insert_with(|| CommittedWindow::new(window_start));
+		let key_capacity =
+			self.time_windows.last_key_value().map_or(0, |(_, window)| window.modified_keys.len());
+		let window = self
+			.time_windows
+			.entry(window_start)
+			.or_insert_with(|| CommittedWindow::new(window_start, key_capacity));
 
 		let txn = CommittedTxn {
 			version,
@@ -1398,5 +1418,60 @@ mod tests {
 		assert_eq!(state.lsn_through(CommitVersion(8191)), Some(Lsn::new(7)), "a repeat lookup is stable");
 		assert_eq!(state.lsn_through(CommitVersion(u64::MAX)), Some(Lsn::new(12)));
 		assert_eq!(state.lsns.len(), 1, "every entry before the answer is pruned");
+	}
+
+	#[test]
+	fn a_new_window_starts_its_key_index_at_the_previous_windows_key_count() {
+		// a window that grows its key index from scratch rehashes millions of keys inside the commit hold.
+		let oracle = create_test_oracle(0);
+		let mut state = oracle.inner.write();
+		for version in 1..10u64 {
+			let mut conflicts = ConflictManager::new();
+			for index in 0..1000 {
+				conflicts.mark_write(&create_test_key(&format!("v{version}-k{index}")));
+			}
+			state.add_committed_transaction(CommitVersion(version), conflicts, 10);
+		}
+		let previous = state.time_windows[&CommitVersion(0)].modified_keys.len();
+		state.add_committed_transaction(CommitVersion(10), ConflictManager::new(), 10);
+
+		let opened = state.time_windows[&CommitVersion(10)].modified_keys.capacity();
+		assert!(
+			opened >= previous,
+			"the new window holds room for {opened} keys, the last one needed {previous}"
+		);
+	}
+
+	#[test]
+	fn an_evicted_window_is_handed_back_instead_of_freed_inside_the_hold() {
+		// freeing a full window under the oracle write lock stalls every commit for tens of milliseconds.
+		let mut windows = BTreeMap::new();
+		windows.insert(CommitVersion(0), CommittedWindow::new(CommitVersion(9), 0));
+		windows.insert(CommitVersion(10), CommittedWindow::new(CommitVersion(19), 0));
+		let mut evicted_up_through = CommitVersion(0);
+		let mut evicted = Vec::new();
+
+		cleanup_old_windows(&mut windows, &mut evicted_up_through, CommitVersion(9), &mut evicted);
+
+		assert_eq!(evicted.len(), 1, "the window below the bound must come back to the caller");
+		assert_eq!(evicted[0].max_version(), CommitVersion(9));
+		assert_eq!(windows.len(), 1);
+		assert_eq!(
+			evicted_up_through,
+			CommitVersion(9),
+			"eviction must still raise the too-old bound inside the hold"
+		);
+	}
+
+	#[test]
+	fn a_presized_key_index_never_reserves_past_its_ceiling() {
+		// one bulk window must not make the next window reserve an index sized for an unbounded number of keys.
+		let index = ModifiedKeyIndex::with_capacity(4 * WINDOW_KEY_CAPACITY_MAX);
+
+		assert!(
+			index.capacity() <= 2 * WINDOW_KEY_CAPACITY_MAX,
+			"a presize of four ceilings reserved {} slots, past the ceiling",
+			index.capacity()
+		);
 	}
 }

@@ -3,7 +3,6 @@
 
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_core::expression::Expression;
 use reifydb_routine_abi::registry::Routines;
 use reifydb_transaction::transaction::Transaction;
 use tracing::instrument;
@@ -20,8 +19,6 @@ use crate::{
 pub mod logical;
 pub mod physical;
 pub mod system_columns;
-
-pub type RowToInsert = Vec<Expression>;
 
 #[instrument(name = "rql::plan", level = "trace", skip(bump, catalog, routines, rx, statement))]
 pub fn plan<'a>(

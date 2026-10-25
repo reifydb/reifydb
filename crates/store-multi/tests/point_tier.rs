@@ -5,23 +5,27 @@
 //! it answers from the displaced version must be counted apart, and one below every cached version must
 //! read as a miss rather than as a hit the cache could not honour.
 
-use std::{collections::HashMap, slice::from_ref};
+use std::{collections::HashMap, slice::from_ref, sync::Arc};
 
-use reifydb_codec::key::encoded::EncodedKey;
+use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
 use reifydb_core::{
 	common::CommitVersion,
+	delta::{Delta, SetPre},
 	interface::{
 		catalog::{id::TableId, storage::StorageId},
-		store::{MultiVersionGet, classify_key},
+		store::{MultiVersionCommit, MultiVersionGet, classify_key},
 	},
 	key::{any::TaggedKey, row::RowKey},
+	lifecycle::watermark::EvictionWatermark,
 };
 use reifydb_store_commit::TierBatch;
 use reifydb_store_multi::{
 	store::StandardMultiStore,
 	tier::{TierStorage, point::MultiReadMetrics},
 };
-use reifydb_value::{util::cowvec::CowVec, value::row_number::RowNumber};
+use reifydb_value::{cow_vec, util::cowvec::CowVec, value::row_number::RowNumber};
+
+use crate::common::without_wal;
 
 fn row_key(n: u64) -> EncodedKey {
 	RowKey {
@@ -37,6 +41,32 @@ fn persistent_only_set(store: &StandardMultiStore, k: &EncodedKey, version: u64,
 	let mut batches: TierBatch = HashMap::new();
 	batches.entry(table).or_default().push((k.clone(), Some(CowVec::new(value.as_bytes().to_vec()))));
 	persistent.set(CommitVersion(version), batches).unwrap();
+}
+
+fn commit(store: &StandardMultiStore, k: &EncodedKey, version: u64, value: &str) {
+	MultiVersionCommit::commit(
+		store,
+		cow_vec![Delta::Set {
+			key: TaggedKey::decode(k).expect("the test key must decode"),
+			bytes: EncodedBytes(CowVec::new(value.as_bytes().to_vec())),
+			pre: SetPre::Unknown,
+		}],
+		CommitVersion(version),
+	)
+	.unwrap();
+}
+
+struct FixedWatermark(CommitVersion);
+
+impl EvictionWatermark for FixedWatermark {
+	fn watermark(&self) -> CommitVersion {
+		self.0
+	}
+}
+
+fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
+	store.set_eviction_watermark(Arc::new(FixedWatermark(cutoff)));
+	store.flush_pending_blocking();
 }
 
 fn get(store: &StandardMultiStore, k: &EncodedKey, version: u64) -> Option<Vec<u8>> {
@@ -78,19 +108,12 @@ fn a_read_below_every_cached_version_is_counted_a_miss_not_a_hit() {
 	// not answer would be indistinguishable from one it could, and cache pressure would read as health.
 	// The key must be seated with both versions first, or this exercises a plain absence instead.
 	let (store, _guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	let store = without_wal(store);
 	let key = row_key(2);
-	store.insert_read_key(
-		classify_key(&key),
-		key.clone(),
-		CommitVersion(20),
-		Some(CowVec::new(b"twenty".to_vec())),
-	);
-	store.insert_read_key(
-		classify_key(&key),
-		key.clone(),
-		CommitVersion(30),
-		Some(CowVec::new(b"thirty".to_vec())),
-	);
+	persistent_only_set(&store, &key, 20, "twenty");
+	commit(&store, &key, 30, "thirty");
+	assert_eq!(get(&store, &key, 20).as_deref(), Some(b"twenty".as_slice()));
+	flush(&store, CommitVersion(30));
 
 	assert_eq!(get(&store, &key, 30).as_deref(), Some(b"thirty".as_slice()));
 	assert_eq!(get(&store, &key, 25).as_deref(), Some(b"twenty".as_slice()));

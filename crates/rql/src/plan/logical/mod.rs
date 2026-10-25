@@ -47,7 +47,7 @@ use reifydb_core::{
 	row::Ttl,
 	sort::{SortDirection, SortKey},
 };
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction, query::QueryTransaction};
+use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{fragment::Fragment, value::identity::IdentityKind};
 use tracing::instrument;
 
@@ -117,26 +117,6 @@ pub(crate) fn find_remote_target<'b>(
 		Some(namespace) => Ok(Some(namespace)),
 		None => compiled.map(|_| None),
 	}
-}
-
-#[instrument(name = "rql::compile::logical_query", level = "trace", skip(bump, catalog, tx, ast))]
-pub fn compile_logical_query<'b>(
-	bump: &'b Bump,
-	catalog: &Catalog,
-	tx: &mut QueryTransaction,
-	ast: AstStatement<'b>,
-) -> Result<BumpVec<'b, LogicalPlan<'b>>> {
-	compile_logical(bump, catalog, &mut Transaction::Query(tx), ast)
-}
-
-#[instrument(name = "rql::compile::logical_command", level = "trace", skip(bump, catalog, tx, ast))]
-pub fn compile_logical_command<'b>(
-	bump: &'b Bump,
-	catalog: &Catalog,
-	tx: &mut CommandTransaction,
-	ast: AstStatement<'b>,
-) -> Result<BumpVec<'b, LogicalPlan<'b>>> {
-	compile_logical(bump, catalog, &mut Transaction::Command(tx), ast)
 }
 
 impl<'bump> Compiler<'bump> {

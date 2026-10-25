@@ -37,43 +37,6 @@ enum Cell<'a> {
 	Blob(&'a [u8]),
 }
 
-pub fn extend_key(view: &ColumnView, index: usize, serializer: &mut KeySerializer) -> Result<()> {
-	if view.none_at(index) {
-		serializer.try_extend_value(&Value::None {
-			inner: view.base_type(),
-		})?;
-		return Ok(());
-	}
-	match &view.data {
-		ViewData::Utf8 {
-			container,
-			..
-		} => match varlen_array::get(*container, index) {
-			Some(text) => {
-				serializer.extend_kind(ValueKind::Utf8).extend_str(text);
-			}
-			None => {
-				serializer.extend_value(&Value::none_of(ValueType::Utf8));
-			}
-		},
-		ViewData::Blob {
-			container,
-			..
-		} => match varlen_array::get(*container, index) {
-			Some(bytes) => {
-				serializer.extend_kind(ValueKind::Blob).extend_bytes(bytes);
-			}
-			None => {
-				serializer.extend_value(&Value::none_of(ValueType::Blob));
-			}
-		},
-		_ => {
-			serializer.try_extend_value(&view.get_value(index))?;
-		}
-	}
-	Ok(())
-}
-
 pub fn extend_keys(view: &ColumnView, rows: &mut [KeySerializer]) -> Result<()> {
 	match &view.data {
 		ViewData::Float4(array) => {

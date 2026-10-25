@@ -31,16 +31,6 @@ pub struct Session {
 }
 
 impl Session {
-	pub fn from_token(engine: StandardEngine, info: &Token) -> Self {
-		Self {
-			engine,
-			identity: info.identity,
-			authenticated: true,
-			token: None,
-			retry: RetryStrategy::default(),
-		}
-	}
-
 	pub fn from_token_with_value(engine: StandardEngine, info: &Token) -> Self {
 		Self {
 			engine,

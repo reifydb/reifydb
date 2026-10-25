@@ -217,11 +217,6 @@ impl MultiPersistentTier {
 			Self::Sqlite(s) => s.set_checkpoint_threshold(frames),
 		}
 	}
-	pub fn delete_keys(&self, table: EntryKind, keys: &[EncodedKey]) -> Result<u64> {
-		match self {
-			Self::Sqlite(s) => s.delete_keys(table, keys),
-		}
-	}
 
 	pub fn expired_keys(
 		&self,
@@ -287,9 +282,6 @@ impl MultiPersistentTier {
 	}
 
 	pub fn set_checkpoint_threshold(&self, _frames: u32) {
-		match *self {}
-	}
-	pub fn delete_keys(&self, _table: EntryKind, _keys: &[EncodedKey]) -> Result<u64> {
 		match *self {}
 	}
 

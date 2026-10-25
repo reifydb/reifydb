@@ -22,10 +22,6 @@ impl<'bump> Token<'bump> {
 		self.kind == TokenKind::EOF
 	}
 
-	pub fn is_name(&self) -> bool {
-		self.kind == TokenKind::Name
-	}
-
 	pub fn is_literal(&self) -> bool {
 		matches!(
 			self.kind,

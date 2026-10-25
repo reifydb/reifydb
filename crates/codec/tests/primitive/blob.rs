@@ -15,18 +15,6 @@ fn test_set_get_blob() {
 }
 
 #[test]
-fn test_try_get_blob() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
-	let mut row = shape.allocate_pod();
-
-	assert_eq!(shape.try_get_blob(&row, 0), None);
-
-	let blob = Blob::from_slice(&[1, 2, 3, 4, 5]);
-	shape.set_blob(&mut row, 0, &blob);
-	assert_eq!(shape.try_get_blob(&row, 0), Some(blob));
-}
-
-#[test]
 fn test_empty() {
 	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Blob]);
 	let mut row = shape.allocate_pod();
@@ -34,7 +22,8 @@ fn test_empty() {
 	let empty_blob = Blob::from_slice(&[]);
 	shape.set_blob(&mut row, 0, &empty_blob);
 	assert_eq!(shape.get_blob(&row, 0), empty_blob);
-	assert_eq!(shape.try_get_blob(&row, 0), Some(empty_blob));
+	assert!(shape.is_defined(&row, 0));
+	assert_eq!(shape.get_blob(&row, 0), empty_blob);
 }
 
 #[test]
@@ -154,14 +143,18 @@ fn test_undefined_handling() {
 	shape.set_blob(&mut row, 0, &blob);
 	shape.set_blob(&mut row, 2, &blob);
 
-	assert_eq!(shape.try_get_blob(&row, 0), Some(blob.clone()));
-	assert_eq!(shape.try_get_blob(&row, 1), None);
-	assert_eq!(shape.try_get_blob(&row, 2), Some(blob.clone()));
+	assert!(shape.is_defined(&row, 0));
+
+	assert_eq!(shape.get_blob(&row, 0), blob.clone());
+	assert!(!shape.is_defined(&row, 1));
+	assert!(shape.is_defined(&row, 2));
+	assert_eq!(shape.get_blob(&row, 2), blob.clone());
 
 	// Clearing one field must not disturb another sharing the dynamic section.
 	shape.set_none(&mut row, 0);
-	assert_eq!(shape.try_get_blob(&row, 0), None);
-	assert_eq!(shape.try_get_blob(&row, 2), Some(blob));
+	assert!(!shape.is_defined(&row, 0));
+	assert!(shape.is_defined(&row, 2));
+	assert_eq!(shape.get_blob(&row, 2), blob);
 }
 
 #[test]
@@ -173,16 +166,6 @@ fn test_all_byte_values() {
 	let full_range_blob = Blob::from_slice(&all_bytes);
 	shape.set_blob(&mut row, 0, &full_range_blob);
 	assert_eq!(shape.get_blob(&row, 0), full_range_blob);
-}
-
-#[test]
-fn test_try_get_blob_wrong_type() {
-	let shape = RowShape::testing(RowFamily::Pod, &[ValueType::Boolean]);
-	let mut row = shape.allocate_pod();
-
-	shape.set::<bool>(&mut row, 0, true);
-
-	assert_eq!(shape.try_get_blob(&row, 0), None);
 }
 
 #[test]

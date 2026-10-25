@@ -454,10 +454,6 @@ impl MultiRangeTier {
 		self.tier.invalidate(table, &key);
 	}
 
-	pub fn clear(&self) {
-		self.tier.clear();
-	}
-
 	pub fn relieve(&self) {
 		self.tier.relieve();
 	}

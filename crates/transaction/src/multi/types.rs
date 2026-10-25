@@ -57,10 +57,6 @@ impl TransactionValue {
 		}
 	}
 
-	pub fn is_committed(&self) -> bool {
-		matches!(self, Self::Committed(_))
-	}
-
 	pub fn into_multi_version_row(self) -> MultiVersionRow<TaggedKey> {
 		match self {
 			Self::Pending(item) => match item.delta {
@@ -168,10 +164,6 @@ impl DeltaEntry {
 
 	pub fn version(&self) -> CommitVersion {
 		self.version
-	}
-
-	pub fn into_components(self) -> (CommitVersion, Delta) {
-		(self.version, self.delta)
 	}
 
 	pub fn key(&self) -> &TaggedKey {

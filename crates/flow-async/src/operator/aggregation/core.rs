@@ -3,7 +3,10 @@
 
 use std::{borrow::Cow, collections::HashMap, iter::repeat_n, sync::Arc};
 
-use arrow_array::{Array, ArrayRef, RecordBatch, UInt64Array};
+use arrow_array::{
+	Array, ArrayRef, FixedSizeBinaryArray, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array,
+	RecordBatch, UInt64Array,
+};
 use arrow_schema::{Field, FieldRef, Schema, SchemaRef};
 use reifydb_core::{
 	error::diagnostic::{
@@ -40,9 +43,9 @@ use reifydb_value::{
 	util::hash::{Hash128, xxh3_128},
 	value::{
 		Value,
-		column_view::ColumnView,
+		column_view::{ColumnView, ViewData},
 		constraint::{precision::Precision, scale::Scale},
-		container::temporal_array::datetime_array,
+		container::{primitive, temporal_array::datetime_array, wide_int_array},
 		datetime::DateTime,
 		digest::{Digest, DigestError},
 		row_number::RowNumber,
@@ -93,6 +96,9 @@ pub enum SlotInput {
 }
 
 fn check_digest_input(function: &str, accuracy: Option<u32>, data: &ColumnView<'_>) -> Result<()> {
+	if accuracy.is_none() && matches!(data.data, ViewData::Digest { .. }) {
+		return Ok(());
+	}
 	let mut probe: Option<Digest> = None;
 	for row in 0..data.len() {
 		let value = data.get_value(row);
@@ -144,8 +150,24 @@ fn bare_slot(output: &Expression, slot_count: usize) -> Option<usize> {
 #[derive(Debug)]
 pub enum SlotColumn {
 	Absent,
-	Values(Vec<Value>),
+	Float8(Float64Array),
+	Int1(Int8Array),
+	Int2(Int16Array),
+	Int4(Int32Array),
+	Int8(Int64Array),
+	Int16(FixedSizeBinaryArray),
+	Array(FieldRef, ArrayRef),
 	EventTime,
+}
+
+fn present_or_none(array: &dyn Array, row: usize, inner: ValueType, read: impl FnOnce() -> Value) -> Value {
+	if array.is_null(row) {
+		Value::None {
+			inner,
+		}
+	} else {
+		read()
+	}
 }
 
 #[derive(Debug)]
@@ -174,7 +196,35 @@ impl SlotRow {
 	pub fn cell(&self, slot: usize) -> Option<Cow<'_, Value>> {
 		match &self.columns.0[slot] {
 			SlotColumn::Absent => None,
-			SlotColumn::Values(values) => Some(Cow::Borrowed(&values[self.row])),
+			SlotColumn::Float8(a) => {
+				Some(Cow::Owned(present_or_none(a, self.row, ValueType::Float8, || {
+					primitive::get_value(a, self.row)
+				})))
+			}
+			SlotColumn::Int1(a) => Some(Cow::Owned(present_or_none(a, self.row, ValueType::Int1, || {
+				primitive::get_value(a, self.row)
+			}))),
+			SlotColumn::Int2(a) => Some(Cow::Owned(present_or_none(a, self.row, ValueType::Int2, || {
+				primitive::get_value(a, self.row)
+			}))),
+			SlotColumn::Int4(a) => Some(Cow::Owned(present_or_none(a, self.row, ValueType::Int4, || {
+				primitive::get_value(a, self.row)
+			}))),
+			SlotColumn::Int8(a) => Some(Cow::Owned(present_or_none(a, self.row, ValueType::Int8, || {
+				primitive::get_value(a, self.row)
+			}))),
+			SlotColumn::Int16(a) => {
+				Some(Cow::Owned(present_or_none(a, self.row, ValueType::Int16, || {
+					wide_int_array::get_value::<i128>(a, self.row)
+				})))
+			}
+			SlotColumn::Array(field, array) => Some(Cow::Owned(
+				ColumnView::try_from((array, field.as_ref()))
+					.unwrap_or_else(|err| {
+						panic!("slot {slot} column was checked when its batch was read: {err}")
+					})
+					.get_value(self.row),
+			)),
 			SlotColumn::EventTime => Some(Cow::Owned(Value::DateTime(self.event_time))),
 		}
 	}
@@ -349,6 +399,8 @@ pub struct Aggregation {
 
 	slot_types: Vec<Option<ValueType>>,
 
+	all_declared: bool,
+
 	emit_schema: Option<SchemaRef>,
 
 	pub routines: Routines,
@@ -458,6 +510,12 @@ impl Aggregation {
 				.chain(aggregate_fields)
 				.collect::<Vec<FieldRef>>(),
 		));
+		let mut all_declared = slot_kinds.is_some() && slot_types.iter().all(Option::is_some);
+		for index in 0..group_names.len() {
+			let declared = from_field(output_schema.field(index))?.value_type;
+			all_declared &=
+				declared.is_some_and(|value_type| !matches!(value_type.inner_type(), ValueType::Any));
+		}
 
 		Ok(Self {
 			operator,
@@ -471,6 +529,7 @@ impl Aggregation {
 			lowered_outputs,
 			bare_outputs,
 			slot_types,
+			all_declared,
 			emit_schema: None,
 			routines,
 			runtime_context,
@@ -570,20 +629,33 @@ impl Aggregation {
 		if row_count == 0 {
 			return Ok(SlotViews(Arc::new(SlotColumns(Vec::new()))));
 		}
-		let values =
-			|view: ColumnView| SlotColumn::Values((0..row_count).map(|row| view.get_value(row)).collect());
+		let array = |(field, array): (FieldRef, ArrayRef)| -> Result<SlotColumn> {
+			let typed = match ColumnView::try_from((&array, field.as_ref()))?.data {
+				ViewData::Float8(a) => Some(SlotColumn::Float8(a.clone())),
+				ViewData::Int1(a) => Some(SlotColumn::Int1(a.clone())),
+				ViewData::Int2(a) => Some(SlotColumn::Int2(a.clone())),
+				ViewData::Int4(a) => Some(SlotColumn::Int4(a.clone())),
+				ViewData::Int8(a) => Some(SlotColumn::Int8(a.clone())),
+				ViewData::Int16(a) => Some(SlotColumn::Int16(a.clone())),
+				_ => None,
+			};
+			Ok(typed.unwrap_or(SlotColumn::Array(field, array)))
+		};
 		let slots = self
 			.slot_inputs
 			.iter()
 			.map(|input| -> Result<SlotColumn> {
-				Ok(match input {
-					SlotInput::Star => SlotColumn::Absent,
-					SlotInput::Column(name) => {
-						column_view(columns, name)?.map_or(SlotColumn::Absent, values)
-					}
-					SlotInput::Expr(idx) => values(ColumnView::try_from(&slot_cols[*idx])?),
-					SlotInput::EventTime => SlotColumn::EventTime,
-				})
+				match input {
+					SlotInput::Star => Ok(SlotColumn::Absent),
+					SlotInput::Column(name) => match columns.schema_ref().fields().find(name) {
+						Some((index, field)) => {
+							array((field.clone(), columns.column(index).clone()))
+						}
+						None => Ok(SlotColumn::Absent),
+					},
+					SlotInput::Expr(idx) => array(slot_cols[*idx].clone()),
+					SlotInput::EventTime => Ok(SlotColumn::EventTime),
+				}
 			})
 			.collect::<Result<Vec<_>>>()?;
 		Ok(SlotViews(Arc::new(SlotColumns(slots))))
@@ -624,24 +696,37 @@ impl Aggregation {
 			updates.into_iter().map(|(pre, post)| (self.patched(pre), self.patched(post))).collect();
 		let removes: Vec<EmitRow> = removes.into_iter().map(|row| self.patched(row)).collect();
 		let mut diffs = Vec::new();
-		for members in type_groups(inserts.iter().map(row_types).collect()) {
+		for members in self.row_groups(inserts.len(), || inserts.iter().map(row_types).collect()) {
 			let rows: Vec<&EmitRow> = members.iter().map(|&index| &inserts[index]).collect();
 			diffs.push(Diff::insert(self.emit_batch(&rows, ts)?));
 		}
-		let signatures = updates
-			.iter()
-			.map(|(pre, post)| row_types(pre).into_iter().chain(row_types(post)).collect())
-			.collect();
-		for members in type_groups(signatures) {
+		let signatures = || {
+			updates.iter()
+				.map(|(pre, post)| row_types(pre).into_iter().chain(row_types(post)).collect())
+				.collect()
+		};
+		for members in self.row_groups(updates.len(), signatures) {
 			let pres: Vec<&EmitRow> = members.iter().map(|&index| &updates[index].0).collect();
 			let posts: Vec<&EmitRow> = members.iter().map(|&index| &updates[index].1).collect();
 			diffs.push(Diff::update(self.emit_batch(&pres, ts)?, self.emit_batch(&posts, ts)?));
 		}
-		for members in type_groups(removes.iter().map(row_types).collect()) {
+		for members in self.row_groups(removes.len(), || removes.iter().map(row_types).collect()) {
 			let rows: Vec<&EmitRow> = members.iter().map(|&index| &removes[index]).collect();
 			diffs.push(Diff::remove(self.emit_batch(&rows, ts)?));
 		}
 		Ok(diffs)
+	}
+
+	fn row_groups(
+		&self,
+		count: usize,
+		signatures: impl FnOnce() -> Vec<Vec<Option<ValueType>>>,
+	) -> Vec<Vec<usize>> {
+		match (self.all_declared, count) {
+			(_, 0) => Vec::new(),
+			(true, _) => vec![(0..count).collect()],
+			(false, _) => type_groups(signatures()),
+		}
 	}
 
 	fn patched(&self, mut row: EmitRow) -> EmitRow {
@@ -756,15 +841,42 @@ impl Aggregation {
 pub(crate) mod slot_rows {
 	use std::sync::Arc;
 
-	use reifydb_value::value::{Value, datetime::DateTime};
+	use reifydb_core::value::column::builder::ColumnBuilder;
+	use reifydb_value::value::{Value, datetime::DateTime, value_type::ValueType};
 
 	use super::{SlotColumn, SlotColumns, SlotRow};
+
+	pub(crate) fn slot_column(values: Vec<Value>) -> SlotColumn {
+		let value_type = values
+			.iter()
+			.find_map(|value| match value {
+				Value::None {
+					..
+				} => None,
+				other => Some(other.get_type()),
+			})
+			.or_else(|| {
+				values.iter().find_map(|value| match value {
+					Value::None {
+						inner,
+					} => Some(inner.clone()),
+					_ => None,
+				})
+			})
+			.unwrap_or(ValueType::Any);
+		let mut builder = ColumnBuilder::with_capacity(ValueType::Option(Box::new(value_type)), values.len());
+		for value in values {
+			builder.push_value(value);
+		}
+		let (field, array) = builder.finish("slot");
+		SlotColumn::Array(field, array)
+	}
 
 	pub(crate) fn slot_row(values: Vec<Option<Value>>) -> SlotRow {
 		let columns = values
 			.into_iter()
 			.map(|value| match value {
-				Some(value) => SlotColumn::Values(vec![value]),
+				Some(value) => slot_column(vec![value]),
 				None => SlotColumn::Absent,
 			})
 			.collect();

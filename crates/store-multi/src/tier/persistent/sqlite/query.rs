@@ -110,10 +110,6 @@ pub(super) fn build_delete_current_sql(table_name: &str, key_count: usize, retur
 	};
 	format!("DELETE FROM \"{}\" WHERE key IN ({}) AND version <= ?{}", table_name, placeholders, suffix)
 }
-pub(super) fn build_delete_keys_sql(table_name: &str, key_count: usize) -> String {
-	let placeholders = build_placeholders(key_count);
-	format!("DELETE FROM \"{}\" WHERE key IN ({})", table_name, placeholders)
-}
 pub(super) fn build_create_current_sql_row(table_name: &str) -> String {
 	format!(
 		"CREATE TABLE IF NOT EXISTS \"{0}\" (\
@@ -227,16 +223,6 @@ pub(super) fn build_delete_current_sql_partitioned(table_name: &str, key_count: 
 		""
 	};
 	format!("DELETE FROM \"{}\" WHERE ({}) AND version <= ?{}", table_name, clause, suffix)
-}
-
-pub(super) fn build_delete_keys_sql_row(table_name: &str, key_count: usize) -> String {
-	let placeholders = build_placeholders(key_count);
-	format!("DELETE FROM \"{}\" WHERE key IN ({})", table_name, placeholders)
-}
-
-pub(super) fn build_delete_keys_sql_partitioned(table_name: &str, key_count: usize) -> String {
-	let clause = build_triple_placeholders(key_count);
-	format!("DELETE FROM \"{}\" WHERE {}", table_name, clause)
 }
 
 pub(super) fn build_current_keys_sql_row(table_name: &str, has_cursor: bool, limit: i64) -> String {
@@ -605,10 +591,6 @@ pub(super) fn build_delete_current_sql_keyed(
 		build_keyed_predicate(columns, key_count),
 		suffix
 	)
-}
-
-pub(super) fn build_delete_keys_sql_keyed(table_name: &str, columns: &[&str], key_count: usize) -> String {
-	format!("DELETE FROM \"{}\" WHERE {}", table_name, build_keyed_predicate(columns, key_count))
 }
 
 pub(super) fn build_current_keys_sql_keyed(table_name: &str, columns: &[&str], has_cursor: bool, limit: i64) -> String {

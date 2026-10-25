@@ -145,8 +145,7 @@ fn add_many_during_a_rebuild_reaches_the_active_and_the_new_filter() {
 
 #[test]
 fn writes_keep_reaching_the_active_filter_during_a_rebuild() {
-	// Dual-write means both slots, not "building instead of active". If the in-flight rebuild is aborted,
-	// the old active filter is the one that keeps serving, so it must have seen the mid-rebuild writes too.
+	// Dual-write means both slots; active keeps serving until the swap, so it must see mid-rebuild writes.
 	let filter = AdaptiveKeyFilter::new();
 
 	let first = filter.begin_rebuild(256);
@@ -154,11 +153,10 @@ fn writes_keep_reaching_the_active_filter_during_a_rebuild() {
 	filter.commit_rebuild(first);
 
 	let written_during_rebuild = 0xFEED_FACE_u64;
-	let second = filter.begin_rebuild(256);
+	let _rebuild = filter.begin_rebuild(256);
 	filter.add_many(&[written_during_rebuild]);
-	filter.abort_rebuild(second);
 
-	assert!(filter.may_contain(written_during_rebuild), "a mid-rebuild write was lost when the rebuild aborted");
+	assert!(filter.may_contain(written_during_rebuild), "a mid-rebuild write never reached the active filter");
 }
 
 #[test]
@@ -183,58 +181,6 @@ fn in_flight_rebuild_never_answers_queries() {
 	// The mirror case: fed only into building, still rejected because active does not know it.
 	second.feed(&[known_absent]);
 	assert!(!filter.may_contain(known_absent), "query was answered by the building filter instead of active");
-
-	filter.abort_rebuild(second);
-}
-
-#[test]
-fn abort_leaves_active_untouched() {
-	// Abort is the failure path of a scan that never finished. It must drop only the partial filter;
-	// disabling or replacing active here would either lose the saved lookups or corrupt reads.
-	let filter = AdaptiveKeyFilter::new();
-
-	let first = filter.begin_rebuild(128);
-	first.feed(&[11, 22, 33]);
-	filter.commit_rebuild(first);
-
-	let known_absent = find_rejected_hash(&filter, 2_000_000);
-
-	let second = filter.begin_rebuild(4096);
-	filter.abort_rebuild(second);
-
-	assert!(filter.is_enabled(), "abort disabled a filter that was enabled");
-	assert!(filter.may_contain(11));
-	assert!(filter.may_contain(22));
-	assert!(filter.may_contain(33));
-	assert!(!filter.may_contain(known_absent), "abort changed how active answers");
-
-	let metrics = filter.metrics();
-	assert_eq!(metrics.aborts, 1);
-	assert_eq!(metrics.rebuilds, 1);
-	assert!(!metrics.rebuilding);
-}
-
-#[test]
-fn abort_clears_the_building_slot() {
-	// If abort left building populated, the next begin_rebuild would panic and every add would keep
-	// writing into a filter nobody will ever swap in.
-	let filter = AdaptiveKeyFilter::new();
-
-	let aborted = filter.begin_rebuild(128);
-	aborted.feed(&[1, 2, 3]);
-	filter.abort_rebuild(aborted);
-
-	assert!(!filter.metrics().rebuilding);
-	filter.add_many(&[0xABCD]);
-
-	let fresh = filter.begin_rebuild(128);
-	let written_after_abort = 0x1234_5678_u64;
-	filter.add_many(&[written_after_abort]);
-	filter.commit_rebuild(fresh);
-
-	assert!(filter.may_contain(written_after_abort), "add after an abort did not reach the live rebuild");
-	assert_eq!(filter.metrics().aborts, 1);
-	assert_eq!(filter.metrics().rebuilds, 1);
 }
 
 #[test]
@@ -346,11 +292,6 @@ fn rebuilding_flag_spans_begin_to_commit() {
 
 	filter.commit_rebuild(handle);
 	assert!(!filter.metrics().rebuilding, "rebuilding stayed true after commit_rebuild");
-
-	let aborted = filter.begin_rebuild(64);
-	assert!(filter.metrics().rebuilding);
-	filter.abort_rebuild(aborted);
-	assert!(!filter.metrics().rebuilding, "rebuilding stayed true after abort_rebuild");
 }
 
 #[test]
@@ -408,7 +349,6 @@ fn an_armed_filter_is_active_before_any_rebuild_has_run() {
 	assert!(metrics.enabled);
 	assert!(!metrics.rebuilding, "arming must not leave a rebuild in flight");
 	assert_eq!(metrics.rebuilds, 0, "arming is not a rebuild and must not be counted as one");
-	assert_eq!(metrics.aborts, 0);
 	assert_eq!(metrics.queries, 0, "arming must not consume the query counter");
 	assert_eq!(metrics.rejected, 0);
 }

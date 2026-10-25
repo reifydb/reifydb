@@ -302,6 +302,7 @@ impl StandardMultiStore {
 		}
 
 		let mut persistent_aligned = vec![VersionedGetResult::NotFound; key_slices.len()];
+		let mut filled = Vec::new();
 		if !persistent_slices.is_empty()
 			&& let Some(persistent) = &self.persistent
 		{
@@ -314,18 +315,17 @@ impl StandardMultiStore {
 				if let VersionedGetResult::Value {
 					value,
 					version: v,
-				} = &result && let Some(point) = &self.point
+				} = &result && self.point.is_some()
 				{
-					point.insert(
-						table,
-						table_keys[slot].storage_key,
-						table_keys[slot].key.clone(),
-						*v,
-						Some(value.clone()),
-					);
+					filled.push((table_keys[slot].key.clone(), *v, Some(value.clone())));
 				}
 				persistent_aligned[slot] = result;
 			}
+		}
+		if let Some(point) = &self.point
+			&& !filled.is_empty()
+		{
+			point.insert(table, filled);
 		}
 
 		Ok((read_aligned, persistent_aligned))
@@ -337,13 +337,14 @@ impl StandardMultiStore {
 			return;
 		}
 		for (table, entries) in batches.iter() {
-			for (key, _) in entries {
-				if let Some(range) = &self.range {
+			if let Some(range) = &self.range {
+				for (key, _) in entries {
 					range.invalidate(*table, key);
 				}
-				if let Some(point) = &self.point {
-					point.invalidate(*table, storage_key(key).1, key);
-				}
+			}
+			if let Some(point) = &self.point {
+				let keys: Vec<EncodedKey> = entries.iter().map(|(key, _)| key.clone()).collect();
+				point.invalidate(*table, &keys);
 			}
 		}
 	}
@@ -1232,7 +1233,6 @@ fn make_range_bounds(range: &EncodedKeyRange) -> (Vec<u8>, Vec<u8>) {
 mod cache_tests {
 	use std::{
 		cell::Cell,
-		collections::HashMap,
 		ops::{Bound, RangeInclusive},
 		rc::Rc,
 		slice::from_ref,
@@ -1255,10 +1255,9 @@ mod cache_tests {
 			operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 			row::{RowKey, RowKeyRange, StorageRowKey},
 		},
+		lifecycle::watermark::EvictionWatermark,
 	};
-	use reifydb_store_commit::{
-		MultiVersionScope, RangeCursor, RangeStop, RawEntry, TierBatch, VersionedGetResult,
-	};
+	use reifydb_store_commit::{MultiVersionScope, RangeCursor, RangeStop, RawEntry, VersionedGetResult};
 	use reifydb_value::{
 		Result as ValueResult, byte_size::ByteSize, cow_vec, util::cowvec::CowVec, value::row_number::RowNumber,
 	};
@@ -1318,6 +1317,7 @@ mod cache_tests {
 	#[test]
 	fn typed_row_scan_returns_exactly_what_the_encoded_scan_returns() {
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 		for n in 1..=40u64 {
 			commit_row(&store, n, n);
 		}
@@ -1415,34 +1415,17 @@ mod cache_tests {
 		.unwrap();
 	}
 
-	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-		let commit = store.commit();
-		for kind in commit.list_all_entry_kinds() {
-			let (to_persist, to_compact, _consumed, _next) =
-				commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX), None);
-			if to_compact.is_empty() {
-				continue;
-			}
-			if !to_persist.is_empty() {
-				let persistent = store.persistent().expect("persistent tier");
-				let mut by_version: HashMap<CommitVersion, TierBatch> = HashMap::new();
-				for (key, version, value) in to_persist {
-					by_version
-						.entry(version)
-						.or_default()
-						.entry(kind)
-						.or_default()
-						.push((key, value));
-				}
-				for (version, batch) in by_version {
-					persistent.set(version, batch).unwrap();
-				}
-			}
-			for (key, _) in &to_compact {
-				store.invalidate_read_key(kind, key);
-			}
-			commit.compact(HashMap::from([(kind, to_compact)]));
+	struct FixedWatermark(CommitVersion);
+
+	impl EvictionWatermark for FixedWatermark {
+		fn watermark(&self) -> CommitVersion {
+			self.0
 		}
+	}
+
+	fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
+		store.set_eviction_watermark(Arc::new(FixedWatermark(cutoff)));
+		store.flush_pending_blocking();
 	}
 
 	#[test]
@@ -1450,6 +1433,7 @@ mod cache_tests {
 		const HEAVY: u64 = 192;
 		const LIGHT: u64 = 20;
 		let (store, _g) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+		store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
 
 		for n in 1..=HEAVY {
 			commit_row(&store, n, 1);
@@ -1637,7 +1621,7 @@ mod cache_tests {
 	const ROWS: u64 = 200;
 
 	fn store_without_read_tier() -> (StandardMultiStore, impl Drop) {
-		StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
+		let (store, guard) = StandardMultiStore::testing_memory_with_persistent_sqlite_tiers(
 			MultiPointConfig {
 				shard_bytes: None,
 				..MultiPointConfig::testing()
@@ -1646,7 +1630,9 @@ mod cache_tests {
 				shard_bytes: None,
 				..MultiRangeConfig::testing()
 			},
-		)
+		);
+		store.set_wal_checkpoint(Arc::new(NoWalCheckpoint));
+		(store, guard)
 	}
 
 	fn persistent_table_stop(store: &StandardMultiStore) -> Option<RangeStop> {
@@ -2020,7 +2006,6 @@ mod cache_tests {
 					),
 					"the flush must move the row out of the buffer, or the rescan reads it from there"
 				);
-				store.clear_read();
 				fired.set(true);
 			});
 		}
@@ -2080,7 +2065,6 @@ mod cache_tests {
 			commit_row(&store, n, 1);
 		}
 		store.flush_all_blocking();
-		store.clear_read();
 
 		commit_row(&store, FILL, 2);
 		store.flush_all_blocking();
@@ -2176,7 +2160,6 @@ mod cache_tests {
 			commit_row(&store, n, 1);
 		}
 		store.flush_all_blocking();
-		store.clear_read();
 
 		assert_eq!(
 			rows_between(&store, FILLERS),

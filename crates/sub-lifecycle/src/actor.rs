@@ -98,6 +98,7 @@ impl Actor for LifecycleActor {
 				if run_slice(&mut state.task) == Progress::Yielded {
 					ctx.schedule_once(self.catchup, || LifecycleMessage::Tick);
 				}
+				return Directive::Yield;
 			}
 			LifecycleMessage::RunToExhaustion {
 				waiter,

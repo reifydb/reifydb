@@ -99,8 +99,11 @@ mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
-		let node = stmts[0].first_unchecked();
-		let AstCreate::Authentication(auth) = node.as_create() else {
+		let node = stmts[0].nodes.first().unwrap();
+		let Ast::Create(create) = node else {
+			panic!("not create")
+		};
+		let AstCreate::Authentication(auth) = &**create else {
 			panic!("expected CreateAuthentication")
 		};
 		assert_eq!(auth.user.text(), "alice");
@@ -117,8 +120,11 @@ mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
-		let node = stmts[0].first_unchecked();
-		let AstCreate::Authentication(auth) = node.as_create() else {
+		let node = stmts[0].nodes.first().unwrap();
+		let Ast::Create(create) = node else {
+			panic!("not create")
+		};
+		let AstCreate::Authentication(auth) = &**create else {
 			panic!("expected CreateAuthentication")
 		};
 		assert_eq!(auth.user.text(), "alice");
@@ -134,7 +140,7 @@ mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
-		let node = stmts[0].first_unchecked();
+		let node = stmts[0].nodes.first().unwrap();
 		let drop = match node {
 			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),
@@ -154,7 +160,7 @@ mod tests {
 		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
 		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
-		let node = stmts[0].first_unchecked();
+		let node = stmts[0].nodes.first().unwrap();
 		let drop = match node {
 			Ast::Drop(d) => d,
 			_ => panic!("expected Drop"),

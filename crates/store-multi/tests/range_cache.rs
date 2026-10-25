@@ -5,7 +5,7 @@
 //! turns on one invariant: a cache-served scan is byte-for-byte identical to the cache-cold read-through
 //! and to the data actually written.
 
-use std::{collections::HashMap, slice::from_ref};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::bytes::EncodedBytes};
 use reifydb_core::{
@@ -16,13 +16,16 @@ use reifydb_core::{
 			id::{QueueId, TableId},
 			storage::StorageId,
 		},
-		store::{EntryKind, EntryLayout, MultiVersionCommit},
+		store::MultiVersionCommit,
 	},
 	key::{any::TaggedKey, queue::QueueDeduplicationKey, row::RowKey},
+	lifecycle::watermark::EvictionWatermark,
 };
-use reifydb_store_commit::{MultiVersionScope, TierBatch};
-use reifydb_store_multi::{store::StandardMultiStore, tier::TierStorage};
-use reifydb_value::{byte_size::ByteSize, cow_vec, util::cowvec::CowVec};
+use reifydb_store_commit::MultiVersionScope;
+use reifydb_store_multi::store::StandardMultiStore;
+use reifydb_value::{cow_vec, util::cowvec::CowVec};
+
+use crate::common::without_wal;
 
 const STORAGE: StorageId = StorageId::Table(TableId(1));
 
@@ -35,7 +38,8 @@ const BUCKET_ROWS: u64 = 200;
 const COLD_ROWS: u64 = 100;
 
 fn store() -> (StandardMultiStore, impl Drop) {
-	StandardMultiStore::testing_memory_with_persistent_sqlite()
+	let (store, guard) = StandardMultiStore::testing_memory_with_persistent_sqlite();
+	(without_wal(store), guard)
 }
 
 fn commit(store: &StandardMultiStore, n: u64, version: u64, value: &str) {
@@ -51,31 +55,17 @@ fn commit(store: &StandardMultiStore, n: u64, version: u64, value: &str) {
 	.unwrap();
 }
 
-fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-	// Deterministic stand-in for the flush sweep, in the same persist -> invalidate-read -> drop order
-	// the actor runs; the invalidate step is what clears bucket completeness.
-	let commit = store.commit();
-	for kind in commit.list_all_entry_kinds() {
-		let (to_persist, to_compact, _, _) =
-			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX), None);
-		if to_compact.is_empty() {
-			continue;
-		}
-		if !to_persist.is_empty() {
-			let persistent = store.persistent().expect("persistent tier configured");
-			let mut by_version: HashMap<CommitVersion, TierBatch> = HashMap::new();
-			for (key, version, value) in to_persist {
-				by_version.entry(version).or_default().entry(kind).or_default().push((key, value));
-			}
-			for (version, batch) in by_version {
-				persistent.set(version, batch).unwrap();
-			}
-		}
-		for (key, _) in &to_compact {
-			store.invalidate_read_key(kind, key);
-		}
-		commit.compact(HashMap::from([(kind, to_compact)]));
+struct FixedWatermark(CommitVersion);
+
+impl EvictionWatermark for FixedWatermark {
+	fn watermark(&self) -> CommitVersion {
+		self.0
 	}
+}
+
+fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
+	store.set_eviction_watermark(Arc::new(FixedWatermark(cutoff)));
+	store.flush_pending_blocking();
 }
 
 fn scan_fwd(store: &StandardMultiStore, read_version: u64, batch: usize) -> Vec<(Vec<u8>, Vec<u8>, CommitVersion)> {
@@ -293,32 +283,6 @@ fn reverse_and_small_batch_match_forward() {
 }
 
 #[test]
-fn physical_delete_then_range_omits_row_no_ghost() {
-	// Delete-then-invalidate (the ordering the drop and TTL paths use) clears completeness, so a stale
-	// complete page can never resurrect a physically removed row.
-	let (store, _g) = store();
-	for n in 1..=BUCKET_ROWS {
-		commit(&store, n, 1, &format!("v{n}"));
-	}
-	flush(&store, CommitVersion(1));
-	let _ = scan_fwd(&store, 1000, 64); // warm bucket 0 complete
-
-	let removed = RowKey::encoded(STORAGE, 5);
-	store.persistent()
-		.unwrap()
-		.delete_keys(EntryKind::Source(STORAGE, EntryLayout::Row), from_ref(&removed))
-		.unwrap();
-	store.invalidate_read_key(EntryKind::Source(STORAGE, EntryLayout::Row), &removed);
-
-	let rows = scan_fwd(&store, 1000, 64);
-	assert_eq!(rows.len(), (BUCKET_ROWS - 1) as usize, "exactly one row removed");
-	assert!(
-		!keys_only(&rows).contains(&removed.to_vec()),
-		"the physically-deleted row must not be served from a stale complete page"
-	);
-}
-
-#[test]
 fn non_source_range_reads_through_with_warm_cache() {
 	// The cache only ever serves Source buckets, so an unbounded range (classified Multi) must return
 	// exactly its own rows, untouched by a warm Source cache.
@@ -364,41 +328,6 @@ fn non_source_range_reads_through_with_warm_cache() {
 		got, expected,
 		"a non-Source range returns only its own Multi rows, unaffected by the warm Source cache"
 	);
-}
-
-#[test]
-fn cache_cleared_mid_scan_reads_through_without_corruption() {
-	// Eviction of a complete page is purely a RAM trade: dropping the cache mid-scan must turn cache hits into
-	// read-throughs with no duplicated, skipped, or corrupted row.
-	let (store, _g) = store();
-	for n in 1..=BUCKET_ROWS {
-		commit(&store, n, 1, &format!("v{n}"));
-	}
-	flush(&store, CommitVersion(1));
-	let _ = scan_fwd(&store, 1000, 64); // warm
-
-	let mut it = store.range(
-		RowKey::full_scan(STORAGE).encode(),
-		MultiVersionScope::AsOf {
-			read: CommitVersion(1000),
-		},
-		16,
-	);
-	let mut all: Vec<Vec<u8>> = Vec::new();
-	for r in it.by_ref().take(40) {
-		all.push(r.unwrap().key.encode().to_vec());
-	}
-	store.clear_read(); // drop the warm pages mid-scan
-	for r in it {
-		all.push(r.unwrap().key.encode().to_vec());
-	}
-
-	let mut expected: Vec<Vec<u8>> = (1..=BUCKET_ROWS).map(|n| RowKey::encoded(STORAGE, n).to_vec()).collect();
-	expected.sort();
-	let mut sorted = all.clone();
-	sorted.sort();
-	assert_eq!(sorted, expected, "no row lost or corrupted by a mid-scan cache clear");
-	assert_eq!(all.len(), BUCKET_ROWS as usize, "no duplicated row across the eviction boundary");
 }
 
 #[test]

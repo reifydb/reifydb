@@ -84,7 +84,11 @@ fn a_tick_runs_exactly_one_slice_of_exactly_its_own_class_and_never_a_neighbour(
 		vec!["second"],
 		"a tick must run only the class whose actor received it - driving a neighbour double-drives its cursor"
 	);
-	assert_eq!(directives, vec![Directive::Continue], "a completed slice must keep the lane alive");
+	assert_eq!(
+		directives,
+		vec![Directive::Yield],
+		"a completed slice must hand the lane to the next actor, not keep it"
+	);
 }
 
 #[test]
@@ -104,7 +108,11 @@ fn a_tick_yields_the_lane_after_one_slice_even_when_the_class_still_has_work() {
 		"one tick must perform exactly one slice; draining {} slices inline would monopolise the lane",
 		journal.lock().len()
 	);
-	assert_eq!(directives, vec![Directive::Continue], "yielding with work left must not stop the lane");
+	assert_eq!(
+		directives,
+		vec![Directive::Yield],
+		"a slice with work left must hand the lane on, not drain or stop"
+	);
 }
 
 #[test]

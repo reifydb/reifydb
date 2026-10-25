@@ -31,12 +31,12 @@ fn multi_point_spec_separates_a_displaced_hit_from_a_current_one() {
 	let spec = MetricsDomain::StoreMultiPoint.spec();
 
 	let current = spec.columns(Surface::Current);
-	assert_eq!(current.len(), 13, "ts + shard + 3 levels + 8 counters");
+	assert_eq!(current.len(), 10, "ts + shard + 3 levels + 5 counters");
 	assert_eq!(current[0].name, "ts");
 	assert_eq!(current[1].name, "shard");
 
 	let total = spec.columns(Surface::Total);
-	assert_eq!(total.len(), 10, "ts + shard + 8 counters; levels must not reach ::total");
+	assert_eq!(total.len(), 7, "ts + shard + 5 counters; levels must not reach ::total");
 
 	for read in ["hits", "previous_hits", "misses"] {
 		assert!(
@@ -51,5 +51,5 @@ fn multi_point_spec_separates_a_displaced_hit_from_a_current_one() {
 
 	let counters = spec.measures.iter().filter(|m| m.kind == MetricKind::Counter).count();
 	let levels = spec.measures.iter().filter(|m| m.kind == MetricKind::Level).count();
-	assert_eq!((levels, counters), (3, 8));
+	assert_eq!((levels, counters), (3, 5));
 }

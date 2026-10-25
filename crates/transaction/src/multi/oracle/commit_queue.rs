@@ -20,7 +20,7 @@ use std::{
 use reifydb_core::{common::CommitVersion, delta::Delta};
 use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 
-use super::{CommitRebase, CommitShared, CreateCommitResult, OracleState, Prepared, SpanTiming};
+use super::{CommitRebase, CommitShared, CommittedWindow, CreateCommitResult, OracleState, Prepared, SpanTiming};
 use crate::multi::{conflict::ConflictManager, transaction::version::VersionProvider};
 
 const QUEUED: u32 = 0;
@@ -36,6 +36,7 @@ struct CommitPayload {
 	rebase: Option<CommitRebase>,
 	prepared: Option<Prepared>,
 	result: Option<Result<CreateCommitResult>>,
+	evicted: Vec<CommittedWindow>,
 }
 
 struct CommitRequest {
@@ -68,6 +69,7 @@ impl CommitRequest {
 				rebase,
 				prepared,
 				result: None,
+				evicted: Vec::new(),
 			}),
 			state: AtomicU32::new(QUEUED),
 			waiter: current(),
@@ -293,6 +295,7 @@ where
 					payload.prepared.take(),
 					payload.window_size,
 					timing,
+					&mut payload.evicted,
 				);
 				complete_request(request, result);
 				request = next;

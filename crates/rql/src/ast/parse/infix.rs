@@ -78,6 +78,7 @@ pub mod tests {
 	use crate::{
 		ast::{
 			ast::{
+				Ast,
 				Ast::{Infix, Literal},
 				AstInfix, AstLiteral, InfixOperator,
 			},
@@ -94,8 +95,13 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let infix = result[0].first_unchecked().as_infix();
-		assert_eq!(infix.left.as_literal_number().value(), "1");
+		let Some(Ast::Infix(infix)) = result[0].nodes.first() else {
+			panic!("not infix")
+		};
+		let Ast::Literal(AstLiteral::Number(left_number)) = &*infix.left else {
+			panic!("not number")
+		};
+		assert_eq!(left_number.value(), "1");
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
 		assert_eq!(infix.right.as_identifier().text(), "one");
 	}
@@ -108,8 +114,13 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let infix = result[0].first_unchecked().as_infix();
-		assert_eq!(infix.left.as_literal_number().value(), "1");
+		let Some(Ast::Infix(infix)) = result[0].nodes.first() else {
+			panic!("not infix")
+		};
+		let Ast::Literal(AstLiteral::Number(left_number)) = &*infix.left else {
+			panic!("not number")
+		};
+		assert_eq!(left_number.value(), "1");
 		assert!(matches!(infix.operator, InfixOperator::As(_)));
 		assert_eq!(infix.right.as_identifier().text(), "a");
 	}
@@ -122,12 +133,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -153,16 +164,19 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let AstInfix {
+		let Some(Ast::Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		} = result[0].first_unchecked().as_infix();
+		})) = result[0].nodes.first()
+		else {
+			panic!("not infix")
+		};
 		assert!(matches!(operator, InfixOperator::LessThan(_)));
 
-		left.as_cast();
-		right.as_cast();
+		assert!(matches!(**left, Ast::Cast(_)));
+		assert!(matches!(**right, Ast::Cast(_)));
 	}
 
 	#[test]
@@ -173,12 +187,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -204,19 +218,26 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let AstInfix {
+		let Some(Ast::Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		} = result[0].first_unchecked().as_infix();
+		})) = result[0].nodes.first()
+		else {
+			panic!("not infix")
+		};
 
-		let left = left.as_literal_number();
+		let Ast::Literal(AstLiteral::Number(left)) = &**left else {
+			panic!("not number")
+		};
 		assert_eq!(left.value(), "-1");
 
 		assert!(matches!(operator, InfixOperator::Subtract(_)));
 
-		let right_number = right.as_literal_number();
+		let Ast::Literal(AstLiteral::Number(right_number)) = &**right else {
+			panic!("not number")
+		};
 		assert_eq!(right_number.value(), "2");
 	}
 
@@ -228,12 +249,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -259,12 +280,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -290,12 +311,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -321,12 +342,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -352,12 +373,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -383,12 +404,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -414,12 +435,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -445,12 +466,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};
@@ -476,12 +497,12 @@ pub mod tests {
 		let result = parse(&bump, source, tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Infix(AstInfix {
+		let Some(Infix(AstInfix {
 			left,
 			operator,
 			right,
 			..
-		}) = result[0].first_unchecked()
+		})) = result[0].nodes.first()
 		else {
 			panic!()
 		};

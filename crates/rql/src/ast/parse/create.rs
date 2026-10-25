@@ -3040,7 +3040,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
@@ -3065,7 +3068,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
@@ -3090,7 +3096,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
@@ -3115,7 +3124,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
@@ -3140,7 +3152,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
@@ -3165,7 +3180,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
@@ -3190,7 +3208,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
@@ -3215,7 +3236,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
@@ -3240,7 +3264,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Table(AstCreateTable {
@@ -3264,7 +3291,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::RingBuffer(AstCreateRingBuffer {
@@ -3290,7 +3320,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Dictionary(AstCreateDictionary {
@@ -3313,7 +3346,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Table(AstCreateTable {
@@ -3340,7 +3376,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
@@ -3365,7 +3404,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Series(AstCreateSeries {
@@ -3415,7 +3457,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Table(AstCreateTable {
@@ -3479,7 +3524,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Table(AstCreateTable {
@@ -3532,7 +3580,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 		match create {
 			AstCreate::DeferredView(AstCreateDeferredView {
 				view,
@@ -3573,7 +3624,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 		match create {
 			AstCreate::DeferredView(AstCreateDeferredView {
 				view,
@@ -3598,7 +3652,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 		match create {
 			AstCreate::TransactionalView(AstCreateTransactionalView {
 				view,
@@ -3650,7 +3707,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::RingBuffer(AstCreateRingBuffer {
@@ -3705,7 +3765,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 		match create {
 			AstCreate::TransactionalView(AstCreateTransactionalView {
 				view,
@@ -3736,7 +3799,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Dictionary(dict) => {
@@ -3765,7 +3831,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Dictionary(dict) => {
@@ -3794,7 +3863,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Dictionary(dict) => {
@@ -3822,7 +3894,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Dictionary(dict) => {
@@ -3852,7 +3927,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Enum(AstCreateSumType {
@@ -3887,7 +3965,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Enum(AstCreateSumType {
@@ -3921,7 +4002,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Enum(AstCreateSumType {
@@ -3947,7 +4031,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Enum(AstCreateSumType {
@@ -3974,7 +4061,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
+		let Some(Ast::Create(create)) = result.nodes.first() else {
+			panic!("not create")
+		};
+		let create = &**create;
 
 		match create {
 			AstCreate::Queue(AstCreateQueue {
@@ -4304,7 +4394,7 @@ mod time_declaration_tests {
 		let mut parser = Parser::new(bump, source, tokens);
 		let mut result = parser.parse()?;
 		let statement = result.pop().unwrap();
-		let Ast::Create(create) = statement.first_unchecked() else {
+		let Some(Ast::Create(create)) = statement.nodes.first() else {
 			panic!("expected a CREATE statement");
 		};
 		let decl = match &**create {

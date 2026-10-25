@@ -472,7 +472,7 @@ mod tests {
 	}
 
 	fn read_u64(row: &Row, name: &str) -> u64 {
-		let field = row.shape.find_field(name).expect("field");
+		let field = row.shape.find_field_index(name).and_then(|i| row.shape.get_field(i)).expect("field");
 		let buf = &row.encoded.as_slice()[field.offset as usize..(field.offset as usize + field.size as usize)];
 		let mut bytes = [0u8; 8];
 		bytes.copy_from_slice(buf);

@@ -110,33 +110,6 @@ impl IndexShapeInner {
 		self.bitvec_size
 	}
 
-	pub fn all_defined(&self, key: &EncodedIndexKey) -> bool {
-		let bits = self.fields.len();
-		if bits == 0 {
-			return false;
-		}
-
-		let bitvec_slice = &key[..self.bitvec_size];
-		for (i, &byte) in bitvec_slice.iter().enumerate() {
-			let bits_in_byte = if i == self.bitvec_size - 1 && !bits.is_multiple_of(8) {
-				bits % 8
-			} else {
-				8
-			};
-
-			let mask = if bits_in_byte == 8 {
-				0xFF
-			} else {
-				(1u8 << bits_in_byte) - 1
-			};
-			if (byte & mask) != mask {
-				return false;
-			}
-		}
-
-		true
-	}
-
 	pub fn value(&self, index: usize) -> ValueType {
 		self.fields[index].value.clone()
 	}

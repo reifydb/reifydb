@@ -377,10 +377,7 @@ impl SqliteCdcPersistent {
 			.map(Arc::new)
 			.collect();
 		self.inner.loads.fetch_add(1, Ordering::Relaxed);
-		Ok(Some(Arc::new(Block {
-			summary,
-			entries,
-		})))
+		Ok(Some(Arc::new(Block::new(summary, entries))))
 	}
 
 	fn aggregate_version(&self, sql: &str) -> Result<Option<CommitVersion>> {
@@ -617,8 +614,8 @@ mod tests {
 	fn block(version: u64) -> Block {
 		let commit = CommitVersion(version);
 		let nanos = i64::try_from(version).expect("test block version fits in i64 nanos");
-		Block {
-			summary: BlockSummary {
+		Block::new(
+			BlockSummary {
 				id: BlockId(commit),
 				min_version: commit,
 				max_version: commit,
@@ -627,12 +624,8 @@ mod tests {
 				count: Count::new(1),
 				stored_bytes: ByteSize::ZERO,
 			},
-			entries: vec![Arc::new(Cdc::new(
-				ChangeVersion::from(commit),
-				DateTime::from_nanos(nanos),
-				vec![],
-			))],
-		}
+			vec![Arc::new(Cdc::new(ChangeVersion::from(commit), DateTime::from_nanos(nanos), vec![]))],
+		)
 	}
 
 	fn reprepares(conn: &Connection) -> i32 {

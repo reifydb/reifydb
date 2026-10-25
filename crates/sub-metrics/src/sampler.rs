@@ -389,9 +389,6 @@ fn multi_point_row(metrics: &MultiPointShardMetrics) -> MetricsRow {
 			counter_count("misses", metrics.reads.misses),
 			counter_count("insertions", metrics.counters.insertions),
 			counter_count("evictions", metrics.counters.evictions),
-			counter_count("fills_started", metrics.counters.fills_started),
-			counter_count("fills_dirty_aborted", metrics.counters.fills_dirty_aborted),
-			counter_count("fills_duplicate", metrics.counters.fills_duplicate),
 		],
 	}
 }
@@ -618,8 +615,8 @@ fn lifecycle_rows(metrics: &RetentionMetrics) -> Vec<MetricsRow> {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::key::operator::state::KeyspaceId;
+	use reifydb_store::tier::range::RangeMetrics;
 	use reifydb_store_cdc::tier::read::CdcReadMetrics;
-	use reifydb_store_operator::range::OperatorRangeMetrics;
 
 	use super::*;
 
@@ -631,7 +628,7 @@ mod tests {
 			partitions: 115,
 			intervals: 203,
 			entries: 419,
-			counters: OperatorRangeMetrics {
+			counters: RangeMetrics {
 				hits: 1_207,
 				misses: 89,
 				exempt: 17,

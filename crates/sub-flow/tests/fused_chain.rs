@@ -203,7 +203,19 @@ fn await_units(db: &TestDb, member: u64, head: u64) -> Vec<(u64, u64)> {
 		},
 		TIMEOUT,
 	)
-	.unwrap_or_else(|| units(db))
+	.expect("the reopened engine never registered the member under its head")
+}
+
+fn started_units(db: &TestDb) -> Vec<(u64, u64)> {
+	// a reopened engine registers its fused units after build returns, so an immediate read can see none yet.
+	poll_until(
+		|| {
+			let units = units(db);
+			(!units.is_empty()).then_some(units)
+		},
+		TIMEOUT,
+	)
+	.expect("the reopened engine never registered its flow units")
 }
 
 #[test]
@@ -509,7 +521,7 @@ fn a_view_created_at_runtime_on_a_middle_member_reads_it_and_the_unit_splits_at_
 	}
 	let mut db = open(&path, true);
 	assert_eq!(
-		units(&db),
+		started_units(&db),
 		under(&db, "a", &["a", "b"]),
 		"b now has two readers, so only a and b may fuse at the next start"
 	);

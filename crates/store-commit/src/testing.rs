@@ -123,9 +123,9 @@ impl<R: Write> Write for TestingRows<R> {
 		self.hooks.on(HookPoint::AfterClose);
 	}
 
-	fn merge(&self, fan_in: usize, cap: ByteSize) {
+	fn merge(&self, fan_in: usize, cap: ByteSize, floor: ByteSize, backlog: usize) {
 		self.hooks.on(HookPoint::BeforeMerge);
-		self.rows.merge(fan_in, cap);
+		self.rows.merge(fan_in, cap, floor, backlog);
 		self.hooks.on(HookPoint::AfterMerge);
 	}
 }

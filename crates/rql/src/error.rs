@@ -7,7 +7,6 @@ use std::{
 };
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
-use reifydb_core::internal_error;
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -864,21 +863,6 @@ impl From<RqlError> for Error {
 #[derive(Debug, Clone)]
 pub enum IdentifierError {
 	SourceNotFound(ObjectNotFoundError),
-	ColumnNotFound {
-		column: String,
-	},
-	AmbiguousColumn(AmbiguousColumnError),
-	UnknownAlias(UnknownAliasError),
-	FunctionNotFound(FunctionNotFoundError),
-	SequenceNotFound {
-		namespace: String,
-		name: String,
-	},
-	IndexNotFound {
-		namespace: String,
-		table: String,
-		name: String,
-	},
 	RemoteNamespace {
 		namespace: String,
 		name: String,
@@ -892,31 +876,6 @@ impl fmt::Display for IdentifierError {
 		match self {
 			IdentifierError::SourceNotFound(e) => {
 				write!(f, "{}", e)
-			}
-			IdentifierError::ColumnNotFound {
-				column,
-			} => {
-				write!(f, "Column '{}' not found", column)
-			}
-			IdentifierError::AmbiguousColumn(e) => {
-				write!(f, "{}", e)
-			}
-			IdentifierError::UnknownAlias(e) => write!(f, "{}", e),
-			IdentifierError::FunctionNotFound(e) => {
-				write!(f, "{}", e)
-			}
-			IdentifierError::SequenceNotFound {
-				namespace,
-				name,
-			} => {
-				write!(f, "Sequence '{}::{}' not found", namespace, name)
-			}
-			IdentifierError::IndexNotFound {
-				namespace,
-				table,
-				name,
-			} => {
-				write!(f, "Index '{}' on table '{}::{}' not found", name, namespace, table)
 			}
 			IdentifierError::RemoteNamespace {
 				namespace,
@@ -975,9 +934,6 @@ impl From<IdentifierError> for Error {
 					operator_chain: None,
 				}))
 			}
-			_ => {
-				internal_error!("{}", err)
-			}
 		}
 	}
 }
@@ -999,60 +955,6 @@ impl fmt::Display for ObjectNotFoundError {
 	}
 }
 
-impl ObjectNotFoundError {
-	pub fn with_expected_type(namespace: String, name: String, _expected: &str, fragment: Fragment) -> Self {
-		Self {
-			namespace,
-			name,
-			fragment,
-		}
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct AmbiguousColumnError {
-	pub column: String,
-	pub sources: Vec<String>,
-}
-
-impl fmt::Display for AmbiguousColumnError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Column '{}' is ambiguous, found in sources: {}", self.column, self.sources.join(", "))
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct UnknownAliasError {
-	pub alias: String,
-}
-
-impl fmt::Display for UnknownAliasError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Alias '{}' is not defined in the current scope", self.alias)
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct FunctionNotFoundError {
-	pub namespaces: Vec<String>,
-	pub name: String,
-}
-
-impl fmt::Display for FunctionNotFoundError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		if self.namespaces.is_empty() {
-			write!(f, "Function '{}' does not exist", self.name)
-		} else {
-			let qualified = format!("{}::{}", self.namespaces.join("::"), self.name);
-			write!(f, "Function '{}' does not exist", qualified)
-		}
-	}
-}
-
-pub fn is_default_namespace(fragment: &Fragment) -> bool {
-	matches!(fragment, Fragment::Internal { .. })
-}
-
 #[cfg(test)]
 pub mod tests {
 	use super::*;
@@ -1072,37 +974,5 @@ pub mod tests {
 			fragment: Fragment::None,
 		};
 		assert_eq!(err.to_string(), "Table or view 'myshape::users' does not exist");
-	}
-
-	#[test]
-	fn test_ambiguous_column_display() {
-		let err = AmbiguousColumnError {
-			column: "id".to_string(),
-			sources: vec!["users".to_string(), "profiles".to_string()],
-		};
-		assert_eq!(err.to_string(), "Column 'id' is ambiguous, found in sources: users, profiles");
-	}
-
-	#[test]
-	fn test_unknown_alias_display() {
-		let err = UnknownAliasError {
-			alias: "u".to_string(),
-		};
-		assert_eq!(err.to_string(), "Alias 'u' is not defined in the current scope");
-	}
-
-	#[test]
-	fn test_function_not_found_display() {
-		let err = FunctionNotFoundError {
-			namespaces: vec![],
-			name: "my_func".to_string(),
-		};
-		assert_eq!(err.to_string(), "Function 'my_func' does not exist");
-
-		let err = FunctionNotFoundError {
-			namespaces: vec!["pg_catalog".to_string(), "string".to_string()],
-			name: "substr".to_string(),
-		};
-		assert_eq!(err.to_string(), "Function 'pg_catalog::string::substr' does not exist");
 	}
 }

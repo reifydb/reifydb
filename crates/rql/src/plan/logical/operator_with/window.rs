@@ -425,12 +425,17 @@ impl<'bump> Compiler<'bump> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{ast::parse_str, bump::Bump};
+	use crate::{
+		ast::{ast::Ast, parse_str},
+		bump::Bump,
+	};
 
 	fn parse_window_config(source: &str) -> Result<ParsedConfig> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source).unwrap();
-		let window = statements[0].first_unchecked().as_window();
+		let Some(Ast::Window(window)) = statements[0].nodes.first() else {
+			panic!("not window")
+		};
 		Compiler::parse_config(window.with.as_ref(), window.token.fragment.to_owned())
 	}
 

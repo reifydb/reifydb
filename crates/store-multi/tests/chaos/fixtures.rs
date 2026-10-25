@@ -3,13 +3,10 @@
 
 //! Store-configuration builders and the deterministic flush stand-in.
 
-use std::collections::HashMap;
+use std::sync::Arc;
 
-use reifydb_codec::{
-	key::encoded::EncodedKey,
-	row::bytes::{EncodedBytes, SHAPE_HEADER_SIZE},
-};
-use reifydb_core::{common::CommitVersion, event::EventBus, interface::store::EntryKind};
+use reifydb_codec::row::bytes::{EncodedBytes, SHAPE_HEADER_SIZE};
+use reifydb_core::{common::CommitVersion, event::EventBus, lifecycle::watermark::EvictionWatermark};
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
@@ -18,7 +15,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::{
 	config::{MultiStoreConfig, PersistentConfig},
 	store::StandardMultiStore,
-	tier::{TierStorage, point::MultiPointConfig, range::MultiRangeConfig},
+	tier::{point::MultiPointConfig, range::MultiRangeConfig},
 };
 use reifydb_value::{byte_size::ByteSize, util::cowvec::CowVec};
 
@@ -62,43 +59,17 @@ pub fn tiny_tiers(kib: u64) -> (MultiPointConfig, MultiRangeConfig) {
 	)
 }
 
-/// Deterministic stand-in for the flush sweep, in its persist -> refresh-read -> evict order. The
-/// read-cache insert is the flush echo that clears two-version previous slots, so omitting it would
-/// leave the stand-in behaving differently from the actor it models.
-pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
-	let commit = store.commit();
-	for kind in commit.list_all_entry_kinds() {
-		// The oracle assumes a complete flush, so a budgeted call would leave a tail and the
-		// differential check would compare against a state the model never reaches.
-		let (to_persist, to_compact, _consumed, next) =
-			commit.collect_evictable_below(kind, cutoff, ByteSize::from_bytes(u64::MAX), None);
-		assert!(next.is_none(), "an unbounded collect must never report a remaining tail");
-		if to_compact.is_empty() {
-			continue;
-		}
-		if !to_persist.is_empty() {
-			let persistent = store.persistent().expect("persistent tier configured");
-			let mut by_version: HashMap<
-				CommitVersion,
-				HashMap<EntryKind, Vec<(EncodedKey, Option<CowVec<u8>>)>>,
-			> = HashMap::new();
-			for (key, version, value) in &to_persist {
-				by_version
-					.entry(*version)
-					.or_default()
-					.entry(kind)
-					.or_default()
-					.push((key.clone(), value.clone()));
-			}
-			for (version, batch) in by_version {
-				persistent.set(version, batch).unwrap();
-			}
-			for (key, version, value) in to_persist {
-				store.insert_read_key(kind, key, version, value);
-			}
-		}
-		commit.compact(HashMap::from([(kind, to_compact)]));
+struct FixedWatermark(CommitVersion);
+
+impl EvictionWatermark for FixedWatermark {
+	fn watermark(&self) -> CommitVersion {
+		self.0
 	}
+}
+
+pub fn flush(store: &StandardMultiStore, cutoff: CommitVersion) {
+	store.set_eviction_watermark(Arc::new(FixedWatermark(cutoff)));
+	store.flush_pending_blocking();
 }
 
 /// TTL eviction is version-anchored, so a key's age is controlled purely by the version it commits at

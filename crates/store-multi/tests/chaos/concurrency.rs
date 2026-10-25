@@ -326,7 +326,6 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 	}
 
 	store.flush_pending_blocking();
-	store.clear_read();
 	let final_version = version.load(Ordering::SeqCst);
 	let live: BTreeMap<u64, Vec<u8>> = scan_rows(&store, final_version, 16, false).into_iter().collect();
 
@@ -352,7 +351,6 @@ pub fn run(seed: u64, cfg: Config) -> BTreeMap<u64, Option<Vec<u8>>> {
 		"FINAL state has rows no writer left live: {live_unexpected:?} (seed={seed})"
 	);
 
-	store.clear_read();
 	let op_live: BTreeMap<u64, Vec<u8>> = scan_op_rows(&store, final_version, 16, false).into_iter().collect();
 	for (row, want) in &op_expected {
 		match want {

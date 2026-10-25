@@ -250,10 +250,6 @@ impl<D: RangeDomain> RangeTier<D> {
 		self.invalidate_within(dimension, None, key)
 	}
 
-	pub fn invalidate_in(&self, dimension: D::Dimension, partition: D::Partition, key: &D::Key) {
-		self.invalidate_within(dimension, Some(partition), key)
-	}
-
 	fn invalidate_within(&self, dimension: D::Dimension, confined: Option<D::Partition>, key: &D::Key) {
 		let Some(partition) = self.cacheable(dimension, confined, key) else {
 			return;
@@ -264,16 +260,6 @@ impl<D: RangeDomain> RangeTier<D> {
 		write_interlock();
 		self.discard(index, &partition, key);
 		self.withdraw(dimension, key);
-	}
-
-	pub fn clear(&self) {
-		self.withdraw_all();
-		for shard in self.all_shards() {
-			let mut shard = shard.lock();
-			shard.partitions.clear();
-			shard.budget.reset();
-		}
-		self.withdraw_all();
 	}
 
 	pub fn forget(&self, dimension: D::Dimension, partition: D::Partition) {
@@ -428,12 +414,6 @@ impl<D: RangeDomain> RangeTier<D> {
 		};
 		target.pinned.remove(&previous);
 		account(&mut target.bytes, budget, entry_footprint(key, &previous), 0);
-	}
-
-	fn withdraw_all(&self) {
-		let mut coverage = self.coverage().write();
-		coverage.clear();
-		self.record_retraction();
 	}
 
 	pub(super) fn withdraw(&self, dimension: D::Dimension, key: &D::Key) {
@@ -1402,26 +1382,6 @@ mod tests {
 		assert!(intervals(&tier, OP_A).is_empty(), "a partition with no rows left must hold no claim");
 		assert!(!covers(&tier, OP_A, &first), "the emptied span must fall through, never answer proven absent");
 		assert!(!covers(&tier, OP_A, &second));
-	}
-
-	#[test]
-	fn clearing_the_tier_withdraws_every_claim() {
-		// Every row goes at once, so a surviving claim reports the whole cleared span as proven absent.
-		let tier = tier();
-		let here = partition(OP_A, CACHED);
-		let there = partition(OP_B, CACHED);
-		let at = key(CACHED, b"m");
-		participate(&tier, here);
-		participate(&tier, there);
-		tier.insert(OP_A, at.clone(), row("v"));
-		tier.insert(OP_B, at.clone(), row("v"));
-		assert!(covers(&tier, OP_A, &at) && covers(&tier, OP_B, &at));
-
-		tier.clear();
-
-		assert!(intervals(&tier, OP_A).is_empty(), "a cleared tier must hold no claim for any dimension");
-		assert!(intervals(&tier, OP_B).is_empty());
-		assert_eq!(resident_entries(&tier), 0, "and no rows, or the clear left the two halves disagreeing");
 	}
 
 	#[test]

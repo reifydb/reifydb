@@ -62,14 +62,4 @@ impl RowShape {
 		let unscaled = read_le(&row[start..start + field.size as usize]);
 		Decimal::from_parts(unscaled, scale.value()).expect("a stored decimal is within 76 digits")
 	}
-
-	pub fn try_get_decimal(&self, row: &[u8], index: usize) -> Option<Decimal> {
-		if self.is_defined(row, index)
-			&& matches!(self.fields()[index].constraint.get_type().inner_type(), ValueType::Decimal { .. })
-		{
-			Some(self.get_decimal(row, index))
-		} else {
-			None
-		}
-	}
 }

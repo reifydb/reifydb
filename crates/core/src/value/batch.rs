@@ -334,10 +334,6 @@ fn append_shaped_rows(
 	merge_system_columns(out, &batch, stamps(shape, &rows, &row_numbers)?, rows.len())
 }
 
-pub fn take_row(batch: &RecordBatch, index: usize) -> Result<RecordBatch> {
-	take_rows(batch, &[index])
-}
-
 pub fn take_rows(batch: &RecordBatch, indices: &[usize]) -> Result<RecordBatch> {
 	kernel::rows_in_range(indices, batch.num_rows())?;
 	let indices = UInt64Array::from_iter_values(indices.iter().map(|&index| index as u64));

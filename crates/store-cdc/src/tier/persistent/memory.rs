@@ -101,10 +101,7 @@ impl MemoryCdcPersistent {
 		self.inner.blocks.lock().insert(
 			last.version.commit,
 			Resident {
-				block: Arc::new(Block {
-					summary,
-					entries: block.entries.clone(),
-				}),
+				block: Arc::new(Block::new(summary, block.entries.clone())),
 				rollup,
 				stored_bytes,
 			},

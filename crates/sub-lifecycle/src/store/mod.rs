@@ -3,3 +3,4 @@
 
 pub mod checkpoint;
 pub mod flush;
+pub mod merge;

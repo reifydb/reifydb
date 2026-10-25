@@ -83,9 +83,7 @@ fn test_auth_cleanup_task_evicts_expired_token() {
 
 	let tasks = create_system_tasks(db.engine().ioc()).unwrap();
 	let task = tasks.into_iter().find(|task| task.name == AUTH_CLEANUP).expect("auth cleanup task");
-	let TaskWork::Sync(work) = task.work else {
-		panic!("auth cleanup work must be sync");
-	};
+	let TaskWork::Sync(work) = task.work;
 
 	work(TaskContext::new(db.engine().clone())).unwrap();
 

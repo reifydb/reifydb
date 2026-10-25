@@ -50,7 +50,7 @@ impl CdcStorage for CdcStore {
 		end: Bound<CommitVersion>,
 		batch_size: u64,
 	) -> CdcStorageResult<CdcBatch> {
-		self.walk_range(start, end, batch_size)
+		self.walk_range(start, end, batch_size, None)
 	}
 
 	#[instrument(name = "store::cdc::count", level = "trace", skip(self), fields(version = version.0))]

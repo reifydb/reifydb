@@ -193,7 +193,10 @@ mod tests {
 
 	use crate::{
 		Result,
-		ast::{ast::AstJoin, parse_str},
+		ast::{
+			ast::{Ast, AstJoin},
+			parse_str,
+		},
 		bump::Bump,
 		plan::logical::Compiler,
 	};
@@ -201,6 +204,9 @@ mod tests {
 	fn join_with(source: &str) -> Result<JoinWith> {
 		let bump = Bump::new();
 		let statements = parse_str(&bump, source)?;
+		let Some(Ast::Join(join)) = statements[0].nodes.first() else {
+			panic!("not join")
+		};
 		let (AstJoin::InnerJoin {
 			with,
 			alias,
@@ -215,7 +221,7 @@ mod tests {
 			with,
 			alias,
 			..
-		}) = statements[0].first_unchecked().as_join();
+		}) = &**join;
 		Compiler::compile_join_with(with.as_ref(), alias)
 	}
 

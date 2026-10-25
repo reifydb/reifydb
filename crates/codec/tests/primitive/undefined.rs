@@ -212,7 +212,7 @@ fn test_set_decimal_int_uint() {
 
 	assert!(!row.is_defined(0));
 
-	assert_eq!(shape.try_get_decimal(&row, 0), None);
+	assert!(!shape.is_defined(&row, 0));
 }
 
 #[test]
@@ -223,16 +223,18 @@ fn test_set_blob() {
 	let blob = Blob::from_slice(&[1, 2, 3, 4, 5]);
 	shape.set_blob(&mut row, 0, &blob);
 	assert!(row.is_defined(0));
-	assert_eq!(shape.try_get_blob(&row, 0), Some(blob.clone()));
+	assert!(shape.is_defined(&row, 0));
+	assert_eq!(shape.get_blob(&row, 0), blob.clone());
 
 	shape.set_none(&mut row, 0);
 	assert!(!row.is_defined(0));
-	assert_eq!(shape.try_get_blob(&row, 0), None);
+	assert!(!shape.is_defined(&row, 0));
 
 	let blob2 = Blob::from_slice(&[10, 20, 30]);
 	shape.set_blob(&mut row, 0, &blob2);
 	assert!(row.is_defined(0));
-	assert_eq!(shape.try_get_blob(&row, 0), Some(blob2));
+	assert!(shape.is_defined(&row, 0));
+	assert_eq!(shape.get_blob(&row, 0), blob2);
 }
 
 #[test]

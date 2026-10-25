@@ -74,10 +74,14 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert_eq!(aggregate.map.len(), 1);
 
-		let projection = &aggregate.map[0].as_call_function();
+		let Ast::CallFunction(projection) = &aggregate.map[0] else {
+			panic!("not call function")
+		};
 		assert_eq!(projection.function.name.text(), "min");
 		assert!(projection.function.namespaces.is_empty());
 
@@ -99,10 +103,14 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert_eq!(aggregate.map.len(), 1);
 
-		let projection = &aggregate.map[0].as_call_function();
+		let Ast::CallFunction(projection) = &aggregate.map[0] else {
+			panic!("not call function")
+		};
 		assert_eq!(projection.function.name.text(), "min");
 		assert!(projection.function.namespaces.is_empty());
 
@@ -124,13 +132,19 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert_eq!(aggregate.map.len(), 1);
 
-		let projection = &aggregate.map[0].as_infix();
+		let Ast::Infix(projection) = &aggregate.map[0] else {
+			panic!("not infix")
+		};
 
 		// Colon syntax lowers to the AS operator, so the projection is an infix with the call on the left.
-		let min_call = projection.left.as_call_function();
+		let Ast::CallFunction(min_call) = &*projection.left else {
+			panic!("not call function")
+		};
 		assert_eq!(min_call.function.name.text(), "min");
 		assert!(min_call.function.namespaces.is_empty());
 
@@ -156,7 +170,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert_eq!(aggregate.map.len(), 0);
 
 		assert_eq!(aggregate.by.len(), 1);
@@ -173,7 +189,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert_eq!(aggregate.map.len(), 0);
 		assert_eq!(aggregate.by.len(), 2);
 
@@ -193,10 +211,14 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert_eq!(aggregate.map.len(), 2);
 
-		let projection = &aggregate.map[0].as_call_function();
+		let Ast::CallFunction(projection) = &aggregate.map[0] else {
+			panic!("not call function")
+		};
 		assert_eq!(projection.function.name.text(), "min");
 		assert!(projection.function.namespaces.is_empty());
 
@@ -204,7 +226,9 @@ pub mod tests {
 		let identifier = projection.arguments.nodes[0].as_identifier();
 		assert_eq!(identifier.text(), "age");
 
-		let projection = &aggregate.map[1].as_call_function();
+		let Ast::CallFunction(projection) = &aggregate.map[1] else {
+			panic!("not call function")
+		};
 		assert_eq!(projection.function.name.text(), "max");
 		assert!(projection.function.namespaces.is_empty());
 
@@ -229,10 +253,14 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert_eq!(aggregate.map.len(), 1);
 
-		let projection = &aggregate.map[0].as_call_function();
+		let Ast::CallFunction(projection) = &aggregate.map[0] else {
+			panic!("not call function")
+		};
 		assert_eq!(projection.function.name.text(), "min");
 		assert!(projection.function.namespaces.is_empty());
 
@@ -253,7 +281,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert_eq!(aggregate.map.len(), 0);
 		assert_eq!(aggregate.by.len(), 1);
 		assert_eq!(aggregate.by[0].as_identifier().text(), "name");
@@ -269,7 +299,9 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert!(
 			Compiler::compile_aggregate_with(aggregate.with.as_ref()).is_err(),
 			"expected error: AGGREGATE takes no WITH clause"
@@ -287,7 +319,7 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		assert!(result.first_unchecked().as_aggregate().with.is_none());
+		assert!(matches!(result.nodes.first(), Some(Ast::Aggregate(aggregate)) if aggregate.with.is_none()));
 	}
 
 	#[test]
@@ -319,10 +351,14 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert_eq!(aggregate.map.len(), 1);
 
-		let projection = &aggregate.map[0].as_call_function();
+		let Ast::CallFunction(projection) = &aggregate.map[0] else {
+			panic!("not call function")
+		};
 		assert_eq!(projection.function.name.text(), "count");
 		assert!(projection.function.namespaces.is_empty());
 
@@ -342,10 +378,14 @@ pub mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		let aggregate = result.first_unchecked().as_aggregate();
+		let Some(Ast::Aggregate(aggregate)) = result.nodes.first() else {
+			panic!("not aggregate")
+		};
 		assert_eq!(aggregate.map.len(), 1);
 
-		let projection = &aggregate.map[0].as_call_function();
+		let Ast::CallFunction(projection) = &aggregate.map[0] else {
+			panic!("not call function")
+		};
 		assert_eq!(projection.function.name.text(), "count");
 		assert!(projection.function.namespaces.is_empty());
 

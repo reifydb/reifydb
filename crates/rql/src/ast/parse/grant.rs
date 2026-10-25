@@ -55,7 +55,7 @@ mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
-		let node = stmts[0].first_unchecked();
+		let node = stmts[0].nodes.first().unwrap();
 		let grant = match node {
 			Ast::Grant(g) => g,
 			_ => panic!("expected Grant"),
@@ -72,7 +72,7 @@ mod tests {
 		let mut parser = Parser::new(&bump, source, tokens);
 		let stmts = parser.parse().unwrap();
 		assert_eq!(stmts.len(), 1);
-		let node = stmts[0].first_unchecked();
+		let node = stmts[0].nodes.first().unwrap();
 		let revoke = match node {
 			Ast::Revoke(r) => r,
 			_ => panic!("expected Revoke"),

@@ -21,7 +21,7 @@ use hashbrown::HashTable;
 use reifydb_core::{key::typed::Key, metrics::heap::HeapSize, util::budget::MemoryBudget};
 use reifydb_runtime::sync::mutex::Mutex;
 use reifydb_value::byte_size::ByteSize;
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::FxHasher;
 
 use crate::tier::range::RowBytes;
 
@@ -70,7 +70,7 @@ pub struct PointKey<D, K> {
 
 struct Entry<D: PointDomain> {
 	key: PointKey<D::Dimension, D::Key>,
-	row: Option<D::Row>,
+	row: D::Row,
 	tick: u64,
 }
 
@@ -85,8 +85,8 @@ const ENTRY_OVERHEAD: usize = entry_overhead::<domain::TestDomain>();
 
 const EVICTION_SAMPLE: usize = 8;
 
-fn entry_footprint<D: PointDomain>(key: &PointKey<D::Dimension, D::Key>, row: &Option<D::Row>) -> usize {
-	entry_overhead::<D>() + key.key.heap_size() + row.as_ref().map_or(0, RowBytes::row_bytes)
+fn entry_footprint<D: PointDomain>(key: &PointKey<D::Dimension, D::Key>, row: &D::Row) -> usize {
+	entry_overhead::<D>() + key.key.heap_size() + row.row_bytes()
 }
 
 const BUCKET_SEED: u64 = 0xD6E8_FEB8_6659_FD93;
@@ -130,9 +130,6 @@ pub struct PointMetrics {
 	pub misses: u64,
 	pub insertions: u64,
 	pub evictions: u64,
-	pub fills_started: u64,
-	pub fills_dirty_aborted: u64,
-	pub fills_duplicate: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -157,7 +154,6 @@ type BucketCounters = Box<[PointMetrics]>;
 struct Shard<D: PointDomain> {
 	index: HashTable<u32>,
 	entries: Vec<Entry<D>>,
-	filling: FxHashMap<PointKey<D::Dimension, D::Key>, bool>,
 	budget: Arc<MemoryBudget>,
 	next_tick: u64,
 	rng: u64,
@@ -165,14 +161,8 @@ struct Shard<D: PointDomain> {
 	bucket_metrics: BucketCounters,
 }
 
-#[cfg(test)]
-pub(crate) type FillInterlock<D> =
-	Box<dyn Fn(&PointTier<D>, &PointKey<<D as PointDomain>::Dimension, <D as PointDomain>::Key>) + Send + Sync>;
-
 struct PoolInner<D: PointDomain> {
 	shards: Box<[Mutex<Shard<D>>]>,
-	#[cfg(test)]
-	interlock: Option<FillInterlock<D>>,
 }
 
 pub struct PointTier<D: PointDomain> {

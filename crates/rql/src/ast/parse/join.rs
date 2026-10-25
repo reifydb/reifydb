@@ -202,7 +202,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Some(Ast::Join(join)) = result.nodes.first() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		let AstJoin::LeftJoin {
 			subquery,
@@ -233,7 +236,9 @@ pub mod tests {
 		let first = &using_clause.pairs[0].first;
 		assert_eq!(first.as_identifier().text(), "id");
 
-		let second = using_clause.pairs[0].second.as_infix();
+		let Ast::Infix(second) = &*using_clause.pairs[0].second else {
+			panic!("not infix")
+		};
 		assert_eq!(second.left.as_identifier().text(), "orders");
 		assert!(matches!(second.operator, InfixOperator::AccessTable(_)));
 		assert_eq!(second.right.as_identifier().text(), "user_id");
@@ -248,7 +253,10 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
-		let result = result[0].first_unchecked().as_join();
+		let Some(Ast::Join(result)) = result[0].nodes.first() else {
+			panic!("not join")
+		};
+		let result = &**result;
 
 		let AstJoin::LeftJoin {
 			subquery,
@@ -279,7 +287,9 @@ pub mod tests {
 		let first = &using_clause.pairs[0].first;
 		assert_eq!(first.as_identifier().text(), "id");
 
-		let second = using_clause.pairs[0].second.as_infix();
+		let Ast::Infix(second) = &*using_clause.pairs[0].second else {
+			panic!("not infix")
+		};
 		assert_eq!(second.left.as_identifier().text(), "c");
 		assert_eq!(second.right.as_identifier().text(), "customer_id");
 	}
@@ -296,7 +306,9 @@ pub mod tests {
 		let statement = &result[0];
 		assert_eq!(statement.nodes.len(), 2);
 
-		let from = statement.nodes[0].as_from();
+		let Ast::From(from) = &statement.nodes[0] else {
+			panic!("not from")
+		};
 		match from {
 			AstFrom::Source {
 				source,
@@ -308,7 +320,10 @@ pub mod tests {
 			_ => panic!("Expected Source"),
 		}
 
-		let join = statement.nodes[1].as_join();
+		let Ast::Join(join) = &statement.nodes[1] else {
+			panic!("not join")
+		};
+		let join = &**join;
 		let AstJoin::LeftJoin {
 			subquery,
 			using_clause,
@@ -338,7 +353,9 @@ pub mod tests {
 		let first = &using_clause.pairs[0].first;
 		assert_eq!(first.as_identifier().text(), "customer_id");
 
-		let second = using_clause.pairs[0].second.as_infix();
+		let Ast::Infix(second) = &*using_clause.pairs[0].second else {
+			panic!("not infix")
+		};
 		assert_eq!(second.left.as_identifier().text(), "c");
 		assert_eq!(second.right.as_identifier().text(), "id");
 	}
@@ -353,7 +370,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Some(Ast::Join(join)) = result.nodes.first() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		let AstJoin::LeftJoin {
 			subquery,
@@ -383,14 +403,18 @@ pub mod tests {
 		let pair1_first = &using_clause.pairs[0].first;
 		assert_eq!(pair1_first.as_identifier().text(), "id");
 
-		let pair1_second = using_clause.pairs[0].second.as_infix();
+		let Ast::Infix(pair1_second) = &*using_clause.pairs[0].second else {
+			panic!("not infix")
+		};
 		assert_eq!(pair1_second.left.as_identifier().text(), "o");
 		assert_eq!(pair1_second.right.as_identifier().text(), "user_id");
 
 		let pair2_first = &using_clause.pairs[1].first;
 		assert_eq!(pair2_first.as_identifier().text(), "tenant");
 
-		let pair2_second = using_clause.pairs[1].second.as_infix();
+		let Ast::Infix(pair2_second) = &*using_clause.pairs[1].second else {
+			panic!("not infix")
+		};
 		assert_eq!(pair2_second.left.as_identifier().text(), "o");
 		assert_eq!(pair2_second.right.as_identifier().text(), "tenant");
 	}
@@ -405,7 +429,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Some(Ast::Join(join)) = result.nodes.first() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		let AstJoin::LeftJoin {
 			using_clause,
@@ -427,7 +454,10 @@ pub mod tests {
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
 
-		let result = result[0].first_unchecked().as_join();
+		let Some(Ast::Join(result)) = result[0].nodes.first() else {
+			panic!("not join")
+		};
+		let result = &**result;
 
 		let AstJoin::LeftJoin {
 			using_clause,
@@ -441,7 +471,9 @@ pub mod tests {
 
 		let first = &using_clause.pairs[0].first;
 		assert_eq!(first.as_identifier().text(), "id");
-		let second = using_clause.pairs[0].second.as_infix();
+		let Ast::Infix(second) = &*using_clause.pairs[0].second else {
+			panic!("not infix")
+		};
 		assert_eq!(second.left.as_identifier().text(), "o");
 		assert_eq!(second.right.as_identifier().text(), "type");
 
@@ -461,7 +493,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Some(Ast::Join(join)) = result.nodes.first() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		match &join {
 			AstJoin::NaturalJoin {
@@ -497,7 +532,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Some(Ast::Join(join)) = result.nodes.first() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		match &join {
 			AstJoin::NaturalJoin {
@@ -520,7 +558,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Some(Ast::Join(join)) = result.nodes.first() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		match &join {
 			AstJoin::NaturalJoin {
@@ -545,7 +586,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Some(Ast::Join(join)) = result.nodes.first() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		match &join {
 			AstJoin::NaturalJoin {
@@ -570,7 +614,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Some(Ast::Join(join)) = result.nodes.first() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		let AstJoin::InnerJoin {
 			subquery,
@@ -608,7 +655,10 @@ pub mod tests {
 		assert_eq!(result.len(), 1);
 
 		let result = result.pop().unwrap();
-		let join = result.first_unchecked().as_join();
+		let Some(Ast::Join(join)) = result.nodes.first() else {
+			panic!("not join")
+		};
+		let join = &**join;
 
 		let AstJoin::InnerJoin {
 			using_clause,

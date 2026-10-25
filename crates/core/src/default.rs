@@ -90,6 +90,9 @@ pub mod store {
 	pub const MULTI_FLUSH_INTERVAL: Duration = Duration::from_seconds_const(60);
 	pub const MULTI_FLUSH_INTERVAL_TESTING: Duration = Duration::from_seconds_const(60);
 
+	pub const COMMIT_MERGE_INTERVAL: Duration = Duration::from_seconds_const(1);
+	pub const COMMIT_MERGE_INTERVAL_TESTING: Duration = Duration::from_seconds_const(1);
+
 	pub const MULTI_FLUSH_BUDGET: ByteSize = ByteSize::from_mib(4);
 	pub const MULTI_FLUSH_BUDGET_TESTING: ByteSize = ByteSize::from_kib(16);
 
