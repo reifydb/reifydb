@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use reifydb_core::durability::Durability;
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_value::{params::Params, value::Value};
@@ -23,7 +24,7 @@ fn keys(ks: &[u16]) -> Params {
 }
 
 fn open(t: &TestEngine, rql: &str, params: Params) -> CommandTransaction {
-	let mut txn = t.begin_command(TestEngine::identity()).expect("begin command");
+	let mut txn = t.begin_command(TestEngine::identity(), Durability::Async).expect("begin command");
 	if let Some(error) = txn.rql(rql, params).error {
 		panic!("{rql} failed inside its transaction: {error:?}");
 	}
