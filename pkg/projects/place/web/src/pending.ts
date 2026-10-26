@@ -46,12 +46,6 @@ export class Pending {
     return true
   }
 
-  remove(x: number, y: number): boolean {
-    if (!this.pixels.delete(`${x},${y}`)) return false
-    this.changed()
-    return true
-  }
-
   settle(committed: readonly Pixel[]): void {
     for (const pixel of committed) {
       const key = `${pixel.x},${pixel.y}`

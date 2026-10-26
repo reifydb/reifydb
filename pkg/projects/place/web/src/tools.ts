@@ -101,7 +101,7 @@ class PointSet {
   }
 }
 
-export type Tool = 'pan' | 'pencil' | 'line' | 'rect' | 'ellipse' | 'eraser' | 'eyedropper' | 'image'
+export type Tool = 'pan' | 'pencil' | 'line' | 'rect' | 'ellipse' | 'eyedropper' | 'image'
 
 export type ShapeTool = 'line' | 'rect' | 'ellipse'
 

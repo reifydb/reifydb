@@ -66,11 +66,10 @@ export function Place({ client }: { client: PlaceClient }) {
       setLayerVisible(true)
       for (const point of points) {
         if (!inCanvas(point.x, point.y)) continue
-        if (tool === 'eraser') pending.remove(point.x, point.y)
-        else if (!pending.add({ ...point, color })) return
+        if (!pending.add({ ...point, color })) return
       }
     },
-    [pending, tool, color],
+    [pending, color],
   )
 
   const onShape = useCallback(

@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import { useEffect, useRef } from 'react'
-import { Circle, Eraser, Hand, Image, Pencil, Pipette, Slash, Square, type LucideIcon } from 'lucide-react'
+import { Circle, Hand, Image, Pencil, Pipette, Slash, Square, type LucideIcon } from 'lucide-react'
 import type { Tool } from '@/tools'
 
 const TOOLS: { tool: Tool; label: string; key: string; icon: LucideIcon }[] = [
@@ -11,7 +11,6 @@ const TOOLS: { tool: Tool; label: string; key: string; icon: LucideIcon }[] = [
   { tool: 'line', label: 'Line', key: 'l', icon: Slash },
   { tool: 'rect', label: 'Rectangle', key: 'r', icon: Square },
   { tool: 'ellipse', label: 'Ellipse', key: 'e', icon: Circle },
-  { tool: 'eraser', label: 'Eraser', key: 'x', icon: Eraser },
   { tool: 'eyedropper', label: 'Eyedropper', key: 'i', icon: Pipette },
   { tool: 'image', label: 'Image', key: 'u', icon: Image },
 ]

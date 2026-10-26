@@ -5,45 +5,6 @@ import { describe, expect, it } from 'vitest'
 import { MAX_PENDING } from '@/geometry'
 import { Pending } from '@/pending'
 
-describe('Pending.remove', () => {
-  it('removes only the targeted pixel and notifies', () => {
-    // The eraser must not touch neighbouring pending pixels, and the canvas must redraw.
-    const pending = new Pending()
-    pending.add({ x: 1, y: 1, color: 3 })
-    pending.add({ x: 2, y: 1, color: 4 })
-    let calls = 0
-    pending.subscribe(() => calls++)
-
-    expect(pending.remove(1, 1)).toBe(true)
-
-    expect(pending.get(1, 1)).toBeUndefined()
-    expect(pending.get(2, 1)?.color).toBe(4)
-    expect(pending.size).toBe(1)
-    expect(calls).toBe(1)
-  })
-
-  it('frees a slot once pending is full', () => {
-    // The eraser is the way to make room without clearing everything.
-    const pending = new Pending()
-    for (let i = 0; i < MAX_PENDING; i++) pending.add({ x: i, y: 0, color: 1 })
-    expect(pending.add({ x: 0, y: 1, color: 1 })).toBe(false)
-
-    pending.remove(5, 0)
-
-    expect(pending.add({ x: 0, y: 1, color: 1 })).toBe(true)
-  })
-
-  it('reports false and stays silent for a pixel that is not pending', () => {
-    // Erasing over committed art must be a no-op, never a write or a spurious redraw.
-    const pending = new Pending()
-    let calls = 0
-    pending.subscribe(() => calls++)
-
-    expect(pending.remove(9, 9)).toBe(false)
-    expect(calls).toBe(0)
-  })
-})
-
 describe('Pending.addAll', () => {
   const row = (count: number, y = 0, color = 2) => Array.from({ length: count }, (_, x) => ({ x, y, color }))
 

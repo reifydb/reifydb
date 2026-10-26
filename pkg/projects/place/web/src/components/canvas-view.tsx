@@ -216,7 +216,7 @@ export function CanvasView({ buffer, pending, layerVisible, tool, color, ghost, 
     const point = pointAt(event.clientX, event.clientY)
     if (!point) return
     event.currentTarget.setPointerCapture(event.pointerId)
-    if (tool === 'pencil' || tool === 'eraser') {
+    if (tool === 'pencil') {
       gestureRef.current = { kind: 'stroke', last: point }
       onStroke([point])
     } else if (isShape(tool)) {
