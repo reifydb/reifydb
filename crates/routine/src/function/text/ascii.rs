@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::ArrayRef;
+use arrow_array::{Array, ArrayRef};
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::int4;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -45,7 +46,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextAscii {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		match &data.data {
 			ViewData::Utf8 {
@@ -55,7 +56,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextAscii {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					let s = container.value(i);
+					let s = container.value(row_of(container.len(), i));
 					let code_point = s.chars().next().map(|c| c as i32).unwrap_or(0);
 					result_data.push(code_point);
 				}

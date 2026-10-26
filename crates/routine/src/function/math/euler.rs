@@ -43,7 +43,7 @@ impl<'a> Routine<FunctionContext<'a>> for Euler {
 		ctx: &mut FunctionContext<'a>,
 		_args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
-		Ok(float8(ctx.fragment.text(), [E]))
+		Ok(float8(ctx.fragment.text(), vec![E; ctx.row_count]))
 	}
 }
 

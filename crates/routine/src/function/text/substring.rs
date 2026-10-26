@@ -4,7 +4,8 @@
 use arrow_array::{Array, ArrayRef, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -49,7 +50,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 		let start_data = ColumnView::try_from(&args[1])?;
 		let length_data = ColumnView::try_from(&args[2])?;
 
-		let row_count = text_data.len();
+		let row_count = ctx.row_count;
 
 		match (&text_data.data, &start_data.data, &length_data.data) {
 			(
@@ -60,41 +61,43 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 				ViewData::Int4(start_container),
 				ViewData::Int4(length_container),
 			) => {
-				let mut result_data = Vec::with_capacity(text_container.len());
+				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if i < text_container.len()
-						&& i < start_container.len() && i < length_container.len()
-					{
-						let original_str = text_container.value(i);
-						let start_pos = start_container.values().get(i).copied().unwrap_or(0);
-						let length = length_container.values().get(i).copied().unwrap_or(0);
+					let original_str = text_container.value(row_of(text_container.len(), i));
+					let start_pos = start_container
+						.values()
+						.get(row_of(start_container.values().len(), i))
+						.copied()
+						.unwrap_or(0);
+					let length = length_container
+						.values()
+						.get(row_of(length_container.values().len(), i))
+						.copied()
+						.unwrap_or(0);
 
-						let chars: Vec<char> = original_str.chars().collect();
-						let chars_len = chars.len();
+					let chars: Vec<char> = original_str.chars().collect();
+					let chars_len = chars.len();
 
-						let start_idx = if start_pos < 0 {
-							chars_len.saturating_sub((-start_pos) as usize)
-						} else {
-							start_pos as usize
-						};
-						let length_usize = if length < 0 {
-							0
-						} else {
-							length as usize
-						};
-
-						let substring = if start_idx >= chars_len {
-							String::new()
-						} else {
-							let end_idx = (start_idx + length_usize).min(chars_len);
-							chars[start_idx..end_idx].iter().collect()
-						};
-
-						result_data.push(substring);
+					let start_idx = if start_pos < 0 {
+						chars_len.saturating_sub((-start_pos) as usize)
 					} else {
-						result_data.push(String::new());
-					}
+						start_pos as usize
+					};
+					let length_usize = if length < 0 {
+						0
+					} else {
+						length as usize
+					};
+
+					let substring = if start_idx >= chars_len {
+						String::new()
+					} else {
+						let end_idx = (start_idx + length_usize).min(chars_len);
+						chars[start_idx..end_idx].iter().collect()
+					};
+
+					result_data.push(substring);
 				}
 
 				Ok(utf8_column(ctx.fragment.text(), *max_bytes, LargeStringArray::from(result_data)))
@@ -108,41 +111,37 @@ impl<'a> Routine<FunctionContext<'a>> for TextSubstring {
 				_,
 				_,
 			) => {
-				let mut result_data = Vec::with_capacity(text_container.len());
+				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if i < text_container.len() {
-						let original_str = text_container.value(i);
+					let original_str = text_container.value(row_of(text_container.len(), i));
 
-						let start_pos = read_i32(&ctx.fragment, &start_data, i)?.unwrap_or(0);
+					let start_pos = read_i32(&ctx.fragment, &start_data, i)?.unwrap_or(0);
 
-						let length = read_i32(&ctx.fragment, &length_data, i)?.unwrap_or(0);
+					let length = read_i32(&ctx.fragment, &length_data, i)?.unwrap_or(0);
 
-						let chars: Vec<char> = original_str.chars().collect();
-						let chars_len = chars.len();
+					let chars: Vec<char> = original_str.chars().collect();
+					let chars_len = chars.len();
 
-						let start_idx = if start_pos < 0 {
-							chars_len.saturating_sub((-start_pos) as usize)
-						} else {
-							start_pos as usize
-						};
-						let length_usize = if length < 0 {
-							0
-						} else {
-							length as usize
-						};
-
-						let substring = if start_idx >= chars_len {
-							String::new()
-						} else {
-							let end_idx = (start_idx + length_usize).min(chars_len);
-							chars[start_idx..end_idx].iter().collect()
-						};
-
-						result_data.push(substring);
+					let start_idx = if start_pos < 0 {
+						chars_len.saturating_sub((-start_pos) as usize)
 					} else {
-						result_data.push(String::new());
-					}
+						start_pos as usize
+					};
+					let length_usize = if length < 0 {
+						0
+					} else {
+						length as usize
+					};
+
+					let substring = if start_idx >= chars_len {
+						String::new()
+					} else {
+						let end_idx = (start_idx + length_usize).min(chars_len);
+						chars[start_idx..end_idx].iter().collect()
+					};
+
+					result_data.push(substring);
 				}
 
 				Ok(utf8_column(ctx.fragment.text(), *max_bytes, LargeStringArray::from(result_data)))

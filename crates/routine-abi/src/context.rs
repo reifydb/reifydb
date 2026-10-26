@@ -39,6 +39,18 @@ impl Context for FunctionContext<'_> {
 		ctx: &mut Self,
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		if let Some((_, ragged)) =
+			args.iter().find(|(_, array)| array.len() != 1 && array.len() != ctx.row_count)
+		{
+			return Err(RoutineError::FunctionExecutionFailed {
+				function: ctx.fragment.clone(),
+				reason: format!(
+					"an argument has {} rows, expected 1 or {}",
+					ragged.len(),
+					ctx.row_count
+				),
+			});
+		}
 		if !routine.propagates_options() {
 			return routine.execute(ctx, args);
 		}
@@ -52,6 +64,7 @@ impl Context for FunctionContext<'_> {
 		let mut unwrapped = Vec::with_capacity(args.len());
 		for column in args {
 			let (inner, nulls) = split_nulls(column.clone())?;
+			let nulls = nulls.and_then(|nulls| broadcast_nulls(nulls, ctx.row_count));
 			if let Some(nulls) = nulls {
 				combined = Some(match combined {
 					Some(existing) => bitmap::and_nulls(&existing, &nulls),
@@ -64,7 +77,7 @@ impl Context for FunctionContext<'_> {
 		if let Some(ref nulls) = combined
 			&& nulls.null_count() == nulls.len()
 		{
-			let row_count = args.first().map_or(0, |(_, array)| array.len());
+			let row_count = ctx.row_count;
 			let mut input_types: Vec<(ValueType, bool)> = Vec::with_capacity(unwrapped.len());
 			for column in &unwrapped {
 				input_types.push((ColumnView::try_from(column)?.get_type(), true));
@@ -83,6 +96,13 @@ impl Context for FunctionContext<'_> {
 			None => Ok(result),
 		}
 	}
+}
+
+fn broadcast_nulls(nulls: NullBuffer, row_count: usize) -> Option<NullBuffer> {
+	if nulls.len() != 1 || row_count == 1 {
+		return Some(nulls);
+	}
+	nulls.is_null(0).then(|| NullBuffer::new_null(row_count))
 }
 
 pub struct ProcedureContext<'a, 'tx> {

@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::any;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{Value, column_view::ColumnView, value_type::ValueType};
 
@@ -46,13 +47,13 @@ impl<'a> Routine<FunctionContext<'a>> for JsonArray {
 		}
 
 		let views = args.iter().map(ColumnView::try_from).collect::<Result<Vec<_>, _>>()?;
-		let row_count = views[0].len();
+		let row_count = ctx.row_count;
 		let mut results: Vec<Value> = Vec::with_capacity(row_count);
 
 		for row in 0..row_count {
 			let mut items = Vec::with_capacity(args.len());
 			for col in views.iter() {
-				items.push(col.get_value(row));
+				items.push(col.get_value(row_of(col.len(), row)));
 			}
 			results.push(Value::List(items));
 		}

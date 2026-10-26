@@ -49,7 +49,7 @@ impl<'a> Routine<FunctionContext<'a>> for Type {
 		let column = ColumnView::try_from(&args[0])?;
 		let col_type = column.get_type();
 		let type_name = col_type.to_string();
-		let row_count = column.len();
+		let row_count = ctx.row_count;
 
 		let result_data: Vec<String> = vec![type_name; row_count];
 

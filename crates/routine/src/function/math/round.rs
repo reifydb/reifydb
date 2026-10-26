@@ -4,9 +4,12 @@
 use arrow_array::ArrayRef;
 use arrow_buffer::i256;
 use arrow_schema::FieldRef;
-use reifydb_core::value::column::factory::{decimal, float4_with_bitvec, float8_with_bitvec, rename};
+use reifydb_core::value::column::factory::{decimal, float4_with_bitvec, float8_with_bitvec, from_many, rename};
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo,
+	broadcast::{is_constant, row_of},
+	context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -69,7 +72,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 		let val_data = ColumnView::try_from(&args[0])?;
 		let precision_column = args.get(1).map(ColumnView::try_from).transpose()?;
 
-		let row_count = val_data.len();
+		let row_count = ctx.row_count;
 
 		if let Some(prec_col) = &precision_column
 			&& !prec_col.get_type().is_integer()
@@ -106,7 +109,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						let precision = get_precision(i)?;
 						let multiplier = 10_f32.powi(precision);
 						let rounded = (value * multiplier).round() / multiplier;
@@ -123,7 +126,7 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				let mut result = Vec::with_capacity(row_count);
 				let mut bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						let precision = get_precision(i)?;
 						let multiplier = 10_f64.powi(precision);
 						let rounded = (value * multiplier).round() / multiplier;
@@ -140,8 +143,10 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 				let precision = container.precision();
 				let scale = container.scale();
 				let mut result = Vec::with_capacity(row_count);
-				for (i, value) in decimals(container).into_iter().enumerate() {
-					let rounded = round_decimal(&value, get_precision(i)?, precision, scale)
+				let values = decimals(container);
+				for i in 0..row_count {
+					let value = &values[row_of(values.len(), i)];
+					let rounded = round_decimal(value, get_precision(i)?, precision, scale)
 						.ok_or_else(|| RoutineError::FunctionExecutionFailed {
 							function: ctx.fragment.clone(),
 							reason: format!(
@@ -152,6 +157,9 @@ impl<'a> Routine<FunctionContext<'a>> for Round {
 					result.push(rounded);
 				}
 				decimal(ctx.fragment.text(), precision, scale, result)
+			}
+			_ if val_data.get_type().is_number() && is_constant(val_data.len(), row_count) => {
+				from_many(ctx.fragment.text(), val_data.get_value(0), row_count)
 			}
 			_ if val_data.get_type().is_number() => rename(args[0].clone(), ctx.fragment.text()),
 			_ => {

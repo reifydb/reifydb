@@ -15,8 +15,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo, context::FunctionContext,
-	error::RoutineError,
+	Accumulator, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo, broadcast::row_of,
+	context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	error::TypeError,
@@ -91,14 +91,15 @@ fn average_column(name: &str, input_scale: u8, values: Vec<Decimal>, valids: Vec
 }
 
 macro_rules! exec_int_arm {
-	($container:expr, $row_count:expr, $sums:expr, $counts:expr, $overflow:expr) => {
+	($container:expr, $row_count:expr, $sums:expr, $counts:expr, $overflow:expr) => {{
+		let values = $container;
 		for i in 0..$row_count {
-			if let Some(value) = $container.get(i) {
+			if let Some(value) = values.get(row_of(values.len(), i)) {
 				$sums[i] = $sums[i].checked_add(&Decimal::from(value.clone())).ok_or_else($overflow)?;
 				$counts[i] += 1;
 			}
 		}
-	};
+	}};
 }
 
 macro_rules! acc_int_arm {
@@ -167,7 +168,7 @@ fn execute_float4<'a>(
 		let data = ColumnView::try_from(col)?;
 		if let ViewData::Float4(container) = &data.data {
 			for i in 0..row_count {
-				if let Some(value) = container.values().get(i) {
+				if let Some(value) = container.values().get(row_of(container.len(), i)) {
 					sums[i] += *value;
 					counts[i] += 1;
 				}
@@ -209,7 +210,7 @@ fn execute_float8<'a>(
 		let data = ColumnView::try_from(col)?;
 		if let ViewData::Float8(container) = &data.data {
 			for i in 0..row_count {
-				if let Some(value) = container.values().get(i) {
+				if let Some(value) = container.values().get(row_of(container.len(), i)) {
 					sums[i] += *value;
 					counts[i] += 1;
 				}
@@ -297,7 +298,7 @@ fn execute_decimal<'a>(
 			ViewData::Decimal(container) => {
 				let values = decimals(container);
 				for i in 0..row_count {
-					if let Some(value) = values.get(i) {
+					if let Some(value) = values.get(row_of(values.len(), i)) {
 						sums[i] = sums[i].checked_add(value).ok_or_else(overflow)?;
 						counts[i] += 1;
 					}

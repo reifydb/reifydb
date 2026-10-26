@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::ArrayRef;
+use arrow_array::{Array, ArrayRef};
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::duration;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -85,12 +86,12 @@ impl<'a> Routine<FunctionContext<'a>> for DurationScale {
 					});
 				}
 
-				let row_count = dur_data.len();
+				let row_count = ctx.row_count;
 				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
 					match (
-						durations(dur_container).get(i),
+						durations(dur_container).get(row_of(dur_container.len(), i)),
 						read_i64(&ctx.fragment, &scalar_data, i)?,
 					) {
 						(Some(dur), Some(scalar)) => {

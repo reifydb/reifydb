@@ -6,7 +6,8 @@ use std::sync::Arc;
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -54,11 +55,14 @@ impl<'a> Routine<FunctionContext<'a>> for TimeDiff {
 
 		match (&data1.data, &data2.data) {
 			(ViewData::Time(container1), ViewData::Time(container2)) => {
-				let row_count = data1.len();
+				let row_count = ctx.row_count;
 				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (times(container1).get(i), times(container2).get(i)) {
+					match (
+						times(container1).get(row_of(data1.len(), i)),
+						times(container2).get(row_of(data2.len(), i)),
+					) {
 						(Some(t1), Some(t2)) => {
 							let diff_nanos = t1.to_nanos_since_midnight() as i64
 								- t2.to_nanos_since_midnight() as i64;

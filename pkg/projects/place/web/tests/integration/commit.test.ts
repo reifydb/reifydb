@@ -64,10 +64,10 @@ describe('commit', () => {
   })
 
   it('refuses a pixel past the cap before anything is sent', async () => {
-    // The server rejects more than 1,024 pixels whole, so the client must stop at the cap instead of sending a doomed commit.
+    // The server rejects more than 4,096 pixels whole, so the client must stop at the cap instead of sending a doomed commit.
     const pending = new Pending()
     for (let i = 0; i < MAX_PENDING; i++) expect(pending.add({ x: i % 64, y: Math.floor(i / 64), color: 5 })).toBe(true)
-    expect(pending.add({ x: 0, y: 63, color: 5 })).toBe(false)
+    expect(pending.add({ x: 0, y: MAX_PENDING / 64, color: 5 })).toBe(false)
     expect(pending.size).toBe(MAX_PENDING)
 
     const command = vi.spyOn(client, 'command')

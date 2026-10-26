@@ -14,8 +14,8 @@ use reifydb_core::{
 	},
 };
 use reifydb_routine_abi::{
-	Accumulator, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo, context::FunctionContext,
-	error::RoutineError,
+	Accumulator, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo, broadcast::row_of,
+	context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -81,8 +81,9 @@ impl<'a> Routine<FunctionContext<'a>> for Min {
 		for i in 0..row_count {
 			let mut row_min: Option<Value> = None;
 			for col in columns.iter() {
-				if col.is_defined(i) {
-					let val = col.get_value(i);
+				let row = row_of(col.len(), i);
+				if col.is_defined(row) {
+					let val = col.get_value(row);
 					row_min = Some(match row_min {
 						Some(current) if val < current => val,
 						Some(current) => current,

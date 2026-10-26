@@ -218,6 +218,60 @@ fn wrong_return_type_trips_the_output_check() {
 	let _ = env.lowered(&call("test::wrong_type", vec![]), rows(2));
 }
 
+struct ListOfKeys {
+	info: RoutineInfo,
+}
+
+impl<'a> Routine<FunctionContext<'a>> for ListOfKeys {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
+
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::List(Box::new(ValueType::Uint2))
+	}
+
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		_args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		let keys = Value::List(vec![Value::Uint2(1), Value::Uint2(7)]);
+		Ok(factory::any_typed(
+			ctx.fragment.text(),
+			(0..ctx.row_count).map(|_| keys.clone()),
+			ValueType::List(Box::new(ValueType::Uint2)),
+		))
+	}
+}
+
+impl Function for ListOfKeys {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(0)
+	}
+}
+
+#[test]
+fn a_routine_returning_a_typed_list_plans_and_keeps_its_list_type() {
+	// The planned field of a list result must carry its declared list type, otherwise planning panics on every list
+	// routine.
+	let routines = Routines::builder()
+		.register_function(Arc::new(ListOfKeys {
+			info: RoutineInfo::new("test::keys"),
+		}))
+		.configure();
+	let env = Env::with_routines(routines, RuntimeContext::testing(0, 0));
+
+	let (field, array) = env.lowered(&call("test::keys", vec![]), rows(3)).unwrap();
+
+	assert_eq!(array.len(), 3);
+	assert_eq!(from_field(&field).unwrap().value_type, Some(ValueType::List(Box::new(ValueType::Uint2))));
+}
+
 #[test]
 fn a_row_changing_routine_falls_back_and_keeps_its_rows() {
 	// DataFusion refuses a routine that changes the row count, so it must run directly and keep its rows.

@@ -60,7 +60,7 @@ impl<'a> Routine<FunctionContext<'a>> for DurationMonths {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		if !is_integer_type(&data) {
 			return Err(RoutineError::FunctionInvalidArgumentType {

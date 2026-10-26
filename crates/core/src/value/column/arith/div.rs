@@ -18,7 +18,10 @@ use reifydb_value::{
 };
 
 use crate::value::column::{
-	arith::{ArithOp, arith_target, context::ArithContext, option::arith_op_unwrap_option, scalar::FitFamily},
+	arith::{
+		ArithOp, arith_target, context::ArithContext, option::arith_op_unwrap_option, output_len, row_of,
+		scalar::FitFamily,
+	},
 	builder::ColumnBuilder,
 	push::Push,
 };
@@ -62,12 +65,12 @@ where
 	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
-		assert_eq!(l.len(), r.len());
+		assert!(l.len() == r.len() || l.len() == 1 || r.len() == 1);
 	}
 
-	let mut data = ColumnBuilder::with_capacity(target, l.len());
-	for i in 0..l.len() {
-		if let Some(value) = ctx.div(&l[i], &r[i], fragment)? {
+	let mut data = ColumnBuilder::with_capacity(target, output_len(l.len(), r.len()));
+	for i in 0..output_len(l.len(), r.len()) {
+		if let Some(value) = ctx.div(&l[row_of(l.len(), i)], &r[row_of(r.len(), i)], fragment)? {
 			data.push(value);
 		} else {
 			data.push_none()
@@ -91,13 +94,13 @@ where
 	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
-		assert_eq!(l.len(), r.len());
+		assert!(l.len() == r.len() || l.len() == 1 || r.len() == 1);
 	}
 
-	let mut data = ColumnBuilder::with_capacity(target.clone(), l.len());
-	for i in 0..l.len() {
-		let l_clone = l[i].clone();
-		let r_clone = r[i].clone();
+	let mut data = ColumnBuilder::with_capacity(target.clone(), output_len(l.len(), r.len()));
+	for i in 0..output_len(l.len(), r.len()) {
+		let l_clone = l[row_of(l.len(), i)].clone();
+		let r_clone = r[row_of(r.len(), i)].clone();
 		match ctx.div(&l_clone, &r_clone, fragment)? {
 			Some(value) => match ctx.fit_family(value, &target, fragment)? {
 				Some(value) => data.push(value),

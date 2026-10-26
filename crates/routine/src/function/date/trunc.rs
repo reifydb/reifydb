@@ -6,7 +6,8 @@ use std::sync::Arc;
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -54,7 +55,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let date_data = ColumnView::try_from(&args[0])?;
 		let prec_data = ColumnView::try_from(&args[1])?;
-		let row_count = date_data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match (&date_data.data, &prec_data.data) {
 			(
@@ -67,7 +68,10 @@ impl<'a> Routine<FunctionContext<'a>> for DateTrunc {
 				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (dates(date_container).get(i), varlen_array::get(prec_container, i)) {
+					match (
+						dates(date_container).get(row_of(date_data.len(), i)),
+						varlen_array::get(prec_container, row_of(prec_data.len(), i)),
+					) {
 						(Some(d), Some(precision)) => {
 							let truncated =
 								match precision {

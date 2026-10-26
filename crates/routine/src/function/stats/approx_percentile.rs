@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::{builder::ColumnBuilder, factory::none_typed, nulls::split_nulls};
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	Value,
@@ -108,7 +109,7 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 		let digest_data = ColumnView::try_from(&digest_bare)?;
 		let percentile_data = ColumnView::try_from(&percentile_bare)?;
 
-		let row_count = digest_column.len();
+		let row_count = ctx.row_count;
 		let container = match &digest_data.data {
 			ViewData::Digest {
 				container,
@@ -151,13 +152,15 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxPercentile {
 
 		let mut result = ColumnBuilder::with_capacity(result_type, row_count);
 		for row in 0..row_count {
-			if !digest_column.is_defined(row) || !percentile_column.is_defined(row) {
+			let digest_row = row_of(digest_column.len(), row);
+			let percentile_row = row_of(percentile_column.len(), row);
+			if !digest_column.is_defined(digest_row) || !percentile_column.is_defined(percentile_row) {
 				result.push_none();
 				continue;
 			}
-			let p = percentile_at(ctx, &percentile_data, row)?;
-			let digest = digest_array::get(container, row)
-				.unwrap_or_else(|| panic!("defined digest row {row} holds no digest"));
+			let p = percentile_at(ctx, &percentile_data, percentile_row)?;
+			let digest = digest_array::get(container, digest_row)
+				.unwrap_or_else(|| panic!("defined digest row {digest_row} holds no digest"));
 			let value = digest.percentile_value(p).map_err(|error| failed(ctx, error.to_string()))?;
 			result.push_value(value);
 		}

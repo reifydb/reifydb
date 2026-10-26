@@ -14,7 +14,7 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
-use crate::function::support::column::array_column;
+use crate::function::{support::column::array_column, text::text_predicate};
 
 pub struct TextEndsWith {
 	info: RoutineInfo,
@@ -62,12 +62,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextEndsWith {
 					..
 				},
 			) => {
-				let result_col_data = ends_with(*str_container, *suffix_container).map_err(|err| {
-					RoutineError::FunctionExecutionFailed {
-						function: ctx.fragment.clone(),
-						reason: err.to_string(),
-					}
-				})?;
+				let result_col_data = text_predicate(ctx, str_container, suffix_container, ends_with)?;
 
 				Ok(array_column(ctx.fragment.text(), ValueType::Boolean, Arc::new(result_col_data)))
 			}

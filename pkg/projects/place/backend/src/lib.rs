@@ -13,8 +13,8 @@ use reifydb::{
 		value::column::factory::{any_typed, blob, int4},
 	},
 	routine::abi::{
-		Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
-		registry::RoutinesConfigurator,
+		Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+		error::RoutineError, registry::RoutinesConfigurator,
 	},
 	value::{
 		params::Params,
@@ -159,7 +159,7 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 			reason,
 		};
 		let last = args.len() - 1;
-		let rows = args[0].1.len();
+		let rows = ctx.row_count;
 		let edits = edit_list(&ColumnView::try_from(&args[last])?.get_value(0))
 			.map_err(failed)?
 			.into_iter()
@@ -203,11 +203,12 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 				};
 				let mut painted = Vec::with_capacity(rows);
 				for row in 0..rows {
-					let key = keys.value(row);
+					let key = keys.value(row_of(keys.len(), row));
 					let edit = by_tile
 						.get(&key)
 						.ok_or_else(|| failed(format!("tile {key} has no edit")))?;
-					let mut pixels = decode_tile(tiles.value(row)).map_err(failed)?;
+					let mut pixels =
+						decode_tile(tiles.value(row_of(tiles.len(), row))).map_err(failed)?;
 					for &(index, color) in edit {
 						pixels[index] = color;
 					}

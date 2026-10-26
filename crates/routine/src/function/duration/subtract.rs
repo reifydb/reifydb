@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::duration;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -51,11 +52,13 @@ impl<'a> Routine<FunctionContext<'a>> for DurationSubtract {
 
 		match (&lhs_data.data, &rhs_data.data) {
 			(ViewData::Duration(lhs_container), ViewData::Duration(rhs_container)) => {
-				let row_count = lhs_data.len();
+				let row_count = ctx.row_count;
 				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (durations(lhs_container).get(i), durations(rhs_container).get(i)) {
+					let lhs = durations(lhs_container);
+					let rhs = durations(rhs_container);
+					match (lhs.get(row_of(lhs.len(), i)), rhs.get(row_of(rhs.len(), i))) {
 						(Some(lv), Some(rv)) => {
 							container.push(lv.try_sub(*rv)?);
 						}

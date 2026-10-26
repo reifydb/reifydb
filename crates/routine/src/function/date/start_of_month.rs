@@ -6,7 +6,8 @@ use std::sync::Arc;
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -50,14 +51,14 @@ impl<'a> Routine<FunctionContext<'a>> for DateStartOfMonth {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match &data.data {
 			ViewData::Date(container) => {
 				let mut result = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if let Some(date) = dates(container).get(i) {
+					if let Some(date) = dates(container).get(row_of(data.len(), i)) {
 						match Date::new(date.year(), date.month(), 1) {
 							Some(d) => result.push(d),
 							None => result.push(Date::default()),

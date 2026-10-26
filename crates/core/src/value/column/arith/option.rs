@@ -14,6 +14,7 @@ use reifydb_value::{
 use crate::value::{
 	batch::{batch, filter},
 	column::{
+		arith::output_len,
 		builder::ColumnBuilder,
 		factory::{none, none_typed},
 		nulls::{split_nulls, with_nulls},
@@ -50,27 +51,38 @@ pub fn arith_op_unwrap_option(
 ) -> Result<(FieldRef, ArrayRef)> {
 	let (left_data, left_nulls) = split_nulls(left.clone())?;
 	let (right_data, right_nulls) = split_nulls(right.clone())?;
+	let len = output_len(left_data.1.len(), right_data.1.len());
 	let typed =
 		match (ColumnView::try_from(left)?.is_untyped_none(), ColumnView::try_from(right)?.is_untyped_none()) {
-			(true, true) => return Ok(none(fragment.text(), left_data.1.len())),
+			(true, true) => return Ok(none(fragment.text(), len)),
 			(true, false) => Some(&right_data),
 			(false, true) => Some(&left_data),
 			(false, false) => None,
 		};
 	if let Some(typed) = typed {
-		return Ok(none_typed(fragment.text(), ColumnView::try_from(typed)?.get_type(), left_data.1.len()));
+		return Ok(none_typed(fragment.text(), ColumnView::try_from(typed)?.get_type(), len));
 	}
 
 	if is_all_none(left_nulls.as_ref()) || is_all_none(right_nulls.as_ref()) {
 		return binary_op_unwrap_option(left, right, fragment, inner);
 	}
 
+	let broadcast = left_data.1.len() != right_data.1.len();
+	let left_nulls = left_nulls.filter(|_| left_data.1.len() == len);
+	let right_nulls = right_nulls.filter(|_| right_data.1.len() == len);
 	let Some(nulls) = combine_option_bitvecs(left_nulls.as_ref(), right_nulls.as_ref()) else {
+		if broadcast {
+			return inner(&left_data, &right_data);
+		}
 		return binary_op_unwrap_option(left, right, fragment, inner);
 	};
 
-	let defined_left = filter_column(left_data, nulls.inner())?;
-	let defined_right = filter_column(right_data, nulls.inner())?;
+	let defined = |column: (FieldRef, ArrayRef)| match column.1.len() == nulls.len() {
+		true => filter_column(column, nulls.inner()),
+		false => Ok(column),
+	};
+	let defined_left = defined(left_data)?;
+	let defined_right = defined(right_data)?;
 
 	let computed = inner(&defined_left, &defined_right)?;
 	let result = ColumnView::try_from(&computed)?;
@@ -111,7 +123,7 @@ pub fn binary_op_unwrap_option(
 		} else {
 			ColumnView::try_from(&inner(&empty_like(&left_data)?, &empty_like(&right_data)?)?)?.get_type()
 		};
-		return Ok(none_typed(fragment.text(), ty, left_data.1.len()));
+		return Ok(none_typed(fragment.text(), ty, output_len(left_data.1.len(), right_data.1.len())));
 	}
 
 	let combined_nulls = combine_option_bitvecs(left_nulls.as_ref(), right_nulls.as_ref());

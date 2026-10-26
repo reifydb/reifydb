@@ -282,3 +282,65 @@ fn the_same_tile_twice_in_one_commit_applies_its_edits_in_order() {
 	let bytes = tile(&db, 2, 1);
 	assert_eq!((bytes[5], bytes[6]), (9, 4), "the later edit must win on a shared pixel and keep the rest");
 }
+
+#[test]
+fn pixel_count_of_a_constant_tiles_list_answers_every_row() {
+	// The constant $tiles arrives as one row, so the row count must come from the query, not from that argument.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	seed_tile(&db, 1, 0);
+	seed_tile(&db, 2, 0);
+	let mut map = HashMap::new();
+	map.insert("tiles".to_string(), Value::List(edits(&[pack(1, 1, 3), pack(65, 1, 4), pack(66, 1, 5)])));
+	let r = db.engine().query_as(
+		IdentityId::root(),
+		"from place::tile map { tile, n: place::pixel_count($tiles) }",
+		Params::from(map),
+	);
+	if let Some(e) = r.error {
+		panic!("pixel count query failed: {e:?}");
+	}
+	let counts: Vec<i32> =
+		r.frames.iter().flat_map(|f| f.rows()).map(|row| row.get::<i32>("n").unwrap().unwrap()).collect();
+	assert_eq!(counts, vec![3, 3, 3], "every tile row must see the same pixel count of the constant list");
+}
+
+#[test]
+fn tile_keys_of_a_constant_tiles_list_answers_every_row() {
+	// Otherwise only the first row gets the key list and the rest are cut off or none.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	seed_tile(&db, 1, 0);
+	seed_tile(&db, 2, 0);
+	let mut map = HashMap::new();
+	map.insert("tiles".to_string(), Value::List(edits(&[pack(1, 1, 3), pack(65, 1, 4)])));
+	let r = db.engine().query_as(
+		IdentityId::root(),
+		"from place::tile map { tile, k: place::tile_keys($tiles) }",
+		Params::from(map),
+	);
+	if let Some(e) = r.error {
+		panic!("tile keys query failed: {e:?}");
+	}
+	let expected = Value::List(vec![Value::Uint2(tile_key(0, 0)), Value::Uint2(tile_key(1, 0))]);
+	let keys: Vec<Value> =
+		r.frames.iter().flat_map(|f| f.rows()).map(|row| row.get::<Value>("k").unwrap().unwrap()).collect();
+	assert_eq!(keys.len(), 3, "one key list per tile row");
+	assert!(keys.iter().all(|k| *k == expected || *k == Value::Any(Box::new(expected.clone()))), "{keys:?}");
+}
+
+#[test]
+fn one_commit_paints_three_tiles_at_once() {
+	// Paint runs over several tile rows with the constant $tiles, so each row must read its own tile and key.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	seed_tile(&db, 1, 0);
+	seed_tile(&db, 2, 0);
+	mark_ready(&db);
+	commit(&db, vec![pack(1, 1, 3), pack(65, 2, 4), pack(130, 3, 5)]).expect("commit");
+	assert_eq!(pixel(&db, 1, 1), 3);
+	assert_eq!(pixel(&db, 65, 2), 4);
+	assert_eq!(pixel(&db, 130, 3), 5);
+	assert_eq!(pixel(&db, 66, 2), 0, "a neighbour pixel must stay untouched");
+	assert_eq!(tiles(&db), 3, "a commit must never add a tile row");
+}

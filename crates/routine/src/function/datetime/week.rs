@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::int4_with_bitvec;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -73,7 +74,8 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeWeek {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let len = data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match &data.data {
 			ViewData::DateTime(container) => {
@@ -81,7 +83,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeWeek {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if let Some(dt) = datetimes(container).get(i) {
+					if let Some(dt) = datetimes(container).get(row_of(len, i)) {
 						let date = dt.date();
 						result.push(iso_week_number(&date)?);
 						res_bitvec.push(true);

@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::duration;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -49,14 +50,19 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeAge {
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data1 = ColumnView::try_from(&args[0])?;
 		let data2 = ColumnView::try_from(&args[1])?;
-		let row_count = data1.len();
+		let data1_len = data1.len();
+		let data2_len = data2.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match (&data1.data, &data2.data) {
 			(ViewData::DateTime(container1), ViewData::DateTime(container2)) => {
 				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (datetimes(container1).get(i), datetimes(container2).get(i)) {
+					match (
+						datetimes(container1).get(row_of(data1_len, i)),
+						datetimes(container2).get(row_of(data2_len, i)),
+					) {
 						(Some(dt1), Some(dt2)) => {
 							let nanos1 = dt1.time().to_nanos_since_midnight() as i64;
 							let nanos2 = dt2.time().to_nanos_since_midnight() as i64;

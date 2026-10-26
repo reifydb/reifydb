@@ -22,7 +22,7 @@ use reifydb_value::{
 use crate::value::column::{
 	arith::{
 		ArithOp, arith_target, context::ArithContext, length_mismatch, option::arith_op_unwrap_option,
-		scalar::FitFamily,
+		output_len, row_of, scalar::FitFamily,
 	},
 	builder::ColumnBuilder,
 	factory,
@@ -46,8 +46,8 @@ pub fn add_columns(
 
 			(ViewData::Duration(l), ViewData::Duration(r)) => {
 				let (l, r) = (durations(l), durations(r));
-				let values = (0..l.len())
-					.map(|i| match (l.get(i), r.get(i)) {
+				let values = (0..output_len(l.len(), r.len()))
+					.map(|i| match (l.get(row_of(l.len(), i)), r.get(row_of(r.len(), i))) {
 						(Some(lv), Some(rv)) => lv.try_add(*rv).map_err(|e| (*e).into()),
 						_ => Err(length_mismatch(l.len(), r.len(), &fragment.fragment())),
 					})
@@ -110,12 +110,12 @@ where
 	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
-		assert_eq!(l.len(), r.len());
+		assert!(l.len() == r.len() || l.len() == 1 || r.len() == 1);
 	}
 
-	let mut data = ColumnBuilder::with_capacity(target, l.len());
-	for i in 0..l.len() {
-		if let Some(value) = ctx.add(&l[i], &r[i], fragment)? {
+	let mut data = ColumnBuilder::with_capacity(target, output_len(l.len(), r.len()));
+	for i in 0..output_len(l.len(), r.len()) {
+		if let Some(value) = ctx.add(&l[row_of(l.len(), i)], &r[row_of(r.len(), i)], fragment)? {
 			data.push(value);
 		} else {
 			data.push_none()
@@ -139,12 +139,12 @@ where
 	ColumnBuilder: Push<<L as Promote<R>>::Output>,
 {
 	reifydb_assertions! {
-		assert_eq!(l.len(), r.len());
+		assert!(l.len() == r.len() || l.len() == 1 || r.len() == 1);
 	}
 
-	let mut data = ColumnBuilder::with_capacity(target.clone(), l.len());
-	for i in 0..l.len() {
-		match (l.get(i), r.get(i)) {
+	let mut data = ColumnBuilder::with_capacity(target.clone(), output_len(l.len(), r.len()));
+	for i in 0..output_len(l.len(), r.len()) {
+		match (l.get(row_of(l.len(), i)), r.get(row_of(r.len(), i))) {
 			(Some(l_val), Some(r_val)) => {
 				let l_clone = l_val.clone();
 				let r_clone = r_val.clone();
@@ -187,12 +187,12 @@ fn concat_strings(
 	fragment: Fragment,
 ) -> Result<(FieldRef, ArrayRef)> {
 	reifydb_assertions! {
-		assert_eq!(l.len(), r.len());
+		assert!(l.len() == r.len() || l.len() == 1 || r.len() == 1);
 	}
 
-	let mut data = ColumnBuilder::with_capacity(target, l.len());
-	for i in 0..l.len() {
-		match (get(l, i), get(r, i)) {
+	let mut data = ColumnBuilder::with_capacity(target, output_len(l.len(), r.len()));
+	for i in 0..output_len(l.len(), r.len()) {
+		match (get(l, row_of(l.len(), i)), get(r, row_of(r.len(), i))) {
 			(Some(l_str), Some(r_str)) => {
 				let concatenated = format!("{}{}", l_str, r_str);
 				data.push(concatenated);
@@ -211,14 +211,18 @@ fn concat_string_with_other(
 	fragment: Fragment,
 ) -> Result<(FieldRef, ArrayRef)> {
 	reifydb_assertions! {
-		assert_eq!(string_data.len(), other_data.len());
+		assert!(
+			string_data.len() == other_data.len() || string_data.len() == 1 || other_data.len() == 1
+		);
 	}
 
-	let mut data = ColumnBuilder::with_capacity(target, string_data.len());
-	for i in 0..string_data.len() {
-		match (get(string_data, i), other_data.is_defined(i)) {
+	let len = output_len(string_data.len(), other_data.len());
+	let mut data = ColumnBuilder::with_capacity(target, len);
+	for i in 0..len {
+		let other_row = row_of(other_data.len(), i);
+		match (get(string_data, row_of(string_data.len(), i)), other_data.is_defined(other_row)) {
 			(Some(str_val), true) => {
-				let other_str = other_data.as_string(i);
+				let other_str = other_data.as_string(other_row);
 				let concatenated = if string_is_left {
 					format!("{}{}", str_val, other_str)
 				} else {

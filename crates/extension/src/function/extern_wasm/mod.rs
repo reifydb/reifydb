@@ -3,11 +3,17 @@
 
 pub mod loader;
 
-use arrow_array::ArrayRef;
-use arrow_schema::FieldRef;
-use reifydb_core::value::column::factory::{none, rename};
+use std::sync::Arc;
+
+use arrow_array::{Array, ArrayRef, RecordBatch};
+use arrow_schema::{FieldRef, Schema};
+use reifydb_core::value::{
+	batch::take_rows,
+	column::factory::{none, rename},
+};
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::is_constant, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_sdk::common::extern_wasm::marshal::{marshal_columns_to_bytes, unmarshal_columns_from_bytes};
 use reifydb_value::{
@@ -41,6 +47,26 @@ impl ExternWasmScalarFunction {
 			reason: reason.into(),
 		}
 	}
+
+	fn broadcast(
+		&self,
+		args: &[(FieldRef, ArrayRef)],
+		row_count: usize,
+	) -> Result<Vec<(FieldRef, ArrayRef)>, RoutineError> {
+		args.iter()
+			.map(|(field, array)| {
+				if !is_constant(array.len(), row_count) {
+					return Ok((field.clone(), array.clone()));
+				}
+				let batch = RecordBatch::try_new(
+					Arc::new(Schema::new(vec![field.clone()])),
+					vec![array.clone()],
+				)
+				.map_err(|e| self.err(e.to_string()))?;
+				Ok((field.clone(), take_rows(&batch, &vec![0; row_count])?.column(0).clone()))
+			})
+			.collect()
+	}
 }
 
 // SAFETY: holds only a name and module bytes; each call instantiates the module fresh, sharing nothing.
@@ -61,7 +87,8 @@ impl<'a> Routine<FunctionContext<'a>> for ExternWasmScalarFunction {
 		ctx: &mut FunctionContext<'a>,
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
-		let input_bytes = marshal_columns_to_bytes(args, ctx.row_count, &[])?;
+		let args = self.broadcast(args, ctx.row_count)?;
+		let input_bytes = marshal_columns_to_bytes(&args, ctx.row_count, &[])?;
 		let label = format!("WASM scalar function '{}'", self.info.name);
 
 		let output_bytes = invoke_extern_wasm_module(&self.wasm_bytes, "scalar", &input_bytes, &label)

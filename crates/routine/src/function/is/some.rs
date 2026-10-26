@@ -7,7 +7,8 @@ use arrow_array::{ArrayRef, BooleanArray};
 use arrow_buffer::BooleanBuffer;
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::is_constant, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{column_view::ColumnView, value_type::ValueType};
 
@@ -51,7 +52,10 @@ impl<'a> Routine<FunctionContext<'a>> for IsSome {
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let column = ColumnView::try_from(&args[0])?;
 		let values = match column.logical_nulls() {
-			None => BooleanBuffer::new_set(column.len()),
+			None => BooleanBuffer::new_set(ctx.row_count),
+			Some(nulls) if is_constant(nulls.len(), ctx.row_count) => {
+				BooleanBuffer::collect_bool(ctx.row_count, |_| nulls.is_valid(0))
+			}
 			Some(nulls) => nulls.inner().clone(),
 		};
 

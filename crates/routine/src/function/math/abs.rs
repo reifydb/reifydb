@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::ArrayRef;
+use arrow_array::{Array, ArrayRef};
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::{
 	decimal, float4_with_bitvec, float8_with_bitvec, int1_with_bitvec, int2_with_bitvec, int4_with_bitvec,
@@ -9,12 +9,12 @@ use reifydb_core::value::column::factory::{
 	uint8_with_bitvec, uint16_with_bitvec,
 };
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
 	container::{decimal_array::decimals, wide_int_array::wide_at},
-	decimal::Decimal,
 	value_type::ValueType,
 };
 
@@ -58,7 +58,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 		let column_type = data.get_type();
 
 		let result_data = match &data.data {
@@ -66,7 +66,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value.checked_abs().ok_or_else(|| {
 							failed(
 								ctx,
@@ -87,7 +87,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value.checked_abs().ok_or_else(|| {
 							failed(
 								ctx,
@@ -108,7 +108,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value.checked_abs().ok_or_else(|| {
 							failed(
 								ctx,
@@ -129,7 +129,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value.checked_abs().ok_or_else(|| {
 							failed(
 								ctx,
@@ -150,7 +150,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(value) = wide_at::<i128>(container, i) {
+					if let Some(value) = wide_at::<i128>(container, row_of(container.len(), i)) {
 						data.push(value.checked_abs().ok_or_else(|| {
 							failed(
 								ctx,
@@ -171,7 +171,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value);
 						res_bitvec.push(true);
 					} else {
@@ -185,7 +185,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value);
 						res_bitvec.push(true);
 					} else {
@@ -199,7 +199,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value);
 						res_bitvec.push(true);
 					} else {
@@ -213,7 +213,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value);
 						res_bitvec.push(true);
 					} else {
@@ -227,7 +227,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(value) = wide_at::<u128>(container, i) {
+					if let Some(value) = wide_at::<u128>(container, row_of(container.len(), i)) {
 						data.push(value);
 						res_bitvec.push(true);
 					} else {
@@ -241,7 +241,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value.abs());
 						res_bitvec.push(true);
 					} else {
@@ -255,7 +255,7 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value.abs());
 						res_bitvec.push(true);
 					} else {
@@ -265,12 +265,15 @@ impl<'a> Routine<FunctionContext<'a>> for Abs {
 				}
 				float8_with_bitvec(ctx.fragment.text(), data, res_bitvec)
 			}
-			ViewData::Decimal(container) => decimal(
-				ctx.fragment.text(),
-				container.precision(),
-				container.scale(),
-				decimals(container).iter().map(Decimal::abs),
-			),
+			ViewData::Decimal(container) => {
+				let values = decimals(container);
+				decimal(
+					ctx.fragment.text(),
+					container.precision(),
+					container.scale(),
+					(0..row_count).map(|i| values[row_of(values.len(), i)].abs()),
+				)
+			}
 			_ => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),

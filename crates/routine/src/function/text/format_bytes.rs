@@ -54,7 +54,10 @@ macro_rules! process_int_column {
 		let mut result_data = Vec::with_capacity($row_count);
 
 		for i in 0..$row_count {
-			if let Some(&value) = $container.values().get(i) {
+			if let Some(&value) = $container
+				.values()
+				.get(reifydb_routine_abi::broadcast::row_of($container.values().len(), i))
+			{
 				result_data.push(format_bytes_internal(value as i64, $base, $units));
 			} else {
 				result_data.push(String::new());
@@ -71,7 +74,10 @@ macro_rules! process_float_column {
 		let mut result_data = Vec::with_capacity($row_count);
 
 		for i in 0..$row_count {
-			if let Some(&value) = $container.values().get(i) {
+			if let Some(&value) = $container
+				.values()
+				.get(reifydb_routine_abi::broadcast::row_of($container.values().len(), i))
+			{
 				result_data.push(format_bytes_internal(value as i64, $base, $units));
 			} else {
 				result_data.push(String::new());
@@ -87,7 +93,9 @@ macro_rules! process_decimal_column {
 	($ctx:expr, $container:expr, $row_count:expr, $base:expr, $units:expr) => {{
 		let mut result_data = Vec::with_capacity($row_count);
 
-		for value in decimals($container) {
+		let values = decimals($container);
+		for i in 0..$row_count {
+			let value = values[reifydb_routine_abi::broadcast::row_of(values.len(), i)].clone();
 			let bytes = value.trunc().to_i128().and_then(|bytes| i64::try_from(bytes).ok()).ok_or_else(
 				|| RoutineError::FunctionExecutionFailed {
 					function: $ctx.fragment.clone(),
@@ -134,7 +142,7 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytes {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match &data.data {
 			ViewData::Int1(container) => process_int_column!(container, row_count, 1024.0, &IEC_UNITS),

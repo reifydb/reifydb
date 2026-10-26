@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::utf8;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{Value, column_view::ColumnView, value_type::ValueType};
 
@@ -106,9 +107,10 @@ impl<'a> Routine<FunctionContext<'a>> for JsonPretty {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
-		let results: Vec<String> = (0..row_count).map(|row| to_json_pretty(&data.get_value(row), 0)).collect();
+		let results: Vec<String> =
+			(0..row_count).map(|row| to_json_pretty(&data.get_value(row_of(data.len(), row)), 0)).collect();
 
 		Ok(utf8(ctx.fragment.text(), results))
 	}

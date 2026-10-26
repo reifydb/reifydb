@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::{uuid4, uuid4_with_bitvec};
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -61,7 +62,7 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV4 {
 		}
 
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 		let nulls = data.logical_nulls();
 
 		match &data.data {
@@ -72,12 +73,13 @@ impl<'a> Routine<FunctionContext<'a>> for UuidV4 {
 				let mut result = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if nulls.as_ref().is_some_and(|nulls| nulls.is_null(i)) {
+					let src = row_of(data.len(), i);
+					if nulls.as_ref().is_some_and(|nulls| nulls.is_null(src)) {
 						result.push(Uuid4::default());
 						res_bitvec.push(false);
 						continue;
 					}
-					let s = varlen_array::get(container, i).unwrap();
+					let s = varlen_array::get(container, src).unwrap();
 					let parsed = Uuid::parse_str(s).map_err(|e| {
 						RoutineError::FunctionExecutionFailed {
 							function: ctx.fragment.clone(),

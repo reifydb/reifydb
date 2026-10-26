@@ -48,7 +48,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNow {
 		let dt = DateTime::from_epoch_millis(millis)?;
 		let time = dt.time();
 
-		let container = vec![time];
+		let container = vec![time; ctx.row_count.max(1)];
 
 		Ok(array_column(ctx.fragment.text(), ValueType::Time, Arc::new(time_array(container))))
 	}

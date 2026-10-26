@@ -6,7 +6,8 @@ use arrow_schema::FieldRef;
 use bumpalo::Bump;
 use reifydb_core::value::column::factory::utf8;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_rql::{
 	ast::parse_str,
@@ -50,7 +51,7 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		match &data.data {
 			ViewData::Utf8 {
@@ -60,7 +61,7 @@ impl<'a> Routine<FunctionContext<'a>> for RqlFingerprint {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					let query = container.value(i);
+					let query = container.value(row_of(data.len(), i));
 					let bump = Bump::new();
 					let stmts = parse_str(&bump, query).map_err(|e| {
 						RoutineError::FunctionExecutionFailed {

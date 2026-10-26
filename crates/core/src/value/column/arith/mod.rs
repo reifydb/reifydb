@@ -183,6 +183,22 @@ pub fn is_family(ty: &ValueType) -> bool {
 	matches!(ty, ValueType::Decimal { .. })
 }
 
+pub(crate) fn row_of(len: usize, row: usize) -> usize {
+	if len == 1 {
+		0
+	} else {
+		row
+	}
+}
+
+pub(crate) fn output_len(left: usize, right: usize) -> usize {
+	if left == 1 {
+		right
+	} else {
+		left
+	}
+}
+
 pub fn length_mismatch(left: usize, right: usize, fragment: &Fragment) -> Error {
 	TypeError::Runtime {
 		kind: RuntimeErrorKind::ColumnLengthMismatch {

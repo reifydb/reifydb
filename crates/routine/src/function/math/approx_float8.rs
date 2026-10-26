@@ -47,7 +47,7 @@ impl<'a> Routine<FunctionContext<'a>> for ApproxFloat8 {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		if !data.get_type().is_number() {
 			return Err(RoutineError::FunctionInvalidArgumentType {

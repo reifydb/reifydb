@@ -12,7 +12,8 @@ use reifydb_core::{
 	value::column::factory::utf8,
 };
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_rql::expression::json::JsonExpression;
 use reifydb_value::{
@@ -279,7 +280,7 @@ impl<'a> Routine<FunctionContext<'a>> for OperatorDefToJson {
 		}
 
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		match &data.data {
 			ViewData::Blob {
@@ -289,8 +290,9 @@ impl<'a> Routine<FunctionContext<'a>> for OperatorDefToJson {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if i < container.len() {
-						let bytes = match varlen_array::get(container, i) {
+					let src = row_of(container.len(), i);
+					if src < container.len() {
+						let bytes = match varlen_array::get(container, src) {
 							Some(b) => b,
 							None => continue,
 						};

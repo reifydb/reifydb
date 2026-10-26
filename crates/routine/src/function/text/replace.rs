@@ -4,7 +4,8 @@
 use arrow_array::{Array, ArrayRef, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -50,7 +51,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextReplace {
 		let from_data = ColumnView::try_from(&args[1])?;
 		let to_data = ColumnView::try_from(&args[2])?;
 
-		let row_count = str_data.len();
+		let row_count = ctx.row_count;
 
 		match (&str_data.data, &from_data.data, &to_data.data) {
 			(
@@ -70,15 +71,10 @@ impl<'a> Routine<FunctionContext<'a>> for TextReplace {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if i < str_container.len() && i < from_container.len() && i < to_container.len()
-					{
-						let s = str_container.value(i);
-						let from = from_container.value(i);
-						let to = to_container.value(i);
-						result_data.push(s.replace(from, to));
-					} else {
-						result_data.push(String::new());
-					}
+					let s = str_container.value(row_of(str_container.len(), i));
+					let from = from_container.value(row_of(from_container.len(), i));
+					let to = to_container.value(row_of(to_container.len(), i));
+					result_data.push(s.replace(from, to));
 				}
 
 				Ok(utf8_column(ctx.fragment.text(), MaxBytes::MAX, LargeStringArray::from(result_data)))

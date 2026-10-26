@@ -4,7 +4,8 @@
 use arrow_array::{ArrayRef, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -54,30 +55,30 @@ impl<'a> Routine<FunctionContext<'a>> for TextChar {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match &data.data {
-			ViewData::Int1(c) => {
-				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
-			}
-			ViewData::Int2(c) => {
-				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
-			}
-			ViewData::Int4(c) => {
-				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
-			}
-			ViewData::Int8(c) => {
-				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
-			}
-			ViewData::Uint1(c) => {
-				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
-			}
-			ViewData::Uint2(c) => {
-				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
-			}
-			ViewData::Uint4(c) => {
-				convert_to_char(ctx, row_count, |i| c.values().get(i).map(|&v| v as i128))?
-			}
+			ViewData::Int1(c) => convert_to_char(ctx, row_count, |i| {
+				c.values().get(row_of(c.values().len(), i)).map(|&v| v as i128)
+			})?,
+			ViewData::Int2(c) => convert_to_char(ctx, row_count, |i| {
+				c.values().get(row_of(c.values().len(), i)).map(|&v| v as i128)
+			})?,
+			ViewData::Int4(c) => convert_to_char(ctx, row_count, |i| {
+				c.values().get(row_of(c.values().len(), i)).map(|&v| v as i128)
+			})?,
+			ViewData::Int8(c) => convert_to_char(ctx, row_count, |i| {
+				c.values().get(row_of(c.values().len(), i)).map(|&v| v as i128)
+			})?,
+			ViewData::Uint1(c) => convert_to_char(ctx, row_count, |i| {
+				c.values().get(row_of(c.values().len(), i)).map(|&v| v as i128)
+			})?,
+			ViewData::Uint2(c) => convert_to_char(ctx, row_count, |i| {
+				c.values().get(row_of(c.values().len(), i)).map(|&v| v as i128)
+			})?,
+			ViewData::Uint4(c) => convert_to_char(ctx, row_count, |i| {
+				c.values().get(row_of(c.values().len(), i)).map(|&v| v as i128)
+			})?,
 			_ => {
 				return Err(RoutineError::FunctionInvalidArgumentType {
 					function: ctx.fragment.clone(),

@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::bool_with_bitvec;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -47,7 +48,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateIsLeapYear {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match &data.data {
 			ViewData::Date(container) => {
@@ -55,7 +56,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateIsLeapYear {
 				let mut res_bitvec = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if let Some(date) = dates(container).get(i) {
+					if let Some(date) = dates(container).get(row_of(data.len(), i)) {
 						result.push(Date::is_leap_year(date.year()));
 						res_bitvec.push(true);
 					} else {

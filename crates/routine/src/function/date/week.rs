@@ -8,7 +8,8 @@ use arrow_array::{Array, ArrayRef, Int32Array};
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::int4_with_bitvec;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::{
 	fragment::Fragment,
@@ -78,7 +79,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateWeek {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match &data.data {
 			ViewData::Date(container) => {
@@ -96,7 +97,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateWeek {
 					}
 				})?;
 
-				if parts.null_count() == 0 {
+				if parts.null_count() == 0 && parts.len() == row_count {
 					array_column(
 						ctx.fragment.text(),
 						ValueType::Int4,
@@ -108,10 +109,11 @@ impl<'a> Routine<FunctionContext<'a>> for DateWeek {
 					let mut res_bitvec = Vec::with_capacity(row_count);
 
 					for i in 0..row_count {
-						if parts.is_valid(i) {
-							result.push(parts.value(i));
+						let row = row_of(parts.len(), i);
+						if parts.is_valid(row) {
+							result.push(parts.value(row));
 							res_bitvec.push(true);
-						} else if let Some(date) = values.get(i) {
+						} else if let Some(date) = values.get(row) {
 							result.push(iso_week_number(date)?);
 							res_bitvec.push(true);
 						} else {

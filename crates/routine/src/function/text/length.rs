@@ -3,11 +3,12 @@
 
 use std::sync::Arc;
 
-use arrow_array::{Array, ArrayRef, Int64Array, types::Int32Type};
+use arrow_array::{Array, ArrayRef, Int32Array, Int64Array, types::Int32Type};
 use arrow_schema::FieldRef;
 use arrow_string::length::length;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::is_constant, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -69,7 +70,14 @@ impl<'a> Routine<FunctionContext<'a>> for TextLength {
 						}
 					})?;
 
-				let result_data = Arc::new(byte_lengths.unary::<_, Int32Type>(|len| len as i32));
+				let lengths = byte_lengths.unary::<_, Int32Type>(|len| len as i32);
+				let row_count = ctx.row_count;
+				let result_data = if is_constant(lengths.len(), row_count) {
+					(0..row_count).map(|_| lengths.is_valid(0).then(|| lengths.value(0))).collect()
+				} else {
+					lengths
+				};
+				let result_data: Arc<Int32Array> = Arc::new(result_data);
 				Ok(array_column(ctx.fragment.text(), ValueType::Int4, result_data))
 			}
 			_ => Err(RoutineError::FunctionInvalidArgumentType {

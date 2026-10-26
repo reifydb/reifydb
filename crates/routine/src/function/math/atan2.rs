@@ -48,7 +48,7 @@ impl<'a> Routine<FunctionContext<'a>> for Atan2 {
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let y_data = ColumnView::try_from(&args[0])?;
 		let x_data = ColumnView::try_from(&args[1])?;
-		let row_count = y_data.len();
+		let row_count = ctx.row_count;
 
 		if !y_data.get_type().is_number() {
 			return Err(RoutineError::FunctionInvalidArgumentType {

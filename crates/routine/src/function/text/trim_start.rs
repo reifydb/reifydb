@@ -4,7 +4,8 @@
 use arrow_array::{Array, ArrayRef, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -46,7 +47,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextTrimStart {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		match &data.data {
 			ViewData::Utf8 {
@@ -56,13 +57,9 @@ impl<'a> Routine<FunctionContext<'a>> for TextTrimStart {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if i < container.len() {
-						let original_str = container.value(i);
-						let trimmed_str = original_str.trim_start();
-						result_data.push(trimmed_str.to_string());
-					} else {
-						result_data.push(String::new());
-					}
+					let original_str = container.value(row_of(container.len(), i));
+					let trimmed_str = original_str.trim_start();
+					result_data.push(trimmed_str.to_string());
 				}
 
 				Ok(utf8_column(ctx.fragment.text(), *max_bytes, LargeStringArray::from(result_data)))

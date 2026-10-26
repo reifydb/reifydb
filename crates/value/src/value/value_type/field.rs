@@ -33,8 +33,15 @@ pub struct FieldType {
 
 impl From<ValueType> for FieldType {
 	fn from(value_type: ValueType) -> Self {
+		let declared_type = match value_type.inner_type() {
+			compound @ (ValueType::List(_) | ValueType::Record(_) | ValueType::Tuple(_)) => {
+				Some(compound.clone())
+			}
+			_ => None,
+		};
 		FieldType {
 			value_type: Some(value_type),
+			declared_type,
 			..FieldType::default()
 		}
 	}

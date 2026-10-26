@@ -14,7 +14,7 @@ use reifydb_value::value::{
 	value_type::ValueType,
 };
 
-use crate::function::support::column::array_column;
+use crate::function::{support::column::array_column, text::text_predicate};
 
 pub struct TextContains {
 	info: RoutineInfo,
@@ -62,12 +62,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextContains {
 					..
 				},
 			) => {
-				let result_col_data = contains(*str_container, *substr_container).map_err(|err| {
-					RoutineError::FunctionExecutionFailed {
-						function: ctx.fragment.clone(),
-						reason: err.to_string(),
-					}
-				})?;
+				let result_col_data = text_predicate(ctx, str_container, substr_container, contains)?;
 
 				Ok(array_column(ctx.fragment.text(), ValueType::Boolean, Arc::new(result_col_data)))
 			}

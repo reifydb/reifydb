@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::utf8;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -146,7 +147,9 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let dt_data = ColumnView::try_from(&args[0])?;
 		let fmt_data = ColumnView::try_from(&args[1])?;
-		let row_count = dt_data.len();
+		let dt_data_len = dt_data.len();
+		let fmt_data_len = fmt_data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match (&dt_data.data, &fmt_data.data) {
 			(
@@ -159,9 +162,13 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeFormat {
 				let mut result = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (datetimes(dt_container).get(i), get(fmt_container, i).is_some()) {
+					match (
+						datetimes(dt_container).get(row_of(dt_data_len, i)),
+						get(fmt_container, row_of(fmt_data_len, i)).is_some(),
+					) {
 						(Some(dt), true) => {
-							let fmt_str = get(fmt_container, i).unwrap();
+							let fmt_str =
+								get(fmt_container, row_of(fmt_data_len, i)).unwrap();
 							match format_datetime(
 								dt.year(),
 								dt.month(),

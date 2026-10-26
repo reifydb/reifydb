@@ -15,7 +15,8 @@ use reifydb_core::value::column::{
 	nulls::split_nulls,
 };
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -89,8 +90,7 @@ impl<'a> Routine<FunctionContext<'a>> for Clamp {
 		let promoted = promote_all(types);
 		if promoted == ValueType::Any {
 			if (0..3).all(|i| all_rows_none(&views[i])) {
-				let row_count = views[0].len();
-				return Ok(none(ctx.fragment.text(), row_count));
+				return Ok(none(ctx.fragment.text(), ctx.row_count));
 			}
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
@@ -234,10 +234,11 @@ where
 	T: IsNumber + PartialOrd + Clone + Default + Display,
 {
 	fn defined<T: IsNumber>(c: &[T], bv: Option<&BooleanBuffer>, i: usize) -> bool {
+		let i = row_of(c.len(), i);
 		i < c.len() && bv.is_none_or(|b| b.value(i))
 	}
 
-	let row_count = v.len();
+	let row_count = ctx.row_count;
 	let mut values = Vec::with_capacity(row_count);
 	let mut bits = Vec::with_capacity(row_count);
 
@@ -247,9 +248,9 @@ where
 			bits.push(false);
 			continue;
 		}
-		let val = v.get(i).expect("defined row has a value");
-		let min = lo.get(i).expect("defined row has a value");
-		let max = hi.get(i).expect("defined row has a value");
+		let val = v.get(row_of(v.len(), i)).expect("defined row has a value");
+		let min = lo.get(row_of(lo.len(), i)).expect("defined row has a value");
+		let max = hi.get(row_of(hi.len(), i)).expect("defined row has a value");
 
 		if min > max {
 			return Err(RoutineError::FunctionExecutionFailed {

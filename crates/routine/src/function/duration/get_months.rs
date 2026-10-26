@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::int4;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -46,14 +47,15 @@ impl<'a> Routine<FunctionContext<'a>> for DurationGetMonths {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		match &data.data {
 			ViewData::Duration(container) => {
 				let mut result = Vec::with_capacity(row_count);
 
-				for dur in durations(container) {
-					result.push(dur.get_months());
+				let values = durations(container);
+				for i in 0..row_count {
+					result.push(values[row_of(values.len(), i)].get_months());
 				}
 
 				let result_data = int4(ctx.fragment.text(), result);

@@ -43,7 +43,7 @@ impl<'a> Routine<FunctionContext<'a>> for Pi {
 		ctx: &mut FunctionContext<'a>,
 		_args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
-		Ok(float8(ctx.fragment.text(), [PI]))
+		Ok(float8(ctx.fragment.text(), vec![PI; ctx.row_count]))
 	}
 }
 

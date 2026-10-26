@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::{factory::date_with_bitvec, nulls::split_nulls};
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -102,19 +103,21 @@ impl<'a> Routine<FunctionContext<'a>> for DateNew {
 			unreachable!()
 		};
 
-		let row_count = years.len();
+		let row_count = ctx.row_count;
 		let mut values = Vec::with_capacity(row_count);
 		let mut bits = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			if !year_cast.is_defined(i) || !month_cast.is_defined(i) || !day_cast.is_defined(i) {
+			let (yr, mr, dr) =
+				(row_of(year_cast.len(), i), row_of(month_cast.len(), i), row_of(day_cast.len(), i));
+			if !year_cast.is_defined(yr) || !month_cast.is_defined(mr) || !day_cast.is_defined(dr) {
 				values.push(Date::default());
 				bits.push(false);
 				continue;
 			}
-			let y = *years.values().get(i).expect("defined row has a value");
-			let m = *months.values().get(i).expect("defined row has a value");
-			let d = *days.values().get(i).expect("defined row has a value");
+			let y = *years.values().get(yr).expect("defined row has a value");
+			let m = *months.values().get(mr).expect("defined row has a value");
+			let d = *days.values().get(dr).expect("defined row has a value");
 
 			let date = if m >= 1 && d >= 1 {
 				Date::new(y, m as u32, d as u32)

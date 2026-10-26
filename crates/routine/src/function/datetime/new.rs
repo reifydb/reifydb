@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::datetime;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -48,7 +49,9 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeNew {
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let date_data = ColumnView::try_from(&args[0])?;
 		let time_data = ColumnView::try_from(&args[1])?;
-		let row_count = date_data.len();
+		let date_data_len = date_data.len();
+		let time_data_len = time_data.len();
+		let row_count = ctx.row_count;
 
 		let result_data =
 			match (&date_data.data, &time_data.data) {
@@ -56,7 +59,10 @@ impl<'a> Routine<FunctionContext<'a>> for DateTimeNew {
 					let mut container = Vec::with_capacity(row_count);
 
 					for i in 0..row_count {
-						match (dates(date_container).get(i), times(time_container).get(i)) {
+						match (
+							dates(date_container).get(row_of(date_data_len, i)),
+							times(time_container).get(row_of(time_data_len, i)),
+						) {
 							(Some(date), Some(time)) => {
 								match DateTime::new(
 									date.year(),

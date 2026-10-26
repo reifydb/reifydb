@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::ArrayRef;
+use arrow_array::{Array, ArrayRef, LargeStringArray};
 use arrow_schema::FieldRef;
-use arrow_string::concat_elements::concat_elements_utf8_many;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -67,12 +67,22 @@ impl<'a> Routine<FunctionContext<'a>> for TextConcat {
 			}
 		}
 
-		let container = concat_elements_utf8_many(&containers).map_err(|err| {
-			RoutineError::FunctionExecutionFailed {
-				function: ctx.fragment.clone(),
-				reason: err.to_string(),
+		let row_count = ctx.row_count;
+		let mut result = Vec::with_capacity(row_count);
+		for i in 0..row_count {
+			let mut value = String::new();
+			let mut valid = true;
+			for container in &containers {
+				let row = row_of(container.len(), i);
+				if container.is_null(row) {
+					valid = false;
+					break;
+				}
+				value.push_str(container.value(row));
 			}
-		})?;
+			result.push(valid.then_some(value));
+		}
+		let container = LargeStringArray::from(result);
 
 		Ok(utf8_column(ctx.fragment.text(), MaxBytes::MAX, container))
 	}

@@ -6,7 +6,8 @@ use std::sync::Arc;
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -56,11 +57,14 @@ impl<'a> Routine<FunctionContext<'a>> for TimeSubtract {
 
 		match (&time_data.data, &dur_data.data) {
 			(ViewData::Time(time_container), ViewData::Duration(dur_container)) => {
-				let row_count = time_data.len();
+				let row_count = ctx.row_count;
 				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (times(time_container).get(i), durations(dur_container).get(i)) {
+					match (
+						times(time_container).get(row_of(time_data.len(), i)),
+						durations(dur_container).get(row_of(dur_data.len(), i)),
+					) {
 						(Some(time), Some(dur)) => {
 							let time_nanos = time.to_nanos_since_midnight() as i64;
 							let dur_nanos =

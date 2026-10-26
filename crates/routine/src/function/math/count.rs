@@ -15,7 +15,9 @@ use reifydb_core::{
 };
 use reifydb_routine_abi::{
 	Accumulator, AggregateFunctionCapability, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
-	context::FunctionContext, error::RoutineError,
+	broadcast::{is_constant, row_of},
+	context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	Value,
@@ -65,14 +67,24 @@ impl<'a> Routine<FunctionContext<'a>> for Count {
 		for (_, data) in args.iter() {
 			match data.logical_nulls() {
 				None => {
-					for count in counts.iter_mut().take(data.len().min(row_count)) {
+					let bound = if is_constant(data.len(), row_count) {
+						row_count
+					} else {
+						data.len().min(row_count)
+					};
+					for count in counts.iter_mut().take(bound) {
 						*count += 1;
 					}
 				}
 				Some(nulls) => {
-					let bound = data.len().min(nulls.len()).min(row_count);
+					let len = data.len().min(nulls.len());
+					let bound = if is_constant(len, row_count) {
+						row_count
+					} else {
+						len.min(row_count)
+					};
 					for (i, count) in counts.iter_mut().enumerate().take(bound) {
-						if nulls.is_valid(i) {
+						if nulls.is_valid(row_of(len, i)) {
 							*count += 1;
 						}
 					}

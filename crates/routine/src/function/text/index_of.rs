@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use arrow_array::ArrayRef;
+use arrow_array::{Array, ArrayRef};
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::int4;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -47,7 +48,7 @@ impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
 		let str_data = ColumnView::try_from(&args[0])?;
 		let substr_data = ColumnView::try_from(&args[1])?;
 
-		let row_count = str_data.len();
+		let row_count = ctx.row_count;
 
 		match (&str_data.data, &substr_data.data) {
 			(
@@ -63,8 +64,8 @@ impl<'a> Routine<FunctionContext<'a>> for TextIndexOf {
 				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					let s = str_container.value(i);
-					let substr = substr_container.value(i);
+					let s = str_container.value(row_of(str_container.len(), i));
+					let substr = substr_container.value(row_of(substr_container.len(), i));
 					let index =
 						s.find(substr).map(|pos| s[..pos].chars().count() as i32).unwrap_or(-1);
 					result_data.push(index);

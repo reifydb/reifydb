@@ -6,7 +6,8 @@ use std::sync::Arc;
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::{
 	error::TypeError,
@@ -93,14 +94,17 @@ impl<'a> Routine<FunctionContext<'a>> for DateAge {
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data1 = ColumnView::try_from(&args[0])?;
 		let data2 = ColumnView::try_from(&args[1])?;
-		let row_count = data1.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match (&data1.data, &data2.data) {
 			(ViewData::Date(container1), ViewData::Date(container2)) => {
 				let mut container = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (dates(container1).get(i), dates(container2).get(i)) {
+					match (
+						dates(container1).get(row_of(data1.len(), i)),
+						dates(container2).get(row_of(data2.len(), i)),
+					) {
 						(Some(d1), Some(d2)) => {
 							container.push(date_age(d1, d2)?);
 						}

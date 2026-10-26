@@ -28,7 +28,7 @@ fn ragged(long: &[&str], short: &[&str]) -> Vec<(FieldRef, ArrayRef)> {
 }
 
 fn outcome(routine: &dyn Routine<FunctionContext<'static>>, name: &str) -> Result<(FieldRef, ArrayRef), RoutineError> {
-	routine.execute(&mut ctx(name, 3), &ragged(&["ab", "cd", "ef"], &["a"]))
+	routine.call(&mut ctx(name, 3), &ragged(&["ab", "cd", "ef"], &["a", "b"]))
 }
 
 #[test]

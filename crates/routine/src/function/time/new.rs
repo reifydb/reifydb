@@ -156,7 +156,7 @@ impl<'a> Routine<FunctionContext<'a>> for TimeNew {
 			});
 		}
 
-		let row_count = hour_data.len();
+		let row_count = ctx.row_count;
 		let mut container = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {

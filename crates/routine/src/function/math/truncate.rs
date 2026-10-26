@@ -3,9 +3,12 @@
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
-use reifydb_core::value::column::factory::{decimal, float4_with_bitvec, float8_with_bitvec, rename};
+use reifydb_core::value::column::factory::{decimal, float4_with_bitvec, float8_with_bitvec, from_many, rename};
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo,
+	broadcast::{is_constant, row_of},
+	context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -47,14 +50,14 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match &data.data {
 			ViewData::Float4(container) => {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value.trunc());
 						res_bitvec.push(true);
 					} else {
@@ -68,7 +71,7 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 				let mut data = Vec::with_capacity(row_count);
 				let mut res_bitvec = Vec::with_capacity(row_count);
 				for i in 0..row_count {
-					if let Some(&value) = container.values().get(i) {
+					if let Some(&value) = container.values().get(row_of(container.len(), i)) {
 						data.push(value.trunc());
 						res_bitvec.push(true);
 					} else {
@@ -82,7 +85,9 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 				let precision = container.precision();
 				let scale = container.scale();
 				let mut data = Vec::with_capacity(row_count);
-				for value in decimals(container) {
+				let values = decimals(container);
+				for i in 0..row_count {
+					let value = &values[row_of(values.len(), i)];
 					let rounded = Decimal::from_parts(value.trunc(), 0)
 						.and_then(|rounded| rounded.fits(precision.value(), scale.value()))
 						.ok_or_else(|| RoutineError::FunctionExecutionFailed {
@@ -95,6 +100,9 @@ impl<'a> Routine<FunctionContext<'a>> for Truncate {
 					data.push(rounded);
 				}
 				decimal(ctx.fragment.text(), precision, scale, data)
+			}
+			_ if data.get_type().is_number() && is_constant(data.len(), row_count) => {
+				from_many(ctx.fragment.text(), data.get_value(0), row_count)
 			}
 			_ if data.get_type().is_number() => rename(args[0].clone(), ctx.fragment.text()),
 			_ => {

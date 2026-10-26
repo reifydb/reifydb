@@ -3,23 +3,26 @@
 
 use arrow_array::{Array, ArrayRef};
 use arrow_schema::FieldRef;
-use reifydb_core::value::column::{
-	arith::{
-		ArithOp as CoreArithOp,
-		add::add_columns,
-		arith_target as core_arith_target,
-		context::{ArithContext, Overflow},
-		div::div_columns,
-		family_digits, is_family,
-		mul::mul_columns,
-		rem::rem_columns,
-		sub::sub_columns,
+use reifydb_core::value::{
+	batch::{batch, take_rows},
+	column::{
+		arith::{
+			ArithOp as CoreArithOp,
+			add::add_columns,
+			arith_target as core_arith_target,
+			context::{ArithContext, Overflow},
+			div::div_columns,
+			family_digits, is_family,
+			mul::mul_columns,
+			rem::rem_columns,
+			sub::sub_columns,
+		},
+		builder::ColumnBuilder,
+		factory::{default_typed, none},
+		nulls::split_nulls,
 	},
-	builder::ColumnBuilder,
-	factory::{default_typed, none},
-	nulls::split_nulls,
 };
-use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
+use reifydb_routine_abi::{broadcast::row_of, context::FunctionContext, error::RoutineError};
 use reifydb_value::value::{
 	Value,
 	column_view::{ColumnView, ViewData},
@@ -128,7 +131,7 @@ fn make_strict_error(ctx: &FunctionContext, msg_col: &ColumnView, i: usize) -> R
 		ViewData::Utf8 {
 			container,
 			..
-		} => varlen_array::get(*container, i).unwrap_or("overflow").to_string(),
+		} => varlen_array::get(*container, row_of(container.len(), i)).unwrap_or("overflow").to_string(),
 		_ => "overflow".to_string(),
 	};
 	RoutineError::FunctionExecutionFailed {
@@ -183,7 +186,10 @@ pub fn dispatch_fallback(
 	};
 	let fallback = coerce_column(ctx, &ColumnView::try_from(&args[2])?, target, CoerceMode::Error)?;
 	let fallback = ColumnView::try_from(&fallback)?;
-	refill(ctx, &args[0], &args[1], &result, |row| Ok(fallback.is_defined(row).then(|| fallback.get_value(row))))
+	refill(ctx, &args[0], &args[1], &result, |row| {
+		let row = row_of(fallback.len(), row);
+		Ok(fallback.is_defined(row).then(|| fallback.get_value(row)))
+	})
 }
 
 pub fn dispatch_strict(
@@ -222,7 +228,7 @@ fn preamble(
 	ensure_numeric(ctx, &b_data, 1)?;
 	if promote_pair(bare_type(&a_data), bare_type(&b_data)) == ValueType::Any {
 		if all_rows_none(&ColumnView::try_from(a_col)?) && all_rows_none(&ColumnView::try_from(b_col)?) {
-			return Ok(Some(none(ctx.fragment.text(), a_data.len())));
+			return Ok(Some(none(ctx.fragment.text(), ctx.row_count)));
 		}
 		return Err(RoutineError::FunctionInvalidArgumentType {
 			function: ctx.fragment.clone(),
@@ -253,8 +259,12 @@ fn kernel(
 		CoreArithOp::Mul => mul_columns(&arith, a, b, lazy),
 		CoreArithOp::Div => div_columns(&arith, a, b, lazy),
 		CoreArithOp::Rem => rem_columns(&arith, a, b, lazy),
-	};
-	Ok(result?)
+	}?;
+	if result.1.len() == ctx.row_count {
+		return Ok(result);
+	}
+	let repeated = take_rows(&batch(vec![result])?, &vec![0; ctx.row_count])?;
+	Ok((repeated.schema_ref().fields()[0].clone(), repeated.column(0).clone()))
 }
 
 fn refill(
@@ -265,16 +275,20 @@ fn refill(
 	mut overflowed: impl FnMut(usize) -> Result<Option<Value>, RoutineError>,
 ) -> Result<(FieldRef, ArrayRef), RoutineError> {
 	let view = ColumnView::try_from(result)?;
-	let overflow_rows: Vec<usize> = (0..view.len())
-		.filter(|&row| !view.is_defined(row) && a.1.is_valid(row) && b.1.is_valid(row))
+	let overflow_rows: Vec<usize> = (0..ctx.row_count)
+		.filter(|&row| {
+			!view.is_defined(row)
+				&& a.1.is_valid(row_of(a.1.len(), row))
+				&& b.1.is_valid(row_of(b.1.len(), row))
+		})
 		.collect();
 	if overflow_rows.is_empty() {
 		return Ok(result.clone());
 	}
 	let target = view.get_type().inner_type().clone();
-	let mut builder = ColumnBuilder::with_capacity(target.clone(), view.len());
+	let mut builder = ColumnBuilder::with_capacity(target.clone(), ctx.row_count);
 	let mut next = overflow_rows.iter().peekable();
-	for row in 0..view.len() {
+	for row in 0..ctx.row_count {
 		if next.peek() == Some(&&row) {
 			next.next();
 			match overflowed(row)? {

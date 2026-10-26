@@ -6,7 +6,7 @@ use std::{fmt::Display, result::Result as StdResult};
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::cast::{cast_column_data, convert::TargetConvert};
-use reifydb_routine_abi::{context::FunctionContext, error::RoutineError};
+use reifydb_routine_abi::{broadcast::row_of, context::FunctionContext, error::RoutineError};
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
@@ -31,6 +31,7 @@ fn narrow<T>(
 	target: ValueType,
 	fit: impl Fn(i128) -> Option<T>,
 ) -> StdResult<Option<T>, RoutineError> {
+	let row = row_of(data.len(), row);
 	if let ViewData::Uint16(container) = &data.data {
 		return match wide_int_array::wide_at::<u128>(container, row) {
 			None => Ok(None),

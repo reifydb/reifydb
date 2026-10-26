@@ -202,7 +202,13 @@ impl ScalarUDFImpl for RoutineUdf {
 		let columns = arg_fields
 			.into_iter()
 			.zip(values)
-			.map(|(field, value)| Ok((field, value.into_array(number_rows)?)))
+			.map(|(field, value)| {
+				let rows = match value {
+					ColumnarValue::Scalar(_) => 1,
+					ColumnarValue::Array(_) => number_rows,
+				};
+				Ok((field, value.into_array(rows)?))
+			})
 			.collect::<DfResult<Vec<(FieldRef, ArrayRef)>>>()?;
 		let mut function_ctx = FunctionContext {
 			fragment: self.fragment.clone(),
@@ -215,6 +221,13 @@ impl ScalarUDFImpl for RoutineUdf {
 			.call(&mut function_ctx, &columns)
 			.map_err(|error| into_external(error.with_context(self.fragment.clone(), false)))?;
 		assert_routine_field(&self.fragment, &field, &return_field);
+		assert_eq!(
+			array.len(),
+			number_rows,
+			"function {} returned {} rows for {number_rows} input rows",
+			self.name(),
+			array.len()
+		);
 		Ok(ColumnarValue::Array(array))
 	}
 

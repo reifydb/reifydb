@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::utf8;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -79,7 +80,7 @@ impl<'a> Routine<FunctionContext<'a>> for DateFormat {
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let date_data = ColumnView::try_from(&args[0])?;
 		let fmt_data = ColumnView::try_from(&args[1])?;
-		let row_count = date_data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match (&date_data.data, &fmt_data.data) {
 			(
@@ -92,7 +93,10 @@ impl<'a> Routine<FunctionContext<'a>> for DateFormat {
 				let mut result = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					match (dates(date_container).get(i), varlen_array::get(fmt_container, i)) {
+					match (
+						dates(date_container).get(row_of(date_data.len(), i)),
+						varlen_array::get(fmt_container, row_of(fmt_data.len(), i)),
+					) {
 						(Some(d), Some(fmt_str)) => {
 							let doy = compute_day_of_year(d.year(), d.month(), d.day());
 							match format_date(d.year(), d.month(), d.day(), doy, fmt_str) {

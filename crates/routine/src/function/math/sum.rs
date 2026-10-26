@@ -16,7 +16,7 @@ use reifydb_core::{
 };
 use reifydb_routine_abi::{
 	Accumulator, AggregateFunctionCapability, Arity, Function, FunctionKind, LiteralArgument, Routine, RoutineInfo,
-	context::FunctionContext, error::RoutineError,
+	broadcast::row_of, context::FunctionContext, error::RoutineError,
 };
 use reifydb_value::{
 	error::TypeError,
@@ -70,7 +70,7 @@ impl<'a> Routine<FunctionContext<'a>> for Sum {
 		let mut results = Vec::with_capacity(row_count);
 
 		for i in 0..row_count {
-			let val1 = data.get_value(i);
+			let val1 = data.get_value(row_of(data.len(), i));
 			results.push(match val1 {
 				Value::None {
 					..

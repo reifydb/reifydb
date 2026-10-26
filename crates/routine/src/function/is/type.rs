@@ -5,7 +5,8 @@ use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::column::factory::bool;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{Value, column_view::ColumnView, value_type::ValueType};
 
@@ -47,7 +48,7 @@ impl<'a> Routine<FunctionContext<'a>> for IsType {
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let value_column = ColumnView::try_from(&args[0])?;
 		let type_column = ColumnView::try_from(&args[1])?;
-		let row_count = value_column.len();
+		let row_count = ctx.row_count;
 
 		let target_type = match type_column.get_value(0) {
 			Value::Any(boxed) => match boxed.as_ref() {
@@ -76,7 +77,7 @@ impl<'a> Routine<FunctionContext<'a>> for IsType {
 
 		let data: Vec<bool> = (0..row_count)
 			.map(|i| {
-				let vtype = value_column.get_value(i).get_type();
+				let vtype = value_column.get_value(row_of(value_column.len(), i)).get_type();
 				if target_type == ValueType::Option(Box::new(ValueType::Any)) {
 					vtype.is_option()
 				} else {

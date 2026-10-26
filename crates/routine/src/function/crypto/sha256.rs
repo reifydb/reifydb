@@ -4,7 +4,8 @@
 use arrow_array::{Array, ArrayRef, LargeStringArray};
 use arrow_schema::FieldRef;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
@@ -48,18 +49,19 @@ impl<'a> Routine<FunctionContext<'a>> for CryptoSha256 {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		match &data.data {
 			ViewData::Utf8 {
 				container,
 				..
 			} => {
-				let mut result_data = Vec::with_capacity(container.len());
+				let mut result_data = Vec::with_capacity(row_count);
 
 				for i in 0..row_count {
-					if i < container.len() {
-						let original_str = container.value(i);
+					let src = row_of(container.len(), i);
+					if src < container.len() {
+						let original_str = container.value(src);
 						let digest = Sha256::digest(original_str.as_bytes());
 						let hex = digest.iter().map(|b| format!("{b:02x}")).collect::<String>();
 						result_data.push(hex);

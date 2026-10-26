@@ -53,7 +53,7 @@ impl<'a> Routine<FunctionContext<'a>> for FormatBytesSi {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let data = ColumnView::try_from(&args[0])?;
-		let row_count = data.len();
+		let row_count = ctx.row_count;
 
 		let result_data = match &data.data {
 			ViewData::Int1(container) => process_int_column!(container, row_count, 1000.0, &SI_UNITS),

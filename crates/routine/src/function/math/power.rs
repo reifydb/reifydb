@@ -13,7 +13,8 @@ use reifydb_core::value::column::{
 	nulls::split_nulls,
 };
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
+	error::RoutineError,
 };
 use reifydb_value::{
 	error::TypeError,
@@ -88,7 +89,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 		let promoted = promote_pair(bare_type(&base_data), bare_type(&exp_data));
 		if promoted == ValueType::Any {
 			if all_rows_none(&base_view) && all_rows_none(&exp_view) {
-				return Ok(none(ctx.fragment.text(), base_data.len()));
+				return Ok(none(ctx.fragment.text(), ctx.row_count));
 			}
 			return Err(RoutineError::FunctionInvalidArgumentType {
 				function: ctx.fragment.clone(),
@@ -123,7 +124,15 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				else {
 					unreachable!()
 				};
-				let (values, bits) = pow_rows(b.values(), base_bv, e.values(), exp_bv, $op, &overflow)?;
+				let (values, bits) = pow_rows(
+					ctx.row_count,
+					b.values(),
+					base_bv,
+					e.values(),
+					exp_bv,
+					$op,
+					&overflow,
+				)?;
 				$factory(ctx.fragment.text(), values, bits)
 			}};
 			($variant:ident(..), $decode:ident, $build:expr, $op:expr) => {{
@@ -132,8 +141,15 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 				else {
 					unreachable!()
 				};
-				let (values, bits) =
-					pow_rows(&$decode(b), base_bv, &$decode(e), exp_bv, $op, &overflow)?;
+				let (values, bits) = pow_rows(
+					ctx.row_count,
+					&$decode(b),
+					base_bv,
+					&$decode(e),
+					exp_bv,
+					$op,
+					&overflow,
+				)?;
 				$build(values, bits)
 			}};
 		}
@@ -167,6 +183,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 					unreachable!()
 				};
 				let (values, bits) = pow_rows(
+					ctx.row_count,
 					&wides::<i128>(b),
 					base_bv,
 					&wides::<i128>(e),
@@ -186,6 +203,7 @@ impl<'a> Routine<FunctionContext<'a>> for Power {
 					unreachable!()
 				};
 				let (values, bits) = pow_rows(
+					ctx.row_count,
 					&wides::<u128>(b),
 					base_bv,
 					&wides::<u128>(e),
@@ -242,6 +260,7 @@ fn exact_decimal_power(base: &Decimal, exponent: i256, scale: u8) -> Option<Deci
 }
 
 fn pow_rows<T, F>(
+	row_count: usize,
 	b: &[T],
 	b_bv: Option<&BooleanBuffer>,
 	e: &[T],
@@ -254,10 +273,10 @@ where
 	F: Fn(&T, &T) -> Option<T>,
 {
 	fn defined<T: IsNumber>(c: &[T], bv: Option<&BooleanBuffer>, i: usize) -> bool {
+		let i = row_of(c.len(), i);
 		i < c.len() && bv.is_none_or(|b| b.value(i))
 	}
 
-	let row_count = b.len();
 	let mut values = Vec::with_capacity(row_count);
 	let mut bits = Vec::with_capacity(row_count);
 
@@ -267,8 +286,8 @@ where
 			bits.push(false);
 			continue;
 		}
-		let base = b.get(i).expect("defined row has a value");
-		let exp = e.get(i).expect("defined row has a value");
+		let base = b.get(row_of(b.len(), i)).expect("defined row has a value");
+		let exp = e.get(row_of(e.len(), i)).expect("defined row has a value");
 		match op(base, exp) {
 			Some(v) => {
 				values.push(v);

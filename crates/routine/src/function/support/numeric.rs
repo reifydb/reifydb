@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_routine_abi::broadcast::row_of;
 use reifydb_value::value::{
 	column_view::{ColumnView, ViewData},
 	container::{decimal_array::decimal_at, wide_int_array::wide_at},
@@ -9,6 +10,7 @@ use reifydb_value::value::{
 pub(crate) const MIN_DIVISION_SCALE: u8 = 6;
 
 pub(crate) fn numeric_to_f64(data: &ColumnView, i: usize) -> Option<f64> {
+	let i = row_of(data.len(), i);
 	match &data.data {
 		ViewData::Int1(c) => c.values().get(i).map(|&v| v as f64),
 		ViewData::Int2(c) => c.values().get(i).map(|&v| v as f64),
