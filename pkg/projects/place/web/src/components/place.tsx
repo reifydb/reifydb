@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { PlaceClient } from '@/client'
 import { commitPending, commitPixels } from '@/commit'
-import { MAX_PENDING, inCanvas, tilesInRect } from '@/geometry'
+import { MAX_PENDING, inCanvas } from '@/geometry'
 import { type Stamp, convert, fitSize, preShrinkSize, stampPixels } from '@/image'
 import type { Pixel } from '@/pack'
 import { Pending } from '@/pending'
@@ -12,10 +12,8 @@ import { PixelBuffer } from '@/pixels'
 import { TileStream } from '@/tiles'
 import type { Point, Tool } from '@/tools'
 import { BottomBar } from './bottom-bar'
-import { CanvasView, type Viewport } from './canvas-view'
+import { CanvasView } from './canvas-view'
 import { Toolbar } from './toolbar'
-
-const VIEWPORT_DEBOUNCE_MS = 150
 
 export function Place({ client }: { client: PlaceClient }) {
   const buffer = useMemo(() => new PixelBuffer(), [])
@@ -24,7 +22,6 @@ export function Place({ client }: { client: PlaceClient }) {
     () =>
       new TileStream(client, {
         put: (tx, ty, bytes, version) => void buffer.put(tx, ty, bytes, version),
-        drop: (tx, ty) => buffer.drop(tx, ty),
       }),
     [client, buffer],
   )
@@ -40,29 +37,15 @@ export function Place({ client }: { client: PlaceClient }) {
   const [notice, setNotice] = useState<string | null>(null)
   const [stamp, setStamp] = useState<Stamp | null>(null)
   const [placing, setPlacing] = useState<Pixel[] | null>(null)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previousToolRef = useRef<Tool>('pencil')
   const imageReturnRef = useRef<Tool>('pencil')
 
-  useEffect(
-    () => () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-      void stream.close()
-    },
-    [stream],
-  )
-
-  const onViewport = useCallback(
-    (viewport: Viewport) => {
-      if (timerRef.current) clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => {
-        stream.show(tilesInRect(viewport.left, viewport.top, viewport.right, viewport.bottom)).catch((error: unknown) => {
-          setMessage(`Live updates failed: ${error instanceof Error ? error.message : String(error)}`)
-        })
-      }, VIEWPORT_DEBOUNCE_MS)
-    },
-    [stream],
-  )
+  useEffect(() => {
+    stream.start().catch((error: unknown) => {
+      setMessage(`Live updates failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+    return () => void stream.close()
+  }, [stream])
 
   const onSelectTool = useCallback((next: Tool) => {
     setTool((current) => {
@@ -181,7 +164,6 @@ export function Place({ client }: { client: PlaceClient }) {
         onStroke={onStroke}
         onShape={onShape}
         onPick={onPick}
-        onViewport={onViewport}
         onHover={setHover}
         ghost={ghost}
         onPlace={onPlace}

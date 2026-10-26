@@ -19,13 +19,6 @@ const EDGE_MARGIN = 64
 const OUTSIDE_COLOR = '#dcdbea'
 const BORDER_COLOR = '#4b52d6'
 
-export interface Viewport {
-  left: number
-  top: number
-  right: number
-  bottom: number
-}
-
 interface View {
   zoom: number
   x: number
@@ -40,7 +33,6 @@ interface CanvasViewProps {
   onStroke: (points: Point[]) => void
   onShape: (points: Point[]) => void
   onPick: (point: Point) => void
-  onViewport: (viewport: Viewport) => void
   onHover: (pixel: Point | null) => void
   ghost: Pixel[] | null
   onPlace: (point: Point) => void
@@ -51,7 +43,7 @@ type Gesture =
   | { kind: 'stroke'; last: Point }
   | { kind: 'shape'; shape: ShapeTool; start: Point }
 
-export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onShape, onPick, onPlace, onViewport, onHover }: CanvasViewProps) {
+export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement>())
@@ -78,16 +70,6 @@ export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onSh
   }, [size])
 
   useEffect(() => {
-    if (size.width === 0 || size.height === 0) return
-    onViewport({
-      left: -view.x / view.zoom,
-      top: -view.y / view.zoom,
-      right: (size.width - view.x) / view.zoom,
-      bottom: (size.height - view.y) / view.zoom,
-    })
-  }, [view, size, onViewport])
-
-  useEffect(() => {
     const canvas = canvasRef.current
     const context = canvas?.getContext('2d')
     if (!canvas || !context) return
@@ -95,11 +77,7 @@ export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onSh
     const flush = () => {
       frame = 0
       const bitmaps = bitmapsRef.current
-      for (const key of buffer.takeDirty()) {
-        const tile = buffer.tile(key)
-        if (tile) bitmaps.set(key, tileBitmap(tile))
-        else bitmaps.delete(key)
-      }
+      for (const key of buffer.takeDirty()) bitmaps.delete(key)
       if (canvas.width !== size.width || canvas.height !== size.height) {
         canvas.width = size.width
         canvas.height = size.height
@@ -117,9 +95,15 @@ export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onSh
         (size.width - view.x) / view.zoom,
         (size.height - view.y) / view.zoom,
       )
+      for (const key of bitmaps.keys()) if (!visible.has(key)) bitmaps.delete(key)
       for (const key of visible) {
-        const bitmap = bitmaps.get(key)
-        if (!bitmap) continue
+        let bitmap = bitmaps.get(key)
+        if (!bitmap) {
+          const tile = buffer.tile(key)
+          if (!tile) continue
+          bitmap = tileBitmap(tile)
+          bitmaps.set(key, bitmap)
+        }
         const [tx, ty] = parseTileKey(key)
         context.drawImage(bitmap, view.x + tx * span, view.y + ty * span, span, span)
       }

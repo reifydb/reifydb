@@ -57,11 +57,6 @@ export class PixelBuffer {
     return true
   }
 
-  drop(tx: number, ty: number): void {
-    const key = tileKey(tx, ty)
-    if (this.tiles.delete(key)) this.mark(key)
-  }
-
   tile(key: TileKey): Tile | undefined {
     return this.tiles.get(key)
   }
