@@ -81,7 +81,9 @@ set-version:
 			(cd $$dir && cargo update --workspace) || exit 1; \
 			files="Cargo.toml Cargo.lock"; \
 		fi; \
-		git -C $$dir commit -q -m "release $(VERSION)" -- $$files || exit 1; \
+		if ! git -C $$dir diff --quiet -- $$files; then \
+			git -C $$dir commit -q -m "release $(VERSION)" -- $$files || exit 1; \
+		fi; \
 	done
 
 # Validate release readiness
