@@ -106,9 +106,9 @@ impl FlowEngineInner {
 		let sources = self.watermark_sources(&flow);
 
 		let (mut arrivals, mut silent) =
-			published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version);
+			published_arrivals(&self.sources, &self.substrate.frontiers, flow_id, version, &sources);
 		let (lookup_arrivals, lookup_silent) =
-			published_arrivals(&self.lookup_sources, &self.substrate.frontiers, flow_id, version);
+			published_arrivals(&self.lookup_sources, &self.substrate.frontiers, flow_id, version, &sources);
 		arrivals.extend(lookup_arrivals);
 		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
@@ -167,12 +167,14 @@ impl FlowEngineInner {
 			&self.substrate.frontiers,
 			flow_id,
 			CommitVersion(version.source.0),
+			&sources,
 		);
 		let (lookup_published, lookup_silent) = published_arrivals(
 			&self.lookup_sources,
 			&self.substrate.frontiers,
 			flow_id,
 			CommitVersion(version.source.0),
+			&sources,
 		);
 		silent.extend(lookup_silent);
 		warn_unpublished(flow_id, &silent);
@@ -263,6 +265,7 @@ fn published_arrivals(
 	frontiers: &OutputFrontiers,
 	flow_id: FlowId,
 	version: CommitVersion,
+	counted: &[OperatorId],
 ) -> (SourceArrivals, Vec<ObjectId>) {
 	let mut out = Vec::new();
 	let mut silent = Vec::new();
@@ -280,7 +283,12 @@ fn published_arrivals(
 				source,
 				at,
 			})),
-			Frontier::Unpublished if matches!(object, ObjectId::View(_)) => silent.push(*object),
+			Frontier::Unpublished
+				if matches!(object, ObjectId::View(_))
+					&& readers.iter().any(|reader| counted.contains(reader)) =>
+			{
+				silent.push(*object)
+			}
 			Frontier::Unpublished => {}
 			Frontier::Withheld => {}
 		}
@@ -480,7 +488,13 @@ mod tests {
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
 
-		let (arrivals, _) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+		let (arrivals, _) = published_arrivals(
+			&sources,
+			&frontiers,
+			FlowId(1),
+			CommitVersion(20),
+			&[OperatorId(3), OperatorId(4)],
+		);
 
 		assert_eq!(
 			arrivals,
@@ -500,9 +514,24 @@ mod tests {
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(object, at_millis(9_000), CommitVersion(10));
 
-		assert!(published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(10)).0.is_empty());
+		assert!(published_arrivals(
+			&sources,
+			&frontiers,
+			FlowId(1),
+			CommitVersion(10),
+			&[OperatorId(3), OperatorId(4)]
+		)
+		.0
+		.is_empty());
 		assert_eq!(
-			published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(11)).0,
+			published_arrivals(
+				&sources,
+				&frontiers,
+				FlowId(1),
+				CommitVersion(11),
+				&[OperatorId(3), OperatorId(4)]
+			)
+			.0,
 			vec![SourceArrival {
 				source: OperatorId(3),
 				at: at_millis(9_000)
@@ -519,7 +548,13 @@ mod tests {
 		let sources = BTreeMap::from([(object, vec![(FlowId(1), OperatorId(3))])]);
 		let frontiers = OutputFrontiers::default();
 
-		let (arrivals, _) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+		let (arrivals, _) = published_arrivals(
+			&sources,
+			&frontiers,
+			FlowId(1),
+			CommitVersion(20),
+			&[OperatorId(3), OperatorId(4)],
+		);
 
 		assert!(arrivals.is_empty());
 	}
@@ -537,9 +572,33 @@ mod tests {
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
 
-		let (_, silent) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+		let (_, silent) = published_arrivals(
+			&sources,
+			&frontiers,
+			FlowId(1),
+			CommitVersion(20),
+			&[OperatorId(3), OperatorId(4)],
+		);
 
 		assert_eq!(silent, vec![stuck]);
+	}
+
+	#[test]
+	fn an_unpublished_view_read_only_by_an_uncounted_source_is_never_reported() {
+		// A view left out of the merge holds no window open, so naming it must never flood the log.
+		let stuck = ObjectId::View(ViewId(5));
+		let live = ObjectId::View(ViewId(6));
+		let sources = BTreeMap::from([
+			(stuck, vec![(FlowId(1), OperatorId(3))]),
+			(live, vec![(FlowId(1), OperatorId(4))]),
+		]);
+		let frontiers = OutputFrontiers::default();
+		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
+
+		let (_, silent) =
+			published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20), &[OperatorId(4)]);
+
+		assert!(silent.is_empty(), "an uncounted reader's view must not be named; found {silent:?}");
 	}
 
 	#[test]
@@ -554,7 +613,13 @@ mod tests {
 		]);
 		let frontiers = OutputFrontiers::default();
 
-		let (arrivals, silent) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+		let (arrivals, silent) = published_arrivals(
+			&sources,
+			&frontiers,
+			FlowId(1),
+			CommitVersion(20),
+			&[OperatorId(3), OperatorId(4)],
+		);
 
 		assert!(arrivals.is_empty());
 		assert!(silent.is_empty(), "a cold flow must name nothing; found {silent:?}");
@@ -573,7 +638,13 @@ mod tests {
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(withheld, at_millis(9_000), CommitVersion(20));
 
-		let (arrivals, silent) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+		let (arrivals, silent) = published_arrivals(
+			&sources,
+			&frontiers,
+			FlowId(1),
+			CommitVersion(20),
+			&[OperatorId(3), OperatorId(4)],
+		);
 
 		assert!(arrivals.is_empty(), "a frontier stamped at the reader's own version must not fold");
 		assert!(silent.is_empty());
@@ -592,7 +663,13 @@ mod tests {
 		let frontiers = OutputFrontiers::default();
 		frontiers.publish(live, at_millis(9_000), CommitVersion(10));
 
-		let (_, silent) = published_arrivals(&sources, &frontiers, FlowId(1), CommitVersion(20));
+		let (_, silent) = published_arrivals(
+			&sources,
+			&frontiers,
+			FlowId(1),
+			CommitVersion(20),
+			&[OperatorId(3), OperatorId(4)],
+		);
 
 		assert!(silent.is_empty());
 	}

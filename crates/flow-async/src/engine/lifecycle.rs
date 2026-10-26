@@ -51,14 +51,22 @@ impl FlowEngineInner {
 			.filter(|(registered, _)| *registered == flow.id)
 			.map(|(_, operator)| *operator)
 			.collect();
-		flow.topological_order()
+		let sources: Vec<OperatorId> = flow
+			.topological_order()
 			.iter()
 			.copied()
 			.filter(|id| {
 				lookups.contains(id)
 					|| flow.get_operator(id).is_some_and(|operator| operator.ty.declares_time())
 			})
-			.collect()
+			.collect();
+		let timed: Vec<OperatorId> =
+			sources.iter().copied().filter(|id| !self.untimed_sources.contains(&(flow.id, *id))).collect();
+		if timed.is_empty() {
+			sources
+		} else {
+			timed
+		}
 	}
 
 	pub fn add_sink(&mut self, flow: FlowId, operator: OperatorId, sink: ObjectId) {
@@ -85,6 +93,7 @@ impl FlowEngineInner {
 		self.lookup_sources.clear();
 		self.sinks.clear();
 		self.sinks_by_flow.clear();
+		self.untimed_sources.clear();
 		self.analyzer.clear();
 	}
 
@@ -121,6 +130,7 @@ impl FlowEngineInner {
 		}
 		self.sinks.retain(|_, v| !v.is_empty());
 		self.sinks_by_flow.remove(&flow_id);
+		self.untimed_sources.retain(|(fid, _)| *fid != flow_id);
 
 		self.flows.remove(&flow_id);
 

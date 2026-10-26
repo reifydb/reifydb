@@ -8,7 +8,7 @@ mod source;
 mod tests;
 mod transform;
 
-use std::{mem, sync::Arc};
+use std::{collections::BTreeSet, mem, sync::Arc};
 
 use arrow_schema::SchemaRef;
 use reifydb_core::{
@@ -24,7 +24,11 @@ use reifydb_core::{
 			},
 		},
 	},
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::catalog::{
+		flow::{FlowId, OperatorId},
+		id::ViewId,
+		object::ObjectId,
+	},
 };
 use reifydb_flow::{
 	context::FlowContext,
@@ -105,11 +109,42 @@ impl FlowEngineInner {
 			added.push(*operator_id);
 		}
 
+		self.mark_untimed_view_sources(txn, &flow)?;
 		self.timers.rebuild(flow.id, armed);
 
 		self.analyzer.add(flow.clone());
 		self.flows.insert(flow.id, flow.clone());
 
+		Ok(())
+	}
+
+	fn mark_untimed_view_sources(&mut self, txn: &mut Transaction<'_>, flow: &FlowDag) -> Result<()> {
+		let mut reads: Vec<(OperatorId, ViewId)> = flow
+			.get_operator_ids()
+			.filter_map(|id| match flow.get_operator(&id).map(|node| &node.ty) {
+				Some(SourceView {
+					view,
+				}) => Some((id, *view)),
+				_ => None,
+			})
+			.collect();
+		for (object, registrations) in &self.lookup_sources {
+			if let ObjectId::View(view) = object {
+				reads.extend(registrations
+					.iter()
+					.filter(|(registered, _)| *registered == flow.id)
+					.map(|(_, operator)| (*operator, *view)));
+			}
+		}
+		if reads.is_empty() {
+			return Ok(());
+		}
+		let dags = self.catalog.list_flow_dags_asc(&mut txn.reborrow())?;
+		for (operator, view) in reads {
+			if !view_is_timed(view, &dags, &mut BTreeSet::new()) {
+				self.untimed_sources.insert((flow.id, operator));
+			}
+		}
 		Ok(())
 	}
 
@@ -321,4 +356,32 @@ impl FlowEngineInner {
 			.map(|schema| decoded_schema(&schema, |id| self.catalog.find_dictionary(txn, id)))
 			.transpose()
 	}
+}
+
+fn view_is_timed(view: ViewId, dags: &[FlowDag], visited: &mut BTreeSet<ViewId>) -> bool {
+	if !visited.insert(view) {
+		return false;
+	}
+	let producers: Vec<&FlowDag> = dags.iter().filter(|dag| produces(dag, view)).collect();
+	if producers.is_empty() {
+		return true;
+	}
+	producers.into_iter().any(|dag| {
+		dag.get_operator_ids().filter_map(|id| dag.get_operator(&id)).any(|node| match &node.ty {
+			SourceView {
+				view: upstream,
+			} => view_is_timed(*upstream, dags, visited),
+			ty => ty.declares_time(),
+		})
+	})
+}
+
+fn produces(dag: &FlowDag, view: ViewId) -> bool {
+	dag.get_operator_ids().filter_map(|id| dag.get_operator(&id)).any(|node| {
+		matches!(
+			&node.ty,
+			SinkTableView { view: sink } | SinkRingBufferView { view: sink, .. } | SinkSeriesView { view: sink, .. }
+				if *sink == view
+		)
+	})
 }
