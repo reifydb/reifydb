@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { PlaceClient } from '@/client'
 import { commitPending } from '@/commit'
 import { MAX_PENDING, inCanvas, tilesInRect } from '@/geometry'
+import { type Stamp, convert, fitSize, preShrinkSize, stampPixels } from '@/image'
 import { Pending } from '@/pending'
 import { PixelBuffer } from '@/pixels'
 import { TileStream } from '@/tiles'
@@ -36,6 +37,7 @@ export function Place({ client }: { client: PlaceClient }) {
   const [committing, setCommitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [stamp, setStamp] = useState<Stamp | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previousToolRef = useRef<Tool>('pencil')
 
@@ -97,6 +99,30 @@ export function Place({ client }: { client: PlaceClient }) {
     [pending, buffer],
   )
 
+  const onFile = useCallback((file: File) => {
+    setMessage(null)
+    loadStamp(file).then(setStamp, (error: unknown) => {
+      setMessage(`Image failed: ${error instanceof Error ? error.message : String(error)}`)
+    })
+  }, [])
+
+  const onPlace = useCallback(
+    (point: Point) => {
+      if (!stamp) {
+        setNotice('Pick an image first (U).')
+        return
+      }
+      setNotice(null)
+      if (!pending.replace(stampPixels(stamp, point))) setMessage('Image could not be placed.')
+    },
+    [pending, stamp],
+  )
+
+  const ghost = useMemo(
+    () => (tool === 'image' && stamp && hover ? stampPixels(stamp, hover) : null),
+    [tool, stamp, hover],
+  )
+
   const onCommit = async () => {
     setCommitting(true)
     setMessage(null)
@@ -121,8 +147,10 @@ export function Place({ client }: { client: PlaceClient }) {
         onPick={onPick}
         onViewport={onViewport}
         onHover={setHover}
+        ghost={ghost}
+        onPlace={onPlace}
       />
-      <Toolbar tool={tool} onSelect={onSelectTool} />
+      <Toolbar tool={tool} onSelect={onSelectTool} onFile={onFile} />
       <BottomBar
         color={color}
         onColor={setColor}
@@ -139,4 +167,23 @@ export function Place({ client }: { client: PlaceClient }) {
       />
     </div>
   )
+}
+
+async function loadStamp(file: File): Promise<Stamp> {
+  const source = await createImageBitmap(file)
+  const size = fitSize(source.width, source.height)
+  const shrink = preShrinkSize(source.width, source.height)
+  const bitmap = shrink
+    ? await createImageBitmap(file, { resizeWidth: shrink.width, resizeHeight: shrink.height, resizeQuality: 'high' })
+    : source
+  if (bitmap !== source) source.close()
+  const canvas = document.createElement('canvas')
+  canvas.width = bitmap.width
+  canvas.height = bitmap.height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('2d canvas context unavailable')
+  context.drawImage(bitmap, 0, 0)
+  bitmap.close()
+  const rgba = context.getImageData(0, 0, canvas.width, canvas.height).data
+  return convert(rgba, canvas.width, canvas.height, size)
 }

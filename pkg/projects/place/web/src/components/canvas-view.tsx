@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent, type Wheel
 import { CANVAS_SIZE, TILE_SIZE, type TileKey, inCanvas, parseTileKey, tilesInRect } from '@/geometry'
 import { PALETTE, cssColor } from '@/palette'
 import type { Pending } from '@/pending'
+import type { Pixel } from '@/pack'
 import type { PixelBuffer, Tile } from '@/pixels'
 import { SHAPES, type Point, type ShapeTool, type Tool, isShape, linePixels } from '@/tools'
 import { isTyping } from './toolbar'
@@ -38,6 +39,8 @@ interface CanvasViewProps {
   onPick: (point: Point) => void
   onViewport: (viewport: Viewport) => void
   onHover: (pixel: Point | null) => void
+  ghost: Pixel[] | null
+  onPlace: (point: Point) => void
 }
 
 type Gesture =
@@ -45,7 +48,7 @@ type Gesture =
   | { kind: 'stroke'; last: Point }
   | { kind: 'shape'; shape: ShapeTool; start: Point }
 
-export function CanvasView({ buffer, pending, tool, color, onStroke, onShape, onPick, onViewport, onHover }: CanvasViewProps) {
+export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onShape, onPick, onPlace, onViewport, onHover }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement>())
@@ -125,6 +128,15 @@ export function CanvasView({ buffer, pending, tool, color, onStroke, onShape, on
           context.fillRect(Math.floor(view.x + point.x * view.zoom), Math.floor(view.y + point.y * view.zoom), cell, cell)
         }
       }
+      if (ghost) {
+        context.globalAlpha = 0.5
+        for (const pixel of ghost) {
+          if (!inCanvas(pixel.x, pixel.y)) continue
+          context.fillStyle = cssColor(pixel.color)
+          context.fillRect(Math.floor(view.x + pixel.x * view.zoom), Math.floor(view.y + pixel.y * view.zoom), cell, cell)
+        }
+        context.globalAlpha = 1
+      }
     }
     const schedule = () => {
       if (frame === 0) frame = requestAnimationFrame(flush)
@@ -137,7 +149,7 @@ export function CanvasView({ buffer, pending, tool, color, onStroke, onShape, on
       unsubscribePending()
       if (frame !== 0) cancelAnimationFrame(frame)
     }
-  }, [buffer, pending, view, size, preview, color])
+  }, [buffer, pending, view, size, preview, color, ghost])
 
   const zoomAt = useCallback(
     (zoom: number, cx: number, cy: number) => {
@@ -212,6 +224,8 @@ export function CanvasView({ buffer, pending, tool, color, onStroke, onShape, on
       setPreview(SHAPES[tool](point, point))
     } else if (tool === 'eyedropper' && inCanvas(point.x, point.y)) {
       onPick(point)
+    } else if (tool === 'image') {
+      onPlace(point)
     }
   }
 

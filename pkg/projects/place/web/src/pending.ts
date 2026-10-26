@@ -46,6 +46,16 @@ export class Pending {
     return true
   }
 
+  replace(pixels: readonly Pixel[]): boolean {
+    const inside = pixels.filter((pixel) => inCanvas(pixel.x, pixel.y))
+    if (!inside.every((pixel) => isColor(pixel.color))) return false
+    if (new Set(inside.map((pixel) => `${pixel.x},${pixel.y}`)).size > MAX_PENDING) return false
+    this.pixels.clear()
+    for (const pixel of inside) this.pixels.set(`${pixel.x},${pixel.y}`, { ...pixel })
+    this.changed()
+    return true
+  }
+
   remove(x: number, y: number): boolean {
     if (!this.pixels.delete(`${x},${y}`)) return false
     this.changed()
