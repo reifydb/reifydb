@@ -58,6 +58,19 @@ pub fn extract_partition_keys(
 	let mut conjuncts = Vec::new();
 	flatten_and(condition, &mut conjuncts);
 
+	if let [col_name] = partition_by {
+		let col = columns.iter().find(|c| c.name == *col_name)?;
+		if col.dictionary_id.is_none() {
+			let value_type = col.constraint.get_type();
+			let equality = conjuncts.iter().any(|e| eq_key_for(e, col_name, &value_type).is_some());
+			if !equality
+				&& let Some(key) = conjuncts.iter().find_map(|e| in_key_for(e, col_name, &value_type))
+			{
+				return Some(vec![key]);
+			}
+		}
+	}
+
 	let mut keys = Vec::with_capacity(partition_by.len());
 	for col_name in partition_by {
 		let col = columns.iter().find(|c| c.name == *col_name)?;
@@ -103,6 +116,54 @@ fn eq_key_for(expr: &Expression, col_name: &str, value_type: &ValueType) -> Opti
 		variable,
 		ty: value_type.clone(),
 	})
+}
+
+fn in_key_for(expr: &Expression, col_name: &str, value_type: &ValueType) -> Option<PartitionKey> {
+	let Expression::In(in_expr) = expr else {
+		return None;
+	};
+	if in_expr.negated || !is_column(&in_expr.value, col_name) {
+		return None;
+	}
+	match in_expr.list.as_ref() {
+		Expression::List(list) => item_keys(&list.expressions, value_type),
+		Expression::Tuple(tuple) => item_keys(&tuple.expressions, value_type),
+		other => variable_of(other).map(|variable| PartitionKey::InList {
+			variable,
+			ty: value_type.clone(),
+		}),
+	}
+}
+
+fn item_keys(items: &[Expression], value_type: &ValueType) -> Option<PartitionKey> {
+	items.iter()
+		.map(|item| match variable_of(item) {
+			Some(variable) => Some(PartitionKey::Variable {
+				variable,
+				ty: value_type.clone(),
+			}),
+			None => partition_value(value_type, literal_fragment(item, value_type)?)
+				.map(PartitionKey::Constant),
+		})
+		.collect::<Option<Vec<_>>>()
+		.map(PartitionKey::In)
+}
+
+fn variable_of(expr: &Expression) -> Option<VariableExpression> {
+	match expr {
+		Expression::Variable(variable) => Some(variable.clone()),
+		Expression::Parameter(
+			ParameterExpression::Positional {
+				fragment,
+			}
+			| ParameterExpression::Named {
+				fragment,
+			},
+		) => Some(VariableExpression {
+			fragment: fragment.clone(),
+		}),
+		_ => None,
+	}
 }
 
 fn flatten_and<'a>(expr: &'a Expression, out: &mut Vec<&'a Expression>) {

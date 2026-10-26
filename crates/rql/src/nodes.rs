@@ -659,6 +659,11 @@ pub enum PartitionKey {
 		variable: VariableExpression,
 		ty: ValueType,
 	},
+	In(Vec<PartitionKey>),
+	InList {
+		variable: VariableExpression,
+		ty: ValueType,
+	},
 }
 
 #[derive(Debug, Clone)]

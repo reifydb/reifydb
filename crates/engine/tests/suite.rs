@@ -96,6 +96,8 @@ mod identity_dml_context;
 mod identity_inject_escalation;
 #[path = "identity_kind.rs"]
 mod identity_kind;
+#[path = "in_list_partition_prune.rs"]
+mod in_list_partition_prune;
 #[path = "in_list_variable.rs"]
 mod in_list_variable;
 #[path = "in_list_with_a_none_item.rs"]

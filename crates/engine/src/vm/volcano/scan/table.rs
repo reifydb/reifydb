@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{ops::Bound, sync::Arc};
+use std::{collections::VecDeque, ops::Bound, sync::Arc};
 
 use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::FieldRef;
@@ -65,6 +65,10 @@ pub struct TableScanNode {
 
 	partition: Option<Partition>,
 
+	pending: Option<VecDeque<Partition>>,
+
+	advanced: bool,
+
 	system_columns: Vec<SystemColumn>,
 
 	oldest_first: bool,
@@ -123,12 +127,65 @@ impl TableScanNode {
 			resume,
 			exhausted: false,
 			partition,
+			pending: None,
+			advanced: false,
 			system_columns,
 			oldest_first: false,
 			keep_dictionary_ids: false,
 			merge: None,
 			storage_batch: None,
 		})
+	}
+
+	pub fn with_partitions(
+		table: ResolvedTable,
+		partitions: Vec<Partition>,
+		context: Arc<QueryContext>,
+		rx: &mut Transaction<'_>,
+	) -> Result<Self> {
+		let mut pending = VecDeque::from(partitions);
+		let first = pending.pop_front();
+		let mut node = Self::new(table, first, context, rx)?;
+		node.pending = Some(pending);
+		Ok(node)
+	}
+
+	fn scan_partition_list<'a>(
+		&mut self,
+		rx: &mut Transaction<'a>,
+		storage: StorageId,
+		scope: RangeScope,
+		batch_size: u64,
+		mut last: Option<StoragePartitionedRowKey>,
+	) -> Result<(ScannedBatch, Option<StoragePartitionedRowKey>)> {
+		let mut batch = ScannedBatch::default();
+		loop {
+			let Some(partition) = self.partition else {
+				batch.exhausted = true;
+				return Ok((batch, None));
+			};
+			let room = batch_size - batch.rows.len() as u64;
+			let (start, end) = partitioned_bounds(Some(partition), last);
+			let (scanned, new_last) = {
+				let mut stream = rx.range_partitioned_row(storage, start, end, scope, room as usize)?;
+				Self::drain_batch_partitioned(&mut stream, room)?
+			};
+			let partition_done = scanned.exhausted;
+			batch.rows.extend(scanned.rows);
+			batch.row_numbers.extend(scanned.row_numbers);
+			batch.partitions.extend(scanned.partitions);
+			batch.commit_versions.extend(scanned.commit_versions);
+			if !partition_done {
+				return Ok((batch, new_last));
+			}
+			self.partition = self.pending.as_mut().and_then(VecDeque::pop_front);
+			self.advanced = true;
+			last = None;
+			if batch.rows.len() as u64 >= batch_size {
+				batch.exhausted = self.partition.is_none();
+				return Ok((batch, None));
+			}
+		}
 	}
 
 	pub(crate) fn oldest_first(mut self) -> Self {
@@ -326,6 +383,12 @@ impl QueryNode for TableScanNode {
 		let storage: StorageId = self.table.def().id.into();
 
 		let (scanned, next_resume, resumed) = match self.resume {
+			Resume::Partitioned(last) if self.pending.is_some() => {
+				let resumed = last.is_some() || self.advanced;
+				let (scanned, new_last) =
+					self.scan_partition_list(rx, storage, scope, batch_size, last)?;
+				(scanned, Resume::Partitioned(new_last), resumed)
+			}
 			Resume::Partitioned(last) if self.oldest_first => {
 				let partition = self.partition;
 				let merge = self.merge.get_or_insert_with(|| {

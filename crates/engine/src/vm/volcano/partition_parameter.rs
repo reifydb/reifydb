@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, slice::from_ref};
 
 use reifydb_core::{
 	interface::catalog::object::ObjectId,
@@ -75,6 +75,57 @@ pub(crate) fn choose_partition(keys: &[PartitionKey], layout: ScanLayout, symbol
 	}
 }
 
+pub(crate) fn choose_partitions(
+	keys: &[PartitionKey],
+	layout: ScanLayout,
+	symbols: &SymbolTable,
+) -> Option<Vec<Partition>> {
+	let (ScanLayout::Row, [key]) = (layout, keys) else {
+		return None;
+	};
+	let values = match key {
+		PartitionKey::In(items) => {
+			items.iter().map(|item| resolve_partition_key(item, symbols)).collect::<Option<Vec<_>>>()?
+		}
+		PartitionKey::InList {
+			variable,
+			ty,
+		} => list_items(variable.name(), symbols)?
+			.into_iter()
+			.filter(|value| !matches!(value, Value::None { .. }))
+			.map(|value| exact_partition_value(value, ty))
+			.collect::<Option<Vec<_>>>()?,
+		PartitionKey::Constant(_)
+		| PartitionKey::Variable {
+			..
+		} => return None,
+	};
+	let mut partitions: Vec<Partition> = values.iter().map(|value| Partition::of(from_ref(value))).collect();
+	partitions.sort_unstable_by(|a, b| b.cmp(a));
+	partitions.dedup();
+	Some(partitions)
+}
+
+fn list_items(name: &str, symbols: &SymbolTable) -> Option<Vec<Value>> {
+	let Some(Variable::Columns {
+		batch,
+	}) = symbols.get(name)
+	else {
+		return None;
+	};
+	if !is_scalar(batch) {
+		return None;
+	}
+	match scalar_value(batch).ok()? {
+		Value::List(items) => Some(items),
+		Value::Any(inner) => match *inner {
+			Value::List(items) => Some(items),
+			_ => None,
+		},
+		_ => None,
+	}
+}
+
 fn resolve_partition_key(key: &PartitionKey, symbols: &SymbolTable) -> Option<Value> {
 	let (variable, ty) = match key {
 		PartitionKey::Constant(value) => return Some(value.clone()),
@@ -82,6 +133,10 @@ fn resolve_partition_key(key: &PartitionKey, symbols: &SymbolTable) -> Option<Va
 			variable,
 			ty,
 		} => (variable, ty),
+		PartitionKey::In(_)
+		| PartitionKey::InList {
+			..
+		} => return None,
 	};
 	let Some(Variable::Columns {
 		batch,

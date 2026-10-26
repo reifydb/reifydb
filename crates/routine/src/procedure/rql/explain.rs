@@ -645,6 +645,13 @@ fn partition_key_text(key: &PartitionKey) -> String {
 			variable,
 			..
 		} => variable.fragment.text().to_string(),
+		PartitionKey::In(items) => {
+			format!("in [{}]", items.iter().map(partition_key_text).collect::<Vec<_>>().join(", "))
+		}
+		PartitionKey::InList {
+			variable,
+			..
+		} => format!("in {}", variable.fragment.text()),
 	}
 }
 

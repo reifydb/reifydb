@@ -48,7 +48,7 @@ use crate::vm::volcano::{
 	generator::GeneratorNode,
 	inline::InlineDataNode,
 	lookup::UnsupportedLookupNode,
-	partition_parameter::choose_partition,
+	partition_parameter::{choose_partition, choose_partitions},
 	query::{QueryContext, QueryNode},
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode, choose_row_lookup},
 	scan::{
@@ -291,6 +291,14 @@ pub(crate) fn compile<'a>(
 			keys,
 			scan,
 		}) => {
+			if let Some(partitions) = choose_partitions(&keys, rx.layout(), &context.symbols)
+				&& let RqlQueryPlan::TableScan(node) = scan.as_ref()
+			{
+				return Box::new(
+					TableScanNode::with_partitions(node.source.clone(), partitions, context, rx)
+						.unwrap(),
+				);
+			}
 			let scan = match (*scan, choose_partition(&keys, rx.layout(), &context.symbols)) {
 				(RqlQueryPlan::TableScan(node), Some(partition)) => {
 					RqlQueryPlan::TableScan(RqlTableScanNode {
