@@ -15,6 +15,9 @@ export const MIN_ZOOM = 1
 export const MAX_ZOOM = 32
 
 const ZOOM_STEP = 1.25
+const EDGE_MARGIN = 64
+const OUTSIDE_COLOR = '#dcdbea'
+const BORDER_COLOR = '#4b52d6'
 
 export interface Viewport {
   left: number
@@ -103,6 +106,10 @@ export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onSh
       }
       context.clearRect(0, 0, canvas.width, canvas.height)
       context.imageSmoothingEnabled = false
+      const canvasSpan = CANVAS_SIZE * view.zoom
+      context.fillStyle = OUTSIDE_COLOR
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.clearRect(view.x, view.y, canvasSpan, canvasSpan)
       const span = TILE_SIZE * view.zoom
       const visible = tilesInRect(
         -view.x / view.zoom,
@@ -137,6 +144,9 @@ export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onSh
         }
         context.globalAlpha = 1
       }
+      context.strokeStyle = BORDER_COLOR
+      context.lineWidth = 2
+      context.strokeRect(view.x - 1, view.y - 1, canvasSpan + 2, canvasSpan + 2)
     }
     const schedule = () => {
       if (frame === 0) frame = requestAnimationFrame(flush)
@@ -306,9 +316,9 @@ function tileBitmap(tile: Tile): HTMLCanvasElement {
   return bitmap
 }
 
-function clampView(view: View, size: { width: number; height: number }): View {
+export function clampView(view: View, size: { width: number; height: number }): View {
   const span = CANVAS_SIZE * view.zoom
   const clampAxis = (offset: number, extent: number) =>
-    span <= extent ? (extent - span) / 2 : Math.min(0, Math.max(extent - span, offset))
+    span <= extent ? (extent - span) / 2 : Math.min(EDGE_MARGIN, Math.max(extent - span - EDGE_MARGIN, offset))
   return { zoom: view.zoom, x: clampAxis(view.x, size.width), y: clampAxis(view.y, size.height) }
 }
