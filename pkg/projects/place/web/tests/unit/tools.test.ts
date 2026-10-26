@@ -44,7 +44,7 @@ describe('linePixels', () => {
 
 describe('rectPixels', () => {
   it('draws only the outline with the exact count', () => {
-    // An off by one corner either leaves a hole or double counts against the 1024 limit.
+    // An off by one corner either leaves a hole or double counts against the 4096 limit.
     const points = rectPixels({ x: 10, y: 20 }, { x: 14, y: 23 })
     expect(points.length).toBe(2 * 5 + 2 * 4 - 4)
     for (const p of points) expect(p.x === 10 || p.x === 14 || p.y === 20 || p.y === 23).toBe(true)
@@ -108,7 +108,7 @@ describe('ellipsePixels', () => {
   })
 
   it('does not fill the interior', () => {
-    // A filled ellipse would burn through the 1024 budget far faster than the outline the user chose.
+    // A filled ellipse would burn through the 4096 budget far faster than the outline the user chose.
     const set = keys(ellipsePixels({ x: 0, y: 0 }, { x: 40, y: 40 }))
     expect(set.has('20,20')).toBe(false)
     expect(set.size).toBeLessThan(200)

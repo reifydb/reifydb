@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { BlobValue, Uint1Value } from '@reifydb/core'
+import { BlobValue, Uint2Value } from '@reifydb/core'
 import type { TestDb } from '@reifydb/reifydb'
 import { bytes } from '@/client'
 import { TILE_BYTES, decodeTile, transform } from '@/pixels'
@@ -13,8 +13,8 @@ function encodeTile(pixels: Uint8Array): Promise<Uint8Array> {
 export async function seedTile(db: TestDb, tx: number, ty: number): Promise<void> {
   const blank = await encodeTile(new Uint8Array(TILE_BYTES))
   await db.commandRoot(
-    'insert place::tile [{ tile_x: $tx, tile_y: $ty, pixels: $pixels }]',
-    { tx: new Uint1Value(tx), ty: new Uint1Value(ty), pixels: new BlobValue(blank) },
+    'insert place::tile [{ tile: $tile, pixels: $pixels }]',
+    { tile: new Uint2Value(ty * 128 + tx), pixels: new BlobValue(blank) },
     [],
   )
 }
@@ -23,7 +23,7 @@ export async function colorAt(db: TestDb, x: number, y: number): Promise<number 
   const tx = Math.floor(x / 64)
   const ty = Math.floor(y / 64)
   const frames = (await db.queryRoot(
-    `from place::tile filter { tile_x == ${tx} and tile_y == ${ty} } map { tile_x, pixels }`,
+    `from place::tile filter { tile == ${ty * 128 + tx} } map { tile, pixels }`,
     {},
     [],
   )) as unknown as Array<Array<{ pixels: unknown }>>

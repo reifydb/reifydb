@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { Uint1Value } from '@reifydb/core'
+import { Uint2Value } from '@reifydb/core'
 import type { PlaceClient } from './client'
 import { bytes, version } from './client'
-import { type TileKey, parseTileKey } from './geometry'
+import { TILES_PER_SIDE, type TileKey, parseTileKey } from './geometry'
 import { decodeTile } from './pixels'
 
 export const TILE_RQL =
-  'from place::tile filter { tile_x == $tx and tile_y == $ty } map { tile_x, tile_y, pixels, #commit_version }'
+  'from place::tile filter { tile == $tile } map { tile, pixels, #commit_version }'
 
 type Row = Record<string, unknown>
 
@@ -97,5 +97,5 @@ export class TileStream {
 }
 
 function params(tx: number, ty: number) {
-  return { tx: new Uint1Value(tx), ty: new Uint1Value(ty) }
+  return { tile: new Uint2Value(ty * TILES_PER_SIDE + tx) }
 }

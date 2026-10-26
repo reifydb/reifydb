@@ -10,7 +10,7 @@ use reifydb::{
 	arrow_schema::FieldRef,
 	core::{
 		interface::catalog::config::ConfigKey,
-		value::column::factory::{blob, int4, uint1},
+		value::column::factory::{any_typed, blob, int4},
 	},
 	routine::abi::{
 		Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
@@ -55,10 +55,9 @@ pub fn migration_path() -> PathBuf {
 
 pub fn routines(routines: RoutinesConfigurator) -> RoutinesConfigurator {
 	[
-		("place::tile_x", TileFunction::TileX),
-		("place::tile_y", TileFunction::TileY),
+		("place::tile_keys", TileFunction::TileKeys),
 		("place::pixel_count", TileFunction::PixelCount),
-		("place::paint_tile", TileFunction::PaintTile),
+		("place::paint", TileFunction::Paint),
 	]
 	.into_iter()
 	.fold(routines, |routines, (name, function)| {
@@ -81,6 +80,10 @@ pub struct TileEdit {
 	pub tx: u8,
 	pub ty: u8,
 	pub pixels: Vec<(usize, u8)>,
+}
+
+pub fn tile_key(tx: u8, ty: u8) -> u16 {
+	u16::from(ty) * u16::from(TILES_PER_SIDE) + u16::from(tx)
 }
 
 pub fn encode_edit(tx: u8, ty: u8, pixels: &[(usize, u8)]) -> Vec<u8> {
@@ -123,10 +126,9 @@ pub fn decode_edit(edit: &[u8]) -> Result<TileEdit, String> {
 
 #[derive(Clone, Copy)]
 enum TileFunction {
-	TileX,
-	TileY,
+	TileKeys,
 	PixelCount,
-	PaintTile,
+	Paint,
 }
 
 struct TileRoutine {
@@ -141,9 +143,9 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 
 	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
 		match self.function {
-			TileFunction::TileX | TileFunction::TileY => ValueType::Uint1,
+			TileFunction::TileKeys => ValueType::List(Box::new(ValueType::Uint2)),
 			TileFunction::PixelCount => ValueType::Int4,
-			TileFunction::PaintTile => ValueType::Blob,
+			TileFunction::Paint => ValueType::Blob,
 		}
 	}
 
@@ -157,34 +159,56 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 			reason,
 		};
 		let last = args.len() - 1;
-		let edits_view = ColumnView::try_from(&args[last])?;
-		let edits = blobs(ctx, last, &edits_view)?;
-		let decoded = (0..edits.len()).map(|row| decode_edit(edits.value(row)).map_err(failed));
+		let rows = args[0].1.len();
+		let edits = edit_list(&ColumnView::try_from(&args[last])?.get_value(0))
+			.map_err(failed)?
+			.into_iter()
+			.map(|edit| decode_edit(&edit))
+			.collect::<Result<Vec<_>, _>>()
+			.map_err(failed)?;
 		match self.function {
-			TileFunction::TileX => {
-				let keys =
-					decoded.map(|edit| edit.map(|edit| edit.tx)).collect::<Result<Vec<_>, _>>()?;
-				Ok(uint1(ctx.fragment.text(), keys))
-			}
-			TileFunction::TileY => {
-				let keys =
-					decoded.map(|edit| edit.map(|edit| edit.ty)).collect::<Result<Vec<_>, _>>()?;
-				Ok(uint1(ctx.fragment.text(), keys))
+			TileFunction::TileKeys => {
+				let mut keys: Vec<u16> = edits.iter().map(|edit| tile_key(edit.tx, edit.ty)).collect();
+				keys.sort_unstable();
+				keys.dedup();
+				let list = Value::List(keys.into_iter().map(Value::Uint2).collect());
+				Ok(any_typed(
+					ctx.fragment.text(),
+					(0..rows).map(|_| list.clone()),
+					ValueType::List(Box::new(ValueType::Uint2)),
+				))
 			}
 			TileFunction::PixelCount => {
-				let counts = decoded
-					.map(|edit| edit.map(|edit| edit.pixels.len() as i32))
-					.collect::<Result<Vec<_>, _>>()?;
-				Ok(int4(ctx.fragment.text(), counts))
+				let count = edits.iter().map(|edit| edit.pixels.len() as i32).sum::<i32>();
+				Ok(int4(ctx.fragment.text(), (0..rows).map(|_| count)))
 			}
-			TileFunction::PaintTile => {
-				let edits = decoded.collect::<Result<Vec<_>, _>>()?;
+			TileFunction::Paint => {
+				let mut by_tile: HashMap<u16, Vec<(usize, u8)>> = HashMap::new();
+				for edit in edits {
+					by_tile.entry(tile_key(edit.tx, edit.ty)).or_default().extend(edit.pixels);
+				}
 				let tiles_view = ColumnView::try_from(&args[0])?;
 				let tiles = blobs(ctx, 0, &tiles_view)?;
-				let mut painted = Vec::with_capacity(edits.len());
-				for (row, edit) in edits.into_iter().enumerate() {
+				let keys_view = ColumnView::try_from(&args[1])?;
+				let keys = match &keys_view.data {
+					ViewData::Uint2(keys) => keys,
+					_ => {
+						return Err(RoutineError::FunctionInvalidArgumentType {
+							function: ctx.fragment.clone(),
+							argument_index: 1,
+							expected: vec![ValueType::Uint2],
+							actual: keys_view.get_type(),
+						});
+					}
+				};
+				let mut painted = Vec::with_capacity(rows);
+				for row in 0..rows {
+					let key = keys.value(row);
+					let edit = by_tile
+						.get(&key)
+						.ok_or_else(|| failed(format!("tile {key} has no edit")))?;
 					let mut pixels = decode_tile(tiles.value(row)).map_err(failed)?;
-					for (index, color) in edit.pixels {
+					for &(index, color) in edit {
 						pixels[index] = color;
 					}
 					painted.push(Blob::new(encode_tile(&pixels)));
@@ -202,10 +226,24 @@ impl Function for TileRoutine {
 
 	fn arity(&self) -> Arity {
 		match self.function {
-			TileFunction::PaintTile => Arity::Exact(2),
-			TileFunction::TileX | TileFunction::TileY | TileFunction::PixelCount => Arity::Exact(1),
+			TileFunction::Paint => Arity::Exact(3),
+			TileFunction::TileKeys | TileFunction::PixelCount => Arity::Exact(1),
 		}
 	}
+}
+
+fn edit_list(value: &Value) -> Result<Vec<Vec<u8>>, String> {
+	let items = match value {
+		Value::List(items) => items,
+		Value::Any(inner) => return edit_list(inner),
+		other => return Err(format!("expected a list of tile edits, got {:?}", other.get_type())),
+	};
+	items.iter()
+		.map(|item| match item {
+			Value::Blob(edit) => Ok(edit.as_bytes().to_vec()),
+			other => Err(format!("expected a tile edit blob, got {:?}", other.get_type())),
+		})
+		.collect()
 }
 
 fn blobs<'v>(
@@ -267,8 +305,8 @@ fn mark_ready(db: &Database) -> Result<(), String> {
 fn tile_stored(db: &Database, tx: u8, ty: u8) -> Result<bool, String> {
 	let frames = db
 		.query_as_root(
-			"from place::tile filter { tile_x == $tx and tile_y == $ty } map { tile_x, pixels }",
-			named(&[("tx", Value::Uint1(tx)), ("ty", Value::Uint1(ty))]),
+			"from place::tile filter { tile == $tile } map { tile, pixels }",
+			named(&[("tile", Value::Uint2(tile_key(tx, ty)))]),
 		)
 		.map_err(|e| format!("read tile ({tx},{ty}): {e:?}"))?;
 	let mut rows = frames.iter().flat_map(|frame| frame.rows());
@@ -290,9 +328,8 @@ fn insert_tiles(db: &Database, ty: u8, columns: &[u8]) -> Result<(), String> {
 		return Ok(());
 	}
 	let white = Value::Blob(Blob::new(encode_tile(&[0u8; TILE_BYTES])));
-	let rows = columns.iter().map(|&tx| {
-		named(&[("tile_x", Value::Uint1(tx)), ("tile_y", Value::Uint1(ty)), ("pixels", white.clone())])
-	});
+	let rows =
+		columns.iter().map(|&tx| named(&[("tile", Value::Uint2(tile_key(tx, ty))), ("pixels", white.clone())]));
 	let mut b = db.engine().bulk_insert(IdentityId::root());
 	b.table("place::tile").rows(rows).done();
 	b.execute().map(|_| ()).map_err(|e| format!("seed tile row {ty}: {e:?}"))

@@ -10,7 +10,7 @@ use reifydb::{
 		value::{blob::Blob, frame::frame::Frame},
 	},
 };
-use reifydb_place::{TILE_BYTES, decode_tile, encode_edit, encode_tile, migration_path, routines};
+use reifydb_place::{TILE_BYTES, decode_tile, encode_edit, encode_tile, migration_path, routines, tile_key};
 
 fn build() -> Database {
 	server::memory()
@@ -32,7 +32,7 @@ fn root_query(db: &Database, rql: &str) -> Vec<Frame> {
 fn seed_tile(db: &Database, tx: u8, ty: u8) {
 	let mut map = HashMap::new();
 	map.insert("pixels".to_string(), Value::Blob(Blob::new(encode_tile(&[0u8; TILE_BYTES]))));
-	let rql = format!("insert place::tile [{{ tile_x: {tx}, tile_y: {ty}, pixels: $pixels }}]");
+	let rql = format!("insert place::tile [{{ tile: {}, pixels: $pixels }}]", tile_key(tx, ty));
 	let r = db.engine().command_as(IdentityId::root(), &rql, Params::from(map));
 	if let Some(e) = r.error {
 		panic!("seeding tile ({tx},{ty}) failed: {e:?}");
@@ -51,14 +51,14 @@ fn mark_ready(db: &Database) {
 }
 
 fn tiles(db: &Database) -> i64 {
-	let frames = root_query(db, "from place::tile aggregate { n: math::count(tile_x) }");
+	let frames = root_query(db, "from place::tile aggregate { n: math::count(tile) }");
 	frames.first().and_then(|f| f.rows().next()).map(|r| r.get::<i64>("n").unwrap().unwrap()).unwrap_or(0)
 }
 
 fn tile(db: &Database, tx: u8, ty: u8) -> Vec<u8> {
 	let frames = root_query(
 		db,
-		&format!("from place::tile filter {{ tile_x == {tx} and tile_y == {ty} }} map {{ tile_x, pixels }}"),
+		&format!("from place::tile filter {{ tile == {} }} map {{ tile, pixels }}", tile_key(tx, ty)),
 	);
 	let rows: Vec<Vec<u8>> = frames
 		.iter()
@@ -143,28 +143,34 @@ fn repainting_a_pixel_keeps_the_last_color() {
 }
 
 #[test]
-fn more_than_1024_pixels_are_refused_whole() {
+fn more_than_4096_pixels_are_refused_whole() {
 	// The cap is the only bound on one anonymous write, so going over it must write nothing at all.
 	let db = build();
 	seed_tile(&db, 0, 0);
+	seed_tile(&db, 0, 1);
 	mark_ready(&db);
-	let pixels = (0..1025u64).map(|i| pack(i % 64, i / 64, 7)).collect();
+	let pixels = (0..4097u64).map(|i| pack(i % 64, i / 64, 7)).collect();
 	let err = commit(&db, pixels).unwrap_err();
 	assert!(err.starts_with("ASSERT"), "{err}");
 	assert_eq!(tile(&db, 0, 0), vec![0u8; TILE_BYTES]);
+	assert_eq!(tile(&db, 0, 1), vec![0u8; TILE_BYTES]);
 }
 
 #[test]
-fn exactly_1024_pixels_are_accepted() {
-	// The cap must be inclusive, or the client's 1,024-pixel limit produces commits the server rejects.
+fn exactly_4096_pixels_are_accepted() {
+	// The cap must be inclusive, or the client's 4,096-pixel limit produces commits the server rejects.
 	let db = build();
 	seed_tile(&db, 0, 0);
+	seed_tile(&db, 0, 1);
 	mark_ready(&db);
-	let pixels = (0..1024u64).map(|i| pack(i % 64, i / 64, 8)).collect();
-	commit(&db, pixels).expect("1,024 pixels");
-	let bytes = tile(&db, 0, 0);
-	assert!(bytes[..1024].iter().all(|&b| b == 8), "every committed pixel must be painted");
-	assert!(bytes[1024..].iter().all(|&b| b == 0), "pixels past the commit must stay white");
+	let pixels = (0..4096u64).map(|i| pack(i % 64, 32 + i / 64, 8)).collect();
+	commit(&db, pixels).expect("4,096 pixels");
+	let upper = tile(&db, 0, 0);
+	let lower = tile(&db, 0, 1);
+	assert!(upper[..2048].iter().all(|&b| b == 0), "pixels above the commit must stay white");
+	assert!(upper[2048..].iter().all(|&b| b == 8), "every committed pixel must be painted");
+	assert!(lower[..2048].iter().all(|&b| b == 8), "every committed pixel must be painted");
+	assert!(lower[2048..].iter().all(|&b| b == 0), "pixels past the commit must stay white");
 }
 
 #[test]
@@ -207,13 +213,12 @@ fn anonymous_can_read_tiles_but_never_insert_or_delete() {
 	seed_tile(&db, 0, 0);
 	mark_ready(&db);
 
-	let frames = anonymous(&db, "from place::tile filter { tile_x == 0 and tile_y == 0 }").expect("anonymous read");
+	let frames = anonymous(&db, "from place::tile filter { tile == 0 }").expect("anonymous read");
 	assert_eq!(frames.first().map(Frame::row_count).unwrap_or(0), 1);
 
-	let err =
-		anonymous(&db, "insert place::tile [{ tile_x: 1, tile_y: 0, pixels: blob::hex(\"00\") }]").unwrap_err();
+	let err = anonymous(&db, "insert place::tile [{ tile: 1, pixels: blob::hex(\"00\") }]").unwrap_err();
 	assert!(err.starts_with("POLICY_002"), "{err}");
-	let err = anonymous(&db, "delete place::tile filter { tile_x == 0 and tile_y == 0 }").unwrap_err();
+	let err = anonymous(&db, "delete place::tile filter { tile == 0 }").unwrap_err();
 	assert!(err.starts_with("POLICY_002"), "{err}");
 	assert_eq!(tiles(&db), 1);
 }
@@ -261,4 +266,19 @@ fn a_malformed_tile_edit_is_refused_whole() {
 	let err = commit_edits(&db, vec![Value::Blob(Blob::new(vec![0, 0, 0x00, 0x10, 1]))]).unwrap_err();
 	assert!(err.contains("pixel index 4096 is outside the tile"), "{err}");
 	assert_eq!(tile(&db, 0, 0), vec![0u8; TILE_BYTES]);
+}
+
+#[test]
+fn the_same_tile_twice_in_one_commit_applies_its_edits_in_order() {
+	// one update paints each tile once, so two edits of one tile must merge with the later edit winning.
+	let db = build();
+	seed_tile(&db, 2, 1);
+	mark_ready(&db);
+	let first = Value::Blob(Blob::new(encode_edit(2, 1, &[(5, 4), (6, 4)])));
+	let second = Value::Blob(Blob::new(encode_edit(2, 1, &[(5, 9)])));
+
+	commit_edits(&db, vec![first, second]).expect("both edits of one tile commit together");
+
+	let bytes = tile(&db, 2, 1);
+	assert_eq!((bytes[5], bytes[6]), (9, 4), "the later edit must win on a shared pixel and keep the rest");
 }

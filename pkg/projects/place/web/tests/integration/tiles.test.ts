@@ -46,8 +46,8 @@ async function paint(x: number, y: number, color: number) {
   await client.caughtUp()
 }
 
-function tilesOf(items: Array<{ params: { tx: { value: number }; ty: { value: number } } }>) {
-  return items.map((item) => tileKey(item.params.tx.value, item.params.ty.value))
+function tilesOf(items: Array<{ params: { tile: { value: number } } }>) {
+  return items.map((item) => tileKey(item.params.tile.value % 128, Math.floor(item.params.tile.value / 128)))
 }
 
 describe('tile stream', () => {

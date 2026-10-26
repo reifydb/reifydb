@@ -4,7 +4,7 @@
 export const CANVAS_SIZE = 8192
 export const TILE_SIZE = 64
 export const TILES_PER_SIDE = CANVAS_SIZE / TILE_SIZE
-export const MAX_PENDING = 1024
+export const MAX_PENDING = 4096
 
 export type TileKey = string
 

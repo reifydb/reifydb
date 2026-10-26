@@ -7,7 +7,7 @@ use reifydb::{
 	Database, IdentityId, Value, WithSubsystem, server,
 	value::{params::Params, value::blob::Blob},
 };
-use reifydb_place::{TILE_BYTES, decode_tile, encode_tile, migration_path, routines, seed};
+use reifydb_place::{TILE_BYTES, decode_tile, encode_tile, migration_path, routines, seed, tile_key};
 
 fn build() -> Database {
 	server::memory()
@@ -27,7 +27,7 @@ fn count(db: &Database, rql: &str) -> i64 {
 }
 
 fn stored(db: &Database, tx: u8, ty: u8) -> Vec<u8> {
-	let rql = format!("from place::tile filter {{ tile_x == {tx} and tile_y == {ty} }} map {{ tile_x, pixels }}");
+	let rql = format!("from place::tile filter {{ tile == {} }} map {{ tile, pixels }}", tile_key(tx, ty));
 	let r = db.engine().query_as(IdentityId::root(), &rql, Params::None);
 	if let Some(e) = r.error {
 		panic!("reading tile ({tx},{ty}) failed: {e:?}");
@@ -58,7 +58,7 @@ fn seed_fills_every_tile_white_once_and_refuses_a_damaged_tile() {
 	seed(&db).expect("first seed");
 
 	// Every tile of the 8192 x 8192 canvas must exist, or a commit to it silently updates zero rows.
-	let tiles = "from place::tile aggregate { n: math::count(tile_x) }";
+	let tiles = "from place::tile aggregate { n: math::count(tile) }";
 	assert_eq!(count(&db, tiles), 16_384);
 
 	// A tile must hold exactly 64 x 64 one-byte pixels, all white, at both corners of the canvas.
@@ -77,24 +77,16 @@ fn seed_fills_every_tile_white_once_and_refuses_a_damaged_tile() {
 	assert_eq!(count(&db, ready), 1);
 
 	// A tile stored twice means a broken seed and must stop the boot, never be skipped.
-	root(
-		&db,
-		"insert place::tile [{ tile_x: 3, tile_y: 3, pixels: $pixels }]",
-		blob_param(encode_tile(&[0u8; TILE_BYTES])),
-	);
+	root(&db, "insert place::tile [{ tile: 387, pixels: $pixels }]", blob_param(encode_tile(&[0u8; TILE_BYTES])));
 	assert_eq!(seed(&db).unwrap_err(), "tile (3,3) is stored more than once");
 
 	// A tile of the wrong size would make paint fail on every commit to it, so the boot must refuse it.
-	root(&db, "delete place::tile filter { tile_x == 3 and tile_y == 3 }", Params::None);
-	root(
-		&db,
-		"insert place::tile [{ tile_x: 3, tile_y: 3, pixels: $pixels }]",
-		blob_param(encode_tile(&[0u8; 10])),
-	);
+	root(&db, "delete place::tile filter { tile == 387 }", Params::None);
+	root(&db, "insert place::tile [{ tile: 387, pixels: $pixels }]", blob_param(encode_tile(&[0u8; 10])));
 	assert_eq!(seed(&db).unwrap_err(), "tile (3,3): tile decodes to 10 bytes, expected 4096");
 
 	// A blob that is not a compressed tile at all must also stop the boot.
-	root(&db, "delete place::tile filter { tile_x == 3 and tile_y == 3 }", Params::None);
-	root(&db, "insert place::tile [{ tile_x: 3, tile_y: 3, pixels: $pixels }]", blob_param(vec![0xff; 16]));
+	root(&db, "delete place::tile filter { tile == 387 }", Params::None);
+	root(&db, "insert place::tile [{ tile: 387, pixels: $pixels }]", blob_param(vec![0xff; 16]));
 	assert!(seed(&db).unwrap_err().starts_with("tile (3,3): tile does not decode"));
 }

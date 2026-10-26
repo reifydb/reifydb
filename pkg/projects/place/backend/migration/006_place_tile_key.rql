@@ -1,0 +1,18 @@
+CREATE MIGRATION 'place_tile_key' {
+    drop table policy place_tile;
+    drop table place::tile;
+    create table place::tile { tile: uint2, pixels: blob }
+        with { partition: { by: { tile } } };
+    create table policy place_tile on place::tile {
+        from: { filter { true } },
+        update: { filter { $identity.kind == "anonymous" } }
+    };
+    drop procedure place::commit;
+    create procedure place::commit { tiles: list(blob) } as {
+        let $state = from place::state filter { key == "canvas" } map { key, ready };
+        assert { is::some($state.ready) and $state.ready } "canvas not ready";
+        assert { place::pixel_count($tiles) <= 4096 } "too many pixels";
+        let $keys = place::tile_keys($tiles);
+        update place::tile { pixels: place::paint(pixels, tile, $tiles) } filter { tile in $keys }
+    }
+};
