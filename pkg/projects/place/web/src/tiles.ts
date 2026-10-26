@@ -18,7 +18,7 @@ export interface TileSink {
 }
 
 export class TileStream {
-  private readonly batches: string[] = []
+  private batch: string | null = null
   private queue: Promise<void> = Promise.resolve()
 
   constructor(
@@ -40,27 +40,25 @@ export class TileStream {
   }
 
   private async subscribe(): Promise<void> {
-    const acks = []
+    const chunks = []
     for (let row = 0; row < TILES_PER_SIDE; row += CHUNK_ROWS) {
-      acks.push(
-        this.client.batchSubscribe([
-          {
-            rql: TILE_RQL,
-            params: { keys: chunkKeys(row) },
-            config: { hydration: { enabled: true } },
-            callbacks: {
-              onInsert: (rows: Row[]) => void this.receive(rows),
-              onUpdate: (rows: Row[]) => void this.receive(rows),
-            },
-          },
-        ]),
-      )
+      chunks.push({
+        rql: TILE_RQL,
+        params: { keys: chunkKeys(row) },
+        config: { hydration: { enabled: true } },
+        callbacks: {
+          onInsert: (rows: Row[]) => void this.receive(rows),
+          onUpdate: (rows: Row[]) => void this.receive(rows),
+        },
+      })
     }
-    for (const batch of await Promise.all(acks)) this.batches.push(batch.batchId)
+    this.batch = (await this.client.batchSubscribe(chunks)).batchId
   }
 
   private async unsubscribe(): Promise<void> {
-    for (const batchId of this.batches.splice(0)) await this.client.batchUnsubscribe(batchId)
+    const batch = this.batch
+    this.batch = null
+    if (batch !== null) await this.client.batchUnsubscribe(batch)
   }
 
   private async receive(rows: Row[]): Promise<void> {

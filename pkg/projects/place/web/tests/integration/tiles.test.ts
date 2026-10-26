@@ -80,12 +80,15 @@ describe('tile stream', () => {
 
   it('releases every chunk subscription on close', async () => {
     // A stream that keeps one chunk after close leaks a live subscription per page visit.
+    const subscribe = vi.spyOn(client, 'batchSubscribe')
     const unsubscribe = vi.spyOn(client, 'batchUnsubscribe')
     await stream.start()
+    const { batchId } = await subscribe.mock.results[0].value
 
     await stream.close()
 
-    expect(unsubscribe).toHaveBeenCalledTimes(16)
+    expect(unsubscribe).toHaveBeenCalledTimes(1)
+    expect(unsubscribe).toHaveBeenCalledWith(batchId)
   })
 
   it('subscribes the canvas in 16 hydrated chunks, top-left first', async () => {
@@ -95,9 +98,10 @@ describe('tile stream', () => {
 
     await stream.start()
 
-    const chunks = subscribe.mock.calls.map((call) => (call[0] as unknown as Chunk[])[0])
+    const chunks = subscribe.mock.calls[0][0] as unknown as Chunk[]
     const keys = chunks.map((chunk) => chunk.params.keys.map((key) => Number(key.value)))
-    expect(subscribe).toHaveBeenCalledTimes(16)
+    expect(subscribe).toHaveBeenCalledTimes(1)
+    expect(chunks).toHaveLength(16)
     expect(keys[0]).toEqual(range(0, 1024))
     expect(chunks.every((chunk) => chunk.config.hydration.enabled)).toBe(true)
     expect(keys.flat().sort((a, b) => a - b)).toEqual(range(0, 16384))
