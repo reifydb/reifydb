@@ -6,6 +6,7 @@ import type { PlaceClient } from '@/client'
 import { commitPending, commitPixels } from '@/commit'
 import { MAX_PENDING, inCanvas } from '@/geometry'
 import { type Stamp, convert, fitSize, preShrinkSize, stampPixels } from '@/image'
+import { Minimap } from '@/minimap'
 import type { Pixel } from '@/pack'
 import { Pending } from '@/pending'
 import { PixelBuffer } from '@/pixels'
@@ -17,23 +18,26 @@ import { Toolbar } from './toolbar'
 
 export function Place({ client }: { client: PlaceClient }) {
   const buffer = useMemo(() => new PixelBuffer(), [])
+  const minimap = useMemo(() => new Minimap(), [])
   const pending = useMemo(() => new Pending(), [])
   const stream = useMemo(
     () =>
       new TileStream(
         client,
         {
-          put: (tx, ty, bytes, version) => void buffer.put(tx, ty, bytes, version),
+          put: (tx, ty, bytes, version) => {
+            if (buffer.put(tx, ty, bytes, version)) minimap.put(tx, ty, bytes)
+          },
         },
         () => setMessage('Live updates failed: the tile stream was closed.'),
       ),
-    [client, buffer],
+    [client, buffer, minimap],
   )
   const pendingVersion = useSyncExternalStore(
     (listener) => pending.subscribe(listener),
     () => pending.snapshot(),
   )
-  const [tool, setTool] = useState<Tool>('pencil')
+  const [tool, setTool] = useState<Tool>('pan')
   const [color, setColor] = useState(1)
   const [layerVisible, setLayerVisible] = useState(true)
   const [hover, setHover] = useState<Point | null>(null)
@@ -164,6 +168,7 @@ export function Place({ client }: { client: PlaceClient }) {
     <div className="relative min-h-0 flex-1">
       <CanvasView
         buffer={buffer}
+        minimap={minimap}
         pending={pending}
         layerVisible={layerVisible}
         tool={tool}
