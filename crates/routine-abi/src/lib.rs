@@ -11,6 +11,8 @@ pub mod context;
 pub mod error;
 pub mod registry;
 
+use std::{any::Any, sync::Arc};
+
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use error::RoutineError;
@@ -136,8 +138,27 @@ impl Arity {
 	}
 }
 
+pub type Prepared = Arc<dyn Any + Send + Sync>;
+
 pub trait Function: for<'a> Routine<context::FunctionContext<'a>> {
 	fn kinds(&self) -> &[FunctionKind];
+
+	fn prepare(
+		&self,
+		_ctx: &mut context::FunctionContext<'_>,
+		_constants: &[Option<&(FieldRef, ArrayRef)>],
+	) -> Result<Option<Prepared>, RoutineError> {
+		Ok(None)
+	}
+
+	fn execute_prepared(
+		&self,
+		ctx: &mut context::FunctionContext<'_>,
+		args: &[(FieldRef, ArrayRef)],
+		_prepared: Option<&Prepared>,
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		self.call(ctx, args)
+	}
 
 	fn arity(&self) -> Arity;
 

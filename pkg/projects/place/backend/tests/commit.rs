@@ -4,10 +4,15 @@
 use std::collections::HashMap;
 
 use reifydb::{
-	Database, IdentityId, Value, WithSubsystem, server,
+	Database, IdentityId, Value, WithSubsystem,
+	core::value::column::factory,
+	routine::abi::{context::FunctionContext, error::RoutineError, registry::Routines},
+	runtime::context::RuntimeContext,
+	server,
 	value::{
+		fragment::Fragment,
 		params::Params,
-		value::{blob::Blob, frame::frame::Frame},
+		value::{blob::Blob, frame::frame::Frame, value_type::ValueType},
 	},
 };
 use reifydb_place::{TILE_BYTES, decode_tile, encode_edit, encode_tile, migration_path, routines, tile_key};
@@ -343,4 +348,59 @@ fn one_commit_paints_three_tiles_at_once() {
 	assert_eq!(pixel(&db, 130, 3), 5);
 	assert_eq!(pixel(&db, 66, 2), 0, "a neighbour pixel must stay untouched");
 	assert_eq!(tiles(&db), 3, "a commit must never add a tile row");
+}
+
+#[test]
+fn a_commit_spanning_several_batches_paints_every_tile() {
+	// The prepared edit map must serve every batch of one update, otherwise tiles past the first batch go
+	// unpainted.
+	let db = build();
+	let coords: Vec<(u8, u8)> = (0..300u16).map(|i| ((i % 128) as u8, (i / 128) as u8)).collect();
+	for &(tx, ty) in &coords {
+		seed_tile(&db, tx, ty);
+	}
+	mark_ready(&db);
+	let pixels = coords
+		.iter()
+		.enumerate()
+		.map(|(i, &(tx, ty))| pack(tx as u64 * 64 + (i % 64) as u64, ty as u64 * 64, 1 + (i % 31) as u64))
+		.collect();
+	commit(&db, pixels).expect("one commit over 300 tiles");
+	let wrong: Vec<String> = coords
+		.iter()
+		.enumerate()
+		.filter(|(i, (tx, ty))| {
+			pixel(&db, *tx as u16 * 64 + (i % 64) as u16, *ty as u16 * 64) != 1 + (i % 31) as u8
+		})
+		.map(|(i, coord)| format!("{i} at {coord:?}"))
+		.collect();
+	assert!(wrong.is_empty(), "unpainted tiles: {wrong:?}");
+}
+
+#[test]
+fn a_prepared_paint_still_refuses_ragged_arguments() {
+	// Skipping the length check on the prepared path would index a short argument past its end.
+	let registry = routines(Routines::builder()).configure();
+	let paint = registry.get_scalar_function("place::paint").expect("place::paint is registered");
+	let runtime = RuntimeContext::testing(0, 0);
+	let mut ctx = FunctionContext {
+		fragment: Fragment::internal("place::paint"),
+		identity: IdentityId::root(),
+		row_count: 3,
+		runtime_context: &runtime,
+	};
+	let edit = Value::Blob(Blob::new(encode_edit(0, 0, &[(0, 1)])));
+	let list = factory::any_typed("tiles", [Value::List(vec![edit])], ValueType::List(Box::new(ValueType::Blob)));
+	let prepared = paint.prepare(&mut ctx, &[None, None, Some(&list)]).unwrap();
+	assert!(prepared.is_some(), "paint must prepare from a constant tiles list");
+	let blank = Blob::new(encode_tile(&[0u8; TILE_BYTES]));
+	let args =
+		vec![factory::blob("pixels", vec![blank.clone(), blank]), factory::uint2("tile", [0u16, 0, 0]), list];
+
+	match paint.execute_prepared(&mut ctx, &args, prepared.as_ref()) {
+		Err(RoutineError::FunctionExecutionFailed {
+			..
+		}) => {}
+		other => panic!("ragged arguments must fail execution, got {other:?}"),
+	}
 }

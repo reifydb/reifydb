@@ -13,8 +13,11 @@ use reifydb::{
 		value::column::factory::{any_typed, blob, int4},
 	},
 	routine::abi::{
-		Arity, Function, FunctionKind, Routine, RoutineInfo, broadcast::row_of, context::FunctionContext,
-		error::RoutineError, registry::RoutinesConfigurator,
+		Arity, Function, FunctionKind, Prepared, Routine, RoutineInfo,
+		broadcast::row_of,
+		context::{FunctionContext, check_lengths},
+		error::RoutineError,
+		registry::RoutinesConfigurator,
 	},
 	value::{
 		params::Params,
@@ -32,7 +35,7 @@ pub const TILES_PER_SIDE: u8 = 128;
 pub const TILE_BYTES: usize = TILE * TILE;
 pub const COLORS: i32 = 32;
 
-const DEFLATE_LEVEL: u8 = 1;
+const DEFLATE_LEVEL: u8 = 3;
 
 pub fn encode_tile(pixels: &[u8]) -> Vec<u8> {
 	compress_to_vec(pixels, DEFLATE_LEVEL)
@@ -154,18 +157,8 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 		ctx: &mut FunctionContext<'a>,
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
-		let failed = |reason: String| RoutineError::FunctionExecutionFailed {
-			function: ctx.fragment.clone(),
-			reason,
-		};
-		let last = args.len() - 1;
 		let rows = ctx.row_count;
-		let edits = edit_list(&ColumnView::try_from(&args[last])?.get_value(0))
-			.map_err(failed)?
-			.into_iter()
-			.map(|edit| decode_edit(&edit))
-			.collect::<Result<Vec<_>, _>>()
-			.map_err(failed)?;
+		let edits = decode_edits(ctx, &args[args.len() - 1])?;
 		match self.function {
 			TileFunction::TileKeys => {
 				let mut keys: Vec<u16> = edits.iter().map(|edit| tile_key(edit.tx, edit.ty)).collect();
@@ -182,42 +175,68 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 				let count = edits.iter().map(|edit| edit.pixels.len() as i32).sum::<i32>();
 				Ok(int4(ctx.fragment.text(), (0..rows).map(|_| count)))
 			}
-			TileFunction::Paint => {
-				let mut by_tile: HashMap<u16, Vec<(usize, u8)>> = HashMap::new();
-				for edit in edits {
-					by_tile.entry(tile_key(edit.tx, edit.ty)).or_default().extend(edit.pixels);
-				}
-				let tiles_view = ColumnView::try_from(&args[0])?;
-				let tiles = blobs(ctx, 0, &tiles_view)?;
-				let keys_view = ColumnView::try_from(&args[1])?;
-				let keys = match &keys_view.data {
-					ViewData::Uint2(keys) => keys,
-					_ => {
-						return Err(RoutineError::FunctionInvalidArgumentType {
-							function: ctx.fragment.clone(),
-							argument_index: 1,
-							expected: vec![ValueType::Uint2],
-							actual: keys_view.get_type(),
-						});
-					}
-				};
-				let mut painted = Vec::with_capacity(rows);
-				for row in 0..rows {
-					let key = keys.value(row_of(keys.len(), row));
-					let edit = by_tile
-						.get(&key)
-						.ok_or_else(|| failed(format!("tile {key} has no edit")))?;
-					let mut pixels =
-						decode_tile(tiles.value(row_of(tiles.len(), row))).map_err(failed)?;
-					for &(index, color) in edit {
-						pixels[index] = color;
-					}
-					painted.push(Blob::new(encode_tile(&pixels)));
-				}
-				Ok(blob(ctx.fragment.text(), painted))
-			}
+			TileFunction::Paint => paint_rows(ctx, &group_by_tile(edits), args),
 		}
 	}
+}
+
+type EditsByTile = HashMap<u16, Vec<(usize, u8)>>;
+
+fn failed(ctx: &FunctionContext<'_>, reason: String) -> RoutineError {
+	RoutineError::FunctionExecutionFailed {
+		function: ctx.fragment.clone(),
+		reason,
+	}
+}
+
+fn decode_edits(ctx: &FunctionContext<'_>, tiles: &(FieldRef, ArrayRef)) -> Result<Vec<TileEdit>, RoutineError> {
+	edit_list(&ColumnView::try_from(tiles)?.get_value(0))
+		.map_err(|reason| failed(ctx, reason))?
+		.into_iter()
+		.map(|edit| decode_edit(&edit))
+		.collect::<Result<Vec<_>, _>>()
+		.map_err(|reason| failed(ctx, reason))
+}
+
+fn group_by_tile(edits: Vec<TileEdit>) -> EditsByTile {
+	let mut by_tile: EditsByTile = HashMap::new();
+	for edit in edits {
+		by_tile.entry(tile_key(edit.tx, edit.ty)).or_default().extend(edit.pixels);
+	}
+	by_tile
+}
+
+fn paint_rows(
+	ctx: &FunctionContext<'_>,
+	by_tile: &EditsByTile,
+	args: &[(FieldRef, ArrayRef)],
+) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let tiles_view = ColumnView::try_from(&args[0])?;
+	let tiles = blobs(ctx, 0, &tiles_view)?;
+	let keys_view = ColumnView::try_from(&args[1])?;
+	let keys = match &keys_view.data {
+		ViewData::Uint2(keys) => keys,
+		_ => {
+			return Err(RoutineError::FunctionInvalidArgumentType {
+				function: ctx.fragment.clone(),
+				argument_index: 1,
+				expected: vec![ValueType::Uint2],
+				actual: keys_view.get_type(),
+			});
+		}
+	};
+	let mut painted = Vec::with_capacity(ctx.row_count);
+	for row in 0..ctx.row_count {
+		let key = keys.value(row_of(keys.len(), row));
+		let edit = by_tile.get(&key).ok_or_else(|| failed(ctx, format!("tile {key} has no edit")))?;
+		let mut pixels =
+			decode_tile(tiles.value(row_of(tiles.len(), row))).map_err(|reason| failed(ctx, reason))?;
+		for &(index, color) in edit {
+			pixels[index] = color;
+		}
+		painted.push(Blob::new(encode_tile(&pixels)));
+	}
+	Ok(blob(ctx.fragment.text(), painted))
 }
 
 impl Function for TileRoutine {
@@ -229,6 +248,35 @@ impl Function for TileRoutine {
 		match self.function {
 			TileFunction::Paint => Arity::Exact(3),
 			TileFunction::TileKeys | TileFunction::PixelCount => Arity::Exact(1),
+		}
+	}
+
+	fn prepare(
+		&self,
+		ctx: &mut FunctionContext<'_>,
+		constants: &[Option<&(FieldRef, ArrayRef)>],
+	) -> Result<Option<Prepared>, RoutineError> {
+		match (self.function, constants.get(2).copied().flatten()) {
+			(TileFunction::Paint, Some(tiles)) => {
+				let prepared: Prepared = Arc::new(group_by_tile(decode_edits(ctx, tiles)?));
+				Ok(Some(prepared))
+			}
+			_ => Ok(None),
+		}
+	}
+
+	fn execute_prepared(
+		&self,
+		ctx: &mut FunctionContext<'_>,
+		args: &[(FieldRef, ArrayRef)],
+		prepared: Option<&Prepared>,
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		match prepared.and_then(|prepared| prepared.downcast_ref::<EditsByTile>()) {
+			Some(by_tile) => {
+				check_lengths(ctx, args)?;
+				paint_rows(ctx, by_tile, args)
+			}
+			None => self.call(ctx, args),
 		}
 	}
 }

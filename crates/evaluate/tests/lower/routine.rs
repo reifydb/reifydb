@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::sync::Arc;
+use std::sync::{
+	Arc,
+	atomic::{AtomicUsize, Ordering},
+};
 
 use arrow_array::ArrayRef;
 use arrow_schema::FieldRef;
 use reifydb_core::value::{batch::empty_batch, column::factory};
 use reifydb_evaluate::lower::LoweredExpr;
 use reifydb_routine_abi::{
-	Arity, Function, FunctionKind, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
+	Arity, Function, FunctionKind, Prepared, Routine, RoutineInfo, context::FunctionContext, error::RoutineError,
 	registry::Routines,
 };
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::value::{
 	Value,
+	column_view::ColumnView,
 	value_type::{ValueType, field::from_field},
 };
 
@@ -270,6 +274,107 @@ fn a_routine_returning_a_typed_list_plans_and_keeps_its_list_type() {
 
 	assert_eq!(array.len(), 3);
 	assert_eq!(from_field(&field).unwrap().value_type, Some(ValueType::List(Box::new(ValueType::Uint2))));
+}
+
+struct CountedPrepare {
+	info: RoutineInfo,
+	prepares: Arc<AtomicUsize>,
+}
+
+fn constant_of(argument: &(FieldRef, ArrayRef)) -> i32 {
+	ColumnView::try_from(argument).unwrap().as_string(0).parse().unwrap()
+}
+
+impl<'a> Routine<FunctionContext<'a>> for CountedPrepare {
+	fn info(&self) -> &RoutineInfo {
+		&self.info
+	}
+
+	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
+		ValueType::Int4
+	}
+
+	fn execute(
+		&self,
+		ctx: &mut FunctionContext<'a>,
+		args: &[(FieldRef, ArrayRef)],
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		Ok(factory::int4(ctx.fragment.text(), vec![constant_of(&args[0]); ctx.row_count]))
+	}
+}
+
+impl Function for CountedPrepare {
+	fn kinds(&self) -> &[FunctionKind] {
+		&[FunctionKind::Scalar]
+	}
+
+	fn arity(&self) -> Arity {
+		Arity::Exact(1)
+	}
+
+	fn prepare(
+		&self,
+		_ctx: &mut FunctionContext<'_>,
+		constants: &[Option<&(FieldRef, ArrayRef)>],
+	) -> Result<Option<Prepared>, RoutineError> {
+		self.prepares.fetch_add(1, Ordering::SeqCst);
+		let prepared: Option<Prepared> =
+			constants[0].map(|constant| Arc::new(constant_of(constant)) as Prepared);
+		Ok(prepared)
+	}
+
+	fn execute_prepared(
+		&self,
+		ctx: &mut FunctionContext<'_>,
+		args: &[(FieldRef, ArrayRef)],
+		prepared: Option<&Prepared>,
+	) -> Result<(FieldRef, ArrayRef), RoutineError> {
+		match prepared.and_then(|prepared| prepared.downcast_ref::<i32>()) {
+			Some(&value) => Ok(factory::int4(ctx.fragment.text(), vec![value; ctx.row_count])),
+			None => self.call(ctx, args),
+		}
+	}
+}
+
+fn counted(prepares: &Arc<AtomicUsize>) -> Env {
+	let routines = Routines::builder()
+		.register_function(Arc::new(CountedPrepare {
+			info: RoutineInfo::new("test::counted"),
+			prepares: prepares.clone(),
+		}))
+		.configure();
+	Env::with_routines(routines, RuntimeContext::testing(0, 0))
+}
+
+#[test]
+fn prepare_runs_once_per_statement_across_batches() {
+	// Preparing on every batch would redo the constant setup per batch, the waste this hook exists to remove.
+	let prepares = Arc::new(AtomicUsize::new(0));
+	let env = counted(&prepares);
+	let lowered = LoweredExpr::new(call("test::counted", vec![number("5")]), "test");
+	let input = rows(4);
+
+	let answers: Vec<Vec<String>> =
+		(0..3).map(|_| strings(&lowered.evaluate(&env.ctx(input.clone())).unwrap())).collect();
+
+	assert_eq!(prepares.load(Ordering::SeqCst), 1);
+	assert!(answers.iter().all(|answer| answer == &vec!["5".to_string(); 4]), "{answers:?}");
+}
+
+#[test]
+fn a_new_statement_prepares_again_with_its_own_constants() {
+	// A setup kept past its statement would answer the previous statement's constant.
+	let prepares = Arc::new(AtomicUsize::new(0));
+	let env = counted(&prepares);
+	let first = LoweredExpr::new(call("test::counted", vec![number("5")]), "test");
+	let second = LoweredExpr::new(call("test::counted", vec![number("9")]), "test");
+
+	let first_answer = strings(&first.evaluate(&env.ctx(rows(2))).unwrap());
+	let second_answer = strings(&second.evaluate(&env.ctx(rows(2))).unwrap());
+
+	assert_eq!(prepares.load(Ordering::SeqCst), 2);
+	assert_eq!(first_answer, vec!["5", "5"]);
+	assert_eq!(second_answer, vec!["9", "9"]);
 }
 
 #[test]

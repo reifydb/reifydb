@@ -39,18 +39,7 @@ impl Context for FunctionContext<'_> {
 		ctx: &mut Self,
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
-		if let Some((_, ragged)) =
-			args.iter().find(|(_, array)| array.len() != 1 && array.len() != ctx.row_count)
-		{
-			return Err(RoutineError::FunctionExecutionFailed {
-				function: ctx.fragment.clone(),
-				reason: format!(
-					"an argument has {} rows, expected 1 or {}",
-					ragged.len(),
-					ctx.row_count
-				),
-			});
-		}
+		check_lengths(ctx, args)?;
 		if !routine.propagates_options() {
 			return routine.execute(ctx, args);
 		}
@@ -95,6 +84,16 @@ impl Context for FunctionContext<'_> {
 			}
 			None => Ok(result),
 		}
+	}
+}
+
+pub fn check_lengths(ctx: &FunctionContext<'_>, args: &[(FieldRef, ArrayRef)]) -> Result<(), RoutineError> {
+	match args.iter().find(|(_, array)| array.len() != 1 && array.len() != ctx.row_count) {
+		Some((_, ragged)) => Err(RoutineError::FunctionExecutionFailed {
+			function: ctx.fragment.clone(),
+			reason: format!("an argument has {} rows, expected 1 or {}", ragged.len(), ctx.row_count),
+		}),
+		None => Ok(()),
 	}
 }
 

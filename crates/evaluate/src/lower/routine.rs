@@ -5,7 +5,7 @@ use std::{
 	fmt,
 	hash::{Hash, Hasher},
 	str::FromStr,
-	sync::Arc,
+	sync::{Arc, OnceLock},
 };
 
 use arrow_array::ArrayRef;
@@ -16,7 +16,7 @@ use reifydb_core::{
 	expression::{CallExpression, Expression, name::display_label},
 	value::column::nulls::split_nulls,
 };
-use reifydb_routine_abi::{Function, context::FunctionContext};
+use reifydb_routine_abi::{Function, Prepared, context::FunctionContext};
 use reifydb_runtime::context::RuntimeContext;
 use reifydb_value::{
 	error::Error,
@@ -103,6 +103,7 @@ pub(super) fn lower_call<'e>(
 				identity: ctx.identity,
 				runtime_context: ctx.runtime_context.clone(),
 				signature: volatile(),
+				prepared: OnceLock::new(),
 			},
 			args.into_iter().map(|node| node.expr).collect(),
 		),
@@ -148,6 +149,7 @@ struct RoutineUdf {
 	identity: IdentityId,
 	runtime_context: RuntimeContext,
 	signature: Signature,
+	prepared: OnceLock<Option<Prepared>>,
 }
 
 impl fmt::Debug for RoutineUdf {
@@ -199,6 +201,8 @@ impl ScalarUDFImpl for RoutineUdf {
 			return_field,
 			..
 		} = args;
+		let constant: Vec<bool> =
+			values.iter().map(|value| matches!(value, ColumnarValue::Scalar(_))).collect();
 		let columns = arg_fields
 			.into_iter()
 			.zip(values)
@@ -216,9 +220,25 @@ impl ScalarUDFImpl for RoutineUdf {
 			row_count: number_rows,
 			runtime_context: &self.runtime_context,
 		};
+		let prepared = match self.prepared.get() {
+			Some(prepared) => prepared.clone(),
+			None => {
+				let constants: Vec<Option<&(FieldRef, ArrayRef)>> = columns
+					.iter()
+					.zip(&constant)
+					.map(|(column, &constant)| constant.then_some(column))
+					.collect();
+				let prepared =
+					self.function.prepare(&mut function_ctx, &constants).map_err(|error| {
+						into_external(error.with_context(self.fragment.clone(), false))
+					})?;
+				let _ = self.prepared.set(prepared.clone());
+				prepared
+			}
+		};
 		let (field, array) = self
 			.function
-			.call(&mut function_ctx, &columns)
+			.execute_prepared(&mut function_ctx, &columns, prepared.as_ref())
 			.map_err(|error| into_external(error.with_context(self.fragment.clone(), false)))?;
 		assert_routine_field(&self.fragment, &field, &return_field);
 		assert_eq!(
@@ -238,7 +258,7 @@ impl ScalarUDFImpl for RoutineUdf {
 
 #[cfg(test)]
 mod tests {
-	use std::sync::Arc;
+	use std::sync::{Arc, OnceLock};
 
 	use reifydb_routine::function::default_in_process_functions;
 	use reifydb_routine_abi::{Function, registry::Routines};
@@ -259,6 +279,7 @@ mod tests {
 			identity: IdentityId::system(),
 			runtime_context: RuntimeContext::with_clock(Clock::Real),
 			signature: volatile(),
+			prepared: OnceLock::new(),
 		}
 	}
 
