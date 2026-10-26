@@ -11,7 +11,7 @@ import { SHAPES, type Point, type ShapeTool, type Tool, isShape, linePixels } fr
 import { isTyping } from './toolbar'
 import { ZoomControl } from './zoom-control'
 
-export const MIN_ZOOM = 1
+export const MIN_ZOOM = 0.5
 export const MAX_ZOOM = 32
 
 const ZOOM_STEP = 1.25
@@ -57,7 +57,7 @@ export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onSh
   const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement>())
   const gestureRef = useRef<Gesture | null>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
-  const [view, setView] = useState<View>({ zoom: MIN_ZOOM, x: 0, y: 0 })
+  const [view, setView] = useState<View>({ zoom: 1, x: 0, y: 0 })
   const [space, setSpace] = useState(false)
   const [panning, setPanning] = useState(false)
   const [preview, setPreview] = useState<Point[] | null>(null)
@@ -174,10 +174,11 @@ export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onSh
 
   const zoomIn = useCallback(() => zoomAt(view.zoom * ZOOM_STEP, size.width / 2, size.height / 2), [zoomAt, view.zoom, size])
   const zoomOut = useCallback(() => zoomAt(view.zoom / ZOOM_STEP, size.width / 2, size.height / 2), [zoomAt, view.zoom, size])
-  const reset = useCallback(() => zoomAt(MIN_ZOOM, size.width / 2, size.height / 2), [zoomAt, size])
+  const reset = useCallback(() => zoomAt(1, size.width / 2, size.height / 2), [zoomAt, size])
   const fit = useCallback(() => {
-    const span = CANVAS_SIZE * MIN_ZOOM
-    setView(clampView({ zoom: MIN_ZOOM, x: (size.width - span) / 2, y: (size.height - span) / 2 }, size))
+    const zoom = Math.max(MIN_ZOOM, Math.min(size.width, size.height) / CANVAS_SIZE)
+    const span = CANVAS_SIZE * zoom
+    setView(clampView({ zoom, x: (size.width - span) / 2, y: (size.height - span) / 2 }, size))
   }, [size])
 
   useEffect(() => {
