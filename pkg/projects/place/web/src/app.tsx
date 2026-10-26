@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react'
 import { Client, type WsClient } from '@reifydb/client'
 import { Loading } from '@reifydb/ui'
 import { wsUrl } from './config'
-import { Header } from './components/header'
+import { BrandBar } from './components/brand-bar'
+import { Landing } from './components/landing'
 import { Place } from './components/place'
 
 type Connection =
@@ -14,6 +15,7 @@ type Connection =
   | { status: 'failed'; message: string }
 
 function App() {
+  const canvas = window.location.pathname.startsWith('/canvas')
   const [connection, setConnection] = useState<Connection>({ status: 'connecting' })
 
   useEffect(() => {
@@ -43,13 +45,13 @@ function App() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg-primary">
-      <Header />
+      {canvas && <BrandBar tag="AGENT CANVAS" />}
       <main className="relative flex min-h-0 flex-1 flex-col">
         {connection.status === 'connecting' && <Loading />}
         {connection.status === 'failed' && (
           <p className="font-mono text-sm text-status-error">Could not connect to ReifyDB: {connection.message}</p>
         )}
-        {connection.status === 'ready' && <Place client={connection.client} />}
+        {connection.status === 'ready' && (canvas ? <Place client={connection.client} /> : <Landing client={connection.client} />)}
       </main>
     </div>
   )

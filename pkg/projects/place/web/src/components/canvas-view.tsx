@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import { CANVAS_SIZE, TILE_SIZE, type TileKey, inCanvas, parseTileKey, tilesInRect } from '@/geometry'
+import type { Activity } from '@/activity'
 import type { Minimap } from '@/minimap'
 import { PALETTE, cssColor } from '@/palette'
 import type { Pending } from '@/pending'
@@ -10,6 +11,7 @@ import type { Pixel } from '@/pack'
 import type { PixelBuffer, Tile } from '@/pixels'
 import { SHAPES, type Point, type ShapeTool, type Tool, isShape, linePixels } from '@/tools'
 import { MinimapPanel } from './minimap-panel'
+import { Pings, tileCenter } from './pings'
 import { isTyping } from './toolbar'
 import { ZoomControl } from './zoom-control'
 
@@ -30,6 +32,7 @@ interface View {
 interface CanvasViewProps {
   buffer: PixelBuffer
   minimap: Minimap
+  activity: Activity
   pending: Pending
   tool: Tool
   color: number
@@ -47,7 +50,7 @@ type Gesture =
   | { kind: 'stroke'; last: Point }
   | { kind: 'shape'; shape: ShapeTool; start: Point }
 
-export function CanvasView({ buffer, minimap, pending, layerVisible, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
+export function CanvasView({ buffer, minimap, activity, pending, layerVisible, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement>())
@@ -287,6 +290,15 @@ export function CanvasView({ buffer, minimap, pending, layerVisible, tool, color
       onWheel={onWheel}
     >
       <canvas ref={canvasRef} className="absolute inset-0 [image-rendering:pixelated]" />
+      <Pings
+        activity={activity}
+        place={(tx, ty) => {
+          const center = tileCenter(tx, ty)
+          const left = view.x + center.x * view.zoom
+          const top = view.y + center.y * view.zoom
+          return left < 0 || top < 0 || left > size.width || top > size.height ? null : { left, top }
+        }}
+      />
       <MinimapPanel
         minimap={minimap}
         view={view}

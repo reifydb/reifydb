@@ -60,3 +60,98 @@
   transform: none;
   filter: none;
 }
+
+.pixel-label {
+  font-family: 'Press Start 2P', ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.live-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary-dark);
+  box-shadow: 0 0 8px var(--color-primary);
+}
+
+.robot-blink .robot-antenna {
+  animation: robot-antenna 1s steps(1) infinite;
+}
+
+@keyframes robot-antenna {
+  50% {
+    fill: #ffe08a;
+  }
+}
+
+.activity-row {
+  animation: activity-in 0.4s ease;
+}
+
+@keyframes activity-in {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+}
+
+.ping-dot {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-primary-dark);
+  transform: translate(-50%, -50%);
+  animation: ping-pulse 1.6s ease-out forwards;
+}
+
+@keyframes ping-pulse {
+  0% {
+    box-shadow: 0 0 0 0 #2e39dfaa;
+  }
+  100% {
+    box-shadow: 0 0 0 22px transparent;
+    opacity: 0;
+  }
+}
+
+.ping-card {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px 0 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  transform: translate(12px, -50%);
+  box-shadow: 0 2px var(--color-primary-dark);
+  animation: ping-fade 2.6s ease forwards;
+}
+
+@keyframes ping-fade {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .robot-blink .robot-antenna,
+  .activity-row,
+  .ping-dot,
+  .ping-card {
+    animation: none;
+  }
+}
+
+.code-navy {
+  background: #10123a;
+  color: #e6e8fd;
+  border: 2px solid #4b52d6;
+  box-shadow: 0 4px var(--color-primary-dark);
+}
