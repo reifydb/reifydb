@@ -32,7 +32,7 @@ pub const TILES_PER_SIDE: u8 = 128;
 pub const TILE_BYTES: usize = TILE * TILE;
 pub const COLORS: i32 = 32;
 
-const DEFLATE_LEVEL: u8 = 6;
+const DEFLATE_LEVEL: u8 = 1;
 
 pub fn encode_tile(pixels: &[u8]) -> Vec<u8> {
 	compress_to_vec(pixels, DEFLATE_LEVEL)
