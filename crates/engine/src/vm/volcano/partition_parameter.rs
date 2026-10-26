@@ -11,13 +11,17 @@ use reifydb_evaluate::stack::{SymbolTable, Variable};
 use reifydb_flow::compiler::child_plans;
 use reifydb_rql::{nodes::PartitionKey, query::QueryPlan};
 use reifydb_transaction::transaction::ScanLayout;
-use reifydb_value::value::{Value, partition::Partition, value_type::ValueType};
+use reifydb_value::value::{
+	Value,
+	partition::{Partition, ScanPartitions},
+	value_type::ValueType,
+};
 
 pub(crate) fn scan_partitions(
 	plan: &QueryPlan,
 	layout: ScanLayout,
 	symbols: &SymbolTable,
-) -> BTreeMap<ObjectId, Option<Partition>> {
+) -> BTreeMap<ObjectId, ScanPartitions> {
 	let mut partitions = BTreeMap::new();
 	collect_partitions(plan, None, layout, symbols, &mut partitions);
 	partitions
@@ -25,31 +29,40 @@ pub(crate) fn scan_partitions(
 
 fn collect_partitions(
 	plan: &QueryPlan,
-	parameter: Option<Partition>,
+	parameter: Option<ScanPartitions>,
 	layout: ScanLayout,
 	symbols: &SymbolTable,
-	partitions: &mut BTreeMap<ObjectId, Option<Partition>>,
+	partitions: &mut BTreeMap<ObjectId, ScanPartitions>,
 ) {
-	let mut record = |source: ObjectId, partition: Option<Partition>| {
+	let mut record = |source: ObjectId, partition: ScanPartitions| {
 		partitions
 			.entry(source)
-			.and_modify(|held: &mut Option<Partition>| {
+			.and_modify(|held: &mut ScanPartitions| {
 				if *held != partition {
-					*held = None;
+					*held = ScanPartitions::All;
 				}
 			})
 			.or_insert(partition);
 	};
 	match plan {
-		QueryPlan::TableScan(node) => {
-			record(ObjectId::Table(node.source.def().id), parameter.or(node.partition))
-		}
-		QueryPlan::ViewScan(node) => {
-			record(ObjectId::View(node.source.def().id()), parameter.or(node.partition))
-		}
+		QueryPlan::TableScan(node) => record(
+			ObjectId::Table(node.source.def().id),
+			parameter.or(node.partition.map(ScanPartitions::One)).unwrap_or(ScanPartitions::All),
+		),
+		QueryPlan::ViewScan(node) => record(
+			ObjectId::View(node.source.def().id()),
+			match parameter {
+				Some(ScanPartitions::Many(_)) | None => {
+					node.partition.map_or(ScanPartitions::All, ScanPartitions::One)
+				}
+				Some(chosen) => chosen,
+			},
+		),
 		QueryPlan::PartitionParameterScan(node) => collect_partitions(
 			&node.scan,
-			choose_partition(&node.keys, layout, symbols),
+			choose_partitions(&node.keys, layout, symbols)
+				.map(ScanPartitions::Many)
+				.or_else(|| choose_partition(&node.keys, layout, symbols).map(ScanPartitions::One)),
 			layout,
 			symbols,
 			partitions,

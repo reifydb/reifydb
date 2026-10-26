@@ -34,7 +34,7 @@ use reifydb_runtime::{
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{
 	Result,
-	value::{identity::IdentityId, partition::Partition},
+	value::{identity::IdentityId, partition::ScanPartitions},
 };
 use tracing::error;
 
@@ -91,7 +91,7 @@ struct SubscriptionFlowState {
 	gate: CommitVersion,
 	identity: IdentityId,
 	held: Option<Vec<Change>>,
-	partitions: BTreeMap<ObjectId, Option<Partition>>,
+	partitions: BTreeMap<ObjectId, ScanPartitions>,
 }
 
 impl SubscriptionFlowState {
@@ -99,7 +99,7 @@ impl SubscriptionFlowState {
 		gate: CommitVersion,
 		identity: IdentityId,
 		hydration_enabled: bool,
-		partitions: BTreeMap<ObjectId, Option<Partition>>,
+		partitions: BTreeMap<ObjectId, ScanPartitions>,
 	) -> Self {
 		Self {
 			keyed_state: HashMap::new(),

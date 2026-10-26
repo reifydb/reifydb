@@ -18,7 +18,7 @@ use reifydb_evaluate::stack::SymbolTable;
 use reifydb_flow::backfill::testing::{InstalledScanHooks, TestingScan};
 use reifydb_flow::backfill::{Scan, backfill_partitioned};
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, params::Params, value::partition::Partition};
+use reifydb_value::{fragment::Fragment, params::Params, value::partition::ScanPartitions};
 
 use crate::{
 	Result,
@@ -44,14 +44,14 @@ pub fn run<'a>(
 	batch_size: NonZeroU64,
 	consume: impl FnMut(&mut TransactionScan<'a>, Change) -> Result<()>,
 ) -> Result<()> {
-	let sources = sources.iter().map(|&source| (source, None)).collect();
+	let sources = sources.iter().map(|&source| (source, ScanPartitions::All)).collect();
 	run_partitioned(services, tx, &sources, batch_size, consume)
 }
 
 pub fn run_partitioned<'a>(
 	services: &Arc<Services>,
 	tx: Transaction<'a>,
-	sources: &BTreeMap<ObjectId, Option<Partition>>,
+	sources: &BTreeMap<ObjectId, ScanPartitions>,
 	batch_size: NonZeroU64,
 	mut consume: impl FnMut(&mut TransactionScan<'a>, Change) -> Result<()>,
 ) -> Result<()> {
@@ -92,7 +92,7 @@ impl<'a> TransactionScan<'a> {
 	fn node(
 		&mut self,
 		source: ObjectId,
-		partition: Option<Partition>,
+		partitions: ScanPartitions,
 		context: &Arc<QueryContext>,
 	) -> Result<(Box<dyn QueryNode>, bool)> {
 		let catalog = &self.services.catalog;
@@ -100,13 +100,27 @@ impl<'a> TransactionScan<'a> {
 		match source {
 			ObjectId::Table(id) => {
 				let table = catalog.resolve_table(tx, id)?;
-				let node = TableScanNode::new(table, partition, Arc::clone(context), tx)?
-					.oldest_first()
-					.keep_dictionary_ids();
+				let node = match partitions {
+					ScanPartitions::All => {
+						TableScanNode::new(table, None, Arc::clone(context), tx)?
+					}
+					ScanPartitions::One(partition) => {
+						TableScanNode::new(table, Some(partition), Arc::clone(context), tx)?
+					}
+					ScanPartitions::Many(listed) => {
+						TableScanNode::with_partitions(table, listed, Arc::clone(context), tx)?
+					}
+				}
+				.oldest_first()
+				.keep_dictionary_ids();
 				Ok((Box::new(node), false))
 			}
 			ObjectId::View(id) => {
 				let view = catalog.resolve_view(tx, id)?;
+				let partition = match partitions {
+					ScanPartitions::One(partition) => Some(partition),
+					ScanPartitions::All | ScanPartitions::Many(_) => None,
+				};
 				let node = ViewScanNode::new(view, partition, Arc::clone(context), tx)?
 					.oldest_first()
 					.keep_dictionary_ids();
@@ -143,13 +157,13 @@ impl Scan for TransactionScan<'_> {
 	}
 
 	fn open(&mut self, source: ObjectId, batch_size: NonZeroU64) -> Result<()> {
-		self.open_partition(source, None, batch_size)
+		self.open_partition(source, ScanPartitions::All, batch_size)
 	}
 
 	fn open_partition(
 		&mut self,
 		source: ObjectId,
-		partition: Option<Partition>,
+		partitions: ScanPartitions,
 		batch_size: NonZeroU64,
 	) -> Result<()> {
 		let context = Arc::new(QueryContext {
@@ -161,7 +175,7 @@ impl Scan for TransactionScan<'_> {
 			identity: self.tx.identity(),
 			memory: query_budget(&self.services),
 		});
-		let (mut node, tagged_series) = self.node(source, partition, &context)?;
+		let (mut node, tagged_series) = self.node(source, partitions, &context)?;
 		node.initialize(&mut self.tx, &context)?;
 		self.opened = Some(Opened {
 			node,

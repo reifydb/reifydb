@@ -31,8 +31,8 @@ use reifydb_transaction::{
 use reifydb_value::{
 	Result,
 	value::{
-		diff_type::DiffType, duration::Duration, identity::IdentityId, row_number::RowNumber,
-		system_columns::require_row_numbers,
+		diff_type::DiffType, duration::Duration, identity::IdentityId, partition::ScanPartitions,
+		row_number::RowNumber, system_columns::require_row_numbers,
 	},
 };
 
@@ -69,7 +69,9 @@ impl SubscriptionWorkerActor {
 		let sources = backfill_sources(&flow)?;
 		let partitioned = sources
 			.iter()
-			.map(|&source| (source, flow_state.partitions.get(&source).copied().flatten()))
+			.map(|&source| {
+				(source, flow_state.partitions.get(&source).cloned().unwrap_or(ScanPartitions::All))
+			})
 			.collect();
 		let batch_size = row_batch_size(&self.catalog)?;
 		let version = lease.version();

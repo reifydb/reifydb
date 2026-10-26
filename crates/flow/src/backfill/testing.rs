@@ -5,7 +5,7 @@ use std::{num::NonZeroU64, sync::Arc};
 
 use arrow_array::RecordBatch;
 use reifydb_core::{common::CommitVersion, interface::catalog::object::ObjectId};
-use reifydb_value::{Result, error::Error, value::partition::Partition};
+use reifydb_value::{Result, error::Error, value::partition::ScanPartitions};
 
 use crate::backfill::Scan;
 
@@ -88,13 +88,13 @@ impl<S: Scan> Scan for TestingScan<S> {
 	}
 
 	fn open(&mut self, source: ObjectId, batch_size: NonZeroU64) -> Result<()> {
-		self.open_partition(source, None, batch_size)
+		self.open_partition(source, ScanPartitions::All, batch_size)
 	}
 
 	fn open_partition(
 		&mut self,
 		source: ObjectId,
-		partition: Option<Partition>,
+		partitions: ScanPartitions,
 		batch_size: NonZeroU64,
 	) -> Result<()> {
 		self.call();
@@ -102,7 +102,7 @@ impl<S: Scan> Scan for TestingScan<S> {
 		if let Outcome::Err(error) = self.hooks.on_open(source) {
 			return Err(error);
 		}
-		self.scan.open_partition(source, partition, batch_size)?;
+		self.scan.open_partition(source, partitions, batch_size)?;
 		self.opened = Some(source);
 		self.pulls = 0;
 		Ok(())

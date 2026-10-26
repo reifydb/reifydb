@@ -22,6 +22,13 @@ impl Partition {
 	}
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScanPartitions {
+	All,
+	One(Partition),
+	Many(Vec<Partition>),
+}
+
 impl From<u128> for Partition {
 	fn from(value: u128) -> Self {
 		Partition(value)

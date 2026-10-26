@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_value::{
 	Result,
 	value::{
-		partition::Partition,
+		partition::ScanPartitions,
 		system_columns::{SystemColumn, keep_system_columns, require_updated_at},
 	},
 };
@@ -37,7 +37,7 @@ pub trait Scan {
 	fn open_partition(
 		&mut self,
 		source: ObjectId,
-		_partition: Option<Partition>,
+		_partitions: ScanPartitions,
 		batch_size: NonZeroU64,
 	) -> Result<()> {
 		self.open(source, batch_size)
@@ -52,19 +52,22 @@ pub fn backfill<S: Scan>(
 	batch_size: NonZeroU64,
 	consume: impl FnMut(&mut S, Change) -> Result<()>,
 ) -> Result<()> {
-	let sources = sources.iter().map(|&source| (source, None)).collect();
+	let sources = sources.iter().map(|&source| (source, ScanPartitions::All)).collect();
 	backfill_partitioned(scan, &sources, batch_size, consume)
 }
 
 pub fn backfill_partitioned<S: Scan>(
 	scan: &mut S,
-	sources: &BTreeMap<ObjectId, Option<Partition>>,
+	sources: &BTreeMap<ObjectId, ScanPartitions>,
 	batch_size: NonZeroU64,
 	mut consume: impl FnMut(&mut S, Change) -> Result<()>,
 ) -> Result<()> {
 	let version = ChangeVersion::from(scan.version());
-	for (&source, &partition) in sources {
-		scan.open_partition(source, partition, batch_size)?;
+	for (&source, partitions) in sources {
+		if matches!(partitions, ScanPartitions::Many(listed) if listed.is_empty()) {
+			continue;
+		}
+		scan.open_partition(source, partitions.clone(), batch_size)?;
 		while let Some(chunk) = scan.next()? {
 			if chunk.num_rows() == 0 {
 				continue;

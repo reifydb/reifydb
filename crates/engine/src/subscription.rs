@@ -17,7 +17,7 @@ use reifydb_value::{
 	Result,
 	error::Error as TypeError,
 	params::Params,
-	value::{duration::Duration, identity::IdentityId, partition::Partition, system_columns::SystemColumn},
+	value::{duration::Duration, identity::IdentityId, partition::ScanPartitions, system_columns::SystemColumn},
 };
 
 use crate::engine::StandardEngine;
@@ -29,7 +29,7 @@ pub struct SubscriptionContext {
 	pub symbols: SymbolTable,
 	pub params: Params,
 	pub named_system_columns: Vec<SystemColumn>,
-	pub partitions: BTreeMap<ObjectId, Option<Partition>>,
+	pub partitions: BTreeMap<ObjectId, ScanPartitions>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
