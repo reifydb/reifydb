@@ -454,4 +454,14 @@ impl SingleWalCheckpoint for SingleStoreCheckpoint {
 		});
 		Ok(())
 	}
+
+	fn durable_head(&self) -> Result<Option<Lsn>> {
+		let cursors = self.wal.cursors().unwrap_or_else(|err| {
+			panic!(
+				"commit log durable head could not be read for the {} checkpoint: {err}",
+				self.floor.name()
+			)
+		});
+		Ok(cursors.durable)
+	}
 }

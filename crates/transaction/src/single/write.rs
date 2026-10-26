@@ -188,6 +188,7 @@ impl<'a> SingleWriteTransaction<'a> {
 		SingleRecord::encode_deltas(&deltas, &mut encoded);
 		check_record_size(&encoded)?;
 		let store = self.inner.store.write();
+		let _in_flight = store.begin_commit();
 		let lsn = self
 			.inner
 			.wal

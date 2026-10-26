@@ -32,6 +32,10 @@ impl SingleWalCheckpoint for NoWal {
 	fn saved_through(&self, _through: Lsn) -> reifydb_value::Result<()> {
 		Ok(())
 	}
+
+	fn durable_head(&self) -> reifydb_value::Result<Option<Lsn>> {
+		Ok(None)
+	}
 }
 
 test_each_path! { in "crates/store-single/tests/scripts/single" as tiered_single => test_tiered }

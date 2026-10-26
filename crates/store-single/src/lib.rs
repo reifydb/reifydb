@@ -31,7 +31,7 @@ use reifydb_core::{
 use reifydb_runtime::shutdown::Shutdown;
 use reifydb_value::util::cowvec::CowVec;
 use reifydb_wal::lsn::Lsn;
-use store::{SinglePersistentProbeMetrics, StandardSingleStore};
+use store::{SingleCommitGuard, SinglePersistentProbeMetrics, StandardSingleStore};
 use tier::{commit::buffer::SingleCommitMetrics, persistent::SinglePageCacheMetrics};
 
 pub struct SingleStoreVersion;
@@ -118,6 +118,12 @@ impl SingleStore {
 	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
 		match self {
 			SingleStore::Standard(store) => store.saved_lsn(),
+		}
+	}
+
+	pub fn begin_commit(&self) -> SingleCommitGuard {
+		match self {
+			SingleStore::Standard(store) => store.begin_commit(),
 		}
 	}
 }

@@ -340,6 +340,8 @@ pub trait SingleWalCheckpoint: Send + Sync + 'static {
 	fn make_durable(&self, through: Lsn) -> Result<()>;
 
 	fn saved_through(&self, through: Lsn) -> Result<()>;
+
+	fn durable_head(&self) -> Result<Option<Lsn>>;
 }
 
 #[derive(Debug, Clone)]

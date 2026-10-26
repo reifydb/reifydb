@@ -3,7 +3,9 @@
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use std::mem;
-use std::sync::Arc;
+#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, atomic::AtomicUsize};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
@@ -40,9 +42,11 @@ pub struct FlushActorState {
 pub struct Flusher {
 	dirty: Arc<Mutex<DirtyMap>>,
 	through: Arc<Mutex<Option<Lsn>>>,
+	in_flight: Arc<AtomicUsize>,
 	persistent: SinglePersistentTier,
 	checkpoint: Arc<dyn SingleWalCheckpoint>,
 	draining: Mutex<()>,
+	last_saved: Mutex<Option<Lsn>>,
 }
 
 #[allow(dead_code)]
@@ -56,15 +60,18 @@ impl Flusher {
 	pub fn new(
 		dirty: Arc<Mutex<DirtyMap>>,
 		through: Arc<Mutex<Option<Lsn>>>,
+		in_flight: Arc<AtomicUsize>,
 		persistent: SinglePersistentTier,
 		checkpoint: Arc<dyn SingleWalCheckpoint>,
 	) -> Self {
 		Self {
 			dirty,
 			through,
+			in_flight,
 			persistent,
 			checkpoint,
 			draining: Mutex::new(()),
+			last_saved: Mutex::new(None),
 		}
 	}
 
@@ -72,9 +79,33 @@ impl Flusher {
 		let _draining = self.draining.lock();
 		let (drained, through) = self.take_dirty();
 		if drained.is_empty() {
+			self.advance_idle();
 			return;
 		}
 		self.flush_to_persistent(drained, through);
+	}
+
+	fn advance_idle(&self) {
+		let head = self.checkpoint.durable_head().unwrap_or_else(|err| {
+			panic!("single idle flush could not read the commit log durable head: {err}")
+		});
+		{
+			let dirty = self.dirty.lock();
+			if self.in_flight.load(Ordering::SeqCst) != 0 || !dirty.is_empty() {
+				return;
+			}
+		}
+		let Some(head) = head else {
+			return;
+		};
+		let mut last_saved = self.last_saved.lock();
+		if last_saved.is_some_and(|last| head <= last) {
+			return;
+		}
+		self.checkpoint.saved_through(head).unwrap_or_else(|err| {
+			panic!("single idle flush could not move its commit log floor to lsn {}: {err}", head.as_u64())
+		});
+		*last_saved = Some(head);
 	}
 
 	#[inline]
@@ -107,6 +138,7 @@ impl Flusher {
 					through.as_u64()
 				)
 			});
+			*self.last_saved.lock() = Some(through);
 		}
 		debug!(rows = count, "single persistent flush completed");
 	}

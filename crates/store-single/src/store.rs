@@ -6,7 +6,7 @@ use std::{
 	ops::{Bound, Deref},
 	sync::{
 		Arc,
-		atomic::{AtomicU64, Ordering},
+		atomic::{AtomicU64, AtomicUsize, Ordering},
 	},
 };
 
@@ -53,6 +53,14 @@ pub struct SinglePersistentProbeMetrics {
 #[derive(Clone)]
 pub struct StandardSingleStore(Arc<StandardSingleStoreInner>);
 
+pub struct SingleCommitGuard(Arc<AtomicUsize>);
+
+impl Drop for SingleCommitGuard {
+	fn drop(&mut self) {
+		self.0.fetch_sub(1, Ordering::SeqCst);
+	}
+}
+
 pub struct StandardSingleStoreInner {
 	pub(crate) commit: Option<SingleCommitBufferTier>,
 	pub(crate) persistent: Option<SinglePersistentTier>,
@@ -62,6 +70,7 @@ pub struct StandardSingleStoreInner {
 	pub(crate) flusher: Option<Arc<Flusher>>,
 	pub(crate) dirty: Arc<Mutex<DirtyMap>>,
 	pub(crate) through: Arc<Mutex<Option<Lsn>>>,
+	pub(crate) in_flight: Arc<AtomicUsize>,
 	pub(crate) persistent_probes: AtomicU64,
 	pub(crate) persistent_absent: AtomicU64,
 	_spawner: ActorSpawner,
@@ -77,6 +86,7 @@ impl StandardSingleStore {
 		let spawner = config.spawner.clone();
 		let dirty: Arc<Mutex<DirtyMap>> = Arc::new(Mutex::new(HashMap::new()));
 		let through: Arc<Mutex<Option<Lsn>>> = Arc::new(Mutex::new(None));
+		let in_flight = Arc::new(AtomicUsize::new(0));
 
 		#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 		let (persistent, flush_actor, flusher) = {
@@ -87,6 +97,7 @@ impl StandardSingleStore {
 					Arc::new(Flusher::new(
 						Arc::clone(&dirty),
 						Arc::clone(&through),
+						Arc::clone(&in_flight),
 						p.clone(),
 						Arc::clone(&cfg.checkpoint),
 					)),
@@ -114,6 +125,7 @@ impl StandardSingleStore {
 			flusher,
 			dirty,
 			through,
+			in_flight,
 			persistent_probes: AtomicU64::new(0),
 			persistent_absent: AtomicU64::new(0),
 			_spawner: spawner,
@@ -123,6 +135,11 @@ impl StandardSingleStore {
 	pub fn commit_logged(&self, deltas: CowVec<Delta>, lsn: Lsn) -> Result<()> {
 		let entries = self.entries_from_deltas(&deltas);
 		self.apply_to_tiers(entries, Some(lsn))
+	}
+
+	pub fn begin_commit(&self) -> SingleCommitGuard {
+		self.in_flight.fetch_add(1, Ordering::SeqCst);
+		SingleCommitGuard(Arc::clone(&self.in_flight))
 	}
 
 	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
@@ -540,6 +557,10 @@ mod tests {
 		fn saved_through(&self, _through: Lsn) -> Result<()> {
 			Ok(())
 		}
+
+		fn durable_head(&self) -> Result<Option<Lsn>> {
+			Ok(None)
+		}
 	}
 
 	fn memory_with_persistent_sqlite(
@@ -613,6 +634,10 @@ mod tests {
 			self.calls.lock().push(("saved_through", through.as_u64()));
 			Ok(())
 		}
+
+		fn durable_head(&self) -> Result<Option<Lsn>> {
+			panic!("recording wal has no durable head; this fake must not reach the idle pass")
+		}
 	}
 
 	#[test]
@@ -641,6 +666,99 @@ mod tests {
 			*wal.calls.lock(),
 			vec![("make_durable", 4)],
 			"the log must be made durable but its floor must stay put while sqlite has not saved lsn 4"
+		);
+	}
+
+	struct DurableHeadWal {
+		durable_head: Lsn,
+		racer: Mutex<Option<StandardSingleStore>>,
+		racing: Mutex<Vec<SingleCommitGuard>>,
+		saved: Mutex<Vec<u64>>,
+	}
+
+	impl DurableHeadWal {
+		fn at(head: u64) -> Arc<Self> {
+			Arc::new(Self {
+				durable_head: Lsn::new(head),
+				racer: Mutex::new(None),
+				racing: Mutex::new(Vec::new()),
+				saved: Mutex::new(Vec::new()),
+			})
+		}
+	}
+
+	impl SingleWalCheckpoint for DurableHeadWal {
+		fn make_durable(&self, _through: Lsn) -> Result<()> {
+			Ok(())
+		}
+
+		fn saved_through(&self, through: Lsn) -> Result<()> {
+			self.saved.lock().push(through.as_u64());
+			Ok(())
+		}
+
+		fn durable_head(&self) -> Result<Option<Lsn>> {
+			match self.racer.lock().as_ref() {
+				Some(store) => {
+					self.racing.lock().push(store.begin_commit());
+					Ok(Some(Lsn::new(self.durable_head.as_u64() + 1)))
+				}
+				None => Ok(Some(self.durable_head)),
+			}
+		}
+	}
+
+	#[test]
+	fn a_held_commit_guard_keeps_a_quiet_flush_from_advancing() {
+		// A floor moved past a commit still between its log append and the dirty map lets gc drop that record.
+		let wal = DurableHeadWal::at(7);
+		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn SingleWalCheckpoint>);
+
+		let _held = store.begin_commit();
+		assert!(store.flush_pending_blocking());
+
+		assert!(
+			wal.saved.lock().is_empty(),
+			"a quiet flush must not move the single floor while a commit is in flight, otherwise gc drops a \
+			 record the store never saved"
+		);
+	}
+
+	#[test]
+	fn the_durable_head_is_read_before_the_in_flight_check() {
+		// A head read after the in-flight check can cover a commit that started in between, which must never be
+		// saved.
+		let wal = DurableHeadWal::at(7);
+		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn SingleWalCheckpoint>);
+		*wal.racer.lock() = Some(store.clone());
+
+		assert!(store.flush_pending_blocking());
+
+		assert!(
+			wal.saved.lock().is_empty(),
+			"the commit that started while the head was read must keep the floor put, otherwise the floor \
+			 passes lsn 8 before the store holds it"
+		);
+	}
+
+	#[test]
+	fn a_dropped_guard_lets_the_next_quiet_flush_advance() {
+		// A guard that never releases its count pins the single floor forever, so gc never drops a segment
+		// again.
+		let wal = DurableHeadWal::at(7);
+		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn SingleWalCheckpoint>);
+
+		let held = store.begin_commit();
+		assert!(store.flush_pending_blocking());
+		assert!(wal.saved.lock().is_empty(), "the held guard must keep the floor put");
+
+		drop(held);
+		assert!(store.flush_pending_blocking());
+
+		assert_eq!(
+			*wal.saved.lock(),
+			vec![7],
+			"once the commit finished, a quiet flush must move the single floor to the log head"
 		);
 	}
 
