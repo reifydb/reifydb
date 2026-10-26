@@ -6,9 +6,10 @@ use reifydb_engine::subscription::HydrateError;
 use reifydb_sub_core::{
 	errors::CreateSubscriptionError,
 	handler::{
-		BatchSubscribeError, SubscribeError, handle_batch_subscribe as shared_batch_subscribe,
-		handle_batch_unsubscribe as shared_batch_unsubscribe, handle_subscribe as shared_subscribe,
+		BatchSubscribeError, SubscribeError, handle_batch_unsubscribe as shared_batch_unsubscribe,
+		handle_subscribe as shared_subscribe, hydrate_batch_subscribe, register_batch_subscribe,
 	},
+	host::SubscribeHost,
 };
 use reifydb_sub_server::{
 	execute::ExecuteError,
@@ -16,12 +17,13 @@ use reifydb_sub_server::{
 };
 use reifydb_subscription::batch::BatchId;
 use reifydb_value::{error::Error, params::Params, value::identity::IdentityId};
+use tokio::spawn;
 
 use crate::{
 	handler::{ConnectionContext, build_error, error_to_response},
 	protocol::{BatchSubscribeRequest, BatchUnsubscribeRequest, SubscribeDecodeError, SubscribeRequest},
 	response::{BatchSubscriptionInfo, Response},
-	subscription::registry::WsWireSink,
+	subscription::registry::{PushMessage, WsWireSink},
 };
 
 fn subscribe_identity(connection: Option<IdentityId>) -> IdentityId {
@@ -104,21 +106,41 @@ pub(crate) async fn handle_batch_subscribe(
 	};
 
 	let host = conn.state.subscribe_host(metadata);
-	match shared_batch_subscribe(
+	match register_batch_subscribe(
 		&host,
 		conn.connection_id,
 		identity,
 		&queries,
-		sink,
+		sink.clone(),
 		conn.registry,
 		format,
 		conn.shutdown.clone(),
 	)
 	.await?
 	{
-		Ok(ack) => {
+		Ok((ack, hydration)) => {
+			let ctx = host.context().clone();
+			let registry = conn.registry.clone();
+			let push_tx = conn.push_tx.clone();
+			let batch_id = hydration.batch_id();
+			let hydrating = spawn(async move {
+				match hydrate_batch_subscribe::<_, ExecuteError>(
+					&ctx, &sink, &registry, format, hydration,
+				)
+				.await
+				{
+					Ok(Ok(())) => {}
+					Ok(Err(_)) => {
+						let _ = push_tx.send(PushMessage::BatchClosed {
+							batch_id,
+						});
+					}
+					Err(error) => panic!("hydrating websocket batch {batch_id} failed: {error}"),
+				}
+			});
 			let handles = conn.batch_remote_tasks.entry(ack.batch_id).or_default();
 			handles.extend(ack.remote_handles);
+			handles.push(hydrating);
 			let subscriptions_for_ack: Vec<BatchSubscriptionInfo> = ack
 				.subscriptions
 				.into_iter()

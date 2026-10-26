@@ -64,6 +64,20 @@ pub struct BatchAck {
 	pub remote_handles: Vec<JoinHandle<()>>,
 }
 
+pub struct BatchHydration {
+	batch_id: BatchId,
+	identity: IdentityId,
+	local_hydrations: Vec<LocalHydration>,
+	effective_max_rows: HashMap<SubscriptionId, u64>,
+	server_cap: u64,
+}
+
+impl BatchHydration {
+	pub fn batch_id(&self) -> BatchId {
+		self.batch_id
+	}
+}
+
 pub struct SubscribeAck {
 	pub subscription_id: SubscriptionId,
 	pub remote_handle: Option<JoinHandle<()>>,
@@ -394,6 +408,41 @@ pub async fn handle_batch_subscribe<S: WireSink, H: SubscribeHost>(
 	format: S::Format,
 	shutdown: WatchReceiver<bool>,
 ) -> Result<Result<BatchAck, BatchSubscribeError<H::Error>>, Error> {
+	let (ack, hydration) = match register_batch_subscribe(
+		host,
+		connection_id,
+		identity,
+		queries,
+		sink.clone(),
+		registry,
+		format,
+		shutdown,
+	)
+	.await?
+	{
+		Ok(parts) => parts,
+		Err(e) => return Ok(Err(e)),
+	};
+	if let Err(e) = hydrate_batch_subscribe(host.context(), &sink, registry, format, hydration).await? {
+		for handle in ack.remote_handles {
+			handle.abort();
+		}
+		return Ok(Err(e));
+	}
+	Ok(Ok(ack))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn register_batch_subscribe<S: WireSink, H: SubscribeHost>(
+	host: &H,
+	connection_id: ConnectionId,
+	identity: IdentityId,
+	queries: &[(String, Params, SubscribeOptions)],
+	sink: S,
+	registry: &Arc<SubscriptionRegistry<S>>,
+	format: S::Format,
+	shutdown: WatchReceiver<bool>,
+) -> Result<Result<(BatchAck, BatchHydration), BatchSubscribeError<H::Error>>, Error> {
 	if queries.is_empty() {
 		return Ok(Err(BatchSubscribeError::Empty));
 	}
@@ -437,22 +486,6 @@ pub async fn handle_batch_subscribe<S: WireSink, H: SubscribeHost>(
 		}
 	};
 
-	if let Err(e) = hydrate_batch_locals(
-		ctx,
-		identity,
-		&sink,
-		registry,
-		format,
-		batch_id,
-		&local_hydrations,
-		&effective_max_rows,
-		server_cap,
-	)
-	.await?
-	{
-		return Ok(Err(e));
-	}
-
 	let remote_handles = spawn_batch_remote_proxies(registry, batch_id, remote_subscriptions_taken, &shutdown);
 
 	debug!(
@@ -462,11 +495,41 @@ pub async fn handle_batch_subscribe<S: WireSink, H: SubscribeHost>(
 		subscriptions_for_ack.len()
 	);
 
-	Ok(Ok(BatchAck {
-		batch_id,
-		subscriptions: subscriptions_for_ack,
-		remote_handles,
-	}))
+	Ok(Ok((
+		BatchAck {
+			batch_id,
+			subscriptions: subscriptions_for_ack,
+			remote_handles,
+		},
+		BatchHydration {
+			batch_id,
+			identity,
+			local_hydrations,
+			effective_max_rows,
+			server_cap,
+		},
+	)))
+}
+
+pub async fn hydrate_batch_subscribe<S: WireSink, E>(
+	ctx: &SubscribeContext,
+	sink: &S,
+	registry: &Arc<SubscriptionRegistry<S>>,
+	format: S::Format,
+	hydration: BatchHydration,
+) -> Result<Result<(), BatchSubscribeError<E>>, Error> {
+	hydrate_batch_locals(
+		ctx,
+		hydration.identity,
+		sink,
+		registry,
+		format,
+		hydration.batch_id,
+		&hydration.local_hydrations,
+		&hydration.effective_max_rows,
+		hydration.server_cap,
+	)
+	.await
 }
 
 type LocalHydration = (SubscriptionId, String, HydrationConfig, Option<Duration>);

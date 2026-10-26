@@ -24,6 +24,7 @@ export class TileStream {
   constructor(
     private readonly client: PlaceClient,
     private readonly sink: TileSink,
+    private readonly onClosed: () => void,
   ) {}
 
   start(): Promise<void> {
@@ -52,7 +53,7 @@ export class TileStream {
         },
       })
     }
-    this.batch = (await this.client.batchSubscribe(chunks)).batchId
+    this.batch = (await this.client.batchSubscribe(chunks, { onClosed: this.onClosed })).batchId
   }
 
   private async unsubscribe(): Promise<void> {

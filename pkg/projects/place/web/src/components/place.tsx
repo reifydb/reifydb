@@ -20,9 +20,13 @@ export function Place({ client }: { client: PlaceClient }) {
   const pending = useMemo(() => new Pending(), [])
   const stream = useMemo(
     () =>
-      new TileStream(client, {
-        put: (tx, ty, bytes, version) => void buffer.put(tx, ty, bytes, version),
-      }),
+      new TileStream(
+        client,
+        {
+          put: (tx, ty, bytes, version) => void buffer.put(tx, ty, bytes, version),
+        },
+        () => setMessage('Live updates failed: the tile stream was closed.'),
+      ),
     [client, buffer],
   )
   const pendingVersion = useSyncExternalStore(

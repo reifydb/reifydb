@@ -14,6 +14,7 @@ let db: TestDb
 let client: BridgeClient
 let buffer: PixelBuffer
 let stream: TileStream
+let closed: number
 
 beforeAll(() => {
   create = loadBackend()
@@ -31,9 +32,14 @@ beforeEach(async () => {
   await markReady(db)
   client = anonymousClient(db)
   buffer = new PixelBuffer()
-  stream = new TileStream(client, {
-    put: (tx, ty, bytes, version) => void buffer.put(tx, ty, bytes, version),
-  })
+  closed = 0
+  stream = new TileStream(
+    client,
+    {
+      put: (tx, ty, bytes, version) => void buffer.put(tx, ty, bytes, version),
+    },
+    () => closed++,
+  )
 })
 
 async function paint(x: number, y: number, color: number) {
@@ -130,6 +136,17 @@ describe('tile stream', () => {
     await vi.waitFor(() => expect(buffer.color(10, 10)).toBe(0))
 
     expect(buffer.color(200, 0)).toBeUndefined()
+  })
+
+  it('reports a closed batch to its owner', async () => {
+    // A late hydration failure closes the batch after the ack; without a report the canvas silently freezes.
+    const subscribe = vi.spyOn(client, 'batchSubscribe')
+    await stream.start()
+    const callbacks = (subscribe.mock.calls[0] as unknown[])[1] as { onClosed?: () => void } | undefined
+
+    callbacks?.onClosed?.()
+
+    expect(closed).toBe(1)
   })
 
   it('handles changes delivered through onInsert as well as onUpdate', async () => {
