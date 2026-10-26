@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 import type { PlaceClient } from './client'
-import { tilesParam } from './pack'
+import { type Pixel, tilesParam } from './pack'
 import type { Pending } from './pending'
 
 export type CommitResult = { ok: true; committed: number } | { ok: false; message: string }
@@ -27,6 +27,16 @@ export async function commitPending(
   retry: Retry = DEFAULT_RETRY,
 ): Promise<CommitResult> {
   const pixels = pending.entries()
+  const result = await commitPixels(client, pixels, retry)
+  if (result.ok && pixels.length > 0) pending.settle(pixels)
+  return result
+}
+
+export async function commitPixels(
+  client: PlaceClient,
+  pixels: readonly Pixel[],
+  retry: Retry = DEFAULT_RETRY,
+): Promise<CommitResult> {
   if (pixels.length === 0) return { ok: true, committed: 0 }
   for (let attempt = 0; ; attempt++) {
     try {
@@ -40,7 +50,6 @@ export async function commitPending(
       await retry.sleep(backoff + retry.random() * backoff)
     }
   }
-  pending.settle(pixels)
   return { ok: true, committed: pixels.length }
 }
 

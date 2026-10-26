@@ -3,9 +3,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { PlaceClient } from '@/client'
-import { commitPending } from '@/commit'
+import { commitPending, commitPixels } from '@/commit'
 import { MAX_PENDING, inCanvas, tilesInRect } from '@/geometry'
 import { type Stamp, convert, fitSize, preShrinkSize, stampPixels } from '@/image'
+import type { Pixel } from '@/pack'
 import { Pending } from '@/pending'
 import { PixelBuffer } from '@/pixels'
 import { TileStream } from '@/tiles'
@@ -38,8 +39,10 @@ export function Place({ client }: { client: PlaceClient }) {
   const [message, setMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [stamp, setStamp] = useState<Stamp | null>(null)
+  const [placing, setPlacing] = useState<Pixel[] | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previousToolRef = useRef<Tool>('pencil')
+  const imageReturnRef = useRef<Tool>('pencil')
 
   useEffect(
     () => () => {
@@ -64,6 +67,7 @@ export function Place({ client }: { client: PlaceClient }) {
   const onSelectTool = useCallback((next: Tool) => {
     setTool((current) => {
       if (next === 'eyedropper' && current !== 'eyedropper') previousToolRef.current = current
+      if (next === 'image' && current !== 'image') imageReturnRef.current = current === 'eyedropper' ? previousToolRef.current : current
       return next
     })
   }, [])
@@ -99,28 +103,60 @@ export function Place({ client }: { client: PlaceClient }) {
     [pending, buffer],
   )
 
-  const onFile = useCallback((file: File) => {
-    setMessage(null)
-    loadStamp(file).then(setStamp, (error: unknown) => {
-      setMessage(`Image failed: ${error instanceof Error ? error.message : String(error)}`)
-    })
-  }, [])
+  const onFile = useCallback(
+    (file: File) => {
+      setMessage(null)
+      loadStamp(file).then(
+        async (loaded) => {
+          setCommitting(true)
+          const result = await commitPending(client, pending)
+          setCommitting(false)
+          if (!result.ok) {
+            setMessage(`Commit failed, your pixels are kept: ${result.message}`)
+            setTool(imageReturnRef.current)
+            return
+          }
+          setStamp(loaded)
+        },
+        (error: unknown) => {
+          setMessage(`Image failed: ${error instanceof Error ? error.message : String(error)}`)
+        },
+      )
+    },
+    [client, pending],
+  )
 
   const onPlace = useCallback(
     (point: Point) => {
+      if (placing) return
       if (!stamp) {
         setNotice('Pick an image first (U).')
         return
       }
+      const pixels = stampPixels(stamp, point)
+      const inside = pixels.filter((pixel) => inCanvas(pixel.x, pixel.y))
+      if (inside.length === 0) return
       setNotice(null)
-      if (!pending.replace(stampPixels(stamp, point))) setMessage('Image could not be placed.')
+      setMessage(null)
+      setPlacing(pixels)
+      setCommitting(true)
+      commitPixels(client, inside).then((result) => {
+        setCommitting(false)
+        setPlacing(null)
+        if (!result.ok) {
+          setMessage(`Image failed to send: ${result.message}`)
+          return
+        }
+        setStamp(null)
+        setTool((current) => (current === 'image' ? imageReturnRef.current : current))
+      })
     },
-    [pending, stamp],
+    [client, stamp, placing],
   )
 
   const ghost = useMemo(
-    () => (tool === 'image' && stamp && hover ? stampPixels(stamp, hover) : null),
-    [tool, stamp, hover],
+    () => placing ?? (tool === 'image' && stamp && hover ? stampPixels(stamp, hover) : null),
+    [placing, tool, stamp, hover],
   )
 
   const onCommit = async () => {

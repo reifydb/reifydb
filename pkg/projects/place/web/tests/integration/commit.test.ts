@@ -3,7 +3,7 @@
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { storeClient } from '@reifydb/reifydb'
-import { type Retry, commitPending } from '@/commit'
+import { type Retry, commitPending, commitPixels } from '@/commit'
 import { MAX_PENDING } from '@/geometry'
 import { Pending } from '@/pending'
 import { anonymousClient, loadBackend, type BridgeClient, type TestDb, type TestFactory } from '../support/backend'
@@ -159,5 +159,36 @@ describe('commit retry', () => {
     expect(retry.waits).toEqual([75, 150, 300, 600, 1200])
     expect(pending.entries()).toEqual([{ x: 1, y: 1, color: 12 }])
     expect(await colorAt(db, 1, 1)).toBe(0)
+  })
+})
+
+describe('commitPixels', () => {
+  it('writes the given pixels without a pending buffer', async () => {
+    // The image flow sends straight from the stamp; nothing may route through pending.
+    const result = await commitPixels(client, [{ x: 3, y: 1, color: 14 }, { x: 4, y: 1, color: 15 }])
+
+    expect(result).toEqual({ ok: true, committed: 2 })
+    expect(await colorAt(db, 3, 1)).toBe(14)
+    expect(await colorAt(db, 4, 1)).toBe(15)
+  })
+
+  it('sends nothing for an empty list', async () => {
+    // A fully transparent or off-canvas stamp must not cost a server round trip.
+    const command = vi.spyOn(client, 'command')
+
+    expect(await commitPixels(client, [])).toEqual({ ok: true, committed: 0 })
+    expect(command).not.toHaveBeenCalled()
+  })
+})
+
+describe('commitPending after the split', () => {
+  it('does not notify pending when there is nothing to commit', async () => {
+    // The old-pending commit before every image pick runs on an empty buffer most of the time; it must not redraw.
+    const pending = new Pending()
+    let calls = 0
+    pending.subscribe(() => calls++)
+
+    expect(await commitPending(client, pending)).toEqual({ ok: true, committed: 0 })
+    expect(calls).toBe(0)
   })
 })
