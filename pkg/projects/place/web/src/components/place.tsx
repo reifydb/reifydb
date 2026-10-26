@@ -35,6 +35,7 @@ export function Place({ client }: { client: PlaceClient }) {
   )
   const [tool, setTool] = useState<Tool>('pencil')
   const [color, setColor] = useState(1)
+  const [layerVisible, setLayerVisible] = useState(true)
   const [hover, setHover] = useState<Point | null>(null)
   const [committing, setCommitting] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -62,6 +63,7 @@ export function Place({ client }: { client: PlaceClient }) {
   const onStroke = useCallback(
     (points: Point[]) => {
       setNotice(null)
+      setLayerVisible(true)
       for (const point of points) {
         if (!inCanvas(point.x, point.y)) continue
         if (tool === 'eraser') pending.remove(point.x, point.y)
@@ -74,9 +76,10 @@ export function Place({ client }: { client: PlaceClient }) {
   const onShape = useCallback(
     (points: Point[]) => {
       setNotice(null)
+      setLayerVisible(true)
       const pixels = points.filter((point) => inCanvas(point.x, point.y) && !pending.get(point.x, point.y))
       if (!pending.addAll(points.map((point) => ({ ...point, color }))))
-        setNotice(`Needs ${pixels.length} px, ${MAX_PENDING - pending.size} left.`)
+        setNotice(`Needs ${pixels.length} px, your layer has ${MAX_PENDING - pending.size} left.`)
     },
     [pending, color],
   )
@@ -99,7 +102,7 @@ export function Place({ client }: { client: PlaceClient }) {
           const result = await commitPending(client, pending)
           setCommitting(false)
           if (!result.ok) {
-            setMessage(`Commit failed, your pixels are kept: ${result.message}`)
+            setMessage(`Merge failed, your layer is kept: ${result.message}`)
             setTool(imageReturnRef.current)
             return
           }
@@ -131,7 +134,7 @@ export function Place({ client }: { client: PlaceClient }) {
         setCommitting(false)
         setPlacing(null)
         if (!result.ok) {
-          setMessage(`Image failed to send: ${result.message}`)
+          setMessage(`Image merge failed: ${result.message}`)
           return
         }
         setStamp(null)
@@ -152,7 +155,7 @@ export function Place({ client }: { client: PlaceClient }) {
     setNotice(null)
     const result = await commitPending(client, pending)
     setCommitting(false)
-    if (!result.ok) setMessage(`Commit failed, your pixels are kept: ${result.message}`)
+    if (!result.ok) setMessage(`Merge failed, your layer is kept: ${result.message}`)
   }
 
   const count = pending.size
@@ -163,6 +166,7 @@ export function Place({ client }: { client: PlaceClient }) {
       <CanvasView
         buffer={buffer}
         pending={pending}
+        layerVisible={layerVisible}
         tool={tool}
         color={color}
         onStroke={onStroke}
@@ -178,6 +182,8 @@ export function Place({ client }: { client: PlaceClient }) {
         onColor={setColor}
         hover={hover}
         count={count}
+        layerVisible={layerVisible}
+        onLayerVisible={setLayerVisible}
         committing={committing}
         onCommit={onCommit}
         onClear={() => {

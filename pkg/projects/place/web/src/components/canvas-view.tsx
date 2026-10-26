@@ -35,6 +35,7 @@ interface CanvasViewProps {
   onPick: (point: Point) => void
   onHover: (pixel: Point | null) => void
   ghost: Pixel[] | null
+  layerVisible: boolean
   onPlace: (point: Point) => void
 }
 
@@ -43,7 +44,7 @@ type Gesture =
   | { kind: 'stroke'; last: Point }
   | { kind: 'shape'; shape: ShapeTool; start: Point }
 
-export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
+export function CanvasView({ buffer, pending, layerVisible, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement>())
@@ -108,9 +109,13 @@ export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onSh
         context.drawImage(bitmap, view.x + tx * span, view.y + ty * span, span, span)
       }
       const cell = Math.ceil(view.zoom)
-      for (const pixel of pending.entries()) {
-        context.fillStyle = cssColor(pixel.color)
-        context.fillRect(Math.floor(view.x + pixel.x * view.zoom), Math.floor(view.y + pixel.y * view.zoom), cell, cell)
+      if (layerVisible) {
+        context.globalAlpha = 0.85
+        for (const pixel of pending.entries()) {
+          context.fillStyle = cssColor(pixel.color)
+          context.fillRect(Math.floor(view.x + pixel.x * view.zoom), Math.floor(view.y + pixel.y * view.zoom), cell, cell)
+        }
+        context.globalAlpha = 1
       }
       if (preview) {
         context.fillStyle = cssColor(color)
@@ -143,7 +148,7 @@ export function CanvasView({ buffer, pending, tool, color, ghost, onStroke, onSh
       unsubscribePending()
       if (frame !== 0) cancelAnimationFrame(frame)
     }
-  }, [buffer, pending, view, size, preview, color, ghost])
+  }, [buffer, pending, layerVisible, view, size, preview, color, ghost])
 
   const zoomAt = useCallback(
     (zoom: number, cx: number, cy: number) => {
