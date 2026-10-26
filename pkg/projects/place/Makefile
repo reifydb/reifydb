@@ -15,4 +15,4 @@ test:
 	cd web && pnpm install --frozen-lockfile && pnpm test
 
 service:
-	cargo run -p $(PKG)
+	cargo run --release -p $(PKG)
