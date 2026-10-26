@@ -721,13 +721,20 @@ impl MultiWriteTransaction {
 		let conflict_manager = mem::take(&mut self.conflicts);
 
 		let result = match rebase {
-			None => self.oracle.new_commit(base_version, conflict_manager, deltas, Some(prepared)),
+			None => self.oracle.new_commit(
+				base_version,
+				conflict_manager,
+				deltas,
+				Some(prepared),
+				self.source,
+			),
 			Some(rebase) => self.oracle.new_commit_rebased(
 				base_version,
 				conflict_manager,
 				deltas,
 				rebase,
 				Some(prepared),
+				self.source,
 			),
 		};
 		self.release_read_snapshot(base_version);
@@ -762,7 +769,7 @@ impl MultiWriteTransaction {
 		let base_version = self.base_version();
 
 		let rebase = self.take_rebase();
-		let result = self.oracle.advance_unchecked(base_version, deltas, rebase);
+		let result = self.oracle.advance_unchecked(base_version, deltas, rebase, self.source);
 		self.release_read_snapshot(base_version);
 		let (result, deltas) = result?;
 
@@ -813,7 +820,7 @@ impl MultiWriteTransaction {
 			let persistent: Vec<&Delta> =
 				deltas.iter().filter(|delta| self.engine.store.is_persistent(delta.key())).collect();
 			let mut buf = Vec::new();
-			CommitRecord::encode_refs(CommitVersion(0), &persistent, &mut buf);
+			CommitRecord::encode_refs(CommitVersion(0), SourceVersion(0), &persistent, &mut buf);
 			check_record_size(&buf)?;
 			Some(buf)
 		};

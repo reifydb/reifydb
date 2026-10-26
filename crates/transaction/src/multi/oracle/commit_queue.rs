@@ -17,7 +17,10 @@ use std::{
 	thread::{Builder, JoinHandle, park},
 };
 
-use reifydb_core::{common::CommitVersion, delta::Delta};
+use reifydb_core::{
+	common::{CommitVersion, SourceVersion},
+	delta::Delta,
+};
 use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 
 use super::{CommitRebase, CommitShared, CommittedWindow, CreateCommitResult, OracleState, Prepared, SpanTiming};
@@ -35,6 +38,7 @@ struct CommitPayload {
 	deltas: Option<CowVec<Delta>>,
 	rebase: Option<CommitRebase>,
 	prepared: Option<Prepared>,
+	source: Option<SourceVersion>,
 	result: Option<Result<CreateCommitResult>>,
 	evicted: Vec<CommittedWindow>,
 }
@@ -59,6 +63,7 @@ impl CommitRequest {
 		deltas: CowVec<Delta>,
 		rebase: Option<CommitRebase>,
 		prepared: Option<Prepared>,
+		source: Option<SourceVersion>,
 	) -> Self {
 		Self {
 			payload: UnsafeCell::new(CommitPayload {
@@ -68,6 +73,7 @@ impl CommitRequest {
 				deltas: Some(deltas),
 				rebase,
 				prepared,
+				source,
 				result: None,
 				evicted: Vec::new(),
 			}),
@@ -227,9 +233,10 @@ where
 		deltas: CowVec<Delta>,
 		rebase: Option<CommitRebase>,
 		prepared: Option<Prepared>,
+		source: Option<SourceVersion>,
 		window_size: u64,
 	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
-		let request = CommitRequest::new(version, window_size, conflicts, deltas, rebase, prepared);
+		let request = CommitRequest::new(version, window_size, conflicts, deltas, rebase, prepared, source);
 		self.queue.push(&request as *const CommitRequest as *mut CommitRequest);
 		loop {
 			if self.queue.sequencer_active() {
@@ -293,6 +300,7 @@ where
 					deltas,
 					payload.rebase.take(),
 					payload.prepared.take(),
+					payload.source,
 					payload.window_size,
 					timing,
 					&mut payload.evicted,

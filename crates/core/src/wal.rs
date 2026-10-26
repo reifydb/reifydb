@@ -9,7 +9,7 @@ use reifydb_wal::{
 };
 
 use crate::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	delta::{Delta, RemoveAnnounce, SetPre},
 	key::any::TaggedKey,
 };
@@ -27,18 +27,21 @@ const ANNOUNCE_UNOBSERVED: u8 = 2;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitRecord {
 	pub version: CommitVersion,
+	pub source: SourceVersion,
 	pub deltas: Vec<Delta>,
 }
 
 impl CommitRecord {
 	pub const KIND: u32 = 1;
 
-	pub fn stamp_version(encoded: &mut [u8], version: CommitVersion) {
+	pub fn stamp(encoded: &mut [u8], version: CommitVersion, source: SourceVersion) {
 		encoded[..8].copy_from_slice(&version.0.to_le_bytes());
+		encoded[8..16].copy_from_slice(&source.0.to_le_bytes());
 	}
 
-	pub fn encode_refs(version: CommitVersion, deltas: &[&Delta], out: &mut Vec<u8>) {
+	pub fn encode_refs(version: CommitVersion, source: SourceVersion, deltas: &[&Delta], out: &mut Vec<u8>) {
 		out.extend_from_slice(&version.0.to_le_bytes());
+		out.extend_from_slice(&source.0.to_le_bytes());
 		put_len(out, deltas.len());
 		for delta in deltas {
 			match delta {
@@ -95,7 +98,7 @@ impl Body for CommitRecord {
 	}
 
 	fn encode(&self, out: &mut Vec<u8>) {
-		Self::encode_refs(self.version, &self.deltas.iter().collect::<Vec<_>>(), out);
+		Self::encode_refs(self.version, self.source, &self.deltas.iter().collect::<Vec<_>>(), out);
 	}
 
 	fn decode(kind: u32, bytes: &[u8]) -> Result<Self> {
@@ -107,6 +110,7 @@ impl Body for CommitRecord {
 			at: 0,
 		};
 		let version = CommitVersion(reader.u64()?);
+		let source = SourceVersion(reader.u64()?);
 		let count = reader.u32()?;
 		let mut deltas = Vec::new();
 		for _ in 0..count {
@@ -120,6 +124,7 @@ impl Body for CommitRecord {
 		}
 		Ok(Self {
 			version,
+			source,
 			deltas,
 		})
 	}

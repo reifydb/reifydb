@@ -14,7 +14,7 @@ use commit_queue::CommitQueue;
 #[cfg(not(reifydb_single_threaded))]
 use commit_queue::spawn_sequencer;
 use reifydb_core::{
-	common::CommitVersion,
+	common::{CommitVersion, SourceVersion},
 	delta::{Delta, SetPre},
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
@@ -335,9 +335,10 @@ where
 		conflicts: ConflictManager,
 		deltas: CowVec<Delta>,
 		prepared: Option<Prepared>,
+		source: Option<SourceVersion>,
 	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
 		let window_size = self.shared.config.get_config_uint8(ConfigKey::OracleWindowSize);
-		self.shared.commit(version, conflicts, deltas, None, prepared, window_size)
+		self.shared.commit(version, conflicts, deltas, None, prepared, source, window_size)
 	}
 
 	#[instrument(name = "transaction::oracle::new_commit_rebased", level = "debug", skip(self, conflicts, deltas, rebase, prepared), fields(
@@ -359,9 +360,10 @@ where
 		deltas: CowVec<Delta>,
 		rebase: CommitRebase,
 		prepared: Option<Prepared>,
+		source: Option<SourceVersion>,
 	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
 		let window_size = self.shared.config.get_config_uint8(ConfigKey::OracleWindowSize);
-		self.shared.commit(version, conflicts, deltas, Some(rebase), prepared, window_size)
+		self.shared.commit(version, conflicts, deltas, Some(rebase), prepared, source, window_size)
 	}
 	pub(crate) fn bootstrapping_completed(&self) {
 		let mut inner = self.inner.write();
@@ -411,6 +413,7 @@ where
 		version: CommitVersion,
 		mut deltas: CowVec<Delta>,
 		rebase: Option<CommitRebase>,
+		source: Option<SourceVersion>,
 	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
 		let mut inner = self.inner.write();
 		if version < inner.evicted_up_through {
@@ -421,7 +424,7 @@ where
 			rebase(&mut deltas, self.versions.current()?)?;
 		}
 		let (version, lsn) =
-			self.allocate_commit_version(&inner, SpanTiming::current(), &mut deltas, None, false)?;
+			self.allocate_commit_version(&inner, SpanTiming::current(), &mut deltas, None, source, false)?;
 		inner.note_lsn(version, lsn);
 		inner.last_unchecked = version;
 		drop(inner);
@@ -448,6 +451,7 @@ where
 		deltas: &mut CowVec<Delta>,
 		rebase: Option<CommitRebase>,
 		prepared: Option<Prepared>,
+		source: Option<SourceVersion>,
 		window_size: u64,
 		timing: SpanTiming,
 		evicted: &mut Vec<CommittedWindow>,
@@ -465,7 +469,8 @@ where
 		}
 
 		let fresh = state.last_unchecked <= version;
-		let (commit_version, lsn) = self.allocate_commit_version(state, timing, deltas, prepared, fresh)?;
+		let (commit_version, lsn) =
+			self.allocate_commit_version(state, timing, deltas, prepared, source, fresh)?;
 		state.note_lsn(commit_version, lsn);
 
 		let add_start = timing.mark(&self.clock);
@@ -566,6 +571,7 @@ where
 		timing: SpanTiming,
 		deltas: &mut CowVec<Delta>,
 		prepared: Option<Prepared>,
+		source: Option<SourceVersion>,
 		fresh: bool,
 	) -> Result<(CommitVersion, Lsn)> {
 		if state.frozen {
@@ -573,6 +579,7 @@ where
 		}
 		let clock_start = timing.mark(&self.clock);
 		let commit_version = self.versions.reserve()?;
+		let source = source.unwrap_or(SourceVersion::from(commit_version));
 		let buf = match prepared {
 			Some(prepared) if fresh => prepared.buf,
 			Some(prepared) => {
@@ -583,7 +590,7 @@ where
 		};
 		let encoded = match buf {
 			Some(mut buf) => {
-				CommitRecord::stamp_version(&mut buf, commit_version);
+				CommitRecord::stamp(&mut buf, commit_version, source);
 				buf
 			}
 			None => {
@@ -591,7 +598,7 @@ where
 				let persistent: Vec<&Delta> =
 					deltas.iter().filter(|delta| self.store.is_persistent(delta.key())).collect();
 				let mut encoded = Vec::new();
-				CommitRecord::encode_refs(commit_version, &persistent, &mut encoded);
+				CommitRecord::encode_refs(commit_version, source, &persistent, &mut encoded);
 				check_record_size(&encoded)?;
 				encoded
 			}
@@ -885,7 +892,7 @@ mod tests {
 		conflicts.mark_write(&key1);
 		conflicts.mark_write(&key2);
 
-		let (result, _) = oracle.new_commit(CommitVersion(1), conflicts, no_deltas(), None).unwrap();
+		let (result, _) = oracle.new_commit(CommitVersion(1), conflicts, no_deltas(), None, None).unwrap();
 
 		match result {
 			CreateCommitResult::Success {
@@ -924,7 +931,7 @@ mod tests {
 			}
 
 			let version_start = CommitVersion(i as u64 * 500 + 1);
-			let (result, _) = oracle.new_commit(version_start, conflicts, no_deltas(), None).unwrap();
+			let (result, _) = oracle.new_commit(version_start, conflicts, no_deltas(), None, None).unwrap();
 			assert!(matches!(result, CreateCommitResult::Success { .. }));
 		}
 
@@ -947,7 +954,7 @@ mod tests {
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&key1);
 
-		let (result1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None).unwrap();
+		let (result1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None, None).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success { .. }));
 
 		let mut conflicts2 = ConflictManager::new();
@@ -955,7 +962,7 @@ mod tests {
 		conflicts2.mark_range(range);
 		conflicts2.mark_write(&create_test_key("other_key"));
 
-		let (result2, _) = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas(), None).unwrap();
+		let (result2, _) = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas(), None, None).unwrap();
 
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
@@ -971,7 +978,7 @@ mod tests {
 
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&key_k);
-		let (r1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None).unwrap();
+		let (r1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None, None).unwrap();
 		let commit_v1 = match r1 {
 			CreateCommitResult::Success {
 				version: v,
@@ -994,7 +1001,7 @@ mod tests {
 		// Read version 510 sits inside T1's window but before T1's commit, so the conflict is real.
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_range(create_test_range("a", "z"));
-		let (r2, _) = oracle.new_commit(CommitVersion(510), conflicts2, no_deltas(), None).unwrap();
+		let (r2, _) = oracle.new_commit(CommitVersion(510), conflicts2, no_deltas(), None, None).unwrap();
 
 		assert!(
 			matches!(r2, CreateCommitResult::Conflict(_)),
@@ -1016,7 +1023,7 @@ mod tests {
 
 		let mut conflicts_b = ConflictManager::new();
 		conflicts_b.mark_write(&key_beta);
-		let (r_b, _) = oracle.new_commit(CommitVersion(1), conflicts_b, no_deltas(), None).unwrap();
+		let (r_b, _) = oracle.new_commit(CommitVersion(1), conflicts_b, no_deltas(), None, None).unwrap();
 		let commit_v_b = match r_b {
 			CreateCommitResult::Success {
 				version: v,
@@ -1031,7 +1038,7 @@ mod tests {
 
 		let mut conflicts_a = ConflictManager::new();
 		conflicts_a.mark_write(&key_alpha);
-		let (r_a, _) = oracle.new_commit(CommitVersion(1), conflicts_a, no_deltas(), None).unwrap();
+		let (r_a, _) = oracle.new_commit(CommitVersion(1), conflicts_a, no_deltas(), None, None).unwrap();
 		let commit_v_a = match r_a {
 			CreateCommitResult::Success {
 				version: v,
@@ -1060,7 +1067,7 @@ mod tests {
 		let mut conflicts_3 = ConflictManager::new();
 		conflicts_3.mark_write(&key_beta);
 		conflicts_3.mark_range(create_test_range("a", "z"));
-		let (r_3, _) = oracle.new_commit(CommitVersion(100), conflicts_3, no_deltas(), None).unwrap();
+		let (r_3, _) = oracle.new_commit(CommitVersion(100), conflicts_3, no_deltas(), None, None).unwrap();
 
 		assert!(
 			matches!(r_3, CreateCommitResult::Conflict(_)),
@@ -1076,7 +1083,7 @@ mod tests {
 
 		let conflicts = ConflictManager::new();
 
-		let (result, _) = oracle.new_commit(CommitVersion(1), conflicts, no_deltas(), None).unwrap();
+		let (result, _) = oracle.new_commit(CommitVersion(1), conflicts, no_deltas(), None, None).unwrap();
 
 		match result {
 			CreateCommitResult::Success {
@@ -1103,13 +1110,13 @@ mod tests {
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&shared_key);
 
-		let (result1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None).unwrap();
+		let (result1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None, None).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success { .. }));
 
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_write(&shared_key);
 
-		let (result2, _) = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas(), None).unwrap();
+		let (result2, _) = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas(), None, None).unwrap();
 
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
@@ -1123,13 +1130,13 @@ mod tests {
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_write(&shared_key);
 
-		let (result1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None).unwrap();
+		let (result1, _) = oracle.new_commit(CommitVersion(1), conflicts1, no_deltas(), None, None).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success { .. }));
 
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_read(&shared_key);
 
-		let (result2, _) = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas(), None).unwrap();
+		let (result2, _) = oracle.new_commit(CommitVersion(1), conflicts2, no_deltas(), None, None).unwrap();
 
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 	}
@@ -1155,7 +1162,7 @@ mod tests {
 					conflicts.mark_write(&key);
 
 					let (result, _) = oracle_clone
-						.new_commit(CommitVersion(1), conflicts, no_deltas(), None)
+						.new_commit(CommitVersion(1), conflicts, no_deltas(), None, None)
 						.unwrap();
 
 					match result {
@@ -1229,7 +1236,7 @@ mod tests {
 				conflicts.mark_write(&key);
 
 				let (result, _) = oracle_clone
-					.new_commit(CommitVersion(1), conflicts, no_deltas(), None)
+					.new_commit(CommitVersion(1), conflicts, no_deltas(), None, None)
 					.unwrap();
 
 				if let CreateCommitResult::Success {
@@ -1297,7 +1304,7 @@ mod tests {
 					let mut conflicts = ConflictManager::new();
 					conflicts.mark_write(&key);
 					match oracle
-						.new_commit(CommitVersion(1), conflicts, no_deltas(), None)
+						.new_commit(CommitVersion(1), conflicts, no_deltas(), None, None)
 						.unwrap()
 						.0
 					{
@@ -1342,7 +1349,7 @@ mod tests {
 
 		let mut conflicts = ConflictManager::new();
 		conflicts.mark_write(&create_test_key("pre_stop"));
-		let (result, _) = oracle.new_commit(CommitVersion(1), conflicts, no_deltas(), None).unwrap();
+		let (result, _) = oracle.new_commit(CommitVersion(1), conflicts, no_deltas(), None, None).unwrap();
 		assert!(matches!(result, CreateCommitResult::Success { .. }));
 
 		oracle.stop();
@@ -1367,7 +1374,7 @@ mod tests {
 			 an empty window for this transaction"
 		);
 
-		let v1 = match oracle.new_commit(CommitVersion(1), cm1, no_deltas(), None).unwrap().0 {
+		let v1 = match oracle.new_commit(CommitVersion(1), cm1, no_deltas(), None, None).unwrap().0 {
 			CreateCommitResult::Success {
 				version: v,
 				..
@@ -1380,7 +1387,7 @@ mod tests {
 		let mut cm2 = ConflictManager::new();
 		cm2.mark_read(&key);
 		cm2.mark_write(&key);
-		let (r2, _) = oracle.new_commit(CommitVersion(1), cm2, no_deltas(), None).unwrap();
+		let (r2, _) = oracle.new_commit(CommitVersion(1), cm2, no_deltas(), None, None).unwrap();
 
 		assert!(
 			matches!(r2, CreateCommitResult::Conflict(_)),
