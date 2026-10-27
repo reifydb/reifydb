@@ -35,7 +35,11 @@ use reifydb_store_commit::VersionedGetResult;
 #[cfg(reifydb_assertions)]
 use reifydb_value::util::hex::display as hex_display;
 use reifydb_value::{
-	Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec, value::partition::Partition,
+	Result,
+	byte_size::ByteSize,
+	reifydb_assertions,
+	util::cowvec::CowVec,
+	value::{datetime::DateTime, partition::Partition},
 };
 use reifydb_wal::lsn::Lsn;
 use tracing::{instrument, warn};
@@ -713,7 +717,10 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	fn commit_pending(&mut self, mut deltas: CowVec<Delta>) -> Result<(CommitVersion, Lsn, CowVec<Delta>)> {
+	fn commit_pending(
+		&mut self,
+		mut deltas: CowVec<Delta>,
+	) -> Result<(CommitVersion, Lsn, DateTime, CowVec<Delta>)> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -759,10 +766,11 @@ impl MultiWriteTransaction {
 			CreateCommitResult::Success {
 				version,
 				lsn,
+				at,
 			} => {
 				self.pending_query_pin = Some(version);
 				self.clear_pending_state();
-				Ok((version, lsn, deltas))
+				Ok((version, lsn, at, deltas))
 			}
 		}
 	}
@@ -771,7 +779,10 @@ impl MultiWriteTransaction {
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
-	fn commit_pending_unchecked(&mut self, deltas: CowVec<Delta>) -> Result<(CommitVersion, Lsn, CowVec<Delta>)> {
+	fn commit_pending_unchecked(
+		&mut self,
+		deltas: CowVec<Delta>,
+	) -> Result<(CommitVersion, Lsn, DateTime, CowVec<Delta>)> {
 		if self.lifecycle == Lifecycle::Discarded {
 			return Err(TransactionError::RolledBack.into());
 		}
@@ -790,10 +801,11 @@ impl MultiWriteTransaction {
 			CreateCommitResult::Success {
 				version,
 				lsn,
+				at,
 			} => {
 				self.pending_query_pin = Some(version);
 				self.clear_pending_state();
-				Ok((version, lsn, deltas))
+				Ok((version, lsn, at, deltas))
 			}
 		}
 	}
@@ -1002,8 +1014,8 @@ impl MultiWriteTransaction {
 		before_publish: impl FnOnce(CommitVersion),
 		durability: Durability,
 	) -> Result<CommitVersion> {
-		let (commit_version, lsn, deltas) = self.commit_pending(deltas)?;
-		self.finalize_commit(commit_version, lsn, deltas, before_publish, durability)
+		let (commit_version, lsn, at, deltas) = self.commit_pending(deltas)?;
+		self.finalize_commit(commit_version, lsn, at, deltas, before_publish, durability)
 	}
 
 	#[instrument(name = "transaction::multi::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
@@ -1018,8 +1030,8 @@ impl MultiWriteTransaction {
 		self.forget_present_tags();
 		self.resolve_removed_after_set()?;
 		let deltas = self.build_deltas();
-		let (commit_version, lsn, deltas) = self.commit_pending_unchecked(deltas)?;
-		let version = self.finalize_commit(commit_version, lsn, deltas, |_| {}, durability)?;
+		let (commit_version, lsn, at, deltas) = self.commit_pending_unchecked(deltas)?;
+		let version = self.finalize_commit(commit_version, lsn, at, deltas, |_| {}, durability)?;
 		Ok(Committed {
 			version,
 			lsn: Some(lsn),
@@ -1031,6 +1043,7 @@ impl MultiWriteTransaction {
 		&mut self,
 		commit_version: CommitVersion,
 		lsn: Lsn,
+		at: DateTime,
 		deltas: CowVec<Delta>,
 		before_publish: impl FnOnce(CommitVersion),
 		durability: Durability,
@@ -1065,18 +1078,18 @@ impl MultiWriteTransaction {
 			});
 		}
 		before_publish(commit_version);
-		self.publish(commit_version, lsn, deltas);
+		self.publish(commit_version, lsn, at, deltas);
 		Ok(commit_version)
 	}
 
 	#[inline]
-	fn publish(&self, commit_version: CommitVersion, lsn: Lsn, deltas: CowVec<Delta>) {
+	fn publish(&self, commit_version: CommitVersion, lsn: Lsn, at: DateTime, deltas: CowVec<Delta>) {
 		self.oracle.done_commit(commit_version);
 		let version = ChangeVersion {
 			commit: commit_version,
 			source: self.source.unwrap_or(SourceVersion::from(commit_version)),
 		};
-		self.engine.event_bus.emit(PostCommitEvent::new(deltas, version, lsn));
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, version, lsn, at));
 	}
 }
 
@@ -1485,7 +1498,7 @@ mod tests {
 
 		// Allocate commit_version exactly as commit() would, without finalizing it yet.
 		let deltas = txn.build_deltas();
-		let (commit_version, lsn, _) = txn.commit_pending(deltas.clone()).unwrap();
+		let (commit_version, lsn, at, _) = txn.commit_pending(deltas.clone()).unwrap();
 		assert_ne!(commit_version, CommitVersion(0));
 
 		// An unrelated transaction finishing at a higher version is the real-world trigger.
@@ -1504,7 +1517,7 @@ mod tests {
 			racer.0, commit_version.0
 		);
 
-		let result = txn.finalize_commit(commit_version, lsn, deltas, |_| {}, Durability::Async);
+		let result = txn.finalize_commit(commit_version, lsn, at, deltas, |_| {}, Durability::Async);
 		assert_eq!(
 			result.unwrap(),
 			commit_version,
@@ -1841,7 +1854,7 @@ mod tests {
 		let written = appended(&test_bytes("v1"), "+d");
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
 		let deltas = txn.prepare_commit().unwrap();
-		let (_, _, published) = txn.commit_pending(deltas).unwrap();
+		let (_, _, _, published) = txn.commit_pending(deltas).unwrap();
 
 		assert_eq!(
 			published.iter().cloned().collect::<Vec<_>>(),
@@ -1999,7 +2012,7 @@ mod tests {
 		txn.set_rebased(&test_key("meta").into(), appended(&test_bytes("v1"), "+d"), appending("+d")).unwrap();
 		let deltas = txn.prepare_commit().unwrap();
 		unchecked_with(&engine, &[("meta", "v2")]);
-		let (_, _, published) = txn.commit_pending(deltas).unwrap();
+		let (_, _, _, published) = txn.commit_pending(deltas).unwrap();
 
 		assert_eq!(
 			published.iter().cloned().collect::<Vec<_>>(),
@@ -2101,7 +2114,7 @@ mod tests {
 		txn.set_rebased(&test_key("meta").into(), written.clone(), appending("+d")).unwrap();
 		let deltas = txn.prepare_commit().unwrap();
 		let input = deltas.as_slice().as_ptr();
-		let (_, _, published) = txn.commit_pending(deltas).unwrap();
+		let (_, _, _, published) = txn.commit_pending(deltas).unwrap();
 
 		assert_eq!(published.as_slice().as_ptr(), input);
 		let Delta::Set {

@@ -12,8 +12,10 @@ use reifydb_core::{
 		metric::{CdcWrite, CdcWrittenEvent},
 		transaction::PostCommitEvent,
 	},
-	interface::cdc::{Cdc, CdcChange},
-	key::cdc::should_exclude_from_cdc,
+	interface::{
+		cdc::{Cdc, CdcChange},
+		commit::flow_relevant,
+	},
 };
 use reifydb_runtime::{
 	actor::{
@@ -65,16 +67,10 @@ where
 	fn process(&self, version: ChangeVersion, changed_at: DateTime, deltas: Vec<Delta>) -> CdcStorageResult<()> {
 		debug!(version = version.commit.0, delta_count = deltas.len(), "Processing CDC");
 
-		let deltas: Vec<Delta> = deltas.into_iter().filter(|delta| !Self::is_excluded_kind(delta)).collect();
-
-		let cdc_changes: Vec<CdcChange> = deltas.iter().filter_map(delta_to_raw_cdc_change).collect();
+		let cdc_changes: Vec<CdcChange> =
+			deltas.iter().filter(|delta| flow_relevant(delta)).map(delta_to_raw_cdc_change).collect();
 
 		self.write_and_emit(version, changed_at, cdc_changes)
-	}
-
-	#[inline]
-	fn is_excluded_kind(delta: &Delta) -> bool {
-		should_exclude_from_cdc(delta.key().kind())
 	}
 
 	#[inline]
@@ -146,7 +142,7 @@ where
 }
 
 #[inline]
-fn delta_to_raw_cdc_change(delta: &Delta) -> Option<CdcChange> {
+fn delta_to_raw_cdc_change(delta: &Delta) -> CdcChange {
 	match delta {
 		Delta::Set {
 			key,
@@ -161,7 +157,7 @@ fn delta_to_raw_cdc_change(delta: &Delta) -> Option<CdcChange> {
 				SetPre::Absent => None,
 				SetPre::Present(bytes) => Some(bytes.clone()),
 			};
-			Some(match pre {
+			match pre {
 				Some(pre) => CdcChange::Update {
 					key: encoded,
 					pre,
@@ -171,32 +167,32 @@ fn delta_to_raw_cdc_change(delta: &Delta) -> Option<CdcChange> {
 					key: encoded,
 					post: bytes.clone(),
 				},
-			})
+			}
 		}
 		Delta::Remove {
 			key,
 			announce: RemoveAnnounce::Announced {
 				pre,
 			},
-		} => Some(CdcChange::Delete {
+		} => CdcChange::Delete {
 			key: key.encode(),
 			pre: Some(pre.clone()),
 			visible: true,
-		}),
+		},
 		Delta::Remove {
 			key,
 			announce: RemoveAnnounce::Unobserved {
 				pre,
 			},
-		} => Some(CdcChange::Delete {
+		} => CdcChange::Delete {
 			key: key.encode(),
 			pre: Some(pre.clone()),
 			visible: false,
-		}),
+		},
 		Delta::Remove {
+			key,
 			announce: RemoveAnnounce::Silent,
-			..
-		} => None,
+		} => panic!("a silent remove the flow filter drops reached cdc mapping: {:?}", key),
 	}
 }
 

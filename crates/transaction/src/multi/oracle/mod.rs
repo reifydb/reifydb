@@ -35,7 +35,7 @@ use reifydb_runtime::{
 	version_epoch::{EpochSeconds, VersionEpoch},
 };
 use reifydb_store_multi::MultiStore;
-use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
+use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec, value::datetime::DateTime};
 use reifydb_wal::lsn::Lsn;
 use smallvec::SmallVec;
 use tracing::{Span, field, instrument};
@@ -200,6 +200,7 @@ pub(crate) enum CreateCommitResult {
 	Success {
 		version: CommitVersion,
 		lsn: Lsn,
+		at: DateTime,
 	},
 	Conflict(ConflictManager),
 	TooOld,
@@ -427,7 +428,7 @@ where
 		if let Some(rebase) = rebase {
 			rebase(&mut deltas, self.versions.current()?)?;
 		}
-		let (version, lsn) = self.allocate_commit_version(
+		let (version, lsn, at) = self.allocate_commit_version(
 			&inner,
 			SpanTiming::current(),
 			&mut deltas,
@@ -444,6 +445,7 @@ where
 			CreateCommitResult::Success {
 				version,
 				lsn,
+				at,
 			},
 			deltas,
 		))
@@ -481,7 +483,7 @@ where
 		}
 
 		let fresh = state.last_unchecked <= version;
-		let (commit_version, lsn) =
+		let (commit_version, lsn, at) =
 			self.allocate_commit_version(state, timing, deltas, prepared, source, &section, fresh)?;
 		state.note_lsn(commit_version, lsn);
 
@@ -504,6 +506,7 @@ where
 		Ok(CreateCommitResult::Success {
 			version: commit_version,
 			lsn,
+			at,
 		})
 	}
 
@@ -586,7 +589,7 @@ where
 		source: Option<SourceVersion>,
 		section: &OperatorSection,
 		fresh: bool,
-	) -> Result<(CommitVersion, Lsn)> {
+	) -> Result<(CommitVersion, Lsn, DateTime)> {
 		if state.frozen {
 			return Err(TransactionError::ShuttingDown.into());
 		}
@@ -627,10 +630,10 @@ where
 				commit_version.0
 			);
 		}
-		let lsn =
-			self.wal.append_encoded(self.clock.now(), CommitRecord::KIND, encoded).unwrap_or_else(|err| {
-				panic!("commit {} failed to append to the commit log: {err}", commit_version.0)
-			});
+		let at = self.clock.now();
+		let lsn = self.wal.append_encoded(at, CommitRecord::KIND, encoded).unwrap_or_else(|err| {
+			panic!("commit {} failed to append to the commit log: {err}", commit_version.0)
+		});
 		if let Err(err) = MultiVersionCommit::commit(&self.store, deltas.clone(), commit_version) {
 			panic!(
 				"commit {} is in the commit log but failed to install in the store: {err}",
@@ -648,7 +651,7 @@ where
 			commit_version.0,
 		);
 
-		Ok((commit_version, lsn))
+		Ok((commit_version, lsn, at))
 	}
 
 	fn resolve_keys(&self, deltas: &mut CowVec<Delta>, keys: &[TaggedKey], version: CommitVersion) -> Result<()> {
