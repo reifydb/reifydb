@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use arrow_array::RecordBatch;
 use arrow_schema::SchemaRef;
 use reifydb_core::{
 	expression::Expression,
@@ -26,7 +27,7 @@ use super::{
 	},
 };
 use crate::{
-	operator::{HostOperator, host::HostContext, state::seal::coord::Coord},
+	operator::{HostOperator, host::HostContext, row_times, state::seal::coord::Coord},
 	window::{
 		engine::{ExpiryAnchor, config::WindowEngineConfig},
 		span::WindowSpan,
@@ -93,31 +94,24 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 
 	let mut routing = Routing::default();
 
-	let degenerate_span = |_row_idx: usize| {
-		(
-			WindowSpan::new(<DateTime as Coord>::from_order(0), <DateTime as Coord>::from_order(1)),
-			DateTime::default(),
-		)
-	};
-
 	for diff in change.diffs.iter() {
 		match diff {
 			Diff::Insert {
 				post,
 				..
-			} => route_into_buckets(core, post, true, degenerate_span, &mut routing)?,
+			} => route_grouped(core, post, true, &mut routing)?,
 			Diff::Remove {
 				pre,
 				..
-			} => route_into_buckets(core, pre, false, degenerate_span, &mut routing)?,
+			} => route_grouped(core, pre, false, &mut routing)?,
 			Diff::Update {
 				pre,
 				post,
 				..
 			} => {
 				for (pre, post) in distinct_row_runs(pre, post)? {
-					route_into_buckets(core, &pre, false, degenerate_span, &mut routing)?;
-					route_into_buckets(core, &post, true, degenerate_span, &mut routing)?;
+					route_grouped(core, &pre, false, &mut routing)?;
+					route_grouped(core, &post, true, &mut routing)?;
 				}
 			}
 		}
@@ -149,7 +143,19 @@ pub fn apply_aggregate_engine(core: &mut Aggregation, host: &mut dyn HostContext
 		None,
 		ExpiryAnchor::Unindexed,
 		false,
-		Stamp::SpanStart,
+		Stamp::Latest,
 	)?;
 	Ok(Change::from_flow(core.operator, change.version, diffs, change.changed_at))
+}
+
+fn route_grouped(core: &Aggregation, batch: &RecordBatch, is_add: bool, routing: &mut Routing) -> Result<()> {
+	let times = row_times(batch)?;
+	let degenerate = WindowSpan::new(<DateTime as Coord>::from_order(0), <DateTime as Coord>::from_order(1));
+	route_into_buckets(
+		core,
+		batch,
+		is_add,
+		|row_idx| (degenerate, times.get(row_idx).copied().flatten().unwrap_or_default()),
+		routing,
+	)
 }

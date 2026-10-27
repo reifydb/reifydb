@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+#[path = "aggregate_event_time.rs"]
+mod aggregate_event_time;
 #[path = "aggregate_expression_input.rs"]
 mod aggregate_expression_input;
 #[path = "apply_row_numbers.rs"]

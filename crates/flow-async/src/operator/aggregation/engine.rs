@@ -131,6 +131,7 @@ impl Routing {
 
 pub(crate) enum Stamp<'a> {
 	SpanStart,
+	Latest,
 	Session(Duration, &'a SessionBounds, &'a GatedMeta),
 	Earliest(&'a EarliestTimes),
 }
@@ -146,7 +147,7 @@ fn prior_engine_meta(
 			.get(window)
 			.cloned()
 			.expect("the seal gate reads the engine meta of every session window it admits")),
-		Stamp::SpanStart | Stamp::Earliest(_) => {
+		Stamp::SpanStart | Stamp::Latest | Stamp::Earliest(_) => {
 			Ok(get_classified::<_, EngineMeta>(store, from_ref(&EngineMetaKey(group)))?.remove(0))
 		}
 	}
@@ -273,7 +274,7 @@ pub(crate) fn finish_tumbling_engine(
 				(&SessionKey(group_of(groups, r.group, r.span.start.to_order()))).into_group_state_key()
 			})
 			.collect(),
-		Stamp::SpanStart | Stamp::Earliest(_) => arrival
+		Stamp::SpanStart | Stamp::Latest | Stamp::Earliest(_) => arrival
 			.iter()
 			.map(|(hash, span)| {
 				(&EngineMetaKey(group_of(groups, *hash, span.start.to_order()))).into_group_state_key()
@@ -293,9 +294,10 @@ pub(crate) fn finish_tumbling_engine(
 		let prior_first = prior_meta.as_ref().map(|m| m.first_event_time);
 		let batch_first = match stamp {
 			Stamp::Earliest(earliest) => earliest.get(&(r.group, r.span)).map(|ts| ts.to_order()),
-			Stamp::SpanStart | Stamp::Session(..) => None,
+			Stamp::SpanStart | Stamp::Latest | Stamp::Session(..) => None,
 		};
 		let first = prior_first.into_iter().chain(batch_first).min();
+		let latest = prior_last.max(window_max_ts.get(&(r.group, r.span)).map(|ts| ts.to_order()));
 		match r.kind {
 			EmitKind::Remove => {}
 			EmitKind::Insert | EmitKind::Update => {
@@ -319,6 +321,20 @@ pub(crate) fn finish_tumbling_engine(
 		}
 		spans.push(match stamp {
 			Stamp::SpanStart => (r.span, r.span),
+			Stamp::Latest => {
+				let at = |order: Option<u64>| {
+					let time = <DateTime as Coord>::from_order(order.unwrap_or_default());
+					WindowSpan {
+						start: time,
+						end: time,
+					}
+				};
+				match r.kind {
+					EmitKind::Insert => (at(latest), at(latest)),
+					EmitKind::Update => (at(prior_last), at(latest)),
+					EmitKind::Remove => (at(prior_last), at(prior_last)),
+				}
+			}
 			Stamp::Earliest(_) => {
 				let pre = match r.kind {
 					EmitKind::Insert => first,
@@ -390,7 +406,7 @@ pub(crate) fn finish_tumbling_engine(
 		let prior_first = prior_meta.as_ref().map(|m| m.first_event_time);
 		let batch_first = match stamp {
 			Stamp::Earliest(earliest) => earliest.get(&(*hash, *span)).map(|ts| ts.to_order()),
-			Stamp::SpanStart | Stamp::Session(..) => None,
+			Stamp::SpanStart | Stamp::Latest | Stamp::Session(..) => None,
 		};
 		let first = prior_first.into_iter().chain(batch_first).min();
 		let batch_max = window_max_ts.get(&(*hash, *span)).map(|ts| ts.to_order());
