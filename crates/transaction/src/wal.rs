@@ -370,6 +370,7 @@ pub fn replay(
 }
 
 pub fn replay_single(wal: &CommitWal, store: &SingleStore, saved_lsn: Option<Lsn>, enabled: bool) {
+	let _replaying = store.begin_commit();
 	let cursors = wal.cursors().unwrap_or_else(|err| panic!("commit log cursors could not be read at boot: {err}"));
 	if enabled
 		&& let Some(saved) = saved_lsn

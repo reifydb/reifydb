@@ -98,14 +98,10 @@ impl Flusher {
 		let Some(head) = head else {
 			return;
 		};
-		let mut last_saved = self.last_saved.lock();
-		if last_saved.is_some_and(|last| head <= last) {
+		if self.last_saved.lock().is_some_and(|last| head <= last) {
 			return;
 		}
-		self.checkpoint.saved_through(head).unwrap_or_else(|err| {
-			panic!("single idle flush could not move its commit log floor to lsn {}: {err}", head.as_u64())
-		});
-		*last_saved = Some(head);
+		self.flush_to_persistent(DirtyMap::default(), Some(head));
 	}
 
 	#[inline]
