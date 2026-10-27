@@ -68,16 +68,6 @@ impl SubscribeContext {
 		self.max_hydration_rows
 	}
 
-	#[inline]
-	pub fn min_throttle(&self) -> Duration {
-		self.min_throttle
-	}
-
-	#[inline]
-	pub fn min_linger(&self) -> Duration {
-		self.min_linger
-	}
-
 	pub fn clamp_throttle(&self, requested: Option<Duration>) -> Duration {
 		match requested {
 			Some(d) if !d.is_zero() => d.max(self.min_throttle),

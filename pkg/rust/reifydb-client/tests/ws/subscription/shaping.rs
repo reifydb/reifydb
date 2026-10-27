@@ -7,7 +7,7 @@ use reifydb::runtime::context::clock::MockClock;
 use reifydb_client::{ChangeKind, ChangePayload, HydrationConfig, Linger, SubscriptionConfig, Throttle};
 use reifydb_value::value::duration::Duration;
 
-use super::{SubscriptionTestHarness, TestContext, recv_with_timeout};
+use super::{SubscriptionTestHarness, TestContext};
 
 fn ms(m: u64) -> Duration {
 	Duration::from_milliseconds(m as i64).unwrap()
@@ -29,7 +29,7 @@ async fn recv_after_advancing(ctx: &mut TestContext, clock: &MockClock) -> Optio
 	// buffering it: each step exceeds every window used here, so one advance after buffering
 	// opens the gate no matter when buffering landed.
 	for _ in 0..40 {
-		if let Some(change) = recv_with_timeout(&mut ctx.client, 50).await {
+		if let Some(change) = ctx.recv_within(50).await {
 			return Some(change);
 		}
 		clock.advance_millis(500);
@@ -95,9 +95,7 @@ fn hydration_enabled_replays_existing_rows() {
 
 		let sub_id = ctx.subscribe(&table, config(true, None, None)).await?;
 
-		let change = recv_with_timeout(&mut ctx.client, 3000)
-			.await
-			.expect("hydration should replay the pre-existing row");
+		let change = ctx.recv_within(3000).await.expect("hydration should replay the pre-existing row");
 		assert_eq!(change.changes.len(), 1, "the seeded row should be replayed as one frame");
 
 		ctx.close(&sub_id).await
@@ -112,11 +110,12 @@ fn hydration_disabled_skips_replay() {
 
 		let sub_id = ctx.subscribe(&table, config(false, None, None)).await?;
 
-		let replayed = recv_with_timeout(&mut ctx.client, 500).await;
+		let replayed = ctx.recv_within(500).await;
 		assert!(replayed.is_none(), "disabled hydration must not replay the pre-existing row");
 
 		ctx.insert(&table, "{ id: 8, name: 'live' }").await?;
-		let change = recv_with_timeout(&mut ctx.client, 3000)
+		let change = ctx
+			.recv_within(3000)
 			.await
 			.expect("a live insert must still be delivered when hydration is disabled");
 		assert_eq!(change.changes[0].kind, ChangeKind::Insert);

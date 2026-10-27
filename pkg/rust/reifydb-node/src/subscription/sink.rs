@@ -3,20 +3,19 @@
 
 use std::{collections::VecDeque, sync::Arc};
 
-use arrow_array::RecordBatch;
 use reifydb::{
 	codec::{
 		frame::{encode::encode_frames, options::EncodeOptions},
-		wire::{RawChangePayload, WireFormat as ClientWireFormat},
+		wire::WireFormat as ClientWireFormat,
 	},
 	core::interface::catalog::id::SubscriptionId,
 	runtime::sync::mutex::Mutex,
 	sub_core::{
-		envelope::{BinaryKind, encode_rbcf_batch_envelope, encode_rbcf_envelope},
-		wire_sink::{BatchSubscribedEntry, WireSink},
+		envelope::encode_rbcf_change_envelope,
+		wire_sink::{ChangeDelivery, SubscribedEntry, WireSink},
 	},
-	subscription::{batch::BatchId, delivery::DeliveryResult},
-	value::value::{diff_type::DiffType, frame::frame::Frame},
+	subscription::delivery::DeliveryResult,
+	value::value::frame::frame::Frame,
 };
 use tracing::warn;
 
@@ -25,26 +24,19 @@ use tracing::warn;
 /// The WebSocket transport also carries json and frames because a browser may ask for them over a
 /// url. Nothing can ask this transport for anything: the caller is a node process that already
 /// links the rbcf decoder, so a second encoding would be untested weight.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rbcf;
 
 /// One thing the sink has to hand back to node.
 ///
 /// Changes are already encoded because their byte layout is the contract clients decode against.
-/// The close notifications are not: they carry two ids and no offsets, so there is nothing for a
-/// second encoder to get subtly wrong, and node can surface them as plain values.
+/// A close notification is not: it carries one id and no offsets, so there is nothing for a
+/// second encoder to get subtly wrong, and node can surface it as a plain value.
 pub enum NodePush {
 	Change {
 		envelope: Vec<u8>,
 	},
-	BatchChange {
-		envelope: Vec<u8>,
-	},
 	Closed {
-		subscription_id: SubscriptionId,
-	},
-	BatchSubscriptionClosed {
-		batch_id: BatchId,
 		subscription_id: SubscriptionId,
 	},
 }
@@ -96,86 +88,30 @@ impl WireSink for NodeWireSink {
 		ClientWireFormat::Rbcf
 	}
 
-	fn send_subscribed(&self, _sub_id: SubscriptionId) -> DeliveryResult {
-		// The subscription id goes back as the return value of the subscribe call, so there is
-		// nothing to queue: node already has it before the first change can arrive.
+	fn send_subscribed(&self, _subscriptions: &[SubscribedEntry]) -> DeliveryResult {
 		DeliveryResult::Delivered
 	}
 
-	fn send_batch_subscribed(&self, _batch_id: BatchId, _subscriptions: &[BatchSubscribedEntry]) -> DeliveryResult {
-		DeliveryResult::Delivered
-	}
-
-	fn send_change(
-		&self,
-		sub_id: SubscriptionId,
-		op: DiffType,
-		batch: RecordBatch,
-		_format: Self::Format,
-	) -> DeliveryResult {
-		let frames = vec![Frame::from(batch).with_op(op)];
-		match encode(&frames, sub_id) {
-			Some(rbcf) => self.push(NodePush::Change {
-				envelope: encode_rbcf_envelope(BinaryKind::Change, &sub_id.to_string(), &rbcf, None),
-			}),
-			None => DeliveryResult::Disconnected,
-		}
-	}
-
-	fn send_remote_change(
-		&self,
-		sub_id: SubscriptionId,
-		payload: RawChangePayload,
-		_format: Self::Format,
-	) -> DeliveryResult {
-		// A remote change already arrived as rbcf unless the proxy had to fall back, so the
-		// common case reframes bytes it never decodes.
-		let rbcf = match payload {
-			RawChangePayload::Rbcf(bytes) => bytes,
-			other => match other.into_frames() {
-				Ok(frames) => match encode(&frames, sub_id) {
-					Some(bytes) => bytes,
-					None => return DeliveryResult::Disconnected,
-				},
-				Err(e) => {
-					warn!("Failed to decode remote change for {}: {}", sub_id, e);
-					return DeliveryResult::Disconnected;
-				}
-			},
-		};
-		self.push(NodePush::Change {
-			envelope: encode_rbcf_envelope(BinaryKind::Change, &sub_id.to_string(), &rbcf, None),
-		})
-	}
-
-	fn send_batch_envelope(
-		&self,
-		batch_id: BatchId,
-		_format: Self::Format,
-		entries: Vec<(SubscriptionId, Vec<Frame>)>,
-	) -> DeliveryResult {
+	fn send_change(&self, _format: Self::Format, entries: Vec<(SubscriptionId, Vec<Frame>)>) -> ChangeDelivery {
 		let mut encoded: Vec<(String, Vec<u8>)> = Vec::with_capacity(entries.len());
+		let mut failed = Vec::new();
 		for (sub_id, frames) in entries {
-			if let Some(rbcf) = encode(&frames, sub_id) {
-				encoded.push((sub_id.to_string(), rbcf));
+			match encode(&frames, sub_id) {
+				Some(rbcf) => encoded.push((sub_id.to_string(), rbcf)),
+				None => failed.push(sub_id),
 			}
 		}
-		if encoded.is_empty() {
-			return DeliveryResult::Delivered;
+		if !encoded.is_empty() {
+			self.push(NodePush::Change {
+				envelope: encode_rbcf_change_envelope(&encoded),
+			});
 		}
-		self.push(NodePush::BatchChange {
-			envelope: encode_rbcf_batch_envelope(&batch_id.to_string(), &encoded),
-		})
+		ChangeDelivery::Delivered {
+			failed,
+		}
 	}
 
-	fn send_batch_subscription_closed(&self, batch_id: BatchId, subscription_id: SubscriptionId) -> DeliveryResult {
-		self.push(NodePush::BatchSubscriptionClosed {
-			batch_id,
-			subscription_id,
-		})
-	}
-
-	fn send_closed(&self, subscription_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscription_closed(&self, subscription_id: SubscriptionId) -> DeliveryResult {
 		self.push(NodePush::Closed {
 			subscription_id,
 		})

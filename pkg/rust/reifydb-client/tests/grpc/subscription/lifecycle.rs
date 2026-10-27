@@ -4,10 +4,10 @@
 use std::sync::Arc;
 
 use reifydb_client::{
-	BatchStreamEvent, GrpcClient, SubscriptionConfig, WireFormat,
+	GrpcClient, SubscribeItem, SubscriptionConfig, WireFormat,
 	grpc::generated::{
-		BatchSubscribeItem, BatchSubscribeRequest, BatchSubscriptionEvent, batch_subscription_event,
-		reify_db_client::ReifyDbClient,
+		SubscribeItem as ProtoSubscribeItem, SubscribeRequest, SubscriptionEvent,
+		reify_db_client::ReifyDbClient, subscription_event,
 	},
 };
 use reifydb_value::value::duration::Duration;
@@ -35,18 +35,26 @@ fn test_no_changes_after_drop_subscription() {
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
 		let sub = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		drop(sub);
 
 		client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 
 		let mut sub2 = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(&format!("INSERT test::{} [{{ id: 2 }}]", table), None).await.unwrap();
 
@@ -75,9 +83,13 @@ fn test_drop_cleans_up_subscriptions() {
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
 		let _sub = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		drop(_sub);
 	});
@@ -102,16 +114,24 @@ fn test_rapid_subscribe_drop() {
 
 		for _ in 0..10 {
 			let sub = client
-				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+				.subscribe(&[SubscribeItem::new(
+					&format!("from test::{}", table),
+					SubscriptionConfig::default(),
+				)])
 				.await
-				.unwrap();
+				.unwrap()
+				.remove(0);
 			drop(sub);
 		}
 
 		let mut sub = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 		assert!(!sub.subscription_id().is_empty());
 
 		client.command(&format!("INSERT test::{} [{{ id: 999 }}]", table), None).await.unwrap();
@@ -131,14 +151,14 @@ async fn connect_as_root(port: u16) -> GrpcClient {
 	client
 }
 
-async fn batch_receives_change_for(
-	stream: &mut Streaming<BatchSubscriptionEvent>,
+async fn receives_change_for(
+	stream: &mut Streaming<SubscriptionEvent>,
 	subscription_id: &str,
 	timeout_ms: i64,
 ) -> bool {
 	let wait = async {
 		while let Ok(Some(event)) = stream.message().await {
-			if let Some(batch_subscription_event::Event::Change(change)) = event.event
+			if let Some(subscription_event::Event::Change(change)) = event.event
 				&& change.entries.iter().any(|entry| entry.subscription_id == subscription_id)
 			{
 				return true;
@@ -161,12 +181,16 @@ fn another_stream_cannot_unsubscribe_a_subscription_it_does_not_own() {
 		let owner = connect_as_root(port).await;
 		let table = unique_table_name("sub_foreign_unsub");
 		create_test_table(&owner, &table, &[("id", "int4")]).await.unwrap();
-		let mut sub =
-			owner.subscribe(&format!("from test::{}", table), SubscriptionConfig::default()).await.unwrap();
+		let query = format!("from test::{}", table);
+		let mut sub = owner
+			.subscribe(&[SubscribeItem::new(&query, SubscriptionConfig::default())])
+			.await
+			.unwrap()
+			.remove(0);
 
 		let intruder = connect_as_root(port).await;
-		let foreign = intruder.unsubscribe(sub.subscription_id()).await.map_err(|e| e.to_string());
-		let unknown = intruder.unsubscribe("999999").await.map_err(|e| e.to_string());
+		let foreign = intruder.unsubscribe(&[sub.subscription_id()]).await.map_err(|e| e.to_string());
+		let unknown = intruder.unsubscribe(&["999999"]).await.map_err(|e| e.to_string());
 
 		owner.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 
@@ -182,7 +206,7 @@ fn another_stream_cannot_unsubscribe_a_subscription_it_does_not_own() {
 
 #[test]
 fn another_stream_cannot_unsubscribe_a_batch_it_does_not_own() {
-	// Dashboards stream through batches, so an unscoped batch unsubscribe ends every other user's page.
+	// Dashboards open many subscriptions per call, so an unscoped list unsubscribe ends every other user's page.
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
 	let mut server = create_server_instance(&runtime);
@@ -190,36 +214,47 @@ fn another_stream_cannot_unsubscribe_a_batch_it_does_not_own() {
 
 	runtime.block_on(async {
 		let setup = connect_as_root(port).await;
-		let table = unique_table_name("sub_foreign_batch_unsub");
+		let table = unique_table_name("sub_foreign_list_unsub");
 		create_test_table(&setup, &table, &[("id", "int4")]).await.unwrap();
 
 		let mut owner = ReifyDbClient::connect(format!("http://[::1]:{}", port)).await.unwrap();
-		let mut request = Request::new(BatchSubscribeRequest {
-			subscriptions: vec![BatchSubscribeItem {
-				rql: format!("from test::{}", table),
-				options: None,
-			}],
+		let mut request = Request::new(SubscribeRequest {
+			subscriptions: vec![
+				ProtoSubscribeItem {
+					rql: format!("from test::{}", table),
+					options: None,
+				},
+				ProtoSubscribeItem {
+					rql: format!("from test::{}", table),
+					options: None,
+				},
+			],
 		});
 		request.metadata_mut().insert("authorization", "Bearer mysecrettoken".parse().unwrap());
-		let mut stream = owner.batch_subscribe(request).await.unwrap().into_inner();
-		let Some(batch_subscription_event::Event::Subscribed(subscribed)) =
+		let mut stream = owner.subscribe(request).await.unwrap().into_inner();
+		let Some(subscription_event::Event::Subscribed(subscribed)) =
 			stream.message().await.unwrap().and_then(|event| event.event)
 		else {
-			panic!("the owner's batch subscribe must be acknowledged first");
+			panic!("the owner's subscribe must be acknowledged first");
 		};
-		let subscription_id = subscribed.subscriptions[0].subscription_id.clone();
+		let first = subscribed.subscriptions[0].subscription_id.clone();
+		let second = subscribed.subscriptions[1].subscription_id.clone();
 
 		let intruder = connect_as_root(port).await;
-		let foreign = intruder.batch_unsubscribe(&subscribed.batch_id).await.map_err(|e| e.to_string());
-		let unknown = intruder.batch_unsubscribe("12345").await.map_err(|e| e.to_string());
+		let foreign = intruder.unsubscribe(&[&first, &second]).await.map_err(|e| e.to_string());
+		let unknown = intruder.unsubscribe(&["12345", "12346"]).await.map_err(|e| e.to_string());
 
 		setup.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
-
 		assert!(
-			batch_receives_change_for(&mut stream, &subscription_id, 5000).await,
-			"a foreign batch unsubscribe must leave the owner's batch delivering"
+			receives_change_for(&mut stream, &first, 5000).await,
+			"a foreign list unsubscribe must leave the owner's first subscription delivering"
 		);
-		assert_eq!(foreign, unknown, "a foreign batch id must be answered exactly like an unknown one");
+		setup.command(&format!("INSERT test::{} [{{ id: 2 }}]", table), None).await.unwrap();
+		assert!(
+			receives_change_for(&mut stream, &second, 5000).await,
+			"a foreign list unsubscribe must leave the owner's second subscription delivering"
+		);
+		assert_eq!(foreign, unknown, "foreign ids must be answered exactly like unknown ones");
 	});
 
 	cleanup_server(Some(server));
@@ -237,10 +272,14 @@ fn the_owner_still_unsubscribes_its_own_subscription() {
 		let owner = connect_as_root(port).await;
 		let table = unique_table_name("sub_own_unsub");
 		create_test_table(&owner, &table, &[("id", "int4")]).await.unwrap();
-		let mut sub =
-			owner.subscribe(&format!("from test::{}", table), SubscriptionConfig::default()).await.unwrap();
+		let query = format!("from test::{}", table);
+		let mut sub = owner
+			.subscribe(&[SubscribeItem::new(&query, SubscriptionConfig::default())])
+			.await
+			.unwrap()
+			.remove(0);
 
-		owner.unsubscribe(sub.subscription_id()).await.unwrap();
+		owner.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		owner.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 
 		assert!(
@@ -253,8 +292,8 @@ fn the_owner_still_unsubscribes_its_own_subscription() {
 }
 
 #[test]
-fn the_owner_still_unsubscribes_its_own_batch() {
-	// A batch unsubscribe by the handle's own id must stop delivery, or every member keeps streaming.
+fn the_owner_unsubscribes_every_item_of_its_call_in_one_request() {
+	// A list unsubscribe that honours only its first id would leave the other items of the call streaming.
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
 	let mut server = create_server_instance(&runtime);
@@ -262,25 +301,108 @@ fn the_owner_still_unsubscribes_its_own_batch() {
 
 	runtime.block_on(async {
 		let owner = connect_as_root(port).await;
-		let table = unique_table_name("sub_own_batch_unsub");
+		let table = unique_table_name("sub_own_list_unsub");
 		create_test_table(&owner, &table, &[("id", "int4")]).await.unwrap();
 		let query = format!("from test::{}", table);
-		let mut batch = owner
-			.batch_subscribe(&[reifydb_client::BatchSubscribeItem::new(
-				&query,
-				SubscriptionConfig::default(),
-			)])
+		let mut handles = owner
+			.subscribe(&[
+				SubscribeItem::new(&query, SubscriptionConfig::default()),
+				SubscribeItem::new(&query, SubscriptionConfig::default()),
+			])
+			.await
+			.unwrap();
+		let first = handles[0].subscription_id().to_string();
+		let second = handles[1].subscription_id().to_string();
+
+		owner.unsubscribe(&[&first, &second]).await.unwrap();
+		owner.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
+
+		assert!(
+			recv_with_timeout(&mut handles[0], 500).await.is_none(),
+			"the owner's list unsubscribe must stop delivery to the first item"
+		);
+		assert!(
+			recv_with_timeout(&mut handles[1], 500).await.is_none(),
+			"the owner's list unsubscribe must stop delivery to the second item"
+		);
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+fn dropping_one_handle_keeps_its_siblings_streaming() {
+	// Catches dropping one handle of a call closing the stream its sibling handles share.
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		let owner = connect_as_root(port).await;
+		let table = unique_table_name("sub_drop_one_handle");
+		create_test_table(&owner, &table, &[("id", "int4")]).await.unwrap();
+		let query = format!("from test::{}", table);
+		let mut handles = owner
+			.subscribe(&[
+				SubscribeItem::new(&query, SubscriptionConfig::default()),
+				SubscribeItem::new(&query, SubscriptionConfig::default()),
+			])
 			.await
 			.unwrap();
 
-		owner.batch_unsubscribe(batch.batch_id()).await.unwrap();
+		drop(handles.remove(0));
+		let mut sibling = handles.remove(0);
 		owner.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 
-		let after = timeout(Duration::from_milliseconds(500).unwrap().to_std(), batch.recv()).await;
 		assert!(
-			!matches!(after, Ok(Some(BatchStreamEvent::Change(_)))),
-			"the owner's own batch unsubscribe must stop delivery"
+			recv_with_timeout(&mut sibling, 5000).await.is_some(),
+			"dropping one handle must leave its sibling delivering"
 		);
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+fn dropping_every_handle_closes_the_stream() {
+	// Catches the shared stream task outliving the last handle of its call and keeping the subscriptions open.
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		let owner = connect_as_root(port).await;
+		let table = unique_table_name("sub_drop_all_handles");
+		create_test_table(&owner, &table, &[("id", "int4")]).await.unwrap();
+		let query = format!("from test::{}", table);
+		let handles = owner
+			.subscribe(&[
+				SubscribeItem::new(&query, SubscriptionConfig::default()),
+				SubscribeItem::new(&query, SubscriptionConfig::default()),
+			])
+			.await
+			.unwrap();
+		let first = handles[0].subscription_id().to_string();
+		let second = handles[1].subscription_id().to_string();
+
+		drop(handles);
+
+		let mut fresh = owner
+			.subscribe(&[SubscribeItem::new(&query, SubscriptionConfig::default())])
+			.await
+			.unwrap()
+			.remove(0);
+		owner.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
+		assert!(
+			recv_with_timeout(&mut fresh, 5000).await.is_some(),
+			"a new subscription on the same table must still deliver after the old stream closed"
+		);
+
+		let closed = owner.unsubscribe(&[&first, &second]).await.map_err(|e| e.to_string());
+		let unknown = owner.unsubscribe(&["12345", "12346"]).await.map_err(|e| e.to_string());
+		assert_eq!(closed, unknown, "the dropped call's ids must be answered exactly like unknown ones");
 	});
 
 	cleanup_server(Some(server));

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{GrpcClient, SubscriptionConfig, Value, WireFormat};
+use reifydb_client::{GrpcClient, SubscribeItem, SubscriptionConfig, Value, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -27,9 +27,13 @@ fn test_filtered_subscription() {
 		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
 		let mut sub = client
-			.subscribe(&format!("from test::{} filter {{ id > 10 }}", table), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{} filter {{ id > 10 }}", table),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(&format!("INSERT test::{} [{{ id: 15, value: 150 }}]", table), None).await.unwrap();
 
@@ -62,12 +66,13 @@ fn test_no_callback_for_non_matching() {
 		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
 		let mut sub = client
-			.subscribe(
+			.subscribe(&[SubscribeItem::new(
 				&format!("from test::{} filter {{ id > 100 }}", table),
 				SubscriptionConfig::default(),
-			)
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(&format!("INSERT test::{} [{{ id: 5, value: 50 }}]", table), None).await.unwrap();
 

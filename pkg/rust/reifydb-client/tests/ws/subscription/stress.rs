@@ -9,7 +9,7 @@ use std::{
 	},
 };
 
-use reifydb_client::{SubscriptionConfig, WireFormat, WsClient};
+use reifydb_client::{SubscribeItem, SubscriptionConfig, WireFormat, WsClient};
 use reifydb_value::value::duration::Duration;
 use tokio::{
 	runtime::Runtime,
@@ -33,17 +33,19 @@ fn test_many_subscriptions_single_client() {
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		const NUM_SUBS: usize = 50;
-		let mut sub_ids = Vec::new();
+		let mut subs = Vec::new();
 		let mut tables = Vec::new();
 
 		for i in 0..NUM_SUBS {
 			let table = unique_table_name(&format!("stress_{}", i));
 			create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
-			let sub_id = client
-				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			let rql = format!("from test::{}", table);
+			let sub = client
+				.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 				.await
-				.unwrap();
-			sub_ids.push(sub_id);
+				.unwrap()
+				.remove(0);
+			subs.push(sub);
 			tables.push(table);
 		}
 
@@ -51,21 +53,24 @@ fn test_many_subscriptions_single_client() {
 			client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
 		}
 
-		let changes = recv_multiple_with_timeout(&mut client, NUM_SUBS, 30000).await;
+		let mut changes = Vec::new();
+		for sub in &mut subs {
+			changes.extend(recv_multiple_with_timeout(sub, 1, 30000).await);
+		}
 		assert_eq!(changes.len(), NUM_SUBS, "Should receive {} notifications, got {}", NUM_SUBS, changes.len());
 
 		let received_sub_ids: std::collections::HashSet<_> =
 			changes.iter().map(|c| c.subscription_id.as_str()).collect();
-		for sub_id in &sub_ids {
+		for sub in &subs {
 			assert!(
-				received_sub_ids.contains(sub_id.as_str()),
+				received_sub_ids.contains(sub.subscription_id()),
 				"Missing notification for subscription {}",
-				sub_id
+				sub.subscription_id()
 			);
 		}
 
-		for sub_id in &sub_ids {
-			client.unsubscribe(sub_id).await.unwrap();
+		for sub in &subs {
+			client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		}
 		client.close().await.unwrap();
 	});
@@ -103,11 +108,13 @@ fn test_many_concurrent_clients() {
 					WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await?;
 				client.authenticate("mysecrettoken").await?;
 
-				let _sub_id = client
-					.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
-					.await?;
+				let rql = format!("from test::{}", table);
+				let mut sub = client
+					.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
+					.await?
+					.remove(0);
 
-				let change = recv_with_timeout(&mut client, 10000).await;
+				let change = recv_with_timeout(&mut sub, 10000).await;
 				if change.is_some() {
 					counter.fetch_add(1, Ordering::SeqCst);
 				}
@@ -161,29 +168,33 @@ fn test_rapid_subscribe_unsubscribe() {
 
 		const NUM_CYCLES: usize = 100;
 		for i in 0..NUM_CYCLES {
-			let sub_id = client
-				.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			let rql = format!("from test::{}", table);
+			let sub = client
+				.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 				.await
-				.unwrap();
-			client.unsubscribe(&sub_id).await.unwrap();
+				.unwrap()
+				.remove(0);
+			client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 
 			if (i + 1) % 25 == 0 {
 				eprintln!("Completed {} rapid cycles", i + 1);
 			}
 		}
 
-		let sub_id = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", table);
+		let mut sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
-		assert!(!sub_id.is_empty(), "Should get valid subscription after rapid cycles");
+			.unwrap()
+			.remove(0);
+		assert!(!sub.subscription_id().is_empty(), "Should get valid subscription after rapid cycles");
 
 		client.command(&format!("INSERT test::{} [{{ id: 999 }}]", table), None).await.unwrap();
 
-		let change = recv_with_timeout(&mut client, 5000).await;
+		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some(), "Should still receive changes after {} rapid cycles", NUM_CYCLES);
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 
@@ -212,10 +223,12 @@ fn test_client_disconnect_without_unsubscribe() {
 			let mut client =
 				WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 			client.authenticate("mysecrettoken").await.unwrap();
-			let _sub_id = client
-				.subscribe(&format!("from test::{}", shared_table), SubscriptionConfig::default())
+			let rql = format!("from test::{}", shared_table);
+			let _sub = client
+				.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 				.await
-				.unwrap();
+				.unwrap()
+				.remove(0);
 
 			// Dropping without unsubscribe or close simulates an abrupt disconnect.
 			drop(client);
@@ -232,18 +245,23 @@ fn test_client_disconnect_without_unsubscribe() {
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		new_client.authenticate("mysecrettoken").await.unwrap();
 
-		let sub_id = new_client
-			.subscribe(&format!("from test::{}", shared_table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", shared_table);
+		let mut sub = new_client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
-		assert!(!sub_id.is_empty(), "New client should be able to subscribe after abrupt disconnects");
+			.unwrap()
+			.remove(0);
+		assert!(
+			!sub.subscription_id().is_empty(),
+			"New client should be able to subscribe after abrupt disconnects"
+		);
 
 		new_client.command(&format!("INSERT test::{} [{{ id: 1 }}]", shared_table), None).await.unwrap();
 
-		let change = recv_with_timeout(&mut new_client, 5000).await;
+		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some(), "New client should receive notification");
 
-		new_client.unsubscribe(&sub_id).await.unwrap();
+		new_client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		new_client.close().await.unwrap();
 	});
 
@@ -295,20 +313,22 @@ fn test_concurrent_connect_disconnect() {
 						.await?;
 						client.authenticate("mysecrettoken").await?;
 
+						let rql = format!("from test::{}", table);
 						match client
-							.subscribe(
-								&format!("from test::{}", table),
+							.subscribe(&[SubscribeItem::new(
+								&rql,
 								SubscriptionConfig::default(),
-							)
+							)])
 							.await
 						{
-							Ok(sub_id) => {
+							Ok(subs) => {
 								sleep(Duration::from_milliseconds(10)
 									.unwrap()
 									.to_std())
 								.await;
 
-								client.unsubscribe(&sub_id).await?;
+								client.unsubscribe(&[subs[0].subscription_id()])
+									.await?;
 								client.close().await?;
 
 								counter.fetch_add(1, Ordering::SeqCst);
@@ -360,18 +380,20 @@ fn test_concurrent_connect_disconnect() {
 			WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		final_client.authenticate("mysecrettoken").await.unwrap();
 
-		let sub_id = final_client
-			.subscribe(&format!("from test::{}", tables[0]), SubscriptionConfig::default())
+		let rql = format!("from test::{}", tables[0]);
+		let mut sub = final_client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
-		assert!(!sub_id.is_empty(), "Server should still accept new subscriptions");
+			.unwrap()
+			.remove(0);
+		assert!(!sub.subscription_id().is_empty(), "Server should still accept new subscriptions");
 
 		final_client.command(&format!("INSERT test::{} [{{ id: 1 }}]", tables[0]), None).await.unwrap();
 
-		let change = recv_with_timeout(&mut final_client, 5000).await;
+		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some(), "Server should still deliver notifications after stress test");
 
-		final_client.unsubscribe(&sub_id).await.unwrap();
+		final_client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		final_client.close().await.unwrap();
 	});
 
@@ -397,13 +419,15 @@ fn test_subscribe_receive_unsubscribe_cycles() {
 		// on a genuine hang, failing fast and attributed instead of stalling the run.
 		let op_timeout = Duration::from_seconds(30).unwrap();
 		for i in 0..NUM_CYCLES {
-			let sub_id = timeout(
+			let rql = format!("from test::{}", table);
+			let mut sub = timeout(
 				op_timeout.to_std(),
-				client.subscribe(&format!("from test::{}", table), SubscriptionConfig::default()),
+				client.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())]),
 			)
 			.await
 			.unwrap_or_else(|_| panic!("Cycle {}: subscribe timed out", i))
-			.unwrap();
+			.unwrap()
+			.remove(0);
 			timeout(
 				op_timeout.to_std(),
 				client.command(&format!("INSERT test::{} [{{ id: {} }}]", table, i), None),
@@ -412,10 +436,10 @@ fn test_subscribe_receive_unsubscribe_cycles() {
 			.unwrap_or_else(|_| panic!("Cycle {}: command timed out", i))
 			.unwrap();
 
-			let change = recv_with_timeout(&mut client, 500).await;
+			let change = recv_with_timeout(&mut sub, 500).await;
 			assert!(change.is_some(), "Cycle {}: should receive notification", i);
 
-			timeout(op_timeout.to_std(), client.unsubscribe(&sub_id))
+			timeout(op_timeout.to_std(), client.unsubscribe(&[sub.subscription_id()]))
 				.await
 				.unwrap_or_else(|_| panic!("Cycle {}: unsubscribe timed out", i))
 				.unwrap();

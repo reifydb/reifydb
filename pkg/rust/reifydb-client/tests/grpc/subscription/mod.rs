@@ -4,7 +4,9 @@
 use std::{error::Error, future::Future, sync::Arc};
 
 use reifydb::runtime::context::clock::Clock;
-use reifydb_client::{ColumnView, Frame, GrpcChange, GrpcClient, GrpcSubscription, SubscriptionConfig, WireFormat};
+use reifydb_client::{
+	ColumnView, Frame, GrpcChange, GrpcClient, GrpcSubscription, SubscribeItem, SubscriptionConfig, WireFormat,
+};
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::timeout};
 
@@ -127,7 +129,8 @@ impl TestContext {
 		table: &str,
 		config: SubscriptionConfig,
 	) -> Result<GrpcSubscription, Box<dyn Error>> {
-		let sub = self.client.subscribe(&format!("from test::{}", table), config).await?;
+		let query = format!("from test::{}", table);
+		let sub = self.client.subscribe(&[SubscribeItem::new(&query, config)]).await?.remove(0);
 		Ok(sub)
 	}
 

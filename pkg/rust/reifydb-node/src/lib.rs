@@ -25,7 +25,6 @@ use reifydb::{
 		},
 	},
 	embedded,
-	subscription::batch::BatchId,
 };
 use reifydb_codec::json::{to::convert_frames, wire_type::WireValueType};
 use reifydb_sub_server::wire::{WireParams, WireValue, resolve_type};
@@ -91,34 +90,15 @@ pub struct Frame {
 	pub row_numbers: Vec<String>,
 }
 
-#[napi(object)]
-pub struct BatchSubscriptionInfo {
-	pub index: u32,
-	pub subscription_id: String,
-}
-
-#[napi(object)]
-pub struct BatchSubscribed {
-	pub batch_id: String,
-	pub subscriptions: Vec<BatchSubscriptionInfo>,
-}
-
-#[napi(object)]
-pub struct ClosedSubscription {
-	pub batch_id: String,
-	pub subscription_id: String,
-}
-
 /// What one [`ReifydbNode::tick`] produced.
 ///
 /// `envelopes` are byte-identical to the binary frames the WebSocket transport sends, so the same
-/// client decoder reads them. The close notifications are values rather than encoded frames: they
-/// carry ids and no offsets, so there is nothing a second encoder could get subtly wrong.
+/// client decoder reads them. A close is a value rather than an encoded frame: it carries one id
+/// and no offsets, so there is nothing a second encoder could get subtly wrong.
 #[napi(object)]
 pub struct SubscriptionTick {
 	pub envelopes: Vec<Buffer>,
 	pub closed: Vec<String>,
-	pub batch_subscription_closed: Vec<ClosedSubscription>,
 }
 
 fn frames_to_napi(frames: &[CoreFrame]) -> Result<Vec<Frame>> {
@@ -306,46 +286,40 @@ impl ReifydbNode {
 		offload(move || node.query_as_now(identity, rql, params)).await
 	}
 
-	#[napi(js_name = "subscribeRoot")]
-	pub async fn subscribe_root(
-		&self,
-		query: String,
-		params: Option<ParamsInput>,
-		options: Option<SubscribeOptionsInput>,
-	) -> Result<String> {
-		self.subscribe_with(IdentityId::root(), query, params, options).await
-	}
-
 	#[napi(js_name = "subscribeAs")]
 	pub async fn subscribe_as(
 		&self,
 		identity: String,
-		query: String,
-		params: Option<ParamsInput>,
-		options: Option<SubscribeOptionsInput>,
-	) -> Result<String> {
-		let identity = parse_identity(&identity)?;
-		self.subscribe_with(identity, query, params, options).await
-	}
-
-	#[napi(js_name = "batchSubscribeRoot")]
-	pub async fn batch_subscribe_root(&self, subscriptions: Vec<SubscriptionInput>) -> Result<BatchSubscribed> {
-		self.batch_subscribe_with(IdentityId::root(), subscriptions).await
-	}
-
-	#[napi(js_name = "batchSubscribeAs")]
-	pub async fn batch_subscribe_as(
-		&self,
-		identity: String,
 		subscriptions: Vec<SubscriptionInput>,
-	) -> Result<BatchSubscribed> {
+	) -> Result<Vec<String>> {
 		let identity = parse_identity(&identity)?;
-		self.batch_subscribe_with(identity, subscriptions).await
+		let queries = subscriptions
+			.into_iter()
+			.map(|subscription| {
+				Ok((
+					subscription.query,
+					parse_params(subscription.params)?,
+					parse_options(subscription.options)?,
+				))
+			})
+			.collect::<Result<Vec<_>>>()?;
+		let subscription_ids = self
+			.subscriptions
+			.subscribe(identity, &queries)
+			.await
+			.map_err(|e| NapiError::from_reason(format!("{e:?}")))?
+			.map_err(|e| NapiError::from_reason(format!("{e:?}")))?;
+		Ok(subscription_ids.into_iter().map(|id| id.to_string()).collect())
 	}
 
-	#[napi(js_name = "batchUnsubscribe")]
-	pub async fn batch_unsubscribe(&self, batch_id: String) -> Result<()> {
-		self.batch_unsubscribe_with(parse_batch_id(&batch_id)?).await
+	#[napi]
+	pub async fn unsubscribe(&self, subscription_ids: Vec<String>) -> Result<()> {
+		let subscription_ids =
+			subscription_ids.iter().map(|raw| parse_subscription_id(raw)).collect::<Result<Vec<_>>>()?;
+		self.subscriptions
+			.unsubscribe(&subscription_ids)
+			.await
+			.map_err(|e| NapiError::from_reason(format!("{e:?}")))
 	}
 
 	#[napi(js_name = "caughtUp")]
@@ -364,10 +338,9 @@ impl ReifydbNode {
 
 #[napi]
 impl ReifydbNode {
-	#[napi]
-	pub fn unsubscribe(&self, subscription_id: String) -> Result<()> {
-		let subscription_id = parse_subscription_id(&subscription_id)?;
-		self.subscriptions.unsubscribe(subscription_id).map_err(|e| NapiError::from_reason(format!("{e:?}")))
+	#[napi(js_name = "rootIdentity")]
+	pub fn root_identity(&self) -> String {
+		IdentityId::root().to_string()
 	}
 
 	#[napi]
@@ -422,66 +395,6 @@ impl ReifydbNode {
 	}
 }
 
-impl ReifydbNode {
-	async fn subscribe_with(
-		&self,
-		identity: IdentityId,
-		query: String,
-		params: Option<ParamsInput>,
-		options: Option<SubscribeOptionsInput>,
-	) -> Result<String> {
-		let params = parse_params(params)?;
-		let options = parse_options(options)?;
-		self.subscriptions
-			.subscribe(identity, query, params, options)
-			.await
-			.map_err(|e| NapiError::from_reason(format!("{e:?}")))?
-			.map(|id| id.to_string())
-			.map_err(|e| NapiError::from_reason(format!("{e:?}")))
-	}
-
-	async fn batch_unsubscribe_with(&self, batch_id: BatchId) -> Result<()> {
-		self.subscriptions
-			.batch_unsubscribe(batch_id)
-			.await
-			.map_err(|e| NapiError::from_reason(format!("{e:?}")))
-	}
-
-	async fn batch_subscribe_with(
-		&self,
-		identity: IdentityId,
-		subscriptions: Vec<SubscriptionInput>,
-	) -> Result<BatchSubscribed> {
-		let queries = subscriptions
-			.into_iter()
-			.map(|subscription| {
-				Ok((
-					subscription.query,
-					parse_params(subscription.params)?,
-					parse_options(subscription.options)?,
-				))
-			})
-			.collect::<Result<Vec<_>>>()?;
-		let ack = self
-			.subscriptions
-			.batch_subscribe(identity, &queries)
-			.await
-			.map_err(|e| NapiError::from_reason(format!("{e:?}")))?
-			.map_err(|e| NapiError::from_reason(format!("{e:?}")))?;
-		Ok(BatchSubscribed {
-			batch_id: ack.batch_id.to_string(),
-			subscriptions: ack
-				.subscriptions
-				.into_iter()
-				.map(|m| BatchSubscriptionInfo {
-					index: m.index as u32,
-					subscription_id: m.subscription_id.to_string(),
-				})
-				.collect(),
-		})
-	}
-}
-
 async fn offload<T, F>(work: F) -> Result<T>
 where
 	T: Send + 'static,
@@ -494,26 +407,15 @@ fn to_tick(pushes: Vec<NodePush>) -> SubscriptionTick {
 	let mut tick = SubscriptionTick {
 		envelopes: Vec::new(),
 		closed: Vec::new(),
-		batch_subscription_closed: Vec::new(),
 	};
 	for push in pushes {
 		match push {
 			NodePush::Change {
 				envelope,
-			}
-			| NodePush::BatchChange {
-				envelope,
 			} => tick.envelopes.push(envelope.into()),
 			NodePush::Closed {
 				subscription_id,
 			} => tick.closed.push(subscription_id.to_string()),
-			NodePush::BatchSubscriptionClosed {
-				batch_id,
-				subscription_id,
-			} => tick.batch_subscription_closed.push(ClosedSubscription {
-				batch_id: batch_id.to_string(),
-				subscription_id: subscription_id.to_string(),
-			}),
 		}
 	}
 	tick
@@ -522,10 +424,6 @@ fn to_tick(pushes: Vec<NodePush>) -> SubscriptionTick {
 fn render(result: ReifyResult<Vec<CoreFrame>>) -> Result<Vec<Frame>> {
 	let frames = result.map_err(|e| NapiError::from_reason(format!("{e:?}")))?;
 	frames_to_napi(&frames)
-}
-
-fn parse_batch_id(raw: &str) -> Result<BatchId> {
-	raw.parse::<BatchId>().map_err(|_| NapiError::from_reason(format!("invalid batch id: {raw}")))
 }
 
 fn parse_subscription_id(raw: &str) -> Result<SubscriptionId> {

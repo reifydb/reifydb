@@ -58,12 +58,12 @@ pub struct SubscriptionConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct BatchSubscribeItem<'a> {
+pub struct SubscribeItem<'a> {
 	pub rql: &'a str,
 	pub config: SubscriptionConfig,
 }
 
-impl<'a> BatchSubscribeItem<'a> {
+impl<'a> SubscribeItem<'a> {
 	pub fn new(rql: &'a str, config: SubscriptionConfig) -> Self {
 		Self {
 			rql,

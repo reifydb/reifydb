@@ -25,8 +25,6 @@ pub enum ResponsePayload {
 	Call(CallResponse),
 	Subscribed(SubscribedResponse),
 	Unsubscribed(UnsubscribedResponse),
-	BatchSubscribed(BatchSubscribedResponse),
-	BatchUnsubscribed(BatchUnsubscribedResponse),
 	Logout(LogoutResponse),
 }
 
@@ -89,29 +87,18 @@ pub struct CallResponse {
 
 #[derive(Debug, Serialize)]
 pub struct SubscribedResponse {
-	pub subscription_id: String,
+	pub subscriptions: Vec<SubscriptionInfo>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct UnsubscribedResponse {
-	pub subscription_id: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BatchSubscribedResponse {
-	pub batch_id: String,
-	pub subscriptions: Vec<BatchSubscriptionInfo>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BatchSubscriptionInfo {
+pub struct SubscriptionInfo {
 	pub index: usize,
 	pub subscription_id: String,
 }
 
 #[derive(Debug, Serialize)]
-pub struct BatchUnsubscribedResponse {
-	pub batch_id: String,
+pub struct UnsubscribedResponse {
+	pub subscription_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -123,40 +110,24 @@ pub struct LogoutResponse {
 #[serde(tag = "type", content = "payload")]
 pub enum ServerPush {
 	Change(ChangePayload),
-	BatchChange(BatchChangePayload),
-	BatchSubscriptionClosed(BatchSubscriptionClosedPayload),
-	BatchClosed(BatchClosedPayload),
+	SubscriptionClosed(SubscriptionClosedPayload),
 }
 
 #[derive(Debug, Serialize)]
 pub struct ChangePayload {
+	pub entries: Vec<ChangeEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeEntry {
 	pub subscription_id: String,
 	pub content_type: String,
 	pub body: JsonValue,
 }
 
 #[derive(Debug, Serialize)]
-pub struct BatchChangePayload {
-	pub batch_id: String,
-	pub entries: Vec<BatchChangeEntry>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BatchChangeEntry {
+pub struct SubscriptionClosedPayload {
 	pub subscription_id: String,
-	pub content_type: String,
-	pub body: JsonValue,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BatchSubscriptionClosedPayload {
-	pub batch_id: String,
-	pub subscription_id: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct BatchClosedPayload {
-	pub batch_id: String,
 }
 
 impl Response {
@@ -263,43 +234,20 @@ impl Response {
 		}
 	}
 
-	pub fn subscribed(id: impl Into<String>, subscription_id: impl Into<String>) -> Self {
+	pub fn subscribed(id: impl Into<String>, subscriptions: Vec<SubscriptionInfo>) -> Self {
 		Self {
 			id: id.into(),
 			payload: ResponsePayload::Subscribed(SubscribedResponse {
-				subscription_id: subscription_id.into(),
-			}),
-		}
-	}
-
-	pub fn unsubscribed(id: impl Into<String>, subscription_id: impl Into<String>) -> Self {
-		Self {
-			id: id.into(),
-			payload: ResponsePayload::Unsubscribed(UnsubscribedResponse {
-				subscription_id: subscription_id.into(),
-			}),
-		}
-	}
-
-	pub fn batch_subscribed(
-		id: impl Into<String>,
-		batch_id: impl Into<String>,
-		subscriptions: Vec<BatchSubscriptionInfo>,
-	) -> Self {
-		Self {
-			id: id.into(),
-			payload: ResponsePayload::BatchSubscribed(BatchSubscribedResponse {
-				batch_id: batch_id.into(),
 				subscriptions,
 			}),
 		}
 	}
 
-	pub fn batch_unsubscribed(id: impl Into<String>, batch_id: impl Into<String>) -> Self {
+	pub fn unsubscribed(id: impl Into<String>, subscription_ids: Vec<String>) -> Self {
 		Self {
 			id: id.into(),
-			payload: ResponsePayload::BatchUnsubscribed(BatchUnsubscribedResponse {
-				batch_id: batch_id.into(),
+			payload: ResponsePayload::Unsubscribed(UnsubscribedResponse {
+				subscription_ids,
 			}),
 		}
 	}
@@ -352,35 +300,87 @@ impl Response {
 }
 
 impl ServerPush {
-	pub fn change(subscription_id: impl Into<String>, content_type: impl Into<String>, body: JsonValue) -> Self {
+	pub fn change(entries: Vec<ChangeEntry>) -> Self {
 		Self::Change(ChangePayload {
-			subscription_id: subscription_id.into(),
-			content_type: content_type.into(),
-			body,
-		})
-	}
-
-	pub fn batch_change(batch_id: impl Into<String>, entries: Vec<BatchChangeEntry>) -> Self {
-		Self::BatchChange(BatchChangePayload {
-			batch_id: batch_id.into(),
 			entries,
 		})
 	}
 
-	pub fn batch_subscription_closed(batch_id: impl Into<String>, subscription_id: impl Into<String>) -> Self {
-		Self::BatchSubscriptionClosed(BatchSubscriptionClosedPayload {
-			batch_id: batch_id.into(),
+	pub fn subscription_closed(subscription_id: impl Into<String>) -> Self {
+		Self::SubscriptionClosed(SubscriptionClosedPayload {
 			subscription_id: subscription_id.into(),
-		})
-	}
-
-	pub fn batch_closed(batch_id: impl Into<String>) -> Self {
-		Self::BatchClosed(BatchClosedPayload {
-			batch_id: batch_id.into(),
 		})
 	}
 
 	pub fn to_json(&self) -> String {
 		to_string(self).expect("Failed to serialize ServerPush")
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use serde_json::{Value as JsonValue, from_str, json};
+
+	use super::{ChangeEntry, Response, ServerPush, SubscriptionInfo};
+
+	fn parsed(text: &str) -> JsonValue {
+		from_str(text).expect("the push must be valid json")
+	}
+
+	fn entry(subscription_id: &str, body: JsonValue) -> ChangeEntry {
+		ChangeEntry {
+			subscription_id: subscription_id.to_string(),
+			content_type: "application/vnd.reifydb.frames+json".to_string(),
+			body,
+		}
+	}
+
+	#[test]
+	fn a_change_push_carries_every_entry_and_no_batch_id() {
+		// Dropping an entry or reviving a batch id breaks every client that routes entries by subscription id.
+		let push = ServerPush::change(vec![entry("7", json!({"a": 1})), entry("9", json!({"b": 2}))]);
+
+		assert_eq!(
+			parsed(&push.to_json()),
+			json!({"type": "Change", "payload": {"entries": [
+				{"subscription_id": "7", "content_type": "application/vnd.reifydb.frames+json", "body": {"a": 1}},
+				{"subscription_id": "9", "content_type": "application/vnd.reifydb.frames+json", "body": {"b": 2}}
+			]}})
+		);
+	}
+
+	#[test]
+	fn subscribed_lists_each_index_with_its_own_id() {
+		// Swapping index and id, or flattening to ids, maps a client's items to the wrong subscriptions.
+		let response = Response::subscribed(
+			"r",
+			vec![
+				SubscriptionInfo {
+					index: 0,
+					subscription_id: "7".to_string(),
+				},
+				SubscriptionInfo {
+					index: 1,
+					subscription_id: "9".to_string(),
+				},
+			],
+		);
+
+		assert_eq!(
+			parsed(&response.to_json()),
+			json!({"id": "r", "type": "Subscribed", "payload": {"subscriptions": [
+				{"index": 0, "subscription_id": "7"},
+				{"index": 1, "subscription_id": "9"}
+			]}})
+		);
+	}
+
+	#[test]
+	fn a_subscription_closed_push_names_only_its_subscription() {
+		// An extra field or a wrong tag makes a client close nothing, or close more than the one subscription.
+		assert_eq!(
+			parsed(&ServerPush::subscription_closed("7").to_json()),
+			json!({"type": "SubscriptionClosed", "payload": {"subscription_id": "7"}})
+		);
 	}
 }

@@ -3,24 +3,23 @@
 
 use std::{future::Future, sync::Arc};
 
-use arrow_array::RecordBatch;
-use reifydb_codec::wire::{RawChangePayload, WireFormat as ClientWireFormat};
+use reifydb_codec::wire::WireFormat as ClientWireFormat;
 use reifydb_core::interface::catalog::{
 	id::SubscriptionId,
 	subscription::{SubscribeOptions, SubscribeOutcome},
 };
 use reifydb_sub_core::{
-	handler::{handle_batch_subscribe, handle_batch_unsubscribe, handle_subscribe},
+	handler::{SubscribeError, handle_subscribe, handle_unsubscribe},
 	host::{SubscribeContext, SubscribeHost},
 	registry::SubscriptionRegistry,
-	wire_sink::{BatchSubscribedEntry, WireSink},
+	wire_sink::{ChangeDelivery, SubscribedEntry, WireSink},
 };
-use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
+use reifydb_subscription::delivery::{DeliveryResult, SubscriptionDelivery};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_value::{
 	error::Error,
 	params::Params,
-	value::{diff_type::DiffType, duration::Duration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
+	value::{duration::Duration, frame::frame::Frame, identity::IdentityId, uuid::Uuid7},
 };
 use tokio::{runtime::Builder, sync::watch};
 
@@ -46,47 +45,20 @@ impl WireSink for TestSink {
 		ClientWireFormat::Rbcf
 	}
 
-	fn send_subscribed(&self, _sub_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscribed(&self, _subscriptions: &[SubscribedEntry]) -> DeliveryResult {
 		self.result()
 	}
 
-	fn send_batch_subscribed(&self, _batch_id: BatchId, _subscriptions: &[BatchSubscribedEntry]) -> DeliveryResult {
-		self.result()
+	fn send_change(&self, _format: (), _entries: Vec<(SubscriptionId, Vec<Frame>)>) -> ChangeDelivery {
+		match self.result() {
+			DeliveryResult::Delivered => ChangeDelivery::Delivered {
+				failed: Vec::new(),
+			},
+			DeliveryResult::Disconnected => ChangeDelivery::Disconnected,
+		}
 	}
 
-	fn send_change(
-		&self,
-		_sub_id: SubscriptionId,
-		_op: DiffType,
-		_columns: RecordBatch,
-		_format: (),
-	) -> DeliveryResult {
-		self.result()
-	}
-
-	fn send_remote_change(
-		&self,
-		_sub_id: SubscriptionId,
-		_payload: RawChangePayload,
-		_format: (),
-	) -> DeliveryResult {
-		self.result()
-	}
-
-	fn send_batch_envelope(
-		&self,
-		_batch_id: BatchId,
-		_format: (),
-		_entries: Vec<(SubscriptionId, Vec<Frame>)>,
-	) -> DeliveryResult {
-		self.result()
-	}
-
-	fn send_batch_subscription_closed(&self, _batch_id: BatchId, _sub_id: SubscriptionId) -> DeliveryResult {
-		self.result()
-	}
-
-	fn send_closed(&self, _sub_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscription_closed(&self, _subscription_id: SubscriptionId) -> DeliveryResult {
 		self.result()
 	}
 }
@@ -144,34 +116,25 @@ fn assert_names_subscription(error: &Error, subscription_id: u64) {
 }
 
 #[test]
-fn a_batch_unsubscribe_that_cannot_unregister_its_subscriptions_fails() {
+fn an_unsubscribe_that_cannot_unregister_its_subscriptions_fails() {
 	// The engine keeps staging changes for a subscription it failed to drop, so this must never succeed.
 	let engine = TestEngine::new();
 	let (clock, rng) = (engine.inner().clock().clone(), engine.inner().rng().clone());
 	let registry = Arc::new(SubscriptionRegistry::new(clock.clone()));
 	let connection_id = Uuid7::generate(&clock, &rng);
-	let sink = TestSink {
-		open: true,
-	};
 	registry.subscribe(
 		SubscriptionId(7),
 		connection_id,
-		sink.clone(),
+		TestSink {
+			open: true,
+		},
 		(),
 		None,
 		Duration::zero(),
 		Duration::zero(),
 	);
-	let batch_id = registry.register_batch(
-		connection_id,
-		vec![(SubscriptionId(7), Duration::zero())],
-		sink,
-		(),
-		&clock,
-		&rng,
-	);
 
-	let error = block_on(handle_batch_unsubscribe(engine.inner(), &registry, connection_id, batch_id))
+	let error = block_on(handle_unsubscribe(engine.inner(), &registry, connection_id, &[SubscriptionId(7)]))
 		.expect_err("the engine has no subscription service, so unregistering must fail");
 
 	assert_names_subscription(&error, 7);
@@ -190,9 +153,7 @@ fn a_subscribe_whose_stream_closed_fails_when_it_cannot_unregister() {
 		&host,
 		connection_id,
 		IdentityId::root(),
-		"8".to_string(),
-		Params::None,
-		SubscribeOptions::default(),
+		&[("8".to_string(), Params::None, SubscribeOptions::default())],
 		TestSink {
 			open: false,
 		},
@@ -222,9 +183,7 @@ fn a_failed_hydration_fails_when_it_cannot_unregister_the_subscription() {
 		&host,
 		connection_id,
 		IdentityId::root(),
-		"9".to_string(),
-		Params::None,
-		options,
+		&[("9".to_string(), Params::None, options)],
 		TestSink {
 			open: true,
 		},
@@ -240,8 +199,8 @@ fn a_failed_hydration_fails_when_it_cannot_unregister_the_subscription() {
 }
 
 #[test]
-fn a_batch_rollback_that_cannot_unregister_an_earlier_subscription_fails() {
-	// A partial batch rollback the engine could not apply must never hide behind the rejected query.
+fn a_rollback_that_cannot_unregister_an_earlier_subscription_fails() {
+	// A partial rollback the engine could not apply must never hide behind the rejected query.
 	let engine = TestEngine::new();
 	let host = TestHost::new(&engine);
 	let registry = Arc::new(SubscriptionRegistry::new(engine.inner().clock().clone()));
@@ -252,7 +211,7 @@ fn a_batch_rollback_that_cannot_unregister_an_earlier_subscription_fails() {
 		("not a subscription".to_string(), Params::None, SubscribeOptions::default()),
 	];
 
-	let outcome = block_on(handle_batch_subscribe(
+	let outcome = block_on(handle_subscribe(
 		&host,
 		connection_id,
 		IdentityId::root(),
@@ -269,4 +228,32 @@ fn a_batch_rollback_that_cannot_unregister_an_earlier_subscription_fails() {
 		panic!("a failed rollback must surface as an unexpected error, not as the rejected query");
 	};
 	assert_names_subscription(&error, 10);
+}
+
+#[test]
+fn an_empty_subscribe_is_refused_without_touching_the_registry() {
+	// An empty call that reaches registration acks nothing yet may leave a connection entry behind.
+	let engine = TestEngine::new();
+	let host = TestHost::new(&engine);
+	let registry = Arc::new(SubscriptionRegistry::new(engine.inner().clock().clone()));
+	let connection_id = Uuid7::generate(engine.inner().clock(), engine.inner().rng());
+	let (_shutdown_tx, shutdown) = watch::channel(false);
+
+	let outcome = block_on(handle_subscribe(
+		&host,
+		connection_id,
+		IdentityId::root(),
+		&[],
+		TestSink {
+			open: true,
+		},
+		&registry,
+		(),
+		shutdown,
+	))
+	.expect("an empty call fails as a client error, not an unexpected one");
+
+	assert!(matches!(outcome, Err(SubscribeError::Empty)), "an empty call must be refused as empty");
+	assert!(registry.active_subscriptions().is_empty());
+	assert!(registry.cleanup_connection(connection_id).is_empty(), "no connection entry may be left behind");
 }

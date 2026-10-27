@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{SubscriptionConfig, WireFormat, WsClient};
+use reifydb_client::{SubscribeItem, SubscriptionConfig, WireFormat, WsClient};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -25,21 +25,23 @@ fn test_filtered_subscription() {
 		let table = unique_table_name("sub_filter");
 		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
-		let sub_id = client
-			.subscribe(&format!("from test::{} filter {{ id > 10 }}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{} filter {{ id > 10 }}", table);
+		let mut sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(&format!("INSERT test::{} [{{ id: 15, value: 150 }}]", table), None).await.unwrap();
 
-		let change = recv_with_timeout(&mut client, 5000).await;
+		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some(), "Should receive matching insert");
 
 		let change = change.unwrap();
 		let id_col = find_column(&change.body, "id").unwrap();
 		assert_eq!(id_col.payload[0], "15");
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 
@@ -60,20 +62,19 @@ fn test_no_callback_for_non_matching() {
 		let table = unique_table_name("sub_no_match");
 		create_test_table(&client, &table, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
-		let sub_id = client
-			.subscribe(
-				&format!("from test::{} filter {{ id > 100 }}", table),
-				SubscriptionConfig::default(),
-			)
+		let rql = format!("from test::{} filter {{ id > 100 }}", table);
+		let mut sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(&format!("INSERT test::{} [{{ id: 5, value: 50 }}]", table), None).await.unwrap();
 
-		let change = recv_with_timeout(&mut client, 500).await;
+		let change = recv_with_timeout(&mut sub, 500).await;
 		assert!(change.is_none(), "Should NOT receive notification for non-matching insert");
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 

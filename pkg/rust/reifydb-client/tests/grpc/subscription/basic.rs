@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{GrpcClient, SubscriptionConfig, WireFormat};
+use reifydb_client::{GrpcClient, SubscribeItem, SubscriptionConfig, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -27,9 +27,13 @@ fn test_subscribe_returns_subscription_id() {
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
 		let sub = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 		assert!(!sub.subscription_id().is_empty(), "Subscription ID should be > 0");
 
 		drop(sub);
@@ -54,9 +58,13 @@ fn test_drop_subscription_cleans_up() {
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
 		let sub = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		drop(sub);
 	});
@@ -76,7 +84,9 @@ fn test_subscribe_invalid_query() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
-		let result = client.subscribe("INVALID RQL SYNTAX HERE", SubscriptionConfig::default()).await;
+		let result = client
+			.subscribe(&[SubscribeItem::new("INVALID RQL SYNTAX HERE", SubscriptionConfig::default())])
+			.await;
 		assert!(result.is_err(), "Invalid query should return error");
 	});
 
@@ -95,7 +105,12 @@ fn test_subscribe_nonexistent_table() {
 			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
 		client.authenticate("mysecrettoken");
 
-		let result = client.subscribe("from nonexistent_table_xyz_12345", SubscriptionConfig::default()).await;
+		let result = client
+			.subscribe(&[SubscribeItem::new(
+				"from nonexistent_table_xyz_12345",
+				SubscriptionConfig::default(),
+			)])
+			.await;
 		assert!(result.is_err(), "Non-existent table should return error");
 	});
 
@@ -118,9 +133,13 @@ fn test_recv_with_timeout_returns_none_when_empty() {
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
 		let mut sub = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		let result = recv_with_timeout(&mut sub, 500).await;
 		assert!(result.is_none(), "recv should return None when no changes pending");

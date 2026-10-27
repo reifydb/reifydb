@@ -3,49 +3,33 @@
 
 use std::fmt::Debug;
 
-use arrow_array::RecordBatch;
-use reifydb_codec::wire::{RawChangePayload, WireFormat as ClientWireFormat};
+use reifydb_codec::wire::WireFormat as ClientWireFormat;
 use reifydb_core::interface::catalog::id::SubscriptionId;
-use reifydb_subscription::{batch::BatchId, delivery::DeliveryResult};
-use reifydb_value::value::{diff_type::DiffType, frame::frame::Frame};
+use reifydb_subscription::delivery::DeliveryResult;
+use reifydb_value::value::frame::frame::Frame;
 
-pub struct BatchSubscribedEntry {
+#[derive(Debug, Clone)]
+pub struct SubscribedEntry {
 	pub index: usize,
 	pub subscription_id: SubscriptionId,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum ChangeDelivery {
+	Delivered {
+		failed: Vec<SubscriptionId>,
+	},
+	Disconnected,
+}
+
 pub trait WireSink: Clone + Send + Sync + 'static {
-	type Format: Copy + Send + Sync + Debug + 'static;
+	type Format: Copy + PartialEq + Send + Sync + Debug + 'static;
 
 	fn client_wire_format(format: Self::Format) -> ClientWireFormat;
 
-	fn send_subscribed(&self, sub_id: SubscriptionId) -> DeliveryResult;
+	fn send_subscribed(&self, subscriptions: &[SubscribedEntry]) -> DeliveryResult;
 
-	fn send_batch_subscribed(&self, batch_id: BatchId, subscriptions: &[BatchSubscribedEntry]) -> DeliveryResult;
+	fn send_change(&self, format: Self::Format, entries: Vec<(SubscriptionId, Vec<Frame>)>) -> ChangeDelivery;
 
-	fn send_change(
-		&self,
-		sub_id: SubscriptionId,
-		op: DiffType,
-		batch: RecordBatch,
-		format: Self::Format,
-	) -> DeliveryResult;
-
-	fn send_remote_change(
-		&self,
-		sub_id: SubscriptionId,
-		payload: RawChangePayload,
-		format: Self::Format,
-	) -> DeliveryResult;
-
-	fn send_batch_envelope(
-		&self,
-		batch_id: BatchId,
-		format: Self::Format,
-		entries: Vec<(SubscriptionId, Vec<Frame>)>,
-	) -> DeliveryResult;
-
-	fn send_batch_subscription_closed(&self, batch_id: BatchId, sub_id: SubscriptionId) -> DeliveryResult;
-
-	fn send_closed(&self, sub_id: SubscriptionId) -> DeliveryResult;
+	fn send_subscription_closed(&self, subscription_id: SubscriptionId) -> DeliveryResult;
 }

@@ -27,8 +27,6 @@ pub enum RequestPayload {
 	Query(QueryRequest),
 	Subscribe(SubscribeRequest),
 	Unsubscribe(UnsubscribeRequest),
-	BatchSubscribe(BatchSubscribeRequest),
-	BatchUnsubscribe(BatchUnsubscribeRequest),
 	Call(CallRequest),
 	QueueClaim(QueueClaimRequest),
 	Logout,
@@ -126,11 +124,7 @@ impl WireSubscribeOptions {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SubscribeRequest {
-	pub rql: String,
-
-	pub params: Option<WireParams>,
-
-	pub options: Option<WireSubscribeOptions>,
+	pub subscriptions: Vec<WireSubscribeItem>,
 
 	#[serde(default)]
 	pub format: WireFormat,
@@ -138,11 +132,11 @@ pub struct SubscribeRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UnsubscribeRequest {
-	pub subscription_id: String,
+	pub subscription_ids: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct WireBatchSubscribeItem {
+pub struct WireSubscribeItem {
 	pub rql: String,
 
 	pub params: Option<WireParams>,
@@ -156,15 +150,7 @@ pub enum SubscribeDecodeError {
 	InvalidOptions(String),
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct BatchSubscribeRequest {
-	pub subscriptions: Vec<WireBatchSubscribeItem>,
-
-	#[serde(default)]
-	pub format: WireFormat,
-}
-
-impl BatchSubscribeRequest {
+impl SubscribeRequest {
 	pub fn into_queries(self) -> Result<Vec<(String, Params, SubscribeOptions)>, SubscribeDecodeError> {
 		self.subscriptions
 			.into_iter()
@@ -193,11 +179,6 @@ impl BatchSubscribeRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct BatchUnsubscribeRequest {
-	pub batch_id: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
 pub struct CallRequest {
 	pub name: String,
 
@@ -212,20 +193,20 @@ mod tests {
 	use reifydb_value::{params::Params, value::Value};
 	use serde_json::from_str;
 
-	use super::{BatchSubscribeRequest, Request, RequestPayload, SubscribeDecodeError};
+	use super::{Request, RequestPayload, SubscribeDecodeError, SubscribeRequest};
 
-	fn batch(json: &str) -> BatchSubscribeRequest {
-		match from_str::<Request>(json).expect("a batch subscribe request should deserialise").payload {
-			RequestPayload::BatchSubscribe(req) => req,
-			other => panic!("expected a batch subscribe payload, got {other:?}"),
+	fn subscribe(json: &str) -> SubscribeRequest {
+		match from_str::<Request>(json).expect("a subscribe request should deserialise").payload {
+			RequestPayload::Subscribe(req) => req,
+			other => panic!("expected a subscribe payload, got {other:?}"),
 		}
 	}
 
 	#[test]
 	fn each_query_runs_with_the_params_at_its_own_position() {
 		// Each query must bind the params at its own index, or a subscription runs with another's id.
-		let queries = batch(
-			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"subscriptions":[{"rql":"from a","params":{"monitor_id":{"type":{"id":"Utf8"},"value":"m-1"}}},{"rql":"from b","params":{"monitor_id":{"type":{"id":"Utf8"},"value":"m-2"}}}]}}"#,
+		let queries = subscribe(
+			r#"{"id":"s-1","type":"Subscribe","payload":{"subscriptions":[{"rql":"from a","params":{"monitor_id":{"type":{"id":"Utf8"},"value":"m-1"}}},{"rql":"from b","params":{"monitor_id":{"type":{"id":"Utf8"},"value":"m-2"}}}]}}"#,
 		)
 		.into_queries()
 		.unwrap();
@@ -240,8 +221,8 @@ mod tests {
 	#[test]
 	fn an_entry_without_params_runs_its_query_without_params() {
 		// A subscription without params must never borrow a neighbour's, or its filter binds a foreign value.
-		let queries = batch(
-			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":[{"type":{"id":"Int4"},"value":"7"}]}]}}"#,
+		let queries = subscribe(
+			r#"{"id":"s-1","type":"Subscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":[{"type":{"id":"Int4"},"value":"7"}]}]}}"#,
 		)
 		.into_queries()
 		.unwrap();
@@ -252,9 +233,9 @@ mod tests {
 
 	#[test]
 	fn a_request_without_params_runs_every_query_without_params() {
-		// A client that sends no params field must keep working, otherwise every older batch is refused.
-		let queries = batch(
-			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b"}]}}"#,
+		// A client that sends no params field must keep working, otherwise every older subscribe is refused.
+		let queries = subscribe(
+			r#"{"id":"s-1","type":"Subscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b"}]}}"#,
 		)
 		.into_queries()
 		.unwrap();
@@ -268,9 +249,9 @@ mod tests {
 
 	#[test]
 	fn an_invalid_param_names_the_query_it_belongs_to() {
-		// Without the index the client cannot tell which subscription of the batch carried the bad value.
-		let err = batch(
-			r#"{"id":"b-1","type":"BatchSubscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":{"n":{"type":{"id":"Int4"},"value":"abc"}}}]}}"#,
+		// Without the index the client cannot tell which subscription of the call carried the bad value.
+		let err = subscribe(
+			r#"{"id":"s-1","type":"Subscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":{"n":{"type":{"id":"Int4"},"value":"abc"}}}]}}"#,
 		)
 		.into_queries()
 		.unwrap_err();
@@ -281,5 +262,21 @@ mod tests {
 				"subscription 1: parameter $n: invalid data: cannot parse 'abc' as Int4".to_string()
 			)
 		);
+	}
+
+	#[test]
+	fn an_unsubscribe_request_carries_every_id_in_order() {
+		// A request that keeps one id, or sorts them, ends the wrong subscriptions or leaves some streaming.
+		let request = from_str::<Request>(
+			r#"{"id":"u-1","type":"Unsubscribe","payload":{"subscription_ids":["4","2"]}}"#,
+		)
+		.expect("an unsubscribe request should deserialise");
+
+		match request.payload {
+			RequestPayload::Unsubscribe(req) => {
+				assert_eq!(req.subscription_ids, vec!["4".to_string(), "2".to_string()])
+			}
+			other => panic!("expected an unsubscribe payload, got {other:?}"),
+		}
 	}
 }

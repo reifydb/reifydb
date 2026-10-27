@@ -6,7 +6,7 @@ use std::{collections::HashMap, sync::Arc};
 use arrow_array::RecordBatch;
 use reifydb::{
 	Clock, MockClock,
-	codec::wire::{RawChangePayload, WireFormat as ClientWireFormat},
+	codec::wire::WireFormat as ClientWireFormat,
 	core::{
 		interface::{catalog::id::SubscriptionId, change::StagedBatch},
 		value::batch::single_row,
@@ -14,10 +14,10 @@ use reifydb::{
 	runtime::{context::rng::Rng, sync::mutex::Mutex},
 	sub_core::{
 		registry::SubscriptionRegistry,
-		wire_sink::{BatchSubscribedEntry, WireSink},
+		wire_sink::{ChangeDelivery, SubscribedEntry, WireSink},
 	},
 	sub_subscription::{poller::StoreBackedPoller, store::SubscriptionStore},
-	subscription::{batch::BatchId, delivery::DeliveryResult},
+	subscription::delivery::{DeliveryResult, SubscriptionDelivery},
 	value::value::{
 		Value, column_view::ColumnView, diff_type::DiffType, duration::Duration, frame::frame::Frame,
 		uuid::Uuid7,
@@ -48,48 +48,21 @@ impl WireSink for RecordingSink {
 		ClientWireFormat::Rbcf
 	}
 
-	fn send_subscribed(&self, _sub_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscribed(&self, _subscriptions: &[SubscribedEntry]) -> DeliveryResult {
 		DeliveryResult::Delivered
 	}
 
-	fn send_batch_subscribed(&self, _batch_id: BatchId, _subscriptions: &[BatchSubscribedEntry]) -> DeliveryResult {
-		DeliveryResult::Delivered
+	fn send_change(&self, _format: Self::Format, entries: Vec<(SubscriptionId, Vec<Frame>)>) -> ChangeDelivery {
+		let mut seen = self.seen.lock();
+		for (_, frames) in entries {
+			seen.extend(frames.iter().map(|frame| first_value(&frame.batch)));
+		}
+		ChangeDelivery::Delivered {
+			failed: Vec::new(),
+		}
 	}
 
-	fn send_change(
-		&self,
-		_sub_id: SubscriptionId,
-		_op: DiffType,
-		columns: RecordBatch,
-		_format: Self::Format,
-	) -> DeliveryResult {
-		self.seen.lock().push(first_value(&columns));
-		DeliveryResult::Delivered
-	}
-
-	fn send_remote_change(
-		&self,
-		_sub_id: SubscriptionId,
-		_payload: RawChangePayload,
-		_format: Self::Format,
-	) -> DeliveryResult {
-		panic!("the poller never delivers a remote change through this sink")
-	}
-
-	fn send_batch_envelope(
-		&self,
-		_batch_id: BatchId,
-		_format: Self::Format,
-		_entries: Vec<(SubscriptionId, Vec<Frame>)>,
-	) -> DeliveryResult {
-		panic!("this fixture registers no batch subscriptions")
-	}
-
-	fn send_batch_subscription_closed(&self, _batch_id: BatchId, _sub_id: SubscriptionId) -> DeliveryResult {
-		DeliveryResult::Delivered
-	}
-
-	fn send_closed(&self, _sub_id: SubscriptionId) -> DeliveryResult {
+	fn send_subscription_closed(&self, _subscription_id: SubscriptionId) -> DeliveryResult {
 		DeliveryResult::Delivered
 	}
 }
@@ -168,8 +141,7 @@ fn a_staged_batch_reaches_the_sink_through_the_poller() {
 
 #[test]
 fn a_warming_subscription_holds_its_changes_until_it_is_promoted() {
-	// A subscription still hydrating must buffer rather than push live changes ahead of its
-	// snapshot, and promoting must then release every held change in order rather than drop them.
+	// Pushing live changes ahead of the snapshot, or dropping them at promote, breaks the hydration hand-off.
 	let f = fixture(Some(8));
 
 	f.store.commit_staged(stage(f.id, &[1, 2]));
@@ -177,5 +149,7 @@ fn a_warming_subscription_holds_its_changes_until_it_is_promoted() {
 	assert!(f.sink.values().is_empty(), "a warming subscription must not reach the sink yet");
 
 	f.registry.promote_to_live(f.id);
+	assert!(f.sink.values().is_empty(), "promotion queues the buffered changes, the next flush sends them");
+	f.registry.flush();
 	assert_eq!(f.sink.values(), vec![1, 2], "promotion must release the buffered changes, in order");
 }

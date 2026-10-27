@@ -36,7 +36,6 @@ use reifydb_sub_server::{
 	state::AppState,
 	wire::WireParams,
 };
-use reifydb_subscription::batch::BatchId;
 use reifydb_value::{
 	error::Error,
 	params::Params,
@@ -59,11 +58,11 @@ use crate::{
 	acceptor::Access,
 	protocol::{
 		AdminRequest, AuthRequest, CallRequest, CommandRequest, QueryRequest, QueueClaimRequest, Request,
-		RequestPayload, UnsubscribeRequest,
+		RequestPayload,
 	},
-	response::{BatchChangeEntry, Response, ResponseMeta, ServerPush},
+	response::{Response, ResponseMeta, ServerPush},
 	subscription::{
-		handler::{handle_batch_subscribe, handle_batch_unsubscribe, handle_subscribe},
+		handler::{handle_subscribe, handle_unsubscribe},
 		registry::{PushMessage, SubscriptionRegistry},
 	},
 };
@@ -101,9 +100,9 @@ pub async fn handle_connection<S>(
 	let mut identity: Option<IdentityId> = Some(IdentityId::anonymous());
 	let mut auth_token: Option<String> = None;
 
-	let mut remote_tasks: HashMap<String, JoinHandle<()>> = HashMap::new();
+	let mut remote_tasks: HashMap<SubscriptionId, JoinHandle<()>> = HashMap::new();
 
-	let mut batch_remote_tasks: HashMap<BatchId, Vec<JoinHandle<()>>> = HashMap::new();
+	let mut hydration_tasks: Vec<JoinHandle<()>> = Vec::new();
 
 	let mut claim_tasks: Vec<JoinHandle<()>> = Vec::new();
 
@@ -111,6 +110,7 @@ pub async fn handle_connection<S>(
 
 	loop {
 		claim_tasks.retain(|handle| !handle.is_finished());
+		hydration_tasks.retain(|handle| !handle.is_finished());
 
 		select! {
 			biased;
@@ -139,57 +139,16 @@ pub async fn handle_connection<S>(
 
 
 			Some(push) = push_rx.recv() => {
-				match push {
-					PushMessage::ChangeJson { subscription_id, content_type, body } => {
-						let msg = ServerPush::change(subscription_id.to_string(), content_type, body).to_json();
-						if sender.send(Message::Text(msg.into())).await.is_err() {
-							debug!("Failed to send push message to {:?}", peer);
-							break;
-						}
+				let msg = match push {
+					PushMessage::ChangeJson { entries } => Message::Text(ServerPush::change(entries).to_json().into()),
+					PushMessage::ChangeRbcf { envelope } => Message::Binary(envelope.into()),
+					PushMessage::SubscriptionClosed { subscription_id } => {
+						Message::Text(ServerPush::subscription_closed(subscription_id.to_string()).to_json().into())
 					}
-					PushMessage::ChangeRbcf { envelope, .. } => {
-						if sender.send(Message::Binary(envelope.into())).await.is_err() {
-							debug!("Failed to send RBCF push message to {:?}", peer);
-							break;
-						}
-					}
-					PushMessage::Closed { .. } => {
-						debug!("Remote subscription closed for {:?}, closing connection", peer);
-						let _ = sender.send(Message::Close(None)).await;
-						break;
-					}
-					PushMessage::BatchChangeJson { batch_id, entries } => {
-						let wire_entries = entries.into_iter().map(|e| BatchChangeEntry {
-							subscription_id: e.subscription_id.to_string(),
-							content_type: e.content_type,
-							body: e.body,
-						}).collect();
-						let msg = ServerPush::batch_change(batch_id.to_string(), wire_entries).to_json();
-						if sender.send(Message::Text(msg.into())).await.is_err() {
-							debug!("Failed to send batch push message to {:?}", peer);
-							break;
-						}
-					}
-					PushMessage::BatchChangeRbcf { envelope, .. } => {
-						if sender.send(Message::Binary(envelope.into())).await.is_err() {
-							debug!("Failed to send RBCF batch push to {:?}", peer);
-							break;
-						}
-					}
-					PushMessage::BatchSubscriptionClosed { batch_id, subscription_id } => {
-						let msg = ServerPush::batch_subscription_closed(batch_id.to_string(), subscription_id.to_string()).to_json();
-						if sender.send(Message::Text(msg.into())).await.is_err() {
-							debug!("Failed to send BatchSubscriptionClosed to {:?}", peer);
-							break;
-						}
-					}
-					PushMessage::BatchClosed { batch_id } => {
-						let msg = ServerPush::batch_closed(batch_id.to_string()).to_json();
-						if sender.send(Message::Text(msg.into())).await.is_err() {
-							debug!("Failed to send BatchClosed to {:?}", peer);
-							break;
-						}
-					}
+				};
+				if sender.send(msg).await.is_err() {
+					debug!("Failed to send push message to {:?}", peer);
+					break;
 				}
 			}
 
@@ -208,7 +167,7 @@ pub async fn handle_connection<S>(
 								registry: &registry,
 								push_tx: push_tx.clone(),
 								remote_tasks: &mut remote_tasks,
-								batch_remote_tasks: &mut batch_remote_tasks,
+								hydration_tasks: &mut hydration_tasks,
 								claim_tasks: &mut claim_tasks,
 								deferred_tx: deferred_tx.clone(),
 								shutdown: shutdown.clone(),
@@ -263,7 +222,7 @@ pub async fn handle_connection<S>(
 	for handle in claim_tasks {
 		handle.abort();
 	}
-	abort_remote_tasks(remote_tasks, batch_remote_tasks);
+	abort_remote_tasks(remote_tasks, hydration_tasks);
 	if shutting_down {
 		registry.cleanup_connection(connection_id);
 	} else if let Err(error) = cleanup_connection_subscriptions(state.engine(), &registry, connection_id).await {
@@ -308,17 +267,12 @@ fn spawn_connection_actor(
 }
 
 #[inline]
-fn abort_remote_tasks(
-	remote_tasks: HashMap<String, JoinHandle<()>>,
-	batch_remote_tasks: HashMap<BatchId, Vec<JoinHandle<()>>>,
-) {
+fn abort_remote_tasks(remote_tasks: HashMap<SubscriptionId, JoinHandle<()>>, hydration_tasks: Vec<JoinHandle<()>>) {
 	for (_, handle) in remote_tasks {
 		handle.abort();
 	}
-	for (_, handles) in batch_remote_tasks {
-		for handle in handles {
-			handle.abort();
-		}
+	for handle in hydration_tasks {
+		handle.abort();
 	}
 }
 
@@ -345,8 +299,8 @@ pub(crate) struct ConnectionContext<'a> {
 	pub connection_id: ConnectionId,
 	pub registry: &'a Arc<SubscriptionRegistry>,
 	pub push_tx: mpsc::UnboundedSender<PushMessage>,
-	pub remote_tasks: &'a mut HashMap<String, JoinHandle<()>>,
-	pub batch_remote_tasks: &'a mut HashMap<BatchId, Vec<JoinHandle<()>>>,
+	pub remote_tasks: &'a mut HashMap<SubscriptionId, JoinHandle<()>>,
+	pub hydration_tasks: &'a mut Vec<JoinHandle<()>>,
 	pub claim_tasks: &'a mut Vec<JoinHandle<()>>,
 	pub deferred_tx: mpsc::UnboundedSender<WsResponse>,
 	pub shutdown: watch::Receiver<bool>,
@@ -393,15 +347,11 @@ async fn process_message(text: &str, conn: &mut ConnectionContext<'_>) -> Result
 			}
 		}
 		RequestPayload::Subscribe(sub) => handle_subscribe(&request.id, sub, conn).await?.map(WsResponse::Text),
-		RequestPayload::BatchSubscribe(req) => {
-			handle_batch_subscribe(&request.id, req, conn).await?.map(WsResponse::Text)
-		}
-		RequestPayload::BatchUnsubscribe(req) => {
-			handle_batch_unsubscribe(&request.id, req, conn).await?.map(WsResponse::Text)
-		}
 		RequestPayload::QueueClaim(claim) => handle_queue_claim(&request.id, claim, conn),
 		RequestPayload::Logout => handle_logout(&request.id, conn).await,
-		RequestPayload::Unsubscribe(unsub) => handle_unsubscribe(&request.id, unsub, conn).await?,
+		RequestPayload::Unsubscribe(unsub) => {
+			handle_unsubscribe(&request.id, unsub, conn).await?.map(WsResponse::Text)
+		}
 	})
 }
 
@@ -412,8 +362,6 @@ fn required_access(payload: &RequestPayload) -> Access {
 		RequestPayload::Auth(_)
 		| RequestPayload::Query(_)
 		| RequestPayload::Subscribe(_)
-		| RequestPayload::BatchSubscribe(_)
-		| RequestPayload::BatchUnsubscribe(_)
 		| RequestPayload::Unsubscribe(_)
 		| RequestPayload::Logout => Access::Query,
 	}
@@ -610,42 +558,6 @@ async fn handle_logout(request_id: &str, conn: &mut ConnectionContext<'_>) -> Op
 			Some(WsResponse::Text(build_error(request_id, "LOGOUT_FAILED", &reason)))
 		}
 		Err(_) => Some(WsResponse::Text(build_error(request_id, "INTERNAL_ERROR", "actor stopped"))),
-	}
-}
-
-#[inline]
-async fn handle_unsubscribe(
-	request_id: &str,
-	unsub: UnsubscribeRequest,
-	conn: &mut ConnectionContext<'_>,
-) -> Result<Option<WsResponse>, Error> {
-	if let Some(handle) = conn.remote_tasks.remove(&unsub.subscription_id) {
-		handle.abort();
-		debug!("Connection {} unsubscribed from remote {}", conn.connection_id, unsub.subscription_id);
-		return Ok(Some(WsResponse::Text(Response::unsubscribed(request_id, unsub.subscription_id).to_json())));
-	}
-
-	let subscription_id = match unsub.subscription_id.parse::<u64>() {
-		Ok(id) => SubscriptionId(id),
-		Err(_) => {
-			return Ok(Some(WsResponse::Text(build_error(
-				request_id,
-				"INVALID_SUBSCRIPTION_ID",
-				"Invalid subscription ID format",
-			))));
-		}
-	};
-
-	let removed = conn.registry.unsubscribe_owned(conn.connection_id, subscription_id);
-
-	if removed {
-		cleanup_subscription(conn.state.engine(), subscription_id).await?;
-
-		debug!("Connection {} unsubscribed from {}", conn.connection_id, subscription_id);
-		Ok(Some(WsResponse::Text(Response::unsubscribed(request_id, subscription_id.to_string()).to_json())))
-	} else {
-		debug!("Connection {} unsubscribe for {} (already removed)", conn.connection_id, subscription_id);
-		Ok(Some(WsResponse::Text(Response::unsubscribed(request_id, subscription_id.to_string()).to_json())))
 	}
 }
 

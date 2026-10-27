@@ -3,7 +3,7 @@
 
 use std::{f32::consts::PI, f64::consts::E, sync::Arc};
 
-use reifydb_client::{SubscriptionConfig, WireFormat, WsClient};
+use reifydb_client::{SubscribeItem, SubscriptionConfig, WireFormat, WsClient};
 use tokio::runtime::Runtime;
 
 use super::{create_test_table, find_column, recv_with_timeout, unique_table_name};
@@ -25,10 +25,12 @@ fn test_subscription_int_types() {
 			.await
 			.unwrap();
 
-		let sub_id = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", table);
+		let mut sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(
 			&format!(
@@ -40,7 +42,7 @@ fn test_subscription_int_types() {
 		.await
 		.unwrap();
 
-		let change = recv_with_timeout(&mut client, 5000).await;
+		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
 		let body = &change.unwrap().body;
@@ -49,7 +51,7 @@ fn test_subscription_int_types() {
 		assert_eq!(find_column(body, "i4").unwrap().payload[0], "2147483647");
 		assert_eq!(find_column(body, "i8").unwrap().payload[0], "9223372036854775807");
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 
@@ -76,10 +78,12 @@ fn test_subscription_uint_types() {
 		.await
 		.unwrap();
 
-		let sub_id = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", table);
+		let mut sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(
 			&format!(
@@ -91,7 +95,7 @@ fn test_subscription_uint_types() {
 		.await
 		.unwrap();
 
-		let change = recv_with_timeout(&mut client, 5000).await;
+		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
 		let body = &change.unwrap().body;
@@ -100,7 +104,7 @@ fn test_subscription_uint_types() {
 		assert_eq!(find_column(body, "u4").unwrap().payload[0], "4294967295");
 		assert_eq!(find_column(body, "u8").unwrap().payload[0], "18446744073709551615");
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 
@@ -121,14 +125,16 @@ fn test_subscription_float_types() {
 		let table = unique_table_name("sub_float_types");
 		create_test_table(&client, &table, &[("f4", "float4"), ("f8", "float8")]).await.unwrap();
 
-		let sub_id = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", table);
+		let mut sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(&format!("INSERT test::{} [{{ f4: {}, f8: {} }}]", table, PI, E), None).await.unwrap();
 
-		let change = recv_with_timeout(&mut client, 5000).await;
+		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
 		let body = &change.unwrap().body;
@@ -138,7 +144,7 @@ fn test_subscription_float_types() {
 		assert!((f4_val - PI).abs() < 0.01);
 		assert!((f8_val - E).abs() < 0.0001);
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 
@@ -159,23 +165,25 @@ fn test_subscription_string_types() {
 		let table = unique_table_name("sub_string");
 		create_test_table(&client, &table, &[("s", "utf8"), ("s2", "utf8")]).await.unwrap();
 
-		let sub_id = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", table);
+		let mut sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(&format!("INSERT test::{} [{{ s: 'hello world', s2: 'test data' }}]", table), None)
 			.await
 			.unwrap();
 
-		let change = recv_with_timeout(&mut client, 5000).await;
+		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
 		let body = &change.unwrap().body;
 		assert_eq!(find_column(body, "s").unwrap().payload[0], "hello world");
 		assert_eq!(find_column(body, "s2").unwrap().payload[0], "test data");
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 
@@ -196,10 +204,12 @@ fn test_subscription_temporal() {
 		let table = unique_table_name("sub_temporal");
 		create_test_table(&client, &table, &[("d", "date"), ("t", "time"), ("dt", "datetime")]).await.unwrap();
 
-		let sub_id = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", table);
+		let mut sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		// Use quoted strings for temporal values (will be cast to temporal types)
 		client.command(
@@ -212,14 +222,14 @@ fn test_subscription_temporal() {
 		.await
 		.unwrap();
 
-		let change = recv_with_timeout(&mut client, 5000).await;
+		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
 		let body = &change.unwrap().body;
 		assert!(find_column(body, "d").unwrap().payload[0].contains("2025"));
 		assert!(find_column(body, "t").unwrap().payload[0].contains("14"));
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 
@@ -240,10 +250,12 @@ fn test_subscription_uuid() {
 		let table = unique_table_name("sub_uuid");
 		create_test_table(&client, &table, &[("u4", "uuid4"), ("u7", "uuid7")]).await.unwrap();
 
-		let sub_id = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", table);
+		let mut sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(
 			&format!(
@@ -255,7 +267,7 @@ fn test_subscription_uuid() {
 		.await
 		.unwrap();
 
-		let change = recv_with_timeout(&mut client, 5000).await;
+		let change = recv_with_timeout(&mut sub, 5000).await;
 		assert!(change.is_some());
 
 		let body = &change.unwrap().body;
@@ -267,7 +279,7 @@ fn test_subscription_uuid() {
 		assert_eq!(u4_val.len(), 36, "UUID should be 36 chars");
 		assert_eq!(u7_val.len(), 36, "UUID should be 36 chars");
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 

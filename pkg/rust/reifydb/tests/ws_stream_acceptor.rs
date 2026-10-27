@@ -20,7 +20,7 @@ use tokio_tungstenite::{WebSocketStream, client_async, tungstenite::Message};
 
 const AUTH: &str = r#"{"id":"1","type":"Auth","payload":{"token":"t"}}"#;
 const QUERY: &str = r#"{"id":"2","type":"Query","payload":{"rql":"FROM demo::note MAP { id, body }"}}"#;
-const SUBSCRIBE: &str = r#"{"id":"3","type":"Subscribe","payload":{"rql":"FROM demo::note"}}"#;
+const SUBSCRIBE: &str = r#"{"id":"3","type":"Subscribe","payload":{"subscriptions":[{"rql":"FROM demo::note"}]}}"#;
 const PROJECT_URL: &str = "ws://localhost/v1/project/p-1";
 
 fn database(max_connections: usize) -> Database {
@@ -130,7 +130,7 @@ fn a_duplex_stream_receives_subscription_changes() {
 		assert_eq!(auth["type"], "Auth", "{auth}");
 		let subscribed = request(&mut via_duplex, SUBSCRIBE).await;
 		assert_eq!(subscribed["type"], "Subscribed", "{subscribed}");
-		let subscription_id = subscribed["payload"]["subscription_id"].clone();
+		let subscription_id = subscribed["payload"]["subscriptions"][0]["subscription_id"].clone();
 		(via_duplex, subscription_id)
 	});
 
@@ -139,8 +139,12 @@ fn a_duplex_stream_receives_subscription_changes() {
 	runtime.block_on(async {
 		loop {
 			let push = next_json(&mut via_duplex).await;
-			if push["type"] == "Change" && push["payload"]["body"].to_string().contains("second") {
-				assert_eq!(push["payload"]["subscription_id"], subscription_id, "{push}");
+			if push["type"] != "Change" {
+				continue;
+			}
+			let entries = push["payload"]["entries"].as_array().expect("a change carries entries");
+			if let Some(entry) = entries.iter().find(|entry| entry["body"].to_string().contains("second")) {
+				assert_eq!(entry["subscription_id"], subscription_id, "{push}");
 				break;
 			}
 		}

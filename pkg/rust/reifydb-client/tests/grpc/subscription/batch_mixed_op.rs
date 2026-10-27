@@ -1,42 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_client::{BatchStreamEvent, BatchSubscribeItem, ChangeKind, SubscriptionConfig};
-use reifydb_value::value::duration::Duration;
-use tokio::time::timeout;
+use reifydb_client::{ChangeKind, SubscribeItem, SubscriptionConfig};
 
-use super::{SubscriptionTestHarness, find_column};
+use super::{SubscriptionTestHarness, TestContext, find_column};
 
 #[test]
-fn test_batch_subscription_entry_reports_per_frame_changes() {
-	// The batch path must derive the op from the frame itself, exactly as the single-subscription
-	// path does. The op never appears as a column, so a user column named `_op` would survive.
+fn a_subscription_entry_reports_per_frame_changes() {
+	// The op must be derived from the frame itself, never surfaced as a column a user `_op` could shadow.
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("batch", "id: int4, name: utf8").await?;
 
 		let rql = format!("from test::{}", table);
 		let mut sub = ctx
 			.client
-			.batch_subscribe(&[BatchSubscribeItem::new(&rql, SubscriptionConfig::default())])
-			.await?;
-		let subscription_id = sub.subscriptions()[0].subscription_id.clone();
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
+			.await?
+			.remove(0);
 
 		ctx.insert(&table, "{ id: 1, name: 'a' }").await?;
 
-		let env = loop {
-			let event = timeout(Duration::from_milliseconds(5000).unwrap().to_std(), sub.recv())
-				.await
-				.expect("should receive a batch change before timeout")
-				.expect("batch stream should not end");
-			match event {
-				BatchStreamEvent::Change(env) if env.entries.contains_key(&subscription_id) => {
-					break env;
-				}
-				_ => continue,
-			}
-		};
-
-		let entry = env.entries.get(&subscription_id).expect("subscription entry should be present");
+		let entry = TestContext::recv(&mut sub).await.expect("should receive a change before timeout");
 
 		assert!(!entry.changes.is_empty(), "subscription entry should carry at least one frame change");
 		let insert = entry

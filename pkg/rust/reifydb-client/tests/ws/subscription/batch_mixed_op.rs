@@ -1,48 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_client::{BatchPushEvent, BatchSubscribeItem, ChangeKind, SubscriptionConfig, Value};
-use reifydb_value::value::duration::Duration;
-use tokio::time::timeout;
+use reifydb_client::{ChangeKind, SubscribeItem, SubscriptionConfig, Value};
 
-use super::SubscriptionTestHarness;
+use super::{SubscriptionTestHarness, recv_with_timeout};
 
 #[test]
-fn test_batch_subscription_entry_reports_per_frame_changes() {
-	// The batch path must derive the op from the frame itself, exactly as the single-subscription
-	// path does. The op never appears as a column, so a user column named `_op` would survive.
+fn a_subscription_entry_reports_per_frame_changes() {
+	// Without the op riding the frame, a user column named `_op` would be read as the op.
 	SubscriptionTestHarness::run(|ctx| async move {
 		let table = ctx.create_table("batch", "id: int4, name: utf8").await?;
 
 		let rql = format!("from test::{}", table);
 		let mut sub = ctx
 			.client
-			.batch_subscribe(&[BatchSubscribeItem::new(&rql, SubscriptionConfig::default())])
-			.await?;
-		let subscription_id = sub.subscriptions()[0].subscription_id.clone();
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
+			.await?
+			.remove(0);
+		let subscription_id = sub.subscription_id().to_string();
 
 		ctx.insert(&table, "{ id: 1, name: 'a' }").await?;
 
-		let payload = loop {
-			let event = timeout(Duration::from_milliseconds(5000).unwrap().to_std(), sub.recv())
-				.await
-				.expect("should receive a batch change before timeout")
-				.expect("batch stream should not end");
-			match event {
-				BatchPushEvent::Change(payload)
-					if payload.entries.iter().any(|e| e.subscription_id == subscription_id) =>
-				{
-					break payload;
-				}
-				_ => continue,
-			}
-		};
-
-		let entry = payload
-			.entries
-			.iter()
-			.find(|e| e.subscription_id == subscription_id)
-			.expect("subscription entry should be present");
+		let entry = recv_with_timeout(&mut sub, 5000).await.expect("should receive a change before timeout");
+		assert_eq!(entry.subscription_id, subscription_id, "subscription entry should be present");
 
 		assert!(!entry.changes.is_empty(), "subscription entry should carry at least one frame change");
 		let insert = entry

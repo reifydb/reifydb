@@ -3,8 +3,9 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{SubscriptionConfig, WireFormat, WsClient};
-use tokio::runtime::Runtime;
+use reifydb_client::{SubscribeItem, SubscriptionConfig, WireFormat, WsClient};
+use reifydb_value::value::duration::Duration;
+use tokio::{runtime::Runtime, time::timeout};
 
 use crate::{
 	common::{cleanup_server, create_server_instance, start_server_and_get_ws_port},
@@ -25,13 +26,15 @@ fn test_subscribe_returns_subscription_id() {
 		let table = unique_table_name("sub_basic");
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
-		let sub_id = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", table);
+		let sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
-		assert_eq!(sub_id, "1");
+			.unwrap()
+			.remove(0);
+		assert_eq!(sub.subscription_id(), "1");
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 
@@ -52,12 +55,14 @@ fn test_unsubscribe_success() {
 		let table = unique_table_name("sub_unsub");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let sub_id = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", table);
+		let sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
-		let result = client.unsubscribe(&sub_id).await;
+		let result = client.unsubscribe(&[sub.subscription_id()]).await;
 		assert!(result.is_ok(), "Unsubscribe should succeed");
 
 		client.close().await.unwrap();
@@ -77,7 +82,8 @@ fn test_subscribe_invalid_query() {
 		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
-		let result = client.subscribe("INVALID RQL SYNTAX HERE", SubscriptionConfig::default()).await;
+		let rql = "INVALID RQL SYNTAX HERE";
+		let result = client.subscribe(&[SubscribeItem::new(rql, SubscriptionConfig::default())]).await;
 		assert!(result.is_err(), "Invalid query should return error");
 
 		client.close().await.unwrap();
@@ -97,7 +103,8 @@ fn test_subscribe_nonexistent_table() {
 		let mut client = WsClient::connect(&format!("ws://[::1]:{}", port), WireFormat::Frames).await.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
-		let result = client.subscribe("from nonexistent_table_xyz_12345", SubscriptionConfig::default()).await;
+		let rql = "from nonexistent_table_xyz_12345";
+		let result = client.subscribe(&[SubscribeItem::new(rql, SubscriptionConfig::default())]).await;
 		assert!(result.is_err(), "Non-existent table should return error");
 
 		client.close().await.unwrap();
@@ -118,7 +125,7 @@ fn test_unsubscribe_invalid_id() {
 		client.authenticate("mysecrettoken").await.unwrap();
 
 		// An unknown id may or may not error server-side; this only pins that it never panics.
-		let result = client.unsubscribe("fake-subscription-id-12345").await;
+		let result = client.unsubscribe(&["fake-subscription-id-12345"]).await;
 		let _ = result;
 
 		client.close().await.unwrap();
@@ -141,15 +148,17 @@ fn test_try_recv_empty() {
 		let table = unique_table_name("sub_try_recv");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
 
-		let sub_id = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+		let rql = format!("from test::{}", table);
+		let mut sub = client
+			.subscribe(&[SubscribeItem::new(&rql, SubscriptionConfig::default())])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
-		let result = client.try_recv();
-		assert!(result.is_err(), "try_recv should return error when empty");
+		let result = timeout(Duration::from_milliseconds(50).unwrap().to_std(), sub.recv()).await;
+		assert!(result.is_err(), "a fresh handle must have nothing to receive");
 
-		client.unsubscribe(&sub_id).await.unwrap();
+		client.unsubscribe(&[sub.subscription_id()]).await.unwrap();
 		client.close().await.unwrap();
 	});
 

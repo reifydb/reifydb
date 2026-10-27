@@ -10,7 +10,7 @@
 pub mod host;
 pub mod sink;
 
-use std::{collections::HashMap, mem, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb::{
 	Database, Error, IdentityId, Params, Result as ReifyResult,
@@ -20,16 +20,11 @@ use reifydb::{
 	},
 	runtime::sync::mutex::Mutex,
 	sub_core::{
-		cleanup::cleanup_subscription_sync,
-		handler::{
-			BatchAck, BatchSubscribeError, SubscribeError, handle_batch_subscribe,
-			handle_batch_unsubscribe, handle_subscribe,
-		},
+		handler::{SubscribeError, handle_subscribe, handle_unsubscribe},
 		host::SubscribeHost,
 		registry::{ConnectionId, SubscriptionRegistry},
 	},
 	sub_subscription::{poller::StoreBackedPoller, subsystem::SubscriptionSubsystem},
-	subscription::batch::BatchId,
 	value::value::uuid::Uuid7,
 };
 use tokio::{sync::watch, task::JoinHandle};
@@ -60,7 +55,6 @@ pub struct Subscriptions {
 	/// read to them as a shutdown.
 	shutdown: watch::Sender<bool>,
 	remote_tasks: Mutex<HashMap<SubscriptionId, JoinHandle<()>>>,
-	batch_remote_tasks: Mutex<HashMap<BatchId, Vec<JoinHandle<()>>>>,
 }
 
 impl Subscriptions {
@@ -80,46 +74,15 @@ impl Subscriptions {
 			host,
 			shutdown,
 			remote_tasks: Mutex::new(HashMap::new()),
-			batch_remote_tasks: Mutex::new(HashMap::new()),
 		})
 	}
 
 	pub async fn subscribe(
 		&self,
 		identity: IdentityId,
-		query: String,
-		params: Params,
-		options: SubscribeOptions,
-	) -> ReifyResult<Result<SubscriptionId, SubscribeError<Error>>> {
-		let ack = match handle_subscribe(
-			&self.host,
-			self.connection_id,
-			identity,
-			query,
-			params,
-			options,
-			self.sink.clone(),
-			&self.registry,
-			Rbcf,
-			self.shutdown.subscribe(),
-		)
-		.await?
-		{
-			Ok(ack) => ack,
-			Err(e) => return Ok(Err(e)),
-		};
-		if let Some(handle) = ack.remote_handle {
-			self.remote_tasks.lock().insert(ack.subscription_id, handle);
-		}
-		Ok(Ok(ack.subscription_id))
-	}
-
-	pub async fn batch_subscribe(
-		&self,
-		identity: IdentityId,
 		queries: &[(String, Params, SubscribeOptions)],
-	) -> ReifyResult<Result<BatchAck, BatchSubscribeError<Error>>> {
-		let mut ack = match handle_batch_subscribe(
+	) -> ReifyResult<Result<Vec<SubscriptionId>, SubscribeError<Error>>> {
+		let ack = match handle_subscribe(
 			&self.host,
 			self.connection_id,
 			identity,
@@ -134,31 +97,24 @@ impl Subscriptions {
 			Ok(ack) => ack,
 			Err(e) => return Ok(Err(e)),
 		};
-		if !ack.remote_handles.is_empty() {
-			let handles = mem::take(&mut ack.remote_handles);
-			self.batch_remote_tasks.lock().entry(ack.batch_id).or_default().extend(handles);
-		}
-		Ok(Ok(ack))
+		self.remote_tasks.lock().extend(ack.remote_handles);
+		let mut subscriptions = ack.subscriptions;
+		subscriptions.sort_by_key(|entry| entry.index);
+		Ok(Ok(subscriptions.into_iter().map(|entry| entry.subscription_id).collect()))
 	}
 
-	/// Drops the subscription and the row that backs it. Unsubscribing twice is not an error: the
-	/// second call finds nothing to remove and the drop is written `if exists`.
-	pub fn unsubscribe(&self, subscription_id: SubscriptionId) -> ReifyResult<()> {
-		if let Some(handle) = self.remote_tasks.lock().remove(&subscription_id) {
-			handle.abort();
-			return Ok(());
-		}
-		self.registry.unsubscribe(subscription_id);
-		cleanup_subscription_sync(self.host.engine(), subscription_id)
-	}
-
-	pub async fn batch_unsubscribe(&self, batch_id: BatchId) -> ReifyResult<()> {
-		if let Some(handles) = self.batch_remote_tasks.lock().remove(&batch_id) {
-			for handle in handles {
-				handle.abort();
+	/// Drops the subscriptions and the rows that back them. An id this node does not hold is skipped,
+	/// so unsubscribing twice is not an error.
+	pub async fn unsubscribe(&self, subscription_ids: &[SubscriptionId]) -> ReifyResult<()> {
+		{
+			let mut remote_tasks = self.remote_tasks.lock();
+			for subscription_id in subscription_ids {
+				if let Some(handle) = remote_tasks.remove(subscription_id) {
+					handle.abort();
+				}
 			}
 		}
-		handle_batch_unsubscribe(self.host.engine(), &self.registry, self.connection_id, batch_id).await?;
+		handle_unsubscribe(self.host.engine(), &self.registry, self.connection_id, subscription_ids).await?;
 		Ok(())
 	}
 

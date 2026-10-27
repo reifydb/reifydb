@@ -7,8 +7,6 @@ service ReifyDB {
   rpc Query(QueryRequest) returns (QueryResponse);
   rpc Subscribe(SubscribeRequest) returns (stream SubscriptionEvent);
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse);
-  rpc BatchSubscribe(BatchSubscribeRequest) returns (stream BatchSubscriptionEvent);
-  rpc BatchUnsubscribe(BatchUnsubscribeRequest) returns (BatchUnsubscribeResponse);
   rpc Authenticate(AuthenticateRequest) returns (AuthenticateResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
   rpc Call(OperationRequest) returns (OperationResponse);
@@ -47,51 +45,22 @@ message SubscribeOptions {
   optional TypedValue throttle = 2;
   optional TypedValue linger = 3;
 }
-message SubscribeRequest { string rql = 1; optional SubscribeOptions options = 2; }
-message UnsubscribeRequest { string subscription_id = 1; }
-message UnsubscribeResponse { string subscription_id = 1; }
+message SubscribeItem { string rql = 1; optional SubscribeOptions options = 2; }
+message SubscribeRequest { repeated SubscribeItem subscriptions = 1; }
+message UnsubscribeRequest { repeated string subscription_ids = 1; }
+message UnsubscribeResponse { repeated string subscription_ids = 1; }
 message SubscriptionEvent {
   oneof event {
     SubscribedEvent subscribed = 1;
     ChangeEvent change = 2;
+    SubscriptionClosedEvent subscription_closed = 3;
   }
 }
-message SubscribedEvent { string subscription_id = 1; }
-message ChangeEvent { bytes rbcf = 1; }
-
-// BatchSubscribe opens a single stream that delivers coalesced deltas from N RQL queries.
-// Each poller tick emits one BatchChangeEvent containing an entry per subscription that had data.
-message BatchSubscribeItem { string rql = 1; optional SubscribeOptions options = 2; }
-message BatchSubscribeRequest { repeated BatchSubscribeItem subscriptions = 1; }
-message BatchUnsubscribeRequest { string batch_id = 1; }
-message BatchUnsubscribeResponse { string batch_id = 1; }
-message BatchSubscriptionEvent {
-  oneof event {
-    BatchSubscribedEvent subscribed = 1;
-    BatchChangeEvent change = 2;
-    BatchSubscriptionClosedEvent subscription_closed = 3;
-  }
-}
-message BatchSubscribedEvent {
-  string batch_id = 1;
-  repeated BatchSubscriptionInfo subscriptions = 2;
-}
-message BatchSubscriptionInfo {
-  uint32 index = 1;
-  string subscription_id = 2;
-}
-message BatchChangeEvent {
-  string batch_id = 1;
-  repeated BatchChangeEntry entries = 2;
-}
-message BatchChangeEntry {
-  string subscription_id = 1;
-  ChangeEvent change = 2;
-}
-message BatchSubscriptionClosedEvent {
-  string batch_id = 1;
-  string subscription_id = 2;
-}
+message SubscribedEvent { repeated SubscribedItem subscriptions = 1; }
+message SubscribedItem { uint32 index = 1; string subscription_id = 2; }
+message ChangeEvent { repeated ChangeEntry entries = 1; }
+message ChangeEntry { string subscription_id = 1; bytes rbcf = 2; }
+message SubscriptionClosedEvent { string subscription_id = 1; }
 
 message AuthenticateRequest {
   string method = 1;

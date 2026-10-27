@@ -14,7 +14,6 @@ test = false
 doctest = false
 
 [dependencies]
-arrow-array = { workspace = true }
 reifydb = { workspace = true, features = ["sub_flow"] }
 reifydb-codec = { workspace = true }
 reifydb-sub-server = { workspace = true }

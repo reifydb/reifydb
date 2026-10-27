@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_client::{GrpcClient, SubscriptionConfig, Value, WireFormat};
+use reifydb_client::{GrpcClient, SubscribeItem, SubscriptionConfig, Value, WireFormat};
 use tokio::runtime::Runtime;
 
 use crate::{
@@ -29,13 +29,21 @@ fn test_multiple_subscriptions_different_tables() {
 		create_test_table(&client, &table2, &[("id", "int4"), ("value", "int4")]).await.unwrap();
 
 		let mut sub1 = client
-			.subscribe(&format!("from test::{}", table1), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table1),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 		let mut sub2 = client
-			.subscribe(&format!("from test::{}", table2), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table2),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		assert_ne!(sub1.subscription_id(), sub2.subscription_id(), "Subscription IDs should be different");
 
@@ -71,13 +79,21 @@ fn test_multiple_subscriptions_same_table() {
 		create_test_table(&client, &table, &[("id", "int4"), ("name", "utf8")]).await.unwrap();
 
 		let mut sub1 = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 		let mut sub2 = client
-			.subscribe(&format!("from test::{}", table), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		assert_ne!(
 			sub1.subscription_id(),
@@ -118,13 +134,21 @@ fn test_changes_routed_to_correct_subscription() {
 		create_test_table(&client, &table2, &[("id", "int4")]).await.unwrap();
 
 		let mut sub1 = client
-			.subscribe(&format!("from test::{}", table1), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table1),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 		let mut sub2 = client
-			.subscribe(&format!("from test::{}", table2), SubscriptionConfig::default())
+			.subscribe(&[SubscribeItem::new(
+				&format!("from test::{}", table2),
+				SubscriptionConfig::default(),
+			)])
 			.await
-			.unwrap();
+			.unwrap()
+			.remove(0);
 
 		client.command(&format!("INSERT test::{} [{{ id: 100 }}]", table1), None).await.unwrap();
 
@@ -140,6 +164,60 @@ fn test_changes_routed_to_correct_subscription() {
 
 		drop(sub1);
 		drop(sub2);
+	});
+
+	cleanup_server(Some(server));
+}
+
+#[test]
+fn one_stream_routes_each_entry_to_its_own_handle() {
+	// Catches entries of one shared stream being routed by position instead of by subscription id.
+	let runtime = Arc::new(Runtime::new().unwrap());
+	let _guard = runtime.enter();
+	let mut server = create_server_instance(&runtime);
+	let port = start_server_and_get_grpc_port(&runtime, &mut server).unwrap();
+
+	runtime.block_on(async {
+		let mut client =
+			GrpcClient::connect(&format!("http://[::1]:{}", port), WireFormat::Rbcf).await.unwrap();
+		client.authenticate("mysecrettoken");
+
+		let table_a = unique_table_name("sub_one_stream_a");
+		let table_b = unique_table_name("sub_one_stream_b");
+		create_test_table(&client, &table_a, &[("id", "int4")]).await.unwrap();
+		create_test_table(&client, &table_b, &[("id", "int4")]).await.unwrap();
+
+		let query_a = format!("from test::{}", table_a);
+		let query_b = format!("from test::{}", table_b);
+		let mut handles = client
+			.subscribe(&[
+				SubscribeItem::new(&query_a, SubscriptionConfig::default()),
+				SubscribeItem::new(&query_b, SubscriptionConfig::default()),
+			])
+			.await
+			.unwrap();
+		assert_eq!(handles.len(), 2, "one handle per item");
+		assert_ne!(handles[0].subscription_id(), handles[1].subscription_id());
+
+		client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table_a), None).await.unwrap();
+		client.command(&format!("INSERT test::{} [{{ id: 2 }}]", table_b), None).await.unwrap();
+
+		let change_a = recv_with_timeout(&mut handles[0], 5000).await.expect("handle 0 should receive A's row");
+		let id_a = find_column(&change_a.changes[0].frame, "id").unwrap();
+		assert_eq!(id_a.get_value(0), Value::Int4(1), "handle 0 must see only table A's row");
+
+		let change_b = recv_with_timeout(&mut handles[1], 5000).await.expect("handle 1 should receive B's row");
+		let id_b = find_column(&change_b.changes[0].frame, "id").unwrap();
+		assert_eq!(id_b.get_value(0), Value::Int4(2), "handle 1 must see only table B's row");
+
+		assert!(
+			recv_with_timeout(&mut handles[0], 500).await.is_none(),
+			"handle 0 must not receive table B's row"
+		);
+		assert!(
+			recv_with_timeout(&mut handles[1], 500).await.is_none(),
+			"handle 1 must not receive table A's row"
+		);
 	});
 
 	cleanup_server(Some(server));

@@ -6,7 +6,6 @@
 pub enum BinaryKind {
 	Response = 0x00,
 	Change = 0x01,
-	BatchChange = 0x02,
 }
 
 pub fn encode_rbcf_envelope(kind: BinaryKind, id: &str, rbcf_bytes: &[u8], meta_json: Option<&str>) -> Vec<u8> {
@@ -23,17 +22,11 @@ pub fn encode_rbcf_envelope(kind: BinaryKind, id: &str, rbcf_bytes: &[u8], meta_
 	envelope
 }
 
-pub fn encode_rbcf_batch_envelope(batch_id: &str, entries: &[(String, Vec<u8>)]) -> Vec<u8> {
-	let batch_id_bytes = batch_id.as_bytes();
-	let mut total_entries_bytes = 0usize;
-	for (sub_id, rbcf) in entries {
-		total_entries_bytes += 4 + sub_id.len() + 4 + rbcf.len();
-	}
+pub fn encode_rbcf_change_envelope(entries: &[(String, Vec<u8>)]) -> Vec<u8> {
+	let total_entries_bytes: usize = entries.iter().map(|(sub_id, rbcf)| 4 + sub_id.len() + 4 + rbcf.len()).sum();
 
-	let mut envelope = Vec::with_capacity(1 + 4 + batch_id_bytes.len() + 4 + total_entries_bytes);
-	envelope.push(BinaryKind::BatchChange as u8);
-	envelope.extend_from_slice(&(batch_id_bytes.len() as u32).to_le_bytes());
-	envelope.extend_from_slice(batch_id_bytes);
+	let mut envelope = Vec::with_capacity(1 + 4 + total_entries_bytes);
+	envelope.push(BinaryKind::Change as u8);
 	envelope.extend_from_slice(&(entries.len() as u32).to_le_bytes());
 	for (sub_id, rbcf) in entries {
 		let sub_id_bytes = sub_id.as_bytes();

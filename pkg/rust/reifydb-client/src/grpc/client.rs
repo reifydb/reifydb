@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::{
-		Arc,
-		atomic::{AtomicU64, Ordering},
-	},
-};
+use std::{collections::HashMap, sync::Arc};
 
 pub use reifydb_codec::wire::RawChangePayload;
 use reifydb_codec::{frame::decode::decode_frames, value::encode_value};
@@ -18,7 +12,9 @@ use reifydb_value::{
 };
 use serde_json::{Value as JsonValue, from_str as serde_json_from_str};
 use tokio::{
-	sync::Mutex,
+	spawn,
+	sync::{Mutex, mpsc},
+	task::JoinHandle,
 	time::{sleep, timeout},
 };
 use tonic::{
@@ -29,27 +25,33 @@ use tonic::{
 };
 
 use super::generated::{
-	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest,
-	BatchSubscribeItem as ProtoBatchSubscribeItem, BatchSubscribeRequest as ProtoBatchSubscribeRequest,
-	BatchSubscriptionEvent, BatchUnsubscribeRequest as ProtoBatchUnsubscribeRequest,
+	AdminRequest as ProtoAdminRequest, AuthenticateRequest as ProtoAuthenticateRequest, ChangeEvent,
 	CommandRequest as ProtoCommandRequest, HydrationOptions as ProtoHydrationOptions,
 	LogoutRequest as ProtoLogoutRequest, NamedParams, OperationRequest as ProtoOperationRequest,
 	Params as ProtoParams, PositionalParams, QueryRequest as ProtoQueryRequest,
-	QueueClaimRequest as ProtoQueueClaimRequest, SubscribeOptions as ProtoSubscribeOptions,
-	SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent, TypedValue,
-	UnsubscribeRequest as ProtoUnsubscribeRequest, batch_subscription_event, params::Params as ProtoParamsOneof,
+	QueueClaimRequest as ProtoQueueClaimRequest, SubscribeItem as ProtoSubscribeItem,
+	SubscribeOptions as ProtoSubscribeOptions, SubscribeRequest as ProtoSubscribeRequest, SubscriptionEvent,
+	TypedValue, UnsubscribeRequest as ProtoUnsubscribeRequest, params::Params as ProtoParamsOneof,
 	reify_db_client::ReifyDbClient, subscription_event,
 };
 use crate::{
-	AdminResult, BatchChangeEntry, BatchChangePayload, BatchPushEvent, BatchSubscriptionClosedPayload,
-	BatchSubscriptionInfo, ChangePayload, CommandResult, FrameChange, LoginResult, QueryResult, QueueClaimRequest,
+	AdminResult, ChangePayload, CommandResult, FrameChange, LoginResult, QueryResult, QueueClaimRequest,
 	ReconnectOptions, ResponseMeta, WireFormat,
 	changes::frames_to_changes,
-	client::{BatchSubscription as ClientBatchSubscription, ReifyClient, Subscription as ClientSubscription},
+	client::{ReifyClient, Subscription as ClientSubscription},
 	error::ClientError,
 	reconnect::{backoff_millis, fire, millis_to_std},
-	subscription::{BatchSubscribeItem, SubscriptionConfig},
+	subscription::{SubscribeItem, SubscriptionConfig},
 };
+
+type RouteSender = mpsc::UnboundedSender<Result<RawChangePayload, Error>>;
+
+struct Route {
+	handle_id: String,
+	sender: RouteSender,
+}
+
+type Routes = Arc<Mutex<HashMap<String, Route>>>;
 
 fn extract_meta(metadata: &MetadataMap) -> Option<ResponseMeta> {
 	let fingerprint = metadata.get("x-fingerprint").and_then(|v| v.to_str().ok())?;
@@ -103,10 +105,8 @@ pub struct GrpcClient {
 	inner: ReifyDbClient<Channel>,
 	token: Option<String>,
 	format: WireFormat,
-	url: String,
 	reconnect: ReconnectOptions,
-	sub_id_counter: Arc<AtomicU64>,
-	batch_server_ids: Arc<Mutex<HashMap<String, String>>>,
+	routes: Routes,
 }
 
 impl GrpcClient {
@@ -128,10 +128,8 @@ impl GrpcClient {
 			inner: ReifyDbClient::new(channel),
 			token: None,
 			format: options.format,
-			url: url.to_string(),
 			reconnect: options.reconnect,
-			sub_id_counter: Arc::new(AtomicU64::new(1)),
-			batch_server_ids: Arc::new(Mutex::new(HashMap::new())),
+			routes: Arc::new(Mutex::new(HashMap::new())),
 		})
 	}
 
@@ -301,87 +299,91 @@ impl GrpcClient {
 		decode_rbcf(&response.into_inner().rbcf)
 	}
 
-	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<GrpcSubscription, Error> {
-		let request = ProtoSubscribeRequest {
-			rql: rql.to_string(),
-			options: Some(subscription_options_to_proto(&config)?),
-		};
+	pub async fn subscribe(&self, items: &[SubscribeItem<'_>]) -> Result<Vec<GrpcSubscription>, Error> {
+		let items: Vec<ProtoSubscribeItem> = items
+			.iter()
+			.map(|item| {
+				Ok(ProtoSubscribeItem {
+					rql: item.rql.to_string(),
+					options: Some(subscription_options_to_proto(&item.config)?),
+				})
+			})
+			.collect::<Result<_, Error>>()?;
 
 		let mut client = self.inner.clone();
-		let mut req = Request::new(request.clone());
+		let mut req = Request::new(ProtoSubscribeRequest {
+			subscriptions: items.clone(),
+		});
 		self.attach_auth(&mut req);
 
 		let response = client.subscribe(req).await.map_err(status_to_error)?;
 		let mut stream = response.into_inner();
-		let subscription_id = consume_subscribed(&mut stream).await?;
+		let server_ids = consume_subscribed(&mut stream, items.len()).await?;
 
-		Ok(GrpcSubscription {
-			subscription_id,
-			stream,
-			url: self.url.clone(),
+		let mut receivers = Vec::with_capacity(server_ids.len());
+		{
+			let mut routes = self.routes.lock().await;
+			for server_id in &server_ids {
+				let (sender, receiver) = mpsc::unbounded_channel();
+				routes.insert(
+					server_id.clone(),
+					Route {
+						handle_id: server_id.clone(),
+						sender,
+					},
+				);
+				receivers.push(receiver);
+			}
+		}
+
+		let reader = StreamReader {
+			items,
+			server_ids: server_ids.clone(),
+			routes: self.routes.clone(),
+			client: self.inner.clone(),
 			token: self.token.clone(),
-			request,
 			reconnect: self.reconnect.clone(),
-			attempt: 0,
-		})
+		};
+		let task = Arc::new(StreamTask(spawn(reader.run(stream))));
+
+		Ok(server_ids
+			.into_iter()
+			.zip(receivers)
+			.map(|(subscription_id, rx)| GrpcSubscription {
+				subscription_id,
+				rx,
+				_task: task.clone(),
+			})
+			.collect())
 	}
 
-	pub async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
+	pub async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), Error> {
+		let targets: Vec<String> = {
+			let mut routes = self.routes.lock().await;
+			subscription_ids
+				.iter()
+				.map(|handle_id| {
+					let server_id = routes
+						.iter()
+						.find(|(_, route)| route.handle_id == *handle_id)
+						.map(|(server_id, _)| server_id.clone());
+					match server_id {
+						Some(server_id) => {
+							routes.remove(&server_id);
+							server_id
+						}
+						None => handle_id.to_string(),
+					}
+				})
+				.collect()
+		};
 		let request = ProtoUnsubscribeRequest {
-			subscription_id: subscription_id.to_string(),
+			subscription_ids: targets,
 		};
 		let mut client = self.inner.clone();
 		let mut req = Request::new(request);
 		self.attach_auth(&mut req);
 		client.unsubscribe(req).await.map_err(status_to_error)?;
-		Ok(())
-	}
-
-	pub async fn batch_subscribe(&self, items: &[BatchSubscribeItem<'_>]) -> Result<BatchGrpcSubscription, Error> {
-		let request = ProtoBatchSubscribeRequest {
-			subscriptions: items
-				.iter()
-				.map(|i| {
-					Ok(ProtoBatchSubscribeItem {
-						rql: i.rql.to_string(),
-						options: Some(subscription_options_to_proto(&i.config)?),
-					})
-				})
-				.collect::<Result<_, Error>>()?,
-		};
-		let client_batch_id = self.sub_id_counter.fetch_add(1, Ordering::Relaxed).to_string();
-
-		let mut client = self.inner.clone();
-		let mut req = Request::new(request.clone());
-		self.attach_auth(&mut req);
-
-		let response = client.batch_subscribe(req).await.map_err(status_to_error)?;
-		let mut stream = response.into_inner();
-		let (server_batch_id, acked) = consume_batch_subscribed(&mut stream).await?;
-		self.batch_server_ids.lock().await.insert(client_batch_id.clone(), server_batch_id);
-
-		Ok(BatchGrpcSubscription {
-			client_batch_id,
-			acked,
-			stream,
-			batch_server_ids: self.batch_server_ids.clone(),
-			url: self.url.clone(),
-			token: self.token.clone(),
-			request,
-			reconnect: self.reconnect.clone(),
-			attempt: 0,
-		})
-	}
-
-	pub async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
-		let server_batch_id = self.batch_server_ids.lock().await.remove(batch_id);
-		let request = ProtoBatchUnsubscribeRequest {
-			batch_id: server_batch_id.unwrap_or_else(|| batch_id.to_string()),
-		};
-		let mut client = self.inner.clone();
-		let mut req = Request::new(request);
-		self.attach_auth(&mut req);
-		client.batch_unsubscribe(req).await.map_err(status_to_error)?;
 		Ok(())
 	}
 
@@ -408,176 +410,157 @@ fn attach_token<T>(request: &mut Request<T>, token: &Option<String>) {
 	}
 }
 
-async fn consume_subscribed(stream: &mut Streaming<SubscriptionEvent>) -> Result<String, Error> {
+async fn consume_subscribed(stream: &mut Streaming<SubscriptionEvent>, expected: usize) -> Result<Vec<String>, Error> {
 	let first = stream.message().await.map_err(status_to_error)?.ok_or_else(|| {
-		ClientError::UnexpectedResponse("Stream closed before receiving subscription ID".to_string())
+		ClientError::UnexpectedResponse("Stream closed before receiving subscription IDs".to_string())
 	})?;
-	match first.event {
-		Some(subscription_event::Event::Subscribed(s)) => Ok(s.subscription_id),
-		_ => {
-			Err(ClientError::UnexpectedResponse("Expected SubscribedEvent as first message".to_string())
-				.into())
+	let Some(subscription_event::Event::Subscribed(subscribed)) = first.event else {
+		return Err(
+			ClientError::UnexpectedResponse("Expected SubscribedEvent as first message".to_string()).into()
+		);
+	};
+	let mut acked = subscribed.subscriptions;
+	if acked.len() != expected {
+		return Err(ClientError::UnexpectedResponse(format!(
+			"Subscribed acknowledged {} of {} subscriptions",
+			acked.len(),
+			expected
+		))
+		.into());
+	}
+	acked.sort_by_key(|item| item.index);
+	Ok(acked.into_iter().map(|item| item.subscription_id).collect())
+}
+
+struct StreamTask(JoinHandle<()>);
+
+impl Drop for StreamTask {
+	fn drop(&mut self) {
+		self.0.abort();
+	}
+}
+
+struct StreamReader {
+	items: Vec<ProtoSubscribeItem>,
+	server_ids: Vec<String>,
+	routes: Routes,
+	client: ReifyDbClient<Channel>,
+	token: Option<String>,
+	reconnect: ReconnectOptions,
+}
+
+impl StreamReader {
+	async fn run(mut self, mut stream: Streaming<SubscriptionEvent>) {
+		loop {
+			let ended = loop {
+				match stream.message().await {
+					Ok(Some(message)) => match message.event {
+						Some(subscription_event::Event::Change(change)) => {
+							route_change_event(change, &mut *self.routes.lock().await)
+						}
+						Some(subscription_event::Event::SubscriptionClosed(closed)) => {
+							self.routes.lock().await.remove(&closed.subscription_id);
+						}
+						Some(subscription_event::Event::Subscribed(_)) | None => {}
+					},
+					Ok(None) => break None,
+					Err(status) => break Some(status_to_error(status)),
+				}
+			};
+			if self.live().await.is_empty() {
+				return;
+			}
+			fire(&self.reconnect.on_disconnect);
+			match self.reopen().await {
+				Some(reopened) => {
+					stream = reopened;
+					fire(&self.reconnect.on_reconnect);
+				}
+				None => {
+					let error = if self.reconnect.max_reconnect_attempts > 0 {
+						Some(Error::from(ClientError::ConnectionLost))
+					} else {
+						ended
+					};
+					self.end(error).await;
+					return;
+				}
+			}
+		}
+	}
+
+	async fn live(&self) -> Vec<usize> {
+		let routes = self.routes.lock().await;
+		(0..self.server_ids.len())
+			.filter(|k| routes.get(&self.server_ids[*k]).is_some_and(|route| !route.sender.is_closed()))
+			.collect()
+	}
+
+	async fn reopen(&mut self) -> Option<Streaming<SubscriptionEvent>> {
+		let mut attempt = 0u32;
+		while attempt < self.reconnect.max_reconnect_attempts {
+			attempt += 1;
+			sleep(millis_to_std(backoff_millis(self.reconnect.reconnect_delay_ms, attempt))).await;
+			let live = self.live().await;
+			if live.is_empty() {
+				return None;
+			}
+			let opened = timeout(millis_to_std(self.reconnect.connect_timeout_ms), self.open(&live)).await;
+			if let Ok(Some((stream, server_ids))) = opened {
+				let mut routes = self.routes.lock().await;
+				for (k, server_id) in live.into_iter().zip(server_ids) {
+					if let Some(route) = routes.remove(&self.server_ids[k]) {
+						routes.insert(server_id.clone(), route);
+					}
+					self.server_ids[k] = server_id;
+				}
+				return Some(stream);
+			}
+		}
+		None
+	}
+
+	async fn open(&self, live: &[usize]) -> Option<(Streaming<SubscriptionEvent>, Vec<String>)> {
+		let mut client = self.client.clone();
+		let mut req = Request::new(ProtoSubscribeRequest {
+			subscriptions: live.iter().map(|k| self.items[*k].clone()).collect(),
+		});
+		attach_token(&mut req, &self.token);
+		let mut stream = client.subscribe(req).await.ok()?.into_inner();
+		let server_ids = consume_subscribed(&mut stream, live.len()).await.ok()?;
+		Some((stream, server_ids))
+	}
+
+	async fn end(&self, error: Option<Error>) {
+		let mut routes = self.routes.lock().await;
+		for server_id in &self.server_ids {
+			if let Some(route) = routes.remove(server_id)
+				&& let Some(error) = &error
+			{
+				let _ = route.sender.send(Err(Error(error.0.clone())));
+			}
 		}
 	}
 }
 
-async fn consume_batch_subscribed(
-	stream: &mut Streaming<BatchSubscriptionEvent>,
-) -> Result<(String, Vec<BatchSubscriptionHandle>), Error> {
-	let first = stream.message().await.map_err(status_to_error)?.ok_or_else(|| {
-		ClientError::UnexpectedResponse("Stream closed before receiving batch subscribed event".to_string())
-	})?;
-	match first.event {
-		Some(batch_subscription_event::Event::Subscribed(s)) => {
-			let subscriptions = s
-				.subscriptions
-				.into_iter()
-				.map(|m| BatchSubscriptionHandle {
-					index: m.index as usize,
-					subscription_id: m.subscription_id,
-				})
-				.collect();
-			Ok((s.batch_id, subscriptions))
+fn route_change_event(change: ChangeEvent, routes: &mut HashMap<String, Route>) {
+	for entry in change.entries {
+		let payload = if entry.rbcf.is_empty() {
+			RawChangePayload::Empty
+		} else {
+			RawChangePayload::Rbcf(entry.rbcf)
+		};
+		let delivered = routes.get(&entry.subscription_id).map(|route| route.sender.send(Ok(payload)).is_ok());
+		if delivered == Some(false) {
+			routes.remove(&entry.subscription_id);
 		}
-		_ => Err(ClientError::UnexpectedResponse("Expected BatchSubscribedEvent as first message".to_string())
-			.into()),
 	}
 }
 
 pub struct GrpcSubscription {
 	subscription_id: String,
-	stream: Streaming<SubscriptionEvent>,
-	url: String,
-	token: Option<String>,
-	request: ProtoSubscribeRequest,
-	reconnect: ReconnectOptions,
-	attempt: u32,
-}
-
-#[derive(Debug, Clone)]
-pub struct BatchSubscriptionHandle {
-	pub index: usize,
-	pub subscription_id: String,
-}
-
-pub struct BatchGrpcSubscription {
-	client_batch_id: String,
-	acked: Vec<BatchSubscriptionHandle>,
-	stream: Streaming<BatchSubscriptionEvent>,
-	batch_server_ids: Arc<Mutex<HashMap<String, String>>>,
-	url: String,
-	token: Option<String>,
-	request: ProtoBatchSubscribeRequest,
-	reconnect: ReconnectOptions,
-	attempt: u32,
-}
-
-#[derive(Debug, Clone)]
-pub struct BatchFramesEnvelope {
-	pub batch_id: String,
-	pub entries: HashMap<String, GrpcChange>,
-}
-
-#[derive(Debug, Clone)]
-pub enum BatchStreamEvent {
-	Change(BatchFramesEnvelope),
-	SubscriptionClosed {
-		batch_id: String,
-		subscription_id: String,
-	},
-}
-
-impl BatchGrpcSubscription {
-	pub fn batch_id(&self) -> &str {
-		&self.client_batch_id
-	}
-
-	pub fn subscriptions(&self) -> &[BatchSubscriptionHandle] {
-		&self.acked
-	}
-
-	pub async fn recv(&mut self) -> Option<BatchStreamEvent> {
-		loop {
-			match self.stream.message().await {
-				Ok(Some(msg)) => {
-					self.attempt = 0;
-					match msg.event {
-						Some(batch_subscription_event::Event::Change(change)) => {
-							let mut entries: HashMap<String, GrpcChange> = HashMap::new();
-							for entry in change.entries {
-								let sub_id = entry.subscription_id;
-								match entry.change.map(|c| c.rbcf) {
-									Some(bytes) if !bytes.is_empty() => {
-										entries.insert(
-											sub_id,
-											change_from_rbcf(&bytes),
-										);
-									}
-									_ => {
-										entries.insert(
-											sub_id,
-											to_grpc_change(Vec::new()),
-										);
-									}
-								}
-							}
-							return Some(BatchStreamEvent::Change(BatchFramesEnvelope {
-								batch_id: self.client_batch_id.clone(),
-								entries,
-							}));
-						}
-						Some(batch_subscription_event::Event::SubscriptionClosed(m)) => {
-							return Some(BatchStreamEvent::SubscriptionClosed {
-								batch_id: self.client_batch_id.clone(),
-								subscription_id: m.subscription_id,
-							});
-						}
-						Some(batch_subscription_event::Event::Subscribed(_)) => continue,
-						None => continue,
-					}
-				}
-				Ok(None) | Err(_) => {
-					fire(&self.reconnect.on_disconnect);
-					if self.reconnect_stream().await {
-						continue;
-					}
-					return None;
-				}
-			}
-		}
-	}
-
-	async fn open_stream(
-		&self,
-	) -> Option<(Streaming<BatchSubscriptionEvent>, String, Vec<BatchSubscriptionHandle>)> {
-		let channel = open_channel(&self.url).await.ok()?;
-		let mut client = ReifyDbClient::new(channel);
-		let mut req = Request::new(self.request.clone());
-		attach_token(&mut req, &self.token);
-		let mut stream = client.batch_subscribe(req).await.ok()?.into_inner();
-		let (server_batch_id, acked) = consume_batch_subscribed(&mut stream).await.ok()?;
-		Some((stream, server_batch_id, acked))
-	}
-
-	async fn reconnect_stream(&mut self) -> bool {
-		while self.attempt < self.reconnect.max_reconnect_attempts {
-			self.attempt += 1;
-			sleep(millis_to_std(backoff_millis(self.reconnect.reconnect_delay_ms, self.attempt))).await;
-
-			let opened =
-				timeout(millis_to_std(self.reconnect.connect_timeout_ms), self.open_stream()).await;
-			if let Ok(Some((stream, server_batch_id, acked))) = opened {
-				if let Some(entry) = self.batch_server_ids.lock().await.get_mut(&self.client_batch_id) {
-					*entry = server_batch_id;
-				}
-				self.acked = acked;
-				self.stream = stream;
-				fire(&self.reconnect.on_reconnect);
-				return true;
-			}
-		}
-		false
-	}
+	rx: mpsc::UnboundedReceiver<Result<RawChangePayload, Error>>,
+	_task: Arc<StreamTask>,
 }
 
 impl GrpcSubscription {
@@ -586,78 +569,15 @@ impl GrpcSubscription {
 	}
 
 	pub async fn recv(&mut self) -> Option<GrpcChange> {
-		loop {
-			match self.stream.message().await {
-				Ok(Some(msg)) => {
-					self.attempt = 0;
-					match msg.event {
-						Some(subscription_event::Event::Change(change)) => {
-							if change.rbcf.is_empty() {
-								return Some(to_grpc_change(Vec::new()));
-							}
-							return Some(change_from_rbcf(&change.rbcf));
-						}
-						Some(subscription_event::Event::Subscribed(_)) => continue,
-						None => continue,
-					}
-				}
-				Ok(None) | Err(_) => {
-					fire(&self.reconnect.on_disconnect);
-					if self.reconnect_stream().await {
-						continue;
-					}
-					return None;
-				}
-			}
+		match self.rx.recv().await? {
+			Ok(RawChangePayload::Rbcf(bytes)) => Some(change_from_rbcf(&bytes)),
+			Ok(RawChangePayload::Empty) => Some(to_grpc_change(Vec::new())),
+			Err(_) => None,
 		}
 	}
 
 	pub async fn recv_raw(&mut self) -> Result<Option<RawChangePayload>, Error> {
-		loop {
-			let Some(msg) = self.stream.message().await.map_err(status_to_error)? else {
-				return Ok(None);
-			};
-			match msg.event {
-				Some(subscription_event::Event::Change(change)) => {
-					let payload = if change.rbcf.is_empty() {
-						RawChangePayload::Empty
-					} else {
-						RawChangePayload::Rbcf(change.rbcf)
-					};
-					return Ok(Some(payload));
-				}
-				Some(subscription_event::Event::Subscribed(_)) => {
-					continue;
-				}
-				None => continue,
-			}
-		}
-	}
-
-	async fn open_stream(&self) -> Option<Streaming<SubscriptionEvent>> {
-		let channel = open_channel(&self.url).await.ok()?;
-		let mut client = ReifyDbClient::new(channel);
-		let mut req = Request::new(self.request.clone());
-		attach_token(&mut req, &self.token);
-		let mut stream = client.subscribe(req).await.ok()?.into_inner();
-		consume_subscribed(&mut stream).await.ok()?;
-		Some(stream)
-	}
-
-	async fn reconnect_stream(&mut self) -> bool {
-		while self.attempt < self.reconnect.max_reconnect_attempts {
-			self.attempt += 1;
-			sleep(millis_to_std(backoff_millis(self.reconnect.reconnect_delay_ms, self.attempt))).await;
-
-			let opened =
-				timeout(millis_to_std(self.reconnect.connect_timeout_ms), self.open_stream()).await;
-			if let Ok(Some(stream)) = opened {
-				self.stream = stream;
-				fire(&self.reconnect.on_reconnect);
-				return true;
-			}
-		}
-		false
+		self.rx.recv().await.transpose()
 	}
 }
 
@@ -733,57 +653,6 @@ impl ClientSubscription for GrpcSubscriptionAdapter {
 	}
 }
 
-pub struct BatchGrpcSubscriptionAdapter {
-	inner: BatchGrpcSubscription,
-	subscription_infos: Vec<BatchSubscriptionInfo>,
-}
-
-#[async_trait::async_trait]
-impl ClientBatchSubscription for BatchGrpcSubscriptionAdapter {
-	fn batch_id(&self) -> &str {
-		self.inner.batch_id()
-	}
-
-	fn subscriptions(&self) -> &[BatchSubscriptionInfo] {
-		&self.subscription_infos
-	}
-
-	async fn recv(&mut self) -> Option<BatchPushEvent> {
-		let event = self.inner.recv().await?;
-		Some(match event {
-			BatchStreamEvent::Change(env) => {
-				let batch_id = env.batch_id.clone();
-				let entries = env
-					.entries
-					.into_iter()
-					.map(|(sub_id, change)| batch_change_entry(sub_id, change))
-					.collect();
-				BatchPushEvent::Change(BatchChangePayload {
-					batch_id,
-					entries,
-				})
-			}
-			BatchStreamEvent::SubscriptionClosed {
-				batch_id,
-				subscription_id,
-			} => BatchPushEvent::SubscriptionClosed(BatchSubscriptionClosedPayload {
-				batch_id,
-				subscription_id,
-			}),
-		})
-	}
-}
-
-fn batch_change_entry(subscription_id: String, change: GrpcChange) -> BatchChangeEntry {
-	BatchChangeEntry {
-		subscription_id,
-		content_type: "application/vnd.reifydb.grpc".to_string(),
-		body: JsonValue::Null,
-		changes: change.changes,
-		decode_error: change.decode_error,
-	}
-}
-
 fn status_to_error(status: Status) -> Error {
 	if let Ok(diag) = serde_json_from_str::<Diagnostic>(status.message()) {
 		return Error(Box::new(diag));
@@ -853,49 +722,37 @@ impl ReifyClient for GrpcClient {
 		GrpcClient::call_with_meta(self, name, params).await
 	}
 
-	async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<Box<dyn ClientSubscription>, Error> {
-		let inner = GrpcClient::subscribe(self, rql, config).await?;
-		Ok(Box::new(GrpcSubscriptionAdapter {
-			inner,
-		}))
-	}
-
-	async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
-		GrpcClient::unsubscribe(self, subscription_id).await
-	}
-
-	async fn batch_subscribe<'a>(
-		&self,
-		items: &[BatchSubscribeItem<'a>],
-	) -> Result<Box<dyn ClientBatchSubscription>, Error> {
-		let inner = GrpcClient::batch_subscribe(self, items).await?;
-		let subscription_infos: Vec<BatchSubscriptionInfo> = inner
-			.subscriptions()
-			.iter()
-			.map(|m| BatchSubscriptionInfo {
-				index: m.index,
-				subscription_id: m.subscription_id.clone(),
+	async fn subscribe<'a>(&self, items: &[SubscribeItem<'a>]) -> Result<Vec<Box<dyn ClientSubscription>>, Error> {
+		Ok(GrpcClient::subscribe(self, items)
+			.await?
+			.into_iter()
+			.map(|inner| {
+				Box::new(GrpcSubscriptionAdapter {
+					inner,
+				}) as Box<dyn ClientSubscription>
 			})
-			.collect();
-		Ok(Box::new(BatchGrpcSubscriptionAdapter {
-			inner,
-			subscription_infos,
-		}))
+			.collect())
 	}
 
-	async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
-		GrpcClient::batch_unsubscribe(self, batch_id).await
+	async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), Error> {
+		GrpcClient::unsubscribe(self, subscription_ids).await
 	}
 }
 
 #[cfg(test)]
 mod tests {
+	use std::collections::HashMap;
+
 	use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 	use reifydb_core::value::{batch::batch, column::factory};
 	use reifydb_value::value::{Value, diff_type::DiffType, frame::frame::Frame};
+	use tokio::sync::mpsc::unbounded_channel;
 
-	use super::{GrpcChange, batch_change_entry, change_from_rbcf};
-	use crate::ChangeKind;
+	use super::{RawChangePayload, Route, change_from_rbcf, route_change_event};
+	use crate::{
+		ChangeKind,
+		grpc::generated::{ChangeEntry, ChangeEvent},
+	};
 
 	fn update_frame(id: i32) -> Frame {
 		Frame::from(batch(vec![factory::int4("id", [id])]).expect("an int4 column forms a batch"))
@@ -935,16 +792,52 @@ mod tests {
 	}
 
 	#[test]
-	fn batch_entry_carries_the_subscription_decode_error() {
-		// A subscription's decode error must reach its batch entry, never be replaced by none.
-		let change = GrpcChange {
-			changes: Vec::new(),
-			decode_error: Some("bad rbcf".to_string()),
-		};
+	fn a_change_event_splits_into_one_payload_per_listed_subscription() {
+		// Sending every entry to every handle, or dropping the empty one, hands a subscription another's rows.
+		let (first_tx, mut first_rx) = unbounded_channel();
+		let (second_tx, mut second_rx) = unbounded_channel();
+		let mut routes = HashMap::from([
+			(
+				"1".to_string(),
+				Route {
+					handle_id: "1".to_string(),
+					sender: first_tx,
+				},
+			),
+			(
+				"2".to_string(),
+				Route {
+					handle_id: "2".to_string(),
+					sender: second_tx,
+				},
+			),
+		]);
+		let bytes = rbcf(&[update_frame(7)]);
 
-		let entry = batch_change_entry("server-1".to_string(), change);
+		route_change_event(
+			ChangeEvent {
+				entries: vec![
+					ChangeEntry {
+						subscription_id: "1".to_string(),
+						rbcf: bytes.clone(),
+					},
+					ChangeEntry {
+						subscription_id: "2".to_string(),
+						rbcf: Vec::new(),
+					},
+					ChangeEntry {
+						subscription_id: "3".to_string(),
+						rbcf: bytes.clone(),
+					},
+				],
+			},
+			&mut routes,
+		);
 
-		assert_eq!(entry.subscription_id, "server-1");
-		assert_eq!(entry.decode_error, Some("bad rbcf".to_string()));
+		assert!(matches!(first_rx.try_recv(), Ok(Ok(RawChangePayload::Rbcf(b))) if b == bytes));
+		assert!(first_rx.try_recv().is_err(), "handle 1 must receive only its own entry");
+		assert!(matches!(second_rx.try_recv(), Ok(Ok(RawChangePayload::Empty))));
+		assert!(second_rx.try_recv().is_err(), "handle 2 must receive only its own entry");
+		assert_eq!(routes.len(), 2, "an entry for an unknown id must not create or drop a route");
 	}
 }

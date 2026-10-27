@@ -90,7 +90,7 @@ mod tests {
 		Response {
 			id: "req-1".to_string(),
 			payload: ResponsePayload::Unsubscribed(UnsubscribedResponse {
-				subscription_id: "sub-1".to_string(),
+				subscription_ids: vec!["sub-1".to_string()],
 			}),
 		}
 	}

@@ -103,7 +103,7 @@ async fn a_ws_unsubscribe_reply_of_the_wrong_type_fails_the_request_instead_of_p
 	let client = WsClient::connect(&url, WireFormat::Frames).await.unwrap();
 
 	let result = spawn(async move {
-		timeout(WAIT.to_std(), client.unsubscribe("1")).await.map(|unsubscribe| unsubscribe.is_err())
+		timeout(WAIT.to_std(), client.unsubscribe(&["1"])).await.map(|unsubscribe| unsubscribe.is_err())
 	})
 	.await;
 

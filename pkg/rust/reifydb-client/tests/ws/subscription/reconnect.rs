@@ -8,13 +8,12 @@
 use std::{future::Future, sync::Arc};
 
 use reifydb_client::{
-	BatchPushEvent, BatchSubscribeItem, ChangeKind, HydrationConfig, ReconnectOptions, SubscriptionConfig,
-	WireFormat, WsClientOptions,
+	ChangeKind, HydrationConfig, ReconnectOptions, SubscribeItem, SubscriptionConfig, WireFormat, WsClientOptions,
 };
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, sync::mpsc, time::timeout};
 
-use super::{create_test_table, recv_with_timeout, unique_table_name};
+use super::{create_test_table, find_column, recv_with_timeout, unique_table_name};
 use crate::{
 	common::{cleanup_server, create_server_instance, start_server_and_get_ws_port},
 	proxy::TcpProxy,
@@ -83,18 +82,23 @@ fn reconnect_transparently_resubscribes_standalone() {
 
 		let table = unique_table_name("reconn_std");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
-		let sub_id = client.subscribe(&format!("from test::{}", table), no_hydration()).await.unwrap();
+		let rql = format!("from test::{}", table);
+		let mut sub = client.subscribe(&[SubscribeItem::new(&rql, no_hydration())]).await.unwrap().remove(0);
 
 		client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
-		let first = recv_with_timeout(&mut client, 5000).await.expect("initial change");
-		assert_eq!(first.subscription_id, sub_id);
+		let first = recv_with_timeout(&mut sub, 5000).await.expect("initial change");
+		assert_eq!(first.subscription_id, sub.subscription_id());
 
 		proxy.kill();
 		assert!(fired_within(&mut recon_rx, 5000).await, "client should reconnect after the socket drops");
 
 		client.command(&format!("INSERT test::{} [{{ id: 2 }}]", table), None).await.unwrap();
-		let second = recv_with_timeout(&mut client, 5000).await.expect("change after reconnect");
-		assert_eq!(second.subscription_id, sub_id, "the stable subscription id survives the reconnect");
+		let second = recv_with_timeout(&mut sub, 5000).await.expect("change after reconnect");
+		assert_eq!(
+			second.subscription_id,
+			sub.subscription_id(),
+			"the stable subscription id survives the reconnect"
+		);
 		assert_eq!(second.changes[0].kind, ChangeKind::Insert);
 
 		client.close().await.unwrap();
@@ -102,7 +106,7 @@ fn reconnect_transparently_resubscribes_standalone() {
 }
 
 #[test]
-fn reconnect_transparently_resubscribes_batch() {
+fn reconnect_resubscribes_every_item_of_one_call() {
 	with_ws_server(|port| async move {
 		let proxy = TcpProxy::start(port).await;
 		let (recon_tx, mut recon_rx) = mpsc::unbounded_channel();
@@ -118,33 +122,45 @@ fn reconnect_transparently_resubscribes_batch() {
 			.unwrap();
 		client.authenticate("mysecrettoken").await.unwrap();
 
-		let table = unique_table_name("reconn_batch");
-		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
-		let query = format!("from test::{}", table);
-		let mut batch =
-			client.batch_subscribe(&[BatchSubscribeItem::new(&query, no_hydration())]).await.unwrap();
-		let batch_id = batch.batch_id().to_string();
+		let tables = [unique_table_name("reconn_call_a"), unique_table_name("reconn_call_b")];
+		for table in &tables {
+			create_test_table(&client, table, &[("id", "int4")]).await.unwrap();
+		}
+		let queries: Vec<String> = tables.iter().map(|table| format!("from test::{}", table)).collect();
+		let items: Vec<SubscribeItem> =
+			queries.iter().map(|query| SubscribeItem::new(query, no_hydration())).collect();
+		let mut subs = client.subscribe(&items).await.unwrap();
+		let sub_ids: Vec<String> = subs.iter().map(|sub| sub.subscription_id().to_string()).collect();
 
-		client.command(&format!("INSERT test::{} [{{ id: 1 }}]", table), None).await.unwrap();
-		let first = timeout(Duration::from_milliseconds(5000).unwrap().to_std(), batch.recv())
-			.await
-			.expect("no batch event before timeout")
-			.expect("batch stream should not close");
-		assert!(matches!(first, BatchPushEvent::Change(_)), "expected a batch change");
+		for (k, table) in tables.iter().enumerate() {
+			client.command(&format!("INSERT test::{} [{{ id: {} }}]", table, k * 10), None).await.unwrap();
+		}
+		for (k, sub) in subs.iter_mut().enumerate() {
+			let first = recv_with_timeout(sub, 5000).await.expect("initial change");
+			assert_eq!(first.subscription_id, sub_ids[k]);
+			assert_eq!(find_column(&first.body, "id").unwrap().payload[0], (k * 10).to_string());
+		}
 
 		proxy.kill();
-		assert!(fired_within(&mut recon_rx, 5000).await, "batch client should reconnect");
+		assert!(fired_within(&mut recon_rx, 5000).await, "client should reconnect after the socket drops");
 
-		client.command(&format!("INSERT test::{} [{{ id: 2 }}]", table), None).await.unwrap();
-		let second = timeout(Duration::from_milliseconds(5000).unwrap().to_std(), batch.recv())
-			.await
-			.expect("no batch event after reconnect before timeout")
-			.expect("batch stream should keep yielding after reconnect");
-		match second {
-			BatchPushEvent::Change(payload) => {
-				assert_eq!(payload.batch_id, batch_id, "the stable batch id survives the reconnect");
-			}
-			other => panic!("expected a batch change after reconnect, got {:?}", other),
+		for (k, table) in tables.iter().enumerate() {
+			client.command(&format!("INSERT test::{} [{{ id: {} }}]", table, k * 10 + 1), None)
+				.await
+				.unwrap();
+		}
+		for (k, sub) in subs.iter_mut().enumerate() {
+			let second = recv_with_timeout(sub, 5000).await.expect("change after reconnect");
+			assert_eq!(
+				second.subscription_id, sub_ids[k],
+				"the stable subscription id survives the reconnect"
+			);
+			assert_eq!(sub.subscription_id(), sub_ids[k], "the handle keeps its id across the reconnect");
+			assert_eq!(
+				find_column(&second.body, "id").unwrap().payload[0],
+				(k * 10 + 1).to_string(),
+				"each handle keeps streaming its own table after the reconnect"
+			);
 		}
 
 		client.close().await.unwrap();
@@ -202,7 +218,8 @@ fn backoff_is_exponential_then_attempts_are_exhausted() {
 
 		let table = unique_table_name("reconn_exhaust");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
-		client.subscribe(&format!("from test::{}", table), no_hydration()).await.unwrap();
+		let rql = format!("from test::{}", table);
+		let mut sub = client.subscribe(&[SubscribeItem::new(&rql, no_hydration())]).await.unwrap().remove(0);
 
 		// Refuse every reconnect so the client exhausts its attempts.
 		proxy.pause();
@@ -212,7 +229,7 @@ fn backoff_is_exponential_then_attempts_are_exhausted() {
 		assert!(fired_within(&mut discon_rx, 5000).await, "on_disconnect fires when the socket drops");
 
 		// Once attempts are exhausted the connection task ends and recv() reports end-of-stream.
-		let ended = client.recv().await;
+		let ended = sub.recv().await;
 		let elapsed = start.elapsed();
 		assert!(ended.is_none(), "recv() ends after reconnection is abandoned");
 
@@ -244,11 +261,12 @@ fn explicit_disconnect_disables_reconnect() {
 
 		let table = unique_table_name("reconn_disc");
 		create_test_table(&client, &table, &[("id", "int4")]).await.unwrap();
-		client.subscribe(&format!("from test::{}", table), no_hydration()).await.unwrap();
+		let rql = format!("from test::{}", table);
+		let mut sub = client.subscribe(&[SubscribeItem::new(&rql, no_hydration())]).await.unwrap().remove(0);
 
 		client.disconnect().await;
 
-		let ended = client.recv().await;
+		let ended = sub.recv().await;
 		assert!(ended.is_none(), "recv() ends after an explicit disconnect");
 		assert!(
 			!fired_within(&mut recon_rx, 200).await,

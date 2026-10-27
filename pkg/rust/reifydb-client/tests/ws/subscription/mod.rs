@@ -7,7 +7,7 @@ use reifydb::{
 	Database,
 	runtime::context::clock::{Clock, MockClock},
 };
-use reifydb_client::{ChangePayload, SubscriptionConfig, WireFormat, WsClient};
+use reifydb_client::{ChangePayload, SubscribeItem, SubscriptionConfig, WireFormat, WsClient, WsSubscription};
 use reifydb_codec::json::wire_type::from_json as type_from_json;
 use reifydb_value::value::duration::Duration;
 use tokio::{runtime::Runtime, time::timeout};
@@ -45,11 +45,11 @@ pub async fn create_test_table(client: &WsClient, name: &str, columns: &[(&str, 
 	Ok(())
 }
 
-pub async fn recv_with_timeout(client: &mut WsClient, timeout_ms: u64) -> Option<ChangePayload> {
-	timeout(Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std(), client.recv()).await.ok().flatten()
+pub async fn recv_with_timeout(sub: &mut WsSubscription, timeout_ms: u64) -> Option<ChangePayload> {
+	timeout(Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std(), sub.recv()).await.ok().flatten()
 }
 
-pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, timeout_ms: u64) -> Vec<ChangePayload> {
+pub async fn recv_multiple_with_timeout(sub: &mut WsSubscription, count: usize, timeout_ms: u64) -> Vec<ChangePayload> {
 	let mut results = Vec::new();
 	let deadline = tokio::time::Instant::now() + Duration::from_milliseconds(timeout_ms as i64).unwrap().to_std();
 
@@ -59,7 +59,7 @@ pub async fn recv_multiple_with_timeout(client: &mut WsClient, count: usize, tim
 			break;
 		}
 
-		match timeout(remaining, client.recv()).await {
+		match timeout(remaining, sub.recv()).await {
 			Ok(Some(change)) => results.push(change),
 			Ok(None) => break,
 			Err(_) => break,
@@ -207,6 +207,7 @@ impl SubscriptionTestHarness {
 pub struct TestContext {
 	pub client: WsClient,
 	table_prefix: String,
+	subscription: Option<WsSubscription>,
 }
 
 impl TestContext {
@@ -214,6 +215,7 @@ impl TestContext {
 		Self {
 			client,
 			table_prefix: unique_table_name("t"),
+			subscription: None,
 		}
 	}
 
@@ -230,8 +232,12 @@ impl TestContext {
 		Ok(full_name)
 	}
 
+	/// Keeps the handle so `recv` reads it; returns its subscription id.
 	pub async fn subscribe(&mut self, table: &str, config: SubscriptionConfig) -> Result<String, Box<dyn Error>> {
-		let sub_id = self.client.subscribe(&format!("from test::{}", table), config).await?;
+		let rql = format!("from test::{}", table);
+		let sub = self.client.subscribe(&[SubscribeItem::new(&rql, config)]).await?.remove(0);
+		let sub_id = sub.subscription_id().to_string();
+		self.subscription = Some(sub);
 		Ok(sub_id)
 	}
 
@@ -257,12 +263,18 @@ impl TestContext {
 
 	/// Receive next change notification with 5s timeout
 	pub async fn recv(&mut self) -> Option<ChangePayload> {
-		recv_with_timeout(&mut self.client, 5000).await
+		self.recv_within(5000).await
+	}
+
+	/// Receive next change notification on the subscribed handle within `timeout_ms`.
+	pub async fn recv_within(&mut self, timeout_ms: u64) -> Option<ChangePayload> {
+		let sub = self.subscription.as_mut().expect("subscribe before receiving");
+		recv_with_timeout(sub, timeout_ms).await
 	}
 
 	/// Unsubscribe and close the client
 	pub async fn close(self, sub_id: &str) -> Result<(), Box<dyn Error>> {
-		self.client.unsubscribe(sub_id).await?;
+		self.client.unsubscribe(&[sub_id]).await?;
 		self.client.close().await?;
 		Ok(())
 	}

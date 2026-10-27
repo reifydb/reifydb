@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 use std::{
-	collections::HashMap,
+	collections::{BTreeMap, HashMap},
 	sync::{
 		Arc,
 		atomic::{AtomicU64, Ordering},
@@ -27,19 +27,17 @@ use tokio_tungstenite::{
 };
 
 use crate::{
-	AdminRequest, AdminResult, AuthRequest, BatchChangeEntry, BatchChangePayload, BatchPushEvent,
-	BatchSubscribeRequest, BatchSubscriptionInfo, BatchUnsubscribeRequest, CallRequest, ChangePayload,
-	CommandRequest, CommandResult, ErrResponse, FrameChange, LoginResult, QueryRequest, QueryResult,
-	QueueClaimRequest, ReconnectOptions, Request, RequestPayload, Response, ResponseMeta, ResponsePayload,
-	ServerPush, SubscribeRequest, UnsubscribeRequest, WireBatchChangePayload, WireBatchSubscribeItem,
-	WireChangePayload, WireFormat, WsQueueClaimRequest,
+	AdminRequest, AdminResult, AuthRequest, CallRequest, ChangePayload, CommandRequest, CommandResult, ErrResponse,
+	FrameChange, LoginResult, QueryRequest, QueryResult, QueueClaimRequest, ReconnectOptions, Request,
+	RequestPayload, Response, ResponseMeta, ResponsePayload, ServerPush, SubscribeRequest, UnsubscribeRequest,
+	WireChangePayload, WireFormat, WireSubscribeItem, WsQueueClaimRequest,
 	changes::frames_to_changes,
-	client::{BatchSubscription as ClientBatchSubscription, ReifyClient, Subscription as ClientSubscription},
+	client::{ReifyClient, Subscription as ClientSubscription},
 	error::ClientError,
 	params_to_wire,
 	reconnect::{backoff_millis, fire, millis_to_std},
 	session::{parse_admin_response, parse_call_response, parse_command_response, parse_query_response},
-	subscription::{BatchSubscribeItem, SubscriptionConfig},
+	subscription::{SubscribeItem, SubscriptionConfig},
 	subscription_options_to_wire,
 	utils::generate_request_id,
 };
@@ -54,34 +52,20 @@ type WsRead = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
 type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<ClientResponse>>>>;
 
-#[derive(Clone)]
-enum SubSink {
-	Dedicated(mpsc::Sender<ChangePayload>),
-	Shared,
-}
-
 struct SubEntry {
 	rql: String,
 	config: SubscriptionConfig,
-	sink: SubSink,
+	sender: mpsc::Sender<ChangePayload>,
 	server_id: Option<String>,
-}
-
-struct BatchEntry {
-	subscriptions: Vec<(String, SubscriptionConfig)>,
-	sender: mpsc::Sender<BatchPushEvent>,
-	server_batch_id: Option<String>,
+	call_id: u64,
 }
 
 #[derive(Clone)]
 struct Shared {
 	pending: PendingRequests,
 	active_subs: Arc<Mutex<HashMap<u64, SubEntry>>>,
-	active_batches: Arc<Mutex<HashMap<u64, BatchEntry>>>,
 	server_to_client_sub: Arc<Mutex<HashMap<String, u64>>>,
-	server_to_client_batch: Arc<Mutex<HashMap<String, u64>>>,
-	pending_sub_acks: Arc<Mutex<HashMap<String, u64>>>,
-	pending_batch_acks: Arc<Mutex<HashMap<String, u64>>>,
+	pending_sub_acks: Arc<Mutex<HashMap<String, Vec<u64>>>>,
 	format: WireFormat,
 }
 
@@ -116,11 +100,10 @@ pub struct WsClient {
 	request_tx: mpsc::Sender<(Request, oneshot::Sender<ClientResponse>)>,
 	shutdown_tx: mpsc::Sender<()>,
 	is_authenticated: bool,
-	change_rx: mpsc::UnboundedReceiver<ChangePayload>,
 	shared: Shared,
 	token: Arc<Mutex<Option<String>>>,
 	sub_id_counter: Arc<AtomicU64>,
-	batch_id_counter: Arc<AtomicU64>,
+	call_id_counter: Arc<AtomicU64>,
 	format: WireFormat,
 }
 
@@ -143,16 +126,12 @@ impl WsClient {
 
 		let (request_tx, request_rx) = mpsc::channel::<(Request, oneshot::Sender<ClientResponse>)>(32);
 		let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>(1);
-		let (change_tx, change_rx) = mpsc::unbounded_channel::<ChangePayload>();
 
 		let shared = Shared {
 			pending: Arc::new(Mutex::new(HashMap::new())),
 			active_subs: Arc::new(Mutex::new(HashMap::new())),
-			active_batches: Arc::new(Mutex::new(HashMap::new())),
 			server_to_client_sub: Arc::new(Mutex::new(HashMap::new())),
-			server_to_client_batch: Arc::new(Mutex::new(HashMap::new())),
 			pending_sub_acks: Arc::new(Mutex::new(HashMap::new())),
-			pending_batch_acks: Arc::new(Mutex::new(HashMap::new())),
 			format: options.format,
 		};
 
@@ -172,7 +151,6 @@ impl WsClient {
 				shutdown_rx,
 				task_shared,
 				task_token,
-				change_tx,
 			)
 			.await;
 		});
@@ -181,11 +159,10 @@ impl WsClient {
 			request_tx,
 			shutdown_tx,
 			is_authenticated: false,
-			change_rx,
 			shared,
 			token,
 			sub_id_counter: Arc::new(AtomicU64::new(1)),
-			batch_id_counter: Arc::new(AtomicU64::new(1)),
+			call_id_counter: Arc::new(AtomicU64::new(1)),
 			format: options.format,
 		})
 	}
@@ -200,13 +177,10 @@ impl WsClient {
 		mut shutdown_rx: mpsc::Receiver<()>,
 		shared: Shared,
 		token: Arc<Mutex<Option<String>>>,
-		change_tx: mpsc::UnboundedSender<ChangePayload>,
 	) {
 		let mut attempt = 0u32;
 		loop {
-			match Self::pump(&mut write, &mut read, &mut request_rx, &mut shutdown_rx, &shared, &change_tx)
-				.await
-			{
+			match Self::pump(&mut write, &mut read, &mut request_rx, &mut shutdown_rx, &shared).await {
 				PumpOutcome::Shutdown => {
 					let _ = write.send(Message::Close(None)).await;
 					break;
@@ -226,7 +200,6 @@ impl WsClient {
 						&token,
 						&mut request_rx,
 						&mut shutdown_rx,
-						&change_tx,
 						&mut attempt,
 					)
 					.await
@@ -243,6 +216,7 @@ impl WsClient {
 		}
 
 		Self::reject_pending(&shared).await;
+		shared.active_subs.lock().await.clear();
 	}
 
 	async fn pump(
@@ -251,7 +225,6 @@ impl WsClient {
 		request_rx: &mut mpsc::Receiver<(Request, oneshot::Sender<ClientResponse>)>,
 		shutdown_rx: &mut mpsc::Receiver<()>,
 		shared: &Shared,
-		change_tx: &mpsc::UnboundedSender<ChangePayload>,
 	) -> PumpOutcome {
 		let mut received = false;
 		loop {
@@ -259,7 +232,7 @@ impl WsClient {
 				msg = read.next() => {
 					match msg {
 						Some(m) => {
-							match Self::dispatch_message(m, write, shared, change_tx).await {
+							match Self::dispatch_message(m, write, shared).await {
 								Flow::Closed => return PumpOutcome::Lost { received },
 								Flow::Continue => received = true,
 							}
@@ -286,14 +259,13 @@ impl WsClient {
 		msg: Result<Message, TungsteniteError>,
 		write: &mut WsWrite,
 		shared: &Shared,
-		change_tx: &mpsc::UnboundedSender<ChangePayload>,
 	) -> Flow {
 		match msg {
 			Ok(Message::Text(text)) => {
 				if let Ok(response) = from_str::<Response>(&text) {
 					Self::handle_response(response, shared).await;
 				} else if let Ok(push) = from_str::<ServerPush>(&text) {
-					Self::handle_push(push, shared, change_tx).await;
+					Self::handle_push(push, shared).await;
 				} else if let Some(id) = request_id_of(&text) {
 					Self::fail_pending(
 						shared,
@@ -306,7 +278,7 @@ impl WsClient {
 				Flow::Continue
 			}
 			Ok(Message::Binary(data)) => {
-				Self::handle_binary(&data, shared, change_tx).await;
+				Self::handle_binary(&data, shared).await;
 				Flow::Continue
 			}
 			Ok(Message::Ping(data)) => {
@@ -335,27 +307,22 @@ impl WsClient {
 	async fn handle_response(response: Response, shared: &Shared) {
 		match &response.payload {
 			ResponsePayload::Subscribed(ack) => {
-				if let Some(cid) = shared.pending_sub_acks.lock().await.remove(&response.id) {
-					shared.server_to_client_sub
-						.lock()
-						.await
-						.insert(ack.subscription_id.clone(), cid);
-					if let Some(entry) = shared.active_subs.lock().await.get_mut(&cid) {
-						entry.server_id = Some(ack.subscription_id.clone());
-					}
-				}
-			}
-			ResponsePayload::BatchSubscribed(ack) => {
-				if let Some(cid) = shared.pending_batch_acks.lock().await.remove(&response.id) {
-					shared.server_to_client_batch.lock().await.insert(ack.batch_id.clone(), cid);
-					if let Some(entry) = shared.active_batches.lock().await.get_mut(&cid) {
-						entry.server_batch_id = Some(ack.batch_id.clone());
+				if let Some(cids) = shared.pending_sub_acks.lock().await.remove(&response.id) {
+					let mut server_to_client = shared.server_to_client_sub.lock().await;
+					let mut active = shared.active_subs.lock().await;
+					for info in &ack.subscriptions {
+						let Some(cid) = cids.get(info.index) else {
+							continue;
+						};
+						server_to_client.insert(info.subscription_id.clone(), *cid);
+						if let Some(entry) = active.get_mut(cid) {
+							entry.server_id = Some(info.subscription_id.clone());
+						}
 					}
 				}
 			}
 			ResponsePayload::Err(_) => {
 				shared.pending_sub_acks.lock().await.remove(&response.id);
-				shared.pending_batch_acks.lock().await.remove(&response.id);
 			}
 			_ => {}
 		}
@@ -364,42 +331,30 @@ impl WsClient {
 		}
 	}
 
-	async fn handle_push(push: ServerPush, shared: &Shared, change_tx: &mpsc::UnboundedSender<ChangePayload>) {
+	async fn handle_push(push: ServerPush, shared: &Shared) {
 		match push {
 			ServerPush::Change(wire) => {
-				let server_id = wire.subscription_id.clone();
-				let payload = payload_from_json_change(wire);
-				Self::route_change(shared, &server_id, payload, change_tx).await;
-			}
-			ServerPush::BatchChange(wire) => {
-				let server_batch_id = wire.batch_id.clone();
-				let payload = batch_change_from_json(wire);
-				Self::route_batch(shared, &server_batch_id, BatchPushEvent::Change(payload)).await;
-			}
-			ServerPush::BatchSubscriptionClosed(m) => {
-				let server_batch_id = m.batch_id.clone();
-				Self::route_batch(shared, &server_batch_id, BatchPushEvent::SubscriptionClosed(m))
-					.await;
-			}
-			ServerPush::BatchClosed(c) => {
-				let server_batch_id = c.batch_id.clone();
-				Self::route_batch(shared, &server_batch_id, BatchPushEvent::Closed(c)).await;
-				if let Some(cid) = shared.server_to_client_batch.lock().await.remove(&server_batch_id) {
-					shared.active_batches.lock().await.remove(&cid);
+				for payload in change_entries_from_json(wire) {
+					let server_id = payload.subscription_id.clone();
+					Self::route_change(shared, &server_id, payload).await;
 				}
+			}
+			ServerPush::SubscriptionClosed(closed) => {
+				Self::close_subscription(shared, &closed.subscription_id).await
 			}
 		}
 	}
 
-	async fn handle_binary(data: &[u8], shared: &Shared, change_tx: &mpsc::UnboundedSender<ChangePayload>) {
+	async fn handle_binary(data: &[u8], shared: &Shared) {
 		if data.is_empty() {
 			return;
 		}
-		let kind = data[0];
-		if kind == 0x02 {
-			if let Some(payload) = parse_rbcf_batch_envelope(data) {
-				let server_batch_id = payload.batch_id.clone();
-				Self::route_batch(shared, &server_batch_id, BatchPushEvent::Change(payload)).await;
+		if data[0] == 0x01 {
+			if let Some(payloads) = parse_rbcf_change_envelope(data) {
+				for payload in payloads {
+					let server_id = payload.subscription_id.clone();
+					Self::route_change(shared, &server_id, payload).await;
+				}
 			}
 			return;
 		}
@@ -443,62 +398,29 @@ impl WsClient {
 			None
 		};
 		let rbcf_data = &data[meta_start + meta_len..];
-		match kind {
-			0x00 => {
-				if let Some(tx) = shared.pending.lock().await.remove(&id) {
-					let _ = tx.send(query_response_from_rbcf(id, rbcf_data, meta));
-				}
-			}
-			0x01 => {
-				let (changes, decode_error) = changes_from_rbcf(rbcf_data);
-				let payload = ChangePayload {
-					subscription_id: id.clone(),
-					content_type: "application/vnd.reifydb.rbcf".to_string(),
-					body: Value::Null,
-					changes,
-					decode_error,
-				};
-				Self::route_change(shared, &id, payload, change_tx).await;
-			}
-			_ => {}
+		if data[0] == 0x00
+			&& let Some(tx) = shared.pending.lock().await.remove(&id)
+		{
+			let _ = tx.send(query_response_from_rbcf(id, rbcf_data, meta));
 		}
 	}
 
-	async fn route_change(
-		shared: &Shared,
-		server_id: &str,
-		mut payload: ChangePayload,
-		change_tx: &mpsc::UnboundedSender<ChangePayload>,
-	) {
-		let client_id = shared.server_to_client_sub.lock().await.get(server_id).copied();
-		match client_id {
-			Some(cid) => {
-				payload.subscription_id = cid.to_string();
-				let sink = shared.active_subs.lock().await.get(&cid).map(|e| e.sink.clone());
-				match sink {
-					Some(SubSink::Dedicated(tx)) => {
-						let _ = tx.send(payload).await;
-					}
-					_ => {
-						let _ = change_tx.send(payload);
-					}
-				}
-			}
-			None => {
-				let _ = change_tx.send(payload);
-			}
+	async fn route_change(shared: &Shared, server_id: &str, mut payload: ChangePayload) {
+		let Some(cid) = shared.server_to_client_sub.lock().await.get(server_id).copied() else {
+			return;
+		};
+		payload.subscription_id = cid.to_string();
+		let sender = shared.active_subs.lock().await.get(&cid).map(|entry| entry.sender.clone());
+		if let Some(sender) = sender {
+			let _ = sender.send(payload).await;
 		}
 	}
 
-	async fn route_batch(shared: &Shared, server_batch_id: &str, mut event: BatchPushEvent) {
-		let client_id = shared.server_to_client_batch.lock().await.get(server_batch_id).copied();
-		if let Some(cid) = client_id {
-			stamp_batch_id(&mut event, cid);
-			let sender = shared.active_batches.lock().await.get(&cid).map(|e| e.sender.clone());
-			if let Some(tx) = sender {
-				let _ = tx.send(event).await;
-			}
-		}
+	async fn close_subscription(shared: &Shared, server_id: &str) {
+		let Some(cid) = shared.server_to_client_sub.lock().await.remove(server_id) else {
+			return;
+		};
+		shared.active_subs.lock().await.remove(&cid);
 	}
 
 	async fn reject_pending(shared: &Shared) {
@@ -513,7 +435,6 @@ impl WsClient {
 		token: &Arc<Mutex<Option<String>>>,
 		request_rx: &mut mpsc::Receiver<(Request, oneshot::Sender<ClientResponse>)>,
 		shutdown_rx: &mut mpsc::Receiver<()>,
-		change_tx: &mpsc::UnboundedSender<ChangePayload>,
 		attempt: &mut u32,
 	) -> Option<(WsWrite, WsRead)> {
 		while *attempt < options.max_reconnect_attempts {
@@ -525,7 +446,7 @@ impl WsClient {
 
 			let opened = timeout(
 				millis_to_std(options.connect_timeout_ms),
-				Self::open_socket(url, shared, token, change_tx),
+				Self::open_socket(url, shared, token),
 			)
 			.await;
 			if let Ok(Some(pair)) = opened {
@@ -539,14 +460,13 @@ impl WsClient {
 		url: &str,
 		shared: &Shared,
 		token: &Arc<Mutex<Option<String>>>,
-		change_tx: &mpsc::UnboundedSender<ChangePayload>,
 	) -> Option<(WsWrite, WsRead)> {
 		let (stream, _) = connect_async_with_config(url, None, true).await.ok()?;
 		let (mut write, mut read) = stream.split();
 
 		let token_value = token.lock().await.clone();
 		if let Some(t) = token_value
-			&& !Self::reauth(&mut write, &mut read, shared, &t, change_tx).await
+			&& !Self::reauth(&mut write, &mut read, shared, &t).await
 		{
 			return None;
 		}
@@ -576,13 +496,7 @@ impl WsClient {
 		}
 	}
 
-	async fn reauth(
-		write: &mut WsWrite,
-		read: &mut WsRead,
-		shared: &Shared,
-		token: &str,
-		change_tx: &mpsc::UnboundedSender<ChangePayload>,
-	) -> bool {
+	async fn reauth(write: &mut WsWrite, read: &mut WsRead, shared: &Shared, token: &str) -> bool {
 		let id = generate_request_id();
 		let (tx, rx) = oneshot::channel();
 		shared.pending.lock().await.insert(id.clone(), tx);
@@ -609,7 +523,7 @@ impl WsClient {
 					match msg {
 						Some(m) => {
 							if let Flow::Closed =
-								Self::dispatch_message(m, write, shared, change_tx).await
+								Self::dispatch_message(m, write, shared).await
 							{
 								return false;
 							}
@@ -626,48 +540,29 @@ impl WsClient {
 
 	async fn resubscribe_all(write: &mut WsWrite, shared: &Shared) {
 		shared.server_to_client_sub.lock().await.clear();
-		shared.server_to_client_batch.lock().await.clear();
 
-		let subs: Vec<(u64, String, SubscriptionConfig)> = {
+		let mut calls: BTreeMap<u64, Vec<(u64, WireSubscribeItem)>> = BTreeMap::new();
+		{
 			let mut guard = shared.active_subs.lock().await;
-			guard.iter_mut()
-				.map(|(cid, entry)| {
-					entry.server_id = None;
-					(*cid, entry.rql.clone(), entry.config.clone())
-				})
-				.collect()
-		};
-		for (cid, rql, config) in subs {
+			for (cid, entry) in guard.iter_mut() {
+				entry.server_id = None;
+				calls.entry(entry.call_id).or_default().push((
+					*cid,
+					WireSubscribeItem {
+						rql: entry.rql.clone(),
+						options: subscription_options_to_wire(&entry.config),
+					},
+				));
+			}
+		}
+		for (_, mut items) in calls {
+			items.sort_by_key(|(cid, _)| *cid);
+			let (cids, subscriptions): (Vec<u64>, Vec<WireSubscribeItem>) = items.into_iter().unzip();
 			let req_id = generate_request_id();
-			shared.pending_sub_acks.lock().await.insert(req_id.clone(), cid);
+			shared.pending_sub_acks.lock().await.insert(req_id.clone(), cids);
 			let request = Request {
 				id: req_id,
 				payload: RequestPayload::Subscribe(SubscribeRequest {
-					rql,
-					options: subscription_options_to_wire(&config),
-					format: Some(shared.format),
-				}),
-			};
-			if let Ok(json) = to_string(&request) {
-				let _ = write.send(Message::Text(json.into())).await;
-			}
-		}
-
-		let batches: Vec<(u64, Vec<WireBatchSubscribeItem>)> = {
-			let mut guard = shared.active_batches.lock().await;
-			guard.iter_mut()
-				.map(|(cid, entry)| {
-					entry.server_batch_id = None;
-					(*cid, batch_subscriptions_to_wire(&entry.subscriptions))
-				})
-				.collect()
-		};
-		for (cid, subscriptions) in batches {
-			let req_id = generate_request_id();
-			shared.pending_batch_acks.lock().await.insert(req_id.clone(), cid);
-			let request = Request {
-				id: req_id,
-				payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
 					subscriptions,
 					format: Some(shared.format),
 				}),
@@ -905,27 +800,36 @@ impl WsClient {
 		}
 	}
 
-	async fn subscribe_inner(&self, rql: String, config: SubscriptionConfig, sink: SubSink) -> Result<u64, Error> {
-		let client_id = self.sub_id_counter.fetch_add(1, Ordering::Relaxed);
+	pub async fn subscribe(&self, items: &[SubscribeItem<'_>]) -> Result<Vec<WsSubscription>, Error> {
+		let call_id = self.call_id_counter.fetch_add(1, Ordering::Relaxed);
 		let req_id = generate_request_id();
-		let options = subscription_options_to_wire(&config);
-
-		self.shared.active_subs.lock().await.insert(
-			client_id,
-			SubEntry {
-				rql: rql.clone(),
-				config,
-				sink,
-				server_id: None,
-			},
-		);
-		self.shared.pending_sub_acks.lock().await.insert(req_id.clone(), client_id);
+		let mut cids = Vec::with_capacity(items.len());
+		let mut receivers = Vec::with_capacity(items.len());
+		{
+			let mut active = self.shared.active_subs.lock().await;
+			for item in items {
+				let cid = self.sub_id_counter.fetch_add(1, Ordering::Relaxed);
+				let (sender, receiver) = mpsc::channel::<ChangePayload>(100);
+				active.insert(
+					cid,
+					SubEntry {
+						rql: item.rql.to_string(),
+						config: item.config.clone(),
+						sender,
+						server_id: None,
+						call_id,
+					},
+				);
+				cids.push(cid);
+				receivers.push(receiver);
+			}
+		}
+		self.shared.pending_sub_acks.lock().await.insert(req_id.clone(), cids.clone());
 
 		let request = Request {
 			id: req_id.clone(),
 			payload: RequestPayload::Subscribe(SubscribeRequest {
-				rql,
-				options,
+				subscriptions: subscriptions_to_wire(items),
 				format: self.wire_format(),
 			}),
 		};
@@ -933,21 +837,35 @@ impl WsClient {
 		let response = match self.send_request_json(request).await {
 			Ok(r) => r,
 			Err(e) => {
-				self.shared.active_subs.lock().await.remove(&client_id);
-				self.shared.pending_sub_acks.lock().await.remove(&req_id);
+				self.forget(&cids, &req_id).await;
 				return Err(e);
 			}
 		};
 
 		match response.payload {
-			ResponsePayload::Subscribed(_) => Ok(client_id),
+			ResponsePayload::Subscribed(ack) if ack.subscriptions.len() == items.len() => Ok(cids
+				.into_iter()
+				.zip(receivers)
+				.map(|(cid, change_rx)| WsSubscription {
+					subscription_id: cid.to_string(),
+					change_rx,
+				})
+				.collect()),
+			ResponsePayload::Subscribed(ack) => {
+				self.forget(&cids, &req_id).await;
+				Err(ClientError::UnexpectedResponse(format!(
+					"Subscribed acknowledged {} of {} subscriptions",
+					ack.subscriptions.len(),
+					items.len()
+				))
+				.into())
+			}
 			ResponsePayload::Err(err) => {
-				self.shared.active_subs.lock().await.remove(&client_id);
+				self.forget(&cids, &req_id).await;
 				Err(Error(Box::new(err.diagnostic)))
 			}
 			_ => {
-				self.shared.active_subs.lock().await.remove(&client_id);
-				self.shared.pending_sub_acks.lock().await.remove(&req_id);
+				self.forget(&cids, &req_id).await;
 				Err(ClientError::UnexpectedResponse(
 					"Unexpected response type for Subscribe".to_string(),
 				)
@@ -956,20 +874,30 @@ impl WsClient {
 		}
 	}
 
-	pub async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<String, Error> {
-		let client_id = self.subscribe_inner(rql.to_string(), config, SubSink::Shared).await?;
-		Ok(client_id.to_string())
+	async fn forget(&self, cids: &[u64], req_id: &str) {
+		self.shared.pending_sub_acks.lock().await.remove(req_id);
+		let removed: Vec<SubEntry> = {
+			let mut active = self.shared.active_subs.lock().await;
+			cids.iter().filter_map(|cid| active.remove(cid)).collect()
+		};
+		let mut server_to_client = self.shared.server_to_client_sub.lock().await;
+		for server_id in removed.iter().filter_map(|entry| entry.server_id.as_ref()) {
+			server_to_client.remove(server_id);
+		}
 	}
 
-	pub async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
-		let server_id = self.take_sub_server_id(subscription_id).await;
-		let target = server_id.unwrap_or_else(|| subscription_id.to_string());
+	pub async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), Error> {
+		let mut targets = Vec::with_capacity(subscription_ids.len());
+		for subscription_id in subscription_ids {
+			let server_id = self.take_sub_server_id(subscription_id).await;
+			targets.push(server_id.unwrap_or_else(|| subscription_id.to_string()));
+		}
 
 		let id = generate_request_id();
 		let request = Request {
 			id,
 			payload: RequestPayload::Unsubscribe(UnsubscribeRequest {
-				subscription_id: target,
+				subscription_ids: targets,
 			}),
 		};
 
@@ -991,101 +919,6 @@ impl WsClient {
 			self.shared.server_to_client_sub.lock().await.remove(server_id);
 		}
 		entry.server_id
-	}
-
-	pub async fn batch_subscribe(&self, items: &[BatchSubscribeItem<'_>]) -> Result<WsBatchSubscription, Error> {
-		let client_id = self.batch_id_counter.fetch_add(1, Ordering::Relaxed);
-		let req_id = generate_request_id();
-		let (push_tx, push_rx) = mpsc::channel::<BatchPushEvent>(100);
-		let subscriptions: Vec<(String, SubscriptionConfig)> =
-			items.iter().map(|i| (i.rql.to_string(), i.config.clone())).collect();
-		let wire_subscriptions = batch_subscriptions_to_wire(&subscriptions);
-
-		self.shared.active_batches.lock().await.insert(
-			client_id,
-			BatchEntry {
-				subscriptions,
-				sender: push_tx,
-				server_batch_id: None,
-			},
-		);
-		self.shared.pending_batch_acks.lock().await.insert(req_id.clone(), client_id);
-
-		let request = Request {
-			id: req_id.clone(),
-			payload: RequestPayload::BatchSubscribe(BatchSubscribeRequest {
-				subscriptions: wire_subscriptions,
-				format: self.wire_format(),
-			}),
-		};
-
-		let response = match self.send_request_json(request).await {
-			Ok(r) => r,
-			Err(e) => {
-				self.shared.active_batches.lock().await.remove(&client_id);
-				self.shared.pending_batch_acks.lock().await.remove(&req_id);
-				return Err(e);
-			}
-		};
-		match response.payload {
-			ResponsePayload::BatchSubscribed(ack) => Ok(WsBatchSubscription {
-				batch_id: client_id.to_string(),
-				subscriptions: ack.subscriptions,
-				push_rx,
-			}),
-			ResponsePayload::Err(err) => {
-				self.shared.active_batches.lock().await.remove(&client_id);
-				Err(Error(Box::new(err.diagnostic)))
-			}
-			_ => {
-				self.shared.active_batches.lock().await.remove(&client_id);
-				self.shared.pending_batch_acks.lock().await.remove(&req_id);
-				Err(ClientError::UnexpectedResponse(
-					"Unexpected response type for BatchSubscribe".to_string(),
-				)
-				.into())
-			}
-		}
-	}
-
-	pub async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
-		let server_batch_id = self.take_batch_server_id(batch_id).await;
-		let target = server_batch_id.unwrap_or_else(|| batch_id.to_string());
-
-		let id = generate_request_id();
-		let request = Request {
-			id,
-			payload: RequestPayload::BatchUnsubscribe(BatchUnsubscribeRequest {
-				batch_id: target,
-			}),
-		};
-
-		let response = self.send_request_json(request).await?;
-		match response.payload {
-			ResponsePayload::BatchUnsubscribed(_) => Ok(()),
-			ResponsePayload::Err(err) => Err(Error(Box::new(err.diagnostic))),
-			_ => Err(ClientError::UnexpectedResponse(
-				"Unexpected response type for BatchUnsubscribe".to_string(),
-			)
-			.into()),
-		}
-	}
-
-	async fn take_batch_server_id(&self, batch_id: &str) -> Option<String> {
-		let client_id = batch_id.parse::<u64>().ok()?;
-		let entry = self.shared.active_batches.lock().await.remove(&client_id)?;
-		if let Some(server_batch_id) = &entry.server_batch_id {
-			self.shared.server_to_client_batch.lock().await.remove(server_batch_id);
-		}
-		entry.server_batch_id
-	}
-
-	pub async fn recv(&mut self) -> Option<ChangePayload> {
-		self.change_rx.recv().await
-	}
-
-	pub fn try_recv(&mut self) -> Result<ChangePayload, mpsc::error::TryRecvError> {
-		self.change_rx.try_recv()
 	}
 
 	async fn send_request(&self, request: Request) -> Result<ClientResponse, Error> {
@@ -1131,61 +964,25 @@ impl Drop for WsClient {
 	}
 }
 
-pub struct WsBatchSubscription {
-	batch_id: String,
-	subscriptions: Vec<BatchSubscriptionInfo>,
-	push_rx: mpsc::Receiver<BatchPushEvent>,
-}
-
-impl WsBatchSubscription {
-	pub fn batch_id(&self) -> &str {
-		&self.batch_id
-	}
-
-	pub fn subscriptions(&self) -> &[BatchSubscriptionInfo] {
-		&self.subscriptions
-	}
-
-	pub async fn recv(&mut self) -> Option<BatchPushEvent> {
-		self.push_rx.recv().await
-	}
-}
-
-fn batch_subscriptions_to_wire(subscriptions: &[(String, SubscriptionConfig)]) -> Vec<WireBatchSubscribeItem> {
-	subscriptions
-		.iter()
-		.map(|(rql, config)| WireBatchSubscribeItem {
-			rql: rql.clone(),
-			options: subscription_options_to_wire(config),
+fn subscriptions_to_wire(items: &[SubscribeItem<'_>]) -> Vec<WireSubscribeItem> {
+	items.iter()
+		.map(|item| WireSubscribeItem {
+			rql: item.rql.to_string(),
+			options: subscription_options_to_wire(&item.config),
 		})
 		.collect()
-}
-
-fn stamp_batch_id(event: &mut BatchPushEvent, client_id: u64) {
-	let id = client_id.to_string();
-	match event {
-		BatchPushEvent::Change(payload) => payload.batch_id = id,
-		BatchPushEvent::SubscriptionClosed(m) => m.batch_id = id,
-		BatchPushEvent::Closed(c) => c.batch_id = id,
-	}
 }
 
 fn request_id_of(text: &str) -> Option<String> {
 	from_str::<Value>(text).ok()?.get("id")?.as_str().map(str::to_string)
 }
 
-fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
-	if data.len() < 5 || data[0] != 0x02 {
+fn parse_rbcf_change_envelope(data: &[u8]) -> Option<Vec<ChangePayload>> {
+	if data.len() < 5 || data[0] != 0x01 {
 		return None;
 	}
-	let batch_id_len = u32::from_le_bytes(data[1..5].try_into().ok()?) as usize;
-	let batch_id_end = 5 + batch_id_len;
-	if data.len() < batch_id_end + 4 {
-		return None;
-	}
-	let batch_id = String::from_utf8_lossy(&data[5..batch_id_end]).into_owned();
-	let num_entries = u32::from_le_bytes(data[batch_id_end..batch_id_end + 4].try_into().ok()?) as usize;
-	let mut pos = batch_id_end + 4;
+	let num_entries = u32::from_le_bytes(data[1..5].try_into().ok()?) as usize;
+	let mut pos = 5;
 	let mut entries = Vec::with_capacity(num_entries);
 	for _ in 0..num_entries {
 		if data.len() < pos + 4 {
@@ -1201,26 +998,22 @@ fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
 		let rbcf_len = u32::from_le_bytes(data[pos..pos + 4].try_into().ok()?) as usize;
 		pos += 4;
 		if data.len() < pos + rbcf_len {
-			entries.push(BatchChangeEntry {
+			entries.push(ChangePayload {
 				subscription_id: sub_id,
 				content_type: "application/vnd.reifydb.rbcf".to_string(),
 				body: Value::Null,
 				changes: Vec::new(),
 				decode_error: Some(format!(
-					"batch entry truncated: declared {} payload bytes, {} remain",
+					"change entry truncated: declared {} payload bytes, {} remain",
 					rbcf_len,
 					data.len() - pos
 				)),
 			});
 			break;
 		}
-		let rbcf_bytes = &data[pos..pos + rbcf_len];
+		let (changes, decode_error) = changes_from_rbcf(&data[pos..pos + rbcf_len]);
 		pos += rbcf_len;
-		let (changes, decode_error) = match decode_frames(rbcf_bytes) {
-			Ok(frames) => (frames_to_changes(frames), None),
-			Err(e) => (Vec::new(), Some(e.to_string())),
-		};
-		entries.push(BatchChangeEntry {
+		entries.push(ChangePayload {
 			subscription_id: sub_id,
 			content_type: "application/vnd.reifydb.rbcf".to_string(),
 			body: Value::Null,
@@ -1228,10 +1021,7 @@ fn parse_rbcf_batch_envelope(data: &[u8]) -> Option<BatchChangePayload> {
 			decode_error,
 		});
 	}
-	Some(BatchChangePayload {
-		batch_id,
-		entries,
-	})
+	Some(entries)
 }
 
 fn query_response_from_rbcf(id: String, rbcf: &[u8], meta: Option<ResponseMeta>) -> ClientResponse {
@@ -1263,24 +1053,12 @@ fn changes_from_envelope(body: Value) -> (Vec<FrameChange>, Option<String>) {
 	}
 }
 
-fn payload_from_json_change(wire: WireChangePayload) -> ChangePayload {
-	let (changes, decode_error) = changes_from_envelope(wire.body.clone());
-	ChangePayload {
-		subscription_id: wire.subscription_id,
-		content_type: wire.content_type,
-		body: wire.body,
-		changes,
-		decode_error,
-	}
-}
-
-fn batch_change_from_json(wire: WireBatchChangePayload) -> BatchChangePayload {
-	let entries = wire
-		.entries
+fn change_entries_from_json(wire: WireChangePayload) -> Vec<ChangePayload> {
+	wire.entries
 		.into_iter()
 		.map(|entry| {
 			let (changes, decode_error) = changes_from_envelope(entry.body.clone());
-			BatchChangeEntry {
+			ChangePayload {
 				subscription_id: entry.subscription_id,
 				content_type: entry.content_type,
 				body: entry.body,
@@ -1288,11 +1066,7 @@ fn batch_change_from_json(wire: WireBatchChangePayload) -> BatchChangePayload {
 				decode_error,
 			}
 		})
-		.collect();
-	BatchChangePayload {
-		batch_id: wire.batch_id,
-		entries,
-	}
+		.collect()
 }
 
 pub struct WsSubscription {
@@ -1300,29 +1074,24 @@ pub struct WsSubscription {
 	change_rx: mpsc::Receiver<ChangePayload>,
 }
 
-#[async_trait::async_trait]
-impl ClientSubscription for WsSubscription {
-	fn subscription_id(&self) -> &str {
+impl WsSubscription {
+	pub fn subscription_id(&self) -> &str {
 		&self.subscription_id
 	}
 
-	async fn recv(&mut self) -> Option<ChangePayload> {
+	pub async fn recv(&mut self) -> Option<ChangePayload> {
 		self.change_rx.recv().await
 	}
 }
 
 #[async_trait::async_trait]
-impl ClientBatchSubscription for WsBatchSubscription {
-	fn batch_id(&self) -> &str {
-		WsBatchSubscription::batch_id(self)
+impl ClientSubscription for WsSubscription {
+	fn subscription_id(&self) -> &str {
+		WsSubscription::subscription_id(self)
 	}
 
-	fn subscriptions(&self) -> &[BatchSubscriptionInfo] {
-		WsBatchSubscription::subscriptions(self)
-	}
-
-	async fn recv(&mut self) -> Option<BatchPushEvent> {
-		WsBatchSubscription::recv(self).await
+	async fn recv(&mut self) -> Option<ChangePayload> {
+		WsSubscription::recv(self).await
 	}
 }
 
@@ -1384,29 +1153,16 @@ impl ReifyClient for WsClient {
 		WsClient::call_with_meta(self, name, params).await
 	}
 
-	async fn subscribe(&self, rql: &str, config: SubscriptionConfig) -> Result<Box<dyn ClientSubscription>, Error> {
-		let (change_tx, change_rx) = mpsc::channel::<ChangePayload>(100);
-		let client_id = self.subscribe_inner(rql.to_string(), config, SubSink::Dedicated(change_tx)).await?;
-		Ok(Box::new(WsSubscription {
-			subscription_id: client_id.to_string(),
-			change_rx,
-		}))
+	async fn subscribe<'a>(&self, items: &[SubscribeItem<'a>]) -> Result<Vec<Box<dyn ClientSubscription>>, Error> {
+		Ok(WsClient::subscribe(self, items)
+			.await?
+			.into_iter()
+			.map(|subscription| Box::new(subscription) as Box<dyn ClientSubscription>)
+			.collect())
 	}
 
-	async fn unsubscribe(&self, subscription_id: &str) -> Result<(), Error> {
-		WsClient::unsubscribe(self, subscription_id).await
-	}
-
-	async fn batch_subscribe<'a>(
-		&self,
-		items: &[BatchSubscribeItem<'a>],
-	) -> Result<Box<dyn ClientBatchSubscription>, Error> {
-		let sub = WsClient::batch_subscribe(self, items).await?;
-		Ok(Box::new(sub))
-	}
-
-	async fn batch_unsubscribe(&self, batch_id: &str) -> Result<(), Error> {
-		WsClient::batch_unsubscribe(self, batch_id).await
+	async fn unsubscribe(&self, subscription_ids: &[&str]) -> Result<(), Error> {
+		WsClient::unsubscribe(self, subscription_ids).await
 	}
 }
 
@@ -1489,56 +1245,62 @@ mod json_change_tests {
 	use reifydb_value::value::{diff_type::DiffType, frame::frame::Frame};
 	use serde_json::{Value, json};
 
-	use super::{batch_change_from_json, payload_from_json_change};
-	use crate::{WireBatchChangeEntry, WireBatchChangePayload, WireChangePayload};
+	use super::change_entries_from_json;
+	use crate::{WireChangeEntry, WireChangePayload};
 
 	fn malformed_body() -> Value {
 		json!({ "frames": [{ "columns": "not a column list" }] })
 	}
 
-	fn change(body: Value) -> WireChangePayload {
-		WireChangePayload {
-			subscription_id: "sub-1".to_string(),
+	fn valid_body() -> Value {
+		let frame = Frame::from(batch(vec![factory::int4("id", [7])]).expect("an int4 column forms a batch"))
+			.with_op(DiffType::Update);
+		json!({ "frames": convert_frames(&[frame]).expect("the frame converts") })
+	}
+
+	fn entry(subscription_id: &str, body: Value) -> WireChangeEntry {
+		WireChangeEntry {
+			subscription_id: subscription_id.to_string(),
 			content_type: "application/vnd.reifydb.frames".to_string(),
 			body,
+		}
+	}
+
+	fn change(entries: Vec<WireChangeEntry>) -> WireChangePayload {
+		WireChangePayload {
+			entries,
 		}
 	}
 
 	#[test]
 	fn a_malformed_json_change_reaches_the_subscriber_as_a_decode_error() {
 		// An empty change is a valid delivery, so a body that fails to decode must carry its error.
-		let payload = payload_from_json_change(change(malformed_body()));
+		let payloads = change_entries_from_json(change(vec![entry("sub-1", malformed_body())]));
 
-		assert!(payload.decode_error.is_some(), "a failed decode must carry its error");
-		assert!(payload.changes.is_empty());
+		assert!(payloads[0].decode_error.is_some(), "a failed decode must carry its error");
+		assert!(payloads[0].changes.is_empty());
 	}
 
 	#[test]
 	fn a_valid_json_change_decodes_with_no_error() {
 		// A clean change must keep its rows, otherwise the error path swallowed a good change.
-		let frame = Frame::from(batch(vec![factory::int4("id", [7])]).expect("an int4 column forms a batch"))
-			.with_op(DiffType::Update);
-		let frames = convert_frames(&[frame]).expect("the frame converts");
+		let payloads = change_entries_from_json(change(vec![entry("sub-1", valid_body())]));
 
-		let payload = payload_from_json_change(change(json!({ "frames": frames })));
-
-		assert_eq!(payload.decode_error, None);
-		assert_eq!(payload.changes.len(), 1);
+		assert_eq!(payloads[0].decode_error, None);
+		assert_eq!(payloads[0].changes.len(), 1);
 	}
 
 	#[test]
-	fn a_malformed_json_batch_entry_carries_its_decode_error() {
-		// One entry that fails to decode must say so, never pass as an empty change for its subscription.
-		let payload = batch_change_from_json(WireBatchChangePayload {
-			batch_id: "batch-1".to_string(),
-			entries: vec![WireBatchChangeEntry {
-				subscription_id: "sub-1".to_string(),
-				content_type: "application/vnd.reifydb.frames".to_string(),
-				body: malformed_body(),
-			}],
-		});
+	fn a_malformed_json_entry_carries_its_own_decode_error() {
+		// One entry that fails to decode must say so on itself, never on its neighbour or as an empty change.
+		let payloads = change_entries_from_json(change(vec![
+			entry("sub-1", valid_body()),
+			entry("sub-2", malformed_body()),
+		]));
 
-		assert!(payload.entries[0].decode_error.is_some(), "a failed decode must carry its error");
-		assert!(payload.entries[0].changes.is_empty());
+		assert_eq!(payloads[0].decode_error, None, "the clean entry must decode on its own");
+		assert_eq!(payloads[0].changes.len(), 1);
+		assert!(payloads[1].decode_error.is_some(), "a failed decode must carry its error");
+		assert!(payloads[1].changes.is_empty());
 	}
 }

@@ -8,7 +8,8 @@
 use std::fmt;
 
 use reifydb_client::{
-	GrpcClient, GrpcSubscription, RawChangePayload, SubscriptionConfig, WireFormat, value::error::Error,
+	GrpcClient, GrpcClientOptions, GrpcSubscription, RawChangePayload, ReconnectOptions, SubscribeItem,
+	SubscriptionConfig, WireFormat, value::error::Error,
 };
 use tokio::{select, sync::watch};
 
@@ -45,14 +46,26 @@ pub async fn connect_remote(
 	token: Option<&str>,
 	wire_format: WireFormat,
 ) -> Result<RemoteSubscription, RemoteSubscriptionError> {
-	let mut client = GrpcClient::connect(address, wire_format)
+	let options = GrpcClientOptions {
+		format: wire_format,
+		reconnect: ReconnectOptions {
+			max_reconnect_attempts: 0,
+			..Default::default()
+		},
+	};
+	let mut client = GrpcClient::connect_with_options(address, options)
 		.await
 		.map_err(|e| RemoteSubscriptionError::Connect(e.to_string()))?;
 	if let Some(t) = token {
 		client.authenticate(t);
 	}
-	let sub =
-		client.subscribe(body, config).await.map_err(|e| RemoteSubscriptionError::Subscribe(e.to_string()))?;
+	let sub = client
+		.subscribe(&[SubscribeItem::new(body, config)])
+		.await
+		.map_err(|e| RemoteSubscriptionError::Subscribe(e.to_string()))?
+		.into_iter()
+		.next()
+		.ok_or_else(|| RemoteSubscriptionError::Subscribe("remote acknowledged no subscription".to_string()))?;
 	let subscription_id = sub.subscription_id().to_string();
 	Ok(RemoteSubscription {
 		inner: sub,

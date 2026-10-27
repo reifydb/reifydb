@@ -1,28 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::interface::catalog::subscription::SubscribeOptions;
+use reifydb_core::interface::catalog::id::SubscriptionId;
 use reifydb_engine::subscription::HydrateError;
 use reifydb_sub_core::{
 	errors::CreateSubscriptionError,
-	handler::{
-		BatchSubscribeError, SubscribeError, handle_batch_unsubscribe as shared_batch_unsubscribe,
-		handle_subscribe as shared_subscribe, hydrate_batch_subscribe, register_batch_subscribe,
-	},
+	handler::{SubscribeError, handle_unsubscribe as shared_unsubscribe, hydrate_subscribe, register_subscribe},
 	host::SubscribeHost,
 };
 use reifydb_sub_server::{
 	execute::ExecuteError,
 	interceptor::{Protocol, RequestMetadata},
 };
-use reifydb_subscription::batch::BatchId;
-use reifydb_value::{error::Error, params::Params, value::identity::IdentityId};
+use reifydb_value::{error::Error, value::identity::IdentityId};
 use tokio::spawn;
 
 use crate::{
 	handler::{ConnectionContext, build_error, error_to_response},
-	protocol::{BatchSubscribeRequest, BatchUnsubscribeRequest, SubscribeDecodeError, SubscribeRequest},
-	response::{BatchSubscriptionInfo, Response},
+	protocol::{SubscribeDecodeError, SubscribeRequest, UnsubscribeRequest},
+	response::{Response, SubscriptionInfo},
 	subscription::registry::{PushMessage, WsWireSink},
 };
 
@@ -32,67 +28,7 @@ fn subscribe_identity(connection: Option<IdentityId>) -> IdentityId {
 
 pub(crate) async fn handle_subscribe(
 	request_id: &str,
-	sub: SubscribeRequest,
-	conn: &mut ConnectionContext<'_>,
-) -> Result<Option<String>, Error> {
-	let identity: IdentityId = subscribe_identity(*conn.identity);
-	let metadata = RequestMetadata::new(Protocol::WebSocket);
-	let sink = WsWireSink::new(conn.push_tx.clone());
-
-	let params = match sub.params {
-		None => Params::None,
-		Some(wp) => match wp.into_params() {
-			Ok(p) => p,
-			Err(e) => {
-				return Ok(Some(decode_error_to_response(
-					request_id,
-					SubscribeDecodeError::InvalidParams(e),
-				)));
-			}
-		},
-	};
-
-	let options = match sub.options {
-		None => SubscribeOptions::default(),
-		Some(wire) => match wire.into_options() {
-			Ok(o) => o,
-			Err(e) => {
-				return Ok(Some(decode_error_to_response(
-					request_id,
-					SubscribeDecodeError::InvalidOptions(e),
-				)));
-			}
-		},
-	};
-
-	let host = conn.state.subscribe_host(metadata);
-	match shared_subscribe(
-		&host,
-		conn.connection_id,
-		identity,
-		sub.rql.clone(),
-		params,
-		options,
-		sink,
-		conn.registry,
-		sub.format,
-		conn.shutdown.clone(),
-	)
-	.await?
-	{
-		Ok(ack) => {
-			if let Some(handle) = ack.remote_handle {
-				conn.remote_tasks.insert(ack.subscription_id.to_string(), handle);
-			}
-			Ok(Some(Response::subscribed(request_id, ack.subscription_id.to_string()).to_json()))
-		}
-		Err(err) => Ok(Some(subscribe_error_to_response(request_id, err))),
-	}
-}
-
-pub(crate) async fn handle_batch_subscribe(
-	request_id: &str,
-	req: BatchSubscribeRequest,
+	req: SubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
 ) -> Result<Option<String>, Error> {
 	let identity: IdentityId = subscribe_identity(*conn.identity);
@@ -106,7 +42,7 @@ pub(crate) async fn handle_batch_subscribe(
 	};
 
 	let host = conn.state.subscribe_host(metadata);
-	match register_batch_subscribe(
+	match register_subscribe(
 		&host,
 		conn.connection_id,
 		identity,
@@ -122,75 +58,73 @@ pub(crate) async fn handle_batch_subscribe(
 			let ctx = host.context().clone();
 			let registry = conn.registry.clone();
 			let push_tx = conn.push_tx.clone();
-			let batch_id = hydration.batch_id();
+			let subscription_ids: Vec<SubscriptionId> =
+				ack.subscriptions.iter().map(|entry| entry.subscription_id).collect();
 			let hydrating = spawn(async move {
-				match hydrate_batch_subscribe::<_, ExecuteError>(
-					&ctx, &sink, &registry, format, hydration,
-				)
-				.await
+				match hydrate_subscribe::<_, ExecuteError>(&ctx, &sink, &registry, format, hydration)
+					.await
 				{
 					Ok(Ok(())) => {}
 					Ok(Err(_)) => {
-						let _ = push_tx.send(PushMessage::BatchClosed {
-							batch_id,
-						});
+						for subscription_id in subscription_ids {
+							let _ = push_tx.send(PushMessage::SubscriptionClosed {
+								subscription_id,
+							});
+						}
 					}
-					Err(error) => panic!("hydrating websocket batch {batch_id} failed: {error}"),
+					Err(error) => {
+						panic!(
+							"hydrating websocket subscriptions {subscription_ids:?} failed: {error}"
+						)
+					}
 				}
 			});
-			let handles = conn.batch_remote_tasks.entry(ack.batch_id).or_default();
-			handles.extend(ack.remote_handles);
-			handles.push(hydrating);
-			let subscriptions_for_ack: Vec<BatchSubscriptionInfo> = ack
+			conn.remote_tasks.extend(ack.remote_handles);
+			conn.hydration_tasks.push(hydrating);
+			let subscriptions: Vec<SubscriptionInfo> = ack
 				.subscriptions
 				.into_iter()
-				.map(|m| BatchSubscriptionInfo {
-					index: m.index,
-					subscription_id: m.subscription_id.to_string(),
+				.map(|entry| SubscriptionInfo {
+					index: entry.index,
+					subscription_id: entry.subscription_id.to_string(),
 				})
 				.collect();
-			Ok(Some(Response::batch_subscribed(
-				request_id,
-				ack.batch_id.to_string(),
-				subscriptions_for_ack,
-			)
-			.to_json()))
+			Ok(Some(Response::subscribed(request_id, subscriptions).to_json()))
 		}
-		Err(err) => Ok(Some(batch_subscribe_error_to_response(request_id, err))),
+		Err(err) => Ok(Some(subscribe_error_to_response(request_id, err))),
 	}
 }
 
-pub(crate) async fn handle_batch_unsubscribe(
+pub(crate) async fn handle_unsubscribe(
 	request_id: &str,
-	req: BatchUnsubscribeRequest,
+	req: UnsubscribeRequest,
 	conn: &mut ConnectionContext<'_>,
 ) -> Result<Option<String>, Error> {
-	let batch_id = match parse_batch_id(request_id, &req.batch_id) {
-		Ok(id) => id,
-		Err(response) => return Ok(Some(response)),
+	let subscription_ids = match req
+		.subscription_ids
+		.iter()
+		.map(|raw| raw.parse::<u64>().map(SubscriptionId))
+		.collect::<Result<Vec<_>, _>>()
+	{
+		Ok(ids) => ids,
+		Err(_) => {
+			return Ok(Some(build_error(
+				request_id,
+				"INVALID_SUBSCRIPTION_ID",
+				"Invalid subscription ID format",
+			)));
+		}
 	};
 
-	abort_local_batch_handles(conn, &batch_id);
-
-	shared_batch_unsubscribe(conn.state.engine(), conn.registry, conn.connection_id, batch_id).await?;
-
-	Ok(Some(Response::batch_unsubscribed(request_id, batch_id.to_string()).to_json()))
-}
-
-#[inline]
-fn parse_batch_id(request_id: &str, raw: &str) -> Result<BatchId, String> {
-	raw.parse::<BatchId>().map_err(|_| {
-		Response::internal_error(request_id, "INVALID_BATCH_ID", "Invalid batch ID format").to_json()
-	})
-}
-
-#[inline]
-fn abort_local_batch_handles(conn: &mut ConnectionContext<'_>, batch_id: &BatchId) {
-	if let Some(handles) = conn.batch_remote_tasks.remove(batch_id) {
-		for handle in handles {
+	for subscription_id in &subscription_ids {
+		if let Some(handle) = conn.remote_tasks.remove(subscription_id) {
 			handle.abort();
 		}
 	}
+
+	shared_unsubscribe(conn.state.engine(), conn.registry, conn.connection_id, &subscription_ids).await?;
+
+	Ok(Some(Response::unsubscribed(request_id, req.subscription_ids).to_json()))
 }
 
 fn decode_error_to_response(request_id: &str, err: SubscribeDecodeError) -> String {
@@ -202,6 +136,12 @@ fn decode_error_to_response(request_id: &str, err: SubscribeDecodeError) -> Stri
 
 fn subscribe_error_to_response(request_id: &str, err: SubscribeError<ExecuteError>) -> String {
 	match err {
+		SubscribeError::Empty => Response::internal_error(
+			request_id,
+			"INVALID_SUBSCRIBE",
+			"Subscribe requires at least one query",
+		)
+		.to_json(),
 		SubscribeError::Create(CreateSubscriptionError::Execute(e)) => error_to_response(request_id, e),
 		SubscribeError::RemoteConnect(msg) => {
 			Response::internal_error(request_id, "REMOTE_SUBSCRIBE_FAILED", msg).to_json()
@@ -228,45 +168,6 @@ fn subscribe_error_to_response(request_id: &str, err: SubscribeError<ExecuteErro
 			max_rows,
 		} => hydrate_error_to_response(request_id, error, &rql, max_rows),
 		SubscribeError::HydrationServiceUnavailable(msg) => {
-			Response::internal_error(request_id, "SUBSCRIPTION_SERVICE_UNAVAILABLE", msg).to_json()
-		}
-	}
-}
-
-fn batch_subscribe_error_to_response(request_id: &str, err: BatchSubscribeError<ExecuteError>) -> String {
-	match err {
-		BatchSubscribeError::Empty => Response::internal_error(
-			request_id,
-			"INVALID_BATCH",
-			"BatchSubscribe requires at least one query",
-		)
-		.to_json(),
-		BatchSubscribeError::Create(CreateSubscriptionError::Execute(e)) => error_to_response(request_id, e),
-		BatchSubscribeError::RemoteConnect(msg) => {
-			Response::internal_error(request_id, "REMOTE_SUBSCRIBE_FAILED", msg).to_json()
-		}
-		BatchSubscribeError::InvalidRemoteId => Response::internal_error(
-			request_id,
-			"REMOTE_SUBSCRIBE_FAILED",
-			"Invalid remote subscription ID format",
-		)
-		.to_json(),
-		BatchSubscribeError::LeaseFailed {
-			code,
-			message,
-		} => Response::internal_error(request_id, code, message).to_json(),
-		BatchSubscribeError::HydrationBackpressure => Response::internal_error(
-			request_id,
-			"HYDRATION_BACKPRESSURE",
-			"Live diffs overflowed warming buffer during hydration; retry with smaller TAKE or lower hydration.max_rows",
-		)
-		.to_json(),
-		BatchSubscribeError::HydrationFailed {
-			error,
-			rql,
-			max_rows,
-		} => hydrate_error_to_response(request_id, error, &rql, max_rows),
-		BatchSubscribeError::HydrationServiceUnavailable(msg) => {
 			Response::internal_error(request_id, "SUBSCRIPTION_SERVICE_UNAVAILABLE", msg).to_json()
 		}
 	}

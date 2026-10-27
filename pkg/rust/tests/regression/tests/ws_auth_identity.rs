@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use reifydb::{RuntimeConfig, server};
-use reifydb_client::{WireFormat, WsClient, subscription::SubscriptionConfig};
+use reifydb_client::{SubscribeItem, WireFormat, WsClient, subscription::SubscriptionConfig};
 use reifydb_value::{params::Params, value::duration::Duration};
 use tokio::{runtime::Runtime, time::timeout};
 
@@ -42,12 +42,12 @@ fn failed_auth_must_not_subscribe_as_root() {
 		let auth = client.authenticate("badtoken").await;
 		assert!(auth.is_err(), "a bad token must fail authentication, got: {:?}", auth);
 
-		let sub = client.subscribe("FROM test::t", SubscriptionConfig::default()).await;
-		let Ok(_id) = sub else {
+		let subs = client.subscribe(&[SubscribeItem::new("FROM test::t", SubscriptionConfig::default())]).await;
+		let Ok(mut subs) = subs else {
 			return 0;
 		};
 
-		match timeout(Duration::from_seconds_const(3).to_std(), client.recv()).await {
+		match timeout(Duration::from_seconds_const(3).to_std(), subs[0].recv()).await {
 			Ok(Some(payload)) => payload.changes.iter().map(|c| c.frame.rows().count()).sum::<usize>(),
 			Ok(None) => 0,
 			Err(_) => 0,
