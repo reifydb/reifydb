@@ -538,7 +538,7 @@ mod tests {
 		delta::SetPre,
 		interface::{
 			catalog::id::QueueId,
-			store::{SingleVersionCommit, SingleWalCheckpoint},
+			store::{SingleVersionCommit, WalFloorCheckpoint},
 		},
 		key::{any::TaggedKey, queue::QueueDeduplicationKey},
 	};
@@ -549,7 +549,7 @@ mod tests {
 
 	struct NoWal;
 
-	impl SingleWalCheckpoint for NoWal {
+	impl WalFloorCheckpoint for NoWal {
 		fn make_durable(&self, _through: Lsn) -> Result<()> {
 			Ok(())
 		}
@@ -561,10 +561,14 @@ mod tests {
 		fn durable_head(&self) -> Result<Option<Lsn>> {
 			Ok(None)
 		}
+
+		fn appended_head(&self) -> Result<Option<Lsn>> {
+			panic!("not used by single")
+		}
 	}
 
 	fn memory_with_persistent_sqlite(
-		checkpoint: Arc<dyn SingleWalCheckpoint>,
+		checkpoint: Arc<dyn WalFloorCheckpoint>,
 	) -> (StandardSingleStore, SqliteTempPathGuard) {
 		let clock = Clock::testing();
 		let actor_system = ActorSystem::testing(clock.clone());
@@ -624,7 +628,7 @@ mod tests {
 		calls: Mutex<Vec<(&'static str, u64)>>,
 	}
 
-	impl SingleWalCheckpoint for RecordingWal {
+	impl WalFloorCheckpoint for RecordingWal {
 		fn make_durable(&self, through: Lsn) -> Result<()> {
 			self.calls.lock().push(("make_durable", through.as_u64()));
 			Ok(())
@@ -638,6 +642,10 @@ mod tests {
 		fn durable_head(&self) -> Result<Option<Lsn>> {
 			panic!("recording wal has no durable head; this fake must not reach the idle pass")
 		}
+
+		fn appended_head(&self) -> Result<Option<Lsn>> {
+			panic!("not used by single")
+		}
 	}
 
 	#[test]
@@ -646,7 +654,7 @@ mod tests {
 		let wal = Arc::new(RecordingWal {
 			calls: Mutex::new(Vec::new()),
 		});
-		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn SingleWalCheckpoint>);
+		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn WalFloorCheckpoint>);
 
 		store.commit_logged(
 			CowVec::new(vec![Delta::Set {
@@ -687,7 +695,7 @@ mod tests {
 		}
 	}
 
-	impl SingleWalCheckpoint for DurableHeadWal {
+	impl WalFloorCheckpoint for DurableHeadWal {
 		fn make_durable(&self, _through: Lsn) -> Result<()> {
 			Ok(())
 		}
@@ -706,13 +714,17 @@ mod tests {
 				None => Ok(Some(self.durable_head)),
 			}
 		}
+
+		fn appended_head(&self) -> Result<Option<Lsn>> {
+			panic!("not used by single")
+		}
 	}
 
 	#[test]
 	fn a_held_commit_guard_keeps_a_quiet_flush_from_advancing() {
 		// A floor moved past a commit still between its log append and the dirty map lets gc drop that record.
 		let wal = DurableHeadWal::at(7);
-		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn SingleWalCheckpoint>);
+		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn WalFloorCheckpoint>);
 
 		let _held = store.begin_commit();
 		assert!(store.flush_pending_blocking());
@@ -729,7 +741,7 @@ mod tests {
 		// A head read after the in-flight check can cover a commit that started in between, which must never be
 		// saved.
 		let wal = DurableHeadWal::at(7);
-		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn SingleWalCheckpoint>);
+		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn WalFloorCheckpoint>);
 		*wal.racer.lock() = Some(store.clone());
 
 		assert!(store.flush_pending_blocking());
@@ -746,7 +758,7 @@ mod tests {
 		// A guard that never releases its count pins the single floor forever, so gc never drops a segment
 		// again.
 		let wal = DurableHeadWal::at(7);
-		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn SingleWalCheckpoint>);
+		let (store, _guard) = memory_with_persistent_sqlite(Arc::clone(&wal) as Arc<dyn WalFloorCheckpoint>);
 
 		let held = store.begin_commit();
 		assert!(store.flush_pending_blocking());

@@ -336,12 +336,14 @@ pub trait WalCheckpoint: Send + Sync + 'static {
 	fn saved_through(&self, version: CommitVersion) -> Result<()>;
 }
 
-pub trait SingleWalCheckpoint: Send + Sync + 'static {
+pub trait WalFloorCheckpoint: Send + Sync + 'static {
 	fn make_durable(&self, through: Lsn) -> Result<()>;
 
 	fn saved_through(&self, through: Lsn) -> Result<()>;
 
 	fn durable_head(&self) -> Result<Option<Lsn>>;
+
+	fn appended_head(&self) -> Result<Option<Lsn>>;
 }
 
 #[derive(Debug, Clone)]

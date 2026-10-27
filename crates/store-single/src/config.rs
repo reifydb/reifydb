@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::store::SingleWalCheckpoint;
+use reifydb_core::interface::store::WalFloorCheckpoint;
 use reifydb_runtime::{actor::system::ActorSpawner, context::clock::Clock};
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
@@ -53,12 +53,12 @@ pub struct CommitBufferConfig {
 pub struct PersistentConfig {
 	pub storage: SinglePersistentTier,
 	pub flush_interval: Duration,
-	pub checkpoint: Arc<dyn SingleWalCheckpoint>,
+	pub checkpoint: Arc<dyn WalFloorCheckpoint>,
 }
 
 impl PersistentConfig {
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite(sqlite_config: SqliteConfig, checkpoint: Arc<dyn SingleWalCheckpoint>) -> Self {
+	pub fn sqlite(sqlite_config: SqliteConfig, checkpoint: Arc<dyn WalFloorCheckpoint>) -> Self {
 		Self {
 			storage: SinglePersistentTier::sqlite(sqlite_config),
 			flush_interval: Duration::from_seconds(5).unwrap(),
@@ -67,7 +67,7 @@ impl PersistentConfig {
 	}
 
 	#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
-	pub fn sqlite_in_memory(checkpoint: Arc<dyn SingleWalCheckpoint>) -> (Self, SqliteTempPathGuard) {
+	pub fn sqlite_in_memory(checkpoint: Arc<dyn WalFloorCheckpoint>) -> (Self, SqliteTempPathGuard) {
 		let (storage, guard) = SinglePersistentTier::sqlite_in_memory();
 		(
 			Self {

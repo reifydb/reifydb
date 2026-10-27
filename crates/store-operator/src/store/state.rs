@@ -33,6 +33,7 @@ use reifydb_core::{
 };
 use reifydb_filter::adaptive::FilterMetrics;
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions};
+use reifydb_wal::lsn::Lsn;
 use tracing::{Span, field::Empty, instrument, warn};
 
 #[cfg(reifydb_assertions)]
@@ -75,6 +76,7 @@ impl StandardOperatorStore {
 		writes: &[OperatorWrite],
 		checkpoints: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
+		lsn: Option<Lsn>,
 	) -> Result<()> {
 		reifydb_assertions! {
 			self.verify_classification(writes);
@@ -91,7 +93,7 @@ impl StandardOperatorStore {
 					});
 				}
 			}
-			self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes);
+			self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes, lsn);
 		}
 		self.occupancy.record(writes);
 		self.census.record(writes);
@@ -686,10 +688,11 @@ impl OperatorStore {
 		writes: &[OperatorWrite],
 		checkpoints: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
+		lsn: Option<Lsn>,
 	) -> Result<()> {
 		match self {
 			Self::Standard(store) => {
-				store.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes)
+				store.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes, lsn)
 			}
 		}
 	}

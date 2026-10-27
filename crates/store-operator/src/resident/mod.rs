@@ -17,7 +17,7 @@ use std::{
 	fmt, mem,
 	sync::{
 		Arc, OnceLock,
-		atomic::{AtomicBool, AtomicU64, Ordering},
+		atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
 	},
 };
 
@@ -26,7 +26,10 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
 	default,
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		store::WalFloorCheckpoint,
+	},
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
 	util::{bloom::hash_item, budget::MemoryBudget},
 };
@@ -36,6 +39,7 @@ use reifydb_runtime::sync::{
 	rwlock::RwLock,
 };
 use reifydb_value::{byte_size::ByteSize, reifydb_assertions, value::duration::Duration};
+use reifydb_wal::lsn::Lsn;
 use tracing::{Span, field::Empty, instrument};
 
 #[cfg(reifydb_assertions)]
@@ -157,6 +161,19 @@ struct PendingGroup {
 struct OperatorSinks {
 	persistent: PersistentTier,
 	range: OperatorRangeTier,
+	checkpoint: Option<Arc<dyn WalFloorCheckpoint>>,
+}
+
+pub struct OperatorCommitGuard {
+	shared: Arc<Shared>,
+	id: u64,
+}
+
+impl Drop for OperatorCommitGuard {
+	fn drop(&mut self) {
+		self.shared.live_heads.lock().remove(&self.id);
+		self.shared.in_flight.fetch_sub(1, Ordering::SeqCst);
+	}
 }
 
 #[cfg(test)]
@@ -190,6 +207,11 @@ pub struct Shared {
 	filter: Arc<AdaptiveKeyFilter>,
 	filter_decided: AtomicBool,
 	sweep_cursor: AtomicU64,
+	in_flight: AtomicUsize,
+	next_guard: AtomicU64,
+	live_heads: Mutex<BTreeMap<u64, Option<Lsn>>>,
+	applied: Mutex<Option<Lsn>>,
+	last_saved: Mutex<Option<Lsn>>,
 	#[cfg(test)]
 	persist_interlock: Mutex<Option<PersistInterlock>>,
 	#[cfg(test)]
@@ -226,6 +248,11 @@ impl Shared {
 			filter: Arc::new(AdaptiveKeyFilter::new()),
 			filter_decided: AtomicBool::new(false),
 			sweep_cursor: AtomicU64::new(0),
+			in_flight: AtomicUsize::new(0),
+			next_guard: AtomicU64::new(0),
+			live_heads: Mutex::new(BTreeMap::new()),
+			applied: Mutex::new(None),
+			last_saved: Mutex::new(None),
 			#[cfg(test)]
 			persist_interlock: Mutex::new(None),
 			#[cfg(test)]
@@ -412,11 +439,45 @@ impl Resident {
 		*self.shared.evictor.lock() = Some(evictor);
 	}
 
-	pub fn attach_sinks(&self, persistent: PersistentTier, range: OperatorRangeTier) {
+	pub fn attach_sinks(
+		&self,
+		persistent: PersistentTier,
+		range: OperatorRangeTier,
+		checkpoint: Option<Arc<dyn WalFloorCheckpoint>>,
+	) {
 		let _ = self.shared.sinks.set(OperatorSinks {
 			persistent,
 			range,
+			checkpoint,
 		});
+	}
+
+	fn checkpoint(&self) -> Option<&Arc<dyn WalFloorCheckpoint>> {
+		self.shared.sinks.get().and_then(|sinks| sinks.checkpoint.as_ref())
+	}
+
+	pub fn begin_commit(&self) -> OperatorCommitGuard {
+		self.shared.in_flight.fetch_add(1, Ordering::SeqCst);
+		let head = self.checkpoint().and_then(|checkpoint| {
+			checkpoint.appended_head().unwrap_or_else(|err| {
+				panic!("operator commit could not read the commit log appended head: {err}")
+			})
+		});
+		let id = self.shared.next_guard.fetch_add(1, Ordering::Relaxed);
+		self.shared.live_heads.lock().insert(id, head);
+		OperatorCommitGuard {
+			shared: Arc::clone(&self.shared),
+			id,
+		}
+	}
+
+	fn marker_through(&self) -> Option<Lsn> {
+		let applied = *self.shared.applied.lock();
+		let lowest_live = self.shared.live_heads.lock().values().min().copied();
+		match lowest_live {
+			Some(head) => applied.min(head),
+			None => applied,
+		}
 	}
 
 	pub fn budget(&self) -> ByteSize {
@@ -520,7 +581,12 @@ impl Resident {
 		writes: &[OperatorWrite],
 		checkpoints: &[(FlowId, CommitVersion)],
 		checkpoint_deletes: &[FlowId],
+		lsn: Option<Lsn>,
 	) {
+		if let Some(lsn) = lsn {
+			let mut applied = self.shared.applied.lock();
+			*applied = (*applied).max(Some(lsn));
+		}
 		if writes.is_empty() && checkpoints.is_empty() && checkpoint_deletes.is_empty() {
 			return;
 		}
@@ -744,19 +810,50 @@ impl Resident {
 		if self.device_absent() {
 			return;
 		}
+		let mut flushed = false;
 		loop {
-			let batch = {
+			let taken = {
 				let _staging = self.flush_guard();
-				match self.take_drain_slice(self.shared.slice) {
-					Some(batch) => batch,
-					None => return,
-				}
+				self.take_drain_slice(self.shared.slice)
 			};
+			let Some(batch) = taken else {
+				if !flushed {
+					self.advance_idle();
+				}
+				return;
+			};
+			flushed = true;
 			self.persist(&batch)
 				.expect("operator state flush must persist; a dropped batch loses buffered rows");
 			let _staging = self.flush_guard();
 			self.settle(batch);
 		}
+	}
+
+	fn advance_idle(&self) {
+		let Some(checkpoint) = self.checkpoint() else {
+			return;
+		};
+		let head = checkpoint.durable_head().unwrap_or_else(|err| {
+			panic!("operator idle flush could not read the commit log durable head: {err}")
+		});
+		{
+			let _staging = self.flush_guard();
+			if self.shared.in_flight.load(Ordering::SeqCst) != 0 || self.pending() {
+				return;
+			}
+		}
+		let Some(head) = head else {
+			return;
+		};
+		if self.shared.last_saved.lock().is_some_and(|last| head <= last) {
+			return;
+		}
+		let marker = Arc::new(FlushBatch {
+			through: Some(head),
+			..FlushBatch::default()
+		});
+		self.persist(&marker).expect("operator idle flush must persist its saved lsn marker");
 	}
 
 	#[cfg(feature = "testing")]
@@ -894,15 +991,18 @@ impl Resident {
 		self.shared.release_dirty_bytes(staged_bytes);
 		batch.bytes = consumed;
 
-		let mut ready: Vec<FlowId> = Vec::new();
-		for flow in global.checkpoints.keys() {
-			if !had_dirty.contains(flow) || drained.contains(flow) {
-				ready.push(*flow);
+		if !exhausted {
+			let mut ready: Vec<FlowId> = Vec::new();
+			for flow in global.checkpoints.keys() {
+				if !had_dirty.contains(flow) || drained.contains(flow) {
+					ready.push(*flow);
+				}
 			}
-		}
-		for flow in ready {
-			let entry = global.checkpoints.remove(&flow).expect("the flow was listed from this map");
-			batch.checkpoints.insert(flow, entry);
+			for flow in ready {
+				let entry =
+					global.checkpoints.remove(&flow).expect("the flow was listed from this map");
+				batch.checkpoints.insert(flow, entry);
+			}
 		}
 
 		if batch.writes.is_empty() && batch.checkpoints.is_empty() && global.drops.is_empty() {
@@ -913,6 +1013,9 @@ impl Resident {
 			self.shared.metrics.lock().budget_exhausted += 1;
 		}
 
+		if !exhausted && self.checkpoint().is_some() {
+			batch.through = self.marker_through();
+		}
 		batch.drops = mem::take(&mut global.drops);
 		global.in_flight_checkpoints = batch.checkpoints.clone();
 		global.in_flight_drops = batch.drops.clone();
@@ -965,7 +1068,34 @@ impl Resident {
 			.sinks
 			.get()
 			.expect("the operator resident state flushed before its sinks were attached");
+		if let Some(through) = batch.through {
+			self.checkpoint()
+				.expect(
+					"a flush batch carries a saved lsn only when a commit log checkpoint is attached",
+				)
+				.make_durable(through)
+				.unwrap_or_else(|err| {
+					panic!(
+						"operator flush could not make the commit log durable through lsn {}: {err}",
+						through.as_u64()
+					)
+				});
+		}
 		let applied = Apply::apply(&sinks.persistent, batch)?;
+		if let Some(through) = batch.through {
+			self.checkpoint()
+				.expect(
+					"a flush batch carries a saved lsn only when a commit log checkpoint is attached",
+				)
+				.saved_through(through)
+				.unwrap_or_else(|err| {
+					panic!(
+						"operator flush saved through lsn {} but could not move its commit log floor: {err}",
+						through.as_u64()
+					)
+				});
+			*self.shared.last_saved.lock() = Some(through);
+		}
 		self.shared.filter.add_many(
 			&batch.writes.iter().map(|(operator, key, _)| staged_hash(*operator, key)).collect::<Vec<_>>(),
 		);

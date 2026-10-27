@@ -44,7 +44,7 @@ use crate::{
 		OperatorRangeTier, RangeSink,
 		tiers::{RangeKeyspaceMetrics, RangeTiers},
 	},
-	resident::Resident,
+	resident::{OperatorCommitGuard, Resident},
 	store::{census::OperatorCensus, occupancy::KeyspaceOccupancy, pin::CheckpointPins},
 };
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -109,6 +109,7 @@ impl StandardOperatorStore {
 				resident.attach_sinks(
 					persistent.storage.clone(),
 					OperatorRangeTier::standard(range.clone()),
+					persistent.checkpoint.clone(),
 				);
 			}
 			let flush = config
@@ -204,6 +205,10 @@ impl StandardOperatorStore {
 		&self.resident
 	}
 
+	pub fn begin_commit(&self) -> OperatorCommitGuard {
+		self.resident.begin_commit()
+	}
+
 	pub fn occupancy(&self) -> &KeyspaceOccupancy {
 		&self.occupancy
 	}
@@ -284,6 +289,12 @@ impl OperatorStore {
 	pub fn resident(&self) -> &Resident {
 		match self {
 			Self::Standard(store) => store.resident(),
+		}
+	}
+
+	pub fn begin_commit(&self) -> OperatorCommitGuard {
+		match self {
+			Self::Standard(store) => store.begin_commit(),
 		}
 	}
 

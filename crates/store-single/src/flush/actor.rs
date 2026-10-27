@@ -9,7 +9,7 @@ use std::sync::{Arc, atomic::AtomicUsize};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_codec::key::encoded::EncodedKey;
-use reifydb_core::interface::store::SingleWalCheckpoint;
+use reifydb_core::interface::store::WalFloorCheckpoint;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_runtime::actor::{
 	context::Context,
@@ -44,7 +44,7 @@ pub struct Flusher {
 	through: Arc<Mutex<Option<Lsn>>>,
 	in_flight: Arc<AtomicUsize>,
 	persistent: SinglePersistentTier,
-	checkpoint: Arc<dyn SingleWalCheckpoint>,
+	checkpoint: Arc<dyn WalFloorCheckpoint>,
 	draining: Mutex<()>,
 	last_saved: Mutex<Option<Lsn>>,
 }
@@ -62,7 +62,7 @@ impl Flusher {
 		through: Arc<Mutex<Option<Lsn>>>,
 		in_flight: Arc<AtomicUsize>,
 		persistent: SinglePersistentTier,
-		checkpoint: Arc<dyn SingleWalCheckpoint>,
+		checkpoint: Arc<dyn WalFloorCheckpoint>,
 	) -> Self {
 		Self {
 			dirty,

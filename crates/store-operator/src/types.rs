@@ -10,6 +10,7 @@ use reifydb_core::{
 	key::operator::state::{GroupStateKey, KeyspaceId},
 };
 use reifydb_value::byte_size::ByteSize;
+use reifydb_wal::lsn::Lsn;
 
 #[derive(Debug, Clone)]
 pub struct OperatorBatch {
@@ -106,6 +107,7 @@ pub struct FlushBatch {
 	pub checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
 	pub drops: Vec<DropMarker>,
 	pub bytes: ByteSize,
+	pub through: Option<Lsn>,
 }
 
 impl FlushBatch {

@@ -17,4 +17,12 @@ pub(super) const CHECKPOINT_SCHEMA_SQL: &str = r#"CREATE TABLE IF NOT EXISTS "fl
 	"version" INTEGER NOT NULL
 ) WITHOUT ROWID;"#;
 
+pub(super) const SAVED_LSN_SET_SQL: &str = r#"INSERT INTO "store_meta" ("key", "value") VALUES ('saved_lsn', ?1)
+	   ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value""#;
+
+pub(super) const META_SCHEMA_SQL: &str = r#"CREATE TABLE IF NOT EXISTS "store_meta" (
+	"key" TEXT NOT NULL PRIMARY KEY,
+	"value" BLOB NOT NULL
+) WITHOUT ROWID;"#;
+
 pub(super) const TABLE_NAMES_SQL: &str = r#"SELECT "name" FROM "sqlite_master" WHERE "type" = 'table'"#;

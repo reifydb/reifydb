@@ -3,7 +3,7 @@
 
 use std::{path::Path, sync::Arc};
 
-use reifydb_core::interface::store::SingleWalCheckpoint;
+use reifydb_core::interface::store::WalFloorCheckpoint;
 use reifydb_runtime::{
 	actor::system::ActorSystem,
 	context::clock::Clock,
@@ -23,7 +23,7 @@ use common::Runner;
 
 struct NoWal;
 
-impl SingleWalCheckpoint for NoWal {
+impl WalFloorCheckpoint for NoWal {
 	fn make_durable(&self, _through: Lsn) -> reifydb_value::Result<()> {
 		// Store-level scripts never log a commit, so there is no lsn to make durable.
 		Ok(())
@@ -35,6 +35,10 @@ impl SingleWalCheckpoint for NoWal {
 
 	fn durable_head(&self) -> reifydb_value::Result<Option<Lsn>> {
 		Ok(None)
+	}
+
+	fn appended_head(&self) -> reifydb_value::Result<Option<Lsn>> {
+		panic!("not used by single")
 	}
 }
 

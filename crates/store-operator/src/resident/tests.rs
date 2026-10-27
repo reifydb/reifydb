@@ -57,7 +57,7 @@ fn insert(operator: OperatorId, name: &str, value: &str) -> OperatorWrite {
 }
 
 fn write_in_flow(buffer: &Resident, flow: FlowId, version: u64, writes: &[OperatorWrite]) {
-	buffer.apply_batch_with_checkpoints(writes, &[(flow, CommitVersion(version))], &[]);
+	buffer.apply_batch_with_checkpoints(writes, &[(flow, CommitVersion(version))], &[], None);
 }
 
 fn operators_of(batch: &FlushBatch) -> Vec<OperatorId> {
@@ -512,6 +512,7 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 		}],
 		&[(FlowId(3), CommitVersion(12))],
 		&[FlowId(4)],
+		None,
 	);
 
 	let batch = buffer.take_for_flush().expect("the combined apply must dirty the buffer");
@@ -547,7 +548,7 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 fn a_combined_apply_with_nothing_to_record_leaves_the_buffer_untouched() {
 	let buffer = Resident::new();
 
-	buffer.apply_batch_with_checkpoints(&[], &[], &[]);
+	buffer.apply_batch_with_checkpoints(&[], &[], &[], None);
 
 	assert!(
 		buffer.take_for_flush().is_none(),
@@ -574,11 +575,7 @@ fn a_flow_the_budget_did_not_reach_keeps_its_checkpoint_for_the_next_slice() {
 	write_in_flow(&buffer, FLOW_B, 20, &[insert(OP_B, "k2", "v2")]);
 
 	let first = buffer.take_for_flush().expect("the seeded buffer yields a slice");
-	assert_eq!(
-		first.checkpoints.get(&FLOW_A).copied(),
-		Some(Some(CommitVersion(10))),
-		"the flow this slice drained completely is safe to check point in the same transaction"
-	);
+	assert!(first.checkpoints.is_empty(), "a slice that leaves state dirty carries no checkpoint");
 	assert!(
 		!first.checkpoints.contains_key(&FLOW_B),
 		"the flow the budget stopped before still holds live state, so its checkpoint must wait"
@@ -591,6 +588,7 @@ fn a_flow_the_budget_did_not_reach_keeps_its_checkpoint_for_the_next_slice() {
 		Some(Some(CommitVersion(20))),
 		"the held checkpoint must go out with the state that earns it, or the flow never advances"
 	);
+	assert_eq!(second.checkpoints.get(&FLOW_A).copied(), Some(Some(CommitVersion(10))));
 }
 
 #[test]
@@ -1088,7 +1086,7 @@ fn a_last_page_is_the_exact_reverse_tail_of_a_forward_page() {
 fn an_idle_flush_over_a_populated_device_never_touches_the_device() {
 	let device = TestingPersistent::new(Arc::new(NoFaults));
 	let buffer = Resident::new();
-	buffer.attach_sinks(PersistentTier::Testing(device.clone()), OperatorRangeTier::Absent);
+	buffer.attach_sinks(PersistentTier::Testing(device.clone()), OperatorRangeTier::Absent, None);
 
 	set(&buffer, OP_A, key("k"), row("v"));
 	buffer.flush_all();
@@ -1112,6 +1110,7 @@ fn a_flush_under_a_zero_budget_still_carries_every_staged_row() {
 	buffer.attach_sinks(
 		PersistentTier::Testing(TestingPersistent::new(Arc::new(NoFaults))),
 		OperatorRangeTier::Absent,
+		None,
 	);
 	assert_eq!(
 		buffer.slice(),
@@ -1212,6 +1211,7 @@ fn a_refused_flush_stops_the_store_instead_of_settling_rows_it_never_wrote() {
 	buffer.attach_sinks(
 		PersistentTier::Testing(TestingPersistent::new(Arc::new(RefuseApply))),
 		OperatorRangeTier::Absent,
+		None,
 	);
 
 	set(&buffer, OP_A, key("k"), row("v"));

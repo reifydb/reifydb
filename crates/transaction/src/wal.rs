@@ -13,7 +13,7 @@ use reifydb_codec::log::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::store::{SingleWalCheckpoint, WalCheckpoint},
+	interface::store::{WalCheckpoint, WalFloorCheckpoint},
 	wal::WalRecord,
 };
 use reifydb_runtime::{
@@ -412,21 +412,21 @@ pub fn replay_single(wal: &CommitWal, store: &SingleStore, saved_lsn: Option<Lsn
 	}
 }
 
-pub fn single_checkpoint(wal: &CommitWal) -> Arc<dyn SingleWalCheckpoint> {
-	let name = CheckpointedStore::Single.floor_name();
+pub fn floor_checkpoint(wal: &CommitWal, store: CheckpointedStore) -> Arc<dyn WalFloorCheckpoint> {
+	let name = store.floor_name();
 	let floor = wal.floor(name).unwrap_or_else(|err| panic!("commit log floor {name} could not be taken: {err}"));
-	Arc::new(SingleStoreCheckpoint {
+	Arc::new(WalFloorCheckpointer {
 		wal: wal.clone(),
 		floor,
 	})
 }
 
-struct SingleStoreCheckpoint {
+struct WalFloorCheckpointer {
 	wal: CommitWal,
 	floor: Floor<WalRecord, CommitDevice>,
 }
 
-impl SingleWalCheckpoint for SingleStoreCheckpoint {
+impl WalFloorCheckpoint for WalFloorCheckpointer {
 	fn make_durable(&self, through: Lsn) -> Result<()> {
 		self.wal.sync().unwrap_or_else(|err| {
 			panic!(
@@ -464,5 +464,15 @@ impl SingleWalCheckpoint for SingleStoreCheckpoint {
 			)
 		});
 		Ok(cursors.durable)
+	}
+
+	fn appended_head(&self) -> Result<Option<Lsn>> {
+		let cursors = self.wal.cursors().unwrap_or_else(|err| {
+			panic!(
+				"commit log appended head could not be read for the {} checkpoint: {err}",
+				self.floor.name()
+			)
+		});
+		Ok(cursors.appended)
 	}
 }

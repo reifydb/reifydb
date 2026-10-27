@@ -44,9 +44,7 @@ use reifydb_store_single::{
 use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{
-		CheckpointedStore, CommitWal, Recovery, memory_wal, nop_wal, open_wal, replay_single, single_checkpoint,
-	},
+	wal::{CheckpointedStore, CommitWal, Recovery, floor_checkpoint, memory_wal, nop_wal, open_wal, replay_single},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -328,7 +326,10 @@ fn create_sqlite_store_with(
 		commit: Some(SingleCommitBufferConfig {
 			storage: SingleCommitBufferTier::memory(),
 		}),
-		persistent: Some(SinglePersistentConfig::sqlite(single_config, single_checkpoint(wal))),
+		persistent: Some(SinglePersistentConfig::sqlite(
+			single_config,
+			floor_checkpoint(wal, CheckpointedStore::Single),
+		)),
 		spawner: spawner.clone(),
 		clock: Clock::Real,
 	});

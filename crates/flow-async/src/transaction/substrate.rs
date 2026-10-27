@@ -64,7 +64,7 @@ pub fn apply_operator_state_with_checkpoints(
 	checkpoints: &[(FlowId, CommitVersion)],
 	checkpoint_deletes: &[FlowId],
 ) -> Result<()> {
-	store.apply_batch_with_checkpoints(&operator_writes(pending, deferred), checkpoints, checkpoint_deletes)?;
+	store.apply_batch_with_checkpoints(&operator_writes(pending, deferred), checkpoints, checkpoint_deletes, None)?;
 	Ok(())
 }
 

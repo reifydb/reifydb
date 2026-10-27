@@ -311,6 +311,7 @@ impl Apply for TestingPersistent {
 					checkpoints: Default::default(),
 					drops: Vec::new(),
 					bytes: batch.bytes,
+					through: None,
 				};
 				self.0.durable.apply(&torn).map(|_| Applied {
 					rows: batch.writes.len(),

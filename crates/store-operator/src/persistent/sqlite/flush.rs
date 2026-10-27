@@ -17,7 +17,7 @@ use crate::{
 		SqlitePersistent,
 		registry::TableRegistry,
 		route,
-		sql::{CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL},
+		sql::{CHECKPOINT_REMOVE_SQL, CHECKPOINT_SET_SQL, SAVED_LSN_SET_SQL},
 		typed,
 	},
 	resident::bucket::{Bucket, BucketMap, write::StandardBucket},
@@ -61,6 +61,16 @@ impl SqlitePersistent {
 					.execute(params![flow.0 as i64])
 					.expect("flow checkpoint delete failed"),
 			};
+		}
+
+		if let Some(through) = batch.through {
+			transaction
+				.prepare_cached(SAVED_LSN_SET_SQL)
+				.expect("operator saved lsn write could not be prepared")
+				.execute(params![through.as_u64().to_le_bytes().to_vec()])
+				.unwrap_or_else(|err| {
+					panic!("operator saved lsn {} could not be written: {err}", through.as_u64())
+				});
 		}
 
 		transaction.commit().expect("operator state flush could not commit");

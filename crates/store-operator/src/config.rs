@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
+use reifydb_core::interface::store::WalFloorCheckpoint;
 use reifydb_runtime::actor::system::ActorSpawner;
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 use reifydb_sqlite::SqliteTempPathGuard;
@@ -30,12 +33,21 @@ impl Default for ResidentConfig {
 #[derive(Clone)]
 pub struct OperatorPersistentConfig {
 	pub storage: PersistentTier,
+	pub checkpoint: Option<Arc<dyn WalFloorCheckpoint>>,
 }
 
 impl OperatorPersistentConfig {
 	pub fn opened(storage: PersistentTier) -> Self {
 		Self {
 			storage,
+			checkpoint: None,
+		}
+	}
+
+	pub fn opened_with_checkpoint(storage: PersistentTier, checkpoint: Arc<dyn WalFloorCheckpoint>) -> Self {
+		Self {
+			storage,
+			checkpoint: Some(checkpoint),
 		}
 	}
 
