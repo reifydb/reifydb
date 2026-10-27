@@ -12,7 +12,7 @@ use crate::transaction::command::CommandTransaction;
 
 pub type CommitApply = Box<dyn FnOnce(&mut CommandTransaction) -> Result<()> + Send>;
 
-pub type CommitCompletion = Box<dyn FnOnce(Result<CommitVersion>) + Send>;
+pub type CommitCompletion = Box<dyn FnOnce(Result<Committed>) + Send>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Committed {
@@ -49,7 +49,7 @@ impl CommitHandle {
 	}
 }
 
-fn apply_and_commit(begin: &CommitBegin, apply: CommitApply) -> Result<CommitVersion> {
+fn apply_and_commit(begin: &CommitBegin, apply: CommitApply) -> Result<Committed> {
 	let mut transaction = begin_unchecked(begin)?;
 	if let Err(e) = (apply)(&mut transaction) {
 		let _ = transaction.rollback();
@@ -57,7 +57,7 @@ fn apply_and_commit(begin: &CommitBegin, apply: CommitApply) -> Result<CommitVer
 	}
 	let result = transaction.commit_unchecked();
 	release(transaction);
-	result.map(|committed| committed.version)
+	result
 }
 
 #[instrument(name = "transaction::commit::begin", level = "debug", skip_all)]

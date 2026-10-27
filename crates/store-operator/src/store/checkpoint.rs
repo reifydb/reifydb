@@ -26,6 +26,20 @@ impl StandardOperatorStore {
 		Ok(())
 	}
 
+	#[instrument(name = "store::operator::check_checkpoints", level = "trace", skip_all, fields(checkpoint_count = checkpoints.len()))]
+	pub fn check_checkpoints(&self, checkpoints: &[(FlowId, CommitVersion)]) -> Result<()> {
+		for (flow, version) in checkpoints {
+			if let Some(current) = self.checkpoint_get(*flow)?
+				&& *version < current
+			{
+				return Err(OperatorError::CheckpointOutOfRange {
+					flow: *flow,
+				});
+			}
+		}
+		Ok(())
+	}
+
 	#[instrument(name = "store::operator::checkpoint_remove", level = "debug", skip(self), fields(flow = flow.0))]
 	pub fn checkpoint_remove(&self, flow: FlowId) -> Result<()> {
 		self.resident.record_checkpoint_delete(flow);
@@ -68,6 +82,12 @@ impl OperatorStore {
 	pub fn checkpoint_set(&self, flow: FlowId, version: CommitVersion) -> Result<()> {
 		match self {
 			Self::Standard(store) => store.checkpoint_set(flow, version),
+		}
+	}
+
+	pub fn check_checkpoints(&self, checkpoints: &[(FlowId, CommitVersion)]) -> Result<()> {
+		match self {
+			Self::Standard(store) => store.check_checkpoints(checkpoints),
 		}
 	}
 

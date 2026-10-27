@@ -12,28 +12,27 @@ use reifydb_core::{
 	interface::{
 		catalog::flow::FlowId,
 		cdc::{CdcConsumerId, ConsumerClass},
+		operator::OperatorSlice,
 	},
 	key::any::TaggedKey,
 	return_internal_error,
 };
 #[cfg(test)]
 use reifydb_engine::engine::StandardEngine;
-use reifydb_flow_async::transaction::substrate::{
-	DeferredClassification, apply_operator_state, apply_operator_state_with_checkpoints, classify_pending,
-};
+use reifydb_flow_async::transaction::substrate::operator_section;
 use reifydb_runtime::actor::{
 	context::Context,
 	system::{ActorConfig, ActorHandle},
 	traits::{Actor, Directive},
 };
-use reifydb_store_operator::store::OperatorStore;
+use reifydb_store_operator::{store::OperatorStore, types::classify_slice};
 use reifydb_transaction::{
-	commit::{CommitApply, CommitCompletion, CommitHandle, CommitSubmission},
+	commit::{CommitApply, CommitCompletion, CommitHandle, CommitSubmission, Committed},
 	transaction::command::CommandTransaction,
 };
 #[cfg(test)]
 use reifydb_value::value::identity::IdentityId;
-use reifydb_value::{Result, util::hex::display as hex_display};
+use reifydb_value::{Result, byte_size::ByteSize, util::hex::display as hex_display};
 use tracing::instrument;
 
 use crate::{commit::quiescence::FlowMaterialization, progress::tracker::FlowPositionTracker};
@@ -139,29 +138,34 @@ impl CommitterActor {
 		pending: Pending,
 		reply: TickCommitReply,
 	) {
-		let deferred = match classify_pending(&self.committer.operators, &pending) {
-			Ok(deferred) => deferred,
+		let (operator, sizes) = match operator_section(&self.committer.operators, &pending, &[], &[]) {
+			Ok(section) => section,
 			Err(e) => return (reply)(Err(e)),
 		};
-		let pending = Arc::new(pending);
 
 		let apply_committer = self.committer.clone();
-		let apply_pending = Arc::clone(&pending);
-		let apply: CommitApply =
-			Box::new(move |transaction| apply_committer.apply_tick(transaction, &apply_pending, source));
+		let apply_operator = operator.clone();
+		let apply: CommitApply = Box::new(move |transaction| {
+			apply_committer.apply_tick(transaction, &pending, source, apply_operator)
+		});
 
+		let guard = self.committer.operators.begin_commit();
 		let completion_committer = self.committer.clone();
-		let completion: CommitCompletion = Box::new(move |result| match result {
-			Ok(version) => {
-				apply_operator_state(&completion_committer.operators, &pending, &deferred);
-				completion_committer.materialization.record_output(version);
-				completion_committer.flow_tracker.record_commit(flow_id, version);
-				for member in &members {
-					completion_committer.flow_tracker.record_commit(*member, version);
+		let completion: CommitCompletion = Box::new(move |result| {
+			match result {
+				Ok(committed) => {
+					completion_committer.apply_operator_slice(&operator, &sizes, committed);
+					let version = committed.version;
+					completion_committer.materialization.record_output(version);
+					completion_committer.flow_tracker.record_commit(flow_id, version);
+					for member in &members {
+						completion_committer.flow_tracker.record_commit(*member, version);
+					}
+					(reply)(Ok(()));
 				}
-				(reply)(Ok(()));
+				Err(e) => (reply)(Err(e)),
 			}
-			Err(e) => (reply)(Err(e)),
+			drop(guard);
 		});
 
 		self.commit.submit(CommitSubmission {
@@ -311,47 +315,63 @@ impl Committer {
 	) {
 		let mut sized = Vec::with_capacity(members.len());
 		for (index, reply) in members {
-			match classify_pending(&self.operators, &slices[index].combined) {
-				Ok(deferred) => sized.push((index, reply, deferred)),
+			let slice = &slices[index];
+			match operator_section(
+				&self.operators,
+				&slice.combined,
+				&slice.checkpoints,
+				&slice.checkpoint_deletes,
+			) {
+				Ok((operator, sizes)) => sized.push((index, reply, operator, sizes)),
 				Err(e) => (reply)(Err(e)),
 			}
 		}
 		if sized.is_empty() {
 			return;
 		}
-		let indices: Vec<usize> = sized.iter().map(|(index, _, _)| *index).collect();
+		let sections: Vec<(usize, OperatorSlice)> =
+			sized.iter().map(|(index, _, operator, _)| (*index, operator.clone())).collect();
 
 		let apply_committer = self.clone();
 		let apply_slices = Arc::clone(&slices);
 		let apply: CommitApply = Box::new(move |transaction| {
-			for index in indices {
-				apply_committer.apply_slice(transaction, &apply_slices[index])?;
+			for (index, operator) in sections {
+				apply_committer.apply_slice(transaction, &apply_slices[index], operator)?;
 			}
 			Ok(())
 		});
 
+		let guard = self.operators.begin_commit();
 		let completion_committer = self.clone();
 		let retry_commit = commit.clone();
-		let completion: CommitCompletion = Box::new(move |result| match result {
-			Ok(version) => {
-				for (index, reply, deferred) in sized {
-					(reply)(completion_committer.finish_slice(&slices[index], &deferred, version));
-				}
-				release_slices(slices);
-			}
-			Err(e) => match <[(usize, SliceCommitReply, DeferredClassification); 1]>::try_from(sized) {
-				Ok([(_, reply, _)]) => (reply)(Err(e)),
-				Err(sized) => {
-					for (index, reply, _) in sized {
-						completion_committer.retry_slice(
-							name,
-							&retry_commit,
-							Arc::clone(&slices),
-							(index, reply),
-						);
+		let completion: CommitCompletion = Box::new(move |result| {
+			match result {
+				Ok(committed) => {
+					for (index, reply, operator, sizes) in sized {
+						(reply)(Ok(completion_committer.finish_slice(
+							&slices[index],
+							&operator,
+							&sizes,
+							committed,
+						)));
 					}
+					release_slices(slices);
 				}
-			},
+				Err(e) => match <[SizedSlice; 1]>::try_from(sized) {
+					Ok([(_, reply, _, _)]) => (reply)(Err(e)),
+					Err(sized) => {
+						for (index, reply, _, _) in sized {
+							completion_committer.retry_slice(
+								name,
+								&retry_commit,
+								Arc::clone(&slices),
+								(index, reply),
+							);
+						}
+					}
+				},
+			}
+			drop(guard);
 		});
 
 		commit.submit(CommitSubmission {
@@ -361,10 +381,17 @@ impl Committer {
 	}
 
 	#[instrument(name = "flow::committer::apply_slice", level = "debug", skip_all)]
-	fn apply_slice(&self, transaction: &mut CommandTransaction, slice: &FlowSlice) -> Result<()> {
+	fn apply_slice(
+		&self,
+		transaction: &mut CommandTransaction,
+		slice: &FlowSlice,
+		operator: OperatorSlice,
+	) -> Result<()> {
+		self.operators.check_checkpoints(&operator.checkpoints)?;
 		if let Some(source) = slice.source {
 			transaction.stamp_source(source)?;
 		}
+		push_if_not_empty(transaction, operator)?;
 		apply_pending_writes(transaction, &slice.combined)?;
 
 		if let Some((consumer_id, version)) = &slice.control_cursor {
@@ -381,21 +408,41 @@ impl Committer {
 	fn finish_slice(
 		&self,
 		slice: &FlowSlice,
-		deferred: &DeferredClassification,
-		version: CommitVersion,
-	) -> Result<CommitVersion> {
-		apply_operator_state_with_checkpoints(
-			&self.operators,
-			&slice.combined,
-			deferred,
-			&slice.checkpoints,
-			&slice.checkpoint_deletes,
-		)?;
+		operator: &OperatorSlice,
+		sizes: &[Option<ByteSize>],
+		committed: Committed,
+	) -> CommitVersion {
+		self.apply_operator_slice(operator, sizes, committed);
+		let version = committed.version;
 		if slice.produced_output() {
 			self.materialization.record_output(version);
 		}
 		self.post_commit_slice(version, slice.source, &slice.checkpoints, &slice.checkpoint_deletes);
-		Ok(version)
+		version
+	}
+
+	#[instrument(name = "flow::committer::apply_operator_slice", level = "trace", skip_all, fields(
+		write_count = operator.writes.len(),
+		checkpoint_count = operator.checkpoints.len()
+	))]
+	fn apply_operator_slice(&self, operator: &OperatorSlice, sizes: &[Option<ByteSize>], committed: Committed) {
+		if operator.is_empty() {
+			return;
+		}
+		let Some(lsn) = committed.lsn else {
+			panic!(
+				"an operator slice committed at version {} without a commit log lsn; its state was never logged",
+				committed.version.0
+			);
+		};
+		if let Err(e) = self.operators.apply_batch_with_checkpoints(
+			&classify_slice(operator, sizes),
+			&operator.checkpoints,
+			&operator.deletes,
+			Some(lsn),
+		) {
+			panic!("operator state for lsn {} is in the commit log but failed to apply: {e}", lsn.as_u64());
+		}
 	}
 
 	#[instrument(name = "flow::committer::post_commit_slice", level = "trace", skip_all, fields(
@@ -424,12 +471,23 @@ impl Committer {
 		transaction: &mut CommandTransaction,
 		pending: &Pending,
 		source: SourceVersion,
+		operator: OperatorSlice,
 	) -> Result<()> {
 		transaction.stamp_source(source)?;
+		push_if_not_empty(transaction, operator)?;
 		apply_pending_writes(transaction, pending)?;
 
 		Ok(())
 	}
+}
+
+type SizedSlice = (usize, SliceCommitReply, OperatorSlice, Vec<Option<ByteSize>>);
+
+fn push_if_not_empty(transaction: &mut CommandTransaction, operator: OperatorSlice) -> Result<()> {
+	if operator.is_empty() {
+		return Ok(());
+	}
+	transaction.push_operator_slice(operator)
 }
 
 #[instrument(name = "flow::committer::release_slices", level = "trace", skip_all)]
@@ -504,6 +562,7 @@ mod commit_integration {
 			atomic::{AtomicUsize, Ordering},
 			mpsc,
 		},
+		time::Duration as StdDuration,
 	};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
@@ -521,6 +580,8 @@ mod commit_integration {
 				storage::StorageId,
 			},
 			cdc::CdcChange,
+			operator::OperatorStateWrite,
+			store::WalFloorCheckpoint,
 		},
 		internal_error,
 		key::{
@@ -533,6 +594,7 @@ mod commit_integration {
 			tag::KeyTag,
 		},
 		value::index::encoded::EncodedIndexKey,
+		wal::{CommitRecord, WalRecord},
 	};
 	use reifydb_runtime::sync::{mutex::Mutex, waiter::WaiterHandle};
 	use reifydb_store_cdc::storage::CdcStorage;
@@ -553,6 +615,7 @@ mod commit_integration {
 		util::cowvec::CowVec,
 		value::{duration::Duration, row_number::RowNumber},
 	};
+	use reifydb_wal::lsn::Lsn;
 
 	use super::*;
 
@@ -805,12 +868,10 @@ mod commit_integration {
 			.is_ok());
 
 		replies.wait();
-		assert_eq!(
+		assert_ne!(
 			replies.versions()[0].1,
 			CommitVersion(0),
-			"operator state is skipped on the way into the transaction, so a slice carrying nothing \
-			 else commits empty and returns the discarded-commit sentinel; a real version here would \
-			 mean the state also leaked into the multi store"
+			"a slice with only operator state still commits a record (OP4)"
 		);
 
 		assert_eq!(
@@ -1352,5 +1413,197 @@ mod commit_integration {
 		};
 		assert!(!row(1, &mut query), "the failed member's rows must not be durable");
 		assert!(row(2, &mut query), "the other member's rows must commit");
+	}
+
+	fn logged_engine() -> TestEngine {
+		TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build()
+	}
+
+	fn logged_handle(engine: &StandardEngine) -> CommitHandle {
+		let begin_engine = engine.clone();
+		CommitHandle::new(Arc::new(move || begin_engine.begin_command(IdentityId::system(), Durability::Async)))
+	}
+
+	fn logged_sections(engine: &StandardEngine) -> Vec<(Lsn, CommitRecord)> {
+		engine.multi()
+			.wal()
+			.replay(Lsn::FIRST)
+			.expect("the commit log replays from its first record")
+			.filter_map(|replayed| {
+				let replayed = replayed.expect("every appended record decodes");
+				match replayed.body {
+					WalRecord::Multi(record) if !record.operator.slices.is_empty() => {
+						Some((replayed.lsn, record))
+					}
+					_ => None,
+				}
+			})
+			.collect()
+	}
+
+	fn plain_committer(store: OperatorStore) -> Committer {
+		Committer::new(
+			FlowPositionTracker::new(),
+			FlowMaterialization::new(CdcConsumerWatermark::new(), FlowPositionTracker::new()),
+			store,
+		)
+	}
+
+	fn commit_direct(committer: &Committer, engine: &StandardEngine, slice: FlowSlice) -> Result<CommitVersion> {
+		let replies = SliceReplies::new(1);
+		committer.commit_slices(
+			"commit-test",
+			&logged_handle(engine),
+			Arc::new(vec![slice]),
+			vec![(0, replies.reply(0))],
+		);
+		replies.wait();
+		replies.results.lock().pop().expect("the slice must reply").1
+	}
+
+	fn state_write(
+		operator: OperatorId,
+		inner: &GroupStateKey,
+		tag: u8,
+	) -> (OperatorId, GroupStateKey, OperatorStateWrite) {
+		(operator, inner.clone(), OperatorStateWrite::Set(EncodedPodRow::new(&[tag; 4])))
+	}
+
+	#[test]
+	fn a_slice_commit_logs_its_writes_and_checkpoints_in_one_record() {
+		// Replay rebuilds state and checkpoint from one record, so a checkpoint missing from it resumes the
+		// flow from a stale position.
+		let te = logged_engine();
+		let engine = te.inner().clone();
+		let committer = plain_committer(engine.operator_state());
+		let operator = OperatorId(3);
+		let inner = state_inner(b"a");
+		let mut slice = state_slice(&[(operator, &inner, 1)]);
+		slice.combined.insert(vec![synthetic_key(1)], vec![EncodedBytes(CowVec::new(vec![1u8; 4]))]);
+
+		let version = commit_direct(&committer, &engine, slice).expect("the slice commits");
+
+		let records = logged_sections(&engine);
+		assert_eq!(records.len(), 1, "exactly one record carries the slice's operator section: {records:?}");
+		let (_, record) = &records[0];
+		assert_eq!(record.version, version, "the section rides in the record of the slice's own commit");
+		assert!(!record.deltas.is_empty(), "the view rows must be in the same record as the section");
+		assert_eq!(
+			record.operator.slices,
+			vec![OperatorSlice {
+				writes: vec![state_write(operator, &inner, 1)],
+				checkpoints: vec![(FlowId(1), CommitVersion(10))],
+				deletes: vec![],
+			}]
+		);
+	}
+
+	#[test]
+	fn a_checkpoint_behind_the_current_one_never_reaches_the_log() {
+		// A refused checkpoint that is already logged replays as durable state the store rejected live.
+		let te = logged_engine();
+		let engine = te.inner().clone();
+		let committer = plain_committer(engine.operator_state());
+		let inner = state_inner(b"a");
+		commit_direct(&committer, &engine, state_slice(&[(OperatorId(3), &inner, 1)]))
+			.expect("the first slice commits");
+
+		let mut behind = synthetic_slice(5);
+		behind.checkpoints = vec![(FlowId(1), CommitVersion(5))];
+		let result = commit_direct(&committer, &engine, behind);
+
+		assert!(result.is_err(), "a checkpoint behind the stored one must fail its slice");
+		let logged: Vec<CommitVersion> = logged_sections(&engine)
+			.into_iter()
+			.flat_map(|(_, record)| record.operator.slices)
+			.flat_map(|slice| slice.checkpoints)
+			.map(|(_, version)| version)
+			.collect();
+		assert_eq!(logged, vec![CommitVersion(10)], "only the accepted checkpoint may be in the log");
+		assert_eq!(committer.operators.checkpoint_get(FlowId(1)).unwrap(), Some(CommitVersion(10)));
+	}
+
+	#[test]
+	fn a_tick_commit_logs_its_operator_writes() {
+		// A tick whose state stays out of the log loses or double-applies that state after a crash.
+		let te = logged_engine();
+		let engine = te.inner().clone();
+		let (handle, _committer) = build_committer_actor(&engine, logged_handle(&engine));
+		let operator = OperatorId(4);
+		let inner = state_inner(b"t");
+		let mut pending = state_slice(&[(operator, &inner, 7)]).combined;
+		pending.insert(vec![synthetic_key(2)], vec![EncodedBytes(CowVec::new(vec![2u8; 4]))]);
+
+		let (done, finished) = mpsc::channel();
+		assert!(handle
+			.actor_ref()
+			.send(CommitterMessage::Tick {
+				flow_id: FlowId(1),
+				members: Vec::new(),
+				source: SourceVersion(1),
+				pending,
+				reply: Box::new(move |result| done.send(result).expect("the test waits for the tick")),
+			})
+			.is_ok());
+		finished.recv_timeout(StdDuration::from_secs(10))
+			.expect("the tick must reply")
+			.expect("the tick commits");
+
+		let records = logged_sections(&engine);
+		assert_eq!(records.len(), 1, "the tick's operator writes must be in its record: {records:?}");
+		assert_eq!(
+			records[0].1.operator.slices,
+			vec![OperatorSlice {
+				writes: vec![state_write(operator, &inner, 7)],
+				checkpoints: vec![],
+				deletes: vec![],
+			}]
+		);
+	}
+
+	#[derive(Default)]
+	struct RecordingFloor {
+		saved: Mutex<Vec<Lsn>>,
+	}
+
+	impl WalFloorCheckpoint for RecordingFloor {
+		fn make_durable(&self, _through: Lsn) -> Result<()> {
+			Ok(())
+		}
+
+		fn saved_through(&self, through: Lsn) -> Result<()> {
+			self.saved.lock().push(through);
+			Ok(())
+		}
+
+		fn durable_head(&self) -> Result<Option<Lsn>> {
+			Ok(None)
+		}
+
+		fn appended_head(&self) -> Result<Option<Lsn>> {
+			Ok(None)
+		}
+	}
+
+	#[test]
+	fn the_operator_store_is_applied_with_the_lsn_of_the_record() {
+		// A marker saved at any lsn but the record's own replays that record twice or skips one after a crash.
+		let te = logged_engine();
+		let engine = te.inner().clone();
+		let floor = Arc::new(RecordingFloor::default());
+		let (storage, _guard) = PersistentTier::sqlite_in_memory();
+		let store = OperatorStore::standard(OperatorStoreConfig::sqlite(
+			OperatorPersistentConfig::opened_with_checkpoint(storage, floor.clone()),
+			engine.spawner(),
+		));
+		let committer = plain_committer(store.clone());
+
+		commit_direct(&committer, &engine, state_slice(&[(OperatorId(5), &state_inner(b"m"), 3)]))
+			.expect("the slice commits");
+		flush_now(store.resident());
+
+		let records = logged_sections(&engine);
+		assert_eq!(records.len(), 1, "one record carries the slice: {records:?}");
+		assert_eq!(*floor.saved.lock(), vec![records[0].0], "the flush must save exactly the record's lsn");
 	}
 }

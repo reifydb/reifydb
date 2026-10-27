@@ -21,6 +21,12 @@ pub struct OperatorSlice {
 	pub deletes: Vec<FlowId>,
 }
 
+impl OperatorSlice {
+	pub fn is_empty(&self) -> bool {
+		self.writes.is_empty() && self.checkpoints.is_empty() && self.deletes.is_empty()
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OperatorStateWrite {
 	Set(EncodedPodRow),

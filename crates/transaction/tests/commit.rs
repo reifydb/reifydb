@@ -24,7 +24,7 @@ use reifydb_runtime::{
 use reifydb_store_multi::MultiStore;
 use reifydb_store_single::SingleStore;
 use reifydb_transaction::{
-	commit::{CommitBegin, CommitHandle, CommitSubmission},
+	commit::{CommitBegin, CommitHandle, CommitSubmission, Committed},
 	interceptor::interceptors::Interceptors,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
@@ -109,10 +109,10 @@ impl Recorder {
 		})
 	}
 
-	fn completion(self: &Arc<Self>, index: usize) -> Box<dyn FnOnce(Result<CommitVersion>) + Send> {
+	fn completion(self: &Arc<Self>, index: usize) -> Box<dyn FnOnce(Result<Committed>) + Send> {
 		let recorder = Arc::clone(self);
 		Box::new(move |result| {
-			recorder.results.lock().push((index, result));
+			recorder.results.lock().push((index, result.map(|committed| committed.version)));
 			if recorder.remaining.fetch_sub(1, Ordering::SeqCst) == 1 {
 				recorder.done.notify();
 			}
@@ -196,11 +196,11 @@ fn a_failing_apply_rolls_back_its_own_writes_and_the_handle_keeps_committing() {
 			txn.set(vec![(k0_apply.clone().into(), encoded_bytes("should-roll-back"))])?;
 			internal_err!("boom")
 		}),
-		completion: Box::new(move |result: Result<CommitVersion>| {
+		completion: Box::new(move |result: Result<Committed>| {
 			if result.is_err() {
 				failures_0.fetch_add(1, Ordering::SeqCst);
 			}
-			recorder_0.results.lock().push((0, result));
+			recorder_0.results.lock().push((0, result.map(|committed| committed.version)));
 			if recorder_0.remaining.fetch_sub(1, Ordering::SeqCst) == 1 {
 				recorder_0.done.notify();
 			}

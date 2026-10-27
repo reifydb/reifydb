@@ -6,7 +6,10 @@ use std::collections::BTreeMap;
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		operator::{OperatorSlice, OperatorStateWrite},
+	},
 	key::operator::state::{GroupStateKey, KeyspaceId},
 };
 use reifydb_value::byte_size::ByteSize;
@@ -76,6 +79,43 @@ pub enum OperatorWrite {
 		key: GroupStateKey,
 		pre: LayeredPre,
 	},
+}
+
+pub fn classify_slice(slice: &OperatorSlice, sizes: &[Option<ByteSize>]) -> Vec<OperatorWrite> {
+	assert_eq!(
+		slice.writes.len(),
+		sizes.len(),
+		"operator slice classification got {} pre sizes for {} writes",
+		sizes.len(),
+		slice.writes.len()
+	);
+	slice.writes
+		.iter()
+		.zip(sizes)
+		.map(|((operator, key, write), size)| match (write, size) {
+			(OperatorStateWrite::Set(post), Some(pre_value_bytes)) => OperatorWrite::Replace {
+				operator: *operator,
+				key: key.clone(),
+				pre_value_bytes: *pre_value_bytes,
+				post: post.clone(),
+			},
+			(OperatorStateWrite::Set(post), None) => OperatorWrite::Insert {
+				operator: *operator,
+				key: key.clone(),
+				post: post.clone(),
+			},
+			(OperatorStateWrite::Remove, Some(bytes)) => OperatorWrite::Remove {
+				operator: *operator,
+				key: key.clone(),
+				pre: LayeredPre::Present(*bytes),
+			},
+			(OperatorStateWrite::Remove, None) => OperatorWrite::Remove {
+				operator: *operator,
+				key: key.clone(),
+				pre: LayeredPre::Absent,
+			},
+		})
+		.collect()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

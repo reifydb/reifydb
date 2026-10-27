@@ -39,7 +39,7 @@ use tracing::{Span, field::Empty, instrument, warn};
 #[cfg(reifydb_assertions)]
 use crate::types::LayeredPre;
 use crate::{
-	error::{OperatorError, Result},
+	error::Result,
 	persistent::{Enumerate, Fetch, Measure, Page as PersistentPage, Persistent},
 	range::RangeSink,
 	store::{
@@ -84,15 +84,7 @@ impl StandardOperatorStore {
 		}
 		{
 			let _flushing = self.resident.flush_guard();
-			for (flow, version) in checkpoints {
-				if let Some(current) = self.checkpoint_get(*flow)?
-					&& *version < current
-				{
-					return Err(OperatorError::CheckpointOutOfRange {
-						flow: *flow,
-					});
-				}
-			}
+			self.check_checkpoints(checkpoints)?;
 			self.resident.apply_batch_with_checkpoints(writes, checkpoints, checkpoint_deletes, lsn);
 		}
 		self.occupancy.record(writes);

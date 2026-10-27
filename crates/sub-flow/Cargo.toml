@@ -67,6 +67,7 @@ reifydb-test-harness = { workspace = true, features = ["operator"] }
 reifydb-testing-chaos = { workspace = true, features = ["operator"] }
 reifydb-testing-flow = { workspace = true }
 reifydb-testing-macro = { workspace = true }
+reifydb-wal = { workspace = true }
 rand = { workspace = true }
 tracing-subscriber = { workspace = true }
 

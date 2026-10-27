@@ -5,7 +5,10 @@ use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
-	interface::catalog::flow::FlowId,
+	interface::{
+		catalog::flow::FlowId,
+		operator::{OperatorSlice, OperatorStateWrite},
+	},
 	key::operator::state::GroupStateKey,
 };
 use reifydb_store_operator::{
@@ -53,19 +56,64 @@ pub fn apply_operator_state(store: &OperatorStore, pending: &Pending, deferred: 
 	store.apply_batch(&operator_writes(pending, deferred));
 }
 
-#[instrument(name = "flow::substrate::apply_operator_state", level = "trace", skip_all, fields(
-	write_count = pending.len(),
+#[instrument(name = "flow::substrate::operator_section", level = "trace", skip_all, fields(
+	pending_count = pending.len(),
 	checkpoint_count = checkpoints.len()
 ))]
-pub fn apply_operator_state_with_checkpoints(
+pub fn operator_section(
 	store: &OperatorStore,
 	pending: &Pending,
-	deferred: &DeferredClassification,
 	checkpoints: &[(FlowId, CommitVersion)],
-	checkpoint_deletes: &[FlowId],
-) -> Result<()> {
-	store.apply_batch_with_checkpoints(&operator_writes(pending, deferred), checkpoints, checkpoint_deletes, None)?;
-	Ok(())
+	deletes: &[FlowId],
+) -> Result<(OperatorSlice, Vec<Option<ByteSize>>)> {
+	let mut writes = Vec::new();
+	let mut sizes = Vec::new();
+	let mut unsized_at = Vec::new();
+	let mut probes = Vec::new();
+	for (key, write) in pending.state_sorted() {
+		let Some(OperatorScope {
+			operator,
+			inner,
+		}) = operator_state_coordinates(key)
+		else {
+			return Err(FlowStateError::PendingStateKeyUndecodable {
+				key: key.clone(),
+			}
+			.into());
+		};
+		let state_key = GroupStateKey::bound_unchecked(inner);
+		match pending.pre_at(key) {
+			Some(size) => sizes.push(size),
+			None => {
+				unsized_at.push(sizes.len());
+				probes.push((operator, state_key.clone()));
+				sizes.push(None);
+			}
+		}
+		writes.push((
+			operator,
+			state_key,
+			match write {
+				PendingWrite::Set(row) => OperatorStateWrite::Set(EncodedPodRow::from(row.clone())),
+				PendingWrite::Remove {
+					..
+				} => OperatorStateWrite::Remove,
+			},
+		));
+	}
+	if !probes.is_empty() {
+		for (index, size) in unsized_at.into_iter().zip(store.state_sizes(&probes)?) {
+			sizes[index] = size;
+		}
+	}
+	Ok((
+		OperatorSlice {
+			writes,
+			checkpoints: checkpoints.to_vec(),
+			deletes: deletes.to_vec(),
+		},
+		sizes,
+	))
 }
 
 pub type DeferredClassification = FxHashMap<EncodedKey, Option<ByteSize>>;

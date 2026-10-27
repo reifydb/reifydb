@@ -2335,12 +2335,10 @@ mod pull_protocol {
 		let pre_tick = h.engine.current_version().expect("current version");
 		assert!(actor.actor_ref().send(FlowActorMessage::Tick).is_ok(), "send tick");
 
-		assert_eq!(
-			h.await_version_beyond(pre_tick, seconds(2)),
-			None,
-			"the flow has no output left, so nothing may reach the multi store here; a version \
-			 moving means some other commit, not the stale-checkpoint slice, advanced the \
-			 checkpoint below"
+		assert!(
+			h.await_version_beyond(pre_tick, seconds(2)).is_some(),
+			"a tick that writes only operator state still commits its own record (OP4), so a version must move \
+			 here; the checkpoint check below must still not credit that commit"
 		);
 
 		assert!(
