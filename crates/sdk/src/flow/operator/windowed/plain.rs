@@ -1173,6 +1173,12 @@ where
 			&& with.window.as_ref().is_some_and(|kind| kind.name() == "rolling");
 		let slides = with.window.as_ref().is_some_and(|kind| kind.name() == "sliding");
 		let sessions = with.window.as_ref().is_some_and(|kind| kind.name() == "session");
+		if sessions && !A::UPDATE_PRE_RETRACTS {
+			return Err(SdkError::OperatorError(format!(
+				"{} keeps update pre-images, which a session window cannot honour",
+				A::NAME
+			)));
+		}
 		if !rolls && !slides && !sessions {
 			with.require_window("tumbling")?;
 		}
@@ -1365,7 +1371,7 @@ mod tests {
 	}
 
 	macro_rules! probe {
-		($coord:ty, $group:ty, $immutable:ty, $seen:expr) => {
+		($coord:ty, $group:ty, $immutable:ty, $seen:expr, $retracts:expr) => {
 			impl OperatorMetadata for Probe<$immutable, $group> {
 				const NAME: &'static str = "probe";
 				const VERSION: &'static str = "0";
@@ -1380,6 +1386,8 @@ mod tests {
 				type GroupKey = $group;
 				type Accumulator = LastValue<i64>;
 				type Output = Out;
+
+				const UPDATE_PRE_RETRACTS: bool = $retracts;
 
 				fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> Result<Self> {
 					Ok(Self {
@@ -1437,11 +1445,13 @@ mod tests {
 		};
 	}
 
-	probe!(DateTime, u32, Duration, |s: &WindowSettings<DateTime>| s.immutable);
-	probe!(OrdinalCoord, u64, RowSpan, |s: &WindowSettings<OrdinalCoord>| s.immutable);
+	probe!(DateTime, u32, Duration, |s: &WindowSettings<DateTime>| s.immutable, true);
+	probe!(OrdinalCoord, u64, RowSpan, |s: &WindowSettings<OrdinalCoord>| s.immutable, true);
+	probe!(DateTime, u64, Duration, |s: &WindowSettings<DateTime>| s.immutable, false);
 
 	type TimeProbe = Probe<Duration, u32>;
 	type SlotProbe = Probe<RowSpan, u64>;
+	type KeepPreProbe = Probe<Duration, u64>;
 
 	fn secs(n: i64) -> Duration {
 		Duration::from_seconds(n).unwrap()
@@ -1599,6 +1609,24 @@ mod tests {
 
 		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &rolling).is_err());
 		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &ApplyWith::default()).is_err());
+	}
+
+	#[test]
+	fn an_operator_that_keeps_update_pre_images_is_refused_a_session_window() {
+		// Sessions still retract the pre-image, so without this refusal the flag would not hold.
+		let session = ApplyWith {
+			window: Some(WindowKind::Session {
+				gap: secs(30),
+			}),
+			lateness: None,
+			immutable: None,
+			retention: None,
+		};
+
+		assert!(PlainDriver::<KeepPreProbe>::create(OperatorId(1), &params(), &session).is_err());
+		assert!(PlainDriver::<TimeProbe>::create(OperatorId(1), &params(), &session).is_ok());
+		assert!(PlainDriver::<KeepPreProbe>::create(OperatorId(1), &params(), &tumbling_time(60, None, None))
+			.is_ok());
 	}
 
 	#[test]
