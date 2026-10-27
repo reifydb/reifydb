@@ -1065,18 +1065,18 @@ impl MultiWriteTransaction {
 			});
 		}
 		before_publish(commit_version);
-		self.publish(commit_version, deltas);
+		self.publish(commit_version, lsn, deltas);
 		Ok(commit_version)
 	}
 
 	#[inline]
-	fn publish(&self, commit_version: CommitVersion, deltas: CowVec<Delta>) {
+	fn publish(&self, commit_version: CommitVersion, lsn: Lsn, deltas: CowVec<Delta>) {
 		self.oracle.done_commit(commit_version);
 		let version = ChangeVersion {
 			commit: commit_version,
 			source: self.source.unwrap_or(SourceVersion::from(commit_version)),
 		};
-		self.engine.event_bus.emit(PostCommitEvent::new(deltas, version));
+		self.engine.event_bus.emit(PostCommitEvent::new(deltas, version, lsn));
 	}
 }
 
