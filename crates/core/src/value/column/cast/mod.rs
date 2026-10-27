@@ -63,6 +63,15 @@ pub fn cast_column_data(
 	target: ValueType,
 	lazy_fragment: impl LazyFragment + Clone,
 ) -> Result<(FieldRef, ArrayRef)> {
+	cast_column_data_inner(ctx, data, target, &|| lazy_fragment.fragment())
+}
+
+fn cast_column_data_inner(
+	ctx: impl Convert + Copy,
+	data: &ColumnView,
+	target: ValueType,
+	lazy_fragment: &dyn Fn() -> Fragment,
+) -> Result<(FieldRef, ArrayRef)> {
 	if data.is_nullable() && !keeps_own_nulls(data) {
 		let total_len = data.len();
 		let nulls = data.logical_nulls().unwrap_or_else(|| NullBuffer::new_valid(total_len));
@@ -80,12 +89,17 @@ pub fn cast_column_data(
 
 		if defined_count < total_len {
 			let compacted = compact(&inner, &nulls)?;
-			let cast_compacted =
-				cast_column_data(ctx, &ColumnView::try_from(&compacted)?, inner_target, lazy_fragment)?;
+			let cast_compacted = cast_column_data_inner(
+				ctx,
+				&ColumnView::try_from(&compacted)?,
+				inner_target,
+				lazy_fragment,
+			)?;
 			return expand(cast_compacted, &nulls);
 		}
 
-		let cast_inner = cast_column_data(ctx, &ColumnView::try_from(&inner)?, inner_target, lazy_fragment)?;
+		let cast_inner =
+			cast_column_data_inner(ctx, &ColumnView::try_from(&inner)?, inner_target, lazy_fragment)?;
 		return match cast_inner.0.is_nullable() {
 			true => Ok(cast_inner),
 			false => with_nulls(cast_inner, nulls),
@@ -93,7 +107,7 @@ pub fn cast_column_data(
 	}
 
 	if let ValueType::Option(inner_target) = &target {
-		let cast_inner = cast_column_data(ctx, data, *inner_target.clone(), lazy_fragment)?;
+		let cast_inner = cast_column_data_inner(ctx, data, *inner_target.clone(), lazy_fragment)?;
 		return match cast_inner.0.is_nullable() {
 			true => Ok(cast_inner),
 			false => {
