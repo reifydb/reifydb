@@ -40,8 +40,8 @@ use crate::{
 		config::ConfigStorageKey,
 		flow::{FlowEdgeByFlowKey, FlowEdgeKey, FlowKey, FlowVersionKey},
 		identity::{
-			AuthenticationKey, GrantedRoleKey, IdentityAttributeKey, IdentityAttributeValueKey,
-			IdentityKey, PolicyKey, PolicyOpKey, RoleKey, TokenKey,
+			AuthenticationKey, AuthenticationMethodKey, GrantedRoleKey, IdentityAttributeKey,
+			IdentityAttributeValueKey, IdentityKey, PolicyKey, PolicyOpKey, RoleKey, TokenKey,
 		},
 		namespace::{
 			NamespaceBindingKey, NamespaceDictionaryKey, NamespaceFlowKey, NamespaceHandlerKey,
@@ -76,7 +76,7 @@ use crate::{
 	value::index::encoded::EncodedIndexKey,
 };
 
-const DECLARED_KINDS: usize = 86;
+const DECLARED_KINDS: usize = 87;
 
 fn bare(kind: KeyTag) -> EncodedKey {
 	let mut serializer = KeySerializer::with_capacity(1);
@@ -312,6 +312,10 @@ fn representative(kind: KeyTag) -> EncodedKey {
 		.encode(),
 		KeyTag::Authentication => AuthenticationKey {
 			authentication: 1,
+		}
+		.encode(),
+		KeyTag::AuthenticationMethod => AuthenticationMethodKey {
+			method: 1,
 		}
 		.encode(),
 		KeyTag::ConfigStorage => ConfigStorageKey {

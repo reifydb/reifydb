@@ -75,6 +75,7 @@ fn a_registered_provider_serves_both_credential_creation_and_login() {
 	let db = TestDb::from(embedded::memory().with_auth_provider(PinProvider).build().expect("build"));
 
 	db.admin("CREATE USER bob");
+	db.admin("CREATE AUTHENTICATION METHOD pin WITH { ttl: forever }");
 	db.admin("CREATE AUTHENTICATION FOR bob { method: pin; pin: '4711' }");
 
 	let (identity, token) = db

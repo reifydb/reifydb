@@ -6,7 +6,9 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use futures_util::{SinkExt, StreamExt};
 use reifydb_codec::json::to::convert_frames;
 use reifydb_core::{
-	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
+	actors::server::{
+		Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage, method_not_enabled_reason,
+	},
 	interface::catalog::{
 		binding::{Binding, BindingFormat},
 		id::SubscriptionId,
@@ -452,6 +454,13 @@ async fn handle_auth(request_id: &str, auth: AuthRequest, conn: &mut ConnectionC
 			Ok(ServerAuthResponse::Failed {
 				reason,
 			}) => Some(WsResponse::Text(build_error(request_id, "AUTH_FAILED", &reason))),
+			Ok(ServerAuthResponse::MethodNotEnabled {
+				method,
+			}) => Some(WsResponse::Text(build_error(
+				request_id,
+				"AUTH_METHOD_NOT_ENABLED",
+				&method_not_enabled_reason(&method),
+			))),
 			Ok(ServerAuthResponse::Error(reason)) => {
 				Some(WsResponse::Text(build_error(request_id, "AUTH_ERROR", &reason)))
 			}

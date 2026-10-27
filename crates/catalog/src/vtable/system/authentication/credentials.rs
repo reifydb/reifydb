@@ -16,27 +16,27 @@ use crate::{
 	vtable::{BaseVTable, Batch, VTableContext},
 };
 
-pub struct SystemAuthentications {
+pub struct SystemAuthenticationCredentials {
 	pub(crate) vtable: Arc<VTable>,
 	exhausted: bool,
 }
 
-impl Default for SystemAuthentications {
+impl Default for SystemAuthenticationCredentials {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl SystemAuthentications {
+impl SystemAuthenticationCredentials {
 	pub fn new() -> Self {
 		Self {
-			vtable: SystemCatalog::get_system_authentications_table().clone(),
+			vtable: SystemCatalog::get_system_authentication_credentials_table().clone(),
 			exhausted: false,
 		}
 	}
 }
 
-impl BaseVTable for SystemAuthentications {
+impl BaseVTable for SystemAuthenticationCredentials {
 	fn initialize(&mut self, _txn: &mut Transaction<'_>, _ctx: VTableContext) -> Result<()> {
 		self.exhausted = false;
 		Ok(())

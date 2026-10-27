@@ -82,6 +82,9 @@ impl<'bump> Parser<'bump> {
 			return self.parse_drop_series(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::Authentication))?).is_some() {
+			if self.consume_method_word()? {
+				return self.parse_drop_authentication_method(token);
+			}
 			return self.parse_drop_authentication(token);
 		}
 		if (self.consume_if(TokenKind::Keyword(Keyword::User))?).is_some() {

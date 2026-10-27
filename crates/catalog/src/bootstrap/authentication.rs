@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2026 ReifyDB
+
+use reifydb_core::{durability::Durability, event::EventBus, interface::catalog::id::NamespaceId};
+use reifydb_transaction::{
+	interceptor::interceptors::Interceptors, multi::transaction::MultiTransaction, single::SingleTransaction,
+	transaction::admin::AdminTransaction,
+};
+use reifydb_value::value::identity::IdentityId;
+
+use super::ensure_namespace;
+use crate::{Result, cache::CatalogCache, catalog::Catalog};
+
+pub fn bootstrap_system_authentication(
+	multi: &MultiTransaction,
+	single: &SingleTransaction,
+	catalog: &CatalogCache,
+	eventbus: &EventBus,
+) -> Result<()> {
+	let catalog_api = Catalog::new(catalog.clone());
+
+	let mut admin = AdminTransaction::new(
+		multi.clone(),
+		single.clone(),
+		eventbus.clone(),
+		Interceptors::default(),
+		IdentityId::system(),
+		Durability::Async,
+	)?;
+
+	ensure_namespace(
+		&catalog_api,
+		&mut admin,
+		NamespaceId::SYSTEM_AUTHENTICATION,
+		"system::authentication",
+		"authentication",
+		NamespaceId::SYSTEM,
+	)?;
+
+	admin.commit()?;
+	Ok(())
+}

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::interface::{catalog::vtable::VTable, version::SystemVersion};
 
-pub mod authentications;
+pub mod authentication;
 pub mod bindings;
 pub mod cdc_consumers;
 pub mod column_properties;
@@ -57,7 +57,7 @@ pub mod versions;
 pub mod views;
 pub mod virtual_table_columns;
 
-use authentications::authentications;
+use authentication::{credentials::authentication_credentials, methods::authentication_methods};
 use bindings::{grpc::bindings_grpc, http::bindings_http, ws::bindings_ws};
 use cdc_consumers::cdc_consumers;
 use column_properties::column_properties;
@@ -796,7 +796,7 @@ pub mod ids {
 				[ID, NAME, TARGET_TYPE, TARGET_NAMESPACE, TARGET_OBJECT, ENABLED];
 		}
 
-		pub mod authentications {
+		pub mod authentication_credentials {
 			use reifydb_core::interface::catalog::id::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
@@ -804,6 +804,18 @@ pub mod ids {
 			pub const METHOD: ColumnId = ColumnId(3);
 
 			pub const ALL: [ColumnId; 3] = [ID, USER_ID, METHOD];
+		}
+
+		pub mod authentication_methods {
+			use reifydb_core::interface::catalog::id::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAME: ColumnId = ColumnId(2);
+			pub const TTL: ColumnId = ColumnId(3);
+			pub const PROMOTE_GUEST: ColumnId = ColumnId(4);
+			pub const PROPERTIES: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [ID, NAME, TTL, PROMOTE_GUEST, PROPERTIES];
 		}
 
 		pub mod policy_operations {
@@ -856,8 +868,9 @@ pub mod ids {
 		pub const COLUMN_BLOCK: SequenceId = SequenceId(22);
 		pub const IDENTITY_ATTRIBUTE: SequenceId = SequenceId(23);
 		pub const RELATIONSHIP: SequenceId = SequenceId(24);
+		pub const AUTHENTICATION_METHOD: SequenceId = SequenceId(25);
 
-		pub const ALL: [(SequenceId, &str); 24] = [
+		pub const ALL: [(SequenceId, &str); 25] = [
 			(NAMESPACE, "namespace"),
 			(SOURCE, "source"),
 			(COLUMN, "column"),
@@ -882,6 +895,7 @@ pub mod ids {
 			(COLUMN_BLOCK, "column_block"),
 			(IDENTITY_ATTRIBUTE, "identity_attribute"),
 			(RELATIONSHIP, "relationship"),
+			(AUTHENTICATION_METHOD, "authentication_method"),
 		];
 	}
 
@@ -923,7 +937,7 @@ pub mod ids {
 		pub const POLICIES: VTableId = VTableId(41);
 		pub const POLICY_OPERATIONS: VTableId = VTableId(42);
 		pub const MIGRATIONS: VTableId = VTableId(43);
-		pub const AUTHENTICATIONS: VTableId = VTableId(44);
+		pub const AUTHENTICATION_CREDENTIALS: VTableId = VTableId(44);
 		pub const CONFIGS: VTableId = VTableId(45);
 		pub const VIRTUAL_TABLE_COLUMNS: VTableId = VTableId(46);
 		pub const ENUM_VARIANTS: VTableId = VTableId(47);
@@ -948,6 +962,7 @@ pub mod ids {
 
 		pub const RELATIONSHIPS: VTableId = VTableId(64);
 		pub const FLOW_UNITS: VTableId = VTableId(65);
+		pub const AUTHENTICATION_METHODS: VTableId = VTableId(66);
 
 		pub const METRICS_STORAGE_TABLE: VTableId = VTableId(1024);
 		pub const METRICS_STORAGE_VIEW: VTableId = VTableId(1025);
@@ -969,7 +984,7 @@ pub mod ids {
 		pub const METRICS_CDC_OPERATOR: VTableId = VTableId(1040);
 		pub const METRICS_CDC_SYSTEM: VTableId = VTableId(1041);
 
-		pub const ALL: [VTableId; 75] = [
+		pub const ALL: [VTableId; 76] = [
 			SEQUENCES,
 			SUBSCRIPTION_WATERMARKS,
 			NAMESPACES,
@@ -1020,7 +1035,8 @@ pub mod ids {
 			POLICIES,
 			POLICY_OPERATIONS,
 			MIGRATIONS,
-			AUTHENTICATIONS,
+			AUTHENTICATION_CREDENTIALS,
+			AUTHENTICATION_METHODS,
 			CONFIGS,
 			VIRTUAL_TABLE_COLUMNS,
 			ENUM_VARIANTS,
@@ -1284,8 +1300,12 @@ impl SystemCatalog {
 		migrations()
 	}
 
-	pub fn get_system_authentications_table() -> Arc<VTable> {
-		authentications()
+	pub fn get_system_authentication_credentials_table() -> Arc<VTable> {
+		authentication_credentials()
+	}
+
+	pub fn get_system_authentication_methods_table() -> Arc<VTable> {
+		authentication_methods()
 	}
 
 	pub fn get_configs_table() -> Arc<VTable> {

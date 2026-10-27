@@ -62,6 +62,7 @@ impl NamespaceId {
 	pub const GRAPHQL: NamespaceId = NamespaceId(55);
 	pub const SYSTEM_FLOW_OPERATOR: NamespaceId = NamespaceId(56);
 	pub const SYSTEM_FLOW_OPERATOR_LIBRARY: NamespaceId = NamespaceId(57);
+	pub const SYSTEM_AUTHENTICATION: NamespaceId = NamespaceId(58);
 }
 
 #[derive(Debug, Clone, PartialEq)]

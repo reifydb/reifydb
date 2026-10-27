@@ -37,8 +37,8 @@ use reifydb_core::{
 use reifydb_value::{
 	fragment::Fragment,
 	value::{
-		Value, constraint::TypeConstraint, dictionary::DictionaryId, identity::IdentityKind,
-		partition::Partition, sumtype::SumTypeId, value_type::ValueType,
+		Value, constraint::TypeConstraint, dictionary::DictionaryId, duration::Duration,
+		identity::IdentityKind, partition::Partition, sumtype::SumTypeId, value_type::ValueType,
 	},
 };
 
@@ -970,6 +970,34 @@ pub struct CreateAuthenticationNode {
 pub struct DropAuthenticationNode {
 	pub user: Fragment,
 	pub method: Fragment,
+	pub if_exists: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AlterMethodTtl {
+	Keep,
+	Set(Option<Duration>),
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateAuthenticationMethodNode {
+	pub name: Fragment,
+	pub ttl: Option<Duration>,
+	pub promote_guest: bool,
+	pub properties: collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlterAuthenticationMethodNode {
+	pub name: Fragment,
+	pub ttl: AlterMethodTtl,
+	pub promote_guest: Option<bool>,
+	pub properties: collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DropAuthenticationMethodNode {
+	pub name: Fragment,
 	pub if_exists: bool,
 }
 

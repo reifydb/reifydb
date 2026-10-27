@@ -51,6 +51,11 @@ pub fn create_server_instance_with_clock(
 #[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.admin_as_root(
+		"CREATE AUTHENTICATION METHOD token WITH { ttl: forever }",
+		reifydb_value::params::Params::None,
+	)
+	.unwrap();
+	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 		reifydb_value::params::Params::None,
 	)
@@ -62,6 +67,11 @@ pub fn start_server_and_get_ws_port(_runtime: &Arc<Runtime>, server: &mut Databa
 #[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.admin_as_root(
+		"CREATE AUTHENTICATION METHOD token WITH { ttl: forever }",
+		reifydb_value::params::Params::None,
+	)
+	.unwrap();
+	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 		reifydb_value::params::Params::None,
 	)
@@ -72,6 +82,11 @@ pub fn start_server_and_get_grpc_port(_runtime: &Arc<Runtime>, server: &mut Data
 #[allow(dead_code)]
 #[cfg(not(reifydb_single_threaded))]
 pub fn start_server_and_get_http_port(_runtime: &Arc<Runtime>, server: &mut Database) -> Result<u16, Box<dyn Error>> {
+	server.admin_as_root(
+		"CREATE AUTHENTICATION METHOD token WITH { ttl: forever }",
+		reifydb_value::params::Params::None,
+	)
+	.unwrap();
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 		reifydb_value::params::Params::None,
@@ -116,6 +131,11 @@ impl DstTestContext {
 	pub fn new() -> Self {
 		let db = embedded::memory().with_runtime_config(RuntimeConfig::default().seeded(0)).build().unwrap();
 
+		db.admin_as_root(
+			"CREATE AUTHENTICATION METHOD token WITH { ttl: forever }",
+			reifydb_value::params::Params::None,
+		)
+		.unwrap();
 		db.admin_as_root(
 			"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 			reifydb_value::params::Params::None,

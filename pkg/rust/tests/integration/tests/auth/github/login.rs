@@ -10,6 +10,7 @@ use reifydb::{
 		github::{GithubApi, GithubConfig, GithubUser},
 		service::{AuthResponse, AuthService},
 	},
+	embedded,
 	testing::db::TestDb,
 	value::{Result, value::Value},
 };
@@ -51,20 +52,14 @@ fn octocat() -> GithubUser {
 	}
 }
 
-fn github_config() -> GithubConfig {
-	GithubConfig {
-		client_id: "test-client-id".to_string(),
-		client_secret: "test-client-secret".to_string(),
-		redirect_uri: "http://localhost:8080/auth/github/callback".to_string(),
-	}
+const CLIENT_SECRET: &str = "test-client-secret";
+
+fn github_db() -> TestDb {
+	TestDb::from(embedded::memory().with_auth(|a| a.github_client_secret(CLIENT_SECRET)).build().unwrap())
 }
 
 fn configured_service(db: &TestDb, api: StubGithubApi) -> AuthService {
-	auth_service(db).configure(|c| c.github(github_config())).github_api(Arc::new(api)).build()
-}
-
-fn unconfigured_service(db: &TestDb, api: StubGithubApi) -> AuthService {
-	auth_service(db).github_api(Arc::new(api)).build()
+	auth_service(db).configure(|c| c.github_client_secret(CLIENT_SECRET)).github_api(Arc::new(api)).build()
 }
 
 fn begin_login(service: &AuthService) -> (String, HashMap<String, String>) {
@@ -100,7 +95,8 @@ fn find_github_identity_id(db: &TestDb, user_id: &str) -> Option<IdentityId> {
 
 #[test]
 fn test_begin_returns_authorize_url_and_state() {
-	let db = TestDb::memory();
+	let db = github_db();
+	db.admin("CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test-client-id', redirect_uri: 'http://localhost:8080/auth/github/callback' }");
 	let service = configured_service(
 		&db,
 		StubGithubApi {
@@ -126,7 +122,8 @@ fn test_begin_returns_authorize_url_and_state() {
 
 #[test]
 fn test_complete_login_provisions_identity_and_mints_token() {
-	let db = TestDb::memory();
+	let db = github_db();
+	db.admin("CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test-client-id', redirect_uri: 'http://localhost:8080/auth/github/callback' }");
 	let service = configured_service(
 		&db,
 		StubGithubApi {
@@ -154,7 +151,8 @@ fn test_complete_login_provisions_identity_and_mints_token() {
 
 #[test]
 fn test_second_login_reuses_identity() {
-	let db = TestDb::memory();
+	let db = github_db();
+	db.admin("CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test-client-id', redirect_uri: 'http://localhost:8080/auth/github/callback' }");
 	let service = configured_service(
 		&db,
 		StubGithubApi {
@@ -173,7 +171,8 @@ fn test_second_login_reuses_identity() {
 
 #[test]
 fn test_tampered_state_fails() {
-	let db = TestDb::memory();
+	let db = github_db();
+	db.admin("CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test-client-id', redirect_uri: 'http://localhost:8080/auth/github/callback' }");
 	let service = configured_service(
 		&db,
 		StubGithubApi {
@@ -193,7 +192,8 @@ fn test_tampered_state_fails() {
 
 #[test]
 fn test_replayed_challenge_fails() {
-	let db = TestDb::memory();
+	let db = github_db();
+	db.admin("CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test-client-id', redirect_uri: 'http://localhost:8080/auth/github/callback' }");
 	let service = configured_service(
 		&db,
 		StubGithubApi {
@@ -215,23 +215,19 @@ fn test_replayed_challenge_fails() {
 
 #[test]
 fn test_unconfigured_github_fails() {
+	// Without a host secret the method must be refused at declaration, never stored to fail at login.
 	let db = TestDb::memory();
-	let service = unconfigured_service(
-		&db,
-		StubGithubApi {
-			user: octocat(),
-			fail_exchange: false,
-		},
-	);
-
-	service.authenticate("github", HashMap::new())
-		.unwrap()
-		.expect_failed("github authentication is not configured");
+	let err = db
+		.try_admin("CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test-client-id', redirect_uri: 'http://localhost:8080/auth/github/callback' }")
+		.unwrap_err();
+	assert_eq!(err.diagnostic().code, "CA_123");
+	assert_eq!(db.row_count("FROM system::authentication::methods FILTER { name == \"github\" }"), 0);
 }
 
 #[test]
 fn test_exchange_failure_fails_login_without_error() {
-	let db = TestDb::memory();
+	let db = github_db();
+	db.admin("CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test-client-id', redirect_uri: 'http://localhost:8080/auth/github/callback' }");
 	let service = configured_service(
 		&db,
 		StubGithubApi {
@@ -248,7 +244,8 @@ fn test_exchange_failure_fails_login_without_error() {
 
 #[test]
 fn test_github_login_attribute_recorded_when_declared() {
-	let db = TestDb::memory();
+	let db = github_db();
+	db.admin("CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test-client-id', redirect_uri: 'http://localhost:8080/auth/github/callback' }");
 	db.admin("create user attribute github_login: utf8");
 
 	let service = configured_service(
@@ -270,7 +267,8 @@ fn test_github_login_attribute_recorded_when_declared() {
 
 #[test]
 fn test_login_succeeds_without_declared_attribute() {
-	let db = TestDb::memory();
+	let db = github_db();
+	db.admin("CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test-client-id', redirect_uri: 'http://localhost:8080/auth/github/callback' }");
 	let service = configured_service(
 		&db,
 		StubGithubApi {
@@ -286,4 +284,24 @@ fn test_login_succeeds_without_declared_attribute() {
 
 	assert_eq!(identity_attribute(&db, identity, "github_login"), None);
 	assert_eq!(identity_attribute(&db, identity, "github_user_id"), Some(Value::Utf8("583231".to_string())));
+}
+
+#[test]
+fn test_altered_redirect_uri_is_used_by_the_next_login() {
+	// Settings live in the method row, so an alter must reach the next authorize url without a restart.
+	let db = github_db();
+	db.admin("CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test-client-id', redirect_uri: 'http://localhost:8080/auth/github/callback' }");
+	db.admin("ALTER AUTHENTICATION METHOD github WITH { redirect_uri: 'http://other/cb' }");
+	let service = configured_service(
+		&db,
+		StubGithubApi {
+			user: octocat(),
+			fail_exchange: false,
+		},
+	);
+
+	let (_, payload) = begin_login(&service);
+	let authorize_url = payload.get("authorize_url").unwrap();
+	assert!(authorize_url.contains("http%3A%2F%2Fother%2Fcb"), "{authorize_url}");
+	assert!(!authorize_url.contains("localhost"), "{authorize_url}");
 }

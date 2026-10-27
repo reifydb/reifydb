@@ -2,6 +2,8 @@ CREATE MIGRATION 'uptime_seed' {
     INSERT uptime::regions [
         { id: uuid::v7(), label: 'US East' },
         { id: uuid::v7(), label: 'EU West' }];
+    CREATE AUTHENTICATION METHOD token WITH { ttl: forever };
+    CREATE AUTHENTICATION METHOD password WITH { ttl: 30d };
     CREATE SERVICE `probe-a`;
     CREATE AUTHENTICATION FOR `probe-a` { method: token; token: 'probe-a-dev-token' };
     CREATE SERVICE `probe-b`;

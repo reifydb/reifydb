@@ -12,6 +12,7 @@ use reifydb_test_harness::{
 #[test]
 fn password_identity_authenticates_through_the_service() {
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 
 	// Provisioning and authentication go through separate paths, so only driving both proves
 	// the harness writes what the auth stack reads.
@@ -36,6 +37,7 @@ fn password_identity_authenticates_through_the_service() {
 #[test]
 fn wrong_password_fails_closed() {
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	identity("alice").password("secret").create(&db);
 
 	let service = auth_service(&db).build();

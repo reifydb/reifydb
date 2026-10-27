@@ -10,7 +10,10 @@ use reifydb_core::{
 use reifydb_value::{
 	error::Error,
 	reifydb_assertions,
-	value::identity::{IdentityId, IdentityKind},
+	value::{
+		duration::Duration,
+		identity::{IdentityId, IdentityKind},
+	},
 };
 
 use super::{AuthResponse, AuthService};
@@ -61,6 +64,7 @@ impl AuthService {
 		public_key: &str,
 		challenge_payload: &HashMap<String, String>,
 		credentials: &HashMap<String, String>,
+		ttl: Option<Duration>,
 	) -> Result<AuthResponse, Error> {
 		let provider = self.solana_provider()?;
 		let properties = self.solana_properties(provider, public_key)?;
@@ -68,7 +72,7 @@ impl AuthService {
 		match provider.verify_challenge(&properties, challenge_payload, credentials)? {
 			AuthStep::Authenticated => {
 				let identity = self.create_solana_identity(identifier, public_key, properties)?;
-				self.finalize_authentication(identity)
+				self.finalize_authentication(identity, ttl)
 			}
 			AuthStep::Rejected {
 				reason,

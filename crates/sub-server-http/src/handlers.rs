@@ -11,7 +11,9 @@ use axum::{
 };
 use reifydb_codec::json::{to::convert_frames, types::ResponseFrame};
 use reifydb_core::{
-	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
+	actors::server::{
+		Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage, method_not_enabled_reason,
+	},
 	interface::catalog::{
 		binding::{Binding, BindingFormat, BindingProtocol, HttpMethod},
 		namespace::Namespace,
@@ -155,6 +157,20 @@ pub async fn handle_authenticate(
 				challenge_id: None,
 				payload: None,
 				reason: Some(reason),
+			}),
+		)
+			.into_response()),
+		ServerAuthResponse::MethodNotEnabled {
+			method,
+		} => Ok((
+			StatusCode::FORBIDDEN,
+			Json(AuthenticateResponse {
+				status: "method_not_enabled".to_string(),
+				token: None,
+				identity: None,
+				challenge_id: None,
+				payload: None,
+				reason: Some(method_not_enabled_reason(&method)),
 			}),
 		)
 			.into_response()),

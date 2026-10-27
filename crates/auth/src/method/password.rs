@@ -25,6 +25,10 @@ impl AuthenticationProvider for PasswordProvider {
 		"password"
 	}
 
+	fn can_promote_guest(&self) -> bool {
+		true
+	}
+
 	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
 		let password = config.get("password").ok_or_else(|| Error::from(AuthError::PasswordRequired))?;
 

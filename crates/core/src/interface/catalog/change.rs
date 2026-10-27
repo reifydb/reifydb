@@ -6,6 +6,7 @@ use reifydb_value::Result;
 use crate::{
 	interface::catalog::{
 		authentication::Authentication,
+		authentication_method::AuthenticationMethod,
 		binding::Binding,
 		column_block::ColumnBlock,
 		config::Config,
@@ -186,6 +187,18 @@ pub trait CatalogTrackAuthenticationChangeOperations {
 	fn track_authentication_deleted(&mut self, auth: Authentication) -> Result<()>;
 }
 
+pub trait CatalogTrackAuthenticationMethodChangeOperations {
+	fn track_authentication_method_created(&mut self, method: AuthenticationMethod) -> Result<()>;
+
+	fn track_authentication_method_updated(
+		&mut self,
+		pre: AuthenticationMethod,
+		post: AuthenticationMethod,
+	) -> Result<()>;
+
+	fn track_authentication_method_deleted(&mut self, method: AuthenticationMethod) -> Result<()>;
+}
+
 pub trait CatalogTrackSourceChangeOperations {
 	fn track_source_created(&mut self, source: Source) -> Result<()>;
 
@@ -239,6 +252,7 @@ pub trait CatalogTrackChangeOperations:
 	+ CatalogTrackTableChangeOperations
 	+ CatalogTrackTestChangeOperations
 	+ CatalogTrackAuthenticationChangeOperations
+	+ CatalogTrackAuthenticationMethodChangeOperations
 	+ CatalogTrackIdentityChangeOperations
 	+ CatalogTrackGrantedRoleChangeOperations
 	+ CatalogTrackIdentityAttributeChangeOperations

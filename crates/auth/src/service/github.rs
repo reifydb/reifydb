@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::interface::{
 	auth::{AuthStep, AuthenticationProvider},
-	catalog::identity::Identity,
+	catalog::{authentication_method::AuthenticationMethod, identity::Identity},
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -13,6 +13,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{
 		Value,
+		duration::Duration,
 		identity::{IdentityId, IdentityKind},
 	},
 };
@@ -23,14 +24,14 @@ use super::{AuthResponse, AuthService, GithubAuth, generate_session_token};
 use crate::{
 	challenge::ChallengeInfo,
 	error::AuthError,
-	github::{GithubUser, build_authorize_url},
+	github::{GithubConfig, GithubUser, build_authorize_url},
 };
 
 pub(crate) const GITHUB_USER_ID_ATTRIBUTE: &str = "github_user_id";
 
 impl AuthService {
-	pub(crate) fn begin_github_login(&self) -> Result<AuthResponse, Error> {
-		let Some(github) = &self.github else {
+	pub(crate) fn begin_github_login(&self, method: &AuthenticationMethod) -> Result<AuthResponse, Error> {
+		let Some(github) = self.github_auth(method) else {
 			return Ok(not_configured());
 		};
 
@@ -59,10 +60,12 @@ impl AuthService {
 		&self,
 		challenge: &ChallengeInfo,
 		credentials: &HashMap<String, String>,
+		method: &AuthenticationMethod,
 	) -> Result<AuthResponse, Error> {
-		let Some(github) = &self.github else {
+		let Some(github) = self.github_auth(method) else {
 			return Ok(not_configured());
 		};
+		let ttl = method.ttl;
 
 		if !state_matches(challenge, credentials) {
 			return Ok(AuthResponse::Failed {
@@ -76,7 +79,7 @@ impl AuthService {
 			});
 		};
 
-		let user = match self.verify_github_user(github, code) {
+		let user = match self.verify_github_user(&github, code) {
 			Ok(user) => user,
 			Err(e) => {
 				warn!("github login failed: {:?}", e);
@@ -90,9 +93,26 @@ impl AuthService {
 			Some(ident) if !ident.enabled => Ok(AuthResponse::Failed {
 				reason: "identity is disabled".to_string(),
 			}),
-			Some(ident) => self.authenticate_github_identity(ident.id, &user),
-			None => self.auto_provision_github(&user),
+			Some(ident) => self.authenticate_github_identity(ident.id, &user, ttl),
+			None => self.auto_provision_github(&user, ttl),
 		}
+	}
+
+	fn github_auth(&self, method: &AuthenticationMethod) -> Option<GithubAuth> {
+		let client_secret = self.auth_registry.github_client_secret()?.to_string();
+		let setting = |key: &str| {
+			method.properties.get(key).cloned().unwrap_or_else(|| {
+				panic!("github method row lacks {key}, which configure_method requires")
+			})
+		};
+		Some(GithubAuth {
+			config: GithubConfig {
+				client_id: setting("client_id"),
+				client_secret,
+				redirect_uri: setting("redirect_uri"),
+			},
+			api: self.github_api.clone(),
+		})
 	}
 
 	#[inline]
@@ -113,7 +133,12 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn authenticate_github_identity(&self, identity: IdentityId, user: &GithubUser) -> Result<AuthResponse, Error> {
+	fn authenticate_github_identity(
+		&self,
+		identity: IdentityId,
+		user: &GithubUser,
+		ttl: Option<Duration>,
+	) -> Result<AuthResponse, Error> {
 		let stored_auth = {
 			let mut txn = self.engine.begin_query()?;
 			let catalog = self.engine.catalog();
@@ -132,14 +157,14 @@ impl AuthService {
 		match provider.authenticate(&stored_auth.properties, &credentials)? {
 			AuthStep::Authenticated => {
 				self.record_github_login(identity, &user.login)?;
-				self.finalize_authentication(identity)
+				self.finalize_authentication(identity, ttl)
 			}
 			_ => Ok(invalid_credentials()),
 		}
 	}
 
 	#[inline]
-	fn auto_provision_github(&self, user: &GithubUser) -> Result<AuthResponse, Error> {
+	fn auto_provision_github(&self, user: &GithubUser, ttl: Option<Duration>) -> Result<AuthResponse, Error> {
 		let provider = self.github_provider()?;
 		let properties = provider.create(
 			&self.rng,
@@ -151,7 +176,7 @@ impl AuthService {
 
 		let identity = self.create_github_identity(user, properties)?;
 		self.record_github_login(identity, &user.login)?;
-		self.finalize_authentication(identity)
+		self.finalize_authentication(identity, ttl)
 	}
 
 	#[inline]

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::testing::db::TestDb;
+use reifydb::{embedded, testing::db::TestDb};
 use reifydb_test_harness::{
 	assert::FrameAssert,
 	fixture::{identity::identity, table, view},
@@ -33,7 +33,10 @@ fn view_builder_creates_a_view_in_an_auto_ensured_namespace() {
 
 #[test]
 fn identity_builder_writes_lookup_and_display_attributes() {
-	let db = TestDb::memory();
+	let db = TestDb::from(embedded::memory().with_auth(|a| a.github_client_secret("test-secret")).build().unwrap());
+	db.admin(
+		"CREATE AUTHENTICATION METHOD github WITH { ttl: forever, client_id: 'test', redirect_uri: 'http://localhost/cb' }",
+	);
 
 	// The builder must write what the auth service would: a github_user_id lookup attribute
 	// the identity is resolvable by, alongside any display attributes.

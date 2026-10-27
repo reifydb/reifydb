@@ -58,6 +58,7 @@ fn a_service_authenticates_by_token_and_is_refused_a_password() {
 	// fixed token, which the engine will not let hold a password credential.
 	let db = TestDb::memory();
 	db.admin("create service probe_a");
+	db.admin("create authentication method token with { ttl: forever }");
 	db.admin("create authentication for probe_a { method: token; token: 'probe-secret' }");
 
 	let (identity, _session_token) = db
@@ -78,6 +79,7 @@ fn a_hyphenated_service_name_round_trips() {
 	// uptime's provisioning emits.
 	let db = TestDb::memory();
 	db.admin("create service `probe-a`");
+	db.admin("create authentication method token with { ttl: forever }");
 	db.admin("create authentication for `probe-a` { method: token; token: 'probe-a-dev-token' }");
 
 	assert_eq!(kind_of(&db, "probe-a"), "service");
@@ -123,6 +125,7 @@ fn root_can_still_be_given_credentials() {
 	// covered CREATE AUTHENTICATION too and broke every grpc/http/ws auth test.
 	// The builtin guard must never extend to credentials.
 	let db = TestDb::memory();
+	db.admin("create authentication method token with { ttl: forever }");
 	let frames = db.admin("create authentication for root { method: token; token: 'roottok' }");
 
 	let frame = frames.first().expect("authentication frame");

@@ -164,6 +164,11 @@ impl ServerActor {
 			}) => reply.send(ServerAuthResponse::Failed {
 				reason,
 			}),
+			Ok(AuthResponse::MethodNotEnabled {
+				method,
+			}) => reply.send(ServerAuthResponse::MethodNotEnabled {
+				method,
+			}),
 			Err(e) => reply.send(ServerAuthResponse::Error(e.to_string())),
 		}
 	}

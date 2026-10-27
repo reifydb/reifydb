@@ -648,6 +648,9 @@ fn physical_plan_kind_name(plan: &PhysicalPlan<'_>) -> &'static str {
 		PhysicalPlan::CreatePolicy(_) => "CREATE POLICY",
 		PhysicalPlan::AlterPolicy(_) => "ALTER POLICY",
 		PhysicalPlan::DropPolicy(_) => "DROP POLICY",
+		PhysicalPlan::CreateAuthenticationMethod(_) => "CREATE AUTHENTICATION METHOD",
+		PhysicalPlan::AlterAuthenticationMethod(_) => "ALTER AUTHENTICATION METHOD",
+		PhysicalPlan::DropAuthenticationMethod(_) => "DROP AUTHENTICATION METHOD",
 		_ => "non-query statement",
 	}
 }
@@ -1278,6 +1281,18 @@ impl InstructionCompiler {
 			}
 			PhysicalPlan::DropPolicy(node) => {
 				self.emit(Instruction::DropPolicy(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::CreateAuthenticationMethod(node) => {
+				self.emit(Instruction::CreateAuthenticationMethod(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::AlterAuthenticationMethod(node) => {
+				self.emit(Instruction::AlterAuthenticationMethod(node));
+				self.emit(Instruction::Emit);
+			}
+			PhysicalPlan::DropAuthenticationMethod(node) => {
+				self.emit(Instruction::DropAuthenticationMethod(node));
 				self.emit(Instruction::Emit);
 			}
 

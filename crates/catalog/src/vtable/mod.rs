@@ -95,7 +95,10 @@ impl VTableRegistry {
 			VIRTUAL_TABLE_COLUMNS => Some(SystemCatalog::get_system_virtual_table_columns_table()),
 			TYPES => Some(SystemCatalog::get_system_types_table()),
 			MIGRATIONS => Some(SystemCatalog::get_system_migrations_table()),
-			AUTHENTICATIONS => Some(SystemCatalog::get_system_authentications_table()),
+			AUTHENTICATION_CREDENTIALS => {
+				Some(SystemCatalog::get_system_authentication_credentials_table())
+			}
+			AUTHENTICATION_METHODS => Some(SystemCatalog::get_system_authentication_methods_table()),
 			CONFIGS => Some(SystemCatalog::get_configs_table()),
 			_ => None,
 		})
@@ -146,7 +149,8 @@ impl VTableRegistry {
 			SystemCatalog::get_system_virtual_table_columns_table(),
 			SystemCatalog::get_system_types_table(),
 			SystemCatalog::get_system_migrations_table(),
-			SystemCatalog::get_system_authentications_table(),
+			SystemCatalog::get_system_authentication_credentials_table(),
+			SystemCatalog::get_system_authentication_methods_table(),
 			SystemCatalog::get_configs_table(),
 		])
 	}

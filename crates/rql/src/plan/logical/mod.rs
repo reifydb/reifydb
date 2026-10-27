@@ -3,6 +3,7 @@
 
 pub mod alter;
 pub mod append;
+pub mod authentication_method;
 pub mod create;
 pub mod drop;
 pub mod function;
@@ -21,6 +22,7 @@ pub mod variable;
 
 use std::{
 	cell::Cell,
+	collections::BTreeMap,
 	fmt,
 	fmt::{Display, Formatter},
 };
@@ -48,7 +50,10 @@ use reifydb_core::{
 	sort::{SortDirection, SortKey},
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{fragment::Fragment, value::identity::IdentityKind};
+use reifydb_value::{
+	fragment::Fragment,
+	value::{duration::Duration, identity::IdentityKind},
+};
 use tracing::instrument;
 
 use crate::{
@@ -75,7 +80,7 @@ use crate::{
 	bump::{BumpBox, BumpFragment},
 	diagnostic::AstError,
 	expression::ExpressionCompiler,
-	nodes::TakeLimit,
+	nodes::{AlterMethodTtl, TakeLimit},
 	plan::logical::alter::table::AlterTableNode,
 };
 
@@ -479,6 +484,9 @@ pub enum LogicalPlan<'bump> {
 	CreatePolicy(CreatePolicyNode<'bump>),
 	AlterPolicy(AlterPolicyNode<'bump>),
 	DropPolicy(DropPolicyNode<'bump>),
+	CreateAuthenticationMethod(CreateAuthenticationMethodNode<'bump>),
+	AlterAuthenticationMethod(AlterAuthenticationMethodNode<'bump>),
+	DropAuthenticationMethod(DropAuthenticationMethodNode<'bump>),
 }
 
 #[derive(Debug)]
@@ -1117,6 +1125,28 @@ pub struct DropAuthenticationNode<'bump> {
 	pub user: BumpFragment<'bump>,
 	pub if_exists: bool,
 	pub method: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct CreateAuthenticationMethodNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub ttl: Option<Duration>,
+	pub promote_guest: bool,
+	pub properties: BTreeMap<String, String>,
+}
+
+#[derive(Debug)]
+pub struct AlterAuthenticationMethodNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub ttl: AlterMethodTtl,
+	pub promote_guest: Option<bool>,
+	pub properties: BTreeMap<String, String>,
+}
+
+#[derive(Debug)]
+pub struct DropAuthenticationMethodNode<'bump> {
+	pub name: BumpFragment<'bump>,
+	pub if_exists: bool,
 }
 
 #[derive(Debug)]

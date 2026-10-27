@@ -193,6 +193,9 @@ pub enum Instruction {
 	CreatePolicy(nodes::CreatePolicyNode),
 	AlterPolicy(nodes::AlterPolicyNode),
 	DropPolicy(nodes::DropPolicyNode),
+	CreateAuthenticationMethod(nodes::CreateAuthenticationMethodNode),
+	AlterAuthenticationMethod(nodes::AlterAuthenticationMethodNode),
+	DropAuthenticationMethod(nodes::DropAuthenticationMethodNode),
 
 	Delete(DeleteTableNode),
 	DeleteRingBuffer(DeleteRingBufferNode),

@@ -67,6 +67,7 @@ export class JsonHttpClient {
             clearTimeout(timeout);
             const body = toCamelCaseKeys<any>(await response.json(), WIRE_PASSTHROUGH_KEYS);
 
+            throwIfMethodNotEnabled(body);
             if (body.status !== "authenticated" || !body.token || !body.identity) {
                 throw new Error(body.reason || "Authentication failed");
             }
@@ -104,6 +105,7 @@ export class JsonHttpClient {
             clearTimeout(timeout);
             const body = toCamelCaseKeys<any>(await response.json(), WIRE_PASSTHROUGH_KEYS);
 
+            throwIfMethodNotEnabled(body);
             if (body.status === "challenge") {
                 if (!body.challengeId || !body.payload?.message || !body.payload?.nonce) {
                     throw new Error("Malformed challenge response");
@@ -363,4 +365,20 @@ function extractMeta(headers: Headers | undefined): ResponseMeta | undefined {
     const duration = headers?.get?.('x-duration');
     if (!fingerprint || !duration) return undefined;
     return { fingerprint, duration };
+}
+
+function throwIfMethodNotEnabled(body: any): void {
+    if (body.status === "method_not_enabled") {
+        throw new ReifyError({
+            id: '',
+            type: 'Err',
+            payload: {
+                diagnostic: {
+                    code: "AUTH_METHOD_NOT_ENABLED",
+                    message: body.reason || "Authentication method is not enabled",
+                    notes: []
+                }
+            }
+        });
+    }
 }

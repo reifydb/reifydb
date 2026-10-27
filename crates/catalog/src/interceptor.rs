@@ -214,6 +214,16 @@ impl PrePublishInterceptor for CatalogCacheInterceptor {
 			self.catalog.set_binding(id, version, change.post.clone());
 		}
 
+		for change in &ctx.changes.authentication_method {
+			let id = change
+				.post
+				.as_ref()
+				.or(change.pre.as_ref())
+				.map(|m| m.id)
+				.expect("Change must have either pre or post state");
+			self.catalog.set_authentication_method(id, version, change.post.clone());
+		}
+
 		for change in &ctx.changes.policy {
 			let id = change
 				.post

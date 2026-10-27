@@ -373,6 +373,7 @@ pub enum AstCreate<'bump> {
 	IdentityAttribute(AstCreateIdentityAttribute<'bump>),
 	Role(AstCreateRole<'bump>),
 	Authentication(AstCreateAuthentication<'bump>),
+	AuthenticationMethod(AstCreateAuthenticationMethod<'bump>),
 	Policy(AstCreatePolicy<'bump>),
 	Migration(AstCreateMigration<'bump>),
 	Test(AstCreateTest<'bump>),
@@ -386,6 +387,7 @@ pub enum AstCreate<'bump> {
 pub enum AstAlter<'bump> {
 	Sequence(AstAlterSequence<'bump>),
 	Policy(AstAlterPolicy<'bump>),
+	AuthenticationMethod(AstAlterAuthenticationMethod<'bump>),
 	Table(AstAlterTable<'bump>),
 	RemoteNamespace(AstAlterRemoteNamespace<'bump>),
 	Identity(AstAlterIdentity<'bump>),
@@ -430,6 +432,7 @@ pub enum AstDrop<'bump> {
 	IdentityAttribute(AstDropIdentityAttribute<'bump>),
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
+	AuthenticationMethod(AstDropAuthenticationMethod<'bump>),
 	Policy(AstDropPolicy<'bump>),
 	Source(AstDropSource<'bump>),
 	Sink(AstDropSink<'bump>),
@@ -1090,6 +1093,7 @@ impl_token_for_enum!(AstCreate, 'bump,
 	IdentityAttribute(AstCreateIdentityAttribute<'bump>),
 	Role(AstCreateRole<'bump>),
 	Authentication(AstCreateAuthentication<'bump>),
+	AuthenticationMethod(AstCreateAuthenticationMethod<'bump>),
 	Policy(AstCreatePolicy<'bump>),
 	Migration(AstCreateMigration<'bump>),
 	Test(AstCreateTest<'bump>),
@@ -1102,6 +1106,7 @@ impl_token_for_enum!(AstCreate, 'bump,
 impl_token_for_enum!(AstAlter, 'bump,
 	Sequence(AstAlterSequence<'bump>),
 	Policy(AstAlterPolicy<'bump>),
+	AuthenticationMethod(AstAlterAuthenticationMethod<'bump>),
 	Table(AstAlterTable<'bump>),
 	RemoteNamespace(AstAlterRemoteNamespace<'bump>),
 	Identity(AstAlterIdentity<'bump>),
@@ -1120,6 +1125,7 @@ impl_token_for_enum!(AstDrop, 'bump,
 	IdentityAttribute(AstDropIdentityAttribute<'bump>),
 	Role(AstDropRole<'bump>),
 	Authentication(AstDropAuthentication<'bump>),
+	AuthenticationMethod(AstDropAuthenticationMethod<'bump>),
 	Policy(AstDropPolicy<'bump>),
 	Source(AstDropSource<'bump>),
 	Sink(AstDropSink<'bump>),
@@ -1780,6 +1786,37 @@ pub struct AstDropAuthentication<'bump> {
 	pub user: BumpFragment<'bump>,
 	pub if_exists: bool,
 	pub method: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstAuthenticationMethodSetting<'bump> {
+	pub key: BumpFragment<'bump>,
+	pub value: BumpFragment<'bump>,
+}
+
+#[derive(Debug)]
+pub struct AstCreateAuthenticationMethod<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+	pub ttl: Token<'bump>,
+	pub promote_guest: Option<Token<'bump>>,
+	pub settings: Vec<AstAuthenticationMethodSetting<'bump>>,
+}
+
+#[derive(Debug)]
+pub struct AstAlterAuthenticationMethod<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+	pub ttl: Option<Token<'bump>>,
+	pub promote_guest: Option<Token<'bump>>,
+	pub settings: Vec<AstAuthenticationMethodSetting<'bump>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropAuthenticationMethod<'bump> {
+	pub token: Token<'bump>,
+	pub name: BumpFragment<'bump>,
+	pub if_exists: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

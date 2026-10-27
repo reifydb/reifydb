@@ -17,9 +17,12 @@ use napi_derive::napi;
 use reifydb::{
 	Database, Frame as CoreFrame, IdentityId, Migration, MigrationSource, Result as ReifyResult, WithSubsystem,
 	auth::service::AuthResponse,
-	core::interface::catalog::{
-		id::SubscriptionId,
-		subscription::{HydrationConfig, SubscribeOptions},
+	core::{
+		actors::server::method_not_enabled_reason,
+		interface::catalog::{
+			id::SubscriptionId,
+			subscription::{HydrationConfig, SubscribeOptions},
+		},
 	},
 	embedded,
 	subscription::batch::BatchId,
@@ -549,6 +552,9 @@ fn auth_response_to_json(response: &AuthResponse) -> String {
 		AuthResponse::Failed {
 			reason,
 		} => json!({"status": "failed", "reason": reason}),
+		AuthResponse::MethodNotEnabled {
+			method,
+		} => json!({"status": "method_not_enabled", "reason": method_not_enabled_reason(method)}),
 	};
 	json_to_string(&json).expect("auth response fields are all plain strings")
 }

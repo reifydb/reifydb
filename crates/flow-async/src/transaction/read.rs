@@ -105,6 +105,7 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyTag::Migration => ReadFrom::Query,
 			KeyTag::MigrationEvent => ReadFrom::Query,
 			KeyTag::Authentication => ReadFrom::Query,
+			KeyTag::AuthenticationMethod => ReadFrom::Query,
 			KeyTag::ConfigStorage => ReadFrom::Query,
 			KeyTag::Token => ReadFrom::Query,
 			KeyTag::Source => ReadFrom::Query,

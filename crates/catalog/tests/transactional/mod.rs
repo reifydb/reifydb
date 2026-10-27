@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 mod authentication;
+mod authentication_method;
 mod binding;
 mod dictionary;
 mod flow;

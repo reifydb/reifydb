@@ -32,6 +32,10 @@ impl AuthenticationProvider for SolanaProvider {
 		"solana"
 	}
 
+	fn can_promote_guest(&self) -> bool {
+		true
+	}
+
 	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
 		let public_key = config.get("public_key").ok_or_else(|| Error::from(SolanaError::MissingPublicKey))?;
 

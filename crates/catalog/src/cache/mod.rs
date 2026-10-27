@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod authentication;
+pub mod authentication_method;
 pub mod binding;
 pub mod column_block;
 pub mod config;
@@ -46,6 +47,7 @@ use reifydb_core::{
 	flow::dag::FlowDag,
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
+		authentication_method::{AuthenticationMethod, AuthenticationMethodId},
 		binding::Binding,
 		column_block::ColumnBlock,
 		config::{Config, ConfigKey, GetConfig},
@@ -124,6 +126,7 @@ pub type MultiVersionGrantedRole = MultiVersionContainer<GrantedRole>;
 pub type MultiVersionIdentityAttribute = MultiVersionContainer<IdentityAttribute>;
 pub type MultiVersionIdentityAttributeValue = MultiVersionContainer<IdentityAttributeValue>;
 pub type MultiVersionPolicy = MultiVersionContainer<Policy>;
+pub type MultiVersionAuthenticationMethod = MultiVersionContainer<AuthenticationMethod>;
 pub type MultiVersionSource = MultiVersionContainer<Source>;
 pub type MultiVersionSink = MultiVersionContainer<Sink>;
 pub type MultiVersionRowSettings = MultiVersionContainer<RowSettings>;
@@ -243,6 +246,10 @@ pub struct CatalogCacheInner {
 	pub(crate) authentications: SkipMap<AuthenticationId, MultiVersionAuthentication>,
 
 	pub(crate) authentications_by_identity_method: SkipMap<(IdentityId, String), AuthenticationId>,
+
+	pub(crate) authentication_methods: SkipMap<AuthenticationMethodId, MultiVersionAuthenticationMethod>,
+
+	pub(crate) authentication_methods_by_name: SkipMap<String, AuthenticationMethodId>,
 
 	pub(crate) policies: SkipMap<PolicyId, MultiVersionPolicy>,
 
@@ -365,6 +372,8 @@ impl CatalogCache {
 			identity_attribute_values: SkipMap::new(),
 			authentications: SkipMap::new(),
 			authentications_by_identity_method: SkipMap::new(),
+			authentication_methods: SkipMap::new(),
+			authentication_methods_by_name: SkipMap::new(),
 			policies: SkipMap::new(),
 			policies_by_name: SkipMap::new(),
 			policy_operations: SkipMap::new(),

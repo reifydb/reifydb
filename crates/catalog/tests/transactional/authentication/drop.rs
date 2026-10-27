@@ -9,6 +9,7 @@ use reifydb_value::{params::Params, value::identity::IdentityId};
 #[test]
 fn uncommitted_drop_is_reflected_within_txn() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aut_drop_a");
 	t.admin("CREATE AUTHENTICATION FOR aut_drop_a { method: password; password: 'secret' }");
@@ -43,6 +44,7 @@ fn uncommitted_drop_is_reflected_within_txn() {
 #[test]
 fn rolled_back_drop_leaves_authentication_intact() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aut_drop_b");
 	t.admin("CREATE AUTHENTICATION FOR aut_drop_b { method: password; password: 'secret' }");
@@ -79,6 +81,7 @@ fn rolled_back_drop_leaves_authentication_intact() {
 #[test]
 fn committed_drop_is_invisible_in_new_txn() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aut_drop_c");
 	t.admin("CREATE AUTHENTICATION FOR aut_drop_c { method: password; password: 'secret' }");
@@ -115,6 +118,7 @@ fn committed_drop_is_invisible_in_new_txn() {
 #[test]
 fn uncommitted_drop_is_isolated_from_concurrent_txn() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aut_drop_d");
 	t.admin("CREATE AUTHENTICATION FOR aut_drop_d { method: password; password: 'secret' }");

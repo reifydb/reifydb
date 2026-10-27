@@ -97,6 +97,11 @@ impl testscript::runner::Runner for HttpRunner {
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
 		server.admin_as_root(
+			"CREATE AUTHENTICATION METHOD token WITH { ttl: forever }",
+			reifydb_value::params::Params::None,
+		)
+		.unwrap();
+		server.admin_as_root(
 			"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 			reifydb_value::params::Params::None,
 		)

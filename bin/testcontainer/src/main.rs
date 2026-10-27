@@ -31,6 +31,9 @@ fn main() {
 	println!();
 	println!("Press Ctrl+C to stop...");
 
+	db.admin_as_root("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }", Params::None).unwrap();
+	db.admin_as_root("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }", Params::None).unwrap();
+	db.admin_as_root("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }", Params::None).unwrap();
 	db.admin_as_root("CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }", Params::None)
 		.unwrap();
 	println!("Auth token configured for root user: mysecrettoken");

@@ -321,6 +321,15 @@ fn describe(plan: &PhysicalPlan<'_>) -> (&'static str, String) {
 		PhysicalPlan::DropPolicy(n) => {
 			("DropPolicy", format!("name={} if_exists={}", n.name.text(), n.if_exists))
 		}
+		PhysicalPlan::CreateAuthenticationMethod(n) => {
+			("CreateAuthenticationMethod", format!("name={}", n.name.text()))
+		}
+		PhysicalPlan::AlterAuthenticationMethod(n) => {
+			("AlterAuthenticationMethod", format!("name={}", n.name.text()))
+		}
+		PhysicalPlan::DropAuthenticationMethod(n) => {
+			("DropAuthenticationMethod", format!("name={} if_exists={}", n.name.text(), n.if_exists))
+		}
 		PhysicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,

@@ -1,22 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb::{Clock, MockClock, RuntimeConfig, embedded, testing::db::TestDb, value::value::duration::Duration};
+use reifydb::{Clock, MockClock, RuntimeConfig, embedded, testing::db::TestDb};
 use reifydb_test_harness::auth::{AuthResponseAssert, password_credentials};
 
-fn create_db_with_mock_clock(mock: &MockClock, session_ttl: Duration) -> TestDb {
+fn create_db_with_mock_clock(mock: &MockClock, ttl: &str) -> TestDb {
 	let config = RuntimeConfig {
 		clock: Clock::Mock(mock.clone()),
 		..Default::default()
 	};
 
-	TestDb::from(
-		embedded::memory()
-			.with_runtime_config(config)
-			.with_auth(move |a| a.session_ttl(session_ttl))
-			.build()
-			.unwrap(),
-	)
+	let db = TestDb::from(embedded::memory().with_runtime_config(config).build().unwrap());
+	db.admin(&format!("CREATE AUTHENTICATION METHOD password WITH {{ ttl: {ttl} }}"));
+	db
 }
 
 fn setup_user_and_login(db: &TestDb) -> String {
@@ -33,8 +29,7 @@ fn setup_user_and_login(db: &TestDb) -> String {
 #[test]
 fn test_token_valid_before_ttl() {
 	let mock = MockClock::from_millis(1_700_000_000_000);
-	let ttl = Duration::from_seconds(60).unwrap();
-	let mut db = create_db_with_mock_clock(&mock, ttl);
+	let mut db = create_db_with_mock_clock(&mock, "60s");
 
 	let token = setup_user_and_login(&db);
 
@@ -48,8 +43,7 @@ fn test_token_valid_before_ttl() {
 #[test]
 fn test_token_expires_after_ttl() {
 	let mock = MockClock::from_millis(1_700_000_000_000);
-	let ttl = Duration::from_seconds(60).unwrap();
-	let mut db = create_db_with_mock_clock(&mock, ttl);
+	let mut db = create_db_with_mock_clock(&mock, "60s");
 
 	let token = setup_user_and_login(&db);
 
@@ -63,14 +57,7 @@ fn test_token_expires_after_ttl() {
 #[test]
 fn test_token_no_ttl_never_expires() {
 	let mock = MockClock::from_millis(1_700_000_000_000);
-	let config = RuntimeConfig {
-		clock: Clock::Mock(mock.clone()),
-		..Default::default()
-	};
-
-	let mut db = TestDb::from(
-		embedded::memory().with_runtime_config(config).with_auth(|a| a.no_session_ttl()).build().unwrap(),
-	);
+	let mut db = create_db_with_mock_clock(&mock, "forever");
 
 	let token = setup_user_and_login(&db);
 
@@ -84,8 +71,7 @@ fn test_token_no_ttl_never_expires() {
 #[test]
 fn test_cleanup_removes_expired_tokens() {
 	let mock = MockClock::from_millis(1_700_000_000_000);
-	let ttl = Duration::from_seconds(60).unwrap();
-	let mut db = create_db_with_mock_clock(&mock, ttl);
+	let mut db = create_db_with_mock_clock(&mock, "60s");
 
 	let token = setup_user_and_login(&db);
 

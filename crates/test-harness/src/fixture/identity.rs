@@ -121,7 +121,7 @@ impl IdentityBuilder {
 fn provider(method: &str, clock: &Clock, rng: &Rng) -> Box<dyn AuthenticationProvider> {
 	match method {
 		"solana" => Box::new(SolanaProvider::new(clock.clone(), rng.clone())),
-		"github" => Box::new(GithubProvider),
+		"github" => Box::new(GithubProvider::new(None)),
 		"password" => Box::new(PasswordProvider),
 		other => panic!("identity builder has no provider for method '{other}'"),
 	}

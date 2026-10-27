@@ -90,6 +90,7 @@ impl<'bump> Compiler<'bump> {
 			AstCreate::Role(node) => Ok(LogicalPlan::CreateRole(CreateRoleNode {
 				name: node.name,
 			})),
+			AstCreate::AuthenticationMethod(node) => self.compile_create_authentication_method(node),
 			AstCreate::Policy(node) => Ok(LogicalPlan::CreatePolicy(CreatePolicyNode {
 				name: node.name,
 				target_type: node.target_type,

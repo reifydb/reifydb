@@ -20,6 +20,7 @@ fn failed_auth_must_not_subscribe_as_root() {
 		.build()
 		.unwrap();
 
+	instance.admin_as_root("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }", Params::None).unwrap();
 	instance.admin_as_root("CREATE AUTHENTICATION FOR root { method: token; token: 'goodtoken' }", Params::None)
 		.unwrap();
 	instance.admin_as_root("CREATE NAMESPACE test", Params::None).unwrap();

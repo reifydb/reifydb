@@ -6,6 +6,7 @@ use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	interface::catalog::{
 		authentication::{Authentication, AuthenticationId},
+		authentication_method::{AuthenticationMethod, AuthenticationMethodId},
 		binding::Binding,
 		column_block::ColumnBlock,
 		config::{Config, ConfigKey},
@@ -67,6 +68,7 @@ pub trait TransactionalChanges:
 	+ TransactionalTableChanges
 	+ TransactionalTestChanges
 	+ TransactionalAuthenticationChanges
+	+ TransactionalAuthenticationMethodChanges
 	+ TransactionalIdentityChanges
 	+ TransactionalGrantedRoleChanges
 	+ TransactionalIdentityAttributeChanges
@@ -265,6 +267,14 @@ pub trait TransactionalAuthenticationChanges {
 	fn is_authentication_deleted_by_identity_and_method(&self, identity: IdentityId, method: &str) -> bool;
 }
 
+pub trait TransactionalAuthenticationMethodChanges {
+	fn find_authentication_method(&self, id: AuthenticationMethodId) -> Option<&AuthenticationMethod>;
+
+	fn find_authentication_method_by_name(&self, name: &str) -> Option<&AuthenticationMethod>;
+
+	fn is_authentication_method_deleted_by_name(&self, name: &str) -> bool;
+}
+
 pub trait TransactionalGrantedRoleChanges {
 	fn find_granted_roles_for_identity(&self, identity: IdentityId) -> Vec<&GrantedRole>;
 
@@ -370,6 +380,8 @@ pub struct TransactionalCatalogChanges {
 
 	pub authentication: Vec<Change<Authentication>>,
 
+	pub authentication_method: Vec<Change<AuthenticationMethod>>,
+
 	pub role: Vec<Change<Role>>,
 
 	pub granted_role: Vec<Change<GrantedRole>>,
@@ -413,6 +425,7 @@ pub struct CatalogChangesSavepoint {
 	table_len: usize,
 	identity_len: usize,
 	authentication_len: usize,
+	authentication_method_len: usize,
 	role_len: usize,
 	granted_role_len: usize,
 	identity_attribute_len: usize,
@@ -449,6 +462,7 @@ impl TransactionalCatalogChanges {
 			table_len: self.table.len(),
 			identity_len: self.identity.len(),
 			authentication_len: self.authentication.len(),
+			authentication_method_len: self.authentication_method.len(),
 			role_len: self.role.len(),
 			granted_role_len: self.granted_role.len(),
 			identity_attribute_len: self.identity_attribute.len(),
@@ -484,6 +498,7 @@ impl TransactionalCatalogChanges {
 		self.table.truncate(sp.table_len);
 		self.identity.truncate(sp.identity_len);
 		self.authentication.truncate(sp.authentication_len);
+		self.authentication_method.truncate(sp.authentication_method_len);
 		self.role.truncate(sp.role_len);
 		self.granted_role.truncate(sp.granted_role_len);
 		self.identity_attribute.truncate(sp.identity_attribute_len);
@@ -900,6 +915,21 @@ impl TransactionalCatalogChanges {
 		});
 	}
 
+	pub fn add_authentication_method_change(&mut self, change: Change<AuthenticationMethod>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|m| m.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.authentication_method.push(change);
+		self.log.push(Operation::AuthenticationMethod {
+			id,
+			op,
+		});
+	}
+
 	pub fn add_policy_change(&mut self, change: Change<Policy>) {
 		let id = change
 			.post
@@ -1063,6 +1093,10 @@ pub enum Operation {
 		id: AuthenticationId,
 		op: OperationType,
 	},
+	AuthenticationMethod {
+		id: AuthenticationMethodId,
+		op: OperationType,
+	},
 	Role {
 		id: RoleId,
 		op: OperationType,
@@ -1128,6 +1162,7 @@ impl TransactionalCatalogChanges {
 			table: Vec::new(),
 			identity: Vec::new(),
 			authentication: Vec::new(),
+			authentication_method: Vec::new(),
 			role: Vec::new(),
 			granted_role: Vec::new(),
 			identity_attribute: Vec::new(),
@@ -1224,6 +1259,7 @@ impl TransactionalCatalogChanges {
 		self.table.clear();
 		self.identity.clear();
 		self.authentication.clear();
+		self.authentication_method.clear();
 		self.role.clear();
 		self.granted_role.clear();
 		self.policy.clear();

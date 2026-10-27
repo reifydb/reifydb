@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod authentication;
+pub mod authentication_method;
 pub mod binding;
 pub mod change;
 pub mod column;

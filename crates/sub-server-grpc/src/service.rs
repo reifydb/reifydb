@@ -5,7 +5,9 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
 use reifydb_codec::frame::{encode::encode_frames, options::EncodeOptions};
 use reifydb_core::{
-	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
+	actors::server::{
+		Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage, method_not_enabled_reason,
+	},
 	interface::catalog::{
 		binding::Binding, id::SubscriptionId, namespace::Namespace, procedure::Procedure,
 		subscription::SubscribeOptions,
@@ -650,6 +652,14 @@ impl ReifyDb for ReifyDbService {
 				token: String::new(),
 				identity: String::new(),
 				reason,
+			})),
+			ServerAuthResponse::MethodNotEnabled {
+				method,
+			} => Ok(Response::new(AuthenticateResponse {
+				status: "method_not_enabled".to_string(),
+				token: String::new(),
+				identity: String::new(),
+				reason: method_not_enabled_reason(&method),
 			})),
 			ServerAuthResponse::Challenge {
 				..

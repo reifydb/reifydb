@@ -15,6 +15,7 @@ fn main() {
 	info!("Data server gRPC listening on [::1]:{}", port);
 
 	// Create a service token so the router can authenticate
+	db.admin_as_root("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }", Params::None).unwrap();
 	db.admin_as_root("CREATE AUTHENTICATION FOR root { method: token; token: 'service-token' }", Params::None)
 		.unwrap();
 

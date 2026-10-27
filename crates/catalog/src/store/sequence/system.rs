@@ -4,6 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		authentication::AuthenticationId,
+		authentication_method::AuthenticationMethodId,
 		id::{
 			BindingId, ColumnBlockId, ColumnId, ColumnPropertyId, HandlerId, MigrationEventId, MigrationId,
 			NamespaceId, PrimaryKeyId, ProcedureId, QueueId, RelationshipId, RingBufferId, SeriesId,
@@ -22,9 +23,9 @@ use crate::{
 	Result,
 	store::sequence::generator::u64::GeneratorU64,
 	system::ids::sequences::{
-		AUTHENTICATION, BINDING, COLUMN, COLUMN_BLOCK, COLUMN_PROPERTY, FLOW, FLOW_EDGE, HANDLER,
-		IDENTITY_ATTRIBUTE, MIGRATION, MIGRATION_EVENT, NAMESPACE, OPERATOR, POLICY, PRIMARY_KEY, PROCEDURE,
-		RELATIONSHIP, ROLE, SOURCE, TEST, TOKEN,
+		AUTHENTICATION, AUTHENTICATION_METHOD, BINDING, COLUMN, COLUMN_BLOCK, COLUMN_PROPERTY, FLOW, FLOW_EDGE,
+		HANDLER, IDENTITY_ATTRIBUTE, MIGRATION, MIGRATION_EVENT, NAMESPACE, OPERATOR, POLICY, PRIMARY_KEY,
+		PROCEDURE, RELATIONSHIP, ROLE, SOURCE, TEST, TOKEN,
 	},
 };
 
@@ -90,6 +91,10 @@ const MIGRATION_EVENT_KEY: SystemSequenceKey = SystemSequenceKey {
 
 const AUTHENTICATION_KEY: SystemSequenceKey = SystemSequenceKey {
 	sequence: AUTHENTICATION,
+};
+
+const AUTHENTICATION_METHOD_KEY: SystemSequenceKey = SystemSequenceKey {
+	sequence: AUTHENTICATION_METHOD,
 };
 
 const TEST_KEY: SystemSequenceKey = SystemSequenceKey {
@@ -190,6 +195,10 @@ impl SystemSequence {
 
 	pub(crate) fn next_authentication_id(txn: &mut AdminTransaction) -> Result<AuthenticationId> {
 		GeneratorU64::next(txn, &AUTHENTICATION_KEY, Some(SYSTEM_RESERVED))
+	}
+
+	pub(crate) fn next_authentication_method_id(txn: &mut AdminTransaction) -> Result<AuthenticationMethodId> {
+		GeneratorU64::next(txn, &AUTHENTICATION_METHOD_KEY, Some(SYSTEM_RESERVED))
 	}
 
 	pub(crate) fn next_test_id(txn: &mut AdminTransaction) -> Result<TestId> {

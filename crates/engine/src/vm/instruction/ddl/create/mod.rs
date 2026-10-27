@@ -80,6 +80,7 @@ pub(crate) fn extract_view_sort(as_clause: &QueryPlan, columns: &[ViewColumnToCr
 }
 
 pub mod authentication;
+pub mod authentication_method;
 pub mod binding;
 pub mod deferred;
 pub mod dictionary;

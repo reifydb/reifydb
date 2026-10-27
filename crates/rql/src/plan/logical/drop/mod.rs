@@ -75,6 +75,7 @@ impl<'bump> Compiler<'bump> {
 				if_exists: node.if_exists,
 				method: node.method,
 			})),
+			AstDrop::AuthenticationMethod(node) => self.compile_drop_authentication_method(node),
 			AstDrop::Policy(node) => Ok(LogicalPlan::DropPolicy(DropPolicyNode {
 				target_type: node.target_type,
 				name: node.name,
