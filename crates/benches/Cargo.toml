@@ -31,6 +31,7 @@ reifydb-core = { workspace = true }
 reifydb-evaluate = { workspace = true }
 reifydb-runtime = { workspace = true }
 reifydb-store-multi = { workspace = true }
+reifydb-store-operator = { workspace = true }
 reifydb-store-single = { workspace = true }
 reifydb-testing-scenario = { workspace = true }
 reifydb-transaction = { workspace = true }
@@ -68,6 +69,10 @@ harness = false
 
 [[bench]]
 name = "compare"
+harness = false
+
+[[bench]]
+name = "keyspace_bucket"
 harness = false
 
 [build-dependencies]
