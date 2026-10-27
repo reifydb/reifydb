@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "copy-wasm": "cp -r ../../webassembly/dist/bundler/* wasm/",
+    "copy-wasm": "rm -rf wasm && mkdir -p wasm && cp -r ../../webassembly/dist/web/* wasm/",
     "prebuild": "pnpm copy-wasm",
     "build": "tsup src/index.ts --dts --format esm --sourcemap",
     "test": "pnpm test:unit",

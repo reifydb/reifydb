@@ -56,15 +56,24 @@ wasm-pack build \
 echo
 echo "WASM build complete!"
 
-# Copy bundler output to @reifydb/wasm package
+if [ "$PROFILE" = "wasm-release" ]; then
+    GZIP_LEVEL=9
+else
+    GZIP_LEVEL=1
+fi
+echo "Compressing web wasm (gzip -$GZIP_LEVEL)..."
+gzip -f -"$GZIP_LEVEL" dist/web/reifydb_webassembly_bg.wasm
+
+# Copy compressed web output to @reifydb/wasm package
 TS_WASM_DIR="$REPO_ROOT/pkg/typescript/wasm/wasm"
-echo "Copying bundler output to $TS_WASM_DIR..."
+echo "Copying web output to $TS_WASM_DIR..."
+rm -rf "$TS_WASM_DIR"
 mkdir -p "$TS_WASM_DIR"
-cp -r dist/bundler/* "$TS_WASM_DIR/"
+cp -r dist/web/* "$TS_WASM_DIR/"
 
 echo
 echo "Outputs:"
-echo "  - pkg/webassembly/dist/web/       - For browsers with ES modules"
+echo "  - pkg/webassembly/dist/web/       - For browsers with ES modules (wasm gzipped)"
 echo "  - pkg/webassembly/dist/node/      - For Node.js"
 echo "  - pkg/webassembly/dist/bundler/   - For webpack/Vite/etc"
-echo "  - pkg/typescript/wasm/wasm/       - Bundler output for @reifydb/wasm"
+echo "  - pkg/typescript/wasm/wasm/       - Web output with gzipped wasm for @reifydb/wasm"

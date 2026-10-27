@@ -3,6 +3,7 @@
 
 import { decode, type TypeValuePair } from '@reifydb/core';
 import type { WasmDB as RawWasmDB } from '../wasm/reifydb_webassembly';
+import { wasmBytes } from './load';
 
 export { decode } from '@reifydb/core';
 export type { TypeValuePair, Value } from '@reifydb/core';
@@ -124,5 +125,6 @@ export class WasmDB {
  */
 export async function createWasmDb(): Promise<WasmDB> {
   const mod = await import('../wasm/reifydb_webassembly.js');
+  await mod.default({ module_or_path: await wasmBytes() });
   return new WasmDB(new mod.WasmDB());
 }
