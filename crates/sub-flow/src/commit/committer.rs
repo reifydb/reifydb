@@ -608,7 +608,7 @@ mod commit_integration {
 	};
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
-		commit::CommitBegin, counting::OpCounts, multi::RangeScope, transaction::Transaction,
+		commit::CommitBegin, counting::OpCounts, multi::RangeScope, transaction::Transaction, wal::CommitWal,
 	};
 	use reifydb_value::{
 		byte_size::ByteSize,
@@ -1612,5 +1612,62 @@ mod commit_integration {
 		let records = logged_sections(&engine);
 		assert_eq!(records.len(), 1, "one record carries the slice: {records:?}");
 		assert_eq!(*floor.saved.lock(), vec![records[0].0], "the flush must save exactly the record's lsn");
+	}
+
+	struct HeadAtGuard {
+		wal: CommitWal,
+		heads: Mutex<Vec<Option<Lsn>>>,
+	}
+
+	impl WalFloorCheckpoint for HeadAtGuard {
+		fn make_durable(&self, _through: Lsn) -> Result<()> {
+			Ok(())
+		}
+
+		fn saved_through(&self, _through: Lsn) -> Result<()> {
+			Ok(())
+		}
+
+		fn durable_head(&self) -> Result<Option<Lsn>> {
+			Ok(None)
+		}
+
+		fn appended_head(&self) -> Result<Option<Lsn>> {
+			// Called exactly when a commit takes its operator guard, so it records what the log held then.
+			let head = self.wal.cursors().expect("the commit log cursors read").appended;
+			self.heads.lock().push(head);
+			Ok(head)
+		}
+	}
+
+	#[test]
+	fn the_operator_guard_is_taken_before_the_section_reaches_the_log() {
+		// A guard taken after the append lets an idle pass mark past a logged section that is not applied yet.
+		let te = logged_engine();
+		let engine = te.inner().clone();
+		let floor = Arc::new(HeadAtGuard {
+			wal: engine.multi().wal().clone(),
+			heads: Mutex::new(Vec::new()),
+		});
+		let (storage, _guard) = PersistentTier::sqlite_in_memory();
+		let store = OperatorStore::standard(OperatorStoreConfig::sqlite(
+			OperatorPersistentConfig::opened_with_checkpoint(storage, floor.clone()),
+			engine.spawner(),
+		));
+		let committer = plain_committer(store);
+
+		commit_direct(&committer, &engine, state_slice(&[(OperatorId(5), &state_inner(b"g"), 3)]))
+			.expect("the slice commits");
+
+		let records = logged_sections(&engine);
+		assert_eq!(records.len(), 1, "one record carries the slice: {records:?}");
+		let heads = floor.heads.lock().clone();
+		assert_eq!(heads.len(), 1, "one commit takes exactly one operator guard: {heads:?}");
+		assert!(
+			heads[0].is_none_or(|head| head < records[0].0),
+			"the guard saw appended head {:?}, at or past its own section at lsn {:?}",
+			heads[0],
+			records[0].0
+		);
 	}
 }

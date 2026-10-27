@@ -1060,7 +1060,12 @@ impl Resident {
 			.sinks
 			.get()
 			.expect("the operator resident state flushed before its sinks were attached");
-		if let Some(through) = batch.through {
+		let durable = match batch.through {
+			Some(through) => Some(through),
+			None if !batch.writes.is_empty() && self.checkpoint().is_some() => *self.shared.applied.lock(),
+			None => None,
+		};
+		if let Some(through) = durable {
 			self.checkpoint()
 				.expect(
 					"a flush batch carries a saved lsn only when a commit log checkpoint is attached",
