@@ -3,15 +3,13 @@
 # Copyright (c) 2026 ReifyDB
 # Build WebAssembly packages for ReifyDB
 #
-# Builds WASM bindings for web, Node.js, and bundler targets.
+# Builds WASM bindings for the web target.
 # Requires wasm-pack to be installed.
 #
 # Usage: ./scripts/build-wasm.sh
 #
 # Outputs:
 #   - pkg/webassembly/dist/web/     - For browsers with ES modules
-#   - pkg/webassembly/dist/node/    - For Node.js
-#   - pkg/webassembly/dist/bundler/ - For webpack/Vite/etc
 
 set -e
 
@@ -39,20 +37,6 @@ wasm-pack build \
     --out-dir dist/web \
     $PROFILE_FLAG
 
-# Build for Node.js
-echo "Building for Node.js..."
-wasm-pack build \
-    --target nodejs \
-    --out-dir dist/node \
-    $PROFILE_FLAG
-
-# Build for bundlers
-echo "Building for bundlers (webpack, vite, etc.)..."
-wasm-pack build \
-    --target bundler \
-    --out-dir dist/bundler \
-    $PROFILE_FLAG
-
 echo
 echo "WASM build complete!"
 
@@ -74,6 +58,4 @@ cp -r dist/web/* "$TS_WASM_DIR/"
 echo
 echo "Outputs:"
 echo "  - pkg/webassembly/dist/web/       - For browsers with ES modules (wasm gzipped)"
-echo "  - pkg/webassembly/dist/node/      - For Node.js"
-echo "  - pkg/webassembly/dist/bundler/   - For webpack/Vite/etc"
 echo "  - pkg/typescript/wasm/wasm/       - Web output with gzipped wasm for @reifydb/wasm"

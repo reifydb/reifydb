@@ -1,16 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { rbcf } from "../src/rbcf";
 import * as path from "path";
 import * as fs from "fs";
-
-// Load the WASM module built for Node.js
-// We use require because vitest in node environment handles it well for cjs/mjs mix
-const wasm = require("../../../webassembly/dist/node/reifydb_webassembly.js");
+import init, { encode_rbcf_fixture } from "../../wasm/wasm/reifydb_webassembly.js";
+import { wasmBytes } from "../../wasm/src/load";
 
 describe("RBCF Conformance", () => {
+    beforeAll(async () => {
+        await init({ module_or_path: await wasmBytes() });
+    }, 30_000);
+
     const conformanceRoot = path.resolve(__dirname, "../../../test/conformance/wire-format");
 
     if (!fs.existsSync(conformanceRoot)) {
@@ -37,7 +39,7 @@ describe("RBCF Conformance", () => {
                         const framesJson = JSON.stringify(testCase.frames);
                         
                         // 1. Get golden bytes from Rust implementation via WASM
-                        const goldenBytes = wasm.encode_rbcf_fixture(framesJson, encoding);
+                        const goldenBytes = encode_rbcf_fixture(framesJson, encoding);
                         
                         // 2. Decode using TypeScript implementation
                         const decodedFrames = rbcf.decode(goldenBytes);
