@@ -6,7 +6,7 @@ use arrow_schema::FieldRef;
 use reifydb_value::{
 	Result,
 	error::{BinaryOp, TypeError},
-	fragment::LazyFragment,
+	fragment::{Fragment, LazyFragment},
 	reifydb_assertions,
 	value::{
 		column_view::{ColumnView, ViewData},
@@ -31,6 +31,15 @@ pub fn mul_columns(
 	left: &(FieldRef, ArrayRef),
 	right: &(FieldRef, ArrayRef),
 	fragment: impl LazyFragment + Copy,
+) -> Result<(FieldRef, ArrayRef)> {
+	mul_columns_inner(ctx, left, right, &|| fragment.fragment())
+}
+
+fn mul_columns_inner(
+	ctx: &ArithContext,
+	left: &(FieldRef, ArrayRef),
+	right: &(FieldRef, ArrayRef),
+	fragment: &dyn Fn() -> Fragment,
 ) -> Result<(FieldRef, ArrayRef)> {
 	arith_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let (left, right) = (ColumnView::try_from(left)?, ColumnView::try_from(right)?);

@@ -35,6 +35,15 @@ pub fn add_columns(
 	right: &(FieldRef, ArrayRef),
 	fragment: impl LazyFragment + Copy,
 ) -> Result<(FieldRef, ArrayRef)> {
+	add_columns_inner(ctx, left, right, &|| fragment.fragment())
+}
+
+fn add_columns_inner(
+	ctx: &ArithContext,
+	left: &(FieldRef, ArrayRef),
+	right: &(FieldRef, ArrayRef),
+	fragment: &dyn Fn() -> Fragment,
+) -> Result<(FieldRef, ArrayRef)> {
 	arith_op_unwrap_option(left, right, fragment.fragment(), |left, right| {
 		let (left, right) = (ColumnView::try_from(left)?, ColumnView::try_from(right)?);
 		let target = arith_target(ArithOp::Add, left.get_type(), right.get_type());
