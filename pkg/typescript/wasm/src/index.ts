@@ -90,6 +90,17 @@ export class WasmDB {
     this.db.logout();
   }
 
+  async awaitAllFlows({ timeoutMs = 2000 }: { timeoutMs?: number } = {}): Promise<void> {
+    const target = this.db.currentVersion();
+    const deadline = Date.now() + timeoutMs;
+    while (!this.db.flowsCaughtUpStep(target)) {
+      if (Date.now() >= deadline) {
+        throw new Error(`deferred flows not caught up to version ${target} within ${timeoutMs}ms`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
   free(): void {
     this.db.free();
   }

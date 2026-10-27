@@ -26,7 +26,7 @@ use reifydb_catalog::{
 };
 use reifydb_cdc::{
 	CdcVersion,
-	consume::{backlog::FlowBacklog, wake::CdcWakeRegistry},
+	consume::{backlog::FlowBacklog, wake::CdcWakeRegistry, watermark::FlowCaughtUpWatermark},
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -467,6 +467,21 @@ impl WasmDB {
 			writeln!(output, "{}", frame).map_err(|e| JsError::from_message(&e.to_string()))?;
 		}
 		Ok(output)
+	}
+
+	#[wasm_bindgen(js_name = currentVersion)]
+	pub fn current_version(&self) -> Result<u64, JsValue> {
+		let version = self.inner.current_version().map_err(|e| JsError::from_error(&e))?;
+		Ok(version.0)
+	}
+
+	#[wasm_bindgen(js_name = flowsCaughtUpStep)]
+	pub fn flows_caught_up_step(&self, target: u64) -> Result<bool, JsValue> {
+		let Some(watermark) = self.inner.ioc().try_resolve::<FlowCaughtUpWatermark>() else {
+			return Err(JsError::from_message("flow caught up watermark not registered"));
+		};
+		watermark.ensure_healthy().map_err(|e| JsError::from_error(&e))?;
+		Ok(watermark.get().0 >= target)
 	}
 
 	#[wasm_bindgen(js_name = queryText)]

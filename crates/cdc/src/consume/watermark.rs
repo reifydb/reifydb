@@ -8,7 +8,7 @@ use std::sync::{
 
 use reifydb_core::{
 	common::CommitVersion,
-	error::diagnostic::internal::internal,
+	error::diagnostic::{flow::flow_error, internal::internal},
 	interface::{catalog::flow::FlowId, cdc::ConsumerClass},
 	key::{any::TaggedKey, cdc::CdcConsumerKey},
 	lifecycle::watermark::CheckpointFloor,
@@ -71,6 +71,29 @@ impl FlowCaughtUpWatermark {
 
 	pub fn stalled(&self) -> Vec<FlowId> {
 		(self.stalled)()
+	}
+
+	pub fn ensure_healthy(&self) -> Result<()> {
+		let poisoned = self.poisoned();
+		if !poisoned.is_empty() {
+			let flows: Vec<String> =
+				poisoned.iter().map(|(id, reason)| format!("flow {}: {}", id.0, reason)).collect();
+			return Err(Error(Box::new(flow_error(format!(
+				"{} deferred flow(s) poisoned: {}",
+				poisoned.len(),
+				flows.join("; ")
+			)))));
+		}
+		let stalled = self.stalled();
+		if !stalled.is_empty() {
+			let flows: Vec<String> = stalled.iter().map(|id| format!("flow {}", id.0)).collect();
+			return Err(Error(Box::new(flow_error(format!(
+				"{} deferred flow(s) stalled with input pending: {}",
+				stalled.len(),
+				flows.join("; ")
+			)))));
+		}
+		Ok(())
 	}
 }
 

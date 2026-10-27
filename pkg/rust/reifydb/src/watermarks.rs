@@ -6,7 +6,6 @@ use std::{marker::PhantomData, thread};
 use reifydb_cdc::consume::watermark::FlowCaughtUpWatermark;
 use reifydb_core::{
 	common::CommitVersion,
-	error::diagnostic::flow::flow_error,
 	interface::{
 		flow::{FlowWatermarkRow, FlowWatermarkSampler},
 		subscription::{SubscriptionWatermarkRow, SubscriptionWatermarkSampler},
@@ -14,7 +13,7 @@ use reifydb_core::{
 };
 use reifydb_runtime::context::clock::Clock;
 use reifydb_store_cdc::storage::CdcStorage;
-use reifydb_value::{Result, error::Error, value::duration::Duration};
+use reifydb_value::{Result, value::duration::Duration};
 
 use crate::Database;
 
@@ -163,46 +162,14 @@ impl CdcWatermarks<'_> {
 			if self.flow_consumer() >= version {
 				return Ok(true);
 			}
-			self.ensure_no_poisoned_flow()?;
-			self.ensure_no_stalled_flow()?;
+			if let Some(watermark) = self.db.engine().ioc().try_resolve::<FlowCaughtUpWatermark>() {
+				watermark.ensure_healthy()?;
+			}
 			if self.clock.instant() >= deadline {
 				return Ok(self.flow_consumer() >= version);
 			}
 			thread::sleep(Duration::from_milliseconds(2).unwrap().to_std());
 		}
-	}
-
-	fn ensure_no_poisoned_flow(&self) -> Result<()> {
-		let Some(watermark) = self.db.engine().ioc().try_resolve::<FlowCaughtUpWatermark>() else {
-			return Ok(());
-		};
-		let poisoned = watermark.poisoned();
-		if poisoned.is_empty() {
-			return Ok(());
-		}
-		let flows: Vec<String> =
-			poisoned.iter().map(|(id, reason)| format!("flow {}: {}", id.0, reason)).collect();
-		Err(Error(Box::new(flow_error(format!(
-			"{} deferred flow(s) poisoned: {}",
-			poisoned.len(),
-			flows.join("; ")
-		)))))
-	}
-
-	fn ensure_no_stalled_flow(&self) -> Result<()> {
-		let Some(watermark) = self.db.engine().ioc().try_resolve::<FlowCaughtUpWatermark>() else {
-			return Ok(());
-		};
-		let stalled = watermark.stalled();
-		if stalled.is_empty() {
-			return Ok(());
-		}
-		let flows: Vec<String> = stalled.iter().map(|id| format!("flow {}", id.0)).collect();
-		Err(Error(Box::new(flow_error(format!(
-			"{} deferred flow(s) stalled with input pending: {}",
-			stalled.len(),
-			flows.join("; ")
-		)))))
 	}
 }
 
