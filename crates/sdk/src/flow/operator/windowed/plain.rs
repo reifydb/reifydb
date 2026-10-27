@@ -196,7 +196,9 @@ where
 				}
 				DiffType::Update => {
 					if let (Some(pre), Some(post)) = (diff.pre(), diff.post()) {
-						self.push_all(ctx, &pre, &mut buckets, false)?;
+						if A::UPDATE_PRE_RETRACTS {
+							self.push_all(ctx, &pre, &mut buckets, false)?;
+						}
 						self.push_all(ctx, &post, &mut buckets, true)?;
 					}
 				}

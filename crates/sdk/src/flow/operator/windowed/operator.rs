@@ -37,6 +37,8 @@ pub trait WindowedOperator: OperatorMetadata + Send + Sync + Sized {
 	type Accumulator: WindowAccumulator;
 	type Output: OutputRows;
 
+	const UPDATE_PRE_RETRACTS: bool = true;
+
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self>;
 
 	fn coord(&self, cols: &impl ColumnsView, rows: &[usize]) -> Result<Vec<Option<Self::Coord>>> {
