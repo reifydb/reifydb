@@ -211,6 +211,9 @@ if [ $SKIP_PNPM -eq 0 ]; then
 
         # Publish all TS packages via the root publish:all script
         # Order: core → client → console → react → shell → wasm
+        echo -e "${BLUE}  Building WebAssembly packages...${NC}"
+        run_cmd "$SCRIPT_DIR/build-wasm.sh"
+
         cd "$ROOT_DIR/pkg/typescript"
 
         echo -e "${BLUE}  Building all TypeScript packages...${NC}"
