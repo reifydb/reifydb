@@ -18,6 +18,7 @@ use reifydb_core::{
 	delta::{Delta, SetPre},
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},
+		operator::OperatorSection,
 		store::{MultiVersionCommit, MultiVersionGetPrevious},
 	},
 	key::any::TaggedKey,
@@ -598,7 +599,13 @@ where
 				let persistent: Vec<&Delta> =
 					deltas.iter().filter(|delta| self.store.is_persistent(delta.key())).collect();
 				let mut encoded = Vec::new();
-				CommitRecord::encode_refs(commit_version, source, &persistent, &mut encoded);
+				CommitRecord::encode_refs(
+					commit_version,
+					source,
+					&persistent,
+					&OperatorSection::default(),
+					&mut encoded,
+				);
 				check_record_size(&encoded)?;
 				encoded
 			}

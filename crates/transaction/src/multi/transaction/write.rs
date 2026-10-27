@@ -20,6 +20,7 @@ use reifydb_core::{
 	event::transaction::PostCommitEvent,
 	interface::{
 		catalog::{object::ObjectId, storage::StorageId},
+		operator::OperatorSection,
 		store::{MultiVersionGet, MultiVersionRow},
 	},
 	key::{
@@ -820,7 +821,13 @@ impl MultiWriteTransaction {
 			let persistent: Vec<&Delta> =
 				deltas.iter().filter(|delta| self.engine.store.is_persistent(delta.key())).collect();
 			let mut buf = Vec::new();
-			CommitRecord::encode_refs(CommitVersion(0), SourceVersion(0), &persistent, &mut buf);
+			CommitRecord::encode_refs(
+				CommitVersion(0),
+				SourceVersion(0),
+				&persistent,
+				&OperatorSection::default(),
+				&mut buf,
+			);
 			check_record_size(&buf)?;
 			Some(buf)
 		};

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
+use reifydb_codec::{
+	key::encoded::EncodedKey,
+	row::{bytes::EncodedBytes, pod::EncodedPodRow},
+};
 use reifydb_value::util::cowvec::CowVec;
 use reifydb_wal::{
 	body::Body,
@@ -11,7 +14,11 @@ use reifydb_wal::{
 use crate::{
 	common::{CommitVersion, SourceVersion},
 	delta::{Delta, RemoveAnnounce, SetPre},
-	key::any::TaggedKey,
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		operator::{OperatorSection, OperatorSlice, OperatorStateWrite},
+	},
+	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
 
 const OP_SET: u8 = 0;
@@ -24,11 +31,15 @@ const ANNOUNCE_SILENT: u8 = 0;
 const ANNOUNCE_ANNOUNCED: u8 = 1;
 const ANNOUNCE_UNOBSERVED: u8 = 2;
 
+const WRITE_SET: u8 = 0;
+const WRITE_REMOVE: u8 = 1;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitRecord {
 	pub version: CommitVersion,
 	pub source: SourceVersion,
 	pub deltas: Vec<Delta>,
+	pub operator: OperatorSection,
 }
 
 impl CommitRecord {
@@ -39,7 +50,13 @@ impl CommitRecord {
 		encoded[8..16].copy_from_slice(&source.0.to_le_bytes());
 	}
 
-	pub fn encode_refs(version: CommitVersion, source: SourceVersion, deltas: &[&Delta], out: &mut Vec<u8>) {
+	pub fn encode_refs(
+		version: CommitVersion,
+		source: SourceVersion,
+		deltas: &[&Delta],
+		section: &OperatorSection,
+		out: &mut Vec<u8>,
+	) {
 		out.extend_from_slice(&version.0.to_le_bytes());
 		out.extend_from_slice(&source.0.to_le_bytes());
 		put_len(out, deltas.len());
@@ -89,6 +106,30 @@ impl CommitRecord {
 				}
 			}
 		}
+		put_len(out, section.slices.len());
+		for slice in &section.slices {
+			put_len(out, slice.writes.len());
+			for (operator, key, write) in &slice.writes {
+				out.extend_from_slice(&operator.0.to_le_bytes());
+				put_bytes(out, key.as_slice());
+				match write {
+					OperatorStateWrite::Set(row) => {
+						out.push(WRITE_SET);
+						put_bytes(out, row.as_slice());
+					}
+					OperatorStateWrite::Remove => out.push(WRITE_REMOVE),
+				}
+			}
+			put_len(out, slice.checkpoints.len());
+			for (flow, version) in &slice.checkpoints {
+				out.extend_from_slice(&flow.0.to_le_bytes());
+				out.extend_from_slice(&version.0.to_le_bytes());
+			}
+			put_len(out, slice.deletes.len());
+			for flow in &slice.deletes {
+				out.extend_from_slice(&flow.0.to_le_bytes());
+			}
+		}
 	}
 }
 
@@ -98,7 +139,13 @@ impl Body for CommitRecord {
 	}
 
 	fn encode(&self, out: &mut Vec<u8>) {
-		Self::encode_refs(self.version, self.source, &self.deltas.iter().collect::<Vec<_>>(), out);
+		Self::encode_refs(
+			self.version,
+			self.source,
+			&self.deltas.iter().collect::<Vec<_>>(),
+			&self.operator,
+			out,
+		);
 	}
 
 	fn decode(kind: u32, bytes: &[u8]) -> Result<Self> {
@@ -116,6 +163,7 @@ impl Body for CommitRecord {
 		for _ in 0..count {
 			deltas.push(reader.delta()?);
 		}
+		let operator = reader.section()?;
 		if reader.at != bytes.len() {
 			return Err(WalError::Body(format!(
 				"{} trailing bytes after delta {count}",
@@ -126,6 +174,7 @@ impl Body for CommitRecord {
 			version,
 			source,
 			deltas,
+			operator,
 		})
 	}
 }
@@ -333,6 +382,52 @@ impl<'a> Reader<'a> {
 			}
 			op => Err(WalError::Body(format!("unknown delta op {op} at byte {at}"))),
 		}
+	}
+
+	fn section(&mut self) -> Result<OperatorSection> {
+		let count = self.u32()?;
+		let mut slices = Vec::new();
+		for _ in 0..count {
+			slices.push(self.slice()?);
+		}
+		Ok(OperatorSection {
+			slices,
+		})
+	}
+
+	fn slice(&mut self) -> Result<OperatorSlice> {
+		let count = self.u32()?;
+		let mut writes = Vec::new();
+		for _ in 0..count {
+			writes.push(self.state_write()?);
+		}
+		let count = self.u32()?;
+		let mut checkpoints = Vec::new();
+		for _ in 0..count {
+			checkpoints.push((FlowId(self.u64()?), CommitVersion(self.u64()?)));
+		}
+		let count = self.u32()?;
+		let mut deletes = Vec::new();
+		for _ in 0..count {
+			deletes.push(FlowId(self.u64()?));
+		}
+		Ok(OperatorSlice {
+			writes,
+			checkpoints,
+			deletes,
+		})
+	}
+
+	fn state_write(&mut self) -> Result<(OperatorId, GroupStateKey, OperatorStateWrite)> {
+		let operator = OperatorId(self.u64()?);
+		let key = GroupStateKey::bound_unchecked(EncodedKey::new(self.bytes()?));
+		let at = self.at;
+		let write = match self.u8()? {
+			WRITE_SET => OperatorStateWrite::Set(EncodedPodRow::from(self.encoded()?)),
+			WRITE_REMOVE => OperatorStateWrite::Remove,
+			tag => return Err(WalError::Body(format!("unknown operator write tag {tag} at byte {at}"))),
+		};
+		Ok((operator, key, write))
 	}
 
 	fn single_delta(&mut self) -> Result<Delta> {

@@ -11,6 +11,7 @@ pub mod consolidate;
 pub mod evaluate;
 pub mod flow;
 pub mod identifier;
+pub mod operator;
 pub mod resolved;
 pub mod store;
 pub mod subscription;
