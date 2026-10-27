@@ -5,6 +5,7 @@ mod gate;
 mod github;
 mod guest;
 mod header;
+mod promotion;
 mod registry;
 mod solana;
 mod token;

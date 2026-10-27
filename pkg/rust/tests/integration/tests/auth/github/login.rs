@@ -5,52 +5,17 @@ use std::{collections::HashMap, sync::Arc};
 
 use reifydb::{
 	IdentityId,
-	auth::{
-		error::GithubError,
-		github::{GithubApi, GithubConfig, GithubUser},
-		service::{AuthResponse, AuthService},
-	},
+	auth::service::{AuthResponse, AuthService},
 	embedded,
 	testing::db::TestDb,
-	value::{Result, value::Value},
+	value::value::Value,
 };
 use reifydb_test_harness::{
 	auth::{AuthResponseAssert, auth_service},
 	lookup::{find_identity_by_attribute, identity_attribute},
 };
 
-struct StubGithubApi {
-	user: GithubUser,
-	fail_exchange: bool,
-}
-
-impl GithubApi for StubGithubApi {
-	fn exchange_code(&self, _config: &GithubConfig, code: &str) -> Result<String> {
-		if self.fail_exchange {
-			return Err(GithubError::ExchangeFailed {
-				reason: "stub exchange failure".to_string(),
-			}
-			.into());
-		}
-		assert_eq!(code, "good-code", "the oauth code from the client must reach the code exchange verbatim");
-		Ok("stub-access-token".to_string())
-	}
-
-	fn fetch_user(&self, access_token: &str) -> Result<GithubUser> {
-		assert_eq!(
-			access_token, "stub-access-token",
-			"the user fetch must use the token minted by the code exchange"
-		);
-		Ok(self.user.clone())
-	}
-}
-
-fn octocat() -> GithubUser {
-	GithubUser {
-		id: 583231,
-		login: "octocat".to_string(),
-	}
-}
+use super::{StubGithubApi, octocat};
 
 const CLIENT_SECRET: &str = "test-client-secret";
 

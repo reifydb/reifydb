@@ -5,6 +5,7 @@ mod configuration;
 mod grpc;
 mod http;
 mod method_not_enabled;
+mod promotion;
 mod ws;
 
 use std::error::Error;

@@ -423,10 +423,22 @@ fn required_access(payload: &RequestPayload) -> Access {
 async fn handle_auth(request_id: &str, auth: AuthRequest, conn: &mut ConnectionContext<'_>) -> Option<WsResponse> {
 	if let Some(method) = auth.method.as_deref() {
 		let credentials = auth.credentials.unwrap_or_default();
+		let caller = match extract_identity_from_ws_auth(conn.state.auth_service(), conn.auth_token.as_deref())
+		{
+			Ok(caller) => caller,
+			Err(error) => {
+				return Some(WsResponse::Text(build_error(
+					request_id,
+					"AUTH_FAILED",
+					&error.to_string(),
+				)));
+			}
+		};
 
 		let (reply, receiver) = reply_channel();
 		conn.actor_ref
 			.send(ServerMessage::Authenticate {
+				caller,
 				method: method.to_string(),
 				credentials,
 				reply,

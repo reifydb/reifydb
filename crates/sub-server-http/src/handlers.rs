@@ -111,9 +111,11 @@ pub struct AuthenticateResponse {
 
 pub async fn handle_authenticate(
 	State(state): State<HttpServerState>,
+	headers: HeaderMap,
 	Json(request): Json<AuthenticateRequest>,
 ) -> Result<Response, AppError> {
-	let auth_response = send_authenticate(&state, request).await?;
+	let caller = extract_identity(&state, &headers)?;
+	let auth_response = send_authenticate(&state, request, caller).await?;
 
 	match auth_response {
 		ServerAuthResponse::Authenticated {
@@ -193,11 +195,13 @@ pub async fn handle_authenticate(
 async fn send_authenticate(
 	state: &HttpServerState,
 	request: AuthenticateRequest,
+	caller: IdentityId,
 ) -> Result<ServerAuthResponse, AppError> {
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
 	actor_ref
 		.send(ServerMessage::Authenticate {
+			caller,
 			method: request.method,
 			credentials: request.credentials,
 			reply,

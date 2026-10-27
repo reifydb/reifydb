@@ -59,6 +59,7 @@ impl DstClient {
 	pub fn authenticate(&self, method: String, credentials: HashMap<String, String>) -> ServerAuthResponse {
 		let (reply, receiver) = reply_channel();
 		self.send(ServerMessage::Authenticate {
+			caller: IdentityId::anonymous(),
 			method,
 			credentials,
 			reply,

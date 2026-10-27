@@ -4,6 +4,7 @@
 mod authenticate;
 mod github;
 mod guest;
+mod promote;
 mod solana;
 mod token;
 

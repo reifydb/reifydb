@@ -10,10 +10,11 @@ use reifydb_runtime::{
 	},
 	sync::rwlock::RwLock,
 };
-use reifydb_value::value::duration::Duration;
+use reifydb_value::value::{duration::Duration, identity::IdentityId};
 use uuid::Builder;
 
 struct ChallengeEntry {
+	pub caller: IdentityId,
 	pub identifier: String,
 	pub method: String,
 	pub payload: HashMap<String, String>,
@@ -22,6 +23,7 @@ struct ChallengeEntry {
 }
 
 pub struct ChallengeInfo {
+	pub caller: IdentityId,
 	pub identifier: String,
 	pub method: String,
 	pub payload: HashMap<String, String>,
@@ -43,6 +45,7 @@ impl ChallengeStore {
 
 	pub fn create(
 		&self,
+		caller: IdentityId,
 		identifier: String,
 		method: String,
 		payload: HashMap<String, String>,
@@ -55,6 +58,7 @@ impl ChallengeStore {
 		let random_bytes = rng.infra_bytes_10();
 		let challenge_id = Builder::from_unix_timestamp_millis(millis, &random_bytes).into_uuid().to_string();
 		let entry = ChallengeEntry {
+			caller,
 			identifier,
 			method,
 			payload,
@@ -75,6 +79,7 @@ impl ChallengeStore {
 		}
 
 		Some(ChallengeInfo {
+			caller: entry.caller,
 			identifier: entry.identifier,
 			method: entry.method,
 			payload: entry.payload,
@@ -106,7 +111,15 @@ mod tests {
 		let store = ChallengeStore::new(Duration::from_seconds(60).unwrap());
 		let data = HashMap::from([("nonce".to_string(), "abc123".to_string())]);
 
-		let id = store.create("alice".to_string(), "solana".to_string(), data, None, &clock, &rng);
+		let id = store.create(
+			IdentityId::anonymous(),
+			"alice".to_string(),
+			"solana".to_string(),
+			data,
+			None,
+			&clock,
+			&rng,
+		);
 		let info = store.consume(&id).unwrap();
 
 		assert_eq!(info.identifier, "alice");
@@ -118,7 +131,15 @@ mod tests {
 	fn test_one_time_use() {
 		let (clock, _, rng) = test_clock_and_rng();
 		let store = ChallengeStore::new(Duration::from_seconds(60).unwrap());
-		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), None, &clock, &rng);
+		let id = store.create(
+			IdentityId::anonymous(),
+			"alice".to_string(),
+			"solana".to_string(),
+			HashMap::new(),
+			None,
+			&clock,
+			&rng,
+		);
 
 		assert!(store.consume(&id).is_some());
 		assert!(store.consume(&id).is_none()); // second attempt fails
@@ -137,6 +158,7 @@ mod tests {
 		let store = ChallengeStore::new(Duration::from_seconds(60).unwrap());
 
 		let id = store.create(
+			IdentityId::anonymous(),
 			"wallet".to_string(),
 			"solana".to_string(),
 			HashMap::from([("message".to_string(), "sign me".to_string())]),
@@ -157,7 +179,15 @@ mod tests {
 	fn test_expired_challenge() {
 		let (clock, mock, rng) = test_clock_and_rng();
 		let store = ChallengeStore::new(Duration::from_milliseconds(1).unwrap());
-		let id = store.create("alice".to_string(), "solana".to_string(), HashMap::new(), None, &clock, &rng);
+		let id = store.create(
+			IdentityId::anonymous(),
+			"alice".to_string(),
+			"solana".to_string(),
+			HashMap::new(),
+			None,
+			&clock,
+			&rng,
+		);
 
 		mock.advance_millis(10);
 		assert!(store.consume(&id).is_none());

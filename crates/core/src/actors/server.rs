@@ -63,6 +63,7 @@ pub enum ServerMessage {
 	},
 
 	Authenticate {
+		caller: IdentityId,
 		method: String,
 		credentials: HashMap<String, String>,
 		reply: Reply<ServerAuthResponse>,

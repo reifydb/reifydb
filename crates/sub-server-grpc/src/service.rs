@@ -620,12 +620,14 @@ impl ReifyDb for ReifyDbService {
 		&self,
 		request: Request<AuthenticateRequest>,
 	) -> Result<Response<AuthenticateResponse>, Status> {
+		let caller = self.extract_identity(&request)?;
 		let inner = request.into_inner();
 
 		let (reply, receiver) = reply_channel();
 		let (actor_ref, _handle) = self.state.spawn_actor();
 		actor_ref
 			.send(ServerMessage::Authenticate {
+				caller,
 				method: inner.method,
 				credentials: inner.credentials,
 				reply,

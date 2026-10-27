@@ -22,6 +22,16 @@ use crate::error::AuthError;
 impl AuthService {
 	#[instrument(name = "auth::authenticate", level = "debug", skip(self, credentials))]
 	pub fn authenticate(&self, method: &str, credentials: HashMap<String, String>) -> Result<AuthResponse, Error> {
+		self.authenticate_as(IdentityId::anonymous(), method, credentials)
+	}
+
+	#[instrument(name = "auth::authenticate_as", level = "debug", skip(self, credentials))]
+	pub fn authenticate_as(
+		&self,
+		caller: IdentityId,
+		method: &str,
+		credentials: HashMap<String, String>,
+	) -> Result<AuthResponse, Error> {
 		self.provider_for(method)?;
 		let Some(declared) = self.declared_method(method)? else {
 			return Ok(AuthResponse::MethodNotEnabled {
@@ -33,30 +43,38 @@ impl AuthService {
 			return self.authenticate_guest(&credentials, ttl);
 		}
 		if let Some(challenge_id) = credentials.get("challenge_id").cloned() {
-			return self.authenticate_challenge_response(method, &challenge_id, credentials, &declared);
+			return self.authenticate_challenge_response(
+				caller,
+				method,
+				&challenge_id,
+				credentials,
+				&declared,
+			);
 		}
 		if method == "token" {
 			return self.authenticate_token(credentials, ttl);
 		}
 		if method == "github" {
-			return self.begin_github_login(&declared);
+			return self.begin_github_login(caller, &declared);
 		}
-		self.authenticate_with_provider(method, credentials, ttl)
+		self.authenticate_with_provider(caller, method, credentials, &declared)
 	}
 
 	fn authenticate_with_provider(
 		&self,
+		caller: IdentityId,
 		method: &str,
 		credentials: HashMap<String, String>,
-		ttl: Option<Duration>,
+		declared: &AuthenticationMethod,
 	) -> Result<AuthResponse, Error> {
+		let ttl = declared.ttl;
 		let identifier = credentials.get("identifier").map(|s| s.as_str()).unwrap_or("");
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 
 		let Some(ident) = self.resolve_provider_identity(&mut txn, &catalog, method, identifier)? else {
 			drop(txn);
-			return self.handle_missing_identity(method, identifier, &credentials);
+			return self.handle_missing_identity(caller, method, identifier, &credentials, declared);
 		};
 		if !ident.enabled {
 			return Ok(AuthResponse::Failed {
@@ -68,7 +86,7 @@ impl AuthService {
 			return Ok(invalid_credentials());
 		};
 
-		self.run_provider_and_respond(&stored_auth, &credentials, ident.id, identifier, method, ttl)
+		self.run_provider_and_respond(caller, &stored_auth, &credentials, ident.id, identifier, method, ttl)
 	}
 
 	#[inline]
@@ -105,6 +123,7 @@ impl AuthService {
 	#[inline]
 	fn run_provider_and_respond(
 		&self,
+		caller: IdentityId,
 		stored_auth: &Authentication,
 		credentials: &HashMap<String, String>,
 		identity: IdentityId,
@@ -114,20 +133,26 @@ impl AuthService {
 	) -> Result<AuthResponse, Error> {
 		let provider = self.provider_for(method)?;
 		let step = provider.authenticate(&stored_auth.properties, credentials)?;
-		self.respond_to_initial_auth_step(step, identity, identifier, method, ttl)
+		self.respond_to_initial_auth_step(caller, step, identity, identifier, method, ttl)
 	}
 
 	#[inline]
 	fn handle_missing_identity(
 		&self,
+		caller: IdentityId,
 		method: &str,
 		identifier: &str,
 		credentials: &HashMap<String, String>,
+		declared: &AuthenticationMethod,
 	) -> Result<AuthResponse, Error> {
 		if method == "solana"
 			&& let Some(public_key) = credentials.get("public_key").cloned()
 		{
-			return self.begin_solana_provision(identifier, &public_key, credentials);
+			return self.begin_solana_provision(caller, identifier, &public_key, credentials);
+		}
+		if method == "password" && declared.promote_guest {
+			let properties = self.provider_for(method)?.create(&self.rng, credentials)?;
+			return self.promote_or_sign_up(caller, identifier, method, properties, None, declared.ttl);
 		}
 		Ok(invalid_credentials())
 	}
@@ -135,6 +160,7 @@ impl AuthService {
 	#[inline]
 	fn respond_to_initial_auth_step(
 		&self,
+		caller: IdentityId,
 		step: AuthStep,
 		identity: IdentityId,
 		identifier: &str,
@@ -151,7 +177,7 @@ impl AuthService {
 			}),
 			AuthStep::Challenge {
 				payload,
-			} => Ok(self.issue_challenge(identifier, method, payload)),
+			} => Ok(self.issue_challenge(caller, identifier, method, payload)),
 		}
 	}
 
@@ -177,8 +203,15 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn issue_challenge(&self, identifier: &str, method: &str, payload: HashMap<String, String>) -> AuthResponse {
+	fn issue_challenge(
+		&self,
+		caller: IdentityId,
+		identifier: &str,
+		method: &str,
+		payload: HashMap<String, String>,
+	) -> AuthResponse {
 		let challenge_id = self.challenges.create(
+			caller,
 			identifier.to_string(),
 			method.to_string(),
 			payload.clone(),
@@ -226,6 +259,7 @@ impl AuthService {
 
 	fn authenticate_challenge_response(
 		&self,
+		caller: IdentityId,
 		method: &str,
 		challenge_id: &str,
 		mut credentials: HashMap<String, String>,
@@ -244,17 +278,24 @@ impl AuthService {
 			});
 		}
 
+		if !caller.is_anonymous() && !challenge.caller.is_anonymous() && caller != challenge.caller {
+			return Ok(AuthResponse::Failed {
+				reason: "challenge was issued to a different caller".to_string(),
+			});
+		}
+
 		if challenge.method == "github" {
 			return self.complete_github_login(&challenge, &credentials, declared);
 		}
 
 		if let Some(public_key) = challenge.pending_public_key.as_deref() {
 			return self.complete_solana_provision(
+				challenge.caller,
 				&challenge.identifier,
 				public_key,
 				&challenge.payload,
 				&credentials,
-				ttl,
+				declared,
 			);
 		}
 

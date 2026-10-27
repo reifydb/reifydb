@@ -162,8 +162,10 @@ impl GrpcClient {
 			credentials,
 		};
 
+		let mut request = Request::new(request);
+		attach_token(&mut request, &self.token);
 		let mut client = self.inner.clone();
-		let response = client.authenticate(Request::new(request)).await.map_err(status_to_error)?;
+		let response = client.authenticate(request).await.map_err(status_to_error)?;
 		let inner = response.into_inner();
 
 		if inner.status == "authenticated" {

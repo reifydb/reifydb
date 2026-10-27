@@ -140,11 +140,12 @@ impl ServerActor {
 	#[inline]
 	fn handle_authenticate(
 		&self,
+		caller: IdentityId,
 		method: String,
 		credentials: HashMap<String, String>,
 		reply: Reply<ServerAuthResponse>,
 	) {
-		match self.auth_service.authenticate(&method, credentials) {
+		match self.auth_service.authenticate_as(caller, &method, credentials) {
 			Ok(AuthResponse::Authenticated {
 				identity,
 				token,
@@ -238,11 +239,12 @@ impl Actor for ServerActor {
 				self.handle_subscribe(identity, rql, params, options, reply);
 			}
 			ServerMessage::Authenticate {
+				caller,
 				method,
 				credentials,
 				reply,
 			} => {
-				self.handle_authenticate(method, credentials, reply);
+				self.handle_authenticate(caller, method, credentials, reply);
 			}
 			ServerMessage::Logout {
 				token,

@@ -77,7 +77,7 @@ export class HttpClient {
         try {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: this.loginHeaders(),
                 body: JSON.stringify(toSnakeCaseKeys({method, credentials}, WIRE_PASSTHROUGH_KEYS)),
                 signal,
             });
@@ -115,7 +115,7 @@ export class HttpClient {
         try {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: this.loginHeaders(),
                 body: JSON.stringify(toSnakeCaseKeys({method, credentials}, WIRE_PASSTHROUGH_KEYS)),
                 signal,
             });
@@ -147,6 +147,14 @@ export class HttpClient {
             if (err.name === 'AbortError') throw new Error("Login timeout or aborted");
             throw err;
         }
+    }
+
+    private loginHeaders(): Record<string, string> {
+        const headers: Record<string, string> = {'Content-Type': 'application/json'};
+        if (this.options.token) {
+            headers['Authorization'] = `Bearer ${this.options.token}`;
+        }
+        return headers;
     }
 
     async logout(reqOpts?: RequestOptions): Promise<void> {

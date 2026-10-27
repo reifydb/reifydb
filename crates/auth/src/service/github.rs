@@ -30,7 +30,11 @@ use crate::{
 pub(crate) const GITHUB_USER_ID_ATTRIBUTE: &str = "github_user_id";
 
 impl AuthService {
-	pub(crate) fn begin_github_login(&self, method: &AuthenticationMethod) -> Result<AuthResponse, Error> {
+	pub(crate) fn begin_github_login(
+		&self,
+		caller: IdentityId,
+		method: &AuthenticationMethod,
+	) -> Result<AuthResponse, Error> {
 		let Some(github) = self.github_auth(method) else {
 			return Ok(not_configured());
 		};
@@ -42,6 +46,7 @@ impl AuthService {
 		]);
 
 		let challenge_id = self.challenges.create(
+			caller,
 			"github".to_string(),
 			"github".to_string(),
 			payload.clone(),
@@ -94,6 +99,9 @@ impl AuthService {
 				reason: "identity is disabled".to_string(),
 			}),
 			Some(ident) => self.authenticate_github_identity(ident.id, &user, ttl),
+			None if method.promote_guest && self.is_guest(challenge.caller)? => {
+				self.promote_github_guest(challenge.caller, &user, ttl)
+			}
 			None => self.auto_provision_github(&user, ttl),
 		}
 	}
@@ -163,16 +171,39 @@ impl AuthService {
 		}
 	}
 
-	#[inline]
-	fn auto_provision_github(&self, user: &GithubUser, ttl: Option<Duration>) -> Result<AuthResponse, Error> {
-		let provider = self.github_provider()?;
-		let properties = provider.create(
+	fn promote_github_guest(
+		&self,
+		guest: IdentityId,
+		user: &GithubUser,
+		ttl: Option<Duration>,
+	) -> Result<AuthResponse, Error> {
+		let properties = self.github_properties(user)?;
+		let user_id = user.id.to_string();
+		let response = self.promote_guest(
+			guest,
+			&format!("github:{}", user.id),
+			"github",
+			properties,
+			Some((GITHUB_USER_ID_ATTRIBUTE, &user_id)),
+			ttl,
+		)?;
+		self.record_github_login(guest, &user.login)?;
+		Ok(response)
+	}
+
+	fn github_properties(&self, user: &GithubUser) -> Result<HashMap<String, String>, Error> {
+		self.github_provider()?.create(
 			&self.rng,
 			&HashMap::from([
 				("user_id".to_string(), user.id.to_string()),
 				("login".to_string(), user.login.clone()),
 			]),
-		)?;
+		)
+	}
+
+	#[inline]
+	fn auto_provision_github(&self, user: &GithubUser, ttl: Option<Duration>) -> Result<AuthResponse, Error> {
+		let properties = self.github_properties(user)?;
 
 		let identity = self.create_github_identity(user, properties)?;
 		self.record_github_login(identity, &user.login)?;
