@@ -288,7 +288,7 @@ mod tests {
 		transaction::{
 			FlowTransaction,
 			mock::FlowTxn,
-			substrate::{FlowSubstrate, apply_operator_state, classify_pending},
+			substrate::{FlowSubstrate, persist},
 			watermark::SourceWatermarks,
 		},
 	};
@@ -417,7 +417,7 @@ mod tests {
 		}
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
+		persist(&store, &seeded);
 
 		let armed: Vec<TimerDue> = flow
 			.get_operator_ids()
@@ -526,7 +526,7 @@ mod tests {
 		}
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
+		persist(&store, &seeded);
 		let armed: Vec<TimerDue> = flow
 			.get_operator_ids()
 			.filter_map(|id| TimerWheel::next_due_stored(id, &store).unwrap())
@@ -678,7 +678,7 @@ mod tests {
 		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
+		persist(&store, &seeded);
 
 		let armed: Vec<TimerDue> = flow
 			.get_operator_ids()
@@ -746,7 +746,7 @@ mod tests {
 		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
+		persist(&store, &seeded);
 
 		let armed: Vec<TimerDue> = flow
 			.get_operator_ids()
@@ -779,7 +779,7 @@ mod tests {
 		TimerWheel::arm(OPERATOR, &mut seed, &due_timer()).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
+		persist(&store, &seeded);
 
 		let armed: Vec<TimerDue> = flow
 			.get_operator_ids()
@@ -832,7 +832,7 @@ mod tests {
 		SourceWatermarks::advance(OPERATOR, &mut seed, at_millis(WATERMARK_MS)).unwrap();
 		let seeded = seed.take_pending();
 		let store = engine.inner().operator_state();
-		apply_operator_state(&store, &seeded, &classify_pending(&store, &seeded).unwrap());
+		persist(&store, &seeded);
 
 		let mut txn = engine.flow_txn().deferred();
 		txn.push_armed(TimerDue {

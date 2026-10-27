@@ -55,21 +55,6 @@ use crate::{
 const SCAN_BUDGET_FACTOR: usize = 16;
 
 impl StandardOperatorStore {
-	#[instrument(name = "store::operator::apply_batch", level = "debug", skip(self, writes), fields(write_count = writes.len()))]
-	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
-		reifydb_assertions! {
-			self.verify_classification(writes);
-			verify_group_scope(writes);
-		}
-		{
-			let _flushing = self.resident.flush_guard();
-			self.resident.apply_batch(writes);
-		}
-		self.occupancy.record(writes);
-		self.census.record(writes);
-		self.invalidate_read_batch(writes);
-	}
-
 	#[instrument(name = "store::operator::apply_batch_with_checkpoints", level = "debug", skip(self, writes, checkpoints, checkpoint_deletes), fields(write_count = writes.len(), checkpoint_count = checkpoints.len()))]
 	pub fn apply_batch_with_checkpoints(
 		&self,
@@ -669,12 +654,6 @@ impl StandardOperatorStore {
 }
 
 impl OperatorStore {
-	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
-		match self {
-			Self::Standard(store) => store.apply_batch(writes),
-		}
-	}
-
 	pub fn apply_batch_with_checkpoints(
 		&self,
 		writes: &[OperatorWrite],

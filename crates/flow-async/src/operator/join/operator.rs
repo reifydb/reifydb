@@ -1246,7 +1246,7 @@ mod seal_tests {
 			pending_get,
 			row_number::RowNumberExtension,
 			state::{StateExtension, StateRange},
-			substrate::{FlowSubstrate, apply_operator_state, classify_pending},
+			substrate::{FlowSubstrate, persist},
 		},
 	};
 
@@ -1472,11 +1472,7 @@ mod seal_tests {
 	fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
 		// State only reaches the store through the batch, so a durable read must go through a commit first.
 		let taken = txn.take_pending();
-		apply_operator_state(
-			&engine.inner().operator_state(),
-			&taken,
-			&classify_pending(&engine.inner().operator_state(), &taken).unwrap(),
-		);
+		persist(&engine.inner().operator_state(), &taken);
 	}
 
 	struct CountingTxn {

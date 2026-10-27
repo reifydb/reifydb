@@ -17,9 +17,8 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::{BoxedHostOperator, apply::engine_retention, host::TxnHostContext},
 	transaction::{
-		ChangeCoordinate, DeferredParams, FlowTransaction,
-		deferred::DeferredTransaction,
-		substrate::{FlowSubstrate, apply_operator_state, classify_pending},
+		ChangeCoordinate, DeferredParams, FlowTransaction, deferred::DeferredTransaction,
+		substrate::FlowSubstrate,
 	},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
@@ -33,6 +32,8 @@ use reifydb_value::{
 	config::ExtensionParams,
 	value::{Value, datetime::DateTime, duration::Duration},
 };
+
+use crate::harness::persist;
 
 pub struct GuestOperatorHarness<C: MountedOperator + OperatorMetadata + 'static> {
 	engine: TestEngine,
@@ -78,8 +79,7 @@ impl<C: MountedOperator + OperatorMetadata + 'static> GuestOperatorHarness<C> {
 		let pending = txn.take_pending();
 		let store =
 			self.substrate.operators.as_ref().expect("the flow harness is built with an operator store");
-		let deferred = classify_pending(store, &pending).expect("the flow harness sizes its operator state");
-		apply_operator_state(store, &pending, &deferred);
+		persist(store, &pending);
 		let mut rest = Pending::new();
 		for (key, write) in pending.rows_ordered() {
 			match write {

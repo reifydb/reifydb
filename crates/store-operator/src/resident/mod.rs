@@ -568,14 +568,6 @@ impl Resident {
 		total
 	}
 
-	pub fn apply_batch(&self, writes: &[OperatorWrite]) {
-		if writes.is_empty() {
-			return;
-		}
-		self.record_writes(writes, None);
-		self.observe_write();
-	}
-
 	pub fn apply_batch_with_checkpoints(
 		&self,
 		writes: &[OperatorWrite],

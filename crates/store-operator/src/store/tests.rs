@@ -40,7 +40,7 @@ use crate::{
 	},
 	range::OperatorRangeConfig,
 	resident::{Resident, ResidentLimits},
-	store::{CheckpointInterlock, StandardOperatorStore, census::OperatorCensus},
+	store::{CheckpointInterlock, StandardOperatorStore, census::OperatorCensus, next_lsn},
 	types::{LayeredPre, OperatorWrite},
 };
 
@@ -158,7 +158,7 @@ fn seed_groups(store: &StandardOperatorStore, groups: &[GroupId]) {
 			}
 		}
 	}
-	store.apply_batch(&writes);
+	store.apply_batch_with_checkpoints(&writes, &[], &[], Some(next_lsn())).unwrap();
 }
 
 fn encoded_order(groups: &[GroupId]) -> Vec<GroupId> {
@@ -226,11 +226,17 @@ fn a_group_page_hides_a_buffered_tombstone_over_a_durable_row() {
 		.pop()
 		.flatten()
 		.map_or(LayeredPre::Absent, |row| LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)));
-	store.apply_batch(&[OperatorWrite::Remove {
-		operator: OP,
-		key: GroupStateKey::bound_unchecked(doomed.clone()),
-		pre,
-	}]);
+	store.apply_batch_with_checkpoints(
+		&[OperatorWrite::Remove {
+			operator: OP,
+			key: GroupStateKey::bound_unchecked(doomed.clone()),
+			pre,
+		}],
+		&[],
+		&[],
+		Some(next_lsn()),
+	)
+	.unwrap();
 
 	let swept = group_page(&store, &groups);
 
@@ -326,7 +332,7 @@ fn a_group_page_keeps_every_row_when_a_flush_lands_between_its_persistent_pages(
 			}
 		})
 		.collect();
-	store.apply_batch(&doomed);
+	store.apply_batch_with_checkpoints(&doomed, &[], &[], Some(next_lsn())).unwrap();
 	let expected = per_group_pages(&store, &groups);
 	assert_eq!(expected.len(), 14, "four groups of four rows less the two buffered deletes");
 	let _ = hook.resident.set(store.resident.clone());
@@ -342,11 +348,11 @@ fn a_group_page_keeps_every_row_when_a_flush_lands_between_its_persistent_pages(
 fn a_buffered_tombstone_hides_the_durable_row_it_deleted_from_the_last_read() {
 	let (store, _guard) = store_fixture();
 
-	store.apply_batch(&[insert(1, "low"), insert(2, "high")]);
+	store.apply_batch_with_checkpoints(&[insert(1, "low"), insert(2, "high")], &[], &[], Some(next_lsn())).unwrap();
 	flush(&store);
 	assert_eq!(last(&store), Some((2, "high".to_string())), "both rows must start out durable");
 
-	store.apply_batch(&[remove(&store, 2)]);
+	store.apply_batch_with_checkpoints(&[remove(&store, 2)], &[], &[], Some(next_lsn())).unwrap();
 
 	assert_eq!(
 		last(&store),
@@ -359,10 +365,22 @@ fn a_buffered_tombstone_hides_the_durable_row_it_deleted_from_the_last_read() {
 fn a_range_whose_every_durable_row_is_buffered_away_reads_as_empty_not_as_the_lowest_row() {
 	let (store, _guard) = store_fixture();
 
-	store.apply_batch(&[insert(1, "low"), insert(2, "mid"), insert(3, "high")]);
+	store.apply_batch_with_checkpoints(
+		&[insert(1, "low"), insert(2, "mid"), insert(3, "high")],
+		&[],
+		&[],
+		Some(next_lsn()),
+	)
+	.unwrap();
 	flush(&store);
 
-	store.apply_batch(&[remove(&store, 3), remove(&store, 2), remove(&store, 1)]);
+	store.apply_batch_with_checkpoints(
+		&[remove(&store, 3), remove(&store, 2), remove(&store, 1)],
+		&[],
+		&[],
+		Some(next_lsn()),
+	)
+	.unwrap();
 
 	assert_eq!(last(&store), None, "a range holding only tombstones has no last row");
 }
@@ -371,9 +389,9 @@ fn a_range_whose_every_durable_row_is_buffered_away_reads_as_empty_not_as_the_lo
 fn a_buffered_row_above_the_durable_tail_wins_the_last_read() {
 	let (store, _guard) = store_fixture();
 
-	store.apply_batch(&[insert(1, "low")]);
+	store.apply_batch_with_checkpoints(&[insert(1, "low")], &[], &[], Some(next_lsn())).unwrap();
 	flush(&store);
-	store.apply_batch(&[insert(2, "buffered")]);
+	store.apply_batch_with_checkpoints(&[insert(2, "buffered")], &[], &[], Some(next_lsn())).unwrap();
 
 	assert_eq!(
 		last(&store),
@@ -471,11 +489,11 @@ fn expiry_remove(store: &StandardOperatorStore, suffix: u64) -> OperatorWrite {
 fn tombstone_wall(store: &StandardOperatorStore, dead: u64) {
 	let armed: Vec<OperatorWrite> =
 		(0..dead).map(|suffix| sweep_insert(expiry_group(), EXPIRY_KEYSPACE, suffix, "armed")).collect();
-	store.apply_batch(&armed);
+	store.apply_batch_with_checkpoints(&armed, &[], &[], Some(next_lsn())).unwrap();
 	flush(store);
 
 	let freed: Vec<OperatorWrite> = (0..dead).map(|suffix| expiry_remove(store, suffix)).collect();
-	store.apply_batch(&freed);
+	store.apply_batch_with_checkpoints(&freed, &[], &[], Some(next_lsn())).unwrap();
 }
 
 fn probe(store: &StandardOperatorStore, batch_size: u64) -> (u64, usize) {
@@ -608,9 +626,9 @@ fn the_key_filter_size_estimate_is_counted_without_enumerating_the_persistent_ti
 #[test]
 fn a_key_filter_restart_still_scans_a_keyspace_whose_last_key_is_deleted_but_not_flushed() {
 	let (store, _guard) = store_fixture();
-	store.apply_batch(&[insert(1, "only")]);
+	store.apply_batch_with_checkpoints(&[insert(1, "only")], &[], &[], Some(next_lsn())).unwrap();
 	flush(&store);
-	store.apply_batch(&[remove(&store, 1)]);
+	store.apply_batch_with_checkpoints(&[remove(&store, 1)], &[], &[], Some(next_lsn())).unwrap();
 	assert!(store.census.snapshot().is_empty(), "the in-memory census must already have dropped the keyspace");
 	let mut source = OperatorStateKeySource::new(store.persistent.clone(), store.census.clone());
 

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
+#[cfg(test)]
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
 	common::CommitVersion,
@@ -11,13 +14,13 @@ use reifydb_core::{
 	},
 	key::operator::state::GroupStateKey,
 };
-use reifydb_store_operator::{
-	store::OperatorStore,
-	types::{LayeredPre, OperatorWrite},
-};
+use reifydb_store_operator::store::OperatorStore;
+#[cfg(test)]
+use reifydb_store_operator::types::classify_slice;
 use reifydb_transaction::dictionary::DictionaryAllocatorRegistry;
 use reifydb_value::{Result, byte_size::ByteSize};
-use rustc_hash::FxHashMap;
+#[cfg(test)]
+use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
 use crate::{
@@ -50,10 +53,6 @@ impl FlowSubstrate {
 			..Self::new(dictionary)
 		}
 	}
-}
-
-pub fn apply_operator_state(store: &OperatorStore, pending: &Pending, deferred: &DeferredClassification) {
-	store.apply_batch(&operator_writes(pending, deferred));
 }
 
 #[instrument(name = "flow::substrate::operator_section", level = "trace", skip_all, fields(
@@ -116,77 +115,16 @@ pub fn operator_section(
 	))
 }
 
-pub type DeferredClassification = FxHashMap<EncodedKey, Option<ByteSize>>;
+#[cfg(test)]
+static LSN: AtomicU64 = AtomicU64::new(0);
 
-#[instrument(name = "flow::substrate::classify_pending", level = "trace", skip_all, fields(pending_count = pending.len()))]
-pub fn classify_pending(store: &OperatorStore, pending: &Pending) -> Result<DeferredClassification> {
-	let mut keys = Vec::new();
-	let mut probes = Vec::new();
-	for (key, _) in pending.state_sorted() {
-		let Some(OperatorScope {
-			operator,
-			inner,
-		}) = operator_state_coordinates(key)
-		else {
-			return Err(FlowStateError::PendingStateKeyUndecodable {
-				key: key.clone(),
-			}
-			.into());
-		};
-		if pending.is_classified(key) {
-			continue;
-		}
-		keys.push(key.clone());
-		probes.push((operator, GroupStateKey::bound_unchecked(inner)));
-	}
-	if probes.is_empty() {
-		return Ok(DeferredClassification::default());
-	}
-	let sizes = store.state_sizes(&probes)?;
-	Ok(keys.into_iter().zip(sizes).collect())
+#[cfg(test)]
+pub(crate) fn next_lsn() -> Lsn {
+	Lsn::new(LSN.fetch_add(1, Ordering::Relaxed) + 1)
 }
 
-#[instrument(name = "flow::substrate::operator_writes", level = "trace", skip_all, fields(pending_count = pending.len()))]
-pub fn operator_writes(pending: &Pending, deferred: &DeferredClassification) -> Vec<OperatorWrite> {
-	let mut writes = Vec::with_capacity(pending.len());
-	for (key, write) in pending.state_sorted() {
-		let Some(OperatorScope {
-			operator,
-			inner,
-		}) = operator_state_coordinates(key)
-		else {
-			panic!("operator state write with no operator reached the apply after classification");
-		};
-		writes.push(match write {
-			PendingWrite::Set(row) => {
-				let post = EncodedPodRow::from(row.clone());
-				match pending.pre_at(key).or_else(|| deferred.get(key).copied()) {
-					Some(Some(pre_value_bytes)) => OperatorWrite::Replace {
-						operator,
-						key: GroupStateKey::bound_unchecked(inner),
-						pre_value_bytes,
-						post,
-					},
-					Some(None) => OperatorWrite::Insert {
-						operator,
-						key: GroupStateKey::bound_unchecked(inner),
-						post,
-					},
-					None => panic!("unclassified operator state write on operator {}", operator.0),
-				}
-			}
-			PendingWrite::Remove {
-				..
-			} => OperatorWrite::Remove {
-				operator,
-				key: GroupStateKey::bound_unchecked(inner),
-				pre: match pending.pre_at(key).or_else(|| deferred.get(key).copied()) {
-					Some(Some(bytes)) => LayeredPre::Present(bytes),
-					Some(None) => LayeredPre::Absent,
-					None => panic!("unclassified operator state remove on operator {}", operator.0),
-				},
-			},
-		});
-	}
-	writes
+#[cfg(test)]
+pub(crate) fn persist(store: &OperatorStore, pending: &Pending) {
+	let (slice, sizes) = operator_section(store, pending, &[], &[]).unwrap();
+	store.apply_batch_with_checkpoints(&classify_slice(&slice, &sizes), &[], &[], Some(next_lsn())).unwrap();
 }

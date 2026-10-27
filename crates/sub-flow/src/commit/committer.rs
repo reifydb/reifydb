@@ -618,6 +618,7 @@ mod commit_integration {
 	use reifydb_wal::lsn::Lsn;
 
 	use super::*;
+	use crate::commit::next_lsn;
 
 	struct SliceReplies {
 		results: Mutex<Vec<(usize, Result<CommitVersion>)>>,
@@ -1348,18 +1349,24 @@ mod commit_integration {
 		});
 		let inner = state_inner(b"k");
 		let before = EncodedPodRow::new(&[0; 4]);
-		store.apply_batch(&[
-			OperatorWrite::Insert {
-				operator: failing,
-				key: inner.clone(),
-				post: before.clone(),
-			},
-			OperatorWrite::Insert {
-				operator: healthy,
-				key: inner.clone(),
-				post: before.clone(),
-			},
-		]);
+		store.apply_batch_with_checkpoints(
+			&[
+				OperatorWrite::Insert {
+					operator: failing,
+					key: inner.clone(),
+					post: before.clone(),
+				},
+				OperatorWrite::Insert {
+					operator: healthy,
+					key: inner.clone(),
+					post: before.clone(),
+				},
+			],
+			&[],
+			&[],
+			Some(next_lsn()),
+		)
+		.unwrap();
 		flush_now(store.resident());
 		store.resident().evict_to_capacity();
 		assert_eq!(

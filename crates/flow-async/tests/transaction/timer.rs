@@ -11,16 +11,14 @@ use reifydb_flow_async::{
 		Timer, TimerDue,
 		wheel::{DueTimers, MAX_TIMERS_PER_SCAN, TimerWheel},
 	},
-	transaction::{
-		DeferredParams, FlowTransaction,
-		deferred::DeferredTransaction,
-		substrate::{FlowSubstrate, apply_operator_state, classify_pending},
-	},
+	transaction::{DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{factory::time::at_millis, value::identity::IdentityId};
+
+use crate::common::persist;
 
 const NODE: OperatorId = OperatorId(1);
 const NO_LIMIT: usize = usize::MAX;
@@ -51,11 +49,7 @@ fn deferred_with_clock(engine: &TestEngine, clock: MockClock) -> DeferredTransac
 fn commit_pending(engine: &TestEngine, txn: &mut impl FlowTransaction) {
 	// Persists into the operator state store so a cold wheel resolves them from the store.
 	let pending = txn.take_pending();
-	apply_operator_state(
-		&engine.inner().operator_state(),
-		&pending,
-		&classify_pending(&engine.inner().operator_state(), &pending).unwrap(),
-	);
+	persist(&engine.inner().operator_state(), &pending);
 }
 
 fn timer(millis: u64, kind: TimerKind, key: &str) -> Timer {

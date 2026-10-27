@@ -33,10 +33,10 @@ use reifydb_flow_async::transaction::{
 	DeferredParams, FlowTransaction,
 	deferred::DeferredTransaction,
 	state::{StateExtension, StateRange},
-	substrate::{FlowSubstrate, classify_pending, operator_writes},
+	substrate::{FlowSubstrate, operator_section},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_store_operator::types::{LayeredPre, OperatorWrite};
+use reifydb_store_operator::types::{LayeredPre, OperatorWrite, classify_slice};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::{interceptor::interceptors::Interceptors, multi::RangeScope};
 use reifydb_value::{
@@ -45,7 +45,7 @@ use reifydb_value::{
 	value::{identity::IdentityId, row_number::RowNumber},
 };
 
-use crate::common::create_test_transaction;
+use crate::common::{create_test_transaction, next_lsn};
 
 fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey, row: EncodedPodRow) {
 	// Stands in for a prior slice's success-side operator state apply.
@@ -69,17 +69,25 @@ fn seed_state_row(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey
 			post: row,
 		},
 	};
-	store.apply_batch(&[write]);
+	store.apply_batch_with_checkpoints(&[write], &[], &[], Some(next_lsn())).unwrap();
 }
 
 fn seed_state_tombstone(engine: &TestEngine, operator: OperatorId, key: &GroupStateKey) {
 	// A remove of a key the persistent tier never held leaves a masking entry in the resident map. Those pages
 	// come back full and carry no rows, which is what makes a scan believe it has reached the end.
-	engine.inner().operator_state().apply_batch(&[OperatorWrite::Remove {
-		operator,
-		key: key.clone(),
-		pre: LayeredPre::Absent,
-	}]);
+	engine.inner()
+		.operator_state()
+		.apply_batch_with_checkpoints(
+			&[OperatorWrite::Remove {
+				operator,
+				key: key.clone(),
+				pre: LayeredPre::Absent,
+			}],
+			&[],
+			&[],
+			Some(next_lsn()),
+		)
+		.unwrap();
 }
 
 fn deferred_shared(engine: &TestEngine) -> DeferredTransaction {
@@ -483,11 +491,11 @@ fn a_last_read_walks_past_more_pending_removes_than_one_page_holds() {
 
 #[test]
 fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
-	// The write path no longer reads a pre-image; classify_pending resolves every unclassified key in one
+	// The write path no longer reads a pre-image; operator_section sizes every unclassified key in one
 	// batch at drain. A key that is already durable must still emit Replace carrying its exact byte size,
-	// and an unseen key must emit Insert. Falsified by returning an empty classification (operator_writes
-	// panics on unclassified) or by claiming Absent for the seeded key, which turns the Replace into an
-	// Insert and drifts the census by the pre-image size forever.
+	// and an unseen key must emit Insert. Falsified by skipping the store probe or by claiming Absent for
+	// the seeded key, which turns the Replace into an Insert and drifts the census by the pre-image size
+	// forever.
 	let engine = TestEngine::new();
 	let operator = OperatorId(1);
 	let seeded = make_key("durable");
@@ -513,8 +521,8 @@ fn a_deferred_state_write_still_classifies_against_the_durable_pre_image() {
 	txn.state_set(operator, vec![(fresh.clone(), make_value("new"))]).unwrap();
 
 	let pending = txn.take_pending();
-	let deferred = classify_pending(&store, &pending).unwrap();
-	let writes = operator_writes(&pending, &deferred);
+	let (slice, sizes) = operator_section(&store, &pending, &[], &[]).unwrap();
+	let writes = classify_slice(&slice, &sizes);
 
 	let replace = writes
 		.iter()

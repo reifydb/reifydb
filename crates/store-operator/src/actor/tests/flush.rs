@@ -51,7 +51,7 @@ use crate::{
 	persistent::{PersistentTier, filter::OperatorStateKeySource, sqlite::SqlitePersistent},
 	range::{OperatorRangeConfig, OperatorRangeTier},
 	resident::{FILTER_KEYS, FLUSH_BUDGET_BYTES, FLUSH_INTERVAL, Resident, ResidentLimits},
-	store::{OperatorStore, census::OperatorCensus},
+	store::{OperatorStore, census::OperatorCensus, next_lsn},
 	types::{BufferedState, FlushBatch, LayeredPre, OperatorWrite, StagedWrite},
 };
 
@@ -104,20 +104,30 @@ fn row(body: &str) -> EncodedPodRow {
 }
 
 fn set(buffer: &Resident, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-	buffer.apply_batch(&[OperatorWrite::Replace {
-		operator,
-		key: GroupStateKey::from_framed(key).expect("test keys are framed operator state keys"),
-		pre_value_bytes: ByteSize::ZERO,
-		post: row,
-	}]);
+	buffer.apply_batch_with_checkpoints(
+		&[OperatorWrite::Replace {
+			operator,
+			key: GroupStateKey::from_framed(key).expect("test keys are framed operator state keys"),
+			pre_value_bytes: ByteSize::ZERO,
+			post: row,
+		}],
+		&[],
+		&[],
+		Some(next_lsn()),
+	);
 }
 
 fn remove(buffer: &Resident, operator: OperatorId, key: EncodedKey) {
-	buffer.apply_batch(&[OperatorWrite::Remove {
-		operator,
-		key: GroupStateKey::from_framed(key).expect("test keys are framed operator state keys"),
-		pre: LayeredPre::Absent,
-	}]);
+	buffer.apply_batch_with_checkpoints(
+		&[OperatorWrite::Remove {
+			operator,
+			key: GroupStateKey::from_framed(key).expect("test keys are framed operator state keys"),
+			pre: LayeredPre::Absent,
+		}],
+		&[],
+		&[],
+		Some(next_lsn()),
+	);
 }
 
 fn entry_bytes(_suffix: u8, body: &str) -> ByteSize {
@@ -159,7 +169,7 @@ fn put(store: &OperatorStore, operator: OperatorId, key: EncodedKey, row: Encode
 			post: row,
 		},
 	};
-	store.apply_batch(&[write]);
+	store.apply_batch_with_checkpoints(&[write], &[], &[], Some(next_lsn())).unwrap();
 }
 
 fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
@@ -172,11 +182,17 @@ fn erase(store: &OperatorStore, operator: OperatorId, key: &EncodedKey) {
 		Some(row) => LayeredPre::Present(ByteSize::from_bytes(row.bytes().len() as u64)),
 		None => LayeredPre::Absent,
 	};
-	store.apply_batch(&[OperatorWrite::Remove {
-		operator,
-		key: GroupStateKey::bound_unchecked(key.clone()),
-		pre,
-	}]);
+	store.apply_batch_with_checkpoints(
+		&[OperatorWrite::Remove {
+			operator,
+			key: GroupStateKey::bound_unchecked(key.clone()),
+			pre,
+		}],
+		&[],
+		&[],
+		Some(next_lsn()),
+	)
+	.unwrap();
 }
 
 #[test]

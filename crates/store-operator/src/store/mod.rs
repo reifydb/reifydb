@@ -12,6 +12,8 @@ mod tests;
 
 #[cfg(test)]
 use std::sync::OnceLock;
+#[cfg(test)]
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::{ops::Deref, sync::Arc};
 
 #[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
@@ -32,6 +34,8 @@ use reifydb_runtime::{
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::Result;
+#[cfg(test)]
+use reifydb_wal::lsn::Lsn;
 
 use crate::{
 	actor::{
@@ -353,4 +357,12 @@ impl Shutdown for OperatorStore {
 			Self::Standard(store) => store.shutdown(),
 		}
 	}
+}
+
+#[cfg(test)]
+static LSN: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(test)]
+pub(crate) fn next_lsn() -> Lsn {
+	Lsn::new(LSN.fetch_add(1, Ordering::Relaxed) + 1)
 }

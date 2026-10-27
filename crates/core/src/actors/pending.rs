@@ -44,10 +44,6 @@ impl Pending {
 		self.pre.entry(key).or_insert(pre);
 	}
 
-	pub fn is_classified(&self, key: &EncodedKey) -> bool {
-		self.pre.contains_key(key)
-	}
-
 	pub fn pre_at(&self, key: &EncodedKey) -> Option<Option<ByteSize>> {
 		self.pre.get(key).copied()
 	}

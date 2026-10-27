@@ -17,10 +17,10 @@ use reifydb_flow_async::transaction::{
 	deferred::DeferredTransaction,
 	join_expiry::{DueStart, JoinDueEntry, JoinDuePage, JoinRowExpiryExtension, join_expiry_key},
 	state::StateExtension,
-	substrate::{FlowSubstrate, apply_operator_state, classify_pending, operator_writes},
+	substrate::{FlowSubstrate, operator_section},
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
-use reifydb_store_operator::types::OperatorWrite;
+use reifydb_store_operator::types::{OperatorWrite, classify_slice};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{
@@ -28,6 +28,8 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{datetime::DateTime, identity::IdentityId, row_number::RowNumber},
 };
+
+use crate::common::{next_lsn, persist};
 
 const NODE: OperatorId = OperatorId(1);
 
@@ -109,19 +111,15 @@ fn entry(group: GroupId, side: u8, row_number: u64, millis: u64) -> JoinDueEntry
 
 fn commit(engine: &TestEngine, txn: &mut DeferredTransaction) {
 	let pending = txn.take_pending();
-	apply_operator_state(
-		&engine.inner().operator_state(),
-		&pending,
-		&classify_pending(&engine.inner().operator_state(), &pending).unwrap(),
-	);
+	persist(&engine.inner().operator_state(), &pending);
 }
 
 fn commit_writes(engine: &TestEngine, txn: &mut DeferredTransaction) -> Vec<OperatorWrite> {
 	let pending = txn.take_pending();
 	let store = engine.inner().operator_state();
-	let deferred = classify_pending(&store, &pending).unwrap();
-	let writes = operator_writes(&pending, &deferred);
-	apply_operator_state(&store, &pending, &classify_pending(&store, &pending).unwrap());
+	let (slice, sizes) = operator_section(&store, &pending, &[], &[]).unwrap();
+	let writes = classify_slice(&slice, &sizes);
+	store.apply_batch_with_checkpoints(&writes, &[], &[], Some(next_lsn())).unwrap();
 	writes
 }
 

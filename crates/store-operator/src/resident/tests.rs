@@ -40,6 +40,7 @@ use crate::{
 	},
 	range::{OperatorRangeTier, RangeSink, tiers::RangeKeyspaceMetrics},
 	resident::{Resident, ResidentLimits, invalidate_flushed},
+	store::next_lsn,
 	types::{BufferedState, DropMarker, FlushBatch, LayeredPre, OperatorStateCensus, OperatorWrite, StagedWrite},
 };
 
@@ -103,20 +104,30 @@ fn row(body: &str) -> EncodedPodRow {
 }
 
 fn set(buffer: &Resident, operator: OperatorId, key: EncodedKey, row: EncodedPodRow) {
-	buffer.apply_batch(&[OperatorWrite::Replace {
-		operator,
-		key: GroupStateKey::from_framed(key).expect("test keys are framed operator state keys"),
-		pre_value_bytes: ByteSize::ZERO,
-		post: row,
-	}]);
+	buffer.apply_batch_with_checkpoints(
+		&[OperatorWrite::Replace {
+			operator,
+			key: GroupStateKey::from_framed(key).expect("test keys are framed operator state keys"),
+			pre_value_bytes: ByteSize::ZERO,
+			post: row,
+		}],
+		&[],
+		&[],
+		Some(next_lsn()),
+	);
 }
 
 fn remove(buffer: &Resident, operator: OperatorId, key: EncodedKey) {
-	buffer.apply_batch(&[OperatorWrite::Remove {
-		operator,
-		key: GroupStateKey::from_framed(key).expect("test keys are framed operator state keys"),
-		pre: LayeredPre::Absent,
-	}]);
+	buffer.apply_batch_with_checkpoints(
+		&[OperatorWrite::Remove {
+			operator,
+			key: GroupStateKey::from_framed(key).expect("test keys are framed operator state keys"),
+			pre: LayeredPre::Absent,
+		}],
+		&[],
+		&[],
+		Some(next_lsn()),
+	);
 }
 
 fn body(row: &Option<EncodedPodRow>) -> String {
@@ -476,18 +487,23 @@ fn take_for_flush_sets_flushing_and_settle_flush_clears_it() {
 #[test]
 fn apply_batch_maps_every_write_variant_onto_its_entry() {
 	let buffer = Resident::new();
-	buffer.apply_batch(&[
-		OperatorWrite::Insert {
-			operator: OP_A,
-			key: GroupStateKey::bound_unchecked(key("set")),
-			post: row("v"),
-		},
-		OperatorWrite::Remove {
-			operator: OP_A,
-			key: GroupStateKey::bound_unchecked(key("removed")),
-			pre: LayeredPre::Absent,
-		},
-	]);
+	buffer.apply_batch_with_checkpoints(
+		&[
+			OperatorWrite::Insert {
+				operator: OP_A,
+				key: GroupStateKey::bound_unchecked(key("set")),
+				post: row("v"),
+			},
+			OperatorWrite::Remove {
+				operator: OP_A,
+				key: GroupStateKey::bound_unchecked(key("removed")),
+				pre: LayeredPre::Absent,
+			},
+		],
+		&[],
+		&[],
+		Some(next_lsn()),
+	);
 
 	let BufferedState::Row(set) = buffer.lookup_state(OP_A, &key("set")) else {
 		panic!("a Set must land in the state map")
@@ -560,7 +576,7 @@ fn a_combined_apply_with_nothing_to_record_leaves_the_buffer_untouched() {
 #[test]
 fn an_empty_write_batch_leaves_the_buffer_untouched() {
 	let buffer = Resident::new();
-	buffer.apply_batch(&[]);
+	buffer.apply_batch_with_checkpoints(&[], &[], &[], Some(next_lsn()));
 
 	assert!(
 		buffer.take_for_flush().is_none(),

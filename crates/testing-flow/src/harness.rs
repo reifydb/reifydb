@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{mem, sync::Arc};
+use std::{
+	mem,
+	sync::{
+		Arc,
+		atomic::{AtomicU64, Ordering},
+	},
+};
 
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::{key::encoded::EncodedKey, row::bytes::EncodedBytes};
@@ -27,7 +33,7 @@ use reifydb_flow_async::{
 	transaction::{
 		ChangeCoordinate, DeferredParams, FlowTransaction,
 		deferred::DeferredTransaction,
-		substrate::{FlowSubstrate, apply_operator_state, classify_pending},
+		substrate::{FlowSubstrate, operator_section},
 	},
 };
 use reifydb_runtime::context::{
@@ -38,6 +44,7 @@ use reifydb_runtime::context::{
 use reifydb_sdk::flow::operator::mount::mount;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use reifydb_sdk::flow::operator::{MountedOperator, OperatorMetadata};
+use reifydb_store_operator::{store::OperatorStore, types::classify_slice};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_testing_chaos::operator::{reclaim::StateFootprint, subject::Subject};
 use reifydb_transaction::{
@@ -50,6 +57,7 @@ use reifydb_value::{
 	byte_size::ByteSize,
 	value::{datetime::DateTime, identity::IdentityId, system_columns::time},
 };
+use reifydb_wal::lsn::Lsn;
 
 pub struct Harness<O> {
 	engine: TestEngine,
@@ -118,8 +126,7 @@ impl<O> Harness<O> {
 		let pending = txn.take_pending();
 		let store =
 			self.substrate.operators.as_ref().expect("the flow harness is built with an operator store");
-		let deferred = classify_pending(store, &pending).expect("the flow harness sizes its operator state");
-		apply_operator_state(store, &pending, &deferred);
+		persist(store, &pending);
 		let mut rest = Pending::new();
 		for (key, write) in pending.rows_ordered() {
 			match write {
@@ -378,6 +385,19 @@ impl<O: HostOperator> Subject for Harness<O> {
 			},
 		)
 	}
+}
+
+static LSN: AtomicU64 = AtomicU64::new(0);
+
+fn next_lsn() -> Lsn {
+	Lsn::new(LSN.fetch_add(1, Ordering::Relaxed) + 1)
+}
+
+pub(crate) fn persist(store: &OperatorStore, pending: &Pending) {
+	let (slice, sizes) =
+		operator_section(store, pending, &[], &[]).expect("the flow harness sizes its operator state");
+	store.apply_batch_with_checkpoints(&classify_slice(&slice, &sizes), &[], &[], Some(next_lsn()))
+		.expect("the flow harness applies its operator state");
 }
 
 #[cfg(test)]

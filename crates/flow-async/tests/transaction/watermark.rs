@@ -9,15 +9,14 @@ use reifydb_core::{
 	key::operator::state::{GroupId, KeyspaceId, OperatorStateKey},
 };
 use reifydb_flow_async::transaction::{
-	DeferredParams, FlowTransaction,
-	deferred::DeferredTransaction,
-	substrate::{FlowSubstrate, apply_operator_state, classify_pending},
-	watermark::*,
+	DeferredParams, FlowTransaction, deferred::DeferredTransaction, substrate::FlowSubstrate, watermark::*,
 };
 use reifydb_runtime::context::clock::{Clock, MockClock};
 use reifydb_test_harness::engine::TestEngine;
 use reifydb_transaction::interceptor::interceptors::Interceptors;
 use reifydb_value::{factory::time::at_millis, value::identity::IdentityId};
+
+use crate::common::persist;
 
 const SOURCE_A: OperatorId = OperatorId(1);
 const SOURCE_B: OperatorId = OperatorId(2);
@@ -44,11 +43,7 @@ fn deferred(engine: &TestEngine, clock: MockClock) -> DeferredTransaction {
 fn commit_pending(engine: &TestEngine, txn: &mut impl FlowTransaction) {
 	// Persists the pending writes so a cold instance resolves them as a restarted process would.
 	let pending = txn.take_pending();
-	apply_operator_state(
-		&engine.inner().operator_state(),
-		&pending,
-		&classify_pending(&engine.inner().operator_state(), &pending).unwrap(),
-	);
+	persist(&engine.inner().operator_state(), &pending);
 }
 
 #[test]

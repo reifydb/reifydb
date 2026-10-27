@@ -750,7 +750,7 @@ mod integration {
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::{
 			read::{ReadFrom, read_from},
-			substrate::{FlowSubstrate, apply_operator_state, classify_pending},
+			substrate::FlowSubstrate,
 			watermark::SourceWatermarks,
 		},
 	};
@@ -770,6 +770,7 @@ mod integration {
 	use crate::{
 		commit::{
 			committer::{Committer, CommitterActor, CommitterHandle, CommitterMessage},
+			persist,
 			quiescence::FlowMaterialization,
 		},
 		discovery::routing,
@@ -906,11 +907,7 @@ mod integration {
 		// "Restored state" means the watermark row is in the store; an uncommitted advance is not restored
 		// state.
 		let seeded = seed.take_pending();
-		apply_operator_state(
-			&engine.operator_state(),
-			&seeded,
-			&classify_pending(&engine.operator_state(), &seeded).unwrap(),
-		);
+		persist(&engine.operator_state(), &seeded);
 
 		let computer = SliceComputer::new(engine.clone());
 		let (held, _) = computer.resolved_holds(&mut flow_engine, flow, version).unwrap();

@@ -165,7 +165,10 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
-		transaction::{join_expiry::join_expiry_key, substrate::FlowSubstrate},
+		transaction::{
+			join_expiry::join_expiry_key,
+			substrate::{FlowSubstrate, next_lsn},
+		},
 	};
 
 	fn occupied_keyspaces(store: &OperatorStore, operator: OperatorId) -> Vec<KeyspaceId> {
@@ -235,11 +238,19 @@ mod tests {
 		);
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
-		store.apply_batch(&[OperatorWrite::Insert {
-			operator,
-			key: unmanaged_key(b"k").expect("a fixture name must fit the keyspace's id width").into(),
-			post: EncodedPodRow::new(&[1u8; 64]),
-		}]);
+		store.apply_batch_with_checkpoints(
+			&[OperatorWrite::Insert {
+				operator,
+				key: unmanaged_key(b"k")
+					.expect("a fixture name must fit the keyspace's id width")
+					.into(),
+				post: EncodedPodRow::new(&[1u8; 64]),
+			}],
+			&[],
+			&[],
+			Some(next_lsn()),
+		)
+		.unwrap();
 		assert!(
 			store.bytes(operator).unwrap() > ByteSize::ZERO,
 			"precondition: the operator's state is resident"
@@ -293,22 +304,28 @@ mod tests {
 
 		let store = inner.substrate.operators.clone().expect("the test substrate carries an operator store");
 		let at = DateTime::from_millis(5_000);
-		store.apply_batch(&[
-			OperatorWrite::Insert {
-				operator,
-				key: join_expiry_key(GroupId::hashed(Hash128(3)), 0, RowNumber(1)),
-				post: JoinRowExpiry {
-					at,
-				}
-				.encode_state()
-				.expect("a join expiry payload must encode"),
-			},
-			OperatorWrite::Insert {
-				operator,
-				key: join_expiry_due_key(at, GroupId::hashed(Hash128(3)), 0, RowNumber(1)),
-				post: EncodedPodRow::new(&[]),
-			},
-		]);
+		store.apply_batch_with_checkpoints(
+			&[
+				OperatorWrite::Insert {
+					operator,
+					key: join_expiry_key(GroupId::hashed(Hash128(3)), 0, RowNumber(1)),
+					post: JoinRowExpiry {
+						at,
+					}
+					.encode_state()
+					.expect("a join expiry payload must encode"),
+				},
+				OperatorWrite::Insert {
+					operator,
+					key: join_expiry_due_key(at, GroupId::hashed(Hash128(3)), 0, RowNumber(1)),
+					post: EncodedPodRow::new(&[]),
+				},
+			],
+			&[],
+			&[],
+			Some(next_lsn()),
+		)
+		.unwrap();
 		assert_eq!(
 			occupied_keyspaces(&store, operator),
 			vec![KeyspaceId::JOIN_ROW_EXPIRY, KeyspaceId::JOIN_EXPIRY_DUE],
@@ -384,11 +401,19 @@ mod tests {
 		let store = engine.inner().operator_state();
 
 		let operator = OperatorId(1);
-		store.apply_batch(&[OperatorWrite::Insert {
-			operator,
-			key: unmanaged_key(b"k").expect("a fixture name must fit the keyspace's id width").into(),
-			post: EncodedPodRow::new(&[1u8; 64]),
-		}]);
+		store.apply_batch_with_checkpoints(
+			&[OperatorWrite::Insert {
+				operator,
+				key: unmanaged_key(b"k")
+					.expect("a fixture name must fit the keyspace's id width")
+					.into(),
+				post: EncodedPodRow::new(&[1u8; 64]),
+			}],
+			&[],
+			&[],
+			Some(next_lsn()),
+		)
+		.unwrap();
 		let durable_bytes = store.bytes(operator).unwrap();
 		assert!(durable_bytes > ByteSize::ZERO, "precondition: the durable operator's state is resident");
 
