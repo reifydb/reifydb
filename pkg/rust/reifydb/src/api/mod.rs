@@ -44,7 +44,10 @@ use reifydb_store_single::{
 use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{CheckpointedStore, CommitWal, Recovery, floor_checkpoint, memory_wal, nop_wal, open_wal, replay_single},
+	wal::{
+		CheckpointedStore, CommitWal, Recovery, floor_checkpoint, memory_wal, nop_wal, open_wal,
+		replay_operator, replay_single,
+	},
 };
 use reifydb_value::value::duration::Duration;
 
@@ -279,6 +282,10 @@ fn create_memory_store_with(
 		.saved_lsn()
 		.unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
 	replay_single(wal, &single_store, saved_lsn, wal_enabled);
+	let operator_saved_lsn = operator_store
+		.saved_lsn()
+		.unwrap_or_else(|err| panic!("operator.db saved lsn could not be read at boot: {err}"));
+	replay_operator(wal, &operator_store, operator_saved_lsn, wal_enabled);
 	let transaction_single =
 		SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)
@@ -348,13 +355,20 @@ fn create_sqlite_store_with(
 		sqlite.set_checkpoint_threshold(operator_wal_autocheckpoint);
 		sqlite
 	});
+	let operator_persistent = match operator_persistent {
+		PersistentTier::Sqlite(_) => OperatorPersistentConfig::opened_with_checkpoint(
+			operator_persistent,
+			floor_checkpoint(wal, CheckpointedStore::Operator),
+		),
+		storage => OperatorPersistentConfig::opened(storage),
+	};
 	let operator_store = OperatorStore::standard(OperatorStoreConfig {
 		range: operator_range,
 		resident: ResidentConfig {
 			storage: Resident::with_limits(operator_resident),
 			flush_interval: operator_flush_interval,
 		},
-		..OperatorStoreConfig::sqlite(OperatorPersistentConfig::opened(operator_persistent), spawner.clone())
+		..OperatorStoreConfig::sqlite(operator_persistent, spawner.clone())
 	});
 
 	let cdc_persistent = if cdc_memory {
@@ -374,6 +388,10 @@ fn create_sqlite_store_with(
 		.saved_lsn()
 		.unwrap_or_else(|err| panic!("single.db saved lsn could not be read at boot: {err}"));
 	replay_single(wal, &single_store, saved_lsn, wal_enabled);
+	let operator_saved_lsn = operator_store
+		.saved_lsn()
+		.unwrap_or_else(|err| panic!("operator.db saved lsn could not be read at boot: {err}"));
+	replay_operator(wal, &operator_store, operator_saved_lsn, wal_enabled);
 	let transaction_single =
 		SingleTransaction::new(single_store.clone(), eventbus.clone(), wal.clone(), clock.clone());
 	(multi_store, single_store, operator_store, cdc_store, transaction_single, eventbus)

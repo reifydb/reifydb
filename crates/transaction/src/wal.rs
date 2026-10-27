@@ -13,7 +13,11 @@ use reifydb_codec::log::{
 };
 use reifydb_core::{
 	common::CommitVersion,
-	interface::store::{WalCheckpoint, WalFloorCheckpoint},
+	interface::{
+		catalog::flow::OperatorId,
+		store::{WalCheckpoint, WalFloorCheckpoint},
+	},
+	key::operator::state::GroupStateKey,
 	wal::WalRecord,
 };
 use reifydb_runtime::{
@@ -29,6 +33,7 @@ use reifydb_store_log::{
 	segment::{Scan, Stop},
 };
 use reifydb_store_multi::store::multi::classify_deltas;
+use reifydb_store_operator::{store::OperatorStore, types::classify_slice};
 use reifydb_store_single::SingleStore;
 use reifydb_value::{Result, byte_size::ByteSize, reifydb_assertions, util::cowvec::CowVec};
 use reifydb_wal::{
@@ -237,6 +242,7 @@ pub(crate) fn check_record_size(encoded: &[u8]) -> Result<()> {
 pub enum CheckpointedStore {
 	Multi,
 	Single,
+	Operator,
 }
 
 impl CheckpointedStore {
@@ -244,6 +250,7 @@ impl CheckpointedStore {
 		match self {
 			Self::Multi => "multi",
 			Self::Single => "single",
+			Self::Operator => "operator",
 		}
 	}
 }
@@ -409,6 +416,68 @@ pub fn replay_single(wal: &CommitWal, store: &SingleStore, saved_lsn: Option<Lsn
 				replayed.lsn.as_u64()
 			)
 		});
+	}
+}
+
+pub fn replay_operator(wal: &CommitWal, store: &OperatorStore, saved_lsn: Option<Lsn>, enabled: bool) {
+	let _replaying = store.begin_commit();
+	let cursors = wal.cursors().unwrap_or_else(|err| panic!("commit log cursors could not be read at boot: {err}"));
+	if enabled
+		&& let Some(saved) = saved_lsn
+		&& cursors.appended.is_none_or(|head| saved > head)
+	{
+		panic!(
+			"operator.db is saved through lsn {} but the commit log head is {:?}: replay would skip operator \
+			 records the commit log holds",
+			saved.as_u64(),
+			cursors.appended.map(Lsn::as_u64)
+		);
+	}
+	let from = saved_lsn.map_or(cursors.start.unwrap_or(Lsn::FIRST), |lsn| Lsn::new(lsn.as_u64() + 1));
+	let records = wal.replay(from).unwrap_or_else(|err| match err {
+		WalError::Purged {
+			oldest,
+			..
+		} => panic!(
+			"operator.db is saved through lsn {} but the commit log starts at lsn {}: gc dropped operator \
+			 records operator.db never received",
+			from.as_u64() - 1,
+			oldest.as_u64()
+		),
+		err => panic!(
+			"commit log replay of operator records from lsn {} failed to start: {err}",
+			from.as_u64()
+		),
+	});
+	for replayed in records {
+		let replayed = replayed.unwrap_or_else(|err| {
+			panic!("commit log replay of operator records failed after lsn {}: {err}", from.as_u64())
+		});
+		let WalRecord::Multi(record) = replayed.body else {
+			continue;
+		};
+		for slice in &record.operator.slices {
+			let probes: Vec<(OperatorId, GroupStateKey)> =
+				slice.writes.iter().map(|(operator, key, _)| (*operator, key.clone())).collect();
+			let sizes = store.state_sizes(&probes).unwrap_or_else(|err| {
+				panic!(
+					"operator state sizes for lsn {} could not be probed at boot: {err}",
+					replayed.lsn.as_u64()
+				)
+			});
+			store.apply_batch_with_checkpoints(
+				&classify_slice(slice, &sizes),
+				&slice.checkpoints,
+				&slice.deletes,
+				Some(replayed.lsn),
+			)
+			.unwrap_or_else(|err| {
+				panic!(
+					"operator state for lsn {} is in the commit log but failed to apply at boot: {err}",
+					replayed.lsn.as_u64()
+				)
+			});
+		}
 	}
 }
 

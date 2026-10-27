@@ -34,7 +34,6 @@ use reifydb_runtime::{
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::Result;
-#[cfg(test)]
 use reifydb_wal::lsn::Lsn;
 
 use crate::{
@@ -43,6 +42,7 @@ use crate::{
 		resident_flush::{FlushMessage, PendingFlush, begin_flush_pending, flush_now},
 	},
 	config::OperatorStoreConfig,
+	error::Result as OperatorResult,
 	persistent::{Persistent, PersistentTier},
 	range::{
 		OperatorRangeTier, RangeSink,
@@ -213,6 +213,10 @@ impl StandardOperatorStore {
 		self.resident.begin_commit()
 	}
 
+	pub fn saved_lsn(&self) -> OperatorResult<Option<Lsn>> {
+		self.persistent.saved_lsn()
+	}
+
 	pub fn occupancy(&self) -> &KeyspaceOccupancy {
 		&self.occupancy
 	}
@@ -299,6 +303,12 @@ impl OperatorStore {
 	pub fn begin_commit(&self) -> OperatorCommitGuard {
 		match self {
 			Self::Standard(store) => store.begin_commit(),
+		}
+	}
+
+	pub fn saved_lsn(&self) -> OperatorResult<Option<Lsn>> {
+		match self {
+			Self::Standard(store) => store.saved_lsn(),
 		}
 	}
 

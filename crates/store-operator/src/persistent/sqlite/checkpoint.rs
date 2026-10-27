@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
+use reifydb_wal::lsn::Lsn;
 use rusqlite::params;
 use tracing::instrument;
 
@@ -9,7 +10,7 @@ use crate::{
 	error::{OperatorError, Result},
 	persistent::sqlite::{
 		SqlitePersistent,
-		sql::{CHECKPOINT_FLOOR_SQL, CHECKPOINT_GET_SQL, CHECKPOINT_LIST_SQL},
+		sql::{CHECKPOINT_FLOOR_SQL, CHECKPOINT_GET_SQL, CHECKPOINT_LIST_SQL, SAVED_LSN_GET_SQL},
 	},
 };
 
@@ -56,5 +57,23 @@ impl SqlitePersistent {
 			out.push(FlowId(row.get::<_, i64>(0)? as u64));
 		}
 		Ok(out)
+	}
+
+	#[instrument(name = "store::operator::persistent::sqlite::saved_lsn", level = "trace", skip(self))]
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+		let guard = self.read_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Err(OperatorError::Closed);
+		};
+		let mut stmt = conn.prepare_cached(SAVED_LSN_GET_SQL)?;
+		let mut rows = stmt.query([])?;
+		let Some(row) = rows.next()? else {
+			return Ok(None);
+		};
+		let bytes = row.get::<_, Vec<u8>>(0)?;
+		let bytes: [u8; 8] = bytes.as_slice().try_into().map_err(|_| OperatorError::Backend {
+			message: format!("operator.db saved lsn holds {} bytes, expected 8", bytes.len()),
+		})?;
+		Ok(Some(Lsn::new(u64::from_le_bytes(bytes))))
 	}
 }

@@ -24,6 +24,7 @@ use reifydb_runtime::shutdown::Shutdown;
 use reifydb_sqlite::{SqliteConfig, SqliteTempPathGuard};
 use reifydb_store::metrics::PageCacheMetrics;
 use reifydb_value::{Result as ValueResult, byte_size::ByteSize};
+use reifydb_wal::lsn::Lsn;
 
 use crate::{
 	error::Result,
@@ -73,6 +74,14 @@ impl PersistentTier {
 		match self {
 			Self::Sqlite(storage) => Some(storage),
 			_ => None,
+		}
+	}
+
+	pub fn saved_lsn(&self) -> Result<Option<Lsn>> {
+		match self {
+			Self::Absent | Self::Memory(_) | Self::Testing(_) => Ok(None),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(storage) => storage.saved_lsn(),
 		}
 	}
 
