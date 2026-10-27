@@ -20,6 +20,7 @@ use std::{
 use reifydb_core::{
 	common::{CommitVersion, SourceVersion},
 	delta::Delta,
+	interface::operator::OperatorSection,
 };
 use reifydb_value::{Result, reifydb_assertions, util::cowvec::CowVec};
 
@@ -39,6 +40,7 @@ struct CommitPayload {
 	rebase: Option<CommitRebase>,
 	prepared: Option<Prepared>,
 	source: Option<SourceVersion>,
+	section: Option<OperatorSection>,
 	result: Option<Result<CreateCommitResult>>,
 	evicted: Vec<CommittedWindow>,
 }
@@ -64,6 +66,7 @@ impl CommitRequest {
 		rebase: Option<CommitRebase>,
 		prepared: Option<Prepared>,
 		source: Option<SourceVersion>,
+		section: OperatorSection,
 	) -> Self {
 		Self {
 			payload: UnsafeCell::new(CommitPayload {
@@ -74,6 +77,7 @@ impl CommitRequest {
 				rebase,
 				prepared,
 				source,
+				section: Some(section),
 				result: None,
 				evicted: Vec::new(),
 			}),
@@ -234,9 +238,11 @@ where
 		rebase: Option<CommitRebase>,
 		prepared: Option<Prepared>,
 		source: Option<SourceVersion>,
+		section: OperatorSection,
 		window_size: u64,
 	) -> Result<(CreateCommitResult, CowVec<Delta>)> {
-		let request = CommitRequest::new(version, window_size, conflicts, deltas, rebase, prepared, source);
+		let request =
+			CommitRequest::new(version, window_size, conflicts, deltas, rebase, prepared, source, section);
 		self.queue.push(&request as *const CommitRequest as *mut CommitRequest);
 		loop {
 			if self.queue.sequencer_active() {
@@ -293,6 +299,10 @@ where
 					.expect("a queued commit request must carry a conflict manager");
 				let deltas =
 					payload.deltas.as_mut().expect("a queued commit request must carry its deltas");
+				let section = payload
+					.section
+					.take()
+					.expect("a queued commit request must carry its operator section");
 				let result = self.service(
 					state,
 					payload.version,
@@ -301,6 +311,7 @@ where
 					payload.rebase.take(),
 					payload.prepared.take(),
 					payload.source,
+					section,
 					payload.window_size,
 					timing,
 					&mut payload.evicted,

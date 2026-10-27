@@ -14,6 +14,7 @@ use reifydb_core::{
 		WithEventBus,
 		catalog::{object::ObjectId, storage::StorageId},
 		change::{Change, ChangeOrigin},
+		operator::OperatorSlice,
 		store::MultiVersionRow,
 	},
 	key::{
@@ -31,6 +32,7 @@ use crate::{
 	TransactionId,
 	accumulator::ChangeAccumulator,
 	change::{RowChange, TransactionalCatalogChanges},
+	commit::Committed,
 	dictionary::DictionaryAllocatorRegistry,
 	error::TransactionError,
 	interceptor::{
@@ -220,51 +222,46 @@ impl CommandTransaction {
 	#[instrument(name = "transaction::command::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> Result<CommitVersion> {
 		self.check_active()?;
-		self.finalize_commit(false)
+		let (mut multi, row_changes) = self.take_for_commit();
+		let version = multi.commit(self.durability)?;
+		self.finish_commit(multi, row_changes, version)?;
+		Ok(version)
 	}
 
-	fn finalize_commit(&mut self, unchecked: bool) -> Result<CommitVersion> {
+	fn take_for_commit(&mut self) -> (MultiWriteTransaction, Vec<RowChange>) {
 		let Some(multi) = self.cmd.take() else {
 			unreachable!("Transaction state inconsistency")
 		};
 		reifydb_assertions! {
 			assert!(
 				self.state == TransactionState::Active,
-				"finalize_commit entered in non-Active state; commit()/commit_unchecked() must \
+				"take_for_commit entered in non-Active state; commit()/commit_unchecked() must \
 				 pass check_active() first, otherwise this double-commits or commits a \
 				 rolled-back/poisoned transaction"
 			);
 		}
 		self.accumulator.clear();
-		let id = multi.id();
 		self.state = TransactionState::Committed;
 		let row_changes = take(&mut self.row_changes);
-		let version = self.commit_and_post(multi, id, row_changes, unchecked)?;
-		Ok(version)
+		(multi, row_changes)
 	}
 
 	#[inline]
-	fn commit_and_post(
+	fn finish_commit(
 		&mut self,
 		mut multi: MultiWriteTransaction,
-		id: TransactionId,
 		row_changes: Vec<RowChange>,
-		unchecked: bool,
-	) -> Result<CommitVersion> {
+		version: CommitVersion,
+	) -> Result<()> {
 		let changes = TransactionalCatalogChanges::default();
-		let version = if unchecked {
-			multi.commit_unchecked(self.durability)?
-		} else {
-			multi.commit(self.durability)?
-		};
 		#[cfg(feature = "testing")]
 		{
 			self.committed_op_counts = multi.op_counts.clone();
 		}
 		let self_lease = multi.take_self_lease();
-		self.run_post_commit(PostCommitContext::new(id, version, changes, row_changes))?;
+		self.run_post_commit(PostCommitContext::new(multi.id(), version, changes, row_changes))?;
 		release_multi(self_lease, multi);
-		Ok(version)
+		Ok(())
 	}
 
 	#[instrument(name = "transaction::command::post_commit", level = "trace", skip_all)]
@@ -289,9 +286,12 @@ impl CommandTransaction {
 	}
 
 	#[instrument(name = "transaction::command::commit_unchecked", level = "debug", skip(self))]
-	pub fn commit_unchecked(&mut self) -> Result<CommitVersion> {
+	pub fn commit_unchecked(&mut self) -> Result<Committed> {
 		self.check_active()?;
-		self.finalize_commit(true)
+		let (mut multi, row_changes) = self.take_for_commit();
+		let committed = multi.commit_unchecked(self.durability)?;
+		self.finish_commit(multi, row_changes, committed.version)?;
+		Ok(committed)
 	}
 
 	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self))]
@@ -404,6 +404,12 @@ impl CommandTransaction {
 	pub fn stamp_source(&mut self, source: SourceVersion) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().stamp_source(source);
+		Ok(())
+	}
+
+	pub fn push_operator_slice(&mut self, slice: OperatorSlice) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().push_operator_slice(slice);
 		Ok(())
 	}
 

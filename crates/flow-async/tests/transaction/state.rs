@@ -387,12 +387,12 @@ fn deferred_reads_owned_rows_at_state_version() {
 		make_value("w").into_bytes(),
 	)])
 	.unwrap();
-	let low_version = cmd.commit_unchecked().unwrap();
+	let low_version = cmd.commit_unchecked().unwrap().version;
 
 	let mut cmd = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
 	cmd.disable_conflict_tracking().unwrap();
 	cmd.set(vec![(row_key.clone().into(), row_value.clone())]).unwrap();
-	let committed_at = cmd.commit_unchecked().unwrap();
+	let committed_at = cmd.commit_unchecked().unwrap().version;
 	assert!(low_version < committed_at);
 
 	let mut txn = DeferredTransaction::new(DeferredParams {

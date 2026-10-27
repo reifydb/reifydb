@@ -20,7 +20,7 @@ use reifydb_core::{
 	event::transaction::PostCommitEvent,
 	interface::{
 		catalog::{object::ObjectId, storage::StorageId},
-		operator::OperatorSection,
+		operator::{OperatorSection, OperatorSlice},
 		store::{MultiVersionGet, MultiVersionRow},
 	},
 	key::{
@@ -45,6 +45,7 @@ use super::{MultiTransaction, version::StandardVersionProvider};
 use crate::counting::OpCounts;
 use crate::{
 	TransactionId,
+	commit::Committed,
 	delta::optimize_deltas,
 	error::TransactionError,
 	multi::{
@@ -89,6 +90,7 @@ pub struct MultiWriteTransaction {
 	pub(crate) version: CommitVersion,
 	pub(crate) read_version: Option<CommitVersion>,
 	source: Option<SourceVersion>,
+	operator: OperatorSection,
 	pub(crate) size: ByteSize,
 	pub(crate) count: u64,
 	pub(crate) oracle: Arc<Oracle<StandardVersionProvider>>,
@@ -128,6 +130,7 @@ impl MultiWriteTransaction {
 			version,
 			read_version: None,
 			source: None,
+			operator: OperatorSection::default(),
 			size: ByteSize::ZERO,
 			count: 0,
 			oracle,
@@ -182,6 +185,10 @@ impl MultiWriteTransaction {
 
 	pub fn stamp_source(&mut self, source: SourceVersion) {
 		self.source = Some(source);
+	}
+
+	pub fn push_operator_slice(&mut self, slice: OperatorSlice) {
+		self.operator.slices.push(slice);
 	}
 
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) {
@@ -728,6 +735,7 @@ impl MultiWriteTransaction {
 				deltas,
 				Some(prepared),
 				self.source,
+				self.operator.clone(),
 			),
 			Some(rebase) => self.oracle.new_commit_rebased(
 				base_version,
@@ -736,6 +744,7 @@ impl MultiWriteTransaction {
 				rebase,
 				Some(prepared),
 				self.source,
+				self.operator.clone(),
 			),
 		};
 		self.release_read_snapshot(base_version);
@@ -770,7 +779,8 @@ impl MultiWriteTransaction {
 		let base_version = self.base_version();
 
 		let rebase = self.take_rebase();
-		let result = self.oracle.advance_unchecked(base_version, deltas, rebase, self.source);
+		let result =
+			self.oracle.advance_unchecked(base_version, deltas, rebase, self.source, self.operator.clone());
 		self.release_read_snapshot(base_version);
 		let (result, deltas) = result?;
 
@@ -825,7 +835,7 @@ impl MultiWriteTransaction {
 				CommitVersion(0),
 				SourceVersion(0),
 				&persistent,
-				&OperatorSection::default(),
+				&self.operator,
 				&mut buf,
 			);
 			check_record_size(&buf)?;
@@ -957,6 +967,7 @@ impl MultiWriteTransaction {
 		let _ = mem::take(&mut self.delta_log);
 		let _ = mem::take(&mut self.removed_after_set);
 		let _ = mem::take(&mut self.committed_pres);
+		let _ = mem::take(&mut self.operator);
 	}
 }
 
@@ -971,7 +982,7 @@ impl MultiWriteTransaction {
 		before_publish: impl FnOnce(CommitVersion),
 		durability: Durability,
 	) -> Result<CommitVersion> {
-		if self.pending_writes.is_empty() {
+		if self.pending_writes.is_empty() && self.operator.slices.is_empty() {
 			self.discard();
 			before_publish(CommitVersion(0));
 			return Ok(CommitVersion(0));
@@ -996,16 +1007,23 @@ impl MultiWriteTransaction {
 	}
 
 	#[instrument(name = "transaction::multi::commit_unchecked", level = "debug", skip(self), fields(pending_count = self.pending_writes().len()))]
-	pub(crate) fn commit_unchecked(&mut self, durability: Durability) -> Result<CommitVersion> {
-		if self.pending_writes.is_empty() {
+	pub(crate) fn commit_unchecked(&mut self, durability: Durability) -> Result<Committed> {
+		if self.pending_writes.is_empty() && self.operator.slices.is_empty() {
 			self.discard();
-			return Ok(CommitVersion(0));
+			return Ok(Committed {
+				version: CommitVersion(0),
+				lsn: None,
+			});
 		}
 		self.forget_present_tags();
 		self.resolve_removed_after_set()?;
 		let deltas = self.build_deltas();
 		let (commit_version, lsn, deltas) = self.commit_pending_unchecked(deltas)?;
-		self.finalize_commit(commit_version, lsn, deltas, |_| {}, durability)
+		let version = self.finalize_commit(commit_version, lsn, deltas, |_| {}, durability)?;
+		Ok(Committed {
+			version,
+			lsn: Some(lsn),
+		})
 	}
 
 	#[inline]

@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::common::CommitVersion;
 use reifydb_value::Result;
+use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
 use crate::transaction::command::CommandTransaction;
@@ -12,6 +13,12 @@ use crate::transaction::command::CommandTransaction;
 pub type CommitApply = Box<dyn FnOnce(&mut CommandTransaction) -> Result<()> + Send>;
 
 pub type CommitCompletion = Box<dyn FnOnce(Result<CommitVersion>) + Send>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Committed {
+	pub version: CommitVersion,
+	pub lsn: Option<Lsn>,
+}
 
 pub struct CommitSubmission {
 	pub apply: CommitApply,
@@ -50,7 +57,7 @@ fn apply_and_commit(begin: &CommitBegin, apply: CommitApply) -> Result<CommitVer
 	}
 	let result = transaction.commit_unchecked();
 	release(transaction);
-	result
+	result.map(|committed| committed.version)
 }
 
 #[instrument(name = "transaction::commit::begin", level = "debug", skip_all)]
