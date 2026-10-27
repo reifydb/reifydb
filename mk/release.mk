@@ -160,42 +160,46 @@ release:
 	echo "$(GREEN)Releasing version: $$NEW_VERSION$(NC)"; \
 	echo ""; \
 	if [ "$(FORCE)" = "1" ]; then \
-		echo "$(YELLOW)[1/7] Skipping version check (FORCE=1)...$(NC)"; \
+		echo "$(YELLOW)[1/8] Skipping version check (FORCE=1)...$(NC)"; \
 		echo "$(RED)⚠ WARNING: Forcing release of existing version!$(NC)"; \
 	else \
-		echo "$(YELLOW)[1/7] Checking if version already exists...$(NC)"; \
+		echo "$(YELLOW)[1/8] Checking if version already exists...$(NC)"; \
 		make check-version-exists "VERSION=$$NEW_VERSION" || exit 1; \
 		echo "$(GREEN)✓ Version $$NEW_VERSION is available$(NC)"; \
 	fi; \
 	echo ""; \
 	if [ "$(SKIP_TESTS)" = "1" ]; then \
-		echo "$(YELLOW)[2/7] Skipping full test suite (SKIP_TESTS=1)...$(NC)"; \
+		echo "$(YELLOW)[2/8] Skipping full test suite (SKIP_TESTS=1)...$(NC)"; \
 		echo "$(RED)⚠ WARNING: Releasing without running tests!$(NC)"; \
 	else \
-		echo "$(YELLOW)[2/7] Running full test suite and validation (make all)...$(NC)"; \
+		echo "$(YELLOW)[2/8] Running full test suite and validation (make all)...$(NC)"; \
 		$(MAKE) all || exit 1; \
 		echo "$(GREEN)✓ All tests passed and containers built$(NC)"; \
 	fi; \
 	echo ""; \
-	echo "$(YELLOW)[3/7] Validating release readiness...$(NC)"; \
+	echo "$(YELLOW)[3/8] Validating release readiness...$(NC)"; \
 	make validate-release "VERSION=$$NEW_VERSION" || exit 1; \
 	echo "$(GREEN)✓ Validation passed$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[4/7] Updating all package versions...$(NC)"; \
+	echo "$(YELLOW)[4/8] Updating all package versions...$(NC)"; \
 	make set-version "VERSION=$$NEW_VERSION" || exit 1; \
 	echo "$(GREEN)✓ Versions updated$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[5/7] Creating git commit and tag...$(NC)"; \
+	echo "$(YELLOW)[5/8] Building size-optimized WebAssembly packages...$(NC)"; \
+	$(MAKE) build-wasm-release || exit 1; \
+	echo "$(GREEN)✓ WebAssembly packages built$(NC)"; \
+	echo ""; \
+	echo "$(YELLOW)[6/8] Creating git commit and tag...$(NC)"; \
 	if [ ! -f "$(SCRIPTS_DIR)/git-release.sh" ]; then echo "$(RED)Error: Required script $(SCRIPTS_DIR)/git-release.sh not found$(NC)"; exit 1; fi; \
 	$(SCRIPTS_DIR)/git-release.sh $$NEW_VERSION || exit 1; \
 	echo "$(GREEN)✓ Git operations completed$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[6/7] Publishing packages...$(NC)"; \
+	echo "$(YELLOW)[7/8] Publishing packages...$(NC)"; \
 	if [ ! -f "$(SCRIPTS_DIR)/publish-release.sh" ]; then echo "$(RED)Error: Required script $(SCRIPTS_DIR)/publish-release.sh not found$(NC)"; exit 1; fi; \
 	$(SCRIPTS_DIR)/publish-release.sh $$NEW_VERSION || exit 1; \
 	echo "$(GREEN)✓ All packages published$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[7/7] Pushing to remote...$(NC)"; \
+	echo "$(YELLOW)[8/8] Pushing to remote...$(NC)"; \
 	git push origin release || exit 1; \
 	git push origin "v$$NEW_VERSION" || exit 1; \
 	echo "$(GREEN)✓ Pushed to remote$(NC)"; \

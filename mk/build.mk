@@ -5,7 +5,7 @@
 # Build Targets - Build all packages
 # =============================================================================
 
-.PHONY: build build-workspace build-pkg-typescript build-wasm check check-value-no-features check-flow-async-no-features
+.PHONY: build build-workspace build-pkg-typescript build-wasm build-wasm-release check check-value-no-features check-flow-async-no-features
 
 # Main build target - builds everything
 build: build-workspace build-wasm build-pkg-typescript
@@ -66,3 +66,12 @@ build-wasm:
 		exit 1; \
 	fi
 	@./scripts/build-wasm.sh
+
+build-wasm-release:
+	@echo "Building size-optimized WebAssembly packages..."
+	@if ! command -v wasm-pack >/dev/null 2>&1; then \
+		echo "Error: wasm-pack is not installed."; \
+		echo "   Install with: cargo install wasm-pack"; \
+		exit 1; \
+	fi
+	@./scripts/build-wasm.sh wasm-release

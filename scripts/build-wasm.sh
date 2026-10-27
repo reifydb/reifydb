@@ -17,6 +17,12 @@ set -e
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 WASM_DIR="$REPO_ROOT/pkg/webassembly"
+PROFILE="${1:-release}"
+if [ "$PROFILE" = "release" ]; then
+    PROFILE_FLAG="--release"
+else
+    PROFILE_FLAG="--profile $PROFILE"
+fi
 
 echo "Building ReifyDB WASM packages..."
 echo
@@ -31,21 +37,21 @@ echo "Building for web (ES modules)..."
 wasm-pack build \
     --target web \
     --out-dir dist/web \
-    --release
+    $PROFILE_FLAG
 
 # Build for Node.js
 echo "Building for Node.js..."
 wasm-pack build \
     --target nodejs \
     --out-dir dist/node \
-    --release
+    $PROFILE_FLAG
 
 # Build for bundlers
 echo "Building for bundlers (webpack, vite, etc.)..."
 wasm-pack build \
     --target bundler \
     --out-dir dist/bundler \
-    --release
+    $PROFILE_FLAG
 
 echo
 echo "WASM build complete!"
