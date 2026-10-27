@@ -4,7 +4,7 @@
 use reifydb_value::{
 	Result,
 	error::TypeError,
-	fragment::Fragment,
+	fragment::LazyFragment,
 	value::{number::safe::convert::SafeConvert, value_type::get::GetType},
 };
 
@@ -14,7 +14,7 @@ use crate::interface::{
 };
 
 pub trait Convert {
-	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl LazyFragment) -> Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType;
@@ -42,12 +42,11 @@ impl TargetConvert<'_> {
 }
 
 impl Convert for TargetConvert<'_> {
-	fn convert<From, To>(&self, from: From, fragment: impl Into<Fragment>) -> Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl LazyFragment) -> Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,
 	{
-		let fragment = fragment.into();
 		match &self.saturation_policy() {
 			ColumnSaturationStrategy::Error => from
 				.checked_convert()
@@ -56,7 +55,7 @@ impl Convert for TargetConvert<'_> {
 						return TypeError::IntegerPrecisionLoss {
 							object_type: From::get_type(),
 							target: To::get_type(),
-							fragment: fragment.clone(),
+							fragment: fragment.fragment(),
 						}
 						.into();
 					};
@@ -64,7 +63,7 @@ impl Convert for TargetConvert<'_> {
 					let descriptor = self.target.and_then(|c| c.to_number_descriptor());
 					TypeError::NumberOutOfRange {
 						target: To::get_type(),
-						fragment: fragment.clone(),
+						fragment: fragment.fragment(),
 						descriptor,
 					}
 					.into()

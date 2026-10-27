@@ -791,7 +791,7 @@ where
 	Fit<T>: SafeConvert<T>,
 	ColumnBuilder: Push<T>,
 {
-	match ctx.convert::<Fit<T>, T>(Fit::new(value, target), fragment)? {
+	match ctx.convert::<Fit<T>, T>(Fit::new(value, target), &fragment)? {
 		Some(value) => out.push::<T>(value),
 		None => out.push_none(),
 	}
@@ -813,9 +813,9 @@ where
 {
 	let mut out = ColumnBuilder::with_capacity(target.clone(), values.len());
 	for value in values {
-		let converted = match ctx.convert::<From, To>(value.clone(), lazy_fragment.fragment())? {
+		let converted = match ctx.convert::<From, To>(value.clone(), || lazy_fragment.fragment())? {
 			Some(value) => {
-				ctx.convert::<Fit<To>, To>(Fit::new(value, &target), lazy_fragment.fragment())?
+				ctx.convert::<Fit<To>, To>(Fit::new(value, &target), || lazy_fragment.fragment())?
 			}
 			None => None,
 		};
@@ -841,8 +841,7 @@ where
 {
 	let mut out = ColumnBuilder::with_capacity(target_kind, container.len());
 	for &val in container {
-		let fragment = lazy_fragment.fragment();
-		match ctx.convert::<From, To>(val, fragment)? {
+		match ctx.convert::<From, To>(val, || lazy_fragment.fragment())? {
 			Some(v) => push(&mut out, v),
 			None => out.push_none(),
 		}
@@ -865,8 +864,7 @@ where
 	let mut out = ColumnBuilder::with_capacity(target_kind, container.len());
 	for val in container {
 		let val = val.clone();
-		let fragment = lazy_fragment.fragment();
-		match ctx.convert::<From, To>(val, fragment)? {
+		match ctx.convert::<From, To>(val, || lazy_fragment.fragment())? {
 			Some(v) => push(&mut out, v),
 			None => out.push_none(),
 		}
@@ -881,7 +879,7 @@ pub mod tests {
 
 		use reifydb_value::{
 			Result,
-			fragment::Fragment,
+			fragment::{Fragment, LazyFragment},
 			value::{
 				column_view::ColumnView,
 				number::safe::convert::SafeConvert,
@@ -989,7 +987,7 @@ pub mod tests {
 
 		impl Convert for &TestCtx {
 			/// Simulates a conversion failure for one- and two-byte integer sources only.
-			fn convert<From, To>(&self, val: From, _fragment: impl Into<Fragment>) -> Result<Option<To>>
+			fn convert<From, To>(&self, val: From, _fragment: impl LazyFragment) -> Result<Option<To>>
 			where
 				From: SafeConvert<To> + GetType,
 				To: GetType,
