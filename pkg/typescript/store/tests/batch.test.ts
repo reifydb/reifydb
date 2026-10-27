@@ -3,7 +3,7 @@
 import {describe, expect, it} from 'vitest';
 import {Shape} from '@reifydb/core';
 import {Store, rql} from '../src';
-import {BatchingFakeClient, FakeClient, flush} from './fake-client';
+import {FakeClient, flush} from './fake-client';
 
 const shape = Shape.object({id: Shape.int4(), name: Shape.string()});
 const monitors = rql(shape)`from test::monitors`;
@@ -11,25 +11,13 @@ const results = rql(shape)`from test::results`;
 const regions = rql(shape)`from test::regions`;
 
 function batching() {
-    const client = new BatchingFakeClient();
+    const client = new FakeClient();
     const errors: Error[] = [];
-    const store = new Store(client, {batch: true, onBackgroundError: error => errors.push(error)});
+    const store = new Store(client, {onBackgroundError: error => errors.push(error)});
     return {client, store, errors};
 }
 
 describe('batched subscription opening', () => {
-    it('leaves every subscribe on its own unless the store was told to batch', async () => {
-        // Batching changes when a subscription reaches the transport and how a failure fans out, so
-        // a store that was not asked for it must keep issuing one call per subscription.
-        const client = new BatchingFakeClient();
-        const store = new Store(client);
-        store.subscribe(monitors, null);
-        store.subscribe(results, null);
-        await flush();
-        expect(client.batches).toHaveLength(0);
-        expect(client.subscribes).toHaveLength(2);
-    });
-
     it('opens every subscription started in one tick as a single batch', async () => {
         // React runs a page's mount effects in one synchronous pass, so this is the whole point:
         // six hooks on a dashboard become one round trip rather than six.
@@ -39,9 +27,8 @@ describe('batched subscription opening', () => {
         store.subscribe(regions, null);
         await flush();
 
-        expect(client.subscribes).toHaveLength(0);
-        expect(client.batches).toHaveLength(1);
-        expect(client.batches[0].subscriptions.map(subscription => subscription.rql)).toEqual([monitors.rql, results.rql, regions.rql]);
+        expect(client.subscribes).toHaveLength(1);
+        expect(client.subscribes[0].subscriptions.map(subscription => subscription.rql)).toEqual([monitors.rql, results.rql, regions.rql]);
     });
 
     it('turns each entry ready with the id the ack gave that subscription', async () => {
@@ -52,14 +39,16 @@ describe('batched subscription opening', () => {
         store.subscribe(results, null);
         await flush();
 
-        client.batches[0].resolve({batchId: 'batch-1', subscriptionIds: ['sub-monitors', 'sub-results']});
+        client.subscribes[0].resolve(['sub-monitors', 'sub-results']);
         await flush();
 
         expect(store.getEntry(monitors, null).status).toBe('ready');
         expect(store.getEntry(results, null).status).toBe('ready');
 
         store.reset();
-        expect(client.unsubscribes.map(call => call.subscriptionId).sort()).toEqual([
+        await flush();
+        expect(client.unsubscribes).toHaveLength(1);
+        expect([...client.unsubscribes[0].subscriptionIds].sort()).toEqual([
             'sub-monitors',
             'sub-results'
         ]);
@@ -74,7 +63,7 @@ describe('batched subscription opening', () => {
         await flush();
 
         const error = new Error('denied');
-        client.batches[0].reject(error);
+        client.subscribes[0].reject(error);
         await flush();
 
         expect(store.getEntry(monitors, null).status).toBe('error');
@@ -90,7 +79,7 @@ describe('batched subscription opening', () => {
         store.subscribe(results, null);
         await flush();
 
-        client.batches[0].resolve({batchId: 'batch-1', subscriptionIds: ['sub-monitors']});
+        client.subscribes[0].resolve(['sub-monitors']);
         await flush();
 
         expect(store.getEntry(monitors, null).status).toBe('ready');
@@ -107,10 +96,10 @@ describe('batched subscription opening', () => {
         release();
         await flush();
 
-        client.batches[0].resolve({batchId: 'batch-1', subscriptionIds: ['sub-monitors', 'sub-results']});
+        client.subscribes[0].resolve(['sub-monitors', 'sub-results']);
         await flush();
 
-        expect(client.unsubscribes.map(call => call.subscriptionId)).toEqual(['sub-monitors']);
+        expect(client.unsubscribes.map(call => call.subscriptionIds)).toEqual([['sub-monitors']]);
         expect(store.getEntry(results, null).status).toBe('ready');
     });
 
@@ -122,7 +111,6 @@ describe('batched subscription opening', () => {
         store.reset();
         await flush();
 
-        expect(client.batches).toHaveLength(0);
         expect(client.subscribes).toHaveLength(0);
     });
 
@@ -135,21 +123,9 @@ describe('batched subscription opening', () => {
         store.subscribe(results, null);
         await flush();
 
-        expect(client.batches).toHaveLength(2);
-        expect(client.batches[0].subscriptions.map(subscription => subscription.rql)).toEqual([monitors.rql]);
-        expect(client.batches[1].subscriptions.map(subscription => subscription.rql)).toEqual([results.rql]);
-    });
-
-    it('falls back to one subscribe each when the transport has no batch path', async () => {
-        // A store is handed whatever client the app was built with. Asking for batching against a
-        // transport that cannot do it has to degrade, not fail the page.
-        const client = new FakeClient();
-        const store = new Store(client, {batch: true});
-        store.subscribe(monitors, null);
-        store.subscribe(results, null);
-        await flush();
-
-        expect(client.subscribes.map(call => call.rql)).toEqual([monitors.rql, results.rql]);
+        expect(client.subscribes).toHaveLength(2);
+        expect(client.subscribes[0].subscriptions.map(subscription => subscription.rql)).toEqual([monitors.rql]);
+        expect(client.subscribes[1].subscriptions.map(subscription => subscription.rql)).toEqual([results.rql]);
     });
 
     it('still shares one subscription between two subscribers of the same rql', async () => {
@@ -160,7 +136,8 @@ describe('batched subscription opening', () => {
         store.subscribe(monitors, null);
         await flush();
 
-        expect(client.batches[0].subscriptions).toHaveLength(1);
+        expect(client.subscribes).toHaveLength(1);
+        expect(client.subscribes[0].subscriptions).toHaveLength(1);
     });
 
     it('delivers a change to the subscription that asked for it', async () => {
@@ -170,12 +147,74 @@ describe('batched subscription opening', () => {
         store.subscribe(monitors, null);
         store.subscribe(results, null);
         await flush();
-        client.batches[0].resolve({batchId: 'batch-1', subscriptionIds: ['sub-monitors', 'sub-results']});
+        client.subscribes[0].resolve(['sub-monitors', 'sub-results']);
         await flush();
 
-        client.batches[0].subscriptions[1].callbacks.onInsert?.([{'#rownum': 1, id: 7, name: 'r'}]);
+        client.subscribes[0].subscriptions[1].callbacks.onInsert?.([{'#rownum': 1, id: 7, name: 'r'}]);
 
         expect(store.getEntry(monitors, null).data).toEqual([]);
         expect(store.getEntry(results, null).data).toEqual([{id: 7, name: 'r'}]);
+    });
+
+    it('gives back every subscription released in one tick in a single unsubscribe', async () => {
+        // An unsubscribe per release would turn a page unmount into one round trip per hook.
+        const {client, store} = batching();
+        const releaseMonitors = store.subscribe(monitors, null);
+        const releaseResults = store.subscribe(results, null);
+        await flush();
+        client.subscribes[0].resolve(['sub-monitors', 'sub-results']);
+        await flush();
+
+        releaseMonitors();
+        releaseResults();
+        await flush();
+
+        expect(client.unsubscribes.map(call => call.subscriptionIds)).toEqual([['sub-monitors', 'sub-results']]);
+    });
+
+    it('gives back every subscription released before the ack in a single unsubscribe', async () => {
+        // Each late id given back on its own would cost one unsubscribe per hook of an unmounted page.
+        const {client, store} = batching();
+        const releaseMonitors = store.subscribe(monitors, null);
+        const releaseResults = store.subscribe(results, null);
+        await flush();
+        releaseMonitors();
+        releaseResults();
+        await flush();
+        expect(client.unsubscribes).toHaveLength(0);
+
+        client.subscribes[0].resolve(['sub-monitors', 'sub-results']);
+        await flush();
+
+        expect(client.unsubscribes.map(call => call.subscriptionIds)).toEqual([['sub-monitors', 'sub-results']]);
+    });
+
+    it('sends the unsubscribe of a tick before its subscribe', async () => {
+        // Subscribing first would hold both the old and the new server subscription during a params change.
+        const {client, store} = batching();
+        const order: string[] = [];
+        const subscribe = client.subscribe.bind(client);
+        const unsubscribe = client.unsubscribe.bind(client);
+        client.subscribe = subscriptions => {
+            order.push('subscribe');
+            return subscribe(subscriptions);
+        };
+        client.unsubscribe = subscriptionIds => {
+            order.push('unsubscribe');
+            return unsubscribe(subscriptionIds);
+        };
+        const release = store.subscribe(monitors, null);
+        await flush();
+        client.subscribes[0].resolve(['sub-monitors']);
+        await flush();
+        order.length = 0;
+
+        release();
+        store.subscribe(results, null);
+        await flush();
+
+        expect(order).toEqual(['unsubscribe', 'subscribe']);
+        expect(client.unsubscribes.map(call => call.subscriptionIds)).toEqual([['sub-monitors']]);
+        expect(client.subscribes[1].subscriptions.map(subscription => subscription.rql)).toEqual([results.rql]);
     });
 });

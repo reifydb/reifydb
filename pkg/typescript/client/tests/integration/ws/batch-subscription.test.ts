@@ -34,7 +34,7 @@ describe('WebSocket Batch Subscriptions', () => {
     });
 
     describe('Basic Batch Flow', () => {
-        it('should successfully batchSubscribe to multiple queries', async () => {
+        it('should subscribe to multiple queries in one call', async () => {
             const tableA = createTestTableName('batch_a');
             const tableB = createTestTableName('batch_b');
             await createTestTable(wsClient, tableA, ['id Int4', 'name Utf8']);
@@ -43,7 +43,7 @@ describe('WebSocket Batch Subscriptions', () => {
             const trackerA = createCallbackTracker();
             const trackerB = createCallbackTracker();
 
-            const batch = await wsClient.batchSubscribe([
+            const ids = await wsClient.subscribe([
                 {
                     rql: `from test::${tableA}`,
                     shape: Shape.object({ id: Shape.number(), name: Shape.string() }),
@@ -56,24 +56,26 @@ describe('WebSocket Batch Subscriptions', () => {
                 }
             ]);
 
-            expect(batch.batchId).toBeDefined();
-            expect(typeof batch.batchId).toBe('string');
-            expect(batch.batchId.length).toBeGreaterThan(0);
-            expect(batch.subscriptionIds).toHaveLength(2);
-            expect(batch.subscriptionIds[0]).not.toBe(batch.subscriptionIds[1]);
+            expect(ids).toHaveLength(2);
+            expect(typeof ids[0]).toBe('string');
+            expect(ids[0].length).toBeGreaterThan(0);
+            expect(typeof ids[1]).toBe('string');
+            expect(ids[1].length).toBeGreaterThan(0);
+            expect(ids[0]).not.toBe(ids[1]);
 
-            const batches = (wsClient as any).batches;
-            expect(batches.has(batch.batchId)).toBe(true);
+            const subscriptions = (wsClient as any).subscriptions;
+            expect(subscriptions.has(ids[0])).toBe(true);
+            expect(subscriptions.has(ids[1])).toBe(true);
 
-            await wsClient.batchUnsubscribe(batch.batchId);
+            await wsClient.unsubscribe(ids);
         }, 10000);
 
-        it('should successfully batchUnsubscribe and clear state', async () => {
+        it('should unsubscribe a list and clear state', async () => {
             const tableName = createTestTableName('batch_unsub');
             await createTestTable(wsClient, tableName, ['id Int4']);
 
             const tracker = createCallbackTracker();
-            const batch = await wsClient.batchSubscribe([
+            const ids = await wsClient.subscribe([
                 {
                     rql: `from test::${tableName}`,
                     shape: Shape.object({ id: Shape.number() }),
@@ -81,16 +83,16 @@ describe('WebSocket Batch Subscriptions', () => {
                 }
             ]);
 
-            await wsClient.batchUnsubscribe(batch.batchId);
+            const subscriptions = (wsClient as any).subscriptions;
+            expect(subscriptions.has(ids[0])).toBe(true);
 
-            const batches = (wsClient as any).batches;
-            const subToBatch = (wsClient as any).subToBatch;
-            expect(batches.has(batch.batchId)).toBe(false);
-            expect(subToBatch.has(batch.subscriptionIds[0])).toBe(false);
+            await wsClient.unsubscribe(ids);
+
+            expect(subscriptions.has(ids[0])).toBe(false);
         }, 10000);
 
-        it('should reject batchSubscribe with empty subscriptions', async () => {
-            await expect(wsClient.batchSubscribe([])).rejects.toThrow(
+        it('should reject subscribe with empty subscriptions', async () => {
+            await expect(wsClient.subscribe([])).rejects.toThrow(
                 /at least one subscription/i
             );
         });
@@ -109,7 +111,7 @@ describe('WebSocket Batch Subscriptions', () => {
             const trackerA = createCallbackTracker(shapeA);
             const trackerB = createCallbackTracker(shapeB);
 
-            const batch = await wsClient.batchSubscribe([
+            const ids = await wsClient.subscribe([
                 { rql: `from test::${tableA}`, shape: shapeA, callbacks: { onInsert: trackerA.callback } },
                 { rql: `from test::${tableB}`, shape: shapeB, callbacks: { onInsert: trackerB.callback } }
             ]);
@@ -140,7 +142,7 @@ describe('WebSocket Batch Subscriptions', () => {
             expect(rowB.id).toBe(42);
             expect(rowB.value).toBe(100);
 
-            await wsClient.batchUnsubscribe(batch.batchId);
+            await wsClient.unsubscribe(ids);
         }, 10000);
 
         it('should dispatch UPDATE and REMOVE to the right subscriptions', async () => {
@@ -158,7 +160,7 @@ describe('WebSocket Batch Subscriptions', () => {
             const updateB = createCallbackTracker(shape);
             const removeB = createCallbackTracker(shape);
 
-            const batch = await wsClient.batchSubscribe([
+            const ids = await wsClient.subscribe([
                 {
                     rql: `from test::${tableA}`,
                     shape,
@@ -214,7 +216,7 @@ describe('WebSocket Batch Subscriptions', () => {
             expect(removeB.getCallCount()).toBe(1);
             expect(removeA.getCallCount()).toBe(0);
 
-            await wsClient.batchUnsubscribe(batch.batchId);
+            await wsClient.unsubscribe(ids);
         }, 15000);
 
         it('should coalesce simultaneous writes across subscriptions', async () => {
@@ -227,7 +229,7 @@ describe('WebSocket Batch Subscriptions', () => {
             const trackerA = createCallbackTracker(shape);
             const trackerB = createCallbackTracker(shape);
 
-            const batch = await wsClient.batchSubscribe([
+            const ids = await wsClient.subscribe([
                 { rql: `from test::${tableA}`, shape, callbacks: { onInsert: trackerA.callback } },
                 { rql: `from test::${tableB}`, shape, callbacks: { onInsert: trackerB.callback } }
             ]);
@@ -243,17 +245,17 @@ describe('WebSocket Batch Subscriptions', () => {
             expect(trackerA.getAllRows()[0].id).toBe(1);
             expect(trackerB.getAllRows()[0].id).toBe(2);
 
-            await wsClient.batchUnsubscribe(batch.batchId);
+            await wsClient.unsubscribe(ids);
         }, 15000);
 
-        it('should stop invoking callbacks after batchUnsubscribe', async () => {
+        it('should stop invoking callbacks after unsubscribe', async () => {
             const tableName = createTestTableName('batch_silence');
             await createTestTable(wsClient, tableName, ['id Int4']);
 
             const shape = Shape.object({ id: Shape.number() });
             const tracker = createCallbackTracker(shape);
 
-            const batch = await wsClient.batchSubscribe([
+            const ids = await wsClient.subscribe([
                 { rql: `from test::${tableName}`, shape, callbacks: { onInsert: tracker.callback } }
             ]);
 
@@ -265,7 +267,7 @@ describe('WebSocket Batch Subscriptions', () => {
             await tracker.waitForCall();
             expect(tracker.getCallCount()).toBe(1);
 
-            await wsClient.batchUnsubscribe(batch.batchId);
+            await wsClient.unsubscribe(ids);
 
             await wsClient.command(
                 `INSERT test::${tableName} [{ id: 2 }]`,
@@ -298,39 +300,31 @@ describe('WebSocket Batch Subscriptions', () => {
             const trackerW = createCallbackTracker(shape);
             const trackerS = createCallbackTracker(shape);
 
-            const [batch1, batch2, singleId] = await Promise.all([
-                wsClient.batchSubscribe([
+            const [ids1, ids2, [singleId]] = await Promise.all([
+                wsClient.subscribe([
                     { rql: `from test::${tableX}`, shape, callbacks: { onInsert: trackerX.callback } },
                     { rql: `from test::${tableY}`, shape, callbacks: { onInsert: trackerY.callback } }
                 ]),
-                wsClient.batchSubscribe([
+                wsClient.subscribe([
                     { rql: `from test::${tableZ}`, shape, callbacks: { onInsert: trackerZ.callback } },
                     { rql: `from test::${tableW}`, shape, callbacks: { onInsert: trackerW.callback } }
                 ]),
-                wsClient.subscribe(
-                    `from test::${tableS}`,
-                    null,
-                    shape,
-                    { onInsert: trackerS.callback }
-                )
+                wsClient.subscribe([
+                    { rql: `from test::${tableS}`, params: null, shape, callbacks: { onInsert: trackerS.callback } }
+                ])
             ]);
 
-            expect(batch1.batchId).not.toBe(batch2.batchId);
-            expect(batch1.subscriptionIds).toHaveLength(2);
-            expect(batch2.subscriptionIds).toHaveLength(2);
+            expect(ids1).toHaveLength(2);
+            expect(ids2).toHaveLength(2);
             const allSubIds = new Set([
-                ...batch1.subscriptionIds,
-                ...batch2.subscriptionIds,
+                ...ids1,
+                ...ids2,
                 singleId
             ]);
             expect(allSubIds.size).toBe(5);
 
-            const batches = (wsClient as any).batches;
-            const subToBatch = (wsClient as any).subToBatch;
             const subscriptions = (wsClient as any).subscriptions;
-            expect(batches.size).toBe(2);
-            expect(subToBatch.size).toBe(4);
-            expect(subscriptions.size).toBe(1);
+            expect(subscriptions.size).toBe(5);
 
             await Promise.all([
                 wsClient.command(`INSERT test::${tableX} [{ id: 1 }]`, null, []),
@@ -354,12 +348,14 @@ describe('WebSocket Batch Subscriptions', () => {
             expect(trackerW.getAllRows()[0].id).toBe(4);
             expect(trackerS.getAllRows()[0].id).toBe(5);
 
-            // Unsubscribe one batch; the other batch and the single sub must keep firing.
-            await wsClient.batchUnsubscribe(batch1.batchId);
-            expect(batches.size).toBe(1);
-            expect(batches.has(batch2.batchId)).toBe(true);
-            expect(subToBatch.size).toBe(2);
-            expect(subscriptions.size).toBe(1);
+            // Unsubscribe one list; the other list and the single sub must keep firing.
+            await wsClient.unsubscribe(ids1);
+            expect(subscriptions.size).toBe(3);
+            expect(subscriptions.has(ids1[0])).toBe(false);
+            expect(subscriptions.has(ids1[1])).toBe(false);
+            expect(subscriptions.has(ids2[0])).toBe(true);
+            expect(subscriptions.has(ids2[1])).toBe(true);
+            expect(subscriptions.has(singleId)).toBe(true);
 
             trackerX.clear();
             trackerY.clear();
@@ -382,8 +378,8 @@ describe('WebSocket Batch Subscriptions', () => {
             expect(trackerZ.getAllRows()[0].id).toBe(13);
             expect(trackerS.getAllRows()[0].id).toBe(15);
 
-            await wsClient.batchUnsubscribe(batch2.batchId);
-            await wsClient.unsubscribe(singleId);
+            await wsClient.unsubscribe(ids2);
+            await wsClient.unsubscribe([singleId]);
         }, 20000);
     });
 
@@ -406,7 +402,7 @@ describe('WebSocket Batch Subscriptions', () => {
             const trackerA = createCallbackTracker(shape);
             const trackerB = createCallbackTracker(shape);
 
-            const batch = await wsClient.batchSubscribe([
+            const ids = await wsClient.subscribe([
                 { rql: `from test::${tableA}`, shape, callbacks: { onInsert: trackerA.callback } },
                 { rql: `from test::${tableB}`, shape, callbacks: { onInsert: trackerB.callback } }
             ]);
@@ -428,7 +424,7 @@ describe('WebSocket Batch Subscriptions', () => {
             expect(trackerA.getAllRows()[0].id).toBe(10);
             expect(trackerB.getAllRows()[0].id).toBe(20);
 
-            await wsClient.batchUnsubscribe(batch.batchId);
+            await wsClient.unsubscribe(ids);
         }, 15000);
     });
 
@@ -449,7 +445,7 @@ describe('WebSocket Batch Subscriptions', () => {
             const N = 8;
             const LINGER_MS = 500;
 
-            const batch = await wsClient.batchSubscribe([
+            const subscriptionIds = await wsClient.subscribe([
                 {
                     rql: `from test::${table}`,
                     shape,
@@ -472,7 +468,7 @@ describe('WebSocket Batch Subscriptions', () => {
             const ids = tracker.getAllRows().map(r => r.id).sort((a, b) => a - b);
             expect(ids).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 
-            await wsClient.batchUnsubscribe(batch.batchId);
+            await wsClient.unsubscribe(subscriptionIds);
         }, 15000);
     });
 });

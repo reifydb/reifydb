@@ -29,14 +29,15 @@ describe('StoreProvider', () => {
             return <span>{entry.status}</span>;
         }
         const {container, rerender} = render(<StoreProvider store={first.store}><Consumer/></StoreProvider>);
+        await act(flush);
         await act(async () => {
-            first.client.subscribes[0].resolve('sub-1');
+            first.client.subscribes[0].resolve(['sub-1']);
             await flush();
         });
         expect(container.textContent).toBe('ready');
         rerender(<StoreProvider store={second.store}><Consumer/></StoreProvider>);
         await act(flush);
-        expect(first.client.unsubscribes.map(call => call.subscriptionId)).toEqual(['sub-1']);
+        expect(first.client.unsubscribes.map(call => call.subscriptionIds)).toEqual([['sub-1']]);
         expect(first.store.getSnapshot().entries).toEqual({});
         expect(second.client.subscribes).toHaveLength(1);
         expect(container.textContent).toBe('loading');

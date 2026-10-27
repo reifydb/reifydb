@@ -145,11 +145,11 @@ describe('create status page flow', () => {
     // A refused monitors subscription would otherwise leave the page spinning with nothing saying why.
     const refused: StoreClient = {
       ...client,
-      batchSubscribe: async (subscriptions) => {
+      subscribe: async (subscriptions) => {
         if (subscriptions.some((subscription) => subscription.rql === monitors.rql)) {
           throw new Error('monitors subscription refused')
         }
-        return client.batchSubscribe(subscriptions)
+        return client.subscribe(subscriptions)
       },
     }
     renderWithProviders(<StatusPageNewPage />, new Store(refused, STORE_OPTIONS))

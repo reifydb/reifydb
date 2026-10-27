@@ -86,20 +86,21 @@ describe('tile stream', () => {
 
   it('releases every chunk subscription on close', async () => {
     // A stream that keeps one chunk after close leaks a live subscription per page visit.
-    const subscribe = vi.spyOn(client, 'batchSubscribe')
-    const unsubscribe = vi.spyOn(client, 'batchUnsubscribe')
+    const subscribe = vi.spyOn(client, 'subscribe')
+    const unsubscribe = vi.spyOn(client, 'unsubscribe')
     await stream.start()
-    const { batchId } = await subscribe.mock.results[0].value
+    const subscriptionIds = await subscribe.mock.results[0].value
 
     await stream.close()
 
+    expect(subscriptionIds).toHaveLength(16)
     expect(unsubscribe).toHaveBeenCalledTimes(1)
-    expect(unsubscribe).toHaveBeenCalledWith(batchId)
+    expect(unsubscribe).toHaveBeenCalledWith(subscriptionIds)
   })
 
   it('subscribes the canvas in 16 hydrated chunks, top-left first', async () => {
     // Each chunk must stay under the hydration row cap, the start view must load first, and no tile may be missed.
-    const subscribe = vi.spyOn(client, 'batchSubscribe')
+    const subscribe = vi.spyOn(client, 'subscribe')
     const query = vi.spyOn(client, 'query')
 
     await stream.start()
@@ -116,7 +117,7 @@ describe('tile stream', () => {
 
   it('never lets an older snapshot row overwrite a newer change', async () => {
     // Snapshot and live rows can arrive in either order; routing must carry the version or a tile rolls back.
-    const subscribe = vi.spyOn(client, 'batchSubscribe')
+    const subscribe = vi.spyOn(client, 'subscribe')
     await stream.start()
     const deliver = subscribe.mock.calls[0][0][0].callbacks.onInsert!
 
@@ -139,19 +140,31 @@ describe('tile stream', () => {
   })
 
   it('reports a closed batch to its owner', async () => {
-    // A late hydration failure closes the batch after the ack; without a report the canvas silently freezes.
-    const subscribe = vi.spyOn(client, 'batchSubscribe')
+    // A late hydration failure closes the chunk after the ack; without a report the canvas silently freezes.
+    const subscribe = vi.spyOn(client, 'subscribe')
     await stream.start()
-    const callbacks = (subscribe.mock.calls[0] as unknown[])[1] as { onClosed?: () => void } | undefined
+    const chunks = subscribe.mock.calls[0][0]
 
-    callbacks?.onClosed?.()
+    chunks[0].callbacks.onClosed?.()
 
     expect(closed).toBe(1)
   })
 
+  it('reports a close of any chunk to its owner', async () => {
+    // The server closes one chunk at a time; a chunk without onClosed would freeze its rows with nothing said.
+    const subscribe = vi.spyOn(client, 'subscribe')
+    await stream.start()
+    const chunks = subscribe.mock.calls[0][0]
+
+    for (const chunk of chunks) chunk.callbacks.onClosed?.()
+
+    expect(chunks).toHaveLength(16)
+    expect(closed).toBe(16)
+  })
+
   it('handles changes delivered through onInsert as well as onUpdate', async () => {
     // The engine delivers snapshot and changed rows through onInsert; ignoring it would leave every tile blank.
-    const subscribe = vi.spyOn(client, 'batchSubscribe')
+    const subscribe = vi.spyOn(client, 'subscribe')
     await stream.start()
     const callbacks = subscribe.mock.calls[0][0][0].callbacks
     expect(typeof callbacks.onInsert).toBe('function')

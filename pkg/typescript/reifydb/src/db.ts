@@ -3,7 +3,7 @@
 
 import type { FrameResults, ShapeNode } from '@reifydb/core'
 import type { SubscriptionConfig } from '@reifydb/client'
-import type { BatchSubscribed, SubscriptionTick } from '../native'
+import type { SubscriptionTick } from '../native'
 
 export interface SubscriptionInput {
   query: string
@@ -24,12 +24,9 @@ export interface Db {
    * `query` is the bare query and `options` carries hydration, throttle and linger, the same as a
    * client puts on a socket. Changes are not pushed: they come back from {@link Db.tick}.
    */
-  subscribeRoot(query: string, params: any, options?: SubscriptionConfig): Promise<string>
-  subscribeAs(identity: string, query: string, params: any, options?: SubscriptionConfig): Promise<string>
-  batchSubscribeRoot(subscriptions: SubscriptionInput[]): Promise<BatchSubscribed>
-  batchSubscribeAs(identity: string, subscriptions: SubscriptionInput[]): Promise<BatchSubscribed>
-  unsubscribe(subscriptionId: string): void
-  batchUnsubscribe(batchId: string): Promise<void>
+  subscribeAs(identity: string, subscriptions: SubscriptionInput[]): Promise<string[]>
+  unsubscribe(subscriptionIds: string[]): Promise<void>
+  rootIdentity(): string
 
   /** Advances the subscription pipeline by one pass and returns what it produced. */
   tick(): SubscriptionTick

@@ -14,7 +14,7 @@ interface Call {
   shapes: readonly ShapeNode[]
 }
 
-function fakeDb(calls: Call[]): Db {
+function fakeDb(calls: Call[], overrides: Partial<Db> = {}): Db {
   const record = (method: string) =>
     <const S extends readonly ShapeNode[]>(rql: string, params: any, shapes: S): Promise<FrameResults<S>> => {
       calls.push({ method, rql, params, shapes })
@@ -29,13 +29,12 @@ function fakeDb(calls: Call[]): Db {
     commandAs: unused,
     adminAs: unused,
     authenticate: unused,
-    subscribeRoot: unused,
     subscribeAs: unused,
-    batchSubscribeRoot: unused,
-    batchSubscribeAs: unused,
-    unsubscribe: () => undefined,
-    batchUnsubscribe: unused,
-    tick: () => ({ envelopes: [], closed: [], batchSubscriptionClosed: [] }),
+    unsubscribe: () => Promise.resolve(),
+    rootIdentity: () => 'root',
+    tick: () => ({ envelopes: [], closed: [] }),
+    caughtUp: () => Promise.resolve({ envelopes: [], closed: [] }),
+    ...overrides,
   }
 }
 
@@ -60,4 +59,33 @@ describe('storeClient', () => {
     expect(calls).toEqual([{ method: 'adminRoot', rql: 'create table t { id: int4 }', params: null, shapes: [shape] }])
   })
 
+  it('tells only the closed subscription that the server closed it, exactly once', async () => {
+    // Without calling onClosed on tick.closed the store never learns the server dropped the subscription.
+    let closedTicks = 0
+    const db = fakeDb([], {
+      subscribeAs: () => Promise.resolve(['7', '8']),
+      caughtUp: () => Promise.resolve({ envelopes: [], closed: closedTicks++ === 0 ? ['7'] : [] }),
+    })
+    const client = storeClient(db)
+    const closed: string[] = []
+    await client.subscribe([
+      { rql: 'from t', shape, callbacks: { onClosed: () => closed.push('7') } },
+      { rql: 'from u', shape, callbacks: { onClosed: () => closed.push('8') } },
+    ])
+    await client.caughtUp()
+    expect(closed).toEqual(['7'])
+  })
+
+  it('releases every id of one unsubscribe in a single call to the database', async () => {
+    // A per-id loop would cost one native round trip per subscription instead of one per release.
+    const unsubscribed: string[][] = []
+    const db = fakeDb([], {
+      unsubscribe: (subscriptionIds) => {
+        unsubscribed.push(subscriptionIds)
+        return Promise.resolve()
+      },
+    })
+    await storeClient(db).unsubscribe(['7', '8'])
+    expect(unsubscribed).toEqual([['7', '8']])
+  })
 })

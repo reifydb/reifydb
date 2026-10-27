@@ -39,22 +39,17 @@ export class ScriptedSocket {
         return this.sent.filter(message => message.type === type);
     }
 
-    ackSubscribe(subscriptionId: string): void {
+    ackSubscribe(subscriptionIds: (string | null)[]): void {
         const request = this.requests('Subscribe').pop();
-        this.receive({id: request.id, type: 'Subscribed', payload: {subscription_id: subscriptionId}});
-    }
-
-    ackBatch(batchId: string, subscriptionIds: (string | null)[]): void {
-        const request = this.requests('BatchSubscribe').pop();
         const subscriptions = subscriptionIds
             .map((subscription_id, index) => ({index, subscription_id}))
             .filter(subscription => subscription.subscription_id !== null);
-        this.receive({id: request.id, type: 'BatchSubscribed', payload: {batch_id: batchId, subscriptions}});
+        this.receive({id: request.id, type: 'Subscribed', payload: {subscriptions}});
     }
 
-    ackUnsubscribe(subscriptionId: string): void {
-        const request = this.requests('Unsubscribe').find(sent => sent.payload.subscription_id === subscriptionId);
-        this.receive({id: request.id, type: 'Unsubscribed', payload: {subscription_id: subscriptionId}});
+    ackUnsubscribe(subscriptionIds: string[]): void {
+        const request = this.requests('Unsubscribe').find(sent => sent.payload.subscription_ids.includes(subscriptionIds[0]));
+        this.receive({id: request.id, type: 'Unsubscribed', payload: {subscription_ids: subscriptionIds}});
     }
 
     refuse(type: string, code: string): void {
@@ -73,12 +68,16 @@ export class ScriptedSocket {
         };
         this.receive({
             type: 'Change',
-            payload: {subscription_id: subscriptionId, content_type: FRAMES, body: {frames: [frame]}}
+            payload: {entries: [{subscription_id: subscriptionId, content_type: FRAMES, body: {frames: [frame]}}]}
         });
     }
 
+    closeSubscription(subscriptionId: string): void {
+        this.receive({type: 'SubscriptionClosed', payload: {subscription_id: subscriptionId}});
+    }
+
     unsubscribed(): string[] {
-        return this.requests('Unsubscribe').map(request => request.payload.subscription_id);
+        return this.requests('Unsubscribe').flatMap(request => request.payload.subscription_ids);
     }
 
     private receive(message: unknown): void {

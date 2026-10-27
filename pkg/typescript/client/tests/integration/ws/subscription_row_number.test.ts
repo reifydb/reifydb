@@ -57,19 +57,19 @@ describe('WebSocket Subscription Row Numbers', () => {
             const dispatched: any[] = [];
             const handle = client.handleChangeMessage.bind(client);
             client.handleChangeMessage = (msg: any) => {
-                dispatched.push(...(msg?.payload?.body?.frames ?? []));
+                dispatched.push(...(msg?.payload?.entries ?? []).flatMap((entry: any) => entry.body?.frames ?? []));
                 return handle(msg);
             };
 
             const tracker = createCallbackTracker(shape);
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: tracker.callback
                 }
-            );
+            }]);
 
             await wsClient.command(
                 `INSERT test::${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }, { id: 3, name: 'carol' }]`,
@@ -93,7 +93,7 @@ describe('WebSocket Subscription Row Numbers', () => {
             const distinct = new Set(rows.map(row => row['#rownum']));
             expect(distinct.size).toBe(3);
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 15000);
 
         it('should hand onUpdate and onRemove the row number the insert already carried', async () => {
@@ -112,16 +112,16 @@ describe('WebSocket Subscription Row Numbers', () => {
             const updateTracker = createCallbackTracker(shape);
             const removeTracker = createCallbackTracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: insertTracker.callback,
                     onUpdate: updateTracker.callback,
                     onRemove: removeTracker.callback
                 }
-            );
+            }]);
 
             await wsClient.command(
                 `INSERT test::${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
@@ -156,7 +156,7 @@ describe('WebSocket Subscription Row Numbers', () => {
             expect(updateTracker.getAllRows()[0]['#rownum']).toBe(aliceRowNumber);
             expect(removeTracker.getAllRows()[0]['#rownum']).toBe(bobRowNumber);
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 15000);
 
         it('should stamp the row whether or not a shape reshapes it', async () => {
@@ -174,22 +174,22 @@ describe('WebSocket Subscription Row Numbers', () => {
             const shapedTracker = createCallbackTracker(shape);
             const rawTracker = createCallbackTracker();
 
-            const shapedId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [shapedId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: shapedTracker.callback
                 }
-            );
-            const rawId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
-                undefined,
-                {
+            }]);
+            const [rawId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
+                shape: undefined,
+                callbacks: {
                     onInsert: rawTracker.callback
                 }
-            );
+            }]);
 
             await wsClient.command(
                 `INSERT test::${tableName} [{ id: 7, name: 'dora' }]`,
@@ -212,8 +212,8 @@ describe('WebSocket Subscription Row Numbers', () => {
             expect(shapedRow.id).toBe(7);
             expect(shapedRow.name).toBe('dora');
 
-            await wsClient.unsubscribe(shapedId);
-            await wsClient.unsubscribe(rawId);
+            await wsClient.unsubscribe([shapedId]);
+            await wsClient.unsubscribe([rawId]);
         }, 15000);
     });
 
@@ -233,18 +233,18 @@ describe('WebSocket Subscription Row Numbers', () => {
             });
 
             const tracker = createCallbackTracker(shape);
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: tracker.callback
                 }
-            );
+            }]);
 
             (wsClient as any).handleChangeMessage({
                 type: 'Change',
-                payload: {
+                payload: { entries: [{
                     subscriptionId,
                     contentType: CONTENT_TYPE_FRAMES,
                     body: {
@@ -257,7 +257,7 @@ describe('WebSocket Subscription Row Numbers', () => {
                             ]
                         }]
                     }
-                }
+                }] }
             });
 
             const rows = tracker.getAllRows();
@@ -268,7 +268,7 @@ describe('WebSocket Subscription Row Numbers', () => {
             expect(typeof rows[0]['#rownum']).toBe('number');
             expect(typeof rows[1]['#rownum']).toBe('number');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 15000);
 
         it('should leave the key off a frame that carries no row numbers', async () => {
@@ -284,18 +284,18 @@ describe('WebSocket Subscription Row Numbers', () => {
             });
 
             const tracker = createCallbackTracker(shape);
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: tracker.callback
                 }
-            );
+            }]);
 
             (wsClient as any).handleChangeMessage({
                 type: 'Change',
-                payload: {
+                payload: { entries: [{
                     subscriptionId,
                     contentType: CONTENT_TYPE_FRAMES,
                     body: {
@@ -307,7 +307,7 @@ describe('WebSocket Subscription Row Numbers', () => {
                             ]
                         }]
                     }
-                }
+                }] }
             });
 
             const rows = tracker.getAllRows();
@@ -318,7 +318,7 @@ describe('WebSocket Subscription Row Numbers', () => {
             expect(rows[0].id).toBe(1);
             expect(rows[0].name).toBe('alice');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 15000);
     });
 });

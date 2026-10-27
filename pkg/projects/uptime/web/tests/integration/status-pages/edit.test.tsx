@@ -198,11 +198,11 @@ describe('edit status page flow', () => {
     const id = await createStatusPage(db, identity, 'acme', 'Acme', [alpha])
     const refused: StoreClient = {
       ...client,
-      batchSubscribe: async (subscriptions) => {
+      subscribe: async (subscriptions) => {
         if (subscriptions.some((subscription) => subscription.rql === monitors.rql)) {
           throw new Error('monitors subscription refused')
         }
-        return client.batchSubscribe(subscriptions)
+        return client.subscribe(subscriptions)
       },
     }
     route.pageId = id

@@ -3,17 +3,11 @@
 import type {ReactNode} from 'react';
 import {Store} from '@reifydb/store';
 import {StoreProvider} from '../src';
-import {BatchingFakeClient, FakeClient} from './fake-client';
+import {FakeClient} from './fake-client';
 
 export function setup() {
     const client = new FakeClient();
     const store = new Store(client);
-    return {client, store, wrapper: withStore(store)};
-}
-
-export function setupBatching() {
-    const client = new BatchingFakeClient();
-    const store = new Store(client, {batch: true});
     return {client, store, wrapper: withStore(store)};
 }
 

@@ -4,7 +4,7 @@ import {createStore} from 'zustand/vanilla';
 import type {StoreApi} from 'zustand/vanilla';
 import type {FrameResults, ShapeNode} from '@reifydb/core';
 import type {
-    BatchSubscribeItem,
+    SubscribeItem,
     SubscriptionCallbacks,
     SubscriptionConfig,
     SubscriptionRow
@@ -21,9 +21,6 @@ export interface StoreState {
 
 export interface StoreOptions {
     onBackgroundError?: (error: Error) => void;
-    // Opens every subscription that starts in the same tick as one batch. React runs a page's mount
-    // effects in one pass, so this is one round trip per page rather than one per hook.
-    batch?: boolean;
 }
 
 export type Release = () => void;
@@ -37,7 +34,7 @@ interface Subscription {
 interface Queued {
     key: string;
     sub: Subscription;
-    request: BatchSubscribeItem;
+    request: SubscribeItem;
 }
 
 function toError(error: unknown): Error {
@@ -48,13 +45,12 @@ export class Store {
     private readonly state: StoreApi<StoreState> = createStore<StoreState>(() => ({entries: {}}));
     private readonly subscriptions = new Map<string, Subscription>();
     private readonly onBackgroundError: (error: Error) => void;
-    private readonly batch: boolean;
     private queued: Queued[] = [];
+    private releasing: string[] = [];
     private flushing = false;
 
     constructor(private readonly client: StoreClient, options: StoreOptions = {}) {
         this.onBackgroundError = options.onBackgroundError ?? (() => undefined);
-        this.batch = options.batch ?? false;
     }
 
     subscribe<S extends ShapeNode, P extends object | null>(spec: ReadSpec<S, P>, params: NoInfer<P>): Release {
@@ -161,17 +157,16 @@ export class Store {
                     this.update(key, entry => withStatus(entry, 'error', toError(error)));
                 }
             },
+            onClosed: () => {
+                if (!sub.closed) {
+                    sub.id = undefined;
+                    this.update(key, entry => withStatus(entry, 'error', new Error('the server closed this subscription')));
+                }
+            },
             onResubscribe: id => this.attach(key, sub, id, new Map()),
         };
-        if (this.batch && this.client.batchSubscribe !== undefined) {
-            this.queued.push({key, sub, request: {rql, params, shape, callbacks, config}});
-            this.scheduleFlush();
-            return sub;
-        }
-        this.client.subscribe(rql, params, shape, callbacks, config).then(
-            id => this.attach(key, sub, id),
-            error => this.reject(key, sub, error)
-        );
+        this.queued.push({key, sub, request: {rql, params, shape, callbacks, config}});
+        this.scheduleFlush();
         return sub;
     }
 
@@ -187,27 +182,23 @@ export class Store {
     }
 
     private flush(): void {
+        const releasing = this.releasing;
+        this.releasing = [];
+        if (releasing.length > 0) {
+            this.client.unsubscribe(releasing).catch(error => this.onBackgroundError(toError(error)));
+        }
         const queued = this.queued;
         this.queued = [];
-        // A subscription released before the batch went out was never opened, so there is nothing to
-        // send for it and nothing to unsubscribe.
         const live = queued.filter(entry => !entry.sub.closed);
         if (live.length === 0) {
             return;
         }
-        const batchSubscribe = this.client.batchSubscribe;
-        if (batchSubscribe === undefined) {
-            for (const {key, sub} of live) {
-                this.reject(key, sub, new Error('the client stopped offering batchSubscribe'));
-            }
-            return;
-        }
-        batchSubscribe.call(this.client, live.map(entry => entry.request)).then(
-            ({subscriptionIds}) => {
+        this.client.subscribe(live.map(entry => entry.request)).then(
+            subscriptionIds => {
                 live.forEach(({key, sub}, index) => {
                     const id = subscriptionIds[index];
                     if (id === undefined) {
-                        this.reject(key, sub, new Error('the batch ack named no id for this subscription'));
+                        this.reject(key, sub, new Error('the subscribe ack named no id for this subscription'));
                         return;
                     }
                     this.attach(key, sub, id);
@@ -223,7 +214,7 @@ export class Store {
 
     private attach(key: string, sub: Subscription, id: string, rows?: Map<number, unknown>): void {
         if (sub.closed) {
-            this.client.unsubscribe(id).catch(error => this.onBackgroundError(toError(error)));
+            this.unsubscribeLater(id);
             return;
         }
         sub.id = id;
@@ -244,8 +235,13 @@ export class Store {
             this.state.setState({entries});
         }
         if (sub.id !== undefined) {
-            this.client.unsubscribe(sub.id).catch(error => this.onBackgroundError(toError(error)));
+            this.unsubscribeLater(sub.id);
         }
+    }
+
+    private unsubscribeLater(id: string): void {
+        this.releasing.push(id);
+        this.scheduleFlush();
     }
 
     private setEntry(key: string, entry: Entry<unknown[]> | Entry<unknown[][]>): void {

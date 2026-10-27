@@ -34,17 +34,9 @@ import type {
     UnsubscribeRequest,
     UnsubscribedResponse,
     ChangeMessage,
-    SubscriptionCallbacks,
-    BatchSubscribeRequest,
-    BatchSubscribedResponse,
-    BatchUnsubscribeRequest,
-    BatchUnsubscribedResponse,
-    BatchChangeMessage,
-    BatchSubscriptionClosedMessage,
-    BatchClosedMessage,
-    BatchSubscribeItem,
-    BatchSubscriptionCallbacks,
-    BatchSubscription
+    SubscribeItem,
+    SubscriptionClosedMessage,
+    SubscriptionInfo
 } from "./types";
 import {
     encodeSubscribeOptions,
@@ -55,7 +47,7 @@ import {encodeParams} from "./encoder";
 import {rbcf} from "./rbcf";
 import {CONTENT_TYPE_RBCF} from "./content-types";
 import {toCamelCaseKeys, toSnakeCaseKeys, WIRE_PASSTHROUGH_KEYS} from "./case";
-import {BinaryKind, decodeBatchEnvelope, decodeEnvelope, dispatchChange, envelopeIdOf, reportSubscriptionError} from "./subscription-decode";
+import {BinaryKind, decodeChangeListEnvelope, decodeEnvelope, dispatchChange, envelopeIdOf, reportSubscriptionError} from "./subscription-decode";
 
 export interface WsClientOptions {
     url: string;
@@ -78,20 +70,9 @@ export interface WsClientOptions {
     onReconnect?: () => void;
 }
 
-interface SubscriptionState<T = any> {
+interface SubscriptionState<T = any> extends SubscribeItem<T> {
     subscriptionId: string;
-    batchId?: string;
-    rql: string;
-    params?: any;
-    shape?: ShapeNode;
-    callbacks: SubscriptionCallbacks<T>;
-    config?: SubscriptionConfig;
-}
-
-interface BatchState {
-    batchId: string;
-    subscriptionsById: Map<string, SubscriptionState>;
-    batchCallbacks?: BatchSubscriptionCallbacks;
+    group: SubscriptionState[];
 }
 
 interface Caller<T> {
@@ -99,20 +80,10 @@ interface Caller<T> {
     reject: (error: unknown) => void;
 }
 
-interface SingleIntent {
-    kind: "single";
-    subscription: BatchSubscribeItem;
-    caller?: Caller<string>;
+interface SubscribeIntent {
+    subscriptions: SubscribeItem[];
+    caller?: Caller<string[]>;
 }
-
-interface BatchIntent {
-    kind: "batch";
-    subscriptions: BatchSubscribeItem[];
-    batchCallbacks?: BatchSubscriptionCallbacks;
-    caller?: Caller<BatchSubscription>;
-}
-
-type SubscribeIntent = SingleIntent | BatchIntent;
 
 const CONNECTION_LOST: ErrorResponse = {
     id: "connection-error",
@@ -126,7 +97,7 @@ const CONNECTION_LOST: ErrorResponse = {
     }
 };
 
-type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | CallResponse | SubscribedResponse | UnsubscribedResponse | BatchSubscribedResponse | BatchUnsubscribedResponse | LogoutResponse;
+type ResponsePayload = ErrorResponse | AdminResponse | AuthResponse | CommandResponse | QueryResponse | CallResponse | SubscribedResponse | UnsubscribedResponse | LogoutResponse;
 
 async function createWebSocket(url: string): Promise<WebSocket> {
     let socket: WebSocket;
@@ -162,8 +133,6 @@ export class WsClient {
     private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     private reconnectCancel: (() => void) | null = null;
     private subscriptions = new Map<string, SubscriptionState>();
-    private batches = new Map<string, BatchState>();
-    private subToBatch = new Map<string, string>();
     private resubscribing = new Map<string, SubscriptionState>();
     private waiting: SubscribeIntent[] = [];
 
@@ -357,15 +326,12 @@ export class WsClient {
         return { frames: transformFrames(result, shapes), meta };
     }
 
-    async subscribe<T = any>(
-        rql: string,
-        params: any,
-        shape: ShapeNode | undefined,
-        callbacks: SubscriptionCallbacks<T>,
-        config?: SubscriptionConfig
-    ): Promise<string> {
+    async subscribe(subscriptions: SubscribeItem[]): Promise<string[]> {
+        if (subscriptions.length === 0) {
+            throw new Error("subscribe requires at least one subscription");
+        }
         return new Promise((resolve, reject) => {
-            this.dispatch({kind: "single", subscription: {rql, params, shape, callbacks, config}, caller: {resolve, reject}});
+            this.dispatch({subscriptions, caller: {resolve, reject}});
         });
     }
 
@@ -381,7 +347,7 @@ export class WsClient {
 
     private sendIntent(intent: SubscribeIntent): Promise<void> {
         return new Promise(done => {
-            let request: SubscribeRequest | BatchSubscribeRequest;
+            let request: SubscribeRequest;
             try {
                 request = this.subscribeRequest(intent);
             } catch (error) {
@@ -404,31 +370,18 @@ export class WsClient {
         });
     }
 
-    private subscribeRequest(intent: SubscribeIntent): SubscribeRequest | BatchSubscribeRequest {
-        const subFormat = this.options.format === "rbcf" ? "rbcf" : "frames";
-        if (intent.kind === "single") {
-            const {rql, params, config} = intent.subscription;
-            return {
-                id: `sub-${this.nextId++}`,
-                type: "Subscribe",
-                payload: {
-                    rql,
-                    params: params !== undefined && params !== null ? encodeParams(params) : undefined,
-                    options: encodeSubscribeOptions(config),
-                    format: subFormat
-                } as any
-            };
-        }
+    private subscribeRequest(intent: SubscribeIntent): SubscribeRequest {
+        const format = this.options.format === "rbcf" ? "rbcf" : "frames";
         return {
-            id: `batch-sub-${this.nextId++}`,
-            type: "BatchSubscribe",
+            id: `sub-${this.nextId++}`,
+            type: "Subscribe",
             payload: {
                 subscriptions: intent.subscriptions.map(m => ({
                     rql: m.rql,
                     params: m.params !== undefined && m.params !== null ? encodeParams(m.params) : undefined,
                     options: encodeSubscribeOptions(m.config)
                 })) as any,
-                format: subFormat as any
+                format
             }
         };
     }
@@ -436,64 +389,49 @@ export class WsClient {
     private settleIntent(intent: SubscribeIntent, response: ResponsePayload): void {
         if (response.type === "Err") {
             this.failIntent(intent, new ReifyError(response));
-        } else if (intent.kind === "single" && response.type === "Subscribed") {
-            this.attachSingle(intent, response.payload.subscriptionId);
-        } else if (intent.kind === "batch" && response.type === "BatchSubscribed") {
-            this.attachBatch(intent, response.payload.batchId, response.payload.subscriptions);
+        } else if (response.type === "Subscribed") {
+            this.attach(intent, response.payload.subscriptions);
         } else {
             this.failIntent(intent, new Error("Unexpected response type"));
         }
     }
 
-    private attachSingle(intent: SingleIntent, subscriptionId: string): void {
-        const {rql, params, shape, callbacks, config} = intent.subscription;
-        const state: SubscriptionState = {subscriptionId, rql, params, shape, callbacks, config};
-        this.subscriptions.set(subscriptionId, state);
-        if (intent.caller) {
-            intent.caller.resolve(subscriptionId);
-        } else if (this.retire(intent.subscription)) {
-            this.notifyResubscribed(state);
-        } else {
-            this.giveBack(state);
-        }
-    }
-
-    private attachBatch(intent: BatchIntent, batchId: string, acked: BatchSubscribedResponse["payload"]["subscriptions"]): void {
-        const subscriptionsById = new Map<string, SubscriptionState>();
+    private attach(intent: SubscribeIntent, acked: SubscriptionInfo[]): void {
+        const group: SubscriptionState[] = [];
         const subscriptionIds: string[] = new Array(intent.subscriptions.length);
-
         for (const info of acked) {
             const subscription = intent.subscriptions[info.index];
             if (!subscription) continue;
             subscriptionIds[info.index] = info.subscriptionId;
-            subscriptionsById.set(info.subscriptionId, {
+            const state: SubscriptionState = {
                 subscriptionId: info.subscriptionId,
-                batchId,
                 rql: subscription.rql,
                 params: subscription.params,
                 shape: subscription.shape,
                 callbacks: subscription.callbacks,
-                config: subscription.config
-            });
-            this.subToBatch.set(info.subscriptionId, batchId);
+                config: subscription.config,
+                group
+            };
+            group.push(state);
+            this.subscriptions.set(info.subscriptionId, state);
         }
-
-        this.batches.set(batchId, {batchId, subscriptionsById, batchCallbacks: intent.batchCallbacks});
-
         if (intent.caller) {
-            intent.caller.resolve({batchId, subscriptionIds});
+            intent.caller.resolve(subscriptionIds);
             return;
         }
+        const released: SubscriptionState[] = [];
         intent.subscriptions.forEach((subscription, index) => {
-            const state = subscriptionsById.get(subscriptionIds[index]);
+            const id = subscriptionIds[index];
+            const state = id === undefined ? undefined : this.subscriptions.get(id);
             if (!this.retire(subscription)) {
-                if (state) this.giveBack(state);
+                if (state) released.push(state);
             } else if (state) {
                 this.notifyResubscribed(state);
             } else {
-                reportSubscriptionError(subscription, new Error("the batch ack named no id for this subscription"));
+                reportSubscriptionError(subscription, new Error("the subscribe ack named no id for this subscription"));
             }
         });
+        this.giveBack(released);
     }
 
     private notifyResubscribed(state: SubscriptionState): void {
@@ -509,15 +447,14 @@ export class WsClient {
             intent.caller.reject(error);
             return;
         }
-        const subscriptions = intent.kind === "single" ? [intent.subscription] : intent.subscriptions;
-        subscriptions.filter(subscription => this.retire(subscription)).forEach(subscription => reportSubscriptionError(subscription, error));
+        intent.subscriptions.filter(subscription => this.retire(subscription)).forEach(subscription => reportSubscriptionError(subscription, error));
     }
 
-    private held(subscription: BatchSubscribeItem): boolean {
+    private held(subscription: SubscribeItem): boolean {
         return this.resubscribing.get((subscription as SubscriptionState).subscriptionId) === subscription;
     }
 
-    private retire(subscription: BatchSubscribeItem): boolean {
+    private retire(subscription: SubscribeItem): boolean {
         return this.held(subscription) && this.resubscribing.delete((subscription as SubscriptionState).subscriptionId);
     }
 
@@ -525,29 +462,26 @@ export class WsClient {
         if (intent.caller) {
             return intent;
         }
-        if (intent.kind === "single") {
-            return this.held(intent.subscription) ? intent : undefined;
-        }
         const subscriptions = intent.subscriptions.filter(subscription => this.held(subscription));
         return subscriptions.length > 0 ? {...intent, subscriptions} : undefined;
     }
 
-    private giveBack(state: SubscriptionState): void {
-        this.unsubscribe(state.subscriptionId).catch(error => reportSubscriptionError(state, error));
+    private giveBack(states: SubscriptionState[]): void {
+        if (states.length === 0) return;
+        this.unsubscribe(states.map(state => state.subscriptionId))
+            .catch(error => states.forEach(state => reportSubscriptionError(state, error)));
     }
 
     private forget(subscriptionId: string): void {
         this.subscriptions.delete(subscriptionId);
-        this.dropBatchSubscription(subscriptionId);
     }
 
-    async unsubscribe(subscriptionId: string): Promise<void> {
-        if (!this.subscriptions.has(subscriptionId) && !this.subToBatch.has(subscriptionId)) {
-            this.resubscribing.delete(subscriptionId);
-            return;
-        }
+    async unsubscribe(subscriptionIds: string[]): Promise<void> {
+        const held = subscriptionIds.filter(id => this.subscriptions.has(id));
+        subscriptionIds.filter(id => !this.subscriptions.has(id)).forEach(id => this.resubscribing.delete(id));
+        if (held.length === 0) return;
         if (this.socket.readyState !== 1) {
-            this.forget(subscriptionId);
+            held.forEach(id => this.forget(id));
             return;
         }
 
@@ -556,7 +490,7 @@ export class WsClient {
         const request: UnsubscribeRequest = {
             id,
             type: "Unsubscribe",
-            payload: {subscriptionId: subscriptionId}
+            payload: {subscriptionIds: held}
         };
 
         return new Promise((resolve, reject) => {
@@ -566,95 +500,20 @@ export class WsClient {
                     if (response.type === "Err") {
                         reject(new ReifyError(response));
                     } else if (response.type === "Unsubscribed") {
-                        this.forget(subscriptionId);
+                        held.forEach(subscriptionId => this.forget(subscriptionId));
                         resolve();
                     } else {
                         reject(new Error("Unexpected response type"));
                     }
                 },
                 onConnectionLost: () => {
-                    this.forget(subscriptionId);
+                    held.forEach(subscriptionId => this.forget(subscriptionId));
                     resolve();
                 }
             });
 
             this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
         });
-    }
-
-    async batchSubscribe(
-        subscriptions: BatchSubscribeItem[],
-        batchCallbacks?: BatchSubscriptionCallbacks
-    ): Promise<BatchSubscription> {
-        if (subscriptions.length === 0) {
-            throw new Error("batchSubscribe requires at least one subscription");
-        }
-        return new Promise((resolve, reject) => {
-            this.dispatch({kind: "batch", subscriptions, batchCallbacks, caller: {resolve, reject}});
-        });
-    }
-
-    async batchUnsubscribe(batchId: string): Promise<void> {
-        this.resubscribing.forEach((state, subscriptionId) => {
-            if (state.batchId === batchId) {
-                this.resubscribing.delete(subscriptionId);
-            }
-        });
-        if (this.socket.readyState !== 1) {
-            this.cleanupBatch(batchId);
-            return;
-        }
-
-        const id = `batch-unsub-${this.nextId++}`;
-
-        const request: BatchUnsubscribeRequest = {
-            id,
-            type: "BatchUnsubscribe",
-            payload: {batchId}
-        };
-
-        return new Promise((resolve, reject) => {
-            this.pending.set(id, {
-                type: "BatchUnsubscribe",
-                handler: (response) => {
-                    if (response.type === "Err") {
-                        reject(new ReifyError(response));
-                    } else if (response.type === "BatchUnsubscribed") {
-                        this.cleanupBatch(batchId);
-                        resolve();
-                    } else {
-                        reject(new Error("Unexpected response type"));
-                    }
-                },
-                onConnectionLost: () => {
-                    this.cleanupBatch(batchId);
-                    resolve();
-                }
-            });
-
-            this.socket.send(JSON.stringify(toSnakeCaseKeys(request, WIRE_PASSTHROUGH_KEYS)));
-        });
-    }
-
-    private dropBatchSubscription(subscriptionId: string): void {
-        const batchId = this.subToBatch.get(subscriptionId);
-        if (batchId === undefined) return;
-        this.subToBatch.delete(subscriptionId);
-        const batch = this.batches.get(batchId);
-        if (!batch) return;
-        batch.subscriptionsById.delete(subscriptionId);
-        if (batch.subscriptionsById.size === 0) {
-            this.batches.delete(batchId);
-        }
-    }
-
-    private cleanupBatch(batchId: string): void {
-        const batch = this.batches.get(batchId);
-        if (!batch) return;
-        for (const subId of batch.subscriptionsById.keys()) {
-            this.subToBatch.delete(subId);
-        }
-        this.batches.delete(batchId);
     }
 
     async send(req: AdminRequest | CommandRequest | QueryRequest | CallRequest): Promise<any> {
@@ -884,8 +743,6 @@ export class WsClient {
     async disconnect(): Promise<void> {
         this.shouldReconnect = false;
         this.subscriptions.clear();
-        this.batches.clear();
-        this.subToBatch.clear();
         this.resubscribing.clear();
         this.failWaiting();
 
@@ -1043,23 +900,17 @@ export class WsClient {
 
     private async resubscribeAll(): Promise<boolean> {
         const socket = this.socket;
+        const groups = new Set<SubscriptionState[]>();
+        this.subscriptions.forEach(state => groups.add(state.group));
         const intents: SubscribeIntent[] = [
-            ...Array.from(this.subscriptions.values(), (subscription): SubscribeIntent => ({kind: "single", subscription})),
-            ...Array.from(this.batches.values())
-                .filter(batch => batch.subscriptionsById.size > 0)
-                .map((batch): SubscribeIntent => ({
-                    kind: "batch",
-                    subscriptions: Array.from(batch.subscriptionsById.values()),
-                    batchCallbacks: batch.batchCallbacks
-                })),
+            ...Array.from(groups, (group): SubscribeIntent => ({
+                subscriptions: group.filter(state => this.subscriptions.get(state.subscriptionId) === state)
+            })),
             ...this.waiting
         ];
 
         this.subscriptions.forEach(state => this.resubscribing.set(state.subscriptionId, state));
-        this.batches.forEach(batch => batch.subscriptionsById.forEach(state => this.resubscribing.set(state.subscriptionId, state)));
         this.subscriptions.clear();
-        this.batches.clear();
-        this.subToBatch.clear();
         this.waiting = [];
 
         for (let i = 0; i < intents.length; i++) {
@@ -1075,55 +926,30 @@ export class WsClient {
         return this.socket === socket && socket.readyState === 1;
     }
 
-    private findSubscriptionState(subscriptionId: string): SubscriptionState | undefined {
-        const single = this.subscriptions.get(subscriptionId);
-        if (single) return single;
-        const batchId = this.subToBatch.get(subscriptionId);
-        if (!batchId) return undefined;
-        return this.batches.get(batchId)?.subscriptionsById.get(subscriptionId);
+    private handleChangeMessage(msg: ChangeMessage): void {
+        for (const entry of msg.payload.entries) {
+            this.deliverChange(entry.subscriptionId, entry.contentType, entry.body);
+        }
     }
 
-    private handleChangeMessage(msg: ChangeMessage): void {
-        const {subscriptionId, contentType, body} = msg.payload;
-        const state = this.findSubscriptionState(subscriptionId);
-
+    private deliverChange(subscriptionId: string, contentType: string, body: any): void {
+        const state = this.subscriptions.get(subscriptionId);
         if (!state) {
             console.error('No state for subscriptionId:', subscriptionId);
             return;
         }
-
         dispatchChange(state, contentType, body);
     }
 
-    private handleBatchChange(msg: BatchChangeMessage): void {
-        const {entries} = msg.payload;
-        for (const entry of entries) {
-            this.handleChangeMessage({
-                type: "Change",
-                payload: {
-                    subscriptionId: entry.subscriptionId,
-                    contentType: entry.contentType,
-                    body: entry.body
-                }
-            });
+    private handleSubscriptionClosed(msg: SubscriptionClosedMessage): void {
+        const state = this.subscriptions.get(msg.payload.subscriptionId);
+        if (!state) return;
+        this.forget(state.subscriptionId);
+        try {
+            state.callbacks.onClosed?.();
+        } catch (error) {
+            reportSubscriptionError(state, error);
         }
-    }
-
-    private handleBatchSubscriptionClosed(msg: BatchSubscriptionClosedMessage): void {
-        const {batchId, subscriptionId} = msg.payload;
-        const batch = this.batches.get(batchId);
-        if (!batch) return;
-        batch.subscriptionsById.delete(subscriptionId);
-        this.subToBatch.delete(subscriptionId);
-        batch.batchCallbacks?.onSubscriptionClosed?.(subscriptionId);
-    }
-
-    private handleBatchClosed(msg: BatchClosedMessage): void {
-        const {batchId} = msg.payload;
-        const batch = this.batches.get(batchId);
-        if (!batch) return;
-        this.cleanupBatch(batchId);
-        batch.batchCallbacks?.onClosed?.();
     }
 
     private setupSocketHandlers() {
@@ -1151,14 +977,8 @@ export class WsClient {
                     case "Change":
                         this.handleChangeMessage(msg);
                         return;
-                    case "BatchChange":
-                        this.handleBatchChange(msg);
-                        return;
-                    case "BatchSubscriptionClosed":
-                        this.handleBatchSubscriptionClosed(msg);
-                        return;
-                    case "BatchClosed":
-                        this.handleBatchClosed(msg);
+                    case "SubscriptionClosed":
+                        this.handleSubscriptionClosed(msg);
                         return;
                 }
                 return;
@@ -1214,8 +1034,8 @@ export class WsClient {
     }
 
     private handleBinaryMessage(bytes: Uint8Array) {
-        if (bytes.length > 0 && bytes[0] === BinaryKind.BatchChange) {
-            this.handleBinaryBatchMessage(bytes);
+        if (bytes.length > 0 && bytes[0] === BinaryKind.Change) {
+            this.handleBinaryChangeList(bytes);
             return;
         }
 
@@ -1226,90 +1046,60 @@ export class WsClient {
             this.failBinaryEnvelope(bytes, e);
             return;
         }
-        const {kind, id, rbcf: rbcfBytes} = envelope;
+        const {id, rbcf: rbcfBytes} = envelope;
+
+        const entry = this.pending.get(id);
+        if (!entry) return;
+        this.pending.delete(id);
 
         let frames: any[];
         try {
             frames = rbcf.decode(rbcfBytes);
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
-            if (kind === BinaryKind.Response) {
-                const entry = this.pending.get(id);
-                if (!entry) return;
-                this.pending.delete(id);
-                entry.handler({
-                    id,
-                    type: "Err",
-                    payload: {
-                        diagnostic: { code: "RBCF_DECODE", message: msg, notes: [] }
-                    }
-                } as ErrorResponse);
-            } else {
-                console.error(`Failed to decode RBCF change for subscription ${id}: ${msg}`);
-            }
-            return;
-        }
-
-        if (kind === BinaryKind.Response) {
-            const entry = this.pending.get(id);
-            if (!entry) return;
-            this.pending.delete(id);
             entry.handler({
                 id,
-                type: entry.type,
+                type: "Err",
                 payload: {
-                    contentType: CONTENT_TYPE_RBCF,
-                    body: { frames },
-                    meta: envelope.meta,
-                },
-            } as ResponsePayload);
+                    diagnostic: { code: "RBCF_DECODE", message: msg, notes: [] }
+                }
+            } as ErrorResponse);
             return;
         }
 
-        if (kind === BinaryKind.Change) {
-            this.handleChangeMessage({
-                type: "Change",
-                payload: {
-                    subscriptionId: id,
-                    contentType: CONTENT_TYPE_RBCF,
-                    body: { frames },
-                }
-            });
-        }
+        entry.handler({
+            id,
+            type: entry.type,
+            payload: {
+                contentType: CONTENT_TYPE_RBCF,
+                body: { frames },
+                meta: envelope.meta,
+            },
+        } as ResponsePayload);
     }
 
-    private handleBinaryBatchMessage(bytes: Uint8Array) {
+    private handleBinaryChangeList(bytes: Uint8Array) {
         let envelope;
         try {
-            envelope = decodeBatchEnvelope(bytes);
+            envelope = decodeChangeListEnvelope(bytes);
         } catch (e) {
-            console.error(`Failed to decode a binary batch envelope: ${e instanceof Error ? e.message : String(e)}`);
+            console.error(`Failed to decode a binary change envelope: ${e instanceof Error ? e.message : String(e)}`);
             return;
         }
-
-        const batch = this.batches.get(envelope.batchId);
-
         for (const entry of envelope.entries) {
+            const state = this.subscriptions.get(entry.subscriptionId);
+            if (!state) {
+                console.error('No state for subscriptionId:', entry.subscriptionId);
+                continue;
+            }
             let frames: any[];
             try {
                 frames = rbcf.decode(entry.rbcf);
             } catch (e) {
-                const err = e instanceof Error ? e : new Error(String(e));
-                if (batch?.batchCallbacks?.onEntryError) {
-                    batch.batchCallbacks.onEntryError(entry.subscriptionId, err);
-                } else {
-                    console.error(`Failed to decode RBCF batch entry for ${entry.subscriptionId}: ${err.message}`);
-                }
+                reportSubscriptionError(state, e);
                 continue;
             }
-            this.handleChangeMessage({
-                type: "Change",
-                payload: {
-                    subscriptionId: entry.subscriptionId,
-                    contentType: CONTENT_TYPE_RBCF,
-                    body: { frames },
-                }
-            });
+            dispatchChange(state, CONTENT_TYPE_RBCF, {frames});
         }
     }
 }

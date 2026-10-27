@@ -4,8 +4,7 @@
 import { encodeParams, columnsToRows, transformFrames, checkFrames, framesFromWire } from '@reifydb/core'
 import type { FrameResults, ShapeNode } from '@reifydb/core'
 import { encodeSubscribeOptions } from '@reifydb/client'
-import type { SubscriptionConfig } from '@reifydb/client'
-import type { BatchSubscribed, Frame, ReifydbNode, SubscriptionTick } from '../native'
+import type { Frame, ReifydbNode, SubscriptionTick } from '../native'
 import type { Db, SubscriptionInput } from './db'
 
 export class NativeDb implements Db {
@@ -39,28 +38,16 @@ export class NativeDb implements Db {
     return this.node.authenticate(method, credentials)
   }
 
-  subscribeRoot(query: string, params: any, options?: SubscriptionConfig): Promise<string> {
-    return this.node.subscribeRoot(query, toWireParams(params), encodeSubscribeOptions(options))
+  subscribeAs(identity: string, subscriptions: SubscriptionInput[]): Promise<string[]> {
+    return this.node.subscribeAs(identity, subscriptions.map(toNativeSubscription))
   }
 
-  subscribeAs(identity: string, query: string, params: any, options?: SubscriptionConfig): Promise<string> {
-    return this.node.subscribeAs(identity, query, toWireParams(params), encodeSubscribeOptions(options))
+  unsubscribe(subscriptionIds: string[]): Promise<void> {
+    return this.node.unsubscribe(subscriptionIds)
   }
 
-  batchSubscribeRoot(subscriptions: SubscriptionInput[]): Promise<BatchSubscribed> {
-    return this.node.batchSubscribeRoot(subscriptions.map(toNativeSubscription))
-  }
-
-  batchSubscribeAs(identity: string, subscriptions: SubscriptionInput[]): Promise<BatchSubscribed> {
-    return this.node.batchSubscribeAs(identity, subscriptions.map(toNativeSubscription))
-  }
-
-  unsubscribe(subscriptionId: string): void {
-    this.node.unsubscribe(subscriptionId)
-  }
-
-  batchUnsubscribe(batchId: string): Promise<void> {
-    return this.node.batchUnsubscribe(batchId)
+  rootIdentity(): string {
+    return this.node.rootIdentity()
   }
 
   tick(): SubscriptionTick {

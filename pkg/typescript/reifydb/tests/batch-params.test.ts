@@ -32,7 +32,7 @@ describe('batch subscription params over the native bridge', () => {
 
     const first: SubscriptionRow<any>[] = []
     const second: SubscriptionRow<any>[] = []
-    await client.batchSubscribe([
+    await client.subscribe([
       { rql, params: { owner: 'a' }, shape: rowShape, callbacks: { onInsert: (rows) => first.push(...rows) } },
       { rql, params: { owner: 'b' }, shape: rowShape, callbacks: { onInsert: (rows) => second.push(...rows) } },
     ])

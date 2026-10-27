@@ -12,10 +12,7 @@ import {
 } from '@reifydb/react'
 import { UPTIME_CONFIG } from '@/config'
 
-// A page mounts its subscriptions in one React pass, so batching turns a dashboard's five round
-// trips into one. The tests build their store from this same object so the two cannot drift.
 export const STORE_OPTIONS: StoreOptions = {
-  batch: true,
   onBackgroundError: (err) => console.error('uptime store background error', err),
 }
 
@@ -53,15 +50,9 @@ function watchAuth(c: WsClient, onAuthError: () => void): StoreClient {
     query: (rql, params, shapes) => watch(c.query(rql, params, shapes)),
     command: (rql, params, shapes) => watch(c.command(rql, params, shapes)),
     admin: (rql, params, shapes) => watch(c.admin(rql, params, shapes)),
-    subscribe: (rql, params, shape, callbacks, config) =>
-      watch(c.subscribe(rql, params, shape, watchErrors(callbacks), config)),
-    unsubscribe: (subscriptionId) => watch(c.unsubscribe(subscriptionId)),
-    batchSubscribe: (subscriptions) =>
-      watch(
-        c.batchSubscribe(
-          subscriptions.map((subscription) => ({ ...subscription, callbacks: watchErrors(subscription.callbacks) })),
-        ),
-      ),
+    subscribe: (subscriptions) =>
+      watch(c.subscribe(subscriptions.map((subscription) => ({ ...subscription, callbacks: watchErrors(subscription.callbacks) })))),
+    unsubscribe: (subscriptionIds) => watch(c.unsubscribe(subscriptionIds)),
   }
 }
 

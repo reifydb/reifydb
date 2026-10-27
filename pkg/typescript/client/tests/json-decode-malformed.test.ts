@@ -6,7 +6,7 @@ import {WsClient} from '../src/ws';
 import {decodeJsonResponse} from '../src/json-decode';
 import {
     BinaryKind,
-    decodeBatchEnvelope,
+    decodeChangeListEnvelope,
     decodeEnvelope,
     dispatchChange,
     type SubscriptionTarget,
@@ -110,20 +110,20 @@ describe('binary envelopes reject malformed bytes', () => {
     });
 
     it('rejects an envelope with an unknown kind', () => {
-        // only Response, Change and BatchChange exist, so another kind must not be dropped silently
+        // only Response and Change exist, so another kind must not be dropped silently
         expect(() => decodeEnvelope(envelopeBytes(9, 'req-1', ''))).toThrow();
     });
 
-    it('rejects a batch envelope whose entry runs past the end', () => {
-        // a truncated batch must not come back as null, which the socket handler drops silently
-        const bytes = new Uint8Array([BinaryKind.BatchChange, ...u32(1), 0x62, ...u32(1), ...u32(50), 0x73]);
-        expect(() => decodeBatchEnvelope(bytes)).toThrow();
+    it('rejects a change list envelope whose entry runs past the end', () => {
+        // a truncated change list must not come back as null, which the socket handler drops silently
+        const bytes = new Uint8Array([BinaryKind.Change, ...u32(1), ...u32(50), 0x73]);
+        expect(() => decodeChangeListEnvelope(bytes)).toThrow();
     });
 
-    it('rejects a batch envelope with bytes after its last entry', () => {
+    it('rejects a change list envelope with bytes after its last entry', () => {
         // bytes past the declared entries mean the entry count was wrong
-        const bytes = new Uint8Array([BinaryKind.BatchChange, ...u32(1), 0x62, ...u32(0), 0xde, 0xad]);
-        expect(() => decodeBatchEnvelope(bytes)).toThrow();
+        const bytes = new Uint8Array([BinaryKind.Change, ...u32(0), 0xde, 0xad]);
+        expect(() => decodeChangeListEnvelope(bytes)).toThrow();
     });
 });
 

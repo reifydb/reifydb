@@ -146,9 +146,9 @@ describe('edit monitor flow', () => {
     })
     const slowRegions: StoreClient = {
       ...client,
-      batchSubscribe: async (subscriptions) => {
+      subscribe: async (subscriptions) => {
         if (subscriptions.some((subscription) => subscription.rql === monitorRegions.rql)) await gate
-        return client.batchSubscribe(subscriptions)
+        return client.subscribe(subscriptions)
       },
     }
     const gated = new Store(slowRegions, STORE_OPTIONS)

@@ -118,12 +118,13 @@ describe('a create error the command runner did not record', () => {
       command,
       admin: pending,
       unsubscribe: async () => undefined,
-      subscribe: async (rql, _params, _shape, callbacks) => {
-        if (rql !== regions.rql) return pending()
-        ;(callbacks as SubscriptionCallbacks<{ id: string; label: string }>).onInsert?.([
+      subscribe: async (subscriptions) => {
+        const item = subscriptions.find((subscription) => subscription.rql === regions.rql)
+        if (!item) return pending()
+        ;(item.callbacks as SubscriptionCallbacks<{ id: string; label: string }>).onInsert?.([
           { '#rownum': 1, id: 'not-a-uuid', label: 'US East' },
         ])
-        return 'regions'
+        return subscriptions.map((_, index) => `sub-${index}`)
       },
     })
     renderWithProviders(<MonitorNewPage />, store)

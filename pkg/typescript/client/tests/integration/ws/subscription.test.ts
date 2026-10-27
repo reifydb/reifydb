@@ -44,18 +44,18 @@ describe('WebSocket Subscriptions', () => {
             ]);
 
             const tracker = createCallbackTracker();
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
-                Shape.object({
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
+                shape: Shape.object({
                     id: Shape.number(),
                     name: Shape.string(),
                     value: Shape.number()
                 }),
-                {
+                callbacks: {
                     onInsert: tracker.callback
                 }
-            );
+            }]);
 
             expect(subscriptionId).toBeDefined();
             expect(typeof subscriptionId).toBe('string');
@@ -65,7 +65,7 @@ describe('WebSocket Subscriptions', () => {
             const subscriptions = (wsClient as any).subscriptions;
             expect(subscriptions.has(subscriptionId)).toBe(true);
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 10000);
 
         it('should successfully unsubscribe from a subscription', async () => {
@@ -76,21 +76,21 @@ describe('WebSocket Subscriptions', () => {
             ]);
 
             const tracker = createCallbackTracker();
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
-                Shape.object({
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
+                shape: Shape.object({
                     id: Shape.number(),
                     name: Shape.string()
                 }),
-                {
+                callbacks: {
                     onInsert: tracker.callback
                 }
-            );
+            }]);
 
             expect(subscriptionId).toBeDefined();
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
 
             // Verify subscription is removed
             const subscriptions = (wsClient as any).subscriptions;
@@ -113,14 +113,14 @@ describe('WebSocket Subscriptions', () => {
 
             const { promise, callback } = waitForCallback(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: callback
                 }
-            );
+            }]);
 
             // Insert data after subscription is established
             await wsClient.command(
@@ -142,7 +142,7 @@ describe('WebSocket Subscriptions', () => {
             // #rownum is the server's identity for the row; `id` is a user column and cannot stand in for it
             expect(rows[0]["#rownum"]).toEqual(expect.any(Number));
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 10000);
     });
 
@@ -163,16 +163,16 @@ describe('WebSocket Subscriptions', () => {
             const updateTracker = createCallbackTracker(shape);
             const removeTracker = createCallbackTracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: insertTracker.callback,
                     onUpdate: updateTracker.callback,
                     onRemove: removeTracker.callback
                 }
-            );
+            }]);
 
             await wsClient.command(
                 `INSERT test::${tableName} [{ id: 1, name: 'alice' }, { id: 2, name: 'bob' }]`,
@@ -196,7 +196,7 @@ describe('WebSocket Subscriptions', () => {
             expect(bob).toBeDefined();
             expect(bob?.name).toBe('bob');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 10000);
 
         it('should invoke onUpdate callback for UPDATE operations', async () => {
@@ -216,16 +216,16 @@ describe('WebSocket Subscriptions', () => {
             const removeTracker = createCallbackTracker(shape);
 
             // Subscribe to empty table FIRST
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: insertTracker.callback,
                     onUpdate: updateTracker.callback,
                     onRemove: removeTracker.callback
                 }
-            );
+            }]);
 
             // Now insert initial data
             await wsClient.command(
@@ -262,7 +262,7 @@ describe('WebSocket Subscriptions', () => {
             expect(updatedRow).toBeDefined();
             expect(updatedRow?.name).toBe('alice_updated');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 10000);
 
         it('should invoke onRemove callback for REMOVE operations', async () => {
@@ -282,16 +282,16 @@ describe('WebSocket Subscriptions', () => {
             const removeTracker = createCallbackTracker(shape);
 
             // Subscribe to empty table FIRST
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: insertTracker.callback,
                     onUpdate: updateTracker.callback,
                     onRemove: removeTracker.callback
                 }
-            );
+            }]);
 
             // Now insert initial data
             await wsClient.command(
@@ -328,7 +328,7 @@ describe('WebSocket Subscriptions', () => {
             expect(removedRow).toBeDefined();
             expect(removedRow?.name).toBe('alice');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 10000);
 
         it('should handle multiple operation types in sequence', async () => {
@@ -347,16 +347,16 @@ describe('WebSocket Subscriptions', () => {
             const updateTracker = createCallbackTracker(shape);
             const removeTracker = createCallbackTracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: insertTracker.callback,
                     onUpdate: updateTracker.callback,
                     onRemove: removeTracker.callback
                 }
-            );
+            }]);
 
             // Insert
             await wsClient.command(
@@ -407,7 +407,7 @@ describe('WebSocket Subscriptions', () => {
             expect(removedRow).toBeDefined();
             expect(removedRow?.name).toBe('alice_updated');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 10000);
 
         it('should batch consecutive rows of same operation type', async () => {
@@ -424,14 +424,14 @@ describe('WebSocket Subscriptions', () => {
 
             const insertTracker = createCallbackTracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: insertTracker.callback
                 }
-            );
+            }]);
 
             // Insert 10 rows at once
             const rows = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, name: `user${i + 1}` }));
@@ -455,7 +455,7 @@ describe('WebSocket Subscriptions', () => {
                 expect(row?.name).toBe(`user${i + 1}`);
             }
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 10000);
     });
 
@@ -476,14 +476,14 @@ describe('WebSocket Subscriptions', () => {
 
             const { promise, callback } = waitForCallback(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: callback
                 }
-            );
+            }]);
 
             await wsClient.command(
                 `INSERT test::${tableName} [{ id: 42, name: 'test', value: 100 }]`,
@@ -504,7 +504,7 @@ describe('WebSocket Subscriptions', () => {
             //@ts-ignore
             expect(rows[0].id.value).toBeUndefined();
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 10000);
 
         it('should handle value shape types', async () => {
@@ -521,14 +521,14 @@ describe('WebSocket Subscriptions', () => {
 
             const { promise, callback } = waitForCallback(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: callback
                 }
-            );
+            }]);
 
             await wsClient.command(
                 `INSERT test::${tableName} [{ id: 42, name: 'test' }]`,
@@ -542,7 +542,7 @@ describe('WebSocket Subscriptions', () => {
             expect(rows[0].id.value).toBe(42);
             expect(rows[0].name.value).toBe('test');
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 10000);
     });
 
@@ -567,13 +567,13 @@ describe('WebSocket Subscriptions', () => {
             const tracker1 = createCallbackTracker(shape1);
             const tracker2 = createCallbackTracker(shape2);
 
-            const sub1 = await wsClient.subscribe(`from test::${table1}`, null, shape1, {
+            const [sub1] = await wsClient.subscribe([{ rql: `from test::${table1}`, params: null, shape: shape1, callbacks: {
                 onInsert: tracker1.callback
-            });
+            } }]);
 
-            const sub2 = await wsClient.subscribe(`from test::${table2}`, null, shape2, {
+            const [sub2] = await wsClient.subscribe([{ rql: `from test::${table2}`, params: null, shape: shape2, callbacks: {
                 onInsert: tracker2.callback
-            });
+            } }]);
 
             // Insert into table 1
             await wsClient.command(
@@ -599,8 +599,8 @@ describe('WebSocket Subscriptions', () => {
             expect(tracker2.getAllRows().length).toBe(1);
             expect(tracker2.getAllRows()[0].value).toBe(200);
 
-            await wsClient.unsubscribe(sub1);
-            await wsClient.unsubscribe(sub2);
+            await wsClient.unsubscribe([sub1]);
+            await wsClient.unsubscribe([sub2]);
         }, 15000);
 
         it('should handle 5+ concurrent subscriptions', async () => {
@@ -625,9 +625,9 @@ describe('WebSocket Subscriptions', () => {
             // Subscribe to all tables
             const subscriptions = await Promise.all(
                 tables.map((table, i) =>
-                    wsClient.subscribe(`from test::${table}`, null, shape, {
+                    wsClient.subscribe([{ rql: `from test::${table}`, params: null, shape, callbacks: {
                         onInsert: trackers[i].callback
-                    })
+                    } }])
                 )
             );
 
@@ -673,14 +673,14 @@ describe('WebSocket Subscriptions', () => {
 
             const tracker = createCallbackTracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                {
+                callbacks: {
                     onInsert: tracker.callback
                 }
-            );
+            }]);
 
             expect(subscriptionId).toBeDefined();
 
@@ -723,12 +723,12 @@ describe('WebSocket Subscriptions', () => {
 
             const tracker = createCallbackTracker(shape);
 
-            await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                { onInsert: tracker.callback }
-            );
+                callbacks: { onInsert: tracker.callback }
+            }]);
 
             // Insert before disconnect
             await wsClient.command(
@@ -793,9 +793,9 @@ describe('WebSocket Subscriptions', () => {
             // Subscribe to all tables
             await Promise.all(
                 tables.map((table, i) =>
-                    wsClient.subscribe(`from test::${table}`, null, shape, {
+                    wsClient.subscribe([{ rql: `from test::${table}`, params: null, shape, callbacks: {
                         onInsert: trackers[i].callback
-                    })
+                    } }])
                 )
             );
 
@@ -831,12 +831,12 @@ describe('WebSocket Subscriptions', () => {
     describe('Error Handling', () => {
         it('should reject subscription with invalid query', async () => {
             try {
-                await wsClient.subscribe(
-                    'INVALID RQL SYNTAX HERE',
-                    null,
-                    undefined,
-                    { onInsert: () => {} }
-                );
+                await wsClient.subscribe([{
+                    rql: 'INVALID RQL SYNTAX HERE',
+                    params: null,
+                    shape: undefined,
+                    callbacks: { onInsert: () => {} }
+                }]);
                 expect.fail('Should have rejected');
             } catch (err: any) {
                 expect(err).toBeDefined();
@@ -849,12 +849,12 @@ describe('WebSocket Subscriptions', () => {
             const nonExistentTable = 'table_that_does_not_exist_' + Date.now();
 
             try {
-                await wsClient.subscribe(
-                    `from ${nonExistentTable}`,
-                    null,
-                    undefined,
-                    { onInsert: () => {} }
-                );
+                await wsClient.subscribe([{
+                    rql: `from ${nonExistentTable}`,
+                    params: null,
+                    shape: undefined,
+                    callbacks: { onInsert: () => {} }
+                }]);
                 expect.fail('Should have rejected');
             } catch (err: any) {
                 expect(err).toBeDefined();
@@ -866,7 +866,7 @@ describe('WebSocket Subscriptions', () => {
             const fakeId = 'fake-subscription-id-' + Date.now();
 
             try {
-                await wsClient.unsubscribe(fakeId);
+                await wsClient.unsubscribe([fakeId]);
                 // May or may not throw depending on server implementation
                 // If it doesn't throw, that's also acceptable
             } catch (err: any) {
@@ -887,12 +887,12 @@ describe('WebSocket Subscriptions', () => {
 
             const tracker = createCallbackTracker(shape);
 
-            await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                { onInsert: tracker.callback }
-            );
+                callbacks: { onInsert: tracker.callback }
+            }]);
 
             const subscriptions = (wsClient as any).subscriptions;
             expect(subscriptions.size).toBe(1);
@@ -914,15 +914,15 @@ describe('WebSocket Subscriptions', () => {
 
             const tracker = createCallbackTracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                { onInsert: tracker.callback }
-            );
+                callbacks: { onInsert: tracker.callback }
+            }]);
 
             // Unsubscribe immediately
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
 
             // Insert data
             await wsClient.command(
@@ -951,12 +951,12 @@ describe('WebSocket Subscriptions', () => {
 
             const tracker = createCallbackTracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName} filter { id > 1000 }`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName} filter { id > 1000 }`,
+                params: null,
                 shape,
-                { onInsert: tracker.callback }
-            );
+                callbacks: { onInsert: tracker.callback }
+            }]);
 
             // Insert data that doesn't match filter
             await wsClient.command(
@@ -987,7 +987,7 @@ describe('WebSocket Subscriptions', () => {
             expect(row.id).toBe(1001);
             expect(row.value).toBe(200);
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 10000);
 
         it('should handle large batch of changes', async () => {
@@ -1001,12 +1001,12 @@ describe('WebSocket Subscriptions', () => {
 
             const tracker = createCallbackTracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                { onInsert: tracker.callback }
-            );
+                callbacks: { onInsert: tracker.callback }
+            }]);
 
             // Insert 100 rows
             const rows = Array.from({ length: 100 }, (_, i) => ({ id: i, value: i * 10 }));
@@ -1042,7 +1042,7 @@ describe('WebSocket Subscriptions', () => {
             // Performance check - should complete in reasonable time
             expect(duration).toBeLessThan(3000);
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 15000);
 
         it('should handle rapid successive changes', async () => {
@@ -1056,12 +1056,12 @@ describe('WebSocket Subscriptions', () => {
 
             const tracker = createCallbackTracker(shape);
 
-            const subscriptionId = await wsClient.subscribe(
-                `from test::${tableName}`,
-                null,
+            const [subscriptionId] = await wsClient.subscribe([{
+                rql: `from test::${tableName}`,
+                params: null,
                 shape,
-                { onInsert: tracker.callback }
-            );
+                callbacks: { onInsert: tracker.callback }
+            }]);
 
             // Fire 10 insert commands rapidly without await
             const promises = Array.from({ length: 10 }, (_, i) =>
@@ -1088,7 +1088,7 @@ describe('WebSocket Subscriptions', () => {
                 expect(row?.value).toBe(i * 10);
             }
 
-            await wsClient.unsubscribe(subscriptionId);
+            await wsClient.unsubscribe([subscriptionId]);
         }, 15000);
     });
 });

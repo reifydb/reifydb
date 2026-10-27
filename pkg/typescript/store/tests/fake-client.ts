@@ -2,12 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 import {asFrameResults} from '@reifydb/core';
 import type {FrameResults, ShapeNode} from '@reifydb/core';
-import type {
-    BatchSubscription,
-    BatchSubscribeItem,
-    SubscriptionCallbacks,
-    SubscriptionConfig
-} from '@reifydb/client';
+import type {SubscribeItem} from '@reifydb/client';
 import type {StoreClient} from '../src';
 
 export interface Deferred<T> {
@@ -15,20 +10,12 @@ export interface Deferred<T> {
     reject: (error: Error) => void;
 }
 
-export interface SubscribeCall extends Deferred<string> {
-    rql: string;
-    params: any;
-    shape: ShapeNode | undefined;
-    callbacks: SubscriptionCallbacks<any>;
-    config: SubscriptionConfig | undefined;
-}
-
-export interface BatchSubscribeCall extends Deferred<BatchSubscription> {
-    subscriptions: BatchSubscribeItem[];
+export interface SubscribeCall extends Deferred<string[]> {
+    subscriptions: SubscribeItem[];
 }
 
 export interface UnsubscribeCall extends Deferred<void> {
-    subscriptionId: string;
+    subscriptionIds: string[];
 }
 
 export interface RequestCall extends Deferred<unknown[][]> {
@@ -76,31 +63,15 @@ export class FakeClient implements StoreClient {
         return promise.then(frames => asFrameResults<S>(frames));
     }
 
-    subscribe<T>(
-        rql: string,
-        params: any,
-        shape: ShapeNode | undefined,
-        callbacks: SubscriptionCallbacks<T>,
-        config?: SubscriptionConfig
-    ): Promise<string> {
-        const {promise, ...call} = deferred<string>();
-        this.subscribes.push({rql, params, shape, callbacks, config, ...call});
+    subscribe(subscriptions: SubscribeItem[]): Promise<string[]> {
+        const {promise, ...call} = deferred<string[]>();
+        this.subscribes.push({subscriptions, ...call});
         return promise;
     }
 
-    unsubscribe(subscriptionId: string): Promise<void> {
+    unsubscribe(subscriptionIds: string[]): Promise<void> {
         const {promise, ...call} = deferred<void>();
-        this.unsubscribes.push({subscriptionId, ...call});
-        return promise;
-    }
-}
-
-export class BatchingFakeClient extends FakeClient {
-    readonly batches: BatchSubscribeCall[] = [];
-
-    batchSubscribe(subscriptions: BatchSubscribeItem[]): Promise<BatchSubscription> {
-        const {promise, ...call} = deferred<BatchSubscription>();
-        this.batches.push({subscriptions, ...call});
+        this.unsubscribes.push({subscriptionIds, ...call});
         return promise;
     }
 }

@@ -73,24 +73,17 @@ export type {
     HydrationConfig,
     SubscriptionConfig,
     SubscribeOptions,
-    BatchSubscribeRequest,
-    BatchSubscribedResponse,
-    BatchUnsubscribeRequest,
-    BatchUnsubscribedResponse,
-    BatchChangeMessage,
-    BatchSubscriptionClosedMessage,
-    BatchClosedMessage,
-    BatchSubscriptionInfo,
-    BatchSubscribeItem,
-    BatchSubscriptionCallbacks,
-    BatchSubscription,
+    SubscribeItem,
+    SubscriptionInfo,
+    ChangeEntry,
+    SubscriptionClosedMessage,
     LoginChallengeResult,
     LoginResult,
     LogoutRequest,
     LogoutResponse,
 } from './types';
-export {BinaryKind, decodeBatchEnvelope, decodeEnvelope, dispatchChange, reportSubscriptionError} from './subscription-decode';
-export type {BatchBinaryEnvelope, BinaryEnvelope, SubscriptionTarget} from './subscription-decode';
+export {BinaryKind, decodeChangeListEnvelope, decodeEnvelope, dispatchChange, reportSubscriptionError} from './subscription-decode';
+export type {BinaryEnvelope, ChangeListEnvelope, SubscriptionTarget} from './subscription-decode';
 export {
     defaultHydrationConfig,
     defaultSubscriptionConfig,

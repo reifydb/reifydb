@@ -27,7 +27,7 @@ async function dropConnection(): Promise<ScriptedSocket> {
 }
 
 async function batchOfTwo(config?: SubscriptionConfig): Promise<Store> {
-    const store = new Store(await connect(), {batch: true});
+    const store = new Store(await connect());
     const spec = config === undefined ? items : items.options({config});
     store.subscribe(spec, {owner: 'a'});
     store.subscribe(spec, {owner: 'b'});
@@ -57,7 +57,7 @@ describe('batched subscription params', () => {
         // A batch that drops params runs every subscription unfiltered, so each must carry its own at its own index.
         await batchOfTwo();
 
-        const [batch] = sockets[0].requests('BatchSubscribe');
+        const [batch] = sockets[0].requests('Subscribe');
 
         expect(batch.payload.subscriptions.map((subscription: any) => subscription.params)).toEqual([encodeParams({owner: 'a'}), encodeParams({owner: 'b'})]);
     });
@@ -65,13 +65,13 @@ describe('batched subscription params', () => {
     it('sends the same params again when the batch is re-established after a reconnect', async () => {
         // The resubscribe must carry the params again, otherwise a reconnect silently widens every filtered subscription.
         await batchOfTwo(tuned);
-        sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
+        sockets[0].ackSubscribe(['server-1', 'server-2']);
         await flush();
 
         const second = await dropConnection();
-        const [batch] = second.requests('BatchSubscribe');
+        const [batch] = second.requests('Subscribe');
 
-        expect(batch.payload.subscriptions).toEqual(sockets[0].requests('BatchSubscribe')[0].payload.subscriptions);
+        expect(batch.payload.subscriptions).toEqual(sockets[0].requests('Subscribe')[0].payload.subscriptions);
         expect(batch.payload.subscriptions.map((subscription: any) => subscription.params)).toEqual([encodeParams({owner: 'a'}), encodeParams({owner: 'b'})]);
     });
 });
@@ -81,7 +81,8 @@ describe('a refused resubscribe', () => {
         // The old rows stop updating once the resubscribe is refused, so the entry must never stay ready.
         const store = new Store(await connect());
         store.subscribe(items, {owner: 'a'});
-        sockets[0].ackSubscribe('server-1');
+        await flush();
+        sockets[0].ackSubscribe(['server-1']);
         sockets[0].insert('server-1', [[1, 1, 'a']]);
         await flush();
 
@@ -98,11 +99,11 @@ describe('a refused resubscribe', () => {
     it('marks every subscription of a refused batch errored', async () => {
         // The whole batch is refused at once, so every subscription must go to error, not just the first one.
         const store = await batchOfTwo();
-        sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
+        sockets[0].ackSubscribe(['server-1', 'server-2']);
         await flush();
 
         const second = await dropConnection();
-        second.refuse('BatchSubscribe', 'AUTH_REQUIRED');
+        second.refuse('Subscribe', 'AUTH_REQUIRED');
         await flush();
 
         expect(store.getEntry(items, {owner: 'a'}).status).toBe('error');
@@ -114,8 +115,8 @@ describe('a refused resubscribe', () => {
         // The subscribe promise settled long before the reconnect, so without onError the refusal never reaches the app.
         const ws = await connect();
         const errors: Error[] = [];
-        const subscribed = ws.subscribe(items.rql, {owner: 'a'}, shape, {onError: error => errors.push(error)});
-        sockets[0].ackSubscribe('server-1');
+        const subscribed = ws.subscribe([{rql: items.rql, params: {owner: 'a'}, shape, callbacks: {onError: error => errors.push(error)}}]);
+        sockets[0].ackSubscribe(['server-1']);
         await subscribed;
 
         const second = await dropConnection();
@@ -131,11 +132,11 @@ describe('a partial resubscribe ack', () => {
     it('marks a subscription the ack left out errored instead of leaving its stale rows ready', async () => {
         // A subscription the server did not re-establish never updates again, so it must not stay ready.
         const store = await batchOfTwo();
-        sockets[0].ackBatch('batch-1', ['server-1', 'server-2']);
+        sockets[0].ackSubscribe(['server-1', 'server-2']);
         await flush();
 
         const second = await dropConnection();
-        second.ackBatch('batch-2', ['server-3', null]);
+        second.ackSubscribe(['server-3', null]);
         await flush();
 
         expect(store.getEntry(items, {owner: 'a'}).status).toBe('ready');
@@ -149,19 +150,24 @@ describe('a throwing onResubscribe', () => {
         const ws = await connect();
         const errors: Error[] = [];
         const thrown = new Error('onResubscribe failed');
-        ws.subscribe(items.rql, {owner: 'a'}, shape, {
-            onError: error => errors.push(error),
-            onResubscribe: () => {
-                throw thrown;
+        ws.subscribe([{
+            rql: items.rql,
+            params: {owner: 'a'},
+            shape,
+            callbacks: {
+                onError: error => errors.push(error),
+                onResubscribe: () => {
+                    throw thrown;
+                },
             },
-        });
-        sockets[0].ackSubscribe('server-1');
-        ws.subscribe(items.rql, {owner: 'b'}, shape, {});
-        sockets[0].ackSubscribe('server-2');
+        }]);
+        sockets[0].ackSubscribe(['server-1']);
+        ws.subscribe([{rql: items.rql, params: {owner: 'b'}, shape, callbacks: {}}]);
+        sockets[0].ackSubscribe(['server-2']);
         await flush();
 
         const second = await dropConnection();
-        expect(() => second.ackSubscribe('server-3')).not.toThrow();
+        expect(() => second.ackSubscribe(['server-3'])).not.toThrow();
         await flush();
 
         expect(errors).toEqual([thrown]);
@@ -174,7 +180,7 @@ describe('unsubscribing an id this client does not hold', () => {
         // An id this client never issued may belong to another connection, so it must never reach the server.
         const ws = await connect();
 
-        const unsubscribed = ws.unsubscribe('server-7');
+        const unsubscribed = ws.unsubscribe(['server-7']);
         await flush();
 
         expect(sockets[0].unsubscribed()).toEqual([]);

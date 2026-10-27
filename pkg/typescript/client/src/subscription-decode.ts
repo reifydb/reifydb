@@ -24,7 +24,6 @@ import {CONTENT_TYPE_FRAMES} from "./content-types";
 export enum BinaryKind {
     Response = 0x00,
     Change = 0x01,
-    BatchChange = 0x02,
 }
 
 export interface BinaryEnvelope {
@@ -54,7 +53,7 @@ export function decodeEnvelope(bytes: Uint8Array): BinaryEnvelope {
         throw new Error(`A binary envelope needs at least 5 bytes, got ${bytes.length}`);
     }
     const kind = bytes[0] as BinaryKind;
-    if (kind !== BinaryKind.Response && kind !== BinaryKind.Change && kind !== BinaryKind.BatchChange) {
+    if (kind !== BinaryKind.Response) {
         throw new Error(`Unknown binary envelope kind ${bytes[0]}`);
     }
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -84,38 +83,32 @@ export function decodeEnvelope(bytes: Uint8Array): BinaryEnvelope {
     return {kind, id, meta, rbcf: rbcfBytes};
 }
 
-export interface BatchBinaryEnvelope {
-    batchId: string;
+export interface ChangeListEnvelope {
     entries: Array<{ subscriptionId: string; rbcf: Uint8Array }>;
 }
 
-export function decodeBatchEnvelope(bytes: Uint8Array): BatchBinaryEnvelope {
-    if (bytes.length < 9) {
-        throw new Error(`A batch envelope needs at least 9 bytes, got ${bytes.length}`);
+export function decodeChangeListEnvelope(bytes: Uint8Array): ChangeListEnvelope {
+    if (bytes.length < 5) {
+        throw new Error(`A change envelope needs at least 5 bytes, got ${bytes.length}`);
+    }
+    if (bytes[0] !== BinaryKind.Change) {
+        throw new Error(`A change envelope starts with kind ${BinaryKind.Change}, got ${bytes[0]}`);
     }
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const decoder = new TextDecoder("utf-8");
 
-    const batchIdLen = view.getUint32(1, true);
+    const numEntries = view.getUint32(1, true);
     let offset = 5;
-    if (bytes.length < offset + batchIdLen + 4) {
-        throw new Error(`A batch envelope declares a ${batchIdLen} byte id that runs past its ${bytes.length} bytes`);
-    }
-    const batchId = decoder.decode(bytes.subarray(offset, offset + batchIdLen));
-    offset += batchIdLen;
-
-    const numEntries = view.getUint32(offset, true);
-    offset += 4;
 
     const entries: Array<{ subscriptionId: string; rbcf: Uint8Array }> = [];
     for (let i = 0; i < numEntries; i++) {
         if (bytes.length < offset + 4) {
-            throw new Error(`Batch envelope ${batchId} ends before entry ${i} declares its subscription id`);
+            throw new Error(`Change envelope ends before entry ${i} declares its subscription id`);
         }
         const subIdLen = view.getUint32(offset, true);
         offset += 4;
         if (bytes.length < offset + subIdLen + 4) {
-            throw new Error(`Batch envelope ${batchId} entry ${i} declares a ${subIdLen} byte id that runs past its ${bytes.length} bytes`);
+            throw new Error(`Change envelope entry ${i} declares a ${subIdLen} byte id that runs past its ${bytes.length} bytes`);
         }
         const subscriptionId = decoder.decode(bytes.subarray(offset, offset + subIdLen));
         offset += subIdLen;
@@ -123,7 +116,7 @@ export function decodeBatchEnvelope(bytes: Uint8Array): BatchBinaryEnvelope {
         const rbcfLen = view.getUint32(offset, true);
         offset += 4;
         if (bytes.length < offset + rbcfLen) {
-            throw new Error(`Batch envelope ${batchId} entry ${i} declares ${rbcfLen} payload bytes that run past its ${bytes.length} bytes`);
+            throw new Error(`Change envelope entry ${i} declares ${rbcfLen} payload bytes that run past its ${bytes.length} bytes`);
         }
         const rbcfBytes = bytes.subarray(offset, offset + rbcfLen);
         offset += rbcfLen;
@@ -132,10 +125,10 @@ export function decodeBatchEnvelope(bytes: Uint8Array): BatchBinaryEnvelope {
     }
 
     if (offset !== bytes.length) {
-        throw new Error(`Batch envelope ${batchId} carries ${bytes.length - offset} bytes past its ${numEntries} entries`);
+        throw new Error(`Change envelope carries ${bytes.length - offset} bytes past its ${numEntries} entries`);
     }
 
-    return {batchId, entries};
+    return {entries};
 }
 
 export function dispatchChange(target: SubscriptionTarget, contentType: string, body: any): void {

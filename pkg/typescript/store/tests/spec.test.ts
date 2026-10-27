@@ -3,7 +3,7 @@
 import {describe, expect, it} from 'vitest';
 import {DurationValue, Shape} from '@reifydb/core';
 import {Store, rql} from '../src';
-import {BatchingFakeClient, FakeClient, flush} from './fake-client';
+import {FakeClient, flush} from './fake-client';
 
 const item = Shape.object({id: Shape.int4(), name: Shape.utf8()});
 const total = Shape.object({total: Shape.int8()});
@@ -20,19 +20,22 @@ describe('store specs', () => {
         store.subscribe(second, {id: 1});
         await flush();
         expect(client.subscribes).toHaveLength(1);
-        client.subscribes[0].resolve('sub-1');
+        expect(client.subscribes[0].subscriptions).toHaveLength(1);
+        client.subscribes[0].resolve(['sub-1']);
         await flush();
         expect(store.getEntry(second, {id: 1})).toBe(store.getEntry(first, {id: 1}));
         expect(store.getEntry(second, {id: 1}).status).toBe('ready');
     });
 
-    it('the same rql and params with a different shape get their own entry', () => {
+    it('the same rql and params with a different shape get their own entry', async () => {
         // One entry for two shapes would hand rows decoded for one shape to a caller typed by the other.
         const client = new FakeClient();
         const store = new Store(client);
         store.subscribe(rql(item)`from test::items`, null);
         store.subscribe(rql(total)`from test::items`, null);
-        expect(client.subscribes).toHaveLength(2);
+        await flush();
+        expect(client.subscribes).toHaveLength(1);
+        expect(client.subscribes[0].subscriptions).toHaveLength(2);
         expect(Object.keys(store.getSnapshot().entries)).toHaveLength(2);
     });
 
@@ -46,26 +49,14 @@ describe('store specs', () => {
         expect(Object.keys(store.getSnapshot().entries)).toHaveLength(2);
     });
 
-    it('subscribe hands the spec rql, params, shape and config to the client unchanged', () => {
+    it('subscribe hands the spec rql, params, shape and config to the client unchanged', async () => {
         // A dropped config silently falls back to server defaults, so hydration and linger settings would never apply.
         const client = new FakeClient();
         const store = new Store(client);
         const spec = rql(item)<{id: number}>`from test::items filter { id == $id }`.options({config});
         store.subscribe(spec, {id: 7});
-        expect(client.subscribes[0].rql).toBe('from test::items filter { id == $id }');
-        expect(client.subscribes[0].params).toEqual({id: 7});
-        expect(client.subscribes[0].shape).toBe(item);
-        expect(client.subscribes[0].config).toBe(config);
-    });
-
-    it('a batched subscribe hands the spec rql, params, shape and config to the batch request unchanged', async () => {
-        // The batch path builds its own request, so it can lose the config even when the direct path keeps it.
-        const client = new BatchingFakeClient();
-        const store = new Store(client, {batch: true});
-        const spec = rql(item)<{id: number}>`from test::items filter { id == $id }`.options({config});
-        store.subscribe(spec, {id: 7});
         await flush();
-        const request = client.batches[0].subscriptions[0];
+        const request = client.subscribes[0].subscriptions[0];
         expect(request.rql).toBe('from test::items filter { id == $id }');
         expect(request.params).toEqual({id: 7});
         expect(request.shape).toBe(item);

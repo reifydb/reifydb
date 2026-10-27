@@ -19,8 +19,9 @@ describe('useSubscription', () => {
         // Going back to a page whose data is already live must not flash loading or open a duplicate subscription.
         const {client, store, wrapper} = setup();
         store.subscribe(items, null);
-        client.subscribes[0].callbacks.onInsert?.([{'#rownum': 1, id: 1, name: 'a'}]);
-        client.subscribes[0].resolve('sub-1');
+        await flush();
+        client.subscribes[0].subscriptions[0].callbacks.onInsert?.([{'#rownum': 1, id: 1, name: 'a'}]);
+        client.subscribes[0].resolve(['sub-1']);
         await flush();
         const statuses: string[] = [];
         const {result} = renderHook(() => {
@@ -37,23 +38,26 @@ describe('useSubscription', () => {
         const {client, wrapper} = setup();
         const {result} = renderHook(() => useSubscription(items, null), {wrapper});
         expect(result.current.status).toBe('loading');
+        await act(flush);
         expect(client.subscribes).toHaveLength(1);
-        expect(client.subscribes[0].rql).toBe(items.rql);
+        expect(client.subscribes[0].subscriptions[0].rql).toBe(items.rql);
         await act(async () => {
-            client.subscribes[0].resolve('sub-1');
+            client.subscribes[0].resolve(['sub-1']);
             await flush();
         });
         expect(result.current.status).toBe('ready');
     });
 
-    it('rerendering with equal arguments does not subscribe again', () => {
+    it('rerendering with equal arguments does not subscribe again', async () => {
         const {client, wrapper} = setup();
         const {rerender} = renderHook(
             ({params}: {params: {a: number; b: number}}) => useSubscription(rql(shape)<{a: number; b: number}>`from test::items`, params),
             {wrapper, initialProps: {params: {a: 1, b: 2}}}
         );
         rerender({params: {b: 2, a: 1}});
+        await act(flush);
         expect(client.subscribes).toHaveLength(1);
+        expect(client.subscribes[0].subscriptions).toHaveLength(1);
     });
 
     it('changing rql releases the old entry and subscribes the new one', async () => {
@@ -62,40 +66,44 @@ describe('useSubscription', () => {
             ({spec}: {spec: typeof items}) => useSubscription(spec, null),
             {wrapper, initialProps: {spec: items}}
         );
+        await act(flush);
         await act(async () => {
-            client.subscribes[0].resolve('sub-1');
+            client.subscribes[0].resolve(['sub-1']);
             await flush();
         });
         rerender({spec: other});
         await act(flush);
-        expect(client.subscribes.map(call => call.rql)).toEqual([items.rql, other.rql]);
-        expect(client.unsubscribes.map(call => call.subscriptionId)).toEqual(['sub-1']);
+        expect(client.subscribes.map(call => call.subscriptions.map(subscription => subscription.rql))).toEqual([[items.rql], [other.rql]]);
+        expect(client.unsubscribes.map(call => call.subscriptionIds)).toEqual([['sub-1']]);
         expect(Object.keys(store.getSnapshot().entries)).toHaveLength(1);
         expect(store.getEntry(other, null).status).toBe('loading');
     });
 
-    it('enabled: false never subscribes and flipping to true subscribes', () => {
+    it('enabled: false never subscribes and flipping to true subscribes', async () => {
         const {client, wrapper} = setup();
         const {result, rerender} = renderHook(
             ({enabled}: {enabled: boolean}) => useSubscription(items, null, {enabled}),
             {wrapper, initialProps: {enabled: false}}
         );
+        await act(flush);
         expect(client.subscribes).toHaveLength(0);
         expect(result.current.status).toBe('loading');
         rerender({enabled: true});
+        await act(flush);
         expect(client.subscribes).toHaveLength(1);
     });
 
     it('unmount releases', async () => {
         const {client, store, wrapper} = setup();
         const {unmount} = renderHook(() => useSubscription(items, null), {wrapper});
+        await act(flush);
         await act(async () => {
-            client.subscribes[0].resolve('sub-1');
+            client.subscribes[0].resolve(['sub-1']);
             await flush();
         });
         unmount();
         await flush();
-        expect(client.unsubscribes.map(call => call.subscriptionId)).toEqual(['sub-1']);
+        expect(client.unsubscribes.map(call => call.subscriptionIds)).toEqual([['sub-1']]);
         expect(store.getSnapshot().entries).toEqual({});
     });
 
@@ -108,8 +116,9 @@ describe('useSubscription', () => {
             </StrictMode>
         );
         const {result} = renderHook(() => useSubscription(items, null), {wrapper});
+        await act(flush);
         await act(async () => {
-            client.subscribes[0].resolve('sub-1');
+            client.subscribes[0].resolve(['sub-1']);
             await flush();
         });
         expect(client.subscribes).toHaveLength(1);
@@ -124,15 +133,17 @@ describe('useSubscription', () => {
             return <ul data-testid={label}>{entry.data.map(row => <li key={row.id}>{row.name}</li>)}</ul>;
         }
         render(<><Items label="left"/><Items label="right"/></>, {wrapper});
+        await act(flush);
         expect(client.subscribes).toHaveLength(1);
+        expect(client.subscribes[0].subscriptions).toHaveLength(1);
         act(() => {
-            client.subscribes[0].callbacks.onInsert?.([{'#rownum': 1, id: 1, name: 'a'}]);
+            client.subscribes[0].subscriptions[0].callbacks.onInsert?.([{'#rownum': 1, id: 1, name: 'a'}]);
         });
         expect(screen.getByTestId('left').textContent).toBe('a');
         expect(screen.getByTestId('right').textContent).toBe('a');
     });
 
-    it('a pushed row into entry A rerenders the consumer of A and not the consumer of B', () => {
+    it('a pushed row into entry A rerenders the consumer of A and not the consumer of B', async () => {
         const {client, wrapper} = setup();
         const renders = {a: 0, b: 0};
         function A() {
@@ -146,9 +157,10 @@ describe('useSubscription', () => {
             return <span>{entry.data.length}</span>;
         }
         render(<><A/><B/></>, {wrapper});
+        await act(flush);
         const before = {...renders};
         act(() => {
-            client.subscribes[0].callbacks.onInsert?.([{'#rownum': 1, id: 1, name: 'a'}]);
+            client.subscribes[0].subscriptions[0].callbacks.onInsert?.([{'#rownum': 1, id: 1, name: 'a'}]);
         });
         expect(renders.a).toBe(before.a + 1);
         expect(renders.b).toBe(before.b);

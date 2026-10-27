@@ -14,15 +14,18 @@ const byId = rql(item)<{id: number}>`from test::items filter { id == $id }`;
 const pair = rql([item, total])`output from test::items; output from test::totals`;
 
 describe('hook specs', () => {
-    it('useSubscription hands the spec rql, params, shape and config to the client unchanged', () => {
+    it('useSubscription hands the spec rql, params, shape and config to the client unchanged', async () => {
         // The hook no longer takes config itself, so a spec config it dropped would never reach the server.
         const {client, wrapper} = setup();
         renderHook(() => useSubscription(byId.options({config}), {id: 7}), {wrapper});
+        await act(flush);
         expect(client.subscribes).toHaveLength(1);
-        expect(client.subscribes[0].rql).toBe('from test::items filter { id == $id }');
-        expect(client.subscribes[0].params).toEqual({id: 7});
-        expect(client.subscribes[0].shape).toBe(item);
-        expect(client.subscribes[0].config).toBe(config);
+        expect(client.subscribes[0].subscriptions).toHaveLength(1);
+        const request = client.subscribes[0].subscriptions[0];
+        expect(request.rql).toBe('from test::items filter { id == $id }');
+        expect(request.params).toEqual({id: 7});
+        expect(request.shape).toBe(item);
+        expect(request.config).toBe(config);
     });
 
     it('useQuery hands a one shape spec as a one element tuple and a tuple spec as the tuple itself', () => {

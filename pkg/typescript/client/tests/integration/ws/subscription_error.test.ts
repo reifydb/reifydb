@@ -64,15 +64,15 @@ describe('WebSocket Subscription Error Reporting', () => {
         const errors: Error[] = [];
         const insertTracker = createCallbackTracker();
 
-        const subscriptionId = await wsClient.subscribe(
-            `from test::${tableName}`,
-            null,
+        const [subscriptionId] = await wsClient.subscribe([{
+            rql: `from test::${tableName}`,
+            params: null,
             shape,
-            {
+            callbacks: {
                 onInsert: insertTracker.callback,
                 onError: (error) => errors.push(error)
             }
-        );
+        }]);
 
         await wsClient.command(
             `INSERT test::${tableName} [{ id: 1, name: 'alice' }]`,
@@ -88,7 +88,7 @@ describe('WebSocket Subscription Error Reporting', () => {
         // The rows never decoded, so handing them to onInsert would hand the caller a lie.
         expect(insertTracker.getCallCount()).toBe(0);
 
-        await wsClient.unsubscribe(subscriptionId);
+        await wsClient.unsubscribe([subscriptionId]);
     }, 15000);
 
     it('should deliver the frames that follow an undecodable one in the same message', async () => {
@@ -107,22 +107,22 @@ describe('WebSocket Subscription Error Reporting', () => {
         const insertTracker = createCallbackTracker(shape);
         const updateTracker = createCallbackTracker(shape);
 
-        const subscriptionId = await wsClient.subscribe(
-            `from test::${tableName}`,
-            null,
+        const [subscriptionId] = await wsClient.subscribe([{
+            rql: `from test::${tableName}`,
+            params: null,
             shape,
-            {
+            callbacks: {
                 onInsert: insertTracker.callback,
                 onUpdate: updateTracker.callback,
                 onError: (error) => errors.push(error)
             }
-        );
+        }]);
 
         // A live server sends one frame per change message, so a message whose first frame fails
         // cannot be induced through a subscription; the handler is driven directly instead.
         (wsClient as any).handleChangeMessage({
             type: 'Change',
-            payload: {
+            payload: { entries: [{
                 subscriptionId,
                 contentType: CONTENT_TYPE_FRAMES,
                 body: {
@@ -152,7 +152,7 @@ describe('WebSocket Subscription Error Reporting', () => {
                         }
                     ]
                 }
-            }
+            }] }
         });
 
         expect(errors.length).toBe(1);
@@ -167,7 +167,7 @@ describe('WebSocket Subscription Error Reporting', () => {
             {id: 3, name: 'carol', '#rownum': 3}
         ]);
 
-        await wsClient.unsubscribe(subscriptionId);
+        await wsClient.unsubscribe([subscriptionId]);
     }, 15000);
 
     it('should report the failure without an onError callback and keep the connection usable', async () => {
@@ -188,14 +188,14 @@ describe('WebSocket Subscription Error Reporting', () => {
 
         // No onError: the failure has nowhere to go but the console, and must not escape into the
         // socket handler, where it would stall every later message on this connection.
-        const subscriptionId = await wsClient.subscribe(
-            `from test::${tableName}`,
-            null,
+        const [subscriptionId] = await wsClient.subscribe([{
+            rql: `from test::${tableName}`,
+            params: null,
             shape,
-            {
+            callbacks: {
                 onInsert: insertTracker.callback
             }
-        );
+        }]);
 
         await wsClient.command(
             `INSERT test::${tableName} [{ id: 1, name: 'alice' }]`,
@@ -220,7 +220,7 @@ describe('WebSocket Subscription Error Reporting', () => {
         expect(result[0].length).toBe(1);
         expect(result[0][0].id).toBe(1);
 
-        await wsClient.unsubscribe(subscriptionId);
+        await wsClient.unsubscribe([subscriptionId]);
 
         consoleErrorSpy.mockRestore();
     }, 15000);
@@ -241,23 +241,23 @@ describe('WebSocket Subscription Error Reporting', () => {
         const insertTracker = createCallbackTracker(shape);
         const updateTracker = createCallbackTracker(shape);
 
-        const subscriptionId = await wsClient.subscribe(
-            `from test::${tableName}`,
-            null,
+        const [subscriptionId] = await wsClient.subscribe([{
+            rql: `from test::${tableName}`,
+            params: null,
             shape,
-            {
+            callbacks: {
                 onInsert: insertTracker.callback,
                 onUpdate: updateTracker.callback,
                 onError: (error) => errors.push(error)
             }
-        );
+        }]);
 
         // A bare string where a type descriptor object belongs is what a protocol mismatch looks
         // like. Reading the wire types is per frame, so this is the first frame's problem only; a
         // server cannot be made to send it, so the handler is driven directly.
         const deliver = () => (wsClient as any).handleChangeMessage({
             type: 'Change',
-            payload: {
+            payload: { entries: [{
                 subscriptionId,
                 contentType: CONTENT_TYPE_FRAMES,
                 body: {
@@ -288,7 +288,7 @@ describe('WebSocket Subscription Error Reporting', () => {
                         }
                     ]
                 }
-            }
+            }] }
         });
 
         // Nothing escapes into the socket handler, where it would stall every later message.
@@ -304,6 +304,6 @@ describe('WebSocket Subscription Error Reporting', () => {
             {id: 3, name: 'carol', '#rownum': 3}
         ]);
 
-        await wsClient.unsubscribe(subscriptionId);
+        await wsClient.unsubscribe([subscriptionId]);
     }, 15000);
 });

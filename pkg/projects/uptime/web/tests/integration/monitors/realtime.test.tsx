@@ -43,8 +43,6 @@ beforeAll(() => {
   create = loadBackend()
 })
 
-// Batching is what uptime ships, so it is what the batched block below inherits. This block pins
-// the other path: a transport with no batchSubscribe still has to drive the same page.
 describe('the dashboard over a live subscription, unbatched', () => {
   let db: TestDb
   let store: Store
@@ -53,7 +51,7 @@ describe('the dashboard over a live subscription, unbatched', () => {
 
   beforeEach(async () => {
     db = create()
-    ;({ store, client, identity } = await bridgeStore(db, 'tester', { batch: false }))
+    ;({ store, client, identity } = await bridgeStore(db, 'tester'))
   })
 
   function createMonitor(name: string, target: string) {
@@ -134,9 +132,8 @@ describe('the dashboard over one batched subscription', () => {
     renderWithProviders(<DashboardPage />, store)
     await caughtUp()
 
-    expect(client.subscribe).not.toHaveBeenCalled()
-    expect(client.batchSubscribe).toHaveBeenCalledTimes(1)
-    const subscriptions = (client.batchSubscribe as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(client.subscribe).toHaveBeenCalledTimes(1)
+    const subscriptions = (client.subscribe as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]
     expect(subscriptions.map((subscription: { rql: string }) => subscription.rql).sort()).toEqual([
       'from uptime::daily_totals',
       'from uptime::daily_ups',

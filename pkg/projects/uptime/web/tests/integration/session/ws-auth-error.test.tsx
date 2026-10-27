@@ -57,7 +57,6 @@ function socketAnswering(code: string, message: string) {
     admin: vi.fn(reply),
     subscribe: vi.fn(reply),
     unsubscribe: vi.fn(reply),
-    batchSubscribe: vi.fn(reply),
     disconnect: vi.fn(async () => undefined),
   }
 }
@@ -102,7 +101,7 @@ describe('a websocket auth error', () => {
     const socket = socketAnswering('AUTH_REQUIRED', 'Authentication required')
     socket.query.mockResolvedValue([[{ id: 'user-1', name: 'user@example.com', kind: 'user' }]])
     let refuse: (err: Error) => void = () => undefined
-    socket.batchSubscribe.mockImplementation(
+    socket.subscribe.mockImplementation(
       () =>
         new Promise<unknown>((_, reject) => {
           refuse = reject
@@ -120,7 +119,7 @@ describe('a websocket auth error', () => {
       expect.any(String),
       expect.objectContaining({ token: 'rejected-token' }),
     )
-    expect(socket.batchSubscribe).toHaveBeenCalled()
+    expect(socket.subscribe).toHaveBeenCalled()
     expect(await screen.findByTitle('Signed in')).toBeInTheDocument()
     expect(screen.queryByTitle('user@example.com')).not.toBeInTheDocument()
   })
@@ -133,7 +132,7 @@ describe('a websocket auth error', () => {
     renderLayout()
 
     expect(await screen.findByText('monitors error')).toBeInTheDocument()
-    expect(socket.batchSubscribe).toHaveBeenCalled()
+    expect(socket.subscribe).toHaveBeenCalled()
     expect(signOut).not.toHaveBeenCalled()
     expect(socket.disconnect).not.toHaveBeenCalled()
   })
@@ -143,7 +142,7 @@ function refusedAfterMe(me: { id: string; name: string; kind: string }) {
   const socket = socketAnswering('AUTH_REQUIRED', 'Authentication required')
   socket.query.mockResolvedValue([[me]])
   let refuse: (err: Error) => void = () => undefined
-  socket.batchSubscribe.mockImplementation(
+  socket.subscribe.mockImplementation(
     () =>
       new Promise<unknown>((_, reject) => {
         refuse = reject
@@ -155,7 +154,7 @@ function refusedAfterMe(me: { id: string; name: string; kind: string }) {
 function pendingSocket(me: { id: string; name: string; kind: string }) {
   const socket = socketAnswering('AUTH_REQUIRED', 'Authentication required')
   socket.query.mockResolvedValue([[me]])
-  socket.batchSubscribe.mockImplementation(() => new Promise<unknown>(() => undefined))
+  socket.subscribe.mockImplementation(() => new Promise<unknown>(() => undefined))
   return socket
 }
 
@@ -437,7 +436,7 @@ class ScriptedSocket {
   }
 
   batches(): any[] {
-    return this.sent.filter((message) => message.type === 'BatchSubscribe')
+    return this.sent.filter((message) => message.type === 'Subscribe')
   }
 
   ackBatch() {
@@ -446,7 +445,7 @@ class ScriptedSocket {
       index,
       subscription_id: `server-${index}`,
     }))
-    this.receive({ id: request.id, type: 'BatchSubscribed', payload: { batch_id: 'batch-1', subscriptions } })
+    this.receive({ id: request.id, type: 'Subscribed', payload: { subscriptions } })
   }
 
   refuseBatch(code: string) {
@@ -469,7 +468,7 @@ class ScriptedSocket {
       ],
     }
     const body = { frames: [frame] }
-    this.receive({ type: 'Change', payload: { subscription_id: subscriptionId, content_type: FRAMES, body } })
+    this.receive({ type: 'Change', payload: { entries: [{ subscription_id: subscriptionId, content_type: FRAMES, body }] } })
   }
 
   private receive(message: unknown) {

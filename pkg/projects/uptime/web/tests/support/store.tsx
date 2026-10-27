@@ -34,28 +34,39 @@ export async function bridgeStore(
   const client = storeClient(db, { identity: row.id })
   vi.spyOn(client, 'command')
   vi.spyOn(client, 'subscribe')
-  vi.spyOn(client, 'batchSubscribe')
   return { store: new Store(client, { ...STORE_OPTIONS, ...overrides }), client, identity: row.id }
 }
 
-// A batch refusal would fail every subscription the page opens, so batching is off and only this subscribe is refused.
 export function refusingStore<P extends object | null>(
   client: StoreClient,
   spec: ReadSpec<ShapeNode, P>,
   params: NoInfer<P>,
   error: Error,
 ): Store {
+  // Rejecting the whole call would fail every hook of the tick, and an onError before the ack is overwritten by 'ready'.
   const refused = entryKey(spec.rql, params, spec.shape)
+  const placeholder = 'refused-subscription'
   return new Store(
     {
       ...client,
-      batchSubscribe: undefined,
-      subscribe: (rql, subscriptionParams, shape, callbacks, config) =>
-        shape !== undefined && entryKey(rql, subscriptionParams, shape) === refused
-          ? Promise.reject(error)
-          : client.subscribe(rql, subscriptionParams, shape, callbacks, config),
+      subscribe: async (subscriptions) => {
+        const index = subscriptions.findIndex(
+          (subscription) =>
+            subscription.shape !== undefined &&
+            entryKey(subscription.rql, subscription.params, subscription.shape) === refused,
+        )
+        if (index === -1) return client.subscribe(subscriptions)
+        const others = subscriptions.filter((_, position) => position !== index)
+        const subscriptionIds = others.length > 0 ? await client.subscribe(others) : []
+        setTimeout(() => subscriptions[index].callbacks.onError?.(error), 0)
+        return [...subscriptionIds.slice(0, index), placeholder, ...subscriptionIds.slice(index)]
+      },
+      unsubscribe: (subscriptionIds) => {
+        const held = subscriptionIds.filter((subscriptionId) => subscriptionId !== placeholder)
+        return held.length > 0 ? client.unsubscribe(held) : Promise.resolve()
+      },
     },
-    { ...STORE_OPTIONS, batch: false },
+    STORE_OPTIONS,
   )
 }
 

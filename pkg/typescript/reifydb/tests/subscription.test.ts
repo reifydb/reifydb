@@ -84,7 +84,7 @@ describe('subscriptions over the native bridge', () => {
     // materialized by the flow actors and only then be staged, so this is the hop count that
     // actually matters; a table subscription would settle in one pass and prove much less.
     const seen = collector()
-    await client.subscribe('from app::v map { id, val }', null, rowShape, callbacks(seen))
+    await client.subscribe([{ rql: 'from app::v map { id, val }', shape: rowShape, callbacks: callbacks(seen) }])
     await client.command('insert app::t [{ id: 1, val: 10 }]', null, [])
     await client.caughtUp()
 
@@ -100,7 +100,7 @@ describe('subscriptions over the native bridge', () => {
 
     const seen = collector()
     // No barrier here on purpose: hydration is part of what subscribe promises.
-    await client.subscribe('from app::v map { id, val }', null, rowShape, callbacks(seen))
+    await client.subscribe([{ rql: 'from app::v map { id, val }', shape: rowShape, callbacks: callbacks(seen) }])
 
     expect(seen.inserted.map((row) => row.id).sort()).toEqual([1, 2])
   })
@@ -113,9 +113,14 @@ describe('subscriptions over the native bridge', () => {
     expect(await viewRowCount(client)).toBe(1)
 
     const seen = collector()
-    await client.subscribe('from app::v map { id, val }', null, rowShape, callbacks(seen), {
-      hydration: { enabled: false },
-    })
+    await client.subscribe([
+      {
+        rql: 'from app::v map { id, val }',
+        shape: rowShape,
+        callbacks: callbacks(seen),
+        config: { hydration: { enabled: false } },
+      },
+    ])
 
     await client.command('insert app::t [{ id: 2, val: 20 }]', null, [])
     await client.caughtUp()
@@ -130,7 +135,7 @@ describe('subscriptions over the native bridge', () => {
     await client.command('insert app::t [{ id: 1, val: 10 }]', null, [])
 
     const seen = collector()
-    await client.subscribe('from app::v map { id, val }', null, rowShape, callbacks(seen))
+    await client.subscribe([{ rql: 'from app::v map { id, val }', shape: rowShape, callbacks: callbacks(seen) }])
 
     await client.command('update app::t { val: 99 } filter { id == 1 }', null, [])
     await client.caughtUp()
@@ -145,11 +150,13 @@ describe('subscriptions over the native bridge', () => {
     // A subscription that kept delivering after unsubscribe would leak into a torn-down component,
     // and the only place that shows up is a test that keeps writing afterwards.
     const seen = collector()
-    const subscriptionId = await client.subscribe('from app::v map { id, val }', null, rowShape, callbacks(seen))
+    const [subscriptionId] = await client.subscribe([
+      { rql: 'from app::v map { id, val }', shape: rowShape, callbacks: callbacks(seen) },
+    ])
     await client.command('insert app::t [{ id: 1, val: 10 }]', null, [])
     await client.caughtUp()
 
-    await client.unsubscribe(subscriptionId)
+    await client.unsubscribe([subscriptionId])
     await client.command('insert app::t [{ id: 2, val: 20 }]', null, [])
     await client.caughtUp()
 
@@ -164,8 +171,8 @@ describe('subscriptions over the native bridge', () => {
 
     const first = collector()
     const second = collector()
-    await client.subscribe('from app::v map { id, val }', null, rowShape, callbacks(first))
-    await client.subscribe('from app::w map { id, val }', null, rowShape, callbacks(second))
+    await client.subscribe([{ rql: 'from app::v map { id, val }', shape: rowShape, callbacks: callbacks(first) }])
+    await client.subscribe([{ rql: 'from app::w map { id, val }', shape: rowShape, callbacks: callbacks(second) }])
 
     await client.command('insert app::t [{ id: 1, val: 10 }]', null, [])
     await client.command('insert app::u [{ id: 2, val: 20 }]', null, [])
@@ -183,7 +190,7 @@ describe('subscriptions over the native bridge', () => {
 
     const first = collector()
     const second = collector()
-    const batch = await client.batchSubscribe([
+    const subscriptionIds = await client.subscribe([
       { rql: 'from app::v map { id, val }', shape: rowShape, callbacks: callbacks(first) },
       { rql: 'from app::w map { id, val }', shape: rowShape, callbacks: callbacks(second) },
     ])
@@ -196,7 +203,7 @@ describe('subscriptions over the native bridge', () => {
     expect(second.inserted).toEqual([expect.objectContaining({ id: 2, val: 20 })])
     expect(first.errors).toEqual([])
     expect(second.errors).toEqual([])
-    expect(batch.subscriptionIds).toHaveLength(2)
+    expect(subscriptionIds).toHaveLength(2)
   })
 
   it('returns the subscription ids in the order the subscriptions were given', async () => {
@@ -207,12 +214,12 @@ describe('subscriptions over the native bridge', () => {
 
     const first = collector()
     const second = collector()
-    const batch = await client.batchSubscribe([
+    const subscriptionIds = await client.subscribe([
       { rql: 'from app::v map { id, val }', shape: rowShape, callbacks: callbacks(first) },
       { rql: 'from app::w map { id, val }', shape: rowShape, callbacks: callbacks(second) },
     ])
 
-    await client.unsubscribe(batch.subscriptionIds[0])
+    await client.unsubscribe([subscriptionIds[0]])
 
     await client.command('insert app::t [{ id: 1, val: 10 }]', null, [])
     await client.command('insert app::u [{ id: 2, val: 20 }]', null, [])
@@ -223,9 +230,7 @@ describe('subscriptions over the native bridge', () => {
   })
 
   it('hydrates every subscription of a batch from rows that predate it', async () => {
-    // Hydration of a batch subscription takes its own path: the rows are wrapped into a batch envelope
-    // rather than sent as a plain change, so a batch can hydrate wrongly while a lone subscription
-    // hydrates fine.
+    // A multi-item call hydrates every item at one snapshot; an item skipped or mixed with another loses its rows.
     await secondView(db)
     await client.command('insert app::t [{ id: 1, val: 10 }]', null, [])
     await client.command('insert app::u [{ id: 2, val: 20 }]', null, [])
@@ -233,7 +238,7 @@ describe('subscriptions over the native bridge', () => {
 
     const first = collector()
     const second = collector()
-    await client.batchSubscribe([
+    await client.subscribe([
       { rql: 'from app::v map { id, val }', shape: rowShape, callbacks: callbacks(first) },
       { rql: 'from app::w map { id, val }', shape: rowShape, callbacks: callbacks(second) },
     ])
@@ -249,14 +254,14 @@ describe('subscriptions over the native bridge', () => {
 
     const first = collector()
     const second = collector()
-    const batch = await client.batchSubscribe([
+    const subscriptionIds = await client.subscribe([
       { rql: 'from app::v map { id, val }', shape: rowShape, callbacks: callbacks(first) },
       { rql: 'from app::w map { id, val }', shape: rowShape, callbacks: callbacks(second) },
     ])
 
     await client.command('insert app::t [{ id: 1, val: 10 }]', null, [])
     await client.caughtUp()
-    await client.batchUnsubscribe(batch.batchId)
+    await client.unsubscribe(subscriptionIds)
 
     await client.command('insert app::t [{ id: 3, val: 30 }]', null, [])
     await client.command('insert app::u [{ id: 4, val: 40 }]', null, [])
@@ -267,7 +272,7 @@ describe('subscriptions over the native bridge', () => {
   })
 
   it('refuses a batch with no subscriptions', async () => {
-    await expect(client.batchSubscribe([])).rejects.toThrow(/at least one subscription/)
+    await expect(client.subscribe([])).rejects.toThrow(/at least one subscription/)
   })
 
   it('runs a subscription as the configured identity', async () => {
@@ -283,7 +288,7 @@ describe('subscriptions over the native bridge', () => {
     const asAlice = storeClient(db, { identity: user.id })
 
     const seen = collector()
-    await asAlice.subscribe('from app::v map { id, val }', null, rowShape, callbacks(seen))
+    await asAlice.subscribe([{ rql: 'from app::v map { id, val }', shape: rowShape, callbacks: callbacks(seen) }])
     await asAlice.command('insert app::t [{ id: 1, val: 10 }]', null, [])
     await asAlice.caughtUp()
 

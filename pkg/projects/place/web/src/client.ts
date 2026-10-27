@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import type { BatchSubscribeItem, BatchSubscription, BatchSubscriptionCallbacks } from '@reifydb/client'
+import type { SubscribeItem } from '@reifydb/client'
 
 export interface PlaceClient {
   query(rql: string, params: any, shapes: []): Promise<any>
   command(rql: string, params: any, shapes: []): Promise<any>
-  batchSubscribe(items: BatchSubscribeItem[], callbacks?: BatchSubscriptionCallbacks): Promise<BatchSubscription>
-  batchUnsubscribe(batchId: string): Promise<void>
+  subscribe(subscriptions: SubscribeItem[]): Promise<string[]>
+  unsubscribe(subscriptionIds: string[]): Promise<void>
 }
 
 export function numeric(value: unknown): number {

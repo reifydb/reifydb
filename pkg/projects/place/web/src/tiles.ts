@@ -18,7 +18,7 @@ export interface TileSink {
 }
 
 export class TileStream {
-  private batch: string | null = null
+  private subscriptionIds: string[] = []
   private queue: Promise<void> = Promise.resolve()
 
   constructor(
@@ -50,16 +50,17 @@ export class TileStream {
         callbacks: {
           onInsert: (rows: Row[]) => void this.receive(rows),
           onUpdate: (rows: Row[]) => void this.receive(rows),
+          onClosed: this.onClosed,
         },
       })
     }
-    this.batch = (await this.client.batchSubscribe(chunks, { onClosed: this.onClosed })).batchId
+    this.subscriptionIds = await this.client.subscribe(chunks)
   }
 
   private async unsubscribe(): Promise<void> {
-    const batch = this.batch
-    this.batch = null
-    if (batch !== null) await this.client.batchUnsubscribe(batch)
+    const subscriptionIds = this.subscriptionIds
+    this.subscriptionIds = []
+    if (subscriptionIds.length > 0) await this.client.unsubscribe(subscriptionIds)
   }
 
   private async receive(rows: Row[]): Promise<void> {
