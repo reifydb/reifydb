@@ -242,7 +242,16 @@ impl TestChangeBuilder {
 impl TestChangeBuilder {
 	fn extend_run(&mut self, kind: DiffType, pre: Option<RecordBatch>, post: Option<RecordBatch>) {
 		let same_schema = |next: &Option<RecordBatch>, run: &[RecordBatch]| match (next, run.last()) {
-			(Some(next), Some(last)) => next.schema_ref() == last.schema_ref(),
+			(Some(next), Some(last)) => {
+				let widened = |batch: &RecordBatch| {
+					batch.schema_ref()
+						.fields()
+						.iter()
+						.map(|field| field.as_ref().clone().with_nullable(true))
+						.collect::<Vec<_>>()
+				};
+				widened(next) == widened(last)
+			}
 			(None, None) => true,
 			_ => false,
 		};
