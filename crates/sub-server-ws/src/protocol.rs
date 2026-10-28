@@ -146,8 +146,14 @@ pub struct WireSubscribeItem {
 
 #[derive(Debug, PartialEq)]
 pub enum SubscribeDecodeError {
-	InvalidParams(String),
-	InvalidOptions(String),
+	InvalidParams {
+		index: usize,
+		message: String,
+	},
+	InvalidOptions {
+		index: usize,
+		message: String,
+	},
 }
 
 impl SubscribeRequest {
@@ -158,18 +164,20 @@ impl SubscribeRequest {
 			.map(|(index, subscription)| {
 				let params = match subscription.params {
 					None => Params::None,
-					Some(wire) => wire.into_params().map_err(|e| {
-						SubscribeDecodeError::InvalidParams(format!(
-							"subscription {index}: {e}"
-						))
-					})?,
+					Some(wire) => {
+						wire.into_params().map_err(|e| SubscribeDecodeError::InvalidParams {
+							index,
+							message: format!("subscription {index}: {e}"),
+						})?
+					}
 				};
 				let options = match subscription.options {
 					None => SubscribeOptions::default(),
 					Some(wire) => wire.into_options().map_err(|e| {
-						SubscribeDecodeError::InvalidOptions(format!(
-							"subscription {index}: {e}"
-						))
+						SubscribeDecodeError::InvalidOptions {
+							index,
+							message: format!("subscription {index}: {e}"),
+						}
 					})?,
 				};
 				Ok((subscription.rql, params, options))
@@ -258,9 +266,11 @@ mod tests {
 
 		assert_eq!(
 			err,
-			SubscribeDecodeError::InvalidParams(
-				"subscription 1: parameter $n: invalid data: cannot parse 'abc' as Int4".to_string()
-			)
+			SubscribeDecodeError::InvalidParams {
+				index: 1,
+				message: "subscription 1: parameter $n: invalid data: cannot parse 'abc' as Int4"
+					.to_string(),
+			}
 		);
 	}
 

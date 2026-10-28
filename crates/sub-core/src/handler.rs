@@ -93,6 +93,34 @@ pub enum SubscribeError<E> {
 	HydrationServiceUnavailable(String),
 }
 
+impl<E> SubscribeError<E> {
+	pub fn index(&self) -> Option<usize> {
+		match self {
+			Self::Create {
+				index,
+				..
+			}
+			| Self::RemoteConnect {
+				index,
+				..
+			}
+			| Self::InvalidRemoteId {
+				index,
+			}
+			| Self::HydrationFailed {
+				index,
+				..
+			} => Some(*index),
+			Self::Empty
+			| Self::LeaseFailed {
+				..
+			}
+			| Self::HydrationBackpressure
+			| Self::HydrationServiceUnavailable(_) => None,
+		}
+	}
+}
+
 enum ResolvedSubscription {
 	Local {
 		index: usize,
@@ -783,9 +811,11 @@ async fn abort_warming<S: WireSink>(
 
 #[cfg(all(test, not(reifydb_single_threaded)))]
 mod tests {
+	use reifydb_engine::subscription::HydrateError;
 	use reifydb_value::error::{Diagnostic, Error};
 
-	use super::end_remote_proxy;
+	use super::{SubscribeError, end_remote_proxy};
+	use crate::errors::CreateSubscriptionError;
 
 	fn error_with_code(code: &str) -> Error {
 		Error(Box::new(Diagnostic {
@@ -804,5 +834,54 @@ mod tests {
 	#[should_panic(expected = "remote subscription proxy failed")]
 	fn any_other_remote_error_panics_naming_the_proxy() {
 		end_remote_proxy(Err(error_with_code("TRANSPORT")));
+	}
+
+	#[test]
+	fn only_item_errors_name_an_index() {
+		// A whole-call error must name no item, or a client blames an innocent subscription.
+		let cases: Vec<(SubscribeError<Error>, Option<usize>)> = vec![
+			(SubscribeError::Empty, None),
+			(
+				SubscribeError::Create {
+					index: 3,
+					error: CreateSubscriptionError::Execute(error_with_code("X")),
+				},
+				Some(3),
+			),
+			(
+				SubscribeError::RemoteConnect {
+					index: 4,
+					message: "down".to_string(),
+				},
+				Some(4),
+			),
+			(
+				SubscribeError::InvalidRemoteId {
+					index: 5,
+				},
+				Some(5),
+			),
+			(
+				SubscribeError::LeaseFailed {
+					code: "TXN_012",
+					message: "evicted".to_string(),
+				},
+				None,
+			),
+			(SubscribeError::HydrationBackpressure, None),
+			(
+				SubscribeError::HydrationFailed {
+					index: 6,
+					error: HydrateError::SubscriptionNotFound,
+					rql: "from a".to_string(),
+					max_rows: 10,
+				},
+				Some(6),
+			),
+			(SubscribeError::HydrationServiceUnavailable("gone".to_string()), None),
+		];
+		for (error, expected) in cases {
+			assert_eq!(error.index(), expected, "{error:?}");
+		}
 	}
 }

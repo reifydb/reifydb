@@ -16,7 +16,7 @@ use reifydb_value::{error::Error, value::identity::IdentityId};
 use tokio::spawn;
 
 use crate::{
-	handler::{ConnectionContext, build_error, error_to_response},
+	handler::{ConnectionContext, build_error, execute_error},
 	protocol::{SubscribeDecodeError, SubscribeRequest, UnsubscribeRequest},
 	response::{Response, SubscriptionInfo},
 	subscription::registry::{PushMessage, WsWireSink},
@@ -128,46 +128,51 @@ pub(crate) async fn handle_unsubscribe(
 }
 
 fn decode_error_to_response(request_id: &str, err: SubscribeDecodeError) -> String {
-	match err {
-		SubscribeDecodeError::InvalidParams(message) => build_error(request_id, "INVALID_PARAMS", &message),
-		SubscribeDecodeError::InvalidOptions(message) => build_error(request_id, "INVALID_OPTIONS", &message),
-	}
+	let (code, index, message) = match err {
+		SubscribeDecodeError::InvalidParams {
+			index,
+			message,
+		} => ("INVALID_PARAMS", index, message),
+		SubscribeDecodeError::InvalidOptions {
+			index,
+			message,
+		} => ("INVALID_OPTIONS", index, message),
+	};
+	Response::internal_error(request_id, code, message).with_index(index).to_json()
 }
 
 fn subscribe_error_to_response(request_id: &str, err: SubscribeError<ExecuteError>) -> String {
-	match err {
+	let index = err.index();
+	let response = match err {
 		SubscribeError::Empty => Response::internal_error(
 			request_id,
 			"INVALID_SUBSCRIBE",
 			"Subscribe requires at least one query",
-		)
-		.to_json(),
+		),
 		SubscribeError::Create {
 			error: CreateSubscriptionError::Execute(e),
 			..
-		} => error_to_response(request_id, e),
+		} => execute_error(request_id, e),
 		SubscribeError::RemoteConnect {
 			message,
 			..
-		} => Response::internal_error(request_id, "REMOTE_SUBSCRIBE_FAILED", message).to_json(),
+		} => Response::internal_error(request_id, "REMOTE_SUBSCRIBE_FAILED", message),
 		SubscribeError::InvalidRemoteId {
 			..
 		} => Response::internal_error(
 			request_id,
 			"REMOTE_SUBSCRIBE_FAILED",
 			"Invalid remote subscription ID format",
-		)
-		.to_json(),
+		),
 		SubscribeError::LeaseFailed {
 			code,
 			message,
-		} => Response::internal_error(request_id, code, message).to_json(),
+		} => Response::internal_error(request_id, code, message),
 		SubscribeError::HydrationBackpressure => Response::internal_error(
 			request_id,
 			"HYDRATION_BACKPRESSURE",
 			"Live diffs overflowed warming buffer during hydration; retry with smaller TAKE or lower hydration.max_rows",
-		)
-		.to_json(),
+		),
 		SubscribeError::HydrationFailed {
 			error,
 			rql,
@@ -175,20 +180,33 @@ fn subscribe_error_to_response(request_id: &str, err: SubscribeError<ExecuteErro
 			..
 		} => hydrate_error_to_response(request_id, error, &rql, max_rows),
 		SubscribeError::HydrationServiceUnavailable(msg) => {
-			Response::internal_error(request_id, "SUBSCRIPTION_SERVICE_UNAVAILABLE", msg).to_json()
+			Response::internal_error(request_id, "SUBSCRIPTION_SERVICE_UNAVAILABLE", msg)
 		}
+	};
+	match index {
+		Some(index) => response.with_index(index),
+		None => response,
 	}
+	.to_json()
 }
 
-fn hydrate_error_to_response(request_id: &str, err: HydrateError, rql: &str, cap: u64) -> String {
-	Response::internal_error(request_id, err.wire_code(), err.wire_message(rql, cap)).to_json()
+fn hydrate_error_to_response(request_id: &str, err: HydrateError, rql: &str, cap: u64) -> Response {
+	Response::internal_error(request_id, err.wire_code(), err.wire_message(rql, cap))
 }
 
 #[cfg(test)]
 mod tests {
+	use reifydb_sub_core::{errors::CreateSubscriptionError, handler::SubscribeError};
+	use reifydb_sub_server::execute::ExecuteError;
 	use reifydb_value::value::identity::IdentityId;
+	use serde_json::{Value as JsonValue, from_str};
 
-	use super::subscribe_identity;
+	use super::{decode_error_to_response, subscribe_error_to_response, subscribe_identity};
+	use crate::protocol::{Request, RequestPayload};
+
+	fn payload(text: &str) -> JsonValue {
+		from_str::<JsonValue>(text).expect("the frame must be valid json")["payload"].clone()
+	}
 
 	#[test]
 	fn missing_identity_must_not_resolve_to_root() {
@@ -202,5 +220,53 @@ mod tests {
 		// Only the absent case may be rewritten; a real identity must never be substituted.
 		assert_eq!(subscribe_identity(Some(IdentityId::root())), IdentityId::root());
 		assert_eq!(subscribe_identity(Some(IdentityId::anonymous())), IdentityId::anonymous());
+	}
+
+	#[test]
+	fn a_create_failure_names_its_item_in_the_frame() {
+		// The engine knows which item failed; dropping it here leaves the client guessing.
+		let frame = subscribe_error_to_response(
+			"s",
+			SubscribeError::Create {
+				index: 2,
+				error: CreateSubscriptionError::Execute(ExecuteError::Timeout),
+			},
+		);
+
+		let payload = payload(&frame);
+		assert_eq!(payload["index"], 2, "{payload}");
+		assert_eq!(payload["diagnostic"]["code"], "QUERY_TIMEOUT", "{payload}");
+	}
+
+	#[test]
+	fn a_lease_failure_names_no_item_in_the_frame() {
+		// A whole-call failure must name no item, or the client blames an innocent subscription.
+		let frame = subscribe_error_to_response(
+			"s",
+			SubscribeError::LeaseFailed {
+				code: "TXN_012",
+				message: "evicted".to_string(),
+			},
+		);
+
+		let payload = payload(&frame);
+		assert!(payload.get("index").is_none(), "{payload}");
+	}
+
+	#[test]
+	fn a_bad_param_names_its_item_in_the_frame() {
+		// The index must survive as a field, not only inside the message text.
+		let request = from_str::<Request>(
+			r#"{"id":"s","type":"Subscribe","payload":{"subscriptions":[{"rql":"from a"},{"rql":"from b","params":{"n":{"type":{"id":"Int4"},"value":"abc"}}}]}}"#,
+		)
+		.expect("a subscribe request should deserialise");
+		let RequestPayload::Subscribe(subscribe) = request.payload else {
+			panic!("expected a subscribe payload");
+		};
+		let err = subscribe.into_queries().unwrap_err();
+
+		let payload = payload(&decode_error_to_response("s", err));
+		assert_eq!(payload["index"], 1, "{payload}");
+		assert_eq!(payload["diagnostic"]["code"], "INVALID_PARAMS", "{payload}");
 	}
 }

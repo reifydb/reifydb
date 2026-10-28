@@ -7,7 +7,14 @@ use reifydb_codec::error::DecodeError;
 use reifydb_sub_server::{auth::AuthError, execute::ExecuteError};
 use reifydb_value::error::Diagnostic;
 use serde_json::to_string as to_json;
-use tonic::{Code, Status};
+use tonic::{Code, Status, metadata::MetadataValue};
+
+pub(crate) const SUBSCRIBE_INDEX_HEADER: &str = "x-subscribe-index";
+
+pub(crate) fn with_subscribe_index(mut status: Status, index: usize) -> Status {
+	status.metadata_mut().insert(SUBSCRIBE_INDEX_HEADER, MetadataValue::from(index as u64));
+	status
+}
 
 pub(crate) fn diagnostic_status(code: Code, diagnostic_code: &str, message: String) -> Status {
 	let diagnostic = Diagnostic {
@@ -22,7 +29,10 @@ pub(crate) fn diagnostic_status(code: Code, diagnostic_code: &str, message: Stri
 pub enum GrpcError {
 	InvalidParamEncoding(DecodeError),
 
-	InvalidSubscribeOptions(String),
+	InvalidSubscribeOptions {
+		index: usize,
+		message: String,
+	},
 
 	Unauthenticated(AuthError),
 
@@ -35,7 +45,10 @@ impl fmt::Display for GrpcError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			GrpcError::InvalidParamEncoding(e) => write!(f, "Invalid param encoding: {}", e),
-			GrpcError::InvalidSubscribeOptions(msg) => write!(f, "Invalid subscribe options: {}", msg),
+			GrpcError::InvalidSubscribeOptions {
+				message,
+				..
+			} => write!(f, "Invalid subscribe options: {}", message),
 			GrpcError::Unauthenticated(e) => write!(f, "{}", e),
 			GrpcError::AuthUnavailable(e) => write!(f, "{}", e),
 			GrpcError::Execute(e) => write!(f, "{}", e),
@@ -47,9 +60,13 @@ impl fmt::Debug for GrpcError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			GrpcError::InvalidParamEncoding(e) => f.debug_tuple("InvalidParamEncoding").field(e).finish(),
-			GrpcError::InvalidSubscribeOptions(msg) => {
-				f.debug_tuple("InvalidSubscribeOptions").field(msg).finish()
-			}
+			GrpcError::InvalidSubscribeOptions {
+				index,
+				message,
+			} => f.debug_struct("InvalidSubscribeOptions")
+				.field("index", index)
+				.field("message", message)
+				.finish(),
 			GrpcError::Unauthenticated(e) => f.debug_tuple("Unauthenticated").field(e).finish(),
 			GrpcError::AuthUnavailable(e) => f.debug_tuple("AuthUnavailable").field(e).finish(),
 			GrpcError::Execute(e) => f.debug_tuple("Execute").field(e).finish(),
@@ -84,7 +101,10 @@ impl From<GrpcError> for Status {
 	fn from(err: GrpcError) -> Self {
 		match err {
 			GrpcError::InvalidParamEncoding(_) => Status::invalid_argument(err.to_string()),
-			GrpcError::InvalidSubscribeOptions(_) => Status::invalid_argument(err.to_string()),
+			GrpcError::InvalidSubscribeOptions {
+				index,
+				..
+			} => with_subscribe_index(Status::invalid_argument(err.to_string()), index),
 			GrpcError::Unauthenticated(_) => Status::unauthenticated(err.to_string()),
 			GrpcError::AuthUnavailable(_) => Status::internal(err.to_string()),
 			GrpcError::Execute(ref inner) => match inner {
@@ -132,5 +152,18 @@ mod tests {
 			Code::Internal,
 			"authentication that could not reach storage is the server's fault"
 		);
+	}
+
+	#[test]
+	fn a_bad_option_names_its_item_in_a_header() {
+		// The index must survive as a header, not only inside the message text.
+		let status = Status::from(GrpcError::InvalidSubscribeOptions {
+			index: 1,
+			message: "subscription 1: bad linger".to_string(),
+		});
+
+		assert_eq!(status.code(), Code::InvalidArgument);
+		assert_eq!(status.metadata().get(SUBSCRIBE_INDEX_HEADER).map(|v| v.to_str().unwrap()), Some("1"));
+		assert!(status.message().contains("subscription 1: bad linger"), "{}", status.message());
 	}
 }

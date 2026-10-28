@@ -49,6 +49,9 @@ pub struct AuthResponse {
 #[derive(Debug, Serialize)]
 pub struct ErrResponse {
 	pub diagnostic: Diagnostic,
+
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub index: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
@@ -277,6 +280,7 @@ impl Response {
 					cause: None,
 					operator_chain: None,
 				},
+				index: None,
 			}),
 		}
 	}
@@ -290,8 +294,16 @@ impl Response {
 			id: id.into(),
 			payload: ResponsePayload::Err(ErrResponse {
 				diagnostic,
+				index: None,
 			}),
 		}
+	}
+
+	pub fn with_index(mut self, index: usize) -> Self {
+		if let ResponsePayload::Err(err) = &mut self.payload {
+			err.index = Some(index);
+		}
+		self
 	}
 
 	pub fn to_json(&self) -> String {
@@ -382,5 +394,21 @@ mod tests {
 			parsed(&ServerPush::subscription_closed("7").to_json()),
 			json!({"type": "SubscriptionClosed", "payload": {"subscription_id": "7"}})
 		);
+	}
+
+	#[test]
+	fn an_err_frame_for_a_failed_item_carries_its_index() {
+		// Without the index a client cannot tell which item of its call failed.
+		let response = Response::internal_error("s", "X", "bad").with_index(1);
+
+		assert_eq!(parsed(&response.to_json())["payload"]["index"], json!(1));
+	}
+
+	#[test]
+	fn an_err_frame_for_a_whole_call_failure_has_no_index() {
+		// An index of none must be left out, never sent as a value a client reads as item 0 or null.
+		let payload = &parsed(&Response::internal_error("s", "X", "bad").to_json())["payload"];
+
+		assert!(payload.get("index").is_none(), "{payload}");
 	}
 }

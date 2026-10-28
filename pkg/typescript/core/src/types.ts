@@ -43,6 +43,7 @@ export interface ErrorResponse {
     type: "Err";
     payload: {
         diagnostic: Diagnostic;
+        index?: number;
     };
 }
 
@@ -55,6 +56,7 @@ export class ReifyError extends Error {
     public readonly help?: string;
     public readonly notes: string[];
     public readonly cause?: Diagnostic;
+    public readonly index?: number;
 
     constructor(response: ErrorResponse) {
         const diagnostic = response.payload.diagnostic;
@@ -72,6 +74,7 @@ export class ReifyError extends Error {
         this.help = diagnostic.help;
         this.notes = diagnostic.notes ?? [];
         this.cause = diagnostic.cause;
+        this.index = response.payload.index;
 
         // Required for instanceof checks to work properly
         Object.setPrototypeOf(this, new.target.prototype);

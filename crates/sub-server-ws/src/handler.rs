@@ -697,21 +697,21 @@ fn build_ws_metadata(auth_token: &Option<String>) -> RequestMetadata {
 }
 
 pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
+	execute_error(id, e).to_json()
+}
+
+pub(crate) fn execute_error(id: &str, e: ExecuteError) -> Response {
 	match e {
-		ExecuteError::Timeout => {
-			Response::internal_error(id, "QUERY_TIMEOUT", "Query execution timed out").to_json()
-		}
-		ExecuteError::Cancelled => {
-			Response::internal_error(id, "QUERY_CANCELLED", "Query was cancelled").to_json()
-		}
+		ExecuteError::Timeout => Response::internal_error(id, "QUERY_TIMEOUT", "Query execution timed out"),
+		ExecuteError::Cancelled => Response::internal_error(id, "QUERY_CANCELLED", "Query was cancelled"),
 		ExecuteError::Disconnected => {
 			error!("Query stream disconnected unexpectedly");
-			Response::internal_error(id, "INTERNAL_ERROR", "Internal server error").to_json()
+			Response::internal_error(id, "INTERNAL_ERROR", "Internal server error")
 		}
 		ExecuteError::Rejected {
 			code,
 			message,
-		} => Response::rejected(id, &code, &message).to_json(),
+		} => Response::rejected(id, &code, &message),
 		ExecuteError::Engine {
 			diagnostic,
 			rql,
@@ -720,7 +720,7 @@ pub(crate) fn error_to_response(id: &str, e: ExecuteError) -> String {
 			if diag.rql.is_none() && !rql.is_empty() {
 				diag.rql = Some(rql);
 			}
-			Response::error(id, diag).to_json()
+			Response::error(id, diag)
 		}
 	}
 }

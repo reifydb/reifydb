@@ -47,7 +47,7 @@ use tracing::debug;
 
 use crate::{
 	convert::{proto_params_to_params, proto_subscribe_options},
-	error::{GrpcError, diagnostic_status},
+	error::{GrpcError, diagnostic_status, with_subscribe_index},
 	generated::{
 		AdminRequest, AdminResponse, AuthenticateRequest, AuthenticateResponse, CommandRequest,
 		CommandResponse, LogoutRequest, LogoutResponse, OperationRequest, OperationResponse,
@@ -409,7 +409,10 @@ impl ReifyDb for ReifyDbService {
 			.enumerate()
 			.map(|(index, subscription)| {
 				let options = proto_subscribe_options(subscription.options).map_err(|e| {
-					GrpcError::InvalidSubscribeOptions(format!("subscription {index}: {e}"))
+					GrpcError::InvalidSubscribeOptions {
+						index,
+						message: format!("subscription {index}: {e}"),
+					}
 				})?;
 				Ok((subscription.rql, Params::None, options))
 			})
@@ -616,7 +619,8 @@ fn insert_meta_headers(metadata: &mut MetadataMap, metrics: &ExecutionMetrics) {
 }
 
 fn subscribe_error_to_status(err: SubscribeError<ExecuteError>) -> Status {
-	match err {
+	let index = err.index();
+	let status = match err {
 		SubscribeError::Empty => Status::invalid_argument("Subscribe requires at least one query"),
 		SubscribeError::Create {
 			error: CreateSubscriptionError::Execute(e),
@@ -649,6 +653,10 @@ fn subscribe_error_to_status(err: SubscribeError<ExecuteError>) -> Status {
 		SubscribeError::HydrationServiceUnavailable(msg) => {
 			Status::internal(format!("subscription service unavailable: {}", msg))
 		}
+	};
+	match index {
+		Some(index) => with_subscribe_index(status, index),
+		None => status,
 	}
 }
 
@@ -664,5 +672,38 @@ fn hydrate_error_to_status(err: HydrateError, rql: &str, cap: u64) -> Status {
 		HydrateError::Engine(_) if evicted => Status::out_of_range(msg),
 		HydrateError::Engine(_) => Status::internal(msg),
 		HydrateError::Internal(_) => Status::internal(msg),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_sub_core::{errors::CreateSubscriptionError, handler::SubscribeError};
+	use reifydb_sub_server::execute::ExecuteError;
+	use tonic::Code;
+
+	use super::subscribe_error_to_status;
+	use crate::error::SUBSCRIBE_INDEX_HEADER;
+
+	#[test]
+	fn a_create_failure_names_its_item_in_a_header() {
+		// The engine knows which item failed; dropping it here leaves a gRPC client guessing.
+		let status = subscribe_error_to_status(SubscribeError::Create {
+			index: 2,
+			error: CreateSubscriptionError::Execute(ExecuteError::Timeout),
+		});
+
+		assert_eq!(status.code(), Code::DeadlineExceeded);
+		assert_eq!(status.metadata().get(SUBSCRIBE_INDEX_HEADER).map(|v| v.to_str().unwrap()), Some("2"));
+	}
+
+	#[test]
+	fn a_lease_failure_sends_no_index_header() {
+		// A whole-call failure must name no item, or the client blames an innocent subscription.
+		let status = subscribe_error_to_status(SubscribeError::LeaseFailed {
+			code: "TXN_012",
+			message: "evicted".to_string(),
+		});
+
+		assert!(status.metadata().get(SUBSCRIBE_INDEX_HEADER).is_none(), "{:?}", status.metadata());
 	}
 }
