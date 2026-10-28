@@ -12,7 +12,7 @@ use reifydb_transaction::{
 	single::SingleTransaction,
 };
 use reifydb_value::value::datetime::DateTime;
-use tracing::{error, instrument};
+use tracing::instrument;
 
 use crate::{Result, queue::wake::QueueWakeRegistry};
 
@@ -37,21 +37,11 @@ impl QueueSchedulingInterceptor {
 		skip_all,
 		fields(queue = queue.0, partition = partition, items = items.len())
 	)]
-	fn admit(&self, queue: QueueId, partition: u16, items: &[QueueAdmission], version: CommitVersion) {
-		if let Err(err) = admit_ready_items(&self.single, queue, partition, items) {
-			error!(
-				queue = queue.0,
-				partition,
-				version = version.0,
-				items = items.len(),
-				error = %err,
-				"queue scheduling handoff failed; hydration will recover these items at next boot"
-			);
-			return;
-		}
-
+	fn admit(&self, queue: QueueId, partition: u16, items: &[QueueAdmission]) -> Result<()> {
+		admit_ready_items(&self.single, queue, partition, items)?;
 		let now = self.clock.now();
 		self.wake.nudge(queue, items.iter().filter(|item| is_due(item.not_before, now)).count());
+		Ok(())
 	}
 
 	#[instrument(
@@ -60,21 +50,11 @@ impl QueueSchedulingInterceptor {
 		skip_all,
 		fields(queue = queue.0, partition = partition, items = items.len())
 	)]
-	fn ack(&self, queue: QueueId, partition: u16, items: &[QueueRowAck], version: CommitVersion) {
-		if let Err(err) = apply_ack_transitions(&self.single, queue, partition, items) {
-			error!(
-				queue = queue.0,
-				partition,
-				version = version.0,
-				items = items.len(),
-				error = %err,
-				"queue ack transition failed; the lease will expire and the item is redelivered"
-			);
-			return;
-		}
-
+	fn ack(&self, queue: QueueId, partition: u16, items: &[QueueRowAck]) -> Result<()> {
+		apply_ack_transitions(&self.single, queue, partition, items)?;
 		let now = self.clock.now();
 		self.wake.nudge(queue, items.iter().filter(|ack| releases_work(ack, now)).count());
+		Ok(())
 	}
 }
 
@@ -118,11 +98,21 @@ impl PostCommitInterceptor for QueueSchedulingInterceptor {
 		}
 
 		for ((queue, partition), items) in admissions {
-			self.admit(queue, partition, &items, ctx.version);
+			if let Err(err) = self.admit(queue, partition, &items) {
+				panic!(
+					"queue admit failed after commit: queue {} partition {} version {}: {}",
+					queue.0, partition, ctx.version.0, err
+				);
+			}
 		}
 
 		for ((queue, partition), items) in acks {
-			self.ack(queue, partition, &items, ctx.version);
+			if let Err(err) = self.ack(queue, partition, &items) {
+				panic!(
+					"queue ack failed after commit: queue {} partition {} version {}: {}",
+					queue.0, partition, ctx.version.0, err
+				);
+			}
 		}
 
 		Ok(())
