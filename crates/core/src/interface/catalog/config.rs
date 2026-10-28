@@ -86,7 +86,6 @@ pub enum ConfigKey {
 	FlowLinger,
 	FlowActorBatchSize,
 	FlowCommitterShards,
-	FlowBacklogBytes,
 	CommitQueueBytes,
 	FlowPullBatchBytes,
 	FlowLoadBatchBytes,
@@ -151,7 +150,6 @@ impl ConfigKey {
 			Self::FlowLinger,
 			Self::FlowActorBatchSize,
 			Self::FlowCommitterShards,
-			Self::FlowBacklogBytes,
 			Self::CommitQueueBytes,
 			Self::FlowPullBatchBytes,
 			Self::FlowLoadBatchBytes,
@@ -242,7 +240,6 @@ impl ConfigKey {
 			Self::FlowLinger => Value::Duration(default::flow::LINGER),
 			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE),
 			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS),
-			Self::FlowBacklogBytes => Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT.as_bytes()),
 			Self::CommitQueueBytes => Value::Uint8(default::commit::QUEUE_MEMORY_LIMIT.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH.as_bytes()),
@@ -333,7 +330,6 @@ impl ConfigKey {
 			Self::FlowLinger => Value::Duration(default::flow::LINGER_TESTING),
 			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE_TESTING),
 			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS_TESTING),
-			Self::FlowBacklogBytes => Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT_TESTING.as_bytes()),
 			Self::CommitQueueBytes => Value::Uint8(default::commit::QUEUE_MEMORY_LIMIT_TESTING.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH_TESTING.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH_TESTING.as_bytes()),
@@ -550,13 +546,6 @@ impl ConfigKey {
 				 shard, so its own commits stay in order while different flows commit side by side. Must be \
 				 >= 1. Read once at boot; changing it requires a restart."
 			}
-			Self::FlowBacklogBytes => {
-				"Byte ceiling of the shared in-memory backlog of decoded CDC entries that feeds flow \
-				 consumers. Producer-fed at commit granularity; entries below every flow's cursor are \
-				 dropped eagerly and the lowest versions are evicted first once the ceiling is exceeded, \
-				 at which point a flow that far behind reloads from disk through the catch-up loader. \
-				 Because payload rows are shared, the tally is an upper bound of unique memory."
-			}
 			Self::CommitQueueBytes => {
 				"Byte ceiling of the in-memory queue of released commits that feeds flow readers. With the \
 				 commit log on, the oldest commits are evicted once the ceiling is exceeded and a reader that \
@@ -691,7 +680,6 @@ impl ConfigKey {
 			Self::FlowLinger => true,
 			Self::FlowActorBatchSize => true,
 			Self::FlowCommitterShards => true,
-			Self::FlowBacklogBytes => true,
 			Self::CommitQueueBytes => true,
 			Self::FlowPullBatchBytes => true,
 			Self::FlowLoadBatchBytes => true,
@@ -756,7 +744,6 @@ impl ConfigKey {
 			Self::FlowLinger => &[ValueType::Duration],
 			Self::FlowActorBatchSize => &[ValueType::Uint2],
 			Self::FlowCommitterShards => &[ValueType::Uint2],
-			Self::FlowBacklogBytes => &[ValueType::Uint8],
 			Self::CommitQueueBytes => &[ValueType::Uint8],
 			Self::FlowPullBatchBytes => &[ValueType::Uint8],
 			Self::FlowLoadBatchBytes => &[ValueType::Uint8],
@@ -821,7 +808,6 @@ impl ConfigKey {
 			Self::FlowLinger => false,
 			Self::FlowActorBatchSize => false,
 			Self::FlowCommitterShards => false,
-			Self::FlowBacklogBytes => false,
 			Self::CommitQueueBytes => false,
 			Self::FlowPullBatchBytes => false,
 			Self::FlowLoadBatchBytes => false,
@@ -891,12 +877,6 @@ impl ConfigKey {
 			},
 			Self::QueryBytes => match value {
 				Value::Uint8(0) => Err("QUERY_BYTES must be greater than zero".to_string()),
-				_ => Ok(()),
-			},
-			Self::FlowBacklogBytes => match value {
-				Value::Uint8(0) => {
-					Err("FLOW_BACKLOG_BYTES must be greater than zero".to_string())
-				}
 				_ => Ok(()),
 			},
 			Self::CommitQueueBytes => match value {
@@ -1219,7 +1199,6 @@ impl fmt::Display for ConfigKey {
 			Self::FlowLinger => write!(f, "FLOW_LINGER"),
 			Self::FlowActorBatchSize => write!(f, "FLOW_ACTOR_BATCH_SIZE"),
 			Self::FlowCommitterShards => write!(f, "FLOW_COMMITTER_SHARDS"),
-			Self::FlowBacklogBytes => write!(f, "FLOW_BACKLOG_BYTES"),
 			Self::CommitQueueBytes => write!(f, "COMMIT_QUEUE_BYTES"),
 			Self::FlowPullBatchBytes => write!(f, "FLOW_PULL_BATCH_BYTES"),
 			Self::FlowLoadBatchBytes => write!(f, "FLOW_LOAD_BATCH_BYTES"),
@@ -1288,7 +1267,6 @@ impl FromStr for ConfigKey {
 			"FLOW_LINGER" => Ok(Self::FlowLinger),
 			"FLOW_ACTOR_BATCH_SIZE" => Ok(Self::FlowActorBatchSize),
 			"FLOW_COMMITTER_SHARDS" => Ok(Self::FlowCommitterShards),
-			"FLOW_BACKLOG_BYTES" => Ok(Self::FlowBacklogBytes),
 			"COMMIT_QUEUE_BYTES" => Ok(Self::CommitQueueBytes),
 			"FLOW_PULL_BATCH_BYTES" => Ok(Self::FlowPullBatchBytes),
 			"FLOW_LOAD_BATCH_BYTES" => Ok(Self::FlowLoadBatchBytes),
@@ -1481,7 +1459,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 60);
+		assert_eq!(all.len(), 59);
 		assert!(all.contains(&ConfigKey::QueryBytes));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
@@ -1509,7 +1487,6 @@ mod tests {
 		assert!(all.contains(&ConfigKey::OperatorFlushSliceBytes));
 		assert!(all.contains(&ConfigKey::MultiPointBufferShards));
 		assert!(all.contains(&ConfigKey::MultiRangeBufferShards));
-		assert!(all.contains(&ConfigKey::FlowBacklogBytes));
 		assert!(all.contains(&ConfigKey::CommitQueueBytes));
 		assert!(all.contains(&ConfigKey::FlowPullBatchBytes));
 		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));

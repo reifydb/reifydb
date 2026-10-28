@@ -53,7 +53,7 @@ use reifydb_value::{
 fn test_consumer_lifecycle() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let pools = Pools::new(PoolConfig::default());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
@@ -83,7 +83,7 @@ fn test_consumer_lifecycle() {
 fn test_event_processing() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 
@@ -132,7 +132,7 @@ fn test_event_processing() {
 fn test_checkpoint_persistence() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
@@ -226,7 +226,7 @@ fn test_consumer_error_aborts_process() {
 fn run_abort_child() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	consumer.set_should_fail(true);
 	let pools = Pools::new(PoolConfig::default());
@@ -280,7 +280,7 @@ fn test_lost_consume_reply_aborts_naming_consumer_pending_work_and_batch() {
 		.expect("the child must announce the batch version it stalls on");
 	assert_eq!(
 		report_field(&child.stderr, "consumer"),
-		Some(format!("{:?}", CdcConsumerId::flow_consumer())),
+		Some(format!("{:?}", CdcConsumerId::new("flow"))),
 		"the abort must name the stalled consumer\nstderr:\n{}",
 		child.stderr
 	);
@@ -311,7 +311,7 @@ fn run_stall_child() {
 		.expect("Failed to set consume wait timeout");
 
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	consumer.set_drop_reply(true);
 	let pools = Pools::new(PoolConfig::default());
@@ -392,7 +392,7 @@ fn report_field(stderr: &str, key: &str) -> Option<String> {
 fn test_empty_events_handling() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
@@ -523,7 +523,7 @@ fn test_multiple_consumers() {
 fn test_non_table_events_filtered() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 
@@ -583,7 +583,7 @@ fn test_non_table_events_filtered() {
 fn test_rapid_start_stop() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let pools = Pools::new(PoolConfig::default());
 	let actor_system = ActorSystem::new(pools, Clock::Real);
@@ -618,7 +618,7 @@ fn test_rapid_start_stop() {
 fn test_batch_size_limits_processing() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
@@ -652,7 +652,7 @@ fn test_batch_size_limits_processing() {
 fn test_batch_size_one_processes_sequentially() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
@@ -686,7 +686,7 @@ fn test_batch_size_one_processes_sequentially() {
 fn test_batch_size_none_processes_all_at_once() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
@@ -717,7 +717,7 @@ fn test_batch_size_none_processes_all_at_once() {
 fn test_batch_size_larger_than_events() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
@@ -752,7 +752,7 @@ fn test_batch_size_larger_than_events() {
 fn test_batch_size_with_checkpoint_resume() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());
@@ -810,7 +810,7 @@ fn test_batch_size_with_checkpoint_resume() {
 fn test_batch_size_exact_match() {
 	let t = TestEngine::new();
 	let cdc_store = t.cdc_store();
-	let consumer_id = CdcConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::new("flow");
 	let consumer = TestConsumer::new(t.inner().clone(), consumer_id.clone());
 	let consumer_clone = consumer.clone();
 	let pools = Pools::new(PoolConfig::default());

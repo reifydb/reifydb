@@ -30,10 +30,7 @@ use reifydb_store_cdc::storage::{CdcStorage, CdcStorageResult};
 use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 use tracing::{debug, error, info};
 
-use crate::{
-	consume::{backlog::FlowBacklog, is_relevant_cdc, wake::CdcWakeRegistry},
-	produce::watermark::CdcProducerWatermark,
-};
+use crate::{consume::wake::CdcWakeRegistry, produce::watermark::CdcProducerWatermark};
 
 pub struct CdcProducerActor<S> {
 	storage: Arc<S>,
@@ -41,7 +38,6 @@ pub struct CdcProducerActor<S> {
 
 	watermark: CdcProducerWatermark,
 	wake_registry: CdcWakeRegistry,
-	backlog: FlowBacklog,
 }
 
 impl<S> CdcProducerActor<S>
@@ -53,14 +49,12 @@ where
 		event_bus: EventBus,
 		watermark: CdcProducerWatermark,
 		wake_registry: CdcWakeRegistry,
-		backlog: FlowBacklog,
 	) -> Self {
 		Self {
 			storage: Arc::new(storage),
 			event_bus,
 			watermark,
 			wake_registry,
-			backlog,
 		}
 	}
 
@@ -81,15 +75,12 @@ where
 		cdc_changes: Vec<CdcChange>,
 	) -> CdcStorageResult<()> {
 		if cdc_changes.is_empty() {
-			self.backlog.publish(version.commit, None);
 			return Ok(());
 		}
 		let cdc = Arc::new(Cdc::new(version, changed_at, cdc_changes));
 		self.storage.write(&cdc)?;
 		debug!(version = version.commit.0, "CDC written successfully");
 		self.emit_written_event(version.commit, &cdc.changes);
-		let relevant = is_relevant_cdc(&cdc).then_some(cdc);
-		self.backlog.publish(version.commit, relevant);
 		Ok(())
 	}
 
@@ -135,7 +126,6 @@ where
 		state.next = Some(next.max(floor));
 		if released {
 			self.wake_registry.notify_all();
-			self.backlog.notify();
 		}
 		Ok(())
 	}
@@ -282,12 +272,11 @@ pub fn spawn_cdc_producer<S>(
 	event_bus: EventBus,
 	watermark: CdcProducerWatermark,
 	wake_registry: CdcWakeRegistry,
-	backlog: FlowBacklog,
 ) -> CdcProduceHandle
 where
 	S: CdcStorage + Send + Sync + 'static,
 {
-	let actor = CdcProducerActor::new(storage, event_bus, watermark, wake_registry, backlog);
+	let actor = CdcProducerActor::new(storage, event_bus, watermark, wake_registry);
 	spawner.spawn_coordination("cdc-producer", actor)
 }
 
@@ -295,10 +284,7 @@ where
 pub mod tests {
 	#[cfg(reifydb_assertions)]
 	use std::panic::{AssertUnwindSafe, catch_unwind};
-	use std::{
-		sync::atomic::{AtomicUsize, Ordering},
-		thread::sleep,
-	};
+	use std::thread::sleep;
 
 	use reifydb_core::{
 		interface::catalog::storage::StorageId,
@@ -306,20 +292,10 @@ pub mod tests {
 	};
 	use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock, pool::Pools};
 	use reifydb_store_cdc::{config::CdcStoreConfig, store::CdcStore};
-	use reifydb_value::{
-		byte_size::ByteSize,
-		value::{datetime::DateTime, duration::Duration, row_number::RowNumber},
-	};
+	use reifydb_value::value::{datetime::DateTime, duration::Duration, row_number::RowNumber};
 
 	use super::*;
-	use crate::{
-		consume::backlog::BacklogPull,
-		testing::{make_bytes, make_key},
-	};
-
-	fn test_backlog() -> FlowBacklog {
-		FlowBacklog::new(ByteSize::from_mib(16))
-	}
+	use crate::testing::{make_bytes, make_key};
 
 	fn set(key: &str, bytes: &str, pre: SetPre) -> Delta {
 		Delta::Set {
@@ -391,7 +367,6 @@ pub mod tests {
 			EventBus::new(&spawner),
 			CdcProducerWatermark::new(),
 			CdcWakeRegistry::new(),
-			test_backlog(),
 		);
 		(actor, storage, actor_system)
 	}
@@ -432,7 +407,6 @@ pub mod tests {
 			event_bus,
 			CdcProducerWatermark::new(),
 			CdcWakeRegistry::new(),
-			test_backlog(),
 		);
 
 		let deltas = vec![Delta::Set {
@@ -481,7 +455,6 @@ pub mod tests {
 			event_bus,
 			CdcProducerWatermark::new(),
 			CdcWakeRegistry::new(),
-			test_backlog(),
 		);
 
 		let deltas = vec![
@@ -506,83 +479,5 @@ pub mod tests {
 		let cdc = storage.read(CommitVersion(2)).unwrap().unwrap();
 		// A silent removal must not reach CDC; only the Set does.
 		assert_eq!(cdc.changes.len(), 1);
-	}
-
-	#[test]
-	fn produce_feeds_the_flow_backlog_and_wakes_it() {
-		// The backlog is the flow hot path's only transport, so a produced commit must land there
-		// and wake it without any consumer touching storage. A flow-irrelevant commit must still
-		// extend coverage, or the next pull goes Behind for nothing.
-		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
-		let spawner = actor_system.spawner();
-		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
-		let event_bus = EventBus::new(&spawner);
-		let backlog = test_backlog();
-		let woken = Arc::new(AtomicUsize::new(0));
-		let counter = woken.clone();
-		backlog.set_waker(move || {
-			counter.fetch_add(1, Ordering::SeqCst);
-		});
-		let handle = spawn_cdc_producer(
-			&spawner,
-			storage.clone(),
-			event_bus,
-			CdcProducerWatermark::new(),
-			CdcWakeRegistry::new(),
-			backlog.clone(),
-		);
-
-		handle.actor_ref()
-			.send(CdcProduceMessage::Produce {
-				version: ChangeVersion::from(CommitVersion(1)),
-				changed_at: DateTime::from_nanos(1),
-				deltas: vec![Delta::Set {
-					key: RowKey::new(StorageId::table(1), RowNumber(1)).into(),
-					bytes: make_bytes("row"),
-					pre: SetPre::Absent,
-				}],
-			})
-			.unwrap();
-		handle.actor_ref()
-			.send(CdcProduceMessage::Produce {
-				version: ChangeVersion::from(CommitVersion(2)),
-				changed_at: DateTime::from_nanos(2),
-				deltas: vec![Delta::Set {
-					key: make_key("unknown_kind_key"),
-					bytes: make_bytes("value"),
-					pre: SetPre::Absent,
-				}],
-			})
-			.unwrap();
-
-		let deadline = Clock::Real.instant() + Duration::from_seconds(10).unwrap();
-		let items = loop {
-			match backlog.pull(CommitVersion(0), CommitVersion(2), ByteSize::from_mib(1)) {
-				BacklogPull::Hit {
-					items,
-					advance_to,
-					..
-				} if advance_to == CommitVersion(2) && !items.is_empty() => break items,
-				_ => {
-					assert!(Clock::Real.instant() < deadline, "producer never fed the backlog");
-					sleep(Duration::from_milliseconds(5).unwrap().to_std());
-				}
-			}
-		};
-		assert_eq!(items.len(), 1, "only the flow-relevant commit may leave an entry");
-		assert_eq!(items[0].version.commit, CommitVersion(1));
-		assert!(woken.load(Ordering::SeqCst) >= 1, "a produce must wake the backlog consumer");
-
-		match backlog.pull(CommitVersion(1), CommitVersion(2), ByteSize::from_mib(1)) {
-			BacklogPull::Hit {
-				items,
-				advance_to,
-				..
-			} => {
-				assert!(items.is_empty(), "the unknown-kind commit must not leave an entry");
-				assert_eq!(advance_to, CommitVersion(2), "but it must extend coverage");
-			}
-			BacklogPull::Behind => panic!("a produced version must be covered, not Behind"),
-		}
 	}
 }

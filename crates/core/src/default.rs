@@ -154,9 +154,6 @@ pub mod flow {
 	pub const COMMITTER_SHARDS: u16 = 1;
 	pub const COMMITTER_SHARDS_TESTING: u16 = 1;
 
-	pub const BACKLOG_MEMORY_LIMIT: ByteSize = ByteSize::from_mib(64);
-	pub const BACKLOG_MEMORY_LIMIT_TESTING: ByteSize = ByteSize::from_kib(64);
-
 	pub const PULL_BATCH: ByteSize = ByteSize::from_mib(8);
 	pub const PULL_BATCH_TESTING: ByteSize = ByteSize::from_kib(16);
 

@@ -17,7 +17,7 @@ use reifydb_catalog::{
 };
 use reifydb_cdc::{
 	CdcVersion,
-	consume::{backlog::FlowBacklog, wake::CdcWakeRegistry},
+	consume::wake::CdcWakeRegistry,
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -464,11 +464,6 @@ impl DatabaseBuilder {
 		let cdc_wake_registry = CdcWakeRegistry::new();
 		self.ioc = self.ioc.register(cdc_wake_registry.clone());
 
-		let flow_backlog = FlowBacklog::new(ByteSize::from_bytes(
-			multi.config().get_config_uint8(ConfigKey::FlowBacklogBytes),
-		));
-		self.ioc = self.ioc.register(flow_backlog.clone());
-
 		let commit_queue = CommitQueue::new(
 			ByteSize::from_bytes(multi.config().get_config_uint8(ConfigKey::CommitQueueBytes)),
 			self.wal_enabled,
@@ -596,7 +591,6 @@ impl DatabaseBuilder {
 			eventbus.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,
-			flow_backlog,
 		);
 		eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 			cdc_handle.actor_ref().clone(),

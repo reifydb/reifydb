@@ -2,7 +2,6 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod actor;
-pub mod backlog;
 pub mod checkpoint;
 pub mod consumer;
 pub mod host;

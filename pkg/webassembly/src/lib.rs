@@ -26,7 +26,7 @@ use reifydb_catalog::{
 };
 use reifydb_cdc::{
 	CdcVersion,
-	consume::{backlog::FlowBacklog, wake::CdcWakeRegistry, watermark::FlowCaughtUpWatermark},
+	consume::{wake::CdcWakeRegistry, watermark::FlowCaughtUpWatermark},
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -273,11 +273,6 @@ impl WasmDB {
 		let cdc_wake_registry = CdcWakeRegistry::new();
 		ioc = ioc.register(cdc_wake_registry.clone());
 
-		let flow_backlog = FlowBacklog::new(ByteSize::from_bytes(
-			multi.config().get_config_uint8(ConfigKey::FlowBacklogBytes),
-		));
-		ioc = ioc.register(flow_backlog.clone());
-
 		ioc = ioc.register(RetentionMetrics::new());
 
 		let ioc_ref = ioc.clone();
@@ -328,7 +323,6 @@ impl WasmDB {
 			eventbus_clone.clone(),
 			cdc_producer_watermark,
 			cdc_wake_registry,
-			flow_backlog,
 		);
 
 		let cdc_listener =

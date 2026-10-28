@@ -21,18 +21,12 @@ use crate::{
 pub struct CdcConsumerId(pub(crate) String);
 
 impl CdcConsumerId {
-	const FLOW: &'static str = "__FLOW_COORDINATOR";
 	const SUBSCRIPTION: &'static str = "__SUBSCRIPTION_CONSUMER";
 
 	pub fn new(id: impl Into<String>) -> Self {
 		let id = id.into();
-		assert_ne!(id, Self::FLOW);
 		assert_ne!(id, Self::SUBSCRIPTION);
 		Self(id)
-	}
-
-	pub fn flow_consumer() -> Self {
-		Self(Self::FLOW.to_string())
 	}
 
 	pub fn subscription_consumer() -> Self {

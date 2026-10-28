@@ -19,7 +19,7 @@ use reifydb_catalog::{
 	},
 };
 use reifydb_cdc::{
-	consume::{backlog::FlowBacklog, wake::CdcWakeRegistry},
+	consume::wake::CdcWakeRegistry,
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -364,11 +364,6 @@ impl TestEngineBuilder {
 		let cdc_wake_registry = CdcWakeRegistry::new();
 		ioc = ioc.register(cdc_wake_registry.clone());
 
-		let flow_backlog = FlowBacklog::new(ByteSize::from_bytes(
-			multi.config().get_config_uint8(ConfigKey::FlowBacklogBytes),
-		));
-		ioc = ioc.register(flow_backlog.clone());
-
 		bootstrap_root_namespaces(&multi, &single, &catalog_cache, &eventbus)
 			.unwrap_or_else(|error| panic!("test engine root namespaces failed to bootstrap: {error}"));
 
@@ -423,7 +418,6 @@ impl TestEngineBuilder {
 				ioc_for_cdc,
 				cdc_producer_watermark,
 				cdc_wake_registry,
-				flow_backlog,
 			);
 			eventbus.register::<PostCommitEvent, _>(commit_queue);
 		}
@@ -464,9 +458,8 @@ fn register_cdc_producer(
 	ioc_for_cdc: IocContainer,
 	watermark: CdcProducerWatermark,
 	wake_registry: CdcWakeRegistry,
-	backlog: FlowBacklog,
 ) {
-	let cdc_handle = spawn_cdc_producer(spawner, cdc_store, eventbus.clone(), watermark, wake_registry, backlog);
+	let cdc_handle = spawn_cdc_producer(spawner, cdc_store, eventbus.clone(), watermark, wake_registry);
 	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 		cdc_handle.actor_ref().clone(),
 		clock.clone(),
