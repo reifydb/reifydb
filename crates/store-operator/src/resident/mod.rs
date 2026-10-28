@@ -24,10 +24,10 @@ use std::{
 use dashmap::DashMap;
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
-	common::CommitVersion,
 	default,
 	interface::{
 		catalog::flow::{FlowId, OperatorId},
+		operator::FlowCheckpoint,
 		store::WalFloorCheckpoint,
 	},
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, OperatorStateKey},
@@ -138,8 +138,9 @@ pub struct OperatorResidentStateMetrics {
 
 #[derive(Debug, Default)]
 struct GlobalInner {
-	checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
-	in_flight_checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
+	checkpoints: BTreeMap<FlowId, Option<FlowCheckpoint>>,
+	in_flight_checkpoints: BTreeMap<FlowId, Option<FlowCheckpoint>>,
+	first_unflushed: BTreeMap<FlowId, Lsn>,
 	drops: Vec<DropMarker>,
 	in_flight_drops: Vec<DropMarker>,
 	flushing: bool,
@@ -571,7 +572,7 @@ impl Resident {
 	pub fn apply_batch_with_checkpoints(
 		&self,
 		writes: &[OperatorWrite],
-		checkpoints: &[(FlowId, CommitVersion)],
+		checkpoints: &[(FlowId, FlowCheckpoint)],
 		checkpoint_deletes: &[FlowId],
 		lsn: Option<Lsn>,
 	) {
@@ -587,8 +588,9 @@ impl Resident {
 		if !checkpoints.is_empty() || !checkpoint_deletes.is_empty() {
 			{
 				let mut global = self.shared.global.lock();
-				for (flow, version) in checkpoints {
-					global.checkpoints.insert(*flow, Some(*version));
+				for (flow, checkpoint) in checkpoints {
+					global.checkpoints.insert(*flow, Some(*checkpoint));
+					global.first_unflushed.entry(*flow).or_insert(checkpoint.lsn);
 				}
 				for flow in checkpoint_deletes {
 					global.checkpoints.insert(*flow, None);
@@ -1116,6 +1118,9 @@ impl Resident {
 				);
 			}
 			global.in_flight_operators.clear();
+			for flow in batch.checkpoints.keys() {
+				global.first_unflushed.remove(flow);
+			}
 			global.in_flight_checkpoints.clear();
 			global.in_flight_drops.clear();
 			self.shared.publish_drops(&global);

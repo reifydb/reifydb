@@ -10,7 +10,10 @@ use std::{
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		operator::FlowCheckpoint,
+	},
 	key::{
 		operator::{
 			keyspace::{
@@ -30,6 +33,7 @@ use reifydb_value::{
 	util::hash::Hash128,
 	value::{duration::Duration, row_number::RowNumber},
 };
+use reifydb_wal::lsn::Lsn;
 
 use crate::{
 	actor::Waker,
@@ -58,7 +62,7 @@ fn insert(operator: OperatorId, name: &str, value: &str) -> OperatorWrite {
 }
 
 fn write_in_flow(buffer: &Resident, flow: FlowId, version: u64, writes: &[OperatorWrite]) {
-	buffer.apply_batch_with_checkpoints(writes, &[(flow, CommitVersion(version))], &[], None);
+	buffer.apply_batch_with_checkpoints(writes, &[(flow, checkpoint_at(version))], &[], None);
 }
 
 fn operators_of(batch: &FlushBatch) -> Vec<OperatorId> {
@@ -208,10 +212,10 @@ fn checkpoints_distinguish_a_delete_from_a_never_written_flow() {
 		"an unwritten flow must be unknown so the read falls back to the durable checkpoint"
 	);
 
-	buffer.record_checkpoint_set(FlowId(7), CommitVersion(42));
+	buffer.record_checkpoint_set(FlowId(7), checkpoint_at(42));
 	assert_eq!(
 		buffer.lookup_checkpoint(FlowId(7)),
-		Some(Some(CommitVersion(42))),
+		Some(Some(checkpoint_at(42))),
 		"the buffered checkpoint must win over anything still in sqlite"
 	);
 
@@ -229,7 +233,7 @@ fn taken_entries_stay_readable_across_the_flush() {
 	let buffer = Resident::new();
 	set(&buffer, OP_A, key("k"), row("v"));
 	remove(&buffer, OP_A, key("gone"));
-	buffer.record_checkpoint_set(FlowId(3), CommitVersion(9));
+	buffer.record_checkpoint_set(FlowId(3), checkpoint_at(9));
 
 	let batch = buffer.take_for_flush().expect("a non-empty live batch must be handed to the flusher");
 	assert_eq!(batch.writes.len(), 2, "both the write and the tombstone belong to the taken batch");
@@ -250,7 +254,7 @@ fn taken_entries_stay_readable_across_the_flush() {
 	);
 	assert_eq!(
 		buffer.lookup_checkpoint(FlowId(3)),
-		Some(Some(CommitVersion(9))),
+		Some(Some(checkpoint_at(9))),
 		"the checkpoint is only durable once its transaction commits"
 	);
 
@@ -526,7 +530,7 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 			key: GroupStateKey::bound_unchecked(key("state")),
 			post: row("v"),
 		}],
-		&[(FlowId(3), CommitVersion(12))],
+		&[(FlowId(3), checkpoint_at(12))],
 		&[FlowId(4)],
 		None,
 	);
@@ -540,7 +544,7 @@ fn a_combined_apply_lands_the_state_and_the_checkpoints_in_one_taken_batch() {
 	);
 	assert_eq!(
 		batch.checkpoints.get(&FlowId(3)).copied(),
-		Some(Some(CommitVersion(12))),
+		Some(Some(checkpoint_at(12))),
 		"the checkpoint must be in the very batch that carries the state; landing it in a later one \
 		 lets a crash leave the checkpoint ahead of the state, and the flow resumes past state it \
 		 never wrote"
@@ -601,10 +605,10 @@ fn a_flow_the_budget_did_not_reach_keeps_its_checkpoint_for_the_next_slice() {
 	let second = buffer.take_for_flush().expect("the second flow makes a second slice");
 	assert_eq!(
 		second.checkpoints.get(&FLOW_B).copied(),
-		Some(Some(CommitVersion(20))),
+		Some(Some(checkpoint_at(20))),
 		"the held checkpoint must go out with the state that earns it, or the flow never advances"
 	);
-	assert_eq!(second.checkpoints.get(&FLOW_A).copied(), Some(Some(CommitVersion(10))));
+	assert_eq!(second.checkpoints.get(&FLOW_A).copied(), Some(Some(checkpoint_at(10))));
 }
 
 #[test]
@@ -638,13 +642,13 @@ fn a_flow_that_keeps_writing_while_its_state_is_staged_still_lands_its_checkpoin
 #[test]
 fn a_checkpoint_with_no_pending_state_is_written_without_waiting_for_a_drain() {
 	let buffer = Resident::new();
-	buffer.record_checkpoint_set(FLOW_A, CommitVersion(77));
+	buffer.record_checkpoint_set(FLOW_A, checkpoint_at(77));
 
 	let batch = buffer.take_for_flush().expect("a checkpoint alone is worth a transaction");
 	assert!(batch.writes.is_empty(), "the flow wrote no state, so none may be invented for it");
 	assert_eq!(
 		batch.checkpoints.get(&FLOW_A).copied(),
-		Some(Some(CommitVersion(77))),
+		Some(Some(checkpoint_at(77))),
 		"nothing is pending for this flow, so everything it claims is already durable"
 	);
 }
@@ -667,13 +671,13 @@ fn the_flow_waiting_longest_drains_first() {
 fn an_operator_with_no_flow_drains_without_blocking_any_checkpoint() {
 	let buffer = Resident::new();
 	set(&buffer, OP_A, key("orphan"), row("v"));
-	buffer.record_checkpoint_set(FLOW_A, CommitVersion(5));
+	buffer.record_checkpoint_set(FLOW_A, checkpoint_at(5));
 
 	let batch = buffer.take_for_flush().expect("the seeded buffer yields a slice");
 	assert!(written(&batch, OP_A, &key("orphan")).is_some(), "untagged state must still be made durable");
 	assert_eq!(
 		batch.checkpoints.get(&FLOW_A).copied(),
-		Some(Some(CommitVersion(5))),
+		Some(Some(checkpoint_at(5))),
 		"an operator with no flow claims no flow, so it must not hold one back"
 	);
 }
@@ -1368,4 +1372,11 @@ fn a_miss_after_a_drop_has_settled_never_waits_on_the_global_lock() {
 	lookup.join().expect("the lookup thread must finish once the lock is released");
 
 	assert_eq!(answer, Ok(BufferedState::Absent), "a miss on a settled drop blocked on the global lock");
+}
+
+fn checkpoint_at(version: u64) -> FlowCheckpoint {
+	FlowCheckpoint {
+		version: CommitVersion(version),
+		lsn: Lsn::new(version + 1_000),
+	}
 }

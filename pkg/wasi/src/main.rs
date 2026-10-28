@@ -31,6 +31,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	CoreVersion,
+	commit::queue::CommitQueue,
 	common::CommitVersion,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
@@ -68,7 +69,7 @@ use reifydb_transaction::{
 	interceptor::factory::InterceptorFactory,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{memory_wal, replay},
+	wal::{flow_wal, memory_wal, replay},
 };
 use reifydb_value::{Result as ValueResult, byte_size::ByteSize, params::Params, value::identity::IdentityId};
 use serde_json::{Value as JsonValue, from_str as json_from_str, json, to_writer as json_to_writer};
@@ -158,6 +159,14 @@ impl Bridge {
 		load_catalog_cache(&multi, &single, &catalog_cache)?;
 		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus)?;
 
+		let commit_queue = CommitQueue::new(
+			ByteSize::from_bytes(multi.config().get_config_uint8(ConfigKey::CommitQueueBytes)),
+			true,
+			multi.current_version()?,
+		);
+		ioc = ioc.register(commit_queue.clone());
+		ioc = ioc.register(flow_wal(multi.wal()));
+
 		let routines = {
 			let b = Routines::builder();
 			let b = default_in_process_functions(b);
@@ -196,6 +205,7 @@ impl Bridge {
 		let cdc_listener =
 			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), clock.clone());
 		eventbus_clone.register::<PostCommitEvent, _>(cdc_listener);
+		eventbus_clone.register::<PostCommitEvent, _>(commit_queue);
 		eprintln!("[WASI] CDC producer actor registered!");
 
 		let flow_config = FlowConfig {

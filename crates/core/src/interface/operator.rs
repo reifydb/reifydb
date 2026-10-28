@@ -2,12 +2,19 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_codec::row::pod::EncodedPodRow;
+use reifydb_wal::lsn::Lsn;
 
 use crate::{
 	common::CommitVersion,
 	interface::catalog::flow::{FlowId, OperatorId},
 	key::operator::state::GroupStateKey,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FlowCheckpoint {
+	pub version: CommitVersion,
+	pub lsn: Lsn,
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OperatorSection {
@@ -17,7 +24,7 @@ pub struct OperatorSection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OperatorSlice {
 	pub writes: Vec<(OperatorId, GroupStateKey, OperatorStateWrite)>,
-	pub checkpoints: Vec<(FlowId, CommitVersion)>,
+	pub checkpoints: Vec<(FlowId, FlowCheckpoint)>,
 	pub deletes: Vec<FlowId>,
 }
 

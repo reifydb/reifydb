@@ -26,6 +26,7 @@ use reifydb_cdc::{
 use reifydb_core::{
 	CoreVersion,
 	actors::cdc::CdcProduceHandle,
+	commit::queue::CommitQueue,
 	durability::Durability,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
@@ -85,6 +86,7 @@ use reifydb_transaction::{
 	interceptor::builder::InterceptorBuilder,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
+	wal::flow_wal,
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -467,6 +469,14 @@ impl DatabaseBuilder {
 		));
 		self.ioc = self.ioc.register(flow_backlog.clone());
 
+		let commit_queue = CommitQueue::new(
+			ByteSize::from_bytes(multi.config().get_config_uint8(ConfigKey::CommitQueueBytes)),
+			self.wal_enabled,
+			resumed_at,
+		);
+		self.ioc = self.ioc.register(commit_queue.clone());
+		self.ioc = self.ioc.register(flow_wal(multi.wal()));
+
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");
 		let single_store = self.single_store.clone().expect("SingleStore must be set via with_stores()");
 		let operator_store = self.operator_store.clone().expect("OperatorStore must be set via with_stores()");
@@ -480,6 +490,7 @@ impl DatabaseBuilder {
 		metrics_registry.register_collectors(multi_store.metrics_collectors());
 		metrics_registry.register_collectors(single_store.metrics_collectors());
 		metrics_registry.register_collectors(operator_store.metrics_collectors());
+		metrics_registry.register_collector(Arc::new(commit_queue.clone()));
 
 		let transforms = if let Some(configurator) = self.transforms_configurator {
 			configurator(Transforms::builder()).configure()
@@ -592,6 +603,7 @@ impl DatabaseBuilder {
 			clock.clone(),
 		));
 		self.ioc.register_service::<Arc<CdcProduceHandle>>(Arc::new(cdc_handle));
+		eventbus.register::<PostCommitEvent, _>(commit_queue);
 
 		// Bootstrap AFTER CDC producer is active so commits are captured.
 		bootstrap_system_objects(&multi, &single, &catalog, &eventbus)?;

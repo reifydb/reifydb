@@ -15,11 +15,15 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		operator::FlowCheckpoint,
+	},
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
 	metrics::collect::MetricsCollector,
 };
 use reifydb_value::byte_size::ByteSize;
+use reifydb_wal::lsn::Lsn;
 
 use crate::{
 	error::{OperatorError, Result},
@@ -266,15 +270,15 @@ impl Enumerate for TestingPersistent {
 }
 
 impl Checkpoint for TestingPersistent {
-	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<CommitVersion>> {
+	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
 		self.call();
 		self.0.durable.checkpoint_get(flow)
 	}
 
-	fn checkpoint_set(&self, flow: FlowId, version: CommitVersion) -> Result<()> {
+	fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<()> {
 		self.call();
 		match self.0.hooks.on_checkpoint(flow) {
-			ApplyOutcome::Land => self.0.durable.checkpoint_set(flow, version),
+			ApplyOutcome::Land => self.0.durable.checkpoint_set(flow, checkpoint),
 			ApplyOutcome::Partial(_) | ApplyOutcome::Lost => Ok(()),
 			ApplyOutcome::Err(error) => Err(error),
 		}
@@ -292,6 +296,11 @@ impl Checkpoint for TestingPersistent {
 	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>> {
 		self.call();
 		self.0.durable.checkpoint_floor()
+	}
+
+	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
+		self.call();
+		self.0.durable.checkpoint_lsn_floor()
 	}
 
 	fn checkpoint_list(&self) -> Result<Vec<FlowId>> {

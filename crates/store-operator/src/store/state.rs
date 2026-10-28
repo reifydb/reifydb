@@ -17,8 +17,10 @@ use reifydb_codec::{
 #[cfg(reifydb_assertions)]
 use reifydb_core::key::operator::{keyspace::group_scoped_id, state::OperatorStateKey};
 use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		operator::FlowCheckpoint,
+	},
 	key::{
 		bound::TaggedKeyBoundRange,
 		operator::{
@@ -59,7 +61,7 @@ impl StandardOperatorStore {
 	pub fn apply_batch_with_checkpoints(
 		&self,
 		writes: &[OperatorWrite],
-		checkpoints: &[(FlowId, CommitVersion)],
+		checkpoints: &[(FlowId, FlowCheckpoint)],
 		checkpoint_deletes: &[FlowId],
 		lsn: Option<Lsn>,
 	) -> Result<()> {
@@ -657,7 +659,7 @@ impl OperatorStore {
 	pub fn apply_batch_with_checkpoints(
 		&self,
 		writes: &[OperatorWrite],
-		checkpoints: &[(FlowId, CommitVersion)],
+		checkpoints: &[(FlowId, FlowCheckpoint)],
 		checkpoint_deletes: &[FlowId],
 		lsn: Option<Lsn>,
 	) -> Result<()> {

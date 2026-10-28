@@ -12,9 +12,10 @@ use reifydb_codec::log::{
 	record::{HEADER_BYTES, Record},
 };
 use reifydb_core::{
-	common::CommitVersion,
+	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::flow::OperatorId,
+		commit::{CommitEntry, CommitFloor, CommitLog, FlowWal, Loaded},
 		store::{WalCheckpoint, WalFloorCheckpoint},
 	},
 	key::operator::state::GroupStateKey,
@@ -543,5 +544,141 @@ impl WalFloorCheckpoint for WalFloorCheckpointer {
 			)
 		});
 		Ok(cursors.appended)
+	}
+}
+
+const FLOW_READER: &str = "flow";
+
+pub fn flow_wal(wal: &CommitWal) -> FlowWal {
+	let floor = wal
+		.floor(FLOW_READER)
+		.unwrap_or_else(|err| panic!("commit log floor {FLOW_READER} could not be taken: {err}"));
+	FlowWal {
+		log: Arc::new(WalCommitLog::new(wal.clone(), FLOW_READER)),
+		floor: Arc::new(WalCommitFloor {
+			wal: wal.clone(),
+			floor,
+		}),
+	}
+}
+
+struct WalCommitFloor {
+	wal: CommitWal,
+	floor: Floor<WalRecord, CommitDevice>,
+}
+
+impl CommitFloor for WalCommitFloor {
+	fn position(&self) -> Option<Lsn> {
+		self.floor.position()
+	}
+
+	fn advance(&self, lsn: Lsn) {
+		let cursors = self.wal.cursors().unwrap_or_else(|err| {
+			panic!("commit log cursors could not be read for the {} floor: {err}", self.floor.name())
+		});
+		let Some(target) = cursors.durable.map(|durable| durable.min(lsn)) else {
+			return;
+		};
+		if self.floor.position().is_some_and(|held| target <= held) {
+			return;
+		}
+		self.floor.advance(target).unwrap_or_else(|err| {
+			panic!(
+				"commit log floor {} failed to advance to lsn {}: {err}",
+				self.floor.name(),
+				target.as_u64()
+			)
+		});
+		self.wal.gc().unwrap_or_else(|err| {
+			panic!(
+				"commit log gc failed after floor {} reached lsn {}: {err}",
+				self.floor.name(),
+				target.as_u64()
+			)
+		});
+	}
+}
+
+pub struct WalCommitLog {
+	wal: CommitWal,
+	reader: String,
+}
+
+impl WalCommitLog {
+	pub fn new(wal: CommitWal, reader: impl Into<String>) -> Self {
+		Self {
+			wal,
+			reader: reader.into(),
+		}
+	}
+}
+
+impl CommitLog for WalCommitLog {
+	fn read(&self, after: (CommitVersion, Lsn), up_to: CommitVersion, budget: ByteSize) -> Result<Loaded> {
+		let (cursor, lsn) = after;
+		let from = Lsn::new(lsn.as_u64() + 1);
+		let records = self.wal.replay(from).unwrap_or_else(|err| match err {
+			WalError::Purged {
+				oldest,
+				..
+			} => panic!(
+				"the {} reader is at lsn {} but the commit log starts at lsn {}: gc dropped commits the \
+				 reader never read",
+				self.reader,
+				lsn.as_u64(),
+				oldest.as_u64()
+			),
+			err => panic!(
+				"commit log read for the {} reader after lsn {} failed to start: {err}",
+				self.reader,
+				lsn.as_u64()
+			),
+		});
+		let budget = budget.as_bytes().max(1);
+		let mut entries: Vec<Arc<CommitEntry>> = Vec::new();
+		let mut taken = 0u64;
+		for replayed in records {
+			let replayed = replayed.unwrap_or_else(|err| {
+				panic!(
+					"commit log read for the {} reader failed after lsn {}: {err}",
+					self.reader,
+					lsn.as_u64()
+				)
+			});
+			let WalRecord::Multi(record) = replayed.body else {
+				continue;
+			};
+			if record.version <= cursor {
+				continue;
+			}
+			if record.version > up_to {
+				break;
+			}
+			let version = ChangeVersion {
+				commit: record.version,
+				source: record.source,
+			};
+			let entry = CommitEntry::build(version, replayed.lsn, replayed.at, record.deltas);
+			if entry.deltas.is_empty() {
+				continue;
+			}
+			let bytes = entry.bytes();
+			if !entries.is_empty() && taken + bytes > budget {
+				let advance_to =
+					entries.last().expect("a cut read holds at least one entry").version.commit;
+				return Ok(Loaded {
+					entries,
+					advance_to,
+					more: true,
+				});
+			}
+			taken += bytes;
+			entries.push(Arc::new(entry));
+		}
+		Ok(Loaded {
+			entries,
+			advance_to: up_to,
+			more: false,
+		})
 	}
 }

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{catalog::flow::FlowId, operator::FlowCheckpoint},
+};
 use reifydb_wal::lsn::Lsn;
 use rusqlite::params;
 use tracing::instrument;
@@ -10,13 +13,16 @@ use crate::{
 	error::{OperatorError, Result},
 	persistent::sqlite::{
 		SqlitePersistent,
-		sql::{CHECKPOINT_FLOOR_SQL, CHECKPOINT_GET_SQL, CHECKPOINT_LIST_SQL, SAVED_LSN_GET_SQL},
+		sql::{
+			CHECKPOINT_FLOOR_SQL, CHECKPOINT_GET_SQL, CHECKPOINT_LIST_SQL, CHECKPOINT_LSN_FLOOR_SQL,
+			SAVED_LSN_GET_SQL,
+		},
 	},
 };
 
 impl SqlitePersistent {
 	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_get", level = "trace", skip(self), fields(flow = flow.0))]
-	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<CommitVersion>> {
+	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
 		let guard = self.read_conn();
 		let Some(conn) = guard.as_ref() else {
 			return Err(OperatorError::Closed);
@@ -26,7 +32,10 @@ impl SqlitePersistent {
 		let Some(row) = rows.next()? else {
 			return Ok(None);
 		};
-		Ok(Some(CommitVersion(row.get::<_, i64>(0)? as u64)))
+		Ok(Some(FlowCheckpoint {
+			version: CommitVersion(row.get::<_, i64>(0)? as u64),
+			lsn: Lsn::new(row.get::<_, i64>(1)? as u64),
+		}))
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_floor", level = "trace", skip(self))]
@@ -42,6 +51,21 @@ impl SqlitePersistent {
 		};
 		let version: Option<i64> = row.get(0)?;
 		Ok(version.map(|version| CommitVersion(version as u64)))
+	}
+
+	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_lsn_floor", level = "trace", skip(self))]
+	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
+		let guard = self.read_conn();
+		let Some(conn) = guard.as_ref() else {
+			return Err(OperatorError::Closed);
+		};
+		let mut stmt = conn.prepare_cached(CHECKPOINT_LSN_FLOOR_SQL)?;
+		let mut rows = stmt.query([])?;
+		let Some(row) = rows.next()? else {
+			return Ok(None);
+		};
+		let lsn: Option<i64> = row.get(0)?;
+		Ok(lsn.map(|lsn| Lsn::new(lsn as u64)))
 	}
 
 	#[instrument(name = "store::operator::persistent::sqlite::checkpoint_list", level = "trace", skip(self))]

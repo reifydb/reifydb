@@ -308,22 +308,22 @@ fn a_drop_flushes_before_the_writes_recorded_after_it() {
 fn a_checkpoint_upsert_and_a_checkpoint_delete_both_reach_the_table() {
 	let (buffer, storage, actor_ref, _guard) = buffer_fixture();
 
-	buffer.record_checkpoint_set(FLOW, CommitVersion(41));
-	buffer.record_checkpoint_set(FLOW, CommitVersion(42));
+	buffer.record_checkpoint_set(FLOW, checkpoint_at(41));
+	buffer.record_checkpoint_set(FLOW, checkpoint_at(42));
 	assert!(begin_flush_pending(&actor_ref).wait(), "the checkpoint batch must reach the flusher");
 
 	assert_eq!(
 		storage.checkpoint_get(FLOW).unwrap(),
-		Some(CommitVersion(42)),
+		Some(checkpoint_at(42)),
 		"the flushed checkpoint must be the latest recorded version; a plain INSERT would collide with \
 		 the previous row and a stale version replays slices that were already applied"
 	);
 
-	buffer.record_checkpoint_set(FLOW, CommitVersion(99));
+	buffer.record_checkpoint_set(FLOW, checkpoint_at(99));
 	assert!(begin_flush_pending(&actor_ref).wait(), "a later checkpoint must overwrite the flushed one");
 	assert_eq!(
 		storage.checkpoint_get(FLOW).unwrap(),
-		Some(CommitVersion(99)),
+		Some(checkpoint_at(99)),
 		"the upsert must move the version forward rather than keep the first write"
 	);
 
@@ -797,7 +797,7 @@ fn a_hair_over_the_cap_drains_the_whole_flow_and_its_checkpoint_in_one_batch() {
 		key: GroupStateKey::bound_unchecked(key(resident)),
 		post: row(&large),
 	});
-	buffer.apply_batch_with_checkpoints(&writes, &[(FLOW, CommitVersion(41))], &[], None);
+	buffer.apply_batch_with_checkpoints(&writes, &[(FLOW, checkpoint_at(41))], &[], None);
 
 	let slice = buffer.take_for_flush().expect("a buffer past its cap must yield a slice");
 
@@ -820,7 +820,7 @@ fn a_hair_over_the_cap_drains_the_whole_flow_and_its_checkpoint_in_one_batch() {
 	);
 	assert_eq!(
 		slice.checkpoints.get(&FLOW).copied().flatten(),
-		Some(CommitVersion(41)),
+		Some(checkpoint_at(41)),
 		"the checkpoint must ride out in the same batch as the last of its flow's state; written earlier \
 		 it replays nothing, written later a crash between the two replays state that is already durable"
 	);
@@ -1118,4 +1118,11 @@ fn a_key_staged_before_a_rebuild_and_persisted_after_its_commit_is_in_the_commit
 		!buffer.never_persisted(OP_A, &key(2)),
 		"the key is in sqlite but the committed filter denies it, so reads answer none and removes drop their tombstone"
 	);
+}
+
+fn checkpoint_at(version: u64) -> reifydb_core::interface::operator::FlowCheckpoint {
+	reifydb_core::interface::operator::FlowCheckpoint {
+		version: CommitVersion(version),
+		lsn: reifydb_wal::lsn::Lsn::new(version + 1_000),
+	}
 }

@@ -8,7 +8,7 @@ use reifydb_value::Result;
 
 use crate::{
 	common::CommitVersion,
-	interface::{catalog::object::ObjectId, cdc::Cdc},
+	interface::{catalog::object::ObjectId, commit::Loaded},
 };
 
 pub type FlowActorHandle = ActorHandle<FlowActorMessage>;
@@ -21,7 +21,7 @@ pub enum FlowActorMessage {
 	TrailingWake,
 
 	Loaded {
-		outcome: Result<(Vec<Arc<Cdc>>, CommitVersion)>,
+		outcome: Result<Loaded>,
 	},
 
 	Tick,

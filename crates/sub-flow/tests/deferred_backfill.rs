@@ -21,7 +21,7 @@ use reifydb::{
 	},
 	testing::db::{TempDbPath, TestDb, await_value, poll_until},
 };
-use reifydb_cdc::{consume::checkpoint::CdcCheckpoint, lift::changed_objects};
+use reifydb_cdc::lift::changed_objects;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	common::{ChangeVersion, CommitVersion, SourceVersion},
@@ -31,7 +31,6 @@ use reifydb_core::{
 			id::{TableId, ViewId},
 			object::ObjectId,
 		},
-		cdc::CdcConsumerId,
 		flow::OperatorCapability,
 	},
 	key::operator::state::{GroupId, managed_key_in},
@@ -56,7 +55,6 @@ use reifydb_sdk::{
 	},
 };
 use reifydb_store_cdc::storage::{CdcStorage, Cutoff};
-use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	config::ExtensionParams,
 	error::{Diagnostic, Error},
@@ -66,11 +64,7 @@ use reifydb_value::{
 
 const TIMEOUT: Duration = Duration::from_seconds_const(10);
 
-const DDL_CURSOR_WAIT: Duration = Duration::from_seconds_const(20);
-
 const HOLD: Duration = Duration::from_seconds_const(1);
-
-const PAST_CHECKPOINT_AGE: Duration = Duration::from_seconds_const(6);
 
 const REFUSED: &str = "TEST_DEFERRED_BACKFILL_REFUSED";
 
@@ -121,6 +115,7 @@ fn memory_with(batch: u16) -> TestDb {
 fn open(path: &TempDbPath, flow: bool, hooks: Option<Arc<dyn ScanHooks>>) -> TestDb {
 	let mut builder = embedded::sqlite(SqliteConfig::new(path))
 		.with_runtime_config(runtime())
+		.with_wal(|wal| wal.enabled(true))
 		.with_config(ConfigKey::QueryRowBatchSize, Value::Uint2(4));
 	if let Some(hooks) = hooks {
 		builder = builder.with_dependency(InstalledScanHooks(hooks));
@@ -293,7 +288,11 @@ fn only_flow(db: &TestDb) -> FlowId {
 }
 
 fn checkpoint(db: &TestDb, flow: FlowId) -> Option<CommitVersion> {
-	db.engine().operator_state().checkpoint_get(flow).expect("the checkpoint lookup")
+	db.engine()
+		.operator_state()
+		.checkpoint_get(flow)
+		.expect("the checkpoint lookup")
+		.map(|checkpoint| checkpoint.version)
 }
 
 fn catalog_id(db: &TestDb, system: &str, name: &str) -> u64 {
@@ -334,12 +333,6 @@ fn stamps(db: &TestDb, object: ObjectId) -> Vec<ChangeVersion> {
 	)
 	.expect("a truncated cdc read would hide commits");
 	batch.items.iter().filter(|cdc| changed_objects(cdc).contains(&object)).map(|cdc| cdc.version).collect()
-}
-
-fn ddl_cursor(db: &TestDb) -> Option<CommitVersion> {
-	let mut query = db.engine().begin_query(IdentityId::root()).expect("a query transaction");
-	CdcCheckpoint::fetch_opt(&mut Transaction::Query(&mut query), &CdcConsumerId::flow_consumer())
-		.expect("the ddl cursor lookup")
 }
 
 fn operators(db: &TestDb, flow: FlowId) -> Vec<OperatorId> {
@@ -505,21 +498,6 @@ impl ScanHooks for Floors {
 
 	fn during_next(&self, _source: ObjectId, _pull: u64) {
 		self.record();
-	}
-}
-
-struct Refuse {
-	armed: AtomicBool,
-	refused: Mutex<Vec<ObjectId>>,
-}
-
-impl ScanHooks for Refuse {
-	fn on_open(&self, source: ObjectId) -> Outcome {
-		if !self.armed.load(Ordering::SeqCst) {
-			return Outcome::Land;
-		}
-		self.refused.lock().push(source);
-		Outcome::Err(refused())
 	}
 }
 
@@ -2056,62 +2034,6 @@ fn a_crash_after_the_view_commit_resets_the_partitioned_ringbuffer_view_on_resta
 			),
 		],
 	);
-}
-
-#[test]
-fn a_backfill_that_never_committed_is_redone_on_restart_after_the_ddl_cursor_passed_the_create() {
-	// A flow with no checkpoint seeded at the persisted ddl cursor skips every row written before its create.
-	let path = TempDbPath::new("deferred_backfill_never_committed");
-	let refuse = Arc::new(Refuse {
-		armed: AtomicBool::new(false),
-		refused: Mutex::new(Vec::new()),
-	});
-	{
-		let mut db = open(&path, true, Some(refuse.clone()));
-		tables(&db);
-		db.admin(&format!("CREATE DEFERRED VIEW bf::early {{ {COLUMNS} }} AS {{ {FILTER} }}"));
-		settle(&db);
-		run(&db, &history("bf::src"));
-		settle(&db);
-		await_rows(&db, "FROM bf::early", Cols::User, &stale_rows(), "after the history, fed live");
-		refuse.armed.store(true, Ordering::SeqCst);
-		db.admin(&format!("CREATE DEFERRED VIEW bf::late {{ {COLUMNS} }} AS {{ {FILTER} }}"));
-		let create = db.engine().current_version().expect("the current version");
-		sleep(PAST_CHECKPOINT_AGE.to_std());
-		db.command("INSERT bf::src [{ id: 30, g: 1, sym: 'z', v: 99 }]");
-		let cursor = poll_until(|| ddl_cursor(&db).filter(|cursor| *cursor >= create), DDL_CURSOR_WAIT);
-		assert!(
-			cursor.is_some(),
-			"precondition: the ddl cursor must be persisted at or past the create {create:?}, got {:?}",
-			ddl_cursor(&db)
-		);
-		assert_eq!(
-			*refuse.refused.lock().first().expect("precondition: the late backfill must have been refused"),
-			table_object(&db, "src"),
-			"precondition: the refused scan must be the late view's source"
-		);
-		assert_eq!(
-			checkpoint(&db, flow_named(&db, "late")),
-			None,
-			"precondition: a refused backfill must never commit a checkpoint"
-		);
-		assert_eq!(
-			rows(&db, "FROM bf::late", Cols::User),
-			Vec::<String>::new(),
-			"precondition: a refused backfill must leave the view empty"
-		);
-		db.stop();
-	}
-	let mut db = open(&path, true, None);
-	let nudged =
-		sorted(&["g=1,id=1,sym=a,v=60", "g=2,id=2,sym=b,v=80", "g=3,id=5,sym=e,v=70", "g=1,id=30,sym=z,v=99"]);
-	await_rows(&db, "FROM bf::late", Cols::User, &nudged, "after a restart");
-	agree(&db, "bf::early", "bf::late", Cols::WithRownum, "after a restart");
-	for rql in later("bf::src") {
-		db.command(&rql);
-		agree(&db, "bf::early", "bf::late", Cols::WithRownum, &format!("after the restart and: {rql}"));
-	}
-	db.stop();
 }
 
 #[test]

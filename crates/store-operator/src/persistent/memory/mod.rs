@@ -10,8 +10,10 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
-	common::CommitVersion,
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		operator::FlowCheckpoint,
+	},
 	key::operator::state::GroupStateKey,
 	metrics::collect::MetricsCollector,
 };
@@ -25,7 +27,7 @@ type Rows = BTreeMap<OperatorId, BTreeMap<GroupStateKey, EncodedPodRow>>;
 #[derive(Default)]
 struct Inner {
 	rows: Mutex<Rows>,
-	checkpoints: Mutex<BTreeMap<FlowId, CommitVersion>>,
+	checkpoints: Mutex<BTreeMap<FlowId, FlowCheckpoint>>,
 }
 
 #[derive(Clone, Default)]

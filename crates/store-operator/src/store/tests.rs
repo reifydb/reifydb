@@ -15,7 +15,10 @@ use std::{
 use reifydb_codec::{key::encoded::EncodedKey, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		operator::FlowCheckpoint,
+	},
 	key::{
 		bound::TaggedKeyBoundRange,
 		operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask, group_range, keyspace_range},
@@ -27,6 +30,7 @@ use reifydb_runtime::{actor::system::ActorSystem, context::clock::Clock};
 use reifydb_sqlite::SqliteTempPathGuard;
 use reifydb_testing::keyspace::state_key;
 use reifydb_value::{byte_size::ByteSize, util::hash::Hash128};
+use reifydb_wal::lsn::Lsn;
 
 use crate::{
 	actor::resident_flush::flush_now,
@@ -404,8 +408,8 @@ fn a_buffered_row_above_the_durable_tail_wins_the_last_read() {
 fn a_flush_between_the_two_tier_reads_cannot_hide_a_buffered_checkpoint_delete() {
 	let (store, _guard) = store_fixture();
 
-	store.checkpoint_set(FLOW_A, CommitVersion(10)).unwrap();
-	store.checkpoint_set(FLOW_B, CommitVersion(20)).unwrap();
+	store.checkpoint_set(FLOW_A, checkpoint_at(10)).unwrap();
+	store.checkpoint_set(FLOW_B, checkpoint_at(20)).unwrap();
 	flush(&store);
 	assert_eq!(store.checkpoint_list().unwrap(), vec![FLOW_A, FLOW_B], "both checkpoints must start out durable");
 
@@ -425,7 +429,7 @@ fn a_flush_between_the_two_tier_reads_cannot_hide_a_buffered_checkpoint_delete()
 fn a_flush_between_the_two_tier_reads_cannot_raise_the_floor_over_a_buffered_checkpoint() {
 	let (store, _guard) = store_fixture();
 
-	store.checkpoint_set(FLOW_A, CommitVersion(100)).unwrap();
+	store.checkpoint_set(FLOW_A, checkpoint_at(100)).unwrap();
 	flush(&store);
 	assert_eq!(
 		store.checkpoint_floor().unwrap(),
@@ -433,7 +437,7 @@ fn a_flush_between_the_two_tier_reads_cannot_raise_the_floor_over_a_buffered_che
 		"the durable checkpoint sets the floor"
 	);
 
-	store.checkpoint_set(FLOW_B, CommitVersion(50)).unwrap();
+	store.checkpoint_set(FLOW_B, checkpoint_at(50)).unwrap();
 	store.attach_checkpoint_interlock(flush_once_interlock());
 
 	assert_eq!(
@@ -448,8 +452,8 @@ fn a_flush_between_the_two_tier_reads_cannot_raise_the_floor_over_a_buffered_che
 fn a_checkpoint_merge_without_an_interlock_is_unaffected() {
 	let (store, _guard) = store_fixture();
 
-	store.checkpoint_set(FLOW_A, CommitVersion(10)).unwrap();
-	store.checkpoint_set(FLOW_B, CommitVersion(20)).unwrap();
+	store.checkpoint_set(FLOW_A, checkpoint_at(10)).unwrap();
+	store.checkpoint_set(FLOW_B, checkpoint_at(20)).unwrap();
 	flush(&store);
 	store.checkpoint_remove(FLOW_A).unwrap();
 
@@ -646,4 +650,11 @@ fn a_failed_census_stops_the_key_filter_rebuild() {
 		Arc::new(OperatorCensus::default()),
 	);
 	source.restart();
+}
+
+fn checkpoint_at(version: u64) -> FlowCheckpoint {
+	FlowCheckpoint {
+		version: CommitVersion(version),
+		lsn: Lsn::new(version + 1_000),
+	}
 }

@@ -3,7 +3,11 @@
 
 use std::collections::BTreeSet;
 
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{catalog::flow::FlowId, operator::FlowCheckpoint},
+};
+use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
 use crate::{
@@ -14,23 +18,23 @@ use crate::{
 
 impl StandardOperatorStore {
 	#[instrument(name = "store::operator::checkpoint_set", level = "debug", skip(self), fields(flow = flow.0))]
-	pub fn checkpoint_set(&self, flow: FlowId, version: CommitVersion) -> Result<()> {
+	pub fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<()> {
 		if let Some(current) = self.checkpoint_get(flow)?
-			&& version < current
+			&& checkpoint.version < current.version
 		{
 			return Err(OperatorError::CheckpointOutOfRange {
 				flow,
 			});
 		}
-		self.resident.record_checkpoint_set(flow, version);
+		self.resident.record_checkpoint_set(flow, checkpoint);
 		Ok(())
 	}
 
 	#[instrument(name = "store::operator::check_checkpoints", level = "trace", skip_all, fields(checkpoint_count = checkpoints.len()))]
-	pub fn check_checkpoints(&self, checkpoints: &[(FlowId, CommitVersion)]) -> Result<()> {
-		for (flow, version) in checkpoints {
+	pub fn check_checkpoints(&self, checkpoints: &[(FlowId, FlowCheckpoint)]) -> Result<()> {
+		for (flow, checkpoint) in checkpoints {
 			if let Some(current) = self.checkpoint_get(*flow)?
-				&& *version < current
+				&& checkpoint.version < current.version
 			{
 				return Err(OperatorError::CheckpointOutOfRange {
 					flow: *flow,
@@ -47,7 +51,7 @@ impl StandardOperatorStore {
 	}
 
 	#[instrument(name = "store::operator::checkpoint_get", level = "trace", skip(self), fields(flow = flow.0))]
-	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<CommitVersion>> {
+	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
 		if let Some(entry) = self.resident.lookup_checkpoint(flow) {
 			return Ok(entry);
 		}
@@ -61,6 +65,14 @@ impl StandardOperatorStore {
 		self.checkpoint_interlock();
 		let durable = self.persistent.checkpoint_floor()?;
 		Ok([pinned, buffered, durable].into_iter().flatten().min())
+	}
+
+	#[instrument(name = "store::operator::checkpoint_lsn_floor", level = "trace", skip(self))]
+	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
+		let buffered = self.resident.checkpoint_lsn_floor();
+		self.checkpoint_interlock();
+		let durable = self.persistent.checkpoint_lsn_floor()?;
+		Ok([buffered, durable].into_iter().flatten().min())
 	}
 
 	#[instrument(name = "store::operator::checkpoint_list", level = "trace", skip(self))]
@@ -79,13 +91,13 @@ impl StandardOperatorStore {
 }
 
 impl OperatorStore {
-	pub fn checkpoint_set(&self, flow: FlowId, version: CommitVersion) -> Result<()> {
+	pub fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<()> {
 		match self {
-			Self::Standard(store) => store.checkpoint_set(flow, version),
+			Self::Standard(store) => store.checkpoint_set(flow, checkpoint),
 		}
 	}
 
-	pub fn check_checkpoints(&self, checkpoints: &[(FlowId, CommitVersion)]) -> Result<()> {
+	pub fn check_checkpoints(&self, checkpoints: &[(FlowId, FlowCheckpoint)]) -> Result<()> {
 		match self {
 			Self::Standard(store) => store.check_checkpoints(checkpoints),
 		}
@@ -97,7 +109,7 @@ impl OperatorStore {
 		}
 	}
 
-	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<CommitVersion>> {
+	pub fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
 		match self {
 			Self::Standard(store) => store.checkpoint_get(flow),
 		}
@@ -106,6 +118,12 @@ impl OperatorStore {
 	pub fn checkpoint_floor(&self) -> Result<Option<CommitVersion>> {
 		match self {
 			Self::Standard(store) => store.checkpoint_floor(),
+		}
+	}
+
+	pub fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
+		match self {
+			Self::Standard(store) => store.checkpoint_lsn_floor(),
 		}
 	}
 

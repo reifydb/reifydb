@@ -9,6 +9,7 @@ use reifydb_value::util::cowvec::CowVec;
 use reifydb_wal::{
 	body::Body,
 	error::{Result, WalError},
+	lsn::Lsn,
 };
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
 	delta::{Delta, RemoveAnnounce, SetPre},
 	interface::{
 		catalog::flow::{FlowId, OperatorId},
-		operator::{OperatorSection, OperatorSlice, OperatorStateWrite},
+		operator::{FlowCheckpoint, OperatorSection, OperatorSlice, OperatorStateWrite},
 	},
 	key::{any::TaggedKey, operator::state::GroupStateKey},
 };
@@ -121,9 +122,10 @@ impl CommitRecord {
 				}
 			}
 			put_len(out, slice.checkpoints.len());
-			for (flow, version) in &slice.checkpoints {
+			for (flow, checkpoint) in &slice.checkpoints {
 				out.extend_from_slice(&flow.0.to_le_bytes());
-				out.extend_from_slice(&version.0.to_le_bytes());
+				out.extend_from_slice(&checkpoint.version.0.to_le_bytes());
+				out.extend_from_slice(&checkpoint.lsn.as_u64().to_le_bytes());
 			}
 			put_len(out, slice.deletes.len());
 			for flow in &slice.deletes {
@@ -404,7 +406,15 @@ impl<'a> Reader<'a> {
 		let count = self.u32()?;
 		let mut checkpoints = Vec::new();
 		for _ in 0..count {
-			checkpoints.push((FlowId(self.u64()?), CommitVersion(self.u64()?)));
+			let flow = FlowId(self.u64()?);
+			let version = CommitVersion(self.u64()?);
+			checkpoints.push((
+				flow,
+				FlowCheckpoint {
+					version,
+					lsn: Lsn::new(self.u64()?),
+				},
+			));
 		}
 		let count = self.u32()?;
 		let mut deletes = Vec::new();

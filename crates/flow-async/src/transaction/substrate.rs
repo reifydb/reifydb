@@ -7,10 +7,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
-	common::CommitVersion,
 	interface::{
 		catalog::flow::FlowId,
-		operator::{OperatorSlice, OperatorStateWrite},
+		operator::{FlowCheckpoint, OperatorSlice, OperatorStateWrite},
 	},
 	key::operator::state::GroupStateKey,
 };
@@ -62,7 +61,7 @@ impl FlowSubstrate {
 pub fn operator_section(
 	store: &OperatorStore,
 	pending: &Pending,
-	checkpoints: &[(FlowId, CommitVersion)],
+	checkpoints: &[(FlowId, FlowCheckpoint)],
 	deletes: &[FlowId],
 ) -> Result<(OperatorSlice, Vec<Option<ByteSize>>)> {
 	let mut writes = Vec::new();

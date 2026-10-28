@@ -27,6 +27,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
+	commit::queue::CommitQueue,
 	common::{CommitVersion, TimeSource},
 	durability::Durability,
 	event::{EventBus, transaction::PostCommitEvent},
@@ -65,7 +66,7 @@ use reifydb_transaction::{
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
 	transaction::admin::AdminTransaction,
-	wal::{CheckpointedStore, WalConfigurator, memory_wal, nop_wal, replay},
+	wal::{CheckpointedStore, WalConfigurator, flow_wal, memory_wal, nop_wal, replay},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -405,6 +406,15 @@ impl TestEngineBuilder {
 		);
 
 		if self.cdc {
+			let commit_queue = CommitQueue::new(
+				ByteSize::from_bytes(
+					engine.multi().config().get_config_uint8(ConfigKey::CommitQueueBytes),
+				),
+				wal_enabled,
+				engine.multi().current_version().unwrap(),
+			);
+			ioc_for_cdc.register_service(commit_queue.clone());
+			ioc_for_cdc.register_service(flow_wal(engine.multi().wal()));
 			register_cdc_producer(
 				&spawner,
 				clock.clone(),
@@ -415,6 +425,7 @@ impl TestEngineBuilder {
 				cdc_wake_registry,
 				flow_backlog,
 			);
+			eventbus.register::<PostCommitEvent, _>(commit_queue);
 		}
 
 		TestEngine {

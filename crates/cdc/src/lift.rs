@@ -12,13 +12,17 @@ use reifydb_codec::{
 	},
 };
 use reifydb_core::{
+	common::ChangeVersion,
+	delta::{Delta, RemoveAnnounce, SetPre},
 	interface::{
 		catalog::object::ObjectId,
 		cdc::{Cdc, CdcChange, CdcLift, ObjectLift},
 		change::{Change, ChangeOrigin, Diff, Diffs},
+		commit::{CommitEntry, CommitLift, CommitObjectLift},
 	},
 	internal_error,
 	key::{
+		any::TaggedKey,
 		row::{PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, SortedViewRowKey},
 		series::{PartitionedSeriesRowKey, SeriesRowKey},
 		tag::KeyTag,
@@ -26,7 +30,11 @@ use reifydb_core::{
 	value::batch::from_encoded_bytes,
 };
 use reifydb_transaction::transaction::Transaction;
-use reifydb_value::{Result, error::Error, value::row_number::RowNumber};
+use reifydb_value::{
+	Result,
+	error::Error,
+	value::{datetime::DateTime, row_number::RowNumber},
+};
 
 pub struct RowTarget {
 	pub object: ObjectId,
@@ -102,8 +110,31 @@ pub fn row_target(key: &EncodedKey) -> Option<RowTarget> {
 	}
 }
 
+pub fn tagged_row_target(key: &TaggedKey) -> Option<RowTarget> {
+	let (storage, row) = match key {
+		TaggedKey::Row(key) => (key.storage, key.row),
+		TaggedKey::SeriesRow(key) => (key.storage, RowNumber(key.sequence)),
+		TaggedKey::PartitionedRow(key) => (key.storage, key.row),
+		TaggedKey::PartitionedSeriesRow(key) => (key.storage, RowNumber(key.sequence)),
+		TaggedKey::SortedViewRow(key) => (key.storage, key.row.0),
+		TaggedKey::PartitionedSortedViewRow(key) => (key.storage, key.row.0),
+		_ => return None,
+	};
+	Some(RowTarget {
+		object: ObjectId::from(storage),
+		row,
+	})
+}
+
 fn tracked_target(key: &EncodedKey) -> Option<RowTarget> {
-	let target = row_target(key)?;
+	untracked_queue(row_target(key)?)
+}
+
+fn tracked_tagged_target(key: &TaggedKey) -> Option<RowTarget> {
+	untracked_queue(tagged_row_target(key)?)
+}
+
+fn untracked_queue(target: RowTarget) -> Option<RowTarget> {
 	if matches!(target.object, ObjectId::Queue(_)) {
 		return None;
 	}
@@ -154,6 +185,111 @@ pub fn lifted_objects(cdc: &Cdc) -> Result<BTreeSet<ObjectId>> {
 	let index = lift_index(cdc);
 	first_missing_pre(index.objects.values(), cdc)?;
 	Ok(index.objects.iter().filter(|(_, object)| !object.rows.is_empty()).map(|(id, _)| *id).collect())
+}
+
+fn entry_lift_index(entry: &CommitEntry) -> &CommitLift {
+	entry.lift_with(|entry| {
+		let mut objects: BTreeMap<ObjectId, CommitObjectLift> = BTreeMap::new();
+		for (index, delta) in entry.deltas.iter().enumerate() {
+			let Some(target) = tracked_tagged_target(delta.key()) else {
+				continue;
+			};
+			let object = objects.entry(target.object).or_default();
+			if !matches!(
+				delta,
+				Delta::Remove {
+					announce: RemoveAnnounce::Unobserved { .. },
+					..
+				}
+			) {
+				object.rows.push((index, target.row));
+			}
+		}
+		CommitLift {
+			objects,
+		}
+	})
+}
+
+pub fn entry_changed_objects(entry: &CommitEntry) -> &BTreeSet<ObjectId> {
+	entry.changed_objects_with(|entry| entry_lift_index(entry).objects.keys().copied().collect())
+}
+
+pub fn lift_entry_changes(
+	entry: &CommitEntry,
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	accept: impl Fn(ObjectId) -> bool,
+) -> Result<Vec<Change>> {
+	let index = entry_lift_index(entry);
+	let mut changes: Vec<Change> = Vec::new();
+	for (id, object) in index.objects.iter().filter(|(id, _)| accept(**id)) {
+		let lifted = match object.change.get() {
+			Some(lifted) => lifted,
+			None => {
+				let lifted = lift_entry_object(entry, *id, &object.rows, catalog, txn)?;
+				object.change.get_or_init(|| lifted)
+			}
+		};
+		if let Some(change) = lifted {
+			changes.push(change.clone());
+		}
+	}
+	Ok(changes)
+}
+
+fn lift_entry_object(
+	entry: &CommitEntry,
+	object: ObjectId,
+	indexed: &[(usize, RowNumber)],
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+) -> Result<Option<Change>> {
+	let mut rows: Vec<LiftedRow> = Vec::with_capacity(indexed.len());
+	for (index, row) in indexed {
+		let (pre, post) = match &entry.deltas[*index] {
+			Delta::Set {
+				bytes,
+				pre: SetPre::Absent,
+				..
+			} => (None, Some(bytes.clone())),
+			Delta::Set {
+				bytes,
+				pre: SetPre::Present(pre),
+				..
+			} => (Some(pre.clone()), Some(bytes.clone())),
+			Delta::Set {
+				key,
+				pre: SetPre::Unknown,
+				..
+			} => panic!(
+				"a set at version {} reached the flow lift with an unresolved pre: {:?}",
+				entry.version.commit.0, key
+			),
+			Delta::Remove {
+				announce: RemoveAnnounce::Announced {
+					pre,
+				},
+				..
+			} => (Some(pre.clone()), None),
+			Delta::Remove {
+				key,
+				..
+			} => panic!(
+				"a remove at version {} reached the flow lift without an announced pre: {:?}",
+				entry.version.commit.0, key
+			),
+		};
+		rows.push(LiftedRow {
+			target: RowTarget {
+				object,
+				row: *row,
+			},
+			pre,
+			post,
+		});
+	}
+	lift_rows(object, rows, entry.version, entry.at, catalog, txn)
 }
 
 pub fn lift_selected_changes(
@@ -216,7 +352,17 @@ fn lift_object(
 			post,
 		});
 	}
+	lift_rows(object, rows, cdc.version, cdc.timestamp, catalog, txn)
+}
 
+fn lift_rows(
+	object: ObjectId,
+	mut rows: Vec<LiftedRow>,
+	version: ChangeVersion,
+	changed_at: DateTime,
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+) -> Result<Option<Change>> {
 	pair_moved_rows(&mut rows);
 
 	let mut buckets: BTreeMap<BucketKey, Bucket> = BTreeMap::new();
@@ -285,8 +431,8 @@ fn lift_object(
 	Ok(Some(Change {
 		origin: ChangeOrigin::Object(object),
 		diffs,
-		version: cdc.version,
-		changed_at: cdc.timestamp,
+		version,
+		changed_at,
 	}))
 }
 

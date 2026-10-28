@@ -3,20 +3,26 @@
 
 use std::collections::BTreeMap;
 
-use reifydb_core::{common::CommitVersion, interface::catalog::flow::FlowId};
+use reifydb_core::{
+	common::CommitVersion,
+	interface::{catalog::flow::FlowId, operator::FlowCheckpoint},
+};
+use reifydb_wal::lsn::Lsn;
 
 use crate::resident::Resident;
 
 impl Resident {
-	pub fn record_checkpoint_set(&self, flow: FlowId, version: CommitVersion) {
-		self.shared().global.lock().checkpoints.insert(flow, Some(version));
+	pub fn record_checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) {
+		let mut global = self.shared().global.lock();
+		global.checkpoints.insert(flow, Some(checkpoint));
+		global.first_unflushed.entry(flow).or_insert(checkpoint.lsn);
 	}
 
 	pub fn record_checkpoint_delete(&self, flow: FlowId) {
 		self.shared().global.lock().checkpoints.insert(flow, None);
 	}
 
-	pub fn lookup_checkpoint(&self, flow: FlowId) -> Option<Option<CommitVersion>> {
+	pub fn lookup_checkpoint(&self, flow: FlowId) -> Option<Option<FlowCheckpoint>> {
 		let global = self.shared().global.lock();
 		if let Some(entry) = global.checkpoints.get(&flow) {
 			return Some(*entry);
@@ -24,9 +30,9 @@ impl Resident {
 		global.in_flight_checkpoints.get(&flow).copied()
 	}
 
-	pub fn checkpoint_entries(&self) -> Vec<(FlowId, Option<CommitVersion>)> {
+	pub fn checkpoint_entries(&self) -> Vec<(FlowId, Option<FlowCheckpoint>)> {
 		let global = self.shared().global.lock();
-		let mut merged: BTreeMap<FlowId, Option<CommitVersion>> = BTreeMap::new();
+		let mut merged: BTreeMap<FlowId, Option<FlowCheckpoint>> = BTreeMap::new();
 		merged.extend(global.in_flight_checkpoints.iter().map(|(flow, entry)| (*flow, *entry)));
 		merged.extend(global.checkpoints.iter().map(|(flow, entry)| (*flow, *entry)));
 		merged.into_iter().collect()
@@ -35,12 +41,13 @@ impl Resident {
 	pub fn checkpoint_floor(&self) -> Option<CommitVersion> {
 		let global = self.shared().global.lock();
 		let mut floor: Option<CommitVersion> = None;
-		for version in global.in_flight_checkpoints.values().flatten() {
-			floor = Some(floor.map_or(*version, |current| current.min(*version)));
-		}
-		for version in global.checkpoints.values().flatten() {
-			floor = Some(floor.map_or(*version, |current| current.min(*version)));
+		for checkpoint in global.in_flight_checkpoints.values().chain(global.checkpoints.values()).flatten() {
+			floor = Some(floor.map_or(checkpoint.version, |current| current.min(checkpoint.version)));
 		}
 		floor
+	}
+
+	pub fn checkpoint_lsn_floor(&self) -> Option<Lsn> {
+		self.shared().global.lock().first_unflushed.values().min().copied()
 	}
 }

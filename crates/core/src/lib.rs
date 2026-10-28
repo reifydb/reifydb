@@ -9,6 +9,7 @@
 use crate::interface::version::{ComponentType, HasVersion, SystemVersion};
 
 pub mod actors;
+pub mod commit;
 pub mod common;
 pub mod default;
 pub mod delta;

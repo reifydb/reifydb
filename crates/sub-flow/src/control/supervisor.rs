@@ -4,21 +4,20 @@
 use std::{
 	collections::{BTreeMap, BTreeSet},
 	iter::once,
+	mem::take,
 	sync::{
 		Arc,
 		atomic::{AtomicUsize, Ordering},
 	},
 };
 
-use reifydb_cdc::{
-	consume::{
-		backlog::{BacklogPull, FlowBacklog},
-		watermark::CdcConsumerWatermark,
-	},
-	lift::changed_objects,
-};
+use reifydb_cdc::{consume::watermark::CdcConsumerWatermark, lift::entry_changed_objects};
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage},
+	commit::{
+		loader::CommitLoaderMessage,
+		queue::{CommitPull, CommitQueue},
+	},
 	common::{CommitVersion, SourceVersion},
 	flow::{dag::FlowDag, operator::OperatorDef},
 	interface::{
@@ -29,7 +28,8 @@ use reifydb_core::{
 			object::ObjectId,
 			view::ViewKind,
 		},
-		cdc::{Cdc, CdcConsumerId},
+		commit::{CommitEntry, CommitFloor, Loaded},
+		operator::FlowCheckpoint,
 	},
 };
 use reifydb_engine::{engine::StandardEngine, vm::flow_lineage::ViewLineage};
@@ -50,21 +50,25 @@ use reifydb_store_operator::{
 };
 use reifydb_transaction::{multi::lease::VersionLeaseGuard, transaction::Transaction};
 use reifydb_value::{
+	Result as ValueResult,
 	byte_size::ByteSize,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
+use reifydb_wal::lsn::Lsn;
 use tracing::{debug, error};
 
 use crate::{
 	builder::CustomOperators,
-	commit::committer::{CommitterMessage, FlowSlice, SliceCommitReply},
+	commit::{
+		committer::{CommitterMessage, FlowSlice, SliceCommitReply},
+		slice::lsn_through,
+	},
 	control::{
 		actor::{FlowActor, FlowActorParams},
 		health::{FlowHealthRegistry, StallWatch},
 	},
 	discovery::{
 		ddl::{extract_deleted_flow_ids, extract_new_flows},
-		loader::LoaderMessage,
 		routing,
 	},
 	progress::{
@@ -109,14 +113,19 @@ pub enum FlowSupervisorMessage {
 		head: FlowId,
 		joiners: Vec<(FlowId, ViewId)>,
 	},
+
+	Loaded {
+		outcome: ValueResult<Loaded>,
+	},
 }
 
 pub struct FlowSupervisorParams {
 	pub engine: StandardEngine,
 	pub committers: Vec<ActorRef<CommitterMessage>>,
 	pub terminal_committers: Vec<ActorRef<CommitterMessage>>,
-	pub backlog: FlowBacklog,
-	pub loader: ActorRef<LoaderMessage>,
+	pub queue: CommitQueue,
+	pub loader: ActorRef<CommitLoaderMessage>,
+	pub floor: Arc<dyn CommitFloor>,
 	pub control: ControlFrontier,
 	pub poll_frontier: CdcConsumerWatermark,
 	pub view_lineage: ViewLineage,
@@ -128,7 +137,6 @@ pub struct FlowSupervisorParams {
 	pub operator_samples: OperatorSampleRegistry,
 	pub clock: Clock,
 	pub spawner: ActorSpawner,
-	pub consumer_id: CdcConsumerId,
 	pub pull_batch_bytes: ByteSize,
 	pub load_batch_bytes: ByteSize,
 	pub checkpoint_lag: u64,
@@ -140,8 +148,9 @@ pub struct FlowSupervisor {
 	engine: StandardEngine,
 	committers: Vec<ActorRef<CommitterMessage>>,
 	terminal_committers: Vec<ActorRef<CommitterMessage>>,
-	backlog: FlowBacklog,
-	loader: ActorRef<LoaderMessage>,
+	queue: CommitQueue,
+	loader: ActorRef<CommitLoaderMessage>,
+	floor: Arc<dyn CommitFloor>,
 	control: ControlFrontier,
 	poll_frontier: CdcConsumerWatermark,
 	view_lineage: ViewLineage,
@@ -153,7 +162,6 @@ pub struct FlowSupervisor {
 	operator_samples: OperatorSampleRegistry,
 	clock: Clock,
 	spawner: ActorSpawner,
-	consumer_id: CdcConsumerId,
 	pull_batch_bytes: ByteSize,
 	load_batch_bytes: ByteSize,
 	checkpoint_lag: u64,
@@ -166,8 +174,11 @@ pub struct SupervisorState {
 	flows: BTreeMap<FlowId, FlowActorHandle>,
 	sources: BTreeMap<FlowId, Arc<BTreeSet<ObjectId>>>,
 	scan_cursor: CommitVersion,
+	scan_lsn: Lsn,
 	scan_lease: Option<VersionLeaseGuard>,
-	last_control_commit_at: DateTime,
+	loading: bool,
+	start_lsns: BTreeMap<FlowId, Lsn>,
+	last_floor_at: DateTime,
 	wake_sets: BTreeMap<ObjectId, BTreeSet<FlowId>>,
 	full_wake_armed: bool,
 	stall_watches: BTreeMap<FlowId, StallWatch>,
@@ -176,8 +187,8 @@ pub struct SupervisorState {
 }
 
 enum FlowStart {
-	Resume(CommitVersion),
-	Backfill(CommitVersion, VersionLeaseGuard, CheckpointPin),
+	Resume(FlowCheckpoint),
+	Backfill(CommitVersion, Lsn, VersionLeaseGuard, CheckpointPin),
 }
 
 type PreparedFlow = (FlowDag, FlowStart, Arc<BTreeSet<ObjectId>>, Option<Arc<BTreeSet<u64>>>);
@@ -188,8 +199,9 @@ impl FlowSupervisor {
 			engine: params.engine,
 			committers: params.committers,
 			terminal_committers: params.terminal_committers,
-			backlog: params.backlog,
+			queue: params.queue,
 			loader: params.loader,
+			floor: params.floor,
 			control: params.control,
 			poll_frontier: params.poll_frontier,
 			view_lineage: params.view_lineage,
@@ -201,7 +213,6 @@ impl FlowSupervisor {
 			operator_samples: params.operator_samples,
 			clock: params.clock,
 			spawner: params.spawner,
-			consumer_id: params.consumer_id,
 			pull_batch_bytes: params.pull_batch_bytes,
 			load_batch_bytes: params.load_batch_bytes,
 			checkpoint_lag: params.checkpoint_lag,
@@ -231,7 +242,7 @@ impl FlowSupervisor {
 			};
 
 		let operators = self.engine.operator_state();
-		let mut to_spawn: Vec<(FlowDag, Option<CommitVersion>)> = Vec::new();
+		let mut to_spawn: Vec<(FlowDag, Option<FlowCheckpoint>)> = Vec::new();
 		for &flow_id in &known {
 			let flow = match self
 				.engine
@@ -262,11 +273,12 @@ impl FlowSupervisor {
 		self.hydrate_frontiers();
 
 		let scan_cursor = scan_from;
+		let scan_lsn = self.floor.position().unwrap_or(Lsn::new(0));
 		state.scan_cursor = scan_cursor;
+		state.scan_lsn = scan_lsn;
 		state.scan_lease = Some(scan_lease.clone());
-		state.last_control_commit_at = self.clock.now();
+		state.last_floor_at = self.clock.now();
 		self.control.store(scan_cursor);
-		self.backlog.set_anchor(scan_cursor);
 
 		let registered: BTreeSet<FlowId> = to_spawn.iter().map(|(f, _)| f.id).collect();
 		let units = self.form_units(state, &to_spawn);
@@ -283,6 +295,7 @@ impl FlowSupervisor {
 				Some(checkpoint) => FlowStart::Resume(checkpoint),
 				None => FlowStart::Backfill(
 					scan_from,
+					scan_lsn,
 					scan_lease.clone(),
 					self.engine.operator_state().checkpoint_pin(scan_from),
 				),
@@ -327,8 +340,7 @@ impl FlowSupervisor {
 						.collect()
 				})
 				.unwrap_or_default();
-			let handle = self.spawn_flow(flow, members, source_objects, completeness_objects, start);
-			state.flows.insert(flow_id, handle);
+			self.spawn_flow(state, flow, members, source_objects, completeness_objects, start);
 			debug!(flow_id = flow_id.0, checkpoint = ?checkpoint, "spawned deferred flow actor");
 		}
 		state.wake_sets = wake_sets(&state.sources, &self.flow_tracker);
@@ -353,9 +365,13 @@ impl FlowSupervisor {
 	}
 
 	fn handle_wake(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
-		self.backlog.disarm();
+		self.queue.disarm();
+		if state.loading {
+			return;
+		}
 
-		let watermark = self.engine.cdc_producer_watermark();
+		let frontier = self.queue.released();
+		let watermark = frontier.0;
 		let done_until = self.engine.done_until();
 		let bound = watermark.min(done_until);
 		if watermark > done_until {
@@ -371,57 +387,96 @@ impl FlowSupervisor {
 			return;
 		}
 
-		let items = match self.backlog.pull(state.scan_cursor, bound, ByteSize::from_bytes(u64::MAX)) {
-			BacklogPull::Hit {
-				items,
+		match self.queue.pull(state.scan_cursor, bound, ByteSize::from_bytes(u64::MAX)) {
+			CommitPull::Hit {
+				entries,
+				advance_to,
 				..
-			} => items,
-			BacklogPull::Behind => {
-				error!(
-					scan_cursor = state.scan_cursor.0,
-					bound = bound.0,
-					"flow supervisor fell behind its own backlog anchor; skipping DDL scan"
-				);
-				return;
-			}
-		};
+			} => self.scan(state, ctx, &entries, advance_to, frontier),
+			CommitPull::Behind => self.request_load(state, ctx, bound),
+		}
+	}
 
-		let changed = self.update_tracker(&items);
-		self.process_ddl(state, &items, ctx);
+	fn request_load(
+		&self,
+		state: &mut SupervisorState,
+		ctx: &Context<FlowSupervisorMessage>,
+		bound: CommitVersion,
+	) {
+		state.loading = true;
+		let self_ref = ctx.self_ref().clone();
+		if self.loader
+			.send(CommitLoaderMessage::Fetch {
+				after: (state.scan_cursor, state.scan_lsn),
+				up_to: bound,
+				budget: self.load_batch_bytes,
+				reply: Box::new(move |outcome| {
+					let _ = self_ref.send(FlowSupervisorMessage::Loaded {
+						outcome,
+					});
+				}),
+			})
+			.is_err()
+		{
+			panic!(
+				"flow supervisor fell behind the commit queue at version {} but the commit loader is stopped",
+				state.scan_cursor.0
+			);
+		}
+	}
 
-		let scan_lease = self.engine.acquire_version_lease(bound).unwrap_or_else(|e| {
+	fn handle_loaded(
+		&self,
+		state: &mut SupervisorState,
+		ctx: &Context<FlowSupervisorMessage>,
+		outcome: ValueResult<Loaded>,
+	) {
+		state.loading = false;
+		let loaded = outcome.unwrap_or_else(|e| {
+			panic!("flow supervisor could not load commits after version {}: {e}", state.scan_cursor.0)
+		});
+		if loaded.advance_to > state.scan_cursor {
+			self.scan(state, ctx, &loaded.entries, loaded.advance_to, (CommitVersion(0), Lsn::new(0)));
+		}
+		let _ = ctx.self_ref().send(FlowSupervisorMessage::Wake);
+	}
+
+	fn scan(
+		&self,
+		state: &mut SupervisorState,
+		ctx: &Context<FlowSupervisorMessage>,
+		entries: &[Arc<CommitEntry>],
+		advance_to: CommitVersion,
+		frontier: (CommitVersion, Lsn),
+	) {
+		let changed = self.update_tracker(entries);
+		self.process_ddl(state, entries, ctx);
+
+		let scan_lease = self.engine.acquire_version_lease(advance_to).unwrap_or_else(|e| {
 			panic!(
 				"flow supervisor failed to move its scan lease from {} to {}: {e}",
-				state.scan_cursor.0, bound.0
+				state.scan_cursor.0, advance_to.0
 			)
 		});
 		state.scan_lease = Some(scan_lease);
 		let scanned_from = state.scan_cursor;
-		state.scan_cursor = bound;
-		self.control.store(bound);
-		self.poll_frontier.store(bound);
-		self.backlog.set_anchor(bound);
-
-		let eviction_floor = state
-			.flows
-			.keys()
-			.filter_map(|id| self.flow_tracker.all().get(id).copied())
-			.min()
-			.unwrap_or(bound)
-			.min(bound);
-		self.backlog.evict_below(eviction_floor);
+		state.scan_lsn = lsn_through(entries, advance_to, state.scan_lsn, frontier);
+		state.scan_cursor = advance_to;
+		self.control.store(advance_to);
+		self.poll_frontier.store(advance_to);
 
 		let now = self.clock.now();
-		if now - state.last_control_commit_at >= self.checkpoint_max_age {
-			self.commit_control(bound);
-			state.last_control_commit_at = now;
+		if now - state.last_floor_at >= self.checkpoint_max_age {
+			self.evict_queue(state);
+			self.advance_flow_floor(state);
+			state.last_floor_at = now;
 		}
 
 		let mut targets = wake_targets(&state.wake_sets, &changed);
 		targets.extend(state.flows.keys().copied().filter(|flow_id| {
 			self.flow_tracker
 				.last_commit(*flow_id)
-				.is_some_and(|commit| commit > scanned_from && commit <= bound)
+				.is_some_and(|commit| commit > scanned_from && commit <= advance_to)
 		}));
 		self.flow_tracker.wake_flows(targets);
 		if !state.full_wake_armed {
@@ -432,13 +487,50 @@ impl FlowSupervisor {
 		}
 	}
 
+	fn evict_queue(&self, state: &SupervisorState) {
+		let floor = match self.engine.operator_state().checkpoint_floor() {
+			Ok(Some(checkpoint)) => checkpoint.min(state.scan_cursor),
+			Ok(None) => state.scan_cursor,
+			Err(e) => panic!("flow supervisor cannot read the flow checkpoint floor: {e}"),
+		};
+		self.queue.evict_below(floor);
+	}
+
+	fn advance_flow_floor(&self, state: &mut SupervisorState) {
+		let operators = self.engine.operator_state();
+		let mut floor = state.scan_lsn;
+		match operators.checkpoint_lsn_floor() {
+			Ok(Some(lsn)) => floor = floor.min(lsn),
+			Ok(None) => {}
+			Err(e) => panic!("flow supervisor cannot read the flow checkpoint lsn floor: {e}"),
+		}
+		let mut waiting = BTreeMap::new();
+		for (flow_id, lsn) in take(&mut state.start_lsns) {
+			if !state.flows.contains_key(&flow_id) {
+				continue;
+			}
+			match operators.checkpoint_get(flow_id) {
+				Ok(Some(_)) => {}
+				Ok(None) => {
+					floor = floor.min(lsn);
+					waiting.insert(flow_id, lsn);
+				}
+				Err(e) => panic!("flow {} checkpoint unreadable for the flow floor: {e}", flow_id.0),
+			}
+		}
+		state.start_lsns = waiting;
+		if floor > Lsn::new(0) {
+			self.floor.advance(floor);
+		}
+	}
+
 	fn handle_check_stalls(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
 		ctx.schedule_once(Duration::from_milliseconds(FLOW_STALL_CHECK_INTERVAL_MS).unwrap(), || {
 			FlowSupervisorMessage::CheckStalls
 		});
 		self.try_join(state, ctx);
 		let timeout = Duration::from_milliseconds(FLOW_STALL_TIMEOUT_MS).unwrap();
-		let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until()).min(self.control.get());
+		let safe = self.queue.released_through().min(self.engine.done_until()).min(self.control.get());
 		let positions = self.flow_tracker.all();
 		let now = self.clock.now();
 		for flow_id in state.flows.keys() {
@@ -464,7 +556,12 @@ impl FlowSupervisor {
 		self.flow_tracker.wake_flows_now(state.flows.keys().copied());
 	}
 
-	fn process_ddl(&self, state: &mut SupervisorState, items: &[Arc<Cdc>], ctx: &Context<FlowSupervisorMessage>) {
+	fn process_ddl(
+		&self,
+		state: &mut SupervisorState,
+		items: &[Arc<CommitEntry>],
+		ctx: &Context<FlowSupervisorMessage>,
+	) {
 		let deleted = extract_deleted_flow_ids(items);
 		let operators = self.engine.operator_state();
 		let mut changed = false;
@@ -535,8 +632,8 @@ impl FlowSupervisor {
 			lineage_dirty = true;
 		}
 
-		let mut to_spawn: Vec<(FlowDag, CommitVersion, VersionLeaseGuard)> = Vec::new();
-		for (flow_id, version) in extract_new_flows(items) {
+		let mut to_spawn: Vec<(FlowDag, CommitVersion, Lsn, VersionLeaseGuard)> = Vec::new();
+		for (flow_id, version, lsn) in extract_new_flows(items) {
 			if deleted.contains(&flow_id) {
 				continue;
 			}
@@ -549,7 +646,7 @@ impl FlowSupervisor {
 			}
 			state.analyzer.add(flow.clone());
 			lineage_dirty = true;
-			to_spawn.push((flow, version, lease));
+			to_spawn.push((flow, version, lsn, lease));
 			changed = true;
 		}
 
@@ -558,14 +655,14 @@ impl FlowSupervisor {
 		}
 
 		let registered: BTreeSet<FlowId> =
-			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _, _)| f.id)).collect();
+			state.flows.keys().copied().chain(to_spawn.iter().map(|(f, _, _, _)| f.id)).collect();
 		let closure = if changed || !to_spawn.is_empty() {
 			state.analyzer.get_dependency_graph().upstream_closure()
 		} else {
 			BTreeMap::new()
 		};
 		let mut prepared: Vec<PreparedFlow> = Vec::with_capacity(to_spawn.len());
-		for (flow, version, lease) in to_spawn {
+		for (flow, version, lsn, lease) in to_spawn {
 			let flow_id = flow.id;
 			let source_objects = self.compute_source_objects(state, flow_id, &registered);
 			let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
@@ -575,15 +672,14 @@ impl FlowSupervisor {
 			let pin = self.engine.operator_state().checkpoint_pin(version);
 			prepared.push((
 				flow,
-				FlowStart::Backfill(version, lease, pin),
+				FlowStart::Backfill(version, lsn, lease, pin),
 				source_objects,
 				completeness_objects,
 			));
 		}
 		for (flow, start, source_objects, completeness_objects) in prepared {
 			let flow_id = flow.id;
-			let handle = self.spawn_flow(flow, Vec::new(), source_objects, completeness_objects, start);
-			state.flows.insert(flow_id, handle);
+			self.spawn_flow(state, flow, Vec::new(), source_objects, completeness_objects, start);
 			debug!(flow_id = flow_id.0, "spawned new deferred flow actor");
 		}
 
@@ -674,7 +770,7 @@ impl FlowSupervisor {
 				continue;
 			};
 			if !joiners.iter().all(|(member, _)| {
-				stored_checkpoint(&operators, *member).is_some_and(|at| at >= head_at)
+				stored_checkpoint(&operators, *member).is_some_and(|at| at.version >= head_at.version)
 			}) {
 				continue;
 			}
@@ -728,7 +824,7 @@ impl FlowSupervisor {
 				joiners.iter().all(|(member, _)| {
 					known(*member)
 						&& stored_checkpoint(&operators, *member)
-							.is_some_and(|at| at >= head_at)
+							.is_some_and(|at| at.version >= head_at.version)
 				})
 			});
 		if fused {
@@ -782,6 +878,7 @@ impl FlowSupervisor {
 				let (_, lease) = self.load_flow_at(flow_id, version);
 				FlowStart::Backfill(
 					version,
+					state.scan_lsn,
 					lease,
 					self.engine.operator_state().checkpoint_pin(version),
 				)
@@ -791,8 +888,7 @@ impl FlowSupervisor {
 		let source_objects = state.sources.get(&flow_id).cloned().unwrap_or_default();
 		let completeness_objects = self.compute_completeness_objects(state, flow_id, &closure);
 		self.publish_routing(state, flow_id);
-		let handle = self.spawn_flow(flow, members, source_objects, completeness_objects, start);
-		state.flows.insert(flow_id, handle);
+		self.spawn_flow(state, flow, members, source_objects, completeness_objects, start);
 	}
 
 	fn load_flow_at(&self, flow_id: FlowId, version: CommitVersion) -> (FlowDag, VersionLeaseGuard) {
@@ -859,12 +955,12 @@ impl FlowSupervisor {
 	fn form_units(
 		&self,
 		state: &SupervisorState,
-		to_spawn: &[(FlowDag, Option<CommitVersion>)],
+		to_spawn: &[(FlowDag, Option<FlowCheckpoint>)],
 	) -> Vec<routing::FusedUnit> {
 		let graph = state.analyzer.get_dependency_graph();
 		let view_kind = |view_id| self.engine.catalog().cache().find_view(view_id).map(|v| v.kind());
 		let starts: BTreeMap<FlowId, Option<CommitVersion>> =
-			to_spawn.iter().map(|(flow, checkpoint)| (flow.id, *checkpoint)).collect();
+			to_spawn.iter().map(|(flow, checkpoint)| (flow.id, checkpoint.map(|at| at.version))).collect();
 		let ringbuffer: BTreeSet<FlowId> = to_spawn
 			.iter()
 			.filter(|(flow, _)| {
@@ -909,16 +1005,20 @@ impl FlowSupervisor {
 
 	fn spawn_flow(
 		&self,
+		state: &mut SupervisorState,
 		flow: FlowDag,
 		members: Vec<(FlowDag, ViewId)>,
 		source_objects: Arc<BTreeSet<ObjectId>>,
 		completeness_objects: Option<Arc<BTreeSet<u64>>>,
 		start: FlowStart,
-	) -> FlowActorHandle {
+	) {
 		let flow_id = flow.id;
-		let cursor = match &start {
-			FlowStart::Resume(checkpoint) => *checkpoint,
-			FlowStart::Backfill(..) => CommitVersion(0),
+		let (cursor, cursor_lsn) = match &start {
+			FlowStart::Resume(checkpoint) => (checkpoint.version, checkpoint.lsn),
+			FlowStart::Backfill(_, lsn, ..) => {
+				state.start_lsns.insert(flow_id, *lsn);
+				(CommitVersion(0), *lsn)
+			}
 		};
 
 		self.flow_tracker.update_committed(flow_id, cursor, self.engine.done_until(), SourceVersion(cursor.0));
@@ -941,7 +1041,7 @@ impl FlowSupervisor {
 			terminal_committer: self.terminal_committers
 				[flow_id.0 as usize % self.terminal_committers.len()]
 			.clone(),
-			backlog: self.backlog.clone(),
+			queue: self.queue.clone(),
 			loader: self.loader.clone(),
 			control: self.control.clone(),
 			custom_operators: self.custom_operators.clone(),
@@ -955,6 +1055,7 @@ impl FlowSupervisor {
 			source_objects,
 			completeness_objects,
 			cursor,
+			cursor_lsn,
 			pull_batch_bytes: self.pull_batch_bytes,
 			load_batch_bytes: self.load_batch_bytes,
 			checkpoint_lag: self.checkpoint_lag,
@@ -967,7 +1068,7 @@ impl FlowSupervisor {
 		};
 		let actor = match start {
 			FlowStart::Resume(_) => FlowActor::new(params),
-			FlowStart::Backfill(version, lease, pin) => {
+			FlowStart::Backfill(version, _, lease, pin) => {
 				FlowActor::backfilling(params, (version, lease, pin))
 			}
 		};
@@ -979,7 +1080,7 @@ impl FlowSupervisor {
 			self.flow_tracker.set_waker(member, waker.clone());
 		}
 		self.flow_tracker.set_waker(flow_id, waker);
-		handle
+		state.flows.insert(flow_id, handle);
 	}
 
 	fn publish_upstreams(&self, state: &SupervisorState, flow_id: FlowId) {
@@ -989,21 +1090,11 @@ impl FlowSupervisor {
 		self.flow_tracker.set_lookup_producers(flow_id, routing::lookup_producers(graph, flow_id));
 	}
 
-	fn commit_control(&self, cursor: CommitVersion) {
-		let mut slice = FlowSlice::empty();
-		slice.control_cursor = Some((self.consumer_id.clone(), cursor));
-		let reply: SliceCommitReply = Box::new(|_| {});
-		let _ = self.committers[0].send(CommitterMessage::Slice {
-			slice,
-			reply,
-		});
-	}
-
-	fn update_tracker(&self, cdcs: &[Arc<Cdc>]) -> BTreeSet<ObjectId> {
+	fn update_tracker(&self, entries: &[Arc<CommitEntry>]) -> BTreeSet<ObjectId> {
 		let mut changed = BTreeSet::new();
-		for cdc in cdcs {
-			for &object in changed_objects(cdc) {
-				self.tracker.update(object, cdc.version.commit);
+		for entry in entries {
+			for &object in entry_changed_objects(entry) {
+				self.tracker.update(object, entry.version.commit);
 				changed.insert(object);
 			}
 		}
@@ -1059,9 +1150,9 @@ fn wake_targets(sets: &BTreeMap<ObjectId, BTreeSet<FlowId>>, changed: &BTreeSet<
 	changed.iter().filter_map(|object| sets.get(object)).flatten().copied().collect()
 }
 
-fn stored_checkpoint(operators: &OperatorStore, flow_id: FlowId) -> Option<CommitVersion> {
+fn stored_checkpoint(operators: &OperatorStore, flow_id: FlowId) -> Option<FlowCheckpoint> {
 	match operators.checkpoint_get(flow_id) {
-		Ok(checkpoint) => checkpoint.filter(|version| *version > CommitVersion(0)),
+		Ok(checkpoint) => checkpoint.filter(|checkpoint| checkpoint.version > CommitVersion(0)),
 		Err(err) => panic!("flow {} checkpoint unreadable at bootstrap: {err}", flow_id.0),
 	}
 }
@@ -1090,8 +1181,11 @@ impl Actor for FlowSupervisor {
 			flows: BTreeMap::new(),
 			sources: BTreeMap::new(),
 			scan_cursor: CommitVersion(0),
+			scan_lsn: Lsn::new(0),
 			scan_lease: None,
-			last_control_commit_at: self.clock.now(),
+			loading: false,
+			start_lsns: BTreeMap::new(),
+			last_floor_at: self.clock.now(),
 			wake_sets: BTreeMap::new(),
 			full_wake_armed: false,
 			stall_watches: BTreeMap::new(),
@@ -1118,6 +1212,9 @@ impl Actor for FlowSupervisor {
 				head,
 				joiners,
 			} => self.handle_join(state, head, joiners),
+			FlowSupervisorMessage::Loaded {
+				outcome,
+			} => self.handle_loaded(state, ctx, outcome),
 		}
 		Directive::Continue
 	}
@@ -1140,10 +1237,13 @@ mod tests {
 	use reifydb_core::{
 		actors::flow::FlowActorMessage,
 		common::CommitVersion,
-		interface::catalog::{
-			flow::FlowId,
-			id::{TableId, ViewId},
-			object::ObjectId,
+		interface::{
+			catalog::{
+				flow::FlowId,
+				id::{TableId, ViewId},
+				object::ObjectId,
+			},
+			operator::FlowCheckpoint,
 		},
 	};
 	use reifydb_runtime::{
@@ -1158,10 +1258,18 @@ mod tests {
 	};
 	use reifydb_store_operator::store::OperatorStore;
 	use reifydb_value::value::duration::Duration;
+	use reifydb_wal::lsn::Lsn;
 	use rustc_hash::{FxHashMap, FxHashSet};
 
 	use super::{reap_orphan_checkpoints, retire_flow, stored_checkpoint, wake_sets, wake_targets};
 	use crate::progress::tracker::FlowPositionTracker;
+
+	fn checkpoint_at(version: u64) -> FlowCheckpoint {
+		FlowCheckpoint {
+			version: CommitVersion(version),
+			lsn: Lsn::new(version + 1_000),
+		}
+	}
 
 	struct StopRecorder {
 		deleted: Arc<AtomicBool>,
@@ -1195,11 +1303,11 @@ mod tests {
 	fn a_flow_with_a_checkpoint_resumes_from_it_and_one_without_has_none_so_it_backfills() {
 		// mixing up "no checkpoint" and a stored one either replays folded-in slices or skips the backfill
 		let store = OperatorStore::testing_memory();
-		store.checkpoint_set(FlowId(1), CommitVersion(77)).unwrap();
+		store.checkpoint_set(FlowId(1), checkpoint_at(77)).unwrap();
 
 		assert_eq!(
 			stored_checkpoint(&store, FlowId(1)),
-			Some(CommitVersion(77)),
+			Some(checkpoint_at(77)),
 			"a stored checkpoint is the resume point; dropping it makes the flow wipe its view and rescan \
 			 every source instead of resuming at 77"
 		);
@@ -1215,7 +1323,7 @@ mod tests {
 	fn a_checkpoint_stored_at_zero_counts_as_none_so_the_flow_backfills() {
 		// older stores seeded new flows at 0; resuming there replays cdc from 0 into an empty view
 		let store = OperatorStore::testing_memory();
-		store.checkpoint_set(FlowId(1), CommitVersion(0)).unwrap();
+		store.checkpoint_set(FlowId(1), checkpoint_at(0)).unwrap();
 
 		assert_eq!(
 			stored_checkpoint(&store, FlowId(1)),
@@ -1238,7 +1346,7 @@ mod tests {
 	fn an_unreadable_checkpoint_list_fails_the_reap_instead_of_reaping_nothing() {
 		// a list read as empty reaps nothing, so every orphan keeps pinning cdc retention forever
 		let (store, _guard) = OperatorStore::testing_memory_with_persistent_sqlite();
-		store.checkpoint_set(FlowId(2), CommitVersion(20)).unwrap();
+		store.checkpoint_set(FlowId(2), checkpoint_at(20)).unwrap();
 		store.shutdown().unwrap();
 
 		assert!(
@@ -1251,14 +1359,14 @@ mod tests {
 	fn bootstrap_reaps_a_checkpoint_whose_flow_the_catalog_no_longer_lists() {
 		// the retention floor is the minimum over these rows, so one orphan pins cdc truncation forever
 		let store = OperatorStore::testing_memory();
-		store.checkpoint_set(FlowId(1), CommitVersion(10)).unwrap();
-		store.checkpoint_set(FlowId(2), CommitVersion(20)).unwrap();
+		store.checkpoint_set(FlowId(1), checkpoint_at(10)).unwrap();
+		store.checkpoint_set(FlowId(2), checkpoint_at(20)).unwrap();
 
 		reap_orphan_checkpoints(&store, &BTreeSet::from([FlowId(1)])).unwrap();
 
 		assert_eq!(
 			store.checkpoint_get(FlowId(1)).unwrap(),
-			Some(CommitVersion(10)),
+			Some(checkpoint_at(10)),
 			"a live flow's checkpoint is its resume point; reaping it in the same pass replays every \
 			 slice the flow ever consumed and double-counts every aggregate"
 		);
@@ -1273,7 +1381,7 @@ mod tests {
 	fn retiring_a_live_flow_leaves_the_delete_to_the_stop_message() {
 		// an out-of-band delete loses to the completion of a slice already in flight, stranding the row
 		let store = OperatorStore::testing_memory();
-		store.checkpoint_set(FlowId(1), CommitVersion(10)).unwrap();
+		store.checkpoint_set(FlowId(1), checkpoint_at(10)).unwrap();
 
 		let actor_system = ActorSystem::testing(Clock::testing());
 		let deleted = Arc::new(AtomicBool::new(false));
@@ -1294,7 +1402,7 @@ mod tests {
 		assert!(stopped, "a live handle must be stopped");
 		assert_eq!(
 			store.checkpoint_get(FlowId(1)).unwrap(),
-			Some(CommitVersion(10)),
+			Some(checkpoint_at(10)),
 			"the supervisor must not delete out of band; only the stop slice may, because it is ordered \
 			 behind every slice the flow already has in flight"
 		);
@@ -1309,7 +1417,7 @@ mod tests {
 	fn a_dropped_flow_loses_its_checkpoint_even_when_this_process_holds_no_actor_for_it() {
 		// the stop message carries the delete, but a flow dropped before its actor spawned never gets one
 		let store = OperatorStore::testing_memory();
-		store.checkpoint_set(FlowId(1), CommitVersion(10)).unwrap();
+		store.checkpoint_set(FlowId(1), checkpoint_at(10)).unwrap();
 		let mut flows = BTreeMap::new();
 
 		let stopped = retire_flow(&store, &mut flows, FlowId(1)).unwrap();

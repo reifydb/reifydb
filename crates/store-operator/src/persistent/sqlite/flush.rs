@@ -50,10 +50,14 @@ impl SqlitePersistent {
 
 		for (flow, entry) in &batch.checkpoints {
 			match entry {
-				Some(version) => transaction
+				Some(checkpoint) => transaction
 					.prepare_cached(CHECKPOINT_SET_SQL)
 					.expect("flow checkpoint write could not be prepared")
-					.execute(params![flow.0 as i64, version.0 as i64])
+					.execute(params![
+						flow.0 as i64,
+						checkpoint.version.0 as i64,
+						checkpoint.lsn.as_u64() as i64
+					])
 					.expect("flow checkpoint write failed"),
 				None => transaction
 					.prepare_cached(CHECKPOINT_REMOVE_SQL)

@@ -8,7 +8,7 @@ use std::{
 };
 
 use arrow_array::{Array, RecordBatch, TimestampNanosecondArray};
-use reifydb_cdc::lift::changed_objects;
+use reifydb_cdc::lift::entry_changed_objects;
 use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_core::{
 	actors::pending::Pending,
@@ -25,6 +25,7 @@ use reifydb_core::{
 			object::ObjectId,
 		},
 		change::{Change, Diff},
+		operator::FlowCheckpoint,
 	},
 	internal_err,
 	key::{
@@ -53,6 +54,7 @@ use reifydb_value::{
 		system_columns::{SystemColumn, require_updated_at, system_column},
 	},
 };
+use reifydb_wal::lsn::Lsn;
 use rustc_hash::FxHashSet;
 use smallvec::smallvec;
 
@@ -63,6 +65,7 @@ use crate::{
 
 pub(crate) struct Snapshot {
 	pub(crate) version: CommitVersion,
+	pub(crate) lsn: Lsn,
 	pub(crate) lease: VersionLeaseGuard,
 	pub(crate) cuts: HashMap<FlowId, UpstreamCut>,
 }
@@ -193,9 +196,9 @@ pub(crate) fn upstream_write_after(
 ) -> Option<CommitVersion> {
 	read.items
 		.iter()
-		.filter(|cdc| cdc.version.commit > from && cdc.version.source.0 > version.0)
-		.find(|cdc| changed_objects(cdc).iter().any(|object| views.contains(object)))
-		.map(|cdc| CommitVersion(cdc.version.commit.0 - 1))
+		.filter(|entry| entry.version.commit > from && entry.version.source.0 > version.0)
+		.find(|entry| entry_changed_objects(entry).iter().any(|object| views.contains(object)))
+		.map(|entry| CommitVersion(entry.version.commit.0 - 1))
 }
 pub(crate) fn compute_unit_backfill(
 	engine: &StandardEngine,
@@ -260,11 +263,18 @@ pub(crate) fn compute_unit_backfill(
 		combined: txn.take_pending(),
 		checkpoints: once(flow.id)
 			.chain(fed.iter().map(|(member, _)| *member))
-			.map(|id| (id, version))
+			.map(|id| {
+				(
+					id,
+					FlowCheckpoint {
+						version,
+						lsn: snapshot.lsn,
+					},
+				)
+			})
 			.collect(),
 		checkpoint_deletes: Vec::new(),
 		emitted,
-		control_cursor: None,
 		source: Some(SourceVersion(version.0)),
 	};
 	Ok((slice, holds))
@@ -421,6 +431,7 @@ mod tests {
 		let (version, lease) = engine.acquire_current_snapshot_lease().expect("snapshot lease");
 		let snapshot = Snapshot {
 			version,
+			lsn: Lsn::new(0),
 			lease,
 			cuts: HashMap::new(),
 		};

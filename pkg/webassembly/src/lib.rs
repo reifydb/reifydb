@@ -34,6 +34,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	CoreVersion,
+	commit::queue::CommitQueue,
 	common::CommitVersion,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
@@ -66,7 +67,7 @@ use reifydb_transaction::{
 	interceptor::factory::InterceptorFactory,
 	multi::transaction::MultiTransaction,
 	single::SingleTransaction,
-	wal::{memory_wal, replay},
+	wal::{flow_wal, memory_wal, replay},
 };
 use reifydb_value::{
 	byte_size::ByteSize,
@@ -285,6 +286,14 @@ impl WasmDB {
 		bootstrap_system_objects(&multi, &single, &catalog_cache, &eventbus)
 			.map_err(|e| JsError::from_error(&e))?;
 
+		let commit_queue = CommitQueue::new(
+			ByteSize::from_bytes(multi.config().get_config_uint8(ConfigKey::CommitQueueBytes)),
+			true,
+			multi.current_version().map_err(|e| JsError::from_error(&e))?,
+		);
+		ioc = ioc.register(commit_queue.clone());
+		ioc = ioc.register(flow_wal(multi.wal()));
+
 		let routines = {
 			let b = Routines::builder();
 			let b = default_in_process_functions(b);
@@ -325,6 +334,7 @@ impl WasmDB {
 		let cdc_listener =
 			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), clock.clone());
 		eventbus_clone.register::<PostCommitEvent, _>(cdc_listener);
+		eventbus_clone.register::<PostCommitEvent, _>(commit_queue);
 		console_log("[WASM] CDC producer actor registered!");
 
 		let flow_config = FlowConfig {

@@ -25,17 +25,18 @@ use std::{
 use extern_c::load_extern_c_operators;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use extern_rust::load_extern_rust_operators;
-use reifydb_cdc::consume::{
-	backlog::FlowBacklog,
-	watermark::{CdcConsumerWatermark, FlowCaughtUpWatermark},
-};
+use reifydb_cdc::consume::watermark::{CdcConsumerWatermark, FlowCaughtUpWatermark};
 use reifydb_core::{
+	commit::{
+		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
+		queue::CommitQueue,
+	},
 	durability::Durability,
 	event::operator::OperatorLoadedEvent,
 	interface::{
 		WithEventBus,
 		catalog::config::{ConfigKey, GetConfig},
-		cdc::CdcConsumerId,
+		commit::FlowWal,
 		flow::{FlowTickSampler, FlowUnitRow, FlowUnitSampler, FlowWatermarkSampler},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
@@ -54,7 +55,6 @@ use reifydb_runtime::{
 	shutdown::{Shutdown, ShutdownErrors},
 	sync::mutex::Mutex,
 };
-use reifydb_store_cdc::store::CdcStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem};
 use reifydb_transaction::commit::{CommitBegin, CommitHandle};
 use reifydb_value::{
@@ -74,7 +74,6 @@ use crate::{
 		health::FlowHealthRegistry,
 		supervisor::{FlowSupervisor, FlowSupervisorHandle, FlowSupervisorMessage, FlowSupervisorParams},
 	},
-	discovery::loader::{LoaderActor, LoaderHandle, LoaderMetrics},
 	progress::{
 		frontier::ControlFrontier,
 		tracker::{FlowPositionTracker, ObjectVersionTracker},
@@ -89,7 +88,7 @@ const FLOW_FRONTIER_PERSIST_MS: i64 = 5_000;
 
 pub struct FlowSubsystem {
 	flow_scope: ActorSpawner,
-	loader_handle: Mutex<Option<LoaderHandle>>,
+	loader_handle: Mutex<Option<CommitLoaderHandle>>,
 	committer_handles: Mutex<Vec<CommitterHandle>>,
 	supervisor_handle: Mutex<Option<FlowSupervisorHandle>>,
 	view_lineage: ViewLineage,
@@ -112,7 +111,7 @@ impl FlowSubsystem {
 		let substrate = FlowSubstrate::with_dictionary(engine.dictionary_allocators(), engine.operator_state());
 		let object_tracker = ObjectVersionTracker::new();
 		let flow_tracker = FlowPositionTracker::new();
-		let cdc_store = ioc.resolve::<CdcStore>().expect("CdcStore must be registered");
+		let flow_wal = ioc.resolve::<FlowWal>().expect("FlowWal must be registered");
 
 		let flow_scope = spawner.scope();
 
@@ -154,28 +153,27 @@ impl FlowSubsystem {
 			.register_operator_collector(Arc::new(OperatorSampleCollector::new(operator_samples.clone())));
 		let view_lineage = engine.view_lineage();
 
-		let backlog = ioc.resolve::<FlowBacklog>().expect("FlowBacklog must be registered");
-		metrics_registry.register_collector(Arc::new(backlog.clone()));
-		let loader_metrics = LoaderMetrics::default();
+		let queue = ioc.resolve::<CommitQueue>().expect("CommitQueue must be registered");
+		let loader_metrics = CommitLoaderMetrics::default();
 		metrics_registry.register_collector(Arc::new(loader_metrics.clone()));
 		metrics_registry.register_collector(Arc::new(health.clone()));
 		let control = ControlFrontier::new();
 		let loader_handle =
-			flow_scope.spawn_flow("flow-loader", LoaderActor::new(cdc_store.clone(), loader_metrics));
+			flow_scope.spawn_flow("flow-loader", CommitLoader::new(flow_wal.log.clone(), loader_metrics));
 		let pull_batch_bytes =
 			ByteSize::from_bytes(engine.catalog().get_config_uint8(ConfigKey::FlowPullBatchBytes));
 		let load_batch_bytes =
 			ByteSize::from_bytes(engine.catalog().get_config_uint8(ConfigKey::FlowLoadBatchBytes));
 
-		let flow_consumer_id = CdcConsumerId::flow_consumer();
 		let supervisor_handle = flow_scope.spawn_flow(
 			"flow-supervisor",
 			FlowSupervisor::new(FlowSupervisorParams {
 				engine: engine.clone(),
 				committers: committer_refs,
 				terminal_committers: terminal_committer_refs,
-				backlog: backlog.clone(),
+				queue: queue.clone(),
 				loader: loader_handle.actor_ref().clone(),
+				floor: flow_wal.floor.clone(),
 				control,
 				poll_frontier: poll_frontier.clone(),
 				view_lineage: view_lineage.clone(),
@@ -187,7 +185,6 @@ impl FlowSubsystem {
 				operator_samples: operator_samples.clone(),
 				clock: clock.clone(),
 				spawner: flow_scope.clone(),
-				consumer_id: flow_consumer_id,
 				pull_batch_bytes,
 				load_batch_bytes,
 				checkpoint_lag: FLOW_CHECKPOINT_LAG,
@@ -229,7 +226,7 @@ impl FlowSubsystem {
 		}
 
 		let supervisor_ref = supervisor_handle.actor_ref().clone();
-		backlog.set_waker(move || {
+		queue.set_waker(move || {
 			let _ = supervisor_ref.send(FlowSupervisorMessage::Wake);
 		});
 		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Wake);

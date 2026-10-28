@@ -37,6 +37,7 @@ reifydb-sdk = { workspace = true, features = ["mount"] }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-value = { workspace = true }
+reifydb-wal = { workspace = true }
 
 rustc-hash = { workspace = true }
 smallvec = { workspace = true }
@@ -67,7 +68,6 @@ reifydb-test-harness = { workspace = true, features = ["operator"] }
 reifydb-testing-chaos = { workspace = true, features = ["operator"] }
 reifydb-testing-flow = { workspace = true }
 reifydb-testing-macro = { workspace = true }
-reifydb-wal = { workspace = true }
 rand = { workspace = true }
 tracing-subscriber = { workspace = true }
 

@@ -3,7 +3,6 @@
 
 use std::{collections::BTreeMap, mem::take, sync::Arc};
 
-use reifydb_cdc::consume::checkpoint::CdcCheckpoint;
 use reifydb_codec::row::bytes::EncodedBytes;
 use reifydb_core::{
 	actors::pending::{Pending, PendingWrite},
@@ -11,8 +10,7 @@ use reifydb_core::{
 	delta::RemoveVisibility,
 	interface::{
 		catalog::flow::FlowId,
-		cdc::{CdcConsumerId, ConsumerClass},
-		operator::OperatorSlice,
+		operator::{FlowCheckpoint, OperatorSlice},
 	},
 	key::any::TaggedKey,
 	return_internal_error,
@@ -229,13 +227,11 @@ impl Actor for CommitterActor {
 pub struct FlowSlice {
 	pub combined: Pending,
 
-	pub checkpoints: Vec<(FlowId, CommitVersion)>,
+	pub checkpoints: Vec<(FlowId, FlowCheckpoint)>,
 
 	pub checkpoint_deletes: Vec<FlowId>,
 
 	pub emitted: bool,
-
-	pub control_cursor: Option<(CdcConsumerId, CommitVersion)>,
 
 	pub source: Option<SourceVersion>,
 }
@@ -247,7 +243,6 @@ impl FlowSlice {
 			checkpoints: Vec::new(),
 			checkpoint_deletes: Vec::new(),
 			emitted: false,
-			control_cursor: None,
 			source: None,
 		}
 	}
@@ -393,11 +388,6 @@ impl Committer {
 		}
 		push_if_not_empty(transaction, operator)?;
 		apply_pending_writes(transaction, &slice.combined)?;
-
-		if let Some((consumer_id, version)) = &slice.control_cursor {
-			CdcCheckpoint::persist(transaction, consumer_id, *version, ConsumerClass::Pinning)?;
-		}
-
 		Ok(())
 	}
 
@@ -452,12 +442,13 @@ impl Committer {
 		&self,
 		commit: CommitVersion,
 		source: Option<SourceVersion>,
-		checkpoints: &[(FlowId, CommitVersion)],
+		checkpoints: &[(FlowId, FlowCheckpoint)],
 		checkpoint_deletes: &[FlowId],
 	) {
-		for (flow_id, version) in checkpoints {
+		for (flow_id, checkpoint) in checkpoints {
+			let version = checkpoint.version;
 			let source = source.unwrap_or(SourceVersion(version.0));
-			self.flow_tracker.update_committed(*flow_id, *version, commit, source);
+			self.flow_tracker.update_committed(*flow_id, version, commit, source);
 		}
 
 		for flow_id in checkpoint_deletes {
@@ -620,6 +611,13 @@ mod commit_integration {
 	use super::*;
 	use crate::commit::next_lsn;
 
+	fn checkpoint_at(version: u64) -> FlowCheckpoint {
+		FlowCheckpoint {
+			version: CommitVersion(version),
+			lsn: Lsn::new(version + 1_000),
+		}
+	}
+
 	struct SliceReplies {
 		results: Mutex<Vec<(usize, Result<CommitVersion>)>>,
 		remaining: AtomicUsize,
@@ -674,7 +672,7 @@ mod commit_integration {
 		combined.insert(vec![synthetic_key(index)], vec![EncodedBytes(CowVec::new(vec![index as u8; 4]))]);
 		let mut slice = FlowSlice::empty();
 		slice.combined = combined;
-		slice.checkpoints = vec![(FlowId(index), CommitVersion(100 + index))];
+		slice.checkpoints = vec![(FlowId(index), checkpoint_at(100 + index))];
 		slice
 	}
 
@@ -768,7 +766,7 @@ mod commit_integration {
 		for flow in 1..=2u64 {
 			assert_eq!(
 				committer.operators.checkpoint_get(FlowId(flow)).unwrap(),
-				Some(CommitVersion(100 + flow)),
+				Some(checkpoint_at(100 + flow)),
 				"the checkpoint must instead land in the operator store, where the flush writes it in \
 				 the same transaction as the state it belongs to"
 			);
@@ -790,7 +788,7 @@ mod commit_integration {
 		}
 		let mut slice = FlowSlice::empty();
 		slice.combined = combined;
-		slice.checkpoints = vec![(FlowId(1), CommitVersion(10))];
+		slice.checkpoints = vec![(FlowId(1), checkpoint_at(10))];
 		slice
 	}
 
@@ -1077,7 +1075,7 @@ mod commit_integration {
 
 	fn control_slice(emitted: bool) -> FlowSlice {
 		let mut slice = FlowSlice::empty();
-		slice.control_cursor = Some((CdcConsumerId::flow_consumer(), CommitVersion(5)));
+		slice.checkpoints = vec![(FlowId(1), checkpoint_at(5))];
 		slice.emitted = emitted;
 		slice
 	}
@@ -1109,7 +1107,7 @@ mod commit_integration {
 
 		let version = commit_one(&handle, control_slice(true));
 
-		assert!(version > CommitVersion(0), "the control cursor must commit, or no version can be recorded");
+		assert!(version > CommitVersion(0), "the checkpoint must commit, or no version can be recorded");
 		assert_eq!(committer.materialization.output_frontier(), version);
 	}
 
@@ -1322,7 +1320,7 @@ mod commit_integration {
 		let mut slice = FlowSlice::empty();
 		slice.combined = combined;
 		slice.source = Some(SourceVersion(7));
-		slice.checkpoints = vec![(FlowId(index), CommitVersion(100 + index))];
+		slice.checkpoints = vec![(FlowId(index), checkpoint_at(100 + index))];
 		slice
 	}
 
@@ -1407,7 +1405,7 @@ mod commit_integration {
 			"the committed member must apply its operator state"
 		);
 		assert_eq!(store.checkpoint_get(FlowId(1)).unwrap(), None, "the failed member must not checkpoint");
-		assert_eq!(store.checkpoint_get(FlowId(2)).unwrap(), Some(CommitVersion(102)));
+		assert_eq!(store.checkpoint_get(FlowId(2)).unwrap(), Some(checkpoint_at(102)));
 
 		let mut query = engine.begin_query(IdentityId::system()).expect("begin query");
 		let row = |index: u64, query: &mut _| {
@@ -1499,7 +1497,7 @@ mod commit_integration {
 			record.operator.slices,
 			vec![OperatorSlice {
 				writes: vec![state_write(operator, &inner, 1)],
-				checkpoints: vec![(FlowId(1), CommitVersion(10))],
+				checkpoints: vec![(FlowId(1), checkpoint_at(10))],
 				deletes: vec![],
 			}]
 		);
@@ -1516,7 +1514,7 @@ mod commit_integration {
 			.expect("the first slice commits");
 
 		let mut behind = synthetic_slice(5);
-		behind.checkpoints = vec![(FlowId(1), CommitVersion(5))];
+		behind.checkpoints = vec![(FlowId(1), checkpoint_at(5))];
 		let result = commit_direct(&committer, &engine, behind);
 
 		assert!(result.is_err(), "a checkpoint behind the stored one must fail its slice");
@@ -1524,10 +1522,10 @@ mod commit_integration {
 			.into_iter()
 			.flat_map(|(_, record)| record.operator.slices)
 			.flat_map(|slice| slice.checkpoints)
-			.map(|(_, version)| version)
+			.map(|(_, checkpoint)| checkpoint.version)
 			.collect();
 		assert_eq!(logged, vec![CommitVersion(10)], "only the accepted checkpoint may be in the log");
-		assert_eq!(committer.operators.checkpoint_get(FlowId(1)).unwrap(), Some(CommitVersion(10)));
+		assert_eq!(committer.operators.checkpoint_get(FlowId(1)).unwrap(), Some(checkpoint_at(10)));
 	}
 
 	#[test]

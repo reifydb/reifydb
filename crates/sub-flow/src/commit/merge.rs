@@ -8,12 +8,12 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_cdc::lift::changed_objects;
+use reifydb_cdc::lift::entry_changed_objects;
 use reifydb_core::{
 	common::{CommitVersion, SourceVersion},
 	interface::{
 		catalog::{flow::FlowId, object::ObjectId},
-		cdc::Cdc,
+		commit::CommitEntry,
 	},
 };
 use reifydb_value::reifydb_assertions;
@@ -23,7 +23,7 @@ use crate::commit::slice::accepts;
 
 #[derive(Clone)]
 pub struct ReadWindow {
-	chunk: Arc<[Arc<Cdc>]>,
+	chunk: Arc<[Arc<CommitEntry>]>,
 	start: usize,
 	end: usize,
 }
@@ -39,15 +39,15 @@ impl ReadWindow {
 }
 
 impl Deref for ReadWindow {
-	type Target = [Arc<Cdc>];
+	type Target = [Arc<CommitEntry>];
 
-	fn deref(&self) -> &[Arc<Cdc>] {
+	fn deref(&self) -> &[Arc<CommitEntry>] {
 		&self.chunk[self.start..self.end]
 	}
 }
 
-impl From<Vec<Arc<Cdc>>> for ReadWindow {
-	fn from(items: Vec<Arc<Cdc>>) -> Self {
+impl From<Vec<Arc<CommitEntry>>> for ReadWindow {
+	fn from(items: Vec<Arc<CommitEntry>>) -> Self {
 		let end = items.len();
 		Self {
 			chunk: items.into(),
@@ -89,8 +89,8 @@ impl ReadCache {
 			.map(|(_, read)| read)?;
 		read.used = clock;
 		let read_to = read.read_to.min(up_to);
-		let start = read.items.partition_point(|cdc| cdc.version.commit <= from);
-		let end = read.items.partition_point(|cdc| cdc.version.commit <= read_to);
+		let start = read.items.partition_point(|entry| entry.version.commit <= from);
+		let end = read.items.partition_point(|entry| entry.version.commit <= read_to);
 		Some(StreamRead {
 			items: read.items.slice(start, end),
 			read_to,
@@ -98,7 +98,12 @@ impl ReadCache {
 		})
 	}
 
-	pub fn insert(&mut self, from: CommitVersion, items: Vec<Arc<Cdc>>, read_to: CommitVersion) -> ReadWindow {
+	pub fn insert(
+		&mut self,
+		from: CommitVersion,
+		items: Vec<Arc<CommitEntry>>,
+		read_to: CommitVersion,
+	) -> ReadWindow {
 		let items = ReadWindow::from(items);
 		if read_to <= from {
 			return items;
@@ -163,17 +168,17 @@ pub struct UpstreamRead {
 	pub read: StreamRead,
 }
 
-fn touches(cdc: &Cdc, objects: &FxHashSet<ObjectId>) -> bool {
-	changed_objects(cdc).iter().any(|object| objects.contains(object))
+fn touches(entry: &CommitEntry, objects: &FxHashSet<ObjectId>) -> bool {
+	entry_changed_objects(entry).iter().any(|object| objects.contains(object))
 }
 
-fn reads(cdc: &Cdc, source_objects: &BTreeSet<ObjectId>) -> bool {
-	changed_objects(cdc).iter().any(|object| accepts(*object, source_objects))
+fn reads(entry: &CommitEntry, source_objects: &BTreeSet<ObjectId>) -> bool {
+	entry_changed_objects(entry).iter().any(|object| accepts(*object, source_objects))
 }
 
 impl UpstreamRead {
-	fn view_items(&self) -> impl DoubleEndedIterator<Item = &Arc<Cdc>> {
-		self.read.items.iter().filter(move |cdc| touches(cdc, &self.views))
+	fn view_items(&self) -> impl DoubleEndedIterator<Item = &Arc<CommitEntry>> {
+		self.read.items.iter().filter(move |entry| touches(entry, &self.views))
 	}
 
 	fn complete_through(&self, cursor: CommitVersion) -> CommitVersion {
@@ -191,7 +196,8 @@ impl UpstreamRead {
 		if !self.read.more {
 			return false;
 		}
-		let mut stamps = self.view_items().map(|cdc| cdc.version.source.0).filter(|source| *source > cursor.0);
+		let mut stamps =
+			self.view_items().map(|entry| entry.version.source.0).filter(|source| *source > cursor.0);
 		match stamps.next() {
 			Some(first) => stamps.all(|source| source == first),
 			None => false,
@@ -200,8 +206,8 @@ impl UpstreamRead {
 
 	pub fn cursor_after(&self, advance_to: CommitVersion) -> CommitVersion {
 		self.view_items()
-			.find(|cdc| cdc.version.source.0 > advance_to.0)
-			.map(|cdc| CommitVersion(cdc.version.commit.0 - 1))
+			.find(|entry| entry.version.source.0 > advance_to.0)
+			.map(|entry| CommitVersion(entry.version.commit.0 - 1))
 			.unwrap_or(self.read.read_to)
 	}
 }
@@ -217,7 +223,7 @@ impl UpstreamReads {
 }
 
 pub struct Merged {
-	pub items: Vec<Arc<Cdc>>,
+	pub items: Vec<Arc<CommitEntry>>,
 	pub target: CommitVersion,
 	pub more: bool,
 }
@@ -227,7 +233,7 @@ pub struct StepCut<'a> {
 	pub per_source: bool,
 }
 
-type Rows<'a> = Peekable<Box<dyn Iterator<Item = (bool, &'a Arc<Cdc>)> + 'a>>;
+type Rows<'a> = Peekable<Box<dyn Iterator<Item = (bool, &'a Arc<CommitEntry>)> + 'a>>;
 
 pub fn merge(
 	cursor: CommitVersion,
@@ -245,17 +251,20 @@ pub fn merge(
 		let table_rows = tables
 			.items
 			.iter()
-			.take_while(|cdc| cdc.version.commit <= target)
-			.filter(|cdc| {
-				cdc.version.commit > cursor && !touches(cdc, &gated) && reads(cdc, cut.source_objects)
+			.take_while(|entry| entry.version.commit <= target)
+			.filter(|entry| {
+				entry.version.commit > cursor
+					&& !touches(entry, &gated) && reads(entry, cut.source_objects)
 			})
-			.map(|cdc| (true, cdc));
+			.map(|entry| (true, entry));
 		let mut streams: Vec<Rows> = vec![(Box::new(table_rows) as Box<dyn Iterator<Item = _>>).peekable()];
 		for upstream in upstreams.values() {
 			let view_rows = upstream
 				.view_items()
-				.filter(move |cdc| cdc.version.source.0 > cursor.0 && cdc.version.source.0 <= target.0)
-				.map(|cdc| (false, cdc));
+				.filter(move |entry| {
+					entry.version.source.0 > cursor.0 && entry.version.source.0 <= target.0
+				})
+				.map(|entry| (false, entry));
 			streams.push((Box::new(view_rows) as Box<dyn Iterator<Item = _>>).peekable());
 		}
 		streams
@@ -263,7 +272,7 @@ pub fn merge(
 
 	reifydb_assertions! {
 		for rows in streams() {
-			let sources: Vec<SourceVersion> = rows.map(|(_, cdc)| cdc.version.source).collect();
+			let sources: Vec<SourceVersion> = rows.map(|(_, entry)| entry.version.source).collect();
 			assert!(
 				sources.is_sorted(),
 				"source versions went down within one stream {sources:?}; a per-source step would stop \
@@ -272,35 +281,36 @@ pub fn merge(
 		}
 	}
 
-	let mut ordered: Vec<(bool, CommitVersion, Arc<Cdc>)> = Vec::new();
+	let mut ordered: Vec<(bool, CommitVersion, Arc<CommitEntry>)> = Vec::new();
 	let mut next: Option<SourceVersion> = None;
 	let mut streams = streams();
 	if cut.per_source {
-		let first = streams.iter_mut().filter_map(|rows| rows.peek().map(|(_, cdc)| cdc.version.source)).min();
+		let first =
+			streams.iter_mut().filter_map(|rows| rows.peek().map(|(_, entry)| entry.version.source)).min();
 		if let Some(first) = first {
 			for rows in &mut streams {
-				while let Some((table, cdc)) = rows.next_if(|(_, cdc)| cdc.version.source == first) {
-					ordered.push((table, cdc.version.commit, cdc.clone()));
+				while let Some((table, entry)) =
+					rows.next_if(|(_, entry)| entry.version.source == first)
+				{
+					ordered.push((table, entry.version.commit, entry.clone()));
 				}
-				if let Some((_, cdc)) = rows.peek() {
-					next =
-						Some(next.map_or(cdc.version.source, |next| {
-							next.min(cdc.version.source)
-						}));
+				if let Some((_, entry)) = rows.peek() {
+					next = Some(next
+						.map_or(entry.version.source, |next| next.min(entry.version.source)));
 				}
 			}
 		}
 	} else {
 		for rows in streams {
-			for (table, cdc) in rows {
-				ordered.push((table, cdc.version.commit, cdc.clone()));
+			for (table, entry) in rows {
+				ordered.push((table, entry.version.commit, entry.clone()));
 			}
 		}
 	}
-	ordered.sort_by_key(|(table, version, cdc)| (cdc.version.source, *table, *version));
+	ordered.sort_by_key(|(table, version, entry)| (entry.version.source, *table, *version));
 
 	Merged {
-		items: ordered.into_iter().map(|(_, _, cdc)| cdc).collect(),
+		items: ordered.into_iter().map(|(_, _, entry)| entry).collect(),
 		target: next.map_or(target, |next| CommitVersion(next.0 - 1)),
 		more: next.is_some() || tables.more || upstreams.values().any(|upstream| upstream.read.more),
 	}
@@ -313,12 +323,10 @@ mod tests {
 	use reifydb_codec::row::bytes::EncodedBytes;
 	use reifydb_core::{
 		common::{ChangeVersion, SourceVersion},
-		interface::{
-			catalog::{
-				id::{TableId, ViewId},
-				storage::StorageId,
-			},
-			cdc::CdcChange,
+		delta::{Delta, SetPre},
+		interface::catalog::{
+			id::{TableId, ViewId},
+			storage::StorageId,
 		},
 		key::row::RowKey,
 	};
@@ -326,6 +334,7 @@ mod tests {
 		util::cowvec::CowVec,
 		value::{datetime::DateTime, row_number::RowNumber},
 	};
+	use reifydb_wal::lsn::Lsn;
 
 	use super::*;
 
@@ -336,33 +345,39 @@ mod tests {
 		CommitVersion(version)
 	}
 
-	fn row(storage: StorageId, version: u64, source: u64) -> Arc<Cdc> {
-		Arc::new(Cdc::new(
+	fn row(storage: StorageId, version: u64, source: u64) -> Arc<CommitEntry> {
+		Arc::new(CommitEntry::build(
 			ChangeVersion {
 				commit: cv(version),
 				source: SourceVersion(source),
 			},
+			Lsn::new(version),
 			DateTime::default(),
-			vec![CdcChange::Insert {
-				key: RowKey::encoded(storage, RowNumber(version)),
-				post: EncodedBytes(CowVec::new(vec![0u8; 4])),
+			vec![Delta::Set {
+				key: RowKey {
+					storage,
+					row: RowNumber(version),
+				}
+				.into(),
+				bytes: EncodedBytes(CowVec::new(vec![0u8; 4])),
+				pre: SetPre::Absent,
 			}],
 		))
 	}
 
-	fn table_row(version: u64) -> Arc<Cdc> {
+	fn table_row(version: u64) -> Arc<CommitEntry> {
 		row(StorageId::table(1), version, version)
 	}
 
-	fn view_row(version: u64, source: u64) -> Arc<Cdc> {
+	fn view_row(version: u64, source: u64) -> Arc<CommitEntry> {
 		row(StorageId::view(5), version, source)
 	}
 
-	fn other_view_row(version: u64, source: u64) -> Arc<Cdc> {
+	fn other_view_row(version: u64, source: u64) -> Arc<CommitEntry> {
 		row(StorageId::view(6), version, source)
 	}
 
-	fn read(items: Vec<Arc<Cdc>>, read_to: u64, more: bool) -> StreamRead {
+	fn read(items: Vec<Arc<CommitEntry>>, read_to: u64, more: bool) -> StreamRead {
 		StreamRead {
 			items: items.into(),
 			read_to: cv(read_to),
@@ -633,7 +648,7 @@ mod tests {
 		);
 	}
 
-	fn chunk(from: u64, to: u64) -> Vec<Arc<Cdc>> {
+	fn chunk(from: u64, to: u64) -> Vec<Arc<CommitEntry>> {
 		(from + 1..=to).map(table_row).collect()
 	}
 

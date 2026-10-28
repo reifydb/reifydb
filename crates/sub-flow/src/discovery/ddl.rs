@@ -5,37 +5,37 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{
-		catalog::flow::FlowId,
-		cdc::{Cdc, CdcChange},
-	},
-	key::flow::FlowKey,
+	delta::{Delta, SetPre},
+	interface::{catalog::flow::FlowId, commit::CommitEntry},
+	key::any::TaggedKey,
 };
+use reifydb_wal::lsn::Lsn;
 
-pub fn extract_new_flows(cdcs: &[Arc<Cdc>]) -> Vec<(FlowId, CommitVersion)> {
+pub fn extract_new_flows(entries: &[Arc<CommitEntry>]) -> Vec<(FlowId, CommitVersion, Lsn)> {
 	let mut flows = Vec::new();
-	for cdc in cdcs {
-		for change in &cdc.changes {
-			if let CdcChange::Insert {
-				key,
+	for entry in entries {
+		for delta in &entry.deltas {
+			if let Delta::Set {
+				key: TaggedKey::Flow(flow_key),
+				pre: SetPre::Absent,
 				..
-			} = change && let Some(flow_key) = FlowKey::decode(key)
+			} = delta
 			{
-				flows.push((flow_key.flow, cdc.version.commit));
+				flows.push((flow_key.flow, entry.version.commit, entry.lsn));
 			}
 		}
 	}
 	flows
 }
 
-pub fn extract_deleted_flow_ids(cdcs: &[Arc<Cdc>]) -> Vec<FlowId> {
+pub fn extract_deleted_flow_ids(entries: &[Arc<CommitEntry>]) -> Vec<FlowId> {
 	let mut flow_ids = Vec::new();
-	for cdc in cdcs {
-		for change in &cdc.changes {
-			if let CdcChange::Delete {
-				key,
+	for entry in entries {
+		for delta in &entry.deltas {
+			if let Delta::Remove {
+				key: TaggedKey::Flow(flow_key),
 				..
-			} = change && let Some(flow_key) = FlowKey::decode(key)
+			} = delta
 			{
 				flow_ids.push(flow_key.flow);
 			}

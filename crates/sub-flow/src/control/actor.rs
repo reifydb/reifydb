@@ -12,9 +12,12 @@ use std::{
 	},
 };
 
-use reifydb_cdc::consume::backlog::{BacklogPull, FlowBacklog};
 use reifydb_core::{
 	actors::{flow::FlowActorMessage, pending::Pending},
+	commit::{
+		loader::{CommitLoaderMessage, CommitLoaderReply},
+		queue::{CommitPull, CommitQueue},
+	},
 	common::{CommitVersion, SourceVersion},
 	durability::Durability,
 	error::diagnostic::flow::flow_step_panicked,
@@ -26,7 +29,8 @@ use reifydb_core::{
 			id::ViewId,
 			object::ObjectId,
 		},
-		cdc::Cdc,
+		commit::{CommitEntry, Loaded},
+		operator::FlowCheckpoint,
 	},
 };
 use reifydb_engine::engine::StandardEngine;
@@ -55,6 +59,7 @@ use reifydb_value::{
 	reifydb_assertions,
 	value::{datetime::DateTime, duration::Duration, identity::IdentityId},
 };
+use reifydb_wal::lsn::Lsn;
 use tracing::{error, warn};
 
 use crate::{
@@ -66,7 +71,6 @@ use crate::{
 		slice::{HoldCache, SliceComputer, SliceConfig, SliceCursor, SliceStep, cuts_per_source},
 	},
 	control::health::FlowHealthRegistry,
-	discovery::loader::{LoaderMessage, LoaderReply},
 	operator::provider::StandardOperatorProvider,
 	progress::{
 		frontier::ControlFrontier,
@@ -78,8 +82,8 @@ pub struct FlowActorParams {
 	pub engine: StandardEngine,
 	pub committer: ActorRef<CommitterMessage>,
 	pub terminal_committer: ActorRef<CommitterMessage>,
-	pub backlog: FlowBacklog,
-	pub loader: ActorRef<LoaderMessage>,
+	pub queue: CommitQueue,
+	pub loader: ActorRef<CommitLoaderMessage>,
 	pub control: ControlFrontier,
 	pub custom_operators: CustomOperators,
 	pub substrate: FlowSubstrate,
@@ -92,6 +96,7 @@ pub struct FlowActorParams {
 	pub source_objects: Arc<BTreeSet<ObjectId>>,
 	pub completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	pub cursor: CommitVersion,
+	pub cursor_lsn: Lsn,
 	pub pull_batch_bytes: ByteSize,
 	pub load_batch_bytes: ByteSize,
 	pub checkpoint_lag: u64,
@@ -107,8 +112,8 @@ pub struct FlowActor {
 	engine: StandardEngine,
 	committer: ActorRef<CommitterMessage>,
 	terminal_committer: ActorRef<CommitterMessage>,
-	backlog: FlowBacklog,
-	loader: ActorRef<LoaderMessage>,
+	queue: CommitQueue,
+	loader: ActorRef<CommitLoaderMessage>,
 	control: ControlFrontier,
 	custom_operators: CustomOperators,
 	substrate: FlowSubstrate,
@@ -134,6 +139,7 @@ pub struct FlowActor {
 	initial_source_objects: Arc<BTreeSet<ObjectId>>,
 	initial_completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	initial_cursor: CommitVersion,
+	initial_cursor_lsn: Lsn,
 	wake_pending: Arc<AtomicBool>,
 	backfill: bool,
 	create_snapshot: Mutex<Option<(CommitVersion, VersionLeaseGuard, CheckpointPin)>>,
@@ -145,6 +151,9 @@ pub struct FlowActorState {
 	source_objects: Arc<BTreeSet<ObjectId>>,
 	completeness_objects: Option<Arc<BTreeSet<u64>>>,
 	cursor: CommitVersion,
+	cursor_lsn: Lsn,
+	pending_lsn: Lsn,
+	frontier: (CommitVersion, Lsn),
 	durable_cursor: CommitVersion,
 	committing: bool,
 	awaiting_load: bool,
@@ -190,7 +199,7 @@ impl FlowActor {
 			engine: params.engine,
 			committer: params.committer,
 			terminal_committer: params.terminal_committer,
-			backlog: params.backlog,
+			queue: params.queue,
 			loader: params.loader,
 			control: params.control,
 			custom_operators: params.custom_operators,
@@ -213,6 +222,7 @@ impl FlowActor {
 			initial_source_objects: params.source_objects,
 			initial_completeness_objects: params.completeness_objects,
 			initial_cursor: params.cursor,
+			initial_cursor_lsn: params.cursor_lsn,
 			wake_pending: Arc::new(AtomicBool::new(false)),
 			backfill: false,
 			create_snapshot: Mutex::new(None),
@@ -380,17 +390,20 @@ impl FlowActor {
 
 		let advance_to = state.cursor;
 		let mut slice = FlowSlice::empty();
-		slice.checkpoints.push((self.flow_id, advance_to));
-		self.dispatch_commit(state, ctx, slice, advance_to, false, WatermarkHolds::new());
-	}
-
-	fn safe_bound(&self) -> CommitVersion {
-		self.engine.cdc_producer_watermark().min(self.engine.done_until()).min(self.control.get())
+		slice.checkpoints.push((
+			self.flow_id,
+			FlowCheckpoint {
+				version: advance_to,
+				lsn: state.cursor_lsn,
+			},
+		));
+		self.dispatch_commit(state, ctx, slice, advance_to, state.cursor_lsn, false, WatermarkHolds::new());
 	}
 
 	fn on_drain(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>) {
 		let woken = self.wake_pending.swap(false, Ordering::SeqCst);
-		let safe = self.safe_bound();
+		state.frontier = self.queue.released();
+		let safe = state.frontier.0.min(self.engine.done_until()).min(self.control.get());
 		if state.poisoned || state.committing || state.awaiting_load {
 			if woken && !state.poisoned {
 				state.drain_after_commit = true;
@@ -451,6 +464,7 @@ impl FlowActor {
 				};
 				Snapshot {
 					version,
+					lsn: self.initial_cursor_lsn,
 					lease,
 					cuts: HashMap::new(),
 				}
@@ -482,10 +496,10 @@ impl FlowActor {
 			)
 		}))
 		.unwrap_or_else(|payload| Err(Error(Box::new(flow_step_panicked(describe_payload(&payload))))));
-		let version = snapshot.version;
+		let (version, lsn) = (snapshot.version, snapshot.lsn);
 		drop(snapshot);
 		match computed {
-			Ok((slice, holds)) => self.dispatch_commit(state, ctx, slice, version, true, holds),
+			Ok((slice, holds)) => self.dispatch_commit(state, ctx, slice, version, lsn, true, holds),
 			Err(e) => {
 				self.retry_or_poison(state, ctx, format!("flow backfill failed: {e}"));
 			}
@@ -642,20 +656,20 @@ impl FlowActor {
 		if let Some(read) = state.read_cache.get(from, up_to) {
 			return Some(read);
 		}
-		match self.backlog.pull(from, up_to, self.pull_batch_bytes) {
-			BacklogPull::Hit {
-				items,
+		match self.queue.pull(from, up_to, self.pull_batch_bytes) {
+			CommitPull::Hit {
+				entries,
 				advance_to,
 				more,
 			} => {
-				let items = state.read_cache.insert(from, items, advance_to);
+				let items = state.read_cache.insert(from, entries, advance_to);
 				Some(StreamRead {
 					items,
 					read_to: advance_to,
 					more,
 				})
 			}
-			BacklogPull::Behind => {
+			CommitPull::Behind => {
 				self.request_load(state, ctx, from, up_to);
 				None
 			}
@@ -697,7 +711,7 @@ impl FlowActor {
 		&self,
 		state: &mut FlowActorState,
 		ctx: &Context<FlowActorMessage>,
-		items: &[Arc<Cdc>],
+		items: &[Arc<CommitEntry>],
 		advance_to: CommitVersion,
 		more: bool,
 	) {
@@ -709,7 +723,7 @@ impl FlowActor {
 	fn compute_step(
 		&self,
 		state: &mut FlowActorState,
-		items: &[Arc<Cdc>],
+		items: &[Arc<CommitEntry>],
 		advance_to: CommitVersion,
 		more: bool,
 	) -> Result<SliceStep> {
@@ -723,6 +737,8 @@ impl FlowActor {
 					source_objects: &state.source_objects,
 					completeness_objects: state.completeness_objects.as_deref(),
 					cursor: state.cursor,
+					lsn: state.cursor_lsn,
+					frontier: state.frontier,
 					durable_cursor: state.durable_cursor,
 					has_readers: self.unit_has_readers(),
 				},
@@ -745,6 +761,7 @@ impl FlowActor {
 		match step {
 			Ok(SliceStep::Skip {
 				advance_to,
+				lsn,
 				more,
 				holds,
 			}) => {
@@ -753,6 +770,7 @@ impl FlowActor {
 					self.advance_view_cursors(state, reads, advance_to);
 				}
 				state.cursor = advance_to;
+				state.cursor_lsn = lsn;
 				for hold in holds {
 					self.substrate.frontiers.publish(hold.object, hold.frontier, advance_to);
 				}
@@ -767,12 +785,13 @@ impl FlowActor {
 			Ok(SliceStep::Commit {
 				slice,
 				advance_to,
+				lsn,
 				more,
 				holds,
 			}) => {
 				state.pending_view_cursors =
 					reads.map(|reads| reads.cursors_after(advance_to)).unwrap_or_default();
-				self.dispatch_commit(state, ctx, slice, advance_to, more, holds);
+				self.dispatch_commit(state, ctx, slice, advance_to, lsn, more, holds);
 			}
 			Err(e) => {
 				self.retry_or_poison(state, ctx, format!("flow step failed: {e}"));
@@ -790,14 +809,14 @@ impl FlowActor {
 		state.awaiting_load = true;
 		state.loading_from = from;
 		let self_ref = ctx.self_ref().clone();
-		let reply: LoaderReply = Box::new(move |outcome| {
+		let reply: CommitLoaderReply = Box::new(move |outcome| {
 			let _ = self_ref.send(FlowActorMessage::Loaded {
 				outcome,
 			});
 		});
 		if self.loader
-			.send(LoaderMessage::Fetch {
-				from,
+			.send(CommitLoaderMessage::Fetch {
+				after: (from, state.cursor_lsn),
 				up_to,
 				budget: self.load_batch_bytes,
 				reply,
@@ -809,19 +828,14 @@ impl FlowActor {
 		}
 	}
 
-	fn on_loaded(
-		&self,
-		state: &mut FlowActorState,
-		ctx: &Context<FlowActorMessage>,
-		outcome: Result<(Vec<Arc<Cdc>>, CommitVersion)>,
-	) {
+	fn on_loaded(&self, state: &mut FlowActorState, ctx: &Context<FlowActorMessage>, outcome: Result<Loaded>) {
 		state.awaiting_load = false;
 		if state.poisoned {
 			return;
 		}
 		match outcome {
-			Ok((items, advance_to)) => {
-				state.read_cache.insert(state.loading_from, items, advance_to);
+			Ok(loaded) => {
+				state.read_cache.insert(state.loading_from, loaded.entries, loaded.advance_to);
 				if state.committing {
 					state.drain_after_commit = true;
 					return;
@@ -843,6 +857,7 @@ impl FlowActor {
 		ctx: &Context<FlowActorMessage>,
 		slice: FlowSlice,
 		advance_to: CommitVersion,
+		lsn: Lsn,
 		more: bool,
 		holds: WatermarkHolds,
 	) {
@@ -865,6 +880,7 @@ impl FlowActor {
 		}
 		state.hold_cache = None;
 		state.committing = true;
+		state.pending_lsn = lsn;
 		state.pending_holds = holds;
 		let self_ref = ctx.self_ref().clone();
 		let reply: SliceCommitReply = Box::new(move |result| {
@@ -926,6 +942,7 @@ impl FlowActor {
 					}
 				}
 				state.cursor = advance_to;
+				state.cursor_lsn = state.pending_lsn;
 				state.durable_cursor = advance_to;
 				state.last_checkpoint_at = self.clock.now();
 				self.move_lookup_lease(state);
@@ -1146,6 +1163,9 @@ impl Actor for FlowActor {
 			source_objects: self.initial_source_objects.clone(),
 			completeness_objects: self.initial_completeness_objects.clone(),
 			cursor: self.initial_cursor,
+			cursor_lsn: self.initial_cursor_lsn,
+			pending_lsn: self.initial_cursor_lsn,
+			frontier: (CommitVersion(0), Lsn::new(0)),
 			durable_cursor: self.initial_cursor,
 			committing: false,
 			awaiting_load: false,
@@ -1276,7 +1296,6 @@ mod pull_protocol {
 	use reifydb_cdc::{
 		consume::watermark::CdcConsumerWatermark,
 		lift::{changed_objects, lift_selected_changes, row_target},
-		produce::watermark::CdcProducerWatermark,
 	};
 	use reifydb_codec::{
 		key::encoded::EncodedKey,
@@ -1284,14 +1303,16 @@ mod pull_protocol {
 	};
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::Pending},
+		commit::loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 		durability::Durability,
 		interface::{
 			catalog::{
 				flow::OperatorId,
 				ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata},
 			},
-			cdc::CdcChange,
+			cdc::{Cdc, CdcChange},
 			change::{Change, ChangeOrigin, Diff},
+			commit::FlowWal,
 		},
 		key::{
 			bound::TaggedKeyBoundRange,
@@ -1327,21 +1348,18 @@ mod pull_protocol {
 			persist,
 			quiescence::FlowMaterialization,
 		},
-		discovery::{
-			loader::{LoaderActor, LoaderHandle, LoaderMetrics},
-			routing,
-		},
+		discovery::routing,
 		progress::tracker::{FLOW_WAKE_COALESCE_NANOS, FlowWaker},
 	};
 
 	struct Harness {
 		te: TestEngine,
 		engine: StandardEngine,
-		backlog: FlowBacklog,
+		queue: CommitQueue,
 		control: ControlFrontier,
 		tracker: FlowPositionTracker,
 		committer_handle: CommitterHandle,
-		loader_handle: LoaderHandle,
+		loader_handle: CommitLoaderHandle,
 		flow: FlowDag,
 		flow_id: FlowId,
 		source_objects: Arc<BTreeSet<ObjectId>>,
@@ -1358,7 +1376,7 @@ mod pull_protocol {
 	}
 
 	fn harness_with(table_rql: &str, view_rql: &str) -> Harness {
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		let engine = te.inner().clone();
 
 		{
@@ -1415,18 +1433,18 @@ mod pull_protocol {
 			CommitterActor::new(committer, CommitHandle::new(begin)),
 		);
 
+		let flow_wal = engine.ioc().resolve::<FlowWal>().expect("test harness must register the flow wal");
 		let loader_handle = engine.spawner().spawn_flow(
 			"pull-protocol-loader",
-			LoaderActor::new(engine.cdc_store(), LoaderMetrics::default()),
+			CommitLoader::new(flow_wal.log.clone(), CommitLoaderMetrics::default()),
 		);
 
-		let backlog =
-			engine.ioc().resolve::<FlowBacklog>().expect("test harness must register the flow backlog");
+		let queue = engine.ioc().resolve::<CommitQueue>().expect("test harness must register the commit queue");
 
 		Harness {
 			te,
 			engine,
-			backlog,
+			queue,
 			control: ControlFrontier::new(),
 			tracker,
 			committer_handle,
@@ -1465,6 +1483,17 @@ mod pull_protocol {
 			cursor: CommitVersion,
 			substrate: FlowSubstrate,
 		) -> FlowActorHandle {
+			self.spawn_flow_actor_on(self.queue.clone(), flow, source_objects, cursor, substrate)
+		}
+
+		fn spawn_flow_actor_on(
+			&self,
+			queue: CommitQueue,
+			flow: FlowDag,
+			source_objects: Arc<BTreeSet<ObjectId>>,
+			cursor: CommitVersion,
+			substrate: FlowSubstrate,
+		) -> FlowActorHandle {
 			let flow_id = flow.id;
 			self.await_safe_watermark(cursor);
 
@@ -1474,7 +1503,7 @@ mod pull_protocol {
 					engine: self.engine.clone(),
 					committer: self.committer_handle.actor_ref().clone(),
 					terminal_committer: self.committer_handle.actor_ref().clone(),
-					backlog: self.backlog.clone(),
+					queue,
 					loader: self.loader_handle.actor_ref().clone(),
 					control: self.control.clone(),
 					custom_operators: CustomOperators::new(HashMap::new()),
@@ -1488,6 +1517,7 @@ mod pull_protocol {
 					source_objects,
 					completeness_objects: None,
 					cursor: CommitVersion(cursor.0 - 1),
+					cursor_lsn: Lsn::new(0),
 					pull_batch_bytes: ByteSize::from_mib(8),
 					load_batch_bytes: ByteSize::from_mib(8),
 					checkpoint_lag: 10_000,
@@ -1524,7 +1554,7 @@ mod pull_protocol {
 				engine: self.engine.clone(),
 				committer: self.committer_handle.actor_ref().clone(),
 				terminal_committer: self.committer_handle.actor_ref().clone(),
-				backlog: self.backlog.clone(),
+				queue: self.queue.clone(),
 				loader: self.loader_handle.actor_ref().clone(),
 				control: self.control.clone(),
 				custom_operators: CustomOperators::new(HashMap::new()),
@@ -1538,6 +1568,7 @@ mod pull_protocol {
 				source_objects,
 				completeness_objects: None,
 				cursor: CommitVersion(cursor.0 - 1),
+				cursor_lsn: Lsn::new(0),
 				pull_batch_bytes: ByteSize::from_mib(8),
 				load_batch_bytes: ByteSize::from_mib(8),
 				checkpoint_lag: 10_000,
@@ -1601,7 +1632,7 @@ mod pull_protocol {
 		fn await_safe_watermark(&self, want: CommitVersion) {
 			let deadline = Clock::Real.instant() + seconds(10);
 			loop {
-				let safe = self.engine.cdc_producer_watermark().min(self.engine.done_until());
+				let safe = self.queue.released_through().min(self.engine.done_until());
 				if safe >= want {
 					return;
 				}
@@ -1655,7 +1686,11 @@ mod pull_protocol {
 		}
 
 		fn persisted_checkpoint(&self) -> Option<CommitVersion> {
-			self.engine.operator_state().checkpoint_get(self.flow_id).unwrap()
+			self.engine
+				.operator_state()
+				.checkpoint_get(self.flow_id)
+				.unwrap()
+				.map(|checkpoint| checkpoint.version)
 		}
 
 		fn await_checkpoint_beyond(&self, floor: CommitVersion, timeout: Duration) -> Option<CommitVersion> {
@@ -1764,10 +1799,10 @@ mod pull_protocol {
 
 		fn pull_behinds(&self) -> Reading {
 			let mut samples = Vec::new();
-			self.backlog.collect(&mut samples);
+			self.queue.collect(&mut samples);
 			samples.into_iter()
 				.find(|sample| sample.metric == "pull_behinds")
-				.expect("the backlog reports its behind count")
+				.expect("the commit queue reports its behind count")
 				.reading
 		}
 	}
@@ -1881,7 +1916,7 @@ mod pull_protocol {
 		let target = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(target);
 
-		h.backlog.evict_below(target);
+		h.queue.evict_below(target);
 		h.wake(&actor);
 
 		let rows = h.await_view_rows(total, seconds(15));
@@ -1945,7 +1980,7 @@ mod pull_protocol {
 			.expect("the reader must publish the position its first commit reached");
 
 		let behinds = h.pull_behinds();
-		h.backlog.evict_below(floor);
+		h.queue.evict_below(floor);
 
 		h.wake(&producer);
 		assert_eq!(h.await_view_rows(2, seconds(10)), 2, "the producer must emit the second row");
@@ -2134,7 +2169,7 @@ mod pull_protocol {
 			"precondition: the reader must not have consumed anything yet, or the eviction below proves nothing"
 		);
 
-		h.backlog.evict_below(produced);
+		h.queue.evict_below(produced);
 		h.wake(&consumer);
 
 		assert!(
@@ -2184,20 +2219,25 @@ mod pull_protocol {
 
 	#[test]
 	fn a_producer_watermark_overshoot_does_not_stall_or_overrun_the_pull() {
+		// A queue released past done_until must never let the pull overrun the done mark.
 		let h = harness();
 		let v0 = h.engine.current_version().expect("current version");
-		let actor = h.spawn_actor(v0);
+		h.control.store(CommitVersion(u64::MAX));
+		let ahead = CommitQueue::new(ByteSize::from_mib(8), true, CommitVersion(h.engine.done_until().0 + 15));
+		let actor = h.spawn_flow_actor_on(
+			ahead.clone(),
+			h.flow.clone(),
+			h.source_objects.clone(),
+			v0,
+			h.substrate.clone(),
+		);
 
 		h.te.command("INSERT app::t [{ id: 1 }]");
 		let target = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(target);
 
-		let producer = h.engine.ioc().resolve::<CdcProducerWatermark>().expect("producer watermark");
-		for _ in 0..10 {
-			producer.advance(CommitVersion(producer.get().0 + 1));
-		}
 		assert!(
-			producer.get().0 >= h.engine.done_until().0 + 5,
+			ahead.released_through().0 >= h.engine.done_until().0 + 5,
 			"test precondition: producer watermark must overshoot done_until by more than the 			 test's own commits"
 		);
 
@@ -2668,7 +2708,7 @@ mod pull_protocol {
 				engine: h.engine.clone(),
 				committer: committer2_handle.actor_ref().clone(),
 				terminal_committer: committer2_handle.actor_ref().clone(),
-				backlog: h.backlog.clone(),
+				queue: h.queue.clone(),
 				loader: h.loader_handle.actor_ref().clone(),
 				control: h.control.clone(),
 				custom_operators: CustomOperators::new(HashMap::new()),
@@ -2682,6 +2722,7 @@ mod pull_protocol {
 				source_objects: h.source_objects.clone(),
 				completeness_objects: None,
 				cursor: target,
+				cursor_lsn: Lsn::new(0),
 				pull_batch_bytes: ByteSize::from_mib(8),
 				load_batch_bytes: ByteSize::from_mib(8),
 				checkpoint_lag: 10_000,
@@ -3211,7 +3252,7 @@ mod tick_failures {
 			engine: engine.clone(),
 			committer: committer.clone(),
 			terminal_committer: committer,
-			backlog: FlowBacklog::new(ByteSize::from_mib(8)),
+			queue: CommitQueue::new(ByteSize::from_mib(8), false, CommitVersion(0)),
 			loader: idle(&engine, "unit-tick-loader"),
 			control: ControlFrontier::new(),
 			custom_operators: unit_operators(rows),
@@ -3225,6 +3266,7 @@ mod tick_failures {
 			source_objects: Arc::new(BTreeSet::new()),
 			completeness_objects: None,
 			cursor: CommitVersion(0),
+			cursor_lsn: Lsn::new(0),
 			pull_batch_bytes: ByteSize::from_mib(8),
 			load_batch_bytes: ByteSize::from_mib(8),
 			checkpoint_lag: 10_000,
@@ -3338,7 +3380,7 @@ mod tick_failures {
 			engine: engine.clone(),
 			committer: committer_ref.clone(),
 			terminal_committer: committer_ref,
-			backlog: FlowBacklog::new(ByteSize::from_mib(8)),
+			queue: CommitQueue::new(ByteSize::from_mib(8), false, CommitVersion(0)),
 			loader: idle(&engine, "tick-failures-loader"),
 			control: ControlFrontier::new(),
 			custom_operators: timer_operators(),
@@ -3352,6 +3394,7 @@ mod tick_failures {
 			source_objects: Arc::new(BTreeSet::new()),
 			completeness_objects: None,
 			cursor: CommitVersion(0),
+			cursor_lsn: Lsn::new(0),
 			pull_batch_bytes: ByteSize::from_mib(8),
 			load_batch_bytes: ByteSize::from_mib(8),
 			checkpoint_lag: 10_000,

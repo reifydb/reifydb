@@ -5,15 +5,16 @@ use std::{collections::BTreeSet, iter::once, sync::Arc};
 
 use arrow_array::{Array, RecordBatch, UInt64Array};
 use reifydb_catalog::catalog::Catalog;
-use reifydb_cdc::lift::{changed_objects, lift_selected_changes};
+use reifydb_cdc::lift::{entry_changed_objects, lift_entry_changes};
 use reifydb_core::{
 	actors::pending::Pending,
 	common::{ChangeVersion, CommitVersion},
 	interface::{
 		catalog::{flow::FlowId, id::ViewId, object::ObjectId, view::View},
-		cdc::Cdc,
 		change::{Change, ChangeOrigin, Diff},
+		commit::CommitEntry,
 		consolidate::consolidate_diffs,
+		operator::FlowCheckpoint,
 	},
 	internal_err,
 	value::batch::batch,
@@ -38,6 +39,7 @@ use reifydb_value::{
 		},
 	},
 };
+use reifydb_wal::lsn::Lsn;
 use tracing::instrument;
 
 use crate::commit::committer::{FlowSlice, produced_output};
@@ -56,6 +58,8 @@ pub struct SliceCursor<'a> {
 	pub source_objects: &'a BTreeSet<ObjectId>,
 	pub completeness_objects: Option<&'a BTreeSet<u64>>,
 	pub cursor: CommitVersion,
+	pub lsn: Lsn,
+	pub frontier: (CommitVersion, Lsn),
 	pub durable_cursor: CommitVersion,
 	pub has_readers: bool,
 }
@@ -64,12 +68,14 @@ pub enum SliceStep {
 	Commit {
 		slice: FlowSlice,
 		advance_to: CommitVersion,
+		lsn: Lsn,
 		more: bool,
 		holds: WatermarkHolds,
 	},
 
 	Skip {
 		advance_to: CommitVersion,
+		lsn: Lsn,
 		more: bool,
 		holds: WatermarkHolds,
 	},
@@ -137,7 +143,7 @@ impl SliceComputer {
 	pub fn compute_pulled(
 		&self,
 		flow_engine: &mut FlowEngineInner,
-		items: &[Arc<Cdc>],
+		items: &[Arc<CommitEntry>],
 		cursor: SliceCursor,
 		advance_to: CommitVersion,
 		more: bool,
@@ -146,23 +152,24 @@ impl SliceComputer {
 	) -> Result<SliceStep> {
 		let start = items.partition_point(|c| c.version.commit <= cursor.cursor);
 		let (mut advance_to, mut more) = (advance_to, more);
-		let mut relevant: Vec<&Cdc> = Vec::new();
+		let mut relevant: Vec<&CommitEntry> = Vec::new();
 		let cut_per_source = cuts_per_source(cursor.has_readers, cursor.source_objects);
-		for cdc in items[start..].iter().map(Arc::as_ref) {
-			if !is_relevant(cdc, cursor.source_objects) {
+		for entry in items[start..].iter().map(Arc::as_ref) {
+			if !is_relevant(entry, cursor.source_objects) {
 				continue;
 			}
 			if let Some(first) = relevant.first()
-				&& cdc.version.source != first.version.source
+				&& entry.version.source != first.version.source
 				&& cut_per_source
 			{
-				advance_to = CommitVersion(cdc.version.source.0 - 1);
+				advance_to = CommitVersion(entry.version.source.0 - 1);
 				more = true;
 				break;
 			}
-			relevant.push(cdc);
+			relevant.push(entry);
 		}
-		let source = relevant.iter().map(|cdc| cdc.version.source).max();
+		let lsn = lsn_through(items, advance_to, cursor.lsn, cursor.frontier);
+		let source = relevant.iter().map(|entry| entry.version.source).max();
 		let changes = collect_flow_changes(
 			&self.engine,
 			&relevant,
@@ -177,6 +184,7 @@ impl SliceComputer {
 			{
 				return Ok(SliceStep::Skip {
 					advance_to,
+					lsn,
 					more,
 					holds: cache.holds.clone(),
 				});
@@ -184,7 +192,10 @@ impl SliceComputer {
 			let step = self.skip_or_checkpoint(
 				flow_engine,
 				cursor.flow_id,
-				advance_to,
+				FlowCheckpoint {
+					version: advance_to,
+					lsn,
+				},
 				cursor.durable_cursor,
 				more,
 				config,
@@ -209,25 +220,30 @@ impl SliceComputer {
 		if !produced_output(&combined, emitted) && !checkpoint_due(advance_to, cursor.durable_cursor, config) {
 			return Ok(SliceStep::Skip {
 				advance_to,
+				lsn,
 				more,
 				holds,
 			});
 		}
 
+		let checkpoint = FlowCheckpoint {
+			version: advance_to,
+			lsn,
+		};
 		Ok(SliceStep::Commit {
 			slice: FlowSlice {
 				combined,
 				checkpoints: self
 					.unit_ids(cursor.flow_id)
 					.into_iter()
-					.map(|flow| (flow, advance_to))
+					.map(|flow| (flow, checkpoint))
 					.collect(),
 				checkpoint_deletes: Vec::new(),
 				emitted,
-				control_cursor: None,
 				source,
 			},
 			advance_to,
+			lsn,
 			more,
 			holds,
 		})
@@ -237,25 +253,29 @@ impl SliceComputer {
 		&self,
 		flow_engine: &mut FlowEngineInner,
 		flow_id: FlowId,
-		advance_to: CommitVersion,
+		checkpoint: FlowCheckpoint,
 		durable_cursor: CommitVersion,
 		more: bool,
 		config: &SliceConfig,
 	) -> Result<SliceStep> {
+		let advance_to = checkpoint.version;
+		let lsn = checkpoint.lsn;
 		let (holds, folded) = self.resolved_holds(flow_engine, flow_id, advance_to)?;
 		if folded.is_empty() && !checkpoint_due(advance_to, durable_cursor, config) {
 			return Ok(SliceStep::Skip {
 				advance_to,
+				lsn,
 				more,
 				holds,
 			});
 		}
 		let mut slice = FlowSlice::empty();
 		slice.combined = folded;
-		slice.checkpoints.extend(self.unit_ids(flow_id).into_iter().map(|flow| (flow, advance_to)));
+		slice.checkpoints.extend(self.unit_ids(flow_id).into_iter().map(|flow| (flow, checkpoint)));
 		Ok(SliceStep::Commit {
 			slice,
 			advance_to,
+			lsn,
 			more,
 			holds,
 		})
@@ -465,6 +485,24 @@ fn checkpoint_due(advance_to: CommitVersion, durable_cursor: CommitVersion, conf
 	advance_to.0.saturating_sub(durable_cursor.0) > config.checkpoint_lag
 }
 
+pub(crate) fn lsn_through(
+	entries: &[Arc<CommitEntry>],
+	through: CommitVersion,
+	floor: Lsn,
+	frontier: (CommitVersion, Lsn),
+) -> Lsn {
+	let lsn = entries
+		.iter()
+		.filter(|entry| entry.version.commit <= through)
+		.map(|entry| entry.lsn)
+		.fold(floor, Lsn::max);
+	if through >= frontier.0 {
+		lsn.max(frontier.1)
+	} else {
+		lsn
+	}
+}
+
 pub(crate) fn cuts_per_source(has_readers: bool, source_objects: &BTreeSet<ObjectId>) -> bool {
 	has_readers || source_objects.len() > 1
 }
@@ -473,13 +511,13 @@ pub(crate) fn accepts(object: ObjectId, source_objects: &BTreeSet<ObjectId>) -> 
 	object == COMPLETENESS_OBJECT || source_objects.contains(&object)
 }
 
-fn is_relevant(cdc: &Cdc, source_objects: &BTreeSet<ObjectId>) -> bool {
-	changed_objects(cdc).iter().any(|object| accepts(*object, source_objects))
+fn is_relevant(entry: &CommitEntry, source_objects: &BTreeSet<ObjectId>) -> bool {
+	entry_changed_objects(entry).iter().any(|object| accepts(*object, source_objects))
 }
 
 pub(crate) fn collect_flow_changes(
 	engine: &StandardEngine,
-	relevant: &[&Cdc],
+	relevant: &[&CommitEntry],
 	source_objects: &BTreeSet<ObjectId>,
 	completeness_objects: Option<&BTreeSet<u64>>,
 ) -> Result<Vec<Change>> {
@@ -492,8 +530,8 @@ pub(crate) fn collect_flow_changes(
 	let mut txn = Transaction::Query(&mut query);
 
 	let mut out = Vec::new();
-	for cdc in relevant {
-		let lifted = lift_selected_changes(cdc, &catalog, &mut txn, |object| accepts(object, source_objects))?;
+	for entry in relevant {
+		let lifted = lift_entry_changes(entry, &catalog, &mut txn, |object| accepts(object, source_objects))?;
 		out.extend(retain_relevant(lifted, source_objects, completeness_objects));
 	}
 	Ok(out)
@@ -724,11 +762,12 @@ mod tests {
 
 #[cfg(test)]
 mod integration {
-	use std::{collections::HashSet, ops::Bound, slice::from_ref, sync::mpsc, thread::sleep};
+	use std::{collections::HashSet, slice::from_ref, sync::mpsc, thread::sleep};
 
 	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_core::{
 		actors::pending::PendingWrite,
+		commit::queue::{CommitPull, CommitQueue},
 		common::TimeDomain,
 		durability::Durability,
 		flow::{
@@ -741,6 +780,7 @@ mod integration {
 				id::{SeriesId, TableId, ViewId},
 			},
 			change::Diff,
+			commit::FlowWal,
 		},
 		key::tag::KeyTag,
 	};
@@ -755,13 +795,13 @@ mod integration {
 		},
 	};
 	use reifydb_runtime::context::RuntimeContext;
-	use reifydb_store_cdc::storage::CdcStorage;
 	use reifydb_test_harness::engine::TestEngine;
 	use reifydb_transaction::{
 		commit::{CommitBegin, CommitHandle},
 		transaction::Transaction,
 	};
 	use reifydb_value::{
+		byte_size::ByteSize,
 		factory::time::at_millis,
 		value::{duration::Duration, identity::IdentityId},
 	};
@@ -807,6 +847,21 @@ mod integration {
 			.expect("commit slice")
 	}
 
+	fn commit_queue(engine: &StandardEngine) -> CommitQueue {
+		engine.ioc().resolve::<CommitQueue>().expect("test harness must register the commit queue")
+	}
+
+	fn checkpoint_at(version: u64) -> FlowCheckpoint {
+		FlowCheckpoint {
+			version: CommitVersion(version),
+			lsn: Lsn::new(version + 1_000),
+		}
+	}
+
+	fn checkpoint_versions(slice: &FlowSlice) -> Vec<(FlowId, CommitVersion)> {
+		slice.checkpoints.iter().map(|(flow, checkpoint)| (*flow, checkpoint.version)).collect()
+	}
+
 	fn view_row_count(te: &TestEngine, rql: &str) -> usize {
 		te.query(rql).first().map(|f| f.row_count()).unwrap_or(0)
 	}
@@ -820,20 +875,33 @@ mod integration {
 		config: &SliceConfig,
 	) -> Option<SliceStep> {
 		// The actor's drain path in miniature; None stands in for its "nothing to do" return.
-		let safe = engine.cdc_producer_watermark().min(engine.done_until());
+		let safe = commit_queue(engine).released_through().min(engine.done_until());
 		if safe <= cursor.cursor {
 			return None;
 		}
-		let batch = engine
-			.cdc_store()
-			.read_range(Bound::Excluded(cursor.cursor), Bound::Included(safe), 1000)
-			.expect("read cdc range");
-		let more = batch.has_more;
-		let items: Vec<Arc<Cdc>> = batch.items.into_iter().map(Arc::new).collect();
-		let advance_to = if more {
-			items.last().expect("has_more implies items").version.commit
-		} else {
-			safe
+		let CommitPull::Hit {
+			entries: items,
+			advance_to,
+			more,
+		} = (match commit_queue(engine).pull(cursor.cursor, safe, ByteSize::from_bytes(u64::MAX)) {
+			CommitPull::Behind => {
+				let loaded = engine
+					.ioc()
+					.resolve::<FlowWal>()
+					.expect("test harness must register the flow wal")
+					.log
+					.read((cursor.cursor, Lsn::new(0)), safe, ByteSize::from_bytes(u64::MAX))
+					.expect("the commit log reads the range below the queue");
+				CommitPull::Hit {
+					entries: loaded.entries,
+					advance_to: loaded.advance_to,
+					more: loaded.more,
+				}
+			}
+			hit => hit,
+		})
+		else {
+			unreachable!("a behind pull is loaded from the commit log above");
 		};
 		Some(computer
 			.compute_pulled(flow_engine, &items, cursor, advance_to, more, config, &mut None)
@@ -939,7 +1007,7 @@ mod integration {
 			.skip_or_checkpoint(
 				&mut flow_engine,
 				FlowId(7),
-				CommitVersion(25),
+				checkpoint_at(25),
 				CommitVersion(15),
 				false,
 				&config,
@@ -950,6 +1018,7 @@ mod integration {
 				advance_to,
 				more,
 				holds: _,
+				..
 			} => {
 				assert_eq!(advance_to, CommitVersion(25));
 				assert!(!more);
@@ -961,7 +1030,7 @@ mod integration {
 			.skip_or_checkpoint(
 				&mut flow_engine,
 				FlowId(7),
-				CommitVersion(26),
+				checkpoint_at(26),
 				CommitVersion(15),
 				true,
 				&config,
@@ -973,10 +1042,11 @@ mod integration {
 				advance_to,
 				more,
 				holds: _,
+				..
 			} => {
 				assert_eq!(advance_to, CommitVersion(26));
 				assert!(more);
-				assert_eq!(slice.checkpoints, vec![(FlowId(7), CommitVersion(26))]);
+				assert_eq!(slice.checkpoints, vec![(FlowId(7), checkpoint_at(26))]);
 				assert!(
 					slice.combined.iter_sorted().next().is_none(),
 					"a checkpoint-only slice must carry no data writes"
@@ -989,7 +1059,7 @@ mod integration {
 
 	#[test]
 	fn deferred_view_materializes_through_slice_step() {
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
@@ -1040,6 +1110,8 @@ mod integration {
 					source_objects: &source_objects,
 					completeness_objects: None,
 					cursor,
+					lsn: Lsn::new(0),
+					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: durable,
 					has_readers: true,
 				},
@@ -1083,7 +1155,7 @@ mod integration {
 	fn pinned_slice_reads_prior_commit_from_the_store() {
 		// Output rows commit above the version pinning the next slice, so a store read that misses them loses
 		// the flow's own rows.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
@@ -1131,6 +1203,8 @@ mod integration {
 					source_objects: &source_objects,
 					completeness_objects: None,
 					cursor,
+					lsn: Lsn::new(0),
+					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: cursor,
 					has_readers: true,
 				},
@@ -1198,7 +1272,7 @@ mod integration {
 	fn a_flow_never_commits_a_key_it_would_later_read_through_the_pinned_query() {
 		// A Query-routed write is read back through the query pinned at the cursor, which never sees the flow's
 		// own later commit.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, g: int4, ts: datetime } with { time: event(ts) }");
 		te.admin("CREATE DEFERRED VIEW app::v { g: int4, total: int8 } \
@@ -1254,6 +1328,8 @@ mod integration {
 					source_objects: &source_objects,
 					completeness_objects: None,
 					cursor,
+					lsn: Lsn::new(0),
+					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: durable,
 					has_readers: true,
 				},
@@ -1335,7 +1411,7 @@ mod integration {
 	#[test]
 	fn a_step_whose_operators_emit_nothing_skips_the_commit_until_the_checkpoint_is_due() {
 		// A no-output step must skip its commit, yet past the checkpoint lag it must persist one or CDC stalls.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin(
@@ -1387,6 +1463,8 @@ mod integration {
 					source_objects: &source_objects,
 					completeness_objects: None,
 					cursor,
+					lsn: Lsn::new(0),
+					frontier: (CommitVersion(0), Lsn::new(0)),
 					durable_cursor: CommitVersion(0),
 					has_readers: true,
 				},
@@ -1422,6 +1500,8 @@ mod integration {
 				source_objects: &source_objects,
 				completeness_objects: None,
 				cursor: CommitVersion(0),
+				lsn: Lsn::new(0),
+				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
 				has_readers: true,
 			},
@@ -1432,7 +1512,7 @@ mod integration {
 				advance_to,
 				..
 			}) => {
-				assert_eq!(slice.checkpoints, vec![(flow_id, advance_to)]);
+				assert_eq!(checkpoint_versions(&slice), vec![(flow_id, advance_to)]);
 				assert!(slice.combined.is_empty(), "the filtered step must carry only its checkpoint");
 			}
 			Some(SliceStep::Skip {
@@ -1482,7 +1562,7 @@ mod integration {
 		te.command("INSERT app::t [{id: 3, val: 30}]");
 		let inserted = te.inner().current_version().expect("current version");
 		for _ in 0..400 {
-			let safe = te.inner().cdc_producer_watermark().min(te.inner().done_until());
+			let safe = commit_queue(te.inner()).released_through().min(te.inner().done_until());
 			if safe >= inserted {
 				return inserted;
 			}
@@ -1495,7 +1575,7 @@ mod integration {
 	fn a_flow_with_readers_takes_one_source_version_per_step() {
 		// A reader merges its producers by source version, so a step that spans two of them would let one
 		// producer run ahead of the other inside a single commit and reorder what the reader sees.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		three_separate_inserts(&te);
 		let engine = te.inner().clone();
 		let (flow_id, mut flow_engine, source_objects) = one_view_flow(&te);
@@ -1515,6 +1595,8 @@ mod integration {
 				source_objects: &source_objects,
 				completeness_objects: None,
 				cursor: CommitVersion(0),
+				lsn: Lsn::new(0),
+				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
 				has_readers: true,
 			},
@@ -1547,7 +1629,7 @@ mod integration {
 	fn a_flow_with_no_readers_folds_every_pending_source_version_into_one_step() {
 		// Nothing reads this flow's output by source version, so a flow that fell behind must catch up in
 		// one step; cutting per source version caps it at one commit per source version forever.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		let inserted = three_separate_inserts(&te);
 		let engine = te.inner().clone();
 		let (flow_id, mut flow_engine, source_objects) = one_view_flow(&te);
@@ -1567,6 +1649,8 @@ mod integration {
 				source_objects: &source_objects,
 				completeness_objects: None,
 				cursor: CommitVersion(0),
+				lsn: Lsn::new(0),
+				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
 				has_readers: false,
 			},
@@ -1604,7 +1688,7 @@ mod integration {
 	fn a_flow_with_no_readers_that_merges_two_sources_still_takes_one_source_version_per_step() {
 		// A flow that merges two inputs pairs them by source version inside its own join, so folding would let
 		// one input run ahead of the other within a step even though nothing downstream reads this flow.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		three_separate_inserts(&te);
 		let engine = te.inner().clone();
 		let (flow_id, mut flow_engine, source_objects) = one_view_flow(&te);
@@ -1630,6 +1714,8 @@ mod integration {
 				source_objects: &merging,
 				completeness_objects: None,
 				cursor: CommitVersion(0),
+				lsn: Lsn::new(0),
+				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
 				has_readers: false,
 			},
@@ -1668,7 +1754,7 @@ mod integration {
 		let written = engine.current_version().expect("current version");
 		let mut caught_up = false;
 		for _ in 0..400 {
-			if engine.cdc_producer_watermark().min(engine.done_until()) >= written {
+			if commit_queue(&engine).released_through().min(engine.done_until()) >= written {
 				caught_up = true;
 				break;
 			}
@@ -1686,6 +1772,8 @@ mod integration {
 				source_objects: &source_objects,
 				completeness_objects: None,
 				cursor: CommitVersion(0),
+				lsn: Lsn::new(0),
+				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(0),
 				has_readers: false,
 			},
@@ -1700,7 +1788,7 @@ mod integration {
 	fn a_step_that_writes_view_rows_commits_and_advances_the_output_frontier() {
 		// Readers of the view wait on the output frontier; a commit of view rows that does not move it leaves
 		// them waiting for rows that are already stored.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin("CREATE DEFERRED VIEW app::v { id: int4, val: int4 } AS { FROM app::t MAP { id, val } }");
@@ -1725,7 +1813,7 @@ mod integration {
 	fn a_step_that_writes_only_operator_state_still_commits() {
 		// State an operator wrote is what its next step reads; skipping the commit because nothing reached the
 		// view loses that state, and the next step computes from what was there before.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, g: int4 }");
 		te.admin(
@@ -1751,7 +1839,7 @@ mod integration {
 	fn a_ringbuffer_step_whose_capacity_skips_rows_commits_only_the_rows_that_fit() {
 		// Rows that never fit are announced but never written; the step must still commit the rows that do
 		// fit, and none of the skipped ones may reach the view.
-		let te = TestEngine::builder().with_cdc().build();
+		let te = TestEngine::builder().with_cdc().with_wal(|wal| wal.enabled(true)).build();
 		te.admin("CREATE NAMESPACE app");
 		te.admin("CREATE TABLE app::t { id: int4, val: int4 }");
 		te.admin(
@@ -1787,23 +1875,24 @@ mod integration {
 		te.command("INSERT app::t [{id: 1, val: 10}]; INSERT app::u [{id: 2, label: 'b'}]");
 		let inserted = te.inner().current_version().expect("current version");
 		for _ in 0..400 {
-			if te.inner().cdc_producer_watermark().min(te.inner().done_until()) >= inserted {
+			if commit_queue(te.inner()).released_through().min(te.inner().done_until()) >= inserted {
 				break;
 			}
 			sleep(Duration::from_milliseconds_const(5).to_std());
 		}
 		let engine = te.inner().clone();
-		let batch = engine
-			.cdc_store()
-			.read_range(Bound::Excluded(before), Bound::Included(inserted), 1000)
-			.expect("read cdc range");
-		let commit = batch
-			.items
+		let CommitPull::Hit {
+			entries,
+			..
+		} = commit_queue(&engine).pull(before, inserted, ByteSize::from_bytes(u64::MAX))
+		else {
+			panic!("the commit queue must still hold the commits after {before:?}");
+		};
+		let commit = entries
 			.into_iter()
-			.find(|cdc| changed_objects(cdc).len() == 2)
-			.map(Arc::new)
+			.find(|entry| entry_changed_objects(entry).len() == 2)
 			.expect("one commit writes both tables");
-		let objects: Vec<ObjectId> = changed_objects(&commit).iter().copied().collect();
+		let objects: Vec<ObjectId> = entry_changed_objects(&commit).iter().copied().collect();
 		let (t, u) = (objects[0], objects[1]);
 
 		let first = collect_flow_changes(&engine, &[&*commit], &BTreeSet::from([t]), None)
@@ -1877,6 +1966,8 @@ mod integration {
 				source_objects: &sources,
 				completeness_objects: None,
 				cursor: from,
+				lsn: Lsn::new(0),
+				frontier: (CommitVersion(0), Lsn::new(0)),
 				durable_cursor: CommitVersion(4),
 				has_readers: false,
 			},
@@ -1973,7 +2064,7 @@ mod integration {
 			SliceStep::Commit {
 				slice,
 				..
-			} => assert_eq!(slice.checkpoints, vec![(flow, CommitVersion(20))]),
+			} => assert_eq!(checkpoint_versions(&slice), vec![(flow, CommitVersion(20))]),
 			SliceStep::Skip {
 				..
 			} => panic!("the cached hold check skipped a checkpoint past the lag"),

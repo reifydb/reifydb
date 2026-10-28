@@ -87,6 +87,7 @@ pub enum ConfigKey {
 	FlowActorBatchSize,
 	FlowCommitterShards,
 	FlowBacklogBytes,
+	CommitQueueBytes,
 	FlowPullBatchBytes,
 	FlowLoadBatchBytes,
 	CdcConsumeWaitTimeout,
@@ -151,6 +152,7 @@ impl ConfigKey {
 			Self::FlowActorBatchSize,
 			Self::FlowCommitterShards,
 			Self::FlowBacklogBytes,
+			Self::CommitQueueBytes,
 			Self::FlowPullBatchBytes,
 			Self::FlowLoadBatchBytes,
 			Self::CdcConsumeWaitTimeout,
@@ -241,6 +243,7 @@ impl ConfigKey {
 			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE),
 			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS),
 			Self::FlowBacklogBytes => Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT.as_bytes()),
+			Self::CommitQueueBytes => Value::Uint8(default::commit::QUEUE_MEMORY_LIMIT.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH.as_bytes()),
 			Self::CdcConsumeWaitTimeout => Value::Duration(default::cdc::CONSUME_WAIT_TIMEOUT),
@@ -331,6 +334,7 @@ impl ConfigKey {
 			Self::FlowActorBatchSize => Value::Uint2(default::flow::ACTOR_BATCH_SIZE_TESTING),
 			Self::FlowCommitterShards => Value::Uint2(default::flow::COMMITTER_SHARDS_TESTING),
 			Self::FlowBacklogBytes => Value::Uint8(default::flow::BACKLOG_MEMORY_LIMIT_TESTING.as_bytes()),
+			Self::CommitQueueBytes => Value::Uint8(default::commit::QUEUE_MEMORY_LIMIT_TESTING.as_bytes()),
 			Self::FlowPullBatchBytes => Value::Uint8(default::flow::PULL_BATCH_TESTING.as_bytes()),
 			Self::FlowLoadBatchBytes => Value::Uint8(default::flow::LOAD_BATCH_TESTING.as_bytes()),
 			Self::CdcConsumeWaitTimeout => Value::Duration(default::cdc::CONSUME_WAIT_TIMEOUT_TESTING),
@@ -553,6 +557,13 @@ impl ConfigKey {
 				 at which point a flow that far behind reloads from disk through the catch-up loader. \
 				 Because payload rows are shared, the tally is an upper bound of unique memory."
 			}
+			Self::CommitQueueBytes => {
+				"Byte ceiling of the in-memory queue of released commits that feeds flow readers. With the \
+				 commit log on, the oldest commits are evicted once the ceiling is exceeded and a reader that \
+				 far behind reads them back from the commit log. With the commit log off, nothing above the \
+				 slowest reader is evicted, so the ceiling is soft. Read once at boot; changing it requires a \
+				 restart."
+			}
 			Self::FlowPullBatchBytes => {
 				"Byte budget a flow actor applies per pull from the CDC backlog. A flow that has fallen \
 				 behind receives up to this many bytes of decoded changes in one slice, so catch-up is \
@@ -681,6 +692,7 @@ impl ConfigKey {
 			Self::FlowActorBatchSize => true,
 			Self::FlowCommitterShards => true,
 			Self::FlowBacklogBytes => true,
+			Self::CommitQueueBytes => true,
 			Self::FlowPullBatchBytes => true,
 			Self::FlowLoadBatchBytes => true,
 			Self::CdcConsumeWaitTimeout => false,
@@ -745,6 +757,7 @@ impl ConfigKey {
 			Self::FlowActorBatchSize => &[ValueType::Uint2],
 			Self::FlowCommitterShards => &[ValueType::Uint2],
 			Self::FlowBacklogBytes => &[ValueType::Uint8],
+			Self::CommitQueueBytes => &[ValueType::Uint8],
 			Self::FlowPullBatchBytes => &[ValueType::Uint8],
 			Self::FlowLoadBatchBytes => &[ValueType::Uint8],
 			Self::CdcConsumeWaitTimeout => &[ValueType::Duration],
@@ -809,6 +822,7 @@ impl ConfigKey {
 			Self::FlowActorBatchSize => false,
 			Self::FlowCommitterShards => false,
 			Self::FlowBacklogBytes => false,
+			Self::CommitQueueBytes => false,
 			Self::FlowPullBatchBytes => false,
 			Self::FlowLoadBatchBytes => false,
 			Self::CdcConsumeWaitTimeout => false,
@@ -882,6 +896,12 @@ impl ConfigKey {
 			Self::FlowBacklogBytes => match value {
 				Value::Uint8(0) => {
 					Err("FLOW_BACKLOG_BYTES must be greater than zero".to_string())
+				}
+				_ => Ok(()),
+			},
+			Self::CommitQueueBytes => match value {
+				Value::Uint8(0) => {
+					Err("COMMIT_QUEUE_BYTES must be greater than zero".to_string())
 				}
 				_ => Ok(()),
 			},
@@ -1200,6 +1220,7 @@ impl fmt::Display for ConfigKey {
 			Self::FlowActorBatchSize => write!(f, "FLOW_ACTOR_BATCH_SIZE"),
 			Self::FlowCommitterShards => write!(f, "FLOW_COMMITTER_SHARDS"),
 			Self::FlowBacklogBytes => write!(f, "FLOW_BACKLOG_BYTES"),
+			Self::CommitQueueBytes => write!(f, "COMMIT_QUEUE_BYTES"),
 			Self::FlowPullBatchBytes => write!(f, "FLOW_PULL_BATCH_BYTES"),
 			Self::FlowLoadBatchBytes => write!(f, "FLOW_LOAD_BATCH_BYTES"),
 			Self::CdcConsumeWaitTimeout => write!(f, "CDC_CONSUME_WAIT_TIMEOUT"),
@@ -1268,6 +1289,7 @@ impl FromStr for ConfigKey {
 			"FLOW_ACTOR_BATCH_SIZE" => Ok(Self::FlowActorBatchSize),
 			"FLOW_COMMITTER_SHARDS" => Ok(Self::FlowCommitterShards),
 			"FLOW_BACKLOG_BYTES" => Ok(Self::FlowBacklogBytes),
+			"COMMIT_QUEUE_BYTES" => Ok(Self::CommitQueueBytes),
 			"FLOW_PULL_BATCH_BYTES" => Ok(Self::FlowPullBatchBytes),
 			"FLOW_LOAD_BATCH_BYTES" => Ok(Self::FlowLoadBatchBytes),
 			"CDC_CONSUME_WAIT_TIMEOUT" => Ok(Self::CdcConsumeWaitTimeout),
@@ -1459,7 +1481,7 @@ mod tests {
 	#[test]
 	fn test_all_contains_every_compact_key_and_has_expected_len() {
 		let all = ConfigKey::all();
-		assert_eq!(all.len(), 59);
+		assert_eq!(all.len(), 60);
 		assert!(all.contains(&ConfigKey::QueryBytes));
 		assert!(all.contains(&ConfigKey::RetentionEvictInterval));
 		assert!(all.contains(&ConfigKey::RetentionEvictBatchSize));
@@ -1488,6 +1510,7 @@ mod tests {
 		assert!(all.contains(&ConfigKey::MultiPointBufferShards));
 		assert!(all.contains(&ConfigKey::MultiRangeBufferShards));
 		assert!(all.contains(&ConfigKey::FlowBacklogBytes));
+		assert!(all.contains(&ConfigKey::CommitQueueBytes));
 		assert!(all.contains(&ConfigKey::FlowPullBatchBytes));
 		assert!(all.contains(&ConfigKey::FlowLoadBatchBytes));
 		assert!(all.contains(&ConfigKey::QueryRowBatchSize));

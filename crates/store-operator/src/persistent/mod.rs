@@ -15,7 +15,10 @@ use reifydb_codec::key::encoded::EncodedKey;
 use reifydb_codec::{key::encoded::EncodedKeyRange, row::pod::EncodedPodRow};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::catalog::flow::{FlowId, OperatorId},
+	interface::{
+		catalog::flow::{FlowId, OperatorId},
+		operator::FlowCheckpoint,
+	},
 	key::operator::state::{GroupId, GroupStateKey, KeyspaceId, KeyspaceMask},
 	metrics::collect::MetricsCollector,
 };
@@ -190,13 +193,15 @@ pub trait Enumerate: Persistent {
 }
 
 pub trait Checkpoint: Persistent {
-	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<CommitVersion>>;
+	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>>;
 
-	fn checkpoint_set(&self, flow: FlowId, version: CommitVersion) -> Result<()>;
+	fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<()>;
 
 	fn checkpoint_remove(&self, flow: FlowId) -> Result<()>;
 
 	fn checkpoint_floor(&self) -> Result<Option<CommitVersion>>;
+
+	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>>;
 
 	fn checkpoint_list(&self) -> Result<Vec<FlowId>>;
 }
@@ -364,7 +369,7 @@ impl Enumerate for PersistentTier {
 }
 
 impl Checkpoint for PersistentTier {
-	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<CommitVersion>> {
+	fn checkpoint_get(&self, flow: FlowId) -> Result<Option<FlowCheckpoint>> {
 		match self {
 			Self::Absent => Ok(None),
 			Self::Memory(memory) => Checkpoint::checkpoint_get(memory, flow),
@@ -374,15 +379,15 @@ impl Checkpoint for PersistentTier {
 		}
 	}
 
-	fn checkpoint_set(&self, flow: FlowId, version: CommitVersion) -> Result<()> {
+	fn checkpoint_set(&self, flow: FlowId, checkpoint: FlowCheckpoint) -> Result<()> {
 		match self {
 			Self::Absent => Ok(()),
-			Self::Memory(memory) => Checkpoint::checkpoint_set(memory, flow, version),
-			Self::Testing(testing) => Checkpoint::checkpoint_set(testing, flow, version),
+			Self::Memory(memory) => Checkpoint::checkpoint_set(memory, flow, checkpoint),
+			Self::Testing(testing) => Checkpoint::checkpoint_set(testing, flow, checkpoint),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(storage) => {
 				let mut batch = FlushBatch::default();
-				batch.checkpoints.insert(flow, Some(version));
+				batch.checkpoints.insert(flow, Some(checkpoint));
 				storage.flush_batch(&batch);
 				Ok(())
 			}
@@ -411,6 +416,16 @@ impl Checkpoint for PersistentTier {
 			Self::Testing(testing) => Checkpoint::checkpoint_floor(testing),
 			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
 			Self::Sqlite(storage) => storage.checkpoint_floor(),
+		}
+	}
+
+	fn checkpoint_lsn_floor(&self) -> Result<Option<Lsn>> {
+		match self {
+			Self::Absent => Ok(None),
+			Self::Memory(memory) => Checkpoint::checkpoint_lsn_floor(memory),
+			Self::Testing(testing) => Checkpoint::checkpoint_lsn_floor(testing),
+			#[cfg(all(feature = "sqlite", not(target_arch = "wasm32")))]
+			Self::Sqlite(storage) => storage.checkpoint_lsn_floor(),
 		}
 	}
 

@@ -12,9 +12,9 @@ fn floor(store: &OperatorStore) -> Option<CommitVersion> {
 }
 
 fn durable_and_buffered(store: &StandardOperatorStore, durable: u64, buffered: u64) {
-	store.checkpoint_set(FLOW_A, CommitVersion(durable)).unwrap();
+	store.checkpoint_set(FLOW_A, checkpoint_at(durable)).unwrap();
 	flush(store);
-	store.checkpoint_set(FLOW_B, CommitVersion(buffered)).unwrap();
+	store.checkpoint_set(FLOW_B, checkpoint_at(buffered)).unwrap();
 	assert_eq!(
 		store.resident.checkpoint_floor(),
 		Some(CommitVersion(buffered)),
@@ -128,13 +128,13 @@ fn a_pin_taken_through_one_handle_holds_the_floor_read_through_another() {
 fn a_pin_released_mid_merge_right_after_its_checkpoint_is_buffered_still_holds_that_merge() {
 	// Pins read after the tiers miss both the released pin and a checkpoint buffered after the buffer read.
 	let (standard, _guard) = store_fixture();
-	standard.checkpoint_set(FLOW_B, CommitVersion(100)).unwrap();
+	standard.checkpoint_set(FLOW_B, checkpoint_at(100)).unwrap();
 	flush(&standard);
 	let store = OperatorStore::Standard(standard.clone());
 	let pin = Mutex::new(Some(store.checkpoint_pin(CommitVersion(50))));
 	standard.attach_checkpoint_interlock(Box::new(move |store| {
 		if let Some(pin) = pin.lock().take() {
-			store.checkpoint_set(FLOW_A, CommitVersion(50)).unwrap();
+			store.checkpoint_set(FLOW_A, checkpoint_at(50)).unwrap();
 			drop(pin);
 		}
 	}));
@@ -149,4 +149,11 @@ fn a_pin_released_mid_merge_right_after_its_checkpoint_is_buffered_still_holds_t
 		Some(CommitVersion(50)),
 		"once the pin is gone the buffered checkpoint must hold the floor at 50"
 	);
+}
+
+fn checkpoint_at(version: u64) -> reifydb_core::interface::operator::FlowCheckpoint {
+	reifydb_core::interface::operator::FlowCheckpoint {
+		version: reifydb_core::common::CommitVersion(version),
+		lsn: reifydb_wal::lsn::Lsn::new(version + 1_000),
+	}
 }

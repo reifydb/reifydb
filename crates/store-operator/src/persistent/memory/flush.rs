@@ -42,9 +42,9 @@ impl Apply for MemoryPersistent {
 			}
 			applied.rows += 1;
 		}
-		for (flow, version) in &batch.checkpoints {
-			match version {
-				Some(version) => checkpoints.insert(*flow, *version),
+		for (flow, checkpoint) in &batch.checkpoints {
+			match checkpoint {
+				Some(checkpoint) => checkpoints.insert(*flow, *checkpoint),
 				None => checkpoints.remove(flow),
 			};
 		}

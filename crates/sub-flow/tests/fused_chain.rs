@@ -90,7 +90,11 @@ fn table_object(db: &TestDb, name: &str) -> ObjectId {
 
 fn checkpoint(db: &TestDb, view: &str) -> Option<CommitVersion> {
 	let flow = FlowId(catalog_id(db, "flows", view));
-	db.engine().operator_state().checkpoint_get(flow).expect("the checkpoint lookup")
+	db.engine()
+		.operator_state()
+		.checkpoint_get(flow)
+		.expect("the checkpoint lookup")
+		.map(|checkpoint| checkpoint.version)
 }
 
 fn commits(db: &TestDb, object: ObjectId) -> Vec<CommitVersion> {
@@ -651,7 +655,10 @@ fn a_chain_built_unfused_fuses_on_the_next_restart() {
 		for member in ["b", "c"] {
 			let flow = FlowId(catalog_id(&db, "flows", member));
 			let at = checkpoint(&db, member).map_or(raised, |at| at.max(raised));
-			db.engine().operator_state().checkpoint_set(flow, at).expect("raise the checkpoint");
+			db.engine()
+				.operator_state()
+				.checkpoint_set(flow, checkpoint_at(at.0))
+				.expect("raise the checkpoint");
 		}
 		stop_without_flow(&mut db);
 	}
@@ -709,4 +716,11 @@ fn a_member_behind_its_head_restarts_unfused_and_catches_up() {
 	settle(&db);
 	await_groups(&db, "fu::b", &[(1, 1, 20), (2, 2, 70)], "after a write that follows the catch-up");
 	db.stop();
+}
+
+fn checkpoint_at(version: u64) -> reifydb_core::interface::operator::FlowCheckpoint {
+	reifydb_core::interface::operator::FlowCheckpoint {
+		version: CommitVersion(version),
+		lsn: reifydb_wal::lsn::Lsn::new(version + 1_000),
+	}
 }

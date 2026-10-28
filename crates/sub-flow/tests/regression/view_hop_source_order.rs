@@ -40,6 +40,7 @@ fn sqlite_db(config: &SqliteConfig) -> TestDb {
 	TestDb::from(
 		embedded::sqlite(config.clone())
 			.with_runtime_config(disarmed())
+			.with_wal(|wal| wal.enabled(true))
 			.with_flow(|f| f)
 			.build()
 			.expect("build sqlite db with flow"),
@@ -50,6 +51,7 @@ fn sqlite_db_without_flow(config: &SqliteConfig) -> TestDb {
 	TestDb::from(
 		embedded::sqlite(config.clone())
 			.with_runtime_config(disarmed())
+			.with_wal(|wal| wal.enabled(true))
 			.build()
 			.expect("build sqlite db without flow"),
 	)

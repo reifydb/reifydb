@@ -5,10 +5,9 @@ use std::collections::BTreeMap;
 
 use reifydb_codec::row::pod::EncodedPodRow;
 use reifydb_core::{
-	common::CommitVersion,
 	interface::{
 		catalog::flow::{FlowId, OperatorId},
-		operator::{OperatorSlice, OperatorStateWrite},
+		operator::{FlowCheckpoint, OperatorSlice, OperatorStateWrite},
 	},
 	key::operator::state::{GroupStateKey, KeyspaceId},
 };
@@ -144,7 +143,7 @@ pub enum DropMarker {
 #[derive(Default)]
 pub struct FlushBatch {
 	pub writes: Vec<(OperatorId, GroupStateKey, StagedWrite)>,
-	pub checkpoints: BTreeMap<FlowId, Option<CommitVersion>>,
+	pub checkpoints: BTreeMap<FlowId, Option<FlowCheckpoint>>,
 	pub drops: Vec<DropMarker>,
 	pub bytes: ByteSize,
 	pub through: Option<Lsn>,

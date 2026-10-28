@@ -167,6 +167,13 @@ pub mod flow {
 	pub const JOIN_PROBE_BLOCK_SIZE_TESTING: u64 = 16;
 }
 
+pub mod commit {
+	use reifydb_value::byte_size::ByteSize;
+
+	pub const QUEUE_MEMORY_LIMIT: ByteSize = ByteSize::from_mib(64);
+	pub const QUEUE_MEMORY_LIMIT_TESTING: ByteSize = ByteSize::from_kib(64);
+}
+
 pub mod threads {
 	pub const ASYNC: u16 = 1;
 	pub const ASYNC_TESTING: u16 = 1;
