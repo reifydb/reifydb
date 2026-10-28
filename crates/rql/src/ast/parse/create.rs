@@ -62,7 +62,7 @@ const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', or 'on'";
 const RING_EVICTION_REASONS: &str = "'capacity' or 'ttl'";
 const EVICTION_REASONS: &str = "'ttl'";
 const EVICTION_VALUES: &str = "'visible' or 'silent'";
-const SERIES_WITH_KEYS: &str = "'key', 'tag', 'precision', 'partition', 'row', 'time', or 'column'";
+const SERIES_WITH_KEYS: &str = "'key', 'tag', 'precision', 'partition', 'row', 'time', 'eviction', or 'column'";
 
 fn unexpected_option(token: &Token<'_>, expected: &str) -> Error {
 	Error::from(TypeError::Ast {
@@ -127,16 +127,6 @@ fn duplicate_eviction_reason(token: &Token<'_>) -> Error {
 			token.fragment.text(),
 			token.fragment.text()
 		),
-		fragment: token.fragment.to_owned(),
-	})
-}
-
-fn unsupported_eviction_reason(token: &Token<'_>, reasons: &str) -> Error {
-	Error::from(TypeError::Ast {
-		kind: AstErrorKind::UnexpectedToken {
-			expected: reasons.to_string(),
-		},
-		message: format!("eviction reason `{}` is not supported yet", token.fragment.text()),
 		fragment: token.fragment.to_owned(),
 	})
 }
@@ -1168,10 +1158,11 @@ impl<'bump> Parser<'bump> {
 						let fragment = key.fragment.to_owned();
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'row', 'partition', or 'time'".to_string(),
+								expected: "'row', 'partition', 'time', or 'eviction'"
+									.to_string(),
 							},
 							message: format!(
-								"expected 'row', 'partition', or 'time', found `{}`",
+								"expected 'row', 'partition', 'time', or 'eviction', found `{}`",
 								fragment.text()
 							),
 							fragment,
@@ -1242,11 +1233,12 @@ impl<'bump> Parser<'bump> {
 					_ => {
 						return Err(Error::from(TypeError::Ast {
 							kind: AstErrorKind::UnexpectedToken {
-								expected: "'capacity', 'partition', or 'row'"
-									.to_string(),
+								expected:
+									"'capacity', 'eviction', 'partition', or 'row'"
+										.to_string(),
 							},
 							message: format!(
-								"expected 'capacity', 'partition', or 'row', found `{}`",
+								"expected 'capacity', 'eviction', 'partition', or 'row', found `{}`",
 								current.fragment.text()
 							),
 							fragment: current.fragment.to_owned(),
@@ -1294,12 +1286,13 @@ impl<'bump> Parser<'bump> {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'capacity', 'partition', 'row', or 'time'"
-								.to_string(),
+							expected:
+								"'capacity', 'eviction', 'partition', 'row', or 'time'"
+									.to_string(),
 						},
 						message: format!(
 							"Unexpected token: expected {}, got {}",
-							"'capacity', 'partition', 'row', or 'time'",
+							"'capacity', 'eviction', 'partition', 'row', or 'time'",
 							fragment.text()
 						),
 						fragment,
@@ -2544,7 +2537,7 @@ impl<'bump> Parser<'bump> {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'capacity', 'partition', or 'row'"
+									expected: "'capacity', 'eviction', 'partition', or 'row'"
 										.to_string(),
 								},
 								message: format!(
@@ -2637,7 +2630,7 @@ impl<'bump> Parser<'bump> {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
 								kind: AstErrorKind::UnexpectedToken {
-									expected: "'key', 'precision', 'partition', or 'row'"
+									expected: "'key', 'precision', 'partition', 'row', or 'eviction'"
 										.to_string(),
 								},
 								message: format!(
@@ -2700,7 +2693,7 @@ impl<'bump> Parser<'bump> {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
 						kind: AstErrorKind::UnexpectedToken {
-							expected: "'partition' or 'row'".to_string(),
+							expected: "'eviction', 'partition', or 'row'".to_string(),
 						},
 						message: format!("unexpected key '{}' in WITH clause", other),
 						fragment,
@@ -2826,7 +2819,6 @@ impl<'bump> Parser<'bump> {
 					let value = self.parse_eviction_visibility()?;
 					ttl = Some((reason, value));
 				}
-				"consume" => return Err(unsupported_eviction_reason(&reason, reasons)),
 				_ => return Err(unexpected_option(&reason, reasons)),
 			}
 
@@ -4544,7 +4536,9 @@ pub mod tests {
 		// The diagnostic must offer `column`, or the author never learns the option exists.
 		let message = series_error("create series ns::s { ts: int8, v: int8 } with { 1: x }");
 		assert!(
-			message.contains("'key', 'tag', 'precision', 'partition', 'row', 'time', or 'column'"),
+			message.contains(
+				"'key', 'tag', 'precision', 'partition', 'row', 'time', 'eviction', or 'column'"
+			),
 			"{message}"
 		);
 	}
@@ -4823,11 +4817,11 @@ mod eviction_tests {
 	}
 
 	#[test]
-	fn eviction_rejects_consume_as_not_supported_yet() {
-		// Accepting it without effect would promise a policy nothing applies.
+	fn eviction_rejects_consume_as_an_unknown_reason() {
+		// Consume is not a reason, so it must fail like any unknown one, never be accepted without effect.
 		for source in both_ringbuffer_forms("eviction: { consume: silent }") {
 			let message = create_error(&source);
-			assert!(message.contains("eviction reason `consume` is not supported yet"), "{message}");
+			assert!(message.contains("expected 'capacity' or 'ttl', found `consume`"), "{message}");
 		}
 	}
 
@@ -5002,12 +4996,17 @@ mod eviction_tests {
 	}
 
 	#[test]
-	fn eviction_consume_stays_not_supported_on_every_form() {
-		// Accepting it without effect would promise a policy nothing applies.
+	fn eviction_consume_is_an_unknown_reason_on_every_form() {
+		// Consume must fail with exactly the reasons the form offers, never a special not-supported path.
 		for source in every_ttl_form("row: { ttl: 1h }", "eviction: { consume: silent }") {
+			let reasons = if source.contains("ringbuffer") {
+				"'capacity' or 'ttl'"
+			} else {
+				"'ttl'"
+			};
 			let message = create_error(&source);
 			assert!(
-				message.contains("eviction reason `consume` is not supported yet"),
+				message.contains(&format!("expected {reasons}, found `consume`")),
 				"{source}: {message}"
 			);
 		}
@@ -5019,5 +5018,48 @@ mod eviction_tests {
 		let message =
 			create_error("create queue ns::q { a: int4 } with { fifo: {}, eviction: { ttl: visible } }");
 		assert!(message.contains("`eviction`"), "{message}");
+	}
+
+	#[test]
+	fn eviction_is_listed_by_every_unknown_key_error_that_accepts_it() {
+		// A typo of `eviction` must point the author at the key they meant.
+		let cases = [
+			(
+				"create table ns::t { a: int4 } with { evict: x }",
+				"'row', 'partition', 'time', or 'eviction'",
+			),
+			(
+				"create ringbuffer ns::r { a: int4 } with { capacity: 1, evict: x }",
+				"'capacity', 'eviction', 'partition', 'row', or 'time'",
+			),
+			(
+				"create ringbuffer ns::r { a: int4 } with { capacity: 1, 1: x }",
+				"'capacity', 'eviction', 'partition', or 'row'",
+			),
+			(
+				"create deferred ringbuffer view ns::v { a: int4 } with { capacity: 1, evict: x } as { from ns::t }",
+				"'capacity', 'eviction', 'partition', or 'row'",
+			),
+			(
+				"create series ns::s { ts: datetime, a: int4 } with { key: ts, evict: x }",
+				"'key', 'tag', 'precision', 'partition', 'row', 'time', 'eviction', or 'column'",
+			),
+			(
+				"create deferred series view ns::v { ts: datetime, a: int4 } with { key: ts, evict: x } as { from ns::t }",
+				"'key', 'precision', 'partition', 'row', or 'eviction'",
+			),
+			(
+				"create deferred view ns::v { a: int4 } with { evict: x } as { from ns::t }",
+				"'eviction', 'partition', or 'row'",
+			),
+			(
+				"create transactional view ns::v { a: int4 } with { evict: x } as { from ns::t }",
+				"'eviction', 'partition', or 'row'",
+			),
+		];
+		for (source, keys) in cases {
+			let message = create_error(source);
+			assert!(message.contains(keys), "{source}: {message}");
+		}
 	}
 }
