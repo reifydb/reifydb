@@ -189,7 +189,7 @@ impl PauseOnRemove {
 
 impl ColumnHooks for PauseOnRemove {
 	fn on_remove(&self, key: &BlockFileKey) -> RemoveOutcome {
-		self.0.hold(key.dir, key.name);
+		self.0.hold(key.name, key.name);
 		RemoveOutcome::Land
 	}
 }

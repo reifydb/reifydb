@@ -248,9 +248,9 @@ fn a_delete_paused_after_the_catalog_commit_leaves_an_orphan_and_the_latest_read
 	let hook = Arc::new(hook);
 	let db = memory_db(host_store(root.clone(), hook.clone()).expect("store"));
 	create_table(&db);
-	hook.target(table_id(&db));
 	insert_rows(&db, 0..1);
 	let first = await_block(&db, 1);
+	hook.target(first.id.0);
 	insert_rows(&db, 1..2);
 
 	let removing =
