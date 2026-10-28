@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::{
-	common::{ChangeVersion, CommitVersion},
+	common::{ChangeVersion, CommitVersion, WindowSizeDomain},
 	interface::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
@@ -18,7 +18,10 @@ use reifydb_core::{
 use reifydb_flow_async::{
 	operator::{
 		host::TxnHostContext,
-		state::seal::{coord::Coord, domain::SealDomain},
+		state::seal::{
+			coord::{Coord, IsZero},
+			domain::SealDomain,
+		},
 	},
 	transaction::FlowTransaction,
 	window::{
@@ -531,6 +534,13 @@ where
 	let mut spans: HashMap<CarryWindowKey<A>, WindowSpan<CarryCoord<A>>> = HashMap::new();
 	let mut metas: HashMap<CarryGroup<A>, CarryGroupState<CarryCoord<A>, A::Carry>> = HashMap::new();
 	let mut last_visible: HashMap<CarryWindowKey<A>, A::Output> = HashMap::new();
+	let sealed_by_horizon =
+		<A::Coord as SealDomain>::SIZE_DOMAIN == WindowSizeDomain::Time || !settings.lateness.is_zero();
+	let retention = if sealed_by_horizon {
+		None
+	} else {
+		settings.immutable
+	};
 
 	for batch in batches {
 		let snapshot: HashMap<CarryGroup<A>, CarryCoord<A>> = HashMap::new();
@@ -621,7 +631,7 @@ where
 				meta.windows.remove(&coord);
 			}
 
-			if let (Some(retention), Some(hw)) = (settings.immutable, meta.high_water) {
+			if let (Some(retention), Some(hw)) = (retention, meta.high_water) {
 				while let Some((&first, carry_out)) = meta.windows.iter().next() {
 					if hw.span_since(first) <= retention {
 						break;

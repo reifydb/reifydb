@@ -108,6 +108,7 @@ pub struct TumblingCarryEngine<G, S: WindowAnchor, Accumulator, Carry, Output> {
 	family: KeyspaceFamily,
 	meta_sweep: MetaSweep,
 	retention: Option<SlotSpan<S>>,
+	idle_retention: Option<SlotSpan<S>>,
 	_pd: PhantomData<(G, Accumulator, Carry, Output)>,
 }
 
@@ -129,6 +130,7 @@ where
 			family: config.base().family(),
 			meta_sweep: MetaSweep::default(),
 			retention: config.retention(),
+			idle_retention: config.idle_retention(),
 			_pd: PhantomData,
 		}
 	}
@@ -138,6 +140,7 @@ where
 		K: Fn(&G, S) -> EncodedKey,
 	{
 		let family = self.family;
+		let idle_retention = self.idle_retention;
 		let threshold = horizon.to_order();
 		let mut doomed: Vec<GroupStateKey> = Vec::new();
 		let mut groups: Vec<GroupId> = Vec::new();
@@ -158,11 +161,20 @@ where
 					groups.push(id);
 				}
 			}
-			let Some(hw) = meta.high_water_order() else {
+			let Some(high_water) = meta.high_water else {
 				return Ok(MetaFate::Ignored);
 			};
+			let hw = high_water.order_key().to_order();
 			if hw < threshold {
-				return Ok(MetaFate::Stale);
+				let revisit = idle_retention
+					.map_or(u64::MAX, |retention| high_water.add_span(retention).to_order());
+				if revisit < threshold {
+					return Ok(MetaFate::Stale);
+				}
+				if folded {
+					set(store, vec![(key, meta)])?;
+				}
+				return Ok(MetaFate::Survives(revisit));
 			}
 			let earliest = meta.windows.keys().next().map_or(hw, |first| first.to_order());
 			if folded {
@@ -263,6 +275,7 @@ where
 		let mut pending: Vec<(G, PendingCarry<S, Output>)> = Vec::new();
 		let mut removed_groups: Vec<GroupId> = Vec::new();
 		for (group, start) in earliest_affected {
+			self.meta_sweep.lower_low_water(start.to_order());
 			let meta = meta_loaded.get_mut(&group).expect("affected group has meta");
 
 			let mut prev_carry: Option<Carry> = match meta.windows.range(..start).next_back() {
@@ -716,6 +729,12 @@ mod tests {
 		TumblingCarryConfig::builder(WindowEngineConfig::builder().build()).retention(retention).build()
 	}
 
+	fn idle_config(idle_retention: Duration) -> TumblingCarryConfig<DateTime> {
+		TumblingCarryConfig::builder(WindowEngineConfig::builder().build())
+			.idle_retention(Some(idle_retention))
+			.build()
+	}
+
 	fn feed(engine: &mut Engine, store: &mut CountingStore, ws: DateTime, price: f64) {
 		// One event per batch, so the high-water mark advances one window per call.
 		let _ = feed_group(engine, store, "BTC", ws, price);
@@ -906,7 +925,7 @@ mod tests {
 		// Dropping the meta first would orphan every accumulator row the group still holds, with nothing left
 		// that can find them.
 		let mut store = CountingStore::default();
-		let mut engine = Engine::new(carry_config(None));
+		let mut engine = Engine::new(idle_config(millis(10 * WINDOW)));
 		for i in 0..10u64 {
 			feed(&mut engine, &mut store, window_at(i * WINDOW), i as f64);
 		}
@@ -917,6 +936,84 @@ mod tests {
 		assert_eq!(store.accumulator_count(), 0, "a dead group must not leave accumulator rows behind");
 		assert_eq!(store.row_mapping_count(), 0, "a dead group must not leave row-number mappings behind");
 		assert_eq!(store.meta_entry_count(), 0);
+	}
+
+	#[test]
+	fn an_idle_group_keeps_its_meta_and_carries_its_sealed_close_into_its_next_window() {
+		// Dropping an idle group's meta loses its carry, so its next window would restart from nothing.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
+		for i in 0..10u64 {
+			feed_carrying(&mut engine, &mut store, window_at(i * WINDOW), i * WINDOW, i as f64);
+		}
+
+		let dropped = engine.expire(&mut store, window_at(100 * WINDOW), seal_key).unwrap();
+
+		assert_eq!(dropped, 0, "without retention an idle group's meta must stay");
+		assert_eq!(
+			(store.accumulator_count(), store.row_mapping_count(), store.meta_entry_count()),
+			(0, 0, 1),
+			"an idle group must give back every window row and keep only its meta"
+		);
+		let results = feed_carrying(&mut engine, &mut store, window_at(200 * WINDOW), 200 * WINDOW, 100.0);
+		let window_200 =
+			results.iter().find(|r| r.span.start == window_at(200 * WINDOW)).expect("window 200 published");
+		assert_eq!(
+			window_200.value,
+			100.0 + 9.0,
+			"window 200 must carry in window 9's close across the idle gap"
+		);
+	}
+
+	#[test]
+	fn an_idle_group_keeps_its_meta_until_it_is_idle_past_the_horizon_by_more_than_retention() {
+		// Dropping at the horizon loses the carry retention keeps, and never dropping leaks it.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(idle_config(millis(10 * WINDOW)));
+		for i in 0..10u64 {
+			feed_carrying(&mut engine, &mut store, window_at(i * WINDOW), i * WINDOW, i as f64);
+		}
+
+		let kept = engine.expire(&mut store, window_at(19 * WINDOW), seal_key).unwrap();
+		assert_eq!(
+			(kept, store.meta_entry_count()),
+			(0, 1),
+			"window 9 plus a 10-window retention is not below 19"
+		);
+		let dropped = engine.expire(&mut store, window_at(20 * WINDOW), seal_key).unwrap();
+		assert_eq!(
+			(dropped, store.meta_entry_count()),
+			(1, 0),
+			"window 9 plus a 10-window retention is below 20"
+		);
+
+		let results = feed_carrying(&mut engine, &mut store, window_at(30 * WINDOW), 30 * WINDOW, 100.0);
+		let window_30 =
+			results.iter().find(|r| r.span.start == window_at(30 * WINDOW)).expect("window 30 published");
+		assert_eq!(
+			window_30.value,
+			100.0 + 1000.0,
+			"a dropped meta carries nothing, so the next window starts fresh"
+		);
+	}
+
+	#[test]
+	fn a_group_that_appears_after_every_other_went_idle_still_folds() {
+		// An idle meta parks the sweep low water, so a later group must lower it or never fold.
+		let mut store = CountingStore::default();
+		let mut engine = Engine::new(carry_config(None));
+		for i in 0..3u64 {
+			feed_group(&mut engine, &mut store, "BTC", window_at(i * WINDOW), i as f64);
+		}
+		engine.expire(&mut store, window_at(10 * WINDOW), seal_key).unwrap();
+		for i in 20..24u64 {
+			feed_group(&mut engine, &mut store, "ETH", window_at(i * WINDOW), i as f64);
+		}
+		assert_eq!(store.accumulator_count(), 4, "precondition: only ETH's four windows hold rows");
+
+		engine.expire(&mut store, window_at(30 * WINDOW), seal_key).unwrap();
+
+		assert_eq!(store.accumulator_count(), 0, "ETH's windows are all below the horizon and must fold");
 	}
 
 	#[test]

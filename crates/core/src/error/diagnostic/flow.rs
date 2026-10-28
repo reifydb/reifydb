@@ -716,7 +716,8 @@ pub fn flow_operator_with_retention_not_supported() -> Diagnostic {
 	flow_diagnostic(
 		"FLOW_080",
 		"this operator takes no 'retention'".to_string(),
-		"Only a managed operator frees state by retention. Remove retention from the with block.",
+		"Only managed operators and carry operators over a time window free state by retention; every other \
+		 operator refuses it. Remove retention from the with block.",
 	)
 }
 

@@ -56,9 +56,19 @@ impl TransactionalViewChanges for AdminTransaction {
 	}
 
 	fn find_view_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&View> {
-		self.changes.view.iter().rev().find_map(|change| {
-			change.post.as_ref().filter(|v| v.namespace() == namespace && v.name() == name)
-		})
+		for change in self.changes.view.iter().rev() {
+			if let Some(view) = &change.post {
+				if view.namespace() == namespace && view.name() == name {
+					return Some(view);
+				}
+			} else if let Some(view) = &change.pre
+				&& view.namespace() == namespace
+				&& view.name() == name && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
 	}
 
 	fn is_view_deleted(&self, id: ViewId) -> bool {

@@ -383,7 +383,10 @@ fn a_stopped_feed_still_drains_group_meta_on_the_seal_timer() {
 	// Carry windows prune relative to the newest window a group has seen, so a group that
 	// stops reporting freezes; only the watermark can drive its reclamation.
 	let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<SealedCarry>>::new()
-		.with(sealed_with())
+		.with(ApplyWith {
+			retention: Some(millis(60)),
+			..sealed_with()
+		})
 		.build()
 		.expect("harness");
 	let _ = h

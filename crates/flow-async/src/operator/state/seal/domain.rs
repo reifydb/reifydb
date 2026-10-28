@@ -49,6 +49,11 @@ pub trait SealDomain: Coord {
 		before: Option<u64>,
 		after: Option<u64>,
 	) -> Result<()>;
+
+	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Self::Span>> {
+		with.reject_retention()?;
+		Ok(None)
+	}
 }
 
 const ROLLING_DEAD_TIMER_KEY: &[u8] = b"rolling-dead";
@@ -74,6 +79,11 @@ impl SealDomain for DateTime {
 		}
 		let lateness = with.lateness_duration()?.unwrap_or_else(Duration::zero);
 		Ok(SealRule::for_window(kind, lateness).map(|rule| rule.admissible().duration()))
+	}
+
+	fn idle_retention_of(with: &ApplyWith) -> Result<Option<Duration>> {
+		with.check_retention()?;
+		Ok(with.retention)
 	}
 
 	fn window_settings_of(with: &ApplyWith) -> Result<WindowSettings<Self>> {

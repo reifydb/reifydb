@@ -16,6 +16,7 @@ mod procedure;
 mod queue;
 mod relationship;
 mod ringbuffer;
+mod role;
 mod row_settings;
 mod series;
 mod sumtype;

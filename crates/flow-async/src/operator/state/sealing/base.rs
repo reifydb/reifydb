@@ -34,10 +34,6 @@ impl<S: Slot, V> Default for SealingBase<S, V> {
 }
 
 impl<S: Slot, V> SealingBase<S, V> {
-	pub fn immutable(immutable: SlotSpan<S>) -> Self {
-		Self::maybe_immutable(Some(immutable))
-	}
-
 	pub fn maybe_immutable(immutable: Option<SlotSpan<S>>) -> Self {
 		Self {
 			immutable,
@@ -144,7 +140,7 @@ mod tests {
 	fn sealing_a_tail_matches_the_btreemap_it_replaced() {
 		// a container that orders or ages differently silently changes the aggregate a window emits
 		let immutable = millis(20);
-		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(immutable);
+		let mut base: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(immutable));
 		let mut tail: BTreeMap<DateTime, i64> = BTreeMap::new();
 		let mut high_water: Option<DateTime> = None;
 		let mut sealed_high: Option<DateTime> = None;
@@ -208,7 +204,7 @@ mod tests {
 	#[test]
 	fn a_coordinate_exactly_one_immutable_span_behind_the_high_water_stays_live() {
 		// The boundary is load-bearing: sealing it would discard a retraction that is still admissible.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(millis(10));
+		let mut base: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(10)));
 		base.push(at_millis(0), 1);
 		base.push(at_millis(10), 2);
 		assert_eq!(base.sealed_count(), 0, "a coordinate exactly at the bound is still immutable");
@@ -222,7 +218,7 @@ mod tests {
 	#[test]
 	fn a_corrected_coordinate_that_seals_twice_is_still_one_observation() {
 		// A repeat of an already sealed slot is that row arriving again, never a second one.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(millis(1));
+		let mut base: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(1)));
 		base.push(at_millis(0), 10);
 		base.push(at_millis(2), 20);
 		assert_eq!(base.len(), 2);
@@ -234,7 +230,7 @@ mod tests {
 	#[test]
 	fn a_row_below_the_seal_line_is_dropped_while_one_just_above_it_still_counts() {
 		// The fast path assumes ordered arrival, so a row at or under the highest sealed slot is lost.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(millis(1));
+		let mut base: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(1)));
 		base.push(at_millis(0), 1);
 		base.push(at_millis(10), 2);
 		assert_eq!(base.sealed_count(), 1);
@@ -251,7 +247,7 @@ mod tests {
 	#[test]
 	fn removing_the_row_that_set_the_high_water_does_not_lower_the_seal_line() {
 		// The seal line is monotonic: a retraction of the newest row must never un-seal what it aged out.
-		let mut base: SealingBase<DateTime, i64> = SealingBase::immutable(millis(10));
+		let mut base: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(10)));
 		base.push(at_millis(0), 1);
 		base.push(at_millis(50), 2);
 		assert_eq!(base.sealed_count(), 1);
@@ -267,13 +263,13 @@ mod tests {
 	#[test]
 	fn absorbing_a_disjoint_branch_keeps_every_observation_from_both_sides() {
 		// absorb takes slot-disjoint branches, so dropping the other side's sealed total undercounts it.
-		let mut left: SealingBase<DateTime, i64> = SealingBase::immutable(millis(10));
+		let mut left: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(10)));
 		left.push(at_millis(0), 1);
 		left.push(at_millis(50), 2);
 		assert_eq!(left.sealed_count(), 1);
 		assert_eq!(left.len(), 2);
 
-		let mut right: SealingBase<DateTime, i64> = SealingBase::immutable(millis(10));
+		let mut right: SealingBase<DateTime, i64> = SealingBase::maybe_immutable(Some(millis(10)));
 		right.push(at_millis(100), 3);
 		right.push(at_millis(200), 4);
 		assert_eq!(right.sealed_count(), 1);

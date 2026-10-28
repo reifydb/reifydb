@@ -179,3 +179,46 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	let in_txn3 = catalog.list_procedures_for_variant(&mut Transaction::Admin(&mut txn3), variant_ref).unwrap();
 	assert!(in_txn3.iter().any(|p| p.name() == "h1"));
 }
+
+#[test]
+fn create_drop_create_same_name_in_one_txn_succeeds() {
+	// A drop must hide an in-txn handler and its procedure, otherwise the recreate sees them.
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE NAMESPACE hns_create_rec");
+	t.admin("CREATE EVENT hns_create_rec::evt { Foo { id: int4 } }");
+	t.admin("CREATE TABLE hns_create_rec::sink { id: int4 }");
+
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let ns_id = catalog
+		.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "hns_create_rec")
+		.unwrap()
+		.unwrap()
+		.id();
+	let create = "CREATE HANDLER hns_create_rec::h1 ON hns_create_rec::evt::Foo { INSERT hns_create_rec::sink [{ id: 1 }] }";
+	let r = txn.rql(create, Params::None);
+	assert!(r.error.is_none(), "first create failed: {:?}", r.error);
+	let first = catalog
+		.find_handler_by_name(&mut Transaction::Admin(&mut txn), ns_id, "h1")
+		.unwrap()
+		.expect("in-txn create must be findable by name")
+		.id;
+	let r = txn.rql("DROP HANDLER hns_create_rec::h1", Params::None);
+	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
+	assert!(
+		catalog.find_handler_by_name(&mut Transaction::Admin(&mut txn), ns_id, "h1").unwrap().is_none(),
+		"in-txn drop must hide the in-txn create"
+	);
+	assert!(
+		catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn), ns_id, "h1").unwrap().is_none(),
+		"the dropped handler's backing procedure must not stay visible by name"
+	);
+	let r = txn.rql(create, Params::None);
+	assert!(r.error.is_none(), "recreate after in-txn drop failed: {:?}", r.error);
+	let second = catalog
+		.find_handler_by_name(&mut Transaction::Admin(&mut txn), ns_id, "h1")
+		.unwrap()
+		.expect("recreated handler must be findable by name")
+		.id;
+	assert_ne!(first, second, "lookup by name must return the recreated object, never the dropped one");
+}

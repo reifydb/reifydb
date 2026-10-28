@@ -152,3 +152,70 @@ fn create_with_non_query_body_is_rejected_with_query_005() {
 	let diagnostic = r.error.expect("a deferred view whose AS body is DDL must be rejected").diagnostic();
 	assert_eq!(diagnostic.code, "QUERY_005", "got: {}", diagnostic.message);
 }
+
+#[test]
+fn create_drop_create_same_name_in_one_txn_succeeds() {
+	// A drop must hide an earlier in-txn create, otherwise the recreate fails with CA_003.
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE NAMESPACE vns_create_f");
+	t.admin("CREATE TABLE vns_create_f::src { id: int4 }");
+
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let r = txn.rql(
+		"CREATE DEFERRED VIEW vns_create_f::v { id: int4 } AS { FROM vns_create_f::src MAP { id: id } }",
+		Params::None,
+	);
+	assert!(r.error.is_none(), "first create failed: {:?}", r.error);
+	let r = txn.rql("DROP VIEW vns_create_f::v", Params::None);
+	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
+	let r = txn.rql(
+		"CREATE DEFERRED VIEW vns_create_f::v { id: int4 } AS { FROM vns_create_f::src MAP { id: id } }",
+		Params::None,
+	);
+	assert!(r.error.is_none(), "recreate after in-txn drop failed: {:?}", r.error);
+
+	let ns_id = catalog
+		.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "vns_create_f")
+		.unwrap()
+		.unwrap()
+		.id();
+	let views: Vec<_> = catalog
+		.list_views_all(&mut Transaction::Admin(&mut txn))
+		.unwrap()
+		.into_iter()
+		.filter(|x| x.namespace() == ns_id && x.name() == "v")
+		.collect();
+	assert_eq!(views.len(), 1, "exactly one live view may carry the name after recreate");
+	let found = catalog.find_view_by_name(&mut Transaction::Admin(&mut txn), ns_id, "v").unwrap().unwrap();
+	assert_eq!(found.id(), views[0].id(), "lookup by name must return the recreated view, never the dropped one");
+}
+
+#[test]
+fn migrate_applies_create_then_drop_and_recreate_across_migrations() {
+	// MIGRATE applies all pending migrations in one txn, so a recreate must not see the earlier create.
+	let t = TestEngine::new();
+	t.admin(
+		"CREATE MIGRATION '001_create' { CREATE NAMESPACE vns_create_g; CREATE TABLE vns_create_g::src { id: int4 }; CREATE DEFERRED VIEW vns_create_g::v { id: int4 } AS { FROM vns_create_g::src MAP { id: id } }; }",
+	);
+	t.admin(
+		"CREATE MIGRATION '002_recreate' { DROP VIEW vns_create_g::v; CREATE DEFERRED VIEW vns_create_g::v { id: int4 } AS { FROM vns_create_g::src MAP { id: id } }; }",
+	);
+	t.admin("MIGRATE");
+
+	let frames = t.query("FROM system::views FILTER {name == \"v\"}");
+	assert_eq!(TestEngine::row_count(&frames), 1, "exactly one view named v must survive the migrations");
+}
+
+#[test]
+fn single_migration_create_drop_create_succeeds() {
+	// One migration body runs in one txn, so create, drop and recreate of a name must not raise CA_003.
+	let t = TestEngine::new();
+	t.admin(
+		"CREATE MIGRATION '001_all' { CREATE NAMESPACE vns_create_h; CREATE TABLE vns_create_h::src { id: int4 }; CREATE DEFERRED VIEW vns_create_h::v { id: int4 } AS { FROM vns_create_h::src MAP { id: id } }; DROP VIEW vns_create_h::v; CREATE DEFERRED VIEW vns_create_h::v { id: int4 } AS { FROM vns_create_h::src MAP { id: id } }; }",
+	);
+	t.admin("MIGRATE");
+
+	let frames = t.query("FROM system::views FILTER {name == \"v\"}");
+	assert_eq!(TestEngine::row_count(&frames), 1, "exactly one view named v must survive the migration");
+}

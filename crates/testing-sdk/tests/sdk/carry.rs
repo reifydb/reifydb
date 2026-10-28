@@ -173,13 +173,13 @@ fn input_row(rn: u64, group: &str, ts: u64, price: f64) -> CoreRow {
 		.build()
 }
 
-fn window_with(immutable: Option<i64>) -> ApplyWith {
+fn window_with() -> ApplyWith {
 	ApplyWith {
 		window: Some(WindowKind::Tumbling {
 			size: WindowSize::Duration(millis(60)),
 		}),
 		lateness: Some(WithSpan::Duration(millis(3_600_000))),
-		immutable: immutable.map(|n| WithSpan::Duration(millis(n as u64))),
+		immutable: None,
 		retention: None,
 	}
 }
@@ -195,32 +195,50 @@ macro_rules! feed_windows {
 	}};
 }
 
+fn sealed_window_with(lateness: u64) -> ApplyWith {
+	ApplyWith {
+		window: Some(WindowKind::Tumbling {
+			size: WindowSize::Duration(millis(60)),
+		}),
+		lateness: Some(WithSpan::Duration(millis(lateness))),
+		immutable: None,
+		retention: None,
+	}
+}
+
 #[test]
-fn a_carry_window_folds_past_immutable_and_drops_its_accumulator_rows() {
-	// With immutable set, windows more than immutable behind a group's newest fold to the carry scalar and
-	// free their accumulator rows, so the store stays bounded however many windows the group crosses.
-	let short = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(Some(120)), 20)
-		.group_state()
-		.len();
-	let long = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(Some(120)), 40)
-		.group_state()
-		.len();
+fn a_carry_window_folds_past_the_lateness_horizon_and_drops_its_accumulator_rows() {
+	// Without a fold past the lateness horizon, the store grows with every window the feed crosses.
+	let feed = |windows: u64| {
+		let mut h = InProcessOperatorHarnessBuilder::<CarryDriver<Probe>>::new()
+			.with(sealed_window_with(120))
+			.build()
+			.expect("harness");
+		for i in 0..windows {
+			h.apply(TestChangeBuilder::new().insert(input_row(i + 1, "BTC", i * 60, i as f64)).build())
+				.expect("apply");
+			h.advance_watermark(DateTime::from_millis((i * 60) as i64)).expect("advance watermark");
+		}
+		h.group_state().len()
+	};
+
+	let (short, long) = (feed(20), feed(40));
 
 	assert!(
 		long <= short + 2,
-		"twice the windows must not mean more state under immutable, but 20 windows left {short} rows and 40 left {long}"
+		"twice the windows must not mean more state past the lateness horizon, but 20 windows left {short} rows and 40 left {long}"
 	);
-	assert!(long < 20, "40 windows folded past a 2-window immutable must leave few rows, but left {long}");
+	assert!(long < 20, "40 windows past a 2-window lateness must leave few rows, but left {long}");
 }
 
 #[test]
 fn a_carry_window_with_no_immutable_keeps_every_accumulator() {
 	// Without immutable the fold must not run: every window's accumulator row stays, so state grows with the
 	// windows crossed. A default retention would fold here and hide behind a bounded store.
-	let short = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(None), 20)
+	let short = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(), 20)
 		.snapshot_state()
 		.len();
-	let long = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(None), 40)
+	let long = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(), 40)
 		.snapshot_state()
 		.len();
 
@@ -256,8 +274,8 @@ fn the_carry_driver_refuses_a_window_that_is_not_tumbling() {
 fn a_seal_frees_every_window_of_a_stopped_carry_group_that_declared_no_immutable() {
 	// Without immutable nothing folds while the feed runs, so the seal is the only thing that can free the
 	// windows; state left behind must not depend on how many windows the group crossed.
-	let mut short = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(None), 5);
-	let mut long = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(None), 40);
+	let mut short = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(), 5);
+	let mut long = feed_windows!(InProcessOperatorHarnessBuilder<CarryDriver<Probe>>, window_with(), 40);
 	let before = long.snapshot_state().len();
 
 	short.advance_watermark(DateTime::from_millis(10_000_000)).expect("advance watermark");

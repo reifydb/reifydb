@@ -66,11 +66,19 @@ impl TransactionalTableChanges for AdminTransaction {
 	}
 
 	fn find_table_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Table> {
-		self.changes
-			.table
-			.iter()
-			.rev()
-			.find_map(|change| change.post.as_ref().filter(|t| t.namespace == namespace && t.name == name))
+		for change in self.changes.table.iter().rev() {
+			if let Some(table) = &change.post {
+				if table.namespace == namespace && table.name == name {
+					return Some(table);
+				}
+			} else if let Some(table) = &change.pre
+				&& table.namespace == namespace
+				&& table.name == name && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
 	}
 
 	fn is_table_deleted(&self, id: TableId) -> bool {

@@ -56,11 +56,19 @@ impl TransactionalTestChanges for AdminTransaction {
 	}
 
 	fn find_test_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Test> {
-		self.changes
-			.test
-			.iter()
-			.rev()
-			.find_map(|change| change.post.as_ref().filter(|t| t.namespace == namespace && t.name == name))
+		for change in self.changes.test.iter().rev() {
+			if let Some(test) = &change.post {
+				if test.namespace == namespace && test.name == name {
+					return Some(test);
+				}
+			} else if let Some(test) = &change.pre
+				&& test.namespace == namespace
+				&& test.name == name && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
 	}
 
 	fn is_test_deleted(&self, id: TestId) -> bool {

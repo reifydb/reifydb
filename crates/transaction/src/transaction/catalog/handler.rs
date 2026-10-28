@@ -56,11 +56,19 @@ impl TransactionalHandlerChanges for AdminTransaction {
 	}
 
 	fn find_handler_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Handler> {
-		self.changes
-			.handler
-			.iter()
-			.rev()
-			.find_map(|change| change.post.as_ref().filter(|h| h.namespace == namespace && h.name == name))
+		for change in self.changes.handler.iter().rev() {
+			if let Some(handler) = &change.post {
+				if handler.namespace == namespace && handler.name == name {
+					return Some(handler);
+				}
+			} else if let Some(handler) = &change.pre
+				&& handler.namespace == namespace
+				&& handler.name == name && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
 	}
 
 	fn is_handler_deleted(&self, id: HandlerId) -> bool {

@@ -54,11 +54,19 @@ impl TransactionalDictionaryChanges for AdminTransaction {
 	}
 
 	fn find_dictionary_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&Dictionary> {
-		self.changes
-			.dictionary
-			.iter()
-			.rev()
-			.find_map(|change| change.post.as_ref().filter(|d| d.namespace == namespace && d.name == name))
+		for change in self.changes.dictionary.iter().rev() {
+			if let Some(dictionary) = &change.post {
+				if dictionary.namespace == namespace && dictionary.name == name {
+					return Some(dictionary);
+				}
+			} else if let Some(dictionary) = &change.pre
+				&& dictionary.namespace == namespace
+				&& dictionary.name == name && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
 	}
 
 	fn is_dictionary_deleted(&self, id: DictionaryId) -> bool {

@@ -54,7 +54,18 @@ impl TransactionalNamespaceChanges for AdminTransaction {
 	}
 
 	fn find_namespace_by_name(&self, name: &str) -> Option<&Namespace> {
-		self.changes.namespace.iter().rev().find_map(|change| change.post.as_ref().filter(|s| s.name() == name))
+		for change in self.changes.namespace.iter().rev() {
+			if let Some(namespace) = &change.post {
+				if namespace.name() == name {
+					return Some(namespace);
+				}
+			} else if let Some(namespace) = &change.pre
+				&& namespace.name() == name && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
 	}
 
 	fn is_namespace_deleted(&self, id: NamespaceId) -> bool {

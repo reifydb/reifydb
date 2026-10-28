@@ -58,7 +58,18 @@ impl TransactionalRoleChanges for AdminTransaction {
 	}
 
 	fn find_role_by_name(&self, name: &str) -> Option<&Role> {
-		self.changes.role.iter().rev().find_map(|change| change.post.as_ref().filter(|r| r.name == name))
+		for change in self.changes.role.iter().rev() {
+			if let Some(role) = &change.post {
+				if role.name == name {
+					return Some(role);
+				}
+			} else if let Some(role) = &change.pre
+				&& role.name == name && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
 	}
 
 	fn is_role_deleted(&self, id: RoleId) -> bool {

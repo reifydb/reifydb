@@ -6,4 +6,3 @@ pub mod endpoint;
 pub mod fold;
 pub mod max;
 pub mod min;
-pub mod tail;

@@ -6,6 +6,7 @@ use std::collections::BTreeMap;
 use reifydb::{WithSubsystem, embedded, testing::db::TestDb};
 use reifydb_core::{
 	common::{OperatorClass, WindowRequirements, WindowSizeDomain},
+	error::CoreError,
 	interface::{catalog::flow::OperatorId, flow::OperatorCapability},
 	metrics::heap::HeapSize,
 	operator_with::ApplyWith,
@@ -22,7 +23,9 @@ use reifydb_sdk::{
 		column::operator::OperatorColumn,
 		context::{GuestContext, Managed, Nostate, Unmanaged, Windowed},
 		view::{ChangeView, ColumnsView},
-		windowed::operator::{AllKinds, Emit, NoRolling, PlainMarker, TopKMarker, WindowedOperator},
+		windowed::operator::{
+			AllKinds, CarryEmit, CarryMarker, Emit, NoRolling, PlainMarker, TopKMarker, WindowedOperator,
+		},
 	},
 	row,
 };
@@ -30,6 +33,7 @@ use reifydb_sub_api::subsystem::HealthStatus;
 use reifydb_test_harness::assert::column_values;
 use reifydb_value::{
 	config::ExtensionParams,
+	error::Error as ValueError,
 	value::{constraint::TypeConstraint, datetime::DateTime, value_type::ValueType},
 };
 
@@ -672,8 +676,8 @@ fn a_retention_alone_creates_a_managed_apply() {
 }
 
 #[test]
-fn a_retention_on_an_unmanaged_or_windowed_apply_fails_the_create() {
-	// Nothing but the managed reclaim reads retention, so accepting it elsewhere leaves a bound nobody honours.
+fn a_retention_on_an_unmanaged_or_plain_windowed_apply_fails_the_create() {
+	// Only managed and carry operators read retention, so any other operator must refuse it, never ignore it.
 	let db = windowed_memory();
 	event_time_source(&db);
 
@@ -694,4 +698,166 @@ fn a_retention_below_the_lateness_fails_the_create() {
 	event_time_source(&db);
 
 	assert_eq!(refused_code(&db, "managed_probe{} WITH { lateness: 2s, retention: 1s }"), "AST_005");
+}
+
+struct RefusingWindowProbe;
+
+impl OperatorMetadata for RefusingWindowProbe {
+	const NAME: &'static str = "refusing_window_probe";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "test-only windowed operator whose create always refuses";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = G_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = G_COLUMNS;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl WindowedOperator for RefusingWindowProbe {
+	type Coord = DateTime;
+	type GroupKey = u32;
+	type Accumulator = LastValue<i64>;
+	type Output = GRow;
+
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> SdkResult<Self> {
+		Err(ValueError::from(CoreError::OperatorWithRetentionNotSupported).into())
+	}
+
+	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<DateTime>>> {
+		Ok(vec![None; rows.len()])
+	}
+
+	fn extract(
+		&self,
+		_: &mut impl GuestContext<Windowed>,
+		_: &impl ColumnsView,
+		rows: &[usize],
+	) -> SdkResult<Vec<Option<(u32, i64)>>> {
+		Ok(vec![None; rows.len()])
+	}
+
+	fn new_accumulator(&self, _: &WindowSettings<DateTime>) -> LastValue<i64> {
+		LastValue::default()
+	}
+}
+
+impl Emit for RefusingWindowProbe {
+	type Kinds = NoRolling;
+
+	fn build_output(&self, _: &u32, _: WindowSpan<DateTime>, _: &i64) -> Option<GRow> {
+		None
+	}
+}
+
+#[reifydb_macro::operator_state]
+#[derive(Clone, Debug, HeapSize)]
+struct CarryRow {
+	g: i32,
+}
+
+row!(CarryRow {
+	g: i32
+});
+
+struct CarryProbe;
+
+impl OperatorMetadata for CarryProbe {
+	const NAME: &'static str = "carry_probe";
+	const VERSION: &'static str = "0.0.1";
+	const DESCRIPTION: &'static str = "test-only carry operator that emits nothing";
+	const INPUT_COLUMNS: &'static [OperatorColumn] = G_COLUMNS;
+	const OUTPUT_COLUMNS: &'static [OperatorColumn] = G_COLUMNS;
+	const CAPABILITIES: &'static [OperatorCapability] = OperatorCapability::STANDARD;
+}
+
+impl WindowedOperator for CarryProbe {
+	type Coord = DateTime;
+	type GroupKey = u32;
+	type Accumulator = LastValue<i64>;
+	type Output = CarryRow;
+
+	fn create(_: OperatorId, _: &ExtensionParams, _: &ApplyWith) -> SdkResult<Self> {
+		Ok(Self)
+	}
+
+	fn coord(&self, _: &impl ColumnsView, rows: &[usize]) -> SdkResult<Vec<Option<DateTime>>> {
+		Ok(vec![None; rows.len()])
+	}
+
+	fn extract(
+		&self,
+		_: &mut impl GuestContext<Windowed>,
+		_: &impl ColumnsView,
+		rows: &[usize],
+	) -> SdkResult<Vec<Option<(u32, i64)>>> {
+		Ok(vec![None; rows.len()])
+	}
+
+	fn new_accumulator(&self, _: &WindowSettings<DateTime>) -> LastValue<i64> {
+		LastValue::default()
+	}
+}
+
+impl CarryEmit for CarryProbe {
+	type Carry = i64;
+
+	fn build_output(&self, _: &u32, _: WindowSpan<DateTime>, _: &i64, _: Option<&i64>) -> Option<CarryRow> {
+		None
+	}
+
+	fn carry_forward(&self, value: &i64, _: Option<&i64>) -> Option<i64> {
+		Some(*value)
+	}
+}
+
+fn retention_memory() -> TestDb {
+	TestDb::from(
+		embedded::memory()
+			.with_runtime_config(runtime())
+			.with_flow(|f| {
+				f.register_windowed_operator::<TimeWindowProbe, PlainMarker>()
+					.register_windowed_operator::<RefusingWindowProbe, PlainMarker>()
+					.register_windowed_operator::<CarryProbe, CarryMarker>()
+			})
+			.build()
+			.expect("build memory db with flow"),
+	)
+}
+
+#[test]
+fn a_windowed_driver_that_refuses_its_create_fails_the_view_create() {
+	// The DDL leaves retention to each windowed driver, so a driver's own refusal must stop the view.
+	let db = retention_memory();
+	event_time_source(&db);
+
+	assert_eq!(
+		refused_code(&db, "refusing_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s }"),
+		"FLOW_080"
+	);
+	assert_eq!(flow_rows(&db, "v"), 0, "a driver refusal must register no flow");
+	assert_eq!(poisoned(&db), None, "a driver refusal must poison nothing");
+}
+
+#[test]
+fn a_retention_on_a_carry_apply_creates_while_a_plain_windowed_apply_still_refuses_it() {
+	// Only the carry driver bounds idle state by retention; any other windowed driver accepting it would ignore it.
+	let db = retention_memory();
+	event_time_source(&db);
+
+	let carry =
+		view("carry_v", "carry_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, retention: 1h }");
+	if let Err(err) = db.try_admin(&carry) {
+		panic!("a carry apply with a retention must create: {carry}: {:?}", err.diagnostic());
+	}
+	assert_eq!(
+		refused_code(&db, "carry_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, retention: 1s }"),
+		"AST_005"
+	);
+	assert_eq!(
+		refused_code(
+			&db,
+			"time_window_probe{} WITH { window: tumbling, duration: 1m, lateness: 2s, retention: 1h }"
+		),
+		"FLOW_080"
+	);
+	assert_eq!(flow_rows(&db, "v"), 0, "a refused retention must register no flow");
+	assert_eq!(poisoned(&db), None, "a refused retention must poison nothing");
 }

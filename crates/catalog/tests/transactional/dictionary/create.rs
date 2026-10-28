@@ -114,3 +114,39 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	let mut txn3 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
 	assert!(catalog.find_dictionary_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "d").unwrap().is_some());
 }
+
+#[test]
+fn create_drop_create_same_name_in_one_txn_succeeds() {
+	// A drop must hide an earlier in-txn create, otherwise the recreate resolves to the dropped dictionary.
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE NAMESPACE dns_create_rec");
+
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let ns_id = catalog
+		.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "dns_create_rec")
+		.unwrap()
+		.unwrap()
+		.id();
+	let r = txn.rql("CREATE DICTIONARY dns_create_rec::d FOR utf8 AS uint2", Params::None);
+	assert!(r.error.is_none(), "first create failed: {:?}", r.error);
+	let first = catalog
+		.find_dictionary_by_name(&mut Transaction::Admin(&mut txn), ns_id, "d")
+		.unwrap()
+		.expect("in-txn create must be findable by name")
+		.id;
+	let r = txn.rql("DROP DICTIONARY dns_create_rec::d", Params::None);
+	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
+	assert!(
+		catalog.find_dictionary_by_name(&mut Transaction::Admin(&mut txn), ns_id, "d").unwrap().is_none(),
+		"in-txn drop must hide the in-txn create"
+	);
+	let r = txn.rql("CREATE DICTIONARY dns_create_rec::d FOR utf8 AS uint2", Params::None);
+	assert!(r.error.is_none(), "recreate after in-txn drop failed: {:?}", r.error);
+	let second = catalog
+		.find_dictionary_by_name(&mut Transaction::Admin(&mut txn), ns_id, "d")
+		.unwrap()
+		.expect("recreated dictionary must be findable by name")
+		.id;
+	assert_ne!(first, second, "lookup by name must return the recreated object, never the dropped one");
+}

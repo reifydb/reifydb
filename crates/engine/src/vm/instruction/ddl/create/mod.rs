@@ -295,7 +295,12 @@ fn check_operator_with_requirements(flow: &FlowDag, operators: &OperatorLibrary)
 					return Err(error!(flow_operator_retention_required()));
 				}
 			}
-			OperatorClass::Unmanaged | OperatorClass::Windowed => with.reject_retention()?,
+			OperatorClass::Unmanaged => with.reject_retention()?,
+			OperatorClass::Windowed => {
+				if with.retention.is_some() {
+					with.check_retention()?;
+				}
+			}
 		}
 		check_window_requirements(info.window, with)?;
 	}

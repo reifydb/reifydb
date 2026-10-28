@@ -92,3 +92,43 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	let found_in_txn3 = catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn3), "ns_create_d").unwrap();
 	assert!(found_in_txn3.is_some(), "after txn1 commits, namespace must be visible in a later txn");
 }
+
+#[test]
+fn create_drop_create_same_name_in_one_txn_succeeds() {
+	// A drop must hide an in-txn namespace and its children, otherwise the recreate sees them.
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let r = txn.rql("CREATE NAMESPACE ns_create_rec", Params::None);
+	assert!(r.error.is_none(), "first create failed: {:?}", r.error);
+	let r = txn.rql("CREATE TABLE ns_create_rec::t { id: int4 }", Params::None);
+	assert!(r.error.is_none(), "child table create failed: {:?}", r.error);
+	let first = catalog
+		.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "ns_create_rec")
+		.unwrap()
+		.expect("in-txn create must be findable by name")
+		.id();
+	let r = txn.rql("DROP NAMESPACE ns_create_rec", Params::None);
+	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
+	assert!(
+		catalog.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "ns_create_rec").unwrap().is_none(),
+		"in-txn drop must hide the in-txn create"
+	);
+	assert!(
+		catalog.find_table_by_name(&mut Transaction::Admin(&mut txn), first, "t").unwrap().is_none(),
+		"a table inside the dropped namespace must not stay visible by name"
+	);
+	let r = txn.rql("CREATE NAMESPACE ns_create_rec", Params::None);
+	assert!(r.error.is_none(), "recreate after in-txn drop failed: {:?}", r.error);
+	let second = catalog
+		.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "ns_create_rec")
+		.unwrap()
+		.expect("recreated namespace must be findable by name")
+		.id();
+	assert_ne!(first, second, "lookup by name must return the recreated object, never the dropped one");
+	assert!(
+		catalog.find_table_by_name(&mut Transaction::Admin(&mut txn), second, "t").unwrap().is_none(),
+		"the recreated namespace must not inherit the dropped namespace's table"
+	);
+}

@@ -65,7 +65,18 @@ impl TransactionalIdentityChanges for AdminTransaction {
 	}
 
 	fn find_identity_by_name(&self, name: &str) -> Option<&Identity> {
-		self.changes.identity.iter().rev().find_map(|change| change.post.as_ref().filter(|u| u.name == name))
+		for change in self.changes.identity.iter().rev() {
+			if let Some(identity) = &change.post {
+				if identity.name == name {
+					return Some(identity);
+				}
+			} else if let Some(identity) = &change.pre
+				&& identity.name == name && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
 	}
 
 	fn is_identity_deleted(&self, id: IdentityId) -> bool {

@@ -645,12 +645,12 @@ fn a_chain_built_unfused_fuses_on_the_next_restart() {
 		// wrote.
 		let mut db = open(&path, false);
 		let head = checkpoint(&db, "a").expect("precondition: the head must hold a checkpoint");
+		// A member can already sit past head + 1, and a checkpoint set below it fails as a backward move.
+		let raised = CommitVersion(head.0 + 1);
 		for member in ["b", "c"] {
 			let flow = FlowId(catalog_id(&db, "flows", member));
-			db.engine()
-				.operator_state()
-				.checkpoint_set(flow, CommitVersion(head.0 + 1))
-				.expect("raise the checkpoint");
+			let at = checkpoint(&db, member).map_or(raised, |at| at.max(raised));
+			db.engine().operator_state().checkpoint_set(flow, at).expect("raise the checkpoint");
 		}
 		stop_without_flow(&mut db);
 	}

@@ -95,3 +95,43 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 		catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn3), "pol_create_d_policy").unwrap();
 	assert!(found_in_txn3.is_some());
 }
+
+#[test]
+fn create_drop_create_same_name_in_one_txn_succeeds() {
+	// A drop must hide an earlier in-txn create, otherwise the recreate fails or resolves to the dropped policy.
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE NAMESPACE pol_create_rec");
+	t.admin("CREATE TABLE pol_create_rec::t { id: int4 }");
+
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let r = txn.rql(
+		"CREATE TABLE POLICY pol_create_rec_policy ON pol_create_rec::t { from: { filter { true } } }",
+		Params::None,
+	);
+	assert!(r.error.is_none(), "first create failed: {:?}", r.error);
+	let first = catalog
+		.find_policy_by_name(&mut Transaction::Admin(&mut txn), "pol_create_rec_policy")
+		.unwrap()
+		.expect("in-txn create must be findable by name")
+		.id;
+	let r = txn.rql("DROP TABLE POLICY pol_create_rec_policy", Params::None);
+	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
+	assert!(
+		catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn), "pol_create_rec_policy")
+			.unwrap()
+			.is_none(),
+		"in-txn drop must hide the in-txn create"
+	);
+	let r = txn.rql(
+		"CREATE TABLE POLICY pol_create_rec_policy ON pol_create_rec::t { from: { filter { true } } }",
+		Params::None,
+	);
+	assert!(r.error.is_none(), "recreate after in-txn drop failed: {:?}", r.error);
+	let second = catalog
+		.find_policy_by_name(&mut Transaction::Admin(&mut txn), "pol_create_rec_policy")
+		.unwrap()
+		.expect("recreated policy must be findable by name")
+		.id;
+	assert_ne!(first, second, "lookup by name must return the recreated object, never the dropped one");
+}

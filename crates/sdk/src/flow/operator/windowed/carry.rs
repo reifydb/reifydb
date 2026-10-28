@@ -73,6 +73,7 @@ where
 	aggregator: A,
 	engine: CarryEngine<A>,
 	seal_span: Option<SealSpan<A>>,
+	idle_retention: Option<<A::Coord as Coord>::Span>,
 	settings: WindowSettings<A::Coord>,
 }
 
@@ -198,6 +199,9 @@ where
 		let newest = buckets.keys().map(|(_, span)| span.start).max();
 		if let Some(newest) = newest {
 			observe_batch(&mut store, newest, seal_span)?;
+			if let Some(idle_retention) = self.idle_retention {
+				observe_batch(&mut store, newest.add_span(idle_retention), seal_span)?;
+			}
 		}
 		let watermark = seal_frontier::<A::Coord>(&mut store)?;
 		let horizon = <A::Coord as SealDomain>::horizon(watermark, seal_span);
@@ -278,18 +282,26 @@ where
 	}
 
 	fn create(operator_id: OperatorId, params: &ExtensionParams, with: &ApplyWith) -> Result<Self> {
-		with.reject_retention()?;
+		let idle_retention = <A::Coord as SealDomain>::idle_retention_of(with)?;
 		with.require_window("tumbling")?;
 		let seal_span = <A::Coord as SealDomain>::seal_span_of(with)?;
 		let settings = <A::Coord as SealDomain>::window_settings_of(with)?;
 		let aggregator = A::create(operator_id, params, with)?;
 		let engine_config = window_engine_config(params);
+		let retention = match seal_span {
+			Some(_) => None,
+			None => settings.immutable,
+		};
 		Ok(Self {
 			aggregator,
 			engine: TumblingCarryEngine::new(
-				TumblingCarryConfig::builder(engine_config).retention(settings.immutable).build(),
+				TumblingCarryConfig::builder(engine_config)
+					.retention(retention)
+					.idle_retention(idle_retention)
+					.build(),
 			),
 			seal_span,
+			idle_retention,
 			settings,
 		})
 	}

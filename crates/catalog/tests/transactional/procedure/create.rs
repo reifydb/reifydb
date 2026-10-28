@@ -117,3 +117,39 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	let found_in_txn3 = catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn3), ns_id, "greet").unwrap();
 	assert!(found_in_txn3.is_some(), "after txn1 commits, the procedure must be visible");
 }
+
+#[test]
+fn create_drop_create_same_name_in_one_txn_succeeds() {
+	// A drop must hide an earlier in-txn create, otherwise the recreate fails or resolves to the dropped procedure.
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE NAMESPACE pns_create_rec");
+
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let ns_id = catalog
+		.find_namespace_by_name(&mut Transaction::Admin(&mut txn), "pns_create_rec")
+		.unwrap()
+		.unwrap()
+		.id();
+	let r = txn.rql("CREATE PROCEDURE pns_create_rec::greet AS { \"hi\" }", Params::None);
+	assert!(r.error.is_none(), "first create failed: {:?}", r.error);
+	let first = catalog
+		.find_procedure_by_name(&mut Transaction::Admin(&mut txn), ns_id, "greet")
+		.unwrap()
+		.expect("in-txn create must be findable by name")
+		.id();
+	let r = txn.rql("DROP PROCEDURE pns_create_rec::greet", Params::None);
+	assert!(r.error.is_none(), "drop failed: {:?}", r.error);
+	assert!(
+		catalog.find_procedure_by_name(&mut Transaction::Admin(&mut txn), ns_id, "greet").unwrap().is_none(),
+		"in-txn drop must hide the in-txn create"
+	);
+	let r = txn.rql("CREATE PROCEDURE pns_create_rec::greet AS { \"hi\" }", Params::None);
+	assert!(r.error.is_none(), "recreate after in-txn drop failed: {:?}", r.error);
+	let second = catalog
+		.find_procedure_by_name(&mut Transaction::Admin(&mut txn), ns_id, "greet")
+		.unwrap()
+		.expect("recreated procedure must be findable by name")
+		.id();
+	assert_ne!(first, second, "lookup by name must return the recreated object, never the dropped one");
+}

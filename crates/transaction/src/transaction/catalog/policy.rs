@@ -65,11 +65,19 @@ impl TransactionalPolicyChanges for AdminTransaction {
 	}
 
 	fn find_policy_by_name(&self, name: &str) -> Option<&Policy> {
-		self.changes
-			.policy
-			.iter()
-			.rev()
-			.find_map(|change| change.post.as_ref().filter(|p| p.name.as_deref() == Some(name)))
+		for change in self.changes.policy.iter().rev() {
+			if let Some(policy) = &change.post {
+				if policy.name.as_deref() == Some(name) {
+					return Some(policy);
+				}
+			} else if let Some(policy) = &change.pre
+				&& policy.name.as_deref() == Some(name)
+				&& change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
 	}
 
 	fn is_policy_deleted_by_name(&self, name: &str) -> bool {

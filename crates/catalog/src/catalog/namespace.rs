@@ -3,7 +3,12 @@
 
 use reifydb_core::{
 	interface::catalog::{
-		change::{CatalogTrackFlowChangeOperations, CatalogTrackNamespaceChangeOperations},
+		change::{
+			CatalogTrackDictionaryChangeOperations, CatalogTrackFlowChangeOperations,
+			CatalogTrackNamespaceChangeOperations, CatalogTrackQueueChangeOperations,
+			CatalogTrackRingBufferChangeOperations, CatalogTrackSumTypeChangeOperations,
+			CatalogTrackTableChangeOperations, CatalogTrackViewChangeOperations,
+		},
 		flow::FlowEntry,
 		id::NamespaceId,
 		namespace::Namespace,
@@ -334,9 +339,46 @@ impl Catalog {
 				});
 			}
 		}
-		CatalogStore::drop_namespace(txn, namespace.id())?;
+		let ns = namespace.id();
+		let tables: Vec<_> = self
+			.list_tables(&mut Transaction::Admin(&mut *txn))?
+			.into_iter()
+			.filter(|t| t.namespace == ns)
+			.collect();
+		let views: Vec<_> = self
+			.list_views_all(&mut Transaction::Admin(&mut *txn))?
+			.into_iter()
+			.filter(|v| v.namespace() == ns)
+			.collect();
+		let ringbuffers: Vec<_> = self
+			.list_ringbuffers(&mut Transaction::Admin(&mut *txn))?
+			.into_iter()
+			.filter(|r| r.namespace == ns)
+			.collect();
+		let queues = self.list_queues_in_namespace(&mut Transaction::Admin(&mut *txn), ns)?;
+		let dictionaries = self.list_dictionaries(&mut Transaction::Admin(&mut *txn), ns)?;
+		let sumtypes = self.list_sumtypes(&mut Transaction::Admin(&mut *txn), ns)?;
+		CatalogStore::drop_namespace(txn, ns)?;
 		for entry in flows {
 			txn.track_flow_deleted(entry)?;
+		}
+		for table in tables {
+			txn.track_table_deleted(table)?;
+		}
+		for view in views {
+			txn.track_view_deleted(view)?;
+		}
+		for ringbuffer in ringbuffers {
+			txn.track_ringbuffer_deleted(ringbuffer)?;
+		}
+		for queue in queues {
+			txn.track_queue_deleted(queue)?;
+		}
+		for dictionary in dictionaries {
+			txn.track_dictionary_deleted(dictionary)?;
+		}
+		for sumtype in sumtypes {
+			txn.track_sumtype_deleted(sumtype)?;
 		}
 		txn.track_namespace_deleted(namespace)?;
 		Ok(())

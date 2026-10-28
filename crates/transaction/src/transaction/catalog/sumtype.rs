@@ -54,11 +54,19 @@ impl TransactionalSumTypeChanges for AdminTransaction {
 	}
 
 	fn find_sumtype_by_name(&self, namespace: NamespaceId, name: &str) -> Option<&SumType> {
-		self.changes
-			.sumtype
-			.iter()
-			.rev()
-			.find_map(|change| change.post.as_ref().filter(|d| d.namespace == namespace && d.name == name))
+		for change in self.changes.sumtype.iter().rev() {
+			if let Some(sumtype) = &change.post {
+				if sumtype.namespace == namespace && sumtype.name == name {
+					return Some(sumtype);
+				}
+			} else if let Some(sumtype) = &change.pre
+				&& sumtype.namespace == namespace
+				&& sumtype.name == name && change.op == Delete
+			{
+				return None;
+			}
+		}
+		None
 	}
 
 	fn is_sumtype_deleted(&self, id: SumTypeId) -> bool {
