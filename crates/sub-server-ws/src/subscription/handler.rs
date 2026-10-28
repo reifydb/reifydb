@@ -142,11 +142,17 @@ fn subscribe_error_to_response(request_id: &str, err: SubscribeError<ExecuteErro
 			"Subscribe requires at least one query",
 		)
 		.to_json(),
-		SubscribeError::Create(CreateSubscriptionError::Execute(e)) => error_to_response(request_id, e),
-		SubscribeError::RemoteConnect(msg) => {
-			Response::internal_error(request_id, "REMOTE_SUBSCRIBE_FAILED", msg).to_json()
-		}
-		SubscribeError::InvalidRemoteId => Response::internal_error(
+		SubscribeError::Create {
+			error: CreateSubscriptionError::Execute(e),
+			..
+		} => error_to_response(request_id, e),
+		SubscribeError::RemoteConnect {
+			message,
+			..
+		} => Response::internal_error(request_id, "REMOTE_SUBSCRIBE_FAILED", message).to_json(),
+		SubscribeError::InvalidRemoteId {
+			..
+		} => Response::internal_error(
 			request_id,
 			"REMOTE_SUBSCRIBE_FAILED",
 			"Invalid remote subscription ID format",
@@ -166,6 +172,7 @@ fn subscribe_error_to_response(request_id: &str, err: SubscribeError<ExecuteErro
 			error,
 			rql,
 			max_rows,
+			..
 		} => hydrate_error_to_response(request_id, error, &rql, max_rows),
 		SubscribeError::HydrationServiceUnavailable(msg) => {
 			Response::internal_error(request_id, "SUBSCRIPTION_SERVICE_UNAVAILABLE", msg).to_json()

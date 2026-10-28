@@ -68,15 +68,24 @@ pub struct SubscribeHydration {
 #[derive(Debug)]
 pub enum SubscribeError<E> {
 	Empty,
-	Create(CreateSubscriptionError<E>),
-	RemoteConnect(String),
-	InvalidRemoteId,
+	Create {
+		index: usize,
+		error: CreateSubscriptionError<E>,
+	},
+	RemoteConnect {
+		index: usize,
+		message: String,
+	},
+	InvalidRemoteId {
+		index: usize,
+	},
 	LeaseFailed {
 		code: &'static str,
 		message: String,
 	},
 	HydrationBackpressure,
 	HydrationFailed {
+		index: usize,
 		error: HydrateError,
 		rql: String,
 		max_rows: u64,
@@ -286,7 +295,7 @@ async fn resolve_subscriptions<S: WireSink, H: SubscribeHost>(
 				linger,
 			}) => {
 				let (subscription_id, remote_sub) = match connect_remote_subscription::<S, H::Error>(
-					address, body, ns_token, hydration, throttle, linger, format,
+					index, address, body, ns_token, hydration, throttle, linger, format,
 				)
 				.await
 				{
@@ -304,7 +313,10 @@ async fn resolve_subscriptions<S: WireSink, H: SubscribeHost>(
 			}
 			Err(e) => {
 				rollback_resolved(ctx.engine(), &resolved).await?;
-				return Ok(Err(SubscribeError::Create(e)));
+				return Ok(Err(SubscribeError::Create {
+					index,
+					error: e,
+				}));
 			}
 		}
 	}
@@ -327,6 +339,7 @@ async fn resolve_subscriptions<S: WireSink, H: SubscribeHost>(
 #[inline]
 #[allow(clippy::too_many_arguments)]
 async fn connect_remote_subscription<S: WireSink, E>(
+	index: usize,
 	_address: String,
 	_body: String,
 	_ns_token: Option<String>,
@@ -335,13 +348,17 @@ async fn connect_remote_subscription<S: WireSink, E>(
 	_linger: Option<Duration>,
 	_format: S::Format,
 ) -> Result<(SubscriptionId, RemoteSubscription), SubscribeError<E>> {
-	Err(SubscribeError::RemoteConnect("Remote subscriptions require a threaded runtime".to_string()))
+	Err(SubscribeError::RemoteConnect {
+		index,
+		message: "Remote subscriptions require a threaded runtime".to_string(),
+	})
 }
 
 #[cfg(not(reifydb_single_threaded))]
 #[inline]
 #[allow(clippy::too_many_arguments)]
 async fn connect_remote_subscription<S: WireSink, E>(
+	index: usize,
 	address: String,
 	body: String,
 	ns_token: Option<String>,
@@ -359,11 +376,18 @@ async fn connect_remote_subscription<S: WireSink, E>(
 		throttle: throttle.map(ClientThrottle::new),
 		linger: linger.map(ClientLinger::new),
 	};
-	let remote_sub = connect_remote(&address, &body, config, ns_token.as_deref(), client_format)
-		.await
-		.map_err(|e| SubscribeError::RemoteConnect(e.to_string()))?;
+	let remote_sub =
+		connect_remote(&address, &body, config, ns_token.as_deref(), client_format).await.map_err(|e| {
+			SubscribeError::RemoteConnect {
+				index,
+				message: e.to_string(),
+			}
+		})?;
 	let remote_id = remote_sub.subscription_id().to_string();
-	let subscription_id = SubscriptionId(remote_id.parse::<u64>().map_err(|_| SubscribeError::InvalidRemoteId)?);
+	let subscription_id =
+		SubscriptionId(remote_id.parse::<u64>().map_err(|_| SubscribeError::InvalidRemoteId {
+			index,
+		})?);
 	Ok((subscription_id, remote_sub))
 }
 
@@ -504,7 +528,11 @@ async fn hydrate_locals<S: WireSink, E>(
 			{
 				unregister_all(registry, subscription_ids);
 				rollback_local_subscriptions(ctx.engine(), local_hydrations).await?;
-				return Ok(Err(err.into()));
+				let index = subscription_ids
+					.iter()
+					.position(|id| id == sub_id)
+					.expect("every local hydration belongs to a subscription of this call");
+				return Ok(Err(err.into_subscribe_error(index)));
 			}
 		}
 	} else {
@@ -693,16 +721,17 @@ enum SubscriptionHydrateErrorKind {
 	Backpressure,
 }
 
-impl<E> From<SubscriptionHydrateError> for SubscribeError<E> {
-	fn from(e: SubscriptionHydrateError) -> Self {
-		match e.kind {
+impl SubscriptionHydrateError {
+	fn into_subscribe_error<E>(self, index: usize) -> SubscribeError<E> {
+		match self.kind {
 			SubscriptionHydrateErrorKind::ServiceUnavailable(msg) => {
 				SubscribeError::HydrationServiceUnavailable(msg)
 			}
 			SubscriptionHydrateErrorKind::Failed(err) => SubscribeError::HydrationFailed {
+				index,
 				error: err,
-				rql: e.rql,
-				max_rows: e.max_rows,
+				rql: self.rql,
+				max_rows: self.max_rows,
 			},
 			SubscriptionHydrateErrorKind::Backpressure => SubscribeError::HydrationBackpressure,
 		}

@@ -618,9 +618,17 @@ fn insert_meta_headers(metadata: &mut MetadataMap, metrics: &ExecutionMetrics) {
 fn subscribe_error_to_status(err: SubscribeError<ExecuteError>) -> Status {
 	match err {
 		SubscribeError::Empty => Status::invalid_argument("Subscribe requires at least one query"),
-		SubscribeError::Create(CreateSubscriptionError::Execute(e)) => Status::from(GrpcError::from(e)),
-		SubscribeError::RemoteConnect(msg) => Status::unavailable(msg),
-		SubscribeError::InvalidRemoteId => Status::internal("Invalid remote subscription ID format"),
+		SubscribeError::Create {
+			error: CreateSubscriptionError::Execute(e),
+			..
+		} => Status::from(GrpcError::from(e)),
+		SubscribeError::RemoteConnect {
+			message,
+			..
+		} => Status::unavailable(message),
+		SubscribeError::InvalidRemoteId {
+			..
+		} => Status::internal("Invalid remote subscription ID format"),
 		SubscribeError::LeaseFailed {
 			code,
 			message,
@@ -636,6 +644,7 @@ fn subscribe_error_to_status(err: SubscribeError<ExecuteError>) -> Status {
 			error,
 			rql,
 			max_rows,
+			..
 		} => hydrate_error_to_status(error, &rql, max_rows),
 		SubscribeError::HydrationServiceUnavailable(msg) => {
 			Status::internal(format!("subscription service unavailable: {}", msg))
