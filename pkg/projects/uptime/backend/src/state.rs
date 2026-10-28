@@ -3,10 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb::{
-	Clock, Database, auth::service::AuthService, catalog::catalog::Catalog, engine::engine::StandardEngine,
-	runtime::context::rng::Rng,
-};
+use reifydb::{Clock, Database, engine::engine::StandardEngine, runtime::context::rng::Rng};
 use reqwest::{Client, redirect::Policy};
 use tokio::runtime::Handle;
 
@@ -15,8 +12,6 @@ use crate::{checks::CheckContext, cli::RunArgs};
 #[derive(Clone)]
 pub struct AppState {
 	pub engine: StandardEngine,
-	pub auth: AuthService,
-	pub catalog: Catalog,
 	pub clock: Clock,
 	pub rng: Rng,
 	pub tokio: Handle,
@@ -31,8 +26,6 @@ impl AppState {
 		let rng = engine.rng().clone();
 		let db_auth_base = format!("http://{}", cfg.reifydb_http_bind);
 		Self {
-			catalog: db.catalog(),
-			auth: db.auth_service().clone(),
 			clock: db.clock().clone(),
 			tokio: db.runtime().tokio(),
 			rng,

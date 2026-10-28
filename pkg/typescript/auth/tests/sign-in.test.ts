@@ -200,4 +200,38 @@ describe.each([
       }),
     ).rejects.toThrow(/sessionTtlSeconds/);
   });
+  it.each([
+    ["a live session sends its token", 3600, "guest-tok"],
+    ["an expired session sends no token", -1, undefined],
+    ["no session sends no token", null, undefined],
+  ])("%s", async (_name, expiresIn, expected) => {
+    // A live guest token must reach the server so the guest is promoted in place; an expired one must not, or an old tab could never sign in again.
+    const client = makeStubClient(
+      { kind: "challenge", challengeId: "c1", message: "hello", nonce: "n1" },
+      { kind: "authenticated", token: "tok", identity: "id" },
+    );
+    const transport = makeTransport(client, kind);
+    const session =
+      expiresIn == null
+        ? undefined
+        : {
+            token: "guest-tok",
+            identity: "guest-id",
+            walletAddress: "guest-id",
+            expiresAt: Math.floor(Date.now() / 1000) + expiresIn,
+          };
+
+    await performSignIn({
+      url: "ws://test",
+      transport,
+      method: "solana",
+      wallet: makeWallet("WaLLeT"),
+      domain: "example.com",
+      statement: "Sign in",
+      sessionTtlSeconds: 60,
+      session,
+    });
+
+    expect(transport.connect).toHaveBeenCalledExactlyOnceWith("ws://test", expected);
+  });
 });

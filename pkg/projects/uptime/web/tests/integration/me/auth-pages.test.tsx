@@ -14,7 +14,7 @@ import { connect } from '@/store/client'
 import { loadBackend } from '../../support/backend'
 import { createUserWithEmail, guestStore, storeAs } from '../../support/identity'
 import { navigate } from '../../support/router-mock'
-import { setSessionToken, signIn } from '../../support/session-mock'
+import { setAuthError, setSessionToken, signIn } from '../../support/session-mock'
 
 vi.mock('@reifydb/auth', async () => (await import('../../support/session-mock')).sessionAuthMock())
 vi.mock('@tanstack/react-router', async () => ({
@@ -63,6 +63,7 @@ beforeEach(async () => {
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
   setSessionToken('guest-token')
+  setAuthError(null)
   vi.mocked(connect).mockReset()
   vi.mocked(connect).mockImplementation(async (token) => stores.get(token))
 })
@@ -94,9 +95,8 @@ describe('me on the auth pages', () => {
   })
 
   it('shows the guest hint, then leaves once the promoted session reads as a user', async () => {
-    // Registration promotes the guest and signs in again; a me still read from the guest session would strand the page here.
+    // The sign-in itself promotes the guest; a me still read from the guest session would strand the page here.
     page = 'register'
-    fetchMock.mockResolvedValue({ status: 201, ok: true, text: async () => '' })
     const user = userEvent.setup()
     renderAuthPages()
     expect(await screen.findByText(/this account takes them over/)).toBeInTheDocument()
@@ -107,11 +107,28 @@ describe('me on the auth pages', () => {
     await user.click(screen.getByRole('button', { name: 'Create account' }))
 
     await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/monitors' }))
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/auth/register',
-      expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ Authorization: 'Bearer guest-token' }) }),
-    )
+    expect(signIn.mock.calls).toEqual([[{ identifier: 'alice@example.com', password: PASSWORD }]])
+    expect(fetchMock).not.toHaveBeenCalled()
     expect(screen.queryByText(/this account takes them over/)).not.toBeInTheDocument()
+  })
+
+  it('tells a guest whose email is taken to sign in instead, and keeps the guest', async () => {
+    // The engine answers a taken email with a wrong password as invalid credentials; the raw text would read as a typo.
+    page = 'register'
+    signIn.mockImplementation(async () => setAuthError('invalid credentials'))
+    const user = userEvent.setup()
+    renderAuthPages()
+    expect(await screen.findByText(/this account takes them over/)).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Email'), 'alice@example.com')
+    await user.type(screen.getByLabelText('Password'), PASSWORD)
+    await user.type(screen.getByLabelText('Confirm password'), PASSWORD)
+    await user.click(screen.getByRole('button', { name: 'Create account' }))
+
+    expect(await screen.findByText('This email already has an account, sign in instead')).toBeInTheDocument()
+    expect(screen.queryByText('invalid credentials')).not.toBeInTheDocument()
+    expect(screen.getByText('me guest')).toBeInTheDocument()
+    expect(navigate).not.toHaveBeenCalled()
   })
 
   it('reads no identity when there is no session', async () => {

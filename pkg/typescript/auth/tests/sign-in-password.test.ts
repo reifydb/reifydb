@@ -153,4 +153,33 @@ describe.each([
       }),
     ).rejects.toThrow(/sessionTtlSeconds/);
   });
+  it.each([
+    ["a live session sends its token", 3600, "guest-tok"],
+    ["an expired session sends no token", -1, undefined],
+    ["no session sends no token", null, undefined],
+  ])("%s", async (_name, expiresIn, expected) => {
+    // A live guest token must reach the server so the guest is promoted in place; an expired one must not, or an old tab could never sign in again.
+    const client = makePasswordClient();
+    const transport = makeTransport(client, kind);
+    const session =
+      expiresIn == null
+        ? undefined
+        : {
+            token: "guest-tok",
+            identity: "guest-id",
+            walletAddress: "guest-id",
+            expiresAt: Math.floor(Date.now() / 1000) + expiresIn,
+          };
+
+    await performPasswordSignIn({
+      url: "u",
+      transport,
+      identifier: "user@example.com",
+      password: "hunter2",
+      sessionTtlSeconds: 60,
+      session,
+    });
+
+    expect(transport.connect).toHaveBeenCalledExactlyOnceWith("u", expected);
+  });
 });

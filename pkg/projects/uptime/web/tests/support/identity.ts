@@ -18,7 +18,7 @@ export async function identityNamed(db: TestDb, name: string): Promise<string> {
 }
 
 export async function createUserWithEmail(db: TestDb, email: string): Promise<string> {
-  await db.adminRoot(`CREATE USER \`${email}\` { email: $email }`, { email }, [])
+  await db.adminRoot(`CREATE USER \`${email}\``, {}, [])
   return identityNamed(db, email)
 }
 

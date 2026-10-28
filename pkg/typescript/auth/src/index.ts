@@ -7,6 +7,7 @@ export type {
   AuthState,
   AuthStatus,
   CredentialAuthCapableClient,
+  GuestAuthCapableClient,
   LoginChallengeResult,
   LoginResult,
   PasswordCredentials,
@@ -31,6 +32,11 @@ export {
 export { useAuth, useAuthClient } from "./use-auth";
 
 export { performSignIn, type SignInArgs } from "./sign-in";
+
+export {
+  performGuestSignIn,
+  type GuestSignInArgs,
+} from "./sign-in-guest";
 
 export {
   performPasswordSignIn,

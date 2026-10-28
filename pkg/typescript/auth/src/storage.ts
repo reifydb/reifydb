@@ -56,7 +56,8 @@ function isAuthSession(v: unknown): v is AuthSession {
     o.method !== undefined &&
     o.method !== "wallet" &&
     o.method !== "password" &&
-    o.method !== "token"
+    o.method !== "token" &&
+    o.method !== "guest"
   ) {
     return false;
   }

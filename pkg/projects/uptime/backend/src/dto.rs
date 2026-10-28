@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::store::DayBucket;
 
@@ -45,17 +45,4 @@ pub struct PublicStatusDto {
 	pub title: String,
 	pub slug: String,
 	pub monitors: Vec<PublicStatusMonitorDto>,
-}
-
-#[derive(Deserialize)]
-pub struct RegisterRequest {
-	pub email: String,
-	pub password: String,
-}
-
-#[derive(Serialize)]
-pub struct GuestSessionResponse {
-	pub token: String,
-	pub identity: String,
-	pub expires_at: i64,
 }

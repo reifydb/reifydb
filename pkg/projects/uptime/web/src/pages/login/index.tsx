@@ -62,7 +62,7 @@ export function LoginPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          {error != null && status === 'error' && (
+          {error != null && (
             <p className="text-sm text-status-error">{error}</p>
           )}
           <Button type="submit" className="w-full" disabled={busy}>

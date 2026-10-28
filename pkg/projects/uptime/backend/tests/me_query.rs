@@ -59,11 +59,7 @@ fn lookup_identity(db: &Database, name: &str) -> IdentityId {
 }
 
 fn sign_up(db: &Database, email: &str) -> IdentityId {
-	let r = db.engine().admin_as(
-		IdentityId::root(),
-		&format!("CREATE USER `{email}` {{ email: $email }}"),
-		params(&[("email", Value::Utf8(email.to_string()))]),
-	);
+	let r = db.engine().admin_as(IdentityId::root(), &format!("CREATE USER `{email}`"), Params::None);
 	if let Some(e) = r.error {
 		panic!("sign up failed: {e:?}");
 	}

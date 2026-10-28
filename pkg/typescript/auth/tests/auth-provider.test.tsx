@@ -394,6 +394,31 @@ describe("AuthProvider", () => {
     expect(localStorage.getItem(storageKeyFor(SCOPED_NS))).toBeNull();
   });
 
+  it("a failed wallet sign-in keeps the session it started from", async () => {
+    // A failed attempt must cost nothing: the session the user already had stays live and stored.
+    writeStoredSession(SCOPED_NS, futureSession({ walletAddress: WALLET_A }));
+    const authedClient = fakeClient();
+    authedClient.loginChallenge.mockRejectedValueOnce(new Error("network down"));
+    const transport = fakeTransport(fakeClient(), authedClient);
+    const ref: { current: ProbeRef | null } = { current: null };
+    mount(
+      fakeWallet({ connected: true, publicKey: WALLET_A, hasSelectedWallet: true }),
+      transport,
+      ref,
+    );
+    await waitFor(() => expect(ref.current?.status).toBe("authenticated"));
+
+    await act(async () => {
+      await ref.current?.signIn();
+    });
+
+    expect(ref.current?.status).toBe("authenticated");
+    expect(ref.current?.clientReady).toBe(true);
+    expect(ref.current?.error).toBe("network down");
+    expect(ref.current?.walletAddress).toBe(WALLET_A);
+    expect(localStorage.getItem(storageKeyFor(SCOPED_NS))).not.toBeNull();
+  });
+
   it("persists the session under a tab-scoped key, not the bare namespace", async () => {
     // The fix for the multi-tab logout bug: each tab writes its own slot
     // `${NS}.${tabId}.auth`, never the shared `${NS}.auth`, so concurrent

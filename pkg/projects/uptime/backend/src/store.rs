@@ -85,11 +85,6 @@ struct IdentityRow {
 	name: String,
 }
 
-#[derive(FromFrame)]
-struct IdentityKindRow {
-	kind: String,
-}
-
 pub fn opt_value<T: IntoValue>(v: Option<T>) -> Value {
 	v.map(IntoValue::into_value).unwrap_or_else(Value::none)
 }
@@ -196,22 +191,6 @@ impl ProbeBackend {
 			} => client.command(rql, Some(params)).await.map_err(ApiError::from),
 		}
 	}
-}
-
-pub async fn exec_admin(st: &AppState, rql: String, params: Params) -> Result<Vec<Frame>, ApiError> {
-	let engine = st.engine.clone();
-	let rng = st.rng.clone();
-	st.tokio.spawn_blocking(move || {
-		let retry = RetryStrategy::default_conflict_retry();
-		let r = retry.execute(&rng, &rql, || engine.admin_as(IdentityId::root(), &rql, params.clone()));
-		match r.error {
-			Some(e) => Err(e),
-			None => Ok(r.frames),
-		}
-	})
-	.await
-	.map_err(|e| ApiError::internal("admin task failed", e))?
-	.map_err(ApiError::from)
 }
 
 fn rows<T: FromFrame>(frames: &[Frame]) -> Result<Vec<T>, ApiError> {
@@ -555,20 +534,4 @@ pub async fn find_identity_by_name(st: &AppState, name: &str) -> Result<Option<I
 	)
 	.await?;
 	Ok(rows::<IdentityRow>(&frames)?.into_iter().next().map(|r| r.id))
-}
-
-pub struct IdentitySummary {
-	pub kind: String,
-}
-
-pub async fn find_identity_summary(st: &AppState, id: IdentityId) -> Result<Option<IdentitySummary>, ApiError> {
-	let frames = exec_query(
-		st,
-		"from system::identities filter { id == $id } map { kind }".to_string(),
-		params! { id: id },
-	)
-	.await?;
-	Ok(rows::<IdentityKindRow>(&frames)?.into_iter().next().map(|r| IdentitySummary {
-		kind: r.kind,
-	}))
 }

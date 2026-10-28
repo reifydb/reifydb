@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-mod auth_api;
 mod db_forward;
 mod public;
 
@@ -19,8 +18,6 @@ use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
 	Router::new()
-		.route("/api/auth/guest", post(auth_api::guest_session))
-		.route("/api/auth/register", post(auth_api::register))
 		.route("/api/public/status/{slug}", get(public::status))
 		.route("/health", get(health))
 		.route("/db/v1/authenticate", post(db_forward::forward))

@@ -15,8 +15,6 @@ use tracing::error;
 #[derive(Debug)]
 pub enum ApiError {
 	NotFound,
-	Conflict(String),
-	Validation(String),
 	Internal(String),
 }
 
@@ -37,8 +35,6 @@ impl IntoResponse for ApiError {
 	fn into_response(self) -> Response {
 		let (status, message) = match self {
 			ApiError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()),
-			ApiError::Conflict(m) => (StatusCode::CONFLICT, m),
-			ApiError::Validation(m) => (StatusCode::UNPROCESSABLE_ENTITY, m),
 			ApiError::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
 		};
 		(status, Json(json!({ "error": message }))).into_response()

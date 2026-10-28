@@ -3,12 +3,10 @@
 #![cfg_attr(not(debug_assertions), deny(clippy::disallowed_methods))]
 #![cfg_attr(debug_assertions, warn(clippy::disallowed_methods))]
 
-mod auth;
 mod checks;
 mod cli;
 mod dto;
 mod error;
-mod guest;
 mod probe;
 mod routes;
 mod scheduler;

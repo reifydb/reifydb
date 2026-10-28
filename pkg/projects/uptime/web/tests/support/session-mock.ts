@@ -5,6 +5,7 @@ import { useSyncExternalStore } from 'react'
 import { vi } from 'vitest'
 
 let token: string | null = null
+let authError: string | null = null
 const listeners = new Set<() => void>()
 
 function subscribe(listener: () => void): () => void {
@@ -17,6 +18,12 @@ function subscribe(listener: () => void): () => void {
 export function setSessionToken(next: string | null): void {
   // Must notify like the real provider's state, otherwise a layout keyed on the token never sees the change.
   token = next
+  for (const listener of listeners) listener()
+}
+
+export function setAuthError(next: string | null): void {
+  // Must notify like setSessionToken, otherwise a page never re-renders with the provider's error.
+  authError = next
   for (const listener of listeners) listener()
 }
 
@@ -37,10 +44,11 @@ export function sessionAuthMock() {
     readStoredSession: () => null,
     useAuth: () => {
       const current = useSyncExternalStore(subscribe, () => token)
+      const error = useSyncExternalStore(subscribe, () => authError)
       return {
         session: current == null ? null : { token: current },
         status: current == null ? 'disconnected' : 'authenticated',
-        error: null,
+        error,
         signIn,
         signOut,
         adoptSession,

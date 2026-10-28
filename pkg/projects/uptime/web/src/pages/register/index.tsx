@@ -4,15 +4,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useAuth } from '@reifydb/auth'
-import { ApiError } from '@/lib/api'
-import { useApi } from '@/hooks/use-api'
 import { useMe } from '@/hooks/use-me'
 import { clearSignedOut } from '@/lib/session-flags'
 import { Button, Card, CardContent, CardHeader, CardTitle, Input } from '@reifydb/ui'
 
 export function RegisterPage() {
   const { signIn, status, error: authError } = useAuth()
-  const api = useApi()
   const { data: me } = useMe()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
@@ -33,32 +30,24 @@ export function RegisterPage() {
     e.preventDefault()
     setFormError(null)
     const normalized = email.trim().toLowerCase()
-    if (password.length < 8) {
-      setFormError('Password must be at least 8 characters')
-      return
-    }
     if (password !== confirm) {
       setFormError('Passwords do not match')
       return
     }
     setSubmitting(true)
     try {
-      await api<void>('/auth/register', {
-        method: 'POST',
-        body: { email: normalized, password },
-      })
       await signIn({ identifier: normalized, password })
       clearSignedOut()
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setFormError(err.message)
-      } else {
-        setFormError('Registration failed')
-      }
     } finally {
       setSubmitting(false)
     }
   }
+
+  const shownError =
+    formError ??
+    (authError === 'invalid credentials'
+      ? 'This email already has an account, sign in instead'
+      : authError)
 
   const busy = submitting || status === 'signing' || status === 'verifying'
 
@@ -101,8 +90,8 @@ export function RegisterPage() {
             onChange={(e) => setConfirm(e.target.value)}
             required
           />
-          {(formError != null || (authError != null && status === 'error')) && (
-            <p className="text-sm text-status-error">{formError ?? authError}</p>
+          {shownError != null && (
+            <p className="text-sm text-status-error">{shownError}</p>
           )}
           <Button type="submit" className="w-full" disabled={busy}>
             {busy ? 'Creating account...' : 'Create account'}

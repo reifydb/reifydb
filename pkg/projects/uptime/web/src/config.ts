@@ -27,4 +27,5 @@ export const UPTIME_CONFIG = {
   },
   storageNamespace: 'reifydb.uptime',
   sessionTtlSeconds: 86400,
+  guestSessionTtlSeconds: 30 * 86400,
 };

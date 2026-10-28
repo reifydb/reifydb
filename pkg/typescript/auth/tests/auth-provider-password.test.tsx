@@ -188,6 +188,27 @@ describe("AuthProvider (password flow)", () => {
     expect(localStorage.getItem(storageKeyFor(SCOPED_NS))).toBeNull();
   });
 
+  it("a failed sign-in keeps the session it started from", async () => {
+    // A guest who mistypes on the register page must stay signed in; dropping the session would strand it and its data.
+    writeStoredSession(SCOPED_NS, passwordSession());
+    const authedClient = fakeClient();
+    authedClient.loginWithPassword.mockRejectedValueOnce(new Error("invalid credentials"));
+    const transport = fakeTransport(fakeClient(), authedClient);
+    const ref: { current: ProbeRef | null } = { current: null };
+    mount(transport, ref);
+    await waitFor(() => expect(ref.current?.status).toBe("authenticated"));
+
+    await act(async () => {
+      await ref.current?.signIn({ identifier: "other@example.com", password: "wrong" });
+    });
+
+    expect(ref.current?.status).toBe("authenticated");
+    expect(ref.current?.clientReady).toBe(true);
+    expect(ref.current?.error).toBe("invalid credentials");
+    expect(ref.current?.identifier).toBe(EMAIL);
+    expect(localStorage.getItem(storageKeyFor(SCOPED_NS))).not.toBeNull();
+  });
+
   it("signIn() without credentials and without a wallet errors instead of throwing", async () => {
     const transport = fakeTransport(fakeClient(), fakeClient());
     const ref: { current: ProbeRef | null } = { current: null };
