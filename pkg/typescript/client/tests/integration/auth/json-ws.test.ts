@@ -4,7 +4,7 @@ import {afterEach, beforeAll, describe, expect, it} from 'vitest';
 import {waitForDatabase} from "../setup";
 import {Client, JsonWsClient} from "../../../src";
 
-describe('Auth Login Tests — JSON WebSocket', () => {
+describe('Auth Login Tests - JSON WebSocket', () => {
     const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
 
     beforeAll(async () => {

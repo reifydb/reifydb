@@ -205,7 +205,7 @@ fn another_stream_cannot_unsubscribe_a_subscription_it_does_not_own() {
 }
 
 #[test]
-fn another_stream_cannot_unsubscribe_a_batch_it_does_not_own() {
+fn another_stream_cannot_unsubscribe_a_call_it_does_not_own() {
 	// Dashboards open many subscriptions per call, so an unscoped list unsubscribe ends every other user's page.
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();

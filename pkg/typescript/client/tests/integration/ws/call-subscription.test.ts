@@ -11,7 +11,7 @@ import {
     createCallbackTracker
 } from './subscription-helpers';
 
-describe('WebSocket Batch Subscriptions', () => {
+describe('WebSocket Call Subscriptions', () => {
     let wsClient: WsClient;
     const testUrl = process.env.REIFYDB_WS_URL || 'ws://localhost:18090';
 
@@ -33,7 +33,7 @@ describe('WebSocket Batch Subscriptions', () => {
         }
     });
 
-    describe('Basic Batch Flow', () => {
+    describe('Basic Call Flow', () => {
         it('should subscribe to multiple queries in one call', async () => {
             const tableA = createTestTableName('batch_a');
             const tableB = createTestTableName('batch_b');
@@ -281,7 +281,7 @@ describe('WebSocket Batch Subscriptions', () => {
     });
 
     describe('Concurrent Subscriptions', () => {
-        it('should keep two concurrent batches and a single subscription isolated', async () => {
+        it('should keep two concurrent calls and a single subscription isolated', async () => {
             const tableX = createTestTableName('conc_x');
             const tableY = createTestTableName('conc_y');
             const tableZ = createTestTableName('conc_z');
@@ -384,7 +384,7 @@ describe('WebSocket Batch Subscriptions', () => {
     });
 
     describe('RBCF Transport', () => {
-        it('should route batch changes over RBCF binary format', async () => {
+        it('should route call changes over RBCF binary format', async () => {
             if (wsClient) wsClient.disconnect();
             wsClient = await Client.connectWs(testUrl, {
                 timeoutMs: 10000,

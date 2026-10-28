@@ -20,8 +20,8 @@ function Page() {
     return <div data-testid="status">{`${a.status}/${b.status}/${c.status}`}</div>
 }
 
-describe('useSubscription against a batching store', () => {
-    it('opens one batch for every hook a page mounts', async () => {
+describe('useSubscription against a per-tick store', () => {
+    it('opens one call for every hook a page mounts', async () => {
         // This is what batching is for. React runs the three mount effects in one pass, so the page
         // that used to cost three round trips costs one, without a hook having to know about it.
         const {client, store} = setup();
@@ -71,7 +71,7 @@ describe('useSubscription against a batching store', () => {
         expect(store.getEntry(results, null).data).toEqual([{id: 7, name: 'r'}]);
     });
 
-    it('marks the whole page in error when the batch is refused', async () => {
+    it('marks the whole page in error when the call is refused', async () => {
         // A page whose subscriptions all failed has to say so. One shared ack means one shared
         // failure, and an entry left loading would be a spinner that never resolves.
         const {client, store} = setup();
@@ -88,7 +88,7 @@ describe('useSubscription against a batching store', () => {
         expect(screen.getByTestId('status').textContent).toBe('error/error/error');
     });
 
-    it('opens one batch under strict mode, not one per mount pass', async () => {
+    it('opens one call under strict mode, not one per mount pass', async () => {
         // Strict mode mounts, unmounts and remounts every effect. Each pass has to close its own
         // batch, and the subscriptions the discarded pass opened have to be given back.
         const {client, store} = setup();

@@ -17,7 +17,7 @@ use crate::common::{
 };
 
 mod basic;
-mod batch_mixed_op;
+mod call_mixed_op;
 mod data_types;
 mod filtered;
 mod integration;

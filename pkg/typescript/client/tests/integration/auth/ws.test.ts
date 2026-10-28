@@ -5,7 +5,7 @@ import {waitForDatabase} from "../setup";
 import {Shape} from "@reifydb/core";
 import {Client, WsClient} from "../../../src";
 
-describe('Auth Login Tests — WebSocket', () => {
+describe('Auth Login Tests - WebSocket', () => {
     const WS_URL = process.env.REIFYDB_WS_URL || 'ws://127.0.0.1:18090';
 
     beforeAll(async () => {
@@ -149,7 +149,7 @@ describe('Auth Login Tests — WebSocket', () => {
 
         it('should handle logout without token', async () => {
             client = await Client.connectWs(WS_URL, {timeoutMs: 10000});
-            // No login — logout should be a no-op
+            // No login - logout should be a no-op
             await client.logout();
         }, 10000);
 

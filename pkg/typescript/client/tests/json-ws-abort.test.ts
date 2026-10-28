@@ -81,7 +81,7 @@ describe('JsonWsClient abort signal', () => {
             const connectPromise = JsonWsClient.connect({url: 'ws://test', signal: controller.signal});
 
             await Promise.resolve();
-            // Fire open event and then immediately abort — the post-await check should catch it
+            // Fire open event and then immediately abort - the post-await check should catch it
             mockSocket._emit('open');
             controller.abort();
 

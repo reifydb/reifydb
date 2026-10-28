@@ -5,7 +5,7 @@ import {waitForDatabase} from "../setup";
 import {Shape} from "@reifydb/core";
 import {Client, HttpClient} from "../../../src";
 
-describe('Auth Login Tests — HTTP', () => {
+describe('Auth Login Tests - HTTP', () => {
     const HTTP_URL = process.env.REIFYDB_HTTP_URL || 'http://127.0.0.1:18091';
 
     beforeAll(async () => {
@@ -108,7 +108,7 @@ describe('Auth Login Tests — HTTP', () => {
 
         it('should handle logout without token', async () => {
             const client = Client.connectHttp(HTTP_URL, {timeoutMs: 10000});
-            // No login — logout should be a no-op
+            // No login - logout should be a no-op
             await client.logout();
         }, 10000);
 
