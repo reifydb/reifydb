@@ -142,7 +142,11 @@ impl HttpClient {
 		});
 
 		let url = format!("{}/v1/authenticate", self.base_url);
-		let response = self.inner.post(&url).json(&body).send().await.map_err(transport)?;
+		let mut request = self.inner.post(&url).json(&body);
+		if let Some(token) = &self.token {
+			request = request.bearer_auth(token);
+		}
+		let response = request.send().await.map_err(transport)?;
 		let response_body = response.text().await.map_err(transport)?;
 
 		let auth: HttpAuthenticateResponse =

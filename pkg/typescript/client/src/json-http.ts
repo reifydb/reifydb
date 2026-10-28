@@ -59,7 +59,7 @@ export class JsonHttpClient {
         try {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: this.loginHeaders(),
                 body: JSON.stringify(toSnakeCaseKeys({method, credentials}, WIRE_PASSTHROUGH_KEYS)),
                 signal,
             });
@@ -67,6 +67,7 @@ export class JsonHttpClient {
             clearTimeout(timeout);
             const body = toCamelCaseKeys<any>(await response.json(), WIRE_PASSTHROUGH_KEYS);
 
+            throwIfMethodNotEnabled(body);
             if (body.status !== "authenticated" || !body.token || !body.identity) {
                 throw new Error(body.reason || "Authentication failed");
             }
@@ -96,7 +97,7 @@ export class JsonHttpClient {
         try {
             const response = await fetch(`${this.options.url}/v1/authenticate`, {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: this.loginHeaders(),
                 body: JSON.stringify(toSnakeCaseKeys({method, credentials}, WIRE_PASSTHROUGH_KEYS)),
                 signal,
             });
@@ -104,6 +105,7 @@ export class JsonHttpClient {
             clearTimeout(timeout);
             const body = toCamelCaseKeys<any>(await response.json(), WIRE_PASSTHROUGH_KEYS);
 
+            throwIfMethodNotEnabled(body);
             if (body.status === "challenge") {
                 if (!body.challengeId || !body.payload?.message || !body.payload?.nonce) {
                     throw new Error("Malformed challenge response");
@@ -127,6 +129,14 @@ export class JsonHttpClient {
             if (err.name === 'AbortError') throw new Error("Login timeout or aborted");
             throw err;
         }
+    }
+
+    private loginHeaders(): Record<string, string> {
+        const headers: Record<string, string> = {'Content-Type': 'application/json'};
+        if (this.options.token) {
+            headers['Authorization'] = `Bearer ${this.options.token}`;
+        }
+        return headers;
     }
 
     async logout(reqOpts?: RequestOptions): Promise<void> {
@@ -363,4 +373,20 @@ function extractMeta(headers: Headers | undefined): ResponseMeta | undefined {
     const duration = headers?.get?.('x-duration');
     if (!fingerprint || !duration) return undefined;
     return { fingerprint, duration };
+}
+
+function throwIfMethodNotEnabled(body: any): void {
+    if (body.status === "method_not_enabled") {
+        throw new ReifyError({
+            id: '',
+            type: 'Err',
+            payload: {
+                diagnostic: {
+                    code: "AUTH_METHOD_NOT_ENABLED",
+                    message: body.reason || "Authentication method is not enabled",
+                    notes: []
+                }
+            }
+        });
+    }
 }

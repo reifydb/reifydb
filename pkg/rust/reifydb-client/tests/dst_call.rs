@@ -59,6 +59,9 @@ fn authenticate(ctx: &DstTestContext, token: &str) -> IdentityId {
 		ServerAuthResponse::Challenge {
 			..
 		} => panic!("unexpected challenge response"),
+		ServerAuthResponse::MethodNotEnabled {
+			method,
+		} => panic!("method not enabled: {}", method),
 	}
 }
 

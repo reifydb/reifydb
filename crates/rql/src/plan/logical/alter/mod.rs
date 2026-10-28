@@ -26,6 +26,7 @@ impl<'bump> Compiler<'bump> {
 				name: node.name,
 				action: node.action,
 			})),
+			AstAlter::AuthenticationMethod(node) => self.compile_alter_authentication_method(node),
 			AstAlter::Table(node) => self.compile_alter_table(node, tx),
 			AstAlter::RemoteNamespace(node) => self.compile_alter_remote_namespace(node),
 			AstAlter::Identity(node) => Ok(LogicalPlan::AlterIdentity(AlterIdentityNode {

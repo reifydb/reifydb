@@ -404,7 +404,7 @@ mod tests {
 		interface::catalog::{
 			id::{NamespaceId, RingBufferId},
 			namespace::Namespace,
-			ringbuffer::RingBuffer,
+			ringbuffer::{EvictionVisibility, RingBuffer},
 		},
 		value::column::headers::ColumnHeaders,
 	};
@@ -468,7 +468,7 @@ mod tests {
 			primary_key: None,
 			partition_by: vec![],
 			time: TimeSource::None,
-			eviction: reifydb_core::interface::catalog::ringbuffer::EvictionVisibility::Visible,
+			eviction: EvictionVisibility::Visible,
 		};
 		let target = RingBufferTarget {
 			namespace: &namespace,

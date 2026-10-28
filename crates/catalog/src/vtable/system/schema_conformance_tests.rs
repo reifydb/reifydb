@@ -7,7 +7,7 @@ use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{params::Params, value::column_view::ColumnView};
 
 use super::{
-	authentications::SystemAuthentications,
+	authentication::{credentials::SystemAuthenticationCredentials, methods::SystemAuthenticationMethods},
 	bindings::{grpc::SystemBindingsGrpc, http::SystemBindingsHttp, ws::SystemBindingsWs},
 	cdc_consumers::SystemCdcConsumers,
 	column_properties::SystemColumnProperties,
@@ -113,7 +113,8 @@ fn all_system_vtables() -> Vec<Box<dyn BaseVTable>> {
 		Box::new(SystemPolicies::new()),
 		Box::new(SystemPolicyOperations::new()),
 		Box::new(SystemMigrations::new()),
-		Box::new(SystemAuthentications::new()),
+		Box::new(SystemAuthenticationCredentials::new()),
+		Box::new(SystemAuthenticationMethods::new()),
 		Box::new(SystemConfigs::new(ioc.clone())),
 		Box::new(SystemSubscriptions::new(ioc.clone())),
 		Box::new(SystemVirtualTableColumns::new(catalog.clone())),
@@ -189,7 +190,7 @@ fn every_system_vtable_emits_the_columns_its_schema_declares() {
 
 	assert!(failures.is_empty(), "system vtable schema drift:\n  {}", failures.join("\n  "));
 
-	assert_eq!(checked, 54, "expected every system vtable handler to be exercised");
+	assert_eq!(checked, 55, "expected every system vtable handler to be exercised");
 }
 
 #[test]

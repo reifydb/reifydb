@@ -11,7 +11,9 @@ use axum::{
 };
 use reifydb_codec::json::{to::convert_frames, types::ResponseFrame};
 use reifydb_core::{
-	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
+	actors::server::{
+		Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage, method_not_enabled_reason,
+	},
 	interface::catalog::{
 		binding::{Binding, BindingFormat, BindingProtocol, HttpMethod},
 		namespace::Namespace,
@@ -109,9 +111,11 @@ pub struct AuthenticateResponse {
 
 pub async fn handle_authenticate(
 	State(state): State<HttpServerState>,
+	headers: HeaderMap,
 	Json(request): Json<AuthenticateRequest>,
 ) -> Result<Response, AppError> {
-	let auth_response = send_authenticate(&state, request).await?;
+	let caller = extract_identity(&state, &headers)?;
+	let auth_response = send_authenticate(&state, request, caller).await?;
 
 	match auth_response {
 		ServerAuthResponse::Authenticated {
@@ -158,6 +162,20 @@ pub async fn handle_authenticate(
 			}),
 		)
 			.into_response()),
+		ServerAuthResponse::MethodNotEnabled {
+			method,
+		} => Ok((
+			StatusCode::FORBIDDEN,
+			Json(AuthenticateResponse {
+				status: "method_not_enabled".to_string(),
+				token: None,
+				identity: None,
+				challenge_id: None,
+				payload: None,
+				reason: Some(method_not_enabled_reason(&method)),
+			}),
+		)
+			.into_response()),
 		ServerAuthResponse::Error(reason) => Ok((
 			StatusCode::INTERNAL_SERVER_ERROR,
 			Json(AuthenticateResponse {
@@ -177,11 +195,13 @@ pub async fn handle_authenticate(
 async fn send_authenticate(
 	state: &HttpServerState,
 	request: AuthenticateRequest,
+	caller: IdentityId,
 ) -> Result<ServerAuthResponse, AppError> {
 	let (reply, receiver) = reply_channel();
 	let (actor_ref, _handle) = state.spawn_actor();
 	actor_ref
 		.send(ServerMessage::Authenticate {
+			caller,
 			method: request.method,
 			credentials: request.credentials,
 			reply,

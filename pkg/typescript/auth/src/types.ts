@@ -15,7 +15,7 @@ export interface AuthSession {
   readonly identity: string;
   readonly walletAddress: string;
   readonly expiresAt: number;
-  readonly method?: "wallet" | "password" | "token";
+  readonly method?: "wallet" | "password" | "token" | "guest";
   readonly identifier?: string;
 }
 
@@ -52,6 +52,13 @@ export interface CredentialAuthCapableClient extends AuthCapableClient {
   loginWithPassword(
     identifier: string,
     password: string,
+  ): Promise<LoginResult>;
+}
+
+export interface GuestAuthCapableClient extends AuthCapableClient {
+  login(
+    method: string,
+    credentials: Record<string, string>,
   ): Promise<LoginResult>;
 }
 

@@ -8,6 +8,7 @@ fn create_authentication_propagates_to_materialized_cache() {
 	let db = TestDb::memory();
 
 	db.admin("create user alice");
+	db.admin("create authentication method token with { ttl: forever }");
 	db.admin("create authentication for alice { method: token; token: 'secret' }");
 
 	let cat = db.catalog();

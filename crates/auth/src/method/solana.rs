@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use bs58::decode as bs58_decode;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -32,7 +32,11 @@ impl AuthenticationProvider for SolanaProvider {
 		"solana"
 	}
 
-	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
+	fn can_promote_guest(&self) -> bool {
+		true
+	}
+
+	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
 		let public_key = config.get("public_key").ok_or_else(|| Error::from(SolanaError::MissingPublicKey))?;
 
 		let bytes = bs58_decode(public_key).into_vec().map_err(|e| {
@@ -47,12 +51,12 @@ impl AuthenticationProvider for SolanaProvider {
 			}));
 		}
 
-		Ok(HashMap::from([("public_key".into(), public_key.clone())]))
+		Ok(BTreeMap::from([("public_key".into(), public_key.clone())]))
 	}
 
 	fn authenticate(
 		&self,
-		stored: &HashMap<String, String>,
+		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {
 		let public_key_b58 =
@@ -63,7 +67,7 @@ impl AuthenticationProvider for SolanaProvider {
 
 	fn verify_challenge(
 		&self,
-		stored: &HashMap<String, String>,
+		stored: &BTreeMap<String, String>,
 		challenge: &HashMap<String, String>,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {
@@ -195,7 +199,7 @@ mod tests {
 
 	fn issued_nonce(provider: &SolanaProvider) -> String {
 		let (_, public_key_b58) = test_keypair();
-		let stored = HashMap::from([("public_key".to_string(), public_key_b58)]);
+		let stored = BTreeMap::from([("public_key".to_string(), public_key_b58)]);
 
 		match provider.authenticate(&stored, &HashMap::new()).unwrap() {
 			AuthStep::Challenge {
@@ -252,7 +256,7 @@ mod tests {
 	fn test_challenge_response_flow() {
 		let provider = test_provider();
 		let (signing_key, public_key_b58) = test_keypair();
-		let stored = HashMap::from([("public_key".to_string(), public_key_b58)]);
+		let stored = BTreeMap::from([("public_key".to_string(), public_key_b58)]);
 
 		let step1 = provider.authenticate(&stored, &HashMap::new()).unwrap();
 		let challenge_data = match step1 {
@@ -286,7 +290,7 @@ mod tests {
 	fn test_invalid_signature_fails() {
 		let provider = test_provider();
 		let (_, public_key_b58) = test_keypair();
-		let stored = HashMap::from([("public_key".to_string(), public_key_b58)]);
+		let stored = BTreeMap::from([("public_key".to_string(), public_key_b58)]);
 
 		let wrong_key = SigningKey::from_bytes(&[99u8; 32]);
 		let signature = wrong_key.sign(b"some message");

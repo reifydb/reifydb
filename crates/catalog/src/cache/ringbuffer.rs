@@ -70,6 +70,7 @@ pub mod tests {
 		interface::catalog::{
 			column::{Column, ColumnIndex},
 			id::ColumnId,
+			ringbuffer::EvictionVisibility,
 		},
 	};
 	use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
@@ -105,7 +106,7 @@ pub mod tests {
 			primary_key: None,
 			partition_by: vec![],
 			time: TimeSource::Processing,
-			eviction: reifydb_core::interface::catalog::ringbuffer::EvictionVisibility::Visible,
+			eviction: EvictionVisibility::Visible,
 		}
 	}
 

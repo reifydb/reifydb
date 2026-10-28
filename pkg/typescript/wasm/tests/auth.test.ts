@@ -9,6 +9,7 @@ describe('auth', () => {
     const db = await createWasmDb();
 
     db.admin("CREATE USER alice");
+    db.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
     db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }");
 
     const result = db.loginWithPassword('alice', 'alice-pass');
@@ -22,6 +23,7 @@ describe('auth', () => {
     const db = await createWasmDb();
 
     db.admin("CREATE USER alice");
+    db.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
     db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }");
 
     expect(() => db.loginWithPassword('alice', 'wrong-password')).toThrow();
@@ -33,6 +35,7 @@ describe('auth', () => {
     const db = await createWasmDb();
 
     db.admin("CREATE USER bob");
+    db.admin("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }");
     db.admin("CREATE AUTHENTICATION FOR bob { method: token; token: 'bob-secret-token' }");
 
     const result = db.loginWithToken('bob-secret-token');
@@ -46,6 +49,7 @@ describe('auth', () => {
     const db = await createWasmDb();
 
     db.admin("CREATE USER bob");
+    db.admin("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }");
     db.admin("CREATE AUTHENTICATION FOR bob { method: token; token: 'bob-secret-token' }");
 
     expect(() => db.loginWithToken('wrong-token')).toThrow();
@@ -57,6 +61,7 @@ describe('auth', () => {
     const db = await createWasmDb();
 
     db.admin("CREATE USER alice");
+    db.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
     db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }");
 
     db.loginWithPassword('alice', 'alice-pass');

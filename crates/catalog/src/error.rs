@@ -6,7 +6,10 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
-use reifydb_core::interface::catalog::config::{AcceptError, ConfigKey};
+use reifydb_core::interface::catalog::{
+	authentication::AuthenticationId,
+	config::{AcceptError, ConfigKey},
+};
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -41,6 +44,7 @@ pub enum CatalogObjectKind {
 	TestProcedure,
 	Binding,
 	Relationship,
+	AuthenticationMethod,
 }
 
 impl Display for CatalogObjectKind {
@@ -71,6 +75,7 @@ impl Display for CatalogObjectKind {
 			CatalogObjectKind::TestProcedure => f.write_str("test procedure"),
 			CatalogObjectKind::Binding => f.write_str("binding"),
 			CatalogObjectKind::Relationship => f.write_str("relationship"),
+			CatalogObjectKind::AuthenticationMethod => f.write_str("authentication method"),
 		}
 	}
 }
@@ -290,6 +295,82 @@ pub enum CatalogError {
 		name: String,
 		reason: String,
 	},
+
+	#[error("properties of authentication method '{method}' are not valid JSON: {reason}")]
+	AuthenticationMethodProperties {
+		method: String,
+		reason: String,
+	},
+
+	#[error("properties of authentication `{id}` are not valid JSON: {reason}")]
+	AuthenticationProperties {
+		id: AuthenticationId,
+		reason: String,
+	},
+
+	#[error("stored config of source '{name}' does not decode: {reason}")]
+	SourceConfigCorrupt {
+		name: String,
+		reason: String,
+	},
+
+	#[error("stored config of sink '{name}' does not decode: {reason}")]
+	SinkConfigCorrupt {
+		name: String,
+		reason: String,
+	},
+
+	#[error("config of source '{name}' does not encode: {reason}")]
+	SourceConfigEncode {
+		name: String,
+		reason: String,
+	},
+
+	#[error("config of sink '{name}' does not encode: {reason}")]
+	SinkConfigEncode {
+		name: String,
+		reason: String,
+	},
+
+	#[error("credential uses authentication method `{method}`, which is not declared")]
+	AuthenticationMethodNotDeclared {
+		method: String,
+	},
+
+	#[error("authentication method `{method}` is used by {credentials} credentials")]
+	AuthenticationMethodInUse {
+		method: String,
+		credentials: usize,
+	},
+
+	#[error("authentication method `{method}` cannot promote guests")]
+	PromoteGuestNotAllowed {
+		method: String,
+	},
+
+	#[error("authentication method `{method}` has no setting `{key}`")]
+	UnknownMethodSetting {
+		method: String,
+		key: String,
+	},
+
+	#[error("unknown authentication provider `{name}`")]
+	UnknownAuthenticationProvider {
+		name: String,
+		registered: Vec<String>,
+	},
+
+	#[error("authentication method `{method}` requires setting `{key}`")]
+	MissingMethodSetting {
+		method: String,
+		key: String,
+	},
+
+	#[error("authentication method `{method}` needs a host secret `{key}`")]
+	AuthenticationMethodHostSecretMissing {
+		method: String,
+		key: String,
+	},
 }
 
 impl From<(ConfigKey, AcceptError)> for CatalogError {
@@ -442,12 +523,18 @@ impl IntoDiagnostic for CatalogError {
 						"relationship",
 						"choose a different name or drop the existing relationship first",
 					),
+					CatalogObjectKind::AuthenticationMethod => (
+						"CA_117",
+						"authentication method",
+						"use ALTER AUTHENTICATION METHOD to change it, or drop it first",
+					),
 				};
 				let message = if matches!(
 					kind,
 					CatalogObjectKind::Namespace
 						| CatalogObjectKind::Migration
 						| CatalogObjectKind::IdentityAttribute
+						| CatalogObjectKind::AuthenticationMethod
 				) {
 					format!("{} `{}` already exists", kind_str, name)
 				} else {
@@ -599,14 +686,19 @@ impl IntoDiagnostic for CatalogError {
 						"relationship",
 						"ensure the relationship exists or create it first using `CREATE RELATIONSHIP`".to_string(),
 					),
+					CatalogObjectKind::AuthenticationMethod => (
+						"CA_118",
+						"authentication method",
+						format!("declare it first with `CREATE AUTHENTICATION METHOD {} WITH {{ ttl: ... }}`", name),
+					),
 				};
 				let message = match kind {
 					CatalogObjectKind::Namespace => {
 						format!("{} `{}` not found", kind_str, namespace)
 					}
-					CatalogObjectKind::Migration | CatalogObjectKind::IdentityAttribute => {
-						format!("{} `{}` not found", kind_str, name)
-					}
+					CatalogObjectKind::Migration
+					| CatalogObjectKind::IdentityAttribute
+					| CatalogObjectKind::AuthenticationMethod => format!("{} `{}` not found", kind_str, name),
 					_ => format!("{} `{}::{}` not found", kind_str, namespace, name),
 				};
 				let label_str = match kind {
@@ -1281,6 +1373,221 @@ impl IntoDiagnostic for CatalogError {
 				fragment: Fragment::None,
 				label: Some("corrupt block encoding config".to_string()),
 				help: Some("the series catalog row is corrupt; restore it from a backup".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::AuthenticationMethodProperties {
+				method,
+				reason,
+			} => Diagnostic {
+				code: "CA_124".to_string(),
+				rql: None,
+				message: format!(
+					"properties of authentication method '{}' are not valid JSON: {}",
+					method, reason
+				),
+				fragment: Fragment::None,
+				label: Some("invalid authentication method properties".to_string()),
+				help: Some("the catalog row is corrupt; drop and re-create the method".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::AuthenticationProperties {
+				id,
+				reason,
+			} => Diagnostic {
+				code: "CA_127".to_string(),
+				rql: None,
+				message: format!("properties of authentication '{}' are not valid JSON: {}", id, reason),
+				fragment: Fragment::None,
+				label: Some("invalid authentication properties".to_string()),
+				help: Some("the catalog row is corrupt; drop and re-create the credential".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::SourceConfigCorrupt {
+				name,
+				reason,
+			} => Diagnostic {
+				code: "CA_128".to_string(),
+				rql: None,
+				message: format!("stored config of source '{}' does not decode: {}", name, reason),
+				fragment: Fragment::None,
+				label: Some("invalid source config".to_string()),
+				help: Some("the catalog row is corrupt; drop and re-create the source".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::SinkConfigCorrupt {
+				name,
+				reason,
+			} => Diagnostic {
+				code: "CA_129".to_string(),
+				rql: None,
+				message: format!("stored config of sink '{}' does not decode: {}", name, reason),
+				fragment: Fragment::None,
+				label: Some("invalid sink config".to_string()),
+				help: Some("the catalog row is corrupt; drop and re-create the sink".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::SourceConfigEncode {
+				name,
+				reason,
+			} => Diagnostic {
+				code: "CA_130".to_string(),
+				rql: None,
+				message: format!("config of source '{}' does not encode: {}", name, reason),
+				fragment: Fragment::None,
+				label: Some("source config encoding failed".to_string()),
+				help: Some("ensure the source config is valid".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::SinkConfigEncode {
+				name,
+				reason,
+			} => Diagnostic {
+				code: "CA_131".to_string(),
+				rql: None,
+				message: format!("config of sink '{}' does not encode: {}", name, reason),
+				fragment: Fragment::None,
+				label: Some("sink config encoding failed".to_string()),
+				help: Some("ensure the sink config is valid".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::AuthenticationMethodNotDeclared {
+				method,
+			} => Diagnostic {
+				code: "CA_119".to_string(),
+				rql: None,
+				message: format!("credential uses authentication method `{}`, which is not declared", method),
+				fragment: Fragment::None,
+				label: Some("undeclared method".to_string()),
+				help: Some(format!(
+					"declare it first with `CREATE AUTHENTICATION METHOD {} WITH {{ ttl: ... }}`",
+					method
+				)),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::AuthenticationMethodInUse {
+				method,
+				credentials,
+			} => Diagnostic {
+				code: "CA_120".to_string(),
+				rql: None,
+				message: format!("authentication method `{}` is used by {} credentials", method, credentials),
+				fragment: Fragment::None,
+				label: Some("method in use".to_string()),
+				help: Some(format!("drop those credentials first with DROP AUTHENTICATION FOR <user> {{ method: {} }}", method)),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::PromoteGuestNotAllowed {
+				method,
+			} => Diagnostic {
+				code: "CA_121".to_string(),
+				rql: None,
+				message: format!("authentication method `{}` cannot promote guests", method),
+				fragment: Fragment::None,
+				label: Some("promote_guest not allowed".to_string()),
+				help: Some("remove promote_guest, or set it to false".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::UnknownMethodSetting {
+				method,
+				key,
+			} => Diagnostic {
+				code: "CA_122".to_string(),
+				rql: None,
+				message: format!("authentication method `{}` has no setting `{}`", method, key),
+				fragment: Fragment::None,
+				label: Some("unknown setting".to_string()),
+				help: Some("remove the setting; see the provider's accepted settings".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::UnknownAuthenticationProvider {
+				name,
+				registered,
+			} => Diagnostic {
+				code: "CA_125".to_string(),
+				rql: None,
+				message: format!("unknown authentication provider `{}`", name),
+				fragment: Fragment::None,
+				label: Some("unknown provider".to_string()),
+				help: Some(format!("registered providers: {}", registered.join(", "))),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::AuthenticationMethodHostSecretMissing {
+				method,
+				key,
+			} => Diagnostic {
+				code: "CA_123".to_string(),
+				rql: None,
+				message: format!("authentication method `{}` needs a host secret `{}`", method, key),
+				fragment: Fragment::None,
+				label: Some("host secret missing".to_string()),
+				help: Some(
+					"configure it on the server with AuthConfigurator::github_client_secret; it is never stored in the catalog"
+						.to_string(),
+				),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::MissingMethodSetting {
+				method,
+				key,
+			} => Diagnostic {
+				code: "CA_126".to_string(),
+				rql: None,
+				message: format!("authentication method `{}` requires setting `{}`", method, key),
+				fragment: Fragment::None,
+				label: Some("missing setting".to_string()),
+				help: Some(format!("add {}: '<value>' to the WITH block", key)),
 				column: None,
 				notes: vec![],
 				cause: None,

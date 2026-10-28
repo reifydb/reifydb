@@ -10,16 +10,16 @@ use reifydb_core::interface::catalog::{
 };
 use reifydb_value::value::{constraint::TypeConstraint, value_type::ValueType};
 
-use super::ids::{columns::authentications::*, vtable::AUTHENTICATIONS};
+use crate::system::ids::{columns::authentication_credentials::*, vtable::AUTHENTICATION_CREDENTIALS};
 
-pub fn authentications() -> Arc<VTable> {
+pub fn authentication_credentials() -> Arc<VTable> {
 	static INSTANCE: OnceLock<Arc<VTable>> = OnceLock::new();
 
 	INSTANCE.get_or_init(|| {
 		Arc::new(VTable {
-			id: AUTHENTICATIONS,
-			namespace: NamespaceId::SYSTEM,
-			name: "authentications".to_string(),
+			id: AUTHENTICATION_CREDENTIALS,
+			namespace: NamespaceId::SYSTEM_AUTHENTICATION,
+			name: "credentials".to_string(),
 			columns: vec![
 				Column {
 					id: ID,

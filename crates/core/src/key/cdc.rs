@@ -205,6 +205,7 @@ pub mod primary_key_tests {
 			KeyTag::PolicyOp => {}
 			KeyTag::Migration => {}
 			KeyTag::Authentication => {}
+			KeyTag::AuthenticationMethod => {}
 			KeyTag::MigrationEvent => {}
 			KeyTag::ConfigStorage => {}
 			KeyTag::Token => {}
@@ -559,6 +560,11 @@ pub mod primary_key_tests {
 	#[test]
 	fn test_include_authentication() {
 		assert!(!should_exclude_from_cdc(KeyTag::Authentication));
+	}
+
+	#[test]
+	fn test_include_authentication_method() {
+		assert!(!should_exclude_from_cdc(KeyTag::AuthenticationMethod));
 	}
 
 	#[test]

@@ -48,8 +48,12 @@ impl AuthServiceFactory {
 	pub fn build(self) -> AuthService {
 		let rng = Rng::seeded(42);
 		let clock = Clock::Real;
-		let registry = Arc::new(AuthenticationRegistry::new(clock.clone(), rng.clone()));
 		let config = self.configurator.configure();
+		let mut registry = AuthenticationRegistry::new(clock.clone(), rng.clone());
+		if let Some(secret) = config.github_client_secret.clone() {
+			registry = registry.with_github_client_secret(secret);
+		}
+		let registry = Arc::new(registry);
 		match self.github_api {
 			Some(api) => AuthService::with_github_api(self.engine, registry, rng, clock, config, api),
 			None => AuthService::new(self.engine, registry, rng, clock, config),
@@ -61,6 +65,7 @@ pub trait AuthResponseAssert {
 	fn expect_authenticated(self) -> (IdentityId, String);
 	fn expect_challenge(self) -> (String, HashMap<String, String>);
 	fn expect_failed(self, reason: &str);
+	fn expect_method_not_enabled(self, method: &str);
 }
 
 impl AuthResponseAssert for AuthResponse {
@@ -90,6 +95,15 @@ impl AuthResponseAssert for AuthResponse {
 				reason: actual,
 			} => assert_eq!(actual, reason, "failure reason mismatch"),
 			other => panic!("expected failed response with reason '{reason}', got {other:?}"),
+		}
+	}
+
+	fn expect_method_not_enabled(self, method: &str) {
+		match self {
+			AuthResponse::MethodNotEnabled {
+				method: actual,
+			} => assert_eq!(actual, method, "method mismatch"),
+			other => panic!("expected method not enabled for '{method}', got {other:?}"),
 		}
 	}
 }

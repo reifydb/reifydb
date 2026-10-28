@@ -34,6 +34,7 @@ use crate::{
 	store::config::convert_config,
 };
 
+pub mod authentication;
 pub mod binding;
 pub mod completeness;
 pub mod epoch;
@@ -58,6 +59,7 @@ pub fn bootstrap_system_objects(
 	identity::bootstrap_root_identity(multi, single, catalog, eventbus)?;
 	procedure::bootstrap_system_procedures(multi, single, catalog, eventbus)?;
 	binding::bootstrap_system_bindings(multi, single, catalog, eventbus)?;
+	authentication::bootstrap_system_authentication(multi, single, catalog, eventbus)?;
 	metric::bootstrap_metric_ringbuffers(multi, single, catalog, eventbus)?;
 	profiler::bootstrap_profiler(multi, single, catalog, eventbus)?;
 	runtime::bootstrap_runtime(multi, single, catalog, eventbus)?;

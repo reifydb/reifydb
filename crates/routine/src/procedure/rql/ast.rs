@@ -394,6 +394,9 @@ fn ast_description(ast: &Ast<'_>, kind: &str) -> String {
 			AstAlter::Policy(sp) => {
 				format!("ALTER {:?} POLICY {}", sp.target_type, sp.name.text())
 			}
+			AstAlter::AuthenticationMethod(m) => {
+				format!("ALTER AUTHENTICATION METHOD {}", m.name.text())
+			}
 			AstAlter::Table(t) => {
 				let namespace =
 					t.table.namespace.first().map(|s| format!("{}.", s.text())).unwrap_or_default();

@@ -14,6 +14,8 @@ import { adoptSession, setSessionToken, signOut } from '../../support/session-mo
 
 vi.mock('@reifydb/auth', async () => ({
   storageKeyFor: (await vi.importActual<typeof import('@reifydb/auth')>('@reifydb/auth')).storageKeyFor,
+  performGuestSignIn: (await vi.importActual<typeof import('@reifydb/auth')>('@reifydb/auth')).performGuestSignIn,
+  jsonHttpTransport: (await vi.importActual<typeof import('@reifydb/auth')>('@reifydb/auth')).jsonHttpTransport,
   ...(await import('../../support/session-mock')).sessionAuthMock(),
 }))
 vi.mock('@tanstack/react-router', async () => ({
@@ -158,8 +160,13 @@ function pendingSocket(me: { id: string; name: string; kind: string }) {
 }
 
 function guestEndpoint() {
-  const body = { token: 'fresh-guest-token', identity: 'guest-2', expires_at: 4102444800 }
-  const fetch = vi.fn(async () => ({ status: 200, ok: true, text: async () => JSON.stringify(body) }))
+  const body = { status: 'authenticated', token: 'fresh-guest-token', identity: 'guest-2' }
+  const fetch = vi.fn(async () => ({
+    status: 200,
+    ok: true,
+    json: async () => body,
+    text: async () => JSON.stringify(body),
+  }))
   vi.stubGlobal('fetch', fetch)
   return fetch
 }
@@ -220,8 +227,11 @@ describe('a websocket auth error behind the session gate', () => {
       ),
     )
     expect(fetch).toHaveBeenCalledTimes(1)
-    expect(fetch).toHaveBeenCalledWith('/api/auth/guest', expect.objectContaining({ method: 'POST' }))
-    expect(adoptSession).toHaveBeenCalledWith(expect.objectContaining({ token: 'fresh-guest-token', method: 'token' }))
+    expect(fetch).toHaveBeenCalledWith(
+      '/db/v1/authenticate',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ method: 'guest', credentials: {} }) }),
+    )
+    expect(adoptSession).toHaveBeenCalledWith(expect.objectContaining({ token: 'fresh-guest-token', method: 'guest' }))
     expect(navigate).not.toHaveBeenCalled()
     expect(isSignedOut()).toBe(false)
     expect(await screen.findByText('monitors loading')).toBeInTheDocument()
@@ -294,11 +304,28 @@ describe('a reload after the stored session expired', () => {
     renderGatedLayout()
 
     await waitFor(() =>
-      expect(adoptSession).toHaveBeenCalledWith(expect.objectContaining({ token: 'fresh-guest-token', method: 'token' })),
+      expect(adoptSession).toHaveBeenCalledWith(expect.objectContaining({ token: 'fresh-guest-token', method: 'guest' })),
     )
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(isSignedOut()).toBe(false)
     expect(await screen.findByText('You are browsing as a guest')).toBeInTheDocument()
+  })
+
+  it('keeps a fresh guest session for the 30 days the server grants it', async () => {
+    // A shorter client expiry would drop the stored guest early, mint a new one, and strand every monitor the visitor made.
+    const fetch = guestEndpoint()
+    const socket = pendingSocket({ id: 'guest-2', name: 'guest-2', kind: 'guest' })
+    vi.spyOn(Client, 'connectWs').mockResolvedValue(socket as unknown as WsClient)
+    const before = Math.floor(Date.now() / 1000)
+
+    renderGatedLayout()
+
+    await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(1))
+    const { expiresAt } = vi.mocked(adoptSession).mock.calls[0][0] as unknown as { expiresAt: number }
+    const thirtyDays = 30 * 24 * 60 * 60
+    expect(expiresAt).toBeGreaterThanOrEqual(before + thirtyDays)
+    expect(expiresAt).toBeLessThanOrEqual(Math.floor(Date.now() / 1000) + thirtyDays)
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 
   it('leaves a user whose stored session is still valid signed in', () => {

@@ -64,7 +64,10 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &SourceToCreate,
 	) -> Result<()> {
-		let config_json = to_string(&to_create.config).unwrap_or_default();
+		let config_json = to_string(&to_create.config).map_err(|e| CatalogError::SourceConfigEncode {
+			name: to_create.name.text().to_string(),
+			reason: e.to_string(),
+		})?;
 
 		let mut row = source::allocate();
 		source::set_id(&mut row, u64::from(source));

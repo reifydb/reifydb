@@ -129,6 +129,7 @@ fn test_service_may_hold_a_token_credential() {
 	// The rule targets password specifically; tokens are how a service is meant
 	// to authenticate, so this must keep working.
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }");
 	t.admin("CREATE SERVICE probe_a");
 	t.admin("CREATE AUTHENTICATION FOR probe_a { method: token; token: 'probe-secret' }");
 }
@@ -137,6 +138,7 @@ fn test_service_may_hold_a_token_credential() {
 fn test_user_may_still_hold_a_password_credential() {
 	// Regression guard: the rule must key on kind, not on the method alone.
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	t.admin("CREATE USER alice");
 	t.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'hunter22' }");
 }

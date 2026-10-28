@@ -306,7 +306,7 @@ export interface AuthResponse {
     id: string;
     type: "Auth";
     payload: {
-        status?: "authenticated" | "challenge" | "failed";
+        status?: "authenticated" | "challenge" | "failed" | "method_not_enabled";
         token?: string;
         identity?: string;
         challengeId?: string;

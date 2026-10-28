@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use reifydb_core::interface::catalog::{
 	authentication::{Authentication, AuthenticationId},
@@ -14,7 +14,7 @@ use reifydb_transaction::{
 use reifydb_value::value::identity::IdentityId;
 use tracing::{instrument, warn};
 
-use crate::{CatalogStore, Result, catalog::Catalog};
+use crate::{CatalogStore, Result, catalog::Catalog, error::CatalogError};
 
 impl Catalog {
 	#[instrument(name = "catalog::authentication::create", level = "info", skip(self, txn))]
@@ -23,8 +23,16 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		method: &str,
-		properties: HashMap<String, String>,
+		properties: BTreeMap<String, String>,
 	) -> Result<Authentication> {
+		if CatalogStore::find_authentication_method_by_name(&mut Transaction::Admin(&mut *txn), method)?
+			.is_none()
+		{
+			return Err(CatalogError::AuthenticationMethodNotDeclared {
+				method: method.to_string(),
+			}
+			.into());
+		}
 		let auth = CatalogStore::create_authentication(txn, identity, method, properties)?;
 		txn.track_authentication_created(auth.clone())?;
 		Ok(auth)
@@ -253,17 +261,8 @@ impl Catalog {
 				Ok(self.cache.list_authentications_by_method_at(method, cmd.version()))
 			}
 			Transaction::Admin(admin) => {
-				let mut auths = self.cache.list_authentications_by_method_at(method, admin.version());
-				for change in &admin.changes.authentication {
-					if let Some(auth) = &change.post
-						&& auth.method == method && !auths
-						.iter()
-						.any(|existing| existing.id == auth.id)
-					{
-						auths.push(auth.clone());
-					}
-				}
-				auths.retain(|a| !admin.is_authentication_deleted(a.id));
+				let mut auths = CatalogStore::list_all_authentications(&mut Transaction::Admin(admin))?;
+				auths.retain(|a| a.method == method);
 				Ok(auths)
 			}
 			Transaction::Query(qry) => {

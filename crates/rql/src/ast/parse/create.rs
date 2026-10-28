@@ -318,6 +318,9 @@ impl<'bump> Parser<'bump> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Keyword::Authentication))?).is_some() {
+			if self.consume_method_word()? {
+				return self.parse_create_authentication_method(token);
+			}
 			return self.parse_create_authentication(token);
 		}
 
@@ -2978,7 +2981,7 @@ impl<'bump> Parser<'bump> {
 		}))
 	}
 
-	fn consume_duration_or_forever(&mut self) -> Result<Token<'bump>> {
+	pub(crate) fn consume_duration_or_forever(&mut self) -> Result<Token<'bump>> {
 		let current = self.current()?;
 		if current.kind == TokenKind::Identifier && current.fragment.text() == FOREVER {
 			return self.advance();
@@ -2986,7 +2989,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_duration("'ttl', or the keyword `forever`,")
 	}
 
-	fn consume_boolean(&mut self, key: &str) -> Result<Token<'bump>> {
+	pub(crate) fn consume_boolean(&mut self, key: &str) -> Result<Token<'bump>> {
 		let current = self.current()?;
 		match current.kind {
 			TokenKind::Literal(Literal::True) | TokenKind::Literal(Literal::False) => self.advance(),

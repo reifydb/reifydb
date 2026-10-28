@@ -11,7 +11,7 @@ use reifydb::{
 	server,
 };
 use reifydb_client::{HttpClient, WireFormat, WsClient};
-use reifydb_value::value::duration::Duration;
+use reifydb_value::params::Params;
 use serde_json::{Value as JsonValue, json};
 use tokio::runtime::Runtime;
 
@@ -20,14 +20,13 @@ use crate::{
 	common::{cleanup_server, create_server_instance},
 };
 
-fn server_with_session_ttl(clock: &MockClock, ttl: Duration) -> Database {
+fn server_with_mock_clock(clock: &MockClock) -> Database {
 	// Without a mock clock the test would have to sleep out the whole session ttl.
 	let _ = rustls::crypto::ring::default_provider().install_default();
 	let mut config = RuntimeConfig::default().seeded(0);
 	config.clock = Clock::Mock(clock.clone());
 	server::memory()
 		.with_runtime_config(config)
-		.with_auth(move |auth| auth.session_ttl(ttl))
 		.with_grpc(|grpc| grpc.admin_bind_addr("[::1]:0"))
 		.with_http(|http| http.admin_bind_addr("::1:0"))
 		.with_ws(|ws| ws.admin_bind_addr("::1:0"))
@@ -74,8 +73,9 @@ fn test_configured_session_ttl_governs_tokens_minted_over_http() {
 	let runtime = Arc::new(Runtime::new().unwrap());
 	let _guard = runtime.enter();
 	let clock = MockClock::from_millis(1_700_000_000_000);
-	let mut server = server_with_session_ttl(&clock, Duration::from_seconds(60).unwrap());
+	let mut server = server_with_mock_clock(&clock);
 	let (_, _, http_port) = start_server_with_auth_users(&mut server).unwrap();
+	server.admin_as_root("ALTER AUTHENTICATION METHOD password WITH { ttl: 60s }", Params::None).unwrap();
 
 	runtime.block_on(async {
 		let mut client =
@@ -105,6 +105,7 @@ fn test_challenge_issued_over_http_completes_over_websocket() {
 	let _guard = runtime.enter();
 	let mut server = create_server_instance(&runtime);
 	let (ws_port, _, http_port) = start_server_with_auth_users(&mut server).unwrap();
+	server.admin_as_root("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }", Params::None).unwrap();
 
 	runtime.block_on(async {
 		let (signing_key, public_key) = wallet_keypair(7);

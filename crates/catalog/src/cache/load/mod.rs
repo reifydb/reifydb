@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod authentication;
+pub mod authentication_method;
 pub mod binding;
 pub mod column_block;
 pub mod config;
@@ -31,6 +32,7 @@ pub mod table;
 pub mod view;
 
 use authentication::load_authentications;
+use authentication_method::load_authentication_methods;
 use binding::load_bindings;
 use column_block::load_column_blocks;
 use config::load_configs;
@@ -96,6 +98,7 @@ impl CatalogCacheLoader {
 
 		load_identities(rx, catalog)?;
 		load_authentications(rx, catalog)?;
+		load_authentication_methods(rx, catalog)?;
 		load_roles(rx, catalog)?;
 		load_granted_roles(rx, catalog)?;
 		load_identity_attributes(rx, catalog)?;

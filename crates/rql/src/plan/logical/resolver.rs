@@ -111,6 +111,7 @@ fn probe_object_in_namespace(
 			| NamespaceId::SYSTEM_FLOW_OPERATOR_LIBRARY
 			| NamespaceId::SYSTEM_PROCEDURES
 			| NamespaceId::SYSTEM_BINDINGS
+			| NamespaceId::SYSTEM_AUTHENTICATION
 	) {
 		let def = VTable {
 			id: VTableId(0),

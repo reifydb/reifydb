@@ -6,7 +6,9 @@ use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use futures_util::{SinkExt, StreamExt};
 use reifydb_codec::json::to::convert_frames;
 use reifydb_core::{
-	actors::server::{Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage},
+	actors::server::{
+		Operation, ServerAuthResponse, ServerLogoutResponse, ServerMessage, method_not_enabled_reason,
+	},
 	interface::catalog::{
 		binding::{Binding, BindingFormat},
 		id::SubscriptionId,
@@ -421,10 +423,22 @@ fn required_access(payload: &RequestPayload) -> Access {
 async fn handle_auth(request_id: &str, auth: AuthRequest, conn: &mut ConnectionContext<'_>) -> Option<WsResponse> {
 	if let Some(method) = auth.method.as_deref() {
 		let credentials = auth.credentials.unwrap_or_default();
+		let caller = match extract_identity_from_ws_auth(conn.state.auth_service(), conn.auth_token.as_deref())
+		{
+			Ok(caller) => caller,
+			Err(error) => {
+				return Some(WsResponse::Text(build_error(
+					request_id,
+					"AUTH_FAILED",
+					&error.to_string(),
+				)));
+			}
+		};
 
 		let (reply, receiver) = reply_channel();
 		conn.actor_ref
 			.send(ServerMessage::Authenticate {
+				caller,
 				method: method.to_string(),
 				credentials,
 				reply,
@@ -452,6 +466,13 @@ async fn handle_auth(request_id: &str, auth: AuthRequest, conn: &mut ConnectionC
 			Ok(ServerAuthResponse::Failed {
 				reason,
 			}) => Some(WsResponse::Text(build_error(request_id, "AUTH_FAILED", &reason))),
+			Ok(ServerAuthResponse::MethodNotEnabled {
+				method,
+			}) => Some(WsResponse::Text(build_error(
+				request_id,
+				"AUTH_METHOD_NOT_ENABLED",
+				&method_not_enabled_reason(&method),
+			))),
 			Ok(ServerAuthResponse::Error(reason)) => {
 				Some(WsResponse::Text(build_error(request_id, "AUTH_ERROR", &reason)))
 			}

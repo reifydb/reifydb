@@ -10,6 +10,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			authentication::{Authentication, AuthenticationId},
+			authentication_method::{AuthenticationMethod, AuthenticationMethodId},
 			binding::Binding,
 			column_block::ColumnBlock,
 			dictionary::Dictionary,
@@ -60,9 +61,10 @@ use crate::counting::OpCounts;
 use crate::{
 	TransactionId,
 	change::{
-		TransactionalAuthenticationChanges, TransactionalBindingChanges, TransactionalChanges,
-		TransactionalColumnBlockChanges, TransactionalDictionaryChanges, TransactionalFlowChanges,
-		TransactionalGrantedRoleChanges, TransactionalHandlerChanges, TransactionalIdentityAttributeChanges,
+		TransactionalAuthenticationChanges, TransactionalAuthenticationMethodChanges,
+		TransactionalBindingChanges, TransactionalChanges, TransactionalColumnBlockChanges,
+		TransactionalDictionaryChanges, TransactionalFlowChanges, TransactionalGrantedRoleChanges,
+		TransactionalHandlerChanges, TransactionalIdentityAttributeChanges,
 		TransactionalIdentityAttributeValueChanges, TransactionalIdentityChanges,
 		TransactionalMigrationChanges, TransactionalNamespaceChanges, TransactionalPolicyChanges,
 		TransactionalProcedureChanges, TransactionalQueueChanges, TransactionalRelationshipChanges,
@@ -554,6 +556,20 @@ impl TransactionalPolicyChanges for QueryTransaction {
 	}
 
 	fn is_policy_deleted_by_name(&self, _name: &str) -> bool {
+		false
+	}
+}
+
+impl TransactionalAuthenticationMethodChanges for QueryTransaction {
+	fn find_authentication_method(&self, _id: AuthenticationMethodId) -> Option<&AuthenticationMethod> {
+		None
+	}
+
+	fn find_authentication_method_by_name(&self, _name: &str) -> Option<&AuthenticationMethod> {
+		None
+	}
+
+	fn is_authentication_method_deleted_by_name(&self, _name: &str) -> bool {
 		false
 	}
 }

@@ -207,6 +207,9 @@ pub enum PhysicalPlan<'bump> {
 	CreatePolicy(nodes::CreatePolicyNode),
 	AlterPolicy(nodes::AlterPolicyNode),
 	DropPolicy(nodes::DropPolicyNode),
+	CreateAuthenticationMethod(nodes::CreateAuthenticationMethodNode),
+	AlterAuthenticationMethod(nodes::AlterAuthenticationMethodNode),
+	DropAuthenticationMethod(nodes::DropAuthenticationMethodNode),
 }
 
 #[derive(Debug)]
@@ -2256,6 +2259,34 @@ impl<'bump> Compiler<'bump> {
 					name: self.interner.intern_fragment(&node.name),
 					if_exists: node.if_exists,
 				}));
+			}
+			LogicalPlan::CreateAuthenticationMethod(node) => {
+				return Ok(PhysicalPlan::CreateAuthenticationMethod(
+					nodes::CreateAuthenticationMethodNode {
+						name: self.interner.intern_fragment(&node.name),
+						ttl: node.ttl,
+						promote_guest: node.promote_guest,
+						properties: node.properties,
+					},
+				));
+			}
+			LogicalPlan::AlterAuthenticationMethod(node) => {
+				return Ok(PhysicalPlan::AlterAuthenticationMethod(
+					nodes::AlterAuthenticationMethodNode {
+						name: self.interner.intern_fragment(&node.name),
+						ttl: node.ttl,
+						promote_guest: node.promote_guest,
+						properties: node.properties,
+					},
+				));
+			}
+			LogicalPlan::DropAuthenticationMethod(node) => {
+				return Ok(PhysicalPlan::DropAuthenticationMethod(
+					nodes::DropAuthenticationMethodNode {
+						name: self.interner.intern_fragment(&node.name),
+						if_exists: node.if_exists,
+					},
+				));
 			}
 
 			LogicalPlan::AssertBlock(node) => {

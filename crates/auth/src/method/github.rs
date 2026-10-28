@@ -1,23 +1,64 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::{
+	collections::{BTreeMap, HashMap},
+	result::Result as StdResult,
+};
 
-use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
+use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider, MethodSettingError};
 use reifydb_runtime::context::rng::Rng;
 use reifydb_value::{Result, error::Error};
 use subtle::ConstantTimeEq;
 
 use crate::error::GithubError;
 
-pub struct GithubProvider;
+const GITHUB_METHOD_KEYS: [&str; 2] = ["client_id", "redirect_uri"];
+
+pub struct GithubProvider {
+	client_secret: Option<String>,
+}
+
+impl GithubProvider {
+	pub fn new(client_secret: Option<String>) -> Self {
+		Self {
+			client_secret,
+		}
+	}
+}
 
 impl AuthenticationProvider for GithubProvider {
 	fn method(&self) -> &str {
 		"github"
 	}
 
-	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
+	fn configure_method(
+		&self,
+		props: &BTreeMap<String, String>,
+	) -> StdResult<BTreeMap<String, String>, MethodSettingError> {
+		if let Some(key) = props.keys().find(|key| !GITHUB_METHOD_KEYS.contains(&key.as_str())) {
+			return Err(MethodSettingError::Unknown {
+				key: key.clone(),
+			});
+		}
+		if let Some(key) = GITHUB_METHOD_KEYS.iter().find(|key| !props.contains_key(**key)) {
+			return Err(MethodSettingError::Missing {
+				key: key.to_string(),
+			});
+		}
+		if self.client_secret.is_none() {
+			return Err(MethodSettingError::HostSecretMissing {
+				key: "client_secret".to_string(),
+			});
+		}
+		Ok(props.clone())
+	}
+
+	fn can_promote_guest(&self) -> bool {
+		true
+	}
+
+	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
 		let user_id = config.get("user_id").ok_or_else(|| Error::from(GithubError::MissingUserId))?;
 
 		if user_id.is_empty() || !user_id.bytes().all(|b| b.is_ascii_digit()) {
@@ -26,7 +67,7 @@ impl AuthenticationProvider for GithubProvider {
 			}));
 		}
 
-		let mut properties = HashMap::from([("user_id".to_string(), user_id.clone())]);
+		let mut properties = BTreeMap::from([("user_id".to_string(), user_id.clone())]);
 		if let Some(login) = config.get("login") {
 			properties.insert("login".to_string(), login.clone());
 		}
@@ -35,7 +76,7 @@ impl AuthenticationProvider for GithubProvider {
 
 	fn authenticate(
 		&self,
-		stored: &HashMap<String, String>,
+		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {
 		let stored_id = stored.get("user_id").ok_or_else(|| Error::from(GithubError::MissingUserId))?;
@@ -63,14 +104,14 @@ mod tests {
 			("login".to_string(), "octocat".to_string()),
 		]);
 
-		let stored = GithubProvider.create(&Rng::default(), &config).unwrap();
+		let stored = GithubProvider::new(None).create(&Rng::default(), &config).unwrap();
 		assert_eq!(stored.get("user_id").unwrap(), "583231");
 		assert_eq!(stored.get("login").unwrap(), "octocat");
 	}
 
 	#[test]
 	fn test_create_requires_user_id() {
-		assert!(GithubProvider.create(&Rng::default(), &HashMap::new()).is_err());
+		assert!(GithubProvider::new(None).create(&Rng::default(), &HashMap::new()).is_err());
 	}
 
 	#[test]
@@ -78,30 +119,30 @@ mod tests {
 		// The user_id is the immutable github account id; a login name here would
 		// let an account be hijacked after a github username change or reuse.
 		let config = HashMap::from([("user_id".to_string(), "octocat".to_string())]);
-		assert!(GithubProvider.create(&Rng::default(), &config).is_err());
+		assert!(GithubProvider::new(None).create(&Rng::default(), &config).is_err());
 	}
 
 	#[test]
 	fn test_create_rejects_empty_user_id() {
 		let config = HashMap::from([("user_id".to_string(), "".to_string())]);
-		assert!(GithubProvider.create(&Rng::default(), &config).is_err());
+		assert!(GithubProvider::new(None).create(&Rng::default(), &config).is_err());
 	}
 
 	#[test]
 	fn test_authenticate_matching_user_id() {
-		let stored = HashMap::from([("user_id".to_string(), "583231".to_string())]);
+		let stored = BTreeMap::from([("user_id".to_string(), "583231".to_string())]);
 		let credentials = HashMap::from([("github_user_id".to_string(), "583231".to_string())]);
 
-		let step = GithubProvider.authenticate(&stored, &credentials).unwrap();
+		let step = GithubProvider::new(None).authenticate(&stored, &credentials).unwrap();
 		assert_eq!(step, AuthStep::Authenticated);
 	}
 
 	#[test]
 	fn test_authenticate_mismatched_user_id_fails() {
-		let stored = HashMap::from([("user_id".to_string(), "583231".to_string())]);
+		let stored = BTreeMap::from([("user_id".to_string(), "583231".to_string())]);
 		let credentials = HashMap::from([("github_user_id".to_string(), "999999".to_string())]);
 
-		let step = GithubProvider.authenticate(&stored, &credentials).unwrap();
+		let step = GithubProvider::new(None).authenticate(&stored, &credentials).unwrap();
 		assert_eq!(step, AuthStep::Failed);
 	}
 
@@ -109,13 +150,13 @@ mod tests {
 	fn test_authenticate_without_verified_user_id_fails() {
 		// github_user_id is injected by the auth service only after it verified the
 		// oauth token with github; raw client credentials must never authenticate.
-		let stored = HashMap::from([("user_id".to_string(), "583231".to_string())]);
+		let stored = BTreeMap::from([("user_id".to_string(), "583231".to_string())]);
 		let credentials = HashMap::from([
 			("code".to_string(), "some-oauth-code".to_string()),
 			("state".to_string(), "some-state".to_string()),
 		]);
 
-		let step = GithubProvider.authenticate(&stored, &credentials).unwrap();
+		let step = GithubProvider::new(None).authenticate(&stored, &credentials).unwrap();
 		assert_eq!(step, AuthStep::Failed);
 	}
 }

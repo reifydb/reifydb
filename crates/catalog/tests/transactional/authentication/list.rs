@@ -9,6 +9,7 @@ use reifydb_value::{params::Params, value::identity::IdentityId};
 #[test]
 fn create_and_drop_in_same_txn_reflects_both() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aul_keep_a");
 	t.admin("CREATE AUTHENTICATION FOR aul_keep_a { method: password; password: 'secret' }");
@@ -50,6 +51,7 @@ fn create_and_drop_in_same_txn_reflects_both() {
 #[test]
 fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aul_keep_b");
 	t.admin("CREATE AUTHENTICATION FOR aul_keep_b { method: password; password: 'secret' }");
@@ -90,6 +92,7 @@ fn rolled_back_create_and_drop_leave_committed_state_intact() {
 #[test]
 fn committed_create_and_drop_are_reflected_in_new_txn() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aul_keep_c");
 	t.admin("CREATE AUTHENTICATION FOR aul_keep_c { method: password; password: 'secret' }");
@@ -130,6 +133,7 @@ fn committed_create_and_drop_are_reflected_in_new_txn() {
 #[test]
 fn concurrent_txn_sees_only_committed_state() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aul_keep_d");
 	t.admin("CREATE AUTHENTICATION FOR aul_keep_d { method: password; password: 'secret' }");

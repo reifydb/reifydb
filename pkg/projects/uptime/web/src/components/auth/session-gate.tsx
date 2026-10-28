@@ -3,12 +3,16 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate } from '@tanstack/react-router'
-import { readStoredSession, useAuth, type AuthSession } from '@reifydb/auth'
+import {
+  jsonHttpTransport,
+  performGuestSignIn,
+  readStoredSession,
+  useAuth,
+  type AuthSession,
+} from '@reifydb/auth'
 import { Button, Loading } from '@reifydb/ui'
-import { apiFetch } from '@/lib/api'
 import { UPTIME_CONFIG } from '@/config'
 import { isSignedOut } from '@/lib/session-flags'
-import type { GuestSession } from '@/lib/types'
 
 let inFlightGuestSession: Promise<AuthSession> | null = null
 
@@ -22,15 +26,11 @@ function existingOrNewGuestSession(): Promise<AuthSession> {
 }
 
 function mintGuestSession(): Promise<AuthSession> {
-  inFlightGuestSession ??= apiFetch<GuestSession>('/auth/guest', { method: 'POST' })
-    .then((session) => ({
-      token: session.token,
-      identity: session.identity,
-      walletAddress: session.identity,
-      expiresAt: session.expires_at,
-      method: 'token' as const,
-    }))
-    .finally(() => {
+  inFlightGuestSession ??= performGuestSignIn({
+    url: UPTIME_CONFIG.authUrl(),
+    transport: jsonHttpTransport,
+    sessionTtlSeconds: UPTIME_CONFIG.guestSessionTtlSeconds,
+  }).finally(() => {
       inFlightGuestSession = null
     })
   return inFlightGuestSession

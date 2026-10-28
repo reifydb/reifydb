@@ -7,7 +7,7 @@ use arrow_array::RecordBatch;
 use reifydb_catalog::vtable::{
 	VTableContext,
 	system::{
-		authentications::SystemAuthentications,
+		authentication::{credentials::SystemAuthenticationCredentials, methods::SystemAuthenticationMethods},
 		bindings::{grpc::SystemBindingsGrpc, http::SystemBindingsHttp, ws::SystemBindingsWs},
 		cdc_consumers::SystemCdcConsumers,
 		column_properties::SystemColumnProperties,
@@ -100,6 +100,8 @@ pub(crate) fn compile_virtual_scan(node: TableVirtualScanNode, context: Arc<Quer
 		compile_procedures_vtable(&table.name, &context)
 	} else if namespace.id() == NamespaceId::SYSTEM_BINDINGS {
 		compile_bindings_vtable(&table.name)
+	} else if namespace.id() == NamespaceId::SYSTEM_AUTHENTICATION {
+		compile_authentication_vtable(&table.name)
 	} else {
 		None
 	};
@@ -160,7 +162,6 @@ fn compile_system_vtable(name: &str, context: &QueryContext) -> Option<VTables> 
 		"tags" => VTables::Tags(SystemTags::new()),
 		"tag_variants" => VTables::TagVariants(SystemTagVariants::new()),
 		"series" => VTables::Series(SystemSeries::new()),
-		"authentications" => VTables::Authentications(SystemAuthentications::new()),
 		"identities" => VTables::Identities(SystemIdentities::new()),
 		"identity_attributes" => VTables::IdentityAttributes(SystemIdentityAttributes::new()),
 		"identity_attribute_values" => VTables::IdentityAttributeValues(SystemIdentityAttributeValues::new()),
@@ -227,6 +228,14 @@ fn compile_bindings_vtable(name: &str) -> Option<VTables> {
 		"http" => VTables::BindingsHttp(SystemBindingsHttp::new()),
 		"grpc" => VTables::BindingsGrpc(SystemBindingsGrpc::new()),
 		"ws" => VTables::BindingsWs(SystemBindingsWs::new()),
+		_ => return None,
+	})
+}
+
+fn compile_authentication_vtable(name: &str) -> Option<VTables> {
+	Some(match name {
+		"credentials" => VTables::AuthenticationCredentials(SystemAuthenticationCredentials::new()),
+		"methods" => VTables::AuthenticationMethods(SystemAuthenticationMethods::new()),
 		_ => return None,
 	})
 }

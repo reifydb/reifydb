@@ -3,6 +3,8 @@
 
 mod authenticate;
 mod github;
+mod guest;
+mod promote;
 mod solana;
 mod token;
 
@@ -45,12 +47,15 @@ pub enum AuthResponse {
 	Failed {
 		reason: String,
 	},
+
+	MethodNotEnabled {
+		method: String,
+	},
 }
 
 pub struct AuthConfigurator {
-	session_ttl: Option<Duration>,
 	challenge_ttl: Duration,
-	github: Option<GithubConfig>,
+	github_client_secret: Option<String>,
 }
 
 impl Default for AuthConfigurator {
@@ -62,20 +67,9 @@ impl Default for AuthConfigurator {
 impl AuthConfigurator {
 	pub fn new() -> Self {
 		Self {
-			session_ttl: Some(Duration::from_seconds(24 * 60 * 60).unwrap()),
 			challenge_ttl: Duration::from_seconds(60).unwrap(),
-			github: None,
+			github_client_secret: None,
 		}
-	}
-
-	pub fn session_ttl(mut self, ttl: Duration) -> Self {
-		self.session_ttl = Some(ttl);
-		self
-	}
-
-	pub fn no_session_ttl(mut self) -> Self {
-		self.session_ttl = None;
-		self
 	}
 
 	pub fn challenge_ttl(mut self, ttl: Duration) -> Self {
@@ -83,27 +77,24 @@ impl AuthConfigurator {
 		self
 	}
 
-	pub fn github(mut self, config: GithubConfig) -> Self {
-		self.github = Some(config);
+	pub fn github_client_secret(mut self, secret: impl Into<String>) -> Self {
+		self.github_client_secret = Some(secret.into());
 		self
 	}
 
 	pub fn configure(self) -> AuthServiceConfig {
 		AuthServiceConfig {
-			session_ttl: self.session_ttl,
 			challenge_ttl: self.challenge_ttl,
-			github: self.github,
+			github_client_secret: self.github_client_secret,
 		}
 	}
 }
 
 #[derive(Debug, Clone)]
 pub struct AuthServiceConfig {
-	pub session_ttl: Option<Duration>,
-
 	pub challenge_ttl: Duration,
 
-	pub github: Option<GithubConfig>,
+	pub github_client_secret: Option<String>,
 }
 
 impl Default for AuthServiceConfig {
@@ -118,8 +109,7 @@ pub struct Inner {
 	pub(crate) challenges: ChallengeStore,
 	pub(crate) rng: SystemRng,
 	pub(crate) clock: Clock,
-	pub(crate) session_ttl: Option<Duration>,
-	pub(crate) github: Option<GithubAuth>,
+	pub(crate) github_api: Arc<dyn GithubApi>,
 }
 
 pub(crate) struct GithubAuth {
@@ -162,11 +152,7 @@ impl AuthService {
 			challenges: ChallengeStore::new(config.challenge_ttl),
 			rng,
 			clock,
-			session_ttl: config.session_ttl,
-			github: config.github.map(|config| GithubAuth {
-				config,
-				api,
-			}),
+			github_api: api,
 		}))
 	}
 
@@ -178,8 +164,8 @@ impl AuthService {
 		Ok(self.clock.now())
 	}
 
-	pub(super) fn expires_at(&self) -> Result<Option<DateTime>, Error> {
-		match self.session_ttl {
+	pub(super) fn expires_at(&self, ttl: Option<Duration>) -> Result<Option<DateTime>, Error> {
+		match ttl {
 			Some(ttl) => {
 				let ttl_nanos = ttl.as_nanos()?;
 				let nanos = self.clock.now().to_nanos().saturating_add(ttl_nanos);
@@ -189,11 +175,16 @@ impl AuthService {
 		}
 	}
 
-	pub(super) fn persist_token(&self, token: &str, identity: IdentityId) -> Result<Token, Error> {
+	pub(super) fn persist_token(
+		&self,
+		token: &str,
+		identity: IdentityId,
+		ttl: Option<Duration>,
+	) -> Result<Token, Error> {
 		RetryStrategy::default().retry(&self.rng, "auth::persist_token", || {
 			let mut admin = self.engine.begin_admin()?;
 
-			let def = create_token(&mut admin, token, identity, self.expires_at()?, self.now()?)?;
+			let def = create_token(&mut admin, token, identity, self.expires_at(ttl)?, self.now()?)?;
 
 			admin.commit()?;
 			Ok(def)
@@ -216,13 +207,7 @@ impl AuthService {
 
 	#[instrument(name = "auth::create_session", level = "debug", skip(self))]
 	pub fn create_session(&self, identity: IdentityId, ttl: Option<Duration>) -> Result<Token, Error> {
-		let expires_at = match ttl {
-			Some(ttl) => {
-				let nanos = self.clock.now().to_nanos().saturating_add(ttl.as_nanos()?);
-				Some(DateTime::from_nanos(nanos))
-			}
-			None => self.expires_at()?,
-		};
+		let expires_at = self.expires_at(ttl)?;
 		self.create_token(&generate_session_token(&self.rng), identity, expires_at)
 	}
 

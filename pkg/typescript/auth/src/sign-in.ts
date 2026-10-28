@@ -12,12 +12,13 @@ export interface SignInArgs<TClient extends AuthCapableClient = AuthCapableClien
   domain: string;
   statement: string;
   sessionTtlSeconds: number;
+  session?: AuthSession | null;
 }
 
 export async function performSignIn<TClient extends AuthCapableClient>(
   args: SignInArgs<TClient>,
 ): Promise<AuthSession> {
-  const { url, transport, method, wallet, domain, statement, sessionTtlSeconds } = args;
+  const { url, transport, method, wallet, domain, statement, sessionTtlSeconds, session } = args;
 
   const walletAddress = wallet.publicKey;
   if (walletAddress == null || walletAddress.length === 0) {
@@ -27,7 +28,9 @@ export async function performSignIn<TClient extends AuthCapableClient>(
     throw new Error("@reifydb/auth: sessionTtlSeconds must be a positive number");
   }
 
-  const client = await transport.connect(url);
+  const token =
+    session != null && session.expiresAt > Date.now() / 1000 ? session.token : undefined;
+  const client = await transport.connect(url, token);
   try {
     const challenge = await client.loginChallenge(method, {
       identifier: walletAddress,

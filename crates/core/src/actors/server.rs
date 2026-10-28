@@ -63,6 +63,7 @@ pub enum ServerMessage {
 	},
 
 	Authenticate {
+		caller: IdentityId,
 		method: String,
 		credentials: HashMap<String, String>,
 		reply: Reply<ServerAuthResponse>,
@@ -102,7 +103,15 @@ pub enum ServerAuthResponse {
 		reason: String,
 	},
 
+	MethodNotEnabled {
+		method: String,
+	},
+
 	Error(String),
+}
+
+pub fn method_not_enabled_reason(method: &str) -> String {
+	format!("authentication method '{}' is not enabled", method)
 }
 
 pub enum ServerLogoutResponse {

@@ -20,6 +20,7 @@ use crate::auth::solana::{begin_challenge, complete_challenge, keypair, provisio
 fn test_failed_verification_creates_no_identity() {
 	// No identity may exist until a signature verifies, otherwise anyone can squat any wallet.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (_, pubkey) = keypair(41);
 	let (attacker_key, _) = keypair(42);
 
@@ -47,6 +48,7 @@ fn test_failed_verification_creates_no_identity() {
 fn test_abandoned_challenge_creates_no_identity() {
 	// Issuing a challenge is unauthenticated, so it must cost the database nothing at all.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (_, pubkey) = keypair(43);
 
 	let service = auth_service(&db).build();
@@ -66,6 +68,7 @@ fn test_abandoned_challenge_creates_no_identity() {
 fn test_successful_provision_creates_identity_once() {
 	// A repeat login must reuse the provisioned identity, never split a wallet across two.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(44);
 
 	let service = auth_service(&db).build();
@@ -92,6 +95,7 @@ fn test_successful_provision_creates_identity_once() {
 #[test]
 fn test_auto_provision_writes_public_key_attribute() {
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(9);
 
 	let service = auth_service(&db).build();
@@ -112,6 +116,7 @@ fn test_auto_provision_writes_public_key_attribute() {
 fn test_provision_rejects_identifier_that_is_not_the_public_key() {
 	// A free-form identifier lets an unauthenticated caller squat any name against any wallet.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (_, pubkey) = keypair(51);
 	let chosen_name = "vitalik";
 
@@ -149,6 +154,7 @@ fn test_provision_rejects_identifier_that_is_not_the_public_key() {
 fn test_provision_cannot_bind_a_registered_wallet_to_a_second_name() {
 	// A duplicate wallet attribute makes resolution pick whichever row the scan reaches first.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (_, pubkey) = keypair(52);
 	let owner = identity(&pubkey).solana_key(&pubkey).create(&db);
 
@@ -183,6 +189,7 @@ fn test_provision_cannot_bind_a_registered_wallet_to_a_second_name() {
 fn test_concurrent_sign_ins_all_authenticate() {
 	// Concurrent sign-ins must never fail on a transaction conflict.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let service = auth_service(&db).build();
 	let threads = 16;
 	let barrier = Arc::new(Barrier::new(threads));

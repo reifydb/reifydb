@@ -126,4 +126,15 @@ describe('Auth Login Tests — HTTP', () => {
             expect(frames[0][0].v).toBe(42);
         }, 10000);
     });
+
+    describe('Method Not Enabled', () => {
+        it('should throw AUTH_METHOD_NOT_ENABLED for a method the server has not declared', async () => {
+            // Apps must tell a switched-off login apart from wrong credentials.
+            const client = Client.connectHttp(HTTP_URL, {timeoutMs: 10000});
+            await expect(client.login('github', {})).rejects.toMatchObject({
+                name: 'ReifyError',
+                code: 'AUTH_METHOD_NOT_ENABLED',
+            });
+        }, 10000);
+    });
 });

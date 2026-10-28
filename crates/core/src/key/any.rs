@@ -26,8 +26,8 @@ use crate::{
 		config::ConfigStorageKey,
 		flow::{FlowEdgeByFlowKey, FlowEdgeKey, FlowKey, FlowVersionKey},
 		identity::{
-			AuthenticationKey, GrantedRoleKey, IdentityAttributeKey, IdentityAttributeValueKey,
-			IdentityKey, PolicyKey, PolicyOpKey, RoleKey, TokenKey,
+			AuthenticationKey, AuthenticationMethodKey, GrantedRoleKey, IdentityAttributeKey,
+			IdentityAttributeValueKey, IdentityKey, PolicyKey, PolicyOpKey, RoleKey, TokenKey,
 		},
 		metric::{MetricCdcKey, MetricStorageKey},
 		namespace::{
@@ -126,6 +126,7 @@ pub enum TaggedKey {
 	Migration(MigrationKey),
 	MigrationEvent(MigrationEventKey),
 	Authentication(AuthenticationKey),
+	AuthenticationMethod(AuthenticationMethodKey),
 	ConfigStorage(ConfigStorageKey),
 	Token(TokenKey),
 	Source(SourceKey),
@@ -221,6 +222,7 @@ impl TaggedKey {
 			Self::Migration(_) => KeyTag::Migration,
 			Self::MigrationEvent(_) => KeyTag::MigrationEvent,
 			Self::Authentication(_) => KeyTag::Authentication,
+			Self::AuthenticationMethod(_) => KeyTag::AuthenticationMethod,
 			Self::ConfigStorage(_) => KeyTag::ConfigStorage,
 			Self::Token(_) => KeyTag::Token,
 			Self::Source(_) => KeyTag::Source,
@@ -317,6 +319,7 @@ impl TaggedKey {
 			Self::Migration(key) => key.encode(),
 			Self::MigrationEvent(key) => key.encode(),
 			Self::Authentication(key) => key.encode(),
+			Self::AuthenticationMethod(key) => key.encode(),
 			Self::ConfigStorage(key) => key.encode(),
 			Self::Token(key) => key.encode(),
 			Self::Source(key) => key.encode(),
@@ -420,6 +423,9 @@ impl TaggedKey {
 			KeyTag::Migration => MigrationKey::decode(key).map(Self::Migration),
 			KeyTag::MigrationEvent => MigrationEventKey::decode(key).map(Self::MigrationEvent),
 			KeyTag::Authentication => AuthenticationKey::decode(key).map(Self::Authentication),
+			KeyTag::AuthenticationMethod => {
+				AuthenticationMethodKey::decode(key).map(Self::AuthenticationMethod)
+			}
 			KeyTag::ConfigStorage => ConfigStorageKey::decode(key).map(Self::ConfigStorage),
 			KeyTag::Token => TokenKey::decode(key).map(Self::Token),
 			KeyTag::Source => SourceKey::decode(key).map(Self::Source),
@@ -798,6 +804,12 @@ impl From<MigrationEventKey> for TaggedKey {
 impl From<AuthenticationKey> for TaggedKey {
 	fn from(key: AuthenticationKey) -> Self {
 		Self::Authentication(key)
+	}
+}
+
+impl From<AuthenticationMethodKey> for TaggedKey {
+	fn from(key: AuthenticationMethodKey) -> Self {
+		Self::AuthenticationMethod(key)
 	}
 }
 
@@ -1255,6 +1267,7 @@ impl KeyFields for TaggedKey {
 			Self::Migration(key) => key.fields(),
 			Self::MigrationEvent(key) => key.fields(),
 			Self::Authentication(key) => key.fields(),
+			Self::AuthenticationMethod(key) => key.fields(),
 			Self::ConfigStorage(key) => key.fields(),
 			Self::Token(key) => key.fields(),
 			Self::Source(key) => key.fields(),
@@ -1354,6 +1367,7 @@ impl Ord for TaggedKey {
 			(Self::Migration(left), Self::Migration(right)) => left.cmp_fields(right),
 			(Self::MigrationEvent(left), Self::MigrationEvent(right)) => left.cmp_fields(right),
 			(Self::Authentication(left), Self::Authentication(right)) => left.cmp_fields(right),
+			(Self::AuthenticationMethod(left), Self::AuthenticationMethod(right)) => left.cmp_fields(right),
 			(Self::ConfigStorage(left), Self::ConfigStorage(right)) => left.cmp_fields(right),
 			(Self::Token(left), Self::Token(right)) => left.cmp_fields(right),
 			(Self::Source(left), Self::Source(right)) => left.cmp_fields(right),
@@ -1450,8 +1464,8 @@ mod tests {
 			config::ConfigStorageKey,
 			flow::{FlowEdgeByFlowKey, FlowEdgeKey, FlowKey, FlowVersionKey},
 			identity::{
-				AuthenticationKey, GrantedRoleKey, IdentityAttributeKey, IdentityAttributeValueKey,
-				IdentityKey, PolicyKey, PolicyOpKey, RoleKey, TokenKey,
+				AuthenticationKey, AuthenticationMethodKey, GrantedRoleKey, IdentityAttributeKey,
+				IdentityAttributeValueKey, IdentityKey, PolicyKey, PolicyOpKey, RoleKey, TokenKey,
 			},
 			namespace::{
 				NamespaceBindingKey, NamespaceDictionaryKey, NamespaceFlowKey, NamespaceHandlerKey,
@@ -2310,6 +2324,9 @@ mod tests {
 			probe(AuthenticationKey {
 				authentication: 70,
 			}),
+			probe(AuthenticationMethodKey {
+				method: 134,
+			}),
 			probe_encodable(ConfigStorageKey::new(ConfigKey::QueryRowBatchSize)),
 			probe(TokenKey {
 				token: 71,
@@ -2575,7 +2592,7 @@ mod tests {
 		let mut kinds: Vec<u8> = all_probes().iter().map(|(key, _)| key.kind() as u8).collect();
 		kinds.sort_unstable();
 		kinds.dedup();
-		assert_eq!(kinds.len(), 86);
+		assert_eq!(kinds.len(), 87);
 	}
 
 	#[test]

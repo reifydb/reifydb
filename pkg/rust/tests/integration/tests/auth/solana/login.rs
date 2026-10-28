@@ -14,6 +14,7 @@ use crate::auth::solana::{begin_challenge, complete_challenge, keypair};
 #[test]
 fn test_login_resolves_identity_by_public_key_attribute() {
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(7);
 
 	// The identity is named "alice", NOT the wallet address, so name lookup can never
@@ -33,6 +34,7 @@ fn test_login_resolves_identity_by_public_key_attribute() {
 #[test]
 fn test_unknown_public_key_without_provisioning_credentials_fails() {
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (_, pubkey) = keypair(11);
 
 	let service = auth_service(&db).build();

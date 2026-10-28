@@ -620,7 +620,12 @@ fn column_type(tokens: &[TokenTree]) -> Option<KeyColumn> {
 		"SequenceId" => Some(KeyColumn::SequenceId),
 		"EpochSeconds" => Some(KeyColumn::EpochSeconds),
 		"IdentityId" => Some(KeyColumn::IdentityId),
-		"AuthenticationId" | "IdentityAttributeId" | "RoleId" | "PolicyId" | "TokenId" => Some(KeyColumn::U64),
+		"AuthenticationId"
+		| "AuthenticationMethodId"
+		| "IdentityAttributeId"
+		| "RoleId"
+		| "PolicyId"
+		| "TokenId" => Some(KeyColumn::U64),
 		"ViewId" => Some(KeyColumn::ViewId),
 		"SinkId" => Some(KeyColumn::SinkId),
 		"SourceId" => Some(KeyColumn::SourceId),

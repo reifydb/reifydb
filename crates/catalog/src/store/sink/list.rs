@@ -13,7 +13,7 @@ use reifydb_core::{
 use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;
 
-use crate::{CatalogStore, Result, store::sink::shape::sink};
+use crate::{CatalogStore, Result, error::CatalogError, store::sink::shape::sink};
 
 impl CatalogStore {
 	pub(crate) fn list_sinks_all(rx: &mut Transaction<'_>) -> Result<Vec<Sink>> {
@@ -32,7 +32,11 @@ impl CatalogStore {
 			let source_name = sink::get_source_name(bytes).to_string();
 			let connector = sink::get_connector(bytes).to_string();
 			let config_json = sink::get_config(bytes);
-			let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
+			let config: Vec<(String, String)> =
+				from_str(config_json).map_err(|e| CatalogError::SinkConfigCorrupt {
+					name: name.clone(),
+					reason: e.to_string(),
+				})?;
 			let status_u8 = sink::get_status(bytes);
 			let status = FlowStatus::from_u8(status_u8);
 

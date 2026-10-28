@@ -17,6 +17,7 @@ fn test_signature_over_attacker_chosen_message_is_rejected() {
 	// not text the client picked. If the client chooses them, any signature that wallet ever
 	// produced anywhere becomes a permanent password for this identity.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(21);
 	identity("mallory").solana_key(&pubkey).create(&db);
 
@@ -46,6 +47,7 @@ fn test_signature_from_another_challenge_is_rejected() {
 	// Each challenge must only accept its own signature. Without that binding a single captured
 	// signature is replayable against every later challenge the same wallet is issued.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(22);
 	identity("carol").solana_key(&pubkey).create(&db);
 
@@ -77,6 +79,7 @@ fn test_signature_without_challenge_id_is_rejected() {
 	// The challenge step must not be skippable. A caller that jumps straight to verification has
 	// no server nonce bound to it, so verification there can only ever be replay.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(23);
 	identity("dave").solana_key(&pubkey).create(&db);
 
@@ -102,6 +105,7 @@ fn test_consumed_challenge_cannot_be_replayed() {
 	// A challenge is single use. If a completed one stayed live, a captured completion could be
 	// replayed for as long as the entry survived.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(24);
 	identity("erin").solana_key(&pubkey).create(&db);
 
@@ -124,6 +128,7 @@ fn test_absent_signed_message_still_verifies() {
 	// signed_message stays optional on the wire: the server already knows the text it issued, so
 	// a client that omits it must still authenticate rather than be forced to echo it back.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(25);
 	let frank = identity("frank").solana_key(&pubkey).create(&db);
 
@@ -149,6 +154,7 @@ fn test_mismatched_signed_message_is_rejected_distinctly() {
 	// its own reason: collapsing it into "invalid credentials" hides a client that is signing the
 	// wrong bytes behind what looks like a plain bad-password failure.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(26);
 	identity("grace").solana_key(&pubkey).create(&db);
 
@@ -182,6 +188,7 @@ fn test_client_supplied_message_cannot_override_challenge_payload() {
 	// credentials could shadow the payload, the attacker supplies both the message and the
 	// signature over it and the nonce binding is gone.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(27);
 	identity("heidi").solana_key(&pubkey).create(&db);
 
@@ -213,6 +220,8 @@ fn test_completion_naming_a_different_method_is_rejected() {
 	// any challenge. The stored method still picks the verifier, so nothing is bypassed, but a
 	// request that contradicts itself must be refused rather than quietly honoured.
 	let db = TestDb::memory();
+	db.admin("CREATE AUTHENTICATION METHOD solana WITH { ttl: forever }");
+	db.admin("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }");
 	let (signing_key, pubkey) = keypair(28);
 	identity("ivan").solana_key(&pubkey).create(&db);
 

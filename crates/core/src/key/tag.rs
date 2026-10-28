@@ -99,6 +99,7 @@ pub enum KeyTag {
 	ViewEviction = 0x5E,
 	TableEviction = 0x5F,
 	SeriesEviction = 0x60,
+	AuthenticationMethod = 0x61,
 }
 
 impl KeyTag {
@@ -212,6 +213,7 @@ impl TryFrom<u8> for KeyTag {
 			0x5E => Ok(Self::ViewEviction),
 			0x5F => Ok(Self::TableEviction),
 			0x60 => Ok(Self::SeriesEviction),
+			0x61 => Ok(Self::AuthenticationMethod),
 			_ => Err(de::Error::custom(format!("Invalid KeyTag value: {value:#04x}"))),
 		}
 	}

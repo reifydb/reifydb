@@ -29,6 +29,8 @@ fn database(max_connections: usize) -> Database {
 		.with_ws(move |ws| ws.bind_addr("127.0.0.1:0").max_connections(max_connections))
 		.build()
 		.expect("database with ws builds");
+	db.admin_as_root("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }", Params::None)
+		.expect("declare token method");
 	db.admin_as_root("CREATE AUTHENTICATION FOR root { method: token; token: 't' }", Params::None)
 		.expect("create root token");
 	db.admin_as_root("CREATE NAMESPACE demo", Params::None).expect("create namespace");

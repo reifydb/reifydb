@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::{
-	interface::auth::{AuthStep, AuthenticationProvider},
+	interface::{
+		auth::{AuthStep, AuthenticationProvider},
+		catalog::authentication_method::AuthenticationMethod,
+	},
 	retry::RetryStrategy,
 };
 use reifydb_value::{
@@ -21,6 +24,7 @@ pub(crate) const SOLANA_PUBLIC_KEY_ATTRIBUTE: &str = "solana_public_key";
 impl AuthService {
 	pub(crate) fn begin_solana_provision(
 		&self,
+		caller: IdentityId,
 		identifier: &str,
 		public_key: &str,
 		credentials: &HashMap<String, String>,
@@ -42,6 +46,7 @@ impl AuthService {
 		};
 
 		let challenge_id = self.challenges.create(
+			caller,
 			identifier.to_string(),
 			"solana".to_string(),
 			payload.clone(),
@@ -57,18 +62,29 @@ impl AuthService {
 
 	pub(crate) fn complete_solana_provision(
 		&self,
+		caller: IdentityId,
 		identifier: &str,
 		public_key: &str,
 		challenge_payload: &HashMap<String, String>,
 		credentials: &HashMap<String, String>,
+		declared: &AuthenticationMethod,
 	) -> Result<AuthResponse, Error> {
 		let provider = self.solana_provider()?;
 		let properties = self.solana_properties(provider, public_key)?;
 
 		match provider.verify_challenge(&properties, challenge_payload, credentials)? {
+			AuthStep::Authenticated if declared.promote_guest && self.is_guest(caller)? => self
+				.promote_guest(
+					caller,
+					identifier,
+					"solana",
+					properties,
+					Some((SOLANA_PUBLIC_KEY_ATTRIBUTE, public_key)),
+					declared.ttl,
+				),
 			AuthStep::Authenticated => {
 				let identity = self.create_solana_identity(identifier, public_key, properties)?;
-				self.finalize_authentication(identity)
+				self.finalize_authentication(identity, declared.ttl)
 			}
 			AuthStep::Rejected {
 				reason,
@@ -98,7 +114,7 @@ impl AuthService {
 		&self,
 		provider: &dyn AuthenticationProvider,
 		public_key: &str,
-	) -> Result<HashMap<String, String>, Error> {
+	) -> Result<BTreeMap<String, String>, Error> {
 		provider.create(&self.rng, &HashMap::from([("public_key".to_string(), public_key.to_string())]))
 	}
 
@@ -107,7 +123,7 @@ impl AuthService {
 		&self,
 		identifier: &str,
 		public_key: &str,
-		properties: HashMap<String, String>,
+		properties: BTreeMap<String, String>,
 	) -> Result<IdentityId, Error> {
 		let ident = RetryStrategy::default().retry(&self.rng, "auth::create_solana_identity", || {
 			let mut admin = self.engine.begin_admin()?;

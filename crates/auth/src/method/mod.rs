@@ -2,6 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 pub mod github;
+pub mod guest;
 pub mod password;
 pub mod solana;
 pub mod token;

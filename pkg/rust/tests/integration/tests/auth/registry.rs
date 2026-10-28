@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	sync::Arc,
+};
 
 use reifydb::{
 	IdentityId,
@@ -20,14 +23,14 @@ impl AuthenticationProvider for PinProvider {
 		"pin"
 	}
 
-	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>, Error> {
+	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>, Error> {
 		let pin = config.get("pin").ok_or_else(pin_required)?;
-		Ok(HashMap::from([("pin".to_string(), pin.clone())]))
+		Ok(BTreeMap::from([("pin".to_string(), pin.clone())]))
 	}
 
 	fn authenticate(
 		&self,
-		stored: &HashMap<String, String>,
+		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep, Error> {
 		let expected = stored.get("pin").ok_or_else(pin_required)?;
@@ -75,6 +78,7 @@ fn a_registered_provider_serves_both_credential_creation_and_login() {
 	let db = TestDb::from(embedded::memory().with_auth_provider(PinProvider).build().expect("build"));
 
 	db.admin("CREATE USER bob");
+	db.admin("CREATE AUTHENTICATION METHOD pin WITH { ttl: forever }");
 	db.admin("CREATE AUTHENTICATION FOR bob { method: pin; pin: '4711' }");
 
 	let (identity, token) = db

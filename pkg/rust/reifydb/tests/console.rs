@@ -94,6 +94,8 @@ fn database_at(address: &str, fingerprint_path: Option<&Path>, access: ExternalA
 }
 
 fn seed(db: &Database) {
+	db.admin_as_root("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }", Params::None)
+		.expect("declare token method");
 	db.admin_as_root("CREATE AUTHENTICATION FOR root { method: token; token: 't' }", Params::None)
 		.expect("create root token");
 	db.admin_as_root("CREATE NAMESPACE demo", Params::None).expect("create namespace");

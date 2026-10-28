@@ -294,6 +294,9 @@ pub fn walk_expressions_mut(
 		| PhysicalPlan::DropAuthentication(_)
 		| PhysicalPlan::CreatePolicy(_)
 		| PhysicalPlan::AlterPolicy(_)
-		| PhysicalPlan::DropPolicy(_) => {}
+		| PhysicalPlan::DropPolicy(_)
+		| PhysicalPlan::CreateAuthenticationMethod(_)
+		| PhysicalPlan::AlterAuthenticationMethod(_)
+		| PhysicalPlan::DropAuthenticationMethod(_) => {}
 	}
 }

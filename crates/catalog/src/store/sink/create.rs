@@ -66,7 +66,10 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &SinkToCreate,
 	) -> Result<()> {
-		let config_json = to_string(&to_create.config).unwrap_or_default();
+		let config_json = to_string(&to_create.config).map_err(|e| CatalogError::SinkConfigEncode {
+			name: to_create.name.text().to_string(),
+			reason: e.to_string(),
+		})?;
 
 		let mut row = sink::allocate();
 		sink::set_id(&mut row, u64::from(sink));

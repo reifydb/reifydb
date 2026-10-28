@@ -16,6 +16,7 @@ export interface PasswordSignInArgs<
   identifier: string;
   password: string;
   sessionTtlSeconds: number;
+  session?: AuthSession | null;
 }
 
 function supportsPasswordLogin(
@@ -30,7 +31,7 @@ function supportsPasswordLogin(
 export async function performPasswordSignIn<TClient extends AuthCapableClient>(
   args: PasswordSignInArgs<TClient>,
 ): Promise<AuthSession> {
-  const { url, transport, identifier, password, sessionTtlSeconds } = args;
+  const { url, transport, identifier, password, sessionTtlSeconds, session } = args;
 
   if (identifier.length === 0) {
     throw new Error("@reifydb/auth: identifier is required to sign in");
@@ -42,7 +43,9 @@ export async function performPasswordSignIn<TClient extends AuthCapableClient>(
     throw new Error("@reifydb/auth: sessionTtlSeconds must be a positive number");
   }
 
-  const client = await transport.connect(url);
+  const token =
+    session != null && session.expiresAt > Date.now() / 1000 ? session.token : undefined;
+  const client = await transport.connect(url, token);
   try {
     if (!supportsPasswordLogin(client)) {
       throw new Error(

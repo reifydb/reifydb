@@ -51,5 +51,5 @@ fn the_reported_counter_covers_every_declared_sequence() {
 	let frames = db.query("FROM system::sequences");
 	let names = column_values(frames.first().expect("system::sequences returned no frame"), "name");
 
-	assert_eq!(names.len(), 24, "every declared sequence must be listed, found {}", names.len());
+	assert_eq!(names.len(), 25, "every declared sequence must be listed, found {}", names.len());
 }

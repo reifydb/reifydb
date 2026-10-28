@@ -28,6 +28,11 @@ impl<'bump> Parser<'bump> {
 	pub(crate) fn parse_alter(&mut self) -> Result<AstAlter<'bump>> {
 		let token = self.consume_keyword(Keyword::Alter)?;
 
+		if (self.consume_if(TokenKind::Keyword(Keyword::Authentication))?).is_some() {
+			self.expect_method_word()?;
+			return self.parse_alter_authentication_method(token);
+		}
+
 		if self.current()?.is_keyword(Keyword::Sequence) {
 			self.consume_keyword(Keyword::Sequence)?;
 			return self.parse_alter_sequence(token);

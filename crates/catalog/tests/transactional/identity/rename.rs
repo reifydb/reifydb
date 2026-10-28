@@ -167,3 +167,25 @@ fn rename_of_an_unknown_identity_is_rejected() {
 	let err = catalog.rename_identity(&mut txn, unknown, "idn_rename_ghost").unwrap_err();
 	assert_eq!(err.diagnostic().code, "CA_043");
 }
+
+#[test]
+fn concurrent_renames_to_the_same_free_name_cannot_both_commit() {
+	// Without conflict tracking on the uniqueness check, two identities would end up sharing one name.
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE USER idn_rename_g1");
+	t.admin("CREATE USER idn_rename_g2");
+	let id1 = identity_id(&t, "idn_rename_g1");
+	let id2 = identity_id(&t, "idn_rename_g2");
+
+	let mut txn1 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let mut txn2 = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	catalog.rename_identity(&mut txn1, id1, "idn_rename_g_taken").unwrap();
+	catalog.rename_identity(&mut txn2, id2, "idn_rename_g_taken").unwrap();
+
+	txn1.commit().unwrap();
+	assert!(txn2.commit().is_err(), "second rename to the same name must fail to commit");
+
+	assert_eq!(identity_id(&t, "idn_rename_g_taken"), id1);
+	assert_eq!(identity_id(&t, "idn_rename_g2"), id2, "the losing identity must keep its old name");
+}

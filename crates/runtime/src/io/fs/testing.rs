@@ -88,6 +88,8 @@ pub trait TestingHooks: Send + Sync {
 		OpenOutcome::Honest
 	}
 
+	fn on_create(&self, _path: &Path) {}
+
 	fn on_rename(&self, _from: &Path, _to: &Path) -> MetaOutcome {
 		MetaOutcome::Durable
 	}
@@ -289,6 +291,7 @@ impl Create for TestingFs {
 	fn create(&self, path: &Path, len: u64) -> Result<TestingFileMut> {
 		self.0.syscall();
 		let inner = self.0.inner.create(path, len)?;
+		self.0.hooks.on_create(path);
 		Ok(TestingFileMut {
 			id: self.0.next_id(),
 			inner,

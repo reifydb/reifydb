@@ -269,6 +269,15 @@ fn describe(plan: &LogicalPlan<'_>) -> (&'static str, String) {
 		LogicalPlan::DropPolicy(n) => {
 			("DropPolicy", format!("name={} if_exists={}", n.name.text(), n.if_exists))
 		}
+		LogicalPlan::CreateAuthenticationMethod(n) => {
+			("CreateAuthenticationMethod", format!("name={}", n.name.text()))
+		}
+		LogicalPlan::AlterAuthenticationMethod(n) => {
+			("AlterAuthenticationMethod", format!("name={}", n.name.text()))
+		}
+		LogicalPlan::DropAuthenticationMethod(n) => {
+			("DropAuthenticationMethod", format!("name={} if_exists={}", n.name.text(), n.if_exists))
+		}
 		LogicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,

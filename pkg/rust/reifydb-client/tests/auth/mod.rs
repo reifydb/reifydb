@@ -4,6 +4,8 @@
 mod configuration;
 mod grpc;
 mod http;
+mod method_not_enabled;
+mod promotion;
 mod ws;
 
 use std::error::Error;
@@ -15,12 +17,14 @@ use reifydb::Database;
 pub fn start_server_with_auth_users(server: &mut Database) -> Result<(u16, u16, u16), Box<dyn Error>> {
 	let params = reifydb_value::params::Params::None;
 
+	server.admin_as_root("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }", params.clone())?;
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR root { method: token; token: 'mysecrettoken' }",
 		params.clone(),
 	)?;
 
 	server.admin_as_root("CREATE USER alice", params.clone())?;
+	server.admin_as_root("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }", params.clone())?;
 	server.admin_as_root(
 		"CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }",
 		params.clone(),

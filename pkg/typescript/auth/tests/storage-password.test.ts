@@ -33,6 +33,19 @@ describe("storage (password sessions)", () => {
     expect(read?.identifier).toBe("user@example.com");
   });
 
+  it("round-trips a guest session", () => {
+    // A guest dropped on reload would lose its identity and everything it owns.
+    const session: AuthSession = {
+      token: "guest-tok",
+      identity: "guest-id",
+      walletAddress: "guest-id",
+      method: "guest",
+      expiresAt: Math.floor(Date.now() / 1000) + 3600,
+    };
+    writeStoredSession(NS, session);
+    expect(readStoredSession(NS)).toEqual(session);
+  });
+
   it("still accepts a legacy four-field wallet session", () => {
     // Sessions persisted before the password flow existed have no method or
     // identifier; the upgrade must not log those users out.

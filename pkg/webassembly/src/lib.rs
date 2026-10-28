@@ -555,6 +555,9 @@ impl WasmDB {
 			AuthResponse::Failed {
 				reason,
 			} => Err(JsError::from_message(&format!("Authentication failed: {}", reason))),
+			AuthResponse::MethodNotEnabled {
+				method,
+			} => Err(JsError::from_message(&format!("Authentication method '{}' is not enabled", method))),
 			AuthResponse::Challenge {
 				..
 			} => Err(JsError::from_message(

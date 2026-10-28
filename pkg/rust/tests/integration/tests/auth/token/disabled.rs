@@ -6,6 +6,7 @@ use reifydb_test_harness::auth::{AuthResponseAssert, password_credentials};
 
 fn setup_user_and_login(db: &TestDb) -> (IdentityId, String) {
 	db.admin("CREATE USER alice");
+	db.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	db.admin("CREATE AUTHENTICATION FOR alice { method: password; password: 'alice-pass' }");
 
 	db.auth_service()

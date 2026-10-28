@@ -11,6 +11,7 @@ use super::KeyTag;
 use crate::{
 	interface::catalog::{
 		authentication::AuthenticationId,
+		authentication_method::AuthenticationMethodId,
 		identity::{IdentityAttributeId, RoleId},
 		policy::PolicyId,
 		token::TokenId,
@@ -243,6 +244,49 @@ mod byte_identical_authentication_key {
 	fn matches_the_flat_key_encoding() {
 		for authentication in [0u64, 1, 42, u64::MAX] {
 			let key = AuthenticationKey::new(authentication);
+			assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = AuthenticationMethod)]
+pub struct AuthenticationMethodKey {
+	pub method: AuthenticationMethodId,
+}
+
+impl AuthenticationMethodKey {
+	pub fn new(method: AuthenticationMethodId) -> Self {
+		Self {
+			method,
+		}
+	}
+
+	pub fn encoded(method: AuthenticationMethodId) -> EncodedKey {
+		Self::new(method).encode()
+	}
+
+	pub fn full_scan() -> TaggedKeyBoundRange {
+		TaggedKeyBoundRange::kind(Self::TAG)
+	}
+}
+
+#[cfg(test)]
+mod byte_identical_authentication_method_key {
+	use reifydb_codec::key::serializer::KeySerializer;
+
+	use super::*;
+
+	fn legacy_encode(key: &AuthenticationMethodKey) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(9);
+		serializer.extend_u8(KeyTag::AuthenticationMethod as u8).extend_u64(key.method);
+		serializer.to_encoded_key()
+	}
+
+	#[test]
+	fn matches_the_flat_key_encoding() {
+		for method in [0u64, 1, 42, u64::MAX] {
+			let key = AuthenticationMethodKey::new(method);
 			assert_eq!(legacy_encode(&key).as_slice(), key.encode().as_slice());
 		}
 	}

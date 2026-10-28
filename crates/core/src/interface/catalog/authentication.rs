@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use reifydb_value::value::identity::IdentityId;
 use serde::{Deserialize, Serialize};
@@ -13,5 +13,5 @@ pub struct Authentication {
 	pub id: AuthenticationId,
 	pub identity: IdentityId,
 	pub method: String,
-	pub properties: HashMap<String, String>,
+	pub properties: BTreeMap<String, String>,
 }

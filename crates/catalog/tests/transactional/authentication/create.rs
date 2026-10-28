@@ -9,6 +9,7 @@ use reifydb_value::{params::Params, value::identity::IdentityId};
 #[test]
 fn uncommitted_create_is_visible_within_txn() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aut_create_a");
 
@@ -43,6 +44,7 @@ fn uncommitted_create_is_visible_within_txn() {
 #[test]
 fn rolled_back_create_is_not_visible() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aut_create_b");
 
@@ -79,6 +81,7 @@ fn rolled_back_create_is_not_visible() {
 #[test]
 fn committed_create_is_visible_in_new_txn() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aut_create_c");
 
@@ -115,6 +118,7 @@ fn committed_create_is_visible_in_new_txn() {
 #[test]
 fn uncommitted_create_is_isolated_from_concurrent_txn() {
 	let t = TestEngine::new();
+	t.admin("CREATE AUTHENTICATION METHOD password WITH { ttl: forever }");
 	let catalog = t.catalog();
 	t.admin("CREATE USER aut_create_d");
 
@@ -160,4 +164,19 @@ fn uncommitted_create_is_isolated_from_concurrent_txn() {
 		.is_some(),
 		"after commit, authentication must be findable"
 	);
+}
+
+#[test]
+fn a_credential_for_an_undeclared_method_is_refused() {
+	// A credential naming an undeclared method would be a login nobody can switch off.
+	let t = TestEngine::new();
+	t.admin("CREATE USER aut_create_undeclared");
+
+	let err =
+		t.admin_err("CREATE AUTHENTICATION FOR aut_create_undeclared { method: password; password: 'secret' }");
+	assert!(err.contains("CA_119"), "{err}");
+
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	let auths = t.catalog().list_authentications_by_method(&mut Transaction::Admin(&mut txn), "password").unwrap();
+	assert!(auths.is_empty(), "a refused credential must leave no row: {auths:?}");
 }

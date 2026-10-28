@@ -7,6 +7,7 @@ use reifydb_codec::row::shape::RowShape;
 
 use crate::store::{
 	authentication::shape::authentication::SHAPE as AUTHENTICATION_SHAPE,
+	authentication_method::shape::authentication_method::SHAPE as AUTHENTICATION_METHOD_SHAPE,
 	binding::shape::{binding::SHAPE as BINDING_SHAPE, binding_namespace::SHAPE as BINDING_NAMESPACE_SHAPE},
 	column::shape::{column::SHAPE as COLUMN_SHAPE, object_column::SHAPE as OBJECT_COLUMN_SHAPE},
 	column_block::shape::column_block::SHAPE as COLUMN_BLOCK_SHAPE,
@@ -88,6 +89,12 @@ fn pinned() -> Vec<Pin> {
 			&*AUTHENTICATION_SHAPE,
 			0x348d84f39b551800,
 			&["id", "identity", "method", "properties"],
+		),
+		(
+			"authentication_method::authentication_method",
+			&*AUTHENTICATION_METHOD_SHAPE,
+			0x9d8672aaa269cabe,
+			&["id", "name", "ttl", "promote_guest", "properties"],
 		),
 		(
 			"binding::binding",

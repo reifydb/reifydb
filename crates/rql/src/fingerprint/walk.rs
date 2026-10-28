@@ -715,6 +715,18 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 					buf.write_u8(0x13);
 					buf.write_str(n.user.text());
 				}
+				AstCreate::AuthenticationMethod(n) => {
+					buf.write_u8(0x1d);
+					buf.write_str(n.name.text());
+					buf.write_str(n.ttl.fragment.text());
+					if let Some(promote_guest) = &n.promote_guest {
+						buf.write_str(promote_guest.fragment.text());
+					}
+					for setting in &n.settings {
+						buf.write_str(setting.key.text());
+						buf.write_str(setting.value.text());
+					}
+				}
 				AstCreate::Policy(n) => {
 					buf.write_u8(0x14);
 					buf.write_str(n.target_type.as_str());
@@ -831,6 +843,20 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 					match n.action {
 						AstAlterPolicyAction::Enable => buf.write_u8(0x01),
 						AstAlterPolicyAction::Disable => buf.write_u8(0x02),
+					}
+				}
+				AstAlter::AuthenticationMethod(n) => {
+					buf.write_u8(0x06);
+					buf.write_str(n.name.text());
+					if let Some(ttl) = &n.ttl {
+						buf.write_str(ttl.fragment.text());
+					}
+					if let Some(promote_guest) = &n.promote_guest {
+						buf.write_str(promote_guest.fragment.text());
+					}
+					for setting in &n.settings {
+						buf.write_str(setting.key.text());
+						buf.write_str(setting.value.text());
 					}
 				}
 				AstAlter::Table(n) => {
@@ -961,6 +987,10 @@ pub(crate) fn fingerprint_ast(buf: &mut FingerprintBuffer, ast: &Ast<'_>) {
 				AstDrop::Authentication(n) => {
 					buf.write_u8(0x0B);
 					buf.write_str(n.user.text());
+				}
+				AstDrop::AuthenticationMethod(n) => {
+					buf.write_u8(0x15);
+					buf.write_str(n.name.text());
 				}
 				AstDrop::Policy(n) => {
 					buf.write_u8(0x0C);

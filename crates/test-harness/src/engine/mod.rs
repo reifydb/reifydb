@@ -258,9 +258,15 @@ pub struct TestEngineBuilder {
 	wal: Option<Box<dyn FnOnce(WalConfigurator) -> WalConfigurator>>,
 	#[cfg(not(target_arch = "wasm32"))]
 	sqlite_cdc: Option<SqliteConfig>,
+	github_client_secret: Option<String>,
 }
 
 impl TestEngineBuilder {
+	pub fn with_github_client_secret(mut self, secret: impl Into<String>) -> Self {
+		self.github_client_secret = Some(secret.into());
+		self
+	}
+
 	pub fn with_routines<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(RoutinesConfigurator) -> RoutinesConfigurator + 'static,
@@ -384,7 +390,11 @@ impl TestEngineBuilder {
 				transforms: Transforms::empty(),
 				block_encodings: BlockEncodings::empty(),
 				ioc,
-				auth_registry: Arc::new(AuthenticationRegistry::new(clock.clone(), rng.clone())),
+				auth_registry: Arc::new(match self.github_client_secret.clone() {
+					Some(secret) => AuthenticationRegistry::new(clock.clone(), rng.clone())
+						.with_github_client_secret(secret),
+					None => AuthenticationRegistry::new(clock.clone(), rng.clone()),
+				}),
 				#[cfg(not(reifydb_single_threaded))]
 				remote_registry: None,
 			},

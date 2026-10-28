@@ -12,25 +12,20 @@ use reifydb::{
 	system::tasks::create_system_tasks,
 	testing::db::TestDb,
 	transaction::transaction::Transaction,
-	value::value::duration::Duration,
 };
 use reifydb_test_harness::auth::{AuthResponseAssert, password_credentials};
 
 const AUTH_CLEANUP: &str = "auth-cleanup";
 
-fn db_with_session_ttl(mock: &MockClock, session_ttl: Duration) -> TestDb {
+fn db_with_session_ttl(mock: &MockClock, ttl: &str) -> TestDb {
 	let config = RuntimeConfig {
 		clock: Clock::Mock(mock.clone()),
 		..Default::default()
 	};
 
-	TestDb::from(
-		embedded::memory()
-			.with_runtime_config(config)
-			.with_auth(move |a| a.session_ttl(session_ttl))
-			.build()
-			.unwrap(),
-	)
+	let db = TestDb::from(embedded::memory().with_runtime_config(config).build().unwrap());
+	db.admin(&format!("CREATE AUTHENTICATION METHOD password WITH {{ ttl: {ttl} }}"));
+	db
 }
 
 fn login(db: &TestDb) -> String {
@@ -73,7 +68,7 @@ fn test_auth_cleanup_task_is_registered() {
 fn test_auth_cleanup_task_evicts_expired_token() {
 	// registration is worthless unless invoking the task actually drops the expired row
 	let mock = MockClock::from_millis(1_700_000_000_000);
-	let mut db = db_with_session_ttl(&mock, Duration::from_seconds(60).unwrap());
+	let mut db = db_with_session_ttl(&mock, "60s");
 
 	let token = login(&db);
 	assert!(token_row_exists(&db, &token), "token row should exist right after login");

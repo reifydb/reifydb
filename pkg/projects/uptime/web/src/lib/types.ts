@@ -115,8 +115,3 @@ export interface Me {
   guest: boolean;
 }
 
-export interface GuestSession {
-  token: string;
-  identity: string;
-  expires_at: number;
-}

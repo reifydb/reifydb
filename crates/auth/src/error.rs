@@ -46,6 +46,14 @@ pub enum AuthError {
 	VerificationFailed {
 		reason: String,
 	},
+
+	#[error("guest login takes no credentials, got: {keys}")]
+	GuestTakesNoCredentials {
+		keys: String,
+	},
+
+	#[error("guest identities have no credentials")]
+	GuestHasNoCredentials,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -213,6 +221,33 @@ impl IntoDiagnostic for AuthError {
 				fragment: Fragment::None,
 				label: Some("verification failed".to_string()),
 				help: Some("an internal error occurred during password verification".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			AuthError::GuestTakesNoCredentials {
+				keys,
+			} => Diagnostic {
+				code: "AU_018".to_string(),
+				rql: None,
+				message: format!("guest login takes no credentials, got: {}", keys),
+				fragment: Fragment::None,
+				label: Some("unexpected credentials".to_string()),
+				help: Some("call authenticate(\"guest\") with empty credentials".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			AuthError::GuestHasNoCredentials => Diagnostic {
+				code: "AU_019".to_string(),
+				rql: None,
+				message: "guest identities have no credentials".to_string(),
+				fragment: Fragment::None,
+				label: Some("credential not allowed".to_string()),
+				help: Some("a guest gets its session from authenticate(\"guest\")".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

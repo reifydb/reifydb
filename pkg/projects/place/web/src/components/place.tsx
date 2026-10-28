@@ -1,56 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { PlaceClient } from '@/client'
 import { commitPending, commitPixels } from '@/commit'
 import { MAX_PENDING, inCanvas } from '@/geometry'
 import { type Stamp, convert, fitSize, preShrinkSize, stampPixels } from '@/image'
 import type { Pixel } from '@/pack'
 import { Pending } from '@/pending'
-import { PixelBuffer } from '@/pixels'
-import { TileStream } from '@/tiles'
 import type { Point, Tool } from '@/tools'
 import { BottomBar } from './bottom-bar'
+import { ActivityRail } from './activity-feed'
 import { CanvasView } from './canvas-view'
+import { useLive } from './live'
 import { Toolbar } from './toolbar'
+import { Welcome } from './welcome'
 
 export function Place({ client }: { client: PlaceClient }) {
-  const buffer = useMemo(() => new PixelBuffer(), [])
+  const [message, setMessage] = useState<string | null>(null)
+  const { buffer, minimap, activity } = useLive(client, setMessage)
   const pending = useMemo(() => new Pending(), [])
-  const stream = useMemo(
-    () =>
-      new TileStream(
-        client,
-        {
-          put: (tx, ty, bytes, version) => void buffer.put(tx, ty, bytes, version),
-        },
-        () => setMessage('Live updates failed: the tile stream was closed.'),
-      ),
-    [client, buffer],
-  )
   const pendingVersion = useSyncExternalStore(
     (listener) => pending.subscribe(listener),
     () => pending.snapshot(),
   )
-  const [tool, setTool] = useState<Tool>('pencil')
+  const [tool, setTool] = useState<Tool>('pan')
   const [color, setColor] = useState(1)
   const [layerVisible, setLayerVisible] = useState(true)
   const [hover, setHover] = useState<Point | null>(null)
   const [committing, setCommitting] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [stamp, setStamp] = useState<Stamp | null>(null)
   const [placing, setPlacing] = useState<Pixel[] | null>(null)
   const previousToolRef = useRef<Tool>('pencil')
   const imageReturnRef = useRef<Tool>('pencil')
-
-  useEffect(() => {
-    stream.start().catch((error: unknown) => {
-      setMessage(`Live updates failed: ${error instanceof Error ? error.message : String(error)}`)
-    })
-    return () => void stream.close()
-  }, [stream])
 
   const onSelectTool = useCallback((next: Tool) => {
     setTool((current) => {
@@ -161,37 +144,45 @@ export function Place({ client }: { client: PlaceClient }) {
   void pendingVersion
 
   return (
-    <div className="relative min-h-0 flex-1">
-      <CanvasView
-        buffer={buffer}
-        pending={pending}
-        layerVisible={layerVisible}
-        tool={tool}
-        color={color}
-        onStroke={onStroke}
-        onShape={onShape}
-        onPick={onPick}
-        onHover={setHover}
-        ghost={ghost}
-        onPlace={onPlace}
-      />
-      <Toolbar tool={tool} onSelect={onSelectTool} onFile={onFile} />
-      <BottomBar
-        color={color}
-        onColor={setColor}
-        hover={hover}
-        count={count}
-        layerVisible={layerVisible}
-        onLayerVisible={setLayerVisible}
-        committing={committing}
-        onCommit={onCommit}
-        onClear={() => {
-          setNotice(null)
-          pending.clear()
-        }}
-        notice={notice}
-        message={message}
-      />
+    <div className="flex min-h-0 flex-1">
+      <div className="relative min-w-0 flex-1">
+        <CanvasView
+          buffer={buffer}
+          minimap={minimap}
+          activity={activity}
+          pending={pending}
+          layerVisible={layerVisible}
+          tool={tool}
+          color={color}
+          onStroke={onStroke}
+          onShape={onShape}
+          onPick={onPick}
+          onHover={setHover}
+          ghost={ghost}
+          onPlace={onPlace}
+        />
+        <Toolbar tool={tool} onSelect={onSelectTool} onFile={onFile} />
+        {tool !== 'pan' && (
+          <BottomBar
+            color={color}
+            onColor={setColor}
+            hover={hover}
+            count={count}
+            layerVisible={layerVisible}
+            onLayerVisible={setLayerVisible}
+            committing={committing}
+            onCommit={onCommit}
+            onClear={() => {
+              setNotice(null)
+              pending.clear()
+            }}
+            notice={notice}
+            message={message}
+          />
+        )}
+        <Welcome />
+      </div>
+      <ActivityRail activity={activity} />
     </div>
   )
 }

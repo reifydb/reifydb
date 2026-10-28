@@ -6,13 +6,13 @@ use std::collections::HashMap;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_core::interface::{
 	auth::{AuthStep, AuthenticationProvider},
-	catalog::{authentication::Authentication, identity::Identity},
+	catalog::{authentication::Authentication, authentication_method::AuthenticationMethod, identity::Identity},
 };
 use reifydb_transaction::transaction::{Transaction, query::QueryTransaction};
 use reifydb_value::{
 	error::Error,
 	reifydb_assertions,
-	value::{Value, identity::IdentityId},
+	value::{Value, duration::Duration, identity::IdentityId},
 };
 use tracing::instrument;
 
@@ -22,30 +22,59 @@ use crate::error::AuthError;
 impl AuthService {
 	#[instrument(name = "auth::authenticate", level = "debug", skip(self, credentials))]
 	pub fn authenticate(&self, method: &str, credentials: HashMap<String, String>) -> Result<AuthResponse, Error> {
+		self.authenticate_as(IdentityId::anonymous(), method, credentials)
+	}
+
+	#[instrument(name = "auth::authenticate_as", level = "debug", skip(self, credentials))]
+	pub fn authenticate_as(
+		&self,
+		caller: IdentityId,
+		method: &str,
+		credentials: HashMap<String, String>,
+	) -> Result<AuthResponse, Error> {
+		self.provider_for(method)?;
+		let Some(declared) = self.declared_method(method)? else {
+			return Ok(AuthResponse::MethodNotEnabled {
+				method: method.to_string(),
+			});
+		};
+		let ttl = declared.ttl;
+		if method == "guest" {
+			return self.authenticate_guest(&credentials, ttl);
+		}
 		if let Some(challenge_id) = credentials.get("challenge_id").cloned() {
-			return self.authenticate_challenge_response(method, &challenge_id, credentials);
+			return self.authenticate_challenge_response(
+				caller,
+				method,
+				&challenge_id,
+				credentials,
+				&declared,
+			);
 		}
 		if method == "token" {
-			return self.authenticate_token(credentials);
+			return self.authenticate_token(credentials, ttl);
 		}
 		if method == "github" {
-			return self.begin_github_login();
+			return self.begin_github_login(caller, &declared);
 		}
-		self.authenticate_with_provider(method, credentials)
+		self.authenticate_with_provider(caller, method, credentials, &declared)
 	}
 
 	fn authenticate_with_provider(
 		&self,
+		caller: IdentityId,
 		method: &str,
 		credentials: HashMap<String, String>,
+		declared: &AuthenticationMethod,
 	) -> Result<AuthResponse, Error> {
+		let ttl = declared.ttl;
 		let identifier = credentials.get("identifier").map(|s| s.as_str()).unwrap_or("");
 		let mut txn = self.engine.begin_query()?;
 		let catalog = self.engine.catalog();
 
 		let Some(ident) = self.resolve_provider_identity(&mut txn, &catalog, method, identifier)? else {
 			drop(txn);
-			return self.handle_missing_identity(method, identifier, &credentials);
+			return self.handle_missing_identity(caller, method, identifier, &credentials, declared);
 		};
 		if !ident.enabled {
 			return Ok(AuthResponse::Failed {
@@ -57,7 +86,7 @@ impl AuthService {
 			return Ok(invalid_credentials());
 		};
 
-		self.run_provider_and_respond(&stored_auth, &credentials, ident.id, identifier, method)
+		self.run_provider_and_respond(caller, &stored_auth, &credentials, ident.id, identifier, method, ttl)
 	}
 
 	#[inline]
@@ -94,28 +123,36 @@ impl AuthService {
 	#[inline]
 	fn run_provider_and_respond(
 		&self,
+		caller: IdentityId,
 		stored_auth: &Authentication,
 		credentials: &HashMap<String, String>,
 		identity: IdentityId,
 		identifier: &str,
 		method: &str,
+		ttl: Option<Duration>,
 	) -> Result<AuthResponse, Error> {
 		let provider = self.provider_for(method)?;
 		let step = provider.authenticate(&stored_auth.properties, credentials)?;
-		self.respond_to_initial_auth_step(step, identity, identifier, method)
+		self.respond_to_initial_auth_step(caller, step, identity, identifier, method, ttl)
 	}
 
 	#[inline]
 	fn handle_missing_identity(
 		&self,
+		caller: IdentityId,
 		method: &str,
 		identifier: &str,
 		credentials: &HashMap<String, String>,
+		declared: &AuthenticationMethod,
 	) -> Result<AuthResponse, Error> {
 		if method == "solana"
 			&& let Some(public_key) = credentials.get("public_key").cloned()
 		{
-			return self.begin_solana_provision(identifier, &public_key, credentials);
+			return self.begin_solana_provision(caller, identifier, &public_key, credentials);
+		}
+		if method == "password" && declared.promote_guest {
+			let properties = self.provider_for(method)?.create(&self.rng, credentials)?;
+			return self.promote_or_sign_up(caller, identifier, method, properties, None, declared.ttl);
 		}
 		Ok(invalid_credentials())
 	}
@@ -123,13 +160,15 @@ impl AuthService {
 	#[inline]
 	fn respond_to_initial_auth_step(
 		&self,
+		caller: IdentityId,
 		step: AuthStep,
 		identity: IdentityId,
 		identifier: &str,
 		method: &str,
+		ttl: Option<Duration>,
 	) -> Result<AuthResponse, Error> {
 		match step {
-			AuthStep::Authenticated => self.finalize_authentication(identity),
+			AuthStep::Authenticated => self.finalize_authentication(identity, ttl),
 			AuthStep::Failed => Ok(invalid_credentials()),
 			AuthStep::Rejected {
 				reason,
@@ -138,12 +177,16 @@ impl AuthService {
 			}),
 			AuthStep::Challenge {
 				payload,
-			} => Ok(self.issue_challenge(identifier, method, payload)),
+			} => Ok(self.issue_challenge(caller, identifier, method, payload)),
 		}
 	}
 
 	#[inline]
-	pub(super) fn finalize_authentication(&self, identity: IdentityId) -> Result<AuthResponse, Error> {
+	pub(super) fn finalize_authentication(
+		&self,
+		identity: IdentityId,
+		ttl: Option<Duration>,
+	) -> Result<AuthResponse, Error> {
 		reifydb_assertions! {
 			assert!(
 				identity != IdentityId::default(),
@@ -152,7 +195,7 @@ impl AuthService {
 			);
 		}
 		let token = generate_session_token(&self.rng);
-		self.persist_token(&token, identity)?;
+		self.persist_token(&token, identity, ttl)?;
 		Ok(AuthResponse::Authenticated {
 			identity,
 			token,
@@ -160,8 +203,15 @@ impl AuthService {
 	}
 
 	#[inline]
-	fn issue_challenge(&self, identifier: &str, method: &str, payload: HashMap<String, String>) -> AuthResponse {
+	fn issue_challenge(
+		&self,
+		caller: IdentityId,
+		identifier: &str,
+		method: &str,
+		payload: HashMap<String, String>,
+	) -> AuthResponse {
 		let challenge_id = self.challenges.create(
+			caller,
 			identifier.to_string(),
 			method.to_string(),
 			payload.clone(),
@@ -175,6 +225,13 @@ impl AuthService {
 		}
 	}
 
+	fn declared_method(&self, method: &str) -> Result<Option<AuthenticationMethod>, Error> {
+		let mut txn = self.engine.begin_query()?;
+		Ok(self.engine
+			.catalog()
+			.find_authentication_method_by_name(&mut Transaction::Query(&mut txn), method)?)
+	}
+
 	#[inline]
 	fn provider_for(&self, method: &str) -> Result<&dyn AuthenticationProvider, Error> {
 		self.auth_registry.get(method).ok_or_else(|| {
@@ -184,24 +241,31 @@ impl AuthService {
 		})
 	}
 
-	fn authenticate_token(&self, credentials: HashMap<String, String>) -> Result<AuthResponse, Error> {
+	fn authenticate_token(
+		&self,
+		credentials: HashMap<String, String>,
+		ttl: Option<Duration>,
+	) -> Result<AuthResponse, Error> {
 		let token_value = match credentials.get("token") {
 			Some(t) if !t.is_empty() => t,
 			_ => return Ok(invalid_credentials()),
 		};
 
 		match self.validate_token(token_value)? {
-			Some(token) => self.finalize_authentication(token.identity),
+			Some(token) => self.finalize_authentication(token.identity, ttl),
 			None => Ok(invalid_credentials()),
 		}
 	}
 
 	fn authenticate_challenge_response(
 		&self,
+		caller: IdentityId,
 		method: &str,
 		challenge_id: &str,
 		mut credentials: HashMap<String, String>,
+		declared: &AuthenticationMethod,
 	) -> Result<AuthResponse, Error> {
+		let ttl = declared.ttl;
 		let Some(challenge) = self.challenges.consume(challenge_id) else {
 			return Ok(AuthResponse::Failed {
 				reason: "invalid or expired challenge".to_string(),
@@ -214,16 +278,24 @@ impl AuthService {
 			});
 		}
 
+		if !caller.is_anonymous() && !challenge.caller.is_anonymous() && caller != challenge.caller {
+			return Ok(AuthResponse::Failed {
+				reason: "challenge was issued to a different caller".to_string(),
+			});
+		}
+
 		if challenge.method == "github" {
-			return self.complete_github_login(&challenge, &credentials);
+			return self.complete_github_login(&challenge, &credentials, declared);
 		}
 
 		if let Some(public_key) = challenge.pending_public_key.as_deref() {
 			return self.complete_solana_provision(
+				challenge.caller,
 				&challenge.identifier,
 				public_key,
 				&challenge.payload,
 				&credentials,
+				declared,
 			);
 		}
 
@@ -248,6 +320,7 @@ impl AuthService {
 			&credentials,
 			ident.id,
 			&challenge.method,
+			ttl,
 		)
 	}
 
@@ -295,10 +368,11 @@ impl AuthService {
 		credentials: &HashMap<String, String>,
 		identity: IdentityId,
 		method: &str,
+		ttl: Option<Duration>,
 	) -> Result<AuthResponse, Error> {
 		let provider = self.provider_for(method)?;
 		let step = provider.verify_challenge(&stored_auth.properties, challenge_payload, credentials)?;
-		respond_to_challenge_step(step, identity, self)
+		respond_to_challenge_step(step, identity, ttl, self)
 	}
 }
 
@@ -314,10 +388,11 @@ fn merge_challenge_payload(credentials: &mut HashMap<String, String>, payload: &
 fn respond_to_challenge_step(
 	step: AuthStep,
 	identity: IdentityId,
+	ttl: Option<Duration>,
 	service: &AuthService,
 ) -> Result<AuthResponse, Error> {
 	match step {
-		AuthStep::Authenticated => service.finalize_authentication(identity),
+		AuthStep::Authenticated => service.finalize_authentication(identity, ttl),
 		AuthStep::Failed => Ok(invalid_credentials()),
 		AuthStep::Rejected {
 			reason,

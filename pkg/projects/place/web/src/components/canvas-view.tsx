@@ -3,11 +3,15 @@
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import { CANVAS_SIZE, TILE_SIZE, type TileKey, inCanvas, parseTileKey, tilesInRect } from '@/geometry'
+import type { Activity } from '@/activity'
+import type { Minimap } from '@/minimap'
 import { PALETTE, cssColor } from '@/palette'
 import type { Pending } from '@/pending'
 import type { Pixel } from '@/pack'
 import type { PixelBuffer, Tile } from '@/pixels'
 import { SHAPES, type Point, type ShapeTool, type Tool, isShape, linePixels } from '@/tools'
+import { MinimapPanel } from './minimap-panel'
+import { Pings, tileCenter } from './pings'
 import { isTyping } from './toolbar'
 import { ZoomControl } from './zoom-control'
 
@@ -27,6 +31,8 @@ interface View {
 
 interface CanvasViewProps {
   buffer: PixelBuffer
+  minimap: Minimap
+  activity: Activity
   pending: Pending
   tool: Tool
   color: number
@@ -44,7 +50,7 @@ type Gesture =
   | { kind: 'stroke'; last: Point }
   | { kind: 'shape'; shape: ShapeTool; start: Point }
 
-export function CanvasView({ buffer, pending, layerVisible, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
+export function CanvasView({ buffer, minimap, activity, pending, layerVisible, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement>())
@@ -164,11 +170,13 @@ export function CanvasView({ buffer, pending, layerVisible, tool, color, ghost, 
   const zoomIn = useCallback(() => zoomAt(view.zoom * ZOOM_STEP, size.width / 2, size.height / 2), [zoomAt, view.zoom, size])
   const zoomOut = useCallback(() => zoomAt(view.zoom / ZOOM_STEP, size.width / 2, size.height / 2), [zoomAt, view.zoom, size])
   const reset = useCallback(() => zoomAt(1, size.width / 2, size.height / 2), [zoomAt, size])
-  const fit = useCallback(() => {
-    const zoom = Math.max(MIN_ZOOM, Math.min(size.width, size.height) / CANVAS_SIZE)
-    const span = CANVAS_SIZE * zoom
-    setView(clampView({ zoom, x: (size.width - span) / 2, y: (size.height - span) / 2 }, size))
-  }, [size])
+  const centerOn = useCallback(
+    (point: Point) =>
+      setView((current) =>
+        clampView({ zoom: current.zoom, x: size.width / 2 - point.x * current.zoom, y: size.height / 2 - point.y * current.zoom }, size),
+      ),
+    [size],
+  )
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -179,7 +187,6 @@ export function CanvasView({ buffer, pending, layerVisible, tool, color, ghost, 
       } else if (event.key === '+' || event.key === '=') zoomIn()
       else if (event.key === '-') zoomOut()
       else if (event.key === '0') reset()
-      else if (event.key === '1') fit()
     }
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.key === ' ') setSpace(false)
@@ -190,7 +197,7 @@ export function CanvasView({ buffer, pending, layerVisible, tool, color, ghost, 
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [zoomIn, zoomOut, reset, fit])
+  }, [zoomIn, zoomOut, reset])
 
   const pointAt = useCallback(
     (clientX: number, clientY: number): Point | null => {
@@ -283,7 +290,22 @@ export function CanvasView({ buffer, pending, layerVisible, tool, color, ghost, 
       onWheel={onWheel}
     >
       <canvas ref={canvasRef} className="absolute inset-0 [image-rendering:pixelated]" />
-      <ZoomControl zoom={view.zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={reset} onFit={fit} />
+      <Pings
+        activity={activity}
+        place={(tx, ty) => {
+          const center = tileCenter(tx, ty)
+          const left = view.x + center.x * view.zoom
+          const top = view.y + center.y * view.zoom
+          return left < 0 || top < 0 || left > size.width || top > size.height ? null : { left, top }
+        }}
+      />
+      <MinimapPanel
+        minimap={minimap}
+        view={view}
+        size={size}
+        onCenter={centerOn}
+        footer={<ZoomControl zoom={view.zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={reset} />}
+      />
     </div>
   )
 }

@@ -66,15 +66,16 @@ use super::{
 use crate::{
 	Result,
 	vm::instruction::ddl::{
-		alter::policy::alter_policy,
+		alter::{authentication_method::alter_authentication_method, policy::alter_policy},
 		create::{
-			authentication::create_authentication, event::create_event, identity::create_identity,
-			identity_attribute::create_identity_attribute, policy::create_policy, role::create_role,
+			authentication::create_authentication, authentication_method::create_authentication_method,
+			event::create_event, identity::create_identity, identity_attribute::create_identity_attribute,
+			policy::create_policy, role::create_role,
 		},
 		drop::{
-			authentication::drop_authentication, handler::drop_handler, identity::drop_identity,
-			identity_attribute::drop_identity_attribute, policy::drop_policy, role::drop_role,
-			test::drop_test,
+			authentication::drop_authentication, authentication_method::drop_authentication_method,
+			handler::drop_handler, identity::drop_identity, identity_attribute::drop_identity_attribute,
+			policy::drop_policy, role::drop_role, test::drop_test,
 		},
 		grant::grant,
 		revoke::revoke,
@@ -599,6 +600,13 @@ impl<'a> Vm<'a> {
 				}
 				Instruction::DropAuthentication(n) => {
 					self.exec_ddl(services, tx, |s, t| drop_authentication(s, t, n.clone()))?
+				}
+				Instruction::CreateAuthenticationMethod(n) => self
+					.exec_ddl(services, tx, |s, t| create_authentication_method(s, t, n.clone()))?,
+				Instruction::AlterAuthenticationMethod(n) => self
+					.exec_ddl(services, tx, |s, t| alter_authentication_method(s, t, n.clone()))?,
+				Instruction::DropAuthenticationMethod(n) => {
+					self.exec_ddl(services, tx, |s, t| drop_authentication_method(s, t, n.clone()))?
 				}
 
 				Instruction::Delete(n) => {

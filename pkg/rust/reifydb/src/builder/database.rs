@@ -526,8 +526,16 @@ impl DatabaseBuilder {
 		#[cfg(not(reifydb_single_threaded))]
 		let remote_registry = RemoteRegistry::new(tokio_handle.clone());
 
+		let auth_config = match self.auth_configurator.take() {
+			Some(configurator) => configurator(AuthConfigurator::new()).configure(),
+			None => AuthServiceConfig::default(),
+		};
+
 		let auth_registry = {
 			let mut registry = AuthenticationRegistry::new(clock.clone(), rng.clone());
+			if let Some(secret) = auth_config.github_client_secret.clone() {
+				registry = registry.with_github_client_secret(secret);
+			}
 			for provider in self.auth_providers.drain(..) {
 				registry.register(provider);
 			}
@@ -565,10 +573,7 @@ impl DatabaseBuilder {
 			auth_registry,
 			rng.clone(),
 			clock.clone(),
-			match self.auth_configurator {
-				Some(configurator) => configurator(AuthConfigurator::new()).configure(),
-				None => AuthServiceConfig::default(),
-			},
+			auth_config,
 		);
 		self.ioc = self.ioc.register(auth_service.clone());
 
