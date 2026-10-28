@@ -29,7 +29,7 @@ use reifydb_cdc::consume::watermark::{CdcConsumerWatermark, FlowCaughtUpWatermar
 use reifydb_core::{
 	commit::{
 		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
-		queue::CommitQueue,
+		queue::{CommitQueue, FlowQueueFloor},
 	},
 	durability::Durability,
 	event::operator::OperatorLoadedEvent,
@@ -154,6 +154,8 @@ impl FlowSubsystem {
 		let view_lineage = engine.view_lineage();
 
 		let queue = ioc.resolve::<CommitQueue>().expect("CommitQueue must be registered");
+		let FlowQueueFloor(queue_floor) =
+			ioc.resolve::<FlowQueueFloor>().expect("FlowQueueFloor must be registered");
 		let loader_metrics = CommitLoaderMetrics::default();
 		metrics_registry.register_collector(Arc::new(loader_metrics.clone()));
 		metrics_registry.register_collector(Arc::new(health.clone()));
@@ -172,6 +174,7 @@ impl FlowSubsystem {
 				committers: committer_refs,
 				terminal_committers: terminal_committer_refs,
 				queue: queue.clone(),
+				queue_floor: queue_floor.clone(),
 				loader: loader_handle.actor_ref().clone(),
 				floor: flow_wal.floor.clone(),
 				control,
@@ -226,7 +229,7 @@ impl FlowSubsystem {
 		}
 
 		let supervisor_ref = supervisor_handle.actor_ref().clone();
-		queue.set_waker(move || {
+		queue_floor.adopt(scan_from, move || {
 			let _ = supervisor_ref.send(FlowSupervisorMessage::Wake);
 		});
 		let _ = supervisor_handle.actor_ref().send(FlowSupervisorMessage::Wake);

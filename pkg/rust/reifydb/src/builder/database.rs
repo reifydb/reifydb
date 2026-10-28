@@ -23,6 +23,8 @@ use reifydb_cdc::{
 		watermark::CdcProducerWatermark,
 	},
 };
+#[cfg(feature = "sub_flow")]
+use reifydb_core::commit::queue::FlowQueueFloor;
 use reifydb_core::{
 	CoreVersion,
 	actors::cdc::CdcProduceHandle,
@@ -470,6 +472,10 @@ impl DatabaseBuilder {
 			resumed_at,
 		);
 		self.ioc = self.ioc.register(commit_queue.clone());
+		#[cfg(feature = "sub_flow")]
+		if self.flow_factory.is_some() {
+			self.ioc = self.ioc.register(FlowQueueFloor(commit_queue.floor("flow")));
+		}
 		self.ioc = self.ioc.register(flow_wal(multi.wal()));
 
 		let multi_store = self.multi_store.clone().expect("MultiStore must be set via with_stores()");

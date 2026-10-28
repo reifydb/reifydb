@@ -38,14 +38,20 @@ struct QueueInner {
 	cover_from: CommitVersion,
 	released: CommitVersion,
 	released_lsn: Lsn,
+	floors: BTreeMap<u64, CommitVersion>,
 }
 
 type Waker = Box<dyn Fn() + Send + Sync>;
 
+struct FloorWaker {
+	armed: AtomicBool,
+	wake: Option<Waker>,
+}
+
 struct QueueShared {
 	inner: RwLock<QueueInner>,
-	waker: RwLock<Option<Waker>>,
-	armed: AtomicBool,
+	wakers: RwLock<BTreeMap<u64, FloorWaker>>,
+	next_floor: AtomicU64,
 	limit: u64,
 	wal_enabled: bool,
 	released_through: AtomicU64,
@@ -73,9 +79,10 @@ impl CommitQueue {
 					cover_from: seed,
 					released: seed,
 					released_lsn: Lsn::new(0),
+					floors: BTreeMap::new(),
 				}),
-				waker: RwLock::new(None),
-				armed: AtomicBool::new(false),
+				wakers: RwLock::new(BTreeMap::new()),
+				next_floor: AtomicU64::new(0),
 				limit: limit.as_bytes().max(1),
 				wal_enabled,
 				released_through: AtomicU64::new(seed.0),
@@ -89,20 +96,48 @@ impl CommitQueue {
 		}
 	}
 
-	pub fn set_waker(&self, waker: impl Fn() + Send + Sync + 'static) {
-		*self.shared.waker.write() = Some(Box::new(waker));
-	}
-
-	pub fn disarm(&self) {
-		self.shared.armed.store(false, Ordering::Release);
+	pub fn floor(&self, name: &str) -> CommitQueueFloor {
+		let id = self.shared.next_floor.fetch_add(1, Ordering::Relaxed);
+		{
+			let mut inner = self.shared.inner.write();
+			let held = inner.released;
+			inner.floors.insert(id, held);
+		}
+		self.shared.wakers.write().insert(
+			id,
+			FloorWaker {
+				armed: AtomicBool::new(false),
+				wake: None,
+			},
+		);
+		CommitQueueFloor {
+			handle: Arc::new(FloorHandle {
+				queue: self.clone(),
+				id,
+				name: name.to_string(),
+			}),
+		}
 	}
 
 	fn notify(&self) {
-		if self.shared.armed.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok()
-			&& let Some(waker) = self.shared.waker.read().as_ref()
-		{
-			waker();
+		for waker in self.shared.wakers.read().values() {
+			if let Some(wake) = waker.wake.as_ref()
+				&& waker.armed
+					.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+					.is_ok()
+			{
+				wake();
+			}
 		}
+	}
+
+	fn free_below_floors(&self, inner: &mut QueueInner) {
+		let floor = inner.floors.values().min().copied().unwrap_or(inner.released).min(inner.released);
+		let retained = inner.entries.split_off(&next_version(floor));
+		let freed = replace(&mut inner.entries, retained);
+		inner.bytes -= freed.values().map(|(bytes, _)| bytes).sum::<u64>();
+		inner.cover_from = inner.cover_from.max(floor);
+		self.shared.evicted_floor.fetch_add(freed.len() as u64, Ordering::Relaxed);
 	}
 
 	pub fn released(&self) -> (CommitVersion, Lsn) {
@@ -150,6 +185,7 @@ impl CommitQueue {
 		}
 		if released {
 			self.shared.released_through.store(inner.released.0, Ordering::Release);
+			self.free_below_floors(&mut inner);
 			self.enforce_cap(&mut inner);
 			drop(inner);
 			self.notify();
@@ -214,17 +250,72 @@ impl CommitQueue {
 			more: false,
 		}
 	}
+}
 
-	pub fn evict_below(&self, floor: CommitVersion) {
-		let mut inner = self.shared.inner.write();
-		let floor = floor.min(inner.released);
-		let retained = inner.entries.split_off(&next_version(floor));
-		let evicted = replace(&mut inner.entries, retained);
-		inner.bytes -= evicted.values().map(|(bytes, _)| bytes).sum::<u64>();
-		inner.cover_from = inner.cover_from.max(floor);
-		self.shared.evicted_floor.fetch_add(evicted.len() as u64, Ordering::Relaxed);
+struct FloorHandle {
+	queue: CommitQueue,
+	id: u64,
+	name: String,
+}
+
+impl Drop for FloorHandle {
+	fn drop(&mut self) {
+		self.queue.shared.wakers.write().remove(&self.id);
+		let mut inner = self.queue.shared.inner.write();
+		inner.floors.remove(&self.id);
+		self.queue.free_below_floors(&mut inner);
 	}
 }
+
+#[derive(Clone)]
+pub struct CommitQueueFloor {
+	handle: Arc<FloorHandle>,
+}
+
+impl CommitQueueFloor {
+	pub fn adopt(&self, start: CommitVersion, waker: impl Fn() + Send + Sync + 'static) {
+		let handle = &self.handle;
+		let shared = &handle.queue.shared;
+		{
+			let mut inner = shared.inner.write();
+			if start < inner.cover_from {
+				panic!(
+					"commit queue floor {} adopted at version {} but the queue only holds commits after {}, \
+					 so the commits between were freed before their reader took this floor",
+					handle.name, start.0, inner.cover_from.0
+				);
+			}
+			inner.floors.insert(handle.id, start);
+			handle.queue.free_below_floors(&mut inner);
+		}
+		if let Some(slot) = shared.wakers.write().get_mut(&handle.id) {
+			slot.wake = Some(Box::new(waker));
+		}
+	}
+
+	pub fn advance(&self, version: CommitVersion) {
+		let handle = &self.handle;
+		let mut inner = handle.queue.shared.inner.write();
+		let target = version.min(inner.released);
+		let Some(held) = inner.floors.get_mut(&handle.id) else {
+			return;
+		};
+		if target <= *held {
+			return;
+		}
+		*held = target;
+		handle.queue.free_below_floors(&mut inner);
+	}
+
+	pub fn disarm(&self) {
+		if let Some(slot) = self.handle.queue.shared.wakers.read().get(&self.handle.id) {
+			slot.armed.store(false, Ordering::Release);
+		}
+	}
+}
+
+#[derive(Clone)]
+pub struct FlowQueueFloor(pub CommitQueueFloor);
 
 #[inline]
 fn next_version(version: CommitVersion) -> CommitVersion {

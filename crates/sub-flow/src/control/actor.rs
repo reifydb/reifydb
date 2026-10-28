@@ -1303,7 +1303,10 @@ mod pull_protocol {
 	};
 	use reifydb_core::{
 		actors::{flow::FlowActorHandle, pending::Pending},
-		commit::loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
+		commit::{
+			loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
+			queue::{CommitQueueFloor, FlowQueueFloor},
+		},
 		durability::Durability,
 		interface::{
 			catalog::{
@@ -1356,6 +1359,7 @@ mod pull_protocol {
 		te: TestEngine,
 		engine: StandardEngine,
 		queue: CommitQueue,
+		flow_floor: CommitQueueFloor,
 		control: ControlFrontier,
 		tracker: FlowPositionTracker,
 		committer_handle: CommitterHandle,
@@ -1440,11 +1444,16 @@ mod pull_protocol {
 		);
 
 		let queue = engine.ioc().resolve::<CommitQueue>().expect("test harness must register the commit queue");
+		let FlowQueueFloor(flow_floor) = engine
+			.ioc()
+			.resolve::<FlowQueueFloor>()
+			.expect("test harness must register the flow queue floor");
 
 		Harness {
 			te,
 			engine,
 			queue,
+			flow_floor,
 			control: ControlFrontier::new(),
 			tracker,
 			committer_handle,
@@ -1916,7 +1925,7 @@ mod pull_protocol {
 		let target = h.engine.current_version().expect("current version");
 		h.await_safe_watermark(target);
 
-		h.queue.evict_below(target);
+		h.flow_floor.advance(target);
 		h.wake(&actor);
 
 		let rows = h.await_view_rows(total, seconds(15));
@@ -1980,7 +1989,7 @@ mod pull_protocol {
 			.expect("the reader must publish the position its first commit reached");
 
 		let behinds = h.pull_behinds();
-		h.queue.evict_below(floor);
+		h.flow_floor.advance(floor);
 
 		h.wake(&producer);
 		assert_eq!(h.await_view_rows(2, seconds(10)), 2, "the producer must emit the second row");
@@ -2169,7 +2178,7 @@ mod pull_protocol {
 			"precondition: the reader must not have consumed anything yet, or the eviction below proves nothing"
 		);
 
-		h.queue.evict_below(produced);
+		h.flow_floor.advance(produced);
 		h.wake(&consumer);
 
 		assert!(

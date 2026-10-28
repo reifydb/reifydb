@@ -27,7 +27,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
-	commit::queue::CommitQueue,
+	commit::queue::{CommitQueue, FlowQueueFloor},
 	common::{CommitVersion, TimeSource},
 	durability::Durability,
 	event::{EventBus, transaction::PostCommitEvent},
@@ -408,6 +408,7 @@ impl TestEngineBuilder {
 				wal_enabled,
 				engine.multi().current_version().unwrap(),
 			);
+			ioc_for_cdc.register_service(FlowQueueFloor(commit_queue.floor("flow")));
 			ioc_for_cdc.register_service(commit_queue.clone());
 			ioc_for_cdc.register_service(flow_wal(engine.multi().wal()));
 			register_cdc_producer(

@@ -16,7 +16,7 @@ use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage},
 	commit::{
 		loader::CommitLoaderMessage,
-		queue::{CommitPull, CommitQueue},
+		queue::{CommitPull, CommitQueue, CommitQueueFloor},
 	},
 	common::{CommitVersion, SourceVersion},
 	flow::{dag::FlowDag, operator::OperatorDef},
@@ -124,6 +124,7 @@ pub struct FlowSupervisorParams {
 	pub committers: Vec<ActorRef<CommitterMessage>>,
 	pub terminal_committers: Vec<ActorRef<CommitterMessage>>,
 	pub queue: CommitQueue,
+	pub queue_floor: CommitQueueFloor,
 	pub loader: ActorRef<CommitLoaderMessage>,
 	pub floor: Arc<dyn CommitFloor>,
 	pub control: ControlFrontier,
@@ -149,6 +150,7 @@ pub struct FlowSupervisor {
 	committers: Vec<ActorRef<CommitterMessage>>,
 	terminal_committers: Vec<ActorRef<CommitterMessage>>,
 	queue: CommitQueue,
+	queue_floor: CommitQueueFloor,
 	loader: ActorRef<CommitLoaderMessage>,
 	floor: Arc<dyn CommitFloor>,
 	control: ControlFrontier,
@@ -200,6 +202,7 @@ impl FlowSupervisor {
 			committers: params.committers,
 			terminal_committers: params.terminal_committers,
 			queue: params.queue,
+			queue_floor: params.queue_floor,
 			loader: params.loader,
 			floor: params.floor,
 			control: params.control,
@@ -365,7 +368,7 @@ impl FlowSupervisor {
 	}
 
 	fn handle_wake(&self, state: &mut SupervisorState, ctx: &Context<FlowSupervisorMessage>) {
-		self.queue.disarm();
+		self.queue_floor.disarm();
 		if state.loading {
 			return;
 		}
@@ -493,7 +496,7 @@ impl FlowSupervisor {
 			Ok(None) => state.scan_cursor,
 			Err(e) => panic!("flow supervisor cannot read the flow checkpoint floor: {e}"),
 		};
-		self.queue.evict_below(floor);
+		self.queue_floor.advance(floor);
 	}
 
 	fn advance_flow_floor(&self, state: &mut SupervisorState) {

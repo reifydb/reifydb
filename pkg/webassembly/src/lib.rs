@@ -34,7 +34,7 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	CoreVersion,
-	commit::queue::CommitQueue,
+	commit::queue::{CommitQueue, FlowQueueFloor},
 	common::CommitVersion,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
@@ -286,6 +286,7 @@ impl WasmDB {
 			true,
 			multi.current_version().map_err(|e| JsError::from_error(&e))?,
 		);
+		ioc = ioc.register(FlowQueueFloor(commit_queue.floor("flow")));
 		ioc = ioc.register(commit_queue.clone());
 		ioc = ioc.register(flow_wal(multi.wal()));
 
