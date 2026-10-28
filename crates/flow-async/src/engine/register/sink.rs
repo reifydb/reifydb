@@ -54,16 +54,20 @@ impl FlowEngineInner {
 			.find_row_settings(&mut txn.reborrow(), StorageId::View(view))?
 			.and_then(|settings| settings.ttl);
 		let row_ttl = ttl.as_ref().map(|t| t.duration);
+		let ttl_eviction = self.catalog.find_ttl_eviction(&mut txn.reborrow(), StorageId::View(view))?;
 		self.durable_sinks.insert(
 			(flow.id, operator_id),
-			Box::new(SinkRingBufferViewOperator::new(
-				operator_id,
-				resolved,
-				capacity,
-				row_ttl,
-				partition_by,
-				self.runtime_context.clone(),
-			)),
+			Box::new(
+				SinkRingBufferViewOperator::new(
+					operator_id,
+					resolved,
+					capacity,
+					row_ttl,
+					partition_by,
+					self.runtime_context.clone(),
+				)
+				.with_ttl_eviction(ttl_eviction),
+			),
 		);
 		Ok(())
 	}

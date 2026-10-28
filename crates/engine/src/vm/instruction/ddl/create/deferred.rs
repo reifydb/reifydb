@@ -91,6 +91,7 @@ pub(crate) fn create_deferred_view(
 				persistent: plan.persistent,
 			},
 		)?;
+		services.catalog.create_ttl_eviction(txn, StorageId::View(result.id()), plan.ttl_eviction)?;
 	}
 
 	create_deferred_view_flow(

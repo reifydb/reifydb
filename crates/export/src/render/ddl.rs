@@ -10,6 +10,7 @@ use reifydb_core::{
 		queue::{Queue, QueueDispatch},
 		ringbuffer::{EvictionVisibility, RingBuffer},
 		series::{Series, SeriesKey, TimestampPrecision},
+		storage::StorageId,
 		sumtype::{Field, SumType},
 		table::Table,
 	},
@@ -156,6 +157,10 @@ pub fn render_table(
 	}
 	parts.extend(render_time(&table.time));
 	parts.extend(render_row(row));
+	parts.extend(render_eviction(
+		EvictionVisibility::Visible,
+		resolver.visible_ttl.contains(&StorageId::Table(table.id)),
+	));
 	let with = if parts.is_empty() {
 		String::new()
 	} else {
@@ -176,8 +181,11 @@ pub fn render_ringbuffer(
 	if !ringbuffer.partition_by.is_empty() {
 		with.push_str(&format!(", partition: {{ by: {{ {} }} }}", ringbuffer.partition_by.join(", ")));
 	}
-	if ringbuffer.eviction == EvictionVisibility::Silent {
-		with.push_str(", eviction: { capacity: silent }");
+	if let Some(eviction) = render_eviction(
+		ringbuffer.eviction,
+		resolver.visible_ttl.contains(&StorageId::RingBuffer(ringbuffer.id)),
+	) {
+		with.push_str(&format!(", {}", eviction));
 	}
 	push_time_and_row(&mut with, &ringbuffer.time, row);
 
@@ -266,6 +274,12 @@ pub fn render_series(
 		with.push_str(&format!(", partition: {{ by: {{ {} }} }}", series.partition_by.join(", ")));
 	}
 	push_time_and_row(&mut with, &series.time, row);
+	if let Some(eviction) = render_eviction(
+		EvictionVisibility::Visible,
+		resolver.visible_ttl.contains(&StorageId::Series(series.id)),
+	) {
+		with.push_str(&format!(", {}", eviction));
+	}
 
 	if let (Some(encoding), Some(config)) = (&series.encoding, encoding_config) {
 		let params = config
@@ -287,6 +301,20 @@ pub fn render_series(
 	}
 
 	Ok(format!("CREATE SERIES {} {} WITH {{ {} }};", name, columns, with))
+}
+
+fn render_eviction(capacity: EvictionVisibility, ttl_visible: bool) -> Option<String> {
+	let mut reasons = Vec::new();
+	if capacity == EvictionVisibility::Silent {
+		reasons.push("capacity: silent");
+	}
+	if ttl_visible {
+		reasons.push("ttl: visible");
+	}
+	if reasons.is_empty() {
+		return None;
+	}
+	Some(format!("eviction: {{ {} }}", reasons.join(", ")))
 }
 
 fn push_time_and_row(with: &mut String, time: &TimeSource, row: Option<&RowSettings>) {

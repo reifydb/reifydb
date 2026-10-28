@@ -1295,6 +1295,7 @@ impl InstructionCompiler {
 					storage_kind: compile_view_storage_kind(node.storage_kind),
 					ttl: node.ttl,
 					persistent: node.persistent,
+					ttl_eviction: node.ttl_eviction,
 				}));
 				self.emit(Instruction::Emit);
 			}

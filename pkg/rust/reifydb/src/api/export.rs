@@ -11,7 +11,7 @@ use reifydb_core::{
 		id::NamespaceId,
 		namespace::Namespace,
 		queue::Queue,
-		ringbuffer::RingBuffer,
+		ringbuffer::{EvictionVisibility, RingBuffer},
 		series::Series,
 		storage::StorageId,
 		sumtype::{SumType, SumTypeKind},
@@ -73,6 +73,7 @@ impl Database {
 			all_queues,
 			all_series,
 			all_views,
+			visible_ttl,
 		) = {
 			let mut qt = self.engine().begin_query(IdentityId::system())?;
 			let mut txn = Transaction::Query(&mut qt);
@@ -126,6 +127,18 @@ impl Database {
 				.filter(|v| user_ids.contains(&v.namespace().0))
 				.collect();
 
+			let mut visible_ttl: HashSet<StorageId> = HashSet::new();
+			for storage in all_tables
+				.iter()
+				.map(|(t, _)| StorageId::Table(t.id))
+				.chain(all_ringbuffers.iter().map(|(r, _)| StorageId::RingBuffer(r.id)))
+				.chain(all_series.iter().map(|(s, _)| StorageId::Series(s.id)))
+			{
+				if catalog.find_ttl_eviction(&mut txn, storage)? == EvictionVisibility::Visible {
+					visible_ttl.insert(storage);
+				}
+			}
+
 			(
 				user_namespaces,
 				all_dictionaries,
@@ -135,10 +148,12 @@ impl Database {
 				all_queues,
 				all_series,
 				all_views,
+				visible_ttl,
 			)
 		};
 
 		let mut resolver = NameResolver::empty();
+		resolver.visible_ttl = visible_ttl;
 		for ns in &user_namespaces {
 			resolver.namespaces.insert(ns.id().0, ns.name().to_string());
 		}

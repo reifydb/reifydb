@@ -5,6 +5,7 @@ use reifydb_catalog::{
 	catalog::view::ViewColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
 };
+use reifydb_core::interface::catalog::ringbuffer::EvictionVisibility;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -146,12 +147,13 @@ impl<'bump> Compiler<'bump> {
 			BumpVec::new_in(self.bump)
 		};
 
-		let (ttl, persistent) = match ast.settings {
+		let (ttl, persistent, ttl_eviction) = match ast.settings {
 			Some(settings) => (
 				settings.ttl.map(Self::compile_ttl).transpose()?,
 				settings.persistent.is_none_or(|p| p.value),
+				settings.ttl_eviction,
 			),
-			None => (None, true),
+			None => (None, true, EvictionVisibility::Silent),
 		};
 
 		Ok(LogicalPlan::CreateDeferredView(CreateDeferredViewNode {
@@ -162,6 +164,7 @@ impl<'bump> Compiler<'bump> {
 			storage_kind: ast.storage_kind,
 			ttl,
 			persistent,
+			ttl_eviction,
 		}))
 	}
 }

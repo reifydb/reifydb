@@ -59,7 +59,8 @@ const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
 const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', or 'on'";
-const EVICTION_REASONS: &str = "'capacity'";
+const RING_EVICTION_REASONS: &str = "'capacity' or 'ttl'";
+const EVICTION_REASONS: &str = "'ttl'";
 const EVICTION_VALUES: &str = "'visible' or 'silent'";
 const SERIES_WITH_KEYS: &str = "'key', 'tag', 'precision', 'partition', 'row', 'time', or 'column'";
 
@@ -130,14 +131,45 @@ fn duplicate_eviction_reason(token: &Token<'_>) -> Error {
 	})
 }
 
-fn unsupported_eviction_reason(token: &Token<'_>) -> Error {
+fn unsupported_eviction_reason(token: &Token<'_>, reasons: &str) -> Error {
 	Error::from(TypeError::Ast {
 		kind: AstErrorKind::UnexpectedToken {
-			expected: EVICTION_REASONS.to_string(),
+			expected: reasons.to_string(),
 		},
 		message: format!("eviction reason `{}` is not supported yet", token.fragment.text()),
 		fragment: token.fragment.to_owned(),
 	})
+}
+
+fn ttl_eviction_without_row_ttl(token: &Token<'_>) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: "a `row: { ttl: .. }` declaration".to_string(),
+		},
+		message: "eviction reason `ttl` requires `row: { ttl: .. }`".to_string(),
+		fragment: token.fragment.to_owned(),
+	})
+}
+
+struct ParsedEviction<'bump> {
+	capacity: EvictionVisibility,
+	ttl: Option<(Token<'bump>, EvictionVisibility)>,
+}
+
+fn apply_ttl_eviction<'bump>(
+	settings: &mut Option<AstRowSettings<'bump>>,
+	eviction: Option<ParsedEviction<'bump>>,
+) -> Result<EvictionVisibility> {
+	let Some(eviction) = eviction else {
+		return Ok(EvictionVisibility::default());
+	};
+	if let Some((token, ttl)) = eviction.ttl {
+		match settings {
+			Some(settings) if settings.ttl.is_some() => settings.ttl_eviction = ttl,
+			_ => return Err(ttl_eviction_without_row_ttl(&token)),
+		}
+	}
+	Ok(eviction.capacity)
 }
 
 impl<'bump> Parser<'bump> {
@@ -740,6 +772,7 @@ impl<'bump> Parser<'bump> {
 		let mut partition_by: Vec<String> = Vec::new();
 		let mut time_declaration = AstTimeDeclaration::default();
 		let mut column = None;
+		let mut eviction = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -826,6 +859,12 @@ impl<'bump> Parser<'bump> {
 					"time" => {
 						time_declaration = self.parse_time_declaration()?;
 					}
+					"eviction" => {
+						if eviction.is_some() {
+							return Err(duplicate_eviction(&with_key));
+						}
+						eviction = Some(self.parse_eviction_config(EVICTION_REASONS)?);
+					}
 					"column" => {
 						if column.is_some() {
 							return Err(unexpected_option(
@@ -864,6 +903,8 @@ impl<'bump> Parser<'bump> {
 
 			self.consume_operator(Operator::CloseCurly)?;
 		}
+
+		apply_ttl_eviction(&mut settings, eviction)?;
 
 		let key_fragment = match key_field {
 			Some(k) => Some(k),
@@ -1092,6 +1133,7 @@ impl<'bump> Parser<'bump> {
 		let mut settings = None;
 		let mut partition_by: Vec<String> = Vec::new();
 		let mut time_declaration = AstTimeDeclaration::default();
+		let mut eviction = None;
 
 		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_some() {
 			self.consume_operator(Operator::OpenCurly)?;
@@ -1115,6 +1157,12 @@ impl<'bump> Parser<'bump> {
 					}
 					"time" => {
 						time_declaration = self.parse_time_declaration()?;
+					}
+					"eviction" => {
+						if eviction.is_some() {
+							return Err(duplicate_eviction(&key));
+						}
+						eviction = Some(self.parse_eviction_config(EVICTION_REASONS)?);
 					}
 					_other => {
 						let fragment = key.fragment.to_owned();
@@ -1145,6 +1193,8 @@ impl<'bump> Parser<'bump> {
 			self.consume_operator(Operator::CloseCurly)?;
 		}
 
+		apply_ttl_eviction(&mut settings, eviction)?;
+
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
 			table,
@@ -1169,7 +1219,7 @@ impl<'bump> Parser<'bump> {
 		let mut partition_by: Vec<String> = Vec::new();
 		let mut settings = None;
 		let mut time_declaration = AstTimeDeclaration::default();
-		let mut eviction: Option<EvictionVisibility> = None;
+		let mut eviction: Option<ParsedEviction<'bump>> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -1238,7 +1288,7 @@ impl<'bump> Parser<'bump> {
 					if eviction.is_some() {
 						return Err(duplicate_eviction(&key));
 					}
-					eviction = Some(self.parse_eviction_config()?);
+					eviction = Some(self.parse_eviction_config(RING_EVICTION_REASONS)?);
 				}
 				_other => {
 					let fragment = key.fragment.to_owned();
@@ -1290,6 +1340,7 @@ impl<'bump> Parser<'bump> {
 		})?;
 
 		let ringbuffer = MaybeQualifiedRingBufferIdentifier::new(name).with_namespace(namespace);
+		let eviction = apply_ttl_eviction(&mut settings, eviction)?;
 
 		Ok(AstCreate::RingBuffer(AstCreateRingBuffer {
 			token,
@@ -1299,7 +1350,7 @@ impl<'bump> Parser<'bump> {
 			partition_by,
 			settings,
 			time_declaration,
-			eviction: eviction.unwrap_or_default(),
+			eviction,
 		}))
 	}
 
@@ -2445,7 +2496,7 @@ impl<'bump> Parser<'bump> {
 			ViewStorageKindHint::RingBuffer => {
 				let mut capacity: Option<u64> = None;
 				let mut partition_by: Vec<String> = Vec::new();
-				let mut eviction: Option<EvictionVisibility> = None;
+				let mut eviction: Option<ParsedEviction<'bump>> = None;
 
 				loop {
 					self.skip_new_line()?;
@@ -2485,7 +2536,9 @@ impl<'bump> Parser<'bump> {
 							if eviction.is_some() {
 								return Err(duplicate_eviction(&key));
 							}
-							eviction = Some(self.parse_eviction_config()?);
+							eviction = Some(
+								self.parse_eviction_config(RING_EVICTION_REASONS)?
+							);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2519,11 +2572,12 @@ impl<'bump> Parser<'bump> {
 					})
 				})?;
 
+				let eviction = apply_ttl_eviction(&mut settings, eviction)?;
 				Ok((
 					AstViewStorageKind::RingBuffer {
 						capacity,
 						partition_by,
-						eviction: eviction.unwrap_or_default(),
+						eviction,
 					},
 					settings,
 				))
@@ -2532,6 +2586,7 @@ impl<'bump> Parser<'bump> {
 				let mut key_column: Option<String> = None;
 				let mut precision: Option<AstTimestampPrecision> = None;
 				let mut partition_by: Vec<String> = Vec::new();
+				let mut eviction: Option<ParsedEviction<'bump>> = None;
 
 				loop {
 					self.skip_new_line()?;
@@ -2572,6 +2627,12 @@ impl<'bump> Parser<'bump> {
 						"row" => {
 							settings = Some(self.parse_row_config()?);
 						}
+						"eviction" => {
+							if eviction.is_some() {
+								return Err(duplicate_eviction(&key));
+							}
+							eviction = Some(self.parse_eviction_config(EVICTION_REASONS)?);
+						}
 						other => {
 							let fragment = key.fragment.to_owned();
 							return Err(Error::from(TypeError::Ast {
@@ -2593,6 +2654,7 @@ impl<'bump> Parser<'bump> {
 
 				self.consume_operator(Operator::CloseCurly)?;
 
+				apply_ttl_eviction(&mut settings, eviction)?;
 				let key_column = key_column.unwrap_or_default();
 				Ok((
 					AstViewStorageKind::Series {
@@ -2610,6 +2672,7 @@ impl<'bump> Parser<'bump> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut clause = AstViewWithClause::default();
+		let mut eviction = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -2627,6 +2690,12 @@ impl<'bump> Parser<'bump> {
 				"row" => {
 					clause.settings = Some(self.parse_row_config()?);
 				}
+				"eviction" => {
+					if eviction.is_some() {
+						return Err(duplicate_eviction(&key));
+					}
+					eviction = Some(self.parse_eviction_config(EVICTION_REASONS)?);
+				}
 				other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
@@ -2643,6 +2712,7 @@ impl<'bump> Parser<'bump> {
 		}
 
 		self.consume_operator(Operator::CloseCurly)?;
+		apply_ttl_eviction(&mut clause.settings, eviction)?;
 		Ok(clause)
 	}
 
@@ -2727,10 +2797,11 @@ impl<'bump> Parser<'bump> {
 		})
 	}
 
-	fn parse_eviction_config(&mut self) -> Result<EvictionVisibility> {
+	fn parse_eviction_config(&mut self, reasons: &str) -> Result<ParsedEviction<'bump>> {
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut capacity: Option<EvictionVisibility> = None;
+		let mut ttl: Option<(Token<'bump>, EvictionVisibility)> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -2738,23 +2809,25 @@ impl<'bump> Parser<'bump> {
 				break;
 			}
 
-			let reason = self.consume_queue_option_key(EVICTION_REASONS)?;
+			let reason = self.consume_queue_option_key(reasons)?;
 			self.consume_operator(Operator::Colon)?;
 
 			match reason.fragment.text() {
-				"capacity" => {
+				"capacity" if reasons == RING_EVICTION_REASONS => {
 					if capacity.is_some() {
 						return Err(duplicate_eviction_reason(&reason));
 					}
-					let value = self.consume_queue_option_key(EVICTION_VALUES)?;
-					capacity = Some(match value.fragment.text() {
-						"visible" => EvictionVisibility::Visible,
-						"silent" => EvictionVisibility::Silent,
-						_ => return Err(unexpected_option(&value, EVICTION_VALUES)),
-					});
+					capacity = Some(self.parse_eviction_visibility()?);
 				}
-				"ttl" | "consume" => return Err(unsupported_eviction_reason(&reason)),
-				_ => return Err(unexpected_option(&reason, EVICTION_REASONS)),
+				"ttl" => {
+					if ttl.is_some() {
+						return Err(duplicate_eviction_reason(&reason));
+					}
+					let value = self.parse_eviction_visibility()?;
+					ttl = Some((reason, value));
+				}
+				"consume" => return Err(unsupported_eviction_reason(&reason, reasons)),
+				_ => return Err(unexpected_option(&reason, reasons)),
 			}
 
 			self.skip_new_line()?;
@@ -2769,7 +2842,19 @@ impl<'bump> Parser<'bump> {
 
 		self.consume_operator(Operator::CloseCurly)?;
 
-		Ok(capacity.unwrap_or_default())
+		Ok(ParsedEviction {
+			capacity: capacity.unwrap_or_default(),
+			ttl,
+		})
+	}
+
+	fn parse_eviction_visibility(&mut self) -> Result<EvictionVisibility> {
+		let value = self.consume_queue_option_key(EVICTION_VALUES)?;
+		match value.fragment.text() {
+			"visible" => Ok(EvictionVisibility::Visible),
+			"silent" => Ok(EvictionVisibility::Silent),
+			_ => Err(unexpected_option(&value, EVICTION_VALUES)),
+		}
 	}
 
 	fn parse_row_config(&mut self) -> Result<AstRowSettings<'bump>> {
@@ -2878,6 +2963,7 @@ impl<'bump> Parser<'bump> {
 				anchor,
 			}),
 			persistent,
+			ttl_eviction: EvictionVisibility::Silent,
 		})
 	}
 
@@ -4724,16 +4810,15 @@ mod eviction_tests {
 		// An ignored reason would let the author believe a policy is in force when none is.
 		for source in both_ringbuffer_forms("eviction: { overflow: silent }") {
 			let message = create_error(&source);
-			assert!(message.contains("expected 'capacity', found `overflow`"), "{message}");
+			assert!(message.contains("expected 'capacity' or 'ttl', found `overflow`"), "{message}");
 		}
 	}
 
 	#[test]
-	fn eviction_rejects_ttl_as_not_supported_yet() {
-		// Accepting it without effect would promise a policy the evictor never applies.
-		for source in both_ringbuffer_forms("eviction: { ttl: visible }") {
-			let message = create_error(&source);
-			assert!(message.contains("eviction reason `ttl` is not supported yet"), "{message}");
+	fn eviction_accepts_ttl_on_both_ringbuffer_forms() {
+		// Rejecting it would leave ring expiry silent with no way to make it visible.
+		for source in both_ringbuffer_forms("row: { ttl: 1h }, eviction: { ttl: visible }") {
+			parse_ok(&source);
 		}
 	}
 
@@ -4797,5 +4882,142 @@ mod eviction_tests {
 		// The with block is a map, so key order must not change the parsed value.
 		let source = "create ringbuffer ns::r { a: int4 } with { eviction: { capacity: silent }, capacity: 1 }";
 		assert_eq!(parsed_eviction(source), EvictionVisibility::Silent);
+	}
+
+	fn parse_ok(source: &str) {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		if let Err(err) = parser.parse() {
+			panic!("the DDL must be accepted: {source}: {:?}", err.diagnostic());
+		}
+	}
+
+	fn every_ttl_form(row: &str, eviction: &str) -> [String; 8] {
+		let sep = if row.is_empty() {
+			""
+		} else {
+			", "
+		};
+		[
+			format!("create table ns::t {{ a: int4 }} with {{ {row}{sep}{eviction} }}"),
+			format!(
+				"create series ns::s {{ ts: datetime, a: int4 }} with {{ key: ts, {row}{sep}{eviction} }}"
+			),
+			format!("create ringbuffer ns::r {{ a: int4 }} with {{ capacity: 1, {row}{sep}{eviction} }}"),
+			format!(
+				"create deferred view ns::v {{ a: int4 }} with {{ {row}{sep}{eviction} }} as {{ from ns::t }}"
+			),
+			format!(
+				"create transactional view ns::v {{ a: int4 }} with {{ {row}{sep}{eviction} }} as {{ from ns::t }}"
+			),
+			format!(
+				"create deferred ringbuffer view ns::v {{ a: int4 }} with {{ capacity: 1, {row}{sep}{eviction} }} as {{ from ns::t }}"
+			),
+			format!(
+				"create deferred series view ns::v {{ ts: datetime, a: int4 }} with {{ key: ts, {row}{sep}{eviction} }} as {{ from ns::t }}"
+			),
+			format!(
+				"create deferred view ns::v {{ a: int4 }} with {{ {eviction}{sep}{row} }} as {{ from ns::t }}"
+			),
+		]
+	}
+
+	fn table_like_forms(eviction: &str) -> [String; 4] {
+		[
+			format!("create table ns::t {{ a: int4 }} with {{ row: {{ ttl: 1h }}, {eviction} }}"),
+			format!(
+				"create series ns::s {{ ts: datetime, a: int4 }} with {{ key: ts, row: {{ ttl: 1h }}, {eviction} }}"
+			),
+			format!(
+				"create deferred view ns::v {{ a: int4 }} with {{ row: {{ ttl: 1h }}, {eviction} }} as {{ from ns::t }}"
+			),
+			format!(
+				"create deferred series view ns::v {{ ts: datetime, a: int4 }} with {{ key: ts, row: {{ ttl: 1h }}, {eviction} }} as {{ from ns::t }}"
+			),
+		]
+	}
+
+	#[test]
+	fn eviction_ttl_is_accepted_wherever_a_row_ttl_is_declared() {
+		// Every storage kind with a row ttl must take the policy, in either key order.
+		for value in ["visible", "silent"] {
+			for source in every_ttl_form("row: { ttl: 1h }", &format!("eviction: {{ ttl: {value} }}")) {
+				parse_ok(&source);
+			}
+		}
+	}
+
+	#[test]
+	fn eviction_ttl_without_a_row_ttl_is_rejected() {
+		// A ttl policy on rows that never expire would promise an effect that never happens.
+		for row in ["", "row: { persistent: true }"] {
+			for source in every_ttl_form(row, "eviction: { ttl: visible }") {
+				let message = create_error(&source);
+				assert!(
+					message.contains("eviction reason `ttl` requires `row: { ttl: .. }`"),
+					"{source}: {message}"
+				);
+			}
+		}
+	}
+
+	#[test]
+	fn eviction_ttl_rejects_a_value_other_than_visible_or_silent() {
+		// A typo read as the default would silently keep expiry invisible.
+		for source in every_ttl_form("row: { ttl: 1h }", "eviction: { ttl: loud }") {
+			let message = create_error(&source);
+			assert!(
+				message.contains("expected 'visible' or 'silent', found `loud`"),
+				"{source}: {message}"
+			);
+		}
+	}
+
+	#[test]
+	fn eviction_ttl_rejects_a_repeated_reason() {
+		// Otherwise the later value silently wins over the earlier one.
+		for source in every_ttl_form("row: { ttl: 1h }", "eviction: { ttl: visible, ttl: silent }") {
+			let message = create_error(&source);
+			assert!(message.contains("eviction reason `ttl` must be unique"), "{source}: {message}");
+		}
+	}
+
+	#[test]
+	fn eviction_rejects_a_repeated_eviction_key_on_table_like_forms() {
+		// Otherwise the later block silently wins over the earlier one.
+		for source in table_like_forms("eviction: { ttl: visible }, eviction: { ttl: silent }") {
+			let message = create_error(&source);
+			assert!(message.contains("`eviction` must be unique"), "{source}: {message}");
+		}
+	}
+
+	#[test]
+	fn eviction_on_table_like_forms_offers_only_ttl() {
+		// Capacity has no meaning without a ring, so accepting it would promise a policy nothing applies.
+		for source in table_like_forms("eviction: { capacity: silent }") {
+			let message = create_error(&source);
+			assert!(message.contains("expected 'ttl', found `capacity`"), "{source}: {message}");
+		}
+	}
+
+	#[test]
+	fn eviction_consume_stays_not_supported_on_every_form() {
+		// Accepting it without effect would promise a policy nothing applies.
+		for source in every_ttl_form("row: { ttl: 1h }", "eviction: { consume: silent }") {
+			let message = create_error(&source);
+			assert!(
+				message.contains("eviction reason `consume` is not supported yet"),
+				"{source}: {message}"
+			);
+		}
+	}
+
+	#[test]
+	fn eviction_on_a_queue_is_rejected() {
+		// Queues have no ttl expiry, so a policy there could never apply.
+		let message =
+			create_error("create queue ns::q { a: int4 } with { fifo: {}, eviction: { ttl: visible } }");
+		assert!(message.contains("`eviction`"), "{message}");
 	}
 }

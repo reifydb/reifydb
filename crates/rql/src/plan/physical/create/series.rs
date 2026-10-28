@@ -92,6 +92,7 @@ impl<'bump> Compiler<'bump> {
 			key: create.key,
 			partition_by: create.partition_by,
 			ttl: create.ttl,
+			ttl_eviction: create.ttl_eviction,
 			persistent: create.persistent,
 			time: create.time,
 			encoding: create.encoding.map(|encoding| {

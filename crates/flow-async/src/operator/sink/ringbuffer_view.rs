@@ -194,6 +194,7 @@ pub struct SinkRingBufferViewOperator {
 	capacity: u64,
 	eviction: EvictionVisibility,
 	ttl: Option<Duration>,
+	ttl_eviction: EvictionVisibility,
 	partition_indices: Vec<usize>,
 	verified_partitions: HashMap<Partition, Vec<Value>>,
 	runtime_context: RuntimeContext,
@@ -227,10 +228,16 @@ impl SinkRingBufferViewOperator {
 			capacity,
 			eviction,
 			ttl,
+			ttl_eviction: EvictionVisibility::Silent,
 			partition_indices,
 			verified_partitions: HashMap::new(),
 			runtime_context,
 		}
+	}
+
+	pub fn with_ttl_eviction(mut self, ttl_eviction: EvictionVisibility) -> Self {
+		self.ttl_eviction = ttl_eviction;
+		self
 	}
 
 	#[inline]
@@ -861,7 +868,11 @@ impl SinkRingBufferViewOperator {
 				removes.push(self.forward_key(source_rn));
 				self.push_row_entry_removes(&mut removes, partition, rn, time);
 			}
-			txn.remove_unobserved(&self.rb_key(object_id, rn, partition))?;
+			let key = self.rb_key(object_id, rn, partition);
+			match self.ttl_eviction {
+				EvictionVisibility::Visible => txn.remove_one(&key)?,
+				EvictionVisibility::Silent => txn.remove_unobserved(&key)?,
+			}
 		}
 		self.state_remove(txn, &removes)?;
 
@@ -2045,6 +2056,70 @@ mod tests {
 				}]
 			),
 			"a silent push-out must be one unobserved remove: {removes:?}"
+		);
+	}
+
+	fn row_removes_of_a_ttl_expiry(ttl_eviction: EvictionVisibility) -> Vec<PendingWrite> {
+		let engine = TestEngine::new();
+		let mut op = build_op(false, Some(hour_ttl())).with_ttl_eviction(ttl_eviction);
+		insert_at(&engine, &mut op, false, &[("us", 1), ("us", 2)], 1, T0);
+
+		let mut txn = deferred_txn(&engine);
+		let key = op.timer_key(&[]);
+		op.on_timer(
+			&mut txn,
+			Timer {
+				due: DateTime::from_nanos(AFTER),
+				kind: TimerKind::RowTtl,
+				key,
+			},
+		)
+		.unwrap();
+		txn.pending
+			.rows_ordered()
+			.filter(|(key, write)| {
+				matches!(
+					TaggedKey::decode(key),
+					Some(TaggedKey::Row(RowKey {
+						storage: RB,
+						..
+					}))
+				) && matches!(write, PendingWrite::Remove { .. })
+			})
+			.map(|(_, write)| write.clone())
+			.collect()
+	}
+
+	#[test]
+	fn a_visible_ttl_expiry_is_announced() {
+		// An unobserved remove here would leave every expired row in the downstream views of a ttl visible
+		// ring.
+		let removes = row_removes_of_a_ttl_expiry(EvictionVisibility::Visible);
+		assert_eq!(removes.len(), 2, "both expired rows must be removed: {removes:?}");
+		assert!(
+			removes.iter().all(|write| matches!(
+				write,
+				PendingWrite::Remove {
+					announce: RemoveVisibility::Announced
+				}
+			)),
+			"a visible ttl expiry must announce every remove: {removes:?}"
+		);
+	}
+
+	#[test]
+	fn a_silent_ttl_expiry_stays_unobserved() {
+		// The explicit silent policy must keep today's unobserved expiry, never announce it.
+		let removes = row_removes_of_a_ttl_expiry(EvictionVisibility::Silent);
+		assert_eq!(removes.len(), 2, "both expired rows must be removed: {removes:?}");
+		assert!(
+			removes.iter().all(|write| matches!(
+				write,
+				PendingWrite::Remove {
+					announce: RemoveVisibility::Unobserved
+				}
+			)),
+			"a silent ttl expiry must keep every remove unobserved: {removes:?}"
 		);
 	}
 }

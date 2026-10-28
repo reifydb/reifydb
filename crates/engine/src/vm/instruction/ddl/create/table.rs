@@ -65,6 +65,7 @@ pub(crate) fn create_table(
 				persistent: plan.persistent,
 			},
 		)?;
+		services.catalog.create_ttl_eviction(txn, StorageId::Table(table.id), plan.ttl_eviction)?;
 	}
 
 	txn.track_table_created(table.clone())?;

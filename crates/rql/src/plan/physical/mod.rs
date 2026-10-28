@@ -27,6 +27,7 @@ use reifydb_core::{
 			column::{Column, ColumnIndex},
 			id::{ColumnId, NamespaceId, TableId},
 			namespace::Namespace,
+			ringbuffer::EvictionVisibility,
 			table::Table,
 			view::ViewStorageKind,
 		},
@@ -218,6 +219,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
 }
 
 #[derive(Debug)]

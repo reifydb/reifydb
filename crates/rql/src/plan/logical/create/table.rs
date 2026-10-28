@@ -5,6 +5,7 @@ use reifydb_catalog::{
 	catalog::table::TableColumnToCreate,
 	error::{CatalogError, CatalogObjectKind},
 };
+use reifydb_core::interface::catalog::ringbuffer::EvictionVisibility;
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
 	fragment::Fragment,
@@ -169,12 +170,13 @@ impl<'bump> Compiler<'bump> {
 		let row_ttl =
 			ast.settings.as_ref().and_then(|s| s.ttl.as_ref()).map(|t| t.duration.fragment.to_owned());
 
-		let (ttl, persistent) = match ast.settings {
+		let (ttl, persistent, ttl_eviction) = match ast.settings {
 			Some(settings) => (
 				settings.ttl.map(Self::compile_ttl).transpose()?,
 				settings.persistent.is_none_or(|p| p.value),
+				settings.ttl_eviction,
 			),
-			None => (None, true),
+			None => (None, true, EvictionVisibility::Silent),
 		};
 
 		let time = resolve_declared_source_time(
@@ -190,6 +192,7 @@ impl<'bump> Compiler<'bump> {
 			partition_by,
 			ttl,
 			persistent,
+			ttl_eviction,
 			time,
 		}))
 	}

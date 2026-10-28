@@ -21,13 +21,14 @@ use reifydb_core::{
 };
 use reifydb_transaction::{multi::RangeScope, transaction::admin::AdminTransaction};
 
-use crate::{Result, store::column::shape::object_column};
+use crate::{CatalogStore, Result, store::column::shape::object_column};
 
 pub(crate) fn drop_object_metadata(
 	txn: &mut AdminTransaction,
 	storage: StorageId,
 	pk_id: Option<PrimaryKeyId>,
 ) -> Result<()> {
+	CatalogStore::drop_eviction(txn, storage)?;
 	let range = ColumnKey::full_scan(storage);
 	let mut stream = txn.range(range, RangeScope::All, 1024)?;
 	let mut col_entries = Vec::new();

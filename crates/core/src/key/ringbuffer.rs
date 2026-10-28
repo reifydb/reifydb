@@ -8,7 +8,7 @@ use reifydb_value::value::Value;
 use super::KeyTag;
 use crate::{
 	interface::catalog::{
-		id::{RingBufferId, ViewId},
+		id::{RingBufferId, SeriesId, TableId, ViewId},
 		object::ObjectId,
 		storage::StorageId,
 	},
@@ -118,6 +118,42 @@ impl ViewEvictionKey {
 
 	pub fn encoded(view: impl Into<ViewId>) -> EncodedKey {
 		Self::new(view.into()).encode()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = TableEviction)]
+pub struct TableEvictionKey {
+	pub table: TableId,
+}
+
+impl TableEvictionKey {
+	pub fn new(table: TableId) -> Self {
+		Self {
+			table,
+		}
+	}
+
+	pub fn encoded(table: impl Into<TableId>) -> EncodedKey {
+		Self::new(table.into()).encode()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = SeriesEviction)]
+pub struct SeriesEvictionKey {
+	pub series: SeriesId,
+}
+
+impl SeriesEvictionKey {
+	pub fn new(series: SeriesId) -> Self {
+		Self {
+			series,
+		}
+	}
+
+	pub fn encoded(series: impl Into<SeriesId>) -> EncodedKey {
+		Self::new(series.into()).encode()
 	}
 }
 

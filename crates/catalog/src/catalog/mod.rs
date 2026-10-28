@@ -7,6 +7,7 @@ pub mod column;
 pub mod column_block;
 pub mod config;
 pub mod dictionary;
+pub mod eviction;
 pub mod flow;
 pub mod handler;
 pub mod identity;

@@ -68,6 +68,7 @@ pub(crate) fn create_series(
 				persistent: plan.persistent,
 			},
 		)?;
+		services.catalog.create_ttl_eviction(txn, StorageId::Series(result.id), plan.ttl_eviction)?;
 	}
 
 	single_row([

@@ -583,6 +583,7 @@ pub struct CreateDeferredViewNode<'bump> {
 	pub storage_kind: AstViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
 }
 
 #[derive(Debug)]
@@ -630,6 +631,7 @@ pub struct CreateTableNode<'bump> {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
 	pub time: TimeSource,
 }
 
@@ -654,6 +656,7 @@ pub struct CreateRingBufferNode<'bump> {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
 	pub time: TimeSource,
 	pub eviction: EvictionVisibility,
 }
@@ -1159,6 +1162,7 @@ pub struct CreateSeriesNode<'bump> {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
 	pub time: TimeSource,
 	pub encoding: Option<AstSeriesEncoding<'bump>>,
 }

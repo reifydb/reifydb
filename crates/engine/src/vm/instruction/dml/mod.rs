@@ -7,7 +7,7 @@ pub(crate) mod context;
 pub mod dictionary_insert;
 pub mod dispatch;
 pub(crate) mod partition;
-pub(crate) mod primary_key;
+pub mod primary_key;
 pub mod queue_insert;
 pub(crate) mod returning;
 pub mod ringbuffer_delete;

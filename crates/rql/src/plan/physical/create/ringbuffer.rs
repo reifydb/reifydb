@@ -47,6 +47,7 @@ impl<'bump> Compiler<'bump> {
 			capacity: create.capacity,
 			partition_by: create.partition_by,
 			ttl: create.ttl,
+			ttl_eviction: create.ttl_eviction,
 			persistent: create.persistent,
 			time: create.time,
 			eviction: create.eviction,

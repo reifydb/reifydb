@@ -10,6 +10,7 @@ use reifydb_core::{
 		queue::{Queue, QueueDispatch, QueueRetention, QueueRetry},
 		ringbuffer::RingBuffer,
 		series::{Series, SeriesEncoding, SeriesKey, TimestampPrecision},
+		storage::StorageId,
 		sumtype::{Field, SumType, SumTypeKind, Variant},
 		table::Table,
 	},
@@ -555,5 +556,85 @@ fn ring_buffer_with_silent_eviction_keeps_partition_before_and_time_and_row_afte
 	assert_eq!(
 		render_ringbuffer(&rb, Some(&one_hour_ttl(true)), &resolver()).unwrap(),
 		"CREATE RINGBUFFER sales::events { id: int4, region: utf8 } WITH { capacity: 1000, partition: { by: { region } }, eviction: { capacity: silent }, time: processing, row: { ttl: 1h } };"
+	);
+}
+
+fn resolver_with_visible_ttl(storage: StorageId) -> NameResolver {
+	let mut r = resolver();
+	r.visible_ttl.insert(storage);
+	r
+}
+
+#[test]
+fn table_with_visible_ttl_eviction() {
+	// Dropping the key on export would re-import the table with silent expiry and stop downstream retractions.
+	let t = table("orders", vec![column(0, "id", TypeConstraint::unconstrained(ValueType::Int4))]);
+	assert_eq!(
+		render_table(&t, Some(&one_hour_ttl(true)), &resolver_with_visible_ttl(StorageId::Table(t.id)), false)
+			.unwrap(),
+		"CREATE TABLE sales::orders { id: int4 } WITH { row: { ttl: 1h }, eviction: { ttl: visible } };"
+	);
+	assert_eq!(
+		render_table(&t, Some(&one_hour_ttl(true)), &resolver(), false).unwrap(),
+		"CREATE TABLE sales::orders { id: int4 } WITH { row: { ttl: 1h } };",
+		"the silent default must never be printed"
+	);
+}
+
+#[test]
+fn ring_buffer_with_silent_capacity_and_visible_ttl_prints_one_eviction_map() {
+	// Two separate eviction keys would be rejected as a repeated key on re-import.
+	let rb = RingBuffer {
+		id: RingBufferId(1),
+		namespace: NamespaceId(NS),
+		name: "events".to_string(),
+		columns: vec![column(0, "id", TypeConstraint::unconstrained(ValueType::Int4))],
+		capacity: 1,
+		primary_key: None,
+		partition_by: vec![],
+		time: TimeSource::Processing,
+		eviction: reifydb_core::interface::catalog::ringbuffer::EvictionVisibility::Silent,
+	};
+	assert_eq!(
+		render_ringbuffer(
+			&rb,
+			Some(&one_hour_ttl(true)),
+			&resolver_with_visible_ttl(StorageId::RingBuffer(rb.id))
+		)
+		.unwrap(),
+		"CREATE RINGBUFFER sales::events { id: int4 } WITH { capacity: 1, eviction: { capacity: silent, ttl: visible }, time: processing, row: { ttl: 1h } };"
+	);
+}
+
+#[test]
+fn series_with_visible_ttl_eviction() {
+	// Dropping the key on export would re-import the series with silent expiry and stop downstream retractions.
+	let series = Series {
+		id: SeriesId(1),
+		namespace: NamespaceId(NS),
+		name: "metrics".to_string(),
+		columns: vec![
+			column(0, "ts", TypeConstraint::unconstrained(ValueType::DateTime)),
+			column(1, "value", TypeConstraint::unconstrained(ValueType::Int4)),
+		],
+		tag: None,
+		key: SeriesKey::DateTime {
+			column: "ts".to_string(),
+			precision: TimestampPrecision::Millisecond,
+		},
+		primary_key: None,
+		partition_by: vec![],
+		time: TimeSource::Processing,
+		encoding: None,
+	};
+	assert_eq!(
+		render_series(
+			&series,
+			Some(&one_hour_ttl(true)),
+			None,
+			&resolver_with_visible_ttl(StorageId::Series(series.id))
+		)
+		.unwrap(),
+		"CREATE SERIES sales::metrics { ts: datetime, value: int4 } WITH { key: ts, precision: millisecond, time: processing, row: { ttl: 1h }, eviction: { ttl: visible } };"
 	);
 }

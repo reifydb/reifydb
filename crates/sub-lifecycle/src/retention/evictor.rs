@@ -12,6 +12,7 @@ use reifydb_core::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			id::{RingBufferId, SeriesId, ViewId},
+			ringbuffer::EvictionVisibility,
 			storage::StorageId,
 			view::ViewStorageKind,
 		},
@@ -38,6 +39,7 @@ use reifydb_engine::{
 		ringbuffer::apply_ringbuffer_partition_metadata_after_delete,
 		series::{SeriesDeleteTally, apply_series_metadata_after_delete},
 	},
+	vm::instruction::dml::primary_key::{PrimaryKeyIndex, get_primary_key},
 };
 use reifydb_store_multi::{MultiStore, store::StandardMultiStore};
 use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
@@ -254,17 +256,34 @@ impl Evictor {
 		budget: &mut u64,
 		stats: &mut TickStats,
 	) -> Result<()> {
+		let eviction = self.ttl_eviction(storage)?;
 		match storage {
-			StorageId::Table(_) => {
-				self.evict_rows(state, storage, RowFamily::Table, cutoff, batch_size, budget, stats)
-			}
-			StorageId::View(id) => self.evict_view(state, id, cutoff, batch_size, budget, stats),
+			StorageId::Table(_) => self.evict_rows(
+				state,
+				storage,
+				RowFamily::Table,
+				eviction,
+				cutoff,
+				batch_size,
+				budget,
+				stats,
+			),
+			StorageId::View(id) => self.evict_view(state, id, eviction, cutoff, batch_size, budget, stats),
 			StorageId::RingBuffer(id) => {
-				self.evict_ringbuffer(state, id, cutoff, batch_size, budget, stats)
+				self.evict_ringbuffer(state, id, eviction, cutoff, batch_size, budget, stats)
 			}
-			StorageId::Series(id) => self.evict_series(state, id, cutoff, batch_size, budget, stats),
+			StorageId::Series(id) => {
+				self.evict_series(state, id, eviction, cutoff, batch_size, budget, stats)
+			}
 			StorageId::Queue(_) => Ok(()),
 		}
+	}
+
+	fn ttl_eviction(&self, storage: StorageId) -> Result<EvictionVisibility> {
+		let mut txn = self.engine.begin_command(IdentityId::system(), Durability::Async)?;
+		let eviction = self.engine.catalog().find_ttl_eviction(&mut Transaction::Command(&mut txn), storage);
+		txn.rollback()?;
+		eviction
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -273,6 +292,7 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: ViewId,
+		eviction: EvictionVisibility,
 		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
@@ -289,12 +309,26 @@ impl Evictor {
 		};
 
 		match view.storage_kind() {
-			ViewStorageKind::Table => {
-				self.evict_rows(state, storage, RowFamily::Table, cutoff, batch_size, budget, stats)
-			}
-			ViewStorageKind::Series => {
-				self.evict_rows(state, storage, RowFamily::Series, cutoff, batch_size, budget, stats)
-			}
+			ViewStorageKind::Table => self.evict_rows(
+				state,
+				storage,
+				RowFamily::Table,
+				eviction,
+				cutoff,
+				batch_size,
+				budget,
+				stats,
+			),
+			ViewStorageKind::Series => self.evict_rows(
+				state,
+				storage,
+				RowFamily::Series,
+				eviction,
+				cutoff,
+				batch_size,
+				budget,
+				stats,
+			),
 			ViewStorageKind::RingBuffer => {
 				state.forget(storage);
 				Ok(())
@@ -309,6 +343,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		storage: StorageId,
 		family: RowFamily,
+		eviction: EvictionVisibility,
 		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
@@ -327,8 +362,9 @@ impl Evictor {
 				if *budget == 0 {
 					return Ok(());
 				}
-				let (rows, drained) =
-					self.evict_rows_batch(state, storage, family, cutoff, batch_size, &keyspace)?;
+				let (rows, drained) = self.evict_rows_batch(
+					state, storage, family, eviction, cutoff, batch_size, &keyspace,
+				)?;
 				stats.rows_expired += rows;
 				if rows > 0 || !drained {
 					*budget -= 1;
@@ -400,6 +436,7 @@ impl Evictor {
 		state: &mut EvictorState,
 		storage: StorageId,
 		family: RowFamily,
+		eviction: EvictionVisibility,
 		cutoff: Cutoff,
 		batch_size: usize,
 		keyspace: &TaggedKeyBoundRange,
@@ -421,11 +458,38 @@ impl Evictor {
 		}
 
 		let rows = expired.len() as u64;
-		for key in &expired {
-			txn.remove_silent(key)?;
-		}
+		self.remove_primary_key_entries(&mut txn, storage, eviction, &expired)?;
+		remove_expired(&mut txn, &expired, eviction)?;
 		txn.commit()?;
 		Ok((rows, drained))
+	}
+
+	fn remove_primary_key_entries(
+		&self,
+		txn: &mut CommandTransaction,
+		storage: StorageId,
+		eviction: EvictionVisibility,
+		expired: &[TaggedKey],
+	) -> Result<()> {
+		let StorageId::Table(id) = storage else {
+			return Ok(());
+		};
+		let catalog = self.engine.catalog();
+		let mut tx = Transaction::Command(&mut *txn);
+		let Some(table) = catalog.find_table(&mut tx, id)? else {
+			return Ok(());
+		};
+		let Some(pk) = get_primary_key(&catalog, &mut tx, &table)? else {
+			return Ok(());
+		};
+		let mut index = PrimaryKeyIndex::new(&pk);
+		for row in tx.get(expired)?.into_iter().flatten() {
+			index.remove(&catalog, &mut tx, &table, &row.bytes)?;
+		}
+		match eviction {
+			EvictionVisibility::Visible => index.write(&mut tx),
+			EvictionVisibility::Silent => index.write_silent(txn),
+		}
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -434,6 +498,7 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: RingBufferId,
+		eviction: EvictionVisibility,
 		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
@@ -445,8 +510,8 @@ impl Evictor {
 				if *budget == 0 {
 					return Ok(());
 				}
-				let (rows, drained) =
-					self.evict_ringbuffer_batch(state, id, cutoff, batch_size, &keyspace)?;
+				let (rows, drained) = self
+					.evict_ringbuffer_batch(state, id, eviction, cutoff, batch_size, &keyspace)?;
 				stats.rows_expired += rows;
 				if rows > 0 || !drained {
 					*budget -= 1;
@@ -464,6 +529,7 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: RingBufferId,
+		eviction: EvictionVisibility,
 		cutoff: Cutoff,
 		batch_size: usize,
 		keyspace: &TaggedKeyBoundRange,
@@ -546,9 +612,7 @@ impl Evictor {
 				decode_ringbuffer_row_number(key, partitioned)
 			})?;
 
-			for key in &keys {
-				txn.remove_silent(key)?;
-			}
+			remove_expired(&mut txn, &keys, eviction)?;
 
 			let deleted = keys.len() as u64;
 			apply_ringbuffer_partition_metadata_after_delete(
@@ -573,6 +637,7 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: SeriesId,
+		eviction: EvictionVisibility,
 		cutoff: Cutoff,
 		batch_size: usize,
 		budget: &mut u64,
@@ -582,7 +647,7 @@ impl Evictor {
 			if *budget == 0 {
 				return Ok(());
 			}
-			let (rows, drained) = self.evict_series_batch(state, id, cutoff, batch_size)?;
+			let (rows, drained) = self.evict_series_batch(state, id, eviction, cutoff, batch_size)?;
 			stats.rows_expired += rows;
 			if rows > 0 || !drained {
 				*budget -= 1;
@@ -598,6 +663,7 @@ impl Evictor {
 		&self,
 		state: &mut EvictorState,
 		id: SeriesId,
+		eviction: EvictionVisibility,
 		cutoff: Cutoff,
 		batch_size: usize,
 	) -> Result<(u64, bool)> {
@@ -641,8 +707,8 @@ impl Evictor {
 				_ => (Partition::default(), 0),
 			};
 			deleted_by_partition.entry(partition).or_default().record(key_value);
-			txn.remove_silent(key)?;
 		}
+		remove_expired(&mut txn, &expired, eviction)?;
 		for (partition, tally) in deleted_by_partition {
 			let Some(mut metadata) = catalog.find_series_metadata(
 				&mut Transaction::Command(&mut txn),
@@ -666,6 +732,18 @@ impl Evictor {
 		}
 		txn.commit()?;
 		Ok((deleted, drained))
+	}
+}
+
+fn remove_expired(txn: &mut CommandTransaction, expired: &[TaggedKey], eviction: EvictionVisibility) -> Result<()> {
+	match eviction {
+		EvictionVisibility::Visible => txn.remove(expired.iter().map(|key| (key.clone(), None)).collect()),
+		EvictionVisibility::Silent => {
+			for key in expired {
+				txn.remove_silent(key)?;
+			}
+			Ok(())
+		}
 	}
 }
 
@@ -753,11 +831,13 @@ mod tests {
 		interface::{
 			catalog::{
 				ringbuffer::{
-					PartitionedMetadata, RingBuffer, RingBufferMetadata, encode_ringbuffer_metadata,
+					EvictionVisibility, PartitionedMetadata, RingBuffer, RingBufferMetadata,
+					encode_ringbuffer_metadata,
 				},
 				series::SeriesPartitionMetadata,
 				view::View,
 			},
+			cdc::CdcChange,
 			store::MultiVersionRow,
 		},
 		key::ringbuffer::RingBufferMetadataKey,
@@ -976,6 +1056,295 @@ mod tests {
 			1,
 			"and it must be the younger one; evicting v=2 would mean the cutoff was rounded up"
 		);
+	}
+
+	#[test]
+	fn an_expired_primary_key_row_frees_its_key_for_a_new_insert() {
+		// A ttl eviction that leaves the primary key index entry behind would reject the same key as a
+		// duplicate.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin("create table test::t { id: int4, v: int4 } with { time: processing, row: { ttl: 1h } }");
+		test.admin("CREATE PRIMARY KEY ON test::t { id }");
+		test.command("INSERT test::t [{ id: 1, v: 1 }]");
+		age_past_ttl(&test);
+
+		let mut state = EvictorState::default();
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		assert_eq!(
+			row_count(&test, "from test::t"),
+			0,
+			"the expired row must be gone before the key is reused"
+		);
+
+		test.command("INSERT test::t [{ id: 1, v: 2 }]");
+		assert_eq!(row_count(&test, "from test::t filter v == 2"), 1, "the reused key must hold the new row");
+	}
+
+	#[test]
+	fn an_expired_primary_key_row_frees_its_key_without_cdc() {
+		// Announcing the primary key index removal would leak every expiry of a keyed table into CDC.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin("create table test::t { id: int4, v: int4 } with { time: processing, row: { ttl: 1h } }");
+		test.admin("CREATE PRIMARY KEY ON test::t { id }");
+		test.command("INSERT test::t [{ id: 1, v: 1 }]");
+		age_past_ttl(&test);
+
+		let before = test.current_version().unwrap();
+		let mut state = EvictorState::default();
+		tick_now(&test, &mut state, RetentionClass::RowTtl);
+		let after = test.current_version().unwrap();
+
+		assert_eq!(row_count(&test, "from test::t"), 0);
+		assert!(after > before, "silent eviction must still be a real commit");
+
+		wait_cdc_watermark(&test, after);
+		let cdc = test.ioc().try_resolve::<CdcStore>().unwrap();
+		for version in (before.0 + 1)..=after.0 {
+			assert!(
+				cdc.read(CommitVersion(version)).unwrap().is_none(),
+				"silent eviction of a keyed table must not write any CDC record"
+			);
+		}
+	}
+
+	fn series_storage_by_name(engine: &StandardEngine, name: &str) -> StorageId {
+		let catalog = engine.catalog();
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
+		let namespace =
+			catalog.find_namespace_by_name(&mut Transaction::Command(&mut txn), "test").unwrap().unwrap();
+		let series = catalog
+			.find_series_by_name(&mut Transaction::Command(&mut txn), namespace.id(), name)
+			.unwrap()
+			.unwrap();
+		txn.rollback().unwrap();
+		StorageId::Series(series.id)
+	}
+
+	fn stored_rows(engine: &StandardEngine, keyspaces: &[TaggedKeyBoundRange]) -> Vec<(TaggedKey, EncodedBytes)> {
+		let mut txn = engine.begin_command(IdentityId::system(), Durability::Async).unwrap();
+		let mut rows = Vec::new();
+		for keyspace in keyspaces {
+			for row in txn.range(keyspace.clone(), RangeScope::All, 1024).unwrap() {
+				let row = row.unwrap();
+				rows.push((row.key.clone(), row.bytes.clone()));
+			}
+		}
+		txn.rollback().unwrap();
+		rows
+	}
+
+	struct ExpiryFeed {
+		stored: Vec<(TaggedKey, EncodedBytes)>,
+		deletes: Vec<(TaggedKey, Option<EncodedBytes>, bool)>,
+	}
+
+	fn expire_and_read_feed(test: &TestEngine, keyspaces: &[TaggedKeyBoundRange]) -> ExpiryFeed {
+		age_past_ttl(test);
+		let stored = stored_rows(test, keyspaces);
+		assert!(!stored.is_empty(), "precondition: rows must exist before they can expire");
+		let before = test.current_version().unwrap();
+		let mut state = EvictorState::default();
+		tick_now(test, &mut state, RetentionClass::RowTtl);
+		let after = test.current_version().unwrap();
+		assert!(after > before, "the eviction must be a real commit");
+		assert!(stored_rows(test, keyspaces).is_empty(), "every expired row must be gone");
+
+		wait_cdc_watermark(test, after);
+		let cdc = test.ioc().try_resolve::<CdcStore>().unwrap();
+		let mut deletes = Vec::new();
+		for version in (before.0 + 1)..=after.0 {
+			let Some(record) = cdc.read(CommitVersion(version)).unwrap() else {
+				continue;
+			};
+			for change in &record.changes {
+				if let CdcChange::Delete {
+					key,
+					pre,
+					visible,
+				} = change
+				{
+					deletes.push((TaggedKey::decode(key).unwrap(), pre.clone(), *visible));
+				}
+			}
+		}
+		ExpiryFeed {
+			stored,
+			deletes,
+		}
+	}
+
+	fn assert_announced_with_old_rows(feed: &ExpiryFeed) {
+		for (key, bytes) in &feed.stored {
+			let announced = feed.deletes.iter().find(|(deleted, _, _)| deleted == key);
+			let Some((_, pre, visible)) = announced else {
+				panic!("a visible expiry must announce the removal of {key:?}");
+			};
+			assert!(*visible, "a visible expiry must reach the change feed as a visible delete");
+			assert_eq!(pre.as_ref(), Some(bytes), "the announced delete must carry the expired row");
+		}
+	}
+
+	fn assert_silent(feed: &ExpiryFeed) {
+		for (key, _) in &feed.stored {
+			assert!(
+				!feed.deletes.iter().any(|(deleted, _, _)| deleted == key),
+				"a silent expiry must not reach the change feed for {key:?}: {:?}",
+				feed.deletes
+			);
+		}
+	}
+
+	fn table_keyspaces(storage: StorageId) -> Vec<TaggedKeyBoundRange> {
+		vec![RowKey::full_scan(storage), PartitionedRowKey::full_scan(storage)]
+	}
+
+	fn series_keyspaces(storage: StorageId) -> Vec<TaggedKeyBoundRange> {
+		vec![SeriesRowKeyRange::full_scan(storage, None), PartitionedSeriesRowKeyRange::full_scan(storage)]
+	}
+
+	fn table_with_eviction(eviction: &str) -> TestEngine {
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(&format!(
+			"create table test::t {{ v: int4 }} with {{ time: processing, row: {{ ttl: 1h }}{eviction} }}"
+		));
+		test.command("INSERT test::t [{ v: 1 }, { v: 2 }]");
+		test
+	}
+
+	#[test]
+	fn ttl_visible_table_expiry_announces_each_old_row() {
+		// Without the old row in the delete a downstream deferred view cannot retract what it aggregated.
+		let test = table_with_eviction(", eviction: { ttl: visible }");
+		let storage = table_storage_by_name(&test, "t");
+		let feed = expire_and_read_feed(&test, &table_keyspaces(storage));
+		assert_eq!(feed.stored.len(), 2);
+		assert_announced_with_old_rows(&feed);
+	}
+
+	#[test]
+	fn ttl_silent_table_expiry_is_identical_to_the_default() {
+		// An explicit silent must never be read as visible.
+		for eviction in ["", ", eviction: { ttl: silent }", ", eviction: {}"] {
+			let test = table_with_eviction(eviction);
+			let storage = table_storage_by_name(&test, "t");
+			assert_silent(&expire_and_read_feed(&test, &table_keyspaces(storage)));
+		}
+	}
+
+	#[test]
+	fn ttl_visible_primary_key_removal_is_announced_like_a_delete() {
+		// A visible expiry must look like a user DELETE on the feed, index entry included, and still free the
+		// key.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(
+			"create table test::t { id: int4, v: int4 } with { time: processing, row: { ttl: 1h }, eviction: { ttl: visible } }",
+		);
+		test.admin("CREATE PRIMARY KEY ON test::t { id }");
+		test.command("INSERT test::t [{ id: 1, v: 1 }]");
+		let storage = table_storage_by_name(&test, "t");
+		let feed = expire_and_read_feed(&test, &table_keyspaces(storage));
+		assert_announced_with_old_rows(&feed);
+		assert!(
+			feed.deletes.iter().any(|(key, pre, visible)| matches!(key, TaggedKey::IndexEntry(_))
+				&& pre.is_some() && *visible),
+			"the primary key entry removal must be announced the way DELETE announces it: {:?}",
+			feed.deletes
+		);
+
+		test.command("INSERT test::t [{ id: 1, v: 2 }]");
+		assert_eq!(row_count(&test, "from test::t filter v == 2"), 1, "the reused key must hold the new row");
+	}
+
+	#[test]
+	fn ttl_visible_table_backed_view_expiry_announces_each_old_row() {
+		// A view feeding another view must retract downstream exactly like a table does.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin("create table test::src { n: int4 }");
+		test.admin("create table test::stamped { n: int4 } with { time: processing, row: { ttl: 1h } }");
+		test.admin(
+			"create deferred view test::v { n: int4 } with { row: { ttl: 1h }, eviction: { ttl: visible } } as { from test::src }",
+		);
+		test.admin("create deferred view test::d { n: int4 } with { row: { ttl: 1h } } as { from test::src }");
+		test.command("INSERT test::stamped [{ n: 1 }]");
+		let seeded = storage_rows(&test, table_storage_by_name(&test, "stamped"), false);
+		assert_eq!(seeded.len(), 1, "precondition: one stamped row");
+
+		let visible = StorageId::View(view_by_name(&test, "v").id());
+		put_row(&test, visible, RowNumber(1), seeded[0].bytes.clone());
+		let feed = expire_and_read_feed(&test, &table_keyspaces(visible));
+		assert_announced_with_old_rows(&feed);
+
+		test.command("INSERT test::stamped [{ n: 2 }]");
+		let fresh = storage_rows(&test, table_storage_by_name(&test, "stamped"), false);
+		assert_eq!(fresh.len(), 1, "precondition: only the fresh stamped row survives the first expiry");
+		let default = StorageId::View(view_by_name(&test, "d").id());
+		put_row(&test, default, RowNumber(1), fresh[0].bytes.clone());
+		assert_silent(&expire_and_read_feed(&test, &table_keyspaces(default)));
+	}
+
+	#[test]
+	fn ttl_visible_ringbuffer_expiry_announces_each_old_row() {
+		// A ring feeding a deferred view must retract downstream on a visible expiry and stay silent by
+		// default.
+		for (eviction, visible) in [(", eviction: { ttl: visible }", true), ("", false)] {
+			let test = TestEngine::new();
+			test.admin("create namespace test;");
+			test.admin(&format!(
+				"CREATE RINGBUFFER test::rb {{ v: int4 }} WITH {{ time: processing, capacity: 100, row: {{ ttl: 1h }}{eviction} }}"
+			));
+			test.command("INSERT test::rb [{ v: 1 }, { v: 2 }]");
+			let storage = StorageId::RingBuffer(ringbuffer_by_name(&test, "rb").id);
+			let feed = expire_and_read_feed(&test, &table_keyspaces(storage));
+			match visible {
+				true => assert_announced_with_old_rows(&feed),
+				false => assert_silent(&feed),
+			}
+			assert!(ringbuffer_partitions(&test, "rb").is_empty(), "metadata must drain either way");
+		}
+	}
+
+	#[test]
+	fn ttl_visible_ringbuffer_keeps_capacity_push_out_silent() {
+		// The two reasons are independent flags, so ttl visible must not flip capacity to visible.
+		let test = TestEngine::new();
+		test.admin("create namespace test;");
+		test.admin(
+			"CREATE RINGBUFFER test::rb { v: int4 } WITH { time: processing, capacity: 1, row: { ttl: 1h }, eviction: { capacity: silent, ttl: visible } }",
+		);
+		assert_eq!(ringbuffer_by_name(&test, "rb").eviction, EvictionVisibility::Silent);
+		test.command("INSERT test::rb [{ v: 1 }]");
+		test.command("INSERT test::rb [{ v: 2 }]");
+		let storage = StorageId::RingBuffer(ringbuffer_by_name(&test, "rb").id);
+		let feed = expire_and_read_feed(&test, &table_keyspaces(storage));
+		assert_eq!(feed.stored.len(), 1, "the silent push-out must already have removed the first row");
+		assert_announced_with_old_rows(&feed);
+	}
+
+	#[test]
+	fn ttl_visible_series_expiry_announces_each_old_row_and_keeps_the_count() {
+		// The row count must still drop with a visible expiry, otherwise metadata reports rows that are gone.
+		for (eviction, visible) in [(", eviction: { ttl: visible }", true), ("", false)] {
+			let test = TestEngine::new();
+			test.admin("create namespace test;");
+			test.admin(&format!(
+				"create series test::s {{ ts: datetime, v: int4 }} WITH {{ time: processing, key: ts, row: {{ ttl: 1h }}{eviction} }}"
+			));
+			test.command(
+				"INSERT test::s [{ ts: datetime::from_epoch_millis(1000), v: 1 }, { ts: datetime::from_epoch_millis(2000), v: 2 }]",
+			);
+			let storage = series_storage_by_name(&test, "s");
+			let feed = expire_and_read_feed(&test, &series_keyspaces(storage));
+			match visible {
+				true => assert_announced_with_old_rows(&feed),
+				false => assert_silent(&feed),
+			}
+			assert_eq!(series_metadata(&test, "s").row_count, 0);
+		}
 	}
 
 	#[test]

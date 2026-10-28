@@ -2,12 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::{
-		id::ViewId,
-		ringbuffer::EvictionVisibility,
-		storage::StorageId,
-		view::{View, ViewStorageKind},
-	},
+	interface::catalog::{id::ViewId, storage::StorageId, view::ViewStorageKind},
 	key::{
 		any::TaggedKey, catalog::ViewKey, namespace::NamespaceViewKey, ringbuffer::RingBufferMetadataKey,
 		row::RowSettingsKey,
@@ -26,11 +21,6 @@ impl CatalogStore {
 		let pk_id = if let Some(view_def) = Self::find_view(&mut Transaction::Admin(&mut *txn), view)? {
 			txn.remove(vec![(NamespaceViewKey::new(view_def.namespace(), view).into(), None)])?;
 			Self::drop_view_family_metadata(txn, view, view_def.storage_kind())?;
-			if let View::RingBuffer(ringbuffer) = &view_def
-				&& ringbuffer.eviction == EvictionVisibility::Silent
-			{
-				Self::drop_view_eviction(txn, view)?;
-			}
 			view_def.primary_key().map(|pk| pk.id)
 		} else {
 			None

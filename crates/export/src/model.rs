@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use reifydb_core::{
 	interface::catalog::{
 		dictionary::Dictionary, namespace::Namespace, queue::Queue, ringbuffer::RingBuffer, series::Series,
-		sumtype::SumType, table::Table,
+		storage::StorageId, sumtype::SumType, table::Table,
 	},
 	row::RowSettings,
 };
@@ -55,6 +55,7 @@ pub struct NameResolver {
 	pub namespaces: HashMap<u64, String>,
 	pub dictionaries: HashMap<u64, ResolvedDictionary>,
 	pub sumtypes: HashMap<u64, ResolvedSumType>,
+	pub visible_ttl: HashSet<StorageId>,
 }
 
 pub struct ResolvedDictionary {
@@ -79,6 +80,7 @@ impl NameResolver {
 			namespaces: HashMap::new(),
 			dictionaries: HashMap::new(),
 			sumtypes: HashMap::new(),
+			visible_ttl: HashSet::new(),
 		}
 	}
 

@@ -755,6 +755,7 @@ pub struct AstPersistent<'bump> {
 pub struct AstRowSettings<'bump> {
 	pub ttl: Option<AstTtl<'bump>>,
 	pub persistent: Option<AstPersistent<'bump>>,
+	pub ttl_eviction: EvictionVisibility,
 }
 
 #[derive(Debug, Default)]

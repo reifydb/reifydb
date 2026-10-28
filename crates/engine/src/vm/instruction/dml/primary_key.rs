@@ -18,7 +18,7 @@ use reifydb_core::{
 	sort::SortDirection,
 	value::index::{encoded::EncodedIndexKey, shape::IndexShape},
 };
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
 	error::Error,
 	fragment::Fragment,
@@ -260,7 +260,7 @@ pub(crate) fn primary_key_index(
 		.collect()
 }
 
-pub(crate) struct PrimaryKeyIndex<'a> {
+pub struct PrimaryKeyIndex<'a> {
 	pk_def: &'a PrimaryKey,
 	encoder: Option<PrimaryKeyEncoder>,
 	shapes: HashMap<RowShapeFingerprint, RowShape>,
@@ -268,7 +268,7 @@ pub(crate) struct PrimaryKeyIndex<'a> {
 }
 
 impl<'a> PrimaryKeyIndex<'a> {
-	pub(crate) fn new(pk_def: &'a PrimaryKey) -> Self {
+	pub fn new(pk_def: &'a PrimaryKey) -> Self {
 		Self {
 			pk_def,
 			encoder: None,
@@ -277,7 +277,7 @@ impl<'a> PrimaryKeyIndex<'a> {
 		}
 	}
 
-	pub(crate) fn remove(
+	pub fn remove(
 		&mut self,
 		catalog: &Catalog,
 		txn: &mut Transaction<'_>,
@@ -308,7 +308,14 @@ impl<'a> PrimaryKeyIndex<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn write(self, txn: &mut Transaction<'_>) -> Result<()> {
+	pub fn write(self, txn: &mut Transaction<'_>) -> Result<()> {
 		txn.remove(self.removes)
+	}
+
+	pub fn write_silent(self, txn: &mut CommandTransaction) -> Result<()> {
+		for (key, _) in &self.removes {
+			txn.remove_silent(key)?;
+		}
+		Ok(())
 	}
 }

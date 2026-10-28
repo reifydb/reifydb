@@ -77,6 +77,7 @@ pub struct CreateDeferredViewNode {
 	pub storage_kind: CompiledViewStorageKind,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
 }
 
 #[derive(Debug, Clone)]
@@ -120,6 +121,7 @@ pub struct CreateTableNode {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
 	pub time: TimeSource,
 }
 
@@ -133,6 +135,7 @@ pub struct CreateRingBufferNode {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
 	pub time: TimeSource,
 	pub eviction: EvictionVisibility,
 }
@@ -239,6 +242,7 @@ pub struct CreateSeriesNode {
 	pub partition_by: Vec<String>,
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
+	pub ttl_eviction: EvictionVisibility,
 	pub time: TimeSource,
 	pub encoding: Option<(Fragment, SeriesEncoding)>,
 }

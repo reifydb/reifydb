@@ -56,6 +56,7 @@ pub(crate) fn create_ringbuffer(
 				persistent: plan.persistent,
 			},
 		)?;
+		services.catalog.create_ttl_eviction(txn, StorageId::RingBuffer(id), plan.ttl_eviction)?;
 	}
 
 	txn.track_ringbuffer_created(result)?;
