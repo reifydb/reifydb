@@ -51,7 +51,13 @@ pub fn bootstrap_completeness(
 		NamespaceId::SYSTEM,
 	)?;
 
-	if catalog_api.find_table_by_name(&mut Transaction::Admin(&mut admin), ns, "completeness")?.is_none() {
+	if let Some(table) = catalog_api.find_table_by_name(&mut Transaction::Admin(&mut admin), ns, "completeness")? {
+		if catalog_api.find_primary_key(&mut Transaction::Admin(&mut admin), table.id)?.is_none() {
+			panic!(
+				"system::source::completeness has no primary key on object_id; this store predates it, wipe the data dir"
+			);
+		}
+	} else {
 		catalog_api.create_table_with_id(
 			&mut admin,
 			TableId::SOURCE_COMPLETENESS,
@@ -62,7 +68,7 @@ pub fn bootstrap_completeness(
 					table_col("object_id", ValueType::Uint8),
 					table_col("complete_through", ValueType::DateTime),
 				],
-				primary_key_columns: None,
+				primary_key_columns: Some(vec!["object_id".to_string()]),
 				partition_by: vec![],
 				time: TimeSource::None,
 			},

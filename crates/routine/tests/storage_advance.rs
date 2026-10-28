@@ -9,7 +9,7 @@ use reifydb_core::{durability::Durability, event::EventBus};
 use reifydb_routine::procedure::storage::advance::StorageAdvanceProcedure;
 use reifydb_routine_abi::{Routine, context::ProcedureContext, error::RoutineError};
 use reifydb_test_harness::engine::TestEngine;
-use reifydb_transaction::transaction::Transaction;
+use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
 use reifydb_value::{
 	fragment::Fragment,
 	params::Params,
@@ -289,4 +289,101 @@ fn a_privileged_identity_asserts_through_the_same_path() {
 
 	let ids = column_view(&columns, "object_id").unwrap().expect("object_id column");
 	assert_eq!(ids.get_value(0), Value::Uint8(trades), "the returned frame must name the asserted object");
+}
+
+fn advance_in(
+	t: &TestEngine,
+	txn: &mut CommandTransaction,
+	object: &str,
+	instant: DateTime,
+) -> Result<RecordBatch, RoutineError> {
+	let services = t.inner().services();
+	let catalog = services.catalog.clone();
+	let params = Params::from(vec![Value::Utf8(object.to_string()), Value::DateTime(instant)]);
+	let mut tx = Transaction::Command(txn);
+	let mut ctx = ProcedureContext {
+		fragment: Fragment::internal("storage::advance"),
+		identity: IdentityId::root(),
+		row_count: 1,
+		runtime_context: &services.runtime_context,
+		tx: &mut tx,
+		params: &params,
+		catalog: &catalog,
+		routines: &services.routines,
+		ioc: &services.ioc,
+	};
+	StorageAdvanceProcedure::new().execute(&mut ctx, &[])
+}
+
+#[test]
+fn concurrent_assertions_on_different_objects_both_commit() {
+	// A read spanning the whole table makes the later commit fail with TXN_001 and panics the ingestor.
+	let t = bootstrapped();
+	t.admin("CREATE NAMESPACE app");
+	t.admin("CREATE TABLE app::trades { id: int4 }");
+	t.admin("CREATE TABLE app::quotes { id: int4 }");
+	let trades = object_id(&t, "trades");
+	let quotes = object_id(&t, "quotes");
+	assert_through(&t, "app::trades", "2026-08-07T09:00:00");
+	assert_through(&t, "app::quotes", "2026-08-07T09:00:00");
+
+	let instant = DateTime::from_ymd_hms(2026, 8, 7, 10, 0, 0).expect("datetime");
+	let mut first = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
+	let mut second = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
+	advance_in(&t, &mut first, "app::trades", instant).expect("first assertion");
+	advance_in(&t, &mut second, "app::quotes", instant).expect("second assertion");
+
+	first.commit().expect("the first commit must succeed");
+	second.commit().expect("an assertion on a different object must not conflict with a concurrent one");
+
+	let mut expected = vec![(trades, instant.to_string()), (quotes, instant.to_string())];
+	expected.sort();
+	assert_eq!(asserted(&t), expected, "both concurrent assertions must land");
+}
+
+#[test]
+fn concurrent_first_assertions_on_different_objects_both_commit() {
+	// Two sources reporting for the first time at once must not collide on the insert path either.
+	let t = bootstrapped();
+	t.admin("CREATE NAMESPACE app");
+	t.admin("CREATE TABLE app::trades { id: int4 }");
+	t.admin("CREATE TABLE app::quotes { id: int4 }");
+	let trades = object_id(&t, "trades");
+	let quotes = object_id(&t, "quotes");
+
+	let instant = DateTime::from_ymd_hms(2026, 8, 7, 10, 0, 0).expect("datetime");
+	let mut first = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
+	let mut second = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
+	advance_in(&t, &mut first, "app::trades", instant).expect("first assertion");
+	advance_in(&t, &mut second, "app::quotes", instant).expect("second assertion");
+
+	first.commit().expect("the first commit must succeed");
+	second.commit().expect("a first assertion on a different object must not conflict with a concurrent one");
+
+	let mut expected = vec![(trades, instant.to_string()), (quotes, instant.to_string())];
+	expected.sort();
+	assert_eq!(asserted(&t), expected, "both concurrent first assertions must land");
+}
+
+#[test]
+fn concurrent_assertions_on_the_same_object_conflict() {
+	// Two writers on one object must not both win, or the later commit silently drops the other's instant.
+	let t = bootstrapped();
+	t.admin("CREATE NAMESPACE app");
+	t.admin("CREATE TABLE app::trades { id: int4 }");
+	let trades = object_id(&t, "trades");
+	assert_through(&t, "app::trades", "2026-08-07T09:00:00");
+
+	let early = DateTime::from_ymd_hms(2026, 8, 7, 10, 0, 0).expect("datetime");
+	let late = DateTime::from_ymd_hms(2026, 8, 7, 11, 0, 0).expect("datetime");
+	let mut first = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
+	let mut second = t.inner().begin_command(IdentityId::root(), Durability::Async).expect("command transaction");
+	advance_in(&t, &mut first, "app::trades", late).expect("first assertion");
+	advance_in(&t, &mut second, "app::trades", early).expect("second assertion");
+
+	first.commit().expect("the first commit must succeed");
+	let err = second.commit().expect_err("a concurrent assertion on the same object must conflict");
+	assert!(format!("{err:?}").contains("TXN_001"), "the refusal must be a transaction conflict: {err:?}");
+
+	assert_eq!(asserted(&t), vec![(trades, late.to_string())], "the winning assertion must stand alone");
 }

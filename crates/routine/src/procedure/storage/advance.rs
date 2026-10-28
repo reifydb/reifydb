@@ -1,39 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{
-	collections::HashMap,
-	sync::{Arc, LazyLock},
-};
+use std::sync::LazyLock;
 
 use arrow_array::{ArrayRef, RecordBatch};
 use arrow_schema::FieldRef;
-use reifydb_catalog::catalog::Catalog;
+use reifydb_catalog::{
+	catalog::Catalog,
+	completeness::{Advanced, CompletenessWriterRef},
+};
 use reifydb_core::{
-	error::CoreError,
 	interface::catalog::{id::NamespaceId, object::ObjectId},
 	value::batch::from_rows,
 };
 use reifydb_routine_abi::{Routine, RoutineInfo, context::ProcedureContext, error::RoutineError};
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
-	error::Error,
 	fragment::Fragment,
 	params::Params,
-	value::{
-		Value,
-		datetime::DateTime,
-		frame::{extract::FrameError, frame::Frame},
-		value_type::ValueType,
-	},
+	value::{Value, datetime::DateTime, value_type::ValueType},
 };
 use tracing::warn;
 
 static INFO: LazyLock<RoutineInfo> = LazyLock::new(|| RoutineInfo::new("storage::advance"));
 
 const NAME: &str = "storage::advance";
-
-const COMPLETENESS: &str = "system::source::completeness";
 
 pub struct StorageAdvanceProcedure;
 
@@ -114,13 +105,6 @@ fn failed(reason: &str) -> RoutineError {
 		procedure: Fragment::internal(NAME),
 		reason: reason.to_string(),
 	}
-}
-
-fn frame_error(error: FrameError) -> RoutineError {
-	Error::from(CoreError::FrameError {
-		message: error.to_string(),
-	})
-	.into()
 }
 
 fn identifiers(objects: &Value) -> Result<Vec<String>, RoutineError> {
@@ -258,88 +242,17 @@ fn expand_namespace(
 }
 
 fn assert_one(ctx: &mut ProcedureContext<'_, '_>, object: ObjectId, at: DateTime) -> Result<(), RoutineError> {
-	let key = object.to_u64();
-	let params = named(key, at);
-
-	let advanced =
-		ctx.tx.rql(
-			&format!("update {COMPLETENESS} {{ complete_through: $complete_through }} \
-				 filter {{ object_id == $object_id and complete_through <= $complete_through }}"),
-			params.clone(),
-		)
-		.check()
-		.map_err(RoutineError::from)?;
-
-	match rows_updated(&advanced.frames)? {
-		0 => {}
-		1 => return Ok(()),
-		updated => unreachable!(
-			"{COMPLETENESS} advanced {updated} rows for object {key}; one row per object is an invariant"
-		),
-	}
-
-	let current =
-		ctx.tx.rql(&format!("from {COMPLETENESS} filter {{ object_id == $object_id }}"), params.clone())
-			.check()
-			.map_err(RoutineError::from)?;
-
-	if let Some(previous) = single_complete_through(&current.frames, key)? {
+	let writer = ctx.ioc.resolve::<CompletenessWriterRef>().expect("CompletenessWriter not registered in IoC");
+	if let Advanced::Backwards(previous) = writer.advance(ctx.tx, object, at)? {
 		warn!(
-			object = key,
+			object = object.to_u64(),
 			previous = %previous,
 			at = %at,
 			"a completeness assertion went backwards; the recorded instant stands and rows \
 			 landing before it fall behind an already sealed window"
 		);
-		return Ok(());
 	}
-
-	ctx.tx.rql(
-		&format!("insert {COMPLETENESS} [{{ object_id: $object_id, \
-				 complete_through: $complete_through }}]"),
-		params,
-	)
-	.check()
-	.map_err(RoutineError::from)?;
 	Ok(())
-}
-
-fn rows_updated(frames: &[Frame]) -> Result<u64, RoutineError> {
-	let column = match frames.first() {
-		Some(frame) => frame.column("updated").map_err(frame_error)?,
-		None => None,
-	};
-	Ok(column.filter(|column| column.len() == 1).map_or(0, |column| match column.get_value(0) {
-		Value::Uint8(count) => count,
-		_ => 0,
-	}))
-}
-
-fn named(object_id: u64, at: DateTime) -> Params {
-	let mut map = HashMap::with_capacity(2);
-	map.insert("object_id".to_string(), Value::Uint8(object_id));
-	map.insert("complete_through".to_string(), Value::DateTime(at));
-	Params::Named(Arc::new(map))
-}
-
-fn single_complete_through(frames: &[Frame], key: u64) -> Result<Option<DateTime>, RoutineError> {
-	let Some(frame) = frames.first() else {
-		return Ok(None);
-	};
-	let Some(column) = frame.column("complete_through").map_err(frame_error)? else {
-		return Ok(None);
-	};
-	match column.len() {
-		0 => return Ok(None),
-		1 => {}
-		recorded => unreachable!(
-			"{COMPLETENESS} holds {recorded} rows for object {key}; one row per object is an invariant"
-		),
-	}
-	match column.get_value(0) {
-		Value::DateTime(at) => Ok(Some(at)),
-		_ => Ok(None),
-	}
 }
 
 fn output(asserted: &[(String, ObjectId)], at: DateTime) -> Result<RecordBatch, RoutineError> {

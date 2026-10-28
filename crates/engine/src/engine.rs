@@ -13,6 +13,7 @@ use std::{
 use reifydb_auth::service::AuthEngine;
 use reifydb_catalog::{
 	catalog::Catalog,
+	completeness::CompletenessWriterRef,
 	interceptor::CatalogCacheInterceptor,
 	metrics::storage::metrics::MetricsReader,
 	vtable::{
@@ -80,6 +81,7 @@ use crate::{
 	Result,
 	bulk_insert::builder::{BulkInsertBuilder, Unchecked, Validated},
 	queue::{interceptor::QueueSchedulingInterceptor, wake::QueueWakeRegistry},
+	transaction::operation::completeness::CompletenessWriterImpl,
 	vm::{
 		Admin, Command, Query,
 		executor::Executor,
@@ -466,6 +468,10 @@ impl StandardEngine {
 			config.ioc.register_service(registry.clone());
 			registry
 		});
+
+		let completeness: CompletenessWriterRef =
+			Arc::new(CompletenessWriterImpl::new(catalog.clone(), config.runtime_context.clock.clone()));
+		config.ioc.register_service::<CompletenessWriterRef>(completeness);
 
 		let single_for_interceptor = single.clone();
 		let wake_for_interceptor = queue_wake.clone();

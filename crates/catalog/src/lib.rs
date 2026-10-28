@@ -15,6 +15,7 @@ use reifydb_value::value::{datetime::DateTime, identity::IdentityId};
 pub mod bootstrap;
 pub mod cache;
 pub mod catalog;
+pub mod completeness;
 pub mod error;
 pub mod interceptor;
 pub mod metrics;
