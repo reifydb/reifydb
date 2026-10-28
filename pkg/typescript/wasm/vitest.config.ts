@@ -13,6 +13,7 @@ export default defineConfig({
         testTimeout: 30_000,
         hookTimeout: 30_000,
         teardownTimeout: 30_000,
+        setupFiles: ['./tests/setup.ts'],
 
         include: [
             'tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}',

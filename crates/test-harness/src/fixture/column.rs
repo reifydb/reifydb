@@ -74,7 +74,13 @@ impl TestingHooks for LyingSync {
 	}
 }
 
-pub struct SyncDirLog(Mutex<Vec<PathBuf>>);
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FsEvent {
+	SyncDir(PathBuf),
+	Create(PathBuf),
+}
+
+pub struct SyncDirLog(Mutex<Vec<FsEvent>>);
 
 impl Default for SyncDirLog {
 	fn default() -> Self {
@@ -83,15 +89,29 @@ impl Default for SyncDirLog {
 }
 
 impl SyncDirLog {
-	pub fn paths(&self) -> Vec<PathBuf> {
+	pub fn events(&self) -> Vec<FsEvent> {
 		self.0.lock().clone()
+	}
+
+	pub fn paths(&self) -> Vec<PathBuf> {
+		self.events()
+			.into_iter()
+			.filter_map(|event| match event {
+				FsEvent::SyncDir(path) => Some(path),
+				FsEvent::Create(_) => None,
+			})
+			.collect()
 	}
 }
 
 impl TestingHooks for SyncDirLog {
 	fn on_sync_dir(&self, path: &Path) -> SyncOutcome {
-		self.0.lock().push(path.to_path_buf());
+		self.0.lock().push(FsEvent::SyncDir(path.to_path_buf()));
 		SyncOutcome::Honest
+	}
+
+	fn on_create(&self, path: &Path) {
+		self.0.lock().push(FsEvent::Create(path.to_path_buf()));
 	}
 }
 

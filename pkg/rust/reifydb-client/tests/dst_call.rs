@@ -59,6 +59,9 @@ fn authenticate(ctx: &DstTestContext, token: &str) -> IdentityId {
 		ServerAuthResponse::Challenge {
 			..
 		} => panic!("unexpected challenge response"),
+		ServerAuthResponse::MethodNotEnabled {
+			method,
+		} => panic!("method not enabled: {}", method),
 	}
 }
 
@@ -120,7 +123,6 @@ fn call_unknown_binding_errors() {
 fn call_observes_the_authenticated_caller_identity() {
 	let ctx = DstTestContext::new();
 	ctx.db.admin_as_root("CREATE USER alice", Params::None).unwrap();
-	ctx.db.admin_as_root("CREATE AUTHENTICATION METHOD token WITH { ttl: forever }", Params::None).unwrap();
 	ctx.db.admin_as_root("CREATE AUTHENTICATION FOR alice { method: token; token: 'alice-tok' }", Params::None)
 		.unwrap();
 	ctx.db.admin_as_root("CREATE USER bob", Params::None).unwrap();

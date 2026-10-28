@@ -166,6 +166,9 @@ impl DstTestContext {
 			ServerAuthResponse::Challenge {
 				..
 			} => panic!("unexpected challenge response"),
+			ServerAuthResponse::MethodNotEnabled {
+				method,
+			} => panic!("method not enabled: {}", method),
 		};
 
 		Self {

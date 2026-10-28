@@ -23,8 +23,8 @@ use reifydb_runtime::io::fs::{
 use reifydb_store_column::{device::BlockFileKey, store::ColumnStore, testing::NoFaults};
 use reifydb_sub_store::subsystem::StorageConfig;
 use reifydb_test_harness::fixture::column::{
-	CorruptReads, LyingSync, MEMORY_ROOT, PauseOnObjectSyncDir, PauseOnRemove, SyncDirLog, TornWrites, block_path,
-	host_store, memory_store,
+	CorruptReads, FsEvent, LyingSync, MEMORY_ROOT, PauseOnObjectSyncDir, PauseOnRemove, SyncDirLog, TornWrites,
+	block_path, host_store, memory_store,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -316,25 +316,84 @@ fn the_root_is_synced_once_per_new_object_folder_and_the_object_folder_once_per_
 	let object = PathBuf::from(MEMORY_ROOT).join(table_id(&db).to_string());
 	insert_rows(&db, 0..1);
 	await_block(&db, 1);
-	assert_folder_syncs(&log.paths(), &object, 1);
+	assert_folder_syncs(&log, &object);
 
 	insert_rows(&db, 1..2);
 	await_block(&db, 2);
-	assert_folder_syncs(&log.paths(), &object, 2);
+	assert_folder_syncs(&log, &object);
 }
 
-fn assert_folder_syncs(paths: &[PathBuf], object: &Path, blocks: usize) {
+fn assert_folder_syncs(log: &SyncDirLog, object: &Path) {
+	// The actor writes on its own thread, so a one-shot read can land between a create and its folder sync.
+	let events = poll_until(
+		|| {
+			let events = log.events();
+			settled(&events).then_some(events)
+		},
+		Duration::from_seconds(5).unwrap().to_std(),
+	)
+	.unwrap_or_else(|| {
+		panic!(
+			"every created block must have its folder synced and the root once per new folder: {:?}",
+			log.events()
+		)
+	});
 	let root = Path::new(MEMORY_ROOT);
-	let folders: BTreeSet<&PathBuf> = paths.iter().filter(|path| path.parent() == Some(root)).collect();
-	assert!(folders.contains(&object.to_path_buf()), "the table's object folder must be synced: {paths:?}");
+	let folders = first_creates(&events);
+	assert!(
+		folders.iter().any(|(folder, _)| folder == object),
+		"the table's object folder must get a block: {events:?}"
+	);
+	let root_syncs: Vec<usize> = sync_indexes(&events, root);
 	assert_eq!(
-		paths.iter().filter(|path| path.as_path() == root).count(),
+		root_syncs.len(),
 		folders.len(),
-		"the root must be synced exactly once per new object folder: {paths:?}"
+		"the root must be synced exactly once per new object folder: {events:?}"
 	);
-	assert_eq!(
-		paths.iter().filter(|path| path.as_path() == object).count(),
-		blocks,
-		"the object folder must be synced once per block: {paths:?}"
-	);
+	for (k, (folder, first)) in folders.iter().enumerate() {
+		assert!(
+			root_syncs[k] < *first,
+			"the root must be synced before the first block of {folder:?}: {events:?}"
+		);
+		assert_eq!(
+			sync_indexes(&events, folder).len(),
+			creates_in(&events, folder),
+			"the object folder must be synced once per block: {events:?}"
+		);
+	}
+}
+
+fn settled(events: &[FsEvent]) -> bool {
+	let every_create_synced = events.iter().enumerate().all(|(i, event)| match event {
+		FsEvent::Create(path) => events[i + 1..]
+			.iter()
+			.any(|later| *later == FsEvent::SyncDir(path.parent().unwrap().to_path_buf())),
+		FsEvent::SyncDir(_) => true,
+	});
+	every_create_synced && sync_indexes(events, Path::new(MEMORY_ROOT)).len() == first_creates(events).len()
+}
+
+fn first_creates(events: &[FsEvent]) -> Vec<(PathBuf, usize)> {
+	let mut folders: Vec<(PathBuf, usize)> = Vec::new();
+	for (i, event) in events.iter().enumerate() {
+		if let FsEvent::Create(path) = event {
+			let folder = path.parent().unwrap().to_path_buf();
+			if !folders.iter().any(|(seen, _)| *seen == folder) {
+				folders.push((folder, i));
+			}
+		}
+	}
+	folders
+}
+
+fn sync_indexes(events: &[FsEvent], dir: &Path) -> Vec<usize> {
+	events.iter()
+		.enumerate()
+		.filter(|(_, event)| matches!(event, FsEvent::SyncDir(path) if path == dir))
+		.map(|(i, _)| i)
+		.collect()
+}
+
+fn creates_in(events: &[FsEvent], dir: &Path) -> usize {
+	events.iter().filter(|event| matches!(event, FsEvent::Create(path) if path.parent() == Some(dir))).count()
 }
