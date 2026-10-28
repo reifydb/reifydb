@@ -142,7 +142,6 @@ export function AuthProvider<TClient extends AuthCapableClient>(
         .catch((err: unknown) => {
           if (cancelled) return;
           const message = err instanceof Error ? err.message : "Failed to connect client";
-          console.error("DBG auth error: client connect", message, err);
           tearDown("error", message);
         });
       return () => {
@@ -278,7 +277,6 @@ export function AuthProvider<TClient extends AuthCapableClient>(
 
     const w = walletRef.current;
     if (w == null || !w.connected || w.publicKey == null) {
-      console.error("DBG auth error: wallet not connected");
       setState((prev) => ({ ...prev, status: "error", error: "Wallet not connected" }));
       return;
     }
@@ -316,7 +314,6 @@ export function AuthProvider<TClient extends AuthCapableClient>(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sign in failed";
-      console.error("DBG auth error: wallet sign in", message, err);
       setState((prev) =>
         prev.session != null
           ? { ...prev, status: prev.clientReady ? "authenticated" : "verifying", error: message }

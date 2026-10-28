@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use reifydb_core::interface::catalog::{
 	authentication::{Authentication, AuthenticationId},
@@ -23,7 +23,7 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		method: &str,
-		properties: HashMap<String, String>,
+		properties: BTreeMap<String, String>,
 	) -> Result<Authentication> {
 		if CatalogStore::find_authentication_method_by_name(&mut Transaction::Admin(&mut *txn), method)?
 			.is_none()

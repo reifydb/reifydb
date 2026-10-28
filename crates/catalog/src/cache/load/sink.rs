@@ -17,7 +17,7 @@ use reifydb_transaction::{multi::RangeScope, transaction::Transaction};
 use serde_json::from_str;
 
 use super::CatalogCache;
-use crate::{Result, store::sink::shape::sink};
+use crate::{Result, error::CatalogError, store::sink::shape::sink};
 
 pub(crate) fn load_sinks(rx: &mut Transaction<'_>, catalog: &CatalogCache) -> Result<()> {
 	let range = SinkKey::full_scan();
@@ -42,7 +42,10 @@ fn convert_sink<K>(multi: MultiVersionRow<K>) -> Result<Sink> {
 	let source_name = sink::get_source_name(&bytes).to_string();
 	let connector = sink::get_connector(&bytes).to_string();
 	let config_json = sink::get_config(&bytes);
-	let config: Vec<(String, String)> = from_str(config_json).unwrap_or_default();
+	let config: Vec<(String, String)> = from_str(config_json).map_err(|e| CatalogError::SinkConfigCorrupt {
+		name: name.clone(),
+		reason: e.to_string(),
+	})?;
 	let status = FlowStatus::from_u8(sink::get_status(&bytes));
 
 	Ok(Sink {
@@ -55,4 +58,35 @@ fn convert_sink<K>(multi: MultiVersionRow<K>) -> Result<Sink> {
 		config,
 		status,
 	})
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::common::CommitVersion;
+
+	use super::*;
+
+	#[test]
+	fn test_convert_rejects_corrupt_config_json() {
+		// Without this, a corrupt sink row loads into the cache with an empty config and the connector runs on
+		// defaults.
+		let mut row = sink::allocate();
+		sink::set_id(&mut row, 7);
+		sink::set_namespace(&mut row, 1);
+		sink::set_name(&mut row, "broken");
+		sink::set_connector(&mut row, "test");
+		sink::set_config(&mut row, "not json");
+		sink::set_source_namespace(&mut row, 1);
+		sink::set_source_name(&mut row, "origin");
+		sink::set_status(&mut row, 0);
+
+		let multi = MultiVersionRow {
+			key: (),
+			bytes: row.freeze().into(),
+			version: CommitVersion(1),
+		};
+
+		let err = convert_sink(multi).unwrap_err();
+		assert_eq!(err.diagnostic().code, "CA_129");
+	}
 }

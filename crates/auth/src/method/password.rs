@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use argon2::{
 	Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version,
@@ -29,8 +29,11 @@ impl AuthenticationProvider for PasswordProvider {
 		true
 	}
 
-	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
-		let password = config.get("password").ok_or_else(|| Error::from(AuthError::PasswordRequired))?;
+	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
+		let password = config
+			.get("password")
+			.filter(|p| !p.is_empty())
+			.ok_or_else(|| Error::from(AuthError::PasswordRequired))?;
 
 		let argon2 = argon2_instance();
 
@@ -43,15 +46,18 @@ impl AuthenticationProvider for PasswordProvider {
 			})?
 			.to_string();
 
-		Ok(HashMap::from([("phc".into(), phc), ("algorithm_version".into(), "1".into())]))
+		Ok(BTreeMap::from([("phc".into(), phc), ("algorithm_version".into(), "1".into())]))
 	}
 
 	fn authenticate(
 		&self,
-		stored: &HashMap<String, String>,
+		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {
-		let credential = credentials.get("password").ok_or_else(|| Error::from(AuthError::PasswordRequired))?;
+		let credential = credentials
+			.get("password")
+			.filter(|p| !p.is_empty())
+			.ok_or_else(|| Error::from(AuthError::PasswordRequired))?;
 
 		let phc_str = stored.get("phc").ok_or_else(|| {
 			Error::from(AuthError::InvalidHash {
@@ -99,6 +105,28 @@ mod tests {
 	}
 
 	#[test]
+	fn test_create_rejects_empty_password() {
+		// Without this, any client that skips the SDK can create a user whose password is "".
+		let provider = PasswordProvider;
+		let config = HashMap::from([("password".to_string(), String::new())]);
+		let err = provider.create(&Rng::default(), &config).unwrap_err();
+		assert_eq!(err.diagnostic().code, "AU_001");
+	}
+
+	#[test]
+	fn test_authenticate_rejects_empty_password() {
+		// A "" user stored before the create check must never log in with "".
+		let provider = PasswordProvider;
+		let stored = BTreeMap::from([
+			("phc".into(), argon2_instance().hash_password(b"").unwrap().to_string()),
+			("algorithm_version".into(), "1".into()),
+		]);
+		let creds = HashMap::from([("password".to_string(), String::new())]);
+		let err = provider.authenticate(&stored, &creds).unwrap_err();
+		assert_eq!(err.diagnostic().code, "AU_001");
+	}
+
+	#[test]
 	fn test_password_requires_password_field() {
 		let provider = PasswordProvider;
 		let config = HashMap::new();
@@ -108,7 +136,7 @@ mod tests {
 	#[test]
 	fn test_authenticate_corrupted_hash() {
 		let provider = PasswordProvider;
-		let stored = HashMap::from([
+		let stored = BTreeMap::from([
 			("phc".into(), "not-a-valid-phc-string".to_string()),
 			("algorithm_version".into(), "1".into()),
 		]);
@@ -119,7 +147,7 @@ mod tests {
 	#[test]
 	fn test_authenticate_missing_phc() {
 		let provider = PasswordProvider;
-		let stored = HashMap::new();
+		let stored = BTreeMap::new();
 		let creds = HashMap::from([("password".to_string(), "anything".to_string())]);
 		assert!(provider.authenticate(&stored, &creds).is_err());
 	}

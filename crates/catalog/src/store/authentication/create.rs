@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use reifydb_core::{interface::catalog::authentication::Authentication, key::identity::AuthenticationKey};
 use reifydb_transaction::transaction::admin::AdminTransaction;
@@ -22,7 +22,7 @@ impl CatalogStore {
 		txn: &mut AdminTransaction,
 		identity: IdentityId,
 		method: &str,
-		properties: HashMap<String, String>,
+		properties: BTreeMap<String, String>,
 	) -> Result<Authentication> {
 		let id = SystemSequence::next_authentication_id(txn)?;
 

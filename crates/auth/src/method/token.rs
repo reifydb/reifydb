@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::rng::Rng;
@@ -17,7 +17,7 @@ impl AuthenticationProvider for TokenProvider {
 		"token"
 	}
 
-	fn create(&self, rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
+	fn create(&self, rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
 		let token = if let Some(explicit) = config.get("token") {
 			explicit.clone()
 		} else {
@@ -25,12 +25,12 @@ impl AuthenticationProvider for TokenProvider {
 			bytes.iter().map(|b| format!("{:02x}", b)).collect()
 		};
 
-		Ok(HashMap::from([("token".into(), token)]))
+		Ok(BTreeMap::from([("token".into(), token)]))
 	}
 
 	fn authenticate(
 		&self,
-		stored: &HashMap<String, String>,
+		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {
 		let credential = credentials.get("token").ok_or_else(|| Error::from(AuthError::MissingToken))?;

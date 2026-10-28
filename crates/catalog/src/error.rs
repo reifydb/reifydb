@@ -6,7 +6,10 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
-use reifydb_core::interface::catalog::config::{AcceptError, ConfigKey};
+use reifydb_core::interface::catalog::{
+	authentication::AuthenticationId,
+	config::{AcceptError, ConfigKey},
+};
 use reifydb_value::{
 	error::{Diagnostic, Error, IntoDiagnostic},
 	fragment::Fragment,
@@ -296,6 +299,36 @@ pub enum CatalogError {
 	#[error("properties of authentication method '{method}' are not valid JSON: {reason}")]
 	AuthenticationMethodProperties {
 		method: String,
+		reason: String,
+	},
+
+	#[error("properties of authentication `{id}` are not valid JSON: {reason}")]
+	AuthenticationProperties {
+		id: AuthenticationId,
+		reason: String,
+	},
+
+	#[error("stored config of source '{name}' does not decode: {reason}")]
+	SourceConfigCorrupt {
+		name: String,
+		reason: String,
+	},
+
+	#[error("stored config of sink '{name}' does not decode: {reason}")]
+	SinkConfigCorrupt {
+		name: String,
+		reason: String,
+	},
+
+	#[error("config of source '{name}' does not encode: {reason}")]
+	SourceConfigEncode {
+		name: String,
+		reason: String,
+	},
+
+	#[error("config of sink '{name}' does not encode: {reason}")]
+	SinkConfigEncode {
+		name: String,
 		reason: String,
 	},
 
@@ -1359,6 +1392,86 @@ impl IntoDiagnostic for CatalogError {
 				fragment: Fragment::None,
 				label: Some("invalid authentication method properties".to_string()),
 				help: Some("the catalog row is corrupt; drop and re-create the method".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::AuthenticationProperties {
+				id,
+				reason,
+			} => Diagnostic {
+				code: "CA_127".to_string(),
+				rql: None,
+				message: format!("properties of authentication '{}' are not valid JSON: {}", id, reason),
+				fragment: Fragment::None,
+				label: Some("invalid authentication properties".to_string()),
+				help: Some("the catalog row is corrupt; drop and re-create the credential".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::SourceConfigCorrupt {
+				name,
+				reason,
+			} => Diagnostic {
+				code: "CA_128".to_string(),
+				rql: None,
+				message: format!("stored config of source '{}' does not decode: {}", name, reason),
+				fragment: Fragment::None,
+				label: Some("invalid source config".to_string()),
+				help: Some("the catalog row is corrupt; drop and re-create the source".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::SinkConfigCorrupt {
+				name,
+				reason,
+			} => Diagnostic {
+				code: "CA_129".to_string(),
+				rql: None,
+				message: format!("stored config of sink '{}' does not decode: {}", name, reason),
+				fragment: Fragment::None,
+				label: Some("invalid sink config".to_string()),
+				help: Some("the catalog row is corrupt; drop and re-create the sink".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::SourceConfigEncode {
+				name,
+				reason,
+			} => Diagnostic {
+				code: "CA_130".to_string(),
+				rql: None,
+				message: format!("config of source '{}' does not encode: {}", name, reason),
+				fragment: Fragment::None,
+				label: Some("source config encoding failed".to_string()),
+				help: Some("ensure the source config is valid".to_string()),
+				column: None,
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
+			CatalogError::SinkConfigEncode {
+				name,
+				reason,
+			} => Diagnostic {
+				code: "CA_131".to_string(),
+				rql: None,
+				message: format!("config of sink '{}' does not encode: {}", name, reason),
+				fragment: Fragment::None,
+				label: Some("sink config encoding failed".to_string()),
+				help: Some("ensure the sink config is valid".to_string()),
 				column: None,
 				notes: vec![],
 				cause: None,

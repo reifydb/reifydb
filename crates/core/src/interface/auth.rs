@@ -40,11 +40,11 @@ pub enum AuthStep {
 pub trait AuthenticationProvider: Send + Sync {
 	fn method(&self) -> &str;
 
-	fn create(&self, rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>>;
+	fn create(&self, rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>>;
 
 	fn authenticate(
 		&self,
-		stored: &HashMap<String, String>,
+		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep>;
 
@@ -66,7 +66,7 @@ pub trait AuthenticationProvider: Send + Sync {
 
 	fn verify_challenge(
 		&self,
-		_stored: &HashMap<String, String>,
+		_stored: &BTreeMap<String, String>,
 		_challenge: &HashMap<String, String>,
 		_credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {

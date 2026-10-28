@@ -58,7 +58,7 @@ impl AuthenticationProvider for GithubProvider {
 		true
 	}
 
-	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
+	fn create(&self, _rng: &Rng, config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
 		let user_id = config.get("user_id").ok_or_else(|| Error::from(GithubError::MissingUserId))?;
 
 		if user_id.is_empty() || !user_id.bytes().all(|b| b.is_ascii_digit()) {
@@ -67,7 +67,7 @@ impl AuthenticationProvider for GithubProvider {
 			}));
 		}
 
-		let mut properties = HashMap::from([("user_id".to_string(), user_id.clone())]);
+		let mut properties = BTreeMap::from([("user_id".to_string(), user_id.clone())]);
 		if let Some(login) = config.get("login") {
 			properties.insert("login".to_string(), login.clone());
 		}
@@ -76,7 +76,7 @@ impl AuthenticationProvider for GithubProvider {
 
 	fn authenticate(
 		&self,
-		stored: &HashMap<String, String>,
+		stored: &BTreeMap<String, String>,
 		credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {
 		let stored_id = stored.get("user_id").ok_or_else(|| Error::from(GithubError::MissingUserId))?;
@@ -130,7 +130,7 @@ mod tests {
 
 	#[test]
 	fn test_authenticate_matching_user_id() {
-		let stored = HashMap::from([("user_id".to_string(), "583231".to_string())]);
+		let stored = BTreeMap::from([("user_id".to_string(), "583231".to_string())]);
 		let credentials = HashMap::from([("github_user_id".to_string(), "583231".to_string())]);
 
 		let step = GithubProvider::new(None).authenticate(&stored, &credentials).unwrap();
@@ -139,7 +139,7 @@ mod tests {
 
 	#[test]
 	fn test_authenticate_mismatched_user_id_fails() {
-		let stored = HashMap::from([("user_id".to_string(), "583231".to_string())]);
+		let stored = BTreeMap::from([("user_id".to_string(), "583231".to_string())]);
 		let credentials = HashMap::from([("github_user_id".to_string(), "999999".to_string())]);
 
 		let step = GithubProvider::new(None).authenticate(&stored, &credentials).unwrap();
@@ -150,7 +150,7 @@ mod tests {
 	fn test_authenticate_without_verified_user_id_fails() {
 		// github_user_id is injected by the auth service only after it verified the
 		// oauth token with github; raw client credentials must never authenticate.
-		let stored = HashMap::from([("user_id".to_string(), "583231".to_string())]);
+		let stored = BTreeMap::from([("user_id".to_string(), "583231".to_string())]);
 		let credentials = HashMap::from([
 			("code".to_string(), "some-oauth-code".to_string()),
 			("state".to_string(), "some-state".to_string()),

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::interface::{
 	auth::{AuthStep, AuthenticationProvider},
@@ -191,7 +191,7 @@ impl AuthService {
 		Ok(response)
 	}
 
-	fn github_properties(&self, user: &GithubUser) -> Result<HashMap<String, String>, Error> {
+	fn github_properties(&self, user: &GithubUser) -> Result<BTreeMap<String, String>, Error> {
 		self.github_provider()?.create(
 			&self.rng,
 			&HashMap::from([
@@ -214,7 +214,7 @@ impl AuthService {
 	fn create_github_identity(
 		&self,
 		user: &GithubUser,
-		properties: HashMap<String, String>,
+		properties: BTreeMap<String, String>,
 	) -> Result<IdentityId, Error> {
 		let mut admin = self.engine.begin_admin()?;
 		let catalog = self.engine.catalog();

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use reifydb_catalog::{create_token, drop_tokens_by_identity};
 use reifydb_core::retry::RetryStrategy;
@@ -31,7 +31,7 @@ impl AuthService {
 		caller: IdentityId,
 		name: &str,
 		method: &str,
-		properties: HashMap<String, String>,
+		properties: BTreeMap<String, String>,
 		lookup: Option<(&str, &str)>,
 		ttl: Option<Duration>,
 	) -> Result<AuthResponse, Error> {
@@ -46,7 +46,7 @@ impl AuthService {
 		guest: IdentityId,
 		name: &str,
 		method: &str,
-		properties: HashMap<String, String>,
+		properties: BTreeMap<String, String>,
 		lookup: Option<(&str, &str)>,
 		ttl: Option<Duration>,
 	) -> Result<AuthResponse, Error> {
@@ -75,7 +75,7 @@ impl AuthService {
 		&self,
 		name: &str,
 		method: &str,
-		properties: HashMap<String, String>,
+		properties: BTreeMap<String, String>,
 		lookup: Option<(&str, &str)>,
 		ttl: Option<Duration>,
 	) -> Result<AuthResponse, Error> {

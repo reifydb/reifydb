@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::{
 	interface::{
@@ -114,7 +114,7 @@ impl AuthService {
 		&self,
 		provider: &dyn AuthenticationProvider,
 		public_key: &str,
-	) -> Result<HashMap<String, String>, Error> {
+	) -> Result<BTreeMap<String, String>, Error> {
 		provider.create(&self.rng, &HashMap::from([("public_key".to_string(), public_key.to_string())]))
 	}
 
@@ -123,7 +123,7 @@ impl AuthService {
 		&self,
 		identifier: &str,
 		public_key: &str,
-		properties: HashMap<String, String>,
+		properties: BTreeMap<String, String>,
 	) -> Result<IdentityId, Error> {
 		let ident = RetryStrategy::default().retry(&self.rng, "auth::create_solana_identity", || {
 			let mut admin = self.engine.begin_admin()?;

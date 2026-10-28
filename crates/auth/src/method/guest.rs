@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use reifydb_core::interface::auth::{AuthStep, AuthenticationProvider};
 use reifydb_runtime::context::rng::Rng;
@@ -16,13 +16,13 @@ impl AuthenticationProvider for GuestProvider {
 		"guest"
 	}
 
-	fn create(&self, _rng: &Rng, _config: &HashMap<String, String>) -> Result<HashMap<String, String>> {
+	fn create(&self, _rng: &Rng, _config: &HashMap<String, String>) -> Result<BTreeMap<String, String>> {
 		Err(Error::from(AuthError::GuestHasNoCredentials))
 	}
 
 	fn authenticate(
 		&self,
-		_stored: &HashMap<String, String>,
+		_stored: &BTreeMap<String, String>,
 		_credentials: &HashMap<String, String>,
 	) -> Result<AuthStep> {
 		Ok(AuthStep::Failed)

@@ -28,6 +28,22 @@ fn create_and_drop_in_same_txn_reflects_both() {
 }
 
 #[test]
+fn create_then_drop_same_policy_in_same_txn_is_not_findable() {
+	// Without this, the earlier create in the change log shadows the later drop and the policy resurfaces.
+	let t = TestEngine::new();
+	let catalog = t.catalog();
+	t.admin("CREATE NAMESPACE pol_find_e");
+	t.admin("CREATE TABLE pol_find_e::t { id: int4 }");
+
+	let mut txn = t.begin_admin(IdentityId::system(), Durability::Async).unwrap();
+	txn.rql("CREATE TABLE POLICY pol_find_e_tmp ON pol_find_e::t { from: { filter { true } } }", Params::None);
+	txn.rql("DROP TABLE POLICY pol_find_e_tmp", Params::None);
+
+	let found = catalog.find_policy_by_name(&mut Transaction::Admin(&mut txn), "pol_find_e_tmp").unwrap();
+	assert!(found.is_none(), "policy created then dropped in the same txn must not be findable");
+}
+
+#[test]
 fn rolled_back_create_and_drop_leave_committed_state_intact() {
 	let t = TestEngine::new();
 	let catalog = t.catalog();
