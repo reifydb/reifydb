@@ -95,6 +95,8 @@ pub enum KeyTag {
 	SortedViewRow = 0x5A,
 	PartitionedSortedViewRow = 0x5B,
 	SeriesPartitionMetadata = 0x5C,
+	RingBufferEviction = 0x5D,
+	ViewEviction = 0x5E,
 }
 
 impl KeyTag {
@@ -204,6 +206,8 @@ impl TryFrom<u8> for KeyTag {
 			0x5A => Ok(Self::SortedViewRow),
 			0x5B => Ok(Self::PartitionedSortedViewRow),
 			0x5C => Ok(Self::SeriesPartitionMetadata),
+			0x5D => Ok(Self::RingBufferEviction),
+			0x5E => Ok(Self::ViewEviction),
 			_ => Err(de::Error::custom(format!("Invalid KeyTag value: {value:#04x}"))),
 		}
 	}

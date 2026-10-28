@@ -48,7 +48,7 @@ use crate::{
 			QueueAttemptKey, QueueDeduplicationKey, QueueDueKey, QueueItemStateKey, QueueKey,
 			QueueKeyActiveKey, QueuePartitionKey,
 		},
-		ringbuffer::{RingBufferKey, RingBufferMetadataKey},
+		ringbuffer::{RingBufferEvictionKey, RingBufferKey, RingBufferMetadataKey, ViewEvictionKey},
 		row::{
 			PartitionedRowKey, PartitionedSortedViewRowKey, RowKey, RowSequenceKey, RowSettingsKey,
 			RowShapeFieldKey, RowShapeKey, SortedViewRowKey, encode_sort_run,
@@ -111,6 +111,8 @@ pub enum TaggedKey {
 	Series(SeriesKey),
 	NamespaceSeries(NamespaceSeriesKey),
 	SeriesPartitionMetadata(SeriesPartitionMetadataKey),
+	RingBufferEviction(RingBufferEvictionKey),
+	ViewEviction(ViewEvictionKey),
 	Identity(IdentityKey),
 	Role(RoleKey),
 	GrantedRole(GrantedRoleKey),
@@ -202,6 +204,8 @@ impl TaggedKey {
 			Self::Series(_) => KeyTag::Series,
 			Self::NamespaceSeries(_) => KeyTag::NamespaceSeries,
 			Self::SeriesPartitionMetadata(_) => KeyTag::SeriesPartitionMetadata,
+			Self::RingBufferEviction(_) => KeyTag::RingBufferEviction,
+			Self::ViewEviction(_) => KeyTag::ViewEviction,
 			Self::Identity(_) => KeyTag::Identity,
 			Self::Role(_) => KeyTag::Role,
 			Self::GrantedRole(_) => KeyTag::GrantedRole,
@@ -294,6 +298,8 @@ impl TaggedKey {
 			Self::Series(key) => key.encode(),
 			Self::NamespaceSeries(key) => key.encode(),
 			Self::SeriesPartitionMetadata(key) => key.encode(),
+			Self::RingBufferEviction(key) => key.encode(),
+			Self::ViewEviction(key) => key.encode(),
 			Self::Identity(key) => key.encode(),
 			Self::Role(key) => key.encode(),
 			Self::GrantedRole(key) => key.encode(),
@@ -393,6 +399,8 @@ impl TaggedKey {
 			KeyTag::SeriesPartitionMetadata => {
 				SeriesPartitionMetadataKey::decode(key).map(Self::SeriesPartitionMetadata)
 			}
+			KeyTag::RingBufferEviction => RingBufferEvictionKey::decode(key).map(Self::RingBufferEviction),
+			KeyTag::ViewEviction => ViewEvictionKey::decode(key).map(Self::ViewEviction),
 			KeyTag::Identity => IdentityKey::decode(key).map(Self::Identity),
 			KeyTag::Role => RoleKey::decode(key).map(Self::Role),
 			KeyTag::GrantedRole => GrantedRoleKey::decode(key).map(Self::GrantedRole),
@@ -707,6 +715,18 @@ impl From<NamespaceSeriesKey> for TaggedKey {
 impl From<SeriesPartitionMetadataKey> for TaggedKey {
 	fn from(key: SeriesPartitionMetadataKey) -> Self {
 		Self::SeriesPartitionMetadata(key)
+	}
+}
+
+impl From<RingBufferEvictionKey> for TaggedKey {
+	fn from(key: RingBufferEvictionKey) -> Self {
+		Self::RingBufferEviction(key)
+	}
+}
+
+impl From<ViewEvictionKey> for TaggedKey {
+	fn from(key: ViewEvictionKey) -> Self {
+		Self::ViewEviction(key)
 	}
 }
 
@@ -1200,6 +1220,8 @@ impl KeyFields for TaggedKey {
 			Self::Series(key) => key.fields(),
 			Self::NamespaceSeries(key) => key.fields(),
 			Self::SeriesPartitionMetadata(key) => key.fields(),
+			Self::RingBufferEviction(key) => key.fields(),
+			Self::ViewEviction(key) => key.fields(),
 			Self::Identity(key) => key.fields(),
 			Self::Role(key) => key.fields(),
 			Self::GrantedRole(key) => key.fields(),
@@ -1295,6 +1317,8 @@ impl Ord for TaggedKey {
 			(Self::SeriesPartitionMetadata(left), Self::SeriesPartitionMetadata(right)) => {
 				left.cmp_fields(right)
 			}
+			(Self::RingBufferEviction(left), Self::RingBufferEviction(right)) => left.cmp_fields(right),
+			(Self::ViewEviction(left), Self::ViewEviction(right)) => left.cmp_fields(right),
 			(Self::Identity(left), Self::Identity(right)) => left.cmp_fields(right),
 			(Self::Role(left), Self::Role(right)) => left.cmp_fields(right),
 			(Self::GrantedRole(left), Self::GrantedRole(right)) => left.cmp_fields(right),

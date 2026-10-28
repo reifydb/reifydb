@@ -27,7 +27,8 @@ impl CatalogStore {
 		let bytes = EncodedCatalogRow::try_from(multi.bytes)?;
 		let columns = Self::list_columns(rx, id)?;
 		let primary_key = Self::find_view_primary_key(rx, id)?;
-		let view = decode_view(&bytes, columns, primary_key)?;
+		let eviction = Self::find_view_eviction(rx, id)?;
+		let view = decode_view(&bytes, columns, primary_key, eviction)?;
 
 		Ok(Some(view))
 	}
@@ -61,7 +62,7 @@ impl CatalogStore {
 	}
 }
 
-use reifydb_core::interface::catalog::{column::Column, key::PrimaryKey};
+use reifydb_core::interface::catalog::{column::Column, key::PrimaryKey, ringbuffer::EvictionVisibility};
 use reifydb_transaction::multi::RangeScope;
 use reifydb_value::{
 	error::{Diagnostic, Error},
@@ -72,6 +73,7 @@ pub(crate) fn decode_view(
 	bytes: &EncodedCatalogRow,
 	columns: Vec<Column>,
 	primary_key: Option<PrimaryKey>,
+	eviction: EvictionVisibility,
 ) -> Result<View> {
 	let id = ViewId(view::get_id(bytes));
 	let namespace = NamespaceId(view::get_namespace(bytes));
@@ -128,6 +130,7 @@ pub(crate) fn decode_view(
 				primary_key,
 				partition_by,
 				capacity,
+				eviction,
 				sort,
 			})
 		}

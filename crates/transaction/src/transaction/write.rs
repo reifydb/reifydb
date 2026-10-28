@@ -16,6 +16,7 @@ pub trait Write {
 	fn set(&mut self, entries: Vec<(TaggedKey, EncodedBytes)>) -> Result<()>;
 	fn set_with_pre(&mut self, entries: Vec<(TaggedKey, EncodedBytes, SetPre)>) -> Result<()>;
 	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()>;
+	fn remove_unobserved_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()>;
 
 	fn track_row_change(&mut self, changes: &[RowChange]);
 

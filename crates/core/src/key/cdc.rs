@@ -194,6 +194,8 @@ pub mod primary_key_tests {
 			KeyTag::Series => {}
 			KeyTag::NamespaceSeries => {}
 			KeyTag::SeriesPartitionMetadata => {}
+			KeyTag::RingBufferEviction => {}
+			KeyTag::ViewEviction => {}
 			KeyTag::Identity => {}
 			KeyTag::Role => {}
 			KeyTag::GrantedRole => {}

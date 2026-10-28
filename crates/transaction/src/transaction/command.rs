@@ -601,6 +601,10 @@ impl Write for CommandTransaction {
 		CommandTransaction::remove(self, entries)
 	}
 	#[inline]
+	fn remove_unobserved_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()> {
+		CommandTransaction::remove_unobserved_with_pre(self, key, pre)
+	}
+	#[inline]
 	fn track_row_change(&mut self, changes: &[RowChange]) {
 		CommandTransaction::track_row_change(self, changes)
 	}

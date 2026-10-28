@@ -375,9 +375,11 @@ fn compile_view_storage_kind(ast: AstViewStorageKind) -> CompiledViewStorageKind
 		AstViewStorageKind::RingBuffer {
 			capacity,
 			partition_by,
+			eviction,
 		} => CompiledViewStorageKind::RingBuffer {
 			capacity,
 			partition_by,
+			eviction,
 		},
 		AstViewStorageKind::Series {
 			key_column,

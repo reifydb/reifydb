@@ -288,7 +288,13 @@ pub(crate) fn insert_ringbuffer_chunks(
 				.collect();
 			let displayed =
 				txn.get(&victim_keys)?.into_iter().map(|row| row.map(|row| row.bytes)).collect();
-			txn.remove_from_ringbuffer(ringbuffer, &victim_partitions, &victims, displayed)?;
+			txn.remove_from_ringbuffer(
+				ringbuffer,
+				&victim_partitions,
+				&victims,
+				displayed,
+				ringbuffer.eviction,
+			)?;
 		}
 		let stored = txn.insert_ringbuffer(ringbuffer, shape, chunk_partitions, &ids, &rows[start..end])?;
 		if let Some(returned) = returned.as_mut() {
@@ -462,6 +468,7 @@ mod tests {
 			primary_key: None,
 			partition_by: vec![],
 			time: TimeSource::None,
+			eviction: reifydb_core::interface::catalog::ringbuffer::EvictionVisibility::Visible,
 		};
 		let target = RingBufferTarget {
 			namespace: &namespace,

@@ -7,7 +7,11 @@ use reifydb_value::value::Value;
 
 use super::KeyTag;
 use crate::{
-	interface::catalog::{id::RingBufferId, object::ObjectId, storage::StorageId},
+	interface::catalog::{
+		id::{RingBufferId, ViewId},
+		object::ObjectId,
+		storage::StorageId,
+	},
 	key::{
 		any::{Field, KeyFields, RawEncoding, Width, encode_values},
 		bound::{TaggedKeyBoundRange, object_fields},
@@ -78,6 +82,42 @@ impl RingBufferMetadataKey {
 
 	pub fn full_scan_for_storage(storage: impl Into<StorageId>) -> TaggedKeyBoundRange {
 		TaggedKeyBoundRange::prefix(Self::TAG, object_fields(ObjectId::from(storage.into())))
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = RingBufferEviction)]
+pub struct RingBufferEvictionKey {
+	pub ringbuffer: RingBufferId,
+}
+
+impl RingBufferEvictionKey {
+	pub fn new(ringbuffer: RingBufferId) -> Self {
+		Self {
+			ringbuffer,
+		}
+	}
+
+	pub fn encoded(ringbuffer: impl Into<RingBufferId>) -> EncodedKey {
+		Self::new(ringbuffer.into()).encode()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, KeyCodec, Hash)]
+#[key(tag = ViewEviction)]
+pub struct ViewEvictionKey {
+	pub view: ViewId,
+}
+
+impl ViewEvictionKey {
+	pub fn new(view: ViewId) -> Self {
+		Self {
+			view,
+		}
+	}
+
+	pub fn encoded(view: impl Into<ViewId>) -> EncodedKey {
+		Self::new(view.into()).encode()
 	}
 }
 

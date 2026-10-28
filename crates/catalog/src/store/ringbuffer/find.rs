@@ -55,6 +55,7 @@ impl CatalogStore {
 			primary_key: Self::find_primary_key(rx, id)?,
 			partition_by,
 			time: decode_ringbuffer_time(&bytes),
+			eviction: Self::find_ringbuffer_eviction(rx, id)?,
 		}))
 	}
 

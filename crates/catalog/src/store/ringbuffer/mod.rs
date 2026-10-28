@@ -4,6 +4,7 @@
 use reifydb_codec::row::catalog::EncodedCatalogRow;
 pub mod create;
 pub mod drop;
+pub mod eviction;
 pub mod find;
 pub mod get;
 pub mod get_pk_id;

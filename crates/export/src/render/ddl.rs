@@ -8,7 +8,7 @@ use reifydb_core::{
 		dictionary::Dictionary,
 		namespace::Namespace,
 		queue::{Queue, QueueDispatch},
-		ringbuffer::RingBuffer,
+		ringbuffer::{EvictionVisibility, RingBuffer},
 		series::{Series, SeriesKey, TimestampPrecision},
 		sumtype::{Field, SumType},
 		table::Table,
@@ -175,6 +175,9 @@ pub fn render_ringbuffer(
 	let mut with = format!("capacity: {}", ringbuffer.capacity);
 	if !ringbuffer.partition_by.is_empty() {
 		with.push_str(&format!(", partition: {{ by: {{ {} }} }}", ringbuffer.partition_by.join(", ")));
+	}
+	if ringbuffer.eviction == EvictionVisibility::Silent {
+		with.push_str(", eviction: { capacity: silent }");
 	}
 	push_time_and_row(&mut with, &ringbuffer.time, row);
 

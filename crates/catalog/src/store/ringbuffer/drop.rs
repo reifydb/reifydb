@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_core::{
-	interface::catalog::id::RingBufferId,
+	interface::catalog::{id::RingBufferId, ringbuffer::EvictionVisibility},
 	key::{namespace::NamespaceRingBufferKey, ringbuffer::RingBufferKey},
 };
 use reifydb_transaction::transaction::{Transaction, admin::AdminTransaction};
@@ -27,6 +27,10 @@ impl CatalogStore {
 					&ringbuffer_def,
 					&partition.partition_values,
 				)?;
+			}
+
+			if ringbuffer_def.eviction == EvictionVisibility::Silent {
+				Self::drop_ringbuffer_eviction(txn, ringbuffer)?;
 			}
 
 			ringbuffer_def.primary_key.as_ref().map(|pk| pk.id)

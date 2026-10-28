@@ -13,7 +13,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			object::ObjectId,
-			ringbuffer::{RingBuffer, RingBufferMetadata},
+			ringbuffer::{EvictionVisibility, RingBuffer, RingBufferMetadata},
 		},
 		change::{Change, ChangeOrigin, Diff},
 	},
@@ -145,6 +145,7 @@ pub trait RingBufferOperations {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		displayed: Vec<Option<EncodedBytes>>,
+		visibility: EvictionVisibility,
 	) -> Result<Vec<EncodedBytes>>;
 }
 
@@ -258,6 +259,7 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 	partitions: &[Partition],
 	ids: &[RowNumber],
 	displayed: Vec<Option<EncodedBytes>>,
+	visibility: EvictionVisibility,
 ) -> Result<Vec<EncodedBytes>> {
 	assert_eq!(ids.len(), displayed.len(), "ids/displayed length mismatch");
 	let mut displayed_rows = Vec::with_capacity(ids.len());
@@ -292,7 +294,16 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 		RingBufferRowInterceptor::pre_delete(txn, ringbuffer, &removed_ids)?;
 	}
 
-	txn.remove(matched_keys.into_iter().zip(removed.iter().cloned().map(Some)).collect())?;
+	match visibility {
+		EvictionVisibility::Visible => {
+			txn.remove(matched_keys.into_iter().zip(removed.iter().cloned().map(Some)).collect())?
+		}
+		EvictionVisibility::Silent => {
+			for (key, pre) in matched_keys.iter().zip(removed.iter().cloned()) {
+				txn.remove_unobserved_with_pre(key, pre)?;
+			}
+		}
+	}
 
 	if !txn.ringbuffer_row_post_delete_interceptors().is_empty() {
 		RingBufferRowInterceptor::post_delete(txn, ringbuffer, &removed_ids, &removed)?;
@@ -300,7 +311,7 @@ fn remove_rows<T: WithInterceptors + Write + Read>(
 
 	let object = ObjectId::ringbuffer(ringbuffer.id);
 	txn.touch_flow_object(object);
-	if txn.wants_flow_diff(object) {
+	if visibility == EvictionVisibility::Visible && txn.wants_flow_diff(object) {
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, &ringbuffer.columns);
 		txn.track_flow_change(build_ringbuffer_remove_change(ringbuffer, &shape, &removed_ids, &removed)?);
 	}
@@ -337,8 +348,9 @@ impl RingBufferOperations for CommandTransaction {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		displayed: Vec<Option<EncodedBytes>>,
+		visibility: EvictionVisibility,
 	) -> Result<Vec<EncodedBytes>> {
-		remove_rows(self, ringbuffer, partitions, ids, displayed)
+		remove_rows(self, ringbuffer, partitions, ids, displayed, visibility)
 	}
 }
 
@@ -371,8 +383,9 @@ impl RingBufferOperations for AdminTransaction {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		displayed: Vec<Option<EncodedBytes>>,
+		visibility: EvictionVisibility,
 	) -> Result<Vec<EncodedBytes>> {
-		remove_rows(self, ringbuffer, partitions, ids, displayed)
+		remove_rows(self, ringbuffer, partitions, ids, displayed, visibility)
 	}
 }
 
@@ -415,11 +428,18 @@ impl RingBufferOperations for Transaction<'_> {
 		partitions: &[Partition],
 		ids: &[RowNumber],
 		displayed: Vec<Option<EncodedBytes>>,
+		visibility: EvictionVisibility,
 	) -> Result<Vec<EncodedBytes>> {
 		match self {
-			Transaction::Command(txn) => txn.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed),
-			Transaction::Admin(txn) => txn.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed),
-			Transaction::Test(t) => t.inner.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed),
+			Transaction::Command(txn) => {
+				txn.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed, visibility)
+			}
+			Transaction::Admin(txn) => {
+				txn.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed, visibility)
+			}
+			Transaction::Test(t) => {
+				t.inner.remove_from_ringbuffer(ringbuffer, partitions, ids, displayed, visibility)
+			}
 			Transaction::Query(_) => panic!("Write operations not supported on Query transaction"),
 		}
 	}

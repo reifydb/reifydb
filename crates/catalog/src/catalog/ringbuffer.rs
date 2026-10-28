@@ -8,7 +8,7 @@ use reifydb_core::{
 		change::CatalogTrackRingBufferChangeOperations,
 		id::{ColumnId, NamespaceId, PrimaryKeyId, RingBufferId},
 		property::ColumnPropertyKind,
-		ringbuffer::{PartitionedMetadata, RingBuffer, RingBufferMetadata},
+		ringbuffer::{EvictionVisibility, PartitionedMetadata, RingBuffer, RingBufferMetadata},
 	},
 	internal,
 	row::row_shape_from_columns,
@@ -51,6 +51,7 @@ pub struct RingBufferToCreate {
 	pub capacity: u64,
 	pub partition_by: Vec<String>,
 	pub time: TimeSource,
+	pub eviction: EvictionVisibility,
 }
 
 impl From<RingBufferColumnToCreate> for StoreRingBufferColumnToCreate {
@@ -255,7 +256,12 @@ impl Catalog {
 		txn: &mut AdminTransaction,
 		to_create: RingBufferToCreate,
 	) -> Result<RingBuffer> {
-		let ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
+		let eviction = to_create.eviction;
+		let mut ringbuffer = CatalogStore::create_ringbuffer(txn, to_create.into())?;
+		if eviction == EvictionVisibility::Silent {
+			CatalogStore::store_ringbuffer_eviction(txn, ringbuffer.id, eviction)?;
+			ringbuffer.eviction = eviction;
+		}
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, ringbuffer.columns.as_slice());
@@ -275,8 +281,13 @@ impl Catalog {
 		to_create: RingBufferToCreate,
 		column_ids: &[ColumnId],
 	) -> Result<RingBuffer> {
-		let ringbuffer =
+		let eviction = to_create.eviction;
+		let mut ringbuffer =
 			CatalogStore::create_ringbuffer_with_id(txn, ringbuffer_id, to_create.into(), column_ids)?;
+		if eviction == EvictionVisibility::Silent {
+			CatalogStore::store_ringbuffer_eviction(txn, ringbuffer.id, eviction)?;
+			ringbuffer.eviction = eviction;
+		}
 		txn.track_ringbuffer_created(ringbuffer.clone())?;
 
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, ringbuffer.columns.as_slice());

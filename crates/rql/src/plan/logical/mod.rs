@@ -39,6 +39,7 @@ use reifydb_core::{
 			namespace::Namespace,
 			property::ColumnPropertyKind,
 			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
+			ringbuffer::EvictionVisibility,
 			series::SeriesKey,
 		},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedObject},
@@ -654,6 +655,7 @@ pub struct CreateRingBufferNode<'bump> {
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
 	pub time: TimeSource,
+	pub eviction: EvictionVisibility,
 }
 
 #[derive(Debug)]

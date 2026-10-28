@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::catalog::{
 		column::ColumnIndex,
 		id::{NamespaceId, ViewId},
-		ringbuffer::{RingBufferMetadata, encode_ringbuffer_metadata},
+		ringbuffer::{EvictionVisibility, RingBufferMetadata, encode_ringbuffer_metadata},
 		series::SeriesKey,
 		storage::StorageId,
 		view::{
@@ -48,6 +48,7 @@ pub enum ViewStorage {
 	RingBuffer {
 		capacity: u64,
 		partition_by: Vec<String>,
+		eviction: EvictionVisibility,
 	},
 	Series {
 		key: SeriesKey,
@@ -214,6 +215,7 @@ impl CatalogStore {
 			} => Ok(()),
 			ViewStorage::RingBuffer {
 				partition_by,
+				eviction,
 				..
 			} => {
 				if partition_by.is_empty() {
@@ -222,6 +224,9 @@ impl CatalogStore {
 						RingBufferMetadataKey::new(StorageId::View(view)).into(),
 						row.into_bytes(),
 					)])?;
+				}
+				if *eviction == EvictionVisibility::Silent {
+					CatalogStore::store_view_eviction(txn, view, *eviction)?;
 				}
 				Ok(())
 			}

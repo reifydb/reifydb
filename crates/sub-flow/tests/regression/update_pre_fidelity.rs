@@ -608,6 +608,7 @@ mod source {
 			capacity: 64,
 			partition_by: vec![],
 			time: TimeSource::Processing,
+			eviction: reifydb_core::interface::catalog::ringbuffer::EvictionVisibility::Visible,
 		}
 	}
 

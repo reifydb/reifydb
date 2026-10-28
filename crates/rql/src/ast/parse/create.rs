@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::sort::SortDirection;
+use reifydb_core::{interface::catalog::ringbuffer::EvictionVisibility, sort::SortDirection};
 use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
@@ -59,6 +59,8 @@ const QUEUE_DEDUPLICATE_KEYS: &str = "'by' or 'ttl'";
 const QUEUE_RETENTION_KEYS: &str = "'done'";
 const QUEUE_RETRY_KEYS: &str = "'attempts' or 'backoff'";
 const ROW_CONFIG_KEYS: &str = "'ttl', 'persistent', or 'on'";
+const EVICTION_REASONS: &str = "'capacity'";
+const EVICTION_VALUES: &str = "'visible' or 'silent'";
 const SERIES_WITH_KEYS: &str = "'key', 'tag', 'precision', 'partition', 'row', 'time', or 'column'";
 
 fn unexpected_option(token: &Token<'_>, expected: &str) -> Error {
@@ -100,6 +102,40 @@ fn duplicate_queue_dispatch(token: &Token<'_>) -> Error {
 			"a queue declares exactly one dispatch block, found a second `{}`",
 			token.fragment.text()
 		),
+		fragment: token.fragment.to_owned(),
+	})
+}
+
+fn duplicate_eviction(token: &Token<'_>) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: "a unique `eviction` key".to_string(),
+		},
+		message: format!("`eviction` must be unique, found a second `{}`", token.fragment.text()),
+		fragment: token.fragment.to_owned(),
+	})
+}
+
+fn duplicate_eviction_reason(token: &Token<'_>) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: "a unique eviction reason".to_string(),
+		},
+		message: format!(
+			"eviction reason `{}` must be unique, found a second `{}`",
+			token.fragment.text(),
+			token.fragment.text()
+		),
+		fragment: token.fragment.to_owned(),
+	})
+}
+
+fn unsupported_eviction_reason(token: &Token<'_>) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: EVICTION_REASONS.to_string(),
+		},
+		message: format!("eviction reason `{}` is not supported yet", token.fragment.text()),
 		fragment: token.fragment.to_owned(),
 	})
 }
@@ -1133,6 +1169,7 @@ impl<'bump> Parser<'bump> {
 		let mut partition_by: Vec<String> = Vec::new();
 		let mut settings = None;
 		let mut time_declaration = AstTimeDeclaration::default();
+		let mut eviction: Option<EvictionVisibility> = None;
 
 		loop {
 			self.skip_new_line()?;
@@ -1197,6 +1234,12 @@ impl<'bump> Parser<'bump> {
 				"time" => {
 					time_declaration = self.parse_time_declaration()?;
 				}
+				"eviction" => {
+					if eviction.is_some() {
+						return Err(duplicate_eviction(&key));
+					}
+					eviction = Some(self.parse_eviction_config()?);
+				}
 				_other => {
 					let fragment = key.fragment.to_owned();
 					return Err(Error::from(TypeError::Ast {
@@ -1256,6 +1299,7 @@ impl<'bump> Parser<'bump> {
 			partition_by,
 			settings,
 			time_declaration,
+			eviction: eviction.unwrap_or_default(),
 		}))
 	}
 
@@ -2401,6 +2445,7 @@ impl<'bump> Parser<'bump> {
 			ViewStorageKindHint::RingBuffer => {
 				let mut capacity: Option<u64> = None;
 				let mut partition_by: Vec<String> = Vec::new();
+				let mut eviction: Option<EvictionVisibility> = None;
 
 				loop {
 					self.skip_new_line()?;
@@ -2435,6 +2480,12 @@ impl<'bump> Parser<'bump> {
 						}
 						"row" => {
 							settings = Some(self.parse_row_config()?);
+						}
+						"eviction" => {
+							if eviction.is_some() {
+								return Err(duplicate_eviction(&key));
+							}
+							eviction = Some(self.parse_eviction_config()?);
 						}
 						other => {
 							let fragment = key.fragment.to_owned();
@@ -2472,6 +2523,7 @@ impl<'bump> Parser<'bump> {
 					AstViewStorageKind::RingBuffer {
 						capacity,
 						partition_by,
+						eviction: eviction.unwrap_or_default(),
 					},
 					settings,
 				))
@@ -2673,6 +2725,51 @@ impl<'bump> Parser<'bump> {
 			name: name.fragment,
 			params,
 		})
+	}
+
+	fn parse_eviction_config(&mut self) -> Result<EvictionVisibility> {
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut capacity: Option<EvictionVisibility> = None;
+
+		loop {
+			self.skip_new_line()?;
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let reason = self.consume_queue_option_key(EVICTION_REASONS)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match reason.fragment.text() {
+				"capacity" => {
+					if capacity.is_some() {
+						return Err(duplicate_eviction_reason(&reason));
+					}
+					let value = self.consume_queue_option_key(EVICTION_VALUES)?;
+					capacity = Some(match value.fragment.text() {
+						"visible" => EvictionVisibility::Visible,
+						"silent" => EvictionVisibility::Silent,
+						_ => return Err(unexpected_option(&value, EVICTION_VALUES)),
+					});
+				}
+				"ttl" | "consume" => return Err(unsupported_eviction_reason(&reason)),
+				_ => return Err(unexpected_option(&reason, EVICTION_REASONS)),
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(capacity.unwrap_or_default())
 	}
 
 	fn parse_row_config(&mut self) -> Result<AstRowSettings<'bump>> {
@@ -4562,5 +4659,143 @@ mod time_declaration_tests {
 
 		assert!(message.contains("time"), "the diagnostic must offer `time`: {message}");
 		assert!(!message.contains("'ts'"), "the diagnostic must not still offer the retired `ts`: {message}");
+	}
+}
+
+#[cfg(test)]
+mod eviction_tests {
+	use reifydb_core::interface::catalog::ringbuffer::EvictionVisibility;
+
+	use crate::{
+		ast::{
+			ast::{Ast, AstCreate, AstViewStorageKind},
+			parse::Parser,
+		},
+		bump::Bump,
+		token::tokenize,
+	};
+
+	fn create_error(source: &str) -> String {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let err = parser.parse().expect_err("the DDL must be rejected");
+		format!("{:?}", err.diagnostic())
+	}
+
+	fn both_ringbuffer_forms(eviction: &str) -> [String; 2] {
+		[
+			format!("create ringbuffer ns::r {{ a: int4 }} with {{ capacity: 1, {eviction} }}"),
+			format!(
+				"create deferred ringbuffer view ns::v {{ a: int4 }} with {{ capacity: 1, {eviction} }} as {{ from ns::t }}"
+			),
+		]
+	}
+
+	#[test]
+	fn eviction_rejects_a_value_other_than_visible_or_silent() {
+		// A typo read as the default would silently keep removes visible.
+		for source in both_ringbuffer_forms("eviction: { capacity: loud }") {
+			let message = create_error(&source);
+			assert!(message.contains("expected 'visible' or 'silent', found `loud`"), "{message}");
+		}
+	}
+
+	#[test]
+	fn eviction_rejects_a_repeated_eviction_key() {
+		// Otherwise the later block silently wins over the earlier one.
+		for source in both_ringbuffer_forms("eviction: { capacity: silent }, eviction: { capacity: visible }") {
+			let message = create_error(&source);
+			assert!(message.contains("`eviction` must be unique"), "{message}");
+		}
+	}
+
+	#[test]
+	fn eviction_rejects_a_repeated_reason() {
+		// Otherwise the later value silently wins over the earlier one.
+		for source in both_ringbuffer_forms("eviction: { capacity: silent, capacity: visible }") {
+			let message = create_error(&source);
+			assert!(message.contains("eviction reason `capacity` must be unique"), "{message}");
+		}
+	}
+
+	#[test]
+	fn eviction_rejects_an_unknown_reason() {
+		// An ignored reason would let the author believe a policy is in force when none is.
+		for source in both_ringbuffer_forms("eviction: { overflow: silent }") {
+			let message = create_error(&source);
+			assert!(message.contains("expected 'capacity', found `overflow`"), "{message}");
+		}
+	}
+
+	#[test]
+	fn eviction_rejects_ttl_as_not_supported_yet() {
+		// Accepting it without effect would promise a policy the evictor never applies.
+		for source in both_ringbuffer_forms("eviction: { ttl: visible }") {
+			let message = create_error(&source);
+			assert!(message.contains("eviction reason `ttl` is not supported yet"), "{message}");
+		}
+	}
+
+	#[test]
+	fn eviction_rejects_consume_as_not_supported_yet() {
+		// Accepting it without effect would promise a policy nothing applies.
+		for source in both_ringbuffer_forms("eviction: { consume: silent }") {
+			let message = create_error(&source);
+			assert!(message.contains("eviction reason `consume` is not supported yet"), "{message}");
+		}
+	}
+
+	fn parsed_eviction(source: &str) -> EvictionVisibility {
+		let bump = Bump::new();
+		let tokens = tokenize(&bump, source).unwrap().into_iter().collect();
+		let mut parser = Parser::new(&bump, source, tokens);
+		let mut result = parser.parse().unwrap();
+		let statement = result.pop().unwrap();
+		let Some(Ast::Create(create)) = statement.nodes.into_iter().next() else {
+			panic!("expected CREATE");
+		};
+		match &*create {
+			AstCreate::RingBuffer(ringbuffer) => ringbuffer.eviction,
+			AstCreate::DeferredView(view) => match &view.storage_kind {
+				AstViewStorageKind::RingBuffer {
+					eviction,
+					..
+				} => *eviction,
+				_ => panic!("expected a ringbuffer view"),
+			},
+			_ => panic!("expected a ringbuffer or a deferred view"),
+		}
+	}
+
+	#[test]
+	fn eviction_silent_is_parsed_on_both_ringbuffer_forms() {
+		// Dropping the value would leave every push-out visible and retract downstream rows.
+		for source in both_ringbuffer_forms("eviction: { capacity: silent }") {
+			assert_eq!(parsed_eviction(&source), EvictionVisibility::Silent, "{source}");
+		}
+	}
+
+	#[test]
+	fn eviction_visible_is_parsed_on_both_ringbuffer_forms() {
+		// An explicit visible must not be read as silent.
+		for source in both_ringbuffer_forms("eviction: { capacity: visible }") {
+			assert_eq!(parsed_eviction(&source), EvictionVisibility::Visible, "{source}");
+		}
+	}
+
+	#[test]
+	fn eviction_defaults_to_visible_on_both_ringbuffer_forms() {
+		// Without the key today's visible push-out must hold exactly.
+		for source in both_ringbuffer_forms("partition: { by: { a } }") {
+			assert_eq!(parsed_eviction(&source), EvictionVisibility::Visible, "{source}");
+		}
+	}
+
+	#[test]
+	fn eviction_may_appear_before_capacity() {
+		// The with block is a map, so key order must not change the parsed value.
+		let source = "create ringbuffer ns::r { a: int4 } with { eviction: { capacity: silent }, capacity: 1 }";
+		assert_eq!(parsed_eviction(source), EvictionVisibility::Silent);
 	}
 }

@@ -5,6 +5,7 @@ use std::ops::Index;
 
 use reifydb_core::{
 	common::{IndexType, JoinType},
+	interface::catalog::ringbuffer::EvictionVisibility,
 	sort::SortDirection,
 };
 use reifydb_value::{fragment::Fragment, value::identity::IdentityKind};
@@ -678,6 +679,7 @@ pub enum AstViewStorageKind {
 	RingBuffer {
 		capacity: u64,
 		partition_by: Vec<String>,
+		eviction: EvictionVisibility,
 	},
 	Series {
 		key_column: String,
@@ -876,6 +878,7 @@ pub struct AstCreateRingBuffer<'bump> {
 	pub partition_by: Vec<String>,
 	pub settings: Option<AstRowSettings<'bump>>,
 	pub time_declaration: AstTimeDeclaration<'bump>,
+	pub eviction: EvictionVisibility,
 }
 
 #[derive(Debug)]

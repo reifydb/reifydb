@@ -22,6 +22,7 @@ use reifydb_core::{
 			property::ColumnPropertyKind,
 			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 			relationship::RelationshipCardinality,
+			ringbuffer::EvictionVisibility,
 			series::{SeriesEncoding, SeriesKey},
 		},
 		resolved::{
@@ -58,6 +59,7 @@ pub enum CompiledViewStorageKind {
 	RingBuffer {
 		capacity: u64,
 		partition_by: Vec<String>,
+		eviction: EvictionVisibility,
 	},
 	Series {
 		key: SeriesKey,
@@ -132,6 +134,7 @@ pub struct CreateRingBufferNode {
 	pub ttl: Option<Ttl>,
 	pub persistent: bool,
 	pub time: TimeSource,
+	pub eviction: EvictionVisibility,
 }
 
 #[derive(Debug, Clone)]

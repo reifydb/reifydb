@@ -439,6 +439,16 @@ impl AdminTransaction {
 	}
 
 	#[inline]
+	pub fn remove_unobserved_with_pre<K: Into<TaggedKey> + Clone>(
+		&mut self,
+		key: &K,
+		pre: EncodedBytes,
+	) -> Result<()> {
+		self.check_active()?;
+		self.cmd.as_mut().unwrap().remove_unobserved_with_pre(key, pre)
+	}
+
+	#[inline]
 	pub fn remove_silent<K: Into<TaggedKey> + Clone>(&mut self, key: &K) -> Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().remove_silent(key)
@@ -536,6 +546,10 @@ impl Write for AdminTransaction {
 	#[inline]
 	fn remove(&mut self, entries: Vec<(TaggedKey, Option<EncodedBytes>)>) -> Result<()> {
 		AdminTransaction::remove(self, entries)
+	}
+	#[inline]
+	fn remove_unobserved_with_pre(&mut self, key: &TaggedKey, pre: EncodedBytes) -> Result<()> {
+		AdminTransaction::remove_unobserved_with_pre(self, key, pre)
 	}
 	#[inline]
 	fn track_row_change(&mut self, changes: &[RowChange]) {

@@ -8,7 +8,7 @@ use reifydb_core::{
 			id::{NamespaceId, PrimaryKeyId, RingBufferId},
 			key::PrimaryKey,
 			object::ObjectId,
-			ringbuffer::RingBuffer,
+			ringbuffer::{EvictionVisibility, RingBuffer},
 		},
 		store::MultiVersionRow,
 	},
@@ -44,6 +44,7 @@ pub(crate) fn load_ringbuffers(rx: &mut Transaction<'_>, catalog: &CatalogCache)
 
 	for (mut ringbuffer, version) in ringbuffers {
 		ringbuffer.columns = CatalogStore::list_columns(rx, ringbuffer.id)?;
+		ringbuffer.eviction = CatalogStore::find_ringbuffer_eviction(rx, ringbuffer.id)?;
 		catalog.set_ringbuffer(ringbuffer.id, version, Some(ringbuffer));
 	}
 
@@ -73,6 +74,7 @@ fn convert_ringbuffer<K>(multi: MultiVersionRow<K>, primary_key: Option<PrimaryK
 		primary_key,
 		partition_by,
 		time: decode_ringbuffer_time(&bytes),
+		eviction: EvictionVisibility::Visible,
 	})
 }
 

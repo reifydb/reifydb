@@ -175,6 +175,7 @@ impl<'bump> Compiler<'bump> {
 			ttl,
 			persistent,
 			time,
+			eviction: ast.eviction,
 		}))
 	}
 }

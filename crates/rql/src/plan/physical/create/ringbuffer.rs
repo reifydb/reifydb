@@ -49,6 +49,7 @@ impl<'bump> Compiler<'bump> {
 			ttl: create.ttl,
 			persistent: create.persistent,
 			time: create.time,
+			eviction: create.eviction,
 		}))
 	}
 }

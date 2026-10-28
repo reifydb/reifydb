@@ -52,9 +52,11 @@ pub(crate) fn create_deferred_view(
 		CompiledViewStorageKind::RingBuffer {
 			capacity,
 			partition_by,
+			eviction,
 		} => ViewStorage::RingBuffer {
 			capacity: *capacity,
 			partition_by: partition_by.clone(),
+			eviction: *eviction,
 		},
 		CompiledViewStorageKind::Series {
 			key,

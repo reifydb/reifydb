@@ -65,6 +65,8 @@ pub fn read_from(key: &EncodedKey) -> ReadFrom {
 			KeyTag::NamespaceView => ReadFrom::Query,
 			KeyTag::PrimaryKey => ReadFrom::Query,
 			KeyTag::RingBuffer => ReadFrom::Query,
+			KeyTag::RingBufferEviction => ReadFrom::Query,
+			KeyTag::ViewEviction => ReadFrom::Query,
 			KeyTag::NamespaceRingBuffer => ReadFrom::Query,
 			KeyTag::Queue => ReadFrom::Query,
 			KeyTag::NamespaceQueue => ReadFrom::Query,

@@ -23,7 +23,10 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			flow::OperatorId,
-			ringbuffer::{RingBufferMetadata, decode_ringbuffer_metadata, encode_ringbuffer_metadata},
+			ringbuffer::{
+				EvictionVisibility, RingBufferMetadata, decode_ringbuffer_metadata,
+				encode_ringbuffer_metadata,
+			},
 			storage::StorageId,
 			view::View,
 		},
@@ -189,6 +192,7 @@ pub struct SinkRingBufferViewOperator {
 	shape: RowShape,
 	storage: StorageId,
 	capacity: u64,
+	eviction: EvictionVisibility,
 	ttl: Option<Duration>,
 	partition_indices: Vec<usize>,
 	verified_partitions: HashMap<Partition, Vec<Value>>,
@@ -208,12 +212,20 @@ impl SinkRingBufferViewOperator {
 		let partition_indices = partition_col_indices(view.def().columns(), &partition_by);
 		let storage = view.def().storage_id();
 		let shape = row_shape_from_columns(RowFamily::RingBuffer, view.def().columns());
+		let View::RingBuffer(ringbuffer) = view.def() else {
+			panic!(
+				"ring buffer view sink {:?} was built over a view that is not ring buffer backed",
+				operator
+			)
+		};
+		let eviction = ringbuffer.eviction;
 		Self {
 			operator,
 			view,
 			shape,
 			storage,
 			capacity,
+			eviction,
 			ttl,
 			partition_indices,
 			verified_partitions: HashMap::new(),
@@ -1043,7 +1055,10 @@ impl SinkRingBufferViewOperator {
 				if row.is_none() {
 					continue;
 				}
-				txn.remove_one(&key)?;
+				match self.eviction {
+					EvictionVisibility::Visible => txn.remove_one(&key)?,
+					EvictionVisibility::Silent => txn.remove_unobserved(&key)?,
+				}
 				meta.count = meta.count.saturating_sub(1);
 				evict_needed -= 1;
 			}
@@ -1354,6 +1369,7 @@ mod tests {
 				Vec::new()
 			},
 			capacity: 100,
+			eviction: EvictionVisibility::Visible,
 			sort: vec![],
 		})
 	}
@@ -1948,5 +1964,87 @@ mod tests {
 
 		assert_eq!(metadata(&engine, &[]).unwrap().count, 0, "the remove finds the new copy");
 		assert_eq!(row_entry_count(&engine, &op, &[]), 0);
+	}
+
+	fn build_capped_op(eviction: EvictionVisibility) -> SinkRingBufferViewOperator {
+		let View::RingBuffer(mut def) = view_def(false) else {
+			unreachable!()
+		};
+		def.capacity = 1;
+		def.eviction = eviction;
+		let resolved = ResolvedView::new(
+			Fragment::internal("rb"),
+			ResolvedNamespace::new(Fragment::internal("test"), Namespace::system()),
+			View::RingBuffer(def),
+		);
+		SinkRingBufferViewOperator::new(
+			OperatorId(1),
+			resolved,
+			1,
+			None,
+			Vec::new(),
+			RuntimeContext::with_clock(Clock::Mock(MockClock::from_millis(0))),
+		)
+	}
+
+	fn row_removes_of_a_push_out(eviction: EvictionVisibility) -> Vec<PendingWrite> {
+		let engine = TestEngine::new();
+		let mut op = build_capped_op(eviction);
+		insert(&engine, &mut op, false, &[("", 1)], 1);
+
+		let mut txn = deferred_txn(&engine);
+		op.apply(
+			&mut txn,
+			Change::from_flow(
+				OperatorId(1),
+				ChangeVersion::from(CommitVersion(1)),
+				vec![Diff::insert(columns_at(false, &[("", 2)], 2, T0))],
+				DateTime::from_nanos(T0),
+			),
+		)
+		.unwrap();
+		txn.pending
+			.rows_ordered()
+			.filter(|(key, write)| {
+				matches!(
+					TaggedKey::decode(key),
+					Some(TaggedKey::Row(RowKey {
+						storage: RB,
+						..
+					}))
+				) && matches!(write, PendingWrite::Remove { .. })
+			})
+			.map(|(_, write)| write.clone())
+			.collect()
+	}
+
+	#[test]
+	fn a_capacity_push_out_is_announced_by_default() {
+		// Without the eviction key the sink must keep retracting pushed-out rows downstream exactly as before.
+		let removes = row_removes_of_a_push_out(EvictionVisibility::Visible);
+		assert!(
+			matches!(
+				removes.as_slice(),
+				[PendingWrite::Remove {
+					announce: RemoveVisibility::Announced
+				}]
+			),
+			"a visible push-out must be one announced remove: {removes:?}"
+		);
+	}
+
+	#[test]
+	fn a_silent_capacity_push_out_is_unobserved() {
+		// An announced remove here would retract the pushed-out row from every downstream view.
+		let removes = row_removes_of_a_push_out(EvictionVisibility::Silent);
+		assert!(
+			matches!(
+				removes.as_slice(),
+				[PendingWrite::Remove {
+					announce: RemoveVisibility::Unobserved
+				}]
+			),
+			"a silent push-out must be one unobserved remove: {removes:?}"
+		);
 	}
 }

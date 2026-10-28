@@ -178,6 +178,7 @@ fn ring_buffer_with_partition_by() {
 		primary_key: None,
 		partition_by: vec!["region".to_string()],
 		time: TimeSource::None,
+		eviction: reifydb_core::interface::catalog::ringbuffer::EvictionVisibility::Visible,
 	};
 	assert_eq!(
 		render_ringbuffer(&rb, None, &resolver()).unwrap(),
@@ -271,6 +272,7 @@ fn ring_buffer_with_partition_time_and_row_ttl() {
 		primary_key: None,
 		partition_by: vec!["region".to_string()],
 		time: TimeSource::Processing,
+		eviction: reifydb_core::interface::catalog::ringbuffer::EvictionVisibility::Visible,
 	};
 	assert_eq!(
 		render_ringbuffer(&rb, Some(&one_hour_ttl(true)), &resolver()).unwrap(),
@@ -510,5 +512,48 @@ fn queue_renders_only_the_options_that_differ_from_defaults() {
 	assert_eq!(
 		render_queue(&q, &resolver()).unwrap(),
 		"CREATE QUEUE sales::jobs { id: int4, kind: utf8 } WITH { fifo: { partitions: 4 } };"
+	);
+}
+
+#[test]
+fn ring_buffer_with_silent_capacity_eviction() {
+	// Dropping the key on export would re-import the ring with visible push-outs and retract downstream state.
+	let rb = RingBuffer {
+		id: RingBufferId(1),
+		namespace: NamespaceId(NS),
+		name: "events".to_string(),
+		columns: vec![column(0, "id", TypeConstraint::unconstrained(ValueType::Int4))],
+		capacity: 1,
+		primary_key: None,
+		partition_by: vec![],
+		time: TimeSource::None,
+		eviction: reifydb_core::interface::catalog::ringbuffer::EvictionVisibility::Silent,
+	};
+	assert_eq!(
+		render_ringbuffer(&rb, None, &resolver()).unwrap(),
+		"CREATE RINGBUFFER sales::events { id: int4 } WITH { capacity: 1, eviction: { capacity: silent } };"
+	);
+}
+
+#[test]
+fn ring_buffer_with_silent_eviction_keeps_partition_before_and_time_and_row_after() {
+	// The eviction key must sit between partition and time, otherwise exports of older objects shift byte for byte.
+	let rb = RingBuffer {
+		id: RingBufferId(1),
+		namespace: NamespaceId(NS),
+		name: "events".to_string(),
+		columns: vec![
+			column(0, "id", TypeConstraint::unconstrained(ValueType::Int4)),
+			column(1, "region", TypeConstraint::unconstrained(ValueType::Utf8)),
+		],
+		capacity: 1000,
+		primary_key: None,
+		partition_by: vec!["region".to_string()],
+		time: TimeSource::Processing,
+		eviction: reifydb_core::interface::catalog::ringbuffer::EvictionVisibility::Silent,
+	};
+	assert_eq!(
+		render_ringbuffer(&rb, Some(&one_hour_ttl(true)), &resolver()).unwrap(),
+		"CREATE RINGBUFFER sales::events { id: int4, region: utf8 } WITH { capacity: 1000, partition: { by: { region } }, eviction: { capacity: silent }, time: processing, row: { ttl: 1h } };"
 	);
 }

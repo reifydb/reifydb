@@ -15,7 +15,7 @@ use reifydb_core::{
 			config::{ConfigKey, GetConfig},
 			namespace::Namespace,
 			policy::{DataOp, PolicyTargetType},
-			ringbuffer::{RingBuffer, RingBufferMetadata},
+			ringbuffer::{EvictionVisibility, RingBuffer, RingBufferMetadata},
 		},
 		resolved::{ResolvedNamespace, ResolvedObject, ResolvedRingBuffer},
 	},
@@ -238,8 +238,13 @@ fn delete_ringbuffer_partitions(
 			Some(partition) => vec![partition; doomed.len()],
 			None => Vec::new(),
 		};
-		let deleted_values =
-			txn.remove_from_ringbuffer(ringbuffer, &doomed_partitions, &doomed, doomed_rows)?;
+		let deleted_values = txn.remove_from_ringbuffer(
+			ringbuffer,
+			&doomed_partitions,
+			&doomed,
+			doomed_rows,
+			EvictionVisibility::Visible,
+		)?;
 		if has_returning {
 			returned_rows.extend(doomed.iter().copied().zip(deleted_values));
 		}

@@ -25,6 +25,14 @@ pub struct RingBuffer {
 	pub primary_key: Option<PrimaryKey>,
 	pub partition_by: Vec<String>,
 	pub time: TimeSource,
+	pub eviction: EvictionVisibility,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EvictionVisibility {
+	#[default]
+	Visible,
+	Silent,
 }
 
 impl RingBuffer {
