@@ -1,0 +1,11 @@
+# Generated from: value_types.tap.md#identity_id_values
+# Test: store and read back identity_id
+
+admin 'DROP NAMESPACE IF EXISTS vt_identity_id_values CASCADE; CREATE NAMESPACE vt_identity_id_values; CREATE TABLE vt_identity_id_values::t { id: int4, v: identity_id }; INSERT vt_identity_id_values::t [{ id: 1, v: "018fad5d-f37a-7c94-a716-446655440001" }]; OUTPUT FROM vt_identity_id_values::t SORT { id: asc }'
+---
+> +-----------+------+----------------------------------------+
+> |  #rownum  |  id  |                   v                    |
+> +-----------+------+----------------------------------------+
+> |     1     |  1   |  018fad5d-f37a-7c94-a716-446655440001  |
+> +-----------+------+----------------------------------------+
+>

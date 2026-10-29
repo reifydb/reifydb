@@ -1,0 +1,14 @@
+# Generated from: value_types.tap.md#float8_values
+# Test: store and read back float8
+
+admin 'DROP NAMESPACE IF EXISTS vt_float8_values CASCADE; CREATE NAMESPACE vt_float8_values; CREATE TABLE vt_float8_values::t { id: int4, v: float8 }; INSERT vt_float8_values::t [{ id: 1, v: 0.5 }, { id: 2, v: -0.0 }, { id: 3, v: 0.000000000001 }, { id: 4, v: 1000000000000000000000.0 }]; OUTPUT FROM vt_float8_values::t SORT { id: asc }'
+---
+> +-----------+------+--------------------------+
+> |  #rownum  |  id  |            v             |
+> +-----------+------+--------------------------+
+> |     1     |  1   |           0.5            |
+> |     2     |  2   |            0             |
+> |     3     |  3   |      0.000000000001      |
+> |     4     |  4   |  1000000000000000000000  |
+> +-----------+------+--------------------------+
+>

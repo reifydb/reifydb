@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#bool_values
+# Test: store and read back bool
+
+admin 'DROP NAMESPACE IF EXISTS vt_bool_values CASCADE; CREATE NAMESPACE vt_bool_values; CREATE TABLE vt_bool_values::t { id: int4, v: bool }; INSERT vt_bool_values::t [{ id: 1, v: true }, { id: 2, v: false }]; OUTPUT FROM vt_bool_values::t SORT { id: asc }'
+---
+> +-----------+------+---------+
+> |  #rownum  |  id  |    v    |
+> +-----------+------+---------+
+> |     1     |  1   |  true   |
+> |     2     |  2   |  false  |
+> +-----------+------+---------+
+>

@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#date_values
+# Test: store and read back date
+
+admin 'DROP NAMESPACE IF EXISTS vt_date_values CASCADE; CREATE NAMESPACE vt_date_values; CREATE TABLE vt_date_values::t { id: int4, v: date }; INSERT vt_date_values::t [{ id: 1, v: "2024-02-29" }, { id: 2, v: "1970-01-01" }]; OUTPUT FROM vt_date_values::t SORT { id: asc }'
+---
+> +-----------+------+--------------+
+> |  #rownum  |  id  |      v       |
+> +-----------+------+--------------+
+> |     1     |  1   |  2024-02-29  |
+> |     2     |  2   |  1970-01-01  |
+> +-----------+------+--------------+
+>

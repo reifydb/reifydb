@@ -1,0 +1,11 @@
+# Generated from: value_types.tap.md#uuid7_values
+# Test: store and read back uuid7
+
+admin 'DROP NAMESPACE IF EXISTS vt_uuid7_values CASCADE; CREATE NAMESPACE vt_uuid7_values; CREATE TABLE vt_uuid7_values::t { id: int4, v: uuid7 }; INSERT vt_uuid7_values::t [{ id: 1, v: "018fad5d-f37a-7c94-a716-446655440000" }]; OUTPUT FROM vt_uuid7_values::t SORT { id: asc }'
+---
+> +-----------+------+----------------------------------------+
+> |  #rownum  |  id  |                   v                    |
+> +-----------+------+----------------------------------------+
+> |     1     |  1   |  018fad5d-f37a-7c94-a716-446655440000  |
+> +-----------+------+----------------------------------------+
+>

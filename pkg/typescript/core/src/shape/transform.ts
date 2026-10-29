@@ -3,7 +3,7 @@
 import {ShapeNode} from '.';
 import {ShapeMismatch} from './check';
 import {widen} from './widen';
-import {NoneValue, Option, noneDepth} from '../value';
+import {DurationValue, NoneValue, Option, TimeValue, noneDepth} from '../value';
 import {FrameResults} from '../types';
 
 function snakeToCamel(key: string): string {
@@ -31,12 +31,7 @@ export function transformResult(row: any, resultShape: any): any {
             const propertyShape = resultShape.properties[key];
             const outputKey = snakeToCamel(key);
             if (propertyShape && propertyShape.kind === 'primitive') {
-                if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
-                    const rawValue = (value as any).valueOf();
-                    transformedRow[outputKey] = coerceToPrimitiveType(rawValue, propertyShape.type);
-                } else {
-                    transformedRow[outputKey] = coerceToPrimitiveType(value, propertyShape.type);
-                }
+                transformedRow[outputKey] = toPrimitive(value, propertyShape.type);
             } else if (propertyShape && propertyShape.kind === 'value') {
                 transformedRow[outputKey] = widen(value, propertyShape.type);
             } else {
@@ -47,10 +42,7 @@ export function transformResult(row: any, resultShape: any): any {
     }
 
     if (resultShape && resultShape.kind === 'primitive') {
-        if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-            return coerceToPrimitiveType(row.valueOf(), resultShape.type);
-        }
-        return coerceToPrimitiveType(row, resultShape.type);
+        return toPrimitive(row, resultShape.type);
     }
 
     if (resultShape && resultShape.kind === 'value') {
@@ -83,6 +75,16 @@ export function transformResult(row: any, resultShape: any): any {
 
 function optionLayers(shape: ShapeNode): number {
     return shape.kind === 'option' ? optionLayers(shape.inner) + 1 : 0;
+}
+
+function toPrimitive(value: any, valueType: string): any {
+    if (value instanceof DurationValue || value instanceof TimeValue) {
+        return value.toString();
+    }
+    if (value && typeof value === 'object' && typeof value.valueOf === 'function') {
+        return coerceToPrimitiveType(value.valueOf(), valueType);
+    }
+    return coerceToPrimitiveType(value, valueType);
 }
 
 function coerceToPrimitiveType(value: any, valueType: string): any {

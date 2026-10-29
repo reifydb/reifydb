@@ -1,0 +1,13 @@
+# Generated from: value_types.tap.md#utf8_values
+# Test: store and read back utf8
+
+admin 'DROP NAMESPACE IF EXISTS vt_utf8_values CASCADE; CREATE NAMESPACE vt_utf8_values; CREATE TABLE vt_utf8_values::t { id: int4, v: utf8 }; INSERT vt_utf8_values::t [{ id: 1, v: "" }, { id: 2, v: "héllo wörld" }, { id: 3, v: "日本語" }]; OUTPUT FROM vt_utf8_values::t SORT { id: asc }'
+---
+> +-----------+------+---------------+
+> |  #rownum  |  id  |       v       |
+> +-----------+------+---------------+
+> |     1     |  1   |               |
+> |     2     |  2   |  héllo wörld  |
+> |     3     |  3   |    日本語     |
+> +-----------+------+---------------+
+>

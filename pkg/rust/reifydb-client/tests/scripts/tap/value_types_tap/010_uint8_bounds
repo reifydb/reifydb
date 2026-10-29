@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#uint8_bounds
+# Test: store and read back uint8
+
+admin 'DROP NAMESPACE IF EXISTS vt_uint8_bounds CASCADE; CREATE NAMESPACE vt_uint8_bounds; CREATE TABLE vt_uint8_bounds::t { id: int4, v: uint8 }; INSERT vt_uint8_bounds::t [{ id: 1, v: 0 }, { id: 2, v: 18446744073709551615 }]; OUTPUT FROM vt_uint8_bounds::t SORT { id: asc }'
+---
+> +-----------+------+------------------------+
+> |  #rownum  |  id  |           v            |
+> +-----------+------+------------------------+
+> |     1     |  1   |           0            |
+> |     2     |  2   |  18446744073709551615  |
+> +-----------+------+------------------------+
+>

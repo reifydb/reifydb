@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#int16_bounds
+# Test: store and read back int16
+
+admin 'DROP NAMESPACE IF EXISTS vt_int16_bounds CASCADE; CREATE NAMESPACE vt_int16_bounds; CREATE TABLE vt_int16_bounds::t { id: int4, v: int16 }; INSERT vt_int16_bounds::t [{ id: 1, v: -170141183460469231731687303715884105728 }, { id: 2, v: 170141183460469231731687303715884105727 }]; OUTPUT FROM vt_int16_bounds::t SORT { id: asc }'
+---
+> +-----------+------+--------------------------------------------+
+> |  #rownum  |  id  |                     v                      |
+> +-----------+------+--------------------------------------------+
+> |     1     |  1   |  -170141183460469231731687303715884105728  |
+> |     2     |  2   |  170141183460469231731687303715884105727   |
+> +-----------+------+--------------------------------------------+
+>

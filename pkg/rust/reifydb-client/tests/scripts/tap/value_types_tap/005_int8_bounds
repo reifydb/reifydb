@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#int8_bounds
+# Test: store and read back int8
+
+admin 'DROP NAMESPACE IF EXISTS vt_int8_bounds CASCADE; CREATE NAMESPACE vt_int8_bounds; CREATE TABLE vt_int8_bounds::t { id: int4, v: int8 }; INSERT vt_int8_bounds::t [{ id: 1, v: -9223372036854775808 }, { id: 2, v: 9223372036854775807 }]; OUTPUT FROM vt_int8_bounds::t SORT { id: asc }'
+---
+> +-----------+------+------------------------+
+> |  #rownum  |  id  |           v            |
+> +-----------+------+------------------------+
+> |     1     |  1   |  -9223372036854775808  |
+> |     2     |  2   |  9223372036854775807   |
+> +-----------+------+------------------------+
+>

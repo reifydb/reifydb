@@ -1,0 +1,13 @@
+# Generated from: value_types.tap.md#decimal_declared_scale
+# Test: store and read back decimal(30, 3)
+
+admin 'DROP NAMESPACE IF EXISTS vt_decimal_declared_scale CASCADE; CREATE NAMESPACE vt_decimal_declared_scale; CREATE TABLE vt_decimal_declared_scale::t { id: int4, v: decimal(30, 3) }; INSERT vt_decimal_declared_scale::t [{ id: 1, v: "12345678901234567890.123" }, { id: 2, v: "1.500" }, { id: 3, v: "-0.25" }]; OUTPUT FROM vt_decimal_declared_scale::t SORT { id: asc }'
+---
+> +-----------+------+----------------------------+
+> |  #rownum  |  id  |             v              |
+> +-----------+------+----------------------------+
+> |     1     |  1   |  12345678901234567890.123  |
+> |     2     |  2   |           1.500            |
+> |     3     |  3   |           -0.250           |
+> +-----------+------+----------------------------+
+>

@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#uint4_bounds
+# Test: store and read back uint4
+
+admin 'DROP NAMESPACE IF EXISTS vt_uint4_bounds CASCADE; CREATE NAMESPACE vt_uint4_bounds; CREATE TABLE vt_uint4_bounds::t { id: int4, v: uint4 }; INSERT vt_uint4_bounds::t [{ id: 1, v: 0 }, { id: 2, v: 4294967295 }]; OUTPUT FROM vt_uint4_bounds::t SORT { id: asc }'
+---
+> +-----------+------+--------------+
+> |  #rownum  |  id  |      v       |
+> +-----------+------+--------------+
+> |     1     |  1   |      0       |
+> |     2     |  2   |  4294967295  |
+> +-----------+------+--------------+
+>

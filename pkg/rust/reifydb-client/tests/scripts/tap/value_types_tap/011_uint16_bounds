@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#uint16_bounds
+# Test: store and read back uint16
+
+admin 'DROP NAMESPACE IF EXISTS vt_uint16_bounds CASCADE; CREATE NAMESPACE vt_uint16_bounds; CREATE TABLE vt_uint16_bounds::t { id: int4, v: uint16 }; INSERT vt_uint16_bounds::t [{ id: 1, v: 0 }, { id: 2, v: 340282366920938463463374607431768211455 }]; OUTPUT FROM vt_uint16_bounds::t SORT { id: asc }'
+---
+> +-----------+------+-------------------------------------------+
+> |  #rownum  |  id  |                     v                     |
+> +-----------+------+-------------------------------------------+
+> |     1     |  1   |                     0                     |
+> |     2     |  2   |  340282366920938463463374607431768211455  |
+> +-----------+------+-------------------------------------------+
+>

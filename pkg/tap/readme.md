@@ -134,7 +134,7 @@ expected:
 | date | Date | Date | DATE | Date only |
 | time | Date | Time | TIME | Time only |
 | datetime | Date | DateTime | DATETIME | Date and time |
-| duration | string | String | DURATION | ISO 8601 duration |
+| duration | string | String | DURATION | Short form such as `1d2h30m` or `0s`, read and written |
 | uuid4 | string | String | UUID4 | UUID version 4 |
 | uuid7 | string | String | UUID7 | UUID version 7 |
 | identity_id | string | String | IDENTITYID | UUID7-based identity |

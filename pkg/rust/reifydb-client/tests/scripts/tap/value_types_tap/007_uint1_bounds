@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#uint1_bounds
+# Test: store and read back uint1
+
+admin 'DROP NAMESPACE IF EXISTS vt_uint1_bounds CASCADE; CREATE NAMESPACE vt_uint1_bounds; CREATE TABLE vt_uint1_bounds::t { id: int4, v: uint1 }; INSERT vt_uint1_bounds::t [{ id: 1, v: 0 }, { id: 2, v: 255 }]; OUTPUT FROM vt_uint1_bounds::t SORT { id: asc }'
+---
+> +-----------+------+-------+
+> |  #rownum  |  id  |   v   |
+> +-----------+------+-------+
+> |     1     |  1   |   0   |
+> |     2     |  2   |  255  |
+> +-----------+------+-------+
+>

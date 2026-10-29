@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#option_utf8_none
+# Test: store and read back Option(utf8)
+
+admin 'DROP NAMESPACE IF EXISTS vt_option_utf8_none CASCADE; CREATE NAMESPACE vt_option_utf8_none; CREATE TABLE vt_option_utf8_none::t { id: int4, v: Option(utf8) }; INSERT vt_option_utf8_none::t [{ id: 1, v: none }, { id: 2, v: "x" }]; OUTPUT FROM vt_option_utf8_none::t SORT { id: asc }'
+---
+> +-----------+------+--------+
+> |  #rownum  |  id  |   v    |
+> +-----------+------+--------+
+> |     1     |  1   |  none  |
+> |     2     |  2   |   x    |
+> +-----------+------+--------+
+>

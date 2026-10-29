@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#time_values
+# Test: store and read back time
+
+admin 'DROP NAMESPACE IF EXISTS vt_time_values CASCADE; CREATE NAMESPACE vt_time_values; CREATE TABLE vt_time_values::t { id: int4, v: time }; INSERT vt_time_values::t [{ id: 1, v: "00:00:00" }, { id: 2, v: "23:59:59.999999999" }]; OUTPUT FROM vt_time_values::t SORT { id: asc }'
+---
+> +-----------+------+----------------------+
+> |  #rownum  |  id  |          v           |
+> +-----------+------+----------------------+
+> |     1     |  1   |  00:00:00.000000000  |
+> |     2     |  2   |  23:59:59.999999999  |
+> +-----------+------+----------------------+
+>

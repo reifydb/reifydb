@@ -1,0 +1,14 @@
+# Generated from: value_types.tap.md#float4_values
+# Test: store and read back float4
+
+admin 'DROP NAMESPACE IF EXISTS vt_float4_values CASCADE; CREATE NAMESPACE vt_float4_values; CREATE TABLE vt_float4_values::t { id: int4, v: float4 }; INSERT vt_float4_values::t [{ id: 1, v: 1.5 }, { id: 2, v: -0.0 }, { id: 3, v: 0.000001 }, { id: 4, v: 300000000000000000000000000000000000000.0 }]; OUTPUT FROM vt_float4_values::t SORT { id: asc }'
+---
+> +-----------+------+-------------------------------------------+
+> |  #rownum  |  id  |                     v                     |
+> +-----------+------+-------------------------------------------+
+> |     1     |  1   |                    1.5                    |
+> |     2     |  2   |                     0                     |
+> |     3     |  3   |                 0.000001                  |
+> |     4     |  4   |  300000000000000000000000000000000000000  |
+> +-----------+------+-------------------------------------------+
+>

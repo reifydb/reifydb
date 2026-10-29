@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#option_int4_none
+# Test: store and read back Option(int4)
+
+admin 'DROP NAMESPACE IF EXISTS vt_option_int4_none CASCADE; CREATE NAMESPACE vt_option_int4_none; CREATE TABLE vt_option_int4_none::t { id: int4, v: Option(int4) }; INSERT vt_option_int4_none::t [{ id: 1, v: 7 }, { id: 2, v: none }]; OUTPUT FROM vt_option_int4_none::t SORT { id: asc }'
+---
+> +-----------+------+--------+
+> |  #rownum  |  id  |   v    |
+> +-----------+------+--------+
+> |     1     |  1   |   7    |
+> |     2     |  2   |  none  |
+> +-----------+------+--------+
+>

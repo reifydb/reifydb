@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#duration_values
+# Test: store and read back duration
+
+admin 'DROP NAMESPACE IF EXISTS vt_duration_values CASCADE; CREATE NAMESPACE vt_duration_values; CREATE TABLE vt_duration_values::t { id: int4, v: duration }; INSERT vt_duration_values::t [{ id: 1, v: "1d2h30m" }, { id: 2, v: "0s" }]; OUTPUT FROM vt_duration_values::t SORT { id: asc }'
+---
+> +-----------+------+-----------+
+> |  #rownum  |  id  |     v     |
+> +-----------+------+-----------+
+> |     1     |  1   |  1d2h30m  |
+> |     2     |  2   |    0s     |
+> +-----------+------+-----------+
+>

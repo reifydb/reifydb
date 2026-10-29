@@ -1,0 +1,12 @@
+# Generated from: value_types.tap.md#blob_values
+# Test: store and read back blob
+
+admin 'DROP NAMESPACE IF EXISTS vt_blob_values CASCADE; CREATE NAMESPACE vt_blob_values; CREATE TABLE vt_blob_values::t { id: int4, v: blob }; INSERT vt_blob_values::t [{ id: 1, v: blob::hex("") }, { id: 2, v: blob::hex("00ff10") }]; OUTPUT FROM vt_blob_values::t SORT { id: asc }'
+---
+> +-----------+------+------------+
+> |  #rownum  |  id  |     v      |
+> +-----------+------+------------+
+> |     1     |  1   |     0x     |
+> |     2     |  2   |  0x00ff10  |
+> +-----------+------+------------+
+>
