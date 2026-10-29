@@ -128,10 +128,12 @@ describe('edit monitor flow', () => {
   ] as const)('says the %s failed to load instead of spinning forever', async (_, query, message) => {
     // A failed subscription never turns ready, so a page that only waits for ready would spin with nothing saying why.
     const id = await createMonitor(db, identity, 'alpha', [usEast])
-    store = refusingStore(client, query(), null, new Error(message))
+    const refusal = refusingStore(client, query(), null, new Error(message))
+    store = refusal.store
     routeParams.monitorId = id
     renderWithProviders(<MonitorEditPage />, store)
     await caughtUp(client)
+    await act(() => refusal.refused)
 
     expect(await screen.findByText(`Failed to load monitor: ${message}`)).toBeInTheDocument()
     expect(screen.queryByLabelText('Name')).not.toBeInTheDocument()

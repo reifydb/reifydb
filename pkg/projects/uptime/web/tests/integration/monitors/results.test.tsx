@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Store } from '@reifydb/react'
@@ -117,13 +117,15 @@ describe('per-monitor results over the batched store', () => {
     // A failed results subscription read as empty would show a checking monitor with no latency and no history.
     await reportResult(db, { monitorId: alpha, owner, regionId: usEast, success: true, statusCode: 200, responseMs: 100 })
     await reportResult(db, { monitorId: beta, owner, regionId: usEast, success: true, statusCode: 200, responseMs: 300 })
-    store = refusingStore(client, results, { monitor_id: alpha }, new Error('results subscription refused'))
+    const refusal = refusingStore(client, results, { monitor_id: alpha }, new Error('results subscription refused'))
+    store = refusal.store
 
     renderWithProviders(<DashboardPage />, store)
     await caughtUp(client)
     await userEvent.click(within(await screen.findByRole('row', { name: /alpha/i })).getByRole('button', { name: 'Expand regions' }))
     await userEvent.click(within(screen.getByRole('row', { name: /beta/i })).getByRole('button', { name: 'Expand regions' }))
     await caughtUp(client)
+    await act(() => refusal.refused)
 
     expect(await screen.findByText('Failed to load checks: results subscription refused')).toBeInTheDocument()
     expect(screen.getAllByText(/^Failed to load checks/)).toHaveLength(1)

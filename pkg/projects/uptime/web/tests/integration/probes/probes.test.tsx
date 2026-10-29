@@ -182,10 +182,12 @@ describe('the probes page without new data', () => {
 
   it('shows why the probes failed to load', async () => {
     // A failed subscription must say so; an empty table would claim no probes are registered.
-    store = refusingStore(client, probes, null, new Error('policy denied'))
+    const refusal = refusingStore(client, probes, null, new Error('policy denied'))
+    store = refusal.store
 
     renderWithProviders(<ProbesPage />, store)
     await caughtUp()
+    await act(() => refusal.refused)
 
     expect(screen.getByText('Failed to load probes: policy denied')).toBeInTheDocument()
     expect(screen.queryByText('No probes registered')).not.toBeInTheDocument()

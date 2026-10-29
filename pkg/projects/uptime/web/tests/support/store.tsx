@@ -42,11 +42,15 @@ export function refusingStore<P extends object | null>(
   spec: ReadSpec<ShapeNode, P>,
   params: NoInfer<P>,
   error: Error,
-): Store {
+): { store: Store; refused: Promise<void> } {
   // Rejecting the whole call would fail every hook of the tick, and an onError before the ack is overwritten by 'ready'.
   const refused = entryKey(spec.rql, params, spec.shape)
   const placeholder = 'refused-subscription'
-  return new Store(
+  let deliver!: () => void
+  const delivered = new Promise<void>((resolve) => {
+    deliver = resolve
+  })
+  const store = new Store(
     {
       ...client,
       subscribe: async (subscriptions) => {
@@ -58,7 +62,10 @@ export function refusingStore<P extends object | null>(
         if (index === -1) return client.subscribe(subscriptions)
         const others = subscriptions.filter((_, position) => position !== index)
         const subscriptionIds = others.length > 0 ? await client.subscribe(others) : []
-        setTimeout(() => subscriptions[index].callbacks.onError?.(error), 0)
+        setTimeout(() => {
+          subscriptions[index].callbacks.onError?.(error)
+          deliver()
+        }, 0)
         return [...subscriptionIds.slice(0, index), placeholder, ...subscriptionIds.slice(index)]
       },
       unsubscribe: (subscriptionIds) => {
@@ -68,6 +75,7 @@ export function refusingStore<P extends object | null>(
     },
     STORE_OPTIONS,
   )
+  return { store, refused: delivered }
 }
 
 export function renderWithProviders(ui: ReactElement, store: Store) {

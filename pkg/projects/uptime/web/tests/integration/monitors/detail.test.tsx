@@ -169,8 +169,10 @@ describe('monitor detail writes', () => {
   it('says the monitor failed to load instead of spinning forever', async () => {
     // A failed monitors subscription never turns ready, so a page that only waits for ready would spin with nothing saying why.
     const id = await createMonitor(db, identity, 'alpha', [usEast])
-    store = refusingStore(client, monitors, null, new Error('monitors subscription refused'))
+    const refusal = refusingStore(client, monitors, null, new Error('monitors subscription refused'))
+    store = refusal.store
     await renderDetail(id)
+    await act(() => refusal.refused)
 
     expect(await screen.findByText('Failed to load monitor: monitors subscription refused')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument()
@@ -181,8 +183,10 @@ describe('monitor detail writes', () => {
     // A failed results subscription read as empty would tell the user a monitor that is checking was never checked.
     const id = await createMonitor(db, identity, 'alpha', [usEast])
     await reportResult(db, { monitorId: id, owner, regionId: usEast, success: true, statusCode: 200, responseMs: 40 })
-    store = refusingStore(client, results, { monitor_id: id }, new Error('results subscription refused'))
+    const refusal = refusingStore(client, results, { monitor_id: id }, new Error('results subscription refused'))
+    store = refusal.store
     await renderDetail(id)
+    await act(() => refusal.refused)
 
     expect(await screen.findByText('Failed to load checks: results subscription refused')).toBeInTheDocument()
     expect(screen.queryByText('No checks recorded yet')).not.toBeInTheDocument()
@@ -192,8 +196,10 @@ describe('monitor detail writes', () => {
     // A failed probes subscription must say so; otherwise every check silently shows no probe as if none ran it.
     const id = await createMonitor(db, identity, 'alpha', [usEast])
     await reportResult(db, { monitorId: id, owner, regionId: usEast, success: true, statusCode: 207, responseMs: 40 })
-    store = refusingStore(client, probes, null, new Error('probes subscription refused'))
+    const refusal = refusingStore(client, probes, null, new Error('probes subscription refused'))
+    store = refusal.store
     await renderDetail(id)
+    await act(() => refusal.refused)
 
     expect(await screen.findByText('Failed to load probes: probes subscription refused')).toBeInTheDocument()
     expect(await screen.findByText('HTTP 207')).toBeInTheDocument()
