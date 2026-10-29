@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use std::sync::Arc;
+
 use arrow_array::RecordBatch;
 use reifydb_core::{
 	internal_error,
@@ -16,7 +18,7 @@ use reifydb_value::{
 	value::{
 		Value,
 		column_view::ColumnView,
-		system_columns::{is_system_field, user_columns},
+		system_columns::{SCALAR_SOURCE_NAME, is_system_field, scalar_source_name, user_columns},
 		value_type::ValueType,
 	},
 };
@@ -178,6 +180,11 @@ impl<'a> Vm<'a> {
 				}
 			}
 			Some(Variable::Columns {
+				batch: columns,
+			}) if user_columns(columns).any(|(field, _)| scalar_source_name(field) == Some(field_name)) => {
+				self.stack.push(Variable::scalar(scalar_value(columns)?));
+			}
+			Some(Variable::Columns {
 				..
 			})
 			| Some(Variable::Closure(_)) => {
@@ -230,7 +237,10 @@ fn rename_user_columns(scalar: &RecordBatch, name: &str) -> Result<RecordBatch> 
 			if is_system_field(field) {
 				column
 			} else {
-				factory::rename(column, name)
+				let (renamed, array) = factory::rename(column, name);
+				let mut metadata = renamed.metadata().clone();
+				metadata.insert(SCALAR_SOURCE_NAME.to_string(), field.name().clone());
+				(Arc::new(renamed.as_ref().clone().with_metadata(metadata)), array)
 			}
 		})
 		.collect();

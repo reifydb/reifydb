@@ -24,7 +24,7 @@ use reifydb_value::{
 		Value,
 		column_view::{ColumnView, ViewData},
 		constraint::{Constraint, TypeConstraint, precision::Precision, scale::Scale},
-		system_columns::user_columns,
+		system_columns::{scalar_source_name, user_columns},
 		value_type::ValueType,
 	},
 };
@@ -162,6 +162,16 @@ pub(crate) fn variable_field_column(
 					.into())
 				}
 			}
+		}
+		Some(Variable::Columns {
+			batch,
+		}) if user_columns(batch).any(|(field, _)| scalar_source_name(field) == Some(field_name)) => {
+			let value = scalar_value(batch)?;
+			let mut data = ColumnBuilder::with_capacity(value.get_type(), row_count);
+			for _ in 0..row_count {
+				data.push_value(value.clone());
+			}
+			Ok(data.finish(field_name))
 		}
 		Some(Variable::Columns {
 			..

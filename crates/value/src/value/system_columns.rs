@@ -312,6 +312,12 @@ pub fn keep_system_columns(batch: &RecordBatch, keep: &[SystemColumn]) -> Result
 	batch.project(&indices).map_err(arrow_error)
 }
 
+pub const SCALAR_SOURCE_NAME: &str = "reifydb.scalar_source_name";
+
+pub fn scalar_source_name(field: &Field) -> Option<&str> {
+	field.metadata().get(SCALAR_SOURCE_NAME).map(String::as_str)
+}
+
 pub fn is_system_field(field: &Field) -> bool {
 	field.name().starts_with('#')
 }
