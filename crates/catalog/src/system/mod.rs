@@ -280,8 +280,9 @@ pub mod ids {
 				pub const TRIGGER_KIND: ColumnId = ColumnId(6);
 				pub const EVENT_VARIANT_SUMTYPE_ID: ColumnId = ColumnId(7);
 				pub const EVENT_VARIANT_INDEX: ColumnId = ColumnId(8);
+				pub const RUN_AS: ColumnId = ColumnId(9);
 
-				pub const ALL: [ColumnId; 8] = [
+				pub const ALL: [ColumnId; 9] = [
 					ID,
 					NAMESPACE_ID,
 					NAME,
@@ -290,6 +291,7 @@ pub mod ids {
 					TRIGGER_KIND,
 					EVENT_VARIANT_SUMTYPE_ID,
 					EVENT_VARIANT_INDEX,
+					RUN_AS,
 				];
 			}
 
@@ -301,8 +303,9 @@ pub mod ids {
 				pub const NAME: ColumnId = ColumnId(3);
 				pub const RETURN_TYPE: ColumnId = ColumnId(4);
 				pub const BODY: ColumnId = ColumnId(5);
+				pub const RUN_AS: ColumnId = ColumnId(6);
 
-				pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, RETURN_TYPE, BODY];
+				pub const ALL: [ColumnId; 6] = [ID, NAMESPACE_ID, NAME, RETURN_TYPE, BODY, RUN_AS];
 			}
 
 			pub mod in_process {

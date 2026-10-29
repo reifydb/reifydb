@@ -5,7 +5,7 @@ use reifydb_codec::row::catalog::EncodedCatalogRow;
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, ProcedureId},
-		procedure::{Procedure, ProcedureParam, RqlTrigger},
+		procedure::{Procedure, ProcedureParam, RqlTrigger, RunAs},
 	},
 	key::{
 		namespace::NamespaceProcedureKey,
@@ -21,7 +21,10 @@ use serde_json::from_str;
 
 use crate::{
 	CatalogStore, Result,
-	store::procedure::shape::{TRIGGER_EVENT, VARIANT_TEST, namespace_procedure, procedure, procedure_param},
+	store::procedure::shape::{
+		RUN_AS_CALLER, RUN_AS_SYSTEM, TRIGGER_EVENT, VARIANT_TEST, namespace_procedure, procedure,
+		procedure_param,
+	},
 };
 
 impl CatalogStore {
@@ -95,6 +98,13 @@ pub(crate) fn decode_procedure(bytes: &EncodedCatalogRow, params: Vec<ProcedureP
 		Some(from_str(return_type_json).expect("TypeConstraint deserializes from stored JSON"))
 	};
 
+	let run_as = match procedure::try_get_run_as(bytes) {
+		Some(RUN_AS_CALLER) => RunAs::Caller,
+		Some(RUN_AS_SYSTEM) => RunAs::System,
+		Some(other) => panic!("procedure {id:?} has unknown stored run_as byte {other}"),
+		None => panic!("procedure {id:?} predates run_as; recreate it"),
+	};
+
 	if variant == VARIANT_TEST {
 		Procedure::Test {
 			id,
@@ -103,6 +113,7 @@ pub(crate) fn decode_procedure(bytes: &EncodedCatalogRow, params: Vec<ProcedureP
 			params,
 			return_type,
 			body,
+			run_as,
 		}
 	} else {
 		let trigger_kind = procedure::get_trigger_kind(bytes);
@@ -126,6 +137,7 @@ pub(crate) fn decode_procedure(bytes: &EncodedCatalogRow, params: Vec<ProcedureP
 			return_type,
 			body,
 			trigger,
+			run_as,
 		}
 	}
 }

@@ -64,6 +64,7 @@ impl BaseVTable for SystemProceduresRql {
 		let mut trigger_kinds = ColumnBuilder::with_capacity(ValueType::Utf8, procs.len());
 		let mut event_sumtypes = ColumnBuilder::with_capacity(ValueType::Uint8, procs.len());
 		let mut event_indexes = ColumnBuilder::with_capacity(ValueType::Uint2, procs.len());
+		let mut run_ases = ColumnBuilder::with_capacity(ValueType::Utf8, procs.len());
 
 		for p in procs {
 			let Procedure::Rql {
@@ -73,6 +74,7 @@ impl BaseVTable for SystemProceduresRql {
 				return_type,
 				body,
 				trigger,
+				run_as,
 				..
 			} = p
 			else {
@@ -86,6 +88,7 @@ impl BaseVTable for SystemProceduresRql {
 				None => Value::none_of(ValueType::Utf8),
 			});
 			bodies.push(body.as_str());
+			run_ases.push(run_as.as_str());
 			match trigger {
 				RqlTrigger::Call => {
 					trigger_kinds.push("call");
@@ -111,6 +114,7 @@ impl BaseVTable for SystemProceduresRql {
 			trigger_kinds.finish("trigger_kind"),
 			event_sumtypes.finish("event_variant_sumtype_id"),
 			event_indexes.finish("event_variant_index"),
+			run_ases.finish("run_as"),
 		];
 
 		self.exhausted = true;

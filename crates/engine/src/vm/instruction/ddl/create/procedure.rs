@@ -24,6 +24,7 @@ pub(crate) fn create_procedure(
 			params: plan.params,
 			return_type: None,
 			body: plan.body_source,
+			run_as: plan.run_as,
 		}
 	} else {
 		ProcedureToCreate::Rql {
@@ -33,6 +34,7 @@ pub(crate) fn create_procedure(
 			return_type: None,
 			body: plan.body_source,
 			trigger: plan.trigger.clone(),
+			run_as: plan.run_as,
 		}
 	};
 

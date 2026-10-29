@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::catalog::{
 		id::{NamespaceId, ProcedureId},
-		procedure::{Procedure, ProcedureParam, RqlTrigger},
+		procedure::{Procedure, ProcedureParam, RqlTrigger, RunAs},
 	},
 	key::{
 		namespace::NamespaceProcedureKey,
@@ -21,8 +21,8 @@ use crate::{
 	error::{CatalogError, CatalogObjectKind},
 	store::{
 		procedure::shape::{
-			TRIGGER_CALL, TRIGGER_EVENT, VARIANT_RQL, VARIANT_TEST, namespace_procedure, procedure,
-			procedure_param,
+			RUN_AS_CALLER, RUN_AS_SYSTEM, TRIGGER_CALL, TRIGGER_EVENT, VARIANT_RQL, VARIANT_TEST,
+			namespace_procedure, procedure, procedure_param,
 		},
 		sequence::system::SystemSequence,
 	},
@@ -69,6 +69,7 @@ impl CatalogStore {
 				return_type,
 				body,
 				trigger,
+				run_as,
 			} => {
 				let name_text = name.text().to_string();
 				store_procedure_row(
@@ -80,6 +81,7 @@ impl CatalogStore {
 					&body,
 					&trigger,
 					&return_type,
+					run_as,
 				)?;
 				link_procedure_to_namespace(txn, namespace, id, &name_text)?;
 				insert_params(txn, id, &params)?;
@@ -91,6 +93,7 @@ impl CatalogStore {
 					return_type,
 					body,
 					trigger,
+					run_as,
 				})
 			}
 			ProcedureToCreate::Test {
@@ -99,6 +102,7 @@ impl CatalogStore {
 				params,
 				return_type,
 				body,
+				run_as,
 			} => {
 				let name_text = name.text().to_string();
 				store_procedure_row(
@@ -110,6 +114,7 @@ impl CatalogStore {
 					&body,
 					&RqlTrigger::Call,
 					&return_type,
+					run_as,
 				)?;
 				link_procedure_to_namespace(txn, namespace, id, &name_text)?;
 				insert_params(txn, id, &params)?;
@@ -120,6 +125,7 @@ impl CatalogStore {
 					params,
 					return_type,
 					body,
+					run_as,
 				})
 			}
 		}
@@ -136,6 +142,7 @@ fn store_procedure_row(
 	body: &str,
 	trigger: &RqlTrigger,
 	return_type: &Option<TypeConstraint>,
+	run_as: RunAs,
 ) -> Result<()> {
 	let mut row = procedure::allocate();
 	procedure::set_id(&mut row, u64::from(id));
@@ -159,6 +166,13 @@ fn store_procedure_row(
 		None => String::new(),
 	};
 	procedure::set_return_type(&mut row, &return_type_json);
+	procedure::set_run_as(
+		&mut row,
+		match run_as {
+			RunAs::Caller => RUN_AS_CALLER,
+			RunAs::System => RUN_AS_SYSTEM,
+		},
+	);
 
 	txn.set(vec![(ProcedureKey::new(id).into(), row.freeze().into())])?;
 	Ok(())

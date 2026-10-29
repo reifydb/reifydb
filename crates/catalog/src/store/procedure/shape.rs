@@ -9,6 +9,9 @@ pub(crate) const VARIANT_TEST: u8 = 1;
 pub(crate) const TRIGGER_CALL: u8 = 0;
 pub(crate) const TRIGGER_EVENT: u8 = 1;
 
+pub(crate) const RUN_AS_CALLER: u8 = 0;
+pub(crate) const RUN_AS_SYSTEM: u8 = 1;
+
 catalog_shape! {
 	pub(crate) procedure {
 		id: u64,
@@ -20,6 +23,7 @@ catalog_shape! {
 		trigger_variant_sumtype: u64,
 		trigger_variant_index: u16,
 		return_type: utf8,
+		run_as: u8?,
 	}
 
 	pub(crate) namespace_procedure {

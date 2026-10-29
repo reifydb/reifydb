@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::catalog::{
 		change::CatalogTrackProcedureChangeOperations,
 		id::{NamespaceId, ProcedureId},
-		procedure::{Procedure, ProcedureParam, RqlTrigger},
+		procedure::{Procedure, ProcedureParam, RqlTrigger, RunAs},
 	},
 };
 use reifydb_transaction::{
@@ -41,6 +41,7 @@ pub enum ProcedureToCreate {
 		return_type: Option<TypeConstraint>,
 		body: String,
 		trigger: RqlTrigger,
+		run_as: RunAs,
 	},
 	Test {
 		name: Fragment,
@@ -48,6 +49,7 @@ pub enum ProcedureToCreate {
 		params: Vec<ProcedureParam>,
 		return_type: Option<TypeConstraint>,
 		body: String,
+		run_as: RunAs,
 	},
 }
 

@@ -5,7 +5,7 @@ use std::ops::Index;
 
 use reifydb_core::{
 	common::{IndexType, JoinType},
-	interface::catalog::ringbuffer::EvictionVisibility,
+	interface::catalog::{procedure::RunAs, ringbuffer::EvictionVisibility},
 	sort::SortDirection,
 };
 use reifydb_value::{fragment::Fragment, value::identity::IdentityKind};
@@ -823,6 +823,7 @@ pub struct AstCreateProcedure<'bump> {
 	pub body: Vec<Ast<'bump>>,
 	pub body_source: String,
 	pub is_test: bool,
+	pub run_as: RunAs,
 }
 
 #[derive(Debug)]

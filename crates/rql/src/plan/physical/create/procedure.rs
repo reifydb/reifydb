@@ -53,6 +53,7 @@ impl<'bump> Compiler<'bump> {
 			body_source: create.body_source,
 			trigger: RqlTrigger::Call,
 			is_test: create.is_test,
+			run_as: create.run_as,
 		}))
 	}
 }

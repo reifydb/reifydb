@@ -220,7 +220,7 @@ fn pinned() -> Vec<Pin> {
 		(
 			"procedure::procedure",
 			&*PROCEDURE_SHAPE,
-			0x0e6d0dd0563391fb,
+			0xeed3cfe19154ea43,
 			&[
 				"id",
 				"namespace",
@@ -231,6 +231,7 @@ fn pinned() -> Vec<Pin> {
 				"trigger_variant_sumtype",
 				"trigger_variant_index",
 				"return_type",
+				"run_as",
 			],
 		),
 		("procedure::namespace_procedure", &*NAMESPACE_PROCEDURE_SHAPE, 0x6ac7ea1f39781c6f, &["id", "name"]),

@@ -39,6 +39,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			namespace::Namespace,
+			procedure::RunAs,
 			property::ColumnPropertyKind,
 			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 			ringbuffer::EvictionVisibility,
@@ -981,6 +982,7 @@ pub struct CreateProcedureNode<'bump> {
 	pub on_variant: Option<BumpFragment<'bump>>,
 
 	pub is_test: bool,
+	pub run_as: RunAs,
 }
 
 #[derive(Debug)]

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
+use reifydb_core::interface::catalog::procedure::RunAs;
+
 use crate::{
 	Result,
 	ast::{ast::AstCreateHandler, identifier::MaybeQualifiedProcedureIdentifier},
@@ -19,6 +21,7 @@ impl<'bump> Compiler<'bump> {
 			on_event: Some(ast.on_event),
 			on_variant: Some(ast.on_variant),
 			is_test: false,
+			run_as: RunAs::Caller,
 		}))
 	}
 }

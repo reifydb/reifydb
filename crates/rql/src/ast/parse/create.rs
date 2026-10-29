@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use reifydb_core::{interface::catalog::ringbuffer::EvictionVisibility, sort::SortDirection};
+use reifydb_core::{
+	interface::catalog::{procedure::RunAs, ringbuffer::EvictionVisibility},
+	sort::SortDirection,
+};
 use reifydb_value::{
 	error::{AstErrorKind, Error, TypeError},
 	fragment::Fragment,
@@ -113,6 +116,16 @@ fn duplicate_eviction(token: &Token<'_>) -> Error {
 			expected: "a unique `eviction` key".to_string(),
 		},
 		message: format!("`eviction` must be unique, found a second `{}`", token.fragment.text()),
+		fragment: token.fragment.to_owned(),
+	})
+}
+
+fn duplicate_run_as(token: &Token<'_>) -> Error {
+	Error::from(TypeError::Ast {
+		kind: AstErrorKind::UnexpectedToken {
+			expected: "a unique `run_as` key".to_string(),
+		},
+		message: format!("`run_as` must be unique, found a second `{}`", token.fragment.text()),
 		fragment: token.fragment.to_owned(),
 	})
 }
@@ -405,6 +418,8 @@ impl<'bump> Parser<'bump> {
 			Vec::new()
 		};
 
+		let run_as = self.parse_procedure_with()?;
+
 		self.consume_operator(Operator::As)?;
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -450,6 +465,7 @@ impl<'bump> Parser<'bump> {
 			body,
 			body_source,
 			is_test: false,
+			run_as,
 		}))
 	}
 
@@ -465,6 +481,8 @@ impl<'bump> Parser<'bump> {
 		} else {
 			Vec::new()
 		};
+
+		let run_as = self.parse_procedure_with()?;
 
 		self.consume_operator(Operator::As)?;
 
@@ -511,6 +529,7 @@ impl<'bump> Parser<'bump> {
 			body,
 			body_source,
 			is_test: true,
+			run_as,
 		}))
 	}
 
@@ -592,6 +611,59 @@ impl<'bump> Parser<'bump> {
 			body,
 			body_source,
 		}))
+	}
+
+	fn parse_procedure_with(&mut self) -> Result<RunAs> {
+		if self.consume_if(TokenKind::Keyword(Keyword::With))?.is_none() {
+			return Ok(RunAs::default());
+		}
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut run_as: Option<RunAs> = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let key = self.consume_identifier()?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"run_as" => {
+					if run_as.is_some() {
+						return Err(duplicate_run_as(&key));
+					}
+					let value = self.current()?;
+					if value.kind != TokenKind::Identifier {
+						return Err(unexpected_option(&value, "`system` or `caller`"));
+					}
+					let value = self.consume_identifier()?;
+					run_as = Some(match value.fragment.text() {
+						"system" => RunAs::System,
+						"caller" => RunAs::Caller,
+						_ => return Err(unexpected_option(&value, "`system` or `caller`")),
+					});
+				}
+				_ => return Err(unexpected_option(&key, "`run_as`")),
+			}
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(run_as.unwrap_or_default())
 	}
 
 	fn parse_procedure_params(&mut self) -> Result<Vec<AstProcedureParam<'bump>>> {

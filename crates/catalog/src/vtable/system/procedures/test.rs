@@ -58,6 +58,7 @@ impl BaseVTable for SystemProceduresTest {
 		let mut names = ColumnBuilder::with_capacity(ValueType::Utf8, procs.len());
 		let mut return_types = ColumnBuilder::with_capacity(ValueType::Utf8, procs.len());
 		let mut bodies = ColumnBuilder::with_capacity(ValueType::Utf8, procs.len());
+		let mut run_ases = ColumnBuilder::with_capacity(ValueType::Utf8, procs.len());
 
 		for p in procs {
 			let Procedure::Test {
@@ -66,6 +67,7 @@ impl BaseVTable for SystemProceduresTest {
 				name,
 				return_type,
 				body,
+				run_as,
 				..
 			} = p
 			else {
@@ -79,6 +81,7 @@ impl BaseVTable for SystemProceduresTest {
 				None => Value::none_of(ValueType::Utf8),
 			});
 			bodies.push(body.as_str());
+			run_ases.push(run_as.as_str());
 		}
 
 		let columns = vec![
@@ -87,6 +90,7 @@ impl BaseVTable for SystemProceduresTest {
 			names.finish("name"),
 			return_types.finish("return_type"),
 			bodies.finish("body"),
+			run_ases.finish("run_as"),
 		];
 
 		self.exhausted = true;

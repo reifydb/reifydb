@@ -18,7 +18,7 @@ use reifydb_core::{
 				TableId, TestId, ViewId,
 			},
 			namespace::Namespace,
-			procedure::{ProcedureParam, RqlTrigger},
+			procedure::{ProcedureParam, RqlTrigger, RunAs},
 			property::ColumnPropertyKind,
 			queue::{QueueDeduplicate, QueueDispatch, QueueRetention, QueueRetry},
 			relationship::RelationshipCardinality,
@@ -230,6 +230,7 @@ pub struct CreateProcedureNode {
 
 	pub trigger: RqlTrigger,
 	pub is_test: bool,
+	pub run_as: RunAs,
 }
 
 #[derive(Debug, Clone)]

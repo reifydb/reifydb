@@ -3,7 +3,10 @@
 
 use reifydb_catalog::error::{CatalogError, CatalogObjectKind};
 use reifydb_core::{
-	interface::catalog::{procedure::RqlTrigger, sumtype::SumTypeKind},
+	interface::catalog::{
+		procedure::{RqlTrigger, RunAs},
+		sumtype::SumTypeKind,
+	},
 	internal_error,
 };
 use reifydb_transaction::transaction::Transaction;
@@ -99,6 +102,7 @@ impl<'bump> Compiler<'bump> {
 				},
 			},
 			is_test: false,
+			run_as: RunAs::Caller,
 		}))
 	}
 }

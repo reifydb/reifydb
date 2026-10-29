@@ -16,6 +16,7 @@ impl<'bump> Compiler<'bump> {
 			on_event: None,
 			on_variant: None,
 			is_test: ast.is_test,
+			run_as: ast.run_as,
 		}))
 	}
 }

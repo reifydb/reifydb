@@ -18,6 +18,22 @@ pub enum RqlTrigger {
 	},
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, Default)]
+pub enum RunAs {
+	#[default]
+	Caller,
+	System,
+}
+
+impl RunAs {
+	pub fn as_str(&self) -> &'static str {
+		match self {
+			RunAs::Caller => "caller",
+			RunAs::System => "system",
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum ProcedureKind {
 	Rql,
@@ -59,6 +75,7 @@ pub enum Procedure {
 		return_type: Option<TypeConstraint>,
 		body: String,
 		trigger: RqlTrigger,
+		run_as: RunAs,
 	},
 
 	Test {
@@ -68,6 +85,7 @@ pub enum Procedure {
 		params: Vec<ProcedureParam>,
 		return_type: Option<TypeConstraint>,
 		body: String,
+		run_as: RunAs,
 	},
 
 	InProcess {
