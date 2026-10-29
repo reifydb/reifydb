@@ -33,6 +33,11 @@ pub enum PolicyError {
 		variant: String,
 		handler: String,
 	},
+	#[error("only root or system may create procedure {procedure} with run_as: system")]
+	RunAsSystemDenied {
+		procedure: String,
+		fragment: Fragment,
+	},
 }
 
 impl IntoDiagnostic for PolicyError {
@@ -121,6 +126,24 @@ impl IntoDiagnostic for PolicyError {
 					"A handler runs with the identity that dispatched the event. Grant it with:\n  CREATE PROCEDURE POLICY ON {} {{ call: {{ filter {{ ... }} }} }}",
 					handler
 				)),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+			PolicyError::RunAsSystemDenied {
+				procedure,
+				fragment,
+			} => Diagnostic {
+				code: "POLICY_004".to_string(),
+				rql: None,
+				message: format!("only root or system may create procedure {} with run_as: system", procedure),
+				column: None,
+				fragment,
+				label: None,
+				help: Some(
+					"Create it as root or system (for example in a migration), or use run_as: caller"
+						.to_string(),
+				),
 				notes: vec![],
 				cause: None,
 				operator_chain: None,

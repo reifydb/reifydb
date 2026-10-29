@@ -3,7 +3,11 @@
 
 use arrow_array::RecordBatch;
 use reifydb_catalog::catalog::{handler::HandlerToCreate, procedure::ProcedureToCreate};
-use reifydb_core::{interface::catalog::procedure::RqlTrigger, value::batch::single_row};
+use reifydb_core::{
+	interface::catalog::procedure::{RqlTrigger, RunAs},
+	value::batch::single_row,
+};
+use reifydb_policy::error::PolicyError;
 use reifydb_rql::nodes::CreateProcedureNode;
 use reifydb_transaction::transaction::admin::AdminTransaction;
 use reifydb_value::value::Value;
@@ -15,6 +19,14 @@ pub(crate) fn create_procedure(
 	txn: &mut AdminTransaction,
 	plan: CreateProcedureNode,
 ) -> Result<RecordBatch> {
+	if plan.run_as == RunAs::System && !txn.identity.is_privileged() {
+		return Err(PolicyError::RunAsSystemDenied {
+			procedure: format!("{}::{}", plan.namespace.name(), plan.name.text()),
+			fragment: plan.name.clone(),
+		}
+		.into());
+	}
+
 	let is_handler = matches!(plan.trigger, RqlTrigger::Event { .. });
 
 	let to_create = if plan.is_test {
