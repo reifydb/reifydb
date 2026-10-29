@@ -10,7 +10,6 @@ use reifydb_core::{
 	},
 	execution::ExecutionResult,
 	interface::catalog::{procedure::Procedure, subscription::SubscribeOptions},
-	retry::RetryStrategy,
 };
 use reifydb_engine::engine::StandardEngine;
 use reifydb_runtime::{
@@ -32,7 +31,6 @@ pub struct ServerActor {
 	engine: StandardEngine,
 	auth_service: AuthService,
 	clock: Clock,
-	retry: RetryStrategy,
 }
 
 impl ServerActor {
@@ -41,7 +39,6 @@ impl ServerActor {
 			engine,
 			auth_service,
 			clock,
-			retry: RetryStrategy::default(),
 		}
 	}
 
@@ -54,9 +51,7 @@ impl ServerActor {
 		execute: impl Fn(&StandardEngine, IdentityId, &str, Params) -> ExecutionResult,
 	) {
 		let t = self.clock.instant();
-		let result = self
-			.retry
-			.execute(self.engine.rng(), &rql, || execute(&self.engine, identity, &rql, params.clone()));
+		let result = execute(&self.engine, identity, &rql, params);
 		if let Some(err) = result.error {
 			reply.send(ServerResponse::EngineError {
 				diagnostic: Box::new(err.diagnostic()),

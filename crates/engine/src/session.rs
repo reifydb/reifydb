@@ -6,7 +6,6 @@ use std::{collections::HashMap, sync::Arc};
 use reifydb_core::{
 	execution::ExecutionResult,
 	interface::catalog::{id::QueueId, token::Token},
-	retry::RetryStrategy,
 };
 use reifydb_runtime::{context::clock::Instant, sync::waiter::WaiterHandle};
 use reifydb_value::{
@@ -27,7 +26,6 @@ pub struct Session {
 	identity: IdentityId,
 	authenticated: bool,
 	token: Option<String>,
-	retry: RetryStrategy,
 }
 
 impl Session {
@@ -37,7 +35,6 @@ impl Session {
 			identity: info.identity,
 			authenticated: true,
 			token: Some(info.token.clone()),
-			retry: RetryStrategy::default(),
 		}
 	}
 
@@ -47,17 +44,11 @@ impl Session {
 			identity,
 			authenticated: false,
 			token: None,
-			retry: RetryStrategy::default(),
 		}
 	}
 
 	pub fn anonymous(engine: StandardEngine) -> Self {
 		Self::trusted(engine, IdentityId::anonymous())
-	}
-
-	pub fn with_retry(mut self, strategy: RetryStrategy) -> Self {
-		self.retry = strategy;
-		self
 	}
 
 	#[inline]
@@ -88,15 +79,12 @@ impl Session {
 
 	#[instrument(name = "session::command", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command(&self, rql: &str, params: impl Into<Params>) -> ExecutionResult {
-		let params = params.into();
-		self.retry
-			.execute(self.engine.rng(), rql, || self.engine.command_as(self.identity, rql, params.clone()))
+		self.engine.command_as(self.identity, rql, params.into())
 	}
 
 	#[instrument(name = "session::admin", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin(&self, rql: &str, params: impl Into<Params>) -> ExecutionResult {
-		let params = params.into();
-		self.retry.execute(self.engine.rng(), rql, || self.engine.admin_as(self.identity, rql, params.clone()))
+		self.engine.admin_as(self.identity, rql, params.into())
 	}
 
 	#[instrument(name = "queue::claim_wait", level = "debug", skip(self), fields(queue = %queue, worker = %worker))]

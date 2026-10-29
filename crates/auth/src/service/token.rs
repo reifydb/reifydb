@@ -4,9 +4,12 @@
 use std::collections::HashMap;
 
 use reifydb_catalog::{drop_expired_tokens, drop_token, drop_tokens_by_identity, find_token_by_value};
-use reifydb_core::interface::{
-	auth::AuthStep,
-	catalog::token::{Token, TokenId, TokenKind},
+use reifydb_core::{
+	interface::{
+		auth::AuthStep,
+		catalog::token::{Token, TokenId, TokenKind},
+	},
+	retry::RetryStrategy,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -100,25 +103,31 @@ impl AuthService {
 
 	#[inline]
 	fn drop_and_commit(&self, id: TokenId) -> Result<(), Error> {
-		let mut admin = self.engine.begin_admin()?;
-		drop_token(&mut admin, id)?;
-		admin.commit()?;
-		Ok(())
+		RetryStrategy::default().retry(&self.rng, "auth::drop_token", || {
+			let mut admin = self.engine.begin_admin()?;
+			drop_token(&mut admin, id)?;
+			admin.commit()?;
+			Ok(())
+		})
 	}
 
 	pub fn revoke_all(&self, identity: IdentityId) -> Result<(), Error> {
-		let mut admin = self.engine.begin_admin()?;
-		drop_tokens_by_identity(&mut admin, identity)?;
-		admin.commit()?;
-		Ok(())
+		RetryStrategy::default().retry(&self.rng, "auth::revoke_all", || {
+			let mut admin = self.engine.begin_admin()?;
+			drop_tokens_by_identity(&mut admin, identity)?;
+			admin.commit()?;
+			Ok(())
+		})
 	}
 
 	pub fn cleanup_expired(&self) -> Result<(), Error> {
 		self.challenges.cleanup_expired();
 
-		let mut admin = self.engine.begin_admin()?;
-		drop_expired_tokens(&mut admin, self.now()?)?;
-		admin.commit()?;
-		Ok(())
+		RetryStrategy::default().retry(&self.rng, "auth::cleanup_expired", || {
+			let mut admin = self.engine.begin_admin()?;
+			drop_expired_tokens(&mut admin, self.now()?)?;
+			admin.commit()?;
+			Ok(())
+		})
 	}
 }

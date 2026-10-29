@@ -5,9 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use reifydb::{
 	FromFrame, IdentityId, Value,
-	core::retry::RetryStrategy,
 	engine::engine::StandardEngine,
-	runtime::context::rng::Rng,
 	value::{
 		params,
 		params::Params,
@@ -105,10 +103,8 @@ async fn exec_query(st: &AppState, rql: String, params: Params) -> Result<Vec<Fr
 
 async fn exec_command(st: &AppState, rql: String, params: Params) -> Result<Vec<Frame>, ApiError> {
 	let engine = st.engine.clone();
-	let rng = st.rng.clone();
 	st.tokio.spawn_blocking(move || {
-		let retry = RetryStrategy::default_conflict_retry();
-		let r = retry.execute(&rng, &rql, || engine.command_as(IdentityId::root(), &rql, params.clone()));
+		let r = engine.command_as(IdentityId::root(), &rql, params);
 		match r.error {
 			Some(e) => Err(e),
 			None => Ok(r.frames),
@@ -122,7 +118,6 @@ async fn exec_command(st: &AppState, rql: String, params: Params) -> Result<Vec<
 pub enum ProbeBackend {
 	Embedded {
 		engine: StandardEngine,
-		rng: Rng,
 		tokio: Handle,
 		identity: IdentityId,
 	},
@@ -164,19 +159,14 @@ impl ProbeBackend {
 		match self {
 			ProbeBackend::Embedded {
 				engine,
-				rng,
 				tokio,
 				identity,
 			} => {
 				let engine = engine.clone();
-				let rng = rng.clone();
 				let identity = *identity;
 				let rql = rql.to_string();
 				tokio.spawn_blocking(move || {
-					let retry = RetryStrategy::default_conflict_retry();
-					let r = retry.execute(&rng, &rql, || {
-						engine.command_as(identity, &rql, params.clone())
-					});
+					let r = engine.command_as(identity, &rql, params);
 					match r.error {
 						Some(e) => Err(e),
 						None => Ok(r.frames),

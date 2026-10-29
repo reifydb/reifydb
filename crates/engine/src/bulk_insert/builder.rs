@@ -30,6 +30,7 @@ use reifydb_core::{
 	},
 	internal_error,
 	key::{any::TaggedKey, series::SeriesPartitionMetadataKey},
+	retry::RetryStrategy,
 	ring::Ring,
 	value::batch::batch,
 };
@@ -202,22 +203,22 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	}
 
 	pub fn execute(self) -> Result<BulkInsertResult> {
-		self.run()
+		RetryStrategy::default().retry(self.engine.rng(), "bulk_insert", || self.run())
 	}
 
-	fn run(self) -> Result<BulkInsertResult> {
+	fn run(&self) -> Result<BulkInsertResult> {
 		self.engine.reject_if_read_only()?;
 		let mut txn = self.engine.begin_command(self.identity, Durability::Async)?;
 		let catalog = self.engine.catalog();
 		let services = self.engine.services();
 		let clock = self.engine.clock();
 		let total_rows = self.total_pending_rows();
-		let pending_tables = self.pending_tables;
-		let pending_ringbuffers = self.pending_ringbuffers;
-		let pending_series = self.pending_series;
+		let pending_tables = &self.pending_tables;
+		let pending_ringbuffers = &self.pending_ringbuffers;
+		let pending_series = &self.pending_series;
 		let identity = self.identity;
 		let checked_commit =
-			!pending_ringbuffers.is_empty() || has_keyed_table(&catalog, &mut txn, &pending_tables)?;
+			!pending_ringbuffers.is_empty() || has_keyed_table(&catalog, &mut txn, pending_tables)?;
 
 		let body = move |txn: &mut CommandTransaction| {
 			let writer = Writer {
@@ -263,19 +264,19 @@ struct Writer<'a> {
 fn run_all_pending<V: ValidationMode>(
 	writer: &Writer<'_>,
 	txn: &mut CommandTransaction,
-	pending_tables: Vec<PendingTableInsert>,
-	pending_ringbuffers: Vec<PendingRingBufferInsert>,
-	pending_series: Vec<PendingSeriesInsert>,
+	pending_tables: &[PendingTableInsert],
+	pending_ringbuffers: &[PendingRingBufferInsert],
+	pending_series: &[PendingSeriesInsert],
 ) -> Result<BulkInsertResult> {
 	let mut result = BulkInsertResult::default();
 	for pending in pending_tables {
-		result.tables.push(execute_table_insert::<V>(writer, txn, &pending)?);
+		result.tables.push(execute_table_insert::<V>(writer, txn, pending)?);
 	}
 	for pending in pending_ringbuffers {
-		result.ringbuffers.push(execute_ringbuffer_insert::<V>(writer, txn, &pending)?);
+		result.ringbuffers.push(execute_ringbuffer_insert::<V>(writer, txn, pending)?);
 	}
 	for pending in pending_series {
-		result.series.push(execute_series_insert::<V>(writer, txn, &pending)?);
+		result.series.push(execute_series_insert::<V>(writer, txn, pending)?);
 	}
 	Ok(result)
 }

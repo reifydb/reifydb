@@ -3,9 +3,12 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use reifydb_core::interface::{
-	auth::{AuthStep, AuthenticationProvider},
-	catalog::{authentication_method::AuthenticationMethod, identity::Identity},
+use reifydb_core::{
+	interface::{
+		auth::{AuthStep, AuthenticationProvider},
+		catalog::{authentication_method::AuthenticationMethod, identity::Identity},
+	},
+	retry::RetryStrategy,
 };
 use reifydb_transaction::transaction::Transaction;
 use reifydb_value::{
@@ -216,15 +219,27 @@ impl AuthService {
 		user: &GithubUser,
 		properties: BTreeMap<String, String>,
 	) -> Result<IdentityId, Error> {
-		let mut admin = self.engine.begin_admin()?;
 		let catalog = self.engine.catalog();
-
 		let identifier = format!("github:{}", user.id);
-		let ident =
-			catalog.create_identity(&mut admin, &identifier, IdentityKind::User, &self.clock, &self.rng)?;
-		catalog.create_authentication(&mut admin, ident.id, "github", properties)?;
-		self.set_lookup_attribute(&mut admin, ident.id, GITHUB_USER_ID_ATTRIBUTE, &user.id.to_string())?;
-		admin.commit()?;
+		let ident = RetryStrategy::default().retry(&self.rng, "auth::create_github_identity", || {
+			let mut admin = self.engine.begin_admin()?;
+			let ident = catalog.create_identity(
+				&mut admin,
+				&identifier,
+				IdentityKind::User,
+				&self.clock,
+				&self.rng,
+			)?;
+			catalog.create_authentication(&mut admin, ident.id, "github", properties.clone())?;
+			self.set_lookup_attribute(
+				&mut admin,
+				ident.id,
+				GITHUB_USER_ID_ATTRIBUTE,
+				&user.id.to_string(),
+			)?;
+			admin.commit()?;
+			Ok(ident)
+		})?;
 
 		reifydb_assertions! {
 			assert!(
@@ -237,18 +252,23 @@ impl AuthService {
 
 	#[inline]
 	fn record_github_login(&self, identity: IdentityId, login: &str) -> Result<(), Error> {
-		let mut admin = self.engine.begin_admin()?;
 		let catalog = self.engine.catalog();
-
-		let Some(attribute) =
-			catalog.find_identity_attribute_by_name(&mut Transaction::Admin(&mut admin), "github_login")?
-		else {
-			return Ok(());
-		};
-
-		catalog.set_identity_attribute_value(&mut admin, identity, &attribute, Value::Utf8(login.to_string()))?;
-		admin.commit()?;
-		Ok(())
+		RetryStrategy::default().retry(&self.rng, "auth::record_github_login", || {
+			let mut admin = self.engine.begin_admin()?;
+			let Some(attribute) = catalog
+				.find_identity_attribute_by_name(&mut Transaction::Admin(&mut admin), "github_login")?
+			else {
+				return Ok(());
+			};
+			catalog.set_identity_attribute_value(
+				&mut admin,
+				identity,
+				&attribute,
+				Value::Utf8(login.to_string()),
+			)?;
+			admin.commit()?;
+			Ok(())
+		})
 	}
 
 	#[inline]

@@ -46,6 +46,7 @@ use reifydb_core::{
 	internal,
 	lifecycle::watermark::CheckpointFloor,
 	metrics::sample::MetricKind,
+	retry::RetryStrategy,
 	util::ioc::IocContainer,
 };
 use reifydb_runtime::{
@@ -173,6 +174,10 @@ impl StandardEngine {
 
 	#[instrument(name = "engine::admin_as", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn admin_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		RetryStrategy::default().execute(self.rng(), rql, || self.admin_once(identity, rql, params.clone()))
+	}
+
+	fn admin_once(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
 		if let Some(e) = self.reject_request(identity) {
 			return ExecutionResult::from_error(e);
 		}
@@ -232,6 +237,10 @@ impl StandardEngine {
 
 	#[instrument(name = "engine::command_as", level = "debug", skip(self, params), fields(rql = %rql))]
 	pub fn command_as(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
+		RetryStrategy::default().execute(self.rng(), rql, || self.command_once(identity, rql, params.clone()))
+	}
+
+	fn command_once(&self, identity: IdentityId, rql: &str, params: Params) -> ExecutionResult {
 		if let Some(e) = self.reject_request(identity) {
 			return ExecutionResult::from_error(e);
 		}

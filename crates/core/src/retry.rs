@@ -10,14 +10,6 @@ use tracing::{debug, warn};
 use crate::execution::ExecutionResult;
 
 pub enum Backoff {
-	None,
-
-	Fixed(Duration),
-
-	Exponential {
-		base: Duration,
-		max: Duration,
-	},
 	ExponentialJitter {
 		base: Duration,
 		max: Duration,
@@ -42,44 +34,6 @@ impl Default for RetryStrategy {
 }
 
 impl RetryStrategy {
-	pub fn no_retry() -> Self {
-		Self {
-			max_attempts: 1,
-			backoff: Backoff::None,
-		}
-	}
-
-	pub fn default_conflict_retry() -> Self {
-		Self::default()
-	}
-
-	pub fn with_fixed_backoff(max_attempts: u32, delay: Duration) -> Self {
-		Self {
-			max_attempts,
-			backoff: Backoff::Fixed(delay),
-		}
-	}
-
-	pub fn with_exponential_backoff(max_attempts: u32, base: Duration, max: Duration) -> Self {
-		Self {
-			max_attempts,
-			backoff: Backoff::Exponential {
-				base,
-				max,
-			},
-		}
-	}
-
-	pub fn with_jittered_backoff(max_attempts: u32, base: Duration, max: Duration) -> Self {
-		Self {
-			max_attempts,
-			backoff: Backoff::ExponentialJitter {
-				base,
-				max,
-			},
-		}
-	}
-
 	pub fn execute<F>(&self, rng: &Rng, rql: &str, f: F) -> ExecutionResult
 	where
 		F: FnMut() -> ExecutionResult,
@@ -134,12 +88,6 @@ pub fn is_conflict(err: &Error) -> bool {
 
 fn compute_backoff(backoff: &Backoff, attempt: u32, rng: &Rng) -> Duration {
 	match backoff {
-		Backoff::None => Duration::zero(),
-		Backoff::Fixed(d) => *d,
-		Backoff::Exponential {
-			base,
-			max,
-		} => exponential_cap(*base, *max, attempt),
 		Backoff::ExponentialJitter {
 			base,
 			max,
@@ -207,7 +155,10 @@ mod retry_tests {
 	fn no_sleep_strategy(max_attempts: u32) -> RetryStrategy {
 		RetryStrategy {
 			max_attempts,
-			backoff: Backoff::None,
+			backoff: Backoff::ExponentialJitter {
+				base: Duration::zero(),
+				max: Duration::zero(),
+			},
 		}
 	}
 
@@ -353,15 +304,11 @@ mod retry_tests {
 	fn default_uses_jittered_backoff() {
 		let s = RetryStrategy::default();
 		assert_eq!(s.max_attempts, 10);
-		match s.backoff {
-			Backoff::ExponentialJitter {
-				base,
-				max,
-			} => {
-				assert_eq!(base, Duration::from_milliseconds(5).unwrap());
-				assert_eq!(max, Duration::from_milliseconds(200).unwrap());
-			}
-			_ => panic!("expected ExponentialJitter default"),
-		}
+		let Backoff::ExponentialJitter {
+			base,
+			max,
+		} = s.backoff;
+		assert_eq!(base, Duration::from_milliseconds(5).unwrap());
+		assert_eq!(max, Duration::from_milliseconds(200).unwrap());
 	}
 }

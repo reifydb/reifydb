@@ -124,7 +124,6 @@ fn main() {
 		}
 		let backend = ProbeBackend::Embedded {
 			engine: state.engine.clone(),
-			rng: state.rng.clone(),
 			tokio: handle.clone(),
 			identity: id,
 		};

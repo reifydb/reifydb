@@ -4,17 +4,11 @@
 use std::{slice::from_ref, sync::Arc};
 
 use reifydb_codec::row::pod::EncodedPodRow;
-use reifydb_core::{
-	key::system::{SystemVersion, SystemVersionKey},
-	retry::RetryStrategy,
-};
+use reifydb_core::key::system::{SystemVersion, SystemVersionKey};
 use reifydb_engine::engine::StandardEngine;
 use reifydb_store_multi::MultiStore;
 use reifydb_transaction::single::SingleTransaction;
-use reifydb_value::{
-	params::Params,
-	value::{duration::Duration, identity::IdentityId},
-};
+use reifydb_value::{params::Params, value::identity::IdentityId};
 use tracing::info;
 
 use crate::{MigrationStatement, Result};
@@ -93,14 +87,7 @@ pub(crate) fn apply_migrations(engine: &StandardEngine, migrations: &[MigrationS
 	}
 
 	info!("Running MIGRATE to apply pending migrations");
-	let strategy = RetryStrategy::with_jittered_backoff(
-		30,
-		Duration::from_milliseconds(10).unwrap(),
-		Duration::from_milliseconds(2_000).unwrap(),
-	);
-	let rng = engine.rng();
-	let result =
-		strategy.execute(rng, "MIGRATE;", || engine.admin_as(IdentityId::system(), "MIGRATE;", Params::None));
+	let result = engine.admin_as(IdentityId::system(), "MIGRATE;", Params::None);
 	if let Some(e) = result.error {
 		return Err(e);
 	}

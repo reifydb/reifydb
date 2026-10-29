@@ -55,7 +55,6 @@ pub struct Run {
 }
 
 const INSERT_CHUNK: usize = 50_000;
-const MAX_ATTEMPTS: usize = 5;
 
 fn err(e: Error) -> String {
 	e.to_string()
@@ -256,29 +255,18 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 	let order = insert_order(ds);
 	let clock = Clock::Real;
 	let start = clock.instant();
-	let mut conflicts = 0;
 	let batches = order
 		.chunks(INSERT_CHUNK)
 		.map(|chunk| batch(columns(ds, chunk, run.variant, run.with_pool)).map_err(err))
 		.collect::<Result<Vec<_>, String>>()?;
 	for (n, txn) in batches.chunks(run.txn_rows.div_ceil(INSERT_CHUNK)).enumerate() {
-		let mut attempt = 1;
-		loop {
-			let mut bulk = db.engine().bulk_insert(IdentityId::root());
-			let mut series = bulk.series(run.series);
-			for record_batch in txn {
-				series = series.batch(record_batch.clone());
-			}
-			series.done();
-			match bulk.execute() {
-				Ok(_) => break,
-				Err(e) if e.0.code == "TXN_001" && attempt < MAX_ATTEMPTS => {
-					conflicts += 1;
-					attempt += 1;
-				}
-				Err(e) => return Err(format!("bulk insert txn {n} (attempt {attempt}): {e}")),
-			}
+		let mut bulk = db.engine().bulk_insert(IdentityId::root());
+		let mut series = bulk.series(run.series);
+		for record_batch in txn {
+			series = series.batch(record_batch.clone());
 		}
+		series.done();
+		bulk.execute().map_err(|e| format!("bulk insert txn {n}: {e}"))?;
 	}
 	let insert_secs = start.elapsed().as_secs_f64();
 
@@ -340,7 +328,7 @@ pub fn measure(ds: &Dataset, run: &Run, profile: CompressionProfile) -> Result<R
 	}
 
 	println!(
-		"phase2 {} {}: insert {insert_secs:.1}s ({conflicts} TXN_001 retries), materialize {seal_secs:.1}s, {materialized}/{} rows, {blocks} blocks ({empty_blocks} empty), merge window {} buckets, row store {row_store_bytes} bytes",
+		"phase2 {} {}: insert {insert_secs:.1}s, materialize {seal_secs:.1}s, {materialized}/{} rows, {blocks} blocks ({empty_blocks} empty), merge window {} buckets, row store {row_store_bytes} bytes",
 		run.name,
 		profile_name(profile),
 		order.len(),
