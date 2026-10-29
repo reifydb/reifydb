@@ -102,7 +102,7 @@ fn pool_config_from_sources(
 		Some(persistent) => (persistent.saved_through()?, persistent.install_floor()?),
 		None => (CommitVersion(0), CommitVersion(0)),
 	};
-	let wal = commit_wal(factory, clock, wal_enabled);
+	let wal = commit_wal(factory, clock, wal_enabled, None);
 	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
 	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides)?;
 	if let Some(persistent) = multi_persistent.as_ref() {

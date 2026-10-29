@@ -160,7 +160,16 @@ pub(crate) fn wal_dir(config: &SqliteConfig) -> PathBuf {
 	}
 }
 
-pub(crate) fn commit_wal(factory: &StorageFactory, clock: &Clock, enabled: bool) -> CommitWal {
+pub(crate) fn commit_wal(
+	factory: &StorageFactory,
+	clock: &Clock,
+	enabled: bool,
+	wal_fs: Option<(Fs, PathBuf)>,
+) -> CommitWal {
+	if let (true, Some((fs, dir))) = (enabled, wal_fs) {
+		return open_wal(fs, clock.clone(), &dir)
+			.unwrap_or_else(|err| panic!("commit log at {} failed to open: {err}", dir.display()));
+	}
 	if !enabled {
 		if let StorageFactory::Sqlite(config) = factory {
 			let dir = wal_dir(config);

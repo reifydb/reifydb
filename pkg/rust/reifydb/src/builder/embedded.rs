@@ -12,7 +12,7 @@ use reifydb_core::{
 use reifydb_extension::transform::registry::TransformsConfigurator;
 use reifydb_routine_abi::registry::RoutinesConfigurator;
 use reifydb_runtime::{
-	Runtime, RuntimeConfig, context::clock::Clock, fatal::install as install_fatal, pool::PoolConfig,
+	Runtime, RuntimeConfig, context::clock::Clock, fatal::install as install_fatal, io::fs::Fs, pool::PoolConfig,
 	version_epoch::VersionEpoch,
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -51,6 +51,7 @@ fn pool_config_from_sources(
 	factory: &StorageFactory,
 	overrides: &[(ConfigKey, Value)],
 	wal_enabled: bool,
+	wal_fs: Option<(Fs, PathBuf)>,
 	clock: &Clock,
 ) -> Result<PoolConfigSources> {
 	let multi_commit_store = factory.open_multi_commit_store();
@@ -59,7 +60,7 @@ fn pool_config_from_sources(
 		Some(persistent) => (persistent.saved_through()?, persistent.install_floor()?),
 		None => (CommitVersion(0), CommitVersion(0)),
 	};
-	let wal = commit_wal(factory, clock, wal_enabled);
+	let wal = commit_wal(factory, clock, wal_enabled, wal_fs);
 	let recovery = replay(&wal, &multi_commit_store, saved_through, persisted_high);
 	let resolved = resolve_startup_configs(&multi_commit_store, multi_persistent.as_ref(), overrides)?;
 	if let Some(persistent) = multi_persistent.as_ref() {
@@ -120,6 +121,7 @@ pub struct EmbeddedBuilder {
 	bootstrap_configs: Vec<(ConfigKey, Value)>,
 	fast_shutdown: bool,
 	operator_persistent: Option<PersistentTier>,
+	wal_fs: Option<(Fs, PathBuf)>,
 }
 
 impl EmbeddedBuilder {
@@ -147,11 +149,18 @@ impl EmbeddedBuilder {
 			bootstrap_configs: Vec::new(),
 			fast_shutdown: false,
 			operator_persistent: None,
+			wal_fs: None,
 		}
 	}
 
 	pub fn with_fast_shutdown(mut self) -> Self {
 		self.fast_shutdown = true;
+		self
+	}
+
+	#[cfg(feature = "testing")]
+	pub fn with_wal_fs(mut self, fs: Fs, dir: impl Into<PathBuf>) -> Self {
+		self.wal_fs = Some((fs, dir.into()));
 		self
 	}
 
@@ -284,7 +293,13 @@ impl EmbeddedBuilder {
 			sync_interval,
 			wal,
 			recovery,
-		) = pool_config_from_sources(&self.storage_factory, &self.bootstrap_configs, wal_enabled, &boot_clock)?;
+		) = pool_config_from_sources(
+			&self.storage_factory,
+			&self.bootstrap_configs,
+			wal_enabled,
+			self.wal_fs,
+			&boot_clock,
+		)?;
 		#[cfg(all(feature = "column", reifydb_target = "host"))]
 		let column_dir = match &self.storage_factory {
 			StorageFactory::Sqlite(config) => Some(api::column_dir(config)),
