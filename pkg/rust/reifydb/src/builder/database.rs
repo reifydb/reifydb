@@ -24,7 +24,7 @@ use reifydb_cdc::{
 	},
 };
 #[cfg(feature = "sub_flow")]
-use reifydb_core::commit::queue::FlowQueueFloor;
+use reifydb_core::commit::queue::{FlowQueueFloor, SubscriptionQueueFloor};
 use reifydb_core::{
 	CoreVersion,
 	actors::cdc::CdcProduceHandle,
@@ -475,6 +475,10 @@ impl DatabaseBuilder {
 		#[cfg(feature = "sub_flow")]
 		if self.flow_factory.is_some() {
 			self.ioc = self.ioc.register(FlowQueueFloor(commit_queue.floor("flow")));
+		}
+		#[cfg(feature = "sub_flow")]
+		{
+			self.ioc = self.ioc.register(SubscriptionQueueFloor(commit_queue.floor("subscription")));
 		}
 		self.ioc = self.ioc.register(flow_wal(multi.wal()));
 

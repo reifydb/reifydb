@@ -4,6 +4,7 @@
 pub mod consumer;
 pub mod delivery;
 pub mod poller;
+pub mod reader;
 pub mod store;
 pub mod subsystem;
 pub mod tracker;

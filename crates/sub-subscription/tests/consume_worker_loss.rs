@@ -2,14 +2,16 @@
 // Copyright (c) 2026 ReifyDB
 
 use std::{
-	ops::Bound,
 	sync::{Arc, mpsc::channel},
 	thread,
 };
 
 use reifydb::testing::db::TestDb;
-use reifydb_cdc::consume::{consumer::CdcConsume, is_relevant_cdc};
-use reifydb_core::interface::{catalog::flow::FlowId, cdc::Cdc};
+use reifydb_core::{
+	commit::queue::{CommitPull, CommitQueue},
+	common::CommitVersion,
+	interface::{catalog::flow::FlowId, commit::CommitEntry},
+};
 use reifydb_runtime::{
 	actor::{
 		context::Context,
@@ -19,7 +21,6 @@ use reifydb_runtime::{
 	},
 	context::clock::Clock,
 };
-use reifydb_store_cdc::{storage::CdcStorage, store::CdcStore};
 use reifydb_sub_subscription::{
 	consumer::SubscriptionCdcConsumer,
 	delivery::DeliveryBuffer,
@@ -27,7 +28,7 @@ use reifydb_sub_subscription::{
 	tracker::{SubscribedObjects, SubscriptionPositionTracker, SubscriptionSourceTracker},
 	worker::SubscriptionWorkerMessage,
 };
-use reifydb_value::value::duration::Duration;
+use reifydb_value::{byte_size::ByteSize, value::duration::Duration};
 
 struct StoppedWorker;
 
@@ -64,18 +65,27 @@ fn closed_worker() -> ActorRef<SubscriptionWorkerMessage> {
 	panic!("the stopped worker's mailbox never closed");
 }
 
-fn wait_for_consumer_caught_up(db: &TestDb) {
+fn queue(db: &TestDb) -> CommitQueue {
+	db.engine().ioc().resolve::<CommitQueue>().expect("the commit queue is registered")
+}
+
+fn wait_for_consumer_caught_up(db: &TestDb) -> CommitVersion {
 	let target = db.watermarks().tx().current().expect("current version");
 	let timeout = Duration::from_seconds(10).unwrap();
 	if !db.watermarks().cdc().wait_for_consumer(target, timeout) {
-		panic!("CDC consumer did not reach {:?} within {:?}", target, timeout);
+		panic!("subscription reader did not reach {:?} within {:?}", target, timeout);
 	}
+	target
 }
 
-fn relevant_cdcs(db: &TestDb) -> Vec<Cdc> {
-	let cdc_store = db.engine().ioc().resolve::<CdcStore>().expect("cdc store registered");
-	let batch = cdc_store.read_range(Bound::Unbounded, Bound::Unbounded, 1024).expect("read the cdc log");
-	batch.items.into_iter().filter(is_relevant_cdc).collect()
+fn entries(db: &TestDb, after: CommitVersion, target: CommitVersion) -> Vec<Arc<CommitEntry>> {
+	match queue(db).pull(after, target, ByteSize::from_bytes(u64::MAX)) {
+		CommitPull::Hit {
+			entries,
+			..
+		} => entries,
+		CommitPull::Behind => panic!("the held floor must keep every commit after {after:?}"),
+	}
 }
 
 #[test]
@@ -84,11 +94,13 @@ fn a_batch_sent_to_an_unreachable_worker_fails_naming_the_worker() {
 	let db = TestDb::memory();
 	db.admin("CREATE NAMESPACE app");
 	db.admin("CREATE TABLE app::t { id: int4 }");
+	let _floor = queue(&db).floor("test");
+	let before = db.watermarks().tx().current().expect("current version");
 	db.command("INSERT app::t [{id: 1}]");
-	wait_for_consumer_caught_up(&db);
+	let target = wait_for_consumer_caught_up(&db);
 
-	let cdcs = relevant_cdcs(&db);
-	assert!(!cdcs.is_empty(), "the insert must be in the cdc log before it can be dispatched");
+	let entries = entries(&db, before, target);
+	assert!(!entries.is_empty(), "the insert must be in the queue before it can be dispatched");
 
 	let store = Arc::new(SubscriptionStore::new(1024));
 	let consumer = SubscriptionCdcConsumer::new(
@@ -102,7 +114,7 @@ fn a_batch_sent_to_an_unreachable_worker_fails_naming_the_worker() {
 	);
 
 	let (tx, rx) = channel();
-	consumer.consume(cdcs, Box::new(move |outcome| tx.send(outcome).unwrap()));
+	consumer.consume(entries, Box::new(move |outcome| tx.send(outcome).unwrap()));
 
 	let outcome = rx
 		.recv_timeout(Duration::from_seconds(10).unwrap().to_std())

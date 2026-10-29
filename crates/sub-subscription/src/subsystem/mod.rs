@@ -16,19 +16,14 @@ use std::{
 };
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_cdc::consume::{
-	consumer::CdcConsumer,
-	poll::{PollConsumer, PollConsumerConfig},
-	wake::CdcWakeRegistry,
-	watermark::CdcConsumerWatermark,
-};
+use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 use reifydb_core::{
+	commit::queue::{CommitQueue, SubscriptionQueueFloor},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
 			subscription::SubscriptionInspectorRef,
 		},
-		cdc::CdcConsumerId,
 		subscription::SubscriptionWatermarkSampler,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
@@ -49,10 +44,9 @@ use reifydb_runtime::{
 	shutdown::{Shutdown, ShutdownErrors},
 	sync::{mutex::Mutex, rwlock::RwLock},
 };
-use reifydb_store_cdc::store::CdcStore;
 use reifydb_sub_api::subsystem::{HealthStatus, Subsystem, SubsystemFactory};
 use reifydb_transaction::interceptor::builder::InterceptorBuilder;
-use reifydb_value::{Result, value::duration::Duration};
+use reifydb_value::Result;
 
 use self::{
 	inspect::SubscriptionInspectorImpl,
@@ -61,6 +55,7 @@ use self::{
 use crate::{
 	consumer::SubscriptionCdcConsumer,
 	delivery::DeliveryBuffer,
+	reader::{SubscriptionReader, SubscriptionReaderMessage},
 	store::SubscriptionStore,
 	tracker::{SubscribedObjects, SubscriptionPositionTracker, SubscriptionSourceTracker},
 	watermark::compute_subscription_watermarks,
@@ -68,7 +63,7 @@ use crate::{
 };
 
 pub struct SubscriptionSubsystem {
-	consumer: Mutex<PollConsumer<StandardEngine, SubscriptionCdcConsumer>>,
+	reader: Mutex<Option<ActorHandle<SubscriptionReaderMessage>>>,
 	state: Arc<SubscriptionState>,
 	running: AtomicBool,
 	_worker_handles: Mutex<Vec<ActorHandle<SubscriptionWorkerMessage>>>,
@@ -78,7 +73,8 @@ impl SubscriptionSubsystem {
 	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		engine: StandardEngine,
-		cdc_store: CdcStore,
+		queue: CommitQueue,
+		floor: SubscriptionQueueFloor,
 		store: Arc<SubscriptionStore>,
 		_runtime_context: RuntimeContext,
 		consumer_watermark: CdcConsumerWatermark,
@@ -116,22 +112,18 @@ impl SubscriptionSubsystem {
 			subscribed,
 		);
 
-		let cdc_wake_registry =
-			engine.ioc().resolve::<CdcWakeRegistry>().expect("CdcWakeRegistry must be registered");
-		let config = PollConsumerConfig::new(
-			CdcConsumerId::subscription_consumer(),
-			"sub-subscription-poll",
-			Duration::from_milliseconds(10).unwrap(),
-			None,
-		)
-		.with_consumer_watermark(consumer_watermark)
-		.with_wake_registry(cdc_wake_registry);
-
-		let mut consumer = PollConsumer::new(config, engine, cdc_consumer, cdc_store, spawner);
-		consumer.start()?;
+		let SubscriptionQueueFloor(floor) = floor;
+		let start = queue.released().0;
+		let reader =
+			SubscriptionReader::new(engine, queue, floor.clone(), cdc_consumer, consumer_watermark, start);
+		let handle = spawner.spawn_coordination("sub-subscription-reader", reader);
+		let reader_ref = handle.actor_ref().clone();
+		floor.adopt(start, move || {
+			let _ = reader_ref.send(SubscriptionReaderMessage::Wake);
+		});
 
 		Ok(Self {
-			consumer: Mutex::new(consumer),
+			reader: Mutex::new(Some(handle)),
 			state,
 			running: AtomicBool::new(true),
 			_worker_handles: Mutex::new(worker_handles),
@@ -214,8 +206,11 @@ impl Shutdown for SubscriptionSubsystem {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			return Ok(());
 		}
-		let mut errors = ShutdownErrors::new("subscription");
-		errors.step("consumer", self.consumer.lock().stop());
+		let errors = ShutdownErrors::new("subscription");
+		if let Some(handle) = self.reader.lock().take() {
+			let _ = handle.actor_ref().send(SubscriptionReaderMessage::Shutdown);
+			let _ = handle.join();
+		}
 		errors.finish()
 	}
 }
@@ -265,7 +260,8 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let cdc_store = ioc.resolve::<CdcStore>()?;
+		let queue = ioc.resolve::<CommitQueue>()?;
+		let floor = ioc.resolve::<SubscriptionQueueFloor>()?;
 		let clock = ioc.resolve::<Clock>()?;
 
 		let runtime_context = RuntimeContext::with_clock(clock);
@@ -286,7 +282,8 @@ impl SubsystemFactory for SubscriptionSubsystemFactory {
 
 		let subsystem = SubscriptionSubsystem::new(
 			engine,
-			cdc_store,
+			queue,
+			floor,
 			store.clone(),
 			runtime_context,
 			consumer_watermark,

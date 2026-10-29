@@ -215,6 +215,37 @@ pub fn entry_changed_objects(entry: &CommitEntry) -> &BTreeSet<ObjectId> {
 	entry.changed_objects_with(|entry| entry_lift_index(entry).objects.keys().copied().collect())
 }
 
+pub fn entry_lifted_objects(entry: &CommitEntry) -> BTreeSet<ObjectId> {
+	let index = entry_lift_index(entry);
+	for object in index.objects.values() {
+		for (row, _) in &object.rows {
+			assert_entry_pre(entry, &entry.deltas[*row]);
+		}
+	}
+	index.objects.iter().filter(|(_, object)| !object.rows.is_empty()).map(|(id, _)| *id).collect()
+}
+
+fn assert_entry_pre(entry: &CommitEntry, delta: &Delta) {
+	match delta {
+		Delta::Set {
+			key,
+			pre: SetPre::Unknown,
+			..
+		} => panic!(
+			"a set at version {} reached the flow lift with an unresolved pre: {:?}",
+			entry.version.commit.0, key
+		),
+		Delta::Remove {
+			key,
+			announce: RemoveAnnounce::Silent,
+		} => panic!(
+			"a remove at version {} reached the flow lift without an announced pre: {:?}",
+			entry.version.commit.0, key
+		),
+		_ => {}
+	}
+}
+
 pub fn lift_entry_changes(
 	entry: &CommitEntry,
 	catalog: &Catalog,

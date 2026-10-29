@@ -317,6 +317,9 @@ impl CommitQueueFloor {
 #[derive(Clone)]
 pub struct FlowQueueFloor(pub CommitQueueFloor);
 
+#[derive(Clone)]
+pub struct SubscriptionQueueFloor(pub CommitQueueFloor);
+
 #[inline]
 fn next_version(version: CommitVersion) -> CommitVersion {
 	CommitVersion(version.0.saturating_add(1))

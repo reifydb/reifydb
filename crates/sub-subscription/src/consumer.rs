@@ -6,13 +6,10 @@ use std::sync::{
 	atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
-use reifydb_cdc::{
-	consume::consumer::CdcConsume,
-	lift::{lift_selected_changes, lifted_objects},
-};
+use reifydb_cdc::lift::{entry_lifted_objects, lift_entry_changes};
 use reifydb_core::{
 	common::CommitVersion,
-	interface::{cdc::Cdc, change::Change},
+	interface::{change::Change, commit::CommitEntry},
 	internal_error,
 };
 use reifydb_engine::engine::StandardEngine;
@@ -31,7 +28,7 @@ use crate::{
 	worker::{SubscriptionWorkerMessage, worker_name},
 };
 
-type Reply = Box<dyn FnOnce(Result<()>) + Send>;
+pub type Reply = Box<dyn FnOnce(Result<()>) + Send>;
 
 pub struct SubscriptionCdcConsumer {
 	engine: StandardEngine,
@@ -66,7 +63,7 @@ impl SubscriptionCdcConsumer {
 		}
 	}
 
-	fn lift_batch(&self, cdcs: &[Cdc]) -> Result<(Vec<Change>, bool)> {
+	fn lift_batch(&self, entries: &[Arc<CommitEntry>]) -> Result<(Vec<Change>, bool)> {
 		let catalog = self.engine.catalog();
 		let mut query = self.engine.begin_query(IdentityId::system())?;
 		let mut txn = Transaction::Query(&mut query);
@@ -74,12 +71,12 @@ impl SubscriptionCdcConsumer {
 
 		let mut out: Vec<Change> = Vec::new();
 		let mut lifted_any = false;
-		for cdc in cdcs {
-			let lifted = lifted_objects(cdc)?;
+		for entry in entries {
+			let lifted = entry_lifted_objects(entry);
 			let changes =
-				lift_selected_changes(cdc, &catalog, &mut txn, |object| subscribed.contains(&object))?;
+				lift_entry_changes(entry, &catalog, &mut txn, |object| subscribed.contains(&object))?;
 			for object in &lifted {
-				self.source_tracker.update(*object, cdc.version.commit);
+				self.source_tracker.update(*object, entry.version.commit);
 			}
 			lifted_any |= !lifted.is_empty();
 			out.extend(changes);
@@ -162,30 +159,23 @@ impl Drop for WorkerDone {
 	}
 }
 
-impl CdcConsume for SubscriptionCdcConsumer {
-	fn overtaken(
-		&self,
-		cursor: CommitVersion,
-		truncated_before: CommitVersion,
-		reply: Box<dyn FnOnce(Result<CommitVersion>) + Send>,
-	) {
+impl SubscriptionCdcConsumer {
+	pub fn overtaken(&self, cursor: CommitVersion, resume: CommitVersion, reply: Reply) {
 		let subscriptions = self.store.active_subscriptions();
 		warn!(
 			cursor = cursor.0,
-			truncated_before = truncated_before.0,
+			resume = resume.0,
 			terminated = subscriptions.len(),
-			"subscription consumer overtaken by retention; terminating all subscriptions, clients must resubscribe"
+			"subscription reader fell behind the commit queue; terminating all subscriptions, clients must resubscribe"
 		);
 		for subscription in &subscriptions {
 			self.store.unregister(subscription);
 			self.subscribed.unregister(subscription);
 		}
 
-		let resume = CommitVersion(truncated_before.0.saturating_sub(1).max(cursor.0));
-		let wrapped: Reply = Box::new(move |outcome| reply(outcome.map(|()| resume)));
 		let barrier = Arc::new(DispatchBarrier {
 			remaining: AtomicUsize::new(self.workers.len().max(1)),
-			reply: Mutex::new(Some(wrapped)),
+			reply: Mutex::new(Some(reply)),
 			error: Mutex::new(None),
 		});
 		if self.workers.is_empty() {
@@ -209,21 +199,16 @@ impl CdcConsume for SubscriptionCdcConsumer {
 		*self.in_flight.lock() = in_flight;
 	}
 
-	#[instrument(name = "subscription::consume", level = "debug", skip(self, cdcs, reply), fields(cdc_count = cdcs.len()))]
-	fn consume(&self, cdcs: Vec<Cdc>, reply: Reply) {
-		if cdcs.is_empty() || self.workers.is_empty() {
+	#[instrument(name = "subscription::consume", level = "debug", skip(self, entries, reply), fields(entry_count = entries.len()))]
+	pub fn consume(&self, entries: Vec<Arc<CommitEntry>>, reply: Reply) {
+		if entries.is_empty() || self.workers.is_empty() {
 			reply(Ok(()));
 			return;
 		}
 
-		let mut max_version = CommitVersion(0);
-		for cdc in &cdcs {
-			if cdc.version.commit > max_version {
-				max_version = cdc.version.commit;
-			}
-		}
+		let max_version = entries.iter().map(|entry| entry.version.commit).max().unwrap_or(CommitVersion(0));
 
-		let (subscribed_changes, lifted_any) = match self.lift_batch(&cdcs) {
+		let (subscribed_changes, lifted_any) = match self.lift_batch(&entries) {
 			Ok(lifted) => lifted,
 			Err(e) => {
 				reply(Err(e));
@@ -277,7 +262,7 @@ impl CdcConsume for SubscriptionCdcConsumer {
 		*self.in_flight.lock() = in_flight;
 	}
 
-	fn describe_pending(&self) -> String {
+	pub fn describe_pending(&self) -> String {
 		self.in_flight
 			.lock()
 			.iter()
