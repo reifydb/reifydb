@@ -65,7 +65,7 @@ use smallvec::smallvec;
 use tracing::instrument;
 
 use super::{
-	columns::{ColumnPipeline, Failure, input_views, intern_dictionary_columns},
+	columns::{ColumnPipeline, Failure, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	context::SeriesTarget,
 	returning::{
 		decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image,
@@ -121,12 +121,14 @@ pub(crate) fn update_series(
 	let has_returning = returning.is_some();
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let mut pre_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
+	let variant_tags = sumtype_variant_tags(&services.catalog, txn, &series.columns)?;
 	let pipeline = ColumnPipeline {
 		columns: &series.columns,
 		sequences: None,
 		series_key: Some(&series.key),
 		fragments: &fragments,
 		context: &context,
+		variant_tags: &variant_tags,
 	};
 	let mut statement_shape: Option<RowShape> = None;
 	let object = ObjectId::series(series.id);

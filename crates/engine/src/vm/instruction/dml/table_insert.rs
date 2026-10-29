@@ -43,7 +43,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::{
-	columns::{CastColumns, ColumnPipeline, input_views, intern_dictionary_columns},
+	columns::{CastColumns, ColumnPipeline, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	context::TableTarget,
 	primary_key::{self, PrimaryKeyEncoder, Violation, checked_primary_keys, primary_key_index},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
@@ -261,12 +261,14 @@ fn validate_and_encode_input_rows(
 	input_node: &mut Box<dyn QueryNode>,
 	fragments: &InputFragments,
 ) -> Result<EncodedTableRows> {
+	let variant_tags = sumtype_variant_tags(&services.catalog, txn, &target.table.columns)?;
 	let pipeline = ColumnPipeline {
 		columns: &target.table.columns,
 		sequences: Some(target.table.id.into()),
 		series_key: None,
 		fragments,
 		context,
+		variant_tags: &variant_tags,
 	};
 	let mut batches: Vec<CastColumns> = Vec::new();
 	let mut mutable_context = (**context).clone();

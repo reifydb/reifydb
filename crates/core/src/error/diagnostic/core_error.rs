@@ -206,6 +206,23 @@ impl IntoDiagnostic for CoreError {
 				operator_chain: None,
 			},
 
+			CoreError::SumTypeTagOutOfRange {
+				fragment,
+				tag,
+				valid,
+			} => Diagnostic {
+				code: "CONSTRAINT_009".to_string(),
+				rql: None,
+				message: format!("tag {} is not a variant: valid tags are {:?}", tag, valid),
+				column: None,
+				fragment,
+				label: Some("constraint violation".to_string()),
+				help: Some(format!("a tag must be one of {:?}", valid)),
+				notes: vec![],
+				cause: None,
+				operator_chain: None,
+			},
+
 
 
 			CoreError::SequenceExhausted {

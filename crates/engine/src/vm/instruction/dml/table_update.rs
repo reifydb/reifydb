@@ -57,7 +57,7 @@ use reifydb_value::{
 };
 
 use super::{
-	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
+	columns::{ColumnPipeline, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	context::{TableTarget, WriteExecCtx},
 	primary_key::{self, PrimaryKeyEncoder},
 	returning::{
@@ -196,12 +196,14 @@ fn run_table_update(
 	let mut returned_rows: ReturnedRows = Vec::new();
 	let mut pre_rows: ReturnedRows = Vec::new();
 	let mut mutable_context = context.clone();
+	let variant_tags = sumtype_variant_tags(&exec.services.catalog, txn, &target.table.columns)?;
 	let pipeline = ColumnPipeline {
 		columns: &target.table.columns,
 		sequences: None,
 		series_key: None,
 		fragments,
 		context,
+		variant_tags: &variant_tags,
 	};
 	let pk_def = primary_key::get_primary_key(&exec.services.catalog, txn, target.table)?;
 	let mut encoder: Option<PrimaryKeyEncoder> = None;

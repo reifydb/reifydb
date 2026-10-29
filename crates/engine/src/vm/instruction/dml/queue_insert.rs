@@ -67,7 +67,7 @@ use reifydb_value::{
 use tracing::instrument;
 
 use super::{
-	columns::{CastColumns, ColumnPipeline, Failure, input_views, intern_dictionary_columns},
+	columns::{CastColumns, ColumnPipeline, Failure, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
 	shape::get_or_create_queue_shape,
 };
@@ -457,12 +457,14 @@ fn validate_and_encode_input_rows(
 	let mut mutable_context = (**context).clone();
 	let declared_key_indices = declared_key_indices(target.queue)?;
 	let ordered_by = ordered_by_index(target.queue)?;
+	let variant_tags = sumtype_variant_tags(&services.catalog, txn, &target.queue.columns)?;
 	let pipeline = ColumnPipeline {
 		columns: &target.queue.columns,
 		sequences: Some(target.queue.id.into()),
 		series_key: None,
 		fragments,
 		context,
+		variant_tags: &variant_tags,
 	};
 	let mut casts: Vec<CastColumns> = Vec::new();
 	let mut not_befores: Vec<Vec<Option<DateTime>>> = Vec::new();

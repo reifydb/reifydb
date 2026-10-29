@@ -67,7 +67,7 @@ use smallvec::smallvec;
 use tracing::instrument;
 
 use super::{
-	columns::{CastColumns, ColumnPipeline, Failure, input_views, intern_dictionary_columns},
+	columns::{CastColumns, ColumnPipeline, Failure, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	context::SeriesTarget,
 	returning::{
 		decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image,
@@ -136,12 +136,14 @@ pub(crate) fn insert_series(
 	input_node.initialize(txn, &context)?;
 	let shape = get_or_create_series_shape(&services.catalog, &series, txn)?;
 
+	let variant_tags = sumtype_variant_tags(&services.catalog, txn, &series.columns)?;
 	let pipeline = ColumnPipeline {
 		columns: &series.columns,
 		sequences: None,
 		series_key: Some(&series.key),
 		fragments: &fragments,
 		context: &context,
+		variant_tags: &variant_tags,
 	};
 	let key_index = series.columns.iter().position(|column| column.name == key_column_name);
 	let populator = populator_index(&series.time, &shape);

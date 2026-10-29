@@ -18,6 +18,7 @@ use reifydb_core::{
 	common::TimeSource,
 	delta::Delta,
 	durability::Durability,
+	error::CoreError,
 	interface::catalog::{
 		column::Column,
 		namespace::Namespace,
@@ -44,7 +45,7 @@ use reifydb_value::{
 	fragment::Fragment,
 	value::{
 		Value, column_view::ColumnView, constraint::Constraint, datetime::DateTime, identity::IdentityId,
-		partition::Partition, value_type::ValueType,
+		partition::Partition, sumtype::SumTypeId, value_type::ValueType,
 	},
 };
 
@@ -72,7 +73,7 @@ use crate::{
 	vm::{
 		instruction::dml::{
 			coerce::key_out_of_range,
-			columns::{CastColumns, fill_sequences, intern_dictionary_columns},
+			columns::{CastColumns, fill_sequences, intern_dictionary_columns, sumtype_variant_tags},
 			partition::ringbuffer_batch_partitions,
 			primary_key::{Violation, get_primary_key},
 			ringbuffer_insert::insert_ringbuffer_chunks,
@@ -287,6 +288,7 @@ struct Checks<'a> {
 	filled: &'a [Vec<usize>],
 	series: Option<&'a Series>,
 	time: &'a TimeSource,
+	variant_tags: &'a HashMap<SumTypeId, Vec<u8>>,
 }
 
 struct Checked {
@@ -308,6 +310,11 @@ fn check_rows<V: ValidationMode>(
 		for ((column, view), filled) in checks.columns.iter().zip(&views).zip(checks.filled) {
 			if let Some(row) = first_constraint_failure(column, view, filled, limit(&failure)) {
 				failure = Some((row, constraint_error(column, view.get_value(row), checks.name, row)));
+			}
+			if let Some((row, error)) =
+				first_tag_failure(column, view, checks.variant_tags, limit(&failure))?
+			{
+				failure = Some((row, with_row_note(error, checks.name, row)));
 			}
 		}
 	}
@@ -391,6 +398,32 @@ fn first_constraint_failure(column: &Column, view: &ColumnView<'_>, filled: &[us
 	})
 }
 
+fn first_tag_failure(
+	column: &Column,
+	view: &ColumnView<'_>,
+	variant_tags: &HashMap<SumTypeId, Vec<u8>>,
+	limit: usize,
+) -> Result<Option<(usize, Error)>> {
+	let Some(Constraint::SumType(id)) = column.constraint.constraint() else {
+		return Ok(None);
+	};
+	let Some(valid) = variant_tags.get(id) else {
+		return Err(internal_error!("bulk column {} has no variant tags for sumtype {}", column.name, id));
+	};
+	Ok((0..limit).find_map(|row| match view.get_value(row) {
+		Value::Uint1(tag) if !valid.contains(&tag) => Some((
+			row,
+			CoreError::SumTypeTagOutOfRange {
+				fragment: Fragment::internal(&column.name),
+				tag,
+				valid: valid.clone(),
+			}
+			.into(),
+		)),
+		_ => None,
+	}))
+}
+
 fn constraint_error(column: &Column, mut value: Value, name: &str, row: usize) -> Error {
 	let mut error = match column.constraint.coerce(&mut value) {
 		Err(error) => error,
@@ -452,6 +485,7 @@ fn execute_table_insert<V: ValidationMode>(
 	enforce_write_policies(writer, txn, &namespace, &table.name, PolicyTargetType::Table, &columns)?;
 
 	let filled = auto_increment_rows(&table.columns, &columns)?;
+	let variant_tags = sumtype_variant_tags(catalog, &mut Transaction::Command(txn), &table.columns)?;
 	check_rows::<V>(
 		&Checks {
 			name: &table.name,
@@ -459,6 +493,7 @@ fn execute_table_insert<V: ValidationMode>(
 			filled: &filled,
 			series: None,
 			time: &table.time,
+			variant_tags: &variant_tags,
 		},
 		&columns,
 		None,
@@ -628,6 +663,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 ) -> Result<u64> {
 	let catalog = writer.catalog;
 	enforce_write_policies(writer, txn, namespace, &ringbuffer.name, PolicyTargetType::RingBuffer, &columns)?;
+	let variant_tags = sumtype_variant_tags(catalog, &mut Transaction::Command(txn), &ringbuffer.columns)?;
 	check_rows::<V>(
 		&Checks {
 			name: &ringbuffer.name,
@@ -635,6 +671,7 @@ fn insert_ringbuffer_rows<V: ValidationMode>(
 			filled: &vec![Vec::new(); ringbuffer.columns.len()],
 			series: None,
 			time: &ringbuffer.time,
+			variant_tags: &variant_tags,
 		},
 		&columns,
 		None,
@@ -706,6 +743,7 @@ fn execute_series_insert<V: ValidationMode>(
 		0
 	} else {
 		enforce_write_policies(writer, txn, &namespace, &series.name, PolicyTargetType::Series, &columns)?;
+		let variant_tags = sumtype_variant_tags(catalog, &mut Transaction::Command(txn), &series.columns)?;
 		let checked = check_rows::<V>(
 			&Checks {
 				name: &series.name,
@@ -713,6 +751,7 @@ fn execute_series_insert<V: ValidationMode>(
 				filled: &vec![Vec::new(); series.columns.len()],
 				series: Some(&series),
 				time: &series.time,
+				variant_tags: &variant_tags,
 			},
 			&columns,
 			tags,

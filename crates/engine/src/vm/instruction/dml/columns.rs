@@ -8,6 +8,7 @@ use arrow_schema::FieldRef;
 use reifydb_catalog::catalog::Catalog;
 use reifydb_codec::row::{bytes::RowBuilder, shape::RowShape};
 use reifydb_core::{
+	error::CoreError,
 	interface::{
 		catalog::{column::Column, object::ObjectId, series::SeriesKey},
 		evaluate::TargetColumn,
@@ -31,6 +32,7 @@ use reifydb_value::{
 		column_view::{ColumnView, ViewData},
 		constraint::Constraint,
 		dictionary::DictionaryId,
+		sumtype::SumTypeId,
 		system_columns::user_columns,
 		value_type::{
 			ValueType,
@@ -55,6 +57,26 @@ pub(crate) struct ColumnPipeline<'a> {
 	pub(crate) series_key: Option<&'a SeriesKey>,
 	pub(crate) fragments: &'a InputFragments,
 	pub(crate) context: &'a QueryContext,
+	pub(crate) variant_tags: &'a HashMap<SumTypeId, Vec<u8>>,
+}
+
+pub(crate) fn sumtype_variant_tags(
+	catalog: &Catalog,
+	txn: &mut Transaction<'_>,
+	columns: &[Column],
+) -> Result<HashMap<SumTypeId, Vec<u8>>> {
+	let mut tags = HashMap::new();
+	for column in columns {
+		if let Some(Constraint::SumType(id)) = column.constraint.constraint()
+			&& !tags.contains_key(id)
+		{
+			tags.insert(
+				*id,
+				catalog.get_sumtype(txn, *id)?.variants.iter().map(|variant| variant.tag).collect(),
+			);
+		}
+	}
+	Ok(tags)
 }
 
 pub(crate) struct Failure {
@@ -359,9 +381,31 @@ impl ColumnPipeline<'_> {
 					return Ok(None);
 				}
 			}
+			(_, Some(Constraint::SumType(_))) => {
+				if (0..rows).any(|row| self.tag_out_of_range(column, &view.get_value(row)).is_some()) {
+					return Ok(None);
+				}
+			}
 			_ => {}
 		}
 		Ok(Some(cast))
+	}
+
+	fn tag_out_of_range(&self, column: &Column, value: &Value) -> Option<Error> {
+		let (Some(Constraint::SumType(id)), Value::Uint1(tag)) = (column.constraint.constraint(), value) else {
+			return None;
+		};
+		let Some(valid) = self.variant_tags.get(id) else {
+			return Some(internal_error!("column {} has no variant tags for sumtype {}", column.name, id));
+		};
+		(!valid.contains(tag)).then(|| {
+			CoreError::SumTypeTagOutOfRange {
+				fragment: self.fragments.column(&column.name),
+				tag: *tag,
+				valid: valid.clone(),
+			}
+			.into()
+		})
 	}
 
 	fn first_error(&self, checks: &Checks<'_, '_>) -> Option<(usize, bool, Error)> {
@@ -388,6 +432,9 @@ impl ColumnPipeline<'_> {
 			};
 			if let Err(mut error) = column.constraint.coerce(&mut value) {
 				error.0.fragment = ident;
+				return Some((row, false, error));
+			}
+			if let Some(error) = self.tag_out_of_range(column, &value) {
 				return Some((row, false, error));
 			}
 			if let Some((key, key_limit)) = checks.key
@@ -483,7 +530,7 @@ pub(crate) fn intern_dictionary_columns(
 
 #[cfg(test)]
 mod tests {
-	use std::{str::FromStr, sync::Arc};
+	use std::{collections::HashMap, str::FromStr, sync::Arc};
 
 	use arrow_array::RecordBatch;
 	use reifydb_catalog::catalog::{
@@ -984,6 +1031,7 @@ mod tests {
 			series_key: None,
 			fragments: &fragments,
 			context: &fixture.context,
+			variant_tags: &HashMap::new(),
 		};
 		let mut txn = Transaction::Admin(&mut fixture.txn);
 		let inputs = input_views(input, &fixture.table.columns).unwrap();

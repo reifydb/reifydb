@@ -44,7 +44,7 @@ use tracing::instrument;
 
 use super::{
 	coerce::InputFragments,
-	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
+	columns::{ColumnPipeline, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	context::RingBufferTarget,
 	partition::ringbuffer_batch_partitions,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_absent_pre_image},
@@ -146,12 +146,14 @@ fn drive_ringbuffer_insert(
 	let mut verified = HashMap::new();
 	let mut inserted_count = 0u64;
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
+	let variant_tags = sumtype_variant_tags(&services.catalog, txn, &ringbuffer.columns)?;
 	let pipeline = ColumnPipeline {
 		columns: &ringbuffer.columns,
 		sequences: None,
 		series_key: None,
 		fragments,
 		context,
+		variant_tags: &variant_tags,
 	};
 	let populator = populator_index(&ringbuffer.time, shape);
 

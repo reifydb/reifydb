@@ -47,7 +47,7 @@ use reifydb_value::{
 
 use super::{
 	coerce::InputFragments,
-	columns::{ColumnPipeline, input_views, intern_dictionary_columns},
+	columns::{ColumnPipeline, input_views, intern_dictionary_columns, sumtype_variant_tags},
 	context::RingBufferTarget,
 	returning::{decode_returning_dictionaries, decode_rows_to_columns, evaluate_returning, with_pre_image},
 	shape::get_or_create_ringbuffer_shape,
@@ -96,12 +96,14 @@ pub(crate) fn update_ringbuffer(
 	let mut returned_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let mut pre_rows: Vec<(RowNumber, EncodedBytes)> = Vec::new();
 	let has_returning = returning.is_some();
+	let variant_tags = sumtype_variant_tags(&services.catalog, txn, &ringbuffer.columns)?;
 	let pipeline = ColumnPipeline {
 		columns: &ringbuffer.columns,
 		sequences: None,
 		series_key: None,
 		fragments: &fragments,
 		context: &context,
+		variant_tags: &variant_tags,
 	};
 	let populator = populator_index(&ringbuffer.time, &shape);
 

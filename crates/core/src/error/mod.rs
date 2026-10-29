@@ -135,6 +135,13 @@ pub enum CoreError {
 		actual: ValueType,
 	},
 
+	#[error("tag {tag} is not a variant: valid tags are {valid:?}")]
+	SumTypeTagOutOfRange {
+		fragment: Fragment,
+		tag: u8,
+		valid: Vec<u8>,
+	},
+
 	#[error("sequence generator of type `{value_type}` is exhausted")]
 	SequenceExhausted {
 		value_type: ValueType,
