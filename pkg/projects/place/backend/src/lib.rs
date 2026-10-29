@@ -10,7 +10,7 @@ use reifydb::{
 	arrow_schema::FieldRef,
 	core::{
 		interface::catalog::config::ConfigKey,
-		value::column::factory::{any_typed, blob, int4},
+		value::column::factory::{any_typed, blob, int4, uint2},
 	},
 	routine::abi::{
 		Arity, Function, FunctionKind, Prepared, Routine, RoutineInfo,
@@ -58,6 +58,7 @@ pub fn migration_path() -> PathBuf {
 
 pub fn routines(routines: RoutinesConfigurator) -> RoutinesConfigurator {
 	[
+		("place::tile_key", TileFunction::TileKey),
 		("place::tile_keys", TileFunction::TileKeys),
 		("place::pixel_count", TileFunction::PixelCount),
 		("place::paint", TileFunction::Paint),
@@ -129,6 +130,7 @@ pub fn decode_edit(edit: &[u8]) -> Result<TileEdit, String> {
 
 #[derive(Clone, Copy)]
 enum TileFunction {
+	TileKey,
 	TileKeys,
 	PixelCount,
 	Paint,
@@ -146,6 +148,7 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 
 	fn return_type(&self, _input_types: &[ValueType]) -> ValueType {
 		match self.function {
+			TileFunction::TileKey => ValueType::Uint2,
 			TileFunction::TileKeys => ValueType::List(Box::new(ValueType::Uint2)),
 			TileFunction::PixelCount => ValueType::Int4,
 			TileFunction::Paint => ValueType::Blob,
@@ -158,9 +161,11 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 		args: &[(FieldRef, ArrayRef)],
 	) -> Result<(FieldRef, ArrayRef), RoutineError> {
 		let rows = ctx.row_count;
-		let edits = decode_edits(ctx, &args[args.len() - 1])?;
+		let tiles = &args[args.len() - 1];
 		match self.function {
+			TileFunction::TileKey => key_rows(ctx, tiles),
 			TileFunction::TileKeys => {
+				let edits = decode_edits(ctx, tiles)?;
 				let mut keys: Vec<u16> = edits.iter().map(|edit| tile_key(edit.tx, edit.ty)).collect();
 				keys.sort_unstable();
 				keys.dedup();
@@ -172,10 +177,11 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 				))
 			}
 			TileFunction::PixelCount => {
+				let edits = decode_edits(ctx, tiles)?;
 				let count = edits.iter().map(|edit| edit.pixels.len() as i32).sum::<i32>();
 				Ok(int4(ctx.fragment.text(), (0..rows).map(|_| count)))
 			}
-			TileFunction::Paint => paint_rows(ctx, &group_by_tile(edits), args),
+			TileFunction::Paint => paint_rows(ctx, &group_by_tile(decode_edits(ctx, tiles)?), args),
 		}
 	}
 }
@@ -196,6 +202,17 @@ fn decode_edits(ctx: &FunctionContext<'_>, tiles: &(FieldRef, ArrayRef)) -> Resu
 		.map(|edit| decode_edit(&edit))
 		.collect::<Result<Vec<_>, _>>()
 		.map_err(|reason| failed(ctx, reason))
+}
+
+fn key_rows(ctx: &FunctionContext<'_>, tiles: &(FieldRef, ArrayRef)) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let view = ColumnView::try_from(tiles)?;
+	let edits = blobs(ctx, 0, &view)?;
+	let mut keys = Vec::with_capacity(ctx.row_count);
+	for row in 0..ctx.row_count {
+		let edit = decode_edit(edits.value(row_of(edits.len(), row))).map_err(|reason| failed(ctx, reason))?;
+		keys.push(tile_key(edit.tx, edit.ty));
+	}
+	Ok(uint2(ctx.fragment.text(), keys))
 }
 
 fn group_by_tile(edits: Vec<TileEdit>) -> EditsByTile {
@@ -247,7 +264,7 @@ impl Function for TileRoutine {
 	fn arity(&self) -> Arity {
 		match self.function {
 			TileFunction::Paint => Arity::Exact(3),
-			TileFunction::TileKeys | TileFunction::PixelCount => Arity::Exact(1),
+			TileFunction::TileKey | TileFunction::TileKeys | TileFunction::PixelCount => Arity::Exact(1),
 		}
 	}
 

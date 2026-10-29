@@ -24,6 +24,8 @@ export function loadBackend(): TestFactory {
   }
 }
 
-export function anonymousClient(db: TestDb): BridgeClient {
-  return storeClient(db, { identity: ANONYMOUS })
+export async function guestClient(db: TestDb): Promise<BridgeClient> {
+  const response = JSON.parse(await db.authenticate('guest', {}))
+  if (response.status !== 'authenticated') throw new Error(`guest login failed: ${JSON.stringify(response)}`)
+  return storeClient(db, { identity: response.identity })
 }

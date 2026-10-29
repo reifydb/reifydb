@@ -6,7 +6,7 @@ import { commitPending } from '@/commit'
 import { Pending } from '@/pending'
 import { PixelBuffer, TILE_BYTES, transform } from '@/pixels'
 import { TileStream } from '@/tiles'
-import { anonymousClient, loadBackend, type BridgeClient, type TestDb, type TestFactory } from '../support/backend'
+import { guestClient, loadBackend, type BridgeClient, type TestDb, type TestFactory } from '../support/backend'
 import { markReady, seedTile } from '../support/seed'
 
 let create: TestFactory
@@ -30,7 +30,7 @@ beforeEach(async () => {
     await seedTile(db, tx, ty)
   }
   await markReady(db)
-  client = anonymousClient(db)
+  client = await guestClient(db)
   buffer = new PixelBuffer()
   closed = 0
   stream = new TileStream(

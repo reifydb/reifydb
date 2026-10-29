@@ -1,3 +1,0 @@
-CREATE MIGRATION 'place_namespace' {
-    create namespace place
-};

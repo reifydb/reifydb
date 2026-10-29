@@ -13,7 +13,7 @@ CREATE MIGRATION 'place_commit' {
             update place::live { color: $c } filter { tile_x == $tx and tile_y == $ty and x == $x and y == $y }
         }
     };
-    create procedure policy place_call_commit on place::commit { call: { filter { $identity.kind == "anonymous" } } };
+    create procedure policy place_call_commit on place::commit { call: { filter { $identity.kind == "guest" or $identity.kind == "user" } } };
     create table policy place_live on place::live {
         from: { filter { true } },
         update: { filter { $identity.kind == "anonymous" } }

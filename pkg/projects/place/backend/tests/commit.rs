@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 use reifydb::{
 	Database, IdentityId, Value, WithSubsystem,
+	auth::service::AuthResponse,
 	core::value::column::factory,
 	routine::abi::{context::FunctionContext, error::RoutineError, registry::Routines},
 	runtime::context::RuntimeContext,
@@ -102,14 +103,51 @@ fn commit(db: &Database, pixels: Vec<(u64, u64, u64)>) -> Result<(), String> {
 	commit_edits(db, edits(&pixels))
 }
 
+fn login_as(db: &Database, caller: IdentityId, method: &str, credentials: &[(&str, &str)]) -> IdentityId {
+	let credentials = credentials.iter().map(|(k, v)| ((*k).to_string(), (*v).to_string())).collect();
+	match db.auth_service().authenticate_as(caller, method, credentials).expect("login") {
+		AuthResponse::Authenticated {
+			identity,
+			..
+		} => identity,
+		other => panic!("{method} login did not authenticate: {other:?}"),
+	}
+}
+
+fn guest(db: &Database) -> IdentityId {
+	login_as(db, IdentityId::anonymous(), "guest", &[])
+}
+
 fn commit_edits(db: &Database, tiles: Vec<Value>) -> Result<(), String> {
+	commit_edits_as(db, guest(db), tiles)
+}
+
+fn commit_as(db: &Database, identity: IdentityId, pixels: Vec<(u64, u64, u64)>) -> Result<(), String> {
+	commit_edits_as(db, identity, edits(&pixels))
+}
+
+fn commit_edits_as(db: &Database, identity: IdentityId, tiles: Vec<Value>) -> Result<(), String> {
 	let mut map = HashMap::new();
 	map.insert("tiles".to_string(), Value::List(tiles));
-	let r = db.engine().command_as(IdentityId::anonymous(), "CALL place::commit($tiles)", Params::from(map));
+	let r = db.engine().command_as(identity, "CALL place::commit($tiles)", Params::from(map));
 	match r.error {
 		Some(e) => Err(format!("{} {}", e.code, e.message)),
 		None => Ok(()),
 	}
+}
+
+fn edit_rows(db: &Database) -> Vec<(IdentityId, u16, Vec<u8>)> {
+	root_query(db, "from place::edit map { owner, tile, pixels }")
+		.iter()
+		.flat_map(|f| f.rows())
+		.map(|r| {
+			(
+				r.get::<IdentityId>("owner").unwrap().unwrap(),
+				r.get::<u16>("tile").unwrap().unwrap(),
+				r.get::<Blob>("pixels").unwrap().unwrap().as_bytes().to_vec(),
+			)
+		})
+		.collect()
 }
 
 fn anonymous(db: &Database, rql: &str) -> Result<Vec<Frame>, String> {
@@ -403,4 +441,127 @@ fn a_prepared_paint_still_refuses_ragged_arguments() {
 		}) => {}
 		other => panic!("ragged arguments must fail execution, got {other:?}"),
 	}
+}
+
+#[test]
+fn a_guest_commit_writes_one_edit_row_per_tile_owned_by_that_guest() {
+	// Attribution rests on this row: without it, or with another owner, a pixel change cannot be traced to its
+	// painter.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	seed_tile(&db, 1, 0);
+	mark_ready(&db);
+	let painter = guest(&db);
+	let tiles = edits(&[pack(1, 1, 3), pack(65, 1, 4)]);
+	let sent: Vec<Vec<u8>> = tiles
+		.iter()
+		.map(|t| match t {
+			Value::Blob(b) => b.as_bytes().to_vec(),
+			_ => unreachable!(),
+		})
+		.collect();
+
+	commit_edits_as(&db, painter, tiles).expect("guest commit");
+
+	let mut rows = edit_rows(&db);
+	rows.sort_by_key(|(_, tile, _)| *tile);
+	assert_eq!(
+		rows,
+		vec![(painter, tile_key(0, 0), sent[0].clone()), (painter, tile_key(1, 0), sent[1].clone())],
+		"exactly one row per tile, owned by the caller, holding the edit as sent"
+	);
+}
+
+#[test]
+fn an_anonymous_commit_is_refused_and_writes_nothing() {
+	// Anonymous paint would be a change with no owner, so it must be refused before any tile or edit row is
+	// written.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	mark_ready(&db);
+
+	let err = commit_as(&db, IdentityId::anonymous(), vec![pack(1, 1, 12)]).unwrap_err();
+	assert!(err.starts_with("POLICY_"), "{err}");
+	assert_eq!(pixel(&db, 1, 1), 0);
+	assert!(edit_rows(&db).is_empty(), "a refused commit must leave no edit row");
+}
+
+#[test]
+fn a_user_commit_is_accepted_and_owned_by_that_user() {
+	// Agents paint as named users, so a user commit must pass both policies and carry the user as owner.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	mark_ready(&db);
+	let agent = login_as(&db, IdentityId::anonymous(), "password", &[("identifier", "agent-a"), ("password", "x")]);
+
+	commit_as(&db, agent, vec![pack(1, 1, 12)]).expect("user commit");
+
+	assert_eq!(pixel(&db, 1, 1), 12);
+	let owners: Vec<IdentityId> = edit_rows(&db).into_iter().map(|(owner, _, _)| owner).collect();
+	assert_eq!(owners, vec![agent]);
+}
+
+#[test]
+fn a_commit_refused_by_the_pixel_cap_writes_no_edit_row() {
+	// Tile update and edit insert are one transaction; a log row for paint that never landed would be false
+	// attribution.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	seed_tile(&db, 0, 1);
+	mark_ready(&db);
+	let pixels = (0..4097u64).map(|i| pack(i % 64, i / 64, 7)).collect();
+
+	commit(&db, pixels).unwrap_err();
+
+	assert!(edit_rows(&db).is_empty(), "a refused commit must leave no edit row");
+}
+
+#[test]
+fn a_promoted_guest_keeps_ownership_of_its_edits() {
+	// Signup must promote the guest in place, or every pixel painted before signup is credited to a dead guest.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	mark_ready(&db);
+	let painter = guest(&db);
+	commit_as(&db, painter, vec![pack(1, 1, 12)]).expect("guest commit");
+
+	let user = login_as(&db, painter, "password", &[("identifier", "alice"), ("password", "x")]);
+
+	assert_eq!(user, painter, "the password method must promote the guest, not create a new identity");
+	commit_as(&db, user, vec![pack(2, 1, 13)]).expect("commit after signup");
+	let owners: Vec<IdentityId> = edit_rows(&db).into_iter().map(|(owner, _, _)| owner).collect();
+	assert_eq!(owners, vec![painter, painter]);
+}
+
+#[test]
+fn tile_key_answers_the_key_of_each_tile_edit() {
+	// The edit row's tile column comes from this; a swapped tx/ty would file every edit under the wrong tile.
+	let db = build();
+	let mut map = HashMap::new();
+	map.insert("a".to_string(), Value::Blob(Blob::new(encode_edit(3, 5, &[(0, 1)]))));
+	map.insert("b".to_string(), Value::Blob(Blob::new(encode_edit(127, 0, &[]))));
+	let r = db.engine().query_as(
+		IdentityId::root(),
+		"map { a: place::tile_key($a), b: place::tile_key($b) }",
+		Params::from(map),
+	);
+	if let Some(e) = r.error {
+		panic!("tile key query failed: {e:?}");
+	}
+	let row = r.frames.iter().flat_map(|f| f.rows()).next().expect("one row");
+	assert_eq!(row.get::<u16>("a").unwrap().unwrap(), tile_key(3, 5));
+	assert_eq!(row.get::<u16>("b").unwrap().unwrap(), tile_key(127, 0));
+}
+
+#[test]
+fn an_anonymous_call_is_refused_by_the_call_policy_itself() {
+	// The tile policy also blocks anonymous, so the call policy needs its own proof or it can open unnoticed.
+	let db = build();
+	seed_tile(&db, 0, 0);
+	mark_ready(&db);
+
+	let err = commit_as(&db, IdentityId::anonymous(), vec![pack(1, 1, 12)]).unwrap_err();
+
+	assert!(err.contains("place_call_commit"), "the call policy must be the one that refuses: {err}");
+	assert_eq!(pixel(&db, 1, 1), 0);
 }

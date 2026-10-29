@@ -6,7 +6,7 @@ import { storeClient } from '@reifydb/reifydb'
 import { type Retry, commitPending, commitPixels } from '@/commit'
 import { MAX_PENDING } from '@/geometry'
 import { Pending } from '@/pending'
-import { anonymousClient, loadBackend, type BridgeClient, type TestDb, type TestFactory } from '../support/backend'
+import { ANONYMOUS, guestClient, loadBackend, type BridgeClient, type TestDb, type TestFactory } from '../support/backend'
 import { colorAt, markReady, seedTile } from '../support/seed'
 
 let create: TestFactory
@@ -21,7 +21,7 @@ beforeEach(async () => {
   db = create()
   await seedTile(db, 0, 0)
   await markReady(db)
-  client = anonymousClient(db)
+  client = await guestClient(db)
 })
 
 describe('commit', () => {
@@ -40,12 +40,8 @@ describe('commit', () => {
   })
 
   it('keeps every pending pixel when the server refuses the commit', async () => {
-    // A refused commit must never drop the user's drawing; a non-anonymous caller has no call policy, so the engine refuses.
-    await db.adminRoot('CREATE USER painter', {}, [])
-    const frames = (await db.queryRoot("from system::identities filter { name == 'painter' } map { id }", {}, [])) as unknown as Array<
-      Array<{ id: unknown }>
-    >
-    const painter = storeClient(db, { identity: String(frames[0][0].id) })
+    // A refused commit must never drop the user's drawing; anonymous may not paint, so the engine refuses.
+    const painter = storeClient(db, { identity: ANONYMOUS })
     const pending = new Pending()
     pending.add({ x: 1, y: 1, color: 12 })
     pending.add({ x: 2, y: 1, color: 13 })

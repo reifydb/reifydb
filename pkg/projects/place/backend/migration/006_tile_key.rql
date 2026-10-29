@@ -5,7 +5,12 @@ CREATE MIGRATION 'place_tile_key' {
         with { partition: { by: { tile } } };
     create table policy place_tile on place::tile {
         from: { filter { true } },
-        update: { filter { $identity.kind == "anonymous" } }
+        update: { filter { $identity.kind == "guest" or $identity.kind == "user" } }
+    };
+    create table place::edit { owner: identity_id, tile: uint2, pixels: blob };
+    create table policy place_edit on place::edit {
+        from: { filter { true } },
+        insert: { filter { $identity.kind == "guest" or $identity.kind == "user" } }
     };
     drop procedure place::commit;
     create procedure place::commit { tiles: list(blob) } as {
@@ -13,6 +18,7 @@ CREATE MIGRATION 'place_tile_key' {
         assert { is::some($state.ready) and $state.ready } "canvas not ready";
         assert { place::pixel_count($tiles) <= 4096 } "too many pixels";
         let $keys = place::tile_keys($tiles);
-        update place::tile { pixels: place::paint(pixels, tile, $tiles) } filter { tile in $keys }
+        update place::tile { pixels: place::paint(pixels, tile, $tiles) } filter { tile in $keys };
+        for $t in $tiles { insert place::edit [{ owner: $identity.id, tile: place::tile_key($t), pixels: $t }] }
     }
 };
