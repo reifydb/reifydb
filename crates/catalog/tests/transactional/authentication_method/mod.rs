@@ -13,7 +13,7 @@ use reifydb_value::value::identity::IdentityId;
 const GITHUB: &str = "CREATE AUTHENTICATION METHOD github WITH { ttl: 30d, promote_guest: true, client_id: 'abc', redirect_uri: 'https://app/cb' }";
 
 fn github_engine() -> TestEngine {
-	TestEngine::builder().with_cdc().with_github_client_secret("test-secret").build()
+	TestEngine::builder().with_commit_queue().with_github_client_secret("test-secret").build()
 }
 
 fn committed(t: &TestEngine, name: &str) -> Option<AuthenticationMethod> {

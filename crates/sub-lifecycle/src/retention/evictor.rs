@@ -1032,8 +1032,8 @@ mod tests {
 	}
 
 	#[test]
-	fn an_expired_primary_key_row_frees_its_key_without_cdc() {
-		// Announcing the primary key index removal would leak every expiry of a keyed table into CDC.
+	fn an_expired_primary_key_row_frees_its_key_without_a_commit_entry() {
+		// Announcing the primary key index removal would leak every expiry of a keyed table to readers.
 		let test = TestEngine::new();
 		test.admin("create namespace test;");
 		test.admin("create table test::t { id: int4, v: int4 } with { time: processing, row: { ttl: 1h } }");
