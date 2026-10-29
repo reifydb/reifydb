@@ -30,7 +30,7 @@ use reifydb_flow::{
 		map::MapOperator,
 		sink::table::TableSink,
 		sort::SortOperator,
-		source::{SourceOperator, unit_sumtype_tags},
+		source::{SourceOperator, expand_enum_groups, sumtype_tags},
 	},
 };
 use reifydb_routine_abi::registry::Routines;
@@ -58,14 +58,14 @@ pub fn build<T: Lookup>(
 				..
 			} => {
 				let columns = txn.table(table)?.columns;
-				let tags = unit_sumtype_tags(&columns, |id| txn.sumtype(id))?;
+				let tags = sumtype_tags(&columns);
 				Node::Source(SourceOperator::from_columns(*operator_id, &columns, tags)?)
 			}
 			SourceView {
 				view,
 			} => {
 				let view = txn.view(view)?;
-				let tags = unit_sumtype_tags(view.columns(), |id| txn.sumtype(id))?;
+				let tags = sumtype_tags(view.columns());
 				Node::Source(SourceOperator::from_columns(*operator_id, view.columns(), tags)?)
 			}
 			SourceRingBuffer {
@@ -86,24 +86,34 @@ pub fn build<T: Lookup>(
 			)?),
 			Map {
 				expressions,
-			} => Node::Map(MapOperator::new(
-				parent_schema(&nodes, first_input(inputs)?)?,
-				*operator_id,
-				expressions,
-				routines.clone(),
-				runtime_context.clone(),
-				Arc::clone(&ctx),
-			)?),
+			} => {
+				let parent = parent_schema(&nodes, first_input(inputs)?)?;
+				let expressions =
+					expand_enum_groups(parent.as_ref(), expressions, |id| txn.sumtype(id))?;
+				Node::Map(MapOperator::new(
+					parent,
+					*operator_id,
+					expressions,
+					routines.clone(),
+					runtime_context.clone(),
+					Arc::clone(&ctx),
+				)?)
+			}
 			Extend {
 				expressions,
-			} => Node::Extend(ExtendOperator::new(
-				parent_schema(&nodes, first_input(inputs)?)?,
-				*operator_id,
-				expressions,
-				routines.clone(),
-				runtime_context.clone(),
-				Arc::clone(&ctx),
-			)?),
+			} => {
+				let parent = parent_schema(&nodes, first_input(inputs)?)?;
+				let expressions =
+					expand_enum_groups(parent.as_ref(), expressions, |id| txn.sumtype(id))?;
+				Node::Extend(ExtendOperator::new(
+					parent,
+					*operator_id,
+					expressions,
+					routines.clone(),
+					runtime_context.clone(),
+					Arc::clone(&ctx),
+				)?)
+			}
 			Append {} => {
 				let mut parent_schemas = Vec::with_capacity(inputs.len());
 				for input_node_id in inputs {

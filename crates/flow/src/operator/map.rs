@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 	value::{
 		batch::empty_batch,
-		column::factory::{rename_keeping_tag, tag_label},
+		column::factory::{column_reference, rename_keeping_tag, tag_label},
 	},
 };
 use reifydb_evaluate::{
@@ -46,6 +46,7 @@ pub struct MapOperator {
 	operator: OperatorId,
 	expressions: BoundExpressions,
 	labels: Vec<String>,
+	references: Vec<Option<String>>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ctx: Arc<FlowContext>,
@@ -64,6 +65,7 @@ impl MapOperator {
 			compile_check(expression)?;
 		}
 		let labels = expressions.iter().map(|expr| display_label(expr).text().to_string()).collect();
+		let references = expressions.iter().map(column_reference).collect();
 
 		Ok(Self {
 			parent_schema,
@@ -71,6 +73,7 @@ impl MapOperator {
 			operator,
 			expressions: BoundExpressions::new(expressions, true, "map"),
 			labels,
+			references,
 			routines,
 			runtime_context,
 			ctx,
@@ -123,9 +126,17 @@ impl MapOperator {
 
 		let mut result_columns = Vec::with_capacity(self.labels.len());
 
-		for (lowered_expr, label) in lowered_expressions.iter().zip(&self.labels) {
+		for ((lowered_expr, label), reference) in
+			lowered_expressions.iter().zip(&self.labels).zip(&self.references)
+		{
 			let evaluated_col = lowered_expr.evaluate(&exec_ctx)?;
-			result_columns.push(rename_keeping_tag(evaluated_col, label));
+			result_columns.push(rename_keeping_tag(
+				evaluated_col,
+				label,
+				reference
+					.as_deref()
+					.is_some_and(|name| columns.schema_ref().field_with_name(name).is_err()),
+			));
 		}
 
 		forward_system_columns(&with_system_columns_of(result_columns, columns)?)
@@ -143,20 +154,27 @@ pub fn schema_column(
 		other => other,
 	};
 	let label = display_label(expression);
-	let parent_field = match (parent, source) {
+	let (parent_field, resolved) = match (parent, source) {
 		(Some(parent), Expression::Column(column)) => {
 			let name = column.0.name.text();
-			parent.field_with_name(name).ok().or_else(|| {
-				parent.field_with_name(&format!("{name}_tag"))
-					.ok()
-					.filter(|field| is_sumtype_tag(field))
-			})
+			match parent.field_with_name(name) {
+				Ok(field) => (Some(field), false),
+				Err(_) => (
+					parent.field_with_name(&format!("{name}_tag"))
+						.ok()
+						.filter(|field| is_sumtype_tag(field)),
+					true,
+				),
+			}
 		}
-		_ => None,
+		_ => (None, false),
 	};
 	match parent_field.cloned().or_else(|| lowered.output_field(ctx).map(|field| field.as_ref().clone())) {
 		Some(field) => {
-			let name = tag_label(&field, label.text());
+			let name = match resolved {
+				true => tag_label(&field, label.text()),
+				false => label.text().to_string(),
+			};
 			Arc::new(field.with_name(name))
 		}
 		None => Arc::new(to_field(label.text(), &FieldType::from(ValueType::Any))),

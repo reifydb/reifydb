@@ -11,7 +11,10 @@ use reifydb_core::{
 		catalog::flow::OperatorId,
 		change::{Change, Diff},
 	},
-	value::{batch::empty_batch, column::factory::rename_keeping_tag},
+	value::{
+		batch::empty_batch,
+		column::factory::{column_reference, rename_keeping_tag},
+	},
 };
 use reifydb_evaluate::{
 	expression::context::EvalContext,
@@ -39,6 +42,7 @@ pub struct ExtendOperator {
 	operator: OperatorId,
 	expressions: BoundExpressions,
 	labels: Vec<String>,
+	references: Vec<Option<String>>,
 	routines: Routines,
 	runtime_context: RuntimeContext,
 	ctx: Arc<FlowContext>,
@@ -57,6 +61,7 @@ impl ExtendOperator {
 			compile_check(expression)?;
 		}
 		let labels = expressions.iter().map(|expr| display_label(expr).text().to_string()).collect();
+		let references = expressions.iter().map(column_reference).collect();
 
 		Ok(Self {
 			parent_schema,
@@ -64,6 +69,7 @@ impl ExtendOperator {
 			operator,
 			expressions: BoundExpressions::new(expressions, true, "extend"),
 			labels,
+			references,
 			routines,
 			runtime_context,
 			ctx,
@@ -115,9 +121,17 @@ impl ExtendOperator {
 		let mut result_columns: Vec<(FieldRef, ArrayRef)> =
 			user_columns(columns).map(|(field, array)| (field.clone(), array.clone())).collect();
 
-		for (lowered_expr, label) in lowered_expressions.iter().zip(&self.labels) {
+		for ((lowered_expr, label), reference) in
+			lowered_expressions.iter().zip(&self.labels).zip(&self.references)
+		{
 			let evaluated_col = lowered_expr.evaluate(&exec_ctx)?;
-			result_columns.push(rename_keeping_tag(evaluated_col, label));
+			result_columns.push(rename_keeping_tag(
+				evaluated_col,
+				label,
+				reference
+					.as_deref()
+					.is_some_and(|name| columns.schema_ref().field_with_name(name).is_err()),
+			));
 		}
 
 		forward_system_columns(&with_system_columns_of(result_columns, columns)?)

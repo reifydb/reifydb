@@ -33,7 +33,7 @@ use reifydb_flow::{
 		first_input,
 		map::MapOperator,
 		sort::SortOperator,
-		source::{catalog_schema, decoded_schema, mark_schema, unit_sumtype_tags},
+		source::{catalog_schema, decoded_schema, expand_enum_groups, mark_schema, sumtype_tags},
 	},
 };
 use reifydb_transaction::transaction::Transaction;
@@ -126,6 +126,9 @@ impl FlowEngineInner {
 		let input = first_input(inputs)?;
 		let parent_schema = self.parent_schema(flow_id, input)?;
 		let decoded_schema = self.decoded_parent_schema(txn, flow_id, input)?;
+		let expressions = expand_enum_groups(parent_schema.as_ref(), expressions, |id| {
+			self.catalog.get_sumtype(&mut txn.reborrow(), id)
+		})?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(
@@ -156,6 +159,9 @@ impl FlowEngineInner {
 		let input = first_input(inputs)?;
 		let parent_schema = self.parent_schema(flow_id, input)?;
 		let decoded_schema = self.decoded_parent_schema(txn, flow_id, input)?;
+		let expressions = expand_enum_groups(parent_schema.as_ref(), expressions, |id| {
+			self.catalog.get_sumtype(&mut txn.reborrow(), id)
+		})?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(
@@ -378,7 +384,7 @@ impl FlowEngineInner {
 		ensure_lookup_key_types(&left, &left_schema, &columns, &partition_by)?;
 
 		let shape = row_shape_from_columns(family, &columns);
-		let right_tags = unit_sumtype_tags(&columns, |id| self.catalog.get_sumtype(&mut txn.reborrow(), id))?;
+		let right_tags = sumtype_tags(&columns);
 		let right_schema = mark_schema(
 			&decoded_schema(&catalog_schema(&columns), |id| self.catalog.find_dictionary(txn, id))?,
 			&right_tags,
@@ -424,6 +430,9 @@ impl FlowEngineInner {
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
+		let expressions = expand_enum_groups(parent_schema.as_ref(), expressions, |id| {
+			self.catalog.get_sumtype(&mut txn.reborrow(), id)
+		})?;
 		self.operators.insert(
 			(flow_id, operator_id),
 			Box::new(DistinctOperator::new(
@@ -507,6 +516,9 @@ impl FlowEngineInner {
 		ctx: &Arc<FlowContext>,
 	) -> Result<()> {
 		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
+		let group_by = expand_enum_groups(parent_schema.as_ref(), group_by, |id| {
+			self.catalog.get_sumtype(&mut txn.reborrow(), id)
+		})?;
 		let operator = WindowOperator::new(WindowConfig {
 			parent_schema,
 			operator: operator_id,
@@ -535,6 +547,9 @@ impl FlowEngineInner {
 		_with: AggregateWith,
 	) -> Result<()> {
 		let parent_schema = self.decoded_parent_schema(txn, flow_id, first_input(inputs)?)?;
+		let by = expand_enum_groups(parent_schema.as_ref(), by, |id| {
+			self.catalog.get_sumtype(&mut txn.reborrow(), id)
+		})?;
 		let operator = AggregateOperator::new(
 			parent_schema,
 			operator_id,

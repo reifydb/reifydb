@@ -7,9 +7,11 @@ use arrow_array::{ArrayRef, RecordBatch, UInt64Array};
 use arrow_schema::{FieldRef, Schema, SchemaRef};
 use reifydb_core::{
 	common::CommitVersion,
+	expression::{AliasExpression, ColumnExpression, Expression, IdentExpression},
 	interface::{
 		catalog::{column::Column, dictionary::Dictionary, flow::OperatorId, series::Series, sumtype::SumType},
 		change::{Change, Diff},
+		identifier::ColumnIdentifier,
 	},
 	value::{
 		batch::{batch, mark_field, mark_tag_columns},
@@ -19,6 +21,7 @@ use reifydb_core::{
 use reifydb_value::{
 	Result,
 	error::Error,
+	fragment::Fragment,
 	value::{
 		column_view::{ColumnView, ViewData},
 		constraint::Constraint,
@@ -173,19 +176,74 @@ pub fn decoded_schema(
 	Ok(Arc::new(Schema::new(fields)))
 }
 
-pub fn unit_sumtype_tags(
-	columns: &[Column],
+pub fn sumtype_tags(columns: &[Column]) -> HashMap<String, SumTypeId> {
+	columns.iter()
+		.filter_map(|column| match column.constraint.constraint() {
+			Some(Constraint::SumType(id)) => Some((column.name.clone(), *id)),
+			_ => None,
+		})
+		.collect()
+}
+
+pub fn expand_enum_groups(
+	parent: Option<&SchemaRef>,
+	expressions: Vec<Expression>,
 	mut sumtype: impl FnMut(SumTypeId) -> Result<SumType>,
-) -> Result<HashMap<String, SumTypeId>> {
-	let mut tags = HashMap::new();
-	for column in columns {
-		if let Some(Constraint::SumType(id)) = column.constraint.constraint()
-			&& sumtype(*id)?.variants.iter().all(|variant| variant.fields.is_empty())
-		{
-			tags.insert(column.name.clone(), *id);
+) -> Result<Vec<Expression>> {
+	let Some(parent) = parent else {
+		return Ok(expressions);
+	};
+	let mut expanded = Vec::with_capacity(expressions.len());
+	for expression in expressions {
+		let (label, column) = match &expression {
+			Expression::Column(column) => (column.0.name.text().to_string(), column.clone()),
+			Expression::Alias(alias) => match alias.expression.as_ref() {
+				Expression::Column(column) => (alias.alias.0.text().to_string(), column.clone()),
+				_ => {
+					expanded.push(expression);
+					continue;
+				}
+			},
+			_ => {
+				expanded.push(expression);
+				continue;
+			}
+		};
+		let name = column.0.name.text().to_string();
+		let id = match (parent.field_with_name(&name), parent.field_with_name(&format!("{name}_tag"))) {
+			(Err(_), Ok(tag)) => from_field(tag)?.sumtype,
+			_ => None,
+		};
+		let Some(id) = id else {
+			expanded.push(expression);
+			continue;
+		};
+		let sumtype = sumtype(id)?;
+		if sumtype.variants.iter().all(|variant| variant.fields.is_empty()) {
+			expanded.push(expression);
+			continue;
+		}
+		let suffixes = once("tag".to_string()).chain(sumtype.variants.iter().flat_map(|variant| {
+			variant.fields.iter().map(move |field| format!("{}_{}", variant.name, field.name))
+		}));
+		for suffix in suffixes {
+			let source = format!("{name}_{suffix}");
+			let target = format!("{label}_{suffix}");
+			let reference = Expression::Column(ColumnExpression(ColumnIdentifier {
+				object: column.0.object.clone(),
+				name: Fragment::internal(&source),
+			}));
+			expanded.push(match source == target {
+				true => reference,
+				false => Expression::Alias(AliasExpression {
+					alias: IdentExpression(Fragment::internal(&target)),
+					expression: Box::new(reference),
+					fragment: Fragment::internal(&target),
+				}),
+			});
 		}
 	}
-	Ok(tags)
+	Ok(expanded)
 }
 
 pub fn mark_schema(schema: &SchemaRef, sumtypes: &HashMap<String, SumTypeId>) -> Result<SchemaRef> {

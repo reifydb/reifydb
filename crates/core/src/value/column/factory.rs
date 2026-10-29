@@ -45,6 +45,8 @@ use reifydb_value::value::{
 	},
 };
 
+use crate::expression::Expression;
+
 fn column(name: &str, value_type: ValueType, array: ArrayRef) -> (FieldRef, ArrayRef) {
 	let value_type = match array.null_count() > 0 {
 		true => ValueType::Option(Box::new(value_type)),
@@ -397,9 +399,23 @@ pub fn tag_label(field: &Field, label: &str) -> String {
 	}
 }
 
-pub fn rename_keeping_tag(column: (FieldRef, ArrayRef), label: &str) -> (FieldRef, ArrayRef) {
-	let name = tag_label(&column.0, label);
+pub fn rename_keeping_tag(column: (FieldRef, ArrayRef), label: &str, resolved: bool) -> (FieldRef, ArrayRef) {
+	let name = match resolved {
+		true => tag_label(&column.0, label),
+		false => label.to_string(),
+	};
 	rename(column, &name)
+}
+
+pub fn column_reference(expression: &Expression) -> Option<String> {
+	let source = match expression {
+		Expression::Alias(alias) => alias.expression.as_ref(),
+		other => other,
+	};
+	match source {
+		Expression::Column(column) => Some(column.0.name.text().to_string()),
+		_ => None,
+	}
 }
 
 pub(crate) fn with_validity(array: ArrayRef, nulls: NullBuffer) -> ArrayRef {
