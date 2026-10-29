@@ -972,6 +972,25 @@ impl<'bump> Compiler<'bump> {
 					}
 				}
 
+				if let PhysicalPlan::RingBufferScan(ref scan) = input {
+					let def = scan.source.def();
+					if !def.partition_by.is_empty()
+						&& let Some(partition) = extract_partition(
+							&filter.condition,
+							&def.columns,
+							&def.partition_by,
+						) {
+						let pruned = PhysicalPlan::RingBufferScan(RingBufferScanNode {
+							source: scan.source.clone(),
+							partition: Some(partition),
+						});
+						return Ok(PhysicalPlan::Filter(FilterNode {
+							conditions: vec![filter.condition],
+							input: self.bump_box(pruned),
+						}));
+					}
+				}
+
 				if let PhysicalPlan::ViewScan(ref scan) = input {
 					let def = scan.source.def();
 					if !def.partition_by().is_empty()
@@ -1735,6 +1754,7 @@ impl<'bump> Compiler<'bump> {
 					}
 					return Ok(PhysicalPlan::RingBufferScan(RingBufferScanNode {
 						source: resolved_ringbuffer.clone(),
+						partition: None,
 					}));
 				}
 

@@ -190,6 +190,7 @@ pub struct RingBufferScan {
 impl RingBufferScan {
 	pub fn new(
 		ringbuffer: ResolvedRingBuffer,
+		partition: Option<Partition>,
 		context: Arc<QueryContext>,
 		rx: &mut Transaction<'_>,
 	) -> Result<Self> {
@@ -202,7 +203,7 @@ impl RingBufferScan {
 			columns: ringbuffer.columns().to_vec(),
 			capacity: def.capacity,
 			registry: Some(ObjectId::ringbuffer(def.id)),
-			only: None,
+			only: partition,
 			view: None,
 		};
 		Self::over(source, system_columns, false, context, rx)

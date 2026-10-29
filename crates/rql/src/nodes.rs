@@ -695,6 +695,7 @@ pub struct SeriesParameterScanNode {
 #[derive(Debug, Clone)]
 pub struct RingBufferScanNode {
 	pub source: ResolvedRingBuffer,
+	pub partition: Option<Partition>,
 }
 
 #[derive(Debug, Clone)]

@@ -227,10 +227,16 @@ pub(crate) fn insert_ringbuffer_chunks(
 ) -> Result<u64> {
 	let mut start = 0;
 	while start < rows.len() {
-		let mut held: HashMap<Option<Partition>, Vec<usize>> = HashMap::new();
+		let mut held: Vec<(Option<Partition>, Vec<usize>)> = Vec::new();
+		let mut slot_of: HashMap<Option<Partition>, usize> = HashMap::new();
 		let mut end = start;
 		while end < rows.len() {
-			let members = held.entry(partitions.get(end).copied()).or_default();
+			let partition = partitions.get(end).copied();
+			let index = *slot_of.entry(partition).or_insert_with(|| {
+				held.push((partition, Vec::new()));
+				held.len() - 1
+			});
+			let members = &mut held[index].1;
 			if members.len() as u64 >= ringbuffer.capacity {
 				break;
 			}

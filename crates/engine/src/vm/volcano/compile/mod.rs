@@ -216,7 +216,7 @@ pub(crate) fn compile<'a>(
 			Box::new(ViewScanNode::new(node.source.clone(), node.partition, context, rx).unwrap())
 		}
 		RqlQueryPlan::RingBufferScan(node) => {
-			Box::new(RingBufferScan::new(node.source.clone(), context, rx).unwrap())
+			Box::new(RingBufferScan::new(node.source.clone(), node.partition, context, rx).unwrap())
 		}
 		RqlQueryPlan::QueueScan(node) => Box::new(QueueScan::new(node.source.clone(), context, rx).unwrap()),
 		RqlQueryPlan::DictionaryScan(node) => {

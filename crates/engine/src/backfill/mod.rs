@@ -138,7 +138,7 @@ impl<'a> TransactionScan<'a> {
 			}
 			ObjectId::RingBuffer(id) => {
 				let ringbuffer = catalog.resolve_ringbuffer(tx, id)?;
-				let node = RingBufferScan::new(ringbuffer, Arc::clone(context), tx)?
+				let node = RingBufferScan::new(ringbuffer, None, Arc::clone(context), tx)?
 					.oldest_first()
 					.keep_dictionary_ids();
 				Ok((Box::new(node), false))

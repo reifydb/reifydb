@@ -67,11 +67,7 @@ impl RingStore for RingTxn<'_, '_, '_> {
 		Ok(self.catalog.reserve_ringbuffer_row_numbers(self.txn, self.ringbuffer.id, capacity)?.0)
 	}
 
-	fn slots(
-		&mut self,
-		partition: Option<Partition>,
-		rows: &[RowNumber],
-	) -> Result<Vec<Option<EncodedBytes>>> {
+	fn slots(&mut self, partition: Option<Partition>, rows: &[RowNumber]) -> Result<Vec<Option<EncodedBytes>>> {
 		if rows.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -209,6 +205,15 @@ fn write_rows<T: WithInterceptors + Write + Read>(
 		.map(|(idx, &row_number)| ringbuffer_key(ringbuffer, partitions.get(idx).copied(), row_number))
 		.collect();
 
+	let (evicted_ids, evicted_rows): (Vec<RowNumber>, Vec<EncodedBytes>) =
+		ids.iter().zip(evicted).filter_map(|(&id, pre)| pre.as_ref().map(|pre| (id, pre.clone()))).unzip();
+	if !evicted_ids.is_empty() && !txn.ringbuffer_row_pre_delete_interceptors().is_empty() {
+		RingBufferRowInterceptor::pre_delete(txn, ringbuffer, &evicted_ids)?;
+	}
+	if !evicted_ids.is_empty() && !txn.ringbuffer_row_post_delete_interceptors().is_empty() {
+		RingBufferRowInterceptor::post_delete(txn, ringbuffer, &evicted_ids, &evicted_rows)?;
+	}
+
 	let written: Vec<EncodedBytes> = if txn.ringbuffer_row_pre_insert_interceptors().is_empty() {
 		rows.to_vec()
 	} else {
@@ -225,12 +230,6 @@ fn write_rows<T: WithInterceptors + Write + Read>(
 		written
 	};
 
-	let (evicted_ids, evicted_rows): (Vec<RowNumber>, Vec<EncodedBytes>) =
-		ids.iter().zip(evicted).filter_map(|(&id, pre)| pre.as_ref().map(|pre| (id, pre.clone()))).unzip();
-	if !evicted_ids.is_empty() && !txn.ringbuffer_row_pre_delete_interceptors().is_empty() {
-		RingBufferRowInterceptor::pre_delete(txn, ringbuffer, &evicted_ids)?;
-	}
-
 	txn.set_with_pre(
 		keys.into_iter()
 			.zip(written.iter().cloned())
@@ -238,9 +237,6 @@ fn write_rows<T: WithInterceptors + Write + Read>(
 			.collect(),
 	)?;
 
-	if !evicted_ids.is_empty() && !txn.ringbuffer_row_post_delete_interceptors().is_empty() {
-		RingBufferRowInterceptor::post_delete(txn, ringbuffer, &evicted_ids, &evicted_rows)?;
-	}
 	if !txn.ringbuffer_row_post_insert_interceptors().is_empty() {
 		RingBufferRowInterceptor::post_insert(txn, ringbuffer, ids, &written)?;
 	}
