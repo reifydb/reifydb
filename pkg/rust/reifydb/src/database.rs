@@ -51,9 +51,10 @@ use reifydb_sub_server_ws::subsystem::WsSubsystem;
 use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::SubscriptionSubsystem};
 #[cfg(not(reifydb_single_threaded))]
 use reifydb_sub_task::{handle::TaskHandle, subsystem::TaskSubsystem};
+#[cfg(feature = "sub_flow")]
+use reifydb_value::error::Error;
 use reifydb_value::{
 	Result,
-	error::Error,
 	params::Params,
 	value::{duration::Duration, frame::frame::Frame, identity::IdentityId},
 };
