@@ -391,7 +391,6 @@ impl Database {
 				return;
 			}
 
-			self.engine.notify_cdc_consumers();
 			sleep(Duration::from_milliseconds(50).unwrap().to_std());
 		}
 	}

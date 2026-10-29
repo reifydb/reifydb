@@ -10,15 +10,17 @@ use std::{
 	any::Any,
 	collections::HashMap,
 	sync::{
-		Arc,
+		Arc, OnceLock,
 		atomic::{AtomicBool, Ordering},
 	},
 };
 
 use reifydb_catalog::catalog::Catalog;
-use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 use reifydb_core::{
-	commit::queue::{CommitQueue, SubscriptionQueueFloor},
+	commit::{
+		queue::{CommitQueue, SubscriptionQueueFloor},
+		watermark::CdcConsumerWatermark,
+	},
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
@@ -114,13 +116,17 @@ impl SubscriptionSubsystem {
 
 		let SubscriptionQueueFloor(floor) = floor;
 		let start = queue.released().0;
+		let reader_ref = Arc::new(OnceLock::<ActorRef<SubscriptionReaderMessage>>::new());
+		let wake_ref = reader_ref.clone();
+		floor.adopt(start, move || {
+			if let Some(reader_ref) = wake_ref.get() {
+				let _ = reader_ref.send(SubscriptionReaderMessage::Wake);
+			}
+		});
 		let reader =
 			SubscriptionReader::new(engine, queue, floor.clone(), cdc_consumer, consumer_watermark, start);
 		let handle = spawner.spawn_coordination("sub-subscription-reader", reader);
-		let reader_ref = handle.actor_ref().clone();
-		floor.adopt(start, move || {
-			let _ = reader_ref.send(SubscriptionReaderMessage::Wake);
-		});
+		let _ = reader_ref.set(handle.actor_ref().clone());
 
 		Ok(Self {
 			reader: Mutex::new(Some(handle)),

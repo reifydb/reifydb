@@ -382,8 +382,7 @@ fn query_batch_size(engine: &StandardEngine) -> Result<NonZeroU64> {
 mod tests {
 	use std::sync::{Arc, mpsc};
 
-	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
-	use reifydb_core::durability::Durability;
+	use reifydb_core::{commit::watermark::CdcConsumerWatermark, durability::Durability};
 	use reifydb_flow_async::{
 		operator::{metrics::OperatorSampleRegistry, provider::EmptyOperatorProvider},
 		transaction::substrate::FlowSubstrate,

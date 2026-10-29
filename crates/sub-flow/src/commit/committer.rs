@@ -556,12 +556,12 @@ mod commit_integration {
 		time::Duration as StdDuration,
 	};
 
-	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_codec::{
 		key::encoded::EncodedKey,
 		row::{bytes::EncodedBytes, pod::EncodedPodRow},
 	};
 	use reifydb_core::{
+		commit::watermark::CdcConsumerWatermark,
 		durability::Durability,
 		interface::{
 			catalog::{

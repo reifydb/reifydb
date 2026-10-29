@@ -22,11 +22,9 @@ use reifydb_catalog::{
 		user::{UserVTable, UserVTableColumn, registry::UserVTableEntry},
 	},
 };
-use reifydb_cdc::{
-	consume::{host::CdcHost, wake::CdcWakeRegistry, watermark::CdcConsumerWatermark},
-	produce::watermark::CdcProducerWatermark,
-};
+use reifydb_cdc::{consume::host::CdcHost, produce::watermark::CdcProducerWatermark};
 use reifydb_core::{
+	commit::watermark::CdcConsumerWatermark,
 	common::CommitVersion,
 	durability::Durability,
 	error::diagnostic::engine::read_only_rejection,
@@ -389,26 +387,6 @@ impl CdcHost for StandardEngine {
 		StandardEngine::begin_query(self, IdentityId::system())
 	}
 
-	fn current_version(&self) -> Result<CommitVersion> {
-		StandardEngine::current_version(self)
-	}
-
-	fn done_until(&self) -> CommitVersion {
-		StandardEngine::done_until(self)
-	}
-
-	fn cdc_producer_watermark(&self) -> CommitVersion {
-		StandardEngine::cdc_producer_watermark(self)
-	}
-
-	fn wait_for_mark_timeout(&self, version: CommitVersion, timeout: Duration) -> bool {
-		StandardEngine::wait_for_mark_timeout(self, version, timeout)
-	}
-
-	fn notify_on_mark(&self, version: CommitVersion, callback: Box<dyn FnOnce() + Send>) {
-		StandardEngine::notify_on_mark(self, version, callback);
-	}
-
 	fn catalog(&self) -> &Catalog {
 		&self.catalog
 	}
@@ -689,13 +667,6 @@ impl StandardEngine {
 	#[inline]
 	pub fn cdc_consumer_watermark(&self) -> CommitVersion {
 		self.executor.ioc.try_resolve::<CdcConsumerWatermark>().map(|w| w.get()).unwrap_or(CommitVersion(0))
-	}
-
-	#[inline]
-	pub fn notify_cdc_consumers(&self) {
-		if let Some(registry) = self.executor.ioc.try_resolve::<CdcWakeRegistry>() {
-			registry.notify_all();
-		}
 	}
 
 	pub fn set_read_only(&self) {

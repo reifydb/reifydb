@@ -25,11 +25,11 @@ use std::{
 use extern_c::load_extern_c_operators;
 #[cfg(all(reifydb_target = "host", not(reifydb_dst)))]
 use extern_rust::load_extern_rust_operators;
-use reifydb_cdc::consume::watermark::{CdcConsumerWatermark, FlowCaughtUpWatermark};
 use reifydb_core::{
 	commit::{
 		loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 		queue::{CommitQueue, FlowQueueFloor},
+		watermark::{CdcConsumerWatermark, FlowCaughtUpWatermark},
 	},
 	durability::Durability,
 	event::operator::OperatorLoadedEvent,

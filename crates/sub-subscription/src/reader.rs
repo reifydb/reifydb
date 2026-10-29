@@ -9,9 +9,11 @@ use std::{
 	},
 };
 
-use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 use reifydb_core::{
-	commit::queue::{CommitPull, CommitQueue, CommitQueueFloor},
+	commit::{
+		queue::{CommitPull, CommitQueue, CommitQueueFloor},
+		watermark::CdcConsumerWatermark,
+	},
 	common::CommitVersion,
 	interface::{
 		catalog::config::{ConfigKey, GetConfig},

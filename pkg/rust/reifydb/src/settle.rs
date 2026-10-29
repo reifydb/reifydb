@@ -11,12 +11,11 @@
 #[cfg(reifydb_dst)]
 use std::{cell::Cell, fmt};
 
-use reifydb_cdc::consume::watermark::FlowCaughtUpWatermark;
 #[cfg(reifydb_dst)]
 use reifydb_core::interface::catalog::config::{ConfigKey, GetConfig};
 use reifydb_core::{
-	common::CommitVersion, error::diagnostic::subscription::subscription_lagged,
-	interface::catalog::id::SubscriptionId, internal,
+	commit::watermark::FlowCaughtUpWatermark, common::CommitVersion,
+	error::diagnostic::subscription::subscription_lagged, interface::catalog::id::SubscriptionId, internal,
 };
 use reifydb_sub_subscription::{store::SubscriptionStore, subsystem::SubscriptionSubsystem};
 use reifydb_value::{Result, error::Error, value::duration::Duration};
@@ -224,7 +223,6 @@ impl Database {
 			previous_pending = Some(state.pending_batches);
 			passes += 1;
 
-			self.engine().notify_cdc_consumers();
 			system.advance_time(step);
 			system.run_until_idle();
 		}
@@ -323,7 +321,6 @@ impl Database {
 			}
 			passes += 1;
 
-			self.engine().notify_cdc_consumers();
 			system.advance_time(step);
 			system.run_until_idle();
 		}

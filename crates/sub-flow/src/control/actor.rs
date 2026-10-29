@@ -1293,10 +1293,7 @@ impl Actor for FlowActor {
 mod pull_protocol {
 	use std::{collections::HashMap, ops::Bound, sync::mpsc, thread::sleep};
 
-	use reifydb_cdc::{
-		consume::watermark::CdcConsumerWatermark,
-		lift::{changed_objects, lift_selected_changes, row_target},
-	};
+	use reifydb_cdc::lift::{changed_objects, lift_selected_changes, row_target};
 	use reifydb_codec::{
 		key::encoded::EncodedKey,
 		row::{bytes::EncodedBytes, pod::EncodedPodRow},
@@ -1306,6 +1303,7 @@ mod pull_protocol {
 		commit::{
 			loader::{CommitLoader, CommitLoaderHandle, CommitLoaderMetrics},
 			queue::{CommitQueueFloor, FlowQueueFloor},
+			watermark::CdcConsumerWatermark,
 		},
 		durability::Durability,
 		interface::{

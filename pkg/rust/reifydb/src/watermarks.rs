@@ -3,8 +3,8 @@
 
 use std::{marker::PhantomData, thread};
 
-use reifydb_cdc::consume::watermark::FlowCaughtUpWatermark;
 use reifydb_core::{
+	commit::watermark::FlowCaughtUpWatermark,
 	common::CommitVersion,
 	interface::{
 		catalog::flow::FlowId,

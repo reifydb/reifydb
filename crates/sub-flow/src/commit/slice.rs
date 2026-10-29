@@ -764,10 +764,12 @@ mod tests {
 mod integration {
 	use std::{collections::HashSet, slice::from_ref, sync::mpsc, thread::sleep};
 
-	use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
 	use reifydb_core::{
 		actors::pending::PendingWrite,
-		commit::queue::{CommitPull, CommitQueue},
+		commit::{
+			queue::{CommitPull, CommitQueue},
+			watermark::CdcConsumerWatermark,
+		},
 		common::TimeDomain,
 		durability::Durability,
 		flow::{

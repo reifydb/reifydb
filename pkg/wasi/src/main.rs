@@ -23,7 +23,6 @@ use reifydb_catalog::{
 };
 use reifydb_cdc::{
 	CdcVersion,
-	consume::wake::CdcWakeRegistry,
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -144,9 +143,6 @@ impl Bridge {
 		let cdc_producer_watermark = CdcProducerWatermark::new();
 		ioc = ioc.register(cdc_producer_watermark.clone());
 
-		let cdc_wake_registry = CdcWakeRegistry::new();
-		ioc = ioc.register(cdc_wake_registry.clone());
-
 		ioc = ioc.register(RetentionMetrics::new());
 
 		let ioc_ref = ioc.clone();
@@ -189,13 +185,8 @@ impl Bridge {
 		);
 
 		eprintln!("[WASI] Spawning CDC producer actor...");
-		let cdc_producer_handle = spawn_cdc_producer(
-			&spawner,
-			cdc_store,
-			eventbus_clone.clone(),
-			cdc_producer_watermark,
-			cdc_wake_registry,
-		);
+		let cdc_producer_handle =
+			spawn_cdc_producer(&spawner, cdc_store, eventbus_clone.clone(), cdc_producer_watermark);
 
 		let cdc_listener =
 			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), clock.clone());

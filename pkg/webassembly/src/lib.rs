@@ -26,7 +26,6 @@ use reifydb_catalog::{
 };
 use reifydb_cdc::{
 	CdcVersion,
-	consume::{wake::CdcWakeRegistry, watermark::FlowCaughtUpWatermark},
 	produce::{
 		producer::{CdcProducerEventListener, spawn_cdc_producer},
 		watermark::CdcProducerWatermark,
@@ -34,7 +33,10 @@ use reifydb_cdc::{
 };
 use reifydb_core::{
 	CoreVersion,
-	commit::queue::{CommitQueue, FlowQueueFloor},
+	commit::{
+		queue::{CommitQueue, FlowQueueFloor},
+		watermark::FlowCaughtUpWatermark,
+	},
 	common::CommitVersion,
 	event::{EventBus, transaction::PostCommitEvent},
 	interface::{
@@ -270,9 +272,6 @@ impl WasmDB {
 		let cdc_producer_watermark = CdcProducerWatermark::new();
 		ioc = ioc.register(cdc_producer_watermark.clone());
 
-		let cdc_wake_registry = CdcWakeRegistry::new();
-		ioc = ioc.register(cdc_wake_registry.clone());
-
 		ioc = ioc.register(RetentionMetrics::new());
 
 		let ioc_ref = ioc.clone();
@@ -318,13 +317,8 @@ impl WasmDB {
 		);
 
 		console_log("[WASM] Spawning CDC producer actor...");
-		let cdc_producer_handle = spawn_cdc_producer(
-			&spawner,
-			cdc_store,
-			eventbus_clone.clone(),
-			cdc_producer_watermark,
-			cdc_wake_registry,
-		);
+		let cdc_producer_handle =
+			spawn_cdc_producer(&spawner, cdc_store, eventbus_clone.clone(), cdc_producer_watermark);
 
 		let cdc_listener =
 			CdcProducerEventListener::new(cdc_producer_handle.actor_ref().clone(), clock.clone());

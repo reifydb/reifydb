@@ -6,8 +6,7 @@ use std::sync::{
 	atomic::{AtomicU64, Ordering},
 };
 
-use reifydb_cdc::consume::watermark::CdcConsumerWatermark;
-use reifydb_core::common::CommitVersion;
+use reifydb_core::{commit::watermark::CdcConsumerWatermark, common::CommitVersion};
 
 use crate::progress::tracker::FlowPositionTracker;
 

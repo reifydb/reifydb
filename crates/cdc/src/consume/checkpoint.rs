@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::cdc::{CheckpointState, ConsumerClass},
 	key::cdc::ToConsumerKey,
 };
-use reifydb_transaction::transaction::{Transaction, command::CommandTransaction};
+use reifydb_transaction::transaction::command::CommandTransaction;
 use reifydb_value::{Result, util::cowvec::CowVec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,22 +43,6 @@ impl CheckpointRow {
 pub struct CdcCheckpoint {}
 
 impl CdcCheckpoint {
-	pub fn fetch<K: ToConsumerKey>(txn: &mut Transaction<'_>, consumer: &K) -> Result<CommitVersion> {
-		Ok(Self::fetch_opt(txn, consumer)?.unwrap_or(CommitVersion(1)))
-	}
-
-	pub fn fetch_opt<K: ToConsumerKey>(txn: &mut Transaction<'_>, consumer: &K) -> Result<Option<CommitVersion>> {
-		Ok(Self::fetch_row(txn, consumer)?.map(|row| row.version))
-	}
-
-	pub fn fetch_row<K: ToConsumerKey>(txn: &mut Transaction<'_>, consumer: &K) -> Result<Option<CheckpointRow>> {
-		let key = consumer.to_consumer_key();
-		Ok(txn.get(&[key.clone().into()])?
-			.pop()
-			.flatten()
-			.and_then(|multi| CheckpointRow::decode(&multi.bytes)))
-	}
-
 	pub fn persist<K: ToConsumerKey>(
 		txn: &mut CommandTransaction,
 		consumer: &K,
@@ -72,27 +56,5 @@ impl CdcCheckpoint {
 			state: CheckpointState::Valid,
 		};
 		txn.set(vec![(key.clone().into(), row.encode())])
-	}
-
-	pub fn invalidate<K: ToConsumerKey>(txn: &mut CommandTransaction, consumer: &K) -> Result<()> {
-		let key = consumer.to_consumer_key();
-		let Some(multi) = txn.get(&[key.clone().into()])?.pop().flatten() else {
-			return Ok(());
-		};
-		let Some(mut bytes) = CheckpointRow::decode(&multi.bytes) else {
-			return Ok(());
-		};
-		assert_ne!(
-			bytes.class,
-			ConsumerClass::Pinning,
-			"a Pinning consumer checkpoint can never be invalidated: retention must never overtake it"
-		);
-		bytes.state = CheckpointState::Invalidated;
-		txn.set(vec![(key.clone().into(), bytes.encode())])
-	}
-
-	pub fn delete<K: ToConsumerKey>(txn: &mut CommandTransaction, consumer: &K) -> Result<()> {
-		let key = consumer.to_consumer_key();
-		txn.remove(vec![(key.clone().into(), None)])
 	}
 }

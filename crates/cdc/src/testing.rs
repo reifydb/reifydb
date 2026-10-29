@@ -29,11 +29,7 @@ use reifydb_transaction::{
 	transaction::{command::CommandTransaction, query::QueryTransaction},
 	wal::{memory_wal, replay},
 };
-use reifydb_value::{
-	Result,
-	util::cowvec::CowVec,
-	value::{duration::Duration, identity::IdentityId},
-};
+use reifydb_value::{Result, util::cowvec::CowVec, value::identity::IdentityId};
 
 use crate::consume::host::CdcHost;
 
@@ -107,26 +103,6 @@ impl CdcHost for TestCdcHost {
 
 	fn begin_query(&self) -> Result<QueryTransaction> {
 		Ok(QueryTransaction::new(self.multi.begin_query()?, self.single.clone(), IdentityId::system()))
-	}
-
-	fn current_version(&self) -> Result<CommitVersion> {
-		Ok(CommitVersion(1))
-	}
-
-	fn done_until(&self) -> CommitVersion {
-		CommitVersion(1)
-	}
-
-	fn cdc_producer_watermark(&self) -> CommitVersion {
-		CommitVersion(1)
-	}
-
-	fn wait_for_mark_timeout(&self, _version: CommitVersion, _timeout: Duration) -> bool {
-		true
-	}
-
-	fn notify_on_mark(&self, _version: CommitVersion, callback: Box<dyn FnOnce() + Send>) {
-		callback();
 	}
 
 	fn catalog(&self) -> &Catalog {

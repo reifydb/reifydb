@@ -3,3 +3,4 @@
 
 pub mod loader;
 pub mod queue;
+pub mod watermark;

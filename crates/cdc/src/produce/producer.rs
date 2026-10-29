@@ -30,31 +30,24 @@ use reifydb_store_cdc::storage::{CdcStorage, CdcStorageResult};
 use reifydb_value::{byte_size::ByteSize, value::datetime::DateTime};
 use tracing::{debug, error, info};
 
-use crate::{consume::wake::CdcWakeRegistry, produce::watermark::CdcProducerWatermark};
+use crate::produce::watermark::CdcProducerWatermark;
 
 pub struct CdcProducerActor<S> {
 	storage: Arc<S>,
 	event_bus: EventBus,
 
 	watermark: CdcProducerWatermark,
-	wake_registry: CdcWakeRegistry,
 }
 
 impl<S> CdcProducerActor<S>
 where
 	S: CdcStorage + Send + Sync + 'static,
 {
-	pub fn new(
-		storage: S,
-		event_bus: EventBus,
-		watermark: CdcProducerWatermark,
-		wake_registry: CdcWakeRegistry,
-	) -> Self {
+	pub fn new(storage: S, event_bus: EventBus, watermark: CdcProducerWatermark) -> Self {
 		Self {
 			storage: Arc::new(storage),
 			event_bus,
 			watermark,
-			wake_registry,
 		}
 	}
 
@@ -113,20 +106,15 @@ where
 		);
 		let floor = state.next.unwrap_or(version.commit.0);
 		let mut next = floor.min(version.commit.0);
-		let mut released = false;
 		while let Some(parked) = state.parked.remove(&next) {
 			self.process(parked.version, parked.changed_at, parked.deltas)?;
 			self.watermark.advance(CommitVersion(next));
-			released = true;
 			let Some(following) = next.checked_add(1) else {
 				break;
 			};
 			next = following;
 		}
 		state.next = Some(next.max(floor));
-		if released {
-			self.wake_registry.notify_all();
-		}
 		Ok(())
 	}
 }
@@ -271,12 +259,11 @@ pub fn spawn_cdc_producer<S>(
 	storage: S,
 	event_bus: EventBus,
 	watermark: CdcProducerWatermark,
-	wake_registry: CdcWakeRegistry,
 ) -> CdcProduceHandle
 where
 	S: CdcStorage + Send + Sync + 'static,
 {
-	let actor = CdcProducerActor::new(storage, event_bus, watermark, wake_registry);
+	let actor = CdcProducerActor::new(storage, event_bus, watermark);
 	spawner.spawn_coordination("cdc-producer", actor)
 }
 
@@ -362,12 +349,8 @@ pub mod tests {
 		let actor_system = ActorSystem::new(Pools::default(), Clock::Real);
 		let spawner = actor_system.spawner();
 		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
-		let actor = CdcProducerActor::new(
-			storage.clone(),
-			EventBus::new(&spawner),
-			CdcProducerWatermark::new(),
-			CdcWakeRegistry::new(),
-		);
+		let actor =
+			CdcProducerActor::new(storage.clone(), EventBus::new(&spawner), CdcProducerWatermark::new());
 		(actor, storage, actor_system)
 	}
 
@@ -401,13 +384,7 @@ pub mod tests {
 		let spawner = actor_system.spawner();
 		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
 		let event_bus = EventBus::new(&spawner);
-		let handle = spawn_cdc_producer(
-			&spawner,
-			storage.clone(),
-			event_bus,
-			CdcProducerWatermark::new(),
-			CdcWakeRegistry::new(),
-		);
+		let handle = spawn_cdc_producer(&spawner, storage.clone(), event_bus, CdcProducerWatermark::new());
 
 		let deltas = vec![Delta::Set {
 			key: make_key("test_key"),
@@ -449,13 +426,7 @@ pub mod tests {
 		let spawner = actor_system.spawner();
 		let storage = CdcStore::new(CdcStoreConfig::memory(spawner.clone(), Clock::Real));
 		let event_bus = EventBus::new(&spawner);
-		let handle = spawn_cdc_producer(
-			&spawner,
-			storage.clone(),
-			event_bus,
-			CdcProducerWatermark::new(),
-			CdcWakeRegistry::new(),
-		);
+		let handle = spawn_cdc_producer(&spawner, storage.clone(), event_bus, CdcProducerWatermark::new());
 
 		let deltas = vec![
 			Delta::Set {

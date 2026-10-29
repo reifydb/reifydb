@@ -18,12 +18,9 @@ use reifydb_catalog::{
 		table::{TableColumnToCreate, TableToCreate},
 	},
 };
-use reifydb_cdc::{
-	consume::wake::CdcWakeRegistry,
-	produce::{
-		producer::{CdcProducerEventListener, spawn_cdc_producer},
-		watermark::CdcProducerWatermark,
-	},
+use reifydb_cdc::produce::{
+	producer::{CdcProducerEventListener, spawn_cdc_producer},
+	watermark::CdcProducerWatermark,
 };
 use reifydb_core::{
 	actors::cdc::CdcProduceHandle,
@@ -361,9 +358,6 @@ impl TestEngineBuilder {
 		let cdc_producer_watermark = CdcProducerWatermark::new();
 		ioc = ioc.register(cdc_producer_watermark.clone());
 
-		let cdc_wake_registry = CdcWakeRegistry::new();
-		ioc = ioc.register(cdc_wake_registry.clone());
-
 		bootstrap_root_namespaces(&multi, &single, &catalog_cache, &eventbus)
 			.unwrap_or_else(|error| panic!("test engine root namespaces failed to bootstrap: {error}"));
 
@@ -418,7 +412,6 @@ impl TestEngineBuilder {
 				&eventbus,
 				ioc_for_cdc,
 				cdc_producer_watermark,
-				cdc_wake_registry,
 			);
 			eventbus.register::<PostCommitEvent, _>(commit_queue);
 		}
@@ -458,9 +451,8 @@ fn register_cdc_producer(
 	eventbus: &EventBus,
 	ioc_for_cdc: IocContainer,
 	watermark: CdcProducerWatermark,
-	wake_registry: CdcWakeRegistry,
 ) {
-	let cdc_handle = spawn_cdc_producer(spawner, cdc_store, eventbus.clone(), watermark, wake_registry);
+	let cdc_handle = spawn_cdc_producer(spawner, cdc_store, eventbus.clone(), watermark);
 	eventbus.register::<PostCommitEvent, _>(CdcProducerEventListener::new(
 		cdc_handle.actor_ref().clone(),
 		clock.clone(),

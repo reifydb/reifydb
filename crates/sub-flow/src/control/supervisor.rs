@@ -11,12 +11,13 @@ use std::{
 	},
 };
 
-use reifydb_cdc::{consume::watermark::CdcConsumerWatermark, lift::entry_changed_objects};
+use reifydb_cdc::lift::entry_changed_objects;
 use reifydb_core::{
 	actors::flow::{FlowActorHandle, FlowActorMessage},
 	commit::{
 		loader::CommitLoaderMessage,
 		queue::{CommitPull, CommitQueue, CommitQueueFloor},
+		watermark::CdcConsumerWatermark,
 	},
 	common::{CommitVersion, SourceVersion},
 	flow::{dag::FlowDag, operator::OperatorDef},

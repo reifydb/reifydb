@@ -2,12 +2,9 @@
 // Copyright (c) 2026 ReifyDB
 
 use reifydb_runtime::actor::system::ActorHandle;
-use reifydb_value::{Result, value::datetime::DateTime};
+use reifydb_value::value::datetime::DateTime;
 
-use crate::{
-	common::{ChangeVersion, CommitVersion},
-	delta::Delta,
-};
+use crate::{common::ChangeVersion, delta::Delta};
 
 pub type CdcProduceHandle = ActorHandle<CdcProduceMessage>;
 
@@ -18,24 +15,4 @@ pub enum CdcProduceMessage {
 		changed_at: DateTime,
 		deltas: Vec<Delta>,
 	},
-}
-
-pub type CdcPollHandle = ActorHandle<CdcPollMessage>;
-
-pub enum CdcPollMessage {
-	Poll,
-
-	CheckWatermark,
-
-	ConsumeResponse {
-		result: Result<()>,
-	},
-
-	ResyncResponse {
-		result: Result<CommitVersion>,
-	},
-
-	Tick,
-
-	Shutdown,
 }
