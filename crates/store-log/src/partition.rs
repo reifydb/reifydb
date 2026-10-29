@@ -112,7 +112,7 @@ impl<F: Filesystem + Create + Mkdir + Open + OpenMut + ReadDir + Rename + SyncDi
 			};
 			let (mut segment, scan) = Segment::recover(&fs, &dir.join(log_name(base)))?;
 			if scan.records.is_empty() && segment.capacity() < config.segment_bytes {
-				segment.regrow_on_append(config.segment_bytes);
+				segment.reset(config.segment_bytes)?;
 			}
 			let index = match Index::recover(&fs, &dir.join(index_name(base)), config.index_interval, &scan)
 			{

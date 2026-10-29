@@ -38,7 +38,6 @@ pub struct Segment<F: Filesystem> {
 	capacity: ByteSize,
 	head: Position,
 	torn: bool,
-	regrow: Option<ByteSize>,
 }
 
 impl<F: Filesystem> Segment<F> {
@@ -63,7 +62,6 @@ impl<F: Filesystem> Segment<F> {
 			capacity,
 			head: Position::ZERO,
 			torn: false,
-			regrow: None,
 		})
 	}
 
@@ -82,15 +80,11 @@ impl<F: Filesystem> Segment<F> {
 			capacity,
 			head: scan.end,
 			torn,
-			regrow: None,
 		};
 		Ok((segment, scan))
 	}
 
 	pub fn append(&mut self, record: &Record) -> Result<Position> {
-		if let Some(capacity) = self.regrow.take() {
-			self.reset(capacity)?;
-		}
 		let bytes = record.encode();
 		let needed = bytes.len() as u64;
 		let remaining = self.capacity.as_bytes() - self.head.as_u64();
@@ -119,12 +113,7 @@ impl<F: Filesystem> Segment<F> {
 		self.head = Position::ZERO;
 		self.capacity = capacity;
 		self.torn = false;
-		self.regrow = None;
 		Ok(())
-	}
-
-	pub fn regrow_on_append(&mut self, capacity: ByteSize) {
-		self.regrow = Some(capacity);
 	}
 
 	pub fn truncate_to(&mut self, position: Position) -> Result<()> {
