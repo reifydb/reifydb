@@ -61,7 +61,7 @@ function App() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-bg-primary">
-      {canvas && <BrandBar tag="AGENT CANVAS" />}
+      {canvas && <BrandBar />}
       {agents && <BrandBar tag="AGENTS" />}
       <main className="relative flex min-h-0 flex-1 flex-col">
         {connection.status === 'connecting' && <Loading />}

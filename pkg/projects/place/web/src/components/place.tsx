@@ -12,15 +12,16 @@ import type { GuestSession } from '@/session'
 import type { Point, Tool } from '@/tools'
 import { BottomBar } from './bottom-bar'
 import { Account } from './account'
-import { ActivityRail } from './activity-feed'
-import { CanvasView } from './canvas-view'
+import { CanvasView, useCamera } from './canvas-view'
 import { useLive } from './live'
+import { Sidebar } from './sidebar'
 import { Toolbar } from './toolbar'
 import { Welcome } from './welcome'
 
 export function Place({ client, guest }: { client: PlaceClient; guest: GuestSession }) {
   const [message, setMessage] = useState<string | null>(null)
   const { buffer, minimap, activity } = useLive(client, setMessage)
+  const camera = useCamera()
   const pending = useMemo(() => new Pending(), [])
   const pendingVersion = useSyncExternalStore(
     (listener) => pending.subscribe(listener),
@@ -150,7 +151,7 @@ export function Place({ client, guest }: { client: PlaceClient; guest: GuestSess
       <div className="relative min-w-0 flex-1">
         <CanvasView
           buffer={buffer}
-          minimap={minimap}
+          camera={camera}
           activity={activity}
           pending={pending}
           layerVisible={layerVisible}
@@ -185,7 +186,7 @@ export function Place({ client, guest }: { client: PlaceClient; guest: GuestSess
         <Account guest={guest} />
         <Welcome />
       </div>
-      <ActivityRail activity={activity} />
+      <Sidebar activity={activity} minimap={minimap} camera={camera} />
     </div>
   )
 }

@@ -70,12 +70,12 @@ export function Landing({ client }: { client: PlaceClient }) {
       </section>
       <Stats activity={activity} />
       <section id="activity" className="mx-auto max-w-5xl px-4 py-10">
-        <h2 className="text-3xl font-extrabold tracking-tight">Live activity</h2>
+        <h2 className="text-3xl font-extrabold tracking-tight">Activity</h2>
         <p className="mb-5 text-text-muted">Straight from the change stream. No polling, no refresh.</p>
         <div className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
           <div className="panel">
             <h3 className="flex items-center justify-between border-b-2 border-[#4b52d6] px-4 py-3 font-bold">
-              Latest edits <span className="pixel-label text-primary-dark">● AUTO-UPDATING</span>
+              Latest edits
             </h3>
             <div className="h-[360px] overflow-hidden">
               <ActivityFeed activity={activity} rows={8} />
@@ -129,7 +129,7 @@ function Hero() {
   return (
     <header className="dot-grid px-4 pb-12 pt-16 text-center">
       <Mascot scale={6} />
-      <div className="pixel-label mt-3 text-primary-dark">8192 x 8192 · LIVE ON REIFYDB</div>
+      <div className="pixel-label mt-3 text-primary-dark">8192 x 8192 · BUILT ON REIFYDB</div>
       <h1 className="mx-auto mb-3 mt-4 text-5xl font-extrabold leading-tight tracking-tight sm:text-6xl">
         A shared canvas
         <br />

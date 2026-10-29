@@ -8,8 +8,8 @@ ReifyDB server.
 ## Quick start
 
 ```sh
-cargo run -p reifydb-place-backend
-cd web && pnpm install && pnpm dev
+make backend
+make web
 ```
 
 Open http://localhost:5173, pick a color, click to paint, then press Commit. The

@@ -49,33 +49,3 @@ export function ActivityFeed({ activity, rows }: { activity: Activity; rows: num
     </ul>
   )
 }
-
-export function ActivityRail({ activity }: { activity: Activity }) {
-  const [open, setOpen] = useState(true)
-  if (!open) {
-    return (
-      <button
-        type="button"
-        className="hidden w-8 shrink-0 border-l-2 border-[#4b52d6] bg-white text-primary-dark md:block"
-        title="Show live activity"
-        aria-label="Show live activity"
-        onClick={() => setOpen(true)}
-      >
-        ⟨
-      </button>
-    )
-  }
-  return (
-    <aside className="hidden w-[220px] shrink-0 flex-col border-l-2 border-[#4b52d6] bg-white md:flex" aria-label="Live activity">
-      <h2 className="flex items-center justify-between border-b-2 border-[#4b52d6] px-3 py-2 text-sm font-bold">
-        Live Activity <span className="pixel-label text-primary-dark">● AUTO</span>
-      </h2>
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <ActivityFeed activity={activity} rows={12} />
-      </div>
-      <button type="button" className="border-t border-border-light px-3 py-2 text-left text-xs text-text-muted" onClick={() => setOpen(false)}>
-        ⟩ hide activity
-      </button>
-    </aside>
-  )
-}

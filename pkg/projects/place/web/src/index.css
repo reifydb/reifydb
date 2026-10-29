@@ -67,14 +67,6 @@
   letter-spacing: 0.04em;
 }
 
-.live-led {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-primary-dark);
-  box-shadow: 0 0 8px var(--color-primary);
-}
-
 .robot-blink .robot-antenna {
   animation: robot-antenna 1s steps(1) infinite;
 }

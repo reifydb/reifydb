@@ -56,13 +56,7 @@ export function MinimapPanel({ minimap, view, size, onCenter, footer }: MinimapP
   const box = viewBox(view, size)
 
   return (
-    <div
-      className="panel absolute right-4 top-4 z-10 p-1"
-      onPointerDown={(event) => event.stopPropagation()}
-      onPointerMove={(event) => event.stopPropagation()}
-      onPointerUp={(event) => event.stopPropagation()}
-      onWheel={(event) => event.stopPropagation()}
-    >
+    <div className="panel p-1">
       <div
         className="dot-grid relative cursor-pointer overflow-hidden"
         style={{ width: MINIMAP_CSS_SIZE, height: MINIMAP_CSS_SIZE }}

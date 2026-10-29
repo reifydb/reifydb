@@ -13,10 +13,6 @@ export function BrandBar({ tag, children }: { tag?: string; children?: ReactNode
           <span className="text-lg font-extrabold tracking-tight">place</span>
         </a>
         {tag && <span className="pixel-label hidden text-text-muted sm:inline">{tag}</span>}
-        <span className="pixel-label flex items-center gap-1.5 text-primary-dark">
-          <span className="live-led" />
-          LIVE
-        </span>
         <div className="ml-auto flex items-center gap-4 text-sm">
           {children}
           <span className="hidden items-center gap-1.5 text-text-muted md:flex">

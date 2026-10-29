@@ -1,19 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-import { useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
+import { type Dispatch, type SetStateAction, useCallback, useEffect, useRef, useState, type PointerEvent, type WheelEvent } from 'react'
 import { CANVAS_SIZE, TILE_SIZE, type TileKey, inCanvas, parseTileKey, tilesInRect } from '@/geometry'
 import type { Activity } from '@/activity'
-import type { Minimap } from '@/minimap'
 import { PALETTE, cssColor } from '@/palette'
 import type { Pending } from '@/pending'
 import type { Pixel } from '@/pack'
 import type { PixelBuffer, Tile } from '@/pixels'
 import { SHAPES, type Point, type ShapeTool, type Tool, isShape, linePixels } from '@/tools'
-import { MinimapPanel } from './minimap-panel'
 import { Pings, tileCenter } from './pings'
 import { isTyping } from './toolbar'
-import { ZoomControl } from './zoom-control'
 
 export const MIN_ZOOM = 0.5
 export const MAX_ZOOM = 32
@@ -23,7 +20,7 @@ const EDGE_MARGIN = 64
 const OUTSIDE_COLOR = '#dcdbea'
 const BORDER_COLOR = '#4b52d6'
 
-interface View {
+export interface View {
   zoom: number
   x: number
   y: number
@@ -31,7 +28,7 @@ interface View {
 
 interface CanvasViewProps {
   buffer: PixelBuffer
-  minimap: Minimap
+  camera: Camera
   activity: Activity
   pending: Pending
   tool: Tool
@@ -50,13 +47,57 @@ type Gesture =
   | { kind: 'stroke'; last: Point }
   | { kind: 'shape'; shape: ShapeTool; start: Point }
 
-export function CanvasView({ buffer, minimap, activity, pending, layerVisible, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
+export interface Camera {
+  view: View
+  setView: Dispatch<SetStateAction<View>>
+  size: { width: number; height: number }
+  setSize: (size: { width: number; height: number }) => void
+  zoomAt: (zoom: number, cx: number, cy: number) => void
+  zoomIn: () => void
+  zoomOut: () => void
+  reset: () => void
+  centerOn: (point: Point) => void
+}
+
+export function useCamera(): Camera {
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  const [view, setView] = useState<View>({ zoom: 1, x: 0, y: 0 })
+
+  useEffect(() => {
+    setView((current) => clampView(current, size))
+  }, [size])
+
+  const zoomAt = useCallback(
+    (zoom: number, cx: number, cy: number) => {
+      setView((current) => {
+        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
+        const scale = next / current.zoom
+        return clampView({ zoom: next, x: cx - (cx - current.x) * scale, y: cy - (cy - current.y) * scale }, size)
+      })
+    },
+    [size],
+  )
+
+  const zoomIn = useCallback(() => zoomAt(view.zoom * ZOOM_STEP, size.width / 2, size.height / 2), [zoomAt, view.zoom, size])
+  const zoomOut = useCallback(() => zoomAt(view.zoom / ZOOM_STEP, size.width / 2, size.height / 2), [zoomAt, view.zoom, size])
+  const reset = useCallback(() => zoomAt(1, size.width / 2, size.height / 2), [zoomAt, size])
+  const centerOn = useCallback(
+    (point: Point) =>
+      setView((current) =>
+        clampView({ zoom: current.zoom, x: size.width / 2 - point.x * current.zoom, y: size.height / 2 - point.y * current.zoom }, size),
+      ),
+    [size],
+  )
+
+  return { view, setView, size, setSize, zoomAt, zoomIn, zoomOut, reset, centerOn }
+}
+
+export function CanvasView({ buffer, camera, activity, pending, layerVisible, tool, color, ghost, onStroke, onShape, onPick, onPlace, onHover }: CanvasViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bitmapsRef = useRef(new Map<TileKey, HTMLCanvasElement>())
   const gestureRef = useRef<Gesture | null>(null)
-  const [size, setSize] = useState({ width: 0, height: 0 })
-  const [view, setView] = useState<View>({ zoom: 1, x: 0, y: 0 })
+  const { view, setView, size, setSize, zoomAt, zoomIn, zoomOut, reset } = camera
   const [space, setSpace] = useState(false)
   const [panning, setPanning] = useState(false)
   const [preview, setPreview] = useState<Point[] | null>(null)
@@ -71,10 +112,6 @@ export function CanvasView({ buffer, minimap, activity, pending, layerVisible, t
     observer.observe(container)
     return () => observer.disconnect()
   }, [])
-
-  useEffect(() => {
-    setView((current) => clampView(current, size))
-  }, [size])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -155,28 +192,6 @@ export function CanvasView({ buffer, minimap, activity, pending, layerVisible, t
       if (frame !== 0) cancelAnimationFrame(frame)
     }
   }, [buffer, pending, layerVisible, view, size, preview, color, ghost])
-
-  const zoomAt = useCallback(
-    (zoom: number, cx: number, cy: number) => {
-      setView((current) => {
-        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom))
-        const scale = next / current.zoom
-        return clampView({ zoom: next, x: cx - (cx - current.x) * scale, y: cy - (cy - current.y) * scale }, size)
-      })
-    },
-    [size],
-  )
-
-  const zoomIn = useCallback(() => zoomAt(view.zoom * ZOOM_STEP, size.width / 2, size.height / 2), [zoomAt, view.zoom, size])
-  const zoomOut = useCallback(() => zoomAt(view.zoom / ZOOM_STEP, size.width / 2, size.height / 2), [zoomAt, view.zoom, size])
-  const reset = useCallback(() => zoomAt(1, size.width / 2, size.height / 2), [zoomAt, size])
-  const centerOn = useCallback(
-    (point: Point) =>
-      setView((current) =>
-        clampView({ zoom: current.zoom, x: size.width / 2 - point.x * current.zoom, y: size.height / 2 - point.y * current.zoom }, size),
-      ),
-    [size],
-  )
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -298,13 +313,6 @@ export function CanvasView({ buffer, minimap, activity, pending, layerVisible, t
           const top = view.y + center.y * view.zoom
           return left < 0 || top < 0 || left > size.width || top > size.height ? null : { left, top }
         }}
-      />
-      <MinimapPanel
-        minimap={minimap}
-        view={view}
-        size={size}
-        onCenter={centerOn}
-        footer={<ZoomControl zoom={view.zoom} onZoomIn={zoomIn} onZoomOut={zoomOut} onReset={reset} />}
       />
     </div>
   )
