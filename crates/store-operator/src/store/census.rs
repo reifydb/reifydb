@@ -206,6 +206,15 @@ impl StandardOperatorStore {
 	pub fn census(&self) -> Result<Vec<OperatorStateCensus>> {
 		Ok(self.census.snapshot())
 	}
+
+	#[instrument(name = "store::operator::stored_operators", level = "debug", skip(self))]
+	pub fn stored_operators(&self) -> Result<Vec<OperatorId>> {
+		let mut operators = self.resident.shared().operators();
+		operators.extend(Enumerate::operators(&self.persistent)?);
+		operators.sort_unstable();
+		operators.dedup();
+		Ok(operators)
+	}
 }
 
 impl OperatorStore {
@@ -224,6 +233,12 @@ impl OperatorStore {
 	pub fn census(&self) -> Result<Vec<OperatorStateCensus>> {
 		match self {
 			Self::Standard(store) => store.census(),
+		}
+	}
+
+	pub fn stored_operators(&self) -> Result<Vec<OperatorId>> {
+		match self {
+			Self::Standard(store) => store.stored_operators(),
 		}
 	}
 }

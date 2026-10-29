@@ -23,7 +23,7 @@ use reifydb_core::{
 	interface::{
 		catalog::{
 			config::{ConfigKey, GetConfig},
-			flow::FlowId,
+			flow::{FlowId, OperatorId},
 			id::ViewId,
 			object::ObjectId,
 			view::ViewKind,
@@ -251,6 +251,7 @@ impl FlowSupervisor {
 
 		let operators = self.engine.operator_state();
 		let mut to_spawn: Vec<(FlowDag, Option<FlowCheckpoint>)> = Vec::new();
+		let mut owned: BTreeSet<OperatorId> = BTreeSet::new();
 		for &flow_id in &known {
 			let flow = match self
 				.engine
@@ -263,6 +264,7 @@ impl FlowSupervisor {
 					flow_id.0, scan_from.0
 				),
 			};
+			owned.extend(flow.get_operator_ids());
 			if self.is_transactional_flow(&flow) {
 				continue;
 			}
@@ -273,6 +275,9 @@ impl FlowSupervisor {
 
 		if let Err(e) = reap_orphan_checkpoints(&operators, &known) {
 			panic!("flow supervisor cannot list flow checkpoints at bootstrap: {e}");
+		}
+		if let Err(e) = reap_orphan_operators(&operators, &owned) {
+			panic!("flow supervisor cannot reap orphan operator state at bootstrap: {e}");
 		}
 
 		drop(query);
@@ -1163,6 +1168,16 @@ fn stored_checkpoint(operators: &OperatorStore, flow_id: FlowId) -> Option<FlowC
 		Ok(checkpoint) => checkpoint.filter(|checkpoint| checkpoint.version > CommitVersion(0)),
 		Err(err) => panic!("flow {} checkpoint unreadable at bootstrap: {err}", flow_id.0),
 	}
+}
+
+fn reap_orphan_operators(operators: &OperatorStore, owned: &BTreeSet<OperatorId>) -> Result<()> {
+	for operator in operators.stored_operators()? {
+		if owned.contains(&operator) {
+			continue;
+		}
+		operators.drop_operator(operator)?;
+	}
+	Ok(())
 }
 
 fn reap_orphan_checkpoints(operators: &OperatorStore, known: &BTreeSet<FlowId>) -> Result<()> {
