@@ -28,9 +28,26 @@ export interface StoreClientOptions {
   identity?: string
 }
 
+interface Hub {
+  targets: Map<string, SubscriptionTarget>
+  queue: Promise<unknown>
+}
+
+const hubs = new WeakMap<Db, Hub>()
+
+function hubOf(db: Db): Hub {
+  let hub = hubs.get(db)
+  if (!hub) {
+    hub = { targets: new Map(), queue: Promise.resolve() }
+    hubs.set(db, hub)
+  }
+  return hub
+}
+
 export function storeClient(db: Db, options: StoreClientOptions = {}): BridgeClient {
   const identity = options.identity
-  const targets = new Map<string, SubscriptionTarget>()
+  const hub = hubOf(db)
+  const targets = hub.targets
 
   const deliver = (subscriptionId: string, bytes: Uint8Array) => {
     const target = targets.get(subscriptionId)
@@ -70,10 +87,9 @@ export function storeClient(db: Db, options: StoreClientOptions = {}): BridgeCli
 
   // Nothing may drain between a subscribe returning its id and that id being registered, or the
   // staged hydration is read off the queue, matched to no target and dropped for good.
-  let queue: Promise<unknown> = Promise.resolve()
   const alone = <T>(work: () => Promise<T>): Promise<T> => {
-    const next = queue.then(work, work)
-    queue = next.then(
+    const next = hub.queue.then(work, work)
+    hub.queue = next.then(
       () => undefined,
       () => undefined,
     )

@@ -88,4 +88,22 @@ describe('storeClient', () => {
     await storeClient(db).unsubscribe(['7', '8'])
     expect(unsubscribed).toEqual([['7', '8']])
   })
+
+  it('delivers to every client on one db whichever client drains', async () => {
+    // Otherwise the first client to drain the db-wide queue drops every change meant for another client's subscriptions.
+    let subscribes = 0
+    let drains = 0
+    const db = fakeDb([], {
+      subscribeAs: () => Promise.resolve([String(7 + subscribes++)]),
+      caughtUp: () => Promise.resolve({ envelopes: [], closed: drains++ === 2 ? ['7', '8'] : [] }),
+    })
+    const alice = storeClient(db)
+    const bob = storeClient(db)
+    const closed: string[] = []
+    await alice.subscribe([{ rql: 'from t', shape, callbacks: { onClosed: () => closed.push('alice') } }])
+    await bob.subscribe([{ rql: 'from u', shape, callbacks: { onClosed: () => closed.push('bob') } }])
+    await alice.caughtUp()
+    expect(closed.sort()).toEqual(['alice', 'bob'])
+  })
 })
+
