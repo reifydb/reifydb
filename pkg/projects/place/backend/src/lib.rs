@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2026 ReifyDB
 
-use std::{collections::HashMap, env::var_os, path::PathBuf, sync::Arc};
+use std::{
+	collections::{BTreeMap, HashMap},
+	env::var_os,
+	path::PathBuf,
+	sync::Arc,
+};
 
 use miniz_oxide::{deflate::compress_to_vec, inflate::decompress_to_vec_with_limit};
 use reifydb::{
@@ -34,6 +39,8 @@ pub const TILE: usize = 64;
 pub const TILES_PER_SIDE: u8 = 128;
 pub const TILE_BYTES: usize = TILE * TILE;
 pub const COLORS: i32 = 32;
+pub const CANVAS: u32 = (TILE * TILES_PER_SIDE as usize) as u32;
+pub const MAX_SPRITE: usize = 128;
 
 const DEFLATE_LEVEL: u8 = 3;
 
@@ -63,6 +70,8 @@ pub fn routines(routines: RoutinesConfigurator) -> RoutinesConfigurator {
 		("place::tile_keys", TileFunction::TileKeys),
 		("place::pixel_count", TileFunction::PixelCount),
 		("place::paint", TileFunction::Paint),
+		("place::parse_pixels", TileFunction::ParsePixels),
+		("place::parse_sprite", TileFunction::ParseSprite),
 	]
 	.into_iter()
 	.fold(routines, |routines, (name, function)| {
@@ -136,6 +145,8 @@ enum TileFunction {
 	TileKeys,
 	PixelCount,
 	Paint,
+	ParsePixels,
+	ParseSprite,
 }
 
 struct TileRoutine {
@@ -154,6 +165,7 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 			TileFunction::TileKeys => ValueType::List(Box::new(ValueType::Uint2)),
 			TileFunction::PixelCount => ValueType::Int4,
 			TileFunction::Paint => ValueType::Blob,
+			TileFunction::ParsePixels | TileFunction::ParseSprite => edit_list_type(),
 		}
 	}
 
@@ -185,6 +197,20 @@ impl<'a> Routine<FunctionContext<'a>> for TileRoutine {
 				Ok(int4(ctx.fragment.text(), (0..rows).map(|_| count)))
 			}
 			TileFunction::Paint => paint_rows(ctx, &group_by_tile(decode_edits(ctx, tiles)?), args),
+			TileFunction::ParsePixels => {
+				let pixels = texts(&first_value(&args[0])?).map_err(|reason| failed(ctx, reason))?;
+				edit_list_rows(ctx, parse_pixels(&pixels).map_err(|reason| failed(ctx, reason))?)
+			}
+			TileFunction::ParseSprite => {
+				let x = coordinate(&first_value(&args[0])?).map_err(|reason| failed(ctx, reason))?;
+				let y = coordinate(&first_value(&args[1])?).map_err(|reason| failed(ctx, reason))?;
+				let rows = texts(&first_value(&args[2])?).map_err(|reason| failed(ctx, reason))?;
+				let legend = texts(&first_value(&args[3])?).map_err(|reason| failed(ctx, reason))?;
+				edit_list_rows(
+					ctx,
+					parse_sprite(x, y, &rows, &legend).map_err(|reason| failed(ctx, reason))?,
+				)
+			}
 		}
 	}
 }
@@ -271,6 +297,8 @@ impl Function for TileRoutine {
 	fn arity(&self) -> Arity {
 		match self.function {
 			TileFunction::Paint => Arity::Exact(3),
+			TileFunction::ParseSprite => Arity::Exact(4),
+			TileFunction::ParsePixels => Arity::Exact(1),
 			TileFunction::TileKey
 			| TileFunction::EditPixels
 			| TileFunction::TileKeys
@@ -306,6 +334,139 @@ impl Function for TileRoutine {
 			None => self.call(ctx, args),
 		}
 	}
+}
+
+fn edit_list_type() -> ValueType {
+	ValueType::List(Box::new(ValueType::Blob))
+}
+
+fn first_value(arg: &(FieldRef, ArrayRef)) -> Result<Value, RoutineError> {
+	Ok(ColumnView::try_from(arg)?.get_value(0))
+}
+
+fn edit_list_rows(ctx: &FunctionContext<'_>, edits: Vec<Vec<u8>>) -> Result<(FieldRef, ArrayRef), RoutineError> {
+	let list = Value::List(edits.into_iter().map(|edit| Value::Blob(Blob::new(edit))).collect());
+	Ok(any_typed(ctx.fragment.text(), (0..ctx.row_count).map(|_| list.clone()), edit_list_type()))
+}
+
+fn texts(value: &Value) -> Result<Vec<String>, String> {
+	match value {
+		Value::List(items) => items.iter().map(text).collect(),
+		Value::Any(inner) => texts(inner),
+		other => Err(format!("expected a list of text, got {:?}", other.get_type())),
+	}
+}
+
+fn text(value: &Value) -> Result<String, String> {
+	match value {
+		Value::Utf8(text) => Ok(text.clone()),
+		Value::Any(inner) => text(inner),
+		other => Err(format!("expected text, got {:?}", other.get_type())),
+	}
+}
+
+fn coordinate(value: &Value) -> Result<u32, String> {
+	match value {
+		Value::Uint2(v) => Ok(u32::from(*v)),
+		Value::Any(inner) => coordinate(inner),
+		other => Err(format!("expected a uint2 coordinate, got {:?}", other.get_type())),
+	}
+}
+
+fn parse_pixels(items: &[String]) -> Result<Vec<Vec<u8>>, String> {
+	let mut seen: HashMap<(u32, u32), usize> = HashMap::new();
+	let mut pixels = Vec::with_capacity(items.len());
+	for (index, item) in items.iter().enumerate() {
+		let n = index + 1;
+		let malformed = || format!("pixel {n} \"{item}\" must be \"x,y,color\"");
+		let parts: Vec<&str> = item.split(',').map(str::trim).collect();
+		let [x, y, color] = parts.as_slice() else {
+			return Err(malformed());
+		};
+		let (Ok(x), Ok(y), Ok(color)) = (x.parse::<u32>(), y.parse::<u32>(), color.parse::<u32>()) else {
+			return Err(malformed());
+		};
+		if x >= CANVAS || y >= CANVAS {
+			return Err(format!("pixel {n} at {x},{y} is outside the {CANVAS}x{CANVAS} canvas"));
+		}
+		if color >= COLORS as u32 {
+			return Err(format!("pixel {n} color {color} is outside the palette 0..{}", COLORS - 1));
+		}
+		if let Some(first) = seen.insert((x, y), n) {
+			return Err(format!("pixel {x},{y} is given twice (items {first} and {n})"));
+		}
+		pixels.push((x, y, color as u8));
+	}
+	Ok(tile_edits(pixels))
+}
+
+fn parse_sprite(x: u32, y: u32, rows: &[String], legend: &[String]) -> Result<Vec<Vec<u8>>, String> {
+	let mut colors: HashMap<char, (u8, usize)> = HashMap::new();
+	for (index, entry) in legend.iter().enumerate() {
+		let n = index + 1;
+		let malformed = || format!("legend {n} \"{entry}\" must be \"letter=color\"");
+		let (key, color) = entry.split_once('=').ok_or_else(malformed)?;
+		let mut chars = key.chars();
+		let (Some(letter), None) = (chars.next(), chars.next()) else {
+			return Err(malformed());
+		};
+		if letter == '.' {
+			return Err(format!("legend {n} \".\" is reserved for \"leave the pixel as it is\""));
+		}
+		let color: u32 = color.parse().map_err(|_| malformed())?;
+		if color >= COLORS as u32 {
+			return Err(format!("legend {n} color {color} is outside the palette 0..{}", COLORS - 1));
+		}
+		if let Some((_, first)) = colors.insert(letter, (color as u8, n)) {
+			return Err(format!("legend letter \"{letter}\" is given twice (entries {first} and {n})"));
+		}
+	}
+	let width = rows.first().map_or(0, |row| row.chars().count());
+	let height = rows.len();
+	for (index, row) in rows.iter().enumerate() {
+		let cells = row.chars().count();
+		if cells != width {
+			return Err(format!(
+				"row {} has {cells} cells, row 1 has {width}; all rows must be the same length",
+				index + 1
+			));
+		}
+	}
+	if width > MAX_SPRITE || height > MAX_SPRITE {
+		return Err(format!("sprite is {width}x{height}, max is {MAX_SPRITE}x{MAX_SPRITE}"));
+	}
+	if width > 0 && height > 0 {
+		let (end_x, end_y) = (x + width as u32 - 1, y + height as u32 - 1);
+		if end_x >= CANVAS || end_y >= CANVAS {
+			return Err(format!(
+				"sprite {width}x{height} at {x},{y} ends at {end_x},{end_y}, past the canvas edge {}",
+				CANVAS - 1
+			));
+		}
+	}
+	let mut pixels = Vec::new();
+	for (r, row) in rows.iter().enumerate() {
+		for (c, letter) in row.chars().enumerate() {
+			if letter == '.' {
+				continue;
+			}
+			let (color, _) = colors.get(&letter).ok_or_else(|| {
+				format!("row {} column {} letter \"{letter}\" is not in the legend", r + 1, c + 1)
+			})?;
+			pixels.push((x + c as u32, y + r as u32, *color));
+		}
+	}
+	Ok(tile_edits(pixels))
+}
+
+fn tile_edits(pixels: Vec<(u32, u32, u8)>) -> Vec<Vec<u8>> {
+	let mut by_tile: BTreeMap<(u8, u8), Vec<(usize, u8)>> = BTreeMap::new();
+	for (x, y, color) in pixels {
+		let (x, y) = (x as usize, y as usize);
+		let tile = ((x / TILE) as u8, (y / TILE) as u8);
+		by_tile.entry(tile).or_default().push(((y % TILE) * TILE + x % TILE, color));
+	}
+	by_tile.into_iter().map(|((tx, ty), pixels)| encode_edit(tx, ty, &pixels)).collect()
 }
 
 fn edit_list(value: &Value) -> Result<Vec<Vec<u8>>, String> {

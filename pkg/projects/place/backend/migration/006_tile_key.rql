@@ -10,6 +10,14 @@ CREATE MIGRATION 'place_tile_key' {
     create table policy place_edit on place::edit {
         from: { filter { true } }
     };
+    create table place::draw { owner: identity_id, name: utf8, note: utf8, painted: uint2 };
+    create table policy place_draw on place::draw {
+        from: { filter { true } }
+    };
+    create table place::cooldown { owner: identity_id, last: datetime };
+    create table policy place_cooldown on place::cooldown {
+        from: { filter { true } }
+    };
     drop procedure place::commit;
     create procedure place::commit { tiles: list(blob) } with { run_as: system } as {
         let $state = from place::state filter { key == "canvas" } map { key, ready };
@@ -20,5 +28,53 @@ CREATE MIGRATION 'place_tile_key' {
         for $t in $tiles {
             insert place::edit [{ owner: $identity.id, name: $identity.name, tile: place::tile_key($t), pixels: $t, painted: place::edit_pixels($t) }]
         }
-    }
+    };
+    create procedure place::draw_pixels { pixels: list(utf8), note: utf8 } with { run_as: system } as {
+        let $state = from place::state filter { key == "canvas" } map { key, ready };
+        assert { is::some($state.ready) and $state.ready } "canvas not ready";
+        assert { text::length($note) >= 1 and text::length($note) <= 140 } "note must be 1 to 140 characters";
+        let $now = datetime::now();
+        let $cool = from place::cooldown filter { owner == $identity.id } map { last };
+        assert { is::none($cool.last) or datetime::epoch_millis($now) - datetime::epoch_millis($cool.last) >= 60000 } "one draw per minute per agent";
+        let $tiles = place::parse_pixels($pixels);
+        let $painted = place::pixel_count($tiles);
+        assert { $painted >= 1 } "a draw must paint at least 1 pixel";
+        assert { $painted <= 4096 } "too many pixels";
+        let $keys = place::tile_keys($tiles);
+        update place::tile { pixels: place::paint(pixels, tile, $tiles) } filter { tile in $keys };
+        for $t in $tiles {
+            insert place::edit [{ owner: $identity.id, name: $identity.name, tile: place::tile_key($t), pixels: $t, painted: place::edit_pixels($t) }]
+        };
+        insert place::draw [{ owner: $identity.id, name: $identity.name, note: $note, painted: cast($painted, uint2) }];
+        if is::none($cool.last) {
+            insert place::cooldown [{ owner: $identity.id, last: $now }]
+        } else {
+            update place::cooldown { last: $now } filter { owner == $identity.id }
+        }
+    };
+    create procedure policy place_call_draw_pixels on place::draw_pixels { call: { filter { $identity.kind == "user" } } };
+    create procedure place::draw_sprite { x: uint2, y: uint2, rows: list(utf8), legend: list(utf8), note: utf8 } with { run_as: system } as {
+        let $state = from place::state filter { key == "canvas" } map { key, ready };
+        assert { is::some($state.ready) and $state.ready } "canvas not ready";
+        assert { text::length($note) >= 1 and text::length($note) <= 140 } "note must be 1 to 140 characters";
+        let $now = datetime::now();
+        let $cool = from place::cooldown filter { owner == $identity.id } map { last };
+        assert { is::none($cool.last) or datetime::epoch_millis($now) - datetime::epoch_millis($cool.last) >= 60000 } "one draw per minute per agent";
+        let $tiles = place::parse_sprite($x, $y, $rows, $legend);
+        let $painted = place::pixel_count($tiles);
+        assert { $painted >= 1 } "a draw must paint at least 1 pixel";
+        assert { $painted <= 4096 } "too many pixels";
+        let $keys = place::tile_keys($tiles);
+        update place::tile { pixels: place::paint(pixels, tile, $tiles) } filter { tile in $keys };
+        for $t in $tiles {
+            insert place::edit [{ owner: $identity.id, name: $identity.name, tile: place::tile_key($t), pixels: $t, painted: place::edit_pixels($t) }]
+        };
+        insert place::draw [{ owner: $identity.id, name: $identity.name, note: $note, painted: cast($painted, uint2) }];
+        if is::none($cool.last) {
+            insert place::cooldown [{ owner: $identity.id, last: $now }]
+        } else {
+            update place::cooldown { last: $now } filter { owner == $identity.id }
+        }
+    };
+    create procedure policy place_call_draw_sprite on place::draw_sprite { call: { filter { $identity.kind == "user" } } }
 };
